@@ -26,6 +26,7 @@ export function useVisualViewportInset() {
   const keyboardInsetPx = ref(0);
   const editableFocused = ref(false);
   const viewportHeightPx = ref(typeof window !== "undefined" ? Math.round(window.visualViewport?.height ?? window.innerHeight) : 0);
+  const deferredUpdateTimers: number[] = [];
   let virtualKeyboard: (Navigator & {
     virtualKeyboard?: {
       addEventListener?: (type: "geometrychange", listener: () => void) => void;
@@ -51,14 +52,43 @@ export function useVisualViewportInset() {
     keyboardInsetPx.value = inset > 0 ? inset : 0;
   };
 
+  const clearDeferredUpdates = () => {
+    while (deferredUpdateTimers.length > 0) {
+      const timerId = deferredUpdateTimers.pop();
+      if (timerId != null) {
+        window.clearTimeout(timerId);
+      }
+    }
+  };
+
+  const scheduleDeferredUpdates = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    clearDeferredUpdates();
+    for (const delayMs of [0, 32, 96, 180, 320, 520]) {
+      deferredUpdateTimers.push(window.setTimeout(update, delayMs));
+    }
+  };
+
+  const onFocusIn = () => {
+    update();
+    scheduleDeferredUpdates();
+  };
+
+  const onFocusOut = () => {
+    clearDeferredUpdates();
+    update();
+  };
+
   onMounted(() => {
     update();
 
     const viewport = window.visualViewport;
     viewport?.addEventListener("resize", update);
     viewport?.addEventListener("scroll", update);
-    window.addEventListener("focusin", update);
-    window.addEventListener("focusout", update);
+    window.addEventListener("focusin", onFocusIn);
+    window.addEventListener("focusout", onFocusOut);
     window.addEventListener("orientationchange", update);
 
     virtualKeyboard = (navigator as Navigator & {
@@ -75,10 +105,11 @@ export function useVisualViewportInset() {
     const viewport = typeof window !== "undefined" ? window.visualViewport : null;
     viewport?.removeEventListener("resize", update);
     viewport?.removeEventListener("scroll", update);
-    window.removeEventListener("focusin", update);
-    window.removeEventListener("focusout", update);
+    window.removeEventListener("focusin", onFocusIn);
+    window.removeEventListener("focusout", onFocusOut);
     window.removeEventListener("orientationchange", update);
     virtualKeyboard?.removeEventListener?.("geometrychange", update);
+    clearDeferredUpdates();
   });
 
   return {
