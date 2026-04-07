@@ -81,7 +81,7 @@ async function main() {
     });
   });
 
-  await runCase("lmstudio can opt into native chat endpoint when thinking is disabled and no tools are used", async () => {
+  await runCase("lmstudio keeps using openai-compatible chat completions even when native no-thinking is preferred", async () => {
     const config = createLlmTestConfig({
       provider: "test",
       supportsVision: true
@@ -93,34 +93,27 @@ async function main() {
     await withMockFetch([
       {
         assertRequest(body: any, _callIndex: number, init: RequestInit, url: string) {
-          assert.equal(url, "http://localhost:1234/api/v1/chat");
-          assert.equal(body.model, "fake-model");
-          assert.equal(body.reasoning, "off");
-          assert.equal(body.stream, false);
-          assert.equal(body.store, false);
-          assert.equal(body.system_prompt, "system prompt");
-          assert.deepEqual(body.input, [
-            { type: "message", content: "describe this image" },
-            { type: "image", data_url: "data:image/png;base64,AAAA" }
+          assert.equal(url, "http://localhost:1234/v1/chat/completions");
+          assert.equal(body.enable_thinking, false);
+          assert.deepEqual(body.messages, [
+            { role: "system", content: "system prompt" },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "describe this image" },
+                { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }
+              ]
+            }
           ]);
           assert.equal((init.headers as Record<string, string>).Authorization, "Bearer test-key");
         },
-        response: new Response(JSON.stringify({
-          output: [
-            { type: "reasoning", content: "hidden" },
-            { type: "message", content: "一只猫" }
-          ],
-          stats: {
-            input_tokens: 12,
-            total_output_tokens: 4,
-            reasoning_output_tokens: 0
-          }
-        }), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json"
-          }
-        })
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "一只猫"
+            }
+          }]
+        }]
       }
     ], async () => {
       const result = await client.generate({

@@ -32,6 +32,10 @@ type NativeLmStudioInput =
   | { type: "message"; content: string }
   | { type: "image"; data_url: string };
 
+type NativeLmStudioFallbackInput =
+  | { type: "text"; text: string }
+  | { type: "image"; data_url: string };
+
 /**
  * LM Studio provider — OpenAI 兼容协议，内置本地默认地址与思考开关控制。
  *
@@ -40,7 +44,8 @@ type NativeLmStudioInput =
  * - apiKey 可选，缺省时使用 "lm-studio"
  * - 若模型声明 supportsThinking 且未手动配置 features.thinking，
  *   自动注入 enable_thinking 控制字段，无需额外 provider feature 配置
- * - 对少数明确 opt-in 的“无工具且需关闭思考”请求，走 LM Studio 原生 /api/v1/chat
+ * - 当前统一走 OpenAI 兼容 /v1/chat/completions，避免不同 LM Studio 版本之间
+ *   /api/v1/chat 输入 schema 不一致导致 reply gate 等无工具路径报错
  */
 export class LmStudioProvider implements LlmProvider {
   readonly type = "lmstudio" as const;
@@ -72,10 +77,6 @@ export class LmStudioProvider implements LlmProvider {
       }
     };
 
-    if (shouldUseNativeNoThinkingChatEndpoint(patchedContext, params)) {
-      return this.generateWithNativeChatEndpoint(patchedContext, params);
-    }
-
     return this.delegate.generate(patchedContext, params);
   }
 
@@ -85,7 +86,6 @@ export class LmStudioProvider implements LlmProvider {
   ): Promise<LlmProviderGenerateResult> {
     const endpoint = `${context.baseUrl.replace(/\/v1\/?$/, "").replace(/\/$/, "")}/api/v1/chat`;
     const resolvedTimeoutMs = params.timeoutMsOverride ?? context.config.llm.timeoutMs;
-    const requestBody = buildNativeChatRequestBody(context.model, params.messages);
     const timeoutController = createProviderTimeoutController({
       totalTimeoutMs: resolvedTimeoutMs,
       firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs
@@ -94,24 +94,22 @@ export class LmStudioProvider implements LlmProvider {
     params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
 
     try {
-      const response = await fetchWithProxy(context.config, "llm", endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${context.providerConfig.apiKey ?? ""}`
-        },
-        body: JSON.stringify(requestBody),
-        signal: timeoutController.controller.signal
-      }, {
-        modelRef: context.modelRef
+      const payload = await requestNativeChatPayload(
+        context,
+        endpoint,
+        timeoutController.controller.signal,
+        buildNativeChatRequestBody(context.model, params.messages)
+      ).catch(async (error) => {
+        if (!shouldRetryWithLegacyNativeChatShape(error)) {
+          throw error;
+        }
+        return requestNativeChatPayload(
+          context,
+          endpoint,
+          timeoutController.controller.signal,
+          buildLegacyNativeChatRequestBody(context.model, params.messages)
+        );
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`LLM API error: ${response.status} ${response.statusText}${errorText ? ` ${errorText}` : ""}`);
-      }
-
-      const payload = await response.json() as LmStudioChatResponsePayload;
       const text = extractNativeChatText(payload);
       const reasoningContent = extractNativeReasoningContent(payload);
       const usage = payload.stats
@@ -163,22 +161,6 @@ export class LmStudioProvider implements LlmProvider {
       params.abortSignal?.removeEventListener("abort", forwardAbort);
     }
   }
-}
-
-function shouldUseNativeNoThinkingChatEndpoint(
-  context: LlmProviderRequestContext,
-  params: LlmProviderGenerateParams
-): boolean {
-  if (!params.preferNativeNoThinkingChatEndpoint) {
-    return false;
-  }
-  if ((params.enableThinkingOverride ?? false) !== false) {
-    return false;
-  }
-  if ((params.tools?.length ?? 0) > 0) {
-    return false;
-  }
-  return canMapMessagesToNativeChatInput(params.messages);
 }
 
 function canMapMessagesToNativeChatInput(messages: LlmMessage[]): boolean {
@@ -257,6 +239,57 @@ function buildNativeChatRequestBody(model: string, messages: LlmMessage[]): Reco
   };
 }
 
+function buildLegacyNativeChatRequestBody(model: string, messages: LlmMessage[]): Record<string, unknown> {
+  const systemPrompts: string[] = [];
+  const input: NativeLmStudioFallbackInput[] = [];
+
+  for (const message of messages) {
+    if (message.role === "system") {
+      const systemText = flattenMessageText(message);
+      if (systemText) {
+        systemPrompts.push(systemText);
+      }
+      continue;
+    }
+
+    if (typeof message.content === "string") {
+      input.push({
+        type: "text",
+        text: message.content
+      });
+      continue;
+    }
+
+    for (const part of message.content) {
+      if (part.type === "text") {
+        if (part.text.length > 0) {
+          input.push({
+            type: "text",
+            text: part.text
+          });
+        }
+        continue;
+      }
+
+      if (part.type === "image_url") {
+        input.push({
+          type: "image",
+          data_url: part.image_url.url
+        });
+      }
+    }
+  }
+
+  return {
+    model,
+    input,
+    reasoning: "off",
+    stream: false,
+    store: false,
+    ...(systemPrompts.length > 0 ? { system_prompt: systemPrompts.join("\n\n") } : {})
+  };
+}
+
 function flattenMessageText(message: LlmMessage): string {
   if (typeof message.content === "string") {
     return message.content;
@@ -269,7 +302,7 @@ function flattenMessageText(message: LlmMessage): string {
 
 function extractNativeChatText(payload: LmStudioChatResponsePayload): string {
   return (payload.output ?? [])
-    .filter((item) => item.type === "message" && typeof item.content === "string")
+    .filter((item) => (item.type === "message" || item.type === "text") && typeof item.content === "string")
     .map((item) => item.content ?? "")
     .join("");
 }
@@ -286,4 +319,40 @@ function sumNullable(left: number | null, right: number | null): number | null {
     return null;
   }
   return (left ?? 0) + (right ?? 0);
+}
+
+async function requestNativeChatPayload(
+  context: LlmProviderRequestContext,
+  endpoint: string,
+  signal: AbortSignal,
+  requestBody: Record<string, unknown>
+): Promise<LmStudioChatResponsePayload> {
+  const response = await fetchWithProxy(context.config, "llm", endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${context.providerConfig.apiKey ?? ""}`
+    },
+    body: JSON.stringify(requestBody),
+    signal
+  }, {
+    modelRef: context.modelRef
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`LLM API error: ${response.status} ${response.statusText}${errorText ? ` ${errorText}` : ""}`);
+  }
+
+  return response.json() as Promise<LmStudioChatResponsePayload>;
+}
+
+function shouldRetryWithLegacyNativeChatShape(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message;
+  return message.includes("Invalid discriminator value. Expected 'text' | 'image'")
+    || message.includes("'input.0.content' is required")
+    || message.includes("Unrecognized key(s) in object: 'text'");
 }
