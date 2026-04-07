@@ -55,7 +55,9 @@ function close() {
     :open="open"
     title="新建会话"
     description="创建一个 Web 会话。这个表单是通用会话入口，后续可以继续扩展更多字段。"
+    variant="content"
     width-class="max-w-xl"
+    body-class="px-4 py-4"
     @close="close"
   >
     <form class="flex flex-col gap-4" @submit.prevent="submit">

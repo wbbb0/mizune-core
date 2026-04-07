@@ -7,11 +7,17 @@ const props = withDefaults(defineProps<{
   open: boolean;
   title: string;
   description?: string;
+  variant?: "content" | "fullscreen";
   widthClass?: string;
+  panelClass?: string;
+  bodyClass?: string;
   closeOnBackdrop?: boolean;
 }>(), {
   description: undefined,
+  variant: "content",
   widthClass: "max-w-lg",
+  panelClass: "",
+  bodyClass: "",
   closeOnBackdrop: true
 });
 
@@ -22,13 +28,36 @@ const emit = defineEmits<{
 const { keyboardInsetPx, keyboardInsetStylePx } = useVisualViewportInset();
 
 const backdropStyle = computed(() => ({
-  paddingBottom: `calc(1.5rem + ${keyboardInsetStylePx.value})`
+  paddingTop: "max(1rem, env(safe-area-inset-top, 0px))",
+  paddingRight: "max(1rem, env(safe-area-inset-right, 0px))",
+  paddingBottom: `calc(max(1rem, env(safe-area-inset-bottom, 0px)) + ${keyboardInsetStylePx.value})`,
+  paddingLeft: "max(1rem, env(safe-area-inset-left, 0px))"
 }));
 
-const panelStyle = computed(() => ({
-  maxHeight: `calc(100dvh - 3rem - ${keyboardInsetStylePx.value})`,
-  marginBottom: keyboardInsetPx.value > 0 ? keyboardInsetStylePx.value : "0px"
-}));
+const panelStyle = computed(() => (
+  props.variant === "fullscreen"
+    ? {
+        width: "min(100%, calc(100vw - 2rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)))",
+        height: `calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - ${keyboardInsetStylePx.value})`,
+        marginBottom: keyboardInsetPx.value > 0 ? keyboardInsetStylePx.value : "0px"
+      }
+    : {
+        maxHeight: `calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - ${keyboardInsetStylePx.value})`,
+        marginBottom: keyboardInsetPx.value > 0 ? keyboardInsetStylePx.value : "0px"
+      }
+));
+
+const panelClasses = computed(() => (
+  props.variant === "fullscreen"
+    ? `h-full max-h-full ${props.panelClass}`.trim()
+    : `${props.widthClass} ${props.panelClass}`.trim()
+));
+
+const bodyClasses = computed(() => (
+  props.variant === "fullscreen"
+    ? `scrollbar-thin min-h-0 flex-1 overflow-y-auto ${props.bodyClass}`.trim()
+    : `scrollbar-thin overflow-y-auto ${props.bodyClass}`.trim()
+));
 
 function onBackdropClick() {
   if (props.closeOnBackdrop) {
@@ -64,7 +93,7 @@ watch(() => props.open, (open) => {
     >
       <div
         class="flex max-h-full w-full flex-col overflow-hidden border border-border-strong bg-surface-panel shadow-[0_22px_70px_rgba(0,0,0,0.45)]"
-        :class="widthClass"
+        :class="panelClasses"
         :style="panelStyle"
       >
         <div class="flex items-start gap-3 border-b border-border-default bg-surface-sidebar px-4 py-3">
@@ -77,7 +106,7 @@ watch(() => props.open, (open) => {
           </button>
         </div>
 
-        <div class="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div :class="bodyClasses">
           <slot />
         </div>
 
