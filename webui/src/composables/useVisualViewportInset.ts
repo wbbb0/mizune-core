@@ -25,15 +25,19 @@ function isEditableElement(target: EventTarget | null): boolean {
 export function useVisualViewportInset() {
   const keyboardInsetPx = ref(0);
   const editableFocused = ref(false);
+  const viewportHeightPx = ref(typeof window !== "undefined" ? Math.round(window.visualViewport?.height ?? window.innerHeight) : 0);
   let virtualKeyboard: (Navigator & {
     virtualKeyboard?: {
-      overlaysContent?: boolean;
       addEventListener?: (type: "geometrychange", listener: () => void) => void;
       removeEventListener?: (type: "geometrychange", listener: () => void) => void;
     };
   })["virtualKeyboard"];
 
   const update = () => {
+    if (typeof window !== "undefined") {
+      viewportHeightPx.value = Math.round(window.visualViewport?.height ?? window.innerHeight);
+    }
+
     const activeElement = typeof document !== "undefined" ? document.activeElement : null;
     editableFocused.value = isEditableElement(activeElement);
 
@@ -59,19 +63,11 @@ export function useVisualViewportInset() {
 
     virtualKeyboard = (navigator as Navigator & {
       virtualKeyboard?: {
-        overlaysContent?: boolean;
         addEventListener?: (type: "geometrychange", listener: () => void) => void;
         removeEventListener?: (type: "geometrychange", listener: () => void) => void;
       };
     }).virtualKeyboard;
-    if (virtualKeyboard && "overlaysContent" in virtualKeyboard) {
-      try {
-        virtualKeyboard.overlaysContent = true;
-      } catch {
-        // Best-effort only.
-      }
-      virtualKeyboard.addEventListener?.("geometrychange", update);
-    }
+    virtualKeyboard?.addEventListener?.("geometrychange", update);
 
   });
 
@@ -87,6 +83,8 @@ export function useVisualViewportInset() {
 
   return {
     keyboardInsetPx,
-    keyboardInsetStylePx: computed(() => `${keyboardInsetPx.value}px`)
+    keyboardInsetStylePx: computed(() => `${keyboardInsetPx.value}px`),
+    viewportHeightPx,
+    viewportHeightStylePx: computed(() => `${viewportHeightPx.value}px`)
   };
 }

@@ -14,6 +14,7 @@ import { useRoute } from "vue-router";
 import { MessageSquare, SlidersHorizontal, Database, Settings, Folder } from "lucide-vue-next";
 import ActivityBar from "./ActivityBar.vue";
 import { useUiStore } from "@/stores/ui";
+import { useVisualViewportInset } from "@/composables/useVisualViewportInset";
 
 defineProps<{
   /** Slot name "side" and "main" expected */
@@ -22,6 +23,7 @@ defineProps<{
 
 const ui = useUiStore();
 const route = useRoute();
+const { viewportHeightStylePx } = useVisualViewportInset();
 
 // On mobile, track which "screen" is active: list or detail
 const mobileScreen = ref<"side" | "main">("side");
@@ -46,10 +48,20 @@ const routeLabel = computed(() => {
   };
   return map[String(route.name)] ?? "";
 });
+
+const rootStyle = computed(() => (
+  ui.isMobile
+    ? { height: viewportHeightStylePx.value }
+    : undefined
+));
 </script>
 
 <template>
-  <div class="relative flex h-full w-full overflow-hidden bg-surface-app text-text-primary">
+  <div
+    class="flex h-full w-full overflow-hidden bg-surface-app text-text-primary"
+    :class="ui.isMobile ? 'fixed inset-0' : 'relative'"
+    :style="rootStyle"
+  >
     <!-- ═══ DESKTOP / TABLET layout (≥768px) ═══ -->
     <template v-if="!ui.isMobile">
       <ActivityBar />
@@ -93,7 +105,7 @@ const routeLabel = computed(() => {
             </router-link>
           </nav>
         </header>
-        <div class="scrollbar-thin flex-1 overflow-x-hidden overflow-y-auto [-webkit-overflow-scrolling:touch]">
+        <div class="min-h-0 flex-1 overflow-hidden">
           <slot name="side" :open-detail="openDetail" />
         </div>
       </div>
@@ -112,7 +124,7 @@ const routeLabel = computed(() => {
           </button>
           <slot name="mobile-header" />
         </header>
-        <div class="flex-1 overflow-x-hidden overflow-y-auto [-webkit-overflow-scrolling:touch]">
+        <div class="min-h-0 flex-1 overflow-hidden">
           <slot name="main" />
         </div>
       </div>

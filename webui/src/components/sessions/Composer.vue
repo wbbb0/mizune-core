@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, nextTick } from "vue";
+import { computed, ref, watch, nextTick, onUnmounted } from "vue";
 import { Send, Paperclip, X, Loader } from "lucide-vue-next";
 import { useVisualViewportInset } from "@/composables/useVisualViewportInset";
 import { uploadsApi, type UploadedAsset } from "@/api/uploads";
@@ -31,11 +31,12 @@ const textareaRef  = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const attachments  = ref<(UploadedAsset & { preview?: string })[]>([]);
 const uploading    = ref(false);
-const { keyboardInsetPx, keyboardInsetStylePx } = useVisualViewportInset();
+const iosRootScrollGuardActive = ref(false);
+const { keyboardInsetPx } = useVisualViewportInset();
+let iosRootScrollGuardCleanup: (() => void) | null = null;
 
 const composerStyle = computed(() => ({
-  marginBottom: keyboardInsetPx.value > 0 ? keyboardInsetStylePx.value : "0px",
-  paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + 0.5rem)`
+  paddingBottom: keyboardInsetPx.value > 0 ? "0.5rem" : `calc(env(safe-area-inset-bottom, 0px) + 0.5rem)`
 }));
 
 // Auto-resize textarea
@@ -65,6 +66,92 @@ function onKeydown(e: KeyboardEvent) {
     e.preventDefault();
     send();
   }
+}
+
+function isIosWebKit(): boolean {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  const ua = navigator.userAgent;
+  return /iP(hone|ad|od)/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function forceRootScrollTop() {
+  if (window.scrollY === 0 && document.documentElement.scrollTop === 0 && document.body.scrollTop === 0) {
+    return;
+  }
+  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+}
+
+function startIosRootScrollGuard() {
+  if (!isIosWebKit() || iosRootScrollGuardActive.value) {
+    return;
+  }
+
+  iosRootScrollGuardActive.value = true;
+
+  let frameId = 0;
+  let timeoutId = 0;
+
+  const force = () => {
+    forceRootScrollTop();
+  };
+
+  const forceSoon = () => {
+    force();
+    cancelAnimationFrame(frameId);
+    frameId = window.requestAnimationFrame(force);
+    window.clearTimeout(timeoutId);
+    timeoutId = window.setTimeout(force, 180);
+  };
+
+  const viewport = window.visualViewport;
+  window.addEventListener("scroll", forceSoon, { passive: true });
+  viewport?.addEventListener("resize", forceSoon);
+  viewport?.addEventListener("scroll", forceSoon);
+
+  forceSoon();
+
+  iosRootScrollGuardCleanup = () => {
+    iosRootScrollGuardActive.value = false;
+    cancelAnimationFrame(frameId);
+    window.clearTimeout(timeoutId);
+    window.removeEventListener("scroll", forceSoon);
+    viewport?.removeEventListener("resize", forceSoon);
+    viewport?.removeEventListener("scroll", forceSoon);
+  };
+}
+
+function stopIosRootScrollGuard() {
+  iosRootScrollGuardCleanup?.();
+  iosRootScrollGuardCleanup = null;
+}
+
+function ensureFocusedFieldVisible() {
+  const el = textareaRef.value;
+  if (!el) {
+    return;
+  }
+  requestAnimationFrame(() => {
+    el.scrollIntoView({ block: "nearest", inline: "nearest" });
+  });
+  window.setTimeout(() => {
+    el.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, 180);
+}
+
+function onTextareaFocus() {
+  if (isIosWebKit()) {
+    startIosRootScrollGuard();
+    return;
+  }
+  ensureFocusedFieldVisible();
+}
+
+function onTextareaBlur() {
+  stopIosRootScrollGuard();
 }
 
 function openFilePicker() {
@@ -106,11 +193,15 @@ function removeAttachment(assetId: string) {
     attachments.value.splice(idx, 1);
   }
 }
+
+onUnmounted(() => {
+  stopIosRootScrollGuard();
+});
 </script>
 
 <template>
   <div
-    class="border-t border-border-default bg-surface-sidebar px-3 pt-2 transition-[margin] duration-180 ease-out"
+    class="border-t border-border-default bg-surface-sidebar px-3 pt-2"
     :style="composerStyle"
   >
     <!-- User ID row -->
@@ -171,6 +262,8 @@ function removeAttachment(assetId: string) {
         placeholder="发送消息… (Enter 发送，Shift+Enter 换行)"
         rows="1"
         :disabled="disabled"
+        @focus="onTextareaFocus"
+        @blur="onTextareaBlur"
         @keydown="onKeydown"
       />
 

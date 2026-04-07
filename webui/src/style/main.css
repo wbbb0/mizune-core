@@ -50,7 +50,7 @@
 }
 
 html {
-  height: calc(100% + env(safe-area-inset-top)); /* Otherwise 100% height doesn't include the top safe area on iOS */
+  height: calc(100% + env(safe-area-inset-top));
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -71,6 +71,13 @@ body {
   background: var(--surface-app);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.test {
+  background-color: red;
+}
+.test > * {
+  opacity: 0.5;
 }
 
 /* Scrollbars */
