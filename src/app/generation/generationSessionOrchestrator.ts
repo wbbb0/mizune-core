@@ -247,7 +247,7 @@ export function createGenerationSessionOrchestrator(
         resolvedModelRef,
         debugSnapshot: promptBuildResult.debugSnapshot,
         ...(setupMode ? { availableToolNames: ["get_persona", "update_persona"], setupMode: true } : {}),
-        streamResponse: resolvedDelivery === "web" ? false : true,
+        streamResponse: true,
         ...(options?.webOutputCollector ? { webOutputCollector: options.webOutputCollector } : {})
       });
     })().catch((error: unknown) => {

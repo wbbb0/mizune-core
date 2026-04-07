@@ -7,6 +7,7 @@ import Composer from "./Composer.vue";
 import ImagePreviewDialog from "@/components/common/ImagePreviewDialog.vue";
 import { useSessionsStore } from "@/stores/sessions";
 import { useAuthStore } from "@/stores/auth";
+import { ApiError } from "@/api/client";
 import type { TranscriptItem as SessionTranscriptItem } from "@/api/types";
 import { workspaceApi } from "@/api/workspace";
 
@@ -175,7 +176,14 @@ const defaultUserId = computed(() =>
 );
 
 async function onSend(payload: { userId: string; text: string; imageIds: string[] }) {
-  await store.sendMessage(payload);
+  try {
+    await store.sendMessage(payload);
+  } catch (error) {
+    const message = error instanceof ApiError || error instanceof Error
+      ? error.message
+      : "发送失败";
+    window.alert(message);
+  }
 }
 
 function onComposerUserIdChange(userId: string) {
@@ -194,7 +202,7 @@ async function onDeleteSession() {
 </script>
 
 <template>
-  <div class="flex h-full flex-col overflow-hidden">
+  <div class="flex h-full min-h-0 flex-col overflow-hidden">
     <!-- Header -->
     <header v-if="session" class="toolbar-header flex h-10 shrink-0 items-center justify-between gap-3 border-b px-4">
       <div class="flex min-w-0 items-center gap-2">
@@ -246,7 +254,7 @@ async function onDeleteSession() {
 
     <template v-else>
       <!-- Chat view: newest on top -->
-      <div v-show="tab === 'chat'" class="scrollbar-thin flex-1 overflow-x-hidden overflow-y-auto">
+      <div v-show="tab === 'chat'" class="scrollbar-thin min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         <div class="sticky-toolbar sticky top-0 z-1 flex items-center justify-between border-b px-3 py-1">
           <span class="text-small text-text-subtle">{{ reversedMessages.length }} 条消息</span>
           <button
@@ -259,13 +267,6 @@ async function onDeleteSession() {
           </button>
         </div>
         <div class="flex flex-col gap-0.5 py-3">
-          <MessageBubble
-            v-if="session.streamingText !== null"
-            side="left"
-            role="assistant"
-            :content="session.streamingText || '…'"
-            :streaming="true"
-          />
           <MessageBubble
             v-for="msg in reversedMessages"
             :key="msg.eventId"
@@ -283,14 +284,14 @@ async function onDeleteSession() {
             :timestamp-ms="msg.timestampMs"
             @preview-image="msg.kind === 'image' ? previewImage = { src: msg.imageUrl, title: msg.filename || msg.assetId } : undefined"
           />
-          <div v-if="reversedMessages.length === 0 && session.streamingText === null" class="px-6 py-6 text-center text-small text-text-subtle">
+          <div v-if="reversedMessages.length === 0" class="px-6 py-6 text-center text-small text-text-subtle">
             暂无消息
           </div>
         </div>
       </div>
 
       <!-- Transcript view: newest on top -->
-      <div v-show="tab === 'transcript'" class="scrollbar-thin flex-1 overflow-x-hidden overflow-y-auto">
+      <div v-show="tab === 'transcript'" class="scrollbar-thin min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         <!-- Toolbar: count + refresh button -->
         <div class="sticky-toolbar sticky top-0 z-1 flex items-center justify-between border-b px-3 py-1">
           <span class="text-small text-text-subtle">{{ session.transcript.length }} 条记录</span>

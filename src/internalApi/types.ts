@@ -60,6 +60,7 @@ export interface InternalApiDeps {
     incomingMessage: ParsedIncomingMessage,
     options: {
       webOutputCollector: GenerationWebOutputCollector;
+      sessionId?: string;
     }
   ) => Promise<void>;
   browserService: BrowserService;

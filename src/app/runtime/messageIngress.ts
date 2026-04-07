@@ -40,6 +40,7 @@ type DeliveryContext =
   | {
       kind: "web";
       collector: GenerationWebOutputCollector;
+      sessionId?: string;
     };
 
 export function createRuntimeMessageIngress(input: {
@@ -61,9 +62,16 @@ export function createRuntimeMessageIngress(input: {
         : buildMessageHandlerDeps(input.services, input.directCommandDeps, input.persistSession, {
             kind: "web",
             collector: delivery.collector,
+            ...(delivery.sessionId ? { sessionId: delivery.sessionId } : {}),
             handleDirectCommand: createDeliveryHandleDirectCommand(input.directCommandDeps, delivery)
           });
-      await processIncomingMessage(deps, incomingMessage);
+      await processIncomingMessage(
+        deps,
+        incomingMessage,
+        delivery.kind === "web" && delivery.sessionId
+          ? { targetSessionId: delivery.sessionId }
+          : undefined
+      );
     }
   };
 }

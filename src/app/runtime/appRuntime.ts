@@ -271,11 +271,13 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     incomingMessage: import("#services/onebot/types.ts").ParsedIncomingMessage,
     options: {
       webOutputCollector: import("../generation/generationExecutor.ts").GenerationWebOutputCollector;
+      sessionId?: string;
     }
   ) => {
     await messageIngress.handleIncomingMessage(incomingMessage, {
       kind: "web",
-      collector: options.webOutputCollector
+      collector: options.webOutputCollector,
+      ...(options.sessionId ? { sessionId: options.sessionId } : {})
     });
   };
 

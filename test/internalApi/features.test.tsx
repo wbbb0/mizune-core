@@ -400,8 +400,35 @@ async function main() {
       assert.equal(streamResponse.statusCode, 200);
       assert.match(streamResponse.body, /event: ready/);
       assert.match(streamResponse.body, /event: chunk/);
-      assert.match(streamResponse.body, /web handled: hello from web/);
+      assert.match(streamResponse.body, new RegExp(`web handled: ${sessionId}: hello from web`));
       assert.match(streamResponse.body, /event: complete/);
+      assert.deepEqual(deps.__state.sentMessages, []);
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("internal api web-turn can inject into onebot sessions without sending to onebot", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const sessionId = "private:10001";
+      const startResponse = await app.inject({
+        method: "POST",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/web-turn`,
+        payload: { userId: "10001", senderName: "Alice", text: "hello from panel" }
+      });
+
+      assert.equal(startResponse.statusCode, 200);
+      const turnId = startResponse.json().turnId;
+      const streamResponse = await app.inject({
+        method: "GET",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/web-turn/stream?turnId=${encodeURIComponent(turnId)}`
+      });
+
+      assert.equal(streamResponse.statusCode, 200);
+      assert.match(streamResponse.body, /event: chunk/);
+      assert.match(streamResponse.body, /web handled: private:10001: hello from panel/);
       assert.deepEqual(deps.__state.sentMessages, []);
     } finally {
       await app.close();

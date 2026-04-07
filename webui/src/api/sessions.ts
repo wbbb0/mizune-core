@@ -6,6 +6,14 @@ export const sessionsApi = {
     return api.get("/api/sessions");
   },
 
+  sendText(body: {
+    userId?: string;
+    groupId?: string;
+    text: string;
+  }): Promise<{ ok: boolean; result: unknown }> {
+    return api.post("/api/send-text", body);
+  },
+
   create(body: {
     participantUserId: string;
     participantLabel?: string;

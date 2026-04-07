@@ -286,17 +286,14 @@ export const useSessionsStore = defineStore("sessions", () => {
 
     active.value = {
       ...cur,
-      streamingText: "",
       composerUserId: opts.userId
     };
-
     const { turnId } = await sessionsApi.sendTurn(sessionId, {
       userId: opts.userId,
       senderName: opts.senderName,
       text: opts.text,
       imageIds: opts.imageIds
     });
-
     _subscribeTurnStream(sessionId, turnId);
   }
 

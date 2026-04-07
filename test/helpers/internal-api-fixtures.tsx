@@ -442,7 +442,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       }
     },
     async handleWebIncomingMessage(incomingMessage, options) {
-      options.webOutputCollector.append(`web handled: ${incomingMessage.text}`);
+      options.webOutputCollector.append(`web handled: ${options.sessionId ?? "derived"}: ${incomingMessage.text}`);
     },
     browserService: {
       async listProfiles() {

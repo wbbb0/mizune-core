@@ -78,6 +78,7 @@ export function createAdminMessagingService(input: {
     incomingMessage: ParsedIncomingMessage,
     options: {
       webOutputCollector: GenerationWebOutputCollector;
+      sessionId?: string;
     }
   ) => Promise<void>;
   webTurnBroker?: WebTurnBroker;
@@ -98,9 +99,6 @@ export function createAdminMessagingService(input: {
 
     async startWebSessionTurn(params, body) {
       const session = input.sessionManager.getSession(params.sessionId);
-      if (session.source !== "web") {
-        throw new Error("web-turn is only available for web sessions");
-      }
       const senderName = body.senderName ?? body.userId;
       const turnState = broker.create(params.sessionId);
 
@@ -191,6 +189,7 @@ async function runWebTurnInBackground(input: {
     incomingMessage: ParsedIncomingMessage,
     options: {
       webOutputCollector: GenerationWebOutputCollector;
+      sessionId?: string;
     }
   ) => Promise<void>;
   broker: WebTurnBroker;
@@ -235,6 +234,7 @@ async function runWebTurnInBackground(input: {
       mentionedAll: false,
       isAtMentioned: false
     }, {
+      sessionId: input.sessionId,
       webOutputCollector: {
         append(chunk) {
           input.broker.publish(input.turnState, {

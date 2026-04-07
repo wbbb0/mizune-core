@@ -166,7 +166,10 @@ async function createMessageProcessingContext(
     MessageHandlerServices,
     "audioStore" | "mediaWorkspace" | "sessionManager" | "userStore" | "setupStore"
   >,
-  incomingMessage: ParsedIncomingMessage
+  incomingMessage: ParsedIncomingMessage,
+  options?: {
+    targetSessionId?: string;
+  }
 ): Promise<MessageProcessingContext> {
   const fileSources = incomingMessage.rawEvent
     ? extractFileSources(incomingMessage.rawEvent.message)
@@ -244,8 +247,22 @@ async function createMessageProcessingContext(
     setupState,
     user,
     enrichedMessage,
-    session: services.sessionManager.getOrCreateSession(enrichedMessage)
+    session: options?.targetSessionId
+      ? resolveTargetSession(services.sessionManager, incomingMessage, options.targetSessionId)
+      : services.sessionManager.getOrCreateSession(enrichedMessage)
   };
+}
+
+function resolveTargetSession(
+  sessionManager: Pick<MessageHandlerServices, "sessionManager">["sessionManager"],
+  incomingMessage: ParsedIncomingMessage,
+  targetSessionId: string
+) {
+  const session = sessionManager.getSession(targetSessionId);
+  if (session.type !== incomingMessage.chatType) {
+    throw new Error(`Session type mismatch for ${targetSessionId}`);
+  }
+  return session;
 }
 
 async function handlePostRouterSetupDecision(
@@ -456,8 +473,11 @@ function handleNonTriggeringMessage(
   return true;
 }
 
-function shouldUpdateSessionReplyDelivery(message: Pick<ParsedIncomingMessage, "chatType" | "isAtMentioned">): boolean {
-  return message.chatType === "private" || message.isAtMentioned;
+function shouldUpdateSessionReplyDelivery(
+  inboundDelivery: SessionDelivery,
+  message: Pick<ParsedIncomingMessage, "chatType" | "isAtMentioned">
+): boolean {
+  return inboundDelivery === "web" || message.chatType === "private" || message.isAtMentioned;
 }
 
 function enqueueTriggeredMessage(
@@ -472,7 +492,7 @@ function enqueueTriggeredMessage(
   flushSession: MessageEventHandlerDeps["flushSession"],
   logger: Logger
 ): void {
-  if (shouldUpdateSessionReplyDelivery(context.enrichedMessage)) {
+  if (shouldUpdateSessionReplyDelivery(inboundDelivery, context.enrichedMessage)) {
     services.sessionManager.setLastInboundDelivery(context.session.id, inboundDelivery);
   }
 
@@ -538,7 +558,10 @@ function logReceivedMessage(
 
 export async function processIncomingMessage(
   deps: MessageEventHandlerDeps,
-  incomingMessage: ParsedIncomingMessage
+  incomingMessage: ParsedIncomingMessage,
+  options?: {
+    targetSessionId?: string;
+  }
 ): Promise<void> {
   const {
     services,
@@ -563,7 +586,8 @@ export async function processIncomingMessage(
 
   const context = await createMessageProcessingContext(
     { audioStore, mediaWorkspace, sessionManager, userStore, setupStore },
-    incomingMessage
+    incomingMessage,
+    options
   );
 
   if (deps.inboundDelivery === "onebot" && await handlePostRouterSetupDecision({ logger, whitelistStore }, context, sendImmediateText)) {
