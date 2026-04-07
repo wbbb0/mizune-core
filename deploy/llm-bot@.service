@@ -1,0 +1,20 @@
+[Unit]
+Description=llm-bot (%i)
+After=network-online.target
+After=napcat@%i.service
+Wants=network-online.target
+Wants=napcat@%i.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Workspace/nodejs/llm-onebot
+Environment=NODE_ENV=production
+Environment=CONFIG_INSTANCE=%i
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/bin/bash -lc '. %h/.nvm/nvm.sh && exec npm run start:bot'
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

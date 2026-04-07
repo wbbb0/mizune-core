@@ -1,0 +1,9 @@
+{
+    "css.lint.unknownAtRules": "ignore",
+    "chat.tools.terminal.autoApprove": {
+        "npm --prefix webui": true,
+        "npm exec": true,
+        "npm install": true,
+        "npm run": true
+    },
+}

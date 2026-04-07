@@ -1,0 +1,221 @@
+import type { ConfigManager } from "#config/configManager.ts";
+import type { WhitelistStore } from "#identity/whitelistStore.ts";
+import type { Logger } from "pino";
+import { startInternalApi } from "#internalApi/server.ts";
+import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
+import { Scheduler } from "#runtime/scheduler/scheduler.ts";
+import type { OneBotClient } from "#services/onebot/onebotClient.ts";
+import type { ShellRuntime } from "#services/shell/runtime.ts";
+import type { BrowserService } from "#services/web/browser/browserService.ts";
+import type { AppConfig } from "#config/config.ts";
+import type { PersonaStore } from "#persona/personaStore.ts";
+import type { RequestStore } from "#requests/requestStore.ts";
+import type { SessionManager } from "#conversation/session/sessionManager.ts";
+import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
+import type { UserStore } from "#identity/userStore.ts";
+import type { GlobalMemoryStore } from "#memory/memoryStore.ts";
+import type { OneBotMessageEvent, OneBotRequestEvent } from "#services/onebot/types.ts";
+import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
+import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
+import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
+import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
+import type { WorkspaceService } from "#services/workspace/workspaceService.ts";
+import type { GenerationWebOutputCollector } from "../generation/generationExecutor.ts";
+import type { ComfyTaskRunner } from "#comfy/taskRunner.ts";
+import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
+
+export interface InternalApiController {
+  close: () => Promise<void>;
+}
+
+export async function startSchedulerIfEnabled(
+  config: AppConfig,
+  scheduler: Scheduler,
+  logger: Logger
+): Promise<boolean> {
+  if (!config.scheduler.enabled) {
+    return false;
+  }
+  await scheduler.start();
+  logger.info("scheduler_started");
+  return true;
+}
+
+export async function startInternalApiIfEnabled(input: {
+  config: AppConfig;
+  logger: Logger;
+  oneBotClient: OneBotClient;
+  sessionManager: SessionManager;
+  personaStore: PersonaStore;
+  globalMemoryStore: GlobalMemoryStore;
+  userStore: UserStore;
+  whitelistStore: WhitelistStore;
+  requestStore: RequestStore;
+  scheduledJobStore: ScheduledJobStore;
+  scheduler: Scheduler;
+  shellRuntime: ShellRuntime;
+  configManager: ConfigManager;
+  sessionPersistence: SessionPersistence;
+  persistSession: (sessionId: string, reason: string) => void;
+  flushSession: (
+    sessionId: string,
+    options?: {
+      skipReplyGate?: boolean;
+      delivery?: "onebot" | "web";
+      webOutputCollector?: import("../generation/generationExecutor.ts").GenerationWebOutputCollector;
+    }
+  ) => void;
+  handleWebIncomingMessage: (
+    incomingMessage: ParsedIncomingMessage,
+    options: {
+      webOutputCollector: GenerationWebOutputCollector;
+    }
+  ) => Promise<void>;
+  browserService: BrowserService;
+  workspaceService: WorkspaceService;
+  mediaWorkspace: MediaWorkspace;
+  mediaVisionService: MediaVisionService;
+  mediaCaptionService: MediaCaptionService;
+}): Promise<InternalApiController | null> {
+  return input.config.internalApi.enabled
+    ? startInternalApi(input)
+    : null;
+}
+
+export function subscribeRuntimeReload(input: {
+  configManager: ConfigManager;
+  config: AppConfig;
+  logger: Logger;
+  oneBotClient: OneBotClient;
+  browserService: BrowserService;
+  workspaceService: WorkspaceService;
+  mediaWorkspace: MediaWorkspace;
+  mediaVisionService: MediaVisionService;
+  mediaCaptionService: MediaCaptionService;
+  searchService: { reloadConfig: () => void };
+  scheduler: Scheduler;
+  comfyTemplateCatalog: ComfyTemplateCatalogService;
+  comfyTaskRunner: ComfyTaskRunner;
+  isSchedulerStarted: () => boolean;
+  setSchedulerStarted: (value: boolean) => void;
+  getInternalApi: () => InternalApiController | null;
+  setInternalApi: (value: InternalApiController | null) => void;
+  sessionManager: SessionManager;
+  personaStore: PersonaStore;
+  globalMemoryStore: GlobalMemoryStore;
+  userStore: UserStore;
+  whitelistStore: WhitelistStore;
+  requestStore: RequestStore;
+  scheduledJobStore: ScheduledJobStore;
+  shellRuntime: ShellRuntime;
+  sessionPersistence: SessionPersistence;
+  persistSession: (sessionId: string, reason: string) => void;
+  flushSession: (
+    sessionId: string,
+    options?: {
+      skipReplyGate?: boolean;
+      delivery?: "onebot" | "web";
+      webOutputCollector?: import("../generation/generationExecutor.ts").GenerationWebOutputCollector;
+    }
+  ) => void;
+  handleWebIncomingMessage: (
+    incomingMessage: ParsedIncomingMessage,
+    options: {
+      webOutputCollector: GenerationWebOutputCollector;
+    }
+  ) => Promise<void>;
+}): void {
+  input.configManager.subscribe(async ({ previousConfig, currentConfig }) => {
+    input.searchService.reloadConfig();
+    await input.browserService.reloadConfig();
+    await input.oneBotClient.reloadConfig(previousConfig);
+    await input.comfyTemplateCatalog.reload();
+    await input.comfyTaskRunner.reloadConfig();
+
+    const schedulerEnabledChanged = previousConfig.scheduler.enabled !== currentConfig.scheduler.enabled;
+    if (schedulerEnabledChanged) {
+      if (currentConfig.scheduler.enabled) {
+        await input.scheduler.start();
+        input.setSchedulerStarted(true);
+        input.logger.info("scheduler_started_after_config_reload");
+      } else if (input.isSchedulerStarted()) {
+        await input.scheduler.stop();
+        input.setSchedulerStarted(false);
+        input.logger.info("scheduler_stopped_after_config_reload");
+      }
+    }
+
+    const internalApiNeedsRestart =
+      previousConfig.internalApi.enabled !== currentConfig.internalApi.enabled
+      || previousConfig.internalApi.port !== currentConfig.internalApi.port;
+    if (!internalApiNeedsRestart) {
+      return;
+    }
+
+    const currentInternalApi = input.getInternalApi();
+    if (currentInternalApi != null) {
+      await currentInternalApi.close();
+      input.setInternalApi(null);
+    }
+    if (!currentConfig.internalApi.enabled) {
+      return;
+    }
+
+    input.setInternalApi(await startInternalApi({
+      config: input.config,
+      logger: input.logger,
+      oneBotClient: input.oneBotClient,
+      sessionManager: input.sessionManager,
+      personaStore: input.personaStore,
+      globalMemoryStore: input.globalMemoryStore,
+      userStore: input.userStore,
+      whitelistStore: input.whitelistStore,
+      requestStore: input.requestStore,
+      scheduledJobStore: input.scheduledJobStore,
+      scheduler: input.scheduler,
+      shellRuntime: input.shellRuntime,
+      configManager: input.configManager,
+      sessionPersistence: input.sessionPersistence,
+      persistSession: input.persistSession,
+      flushSession: input.flushSession,
+      handleWebIncomingMessage: input.handleWebIncomingMessage,
+      browserService: input.browserService,
+      workspaceService: input.workspaceService,
+      mediaWorkspace: input.mediaWorkspace,
+      mediaVisionService: input.mediaVisionService,
+      mediaCaptionService: input.mediaCaptionService
+    }));
+  });
+}
+
+export async function shutdownRuntime(input: {
+  configManager: ConfigManager;
+  oneBotClient: OneBotClient;
+  onMessage: (event: OneBotMessageEvent) => void;
+  onRequest: (event: OneBotRequestEvent) => void;
+  internalApi: InternalApiController | null;
+  schedulerStarted: boolean;
+  scheduler: Scheduler;
+  comfyTaskRunner: ComfyTaskRunner;
+  singleInstanceLock: { release: () => Promise<void> };
+  logger: Logger & { flush?: () => void | Promise<void> };
+}): Promise<void> {
+  input.configManager.stop();
+  try {
+    input.oneBotClient.off("message", input.onMessage);
+    input.oneBotClient.off("request", input.onRequest);
+
+    if (input.internalApi != null) {
+      await input.internalApi.close();
+    }
+    if (input.schedulerStarted) {
+      await input.scheduler.stop();
+    }
+    await input.comfyTaskRunner.stop();
+    await input.oneBotClient.stop();
+    input.logger.info("application_stopped");
+  } finally {
+    await input.singleInstanceLock.release();
+    await Promise.resolve(input.logger.flush?.());
+  }
+}

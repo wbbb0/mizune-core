@@ -1,0 +1,20 @@
+[Unit]
+Description=llm-bot dev webui (%i)
+After=network-online.target
+After=llm-bot-dev@%i.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Workspace/nodejs/llm-onebot
+Environment=NODE_ENV=development
+Environment=CONFIG_INSTANCE=%i
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/bin/bash -lc '. %h/.nvm/nvm.sh && exec npm run dev:webui'
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+PartOf=llm-bot-dev@%i.service
+
+[Install]
+WantedBy=default.target

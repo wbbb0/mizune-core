@@ -1,0 +1,43 @@
+dashscope:
+  type: dashscope
+  apiKey: replace-me
+  proxy: false
+  features:
+    thinking:
+      type: flag
+      path: enable_thinking
+    search:
+      type: flag
+      path: enable_search
+vertex_express:
+  type: vertex_express
+  apiKey: replace-me
+  proxy: true
+  harmBlockThreshold: BLOCK_NONE
+  features:
+    search:
+      type: builtin_tool
+      tool:
+        googleSearch: {}
+# Google AI Studio 直连写法仍可使用 type=google；下面展示的是更接近 Vertex Express 的 API key 接入
+# Vertex AI 需要显式配置完整 baseUrl；apiKey 字段填写 Bearer token 或 access token
+# 典型 baseUrl:
+# https://us-central1-aiplatform.googleapis.com/v1/projects/<project>/locations/us-central1/publishers/google
+# vertex:
+#   type: vertex
+#   baseUrl: https://us-central1-aiplatform.googleapis.com/v1/projects/<project>/locations/us-central1/publishers/google
+#   apiKey: ya29.replace-me
+#   proxy: true
+#   harmBlockThreshold: BLOCK_NONE
+#   features:
+#     search:
+#       type: builtin_tool
+#       tool:
+#         googleSearch: {}
+# LM Studio 本地服务，apiKey 可省略（缺省使用 lm-studio），baseUrl 默认 http://localhost:1234/v1
+lmstudio_local:
+  type: lmstudio
+# 若 LM Studio 监听非默认端口或远程地址，可自定义 baseUrl：
+# lmstudio_remote:
+#   type: lmstudio
+#   baseUrl: http://192.168.0.100:1234/v1

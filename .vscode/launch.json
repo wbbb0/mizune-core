@@ -1,0 +1,34 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "WebUI: 启动 dev 服务并调试",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://127.0.0.1:3131/webui/",
+      "webRoot": "${workspaceFolder}/webui",
+      "preLaunchTask": "dev: full stack (CONFIG_INSTANCE=dev)",
+      "sourceMaps": true,
+      "smartStep": true
+    },
+    {
+      "name": "WebUI: 调试已运行的 dev 服务",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://127.0.0.1:3131/webui/",
+      "webRoot": "${workspaceFolder}/webui",
+      "sourceMaps": true,
+      "smartStep": true
+    },
+    {
+      "name": "WebUI: Attach 到现有 Edge (9222)",
+      "type": "msedge",
+      "request": "attach",
+      "port": 9222,
+      "urlFilter": "http://127.0.0.1:3131/webui/*",
+      "webRoot": "${workspaceFolder}/webui",
+      "sourceMaps": true,
+      "smartStep": true
+    }
+  ]
+}

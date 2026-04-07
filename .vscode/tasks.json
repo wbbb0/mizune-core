@@ -1,0 +1,61 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev: full stack (CONFIG_INSTANCE=dev)",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "dev"],
+      "options": {
+        "env": {
+          "CONFIG_INSTANCE": "dev"
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": {
+          "regexp": ".+"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "https?://(?:localhost|127\\.0\\.0\\.1):3131/webui/"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "llm-bot-dev"
+      }
+    },
+    {
+      "label": "dev: webui only (CONFIG_INSTANCE=dev)",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "dev:webui"],
+      "options": {
+        "env": {
+          "CONFIG_INSTANCE": "dev"
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": {
+          "regexp": ".+"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "https?://(?:localhost|127\\.0\\.0\\.1):3131/webui/"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "llm-bot-dev"
+      }
+    }
+  ]
+}

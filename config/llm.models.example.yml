@@ -1,0 +1,83 @@
+qwen35_plus:
+  provider: dashscope
+  model: qwen3.5-plus
+  modelType: chat
+  supportsThinking: true
+  supportsVision: true
+  supportsAudioInput: false
+  supportsTools: true
+  supportsSearch: true
+  forceNoThinkDirective: true
+qwen35_flash:
+  provider: dashscope
+  model: qwen3.5-flash
+  modelType: chat
+  supportsThinking: true
+  supportsVision: false
+  supportsAudioInput: false
+  supportsTools: false
+  supportsSearch: true
+  forceNoThinkDirective: true
+qwen35_35b_a3b:
+  provider: dashscope
+  model: qwen3.5-35b-a3b
+  modelType: chat
+  supportsThinking: true
+  supportsVision: true
+  supportsAudioInput: false
+  supportsTools: true
+  supportsSearch: false
+  forceNoThinkDirective: true
+gemini25_flash:
+  provider: vertex_express
+  model: gemini-2.5-flash
+  modelType: chat
+  supportsThinking: true
+  supportsVision: true
+  supportsAudioInput: true
+  supportsTools: true
+  supportsSearch: true
+gemini31_pro_preview:
+  provider: vertex_express
+  model: gemini-3.1-pro-preview
+  modelType: chat
+  supportsThinking: true
+  supportsVision: true
+  supportsAudioInput: false
+  supportsTools: true
+gemini31_flash_lite_preview:
+  provider: vertex_express
+  model: gemini-3.1-flash-lite-preview
+  modelType: chat
+  supportsThinking: true
+  supportsVision: true
+  supportsAudioInput: false
+  supportsTools: true
+# LM Studio 本地模型示例——无需配置 features.thinking，自动注入 enable_thinking
+lmstudio_qwen3_8b:
+  provider: lmstudio_local
+  model: qwen3-8b
+  modelType: chat
+  supportsThinking: true
+  supportsVision: false
+  supportsAudioInput: false
+  supportsTools: true
+  supportsSearch: false
+lmstudio_qwen3_8b_no_think:
+  provider: lmstudio_local
+  model: qwen3-8b
+  modelType: chat
+  supportsThinking: false
+  supportsVision: false
+  supportsAudioInput: false
+  supportsTools: true
+  supportsSearch: false
+gemini25_flash_transcription:
+  provider: vertex_express
+  model: gemini-2.5-flash
+  modelType: transcription
+  supportsThinking: false
+  supportsVision: false
+  supportsAudioInput: true
+  supportsTools: false
+  supportsSearch: false

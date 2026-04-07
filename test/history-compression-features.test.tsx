@@ -1,0 +1,488 @@
+import assert from "node:assert/strict";
+import pino from "pino";
+import { HistoryCompressor } from "../src/conversation/historyCompressor.ts";
+import { SessionManager } from "../src/conversation/session/sessionManager.ts";
+import { createTestAppConfig } from "./helpers/config-fixtures.tsx";
+
+function createConfig() {
+  return createTestAppConfig({
+    conversation: {
+      historyWindow: {
+        maxRecentMessages: 20
+      },
+      historyCompression: {
+        enabled: true
+      }
+    },
+    llm: {
+      enabled: true,
+      providers: {},
+      toolCallMaxIterations: 4,
+      summarizer: {
+        enabled: true
+      }
+    }
+  });
+}
+
+async function runCase(name: string, fn: () => Promise<void>) {
+  process.stdout.write(`- ${name} ... `);
+  await fn();
+  process.stdout.write("ok\n");
+}
+
+async function main() {
+  await runCase("forceCompact uses default retain count from config", async () => {
+    const sessionManager = new SessionManager(createConfig());
+    sessionManager.ensureSession({ id: "private:test", type: "private" });
+    sessionManager.appendHistory("private:test", "user", "hello", 1);
+    sessionManager.appendHistory("private:test", "assistant", "hi", 2);
+    sessionManager.appendHistory("private:test", "user", "more", 3);
+    sessionManager.appendHistory("private:test", "assistant", "later", 4);
+    let capturedMessages: Array<{ content?: unknown }> | null = null;
+
+    const compressor = new HistoryCompressor(
+      createConfig(),
+      {
+        isConfigured() {
+          return true;
+        },
+        async generate(input: { messages: Array<{ content?: unknown }> }) {
+          capturedMessages = input.messages;
+          return {
+            text: "compressed summary",
+            usage: {
+              inputTokens: 1,
+              outputTokens: 1,
+              totalTokens: 2,
+              reasoningTokens: null,
+              cachedTokens: null,
+              requestCount: 1,
+              providerReported: true,
+              modelRef: "main",
+              model: "fake"
+            }
+          };
+        }
+      } as any,
+      sessionManager,
+      {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      pino({ level: "silent" })
+    );
+
+    const changed = await compressor.forceCompact("private:test");
+    const session = sessionManager.getSession("private:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+
+    assert.equal(changed, true);
+    assert.equal(session.historySummary, "compressed summary");
+    assert.deepEqual(
+      llmVisibleHistory.map((message) => message.content),
+      ["hi", "more", "later"]
+    );
+    assert.deepEqual(
+      session.internalTranscript.map((item) => item.kind === "user_message" || item.kind === "assistant_message" ? item.text : item.kind),
+      ["hi", "more", "later"]
+    );
+    const captured = (capturedMessages ?? []) as Array<{ content?: unknown }>;
+    const systemPrompt = String(captured[0]?.content ?? "");
+    const userPrompt = String(captured[1]?.content ?? "");
+    assert.match(systemPrompt, /必须保留：稳定/);
+    assert.match(systemPrompt, /拒绝流水账式的复述/);
+    assert.match(systemPrompt, /适度放长篇幅/);
+    assert.match(userPrompt, /summary_context/);
+  });
+
+  await runCase("forceCompact accepts explicit zero retained history items", async () => {
+    const sessionManager = new SessionManager(createConfig());
+    sessionManager.ensureSession({ id: "private:test", type: "private" });
+    sessionManager.appendHistory("private:test", "user", "hello", 1);
+    sessionManager.appendHistory("private:test", "assistant", "hi", 2);
+    sessionManager.appendHistory("private:test", "user", "more", 3);
+
+    const compressor = new HistoryCompressor(
+      createConfig(),
+      {
+        isConfigured() {
+          return true;
+        },
+        async generate() {
+          return {
+            text: "compressed summary",
+            usage: {
+              inputTokens: 1,
+              outputTokens: 1,
+              totalTokens: 2,
+              reasoningTokens: null,
+              cachedTokens: null,
+              requestCount: 1,
+              providerReported: true,
+              modelRef: "main",
+              model: "fake"
+            }
+          };
+        }
+      } as any,
+      sessionManager,
+      {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      pino({ level: "silent" })
+    );
+
+    const changed = await compressor.forceCompact("private:test", 0);
+    const session = sessionManager.getSession("private:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+
+    assert.equal(changed, true);
+    assert.equal(session.historySummary, "compressed summary");
+    assert.deepEqual(llmVisibleHistory, []);
+    assert.deepEqual(session.internalTranscript, []);
+  });
+
+  await runCase("compactOldHistoryKeepingRecent preserves the latest topic window", async () => {
+    const sessionManager = new SessionManager(createConfig());
+    sessionManager.ensureSession({ id: "private:test", type: "private" });
+    sessionManager.appendHistory("private:test", "user", "old-1", 1);
+    sessionManager.appendInternalTranscript("private:test", {
+      kind: "status_message",
+      llmVisible: false,
+      role: "assistant",
+      statusType: "system",
+      content: "old-status",
+      timestampMs: 1
+    });
+    sessionManager.appendHistory("private:test", "assistant", "old-2", 2);
+    sessionManager.appendHistory("private:test", "user", "new-1", 3);
+    sessionManager.appendInternalTranscript("private:test", {
+      kind: "status_message",
+      llmVisible: false,
+      role: "assistant",
+      statusType: "system",
+      content: "new-status",
+      timestampMs: 3
+    });
+    sessionManager.appendHistory("private:test", "assistant", "new-2", 4);
+
+    const compressor = new HistoryCompressor(
+      createConfig(),
+      {
+        isConfigured() {
+          return true;
+        },
+        async generate() {
+          return {
+            text: "compressed summary",
+            usage: {
+              inputTokens: 1,
+              outputTokens: 1,
+              totalTokens: 2,
+              reasoningTokens: null,
+              cachedTokens: null,
+              requestCount: 1,
+              providerReported: true,
+              modelRef: "main",
+              model: "fake"
+            }
+          };
+        }
+      } as any,
+      sessionManager,
+      {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      pino({ level: "silent" })
+    );
+
+    const changed = await compressor.compactOldHistoryKeepingRecent("private:test", 2);
+    const session = sessionManager.getSession("private:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+
+    assert.equal(changed, true);
+    assert.equal(session.historySummary, "compressed summary");
+    assert.deepEqual(
+      llmVisibleHistory.map((message) => message.content),
+      ["new-1", "new-2"]
+    );
+    assert.deepEqual(
+      session.internalTranscript.map((item) => item.kind === "status_message" ? item.content : item.kind),
+      ["user_message", "new-status", "assistant_message"]
+    );
+  });
+
+  await runCase("compression also absorbs leading tool items from retained window", async () => {
+    const sessionManager = new SessionManager(createConfig());
+    sessionManager.ensureSession({ id: "private:test", type: "private" });
+    sessionManager.appendHistory("private:test", "user", "old-1", 1);
+    sessionManager.appendInternalTranscript("private:test", {
+      kind: "assistant_tool_call",
+      llmVisible: true,
+      timestampMs: 2,
+      content: "tool call",
+      toolCalls: [{
+        id: "tool-1",
+        type: "function",
+        function: {
+          name: "search",
+          arguments: "{}"
+        }
+      }]
+    });
+    sessionManager.appendInternalTranscript("private:test", {
+      kind: "tool_result",
+      llmVisible: true,
+      timestampMs: 3,
+      toolCallId: "tool-1",
+      toolName: "search",
+      content: "tool result"
+    });
+    sessionManager.appendHistory("private:test", "assistant", "old-2", 4);
+    sessionManager.appendHistory("private:test", "user", "new-1", 5);
+    sessionManager.appendHistory("private:test", "assistant", "new-2", 6);
+
+    const compressor = new HistoryCompressor(
+      createConfig(),
+      {
+        isConfigured() {
+          return true;
+        },
+        async generate() {
+          return {
+            text: "compressed summary",
+            usage: {
+              inputTokens: 1,
+              outputTokens: 1,
+              totalTokens: 2,
+              reasoningTokens: null,
+              cachedTokens: null,
+              requestCount: 1,
+              providerReported: true,
+              modelRef: "main",
+              model: "fake"
+            }
+          };
+        }
+      } as any,
+      sessionManager,
+      {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      pino({ level: "silent" })
+    );
+
+    const changed = await compressor.compactOldHistoryKeepingRecent("private:test", 3);
+    const session = sessionManager.getSession("private:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+
+    assert.equal(changed, true);
+    assert.equal(session.historySummary, "compressed summary");
+    assert.deepEqual(
+      llmVisibleHistory.map((message) => message.content),
+      ["old-2", "new-1", "new-2"]
+    );
+    assert.deepEqual(
+      session.internalTranscript.map((item) => item.kind === "user_message" || item.kind === "assistant_message" ? item.text : item.kind),
+      ["old-2", "new-1", "new-2"]
+    );
+  });
+
+  await runCase("compression keeps retained window unchanged when it already starts with a normal message", async () => {
+    const sessionManager = new SessionManager(createConfig());
+    sessionManager.ensureSession({ id: "private:test", type: "private" });
+    sessionManager.appendHistory("private:test", "user", "old-1", 1);
+    sessionManager.appendInternalTranscript("private:test", {
+      kind: "assistant_tool_call",
+      llmVisible: true,
+      timestampMs: 2,
+      content: "tool call",
+      toolCalls: [{
+        id: "tool-1",
+        type: "function",
+        function: {
+          name: "search",
+          arguments: "{}"
+        }
+      }]
+    });
+    sessionManager.appendInternalTranscript("private:test", {
+      kind: "tool_result",
+      llmVisible: true,
+      timestampMs: 3,
+      toolCallId: "tool-1",
+      toolName: "search",
+      content: "tool result"
+    });
+    sessionManager.appendHistory("private:test", "assistant", "old-2", 4);
+    sessionManager.appendHistory("private:test", "user", "new-1", 5);
+    sessionManager.appendHistory("private:test", "assistant", "new-2", 6);
+
+    const compressor = new HistoryCompressor(
+      createConfig(),
+      {
+        isConfigured() {
+          return true;
+        },
+        async generate() {
+          return {
+            text: "compressed summary",
+            usage: {
+              inputTokens: 1,
+              outputTokens: 1,
+              totalTokens: 2,
+              reasoningTokens: null,
+              cachedTokens: null,
+              requestCount: 1,
+              providerReported: true,
+              modelRef: "main",
+              model: "fake"
+            }
+          };
+        }
+      } as any,
+      sessionManager,
+      {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      pino({ level: "silent" })
+    );
+
+    const changed = await compressor.compactOldHistoryKeepingRecent("private:test", 2);
+    const session = sessionManager.getSession("private:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+
+    assert.equal(changed, true);
+    assert.equal(session.historySummary, "compressed summary");
+    assert.deepEqual(
+      llmVisibleHistory.map((message) => message.content),
+      ["new-1", "new-2"]
+    );
+    assert.deepEqual(
+      session.internalTranscript.map((item) => {
+        if (item.kind === "user_message" || item.kind === "assistant_message") {
+          return item.text;
+        }
+        return item.kind;
+      }),
+      ["new-1", "new-2"]
+    );
+  });
+
+  await runCase("stale epoch writes are rejected after clear", async () => {
+    const sessionManager = new SessionManager(createConfig());
+    sessionManager.ensureSession({ id: "private:test", type: "private" });
+    sessionManager.appendHistory("private:test", "user", "before", 1);
+
+    const oldEpoch = sessionManager.getMutationEpoch("private:test");
+    sessionManager.clearSession("private:test");
+
+    assert.equal(
+      sessionManager.appendHistoryIfEpochMatches("private:test", oldEpoch, "assistant", "stale", 2),
+      false
+    );
+    assert.equal(
+      sessionManager.applyCompressedHistoryIfEpochMatches("private:test", oldEpoch, {
+        historySummary: "stale summary",
+        transcriptStartIndexToKeep: 0
+      }),
+      false
+    );
+    assert.equal(
+      sessionManager.setLastLlmUsageIfEpochMatches("private:test", oldEpoch, {
+        inputTokens: 1,
+        outputTokens: 1,
+        totalTokens: 2,
+        reasoningTokens: null,
+        cachedTokens: null,
+        requestCount: 1,
+        providerReported: true,
+        modelRef: "main",
+        model: "fake",
+        capturedAt: 3
+      }),
+      false
+    );
+
+    const session = sessionManager.getSession("private:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+    assert.equal(session.historySummary, null);
+    assert.deepEqual(llmVisibleHistory, []);
+    assert.equal(session.lastLlmUsage, null);
+  });
+
+  await runCase("compression results are rejected when history changes during summarization", async () => {
+    const sessionManager = new SessionManager(createConfig());
+    sessionManager.ensureSession({ id: "private:test", type: "private" });
+    sessionManager.appendHistory("private:test", "user", "hello", 1);
+    sessionManager.appendHistory("private:test", "assistant", "hi", 2);
+    sessionManager.appendHistory("private:test", "user", "more", 3);
+
+    let releaseSummary!: () => void;
+    const summaryGate = new Promise<void>((resolve) => {
+      releaseSummary = resolve;
+    });
+    const compressor = new HistoryCompressor(
+      createConfig(),
+      {
+        isConfigured() {
+          return true;
+        },
+        async generate() {
+          await summaryGate;
+          return {
+            text: "compressed summary",
+            usage: {
+              inputTokens: 1,
+              outputTokens: 1,
+              totalTokens: 2,
+              reasoningTokens: null,
+              cachedTokens: null,
+              requestCount: 1,
+              providerReported: true,
+              modelRef: "main",
+              model: "fake"
+            }
+          };
+        }
+      } as any,
+      sessionManager,
+      {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      pino({ level: "silent" })
+    );
+
+    const pendingCompression = compressor.forceCompact("private:test");
+    sessionManager.appendHistory("private:test", "user", "new info", 4);
+    releaseSummary();
+
+    const changed = await pendingCompression;
+    const session = sessionManager.getSession("private:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+
+    assert.equal(changed, false);
+    assert.equal(session.historySummary, null);
+    assert.deepEqual(
+      llmVisibleHistory.map((message) => message.content),
+      ["hello", "hi", "more", "new info"]
+    );
+  });
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

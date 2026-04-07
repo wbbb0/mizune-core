@@ -1,0 +1,14 @@
+/node_modules/
+/dist/
+/data/
+/.env
+/.env.*
+/*.log
+/webui/node_modules/
+/webui/dist/
+
+/config/**/*.yml
+!/config/**/*.example.yml
+
+/CLAUDE.md
+/GEMINI.md

@@ -1,0 +1,70 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { initializeBootstrapState } from "../../src/app/bootstrap/bootstrapServices.ts";
+import { runCase } from "../helpers/forward-test-support.tsx";
+import { createSilentLogger } from "../helpers/browser-test-support.tsx";
+
+async function main() {
+  await runCase("initializeBootstrapState clears persisted runtime resources on startup", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-runtime-resource-reset-"));
+
+    try {
+      await writeFile(join(dataDir, "runtime-resources.json"), JSON.stringify({
+        resources: [{
+          resourceId: "res_shell_1",
+          kind: "shell_session",
+          status: "active",
+          ownerSessionId: null,
+          title: "pwd @ /tmp",
+          description: "查看当前目录",
+          summary: "pwd (cwd=/tmp)",
+          createdAtMs: 1,
+          lastAccessedAtMs: 2,
+          expiresAtMs: null,
+          shellSession: {
+            command: "pwd",
+            cwd: "/tmp",
+            shell: "/bin/sh",
+            tty: true,
+            login: true
+          }
+        }]
+      }, null, 2), "utf8");
+
+      await initializeBootstrapState({
+        logger: createSilentLogger(),
+        dataDir,
+        whitelistStore: { async init() {} } as any,
+        sessionPersistence: { async init() {}, async loadAll() { return []; } } as any,
+        audioStore: { async init() {} } as any,
+        workspaceService: { async init() {} } as any,
+        mediaWorkspace: { async init() {} } as any,
+        mediaVisionService: {} as any,
+        mediaCaptionService: {} as any,
+        comfyTaskStore: { async init() {} } as any,
+        comfyTemplateCatalog: { async init() {} } as any,
+        scheduledJobStore: { async init() {} } as any,
+        requestStore: { async init() {} } as any,
+        groupMembershipStore: { async init() {} } as any,
+        userStore: { async init() {} } as any,
+        npcDirectory: { async refresh() {} } as any,
+        personaStore: { async init() {}, async get() { return {}; } } as any,
+        globalMemoryStore: { async init() {} } as any,
+        setupStore: { async init() {} } as any,
+        sessionManager: { restoreSessions() {} } as any
+      });
+
+      const persisted = JSON.parse(await readFile(join(dataDir, "runtime-resources.json"), "utf8"));
+      assert.deepEqual(persisted, { resources: [] });
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

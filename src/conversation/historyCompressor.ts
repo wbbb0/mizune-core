@@ -1,0 +1,166 @@
+import type { Logger } from "pino";
+import type { AppConfig } from "#config/config.ts";
+import { annotateStructuredMediaReferences, extractStructuredMediaIds } from "#images/imageReferences.ts";
+import type { LlmClient } from "#llm/llmClient.ts";
+import { buildHistorySummaryPrompt } from "#llm/prompts/history-summary.prompt.ts";
+import { resolveModelRefsForType } from "#llm/shared/modelProfiles.ts";
+import type { SessionManager } from "#conversation/session/sessionManager.ts";
+import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
+
+export class HistoryCompressor {
+  private readonly inFlightSessions = new Set<string>();
+
+  constructor(
+    private readonly config: AppConfig,
+    private readonly llmClient: LlmClient,
+    private readonly sessionManager: SessionManager,
+    private readonly mediaCaptionService: MediaCaptionService,
+    private readonly logger: Logger
+  ) {}
+
+  async maybeCompress(sessionId: string): Promise<boolean> {
+    return this.compress(sessionId, {
+      triggerMessageCount: this.config.conversation.historyCompression.triggerMessageCount,
+      retainMessageCount: this.config.conversation.historyCompression.retainMessageCount,
+      expectedHistoryRevision: this.sessionManager.getHistoryRevision(sessionId)
+    });
+  }
+
+  async forceCompact(sessionId: string, retainMessageCount?: number): Promise<boolean> {
+    const safeRetainCount = retainMessageCount == null
+      ? this.config.conversation.historyCompression.retainMessageCount
+      : Math.max(0, retainMessageCount);
+    return this.compress(sessionId, {
+      triggerMessageCount: 0,
+      retainMessageCount: safeRetainCount,
+      expectedHistoryRevision: this.sessionManager.getHistoryRevision(sessionId),
+      force: true
+    });
+  }
+
+  async compactOldHistoryKeepingRecent(sessionId: string, recentMessageCountToKeep: number): Promise<boolean> {
+    const safeKeepCount = Math.max(0, recentMessageCountToKeep);
+    return this.compress(sessionId, {
+      triggerMessageCount: safeKeepCount,
+      retainMessageCount: safeKeepCount,
+      expectedHistoryRevision: this.sessionManager.getHistoryRevision(sessionId),
+      force: true
+    });
+  }
+
+  private async compress(
+    sessionId: string,
+    options: {
+      triggerMessageCount: number;
+      retainMessageCount: number;
+      expectedHistoryRevision: number;
+      force?: boolean;
+    }
+  ): Promise<boolean> {
+    if (this.inFlightSessions.has(sessionId)) {
+      return false;
+    }
+
+    if (!this.config.conversation.historyCompression.enabled) {
+      return false;
+    }
+
+    if (
+      !this.config.llm.enabled
+      || !this.config.llm.summarizer.enabled
+      || !this.llmClient.isConfigured(this.resolveModelRefs())
+    ) {
+      return false;
+    }
+
+    this.inFlightSessions.add(sessionId);
+    try {
+      const snapshot = this.sessionManager.getHistoryForCompression(
+        sessionId,
+        options.triggerMessageCount,
+        options.retainMessageCount
+      );
+      if (!snapshot) {
+        return false;
+      }
+
+      const imageIds = Array.from(new Set(snapshot.messagesToCompress.flatMap((message) => extractStructuredMediaIds(message.content))));
+      const captions = imageIds.length > 0
+        ? await this.mediaCaptionService.ensureReady(imageIds, { reason: "history_compression" })
+        : new Map<string, string>();
+      const messagesToCompress = snapshot.messagesToCompress.map((message) => ({
+        ...message,
+        content: annotateStructuredMediaReferences(message.content, captions, { includeIds: false })
+      }));
+
+      this.logger.info(
+        {
+          sessionId,
+          messagesToCompress: messagesToCompress.length,
+          retainedMessages: snapshot.retainedMessages.length,
+          captionCount: captions.size,
+          force: options.force ?? false
+        },
+        "history_compression_started"
+      );
+
+      const summaryResult = await this.llmClient.generate({
+        modelRefOverride: this.resolveModelRefs(),
+        timeoutMsOverride: this.config.llm.summarizer.timeoutMs,
+        enableThinkingOverride: this.config.llm.summarizer.enableThinking,
+        skipDebugDump: true,
+        messages: buildHistorySummaryPrompt({
+          sessionId,
+          existingSummary: snapshot.historySummary,
+          messagesToCompress
+        })
+      });
+      const summary = summaryResult.text;
+
+      const applied = this.sessionManager.applyCompressedHistoryIfHistoryRevisionMatches(
+        sessionId,
+        options.expectedHistoryRevision,
+        {
+          historySummary: summary,
+          transcriptStartIndexToKeep: snapshot.transcriptStartIndexToKeep
+        }
+      );
+      if (!applied) {
+        this.logger.info(
+          { sessionId, expectedHistoryRevision: options.expectedHistoryRevision },
+          "history_compression_skipped_history_revision_mismatch"
+        );
+        return false;
+      }
+
+      this.logger.info(
+        {
+          sessionId,
+          summaryLength: summary.length,
+          retainedMessages: snapshot.retainedMessages.length,
+          force: options.force ?? false
+        },
+        "history_compression_succeeded"
+      );
+      return true;
+    } finally {
+      this.inFlightSessions.delete(sessionId);
+    }
+  }
+
+  private resolveModelRefs(): string[] {
+    const resolved = resolveModelRefsForType(this.config, this.config.llm.summarizer.modelRef, "chat");
+    for (const rejected of resolved.rejectedModelRefs) {
+      if (rejected.reason === "unsupported_model_type") {
+        this.logger.warn(
+          {
+            modelRef: rejected.modelRef,
+            actualModelType: rejected.actualModelType ?? "unknown"
+          },
+          "history_compressor_model_skipped_due_to_type"
+        );
+      }
+    }
+    return resolved.acceptedModelRefs;
+  }
+}

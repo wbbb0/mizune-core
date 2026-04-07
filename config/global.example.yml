@@ -1,0 +1,170 @@
+appName: llm-bot
+nodeEnv: development
+logLevel: info
+dataDir: data
+proxy:
+  http:
+    type: http
+    host: 127.0.0.1
+    port: 7890
+  https:
+    type: socks5
+    host: 127.0.0.1
+    port: 7891
+onebot:
+  wsUrl: ws://127.0.0.1:3001
+  httpUrl: http://127.0.0.1:3000
+llm:
+  enabled: false
+  timeoutMs: 300000
+  firstTokenTimeoutMs: 30000
+  toolCallMaxIterations: 8
+  mainRouting:
+    enabled: true
+    smallModelRef:
+      - qwen35_flash
+    largeModelRef:
+      - qwen35_plus
+    timeoutMs: 300000
+    enableThinking: false
+  summarizer:
+    enabled: true
+    modelRef:
+      - qwen35_flash
+      - gemini31_flash_lite_preview
+    timeoutMs: 45000
+    enableThinking: false
+  imageCaptioner:
+    enabled: true
+    modelRef:
+      - qwen35_35b_a3b
+      - gemini31_flash_lite_preview
+    timeoutMs: 30000
+    enableThinking: false
+    maxConcurrency: 2
+  audioTranscription:
+    enabled: true
+    modelRef:
+      - gemini25_flash_transcription
+    timeoutMs: 30000
+    enableThinking: false
+    maxConcurrency: 2
+  replyGate:
+    enabled: true
+    modelRef:
+      - qwen35_flash
+    timeoutMs: 20000
+    recentMessageCount: 6
+    enableThinking: false
+    maxWaitPasses: 1
+  debugDump:
+    enabled: false
+conversation:
+  historyWindow:
+    maxRecentMessages: 80
+    maxImageReferences: 5
+  images:
+    maxSerializedPixels: 1048576
+    maxCachedFiles: 100
+  debounce:
+    defaultBaseSeconds: 4
+    minBaseSeconds: 4
+    maxBaseSeconds: 10
+    smoothingFactor: 0.2
+    finalMultiplier: 1.5
+    gateWaitMultiplier: 2
+  historyCompression:
+    enabled: true
+    triggerMessageCount: 40
+    retainMessageCount: 10
+  group:
+    requireAtMention: true
+whitelist:
+  enabled: true
+internalApi:
+  enabled: false
+  port: 3030
+  webui:
+    # 启用后在 /webui/ 提供 WebUI 界面，访问时需要输入 accessToken 认证。
+    # accessToken 在首次启动时自动生成并写入 data/webui-auth.json，同时打印到控制台。
+    # 启用时整个服务监听 0.0.0.0（可从局域网其他设备访问），禁用时仅 127.0.0.1。
+    enabled: false
+    port: 3031
+    # 仅开发态 Vite WebUI 使用；用于放行反代或自定义域名访问。
+    allowedHosts: []
+scheduler:
+  enabled: true
+  defaultTimezone: Asia/Shanghai
+shell:
+  enabled: false
+  allowAnyCwd: false
+  defaultCwd: /tmp
+  allowedCwds:
+    - /tmp
+  defaultTimeoutMs: 120000
+  maxTimeoutMs: 600000
+  maxOutputChars: 12000
+  sessionTtlMs: null
+workspace:
+  enabled: true
+  root: data
+  maxUploadBytes: 33554432
+  maxPatchFileBytes: 524288
+comfy:
+  enabled: false
+  apiBaseUrl: http://192.168.0.223:8188
+  templateRoot: templates/comfyui
+  submitTimeoutMs: 15000
+  pollIntervalMs: 3000
+  maxConcurrentTasks: 2
+  aspectRatios:
+    "1:1":
+      width: 1024
+      height: 1024
+  templates:
+    - id: sdxl
+      label: SDXL
+      workflowFile: sdxl.json
+      enabled: true
+      description: 基础 SDXL 工作流模板
+      parameterBindings:
+        positivePromptPath: /15/inputs/value
+        widthPath: /6/inputs/width
+        heightPath: /6/inputs/height
+      resultPolicy:
+        maxAutoIterations: 1
+        defaultActionHint: decide_by_model
+search:
+  googleGrounding:
+    enabled: false
+    proxy: false
+    model: gemini-2.5-flash
+    timeoutMs: 30000
+    maxSources: 8
+    resolveRedirectUrls: true
+  aliyunIqs:
+    enabled: false
+    proxy: false
+    timeoutMs: 30000
+    defaultNumResults: 8
+    maxNumResults: 20
+    defaultIncludeMainText: false
+    defaultIncludeMarkdownText: false
+browser:
+  enabled: false
+  browseMaxContentChars: 16000
+  sessionTtlMs: 3600000
+  playwright:
+    enabled: false
+    proxy: false
+    headless: true
+    actionTimeoutMs: 15000
+    navigationTimeoutMs: 30000
+    maxSnapshotChars: 20000
+    persistSessionState: true
+    persistSessionStorage: true
+    profileAutoSaveDebounceMs: 250
+    profileMaxCount: 24
+    screenshotMaxBytes: 5242880
+backup:
+  profileRotateLimit: 10
