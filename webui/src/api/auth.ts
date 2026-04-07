@@ -16,7 +16,7 @@ export interface AuthSettings {
 }
 
 export interface WhitelistSnapshot {
-  ownerQq?: string;
+  ownerId?: string;
   users: string[];
   groups: string[];
 }

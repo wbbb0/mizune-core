@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { Wifi, WifiOff, Loader, RefreshCw } from "lucide-vue-next";
+import { Wifi, WifiOff, Loader, RefreshCw, Trash2 } from "lucide-vue-next";
 import MessageBubble from "./MessageBubble.vue";
 import TranscriptItem from "./TranscriptItem.vue";
 import Composer from "./Composer.vue";
@@ -146,8 +146,7 @@ const reversedTranscript = computed(() =>
 // Session header info
 const headerLabel = computed(() => {
   if (!session.value) return "";
-  const [, ...rest] = session.value.id.split(":");
-  return rest.join(":") || session.value.id;
+  return session.value.participantLabel || session.value.participantUserId || session.value.id;
 });
 
 const statusColor = computed(() => {
@@ -158,17 +157,21 @@ const statusColor = computed(() => {
 });
 
 // Composer userId logic
-const isPrivate = computed(() => session.value?.id.startsWith("private:") ?? false);
+const isPrivate = computed(() => session.value?.type === "private");
 
-// Private: extract userId from "private:{userId}" — locked, not editable
+// OneBot private sessions use a fixed remote user ID.
 const lockedUserId = computed(() => {
-  if (!session.value || !isPrivate.value) return undefined;
-  return session.value.id.slice("private:".length);
+  if (!session.value || !isPrivate.value || session.value.source !== "onebot") return undefined;
+  return session.value.participantUserId;
 });
 
-// Group: default to ownerQq (editable)
+// Web sessions default to the participant identity; OneBot group sessions use the owner identity.
 const defaultUserId = computed(() =>
-  !isPrivate.value ? (auth.ownerQq ?? undefined) : undefined
+  session.value?.source === "web"
+    ? session.value.participantUserId
+    : !isPrivate.value
+      ? (auth.ownerId ?? undefined)
+      : undefined
 );
 
 async function onSend(payload: { userId: string; text: string; imageIds: string[] }) {
@@ -177,6 +180,16 @@ async function onSend(payload: { userId: string; text: string; imageIds: string[
 
 function onComposerUserIdChange(userId: string) {
   store.setComposerUserId(userId || null);
+}
+
+async function onDeleteSession() {
+  if (!session.value) {
+    return;
+  }
+  if (!window.confirm(`删除会话 ${headerLabel.value}？`)) {
+    return;
+  }
+  await store.deleteSelectedSession();
 }
 </script>
 
@@ -211,6 +224,13 @@ function onComposerUserIdChange(userId: string) {
 
       <!-- Tabs -->
       <div class="flex shrink-0">
+        <button
+          v-if="session.source === 'web'"
+          class="flex h-10 items-center gap-1 border-0 bg-transparent px-2 text-small whitespace-nowrap text-text-muted transition-colors hover:text-danger"
+          @click="onDeleteSession"
+        >
+          <Trash2 :size="14" :stroke-width="1.75" />
+        </button>
         <button class="flex h-10 items-center gap-1 border-0 border-b-2 border-transparent bg-transparent px-3 text-small whitespace-nowrap text-text-muted transition-colors hover:text-text-primary" :class="{ 'border-b-accent text-text-secondary': tab === 'chat' }" @click="tab = 'chat'">聊天</button>
         <button class="flex h-10 items-center gap-1 border-0 border-b-2 border-transparent bg-transparent px-3 text-small whitespace-nowrap text-text-muted transition-colors hover:text-text-primary" :class="{ 'border-b-accent text-text-secondary': tab === 'transcript' }" @click="tab = 'transcript'">
           后台记录

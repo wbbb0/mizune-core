@@ -6,14 +6,14 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 export const useAuthStore = defineStore("auth", () => {
   const authenticated = ref(false);
   const checked = ref(false);
-  const ownerQq = ref<string | null>(null);
+  const ownerId = ref<string | null>(null);
 
-  async function fetchOwnerQq(): Promise<void> {
+  async function fetchOwnerId(): Promise<void> {
     try {
       const res = await authApi.whitelist();
-      ownerQq.value = res.whitelist.ownerQq ?? null;
+      ownerId.value = res.whitelist.ownerId ?? null;
     } catch {
-      // non-fatal: ownerQq stays null
+      // non-fatal: ownerId stays null
     }
   }
 
@@ -21,7 +21,7 @@ export const useAuthStore = defineStore("auth", () => {
     try {
       const res = await authApi.me();
       authenticated.value = res.authenticated;
-      if (res.authenticated) await fetchOwnerQq();
+      if (res.authenticated) await fetchOwnerId();
     } catch {
       authenticated.value = false;
     } finally {
@@ -33,7 +33,7 @@ export const useAuthStore = defineStore("auth", () => {
     await authApi.login(password);
     authenticated.value = true;
     checked.value = true;
-    await fetchOwnerQq();
+    await fetchOwnerId();
   }
 
   async function loginWithPasskey(): Promise<void> {
@@ -42,7 +42,7 @@ export const useAuthStore = defineStore("auth", () => {
     await authApi.finishPasskeyLogin(response);
     authenticated.value = true;
     checked.value = true;
-    await fetchOwnerQq();
+    await fetchOwnerId();
   }
 
   async function registerPasskey(label: string): Promise<void> {
@@ -58,7 +58,7 @@ export const useAuthStore = defineStore("auth", () => {
   async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
     await authApi.changePassword(currentPassword, newPassword);
     authenticated.value = false;
-    ownerQq.value = null;
+    ownerId.value = null;
   }
 
   async function logout(): Promise<void> {
@@ -66,14 +66,14 @@ export const useAuthStore = defineStore("auth", () => {
       await authApi.logout();
     } finally {
       authenticated.value = false;
-      ownerQq.value = null;
+      ownerId.value = null;
     }
   }
 
   return {
     authenticated,
     checked,
-    ownerQq,
+    ownerId,
     check,
     login,
     loginWithPasskey,

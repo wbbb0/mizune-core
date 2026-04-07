@@ -50,6 +50,9 @@ export function getHistoryForCompressionSnapshot(
 export function getSessionViewSnapshot(session: SessionState): {
   id: string;
   type: "private" | "group";
+  source: "onebot" | "web";
+  participantUserId: string;
+  participantLabel: string | null;
   debugControl: SessionDebugControlState;
   historySummary: string | null;
   internalTranscript: InternalTranscriptItem[];
@@ -62,6 +65,9 @@ export function getSessionViewSnapshot(session: SessionState): {
   return {
     id: session.id,
     type: session.type,
+    source: session.source,
+    participantUserId: session.participantUserId,
+    participantLabel: session.participantLabel,
     debugControl: { ...session.debugControl },
     historySummary: session.historySummary,
     internalTranscript: [...session.internalTranscript],

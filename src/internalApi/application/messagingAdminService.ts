@@ -30,6 +30,9 @@ const WEB_SESSION_STREAM_POLL_MS = 250;
 type SessionStreamableState = {
   id: string;
   type: "private" | "group";
+  source: "onebot" | "web";
+  participantUserId: string;
+  participantLabel: string | null;
   pendingMessages: Array<{ receivedAt?: number }>;
   pendingReplyGateWaitPasses: number;
   debounceTimer: NodeJS.Timeout | null;
@@ -61,6 +64,11 @@ export interface AdminMessagingService {
 }
 
 export function createAdminMessagingService(input: {
+  config: {
+    onebot: {
+      enabled: boolean;
+    };
+  };
   oneBotClient: Pick<OneBotClient, "sendText">;
   mediaWorkspace: Pick<MediaWorkspace, "getMany">;
   sessionManager: Pick<SessionManager, "getSession" | "hasActiveResponse"> & {
@@ -78,6 +86,9 @@ export function createAdminMessagingService(input: {
 
   return {
     async sendInternalTextMessage(body) {
+      if (!input.config.onebot.enabled) {
+        throw new Error("OneBot is disabled in the current runtime mode");
+      }
       return input.oneBotClient.sendText({
         text: body.text,
         ...(body.userId ? { userId: body.userId } : {}),
@@ -87,6 +98,9 @@ export function createAdminMessagingService(input: {
 
     async startWebSessionTurn(params, body) {
       const session = input.sessionManager.getSession(params.sessionId);
+      if (session.source !== "web") {
+        throw new Error("web-turn is only available for web sessions");
+      }
       const senderName = body.senderName ?? body.userId;
       const turnState = broker.create(params.sessionId);
 

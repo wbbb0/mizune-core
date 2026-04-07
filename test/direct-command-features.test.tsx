@@ -99,7 +99,7 @@ async function main() {
     assert.equal(postRouterGroup.kind, "ignore_during_setup");
     assert.equal(postRouterKnownUser.kind, "block_private_non_owner");
     if (postRouterKnownUser.kind === "block_private_non_owner") {
-      assert.match(postRouterKnownUser.text, /暂时只接受 owner 私聊补全角色设定/);
+      assert.match(postRouterKnownUser.text, /暂时只接受管理者私聊补全角色设定/);
     }
   });
 

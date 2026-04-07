@@ -9,13 +9,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{ select: [] }>();
 
-// "private:10001" → { badge: "P", label: "10001" }
-// "group:100001"  → { badge: "G", label: "100001" }
 const display = computed(() => {
-  const [typePrefix, ...rest] = props.session.id.split(":");
   return {
-    badge: typePrefix === "group" ? "G" : "P",
-    label: rest.join(":") || props.session.id
+    badge: props.session.type === "group" ? "G" : props.session.source === "web" ? "W" : "P",
+    label: props.session.participantLabel || props.session.participantUserId || props.session.id
   };
 });
 

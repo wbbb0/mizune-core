@@ -6,6 +6,17 @@ export const sessionsApi = {
     return api.get("/api/sessions");
   },
 
+  create(body: {
+    participantUserId: string;
+    participantLabel?: string;
+  }): Promise<{ ok: boolean; session: SessionListItem }> {
+    return api.post("/api/sessions", body);
+  },
+
+  remove(sessionId: string): Promise<{ ok: boolean }> {
+    return api.delete(`/api/sessions/${encodeURIComponent(sessionId)}`);
+  },
+
   sendTurn(sessionId: string, body: {
     userId: string;
     senderName?: string;

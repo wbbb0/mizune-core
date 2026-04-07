@@ -24,7 +24,10 @@ async function main() {
       assert.equal(configSummary.statusCode, 200);
       assert.equal(editors.statusCode, 200);
       assert.equal(configEditor.statusCode, 200);
-      assert.equal(configSummary.json().ownerId, "10001");
+      assert.equal(configSummary.json().runtimeMode, "onebot");
+      assert.equal(configSummary.json().access.ownerId, "10001");
+      assert.deepEqual(configSummary.json().access.whitelist.users, ["10001"]);
+      assert.equal(configSummary.json().onebot.enabled, true);
       assert.ok(editors.json().resources.some((resource: { key: string }) => resource.key === "config"));
       assert.ok(editors.json().resources.some((resource: { key: string }) => resource.key === "whitelist"));
       assert.equal(configEditor.json().editor.schemaMeta.kind, "object");
@@ -285,13 +288,102 @@ async function main() {
     }
   });
 
+  await runCase("internal api rejects send-text when onebot is disabled", async () => {
+    const deps = createInternalApiDeps();
+    deps.config.onebot.enabled = false;
+    const app = await createInternalApiApp(deps);
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/send-text",
+        payload: { userId: "10001", text: "hello" }
+      });
+
+      assert.equal(response.statusCode, 400);
+      assert.equal(response.json().error, "OneBot is disabled in the current runtime mode");
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("config summary switches to webui-only semantics when onebot is disabled", async () => {
+    const deps = createInternalApiDeps();
+    deps.config.onebot.enabled = false;
+    const app = await createInternalApiApp(deps);
+    try {
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/config-summary"
+      });
+
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.json().runtimeMode, "webui_only");
+      assert.equal(response.json().access.ownerId, null);
+      assert.deepEqual(response.json().access.whitelist, {
+        enabled: false,
+        users: [],
+        groups: []
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("internal api creates and deletes web sessions", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const createResponse = await app.inject({
+        method: "POST",
+        url: "/api/sessions",
+        payload: {
+          participantUserId: "web-user-1",
+          participantLabel: "Web User"
+        }
+      });
+
+      assert.equal(createResponse.statusCode, 200);
+      assert.equal(createResponse.json().session.source, "web");
+      assert.equal(createResponse.json().session.participantUserId, "web-user-1");
+
+      const sessionId = createResponse.json().session.id;
+      const listResponse = await app.inject({
+        method: "GET",
+        url: "/api/sessions"
+      });
+      assert.equal(listResponse.statusCode, 200);
+      assert.ok(listResponse.json().sessions.some((item: { id: string }) => item.id === sessionId));
+
+      const deleteResponse = await app.inject({
+        method: "DELETE",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}`
+      });
+      assert.equal(deleteResponse.statusCode, 200);
+
+      const finalListResponse = await app.inject({
+        method: "GET",
+        url: "/api/sessions"
+      });
+      assert.ok(!finalListResponse.json().sessions.some((item: { id: string }) => item.id === sessionId));
+    } finally {
+      await app.close();
+    }
+  });
+
   await runCase("internal api web-turn starts turn and streams page-scoped response without onebot send", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
+      const createResponse = await app.inject({
+        method: "POST",
+        url: "/api/sessions",
+        payload: { participantUserId: "web-user-2", participantLabel: "Alice" }
+      });
+      const sessionId = createResponse.json().session.id;
+
       const startResponse = await app.inject({
         method: "POST",
-        url: "/api/sessions/private:10001/web-turn",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/web-turn`,
         payload: { userId: "10001", senderName: "Alice", text: "hello from web" }
       });
 
@@ -302,7 +394,7 @@ async function main() {
 
       const streamResponse = await app.inject({
         method: "GET",
-        url: `/api/sessions/private:10001/web-turn/stream?turnId=${encodeURIComponent(turnId)}`
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/web-turn/stream?turnId=${encodeURIComponent(turnId)}`
       });
 
       assert.equal(streamResponse.statusCode, 200);

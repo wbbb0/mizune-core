@@ -115,6 +115,9 @@ export class SessionManager {
   ensureSession(target: {
     id: string;
     type: "private" | "group";
+    source?: "onebot" | "web";
+    participantUserId?: string;
+    participantLabel?: string | null;
   }): SessionState {
     const existing = this.sessions.get(target.id);
     if (existing) {
@@ -268,6 +271,21 @@ export class SessionManager {
     return Array.from(this.sessions.values()).map((session) => cloneSessionState(session));
   }
 
+  deleteSession(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return false;
+    }
+    this.clearDebounceTimer(sessionId);
+    if (session.generationAbortController != null) {
+      session.generationAbortController.abort();
+    }
+    if (session.responseAbortController != null) {
+      session.responseAbortController.abort();
+    }
+    return this.sessions.delete(sessionId);
+  }
+
   getSession(sessionId: string): SessionState {
     return this.requireSession(sessionId);
   }
@@ -306,7 +324,7 @@ export class SessionManager {
   appendHistory(sessionId: string, role: "user" | "assistant", content: string, timestampMs = Date.now()): void {
     const session = this.requireSession(sessionId);
     const defaultUserId = session.type === "private"
-      ? session.id.slice("private:".length)
+      ? session.participantUserId
       : "unknown";
     if (role === "user") {
       appendHistoryEntry(session, createUserTranscriptMessageItem({
@@ -513,7 +531,7 @@ export class SessionManager {
       return false;
     }
     const defaultUserId = session.type === "private"
-      ? session.id.slice("private:".length)
+      ? session.participantUserId
       : "unknown";
     appendHistoryEntry(session, role === "user"
       ? createUserTranscriptMessageItem({
@@ -606,6 +624,9 @@ export class SessionManager {
   getSessionView(sessionId: string): {
     id: string;
     type: "private" | "group";
+    source: "onebot" | "web";
+    participantUserId: string;
+    participantLabel: string | null;
     debugControl: SessionDebugControlState;
     historySummary: string | null;
     internalTranscript: InternalTranscriptItem[];

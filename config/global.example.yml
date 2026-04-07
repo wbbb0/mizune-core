@@ -12,6 +12,7 @@ proxy:
     host: 127.0.0.1
     port: 7891
 onebot:
+  enabled: true
   wsUrl: ws://127.0.0.1:3001
   httpUrl: http://127.0.0.1:3000
 llm:

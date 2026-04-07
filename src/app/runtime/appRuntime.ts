@@ -283,13 +283,18 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
   const onRequest = createRequestListener(logger, requestStore);
 
   try {
-    await oneBotClient.start();
+    if (config.onebot.enabled) {
+      await oneBotClient.start();
 
-    // Register listeners ONLY AFTER client is started to avoid double processing during transitions
-    oneBotClient.on("message", onMessage);
-    oneBotClient.on("request", onRequest);
+      // Register listeners ONLY AFTER client is started to avoid double processing during transitions
+      oneBotClient.on("message", onMessage);
+      oneBotClient.on("request", onRequest);
 
-    await notifyOwnerSetupIfNeeded();
+      await notifyOwnerSetupIfNeeded();
+    } else {
+      logger.info("onebot_disabled_startup_skipped");
+    }
+
     schedulerStarted = await startSchedulerIfEnabled(config, scheduler, logger);
     await comfyTaskRunner.start();
 

@@ -12,6 +12,16 @@ import type { ShellRunParams, ShellRunResult, ShellSession } from "../../src/ser
 
 export interface InternalApiFixtureState {
   sentMessages: Array<{ userId?: string; groupId?: string; text: string }>;
+  sessions: Array<{
+    id: string;
+    type: "private" | "group";
+    source: "onebot" | "web";
+    participantUserId: string;
+    participantLabel: string | null;
+    pendingMessages: Array<{ id?: number }>;
+    isGenerating: boolean;
+    lastActiveAt: number;
+  }>;
   shellSessions: ShellSession[];
   closedSessionIds: string[];
   configCheckForUpdatesCount: number;
@@ -45,6 +55,16 @@ function createShellSession(overrides: Partial<ShellSession> = {}): ShellSession
 export function createInternalApiDeps(): InternalApiDeps & { __state: InternalApiFixtureState } {
   const state: InternalApiFixtureState = {
     sentMessages: [],
+    sessions: [{
+      id: "private:10001",
+      type: "private",
+      source: "onebot",
+      participantUserId: "10001",
+      participantLabel: "Alice",
+      pendingMessages: [{ id: 1 }],
+      isGenerating: false,
+      lastActiveAt: 123456
+    }],
     shellSessions: [createShellSession()],
     closedSessionIds: [],
     configCheckForUpdatesCount: 0,
@@ -204,18 +224,16 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     sessionManager: {
       __activeResponses: new Map<string, number>(),
       listSessions() {
-        return [{
-          id: "private:10001",
-          type: "private",
-          pendingMessages: [{ id: 1 }],
-          isGenerating: false,
-          lastActiveAt: 123456
-        }];
+        return state.sessions;
       },
-      getSessionView() {
+      getSessionView(sessionId: string) {
+        const session = state.sessions.find((item) => item.id === sessionId) ?? state.sessions[0]!;
         return {
-          id: "private:10001",
-          type: "private",
+          id: session.id,
+          type: session.type,
+          source: session.source,
+          participantUserId: session.participantUserId,
+          participantLabel: session.participantLabel,
           debugControl: {
             enabled: false,
             oncePending: false
@@ -227,7 +245,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           recentToolEvents: [],
           lastLlmUsage: null,
           sentMessages: [],
-          lastActiveAt: 123456
+          lastActiveAt: session.lastActiveAt
         };
       },
       getHistoryRevision() {
@@ -237,9 +255,13 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         return 0;
       },
       getSession(sessionId: string) {
+        const existing = state.sessions.find((item) => item.id === sessionId);
         return {
           id: sessionId,
-          type: sessionId.startsWith("group:") ? "group" : "private",
+          type: existing?.type ?? (sessionId.startsWith("group:") ? "group" : "private"),
+          source: existing?.source ?? (sessionId.startsWith("web:") ? "web" : "onebot"),
+          participantUserId: existing?.participantUserId ?? "10001",
+          participantLabel: existing?.participantLabel ?? "Alice",
           pendingMessages: [],
           debounceTimer: null,
           isGenerating: false,
@@ -248,6 +270,59 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           lastActiveAt: 123456,
           internalTranscript: [],
           activeAssistantResponse: null
+        };
+      },
+      ensureSession(target: {
+        id: string;
+        type: "private" | "group";
+        source?: "onebot" | "web";
+        participantUserId?: string;
+        participantLabel?: string | null;
+      }) {
+        const existing = state.sessions.find((item) => item.id === target.id);
+        if (existing) {
+          return existing;
+        }
+        const created = {
+          id: target.id,
+          type: target.type,
+          source: target.source ?? "onebot",
+          participantUserId: target.participantUserId ?? target.id,
+          participantLabel: target.participantLabel ?? target.participantUserId ?? target.id,
+          pendingMessages: [],
+          isGenerating: false,
+          lastActiveAt: Date.now()
+        };
+        state.sessions.push(created);
+        return created;
+      },
+      deleteSession(sessionId: string) {
+        const index = state.sessions.findIndex((item) => item.id === sessionId);
+        if (index === -1) {
+          return false;
+        }
+        state.sessions.splice(index, 1);
+        return true;
+      },
+      getPersistedSession(sessionId: string) {
+        const session = state.sessions.find((item) => item.id === sessionId)!;
+        return {
+          id: session.id,
+          type: session.type,
+          source: session.source,
+          participantUserId: session.participantUserId,
+          participantLabel: session.participantLabel,
+          pendingMessages: [],
+          historySummary: null,
+          internalTranscript: [],
+          debugMarkers: [],
+          recentToolEvents: [],
+          lastLlmUsage: null,
+          sentMessages: [],
+          lastActiveAt: session.lastActiveAt,
+          lastMessageAt: null,
+          latestGapMs: null,
+          smoothedGapMs: null
         };
       },
       appendSyntheticPendingMessage() {},
@@ -352,6 +427,8 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       }
     } as unknown as InternalApiDeps["configManager"],
     sessionPersistence: {
+      async save() {},
+      async remove() {},
       async getPersistedSessionMtimeMs() {
         return 987654321;
       }

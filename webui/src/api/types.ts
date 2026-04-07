@@ -3,6 +3,9 @@
 export interface SessionListItem {
   id: string;
   type: "private" | "group";
+  source: "onebot" | "web";
+  participantUserId: string;
+  participantLabel: string | null;
   pendingMessageCount: number;
   isGenerating: boolean;
   lastActiveAt: number;

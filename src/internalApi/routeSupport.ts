@@ -52,6 +52,11 @@ const webTurnBodySchema = z.object({
   message: "text, imageIds, or attachmentIds is required"
 });
 
+const createSessionBodySchema = z.object({
+  participantUserId: z.string().trim().min(1, "participantUserId is required"),
+  participantLabel: z.string().trim().min(1).optional()
+});
+
 const uploadAssetFileSchema = z.object({
   filename: z.string().trim().min(1).optional(),
   mimeType: z.string().trim().min(1, "mimeType is required"),
@@ -110,6 +115,7 @@ export type ParsedShellInteractBody = z.infer<typeof shellInteractBodySchema>;
 export type ParsedShellSignalBody = z.infer<typeof shellSignalBodySchema>;
 export type ParsedSendTextBody = z.infer<typeof sendTextBodySchema>;
 export type ParsedWebTurnBody = z.infer<typeof webTurnBodySchema>;
+export type ParsedCreateSessionBody = z.infer<typeof createSessionBodySchema>;
 export type ParsedUploadAssetsBody = z.infer<typeof uploadAssetsBodySchema>;
 export type ParsedConfigValidateBody = z.infer<typeof configValidateBodySchema>;
 export type ParsedConfigSaveBody = z.infer<typeof configSaveBodySchema>;
@@ -190,6 +196,10 @@ export function parseSendTextBody(body: unknown): ParsedSendTextBody | { error: 
 
 export function parseWebTurnBody(body: unknown): ParsedWebTurnBody | { error: string } {
   return parseWithSchema(webTurnBodySchema, body);
+}
+
+export function parseCreateSessionBody(body: unknown): ParsedCreateSessionBody | { error: string } {
+  return parseWithSchema(createSessionBodySchema, body);
 }
 
 export function parseUploadAssetsBody(body: unknown): ParsedUploadAssetsBody | { error: string } {

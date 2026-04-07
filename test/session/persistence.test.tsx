@@ -30,6 +30,9 @@ async function main() {
       const session: PersistedSessionState = {
         id: "private:owner",
         type: "private",
+        source: "onebot",
+        participantUserId: "owner",
+        participantLabel: "Owner",
         lastInboundDelivery: "web",
         pendingMessages: [
           {
@@ -155,6 +158,9 @@ async function main() {
       const session: PersistedSessionState = {
         id: "private:google-tool",
         type: "private",
+        source: "onebot",
+        participantUserId: "google-tool",
+        participantLabel: "google-tool",
         lastInboundDelivery: "onebot",
         pendingMessages: [],
         historySummary: null,
@@ -278,6 +284,7 @@ async function main() {
       assert.deepEqual(await persistence.loadAll(), [{
         id: "private:compat",
         type: "private",
+        source: "onebot",
         lastInboundDelivery: "onebot",
         pendingMessages: [],
         historySummary: null,

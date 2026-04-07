@@ -5,9 +5,9 @@ import { uploadsApi, type UploadedAsset } from "@/api/uploads";
 
 const props = defineProps<{
   sessionType: "private" | "group";
-  /** Private sessions: locked userId derived from session ID */
+  /** OneBot private sessions: locked userId derived from session metadata */
   lockedUserId?: string;
-  /** Group sessions: initial userId (ownerQq), still editable */
+  /** Editable default sender for web/group sessions */
   defaultUserId?: string;
   disabled?: boolean;
 }>();
@@ -20,7 +20,7 @@ const emit = defineEmits<{
 const text    = ref("");
 const userId  = ref(props.lockedUserId ?? props.defaultUserId ?? "");
 
-// Sync if parent provides a new default (e.g. ownerQq loaded async)
+// Sync if parent provides a new default later.
 watch(() => props.lockedUserId,   (v) => { if (v != null) userId.value = v; });
 watch(() => props.defaultUserId,  (v) => { if (v != null && !props.lockedUserId) userId.value = v; });
 watch(userId, (value) => {

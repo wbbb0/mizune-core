@@ -70,12 +70,12 @@ export interface InternalApiDeps {
 }
 
 export interface InternalApiServices {
-  config: Pick<InternalApiDeps, "config" | "whitelistStore" | "sessionManager" | "personaStore" | "globalMemoryStore" | "userStore">;
+  config: Pick<InternalApiDeps, "config" | "whitelistStore" | "sessionManager" | "sessionPersistence" | "personaStore" | "globalMemoryStore" | "userStore">;
   editor: EditorService;
   dataBrowser: DataBrowserService;
   workspaceAdmin: WorkspaceAdminService;
   operations: Pick<InternalApiDeps, "requestStore" | "scheduledJobStore">;
-  messaging: Pick<InternalApiDeps, "oneBotClient" | "sessionManager" | "handleWebIncomingMessage" | "mediaWorkspace">;
+  messaging: Pick<InternalApiDeps, "config" | "oneBotClient" | "sessionManager" | "handleWebIncomingMessage" | "mediaWorkspace">;
   uploads: Pick<InternalApiDeps, "mediaWorkspace">;
   shell: Pick<InternalApiDeps, "shellRuntime">;
   browser: Pick<InternalApiDeps, "browserService">;
@@ -88,6 +88,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       config: deps.config,
       whitelistStore: deps.whitelistStore,
       sessionManager: deps.sessionManager,
+      sessionPersistence: deps.sessionPersistence,
       personaStore: deps.personaStore,
       globalMemoryStore: deps.globalMemoryStore,
       userStore: deps.userStore
@@ -110,6 +111,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       scheduledJobStore: deps.scheduledJobStore
     },
     messaging: {
+      config: deps.config,
       oneBotClient: deps.oneBotClient,
       sessionManager: deps.sessionManager,
       handleWebIncomingMessage: deps.handleWebIncomingMessage,

@@ -339,6 +339,7 @@ export function toConfigSummary(
     runtimeNodeEnv: process.env.NODE_ENV?.trim() || "unknown",
     configuredNodeEnv: config.nodeEnv,
     logLevel: config.logLevel,
+    oneBotEnabled: config.onebot.enabled,
     oneBotWsUrl: config.onebot.wsUrl,
     oneBotHttpUrl: config.onebot.httpUrl,
     dataDir: config.dataDir,

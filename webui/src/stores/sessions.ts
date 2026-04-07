@@ -20,6 +20,10 @@ export interface TranscriptEntry {
 
 export interface ActiveSession {
   id: string;
+  type: "private" | "group";
+  source: "onebot" | "web";
+  participantUserId: string;
+  participantLabel: string | null;
   mutationEpoch: number;
   transcriptCount: number;
   pendingMessageCount: number;
@@ -60,6 +64,10 @@ export const useSessionsStore = defineStore("sessions", () => {
     if (active.value?.id !== sessionId) {
       active.value = {
         id: sessionId,
+        type: "private",
+        source: "web",
+        participantUserId: "",
+        participantLabel: null,
         mutationEpoch: currentEpoch,
         transcriptCount: requestedTranscriptCount,
         pendingMessageCount: 0,
@@ -233,6 +241,29 @@ export const useSessionsStore = defineStore("sessions", () => {
   function selectSession(sessionId: string): void {
     if (selectedId.value === sessionId) return;
     selectedId.value = sessionId;
+    const selected = list.value.find((item) => item.id === sessionId);
+    if (selected) {
+      active.value = {
+        id: selected.id,
+        type: selected.type,
+        source: selected.source,
+        participantUserId: selected.participantUserId,
+        participantLabel: selected.participantLabel,
+        mutationEpoch: 0,
+        transcriptCount: 0,
+        pendingMessageCount: selected.pendingMessageCount,
+        isGenerating: selected.isGenerating,
+        lastActiveAt: selected.lastActiveAt,
+        streamStatus: "connecting",
+        phase: {
+          kind: "idle",
+          label: "连接中"
+        },
+        transcript: [],
+        streamingText: null,
+        composerUserId: selected.participantUserId
+      };
+    }
     _openStream(sessionId);
   }
 
@@ -267,6 +298,26 @@ export const useSessionsStore = defineStore("sessions", () => {
     });
 
     _subscribeTurnStream(sessionId, turnId);
+  }
+
+  async function createSession(input: {
+    participantUserId: string;
+    participantLabel?: string;
+  }): Promise<string> {
+    const result = await sessionsApi.create(input);
+    await refresh();
+    selectSession(result.session.id);
+    return result.session.id;
+  }
+
+  async function deleteSelectedSession(): Promise<void> {
+    const sessionId = selectedId.value;
+    if (!sessionId) {
+      return;
+    }
+    await sessionsApi.remove(sessionId);
+    deselectSession();
+    await refresh();
   }
 
   function _subscribeTurnStream(sessionId: string, turnId: string): void {
@@ -322,6 +373,8 @@ export const useSessionsStore = defineStore("sessions", () => {
     selectedId,
     active,
     refresh,
+    createSession,
+    deleteSelectedSession,
     selectSession,
     deselectSession,
     sendMessage,

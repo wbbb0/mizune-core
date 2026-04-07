@@ -3,6 +3,7 @@ import type { ChatAttachment } from "#services/workspace/types.ts";
 // Defines the public session data contracts shared across conversation modules.
 
 export type SessionDelivery = "onebot" | "web";
+export type SessionSource = "onebot" | "web";
 
 export interface StoredToolCall {
   id: string;
@@ -349,6 +350,9 @@ export type InternalSessionTriggerExecution =
 export interface SessionState {
   id: string;
   type: "private" | "group";
+  source: SessionSource;
+  participantUserId: string;
+  participantLabel: string | null;
   lastInboundDelivery: SessionDelivery;
   debugControl: SessionDebugControlState;
   pendingMessages: SessionMessage[];
@@ -381,6 +385,9 @@ export interface SessionState {
 export interface PersistedSessionState {
   id: string;
   type: "private" | "group";
+  source?: SessionSource;
+  participantUserId?: string;
+  participantLabel?: string | null;
   lastInboundDelivery?: SessionDelivery;
   debugControl?: {
     enabled?: boolean;

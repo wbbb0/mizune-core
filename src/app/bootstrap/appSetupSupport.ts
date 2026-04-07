@@ -109,10 +109,10 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
     const currentPersona = await personaStore.get();
     const missing = setupStore.describeMissingFields(currentPersona);
     if (missing.length === 0) {
-      return "当前实例已进入初始化确认阶段，但没有检测到缺失字段。你可以直接补充或微调角色设定。";
+      return "当前实例已进入初始化确认阶段，但没有检测到缺失字段。你可以继续补充或微调角色设定。";
     }
     return [
-      "当前实例还在初始化，请先补全角色设定。",
+      "当前实例还在 OneBot 初始化阶段，请先补全角色设定。",
       `仍需填写：${missing.map((item) => item.label).join("、")}`,
       "你可以直接发文本描述，也可以发图片辅助设定。"
     ].join("\n");
@@ -142,15 +142,15 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
     chatType: "private" | "group";
   }): Promise<string> => {
     if (params.chatType !== "private") {
-      return "`.own` 只能在私聊里使用。";
+      return "`.own` 只能在 OneBot 私聊里使用。";
     }
     const currentState = await setupStore.get();
     if (currentState.state === "ready") {
-      return "当前实例已完成初始化，`.own` 不再可用。";
+      return "当前实例已完成 OneBot 初始化，`.own` 不再可用。";
     }
     const currentOwnerId = whitelistStore.getOwnerId();
     if (currentOwnerId) {
-      return `当前实例已绑定 owner：${currentOwnerId}。请由 owner 继续完成设定。`;
+      return `当前实例已绑定管理者：${currentOwnerId}。请由该管理者继续完成设定。`;
     }
     const targetUserId = params.targetUserId.trim();
     if (!targetUserId) {
@@ -159,7 +159,7 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
     const friends = await oneBotClient.getFriendList();
     const matchedFriend = friends.find((friend) => String(friend.user_id) === targetUserId);
     if (!matchedFriend) {
-      return "只能把已经是 bot 好友的用户 ID 设为 owner。";
+      return "只能把已经在 OneBot 中与 bot 建立好友关系的用户 ID 设为管理者。";
     }
 
     await whitelistStore.assignOwner(targetUserId);
@@ -172,11 +172,11 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
         text: await buildSetupInstructionText()
       });
       await setupStore.markOwnerPromptSent();
-      return `已将 ${targetUserId} 设为 owner，并通知对方继续完成角色设定。`;
+      return `已将 ${targetUserId} 设为管理者，并通知对方继续完成角色设定。`;
     }
 
     await notifyOwnerSetupIfNeeded({ force: true, ownerId: targetUserId });
-    return "已将你设为 owner。接下来请继续补全角色设定。";
+    return "已将你设为管理者。接下来请继续补全角色设定。";
   };
 
   return {

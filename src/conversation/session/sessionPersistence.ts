@@ -7,6 +7,9 @@ import type { PersistedSessionState } from "./sessionManager.ts";
 const persistedSessionSchema = z.object({
   id: z.string().min(1),
   type: z.enum(["private", "group"]),
+  source: z.enum(["onebot", "web"]).default("onebot"),
+  participantUserId: z.string().min(1).optional(),
+  participantLabel: z.string().min(1).nullable().optional(),
   lastInboundDelivery: z.enum(["onebot", "web"]).default("onebot"),
   pendingMessages: z.array(z.object({
     userId: z.string().min(1),

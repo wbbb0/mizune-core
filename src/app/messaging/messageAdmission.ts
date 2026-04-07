@@ -56,7 +56,7 @@ export function resolvePreRouterSetupDecision(input: {
     return {
       kind: "reject_private_before_owner_bound",
       userId: input.eventUserId,
-      text: "当前实例还没有绑定 owner。请私聊发送 `.own` 绑定自己，或发送 `.own <userId>` 指定一个已经是 bot 好友的用户 ID。"
+      text: "当前实例还没有完成 OneBot 管理者绑定。请私聊发送 `.own` 绑定自己，或发送 `.own <userId>` 指定一个已与 bot 建立好友关系的用户 ID。"
     };
   }
 
@@ -89,8 +89,8 @@ export function resolvePostRouterSetupDecision(input: {
     return {
       kind: "block_private_non_owner",
       text: input.ownerId
-        ? "当前实例仍在初始化，暂时只接受 owner 私聊补全角色设定。"
-        : "当前实例还没有绑定 owner。请先发送 `.own` 完成 owner 认领。"
+        ? "当前实例仍在 OneBot 初始化阶段，暂时只接受管理者私聊补全角色设定。"
+        : "当前实例还没有完成管理者绑定。请先发送 `.own` 完成认领。"
     };
   }
 

@@ -566,14 +566,20 @@ export async function processIncomingMessage(
     incomingMessage
   );
 
-  if (await handlePostRouterSetupDecision({ logger, whitelistStore }, context, sendImmediateText)) {
+  if (deps.inboundDelivery === "onebot" && await handlePostRouterSetupDecision({ logger, whitelistStore }, context, sendImmediateText)) {
     return;
   }
 
-  const triggerDecision = await resolveTriggerDecision(
-    { config, whitelistStore, conversationAccess, sessionManager },
-    context
-  );
+  const triggerDecision = deps.inboundDelivery === "web"
+    ? {
+        groupMatched: false,
+        matchedPendingGroupTrigger: false,
+        shouldTriggerResponse: true
+      }
+    : await resolveTriggerDecision(
+        { config, whitelistStore, conversationAccess, sessionManager },
+        context
+      );
   const command = resolveChatDirectCommand(context);
   if (command) {
     try {

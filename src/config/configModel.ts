@@ -18,6 +18,7 @@ const modelProfileSchema = s.object({
 const createModelRefListSchema = () => s.oneOrMany(s.string().trim().nonempty().dynamicRef("llm_model_names")).min(1);
 
 const onebotConfigSchema = s.object({
+  enabled: s.boolean().default(true),
   wsUrl: s.string().url().default("ws://127.0.0.1:3001"),
   httpUrl: s.string().url().default("http://127.0.0.1:3000"),
   accessToken: s.string().trim().nonempty().optional()
@@ -366,6 +367,7 @@ export interface ConfigSummary {
   runtimeNodeEnv: string;
   configuredNodeEnv: string;
   logLevel: string;
+  oneBotEnabled: boolean;
   oneBotWsUrl: string;
   oneBotHttpUrl: string;
   dataDir: string;

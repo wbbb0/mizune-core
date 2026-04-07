@@ -7,10 +7,17 @@ import type { SessionState, PersistedSessionState } from "./sessionTypes.ts";
 export function createSessionState(target: {
   id: string;
   type: "private" | "group";
+  source?: "onebot" | "web";
+  participantUserId?: string;
+  participantLabel?: string | null;
 }): SessionState {
+  const participantUserId = target.participantUserId ?? deriveParticipantUserId(target.id, target.type);
   return {
     id: target.id,
     type: target.type,
+    source: target.source ?? deriveSessionSource(target.id),
+    participantUserId,
+    participantLabel: target.participantLabel ?? participantUserId,
     lastInboundDelivery: "onebot",
     debugControl: {
       enabled: false,
@@ -53,9 +60,13 @@ export function buildSessionId(message: ParsedIncomingMessage): string {
 
 // Restores a persisted session snapshot into runtime state.
 export function restoreSessionState(item: PersistedSessionState): SessionState {
+  const participantUserId = item.participantUserId ?? deriveParticipantUserId(item.id, item.type);
   return {
     id: item.id,
     type: item.type,
+    source: item.source ?? deriveSessionSource(item.id),
+    participantUserId,
+    participantLabel: item.participantLabel ?? participantUserId,
     lastInboundDelivery: item.lastInboundDelivery ?? "onebot",
     debugControl: {
       enabled: item.debugControl?.enabled === true,
@@ -137,6 +148,9 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
   return {
     id: session.id,
     type: session.type,
+    source: session.source,
+    participantUserId: session.participantUserId,
+    participantLabel: session.participantLabel,
     lastInboundDelivery: session.lastInboundDelivery,
     debugControl: {
       enabled: session.debugControl.enabled
@@ -153,4 +167,21 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     latestGapMs: session.latestGapMs,
     smoothedGapMs: session.smoothedGapMs
   };
+}
+
+function deriveSessionSource(sessionId: string): "onebot" | "web" {
+  return sessionId.startsWith("web:") ? "web" : "onebot";
+}
+
+function deriveParticipantUserId(sessionId: string, type: "private" | "group"): string {
+  if (type === "private" && sessionId.startsWith("private:")) {
+    return sessionId.slice("private:".length);
+  }
+  if (type === "group" && sessionId.startsWith("group:")) {
+    return sessionId.slice("group:".length);
+  }
+  if (sessionId.startsWith("web:")) {
+    return sessionId.slice("web:".length);
+  }
+  return sessionId;
 }

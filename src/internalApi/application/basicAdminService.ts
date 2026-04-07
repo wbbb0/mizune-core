@@ -1,4 +1,19 @@
 import type { InternalApiDeps } from "../types.ts";
+import type { ParsedCreateSessionBody } from "../routeSupport.ts";
+import type { SessionState } from "#conversation/session/sessionTypes.ts";
+
+function buildSessionSummary(session: SessionState) {
+  return {
+    id: session.id,
+    type: session.type,
+    source: session.source,
+    participantUserId: session.participantUserId,
+    participantLabel: session.participantLabel,
+    pendingMessageCount: session.pendingMessages.length,
+    isGenerating: session.isGenerating,
+    lastActiveAt: session.lastActiveAt
+  };
+}
 
 export function getHealthStatus() {
   return { ok: true };
@@ -6,16 +21,21 @@ export function getHealthStatus() {
 
 export function getConfigSummary(deps: Pick<InternalApiDeps, "config" | "whitelistStore">) {
   const whitelist = deps.whitelistStore.getSnapshot();
+  const runtimeMode = deps.config.onebot.enabled ? "onebot" : "webui_only";
   return {
+    runtimeMode,
     onebot: {
+      enabled: deps.config.onebot.enabled,
       wsUrl: deps.config.onebot.wsUrl,
       httpUrl: deps.config.onebot.httpUrl
     },
-    ownerId: whitelist.ownerId ?? null,
-    whitelist: {
-      enabled: deps.config.whitelist.enabled,
-      users: whitelist.users,
-      groups: whitelist.groups
+    access: {
+      ownerId: deps.config.onebot.enabled ? (whitelist.ownerId ?? null) : null,
+      whitelist: {
+        enabled: deps.config.onebot.enabled ? deps.config.whitelist.enabled : false,
+        users: deps.config.onebot.enabled ? whitelist.users : [],
+        groups: deps.config.onebot.enabled ? whitelist.groups : []
+      }
     }
   };
 }
@@ -28,13 +48,7 @@ export async function listUsers(deps: Pick<InternalApiDeps, "userStore">) {
 
 export function listSessions(deps: Pick<InternalApiDeps, "sessionManager">) {
   return {
-    sessions: deps.sessionManager.listSessions().map((session) => ({
-      id: session.id,
-      type: session.type,
-      pendingMessageCount: session.pendingMessages.length,
-      isGenerating: session.isGenerating,
-      lastActiveAt: session.lastActiveAt
-    }))
+    sessions: deps.sessionManager.listSessions().map((session) => buildSessionSummary(session))
   };
 }
 
@@ -58,6 +72,37 @@ export async function getSessionDetail(
   };
 }
 
+export function createWebSession(
+  deps: Pick<InternalApiDeps, "sessionManager" | "sessionPersistence">,
+  body: ParsedCreateSessionBody
+) {
+  const sessionId = createWebSessionId();
+  const session = deps.sessionManager.ensureSession({
+    id: sessionId,
+    type: "private",
+    source: "web",
+    participantUserId: body.participantUserId,
+    participantLabel: body.participantLabel ?? body.participantUserId
+  });
+  void deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(session.id));
+  return {
+    ok: true,
+    session: buildSessionSummary(session)
+  };
+}
+
+export async function deleteSession(
+  deps: Pick<InternalApiDeps, "sessionManager" | "sessionPersistence">,
+  sessionId: string
+) {
+  const deleted = deps.sessionManager.deleteSession(sessionId);
+  if (!deleted) {
+    return { ok: false as const };
+  }
+  await deps.sessionPersistence.remove(sessionId);
+  return { ok: true as const };
+}
+
 export async function getPersona(deps: Pick<InternalApiDeps, "personaStore">) {
   return {
     persona: await deps.personaStore.get()
@@ -68,4 +113,8 @@ export function getWhitelist(deps: Pick<InternalApiDeps, "whitelistStore">) {
   return {
     whitelist: deps.whitelistStore.getSnapshot()
   };
+}
+
+function createWebSessionId(): string {
+  return `web:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }

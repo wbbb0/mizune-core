@@ -38,6 +38,9 @@ async function main() {
     const sessionState = {
       id: "private:10001",
       type: "private" as const,
+      source: "onebot" as const,
+      participantUserId: "10001",
+      participantLabel: "Alice",
       pendingMessages: [{ receivedAt: 1 }],
       pendingReplyGateWaitPasses: 0,
       debounceTimer: null,
@@ -52,6 +55,11 @@ async function main() {
     };
 
     const service = createAdminMessagingService({
+      config: {
+        onebot: {
+          enabled: true
+        }
+      },
       oneBotClient: {
         async sendText() {
           return {};
@@ -92,6 +100,9 @@ async function main() {
     const sessionState = {
       id: "private:10001",
       type: "private" as const,
+      source: "onebot" as const,
+      participantUserId: "10001",
+      participantLabel: "Alice",
       pendingMessages: [] as Array<{ receivedAt?: number }>,
       pendingReplyGateWaitPasses: 0,
       debounceTimer: null,
@@ -106,6 +117,11 @@ async function main() {
     };
 
     const service = createAdminMessagingService({
+      config: {
+        onebot: {
+          enabled: true
+        }
+      },
       oneBotClient: {
         async sendText() {
           return {};

@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import {
+  createWebSession,
+  deleteSession,
   getConfigSummary,
   getHealthStatus,
   getPersona,
@@ -10,6 +12,7 @@ import {
 } from "../application/basicAdminService.ts";
 import { listRequests, listScheduledJobs } from "../application/operationsAdminService.ts";
 import {
+  parseCreateSessionBody,
   parseConfigSaveBody,
   parseConfigValidateBody,
   parseEditorOptionsParams,
@@ -214,6 +217,14 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
 
   app.get("/api/sessions", async () => listSessions(services.config));
 
+  app.post("/api/sessions", async (request, reply) => {
+    const body = parseCreateSessionBody(request.body);
+    if (!parseOrReply(reply, body)) {
+      return reply;
+    }
+    return createWebSession(services.config, body);
+  });
+
   app.get("/api/sessions/:sessionId", async (request, reply) => {
     const params = parseSessionParams(request.params);
     if (!parseOrReply(reply, params)) {
@@ -225,6 +236,19 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
       return respondNotFound(reply, "Session not found");
     }
     return session;
+  });
+
+  app.delete("/api/sessions/:sessionId", async (request, reply) => {
+    const params = parseSessionParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+
+    const result = await deleteSession(services.config, params.sessionId);
+    if (!result.ok) {
+      return respondNotFound(reply, "Session not found");
+    }
+    return result;
   });
 
   app.get("/api/persona", async () => getPersona(services.config));
