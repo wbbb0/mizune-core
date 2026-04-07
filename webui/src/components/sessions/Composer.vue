@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, watch, nextTick } from "vue";
+import { computed, ref, watch, nextTick } from "vue";
 import { Send, Paperclip, X, Loader } from "lucide-vue-next";
+import { useVisualViewportInset } from "@/composables/useVisualViewportInset";
 import { uploadsApi, type UploadedAsset } from "@/api/uploads";
 
 const props = defineProps<{
@@ -30,6 +31,12 @@ const textareaRef  = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const attachments  = ref<(UploadedAsset & { preview?: string })[]>([]);
 const uploading    = ref(false);
+const { keyboardInsetPx, keyboardInsetStylePx } = useVisualViewportInset();
+
+const composerStyle = computed(() => ({
+  marginBottom: keyboardInsetPx.value > 0 ? keyboardInsetStylePx.value : "0px",
+  paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + 0.5rem)`
+}));
 
 // Auto-resize textarea
 watch(text, () => nextTick(resize));
@@ -102,7 +109,10 @@ function removeAttachment(assetId: string) {
 </script>
 
 <template>
-  <div class="border-t border-border-default bg-surface-sidebar px-3 pt-2 pb-safe-offset-2">
+  <div
+    class="border-t border-border-default bg-surface-sidebar px-3 pt-2 transition-[margin] duration-180 ease-out"
+    :style="composerStyle"
+  >
     <!-- User ID row -->
     <div class="mb-1.5 flex items-center gap-2">
       <label class="shrink-0 whitespace-nowrap text-small text-text-muted">发送方 ID</label>
