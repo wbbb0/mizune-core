@@ -10,7 +10,7 @@ const persistedSessionSchema = z.object({
   source: z.enum(["onebot", "web"]).default("onebot"),
   participantUserId: z.string().min(1).optional(),
   participantLabel: z.string().min(1).nullable().optional(),
-  lastInboundDelivery: z.enum(["onebot", "web"]).default("onebot"),
+  replyDelivery: z.enum(["onebot", "web"]).default("onebot"),
   pendingMessages: z.array(z.object({
     userId: z.string().min(1),
     groupId: z.string().min(1).optional(),

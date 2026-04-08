@@ -18,7 +18,7 @@ export function createSessionState(target: {
     source: target.source ?? deriveSessionSource(target.id),
     participantUserId,
     participantLabel: target.participantLabel ?? participantUserId,
-    lastInboundDelivery: "onebot",
+    replyDelivery: target.source ?? deriveSessionSource(target.id),
     debugControl: {
       enabled: false,
       oncePending: false
@@ -67,7 +67,7 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
     source: item.source ?? deriveSessionSource(item.id),
     participantUserId,
     participantLabel: item.participantLabel ?? participantUserId,
-    lastInboundDelivery: item.lastInboundDelivery ?? "onebot",
+    replyDelivery: item.replyDelivery ?? item.source ?? deriveSessionSource(item.id),
     debugControl: {
       enabled: item.debugControl?.enabled === true,
       oncePending: false
@@ -151,7 +151,7 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     source: session.source,
     participantUserId: session.participantUserId,
     participantLabel: session.participantLabel,
-    lastInboundDelivery: session.lastInboundDelivery,
+    replyDelivery: session.replyDelivery,
     debugControl: {
       enabled: session.debugControl.enabled
     },

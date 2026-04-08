@@ -214,6 +214,7 @@ export function createGenerationExecutor(
       const rawToolExecutor = createBuiltinToolExecutor(buildBuiltinToolContext({
         config,
         relationship: toolRelationship ?? relationship,
+        replyDelivery: sendTarget.delivery,
         lastMessage: {
           sessionId,
           userId: sendTarget.userId,
@@ -246,7 +247,6 @@ export function createGenerationExecutor(
         conversationAccess,
         npcDirectory,
         debugSnapshot,
-        outboundDelivery: sendTarget.delivery,
         ...(webOutputCollector ? { webOutputCollector } : {}),
         ...(activeInternalTrigger !== undefined ? { activeInternalTrigger } : {})
       }), {

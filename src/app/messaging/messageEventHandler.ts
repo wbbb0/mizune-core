@@ -493,7 +493,7 @@ function enqueueTriggeredMessage(
   logger: Logger
 ): void {
   if (shouldUpdateSessionReplyDelivery(inboundDelivery, context.enrichedMessage)) {
-    services.sessionManager.setLastInboundDelivery(context.session.id, inboundDelivery);
+    services.sessionManager.setReplyDelivery(context.session.id, inboundDelivery);
   }
 
   if (context.enrichedMessage.chatType === "group") {

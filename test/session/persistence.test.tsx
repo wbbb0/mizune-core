@@ -33,7 +33,7 @@ async function main() {
         source: "onebot",
         participantUserId: "owner",
         participantLabel: "Owner",
-        lastInboundDelivery: "web",
+        replyDelivery: "web",
         pendingMessages: [
           {
             userId: "owner",
@@ -163,7 +163,7 @@ async function main() {
         source: "onebot",
         participantUserId: "google-tool",
         participantLabel: "google-tool",
-        lastInboundDelivery: "onebot",
+        replyDelivery: "onebot",
         pendingMessages: [],
         historySummary: null,
         internalTranscript: [{
@@ -287,7 +287,7 @@ async function main() {
         id: "private:compat",
         type: "private",
         source: "onebot",
-        lastInboundDelivery: "onebot",
+        replyDelivery: "onebot",
         pendingMessages: [],
         historySummary: null,
         internalTranscript: [],

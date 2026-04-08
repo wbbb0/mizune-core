@@ -552,7 +552,7 @@ async function main() {
       { id: "tool_workspace_send_2_web", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_ref\":\"file_bead1234.txt\"}" } },
       { file_ref: "file_bead1234.txt" },
       {
-        outboundDelivery: "web",
+        replyDelivery: "web",
         webOutputCollector: {
           append(chunk: string) {
             webChunks.push(chunk);
@@ -622,7 +622,7 @@ async function main() {
         { id: "tool_workspace_send_web_img", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_ref\":\"img_deadbeef.png\"}" } },
         { file_ref: "img_deadbeef.png" },
         {
-          outboundDelivery: "web",
+          replyDelivery: "web",
           lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
           mediaWorkspace: {
             async getFile(id: string) {

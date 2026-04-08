@@ -355,7 +355,7 @@ export interface SessionState {
   source: SessionSource;
   participantUserId: string;
   participantLabel: string | null;
-  lastInboundDelivery: SessionDelivery;
+  replyDelivery: SessionDelivery;
   debugControl: SessionDebugControlState;
   pendingMessages: SessionMessage[];
   pendingSteerMessages: SessionMessage[];
@@ -390,7 +390,7 @@ export interface PersistedSessionState {
   source?: SessionSource;
   participantUserId?: string;
   participantLabel?: string | null;
-  lastInboundDelivery?: SessionDelivery;
+  replyDelivery?: SessionDelivery;
   debugControl?: {
     enabled?: boolean;
   };

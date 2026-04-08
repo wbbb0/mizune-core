@@ -106,7 +106,7 @@ async function main() {
     assert.ok(persistedReasons.includes("user_message_steered_and_outbound_interrupted"));
     assert.equal(debounceScheduled, 0);
     assert.equal(flushCalled, 0);
-    assert.equal(sessionManager.getLastInboundDelivery(session.id), "web");
+    assert.equal(sessionManager.getReplyDelivery(session.id), "web");
   });
 
   await runCase("group non-mention messages do not change the session reply delivery flag", async () => {
@@ -117,7 +117,7 @@ async function main() {
     });
     const sessionManager = new SessionManager(config);
     const session = sessionManager.ensureSession({ id: "group:20001", type: "group" });
-    sessionManager.setLastInboundDelivery(session.id, "web");
+    sessionManager.setReplyDelivery(session.id, "web");
 
     await processIncomingMessage({
       inboundDelivery: "onebot",
@@ -184,7 +184,7 @@ async function main() {
       isAtMentioned: false
     });
 
-    assert.equal(sessionManager.getLastInboundDelivery(session.id), "web");
+    assert.equal(sessionManager.getReplyDelivery(session.id), "web");
   });
 
   await runCase("group mention trigger updates the session reply delivery flag", async () => {
@@ -195,7 +195,7 @@ async function main() {
     });
     const sessionManager = new SessionManager(config);
     const session = sessionManager.ensureSession({ id: "group:20001", type: "group" });
-    sessionManager.setLastInboundDelivery(session.id, "web");
+    sessionManager.setReplyDelivery(session.id, "web");
     let debounceScheduled = 0;
 
     await processIncomingMessage({
@@ -264,7 +264,7 @@ async function main() {
     });
 
     assert.equal(debounceScheduled, 1);
-    assert.equal(sessionManager.getLastInboundDelivery(session.id), "onebot");
+    assert.equal(sessionManager.getReplyDelivery(session.id), "onebot");
   });
 
   await runCase("owner group mention triggers even when the group is not whitelisted", async () => {
@@ -343,7 +343,7 @@ async function main() {
     });
 
     assert.equal(debounceScheduled, 1);
-    assert.equal(sessionManager.getLastInboundDelivery(session.id), "onebot");
+    assert.equal(sessionManager.getReplyDelivery(session.id), "onebot");
   });
 }
 

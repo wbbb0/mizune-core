@@ -87,6 +87,7 @@ export function createBrowserToolContext(
     browserService: browserService as unknown as BuiltinToolContext["browserService"],
     config: null as unknown as BuiltinToolContext["config"],
     relationship: "owner",
+    replyDelivery: "onebot",
     lastMessage: {
       sessionId: "private:test",
       userId: "10001",

@@ -1,5 +1,5 @@
 import { extractWindowUsers } from "#conversation/session/historyContext.ts";
-import type { InternalSessionTriggerExecution } from "#conversation/session/sessionManager.ts";
+import type { InternalSessionTriggerExecution, SessionDelivery } from "#conversation/session/sessionManager.ts";
 import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getBuiltinToolNames } from "#llm/builtinTools.ts";
 import type { PromptInteractionMode } from "#llm/prompt/promptTypes.ts";
@@ -77,6 +77,26 @@ export function createGenerationSessionOrchestrator(
     persistSession
   } = deps;
 
+  const resolveSessionReplyDelivery = (
+    sessionId: string,
+    options?: {
+      delivery?: SessionDelivery;
+      trigger?: InternalSessionTriggerExecution;
+    }
+  ): SessionDelivery => {
+    if (options?.delivery) {
+      return options.delivery;
+    }
+
+    if (options?.trigger?.kind === "scheduled_instruction") {
+      const delivery = sessionManager.getSession(sessionId).source;
+      sessionManager.setReplyDelivery(sessionId, delivery);
+      return delivery;
+    }
+
+    return sessionManager.getReplyDelivery(sessionId);
+  };
+
   const flushSession = (
     sessionId: string,
     options?: {
@@ -85,7 +105,7 @@ export function createGenerationSessionOrchestrator(
       webOutputCollector?: GenerationWebOutputCollector;
     }
   ) => {
-    const resolvedDelivery = options?.delivery ?? sessionManager.getLastInboundDelivery(sessionId);
+    const resolvedDelivery = resolveSessionReplyDelivery(sessionId, options);
     const { messages, pendingReplyGateWaitPasses, abortController, responseAbortController, responseEpoch } = sessionManager.beginGeneration(sessionId);
     const expectedEpoch = sessionManager.getMutationEpoch(sessionId);
     if (messages.length === 0) {
@@ -381,7 +401,7 @@ export function createGenerationSessionOrchestrator(
         batchMessages: [],
         resolvedModelRef: scheduledModelRef,
         sendTarget: {
-          delivery: "onebot",
+          delivery: resolveSessionReplyDelivery(sessionId, { trigger }) satisfies SessionDelivery,
           chatType: trigger.targetType,
           userId: trigger.targetUserId ?? trigger.targetGroupId ?? sessionId,
           ...(trigger.targetGroupId ? { groupId: trigger.targetGroupId } : {}),

@@ -290,12 +290,12 @@ export class SessionManager {
     return this.requireSession(sessionId);
   }
 
-  getLastInboundDelivery(sessionId: string): SessionDelivery {
-    return this.requireSession(sessionId).lastInboundDelivery;
+  getReplyDelivery(sessionId: string): SessionDelivery {
+    return this.requireSession(sessionId).replyDelivery;
   }
 
-  setLastInboundDelivery(sessionId: string, delivery: SessionDelivery): void {
-    this.requireSession(sessionId).lastInboundDelivery = delivery;
+  setReplyDelivery(sessionId: string, delivery: SessionDelivery): void {
+    this.requireSession(sessionId).replyDelivery = delivery;
   }
 
   getPersistedSession(sessionId: string): PersistedSessionState {

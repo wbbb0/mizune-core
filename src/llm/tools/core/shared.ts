@@ -40,8 +40,8 @@ import type {
 } from "#app/generation/generationPromptBuilder.ts";
 import type { PromptLiveResource } from "../../prompt/promptTypes.ts";
 import type { Persona } from "#persona/personaSchema.ts";
-import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
 import type { GenerationWebOutputCollector } from "#app/generation/generationExecutor.ts";
+import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
 
 export type Relationship = "owner" | "known";
 export type ToolAccessLevel = "any" | "owner" | "operator";
@@ -58,6 +58,7 @@ export interface ToolDescriptor {
 export interface BuiltinToolActorContext {
   config: AppConfig;
   relationship: Relationship;
+  replyDelivery: SessionDelivery;
   lastMessage: {
     sessionId: string;
     userId: string;
@@ -124,7 +125,6 @@ export interface BuiltinToolContext extends
   BuiltinToolCommunicationDeps,
   BuiltinToolStoreDeps,
   BuiltinToolRuntimeDeps {
-  outboundDelivery?: SessionDelivery;
   webOutputCollector?: GenerationWebOutputCollector;
   debugSnapshot?: PromptDebugSnapshot;
   activeInternalTrigger?: InternalSessionTriggerExecution | null;

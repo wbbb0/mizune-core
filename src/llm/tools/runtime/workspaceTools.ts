@@ -32,9 +32,7 @@ function enqueueToolSend(
 function resolveToolDelivery(
   context: Parameters<NonNullable<typeof workspaceToolHandlers.send_workspace_file_to_chat>>[2]
 ): "onebot" | "web" {
-  return context.outboundDelivery
-    ?? context.sessionManager?.getLastInboundDelivery?.(context.lastMessage.sessionId)
-    ?? "onebot";
+  return context.replyDelivery;
 }
 
 function buildAssistantHistoryTarget(

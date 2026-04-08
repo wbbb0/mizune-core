@@ -152,6 +152,133 @@ async function main() {
     assert.match(started.details ?? "", /GPU OOM/);
     assert.ok(persistedReasons.includes("internal_trigger_started"));
   });
+
+  await runCase("scheduled instruction resets reply delivery to the session source", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "web:test";
+    sessionManager.ensureSession({ id: sessionId, type: "private", source: "web" });
+    sessionManager.setReplyDelivery(sessionId, "onebot");
+    const deliveries: Array<"onebot" | "web"> = [];
+
+    const orchestrator = createGenerationSessionOrchestrator({
+      config,
+      logger: pino({ level: "silent" }),
+      sessionManager,
+      historyCompressor: {
+        async maybeCompress() {
+          return false;
+        }
+      } as never,
+      userStore: {
+        async getByUserId() {
+          return null;
+        }
+      } as never,
+      personaStore: {
+        async get() {
+          return null;
+        }
+      } as never,
+      setupStore: {} as never,
+      persistSession() {}
+    } as never, {
+      promptBuilder: {
+        async buildScheduledPromptMessages() {
+          return {
+            promptMessages: [],
+            debugSnapshot: {} as never
+          };
+        }
+      } as never,
+      async runGeneration(input) {
+        deliveries.push(input.sendTarget.delivery);
+      },
+      processNextSessionWork() {}
+    });
+
+    await orchestrator.runInternalTriggerSession(sessionId, {
+      kind: "scheduled_instruction",
+      targetType: "private",
+      targetUserId: "owner",
+      targetSenderName: "Owner",
+      jobName: "daily",
+      instruction: "提醒喝水",
+      enqueuedAt: 1
+    });
+
+    assert.deepEqual(deliveries, ["web"]);
+    assert.equal(sessionManager.getReplyDelivery(sessionId), "web");
+  });
+
+  await runCase("non-scheduled internal triggers keep the current reply delivery", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "private:owner";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    sessionManager.setReplyDelivery(sessionId, "web");
+    const deliveries: Array<"onebot" | "web"> = [];
+
+    const orchestrator = createGenerationSessionOrchestrator({
+      config,
+      logger: pino({ level: "silent" }),
+      sessionManager,
+      historyCompressor: {
+        async maybeCompress() {
+          return false;
+        }
+      } as never,
+      userStore: {
+        async getByUserId() {
+          return null;
+        }
+      } as never,
+      personaStore: {
+        async get() {
+          return null;
+        }
+      } as never,
+      setupStore: {} as never,
+      persistSession() {}
+    } as never, {
+      promptBuilder: {
+        async buildScheduledPromptMessages() {
+          return {
+            promptMessages: [],
+            debugSnapshot: {} as never
+          };
+        }
+      } as never,
+      async runGeneration(input) {
+        deliveries.push(input.sendTarget.delivery);
+      },
+      processNextSessionWork() {}
+    });
+
+    await orchestrator.runInternalTriggerSession(sessionId, {
+      kind: "comfy_task_completed",
+      targetType: "private",
+      targetUserId: "owner",
+      targetSenderName: "Owner",
+      jobName: "render_done",
+      instruction: "发图",
+      enqueuedAt: 1,
+      taskId: "task-1",
+      templateId: "tpl-1",
+      positivePrompt: "prompt",
+      aspectRatio: "1:1",
+      resolvedWidth: 1024,
+      resolvedHeight: 1024,
+      workspaceFileIds: ["file-1"],
+      workspacePaths: ["workspace/media/file-1.png"],
+      comfyPromptId: "prompt-1",
+      autoIterationIndex: 0,
+      maxAutoIterations: 1
+    });
+
+    assert.deepEqual(deliveries, ["web"]);
+    assert.equal(sessionManager.getReplyDelivery(sessionId), "web");
+  });
 }
 
 main().catch((error) => {
