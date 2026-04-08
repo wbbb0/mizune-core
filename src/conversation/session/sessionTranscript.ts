@@ -50,10 +50,12 @@ export type ProjectedChatTimelineItem =
   | {
       kind: "image";
       role: "assistant";
-      assetId: string;
-      filename: string | null;
+      fileId: string;
+      fileRef: string | null;
+      sourceName: string | null;
+      workspacePath: string | null;
       messageId: number | null;
-      toolName: "send_workspace_media_to_chat";
+      toolName: "send_workspace_file_to_chat";
       captionText: string | null;
       timestampMs: number;
     };
@@ -75,8 +77,10 @@ export function projectChatTimelineFromTranscript(transcript: InternalTranscript
       projected.push({
         kind: "image" as const,
         role: "assistant" as const,
-        assetId: item.assetId,
-        filename: item.filename,
+        fileId: item.fileId,
+        fileRef: item.fileRef,
+        sourceName: item.sourceName,
+        workspacePath: item.workspacePath,
         messageId: item.messageId,
         toolName: item.toolName,
         captionText: item.captionText ?? null,

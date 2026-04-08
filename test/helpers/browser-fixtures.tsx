@@ -137,8 +137,20 @@ export function createBrowserToolContext(
       async getMany() {
         return [];
       },
-      async getAsset() {
-        return null;
+      async getAsset(assetId: string) {
+        return {
+          assetId,
+          displayName: `shot_${assetId.slice(-8)}.png`,
+          kind: "image" as const,
+          origin: "browser_screenshot" as const,
+          storagePath: `workspace/media/${assetId}.png`,
+          filename: `${assetId}.png`,
+          mimeType: "image/png",
+          sizeBytes: 4,
+          createdAtMs: Date.now(),
+          sourceContext: {},
+          caption: null
+        };
       },
       async resolveAbsolutePath() {
         return "/tmp/fake.png";

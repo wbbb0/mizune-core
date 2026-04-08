@@ -48,7 +48,7 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
     globalMemories: input.globalMemories,
     historySummary: input.historySummary,
     recentToolEvents: input.recentToolEvents,
-    runtimeResources: input.runtimeResources
+    liveResources: input.liveResources
   }).join("\n");
 
   const historyMessages: LlmMessage[] = input.recentMessages.map((message) => ({
@@ -82,7 +82,7 @@ export function buildScheduledTaskPrompt(input: ScheduledTaskPromptInput): LlmMe
       globalMemories: input.globalMemories,
       historySummary: input.historySummary,
       recentToolEvents: input.recentToolEvents,
-      runtimeResources: input.runtimeResources
+      liveResources: input.liveResources
     }),
     ...buildScheduledTaskSystemLines({
       trigger: input.trigger,
@@ -129,8 +129,8 @@ function buildTriggerMessage(input: ScheduledTaskPromptInput): string {
     return [
       "你之前发起的 ComfyUI 任务已经完成。",
       "这不是用户新发来的消息，而是系统把完成结果交还给你处理。",
-      `workspace asset_id：${input.trigger.workspaceAssetIds.join("、") || "无"}`,
-      `workspace 路径：${input.trigger.workspacePaths.join("、") || "无"}`,
+      `workspace file_id：${input.trigger.workspaceAssetIds.join("、") || "无"}`,
+      `workspace_path：${input.trigger.workspacePaths.join("、") || "无"}`,
       "请你自己判断接下来要做什么：可以先看图、直接发图、继续改 prompt 再生成，或结束本轮。"
     ].join("\n");
   }

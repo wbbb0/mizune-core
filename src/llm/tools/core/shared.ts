@@ -38,7 +38,7 @@ import type {
   GenerationPromptParticipantProfile,
   GenerationPromptToolEvent
 } from "#app/generation/generationPromptBuilder.ts";
-import type { PromptRuntimeResource } from "../../prompt/promptTypes.ts";
+import type { PromptLiveResource } from "../../prompt/promptTypes.ts";
 import type { Persona } from "#persona/personaSchema.ts";
 import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
 import type { GenerationWebOutputCollector } from "#app/generation/generationExecutor.ts";
@@ -107,7 +107,7 @@ export interface PromptDebugSnapshot {
   historySummary: string | null;
   recentHistory: GenerationPromptHistoryMessage[];
   currentBatch: GenerationPromptBatchMessage[];
-  runtimeResources: PromptRuntimeResource[];
+  liveResources: PromptLiveResource[];
   recentToolEvents: GenerationPromptToolEvent[];
   debugMarkers: SessionDebugMarker[];
   toolTranscript: InternalTranscriptItem[];

@@ -2,7 +2,7 @@
 import { computed, ref, watch, nextTick, onUnmounted } from "vue";
 import { Send, Paperclip, X, Loader } from "lucide-vue-next";
 import { useVisualViewportInset } from "@/composables/useVisualViewportInset";
-import { uploadsApi, type UploadedAsset } from "@/api/uploads";
+import { uploadsApi, type UploadedFile } from "@/api/uploads";
 
 const props = defineProps<{
   sessionType: "private" | "group";
@@ -29,7 +29,7 @@ watch(userId, (value) => {
 }, { immediate: true });
 const textareaRef  = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
-const attachments  = ref<(UploadedAsset & { preview?: string })[]>([]);
+const attachments  = ref<(UploadedFile & { preview?: string })[]>([]);
 const uploading    = ref(false);
 const iosRootScrollGuardActive = ref(false);
 const { keyboardInsetPx } = useVisualViewportInset();
@@ -54,7 +54,7 @@ function send() {
   emit("send", {
     userId: userId.value.trim() || "10001",
     text: trimmed,
-    imageIds: attachments.value.filter((a) => a.kind === "image").map((a) => a.assetId)
+    imageIds: attachments.value.filter((a) => a.kind === "image").map((a) => a.fileId)
   });
   text.value = "";
   attachments.value = [];
@@ -185,8 +185,8 @@ async function onFilesSelected(e: Event) {
   }
 }
 
-function removeAttachment(assetId: string) {
-  const idx = attachments.value.findIndex((a) => a.assetId === assetId);
+function removeAttachment(fileId: string) {
+  const idx = attachments.value.findIndex((a) => a.fileId === fileId);
   if (idx !== -1) {
     const removed = attachments.value[idx];
     if (removed?.preview) URL.revokeObjectURL(removed.preview);
@@ -225,10 +225,10 @@ onUnmounted(() => {
         <Loader :size="14" class="spin" :stroke-width="2" />
         <span>上传中…</span>
       </div>
-      <div v-for="att in attachments" :key="att.assetId" class="relative flex max-w-20 items-center overflow-hidden rounded border border-border-default bg-surface-input">
-        <img v-if="att.preview" :src="att.preview" class="block h-14 w-14 object-cover" :alt="att.filename" />
-        <span v-else class="max-w-20 overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-1 font-mono text-small text-text-muted">{{ att.filename }}</span>
-        <button class="absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-0 bg-black/65 p-0 text-white hover:bg-danger" @click="removeAttachment(att.assetId)">
+      <div v-for="att in attachments" :key="att.fileId" class="relative flex max-w-20 items-center overflow-hidden rounded border border-border-default bg-surface-input">
+        <img v-if="att.preview" :src="att.preview" class="block h-14 w-14 object-cover" :alt="att.sourceName" />
+        <span v-else class="max-w-20 overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-1 font-mono text-small text-text-muted">{{ att.sourceName }}</span>
+        <button class="absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-0 bg-black/65 p-0 text-white hover:bg-danger" @click="removeAttachment(att.fileId)">
           <X :size="10" :stroke-width="2.5" />
         </button>
       </div>

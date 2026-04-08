@@ -24,9 +24,11 @@ async function main() {
     assert.ok(names.includes("view_forward_record"));
     assert.ok(names.includes("view_media"));
     assert.ok(names.includes("view_message"));
+    assert.ok(names.includes("list_workspace_files"));
+    assert.ok(names.includes("send_workspace_file_to_chat"));
     assert.ok(names.includes("ground_with_google_search"));
     assert.ok(names.includes("search_with_iqs_lite_advanced"));
-    assert.ok(names.includes("list_runtime_resources"));
+    assert.ok(names.includes("list_live_resources"));
     assert.ok(names.includes("list_browser_pages"));
     assert.ok(names.includes("list_shell_sessions"));
     assert.ok(names.includes("shell_run"));
@@ -48,7 +50,7 @@ async function main() {
     const names = getBuiltinTools("owner", config).map((tool) => tool.function.name);
     assert.ok(!names.includes("ground_with_google_search"));
     assert.ok(!names.includes("search_with_iqs_lite_advanced"));
-    assert.ok(!names.includes("list_runtime_resources"));
+    assert.ok(!names.includes("list_live_resources"));
     assert.ok(!names.includes("list_browser_pages"));
     assert.ok(!names.includes("list_shell_sessions"));
     assert.ok(!names.includes("shell_run"));
@@ -284,7 +286,7 @@ async function main() {
           historySummary: null,
           recentHistory: [],
           currentBatch: [],
-          runtimeResources: [],
+          liveResources: [],
           recentToolEvents: [],
           debugMarkers: [],
           toolTranscript: [],
@@ -331,10 +333,10 @@ async function main() {
     assert.equal((result as any).terminalResponse?.text, "");
   });
 
-  await runCase("send_workspace_media_to_chat rejects text when sending an image", async () => {
-    const result = await workspaceToolHandlers.send_workspace_media_to_chat!(
-      { id: "tool_workspace_send_text_reject", type: "function", function: { name: "send_workspace_media_to_chat", arguments: "{\"asset_id\":\"asset_img_1\",\"text\":\"发你了\"}" } },
-      { asset_ref: "img_deadbeef.png", text: "发你了" },
+  await runCase("send_workspace_file_to_chat rejects text when sending an image", async () => {
+    const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
+      { id: "tool_workspace_send_text_reject", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_id\":\"asset_img_1\",\"text\":\"发你了\"}" } },
+      { file_ref: "img_deadbeef.png", text: "发你了" },
       {
         lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
         mediaWorkspace: {
@@ -357,11 +359,11 @@ async function main() {
     );
 
     assert.deepEqual(JSON.parse(String(result)), {
-      error: "send_workspace_media_to_chat 发送图片时不能附带 text；若需要文字，请让模型单独发送回复"
+      error: "send_workspace_file_to_chat 发送图片时不能附带 text；若需要文字，请让模型单独发送回复"
     });
   });
 
-  await runCase("send_workspace_media_to_chat sends a pure image and keeps the turn open", async () => {
+  await runCase("send_workspace_file_to_chat sends a pure image and keeps the turn open", async () => {
     const sentMessages: any[] = [];
     const sentMetaCalls: any[] = [];
     const transcriptCalls: any[] = [];
@@ -372,9 +374,9 @@ async function main() {
     await writeFile(imagePath, imageBytes);
 
     try {
-    const result = await workspaceToolHandlers.send_workspace_media_to_chat!(
-      { id: "tool_workspace_send_1", type: "function", function: { name: "send_workspace_media_to_chat", arguments: "{\"asset_ref\":\"img_deadbeef.png\"}" } },
-      { asset_ref: "img_deadbeef.png" },
+    const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
+      { id: "tool_workspace_send_1", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_ref\":\"img_deadbeef.png\"}" } },
+      { file_ref: "img_deadbeef.png" },
       {
         lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
         mediaWorkspace: {
@@ -423,8 +425,8 @@ async function main() {
     assert.equal(sentMetaCalls.length, 0);
     assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
       ok: true,
-      assetRef: "img_deadbeef.png",
-      assetId: "asset_img_1",
+      file_ref: "img_deadbeef.png",
+      file_id: "asset_img_1",
       deliveredAs: "image",
       queued: true
     });
@@ -449,10 +451,12 @@ async function main() {
       role: "assistant",
       delivery: "onebot",
       mediaKind: "image",
-      assetId: "asset_img_1",
-      filename: "test.png",
+      fileId: "asset_img_1",
+      fileRef: "img_deadbeef.png",
+      sourceName: "test.png",
+      workspacePath: null,
       messageId: 42,
-      toolName: "send_workspace_media_to_chat",
+      toolName: "send_workspace_file_to_chat",
       captionText: null,
       timestampMs: transcriptCalls[0].timestampMs
     });
@@ -464,13 +468,13 @@ async function main() {
     }
   });
 
-  await runCase("send_workspace_media_to_chat keeps the turn open for non-image fallback sends", async () => {
+  await runCase("send_workspace_file_to_chat keeps the turn open for non-image fallback sends", async () => {
     const sentTexts: any[] = [];
     const sentMetaCalls: any[] = [];
     const queuedTasks: Array<() => Promise<void>> = [];
-    const result = await workspaceToolHandlers.send_workspace_media_to_chat!(
-      { id: "tool_workspace_send_2", type: "function", function: { name: "send_workspace_media_to_chat", arguments: "{\"asset_ref\":\"file_bead1234.txt\"}" } },
-      { asset_ref: "file_bead1234.txt" },
+    const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
+      { id: "tool_workspace_send_2", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_ref\":\"file_bead1234.txt\"}" } },
+      { file_ref: "file_bead1234.txt" },
       {
         lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
         mediaWorkspace: {
@@ -513,8 +517,8 @@ async function main() {
     assert.equal(sentMetaCalls.length, 0);
     assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
       ok: true,
-      assetRef: "file_bead1234.txt",
-      assetId: "asset_file_1",
+      file_ref: "file_bead1234.txt",
+      file_id: "asset_file_1",
       deliveredAs: "text_fallback",
       queued: true,
       reason: "native file sending is not enabled in this phase"
@@ -525,25 +529,25 @@ async function main() {
     assert.equal(sentTexts.length, 1);
     assert.deepEqual(sentTexts[0], {
       userId: "owner",
-      text: "文件已保存在工作区：file_bead1234.txt；asset_id=asset_file_1"
+      text: "文件已保存在工作区：file_bead1234.txt；file_id=asset_file_1"
     });
     assert.deepEqual(sentMetaCalls[0], {
       messageId: 43,
-      text: "文件已保存在工作区：file_bead1234.txt；asset_id=asset_file_1",
+      text: "文件已保存在工作区：file_bead1234.txt；file_id=asset_file_1",
       sentAt: sentMetaCalls[0].sentAt
     });
     assert.equal(typeof sentMetaCalls[0].sentAt, "number");
     assert.equal((result as any).terminalResponse, undefined);
   });
 
-  await runCase("send_workspace_media_to_chat mirrors non-image fallback text into web delivery", async () => {
+  await runCase("send_workspace_file_to_chat mirrors non-image fallback text into web delivery", async () => {
     const webChunks: string[] = [];
     const queuedTasks: Array<() => Promise<void>> = [];
     const assistantHistoryCalls: any[] = [];
 
-    const result = await workspaceToolHandlers.send_workspace_media_to_chat!(
-      { id: "tool_workspace_send_2_web", type: "function", function: { name: "send_workspace_media_to_chat", arguments: "{\"asset_ref\":\"file_bead1234.txt\"}" } },
-      { asset_ref: "file_bead1234.txt" },
+    const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
+      { id: "tool_workspace_send_2_web", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_ref\":\"file_bead1234.txt\"}" } },
+      { file_ref: "file_bead1234.txt" },
       {
         outboundDelivery: "web",
         webOutputCollector: {
@@ -583,8 +587,8 @@ async function main() {
 
     assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
       ok: true,
-      assetRef: "file_bead1234.txt",
-      assetId: "asset_file_1",
+      file_ref: "file_bead1234.txt",
+      file_id: "asset_file_1",
       deliveredAs: "text_fallback",
       queued: true,
       reason: "native file sending is not enabled in this phase"
@@ -593,16 +597,16 @@ async function main() {
 
     await queuedTasks[0]!();
 
-    assert.deepEqual(webChunks, ["文件已保存在工作区：file_bead1234.txt；asset_id=asset_file_1"]);
+    assert.deepEqual(webChunks, ["文件已保存在工作区：file_bead1234.txt；file_id=asset_file_1"]);
     assert.deepEqual(assistantHistoryCalls, [{
       chatType: "private",
       userId: "owner",
       senderName: "Owner",
-      text: "文件已保存在工作区：file_bead1234.txt；asset_id=asset_file_1"
+      text: "文件已保存在工作区：file_bead1234.txt；file_id=asset_file_1"
     }]);
   });
 
-  await runCase("send_workspace_media_to_chat records image sends for web delivery", async () => {
+  await runCase("send_workspace_file_to_chat records image sends for web delivery", async () => {
     const transcriptCalls: any[] = [];
     const queuedTasks: Array<() => Promise<void>> = [];
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-web-"));
@@ -610,9 +614,9 @@ async function main() {
     await writeFile(imagePath, Buffer.from("fake-image-bytes"));
 
     try {
-      const result = await workspaceToolHandlers.send_workspace_media_to_chat!(
-        { id: "tool_workspace_send_web_img", type: "function", function: { name: "send_workspace_media_to_chat", arguments: "{\"asset_ref\":\"img_deadbeef.png\"}" } },
-        { asset_ref: "img_deadbeef.png" },
+      const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
+        { id: "tool_workspace_send_web_img", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_ref\":\"img_deadbeef.png\"}" } },
+        { file_ref: "img_deadbeef.png" },
         {
           outboundDelivery: "web",
           lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
@@ -650,8 +654,8 @@ async function main() {
 
       assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
         ok: true,
-        assetRef: "img_deadbeef.png",
-        assetId: "asset_img_1",
+        file_ref: "img_deadbeef.png",
+        file_id: "asset_img_1",
         deliveredAs: "image",
         queued: true
       });
@@ -665,10 +669,12 @@ async function main() {
         role: "assistant",
         delivery: "web",
         mediaKind: "image",
-        assetId: "asset_img_1",
-        filename: "test.png",
+        fileId: "asset_img_1",
+        fileRef: "img_deadbeef.png",
+        sourceName: "test.png",
+        workspacePath: null,
         messageId: null,
-        toolName: "send_workspace_media_to_chat",
+        toolName: "send_workspace_file_to_chat",
         captionText: null,
         timestampMs: transcriptCalls[0].timestampMs
       });
@@ -678,16 +684,16 @@ async function main() {
     }
   });
 
-  await runCase("send_workspace_media_to_chat accepts stored filenames as asset_ref", async () => {
+  await runCase("send_workspace_file_to_chat accepts stored filenames as file_ref", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-ref-"));
     const imagePath = join(tempDir, "asset_deadbeef.jpg");
     await writeFile(imagePath, Buffer.from("fake-image-bytes"));
     const queuedTasks: Array<() => Promise<void>> = [];
     const sentMessages: any[] = [];
     try {
-      const result = await workspaceToolHandlers.send_workspace_media_to_chat!(
-        { id: "tool_workspace_send_3", type: "function", function: { name: "send_workspace_media_to_chat", arguments: "{\"asset_ref\":\"asset_deadbeef.jpg\"}" } },
-        { asset_ref: "asset_deadbeef.jpg" },
+      const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
+        { id: "tool_workspace_send_3", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_ref\":\"asset_deadbeef.jpg\"}" } },
+        { file_ref: "asset_deadbeef.jpg" },
         {
           lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
           mediaWorkspace: {
@@ -748,8 +754,8 @@ async function main() {
 
       assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
         ok: true,
-        assetRef: "img_deadbeef.jpg",
-        assetId: "asset_deadbeef",
+        file_ref: "img_deadbeef.jpg",
+        file_id: "asset_deadbeef",
         deliveredAs: "image",
         queued: true
       });
@@ -760,9 +766,9 @@ async function main() {
     }
   });
 
-  await runCase("list_runtime_resources merges browser and shell resources", async () => {
-    const result = await resourceToolHandlers.list_runtime_resources!(
-      { id: "tool_resource_list_1", type: "function", function: { name: "list_runtime_resources", arguments: "{}" } },
+  await runCase("list_live_resources merges browser and shell resources", async () => {
+    const result = await resourceToolHandlers.list_live_resources!(
+      { id: "tool_resource_list_1", type: "function", function: { name: "list_live_resources", arguments: "{}" } },
       {},
       {
         config: createForwardFeatureConfig(),
@@ -811,14 +817,14 @@ async function main() {
 
     const payload = JSON.parse(String(result));
     assert.equal(payload.ok, true);
-    assert.deepEqual(payload.resources.map((item: any) => item.resource_id), ["res_shell_1", "res_browser_1"]);
-    assert.equal(payload.resources[0].description, "查看当前工作目录");
-    assert.equal(payload.resources[1].description, "查看首页文案");
+    assert.deepEqual(payload.live_resources.map((item: any) => item.resource_id), ["res_shell_1", "res_browser_1"]);
+    assert.equal(payload.live_resources[0].description, "查看当前工作目录");
+    assert.equal(payload.live_resources[1].description, "查看首页文案");
   });
 
-  await runCase("list_runtime_resources only returns valid active resources", async () => {
-    const result = await resourceToolHandlers.list_runtime_resources!(
-      { id: "tool_resource_list_2", type: "function", function: { name: "list_runtime_resources", arguments: "{}" } },
+  await runCase("list_live_resources only returns valid active resources", async () => {
+    const result = await resourceToolHandlers.list_live_resources!(
+      { id: "tool_resource_list_2", type: "function", function: { name: "list_live_resources", arguments: "{}" } },
       {},
       {
         config: createForwardFeatureConfig(),
@@ -866,10 +872,10 @@ async function main() {
     );
 
     const payload = JSON.parse(String(result));
-    assert.deepEqual(payload.resources.map((item: any) => item.resource_id), ["res_shell_live", "res_browser_live"]);
-    assert.equal(payload.resources.every((item: any) => item.status === "active"), true);
-    assert.equal(payload.resources[0].description, "查看当前工作目录");
-    assert.equal(payload.resources[1].description, "继续支付流程");
+    assert.deepEqual(payload.live_resources.map((item: any) => item.resource_id), ["res_shell_live", "res_browser_live"]);
+    assert.equal(payload.live_resources.every((item: any) => item.status === "active"), true);
+    assert.equal(payload.live_resources[0].description, "查看当前工作目录");
+    assert.equal(payload.live_resources[1].description, "继续支付流程");
   });
 }
 

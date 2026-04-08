@@ -342,7 +342,7 @@ async function main() {
     if (typeof result === "string") {
       throw new Error("expected structured screenshot result");
     }
-    assert.match(String(result.content), /"imageId":"img_1"/);
+    assert.match(String(result.content), /"file_id":"img_1"/);
     assert.equal(result.supplementalMessages?.length, 1);
   });
 
@@ -373,7 +373,7 @@ async function main() {
 
     const parsed = parseJsonToolResult<any>(result);
     assert.equal(parsed.ok, true);
-    assert.equal(parsed.asset_id, "asset_1");
+    assert.equal(parsed.file_id, "asset_1");
   });
 
   await runCase("download_asset supports browser resource targets", async () => {
@@ -404,6 +404,7 @@ async function main() {
     assert.equal(parsed.ok, true);
     assert.equal(parsed.resource_id, "res_browser_1");
     assert.equal(parsed.target_id, 2);
+    assert.equal(parsed.file_id, "asset_2");
   });
 }
 

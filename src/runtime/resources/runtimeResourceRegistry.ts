@@ -16,7 +16,7 @@ export class RuntimeResourceRegistry {
 
   constructor(dataDir: string, logger: Logger) {
     this.store = new FileSchemaStore({
-      filePath: join(dataDir, "runtime-resources.json"),
+      filePath: join(dataDir, "live-resources.json"),
       schema: runtimeResourceFileSchema,
       logger,
       loadErrorEvent: "runtime_resource_registry_load_failed",

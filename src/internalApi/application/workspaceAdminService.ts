@@ -3,14 +3,28 @@ import type { WorkspaceItemStat, WorkspaceListResult, WorkspaceFileReadResult, W
 import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
 import type { WorkspaceService } from "#services/workspace/workspaceService.ts";
 
+export interface AdminWorkspaceFileRecord {
+  fileId: string;
+  fileRef: string;
+  kind: WorkspaceAssetRecord["kind"];
+  origin: WorkspaceAssetRecord["origin"];
+  workspacePath: string;
+  sourceName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAtMs: number;
+  sourceContext: Record<string, string | number | boolean | null>;
+  caption: string | null;
+}
+
 export interface WorkspaceAdminService {
   listItems(path?: string): Promise<WorkspaceListResult>;
   statItem(path: string): Promise<WorkspaceItemStat>;
   readFile(path: string, options?: { startLine?: number; endLine?: number }): Promise<WorkspaceFileReadResult>;
   readFileContent(path: string): Promise<WorkspaceFileContentResult>;
-  listAssets(): Promise<{ assets: WorkspaceAssetRecord[] }>;
-  getAsset(assetId: string): Promise<{ asset: WorkspaceAssetRecord | null }>;
-  readAssetContent(assetId: string): Promise<{ asset: WorkspaceAssetRecord | null; buffer: Buffer | null }>;
+  listFiles(): Promise<{ files: AdminWorkspaceFileRecord[] }>;
+  getFile(fileId: string): Promise<{ file: AdminWorkspaceFileRecord | null }>;
+  readFileContentById(fileId: string): Promise<{ file: AdminWorkspaceFileRecord | null; buffer: Buffer | null }>;
 }
 
 export function createWorkspaceAdminService(input: {
@@ -34,32 +48,49 @@ export function createWorkspaceAdminService(input: {
       return input.workspaceService.readFileContent(path);
     },
 
-    async listAssets() {
+    async listFiles() {
       return {
-        assets: await input.mediaWorkspace.listAssets()
+        files: (await input.mediaWorkspace.listAssets()).map(mapWorkspaceAssetToAdminFile)
       };
     },
 
-    async getAsset(assetId) {
+    async getFile(fileId) {
+      const asset = await input.mediaWorkspace.getAsset(fileId);
       return {
-        asset: await input.mediaWorkspace.getAsset(assetId)
+        file: asset ? mapWorkspaceAssetToAdminFile(asset) : null
       };
     },
 
-    async readAssetContent(assetId) {
-      const asset = await input.mediaWorkspace.getAsset(assetId);
+    async readFileContentById(fileId) {
+      const asset = await input.mediaWorkspace.getAsset(fileId);
       if (!asset) {
         return {
-          asset: null,
+          file: null,
           buffer: null
         };
       }
 
       const absolutePath = await input.mediaWorkspace.resolveAbsolutePath(asset.assetId);
       return {
-        asset,
+        file: mapWorkspaceAssetToAdminFile(asset),
         buffer: await readFile(absolutePath)
       };
     }
+  };
+}
+
+function mapWorkspaceAssetToAdminFile(asset: WorkspaceAssetRecord): AdminWorkspaceFileRecord {
+  return {
+    fileId: asset.assetId,
+    fileRef: asset.displayName,
+    kind: asset.kind,
+    origin: asset.origin,
+    workspacePath: asset.storagePath,
+    sourceName: asset.filename,
+    mimeType: asset.mimeType,
+    sizeBytes: asset.sizeBytes,
+    createdAtMs: asset.createdAtMs,
+    sourceContext: asset.sourceContext,
+    caption: asset.caption
   };
 }

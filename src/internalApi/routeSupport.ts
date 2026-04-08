@@ -58,7 +58,7 @@ const createSessionBodySchema = z.object({
 });
 
 const uploadAssetFileSchema = z.object({
-  filename: z.string().trim().min(1).optional(),
+  sourceName: z.string().trim().min(1).optional(),
   mimeType: z.string().trim().min(1, "mimeType is required"),
   contentBase64: z.string().trim().min(1, "contentBase64 is required"),
   kind: z.enum(["image", "animated_image", "video", "audio", "file"]).optional()
@@ -103,8 +103,8 @@ const workspaceFileQuerySchema = z.object({
   endLine: z.coerce.number().int().positive().optional()
 });
 
-const workspaceAssetParamsSchema = z.object({
-  assetId: z.string().trim().min(1, "assetId is required")
+const workspaceStoredFileParamsSchema = z.object({
+  fileId: z.string().trim().min(1, "fileId is required")
 });
 
 export type ParsedSessionParams = z.infer<typeof sessionParamsSchema>;
@@ -125,7 +125,7 @@ export type ParsedEditorOptionsParams = z.infer<typeof editorOptionsParamsSchema
 export type ParsedBrowserProfileParams = z.infer<typeof browserProfileParamsSchema>;
 export type ParsedWorkspacePathQuery = z.infer<typeof workspacePathQuerySchema>;
 export type ParsedWorkspaceFileQuery = z.infer<typeof workspaceFileQuerySchema>;
-export type ParsedWorkspaceAssetParams = z.infer<typeof workspaceAssetParamsSchema>;
+export type ParsedWorkspaceStoredFileParams = z.infer<typeof workspaceStoredFileParamsSchema>;
 
 export function respondBadRequest(reply: FastifyReply, error: string) {
   reply.code(400);
@@ -238,6 +238,6 @@ export function parseWorkspaceFileQuery(query: unknown): ParsedWorkspaceFileQuer
   return parseWithSchema(workspaceFileQuerySchema, query);
 }
 
-export function parseWorkspaceAssetParams(params: unknown): ParsedWorkspaceAssetParams | { error: string } {
-  return parseWithSchema(workspaceAssetParamsSchema, params);
+export function parseWorkspaceStoredFileParams(params: unknown): ParsedWorkspaceStoredFileParams | { error: string } {
+  return parseWithSchema(workspaceStoredFileParamsSchema, params);
 }

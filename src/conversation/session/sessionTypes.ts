@@ -82,7 +82,7 @@ export type DebugLiteral =
   | "persona"
   | "recent_history"
   | "current_batch"
-  | "runtime_resources"
+  | "live_resources"
   | "debug_markers"
   | "last_llm_usage"
   | "tool_transcript";
@@ -151,10 +151,12 @@ export interface TranscriptOutboundMediaMessageItem {
   role: "assistant";
   delivery: SessionDelivery;
   mediaKind: "image";
-  assetId: string;
-  filename: string | null;
+  fileId: string;
+  fileRef: string | null;
+  sourceName: string | null;
+  workspacePath: string | null;
   messageId: number | null;
-  toolName: "send_workspace_media_to_chat";
+  toolName: "send_workspace_file_to_chat";
   captionText?: string | null | undefined;
   timestampMs: number;
 }

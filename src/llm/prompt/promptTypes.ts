@@ -58,7 +58,7 @@ export interface PromptToolEvent {
   timestampMs?: number | null;
 }
 
-export interface PromptRuntimeResource {
+export interface PromptLiveResource {
   resourceId: string;
   kind: "browser_page" | "shell_session";
   status: "active" | "expired" | "closed" | "unrecoverable";
@@ -141,7 +141,7 @@ export interface PromptInput {
   recentMessages: PromptHistoryMessage[];
   recentToolEvents?: PromptToolEvent[] | undefined;
   debugMarkers?: SessionDebugMarker[] | undefined;
-  runtimeResources?: PromptRuntimeResource[] | undefined;
+  liveResources?: PromptLiveResource[] | undefined;
   batchMessages: PromptBatchMessage[];
 }
 
@@ -198,7 +198,7 @@ export interface InternalSessionTriggerPromptInput {
   recentMessages: PromptInput["recentMessages"];
   recentToolEvents?: PromptInput["recentToolEvents"];
   debugMarkers?: PromptInput["debugMarkers"];
-  runtimeResources?: PromptInput["runtimeResources"];
+  liveResources?: PromptInput["liveResources"];
   targetContext:
     | {
         chatType: "private";
@@ -224,6 +224,6 @@ export interface SetupPromptInput {
   recentMessages: PromptInput["recentMessages"];
   recentToolEvents?: PromptInput["recentToolEvents"];
   debugMarkers?: PromptInput["debugMarkers"];
-  runtimeResources?: PromptInput["runtimeResources"];
+  liveResources?: PromptInput["liveResources"];
   batchMessages: PromptInput["batchMessages"];
 }

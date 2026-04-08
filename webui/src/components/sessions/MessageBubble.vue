@@ -9,8 +9,9 @@ const props = defineProps<{
   label?: string;
   senderLabel?: string;
   metaChips?: string[];
-  filename?: string | null;
-  assetId?: string;
+  sourceName?: string | null;
+  fileRef?: string | null;
+  fileId?: string;
   imageUrl?: string;
   toolName?: string;
   timestampMs?: number;
@@ -54,11 +55,11 @@ const timeStr = computed(() => {
             class="cursor-zoom-in overflow-hidden rounded border border-border-default/50 bg-black/10 p-1"
             @click="emit('previewImage')"
           >
-            <img :src="imageUrl" :alt="filename || assetId || '图片消息'" class="max-h-72 w-full rounded object-contain" />
+            <img :src="imageUrl" :alt="sourceName || fileRef || fileId || '图片消息'" class="max-h-72 w-full rounded object-contain" />
           </button>
           <span class="text-small opacity-80">已发送图片</span>
-          <span class="block wrap-break-word font-semibold">{{ filename || assetId || "未命名图片" }}</span>
-          <span class="block font-mono text-small opacity-80">{{ toolName || "send_workspace_media_to_chat" }}</span>
+          <span class="block wrap-break-word font-semibold">{{ sourceName || fileRef || fileId || "未命名图片" }}</span>
+          <span class="block font-mono text-small opacity-80">{{ toolName || "send_workspace_file_to_chat" }}</span>
         </template>
         <template v-else>
           <span v-if="label" class="mb-1 block text-small opacity-80">{{ label }}</span>

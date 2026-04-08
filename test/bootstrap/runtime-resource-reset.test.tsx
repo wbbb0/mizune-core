@@ -11,7 +11,7 @@ async function main() {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-runtime-resource-reset-"));
 
     try {
-      await writeFile(join(dataDir, "runtime-resources.json"), JSON.stringify({
+      await writeFile(join(dataDir, "live-resources.json"), JSON.stringify({
         resources: [{
           resourceId: "res_shell_1",
           kind: "shell_session",
@@ -56,7 +56,7 @@ async function main() {
         sessionManager: { restoreSessions() {} } as any
       });
 
-      const persisted = JSON.parse(await readFile(join(dataDir, "runtime-resources.json"), "utf8"));
+      const persisted = JSON.parse(await readFile(join(dataDir, "live-resources.json"), "utf8"));
       assert.deepEqual(persisted, { resources: [] });
     } finally {
       await rm(dataDir, { recursive: true, force: true });

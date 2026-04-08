@@ -4,9 +4,9 @@ import { RefreshCw, FolderOpen, Image as ImageIcon, FileText, File, Folder } fro
 import AppLayout from "@/components/layout/AppLayout.vue";
 import WorkspaceFileTree from "@/components/workspace/WorkspaceFileTree.vue";
 import ImagePreviewDialog from "@/components/common/ImagePreviewDialog.vue";
-import { workspaceApi, type WorkspaceAssetSummary, type WorkspaceFilePreview, type WorkspaceItem } from "@/api/workspace";
+import { workspaceApi, type WorkspaceStoredFileSummary, type WorkspaceFilePreview, type WorkspaceItem } from "@/api/workspace";
 
-type Mode = "files" | "assets";
+type Mode = "files" | "stored-files";
 
 const layout = ref<InstanceType<typeof AppLayout> | null>(null);
 const mode = ref<Mode>("files");
@@ -16,8 +16,8 @@ const itemsByPath = ref<Record<string, WorkspaceItem[]>>({});
 const expandedPaths = ref<string[]>([]);
 const selectedPath = ref<string | null>(null);
 const selectedItem = ref<WorkspaceItem | null>(null);
-const selectedAsset = ref<WorkspaceAssetSummary | null>(null);
-const assetList = ref<WorkspaceAssetSummary[]>([]);
+const selectedStoredFile = ref<WorkspaceStoredFileSummary | null>(null);
+const storedFileList = ref<WorkspaceStoredFileSummary[]>([]);
 const filePreview = ref<WorkspaceFilePreview | null>(null);
 const previewError = ref<string | null>(null);
 const fileImageSrc = ref<string | null>(null);
@@ -25,14 +25,14 @@ const dialogImageSrc = ref<string | null>(null);
 
 const currentRootItems = computed(() => itemsByPath.value["."] ?? []);
 const mobileHeaderTitle = computed(() =>
-  selectedItem.value?.name ?? selectedAsset.value?.filename ?? selectedAsset.value?.assetId ?? "工作区"
+  selectedItem.value?.name ?? selectedStoredFile.value?.sourceName ?? selectedStoredFile.value?.fileId ?? "工作区"
 );
-const selectedAssetImageUrl = computed(() =>
-  selectedAsset.value ? workspaceApi.getAssetContentUrl(selectedAsset.value.assetId) : null
+const selectedStoredFileImageUrl = computed(() =>
+  selectedStoredFile.value ? workspaceApi.getFileContentUrlById(selectedStoredFile.value.fileId) : null
 );
 
 onMounted(async () => {
-  await Promise.all([loadDirectory("."), loadAssets()]);
+  await Promise.all([loadDirectory("."), loadStoredFiles()]);
 });
 
 async function loadDirectory(path: string): Promise<void> {
@@ -48,11 +48,11 @@ async function loadDirectory(path: string): Promise<void> {
   }
 }
 
-async function loadAssets(): Promise<void> {
+async function loadStoredFiles(): Promise<void> {
   loadingAssets.value = true;
   try {
-    const result = await workspaceApi.listAssets();
-    assetList.value = result.assets;
+    const result = await workspaceApi.listFiles();
+    storedFileList.value = result.files;
   } finally {
     loadingAssets.value = false;
   }
@@ -74,7 +74,7 @@ async function toggleDirectory(path: string) {
 async function selectItem(item: WorkspaceItem) {
   selectedPath.value = item.path;
   selectedItem.value = item;
-  selectedAsset.value = null;
+  selectedStoredFile.value = null;
   filePreview.value = null;
   previewError.value = null;
   fileImageSrc.value = null;
@@ -102,8 +102,8 @@ async function selectItem(item: WorkspaceItem) {
   layout.value?.openDetail();
 }
 
-function selectAsset(asset: WorkspaceAssetSummary) {
-  selectedAsset.value = asset;
+function selectStoredFile(file: WorkspaceStoredFileSummary) {
+  selectedStoredFile.value = file;
   selectedItem.value = null;
   selectedPath.value = null;
   filePreview.value = null;
@@ -117,7 +117,7 @@ function refreshCurrentMode() {
   if (mode.value === "files") {
     void loadDirectory(".");
   } else {
-    void loadAssets();
+    void loadStoredFiles();
   }
 }
 
@@ -150,7 +150,7 @@ function formatTime(ms: number): string {
       <div class="panel-header flex h-10 shrink-0 items-center justify-between border-b px-3">
         <div class="inline-flex rounded-md border border-border-default bg-surface-input p-0.5">
           <button class="px-2 py-0.75 text-small" :class="mode === 'files' ? 'rounded bg-surface-selected-muted text-text-secondary' : 'text-text-muted'" @click="mode = 'files'">文件</button>
-          <button class="px-2 py-0.75 text-small" :class="mode === 'assets' ? 'rounded bg-surface-selected-muted text-text-secondary' : 'text-text-muted'" @click="mode = 'assets'">资产</button>
+          <button class="px-2 py-0.75 text-small" :class="mode === 'stored-files' ? 'rounded bg-surface-selected-muted text-text-secondary' : 'text-text-muted'" @click="mode = 'stored-files'">已保存</button>
         </div>
         <button class="btn-ghost" :disabled="loadingFiles || loadingAssets" title="刷新" @click="refreshCurrentMode">
           <RefreshCw :size="14" :stroke-width="2" :class="{ spin: loadingFiles || loadingAssets }" />
@@ -171,19 +171,19 @@ function formatTime(ms: number): string {
 
       <div v-else class="scrollbar-thin overflow-y-auto">
         <button
-          v-for="asset in assetList"
-          :key="asset.assetId"
+          v-for="file in storedFileList"
+          :key="file.fileId"
           class="list-row flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
-          :class="{ 'is-selected': selectedAsset?.assetId === asset.assetId }"
-          @click="selectAsset(asset)"
+          :class="{ 'is-selected': selectedStoredFile?.fileId === file.fileId }"
+          @click="selectStoredFile(file)"
         >
           <div class="min-w-0">
-            <div class="truncate text-ui text-text-secondary">{{ asset.filename || asset.assetId }}</div>
-            <div class="truncate font-mono text-small text-text-subtle">{{ asset.assetId }}</div>
+            <div class="truncate text-ui text-text-secondary">{{ file.sourceName || file.fileRef || file.fileId }}</div>
+            <div class="truncate font-mono text-small text-text-subtle">{{ file.fileRef }}</div>
           </div>
-          <span class="shrink-0 rounded-full bg-surface-muted px-1.5 text-small text-text-subtle">{{ asset.kind }}</span>
+          <span class="shrink-0 rounded-full bg-surface-muted px-1.5 text-small text-text-subtle">{{ file.kind }}</span>
         </button>
-        <div v-if="!loadingAssets && assetList.length === 0" class="px-3 py-6 text-center text-small text-text-subtle">暂无资产</div>
+        <div v-if="!loadingAssets && storedFileList.length === 0" class="px-3 py-6 text-center text-small text-text-subtle">暂无已保存文件</div>
       </div>
     </template>
 
@@ -218,39 +218,41 @@ function formatTime(ms: number): string {
         </div>
 
         <div v-else class="flex h-full flex-col overflow-hidden">
-          <div v-if="!selectedAsset" class="panel-empty flex flex-1 items-center justify-center gap-2">← 选择一个资产</div>
+          <div v-if="!selectedStoredFile" class="panel-empty flex flex-1 items-center justify-center gap-2">← 选择一个已保存文件</div>
           <template v-else>
             <header class="toolbar-header flex shrink-0 items-center gap-3 border-b px-4 py-2">
-              <span class="min-w-0 flex-1 truncate font-mono text-small text-text-muted">{{ selectedAsset.storagePath }}</span>
-              <span class="shrink-0 text-small text-text-subtle">{{ formatSize(selectedAsset.sizeBytes) }}</span>
-              <span class="shrink-0 text-small text-text-subtle">{{ formatTime(selectedAsset.createdAtMs) }}</span>
+              <span class="min-w-0 flex-1 truncate font-mono text-small text-text-muted">{{ selectedStoredFile.workspacePath }}</span>
+              <span class="shrink-0 text-small text-text-subtle">{{ formatSize(selectedStoredFile.sizeBytes) }}</span>
+              <span class="shrink-0 text-small text-text-subtle">{{ formatTime(selectedStoredFile.createdAtMs) }}</span>
             </header>
 
             <div class="scrollbar-thin flex-1 overflow-auto px-4 py-4">
-              <div v-if="selectedAsset.kind === 'image' || selectedAsset.kind === 'animated_image'" class="mb-4">
-                <button class="cursor-zoom-in overflow-hidden rounded-lg border border-border-default bg-surface-sidebar p-2" @click="selectedAssetImageUrl ? dialogImageSrc = selectedAssetImageUrl : null">
-                  <img v-if="selectedAssetImageUrl" :src="selectedAssetImageUrl" :alt="selectedAsset.filename || selectedAsset.assetId" class="max-h-[65vh] w-full rounded object-contain" />
+              <div v-if="selectedStoredFile.kind === 'image' || selectedStoredFile.kind === 'animated_image'" class="mb-4">
+                <button class="cursor-zoom-in overflow-hidden rounded-lg border border-border-default bg-surface-sidebar p-2" @click="selectedStoredFileImageUrl ? dialogImageSrc = selectedStoredFileImageUrl : null">
+                  <img v-if="selectedStoredFileImageUrl" :src="selectedStoredFileImageUrl" :alt="selectedStoredFile.sourceName || selectedStoredFile.fileId" class="max-h-[65vh] w-full rounded object-contain" />
                 </button>
               </div>
               <div v-else class="mb-4 rounded-lg border border-border-default bg-surface-sidebar px-4 py-3 text-text-muted">
-                当前只支持图片直接预览，该资产将展示元数据。
+                当前只支持图片直接预览，该文件将展示元数据。
               </div>
 
               <dl class="grid grid-cols-[120px_minmax(0,1fr)] gap-x-3 gap-y-2 text-ui">
-                <dt class="text-text-subtle">assetId</dt>
-                <dd class="min-w-0 font-mono text-text-secondary">{{ selectedAsset.assetId }}</dd>
-                <dt class="text-text-subtle">文件名</dt>
-                <dd class="min-w-0 text-text-secondary">{{ selectedAsset.filename }}</dd>
+                <dt class="text-text-subtle">fileId</dt>
+                <dd class="min-w-0 font-mono text-text-secondary">{{ selectedStoredFile.fileId }}</dd>
+                <dt class="text-text-subtle">fileRef</dt>
+                <dd class="min-w-0 font-mono text-text-secondary">{{ selectedStoredFile.fileRef }}</dd>
+                <dt class="text-text-subtle">原始文件名</dt>
+                <dd class="min-w-0 text-text-secondary">{{ selectedStoredFile.sourceName }}</dd>
                 <dt class="text-text-subtle">类型</dt>
-                <dd class="text-text-secondary">{{ selectedAsset.kind }}</dd>
+                <dd class="text-text-secondary">{{ selectedStoredFile.kind }}</dd>
                 <dt class="text-text-subtle">MIME</dt>
-                <dd class="font-mono text-text-secondary">{{ selectedAsset.mimeType }}</dd>
+                <dd class="font-mono text-text-secondary">{{ selectedStoredFile.mimeType }}</dd>
                 <dt class="text-text-subtle">来源</dt>
-                <dd class="text-text-secondary">{{ selectedAsset.origin }}</dd>
-                <dt class="text-text-subtle">路径</dt>
-                <dd class="min-w-0 font-mono text-text-secondary">{{ selectedAsset.storagePath }}</dd>
+                <dd class="text-text-secondary">{{ selectedStoredFile.origin }}</dd>
+                <dt class="text-text-subtle">工作区路径</dt>
+                <dd class="min-w-0 font-mono text-text-secondary">{{ selectedStoredFile.workspacePath }}</dd>
                 <dt class="text-text-subtle">Caption</dt>
-                <dd class="text-text-secondary">{{ selectedAsset.caption || "无" }}</dd>
+                <dd class="text-text-secondary">{{ selectedStoredFile.caption || "无" }}</dd>
               </dl>
             </div>
           </template>
@@ -266,7 +268,7 @@ function formatTime(ms: number): string {
   <ImagePreviewDialog
     :open="dialogImageSrc !== null"
     :src="dialogImageSrc || ''"
-    :title="selectedAsset?.filename || selectedAsset?.assetId || selectedItem?.name"
+    :title="selectedStoredFile?.sourceName || selectedStoredFile?.fileRef || selectedItem?.name"
     @close="dialogImageSrc = null"
   />
 </template>

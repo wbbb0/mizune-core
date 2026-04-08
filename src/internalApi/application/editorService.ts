@@ -335,7 +335,7 @@ function buildEditorResourceMap(input: {
     single("requests", "Pending Requests", "data", requestFileSchema, `${dataDir}/pending-requests.json`),
     single("setup_state", "Setup State", "data", setupStateSchema, `${dataDir}/setup-state.json`),
     single("group_membership", "Group Membership Cache", "data", membershipFileSchema, `${dataDir}/group-membership-cache.json`),
-    single("runtime_resources", "Runtime Resources", "data", runtimeResourceFileSchema, `${dataDir}/runtime-resources.json`, {
+    single("live_resources", "Live Resources", "data", runtimeResourceFileSchema, `${dataDir}/live-resources.json`, {
       editable: false
     }),
     single("scheduled_jobs", "Scheduled Jobs", "data", scheduledJobFileSchema, `${dataDir}/scheduled-jobs.json`, {

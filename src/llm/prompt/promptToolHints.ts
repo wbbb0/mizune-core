@@ -15,8 +15,8 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   }
 
   if (visibleToolNames.has("generate_image_with_comfyui")) {
-    lines.push("generate_image_with_comfyui 是异步工具：调用后不会立刻拿到图片，系统会在完成后把对应的 asset_id 和 workspace 路径再交还给你。");
-    lines.push("收到 ComfyUI 完成通知后，你要自己判断下一步：先 view_media 看图、直接 send_workspace_media_to_chat 发图、继续改 prompt 再生成，或结束本轮。");
+    lines.push("generate_image_with_comfyui 是异步工具：调用后不会立刻拿到图片，系统会在完成后把对应的 workspace file_id、file_ref 和 workspace_path 再交还给你。");
+    lines.push("收到 ComfyUI 完成通知后，你要自己判断下一步：先 view_media 看图、直接 send_workspace_file_to_chat 发图、继续改 prompt 再生成，或结束本轮。");
     lines.push("generate_image_with_comfyui 只接受 template、positive_prompt、aspect_ratio；不要自己编造宽高。");
   }
 
@@ -46,12 +46,13 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("遇到短信码、邮箱码、TOTP 或二次验证时，应直接在当前会话向用户索取验证码；验证码只用于当前验证步骤，不要写入长期记忆、用户资料或 persona。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["shell_run", "shell_interact", "shell_read", "shell_signal", "list_shell_sessions", "list_runtime_resources"])) {
-    lines.push("需要继续操作浏览器或 shell 时，先列出现有资源，再复用已有 resource_id；只有不存在合适资源时才新开。");
+  if (hasAnyTool(visibleToolNames, ["shell_run", "shell_interact", "shell_read", "shell_signal", "list_shell_sessions", "list_live_resources"])) {
+    lines.push("需要继续操作浏览器或 shell 时，先列出现有 live_resource，再复用已有 resource_id；只有不存在合适资源时才新开。live_resource 不是工作区文件。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["view_media", "send_workspace_media_to_chat"])) {
-    lines.push("workspace 资产优先看 asset_ref 短名；若系统同时给了 asset_id，asset_id 只是稳定主键。send_workspace_media_to_chat 可直接传 asset_ref。");
+  if (hasAnyTool(visibleToolNames, ["list_workspace_files", "view_media", "send_workspace_file_to_chat"])) {
+    lines.push("需要找工作区里的图片、视频、音频或文件时，先调用 list_workspace_files；不要靠猜 workspace/media 目录名来找。");
+    lines.push("workspace file 默认优先使用 file_ref；file_id 只是稳定主键。send_workspace_file_to_chat 可直接传 file_ref。");
   }
 
   if (hasAnyTool(visibleToolNames, ["get_user_profile", "remember_user_profile", "remember_user_memory", "list_user_memories", "remove_user_memory", "overwrite_user_memories"])) {

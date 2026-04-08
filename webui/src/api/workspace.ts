@@ -23,12 +23,13 @@ export interface WorkspaceFilePreview {
   truncated: boolean;
 }
 
-export interface WorkspaceAssetSummary {
-  assetId: string;
+export interface WorkspaceStoredFileSummary {
+  fileId: string;
+  fileRef: string;
   kind: "image" | "animated_image" | "video" | "audio" | "file";
   origin: string;
-  storagePath: string;
-  filename: string;
+  workspacePath: string;
+  sourceName: string;
   mimeType: string;
   sizeBytes: number;
   createdAtMs: number;
@@ -36,8 +37,8 @@ export interface WorkspaceAssetSummary {
   caption: string | null;
 }
 
-export interface WorkspaceAssetDetail {
-  asset: WorkspaceAssetSummary;
+export interface WorkspaceStoredFileDetail {
+  file: WorkspaceStoredFileSummary;
 }
 
 export const workspaceApi = {
@@ -60,13 +61,13 @@ export const workspaceApi = {
   getFileContentUrl(path: string): string {
     return `/api/workspace/content?path=${encodeURIComponent(path)}`;
   },
-  listAssets(): Promise<{ assets: WorkspaceAssetSummary[] }> {
-    return api.get("/api/workspace/assets");
+  listFiles(): Promise<{ files: WorkspaceStoredFileSummary[] }> {
+    return api.get("/api/workspace/files");
   },
-  getAsset(assetId: string): Promise<WorkspaceAssetDetail> {
-    return api.get(`/api/workspace/assets/${encodeURIComponent(assetId)}`);
+  getFile(fileId: string): Promise<WorkspaceStoredFileDetail> {
+    return api.get(`/api/workspace/files/${encodeURIComponent(fileId)}`);
   },
-  getAssetContentUrl(assetId: string): string {
-    return `/api/workspace/assets/${encodeURIComponent(assetId)}/content`;
+  getFileContentUrlById(fileId: string): string {
+    return `/api/workspace/files/${encodeURIComponent(fileId)}/content`;
   }
 };

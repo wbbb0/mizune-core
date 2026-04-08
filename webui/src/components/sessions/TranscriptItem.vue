@@ -175,7 +175,8 @@ const metaChips = computed(() => {
       return props.item.toolCallId ? [props.item.toolCallId] : [];
     case "outbound_media_message":
       return [
-        props.item.assetId,
+        props.item.fileId,
+        props.item.fileRef,
         props.item.messageId != null ? `messageId=${props.item.messageId}` : null
       ].filter(Boolean) as string[];
     case "gate_decision":
@@ -341,12 +342,20 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
           <div class="font-mono text-small text-text-muted">{{ item.delivery }}</div>
         </section>
         <section class="flex items-center justify-between gap-3 rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-          <div class="text-small tracking-[0.05em] text-text-subtle uppercase">资源 ID</div>
-          <div class="font-mono text-small text-text-muted">{{ item.assetId }}</div>
+          <div class="text-small tracking-[0.05em] text-text-subtle uppercase">文件 ID</div>
+          <div class="font-mono text-small text-text-muted">{{ item.fileId }}</div>
         </section>
         <section class="flex items-center justify-between gap-3 rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-          <div class="text-small tracking-[0.05em] text-text-subtle uppercase">文件名</div>
-          <div class="font-mono text-small text-text-muted">{{ item.filename || "未命名图片" }}</div>
+          <div class="text-small tracking-[0.05em] text-text-subtle uppercase">文件引用</div>
+          <div class="font-mono text-small text-text-muted">{{ item.fileRef || "无" }}</div>
+        </section>
+        <section class="flex items-center justify-between gap-3 rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
+          <div class="text-small tracking-[0.05em] text-text-subtle uppercase">原始文件名</div>
+          <div class="font-mono text-small text-text-muted">{{ item.sourceName || "未命名图片" }}</div>
+        </section>
+        <section class="flex items-center justify-between gap-3 rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
+          <div class="text-small tracking-[0.05em] text-text-subtle uppercase">工作区路径</div>
+          <div class="font-mono text-small text-text-muted">{{ item.workspacePath || "无" }}</div>
         </section>
         <section class="flex items-center justify-between gap-3 rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
           <div class="text-small tracking-[0.05em] text-text-subtle uppercase">消息 ID</div>

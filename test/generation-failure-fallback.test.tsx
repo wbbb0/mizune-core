@@ -151,7 +151,7 @@ async function main() {
       historySummary: null,
       recentHistory: [],
       currentBatch: [],
-      runtimeResources: [],
+      liveResources: [],
       recentToolEvents: [],
       debugMarkers: [],
       toolTranscript: [],

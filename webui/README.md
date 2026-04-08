@@ -139,10 +139,10 @@ npm run build:webui
 ## 页面能力
 
 - `Sessions`：查看基于 transcript 派生的聊天消息与完整后台记录，并发送调试消息
-- `Sessions` 聊天区会直接显示由 `send_workspace_media_to_chat` 发送出的 workspace 图片，并支持简单放大预览
+- `Sessions` 聊天区会直接显示由 `send_workspace_file_to_chat` 发送出的工作区图片，并支持简单放大预览
 - `Config`：编辑配置层的 instance 覆盖
 - `Data`：查看和编辑常见运行数据 JSON，例如 persona、users、whitelist、scheduled jobs
-- `Workspace`：浏览 workspace 文件树与资产列表，并对图片与文本文件做只读预览
+- `Workspace`：浏览 workspace 文件树与已保存文件列表，并对图片与文本文件做只读预览
 - `Backends`：切换当前代理到的 backend 实例
 
 ### Sessions 页展示规则
@@ -152,7 +152,7 @@ npm run build:webui
   - 助手文本回复
   - 工具实际发送出去的图片消息
 - 后台记录页展示完整 transcript，包括工具调用、工具结果、门限判定、系统状态、direct command 等非聊天条目。
-- `send_workspace_media_to_chat` 发图片时只允许纯图片发送；如果模型还要附带文字，必须单独发送普通助手回复。
+- `send_workspace_file_to_chat` 发图片时只允许纯图片发送；如果模型还要附带文字，必须单独发送普通助手回复。
 - 聊天页与后台记录页的“重新加载”都会从头重拉 transcript，不再依赖本地缓存。
 
 ## PWA 说明

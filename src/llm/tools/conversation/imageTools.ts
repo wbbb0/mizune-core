@@ -1,5 +1,6 @@
 import type { LlmContentPart, LlmToolExecutionResult } from "../../llmClient.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
+import { mapWorkspaceAssetToFileView } from "../core/workspaceFileView.ts";
 
 const MAX_MEDIA_VIEW_PER_CALL = 5;
 
@@ -9,7 +10,7 @@ export const imageToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "view_media",
-        description: "按精确 media_ids 加载最多 5 个媒体资源，支持 workspace 资产、image/emoji/audio，供下一轮模型查看或读取其元数据。",
+        description: "按精确 media_ids 加载最多 5 个媒体资源，支持 workspace file、image/emoji/audio，供下一轮模型查看或读取其元数据。",
         parameters: {
           type: "object",
           properties: {
@@ -97,12 +98,7 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
               sampledFrameCount: item.sampledFrameCount
             })),
           workspace: workspaceAssets.map((item) => ({
-            assetId: item.assetId,
-            assetRef: item.displayName,
-            kind: item.kind,
-            filename: item.filename,
-            mimeType: item.mimeType,
-            sizeBytes: item.sizeBytes,
+            ...mapWorkspaceAssetToFileView(item),
             caption: assetCaptionMap.get(item.assetId) ?? item.caption
           })),
           audio: audioSummaries,

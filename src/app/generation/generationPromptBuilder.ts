@@ -6,7 +6,7 @@ import {
 import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { prepareAudioInputsForModel } from "#messages/audioSources.ts";
 import { buildPrompt, buildScheduledTaskPrompt, buildSetupPrompt } from "#llm/prompt/promptBuilder.ts";
-import type { PromptInteractionMode, PromptRuntimeResource } from "#llm/prompt/promptTypes.ts";
+import type { PromptInteractionMode, PromptLiveResource } from "#llm/prompt/promptTypes.ts";
 import type { PromptAudioTranscription } from "#llm/prompt/promptTypes.ts";
 import type {
   InternalTranscriptItem,
@@ -23,8 +23,8 @@ import type { ChatAttachment } from "#services/workspace/types.ts";
 
 type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
-const RUNTIME_RESOURCE_TOOL_NAMES = new Set([
-  "list_runtime_resources",
+const LIVE_RESOURCE_TOOL_NAMES = new Set([
+  "list_live_resources",
   "list_browser_pages",
   "open_page",
   "inspect_page",
@@ -280,7 +280,7 @@ async function preparePromptBatchMessages(
   }));
 }
 
-async function collectPromptRuntimeResources(deps: GenerationPromptBuilderDeps): Promise<PromptRuntimeResource[]> {
+async function collectPromptLiveResources(deps: GenerationPromptBuilderDeps): Promise<PromptLiveResource[]> {
   const [browserPages, shellSessions] = await Promise.all([
     deps.browserService.listPages(),
     deps.shellRuntime.listSessionResources()
@@ -306,22 +306,22 @@ async function collectPromptRuntimeResources(deps: GenerationPromptBuilderDeps):
       lastAccessedAtMs: item.lastAccessedAtMs
     }))
   ]
-    .sort(comparePromptRuntimeResources)
+    .sort(comparePromptLiveResources)
     .map(({ lastAccessedAtMs: _lastAccessedAtMs, ...item }) => item);
 }
 
-function shouldIncludeRuntimeResources(visibleToolNames: string[]): boolean {
-  return visibleToolNames.some((name) => RUNTIME_RESOURCE_TOOL_NAMES.has(name));
+function shouldIncludeLiveResources(visibleToolNames: string[]): boolean {
+  return visibleToolNames.some((name) => LIVE_RESOURCE_TOOL_NAMES.has(name));
 }
 
-function comparePromptRuntimeResources(left: {
-  kind: PromptRuntimeResource["kind"];
-  status: PromptRuntimeResource["status"];
+function comparePromptLiveResources(left: {
+  kind: PromptLiveResource["kind"];
+  status: PromptLiveResource["status"];
   resourceId: string;
   lastAccessedAtMs: number;
 }, right: {
-  kind: PromptRuntimeResource["kind"];
-  status: PromptRuntimeResource["status"];
+  kind: PromptLiveResource["kind"];
+  status: PromptLiveResource["status"];
   resourceId: string;
   lastAccessedAtMs: number;
 }): number {
@@ -338,7 +338,7 @@ function comparePromptRuntimeResources(left: {
   return left.resourceId.localeCompare(right.resourceId);
 }
 
-function statusPriority(status: PromptRuntimeResource["status"]): number {
+function statusPriority(status: PromptLiveResource["status"]): number {
   switch (status) {
     case "active":
       return 0;
@@ -418,8 +418,8 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       ...input.batchMessages.map((item) => item.userId)
     ]);
     const globalMemories = await deps.globalMemoryStore.getAll();
-    const runtimeResources = shouldIncludeRuntimeResources(input.visibleToolNames)
-      ? await collectPromptRuntimeResources(deps)
+    const liveResources = shouldIncludeLiveResources(input.visibleToolNames)
+      ? await collectPromptLiveResources(deps)
       : [];
     const preparedBatchMessages = await preparePromptBatchMessages(
       deps,
@@ -451,7 +451,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       historySummary: input.historySummary,
       recentToolEvents: input.recentToolEvents,
       debugMarkers: input.debugMarkers,
-      runtimeResources,
+      liveResources,
       recentMessages: mediaContext.historyForPrompt,
       batchMessages: preparedBatchMessages
     });
@@ -465,7 +465,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         historySummary: input.historySummary,
         recentHistory: mediaContext.historyForPrompt,
         currentBatch: input.batchMessages,
-        runtimeResources,
+        liveResources,
         recentToolEvents: input.recentToolEvents,
         debugMarkers: input.debugMarkers ?? [],
         toolTranscript: input.internalTranscript,
@@ -499,14 +499,14 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     targetContext: ScheduledPromptTargetContext;
     abortSignal?: AbortSignal;
   }) => {
-    const [mediaContext, runtimeResources, globalMemories] = await Promise.all([
+    const [mediaContext, liveResources, globalMemories] = await Promise.all([
       preparePromptMediaContext(deps, {
         historyForPrompt: input.historyForPrompt,
         reason: "scheduled_prompt",
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
       }),
-      shouldIncludeRuntimeResources(input.visibleToolNames)
-        ? collectPromptRuntimeResources(deps)
+      shouldIncludeLiveResources(input.visibleToolNames)
+        ? collectPromptLiveResources(deps)
         : Promise.resolve([]),
       deps.globalMemoryStore.getAll()
     ]);
@@ -536,7 +536,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       historySummary: input.historySummary,
       recentToolEvents: input.recentToolEvents,
       debugMarkers: input.debugMarkers,
-      runtimeResources,
+      liveResources,
       recentMessages: mediaContext.historyForPrompt,
       targetContext: input.targetContext
     });
@@ -550,7 +550,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         historySummary: input.historySummary,
         recentHistory: mediaContext.historyForPrompt,
         currentBatch: [],
-        runtimeResources,
+        liveResources,
         recentToolEvents: input.recentToolEvents,
         debugMarkers: input.debugMarkers ?? [],
         toolTranscript: input.internalTranscript,
@@ -623,7 +623,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         historySummary: null,
         recentHistory: mediaContext.historyForPrompt,
         currentBatch: input.batchMessages,
-        runtimeResources: [],
+        liveResources: [],
         recentToolEvents: input.recentToolEvents,
         debugMarkers: input.debugMarkers ?? [],
         toolTranscript: input.internalTranscript,

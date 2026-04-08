@@ -14,7 +14,7 @@ const DEBUG_LITERALS: DebugLiteral[] = [
   "persona",
   "recent_history",
   "current_batch",
-  "runtime_resources",
+  "live_resources",
   "debug_markers",
   "last_llm_usage",
   "tool_transcript"
@@ -196,8 +196,8 @@ async function renderDebugLiteral(literal: DebugLiteral, context: Parameters<Non
       return JSON.stringify(snapshot?.recentHistory ?? [], null, 2);
     case "current_batch":
       return JSON.stringify(snapshot?.currentBatch ?? [], null, 2);
-    case "runtime_resources":
-      return JSON.stringify(snapshot?.runtimeResources ?? [], null, 2);
+    case "live_resources":
+      return JSON.stringify(snapshot?.liveResources ?? [], null, 2);
     case "debug_markers":
       return JSON.stringify(snapshot?.debugMarkers ?? context.sessionManager.getDebugMarkers(context.lastMessage.sessionId), null, 2);
     case "last_llm_usage":

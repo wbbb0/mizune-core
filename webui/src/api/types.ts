@@ -34,10 +34,10 @@ export interface UserMessageItem {
   imageIds: string[];
   emojiIds: string[];
   attachments?: Array<{
-    assetId: string;
+    fileId: string;
     kind: "image" | "animated_image" | "video" | "audio" | "file";
     source: "chat_message" | "web_upload" | "browser" | "workspace";
-    filename: string | null;
+    sourceName: string | null;
     mimeType: string | null;
     semanticKind?: "image" | "emoji";
   }>;
@@ -85,10 +85,12 @@ export interface OutboundMediaMessageItem {
   role: "assistant";
   delivery: "onebot" | "web";
   mediaKind: "image";
-  assetId: string;
-  filename: string | null;
+  fileId: string;
+  fileRef: string | null;
+  sourceName: string | null;
+  workspacePath: string | null;
   messageId: number | null;
-  toolName: "send_workspace_media_to_chat";
+  toolName: "send_workspace_file_to_chat";
   captionText?: string | null;
   timestampMs: number;
 }

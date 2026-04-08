@@ -171,17 +171,17 @@ async function main() {
     }
   });
 
-  await runCase("internal api exposes workspace listing, text preview, workspace image content, and asset content", async () => {
+  await runCase("internal api exposes workspace listing, text preview, workspace image content, and stored file content", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
-      const [listResponse, statResponse, fileResponse, imageContentResponse, assetsResponse, assetResponse, contentResponse] = await Promise.all([
+      const [listResponse, statResponse, fileResponse, imageContentResponse, filesResponse, storedFileResponse, contentResponse] = await Promise.all([
         app.inject({ method: "GET", url: "/api/workspace/items" }),
         app.inject({ method: "GET", url: "/api/workspace/stat?path=notes.txt" }),
         app.inject({ method: "GET", url: "/api/workspace/file?path=notes.txt&startLine=1&endLine=2" }),
         app.inject({ method: "GET", url: "/api/workspace/content?path=photo.png" }),
-        app.inject({ method: "GET", url: "/api/workspace/assets" }),
-        app.inject({ method: "GET", url: "/api/workspace/assets/asset_image_1" }),
-        app.inject({ method: "GET", url: "/api/workspace/assets/asset_image_1/content" })
+        app.inject({ method: "GET", url: "/api/workspace/files" }),
+        app.inject({ method: "GET", url: "/api/workspace/files/asset_image_1" }),
+        app.inject({ method: "GET", url: "/api/workspace/files/asset_image_1/content" })
       ]);
 
       assert.equal(listResponse.statusCode, 200);
@@ -194,10 +194,10 @@ async function main() {
       assert.equal(imageContentResponse.statusCode, 200);
       assert.equal(imageContentResponse.headers["content-type"], "image/png");
       assert.ok(imageContentResponse.body.length > 0);
-      assert.equal(assetsResponse.statusCode, 200);
-      assert.equal(assetsResponse.json().assets[0].assetId, "asset_image_1");
-      assert.equal(assetResponse.statusCode, 200);
-      assert.equal(assetResponse.json().asset.filename, "fixture.png");
+      assert.equal(filesResponse.statusCode, 200);
+      assert.equal(filesResponse.json().files[0].fileId, "asset_image_1");
+      assert.equal(storedFileResponse.statusCode, 200);
+      assert.equal(storedFileResponse.json().file.sourceName, "fixture.png");
       assert.equal(contentResponse.statusCode, 200);
       assert.equal(contentResponse.headers["content-type"], "image/png");
       assert.ok(contentResponse.body.length > 0);
@@ -206,7 +206,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api rejects workspace path escape and returns not found for missing asset", async () => {
+  await runCase("internal api rejects workspace path escape and returns not found for missing stored file", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
       const badPathResponse = await app.inject({
@@ -215,12 +215,12 @@ async function main() {
       });
       assert.equal(badPathResponse.statusCode, 400);
 
-      const missingAssetResponse = await app.inject({
+      const missingFileResponse = await app.inject({
         method: "GET",
-        url: "/api/workspace/assets/missing_asset"
+        url: "/api/workspace/files/missing_asset"
       });
-      assert.equal(missingAssetResponse.statusCode, 404);
-      assert.equal(missingAssetResponse.json().error, "Workspace asset not found");
+      assert.equal(missingFileResponse.statusCode, 404);
+      assert.equal(missingFileResponse.json().error, "Workspace file not found");
     } finally {
       await app.close();
     }
@@ -435,16 +435,16 @@ async function main() {
     }
   });
 
-  await runCase("internal api accepts asset upload payloads above the default fastify body limit", async () => {
+  await runCase("internal api accepts file upload payloads above the default fastify body limit", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
       const largeBuffer = Buffer.alloc(1024 * 1024 + 256 * 1024, 0xaa);
       const response = await app.inject({
         method: "POST",
-        url: "/api/uploads/assets",
+        url: "/api/uploads/files",
         payload: {
           files: [{
-            filename: "large.png",
+            sourceName: "large.png",
             mimeType: "image/png",
             contentBase64: largeBuffer.toString("base64"),
             kind: "image"
@@ -454,7 +454,7 @@ async function main() {
 
       assert.equal(response.statusCode, 200);
       assert.equal(response.json().ok, true);
-      assert.equal(response.json().uploads[0].assetId, "asset_image_1");
+      assert.equal(response.json().uploads[0].fileId, "asset_image_1");
       assert.equal(response.json().uploads[0].sizeBytes, largeBuffer.byteLength);
     } finally {
       await app.close();

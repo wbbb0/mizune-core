@@ -1,9 +1,11 @@
 import { api } from "./client";
 
-export interface UploadedAsset {
-  assetId: string;
+export interface UploadedFile {
+  fileId: string;
+  fileRef: string | null;
   kind: "image" | "animated_image" | "video" | "audio" | "file";
-  filename: string;
+  sourceName: string;
+  workspacePath: string | null;
   mimeType: string;
   sizeBytes: number;
 }
@@ -23,15 +25,15 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 export const uploadsApi = {
-  async uploadFiles(files: File[]): Promise<{ ok: true; uploads: UploadedAsset[] }> {
+  async uploadFiles(files: File[]): Promise<{ ok: true; uploads: UploadedFile[] }> {
     const encoded = await Promise.all(
       files.map(async (f) => ({
-        filename: f.name,
+        sourceName: f.name,
         mimeType: f.type || "application/octet-stream",
         contentBase64: await fileToBase64(f),
         kind: f.type.startsWith("image/") ? ("image" as const) : undefined
       }))
     );
-    return api.post("/api/uploads/assets", { files: encoded });
+    return api.post("/api/uploads/files", { files: encoded });
   }
 };

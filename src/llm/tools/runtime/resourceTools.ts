@@ -5,8 +5,8 @@ export const resourceToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "list_runtime_resources",
-        description: "列出当前可复用的运行时 resources，包含 browser 页面与 shell 会话。",
+        name: "list_live_resources",
+        description: "列出当前可复用的 live_resource，包含 browser 页面与 shell 会话。live_resource 只表示正在运行的可继续操作句柄，不是工作区文件。",
         parameters: {
           type: "object",
           properties: {},
@@ -19,7 +19,7 @@ export const resourceToolDescriptors: ToolDescriptor[] = [
 ];
 
 export const resourceToolHandlers: Record<string, ToolHandler> = {
-  async list_runtime_resources(_toolCall, _args, context) {
+  async list_live_resources(_toolCall, _args, context) {
     const [pages, shellSessions] = await Promise.all([
       context.config.browser.enabled
         ? context.browserService.listPages()
@@ -56,7 +56,7 @@ export const resourceToolHandlers: Record<string, ToolHandler> = {
 
     return JSON.stringify({
       ok: true,
-      resources
+      live_resources: resources
     });
   }
 };

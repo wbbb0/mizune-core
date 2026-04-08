@@ -18,7 +18,7 @@ import {
   parseEditorOptionsParams,
   parseEditorResourceParams,
   parseResourceItemParams,
-  parseWorkspaceAssetParams,
+  parseWorkspaceStoredFileParams,
   parseWorkspaceFileQuery,
   parseWorkspacePathQuery,
   parseOrReply,
@@ -120,18 +120,18 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
   });
 
-  app.get("/api/workspace/assets", async () => services.workspaceAdmin.listAssets());
+  app.get("/api/workspace/files", async () => services.workspaceAdmin.listFiles());
 
-  app.get("/api/workspace/assets/:assetId", async (request, reply) => {
-    const params = parseWorkspaceAssetParams(request.params);
+  app.get("/api/workspace/files/:fileId", async (request, reply) => {
+    const params = parseWorkspaceStoredFileParams(request.params);
     if (!parseOrReply(reply, params)) {
       return reply;
     }
 
     try {
-      const result = await services.workspaceAdmin.getAsset(params.assetId);
-      if (!result.asset) {
-        return respondNotFound(reply, "Workspace asset not found");
+      const result = await services.workspaceAdmin.getFile(params.fileId);
+      if (!result.file) {
+        return respondNotFound(reply, "Workspace file not found");
       }
       return result;
     } catch (error: unknown) {
@@ -139,20 +139,20 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
   });
 
-  app.get("/api/workspace/assets/:assetId/content", async (request, reply) => {
-    const params = parseWorkspaceAssetParams(request.params);
+  app.get("/api/workspace/files/:fileId/content", async (request, reply) => {
+    const params = parseWorkspaceStoredFileParams(request.params);
     if (!parseOrReply(reply, params)) {
       return reply;
     }
 
     try {
-      const result = await services.workspaceAdmin.readAssetContent(params.assetId);
-      if (!result.asset || !result.buffer) {
-        return respondNotFound(reply, "Workspace asset not found");
+      const result = await services.workspaceAdmin.readFileContentById(params.fileId);
+      if (!result.file || !result.buffer) {
+        return respondNotFound(reply, "Workspace file not found");
       }
 
-      reply.header("Content-Disposition", `inline; filename="${encodeURIComponent(result.asset.filename || result.asset.assetId)}"`);
-      reply.type(result.asset.mimeType || "application/octet-stream");
+      reply.header("Content-Disposition", `inline; filename="${encodeURIComponent(result.file.sourceName || result.file.fileId)}"`);
+      reply.type(result.file.mimeType || "application/octet-stream");
       return reply.send(result.buffer);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));

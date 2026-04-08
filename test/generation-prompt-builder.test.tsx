@@ -206,7 +206,7 @@ async function main() {
       sessionId: "private:10001",
       interactionMode: "normal",
       mainModelRef: ["main"],
-      visibleToolNames: ["list_runtime_resources", "list_browser_pages", "list_shell_sessions", "shell_run", "open_page"],
+      visibleToolNames: ["list_live_resources", "list_browser_pages", "list_shell_sessions", "shell_run", "open_page"],
       persona: {
         name: "Bot",
         identity: "助手",
@@ -248,7 +248,7 @@ async function main() {
     });
 
     const system = String(result.promptMessages[0]?.content ?? "");
-    assert.match(system, /当前可复用运行时资源/);
+    assert.match(system, /当前可复用 live_resource/);
     assert.match(system, /res_browser_7 \| browser \| active \| Docs 7 \| 浏览第 7 个页面/);
     assert.match(system, /res_browser_1 \| browser \| active \| Docs 1/);
     assert.match(system, /res_shell_1 \| shell \| active \| npm test @ \/repo \| 跑测试/);

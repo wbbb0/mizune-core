@@ -4,9 +4,9 @@ import { buildToolHintLines } from "#llm/prompt/promptToolHints.ts";
 import type {
   PromptInput,
   PromptInteractionMode,
+  PromptLiveResource,
   PromptNpcProfile,
   PromptParticipantProfile,
-  PromptRuntimeResource,
   PromptToolEvent
 } from "#llm/prompt/promptTypes.ts";
 import { renderPromptSection } from "./prompt-section.ts";
@@ -58,7 +58,7 @@ export function buildBaseSystemLines(input: {
   globalMemories?: PromptInput["globalMemories"];
   historySummary?: string | null | undefined;
   recentToolEvents?: PromptInput["recentToolEvents"];
-  runtimeResources?: PromptInput["runtimeResources"];
+  liveResources?: PromptInput["liveResources"];
 }): string[] {
   return [
     renderPromptSection("identity", buildCoreIdentityLines(input.persona)),
@@ -66,7 +66,7 @@ export function buildBaseSystemLines(input: {
     renderPromptSection("behavior_rules", buildBoundaryLines({
       ...(input.visibleToolNames ? { visibleToolNames: input.visibleToolNames } : {})
     })),
-    renderPromptSection("runtime_resources", buildRuntimeResourceLines(input.runtimeResources)),
+    renderPromptSection("live_resources", buildLiveResourceLines(input.liveResources)),
     renderPromptSection("participant_context", [
       ...buildParticipantContextLines(input.participantProfiles),
       ...buildNpcContextLines(input.npcProfiles, input.participantProfiles)
@@ -160,8 +160,8 @@ export function buildScheduledTaskSystemLines(input: {
         `prompt：${input.trigger.positivePrompt}`,
         `比例：${input.trigger.aspectRatio} -> ${input.trigger.resolvedWidth}x${input.trigger.resolvedHeight}`,
         `Comfy prompt_id：${input.trigger.comfyPromptId}`,
-        `workspace asset_id：${input.trigger.workspaceAssetIds.join("、") || "无"}`,
-        `workspace 路径：${input.trigger.workspacePaths.join("、") || "无"}`,
+        `workspace file_id：${input.trigger.workspaceAssetIds.join("、") || "无"}`,
+        `workspace_path：${input.trigger.workspacePaths.join("、") || "无"}`,
         `自动迭代进度：${input.trigger.autoIterationIndex}/${input.trigger.maxAutoIterations}`
       ])
     ].filter((item): item is string => Boolean(item));
@@ -267,7 +267,7 @@ function buildHistorySummaryLines(historySummary?: string | null | undefined): s
   return historySummary ? [`较早历史摘要：${historySummary}`] : [];
 }
 
-function buildRuntimeResourceLines(resources: PromptRuntimeResource[] | undefined): string[] {
+function buildLiveResourceLines(resources: PromptLiveResource[] | undefined): string[] {
   if (!resources || resources.length === 0) {
     return [];
   }
@@ -284,7 +284,7 @@ function buildRuntimeResourceLines(resources: PromptRuntimeResource[] | undefine
     const description = item.description?.trim() ? ` | ${item.description.trim()}` : "";
     return `- ${item.resourceId} | ${kind} | ${item.status}${title}${description} | ${item.summary}`;
   });
-  return [`当前可复用运行时资源（优先复用这些 resource_id；不要杜撰不存在的 id）：\n${lines.join("\n")}`];
+  return [`当前可复用 live_resource（只表示正在运行的浏览器页面或 shell 会话，不是工作区文件；需要继续操作网页/终端时优先复用这些 resource_id）：\n${lines.join("\n")}`];
 }
 
 function buildRecentToolEventLines(events: PromptToolEvent[] | undefined): string[] {

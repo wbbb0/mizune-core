@@ -36,8 +36,9 @@ type ChatTimelineItem =
       kind: "image";
       role: "assistant";
       side: "left" | "right";
-      filename: string | null;
-      assetId: string;
+      sourceName: string | null;
+      fileRef: string | null;
+      fileId: string;
       imageUrl: string;
       toolName: string;
       timestampMs: number;
@@ -80,9 +81,10 @@ function toChatTimelineItem(entry: { eventId: string; item: SessionTranscriptIte
       kind: "image",
       role: "assistant",
       side: "left",
-      filename: entry.item.filename,
-      assetId: entry.item.assetId,
-      imageUrl: workspaceApi.getAssetContentUrl(entry.item.assetId),
+      sourceName: entry.item.sourceName,
+      fileRef: entry.item.fileRef,
+      fileId: entry.item.fileId,
+      imageUrl: workspaceApi.getFileContentUrlById(entry.item.fileId),
       toolName: entry.item.toolName,
       timestampMs: entry.item.timestampMs
     };
@@ -277,12 +279,13 @@ async function onDeleteSession() {
             :label="msg.kind === 'text' ? msg.label : undefined"
             :sender-label="msg.kind === 'text' ? msg.senderLabel : undefined"
             :meta-chips="msg.kind === 'text' ? msg.metaChips : undefined"
-            :filename="msg.kind === 'image' ? msg.filename : undefined"
-            :asset-id="msg.kind === 'image' ? msg.assetId : undefined"
+            :source-name="msg.kind === 'image' ? msg.sourceName : undefined"
+            :file-ref="msg.kind === 'image' ? msg.fileRef : undefined"
+            :file-id="msg.kind === 'image' ? msg.fileId : undefined"
             :image-url="msg.kind === 'image' ? msg.imageUrl : undefined"
             :tool-name="msg.kind === 'image' ? msg.toolName : undefined"
             :timestamp-ms="msg.timestampMs"
-            @preview-image="msg.kind === 'image' ? previewImage = { src: msg.imageUrl, title: msg.filename || msg.assetId } : undefined"
+            @preview-image="msg.kind === 'image' ? previewImage = { src: msg.imageUrl, title: msg.sourceName || msg.fileRef || msg.fileId } : undefined"
           />
           <div v-if="reversedMessages.length === 0" class="px-6 py-6 text-center text-small text-text-subtle">
             暂无消息

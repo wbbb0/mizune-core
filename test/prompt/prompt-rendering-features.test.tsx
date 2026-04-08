@@ -272,7 +272,7 @@ async function main() {
       const persona = await harness.personaStore.get();
       const prompt = buildPrompt({
         sessionId: "private:owner",
-        visibleToolNames: ["list_runtime_resources", "list_browser_pages", "list_shell_sessions"],
+        visibleToolNames: ["list_live_resources", "list_browser_pages", "list_shell_sessions"],
         persona,
         relationship: "owner",
         npcProfiles: [],
@@ -281,7 +281,7 @@ async function main() {
         historySummary: null,
         recentMessages: [],
         recentToolEvents: [],
-        runtimeResources: [
+        liveResources: [
           {
             resourceId: "res_shell_a",
             kind: "shell_session",
@@ -309,7 +309,7 @@ async function main() {
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "继续刚才那个页面和 shell", timestampMs: Date.now() })]
       });
       const system = String(prompt[0]?.content ?? "");
-      assert.match(system, /当前可复用运行时资源/);
+      assert.match(system, /当前可复用 live_resource/);
       assert.match(system, /res_browser_b \| browser \| active \| OpenAI \| 查看首页文案 \| https:\/\/openai\.com\/ \| backend=playwright \| OpenAI homepage/);
       assert.match(system, /res_shell_a \| shell \| active \| npm test @ \/repo \| 跑测试 \| npm test \| cwd=\/repo \| tty=on/);
       assert.doesNotMatch(system, /res_browser_c/);

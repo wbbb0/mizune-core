@@ -1,6 +1,7 @@
 import type { LlmToolExecutionResult } from "../../llmClient.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getBooleanArg, getNumberArg, getStringArg, getStringArrayArg } from "../core/toolArgHelpers.ts";
+import { mapWorkspaceAssetToFileView } from "../core/workspaceFileView.ts";
 import type { BrowserActionTarget, BrowserCoordinate } from "#services/web/browser/types.ts";
 import { isBrowserInteractionAction } from "#services/web/browser/types.ts";
 
@@ -187,7 +188,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "capture_page_screenshot",
-        description: "对当前已打开页面截图，返回截图 asset_id，并把截图附到下一轮视觉上下文里。",
+        description: "对当前已打开页面截图，返回截图对应的 workspace file_id / file_ref，并把截图附到下一轮视觉上下文里。",
         parameters: {
           type: "object",
           properties: {
@@ -224,7 +225,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "download_asset",
-        description: "把远程链接或当前网页元素对应的图片、视频、音频、文件下载进工作区；支持直接给 url，也支持给 resource_id 加 target_id。",
+        description: "把远程链接或当前网页元素对应的图片、视频、音频、文件下载进工作区；支持直接给 url，也支持给 resource_id 加 target_id。成功后返回 workspace file_id / file_ref / workspace_path。",
         parameters: {
           type: "object",
           properties: {
@@ -515,13 +516,24 @@ export const webToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ error: "target_id requires resource_id" });
     }
     try {
-      return JSON.stringify(await context.browserService.downloadAsset({
+      const result = await context.browserService.downloadAsset({
         ...(url ? { url } : {}),
         ...(resourceId ? { resourceId } : {}),
         ...(targetId !== undefined ? { targetId } : {}),
         ...(filename ? { filename } : {}),
         ...(kind ? { kind } : {})
-      }));
+      });
+      const asset = await context.mediaWorkspace.getAsset(result.asset_id);
+      return JSON.stringify({
+        ok: true,
+        ...(asset ? mapWorkspaceAssetToFileView(asset) : { file_id: result.asset_id }),
+        kind: result.kind,
+        mime_type: asset?.mimeType ?? result.mimeType,
+        size_bytes: asset?.sizeBytes ?? result.sizeBytes,
+        source_url: result.source_url,
+        resource_id: result.resource_id,
+        target_id: result.target_id
+      });
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -660,18 +672,29 @@ async function buildScreenshotToolResult(
   context: Parameters<ToolHandler>[2]
 ): Promise<LlmToolExecutionResult | string> {
   const prepared = await context.mediaVisionService.prepareAssetForModel(imageId).catch(() => null);
+  const asset = await context.mediaWorkspace.getAsset(imageId).catch(() => null);
+  const contentPayload = asset
+    ? {
+        ok: true,
+        ...mapWorkspaceAssetToFileView(asset),
+        mode: typeof result === "object" && result && "mode" in result ? (result as { mode?: unknown }).mode : null,
+        resource_id: typeof result === "object" && result && "resource_id" in result ? (result as { resource_id?: unknown }).resource_id : null,
+        profile_id: typeof result === "object" && result && "profile_id" in result ? (result as { profile_id?: unknown }).profile_id : null,
+        target_id: typeof result === "object" && result && "target_id" in result ? (result as { target_id?: unknown }).target_id : null
+      }
+    : result;
   if (!prepared) {
-    return JSON.stringify(result);
+    return JSON.stringify(contentPayload);
   }
   const caption = (await context.mediaCaptionService.getCaptionMap([imageId]).catch(() => new Map<string, string>())).get(imageId);
   return {
-    content: JSON.stringify(result),
+    content: JSON.stringify(contentPayload),
     supplementalMessages: [{
       role: "user",
       content: [
         {
           type: "text",
-          text: `以下截图来自浏览器工具，请结合它继续完成当前页面任务。asset_id=${imageId}${caption ? ` caption=${caption}` : ""}`
+          text: `以下截图来自浏览器工具，请结合它继续完成当前页面任务。file_id=${asset?.assetId ?? imageId}${asset?.displayName ? ` file_ref=${asset.displayName}` : ""}${caption ? ` caption=${caption}` : ""}`
         },
         {
           type: "image_url",

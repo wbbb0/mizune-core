@@ -4,9 +4,9 @@ import type { WorkspaceAssetKind } from "#services/workspace/types.ts";
 const MAX_UPLOAD_FILE_COUNT = 8;
 
 export interface AdminWorkspaceUploadService {
-  uploadAssets(body: {
+  uploadFiles(body: {
     files: Array<{
-      filename?: string;
+      sourceName?: string;
       mimeType: string;
       contentBase64: string;
       kind?: WorkspaceAssetKind;
@@ -14,9 +14,11 @@ export interface AdminWorkspaceUploadService {
   }): Promise<{
     ok: true;
     uploads: Array<{
-      assetId: string;
+      fileId: string;
+      fileRef: string;
       kind: WorkspaceAssetKind;
-      filename: string;
+      sourceName: string;
+      workspacePath: string;
       mimeType: string;
       sizeBytes: number;
     }>;
@@ -27,7 +29,7 @@ export function createAdminWorkspaceUploadService(input: {
   mediaWorkspace: Pick<MediaWorkspace, "importBuffer">;
 }): AdminWorkspaceUploadService {
   return {
-    async uploadAssets(body) {
+    async uploadFiles(body) {
       if (body.files.length > MAX_UPLOAD_FILE_COUNT) {
         throw new Error(`Too many files in one request; max is ${MAX_UPLOAD_FILE_COUNT}`);
       }
@@ -43,12 +45,14 @@ export function createAdminWorkspaceUploadService(input: {
           mimeType,
           kind,
           origin: "user_upload",
-          ...(file.filename ? { filename: file.filename } : {})
+          ...(file.sourceName ? { filename: file.sourceName } : {})
         });
         return {
-          assetId: asset.assetId,
+          fileId: asset.assetId,
+          fileRef: asset.displayName,
           kind: asset.kind,
-          filename: asset.filename,
+          sourceName: asset.filename,
+          workspacePath: asset.storagePath,
           mimeType: asset.mimeType,
           sizeBytes: asset.sizeBytes
         };
