@@ -4,11 +4,12 @@ import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import type { WhitelistStore } from "./whitelistStore.ts";
 import { FileSchemaStore } from "#data/fileSchemaStore.ts";
+import { readStructuredFileRaw } from "#data/schema/file.ts";
 import { createMemoryEntry, type MemoryEntry } from "#memory/memoryEntry.ts";
 import { rotateBackup } from "#utils/rotatingBackup.ts";
 import type { Relationship } from "./relationship.ts";
 import type { SpecialRole } from "./specialRole.ts";
-import { userStoreSchema, type User } from "./userSchema.ts";
+import { userStoreSchema, type PersistedUser, type User } from "./userSchema.ts";
 
 function resolveStoredRelationship(whitelistStore: Pick<WhitelistStore, "getOwnerId">, userId: string): Relationship {
   if (whitelistStore.getOwnerId() === userId) {
@@ -43,7 +44,6 @@ export class UserStore {
       activeUsers.push({
         userId: ownerId,
         memories: [],
-        relationship: "owner",
         specialRole: "none",
         createdAt: Date.now()
       });
@@ -70,10 +70,10 @@ export class UserStore {
     profileSummary?: string;
     sharedContext?: string;
   }): Promise<User> {
-    const users = await this.readAll();
+    const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === input.userId);
 
-    const next: User = {
+    const next: PersistedUser = {
       userId: input.userId,
       ...(input.nickname ? { nickname: input.nickname } : existing?.nickname ? { nickname: existing.nickname } : {}),
       ...(input.preferredAddress ? { preferredAddress: input.preferredAddress } : existing?.preferredAddress ? { preferredAddress: existing.preferredAddress } : {}),
@@ -81,7 +81,6 @@ export class UserStore {
       ...(input.residence ? { residence: input.residence } : existing?.residence ? { residence: existing.residence } : {}),
       ...(input.profileSummary ? { profileSummary: input.profileSummary } : existing?.profileSummary ? { profileSummary: existing.profileSummary } : {}),
       ...(input.sharedContext ? { sharedContext: input.sharedContext } : existing?.sharedContext ? { sharedContext: existing.sharedContext } : {}),
-      relationship: resolveStoredRelationship(this.whitelistStore, input.userId),
       specialRole: existing?.specialRole ?? "none",
       memories: existing?.memories ?? [],
       createdAt: existing?.createdAt ?? Date.now()
@@ -93,35 +92,30 @@ export class UserStore {
       users.push(next);
       await this.writeAll(users);
     }
-    this.logger.info({ userId: input.userId, relationship: next.relationship }, "known_user_registered");
-    return next;
+    const runtimeUser = toRuntimeUser(this.whitelistStore, next);
+    this.logger.info({ userId: input.userId, relationship: runtimeUser.relationship }, "known_user_registered");
+    return runtimeUser;
   }
 
   async setOwner(userId: string): Promise<User> {
-    const users = await this.readAll();
+    const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === userId);
 
     if (!existing) {
-      const created: User = {
+      const created: PersistedUser = {
         userId,
         memories: [],
-        relationship: "owner",
         specialRole: "none",
         createdAt: Date.now()
       };
       users.push(created);
       await this.writeAll(users);
       this.logger.info({ userId }, "owner_user_bound");
-      return created;
+      return toRuntimeUser(this.whitelistStore, created);
     }
 
-    const updated: User = {
-      ...existing,
-      relationship: "owner"
-    };
-    await this.replaceUser(users, updated);
     this.logger.info({ userId }, "owner_user_bound");
-    return updated;
+    return toRuntimeUser(this.whitelistStore, existing);
   }
 
   async patchUserProfile(input: {
@@ -133,11 +127,11 @@ export class UserStore {
     sharedContext?: string;
     nickname?: string;
   }): Promise<User> {
-    const users = await this.readAll();
+    const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === input.userId);
 
     if (!existing) {
-      const created: User = {
+      const created: PersistedUser = {
         userId: input.userId,
         ...(input.nickname ? { nickname: input.nickname } : {}),
         ...(input.preferredAddress ? { preferredAddress: input.preferredAddress } : {}),
@@ -146,17 +140,16 @@ export class UserStore {
         ...(input.profileSummary ? { profileSummary: input.profileSummary } : {}),
         ...(input.sharedContext ? { sharedContext: input.sharedContext } : {}),
         memories: [],
-        relationship: resolveStoredRelationship(this.whitelistStore, input.userId),
         specialRole: "none",
         createdAt: Date.now()
       };
       users.push(created);
       await this.writeAll(users);
       this.logger.info({ userId: input.userId }, "user_profile_updated");
-      return created;
+      return toRuntimeUser(this.whitelistStore, created);
     }
 
-    const updated: User = {
+    const updated: PersistedUser = {
       ...existing,
       ...(input.nickname ? { nickname: input.nickname } : {}),
       ...(input.preferredAddress ? { preferredAddress: input.preferredAddress } : {}),
@@ -167,48 +160,47 @@ export class UserStore {
     };
     await this.replaceUser(users, updated);
     this.logger.info({ userId: input.userId }, "user_profile_updated");
-    return updated;
+    return toRuntimeUser(this.whitelistStore, updated);
   }
 
   async touchSeenUser(input: { userId: string; nickname?: string }): Promise<User> {
-    const users = await this.readAll();
+    const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === input.userId);
 
     if (existing) {
       if (input.nickname && existing.nickname !== input.nickname) {
-        const updated: User = {
+        const updated: PersistedUser = {
           ...existing,
           nickname: input.nickname
         };
         await this.replaceUser(users, updated);
-        return updated;
+        return toRuntimeUser(this.whitelistStore, updated);
       }
-      return existing;
+      return toRuntimeUser(this.whitelistStore, existing);
     }
 
     if (this.whitelistStore.getOwnerId() && input.userId === this.whitelistStore.getOwnerId()) {
-      const created: User = {
+      const created: PersistedUser = {
         userId: input.userId,
         ...(input.nickname ? { nickname: input.nickname } : {}),
         memories: [],
-        relationship: "owner",
         specialRole: "none",
         createdAt: Date.now()
       };
       users.push(created);
       await this.writeAll(users);
-      this.logger.info({ userId: created.userId, relationship: created.relationship }, "user_created");
-      return created;
+      const runtimeUser = toRuntimeUser(this.whitelistStore, created);
+      this.logger.info({ userId: created.userId, relationship: runtimeUser.relationship }, "user_created");
+      return runtimeUser;
     }
 
-    return {
+    return toRuntimeUser(this.whitelistStore, {
       userId: input.userId,
       ...(input.nickname ? { nickname: input.nickname } : {}),
       memories: [],
-      relationship: resolveStoredRelationship(this.whitelistStore, input.userId),
       specialRole: "none",
       createdAt: Date.now()
-    };
+    });
   }
 
   async upsertMemory(input: {
@@ -217,11 +209,10 @@ export class UserStore {
     title: string;
     content: string;
   }): Promise<User> {
-    const users = await this.readAll();
+    const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === input.userId);
-    const base = existing ?? {
+    const base: PersistedUser = existing ? toPersistedUser(existing) : {
       userId: input.userId,
-      relationship: resolveStoredRelationship(this.whitelistStore, input.userId),
       specialRole: "none" as const,
       createdAt: Date.now(),
       memories: []
@@ -238,7 +229,7 @@ export class UserStore {
     } else {
       memories.push(nextMemory);
     }
-    const updated: User = {
+    const updated: PersistedUser = {
       ...base,
       memories
     };
@@ -249,39 +240,38 @@ export class UserStore {
       await this.writeAll(users);
     }
     this.logger.info({ userId: input.userId, memoryId: nextMemory.id }, "user_memory_upserted");
-    return updated;
+    return toRuntimeUser(this.whitelistStore, updated);
   }
 
   async removeMemory(userId: string, memoryId: string): Promise<User | null> {
-    const users = await this.readAll();
+    const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === userId);
     if (!existing) {
       return null;
     }
-    const nextMemories = (existing.memories ?? []).filter((item) => item.id !== memoryId);
-    if (nextMemories.length === (existing.memories ?? []).length) {
-      return existing;
+    const nextMemories = existing.memories.filter((item) => item.id !== memoryId);
+    if (nextMemories.length === existing.memories.length) {
+      return toRuntimeUser(this.whitelistStore, existing);
     }
-    const updated: User = {
+    const updated: PersistedUser = {
       ...existing,
       memories: nextMemories
     };
     await this.replaceUser(users, updated);
     this.logger.info({ userId, memoryId }, "user_memory_removed");
-    return updated;
+    return toRuntimeUser(this.whitelistStore, updated);
   }
 
   async overwriteMemories(userId: string, memories: Array<{ id?: string; title: string; content: string }>): Promise<User> {
-    const users = await this.readAll();
+    const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === userId);
-    const base = existing ?? {
+    const base: PersistedUser = existing ? toPersistedUser(existing) : {
       userId,
-      relationship: resolveStoredRelationship(this.whitelistStore, userId),
       specialRole: "none" as const,
       createdAt: Date.now(),
       memories: []
     };
-    const updated: User = {
+    const updated: PersistedUser = {
       ...base,
       memories: memories.map((item) => createMemoryEntry(item))
     };
@@ -292,20 +282,19 @@ export class UserStore {
       await this.writeAll(users);
     }
     this.logger.info({ userId, memoryCount: updated.memories.length }, "user_memories_overwritten");
-    return updated;
+    return toRuntimeUser(this.whitelistStore, updated);
   }
 
   async setSpecialRole(userId: string, specialRole: SpecialRole): Promise<User> {
-    const users = await this.readAll();
+    const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === userId);
-    const base = existing ?? {
+    const base: PersistedUser = existing ? toPersistedUser(existing) : {
       userId,
-      relationship: resolveStoredRelationship(this.whitelistStore, userId),
       specialRole: "none" as const,
       memories: [],
       createdAt: Date.now()
     };
-    const updated: User = {
+    const updated: PersistedUser = {
       ...base,
       specialRole
     };
@@ -316,16 +305,21 @@ export class UserStore {
       await this.writeAll(users);
     }
     this.logger.info({ userId, specialRole }, "user_special_role_changed");
-    return updated;
+    return toRuntimeUser(this.whitelistStore, updated);
   }
 
-  private async readRawAll(): Promise<User[]> {
+  private async readRawAll(): Promise<PersistedUser[]> {
     try {
-      const parsed = await this.store.read();
-      if (parsed) {
-        return [...parsed];
+      const raw = await readStructuredFileRaw(this.filePath);
+      if (raw != null) {
+        return normalizePersistedUsers(raw);
       }
     } catch (error) {
+      const nodeError = error as NodeJS.ErrnoException;
+      if (nodeError.code === "ENOENT") {
+        await this.writeAll([]);
+        return [];
+      }
       this.logger.warn({ error }, "user_store_load_failed");
       throw error;
     }
@@ -334,16 +328,17 @@ export class UserStore {
   }
 
   private async readAll(): Promise<User[]> {
-    return this.readRawAll();
+    return (await this.readRawAll()).map((user) => toRuntimeUser(this.whitelistStore, user));
   }
 
-  private async replaceUser(users: User[], updated: User): Promise<void> {
-    const next = users.map((user) => user.userId === updated.userId ? updated : user);
+  private async replaceUser(users: Array<User | PersistedUser>, updated: User | PersistedUser): Promise<void> {
+    const normalizedUpdated = toPersistedUser(updated);
+    const next = users.map((user) => user.userId === updated.userId ? normalizedUpdated : toPersistedUser(user));
     await this.writeAll(next);
   }
 
-  private async writeAll(users: User[]): Promise<void> {
-    const validated = userStoreSchema.parse(users);
+  private async writeAll(users: Array<User | PersistedUser>): Promise<void> {
+    const validated = userStoreSchema.parse(users.map((user) => toPersistedUser(user)));
     await this.createBackupIfNeeded();
     await this.store.write(validated);
   }
@@ -365,4 +360,32 @@ export class UserStore {
       logger: this.logger
     });
   }
+}
+
+function normalizePersistedUsers(value: unknown): PersistedUser[] {
+  if (!Array.isArray(value)) {
+    return userStoreSchema.parse(value);
+  }
+  return userStoreSchema.parse(value.map((item) => {
+    if (typeof item !== "object" || item == null) {
+      return item;
+    }
+    const { relationship: _relationship, ...rest } = item as Record<string, unknown>;
+    return rest;
+  }));
+}
+
+function toRuntimeUser(
+  whitelistStore: Pick<WhitelistStore, "getOwnerId">,
+  user: PersistedUser
+): User {
+  return {
+    ...user,
+    relationship: resolveStoredRelationship(whitelistStore, user.userId)
+  };
+}
+
+function toPersistedUser(user: User | PersistedUser): PersistedUser {
+  const { relationship: _relationship, ...rest } = user as User;
+  return rest;
 }

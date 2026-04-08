@@ -75,6 +75,30 @@ async function main() {
     }
   });
 
+  await runCase("whitelist store treats owner as whitelisted and repairs missing owner user entry", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-whitelist-owner-repair-"));
+    try {
+      await writeFile(join(dataDir, "whitelist.json"), `${JSON.stringify({
+        version: 2,
+        ownerId: "10001",
+        users: [],
+        groups: []
+      }, null, 2)}\n`, "utf8");
+      const store = new WhitelistStore(dataDir, pino({ level: "silent" }));
+
+      await store.init();
+
+      assert.equal(store.hasUser("10001"), true);
+      assert.deepEqual(store.getSnapshot(), { ownerId: "10001", users: ["10001"], groups: [] });
+      assert.deepEqual(
+        JSON.parse(await readFile(join(dataDir, "whitelist.json"), "utf8")),
+        { version: 2, ownerId: "10001", users: ["10001"], groups: [] }
+      );
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
   await runCase("event router allows private .own before owner is bound even when whitelist is enabled", async () => {
     const config = createTestAppConfig({
       whitelist: {
@@ -88,6 +112,20 @@ async function main() {
 
     assert.equal(router.toIncomingMessage(createPrivateMessageEvent(".own") as any)?.text, ".own");
     assert.equal(router.toIncomingMessage(createPrivateMessageEvent("hello") as any), null);
+  });
+
+  await runCase("event router allows owner private messages even when owner is missing from users array", async () => {
+    const config = createTestAppConfig({
+      whitelist: {
+        enabled: true
+      }
+    });
+    const router = new EventRouter(config, {
+      hasUser: () => false,
+      getOwnerId: () => "10001"
+    } as any, undefined, isOwnerBootstrapCommandText);
+
+    assert.equal(router.toIncomingMessage(createPrivateMessageEvent("hello") as any)?.text, "hello");
   });
 }
 

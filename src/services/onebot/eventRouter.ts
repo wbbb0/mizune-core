@@ -25,7 +25,9 @@ export class EventRouter {
       }
 
       const userId = String(event.user_id);
-      const userMatched = this.whitelistStore.hasUser(userId) || this.isImplicitlyAllowedUser(userId);
+      const userMatched = this.whitelistStore.hasUser(userId)
+        || this.whitelistStore.getOwnerId() === userId
+        || this.isImplicitlyAllowedUser(userId);
       return userMatched;
     }
 

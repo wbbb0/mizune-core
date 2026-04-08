@@ -45,7 +45,7 @@ export class WhitelistStore {
   }
 
   hasUser(userId: string): boolean {
-    return this.current.users.includes(userId);
+    return this.current.users.includes(userId) || this.current.ownerId === userId;
   }
 
   hasGroup(groupId: string): boolean {
@@ -171,7 +171,10 @@ function normalizeSnapshot(snapshot: WhitelistSnapshot | WhitelistFile): Whiteli
   const ownerId = getOwnerId(snapshot);
   return {
     ...(ownerId ? { ownerId: ownerId.trim() } : {}),
-    users: uniqueSorted(snapshot.users.map((item) => item.trim()).filter(Boolean)),
+    users: uniqueSorted([
+      ...snapshot.users.map((item) => item.trim()).filter(Boolean),
+      ...(ownerId ? [ownerId.trim()] : [])
+    ]),
     groups: uniqueSorted(snapshot.groups.map((item) => item.trim()).filter(Boolean))
   };
 }

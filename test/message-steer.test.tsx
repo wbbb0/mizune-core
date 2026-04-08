@@ -266,6 +266,85 @@ async function main() {
     assert.equal(debounceScheduled, 1);
     assert.equal(sessionManager.getLastInboundDelivery(session.id), "onebot");
   });
+
+  await runCase("owner group mention triggers even when the group is not whitelisted", async () => {
+    const config = createTestAppConfig({
+      whitelist: {
+        enabled: true
+      }
+    });
+    const sessionManager = new SessionManager(config);
+    const session = sessionManager.ensureSession({ id: "group:20001", type: "group" });
+    let debounceScheduled = 0;
+
+    await processIncomingMessage({
+      inboundDelivery: "onebot",
+      services: {
+        config,
+        logger: pino({ level: "silent" }),
+        whitelistStore: {
+          getOwnerId() {
+            return "10001";
+          },
+          hasGroup() {
+            return false;
+          }
+        } as any,
+        router: {} as any,
+        oneBotClient: {} as any,
+        sessionManager,
+        debounceManager: {
+          schedule() {
+            debounceScheduled += 1;
+          }
+        } as any,
+        audioStore: {
+          registerSources: async () => []
+        } as any,
+        mediaWorkspace: {
+          importRemoteSource: async () => null
+        } as any,
+        mediaCaptionService: {
+          schedule() {}
+        } as any,
+        requestStore: {} as any,
+        userStore: {
+          touchSeenUser: async () => ({ relationship: "owner" })
+        } as any,
+        setupStore: {
+          get: async () => ({ state: "ready" })
+        } as any,
+        conversationAccess: {
+          recordSeenGroupMember: async () => {}
+        } as any
+      },
+      handleDirectCommand: async () => {},
+      persistSession: () => {},
+      sendImmediateText: async () => {},
+      flushSession: () => {}
+    }, {
+      chatType: "group",
+      userId: "10001",
+      groupId: "20001",
+      senderName: "owner",
+      text: "@bot 你好",
+      images: [],
+      audioSources: [],
+      audioIds: [],
+      emojiSources: [],
+      imageIds: [],
+      emojiIds: [],
+      attachments: [],
+      forwardIds: [],
+      replyMessageId: null,
+      mentionUserIds: [],
+      mentionedAll: false,
+      isAtMentioned: true
+    });
+
+    assert.equal(debounceScheduled, 1);
+    assert.equal(sessionManager.getLastInboundDelivery(session.id), "onebot");
+  });
 }
 
 main().catch((error) => {
