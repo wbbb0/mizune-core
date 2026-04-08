@@ -4,10 +4,10 @@
 
 ## 任务清单
 
-- [ ] 1. 启动与运行时依赖图收敛（bootstrap/runtime）
+- [x] 1. 启动与运行时依赖图收敛（bootstrap/runtime）
 - [x] 2. 入站消息链路拆分（messageEventHandler）
 - [x] 3. 生成执行器拆分（generationExecutor）
-- [ ] 4. BrowserService 职责拆分
+- [x] 4. BrowserService 职责拆分
 - [x] 5. SessionManager epoch/revision guard 收敛
 - [x] 6. Web tools 模块拆分
 - [x] 7. WebUI/后端流协议类型收敛
@@ -26,3 +26,5 @@
 - [x] commit G：SSE/轮询策略调整
 - [x] commit H：prompt 语言统一
 - [x] commit I：internalApi 依赖耦合收敛（部分）
+- [x] commit J：BrowserService 会话运行时拆分
+- [x] commit K：runtime 依赖装配收敛
