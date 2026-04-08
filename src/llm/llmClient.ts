@@ -252,7 +252,7 @@ export class LlmClient {
         ...(await consumeClonedSteerMessages()),
         {
           role: "system",
-          content: `You have reached the tool call iteration limit (${maxIterations}). Do not call any more tools. Based on the tool results you already have, respond directly to the user. If the task is incomplete, briefly explain what succeeded, what is still missing, and the best next step.`
+          content: `你已达到工具调用轮次上限（${maxIterations}）。不要再调用任何工具。请基于现有工具结果直接回复用户；如果任务仍未完成，请简要说明已完成内容、未完成部分和下一步建议。`
         }
       ],
       ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
@@ -283,13 +283,13 @@ export class LlmClient {
     assistantMetadata?: Record<string, unknown>;
   }> {
     if (!this.config.llm.enabled) {
-      throw new Error("LLM is disabled");
+      throw new Error("LLM 功能未启用");
     }
 
     const requestedModelRefs = normalizeModelRefs(params.modelRefOverride ?? getDefaultMainModelRefs(this.config));
     const providerContexts = this.resolveProviderContexts(requestedModelRefs, params.modelOverride);
     if (providerContexts.length === 0) {
-      throw new Error("LLM is not fully configured");
+      throw new Error("LLM 配置不完整");
     }
 
     const resolvedEnableThinking = params.enableThinkingOverride ?? false;
@@ -445,7 +445,7 @@ export class LlmClient {
         });
       default:
         return JSON.stringify({
-          error: `Unsupported tool: ${toolCall.function.name}`
+          error: `不支持的工具：${toolCall.function.name}`
         });
     }
   }
