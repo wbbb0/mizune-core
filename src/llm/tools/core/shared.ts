@@ -40,7 +40,7 @@ import type {
 } from "#app/generation/generationPromptBuilder.ts";
 import type { PromptLiveResource } from "../../prompt/promptTypes.ts";
 import type { Persona } from "#persona/personaSchema.ts";
-import type { GenerationWebOutputCollector } from "#app/generation/generationExecutor.ts";
+import type { GenerationWebOutputCollector } from "#app/generation/generationTypes.ts";
 import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
 
 export type Relationship = "owner" | "known";

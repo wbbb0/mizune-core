@@ -1,7 +1,8 @@
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 import { sanitizeOutboundText } from "#llm/shared/outboundTextSanitizer.ts";
 import type { GenerationRunnerDeps } from "./generationRunnerDeps.ts";
-import type { GenerationSendTarget, GenerationWebOutputCollector } from "./generationExecutor.ts";
+import type { GenerationSendTarget } from "./generationExecutor.ts";
+import type { GenerationWebOutputCollector } from "./generationTypes.ts";
 
 export interface GenerationOutboundInput {
   sessionId: string;

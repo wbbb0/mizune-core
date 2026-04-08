@@ -3,7 +3,7 @@ import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
-import type { GenerationWebOutputCollector } from "#app/generation/generationExecutor.ts";
+import type { GenerationWebOutputCollector } from "#app/generation/generationTypes.ts";
 import type {
   ParsedSendTextBody,
   ParsedWebSessionStreamQuery,

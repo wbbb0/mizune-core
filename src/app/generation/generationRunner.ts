@@ -30,7 +30,7 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
     options?: {
       skipReplyGate?: boolean;
       delivery?: "onebot" | "web";
-      webOutputCollector?: import("./generationExecutor.ts").GenerationWebOutputCollector;
+      webOutputCollector?: import("./generationTypes.ts").GenerationWebOutputCollector;
     }
   ) => void) | null = null;
 
@@ -100,7 +100,7 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
     options?: {
       skipReplyGate?: boolean;
       delivery?: "onebot" | "web";
-      webOutputCollector?: import("./generationExecutor.ts").GenerationWebOutputCollector;
+      webOutputCollector?: import("./generationTypes.ts").GenerationWebOutputCollector;
     }
   ) => {
     sessionOrchestrator.flushSession(sessionId, options);

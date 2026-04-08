@@ -9,7 +9,7 @@ import {
 } from "../messaging/messageEventHandler.ts";
 import type { AppServiceBootstrap } from "../bootstrap/appServiceBootstrap.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
-import type { GenerationWebOutputCollector } from "../generation/generationExecutor.ts";
+import type { GenerationWebOutputCollector } from "../generation/generationTypes.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionManager.ts";
 
 type DirectCommandDeps = Pick<

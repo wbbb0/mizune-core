@@ -26,6 +26,7 @@ import {
   summarizeToolArgs,
   summarizeToolResult
 } from "./generationExecutorSupport.ts";
+import type { GenerationWebOutputCollector } from "./generationTypes.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -54,10 +55,6 @@ export interface GenerationSendTarget {
   userId: string;
   groupId?: string;
   senderName: string;
-}
-
-export interface GenerationWebOutputCollector {
-  append: (chunk: string) => Promise<void> | void;
 }
 
 export interface RunGenerationInput {

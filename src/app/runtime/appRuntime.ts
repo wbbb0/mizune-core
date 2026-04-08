@@ -270,7 +270,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
   const handleWebIncomingMessage = async (
     incomingMessage: import("#services/onebot/types.ts").ParsedIncomingMessage,
     options: {
-      webOutputCollector: import("../generation/generationExecutor.ts").GenerationWebOutputCollector;
+      webOutputCollector: import("../generation/generationTypes.ts").GenerationWebOutputCollector;
       sessionId?: string;
     }
   ) => {

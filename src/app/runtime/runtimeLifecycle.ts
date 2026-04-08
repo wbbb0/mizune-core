@@ -20,7 +20,7 @@ import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
 import type { WorkspaceService } from "#services/workspace/workspaceService.ts";
-import type { GenerationWebOutputCollector } from "../generation/generationExecutor.ts";
+import type { GenerationWebOutputCollector } from "../generation/generationTypes.ts";
 import type { ComfyTaskRunner } from "#comfy/taskRunner.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 
@@ -62,7 +62,7 @@ export async function startInternalApiIfEnabled(input: {
     options?: {
       skipReplyGate?: boolean;
       delivery?: "onebot" | "web";
-      webOutputCollector?: import("../generation/generationExecutor.ts").GenerationWebOutputCollector;
+      webOutputCollector?: import("../generation/generationTypes.ts").GenerationWebOutputCollector;
     }
   ) => void;
   handleWebIncomingMessage: (
@@ -115,7 +115,7 @@ export function subscribeRuntimeReload(input: {
     options?: {
       skipReplyGate?: boolean;
       delivery?: "onebot" | "web";
-      webOutputCollector?: import("../generation/generationExecutor.ts").GenerationWebOutputCollector;
+      webOutputCollector?: import("../generation/generationTypes.ts").GenerationWebOutputCollector;
     }
   ) => void;
   handleWebIncomingMessage: (

@@ -12,7 +12,7 @@ import type { ShellRuntime } from "#services/shell/runtime.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
 import type { ConfigManager } from "#config/configManager.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
-import type { GenerationWebOutputCollector } from "#app/generation/generationExecutor.ts";
+import type { GenerationWebOutputCollector } from "#app/generation/generationTypes.ts";
 import type { BrowserService } from "#services/web/browser/browserService.ts";
 import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
