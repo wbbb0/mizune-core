@@ -8,7 +8,7 @@
 - [x] 2. 入站消息链路拆分（messageEventHandler）
 - [ ] 3. 生成执行器拆分（generationExecutor）
 - [ ] 4. BrowserService 职责拆分
-- [ ] 5. SessionManager epoch/revision guard 收敛
+- [x] 5. SessionManager epoch/revision guard 收敛
 - [ ] 6. Web tools 模块拆分
 - [ ] 7. WebUI/后端流协议类型收敛
 - [ ] 8. Sessions 页轮询与 SSE 策略收敛
@@ -20,7 +20,7 @@
 - [x] commit A：新增追踪文件
 - [x] commit B：消息入站链路拆分
 - [ ] commit C：生成执行器拆分
-- [ ] commit D：Session guard 收敛
+- [x] commit D：Session guard 收敛
 - [ ] commit E：Web tools 拆分
 - [ ] commit F：协议类型收敛
 - [ ] commit G：SSE/轮询策略调整

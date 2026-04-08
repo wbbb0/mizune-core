@@ -495,12 +495,9 @@ export class SessionManager {
       transcriptStartIndexToKeep: number;
     }
   ): boolean {
-    const session = this.requireSession(sessionId);
-    if (session.mutationEpoch !== expectedEpoch) {
-      return false;
-    }
-    applyCompressedHistoryState(session, payload);
-    return true;
+    return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
+      applyCompressedHistoryState(session, payload);
+    });
   }
 
   applyCompressedHistoryIfHistoryRevisionMatches(
@@ -526,29 +523,26 @@ export class SessionManager {
     content: string,
     timestampMs = Date.now()
   ): boolean {
-    const session = this.requireSession(sessionId);
-    if (session.mutationEpoch !== expectedEpoch) {
-      return false;
-    }
-    const defaultUserId = session.type === "private"
-      ? session.participantUserId
-      : "unknown";
-    appendHistoryEntry(session, role === "user"
-      ? createUserTranscriptMessageItem({
-          chatType: session.type,
-          userId: defaultUserId,
-          senderName: defaultUserId,
-          text: content,
-          timestampMs
-        })
-      : createAssistantTranscriptMessageItem({
-          chatType: session.type,
-          userId: defaultUserId,
-          senderName: defaultUserId,
-          text: content,
-          timestampMs
-        }));
-    return true;
+    return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
+      const defaultUserId = session.type === "private"
+        ? session.participantUserId
+        : "unknown";
+      appendHistoryEntry(session, role === "user"
+        ? createUserTranscriptMessageItem({
+            chatType: session.type,
+            userId: defaultUserId,
+            senderName: defaultUserId,
+            text: content,
+            timestampMs
+          })
+        : createAssistantTranscriptMessageItem({
+            chatType: session.type,
+            userId: defaultUserId,
+            senderName: defaultUserId,
+            text: content,
+            timestampMs
+          }));
+    });
   }
 
   appendHistoryIfResponseEpochMatches(
@@ -562,15 +556,12 @@ export class SessionManager {
     },
     timestampMs = Date.now()
   ): boolean {
-    const session = this.requireSession(sessionId);
-    if (session.responseEpoch !== expectedResponseEpoch || !session.isResponding) {
-      return false;
-    }
-    appendHistoryEntry(session, createAssistantTranscriptMessageItem({
-      ...target,
-      timestampMs
-    }));
-    return true;
+    return this.withResponseEpoch(sessionId, expectedResponseEpoch, true, (session) => {
+      appendHistoryEntry(session, createAssistantTranscriptMessageItem({
+        ...target,
+        timestampMs
+      }));
+    });
   }
 
   appendInternalTranscriptIfEpochMatches(
@@ -578,12 +569,9 @@ export class SessionManager {
     expectedEpoch: number,
     item: InternalTranscriptItem
   ): boolean {
-    const session = this.requireSession(sessionId);
-    if (session.mutationEpoch !== expectedEpoch) {
-      return false;
-    }
-    appendInternalTranscriptState(session, item);
-    return true;
+    return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
+      appendInternalTranscriptState(session, item);
+    });
   }
 
   appendDebugMarkerIfEpochMatches(
@@ -591,12 +579,9 @@ export class SessionManager {
     expectedEpoch: number,
     marker: SessionDebugMarker
   ): boolean {
-    const session = this.requireSession(sessionId);
-    if (session.mutationEpoch !== expectedEpoch) {
-      return false;
-    }
-    appendDebugMarkerState(session, marker);
-    return true;
+    return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
+      appendDebugMarkerState(session, marker);
+    });
   }
 
   appendToolEventIfEpochMatches(
@@ -604,21 +589,15 @@ export class SessionManager {
     expectedEpoch: number,
     event: SessionToolEvent
   ): boolean {
-    const session = this.requireSession(sessionId);
-    if (session.mutationEpoch !== expectedEpoch) {
-      return false;
-    }
-    appendToolEventState(session, event);
-    return true;
+    return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
+      appendToolEventState(session, event);
+    });
   }
 
   setLastLlmUsageIfEpochMatches(sessionId: string, expectedEpoch: number, usage: SessionUsageSnapshot): boolean {
-    const session = this.requireSession(sessionId);
-    if (session.mutationEpoch !== expectedEpoch) {
-      return false;
-    }
-    setLastLlmUsageState(session, usage);
-    return true;
+    return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
+      setLastLlmUsageState(session, usage);
+    });
   }
 
   getSessionView(sessionId: string): {
@@ -721,5 +700,33 @@ export class SessionManager {
       throw new Error(`Session not found: ${sessionId}`);
     }
     return session;
+  }
+
+  private withMutationEpoch(
+    sessionId: string,
+    expectedEpoch: number,
+    mutate: (session: SessionState) => void
+  ): boolean {
+    const session = this.requireSession(sessionId);
+    if (session.mutationEpoch !== expectedEpoch) {
+      return false;
+    }
+    mutate(session);
+    return true;
+  }
+
+  private withResponseEpoch(
+    sessionId: string,
+    expectedResponseEpoch: number,
+    requireResponding: boolean,
+    mutate: (session: SessionState) => void
+  ): boolean {
+    const session = this.requireSession(sessionId);
+    const responseEpochMatched = session.responseEpoch === expectedResponseEpoch;
+    if (!responseEpochMatched || (requireResponding && !session.isResponding)) {
+      return false;
+    }
+    mutate(session);
+    return true;
   }
 }
