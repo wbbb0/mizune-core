@@ -14,7 +14,7 @@ const createDialogOpen = ref(false);
 const createDialogBusy = ref(false);
 const createDialogError = ref("");
 
-// Poll session list every 5s for status updates (pending count, generating)
+// Fallback polling: only refresh list while stream is unavailable.
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 onMounted(async () => {
@@ -24,7 +24,11 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
-  pollTimer = setInterval(() => store.refresh(), 5_000);
+  pollTimer = setInterval(() => {
+    if (!store.active || store.active.streamStatus !== "connected") {
+      void store.refresh();
+    }
+  }, 10_000);
 });
 
 onUnmounted(() => {
