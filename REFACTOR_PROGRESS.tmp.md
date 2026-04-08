@@ -5,7 +5,7 @@
 ## 任务清单
 
 - [ ] 1. 启动与运行时依赖图收敛（bootstrap/runtime）
-- [ ] 2. 入站消息链路拆分（messageEventHandler）
+- [x] 2. 入站消息链路拆分（messageEventHandler）
 - [ ] 3. 生成执行器拆分（generationExecutor）
 - [ ] 4. BrowserService 职责拆分
 - [ ] 5. SessionManager epoch/revision guard 收敛
@@ -17,8 +17,8 @@
 
 ## 提交记录
 
-- [ ] commit A：新增追踪文件
-- [ ] commit B：消息入站链路拆分
+- [x] commit A：新增追踪文件
+- [x] commit B：消息入站链路拆分
 - [ ] commit C：生成执行器拆分
 - [ ] commit D：Session guard 收敛
 - [ ] commit E：Web tools 拆分
@@ -26,4 +26,3 @@
 - [ ] commit G：SSE/轮询策略调整
 - [ ] commit H：prompt 语言统一
 - [ ] commit I：bootstrap/runtime 与 internalApi 依赖收敛
-
