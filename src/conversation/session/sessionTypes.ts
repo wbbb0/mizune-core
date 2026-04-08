@@ -312,7 +312,7 @@ export interface ComfyTaskCompletedTriggerExecution {
   aspectRatio: string;
   resolvedWidth: number;
   resolvedHeight: number;
-  workspaceAssetIds: string[];
+  workspaceFileIds: string[];
   workspacePaths: string[];
   comfyPromptId: string;
   autoIterationIndex: number;

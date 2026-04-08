@@ -23,7 +23,7 @@ export function buildReplyGatePrompt(input: {
     imageIds: string[];
     emojiIds: string[];
     attachments?: Array<{
-      assetId: string;
+      fileId: string;
       kind: string;
       semanticKind?: "image" | "emoji";
     }>;
@@ -143,7 +143,7 @@ function formatBatch(input: Array<{
   imageIds: string[];
   emojiIds: string[];
   attachments?: Array<{
-    assetId: string;
+    fileId: string;
     kind: string;
     semanticKind?: "image" | "emoji";
   }>;
@@ -177,7 +177,7 @@ function formatBatch(input: Array<{
       }
       for (const attachment of message.attachments ?? []) {
         if (attachment.semanticKind === "emoji") {
-          parts.push(formatStructuredEmojiReference(attachment.assetId));
+          parts.push(formatStructuredEmojiReference(attachment.fileId));
         }
       }
       if (message.images.length > 0) {

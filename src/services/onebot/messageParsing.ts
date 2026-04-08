@@ -84,17 +84,17 @@ function buildInitialAttachments(
 ): ChatAttachment[] {
   return [
     ...images.map((source, index) => ({
-      assetId: `pending:image:${index}:${source}`,
+      fileId: `pending:image:${index}:${source}`,
       kind: "image" as const,
       source: "chat_message" as const,
-      filename: null,
+      sourceName: null,
       mimeType: null
     })),
     ...fileSources.map((item, index) => ({
-      assetId: `pending:file:${index}:${item.source}`,
+      fileId: `pending:file:${index}:${item.source}`,
       kind: "file" as const,
       source: "chat_message" as const,
-      filename: item.filename,
+      sourceName: item.filename,
       mimeType: item.mimeType
     }))
   ];

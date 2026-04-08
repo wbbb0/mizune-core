@@ -16,7 +16,7 @@ export class ComfyTaskRunner {
       comfyClient: ComfyClient;
       comfyTaskStore: ComfyTaskStore;
       mediaWorkspace: MediaWorkspace;
-      notifyCompletedTask: (task: ComfyTaskRecord, assets: Array<{ assetId: string; path: string }>) => Promise<void>;
+      notifyCompletedTask: (task: ComfyTaskRecord, assets: Array<{ fileId: string; path: string }>) => Promise<void>;
       notifyFailedTask: (task: ComfyTaskRecord) => Promise<void>;
     }
   ) {}
@@ -117,12 +117,12 @@ export class ComfyTaskRunner {
       return;
     }
 
-    const assets: Array<{ assetId: string; path: string }> = [];
+    const assets: Array<{ fileId: string; path: string }> = [];
     for (const file of history.images) {
       const bytes = await this.input.comfyClient.downloadView(file);
       const imported = await this.input.mediaWorkspace.importBuffer({
         buffer: bytes,
-        filename: file.filename,
+        sourceName: file.filename,
         mimeType: "image/png",
         kind: "image",
         origin: "comfy_generated",
@@ -140,15 +140,15 @@ export class ComfyTaskRunner {
         }
       });
       assets.push({
-        assetId: imported.assetId,
-        path: imported.storagePath
+        fileId: imported.fileId,
+        path: imported.workspacePath
       });
     }
 
     const completed = {
       ...task,
       status: "notified" as const,
-      resultAssetIds: assets.map((item) => item.assetId),
+      resultAssetIds: assets.map((item) => item.fileId),
       resultFiles: history.images,
       finishedAtMs: Date.now()
     };

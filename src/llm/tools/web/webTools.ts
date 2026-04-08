@@ -1,7 +1,7 @@
 import type { LlmToolExecutionResult } from "../../llmClient.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getBooleanArg, getNumberArg, getStringArg, getStringArrayArg } from "../core/toolArgHelpers.ts";
-import { mapWorkspaceAssetToFileView } from "../core/workspaceFileView.ts";
+import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
 import type { BrowserActionTarget, BrowserCoordinate } from "#services/web/browser/types.ts";
 import { isBrowserInteractionAction } from "#services/web/browser/types.ts";
 
@@ -476,7 +476,7 @@ export const webToolHandlers: Record<string, ToolHandler> = {
     }
     try {
       const result = await context.browserService.capturePageScreenshot(resourceId);
-      return buildScreenshotToolResult(result.imageId, result, context);
+      return buildScreenshotToolResult(result.fileId, result, context);
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -495,7 +495,7 @@ export const webToolHandlers: Record<string, ToolHandler> = {
     }
     try {
       const result = await context.browserService.captureElementScreenshot(resourceId, Number(targetId));
-      return buildScreenshotToolResult(result.imageId, result, context);
+      return buildScreenshotToolResult(result.fileId, result, context);
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -520,13 +520,13 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         ...(url ? { url } : {}),
         ...(resourceId ? { resourceId } : {}),
         ...(targetId !== undefined ? { targetId } : {}),
-        ...(filename ? { filename } : {}),
+        ...(filename ? { sourceName: filename } : {}),
         ...(kind ? { kind } : {})
       });
-      const asset = await context.mediaWorkspace.getAsset(result.asset_id);
+      const asset = await context.mediaWorkspace.getFile(result.file_id);
       return JSON.stringify({
         ok: true,
-        ...(asset ? mapWorkspaceAssetToFileView(asset) : { file_id: result.asset_id }),
+        ...(asset ? mapWorkspaceFileToView(asset) : { file_id: result.file_id }),
         kind: result.kind,
         mime_type: asset?.mimeType ?? result.mimeType,
         size_bytes: asset?.sizeBytes ?? result.sizeBytes,
@@ -671,12 +671,12 @@ async function buildScreenshotToolResult(
   result: unknown,
   context: Parameters<ToolHandler>[2]
 ): Promise<LlmToolExecutionResult | string> {
-  const prepared = await context.mediaVisionService.prepareAssetForModel(imageId).catch(() => null);
-  const asset = await context.mediaWorkspace.getAsset(imageId).catch(() => null);
+  const prepared = await context.mediaVisionService.prepareFileForModel(imageId).catch(() => null);
+  const asset = await context.mediaWorkspace.getFile(imageId).catch(() => null);
   const contentPayload = asset
     ? {
         ok: true,
-        ...mapWorkspaceAssetToFileView(asset),
+        ...mapWorkspaceFileToView(asset),
         mode: typeof result === "object" && result && "mode" in result ? (result as { mode?: unknown }).mode : null,
         resource_id: typeof result === "object" && result && "resource_id" in result ? (result as { resource_id?: unknown }).resource_id : null,
         profile_id: typeof result === "object" && result && "profile_id" in result ? (result as { profile_id?: unknown }).profile_id : null,
@@ -694,7 +694,7 @@ async function buildScreenshotToolResult(
       content: [
         {
           type: "text",
-          text: `以下截图来自浏览器工具，请结合它继续完成当前页面任务。file_id=${asset?.assetId ?? imageId}${asset?.displayName ? ` file_ref=${asset.displayName}` : ""}${caption ? ` caption=${caption}` : ""}`
+          text: `以下截图来自浏览器工具，请结合它继续完成当前页面任务。file_id=${asset?.fileId ?? imageId}${asset?.fileRef ? ` file_ref=${asset.fileRef}` : ""}${caption ? ` caption=${caption}` : ""}`
         },
         {
           type: "image_url",

@@ -211,7 +211,7 @@ export interface BrowserScreenshotResult {
   ok: true;
   resource_id: string;
   profile_id: string | null;
-  imageId: string;
+  fileId: string;
   mimeType: string;
   sizeBytes: number;
   mode: "page" | "element";
@@ -222,15 +222,15 @@ export interface DownloadBrowserAssetInput {
   url?: string | undefined;
   resourceId?: string | undefined;
   targetId?: number | undefined;
-  filename?: string | undefined;
+  sourceName?: string | undefined;
   kind?: "image" | "animated_image" | "video" | "audio" | "file" | undefined;
 }
 
 export interface DownloadBrowserAssetResult {
   ok: true;
-  asset_id: string;
+  file_id: string;
   kind: "image" | "animated_image" | "video" | "audio" | "file";
-  filename: string;
+  source_name: string;
   mimeType: string;
   sizeBytes: number;
   origin: "browser_download";

@@ -46,10 +46,10 @@ async function main() {
       workspaceService: {} as any,
       mediaWorkspace: {} as any,
       mediaVisionService: {
-        async prepareAssetsForModel(imageIds: string[]) {
+        async prepareFilesForModel(imageIds: string[]) {
           capturedImageIdCalls.push(imageIds);
           return [{
-            assetId: imageIds[0] ?? "asset_1",
+            fileId: imageIds[0] ?? "file_1",
             inputUrl: "data:image/png;base64,AAAA",
             kind: "image",
             transport: "data_url",
@@ -102,10 +102,10 @@ async function main() {
         imageIds: ["img-1"],
         emojiIds: [],
         attachments: [{
-          assetId: "asset_1",
+          fileId: "file_1",
           kind: "image",
           source: "chat_message",
-          filename: "a.png",
+          sourceName: "a.png",
           mimeType: "image/png",
           semanticKind: "image"
         }],
@@ -118,7 +118,7 @@ async function main() {
       }]
     });
 
-    assert.deepEqual(capturedImageIdCalls, [["asset_1"], []]);
+    assert.deepEqual(capturedImageIdCalls, [["file_1"], []]);
     const content = result.promptMessages[1]?.content;
     assert.ok(Array.isArray(content));
     assert.equal(content.some((part) => part.type === "image_url"), true);
@@ -162,7 +162,7 @@ async function main() {
       workspaceService: {} as any,
       mediaWorkspace: {} as any,
       mediaVisionService: {
-        async prepareAssetsForModel() {
+        async prepareFilesForModel() {
           return [];
         }
       } as any,

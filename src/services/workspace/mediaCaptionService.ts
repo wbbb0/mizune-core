@@ -4,7 +4,7 @@ import { normalizeModelRefs, resolveModelRefsForType } from "#llm/shared/modelPr
 import type { LlmClient, LlmMessage } from "#llm/llmClient.ts";
 import type { MediaWorkspace } from "./mediaWorkspace.ts";
 import type { MediaVisionService } from "./mediaVisionService.ts";
-import type { WorkspaceAssetRecord } from "./types.ts";
+import type { WorkspaceStoredFileRecord } from "./types.ts";
 
 function buildCaptionPrompt(): LlmMessage[] {
   return [
@@ -43,8 +43,8 @@ export class MediaCaptionService {
   constructor(
     private readonly config: AppConfig,
     private readonly llmClient: LlmClient,
-    private readonly mediaWorkspace: Pick<MediaWorkspace, "getAsset" | "getMany" | "updateCaption">,
-    private readonly mediaVisionService: Pick<MediaVisionService, "prepareAssetForModel">,
+    private readonly mediaWorkspace: Pick<MediaWorkspace, "getFile" | "getMany" | "updateCaption">,
+    private readonly mediaVisionService: Pick<MediaVisionService, "prepareFileForModel">,
     private readonly logger: Logger
   ) {}
 
@@ -56,24 +56,24 @@ export class MediaCaptionService {
       && this.llmClient.isConfigured(modelRefs);
   }
 
-  async getCaptionMap(assetIds: string[]): Promise<Map<string, string>> {
-    const assets = await this.mediaWorkspace.getMany(uniqueIds(assetIds));
+  async getCaptionMap(fileIds: string[]): Promise<Map<string, string>> {
+    const files = await this.mediaWorkspace.getMany(uniqueIds(fileIds));
     return new Map(
-      assets
+      files
         .filter((item) => typeof item.caption === "string" && item.caption.length > 0)
-        .map((item) => [item.assetId, item.caption as string])
+        .map((item) => [item.fileId, item.caption as string])
     );
   }
 
-  schedule(assetIds: string[], reason: string): void {
+  schedule(fileIds: string[], reason: string): void {
     if (!this.isEnabled()) {
       return;
     }
-    void this.enqueue(uniqueIds(assetIds), reason);
+    void this.enqueue(uniqueIds(fileIds), reason);
   }
 
-  async ensureReady(assetIds: string[], options?: { reason?: string; abortSignal?: AbortSignal }): Promise<Map<string, string>> {
-    const ids = uniqueIds(assetIds);
+  async ensureReady(fileIds: string[], options?: { reason?: string; abortSignal?: AbortSignal }): Promise<Map<string, string>> {
+    const ids = uniqueIds(fileIds);
     if (ids.length === 0) {
       return new Map();
     }
@@ -81,55 +81,55 @@ export class MediaCaptionService {
       return this.getCaptionMap(ids);
     }
     await this.enqueue(ids, options?.reason ?? "ensure_ready");
-    await Promise.all(ids.map((assetId) => this.waitForCompletion(assetId, options?.abortSignal)));
+    await Promise.all(ids.map((fileId) => this.waitForCompletion(fileId, options?.abortSignal)));
     return this.getCaptionMap(ids);
   }
 
-  private async enqueue(assetIds: string[], reason: string): Promise<void> {
-    const existing = await this.mediaWorkspace.getMany(assetIds);
+  private async enqueue(fileIds: string[], reason: string): Promise<void> {
+    const existing = await this.mediaWorkspace.getMany(fileIds);
     const pendingIds = existing
-      .filter(isCaptionableAsset)
+      .filter(isCaptionableFile)
       .filter((item) => !item.caption)
-      .map((item) => item.assetId);
+      .map((item) => item.fileId);
     if (pendingIds.length === 0) {
       return;
     }
-    for (const assetId of pendingIds) {
-      if (this.queued.has(assetId) || this.running.has(assetId)) {
+    for (const fileId of pendingIds) {
+      if (this.queued.has(fileId) || this.running.has(fileId)) {
         continue;
       }
-      this.queued.add(assetId);
-      this.pending.push(assetId);
+      this.queued.add(fileId);
+      this.pending.push(fileId);
     }
-    this.logger.debug({ assetCount: pendingIds.length, reason }, "media_caption_enqueued");
+    this.logger.debug({ fileCount: pendingIds.length, reason }, "media_caption_enqueued");
     this.pump();
   }
 
   private pump(): void {
     const maxConcurrency = this.config.llm.imageCaptioner.maxConcurrency;
     while (this.running.size < maxConcurrency) {
-      const nextAssetId = this.pending.shift();
-      if (!nextAssetId) {
+      const nextFileId = this.pending.shift();
+      if (!nextFileId) {
         return;
       }
-      this.queued.delete(nextAssetId);
-      const task = this.runCaption(nextAssetId).finally(() => {
-        this.running.delete(nextAssetId);
-        this.notifyWaiters(nextAssetId);
+      this.queued.delete(nextFileId);
+      const task = this.runCaption(nextFileId).finally(() => {
+        this.running.delete(nextFileId);
+        this.notifyWaiters(nextFileId);
         this.pump();
       });
-      this.running.set(nextAssetId, task);
+      this.running.set(nextFileId, task);
     }
   }
 
-  private async runCaption(assetId: string): Promise<void> {
+  private async runCaption(fileId: string): Promise<void> {
     const modelRef = this.resolveModelRefs();
     try {
-      const asset = await this.mediaWorkspace.getAsset(assetId);
-      if (!asset || !isCaptionableAsset(asset) || asset.caption) {
+      const file = await this.mediaWorkspace.getFile(fileId);
+      if (!file || !isCaptionableFile(file) || file.caption) {
         return;
       }
-      const prepared = await this.mediaVisionService.prepareAssetForModel(assetId);
+      const prepared = await this.mediaVisionService.prepareFileForModel(fileId);
       const result = await this.llmClient.generate({
         modelRefOverride: modelRef,
         timeoutMsOverride: this.config.llm.imageCaptioner.timeoutMs,
@@ -143,7 +143,7 @@ export class MediaCaptionService {
             content: [
               {
                 type: "text",
-                text: asset.sourceContext.mediaKind === "emoji"
+                text: file.sourceContext.mediaKind === "emoji"
                   ? "请为这张聊天表情图生成一句极短描述。"
                   : "请为这张聊天图片生成一句极短描述。"
               },
@@ -157,25 +157,25 @@ export class MediaCaptionService {
           }
         ]
       });
-      const fallbackLabel = asset.sourceContext.mediaKind === "emoji" ? "一个聊天表情" : "一张聊天图片";
+      const fallbackLabel = file.sourceContext.mediaKind === "emoji" ? "一个聊天表情" : "一张聊天图片";
       const caption = normalizeCaption(result.text, fallbackLabel);
-      await this.mediaWorkspace.updateCaption(assetId, caption);
+      await this.mediaWorkspace.updateCaption(fileId, caption);
       this.logger.debug({
-        assetId,
+        fileId,
         modelRef: result.usage.modelRef ?? normalizeModelRefs(modelRef)[0] ?? "unknown",
         caption
       }, "media_caption_succeeded");
     } catch (error: unknown) {
       this.logger.warn({
-        assetId,
+        fileId,
         error: error instanceof Error ? error.message : String(error)
       }, "media_caption_failed");
     }
   }
 
-  private async waitForCompletion(assetId: string, abortSignal?: AbortSignal): Promise<void> {
-    const existing = await this.mediaWorkspace.getAsset(assetId);
-    if (!existing || existing.caption || !isCaptionableAsset(existing)) {
+  private async waitForCompletion(fileId: string, abortSignal?: AbortSignal): Promise<void> {
+    const existing = await this.mediaWorkspace.getFile(fileId);
+    if (!existing || existing.caption || !isCaptionableFile(existing)) {
       return;
     }
     if (abortSignal?.aborted) {
@@ -183,39 +183,39 @@ export class MediaCaptionService {
     }
     await new Promise<void>((resolve, reject) => {
       const onAbort = () => {
-        this.removeWaiter(assetId, waiter);
+        this.removeWaiter(fileId, waiter);
         reject(abortSignal?.reason instanceof Error ? abortSignal.reason : new Error("Media caption wait aborted"));
       };
       const waiter = () => {
         abortSignal?.removeEventListener("abort", onAbort);
         resolve();
       };
-      const listeners = this.waiters.get(assetId) ?? new Set<() => void>();
+      const listeners = this.waiters.get(fileId) ?? new Set<() => void>();
       listeners.add(waiter);
-      this.waiters.set(assetId, listeners);
+      this.waiters.set(fileId, listeners);
       abortSignal?.addEventListener("abort", onAbort, { once: true });
     });
   }
 
-  private notifyWaiters(assetId: string): void {
-    const listeners = this.waiters.get(assetId);
+  private notifyWaiters(fileId: string): void {
+    const listeners = this.waiters.get(fileId);
     if (!listeners) {
       return;
     }
-    this.waiters.delete(assetId);
+    this.waiters.delete(fileId);
     for (const listener of listeners) {
       listener();
     }
   }
 
-  private removeWaiter(assetId: string, waiter: () => void): void {
-    const listeners = this.waiters.get(assetId);
+  private removeWaiter(fileId: string, waiter: () => void): void {
+    const listeners = this.waiters.get(fileId);
     if (!listeners) {
       return;
     }
     listeners.delete(waiter);
     if (listeners.size === 0) {
-      this.waiters.delete(assetId);
+      this.waiters.delete(fileId);
     }
   }
 
@@ -225,10 +225,10 @@ export class MediaCaptionService {
   }
 }
 
-function isCaptionableAsset(asset: WorkspaceAssetRecord): boolean {
-  return asset.kind === "image" || asset.kind === "animated_image";
+function isCaptionableFile(file: WorkspaceStoredFileRecord): boolean {
+  return file.kind === "image" || file.kind === "animated_image";
 }
 
-function uniqueIds(assetIds: string[]): string[] {
-  return Array.from(new Set(assetIds.map((item) => String(item ?? "").trim()).filter(Boolean)));
+function uniqueIds(fileIds: string[]): string[] {
+  return Array.from(new Set(fileIds.map((item) => String(item ?? "").trim()).filter(Boolean)));
 }

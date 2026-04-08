@@ -3,7 +3,7 @@ import type { OneBotMessageSegment } from "#services/onebot/types.ts";
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
-import { mapWorkspaceAssetToFileView } from "../core/workspaceFileView.ts";
+import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
 
 const isWorkspaceToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.workspace.enabled;
 
@@ -324,10 +324,10 @@ export const workspaceToolHandlers: Record<string, ToolHandler> = {
   async list_workspace_files(_toolCall, args, context) {
     const kind = getStringArg(args, "kind");
     const limit = getNumberArg(args, "limit");
-    const files = (await context.mediaWorkspace.listAssets())
+    const files = (await context.mediaWorkspace.listFiles())
       .filter((item) => !kind || item.kind === kind)
       .slice(0, limit ?? 50)
-      .map((item) => mapWorkspaceAssetToFileView(item));
+      .map((item) => mapWorkspaceFileToView(item));
     return JSON.stringify({
       ok: true,
       files
@@ -339,8 +339,8 @@ export const workspaceToolHandlers: Record<string, ToolHandler> = {
     if (!fileRef) {
       return JSON.stringify({ error: "file_ref or file_id is required" });
     }
-    const asset = await resolveWorkspaceAsset(context, fileRef);
-    if (!asset) {
+    const file = await resolveWorkspaceFile(context, fileRef);
+    if (!file) {
       return JSON.stringify({ error: await buildUnknownAssetError(context, fileRef) });
     }
     const target = parseSessionTarget(context.lastMessage.sessionId);
@@ -349,8 +349,8 @@ export const workspaceToolHandlers: Record<string, ToolHandler> = {
     }
     const delivery = resolveToolDelivery(context);
     const text = getStringArg(args, "text");
-    if (asset.kind !== "image" && asset.kind !== "animated_image") {
-      const summary = text || `文件已保存在工作区：${asset.displayName}；file_id=${asset.assetId}`;
+    if (file.kind !== "image" && file.kind !== "animated_image") {
+      const summary = text || `文件已保存在工作区：${file.fileRef}；file_id=${file.fileId}`;
       enqueueToolSend(context, summary, async () => {
         if (delivery === "web") {
           await context.webOutputCollector?.append(summary);
@@ -370,8 +370,8 @@ export const workspaceToolHandlers: Record<string, ToolHandler> = {
       return {
         content: JSON.stringify({
           ok: true,
-          file_ref: asset.displayName,
-          file_id: asset.assetId,
+          file_ref: file.fileRef,
+          file_id: file.fileId,
           deliveredAs: "text_fallback",
           queued: true,
           reason: "native file sending is not enabled in this phase"
@@ -381,12 +381,12 @@ export const workspaceToolHandlers: Record<string, ToolHandler> = {
     if (text) {
       return JSON.stringify({ error: "send_workspace_file_to_chat 发送图片时不能附带 text；若需要文字，请让模型单独发送回复" });
     }
-    const absolutePath = await context.mediaWorkspace.resolveAbsolutePath(asset.assetId);
+    const absolutePath = await context.mediaWorkspace.resolveAbsolutePath(file.fileId);
     const bytes = await readFile(absolutePath);
     const segments: OneBotMessageSegment[] = [
       { type: "image", data: { file: `base64://${bytes.toString("base64")}` } }
     ];
-    enqueueToolSend(context, asset.displayName || asset.filename || asset.assetId, async () => {
+    enqueueToolSend(context, file.fileRef || file.sourceName || file.fileId, async () => {
       if (delivery === "web") {
         context.sessionManager.appendInternalTranscript(context.lastMessage.sessionId, {
           kind: "outbound_media_message",
@@ -394,10 +394,10 @@ export const workspaceToolHandlers: Record<string, ToolHandler> = {
           role: "assistant",
           delivery: "web",
           mediaKind: "image",
-          fileId: asset.assetId,
-          fileRef: asset.displayName ?? null,
-          sourceName: asset.filename ?? null,
-          workspacePath: asset.storagePath ?? null,
+          fileId: file.fileId,
+          fileRef: file.fileRef ?? null,
+          sourceName: file.sourceName ?? null,
+          workspacePath: file.workspacePath ?? null,
           messageId: null,
           toolName: "send_workspace_file_to_chat",
           captionText: null,
@@ -410,17 +410,17 @@ export const workspaceToolHandlers: Record<string, ToolHandler> = {
         ...target,
         message: segments
       });
-      const messageId = recordDeliveredMessage(context, asset.displayName || asset.filename || asset.assetId, payload.data?.message_id);
+      const messageId = recordDeliveredMessage(context, file.fileRef || file.sourceName || file.fileId, payload.data?.message_id);
       context.sessionManager.appendInternalTranscript(context.lastMessage.sessionId, {
         kind: "outbound_media_message",
         llmVisible: false,
         role: "assistant",
         delivery: "onebot",
         mediaKind: "image",
-        fileId: asset.assetId,
-        fileRef: asset.displayName ?? null,
-        sourceName: asset.filename ?? null,
-        workspacePath: asset.storagePath ?? null,
+        fileId: file.fileId,
+        fileRef: file.fileRef ?? null,
+        sourceName: file.sourceName ?? null,
+        workspacePath: file.workspacePath ?? null,
         messageId,
         toolName: "send_workspace_file_to_chat",
         captionText: null,
@@ -430,8 +430,8 @@ export const workspaceToolHandlers: Record<string, ToolHandler> = {
     return {
       content: JSON.stringify({
         ok: true,
-        file_ref: asset.displayName,
-        file_id: asset.assetId,
+        file_ref: file.fileRef,
+        file_id: file.fileId,
         deliveredAs: "image",
         queued: true
       })
@@ -465,34 +465,34 @@ async function buildUnknownAssetError(
     return "Unknown workspace file";
   }
 
-  const assets = await context.mediaWorkspace.listAssets().catch(() => []);
-  const matchedByDisplayName = assets.find((item) => item.displayName === normalized);
+  const files = await context.mediaWorkspace.listFiles().catch(() => []);
+  const matchedByDisplayName = files.find((item) => item.fileRef === normalized);
   if (matchedByDisplayName) {
     return [
       `Unknown workspace file: ${normalized}`,
-      `received file_ref display name; use file_ref=${matchedByDisplayName.displayName} or file_id=${matchedByDisplayName.assetId}`
+      `received file_ref display name; use file_ref=${matchedByDisplayName.fileRef} or file_id=${matchedByDisplayName.fileId}`
     ].join("; ");
   }
-  const matchedByStoredFilename = assets.find((item) => item.storagePath.split("/").at(-1) === normalized);
+  const matchedByStoredFilename = files.find((item) => item.workspacePath.split("/").at(-1) === normalized);
   if (matchedByStoredFilename) {
     return [
       `Unknown workspace file: ${normalized}`,
-      `received storage filename; use file_ref=${matchedByStoredFilename.displayName} or file_id=${matchedByStoredFilename.assetId}`
+      `received storage filename; use file_ref=${matchedByStoredFilename.fileRef} or file_id=${matchedByStoredFilename.fileId}`
     ].join("; ");
   }
 
-  const matchedByFilename = assets.find((item) => item.filename === normalized);
+  const matchedByFilename = files.find((item) => item.sourceName === normalized);
   if (matchedByFilename) {
     return [
       `Unknown workspace file: ${normalized}`,
-      `received source filename; use file_ref=${matchedByFilename.displayName} or file_id=${matchedByFilename.assetId}`
+      `received source filename; use file_ref=${matchedByFilename.fileRef} or file_id=${matchedByFilename.fileId}`
     ].join("; ");
   }
 
   return `${"Unknown workspace file: "}${normalized}. 直接用 file_ref；若系统同时给了 file_id，file_id 是稳定主键。`;
 }
 
-async function resolveWorkspaceAsset(
+async function resolveWorkspaceFile(
   context: Parameters<NonNullable<typeof workspaceToolHandlers.send_workspace_file_to_chat>>[2],
   assetRef: string
 ) {
@@ -500,14 +500,14 @@ async function resolveWorkspaceAsset(
   if (!normalized) {
     return null;
   }
-  const direct = await context.mediaWorkspace.getAsset(normalized);
+  const direct = await context.mediaWorkspace.getFile(normalized);
   if (direct) {
     return direct;
   }
-  const assets = await context.mediaWorkspace.listAssets().catch(() => []);
-  return assets.find((item) => (
-    item.displayName === normalized
-    || item.storagePath.split("/").at(-1) === normalized
-    || item.filename === normalized
+  const files = await context.mediaWorkspace.listFiles().catch(() => []);
+  return files.find((item) => (
+    item.fileRef === normalized
+    || item.workspacePath.split("/").at(-1) === normalized
+    || item.sourceName === normalized
   )) ?? null;
 }

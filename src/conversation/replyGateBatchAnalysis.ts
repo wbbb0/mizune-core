@@ -4,7 +4,7 @@ export interface ReplyGateBatchAnalysisMessage {
   imageIds?: string[];
   emojiIds?: string[];
   attachments?: Array<{
-    assetId: string;
+    fileId: string;
     kind: string;
     semanticKind?: "image" | "emoji";
   }>;

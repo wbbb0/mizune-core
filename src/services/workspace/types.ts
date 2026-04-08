@@ -53,8 +53,8 @@ export interface WorkspacePatchResult {
   hunksApplied: number;
 }
 
-export type WorkspaceAssetKind = "image" | "animated_image" | "video" | "audio" | "file";
-export type WorkspaceAssetOrigin =
+export type WorkspaceStoredFileKind = "image" | "animated_image" | "video" | "audio" | "file";
+export type WorkspaceStoredFileOrigin =
   | "chat_message"
   | "browser_download"
   | "browser_screenshot"
@@ -62,13 +62,13 @@ export type WorkspaceAssetOrigin =
   | "workspace_import"
   | "user_upload";
 
-export interface WorkspaceAssetRecord {
-  assetId: string;
-  displayName: string;
-  kind: WorkspaceAssetKind;
-  origin: WorkspaceAssetOrigin;
-  storagePath: string;
-  filename: string;
+export interface WorkspaceStoredFileRecord {
+  fileId: string;
+  fileRef: string;
+  kind: WorkspaceStoredFileKind;
+  origin: WorkspaceStoredFileOrigin;
+  workspacePath: string;
+  sourceName: string;
   mimeType: string;
   sizeBytes: number;
   createdAtMs: number;
@@ -77,10 +77,10 @@ export interface WorkspaceAssetRecord {
 }
 
 export interface ChatAttachment {
-  assetId: string;
-  kind: WorkspaceAssetKind;
+  fileId: string;
+  kind: WorkspaceStoredFileKind;
   source: "chat_message" | "web_upload" | "browser" | "workspace";
-  filename: string | null;
+  sourceName: string | null;
   mimeType: string | null;
   semanticKind?: "image" | "emoji";
 }

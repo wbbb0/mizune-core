@@ -95,11 +95,11 @@ export function formatHistoryContent(input: {
   }
   for (const attachment of input.attachments ?? []) {
     if (attachment.semanticKind === "emoji") {
-      parts.push(formatStructuredEmojiReference(attachment.assetId));
+      parts.push(formatStructuredEmojiReference(attachment.fileId));
       continue;
     }
     if (attachment.kind === "image" || attachment.kind === "animated_image") {
-      parts.push(formatStructuredImageReference(attachment.assetId));
+      parts.push(formatStructuredImageReference(attachment.fileId));
     }
   }
   for (const forwardId of input.forwardIds ?? []) {

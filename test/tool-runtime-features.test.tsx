@@ -335,23 +335,24 @@ async function main() {
 
   await runCase("send_workspace_file_to_chat rejects text when sending an image", async () => {
     const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
-      { id: "tool_workspace_send_text_reject", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_id\":\"asset_img_1\",\"text\":\"发你了\"}" } },
+      { id: "tool_workspace_send_text_reject", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_id\":\"file_img_1\",\"text\":\"发你了\"}" } },
       { file_ref: "img_deadbeef.png", text: "发你了" },
       {
         lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
         mediaWorkspace: {
-          async getAsset(id: string) {
-            if (id !== "img_deadbeef.png" && id !== "asset_img_1") {
+          async getFile(id: string) {
+            if (id !== "img_deadbeef.png" && id !== "file_img_1") {
               return null;
             }
             return {
-              assetId: "asset_img_1",
-              displayName: "img_deadbeef.png",
+              fileId: "file_img_1",
+              fileRef: "img_deadbeef.png",
               kind: "image",
-              filename: "test.png"
+              sourceName: "test.png",
+              workspacePath: "workspace/media/file_img_1.png"
             };
           },
-          async listAssets() {
+          async listFiles() {
             return [];
           }
         }
@@ -380,18 +381,19 @@ async function main() {
       {
         lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
         mediaWorkspace: {
-          async getAsset(id: string) {
-            if (id !== "img_deadbeef.png" && id !== "asset_img_1") {
+          async getFile(id: string) {
+            if (id !== "img_deadbeef.png" && id !== "file_img_1") {
               return null;
             }
             return {
-              assetId: "asset_img_1",
-              displayName: "img_deadbeef.png",
+              fileId: "file_img_1",
+              fileRef: "img_deadbeef.png",
               kind: "image",
-              filename: "test.png"
+              sourceName: "test.png",
+              workspacePath: "workspace/media/file_img_1.png"
             };
           },
-          async listAssets() {
+          async listFiles() {
             return [];
           },
           async resolveAbsolutePath() {
@@ -426,7 +428,7 @@ async function main() {
     assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
       ok: true,
       file_ref: "img_deadbeef.png",
-      file_id: "asset_img_1",
+      file_id: "file_img_1",
       deliveredAs: "image",
       queued: true
     });
@@ -451,10 +453,10 @@ async function main() {
       role: "assistant",
       delivery: "onebot",
       mediaKind: "image",
-      fileId: "asset_img_1",
+      fileId: "file_img_1",
       fileRef: "img_deadbeef.png",
       sourceName: "test.png",
-      workspacePath: null,
+      workspacePath: "workspace/media/file_img_1.png",
       messageId: 42,
       toolName: "send_workspace_file_to_chat",
       captionText: null,
@@ -478,18 +480,19 @@ async function main() {
       {
         lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
         mediaWorkspace: {
-          async getAsset(id: string) {
-            if (id !== "file_bead1234.txt" && id !== "asset_file_1") {
+          async getFile(id: string) {
+            if (id !== "file_bead1234.txt" && id !== "file_file_1") {
               return null;
             }
             return {
-              assetId: "asset_file_1",
-              displayName: "file_bead1234.txt",
+              fileId: "file_file_1",
+              fileRef: "file_bead1234.txt",
               kind: "file",
-              filename: "note.txt"
+              sourceName: "note.txt",
+              workspacePath: "workspace/media/file_file_1.txt"
             };
           },
-          async listAssets() {
+          async listFiles() {
             return [];
           }
         },
@@ -518,7 +521,7 @@ async function main() {
     assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
       ok: true,
       file_ref: "file_bead1234.txt",
-      file_id: "asset_file_1",
+      file_id: "file_file_1",
       deliveredAs: "text_fallback",
       queued: true,
       reason: "native file sending is not enabled in this phase"
@@ -529,11 +532,11 @@ async function main() {
     assert.equal(sentTexts.length, 1);
     assert.deepEqual(sentTexts[0], {
       userId: "owner",
-      text: "文件已保存在工作区：file_bead1234.txt；file_id=asset_file_1"
+      text: "文件已保存在工作区：file_bead1234.txt；file_id=file_file_1"
     });
     assert.deepEqual(sentMetaCalls[0], {
       messageId: 43,
-      text: "文件已保存在工作区：file_bead1234.txt；file_id=asset_file_1",
+      text: "文件已保存在工作区：file_bead1234.txt；file_id=file_file_1",
       sentAt: sentMetaCalls[0].sentAt
     });
     assert.equal(typeof sentMetaCalls[0].sentAt, "number");
@@ -557,18 +560,19 @@ async function main() {
         },
         lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
         mediaWorkspace: {
-          async getAsset(id: string) {
-            if (id !== "file_bead1234.txt" && id !== "asset_file_1") {
+          async getFile(id: string) {
+            if (id !== "file_bead1234.txt" && id !== "file_file_1") {
               return null;
             }
             return {
-              assetId: "asset_file_1",
-              displayName: "file_bead1234.txt",
+              fileId: "file_file_1",
+              fileRef: "file_bead1234.txt",
               kind: "file",
-              filename: "note.txt"
+              sourceName: "note.txt",
+              workspacePath: "workspace/media/file_file_1.txt"
             };
           },
-          async listAssets() {
+          async listFiles() {
             return [];
           }
         },
@@ -588,7 +592,7 @@ async function main() {
     assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
       ok: true,
       file_ref: "file_bead1234.txt",
-      file_id: "asset_file_1",
+      file_id: "file_file_1",
       deliveredAs: "text_fallback",
       queued: true,
       reason: "native file sending is not enabled in this phase"
@@ -597,12 +601,12 @@ async function main() {
 
     await queuedTasks[0]!();
 
-    assert.deepEqual(webChunks, ["文件已保存在工作区：file_bead1234.txt；file_id=asset_file_1"]);
+    assert.deepEqual(webChunks, ["文件已保存在工作区：file_bead1234.txt；file_id=file_file_1"]);
     assert.deepEqual(assistantHistoryCalls, [{
       chatType: "private",
       userId: "owner",
       senderName: "Owner",
-      text: "文件已保存在工作区：file_bead1234.txt；file_id=asset_file_1"
+      text: "文件已保存在工作区：file_bead1234.txt；file_id=file_file_1"
     }]);
   });
 
@@ -621,18 +625,19 @@ async function main() {
           outboundDelivery: "web",
           lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
           mediaWorkspace: {
-            async getAsset(id: string) {
-              if (id !== "img_deadbeef.png" && id !== "asset_img_1") {
+            async getFile(id: string) {
+              if (id !== "img_deadbeef.png" && id !== "file_img_1") {
                 return null;
               }
               return {
-                assetId: "asset_img_1",
-                displayName: "img_deadbeef.png",
+                fileId: "file_img_1",
+                fileRef: "img_deadbeef.png",
                 kind: "image",
-                filename: "test.png"
+                sourceName: "test.png",
+                workspacePath: "workspace/media/file_img_1.png"
               };
             },
-            async listAssets() {
+            async listFiles() {
               return [];
             },
             async resolveAbsolutePath() {
@@ -655,7 +660,7 @@ async function main() {
       assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
         ok: true,
         file_ref: "img_deadbeef.png",
-        file_id: "asset_img_1",
+        file_id: "file_img_1",
         deliveredAs: "image",
         queued: true
       });
@@ -669,10 +674,10 @@ async function main() {
         role: "assistant",
         delivery: "web",
         mediaKind: "image",
-        fileId: "asset_img_1",
+        fileId: "file_img_1",
         fileRef: "img_deadbeef.png",
         sourceName: "test.png",
-        workspacePath: null,
+        workspacePath: "workspace/media/file_img_1.png",
         messageId: null,
         toolName: "send_workspace_file_to_chat",
         captionText: null,
@@ -686,26 +691,26 @@ async function main() {
 
   await runCase("send_workspace_file_to_chat accepts stored filenames as file_ref", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-ref-"));
-    const imagePath = join(tempDir, "asset_deadbeef.jpg");
+    const imagePath = join(tempDir, "file_deadbeef.jpg");
     await writeFile(imagePath, Buffer.from("fake-image-bytes"));
     const queuedTasks: Array<() => Promise<void>> = [];
     const sentMessages: any[] = [];
     try {
       const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
-        { id: "tool_workspace_send_3", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_ref\":\"asset_deadbeef.jpg\"}" } },
-        { file_ref: "asset_deadbeef.jpg" },
+        { id: "tool_workspace_send_3", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_ref\":\"file_deadbeef.jpg\"}" } },
+        { file_ref: "file_deadbeef.jpg" },
         {
           lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
           mediaWorkspace: {
-            async getAsset(id: string) {
-              if (id === "asset_deadbeef") {
+            async getFile(id: string) {
+              if (id === "file_deadbeef") {
                 return {
-                  assetId: "asset_deadbeef",
-                  displayName: "img_deadbeef.jpg",
+                  fileId: "file_deadbeef",
+                  fileRef: "img_deadbeef.jpg",
                   kind: "image",
                   origin: "workspace_import",
-                  storagePath: "workspace/media/asset_deadbeef.jpg",
-                  filename: "photo.jpg",
+                  workspacePath: "workspace/media/file_deadbeef.jpg",
+                  sourceName: "photo.jpg",
                   mimeType: "image/jpeg",
                   sizeBytes: 123,
                   createdAtMs: 1,
@@ -715,14 +720,14 @@ async function main() {
               }
               return null;
             },
-            async listAssets() {
+            async listFiles() {
               return [{
-                assetId: "asset_deadbeef",
-                displayName: "img_deadbeef.jpg",
+                fileId: "file_deadbeef",
+                fileRef: "img_deadbeef.jpg",
                 kind: "image",
                 origin: "workspace_import",
-                storagePath: "workspace/media/asset_deadbeef.jpg",
-                filename: "photo.jpg",
+                workspacePath: "workspace/media/file_deadbeef.jpg",
+                sourceName: "photo.jpg",
                 mimeType: "image/jpeg",
                 sizeBytes: 123,
                 createdAtMs: 1,
@@ -755,7 +760,7 @@ async function main() {
       assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
         ok: true,
         file_ref: "img_deadbeef.jpg",
-        file_id: "asset_deadbeef",
+        file_id: "file_deadbeef",
         deliveredAs: "image",
         queued: true
       });

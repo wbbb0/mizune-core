@@ -193,7 +193,7 @@ async function preparePromptMediaContext(
   const batchImageIds = Array.from(new Set((input.batchMessages ?? []).flatMap((message) => (
     message.attachments
       ?.filter((item) => item.kind === "image" || item.kind === "animated_image")
-      .map((item) => item.assetId)
+      .map((item) => item.fileId)
       ?? []
   ))));
   const historyImageIds = collectReferencedImageIds(input.historyForPrompt);
@@ -224,17 +224,17 @@ async function preparePromptBatchMessages(
 ) {
   return Promise.all(messages.map(async (message) => {
     const audioIds = message.audioIds ?? [];
-    const imageAssetIds = (message.attachments ?? [])
+    const imageFileIds = (message.attachments ?? [])
       .filter((item) => item.semanticKind !== "emoji" && (item.kind === "image" || item.kind === "animated_image"))
-      .map((item) => item.assetId);
-    const emojiAssetIds = (message.attachments ?? [])
+      .map((item) => item.fileId);
+    const emojiFileIds = (message.attachments ?? [])
       .filter((item) => item.semanticKind === "emoji" && (item.kind === "image" || item.kind === "animated_image"))
-      .map((item) => item.assetId);
+      .map((item) => item.fileId);
     const imageVisuals = options.supportsVision
-      ? await deps.mediaVisionService.prepareAssetsForModel(imageAssetIds)
+      ? await deps.mediaVisionService.prepareFilesForModel(imageFileIds)
       : [];
     const emojiVisuals = options.supportsVision
-      ? await deps.mediaVisionService.prepareAssetsForModel(emojiAssetIds)
+      ? await deps.mediaVisionService.prepareFilesForModel(emojiFileIds)
       : [];
 
     return {
@@ -263,12 +263,12 @@ async function preparePromptBatchMessages(
           }
         : {}),
       emojiSources: message.emojiSources,
-      imageIds: imageAssetIds,
-      imageCaptions: buildPromptImageCaptions(imageAssetIds, captionMap),
-      ...(options.supportsVision ? { imageVisuals: imageVisuals.map((item) => ({ imageId: item.assetId, inputUrl: item.inputUrl })) } : {}),
-      emojiIds: emojiAssetIds,
-      emojiCaptions: buildPromptImageCaptions(emojiAssetIds, captionMap),
-      ...(options.supportsVision ? { emojiVisuals: emojiVisuals.map((item) => ({ imageId: item.assetId, inputUrl: item.inputUrl, animated: item.animated, durationMs: item.durationMs, sampledFrameCount: item.sampledFrameCount })) } : {}),
+      imageIds: imageFileIds,
+      imageCaptions: buildPromptImageCaptions(imageFileIds, captionMap),
+      ...(options.supportsVision ? { imageVisuals: imageVisuals.map((item) => ({ imageId: item.fileId, inputUrl: item.inputUrl })) } : {}),
+      emojiIds: emojiFileIds,
+      emojiCaptions: buildPromptImageCaptions(emojiFileIds, captionMap),
+      ...(options.supportsVision ? { emojiVisuals: emojiVisuals.map((item) => ({ imageId: item.fileId, inputUrl: item.inputUrl, animated: item.animated, durationMs: item.durationMs, sampledFrameCount: item.sampledFrameCount })) } : {}),
       ...(message.attachments ? { attachments: message.attachments } : {}),
       forwardIds: message.forwardIds,
       replyMessageId: message.replyMessageId,

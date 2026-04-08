@@ -59,7 +59,7 @@ export class ReplyGate {
     private readonly config: AppConfig,
     private readonly llmClient: LlmClient,
     private readonly mediaWorkspace: Pick<MediaWorkspace, "getMany">,
-    private readonly mediaVisionService: Pick<MediaVisionService, "prepareAssetsForModel">,
+    private readonly mediaVisionService: Pick<MediaVisionService, "prepareFilesForModel">,
     private readonly logger: Logger
   ) {}
 
@@ -87,7 +87,7 @@ export class ReplyGate {
       ? Array.from(new Set(input.batchMessages.flatMap((message) => (
         message.attachments
           ?.filter((item) => item.semanticKind === "emoji" && (item.kind === "image" || item.kind === "animated_image"))
-          .map((item) => item.assetId)
+          .map((item) => item.fileId)
           ?? []
       )))).slice(0, 5)
       : [];
@@ -100,12 +100,12 @@ export class ReplyGate {
     }> = [];
     if (emojiImageIds.length > 0) {
       try {
-        const assets = await this.mediaWorkspace.getMany(emojiImageIds);
-        const existingIds = new Set(assets.map((item) => item.assetId));
-        emojiInputs = (await this.mediaVisionService.prepareAssetsForModel(emojiImageIds))
-          .filter((item) => existingIds.has(item.assetId))
+        const files = await this.mediaWorkspace.getMany(emojiImageIds);
+        const existingIds = new Set(files.map((item) => item.fileId));
+        emojiInputs = (await this.mediaVisionService.prepareFilesForModel(emojiImageIds))
+          .filter((item) => existingIds.has(item.fileId))
           .map((item) => ({
-          imageId: item.assetId,
+          imageId: item.fileId,
           inputUrl: item.inputUrl,
           animated: item.animated,
           durationMs: item.durationMs,

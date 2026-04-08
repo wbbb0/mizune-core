@@ -1,13 +1,13 @@
 import { readFile } from "node:fs/promises";
-import type { WorkspaceItemStat, WorkspaceListResult, WorkspaceFileReadResult, WorkspaceFileContentResult, WorkspaceAssetRecord } from "#services/workspace/types.ts";
+import type { WorkspaceItemStat, WorkspaceListResult, WorkspaceFileReadResult, WorkspaceFileContentResult, WorkspaceStoredFileRecord } from "#services/workspace/types.ts";
 import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
 import type { WorkspaceService } from "#services/workspace/workspaceService.ts";
 
 export interface AdminWorkspaceFileRecord {
   fileId: string;
   fileRef: string;
-  kind: WorkspaceAssetRecord["kind"];
-  origin: WorkspaceAssetRecord["origin"];
+  kind: WorkspaceStoredFileRecord["kind"];
+  origin: WorkspaceStoredFileRecord["origin"];
   workspacePath: string;
   sourceName: string;
   mimeType: string;
@@ -29,7 +29,7 @@ export interface WorkspaceAdminService {
 
 export function createWorkspaceAdminService(input: {
   workspaceService: Pick<WorkspaceService, "listItems" | "statItem" | "readFile" | "readFileContent">;
-  mediaWorkspace: Pick<MediaWorkspace, "listAssets" | "getAsset" | "resolveAbsolutePath">;
+  mediaWorkspace: Pick<MediaWorkspace, "listFiles" | "getFile" | "resolveAbsolutePath">;
 }): WorkspaceAdminService {
   return {
     async listItems(path = ".") {
@@ -50,47 +50,47 @@ export function createWorkspaceAdminService(input: {
 
     async listFiles() {
       return {
-        files: (await input.mediaWorkspace.listAssets()).map(mapWorkspaceAssetToAdminFile)
+        files: (await input.mediaWorkspace.listFiles()).map(mapWorkspaceFileToAdminFile)
       };
     },
 
     async getFile(fileId) {
-      const asset = await input.mediaWorkspace.getAsset(fileId);
+      const file = await input.mediaWorkspace.getFile(fileId);
       return {
-        file: asset ? mapWorkspaceAssetToAdminFile(asset) : null
+        file: file ? mapWorkspaceFileToAdminFile(file) : null
       };
     },
 
     async readFileContentById(fileId) {
-      const asset = await input.mediaWorkspace.getAsset(fileId);
-      if (!asset) {
+      const file = await input.mediaWorkspace.getFile(fileId);
+      if (!file) {
         return {
           file: null,
           buffer: null
         };
       }
 
-      const absolutePath = await input.mediaWorkspace.resolveAbsolutePath(asset.assetId);
+      const absolutePath = await input.mediaWorkspace.resolveAbsolutePath(file.fileId);
       return {
-        file: mapWorkspaceAssetToAdminFile(asset),
+        file: mapWorkspaceFileToAdminFile(file),
         buffer: await readFile(absolutePath)
       };
     }
   };
 }
 
-function mapWorkspaceAssetToAdminFile(asset: WorkspaceAssetRecord): AdminWorkspaceFileRecord {
+function mapWorkspaceFileToAdminFile(file: WorkspaceStoredFileRecord): AdminWorkspaceFileRecord {
   return {
-    fileId: asset.assetId,
-    fileRef: asset.displayName,
-    kind: asset.kind,
-    origin: asset.origin,
-    workspacePath: asset.storagePath,
-    sourceName: asset.filename,
-    mimeType: asset.mimeType,
-    sizeBytes: asset.sizeBytes,
-    createdAtMs: asset.createdAtMs,
-    sourceContext: asset.sourceContext,
-    caption: asset.caption
+    fileId: file.fileId,
+    fileRef: file.fileRef,
+    kind: file.kind,
+    origin: file.origin,
+    workspacePath: file.workspacePath,
+    sourceName: file.sourceName,
+    mimeType: file.mimeType,
+    sizeBytes: file.sizeBytes,
+    createdAtMs: file.createdAtMs,
+    sourceContext: file.sourceContext,
+    caption: file.caption
   };
 }

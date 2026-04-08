@@ -96,10 +96,10 @@ export function createBrowserToolContext(
     oneBotClient: null as unknown as BuiltinToolContext["oneBotClient"],
     audioStore: null as unknown as BuiltinToolContext["audioStore"],
     mediaVisionService: {
-      async prepareAssetForModel(assetId: string) {
+      async prepareFileForModel(fileId: string) {
         return {
-          assetId,
-          inputUrl: `data:image/png;base64,${assetId}`,
+          fileId,
+          inputUrl: `data:image/png;base64,${fileId}`,
           kind: "image" as const,
           transport: "data_url" as const,
           animated: false,
@@ -114,37 +114,37 @@ export function createBrowserToolContext(
       }
     } as unknown as BuiltinToolContext["mediaCaptionService"],
     mediaWorkspace: {
-      async prepareImageAssetForModel(assetId: string) {
+      async prepareImageFileForModel(fileId: string) {
         return {
-          asset: {
-            assetId,
-            displayName: `shot_${assetId.slice(-8)}.png`,
+          file: {
+            fileId,
+            fileRef: `shot_${fileId.slice(-8)}.png`,
             kind: "image",
             origin: "browser_screenshot",
-            storagePath: `workspace/media/${assetId}.png`,
-            filename: `${assetId}.png`,
+            workspacePath: `workspace/media/${fileId}.png`,
+            sourceName: `${fileId}.png`,
             mimeType: "image/png",
             sizeBytes: 4,
             createdAtMs: Date.now(),
             sourceContext: {},
-            legacyImageId: assetId,
+            legacyImageId: fileId,
             caption: null
           },
-          inputUrl: `data:image/png;base64,${assetId}`,
+          inputUrl: `data:image/png;base64,${fileId}`,
           caption: null
         };
       },
       async getMany() {
         return [];
       },
-      async getAsset(assetId: string) {
+      async getFile(fileId: string) {
         return {
-          assetId,
-          displayName: `shot_${assetId.slice(-8)}.png`,
+          fileId,
+          fileRef: `shot_${fileId.slice(-8)}.png`,
           kind: "image" as const,
           origin: "browser_screenshot" as const,
-          storagePath: `workspace/media/${assetId}.png`,
-          filename: `${assetId}.png`,
+          workspacePath: `workspace/media/${fileId}.png`,
+          sourceName: `${fileId}.png`,
           mimeType: "image/png",
           sizeBytes: 4,
           createdAtMs: Date.now(),
@@ -157,10 +157,10 @@ export function createBrowserToolContext(
       },
       async importRemoteSource() {
         return {
-          assetId: "asset_1",
-          displayName: "file_asset1.bin",
+          fileId: "file_1",
+          fileRef: "file_1.bin",
           kind: "file" as const,
-          filename: "downloaded.bin",
+          sourceName: "downloaded.bin",
           mimeType: "application/octet-stream",
           sizeBytes: 1
         };

@@ -1,5 +1,5 @@
 import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
-import type { WorkspaceAssetKind } from "#services/workspace/types.ts";
+import type { WorkspaceStoredFileKind } from "#services/workspace/types.ts";
 
 const MAX_UPLOAD_FILE_COUNT = 8;
 
@@ -9,14 +9,14 @@ export interface AdminWorkspaceUploadService {
       sourceName?: string;
       mimeType: string;
       contentBase64: string;
-      kind?: WorkspaceAssetKind;
+      kind?: WorkspaceStoredFileKind;
     }>;
   }): Promise<{
     ok: true;
     uploads: Array<{
       fileId: string;
       fileRef: string;
-      kind: WorkspaceAssetKind;
+      kind: WorkspaceStoredFileKind;
       sourceName: string;
       workspacePath: string;
       mimeType: string;
@@ -40,21 +40,21 @@ export function createAdminWorkspaceUploadService(input: {
           throw new Error("Uploaded file is empty");
         }
         const kind = file.kind ?? (mimeType.startsWith("image/") ? "image" : mimeType.startsWith("audio/") ? "audio" : "file");
-        const asset = await input.mediaWorkspace.importBuffer({
+        const storedFile = await input.mediaWorkspace.importBuffer({
           buffer,
           mimeType,
           kind,
           origin: "user_upload",
-          ...(file.sourceName ? { filename: file.sourceName } : {})
+          ...(file.sourceName ? { sourceName: file.sourceName } : {})
         });
         return {
-          fileId: asset.assetId,
-          fileRef: asset.displayName,
-          kind: asset.kind,
-          sourceName: asset.filename,
-          workspacePath: asset.storagePath,
-          mimeType: asset.mimeType,
-          sizeBytes: asset.sizeBytes
+          fileId: storedFile.fileId,
+          fileRef: storedFile.fileRef,
+          kind: storedFile.kind,
+          sourceName: storedFile.sourceName,
+          workspacePath: storedFile.workspacePath,
+          mimeType: storedFile.mimeType,
+          sizeBytes: storedFile.sizeBytes
         };
       }));
 

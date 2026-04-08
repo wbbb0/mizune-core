@@ -95,7 +95,7 @@ export function buildScheduledTaskSystemLines(input: {
         aspectRatio: string;
         resolvedWidth: number;
         resolvedHeight: number;
-        workspaceAssetIds: string[];
+        workspaceFileIds: string[];
         workspacePaths: string[];
         comfyPromptId: string;
         autoIterationIndex: number;
@@ -160,7 +160,7 @@ export function buildScheduledTaskSystemLines(input: {
         `prompt：${input.trigger.positivePrompt}`,
         `比例：${input.trigger.aspectRatio} -> ${input.trigger.resolvedWidth}x${input.trigger.resolvedHeight}`,
         `Comfy prompt_id：${input.trigger.comfyPromptId}`,
-        `workspace file_id：${input.trigger.workspaceAssetIds.join("、") || "无"}`,
+        `workspace file_id：${input.trigger.workspaceFileIds.join("、") || "无"}`,
         `workspace_path：${input.trigger.workspacePaths.join("、") || "无"}`,
         `自动迭代进度：${input.trigger.autoIterationIndex}/${input.trigger.maxAutoIterations}`
       ])

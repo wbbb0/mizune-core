@@ -329,7 +329,7 @@ async function main() {
             ok: true,
             resource_id: "res_browser_1",
             profile_id: "browser_profile_1",
-            imageId: "img_1",
+            fileId: "img_1",
             mimeType: "image/png",
             sizeBytes: 123,
             mode: "page",
@@ -353,13 +353,13 @@ async function main() {
       createBrowserToolContext({
         async downloadAsset(input) {
           assert.equal(input.url, "https://example.com/video.mp4");
-          assert.equal(input.filename, "video.mp4");
+          assert.equal(input.sourceName, "video.mp4");
           assert.equal(input.kind, "video");
           return {
             ok: true,
-            asset_id: "asset_1",
+            file_id: "file_1",
             kind: "video",
-            filename: "video.mp4",
+            source_name: "video.mp4",
             mimeType: "video/mp4",
             sizeBytes: 123,
             origin: "browser_download",
@@ -373,7 +373,7 @@ async function main() {
 
     const parsed = parseJsonToolResult<any>(result);
     assert.equal(parsed.ok, true);
-    assert.equal(parsed.file_id, "asset_1");
+    assert.equal(parsed.file_id, "file_1");
   });
 
   await runCase("download_asset supports browser resource targets", async () => {
@@ -386,9 +386,9 @@ async function main() {
           assert.equal(input.targetId, 2);
           return {
             ok: true,
-            asset_id: "asset_2",
+            file_id: "file_2",
             kind: "image",
-            filename: "cover.jpg",
+            source_name: "cover.jpg",
             mimeType: "image/jpeg",
             sizeBytes: 456,
             origin: "browser_download",
@@ -404,7 +404,7 @@ async function main() {
     assert.equal(parsed.ok, true);
     assert.equal(parsed.resource_id, "res_browser_1");
     assert.equal(parsed.target_id, 2);
-    assert.equal(parsed.file_id, "asset_2");
+    assert.equal(parsed.file_id, "file_2");
   });
 }
 

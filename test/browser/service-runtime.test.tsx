@@ -14,13 +14,13 @@ function createBrowserService() {
     "/tmp",
     {
       async importBuffer() {
-        return { assetId: "img_uploaded_1" };
+        return { fileId: "img_uploaded_1" };
       },
       async importRemoteSource() {
         return {
-          assetId: "asset_uploaded_1",
+          fileId: "file_uploaded_1",
           kind: "file" as const,
-          filename: "downloaded.bin",
+          sourceName: "downloaded.bin",
           mimeType: "application/octet-stream",
           sizeBytes: 1
         };
@@ -103,7 +103,7 @@ async function main() {
 
     const pageShot = await service.capturePageScreenshot(page.resource_id);
     const elementShot = await service.captureElementScreenshot(page.resource_id, 1);
-    assert.equal(pageShot.imageId, "img_uploaded_1");
+    assert.equal(pageShot.fileId, "img_uploaded_1");
     assert.equal(elementShot.mode, "element");
     assert.deepEqual(screenshots, [{}, { targetId: 1 }]);
   });
@@ -461,7 +461,7 @@ async function main() {
     const downloads: Array<{
       source: string;
       origin: string;
-      filename?: string;
+      sourceName?: string;
       kind?: string;
       proxyConsumer?: string;
     }> = [];
@@ -469,15 +469,15 @@ async function main() {
       async importRemoteSource(input: {
         source: string;
         origin: string;
-        filename?: string;
+        sourceName?: string;
         kind?: string;
         proxyConsumer?: string;
       }) {
         downloads.push(input);
         return {
-          assetId: "asset_downloaded_1",
+          fileId: "file_downloaded_1",
           kind: (input.kind as "image" | "animated_image" | "video" | "audio" | "file" | undefined) ?? "file",
-          filename: input.filename ?? "downloaded.bin",
+          sourceName: input.sourceName ?? "downloaded.bin",
           mimeType: "application/octet-stream",
           sizeBytes: 777
         };
@@ -570,11 +570,11 @@ async function main() {
     };
 
     const page = await service.openPage({ url: "https://example.com/gallery", ownerSessionId: "private:10001" });
-    const byUrl = await service.downloadAsset({ url: "https://example.com/video.mp4", filename: "video.mp4", kind: "video" });
+    const byUrl = await service.downloadAsset({ url: "https://example.com/video.mp4", sourceName: "video.mp4", kind: "video" });
     const byTarget = await service.downloadAsset({ resourceId: page.resource_id, targetId: 1 });
     const byMediaTarget = await service.downloadAsset({ resourceId: page.resource_id, targetId: 2, kind: "video" });
 
-    assert.equal(byUrl.asset_id, "asset_downloaded_1");
+    assert.equal(byUrl.file_id, "file_downloaded_1");
     assert.equal(byUrl.source_url, "https://example.com/video.mp4");
     assert.equal(byTarget.source_url, "https://example.com/image.jpg");
     assert.equal(byMediaTarget.source_url, "https://example.com/trailer.mp4");
@@ -582,14 +582,14 @@ async function main() {
       downloads.map((item) => ({
         source: item.source,
         origin: item.origin,
-        filename: item.filename ?? null,
+        sourceName: item.sourceName ?? null,
         kind: item.kind ?? null,
         proxyConsumer: item.proxyConsumer ?? null
       })),
       [
-        { source: "https://example.com/video.mp4", origin: "browser_download", filename: "video.mp4", kind: "video", proxyConsumer: "browser" },
-        { source: "https://example.com/image.jpg", origin: "browser_download", filename: null, kind: null, proxyConsumer: "browser" },
-        { source: "https://example.com/trailer.mp4", origin: "browser_download", filename: null, kind: "video", proxyConsumer: "browser" }
+        { source: "https://example.com/video.mp4", origin: "browser_download", sourceName: "video.mp4", kind: "video", proxyConsumer: "browser" },
+        { source: "https://example.com/image.jpg", origin: "browser_download", sourceName: null, kind: null, proxyConsumer: "browser" },
+        { source: "https://example.com/trailer.mp4", origin: "browser_download", sourceName: null, kind: "video", proxyConsumer: "browser" }
       ]
     );
   });

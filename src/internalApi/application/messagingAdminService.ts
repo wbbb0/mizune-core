@@ -207,12 +207,12 @@ async function runWebTurnInBackground(input: {
 }): Promise<void> {
   try {
     const attachments = input.message.attachmentIds.length > 0
-      ? (await input.mediaWorkspace.getMany(input.message.attachmentIds)).map((asset) => ({
-          assetId: asset.assetId,
-          kind: asset.kind,
+      ? (await input.mediaWorkspace.getMany(input.message.attachmentIds)).map((file) => ({
+          fileId: file.fileId,
+          kind: file.kind,
           source: "web_upload" as const,
-          filename: asset.filename,
-          mimeType: asset.mimeType
+          sourceName: file.sourceName,
+          mimeType: file.mimeType
         }))
       : [];
     await input.handleWebIncomingMessage({

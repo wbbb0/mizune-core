@@ -47,24 +47,24 @@ interface OpenedBrowserSession {
 type ScreenshotImageStore = {
   importBuffer(input: {
     buffer: Buffer;
-    filename?: string;
+    sourceName?: string;
     mimeType?: string;
     kind: "image";
     origin: "browser_screenshot";
     sourceContext?: Record<string, string | number | boolean | null>;
-  }): Promise<{ assetId: string }>;
+  }): Promise<{ fileId: string }>;
   importRemoteSource(input: {
     source: string;
-    filename?: string;
+    sourceName?: string;
     mimeType?: string;
     kind?: "image" | "animated_image" | "video" | "audio" | "file";
     origin: "browser_download";
     proxyConsumer?: "browser";
     sourceContext?: Record<string, string | number | boolean | null>;
   }): Promise<{
-    assetId: string;
+    fileId: string;
     kind: "image" | "animated_image" | "video" | "audio" | "file";
-    filename: string;
+    sourceName: string;
     mimeType: string;
     sizeBytes: number;
   }>;
@@ -332,7 +332,7 @@ export class BrowserService {
     await this.cleanupExpiredSessions();
     const directUrl = normalizeOptionalString(input.url);
     const resourceId = normalizeOptionalString(input.resourceId);
-    const filename = normalizeOptionalString(input.filename) ?? undefined;
+    const sourceName = normalizeOptionalString(input.sourceName) ?? undefined;
     const kind = input.kind;
 
     if (Boolean(directUrl) === Boolean(resourceId)) {
@@ -375,7 +375,7 @@ export class BrowserService {
 
     const downloaded = await this.mediaWorkspace.importRemoteSource({
       source: String(sourceUrl),
-      ...(filename ? { filename } : {}),
+      ...(sourceName ? { sourceName } : {}),
       ...(kind ? { kind } : {}),
       origin: "browser_download",
       proxyConsumer: "browser",
@@ -388,9 +388,9 @@ export class BrowserService {
 
     return {
       ok: true,
-      asset_id: downloaded.assetId,
+      file_id: downloaded.fileId,
       kind: downloaded.kind,
-      filename: downloaded.filename,
+      source_name: downloaded.sourceName,
       mimeType: downloaded.mimeType,
       sizeBytes: downloaded.sizeBytes,
       origin: "browser_download",
@@ -481,7 +481,7 @@ export class BrowserService {
     const uploaded = await this.mediaWorkspace.importBuffer({
       buffer,
       mimeType: "image/png",
-      filename: mode === "page" ? "browser-page.png" : `browser-element-${targetId}.png`,
+      sourceName: mode === "page" ? "browser-page.png" : `browser-element-${targetId}.png`,
       kind: "image",
       origin: "browser_screenshot",
       sourceContext: {
@@ -490,15 +490,15 @@ export class BrowserService {
         ...(targetId == null ? {} : { targetId })
       }
     });
-    const imageId = uploaded.assetId;
-    if (!imageId) {
+    const fileId = uploaded.fileId;
+    if (!fileId) {
       throw new Error("Failed to register screenshot image");
     }
     return {
       ok: true,
       resource_id: resourceId,
       profile_id: session.profileId,
-      imageId,
+      fileId,
       mimeType: "image/png",
       sizeBytes: buffer.byteLength,
       mode,

@@ -320,7 +320,7 @@ export function createGenerationSessionOrchestrator(
                 aspectRatio: trigger.aspectRatio,
                 resolvedWidth: trigger.resolvedWidth,
                 resolvedHeight: trigger.resolvedHeight,
-                workspaceAssetIds: trigger.workspaceAssetIds,
+                workspaceFileIds: trigger.workspaceFileIds,
                 workspacePaths: trigger.workspacePaths,
                 comfyPromptId: trigger.comfyPromptId,
                 autoIterationIndex: trigger.autoIterationIndex,

@@ -46,7 +46,7 @@ export function createReplyGate(
   } as unknown as LlmClient;
 
   const mediaVisionService = {
-    async prepareAssetsForModel() {
+    async prepareFilesForModel() {
       throw new Error("should not prepare emoji images when vision is disabled");
     }
   } as unknown as GenerationRunnerDeps["mediaVisionService"];

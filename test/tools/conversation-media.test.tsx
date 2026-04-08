@@ -8,7 +8,7 @@ async function main() {
   await runCase("view_media injects multimodal follow-up content for images", async () => {
     const result = await imageToolHandlers.view_media!(
       createFunctionToolCall("view_media", "tool_1"),
-      { media_ids: ["asset_test_1"] },
+      { media_ids: ["file_test_1"] },
       {
         config: createForwardFeatureConfig(),
         audioStore: {
@@ -22,12 +22,12 @@ async function main() {
         mediaWorkspace: {
           async getMany() {
             return [{
-              assetId: "asset_test_1",
-              displayName: "chat_test0001.gif",
+              fileId: "file_test_1",
+              fileRef: "chat_test0001.gif",
               kind: "animated_image",
               origin: "chat_message",
-              storagePath: "workspace/media/a.gif",
-              filename: "a.gif",
+              workspacePath: "workspace/media/file_test_1.gif",
+              sourceName: "a.gif",
               mimeType: "image/gif",
               sizeBytes: 1,
               createdAtMs: Date.now(),
@@ -37,9 +37,9 @@ async function main() {
           }
         } as any,
         mediaVisionService: {
-          async prepareAssetForModel() {
+          async prepareFileForModel() {
             return {
-              assetId: "asset_test_1",
+              fileId: "file_test_1",
               inputUrl: "https://example.com/a.png",
               kind: "animated_image",
               transport: "data_url",
@@ -80,7 +80,7 @@ async function main() {
       {
         audioStore: { async getTranscriptionMap() { return new Map(); }, async getMany() { return []; } } as any,
         mediaWorkspace: { async getMany() { return []; } } as any,
-        mediaVisionService: { async prepareAssetForModel() { throw new Error("should not be called"); } } as any,
+        mediaVisionService: { async prepareFileForModel() { throw new Error("should not be called"); } } as any,
         mediaCaptionService: { async getCaptionMap() { return new Map(); } } as any
       } as any
     );
@@ -119,12 +119,12 @@ async function main() {
         mediaWorkspace: {
           async importRemoteSource() {
             return {
-              assetId: "asset_test_1",
-              displayName: "chat_test0001.png",
+              fileId: "file_test_1",
+              fileRef: "chat_test0001.png",
               kind: "image",
               origin: "chat_message",
-              storagePath: "workspace/media/a.png",
-              filename: "a.png",
+              workspacePath: "workspace/media/file_test_1.png",
+              sourceName: "a.png",
               mimeType: "image/png",
               sizeBytes: 1,
               createdAtMs: Date.now(),
@@ -145,7 +145,7 @@ async function main() {
     assert.equal(parsed.segments[1].kind, "mention");
     assert.equal(parsed.segments[3].kind, "forward");
     assert.equal(parsed.segments[4].kind, "image");
-    assert.equal(parsed.segments[4].assetId, "asset_test_1");
+    assert.equal(parsed.segments[4].fileId, "file_test_1");
     assert.equal(parsed.segments[4].mediaKind, "image");
   });
 }

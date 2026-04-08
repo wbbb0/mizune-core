@@ -2,13 +2,13 @@ import { readFile } from "node:fs/promises";
 import type { Logger } from "pino";
 import sharp from "sharp";
 import type { AppConfig } from "#config/config.ts";
-import type { WorkspaceAssetRecord } from "./types.ts";
+import type { WorkspaceStoredFileRecord } from "./types.ts";
 import type { MediaWorkspace } from "./mediaWorkspace.ts";
 
 export interface PreparedWorkspaceVisual {
-  assetId: string;
+  fileId: string;
   inputUrl: string;
-  kind: WorkspaceAssetRecord["kind"];
+  kind: WorkspaceStoredFileRecord["kind"];
   transport: "data_url";
   animated: boolean;
   durationMs: number | null;
@@ -19,36 +19,36 @@ export class MediaVisionService {
   constructor(
     private readonly config: AppConfig,
     private readonly logger: Logger,
-    private readonly mediaWorkspace: Pick<MediaWorkspace, "getAsset" | "resolveAbsolutePath">
+    private readonly mediaWorkspace: Pick<MediaWorkspace, "getFile" | "resolveAbsolutePath">
   ) {}
 
-  async prepareAssetsForModel(assetIds: string[]): Promise<PreparedWorkspaceVisual[]> {
-    const uniqueIds = Array.from(new Set(assetIds.map((item) => String(item ?? "").trim()).filter(Boolean)));
+  async prepareFilesForModel(fileIds: string[]): Promise<PreparedWorkspaceVisual[]> {
+    const uniqueIds = Array.from(new Set(fileIds.map((item) => String(item ?? "").trim()).filter(Boolean)));
     const prepared: PreparedWorkspaceVisual[] = [];
-    for (const assetId of uniqueIds) {
-      prepared.push(await this.prepareAssetForModel(assetId));
+    for (const fileId of uniqueIds) {
+      prepared.push(await this.prepareFileForModel(fileId));
     }
     return prepared;
   }
 
-  async prepareAssetForModel(assetId: string): Promise<PreparedWorkspaceVisual> {
-    const asset = await this.mediaWorkspace.getAsset(assetId);
-    if (!asset) {
-      throw new Error(`Workspace asset not found: ${assetId}`);
+  async prepareFileForModel(fileId: string): Promise<PreparedWorkspaceVisual> {
+    const file = await this.mediaWorkspace.getFile(fileId);
+    if (!file) {
+      throw new Error(`Workspace file not found: ${fileId}`);
     }
-    if (asset.kind !== "image" && asset.kind !== "animated_image") {
-      throw new Error(`Workspace asset is not viewable: ${assetId}`);
+    if (file.kind !== "image" && file.kind !== "animated_image") {
+      throw new Error(`Workspace file is not viewable: ${fileId}`);
     }
 
-    const buffer = await readFile(await this.mediaWorkspace.resolveAbsolutePath(assetId));
-    if (asset.kind === "animated_image") {
-      return this.prepareAnimatedAsset(asset, buffer);
+    const buffer = await readFile(await this.mediaWorkspace.resolveAbsolutePath(fileId));
+    if (file.kind === "animated_image") {
+      return this.prepareAnimatedFile(file, buffer);
     }
 
     return {
-      assetId: asset.assetId,
+      fileId: file.fileId,
       inputUrl: await this.serializeImage(buffer),
-      kind: asset.kind,
+      kind: file.kind,
       transport: "data_url",
       animated: false,
       durationMs: null,
@@ -56,7 +56,7 @@ export class MediaVisionService {
     };
   }
 
-  private async prepareAnimatedAsset(asset: WorkspaceAssetRecord, buffer: Buffer): Promise<PreparedWorkspaceVisual> {
+  private async prepareAnimatedFile(file: WorkspaceStoredFileRecord, buffer: Buffer): Promise<PreparedWorkspaceVisual> {
     const metadata = await sharp(buffer, {
       animated: true,
       failOn: "none"
@@ -66,9 +66,9 @@ export class MediaVisionService {
     const animated = pageCount > 1 && durationMs > 0;
     if (!animated) {
       return {
-        assetId: asset.assetId,
+        fileId: file.fileId,
         inputUrl: await this.serializeImage(buffer),
-        kind: asset.kind,
+        kind: file.kind,
         transport: "data_url",
         animated: false,
         durationMs: durationMs > 0 ? durationMs : null,
@@ -78,9 +78,9 @@ export class MediaVisionService {
 
     const frameIndexes = selectAnimatedFrameIndexes(pageCount, durationMs);
     return {
-      assetId: asset.assetId,
+      fileId: file.fileId,
       inputUrl: await this.serializeAnimatedStoryboard(buffer, metadata, frameIndexes),
-      kind: asset.kind,
+      kind: file.kind,
       transport: "data_url",
       animated: true,
       durationMs,

@@ -1,6 +1,6 @@
 import type { LlmContentPart, LlmToolExecutionResult } from "../../llmClient.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
-import { mapWorkspaceAssetToFileView } from "../core/workspaceFileView.ts";
+import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
 
 const MAX_MEDIA_VIEW_PER_CALL = 5;
 
@@ -40,9 +40,9 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
     }
 
     try {
-      const assetIds = mediaIds.filter((item) => item.startsWith("asset_"));
+      const fileIds = mediaIds.filter((item) => item.startsWith("file_"));
       const audioIds = mediaIds.filter((item) => item.startsWith("aud_"));
-      const unsupportedIds = mediaIds.filter((item) => !item.startsWith("aud_") && !item.startsWith("asset_"));
+      const unsupportedIds = mediaIds.filter((item) => !item.startsWith("aud_") && !item.startsWith("file_"));
       if (unsupportedIds.length > 0) {
         return JSON.stringify({
           error: `Unsupported legacy media ids: ${unsupportedIds.join(", ")}`
@@ -50,17 +50,17 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
       }
       const transcriptionMap = await context.audioStore.getTranscriptionMap(audioIds);
       const audioAssets = await context.audioStore.getMany(audioIds);
-      const workspaceAssets = await context.mediaWorkspace.getMany(assetIds);
-      const assetCaptionMap = await context.mediaCaptionService.getCaptionMap(assetIds);
+      const workspaceFiles = await context.mediaWorkspace.getMany(fileIds);
+      const assetCaptionMap = await context.mediaCaptionService.getCaptionMap(fileIds);
       const attachedWorkspaceImages = await Promise.all(
-        workspaceAssets
+        workspaceFiles
           .filter((item) => item.kind === "image" || item.kind === "animated_image")
           .map(async (item) => {
             try {
-              const prepared = await context.mediaVisionService.prepareAssetForModel(item.assetId);
-              const assetCaption = (await context.mediaCaptionService.getCaptionMap([item.assetId])).get(item.assetId) ?? item.caption;
+              const prepared = await context.mediaVisionService.prepareFileForModel(item.fileId);
+              const assetCaption = (await context.mediaCaptionService.getCaptionMap([item.fileId])).get(item.fileId) ?? item.caption;
               return {
-                mediaId: item.assetId,
+                mediaId: item.fileId,
                 caption: assetCaption,
                 inputUrl: prepared.inputUrl,
                 animated: prepared.animated,
@@ -97,9 +97,9 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
               durationMs: item.durationMs,
               sampledFrameCount: item.sampledFrameCount
             })),
-          workspace: workspaceAssets.map((item) => ({
-            ...mapWorkspaceAssetToFileView(item),
-            caption: assetCaptionMap.get(item.assetId) ?? item.caption
+          workspace: workspaceFiles.map((item) => ({
+            ...mapWorkspaceFileToView(item),
+            caption: assetCaptionMap.get(item.fileId) ?? item.caption
           })),
           audio: audioSummaries,
           unavailable: []

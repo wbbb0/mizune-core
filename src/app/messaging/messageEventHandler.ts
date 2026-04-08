@@ -215,29 +215,29 @@ async function createMessageProcessingContext(
     imageIds: importedImageAssets
       .filter((item): item is NonNullable<typeof item> => item != null)
       .filter((item) => item.sourceContext.mediaKind !== "emoji")
-      .map((item) => item.assetId),
+      .map((item) => item.fileId),
     emojiIds: importedImageAssets
       .filter((item): item is NonNullable<typeof item> => item != null)
       .filter((item) => item.sourceContext.mediaKind === "emoji")
-      .map((item) => item.assetId),
+      .map((item) => item.fileId),
     attachments: [
       ...importedImageAssets
         .filter((item): item is NonNullable<typeof item> => Boolean(item))
         .map((item) => ({
-          assetId: item.assetId,
+          fileId: item.fileId,
           kind: item.kind,
           source: "chat_message" as const,
-          filename: item.filename,
+          sourceName: item.sourceName,
           mimeType: item.mimeType,
           semanticKind: item.sourceContext.mediaKind === "emoji" ? "emoji" : "image"
         })),
       ...importedFileAssets
         .filter((item): item is NonNullable<typeof item> => Boolean(item))
         .map((item) => ({
-          assetId: item.assetId,
+          fileId: item.fileId,
           kind: item.kind,
           source: "chat_message" as const,
-          filename: item.filename,
+          sourceName: item.sourceName,
           mimeType: item.mimeType
         }))
     ]
@@ -503,7 +503,7 @@ function enqueueTriggeredMessage(
   services.mediaCaptionService.schedule(
     (context.enrichedMessage.attachments ?? [])
       .filter((item) => item.kind === "image" || item.kind === "animated_image")
-      .map((item) => item.assetId),
+      .map((item) => item.fileId),
     context.enrichedMessage.chatType === "private" ? "incoming_private_message" : "incoming_group_trigger"
   );
 

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 import { fetch as undiciFetch } from "undici";
 import type { Logger } from "pino";
@@ -7,13 +7,13 @@ import sharp from "sharp";
 import type { AppConfig } from "#config/config.ts";
 import { fetchWithProxy, type ProxyConsumer } from "#services/proxy/index.ts";
 import type { WorkspaceService } from "./workspaceService.ts";
-import type { WorkspaceAssetKind, WorkspaceAssetOrigin, WorkspaceAssetRecord } from "./types.ts";
+import type { WorkspaceStoredFileKind, WorkspaceStoredFileOrigin, WorkspaceStoredFileRecord } from "./types.ts";
 
-const ASSET_INDEX_FILE = "assets.json";
+const FILE_INDEX_FILE = "files.json";
 
 export class MediaWorkspace {
   private readonly workspaceRootDir: string;
-  private readonly assetIndexPath: string;
+  private readonly fileIndexPath: string;
   private readonly mediaDir: string;
   private readonly writeChain = new Map<string, Promise<void>>();
 
@@ -23,7 +23,7 @@ export class MediaWorkspace {
     private readonly workspaceService: WorkspaceService
   ) {
     this.workspaceRootDir = join(this.workspaceService.rootDir, "workspace");
-    this.assetIndexPath = join(this.workspaceRootDir, ASSET_INDEX_FILE);
+    this.fileIndexPath = join(this.workspaceRootDir, FILE_INDEX_FILE);
     this.mediaDir = join(this.workspaceRootDir, "media");
   }
 
@@ -32,89 +32,88 @@ export class MediaWorkspace {
       return;
     }
     await mkdir(this.mediaDir, { recursive: true });
-    if (!(await fileExists(this.assetIndexPath))) {
-      await this.writeAssets([]);
+    if (!(await fileExists(this.fileIndexPath))) {
+      await this.writeFiles([]);
     }
   }
 
-  async listAssets(): Promise<WorkspaceAssetRecord[]> {
-    return this.readAssets();
+  async listFiles(): Promise<WorkspaceStoredFileRecord[]> {
+    return this.readFiles();
   }
 
-  async getAsset(assetId: string): Promise<WorkspaceAssetRecord | null> {
-    const normalizedAssetId = String(assetId ?? "").trim();
-    if (!normalizedAssetId) {
+  async getFile(fileId: string): Promise<WorkspaceStoredFileRecord | null> {
+    const normalizedFileId = String(fileId ?? "").trim();
+    if (!normalizedFileId) {
       return null;
     }
-    const assets = await this.readAssets();
-    return assets.find((item) => item.assetId === normalizedAssetId) ?? null;
+    const files = await this.readFiles();
+    return files.find((item) => item.fileId === normalizedFileId) ?? null;
   }
 
-  async getMany(assetIds: string[]): Promise<WorkspaceAssetRecord[]> {
-    const wanted = new Set(assetIds.map((item) => String(item ?? "").trim()).filter(Boolean));
+  async getMany(fileIds: string[]): Promise<WorkspaceStoredFileRecord[]> {
+    const wanted = new Set(fileIds.map((item) => String(item ?? "").trim()).filter(Boolean));
     if (wanted.size === 0) {
       return [];
     }
-    const assets = await this.readAssets();
-    return assets.filter((item) => wanted.has(item.assetId));
+    const files = await this.readFiles();
+    return files.filter((item) => wanted.has(item.fileId));
   }
 
   async importBuffer(input: {
     buffer: Buffer;
-    filename?: string;
+    sourceName?: string;
     mimeType?: string;
-    kind: WorkspaceAssetKind;
-    origin: WorkspaceAssetOrigin;
+    kind: WorkspaceStoredFileKind;
+    origin: WorkspaceStoredFileOrigin;
     sourceContext?: Record<string, string | number | boolean | null>;
-  }): Promise<WorkspaceAssetRecord> {
-    const kind = await normalizeAssetKind(input.kind, input.buffer, input.filename, input.mimeType);
-    await validateAssetBuffer(kind, input.buffer);
-    const filename = normalizeFilename(input.filename, kind);
+  }): Promise<WorkspaceStoredFileRecord> {
+    const kind = await normalizeStoredFileKind(input.kind, input.buffer, input.sourceName, input.mimeType);
+    await validateStoredFileBuffer(kind, input.buffer);
+    const sourceName = normalizeSourceName(input.sourceName, kind);
     const mimeType = normalizeMimeType(input.mimeType, kind);
-    const ext = extname(filename) || extensionFromMimeType(mimeType) || defaultExtension(kind);
-    const assetId = buildAssetId();
-    const displayName = buildAssetDisplayName(assetId, input.origin, kind, ext);
-    const storedFilename = displayName;
-    const relativePath = join("workspace", "media", storedFilename);
+    const ext = extname(sourceName) || extensionFromMimeType(mimeType) || defaultExtension(kind);
+    const fileId = buildStoredFileId();
+    const fileRef = buildStoredFileRef(fileId, input.origin, kind, ext);
+    const relativePath = join("workspace", "media", fileRef);
     const absolutePath = this.workspaceService.resolvePath(relativePath).absolutePath;
     await mkdir(dirname(absolutePath), { recursive: true });
     await writeFile(absolutePath, input.buffer);
-    const record: WorkspaceAssetRecord = {
-      assetId,
-      displayName,
+    const record: WorkspaceStoredFileRecord = {
+      fileId,
+      fileRef,
       kind,
       origin: input.origin,
-      storagePath: relativePath.replaceAll("\\", "/"),
-      filename,
+      workspacePath: relativePath.replaceAll("\\", "/"),
+      sourceName,
       mimeType,
       sizeBytes: input.buffer.byteLength,
       createdAtMs: Date.now(),
       sourceContext: input.sourceContext ?? {},
       caption: null
     };
-    await this.upsertAsset(record);
+    await this.upsertFile(record);
     return record;
   }
 
   async importFileFromPath(input: {
     sourcePath: string;
-    filename?: string;
+    sourceName?: string;
     mimeType?: string;
-    kind?: WorkspaceAssetKind;
-    origin: WorkspaceAssetOrigin;
+    kind?: WorkspaceStoredFileKind;
+    origin: WorkspaceStoredFileOrigin;
     sourceContext?: Record<string, string | number | boolean | null>;
-  }): Promise<WorkspaceAssetRecord> {
+  }): Promise<WorkspaceStoredFileRecord> {
     const fileStat = await stat(input.sourcePath);
     if (fileStat.size > this.config.workspace.maxUploadBytes) {
       throw new Error("Workspace import exceeds maxUploadBytes");
     }
-    const filename = input.filename ?? basename(input.sourcePath);
-    const kind = input.kind ?? inferAssetKind(filename, input.mimeType);
+    const sourceName = input.sourceName ?? basename(input.sourcePath);
+    const kind = input.kind ?? inferStoredFileKind(sourceName, input.mimeType);
     const mimeType = normalizeMimeType(input.mimeType, kind);
     const buffer = await readFile(input.sourcePath);
     return this.importBuffer({
       buffer,
-      filename,
+      sourceName,
       mimeType,
       kind,
       origin: input.origin,
@@ -124,13 +123,13 @@ export class MediaWorkspace {
 
   async importRemoteSource(input: {
     source: string;
-    filename?: string;
+    sourceName?: string;
     mimeType?: string;
-    kind?: WorkspaceAssetKind;
-    origin: WorkspaceAssetOrigin;
+    kind?: WorkspaceStoredFileKind;
+    origin: WorkspaceStoredFileOrigin;
     proxyConsumer?: ProxyConsumer;
     sourceContext?: Record<string, string | number | boolean | null>;
-  }): Promise<WorkspaceAssetRecord> {
+  }): Promise<WorkspaceStoredFileRecord> {
     const source = String(input.source ?? "").trim();
     if (!source) {
       throw new Error("source is required");
@@ -140,7 +139,7 @@ export class MediaWorkspace {
         ? await fetchWithProxy(this.config, input.proxyConsumer, source)
         : await undiciFetch(source);
       if (!response.ok) {
-        throw new Error(`Failed to download workspace asset: ${response.status} ${response.statusText}`);
+        throw new Error(`Failed to download workspace file: ${response.status} ${response.statusText}`);
       }
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
@@ -148,11 +147,11 @@ export class MediaWorkspace {
         throw new Error("Workspace import exceeds maxUploadBytes");
       }
       const mimeType = input.mimeType ?? response.headers.get("content-type") ?? undefined;
-      const filename = input.filename ?? inferFilenameFromUrl(source, mimeType, input.kind);
+      const sourceName = input.sourceName ?? inferFilenameFromUrl(source, mimeType, input.kind);
       return this.importBuffer({
         buffer,
-        filename,
-        kind: input.kind ?? inferAssetKind(filename, mimeType),
+        sourceName,
+        kind: input.kind ?? inferStoredFileKind(sourceName, mimeType),
         origin: input.origin,
         ...(mimeType ? { mimeType } : {}),
         sourceContext: {
@@ -164,7 +163,7 @@ export class MediaWorkspace {
     return this.importFileFromPath({
       sourcePath: source,
       origin: input.origin,
-      ...(input.filename ? { filename: input.filename } : {}),
+      ...(input.sourceName ? { sourceName: input.sourceName } : {}),
       ...(input.mimeType ? { mimeType: input.mimeType } : {}),
       ...(input.kind ? { kind: input.kind } : {}),
       sourceContext: {
@@ -174,53 +173,53 @@ export class MediaWorkspace {
     });
   }
 
-  async updateCaption(assetId: string, caption: string | null): Promise<void> {
-    const asset = await this.getRequiredAsset(assetId);
-    await this.upsertAsset({
-      ...asset,
+  async updateCaption(fileId: string, caption: string | null): Promise<void> {
+    const file = await this.getRequiredFile(fileId);
+    await this.upsertFile({
+      ...file,
       caption: caption ? String(caption) : null
     });
   }
 
-  async resolveAbsolutePath(assetId: string): Promise<string> {
-    const asset = await this.getRequiredAsset(assetId);
-    return this.workspaceService.resolvePath(asset.storagePath).absolutePath;
+  async resolveAbsolutePath(fileId: string): Promise<string> {
+    const file = await this.getRequiredFile(fileId);
+    return this.workspaceService.resolvePath(file.workspacePath).absolutePath;
   }
 
-  private async getRequiredAsset(assetId: string): Promise<WorkspaceAssetRecord> {
-    const asset = await this.getAsset(assetId);
-    if (!asset) {
-      throw new Error(`Unknown workspace asset: ${assetId}`);
+  private async getRequiredFile(fileId: string): Promise<WorkspaceStoredFileRecord> {
+    const file = await this.getFile(fileId);
+    if (!file) {
+      throw new Error(`Unknown workspace file: ${fileId}`);
     }
-    return asset;
+    return file;
   }
 
-  private async upsertAsset(record: WorkspaceAssetRecord): Promise<void> {
-    await this.withWriteLock(record.assetId, async () => {
-      const assets = await this.readAssets();
-      const next = assets.filter((item) => item.assetId !== record.assetId);
+  private async upsertFile(record: WorkspaceStoredFileRecord): Promise<void> {
+    await this.withWriteLock(record.fileId, async () => {
+      const files = await this.readFiles();
+      const next = files.filter((item) => item.fileId !== record.fileId);
       next.push(record);
       next.sort((left, right) => right.createdAtMs - left.createdAtMs);
-      await this.writeAssets(next);
+      await this.writeFiles(next);
     });
   }
 
-  private async readAssets(): Promise<WorkspaceAssetRecord[]> {
+  private async readFiles(): Promise<WorkspaceStoredFileRecord[]> {
     try {
-      const raw = await readFile(this.assetIndexPath, "utf8");
+      const raw = await readFile(this.fileIndexPath, "utf8");
       const parsed = JSON.parse(raw) as unknown;
       return Array.isArray(parsed)
         ? parsed
-          .filter(isWorkspaceAssetRecord)
-          .map((item) => item.displayName
+          .filter(isWorkspaceStoredFileRecord)
+          .map((item) => item.fileRef
             ? item
             : {
                 ...item,
-                displayName: item.storagePath.split("/").at(-1) ?? buildAssetDisplayName(
-                  item.assetId,
+                fileRef: item.workspacePath.split("/").at(-1) ?? buildStoredFileRef(
+                  item.fileId,
                   item.origin,
                   item.kind,
-                  extname(item.filename) || extname(item.storagePath) || extensionFromMimeType(item.mimeType) || defaultExtension(item.kind)
+                  extname(item.sourceName) || extname(item.workspacePath) || extensionFromMimeType(item.mimeType) || defaultExtension(item.kind)
                 )
               })
         : [];
@@ -229,9 +228,9 @@ export class MediaWorkspace {
     }
   }
 
-  private async writeAssets(records: WorkspaceAssetRecord[]): Promise<void> {
-    await mkdir(dirname(this.assetIndexPath), { recursive: true });
-    await writeFile(this.assetIndexPath, `${JSON.stringify(records, null, 2)}\n`, "utf8");
+  private async writeFiles(records: WorkspaceStoredFileRecord[]): Promise<void> {
+    await mkdir(dirname(this.fileIndexPath), { recursive: true });
+    await writeFile(this.fileIndexPath, `${JSON.stringify(records, null, 2)}\n`, "utf8");
   }
 
   private async withWriteLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
@@ -253,30 +252,30 @@ export class MediaWorkspace {
   }
 }
 
-function buildAssetId(): string {
-  return `asset_${randomUUID().replaceAll("-", "")}`;
+function buildStoredFileId(): string {
+  return `file_${randomUUID().replaceAll("-", "")}`;
 }
 
-function normalizeFilename(filename: string | undefined, kind: WorkspaceAssetKind): string {
-  const normalized = String(filename ?? "").trim();
+function normalizeSourceName(sourceName: string | undefined, kind: WorkspaceStoredFileKind): string {
+  const normalized = String(sourceName ?? "").trim();
   if (normalized) {
     return normalized;
   }
   return `workspace-${kind}${defaultExtension(kind)}`;
 }
 
-function buildAssetDisplayName(
-  assetId: string,
-  origin: WorkspaceAssetOrigin,
-  kind: WorkspaceAssetKind,
+function buildStoredFileRef(
+  fileId: string,
+  origin: WorkspaceStoredFileOrigin,
+  kind: WorkspaceStoredFileKind,
   extension: string
 ): string {
   const prefix = originPrefix(origin) ?? kindPrefix(kind);
-  const shortId = assetId.replace(/^asset_/, "").slice(0, 8) || "unknown";
+  const shortId = fileId.replace(/^file_/, "").slice(0, 8) || "unknown";
   return `${prefix}_${shortId}${extension}`;
 }
 
-function originPrefix(origin: WorkspaceAssetOrigin): string | null {
+function originPrefix(origin: WorkspaceStoredFileOrigin): string | null {
   if (origin === "comfy_generated") return "comfy";
   if (origin === "browser_download") return "web";
   if (origin === "browser_screenshot") return "shot";
@@ -286,7 +285,7 @@ function originPrefix(origin: WorkspaceAssetOrigin): string | null {
   return null;
 }
 
-function kindPrefix(kind: WorkspaceAssetKind): string {
+function kindPrefix(kind: WorkspaceStoredFileKind): string {
   if (kind === "image") return "img";
   if (kind === "animated_image") return "gif";
   if (kind === "video") return "vid";
@@ -294,7 +293,7 @@ function kindPrefix(kind: WorkspaceAssetKind): string {
   return "file";
 }
 
-function normalizeMimeType(mimeType: string | undefined, kind: WorkspaceAssetKind): string {
+function normalizeMimeType(mimeType: string | undefined, kind: WorkspaceStoredFileKind): string {
   const normalized = String(mimeType ?? "").trim().toLowerCase();
   if (normalized) {
     return normalized;
@@ -314,7 +313,7 @@ function normalizeMimeType(mimeType: string | undefined, kind: WorkspaceAssetKin
   return "application/octet-stream";
 }
 
-function defaultExtension(kind: WorkspaceAssetKind): string {
+function defaultExtension(kind: WorkspaceStoredFileKind): string {
   if (kind === "image") {
     return ".png";
   }
@@ -341,7 +340,7 @@ function extensionFromMimeType(mimeType: string): string | null {
   return null;
 }
 
-function inferAssetKind(filename: string, mimeType?: string): WorkspaceAssetKind {
+function inferStoredFileKind(sourceName: string, mimeType?: string): WorkspaceStoredFileKind {
   const normalizedMimeType = String(mimeType ?? "").toLowerCase();
   if (normalizedMimeType === "image/gif" || normalizedMimeType === "image/apng") {
     return "animated_image";
@@ -355,7 +354,7 @@ function inferAssetKind(filename: string, mimeType?: string): WorkspaceAssetKind
   if (normalizedMimeType.startsWith("audio/")) {
     return "audio";
   }
-  const ext = extname(filename).toLowerCase();
+  const ext = extname(sourceName).toLowerCase();
   if ([".gif", ".apng"].includes(ext)) {
     return "animated_image";
   }
@@ -371,26 +370,26 @@ function inferAssetKind(filename: string, mimeType?: string): WorkspaceAssetKind
   return "file";
 }
 
-function inferFilenameFromUrl(source: string, mimeType?: string, kind?: WorkspaceAssetKind): string {
+function inferFilenameFromUrl(source: string, mimeType?: string, kind?: WorkspaceStoredFileKind): string {
   const pathname = new URL(source).pathname;
   const existing = basename(pathname);
   if (existing && existing !== "/") {
     return existing;
   }
-  const resolvedKind = kind ?? inferAssetKind("asset", mimeType);
+  const resolvedKind = kind ?? inferStoredFileKind("file", mimeType);
   return `download${extensionFromMimeType(String(mimeType ?? "")) ?? defaultExtension(resolvedKind)}`;
 }
 
-async function normalizeAssetKind(
-  kind: WorkspaceAssetKind,
+async function normalizeStoredFileKind(
+  kind: WorkspaceStoredFileKind,
   buffer: Buffer,
-  filename?: string,
+  sourceName?: string,
   mimeType?: string
-): Promise<WorkspaceAssetKind> {
+): Promise<WorkspaceStoredFileKind> {
   if (kind !== "image") {
     return kind;
   }
-  const inferred = inferAssetKind(filename ?? "", mimeType);
+  const inferred = inferStoredFileKind(sourceName ?? "", mimeType);
   if (inferred !== "image") {
     return inferred;
   }
@@ -405,7 +404,7 @@ async function normalizeAssetKind(
   return "image";
 }
 
-async function validateAssetBuffer(kind: WorkspaceAssetKind, buffer: Buffer): Promise<void> {
+async function validateStoredFileBuffer(kind: WorkspaceStoredFileKind, buffer: Buffer): Promise<void> {
   if (kind !== "image" && kind !== "animated_image") {
     return;
   }
@@ -431,17 +430,17 @@ async function validateAssetBuffer(kind: WorkspaceAssetKind, buffer: Buffer): Pr
   }
 }
 
-function isWorkspaceAssetRecord(value: unknown): value is WorkspaceAssetRecord {
+function isWorkspaceStoredFileRecord(value: unknown): value is WorkspaceStoredFileRecord {
   if (!value || typeof value !== "object") {
     return false;
   }
   const candidate = value as Record<string, unknown>;
-  return typeof candidate.assetId === "string"
-    && (candidate.displayName == null || typeof candidate.displayName === "string")
+  return typeof candidate.fileId === "string"
+    && (candidate.fileRef == null || typeof candidate.fileRef === "string")
     && typeof candidate.kind === "string"
     && typeof candidate.origin === "string"
-    && typeof candidate.storagePath === "string"
-    && typeof candidate.filename === "string"
+    && typeof candidate.workspacePath === "string"
+    && typeof candidate.sourceName === "string"
     && typeof candidate.mimeType === "string"
     && typeof candidate.sizeBytes === "number"
     && typeof candidate.createdAtMs === "number";

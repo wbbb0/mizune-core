@@ -4,28 +4,28 @@ import { createTestAppConfig } from "./helpers/config-fixtures.tsx";
 import { createSilentLogger } from "./helpers/browser-test-support.tsx";
 import { runCase } from "./helpers/llm-test-support.tsx";
 
-type TestAsset = {
-  assetId: string;
+type TestFile = {
+  fileId: string;
   kind: "image" | "animated_image";
   caption: string | null;
   sourceContext: Record<string, string | number | boolean | null>;
 };
 
 class FakeMediaWorkspace {
-  constructor(private readonly assets = new Map<string, TestAsset>()) {}
+  constructor(private readonly files = new Map<string, TestFile>()) {}
 
-  async getMany(assetIds: string[]) {
-    return assetIds.map((assetId) => this.assets.get(assetId)).filter((item): item is TestAsset => Boolean(item));
+  async getMany(fileIds: string[]) {
+    return fileIds.map((fileId) => this.files.get(fileId)).filter((item): item is TestFile => Boolean(item));
   }
 
-  async getAsset(assetId: string) {
-    return this.assets.get(assetId) ?? null;
+  async getFile(fileId: string) {
+    return this.files.get(fileId) ?? null;
   }
 
-  async updateCaption(assetId: string, caption: string | null) {
-    const asset = this.assets.get(assetId);
-    assert.ok(asset);
-    asset.caption = caption;
+  async updateCaption(fileId: string, caption: string | null) {
+    const file = this.files.get(fileId);
+    assert.ok(file);
+    file.caption = caption;
   }
 }
 
@@ -81,8 +81,8 @@ function createCaptionerConfig() {
 async function main() {
   await runCase("media caption service requests richer captions and normalizes nsfw labels", async () => {
     const mediaWorkspace = new FakeMediaWorkspace(new Map([
-      ["asset_nsfw", {
-        assetId: "asset_nsfw",
+      ["file_nsfw", {
+        fileId: "file_nsfw",
         kind: "image",
         caption: null,
         sourceContext: { mediaKind: "image" }
@@ -111,10 +111,10 @@ async function main() {
       llmClient,
       mediaWorkspace as any,
       {
-        async prepareAssetForModel(assetId: string) {
+        async prepareFileForModel(fileId: string) {
           return {
-            assetId,
-            inputUrl: `data:image/png;base64,${assetId}`,
+            fileId,
+            inputUrl: `data:image/png;base64,${fileId}`,
             kind: "image",
             transport: "data_url",
             animated: false,
@@ -125,15 +125,15 @@ async function main() {
       } as any,
       createSilentLogger()
     );
-    const captions = await captioner.ensureReady(["asset_nsfw"], { reason: "test_nsfw" });
+    const captions = await captioner.ensureReady(["file_nsfw"], { reason: "test_nsfw" });
 
-    assert.equal(captions.get("asset_nsfw"), "NSFW 半裸人物站在卧室镜前自拍，长发披肩");
+    assert.equal(captions.get("file_nsfw"), "NSFW 半裸人物站在卧室镜前自拍，长发披肩");
   });
 
   await runCase("media caption service stores the actual fallback model when generation succeeds", async () => {
     const mediaWorkspace = new FakeMediaWorkspace(new Map([
-      ["asset_1", {
-        assetId: "asset_1",
+      ["file_1", {
+        fileId: "file_1",
         kind: "image",
         caption: null,
         sourceContext: { mediaKind: "image" }
@@ -160,10 +160,10 @@ async function main() {
       llmClient,
       mediaWorkspace as any,
       {
-        async prepareAssetForModel(assetId: string) {
+        async prepareFileForModel(fileId: string) {
           return {
-            assetId,
-            inputUrl: `data:image/png;base64,${assetId}`,
+            fileId,
+            inputUrl: `data:image/png;base64,${fileId}`,
             kind: "image",
             transport: "data_url",
             animated: false,
@@ -174,21 +174,21 @@ async function main() {
       } as any,
       createSilentLogger()
     );
-    const captions = await captioner.ensureReady(["asset_1"], { reason: "test_fallback" });
+    const captions = await captioner.ensureReady(["file_1"], { reason: "test_fallback" });
 
-    assert.equal(captions.get("asset_1"), "窗边的小猫");
+    assert.equal(captions.get("file_1"), "窗边的小猫");
   });
 
   await runCase("media caption service retries image and emoji-like assets on demand", async () => {
     const mediaWorkspace = new FakeMediaWorkspace(new Map([
-      ["asset_missing", {
-        assetId: "asset_missing",
+      ["file_missing", {
+        fileId: "file_missing",
         kind: "image",
         caption: null,
         sourceContext: { mediaKind: "image" }
       }],
-      ["asset_failed", {
-        assetId: "asset_failed",
+      ["file_failed", {
+        fileId: "file_failed",
         kind: "animated_image",
         caption: null,
         sourceContext: { mediaKind: "emoji" }
@@ -217,24 +217,24 @@ async function main() {
       llmClient,
       mediaWorkspace as any,
       {
-        async prepareAssetForModel(assetId: string) {
+        async prepareFileForModel(fileId: string) {
           return {
-            assetId,
-            inputUrl: `data:image/png;base64,${assetId}`,
-            kind: assetId === "asset_failed" ? "animated_image" : "image",
+            fileId,
+            inputUrl: `data:image/png;base64,${fileId}`,
+            kind: fileId === "file_failed" ? "animated_image" : "image",
             transport: "data_url",
-            animated: assetId === "asset_failed",
-            durationMs: assetId === "asset_failed" ? 1200 : null,
-            sampledFrameCount: assetId === "asset_failed" ? 3 : null
+            animated: fileId === "file_failed",
+            durationMs: fileId === "file_failed" ? 1200 : null,
+            sampledFrameCount: fileId === "file_failed" ? 3 : null
           };
         }
       } as any,
       createSilentLogger()
     );
-    const captions = await captioner.ensureReady(["asset_missing", "asset_failed"], { reason: "test_retry" });
+    const captions = await captioner.ensureReady(["file_missing", "file_failed"], { reason: "test_retry" });
 
-    assert.equal(captions.get("asset_missing"), "会议室白板照片");
-    assert.equal(captions.get("asset_failed"), "搞怪表情包");
+    assert.equal(captions.get("file_missing"), "会议室白板照片");
+    assert.equal(captions.get("file_failed"), "搞怪表情包");
     assert.equal(calls.length, 2);
   });
 }

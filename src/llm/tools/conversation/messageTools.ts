@@ -94,16 +94,16 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
         forwardIds: extractForwardIds(message.message),
         attachments: [
           ...workspaceImageAssets.filter((item): item is NonNullable<typeof item> => Boolean(item)).map((item) => ({
-            assetId: item.assetId,
+            fileId: item.fileId,
             kind: item.kind,
-            filename: item.filename,
+            sourceName: item.sourceName,
             mimeType: item.mimeType,
             semanticKind: item.sourceContext.mediaKind === "emoji" ? "emoji" : "image"
           })),
           ...workspaceFileAssets.filter((item): item is NonNullable<typeof item> => Boolean(item)).map((item) => ({
-            assetId: item.assetId,
+            fileId: item.fileId,
             kind: item.kind,
-            filename: item.filename,
+            sourceName: item.sourceName,
             mimeType: item.mimeType
           }))
         ],
@@ -114,7 +114,7 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
             return {
               kind: segment.kind,
               mediaKind: segment.mediaKind,
-              assetId: registered?.assetId ?? null,
+              fileId: registered?.fileId ?? null,
               viewable: Boolean(registered)
             };
           }

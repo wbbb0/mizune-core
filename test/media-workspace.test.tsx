@@ -96,7 +96,7 @@ async function main() {
           }),
           /Workspace image validation failed: image is invalid or corrupted/
         );
-        assert.deepEqual(await mediaWorkspace.listAssets(), []);
+        assert.deepEqual(await mediaWorkspace.listFiles(), []);
       } finally {
         await server.close();
       }
@@ -117,13 +117,13 @@ async function main() {
       }) satisfies TestRequestHandler);
 
       try {
-        const asset = await mediaWorkspace.importRemoteSource({
+        const file = await mediaWorkspace.importRemoteSource({
           source: `${server.baseUrl}/ok.png`,
           origin: "browser_download"
         });
-        assert.equal(asset.kind, "image");
-        assert.equal(asset.mimeType, "image/png");
-        assert.equal((await mediaWorkspace.listAssets()).length, 1);
+        assert.equal(file.kind, "image");
+        assert.equal(file.mimeType, "image/png");
+        assert.equal((await mediaWorkspace.listFiles()).length, 1);
       } finally {
         await server.close();
       }

@@ -24,10 +24,10 @@ const persistedSessionSchema = z.object({
     imageIds: z.array(z.string()),
     emojiIds: z.array(z.string()),
     attachments: z.array(z.object({
-      assetId: z.string(),
+      fileId: z.string(),
       kind: z.enum(["image", "file", "audio"]),
       source: z.enum(["chat_message", "web_upload", "browser", "workspace"]),
-      filename: z.string().nullable(),
+      sourceName: z.string().nullable(),
       mimeType: z.string().nullable()
     })).default([]),
     forwardIds: z.array(z.string()),
@@ -51,10 +51,10 @@ const persistedSessionSchema = z.object({
       imageIds: z.array(z.string()).default([]),
       emojiIds: z.array(z.string()).default([]),
       attachments: z.array(z.object({
-        assetId: z.string(),
+        fileId: z.string(),
         kind: z.enum(["image", "animated_image", "video", "audio", "file"]),
         source: z.enum(["chat_message", "web_upload", "browser", "workspace"]),
-        filename: z.string().nullable(),
+        sourceName: z.string().nullable(),
         mimeType: z.string().nullable(),
         semanticKind: z.enum(["image", "emoji"]).optional()
       })).default([]),
