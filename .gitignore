@@ -1,14 +1,26 @@
+# Dependencies
 /node_modules/
-/dist/
-/data/
-/.env
-/.env.*
-/*.log
 /webui/node_modules/
+
+# Build outputs
+/dist/
 /webui/dist/
 
+# Runtime data
+/data/
+
+# Environment files
+/.env
+/.env.*
+
+# Logs
+/*.log
+
+# Local runtime config (keep examples)
 /config/**/*.yml
 !/config/**/*.example.yml
 
+# Local assistant/workspace files
 /CLAUDE.md
 /GEMINI.md
+/.claude/
