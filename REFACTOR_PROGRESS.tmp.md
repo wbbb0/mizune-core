@@ -10,7 +10,7 @@
 - [ ] 4. BrowserService 职责拆分
 - [x] 5. SessionManager epoch/revision guard 收敛
 - [x] 6. Web tools 模块拆分
-- [ ] 7. WebUI/后端流协议类型收敛
+- [x] 7. WebUI/后端流协议类型收敛
 - [x] 8. Sessions 页轮询与 SSE 策略收敛
 - [x] 9. prompt 语言约定统一（中文）
 - [ ] 10. Internal API 依赖接口瘦身
@@ -22,7 +22,7 @@
 - [ ] commit C：生成执行器拆分
 - [x] commit D：Session guard 收敛
 - [x] commit E：Web tools 拆分
-- [ ] commit F：协议类型收敛
+- [x] commit F：协议类型收敛
 - [x] commit G：SSE/轮询策略调整
 - [x] commit H：prompt 语言统一
 - [ ] commit I：bootstrap/runtime 与 internalApi 依赖收敛
