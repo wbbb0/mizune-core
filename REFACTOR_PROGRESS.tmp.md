@@ -6,7 +6,7 @@
 
 - [ ] 1. 启动与运行时依赖图收敛（bootstrap/runtime）
 - [x] 2. 入站消息链路拆分（messageEventHandler）
-- [ ] 3. 生成执行器拆分（generationExecutor）
+- [x] 3. 生成执行器拆分（generationExecutor）
 - [ ] 4. BrowserService 职责拆分
 - [x] 5. SessionManager epoch/revision guard 收敛
 - [x] 6. Web tools 模块拆分
@@ -19,7 +19,7 @@
 
 - [x] commit A：新增追踪文件
 - [x] commit B：消息入站链路拆分
-- [ ] commit C：生成执行器拆分
+- [x] commit C：生成执行器拆分
 - [x] commit D：Session guard 收敛
 - [x] commit E：Web tools 拆分
 - [x] commit F：协议类型收敛

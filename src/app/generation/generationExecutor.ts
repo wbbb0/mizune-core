@@ -19,6 +19,13 @@ import type { GenerationPromptParticipantProfile } from "./generationPromptBuild
 import type { GenerationRunnerDeps } from "./generationRunnerDeps.ts";
 import type { InternalSessionTriggerExecution, InternalTranscriptItem, SessionDebugMarker } from "#conversation/session/sessionManager.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
+import {
+  buildGenerationFailureAssistantMessage,
+  extractToolContent,
+  summarizeResultText,
+  summarizeToolArgs,
+  summarizeToolResult
+} from "./generationExecutorSupport.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -279,7 +286,7 @@ export function createGenerationExecutor(
             toolName: toolCall.function.name,
             argsSummary: summarizeToolArgs(args),
             outcome: "error",
-            resultSummary: summarizeText(message, 220),
+            resultSummary: summarizeResultText(message, 220),
             timestampMs: Date.now()
           });
           if (eventApplied) {
@@ -488,61 +495,4 @@ export function createGenerationExecutor(
   return {
     runGeneration
   };
-}
-
-function buildGenerationFailureAssistantMessage(): string {
-  return "刚刚这次回复失败了，我暂时没拿到可用结果。你可以稍后重试；如果连续出现，请检查模型配置、上游接口状态或服务日志。";
-}
-
-function summarizeToolArgs(args: unknown): string {
-  return summarizeUnknown(args, 180);
-}
-
-function summarizeToolResult(result: string | LlmToolExecutionResult): string {
-  if (typeof result === "string") {
-    const error = extractToolError(result);
-    return summarizeText(error ?? summarizeUnknown(tryParseJson(result), 220), 220);
-  }
-
-  const contentError = extractToolError(result.content);
-  if (contentError) {
-    return summarizeText(contentError, 220);
-  }
-  if (result.terminalResponse) {
-    return "terminal response";
-  }
-  return summarizeText(summarizeUnknown(tryParseJson(result.content), 220), 220);
-}
-
-function extractToolContent(result: string | LlmToolExecutionResult): string {
-  return typeof result === "string" ? result : result.content;
-}
-
-function tryParseJson(value: string): unknown {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
-}
-
-function summarizeUnknown(value: unknown, maxLength: number): string {
-  if (typeof value === "string") {
-    return summarizeText(value, maxLength);
-  }
-  try {
-    return summarizeText(JSON.stringify(value), maxLength);
-  } catch {
-    return summarizeText(String(value), maxLength);
-  }
-}
-
-function summarizeText(value: string, maxLength: number): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  if (!normalized) {
-    return "";
-  }
-  return normalized.length <= maxLength
-    ? normalized
-    : `${normalized.slice(0, maxLength)}...`;
 }
