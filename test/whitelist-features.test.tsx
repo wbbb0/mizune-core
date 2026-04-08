@@ -60,7 +60,7 @@ async function main() {
   await runCase("whitelist store migrates legacy owner file into whitelist data", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-whitelist-owner-"));
     try {
-      await writeFile(join(dataDir, "owner.json"), `${JSON.stringify({ ownerQq: "10001" }, null, 2)}\n`, "utf8");
+      await writeFile(join(dataDir, "owner.json"), `${JSON.stringify({ ownerId: "10001" }, null, 2)}\n`, "utf8");
       const store = new WhitelistStore(dataDir, pino({ level: "silent" }));
 
       await store.init();

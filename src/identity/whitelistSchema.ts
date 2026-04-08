@@ -18,8 +18,8 @@ export const legacyWhitelistEntrySchema = s.object({
   groups: s.array(s.string().trim().nonempty()).default([])
 }).strict();
 
-export const legacyOwnerRecordSchema = s.object({
-  ownerQq: s.string().trim().nonempty()
+export const ownerRecordSchema = s.object({
+  ownerId: s.string().trim().nonempty()
 }).strict();
 
 export const whitelistFileSchema = s.union([

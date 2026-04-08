@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { Logger } from "pino";
 import { FileSchemaStore } from "#data/fileSchemaStore.ts";
 import {
-  legacyOwnerRecordSchema,
+  ownerRecordSchema,
   whitelistFileSchema,
   type WhitelistFile
 } from "./whitelistSchema.ts";
@@ -53,7 +53,7 @@ export class WhitelistStore {
   }
 
   async assignOwner(userId: string): Promise<string> {
-    const normalizedUserId = legacyOwnerRecordSchema.parse({ ownerQq: userId }).ownerQq;
+    const normalizedUserId = ownerRecordSchema.parse({ ownerId: userId }).ownerId;
     const next = await this.writeAll({
       ...this.current,
       ownerId: normalizedUserId,
@@ -155,7 +155,7 @@ export class WhitelistStore {
   private async readLegacyOwnerId(): Promise<string | undefined> {
     try {
       const raw = await readFile(this.legacyOwnerFilePath, "utf8");
-      return legacyOwnerRecordSchema.parse(JSON.parse(raw)).ownerQq;
+      return ownerRecordSchema.parse(JSON.parse(raw)).ownerId;
     } catch (error: unknown) {
       const nodeError = error as NodeJS.ErrnoException;
       if (nodeError.code === "ENOENT") {

@@ -29,7 +29,7 @@ export const crossChatToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "search_chat_targets",
-        description: "委派消息前先搜索候选目标会话，可按 QQ、昵称、备注、群名或 sessionId 匹配。",
+        description: "委派消息前先搜索候选目标会话，可按 userId、昵称、备注、群名或 sessionId 匹配。",
         parameters: {
           type: "object",
           properties: {
