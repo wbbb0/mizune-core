@@ -5,6 +5,7 @@ import type { BrowserPageResourceSummary } from "#runtime/resources/resourceType
 import { findMatches, normalizeLineNumber, normalizeWaitMs, renderSnapshot, validateHttpUrl } from "./contentExtraction.ts";
 import { BrowserProfileStore } from "./browserProfileStore.ts";
 import { PlaywrightBrowserBackend } from "./playwrightBrowserBackend.ts";
+import { BrowserSessionRuntime, type BrowserSessionRecord } from "./browserSessionRuntime.ts";
 import type {
   BrowserActionTarget,
   BrowserBackend,
@@ -26,17 +27,6 @@ import type {
 } from "./types.ts";
 
 const MAX_BROWSER_SESSIONS = 256;
-
-interface BrowserSessionRecord {
-  resourceId: string;
-  runtimePageId: string;
-  backend: BrowserBackend;
-  state: unknown;
-  snapshot: BrowserSnapshot;
-  expiresAt: number;
-  ownerSessionId: string | null;
-  profileId: string | null;
-}
 
 interface OpenedBrowserSession {
   backend: BrowserBackend;
@@ -72,8 +62,7 @@ type ScreenshotImageStore = {
 
 export class BrowserService {
   private readonly playwrightBackend: BrowserBackend;
-  private readonly sessions = new Map<string, BrowserSessionRecord>();
-  private nextPageId = 1;
+  private readonly sessions: BrowserSessionRuntime;
   private readonly resourceRegistry: RuntimeResourceRegistry;
   private readonly profileStore: BrowserProfileStore;
 
@@ -85,6 +74,7 @@ export class BrowserService {
     private readonly mediaWorkspace: ScreenshotImageStore
   ) {
     this.playwrightBackend = new PlaywrightBrowserBackend(config, logger);
+    this.sessions = new BrowserSessionRuntime(MAX_BROWSER_SESSIONS);
     this.resourceRegistry = new RuntimeResourceRegistry(dataDir, logger);
     this.profileStore = new BrowserProfileStore(dataDir, config, logger);
   }
@@ -149,9 +139,7 @@ export class BrowserService {
         profileId: openResult.snapshot.profileId
       }
     });
-    this.sessions.set(resource.resourceId, {
-      resourceId: resource.resourceId,
-      runtimePageId: this.createPageId(),
+    const evicted = this.sessions.set(resource.resourceId, {
       backend: openResult.backend,
       state: openResult.state,
       snapshot: openResult.snapshot,
@@ -159,7 +147,9 @@ export class BrowserService {
       ownerSessionId,
       profileId: openResult.snapshot.profileId
     });
-    trimSessions(this.sessions, MAX_BROWSER_SESSIONS);
+    for (const session of evicted) {
+      void session.backend.close(session.state).catch(() => undefined);
+    }
 
     return {
       ok: true,
@@ -424,7 +414,7 @@ export class BrowserService {
       throw new Error("profile_id is required");
     }
 
-    const liveSession = Array.from(this.sessions.values()).find((item) => item.profileId === normalizedProfileId);
+    const liveSession = this.sessions.findByProfileId(normalizedProfileId);
     if (liveSession) {
       await this.persistSessionProfile(liveSession);
     } else {
@@ -536,10 +526,15 @@ export class BrowserService {
       throw new Error(`Unknown resource_id: ${resourceId}`);
     }
     if (options?.touch !== false) {
-      session.expiresAt = this.computeNextExpiry();
+      const nextExpiry = this.computeNextExpiry();
+      const touched = this.sessions.touch(resourceId, nextExpiry);
+      if (!touched) {
+        await this.resourceRegistry.markStatus(resourceId, "expired", Date.now()).catch(() => null);
+        throw new Error(`Unknown resource_id: ${resourceId}`);
+      }
       await this.resourceRegistry.touch(resourceId, {
         accessedAtMs: Date.now(),
-        expiresAtMs: session.expiresAt,
+        expiresAtMs: touched.expiresAt,
         title: session.snapshot.title,
         summary: summarizeSnapshot(session.snapshot),
         status: "active"
@@ -554,13 +549,12 @@ export class BrowserService {
 
   private async cleanupExpiredSessions(): Promise<void> {
     const now = Date.now();
-    const expiredSessions = Array.from(this.sessions.values()).filter((session) => session.expiresAt <= now);
+    const expiredSessions = this.sessions.collectExpired(now);
     if (expiredSessions.length === 0) {
       return;
     }
 
     for (const session of expiredSessions) {
-      this.sessions.delete(session.resourceId);
       await this.persistSessionProfile(session).catch((error: unknown) => {
         this.logger.warn(
           { profileId: session.profileId, error: error instanceof Error ? error.message : String(error) },
@@ -583,15 +577,8 @@ export class BrowserService {
     this.logger.info({ expiredSessionCount: expiredSessions.length }, "browser_sessions_expired");
   }
 
-  private createPageId(): string {
-    const pageId = `page_${this.nextPageId}`;
-    this.nextPageId += 1;
-    return pageId;
-  }
-
   private async closeAllSessions(logEvent: string): Promise<void> {
-    const existingSessions = Array.from(this.sessions.values());
-    this.sessions.clear();
+    const existingSessions = this.sessions.clear();
 
     await Promise.all(existingSessions.map(async (session) => {
       try {
@@ -897,18 +884,6 @@ function extractDownloadSourceUrl(element: BrowserSnapshot["elements"][number]):
     }
   }
   return null;
-}
-
-function trimSessions(map: Map<string, BrowserSessionRecord>, maxSize: number): void {
-  while (map.size > maxSize) {
-    const firstKey = map.keys().next().value;
-    if (!firstKey) {
-      break;
-    }
-    const session = map.get(firstKey);
-    map.delete(firstKey);
-    void session?.backend.close(session.state).catch(() => undefined);
-  }
 }
 
 function summarizeSnapshot(snapshot: BrowserSnapshot): string {
