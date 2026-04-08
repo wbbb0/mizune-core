@@ -195,12 +195,12 @@ async function createMessageProcessingContext(
         }).catch(() => null))
     ),
     Promise.all(
-      fileSources.map(async (file) => services.mediaWorkspace.importRemoteSource({
-        source: file.source,
+      fileSources.map(async (fileSource) => services.mediaWorkspace.importRemoteSource({
+        source: fileSource.source,
         kind: "file",
         origin: "chat_message",
-        ...(file.filename ? { filename: file.filename } : {}),
-        ...(file.mimeType ? { mimeType: file.mimeType } : {}),
+        ...(fileSource.filename ? { sourceName: fileSource.filename } : {}),
+        ...(fileSource.mimeType ? { mimeType: fileSource.mimeType } : {}),
         sourceContext: {
           userId: incomingMessage.userId,
           senderName: incomingMessage.senderName

@@ -349,7 +349,7 @@ async function main() {
   await runCase("download_asset supports direct urls", async () => {
     const result = await webToolHandlers.download_asset!(
       createFunctionToolCall("download_asset", "tool_10b"),
-      { url: "https://example.com/video.mp4", filename: "video.mp4", kind: "video" },
+      { url: "https://example.com/video.mp4", source_name: "video.mp4", kind: "video" },
       createBrowserToolContext({
         async downloadAsset(input) {
           assert.equal(input.url, "https://example.com/video.mp4");

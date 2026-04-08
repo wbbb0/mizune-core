@@ -456,7 +456,7 @@ async function main() {
     assert.equal(backendCalled, false);
   });
 
-  await runCase("browser service downloads direct urls and page target media sources into workspace assets", async () => {
+  await runCase("browser service downloads direct urls and page target media sources into workspace files", async () => {
     const service = createBrowserService();
     const downloads: Array<{
       source: string;

@@ -57,15 +57,15 @@ const createSessionBodySchema = z.object({
   participantLabel: z.string().trim().min(1).optional()
 });
 
-const uploadAssetFileSchema = z.object({
+const uploadWorkspaceFileSchema = z.object({
   sourceName: z.string().trim().min(1).optional(),
   mimeType: z.string().trim().min(1, "mimeType is required"),
   contentBase64: z.string().trim().min(1, "contentBase64 is required"),
   kind: z.enum(["image", "animated_image", "video", "audio", "file"]).optional()
 });
 
-const uploadAssetsBodySchema = z.object({
-  files: z.array(uploadAssetFileSchema).min(1, "files must contain at least one asset")
+const uploadWorkspaceFilesBodySchema = z.object({
+  files: z.array(uploadWorkspaceFileSchema).min(1, "files must contain at least one file")
 });
 
 const configValidateBodySchema = z.object({
@@ -116,7 +116,7 @@ export type ParsedShellSignalBody = z.infer<typeof shellSignalBodySchema>;
 export type ParsedSendTextBody = z.infer<typeof sendTextBodySchema>;
 export type ParsedWebTurnBody = z.infer<typeof webTurnBodySchema>;
 export type ParsedCreateSessionBody = z.infer<typeof createSessionBodySchema>;
-export type ParsedUploadAssetsBody = z.infer<typeof uploadAssetsBodySchema>;
+export type ParsedUploadAssetsBody = z.infer<typeof uploadWorkspaceFilesBodySchema>;
 export type ParsedConfigValidateBody = z.infer<typeof configValidateBodySchema>;
 export type ParsedConfigSaveBody = z.infer<typeof configSaveBodySchema>;
 export type ParsedEditorResourceParams = z.infer<typeof editorResourceParamsSchema>;
@@ -203,7 +203,7 @@ export function parseCreateSessionBody(body: unknown): ParsedCreateSessionBody |
 }
 
 export function parseUploadAssetsBody(body: unknown): ParsedUploadAssetsBody | { error: string } {
-  return parseWithSchema(uploadAssetsBodySchema, body);
+  return parseWithSchema(uploadWorkspaceFilesBodySchema, body);
 }
 
 export function parseConfigValidateBody(body: unknown): ParsedConfigValidateBody | { error: string } {

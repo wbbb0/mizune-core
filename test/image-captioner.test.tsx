@@ -179,7 +179,7 @@ async function main() {
     assert.equal(captions.get("file_1"), "窗边的小猫");
   });
 
-  await runCase("media caption service retries image and emoji-like assets on demand", async () => {
+  await runCase("media caption service retries image and emoji-like files on demand", async () => {
     const mediaWorkspace = new FakeMediaWorkspace(new Map([
       ["file_missing", {
         fileId: "file_missing",

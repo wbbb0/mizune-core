@@ -105,10 +105,10 @@ export function createDataBrowserService(input: {
 function buildDataBrowserResourceMap(dataDir: string): Map<string, DataBrowserResource> {
   const resources: DataBrowserResource[] = [
     {
-      key: "image_assets",
-      title: "Image Assets",
+      key: "image_files",
+      title: "Image Files",
       kind: "single_json",
-      filePath: join(dataDir, "image-assets.json")
+      filePath: join(dataDir, "image-files.json")
     },
     {
       key: "sessions",
@@ -117,10 +117,10 @@ function buildDataBrowserResourceMap(dataDir: string): Map<string, DataBrowserRe
       dirPath: join(dataDir, "sessions")
     },
     {
-      key: "workspace_assets",
-      title: "Workspace Assets",
+      key: "workspace_files",
+      title: "Workspace Files",
       kind: "single_json",
-      filePath: join(dataDir, "workspace", "assets.json")
+      filePath: join(dataDir, "workspace", "files.json")
     }
   ];
 

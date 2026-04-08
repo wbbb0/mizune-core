@@ -494,9 +494,9 @@ async function buildUnknownAssetError(
 
 async function resolveWorkspaceFile(
   context: Parameters<NonNullable<typeof workspaceToolHandlers.send_workspace_file_to_chat>>[2],
-  assetRef: string
+  fileSelector: string
 ) {
-  const normalized = String(assetRef ?? "").trim();
+  const normalized = String(fileSelector ?? "").trim();
   if (!normalized) {
     return null;
   }

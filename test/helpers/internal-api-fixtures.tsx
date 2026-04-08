@@ -77,7 +77,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
   mkdirSync(join(state.workspaceRoot, "docs"), { recursive: true });
   mkdirSync(join(state.workspaceRoot, "workspace", "media"), { recursive: true });
   writeFileSync(join(state.workspaceRoot, "notes.txt"), "line 1\nline 2\nline 3\n", "utf8");
-  writeFileSync(join(state.workspaceRoot, "workspace", "media", "asset_image_1.png"), Buffer.from("fixture-image"));
+  writeFileSync(join(state.workspaceRoot, "workspace", "media", "file_image_1.png"), Buffer.from("fixture-image"));
 
   const deps: InternalApiDeps = {
     config: createTestAppConfig({
@@ -97,14 +97,14 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       }
     } as unknown as InternalApiDeps["oneBotClient"],
     mediaWorkspace: {
-      async importBuffer(input: { kind: "image" | "animated_image" | "video" | "file" | "audio"; filename?: string; mimeType?: string; buffer: Buffer }) {
+      async importBuffer(input: { kind: "image" | "animated_image" | "video" | "file" | "audio"; sourceName?: string; mimeType?: string; buffer: Buffer }) {
         return {
-          assetId: `asset_${input.kind}_1`,
-          displayName: `${input.kind}_fixture_1.bin`,
+          fileId: `file_${input.kind}_1`,
+          fileRef: `${input.kind}_fixture_1.bin`,
           kind: input.kind,
           origin: "user_upload",
-          storagePath: `workspace/media/${input.filename ?? "file"}`,
-          filename: input.filename ?? "file",
+          workspacePath: `workspace/media/${input.sourceName ?? "file"}`,
+          sourceName: input.sourceName ?? "file",
           mimeType: input.mimeType ?? "application/octet-stream",
           sizeBytes: input.buffer.byteLength,
           createdAtMs: Date.now(),
@@ -112,14 +112,14 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           caption: null
         };
       },
-      async listAssets() {
+      async listFiles() {
         return [{
-          assetId: "asset_image_1",
-          displayName: "upload_image1.png",
+          fileId: "file_image_1",
+          fileRef: "upload_image1.png",
           kind: "image",
           origin: "user_upload",
-          storagePath: "workspace/media/asset_image_1.png",
-          filename: "fixture.png",
+          workspacePath: "workspace/media/file_image_1.png",
+          sourceName: "fixture.png",
           mimeType: "image/png",
           sizeBytes: 13,
           createdAtMs: 123,
@@ -127,17 +127,17 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           caption: null
         }];
       },
-      async getAsset(assetId: string) {
-        if (assetId !== "asset_image_1") {
+      async getFile(fileId: string) {
+        if (fileId !== "file_image_1") {
           return null;
         }
         return {
-          assetId: "asset_image_1",
-          displayName: "upload_image1.png",
+          fileId: "file_image_1",
+          fileRef: "upload_image1.png",
           kind: "image",
           origin: "user_upload",
-          storagePath: "workspace/media/asset_image_1.png",
-          filename: "fixture.png",
+          workspacePath: "workspace/media/file_image_1.png",
+          sourceName: "fixture.png",
           mimeType: "image/png",
           sizeBytes: 13,
           createdAtMs: 123,
@@ -145,11 +145,11 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           caption: null
         };
       },
-      async resolveAbsolutePath(assetId: string) {
-        if (assetId !== "asset_image_1") {
-          throw new Error(`Unknown workspace asset: ${assetId}`);
+      async resolveAbsolutePath(fileId: string) {
+        if (fileId !== "file_image_1") {
+          throw new Error(`Unknown workspace file: ${fileId}`);
         }
-        return join(state.workspaceRoot, "workspace", "media", "asset_image_1.png");
+        return join(state.workspaceRoot, "workspace", "media", "file_image_1.png");
       }
     } as unknown as InternalApiDeps["mediaWorkspace"],
     mediaVisionService: {} as unknown as InternalApiDeps["mediaVisionService"],

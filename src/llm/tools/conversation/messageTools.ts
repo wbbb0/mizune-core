@@ -62,7 +62,7 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
           source: item.source,
           kind: "file",
           origin: "chat_message",
-          ...(item.filename ? { filename: item.filename } : {}),
+          ...(item.filename ? { sourceName: item.filename } : {}),
           ...(item.mimeType ? { mimeType: item.mimeType } : {})
         }).catch(() => null))
       );

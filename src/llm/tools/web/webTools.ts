@@ -232,7 +232,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
             url: { type: "string" },
             resource_id: { type: "string" },
             target_id: { type: "integer", minimum: 1 },
-            filename: { type: "string" },
+            source_name: { type: "string" },
             kind: {
               type: "string",
               enum: ["image", "animated_image", "video", "audio", "file"]
@@ -507,7 +507,7 @@ export const webToolHandlers: Record<string, ToolHandler> = {
     const url = getStringArg(args, "url");
     const resourceId = getStringArg(args, "resource_id");
     const targetId = getNumberArg(args, "target_id");
-    const filename = getStringArg(args, "filename");
+    const sourceName = getStringArg(args, "source_name");
     const kind = getStringArg(args, "kind") as "image" | "animated_image" | "video" | "audio" | "file" | undefined;
     if (Boolean(url) === Boolean(resourceId)) {
       return JSON.stringify({ error: "provide exactly one of url or resource_id" });
@@ -520,16 +520,16 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         ...(url ? { url } : {}),
         ...(resourceId ? { resourceId } : {}),
         ...(targetId !== undefined ? { targetId } : {}),
-        ...(filename ? { sourceName: filename } : {}),
+        ...(sourceName ? { sourceName } : {}),
         ...(kind ? { kind } : {})
       });
-      const asset = await context.mediaWorkspace.getFile(result.file_id);
+      const file = await context.mediaWorkspace.getFile(result.file_id);
       return JSON.stringify({
         ok: true,
-        ...(asset ? mapWorkspaceFileToView(asset) : { file_id: result.file_id }),
+        ...(file ? mapWorkspaceFileToView(file) : { file_id: result.file_id }),
         kind: result.kind,
-        mime_type: asset?.mimeType ?? result.mimeType,
-        size_bytes: asset?.sizeBytes ?? result.sizeBytes,
+        mime_type: file?.mimeType ?? result.mimeType,
+        size_bytes: file?.sizeBytes ?? result.sizeBytes,
         source_url: result.source_url,
         resource_id: result.resource_id,
         target_id: result.target_id
@@ -672,11 +672,11 @@ async function buildScreenshotToolResult(
   context: Parameters<ToolHandler>[2]
 ): Promise<LlmToolExecutionResult | string> {
   const prepared = await context.mediaVisionService.prepareFileForModel(imageId).catch(() => null);
-  const asset = await context.mediaWorkspace.getFile(imageId).catch(() => null);
-  const contentPayload = asset
+  const file = await context.mediaWorkspace.getFile(imageId).catch(() => null);
+  const contentPayload = file
     ? {
         ok: true,
-        ...mapWorkspaceFileToView(asset),
+        ...mapWorkspaceFileToView(file),
         mode: typeof result === "object" && result && "mode" in result ? (result as { mode?: unknown }).mode : null,
         resource_id: typeof result === "object" && result && "resource_id" in result ? (result as { resource_id?: unknown }).resource_id : null,
         profile_id: typeof result === "object" && result && "profile_id" in result ? (result as { profile_id?: unknown }).profile_id : null,
@@ -694,7 +694,7 @@ async function buildScreenshotToolResult(
       content: [
         {
           type: "text",
-          text: `以下截图来自浏览器工具，请结合它继续完成当前页面任务。file_id=${asset?.fileId ?? imageId}${asset?.fileRef ? ` file_ref=${asset.fileRef}` : ""}${caption ? ` caption=${caption}` : ""}`
+          text: `以下截图来自浏览器工具，请结合它继续完成当前页面任务。file_id=${file?.fileId ?? imageId}${file?.fileRef ? ` file_ref=${file.fileRef}` : ""}${caption ? ` caption=${caption}` : ""}`
         },
         {
           type: "image_url",
