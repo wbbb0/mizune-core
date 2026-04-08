@@ -19,7 +19,7 @@ export const comfyTaskRecordSchema = s.object({
   resolvedHeight: s.number().int().positive(),
   comfyPromptId: s.string().trim().nonempty(),
   status: s.enum(["queued", "running", "succeeded", "failed", "notified"] as const),
-  resultAssetIds: s.array(s.string().trim().nonempty()).default([]),
+  resultFileIds: s.array(s.string().trim().nonempty()).default([]),
   resultFiles: s.array(comfyTaskResultFileSchema).default([]),
   autoIterationIndex: s.number().int().min(0).default(0),
   maxAutoIterations: s.number().int().min(0).default(1),

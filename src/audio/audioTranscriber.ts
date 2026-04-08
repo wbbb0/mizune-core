@@ -151,11 +151,11 @@ export class AudioTranscriber {
   private async runTranscription(audioId: string): Promise<void> {
     const modelRefs = this.getResolvedModelRefs();
     try {
-      const asset = await this.audioStore.get(audioId);
-      if (!asset || asset.transcriptionStatus === "ready") {
+      const audioFile = await this.audioStore.get(audioId);
+      if (!audioFile || audioFile.transcriptionStatus === "ready") {
         return;
       }
-      const prepared = await prepareAudioInputsForModel([asset.source], {
+      const prepared = await prepareAudioInputsForModel([audioFile.source], {
         oneBotClient: this.oneBotClient
       }, {
         maxInputs: 1
@@ -210,19 +210,19 @@ export class AudioTranscriber {
   }
 
   private async buildResultMap(audioIds: string[]): Promise<Map<string, AudioTranscriptionResult>> {
-    const assets = await this.audioStore.getMany(audioIds);
-    return new Map(assets.map((asset) => [
-      asset.id,
-      asset.transcriptionStatus === "ready"
+    const audioFiles = await this.audioStore.getMany(audioIds);
+    return new Map(audioFiles.map((audioFile) => [
+      audioFile.id,
+      audioFile.transcriptionStatus === "ready"
         ? {
-            audioId: asset.id,
+            audioId: audioFile.id,
             status: "ready" as const,
-            text: asset.transcription ?? ""
+            text: audioFile.transcription ?? ""
           }
         : {
-            audioId: asset.id,
+            audioId: audioFile.id,
             status: "failed" as const,
-            error: asset.transcriptionError ?? null
+            error: audioFile.transcriptionError ?? null
           }
     ]));
   }

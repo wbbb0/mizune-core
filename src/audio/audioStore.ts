@@ -5,7 +5,7 @@ import { z } from "zod";
 
 const transcriptionStatusSchema = z.enum(["missing", "queued", "ready", "failed"]);
 
-const storedAudioAssetSchema = z.object({
+const storedAudioFileSchema = z.object({
   id: z.string().min(1),
   source: z.string().min(1),
   createdAt: z.number().int().nonnegative(),
@@ -16,13 +16,13 @@ const storedAudioAssetSchema = z.object({
   transcriptionError: z.string().min(1).nullable().optional()
 });
 
-const audioAssetFileSchema = z.object({
+const audioFileStoreSchema = z.object({
   version: z.literal(1),
-  audios: z.array(storedAudioAssetSchema)
+  audios: z.array(storedAudioFileSchema)
 });
 
 export type AudioTranscriptionStatus = z.infer<typeof transcriptionStatusSchema>;
-export type StoredAudioAsset = z.infer<typeof storedAudioAssetSchema> & {
+export type StoredAudioFile = z.infer<typeof storedAudioFileSchema> & {
   transcription: string | null;
   transcriptionStatus: AudioTranscriptionStatus;
   transcriptionModelRef: string | null;
@@ -31,12 +31,12 @@ export type StoredAudioAsset = z.infer<typeof storedAudioAssetSchema> & {
 
 export class AudioStore {
   private readonly filePath: string;
-  private cachedAudios: StoredAudioAsset[] | null = null;
+  private cachedAudios: StoredAudioFile[] | null = null;
   private cachedMtimeMs: number | null = null;
   private writeChain: Promise<void> = Promise.resolve();
 
   constructor(dataDir: string) {
-    this.filePath = join(dataDir, "audio-assets.json");
+    this.filePath = join(dataDir, "audio-files.json");
   }
 
   async init(): Promise<void> {
@@ -44,7 +44,7 @@ export class AudioStore {
     await this.readAll();
   }
 
-  async registerSources(sources: string[]): Promise<StoredAudioAsset[]> {
+  async registerSources(sources: string[]): Promise<StoredAudioFile[]> {
     const normalized = sources
       .map((source) => String(source ?? "").trim())
       .filter(Boolean);
@@ -55,10 +55,10 @@ export class AudioStore {
     return this.withStoreLock(async () => {
       const existing = await this.readAll();
       const next = [...existing];
-      const created: StoredAudioAsset[] = [];
+      const created: StoredAudioFile[] = [];
 
       for (const source of normalized) {
-        const asset = normalizeStoredAudioAsset({
+        const audioFile = normalizeStoredAudioFile({
           id: `aud_${randomUUID().replace(/-/g, "")}`,
           source,
           createdAt: Date.now(),
@@ -67,8 +67,8 @@ export class AudioStore {
           transcriptionModelRef: null,
           transcriptionError: null
         });
-        next.push(asset);
-        created.push(asset);
+        next.push(audioFile);
+        created.push(audioFile);
       }
 
       await this.writeAll(next);
@@ -76,12 +76,12 @@ export class AudioStore {
     });
   }
 
-  async get(audioId: string): Promise<StoredAudioAsset | null> {
+  async get(audioId: string): Promise<StoredAudioFile | null> {
     const audios = await this.readAll();
     return audios.find((item) => item.id === audioId) ?? null;
   }
 
-  async getMany(audioIds: string[]): Promise<StoredAudioAsset[]> {
+  async getMany(audioIds: string[]): Promise<StoredAudioFile[]> {
     const ids = new Set(audioIds.map((item) => String(item ?? "").trim()).filter(Boolean));
     if (ids.size === 0) {
       return [];
@@ -91,9 +91,9 @@ export class AudioStore {
   }
 
   async getTranscriptionMap(audioIds: string[]): Promise<Map<string, string>> {
-    const assets = await this.getMany(audioIds);
+    const audioFiles = await this.getMany(audioIds);
     return new Map(
-      assets
+      audioFiles
         .filter((item) => item.transcriptionStatus === "ready" && typeof item.transcription === "string" && item.transcription.length > 0)
         .map((item) => [item.id, item.transcription as string])
     );
@@ -173,27 +173,27 @@ export class AudioStore {
     });
   }
 
-  private async readAll(): Promise<StoredAudioAsset[]> {
+  private async readAll(): Promise<StoredAudioFile[]> {
     try {
       const stats = await stat(this.filePath);
       if (this.cachedAudios && this.cachedMtimeMs === stats.mtimeMs) {
         return this.cachedAudios;
       }
       const raw = await readFile(this.filePath, "utf8");
-      const parsed = audioAssetFileSchema.parse(JSON.parse(raw));
-      const audios = parsed.audios.map(normalizeStoredAudioAsset);
+      const parsed = audioFileStoreSchema.parse(JSON.parse(raw));
+      const audios = parsed.audios.map(normalizeStoredAudioFile);
       this.cachedAudios = audios;
       this.cachedMtimeMs = stats.mtimeMs;
       return audios;
     } catch {
-      const empty: StoredAudioAsset[] = [];
+      const empty: StoredAudioFile[] = [];
       this.cachedAudios = empty;
       this.cachedMtimeMs = null;
       return empty;
     }
   }
 
-  private async writeAll(audios: StoredAudioAsset[]): Promise<void> {
+  private async writeAll(audios: StoredAudioFile[]): Promise<void> {
     const payload = {
       version: 1 as const,
       audios
@@ -224,7 +224,7 @@ export class AudioStore {
   }
 }
 
-function normalizeStoredAudioAsset(value: z.infer<typeof storedAudioAssetSchema>): StoredAudioAsset {
+function normalizeStoredAudioFile(value: z.infer<typeof storedAudioFileSchema>): StoredAudioFile {
   return {
     ...value,
     transcription: value.transcription ?? null,

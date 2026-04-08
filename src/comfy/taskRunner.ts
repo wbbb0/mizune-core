@@ -16,7 +16,7 @@ export class ComfyTaskRunner {
       comfyClient: ComfyClient;
       comfyTaskStore: ComfyTaskStore;
       mediaWorkspace: MediaWorkspace;
-      notifyCompletedTask: (task: ComfyTaskRecord, assets: Array<{ fileId: string; path: string }>) => Promise<void>;
+      notifyCompletedTask: (task: ComfyTaskRecord, files: Array<{ fileId: string; path: string }>) => Promise<void>;
       notifyFailedTask: (task: ComfyTaskRecord) => Promise<void>;
     }
   ) {}
@@ -117,7 +117,7 @@ export class ComfyTaskRunner {
       return;
     }
 
-    const assets: Array<{ fileId: string; path: string }> = [];
+    const files: Array<{ fileId: string; path: string }> = [];
     for (const file of history.images) {
       const bytes = await this.input.comfyClient.downloadView(file);
       const imported = await this.input.mediaWorkspace.importBuffer({
@@ -139,7 +139,7 @@ export class ComfyTaskRunner {
           type: file.type
         }
       });
-      assets.push({
+      files.push({
         fileId: imported.fileId,
         path: imported.workspacePath
       });
@@ -148,11 +148,11 @@ export class ComfyTaskRunner {
     const completed = {
       ...task,
       status: "notified" as const,
-      resultAssetIds: assets.map((item) => item.fileId),
+      resultFileIds: files.map((item) => item.fileId),
       resultFiles: history.images,
       finishedAtMs: Date.now()
     };
     await this.input.comfyTaskStore.update(completed);
-    await this.input.notifyCompletedTask(completed, assets);
+    await this.input.notifyCompletedTask(completed, files);
   }
 }

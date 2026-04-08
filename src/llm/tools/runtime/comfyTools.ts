@@ -116,7 +116,7 @@ export const comfyToolHandlers: Record<string, ToolHandler> = {
       resolvedHeight: ratio.height,
       comfyPromptId: submitted.promptId,
       status: "queued",
-      resultAssetIds: [],
+      resultFileIds: [],
       resultFiles: [],
       autoIterationIndex: currentAutoIteration == null ? 0 : currentAutoIteration + 1,
       maxAutoIterations: maxAutoIterations ?? template.resultPolicy.maxAutoIterations,

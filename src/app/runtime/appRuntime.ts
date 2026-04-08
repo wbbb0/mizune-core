@@ -144,7 +144,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     comfyClient,
     comfyTaskStore,
     mediaWorkspace,
-    notifyCompletedTask: async (task, assets) => {
+    notifyCompletedTask: async (task, files) => {
       await sessionWorkCoordinator.dispatchInternalTrigger(task.sessionId, (target) => target.type === "group"
         ? {
             kind: "comfy_task_completed",
@@ -160,8 +160,8 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
             aspectRatio: task.aspectRatio,
             resolvedWidth: task.resolvedWidth,
             resolvedHeight: task.resolvedHeight,
-            workspaceFileIds: assets.map((item) => item.fileId),
-            workspacePaths: assets.map((item) => item.path),
+            workspaceFileIds: files.map((item) => item.fileId),
+            workspacePaths: files.map((item) => item.path),
             comfyPromptId: task.comfyPromptId,
             autoIterationIndex: task.autoIterationIndex,
             maxAutoIterations: task.maxAutoIterations
@@ -180,8 +180,8 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
             aspectRatio: task.aspectRatio,
             resolvedWidth: task.resolvedWidth,
             resolvedHeight: task.resolvedHeight,
-            workspaceFileIds: assets.map((item) => item.fileId),
-            workspacePaths: assets.map((item) => item.path),
+            workspaceFileIds: files.map((item) => item.fileId),
+            workspacePaths: files.map((item) => item.path),
             comfyPromptId: task.comfyPromptId,
             autoIterationIndex: task.autoIterationIndex,
             maxAutoIterations: task.maxAutoIterations

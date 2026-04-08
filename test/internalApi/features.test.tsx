@@ -217,7 +217,7 @@ async function main() {
 
       const missingFileResponse = await app.inject({
         method: "GET",
-        url: "/api/workspace/files/missing_asset"
+        url: "/api/workspace/files/missing_file"
       });
       assert.equal(missingFileResponse.statusCode, 404);
       assert.equal(missingFileResponse.json().error, "Workspace file not found");
