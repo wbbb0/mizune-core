@@ -8,6 +8,7 @@ import type { AppLifecycleHooks } from "../../types/common.ts";
 import { ComfyTaskRunner } from "#comfy/taskRunner.ts";
 import { createMessageListener, createRequestListener } from "./runtimeEvents.ts";
 import { createRuntimeMessageIngress } from "./messageIngress.ts";
+import { buildSessionWorkCoordinatorDeps, createComfyTaskNotifications } from "./runtimeDependencyBuilders.ts";
 import {
   shutdownRuntime,
   startInternalApiIfEnabled,
@@ -88,41 +89,9 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
 
   let scheduler!: Scheduler;
   let schedulerStarted = false;
-  sessionWorkCoordinator = createSessionWorkCoordinator({
-    config,
-    logger,
-    llmClient,
-    replyGate,
-    debounceManager,
-    historyCompressor,
-    messageQueue,
-    oneBotClient,
-    sessionManager,
-    audioTranscriber,
-    audioStore,
-    requestStore,
-    whitelistStore,
-    scheduledJobStore,
-    shellRuntime,
-    searchService,
-    browserService,
-    workspaceService,
-    mediaWorkspace,
-    mediaVisionService,
-    mediaCaptionService,
-    comfyClient,
-    comfyTaskStore,
-    comfyTemplateCatalog,
-    forwardResolver,
-    userStore,
-    personaStore,
-    globalMemoryStore,
-    setupStore,
-    conversationAccess,
-    npcDirectory,
-    persistSession,
-    getScheduler: () => scheduler
-  });
+  sessionWorkCoordinator = createSessionWorkCoordinator(
+    buildSessionWorkCoordinatorDeps(services, persistSession, () => scheduler)
+  );
 
   scheduler = new Scheduler(
     scheduledJobStore,
@@ -138,96 +107,15 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     }
   );
 
+  const comfyTaskNotifications = createComfyTaskNotifications(sessionWorkCoordinator);
   comfyTaskRunner = new ComfyTaskRunner({
     config,
     logger,
     comfyClient,
     comfyTaskStore,
     mediaWorkspace,
-    notifyCompletedTask: async (task, files) => {
-      await sessionWorkCoordinator.dispatchInternalTrigger(task.sessionId, (target) => target.type === "group"
-        ? {
-            kind: "comfy_task_completed",
-            targetType: "group",
-            ...(target.groupId ? { targetGroupId: target.groupId } : {}),
-            targetSenderName: target.senderName,
-            jobName: `ComfyUI 图片已完成 (${task.templateId})`,
-            instruction: "你之前发起的图片生成任务已经完成。系统已把结果导入 workspace，请自行判断接下来要做什么。",
-            enqueuedAt: Date.now(),
-            taskId: task.id,
-            templateId: task.templateId,
-            positivePrompt: task.positivePrompt,
-            aspectRatio: task.aspectRatio,
-            resolvedWidth: task.resolvedWidth,
-            resolvedHeight: task.resolvedHeight,
-            workspaceFileIds: files.map((item) => item.fileId),
-            workspacePaths: files.map((item) => item.path),
-            comfyPromptId: task.comfyPromptId,
-            autoIterationIndex: task.autoIterationIndex,
-            maxAutoIterations: task.maxAutoIterations
-          }
-        : {
-            kind: "comfy_task_completed",
-            targetType: "private",
-            targetUserId: target.userId,
-            targetSenderName: target.senderName,
-            jobName: `ComfyUI 图片已完成 (${task.templateId})`,
-            instruction: "你之前发起的图片生成任务已经完成。系统已把结果导入 workspace，请自行判断接下来要做什么。",
-            enqueuedAt: Date.now(),
-            taskId: task.id,
-            templateId: task.templateId,
-            positivePrompt: task.positivePrompt,
-            aspectRatio: task.aspectRatio,
-            resolvedWidth: task.resolvedWidth,
-            resolvedHeight: task.resolvedHeight,
-            workspaceFileIds: files.map((item) => item.fileId),
-            workspacePaths: files.map((item) => item.path),
-            comfyPromptId: task.comfyPromptId,
-            autoIterationIndex: task.autoIterationIndex,
-            maxAutoIterations: task.maxAutoIterations
-          });
-    },
-    notifyFailedTask: async (task) => {
-      await sessionWorkCoordinator.dispatchInternalTrigger(task.sessionId, (target) => target.type === "group"
-        ? {
-            kind: "comfy_task_failed",
-            targetType: "group",
-            ...(target.groupId ? { targetGroupId: target.groupId } : {}),
-            targetSenderName: target.senderName,
-            jobName: `ComfyUI 图片失败 (${task.templateId})`,
-            instruction: "你之前发起的图片生成任务失败了。请自行判断接下来要做什么。",
-            enqueuedAt: Date.now(),
-            taskId: task.id,
-            templateId: task.templateId,
-            positivePrompt: task.positivePrompt,
-            aspectRatio: task.aspectRatio,
-            resolvedWidth: task.resolvedWidth,
-            resolvedHeight: task.resolvedHeight,
-            comfyPromptId: task.comfyPromptId,
-            lastError: task.lastError ?? "Comfy task failed",
-            autoIterationIndex: task.autoIterationIndex,
-            maxAutoIterations: task.maxAutoIterations
-          }
-        : {
-            kind: "comfy_task_failed",
-            targetType: "private",
-            targetUserId: target.userId,
-            targetSenderName: target.senderName,
-            jobName: `ComfyUI 图片失败 (${task.templateId})`,
-            instruction: "你之前发起的图片生成任务失败了。请自行判断接下来要做什么。",
-            enqueuedAt: Date.now(),
-            taskId: task.id,
-            templateId: task.templateId,
-            positivePrompt: task.positivePrompt,
-            aspectRatio: task.aspectRatio,
-            resolvedWidth: task.resolvedWidth,
-            resolvedHeight: task.resolvedHeight,
-            comfyPromptId: task.comfyPromptId,
-            lastError: task.lastError ?? "Comfy task failed",
-            autoIterationIndex: task.autoIterationIndex,
-            maxAutoIterations: task.maxAutoIterations
-          });
-    }
+    notifyCompletedTask: comfyTaskNotifications.notifyCompletedTask,
+    notifyFailedTask: comfyTaskNotifications.notifyFailedTask
   });
 
   const messageIngress = createRuntimeMessageIngress({
