@@ -25,4 +25,4 @@
 - [x] commit F：协议类型收敛
 - [x] commit G：SSE/轮询策略调整
 - [x] commit H：prompt 语言统一
-- [x] commit I：bootstrap/runtime 与 internalApi 依赖收敛
+- [x] commit I：internalApi 依赖耦合收敛（部分）
