@@ -74,6 +74,7 @@ const persistedSessionSchema = z.object({
       userId: z.string().min(1),
       senderName: z.string().min(1),
       text: z.string(),
+      reasoningContent: z.string().optional(),
       timestampMs: z.number().int().nonnegative()
     }),
     z.object({
@@ -138,9 +139,11 @@ const persistedSessionSchema = z.object({
       llmVisible: z.literal(false),
       action: z.enum(["continue", "wait", "skip", "topic_switch"]),
       reason: z.string().nullable(),
+      reasoningContent: z.string().optional(),
       waitPassCount: z.number().int().nonnegative().optional(),
       replyDecision: z.enum(["reply_small", "reply_large", "wait", "ignore"]).optional(),
       topicDecision: z.string().optional(),
+      toolsetIds: z.array(z.string()).optional(),
       timestampMs: z.number().int().nonnegative()
     }),
     z.object({

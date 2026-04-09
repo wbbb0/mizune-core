@@ -8,6 +8,7 @@ const props = defineProps<{
 }>();
 
 const expanded = ref(false);
+const reasoningExpanded = ref(false);
 
 const timeStr = computed(() => {
   const d = new Date(props.item.timestampMs);
@@ -303,7 +304,19 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
         </div>
       </header>
 
-      <div v-if="item.kind === 'user_message' || item.kind === 'assistant_message'" class="flex flex-col gap-2">
+      <div v-if="item.kind === 'user_message'" class="flex flex-col gap-2">
+        <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre-wrap wrap-break-word">{{ item.text }}</pre>
+      </div>
+
+      <div v-else-if="item.kind === 'assistant_message'" class="flex flex-col gap-2">
+        <template v-if="item.reasoningContent">
+          <button class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border-default bg-surface-input px-2.5 py-1.75 text-small text-text-muted hover:text-text-primary" @click="reasoningExpanded = !reasoningExpanded">
+            <span>{{ reasoningExpanded ? "收起思考过程" : "展开思考过程" }}</span>
+          </button>
+          <div v-if="reasoningExpanded" class="flex flex-col gap-2">
+            <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ item.reasoningContent }}</pre>
+          </div>
+        </template>
         <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre-wrap wrap-break-word">{{ item.text }}</pre>
       </div>
 
@@ -316,6 +329,14 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
       </div>
 
       <div v-else-if="item.kind === 'assistant_tool_call'" class="flex flex-col gap-2">
+        <template v-if="item.reasoningContent">
+          <button class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border-default bg-surface-input px-2.5 py-1.75 text-small text-text-muted hover:text-text-primary" @click="reasoningExpanded = !reasoningExpanded">
+            <span>{{ reasoningExpanded ? "收起思考过程" : "展开思考过程" }}</span>
+          </button>
+          <div v-if="reasoningExpanded" class="flex flex-col gap-2">
+            <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ item.reasoningContent }}</pre>
+          </div>
+        </template>
         <button class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border-default bg-surface-input px-2.5 py-1.75 text-small text-text-muted hover:text-text-primary" @click="expanded = !expanded">
           <span>{{ expanded ? "收起参数" : "展开参数" }}</span>
           <span>{{ toolNames.length > 0 ? toolNames.join("、") : `${item.toolCalls.length} 个调用` }}</span>
@@ -325,10 +346,6 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
             <div class="mb-1 text-small tracking-[0.05em] text-text-subtle uppercase">{{ getDisplayToolName(toolCall) || "未知工具" }}</div>
             <div class="font-mono text-small text-text-muted">toolCallId: {{ toolCall.id }}</div>
             <pre v-if="getToolArguments(toolCall)" class="mt-2 m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre">{{ formatMaybeJson(getToolArguments(toolCall)) }}</pre>
-          </section>
-          <section v-if="item.reasoningContent" class="rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-            <div class="mb-1 text-small tracking-[0.05em] text-text-subtle uppercase">推理内容</div>
-            <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre-wrap wrap-break-word">{{ item.reasoningContent }}</pre>
           </section>
           <section v-if="item.content" class="rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
             <div class="mb-1 text-small tracking-[0.05em] text-text-subtle uppercase">模型工具消息</div>
@@ -379,6 +396,14 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
       </div>
 
       <div v-else-if="item.kind === 'gate_decision'" class="flex flex-col gap-2">
+        <template v-if="item.reasoningContent">
+          <button class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border-default bg-surface-input px-2.5 py-1.75 text-small text-text-muted hover:text-text-primary" @click="reasoningExpanded = !reasoningExpanded">
+            <span>{{ reasoningExpanded ? "收起思考过程" : "展开思考过程" }}</span>
+          </button>
+          <div v-if="reasoningExpanded" class="flex flex-col gap-2">
+            <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ item.reasoningContent }}</pre>
+          </div>
+        </template>
         <section class="rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
           <div class="mb-1 text-small tracking-[0.05em] text-text-subtle uppercase">规划输出</div>
           <div class="grid gap-1.5">

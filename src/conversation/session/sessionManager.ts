@@ -30,6 +30,7 @@ import {
   setSessionDebugControlState,
   setInterruptibleGroupTriggerUserState,
   setLastLlmUsageState,
+  setLastAssistantMessageReasoningState,
   shiftInternalTriggerState
 } from "./sessionMutations.ts";
 import {
@@ -479,6 +480,16 @@ export class SessionManager {
       return null;
     }
     return finalizeActiveAssistantResponseState(session, timestampMs);
+  }
+
+  setLastAssistantReasoningIfResponseEpochMatches(
+    sessionId: string,
+    expectedResponseEpoch: number,
+    reasoningContent: string
+  ): boolean {
+    return this.withResponseEpoch(sessionId, expectedResponseEpoch, true, (session) => {
+      setLastAssistantMessageReasoningState(session, reasoningContent);
+    });
   }
 
   clearSession(sessionId: string): void {

@@ -214,6 +214,7 @@ export function createAssistantTranscriptMessageItem(input: {
   userId: string;
   senderName: string;
   text: string;
+  reasoningContent?: string;
   timestampMs: number;
 }): TranscriptAssistantMessageItem {
   return {
@@ -224,6 +225,7 @@ export function createAssistantTranscriptMessageItem(input: {
     userId: input.userId,
     senderName: input.senderName,
     text: input.text,
+    ...(input.reasoningContent ? { reasoningContent: input.reasoningContent } : {}),
     timestampMs: input.timestampMs
   };
 }

@@ -157,6 +157,7 @@ export function createGenerationExecutor(
         webOutputCollector
       } = input;
     let outboundDrainPromise: Promise<void> | null = null;
+    let lastResultReasoningContent = "";
     // 消费 steer 消息，注入到当前 tool iteration 的 prompt 上下文中。
     // 如果仅注入用户消息效果不够明显（模型没有及时收尾），
     // 可以在这里额外附加一条 system 提示，告知模型"用户发了新消息，请尽快结束当前工具链"。
@@ -474,6 +475,7 @@ export function createGenerationExecutor(
                 })
           });
           summary = result.text;
+          lastResultReasoningContent = result.reasoningContent ?? "";
           const usageApplied = sessionManager.setLastLlmUsageIfEpochMatches(sessionId, expectedEpoch, {
             ...result.usage,
             capturedAt: Date.now()
@@ -540,6 +542,14 @@ export function createGenerationExecutor(
         await outboundDrainPromise;
       } catch (error: unknown) {
         logger.warn({ err: error, sessionId }, "outbound_drain_failed");
+      }
+
+      if (lastResultReasoningContent) {
+        sessionManager.setLastAssistantReasoningIfResponseEpochMatches(
+          sessionId,
+          responseEpoch,
+          lastResultReasoningContent
+        );
       }
 
       const finalizedAssistant = sessionManager.finalizeActiveAssistantResponseIfResponseEpochMatches(

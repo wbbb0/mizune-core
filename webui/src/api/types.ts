@@ -57,6 +57,7 @@ export interface AssistantMessageItem {
   userId: string;
   senderName: string;
   text: string;
+  reasoningContent?: string;
   timestampMs: number;
 }
 
@@ -118,6 +119,7 @@ export interface GateDecisionItem {
   llmVisible: false;
   action: "continue" | "wait" | "skip" | "topic_switch";
   reason: string | null;
+  reasoningContent?: string;
   waitPassCount?: number;
   replyDecision?: "reply_small" | "reply_large" | "wait" | "ignore";
   topicDecision?: string;

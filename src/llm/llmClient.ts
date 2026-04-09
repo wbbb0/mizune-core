@@ -53,6 +53,7 @@ export class LlmClient {
     );
     const maxIterations = this.config.llm.toolCallMaxIterations;
     const aggregatedUsage: LlmUsage = createEmptyUsage(requestedModelRefs[0] ?? null, null);
+    let lastReasoningContent = "";
     const consumeClonedSteerMessages = async (): Promise<LlmMessage[]> => {
       const steerMessages = await params.consumeSteerMessages?.() ?? [];
       return steerMessages.length > 0
@@ -90,10 +91,12 @@ export class LlmClient {
       });
       activeModelRefs = narrowActiveModelRefs(activeModelRefs, streamed.modelRef);
       mergeUsage(aggregatedUsage, streamed.usage);
+      lastReasoningContent = streamed.reasoningContent;
 
       if (streamed.toolCalls.length === 0) {
         return {
           text: streamed.text,
+          reasoningContent: lastReasoningContent,
           usage: aggregatedUsage
         };
       }
@@ -177,6 +180,7 @@ export class LlmClient {
           );
           return {
             text: terminalResponse.text,
+            reasoningContent: lastReasoningContent,
             usage: aggregatedUsage
           };
         }
@@ -230,6 +234,7 @@ export class LlmClient {
     mergeUsage(aggregatedUsage, fallback.usage);
     return {
       text: fallback.text || `工具调用轮次已达到上限（${maxIterations}），请基于现有结果继续处理或缩小任务范围。`,
+      reasoningContent: fallback.reasoningContent,
       usage: aggregatedUsage
     };
   }

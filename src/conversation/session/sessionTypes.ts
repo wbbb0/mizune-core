@@ -123,6 +123,7 @@ export interface TranscriptAssistantMessageItem {
   userId: string;
   senderName: string;
   text: string;
+  reasoningContent?: string | undefined;
   timestampMs: number;
 }
 
@@ -185,6 +186,7 @@ export interface TranscriptGateDecisionItem {
   llmVisible: false;
   action: "continue" | "wait" | "skip" | "topic_switch";
   reason: string | null;
+  reasoningContent?: string | undefined;
   waitPassCount?: number | undefined;
   replyDecision?: "reply_small" | "reply_large" | "wait" | "ignore" | undefined;
   topicDecision?: string | undefined;

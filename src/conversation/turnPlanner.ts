@@ -41,6 +41,7 @@ export interface TurnPlannerResult {
   topicDecision: "continue_topic" | "new_topic";
   reason: string;
   toolsetIds: string[];
+  reasoningContent?: string;
 }
 
 const MAX_LOG_REASON_LENGTH = 96;
@@ -141,6 +142,7 @@ export class TurnPlanner {
     );
 
     let raw: string;
+    let plannerReasoningContent = "";
     try {
       const result = await this.llmClient.generate({
         modelRefOverride: plannerModelRefs,
@@ -158,6 +160,7 @@ export class TurnPlanner {
         })
       });
       raw = result.text;
+      plannerReasoningContent = result.reasoningContent ?? "";
     } catch (error: unknown) {
       const durationMs = Date.now() - startedAt;
       if (input.abortSignal?.aborted || isAbortError(error)) {
@@ -173,7 +176,10 @@ export class TurnPlanner {
       };
     }
 
-    const parsed = this.normalizeDecision(this.parseDecision(raw), input, batchAnalysis);
+    const parsedRaw = this.normalizeDecision(this.parseDecision(raw), input, batchAnalysis);
+    const parsed: TurnPlannerResult = plannerReasoningContent
+      ? { ...parsedRaw, reasoningContent: plannerReasoningContent }
+      : parsedRaw;
     const logReason = summarizeReasonForLog(parsed.reason);
     const durationMs = Date.now() - startedAt;
     this.logger.info(

@@ -89,6 +89,7 @@ export interface LlmUsage {
 
 export interface LlmGenerateResult {
   text: string;
+  reasoningContent: string;
   usage: LlmUsage;
 }
 

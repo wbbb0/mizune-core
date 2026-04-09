@@ -164,6 +164,7 @@ export async function handleGenerationTurnPlanner(
       llmVisible: false,
       action: finalAction,
       reason: planner.reason ?? null,
+      ...(planner.reasoningContent ? { reasoningContent: planner.reasoningContent } : {}),
       ...(typeof finalWaitPassCount === "number" ? { waitPassCount: finalWaitPassCount } : {}),
       replyDecision: planner.replyDecision,
       topicDecision: planner.topicDecision,
