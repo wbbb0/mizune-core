@@ -99,26 +99,8 @@ export async function handleGenerationReplyGate(
     return { action: "skip" };
   }
 
-  const recordGateDecision = (item: {
-    action: "continue" | "wait" | "skip" | "topic_switch";
-    reason: string | null;
-    waitPassCount?: number;
-  }) => {
-    if (typeof (sessionManager as { appendInternalTranscript?: unknown }).appendInternalTranscript !== "function") {
-      return;
-    }
-    sessionManager.appendInternalTranscript(input.sessionId, {
-      kind: "gate_decision",
-      llmVisible: false,
-      action: item.action,
-      reason: item.reason,
-      ...(typeof item.waitPassCount === "number" ? { waitPassCount: item.waitPassCount } : {}),
-      replyDecision: gate.replyDecision,
-      topicDecision: gate.topicDecision,
-      timestampMs: Date.now()
-    });
-    persistSession(input.sessionId, `reply_gate_${item.action}_recorded`);
-  };
+  let finalAction: "continue" | "wait" | "skip" | "topic_switch" = "continue";
+  let finalWaitPassCount: number | undefined;
 
   if (gate.topicDecision === "new_topic" && gate.replyDecision !== "wait") {
     const preservedMessageCount = input.batchMessages.length;
@@ -135,10 +117,7 @@ export async function handleGenerationReplyGate(
     if (compressed) {
       persistSession(input.sessionId, "reply_gate_topic_switch_compacted");
     }
-    recordGateDecision({
-      action: "topic_switch",
-      reason: gate.reason ?? null
-    });
+    finalAction = "topic_switch";
   }
 
   if (gate.replyDecision === "wait") {
@@ -153,41 +132,46 @@ export async function handleGenerationReplyGate(
         },
         "reply_gate_wait_limit_reached"
       );
-      return {
-        action: "continue",
-        resolvedModelRef: defaultModelRef
-      };
+    } else {
+      sessionManager.requeuePendingMessages(input.sessionId, input.batchMessages, nextWaitPassCount);
+      debounceManager.schedule(input.sessionId, () => {
+        handlers.flushSession(input.sessionId);
+      }, {
+        reason: "gate_wait",
+        multiplierOverride: config.conversation.debounce.gateWaitMultiplier
+      });
+      persistSession(input.sessionId, "reply_gate_wait_rescheduled");
+      logger.info(
+        {
+          sessionId: input.sessionId,
+          waitPassCount: nextWaitPassCount,
+          gateWaitMultiplier: config.conversation.debounce.gateWaitMultiplier,
+          ...(gate.reason ? { reason: gate.reason } : {})
+        },
+        "reply_deferred_by_gate_wait"
+      );
+      finalAction = "wait";
+      finalWaitPassCount = nextWaitPassCount;
     }
-
-    sessionManager.requeuePendingMessages(input.sessionId, input.batchMessages, nextWaitPassCount);
-    debounceManager.schedule(input.sessionId, () => {
-      handlers.flushSession(input.sessionId);
-    }, {
-      reason: "gate_wait",
-      multiplierOverride: config.conversation.debounce.gateWaitMultiplier
-    });
-    persistSession(input.sessionId, "reply_gate_wait_rescheduled");
-    logger.info(
-      {
-        sessionId: input.sessionId,
-        waitPassCount: nextWaitPassCount,
-        gateWaitMultiplier: config.conversation.debounce.gateWaitMultiplier,
-        ...(gate.reason ? { reason: gate.reason } : {})
-      },
-      "reply_deferred_by_gate_wait"
-    );
-    recordGateDecision({
-      action: "wait",
-      reason: gate.reason ?? null,
-      waitPassCount: nextWaitPassCount
-    });
-    return { action: "skip" };
   }
 
-  recordGateDecision({
-    action: "continue",
-    reason: gate.reason ?? null
-  });
+  if (typeof (sessionManager as { appendInternalTranscript?: unknown }).appendInternalTranscript === "function") {
+    sessionManager.appendInternalTranscript(input.sessionId, {
+      kind: "gate_decision",
+      llmVisible: false,
+      action: finalAction,
+      reason: gate.reason ?? null,
+      ...(typeof finalWaitPassCount === "number" ? { waitPassCount: finalWaitPassCount } : {}),
+      replyDecision: gate.replyDecision,
+      topicDecision: gate.topicDecision,
+      timestampMs: Date.now()
+    });
+    persistSession(input.sessionId, `reply_gate_${finalAction}_recorded`);
+  }
+
+  if (finalAction === "wait") {
+    return { action: "skip" };
+  }
 
   return {
     action: "continue",
