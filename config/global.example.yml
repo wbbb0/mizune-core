@@ -27,7 +27,7 @@ llm:
     largeModelRef:
       - qwen35_plus
     timeoutMs: 300000
-    enableThinking: false
+    enableThinking: true
   summarizer:
     enabled: true
     modelRef:

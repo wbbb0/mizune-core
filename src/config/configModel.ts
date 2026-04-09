@@ -71,7 +71,7 @@ const llmMainRoutingConfigSchema = s.object({
   smallModelRef: createModelRefListSchema().default(["main"]),
   largeModelRef: createModelRefListSchema().default(["main"]),
   timeoutMs: s.number().int().positive().default(300000),
-  enableThinking: s.boolean().default(false)
+  enableThinking: s.boolean().default(true)
 }).default(emptyObject);
 
 const llmProviderFeatureFlagSchema = s.object({
