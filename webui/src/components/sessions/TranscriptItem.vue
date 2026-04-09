@@ -48,7 +48,7 @@ const itemTitle = computed(() => {
       title = `发送图片 · ${props.item.toolName}`;
       break;
     case "gate_decision":
-      title = `门限判定 · ${formatGateAction(props.item.action)}`;
+      title = `Turn Planner 判定 · ${formatPlannerAction(props.item.action)}`;
       break;
     case "system_marker":
       title = `系统标记 · ${props.item.markerType}`;
@@ -181,9 +181,11 @@ const metaChips = computed(() => {
       ].filter(Boolean) as string[];
     case "gate_decision":
       return [
+        `action=${props.item.action}`,
         props.item.replyDecision ? `reply=${props.item.replyDecision}` : null,
         props.item.waitPassCount != null ? `wait#${props.item.waitPassCount}` : null,
-        props.item.topicDecision ? `topic=${props.item.topicDecision}` : null
+        props.item.topicDecision ? `topic=${props.item.topicDecision}` : null,
+        props.item.toolsetIds && props.item.toolsetIds.length > 0 ? `toolsets=${props.item.toolsetIds.length}` : null
       ].filter(Boolean) as string[];
     case "system_marker":
       return [props.item.markerType];
@@ -210,22 +212,35 @@ const metaChips = computed(() => {
   }
 });
 
-const gateReasonText = computed(() => {
+const plannerReasonText = computed(() => {
   if (props.item.kind !== "gate_decision") {
     return null;
   }
-  return summarize(props.item.reason ?? "");
+  return normalizeText(props.item.reason ?? "");
 });
 
-function summarize(value: string): string | null {
+const plannerOutputRows = computed(() => {
+  if (props.item.kind !== "gate_decision") {
+    return [];
+  }
+  return [
+    { key: "action", value: props.item.action },
+    { key: "replyDecision", value: props.item.replyDecision ?? null },
+    { key: "topicDecision", value: props.item.topicDecision ?? null },
+    { key: "waitPassCount", value: props.item.waitPassCount != null ? String(props.item.waitPassCount) : null },
+    { key: "toolsetIds", value: props.item.toolsetIds && props.item.toolsetIds.length > 0 ? props.item.toolsetIds.join(", ") : null }
+  ];
+});
+
+function normalizeText(value: string): string | null {
   const normalized = value.trim();
   if (!normalized) {
     return null;
   }
-  return normalized.length <= 140 ? normalized : `${normalized.slice(0, 140)}...`;
+  return normalized;
 }
 
-function formatGateAction(action: "continue" | "wait" | "skip" | "topic_switch"): string {
+function formatPlannerAction(action: "continue" | "wait" | "skip" | "topic_switch"): string {
   switch (action) {
     case "continue":
       return "继续回复";
@@ -364,7 +379,19 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
       </div>
 
       <div v-else-if="item.kind === 'gate_decision'" class="flex flex-col gap-2">
-        <p v-if="gateReasonText" class="m-0 whitespace-pre-wrap wrap-break-word text-text-muted">{{ gateReasonText }}</p>
+        <section class="rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
+          <div class="mb-1 text-small tracking-[0.05em] text-text-subtle uppercase">规划输出</div>
+          <div class="grid gap-1.5">
+            <div v-for="row in plannerOutputRows" :key="row.key" class="flex items-start justify-between gap-3 rounded-md border border-border-subtle bg-surface-input px-2 py-1.5">
+              <span class="font-mono text-small text-text-subtle">{{ row.key }}</span>
+              <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ row.value ?? "null" }}</span>
+            </div>
+          </div>
+        </section>
+        <section class="rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
+          <div class="mb-1 text-small tracking-[0.05em] text-text-subtle uppercase">reason</div>
+          <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre-wrap wrap-break-word">{{ plannerReasonText ?? "null" }}</pre>
+        </section>
       </div>
 
       <div v-else-if="item.kind === 'system_marker'" class="flex flex-col gap-2">

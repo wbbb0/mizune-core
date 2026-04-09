@@ -121,6 +121,7 @@ export interface GateDecisionItem {
   waitPassCount?: number;
   replyDecision?: "reply_small" | "reply_large" | "wait" | "ignore";
   topicDecision?: string;
+  toolsetIds?: string[];
   timestampMs: number;
 }
 
