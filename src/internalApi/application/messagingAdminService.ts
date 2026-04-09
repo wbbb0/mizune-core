@@ -1,5 +1,5 @@
 import type { SessionManager } from "#conversation/session/sessionManager.ts";
-import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
+import type { InternalTranscriptItem, SessionPhase } from "#conversation/session/sessionTypes.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
@@ -34,10 +34,7 @@ type SessionStreamableState = {
   participantUserId: string;
   participantLabel: string | null;
   pendingMessages: Array<{ receivedAt?: number }>;
-  pendingReplyGateWaitPasses: number;
-  debounceTimer: NodeJS.Timeout | null;
-  isGenerating: boolean;
-  isResponding: boolean;
+  phase: SessionPhase;
   historyRevision: number;
   mutationEpoch: number;
   lastActiveAt: number;
@@ -313,16 +310,12 @@ async function readSessionStreamSnapshot(
 ): Promise<WebSessionStreamSnapshot> {
   const session = input.sessionManager.getSession(sessionId);
   return {
-    sessionId,
+    sessionId: session.id,
     mutationEpoch: session.mutationEpoch,
     transcript: [...session.internalTranscript],
     pendingMessageCount: session.pendingMessages.length,
-    pendingReplyGateWaitPasses: session.pendingReplyGateWaitPasses,
-    hasDebounceTimer: session.debounceTimer != null,
-    isGenerating: session.isGenerating,
-    isResponding: session.isResponding,
     lastActiveAt: session.lastActiveAt,
-    activeAssistantResponseText: session.activeAssistantResponse?.text ?? null,
-    lastToolName: session.recentToolEvents.at(-1)?.toolName ?? null
+    phase: session.phase,
+    activeAssistantResponseText: session.activeAssistantResponse?.text ?? null
   };
-}
+  }

@@ -185,27 +185,28 @@ export type TranscriptItem =
 
 export type SessionPhase =
   | { kind: "idle"; label: string }
-  | { kind: "waiting"; label: string; pendingMessageCount: number }
-  | { kind: "reply_gate_wait"; label: string; pendingMessageCount: number; waitPassCount: number }
+  | { kind: "debouncing"; label: string }
+  | { kind: "reply_gate_evaluating"; label: string }
+  | { kind: "reply_gate_waiting"; label: string }
+  | { kind: "requesting_llm"; label: string }
   | { kind: "generating"; label: string }
   | { kind: "tool_calling"; label: string; toolNames: string[]; lastToolName: string | null }
-  | { kind: "responding"; label: string; previewText: string | null };
+  | { kind: "delivering"; label: string; previewText?: string | null };
 
 export type SessionStreamEvent =
-  | { type: "ready";   sessionId: string; mutationEpoch: number; transcriptCount: number; pendingMessageCount: number; isGenerating: boolean; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
+  | { type: "ready";   sessionId: string; mutationEpoch: number; transcriptCount: number; pendingMessageCount: number; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
   | {
       type: "reset";
       sessionId: string;
       mutationEpoch: number;
       transcriptCount: number;
       pendingMessageCount: number;
-      isGenerating: boolean;
       lastActiveAt: number;
       phase: SessionPhase;
       reason: "mutation_epoch_changed" | "transcript_cursor_ahead" | "transcript_gap_detected";
       timestampMs: number;
     }
-  | { type: "status";  sessionId: string; mutationEpoch: number; pendingMessageCount: number; isGenerating: boolean; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
+  | { type: "status";  sessionId: string; mutationEpoch: number; pendingMessageCount: number; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
   | { type: "transcript_item"; sessionId: string; mutationEpoch: number; index: number; totalCount: number; eventId: string; item: TranscriptItem; timestampMs: number }
   | { type: "session_error"; message: string };
 

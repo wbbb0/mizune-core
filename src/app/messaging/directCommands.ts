@@ -222,7 +222,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         `会话 ID：${ctx.session.id}`,
         `会话类型：${ctx.session.type}`,
         `调试模式：常驻=${debugState.enabled ? "开" : "关"}；单次=${debugState.oncePending ? "待触发" : "无"}`,
-        `正在生成：${ctx.session.isGenerating ? "是" : "否"}`,
+        `正在生成：${ctx.input.sessionManager.isGenerating(ctx.session.id) ? "是" : "否"}`,
         `待处理消息：${ctx.session.pendingMessages.length}`,
         `最近历史条数：${llmVisibleHistory.length}`,
         `已有摘要：${ctx.session.historySummary ? "有" : "无"}`,

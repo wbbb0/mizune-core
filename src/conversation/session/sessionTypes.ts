@@ -349,6 +349,16 @@ export type InternalSessionTriggerExecution =
   | ComfyTaskCompletedTriggerExecution
   | ComfyTaskFailedTriggerExecution;
 
+export type SessionPhase =
+  | { kind: "idle" }
+  | { kind: "debouncing" }
+  | { kind: "reply_gate_evaluating" }
+  | { kind: "reply_gate_waiting" }
+  | { kind: "requesting_llm" }
+  | { kind: "generating" }
+  | { kind: "tool_calling"; toolNames: string[]; lastToolName: string | null }
+  | { kind: "delivering" };
+
 export interface SessionState {
   id: string;
   type: "private" | "group";
@@ -368,8 +378,7 @@ export interface SessionState {
   recentToolEvents: SessionToolEvent[];
   lastLlmUsage: SessionUsageSnapshot | null;
   sentMessages: SessionSentMessage[];
-  isGenerating: boolean;
-  isResponding: boolean;
+  phase: SessionPhase;
   responseEpoch: number;
   messageQueue: string[];
   lastActiveAt: number;

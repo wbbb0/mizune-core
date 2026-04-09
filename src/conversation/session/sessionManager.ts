@@ -8,7 +8,9 @@ import {
   finishGenerationState,
   interruptResponseState
 } from "./sessionLifecycle.ts";
+import { isSessionGenerating, isSessionResponding } from "./sessionQueries.ts";
 import {
+  setSessionPhaseState,
   appendDebugMarkerState,
   appendHistoryEntry,
   appendInternalTranscriptState,
@@ -47,6 +49,7 @@ import {
   toPersistedSessionState
 } from "./sessionStateFactory.ts";
 import type {
+  SessionPhase,
   ActiveAssistantResponse,
   DebugLiteral,
   InternalSessionTriggerExecution,
@@ -245,9 +248,30 @@ export class SessionManager {
     };
   }
 
+  setSessionPhase(sessionId: string, phase: SessionPhase): void {
+    const session = this.requireSession(sessionId);
+    setSessionPhaseState(session, phase);
+  }
+
+  setSessionPhaseIfEpochMatches(
+    sessionId: string,
+    expectedEpoch: number,
+    phase: SessionPhase
+  ): boolean {
+    const session = this.requireSession(sessionId);
+    if (session.mutationEpoch !== expectedEpoch) {
+      return false;
+    }
+    setSessionPhaseState(session, phase);
+    return true;
+  }
+
   setDebounceTimer(sessionId: string, timer: NodeJS.Timeout): void {
     const session = this.requireSession(sessionId);
     session.debounceTimer = timer;
+    if (session.phase.kind === "idle" || session.phase.kind === "reply_gate_waiting") {
+      setSessionPhaseState(session, { kind: "debouncing" });
+    }
   }
 
   clearDebounceTimer(sessionId: string): void {
@@ -255,6 +279,9 @@ export class SessionManager {
     if (session.debounceTimer != null) {
       clearTimeout(session.debounceTimer);
       session.debounceTimer = null;
+      if (session.phase.kind === "debouncing") {
+        setSessionPhaseState(session, { kind: "idle" });
+      }
     }
   }
 
@@ -265,6 +292,9 @@ export class SessionManager {
     }
     const session = this.requireSession(sessionId);
     requeuePendingMessagesState(session, messages, replyGateWaitPasses);
+    if (session.phase.kind === "reply_gate_evaluating" || session.phase.kind === "requesting_llm" || session.phase.kind === "idle") {
+      setSessionPhaseState(session, { kind: "reply_gate_waiting" });
+    }
   }
 
   listSessions(): SessionState[] {
@@ -311,14 +341,19 @@ export class SessionManager {
     return this.requireSession(sessionId).historyRevision;
   }
 
+  isGenerating(sessionId: string): boolean {
+    const session = this.requireSession(sessionId);
+    return isSessionGenerating(session);
+  }
+
   hasActiveResponse(sessionId: string): boolean {
     const session = this.requireSession(sessionId);
-    return session.isGenerating || session.isResponding;
+    return isSessionGenerating(session) || isSessionResponding(session);
   }
 
   isResponseOpen(sessionId: string, expectedResponseEpoch: number): boolean {
     const session = this.requireSession(sessionId);
-    return session.responseEpoch === expectedResponseEpoch && session.isResponding;
+    return session.responseEpoch === expectedResponseEpoch && isSessionResponding(session);
   }
 
   appendHistory(sessionId: string, role: "user" | "assistant", content: string, timestampMs = Date.now()): void {
@@ -427,7 +462,7 @@ export class SessionManager {
     }
   ): boolean {
     const session = this.requireSession(sessionId);
-    if (session.responseEpoch !== expectedResponseEpoch || !session.isResponding) {
+    if (session.responseEpoch !== expectedResponseEpoch || !isSessionResponding(session)) {
       return false;
     }
     appendActiveAssistantResponseChunkState(session, target, chunk, timestampMs, options);
@@ -723,7 +758,7 @@ export class SessionManager {
   ): boolean {
     const session = this.requireSession(sessionId);
     const responseEpochMatched = session.responseEpoch === expectedResponseEpoch;
-    if (!responseEpochMatched || (requireResponding && !session.isResponding)) {
+    if (!responseEpochMatched || (requireResponding && !isSessionResponding(session))) {
       return false;
     }
     mutate(session);

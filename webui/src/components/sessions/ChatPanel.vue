@@ -221,13 +221,12 @@ async function onDeleteSession() {
           <WifiOff v-else-if="session.streamStatus === 'error'" :size="12" :stroke-width="2" />
           <Loader v-else :size="12" :stroke-width="2" class="spin" />
         </span>
-        <span v-if="session.isGenerating" class="badge-pill bg-surface-success text-success">生成中</span>
         <span v-if="session.pendingMessageCount" class="badge-pill bg-surface-warning text-warning">待 {{ session.pendingMessageCount }}</span>
         <span
           class="badge-pill bg-surface-muted text-text-muted"
           :class="{
-            'text-success': session.phase.kind === 'tool_calling' || session.phase.kind === 'responding',
-            'text-warning': session.phase.kind === 'reply_gate_wait'
+            'text-success': ['tool_calling', 'generating', 'delivering', 'requesting_llm', 'reply_gate_evaluating'].includes(session.phase.kind),
+            'text-warning': ['reply_gate_waiting', 'debouncing'].includes(session.phase.kind)
           }"
         >{{ session.phase.label }}</span>
       </div>

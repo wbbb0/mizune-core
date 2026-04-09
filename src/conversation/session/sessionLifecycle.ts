@@ -1,4 +1,5 @@
 import type { SessionState } from "./sessionTypes.ts";
+import { isSessionGenerating, isSessionResponding } from "./sessionQueries.ts";
 
 // Manages generation/response lifecycle transitions for a session state.
 export function beginGenerationState(session: SessionState) {
@@ -6,8 +7,7 @@ export function beginGenerationState(session: SessionState) {
   const pendingReplyGateWaitPasses = session.pendingReplyGateWaitPasses;
   session.pendingMessages = [];
   session.pendingReplyGateWaitPasses = 0;
-  session.isGenerating = true;
-  session.isResponding = true;
+  session.phase = { kind: "reply_gate_evaluating" };
   session.responseEpoch += 1;
   const abortController = new AbortController();
   const responseAbortController = new AbortController();
@@ -25,8 +25,7 @@ export function beginGenerationState(session: SessionState) {
 
 // Starts a synthetic generation cycle without consuming pending inbound messages.
 export function beginSyntheticGenerationState(session: SessionState) {
-  session.isGenerating = true;
-  session.isResponding = true;
+  session.phase = { kind: "requesting_llm" };
   session.responseEpoch += 1;
   const abortController = new AbortController();
   const responseAbortController = new AbortController();
@@ -40,19 +39,19 @@ export function finishGenerationState(session: SessionState, abortController: Ab
   if (session.generationAbortController !== abortController) {
     return false;
   }
-  session.isGenerating = false;
+  session.phase = { kind: "delivering" };
   session.generationAbortController = null;
   return true;
 }
 
 // Cancels the active generation request for the session.
 export function cancelGenerationState(session: SessionState): boolean {
-  if (!session.isGenerating || session.generationAbortController == null) {
+  if (!isSessionGenerating(session) || session.generationAbortController == null) {
     return false;
   }
 
   session.generationAbortController.abort();
-  session.isGenerating = false;
+  session.phase = { kind: "delivering" };
   session.generationAbortController = null;
   return true;
 }
@@ -65,7 +64,7 @@ export function interruptResponseState(session: SessionState): { cancelledGenera
     session.responseAbortController.abort();
     cancelledOutbound = true;
   }
-  session.isResponding = false;
+  session.phase = { kind: "idle" };
   return { cancelledGeneration, cancelledOutbound };
 }
 
@@ -74,7 +73,7 @@ export function completeResponseState(session: SessionState, expectedResponseEpo
   if (session.responseEpoch !== expectedResponseEpoch) {
     return false;
   }
-  session.isResponding = false;
+  session.phase = { kind: "idle" };
   session.responseAbortController = null;
   session.interruptibleGroupTriggerUserId = null;
   return true;

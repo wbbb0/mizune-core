@@ -179,9 +179,9 @@ async function main() {
     const first = sessionManager.beginSyntheticGeneration(sessionId);
     const second = sessionManager.beginSyntheticGeneration(sessionId);
     assert.equal(sessionManager.finishGeneration(sessionId, first.abortController), false);
-    assert.equal(sessionManager.getSession(sessionId).isGenerating, true);
+    assert.equal(sessionManager.isGenerating(sessionId), true);
     assert.equal(sessionManager.finishGeneration(sessionId, second.abortController), true);
-    assert.equal(sessionManager.getSession(sessionId).isGenerating, false);
+    assert.equal(sessionManager.isGenerating(sessionId), false);
 
     sessionManager.enqueueInternalTrigger(sessionId, {
       kind: "scheduled_instruction",

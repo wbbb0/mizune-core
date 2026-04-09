@@ -27,7 +27,6 @@ export interface ActiveSession {
   mutationEpoch: number;
   transcriptCount: number;
   pendingMessageCount: number;
-  isGenerating: boolean;
   lastActiveAt: number;
   streamStatus: "connecting" | "connected" | "error";
   phase: SessionPhase;
@@ -71,7 +70,6 @@ export const useSessionsStore = defineStore("sessions", () => {
         mutationEpoch: currentEpoch,
         transcriptCount: requestedTranscriptCount,
         pendingMessageCount: 0,
-        isGenerating: false,
         lastActiveAt: 0,
         streamStatus: "connecting",
         phase: {
@@ -162,7 +160,6 @@ export const useSessionsStore = defineStore("sessions", () => {
         mutationEpoch: event.mutationEpoch,
         transcriptCount: event.transcriptCount,
         pendingMessageCount: event.pendingMessageCount,
-        isGenerating: event.isGenerating,
         lastActiveAt: event.lastActiveAt,
         phase: event.phase
       };
@@ -175,7 +172,6 @@ export const useSessionsStore = defineStore("sessions", () => {
         mutationEpoch: event.mutationEpoch,
         transcriptCount: 0,
         pendingMessageCount: event.pendingMessageCount,
-        isGenerating: event.isGenerating,
         lastActiveAt: event.lastActiveAt,
         phase: event.phase,
         streamStatus: "connecting",
@@ -192,7 +188,6 @@ export const useSessionsStore = defineStore("sessions", () => {
         ...cur,
         mutationEpoch: event.mutationEpoch,
         pendingMessageCount: event.pendingMessageCount,
-        isGenerating: event.isGenerating,
         lastActiveAt: event.lastActiveAt,
         phase: event.phase
       };
@@ -252,7 +247,6 @@ export const useSessionsStore = defineStore("sessions", () => {
         mutationEpoch: 0,
         transcriptCount: 0,
         pendingMessageCount: selected.pendingMessageCount,
-        isGenerating: selected.isGenerating,
         lastActiveAt: selected.lastActiveAt,
         streamStatus: "connecting",
         phase: {

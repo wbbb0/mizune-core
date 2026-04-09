@@ -8,6 +8,7 @@ import type {
   SessionMessage,
   SessionSentMessage,
   SessionState,
+  SessionPhase,
   SessionToolEvent,
   TranscriptAssistantMessageItem,
   TranscriptUserMessageItem,
@@ -226,8 +227,7 @@ export function clearSessionState(session: SessionState): void {
   session.recentToolEvents = [];
   session.lastLlmUsage = null;
   session.sentMessages = [];
-  session.isGenerating = false;
-  session.isResponding = false;
+  session.phase = { kind: "idle" };
   session.messageQueue = [];
   session.lastActiveAt = Date.now();
   session.lastMessageAt = null;
@@ -236,6 +236,10 @@ export function clearSessionState(session: SessionState): void {
   session.generationAbortController = null;
   session.responseAbortController = null;
   session.activeAssistantResponse = null;
+}
+
+export function setSessionPhaseState(session: SessionState, phase: SessionPhase): void {
+  session.phase = phase;
 }
 
 export function setSessionDebugControlState(

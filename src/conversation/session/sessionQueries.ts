@@ -27,7 +27,10 @@ export function cloneSessionState(session: SessionState): SessionState {
     messageQueue: [...session.messageQueue],
     activeAssistantResponse: session.activeAssistantResponse == null
       ? null
-      : { ...session.activeAssistantResponse }
+      : { ...session.activeAssistantResponse },
+    phase: session.phase.kind === "tool_calling"
+      ? { ...session.phase, toolNames: [...session.phase.toolNames] }
+      : { ...session.phase }
   };
 }
 
@@ -77,4 +80,23 @@ export function getSessionViewSnapshot(session: SessionState): {
     sentMessages: [...session.sentMessages],
     lastActiveAt: session.lastActiveAt
   };
+}
+
+export function isSessionGenerating(session: SessionState): boolean {
+  return [
+    "reply_gate_evaluating",
+    "requesting_llm",
+    "generating",
+    "tool_calling"
+  ].includes(session.phase.kind);
+}
+
+export function isSessionResponding(session: SessionState): boolean {
+  return [
+    "reply_gate_evaluating",
+    "requesting_llm",
+    "generating",
+    "tool_calling",
+    "delivering"
+  ].includes(session.phase.kind);
 }

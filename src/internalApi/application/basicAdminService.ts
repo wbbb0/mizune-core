@@ -2,6 +2,8 @@ import type { InternalApiDeps } from "../types.ts";
 import type { ParsedCreateSessionBody } from "../routeSupport.ts";
 import type { SessionState } from "#conversation/session/sessionTypes.ts";
 
+import { isSessionGenerating } from "#conversation/session/sessionQueries.ts";
+
 function buildSessionSummary(session: SessionState) {
   return {
     id: session.id,
@@ -10,7 +12,7 @@ function buildSessionSummary(session: SessionState) {
     participantUserId: session.participantUserId,
     participantLabel: session.participantLabel,
     pendingMessageCount: session.pendingMessages.length,
-    isGenerating: session.isGenerating,
+    isGenerating: isSessionGenerating(session),
     lastActiveAt: session.lastActiveAt
   };
 }
@@ -64,7 +66,7 @@ export async function getSessionDetail(
   return {
     session: {
       ...deps.sessionManager.getSessionView(sessionId),
-      isGenerating: existing.isGenerating,
+      isGenerating: isSessionGenerating(existing),
       pendingMessageCount: existing.pendingMessages.length,
       historyRevision: deps.sessionManager.getHistoryRevision(sessionId),
       mutationEpoch: deps.sessionManager.getMutationEpoch(sessionId)

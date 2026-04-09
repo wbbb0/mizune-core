@@ -270,7 +270,7 @@ export function createGenerationSessionOrchestrator(
         ...(options?.webOutputCollector ? { webOutputCollector: options.webOutputCollector } : {})
       });
     })().catch((error: unknown) => {
-      if (sessionManager.getSession(sessionId).isGenerating) {
+      if (sessionManager.isGenerating(sessionId)) {
         logger.error({ err: error, sessionId }, "generation_prepare_failed");
         if (sessionManager.finishGeneration(sessionId, abortController)) {
           persistSession(sessionId, "generation_finished");
@@ -413,7 +413,7 @@ export function createGenerationSessionOrchestrator(
         streamResponse: false
       });
     })().catch((error: unknown) => {
-      if (sessionManager.getSession(sessionId).isGenerating) {
+      if (sessionManager.isGenerating(sessionId)) {
         logger.error({ err: error, sessionId, triggerKind: trigger.kind, jobName: trigger.jobName }, "scheduled_generation_prepare_failed");
         if (sessionManager.finishGeneration(sessionId, abortController)) {
           persistSession(sessionId, "generation_finished");

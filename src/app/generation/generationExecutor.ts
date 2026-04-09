@@ -305,6 +305,7 @@ export function createGenerationExecutor(
 
       if (llmClient.isConfigured(resolvedModelRef)) {
         try {
+          sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "requesting_llm" });
           const result = await llmClient.generate({
             messages: promptMessages,
             modelRefOverride: resolvedModelRef,
@@ -312,7 +313,16 @@ export function createGenerationExecutor(
             tools: allowedTools,
             abortSignal: abortController.signal,
             consumeSteerMessages,
-            toolExecutor,
+            toolExecutor: async (toolCall) => {
+              sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, {
+                kind: "tool_calling",
+                toolNames: [toolCall.function.name],
+                lastToolName: toolCall.function.name
+              });
+              const res = await toolExecutor(toolCall);
+              sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "requesting_llm" });
+              return res;
+            },
             onAssistantToolCalls: async (message) => {
               const applied = sessionManager.appendInternalTranscriptIfEpochMatches(sessionId, expectedEpoch, {
                 kind: "assistant_tool_call",
@@ -361,6 +371,7 @@ export function createGenerationExecutor(
               ? {}
               : {
                   onTextDelta: async (delta: string) => {
+                    sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "generating" });
                     streamBuffer += delta;
                     const split = splitReadySegments(streamBuffer);
                     streamBuffer = split.rest;

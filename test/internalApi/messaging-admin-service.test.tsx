@@ -40,13 +40,9 @@ async function main() {
       type: "private" as const,
       source: "onebot" as const,
       participantUserId: "10001",
-      participantLabel: "Alice",
+      phase: { kind: "idle" },
       pendingMessages: [{ receivedAt: 1 }],
-      pendingReplyGateWaitPasses: 0,
-      debounceTimer: null,
-      isGenerating: true,
-      isResponding: false,
-      historyRevision: 3,
+      historyRevision: 1,
       mutationEpoch: 7,
       lastActiveAt: 99,
       internalTranscript: transcript,
@@ -103,11 +99,8 @@ async function main() {
       source: "onebot" as const,
       participantUserId: "10001",
       participantLabel: "Alice",
+      phase: { kind: "idle" },
       pendingMessages: [] as Array<{ receivedAt?: number }>,
-      pendingReplyGateWaitPasses: 0,
-      debounceTimer: null,
-      isGenerating: true,
-      isResponding: false,
       historyRevision: 1,
       mutationEpoch: 2,
       lastActiveAt: 100,
@@ -165,7 +158,6 @@ async function main() {
       timestampMs: 30
     });
     sessionState.historyRevision = 2;
-    sessionState.isGenerating = false;
     sessionState.lastActiveAt = 130;
     await sleep(320);
 
