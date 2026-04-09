@@ -29,7 +29,7 @@ async function main() {
             timeoutMs: 45000,
             enableThinking: false
           },
-          replyGate: {
+          turnPlanner: {
             enabled: true,
             timeoutMs: 20000,
             recentMessageCount: 6,
@@ -45,7 +45,7 @@ async function main() {
       assert.deepEqual(config.llm.mainRouting.smallModelRef, ["main"]);
       assert.deepEqual(config.llm.mainRouting.largeModelRef, ["main"]);
       assert.deepEqual(config.llm.summarizer.modelRef, ["summarizer"]);
-      assert.deepEqual(config.llm.replyGate.modelRef, ["replyGate"]);
+      assert.deepEqual(config.llm.turnPlanner.modelRef, ["turnPlanner"]);
       assert.deepEqual(config.llm.providers, {});
       assert.deepEqual(config.llm.models, {});
       assert.equal(config.dataDir, "data/default");
@@ -116,7 +116,7 @@ async function main() {
             timeoutMs: 45000,
             enableThinking: false
           },
-          replyGate: {
+          turnPlanner: {
             enabled: true,
             modelRef: "main",
             timeoutMs: 20000,
@@ -186,7 +186,7 @@ async function main() {
             timeoutMs: 45000,
             enableThinking: false
           },
-          replyGate: {
+          turnPlanner: {
             enabled: true,
             modelRef: "main",
             timeoutMs: 20000,

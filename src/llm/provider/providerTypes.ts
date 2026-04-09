@@ -60,7 +60,7 @@ export interface LlmMessage {
 export interface LlmGenerateParams {
   messages: LlmMessage[];
   abortSignal?: AbortSignal;
-  tools?: LlmToolDefinition[];
+  tools?: LlmToolDefinition[] | (() => LlmToolDefinition[]);
   consumeSteerMessages?: () => Promise<LlmMessage[]> | LlmMessage[];
   onTextDelta?: (delta: string) => Promise<void> | void;
   toolExecutor?: (toolCall: LlmToolCall) => Promise<string | LlmToolExecutionResult>;

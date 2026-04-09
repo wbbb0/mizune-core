@@ -50,7 +50,7 @@ llm:
     timeoutMs: 30000
     enableThinking: false
     maxConcurrency: 2
-  replyGate:
+  turnPlanner:
     enabled: true
     modelRef:
       - qwen35_flash
@@ -73,7 +73,7 @@ conversation:
     maxBaseSeconds: 10
     smoothingFactor: 0.2
     finalMultiplier: 1.5
-    gateWaitMultiplier: 2
+    plannerWaitMultiplier: 2
   historyCompression:
     enabled: true
     triggerMessageCount: 40

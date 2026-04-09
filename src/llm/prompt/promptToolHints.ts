@@ -48,6 +48,10 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("需要继续操作浏览器或 shell 时，先列出现有 live_resource，再复用已有 resource_id；只有不存在合适资源时才新开。live_resource 不是工作区文件。");
   }
 
+  if (hasAnyTool(visibleToolNames, ["list_available_toolsets", "request_toolset"])) {
+    lines.push("当前工具按工具集分批暴露；若发现缺少完成任务所需能力，先 list_available_toolsets，再用 request_toolset 申请补充，避免盲猜工具名。");
+  }
+
   if (hasAnyTool(visibleToolNames, ["list_workspace_files", "view_media", "send_workspace_file_to_chat"])) {
     lines.push("需要找工作区里的图片、视频、音频或文件时，先调用 list_workspace_files；不要靠猜 workspace/media 目录名来找。");
     lines.push("workspace file 默认优先使用 file_ref；file_id 只是稳定主键。send_workspace_file_to_chat 可直接传 file_ref。");

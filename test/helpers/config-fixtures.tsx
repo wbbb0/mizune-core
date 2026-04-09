@@ -42,7 +42,7 @@ const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
       timeoutMs: 1000,
       enableThinking: false
     },
-    replyGate: {
+    turnPlanner: {
       enabled: false,
       modelRef: ["main"],
       timeoutMs: 1000,

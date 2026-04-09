@@ -51,7 +51,6 @@ export class LlmClient {
       params.messages,
       reasoningRelayPolicy.returnReasoningContentForAllMessages
     );
-    const tools = params.tools ?? [];
     const maxIterations = this.config.llm.toolCallMaxIterations;
     const aggregatedUsage: LlmUsage = createEmptyUsage(requestedModelRefs[0] ?? null, null);
     const consumeClonedSteerMessages = async (): Promise<LlmMessage[]> => {
@@ -70,6 +69,9 @@ export class LlmClient {
         workingMessages.push(...steerMessages);
       }
 
+      const tools = typeof params.tools === "function"
+        ? params.tools()
+        : (params.tools ?? []);
       const streamed = await this.streamChatCompletion({
         messages: workingMessages,
         tools,
@@ -260,12 +262,15 @@ export class LlmClient {
       }
 
       const provider = getLlmProvider(providerContext);
+      const resolvedTools = typeof params.tools === "function"
+        ? params.tools()
+        : params.tools;
 
       try {
         const result = await provider.generate(providerContext, {
           messages: params.messages,
           ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
-          ...(params.tools ? { tools: params.tools } : {}),
+          ...(resolvedTools ? { tools: resolvedTools } : {}),
           ...(params.onTextDelta ? { onTextDelta: params.onTextDelta } : {}),
           ...(params.timeoutMsOverride ? { timeoutMsOverride: params.timeoutMsOverride } : {}),
           ...(params.enableThinkingOverride != null ? { enableThinkingOverride: params.enableThinkingOverride } : {}),

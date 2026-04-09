@@ -319,7 +319,7 @@ async function main() {
           return { state: "ready" };
         }
       } as never,
-      replyGate: {} as never,
+      turnPlanner: {} as never,
       llmClient: {} as never,
       debounceManager: {} as never,
       persistSession(_sessionId: string, reason: string) {

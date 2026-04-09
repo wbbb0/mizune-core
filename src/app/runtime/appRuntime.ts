@@ -33,7 +33,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     audioStore,
     audioTranscriber,
     historyCompressor,
-    replyGate,
+    turnPlanner,
     messageQueue,
     sessionPersistence,
     scheduledJobStore,

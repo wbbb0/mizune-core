@@ -10,7 +10,7 @@ function createServicesFixture() {
     config: { key: "config" },
     logger: { key: "logger" },
     llmClient: { key: "llmClient" },
-    replyGate: { key: "replyGate" },
+    turnPlanner: { key: "turnPlanner" },
     debounceManager: { key: "debounceManager" },
     historyCompressor: { key: "historyCompressor" },
     messageQueue: { key: "messageQueue" },

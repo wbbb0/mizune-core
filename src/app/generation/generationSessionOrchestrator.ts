@@ -4,11 +4,16 @@ import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/mod
 import { getBuiltinToolNames } from "#llm/builtinTools.ts";
 import type { PromptInteractionMode } from "#llm/prompt/promptTypes.ts";
 import type { Relationship } from "#identity/relationship.ts";
+import {
+  listTurnToolsets,
+  resolveToolNamesFromToolsets,
+  TURN_PLANNER_ALWAYS_TOOL_NAMES
+} from "#llm/tools/toolsets.ts";
 import type { GenerationPromptBuilder } from "./generationPromptBuilder.ts";
 import type { GenerationRunnerDeps } from "./generationRunnerDeps.ts";
 import type { GenerationRuntimeBatchMessage, RunGenerationInput } from "./generationExecutor.ts";
 import type { GenerationWebOutputCollector } from "./generationTypes.ts";
-import { handleGenerationReplyGate } from "./generationReplyGate.ts";
+import { handleGenerationTurnPlanner } from "./generationTurnPlanner.ts";
 import { getProviderTranscriptProjector } from "./providerTranscriptProjector.ts";
 import { createInternalTriggerEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { projectLlmVisibleHistoryFromTranscript } from "#conversation/session/sessionTranscript.ts";
@@ -135,13 +140,23 @@ export function createGenerationSessionOrchestrator(
       let visibleHistory = projectLlmVisibleHistoryFromTranscript(refreshedSession.internalTranscript, config);
       let historyForPrompt = visibleHistory.slice(0, Math.max(0, visibleHistory.length - messages.length));
       let resolvedModelRef = getDefaultMainModelRefs(config);
+      let plannerToolsets = listTurnToolsets({
+        config,
+        relationship,
+        currentUser: user,
+        modelRef: resolvedModelRef,
+        includeDebugTools: interactionMode === "debug",
+        ...(setupMode ? { setupMode: true } : {})
+      });
+      let plannedToolsetIds = plannerToolsets.map((item) => item.id);
+
       if (!(setupMode || options?.skipReplyGate)) {
-        const gateResult = await handleGenerationReplyGate(
+        const gateResult = await handleGenerationTurnPlanner(
           {
             config,
             logger,
             llmClient: deps.llmClient,
-            replyGate: deps.replyGate,
+            turnPlanner: deps.turnPlanner,
             debounceManager: deps.debounceManager,
             historyCompressor,
             sessionManager,
@@ -157,6 +172,7 @@ export function createGenerationSessionOrchestrator(
             relationship,
             currentUser: user,
             batchMessages: messages,
+            availableToolsets: plannerToolsets,
             sendTarget: {
               delivery: resolvedDelivery,
               chatType: last.chatType,
@@ -178,6 +194,15 @@ export function createGenerationSessionOrchestrator(
           return;
         }
         resolvedModelRef = gateResult.resolvedModelRef;
+        plannerToolsets = listTurnToolsets({
+          config,
+          relationship,
+          currentUser: user,
+          modelRef: resolvedModelRef,
+          includeDebugTools: interactionMode === "debug",
+          ...(setupMode ? { setupMode: true } : {})
+        });
+        plannedToolsetIds = gateResult.toolsetIds.filter((id) => plannerToolsets.some((item) => item.id === id));
         refreshedSession = sessionManager.getSession(sessionId);
         visibleHistory = projectLlmVisibleHistoryFromTranscript(refreshedSession.internalTranscript, config);
         historyForPrompt = visibleHistory.slice(0, Math.max(0, visibleHistory.length - messages.length));
@@ -187,9 +212,11 @@ export function createGenerationSessionOrchestrator(
           senderName: message.senderName
         })));
       const providerName = getPrimaryModelProfile(config, resolvedModelRef)?.provider ?? "unknown";
+      const toolNamesFromPlanner = resolveToolNamesFromToolsets(plannerToolsets, plannedToolsetIds);
       const chatVisibleToolNames = getBuiltinToolNames(relationship, user, config, {
         modelRef: resolvedModelRef,
-        includeDebugTools: interactionMode === "debug"
+        includeDebugTools: interactionMode === "debug",
+        availableToolNames: [...toolNamesFromPlanner, ...TURN_PLANNER_ALWAYS_TOOL_NAMES]
       });
       const recentToolEvents = refreshedSession.recentToolEvents;
       const debugMarkers = refreshedSession.debugMarkers;
@@ -265,7 +292,15 @@ export function createGenerationSessionOrchestrator(
         promptMessages: promptBuildResult.promptMessages,
         resolvedModelRef,
         debugSnapshot: promptBuildResult.debugSnapshot,
-        ...(setupMode ? { availableToolNames: ["read_memory", "write_memory"], setupMode: true } : {}),
+        ...(setupMode
+          ? {
+              availableToolNames: ["read_memory", "write_memory"],
+              setupMode: true
+            }
+          : {
+              plannedToolsetIds,
+              availableToolsets: plannerToolsets
+            }),
         streamResponse: true,
         ...(options?.webOutputCollector ? { webOutputCollector: options.webOutputCollector } : {})
       });
@@ -410,6 +445,8 @@ export function createGenerationSessionOrchestrator(
         participantProfiles,
         promptMessages: promptBuildResult.promptMessages,
         debugSnapshot: promptBuildResult.debugSnapshot,
+        plannedToolsetIds: [],
+        availableToolsets: [],
         streamResponse: false
       });
     })().catch((error: unknown) => {

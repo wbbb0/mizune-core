@@ -84,7 +84,7 @@ export function getSessionViewSnapshot(session: SessionState): {
 
 export function isSessionGenerating(session: SessionState): boolean {
   return [
-    "reply_gate_evaluating",
+    "turn_planner_evaluating",
     "requesting_llm",
     "generating",
     "tool_calling"
@@ -93,7 +93,7 @@ export function isSessionGenerating(session: SessionState): boolean {
 
 export function isSessionResponding(session: SessionState): boolean {
   return [
-    "reply_gate_evaluating",
+    "turn_planner_evaluating",
     "requesting_llm",
     "generating",
     "tool_calling",

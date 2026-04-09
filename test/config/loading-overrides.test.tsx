@@ -108,7 +108,7 @@ async function main() {
             provider: "dashscope",
             model: "qwen3.5-plus"
           },
-          replyGate: {
+          turnPlanner: {
             provider: "dashscope",
             model: "qwen3.5-flash"
           }
@@ -123,13 +123,13 @@ async function main() {
           },
           summarizer: {
             enabled: true,
-            modelRef: "replyGate",
+            modelRef: "turnPlanner",
             timeoutMs: 45000,
             enableThinking: false
           },
-          replyGate: {
+          turnPlanner: {
             enabled: true,
-            modelRef: "replyGate",
+            modelRef: "turnPlanner",
             timeoutMs: 20000,
             recentMessageCount: 6,
             enableThinking: false
@@ -142,7 +142,7 @@ async function main() {
             smallModelRef: "qwen35_lan",
             largeModelRef: "qwen35_lan"
           },
-          replyGate: {
+          turnPlanner: {
             modelRef: "qwen35_lan"
           }
         }
@@ -156,7 +156,7 @@ async function main() {
       assert.equal(config.llm.providers.dashscope?.baseUrl, "https://dashscope.aliyuncs.com/compatible-mode/v1");
       assert.deepEqual(config.llm.mainRouting.smallModelRef, ["qwen35_lan"]);
       assert.deepEqual(config.llm.mainRouting.largeModelRef, ["qwen35_lan"]);
-      assert.deepEqual(config.llm.replyGate.modelRef, ["qwen35_lan"]);
+      assert.deepEqual(config.llm.turnPlanner.modelRef, ["qwen35_lan"]);
       assert.equal(config.llm.models.qwen35_lan, undefined);
     });
   });

@@ -37,9 +37,9 @@ const proxyConfigSchema = s.object({
   https: proxyDetailSchema.optional()
 }).default(emptyObject);
 
-const llmReplyGateConfigSchema = s.object({
+const llmTurnPlannerConfigSchema = s.object({
   enabled: s.boolean().default(true),
-  modelRef: createModelRefListSchema().default(["replyGate"]),
+  modelRef: createModelRefListSchema().default(["turnPlanner"]),
   timeoutMs: s.number().int().positive().default(20000),
   enableThinking: s.boolean().default(false),
   recentMessageCount: s.number().int().positive().default(6),
@@ -124,7 +124,7 @@ const conversationConfigSchema = s.object({
     maxBaseSeconds: s.number().positive().default(20),
     smoothingFactor: s.number().min(0).max(1).default(0.3),
     finalMultiplier: s.number().positive().default(1.5),
-    gateWaitMultiplier: s.number().positive().default(2),
+    plannerWaitMultiplier: s.number().positive().default(2),
     randomRatioMin: s.number().min(0.5).max(1).default(0.8),
     randomRatioMax: s.number().min(1).max(2).default(1.25)
   }).default(emptyObject),
@@ -284,7 +284,7 @@ const llmRuntimeConfigSchema = s.object({
   }).default(emptyObject),
   imageCaptioner: llmImageCaptionerConfigSchema,
   audioTranscription: llmAudioTranscriptionConfigSchema,
-  replyGate: llmReplyGateConfigSchema,
+  turnPlanner: llmTurnPlannerConfigSchema,
   debugDump: llmDebugDumpSchema
 }).default(emptyObject);
 

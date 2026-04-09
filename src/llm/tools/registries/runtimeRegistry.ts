@@ -5,11 +5,13 @@ import { resourceToolDescriptors, resourceToolHandlers } from "../runtime/resour
 import { schedulerToolDescriptors, schedulerToolHandlers } from "../runtime/schedulerTools.ts";
 import { shellToolDescriptors, shellToolHandlers } from "../runtime/shellTools.ts";
 import { timeToolDescriptors, timeToolHandlers } from "../runtime/timeTools.ts";
+import { turnPlannerToolDescriptors, turnPlannerToolHandlers } from "../runtime/turnPlannerTools.ts";
 import { workspaceToolDescriptors, workspaceToolHandlers } from "../runtime/workspaceTools.ts";
 
 const runtimeStaticToolDescriptorsRegistry = [
   ...debugToolDescriptors,
   ...resourceToolDescriptors,
+  ...turnPlannerToolDescriptors,
   ...schedulerToolDescriptors,
   ...shellToolDescriptors,
   ...workspaceToolDescriptors,
@@ -27,6 +29,7 @@ export const runtimeToolHandlersRegistry = {
   ...comfyToolHandlers,
   ...debugToolHandlers,
   ...resourceToolHandlers,
+  ...turnPlannerToolHandlers,
   ...schedulerToolHandlers,
   ...shellToolHandlers,
   ...workspaceToolHandlers,

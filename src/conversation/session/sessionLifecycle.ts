@@ -7,7 +7,7 @@ export function beginGenerationState(session: SessionState) {
   const pendingReplyGateWaitPasses = session.pendingReplyGateWaitPasses;
   session.pendingMessages = [];
   session.pendingReplyGateWaitPasses = 0;
-  session.phase = { kind: "reply_gate_evaluating" };
+  session.phase = { kind: "turn_planner_evaluating" };
   session.responseEpoch += 1;
   const abortController = new AbortController();
   const responseAbortController = new AbortController();

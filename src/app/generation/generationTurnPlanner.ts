@@ -3,37 +3,39 @@ import type { Relationship } from "#identity/relationship.ts";
 import type { GenerationPromptHistoryMessage } from "./generationPromptBuilder.ts";
 import type { GenerationRunnerDeps } from "./generationRunnerDeps.ts";
 import type { GenerationRuntimeBatchMessage, GenerationSendTarget } from "./generationExecutor.ts";
+import type { ToolsetView } from "#llm/tools/toolsets.ts";
 
-export interface GenerationReplyGateInput {
+export interface GenerationTurnPlannerInput {
   sessionId: string;
   relationship: Relationship;
   currentUser: Awaited<ReturnType<GenerationRunnerDeps["userStore"]["getByUserId"]>>;
   batchMessages: GenerationRuntimeBatchMessage[];
+  availableToolsets: ToolsetView[];
   sendTarget: GenerationSendTarget;
   historyForPrompt: GenerationPromptHistoryMessage[];
   pendingReplyGateWaitPasses: number;
   abortSignal: AbortSignal;
 }
 
-export interface GenerationReplyGateHandlers {
+export interface GenerationTurnPlannerHandlers {
   flushSession: (sessionId: string) => void;
 }
 
-export type GenerationReplyGateResult =
-  | { action: "continue"; resolvedModelRef: string[] }
+export type GenerationTurnPlannerResult =
+  | { action: "continue"; resolvedModelRef: string[]; toolsetIds: string[] }
   | { action: "skip" };
 
-// Evaluates reply-gate policy and applies reschedule side effects when needed.
-export async function handleGenerationReplyGate(
-  deps: Pick<GenerationRunnerDeps, "config" | "logger" | "llmClient" | "replyGate" | "debounceManager" | "historyCompressor" | "sessionManager" | "persistSession">,
-  handlers: GenerationReplyGateHandlers,
-  input: GenerationReplyGateInput
-): Promise<GenerationReplyGateResult> {
+// Evaluates turn-planner policy and applies reschedule side effects when needed.
+export async function handleGenerationTurnPlanner(
+  deps: Pick<GenerationRunnerDeps, "config" | "logger" | "llmClient" | "turnPlanner" | "debounceManager" | "historyCompressor" | "sessionManager" | "persistSession">,
+  handlers: GenerationTurnPlannerHandlers,
+  input: GenerationTurnPlannerInput
+): Promise<GenerationTurnPlannerResult> {
   const {
     config,
     logger,
     llmClient,
-    replyGate,
+    turnPlanner,
     debounceManager,
     historyCompressor,
     sessionManager,
@@ -42,11 +44,11 @@ export async function handleGenerationReplyGate(
   const defaultModelRef = getMainModelRefsForTier(config, "small");
 
   if (input.batchMessages.length === 0 || !llmClient.isConfigured(defaultModelRef)) {
-    return { action: "continue", resolvedModelRef: defaultModelRef };
+    return { action: "continue", resolvedModelRef: defaultModelRef, toolsetIds: input.availableToolsets.map((item) => item.id) };
   }
 
-  if (!replyGate.isEnabled()) {
-    return { action: "continue", resolvedModelRef: defaultModelRef };
+  if (!turnPlanner.isEnabled()) {
+    return { action: "continue", resolvedModelRef: defaultModelRef, toolsetIds: input.availableToolsets.map((item) => item.id) };
   }
 
   const last = input.batchMessages[input.batchMessages.length - 1];
@@ -55,28 +57,29 @@ export async function handleGenerationReplyGate(
   }
 
   if (input.batchMessages.some((message) => message.audioSources.length > 0)) {
-    logger.info({ sessionId: input.sessionId }, "reply_gate_audio_todo_bypassed");
-    return { action: "continue", resolvedModelRef: defaultModelRef };
+    logger.info({ sessionId: input.sessionId }, "turn_planner_audio_todo_bypassed");
+    return { action: "continue", resolvedModelRef: defaultModelRef, toolsetIds: input.availableToolsets.map((item) => item.id) };
   }
 
-  const replyGateProfile = getPrimaryModelProfile(config, config.llm.replyGate.modelRef);
+  const plannerProfile = getPrimaryModelProfile(config, config.llm.turnPlanner.modelRef);
   const hasEmojiWithoutGateVision = (
     input.batchMessages.some((message) => message.emojiIds.length > 0)
     || input.batchMessages.some((message) => (message.attachments ?? []).some((item) => item.semanticKind === "emoji"))
-  ) && !replyGateProfile?.supportsVision;
+  ) && !plannerProfile?.supportsVision;
   if (hasEmojiWithoutGateVision) {
     logger.info(
       { sessionId: input.sessionId },
-      "reply_gate_emoji_without_vision_continues_without_emoji_inputs"
+      "turn_planner_emoji_without_vision_continues_without_emoji_inputs"
     );
   }
 
-  const gate = await replyGate.decide({
+  const planner = await turnPlanner.decide({
     sessionId: input.sessionId,
     chatType: input.sendTarget.chatType,
     relationship: input.relationship,
     currentUserSpecialRole: input.currentUser?.specialRole ?? null,
     recentMessages: input.historyForPrompt,
+    availableToolsets: input.availableToolsets,
     abortSignal: input.abortSignal,
     batchMessages: input.batchMessages.map((message) => ({
       senderName: message.senderName,
@@ -102,7 +105,7 @@ export async function handleGenerationReplyGate(
   let finalAction: "continue" | "wait" | "skip" | "topic_switch" = "continue";
   let finalWaitPassCount: number | undefined;
 
-  if (gate.topicDecision === "new_topic" && gate.replyDecision !== "wait") {
+  if (planner.topicDecision === "new_topic" && planner.replyDecision !== "wait") {
     const preservedMessageCount = input.batchMessages.length;
     const compressed = await historyCompressor.compactOldHistoryKeepingRecent(input.sessionId, preservedMessageCount);
     logger.info(
@@ -110,27 +113,27 @@ export async function handleGenerationReplyGate(
         sessionId: input.sessionId,
         preservedMessageCount,
         compressed,
-        ...(gate.reason ? { reason: gate.reason } : {})
+        ...(planner.reason ? { reason: planner.reason } : {})
       },
-      "reply_gate_topic_switch_compacted"
+      "turn_planner_topic_switch_compacted"
     );
     if (compressed) {
-      persistSession(input.sessionId, "reply_gate_topic_switch_compacted");
+      persistSession(input.sessionId, "turn_planner_topic_switch_compacted");
     }
     finalAction = "topic_switch";
   }
 
-  if (gate.replyDecision === "wait") {
+  if (planner.replyDecision === "wait") {
     const nextWaitPassCount = input.pendingReplyGateWaitPasses + 1;
-    if (nextWaitPassCount > config.llm.replyGate.maxWaitPasses) {
+    if (nextWaitPassCount > config.llm.turnPlanner.maxWaitPasses) {
       logger.info(
         {
           sessionId: input.sessionId,
           pendingReplyGateWaitPasses: input.pendingReplyGateWaitPasses,
-          maxWaitPasses: config.llm.replyGate.maxWaitPasses,
-          ...(gate.reason ? { reason: gate.reason } : {})
+          maxWaitPasses: config.llm.turnPlanner.maxWaitPasses,
+          ...(planner.reason ? { reason: planner.reason } : {})
         },
-        "reply_gate_wait_limit_reached"
+        "turn_planner_wait_limit_reached"
       );
     } else {
       sessionManager.requeuePendingMessages(input.sessionId, input.batchMessages, nextWaitPassCount);
@@ -138,17 +141,17 @@ export async function handleGenerationReplyGate(
         handlers.flushSession(input.sessionId);
       }, {
         reason: "gate_wait",
-        multiplierOverride: config.conversation.debounce.gateWaitMultiplier
+        multiplierOverride: config.conversation.debounce.plannerWaitMultiplier
       });
-      persistSession(input.sessionId, "reply_gate_wait_rescheduled");
+      persistSession(input.sessionId, "turn_planner_wait_rescheduled");
       logger.info(
         {
           sessionId: input.sessionId,
           waitPassCount: nextWaitPassCount,
-          gateWaitMultiplier: config.conversation.debounce.gateWaitMultiplier,
-          ...(gate.reason ? { reason: gate.reason } : {})
+          plannerWaitMultiplier: config.conversation.debounce.plannerWaitMultiplier,
+          ...(planner.reason ? { reason: planner.reason } : {})
         },
-        "reply_deferred_by_gate_wait"
+        "reply_deferred_by_turn_planner_wait"
       );
       finalAction = "wait";
       finalWaitPassCount = nextWaitPassCount;
@@ -160,13 +163,14 @@ export async function handleGenerationReplyGate(
       kind: "gate_decision",
       llmVisible: false,
       action: finalAction,
-      reason: gate.reason ?? null,
+      reason: planner.reason ?? null,
       ...(typeof finalWaitPassCount === "number" ? { waitPassCount: finalWaitPassCount } : {}),
-      replyDecision: gate.replyDecision,
-      topicDecision: gate.topicDecision,
+      replyDecision: planner.replyDecision,
+      topicDecision: planner.topicDecision,
+      ...(planner.toolsetIds.length > 0 ? { toolsetIds: planner.toolsetIds } : {}),
       timestampMs: Date.now()
     });
-    persistSession(input.sessionId, `reply_gate_${finalAction}_recorded`);
+    persistSession(input.sessionId, `turn_planner_${finalAction}_recorded`);
   }
 
   if (finalAction === "wait") {
@@ -175,6 +179,7 @@ export async function handleGenerationReplyGate(
 
   return {
     action: "continue",
-    resolvedModelRef: getMainModelRefsForTier(config, gate.replyDecision === "reply_large" ? "large" : "small")
+    resolvedModelRef: getMainModelRefsForTier(config, planner.replyDecision === "reply_large" ? "large" : "small"),
+    toolsetIds: planner.toolsetIds
   };
 }

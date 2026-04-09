@@ -188,6 +188,7 @@ export interface TranscriptGateDecisionItem {
   waitPassCount?: number | undefined;
   replyDecision?: "reply_small" | "reply_large" | "wait" | "ignore" | undefined;
   topicDecision?: string | undefined;
+  toolsetIds?: string[] | undefined;
   timestampMs: number;
 }
 
@@ -352,8 +353,8 @@ export type InternalSessionTriggerExecution =
 export type SessionPhase =
   | { kind: "idle" }
   | { kind: "debouncing" }
-  | { kind: "reply_gate_evaluating" }
-  | { kind: "reply_gate_waiting" }
+  | { kind: "turn_planner_evaluating" }
+  | { kind: "turn_planner_waiting" }
   | { kind: "requesting_llm" }
   | { kind: "generating" }
   | { kind: "tool_calling"; toolNames: string[]; lastToolName: string | null }

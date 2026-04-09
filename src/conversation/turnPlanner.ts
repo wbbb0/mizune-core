@@ -1,22 +1,24 @@
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import { getPrimaryModelProfile, resolveModelRefsForType } from "#llm/shared/modelProfiles.ts";
-import { analyzeReplyGateBatch } from "./replyGateBatchAnalysis.ts";
+import { analyzeTurnPlannerBatch } from "./turnPlannerBatchAnalysis.ts";
 import type { LlmClient } from "#llm/llmClient.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { SpecialRole } from "#identity/specialRole.ts";
-import { buildReplyGatePrompt } from "#llm/prompts/reply-gate.prompt.ts";
+import { buildTurnPlannerPrompt } from "#llm/prompts/turn-planner.prompt.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
 import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
+import type { ToolsetView } from "#llm/tools/toolsets.ts";
 
-export interface ReplyGateInput {
+export interface TurnPlannerInput {
   sessionId: string;
   chatType: "private" | "group";
   relationship: Relationship;
   currentUserSpecialRole?: SpecialRole | null;
   recentMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs?: number | null }>;
   abortSignal?: AbortSignal;
+  availableToolsets?: ToolsetView[];
   batchMessages: Array<{
     senderName: string;
     text: string;
@@ -34,10 +36,11 @@ export interface ReplyGateInput {
   }>;
 }
 
-export interface ReplyGateResult {
+export interface TurnPlannerResult {
   replyDecision: "reply_small" | "reply_large" | "wait";
   topicDecision: "continue_topic" | "new_topic";
   reason: string;
+  toolsetIds: string[];
 }
 
 const MAX_LOG_REASON_LENGTH = 96;
@@ -54,7 +57,7 @@ const LIKELY_UNFINISHED_TEXT_PATTERNS = [
   /(?:\.{3,}|…+)$/u
 ] as const;
 
-export class ReplyGate {
+export class TurnPlanner {
   constructor(
     private readonly config: AppConfig,
     private readonly llmClient: LlmClient,
@@ -65,25 +68,26 @@ export class ReplyGate {
 
   isEnabled(): boolean {
     return this.config.llm.enabled
-      && this.config.llm.replyGate.enabled
+      && this.config.llm.turnPlanner.enabled
       && this.resolveModelRefs().length > 0;
   }
 
-  async decide(input: ReplyGateInput): Promise<ReplyGateResult> {
+  async decide(input: TurnPlannerInput): Promise<TurnPlannerResult> {
     if (!this.isEnabled()) {
       return {
         replyDecision: "reply_small",
         topicDecision: "continue_topic",
-        reason: "reply gate disabled"
+        reason: "turn planner disabled",
+        toolsetIds: []
       };
     }
 
     const startedAt = Date.now();
-    const gateModelRefs = this.resolveModelRefs();
-    const recentMessages = input.recentMessages.slice(-this.config.llm.replyGate.recentMessageCount);
-    const batchAnalysis = analyzeReplyGateBatch(input.batchMessages);
-    const gateProfile = getPrimaryModelProfile(this.config, gateModelRefs);
-    const emojiImageIds = gateProfile?.supportsVision
+    const plannerModelRefs = this.resolveModelRefs();
+    const recentMessages = input.recentMessages.slice(-this.config.llm.turnPlanner.recentMessageCount);
+    const batchAnalysis = analyzeTurnPlannerBatch(input.batchMessages);
+    const plannerProfile = getPrimaryModelProfile(this.config, plannerModelRefs);
+    const emojiImageIds = plannerProfile?.supportsVision
       ? Array.from(new Set(input.batchMessages.flatMap((message) => (
         message.attachments
           ?.filter((item) => item.semanticKind === "emoji" && (item.kind === "image" || item.kind === "animated_image"))
@@ -105,12 +109,12 @@ export class ReplyGate {
         emojiInputs = (await this.mediaVisionService.prepareFilesForModel(emojiImageIds))
           .filter((item) => existingIds.has(item.fileId))
           .map((item) => ({
-          imageId: item.fileId,
-          inputUrl: item.inputUrl,
-          animated: item.animated,
-          durationMs: item.durationMs,
-          sampledFrameCount: item.sampledFrameCount
-        }));
+            imageId: item.fileId,
+            inputUrl: item.inputUrl,
+            animated: item.animated,
+            durationMs: item.durationMs,
+            sampledFrameCount: item.sampledFrameCount
+          }));
       } catch (error: unknown) {
         this.logger.warn(
           {
@@ -118,7 +122,7 @@ export class ReplyGate {
             emojiImageIds,
             error: error instanceof Error ? error.message : String(error)
           },
-          "reply_gate_emoji_prepare_failed"
+          "turn_planner_emoji_prepare_failed"
         );
       }
     }
@@ -130,22 +134,24 @@ export class ReplyGate {
         recentMessageCount: recentMessages.length,
         batchMessageCount: input.batchMessages.length,
         batchFeatures: batchAnalysis.summaryTags,
-        emojiInputCount: emojiInputs.length
+        emojiInputCount: emojiInputs.length,
+        availableToolsetCount: (input.availableToolsets ?? []).length
       },
-      "reply_gate_started"
+      "turn_planner_started"
     );
 
     let raw: string;
     try {
       const result = await this.llmClient.generate({
-        modelRefOverride: gateModelRefs,
-        timeoutMsOverride: this.config.llm.replyGate.timeoutMs,
-        enableThinkingOverride: this.config.llm.replyGate.enableThinking,
+        modelRefOverride: plannerModelRefs,
+        timeoutMsOverride: this.config.llm.turnPlanner.timeoutMs,
+        enableThinkingOverride: this.config.llm.turnPlanner.enableThinking,
         preferNativeNoThinkingChatEndpoint: true,
         skipDebugDump: true,
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
-        messages: buildReplyGatePrompt({
+        messages: buildTurnPlannerPrompt({
           ...input,
+          availableToolsets: input.availableToolsets ?? [],
           recentMessages,
           batchAnalysis,
           emojiInputs
@@ -155,14 +161,15 @@ export class ReplyGate {
     } catch (error: unknown) {
       const durationMs = Date.now() - startedAt;
       if (input.abortSignal?.aborted || isAbortError(error)) {
-        this.logger.info({ sessionId: input.sessionId, durationMs }, "reply_gate_aborted");
+        this.logger.info({ sessionId: input.sessionId, durationMs }, "turn_planner_aborted");
       } else {
-        this.logger.warn({ sessionId: input.sessionId, durationMs, err: error }, "reply_gate_llm_failed");
+        this.logger.warn({ sessionId: input.sessionId, durationMs, err: error }, "turn_planner_llm_failed");
       }
       return {
         replyDecision: "reply_small",
         topicDecision: "continue_topic",
-        reason: "reply gate failed"
+        reason: "turn planner failed",
+        toolsetIds: []
       };
     }
 
@@ -174,52 +181,34 @@ export class ReplyGate {
         sessionId: input.sessionId,
         replyDecision: parsed.replyDecision,
         topicDecision: parsed.topicDecision,
+        toolsetIds: parsed.toolsetIds,
         ...(logReason ? { reason: logReason } : {}),
         durationMs
       },
-      "reply_gate_decided"
+      "turn_planner_decided"
     );
     if (durationMs >= 3000) {
       this.logger.warn(
         {
           sessionId: input.sessionId,
           durationMs,
-          model: getPrimaryModelProfile(this.config, gateModelRefs)?.model ?? null,
-          modelRef: gateModelRefs
+          model: getPrimaryModelProfile(this.config, plannerModelRefs)?.model ?? null,
+          modelRef: plannerModelRefs
         },
-        "reply_gate_slow"
+        "turn_planner_slow"
       );
     }
     return parsed;
   }
 
-  private parseDecision(raw: string): ReplyGateResult {
+  private parseDecision(raw: string): TurnPlannerResult {
     const trimmed = raw.trim();
-    if (
-      trimmed === "reply_small"
-      || trimmed === "reply_large"
-      || trimmed === "wait"
-      || trimmed === "reply"
-      || trimmed === "topic_switch"
-    ) {
+    const line4Match = trimmed.match(/^(.+?)\s*\|\s*(reply_small|reply_large|wait|reply|topic_switch)\s*\|\s*(continue_topic|new_topic)\s*\|\s*(.+)\s*$/is);
+    if (line4Match) {
       return {
-        ...normalizeParsedDecisions(trimmed, "continue_topic"),
-        reason: ""
-      };
-    }
-    const lineMatch = trimmed.match(/^(reply_small|reply_large|wait|reply|topic_switch)\s*\|\s*(.+)$/is);
-    if (lineMatch) {
-      const reason = sanitizeReason(lineMatch[2] ?? "");
-      return {
-        ...normalizeParsedDecisions(lineMatch[1], "continue_topic"),
-        reason: summarizeReasonForLog(reason, 160)
-      };
-    }
-    const trailingDecisionMatch = trimmed.match(/^(.+?)\s*\|\s*(reply_small|reply_large|wait|reply|topic_switch)\s*$/is);
-    if (trailingDecisionMatch) {
-      return {
-        ...normalizeParsedDecisions(trailingDecisionMatch[2], "continue_topic"),
-        reason: summarizeReasonForLog(trailingDecisionMatch[1] ?? "", 160)
+        ...normalizeParsedDecisions(line4Match[2], line4Match[3]),
+        reason: summarizeReasonForLog(line4Match[1] ?? "", 160),
+        toolsetIds: parseToolsetIds(line4Match[4] ?? "")
       };
     }
 
@@ -227,7 +216,8 @@ export class ReplyGate {
     if (tripleMatch) {
       return {
         ...normalizeParsedDecisions(tripleMatch[2], tripleMatch[3]),
-        reason: summarizeReasonForLog(tripleMatch[1] ?? "", 160)
+        reason: summarizeReasonForLog(tripleMatch[1] ?? "", 160),
+        toolsetIds: []
       };
     }
 
@@ -237,67 +227,28 @@ export class ReplyGate {
         replyDecision?: unknown;
         topicDecision?: unknown;
         reason?: unknown;
+        toolsetIds?: unknown;
+        toolsets?: unknown;
       };
-      const reason = sanitizeReason(typeof parsed.reason === "string" ? parsed.reason : "");
       return {
         ...normalizeParsedDecisions(parsed.replyDecision ?? parsed.decision, parsed.topicDecision),
-        reason: summarizeReasonForLog(reason, 160)
+        reason: summarizeReasonForLog(typeof parsed.reason === "string" ? parsed.reason : "", 160),
+        toolsetIds: parseUnknownToolsetIds(parsed.toolsetIds ?? parsed.toolsets)
       };
     } catch {
-      const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[0]) as {
-            decision?: unknown;
-            replyDecision?: unknown;
-            topicDecision?: unknown;
-            reason?: unknown;
-          };
-          const reason = sanitizeReason(typeof parsed.reason === "string" ? parsed.reason : "");
-          return {
-            ...normalizeParsedDecisions(parsed.replyDecision ?? parsed.decision, parsed.topicDecision),
-            reason: summarizeReasonForLog(reason, 160)
-          };
-        } catch {
-          // fall through to tolerant parsing
-        }
-      }
+      // ignore
     }
 
-    const tolerantTripleMatch = trimmed.match(/^(.+?)[\s|:：,-]+(reply_small|reply_large|wait|reply|topic_switch)[\s|:：,-]+(continue_topic|new_topic)\s*$/is);
-    if (tolerantTripleMatch) {
-      return {
-        ...normalizeParsedDecisions(tolerantTripleMatch[2], tolerantTripleMatch[3]),
-        reason: summarizeReasonForLog(tolerantTripleMatch[1] ?? "", 160)
-      };
-    }
-
-    const tolerantTrailingDecisionMatch = trimmed.match(/^(.+?)[\s|:：,-]+(reply_small|reply_large|wait|reply|topic_switch)\s*$/is);
-    if (tolerantTrailingDecisionMatch) {
-      return {
-        ...normalizeParsedDecisions(tolerantTrailingDecisionMatch[2], "continue_topic"),
-        reason: summarizeReasonForLog(tolerantTrailingDecisionMatch[1] ?? "", 160)
-      };
-    }
-
-    const tolerantLeadingDecisionMatch = trimmed.match(/\b(reply_small|reply_large|wait|reply|topic_switch)\b[\s|:：,-]*(.+)?/is);
-    if (tolerantLeadingDecisionMatch) {
-      return {
-        ...normalizeParsedDecisions(tolerantLeadingDecisionMatch[1], "continue_topic"),
-        reason: summarizeReasonForLog(tolerantLeadingDecisionMatch[2] ?? "", 160)
-      };
-    }
-
-    this.logger.warn({ rawPreview: summarizeReasonForLog(trimmed, 240) }, "reply_gate_invalid_format");
+    const fallbackDecision = trimmed.match(/\b(reply_small|reply_large|wait|reply|topic_switch)\b/is)?.[1];
     return {
-      replyDecision: "reply_small",
-      topicDecision: "continue_topic",
-      reason: "invalid gate format fallback"
+      ...normalizeParsedDecisions(fallbackDecision ?? "reply_small", "continue_topic"),
+      reason: summarizeReasonForLog(trimmed, 160),
+      toolsetIds: []
     };
   }
 
   private resolveModelRefs(): string[] {
-    const resolved = resolveModelRefsForType(this.config, this.config.llm.replyGate.modelRef, "chat");
+    const resolved = resolveModelRefsForType(this.config, this.config.llm.turnPlanner.modelRef, "chat");
     for (const rejected of resolved.rejectedModelRefs) {
       if (rejected.reason === "unsupported_model_type") {
         this.logger.warn(
@@ -305,7 +256,7 @@ export class ReplyGate {
             modelRef: rejected.modelRef,
             actualModelType: rejected.actualModelType ?? "unknown"
           },
-          "reply_gate_model_skipped_due_to_type"
+          "turn_planner_model_skipped_due_to_type"
         );
       }
     }
@@ -313,34 +264,60 @@ export class ReplyGate {
   }
 
   private normalizeDecision(
-    parsed: ReplyGateResult,
-    input: ReplyGateInput,
-    batchAnalysis: ReturnType<typeof analyzeReplyGateBatch>
-  ): ReplyGateResult {
-    if (parsed.replyDecision !== "wait") {
-      return parsed;
+    parsed: TurnPlannerResult,
+    input: TurnPlannerInput,
+    batchAnalysis: ReturnType<typeof analyzeTurnPlannerBatch>
+  ): TurnPlannerResult {
+    const allowedToolsetIds = new Set((input.availableToolsets ?? []).map((item) => item.id));
+    const filteredToolsetIds = parsed.replyDecision === "wait"
+      ? []
+      : Array.from(new Set(parsed.toolsetIds.filter((id) => allowedToolsetIds.has(id))));
+    const normalized = { ...parsed, toolsetIds: filteredToolsetIds };
+
+    if (normalized.replyDecision !== "wait") {
+      return normalized;
     }
 
-    if (!shouldHonorWaitDecision(input, batchAnalysis, parsed.reason)) {
+    if (!shouldHonorWaitDecision(input, batchAnalysis, normalized.reason)) {
       this.logger.info(
         {
           sessionId: input.sessionId,
-          reason: parsed.reason || "wait decision not justified by local heuristics"
+          reason: normalized.reason || "wait decision not justified by local heuristics"
         },
-        "reply_gate_wait_coerced_to_reply"
+        "turn_planner_wait_coerced_to_reply"
       );
       return {
         replyDecision: "reply_small",
         topicDecision: "continue_topic",
-        reason: parsed.reason || "wait coerced to reply"
+        reason: normalized.reason || "wait coerced to reply",
+        toolsetIds: []
       };
     }
 
     return {
-      ...parsed,
-      topicDecision: "continue_topic"
+      ...normalized,
+      topicDecision: "continue_topic",
+      toolsetIds: []
     };
   }
+}
+
+function parseUnknownToolsetIds(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return parseToolsetIds(value);
+  }
+  return [];
+}
+
+function parseToolsetIds(value: string): string[] {
+  const normalized = sanitizeReason(value).toLowerCase();
+  if (!normalized || normalized === "-" || normalized === "none") {
+    return [];
+  }
+  return normalized.split(/[\s,，|]+/g).map((item) => item.trim()).filter(Boolean);
 }
 
 function isAbortError(error: unknown): boolean {
@@ -365,7 +342,7 @@ function summarizeReasonForLog(reason: string, maxLength = MAX_LOG_REASON_LENGTH
     : `${normalized.slice(0, maxLength)}...`;
 }
 
-function normalizeReplyDecision(input: unknown): ReplyGateResult["replyDecision"] {
+function normalizeReplyDecision(input: unknown): TurnPlannerResult["replyDecision"] {
   const normalized = typeof input === "string" ? input.trim().toLowerCase() : "";
   if (normalized === "reply_large") {
     return normalized;
@@ -376,7 +353,7 @@ function normalizeReplyDecision(input: unknown): ReplyGateResult["replyDecision"
   return "reply_small";
 }
 
-function normalizeTopicDecision(input: unknown): ReplyGateResult["topicDecision"] {
+function normalizeTopicDecision(input: unknown): TurnPlannerResult["topicDecision"] {
   const normalized = typeof input === "string" ? input.trim().toLowerCase() : "";
   if (normalized === "new_topic" || normalized === "topic_switch") {
     return "new_topic";
@@ -384,7 +361,10 @@ function normalizeTopicDecision(input: unknown): ReplyGateResult["topicDecision"
   return "continue_topic";
 }
 
-function normalizeParsedDecisions(replyInput: unknown, topicInput: unknown): Pick<ReplyGateResult, "replyDecision" | "topicDecision"> {
+function normalizeParsedDecisions(
+  replyInput: unknown,
+  topicInput: unknown
+): Pick<TurnPlannerResult, "replyDecision" | "topicDecision"> {
   if (replyInput === "topic_switch") {
     return {
       replyDecision: "reply_small",
@@ -405,8 +385,8 @@ function normalizeParsedDecisions(replyInput: unknown, topicInput: unknown): Pic
 }
 
 function shouldHonorWaitDecision(
-  input: ReplyGateInput,
-  batchAnalysis: ReturnType<typeof analyzeReplyGateBatch>,
+  input: TurnPlannerInput,
+  batchAnalysis: ReturnType<typeof analyzeTurnPlannerBatch>,
   reason: string
 ): boolean {
   if (looksLikeNoReplyRationale(reason)) {

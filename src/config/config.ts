@@ -270,7 +270,7 @@ function emitConfigConsistencyWarnings(config: AppConfig): void {
     ["llm.summarizer.modelRef", config.llm.summarizer.modelRef],
     ["llm.imageCaptioner.modelRef", config.llm.imageCaptioner.modelRef],
     ["llm.audioTranscription.modelRef", config.llm.audioTranscription.modelRef],
-    ["llm.replyGate.modelRef", config.llm.replyGate.modelRef]
+    ["llm.turnPlanner.modelRef", config.llm.turnPlanner.modelRef]
   ] as const) {
     if (!shouldWarnForModelRefs(fieldName, modelRefs)) {
       continue;
@@ -291,7 +291,7 @@ function emitConfigConsistencyWarnings(config: AppConfig): void {
     ["llm.summarizer.modelRef", config.llm.summarizer.modelRef, "chat"],
     ["llm.imageCaptioner.modelRef", config.llm.imageCaptioner.modelRef, "chat"],
     ["llm.audioTranscription.modelRef", config.llm.audioTranscription.modelRef, "transcription"],
-    ["llm.replyGate.modelRef", config.llm.replyGate.modelRef, "chat"]
+    ["llm.turnPlanner.modelRef", config.llm.turnPlanner.modelRef, "chat"]
   ] as Array<[string, string[], SupportedModelType]>) {
     if (!shouldWarnForModelRefs(fieldName, modelRefs)) {
       continue;
@@ -314,7 +314,7 @@ function shouldWarnForModelRefs(fieldName: string, modelRefs: string[]): boolean
     "llm.summarizer.modelRef": ["summarizer"],
     "llm.imageCaptioner.modelRef": ["imageCaptioner"],
     "llm.audioTranscription.modelRef": ["transcription"],
-    "llm.replyGate.modelRef": ["replyGate"]
+    "llm.turnPlanner.modelRef": ["turnPlanner"]
   };
   const defaultRefs = defaultPlaceholderByField[fieldName];
   return !defaultRefs || !sameStringArray(modelRefs, defaultRefs);

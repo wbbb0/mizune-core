@@ -33,7 +33,7 @@ async function main() {
         throw new Error("LLM API error: 400 Bad Request {\"error\":{\"type\":\"content_filter\"}}");
       }
     } as never,
-    replyGate: {} as never,
+    turnPlanner: {} as never,
     debounceManager: {} as never,
     historyCompressor: {
       async maybeCompress() {

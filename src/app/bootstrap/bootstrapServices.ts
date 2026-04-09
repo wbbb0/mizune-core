@@ -6,7 +6,7 @@ import { ConfigManager } from "#config/configManager.ts";
 import { DebounceManager } from "../../conversation/debounceManager.ts";
 import { HistoryCompressor } from "../../conversation/historyCompressor.ts";
 import { MessageQueue } from "../../conversation/messageQueue.ts";
-import { ReplyGate } from "../../conversation/replyGate.ts";
+import { TurnPlanner } from "../../conversation/turnPlanner.ts";
 import { SessionManager } from "#conversation/session/sessionManager.ts";
 import { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
 import { ForwardResolver } from "../../forwards/forwardResolver.ts";
@@ -59,7 +59,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
   const comfyTaskStore = new ComfyTaskStore(dataDir, logger);
   const comfyTemplateCatalog = new ComfyTemplateCatalogService(config, logger);
   const historyCompressor = new HistoryCompressor(config, llmClient, sessionManager, mediaCaptionService, logger);
-  const replyGate = new ReplyGate(config, llmClient, mediaWorkspace, mediaVisionService, logger);
+  const turnPlanner = new TurnPlanner(config, llmClient, mediaWorkspace, mediaVisionService, logger);
   const messageQueue = new MessageQueue(logger);
   const sessionPersistence = new SessionPersistence(dataDir, logger);
   const scheduledJobStore = new ScheduledJobStore(dataDir, logger);
@@ -98,7 +98,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
     audioStore,
     audioTranscriber,
     historyCompressor,
-    replyGate,
+    turnPlanner,
     messageQueue,
     sessionPersistence,
     scheduledJobStore,

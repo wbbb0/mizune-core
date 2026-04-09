@@ -1,4 +1,4 @@
-export interface ReplyGateBatchAnalysisMessage {
+export interface TurnPlannerBatchAnalysisMessage {
   text?: string;
   audioSources?: string[];
   imageIds?: string[];
@@ -15,7 +15,7 @@ export interface ReplyGateBatchAnalysisMessage {
   mentionedSelf?: boolean;
 }
 
-export interface ReplyGateBatchAnalysis {
+export interface TurnPlannerBatchAnalysis {
   messageCount: number;
   textMessageCount: number;
   audioMessageCount: number;
@@ -35,14 +35,14 @@ export interface ReplyGateBatchAnalysis {
   summaryTags: string[];
 }
 
-function hasMentionSignal(message: ReplyGateBatchAnalysisMessage): boolean {
+function hasMentionSignal(message: TurnPlannerBatchAnalysisMessage): boolean {
   return Boolean(message.mentionedAll)
     || Boolean(message.mentionedSelf)
     || (message.mentionUserIds?.length ?? 0) > 0;
 }
 
-export function analyzeReplyGateBatch(messages: ReplyGateBatchAnalysisMessage[]): ReplyGateBatchAnalysis {
-  const analysis: ReplyGateBatchAnalysis = {
+export function analyzeTurnPlannerBatch(messages: TurnPlannerBatchAnalysisMessage[]): TurnPlannerBatchAnalysis {
+  const analysis: TurnPlannerBatchAnalysis = {
     messageCount: messages.length,
     textMessageCount: 0,
     audioMessageCount: 0,

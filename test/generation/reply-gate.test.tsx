@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { LlmMessage } from "../../src/llm/llmClient.ts";
-import { handleGenerationReplyGate } from "../../src/app/generation/generationReplyGate.ts";
+import { handleGenerationTurnPlanner } from "../../src/app/generation/generationTurnPlanner.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import {
   createGenerationReplyGateDeps,
@@ -19,7 +19,7 @@ function createConfig() {
           supportsTools: false
         }
       },
-      replyGate: {
+      turnPlanner: {
         enabled: true
       }
     }
@@ -70,31 +70,29 @@ async function main() {
     const userParts: Array<{ type: string; text?: string }> =
       secondMessage && Array.isArray(secondMessage.content) ? secondMessage.content : [];
     const user = userParts.find((part: { type: string; text?: string }) => part.type === "text")?.text ?? "";
-    assert.match(system, /⟦section name="gate_identity"⟧/);
-    assert.match(system, /⟦section name="gate_rules"⟧/);
-    assert.match(system, /⟦section name="gate_identity"⟧/);
-    assert.match(system, /⟦section name="gate_rules"⟧/);
+    assert.match(system, /⟦section name="planner_identity"⟧/);
+    assert.match(system, /⟦section name="planner_rules"⟧/);
     assert.doesNotMatch(system, /包括但不限于/);
     assert.doesNotMatch(system, /像“取消这个吧”/);
-    assert.match(user, /⟦section name="gate_batch_features"⟧/);
+    assert.match(user, /⟦section name="planner_batch_features"⟧/);
     assert.match(user, /tags=mention, text/);
-    assert.match(user, /⟦gate_batch_message index="1"/);
+    assert.match(user, /⟦planner_batch_message index="1"/);
   });
 
   await runCase("generation reply gate bypasses audio-only batches", async () => {
     let llmCalled = false;
-    const result = await handleGenerationReplyGate(
+    const result = await handleGenerationTurnPlanner(
       createGenerationReplyGateDeps({
         config: createConfig(),
-        replyGate: {
+        turnPlanner: {
           isEnabled() {
             return true;
           },
           async decide() {
             llmCalled = true;
-            return { replyDecision: "reply_small", topicDecision: "continue_topic", reason: "should not run" };
+            return { replyDecision: "reply_small", topicDecision: "continue_topic", reason: "should not run", toolsetIds: [] };
           }
-        } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["replyGate"],
+        } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["turnPlanner"],
         debounceManager: {
           schedule() {
             throw new Error("should not reschedule audio-only batch");
@@ -115,7 +113,7 @@ async function main() {
       createGenerationReplyGateInput()
     );
 
-    assert.deepEqual(result, { action: "continue", resolvedModelRef: ["main"] });
+    assert.deepEqual(result, { action: "continue", resolvedModelRef: ["main"], toolsetIds: [] });
     assert.equal(llmCalled, false);
   });
 
@@ -144,17 +142,17 @@ async function main() {
   await runCase("generation reply gate compacts old history on topic switch", async () => {
     const compactCalls: Array<{ sessionId: string; keep: number }> = [];
     const persistReasons: string[] = [];
-    const result = await handleGenerationReplyGate(
+    const result = await handleGenerationTurnPlanner(
       createGenerationReplyGateDeps({
         config: createConfig(),
-        replyGate: {
+        turnPlanner: {
           isEnabled() {
             return true;
           },
           async decide() {
-            return { replyDecision: "reply_large", topicDecision: "new_topic", reason: "明显换题" };
+            return { replyDecision: "reply_large", topicDecision: "new_topic", reason: "明显换题", toolsetIds: [] };
           }
-        } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["replyGate"],
+        } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["turnPlanner"],
         historyCompressor: {
           async maybeCompress() {},
           async compactOldHistoryKeepingRecent(sessionId: string, keep: number) {
@@ -179,9 +177,9 @@ async function main() {
       })
     );
 
-    assert.deepEqual(result, { action: "continue", resolvedModelRef: ["main"] });
+    assert.deepEqual(result, { action: "continue", resolvedModelRef: ["main"], toolsetIds: [] });
     assert.deepEqual(compactCalls, [{ sessionId: "private:audio", keep: 1 }]);
-    assert.deepEqual(persistReasons, ["reply_gate_topic_switch_compacted"]);
+    assert.deepEqual(persistReasons, ["turn_planner_topic_switch_compacted"]);
   });
 
   await runCase("reply gate coerces model ignore decisions back to reply for normal requests", async () => {

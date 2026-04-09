@@ -1,13 +1,13 @@
 import pino from "pino";
-import { ReplyGate, type ReplyGateInput } from "../../src/conversation/replyGate.ts";
+import { TurnPlanner, type TurnPlannerInput } from "../../src/conversation/turnPlanner.ts";
 import type { AppConfig } from "../../src/config/config.ts";
 import type { LlmClient, LlmGenerateParams } from "../../src/llm/llmClient.ts";
-import type { GenerationReplyGateHandlers, GenerationReplyGateInput } from "../../src/app/generation/generationReplyGate.ts";
+import type { GenerationTurnPlannerHandlers, GenerationTurnPlannerInput } from "../../src/app/generation/generationTurnPlanner.ts";
 import type { GenerationRunnerDeps } from "../../src/app/generation/generationRunnerDeps.ts";
 
-export type ReplyGateBatchMessage = ReplyGateInput["batchMessages"][number];
-export type ReplyGateRecentMessage = ReplyGateInput["recentMessages"][number];
-type GenerationReplyGateDeps = Pick<GenerationRunnerDeps, "config" | "logger" | "llmClient" | "replyGate" | "debounceManager" | "historyCompressor" | "sessionManager" | "persistSession">;
+export type ReplyGateBatchMessage = TurnPlannerInput["batchMessages"][number];
+export type ReplyGateRecentMessage = TurnPlannerInput["recentMessages"][number];
+type GenerationReplyGateDeps = Pick<GenerationRunnerDeps, "config" | "logger" | "llmClient" | "turnPlanner" | "debounceManager" | "historyCompressor" | "sessionManager" | "persistSession">;
 
 interface ReplyGateHarnessOptions {
   resultText?: string;
@@ -37,7 +37,7 @@ export function createReplyGateBatchMessage(
 export function createReplyGate(
   config: AppConfig,
   options: ReplyGateHarnessOptions = {}
-): ReplyGate {
+): TurnPlanner {
   const llmClient = {
     async generate(input: LlmGenerateParams) {
       await options.onGenerate?.(input);
@@ -51,7 +51,7 @@ export function createReplyGate(
     }
   } as unknown as GenerationRunnerDeps["mediaVisionService"];
 
-  return new ReplyGate(config, llmClient, {
+  return new TurnPlanner(config, llmClient, {
     async getMany() {
       return [];
     }
@@ -69,14 +69,14 @@ export function createGenerationReplyGateDeps(
         return true;
       }
     } as GenerationRunnerDeps["llmClient"],
-    replyGate: overrides.replyGate ?? ({
+    turnPlanner: overrides.turnPlanner ?? ({
       isEnabled() {
         return true;
       },
       async decide() {
-        return { replyDecision: "reply_small", topicDecision: "continue_topic", reason: "should not run" };
+        return { replyDecision: "reply_small", topicDecision: "continue_topic", reason: "should not run", toolsetIds: [] };
       }
-    } as unknown as GenerationRunnerDeps["replyGate"]),
+    } as unknown as GenerationRunnerDeps["turnPlanner"]),
     debounceManager: overrides.debounceManager ?? ({
       schedule() {
         throw new Error("unexpected debounce schedule");
@@ -96,8 +96,8 @@ export function createGenerationReplyGateDeps(
 }
 
 export function createGenerationReplyGateHandlers(
-  overrides: Partial<GenerationReplyGateHandlers> = {}
-): GenerationReplyGateHandlers {
+  overrides: Partial<GenerationTurnPlannerHandlers> = {}
+): GenerationTurnPlannerHandlers {
   return {
     flushSession() {},
     ...overrides
@@ -105,8 +105,8 @@ export function createGenerationReplyGateHandlers(
 }
 
 export function createGenerationReplyGateInput(
-  overrides: Partial<GenerationReplyGateInput> = {}
-): GenerationReplyGateInput {
+  overrides: Partial<GenerationTurnPlannerInput> = {}
+): GenerationTurnPlannerInput {
   return {
     sessionId: "private:audio",
     relationship: "owner",
@@ -119,6 +119,7 @@ export function createGenerationReplyGateInput(
     },
     historyForPrompt: [],
     pendingReplyGateWaitPasses: 0,
+    availableToolsets: [],
     abortSignal: new AbortController().signal,
     batchMessages: [{
       chatType: "private",

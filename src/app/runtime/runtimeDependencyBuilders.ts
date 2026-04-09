@@ -12,7 +12,7 @@ export function buildSessionWorkCoordinatorDeps(
     config: services.config,
     logger: services.logger,
     llmClient: services.llmClient,
-    replyGate: services.replyGate,
+    turnPlanner: services.turnPlanner,
     debounceManager: services.debounceManager,
     historyCompressor: services.historyCompressor,
     messageQueue: services.messageQueue,

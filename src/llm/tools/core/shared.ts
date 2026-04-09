@@ -125,6 +125,28 @@ export interface BuiltinToolContext extends
   BuiltinToolCommunicationDeps,
   BuiltinToolStoreDeps,
   BuiltinToolRuntimeDeps {
+  toolsetAccess?: {
+    listAvailableToolsets: () => {
+      available_toolsets: Array<{
+        id: string;
+        title: string;
+        description: string;
+        tools: string[];
+      }>;
+      active_toolset_ids: string[];
+      request_limit_per_turn: number;
+      remaining_request_quota: number;
+    };
+    requestToolsets: (toolsetIds: string[], reason: string) => {
+      ok: boolean;
+      requested_toolset_ids: string[];
+      approved_toolset_ids: string[];
+      rejected_toolset_ids: string[];
+      active_toolset_ids: string[];
+      reason: string | null;
+      message: string;
+    };
+  };
   webOutputCollector?: GenerationWebOutputCollector;
   debugSnapshot?: PromptDebugSnapshot;
   activeInternalTrigger?: InternalSessionTriggerExecution | null;

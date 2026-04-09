@@ -27,6 +27,11 @@ import {
   summarizeToolResult
 } from "./generationExecutorSupport.ts";
 import type { GenerationWebOutputCollector } from "./generationTypes.ts";
+import {
+  resolveToolNamesFromToolsets,
+  TURN_PLANNER_ALWAYS_TOOL_NAMES,
+  type ToolsetView
+} from "#llm/tools/toolsets.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -78,6 +83,8 @@ export interface RunGenerationInput {
   resolvedModelRef: string[];
   debugSnapshot: PromptDebugSnapshot;
   availableToolNames?: string[] | undefined;
+  plannedToolsetIds?: string[] | undefined;
+  availableToolsets?: ToolsetView[] | undefined;
   setupMode?: boolean | undefined;
   streamResponse?: boolean | undefined;
   webOutputCollector?: GenerationWebOutputCollector | undefined;
@@ -143,6 +150,8 @@ export function createGenerationExecutor(
         resolvedModelRef,
         debugSnapshot,
         availableToolNames,
+        plannedToolsetIds,
+        availableToolsets,
         setupMode,
         streamResponse,
         webOutputCollector
@@ -209,13 +218,90 @@ export function createGenerationExecutor(
           }
       );
 
-      const allowedTools = getBuiltinTools(toolRelationship ?? relationship, currentUser, config, {
+      const isPlannerToolsetMode = !setupMode && Array.isArray(availableToolsets) && availableToolsets.length > 0;
+      const activeToolsetIds = new Set((plannedToolsetIds ?? []).filter((id) => (
+        availableToolsets?.some((item) => item.id === id) ?? false
+      )));
+      let toolsetUpgradeUsed = false;
+
+      const resolveDynamicAllowedToolNames = (): string[] => {
+        if (!isPlannerToolsetMode) {
+          return availableToolNames ?? [];
+        }
+        return [
+          ...resolveToolNamesFromToolsets(availableToolsets!, Array.from(activeToolsetIds)),
+          ...TURN_PLANNER_ALWAYS_TOOL_NAMES
+        ];
+      };
+
+      const resolveAllowedTools = () => getBuiltinTools(toolRelationship ?? relationship, currentUser, config, {
         modelRef: resolvedModelRef,
         includeDebugTools: interactionMode === "debug",
-        ...(availableToolNames ? { availableToolNames } : {})
+        ...(resolveDynamicAllowedToolNames().length > 0
+          ? { availableToolNames: resolveDynamicAllowedToolNames() }
+          : {})
       });
 
-      const rawToolExecutor = createBuiltinToolExecutor(buildBuiltinToolContext({
+      const toolsetAccess = isPlannerToolsetMode
+        ? {
+            listAvailableToolsets: () => ({
+              available_toolsets: availableToolsets!.map((toolset) => ({
+                id: toolset.id,
+                title: toolset.title,
+                description: toolset.description,
+                tools: toolset.toolNames
+              })),
+              active_toolset_ids: Array.from(activeToolsetIds),
+              request_limit_per_turn: 1,
+              remaining_request_quota: toolsetUpgradeUsed ? 0 : 1
+            }),
+            requestToolsets: (toolsetIds: string[], reason: string) => {
+              const requested = Array.from(new Set(toolsetIds.map((item) => item.trim()).filter(Boolean)));
+              if (requested.length === 0) {
+                return {
+                  ok: false,
+                  requested_toolset_ids: [],
+                  approved_toolset_ids: [],
+                  rejected_toolset_ids: [],
+                  active_toolset_ids: Array.from(activeToolsetIds),
+                  reason: reason || null,
+                  message: "toolset_ids is empty"
+                };
+              }
+              if (toolsetUpgradeUsed) {
+                return {
+                  ok: false,
+                  requested_toolset_ids: requested,
+                  approved_toolset_ids: [],
+                  rejected_toolset_ids: requested,
+                  active_toolset_ids: Array.from(activeToolsetIds),
+                  reason: reason || null,
+                  message: "toolset request quota exceeded for this turn"
+                };
+              }
+              const allowedIds = new Set(availableToolsets!.map((item) => item.id));
+              const approved = requested.filter((id) => allowedIds.has(id));
+              const rejected = requested.filter((id) => !allowedIds.has(id));
+              for (const id of approved) {
+                activeToolsetIds.add(id);
+              }
+              toolsetUpgradeUsed = true;
+              return {
+                ok: approved.length > 0,
+                requested_toolset_ids: requested,
+                approved_toolset_ids: approved,
+                rejected_toolset_ids: rejected,
+                active_toolset_ids: Array.from(activeToolsetIds),
+                reason: reason || null,
+                message: approved.length > 0
+                  ? "toolset request approved"
+                  : "no requested toolset could be approved"
+              };
+            }
+          }
+        : undefined;
+
+      const builtinToolContext = buildBuiltinToolContext({
         config,
         relationship: toolRelationship ?? relationship,
         replyDelivery: sendTarget.delivery,
@@ -250,13 +336,10 @@ export function createGenerationExecutor(
         setupStore,
         conversationAccess,
         npcDirectory,
+        ...(toolsetAccess ? { toolsetAccess } : {}),
         debugSnapshot,
         ...(webOutputCollector ? { webOutputCollector } : {}),
         ...(activeInternalTrigger !== undefined ? { activeInternalTrigger } : {})
-      }), {
-        modelRef: resolvedModelRef,
-        includeDebugTools: interactionMode === "debug",
-        ...(availableToolNames ? { availableToolNames } : {})
       });
 
       const toolExecutor = async (toolCall: LlmToolCall): Promise<string | LlmToolExecutionResult> => {
@@ -265,6 +348,13 @@ export function createGenerationExecutor(
           toolCallId: toolCall.id
         });
         try {
+          const rawToolExecutor = createBuiltinToolExecutor(builtinToolContext, {
+            modelRef: resolvedModelRef,
+            includeDebugTools: interactionMode === "debug",
+            ...(resolveDynamicAllowedToolNames().length > 0
+              ? { availableToolNames: resolveDynamicAllowedToolNames() }
+              : {})
+          });
           const result = await rawToolExecutor(toolCall, args);
           const eventApplied = sessionManager.appendToolEventIfEpochMatches(sessionId, expectedEpoch, {
             toolName: toolCall.function.name,
@@ -310,7 +400,7 @@ export function createGenerationExecutor(
             messages: promptMessages,
             modelRefOverride: resolvedModelRef,
             enableThinkingOverride: config.llm.mainRouting.enableThinking,
-            tools: allowedTools,
+            tools: resolveAllowedTools,
             abortSignal: abortController.signal,
             consumeSteerMessages,
             toolExecutor: async (toolCall) => {

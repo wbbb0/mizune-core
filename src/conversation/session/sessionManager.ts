@@ -269,7 +269,7 @@ export class SessionManager {
   setDebounceTimer(sessionId: string, timer: NodeJS.Timeout): void {
     const session = this.requireSession(sessionId);
     session.debounceTimer = timer;
-    if (session.phase.kind === "idle" || session.phase.kind === "reply_gate_waiting") {
+    if (session.phase.kind === "idle" || session.phase.kind === "turn_planner_waiting") {
       setSessionPhaseState(session, { kind: "debouncing" });
     }
   }
@@ -292,8 +292,8 @@ export class SessionManager {
     }
     const session = this.requireSession(sessionId);
     requeuePendingMessagesState(session, messages, replyGateWaitPasses);
-    if (session.phase.kind === "reply_gate_evaluating" || session.phase.kind === "requesting_llm" || session.phase.kind === "idle") {
-      setSessionPhaseState(session, { kind: "reply_gate_waiting" });
+    if (session.phase.kind === "turn_planner_evaluating" || session.phase.kind === "requesting_llm" || session.phase.kind === "idle") {
+      setSessionPhaseState(session, { kind: "turn_planner_waiting" });
     }
   }
 

@@ -6,7 +6,7 @@ import type { ConfigManager } from "#config/configManager.ts";
 import type { DebounceManager } from "../../conversation/debounceManager.ts";
 import type { HistoryCompressor } from "../../conversation/historyCompressor.ts";
 import type { MessageQueue } from "../../conversation/messageQueue.ts";
-import type { ReplyGate } from "../../conversation/replyGate.ts";
+import type { TurnPlanner } from "../../conversation/turnPlanner.ts";
 import type { SessionManager } from "#conversation/session/sessionManager.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
 import type { ForwardResolver } from "../../forwards/forwardResolver.ts";
@@ -49,7 +49,7 @@ export interface AppServiceBootstrap {
   audioStore: AudioStore;
   audioTranscriber: AudioTranscriber;
   historyCompressor: HistoryCompressor;
-  replyGate: ReplyGate;
+  turnPlanner: TurnPlanner;
   messageQueue: MessageQueue;
   sessionPersistence: SessionPersistence;
   scheduledJobStore: ScheduledJobStore;

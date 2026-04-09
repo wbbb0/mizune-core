@@ -185,8 +185,8 @@ export type TranscriptItem =
 export type SessionPhase =
   | { kind: "idle"; label: string }
   | { kind: "debouncing"; label: string }
-  | { kind: "reply_gate_evaluating"; label: string }
-  | { kind: "reply_gate_waiting"; label: string }
+  | { kind: "turn_planner_evaluating"; label: string }
+  | { kind: "turn_planner_waiting"; label: string }
   | { kind: "requesting_llm"; label: string }
   | { kind: "generating"; label: string }
   | { kind: "tool_calling"; label: string; toolNames: string[]; lastToolName: string | null }
