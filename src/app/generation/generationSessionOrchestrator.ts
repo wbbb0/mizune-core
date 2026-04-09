@@ -274,6 +274,7 @@ export function createGenerationSessionOrchestrator(
         logger.error({ err: error, sessionId }, "generation_prepare_failed");
         if (sessionManager.finishGeneration(sessionId, abortController)) {
           persistSession(sessionId, "generation_finished");
+          sessionManager.completeResponse(sessionId, responseEpoch);
           services.processNextSessionWork(sessionId);
         }
       }
@@ -416,6 +417,7 @@ export function createGenerationSessionOrchestrator(
         logger.error({ err: error, sessionId, triggerKind: trigger.kind, jobName: trigger.jobName }, "scheduled_generation_prepare_failed");
         if (sessionManager.finishGeneration(sessionId, abortController)) {
           persistSession(sessionId, "generation_finished");
+          sessionManager.completeResponse(sessionId, responseEpoch);
           services.processNextSessionWork(sessionId);
         }
       }

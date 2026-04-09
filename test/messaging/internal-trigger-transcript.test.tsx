@@ -279,6 +279,135 @@ async function main() {
     assert.deepEqual(deliveries, ["web"]);
     assert.equal(sessionManager.getReplyDelivery(sessionId), "web");
   });
+
+  await runCase("flush session prepare failure clears active response state", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "private:owner";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    sessionManager.appendSyntheticPendingMessage(sessionId, {
+      chatType: "private",
+      userId: "owner",
+      senderName: "Owner",
+      text: "你好",
+      images: []
+    });
+    const persistedReasons: string[] = [];
+    let processNextCalled = 0;
+
+    const orchestrator = createGenerationSessionOrchestrator({
+      config,
+      logger: pino({ level: "silent" }),
+      sessionManager,
+      historyCompressor: {
+        async maybeCompress() {
+          throw new Error("compress failed");
+        }
+      } as never,
+      userStore: {
+        async getByUserId() {
+          return null;
+        }
+      } as never,
+      personaStore: {
+        async get() {
+          return null;
+        }
+      } as never,
+      setupStore: {
+        async get() {
+          return { state: "ready" };
+        }
+      } as never,
+      replyGate: {} as never,
+      llmClient: {} as never,
+      debounceManager: {} as never,
+      persistSession(_sessionId: string, reason: string) {
+        persistedReasons.push(reason);
+      }
+    } as never, {
+      promptBuilder: {
+        async buildChatPromptMessages() {
+          return {
+            promptMessages: [],
+            debugSnapshot: {} as never
+          };
+        }
+      } as never,
+      async runGeneration() {},
+      processNextSessionWork() {
+        processNextCalled += 1;
+      }
+    });
+
+    orchestrator.flushSession(sessionId);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(sessionManager.hasActiveResponse(sessionId), false);
+    assert.equal(processNextCalled, 1);
+    assert.ok(persistedReasons.includes("generation_finished"));
+  });
+
+  await runCase("scheduled trigger prepare failure clears active response state", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "private:owner";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    const persistedReasons: string[] = [];
+    let processNextCalled = 0;
+
+    const orchestrator = createGenerationSessionOrchestrator({
+      config,
+      logger: pino({ level: "silent" }),
+      sessionManager,
+      historyCompressor: {
+        async maybeCompress() {
+          return false;
+        }
+      } as never,
+      userStore: {
+        async getByUserId() {
+          return null;
+        }
+      } as never,
+      personaStore: {
+        async get() {
+          return null;
+        }
+      } as never,
+      setupStore: {} as never,
+      persistSession(_sessionId: string, reason: string) {
+        persistedReasons.push(reason);
+      }
+    } as never, {
+      promptBuilder: {
+        async buildScheduledPromptMessages() {
+          throw new Error("prompt failed");
+        }
+      } as never,
+      async runGeneration() {},
+      processNextSessionWork() {
+        processNextCalled += 1;
+      }
+    });
+
+    await assert.rejects(
+      () => orchestrator.runInternalTriggerSession(sessionId, {
+        kind: "scheduled_instruction",
+        targetType: "private",
+        targetUserId: "owner",
+        targetSenderName: "Owner",
+        jobName: "daily",
+        instruction: "提醒喝水",
+        enqueuedAt: 1
+      }),
+      /prompt failed/
+    );
+
+    assert.equal(sessionManager.hasActiveResponse(sessionId), false);
+    assert.equal(processNextCalled, 1);
+    assert.ok(persistedReasons.includes("generation_finished"));
+  });
 }
 
 main().catch((error) => {

@@ -33,6 +33,10 @@ type NativeLmStudioInput =
   | { type: "image"; data_url: string };
 
 type NativeLmStudioFallbackInput =
+  | { type: "text"; content: string }
+  | { type: "image"; data_url: string };
+
+type NativeLmStudioLegacyInput =
   | { type: "text"; text: string }
   | { type: "image"; data_url: string };
 
@@ -44,8 +48,7 @@ type NativeLmStudioFallbackInput =
  * - apiKey 可选，缺省时使用 "lm-studio"
  * - 若模型声明 supportsThinking 且未手动配置 features.thinking，
  *   自动注入 enable_thinking 控制字段，无需额外 provider feature 配置
- * - 当前统一走 OpenAI 兼容 /v1/chat/completions，避免不同 LM Studio 版本之间
- *   /api/v1/chat 输入 schema 不一致导致 reply gate 等无工具路径报错
+ * - 当无 tools 且本轮要求关闭思考时，自动切换到 /api/v1/chat（reasoning: off）
  */
 export class LmStudioProvider implements LlmProvider {
   readonly type = "lmstudio" as const;
@@ -59,9 +62,15 @@ export class LmStudioProvider implements LlmProvider {
     context: LlmProviderRequestContext,
     params: LlmProviderGenerateParams
   ): Promise<LlmProviderGenerateResult> {
+    if (shouldUseNativeNoThinkingEndpoint(context, params)) {
+      return this.generateWithNativeChatEndpoint(context, params);
+    }
+
     const features = context.providerConfig.features;
     const defaultThinking =
-      features.thinking == null && context.modelProfile.supportsThinking
+      features.thinking == null
+      && context.modelProfile.supportsThinking
+      && context.modelProfile.thinkingControllable
         ? DEFAULT_THINKING_FEATURE
         : undefined;
 
@@ -77,7 +86,32 @@ export class LmStudioProvider implements LlmProvider {
       }
     };
 
-    return this.delegate.generate(patchedContext, params);
+    const normalizedMessages = normalizeMessagesForLmStudioOpenAiEndpoint(params.messages);
+    const normalizedParams: LlmProviderGenerateParams = {
+      ...params,
+      messages: normalizedMessages
+    };
+
+    try {
+      return await this.delegate.generate(patchedContext, normalizedParams);
+    } catch (error) {
+      if (!shouldRetryWithoutToolsForTemplateError(error, normalizedParams)) {
+        throw error;
+      }
+
+      context.logger.warn(
+        {
+          model: context.model,
+          modelRef: context.modelRef
+        },
+        "lmstudio_template_error_retry_without_tools"
+      );
+
+      return this.delegate.generate(patchedContext, {
+        ...normalizedParams,
+        tools: []
+      });
+    }
   }
 
   private async generateWithNativeChatEndpoint(
@@ -94,22 +128,41 @@ export class LmStudioProvider implements LlmProvider {
     params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
 
     try {
-      const payload = await requestNativeChatPayload(
-        context,
-        endpoint,
-        timeoutController.controller.signal,
-        buildNativeChatRequestBody(context.model, params.messages)
-      ).catch(async (error) => {
-        if (!shouldRetryWithLegacyNativeChatShape(error)) {
-          throw error;
-        }
-        return requestNativeChatPayload(
+      const primaryRequestBody = buildNativeChatRequestBody(context.model, params.messages);
+      const textContentRequestBody = buildTextContentNativeChatRequestBody(context.model, params.messages);
+      const legacyRequestBody = buildLegacyNativeChatRequestBody(context.model, params.messages);
+
+      let payload: LmStudioChatResponsePayload;
+      try {
+        payload = await requestNativeChatPayload(
           context,
           endpoint,
           timeoutController.controller.signal,
-          buildLegacyNativeChatRequestBody(context.model, params.messages)
+          primaryRequestBody
         );
-      });
+      } catch (error) {
+        if (!shouldRetryWithTextContentNativeChatShape(error)) {
+          throw error;
+        }
+        try {
+          payload = await requestNativeChatPayload(
+            context,
+            endpoint,
+            timeoutController.controller.signal,
+            textContentRequestBody
+          );
+        } catch (fallbackError) {
+          if (!shouldRetryWithLegacyNativeChatShape(fallbackError)) {
+            throw fallbackError;
+          }
+          payload = await requestNativeChatPayload(
+            context,
+            endpoint,
+            timeoutController.controller.signal,
+            legacyRequestBody
+          );
+        }
+      }
       const text = extractNativeChatText(payload);
       const reasoningContent = extractNativeReasoningContent(payload);
       const usage = payload.stats
@@ -161,6 +214,23 @@ export class LmStudioProvider implements LlmProvider {
       params.abortSignal?.removeEventListener("abort", forwardAbort);
     }
   }
+}
+
+function shouldUseNativeNoThinkingEndpoint(
+  context: LlmProviderRequestContext,
+  params: LlmProviderGenerateParams
+): boolean {
+  const resolvedEnableThinking = params.enableThinkingOverride ?? false;
+  if (resolvedEnableThinking) {
+    return false;
+  }
+  if (!context.modelProfile.supportsThinking || !context.modelProfile.thinkingControllable) {
+    return false;
+  }
+  if ((params.tools?.length ?? 0) > 0) {
+    return false;
+  }
+  return canMapMessagesToNativeChatInput(params.messages);
 }
 
 function canMapMessagesToNativeChatInput(messages: LlmMessage[]): boolean {
@@ -239,9 +309,60 @@ function buildNativeChatRequestBody(model: string, messages: LlmMessage[]): Reco
   };
 }
 
-function buildLegacyNativeChatRequestBody(model: string, messages: LlmMessage[]): Record<string, unknown> {
+function buildTextContentNativeChatRequestBody(model: string, messages: LlmMessage[]): Record<string, unknown> {
   const systemPrompts: string[] = [];
   const input: NativeLmStudioFallbackInput[] = [];
+
+  for (const message of messages) {
+    if (message.role === "system") {
+      const systemText = flattenMessageText(message);
+      if (systemText) {
+        systemPrompts.push(systemText);
+      }
+      continue;
+    }
+
+    if (typeof message.content === "string") {
+      input.push({
+        type: "text",
+        content: message.content
+      });
+      continue;
+    }
+
+    for (const part of message.content) {
+      if (part.type === "text") {
+        if (part.text.length > 0) {
+          input.push({
+            type: "text",
+            content: part.text
+          });
+        }
+        continue;
+      }
+
+      if (part.type === "image_url") {
+        input.push({
+          type: "image",
+          data_url: part.image_url.url
+        });
+      }
+    }
+  }
+
+  return {
+    model,
+    input,
+    reasoning: "off",
+    stream: false,
+    store: false,
+    ...(systemPrompts.length > 0 ? { system_prompt: systemPrompts.join("\n\n") } : {})
+  };
+}
+
+function buildLegacyNativeChatRequestBody(model: string, messages: LlmMessage[]): Record<string, unknown> {
+  const systemPrompts: string[] = [];
+  const input: NativeLmStudioLegacyInput[] = [];
 
   for (const message of messages) {
     if (message.role === "system") {
@@ -300,6 +421,66 @@ function flattenMessageText(message: LlmMessage): string {
     .join("\n");
 }
 
+function normalizeMessagesForLmStudioOpenAiEndpoint(messages: LlmMessage[]): LlmMessage[] {
+  const normalized = messages.map((message) => {
+    if (typeof message.content === "string") {
+      return {
+        ...message,
+        content: stripStructuredBracketOnlyLines(message.content)
+      };
+    }
+
+    if (!message.content.every((part) => part.type === "text")) {
+      return message;
+    }
+
+    return {
+      ...message,
+      content: stripStructuredBracketOnlyLines(message.content.map((part) => part.text).join("\n"))
+    };
+  });
+
+  return ensureFirstNonSystemMessageIsUser(normalized);
+}
+
+function stripStructuredBracketOnlyLines(text: string): string {
+  return text.replace(/^\s*⟦[^⟧]*⟧\s*(?:\r?\n)?/gm, "");
+}
+
+function ensureFirstNonSystemMessageIsUser(messages: LlmMessage[]): LlmMessage[] {
+  let systemEnd = 0;
+  while (systemEnd < messages.length && messages[systemEnd]?.role === "system") {
+    systemEnd += 1;
+  }
+
+  const suffix = messages.slice(systemEnd);
+  if (suffix.length === 0) {
+    return messages;
+  }
+  if (suffix[0]?.role === "user") {
+    return messages;
+  }
+
+  return [
+    ...messages.slice(0, systemEnd),
+    {
+      role: "user",
+      content: "⟦placeholder kind=\"bootstrap_user\" note=\"ignore_this_placeholder\"⟧"
+    },
+    ...suffix
+  ];
+}
+
+function shouldRetryWithoutToolsForTemplateError(error: unknown, params: LlmProviderGenerateParams): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  if ((params.tools?.length ?? 0) === 0) {
+    return false;
+  }
+  return error.message.includes("No user query found in messages");
+}
+
 function extractNativeChatText(payload: LmStudioChatResponsePayload): string {
   return (payload.output ?? [])
     .filter((item) => (item.type === "message" || item.type === "text") && typeof item.content === "string")
@@ -347,12 +528,19 @@ async function requestNativeChatPayload(
   return response.json() as Promise<LmStudioChatResponsePayload>;
 }
 
+function shouldRetryWithTextContentNativeChatShape(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message;
+  return message.includes("Invalid discriminator value. Expected 'text' | 'image'");
+}
+
 function shouldRetryWithLegacyNativeChatShape(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
   const message = error.message;
-  return message.includes("Invalid discriminator value. Expected 'text' | 'image'")
-    || message.includes("'input.0.content' is required")
-    || message.includes("Unrecognized key(s) in object: 'text'");
+  return message.includes("'input.0.text' is required")
+    || message.includes("Unrecognized key(s) in object: 'content'");
 }

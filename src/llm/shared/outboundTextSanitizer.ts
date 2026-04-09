@@ -1,6 +1,7 @@
 import { stripLeadingMessageHeaders } from "./messageHeaderFormat.ts";
 
 const LIST_MARKER_REGEX = /^\s*(?:[-*+]|\d+[.)])\s+/gm;
+const STRUCTURED_BRACKET_LINE_REGEX = /^\s*⟦[^⟧]*⟧\s*(?:\r?\n)?/gm;
 
 function stripInlineCode(text: string): string {
   return text.replace(/`([^`\n]+)`/g, "$1");
@@ -25,6 +26,10 @@ function stripEmphasis(text: string): string {
   }
 }
 
+function stripStructuredBracketOnlyLines(text: string): string {
+  return text.replace(STRUCTURED_BRACKET_LINE_REGEX, "");
+}
+
 export function sanitizeOutboundText(
   text: string,
   options?: {
@@ -34,5 +39,7 @@ export function sanitizeOutboundText(
   const strippedText = options?.stripLeadingMessageHeaders
     ? stripLeadingMessageHeaders(text)
     : text;
-  return stripEmphasis(stripInlineCode(strippedText).replace(LIST_MARKER_REGEX, ""));
+  return stripEmphasis(
+    stripInlineCode(stripStructuredBracketOnlyLines(strippedText)).replace(LIST_MARKER_REGEX, "")
+  );
 }

@@ -81,7 +81,7 @@ async function main() {
     });
   });
 
-  await runCase("lmstudio keeps using openai-compatible chat completions even when native no-thinking is preferred", async () => {
+  await runCase("lmstudio uses native chat endpoint when tools are absent and thinking is disabled", async () => {
     const config = createLlmTestConfig({
       provider: "test",
       supportsVision: true
@@ -93,27 +93,33 @@ async function main() {
     await withMockFetch([
       {
         assertRequest(body: any, _callIndex: number, init: RequestInit, url: string) {
-          assert.equal(url, "http://localhost:1234/v1/chat/completions");
-          assert.equal(body.enable_thinking, false);
-          assert.deepEqual(body.messages, [
-            { role: "system", content: "system prompt" },
-            {
-              role: "user",
-              content: [
-                { type: "text", text: "describe this image" },
-                { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }
-              ]
-            }
+          assert.equal(url, "http://localhost:1234/api/v1/chat");
+          assert.equal(body.reasoning, "off");
+          assert.equal(body.stream, false);
+          assert.equal(body.store, false);
+          assert.equal(body.system_prompt, "system prompt");
+          assert.deepEqual(body.input, [
+            { type: "message", content: "describe this image" },
+            { type: "image", data_url: "data:image/png;base64,AAAA" }
           ]);
           assert.equal((init.headers as Record<string, string>).Authorization, "Bearer test-key");
         },
-        payloads: [{
-          choices: [{
-            delta: {
-              content: "一只猫"
-            }
-          }]
-        }]
+        response: new Response(JSON.stringify({
+          output: [{
+            type: "message",
+            content: "一只猫"
+          }],
+          stats: {
+            input_tokens: 8,
+            total_output_tokens: 3,
+            reasoning_output_tokens: 0
+          }
+        }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        })
       }
     ], async () => {
       const result = await client.generate({
@@ -135,7 +141,7 @@ async function main() {
     });
   });
 
-  await runCase("lmstudio keeps openai-compatible chat completions when native no-thinking path is not requested", async () => {
+  await runCase("lmstudio automatically uses native no-thinking chat endpoint without explicit prefer flag", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "lmstudio";
     config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
@@ -144,8 +150,195 @@ async function main() {
     await withMockFetch([
       {
         assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
+          assert.equal(url, "http://localhost:1234/api/v1/chat");
+          assert.equal(body.reasoning, "off");
+          assert.deepEqual(body.input, [{ type: "message", content: "hello" }]);
+        },
+        response: new Response(JSON.stringify({
+          output: [{
+            type: "message",
+            content: "done"
+          }]
+        }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        })
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "hello" }],
+        enableThinkingOverride: false
+      });
+
+      assert.equal(result.text, "done");
+    });
+  });
+
+  await runCase("lmstudio retries with text+content native shape when server requires text discriminator", async () => {
+    const config = createLlmTestConfig();
+    config.llm.providers.test!.type = "lmstudio";
+    config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
+          assert.equal(url, "http://localhost:1234/api/v1/chat");
+          assert.deepEqual(body.input, [{ type: "message", content: "hello" }]);
+        },
+        response: new Response(JSON.stringify({
+          error: {
+            message: "Invalid discriminator value. Expected 'text' | 'image'"
+          }
+        }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        })
+      },
+      {
+        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
+          assert.equal(url, "http://localhost:1234/api/v1/chat");
+          assert.deepEqual(body.input, [{ type: "text", content: "hello" }]);
+        },
+        response: new Response(JSON.stringify({
+          output: [{
+            type: "message",
+            content: "fallback ok"
+          }]
+        }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        })
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "hello" }],
+        enableThinkingOverride: false
+      });
+
+      assert.equal(result.text, "fallback ok");
+    });
+  });
+
+  await runCase("lmstudio retries with legacy text+text shape after text+content fallback fails", async () => {
+    const config = createLlmTestConfig();
+    config.llm.providers.test!.type = "lmstudio";
+    config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
+          assert.equal(url, "http://localhost:1234/api/v1/chat");
+          assert.deepEqual(body.input, [{ type: "message", content: "hello" }]);
+        },
+        response: new Response(JSON.stringify({
+          error: {
+            message: "Invalid discriminator value. Expected 'text' | 'image'"
+          }
+        }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        })
+      },
+      {
+        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
+          assert.equal(url, "http://localhost:1234/api/v1/chat");
+          assert.deepEqual(body.input, [{ type: "text", content: "hello" }]);
+        },
+        response: new Response(JSON.stringify({
+          error: {
+            message: "'input.0.text' is required, Unrecognized key(s) in object: 'content'"
+          }
+        }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        })
+      },
+      {
+        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
+          assert.equal(url, "http://localhost:1234/api/v1/chat");
+          assert.deepEqual(body.input, [{ type: "text", text: "hello" }]);
+        },
+        response: new Response(JSON.stringify({
+          output: [{
+            type: "message",
+            content: "legacy ok"
+          }]
+        }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        })
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "hello" }],
+        enableThinkingOverride: false
+      });
+
+      assert.equal(result.text, "legacy ok");
+    });
+  });
+
+  await runCase("lmstudio does not retry with legacy shape when server requires content field", async () => {
+    const config = createLlmTestConfig();
+    config.llm.providers.test!.type = "lmstudio";
+    config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
+          assert.equal(url, "http://localhost:1234/api/v1/chat");
+          assert.deepEqual(body.input, [{ type: "message", content: "hello" }]);
+        },
+        response: new Response(JSON.stringify({
+          error: {
+            message: "'input.0.content' is required, Unrecognized key(s) in object: 'text'"
+          }
+        }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        })
+      }
+    ], async () => {
+      await assert.rejects(
+        () => client.generate({
+          messages: [{ role: "user", content: "hello" }],
+          enableThinkingOverride: false
+        }),
+        /input\.0\.content/
+      );
+    });
+  });
+
+  await runCase("lmstudio keeps openai-compatible chat completions when model thinking is not controllable", async () => {
+    const config = createLlmTestConfig({
+      thinkingControllable: false
+    });
+    config.llm.providers.test!.type = "lmstudio";
+    config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
           assert.equal(url, "http://localhost:1234/v1/chat/completions");
-          assert.equal(body.enable_thinking, false);
+          assert.equal("enable_thinking" in body, false);
           assert.deepEqual(body.messages, [{ role: "user", content: "hello" }]);
         },
         payloads: [{
@@ -163,6 +356,137 @@ async function main() {
       });
 
       assert.equal(result.text, "done");
+    });
+  });
+
+  await runCase("lmstudio flattens text-only content parts for openai-compatible chat completions", async () => {
+    const config = createLlmTestConfig({
+      thinkingControllable: false
+    });
+    config.llm.providers.test!.type = "lmstudio";
+    config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
+          assert.equal(url, "http://localhost:1234/v1/chat/completions");
+          assert.deepEqual(body.messages, [{
+            role: "user",
+            content: "我想想"
+          }]);
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "done"
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{
+          role: "user",
+          content: [{ type: "text", text: "我想想" }]
+        }],
+        enableThinkingOverride: false
+      });
+
+      assert.equal(result.text, "done");
+    });
+  });
+
+  await runCase("lmstudio retries without tools when template reports no user query", async () => {
+    const config = createLlmTestConfig({
+      thinkingControllable: false
+    });
+    config.llm.providers.test!.type = "lmstudio";
+    config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
+          assert.equal(url, "http://localhost:1234/v1/chat/completions");
+          assert.equal(Array.isArray(body.tools), true);
+          assert.equal(body.tools.length, 1);
+        },
+        response: new Response(JSON.stringify({
+          error: {
+            message: "Error rendering prompt with jinja template: \"No user query found in messages.\""
+          }
+        }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        })
+      },
+      {
+        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
+          assert.equal(url, "http://localhost:1234/v1/chat/completions");
+          assert.equal("tools" in body, false);
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "fallback without tools"
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "测试" }],
+        tools: [createToolDefinition("lookup")],
+        enableThinkingOverride: false
+      });
+
+      assert.equal(result.text, "fallback without tools");
+    });
+  });
+
+  await runCase("lmstudio injects placeholder user when first non-system message is assistant", async () => {
+    const config = createLlmTestConfig({
+      thinkingControllable: false
+    });
+    config.llm.providers.test!.type = "lmstudio";
+    config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
+          assert.equal(url, "http://localhost:1234/v1/chat/completions");
+          assert.deepEqual(body.messages, [
+            { role: "system", content: "sys" },
+            { role: "user", content: "⟦placeholder kind=\"bootstrap_user\" note=\"ignore_this_placeholder\"⟧" },
+            { role: "assistant", content: "历史助手首条" },
+            { role: "user", content: "真正用户输入" }
+          ]);
+          assert.equal(body.tools.length, 1);
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "ok"
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [
+          { role: "system", content: "sys" },
+          { role: "assistant", content: "历史助手首条" },
+          { role: "user", content: "真正用户输入" }
+        ],
+        tools: [createToolDefinition("lookup")],
+        enableThinkingOverride: false
+      });
+
+      assert.equal(result.text, "ok");
     });
   });
 

@@ -69,8 +69,26 @@ function main() {
 
     assert.equal(
       sanitizeOutboundText(input),
-      input
+      "收到啦"
     );
+  });
+
+  runCase("strips standalone structured bracket lines in the middle of output", () => {
+    const input = [
+      "先说结论",
+      "⟦section name=\"debug\"⟧",
+      "再补一句"
+    ].join("\n");
+
+    assert.equal(
+      sanitizeOutboundText(input),
+      ["先说结论", "再补一句"].join("\n")
+    );
+  });
+
+  runCase("keeps bracket tokens when they are part of a normal sentence", () => {
+    const input = "这个符号⟦不是整行标签⟧要保留";
+    assert.equal(sanitizeOutboundText(input), input);
   });
 }
 
