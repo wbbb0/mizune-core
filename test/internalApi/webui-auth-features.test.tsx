@@ -5,7 +5,7 @@ import { join } from "node:path";
 import Fastify from "fastify";
 import fastifyCookie from "@fastify/cookie";
 import pino from "pino";
-import { COOKIE_NAME, verifyPassword, verifySessionToken } from "../../src/internalApi/auth/webuiAuth.ts";
+import { buildCookieName, verifyPassword, verifySessionToken } from "../../src/internalApi/auth/webuiAuth.ts";
 import { getWebuiAuthFilePath, loadOrCreateWebuiAuth } from "../../src/internalApi/auth/webuiAuthStore.ts";
 import { registerAuthRoutes } from "../../src/internalApi/routes/authRoutes.ts";
 
@@ -25,9 +25,11 @@ async function createAuthTestApp(input?: { initialToken?: string }) {
   const app = Fastify({ logger: false });
   await app.register(fastifyCookie);
 
+  const cookieName = buildCookieName(3000);
   registerAuthRoutes(app, {
     authData,
     dataDir,
+    cookieName,
     defaultRpName: "llm-bot WebUI",
     allowedHosts: ["localhost"]
   });
@@ -45,19 +47,19 @@ async function createAuthTestApp(input?: { initialToken?: string }) {
     if (!request.url.startsWith("/api/auth/")) {
       return;
     }
-    const cookie = request.cookies[COOKIE_NAME];
+    const cookie = request.cookies[cookieName];
     if (!cookie || !verifySessionToken(authData.passwordHash, authData.sessionVersion, cookie)) {
       await reply.status(401).send({ error: "Unauthorized" });
     }
   });
 
   await app.ready();
-  return { app, authData, dataDir };
+  return { app, authData, dataDir, cookieName };
 }
 
 async function main() {
   await runCase("legacy accessToken auth file is migrated to password auth", async () => {
-    const { app, authData, dataDir } = await createAuthTestApp({ initialToken: "legacy-secret" });
+    const { app, authData, dataDir, cookieName } = await createAuthTestApp({ initialToken: "legacy-secret" });
     try {
       assert.equal(verifyPassword("legacy-secret", authData.passwordHash), true);
       assert.equal(authData.sessionVersion, 1);
@@ -70,7 +72,7 @@ async function main() {
   });
 
   await runCase("password change invalidates old sessions and old password", async () => {
-    const { app } = await createAuthTestApp({ initialToken: "old-secret" });
+    const { app, cookieName } = await createAuthTestApp({ initialToken: "old-secret" });
     try {
       const login = await app.inject({
         method: "POST",
@@ -84,7 +86,7 @@ async function main() {
       const settingsBefore = await app.inject({
         method: "GET",
         url: "/api/auth/settings",
-        cookies: { [COOKIE_NAME]: cookie }
+        cookies: { [cookieName]: cookie }
       });
       assert.equal(settingsBefore.statusCode, 200);
       assert.equal(settingsBefore.json().username, "admin");
@@ -92,7 +94,7 @@ async function main() {
       const change = await app.inject({
         method: "POST",
         url: "/api/auth/password",
-        cookies: { [COOKIE_NAME]: cookie },
+        cookies: { [cookieName]: cookie },
         payload: {
           currentPassword: "old-secret",
           newPassword: "new-secret"
@@ -103,7 +105,7 @@ async function main() {
       const meWithOldCookie = await app.inject({
         method: "GET",
         url: "/api/auth/me",
-        cookies: { [COOKIE_NAME]: cookie }
+        cookies: { [cookieName]: cookie }
       });
       assert.equal(meWithOldCookie.statusCode, 200);
       assert.equal(meWithOldCookie.json().authenticated, false);
@@ -127,7 +129,7 @@ async function main() {
   });
 
   await runCase("passkey registration options require an authenticated session", async () => {
-    const { app } = await createAuthTestApp({ initialToken: "auth-secret" });
+    const { app, cookieName } = await createAuthTestApp({ initialToken: "auth-secret" });
     try {
       const unauthorized = await app.inject({
         method: "POST",
@@ -147,7 +149,7 @@ async function main() {
       const authorized = await app.inject({
         method: "POST",
         url: "/api/auth/passkey/register/options",
-        cookies: { [COOKIE_NAME]: cookie },
+        cookies: { [cookieName]: cookie },
         headers: { origin: "http://localhost:3131", host: "localhost:3131" }
       });
       assert.equal(authorized.statusCode, 200);

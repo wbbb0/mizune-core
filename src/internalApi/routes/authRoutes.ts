@@ -10,7 +10,6 @@ import {
 import type { AuthenticatorTransportFuture } from "@simplewebauthn/server";
 import {
   COOKIE_MAX_AGE_SECONDS,
-  COOKIE_NAME,
   createSessionToken,
   hashPassword,
   verifyPassword,
@@ -33,16 +32,18 @@ const FIXED_USERNAME = "admin";
 export function registerAuthRoutes(app: FastifyInstance, options: {
   authData: WebuiAuthData;
   dataDir: string;
+  cookieName: string;
   defaultRpName?: string;
   allowedHosts?: string[];
 }): void {
+  const { cookieName } = options;
   const state = {
     pendingRegistration: null as PendingCeremony | null,
     pendingAuthentication: null as PendingCeremony | null
   };
 
   app.get("/api/auth/me", async (request) => {
-    const cookie = request.cookies[COOKIE_NAME];
+    const cookie = request.cookies[cookieName];
     const authenticated = typeof cookie === "string" && verifySessionToken(
       options.authData.passwordHash,
       options.authData.sessionVersion,
@@ -70,7 +71,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: {
       return reply.status(401).send({ error: "Invalid password" });
     }
 
-    return issueSession(reply, options.authData);
+    return issueSession(reply, options.authData, cookieName);
   });
 
   app.post("/api/auth/password", async (request, reply) => {
@@ -89,7 +90,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: {
     options.authData.passwordUpdatedAt = Date.now();
     options.authData.sessionVersion += 1;
     await saveWebuiAuth(options.dataDir, options.authData);
-    reply.clearCookie(COOKIE_NAME, { path: "/" });
+    reply.clearCookie(cookieName, { path: "/" });
     return { ok: true };
   });
 
@@ -235,7 +236,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: {
       options.authData.passkey.lastUsedAt = Date.now();
       await saveWebuiAuth(options.dataDir, options.authData);
       state.pendingAuthentication = null;
-      return issueSession(reply, options.authData);
+      return issueSession(reply, options.authData, cookieName);
     } catch (error: unknown) {
       return reply.status(401).send({ error: error instanceof Error ? error.message : "Passkey login failed" });
     }
@@ -250,14 +251,14 @@ export function registerAuthRoutes(app: FastifyInstance, options: {
   });
 
   app.post("/api/auth/logout", async (_, reply) => {
-    reply.clearCookie(COOKIE_NAME, { path: "/" });
+    reply.clearCookie(cookieName, { path: "/" });
     return { ok: true };
   });
 }
 
-function issueSession(reply: FastifyReply, authData: WebuiAuthData) {
+function issueSession(reply: FastifyReply, authData: WebuiAuthData, cookieName: string) {
   const session = createSessionToken(authData.passwordHash, authData.sessionVersion);
-  reply.setCookie(COOKIE_NAME, session, {
+  reply.setCookie(cookieName, session, {
     httpOnly: true,
     sameSite: "strict",
     path: "/",

@@ -12,7 +12,7 @@ import { registerShellRoutes } from "./routes/shellRoutes.ts";
 import { registerUploadRoutes } from "./routes/uploadRoutes.ts";
 import { registerAuthRoutes } from "./routes/authRoutes.ts";
 import { loadOrCreateWebuiAuth } from "./auth/webuiAuthStore.ts";
-import { COOKIE_NAME, verifySessionToken } from "./auth/webuiAuth.ts";
+import { buildCookieName, verifySessionToken } from "./auth/webuiAuth.ts";
 import { createInternalApiServices, type InternalApiDeps } from "./types.ts";
 
 // Routes that do not require authentication.
@@ -55,6 +55,14 @@ export async function startInternalApi(deps: InternalApiDeps) {
   const webuiEnabled = deps.config.internalApi.webui.enabled;
   const externalWebuiMode = process.env.LLM_BOT_WEBUI_MODE === "external" && webuiEnabled;
 
+  // Compute listen port early so the cookie name can be derived from it.
+  const listenPort = externalWebuiMode
+    ? deps.config.internalApi.port
+    : webuiEnabled
+      ? deps.config.internalApi.webui.port
+      : deps.config.internalApi.port;
+  const cookieName = buildCookieName(listenPort);
+
   // --- Cookie support (required for auth) ---
   await app.register(fastifyCookie);
 
@@ -67,6 +75,7 @@ export async function startInternalApi(deps: InternalApiDeps) {
     registerAuthRoutes(app, {
       authData,
       dataDir: deps.config.dataDir,
+      cookieName,
       defaultRpName: `${deps.config.appName} WebUI`,
       allowedHosts: deps.config.internalApi.webui.allowedHosts
     });
@@ -100,7 +109,7 @@ export async function startInternalApi(deps: InternalApiDeps) {
       // WebUI disabled → internal API is unauthenticated (existing behaviour).
       return;
     }
-    const cookie = request.cookies[COOKIE_NAME];
+    const cookie = request.cookies[cookieName];
     if (
       !authData ||
       !cookie ||
@@ -116,11 +125,6 @@ export async function startInternalApi(deps: InternalApiDeps) {
   // devices (e.g. phones on the LAN) can reach the PWA.  Auth middleware
   // protects all API routes, so public exposure is safe.
   // When webui is disabled, stay on 127.0.0.1 (local-only, unauthenticated).
-  const listenPort = externalWebuiMode
-    ? deps.config.internalApi.port
-    : webuiEnabled
-      ? deps.config.internalApi.webui.port
-      : deps.config.internalApi.port;
   const listenHost = externalWebuiMode
     ? "127.0.0.1"
     : webuiEnabled

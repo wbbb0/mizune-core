@@ -1,10 +1,13 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
-const COOKIE_NAME = "webui-session";
 const COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const PASSWORD_HASH_PREFIX = "scrypt";
 
-export { COOKIE_NAME, COOKIE_MAX_AGE_SECONDS };
+export { COOKIE_MAX_AGE_SECONDS };
+
+export function buildCookieName(port: number): string {
+  return `webui-session-${port}`;
+}
 
 function sign(secret: string, value: string): string {
   return createHmac("sha256", secret).update(value).digest("hex");
