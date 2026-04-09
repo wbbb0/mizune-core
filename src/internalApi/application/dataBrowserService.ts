@@ -111,12 +111,6 @@ function buildDataBrowserResourceMap(dataDir: string): Map<string, DataBrowserRe
       filePath: join(dataDir, "audio-files.json")
     },
     {
-      key: "global_memories",
-      title: "Global Memories",
-      kind: "single_json",
-      filePath: join(dataDir, "global-memories.json")
-    },
-    {
       key: "image_files",
       title: "Image Files",
       kind: "single_json",

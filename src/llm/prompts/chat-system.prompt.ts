@@ -337,10 +337,51 @@ function buildCurrentUserLines(input: { userProfile: PromptInput["userProfile"] 
 }
 
 function buildGlobalMemoryLines(input: { globalMemories?: PromptInput["globalMemories"] }): string[] {
-  const memoryText = formatMemoryEntries(input.globalMemories, "");
-  return memoryText
-    ? [`当前长期全局行为要求（最多 ${MAX_VISIBLE_MEMORIES} 条）：\n${memoryText}`]
-    : [];
+  const entries = input.globalMemories;
+  const memoryText = formatMemoryEntries(entries, "");
+  if (!memoryText) return [];
+
+  const lines = [`当前长期全局行为要求（最多 ${MAX_VISIBLE_MEMORIES} 条）：\n${memoryText}`];
+
+  const similarPairs = findSimilarMemoryPairs(entries ?? []);
+  if (similarPairs.length > 0) {
+    const pairDescs = similarPairs.map(([a, b]) => `「${a.title}」与「${b.title}」`).join("、");
+    lines.push(`⚠️ 以下记忆内容高度相似，建议合并：${pairDescs}。可用 remember_global_memory（传入 memoryId）更新保留项，再用 remove_global_memory 删除重复项。`);
+  }
+
+  return lines;
+}
+
+const MEMORY_SIMILARITY_THRESHOLD = 0.45;
+
+function findSimilarMemoryPairs(entries: MemoryEntry[]): Array<[MemoryEntry, MemoryEntry]> {
+  const pairs: Array<[MemoryEntry, MemoryEntry]> = [];
+  for (let i = 0; i < entries.length; i++) {
+    for (let j = i + 1; j < entries.length; j++) {
+      const a = entries[i];
+      const b = entries[j];
+      if (!a || !b) continue;
+      const sim = bigramJaccard(`${a.title} ${a.content}`, `${b.title} ${b.content}`);
+      if (sim >= MEMORY_SIMILARITY_THRESHOLD) {
+        pairs.push([a, b]);
+      }
+    }
+  }
+  return pairs;
+}
+
+function bigramJaccard(a: string, b: string): number {
+  const bigrams = (str: string): Set<string> => {
+    const result = new Set<string>();
+    for (let i = 0; i < str.length - 1; i++) result.add(str.slice(i, i + 2));
+    return result;
+  };
+  const aSet = bigrams(a);
+  const bSet = bigrams(b);
+  let intersection = 0;
+  for (const g of aSet) if (bSet.has(g)) intersection++;
+  const union = aSet.size + bSet.size - intersection;
+  return union === 0 ? 0 : intersection / union;
 }
 
 function buildBoundaryLines(input: { visibleToolNames?: string[] }): string[] {

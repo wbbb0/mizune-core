@@ -15,6 +15,7 @@ import { deepMergeAllReplaceArrays } from "#data/schema/helpers.ts";
 import { buildUiTreeFromMeta } from "#data/schema/ui.ts";
 import type { BaseSchema, Infer } from "#data/schema/index.ts";
 import { personaSchema } from "#persona/personaSchema.ts";
+import { memoryEntrySchema } from "#memory/memoryEntry.ts";
 import { userStoreSchema } from "#identity/userSchema.ts";
 import { whitelistFileSchema } from "#identity/whitelistSchema.ts";
 import { requestFileSchema } from "#requests/requestSchema.ts";
@@ -334,7 +335,8 @@ function buildEditorResourceMap(input: {
       afterSave: async () => {
         await input.scheduler.reloadFromStore();
       }
-    })
+    }),
+    single("global_memories", "Global Memories", "data", s.array(memoryEntrySchema).default([]), `${dataDir}/global-memories.json`)
   ];
 
   return new Map(

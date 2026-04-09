@@ -8,7 +8,7 @@ export const profileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "get_global_memories",
-        description: "读取当前长期全局行为要求和执行规则。owner 在修改 bot 长期做事方式前应先看这里，避免重复或冲突。",
+        description: "读取当前所有长期全局行为要求。在新增或修改记忆前必须先调用此工具，确认是否已有内容相近的条目——若有，应更新已有条目而非创建重复条目。",
         parameters: {
           type: "object",
           properties: {},
@@ -23,11 +23,11 @@ export const profileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "remember_global_memory",
-        description: "写入一条长期全局 memory，适合记录 owner 指定的 bot 长期执行规则、回答协议、输出偏好或默认工作方式。",
+        description: "新增或更新一条长期全局 memory。适合记录 owner 指定的 bot 长期执行规则、回答协议、输出偏好或默认工作方式。重要：调用前必须先用 get_global_memories 检查已有内容，若已存在主题或含义相近的条目，必须传入其 memoryId 进行更新，严禁创建重复条目。",
         parameters: {
           type: "object",
           properties: {
-            memoryId: { type: "string" },
+            memoryId: { type: "string", description: "更新已有条目时必须填写该条目的 id；省略此字段将创建全新条目。" },
             title: { type: "string" },
             content: { type: "string" }
           },
