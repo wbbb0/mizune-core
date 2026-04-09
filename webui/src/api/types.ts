@@ -6,7 +6,6 @@ export interface SessionListItem {
   source: "onebot" | "web";
   participantUserId: string;
   participantLabel: string | null;
-  pendingMessageCount: number;
   isGenerating: boolean;
   lastActiveAt: number;
 }
@@ -194,19 +193,18 @@ export type SessionPhase =
   | { kind: "delivering"; label: string; previewText?: string | null };
 
 export type SessionStreamEvent =
-  | { type: "ready";   sessionId: string; mutationEpoch: number; transcriptCount: number; pendingMessageCount: number; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
+  | { type: "ready";   sessionId: string; mutationEpoch: number; transcriptCount: number; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
   | {
       type: "reset";
       sessionId: string;
       mutationEpoch: number;
       transcriptCount: number;
-      pendingMessageCount: number;
       lastActiveAt: number;
       phase: SessionPhase;
       reason: "mutation_epoch_changed" | "transcript_cursor_ahead" | "transcript_gap_detected";
       timestampMs: number;
     }
-  | { type: "status";  sessionId: string; mutationEpoch: number; pendingMessageCount: number; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
+  | { type: "status";  sessionId: string; mutationEpoch: number; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
   | { type: "transcript_item"; sessionId: string; mutationEpoch: number; index: number; totalCount: number; eventId: string; item: TranscriptItem; timestampMs: number }
   | { type: "session_error"; message: string };
 

@@ -11,7 +11,6 @@ function buildSessionSummary(session: SessionState) {
     source: session.source,
     participantUserId: session.participantUserId,
     participantLabel: session.participantLabel,
-    pendingMessageCount: session.pendingMessages.length,
     isGenerating: isSessionGenerating(session),
     lastActiveAt: session.lastActiveAt
   };
@@ -67,7 +66,6 @@ export async function getSessionDetail(
     session: {
       ...deps.sessionManager.getSessionView(sessionId),
       isGenerating: isSessionGenerating(existing),
-      pendingMessageCount: existing.pendingMessages.length,
       historyRevision: deps.sessionManager.getHistoryRevision(sessionId),
       mutationEpoch: deps.sessionManager.getMutationEpoch(sessionId)
     }

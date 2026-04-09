@@ -9,7 +9,6 @@ export type WebSessionStreamEvent =
       sessionId: string;
       mutationEpoch: number;
       transcriptCount: number;
-      pendingMessageCount: number;
       lastActiveAt: number;
       phase: WebSessionPhase;
       timestampMs: number;
@@ -19,7 +18,6 @@ export type WebSessionStreamEvent =
       sessionId: string;
       mutationEpoch: number;
       transcriptCount: number;
-      pendingMessageCount: number;
       lastActiveAt: number;
       phase: WebSessionPhase;
       reason: "mutation_epoch_changed" | "transcript_cursor_ahead" | "transcript_gap_detected";
@@ -29,7 +27,6 @@ export type WebSessionStreamEvent =
       type: "status";
       sessionId: string;
       mutationEpoch: number;
-      pendingMessageCount: number;
       lastActiveAt: number;
       phase: WebSessionPhase;
       timestampMs: number;
@@ -49,7 +46,6 @@ export type WebSessionStreamSnapshot = {
   sessionId: string;
   mutationEpoch: number;
   transcript: InternalTranscriptItem[];
-  pendingMessageCount: number;
   lastActiveAt: number;
   phase: SessionPhase;
   activeAssistantResponseText: string | null;
@@ -64,7 +60,6 @@ export function buildInitialSessionStreamEvents(
     sessionId: snapshot.sessionId,
     mutationEpoch: snapshot.mutationEpoch,
     transcriptCount: snapshot.transcript.length,
-    pendingMessageCount: snapshot.pendingMessageCount,
     lastActiveAt: snapshot.lastActiveAt,
     phase: deriveWebSessionPhase(snapshot),
     timestampMs: Date.now()
@@ -80,7 +75,6 @@ export function buildInitialSessionStreamEvents(
       sessionId: snapshot.sessionId,
       mutationEpoch: snapshot.mutationEpoch,
       transcriptCount: snapshot.transcript.length,
-      pendingMessageCount: snapshot.pendingMessageCount,
       lastActiveAt: snapshot.lastActiveAt,
       phase: deriveWebSessionPhase(snapshot),
       reason: "mutation_epoch_changed",
@@ -95,7 +89,6 @@ export function buildInitialSessionStreamEvents(
       sessionId: snapshot.sessionId,
       mutationEpoch: snapshot.mutationEpoch,
       transcriptCount: snapshot.transcript.length,
-      pendingMessageCount: snapshot.pendingMessageCount,
       lastActiveAt: snapshot.lastActiveAt,
       phase: deriveWebSessionPhase(snapshot),
       reason: "transcript_cursor_ahead",
@@ -123,7 +116,6 @@ export function diffSessionStreamEvents(
       sessionId: current.sessionId,
       mutationEpoch: current.mutationEpoch,
       transcriptCount: current.transcript.length,
-      pendingMessageCount: current.pendingMessageCount,
       lastActiveAt: current.lastActiveAt,
       phase: deriveWebSessionPhase(current),
       reason: "mutation_epoch_changed",
@@ -138,7 +130,6 @@ export function diffSessionStreamEvents(
       sessionId: current.sessionId,
       mutationEpoch: current.mutationEpoch,
       transcriptCount: current.transcript.length,
-      pendingMessageCount: current.pendingMessageCount,
       lastActiveAt: current.lastActiveAt,
       phase: deriveWebSessionPhase(current),
       reason: "transcript_gap_detected",
@@ -155,8 +146,7 @@ export function diffSessionStreamEvents(
   const currentPhase = deriveWebSessionPhase(current);
 
   if (
-    current.pendingMessageCount !== previous.pendingMessageCount
-    || current.lastActiveAt !== previous.lastActiveAt
+    current.lastActiveAt !== previous.lastActiveAt
     || currentPhase.label !== previousPhase.label
     || currentPhase.kind !== previousPhase.kind
   ) {
@@ -164,7 +154,6 @@ export function diffSessionStreamEvents(
       type: "status",
       sessionId: current.sessionId,
       mutationEpoch: current.mutationEpoch,
-      pendingMessageCount: current.pendingMessageCount,
       lastActiveAt: current.lastActiveAt,
       phase: currentPhase,
       timestampMs: Date.now()

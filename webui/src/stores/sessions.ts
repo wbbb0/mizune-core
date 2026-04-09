@@ -17,7 +17,6 @@ export interface TranscriptEntry {
   index: number;
   item: TranscriptItem;
 }
-
 export interface ActiveSession {
   id: string;
   type: "private" | "group";
@@ -26,7 +25,6 @@ export interface ActiveSession {
   participantLabel: string | null;
   mutationEpoch: number;
   transcriptCount: number;
-  pendingMessageCount: number;
   lastActiveAt: number;
   streamStatus: "connecting" | "connected" | "error";
   phase: SessionPhase;
@@ -69,7 +67,6 @@ export const useSessionsStore = defineStore("sessions", () => {
         participantLabel: null,
         mutationEpoch: currentEpoch,
         transcriptCount: requestedTranscriptCount,
-        pendingMessageCount: 0,
         lastActiveAt: 0,
         streamStatus: "connecting",
         phase: {
@@ -159,7 +156,6 @@ export const useSessionsStore = defineStore("sessions", () => {
         streamStatus: "connected",
         mutationEpoch: event.mutationEpoch,
         transcriptCount: event.transcriptCount,
-        pendingMessageCount: event.pendingMessageCount,
         lastActiveAt: event.lastActiveAt,
         phase: event.phase
       };
@@ -171,7 +167,6 @@ export const useSessionsStore = defineStore("sessions", () => {
         ...cur,
         mutationEpoch: event.mutationEpoch,
         transcriptCount: 0,
-        pendingMessageCount: event.pendingMessageCount,
         lastActiveAt: event.lastActiveAt,
         phase: event.phase,
         streamStatus: "connecting",
@@ -187,7 +182,6 @@ export const useSessionsStore = defineStore("sessions", () => {
       active.value = {
         ...cur,
         mutationEpoch: event.mutationEpoch,
-        pendingMessageCount: event.pendingMessageCount,
         lastActiveAt: event.lastActiveAt,
         phase: event.phase
       };
@@ -246,7 +240,6 @@ export const useSessionsStore = defineStore("sessions", () => {
         participantLabel: selected.participantLabel,
         mutationEpoch: 0,
         transcriptCount: 0,
-        pendingMessageCount: selected.pendingMessageCount,
         lastActiveAt: selected.lastActiveAt,
         streamStatus: "connecting",
         phase: {

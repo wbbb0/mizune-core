@@ -313,9 +313,8 @@ async function readSessionStreamSnapshot(
     sessionId: session.id,
     mutationEpoch: session.mutationEpoch,
     transcript: [...session.internalTranscript],
-    pendingMessageCount: session.pendingMessages.length,
     lastActiveAt: session.lastActiveAt,
     phase: session.phase,
     activeAssistantResponseText: session.activeAssistantResponse?.text ?? null
   };
-  }
+}

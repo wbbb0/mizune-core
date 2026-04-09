@@ -48,20 +48,18 @@ const relativeTime = computed(() => {
         <span
           class="text-small text-text-muted"
           :class="{
-            'text-success': session.isGenerating,
-            'text-warning': session.pendingMessageCount > 0 && !session.isGenerating
+            'text-success': session.isGenerating
           }"
         >
-          {{ session.isGenerating ? "生成中…" : session.pendingMessageCount > 0 ? `待处理 ${session.pendingMessageCount}` : "空闲" }}
+          {{ session.isGenerating ? "生成中…" : "空闲" }}
         </span>
       </div>
     </div>
 
-    <!-- Pending badge -->
+    <!-- Active indicator -->
     <span
-      v-if="session.pendingMessageCount > 0 || session.isGenerating"
-      class="h-1.5 w-1.5 shrink-0 rounded-full bg-warning"
-      :class="{ 'bg-success': session.isGenerating }"
+      v-if="session.isGenerating"
+      class="h-1.5 w-1.5 shrink-0 rounded-full bg-success"
     />
   </button>
 </template>

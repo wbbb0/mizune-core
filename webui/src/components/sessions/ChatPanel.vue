@@ -221,7 +221,6 @@ async function onDeleteSession() {
           <WifiOff v-else-if="session.streamStatus === 'error'" :size="12" :stroke-width="2" />
           <Loader v-else :size="12" :stroke-width="2" class="spin" />
         </span>
-        <span v-if="session.pendingMessageCount" class="badge-pill bg-surface-warning text-warning">待 {{ session.pendingMessageCount }}</span>
         <span
           class="badge-pill bg-surface-muted text-text-muted"
           :class="{
