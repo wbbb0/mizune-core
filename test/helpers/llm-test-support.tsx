@@ -7,10 +7,10 @@ export function createLlmTestConfig(modelOverrides: any = {}) {
     provider: "test",
     model: "fake-model",
     supportsThinking: true,
+    thinkingControllable: true,
     supportsVision: false,
     supportsSearch: false,
     supportsTools: true,
-    forceNoThinkDirective: false,
     returnReasoningContentForAllMessages: false,
     returnReasoningContentForSameRoundMessages: true
   };

@@ -37,7 +37,6 @@ async function main() {
             supportsAudioInput: false,
             supportsSearch: false,
             supportsTools: true,
-            forceNoThinkDirective: false,
             returnReasoningContentForAllMessages: false,
             returnReasoningContentForSameRoundMessages: true
           }
@@ -104,7 +103,6 @@ async function main() {
             supportsAudioInput: false,
             supportsSearch: false,
             supportsTools: true,
-            forceNoThinkDirective: false,
             returnReasoningContentForAllMessages: false,
             returnReasoningContentForSameRoundMessages: true
           }
@@ -337,7 +335,6 @@ async function main() {
             supportsAudioInput: false,
             supportsSearch: false,
             supportsTools: true,
-            forceNoThinkDirective: false,
             returnReasoningContentForAllMessages: false,
             returnReasoningContentForSameRoundMessages: true
           },
@@ -349,7 +346,6 @@ async function main() {
             supportsAudioInput: false,
             supportsSearch: false,
             supportsTools: true,
-            forceNoThinkDirective: false,
             returnReasoningContentForAllMessages: false,
             returnReasoningContentForSameRoundMessages: true
           }

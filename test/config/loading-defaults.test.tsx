@@ -132,6 +132,7 @@ async function main() {
 
       assert.equal(config.llm.models.main?.supportsAudioInput, false);
       assert.equal(config.llm.models.main?.supportsSearch, false);
+      assert.equal(config.llm.models.main?.thinkingControllable, true);
       assert.equal(config.llm.models.main?.returnReasoningContentForAllMessages, false);
       assert.equal(config.llm.models.main?.returnReasoningContentForSameRoundMessages, true);
       assert.equal(config.llm.providers.test?.harmBlockThreshold, "BLOCK_NONE");
@@ -166,6 +167,7 @@ async function main() {
           main: {
             provider: "test",
             model: "gpt-test",
+            thinkingControllable: false,
             supportsAudioInput: true,
             supportsSearch: true
           }
@@ -213,6 +215,7 @@ async function main() {
       });
       assert.equal(config.llm.models.main?.supportsAudioInput, true);
       assert.equal(config.llm.models.main?.supportsSearch, true);
+      assert.equal(config.llm.models.main?.thinkingControllable, false);
     });
   });
 

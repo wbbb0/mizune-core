@@ -28,48 +28,6 @@ export type {
   LlmUsage
 } from "./provider/providerTypes.ts";
 
-function shouldForceNoThink(
-  modelProfile: {
-    forceNoThinkDirective: boolean;
-  } | undefined,
-  enableThinking: boolean
-): boolean {
-  return !enableThinking && Boolean(modelProfile?.forceNoThinkDirective);
-}
-
-function injectNoThinkDirective(messages: LlmMessage[]): LlmMessage[] {
-  const firstUserIndex = messages.findIndex((message) => message.role === "user");
-  if (firstUserIndex === -1) {
-    return messages;
-  }
-
-  const next = [...messages];
-  const target = next[firstUserIndex];
-  if (!target) {
-    return messages;
-  }
-
-  if (typeof target.content === "string") {
-    next[firstUserIndex] = {
-      ...target,
-      content: `/no_think\n${target.content}`
-    };
-    return next;
-  }
-
-  next[firstUserIndex] = {
-    ...target,
-    content: [
-      {
-        type: "text",
-        text: "/no_think"
-      },
-      ...target.content
-    ]
-  };
-  return next;
-}
-
 export class LlmClient {
   constructor(
     private readonly config: AppConfig,
@@ -301,14 +259,11 @@ export class LlmClient {
         continue;
       }
 
-      const requestMessages = shouldForceNoThink(providerContext.modelProfile, resolvedEnableThinking)
-        ? injectNoThinkDirective(params.messages)
-        : params.messages;
       const provider = getLlmProvider(providerContext);
 
       try {
         const result = await provider.generate(providerContext, {
-          messages: requestMessages,
+          messages: params.messages,
           ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
           ...(params.tools ? { tools: params.tools } : {}),
           ...(params.onTextDelta ? { onTextDelta: params.onTextDelta } : {}),

@@ -50,7 +50,6 @@ function createCaptionerConfig() {
           supportsAudioInput: false,
           supportsSearch: false,
           supportsTools: false,
-          forceNoThinkDirective: false,
           returnReasoningContentForAllMessages: false,
           returnReasoningContentForSameRoundMessages: true
         },
@@ -62,7 +61,6 @@ function createCaptionerConfig() {
           supportsAudioInput: false,
           supportsSearch: false,
           supportsTools: false,
-          forceNoThinkDirective: false,
           returnReasoningContentForAllMessages: false,
           returnReasoningContentForSameRoundMessages: true
         }

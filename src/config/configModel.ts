@@ -6,11 +6,11 @@ const modelProfileSchema = s.object({
   model: s.string().trim().nonempty(),
   modelType: s.enum(["chat", "transcription", "image_generation"] as const).default("chat"),
   supportsThinking: s.boolean().default(false),
+  thinkingControllable: s.boolean().default(true),
   supportsVision: s.boolean().default(false),
   supportsAudioInput: s.boolean().default(false),
   supportsSearch: s.boolean().default(false),
   supportsTools: s.boolean().default(true),
-  forceNoThinkDirective: s.boolean().default(false),
   returnReasoningContentForAllMessages: s.boolean().default(false),
   returnReasoningContentForSameRoundMessages: s.boolean().default(true)
 }).default(emptyObject);

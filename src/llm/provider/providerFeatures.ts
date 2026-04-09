@@ -40,7 +40,7 @@ export function hasNativeSearchFeature(
 
 function isFeatureSupportedByModel(modelProfile: ModelProfile, featureName: ProviderFeatureName): boolean {
   if (featureName === "thinking") {
-    return modelProfile.supportsThinking;
+    return modelProfile.supportsThinking && modelProfile.thinkingControllable;
   }
   return modelProfile.supportsSearch;
 }

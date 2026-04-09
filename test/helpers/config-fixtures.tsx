@@ -160,11 +160,11 @@ const baseTestCatalogOverrides: DeepPartial<LlmCatalogConfig> = {
       model: "fake",
       modelType: "chat",
       supportsThinking: false,
+      thinkingControllable: true,
       supportsVision: false,
       supportsAudioInput: false,
       supportsSearch: false,
       supportsTools: true,
-      forceNoThinkDirective: false,
       returnReasoningContentForAllMessages: false,
       returnReasoningContentForSameRoundMessages: true
     }
