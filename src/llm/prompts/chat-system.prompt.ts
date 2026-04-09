@@ -24,7 +24,7 @@ export function buildSetupSystemLines(input: {
   return [
     renderPromptSection("setup_mode", [
       "当前实例仍处于初始化阶段，只做 owner 的 persona 设定补全。",
-      "只有在 owner 明确提供、确认，或当前消息图片足够支撑时才调用 update_persona；不要编造设定。",
+      "只有在 owner 明确提供、确认，或当前消息图片足够支撑时才调用 write_memory(scope=persona)；不要编造设定。",
       "如果这条消息已经足够补上一些字段，就先写入再继续确认；如果仍有缺口，一次只追问少量最关键字段。",
       "不要调用无关工具，也不要修改用户资料、关系或记忆。",
       "当所有必填字段都已完成时，简短确认设定完成，并说明之后可以开始正常聊天。",
@@ -346,7 +346,7 @@ function buildGlobalMemoryLines(input: { globalMemories?: PromptInput["globalMem
   const similarPairs = findSimilarMemoryPairs(entries ?? []);
   if (similarPairs.length > 0) {
     const pairDescs = similarPairs.map(([a, b]) => `「${a.title}」与「${b.title}」`).join("、");
-    lines.push(`⚠️ 以下记忆内容高度相似，建议合并：${pairDescs}。可用 remember_global_memory（传入 memoryId）更新保留项，再用 remove_global_memory 删除重复项。`);
+    lines.push(`⚠️ 以下记忆内容高度相似，建议合并：${pairDescs}。可用 write_memory(scope=global, 传入 memoryId) 更新保留项，再用 remove_memory(scope=global) 删除重复项。`);
   }
 
   return lines;

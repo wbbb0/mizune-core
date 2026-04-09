@@ -23,21 +23,19 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   if (hasAnyTool(visibleToolNames, [
     "ground_with_google_search",
     "search_with_iqs_lite_advanced",
-    "list_browser_pages",
     "open_page",
     "inspect_page",
     "interact_with_page",
     "close_page",
     "download_asset",
-    "capture_page_screenshot",
-    "capture_element_screenshot",
+    "capture_screenshot",
     "list_browser_profiles",
     "inspect_browser_profile",
     "save_browser_profile",
     "clear_browser_profile"
   ])) {
     lines.push("只有问题依赖最新外部信息时再查网页；需要 Google grounding 时用 ground_with_google_search，需要更可控的网页检索时用 search_with_iqs_lite_advanced；拿到 ref_id 后再 open_page；后续优先复用已有 browser resource_id。");
-    lines.push("浏览器任务默认会复用当前会话的持久化登录态；需要看验证码、局部表单或登录结果时，优先用 capture_element_screenshot，必要时再用 capture_page_screenshot。");
+    lines.push("浏览器任务默认会复用当前会话的持久化登录态；需要看验证码、局部表单或登录结果时，优先用 capture_screenshot 并传 target_id（局部截图），必要时再截整页。");
     lines.push("做网页交互前优先先 inspect_page 看当前 elements；有稳定 target_id 时优先用 target_id，页面跳转、刷新、弹层变化后先重新 inspect_page。");
     lines.push("看 elements 时优先关注 label、kind、why_selected、has_image、in_main_content 这些摘要字段；它们比原始 tag/text 更适合判断该点哪里。");
     lines.push("新开 browser 页面或 shell 会话时，若后续还要复用，优先在 open_page 或 shell_run 里填写 description，简短说明这个资源是做什么的。");
@@ -46,7 +44,7 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("遇到短信码、邮箱码、TOTP 或二次验证时，应直接在当前会话向用户索取验证码；验证码只用于当前验证步骤，不要写入长期记忆、用户资料或 persona。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["shell_run", "shell_interact", "shell_read", "shell_signal", "list_shell_sessions", "list_live_resources"])) {
+  if (hasAnyTool(visibleToolNames, ["shell_run", "shell_interact", "shell_read", "shell_signal", "list_live_resources"])) {
     lines.push("需要继续操作浏览器或 shell 时，先列出现有 live_resource，再复用已有 resource_id；只有不存在合适资源时才新开。live_resource 不是工作区文件。");
   }
 
@@ -55,16 +53,16 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("workspace file 默认优先使用 file_ref；file_id 只是稳定主键。send_workspace_file_to_chat 可直接传 file_ref。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["get_user_profile", "remember_user_profile", "remember_user_memory", "list_user_memories", "remove_user_memory", "overwrite_user_memories"])) {
+  if (hasAnyTool(visibleToolNames, ["get_user_profile", "remember_user_profile", "read_memory", "write_memory", "remove_memory"])) {
     lines.push("处理用户长期资料时，先看已存 profile 和 user memories；优先依据用户本人明确自述，避免重复或冲突。结构化字段优先写 profile，其余再写 user memory。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["get_global_memories", "remember_global_memory", "remove_global_memory", "overwrite_global_memories"])) {
+  if (hasAnyTool(visibleToolNames, ["read_memory", "write_memory", "remove_memory"])) {
     lines.push("处理 owner 的长期执行规则时，先看已存 global memories；只有 owner 明确提出今后都要遵守的做事要求时，才写入 global memory。普通用户的长期做事要求不要写成全局规则。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["get_persona", "update_persona"])) {
-    lines.push("当 owner 明确提出长期生效的人设、口吻、身份设定、角色边界或角色扮演补充时，应视为 persona 修改请求；先调用 get_persona 查看当前内容，再调用 update_persona 写入对应字段。若你最终回复里说了“记下了”“以后按这个来”“已经写进 persona”，本轮之前必须已经实际完成写入。");
+  if (hasAnyTool(visibleToolNames, ["read_memory", "write_memory", "remove_memory"])) {
+    lines.push("当 owner 明确提出长期生效的人设、口吻、身份设定、角色边界或角色扮演补充时，应视为 persona 修改请求；先用 read_memory(scope=persona) 查看当前内容，再用 write_memory(scope=persona, personaPatch=...) 写入对应字段。若你最终回复里说了“记下了”“以后按这个来”“已经写进 persona”，本轮之前必须已经实际完成写入。");
     lines.push("以下表达通常表示应写 persona：把这个身份设定记下来、以后按这个人设说话、这是角色设定、把这个写进 persona、以后都用这种口吻、别突破这个角色边界。");
   }
 
@@ -91,21 +89,13 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   if (hasAnyTool(visibleToolNames, [
     "search_friends",
     "search_joined_groups",
-    "allow_user_chat",
-    "disallow_user_chat",
-    "allow_group_chat",
-    "disallow_group_chat",
+    "set_chat_permission",
     "list_pending_friend_requests",
     "list_pending_group_requests",
-    "approve_friend_request",
-    "reject_friend_request",
-    "approve_group_request",
-    "reject_group_request",
+    "respond_request",
     "create_scheduled_job",
     "list_scheduled_jobs",
-    "enable_scheduled_job",
-    "disable_scheduled_job",
-    "remove_scheduled_job"
+    "manage_scheduled_job"
   ])) {
     lines.push("管理类工具只在 owner 明确要求时使用。");
   }
@@ -113,9 +103,7 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   if (hasAnyTool(visibleToolNames, [
     "create_scheduled_job",
     "list_scheduled_jobs",
-    "enable_scheduled_job",
-    "disable_scheduled_job",
-    "remove_scheduled_job"
+    "manage_scheduled_job"
   ])) {
     lines.push("只有在 owner 明确要求未来某时提醒、延后处理或定期执行时，才创建计划任务。");
     lines.push("create_scheduled_job 的 instruction 要写成触发当时能独立执行的完整任务；不要依赖“刚才这轮对话”的隐含上下文。");

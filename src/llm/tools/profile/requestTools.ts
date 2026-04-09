@@ -35,71 +35,21 @@ export const requestToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "approve_friend_request",
-        description: "按 flag 同意好友请求，可选设置 remark。",
+        name: "respond_request",
+        description: "处理请求审批。kind=friend 时可选 remark；kind=group 时可选 reason。",
         parameters: {
           type: "object",
           properties: {
+            kind: {
+              type: "string",
+              enum: ["friend", "group"]
+            },
+            approve: { type: "boolean" },
             flag: { type: "string" },
-            remark: { type: "string" }
-          },
-          required: ["flag"],
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    ownerOnly: true,
-    definition: {
-      type: "function",
-      function: {
-        name: "reject_friend_request",
-        description: "按 flag 拒绝好友请求。",
-        parameters: {
-          type: "object",
-          properties: {
-            flag: { type: "string" }
-          },
-          required: ["flag"],
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    ownerOnly: true,
-    definition: {
-      type: "function",
-      function: {
-        name: "approve_group_request",
-        description: "按 flag 同意加群或邀请请求。",
-        parameters: {
-          type: "object",
-          properties: {
-            flag: { type: "string" },
+            remark: { type: "string" },
             reason: { type: "string" }
           },
-          required: ["flag"],
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    ownerOnly: true,
-    definition: {
-      type: "function",
-      function: {
-        name: "reject_group_request",
-        description: "按 flag 拒绝加群或邀请请求，可选填写 reason。",
-        parameters: {
-          type: "object",
-          properties: {
-            flag: { type: "string" },
-            reason: { type: "string" }
-          },
-          required: ["flag"],
+          required: ["kind", "approve", "flag"],
           additionalProperties: false
         }
       }
@@ -114,104 +64,57 @@ export const requestToolHandlers: Record<string, ToolHandler> = {
   async list_pending_group_requests(_toolCall, _args, context) {
     return JSON.stringify(await context.requestStore.listGroupRequests());
   },
-  async approve_friend_request(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can approve friend requests");
+  async respond_request(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can respond to requests");
     if (denied) {
       return denied;
     }
+    const kind = typeof args === "object" && args && "kind" in args
+      ? String((args as { kind: unknown }).kind).trim()
+      : "";
+    const approve = typeof args === "object" && args && "approve" in args
+      ? (args as { approve: unknown }).approve
+      : undefined;
     const flag = typeof args === "object" && args && "flag" in args
       ? String((args as { flag: unknown }).flag).trim()
       : "";
     const remark = typeof args === "object" && args && "remark" in args
       ? String((args as { remark: unknown }).remark).trim()
       : "";
-    if (!flag) {
-      return JSON.stringify({ error: "flag is required" });
-    }
-    const request = await context.requestStore.get(flag);
-    if (!request || request.kind !== "friend") {
-      return JSON.stringify({ error: "Pending friend request not found" });
-    }
-    const result = await context.oneBotClient.setFriendAddRequest({
-      flag,
-      approve: true,
-      ...(remark ? { remark } : {})
-    });
-    await context.requestStore.remove(flag);
-    return JSON.stringify({ ok: true, result });
-  },
-  async reject_friend_request(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can reject friend requests");
-    if (denied) {
-      return denied;
-    }
-    const flag = typeof args === "object" && args && "flag" in args
-      ? String((args as { flag: unknown }).flag).trim()
-      : "";
-    if (!flag) {
-      return JSON.stringify({ error: "flag is required" });
-    }
-    const request = await context.requestStore.get(flag);
-    if (!request || request.kind !== "friend") {
-      return JSON.stringify({ error: "Pending friend request not found" });
-    }
-    const result = await context.oneBotClient.setFriendAddRequest({
-      flag,
-      approve: false
-    });
-    await context.requestStore.remove(flag);
-    return JSON.stringify({ ok: true, result });
-  },
-  async approve_group_request(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can approve group requests");
-    if (denied) {
-      return denied;
-    }
-    const flag = typeof args === "object" && args && "flag" in args
-      ? String((args as { flag: unknown }).flag).trim()
-      : "";
     const reason = typeof args === "object" && args && "reason" in args
       ? String((args as { reason: unknown }).reason).trim()
       : "";
+    if (!["friend", "group"].includes(kind)) {
+      return JSON.stringify({ error: "kind must be friend or group" });
+    }
+    if (typeof approve !== "boolean") {
+      return JSON.stringify({ error: "approve must be boolean" });
+    }
     if (!flag) {
       return JSON.stringify({ error: "flag is required" });
     }
     const request = await context.requestStore.get(flag);
-    if (!request || request.kind !== "group") {
+    if (!request || request.kind !== kind) {
+      return JSON.stringify({ error: `Pending ${kind} request not found` });
+    }
+    if (kind === "friend") {
+      const result = await context.oneBotClient.setFriendAddRequest({
+        flag,
+        approve,
+        ...((remark || reason) ? { remark: remark || reason } : {})
+      });
+      await context.requestStore.remove(flag);
+      return JSON.stringify({ ok: true, result });
+    }
+
+    if (request.kind !== "group") {
       return JSON.stringify({ error: "Pending group request not found" });
     }
     const result = await context.oneBotClient.setGroupAddRequest({
       flag,
       subType: request.subType,
-      approve: true,
-      ...(reason ? { reason } : {})
-    });
-    await context.requestStore.remove(flag);
-    return JSON.stringify({ ok: true, result });
-  },
-  async reject_group_request(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can reject group requests");
-    if (denied) {
-      return denied;
-    }
-    const flag = typeof args === "object" && args && "flag" in args
-      ? String((args as { flag: unknown }).flag).trim()
-      : "";
-    const reason = typeof args === "object" && args && "reason" in args
-      ? String((args as { reason: unknown }).reason).trim()
-      : "";
-    if (!flag) {
-      return JSON.stringify({ error: "flag is required" });
-    }
-    const request = await context.requestStore.get(flag);
-    if (!request || request.kind !== "group") {
-      return JSON.stringify({ error: "Pending group request not found" });
-    }
-    const result = await context.oneBotClient.setGroupAddRequest({
-      flag,
-      subType: request.subType,
-      approve: false,
-      ...(reason ? { reason } : {})
+      approve,
+      ...((reason || remark) ? { reason: reason || remark } : {})
     });
     await context.requestStore.remove(flag);
     return JSON.stringify({ ok: true, result });

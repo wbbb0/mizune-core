@@ -6,16 +6,6 @@ import type { BrowserActionTarget, BrowserCoordinate } from "#services/web/brows
 import { isBrowserInteractionAction } from "#services/web/browser/types.ts";
 
 export const webToolHandlers: Record<string, ToolHandler> = {
-  async list_browser_pages(_toolCall, _args, context) {
-    try {
-      return JSON.stringify(await context.browserService.listPages());
-    } catch (error: unknown) {
-      return JSON.stringify({
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  },
-
   async ground_with_google_search(_toolCall, args, context) {
     const query = getStringArg(args, "query");
     if (!query) {
@@ -159,32 +149,16 @@ export const webToolHandlers: Record<string, ToolHandler> = {
     }
   },
 
-  async capture_page_screenshot(_toolCall, args, context) {
-    const resourceId = getStringArg(args, "resource_id");
-    if (!resourceId) {
-      return JSON.stringify({ error: "resource_id is required" });
-    }
-    try {
-      const result = await context.browserService.capturePageScreenshot(resourceId);
-      return buildScreenshotToolResult(result.fileId, result, context);
-    } catch (error: unknown) {
-      return JSON.stringify({
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  },
-
-  async capture_element_screenshot(_toolCall, args, context) {
+  async capture_screenshot(_toolCall, args, context) {
     const resourceId = getStringArg(args, "resource_id");
     const targetId = getNumberArg(args, "target_id");
     if (!resourceId) {
       return JSON.stringify({ error: "resource_id is required" });
     }
-    if (targetId === undefined) {
-      return JSON.stringify({ error: "target_id is required" });
-    }
     try {
-      const result = await context.browserService.captureElementScreenshot(resourceId, Number(targetId));
+      const result = targetId === undefined
+        ? await context.browserService.capturePageScreenshot(resourceId)
+        : await context.browserService.captureElementScreenshot(resourceId, Number(targetId));
       return buildScreenshotToolResult(result.fileId, result, context);
     } catch (error: unknown) {
       return JSON.stringify({

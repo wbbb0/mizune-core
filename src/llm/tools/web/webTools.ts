@@ -54,21 +54,6 @@ export const webToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "list_browser_pages",
-        description: "列出最近已知的浏览器页面 resources。",
-        parameters: {
-          type: "object",
-          properties: {},
-          additionalProperties: false
-        }
-      }
-    },
-    isEnabled: isBrowserToolEnabled
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
         name: "open_page",
         description: "根据搜索 ref_id 或直接 URL 打开页面，返回 resource_id、可读文本、链接和可交互元素。开启新页面资源时应尽量提供 description，说明这个页面后续要做什么。",
         parameters: {
@@ -183,33 +168,15 @@ export const webToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "capture_page_screenshot",
-        description: "对当前已打开页面截图，返回截图对应的 workspace file_id / file_ref，并把截图附到下一轮视觉上下文里。",
-        parameters: {
-          type: "object",
-          properties: {
-            resource_id: { type: "string" }
-          },
-          required: ["resource_id"],
-          additionalProperties: false
-        }
-      }
-    },
-    isEnabled: isBrowserToolEnabled
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "capture_element_screenshot",
-        description: "按 target_id 对页面元素截图，适合验证码、登录框或局部区域。",
+        name: "capture_screenshot",
+        description: "对当前已打开页面截图；未传 target_id 时截整页，传 target_id 时截元素。返回截图对应的 workspace file_id / file_ref，并把截图附到下一轮视觉上下文里。",
         parameters: {
           type: "object",
           properties: {
             resource_id: { type: "string" },
             target_id: { type: "integer", minimum: 1 }
           },
-          required: ["resource_id", "target_id"],
+          required: ["resource_id"],
           additionalProperties: false
         }
       }

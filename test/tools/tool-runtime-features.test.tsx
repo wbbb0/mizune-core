@@ -29,8 +29,10 @@ async function main() {
     assert.ok(names.includes("ground_with_google_search"));
     assert.ok(names.includes("search_with_iqs_lite_advanced"));
     assert.ok(names.includes("list_live_resources"));
-    assert.ok(names.includes("list_browser_pages"));
-    assert.ok(names.includes("list_shell_sessions"));
+    assert.ok(names.includes("capture_screenshot"));
+    assert.ok(names.includes("manage_scheduled_job"));
+    assert.ok(names.includes("respond_request"));
+    assert.ok(names.includes("set_chat_permission"));
     assert.ok(names.includes("shell_run"));
     assert.ok(names.includes("shell_interact"));
     assert.ok(names.includes("shell_read"));
@@ -51,8 +53,7 @@ async function main() {
     assert.ok(!names.includes("ground_with_google_search"));
     assert.ok(!names.includes("search_with_iqs_lite_advanced"));
     assert.ok(!names.includes("list_live_resources"));
-    assert.ok(!names.includes("list_browser_pages"));
-    assert.ok(!names.includes("list_shell_sessions"));
+    assert.ok(!names.includes("capture_screenshot"));
     assert.ok(!names.includes("shell_run"));
     assert.ok(!names.includes("open_page"));
     assert.ok(!names.includes("inspect_page"));
@@ -105,31 +106,31 @@ async function main() {
     }).map((tool) => tool.function.name).includes("dump_debug_literals"));
   });
 
-  await runCase("persona tool descriptions require read-before-write for long-term owner rules", async () => {
+  await runCase("memory tool descriptions cover persona read/write surface", async () => {
     const config = createForwardFeatureConfig();
     const tools = getBuiltinTools("owner", config);
-    const getPersona = tools.find((tool) => tool.function.name === "get_persona");
-    const updatePersona = tools.find((tool) => tool.function.name === "update_persona");
-    assert.match(String(getPersona?.function.description ?? ""), /都应先调用它检查当前内容/);
-    assert.match(String(updatePersona?.function.description ?? ""), /若回复中声称“已记住”“以后按这个做”“已写进 persona”，则必须已经完成本工具调用/);
+    const readMemory = tools.find((tool) => tool.function.name === "read_memory");
+    const writeMemory = tools.find((tool) => tool.function.name === "write_memory");
+    assert.match(String(readMemory?.function.description ?? ""), /scope=global|scope=user|scope=persona/);
+    assert.match(String(writeMemory?.function.description ?? ""), /scope=global\|user|scope=persona/);
   });
 
-  await runCase("global memory tools are owner-only", async () => {
+  await runCase("memory tools are exposed to both owner and known users", async () => {
     const config = createForwardFeatureConfig();
     const ownerNames = getBuiltinTools("owner", config).map((tool) => tool.function.name);
     const knownNames = getBuiltinTools("known", config).map((tool) => tool.function.name);
-    assert.ok(ownerNames.includes("get_global_memories"));
-    assert.ok(ownerNames.includes("remember_global_memory"));
-    assert.ok(ownerNames.includes("remove_global_memory"));
-    assert.ok(ownerNames.includes("overwrite_global_memories"));
-    assert.ok(!knownNames.includes("get_global_memories"));
-    assert.ok(!knownNames.includes("remember_global_memory"));
+    assert.ok(ownerNames.includes("read_memory"));
+    assert.ok(ownerNames.includes("write_memory"));
+    assert.ok(ownerNames.includes("remove_memory"));
+    assert.ok(knownNames.includes("read_memory"));
+    assert.ok(knownNames.includes("write_memory"));
+    assert.ok(knownNames.includes("remove_memory"));
   });
 
   await runCase("global memory handlers allow owner and reject non-owner", async () => {
-    const ownerResult = await profileToolHandlers.remember_global_memory!(
-      { id: "tool_global_memory_1", type: "function", function: { name: "remember_global_memory", arguments: "{\"title\":\"输出顺序\",\"content\":\"先结论后细节\"}" } },
-      { title: "输出顺序", content: "先结论后细节" },
+    const ownerResult = await profileToolHandlers.write_memory!(
+      { id: "tool_global_memory_1", type: "function", function: { name: "write_memory", arguments: "{\"scope\":\"global\",\"title\":\"输出顺序\",\"content\":\"先结论后细节\"}" } },
+      { scope: "global", title: "输出顺序", content: "先结论后细节" },
       {
         relationship: "owner",
         globalMemoryStore: {
@@ -141,9 +142,9 @@ async function main() {
     );
     assert.equal(JSON.parse(String(ownerResult))[0].title, "输出顺序");
 
-    const deniedResult = await profileToolHandlers.remember_global_memory!(
-      { id: "tool_global_memory_2", type: "function", function: { name: "remember_global_memory", arguments: "{\"title\":\"输出顺序\",\"content\":\"先结论后细节\"}" } },
-      { title: "输出顺序", content: "先结论后细节" },
+    const deniedResult = await profileToolHandlers.write_memory!(
+      { id: "tool_global_memory_2", type: "function", function: { name: "write_memory", arguments: "{\"scope\":\"global\",\"title\":\"输出顺序\",\"content\":\"先结论后细节\"}" } },
+      { scope: "global", title: "输出顺序", content: "先结论后细节" },
       {
         relationship: "known",
         globalMemoryStore: {}
@@ -238,12 +239,12 @@ async function main() {
     assert.equal(payload.status, "completed");
   });
 
-  await runCase("list_shell_sessions returns shell resource summaries", async () => {
-    const result = await shellToolHandlers.list_shell_sessions!(
-      { id: "tool_shell_list_1", type: "function", function: { name: "list_shell_sessions", arguments: "{}" } },
-      {},
+  await runCase("list_live_resources supports shell-only filtering", async () => {
+    const result = await resourceToolHandlers.list_live_resources!(
+      { id: "tool_shell_list_1", type: "function", function: { name: "list_live_resources", arguments: "{\"type\":\"shell\"}" } },
+      { type: "shell" },
       {
-        relationship: "owner",
+        config: createForwardFeatureConfig(),
         shellRuntime: {
           async listSessionResources() {
             return [{
@@ -262,12 +263,18 @@ async function main() {
               expiresAtMs: null
             }];
           }
+        },
+        browserService: {
+          async listPages() {
+            throw new Error("should not list browser pages when type=shell");
+          }
         }
       } as any
     );
 
     const payload = JSON.parse(String(result));
-    assert.equal(payload[0].resource_id, "res_shell_1");
+    assert.equal(payload.type, "shell");
+    assert.equal(payload.live_resources[0].resource_id, "res_shell_1");
   });
 
   await runCase("dump_debug_literals pushes one literal per outbound message without writing history", async () => {

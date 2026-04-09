@@ -287,41 +287,9 @@ async function main() {
     assert.equal(parsed.closed, true);
   });
 
-  await runCase("list_browser_pages returns existing browser resources", async () => {
-    const result = await webToolHandlers.list_browser_pages!(
-      createFunctionToolCall("list_browser_pages", "tool_9b"),
-      {},
-      createBrowserToolContext({
-        async listPages() {
-          return {
-            ok: true,
-            pages: [{
-              resource_id: "res_browser_1",
-              status: "active",
-              title: "OpenAI",
-              description: "查看首页文案",
-              summary: "OpenAI",
-              requestedUrl: "https://openai.com",
-              resolvedUrl: "https://openai.com",
-              backend: "playwright",
-              profile_id: null,
-              createdAtMs: 1000,
-              lastAccessedAtMs: 2000,
-              expiresAtMs: 3000
-            }]
-          };
-        }
-      })
-    );
-
-    const parsed = parseJsonToolResult<any>(result);
-    assert.equal(parsed.ok, true);
-    assert.equal(parsed.pages[0].resource_id, "res_browser_1");
-  });
-
-  await runCase("capture_page_screenshot attaches screenshot context", async () => {
-    const result = await webToolHandlers.capture_page_screenshot!(
-      createFunctionToolCall("capture_page_screenshot", "tool_10"),
+  await runCase("capture_screenshot attaches page screenshot context", async () => {
+    const result = await webToolHandlers.capture_screenshot!(
+      createFunctionToolCall("capture_screenshot", "tool_10"),
       { resource_id: "res_browser_1" },
       createBrowserToolContext({
         async capturePageScreenshot() {
@@ -343,6 +311,34 @@ async function main() {
       throw new Error("expected structured screenshot result");
     }
     assert.match(String(result.content), /"file_id":"img_1"/);
+    assert.equal(result.supplementalMessages?.length, 1);
+  });
+
+  await runCase("capture_screenshot supports element-level screenshot", async () => {
+    const result = await webToolHandlers.capture_screenshot!(
+      createFunctionToolCall("capture_screenshot", "tool_10a"),
+      { resource_id: "res_browser_1", target_id: 3 },
+      createBrowserToolContext({
+        async captureElementScreenshot(resourceId, targetId) {
+          assert.equal(resourceId, "res_browser_1");
+          assert.equal(targetId, 3);
+          return {
+            ok: true,
+            resource_id: "res_browser_1",
+            profile_id: "browser_profile_1",
+            fileId: "img_2",
+            mimeType: "image/png",
+            sizeBytes: 321,
+            mode: "element",
+            target_id: 3
+          };
+        }
+      })
+    );
+    if (typeof result === "string") {
+      throw new Error("expected structured screenshot result");
+    }
+    assert.match(String(result.content), /"file_id":"img_2"/);
     assert.equal(result.supplementalMessages?.length, 1);
   });
 

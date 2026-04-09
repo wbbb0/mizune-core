@@ -206,7 +206,7 @@ async function main() {
       sessionId: "private:10001",
       interactionMode: "normal",
       mainModelRef: ["main"],
-      visibleToolNames: ["list_live_resources", "list_browser_pages", "list_shell_sessions", "shell_run", "open_page"],
+      visibleToolNames: ["list_live_resources", "shell_run", "open_page"],
       persona: {
         name: "Bot",
         identity: "助手",

@@ -6,10 +6,15 @@ export const resourceToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "list_live_resources",
-        description: "列出当前可复用的 live_resource，包含 browser 页面与 shell 会话。live_resource 只表示正在运行的可继续操作句柄，不是工作区文件。",
+        description: "列出当前可复用的 live_resource。可用 type 过滤 browser 或 shell；live_resource 只表示正在运行的可继续操作句柄，不是工作区文件。",
         parameters: {
           type: "object",
-          properties: {},
+          properties: {
+            type: {
+              type: "string",
+              enum: ["all", "browser", "shell"]
+            }
+          },
           additionalProperties: false
         }
       }
@@ -19,12 +24,22 @@ export const resourceToolDescriptors: ToolDescriptor[] = [
 ];
 
 export const resourceToolHandlers: Record<string, ToolHandler> = {
-  async list_live_resources(_toolCall, _args, context) {
+  async list_live_resources(_toolCall, args, context) {
+    const type = typeof args === "object" && args && "type" in args
+      ? String((args as { type: unknown }).type).trim()
+      : "all";
+    if (!["all", "browser", "shell"].includes(type)) {
+      return JSON.stringify({ error: "type must be all, browser, or shell" });
+    }
+
+    const includeBrowser = type === "all" || type === "browser";
+    const includeShell = type === "all" || type === "shell";
+
     const [pages, shellSessions] = await Promise.all([
-      context.config.browser.enabled
+      includeBrowser && context.config.browser.enabled
         ? context.browserService.listPages()
         : Promise.resolve({ ok: true as const, pages: [] }),
-      context.config.shell.enabled
+      includeShell && context.config.shell.enabled
         ? context.shellRuntime.listSessionResources()
         : Promise.resolve([])
     ]);
@@ -56,6 +71,7 @@ export const resourceToolHandlers: Record<string, ToolHandler> = {
 
     return JSON.stringify({
       ok: true,
+      type,
       live_resources: resources
     });
   }

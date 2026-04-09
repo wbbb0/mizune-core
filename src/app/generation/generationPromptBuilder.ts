@@ -25,12 +25,10 @@ type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
 const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "list_live_resources",
-  "list_browser_pages",
   "open_page",
   "inspect_page",
   "interact_with_page",
   "close_page",
-  "list_shell_sessions",
   "shell_run",
   "shell_interact",
   "shell_read",

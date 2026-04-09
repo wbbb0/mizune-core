@@ -39,68 +39,19 @@ export const whitelistToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "allow_user_chat",
-        description: "把用户加入聊天白名单。",
+        name: "set_chat_permission",
+        description: "设置聊天白名单权限。targetType=user 或 group，allowed=true 加入白名单，allowed=false 移出白名单。",
         parameters: {
           type: "object",
           properties: {
-            user_id: { type: "string" }
+            targetType: {
+              type: "string",
+              enum: ["user", "group"]
+            },
+            targetId: { type: "string" },
+            allowed: { type: "boolean" }
           },
-          required: ["user_id"],
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    ownerOnly: true,
-    definition: {
-      type: "function",
-      function: {
-        name: "disallow_user_chat",
-        description: "把用户移出聊天白名单。",
-        parameters: {
-          type: "object",
-          properties: {
-            user_id: { type: "string" }
-          },
-          required: ["user_id"],
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    ownerOnly: true,
-    definition: {
-      type: "function",
-      function: {
-        name: "allow_group_chat",
-        description: "把已加入的群加入群白名单。",
-        parameters: {
-          type: "object",
-          properties: {
-            groupId: { type: "string" }
-          },
-          required: ["groupId"],
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    ownerOnly: true,
-    definition: {
-      type: "function",
-      function: {
-        name: "disallow_group_chat",
-        description: "把群移出群白名单。",
-        parameters: {
-          type: "object",
-          properties: {
-            groupId: { type: "string" }
-          },
-          required: ["groupId"],
+          required: ["targetType", "targetId", "allowed"],
           additionalProperties: false
         }
       }
@@ -158,60 +109,49 @@ export const whitelistToolHandlers: Record<string, ToolHandler> = {
         }))
     );
   },
-  async allow_user_chat(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can update user whitelist");
+  async set_chat_permission(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can update chat whitelist");
     if (denied) {
       return denied;
     }
-    const userId = typeof args === "object" && args && "user_id" in args
-      ? String((args as { user_id: unknown }).user_id).trim()
+    const targetType = typeof args === "object" && args && "targetType" in args
+      ? String((args as { targetType: unknown }).targetType).trim()
       : "";
-    if (!userId) {
-      return JSON.stringify({ error: "user_id is required" });
-    }
-    const users = await context.whitelistStore.addUser(userId);
-    return JSON.stringify({ user_id: userId, whitelistUsers: users });
-  },
-  async disallow_user_chat(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can update user whitelist");
-    if (denied) {
-      return denied;
-    }
-    const userId = typeof args === "object" && args && "user_id" in args
-      ? String((args as { user_id: unknown }).user_id).trim()
+    const targetId = typeof args === "object" && args && "targetId" in args
+      ? String((args as { targetId: unknown }).targetId).trim()
       : "";
-    if (!userId) {
-      return JSON.stringify({ error: "user_id is required" });
+    const allowed = typeof args === "object" && args && "allowed" in args
+      ? (args as { allowed: unknown }).allowed
+      : undefined;
+    if (!["user", "group"].includes(targetType)) {
+      return JSON.stringify({ error: "targetType must be user or group" });
     }
-    const users = await context.whitelistStore.removeUser(userId);
-    return JSON.stringify({ user_id: userId, whitelistUsers: users });
-  },
-  async allow_group_chat(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can update group whitelist");
-    if (denied) {
-      return denied;
+    if (!targetId) {
+      return JSON.stringify({ error: "targetId is required" });
     }
-    const groupId = typeof args === "object" && args && "groupId" in args
-      ? String((args as { groupId: unknown }).groupId).trim()
-      : "";
-    if (!groupId) {
-      return JSON.stringify({ error: "groupId is required" });
+    if (typeof allowed !== "boolean") {
+      return JSON.stringify({ error: "allowed must be boolean" });
     }
-    const groups = await context.whitelistStore.addGroup(groupId);
-    return JSON.stringify({ groupId, whitelistGroups: groups });
-  },
-  async disallow_group_chat(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can update group whitelist");
-    if (denied) {
-      return denied;
+
+    if (targetType === "user") {
+      const users = allowed
+        ? await context.whitelistStore.addUser(targetId)
+        : await context.whitelistStore.removeUser(targetId);
+      return JSON.stringify({
+        targetType,
+        targetId,
+        allowed,
+        whitelistUsers: users
+      });
     }
-    const groupId = typeof args === "object" && args && "groupId" in args
-      ? String((args as { groupId: unknown }).groupId).trim()
-      : "";
-    if (!groupId) {
-      return JSON.stringify({ error: "groupId is required" });
-    }
-    const groups = await context.whitelistStore.removeGroup(groupId);
-    return JSON.stringify({ groupId, whitelistGroups: groups });
+    const groups = allowed
+      ? await context.whitelistStore.addGroup(targetId)
+      : await context.whitelistStore.removeGroup(targetId);
+    return JSON.stringify({
+      targetType,
+      targetId,
+      allowed,
+      whitelistGroups: groups
+    });
   }
 };

@@ -62,78 +62,24 @@ export const schedulerToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "remove_scheduled_job",
-        description: "按 id 删除定时任务。",
+        name: "manage_scheduled_job",
+        description: "按 id 管理定时任务。action=enable|disable|remove。",
         parameters: {
           type: "object",
           properties: {
+            action: {
+              type: "string",
+              enum: ["enable", "disable", "remove"]
+            },
             jobId: { type: "string" }
           },
-          required: ["jobId"],
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    ownerOnly: true,
-    definition: {
-      type: "function",
-      function: {
-        name: "enable_scheduled_job",
-        description: "按 id 启用定时任务。",
-        parameters: {
-          type: "object",
-          properties: {
-            jobId: { type: "string" }
-          },
-          required: ["jobId"],
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    ownerOnly: true,
-    definition: {
-      type: "function",
-      function: {
-        name: "disable_scheduled_job",
-        description: "按 id 禁用定时任务。",
-        parameters: {
-          type: "object",
-          properties: {
-            jobId: { type: "string" }
-          },
-          required: ["jobId"],
+          required: ["action", "jobId"],
           additionalProperties: false
         }
       }
     }
   }
 ];
-
-async function setScheduledJobEnabled(
-  toolCall: { function: { name: string } },
-  args: unknown,
-  context: Parameters<ToolHandler>[2]
-): Promise<string> {
-  const denied = requireOwner(context.relationship, "Only owner can update scheduled jobs");
-  if (denied) {
-    return denied;
-  }
-  const jobId = typeof args === "object" && args && "jobId" in args
-    ? String((args as { jobId: unknown }).jobId)
-    : "";
-  if (!jobId) {
-    return JSON.stringify({ error: "jobId is required" });
-  }
-  const updated = await context.scheduler.setEnabled(
-    jobId,
-    toolCall.function.name === "enable_scheduled_job"
-  );
-  return JSON.stringify(updated ?? { error: "Job not found" });
-}
 
 export const schedulerToolHandlers: Record<string, ToolHandler> = {
   async list_scheduled_jobs(_toolCall, _args, context) {
@@ -188,24 +134,29 @@ export const schedulerToolHandlers: Record<string, ToolHandler> = {
     }
     return JSON.stringify(created);
   },
-  async remove_scheduled_job(toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can remove scheduled jobs");
+  async manage_scheduled_job(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can manage scheduled jobs");
     if (denied) {
       return denied;
     }
+    const action = typeof args === "object" && args && "action" in args
+      ? String((args as { action: unknown }).action)
+      : "";
     const jobId = typeof args === "object" && args && "jobId" in args
       ? String((args as { jobId: unknown }).jobId)
       : "";
+    if (!["enable", "disable", "remove"].includes(action)) {
+      return JSON.stringify({ error: "action must be enable, disable, or remove" });
+    }
     if (!jobId) {
       return JSON.stringify({ error: "jobId is required" });
     }
-    const removed = await context.scheduler.removeJob(jobId);
-    return JSON.stringify({ removed, operation: toolCall.function.name });
-  },
-  async enable_scheduled_job(toolCall, args, context) {
-    return setScheduledJobEnabled(toolCall, args, context);
-  },
-  async disable_scheduled_job(toolCall, args, context) {
-    return setScheduledJobEnabled(toolCall, args, context);
+
+    if (action === "remove") {
+      const removed = await context.scheduler.removeJob(jobId);
+      return JSON.stringify({ removed, action, jobId });
+    }
+    const updated = await context.scheduler.setEnabled(jobId, action === "enable");
+    return JSON.stringify(updated ?? { error: "Job not found" });
   }
 };

@@ -88,22 +88,6 @@ export const shellToolDescriptors: ToolDescriptor[] = [
       }
     },
     isEnabled: isShellToolEnabled
-  },
-  {
-    ownerOnly: true,
-    definition: {
-      type: "function",
-      function: {
-        name: "list_shell_sessions",
-        description: "列出已知 shell resources，包含 resource_id、状态、命令和 cwd。",
-        parameters: {
-          type: "object",
-          properties: {},
-          additionalProperties: false
-        }
-      }
-    },
-    isEnabled: isShellToolEnabled
   }
 ];
 
@@ -170,11 +154,4 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
     const result = await context.shellRuntime.signal(resourceId, signal);
     return JSON.stringify(result);
   },
-
-  async list_shell_sessions(_toolCall, _args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can list shell sessions");
-    if (denied) return denied;
-
-    return JSON.stringify(await context.shellRuntime.listSessionResources());
-  }
 };

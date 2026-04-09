@@ -101,7 +101,7 @@ async function main() {
       const persona = await harness.personaStore.get();
       const prompt = buildPrompt({
         sessionId: "private:owner",
-        visibleToolNames: ["get_user_profile", "remember_user_profile", "remember_user_memory", "get_global_memories", "remember_global_memory"],
+        visibleToolNames: ["get_user_profile", "remember_user_profile", "read_memory", "write_memory"],
         persona,
         relationship: "owner",
         npcProfiles: [],
@@ -174,7 +174,7 @@ async function main() {
       const persona = await harness.personaStore.get();
       const prompt = buildPrompt({
         sessionId: "private:owner",
-        visibleToolNames: ["get_persona", "update_persona"],
+        visibleToolNames: ["read_memory", "write_memory"],
         persona,
         relationship: "owner",
         npcProfiles: [],
@@ -186,7 +186,7 @@ async function main() {
       });
 
       const system = String(prompt[0]?.content ?? "");
-      assert.match(system, /应视为 persona 修改请求；先调用 get_persona 查看当前内容，再调用 update_persona 写入对应字段/);
+      assert.match(system, /应视为 persona 修改请求；先用 read_memory\(scope=persona\) 查看当前内容，再用 write_memory\(scope=persona, personaPatch=\.\.\.\) 写入对应字段/);
       assert.match(system, /若你最终回复里说了“记下了”“以后按这个来”“已经写进 persona”，本轮之前必须已经实际完成写入/);
       assert.match(system, /以下表达通常表示应写 persona：把这个身份设定记下来、以后按这个人设说话、这是角色设定、把这个写进 persona、以后都用这种口吻、别突破这个角色边界/);
     } finally {
@@ -272,7 +272,7 @@ async function main() {
       const persona = await harness.personaStore.get();
       const prompt = buildPrompt({
         sessionId: "private:owner",
-        visibleToolNames: ["list_live_resources", "list_browser_pages", "list_shell_sessions"],
+        visibleToolNames: ["list_live_resources"],
         persona,
         relationship: "owner",
         npcProfiles: [],

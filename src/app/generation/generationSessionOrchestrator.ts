@@ -265,7 +265,7 @@ export function createGenerationSessionOrchestrator(
         promptMessages: promptBuildResult.promptMessages,
         resolvedModelRef,
         debugSnapshot: promptBuildResult.debugSnapshot,
-        ...(setupMode ? { availableToolNames: ["get_persona", "update_persona"], setupMode: true } : {}),
+        ...(setupMode ? { availableToolNames: ["read_memory", "write_memory"], setupMode: true } : {}),
         streamResponse: true,
         ...(options?.webOutputCollector ? { webOutputCollector: options.webOutputCollector } : {})
       });

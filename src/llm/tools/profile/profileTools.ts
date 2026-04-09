@@ -3,83 +3,100 @@ import { requireOwner } from "../core/shared.ts";
 
 export const profileToolDescriptors: ToolDescriptor[] = [
   {
-    ownerOnly: true,
     definition: {
       type: "function",
       function: {
-        name: "get_global_memories",
-        description: "读取当前所有长期全局行为要求。在新增或修改记忆前必须先调用此工具，确认是否已有内容相近的条目——若有，应更新已有条目而非创建重复条目。",
+        name: "read_memory",
+        description: "读取长期记忆或 persona。scope=global 读取全局记忆（仅 owner）；scope=user 读取用户记忆（默认当前触发用户）；scope=persona 读取当前 persona。",
         parameters: {
           type: "object",
-          properties: {},
+          properties: {
+            scope: {
+              type: "string",
+              enum: ["global", "user", "persona"]
+            },
+            user_id: { type: "string" }
+          },
+          required: ["scope"],
           additionalProperties: false
         }
       }
     }
   },
   {
-    ownerOnly: true,
     definition: {
       type: "function",
       function: {
-        name: "remember_global_memory",
-        description: "新增或更新一条长期全局 memory。适合记录 owner 指定的 bot 长期执行规则、回答协议、输出偏好或默认工作方式。重要：调用前必须先用 get_global_memories 检查已有内容，若已存在主题或含义相近的条目，必须传入其 memoryId 进行更新，严禁创建重复条目。",
+        name: "write_memory",
+        description: "写入长期记忆或 persona。scope=global|user 时写 memory（可传 memoryId 更新）；scope=persona 时写入 personaPatch。",
         parameters: {
           type: "object",
           properties: {
-            memoryId: { type: "string", description: "更新已有条目时必须填写该条目的 id；省略此字段将创建全新条目。" },
+            scope: {
+              type: "string",
+              enum: ["global", "user", "persona"]
+            },
+            user_id: { type: "string" },
+            memoryId: { type: "string" },
             title: { type: "string" },
-            content: { type: "string" }
-          },
-          required: ["title", "content"],
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    ownerOnly: true,
-    definition: {
-      type: "function",
-      function: {
-        name: "remove_global_memory",
-        description: "删除一条已存的长期全局 memory。",
-        parameters: {
-          type: "object",
-          properties: {
-            memoryId: { type: "string" }
-          },
-          required: ["memoryId"],
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    ownerOnly: true,
-    definition: {
-      type: "function",
-      function: {
-        name: "overwrite_global_memories",
-        description: "整组覆写长期全局 memories。",
-        parameters: {
-          type: "object",
-          properties: {
-            memories: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  id: { type: "string" },
-                  title: { type: "string" },
-                  content: { type: "string" }
-                },
-                required: ["title", "content"],
-                additionalProperties: false
-              }
+            content: { type: "string" },
+            personaPatch: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                identity: { type: "string" },
+                virtualAppearance: { type: "string" },
+                personality: { type: "string" },
+                hobbies: { type: "string" },
+                likesAndDislikes: { type: "string" },
+                familyBackground: { type: "string" },
+                speakingStyle: { type: "string" },
+                secrets: { type: "string" },
+                residence: { type: "string" },
+                roleplayRequirements: { type: "string" }
+              },
+              additionalProperties: false
             }
           },
-          required: ["memories"],
+          required: ["scope"],
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "remove_memory",
+        description: "删除长期记忆，或清空 persona 字段。scope=global|user 时需 memoryId；scope=persona 时需 personaField。",
+        parameters: {
+          type: "object",
+          properties: {
+            scope: {
+              type: "string",
+              enum: ["global", "user", "persona"]
+            },
+            user_id: { type: "string" },
+            memoryId: { type: "string" },
+            personaField: {
+              type: "string",
+              enum: [
+                "name",
+                "identity",
+                "virtualAppearance",
+                "personality",
+                "hobbies",
+                "likesAndDislikes",
+                "familyBackground",
+                "speakingStyle",
+                "secrets",
+                "residence",
+                "roleplayRequirements"
+              ]
+            }
+          },
+          required: ["scope"],
           additionalProperties: false
         }
       }
@@ -94,164 +111,6 @@ export const profileToolDescriptors: ToolDescriptor[] = [
         parameters: {
           type: "object",
           properties: {},
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "get_persona",
-        description: "读取当前长期 persona。凡是 owner 想长期修改口吻、行为规则、查询协议、身份设定或角色边界时，都应先调用它检查当前内容。",
-        parameters: {
-          type: "object",
-          properties: {},
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    ownerOnly: true,
-    definition: {
-      type: "function",
-      function: {
-        name: "update_persona",
-        description: "持久更新 bot 的长期 persona 字段。owner 一旦明确提出长期生效的口吻、规则、查询方式、身份设定或角色边界，就应在确认字段归属后立即调用。若回复中声称“已记住”“以后按这个做”“已写进 persona”，则必须已经完成本工具调用。",
-        parameters: {
-          type: "object",
-          properties: {
-            name: {
-              type: "string",
-              description: "bot 名字，或角色扮演时应使用的名字。"
-            },
-            identity: {
-              type: "string",
-              description: "核心身份、种族、职业、世界观或角色定位。"
-            },
-            virtualAppearance: {
-              type: "string",
-              description: "稳定的外貌描述。"
-            },
-            personality: {
-              type: "string",
-              description: "稳定的性格特征或气质。"
-            },
-            hobbies: {
-              type: "string",
-              description: "稳定的兴趣、爱好或偏爱的活动。"
-            },
-            likesAndDislikes: {
-              type: "string",
-              description: "稳定的喜欢、讨厌、口味或禁忌。"
-            },
-            familyBackground: {
-              type: "string",
-              description: "稳定的背景设定或个人经历。"
-            },
-            speakingStyle: {
-              type: "string",
-              description: "之后聊天时应保持的说话风格，如语气、措辞、句式节奏、称呼或口头禅。"
-            },
-            secrets: {
-              type: "string",
-              description: "角色内部长期保留的隐藏设定或秘密背景。"
-            },
-            residence: {
-              type: "string",
-              description: "稳定的住处或常驻地点。"
-            },
-            roleplayRequirements: {
-              type: "string",
-              description: "额外的长期角色扮演规则、边界或行为要求。"
-            }
-          },
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "list_user_memories",
-        description: "列出当前用户已存的长期 memories；只有 owner 明确指定 user_id 时才能看别人的。",
-        parameters: {
-          type: "object",
-          properties: {
-            user_id: { type: "string" }
-          },
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "remember_user_memory",
-        description: "为用户写入一条长期 memory，只适合记录该用户自己的稳定偏好、事实、习惯、关系或经历。优先在看过已存 profile 和 memories 后再写。",
-        parameters: {
-          type: "object",
-          properties: {
-            user_id: { type: "string" },
-            memoryId: { type: "string" },
-            title: { type: "string" },
-            content: { type: "string" }
-          },
-          required: ["title", "content"],
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "remove_user_memory",
-        description: "删除一条已存的长期 memory；只有 owner 明确指定 user_id 时才能删别人的。",
-        parameters: {
-          type: "object",
-          properties: {
-            user_id: { type: "string" },
-            memoryId: { type: "string" }
-          },
-          required: ["memoryId"],
-          additionalProperties: false
-        }
-      }
-    }
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "overwrite_user_memories",
-        description: "整组覆写用户的长期 memories；只有 owner 明确指定 user_id 时才能改别人的。",
-        parameters: {
-          type: "object",
-          properties: {
-            user_id: { type: "string" },
-            memories: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  id: { type: "string" },
-                  title: { type: "string" },
-                  content: { type: "string" }
-                },
-                required: ["title", "content"],
-                additionalProperties: false
-              }
-            }
-          },
-          required: ["memories"],
           additionalProperties: false
         }
       }
@@ -333,25 +192,6 @@ function getStringField(args: unknown, key: string): string {
     : "";
 }
 
-function parseMemoryEntries(args: unknown): Array<{ id?: string; title: string; content: string }> {
-  if (typeof args !== "object" || !args || !("memories" in args) || !Array.isArray((args as { memories?: unknown }).memories)) {
-    return [];
-  }
-  return (args as { memories: unknown[] }).memories
-    .map((item) => ({
-      ...(typeof item === "object" && item && "id" in item && String((item as Record<string, unknown>).id).trim()
-        ? { id: String((item as Record<string, unknown>).id).trim() }
-        : {}),
-      title: typeof item === "object" && item && "title" in item
-        ? String((item as Record<string, unknown>).title).trim()
-        : "",
-      content: typeof item === "object" && item && "content" in item
-        ? String((item as Record<string, unknown>).content).trim()
-        : ""
-    }))
-    .filter((item) => item.title && item.content);
-}
-
 function resolveTargetUserId(args: unknown, fallbackUserId: string): string {
   return getStringField(args, "user_id") || fallbackUserId;
 }
@@ -413,124 +253,129 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
       memories: context.currentUser?.memories ?? []
     });
   },
-  async get_global_memories(_toolCall, _args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can inspect global memories");
-    if (denied) {
-      return denied;
+  async read_memory(_toolCall, args, context) {
+    const scope = getStringField(args, "scope");
+    if (scope === "global") {
+      const denied = requireOwner(context.relationship, "Only owner can inspect global memories");
+      if (denied) {
+        return denied;
+      }
+      return JSON.stringify(await context.globalMemoryStore.getAll());
     }
-    return JSON.stringify(await context.globalMemoryStore.getAll());
+    if (scope === "user") {
+      const userId = resolveTargetUserId(args, context.lastMessage.userId);
+      const denied = requireOwnerOrSelf(context, userId, "Only owner can inspect another user's memories");
+      if (denied) {
+        return denied;
+      }
+      const user = await context.userStore.getByUserId(userId);
+      return JSON.stringify(user?.memories ?? []);
+    }
+    if (scope === "persona") {
+      return JSON.stringify(await context.personaStore.get());
+    }
+    return JSON.stringify({ error: "scope must be global, user, or persona" });
   },
-  async get_persona(_toolCall, _args, context) {
-    return JSON.stringify(await context.personaStore.get());
+  async write_memory(_toolCall, args, context) {
+    const scope = getStringField(args, "scope");
+    if (scope === "global") {
+      const denied = requireOwner(context.relationship, "Only owner can edit global memories");
+      if (denied) {
+        return denied;
+      }
+      const title = getStringField(args, "title");
+      const content = getStringField(args, "content");
+      if (!title || !content) {
+        return JSON.stringify({ error: "title and content are required" });
+      }
+      return JSON.stringify(await context.globalMemoryStore.upsert({
+        ...(getStringField(args, "memoryId") ? { memoryId: getStringField(args, "memoryId") } : {}),
+        title,
+        content
+      }));
+    }
+    if (scope === "user") {
+      const userId = resolveTargetUserId(args, context.lastMessage.userId);
+      const denied = requireOwnerOrSelf(context, userId, "Only owner can edit another user's memories");
+      if (denied) {
+        return denied;
+      }
+      const title = getStringField(args, "title");
+      const content = getStringField(args, "content");
+      if (!title || !content) {
+        return JSON.stringify({ error: "title and content are required" });
+      }
+      const updated = await context.userStore.upsertMemory({
+        userId,
+        ...(getStringField(args, "memoryId") ? { memoryId: getStringField(args, "memoryId") } : {}),
+        title,
+        content
+      });
+      return JSON.stringify(updated.memories);
+    }
+    if (scope === "persona") {
+      const denied = requireOwner(context.relationship, "Only owner can update persona");
+      if (denied) {
+        return denied;
+      }
+      const personaPatch = typeof args === "object" && args && "personaPatch" in args && typeof (args as { personaPatch?: unknown }).personaPatch === "object"
+        ? Object.fromEntries(
+            Object.entries((args as { personaPatch: Record<string, unknown> }).personaPatch)
+              .filter(([, value]) => typeof value === "string")
+          )
+        : {};
+      if (Object.keys(personaPatch).length === 0) {
+        return JSON.stringify({ error: "personaPatch with at least one string field is required" });
+      }
+      const updated = await context.personaStore.patch(personaPatch);
+      await context.setupStore.advanceAfterPersonaUpdate(updated);
+      return JSON.stringify(updated);
+    }
+    return JSON.stringify({ error: "scope must be global, user, or persona" });
   },
-  async update_persona(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can update persona");
-    if (denied) {
-      return denied;
+  async remove_memory(_toolCall, args, context) {
+    const scope = getStringField(args, "scope");
+    if (scope === "global") {
+      const denied = requireOwner(context.relationship, "Only owner can edit global memories");
+      if (denied) {
+        return denied;
+      }
+      const memoryId = getStringField(args, "memoryId");
+      if (!memoryId) {
+        return JSON.stringify({ error: "memoryId is required" });
+      }
+      return JSON.stringify(await context.globalMemoryStore.remove(memoryId));
     }
-    const patch = typeof args === "object" && args
-      ? Object.fromEntries(
-          Object.entries(args as Record<string, unknown>).filter(([, value]) => typeof value === "string")
-        )
-      : {};
-    if (Object.keys(patch).length === 0) {
-      return JSON.stringify({ error: "At least one persona field is required" });
+    if (scope === "user") {
+      const userId = resolveTargetUserId(args, context.lastMessage.userId);
+      const denied = requireOwnerOrSelf(context, userId, "Only owner can edit another user's memories");
+      if (denied) {
+        return denied;
+      }
+      const memoryId = getStringField(args, "memoryId");
+      if (!memoryId) {
+        return JSON.stringify({ error: "memoryId is required" });
+      }
+      const updated = await context.userStore.removeMemory(userId, memoryId);
+      if (!updated) {
+        return JSON.stringify({ error: "User not found" });
+      }
+      return JSON.stringify(updated.memories);
     }
-    const updated = await context.personaStore.patch(patch);
-    await context.setupStore.advanceAfterPersonaUpdate(updated);
-    return JSON.stringify(updated);
-  },
-  async list_user_memories(_toolCall, args, context) {
-    const userId = resolveTargetUserId(args, context.lastMessage.userId);
-    const denied = requireOwnerOrSelf(context, userId, "Only owner can inspect another user's memories");
-    if (denied) {
-      return denied;
+    if (scope === "persona") {
+      const denied = requireOwner(context.relationship, "Only owner can update persona");
+      if (denied) {
+        return denied;
+      }
+      const personaField = getStringField(args, "personaField");
+      if (!personaField) {
+        return JSON.stringify({ error: "personaField is required" });
+      }
+      const updated = await context.personaStore.patch({ [personaField]: "" });
+      await context.setupStore.advanceAfterPersonaUpdate(updated);
+      return JSON.stringify(updated);
     }
-    const user = await context.userStore.getByUserId(userId);
-    return JSON.stringify(user?.memories ?? []);
-  },
-  async remember_global_memory(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can edit global memories");
-    if (denied) {
-      return denied;
-    }
-    const title = getStringField(args, "title");
-    const content = getStringField(args, "content");
-    if (!title || !content) {
-      return JSON.stringify({ error: "title and content are required" });
-    }
-    return JSON.stringify(await context.globalMemoryStore.upsert({
-      ...(getStringField(args, "memoryId") ? { memoryId: getStringField(args, "memoryId") } : {}),
-      title,
-      content
-    }));
-  },
-  async remember_user_memory(_toolCall, args, context) {
-    const userId = resolveTargetUserId(args, context.lastMessage.userId);
-    const denied = requireOwnerOrSelf(context, userId, "Only owner can edit another user's memories");
-    if (denied) {
-      return denied;
-    }
-    const title = getStringField(args, "title");
-    const content = getStringField(args, "content");
-    if (!title || !content) {
-      return JSON.stringify({ error: "title and content are required" });
-    }
-    const updated = await context.userStore.upsertMemory({
-      userId,
-      ...(getStringField(args, "memoryId") ? { memoryId: getStringField(args, "memoryId") } : {}),
-      title,
-      content
-    });
-    return JSON.stringify(updated.memories);
-  },
-  async remove_global_memory(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can edit global memories");
-    if (denied) {
-      return denied;
-    }
-    const memoryId = getStringField(args, "memoryId");
-    if (!memoryId) {
-      return JSON.stringify({ error: "memoryId is required" });
-    }
-    return JSON.stringify(await context.globalMemoryStore.remove(memoryId));
-  },
-  async remove_user_memory(_toolCall, args, context) {
-    const userId = resolveTargetUserId(args, context.lastMessage.userId);
-    const denied = requireOwnerOrSelf(context, userId, "Only owner can edit another user's memories");
-    if (denied) {
-      return denied;
-    }
-    const memoryId = getStringField(args, "memoryId");
-    if (!memoryId) {
-      return JSON.stringify({ error: "memoryId is required" });
-    }
-    const updated = await context.userStore.removeMemory(userId, memoryId);
-    if (!updated) {
-      return JSON.stringify({ error: "User not found" });
-    }
-    return JSON.stringify(updated.memories);
-  },
-  async overwrite_global_memories(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can overwrite global memories");
-    if (denied) {
-      return denied;
-    }
-    return JSON.stringify(await context.globalMemoryStore.overwrite(
-      parseMemoryEntries(args)
-    ));
-  },
-  async overwrite_user_memories(_toolCall, args, context) {
-    const userId = resolveTargetUserId(args, context.lastMessage.userId);
-    const denied = requireOwnerOrSelf(context, userId, "Only owner can overwrite another user's memories");
-    if (denied) {
-      return denied;
-    }
-    const updated = await context.userStore.overwriteMemories(
-      userId,
-      parseMemoryEntries(args)
-    );
-    return JSON.stringify(updated.memories);
+    return JSON.stringify({ error: "scope must be global, user, or persona" });
   },
   async register_known_user(_toolCall, args, context) {
     const denied = requireOwner(context.relationship, "Only owner can register known users");
