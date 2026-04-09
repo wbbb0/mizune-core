@@ -60,6 +60,17 @@ async function main() {
           mentionedSelf: true,
           timestampMs: Date.now()
         })
+      ],
+      availableToolsets: [
+        {
+          id: "scheduler_admin",
+          title: "定时任务管理",
+          description: "查看、创建和管理计划任务。",
+          toolNames: ["create_scheduled_job"],
+          plannerSignals: [
+            "需要未来触发、延时提醒或周期执行"
+          ]
+        }
       ]
     });
 
@@ -75,6 +86,7 @@ async function main() {
     assert.doesNotMatch(system, /包括但不限于/);
     assert.doesNotMatch(system, /像“取消这个吧”/);
     assert.match(user, /⟦section name="planner_batch_features"⟧/);
+    assert.match(user, /signals=需要未来触发、延时提醒或周期执行/);
     assert.match(user, /tags=mention, text/);
     assert.match(user, /⟦planner_batch_message index="1"/);
   });

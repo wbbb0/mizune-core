@@ -14,6 +14,7 @@ import type { GenerationRunnerDeps } from "./generationRunnerDeps.ts";
 import type { GenerationRuntimeBatchMessage, RunGenerationInput } from "./generationExecutor.ts";
 import type { GenerationWebOutputCollector } from "./generationTypes.ts";
 import { handleGenerationTurnPlanner } from "./generationTurnPlanner.ts";
+import { supplementPlannedToolsets } from "./toolsetSupplement.ts";
 import { getProviderTranscriptProjector } from "./providerTranscriptProjector.ts";
 import { createInternalTriggerEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { projectLlmVisibleHistoryFromTranscript } from "#conversation/session/sessionTranscript.ts";
@@ -206,6 +207,32 @@ export function createGenerationSessionOrchestrator(
         refreshedSession = sessionManager.getSession(sessionId);
         visibleHistory = projectLlmVisibleHistoryFromTranscript(refreshedSession.internalTranscript, config);
         historyForPrompt = visibleHistory.slice(0, Math.max(0, visibleHistory.length - messages.length));
+        if (plannerToolsets.length === 0) {
+          logger.warn({
+            sessionId,
+            resolvedModelRef,
+            relationship,
+            supportsTools: getPrimaryModelProfile(config, resolvedModelRef)?.supportsTools ?? null
+          }, "turn_planner_available_toolsets_empty_after_routing");
+        }
+      }
+      if (!setupMode && config.llm.turnPlanner.supplementToolsets && plannerToolsets.length > 0) {
+        const supplement = supplementPlannedToolsets({
+          selectedToolsetIds: plannedToolsetIds,
+          availableToolsets: plannerToolsets,
+          batchMessages: messages,
+          recentToolEvents: refreshedSession.recentToolEvents
+        });
+        if (supplement.addedToolsetIds.length > 0) {
+          logger.info({
+            sessionId,
+            plannerToolsetIds: plannedToolsetIds,
+            supplementedToolsetIds: supplement.toolsetIds,
+            addedToolsetIds: supplement.addedToolsetIds,
+            reasons: supplement.reasons
+          }, "turn_planner_toolsets_supplemented");
+        }
+        plannedToolsetIds = supplement.toolsetIds;
       }
       const participantProfiles = await extractWindowUsers(userStore, refreshedSession.internalTranscript, messages.map((message) => ({
           userId: message.userId,

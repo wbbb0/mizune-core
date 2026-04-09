@@ -58,6 +58,7 @@ llm:
     recentMessageCount: 6
     enableThinking: false
     maxWaitPasses: 1
+    supplementToolsets: true
   debugDump:
     enabled: false
 conversation:

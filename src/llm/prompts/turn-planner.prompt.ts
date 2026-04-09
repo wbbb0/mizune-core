@@ -39,6 +39,7 @@ export function buildTurnPlannerPrompt(input: {
     title: string;
     description: string;
     toolNames: string[];
+    plannerSignals?: string[];
   }>;
   batchAnalysis: {
     summaryTags: string[];
@@ -71,6 +72,8 @@ export function buildTurnPlannerPrompt(input: {
       "- reply_* 时填逗号分隔 ID，例如 web_research,memory_profile；若无需工具可填 none。",
       "只可从给定 available_toolsets 中挑选，不要编造 ID。",
       "若任务可能跨多个能力域，可一次返回多个工具集；但不要无谓扩大范围。",
+      "signals 只是典型意图示例，不是关键词白名单。按语义相近判定，不要求原词命中。",
+      "缺失工具集比多给 1 个工具集代价更高；只要能预见本轮很可能至少调用一次某域工具，就应提前带上。",
       "判断原则：",
       "1. 末尾意图优先；有明确问题/指令/关键信息就应 reply。",
       "2. 区分该回与能答：即使可能拒答或信息不足，仍应 reply，由主模型处理。",
@@ -88,7 +91,7 @@ export function buildTurnPlannerPrompt(input: {
     ]),
     renderPromptSection("available_toolsets", input.availableToolsets.length > 0
       ? input.availableToolsets.map((toolset) => (
-          `${toolset.id} | ${toolset.title} | ${toolset.description} | tools=${toolset.toolNames.join(",")}`
+          `${toolset.id} | ${toolset.title} | ${toolset.description} | tools=${toolset.toolNames.join(",")}${toolset.plannerSignals && toolset.plannerSignals.length > 0 ? ` | signals=${toolset.plannerSignals.join("/")}` : ""}`
         ))
       : ["none"]),
     renderPromptSectionRaw("planner_recent_messages", input.recentMessages.length > 0
@@ -242,4 +245,3 @@ function formatTimestamp(timestampMs?: number | null): string {
     hour12: false
   }).format(new Date(timestampMs));
 }
-

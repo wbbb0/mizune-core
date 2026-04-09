@@ -43,7 +43,8 @@ const llmTurnPlannerConfigSchema = s.object({
   timeoutMs: s.number().int().positive().default(20000),
   enableThinking: s.boolean().default(false),
   recentMessageCount: s.number().int().positive().default(6),
-  maxWaitPasses: s.number().int().min(0).default(1)
+  maxWaitPasses: s.number().int().min(0).default(1),
+  supplementToolsets: s.boolean().default(true)
 }).default(emptyObject);
 
 const llmImageCaptionerConfigSchema = s.object({

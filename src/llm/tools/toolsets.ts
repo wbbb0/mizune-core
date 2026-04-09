@@ -7,6 +7,7 @@ export interface ToolsetDefinition {
   title: string;
   description: string;
   toolNames: string[];
+  plannerSignals?: string[];
   ownerOnly?: boolean;
   debugOnly?: boolean;
 }
@@ -16,6 +17,7 @@ export interface ToolsetView {
   title: string;
   description: string;
   toolNames: string[];
+  plannerSignals?: string[];
 }
 
 export const TURN_PLANNER_ALWAYS_TOOL_NAMES = [
@@ -28,6 +30,10 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     id: "chat_context",
     title: "会话上下文",
     description: "查看消息、转发和媒体上下文，必要时结束本轮回复。",
+    plannerSignals: [
+      "查看 reply/forward/image 上下文",
+      "先展开上下文再回复"
+    ],
     toolNames: [
       "view_message",
       "view_forward_record",
@@ -39,6 +45,10 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     id: "memory_profile",
     title: "记忆与资料",
     description: "读取和维护用户资料、长期记忆与 persona。",
+    plannerSignals: [
+      "长期信息与偏好",
+      "读写资料、记忆、persona"
+    ],
     toolNames: [
       "get_user_profile",
       "remember_user_profile",
@@ -53,6 +63,10 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     id: "conversation_navigation",
     title: "跨会话导航",
     description: "检索可访问会话并读取上下文。",
+    plannerSignals: [
+      "跨会话找历史",
+      "读取别的聊天上下文"
+    ],
     toolNames: [
       "search_accessible_conversations",
       "get_conversation_context"
@@ -62,6 +76,10 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     id: "chat_delegation",
     title: "会话委派",
     description: "查找目标会话并把任务委派到其他聊天。",
+    plannerSignals: [
+      "转告或委派到其他会话",
+      "查找目标聊天并代发"
+    ],
     toolNames: [
       "search_chat_targets",
       "delegate_message_to_chat"
@@ -70,7 +88,11 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   {
     id: "web_research",
     title: "网页检索与浏览",
-    description: "搜索网页、打开页面、交互、截图与下载资源。",
+    description: "搜索网页、打开页面、交互与截图。",
+    plannerSignals: [
+      "外部信息与事实核查",
+      "网页浏览、交互、截图"
+    ],
     toolNames: [
       "ground_with_google_search",
       "search_with_iqs_lite_advanced",
@@ -79,7 +101,6 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "interact_with_page",
       "close_page",
       "capture_screenshot",
-      "download_asset",
       "list_browser_profiles",
       "inspect_browser_profile",
       "save_browser_profile",
@@ -90,6 +111,10 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     id: "shell_runtime",
     title: "Shell 运行时",
     description: "执行与交互 shell 会话，并复用 live_resource。",
+    plannerSignals: [
+      "运行命令与终端交互",
+      "脚本、日志、进程排障"
+    ],
     ownerOnly: true,
     toolNames: [
       "list_live_resources",
@@ -103,7 +128,12 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     id: "workspace_io",
     title: "工作区文件",
     description: "浏览与编辑 workspace 文件，以及发送工作区媒体。",
+    plannerSignals: [
+      "下载或保存到 workspace",
+      "读写工作区文件"
+    ],
     toolNames: [
+      "download_asset",
       "list_workspace_items",
       "stat_workspace_item",
       "read_workspace_file",
@@ -120,6 +150,9 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     id: "social_admin",
     title: "社交管理",
     description: "处理好友/群请求和聊天白名单。",
+    plannerSignals: [
+      "好友、群、白名单审批"
+    ],
     ownerOnly: true,
     toolNames: [
       "search_friends",
@@ -134,6 +167,9 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     id: "scheduler_admin",
     title: "定时任务管理",
     description: "查看、创建和管理计划任务。",
+    plannerSignals: [
+      "提醒、延时、周期任务"
+    ],
     ownerOnly: true,
     toolNames: [
       "list_scheduled_jobs",
@@ -144,7 +180,10 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   {
     id: "comfy_image",
     title: "Comfy 图像生成",
-    description: "提交 ComfyUI 图像任务。",
+    description: "仅用于生成新图像（文生图）。不用于下载已有文件或图片。",
+    plannerSignals: [
+      "生成新图片或重绘"
+    ],
     toolNames: [
       "generate_image_with_comfyui"
     ]
@@ -153,6 +192,9 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     id: "time_utils",
     title: "时间工具",
     description: "查询当前时间。",
+    plannerSignals: [
+      "当前精确时间或日期"
+    ],
     toolNames: [
       "get_current_time"
     ]
@@ -182,7 +224,10 @@ export function listTurnToolsets(input: {
       id: "memory_profile",
       title: "记忆与资料",
       description: "初始化阶段仅允许写入 persona 相关资料。",
-      toolNames: ["read_memory", "write_memory"]
+      toolNames: ["read_memory", "write_memory"],
+      plannerSignals: [
+        "初始化 persona 补全"
+      ]
     }];
   }
 
@@ -208,7 +253,10 @@ export function listTurnToolsets(input: {
       id: toolset.id,
       title: toolset.title,
       description: toolset.description,
-      toolNames: toolset.toolNames
+      toolNames: toolset.toolNames,
+      ...(toolset.plannerSignals && toolset.plannerSignals.length > 0
+        ? { plannerSignals: toolset.plannerSignals }
+        : {})
     }));
 }
 
@@ -223,4 +271,3 @@ export function resolveToolNamesFromToolsets(
       .flatMap((toolset) => toolset.toolNames)
   ));
 }
-

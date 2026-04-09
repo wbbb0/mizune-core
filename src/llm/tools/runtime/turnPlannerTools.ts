@@ -7,7 +7,7 @@ export const turnPlannerToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "list_available_toolsets",
-        description: "列出当前回合可申请的工具集及其说明。",
+        description: "列出当前回合可申请的工具集及其说明。发现缺失工具时应先调用本工具。",
         parameters: {
           type: "object",
           properties: {},
@@ -21,7 +21,7 @@ export const turnPlannerToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "request_toolset",
-        description: "申请启用一个或多个工具集。每轮最多允许一次升级申请。",
+        description: "申请启用一个或多个工具集。每轮最多允许一次升级申请；审批通过后再调用对应工具。",
         parameters: {
           type: "object",
           properties: {
@@ -59,4 +59,3 @@ export const turnPlannerToolHandlers: Record<string, ToolHandler> = {
     return JSON.stringify(context.toolsetAccess.requestToolsets(toolsetIds, reason));
   }
 };
-

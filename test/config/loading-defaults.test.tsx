@@ -46,6 +46,7 @@ async function main() {
       assert.deepEqual(config.llm.mainRouting.largeModelRef, ["main"]);
       assert.deepEqual(config.llm.summarizer.modelRef, ["summarizer"]);
       assert.deepEqual(config.llm.turnPlanner.modelRef, ["turnPlanner"]);
+      assert.equal(config.llm.turnPlanner.supplementToolsets, true);
       assert.deepEqual(config.llm.providers, {});
       assert.deepEqual(config.llm.models, {});
       assert.equal(config.dataDir, "data/default");
