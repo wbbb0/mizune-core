@@ -115,8 +115,7 @@ export function createEditorService(input: {
       const resource = getRequiredResource(resources, resourceKey);
       const schemaMeta = exportSchemaMeta(resource.schema);
 
-      // Filter out 'comfy' from 'config' resource to hide it from WebUI as requested.
-      if (resourceKey === "config" && schemaMeta.fields) {
+      if (resourceKey === "config" && schemaMeta.kind === "object") {
         delete schemaMeta.fields.comfy;
       }
 
@@ -316,6 +315,7 @@ function buildEditorResourceMap(input: {
       }
     }
   ];
+  const dataDir = input.config.dataDir;
   const dataResources: EditorResource<any>[] = [
     single("persona", "Persona", "data", personaSchema, `${dataDir}/persona.json`),
     single("users", "Users", "data", userStoreSchema, `${dataDir}/users.json`),
