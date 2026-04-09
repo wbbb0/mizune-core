@@ -105,6 +105,18 @@ export function createDataBrowserService(input: {
 function buildDataBrowserResourceMap(dataDir: string): Map<string, DataBrowserResource> {
   const resources: DataBrowserResource[] = [
     {
+      key: "audio_files",
+      title: "Audio Files",
+      kind: "single_json",
+      filePath: join(dataDir, "audio-files.json")
+    },
+    {
+      key: "global_memories",
+      title: "Global Memories",
+      kind: "single_json",
+      filePath: join(dataDir, "global-memories.json")
+    },
+    {
       key: "image_files",
       title: "Image Files",
       kind: "single_json",

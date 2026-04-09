@@ -114,6 +114,12 @@ export function createEditorService(input: {
       const resources = buildEditorResourceMap(input);
       const resource = getRequiredResource(resources, resourceKey);
       const schemaMeta = exportSchemaMeta(resource.schema);
+
+      // Filter out 'comfy' from 'config' resource to hide it from WebUI as requested.
+      if (resourceKey === "config" && schemaMeta.fields) {
+        delete schemaMeta.fields.comfy;
+      }
+
       const template = createSchemaTemplate(resource.schema);
 
       if (resource.kind === "single") {
@@ -310,20 +316,6 @@ function buildEditorResourceMap(input: {
       }
     }
   ];
-  const templateRoot = resolve(input.config.configRuntime.configDir, "templates", "comfyui");
-  const templateResources = listComfyTemplateFiles(templateRoot).map((fileName) => single(
-    `comfy_template:${fileName}`,
-    `Comfy Template / ${fileName}`,
-    "config",
-    s.object({}).passthrough(),
-    join(templateRoot, fileName),
-    {
-      afterSave: async () => {
-        await input.configManager.checkForUpdates();
-      }
-    }
-  ));
-  const dataDir = input.config.dataDir;
   const dataResources: EditorResource<any>[] = [
     single("persona", "Persona", "data", personaSchema, `${dataDir}/persona.json`),
     single("users", "Users", "data", userStoreSchema, `${dataDir}/users.json`),
@@ -346,19 +338,8 @@ function buildEditorResourceMap(input: {
   ];
 
   return new Map(
-    [...configResources, ...templateResources, ...dataResources].map((resource) => [resource.key, resource])
+    [...configResources, ...dataResources].map((resource) => [resource.key, resource])
   );
-}
-
-function listComfyTemplateFiles(templateRoot: string): string[] {
-  try {
-    return readdirSync(templateRoot, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-      .map((entry) => entry.name)
-      .sort((left, right) => left.localeCompare(right));
-  } catch {
-    return [];
-  }
 }
 
 function single<TSchema extends BaseSchema<any>>(
