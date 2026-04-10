@@ -163,6 +163,8 @@ async function renderDebugLiteral(literal: DebugLiteral, context: Parameters<Non
     case "tools_info":
       return JSON.stringify({
         visibleToolNames: snapshot?.visibleToolNames ?? [],
+        activeToolsets: snapshot?.activeToolsets ?? [],
+        operationNotes: snapshot?.operationNotes ?? [],
         recentToolEvents: snapshot?.recentToolEvents ?? []
       }, null, 2);
     case "image_captions": {

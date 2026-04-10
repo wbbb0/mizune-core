@@ -23,6 +23,7 @@ import { setupStateSchema } from "#identity/setupStateSchema.ts";
 import { membershipFileSchema } from "#identity/groupMembershipSchema.ts";
 import { runtimeResourceFileSchema } from "#runtime/resources/runtimeResourceSchema.ts";
 import { scheduledJobFileSchema } from "#runtime/scheduler/jobSchema.ts";
+import { operationNoteFileSchema } from "#llm/prompt/operationNoteStore.ts";
 import type { ConfigManager } from "#config/configManager.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
@@ -336,7 +337,8 @@ function buildEditorResourceMap(input: {
         await input.scheduler.reloadFromStore();
       }
     }),
-    single("global_memories", "Global Memories", "data", s.array(memoryEntrySchema).default([]), `${dataDir}/global-memories.json`)
+    single("global_memories", "Global Memories", "data", s.array(memoryEntrySchema).default([]), `${dataDir}/global-memories.json`),
+    single("operation_notes", "Operation Notes", "data", operationNoteFileSchema, `${dataDir}/operation-notes.json`)
   ];
 
   return new Map(

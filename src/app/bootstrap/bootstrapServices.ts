@@ -32,6 +32,7 @@ import { ComfyClient } from "#comfy/comfyClient.ts";
 import { ComfyTaskStore } from "#comfy/taskStore.ts";
 import { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import { RuntimeResourceRegistry } from "#runtime/resources/runtimeResourceRegistry.ts";
+import { OperationNoteStore } from "#llm/prompt/operationNoteStore.ts";
 import { isOwnerBootstrapCommandText } from "../messaging/directCommands.ts";
 import type { AppBootstrapServices, AppServiceBootstrap, BootstrapRuntimeContext } from "./bootstrapTypes.ts";
 
@@ -68,6 +69,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
   const userStore = new UserStore(dataDir, config, whitelistStore, logger);
   const personaStore = new PersonaStore(dataDir, config, logger);
   const globalMemoryStore = new GlobalMemoryStore(dataDir, config, logger);
+  const operationNoteStore = new OperationNoteStore(dataDir, config, logger);
   const setupStore = new SetupStateStore(dataDir, whitelistStore, logger);
   const searchService = new SearchService(config, logger);
   const browserService = new BrowserService(
@@ -107,6 +109,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
     userStore,
     personaStore,
     globalMemoryStore,
+    operationNoteStore,
     setupStore,
     searchService,
     browserService,
@@ -144,6 +147,7 @@ export async function initializeBootstrapState(
     | "npcDirectory"
     | "personaStore"
     | "globalMemoryStore"
+    | "operationNoteStore"
     | "setupStore"
     | "sessionManager"
   >
@@ -167,6 +171,7 @@ export async function initializeBootstrapState(
     npcDirectory,
     personaStore,
     globalMemoryStore,
+    operationNoteStore,
     setupStore,
     sessionManager
   } = services;
@@ -186,6 +191,7 @@ export async function initializeBootstrapState(
   await npcDirectory.refresh(userStore);
   await personaStore.init();
   await globalMemoryStore.init();
+  await operationNoteStore.init();
   await setupStore.init(await personaStore.get());
   const persistedSessions = await sessionPersistence.loadAll();
   sessionManager.restoreSessions(persistedSessions);

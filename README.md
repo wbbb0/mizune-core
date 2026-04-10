@@ -409,6 +409,8 @@ config/instances/acc1.yml
 - `sessions/`
 - `persona.json`
 - `users.json`
+- `global-memories.json`
+- `operation-notes.json`
 - `whitelist.json`
 - `scheduled-jobs.json`
 - `workspace/`

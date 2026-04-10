@@ -240,6 +240,7 @@ export function createGenerationSessionOrchestrator(
         })));
       const providerName = getPrimaryModelProfile(config, resolvedModelRef)?.provider ?? "unknown";
       const toolNamesFromPlanner = resolveToolNamesFromToolsets(plannerToolsets, plannedToolsetIds);
+      const activeChatToolsets = plannerToolsets.filter((toolset) => plannedToolsetIds.includes(toolset.id));
       const chatVisibleToolNames = getBuiltinToolNames(relationship, user, config, {
         modelRef: resolvedModelRef,
         includeDebugTools: interactionMode === "debug",
@@ -279,6 +280,7 @@ export function createGenerationSessionOrchestrator(
             interactionMode,
             mainModelRef: resolvedModelRef,
             visibleToolNames: chatVisibleToolNames,
+            activeToolsets: activeChatToolsets,
             lateSystemMessages,
             replayMessages: projectedTranscript.replayMessages,
             persona,
@@ -360,9 +362,25 @@ export function createGenerationSessionOrchestrator(
         : null;
       const promptRelationship: Relationship = currentUser?.relationship ?? "known";
       const scheduledModelRef = getDefaultMainModelRefs(config);
+      const scheduledAvailableToolsets = listTurnToolsets({
+        config,
+        relationship: "owner",
+        currentUser,
+        modelRef: scheduledModelRef,
+        includeDebugTools: interactionMode === "debug"
+      });
       const scheduledVisibleToolNames = getBuiltinToolNames("owner", currentUser, config, {
         modelRef: scheduledModelRef,
         includeDebugTools: interactionMode === "debug"
+      });
+      const activeScheduledToolsets = scheduledAvailableToolsets.filter((toolset) => {
+        if (trigger.kind === "scheduled_instruction") {
+          return ["memory_profile", "chat_context", "conversation_navigation", "chat_delegation", "web_research", "workspace_io", "scheduler_admin", "time_utils"].includes(toolset.id);
+        }
+        if (trigger.kind === "comfy_task_completed") {
+          return ["chat_context", "workspace_io", "comfy_image"].includes(toolset.id);
+        }
+        return ["comfy_image"].includes(toolset.id);
       });
       await historyCompressor.maybeCompress(sessionId);
       const session = sessionManager.getSession(sessionId);
@@ -383,6 +401,7 @@ export function createGenerationSessionOrchestrator(
         sessionId,
         interactionMode,
         visibleToolNames: scheduledVisibleToolNames,
+        activeToolsets: activeScheduledToolsets,
         lateSystemMessages,
         replayMessages: projectedTranscript.replayMessages,
         trigger: trigger.kind === "scheduled_instruction"

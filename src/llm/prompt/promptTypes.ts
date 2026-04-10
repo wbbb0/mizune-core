@@ -5,6 +5,7 @@ import type { SpecialRole } from "#identity/specialRole.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { SessionDebugMarker } from "#conversation/session/sessionManager.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
+import type { ToolsetView } from "#llm/tools/toolsets.ts";
 import type { LlmMessage } from "../llmClient.ts";
 
 export type PromptInteractionMode = "normal" | "debug";
@@ -65,6 +66,13 @@ export interface PromptLiveResource {
   title?: string | null;
   description?: string | null;
   summary: string;
+}
+
+export interface PromptOperationNote {
+  id: string;
+  title: string;
+  content: string;
+  toolsetIds: string[];
 }
 
 export interface PromptEmojiVisual {
@@ -128,6 +136,7 @@ export interface PromptInput {
   sessionId: string;
   interactionMode?: PromptInteractionMode;
   visibleToolNames?: string[];
+  activeToolsets?: ToolsetView[];
   lateSystemMessages?: string[] | undefined;
   replayMessages?: LlmMessage[] | undefined;
   includeBatchMediaCaptions?: boolean | undefined;
@@ -142,6 +151,7 @@ export interface PromptInput {
   recentToolEvents?: PromptToolEvent[] | undefined;
   debugMarkers?: SessionDebugMarker[] | undefined;
   liveResources?: PromptLiveResource[] | undefined;
+  operationNotes?: PromptOperationNote[] | undefined;
   batchMessages: PromptBatchMessage[];
 }
 
@@ -149,6 +159,7 @@ export interface InternalSessionTriggerPromptInput {
   sessionId: string;
   interactionMode?: PromptInteractionMode;
   visibleToolNames?: string[];
+  activeToolsets?: ToolsetView[];
   lateSystemMessages?: string[] | undefined;
   replayMessages?: PromptInput["replayMessages"];
   trigger:
@@ -199,6 +210,7 @@ export interface InternalSessionTriggerPromptInput {
   recentToolEvents?: PromptInput["recentToolEvents"];
   debugMarkers?: PromptInput["debugMarkers"];
   liveResources?: PromptInput["liveResources"];
+  operationNotes?: PromptInput["operationNotes"];
   targetContext:
     | {
         chatType: "private";

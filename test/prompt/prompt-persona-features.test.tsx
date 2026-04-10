@@ -36,7 +36,7 @@ async function main() {
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "你好", timestampMs: Date.now() })]
       });
       const system = String(prompt[0]?.content ?? "");
-      assert.match(system, /额外要求=下雨天会更安静一点/);
+      assert.match(system, /角色边界与长期口吻：下雨天会更安静一点/);
       assert.match(system, /当前触发用户相关长期记忆/);
       assert.match(system, /当前用户偏好：不喜欢被叫全名/);
       assert.match(system, /最近内部工具轨迹/);
@@ -106,16 +106,15 @@ async function main() {
         targetContext: { chatType: "private", userId: "owner", senderName: "Owner" }
       });
       const system = String(prompt[0]?.content ?? "");
-      assert.match(system, /下面这次执行是计划任务，不是用户刚刚发来了一条新消息/);
-      assert.match(system, /任务指令：五分钟后提醒用户去拿外卖/);
+      assert.match(system, /下面这次执行是内部计划任务，不是用户刚刚发来了一条新消息/);
       assert.doesNotMatch(system, /不一定是最终发给用户的原文/);
       assert.doesNotMatch(system, /产出最终要发送给目标会话的文本/);
       assert.doesNotMatch(system, /当前时间（/);
       assert.doesNotMatch(system, /当前会话 ID：/);
       assert.equal(prompt.length, 3);
       assert.match(String(prompt[1]?.content ?? ""), /^⟦scheduled_history_message role="user" time="/);
-      assert.match(String(prompt[2]?.content ?? ""), /请现在执行这项计划任务/);
-      assert.match(String(prompt[2]?.content ?? ""), /如果任务本身需要查资料、看图或调用其他工具/);
+      assert.match(String(prompt[2]?.content ?? ""), /任务名称：五分钟提醒/);
+      assert.match(String(prompt[2]?.content ?? ""), /任务指令：五分钟后提醒用户去拿外卖/);
     } finally {
       await harness.cleanup();
     }
@@ -164,7 +163,7 @@ async function main() {
         targetContext: { chatType: "group", groupId: "123456" }
       });
       const system = String(prompt[0]?.content ?? "");
-      assert.match(system, /目标会话：群聊 123456/);
+      assert.doesNotMatch(system, /目标会话：群聊 123456/);
       assert.doesNotMatch(system, /目标会话用户：/);
     } finally {
       await harness.cleanup();
@@ -221,7 +220,7 @@ async function main() {
       await npcDirectory.refresh(harness.userStore);
       const persona = await harness.personaStore.get();
       const prompt = buildPrompt({
-        sessionId: "private:owner",
+        sessionId: "group:123456",
         persona,
         relationship: "owner",
         npcProfiles: npcDirectory.listProfiles().map((item) => ({

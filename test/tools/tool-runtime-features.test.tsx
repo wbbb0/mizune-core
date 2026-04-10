@@ -125,6 +125,9 @@ async function main() {
     assert.ok(knownNames.includes("read_memory"));
     assert.ok(knownNames.includes("write_memory"));
     assert.ok(knownNames.includes("remove_memory"));
+    assert.ok(ownerNames.includes("list_operation_notes"));
+    assert.ok(ownerNames.includes("write_operation_note"));
+    assert.ok(ownerNames.includes("remove_operation_note"));
   });
 
   await runCase("global memory handlers allow owner and reject non-owner", async () => {
@@ -151,6 +154,54 @@ async function main() {
       } as any
     );
     assert.match(String(deniedResult), /Only owner can edit global memories/);
+  });
+
+  await runCase("operation note handlers reject duplicate creation and allow targeted updates", async () => {
+    const existing = [{
+      id: "note_1",
+      title: "网页登录处理",
+      content: "只有在明确遇到登录任务时，才读取并使用站点凭据。",
+      toolsetIds: ["web_research"],
+      source: "owner",
+      updatedAt: 1
+    }];
+    const duplicateResult = await profileToolHandlers.write_operation_note!(
+      { id: "tool_operation_note_1", type: "function", function: { name: "write_operation_note", arguments: "{\"title\":\"网页登录规则\",\"content\":\"只有在明确遇到登录任务时，才读取并使用站点凭据。\",\"toolset_ids\":[\"web_research\"]}" } },
+      { title: "网页登录规则", content: "只有在明确遇到登录任务时，才读取并使用站点凭据。", toolset_ids: ["web_research"] },
+      {
+        relationship: "owner",
+        operationNoteStore: {
+          async getAll() {
+            return existing;
+          }
+        }
+      } as any
+    );
+    assert.match(String(duplicateResult), /duplicate_operation_note/);
+
+    const updateResult = await profileToolHandlers.write_operation_note!(
+      { id: "tool_operation_note_2", type: "function", function: { name: "write_operation_note", arguments: "{\"noteId\":\"note_1\",\"title\":\"网页登录处理\",\"content\":\"遇到明确登录任务时才读取并使用站点凭据。\",\"toolset_ids\":[\"web_research\"]}" } },
+      { noteId: "note_1", title: "网页登录处理", content: "遇到明确登录任务时才读取并使用站点凭据。", toolset_ids: ["web_research"] },
+      {
+        relationship: "owner",
+        operationNoteStore: {
+          async getAll() {
+            return existing;
+          },
+          async upsert(input: { noteId?: string; title: string; content: string; toolsetIds: string[] }) {
+            return [{
+              id: input.noteId ?? "note_1",
+              title: input.title,
+              content: input.content,
+              toolsetIds: input.toolsetIds,
+              source: "model",
+              updatedAt: 2
+            }];
+          }
+        }
+      } as any
+    );
+    assert.equal(JSON.parse(String(updateResult))[0].id, "note_1");
   });
 
   await runCase("scheduler tool description emphasizes future triggers and self-contained instructions", async () => {
@@ -290,6 +341,7 @@ async function main() {
           sessionId: "private:owner",
           systemMessages: ["system prompt"],
           visibleToolNames: [],
+          activeToolsets: [],
           historySummary: null,
           recentHistory: [],
           currentBatch: [],
@@ -299,6 +351,7 @@ async function main() {
           toolTranscript: [],
           persona: { name: "Test Persona" },
           globalMemories: [],
+          operationNotes: [],
           currentUser: null,
           participantProfiles: [],
           imageCaptions: [],

@@ -31,6 +31,7 @@ import type { SessionWorkPersistenceDeps } from "../session-work/sessionWorkCore
 import type { ComfyClient } from "#comfy/comfyClient.ts";
 import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
+import type { OperationNoteStore } from "#llm/prompt/operationNoteStore.ts";
 
 export interface GenerationPromptBuilderDeps {
   config: AppConfig;
@@ -46,6 +47,7 @@ export interface GenerationPromptBuilderDeps {
   mediaVisionService: MediaVisionService;
   mediaCaptionService: MediaCaptionService;
   globalMemoryStore: GlobalMemoryStore;
+  operationNoteStore: OperationNoteStore;
 }
 
 export interface GenerationSessionRuntimeDeps {
@@ -63,6 +65,7 @@ export interface GenerationIdentityDeps {
   whitelistStore: WhitelistStore;
   personaStore: PersonaStore;
   globalMemoryStore: GlobalMemoryStore;
+  operationNoteStore: OperationNoteStore;
   setupStore: SetupStateStore;
   conversationAccess: ConversationAccessService;
   npcDirectory: NpcDirectory;

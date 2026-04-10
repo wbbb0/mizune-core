@@ -37,6 +37,7 @@ export function buildSessionWorkCoordinatorDeps(
     userStore: services.userStore,
     personaStore: services.personaStore,
     globalMemoryStore: services.globalMemoryStore,
+    operationNoteStore: services.operationNoteStore,
     setupStore: services.setupStore,
     conversationAccess: services.conversationAccess,
     npcDirectory: services.npcDirectory,

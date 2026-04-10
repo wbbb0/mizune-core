@@ -23,6 +23,7 @@ import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { ConversationAccessService } from "#identity/conversationAccessService.ts";
 import type { NpcDirectory } from "#identity/npcDirectory.ts";
 import type { GlobalMemoryStore } from "#memory/memoryStore.ts";
+import type { OperationNoteStore } from "#llm/prompt/operationNoteStore.ts";
 import type { ComfyClient } from "#comfy/comfyClient.ts";
 import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
@@ -39,9 +40,11 @@ import type {
   GenerationPromptToolEvent
 } from "#app/generation/generationPromptBuilder.ts";
 import type { PromptLiveResource } from "../../prompt/promptTypes.ts";
+import type { PromptOperationNote } from "../../prompt/promptTypes.ts";
 import type { Persona } from "#persona/personaSchema.ts";
 import type { GenerationWebOutputCollector } from "#app/generation/generationTypes.ts";
 import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
+import type { ToolsetView } from "#llm/tools/toolsets.ts";
 
 export type Relationship = "owner" | "known";
 export type ToolAccessLevel = "any" | "owner" | "operator";
@@ -83,6 +86,7 @@ export interface BuiltinToolStoreDeps {
   userStore: UserStore;
   personaStore: PersonaStore;
   globalMemoryStore: GlobalMemoryStore;
+  operationNoteStore: OperationNoteStore;
   setupStore: SetupStateStore;
   conversationAccess: ConversationAccessService;
   npcDirectory: NpcDirectory;
@@ -105,6 +109,7 @@ export interface PromptDebugSnapshot {
   sessionId: string;
   systemMessages: string[];
   visibleToolNames: string[];
+  activeToolsets: ToolsetView[];
   historySummary: string | null;
   recentHistory: GenerationPromptHistoryMessage[];
   currentBatch: GenerationPromptBatchMessage[];
@@ -114,6 +119,7 @@ export interface PromptDebugSnapshot {
   toolTranscript: InternalTranscriptItem[];
   persona: Persona;
   globalMemories: Awaited<ReturnType<GlobalMemoryStore["getAll"]>>;
+  operationNotes: PromptOperationNote[];
   currentUser: Awaited<ReturnType<UserStore["getByUserId"]>>;
   participantProfiles: GenerationPromptParticipantProfile[];
   imageCaptions: Array<{ imageId: string; caption: string }>;

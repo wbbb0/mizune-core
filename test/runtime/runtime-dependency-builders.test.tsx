@@ -35,6 +35,7 @@ function createServicesFixture() {
     userStore: { key: "userStore" },
     personaStore: { key: "personaStore" },
     globalMemoryStore: { key: "globalMemoryStore" },
+    operationNoteStore: { key: "operationNoteStore" },
     setupStore: { key: "setupStore" },
     conversationAccess: { key: "conversationAccess" },
     npcDirectory: { key: "npcDirectory" }

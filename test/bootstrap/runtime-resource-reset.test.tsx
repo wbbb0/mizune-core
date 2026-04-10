@@ -52,6 +52,7 @@ async function main() {
         npcDirectory: { async refresh() {} } as any,
         personaStore: { async init() {}, async get() { return {}; } } as any,
         globalMemoryStore: { async init() {} } as any,
+        operationNoteStore: { async init() {} } as any,
         setupStore: { async init() {} } as any,
         sessionManager: { restoreSessions() {} } as any
       });

@@ -174,6 +174,7 @@ export function createBrowserToolContext(
     userStore: null as unknown as BuiltinToolContext["userStore"],
     personaStore: null as unknown as BuiltinToolContext["personaStore"],
     globalMemoryStore: null as unknown as BuiltinToolContext["globalMemoryStore"],
+    operationNoteStore: null as unknown as BuiltinToolContext["operationNoteStore"],
     setupStore: null as unknown as BuiltinToolContext["setupStore"],
     conversationAccess: null as unknown as BuiltinToolContext["conversationAccess"],
     npcDirectory: null as unknown as BuiltinToolContext["npcDirectory"],

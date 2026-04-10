@@ -8,6 +8,7 @@ import { prepareAudioInputsForModel } from "#messages/audioSources.ts";
 import { buildPrompt, buildScheduledTaskPrompt, buildSetupPrompt } from "#llm/prompt/promptBuilder.ts";
 import type { PromptInteractionMode, PromptLiveResource } from "#llm/prompt/promptTypes.ts";
 import type { PromptAudioTranscription } from "#llm/prompt/promptTypes.ts";
+import type { PromptOperationNote } from "#llm/prompt/promptTypes.ts";
 import type {
   InternalTranscriptItem,
   SessionDebugMarker,
@@ -20,6 +21,9 @@ import type { LlmMessage } from "#llm/llmClient.ts";
 import type { PromptDebugSnapshot } from "#llm/tools/core/shared.ts";
 import type { GenerationPromptBuilderDeps } from "./generationRunnerDeps.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
+import type { ToolsetView } from "#llm/tools/toolsets.ts";
+import type { OperationNoteEntry } from "#llm/prompt/operationNoteStore.ts";
+import { isNearDuplicateText } from "#memory/similarity.ts";
 
 type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
@@ -92,6 +96,7 @@ export interface GenerationPromptBuilder {
     interactionMode: PromptInteractionMode;
     mainModelRef: string[];
     visibleToolNames: string[];
+    activeToolsets: ToolsetView[];
     lateSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
@@ -111,6 +116,7 @@ export interface GenerationPromptBuilder {
     sessionId: string;
     interactionMode: PromptInteractionMode;
     visibleToolNames: string[];
+    activeToolsets: ToolsetView[];
     lateSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"];
@@ -380,6 +386,41 @@ function extractSystemMessages(promptMessages: LlmMessage[]): string[] {
     .map((message) => typeof message.content === "string" ? message.content : JSON.stringify(message.content));
 }
 
+function resolveOperationNotes(
+  notes: OperationNoteEntry[],
+  input: {
+    activeToolsets: ToolsetView[];
+  }
+): PromptOperationNote[] {
+  if (notes.length === 0) {
+    return [];
+  }
+
+  const activeToolsetIds = new Set(input.activeToolsets.map((item) => item.id));
+  const selected = notes
+    .filter((note) => note.toolsetIds.some((id) => activeToolsetIds.has(id)))
+    .map((note) => ({
+      id: note.id,
+      title: note.title,
+      content: note.content,
+      toolsetIds: note.toolsetIds
+    }));
+  const deduped: PromptOperationNote[] = [];
+  for (const note of selected) {
+    const exists = deduped.some((item) => (
+      item.id === note.id
+      || isNearDuplicateText(
+        `${note.title} ${note.content} ${note.toolsetIds.join(" ")}`,
+        [`${item.title} ${item.content} ${item.toolsetIds.join(" ")}`]
+      )
+    ));
+    if (!exists) {
+      deduped.push(note);
+    }
+  }
+  return deduped;
+}
+
 // Builds chat, setup, and scheduled prompts from shared context helpers.
 export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps): GenerationPromptBuilder {
   const buildChatPromptMessages = async (input: {
@@ -387,6 +428,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     interactionMode: PromptInteractionMode;
     mainModelRef: string[];
     visibleToolNames: string[];
+    activeToolsets: ToolsetView[];
     lateSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
@@ -416,6 +458,9 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       ...input.batchMessages.map((item) => item.userId)
     ]);
     const globalMemories = await deps.globalMemoryStore.getAll();
+    const operationNotes = resolveOperationNotes(await deps.operationNoteStore.getAll(), {
+      activeToolsets: input.activeToolsets
+    });
     const liveResources = shouldIncludeLiveResources(input.visibleToolNames)
       ? await collectPromptLiveResources(deps)
       : [];
@@ -435,6 +480,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       sessionId: input.sessionId,
       interactionMode: input.interactionMode,
       visibleToolNames: input.visibleToolNames,
+      activeToolsets: input.activeToolsets,
       lateSystemMessages: input.lateSystemMessages,
       replayMessages: input.replayMessages,
       persona: input.persona,
@@ -450,6 +496,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       recentToolEvents: input.recentToolEvents,
       debugMarkers: input.debugMarkers,
       liveResources,
+      operationNotes,
       recentMessages: mediaContext.historyForPrompt,
       batchMessages: preparedBatchMessages
     });
@@ -460,6 +507,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         sessionId: input.sessionId,
         systemMessages: extractSystemMessages(promptMessages),
         visibleToolNames: input.visibleToolNames,
+        activeToolsets: input.activeToolsets,
         historySummary: input.historySummary,
         recentHistory: mediaContext.historyForPrompt,
         currentBatch: input.batchMessages,
@@ -469,6 +517,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         toolTranscript: input.internalTranscript,
         persona: input.persona,
         globalMemories,
+        operationNotes,
         currentUser: input.currentUser,
         participantProfiles: input.participantProfiles,
         imageCaptions: toImageCaptionEntries(mediaContext.captionMap),
@@ -481,6 +530,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     sessionId: string;
     interactionMode: PromptInteractionMode;
     visibleToolNames: string[];
+    activeToolsets: ToolsetView[];
     lateSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"];
@@ -497,7 +547,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     targetContext: ScheduledPromptTargetContext;
     abortSignal?: AbortSignal;
   }) => {
-    const [mediaContext, liveResources, globalMemories] = await Promise.all([
+    const [mediaContext, liveResources, globalMemories, noteEntries] = await Promise.all([
       preparePromptMediaContext(deps, {
         historyForPrompt: input.historyForPrompt,
         reason: "scheduled_prompt",
@@ -506,8 +556,12 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       shouldIncludeLiveResources(input.visibleToolNames)
         ? collectPromptLiveResources(deps)
         : Promise.resolve([]),
-      deps.globalMemoryStore.getAll()
+      deps.globalMemoryStore.getAll(),
+      deps.operationNoteStore.getAll()
     ]);
+    const operationNotes = resolveOperationNotes(noteEntries, {
+      activeToolsets: input.activeToolsets
+    });
 
     const relevantUserIds = new Set<string>([
       ...(input.currentUser?.userId ? [input.currentUser.userId] : []),
@@ -519,6 +573,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       sessionId: input.sessionId,
       interactionMode: input.interactionMode,
       visibleToolNames: input.visibleToolNames,
+      activeToolsets: input.activeToolsets,
       lateSystemMessages: input.lateSystemMessages,
       replayMessages: input.replayMessages,
       trigger: input.trigger,
@@ -535,6 +590,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       recentToolEvents: input.recentToolEvents,
       debugMarkers: input.debugMarkers,
       liveResources,
+      operationNotes,
       recentMessages: mediaContext.historyForPrompt,
       targetContext: input.targetContext
     });
@@ -545,6 +601,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         sessionId: input.sessionId,
         systemMessages: extractSystemMessages(promptMessages),
         visibleToolNames: input.visibleToolNames,
+        activeToolsets: input.activeToolsets,
         historySummary: input.historySummary,
         recentHistory: mediaContext.historyForPrompt,
         currentBatch: [],
@@ -554,6 +611,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         toolTranscript: input.internalTranscript,
         persona: input.persona,
         globalMemories,
+        operationNotes,
         currentUser: input.currentUser,
         participantProfiles: input.participantProfiles,
         imageCaptions: toImageCaptionEntries(mediaContext.captionMap),
@@ -618,6 +676,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         sessionId: input.sessionId,
         systemMessages: extractSystemMessages(promptMessages),
         visibleToolNames: [],
+        activeToolsets: [],
         historySummary: null,
         recentHistory: mediaContext.historyForPrompt,
         currentBatch: input.batchMessages,
@@ -627,6 +686,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         toolTranscript: input.internalTranscript,
         persona: input.persona,
         globalMemories: [],
+        operationNotes: [],
         currentUser: input.currentUser,
         participantProfiles: input.participantProfiles,
         imageCaptions: toImageCaptionEntries(mediaContext.captionMap),

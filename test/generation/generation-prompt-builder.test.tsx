@@ -69,6 +69,11 @@ async function main() {
           return [];
         }
       } as any,
+      operationNoteStore: {
+        async getAll() {
+          return [];
+        }
+      } as any,
       shellRuntime: {
         async listSessionResources() {
           return [];
@@ -176,6 +181,11 @@ async function main() {
           return [];
         }
       } as any,
+      operationNoteStore: {
+        async getAll() {
+          return [];
+        }
+      } as any,
       shellRuntime: {
         async listSessionResources() {
           return [{
@@ -207,6 +217,22 @@ async function main() {
       interactionMode: "normal",
       mainModelRef: ["main"],
       visibleToolNames: ["list_live_resources", "shell_run", "open_page"],
+      activeToolsets: [
+        {
+          id: "shell_runtime",
+          title: "Shell 运行时",
+          description: "执行与交互 shell 会话，并复用 live_resource。",
+          toolNames: ["list_live_resources", "shell_run"],
+          promptGuidance: ["需要运行命令时优先复用现有 shell 资源。"]
+        },
+        {
+          id: "web_research",
+          title: "网页检索与浏览",
+          description: "搜索网页、打开页面、交互与截图。",
+          toolNames: ["open_page"],
+          promptGuidance: ["需要网页状态时再进入网页检索与浏览。"]
+        }
+      ],
       persona: {
         name: "Bot",
         identity: "助手",

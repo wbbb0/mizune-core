@@ -1,5 +1,6 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
+import { findBestDuplicateMatch } from "#memory/similarity.ts";
 
 export const profileToolDescriptors: ToolDescriptor[] = [
   {
@@ -106,6 +107,66 @@ export const profileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
+        name: "list_operation_notes",
+        description: "读取 operation notes。可按 toolset_ids 过滤。写入前优先先读，避免重复。",
+        parameters: {
+          type: "object",
+          properties: {
+            toolset_ids: {
+              type: "array",
+              items: { type: "string" }
+            }
+          },
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "write_operation_note",
+        description: "写入工具集绑定的长期操作笔记。必须提供 title、content、toolset_ids。写入前应先读取现有 notes；若已有相近内容，优先更新，严禁创建重复内容。",
+        parameters: {
+          type: "object",
+          properties: {
+            noteId: { type: "string" },
+            title: { type: "string" },
+            content: { type: "string" },
+            toolset_ids: {
+              type: "array",
+              items: { type: "string" },
+              minItems: 1
+            }
+          },
+          required: ["title", "content", "toolset_ids"],
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "remove_operation_note",
+        description: "删除一条 operation note，需要 noteId。",
+        parameters: {
+          type: "object",
+          properties: {
+            noteId: { type: "string" }
+          },
+          required: ["noteId"],
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
         name: "get_user_profile",
         description: "读取当前用户已存的长期 profile 和 memories。主动写入前优先先读，避免重复或冲突。",
         parameters: {
@@ -196,6 +257,15 @@ function resolveTargetUserId(args: unknown, fallbackUserId: string): string {
   return getStringField(args, "user_id") || fallbackUserId;
 }
 
+function getStringArrayField(args: unknown, key: string): string[] {
+  if (typeof args !== "object" || !args || !(key in args) || !Array.isArray((args as Record<string, unknown>)[key])) {
+    return [];
+  }
+  return ((args as Record<string, unknown>)[key] as unknown[])
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean);
+}
+
 function requireOwnerOrSelf(
   context: Parameters<ToolHandler>[2],
   targetUserId: string,
@@ -238,6 +308,19 @@ function parseUserProfilePatch(args: unknown): {
 }
 
 export const profileToolHandlers: Record<string, ToolHandler> = {
+  async list_operation_notes(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can inspect operation notes");
+    if (denied) {
+      return denied;
+    }
+    const toolsetIds = new Set(getStringArrayField(args, "toolset_ids"));
+    const notes = await context.operationNoteStore.getAll();
+    return JSON.stringify(
+      toolsetIds.size > 0
+        ? notes.filter((item) => item.toolsetIds.some((id) => toolsetIds.has(id)))
+        : notes
+    );
+  },
   async get_user_profile(_toolCall, _args, context) {
     return JSON.stringify({
       user_id: context.lastMessage.userId,
@@ -333,6 +416,39 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     }
     return JSON.stringify({ error: "scope must be global, user, or persona" });
   },
+  async write_operation_note(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can edit operation notes");
+    if (denied) {
+      return denied;
+    }
+    const title = getStringField(args, "title");
+    const content = getStringField(args, "content");
+    const toolsetIds = getStringArrayField(args, "toolset_ids");
+    const noteId = getStringField(args, "noteId");
+    if (!title || !content || toolsetIds.length === 0) {
+      return JSON.stringify({ error: "title, content and toolset_ids are required" });
+    }
+    const notes = await context.operationNoteStore.getAll();
+    const duplicate = findBestDuplicateMatch(
+      `${title} ${content} ${toolsetIds.join(" ")}`,
+      notes.filter((item) => !noteId || item.id !== noteId),
+      (item) => `${item.title} ${item.content} ${item.toolsetIds.join(" ")}`
+    );
+    if (duplicate && !noteId) {
+      return JSON.stringify({
+        error: "duplicate_operation_note",
+        message: "Found similar existing operation note; update it instead of creating a duplicate",
+        existing: duplicate
+      });
+    }
+    return JSON.stringify(await context.operationNoteStore.upsert({
+      ...(noteId ? { noteId } : duplicate?.id ? { noteId: duplicate.id } : {}),
+      title,
+      content,
+      toolsetIds,
+      source: "model"
+    }));
+  },
   async remove_memory(_toolCall, args, context) {
     const scope = getStringField(args, "scope");
     if (scope === "global") {
@@ -376,6 +492,17 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify(updated);
     }
     return JSON.stringify({ error: "scope must be global, user, or persona" });
+  },
+  async remove_operation_note(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can edit operation notes");
+    if (denied) {
+      return denied;
+    }
+    const noteId = getStringField(args, "noteId");
+    if (!noteId) {
+      return JSON.stringify({ error: "noteId is required" });
+    }
+    return JSON.stringify(await context.operationNoteStore.remove(noteId));
   },
   async register_known_user(_toolCall, args, context) {
     const denied = requireOwner(context.relationship, "Only owner can register known users");

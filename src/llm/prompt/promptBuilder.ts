@@ -39,8 +39,10 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
       : {})
   };
   const system = buildBaseSystemLines({
+    sessionMode: input.sessionId.startsWith("group:") ? "group" : input.sessionId.startsWith("private:") ? "private" : "unknown",
     ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
     ...(input.visibleToolNames ? { visibleToolNames: input.visibleToolNames } : {}),
+    ...(input.activeToolsets ? { activeToolsets: input.activeToolsets } : {}),
     persona: input.persona,
     npcProfiles: input.npcProfiles,
     participantProfiles: input.participantProfiles,
@@ -48,7 +50,8 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
     globalMemories: input.globalMemories,
     historySummary: input.historySummary,
     recentToolEvents: input.recentToolEvents,
-    liveResources: input.liveResources
+    liveResources: input.liveResources,
+    ...(input.operationNotes ? { operationNotes: input.operationNotes } : {})
   }).join("\n");
 
   const historyMessages: LlmMessage[] = input.recentMessages.map((message) => ({
@@ -73,8 +76,10 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
 export function buildScheduledTaskPrompt(input: ScheduledTaskPromptInput): LlmMessage[] {
   const system = [
     ...buildBaseSystemLines({
+        sessionMode: input.targetContext.chatType,
         ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
         ...(input.visibleToolNames ? { visibleToolNames: input.visibleToolNames } : {}),
+        ...(input.activeToolsets ? { activeToolsets: input.activeToolsets } : {}),
       persona: input.persona,
       npcProfiles: input.npcProfiles,
       participantProfiles: input.participantProfiles,
@@ -82,7 +87,8 @@ export function buildScheduledTaskPrompt(input: ScheduledTaskPromptInput): LlmMe
       globalMemories: input.globalMemories,
       historySummary: input.historySummary,
       recentToolEvents: input.recentToolEvents,
-      liveResources: input.liveResources
+      liveResources: input.liveResources,
+      ...(input.operationNotes ? { operationNotes: input.operationNotes } : {})
     }),
     ...buildScheduledTaskSystemLines({
       trigger: input.trigger,
@@ -110,15 +116,11 @@ function buildTriggerMessage(input: ScheduledTaskPromptInput): string {
   if (input.trigger.kind === "scheduled_instruction") {
     return input.targetContext.chatType === "private"
       ? [
-          "请现在执行这项计划任务。",
-          "如果任务本身需要查资料、看图或调用其他工具，请先完成这些内部步骤，再决定是否给目标私聊用户发消息。",
           `目标用户：${input.targetContext.senderName} (${input.targetContext.userId})`,
           `任务名称：${input.trigger.jobName}`,
           `任务指令：${input.trigger.taskInstruction}`
         ].join("\n")
       : [
-          "请现在执行这项计划任务。",
-          "如果任务本身需要查资料、看图或调用其他工具，请先完成这些内部步骤，再决定是否给目标群聊发消息。",
           `目标群聊：${input.targetContext.groupId}`,
           `任务名称：${input.trigger.jobName}`,
           `任务指令：${input.trigger.taskInstruction}`
@@ -127,19 +129,27 @@ function buildTriggerMessage(input: ScheduledTaskPromptInput): string {
 
   if (input.trigger.kind === "comfy_task_completed") {
     return [
-      "你之前发起的 ComfyUI 任务已经完成。",
-      "这不是用户新发来的消息，而是系统把完成结果交还给你处理。",
+      `任务名称：${input.trigger.jobName}`,
+      `任务说明：${input.trigger.taskInstruction}`,
+      `模板：${input.trigger.templateId}`,
+      `prompt：${input.trigger.positivePrompt}`,
+      `比例：${input.trigger.aspectRatio} -> ${input.trigger.resolvedWidth}x${input.trigger.resolvedHeight}`,
+      `Comfy prompt_id：${input.trigger.comfyPromptId}`,
       `workspace file_id：${input.trigger.workspaceFileIds.join("、") || "无"}`,
       `workspace_path：${input.trigger.workspacePaths.join("、") || "无"}`,
-      "请你自己判断接下来要做什么：可以先看图、直接发图、继续改 prompt 再生成，或结束本轮。"
+      `自动迭代进度：${input.trigger.autoIterationIndex}/${input.trigger.maxAutoIterations}`
     ].join("\n");
   }
 
   return [
-    "你之前发起的 ComfyUI 任务失败了。",
-    "这不是用户新发来的消息，而是系统把失败结果交还给你处理。",
+    `任务名称：${input.trigger.jobName}`,
+    `任务说明：${input.trigger.taskInstruction}`,
+    `模板：${input.trigger.templateId}`,
+    `prompt：${input.trigger.positivePrompt}`,
+    `比例：${input.trigger.aspectRatio} -> ${input.trigger.resolvedWidth}x${input.trigger.resolvedHeight}`,
+    `Comfy prompt_id：${input.trigger.comfyPromptId}`,
     `失败原因：${input.trigger.lastError}`,
-    "请你自己判断接下来要做什么：可以向用户简短说明，也可以调整 prompt 再次生成。"
+    `自动迭代进度：${input.trigger.autoIterationIndex}/${input.trigger.maxAutoIterations}`
   ].join("\n");
 }
 

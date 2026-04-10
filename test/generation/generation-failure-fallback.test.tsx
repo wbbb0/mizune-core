@@ -82,6 +82,7 @@ async function main() {
     userStore: {} as never,
     personaStore: {} as never,
     globalMemoryStore: {} as never,
+    operationNoteStore: {} as never,
     setupStore: {
       async isReady() {
         return false;
@@ -148,6 +149,7 @@ async function main() {
       sessionId,
       systemMessages: [],
       visibleToolNames: [],
+      activeToolsets: [],
       historySummary: null,
       recentHistory: [],
       currentBatch: [],
@@ -157,6 +159,7 @@ async function main() {
       toolTranscript: [],
       persona: null as never,
       globalMemories: [],
+      operationNotes: [],
       currentUser: null as never,
       participantProfiles: [],
       imageCaptions: [],
