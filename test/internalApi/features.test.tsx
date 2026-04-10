@@ -174,11 +174,12 @@ async function main() {
   await runCase("internal api exposes workspace listing, text preview, workspace image content, and stored file content", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
-      const [listResponse, statResponse, fileResponse, imageContentResponse, filesResponse, storedFileResponse, contentResponse] = await Promise.all([
+      const [listResponse, statResponse, fileResponse, imageContentResponse, sendContentResponse, filesResponse, storedFileResponse, contentResponse] = await Promise.all([
         app.inject({ method: "GET", url: "/api/workspace/items" }),
         app.inject({ method: "GET", url: "/api/workspace/stat?path=notes.txt" }),
         app.inject({ method: "GET", url: "/api/workspace/file?path=notes.txt&startLine=1&endLine=2" }),
         app.inject({ method: "GET", url: "/api/workspace/content?path=photo.png" }),
+        app.inject({ method: "GET", url: "/api/workspace/send-content?path=photo.png" }),
         app.inject({ method: "GET", url: "/api/workspace/files" }),
         app.inject({ method: "GET", url: "/api/workspace/files/asset_image_1" }),
         app.inject({ method: "GET", url: "/api/workspace/files/asset_image_1/content" })
@@ -194,6 +195,9 @@ async function main() {
       assert.equal(imageContentResponse.statusCode, 200);
       assert.equal(imageContentResponse.headers["content-type"], "image/png");
       assert.ok(imageContentResponse.body.length > 0);
+      assert.equal(sendContentResponse.statusCode, 200);
+      assert.equal(sendContentResponse.headers["content-type"], "image/png");
+      assert.ok(sendContentResponse.body.length > 0);
       assert.equal(filesResponse.statusCode, 200);
       assert.equal(filesResponse.json().files[0].fileId, "asset_image_1");
       assert.equal(storedFileResponse.statusCode, 200);

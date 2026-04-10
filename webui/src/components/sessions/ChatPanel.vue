@@ -49,7 +49,7 @@ type ChatTimelineItem =
       side: "left" | "right";
       sourceName: string | null;
       fileRef: string | null;
-      fileId: string;
+      fileId: string | null;
       imageUrl: string;
       toolName: string;
       timestampMs: number;
@@ -87,6 +87,12 @@ function toChatTimelineItem(entry: { eventId: string; item: SessionTranscriptIte
   }
 
   if (entry.item.kind === "outbound_media_message") {
+    const imageUrl = entry.item.fileId
+      ? workspaceApi.getFileContentUrlById(entry.item.fileId)
+      : (entry.item.sourcePath ? workspaceApi.getSendFileContentUrl(entry.item.sourcePath) : "");
+    if (!imageUrl) {
+      return null;
+    }
     return {
       eventId: entry.eventId,
       kind: "image",
@@ -95,7 +101,7 @@ function toChatTimelineItem(entry: { eventId: string; item: SessionTranscriptIte
       sourceName: entry.item.sourceName,
       fileRef: entry.item.fileRef,
       fileId: entry.item.fileId,
-      imageUrl: workspaceApi.getFileContentUrlById(entry.item.fileId),
+      imageUrl,
       toolName: entry.item.toolName,
       timestampMs: entry.item.timestampMs
     };
@@ -303,7 +309,7 @@ async function onDeleteSession() {
               :image-url="msg.kind === 'image' ? msg.imageUrl : undefined"
               :tool-name="msg.kind === 'image' ? msg.toolName : undefined"
               :timestamp-ms="msg.timestampMs"
-              @preview-image="msg.kind === 'image' ? previewImage = { src: msg.imageUrl, title: msg.sourceName || msg.fileRef || msg.fileId } : undefined"
+              @preview-image="msg.kind === 'image' ? previewImage = { src: msg.imageUrl, title: msg.sourceName || msg.fileRef || msg.fileId || '已发送图片' } : undefined"
             />
           </template>
         </VirtualMessageList>

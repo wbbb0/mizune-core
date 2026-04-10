@@ -86,6 +86,7 @@ async function main() {
             fileRef: "img_hello.png",
             sourceName: "hello.png",
             workspacePath: "workspace/media/asset_img_1.png",
+            sourcePath: null,
             messageId: null,
             toolName: "send_workspace_file_to_chat",
             captionText: null,

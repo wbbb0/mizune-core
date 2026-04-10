@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import type { WorkspaceItemStat, WorkspaceListResult, WorkspaceFileReadResult, WorkspaceFileContentResult, WorkspaceStoredFileRecord } from "#services/workspace/types.ts";
 import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
 import type { WorkspaceService } from "#services/workspace/workspaceService.ts";
+import type { AppConfig } from "#config/config.ts";
+import { contentTypeFromPath, resolveSendablePath } from "#services/workspace/sendablePath.ts";
 
 export interface AdminWorkspaceFileRecord {
   fileId: string;
@@ -22,13 +24,15 @@ export interface WorkspaceAdminService {
   statItem(path: string): Promise<WorkspaceItemStat>;
   readFile(path: string, options?: { startLine?: number; endLine?: number }): Promise<WorkspaceFileReadResult>;
   readFileContent(path: string): Promise<WorkspaceFileContentResult>;
+  readSendableFileContent(path: string): Promise<{ contentType: string; buffer: Buffer }>;
   listFiles(): Promise<{ files: AdminWorkspaceFileRecord[] }>;
   getFile(fileId: string): Promise<{ file: AdminWorkspaceFileRecord | null }>;
   readFileContentById(fileId: string): Promise<{ file: AdminWorkspaceFileRecord | null; buffer: Buffer | null }>;
 }
 
 export function createWorkspaceAdminService(input: {
-  workspaceService: Pick<WorkspaceService, "listItems" | "statItem" | "readFile" | "readFileContent">;
+  config: AppConfig;
+  workspaceService: Pick<WorkspaceService, "listItems" | "statItem" | "readFile" | "readFileContent" | "resolvePath">;
   mediaWorkspace: Pick<MediaWorkspace, "listFiles" | "getFile" | "resolveAbsolutePath">;
 }): WorkspaceAdminService {
   return {
@@ -46,6 +50,14 @@ export function createWorkspaceAdminService(input: {
 
     async readFileContent(path) {
       return input.workspaceService.readFileContent(path);
+    },
+
+    async readSendableFileContent(path) {
+      const resolved = resolveSendablePath(input.config, input.workspaceService, path);
+      return {
+        contentType: contentTypeFromPath(resolved.sourcePath),
+        buffer: await readFile(resolved.absolutePath)
+      };
     },
 
     async listFiles() {

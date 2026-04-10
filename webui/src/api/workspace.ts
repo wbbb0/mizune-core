@@ -61,6 +61,9 @@ export const workspaceApi = {
   getFileContentUrl(path: string): string {
     return `/api/workspace/content?path=${encodeURIComponent(path)}`;
   },
+  getSendFileContentUrl(path: string): string {
+    return `/api/workspace/send-content?path=${encodeURIComponent(path)}`;
+  },
   listFiles(): Promise<{ files: WorkspaceStoredFileSummary[] }> {
     return api.get("/api/workspace/files");
   },

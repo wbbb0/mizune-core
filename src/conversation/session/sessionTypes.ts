@@ -152,10 +152,11 @@ export interface TranscriptOutboundMediaMessageItem {
   role: "assistant";
   delivery: SessionDelivery;
   mediaKind: "image";
-  fileId: string;
+  fileId: string | null;
   fileRef: string | null;
   sourceName: string | null;
   workspacePath: string | null;
+  sourcePath: string | null;
   messageId: number | null;
   toolName: "send_workspace_file_to_chat";
   captionText?: string | null | undefined;

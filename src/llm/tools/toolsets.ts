@@ -159,7 +159,7 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   {
     id: "workspace_io",
     title: "工作区文件",
-    description: "浏览与编辑 workspace 文件，以及发送工作区媒体。",
+    description: "浏览与编辑 workspace 文件，以及按 workspace file 或路径发送文件。",
     promptGuidance: [
       "处理工作区文件时，先列出或查看现有文件，再读写或发送。",
       "需要下载网页资源、保存中间结果或把产物发回聊天时，再使用这一组能力。"

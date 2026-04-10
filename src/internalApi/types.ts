@@ -104,6 +104,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       config: deps.config
     }),
     workspaceAdmin: createWorkspaceAdminService({
+      config: deps.config,
       workspaceService: deps.workspaceService,
       mediaWorkspace: deps.mediaWorkspace
     }),

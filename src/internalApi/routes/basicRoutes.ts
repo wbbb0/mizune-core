@@ -120,6 +120,21 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
   });
 
+  app.get("/api/workspace/send-content", async (request, reply) => {
+    const query = parseWorkspacePathQuery(request.query);
+    if (!parseOrReply(reply, query)) {
+      return reply;
+    }
+
+    try {
+      const result = await services.workspaceAdmin.readSendableFileContent(query.path);
+      reply.type(result.contentType);
+      return reply.send(result.buffer);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
   app.get("/api/workspace/files", async () => services.workspaceAdmin.listFiles());
 
   app.get("/api/workspace/files/:fileId", async (request, reply) => {

@@ -54,7 +54,8 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
 
   if (hasAnyTool(visibleToolNames, ["list_workspace_files", "view_media", "send_workspace_file_to_chat"])) {
     lines.push("需要找工作区里的图片、视频、音频或文件时，先调用 list_workspace_files；不要靠猜 workspace/media 目录名来找。");
-    lines.push("workspace file 默认优先使用 file_ref；file_id 只是稳定主键。send_workspace_file_to_chat 可直接传 file_ref。");
+    lines.push("send_workspace_file_to_chat 默认优先发送已登记的 workspace file：优先传 file_ref，file_id 只是稳定主键；若直接传 path，则 shell.allowAnyCwd=true 时必须用绝对路径，false 时必须用 workspace 相对路径。");
+    lines.push("view_media 支持两种模式：media_ids 模式传已登记的 file_/aud_ id 列表；path 模式直接按路径查看图片，路径规则与 send_workspace_file_to_chat 一致，两种模式互斥。");
   }
 
   if (hasAnyTool(visibleToolNames, ["get_user_profile", "remember_user_profile", "read_memory", "write_memory", "remove_memory"])) {

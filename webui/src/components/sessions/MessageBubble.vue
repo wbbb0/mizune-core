@@ -13,7 +13,7 @@ const props = defineProps<{
   metaChips?: string[];
   sourceName?: string | null;
   fileRef?: string | null;
-  fileId?: string;
+  fileId?: string | null;
   imageUrl?: string;
   toolName?: string;
   timestampMs?: number;

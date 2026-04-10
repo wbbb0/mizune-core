@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import type { OneBotMessageSegment } from "#services/onebot/types.ts";
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
+import { inferSendableFileKind, resolveSendablePath } from "#services/workspace/sendablePath.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
 import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
@@ -229,12 +230,13 @@ export const workspaceToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "send_workspace_file_to_chat",
-        description: "把 workspace 中的文件发送回当前聊天。默认优先传 file_ref；file_id 只是稳定主键。图片会原生发送，其他文件暂时会降级为说明文本。",
+        description: "把文件发送回当前聊天。发送已登记的 workspace file 时优先传 file_ref，file_id 只是稳定主键；按路径直接发送时传 path。path 在 shell.allowAnyCwd=true 时必须是绝对路径，在 false 时必须是 workspace 相对路径。图片会原生发送，其他文件暂时会降级为说明文本。",
         parameters: {
           type: "object",
           properties: {
             file_ref: { type: "string" },
             file_id: { type: "string" },
+            path: { type: "string" },
             text: { type: "string" }
           },
           additionalProperties: false
@@ -334,12 +336,26 @@ export const workspaceToolHandlers: Record<string, ToolHandler> = {
 
   async send_workspace_file_to_chat(_toolCall, args, context) {
     const fileRef = getStringArg(args, "file_ref") || getStringArg(args, "file_id");
-    if (!fileRef) {
-      return JSON.stringify({ error: "file_ref or file_id is required" });
+    const path = getStringArg(args, "path");
+    if (!fileRef && !path) {
+      return JSON.stringify({ error: "file_ref, file_id, or path is required" });
     }
-    const file = await resolveWorkspaceFile(context, fileRef);
-    if (!file) {
-      return JSON.stringify({ error: await buildUnknownAssetError(context, fileRef) });
+    if (fileRef && path) {
+      return JSON.stringify({ error: "file_ref/file_id and path are mutually exclusive" });
+    }
+    let file = null;
+    let directPathInfo: ReturnType<typeof resolveDirectPathSendInput> | null = null;
+    if (path) {
+      try {
+        directPathInfo = resolveDirectPathSendInput(context, path);
+      } catch (error) {
+        return JSON.stringify({ error: error instanceof Error ? error.message : String(error) });
+      }
+    } else {
+      file = await resolveWorkspaceFile(context, fileRef!);
+      if (!file) {
+        return JSON.stringify({ error: await buildUnknownAssetError(context, fileRef!) });
+      }
     }
     const target = parseSessionTarget(context.lastMessage.sessionId);
     if (!target) {
@@ -347,8 +363,9 @@ export const workspaceToolHandlers: Record<string, ToolHandler> = {
     }
     const delivery = resolveToolDelivery(context);
     const text = getStringArg(args, "text");
-    if (file.kind !== "image" && file.kind !== "animated_image") {
-      const summary = text || `文件已保存在工作区：${file.fileRef}；file_id=${file.fileId}`;
+    const kind = directPathInfo?.kind ?? file?.kind ?? "file";
+    if (kind !== "image" && kind !== "animated_image") {
+      const summary = text || buildNonImageSendSummary(file, directPathInfo);
       enqueueToolSend(context, summary, async () => {
         if (delivery === "web") {
           await context.webOutputCollector?.append(summary);
@@ -368,8 +385,15 @@ export const workspaceToolHandlers: Record<string, ToolHandler> = {
       return {
         content: JSON.stringify({
           ok: true,
-          file_ref: file.fileRef,
-          file_id: file.fileId,
+          ...(file ? {
+            file_ref: file.fileRef,
+            file_id: file.fileId
+          } : {}),
+          ...(directPathInfo ? {
+            path: directPathInfo.sourcePath,
+            path_mode: directPathInfo.pathMode,
+            source_name: directPathInfo.sourceName
+          } : {}),
           deliveredAs: "text_fallback",
           queued: true,
           reason: "native file sending is not enabled in this phase"
@@ -379,12 +403,13 @@ export const workspaceToolHandlers: Record<string, ToolHandler> = {
     if (text) {
       return JSON.stringify({ error: "send_workspace_file_to_chat 发送图片时不能附带 text；若需要文字，请让模型单独发送回复" });
     }
-    const absolutePath = await context.mediaWorkspace.resolveAbsolutePath(file.fileId);
+    const absolutePath = directPathInfo?.absolutePath ?? await context.mediaWorkspace.resolveAbsolutePath(file!.fileId);
     const bytes = await readFile(absolutePath);
     const segments: OneBotMessageSegment[] = [
       { type: "image", data: { file: `base64://${bytes.toString("base64")}` } }
     ];
-    enqueueToolSend(context, file.fileRef || file.sourceName || file.fileId, async () => {
+    const previewText = directPathInfo?.sourcePath ?? file?.fileRef ?? file?.sourceName ?? file?.fileId ?? "image";
+    enqueueToolSend(context, previewText, async () => {
       if (delivery === "web") {
         context.sessionManager.appendInternalTranscript(context.lastMessage.sessionId, {
           kind: "outbound_media_message",
@@ -392,10 +417,11 @@ export const workspaceToolHandlers: Record<string, ToolHandler> = {
           role: "assistant",
           delivery: "web",
           mediaKind: "image",
-          fileId: file.fileId,
-          fileRef: file.fileRef ?? null,
-          sourceName: file.sourceName ?? null,
-          workspacePath: file.workspacePath ?? null,
+          fileId: file?.fileId ?? null,
+          fileRef: file?.fileRef ?? null,
+          sourceName: directPathInfo?.sourceName ?? file?.sourceName ?? null,
+          workspacePath: directPathInfo?.workspacePath ?? file?.workspacePath ?? null,
+          sourcePath: directPathInfo?.sourcePath ?? null,
           messageId: null,
           toolName: "send_workspace_file_to_chat",
           captionText: null,
@@ -408,17 +434,18 @@ export const workspaceToolHandlers: Record<string, ToolHandler> = {
         ...target,
         message: segments
       });
-      const messageId = recordDeliveredMessage(context, file.fileRef || file.sourceName || file.fileId, payload.data?.message_id);
+      const messageId = recordDeliveredMessage(context, previewText, payload.data?.message_id);
       context.sessionManager.appendInternalTranscript(context.lastMessage.sessionId, {
         kind: "outbound_media_message",
         llmVisible: false,
         role: "assistant",
         delivery: "onebot",
         mediaKind: "image",
-        fileId: file.fileId,
-        fileRef: file.fileRef ?? null,
-        sourceName: file.sourceName ?? null,
-        workspacePath: file.workspacePath ?? null,
+        fileId: file?.fileId ?? null,
+        fileRef: file?.fileRef ?? null,
+        sourceName: directPathInfo?.sourceName ?? file?.sourceName ?? null,
+        workspacePath: directPathInfo?.workspacePath ?? file?.workspacePath ?? null,
+        sourcePath: directPathInfo?.sourcePath ?? null,
         messageId,
         toolName: "send_workspace_file_to_chat",
         captionText: null,
@@ -428,8 +455,15 @@ export const workspaceToolHandlers: Record<string, ToolHandler> = {
     return {
       content: JSON.stringify({
         ok: true,
-        file_ref: file.fileRef,
-        file_id: file.fileId,
+        ...(file ? {
+          file_ref: file.fileRef,
+          file_id: file.fileId
+        } : {}),
+        ...(directPathInfo ? {
+          path: directPathInfo.sourcePath,
+          path_mode: directPathInfo.pathMode,
+          source_name: directPathInfo.sourceName
+        } : {}),
         deliveredAs: "image",
         queued: true
       })
@@ -508,4 +542,37 @@ async function resolveWorkspaceFile(
     || item.workspacePath.split("/").at(-1) === normalized
     || item.sourceName === normalized
   )) ?? null;
+}
+
+function resolveDirectPathSendInput(
+  context: Parameters<NonNullable<typeof workspaceToolHandlers.send_workspace_file_to_chat>>[2],
+  inputPath: string
+): {
+  absolutePath: string;
+  sourceName: string;
+  sourcePath: string;
+  pathMode: "absolute" | "workspace_relative";
+  workspacePath: string | null;
+  kind: "image" | "animated_image" | "file";
+} {
+  const resolvedPath = resolveSendablePath(context.config, context.workspaceService, inputPath);
+  return {
+    ...resolvedPath,
+    kind: inferSendableFileKind(resolvedPath.sourcePath)
+  };
+}
+
+function buildNonImageSendSummary(
+  file: Awaited<ReturnType<typeof resolveWorkspaceFile>>,
+  directPathInfo: ReturnType<typeof resolveDirectPathSendInput> | null
+): string {
+  if (file) {
+    return `文件已保存在工作区：${file.fileRef}；file_id=${file.fileId}`;
+  }
+  if (!directPathInfo) {
+    return "文件已发送";
+  }
+  return directPathInfo.pathMode === "absolute"
+    ? `文件已发送：${directPathInfo.sourcePath}`
+    : `工作区文件已发送：${directPathInfo.sourcePath}`;
 }
