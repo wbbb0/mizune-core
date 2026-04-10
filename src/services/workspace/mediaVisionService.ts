@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import type { Logger } from "pino";
 import sharp from "sharp";
 import type { AppConfig } from "#config/config.ts";
+import { inferSendableFileKind } from "./sendablePath.ts";
 import type { WorkspaceStoredFileRecord } from "./types.ts";
 import type { MediaWorkspace } from "./mediaWorkspace.ts";
 
@@ -49,6 +50,26 @@ export class MediaVisionService {
       fileId: file.fileId,
       inputUrl: await this.serializeImage(buffer),
       kind: file.kind,
+      transport: "data_url",
+      animated: false,
+      durationMs: null,
+      sampledFrameCount: null
+    };
+  }
+
+  async prepareAbsolutePathForModel(absolutePath: string, sourceName: string): Promise<PreparedWorkspaceVisual> {
+    const kind = inferSendableFileKind(absolutePath);
+    if (kind === "file") {
+      throw new Error(`路径对应的文件不是可查看的媒体格式：${sourceName}`);
+    }
+    const buffer = await readFile(absolutePath);
+    if (kind === "animated_image") {
+      return this.prepareAnimatedFile({ fileId: absolutePath, kind } as WorkspaceStoredFileRecord, buffer);
+    }
+    return {
+      fileId: absolutePath,
+      inputUrl: await this.serializeImage(buffer),
+      kind,
       transport: "data_url",
       animated: false,
       durationMs: null,
