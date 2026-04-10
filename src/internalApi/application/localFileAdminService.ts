@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 import type { LocalFileItemStat, LocalFileListResult, LocalFileReadResult, LocalFileContentResult, ChatFileRecord } from "#services/workspace/types.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
-import type { AppConfig } from "#config/config.ts";
 import { contentTypeFromPath, resolveSendablePath } from "#services/workspace/sendablePath.ts";
 
 export interface AdminWorkspaceFileRecord {
@@ -31,7 +30,6 @@ export interface LocalFileAdminService {
 }
 
 export function createLocalFileAdminService(input: {
-  config: AppConfig;
   localFileService: Pick<LocalFileService, "listItems" | "statItem" | "readFile" | "readFileContent" | "resolvePath">;
   chatFileStore: Pick<ChatFileStore, "listFiles" | "getFile" | "resolveAbsolutePath">;
 }): LocalFileAdminService {
@@ -53,7 +51,7 @@ export function createLocalFileAdminService(input: {
     },
 
     async readSendableFileContent(path) {
-      const resolved = resolveSendablePath(input.config, input.localFileService, path);
+      const resolved = resolveSendablePath(input.localFileService, path);
       return {
         contentType: contentTypeFromPath(resolved.sourcePath),
         buffer: await readFile(resolved.absolutePath)

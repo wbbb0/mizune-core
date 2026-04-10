@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join, normalize, posix, resolve } from "node:path";
+import { dirname, isAbsolute, join, normalize, posix, resolve } from "node:path";
 import type { AppConfig } from "#config/config.ts";
 import type {
   LocalFileContentResult,
@@ -45,14 +45,20 @@ export class LocalFileService {
     await mkdir(this.rootDir, { recursive: true });
   }
 
-  resolvePath(relativePath = "."): { relativePath: string; absolutePath: string } {
+  resolvePath(inputPath = "."): { relativePath: string; absolutePath: string } {
     if (!this.isEnabled()) {
       throw new Error("local files are disabled");
     }
-    const normalizedInput = String(relativePath ?? "").trim() || ".";
-    if (normalizedInput.startsWith("/") || normalizedInput.startsWith("\\")) {
-      throw new Error("absolute paths are not allowed in local_file tools");
+    const normalizedInput = String(inputPath ?? "").trim() || ".";
+
+    if (isAbsolute(normalizedInput)) {
+      const absolutePath = resolve(normalizedInput);
+      return {
+        relativePath: absolutePath,
+        absolutePath
+      };
     }
+
     const normalizedRelative = posix.normalize(normalizedInput.replaceAll("\\", "/"));
     if (normalizedRelative === ".." || normalizedRelative.startsWith("../")) {
       throw new Error("local file path cannot escape the root directory");

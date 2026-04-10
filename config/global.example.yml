@@ -99,7 +99,6 @@ scheduler:
   defaultTimezone: Asia/Shanghai
 shell:
   enabled: false
-  mode: disabled
   defaultTimeoutMs: 120000
   maxTimeoutMs: 600000
   maxOutputChars: 12000
@@ -108,17 +107,6 @@ localFiles:
   enabled: true
   root: data
   maxPatchFileBytes: 524288
-localFileAccess:
-  read:
-    mode: allowed_roots
-    allowedRoots:
-      - data
-  write:
-    mode: allowed_roots
-    allowedRoots:
-      - data
-  maxReadBytes: 33554432
-  maxImageBytes: 16777216
 chatFiles:
   enabled: true
   root: chat-files

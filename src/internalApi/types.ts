@@ -107,7 +107,6 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       config: deps.config
     }),
     localFileAdmin: createLocalFileAdminService({
-      config: deps.config,
       localFileService: deps.localFileService,
       chatFileStore: deps.chatFileStore
     }),

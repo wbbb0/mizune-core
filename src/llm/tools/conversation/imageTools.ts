@@ -55,7 +55,7 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ error: "path is required" });
     }
     try {
-      const resolved = resolveSendablePath(context.config, context.localFileService, path);
+      const resolved = resolveSendablePath(context.localFileService, path);
       const prepared = await context.mediaVisionService.prepareAbsolutePathForModel(resolved.absolutePath, resolved.sourceName);
       const result: LlmToolExecutionResult = {
         content: JSON.stringify({

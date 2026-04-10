@@ -38,7 +38,7 @@ export class ShellRuntime {
   }
 
   isEnabled(): boolean {
-    return this.config.shell.enabled && this.config.shell.mode === "full";
+    return this.config.shell.enabled;
   }
 
   async run(params: ShellRunParams): Promise<ShellRunResult> {

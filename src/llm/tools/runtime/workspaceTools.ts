@@ -409,7 +409,7 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     }
     let resolvedPath;
     try {
-      resolvedPath = resolveSendablePath(context.config, context.localFileService, path);
+      resolvedPath = resolveSendablePath(context.localFileService, path);
     } catch (error) {
       return JSON.stringify({ error: error instanceof Error ? error.message : String(error) });
     }

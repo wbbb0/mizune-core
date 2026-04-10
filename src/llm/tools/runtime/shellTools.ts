@@ -3,7 +3,7 @@ import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
 import { getBooleanArg, getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
 
-const isShellToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.shell.enabled && config.shell.mode === "full";
+const isShellToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.shell.enabled;
 
 export const shellToolDescriptors: ToolDescriptor[] = [
   {

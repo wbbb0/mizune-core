@@ -18,7 +18,6 @@ async function main() {
     const config = createForwardFeatureConfig();
     config.search.aliyunIqs.enabled = true;
     config.shell.enabled = true;
-    config.shell.mode = "full";
     const names = getBuiltinTools("owner", config).map((tool) => tool.function.name);
     assert.ok(names.includes("end_turn_without_reply"));
     assert.ok(names.includes("get_current_time"));
@@ -833,7 +832,7 @@ async function main() {
     }
   });
 
-  await runCase("local_file_send_to_chat accepts root-relative path when read mode is allowed_roots", async () => {
+  await runCase("local_file_send_to_chat sends workspace-relative image", async () => {
     const queuedTasks: Array<() => Promise<void>> = [];
     const sentMessages: any[] = [];
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-path-rel-"));
@@ -846,14 +845,7 @@ async function main() {
         { id: "tool_workspace_send_path_rel", type: "function", function: { name: "local_file_send_to_chat", arguments: "{\"path\":\"outputs/diagram.png\"}" } },
         { path: "outputs/diagram.png" },
         {
-          config: createTestAppConfig({
-            localFileAccess: {
-              read: {
-                mode: "allowed_roots",
-                allowedRoots: ["data", tempDir]
-              }
-            }
-          }),
+          config: createTestAppConfig(),
           lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
           localFileService: {
             resolvePath(relativePath: string) {
@@ -909,33 +901,7 @@ async function main() {
     }
   });
 
-  await runCase("local_file_send_to_chat rejects absolute path outside allowed roots", async () => {
-    const result = await localFileToolHandlers.local_file_send_to_chat!(
-      { id: "tool_workspace_send_path_rel_reject", type: "function", function: { name: "local_file_send_to_chat", arguments: "{\"path\":\"/tmp/demo.txt\"}" } },
-      { path: "/tmp/demo.txt" },
-      {
-        config: createTestAppConfig({
-          localFileAccess: {
-            read: {
-              mode: "allowed_roots",
-              allowedRoots: ["data"]
-            }
-          }
-        }),
-        localFileService: {
-          resolvePath() {
-            throw new Error("should not be called");
-          }
-        }
-      } as any
-    );
-
-    assert.deepEqual(JSON.parse(String(result)), {
-      error: "path is outside allowed local file roots: /tmp/demo.txt"
-    });
-  });
-
-  await runCase("local_file_send_to_chat accepts absolute path when read mode is any_path", async () => {
+  await runCase("local_file_send_to_chat sends file via absolute path", async () => {
     const queuedTasks: Array<() => Promise<void>> = [];
     const sentTexts: any[] = [];
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-path-abs-"));
@@ -947,14 +913,7 @@ async function main() {
         { id: "tool_workspace_send_path_abs", type: "function", function: { name: "local_file_send_to_chat", arguments: `{\"path\":\"${filePath}\"}` } },
         { path: filePath },
         {
-          config: createTestAppConfig({
-            localFileAccess: {
-              read: {
-                mode: "any_path",
-                allowedRoots: ["data"]
-              }
-            }
-          }),
+          config: createTestAppConfig(),
           lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
           oneBotClient: {
             async sendText(params: unknown) {
@@ -993,19 +952,12 @@ async function main() {
     }
   });
 
-  await runCase("local_file_send_to_chat still accepts relative paths in any_path mode", async () => {
+  await runCase("local_file_send_to_chat resolves relative path through localFileService", async () => {
     const result = await localFileToolHandlers.local_file_send_to_chat!(
-      { id: "tool_workspace_send_path_abs_reject", type: "function", function: { name: "local_file_send_to_chat", arguments: "{\"path\":\"outputs/demo.txt\"}" } },
+      { id: "tool_workspace_send_path_rel_resolve", type: "function", function: { name: "local_file_send_to_chat", arguments: "{\"path\":\"outputs/demo.txt\"}" } },
       { path: "outputs/demo.txt" },
       {
-        config: createTestAppConfig({
-          localFileAccess: {
-            read: {
-              mode: "any_path",
-              allowedRoots: ["data"]
-            }
-          }
-        }),
+        config: createTestAppConfig(),
         lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
         localFileService: {
           resolvePath(relativePath: string) {

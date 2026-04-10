@@ -1,5 +1,4 @@
 import { basename, isAbsolute, resolve } from "node:path";
-import type { AppConfig } from "#config/config.ts";
 import type { LocalFileService } from "./localFileService.ts";
 
 export interface ResolvedSendablePath {
@@ -11,18 +10,12 @@ export interface ResolvedSendablePath {
 }
 
 export function resolveSendablePath(
-  config: AppConfig,
   localFileService: Pick<LocalFileService, "resolvePath">,
   inputPath: string
 ): ResolvedSendablePath {
   const normalizedInput = String(inputPath ?? "").trim();
   if (!normalizedInput) {
     throw new Error("path is required");
-  }
-
-  const mode = config.localFileAccess.read.mode;
-  if (mode === "disabled") {
-    throw new Error("local file read is disabled");
   }
 
   if (!isAbsolute(normalizedInput)) {
@@ -36,10 +29,6 @@ export function resolveSendablePath(
     };
   }
 
-  if (mode === "allowed_roots" && !isPathWithinAllowedRoots(config.localFileAccess.read.allowedRoots, normalizedInput)) {
-    throw new Error(`path is outside allowed local file roots: ${normalizedInput}`);
-  }
-
   const absolutePath = resolve(normalizedInput);
   return {
     absolutePath,
@@ -48,13 +37,6 @@ export function resolveSendablePath(
     pathMode: "absolute",
     chatFilePath: null
   };
-}
-
-function isPathWithinAllowedRoots(allowedRoots: string[], inputPath: string): boolean {
-  const absolutePath = resolve(inputPath);
-  return allowedRoots
-    .map((root) => resolve(root))
-    .some((root) => absolutePath === root || absolutePath.startsWith(`${root}/`));
 }
 
 export function inferSendableFileKind(pathLike: string): "image" | "animated_image" | "file" {

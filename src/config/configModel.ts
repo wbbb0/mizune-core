@@ -158,7 +158,6 @@ const schedulerConfigSchema = s.object({
 
 const shellConfigSchema = s.object({
   enabled: s.boolean().default(false),
-  mode: s.enum(["disabled", "full"] as const).default("disabled"),
   defaultTimeoutMs: s.number().int().positive().default(120000),
   maxTimeoutMs: s.number().int().positive().default(600000),
   maxOutputChars: s.number().int().positive().default(12000),
@@ -169,19 +168,6 @@ const localFilesConfigSchema = s.object({
   enabled: s.boolean().default(true),
   root: s.string().trim().nonempty().default("data"),
   maxPatchFileBytes: s.number().int().positive().default(512 * 1024)
-}).default(emptyObject);
-
-const localFileAccessSchema = s.object({
-  read: s.object({
-    mode: s.enum(["disabled", "allowed_roots", "any_path"] as const).default("allowed_roots"),
-    allowedRoots: s.array(s.string().trim().nonempty()).min(1).default(["data"])
-  }).default(emptyObject),
-  write: s.object({
-    mode: s.enum(["disabled", "allowed_roots"] as const).default("allowed_roots"),
-    allowedRoots: s.array(s.string().trim().nonempty()).min(1).default(["data"])
-  }).default(emptyObject),
-  maxReadBytes: s.number().int().positive().default(32 * 1024 * 1024),
-  maxImageBytes: s.number().int().positive().default(16 * 1024 * 1024)
 }).default(emptyObject);
 
 const chatFilesConfigSchema = s.object({
@@ -336,7 +322,6 @@ export const fileConfigSchema = s.object({
   scheduler: schedulerConfigSchema,
   shell: shellConfigSchema,
   localFiles: localFilesConfigSchema,
-  localFileAccess: localFileAccessSchema,
   chatFiles: chatFilesConfigSchema,
   comfy: comfyConfigSchema,
   search: searchConfigSchema,
@@ -376,7 +361,6 @@ export type InternalApiConfig = Infer<typeof internalApiConfigSchema>;
 export type SchedulerConfig = Infer<typeof schedulerConfigSchema>;
 export type ShellConfig = Infer<typeof shellConfigSchema>;
 export type LocalFilesConfig = Infer<typeof localFilesConfigSchema>;
-export type LocalFileAccessConfig = Infer<typeof localFileAccessSchema>;
 export type ChatFilesConfig = Infer<typeof chatFilesConfigSchema>;
 export type ComfyConfig = Infer<typeof comfyConfigSchema>;
 export type ComfyTemplateConfig = Infer<typeof comfyTemplateConfigSchema>;

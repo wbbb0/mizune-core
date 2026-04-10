@@ -93,7 +93,6 @@ const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
   },
   shell: {
     enabled: false,
-    mode: "disabled",
     defaultTimeoutMs: 1000,
     maxTimeoutMs: 5000,
     maxOutputChars: 4000,
@@ -103,18 +102,6 @@ const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
     enabled: true,
     root: "data",
     maxPatchFileBytes: 512 * 1024
-  },
-  localFileAccess: {
-    read: {
-      mode: "allowed_roots",
-      allowedRoots: ["data", "/tmp"]
-    },
-    write: {
-      mode: "allowed_roots",
-      allowedRoots: ["data", "/tmp"]
-    },
-    maxReadBytes: 32 * 1024 * 1024,
-    maxImageBytes: 16 * 1024 * 1024
   },
   chatFiles: {
     enabled: true,

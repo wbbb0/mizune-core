@@ -11,7 +11,6 @@ async function main() {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-shell-runtime-title-"));
     const config = createForwardFeatureConfig();
     config.shell.enabled = true;
-    config.shell.mode = "full";
     const runtime = new ShellRuntime(config, createSilentLogger(), dataDir);
 
     try {
