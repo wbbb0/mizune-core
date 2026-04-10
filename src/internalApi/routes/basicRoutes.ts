@@ -63,40 +63,40 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
   });
 
-  app.get("/api/workspace/items", async (request, reply) => {
+  app.get("/api/local-files/items", async (request, reply) => {
     const query = parseWorkspacePathQuery(request.query);
     if (!parseOrReply(reply, query)) {
       return reply;
     }
 
     try {
-      return await services.workspaceAdmin.listItems(query.path);
+      return await services.localFileAdmin.listItems(query.path);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
     }
   });
 
-  app.get("/api/workspace/stat", async (request, reply) => {
+  app.get("/api/local-files/stat", async (request, reply) => {
     const query = parseWorkspacePathQuery(request.query);
     if (!parseOrReply(reply, query)) {
       return reply;
     }
 
     try {
-      return await services.workspaceAdmin.statItem(query.path);
+      return await services.localFileAdmin.statItem(query.path);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
     }
   });
 
-  app.get("/api/workspace/file", async (request, reply) => {
+  app.get("/api/local-files/file", async (request, reply) => {
     const query = parseWorkspaceFileQuery(request.query);
     if (!parseOrReply(reply, query)) {
       return reply;
     }
 
     try {
-      return await services.workspaceAdmin.readFile(query.path, {
+      return await services.localFileAdmin.readFile(query.path, {
         ...(query.startLine != null ? { startLine: query.startLine } : {}),
         ...(query.endLine != null ? { endLine: query.endLine } : {})
       });
@@ -105,14 +105,14 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
   });
 
-  app.get("/api/workspace/content", async (request, reply) => {
+  app.get("/api/local-files/content", async (request, reply) => {
     const query = parseWorkspacePathQuery(request.query);
     if (!parseOrReply(reply, query)) {
       return reply;
     }
 
     try {
-      const result = await services.workspaceAdmin.readFileContent(query.path);
+      const result = await services.localFileAdmin.readFileContent(query.path);
       reply.type(result.contentType);
       return reply.send(result.buffer);
     } catch (error: unknown) {
@@ -120,14 +120,14 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
   });
 
-  app.get("/api/workspace/send-content", async (request, reply) => {
+  app.get("/api/local-files/send-content", async (request, reply) => {
     const query = parseWorkspacePathQuery(request.query);
     if (!parseOrReply(reply, query)) {
       return reply;
     }
 
     try {
-      const result = await services.workspaceAdmin.readSendableFileContent(query.path);
+      const result = await services.localFileAdmin.readSendableFileContent(query.path);
       reply.type(result.contentType);
       return reply.send(result.buffer);
     } catch (error: unknown) {
@@ -135,18 +135,18 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
   });
 
-  app.get("/api/workspace/files", async () => services.workspaceAdmin.listFiles());
+  app.get("/api/chat-files", async () => services.localFileAdmin.listFiles());
 
-  app.get("/api/workspace/files/:fileId", async (request, reply) => {
+  app.get("/api/chat-files/:fileId", async (request, reply) => {
     const params = parseWorkspaceStoredFileParams(request.params);
     if (!parseOrReply(reply, params)) {
       return reply;
     }
 
     try {
-      const result = await services.workspaceAdmin.getFile(params.fileId);
+      const result = await services.localFileAdmin.getFile(params.fileId);
       if (!result.file) {
-        return respondNotFound(reply, "Workspace file not found");
+        return respondNotFound(reply, "Chat file not found");
       }
       return result;
     } catch (error: unknown) {
@@ -154,16 +154,16 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
   });
 
-  app.get("/api/workspace/files/:fileId/content", async (request, reply) => {
+  app.get("/api/chat-files/:fileId/content", async (request, reply) => {
     const params = parseWorkspaceStoredFileParams(request.params);
     if (!parseOrReply(reply, params)) {
       return reply;
     }
 
     try {
-      const result = await services.workspaceAdmin.readFileContentById(params.fileId);
+      const result = await services.localFileAdmin.readFileContentById(params.fileId);
       if (!result.file || !result.buffer) {
-        return respondNotFound(reply, "Workspace file not found");
+        return respondNotFound(reply, "Chat file not found");
       }
 
       reply.header("Content-Disposition", `inline; filename="${encodeURIComponent(result.file.sourceName || result.file.fileId)}"`);

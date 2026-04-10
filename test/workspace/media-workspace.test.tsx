@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
-import { MediaWorkspace } from "../../src/services/workspace/mediaWorkspace.ts";
-import { WorkspaceService } from "../../src/services/workspace/workspaceService.ts";
+import { ChatFileStore } from "../../src/services/workspace/chatFileStore.ts";
+import { LocalFileService } from "../../src/services/workspace/localFileService.ts";
 
 async function runCase(name: string, fn: () => Promise<void>) {
   process.stdout.write(`- ${name} ... `);
@@ -56,17 +56,22 @@ async function startServer(handler: TestRequestHandler): Promise<{
   };
 }
 
-function createMediaWorkspace(rootDir: string): MediaWorkspace {
+function createChatFileStore(rootDir: string): ChatFileStore {
   const config = createTestAppConfig({
-    workspace: {
+    localFiles: {
       enabled: true,
       root: rootDir,
-      maxUploadBytes: 1024 * 1024,
       maxPatchFileBytes: 128 * 1024
+    },
+    chatFiles: {
+      enabled: true,
+      root: "chat-files",
+      maxUploadBytes: 1024 * 1024,
+      gcGracePeriodMs: 0
     }
   });
-  const workspaceService = new WorkspaceService(config, rootDir);
-  return new MediaWorkspace(config, pino({ level: "silent" }), workspaceService);
+  const localFileService = new LocalFileService(config, rootDir);
+  return new ChatFileStore(config, pino({ level: "silent" }), localFileService);
 }
 
 const TINY_PNG = Buffer.from(
@@ -77,8 +82,8 @@ const TINY_PNG = Buffer.from(
 async function main() {
   await runCase("importRemoteSource rejects corrupted downloaded images", async () => {
     await withTempDir(async (dir) => {
-      const mediaWorkspace = createMediaWorkspace(dir);
-      await mediaWorkspace.init();
+      const chatFileStore = createChatFileStore(dir);
+      await chatFileStore.init();
       const server = await startServer(((req, res) => {
         if (req.url !== "/broken.png") {
           res.writeHead(404).end();
@@ -90,13 +95,13 @@ async function main() {
 
       try {
         await assert.rejects(
-          mediaWorkspace.importRemoteSource({
+          chatFileStore.importRemoteSource({
             source: `${server.baseUrl}/broken.png`,
             origin: "browser_download"
           }),
           /Workspace image validation failed: image is invalid or corrupted/
         );
-        assert.deepEqual(await mediaWorkspace.listFiles(), []);
+        assert.deepEqual(await chatFileStore.listFiles(), []);
       } finally {
         await server.close();
       }
@@ -105,8 +110,8 @@ async function main() {
 
   await runCase("importRemoteSource keeps valid downloaded images", async () => {
     await withTempDir(async (dir) => {
-      const mediaWorkspace = createMediaWorkspace(dir);
-      await mediaWorkspace.init();
+      const chatFileStore = createChatFileStore(dir);
+      await chatFileStore.init();
       const server = await startServer(((req, res) => {
         if (req.url !== "/ok.png") {
           res.writeHead(404).end();
@@ -117,13 +122,13 @@ async function main() {
       }) satisfies TestRequestHandler);
 
       try {
-        const file = await mediaWorkspace.importRemoteSource({
+        const file = await chatFileStore.importRemoteSource({
           source: `${server.baseUrl}/ok.png`,
           origin: "browser_download"
         });
         assert.equal(file.kind, "image");
         assert.equal(file.mimeType, "image/png");
-        assert.equal((await mediaWorkspace.listFiles()).length, 1);
+        assert.equal((await chatFileStore.listFiles()).length, 1);
       } finally {
         await server.close();
       }

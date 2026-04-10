@@ -35,7 +35,7 @@ export interface UserMessageItem {
   attachments?: Array<{
     fileId: string;
     kind: "image" | "animated_image" | "video" | "audio" | "file";
-    source: "chat_message" | "web_upload" | "browser" | "workspace";
+    source: "chat_message" | "web_upload" | "browser" | "chat_file";
     sourceName: string | null;
     mimeType: string | null;
     semanticKind?: "image" | "emoji";
@@ -88,10 +88,10 @@ export interface OutboundMediaMessageItem {
   fileId: string | null;
   fileRef: string | null;
   sourceName: string | null;
-  workspacePath: string | null;
+  chatFilePath: string | null;
   sourcePath: string | null;
   messageId: number | null;
-  toolName: "send_workspace_file_to_chat";
+  toolName: "chat_file_send_to_chat" | "local_file_send_to_chat";
   captionText?: string | null;
   timestampMs: number;
 }

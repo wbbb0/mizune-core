@@ -245,9 +245,9 @@ async function main() {
     await withConfigDir("llm-bot-config-partial-section-recovery", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeYaml(join(configDir, "global.yml"), {
-        shell: {
+        localFiles: {
           enabled: false,
-          defaultCwd: "/tmp"
+          root: "/tmp"
         },
         browser: {
           enabled: false
@@ -267,7 +267,7 @@ async function main() {
       });
 
       assert.equal(config.shell.enabled, true);
-      assert.equal(config.shell.defaultCwd, "/tmp");
+      assert.equal(config.localFiles.root, "/tmp");
       assert.equal(config.browser.enabled, false);
     });
   });

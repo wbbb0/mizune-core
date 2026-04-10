@@ -2,14 +2,14 @@
 import { computed } from "vue";
 import { FileText, Image as ImageIcon, File } from "lucide-vue-next";
 import TreeNodeShell from "@/components/tree/TreeNodeShell.vue";
-import type { WorkspaceItem } from "@/api/workspace";
+import type { LocalFileItem } from "@/api/workspace";
 
 defineOptions({ name: "WorkspaceFileTree" });
 
 const props = withDefaults(defineProps<{
-  items: WorkspaceItem[];
+  items: LocalFileItem[];
   expandedPaths: string[];
-  itemsByPath: Record<string, WorkspaceItem[]>;
+  itemsByPath: Record<string, LocalFileItem[]>;
   selectedPath: string | null;
   depth?: number;
 }>(), {
@@ -18,12 +18,12 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   toggleDirectory: [path: string];
-  selectItem: [item: WorkspaceItem];
+  selectItem: [item: LocalFileItem];
 }>();
 
 const expandedSet = computed(() => new Set(props.expandedPaths));
 
-function itemIcon(item: WorkspaceItem) {
+function itemIcon(item: LocalFileItem) {
   if (/\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(item.name)) {
     return ImageIcon;
   }

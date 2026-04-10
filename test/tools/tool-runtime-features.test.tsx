@@ -8,7 +8,7 @@ import { resourceToolHandlers } from "../../src/llm/tools/runtime/resourceTools.
 import { debugToolHandlers } from "../../src/llm/tools/runtime/debugTools.ts";
 import { shellToolHandlers } from "../../src/llm/tools/runtime/shellTools.ts";
 import { timeToolHandlers } from "../../src/llm/tools/runtime/timeTools.ts";
-import { workspaceToolHandlers } from "../../src/llm/tools/runtime/workspaceTools.ts";
+import { localFileToolHandlers, chatFileToolHandlers } from "../../src/llm/tools/runtime/workspaceTools.ts";
 import { profileToolHandlers } from "../../src/llm/tools/profile/profileTools.ts";
 import { createForwardFeatureConfig, runCase } from "../helpers/forward-test-support.tsx";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
@@ -23,10 +23,11 @@ async function main() {
     assert.ok(names.includes("end_turn_without_reply"));
     assert.ok(names.includes("get_current_time"));
     assert.ok(names.includes("view_forward_record"));
-    assert.ok(names.includes("view_media"));
+    assert.ok(names.includes("chat_file_view_media"));
     assert.ok(names.includes("view_message"));
-    assert.ok(names.includes("list_workspace_files"));
-    assert.ok(names.includes("send_workspace_file_to_chat"));
+    assert.ok(names.includes("chat_file_list"));
+    assert.ok(names.includes("chat_file_send_to_chat"));
+    assert.ok(names.includes("local_file_send_to_chat"));
     assert.ok(names.includes("ground_with_google_search"));
     assert.ok(names.includes("search_with_iqs_lite_advanced"));
     assert.ok(names.includes("list_live_resources"));
@@ -247,7 +248,7 @@ async function main() {
         tmuxRuntime: {},
         tmuxSessionStore: {},
         searchService: {},
-        mediaWorkspace: {},
+        chatFileStore: {},
         mediaVisionService: {},
         mediaCaptionService: {},
         forwardResolver: {},
@@ -394,13 +395,13 @@ async function main() {
     assert.equal((result as any).terminalResponse?.text, "");
   });
 
-  await runCase("send_workspace_file_to_chat rejects text when sending an image", async () => {
-    const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
-      { id: "tool_workspace_send_text_reject", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_id\":\"file_img_1\",\"text\":\"发你了\"}" } },
+  await runCase("chat_file_send_to_chat rejects text when sending an image", async () => {
+    const result = await chatFileToolHandlers.chat_file_send_to_chat!(
+      { id: "tool_workspace_send_text_reject", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_id\":\"file_img_1\",\"text\":\"发你了\"}" } },
       { file_ref: "img_deadbeef.png", text: "发你了" },
       {
         lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
-        mediaWorkspace: {
+        chatFileStore: {
           async getFile(id: string) {
             if (id !== "img_deadbeef.png" && id !== "file_img_1") {
               return null;
@@ -410,7 +411,7 @@ async function main() {
               fileRef: "img_deadbeef.png",
               kind: "image",
               sourceName: "test.png",
-              workspacePath: "workspace/media/file_img_1.png"
+              chatFilePath: "workspace/media/file_img_1.png"
             };
           },
           async listFiles() {
@@ -421,11 +422,11 @@ async function main() {
     );
 
     assert.deepEqual(JSON.parse(String(result)), {
-      error: "send_workspace_file_to_chat 发送图片时不能附带 text；若需要文字，请让模型单独发送回复"
+      error: "chat_file_send_to_chat 发送图片时不能附带 text"
     });
   });
 
-  await runCase("send_workspace_file_to_chat sends a pure image and keeps the turn open", async () => {
+  await runCase("chat_file_send_to_chat sends a pure image and keeps the turn open", async () => {
     const sentMessages: any[] = [];
     const sentMetaCalls: any[] = [];
     const transcriptCalls: any[] = [];
@@ -436,12 +437,12 @@ async function main() {
     await writeFile(imagePath, imageBytes);
 
     try {
-    const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
-      { id: "tool_workspace_send_1", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_ref\":\"img_deadbeef.png\"}" } },
+    const result = await chatFileToolHandlers.chat_file_send_to_chat!(
+      { id: "tool_workspace_send_1", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_ref\":\"img_deadbeef.png\"}" } },
       { file_ref: "img_deadbeef.png" },
       {
         lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
-        mediaWorkspace: {
+        chatFileStore: {
           async getFile(id: string) {
             if (id !== "img_deadbeef.png" && id !== "file_img_1") {
               return null;
@@ -451,7 +452,7 @@ async function main() {
               fileRef: "img_deadbeef.png",
               kind: "image",
               sourceName: "test.png",
-              workspacePath: "workspace/media/file_img_1.png"
+              chatFilePath: "workspace/media/file_img_1.png"
             };
           },
           async listFiles() {
@@ -517,10 +518,10 @@ async function main() {
       fileId: "file_img_1",
       fileRef: "img_deadbeef.png",
       sourceName: "test.png",
-      workspacePath: "workspace/media/file_img_1.png",
+      chatFilePath: "workspace/media/file_img_1.png",
       sourcePath: null,
       messageId: 42,
-      toolName: "send_workspace_file_to_chat",
+      toolName: "chat_file_send_to_chat",
       captionText: null,
       timestampMs: transcriptCalls[0].timestampMs
     });
@@ -532,16 +533,16 @@ async function main() {
     }
   });
 
-  await runCase("send_workspace_file_to_chat keeps the turn open for non-image fallback sends", async () => {
+  await runCase("chat_file_send_to_chat keeps the turn open for non-image fallback sends", async () => {
     const sentTexts: any[] = [];
     const sentMetaCalls: any[] = [];
     const queuedTasks: Array<() => Promise<void>> = [];
-    const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
-      { id: "tool_workspace_send_2", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_ref\":\"file_bead1234.txt\"}" } },
+    const result = await chatFileToolHandlers.chat_file_send_to_chat!(
+      { id: "tool_workspace_send_2", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_ref\":\"file_bead1234.txt\"}" } },
       { file_ref: "file_bead1234.txt" },
       {
         lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
-        mediaWorkspace: {
+        chatFileStore: {
           async getFile(id: string) {
             if (id !== "file_bead1234.txt" && id !== "file_file_1") {
               return null;
@@ -551,7 +552,7 @@ async function main() {
               fileRef: "file_bead1234.txt",
               kind: "file",
               sourceName: "note.txt",
-              workspacePath: "workspace/media/file_file_1.txt"
+              chatFilePath: "workspace/media/file_file_1.txt"
             };
           },
           async listFiles() {
@@ -585,8 +586,7 @@ async function main() {
       file_ref: "file_bead1234.txt",
       file_id: "file_file_1",
       deliveredAs: "text_fallback",
-      queued: true,
-      reason: "native file sending is not enabled in this phase"
+      queued: true
     });
 
     await queuedTasks[0]!();
@@ -594,24 +594,24 @@ async function main() {
     assert.equal(sentTexts.length, 1);
     assert.deepEqual(sentTexts[0], {
       userId: "owner",
-      text: "文件已保存在工作区：file_bead1234.txt；file_id=file_file_1"
+      text: "chat file 已发送：file_bead1234.txt；file_id=file_file_1"
     });
     assert.deepEqual(sentMetaCalls[0], {
       messageId: 43,
-      text: "文件已保存在工作区：file_bead1234.txt；file_id=file_file_1",
+      text: "chat file 已发送：file_bead1234.txt；file_id=file_file_1",
       sentAt: sentMetaCalls[0].sentAt
     });
     assert.equal(typeof sentMetaCalls[0].sentAt, "number");
     assert.equal((result as any).terminalResponse, undefined);
   });
 
-  await runCase("send_workspace_file_to_chat mirrors non-image fallback text into web delivery", async () => {
+  await runCase("chat_file_send_to_chat mirrors non-image fallback text into web delivery", async () => {
     const webChunks: string[] = [];
     const queuedTasks: Array<() => Promise<void>> = [];
     const assistantHistoryCalls: any[] = [];
 
-    const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
-      { id: "tool_workspace_send_2_web", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_ref\":\"file_bead1234.txt\"}" } },
+    const result = await chatFileToolHandlers.chat_file_send_to_chat!(
+      { id: "tool_workspace_send_2_web", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_ref\":\"file_bead1234.txt\"}" } },
       { file_ref: "file_bead1234.txt" },
       {
         replyDelivery: "web",
@@ -621,7 +621,7 @@ async function main() {
           }
         },
         lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
-        mediaWorkspace: {
+        chatFileStore: {
           async getFile(id: string) {
             if (id !== "file_bead1234.txt" && id !== "file_file_1") {
               return null;
@@ -631,7 +631,7 @@ async function main() {
               fileRef: "file_bead1234.txt",
               kind: "file",
               sourceName: "note.txt",
-              workspacePath: "workspace/media/file_file_1.txt"
+              chatFilePath: "workspace/media/file_file_1.txt"
             };
           },
           async listFiles() {
@@ -656,23 +656,22 @@ async function main() {
       file_ref: "file_bead1234.txt",
       file_id: "file_file_1",
       deliveredAs: "text_fallback",
-      queued: true,
-      reason: "native file sending is not enabled in this phase"
+      queued: true
     });
     assert.equal(queuedTasks.length, 1);
 
     await queuedTasks[0]!();
 
-    assert.deepEqual(webChunks, ["文件已保存在工作区：file_bead1234.txt；file_id=file_file_1"]);
+    assert.deepEqual(webChunks, ["chat file 已发送：file_bead1234.txt；file_id=file_file_1"]);
     assert.deepEqual(assistantHistoryCalls, [{
       chatType: "private",
       userId: "owner",
       senderName: "Owner",
-      text: "文件已保存在工作区：file_bead1234.txt；file_id=file_file_1"
+      text: "chat file 已发送：file_bead1234.txt；file_id=file_file_1"
     }]);
   });
 
-  await runCase("send_workspace_file_to_chat records image sends for web delivery", async () => {
+  await runCase("chat_file_send_to_chat records image sends for web delivery", async () => {
     const transcriptCalls: any[] = [];
     const queuedTasks: Array<() => Promise<void>> = [];
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-web-"));
@@ -680,13 +679,13 @@ async function main() {
     await writeFile(imagePath, Buffer.from("fake-image-bytes"));
 
     try {
-      const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
-        { id: "tool_workspace_send_web_img", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_ref\":\"img_deadbeef.png\"}" } },
+      const result = await chatFileToolHandlers.chat_file_send_to_chat!(
+        { id: "tool_workspace_send_web_img", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_ref\":\"img_deadbeef.png\"}" } },
         { file_ref: "img_deadbeef.png" },
         {
           replyDelivery: "web",
           lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
-          mediaWorkspace: {
+          chatFileStore: {
             async getFile(id: string) {
               if (id !== "img_deadbeef.png" && id !== "file_img_1") {
                 return null;
@@ -696,7 +695,7 @@ async function main() {
                 fileRef: "img_deadbeef.png",
                 kind: "image",
                 sourceName: "test.png",
-                workspacePath: "workspace/media/file_img_1.png"
+                chatFilePath: "workspace/media/file_img_1.png"
               };
             },
             async listFiles() {
@@ -739,10 +738,10 @@ async function main() {
         fileId: "file_img_1",
         fileRef: "img_deadbeef.png",
         sourceName: "test.png",
-        workspacePath: "workspace/media/file_img_1.png",
+        chatFilePath: "workspace/media/file_img_1.png",
         sourcePath: null,
         messageId: null,
-        toolName: "send_workspace_file_to_chat",
+        toolName: "chat_file_send_to_chat",
         captionText: null,
         timestampMs: transcriptCalls[0].timestampMs
       });
@@ -752,27 +751,27 @@ async function main() {
     }
   });
 
-  await runCase("send_workspace_file_to_chat accepts stored filenames as file_ref", async () => {
+  await runCase("chat_file_send_to_chat accepts stored filenames as file_ref", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-ref-"));
     const imagePath = join(tempDir, "file_deadbeef.jpg");
     await writeFile(imagePath, Buffer.from("fake-image-bytes"));
     const queuedTasks: Array<() => Promise<void>> = [];
     const sentMessages: any[] = [];
     try {
-      const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
-        { id: "tool_workspace_send_3", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"file_ref\":\"file_deadbeef.jpg\"}" } },
+      const result = await chatFileToolHandlers.chat_file_send_to_chat!(
+        { id: "tool_workspace_send_3", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_ref\":\"file_deadbeef.jpg\"}" } },
         { file_ref: "file_deadbeef.jpg" },
         {
           lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
-          mediaWorkspace: {
+          chatFileStore: {
             async getFile(id: string) {
               if (id === "file_deadbeef") {
                 return {
                   fileId: "file_deadbeef",
                   fileRef: "img_deadbeef.jpg",
                   kind: "image",
-                  origin: "workspace_import",
-                  workspacePath: "workspace/media/file_deadbeef.jpg",
+                  origin: "local_file_import",
+                  chatFilePath: "workspace/media/file_deadbeef.jpg",
                   sourceName: "photo.jpg",
                   mimeType: "image/jpeg",
                   sizeBytes: 123,
@@ -788,8 +787,8 @@ async function main() {
                 fileId: "file_deadbeef",
                 fileRef: "img_deadbeef.jpg",
                 kind: "image",
-                origin: "workspace_import",
-                workspacePath: "workspace/media/file_deadbeef.jpg",
+                origin: "local_file_import",
+                chatFilePath: "workspace/media/file_deadbeef.jpg",
                 sourceName: "photo.jpg",
                 mimeType: "image/jpeg",
                 sizeBytes: 123,
@@ -834,7 +833,7 @@ async function main() {
     }
   });
 
-  await runCase("send_workspace_file_to_chat accepts workspace-relative path when shell.allowAnyCwd=false", async () => {
+  await runCase("local_file_send_to_chat accepts root-relative path when read mode is allowed_roots", async () => {
     const queuedTasks: Array<() => Promise<void>> = [];
     const sentMessages: any[] = [];
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-path-rel-"));
@@ -843,17 +842,20 @@ async function main() {
     await writeFile(imagePath, imageBytes);
 
     try {
-      const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
-        { id: "tool_workspace_send_path_rel", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"path\":\"outputs/diagram.png\"}" } },
+      const result = await localFileToolHandlers.local_file_send_to_chat!(
+        { id: "tool_workspace_send_path_rel", type: "function", function: { name: "local_file_send_to_chat", arguments: "{\"path\":\"outputs/diagram.png\"}" } },
         { path: "outputs/diagram.png" },
         {
           config: createTestAppConfig({
-            shell: {
-              allowAnyCwd: false
+            localFileAccess: {
+              read: {
+                mode: "allowed_roots",
+                allowedRoots: ["data", tempDir]
+              }
             }
           }),
           lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
-          workspaceService: {
+          localFileService: {
             resolvePath(relativePath: string) {
               assert.equal(relativePath, "outputs/diagram.png");
               return {
@@ -862,7 +864,7 @@ async function main() {
               };
             }
           },
-          mediaWorkspace: {
+          chatFileStore: {
             async resolveAbsolutePath() {
               throw new Error("should not be called");
             }
@@ -889,7 +891,6 @@ async function main() {
         ok: true,
         path: "outputs/diagram.png",
         path_mode: "workspace_relative",
-        source_name: "diagram.png",
         deliveredAs: "image",
         queued: true
       });
@@ -908,17 +909,20 @@ async function main() {
     }
   });
 
-  await runCase("send_workspace_file_to_chat rejects absolute path when shell.allowAnyCwd=false", async () => {
-    const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
-      { id: "tool_workspace_send_path_rel_reject", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"path\":\"/tmp/demo.txt\"}" } },
+  await runCase("local_file_send_to_chat rejects absolute path outside allowed roots", async () => {
+    const result = await localFileToolHandlers.local_file_send_to_chat!(
+      { id: "tool_workspace_send_path_rel_reject", type: "function", function: { name: "local_file_send_to_chat", arguments: "{\"path\":\"/tmp/demo.txt\"}" } },
       { path: "/tmp/demo.txt" },
       {
         config: createTestAppConfig({
-          shell: {
-            allowAnyCwd: false
+          localFileAccess: {
+            read: {
+              mode: "allowed_roots",
+              allowedRoots: ["data"]
+            }
           }
         }),
-        workspaceService: {
+        localFileService: {
           resolvePath() {
             throw new Error("should not be called");
           }
@@ -927,11 +931,11 @@ async function main() {
     );
 
     assert.deepEqual(JSON.parse(String(result)), {
-      error: "absolute path is not allowed when shell.allowAnyCwd=false; use a workspace-relative path"
+      error: "path is outside allowed local file roots: /tmp/demo.txt"
     });
   });
 
-  await runCase("send_workspace_file_to_chat accepts absolute path when shell.allowAnyCwd=true", async () => {
+  await runCase("local_file_send_to_chat accepts absolute path when read mode is any_path", async () => {
     const queuedTasks: Array<() => Promise<void>> = [];
     const sentTexts: any[] = [];
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-path-abs-"));
@@ -939,21 +943,19 @@ async function main() {
     await writeFile(filePath, "hello", "utf8");
 
     try {
-      const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
-        { id: "tool_workspace_send_path_abs", type: "function", function: { name: "send_workspace_file_to_chat", arguments: `{\"path\":\"${filePath}\"}` } },
+      const result = await localFileToolHandlers.local_file_send_to_chat!(
+        { id: "tool_workspace_send_path_abs", type: "function", function: { name: "local_file_send_to_chat", arguments: `{\"path\":\"${filePath}\"}` } },
         { path: filePath },
         {
           config: createTestAppConfig({
-            shell: {
-              allowAnyCwd: true
+            localFileAccess: {
+              read: {
+                mode: "any_path",
+                allowedRoots: ["data"]
+              }
             }
           }),
           lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
-          mediaWorkspace: {
-            async resolveAbsolutePath() {
-              throw new Error("should not be called");
-            }
-          },
           oneBotClient: {
             async sendText(params: unknown) {
               sentTexts.push(params);
@@ -975,10 +977,8 @@ async function main() {
         ok: true,
         path: filePath,
         path_mode: "absolute",
-        source_name: "report.txt",
         deliveredAs: "text_fallback",
-        queued: true,
-        reason: "native file sending is not enabled in this phase"
+        queued: true
       });
       assert.equal(queuedTasks.length, 1);
 
@@ -993,22 +993,36 @@ async function main() {
     }
   });
 
-  await runCase("send_workspace_file_to_chat rejects relative path when shell.allowAnyCwd=true", async () => {
-    const result = await workspaceToolHandlers.send_workspace_file_to_chat!(
-      { id: "tool_workspace_send_path_abs_reject", type: "function", function: { name: "send_workspace_file_to_chat", arguments: "{\"path\":\"outputs/demo.txt\"}" } },
+  await runCase("local_file_send_to_chat still accepts relative paths in any_path mode", async () => {
+    const result = await localFileToolHandlers.local_file_send_to_chat!(
+      { id: "tool_workspace_send_path_abs_reject", type: "function", function: { name: "local_file_send_to_chat", arguments: "{\"path\":\"outputs/demo.txt\"}" } },
       { path: "outputs/demo.txt" },
       {
         config: createTestAppConfig({
-          shell: {
-            allowAnyCwd: true
+          localFileAccess: {
+            read: {
+              mode: "any_path",
+              allowedRoots: ["data"]
+            }
           }
-        })
+        }),
+        lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
+        localFileService: {
+          resolvePath(relativePath: string) {
+            assert.equal(relativePath, "outputs/demo.txt");
+            return {
+              relativePath,
+              absolutePath: "/project/data/outputs/demo.txt"
+            };
+          }
+        },
+        messageQueue: {
+          enqueueTextDetached() {}
+        }
       } as any
     );
 
-    assert.deepEqual(JSON.parse(String(result)), {
-      error: "path must be absolute when shell.allowAnyCwd=true"
-    });
+    assert.equal(JSON.parse(String((result as any).content ?? result)).path, "outputs/demo.txt");
   });
 
   await runCase("list_live_resources merges browser and shell resources", async () => {

@@ -188,7 +188,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "download_asset",
-        description: "把远程链接或当前网页元素对应的图片、视频、音频、文件下载进工作区；支持直接给 url，也支持给 resource_id 加 target_id。成功后返回 workspace file_id / file_ref / workspace_path。",
+        description: "把远程链接或当前网页元素对应的图片、视频、音频、文件下载进工作区；支持直接给 url，也支持给 resource_id 加 target_id。成功后返回 workspace file_id / file_ref / chat_file_path。",
         parameters: {
           type: "object",
           properties: {

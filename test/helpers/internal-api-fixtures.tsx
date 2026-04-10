@@ -96,14 +96,19 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         return { messageId: "123" };
       }
     } as unknown as InternalApiDeps["oneBotClient"],
-    mediaWorkspace: {
+    chatMessageFileGcService: {
+      async sweep() {
+        return { deletedFileIds: [] };
+      }
+    } as unknown as InternalApiDeps["chatMessageFileGcService"],
+    chatFileStore: {
       async importBuffer(input: { kind: "image" | "animated_image" | "video" | "file" | "audio"; sourceName?: string; mimeType?: string; buffer: Buffer }) {
         return {
           fileId: `file_${input.kind}_1`,
           fileRef: `${input.kind}_fixture_1.bin`,
           kind: input.kind,
           origin: "user_upload",
-          workspacePath: `workspace/media/${input.sourceName ?? "file"}`,
+          chatFilePath: `workspace/media/${input.sourceName ?? "file"}`,
           sourceName: input.sourceName ?? "file",
           mimeType: input.mimeType ?? "application/octet-stream",
           sizeBytes: input.buffer.byteLength,
@@ -118,7 +123,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           fileRef: "upload_image1.png",
           kind: "image",
           origin: "user_upload",
-          workspacePath: "workspace/media/file_image_1.png",
+          chatFilePath: "workspace/media/file_image_1.png",
           sourceName: "fixture.png",
           mimeType: "image/png",
           sizeBytes: 13,
@@ -136,7 +141,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           fileRef: "upload_image1.png",
           kind: "image",
           origin: "user_upload",
-          workspacePath: "workspace/media/file_image_1.png",
+          chatFilePath: "workspace/media/file_image_1.png",
           sourceName: "fixture.png",
           mimeType: "image/png",
           sizeBytes: 13,
@@ -151,10 +156,10 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         }
         return join(state.workspaceRoot, "workspace", "media", "file_image_1.png");
       }
-    } as unknown as InternalApiDeps["mediaWorkspace"],
+    } as unknown as InternalApiDeps["chatFileStore"],
     mediaVisionService: {} as unknown as InternalApiDeps["mediaVisionService"],
     mediaCaptionService: {} as unknown as InternalApiDeps["mediaCaptionService"],
-    workspaceService: {
+    localFileService: {
       rootDir: state.workspaceRoot,
       async listItems(relativePath = ".") {
         if (relativePath === "../escape") {
@@ -220,7 +225,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           buffer: Buffer.from("fixture-image")
         };
       }
-    } as unknown as InternalApiDeps["workspaceService"],
+    } as unknown as InternalApiDeps["localFileService"],
     sessionManager: {
       __activeResponses: new Map<string, number>(),
       listSessions() {

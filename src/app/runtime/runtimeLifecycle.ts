@@ -16,10 +16,10 @@ import type { UserStore } from "#identity/userStore.ts";
 import type { GlobalMemoryStore } from "#memory/memoryStore.ts";
 import type { OneBotMessageEvent, OneBotRequestEvent } from "#services/onebot/types.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
-import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
+import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
-import type { WorkspaceService } from "#services/workspace/workspaceService.ts";
+import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { GenerationWebOutputCollector } from "../generation/generationTypes.ts";
 import type { ComfyTaskRunner } from "#comfy/taskRunner.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
@@ -72,8 +72,9 @@ export async function startInternalApiIfEnabled(input: {
     }
   ) => Promise<void>;
   browserService: BrowserService;
-  workspaceService: WorkspaceService;
-  mediaWorkspace: MediaWorkspace;
+  localFileService: LocalFileService;
+  chatFileStore: ChatFileStore;
+  chatMessageFileGcService: import("#services/workspace/chatMessageFileGcService.ts").ChatMessageFileGcService;
   mediaVisionService: MediaVisionService;
   mediaCaptionService: MediaCaptionService;
 }): Promise<InternalApiController | null> {
@@ -88,8 +89,9 @@ export function subscribeRuntimeReload(input: {
   logger: Logger;
   oneBotClient: OneBotClient;
   browserService: BrowserService;
-  workspaceService: WorkspaceService;
-  mediaWorkspace: MediaWorkspace;
+  localFileService: LocalFileService;
+  chatFileStore: ChatFileStore;
+  chatMessageFileGcService: import("#services/workspace/chatMessageFileGcService.ts").ChatMessageFileGcService;
   mediaVisionService: MediaVisionService;
   mediaCaptionService: MediaCaptionService;
   searchService: { reloadConfig: () => void };
@@ -170,6 +172,7 @@ export function subscribeRuntimeReload(input: {
       globalMemoryStore: input.globalMemoryStore,
       userStore: input.userStore,
       whitelistStore: input.whitelistStore,
+      chatMessageFileGcService: input.chatMessageFileGcService,
       requestStore: input.requestStore,
       scheduledJobStore: input.scheduledJobStore,
       scheduler: input.scheduler,
@@ -180,8 +183,8 @@ export function subscribeRuntimeReload(input: {
       flushSession: input.flushSession,
       handleWebIncomingMessage: input.handleWebIncomingMessage,
       browserService: input.browserService,
-      workspaceService: input.workspaceService,
-      mediaWorkspace: input.mediaWorkspace,
+      localFileService: input.localFileService,
+      chatFileStore: input.chatFileStore,
       mediaVisionService: input.mediaVisionService,
       mediaCaptionService: input.mediaCaptionService
     }));

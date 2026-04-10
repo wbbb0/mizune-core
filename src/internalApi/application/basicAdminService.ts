@@ -92,7 +92,7 @@ export function createWebSession(
 }
 
 export async function deleteSession(
-  deps: Pick<InternalApiDeps, "sessionManager" | "sessionPersistence">,
+  deps: Pick<InternalApiDeps, "sessionManager" | "sessionPersistence" | "chatMessageFileGcService">,
   sessionId: string
 ) {
   const deleted = deps.sessionManager.deleteSession(sessionId);
@@ -100,6 +100,10 @@ export async function deleteSession(
     return { ok: false as const };
   }
   await deps.sessionPersistence.remove(sessionId);
+  await deps.chatMessageFileGcService.sweep({
+    activeSessions: deps.sessionManager.listSessions(),
+    persistedSessions: await deps.sessionPersistence.loadAll()
+  });
   return { ok: true as const };
 }
 

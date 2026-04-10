@@ -45,7 +45,7 @@ export async function processIncomingMessage(
     sessionManager,
     debounceManager,
     audioStore,
-    mediaWorkspace,
+    chatFileStore,
     mediaCaptionService,
     userStore,
     setupStore,
@@ -53,7 +53,7 @@ export async function processIncomingMessage(
   } = services;
 
   const context = await createMessageProcessingContext(
-    { audioStore, mediaWorkspace, sessionManager, userStore, setupStore },
+    { audioStore, chatFileStore, sessionManager, userStore, setupStore },
     incomingMessage,
     options
   );

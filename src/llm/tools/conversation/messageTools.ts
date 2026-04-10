@@ -48,7 +48,7 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
       ));
       const workspaceImageAssets = await Promise.all(
         imageSources
-          .map(async (item) => context.mediaWorkspace.importRemoteSource({
+          .map(async (item) => context.chatFileStore.importRemoteSource({
             source: item.source,
             kind: "image",
             origin: "chat_message",
@@ -58,7 +58,7 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
           }).catch(() => null))
       );
       const workspaceFileAssets = await Promise.all(
-        extractFileSources(message.message).map(async (item) => context.mediaWorkspace.importRemoteSource({
+        extractFileSources(message.message).map(async (item) => context.chatFileStore.importRemoteSource({
           source: item.source,
           kind: "file",
           origin: "chat_message",

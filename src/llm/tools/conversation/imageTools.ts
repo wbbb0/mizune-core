@@ -11,8 +11,8 @@ export const imageToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "view_media",
-        description: "加载媒体资源供下一轮模型查看。media_ids 模式：按精确 media_ids 加载最多 5 个 workspace file/image/emoji/audio；path 模式：按文件路径直接加载单张图片（shell.allowAnyCwd=true 时必须是绝对路径，否则必须是 workspace 相对路径）。两种模式互斥。",
+        name: "chat_file_view_media",
+        description: "加载已登记媒体供下一轮模型查看。",
         parameters: {
           type: "object",
           properties: {
@@ -21,9 +21,26 @@ export const imageToolDescriptors: ToolDescriptor[] = [
               items: { type: "string" },
               minItems: 1,
               maxItems: MAX_MEDIA_VIEW_PER_CALL
-            },
+            }
+          },
+          required: ["media_ids"],
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "local_file_view_media",
+        description: "按路径加载本地图片供下一轮模型查看。",
+        parameters: {
+          type: "object",
+          properties: {
             path: { type: "string" }
           },
+          required: ["path"],
           additionalProperties: false
         }
       }
@@ -32,47 +49,43 @@ export const imageToolDescriptors: ToolDescriptor[] = [
 ];
 
 export const imageToolHandlers: Record<string, ToolHandler> = {
-  async view_media(_toolCall, args, context) {
+  async local_file_view_media(_toolCall, args, context) {
     const path = getStringArg(args, "path");
+    if (!path) {
+      return JSON.stringify({ error: "path is required" });
+    }
+    try {
+      const resolved = resolveSendablePath(context.config, context.localFileService, path);
+      const prepared = await context.mediaVisionService.prepareAbsolutePathForModel(resolved.absolutePath, resolved.sourceName);
+      const result: LlmToolExecutionResult = {
+        content: JSON.stringify({
+          ok: true,
+          path: resolved.sourcePath,
+          sourceName: resolved.sourceName,
+          kind: prepared.kind,
+          transport: "data_url",
+          animated: prepared.animated,
+          durationMs: prepared.durationMs,
+          sampledFrameCount: prepared.sampledFrameCount
+        }),
+        supplementalMessages: [{
+          role: "user",
+          content: buildImageMessage(
+            [{ imageId: resolved.sourceName, inputUrl: prepared.inputUrl, kind: prepared.kind, animated: prepared.animated, durationMs: prepared.durationMs, sampledFrameCount: prepared.sampledFrameCount }],
+            new Map()
+          )
+        }]
+      };
+      return result;
+    } catch (error: unknown) {
+      return JSON.stringify({ error: error instanceof Error ? error.message : String(error) });
+    }
+  },
+
+  async chat_file_view_media(_toolCall, args, context) {
     const mediaIds = getMediaIdsArg(args);
-
-    if (path && mediaIds.length > 0) {
-      return JSON.stringify({ error: "path and media_ids are mutually exclusive" });
-    }
-
-    // Path mode: directly view an image at a workspace or absolute path
-    if (path) {
-      try {
-        const resolved = resolveSendablePath(context.config, context.workspaceService, path);
-        const prepared = await context.mediaVisionService.prepareAbsolutePathForModel(resolved.absolutePath, resolved.sourceName);
-        const result: LlmToolExecutionResult = {
-          content: JSON.stringify({
-            ok: true,
-            path: resolved.sourcePath,
-            sourceName: resolved.sourceName,
-            kind: prepared.kind,
-            transport: "data_url",
-            animated: prepared.animated,
-            durationMs: prepared.durationMs,
-            sampledFrameCount: prepared.sampledFrameCount
-          }),
-          supplementalMessages: [{
-            role: "user",
-            content: buildImageMessage(
-              [{ imageId: resolved.sourceName, inputUrl: prepared.inputUrl, kind: prepared.kind, animated: prepared.animated, durationMs: prepared.durationMs, sampledFrameCount: prepared.sampledFrameCount }],
-              new Map()
-            )
-          }]
-        };
-        return result;
-      } catch (error: unknown) {
-        return JSON.stringify({ error: error instanceof Error ? error.message : String(error) });
-      }
-    }
-
-    // media_ids mode
     if (mediaIds.length === 0) {
-      return JSON.stringify({ error: "media_ids must contain at least one id, or provide path" });
+      return JSON.stringify({ error: "media_ids must contain at least one id" });
     }
     if (mediaIds.length > MAX_MEDIA_VIEW_PER_CALL) {
       return JSON.stringify({ error: `media_ids can contain at most ${MAX_MEDIA_VIEW_PER_CALL} ids` });
@@ -89,7 +102,7 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
       }
       const transcriptionMap = await context.audioStore.getTranscriptionMap(audioIds);
       const audioAssets = await context.audioStore.getMany(audioIds);
-      const workspaceFiles = await context.mediaWorkspace.getMany(fileIds);
+      const workspaceFiles = await context.chatFileStore.getMany(fileIds);
       const assetCaptionMap = await context.mediaCaptionService.getCaptionMap(fileIds);
       const attachedWorkspaceImages = await Promise.all(
         workspaceFiles

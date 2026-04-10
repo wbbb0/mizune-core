@@ -11,7 +11,7 @@ type TestFile = {
   sourceContext: Record<string, string | number | boolean | null>;
 };
 
-class FakeMediaWorkspace {
+class FakeChatFileStore {
   constructor(private readonly files = new Map<string, TestFile>()) {}
 
   async getMany(fileIds: string[]) {
@@ -78,7 +78,7 @@ function createCaptionerConfig() {
 
 async function main() {
   await runCase("media caption service requests richer captions and normalizes nsfw labels", async () => {
-    const mediaWorkspace = new FakeMediaWorkspace(new Map([
+    const chatFileStore = new FakeChatFileStore(new Map([
       ["file_nsfw", {
         fileId: "file_nsfw",
         kind: "image",
@@ -107,7 +107,7 @@ async function main() {
     const captioner = new MediaCaptionService(
       createCaptionerConfig(),
       llmClient,
-      mediaWorkspace as any,
+      chatFileStore as any,
       {
         async prepareFileForModel(fileId: string) {
           return {
@@ -129,7 +129,7 @@ async function main() {
   });
 
   await runCase("media caption service stores the actual fallback model when generation succeeds", async () => {
-    const mediaWorkspace = new FakeMediaWorkspace(new Map([
+    const chatFileStore = new FakeChatFileStore(new Map([
       ["file_1", {
         fileId: "file_1",
         kind: "image",
@@ -156,7 +156,7 @@ async function main() {
     const captioner = new MediaCaptionService(
       createCaptionerConfig(),
       llmClient,
-      mediaWorkspace as any,
+      chatFileStore as any,
       {
         async prepareFileForModel(fileId: string) {
           return {
@@ -178,7 +178,7 @@ async function main() {
   });
 
   await runCase("media caption service retries image and emoji-like files on demand", async () => {
-    const mediaWorkspace = new FakeMediaWorkspace(new Map([
+    const chatFileStore = new FakeChatFileStore(new Map([
       ["file_missing", {
         fileId: "file_missing",
         kind: "image",
@@ -213,7 +213,7 @@ async function main() {
     const captioner = new MediaCaptionService(
       createCaptionerConfig(),
       llmClient,
-      mediaWorkspace as any,
+      chatFileStore as any,
       {
         async prepareFileForModel(fileId: string) {
           return {

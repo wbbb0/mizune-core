@@ -43,7 +43,7 @@ const routeLabel = computed(() => {
     sessions: "会话",
     config:   "配置",
     data:     "数据",
-    workspace:"工作区",
+    files: "文件",
     settings: "设置"
   };
   return map[String(route.name)] ?? "";
@@ -97,7 +97,7 @@ const rootStyle = computed(() => (
             <router-link to="/data" class="flex h-10 w-10 items-center justify-center rounded text-text-muted no-underline" :class="{ 'text-text-secondary': route.name === 'data' }">
               <Database :size="20" :stroke-width="1.5" />
             </router-link>
-            <router-link to="/workspace" class="flex h-10 w-10 items-center justify-center rounded text-text-muted no-underline" :class="{ 'text-text-secondary': route.name === 'workspace' }">
+            <router-link to="/files" class="flex h-10 w-10 items-center justify-center rounded text-text-muted no-underline" :class="{ 'text-text-secondary': route.name === 'files' }">
               <Folder :size="20" :stroke-width="1.5" />
             </router-link>
             <router-link to="/settings" class="flex h-10 w-10 items-center justify-center rounded text-text-muted no-underline" :class="{ 'text-text-secondary': route.name === 'settings' }">

@@ -48,7 +48,7 @@ async function main() {
         audioStore: {
           registerSources: async () => []
         } as any,
-        mediaWorkspace: {
+        chatFileStore: {
           importRemoteSource: async () => null
         } as any,
         mediaCaptionService: {
@@ -143,7 +143,7 @@ async function main() {
         audioStore: {
           registerSources: async () => []
         } as any,
-        mediaWorkspace: {
+        chatFileStore: {
           importRemoteSource: async () => null
         } as any,
         mediaCaptionService: {
@@ -222,7 +222,7 @@ async function main() {
         audioStore: {
           registerSources: async () => []
         } as any,
-        mediaWorkspace: {
+        chatFileStore: {
           importRemoteSource: async () => null
         } as any,
         mediaCaptionService: {
@@ -301,7 +301,7 @@ async function main() {
         audioStore: {
           registerSources: async () => []
         } as any,
-        mediaWorkspace: {
+        chatFileStore: {
           importRemoteSource: async () => null
         } as any,
         mediaCaptionService: {

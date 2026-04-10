@@ -1,5 +1,5 @@
-import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
-import type { WorkspaceStoredFileKind } from "#services/workspace/types.ts";
+import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
+import type { ChatFileKind } from "#services/workspace/types.ts";
 
 const MAX_UPLOAD_FILE_COUNT = 8;
 
@@ -9,16 +9,16 @@ export interface AdminWorkspaceUploadService {
       sourceName?: string;
       mimeType: string;
       contentBase64: string;
-      kind?: WorkspaceStoredFileKind;
+      kind?: ChatFileKind;
     }>;
   }): Promise<{
     ok: true;
     uploads: Array<{
       fileId: string;
       fileRef: string;
-      kind: WorkspaceStoredFileKind;
+      kind: ChatFileKind;
       sourceName: string;
-      workspacePath: string;
+      chatFilePath: string;
       mimeType: string;
       sizeBytes: number;
     }>;
@@ -26,7 +26,7 @@ export interface AdminWorkspaceUploadService {
 }
 
 export function createAdminWorkspaceUploadService(input: {
-  mediaWorkspace: Pick<MediaWorkspace, "importBuffer">;
+  chatFileStore: Pick<ChatFileStore, "importBuffer">;
 }): AdminWorkspaceUploadService {
   return {
     async uploadFiles(body) {
@@ -40,7 +40,7 @@ export function createAdminWorkspaceUploadService(input: {
           throw new Error("Uploaded file is empty");
         }
         const kind = file.kind ?? (mimeType.startsWith("image/") ? "image" : mimeType.startsWith("audio/") ? "audio" : "file");
-        const storedFile = await input.mediaWorkspace.importBuffer({
+        const storedFile = await input.chatFileStore.importBuffer({
           buffer,
           mimeType,
           kind,
@@ -52,7 +52,7 @@ export function createAdminWorkspaceUploadService(input: {
           fileRef: storedFile.fileRef,
           kind: storedFile.kind,
           sourceName: storedFile.sourceName,
-          workspacePath: storedFile.workspacePath,
+          chatFilePath: storedFile.chatFilePath,
           mimeType: storedFile.mimeType,
           sizeBytes: storedFile.sizeBytes
         };

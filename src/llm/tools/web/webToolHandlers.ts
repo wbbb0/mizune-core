@@ -187,7 +187,7 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         ...(sourceName ? { sourceName } : {}),
         ...(kind ? { kind } : {})
       });
-      const file = await context.mediaWorkspace.getFile(result.file_id);
+      const file = await context.chatFileStore.getFile(result.file_id);
       return JSON.stringify({
         ok: true,
         ...(file ? mapWorkspaceFileToView(file) : { file_id: result.file_id }),
@@ -317,7 +317,7 @@ function resolveWorkspaceFilePaths(
   if (!filePaths) {
     return undefined;
   }
-  return filePaths.map((path) => context.workspaceService.resolvePath(path).absolutePath);
+  return filePaths.map((path) => context.localFileService.resolvePath(path).absolutePath);
 }
 
 function normalizeOptionalString(value: unknown): string | undefined {
@@ -336,7 +336,7 @@ async function buildScreenshotToolResult(
   context: Parameters<ToolHandler>[2]
 ): Promise<LlmToolExecutionResult | string> {
   const prepared = await context.mediaVisionService.prepareFileForModel(imageId).catch(() => null);
-  const file = await context.mediaWorkspace.getFile(imageId).catch(() => null);
+  const file = await context.chatFileStore.getFile(imageId).catch(() => null);
   const contentPayload = file
     ? {
         ok: true,

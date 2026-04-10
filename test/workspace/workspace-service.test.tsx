@@ -4,19 +4,19 @@ import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { runCase } from "../helpers/config-test-support.tsx";
-import { WorkspaceService } from "../../src/services/workspace/workspaceService.ts";
+import { LocalFileService } from "../../src/services/workspace/localFileService.ts";
 
 await runCase("workspace service rejects binary image files in text preview", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-service-"));
   try {
     const config = createTestAppConfig({
-      workspace: {
+      localFiles: {
         enabled: true,
         root: "data",
         maxPatchFileBytes: 1024 * 1024
       }
     });
-    const service = new WorkspaceService(config, rootDir);
+    const service = new LocalFileService(config, rootDir);
     await service.init();
 
     await writeFile(join(rootDir, "photo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]));

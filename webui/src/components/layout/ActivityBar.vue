@@ -10,7 +10,7 @@ const primaryNavItems = [
   { name: "sessions", path: "/sessions", icon: MessageSquare, label: "会话" },
   { name: "config", path: "/config", icon: SlidersHorizontal, label: "配置" },
   { name: "data", path: "/data", icon: Database, label: "数据" },
-  { name: "workspace", path: "/workspace", icon: Folder, label: "工作区" },
+  { name: "files", path: "/files", icon: Folder, label: "文件" },
 ] as const;
 
 const bottomNavItems = [

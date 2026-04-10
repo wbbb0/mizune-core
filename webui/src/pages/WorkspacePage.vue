@@ -4,7 +4,7 @@ import { RefreshCw, FolderOpen, Image as ImageIcon, FileText, File, Folder } fro
 import AppLayout from "@/components/layout/AppLayout.vue";
 import WorkspaceFileTree from "@/components/workspace/WorkspaceFileTree.vue";
 import ImagePreviewDialog from "@/components/common/ImagePreviewDialog.vue";
-import { workspaceApi, type WorkspaceStoredFileSummary, type WorkspaceFilePreview, type WorkspaceItem } from "@/api/workspace";
+import { fileApi, type ChatFileSummary, type LocalFilePreview, type LocalFileItem } from "@/api/workspace";
 
 type Mode = "files" | "stored-files";
 
@@ -12,13 +12,13 @@ const layout = ref<InstanceType<typeof AppLayout> | null>(null);
 const mode = ref<Mode>("files");
 const loadingFiles = ref(false);
 const loadingAssets = ref(false);
-const itemsByPath = ref<Record<string, WorkspaceItem[]>>({});
+const itemsByPath = ref<Record<string, LocalFileItem[]>>({});
 const expandedPaths = ref<string[]>([]);
 const selectedPath = ref<string | null>(null);
-const selectedItem = ref<WorkspaceItem | null>(null);
-const selectedStoredFile = ref<WorkspaceStoredFileSummary | null>(null);
-const storedFileList = ref<WorkspaceStoredFileSummary[]>([]);
-const filePreview = ref<WorkspaceFilePreview | null>(null);
+const selectedItem = ref<LocalFileItem | null>(null);
+const selectedStoredFile = ref<ChatFileSummary | null>(null);
+const storedFileList = ref<ChatFileSummary[]>([]);
+const filePreview = ref<LocalFilePreview | null>(null);
 const previewError = ref<string | null>(null);
 const fileImageSrc = ref<string | null>(null);
 const dialogImageSrc = ref<string | null>(null);
@@ -28,14 +28,14 @@ const mobileHeaderTitle = computed(() =>
   selectedItem.value?.name ?? selectedStoredFile.value?.sourceName ?? selectedStoredFile.value?.fileId ?? "工作区"
 );
 const selectedStoredFileImageUrl = computed(() =>
-  selectedStoredFile.value ? workspaceApi.getFileContentUrlById(selectedStoredFile.value.fileId) : null
+  selectedStoredFile.value ? fileApi.getChatFileContentUrlById(selectedStoredFile.value.fileId) : null
 );
 
 onMounted(async () => {
   await Promise.all([loadDirectory("."), loadStoredFiles()]);
 });
 
-function sortWorkspaceItems(items: WorkspaceItem[]): WorkspaceItem[] {
+function sortWorkspaceItems(items: LocalFileItem[]): LocalFileItem[] {
   return [...items].sort((left, right) => {
     if (left.kind !== right.kind) {
       return left.kind === "directory" ? -1 : 1;
@@ -47,7 +47,7 @@ function sortWorkspaceItems(items: WorkspaceItem[]): WorkspaceItem[] {
 async function loadDirectory(path: string): Promise<void> {
   loadingFiles.value = true;
   try {
-    const result = await workspaceApi.listItems(path);
+    const result = await fileApi.listLocalItems(path);
     itemsByPath.value = {
       ...itemsByPath.value,
       [path]: sortWorkspaceItems(result.items)
@@ -60,7 +60,7 @@ async function loadDirectory(path: string): Promise<void> {
 async function loadStoredFiles(): Promise<void> {
   loadingAssets.value = true;
   try {
-    const result = await workspaceApi.listFiles();
+    const result = await fileApi.listChatFiles();
     storedFileList.value = result.files;
   } finally {
     loadingAssets.value = false;
@@ -80,7 +80,7 @@ async function toggleDirectory(path: string) {
   expandedPaths.value = [...next];
 }
 
-async function selectItem(item: WorkspaceItem) {
+async function selectItem(item: LocalFileItem) {
   selectedPath.value = item.path;
   selectedItem.value = item;
   selectedStoredFile.value = null;
@@ -98,20 +98,20 @@ async function selectItem(item: WorkspaceItem) {
   }
 
   if (isImageFile(item.name)) {
-    fileImageSrc.value = workspaceApi.getFileContentUrl(item.path);
+    fileImageSrc.value = fileApi.getLocalFileContentUrl(item.path);
     layout.value?.openDetail();
     return;
   }
 
   try {
-    filePreview.value = await workspaceApi.readFile(item.path, { startLine: 1, endLine: 240 });
+    filePreview.value = await fileApi.readLocalFile(item.path, { startLine: 1, endLine: 240 });
   } catch (error: unknown) {
     previewError.value = error instanceof Error ? error.message : "暂不支持预览该文件";
   }
   layout.value?.openDetail();
 }
 
-function selectStoredFile(file: WorkspaceStoredFileSummary) {
+function selectStoredFile(file: ChatFileSummary) {
   selectedStoredFile.value = file;
   selectedItem.value = null;
   selectedPath.value = null;
@@ -130,7 +130,7 @@ function refreshCurrentMode() {
   }
 }
 
-function previewIcon(item: WorkspaceItem | null) {
+function previewIcon(item: LocalFileItem | null) {
   if (!item) return FolderOpen;
   if (item.kind === "directory") return Folder;
   if (isImageFile(item.name)) return ImageIcon;
@@ -230,7 +230,7 @@ function formatTime(ms: number): string {
           <div v-if="!selectedStoredFile" class="panel-empty flex flex-1 items-center justify-center gap-2">← 选择一个已保存文件</div>
           <template v-else>
             <header class="toolbar-header flex shrink-0 items-center gap-3 border-b px-4 py-2">
-              <span class="min-w-0 flex-1 truncate font-mono text-small text-text-muted">{{ selectedStoredFile.workspacePath }}</span>
+              <span class="min-w-0 flex-1 truncate font-mono text-small text-text-muted">{{ selectedStoredFile.chatFilePath }}</span>
               <span class="shrink-0 text-small text-text-subtle">{{ formatSize(selectedStoredFile.sizeBytes) }}</span>
               <span class="shrink-0 text-small text-text-subtle">{{ formatTime(selectedStoredFile.createdAtMs) }}</span>
             </header>
@@ -259,7 +259,7 @@ function formatTime(ms: number): string {
                 <dt class="text-text-subtle">来源</dt>
                 <dd class="text-text-secondary">{{ selectedStoredFile.origin }}</dd>
                 <dt class="text-text-subtle">工作区路径</dt>
-                <dd class="min-w-0 font-mono text-text-secondary">{{ selectedStoredFile.workspacePath }}</dd>
+                <dd class="min-w-0 font-mono text-text-secondary">{{ selectedStoredFile.chatFilePath }}</dd>
                 <dt class="text-text-subtle">Caption</dt>
                 <dd class="text-text-secondary">{{ selectedStoredFile.caption || "无" }}</dd>
               </dl>

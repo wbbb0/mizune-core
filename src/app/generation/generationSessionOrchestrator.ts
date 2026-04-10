@@ -422,7 +422,7 @@ export function createGenerationSessionOrchestrator(
                 resolvedWidth: trigger.resolvedWidth,
                 resolvedHeight: trigger.resolvedHeight,
                 workspaceFileIds: trigger.workspaceFileIds,
-                workspacePaths: trigger.workspacePaths,
+                chatFilePaths: trigger.chatFilePaths,
                 comfyPromptId: trigger.comfyPromptId,
                 autoIterationIndex: trigger.autoIterationIndex,
                 maxAutoIterations: trigger.maxAutoIterations

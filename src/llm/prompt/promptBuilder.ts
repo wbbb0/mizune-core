@@ -136,7 +136,7 @@ function buildTriggerMessage(input: ScheduledTaskPromptInput): string {
       `比例：${input.trigger.aspectRatio} -> ${input.trigger.resolvedWidth}x${input.trigger.resolvedHeight}`,
       `Comfy prompt_id：${input.trigger.comfyPromptId}`,
       `workspace file_id：${input.trigger.workspaceFileIds.join("、") || "无"}`,
-      `workspace_path：${input.trigger.workspacePaths.join("、") || "无"}`,
+      `chat_file_path：${input.trigger.chatFilePaths.join("、") || "无"}`,
       `自动迭代进度：${input.trigger.autoIterationIndex}/${input.trigger.maxAutoIterations}`
     ].join("\n");
   }

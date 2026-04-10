@@ -155,10 +155,10 @@ export interface TranscriptOutboundMediaMessageItem {
   fileId: string | null;
   fileRef: string | null;
   sourceName: string | null;
-  workspacePath: string | null;
+  chatFilePath: string | null;
   sourcePath: string | null;
   messageId: number | null;
-  toolName: "send_workspace_file_to_chat";
+  toolName: "chat_file_send_to_chat" | "local_file_send_to_chat";
   captionText?: string | null | undefined;
   timestampMs: number;
 }
@@ -317,7 +317,7 @@ export interface ComfyTaskCompletedTriggerExecution {
   resolvedWidth: number;
   resolvedHeight: number;
   workspaceFileIds: string[];
-  workspacePaths: string[];
+  chatFilePaths: string[];
   comfyPromptId: string;
   autoIterationIndex: number;
   maxAutoIterations: number;

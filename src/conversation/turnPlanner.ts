@@ -7,7 +7,7 @@ import type { Relationship } from "#identity/relationship.ts";
 import type { SpecialRole } from "#identity/specialRole.ts";
 import { buildTurnPlannerPrompt } from "#llm/prompts/turn-planner.prompt.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
-import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
+import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
 import type { ToolsetView } from "#llm/tools/toolsets.ts";
 
@@ -62,7 +62,7 @@ export class TurnPlanner {
   constructor(
     private readonly config: AppConfig,
     private readonly llmClient: LlmClient,
-    private readonly mediaWorkspace: Pick<MediaWorkspace, "getMany">,
+    private readonly chatFileStore: Pick<ChatFileStore, "getMany">,
     private readonly mediaVisionService: Pick<MediaVisionService, "prepareFilesForModel">,
     private readonly logger: Logger
   ) {}
@@ -105,7 +105,7 @@ export class TurnPlanner {
     }> = [];
     if (emojiImageIds.length > 0) {
       try {
-        const files = await this.mediaWorkspace.getMany(emojiImageIds);
+        const files = await this.chatFileStore.getMany(emojiImageIds);
         const existingIds = new Set(files.map((item) => item.fileId));
         emojiInputs = (await this.mediaVisionService.prepareFilesForModel(emojiImageIds))
           .filter((item) => existingIds.has(item.fileId))

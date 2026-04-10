@@ -30,8 +30,8 @@ const router = createRouter({
       component: () => import("@/pages/DataPage.vue")
     },
     {
-      path: "/workspace",
-      name: "workspace",
+      path: "/files",
+      name: "files",
       component: () => import("@/pages/WorkspacePage.vue")
     },
     {

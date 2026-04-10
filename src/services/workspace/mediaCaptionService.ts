@@ -2,9 +2,9 @@ import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import { normalizeModelRefs, resolveModelRefsForType } from "#llm/shared/modelProfiles.ts";
 import type { LlmClient, LlmMessage } from "#llm/llmClient.ts";
-import type { MediaWorkspace } from "./mediaWorkspace.ts";
+import type { ChatFileStore } from "./chatFileStore.ts";
 import type { MediaVisionService } from "./mediaVisionService.ts";
-import type { WorkspaceStoredFileRecord } from "./types.ts";
+import type { ChatFileRecord } from "./types.ts";
 
 function buildCaptionPrompt(): LlmMessage[] {
   return [
@@ -43,7 +43,7 @@ export class MediaCaptionService {
   constructor(
     private readonly config: AppConfig,
     private readonly llmClient: LlmClient,
-    private readonly mediaWorkspace: Pick<MediaWorkspace, "getFile" | "getMany" | "updateCaption">,
+    private readonly chatFileStore: Pick<ChatFileStore, "getFile" | "getMany" | "updateCaption">,
     private readonly mediaVisionService: Pick<MediaVisionService, "prepareFileForModel">,
     private readonly logger: Logger
   ) {}
@@ -57,7 +57,7 @@ export class MediaCaptionService {
   }
 
   async getCaptionMap(fileIds: string[]): Promise<Map<string, string>> {
-    const files = await this.mediaWorkspace.getMany(uniqueIds(fileIds));
+    const files = await this.chatFileStore.getMany(uniqueIds(fileIds));
     return new Map(
       files
         .filter((item) => typeof item.caption === "string" && item.caption.length > 0)
@@ -86,7 +86,7 @@ export class MediaCaptionService {
   }
 
   private async enqueue(fileIds: string[], reason: string): Promise<void> {
-    const existing = await this.mediaWorkspace.getMany(fileIds);
+    const existing = await this.chatFileStore.getMany(fileIds);
     const pendingIds = existing
       .filter(isCaptionableFile)
       .filter((item) => !item.caption)
@@ -125,7 +125,7 @@ export class MediaCaptionService {
   private async runCaption(fileId: string): Promise<void> {
     const modelRef = this.resolveModelRefs();
     try {
-      const file = await this.mediaWorkspace.getFile(fileId);
+      const file = await this.chatFileStore.getFile(fileId);
       if (!file || !isCaptionableFile(file) || file.caption) {
         return;
       }
@@ -159,7 +159,7 @@ export class MediaCaptionService {
       });
       const fallbackLabel = file.sourceContext.mediaKind === "emoji" ? "一个聊天表情" : "一张聊天图片";
       const caption = normalizeCaption(result.text, fallbackLabel);
-      await this.mediaWorkspace.updateCaption(fileId, caption);
+      await this.chatFileStore.updateCaption(fileId, caption);
       this.logger.debug({
         fileId,
         modelRef: result.usage.modelRef ?? normalizeModelRefs(modelRef)[0] ?? "unknown",
@@ -174,7 +174,7 @@ export class MediaCaptionService {
   }
 
   private async waitForCompletion(fileId: string, abortSignal?: AbortSignal): Promise<void> {
-    const existing = await this.mediaWorkspace.getFile(fileId);
+    const existing = await this.chatFileStore.getFile(fileId);
     if (!existing || existing.caption || !isCaptionableFile(existing)) {
       return;
     }
@@ -225,7 +225,7 @@ export class MediaCaptionService {
   }
 }
 
-function isCaptionableFile(file: WorkspaceStoredFileRecord): boolean {
+function isCaptionableFile(file: ChatFileRecord): boolean {
   return file.kind === "image" || file.kind === "animated_image";
 }
 

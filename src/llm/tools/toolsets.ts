@@ -44,7 +44,7 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     toolNames: [
       "view_message",
       "view_forward_record",
-      "view_media",
+      "chat_file_view_media",
       "end_turn_without_reply"
     ]
   },
@@ -115,7 +115,7 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     promptGuidance: [
       "只有当前问题依赖外部信息或网页状态时，才进入网页检索与浏览。",
       "先搜索或打开页面，再检查页面结构后交互；页面变化后重新检查，不要沿用旧定位。",
-      "需要保存网页资源到工作区时，再配合工作区文件工具处理。"
+      "需要保存网页资源或上传本地文件时，再配合文件工具处理。"
     ],
     plannerSignals: [
       "外部信息与事实核查",
@@ -157,29 +157,50 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
-    id: "workspace_io",
-    title: "工作区文件",
-    description: "浏览与编辑 workspace 文件，以及按 workspace file 或路径发送文件。",
+    id: "local_file_io",
+    title: "本地文件",
+    description: "浏览、编辑、搜索和发送本地文件。",
     promptGuidance: [
-      "处理工作区文件时，先列出或查看现有文件，再读写或发送。",
-      "需要下载网页资源、保存中间结果或把产物发回聊天时，再使用这一组能力。"
+      "处理本地文件时，先列出、搜索或查看现有内容，再读写或发送。",
+      "需要下载网页资源、保存中间结果或把本地产物发回聊天时，再使用这一组能力。"
     ],
     plannerSignals: [
-      "下载或保存到 workspace",
-      "读写工作区文件"
+      "读写或搜索本地文件",
+      "按路径发送本地文件"
     ],
     toolNames: [
       "download_asset",
-      "list_workspace_items",
-      "stat_workspace_item",
-      "read_workspace_file",
-      "write_workspace_file",
-      "patch_workspace_file",
-      "mkdir_workspace_dir",
-      "move_workspace_item",
-      "delete_workspace_item",
-      "list_workspace_files",
-      "send_workspace_file_to_chat"
+      "local_file_list_items",
+      "local_file_stat",
+      "local_file_read",
+      "local_file_write",
+      "local_file_patch",
+      "local_file_mkdir",
+      "local_file_move",
+      "local_file_delete",
+      "local_file_search_items",
+      "local_file_find_text",
+      "local_file_view_media",
+      "local_file_send_to_chat"
+    ]
+  },
+  {
+    id: "chat_file_io",
+    title: "聊天文件",
+    description: "查看和发送已登记的 chat file。",
+    promptGuidance: [
+      "需要查看聊天导入图片、网页下载、截图或生成结果时，先列出现有 chat file。",
+      "发送已登记文件时优先用 file_ref；file_id 是稳定主键。"
+    ],
+    plannerSignals: [
+      "查看聊天导入文件",
+      "发送已登记图片或附件"
+    ],
+    toolNames: [
+      "chat_file_list",
+      "chat_file_get",
+      "chat_file_view_media",
+      "chat_file_send_to_chat"
     ]
   },
   {

@@ -1,6 +1,6 @@
 import { api } from "./client";
 
-export interface WorkspaceItem {
+export interface LocalFileItem {
   path: string;
   name: string;
   kind: "file" | "directory";
@@ -8,13 +8,13 @@ export interface WorkspaceItem {
   updatedAtMs: number;
 }
 
-export interface WorkspaceListResult {
+export interface LocalFileListResult {
   root: string;
   path: string;
-  items: WorkspaceItem[];
+  items: LocalFileItem[];
 }
 
-export interface WorkspaceFilePreview {
+export interface LocalFilePreview {
   path: string;
   content: string;
   startLine: number;
@@ -23,12 +23,12 @@ export interface WorkspaceFilePreview {
   truncated: boolean;
 }
 
-export interface WorkspaceStoredFileSummary {
+export interface ChatFileSummary {
   fileId: string;
   fileRef: string;
   kind: "image" | "animated_image" | "video" | "audio" | "file";
   origin: string;
-  workspacePath: string;
+  chatFilePath: string;
   sourceName: string;
   mimeType: string;
   sizeBytes: number;
@@ -37,18 +37,18 @@ export interface WorkspaceStoredFileSummary {
   caption: string | null;
 }
 
-export interface WorkspaceStoredFileDetail {
-  file: WorkspaceStoredFileSummary;
+export interface ChatFileDetail {
+  file: ChatFileSummary;
 }
 
-export const workspaceApi = {
-  listItems(path = "."): Promise<WorkspaceListResult> {
-    return api.get(`/api/workspace/items?path=${encodeURIComponent(path)}`);
+export const fileApi = {
+  listLocalItems(path = "."): Promise<LocalFileListResult> {
+    return api.get(`/api/local-files/items?path=${encodeURIComponent(path)}`);
   },
-  statItem(path = "."): Promise<WorkspaceItem> {
-    return api.get(`/api/workspace/stat?path=${encodeURIComponent(path)}`);
+  statLocalItem(path = "."): Promise<LocalFileItem> {
+    return api.get(`/api/local-files/stat?path=${encodeURIComponent(path)}`);
   },
-  readFile(path: string, range?: { startLine?: number; endLine?: number }): Promise<WorkspaceFilePreview> {
+  readLocalFile(path: string, range?: { startLine?: number; endLine?: number }): Promise<LocalFilePreview> {
     const params = new URLSearchParams({ path });
     if (range?.startLine != null) {
       params.set("startLine", String(range.startLine));
@@ -56,21 +56,21 @@ export const workspaceApi = {
     if (range?.endLine != null) {
       params.set("endLine", String(range.endLine));
     }
-    return api.get(`/api/workspace/file?${params.toString()}`);
+    return api.get(`/api/local-files/file?${params.toString()}`);
   },
-  getFileContentUrl(path: string): string {
-    return `/api/workspace/content?path=${encodeURIComponent(path)}`;
+  getLocalFileContentUrl(path: string): string {
+    return `/api/local-files/content?path=${encodeURIComponent(path)}`;
   },
-  getSendFileContentUrl(path: string): string {
-    return `/api/workspace/send-content?path=${encodeURIComponent(path)}`;
+  getLocalSendFileContentUrl(path: string): string {
+    return `/api/local-files/send-content?path=${encodeURIComponent(path)}`;
   },
-  listFiles(): Promise<{ files: WorkspaceStoredFileSummary[] }> {
-    return api.get("/api/workspace/files");
+  listChatFiles(): Promise<{ files: ChatFileSummary[] }> {
+    return api.get("/api/chat-files");
   },
-  getFile(fileId: string): Promise<WorkspaceStoredFileDetail> {
-    return api.get(`/api/workspace/files/${encodeURIComponent(fileId)}`);
+  getChatFile(fileId: string): Promise<ChatFileDetail> {
+    return api.get(`/api/chat-files/${encodeURIComponent(fileId)}`);
   },
-  getFileContentUrlById(fileId: string): string {
-    return `/api/workspace/files/${encodeURIComponent(fileId)}/content`;
+  getChatFileContentUrlById(fileId: string): string {
+    return `/api/chat-files/${encodeURIComponent(fileId)}/content`;
   }
 };

@@ -5,9 +5,9 @@ import { createForwardFeatureConfig, runCase } from "../helpers/forward-test-sup
 import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-test-support.tsx";
 
 async function main() {
-  await runCase("view_media injects multimodal follow-up content for images", async () => {
-    const result = await imageToolHandlers.view_media!(
-      createFunctionToolCall("view_media", "tool_1"),
+  await runCase("chat_file_view_media injects multimodal follow-up content for images", async () => {
+    const result = await imageToolHandlers.chat_file_view_media!(
+      createFunctionToolCall("chat_file_view_media", "tool_1"),
       { media_ids: ["file_test_1"] },
       {
         config: createForwardFeatureConfig(),
@@ -19,14 +19,14 @@ async function main() {
             return [];
           }
         } as any,
-        mediaWorkspace: {
+        chatFileStore: {
           async getMany() {
             return [{
               fileId: "file_test_1",
               fileRef: "chat_test0001.gif",
               kind: "animated_image",
               origin: "chat_message",
-              workspacePath: "workspace/media/file_test_1.gif",
+              chatFilePath: "workspace/media/file_test_1.gif",
               sourceName: "a.gif",
               mimeType: "image/gif",
               sizeBytes: 1,
@@ -73,13 +73,13 @@ async function main() {
     assert.match(result.content, /"durationMs":2400/);
   });
 
-  await runCase("view_media rejects requests above the hard limit", async () => {
-    const result = await imageToolHandlers.view_media!(
-      createFunctionToolCall("view_media", "tool_2"),
+  await runCase("chat_file_view_media rejects requests above the hard limit", async () => {
+    const result = await imageToolHandlers.chat_file_view_media!(
+      createFunctionToolCall("chat_file_view_media", "tool_2"),
       { media_ids: ["1", "2", "3", "4", "5", "6"] },
       {
         audioStore: { async getTranscriptionMap() { return new Map(); }, async getMany() { return []; } } as any,
-        mediaWorkspace: { async getMany() { return []; } } as any,
+        chatFileStore: { async getMany() { return []; } } as any,
         mediaVisionService: { async prepareFileForModel() { throw new Error("should not be called"); } } as any,
         mediaCaptionService: { async getCaptionMap() { return new Map(); } } as any
       } as any
@@ -116,14 +116,14 @@ async function main() {
             };
           }
         } as any,
-        mediaWorkspace: {
+        chatFileStore: {
           async importRemoteSource() {
             return {
               fileId: "file_test_1",
               fileRef: "chat_test0001.png",
               kind: "image",
               origin: "chat_message",
-              workspacePath: "workspace/media/file_test_1.png",
+              chatFilePath: "workspace/media/file_test_1.png",
               sourceName: "a.png",
               mimeType: "image/png",
               sizeBytes: 1,

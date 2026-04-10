@@ -114,7 +114,7 @@ export function createBrowserToolContext(
         return new Map<string, string>();
       }
     } as unknown as BuiltinToolContext["mediaCaptionService"],
-    mediaWorkspace: {
+    chatFileStore: {
       async prepareImageFileForModel(fileId: string) {
         return {
           file: {
@@ -122,7 +122,7 @@ export function createBrowserToolContext(
             fileRef: `shot_${fileId.slice(-8)}.png`,
             kind: "image",
             origin: "browser_screenshot",
-            workspacePath: `workspace/media/${fileId}.png`,
+            chatFilePath: `workspace/media/${fileId}.png`,
             sourceName: `${fileId}.png`,
             mimeType: "image/png",
             sizeBytes: 4,
@@ -144,7 +144,7 @@ export function createBrowserToolContext(
           fileRef: `shot_${fileId.slice(-8)}.png`,
           kind: "image" as const,
           origin: "browser_screenshot" as const,
-          workspacePath: `workspace/media/${fileId}.png`,
+          chatFilePath: `workspace/media/${fileId}.png`,
           sourceName: `${fileId}.png`,
           mimeType: "image/png",
           sizeBytes: 4,
@@ -166,7 +166,7 @@ export function createBrowserToolContext(
           sizeBytes: 1
         };
       }
-    } as unknown as BuiltinToolContext["mediaWorkspace"],
+    } as unknown as BuiltinToolContext["chatFileStore"],
     forwardResolver: null as unknown as BuiltinToolContext["forwardResolver"],
     requestStore: null as unknown as BuiltinToolContext["requestStore"],
     sessionManager: null as unknown as BuiltinToolContext["sessionManager"],
@@ -186,14 +186,14 @@ export function createBrowserToolContext(
     comfyClient: null as unknown as BuiltinToolContext["comfyClient"],
     comfyTaskStore: null as unknown as BuiltinToolContext["comfyTaskStore"],
     comfyTemplateCatalog: null as unknown as BuiltinToolContext["comfyTemplateCatalog"],
-    workspaceService: {
+    localFileService: {
       resolvePath(relativePath = ".") {
         return {
           relativePath,
           absolutePath: `/tmp/workspace/${relativePath}`
         };
       }
-    } as unknown as BuiltinToolContext["workspaceService"],
+    } as unknown as BuiltinToolContext["localFileService"],
     activeInternalTrigger: null
   };
 }

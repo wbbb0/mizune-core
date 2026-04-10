@@ -76,7 +76,7 @@ const bubbleGlyphToneClass = computed(() => {
           </button>
           <span class="text-small opacity-80">已发送图片</span>
           <span class="block wrap-break-word font-semibold">{{ sourceName || fileRef || fileId || "未命名图片" }}</span>
-          <span class="block font-mono text-small opacity-80">{{ toolName || "send_workspace_file_to_chat" }}</span>
+          <span class="block font-mono text-small opacity-80">{{ toolName || "chat_file_send_to_chat" }}</span>
         </template>
         <template v-else>
           <span v-if="label" class="mb-1 block text-small opacity-80">{{ label }}</span>

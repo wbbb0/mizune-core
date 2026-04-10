@@ -1,18 +1,18 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 import { fetch as undiciFetch } from "undici";
 import type { Logger } from "pino";
 import sharp from "sharp";
 import type { AppConfig } from "#config/config.ts";
 import { fetchWithProxy, type ProxyConsumer } from "#services/proxy/index.ts";
-import type { WorkspaceService } from "./workspaceService.ts";
-import type { WorkspaceStoredFileKind, WorkspaceStoredFileOrigin, WorkspaceStoredFileRecord } from "./types.ts";
+import type { LocalFileService } from "./localFileService.ts";
+import type { ChatFileKind, ChatFileOrigin, ChatFileRecord } from "./types.ts";
 
 const FILE_INDEX_FILE = "files.json";
 
-export class MediaWorkspace {
-  private readonly workspaceRootDir: string;
+export class ChatFileStore {
+  private readonly storeRootDir: string;
   private readonly fileIndexPath: string;
   private readonly mediaDir: string;
   private readonly writeChain = new Map<string, Promise<void>>();
@@ -20,15 +20,16 @@ export class MediaWorkspace {
   constructor(
     private readonly config: AppConfig,
     private readonly logger: Logger,
-    private readonly workspaceService: WorkspaceService
+    private readonly localFileService: LocalFileService
   ) {
-    this.workspaceRootDir = join(this.workspaceService.rootDir, "workspace");
-    this.fileIndexPath = join(this.workspaceRootDir, FILE_INDEX_FILE);
-    this.mediaDir = join(this.workspaceRootDir, "media");
+    const configuredRoot = String(this.config.chatFiles.root ?? "").trim() || "chat-files";
+    this.storeRootDir = join(this.localFileService.rootDir, configuredRoot);
+    this.fileIndexPath = join(this.storeRootDir, FILE_INDEX_FILE);
+    this.mediaDir = join(this.storeRootDir, "media");
   }
 
   async init(): Promise<void> {
-    if (!this.config.workspace.enabled) {
+    if (!this.config.chatFiles.enabled) {
       return;
     }
     await mkdir(this.mediaDir, { recursive: true });
@@ -37,11 +38,11 @@ export class MediaWorkspace {
     }
   }
 
-  async listFiles(): Promise<WorkspaceStoredFileRecord[]> {
+  async listFiles(): Promise<ChatFileRecord[]> {
     return this.readFiles();
   }
 
-  async getFile(fileId: string): Promise<WorkspaceStoredFileRecord | null> {
+  async getFile(fileId: string): Promise<ChatFileRecord | null> {
     const normalizedFileId = String(fileId ?? "").trim();
     if (!normalizedFileId) {
       return null;
@@ -50,7 +51,7 @@ export class MediaWorkspace {
     return files.find((item) => item.fileId === normalizedFileId) ?? null;
   }
 
-  async getMany(fileIds: string[]): Promise<WorkspaceStoredFileRecord[]> {
+  async getMany(fileIds: string[]): Promise<ChatFileRecord[]> {
     const wanted = new Set(fileIds.map((item) => String(item ?? "").trim()).filter(Boolean));
     if (wanted.size === 0) {
       return [];
@@ -63,10 +64,10 @@ export class MediaWorkspace {
     buffer: Buffer;
     sourceName?: string;
     mimeType?: string;
-    kind: WorkspaceStoredFileKind;
-    origin: WorkspaceStoredFileOrigin;
+    kind: ChatFileKind;
+    origin: ChatFileOrigin;
     sourceContext?: Record<string, string | number | boolean | null>;
-  }): Promise<WorkspaceStoredFileRecord> {
+  }): Promise<ChatFileRecord> {
     const kind = await normalizeStoredFileKind(input.kind, input.buffer, input.sourceName, input.mimeType);
     await validateStoredFileBuffer(kind, input.buffer);
     const sourceName = normalizeSourceName(input.sourceName, kind);
@@ -74,16 +75,16 @@ export class MediaWorkspace {
     const ext = extname(sourceName) || extensionFromMimeType(mimeType) || defaultExtension(kind);
     const fileId = buildStoredFileId();
     const fileRef = buildStoredFileRef(fileId, input.origin, kind, ext);
-    const relativePath = join("workspace", "media", fileRef);
-    const absolutePath = this.workspaceService.resolvePath(relativePath).absolutePath;
+    const relativePath = join(String(this.config.chatFiles.root ?? "").trim() || "chat-files", "media", fileRef);
+    const absolutePath = this.localFileService.resolvePath(relativePath).absolutePath;
     await mkdir(dirname(absolutePath), { recursive: true });
     await writeFile(absolutePath, input.buffer);
-    const record: WorkspaceStoredFileRecord = {
+    const record: ChatFileRecord = {
       fileId,
       fileRef,
       kind,
       origin: input.origin,
-      workspacePath: relativePath.replaceAll("\\", "/"),
+      chatFilePath: relativePath.replaceAll("\\", "/"),
       sourceName,
       mimeType,
       sizeBytes: input.buffer.byteLength,
@@ -99,13 +100,13 @@ export class MediaWorkspace {
     sourcePath: string;
     sourceName?: string;
     mimeType?: string;
-    kind?: WorkspaceStoredFileKind;
-    origin: WorkspaceStoredFileOrigin;
+    kind?: ChatFileKind;
+    origin: ChatFileOrigin;
     sourceContext?: Record<string, string | number | boolean | null>;
-  }): Promise<WorkspaceStoredFileRecord> {
+  }): Promise<ChatFileRecord> {
     const fileStat = await stat(input.sourcePath);
-    if (fileStat.size > this.config.workspace.maxUploadBytes) {
-      throw new Error("Workspace import exceeds maxUploadBytes");
+    if (fileStat.size > this.config.chatFiles.maxUploadBytes) {
+      throw new Error("chat file import exceeds maxUploadBytes");
     }
     const sourceName = input.sourceName ?? basename(input.sourcePath);
     const kind = input.kind ?? inferStoredFileKind(sourceName, input.mimeType);
@@ -125,11 +126,11 @@ export class MediaWorkspace {
     source: string;
     sourceName?: string;
     mimeType?: string;
-    kind?: WorkspaceStoredFileKind;
-    origin: WorkspaceStoredFileOrigin;
+    kind?: ChatFileKind;
+    origin: ChatFileOrigin;
     proxyConsumer?: ProxyConsumer;
     sourceContext?: Record<string, string | number | boolean | null>;
-  }): Promise<WorkspaceStoredFileRecord> {
+  }): Promise<ChatFileRecord> {
     const source = String(input.source ?? "").trim();
     if (!source) {
       throw new Error("source is required");
@@ -139,12 +140,12 @@ export class MediaWorkspace {
         ? await fetchWithProxy(this.config, input.proxyConsumer, source)
         : await undiciFetch(source);
       if (!response.ok) {
-        throw new Error(`Failed to download workspace file: ${response.status} ${response.statusText}`);
+        throw new Error(`failed to download chat file: ${response.status} ${response.statusText}`);
       }
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-      if (buffer.byteLength > this.config.workspace.maxUploadBytes) {
-        throw new Error("Workspace import exceeds maxUploadBytes");
+      if (buffer.byteLength > this.config.chatFiles.maxUploadBytes) {
+        throw new Error("chat file import exceeds maxUploadBytes");
       }
       const mimeType = input.mimeType ?? response.headers.get("content-type") ?? undefined;
       const sourceName = input.sourceName ?? inferFilenameFromUrl(source, mimeType, input.kind);
@@ -183,18 +184,32 @@ export class MediaWorkspace {
 
   async resolveAbsolutePath(fileId: string): Promise<string> {
     const file = await this.getRequiredFile(fileId);
-    return this.workspaceService.resolvePath(file.workspacePath).absolutePath;
+    return this.localFileService.resolvePath(file.chatFilePath).absolutePath;
   }
 
-  private async getRequiredFile(fileId: string): Promise<WorkspaceStoredFileRecord> {
+  async deleteFile(fileId: string): Promise<boolean> {
     const file = await this.getFile(fileId);
     if (!file) {
-      throw new Error(`Unknown workspace file: ${fileId}`);
+      return false;
+    }
+    const absolutePath = await this.resolveAbsolutePath(fileId);
+    await rm(absolutePath, { force: true });
+    await this.withWriteLock(fileId, async () => {
+      const files = await this.readFiles();
+      await this.writeFiles(files.filter((item) => item.fileId !== fileId));
+    });
+    return true;
+  }
+
+  private async getRequiredFile(fileId: string): Promise<ChatFileRecord> {
+    const file = await this.getFile(fileId);
+    if (!file) {
+      throw new Error(`unknown chat file: ${fileId}`);
     }
     return file;
   }
 
-  private async upsertFile(record: WorkspaceStoredFileRecord): Promise<void> {
+  private async upsertFile(record: ChatFileRecord): Promise<void> {
     await this.withWriteLock(record.fileId, async () => {
       const files = await this.readFiles();
       const next = files.filter((item) => item.fileId !== record.fileId);
@@ -204,22 +219,22 @@ export class MediaWorkspace {
     });
   }
 
-  private async readFiles(): Promise<WorkspaceStoredFileRecord[]> {
+  private async readFiles(): Promise<ChatFileRecord[]> {
     try {
       const raw = await readFile(this.fileIndexPath, "utf8");
       const parsed = JSON.parse(raw) as unknown;
       return Array.isArray(parsed)
         ? parsed
-          .filter(isWorkspaceStoredFileRecord)
+          .filter(isChatFileRecord)
           .map((item) => item.fileRef
             ? item
             : {
                 ...item,
-                fileRef: item.workspacePath.split("/").at(-1) ?? buildStoredFileRef(
+                fileRef: item.chatFilePath.split("/").at(-1) ?? buildStoredFileRef(
                   item.fileId,
                   item.origin,
                   item.kind,
-                  extname(item.sourceName) || extname(item.workspacePath) || extensionFromMimeType(item.mimeType) || defaultExtension(item.kind)
+                  extname(item.sourceName) || extname(item.chatFilePath) || extensionFromMimeType(item.mimeType) || defaultExtension(item.kind)
                 )
               })
         : [];
@@ -228,7 +243,7 @@ export class MediaWorkspace {
     }
   }
 
-  private async writeFiles(records: WorkspaceStoredFileRecord[]): Promise<void> {
+  private async writeFiles(records: ChatFileRecord[]): Promise<void> {
     await mkdir(dirname(this.fileIndexPath), { recursive: true });
     await writeFile(this.fileIndexPath, `${JSON.stringify(records, null, 2)}\n`, "utf8");
   }
@@ -256,7 +271,7 @@ function buildStoredFileId(): string {
   return `file_${randomUUID().replaceAll("-", "")}`;
 }
 
-function normalizeSourceName(sourceName: string | undefined, kind: WorkspaceStoredFileKind): string {
+function normalizeSourceName(sourceName: string | undefined, kind: ChatFileKind): string {
   const normalized = String(sourceName ?? "").trim();
   if (normalized) {
     return normalized;
@@ -266,8 +281,8 @@ function normalizeSourceName(sourceName: string | undefined, kind: WorkspaceStor
 
 function buildStoredFileRef(
   fileId: string,
-  origin: WorkspaceStoredFileOrigin,
-  kind: WorkspaceStoredFileKind,
+  origin: ChatFileOrigin,
+  kind: ChatFileKind,
   extension: string
 ): string {
   const prefix = originPrefix(origin) ?? kindPrefix(kind);
@@ -275,17 +290,17 @@ function buildStoredFileRef(
   return `${prefix}_${shortId}${extension}`;
 }
 
-function originPrefix(origin: WorkspaceStoredFileOrigin): string | null {
+function originPrefix(origin: ChatFileOrigin): string | null {
   if (origin === "comfy_generated") return "comfy";
   if (origin === "browser_download") return "web";
   if (origin === "browser_screenshot") return "shot";
-  if (origin === "workspace_import") return "ws";
+  if (origin === "local_file_import") return "ws";
   if (origin === "user_upload") return "upload";
   if (origin === "chat_message") return "chat";
   return null;
 }
 
-function kindPrefix(kind: WorkspaceStoredFileKind): string {
+function kindPrefix(kind: ChatFileKind): string {
   if (kind === "image") return "img";
   if (kind === "animated_image") return "gif";
   if (kind === "video") return "vid";
@@ -293,7 +308,7 @@ function kindPrefix(kind: WorkspaceStoredFileKind): string {
   return "file";
 }
 
-function normalizeMimeType(mimeType: string | undefined, kind: WorkspaceStoredFileKind): string {
+function normalizeMimeType(mimeType: string | undefined, kind: ChatFileKind): string {
   const normalized = String(mimeType ?? "").trim().toLowerCase();
   if (normalized) {
     return normalized;
@@ -313,7 +328,7 @@ function normalizeMimeType(mimeType: string | undefined, kind: WorkspaceStoredFi
   return "application/octet-stream";
 }
 
-function defaultExtension(kind: WorkspaceStoredFileKind): string {
+function defaultExtension(kind: ChatFileKind): string {
   if (kind === "image") {
     return ".png";
   }
@@ -340,7 +355,7 @@ function extensionFromMimeType(mimeType: string): string | null {
   return null;
 }
 
-function inferStoredFileKind(sourceName: string, mimeType?: string): WorkspaceStoredFileKind {
+function inferStoredFileKind(sourceName: string, mimeType?: string): ChatFileKind {
   const normalizedMimeType = String(mimeType ?? "").toLowerCase();
   if (normalizedMimeType === "image/gif" || normalizedMimeType === "image/apng") {
     return "animated_image";
@@ -370,7 +385,7 @@ function inferStoredFileKind(sourceName: string, mimeType?: string): WorkspaceSt
   return "file";
 }
 
-function inferFilenameFromUrl(source: string, mimeType?: string, kind?: WorkspaceStoredFileKind): string {
+function inferFilenameFromUrl(source: string, mimeType?: string, kind?: ChatFileKind): string {
   const pathname = new URL(source).pathname;
   const existing = basename(pathname);
   if (existing && existing !== "/") {
@@ -381,11 +396,11 @@ function inferFilenameFromUrl(source: string, mimeType?: string, kind?: Workspac
 }
 
 async function normalizeStoredFileKind(
-  kind: WorkspaceStoredFileKind,
+  kind: ChatFileKind,
   buffer: Buffer,
   sourceName?: string,
   mimeType?: string
-): Promise<WorkspaceStoredFileKind> {
+): Promise<ChatFileKind> {
   if (kind !== "image") {
     return kind;
   }
@@ -404,7 +419,7 @@ async function normalizeStoredFileKind(
   return "image";
 }
 
-async function validateStoredFileBuffer(kind: WorkspaceStoredFileKind, buffer: Buffer): Promise<void> {
+async function validateStoredFileBuffer(kind: ChatFileKind, buffer: Buffer): Promise<void> {
   if (kind !== "image" && kind !== "animated_image") {
     return;
   }
@@ -430,7 +445,7 @@ async function validateStoredFileBuffer(kind: WorkspaceStoredFileKind, buffer: B
   }
 }
 
-function isWorkspaceStoredFileRecord(value: unknown): value is WorkspaceStoredFileRecord {
+function isChatFileRecord(value: unknown): value is ChatFileRecord {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -439,7 +454,7 @@ function isWorkspaceStoredFileRecord(value: unknown): value is WorkspaceStoredFi
     && (candidate.fileRef == null || typeof candidate.fileRef === "string")
     && typeof candidate.kind === "string"
     && typeof candidate.origin === "string"
-    && typeof candidate.workspacePath === "string"
+    && typeof candidate.chatFilePath === "string"
     && typeof candidate.sourceName === "string"
     && typeof candidate.mimeType === "string"
     && typeof candidate.sizeBytes === "number"

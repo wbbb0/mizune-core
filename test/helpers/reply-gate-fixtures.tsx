@@ -55,7 +55,7 @@ export function createReplyGate(
     async getMany() {
       return [];
     }
-  } as unknown as GenerationRunnerDeps["mediaWorkspace"], mediaVisionService, pino({ level: "silent" }));
+  } as unknown as GenerationRunnerDeps["chatFileStore"], mediaVisionService, pino({ level: "silent" }));
 }
 
 export function createGenerationReplyGateDeps(

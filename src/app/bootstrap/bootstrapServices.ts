@@ -22,10 +22,11 @@ import { GlobalMemoryStore } from "#memory/memoryStore.ts";
 import { EventRouter } from "#services/onebot/eventRouter.ts";
 import { OneBotClient } from "#services/onebot/onebotClient.ts";
 import { ShellRuntime } from "#services/shell/runtime.ts";
-import { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
+import { ChatFileStore } from "#services/workspace/chatFileStore.ts";
+import { ChatMessageFileGcService } from "#services/workspace/chatMessageFileGcService.ts";
 import { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
-import { WorkspaceService } from "#services/workspace/workspaceService.ts";
+import { LocalFileService } from "#services/workspace/localFileService.ts";
 import { BrowserService } from "#services/web/browser/browserService.ts";
 import { SearchService } from "#services/web/search/searchService.ts";
 import { ComfyClient } from "#comfy/comfyClient.ts";
@@ -52,15 +53,20 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
   const llmClient = new LlmClient(config, logger);
   const audioStore = new AudioStore(dataDir);
   const audioTranscriber = new AudioTranscriber(config, llmClient, audioStore, oneBotClient, logger);
-  const workspaceService = new WorkspaceService(config, dataDir);
-  const mediaWorkspace = new MediaWorkspace(config, logger, workspaceService);
-  const mediaVisionService = new MediaVisionService(config, logger, mediaWorkspace);
-  const mediaCaptionService = new MediaCaptionService(config, llmClient, mediaWorkspace, mediaVisionService, logger);
+  const localFileService = new LocalFileService(config, dataDir);
+  const chatFileStore = new ChatFileStore(config, logger, localFileService);
+  const chatMessageFileGcService = new ChatMessageFileGcService(
+    chatFileStore,
+    logger,
+    config.chatFiles.gcGracePeriodMs
+  );
+  const mediaVisionService = new MediaVisionService(config, logger, chatFileStore);
+  const mediaCaptionService = new MediaCaptionService(config, llmClient, chatFileStore, mediaVisionService, logger);
   const comfyClient = new ComfyClient(config, logger);
   const comfyTaskStore = new ComfyTaskStore(dataDir, logger);
   const comfyTemplateCatalog = new ComfyTemplateCatalogService(config, logger);
   const historyCompressor = new HistoryCompressor(config, llmClient, sessionManager, mediaCaptionService, logger);
-  const turnPlanner = new TurnPlanner(config, llmClient, mediaWorkspace, mediaVisionService, logger);
+  const turnPlanner = new TurnPlanner(config, llmClient, chatFileStore, mediaVisionService, logger);
   const messageQueue = new MessageQueue(logger);
   const sessionPersistence = new SessionPersistence(dataDir, logger);
   const scheduledJobStore = new ScheduledJobStore(dataDir, logger);
@@ -77,7 +83,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
     logger,
     (refId) => searchService.resolveReference(refId),
     dataDir,
-    mediaWorkspace
+    chatFileStore
   );
   const forwardResolver = new ForwardResolver(oneBotClient, logger);
   const conversationAccess = new ConversationAccessService(
@@ -113,8 +119,9 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
     setupStore,
     searchService,
     browserService,
-    workspaceService,
-    mediaWorkspace,
+    localFileService,
+    chatFileStore,
+    chatMessageFileGcService,
     mediaVisionService,
     mediaCaptionService,
     comfyClient,
@@ -134,8 +141,9 @@ export async function initializeBootstrapState(
     | "whitelistStore"
     | "sessionPersistence"
     | "audioStore"
-    | "workspaceService"
-    | "mediaWorkspace"
+    | "localFileService"
+    | "chatFileStore"
+    | "chatMessageFileGcService"
     | "mediaVisionService"
     | "mediaCaptionService"
     | "comfyTaskStore"
@@ -158,8 +166,9 @@ export async function initializeBootstrapState(
     whitelistStore,
     sessionPersistence,
     audioStore,
-    workspaceService,
-    mediaWorkspace,
+    localFileService,
+    chatFileStore,
+    chatMessageFileGcService,
     mediaVisionService,
     mediaCaptionService,
     comfyTaskStore,
@@ -179,8 +188,8 @@ export async function initializeBootstrapState(
   await new RuntimeResourceRegistry(dataDir, logger).reset();
   await whitelistStore.init();
   await sessionPersistence.init();
-  await workspaceService.init();
-  await mediaWorkspace.init();
+  await localFileService.init();
+  await chatFileStore.init();
   await audioStore.init();
   await comfyTaskStore.init();
   await comfyTemplateCatalog.init();
@@ -195,6 +204,10 @@ export async function initializeBootstrapState(
   await setupStore.init(await personaStore.get());
   const persistedSessions = await sessionPersistence.loadAll();
   sessionManager.restoreSessions(persistedSessions);
+  await chatMessageFileGcService.sweep({
+    activeSessions: sessionManager.listSessions(),
+    persistedSessions
+  });
 
   if (persistedSessions.length > 0) {
     logger.info({ restoredSessionCount: persistedSessions.length }, "session_restore_completed");

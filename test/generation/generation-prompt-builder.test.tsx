@@ -43,8 +43,8 @@ async function main() {
           return { pages: [] };
         }
       } as any,
-      workspaceService: {} as any,
-      mediaWorkspace: {} as any,
+      localFileService: {} as any,
+      chatFileStore: {} as any,
       mediaVisionService: {
         async prepareFilesForModel(imageIds: string[]) {
           capturedImageIdCalls.push(imageIds);
@@ -164,8 +164,8 @@ async function main() {
           };
         }
       } as any,
-      workspaceService: {} as any,
-      mediaWorkspace: {} as any,
+      localFileService: {} as any,
+      chatFileStore: {} as any,
       mediaVisionService: {
         async prepareFilesForModel() {
           return [];

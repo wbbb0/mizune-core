@@ -10,13 +10,13 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
 
   const lines: string[] = [];
 
-  if (hasAnyTool(visibleToolNames, ["view_message", "view_forward_record", "view_media"])) {
+  if (hasAnyTool(visibleToolNames, ["view_message", "view_forward_record", "chat_file_view_media", "local_file_view_media"])) {
     lines.push("需要展开消息、转发或图片引用时再调用查看工具；message_id、forward_id、image_id 必须逐字复制。");
   }
 
   if (visibleToolNames.has("generate_image_with_comfyui")) {
-    lines.push("generate_image_with_comfyui 是异步工具：调用后不会立刻拿到图片，系统会在完成后把对应的 workspace file_id、file_ref 和 workspace_path 再交还给你。");
-    lines.push("收到 ComfyUI 完成通知后，你要自己判断下一步：先 view_media 看图、直接 send_workspace_file_to_chat 发图、继续改 prompt 再生成，或结束本轮。");
+    lines.push("generate_image_with_comfyui 是异步工具：调用后不会立刻拿到图片，系统会在完成后把对应的 workspace file_id、file_ref 和 chat_file_path 再交还给你。");
+    lines.push("收到 ComfyUI 完成通知后，你要自己判断下一步：先 chat_file_view_media 看图、直接 chat_file_send_to_chat 发图、继续改 prompt 再生成，或结束本轮。");
     lines.push("generate_image_with_comfyui 只接受 template、positive_prompt、aspect_ratio；不要自己编造宽高。");
   }
 
@@ -52,10 +52,14 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("当前工具按工具集分批暴露；若发现缺少完成任务所需能力，先 list_available_toolsets，再用 request_toolset 申请补充，避免盲猜工具名。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["list_workspace_files", "view_media", "send_workspace_file_to_chat"])) {
-    lines.push("需要找工作区里的图片、视频、音频或文件时，先调用 list_workspace_files；不要靠猜 workspace/media 目录名来找。");
-    lines.push("send_workspace_file_to_chat 默认优先发送已登记的 workspace file：优先传 file_ref，file_id 只是稳定主键；若直接传 path，则 shell.allowAnyCwd=true 时必须用绝对路径，false 时必须用 workspace 相对路径。");
-    lines.push("view_media 支持两种模式：media_ids 模式传已登记的 file_/aud_ id 列表；path 模式直接按路径查看图片，路径规则与 send_workspace_file_to_chat 一致，两种模式互斥。");
+  if (hasAnyTool(visibleToolNames, ["chat_file_list", "chat_file_view_media", "chat_file_send_to_chat"])) {
+    lines.push("需要找已登记的图片、视频、音频或文件时，先调 chat_file_list；默认不会列出 chat_message 来源，除非你显式传 origin。");
+    lines.push("发送已登记文件时优先用 chat_file_send_to_chat(file_ref=...)；file_id 只是稳定主键。");
+  }
+
+  if (hasAnyTool(visibleToolNames, ["local_file_view_media", "local_file_send_to_chat", "local_file_read", "local_file_search_items"])) {
+    lines.push("local_file_* 处理本地路径；相对路径走本地文件根目录，绝对路径是否允许由 localFileAccess 控制。");
+    lines.push("本地图片查看用 local_file_view_media，本地路径发送用 local_file_send_to_chat。");
   }
 
   if (hasAnyTool(visibleToolNames, ["get_user_profile", "remember_user_profile", "read_memory", "write_memory", "remove_memory"])) {

@@ -111,10 +111,10 @@ const persistedSessionSchema = z.object({
       fileId: z.string().min(1).nullable(),
       fileRef: z.string().nullable(),
       sourceName: z.string().nullable(),
-      workspacePath: z.string().nullable(),
+      chatFilePath: z.string().nullable(),
       sourcePath: z.string().nullable(),
       messageId: z.number().int().nonnegative().nullable(),
-      toolName: z.literal("send_workspace_file_to_chat"),
+      toolName: z.union([z.literal("chat_file_send_to_chat"), z.literal("local_file_send_to_chat")]),
       captionText: z.string().nullable().optional(),
       timestampMs: z.number().int().nonnegative()
     }),

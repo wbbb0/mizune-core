@@ -139,7 +139,7 @@ function buildTriggerDetails(trigger: InternalSessionTriggerExecution): string |
 
   if (trigger.kind === "comfy_task_completed") {
     lines.push(`workspaceFileIds: ${trigger.workspaceFileIds.join(", ") || "(none)"}`);
-    lines.push(`workspacePaths: ${trigger.workspacePaths.join(", ") || "(none)"}`);
+    lines.push(`chatFilePaths: ${trigger.chatFilePaths.join(", ") || "(none)"}`);
   } else {
     lines.push(`lastError: ${trigger.lastError}`);
   }

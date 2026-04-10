@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
-import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
+import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { ComfyClient } from "./comfyClient.ts";
 import type { ComfyTaskStore } from "./taskStore.ts";
 import type { ComfyTaskRecord } from "./taskSchema.ts";
@@ -15,7 +15,7 @@ export class ComfyTaskRunner {
       logger: Logger;
       comfyClient: ComfyClient;
       comfyTaskStore: ComfyTaskStore;
-      mediaWorkspace: MediaWorkspace;
+      chatFileStore: ChatFileStore;
       notifyCompletedTask: (task: ComfyTaskRecord, files: Array<{ fileId: string; path: string }>) => Promise<void>;
       notifyFailedTask: (task: ComfyTaskRecord) => Promise<void>;
     }
@@ -120,7 +120,7 @@ export class ComfyTaskRunner {
     const files: Array<{ fileId: string; path: string }> = [];
     for (const file of history.images) {
       const bytes = await this.input.comfyClient.downloadView(file);
-      const imported = await this.input.mediaWorkspace.importBuffer({
+      const imported = await this.input.chatFileStore.importBuffer({
         buffer: bytes,
         sourceName: file.filename,
         mimeType: "image/png",
@@ -141,7 +141,7 @@ export class ComfyTaskRunner {
       });
       files.push({
         fileId: imported.fileId,
-        path: imported.workspacePath
+        path: imported.chatFilePath
       });
     }
 

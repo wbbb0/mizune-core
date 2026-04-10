@@ -2,7 +2,7 @@ import type { SessionManager } from "#conversation/session/sessionManager.ts";
 import type { InternalTranscriptItem, SessionPhase } from "#conversation/session/sessionTypes.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
-import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
+import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { GenerationWebOutputCollector } from "#app/generation/generationTypes.ts";
 import type {
   ParsedSendTextBody,
@@ -75,7 +75,7 @@ export function createAdminMessagingService(input: {
     };
   };
   oneBotClient: Pick<OneBotClient, "sendText">;
-  mediaWorkspace: Pick<MediaWorkspace, "getMany">;
+  chatFileStore: Pick<ChatFileStore, "getMany">;
   sessionManager: Pick<SessionManager, "getSession" | "hasActiveResponse"> & {
     getSession(sessionId: string): SessionStreamableState;
   };
@@ -117,7 +117,7 @@ export function createAdminMessagingService(input: {
       void runWebTurnInBackground({
         sessionManager: input.sessionManager,
         handleWebIncomingMessage: input.handleWebIncomingMessage,
-        mediaWorkspace: input.mediaWorkspace,
+        chatFileStore: input.chatFileStore,
         broker,
         turnState,
         sessionId: params.sessionId,
@@ -204,7 +204,7 @@ async function runWebTurnInBackground(input: {
   sessionManager: Pick<SessionManager, "getSession" | "hasActiveResponse"> & {
     getSession(sessionId: string): SessionStreamableState;
   };
-  mediaWorkspace: Pick<MediaWorkspace, "getMany">;
+  chatFileStore: Pick<ChatFileStore, "getMany">;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {
@@ -227,7 +227,7 @@ async function runWebTurnInBackground(input: {
 }): Promise<void> {
   try {
     const attachments = input.message.attachmentIds.length > 0
-      ? (await input.mediaWorkspace.getMany(input.message.attachmentIds)).map((file) => ({
+      ? (await input.chatFileStore.getMany(input.message.attachmentIds)).map((file) => ({
           fileId: file.fileId,
           kind: file.kind,
           source: "web_upload" as const,

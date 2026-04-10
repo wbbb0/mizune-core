@@ -2,15 +2,18 @@ import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/p
 import { dirname, join, normalize, posix, resolve } from "node:path";
 import type { AppConfig } from "#config/config.ts";
 import type {
-  WorkspaceFileContentResult,
-  WorkspaceDeleteResult,
-  WorkspaceFileReadResult,
-  WorkspaceItemStat,
-  WorkspaceListResult,
-  WorkspaceMoveResult,
-  WorkspacePatchResult,
-  WorkspaceWriteMode,
-  WorkspaceWriteResult
+  LocalFileContentResult,
+  LocalFileDeleteResult,
+  LocalFileFindTextResult,
+  LocalFileItemStat,
+  LocalFileListResult,
+  LocalFileMoveResult,
+  LocalFilePatchResult,
+  LocalFileReadResult,
+  LocalFileSearchItem,
+  LocalFileSearchResult,
+  LocalFileWriteMode,
+  LocalFileWriteResult
 } from "./types.ts";
 
 const DEFAULT_READ_LINE_LIMIT = 400;
@@ -23,16 +26,16 @@ interface ParsedHunk {
   lines: string[];
 }
 
-export class WorkspaceService {
+export class LocalFileService {
   readonly rootDir: string;
 
   constructor(private readonly config: AppConfig, dataDir: string) {
-    const configuredRoot = String(config.workspace.root ?? "").trim();
+    const configuredRoot = String(config.localFiles.root ?? "").trim();
     this.rootDir = resolve(!configuredRoot || configuredRoot === "data" ? dataDir : configuredRoot);
   }
 
   isEnabled(): boolean {
-    return this.config.workspace.enabled;
+    return this.config.localFiles.enabled;
   }
 
   async init(): Promise<void> {
@@ -44,15 +47,15 @@ export class WorkspaceService {
 
   resolvePath(relativePath = "."): { relativePath: string; absolutePath: string } {
     if (!this.isEnabled()) {
-      throw new Error("Workspace is disabled");
+      throw new Error("local files are disabled");
     }
     const normalizedInput = String(relativePath ?? "").trim() || ".";
     if (normalizedInput.startsWith("/") || normalizedInput.startsWith("\\")) {
-      throw new Error("Absolute paths are not allowed in workspace tools");
+      throw new Error("absolute paths are not allowed in local_file tools");
     }
     const normalizedRelative = posix.normalize(normalizedInput.replaceAll("\\", "/"));
     if (normalizedRelative === ".." || normalizedRelative.startsWith("../")) {
-      throw new Error("Workspace path cannot escape the root directory");
+      throw new Error("local file path cannot escape the root directory");
     }
     const cleanedRelative = normalizedRelative === "." ? "" : normalizedRelative;
     const absolutePath = resolve(this.rootDir, cleanedRelative);
@@ -60,7 +63,7 @@ export class WorkspaceService {
       ? cleanedRelative
       : null;
     if (relativeFromRoot == null) {
-      throw new Error("Workspace path cannot escape the root directory");
+      throw new Error("local file path cannot escape the root directory");
     }
     return {
       relativePath: cleanedRelative || ".",
@@ -68,7 +71,7 @@ export class WorkspaceService {
     };
   }
 
-  async listItems(relativePath = "."): Promise<WorkspaceListResult> {
+  async listItems(relativePath = "."): Promise<LocalFileListResult> {
     const target = this.resolvePath(relativePath);
     const entries = await readdir(target.absolutePath, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") {
@@ -76,7 +79,7 @@ export class WorkspaceService {
       }
       throw error;
     });
-    const items = await Promise.all(entries.map(async (entry): Promise<WorkspaceItemStat> => {
+    const items = await Promise.all(entries.map(async (entry): Promise<LocalFileItemStat> => {
       const itemRelativePath = target.relativePath === "."
         ? entry.name
         : posix.join(target.relativePath, entry.name);
@@ -97,7 +100,7 @@ export class WorkspaceService {
     };
   }
 
-  async statItem(relativePath: string): Promise<WorkspaceItemStat> {
+  async statItem(relativePath: string): Promise<LocalFileItemStat> {
     const target = this.resolvePath(relativePath);
     const itemStat = await stat(target.absolutePath);
     return {
@@ -112,10 +115,10 @@ export class WorkspaceService {
   async readFile(relativePath: string, options?: {
     startLine?: number;
     endLine?: number;
-  }): Promise<WorkspaceFileReadResult> {
+  }): Promise<LocalFileReadResult> {
     const target = this.resolvePath(relativePath);
     const rawBuffer = await readFile(target.absolutePath);
-    assertTextFile(rawBuffer, target.relativePath, this.config.workspace.maxPatchFileBytes);
+    assertTextFile(rawBuffer, target.relativePath, this.config.localFiles.maxPatchFileBytes);
     const raw = rawBuffer.toString("utf8");
     const lines = raw.split("\n");
     const startLine = Math.max(1, Math.floor(options?.startLine ?? 1));
@@ -134,11 +137,11 @@ export class WorkspaceService {
     };
   }
 
-  async readFileContent(relativePath: string): Promise<WorkspaceFileContentResult> {
+  async readFileContent(relativePath: string): Promise<LocalFileContentResult> {
     const target = this.resolvePath(relativePath);
     const itemStat = await stat(target.absolutePath);
     if (itemStat.isDirectory()) {
-      throw new Error(`Workspace path is not a file: ${target.relativePath}`);
+      throw new Error(`local file path is not a file: ${target.relativePath}`);
     }
     return {
       path: target.relativePath,
@@ -147,17 +150,17 @@ export class WorkspaceService {
     };
   }
 
-  async writeFile(relativePath: string, content: string, mode: WorkspaceWriteMode): Promise<WorkspaceWriteResult> {
+  async writeFile(relativePath: string, content: string, mode: LocalFileWriteMode): Promise<LocalFileWriteResult> {
     const target = this.resolvePath(relativePath);
     await mkdir(dirname(target.absolutePath), { recursive: true });
     const normalizedContent = String(content ?? "");
-    if (Buffer.byteLength(normalizedContent, "utf8") > this.config.workspace.maxPatchFileBytes) {
-      throw new Error("Workspace file content exceeds maxPatchFileBytes");
+    if (Buffer.byteLength(normalizedContent, "utf8") > this.config.localFiles.maxPatchFileBytes) {
+      throw new Error("local file content exceeds maxPatchFileBytes");
     }
     if (mode === "create") {
       const existing = await stat(target.absolutePath).then(() => true).catch(() => false);
       if (existing) {
-        throw new Error(`Workspace file already exists: ${target.relativePath}`);
+        throw new Error(`local file already exists: ${target.relativePath}`);
       }
     }
     if (mode === "append") {
@@ -167,7 +170,7 @@ export class WorkspaceService {
         }
         throw error;
       });
-      assertTextFile(previous, target.relativePath, this.config.workspace.maxPatchFileBytes);
+      assertTextFile(previous, target.relativePath, this.config.localFiles.maxPatchFileBytes);
       await writeFile(target.absolutePath, `${previous.toString("utf8")}${normalizedContent}`, "utf8");
     } else {
       await writeFile(target.absolutePath, normalizedContent, "utf8");
@@ -180,13 +183,13 @@ export class WorkspaceService {
     };
   }
 
-  async mkdir(relativePath: string): Promise<WorkspaceItemStat> {
+  async mkdir(relativePath: string): Promise<LocalFileItemStat> {
     const target = this.resolvePath(relativePath);
     await mkdir(target.absolutePath, { recursive: true });
     return this.statItem(target.relativePath);
   }
 
-  async moveItem(fromPath: string, toPath: string): Promise<WorkspaceMoveResult> {
+  async moveItem(fromPath: string, toPath: string): Promise<LocalFileMoveResult> {
     const from = this.resolvePath(fromPath);
     const to = this.resolvePath(toPath);
     await mkdir(dirname(to.absolutePath), { recursive: true });
@@ -197,7 +200,7 @@ export class WorkspaceService {
     };
   }
 
-  async deleteItem(relativePath: string): Promise<WorkspaceDeleteResult> {
+  async deleteItem(relativePath: string): Promise<LocalFileDeleteResult> {
     const target = this.resolvePath(relativePath);
     const existed = await stat(target.absolutePath).then(() => true).catch(() => false);
     await rm(target.absolutePath, { recursive: true, force: true });
@@ -207,10 +210,10 @@ export class WorkspaceService {
     };
   }
 
-  async patchFile(relativePath: string, patch: string): Promise<WorkspacePatchResult> {
+  async patchFile(relativePath: string, patch: string): Promise<LocalFilePatchResult> {
     const target = this.resolvePath(relativePath);
     const originalBuffer = await readFile(target.absolutePath);
-    assertTextFile(originalBuffer, target.relativePath, this.config.workspace.maxPatchFileBytes);
+    assertTextFile(originalBuffer, target.relativePath, this.config.localFiles.maxPatchFileBytes);
     const original = originalBuffer.toString("utf8");
     const patched = applyUnifiedPatch(original, patch);
     await writeFile(target.absolutePath, patched, "utf8");
@@ -220,6 +223,119 @@ export class WorkspaceService {
       updatedAtMs: updated.mtimeMs,
       hunksApplied: countPatchHunks(patch)
     };
+  }
+
+  async searchItems(query: string, relativePath = ".", limit = 50): Promise<LocalFileSearchResult> {
+    const normalizedQuery = String(query ?? "").trim().toLowerCase();
+    if (!normalizedQuery) {
+      throw new Error("query is required");
+    }
+    const target = this.resolvePath(relativePath);
+    const items: LocalFileSearchItem[] = [];
+    let truncated = false;
+    await this.walk(target.relativePath, async (itemPath, entryKind) => {
+      if (items.length >= limit) {
+        truncated = true;
+        return false;
+      }
+      const name = basenameFromRelative(itemPath).toLowerCase();
+      if (name.includes(normalizedQuery) || itemPath.toLowerCase().includes(normalizedQuery)) {
+        items.push({
+          path: itemPath,
+          name: basenameFromRelative(itemPath),
+          kind: entryKind
+        });
+      }
+      return true;
+    });
+    return {
+      root: this.rootDir,
+      path: target.relativePath,
+      query: normalizedQuery,
+      items,
+      truncated
+    };
+  }
+
+  async findText(query: string, relativePath = ".", limit = 50): Promise<LocalFileFindTextResult> {
+    const normalizedQuery = String(query ?? "").trim();
+    if (!normalizedQuery) {
+      throw new Error("query is required");
+    }
+    const target = this.resolvePath(relativePath);
+    const matches: LocalFileFindTextResult["matches"] = [];
+    let truncated = false;
+    await this.walk(target.relativePath, async (itemPath, entryKind) => {
+      if (entryKind !== "file") {
+        return true;
+      }
+      if (matches.length >= limit) {
+        truncated = true;
+        return false;
+      }
+      const absolutePath = this.resolvePath(itemPath).absolutePath;
+      const buffer = await readFile(absolutePath).catch(() => null);
+      if (!buffer) {
+        return true;
+      }
+      try {
+        assertTextFile(buffer, itemPath, this.config.localFiles.maxPatchFileBytes);
+      } catch {
+        return true;
+      }
+      const lines = buffer.toString("utf8").split("\n");
+      for (let index = 0; index < lines.length; index += 1) {
+        if (matches.length >= limit) {
+          truncated = true;
+          return false;
+        }
+        const lineText = lines[index] ?? "";
+        if (lineText.includes(normalizedQuery)) {
+          matches.push({
+            path: itemPath,
+            line: index + 1,
+            text: lineText
+          });
+        }
+      }
+      return true;
+    });
+    return {
+      root: this.rootDir,
+      path: target.relativePath,
+      query: normalizedQuery,
+      matches,
+      truncated
+    };
+  }
+
+  private async walk(
+    relativePath: string,
+    visitor: (itemPath: string, kind: "file" | "directory") => Promise<boolean>
+  ): Promise<boolean> {
+    const target = this.resolvePath(relativePath);
+    const entries = await readdir(target.absolutePath, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") {
+        return [];
+      }
+      throw error;
+    });
+
+    for (const entry of entries) {
+      const itemPath = target.relativePath === "." ? entry.name : posix.join(target.relativePath, entry.name);
+      const kind = entry.isDirectory() ? "directory" as const : "file" as const;
+      const shouldContinue = await visitor(itemPath, kind);
+      if (!shouldContinue) {
+        return false;
+      }
+      if (entry.isDirectory()) {
+        const nestedContinue = await this.walk(itemPath, visitor);
+        if (!nestedContinue) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 }
 

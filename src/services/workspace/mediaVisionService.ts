@@ -3,13 +3,13 @@ import type { Logger } from "pino";
 import sharp from "sharp";
 import type { AppConfig } from "#config/config.ts";
 import { inferSendableFileKind } from "./sendablePath.ts";
-import type { WorkspaceStoredFileRecord } from "./types.ts";
-import type { MediaWorkspace } from "./mediaWorkspace.ts";
+import type { ChatFileRecord } from "./types.ts";
+import type { ChatFileStore } from "./chatFileStore.ts";
 
 export interface PreparedWorkspaceVisual {
   fileId: string;
   inputUrl: string;
-  kind: WorkspaceStoredFileRecord["kind"];
+  kind: ChatFileRecord["kind"];
   transport: "data_url";
   animated: boolean;
   durationMs: number | null;
@@ -20,7 +20,7 @@ export class MediaVisionService {
   constructor(
     private readonly config: AppConfig,
     private readonly logger: Logger,
-    private readonly mediaWorkspace: Pick<MediaWorkspace, "getFile" | "resolveAbsolutePath">
+    private readonly chatFileStore: Pick<ChatFileStore, "getFile" | "resolveAbsolutePath">
   ) {}
 
   async prepareFilesForModel(fileIds: string[]): Promise<PreparedWorkspaceVisual[]> {
@@ -33,7 +33,7 @@ export class MediaVisionService {
   }
 
   async prepareFileForModel(fileId: string): Promise<PreparedWorkspaceVisual> {
-    const file = await this.mediaWorkspace.getFile(fileId);
+    const file = await this.chatFileStore.getFile(fileId);
     if (!file) {
       throw new Error(`Workspace file not found: ${fileId}`);
     }
@@ -41,7 +41,7 @@ export class MediaVisionService {
       throw new Error(`Workspace file is not viewable: ${fileId}`);
     }
 
-    const buffer = await readFile(await this.mediaWorkspace.resolveAbsolutePath(fileId));
+    const buffer = await readFile(await this.chatFileStore.resolveAbsolutePath(fileId));
     if (file.kind === "animated_image") {
       return this.prepareAnimatedFile(file, buffer);
     }
@@ -64,7 +64,7 @@ export class MediaVisionService {
     }
     const buffer = await readFile(absolutePath);
     if (kind === "animated_image") {
-      return this.prepareAnimatedFile({ fileId: absolutePath, kind } as WorkspaceStoredFileRecord, buffer);
+      return this.prepareAnimatedFile({ fileId: absolutePath, kind } as ChatFileRecord, buffer);
     }
     return {
       fileId: absolutePath,
@@ -77,7 +77,7 @@ export class MediaVisionService {
     };
   }
 
-  private async prepareAnimatedFile(file: WorkspaceStoredFileRecord, buffer: Buffer): Promise<PreparedWorkspaceVisual> {
+  private async prepareAnimatedFile(file: ChatFileRecord, buffer: Buffer): Promise<PreparedWorkspaceVisual> {
     const metadata = await sharp(buffer, {
       animated: true,
       failOn: "none"

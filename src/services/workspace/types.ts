@@ -1,20 +1,20 @@
-export type WorkspaceFileKind = "file" | "directory";
+export type LocalFileKind = "file" | "directory";
 
-export interface WorkspaceItemStat {
+export interface LocalFileItemStat {
   path: string;
   name: string;
-  kind: WorkspaceFileKind;
+  kind: LocalFileKind;
   sizeBytes: number;
   updatedAtMs: number;
 }
 
-export interface WorkspaceListResult {
+export interface LocalFileListResult {
   root: string;
   path: string;
-  items: WorkspaceItemStat[];
+  items: LocalFileItemStat[];
 }
 
-export interface WorkspaceFileReadResult {
+export interface LocalFileReadResult {
   path: string;
   content: string;
   startLine: number;
@@ -23,51 +23,79 @@ export interface WorkspaceFileReadResult {
   truncated: boolean;
 }
 
-export interface WorkspaceFileContentResult {
+export interface LocalFileContentResult {
   path: string;
   contentType: string;
   buffer: Buffer;
 }
 
-export type WorkspaceWriteMode = "overwrite" | "append" | "create";
+export type LocalFileWriteMode = "overwrite" | "append" | "create";
 
-export interface WorkspaceWriteResult {
+export interface LocalFileWriteResult {
   path: string;
   bytesWritten: number;
   updatedAtMs: number;
 }
 
-export interface WorkspaceMoveResult {
+export interface LocalFileMoveResult {
   fromPath: string;
   toPath: string;
 }
 
-export interface WorkspaceDeleteResult {
+export interface LocalFileDeleteResult {
   path: string;
   deleted: boolean;
 }
 
-export interface WorkspacePatchResult {
+export interface LocalFilePatchResult {
   path: string;
   updatedAtMs: number;
   hunksApplied: number;
 }
 
-export type WorkspaceStoredFileKind = "image" | "animated_image" | "video" | "audio" | "file";
-export type WorkspaceStoredFileOrigin =
+export interface LocalFileSearchItem {
+  path: string;
+  name: string;
+  kind: LocalFileKind;
+}
+
+export interface LocalFileSearchResult {
+  root: string;
+  path: string;
+  query: string;
+  items: LocalFileSearchItem[];
+  truncated: boolean;
+}
+
+export interface LocalFileTextMatch {
+  path: string;
+  line: number;
+  text: string;
+}
+
+export interface LocalFileFindTextResult {
+  root: string;
+  path: string;
+  query: string;
+  matches: LocalFileTextMatch[];
+  truncated: boolean;
+}
+
+export type ChatFileKind = "image" | "animated_image" | "video" | "audio" | "file";
+export type ChatFileOrigin =
   | "chat_message"
   | "browser_download"
   | "browser_screenshot"
   | "comfy_generated"
-  | "workspace_import"
+  | "local_file_import"
   | "user_upload";
 
-export interface WorkspaceStoredFileRecord {
+export interface ChatFileRecord {
   fileId: string;
   fileRef: string;
-  kind: WorkspaceStoredFileKind;
-  origin: WorkspaceStoredFileOrigin;
-  workspacePath: string;
+  kind: ChatFileKind;
+  origin: ChatFileOrigin;
+  chatFilePath: string;
   sourceName: string;
   mimeType: string;
   sizeBytes: number;
@@ -78,8 +106,8 @@ export interface WorkspaceStoredFileRecord {
 
 export interface ChatAttachment {
   fileId: string;
-  kind: WorkspaceStoredFileKind;
-  source: "chat_message" | "web_upload" | "browser" | "workspace";
+  kind: ChatFileKind;
+  source: "chat_message" | "web_upload" | "browser" | "chat_file";
   sourceName: string | null;
   mimeType: string | null;
   semanticKind?: "image" | "emoji";

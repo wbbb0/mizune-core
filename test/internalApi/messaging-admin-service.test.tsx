@@ -61,7 +61,7 @@ async function main() {
           return {};
         }
       } as any,
-      mediaWorkspace: {
+      chatFileStore: {
         async getMany() {
           return [];
         }
@@ -120,7 +120,7 @@ async function main() {
           return {};
         }
       } as any,
-      mediaWorkspace: {
+      chatFileStore: {
         async getMany() {
           return [];
         }

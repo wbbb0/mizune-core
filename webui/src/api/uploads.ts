@@ -5,7 +5,7 @@ export interface UploadedFile {
   fileRef: string | null;
   kind: "image" | "animated_image" | "video" | "audio" | "file";
   sourceName: string;
-  workspacePath: string | null;
+  chatFilePath: string | null;
   mimeType: string;
   sizeBytes: number;
 }

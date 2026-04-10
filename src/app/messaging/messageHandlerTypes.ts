@@ -17,7 +17,7 @@ export interface MessageEventHandlerDeps {
     | "sessionManager"
     | "debounceManager"
     | "audioStore"
-    | "mediaWorkspace"
+    | "chatFileStore"
     | "mediaCaptionService"
     | "requestStore"
     | "userStore"

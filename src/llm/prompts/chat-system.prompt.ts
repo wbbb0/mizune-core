@@ -124,7 +124,7 @@ export function buildScheduledTaskSystemLines(input: {
         resolvedWidth: number;
         resolvedHeight: number;
         workspaceFileIds: string[];
-        workspacePaths: string[];
+        chatFilePaths: string[];
         comfyPromptId: string;
         autoIterationIndex: number;
         maxAutoIterations: number;

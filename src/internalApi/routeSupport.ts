@@ -93,7 +93,7 @@ const browserProfileParamsSchema = z.object({
   profileId: z.string().trim().min(1, "profileId is required")
 });
 
-const workspacePathQuerySchema = z.object({
+const chatFilePathQuerySchema = z.object({
   path: z.string().trim().optional().default(".")
 });
 
@@ -123,7 +123,7 @@ export type ParsedEditorResourceParams = z.infer<typeof editorResourceParamsSche
 export type ParsedResourceItemParams = z.infer<typeof resourceItemParamsSchema>;
 export type ParsedEditorOptionsParams = z.infer<typeof editorOptionsParamsSchema>;
 export type ParsedBrowserProfileParams = z.infer<typeof browserProfileParamsSchema>;
-export type ParsedWorkspacePathQuery = z.infer<typeof workspacePathQuerySchema>;
+export type ParsedWorkspacePathQuery = z.infer<typeof chatFilePathQuerySchema>;
 export type ParsedWorkspaceFileQuery = z.infer<typeof workspaceFileQuerySchema>;
 export type ParsedWorkspaceStoredFileParams = z.infer<typeof workspaceStoredFileParamsSchema>;
 
@@ -231,7 +231,7 @@ export function parseBrowserProfileParams(params: unknown): ParsedBrowserProfile
 }
 
 export function parseWorkspacePathQuery(query: unknown): ParsedWorkspacePathQuery | { error: string } {
-  return parseWithSchema(workspacePathQuerySchema, query);
+  return parseWithSchema(chatFilePathQuerySchema, query);
 }
 
 export function parseWorkspaceFileQuery(query: unknown): ParsedWorkspaceFileQuery | { error: string } {

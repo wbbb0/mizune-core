@@ -276,7 +276,7 @@ const outboundMediaRows = computed(() => {
     { label: "文件 ID", value: props.item.fileId || "无" },
     { label: "文件引用", value: props.item.fileRef || "无" },
     { label: "原始文件名", value: props.item.sourceName || "未命名图片" },
-    { label: "工作区路径", value: props.item.workspacePath || "无" },
+    { label: "工作区路径", value: props.item.chatFilePath || "无" },
     { label: "发送路径", value: props.item.sourcePath || "无" },
     { label: "消息 ID", value: props.item.messageId != null ? String(props.item.messageId) : "无" }
   ];

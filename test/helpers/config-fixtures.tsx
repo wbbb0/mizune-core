@@ -93,13 +93,34 @@ const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
   },
   shell: {
     enabled: false,
-    allowAnyCwd: false,
-    defaultCwd: "/tmp",
-    allowedCwds: ["/tmp"],
+    mode: "disabled",
     defaultTimeoutMs: 1000,
     maxTimeoutMs: 5000,
     maxOutputChars: 4000,
     sessionTtlMs: null
+  },
+  localFiles: {
+    enabled: true,
+    root: "data",
+    maxPatchFileBytes: 512 * 1024
+  },
+  localFileAccess: {
+    read: {
+      mode: "allowed_roots",
+      allowedRoots: ["data", "/tmp"]
+    },
+    write: {
+      mode: "allowed_roots",
+      allowedRoots: ["data", "/tmp"]
+    },
+    maxReadBytes: 32 * 1024 * 1024,
+    maxImageBytes: 16 * 1024 * 1024
+  },
+  chatFiles: {
+    enabled: true,
+    root: "chat-files",
+    maxUploadBytes: 32 * 1024 * 1024,
+    gcGracePeriodMs: 7 * 24 * 60 * 60 * 1000
   },
   search: {
     googleGrounding: {

@@ -71,7 +71,7 @@ export class BrowserService {
     private readonly logger: Logger,
     private readonly resolveSearchRef: (refId: string) => string | null,
     dataDir: string,
-    private readonly mediaWorkspace: ScreenshotImageStore
+    private readonly chatFileStore: ScreenshotImageStore
   ) {
     this.playwrightBackend = new PlaywrightBrowserBackend(config, logger);
     this.sessions = new BrowserSessionRuntime(MAX_BROWSER_SESSIONS);
@@ -363,7 +363,7 @@ export class BrowserService {
       }
     }
 
-    const downloaded = await this.mediaWorkspace.importRemoteSource({
+    const downloaded = await this.chatFileStore.importRemoteSource({
       source: String(sourceUrl),
       ...(sourceName ? { sourceName } : {}),
       ...(kind ? { kind } : {}),
@@ -468,7 +468,7 @@ export class BrowserService {
       throw new Error(`Screenshot exceeds ${this.config.browser.playwright.screenshotMaxBytes} bytes`);
     }
 
-    const uploaded = await this.mediaWorkspace.importBuffer({
+    const uploaded = await this.chatFileStore.importBuffer({
       buffer,
       mimeType: "image/png",
       sourceName: mode === "page" ? "browser-page.png" : `browser-element-${targetId}.png`,

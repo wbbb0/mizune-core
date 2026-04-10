@@ -270,7 +270,7 @@ async function main() {
       resolvedWidth: 1024,
       resolvedHeight: 1024,
       workspaceFileIds: ["file-1"],
-      workspacePaths: ["workspace/media/file-1.png"],
+      chatFilePaths: ["workspace/media/file-1.png"],
       comfyPromptId: "prompt-1",
       autoIterationIndex: 0,
       maxAutoIterations: 1

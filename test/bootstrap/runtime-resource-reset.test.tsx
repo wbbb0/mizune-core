@@ -39,8 +39,9 @@ async function main() {
         whitelistStore: { async init() {} } as any,
         sessionPersistence: { async init() {}, async loadAll() { return []; } } as any,
         audioStore: { async init() {} } as any,
-        workspaceService: { async init() {} } as any,
-        mediaWorkspace: { async init() {} } as any,
+        localFileService: { async init() {} } as any,
+        chatFileStore: { async init() {} } as any,
+        chatMessageFileGcService: { async sweep() { return { deletedFileIds: [] }; } } as any,
         mediaVisionService: {} as any,
         mediaCaptionService: {} as any,
         comfyTaskStore: { async init() {} } as any,
@@ -54,7 +55,7 @@ async function main() {
         globalMemoryStore: { async init() {} } as any,
         operationNoteStore: { async init() {} } as any,
         setupStore: { async init() {} } as any,
-        sessionManager: { restoreSessions() {} } as any
+        sessionManager: { restoreSessions() {}, listSessions() { return []; } } as any
       });
 
       const persisted = JSON.parse(await readFile(join(dataDir, "live-resources.json"), "utf8"));

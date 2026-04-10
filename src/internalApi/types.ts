@@ -14,10 +14,11 @@ import type { ConfigManager } from "#config/configManager.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { GenerationWebOutputCollector } from "#app/generation/generationTypes.ts";
 import type { BrowserService } from "#services/web/browser/browserService.ts";
-import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
+import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
+import type { ChatMessageFileGcService } from "#services/workspace/chatMessageFileGcService.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
-import type { WorkspaceService } from "#services/workspace/workspaceService.ts";
+import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import {
   createEditorService,
   type EditorService
@@ -28,9 +29,9 @@ import {
   type DataBrowserService
 } from "./application/dataBrowserService.ts";
 import {
-  createWorkspaceAdminService,
-  type WorkspaceAdminService
-} from "./application/workspaceAdminService.ts";
+  createLocalFileAdminService,
+  type LocalFileAdminService
+} from "./application/localFileAdminService.ts";
 
 export interface InternalApiDeps {
   config: AppConfig;
@@ -64,23 +65,24 @@ export interface InternalApiDeps {
     }
   ) => Promise<void>;
   browserService: BrowserService;
-  workspaceService: WorkspaceService;
-  mediaWorkspace: MediaWorkspace;
+  localFileService: LocalFileService;
+  chatFileStore: ChatFileStore;
+  chatMessageFileGcService: ChatMessageFileGcService;
   mediaVisionService: MediaVisionService;
   mediaCaptionService: MediaCaptionService;
 }
 
 export interface InternalApiServices {
-  config: Pick<InternalApiDeps, "config" | "whitelistStore" | "sessionManager" | "sessionPersistence" | "personaStore" | "globalMemoryStore" | "userStore">;
+  config: Pick<InternalApiDeps, "config" | "whitelistStore" | "sessionManager" | "sessionPersistence" | "personaStore" | "globalMemoryStore" | "userStore" | "chatMessageFileGcService">;
   editor: EditorService;
   dataBrowser: DataBrowserService;
-  workspaceAdmin: WorkspaceAdminService;
+  localFileAdmin: LocalFileAdminService;
   operations: Pick<InternalApiDeps, "requestStore" | "scheduledJobStore">;
-  messaging: Pick<InternalApiDeps, "config" | "oneBotClient" | "sessionManager" | "handleWebIncomingMessage" | "mediaWorkspace">;
-  uploads: Pick<InternalApiDeps, "mediaWorkspace">;
+  messaging: Pick<InternalApiDeps, "config" | "oneBotClient" | "sessionManager" | "handleWebIncomingMessage" | "chatFileStore">;
+  uploads: Pick<InternalApiDeps, "chatFileStore">;
   shell: Pick<InternalApiDeps, "shellRuntime">;
   browser: Pick<InternalApiDeps, "browserService">;
-  workspace: Pick<InternalApiDeps, "workspaceService" | "mediaWorkspace" | "oneBotClient">;
+  workspace: Pick<InternalApiDeps, "localFileService" | "chatFileStore" | "oneBotClient">;
 }
 
 export function createInternalApiServices(deps: InternalApiDeps): InternalApiServices {
@@ -92,7 +94,8 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       sessionPersistence: deps.sessionPersistence,
       personaStore: deps.personaStore,
       globalMemoryStore: deps.globalMemoryStore,
-      userStore: deps.userStore
+      userStore: deps.userStore,
+      chatMessageFileGcService: deps.chatMessageFileGcService
     },
     editor: createEditorService({
       config: deps.config,
@@ -103,10 +106,10 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
     dataBrowser: createDataBrowserService({
       config: deps.config
     }),
-    workspaceAdmin: createWorkspaceAdminService({
+    localFileAdmin: createLocalFileAdminService({
       config: deps.config,
-      workspaceService: deps.workspaceService,
-      mediaWorkspace: deps.mediaWorkspace
+      localFileService: deps.localFileService,
+      chatFileStore: deps.chatFileStore
     }),
     operations: {
       requestStore: deps.requestStore,
@@ -117,10 +120,10 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       oneBotClient: deps.oneBotClient,
       sessionManager: deps.sessionManager,
       handleWebIncomingMessage: deps.handleWebIncomingMessage,
-      mediaWorkspace: deps.mediaWorkspace
+      chatFileStore: deps.chatFileStore
     },
     uploads: {
-      mediaWorkspace: deps.mediaWorkspace
+      chatFileStore: deps.chatFileStore
     },
     shell: {
       shellRuntime: deps.shellRuntime
@@ -129,8 +132,8 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       browserService: deps.browserService
     },
     workspace: {
-      workspaceService: deps.workspaceService,
-      mediaWorkspace: deps.mediaWorkspace,
+      localFileService: deps.localFileService,
+      chatFileStore: deps.chatFileStore,
       oneBotClient: deps.oneBotClient
     }
   };

@@ -18,18 +18,9 @@ export interface SpawnedShellIo {
 }
 
 export function resolveAllowedShellCwd(config: AppConfig, input: string | undefined, label = "cwd"): string {
-  const cwd = resolve(input?.trim() || config.shell.defaultCwd);
-  if (config.shell.allowAnyCwd) {
-    return cwd;
-  }
-  const allowed = config.shell.allowedCwds.some((baseDir) => {
-    const resolvedBase = resolve(baseDir);
-    return cwd === resolvedBase || cwd.startsWith(`${resolvedBase}/`);
-  });
-  if (!allowed) {
-    throw new Error(`${label} is not allowed: ${cwd}`);
-  }
-  return cwd;
+  const configuredRoot = String(config.localFiles.root ?? "").trim();
+  const defaultRoot = resolve(!configuredRoot || configuredRoot === "data" ? config.dataDir : configuredRoot);
+  return resolve(input?.trim() || defaultRoot);
 }
 
 export function getDefaultShell(shell?: string): string {

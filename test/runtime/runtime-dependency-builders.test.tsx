@@ -24,8 +24,8 @@ function createServicesFixture() {
     shellRuntime: { key: "shellRuntime" },
     searchService: { key: "searchService" },
     browserService: { key: "browserService" },
-    workspaceService: { key: "workspaceService" },
-    mediaWorkspace: { key: "mediaWorkspace" },
+    localFileService: { key: "localFileService" },
+    chatFileStore: { key: "chatFileStore" },
     mediaVisionService: { key: "mediaVisionService" },
     mediaCaptionService: { key: "mediaCaptionService" },
     comfyClient: { key: "comfyClient" },
@@ -109,7 +109,7 @@ async function main() {
     assert.equal(dispatched[0]?.trigger.targetGroupId, "114514");
     assert.equal(dispatched[0]?.trigger.targetSenderName, "Alice");
     assert.deepEqual(dispatched[0]?.trigger.workspaceFileIds, ["file-1", "file-2"]);
-    assert.deepEqual(dispatched[0]?.trigger.workspacePaths, ["workspace/image.png", "workspace/image-2.png"]);
+    assert.deepEqual(dispatched[0]?.trigger.chatFilePaths, ["workspace/image.png", "workspace/image-2.png"]);
   });
 
   await runCase("createComfyTaskNotifications builds failed trigger payloads with default error", async () => {

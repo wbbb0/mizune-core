@@ -465,7 +465,7 @@ async function main() {
       kind?: string;
       proxyConsumer?: string;
     }> = [];
-    (service as any).mediaWorkspace = {
+    (service as any).chatFileStore = {
       async importRemoteSource(input: {
         source: string;
         origin: string;

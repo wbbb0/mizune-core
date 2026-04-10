@@ -32,10 +32,10 @@ const TOOLSET_PATTERN_RULES: Array<{ toolsetId: string; reason: string; patterns
     ]
   },
   {
-    toolsetId: "workspace_io",
-    reason: "current_workspace_intent",
+    toolsetId: "local_file_io",
+    reason: "current_local_file_intent",
     patterns: [
-  /文件|文档|pdf|markdown|md\b|txt\b|csv\b|json\b|yaml\b|yml\b|保存|落盘|下载|上传|导出|导入|workspace|工作区|附件/u
+  /文件|文档|pdf|markdown|md\b|txt\b|csv\b|json\b|yaml\b|yml\b|保存|落盘|下载|上传|导出|导入|本地文件|附件/u
     ]
   },
   {
@@ -94,7 +94,7 @@ const WEB_CONTEXT_PATTERNS = [
   /页面|网页|网站|官网|浏览器|链接/u
 ] as const;
 const DOWNLOAD_INTENT_PATTERNS = [
-  /下载|下下来|保存下来|存一下|落盘|导出|拉到工作区|传给我/u
+  /下载|下下来|保存下来|存一下|落盘|导出|保存到本地|传给我/u
 ] as const;
 const FOLLOWUP_SHORT_PATTERNS = [
   /^继续/,
@@ -141,9 +141,9 @@ export function supplementPlannedToolsets(input: ToolsetSupplementInput): Toolse
   }
 
   if (selected.has("web_research") && matchesAny(currentText, DOWNLOAD_INTENT_PATTERNS)) {
-    add("workspace_io", "web_download_linkage");
+    add("local_file_io", "web_download_linkage");
   }
-  if (selected.has("workspace_io") && matchesAny(currentText, WEB_CONTEXT_PATTERNS)) {
+  if (selected.has("local_file_io") && matchesAny(currentText, WEB_CONTEXT_PATTERNS)) {
     add("web_research", "workspace_web_linkage");
   }
   if (selected.has("chat_context") && matchesAny(currentText, WEB_INTENT_PATTERNS)) {
@@ -157,14 +157,14 @@ export function supplementPlannedToolsets(input: ToolsetSupplementInput): Toolse
     if (recentDomains.hasShell) {
       add("shell_runtime", "followup_recent_shell");
     }
-    if (recentDomains.hasWorkspace) {
-      add("workspace_io", "followup_recent_workspace");
+    if (recentDomains.hasLocalFiles) {
+      add("local_file_io", "followup_recent_workspace");
     }
     if (recentDomains.hasChatContext || matchesAny(currentText, FOLLOWUP_REFERENCE_PATTERNS)) {
       add("chat_context", "followup_recent_context");
     }
     if (matchesAny(currentText, DOWNLOAD_INTENT_PATTERNS) && (recentDomains.hasWeb || selected.has("web_research"))) {
-      add("workspace_io", "followup_recent_web_download");
+      add("local_file_io", "followup_recent_web_download");
     }
   }
 
@@ -185,7 +185,7 @@ function summarizeRecentDomains(
 ): {
   hasWeb: boolean;
   hasShell: boolean;
-  hasWorkspace: boolean;
+  hasLocalFiles: boolean;
   hasChatContext: boolean;
 } {
   const toolToToolsets = new Map<string, Set<string>>();
@@ -199,7 +199,7 @@ function summarizeRecentDomains(
 
   let hasWeb = false;
   let hasShell = false;
-  let hasWorkspace = false;
+  let hasLocalFiles = false;
   let hasChatContext = false;
   for (const event of recentToolEvents.slice(-6)) {
     const mapped = toolToToolsets.get(event.toolName);
@@ -209,15 +209,15 @@ function summarizeRecentDomains(
     if (mapped?.has("shell_runtime")) {
       hasShell = true;
     }
-    if (mapped?.has("workspace_io")) {
-      hasWorkspace = true;
+    if (mapped?.has("local_file_io")) {
+      hasLocalFiles = true;
     }
     if (mapped?.has("chat_context")) {
       hasChatContext = true;
     }
   }
 
-  return { hasWeb, hasShell, hasWorkspace, hasChatContext };
+  return { hasWeb, hasShell, hasLocalFiles, hasChatContext };
 }
 
 function hasStructuredResolvableContent(messages: GenerationRuntimeBatchMessage[]): boolean {

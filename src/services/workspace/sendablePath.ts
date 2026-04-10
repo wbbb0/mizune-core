@@ -1,18 +1,18 @@
 import { basename, isAbsolute, resolve } from "node:path";
 import type { AppConfig } from "#config/config.ts";
-import type { WorkspaceService } from "./workspaceService.ts";
+import type { LocalFileService } from "./localFileService.ts";
 
 export interface ResolvedSendablePath {
   absolutePath: string;
   sourceName: string;
   sourcePath: string;
   pathMode: "absolute" | "workspace_relative";
-  workspacePath: string | null;
+  chatFilePath: string | null;
 }
 
 export function resolveSendablePath(
   config: AppConfig,
-  workspaceService: Pick<WorkspaceService, "resolvePath">,
+  localFileService: Pick<LocalFileService, "resolvePath">,
   inputPath: string
 ): ResolvedSendablePath {
   const normalizedInput = String(inputPath ?? "").trim();
@@ -20,32 +20,41 @@ export function resolveSendablePath(
     throw new Error("path is required");
   }
 
-  if (config.shell.allowAnyCwd) {
-    if (!isAbsolute(normalizedInput)) {
-      throw new Error("path must be absolute when shell.allowAnyCwd=true");
-    }
-    const absolutePath = resolve(normalizedInput);
+  const mode = config.localFileAccess.read.mode;
+  if (mode === "disabled") {
+    throw new Error("local file read is disabled");
+  }
+
+  if (!isAbsolute(normalizedInput)) {
+    const resolvedPath = localFileService.resolvePath(normalizedInput);
     return {
-      absolutePath,
-      sourceName: basename(absolutePath),
-      sourcePath: absolutePath,
-      pathMode: "absolute",
-      workspacePath: null
+      absolutePath: resolvedPath.absolutePath,
+      sourceName: basename(resolvedPath.relativePath),
+      sourcePath: resolvedPath.relativePath,
+      pathMode: "workspace_relative",
+      chatFilePath: resolvedPath.relativePath
     };
   }
 
-  if (isAbsolute(normalizedInput)) {
-    throw new Error("absolute path is not allowed when shell.allowAnyCwd=false; use a workspace-relative path");
+  if (mode === "allowed_roots" && !isPathWithinAllowedRoots(config.localFileAccess.read.allowedRoots, normalizedInput)) {
+    throw new Error(`path is outside allowed local file roots: ${normalizedInput}`);
   }
 
-  const resolvedPath = workspaceService.resolvePath(normalizedInput);
+  const absolutePath = resolve(normalizedInput);
   return {
-    absolutePath: resolvedPath.absolutePath,
-    sourceName: basename(resolvedPath.relativePath),
-    sourcePath: resolvedPath.relativePath,
-    pathMode: "workspace_relative",
-    workspacePath: resolvedPath.relativePath
+    absolutePath,
+    sourceName: basename(absolutePath),
+    sourcePath: absolutePath,
+    pathMode: "absolute",
+    chatFilePath: null
   };
+}
+
+function isPathWithinAllowedRoots(allowedRoots: string[], inputPath: string): boolean {
+  const absolutePath = resolve(inputPath);
+  return allowedRoots
+    .map((root) => resolve(root))
+    .some((root) => absolutePath === root || absolutePath.startsWith(`${root}/`));
 }
 
 export function inferSendableFileKind(pathLike: string): "image" | "animated_image" | "file" {

@@ -53,10 +53,10 @@ export type ProjectedChatTimelineItem =
       fileId: string | null;
       fileRef: string | null;
       sourceName: string | null;
-      workspacePath: string | null;
+      chatFilePath: string | null;
       sourcePath: string | null;
       messageId: number | null;
-      toolName: "send_workspace_file_to_chat";
+      toolName: "chat_file_send_to_chat" | "local_file_send_to_chat";
       captionText: string | null;
       timestampMs: number;
     };
@@ -81,7 +81,7 @@ export function projectChatTimelineFromTranscript(transcript: InternalTranscript
         fileId: item.fileId,
         fileRef: item.fileRef,
         sourceName: item.sourceName,
-        workspacePath: item.workspacePath,
+        chatFilePath: item.chatFilePath,
         sourcePath: item.sourcePath,
         messageId: item.messageId,
         toolName: item.toolName,

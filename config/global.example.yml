@@ -99,19 +99,31 @@ scheduler:
   defaultTimezone: Asia/Shanghai
 shell:
   enabled: false
-  allowAnyCwd: false
-  defaultCwd: /tmp
-  allowedCwds:
-    - /tmp
+  mode: disabled
   defaultTimeoutMs: 120000
   maxTimeoutMs: 600000
   maxOutputChars: 12000
   sessionTtlMs: null
-workspace:
+localFiles:
   enabled: true
   root: data
-  maxUploadBytes: 33554432
   maxPatchFileBytes: 524288
+localFileAccess:
+  read:
+    mode: allowed_roots
+    allowedRoots:
+      - data
+  write:
+    mode: allowed_roots
+    allowedRoots:
+      - data
+  maxReadBytes: 33554432
+  maxImageBytes: 16777216
+chatFiles:
+  enabled: true
+  root: chat-files
+  maxUploadBytes: 33554432
+  gcGracePeriodMs: 604800000
 comfy:
   enabled: false
   apiBaseUrl: http://192.168.0.223:8188

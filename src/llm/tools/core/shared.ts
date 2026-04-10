@@ -15,10 +15,10 @@ import type { LlmToolCall, LlmToolDefinition, LlmToolExecutionResult } from "../
 import type { ShellRuntime } from "#services/shell/runtime.ts";
 import type { SearchService } from "#services/web/search/searchService.ts";
 import type { BrowserService } from "#services/web/browser/browserService.ts";
-import type { MediaWorkspace } from "#services/workspace/mediaWorkspace.ts";
+import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
-import type { WorkspaceService } from "#services/workspace/workspaceService.ts";
+import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { ConversationAccessService } from "#identity/conversationAccessService.ts";
 import type { NpcDirectory } from "#identity/npcDirectory.ts";
@@ -73,7 +73,7 @@ export interface BuiltinToolActorContext {
 export interface BuiltinToolCommunicationDeps {
   oneBotClient: OneBotClient;
   audioStore: AudioStore;
-  mediaWorkspace: MediaWorkspace;
+  chatFileStore: ChatFileStore;
   mediaVisionService: MediaVisionService;
   mediaCaptionService: MediaCaptionService;
   forwardResolver: ForwardResolver;
@@ -99,7 +99,7 @@ export interface BuiltinToolRuntimeDeps {
   shellRuntime: ShellRuntime;
   searchService: SearchService;
   browserService: BrowserService;
-  workspaceService: WorkspaceService;
+  localFileService: LocalFileService;
   comfyClient: ComfyClient;
   comfyTaskStore: ComfyTaskStore;
   comfyTemplateCatalog: ComfyTemplateCatalogService;

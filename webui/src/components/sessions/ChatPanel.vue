@@ -10,7 +10,7 @@ import { useSessionsStore } from "@/stores/sessions";
 import { useAuthStore } from "@/stores/auth";
 import { ApiError } from "@/api/client";
 import type { TranscriptItem as SessionTranscriptItem } from "@/api/types";
-import { workspaceApi } from "@/api/workspace";
+import { fileApi } from "@/api/workspace";
 
 const store = useSessionsStore();
 const auth  = useAuthStore();
@@ -88,8 +88,8 @@ function toChatTimelineItem(entry: { eventId: string; item: SessionTranscriptIte
 
   if (entry.item.kind === "outbound_media_message") {
     const imageUrl = entry.item.fileId
-      ? workspaceApi.getFileContentUrlById(entry.item.fileId)
-      : (entry.item.sourcePath ? workspaceApi.getSendFileContentUrl(entry.item.sourcePath) : "");
+      ? fileApi.getChatFileContentUrlById(entry.item.fileId)
+      : (entry.item.sourcePath ? fileApi.getLocalSendFileContentUrl(entry.item.sourcePath) : "");
     if (!imageUrl) {
       return null;
     }

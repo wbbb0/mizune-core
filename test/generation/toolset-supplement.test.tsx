@@ -8,10 +8,10 @@ async function runCase(name: string, fn: () => Promise<void>) {
 }
 
 const AVAILABLE_TOOLSETS = [
-  { id: "chat_context", title: "会话上下文", description: "", toolNames: ["view_message", "view_media"] },
+  { id: "chat_context", title: "会话上下文", description: "", toolNames: ["view_message", "chat_file_view_media"] },
   { id: "web_research", title: "网页检索与浏览", description: "", toolNames: ["open_page", "inspect_page"] },
   { id: "shell_runtime", title: "Shell 运行时", description: "", toolNames: ["shell_run"] },
-  { id: "workspace_io", title: "工作区文件", description: "", toolNames: ["download_asset", "read_workspace_file"] },
+  { id: "local_file_io", title: "本地文件", description: "", toolNames: ["download_asset", "local_file_read"] },
   { id: "memory_profile", title: "记忆与资料", description: "", toolNames: ["write_memory"] },
   { id: "scheduler_admin", title: "定时任务管理", description: "", toolNames: ["create_scheduled_job"] }
 ];
@@ -50,15 +50,15 @@ async function main() {
     assert.deepEqual(result.toolsetIds, ["chat_context"]);
   });
 
-  await runCase("supplement links web download flows to workspace_io", async () => {
+  await runCase("supplement links web download flows to local_file_io", async () => {
     const result = supplementPlannedToolsets({
       selectedToolsetIds: ["web_research"],
       availableToolsets: AVAILABLE_TOOLSETS,
-      batchMessages: [createBatchMessage({ text: "把这个页面里的图下下来保存到工作区" })],
+      batchMessages: [createBatchMessage({ text: "把这个页面里的图下下来保存到本地文件里" })],
       recentToolEvents: []
     });
-    assert.deepEqual(result.toolsetIds, ["web_research", "workspace_io"]);
-    assert.deepEqual(result.addedToolsetIds, ["workspace_io"]);
+    assert.deepEqual(result.toolsetIds, ["web_research", "local_file_io"]);
+    assert.deepEqual(result.addedToolsetIds, ["local_file_io"]);
   });
 
   await runCase("supplement inherits recent browser activity for short followups", async () => {

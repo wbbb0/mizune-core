@@ -5,7 +5,7 @@ import type { MessageHandlerServices, MessageProcessingContext } from "./message
 export async function createMessageProcessingContext(
   services: Pick<
     MessageHandlerServices,
-    "audioStore" | "mediaWorkspace" | "sessionManager" | "userStore" | "setupStore"
+    "audioStore" | "chatFileStore" | "sessionManager" | "userStore" | "setupStore"
   >,
   incomingMessage: ParsedIncomingMessage,
   options?: {
@@ -24,7 +24,7 @@ export async function createMessageProcessingContext(
     services.audioStore.registerSources(incomingMessage.audioSources),
     Promise.all(
       incomingMessage.images
-        .map(async (source) => services.mediaWorkspace.importRemoteSource({
+        .map(async (source) => services.chatFileStore.importRemoteSource({
           source,
           kind: "image",
           origin: "chat_message",
@@ -36,7 +36,7 @@ export async function createMessageProcessingContext(
         }).catch(() => null))
     ),
     Promise.all(
-      fileSources.map(async (fileSource) => services.mediaWorkspace.importRemoteSource({
+      fileSources.map(async (fileSource) => services.chatFileStore.importRemoteSource({
         source: fileSource.source,
         kind: "file",
         origin: "chat_message",
