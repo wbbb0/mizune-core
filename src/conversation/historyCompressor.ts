@@ -19,9 +19,9 @@ export class HistoryCompressor {
   ) {}
 
   async maybeCompress(sessionId: string): Promise<boolean> {
-    return this.compress(sessionId, {
-      triggerMessageCount: this.config.conversation.historyCompression.triggerMessageCount,
-      retainMessageCount: this.config.conversation.historyCompression.retainMessageCount,
+    return this.compressByTokens(sessionId, {
+      triggerTokens: this.config.conversation.historyCompression.triggerTokens,
+      retainTokens: this.config.conversation.historyCompression.retainTokens,
       expectedHistoryRevision: this.sessionManager.getHistoryRevision(sessionId)
     });
   }
@@ -30,7 +30,7 @@ export class HistoryCompressor {
     const safeRetainCount = retainMessageCount == null
       ? this.config.conversation.historyCompression.retainMessageCount
       : Math.max(0, retainMessageCount);
-    return this.compress(sessionId, {
+    return this.compressByMessageCount(sessionId, {
       triggerMessageCount: 0,
       retainMessageCount: safeRetainCount,
       expectedHistoryRevision: this.sessionManager.getHistoryRevision(sessionId),
@@ -40,7 +40,7 @@ export class HistoryCompressor {
 
   async compactOldHistoryKeepingRecent(sessionId: string, recentMessageCountToKeep: number): Promise<boolean> {
     const safeKeepCount = Math.max(0, recentMessageCountToKeep);
-    return this.compress(sessionId, {
+    return this.compressByMessageCount(sessionId, {
       triggerMessageCount: safeKeepCount,
       retainMessageCount: safeKeepCount,
       expectedHistoryRevision: this.sessionManager.getHistoryRevision(sessionId),
@@ -48,7 +48,44 @@ export class HistoryCompressor {
     });
   }
 
-  private async compress(
+  private async compressByTokens(
+    sessionId: string,
+    options: {
+      triggerTokens: number;
+      retainTokens: number;
+      expectedHistoryRevision: number;
+    }
+  ): Promise<boolean> {
+    if (this.inFlightSessions.has(sessionId)) {
+      return false;
+    }
+    if (!this.config.conversation.historyCompression.enabled) {
+      return false;
+    }
+    if (
+      !this.config.llm.enabled
+      || !this.config.llm.summarizer.enabled
+      || !this.llmClient.isConfigured(this.resolveModelRefs())
+    ) {
+      return false;
+    }
+    this.inFlightSessions.add(sessionId);
+    try {
+      const snapshot = this.sessionManager.getHistoryForCompressionByTokens(
+        sessionId,
+        options.triggerTokens,
+        options.retainTokens
+      );
+      if (!snapshot) {
+        return false;
+      }
+      return await this.runCompression(sessionId, snapshot, options.expectedHistoryRevision, false);
+    } finally {
+      this.inFlightSessions.delete(sessionId);
+    }
+  }
+
+  private async compressByMessageCount(
     sessionId: string,
     options: {
       triggerMessageCount: number;
@@ -83,69 +120,82 @@ export class HistoryCompressor {
       if (!snapshot) {
         return false;
       }
-
-      const imageIds = Array.from(new Set(snapshot.messagesToCompress.flatMap((message) => extractStructuredMediaIds(message.content))));
-      const captions = imageIds.length > 0
-        ? await this.mediaCaptionService.ensureReady(imageIds, { reason: "history_compression" })
-        : new Map<string, string>();
-      const messagesToCompress = snapshot.messagesToCompress.map((message) => ({
-        ...message,
-        content: annotateStructuredMediaReferences(message.content, captions, { includeIds: false })
-      }));
-
-      this.logger.info(
-        {
-          sessionId,
-          messagesToCompress: messagesToCompress.length,
-          retainedMessages: snapshot.retainedMessages.length,
-          captionCount: captions.size,
-          force: options.force ?? false
-        },
-        "history_compression_started"
-      );
-
-      const summaryResult = await this.llmClient.generate({
-        modelRefOverride: this.resolveModelRefs(),
-        timeoutMsOverride: this.config.llm.summarizer.timeoutMs,
-        enableThinkingOverride: this.config.llm.summarizer.enableThinking,
-        skipDebugDump: true,
-        messages: buildHistorySummaryPrompt({
-          sessionId,
-          existingSummary: snapshot.historySummary,
-          messagesToCompress
-        })
-      });
-      const summary = summaryResult.text;
-
-      const applied = this.sessionManager.applyCompressedHistoryIfHistoryRevisionMatches(
-        sessionId,
-        options.expectedHistoryRevision,
-        {
-          historySummary: summary,
-          transcriptStartIndexToKeep: snapshot.transcriptStartIndexToKeep
-        }
-      );
-      if (!applied) {
-        this.logger.info(
-          { sessionId, expectedHistoryRevision: options.expectedHistoryRevision },
-          "history_compression_skipped_history_revision_mismatch"
-        );
-        return false;
-      }
-
-      this.logger.info(
-        {
-          sessionId,
-          summaryLength: summary.length,
-          retainedMessages: snapshot.retainedMessages.length,
-          force: options.force ?? false
-        },
-        "history_compression_succeeded"
-      );
-      return true;
+      return await this.runCompression(sessionId, snapshot, options.expectedHistoryRevision, options.force ?? false);
     } finally {
       this.inFlightSessions.delete(sessionId);
     }
+  }
+
+  private async runCompression(
+    sessionId: string,
+    snapshot: {
+      historySummary: string | null;
+      messagesToCompress: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
+      retainedMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
+      transcriptStartIndexToKeep: number;
+    },
+    expectedHistoryRevision: number,
+    force: boolean
+  ): Promise<boolean> {
+    const imageIds = Array.from(new Set(snapshot.messagesToCompress.flatMap((message) => extractStructuredMediaIds(message.content))));
+    const captions = imageIds.length > 0
+      ? await this.mediaCaptionService.ensureReady(imageIds, { reason: "history_compression" })
+      : new Map<string, string>();
+    const messagesToCompress = snapshot.messagesToCompress.map((message) => ({
+      ...message,
+      content: annotateStructuredMediaReferences(message.content, captions, { includeIds: false })
+    }));
+
+    this.logger.info(
+      {
+        sessionId,
+        messagesToCompress: messagesToCompress.length,
+        retainedMessages: snapshot.retainedMessages.length,
+        captionCount: captions.size,
+        force
+      },
+      "history_compression_started"
+    );
+
+    const summaryResult = await this.llmClient.generate({
+      modelRefOverride: this.resolveModelRefs(),
+      timeoutMsOverride: this.config.llm.summarizer.timeoutMs,
+      enableThinkingOverride: this.config.llm.summarizer.enableThinking,
+      skipDebugDump: true,
+      messages: buildHistorySummaryPrompt({
+        sessionId,
+        existingSummary: snapshot.historySummary,
+        messagesToCompress
+      })
+    });
+    const summary = summaryResult.text;
+
+    const applied = this.sessionManager.applyCompressedHistoryIfHistoryRevisionMatches(
+      sessionId,
+      expectedHistoryRevision,
+      {
+        historySummary: summary,
+        transcriptStartIndexToKeep: snapshot.transcriptStartIndexToKeep
+      }
+    );
+    if (!applied) {
+      this.logger.info(
+        { sessionId, expectedHistoryRevision },
+        "history_compression_skipped_history_revision_mismatch"
+      );
+      return false;
+    }
+
+    this.logger.info(
+      {
+        sessionId,
+        summaryLength: summary.length,
+        retainedMessages: snapshot.retainedMessages.length,
+        force
+      },
+      "history_compression_succeeded"
+    );
+    return true;
   }
 
   private resolveModelRefs(): string[] {

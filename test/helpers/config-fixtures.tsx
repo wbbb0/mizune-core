@@ -76,7 +76,8 @@ const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
     },
     historyCompression: {
       enabled: false,
-      triggerMessageCount: 10,
+      triggerTokens: 2000,
+      retainTokens: 500,
       retainMessageCount: 3
     }
   },

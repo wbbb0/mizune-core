@@ -84,8 +84,9 @@ conversation:
     randomFactorMax: 1.25
   historyCompression:
     enabled: true
-    triggerMessageCount: 40
-    retainMessageCount: 10
+    triggerTokens: 8000
+    retainTokens: 2000
+    retainMessageCount: 8
   group:
     requireAtMention: true
 whitelist:

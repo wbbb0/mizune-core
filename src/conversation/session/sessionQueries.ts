@@ -8,7 +8,7 @@ import type {
   SessionToolEvent,
   SessionUsageSnapshot
 } from "./sessionTypes.ts";
-import { projectCompressionHistorySnapshot, projectLlmVisibleHistoryFromTranscript } from "./sessionTranscript.ts";
+import { projectCompressionHistorySnapshot, projectCompressionHistorySnapshotByTokens, projectLlmVisibleHistoryFromTranscript } from "./sessionTranscript.ts";
 import type { AppConfig } from "#config/config.ts";
 
 // Provides read-only projections and snapshots derived from session state.
@@ -34,7 +34,7 @@ export function cloneSessionState(session: SessionState): SessionState {
   };
 }
 
-// Builds a compression snapshot from the recent message window when needed.
+// Builds a compression snapshot from the recent message window when needed (message-count based).
 export function getHistoryForCompressionSnapshot(
   session: SessionState,
   config: AppConfig,
@@ -47,6 +47,22 @@ export function getHistoryForCompressionSnapshot(
   transcriptStartIndexToKeep: number;
 } | null {
   return projectCompressionHistorySnapshot(session, config, triggerMessageCount, retainMessageCount);
+}
+
+// Builds a compression snapshot using estimated token counts as the trigger threshold.
+export function getHistoryForCompressionSnapshotByTokens(
+  session: SessionState,
+  config: AppConfig,
+  triggerTokens: number,
+  retainTokens: number
+): {
+  historySummary: string | null;
+  messagesToCompress: ReturnType<typeof projectLlmVisibleHistoryFromTranscript>;
+  retainedMessages: ReturnType<typeof projectLlmVisibleHistoryFromTranscript>;
+  transcriptStartIndexToKeep: number;
+  estimatedTotalTokens: number;
+} | null {
+  return projectCompressionHistorySnapshotByTokens(session, config, triggerTokens, retainTokens);
 }
 
 // Builds a minimal session view for APIs and diagnostics.

@@ -36,6 +36,7 @@ import {
 import {
   cloneSessionState,
   getHistoryForCompressionSnapshot,
+  getHistoryForCompressionSnapshotByTokens,
   getSessionViewSnapshot
 } from "./sessionQueries.ts";
 import { projectLlmVisibleHistoryFromTranscript, projectVisibleMessagesFromTranscript } from "./sessionTranscript.ts";
@@ -511,7 +512,7 @@ export class SessionManager {
     }
   }
 
-  // Returns a compression snapshot when the recent window exceeds limits.
+  // Returns a compression snapshot when the recent window exceeds limits (message-count based).
   getHistoryForCompression(sessionId: string, triggerMessageCount: number, retainMessageCount: number): {
     historySummary: string | null;
     messagesToCompress: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
@@ -520,6 +521,18 @@ export class SessionManager {
   } | null {
     const session = this.requireSession(sessionId);
     return getHistoryForCompressionSnapshot(session, this.config, triggerMessageCount, retainMessageCount);
+  }
+
+  // Returns a compression snapshot when the estimated token count exceeds the trigger threshold.
+  getHistoryForCompressionByTokens(sessionId: string, triggerTokens: number, retainTokens: number): {
+    historySummary: string | null;
+    messagesToCompress: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
+    retainedMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
+    transcriptStartIndexToKeep: number;
+    estimatedTotalTokens: number;
+  } | null {
+    const session = this.requireSession(sessionId);
+    return getHistoryForCompressionSnapshotByTokens(session, this.config, triggerTokens, retainTokens);
   }
 
   applyCompressedHistory(

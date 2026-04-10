@@ -139,8 +139,9 @@ const conversationConfigSchema = s.object({
   }).default(emptyObject),
   historyCompression: s.object({
     enabled: s.boolean().default(true),
-    triggerMessageCount: s.number().int().positive().default(24),
-    retainMessageCount: s.number().int().positive().default(8)
+    triggerTokens: s.number().int().positive().default(8000),
+    retainTokens: s.number().int().positive().default(2000),
+    retainMessageCount: s.number().int().min(0).default(8)
   }).default(emptyObject),
   group: s.object({
     requireAtMention: s.boolean().default(true)

@@ -93,6 +93,32 @@ export function projectChatTimelineFromTranscript(transcript: InternalTranscript
   return projected;
 }
 
+// Estimates token count for a text string using a lightweight heuristic.
+// CJK characters are typically 2 tokens in most tokenizers; ASCII ~4 chars/token.
+export function estimateTokens(text: string): number {
+  let tokens = 0;
+  for (const char of text) {
+    const code = char.charCodeAt(0);
+    if (
+      (code >= 0x4E00 && code <= 0x9FFF) // CJK Unified Ideographs
+      || (code >= 0x3400 && code <= 0x4DBF) // CJK Extension A
+      || (code >= 0x20000 && code <= 0x2A6DF) // CJK Extension B (surrogate pair range)
+      || (code >= 0xF900 && code <= 0xFAFF) // CJK Compatibility Ideographs
+      || (code >= 0x3000 && code <= 0x303F) // CJK Symbols and Punctuation
+      || (code >= 0x30A0 && code <= 0x30FF) // Katakana
+      || (code >= 0x3040 && code <= 0x309F) // Hiragana
+      || (code >= 0xFF00 && code <= 0xFFEF) // Halfwidth/Fullwidth Forms
+    ) {
+      tokens += 2;
+    } else if (code > 127) {
+      tokens += 1;
+    } else {
+      tokens += 0.25;
+    }
+  }
+  return Math.ceil(tokens);
+}
+
 export function projectCompressionHistorySnapshot(
   session: SessionState,
   config: AppConfig,
@@ -114,6 +140,69 @@ export function projectCompressionHistorySnapshot(
 
   const safeRetainCount = Math.max(0, Math.min(retainMessageCount, recentMessages.length - 1));
   const visibleHistorySplitIndex = Math.max(1, recentMessages.length - safeRetainCount);
+  return buildCompressionSnapshot(session, config, llmVisibleItems, recentMessages, visibleHistorySplitIndex);
+}
+
+export function projectCompressionHistorySnapshotByTokens(
+  session: SessionState,
+  config: AppConfig,
+  triggerTokens: number,
+  retainTokens: number
+): {
+  historySummary: string | null;
+  messagesToCompress: SessionHistoryMessage[];
+  retainedMessages: SessionHistoryMessage[];
+  transcriptStartIndexToKeep: number;
+  estimatedTotalTokens: number;
+} | null {
+  const llmVisibleItems = session.internalTranscript.filter(isTranscriptLlmVisible);
+  const recentMessages = llmVisibleItems
+    .filter(isTranscriptHistoryMessage)
+    .map((item) => projectTranscriptMessageItemToHistoryMessage(item));
+
+  if (recentMessages.length === 0) {
+    return null;
+  }
+
+  const estimatedTotalTokens = recentMessages.reduce((sum, msg) => sum + estimateTokens(msg.content), 0);
+  if (estimatedTotalTokens <= triggerTokens) {
+    return null;
+  }
+
+  // Find the split point: retain recent messages whose cumulative tokens (newest first)
+  // fit within the retainTokens budget, but always compress at least one message.
+  let retainedTokens = 0;
+  let retainedMessageCount = 0;
+  for (let i = recentMessages.length - 1; i >= 1; i -= 1) {
+    const msg = recentMessages[i]!;
+    const msgTokens = estimateTokens(msg.content);
+    if (retainedTokens + msgTokens > retainTokens) {
+      break;
+    }
+    retainedTokens += msgTokens;
+    retainedMessageCount += 1;
+  }
+
+  const visibleHistorySplitIndex = Math.max(1, recentMessages.length - retainedMessageCount);
+  const snapshot = buildCompressionSnapshot(session, config, llmVisibleItems, recentMessages, visibleHistorySplitIndex);
+  if (!snapshot) {
+    return null;
+  }
+  return { ...snapshot, estimatedTotalTokens };
+}
+
+function buildCompressionSnapshot(
+  session: SessionState,
+  config: AppConfig,
+  llmVisibleItems: InternalTranscriptItem[],
+  recentMessages: SessionHistoryMessage[],
+  visibleHistorySplitIndex: number
+): {
+  historySummary: string | null;
+  messagesToCompress: SessionHistoryMessage[];
+  retainedMessages: SessionHistoryMessage[];
+  transcriptStartIndexToKeep: number;
+} | null {
   const llmVisibleSplitIndex = resolveLlmVisibleSplitIndex(llmVisibleItems, visibleHistorySplitIndex);
   const transcriptStartIndexToKeep = findTranscriptStartIndexForLlmVisibleOffset(
     session.internalTranscript,
@@ -124,6 +213,9 @@ export function projectCompressionHistorySnapshot(
     config
   );
   const compressedMessageCount = Math.max(1, recentMessages.length - retainedMessages.length);
+  if (compressedMessageCount === 0) {
+    return null;
+  }
 
   return {
     historySummary: session.historySummary,
