@@ -84,9 +84,13 @@ conversation:
     randomFactorMax: 1.25
   historyCompression:
     enabled: true
-    triggerTokens: 8000
-    retainTokens: 2000
+    triggerTokens: 15000
+    retainTokens: 4000
     retainMessageCount: 8
+    tokenEstimation:
+      cjkTokens: 2
+      nonAsciiTokens: 1
+      asciiTokens: 0.25
   group:
     requireAtMention: true
 whitelist:

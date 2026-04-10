@@ -93,9 +93,18 @@ export function projectChatTimelineFromTranscript(transcript: InternalTranscript
   return projected;
 }
 
+interface TokenEstimationWeights {
+  cjkTokens: number;
+  nonAsciiTokens: number;
+  asciiTokens: number;
+}
+
 // Estimates token count for a text string using a lightweight heuristic.
 // CJK characters are typically 2 tokens in most tokenizers; ASCII ~4 chars/token.
-export function estimateTokens(text: string): number {
+export function estimateTokens(text: string, weights?: TokenEstimationWeights): number {
+  const cjkTokens = weights?.cjkTokens ?? 2;
+  const nonAsciiTokens = weights?.nonAsciiTokens ?? 1;
+  const asciiTokens = weights?.asciiTokens ?? 0.25;
   let tokens = 0;
   for (const char of text) {
     const code = char.charCodeAt(0);
@@ -109,11 +118,11 @@ export function estimateTokens(text: string): number {
       || (code >= 0x3040 && code <= 0x309F) // Hiragana
       || (code >= 0xFF00 && code <= 0xFFEF) // Halfwidth/Fullwidth Forms
     ) {
-      tokens += 2;
+      tokens += cjkTokens;
     } else if (code > 127) {
-      tokens += 1;
+      tokens += nonAsciiTokens;
     } else {
-      tokens += 0.25;
+      tokens += asciiTokens;
     }
   }
   return Math.ceil(tokens);
@@ -164,7 +173,8 @@ export function projectCompressionHistorySnapshotByTokens(
     return null;
   }
 
-  const estimatedTotalTokens = recentMessages.reduce((sum, msg) => sum + estimateTokens(msg.content), 0);
+  const weights = config.conversation.historyCompression.tokenEstimation;
+  const estimatedTotalTokens = recentMessages.reduce((sum, msg) => sum + estimateTokens(msg.content, weights), 0);
   if (estimatedTotalTokens <= triggerTokens) {
     return null;
   }
@@ -175,7 +185,7 @@ export function projectCompressionHistorySnapshotByTokens(
   let retainedMessageCount = 0;
   for (let i = recentMessages.length - 1; i >= 1; i -= 1) {
     const msg = recentMessages[i]!;
-    const msgTokens = estimateTokens(msg.content);
+    const msgTokens = estimateTokens(msg.content, weights);
     if (retainedTokens + msgTokens > retainTokens) {
       break;
     }

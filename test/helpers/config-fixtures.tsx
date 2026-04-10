@@ -78,7 +78,8 @@ const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
       enabled: false,
       triggerTokens: 2000,
       retainTokens: 500,
-      retainMessageCount: 3
+      retainMessageCount: 3,
+      tokenEstimation: { cjkTokens: 2, nonAsciiTokens: 1, asciiTokens: 0.25 }
     }
   },
   whitelist: {

@@ -139,9 +139,14 @@ const conversationConfigSchema = s.object({
   }).default(emptyObject),
   historyCompression: s.object({
     enabled: s.boolean().default(true),
-    triggerTokens: s.number().int().positive().default(8000),
-    retainTokens: s.number().int().positive().default(2000),
-    retainMessageCount: s.number().int().min(0).default(8)
+    triggerTokens: s.number().int().positive().default(15000),
+    retainTokens: s.number().int().positive().default(4000),
+    retainMessageCount: s.number().int().min(0).default(8),
+    tokenEstimation: s.object({
+      cjkTokens: s.number().positive().default(2),
+      nonAsciiTokens: s.number().positive().default(1),
+      asciiTokens: s.number().positive().default(0.25)
+    }).default(emptyObject)
   }).default(emptyObject),
   group: s.object({
     requireAtMention: s.boolean().default(true)
