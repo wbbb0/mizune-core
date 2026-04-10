@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, reactive, provide, watch } from "vue";
 import { Wifi, WifiOff, Loader, RefreshCw, Trash2 } from "lucide-vue-next";
 import MessageBubble from "./MessageBubble.vue";
 import TranscriptItem from "./TranscriptItem.vue";
+import VirtualMessageList from "./VirtualMessageList.vue";
 import Composer from "./Composer.vue";
 import ImagePreviewDialog from "@/components/common/ImagePreviewDialog.vue";
 import { useSessionsStore } from "@/stores/sessions";
@@ -14,6 +15,16 @@ import { workspaceApi } from "@/api/workspace";
 const store = useSessionsStore();
 const auth  = useAuthStore();
 const session = computed(() => store.active);
+
+// Transcript item expand state — keyed by eventId, survives virtual scroll mount/unmount cycles
+export interface TranscriptExpandState {
+  expanded: boolean;
+  reasoningExpanded: boolean;
+  plannerExpanded: boolean;
+}
+const transcriptExpandStates = reactive(new Map<string, TranscriptExpandState>());
+provide("transcriptExpandStates", transcriptExpandStates);
+watch(() => session.value?.id, () => { transcriptExpandStates.clear(); });
 
 // Tabs
 type Tab = "chat" | "transcript";
@@ -242,7 +253,7 @@ async function onDeleteSession() {
         <button class="flex h-10 items-center gap-1 border-0 border-b-2 border-transparent bg-transparent px-3 text-small whitespace-nowrap text-text-muted transition-colors hover:text-text-primary" :class="{ 'border-b-accent text-text-secondary': tab === 'chat' }" @click="tab = 'chat'">聊天</button>
         <button class="flex h-10 items-center gap-1 border-0 border-b-2 border-transparent bg-transparent px-3 text-small whitespace-nowrap text-text-muted transition-colors hover:text-text-primary" :class="{ 'border-b-accent text-text-secondary': tab === 'transcript' }" @click="tab = 'transcript'">
           后台记录
-          <span v-if="session?.transcript.length" class="rounded-full bg-surface-muted px-1 text-[10px] text-text-muted">{{ session.transcript.length }}</span>
+          <span v-if="session?.transcriptCount" class="rounded-full bg-surface-muted px-1 text-[10px] text-text-muted">{{ session.transcriptCount }}</span>
         </button>
       </div>
     </header>
@@ -254,9 +265,9 @@ async function onDeleteSession() {
 
     <template v-else>
       <!-- Chat view: newest on top -->
-      <div v-show="tab === 'chat'" class="scrollbar-thin min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        <div class="sticky-toolbar sticky top-0 z-1 flex items-center justify-between border-b px-3 py-1">
-          <span class="text-small text-text-subtle">{{ reversedMessages.length }} 条消息</span>
+      <div v-show="tab === 'chat'" class="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div class="sticky-toolbar flex shrink-0 items-center justify-between border-b px-3 py-1">
+          <span class="text-small text-text-subtle">{{ session.transcriptCount }} 条消息</span>
           <button
             class="btn-ghost flex items-center gap-1 px-1.5 py-0.5 text-small text-text-muted hover:text-text-primary"
             title="从头重新拉取所有记录"
@@ -266,36 +277,42 @@ async function onDeleteSession() {
             重新加载
           </button>
         </div>
-        <div class="flex flex-col gap-0.5 py-3">
-          <MessageBubble
-            v-for="msg in reversedMessages"
-            :key="msg.eventId"
-            :side="msg.side"
-            :role="msg.role"
-            :kind="msg.kind"
-            :content="msg.kind === 'text' ? msg.content : undefined"
-            :label="msg.kind === 'text' ? msg.label : undefined"
-            :sender-label="msg.kind === 'text' ? msg.senderLabel : undefined"
-            :meta-chips="msg.kind === 'text' ? msg.metaChips : undefined"
-            :source-name="msg.kind === 'image' ? msg.sourceName : undefined"
-            :file-ref="msg.kind === 'image' ? msg.fileRef : undefined"
-            :file-id="msg.kind === 'image' ? msg.fileId : undefined"
-            :image-url="msg.kind === 'image' ? msg.imageUrl : undefined"
-            :tool-name="msg.kind === 'image' ? msg.toolName : undefined"
-            :timestamp-ms="msg.timestampMs"
-            @preview-image="msg.kind === 'image' ? previewImage = { src: msg.imageUrl, title: msg.sourceName || msg.fileRef || msg.fileId } : undefined"
-          />
-          <div v-if="reversedMessages.length === 0" class="px-6 py-6 text-center text-small text-text-subtle">
-            暂无消息
-          </div>
+        <div v-if="reversedMessages.length === 0" class="flex-1 px-6 py-6 text-center text-small text-text-subtle">
+          暂无消息
         </div>
+        <VirtualMessageList
+          v-else
+          class="min-h-0 flex-1"
+          :items="reversedMessages"
+          :has-more="session.transcriptHasMore"
+          :loading-more="session.transcriptLoadingMore"
+          @load-more="store.loadMoreTranscript()"
+        >
+          <template #item="{ item: msg }">
+            <MessageBubble
+              :side="msg.side"
+              :role="msg.role"
+              :kind="msg.kind"
+              :content="msg.kind === 'text' ? msg.content : undefined"
+              :label="msg.kind === 'text' ? msg.label : undefined"
+              :sender-label="msg.kind === 'text' ? msg.senderLabel : undefined"
+              :meta-chips="msg.kind === 'text' ? msg.metaChips : undefined"
+              :source-name="msg.kind === 'image' ? msg.sourceName : undefined"
+              :file-ref="msg.kind === 'image' ? msg.fileRef : undefined"
+              :file-id="msg.kind === 'image' ? msg.fileId : undefined"
+              :image-url="msg.kind === 'image' ? msg.imageUrl : undefined"
+              :tool-name="msg.kind === 'image' ? msg.toolName : undefined"
+              :timestamp-ms="msg.timestampMs"
+              @preview-image="msg.kind === 'image' ? previewImage = { src: msg.imageUrl, title: msg.sourceName || msg.fileRef || msg.fileId } : undefined"
+            />
+          </template>
+        </VirtualMessageList>
       </div>
 
       <!-- Transcript view: newest on top -->
-      <div v-show="tab === 'transcript'" class="scrollbar-thin min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        <!-- Toolbar: count + refresh button -->
-        <div class="sticky-toolbar sticky top-0 z-1 flex items-center justify-between border-b px-3 py-1">
-          <span class="text-small text-text-subtle">{{ session.transcript.length }} 条记录</span>
+      <div v-show="tab === 'transcript'" class="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div class="sticky-toolbar flex shrink-0 items-center justify-between border-b px-3 py-1">
+          <span class="text-small text-text-subtle">{{ session.transcriptCount }} 条记录</span>
           <button
             class="btn-ghost flex items-center gap-1 px-1.5 py-0.5 text-small text-text-muted hover:text-text-primary"
             title="从头重新拉取所有记录"
@@ -305,13 +322,23 @@ async function onDeleteSession() {
             重新加载
           </button>
         </div>
-        <div v-if="session.transcript.length === 0" class="px-6 py-6 text-center text-small text-text-subtle">暂无记录</div>
-        <TranscriptItem
-          v-for="entry in reversedTranscript"
-          :key="entry.eventId"
-          :item="entry.item"
-          :index="entry.index"
-        />
+        <div v-if="reversedTranscript.length === 0" class="flex-1 px-6 py-6 text-center text-small text-text-subtle">暂无记录</div>
+        <VirtualMessageList
+          v-else
+          class="min-h-0 flex-1"
+          :items="reversedTranscript"
+          :has-more="session.transcriptHasMore"
+          :loading-more="session.transcriptLoadingMore"
+          @load-more="store.loadMoreTranscript()"
+        >
+          <template #item="{ item: entry }">
+            <TranscriptItem
+              :item="entry.item"
+              :index="entry.index"
+              :event-id="entry.eventId"
+            />
+          </template>
+        </VirtualMessageList>
       </div>
 
       <!-- Composer -->

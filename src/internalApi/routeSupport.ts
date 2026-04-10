@@ -241,3 +241,14 @@ export function parseWorkspaceFileQuery(query: unknown): ParsedWorkspaceFileQuer
 export function parseWorkspaceStoredFileParams(params: unknown): ParsedWorkspaceStoredFileParams | { error: string } {
   return parseWithSchema(workspaceStoredFileParamsSchema, params);
 }
+
+const transcriptQuerySchema = z.object({
+  beforeIndex: z.coerce.number().int().nonnegative().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional().default(25)
+});
+
+export type ParsedTranscriptQuery = z.infer<typeof transcriptQuerySchema>;
+
+export function parseTranscriptQuery(query: unknown): ParsedTranscriptQuery | { error: string } {
+  return parseWithSchema(transcriptQuerySchema, query);
+}

@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { SessionListItem } from "./types";
+import type { SessionListItem, TranscriptFetchResult } from "./types";
 
 export const sessionsApi = {
   list(): Promise<{ sessions: SessionListItem[] }> {
@@ -51,5 +51,16 @@ export const sessionsApi = {
     return api.sse(
       `/api/sessions/${encodeURIComponent(sessionId)}/web-turn/stream?turnId=${encodeURIComponent(turnId)}`
     );
+  },
+
+  fetchTranscript(sessionId: string, params: {
+    beforeIndex?: number;
+    limit?: number;
+  }): Promise<TranscriptFetchResult> {
+    const qs = new URLSearchParams();
+    if (params.beforeIndex != null) qs.set("beforeIndex", String(params.beforeIndex));
+    if (params.limit != null) qs.set("limit", String(params.limit));
+    const query = qs.toString();
+    return api.get(`/api/sessions/${encodeURIComponent(sessionId)}/transcript${query ? `?${query}` : ""}`);
   }
 };

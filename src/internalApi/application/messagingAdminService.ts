@@ -58,6 +58,14 @@ export interface AdminMessagingService {
     initialEvents: WebSessionStreamEvent[];
     subscribe: (listener: (event: WebSessionStreamEvent) => void) => () => void;
   }>;
+  fetchTranscript(
+    params: { sessionId: string },
+    query: { beforeIndex?: number | undefined; limit: number }
+  ): {
+    items: Array<{ eventId: string; index: number; item: InternalTranscriptItem }>;
+    totalCount: number;
+    hasMore: boolean;
+  };
 }
 
 export function createAdminMessagingService(input: {
@@ -132,6 +140,21 @@ export function createAdminMessagingService(input: {
 
     getWebTurnStream(params, query) {
       return broker.getStream(params.sessionId, query.turnId);
+    },
+
+    fetchTranscript(params, query) {
+      const session = input.sessionManager.getSession(params.sessionId);
+      const transcript = session.internalTranscript;
+      const totalCount = transcript.length;
+      const beforeIndex = query.beforeIndex ?? totalCount;
+      const clampedBefore = Math.min(beforeIndex, totalCount);
+      const startIndex = Math.max(0, clampedBefore - query.limit);
+      const items = transcript.slice(startIndex, clampedBefore).map((item, offset) => ({
+        eventId: `transcript:${session.mutationEpoch}:${startIndex + offset}`,
+        index: startIndex + offset,
+        item
+      }));
+      return { items, totalCount, hasMore: startIndex > 0 };
     },
 
     async getWebSessionStream(params, query) {

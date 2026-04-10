@@ -6,9 +6,7 @@ import { sessionsApi } from "@/api/sessions";
 const SESSION_DEBUG_ENABLED = import.meta.env.DEV;
 
 function debugSession(event: string, detail?: Record<string, unknown>): void {
-  if (!SESSION_DEBUG_ENABLED) {
-    return;
-  }
+  if (!SESSION_DEBUG_ENABLED) return;
   console.debug("[sessions]", event, detail ?? {});
 }
 
@@ -29,6 +27,8 @@ export interface ActiveSession {
   streamStatus: "connecting" | "connected" | "error";
   phase: SessionPhase;
   transcript: TranscriptEntry[];
+  transcriptHasMore: boolean;
+  transcriptLoadingMore: boolean;
   /** Live assistant text chunks while web-turn is in progress */
   streamingText: string | null;
   composerUserId: string | null;
@@ -46,9 +46,7 @@ export const useSessionsStore = defineStore("sessions", () => {
   async function refresh(): Promise<void> {
     const res = await sessionsApi.list();
     list.value = res.sessions;
-    debugSession("refresh", {
-      sessions: res.sessions.map((session) => session.id)
-    });
+    debugSession("refresh", { sessions: res.sessions.map((s) => s.id) });
   }
 
   function _openStream(sessionId: string, epoch?: number, transcriptCount?: number): void {
@@ -69,11 +67,10 @@ export const useSessionsStore = defineStore("sessions", () => {
         transcriptCount: requestedTranscriptCount,
         lastActiveAt: 0,
         streamStatus: "connecting",
-        phase: {
-          kind: "idle",
-          label: "连接中"
-        },
+        phase: { kind: "idle", label: "连接中" },
         transcript: [],
+        transcriptHasMore: false,
+        transcriptLoadingMore: false,
         streamingText: null,
         composerUserId: null
       };
@@ -87,16 +84,10 @@ export const useSessionsStore = defineStore("sessions", () => {
     });
     _es = es;
     _reconnectDelay = 1000;
-    debugSession("open_stream:created", {
-      sessionId,
-      mutationEpoch: epoch ?? null,
-      transcriptCount: requestedTranscriptCount
-    });
+    debugSession("open_stream:created", { sessionId, mutationEpoch: epoch ?? null, transcriptCount: requestedTranscriptCount });
 
     es.onopen = () => {
-      if (_es !== es) {
-        return;
-      }
+      if (_es !== es) return;
       debugSession("open_stream:onopen", { sessionId, readyState: es.readyState });
       if (active.value?.id === sessionId) {
         active.value = { ...active.value, streamStatus: "connected" };
@@ -110,11 +101,7 @@ export const useSessionsStore = defineStore("sessions", () => {
         if (_es !== es) return;
         try {
           const event = JSON.parse(e.data) as SessionStreamEvent;
-          debugSession("open_stream:event", {
-            sessionId,
-            eventType: event.type,
-            readyState: es.readyState
-          });
+          debugSession("open_stream:event", { sessionId, eventType: event.type, readyState: es.readyState });
           _handleEvent(event);
         } catch { /* malformed event */ }
       });
@@ -122,11 +109,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 
     es.onerror = () => {
       if (_es !== es) return;
-      debugSession("open_stream:onerror", {
-        sessionId,
-        readyState: es.readyState,
-        currentStatus: active.value?.streamStatus ?? null
-      });
+      debugSession("open_stream:onerror", { sessionId, readyState: es.readyState, currentStatus: active.value?.streamStatus ?? null });
       if (active.value?.id === sessionId) {
         active.value = { ...active.value, streamStatus: "connecting" };
       }
@@ -134,15 +117,34 @@ export const useSessionsStore = defineStore("sessions", () => {
     };
   }
 
+  /** REST 拉末尾 25 条后开 SSE（REST 失败时降级为 SSE from 0） */
+  async function _initTranscriptAndStream(sessionId: string, epoch?: number): Promise<void> {
+    try {
+      const snap = await sessionsApi.fetchTranscript(sessionId, { limit: 25 });
+      const cur = active.value;
+      if (!cur || cur.id !== sessionId) return; // 会话已切换，丢弃
+      active.value = {
+        ...cur,
+        transcript: snap.items,
+        transcriptCount: snap.totalCount,
+        transcriptHasMore: snap.hasMore,
+        transcriptLoadingMore: false
+      };
+      _openStream(sessionId, epoch, snap.totalCount);
+    } catch {
+      const cur = active.value;
+      if (cur?.id === sessionId) {
+        _openStream(sessionId, epoch, 0);
+      }
+    }
+  }
+
   function _handleEvent(event: SessionStreamEvent): void {
     const cur = active.value;
     if (!cur) return;
 
     if (event.type === "session_error") {
-      debugSession("handle_event:session_error", {
-        activeSessionId: cur.id,
-        message: event.message
-      });
+      debugSession("handle_event:session_error", { activeSessionId: cur.id, message: event.message });
       _closeStream();
       active.value = { ...cur, streamStatus: "error" };
       return;
@@ -171,10 +173,12 @@ export const useSessionsStore = defineStore("sessions", () => {
         phase: event.phase,
         streamStatus: "connecting",
         transcript: [],
+        transcriptHasMore: false,
+        transcriptLoadingMore: false,
         streamingText: null,
         composerUserId: cur.composerUserId
       };
-      _openStream(cur.id, event.mutationEpoch, 0);
+      void _initTranscriptAndStream(cur.id, event.mutationEpoch);
       return;
     }
 
@@ -210,6 +214,7 @@ export const useSessionsStore = defineStore("sessions", () => {
       _reconnectTimer = null;
       if (selectedId.value === sessionId) {
         const cur = active.value;
+        // 断线重连：SSE 从当前已知 transcriptCount 起，无需重拉 REST
         _openStream(sessionId, cur?.mutationEpoch, cur?.transcriptCount);
         _reconnectDelay = Math.min(_reconnectDelay * 2, 15_000);
       }
@@ -217,41 +222,33 @@ export const useSessionsStore = defineStore("sessions", () => {
   }
 
   function _closeStream(): void {
-    if (_es) {
-      _es.close();
-      _es = null;
-    }
-    if (_reconnectTimer) {
-      clearTimeout(_reconnectTimer);
-      _reconnectTimer = null;
-    }
+    if (_es) { _es.close(); _es = null; }
+    if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
   }
 
   function selectSession(sessionId: string): void {
     if (selectedId.value === sessionId) return;
     selectedId.value = sessionId;
     const selected = list.value.find((item) => item.id === sessionId);
-    if (selected) {
-      active.value = {
-        id: selected.id,
-        type: selected.type,
-        source: selected.source,
-        participantUserId: selected.participantUserId,
-        participantLabel: selected.participantLabel,
-        mutationEpoch: 0,
-        transcriptCount: 0,
-        lastActiveAt: selected.lastActiveAt,
-        streamStatus: "connecting",
-        phase: {
-          kind: "idle",
-          label: "连接中"
-        },
-        transcript: [],
-        streamingText: null,
-        composerUserId: selected.participantUserId
-      };
-    }
-    _openStream(sessionId);
+    _closeStream();
+    active.value = {
+      id: sessionId,
+      type: selected?.type ?? "private",
+      source: selected?.source ?? "web",
+      participantUserId: selected?.participantUserId ?? "",
+      participantLabel: selected?.participantLabel ?? null,
+      mutationEpoch: 0,
+      transcriptCount: 0,
+      lastActiveAt: selected?.lastActiveAt ?? 0,
+      streamStatus: "connecting",
+      phase: { kind: "idle", label: "连接中" },
+      transcript: [],
+      transcriptHasMore: false,
+      transcriptLoadingMore: false,
+      streamingText: null,
+      composerUserId: selected?.participantUserId ?? null
+    };
+    void _initTranscriptAndStream(sessionId);
   }
 
   function deselectSession(): void {
@@ -271,10 +268,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     const cur = active.value;
     if (!cur) return;
 
-    active.value = {
-      ...cur,
-      composerUserId: opts.userId
-    };
+    active.value = { ...cur, composerUserId: opts.userId };
     const { turnId } = await sessionsApi.sendTurn(sessionId, {
       userId: opts.userId,
       senderName: opts.senderName,
@@ -296,9 +290,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 
   async function deleteSelectedSession(): Promise<void> {
     const sessionId = selectedId.value;
-    if (!sessionId) {
-      return;
-    }
+    if (!sessionId) return;
     await sessionsApi.remove(sessionId);
     deselectSession();
     await refresh();
@@ -329,12 +321,8 @@ export const useSessionsStore = defineStore("sessions", () => {
     es.addEventListener("turn_error", (e: MessageEvent) => {
       try {
         const event = JSON.parse(e.data) as TurnStreamEvent;
-        if (event.type === "turn_error") {
-          cleanup();
-        }
-      } catch {
-        cleanup();
-      }
+        if (event.type === "turn_error") cleanup();
+      } catch { cleanup(); }
     });
     es.onerror = cleanup;
   }
@@ -342,8 +330,44 @@ export const useSessionsStore = defineStore("sessions", () => {
   function reloadTranscript(): void {
     const cur = active.value;
     if (!cur) return;
-    active.value = { ...cur, transcript: [], transcriptCount: 0 };
-    _openStream(cur.id, cur.mutationEpoch, 0);
+    active.value = {
+      ...cur,
+      transcript: [],
+      transcriptCount: 0,
+      transcriptHasMore: false,
+      transcriptLoadingMore: false
+    };
+    void _initTranscriptAndStream(cur.id, cur.mutationEpoch);
+  }
+
+  async function loadMoreTranscript(): Promise<void> {
+    const cur = active.value;
+    if (!cur || !cur.transcriptHasMore || cur.transcriptLoadingMore) return;
+
+    const sessionId = cur.id;
+    const oldestIndex = cur.transcript[0]?.index ?? cur.transcriptCount;
+
+    active.value = { ...cur, transcriptLoadingMore: true };
+
+    try {
+      const snap = await sessionsApi.fetchTranscript(sessionId, {
+        beforeIndex: oldestIndex,
+        limit: 25
+      });
+      const current = active.value;
+      if (!current || current.id !== sessionId) return;
+      active.value = {
+        ...current,
+        transcript: [...snap.items, ...current.transcript],
+        transcriptHasMore: snap.hasMore,
+        transcriptLoadingMore: false
+      };
+    } catch {
+      const current = active.value;
+      if (current?.id === sessionId) {
+        active.value = { ...current, transcriptLoadingMore: false };
+      }
+    }
   }
 
   function setComposerUserId(userId: string | null): void {
@@ -363,6 +387,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     deselectSession,
     sendMessage,
     reloadTranscript,
+    loadMoreTranscript,
     setComposerUserId
   };
 });

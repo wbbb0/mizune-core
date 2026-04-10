@@ -216,3 +216,17 @@ export type TurnStreamEvent =
   | { type: "chunk";    turnId: string; sessionId: string; chunk: string; timestampMs: number }
   | { type: "complete"; turnId: string; sessionId: string; response: string; chunks: string[]; timestampMs: number }
   | { type: "turn_error"; turnId: string; sessionId: string; message: string; timestampMs: number };
+
+// ── Transcript pagination ─────────────────────────────────────────────────────
+
+export interface TranscriptFetchItem {
+  eventId: string;
+  index: number;
+  item: TranscriptItem;
+}
+
+export interface TranscriptFetchResult {
+  items: TranscriptFetchItem[];
+  totalCount: number;
+  hasMore: boolean;
+}

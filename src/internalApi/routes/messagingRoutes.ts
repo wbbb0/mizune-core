@@ -9,6 +9,7 @@ import {
   parseWebSessionStreamQuery,
   parseWebTurnBody,
   parseWebTurnStreamQuery,
+  parseTranscriptQuery,
   respondBadRequest
 } from "../routeSupport.ts";
 import { replyWithSseStream } from "./sse.ts";
@@ -84,6 +85,18 @@ export function registerMessagingRoutes(app: FastifyInstance, services: Internal
     }
 
     replyWithSseStream(request, reply, stream);
+  });
+
+  app.get("/api/sessions/:sessionId/transcript", async (request, reply) => {
+    const params = parseSessionParams(request.params);
+    if (!parseOrReply(reply, params)) return reply;
+    const query = parseTranscriptQuery(request.query);
+    if (!parseOrReply(reply, query)) return reply;
+    try {
+      return messaging.fetchTranscript(params, query);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
   });
 
   app.post("/api/send-text", async (request, reply) => {

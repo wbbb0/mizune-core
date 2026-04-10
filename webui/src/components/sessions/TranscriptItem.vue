@@ -1,20 +1,47 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, inject } from "vue";
 import { Bot, GitBranch, Image as ImageIcon, Info, User, Wrench } from "lucide-vue-next";
 import type { StoredToolCall, TranscriptItem } from "@/api/types";
 import SessionGlyph, { type SessionGlyphModel } from "./SessionGlyph.vue";
 import TranscriptCard from "./TranscriptCard.vue";
 import TranscriptDisclosure from "./TranscriptDisclosure.vue";
 import TranscriptTextBlock from "./TranscriptTextBlock.vue";
+import type { TranscriptExpandState } from "./ChatPanel.vue";
 
 const props = defineProps<{
   item: TranscriptItem;
   index: number;
+  eventId?: string;
 }>();
 
-const expanded = ref(false);
-const reasoningExpanded = ref(false);
-const plannerExpanded = ref(false);
+const expandStates = inject<Map<string, TranscriptExpandState>>("transcriptExpandStates");
+
+function getState(): TranscriptExpandState {
+  if (!expandStates || !props.eventId) {
+    return { expanded: false, reasoningExpanded: false, plannerExpanded: false };
+  }
+  if (!expandStates.has(props.eventId)) {
+    expandStates.set(props.eventId, { expanded: false, reasoningExpanded: false, plannerExpanded: false });
+  }
+  return expandStates.get(props.eventId)!;
+}
+
+const expanded = computed(() => getState().expanded);
+const reasoningExpanded = computed(() => getState().reasoningExpanded);
+const plannerExpanded = computed(() => getState().plannerExpanded);
+
+function toggleExpanded() {
+  const s = getState();
+  s.expanded = !s.expanded;
+}
+function toggleReasoningExpanded() {
+  const s = getState();
+  s.reasoningExpanded = !s.reasoningExpanded;
+}
+function togglePlannerExpanded() {
+  const s = getState();
+  s.plannerExpanded = !s.plannerExpanded;
+}
 
 const timeStr = computed(() => {
   const d = new Date(props.item.timestampMs);
@@ -334,7 +361,7 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
           :expanded="reasoningExpanded"
           collapsed-label="展开思考过程"
           expanded-label="收起思考过程"
-          @toggle="reasoningExpanded = !reasoningExpanded"
+          @toggle="toggleReasoningExpanded"
         >
           <TranscriptTextBlock :text="item.reasoningContent" tone="muted" />
         </TranscriptDisclosure>
@@ -355,7 +382,7 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
           :expanded="reasoningExpanded"
           collapsed-label="展开思考过程"
           expanded-label="收起思考过程"
-          @toggle="reasoningExpanded = !reasoningExpanded"
+          @toggle="toggleReasoningExpanded"
         >
           <TranscriptTextBlock :text="item.reasoningContent" tone="muted" />
         </TranscriptDisclosure>
@@ -364,7 +391,7 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
           collapsed-label="展开参数"
           expanded-label="收起参数"
           :summary="toolNames.length > 0 ? toolNames.join('、') : `${item.toolCalls.length} 个调用`"
-          @toggle="expanded = !expanded"
+          @toggle="toggleExpanded"
         >
           <TranscriptCard v-for="toolCall in item.toolCalls" :key="toolCall.id" :title="getDisplayToolName(toolCall) || '未知工具'">
             <div class="font-mono text-small text-text-muted">toolCallId: {{ toolCall.id }}</div>
@@ -382,7 +409,7 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
           collapsed-label="展开结果"
           expanded-label="收起结果"
           :summary="item.toolName || '未知工具结果'"
-          @toggle="expanded = !expanded"
+          @toggle="toggleExpanded"
         >
           <TranscriptCard title="工具输出">
             <div v-if="item.toolCallId" class="font-mono text-small text-text-muted">toolCallId: {{ item.toolCallId }}</div>
@@ -406,7 +433,7 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
           :expanded="reasoningExpanded"
           collapsed-label="展开思考过程"
           expanded-label="收起思考过程"
-          @toggle="reasoningExpanded = !reasoningExpanded"
+          @toggle="toggleReasoningExpanded"
         >
           <TranscriptTextBlock :text="item.reasoningContent" tone="muted" />
         </TranscriptDisclosure>
@@ -415,7 +442,7 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
           collapsed-label="展开规划输出"
           expanded-label="收起规划输出"
           :summary="item.action"
-          @toggle="plannerExpanded = !plannerExpanded"
+          @toggle="togglePlannerExpanded"
         >
           <TranscriptCard title="规划输出">
             <div class="grid gap-1.5">
@@ -445,7 +472,7 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
           collapsed-label="展开详细信息"
           expanded-label="收起详细信息"
           :summary="item.fallbackType === 'model_candidate_switch' ? 'fallback' : '兜底回复'"
-          @toggle="expanded = !expanded"
+          @toggle="toggleExpanded"
         >
           <TranscriptCard title="详细信息">
             <TranscriptTextBlock :text="item.details" />
@@ -464,7 +491,7 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
           collapsed-label="展开详细信息"
           expanded-label="收起详细信息"
           :summary="item.stage"
-          @toggle="expanded = !expanded"
+          @toggle="toggleExpanded"
         >
           <TranscriptCard title="详细信息">
             <TranscriptTextBlock :text="item.details" />
