@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import pino from "pino";
 import { MessageQueue } from "../../src/conversation/messageQueue.ts";
+import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
 async function runCase(name: string, fn: () => Promise<void>) {
   process.stdout.write(`- ${name} ... `);
@@ -11,7 +12,7 @@ async function runCase(name: string, fn: () => Promise<void>) {
 async function main() {
   await runCase("queued messages are skipped after abort signal fires", async () => {
     const logger = pino({ level: "silent" });
-    const queue = new MessageQueue(logger);
+    const queue = new MessageQueue(logger, createTestAppConfig());
     const abortController = new AbortController();
     const sent: string[] = [];
 
@@ -39,7 +40,7 @@ async function main() {
 
   await runCase("abort before any send skips all queued messages", async () => {
     const logger = pino({ level: "silent" });
-    const queue = new MessageQueue(logger);
+    const queue = new MessageQueue(logger, createTestAppConfig());
     const abortController = new AbortController();
     const sent: string[] = [];
 
@@ -60,7 +61,7 @@ async function main() {
 
   await runCase("messages enqueued before abort complete; messages pending during abort are skipped", async () => {
     const logger = pino({ level: "silent" });
-    const queue = new MessageQueue(logger);
+    const queue = new MessageQueue(logger, createTestAppConfig());
     const responseAbortController = new AbortController();
     const sent: string[] = [];
 

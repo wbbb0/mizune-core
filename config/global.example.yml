@@ -75,6 +75,13 @@ conversation:
     smoothingFactor: 0.2
     finalMultiplier: 1.5
     plannerWaitMultiplier: 2
+  outbound:
+    instantReply: false
+    baseDelayMs: 1200
+    charDelayMs: 200
+    maxDelayMs: 20000
+    randomFactorMin: 0.8
+    randomFactorMax: 1.25
   historyCompression:
     enabled: true
     triggerMessageCount: 40

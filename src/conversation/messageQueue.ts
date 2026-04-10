@@ -1,11 +1,14 @@
 import type { Logger } from "pino";
+import type { AppConfig } from "#config/config.ts";
 
-function computeTypingDelayMs(text: string): number {
-  return Math.min(1200 + text.length * 200, 20000);
+function computeTypingDelayMs(text: string, cfg: AppConfig["conversation"]["outbound"]): number {
+  return Math.min(cfg.baseDelayMs + text.length * cfg.charDelayMs, cfg.maxDelayMs);
 }
 
-function applyRandomFactor(delayMs: number): number {
-  const factor = 0.8 + Math.random() * 0.45;
+function applyRandomFactor(delayMs: number, cfg: AppConfig["conversation"]["outbound"]): number {
+  const factor = cfg.randomFactorMin < cfg.randomFactorMax
+    ? cfg.randomFactorMin + Math.random() * (cfg.randomFactorMax - cfg.randomFactorMin)
+    : 1;
   return Math.round(delayMs * factor);
 }
 
@@ -35,7 +38,10 @@ export class MessageQueue {
   private readonly queues = new Map<string, Promise<void>>();
   private readonly lastSentAt = new Map<string, number>();
 
-  constructor(private readonly logger: Logger) {}
+  constructor(
+    private readonly logger: Logger,
+    private readonly config: AppConfig
+  ) {}
 
   enqueue(sessionId: string, task: () => Promise<void>): Promise<void> {
     const previous = this.queues.get(sessionId) ?? Promise.resolve();
@@ -85,8 +91,9 @@ export class MessageQueue {
         return;
       }
 
-      const baseDelayMs = computeTypingDelayMs(params.text);
-      const randomizedDelayMs = applyRandomFactor(baseDelayMs);
+      const cfg = this.config.conversation.outbound;
+      const baseDelayMs = cfg.instantReply ? 0 : computeTypingDelayMs(params.text, cfg);
+      const randomizedDelayMs = cfg.instantReply ? 0 : applyRandomFactor(baseDelayMs, cfg);
       const previousSentAt = this.lastSentAt.get(params.sessionId);
       const targetAt = (previousSentAt ?? Date.now()) + randomizedDelayMs;
       const waitMs = Math.max(0, targetAt - Date.now());

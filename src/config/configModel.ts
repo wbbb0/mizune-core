@@ -129,6 +129,14 @@ const conversationConfigSchema = s.object({
     randomRatioMin: s.number().min(0.5).max(1).default(0.8),
     randomRatioMax: s.number().min(1).max(2).default(1.25)
   }).default(emptyObject),
+  outbound: s.object({
+    instantReply: s.boolean().default(false),
+    baseDelayMs: s.number().int().min(0).default(1200),
+    charDelayMs: s.number().int().min(0).default(200),
+    maxDelayMs: s.number().int().min(0).default(20000),
+    randomFactorMin: s.number().min(0).max(2).default(0.8),
+    randomFactorMax: s.number().min(0).max(2).default(1.25)
+  }).default(emptyObject),
   historyCompression: s.object({
     enabled: s.boolean().default(true),
     triggerMessageCount: s.number().int().positive().default(24),
