@@ -108,7 +108,7 @@ function updateDraft(value: unknown) {
       <div v-if="!ui.isMobile" class="panel-header flex h-10 shrink-0 items-center border-b px-3">
         <span class="text-small font-semibold tracking-[0.08em] text-text-muted uppercase">配置编辑器</span>
       </div>
-      <div class="overflow-y-auto">
+      <div class="min-h-0 flex-1 overflow-y-auto">
         <button
           v-for="r in resources"
           :key="r.key"

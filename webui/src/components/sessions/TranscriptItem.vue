@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { Bot, GitBranch, Image as ImageIcon, Info, User, Wrench } from "lucide-vue-next";
 import type { StoredToolCall, TranscriptItem } from "@/api/types";
+import SessionGlyph, { type SessionGlyphModel } from "./SessionGlyph.vue";
+import TranscriptCard from "./TranscriptCard.vue";
+import TranscriptDisclosure from "./TranscriptDisclosure.vue";
+import TranscriptTextBlock from "./TranscriptTextBlock.vue";
 
 const props = defineProps<{
   item: TranscriptItem;
@@ -9,6 +14,7 @@ const props = defineProps<{
 
 const expanded = ref(false);
 const reasoningExpanded = ref(false);
+const plannerExpanded = ref(false);
 
 const timeStr = computed(() => {
   const d = new Date(props.item.timestampMs);
@@ -94,30 +100,30 @@ const itemTone = computed(() => {
   }
 });
 
-const itemGlyph = computed(() => {
+const itemGlyph = computed<SessionGlyphModel>(() => {
   switch (props.item.kind) {
     case "user_message":
-      return "U";
+      return { kind: "icon", component: User, size: 13, strokeWidth: 2.1 };
     case "assistant_message":
-      return "A";
+      return { kind: "icon", component: Bot, size: 13, strokeWidth: 2 };
     case "direct_command":
-      return props.item.direction === "input" ? "." : ">";
+      return { kind: "text", value: props.item.direction === "input" ? "." : ">" };
     case "status_message":
-      return "S";
+      return { kind: "icon", component: Info, size: 13, strokeWidth: 2.1 };
     case "assistant_tool_call":
-      return "T";
+      return { kind: "icon", component: Wrench, size: 13, strokeWidth: 2 };
     case "tool_result":
-      return "R";
+      return { kind: "text", value: "R" };
     case "outbound_media_message":
-      return "I";
+      return { kind: "icon", component: ImageIcon, size: 13, strokeWidth: 2 };
     case "gate_decision":
-      return "G";
+      return { kind: "icon", component: GitBranch, size: 13, strokeWidth: 2 };
     case "system_marker":
-      return "M";
+      return { kind: "text", value: "M" };
     case "fallback_event":
-      return "F";
+      return { kind: "text", value: "F" };
     case "internal_trigger_event":
-      return "I";
+      return { kind: "text", value: "I" };
   }
 });
 
@@ -233,6 +239,20 @@ const plannerOutputRows = computed(() => {
   ];
 });
 
+const outboundMediaRows = computed(() => {
+  if (props.item.kind !== "outbound_media_message") {
+    return [];
+  }
+  return [
+    { label: "发送到", value: props.item.delivery },
+    { label: "文件 ID", value: props.item.fileId },
+    { label: "文件引用", value: props.item.fileRef || "无" },
+    { label: "原始文件名", value: props.item.sourceName || "未命名图片" },
+    { label: "工作区路径", value: props.item.workspacePath || "无" },
+    { label: "消息 ID", value: props.item.messageId != null ? String(props.item.messageId) : "无" }
+  ];
+});
+
 function normalizeText(value: string): string | null {
   const normalized = value.trim();
   if (!normalized) {
@@ -289,7 +309,7 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
 <template>
   <article class="grid grid-cols-[56px_minmax(0,1fr)] gap-2.5 border-b border-border-subtle px-3 py-2.5 max-[720px]:grid-cols-[42px_minmax(0,1fr)] max-[720px]:gap-2">
     <div class="flex flex-col items-center gap-1.5 pt-0.5">
-      <span class="flex h-6 w-6 items-center justify-center rounded-full border border-current text-[11px] font-bold" :class="toneGlyphClass">{{ itemGlyph }}</span>
+      <SessionGlyph :glyph="itemGlyph" :tone-class="toneGlyphClass" />
       <span class="font-mono text-small text-text-subtle">#{{ index }}</span>
     </div>
 
@@ -305,152 +325,151 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
       </header>
 
       <div v-if="item.kind === 'user_message'" class="flex flex-col gap-2">
-        <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre-wrap wrap-break-word">{{ item.text }}</pre>
+        <TranscriptTextBlock :text="item.text" />
       </div>
 
       <div v-else-if="item.kind === 'assistant_message'" class="flex flex-col gap-2">
-        <template v-if="item.reasoningContent">
-          <button class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border-default bg-surface-input px-2.5 py-1.75 text-small text-text-muted hover:text-text-primary" @click="reasoningExpanded = !reasoningExpanded">
-            <span>{{ reasoningExpanded ? "收起思考过程" : "展开思考过程" }}</span>
-          </button>
-          <div v-if="reasoningExpanded" class="flex flex-col gap-2">
-            <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ item.reasoningContent }}</pre>
-          </div>
-        </template>
-        <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre-wrap wrap-break-word">{{ item.text }}</pre>
+        <TranscriptDisclosure
+          v-if="item.reasoningContent"
+          :expanded="reasoningExpanded"
+          collapsed-label="展开思考过程"
+          expanded-label="收起思考过程"
+          @toggle="reasoningExpanded = !reasoningExpanded"
+        >
+          <TranscriptTextBlock :text="item.reasoningContent" tone="muted" />
+        </TranscriptDisclosure>
+        <TranscriptTextBlock :text="item.text" />
       </div>
 
       <div v-else-if="item.kind === 'direct_command'" class="flex flex-col gap-2">
-        <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre-wrap wrap-break-word">{{ item.content }}</pre>
+        <TranscriptTextBlock :text="item.content" />
       </div>
 
       <div v-else-if="item.kind === 'status_message'" class="flex flex-col gap-2">
-        <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre-wrap wrap-break-word">{{ item.content }}</pre>
+        <TranscriptTextBlock :text="item.content" />
       </div>
 
       <div v-else-if="item.kind === 'assistant_tool_call'" class="flex flex-col gap-2">
-        <template v-if="item.reasoningContent">
-          <button class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border-default bg-surface-input px-2.5 py-1.75 text-small text-text-muted hover:text-text-primary" @click="reasoningExpanded = !reasoningExpanded">
-            <span>{{ reasoningExpanded ? "收起思考过程" : "展开思考过程" }}</span>
-          </button>
-          <div v-if="reasoningExpanded" class="flex flex-col gap-2">
-            <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ item.reasoningContent }}</pre>
-          </div>
-        </template>
-        <button class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border-default bg-surface-input px-2.5 py-1.75 text-small text-text-muted hover:text-text-primary" @click="expanded = !expanded">
-          <span>{{ expanded ? "收起参数" : "展开参数" }}</span>
-          <span>{{ toolNames.length > 0 ? toolNames.join("、") : `${item.toolCalls.length} 个调用` }}</span>
-        </button>
-        <div v-if="expanded" class="flex flex-col gap-2">
-          <section v-for="toolCall in item.toolCalls" :key="toolCall.id" class="rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-            <div class="mb-1 text-small tracking-[0.05em] text-text-subtle uppercase">{{ getDisplayToolName(toolCall) || "未知工具" }}</div>
+        <TranscriptDisclosure
+          v-if="item.reasoningContent"
+          :expanded="reasoningExpanded"
+          collapsed-label="展开思考过程"
+          expanded-label="收起思考过程"
+          @toggle="reasoningExpanded = !reasoningExpanded"
+        >
+          <TranscriptTextBlock :text="item.reasoningContent" tone="muted" />
+        </TranscriptDisclosure>
+        <TranscriptDisclosure
+          :expanded="expanded"
+          collapsed-label="展开参数"
+          expanded-label="收起参数"
+          :summary="toolNames.length > 0 ? toolNames.join('、') : `${item.toolCalls.length} 个调用`"
+          @toggle="expanded = !expanded"
+        >
+          <TranscriptCard v-for="toolCall in item.toolCalls" :key="toolCall.id" :title="getDisplayToolName(toolCall) || '未知工具'">
             <div class="font-mono text-small text-text-muted">toolCallId: {{ toolCall.id }}</div>
-            <pre v-if="getToolArguments(toolCall)" class="mt-2 m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre">{{ formatMaybeJson(getToolArguments(toolCall)) }}</pre>
-          </section>
-          <section v-if="item.content" class="rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-            <div class="mb-1 text-small tracking-[0.05em] text-text-subtle uppercase">模型工具消息</div>
-            <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre-wrap wrap-break-word">{{ item.content }}</pre>
-          </section>
-        </div>
+            <TranscriptTextBlock v-if="getToolArguments(toolCall)" class="mt-2" :text="formatMaybeJson(getToolArguments(toolCall))" :wrap="false" />
+          </TranscriptCard>
+          <TranscriptCard v-if="item.content" title="模型工具消息">
+            <TranscriptTextBlock :text="item.content" />
+          </TranscriptCard>
+        </TranscriptDisclosure>
       </div>
 
       <div v-else-if="item.kind === 'tool_result'" class="flex flex-col gap-2">
-        <button class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border-default bg-surface-input px-2.5 py-1.75 text-small text-text-muted hover:text-text-primary" @click="expanded = !expanded">
-          <span>{{ expanded ? "收起结果" : "展开结果" }}</span>
-          <span>{{ item.toolName || "未知工具结果" }}</span>
-        </button>
-        <div v-if="expanded" class="flex flex-col gap-2">
-          <section class="rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-            <div class="mb-1 text-small tracking-[0.05em] text-text-subtle uppercase">工具输出</div>
+        <TranscriptDisclosure
+          :expanded="expanded"
+          collapsed-label="展开结果"
+          expanded-label="收起结果"
+          :summary="item.toolName || '未知工具结果'"
+          @toggle="expanded = !expanded"
+        >
+          <TranscriptCard title="工具输出">
             <div v-if="item.toolCallId" class="font-mono text-small text-text-muted">toolCallId: {{ item.toolCallId }}</div>
-            <pre class="mt-2 m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre">{{ formatMaybeJson(item.content) }}</pre>
-          </section>
-        </div>
+            <TranscriptTextBlock class="mt-2" :text="formatMaybeJson(item.content)" :wrap="false" />
+          </TranscriptCard>
+        </TranscriptDisclosure>
       </div>
 
       <div v-else-if="item.kind === 'outbound_media_message'" class="flex flex-col gap-2">
-        <section class="flex items-center justify-between gap-3 rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-          <div class="text-small tracking-[0.05em] text-text-subtle uppercase">发送到</div>
-          <div class="font-mono text-small text-text-muted">{{ item.delivery }}</div>
-        </section>
-        <section class="flex items-center justify-between gap-3 rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-          <div class="text-small tracking-[0.05em] text-text-subtle uppercase">文件 ID</div>
-          <div class="font-mono text-small text-text-muted">{{ item.fileId }}</div>
-        </section>
-        <section class="flex items-center justify-between gap-3 rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-          <div class="text-small tracking-[0.05em] text-text-subtle uppercase">文件引用</div>
-          <div class="font-mono text-small text-text-muted">{{ item.fileRef || "无" }}</div>
-        </section>
-        <section class="flex items-center justify-between gap-3 rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-          <div class="text-small tracking-[0.05em] text-text-subtle uppercase">原始文件名</div>
-          <div class="font-mono text-small text-text-muted">{{ item.sourceName || "未命名图片" }}</div>
-        </section>
-        <section class="flex items-center justify-between gap-3 rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-          <div class="text-small tracking-[0.05em] text-text-subtle uppercase">工作区路径</div>
-          <div class="font-mono text-small text-text-muted">{{ item.workspacePath || "无" }}</div>
-        </section>
-        <section class="flex items-center justify-between gap-3 rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-          <div class="text-small tracking-[0.05em] text-text-subtle uppercase">消息 ID</div>
-          <div class="font-mono text-small text-text-muted">{{ item.messageId }}</div>
-        </section>
+        <TranscriptCard v-for="row in outboundMediaRows" :key="row.label">
+          <div class="flex items-center justify-between gap-3">
+            <div class="text-small tracking-[0.05em] text-text-subtle uppercase">{{ row.label }}</div>
+            <div class="font-mono text-small text-text-muted">{{ row.value }}</div>
+          </div>
+        </TranscriptCard>
       </div>
 
       <div v-else-if="item.kind === 'gate_decision'" class="flex flex-col gap-2">
-        <template v-if="item.reasoningContent">
-          <button class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border-default bg-surface-input px-2.5 py-1.75 text-small text-text-muted hover:text-text-primary" @click="reasoningExpanded = !reasoningExpanded">
-            <span>{{ reasoningExpanded ? "收起思考过程" : "展开思考过程" }}</span>
-          </button>
-          <div v-if="reasoningExpanded" class="flex flex-col gap-2">
-            <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ item.reasoningContent }}</pre>
-          </div>
-        </template>
-        <section class="rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-          <div class="mb-1 text-small tracking-[0.05em] text-text-subtle uppercase">规划输出</div>
-          <div class="grid gap-1.5">
-            <div v-for="row in plannerOutputRows" :key="row.key" class="flex items-start justify-between gap-3 rounded-md border border-border-subtle bg-surface-input px-2 py-1.5">
-              <span class="font-mono text-small text-text-subtle">{{ row.key }}</span>
-              <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ row.value ?? "null" }}</span>
+        <TranscriptDisclosure
+          v-if="item.reasoningContent"
+          :expanded="reasoningExpanded"
+          collapsed-label="展开思考过程"
+          expanded-label="收起思考过程"
+          @toggle="reasoningExpanded = !reasoningExpanded"
+        >
+          <TranscriptTextBlock :text="item.reasoningContent" tone="muted" />
+        </TranscriptDisclosure>
+        <TranscriptDisclosure
+          :expanded="plannerExpanded"
+          collapsed-label="展开规划输出"
+          expanded-label="收起规划输出"
+          :summary="item.action"
+          @toggle="plannerExpanded = !plannerExpanded"
+        >
+          <TranscriptCard title="规划输出">
+            <div class="grid gap-1.5">
+              <TranscriptCard v-for="row in plannerOutputRows" :key="row.key" compact>
+                <div class="flex items-start justify-between gap-3">
+                  <span class="font-mono text-small text-text-subtle">{{ row.key }}</span>
+                  <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ row.value ?? "null" }}</span>
+                </div>
+              </TranscriptCard>
+              <TranscriptCard compact>
+                <div class="mb-1 font-mono text-small text-text-subtle">reason</div>
+                <pre class="m-0 overflow-x-auto font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ plannerReasonText ?? "null" }}</pre>
+              </TranscriptCard>
             </div>
-          </div>
-        </section>
-        <section class="rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-          <div class="mb-1 text-small tracking-[0.05em] text-text-subtle uppercase">reason</div>
-          <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre-wrap wrap-break-word">{{ plannerReasonText ?? "null" }}</pre>
-        </section>
+          </TranscriptCard>
+        </TranscriptDisclosure>
       </div>
 
       <div v-else-if="item.kind === 'system_marker'" class="flex flex-col gap-2">
-        <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre-wrap wrap-break-word">{{ item.content }}</pre>
+        <TranscriptTextBlock :text="item.content" />
       </div>
 
       <div v-else-if="item.kind === 'fallback_event'" class="flex flex-col gap-2">
         <p class="m-0 whitespace-pre-wrap wrap-break-word text-text-muted">{{ item.summary }}</p>
-        <button class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border-default bg-surface-input px-2.5 py-1.75 text-small text-text-muted hover:text-text-primary" @click="expanded = !expanded">
-          <span>{{ expanded ? "收起详细信息" : "展开详细信息" }}</span>
-          <span>{{ item.fallbackType === "model_candidate_switch" ? "fallback" : "兜底回复" }}</span>
-        </button>
-        <div v-if="expanded" class="flex flex-col gap-2">
-          <section class="rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-            <div class="mb-1 text-small tracking-[0.05em] text-text-subtle uppercase">详细信息</div>
-            <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre-wrap wrap-break-word">{{ item.details }}</pre>
-          </section>
-          <section v-if="item.failureMessage" class="rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-            <div class="mb-1 text-small tracking-[0.05em] text-text-subtle uppercase">发送给用户的兜底回复</div>
-            <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre-wrap wrap-break-word">{{ item.failureMessage }}</pre>
-          </section>
-        </div>
+        <TranscriptDisclosure
+          :expanded="expanded"
+          collapsed-label="展开详细信息"
+          expanded-label="收起详细信息"
+          :summary="item.fallbackType === 'model_candidate_switch' ? 'fallback' : '兜底回复'"
+          @toggle="expanded = !expanded"
+        >
+          <TranscriptCard title="详细信息">
+            <TranscriptTextBlock :text="item.details" />
+          </TranscriptCard>
+          <TranscriptCard v-if="item.failureMessage" title="发送给用户的兜底回复">
+            <TranscriptTextBlock :text="item.failureMessage" />
+          </TranscriptCard>
+        </TranscriptDisclosure>
       </div>
 
       <div v-else-if="item.kind === 'internal_trigger_event'" class="flex flex-col gap-2">
         <p class="m-0 whitespace-pre-wrap wrap-break-word text-text-muted">{{ item.summary }}</p>
-        <button v-if="item.details" class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border-default bg-surface-input px-2.5 py-1.75 text-small text-text-muted hover:text-text-primary" @click="expanded = !expanded">
-          <span>{{ expanded ? "收起详细信息" : "展开详细信息" }}</span>
-          <span>{{ item.stage }}</span>
-        </button>
-        <section v-if="item.details && expanded" class="rounded-lg border border-border-default bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] p-2.5">
-          <div class="mb-1 text-small tracking-[0.05em] text-text-subtle uppercase">详细信息</div>
-          <pre class="m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono text-text-primary whitespace-pre-wrap wrap-break-word">{{ item.details }}</pre>
-        </section>
+        <TranscriptDisclosure
+          v-if="item.details"
+          :expanded="expanded"
+          collapsed-label="展开详细信息"
+          expanded-label="收起详细信息"
+          :summary="item.stage"
+          @toggle="expanded = !expanded"
+        >
+          <TranscriptCard title="详细信息">
+            <TranscriptTextBlock :text="item.details" />
+          </TranscriptCard>
+        </TranscriptDisclosure>
       </div>
     </div>
   </article>

@@ -94,11 +94,10 @@ async function onCreateSessionSubmit(payload: {
         </div>
       </div>
 
-      <div v-if="store.list.length === 0 && !loading" class="px-3 py-6 text-center text-small text-text-subtle">
-        暂无活跃会话
-      </div>
-
-      <div class="overflow-y-auto">
+      <div class="min-h-0 flex-1 overflow-y-auto">
+        <div v-if="store.list.length === 0 && !loading" class="px-3 py-6 text-center text-small text-text-subtle">
+          暂无活跃会话
+        </div>
         <SessionListItem
           v-for="s in store.list"
           :key="s.id"

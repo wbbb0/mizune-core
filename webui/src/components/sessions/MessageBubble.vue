@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { Bot, User, Users } from "lucide-vue-next";
+import SessionGlyph, { type SessionGlyphModel } from "./SessionGlyph.vue";
 
 const props = defineProps<{
   side: "left" | "right";
@@ -27,16 +29,31 @@ const timeStr = computed(() => {
   const d = new Date(props.timestampMs);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 });
+
+const bubbleGlyph = computed<SessionGlyphModel>(() => {
+  if (props.side === "right") {
+    return { kind: "icon", component: User, size: 14, strokeWidth: 2.1 };
+  }
+  if (props.role === "assistant") {
+    return { kind: "icon", component: Bot, size: 14, strokeWidth: 2 };
+  }
+  return { kind: "icon", component: Users, size: 14, strokeWidth: 2 };
+});
+
+const bubbleGlyphToneClass = computed(() => {
+  return props.side === "right" ? "bg-surface-selected text-text-accent" : "bg-surface-success text-success";
+});
 </script>
 
 <template>
   <div class="flex items-end gap-2 px-3 py-1" :class="{ 'flex-row-reverse': side === 'right' }">
-    <div
-      class="flex h-7 w-7 shrink-0 items-center justify-center rounded text-small font-bold"
-      :class="side === 'right' ? 'bg-surface-selected text-text-accent' : 'bg-surface-success text-success'"
-    >
-      <span>{{ side === "right" ? "U" : role === "assistant" ? "A" : "G" }}</span>
-    </div>
+    <SessionGlyph
+      class="shrink-0"
+      :glyph="bubbleGlyph"
+      :tone-class="bubbleGlyphToneClass"
+      size-class="h-7 w-7"
+      text-class="text-small font-bold"
+    />
 
     <div class="flex max-w-[72%] flex-col gap-0.5" :class="{ 'items-end': side === 'right' }">
       <div

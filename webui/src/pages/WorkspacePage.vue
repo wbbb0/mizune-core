@@ -35,13 +35,22 @@ onMounted(async () => {
   await Promise.all([loadDirectory("."), loadStoredFiles()]);
 });
 
+function sortWorkspaceItems(items: WorkspaceItem[]): WorkspaceItem[] {
+  return [...items].sort((left, right) => {
+    if (left.kind !== right.kind) {
+      return left.kind === "directory" ? -1 : 1;
+    }
+    return left.name.localeCompare(right.name, "zh-CN", { numeric: true, sensitivity: "base" });
+  });
+}
+
 async function loadDirectory(path: string): Promise<void> {
   loadingFiles.value = true;
   try {
     const result = await workspaceApi.listItems(path);
     itemsByPath.value = {
       ...itemsByPath.value,
-      [path]: result.items
+      [path]: sortWorkspaceItems(result.items)
     };
   } finally {
     loadingFiles.value = false;
@@ -157,7 +166,7 @@ function formatTime(ms: number): string {
         </button>
       </div>
 
-      <div v-if="mode === 'files'" class="scrollbar-thin overflow-y-auto px-2 py-2">
+      <div v-if="mode === 'files'" class="scrollbar-thin min-h-0 flex-1 overflow-auto px-2 py-2">
         <WorkspaceFileTree
           :items="currentRootItems"
           :expanded-paths="expandedPaths"
@@ -169,7 +178,7 @@ function formatTime(ms: number): string {
         <div v-if="!loadingFiles && currentRootItems.length === 0" class="px-3 py-6 text-center text-small text-text-subtle">工作区为空</div>
       </div>
 
-      <div v-else class="scrollbar-thin overflow-y-auto">
+      <div v-else class="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
         <button
           v-for="file in storedFileList"
           :key="file.fileId"

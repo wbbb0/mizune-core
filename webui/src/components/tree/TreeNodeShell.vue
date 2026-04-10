@@ -1,33 +1,47 @@
 <script setup lang="ts">
-import { ChevronRight, ChevronDown } from "lucide-vue-next";
+import { computed } from "vue";
+import { ChevronRight, ChevronDown, Folder, FolderOpen } from "lucide-vue-next";
 
-defineProps<{
+const props = withDefaults(defineProps<{
   collapsible?: boolean;
   expanded?: boolean;
   selected?: boolean;
   childInset?: boolean;
   meta?: string | number;
-}>();
+  iconMode?: "data" | "files";
+  indentPx?: number;
+}>(), {
+  iconMode: "data",
+  indentPx: 0
+});
 
 defineEmits<{
   toggle: [];
   select: [];
 }>();
+
+const collapsibleIcon = computed(() => {
+  if (props.iconMode === "files") {
+    return props.expanded ? FolderOpen : Folder;
+  }
+  return props.expanded ? ChevronDown : ChevronRight;
+});
 </script>
 
 <template>
-  <div class="min-w-0">
+  <div class="w-max min-w-full">
     <div
-      class="tree-shell-header flex min-w-0 items-center justify-between gap-2 rounded-md px-1 py-0.75"
-      :class="{ 'tree-shell-selected': selected }"
+      class="tree-shell-header relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md px-1 py-0.75"
+      :class="['w-max min-w-full', { 'tree-shell-selected': selected }]"
     >
       <button
         v-if="collapsible"
         class="min-w-0 flex flex-1 cursor-pointer items-center bg-transparent text-left hover:text-text-secondary"
+        :style="props.indentPx > 0 ? { paddingLeft: `${props.indentPx}px` } : undefined"
         @click="$emit('toggle')"
       >
         <div class="tree-head min-w-0">
-          <component :is="expanded ? ChevronDown : ChevronRight" :size="13" :stroke-width="2" class="tree-chevron" />
+          <component :is="collapsibleIcon" :size="13" :stroke-width="2" class="tree-chevron shrink-0 text-text-muted" />
           <div class="min-w-0 flex-1">
             <slot name="label" />
           </div>
@@ -36,6 +50,7 @@ defineEmits<{
       <button
         v-else
         class="min-w-0 flex flex-1 cursor-pointer items-center bg-transparent text-left hover:text-text-secondary"
+        :style="props.indentPx > 0 ? { paddingLeft: `${props.indentPx}px` } : undefined"
         @click="$emit('select')"
       >
         <div class="tree-head min-w-0">
@@ -46,7 +61,10 @@ defineEmits<{
         </div>
       </button>
 
-      <div v-if="$slots.actions || $slots.meta || meta !== undefined" class="flex shrink-0 items-center gap-1">
+      <div
+        v-if="$slots.actions || $slots.meta || meta !== undefined"
+        class="flex shrink-0 items-center gap-1 pl-2 sticky right-0 z-1 bg-inherit"
+      >
         <slot name="meta">
           <span v-if="meta !== undefined" class="tree-meta">{{ meta }}</span>
         </slot>
