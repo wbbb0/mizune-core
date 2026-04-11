@@ -18,8 +18,7 @@ export async function createMessageProcessingContext(
   const [setupState, user, registeredAudios, importedImageAssets, importedFileAssets] = await Promise.all([
     services.setupStore.get(),
     services.userStore.touchSeenUser({
-      userId: incomingMessage.userId,
-      nickname: incomingMessage.senderName
+      userId: incomingMessage.userId
     }),
     services.audioStore.registerSources(incomingMessage.audioSources),
     Promise.all(

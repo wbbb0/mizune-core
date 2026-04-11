@@ -14,7 +14,7 @@ async function main() {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        roleplayRequirements: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
+        rules: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
       });
       const prompt = buildPrompt({
         sessionId: "group:123456",
@@ -53,7 +53,7 @@ async function main() {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        roleplayRequirements: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
+        rules: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
       });
       const prompt = buildPrompt({
         sessionId: "private:owner",
@@ -96,7 +96,7 @@ async function main() {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        roleplayRequirements: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
+        rules: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
       });
       await harness.globalMemoryStore.overwrite([
         {
@@ -222,7 +222,7 @@ async function main() {
   await runCase("conversation access allows self private, npc private, and shared groups only", async () => {
     const harness = await createMemoryHarness();
     try {
-      await harness.userStore.registerKnownUser({ userId: "30003", nickname: "NPC甲" });
+      await harness.userStore.registerKnownUser({ userId: "30003" });
       await harness.userStore.setSpecialRole("30003", "npc");
       const npcDirectory = new NpcDirectory();
       await npcDirectory.refresh(harness.userStore);

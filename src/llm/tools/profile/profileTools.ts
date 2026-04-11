@@ -45,16 +45,13 @@ export const profileToolDescriptors: ToolDescriptor[] = [
               type: "object",
               properties: {
                 name: { type: "string" },
-                identity: { type: "string" },
-                virtualAppearance: { type: "string" },
+                role: { type: "string" },
+                appearance: { type: "string" },
                 personality: { type: "string" },
-                hobbies: { type: "string" },
-                likesAndDislikes: { type: "string" },
-                familyBackground: { type: "string" },
-                speakingStyle: { type: "string" },
-                secrets: { type: "string" },
-                residence: { type: "string" },
-                roleplayRequirements: { type: "string" }
+                interests: { type: "string" },
+                background: { type: "string" },
+                speechStyle: { type: "string" },
+                rules: { type: "string" }
               },
               additionalProperties: false
             }
@@ -84,16 +81,13 @@ export const profileToolDescriptors: ToolDescriptor[] = [
               type: "string",
               enum: [
                 "name",
-                "identity",
-                "virtualAppearance",
+                "role",
+                "appearance",
                 "personality",
-                "hobbies",
-                "likesAndDislikes",
-                "familyBackground",
-                "speakingStyle",
-                "secrets",
-                "residence",
-                "roleplayRequirements"
+                "interests",
+                "background",
+                "speechStyle",
+                "rules"
               ]
             }
           },
@@ -188,12 +182,11 @@ export const profileToolDescriptors: ToolDescriptor[] = [
           type: "object",
           properties: {
             user_id: { type: "string" },
-            nickname: { type: "string" },
             preferredAddress: { type: "string" },
             gender: { type: "string" },
             residence: { type: "string" },
             profileSummary: { type: "string" },
-            sharedContext: { type: "string" }
+            relationshipNote: { type: "string" }
           },
           required: ["user_id"],
           additionalProperties: false
@@ -228,17 +221,16 @@ export const profileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "remember_user_profile",
-        description: "为用户写入结构化长期 profile 字段，适合稳定且以后还会用到的自我信息。优先先看已存数据，避免重复或冲突。",
+        description: "为用户写入结构化长期 profile 字段，适合稳定且以后还会用到的自我信息。优先先看已存数据，避免重复或冲突。preferredAddress=称呼，profileSummary=用户画像，relationshipNote=与用户的关系背景（仅 owner 可写）。",
         parameters: {
           type: "object",
           properties: {
             user_id: { type: "string" },
-            nickname: { type: "string" },
             preferredAddress: { type: "string" },
             gender: { type: "string" },
             residence: { type: "string" },
             profileSummary: { type: "string" },
-            sharedContext: { type: "string" }
+            relationshipNote: { type: "string" }
           },
           additionalProperties: false
         }
@@ -278,17 +270,13 @@ function requireOwnerOrSelf(
 }
 
 function parseUserProfilePatch(args: unknown): {
-  nickname?: string;
   preferredAddress?: string;
   gender?: string;
   residence?: string;
   profileSummary?: string;
-  sharedContext?: string;
+  relationshipNote?: string;
 } {
   return {
-    ...(typeof args === "object" && args && "nickname" in args
-      ? { nickname: String((args as { nickname: unknown }).nickname) }
-      : {}),
     ...(typeof args === "object" && args && "preferredAddress" in args
       ? { preferredAddress: String((args as { preferredAddress: unknown }).preferredAddress) }
       : {}),
@@ -301,8 +289,8 @@ function parseUserProfilePatch(args: unknown): {
     ...(typeof args === "object" && args && "profileSummary" in args
       ? { profileSummary: String((args as { profileSummary: unknown }).profileSummary) }
       : {}),
-    ...(typeof args === "object" && args && "sharedContext" in args
-      ? { sharedContext: String((args as { sharedContext: unknown }).sharedContext) }
+    ...(typeof args === "object" && args && "relationshipNote" in args
+      ? { relationshipNote: String((args as { relationshipNote: unknown }).relationshipNote) }
       : {})
   };
 }
@@ -325,14 +313,13 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     return JSON.stringify({
       user_id: context.lastMessage.userId,
       senderName: context.lastMessage.senderName,
-      nickname: context.currentUser?.nickname ?? null,
       relationship: context.currentUser?.relationship ?? null,
-      specialRole: context.currentUser?.specialRole ?? "none",
+      specialRole: context.currentUser?.specialRole ?? null,
       preferredAddress: context.currentUser?.preferredAddress ?? null,
       gender: context.currentUser?.gender ?? null,
       residence: context.currentUser?.residence ?? null,
       profileSummary: context.currentUser?.profileSummary ?? null,
-      sharedContext: context.currentUser?.sharedContext ?? null,
+      relationshipNote: context.currentUser?.relationshipNote ?? null,
       memories: context.currentUser?.memories ?? []
     });
   },
@@ -525,8 +512,8 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     if (denied) {
       return denied;
     }
-    if (context.relationship !== "owner" && typeof args === "object" && args && "sharedContext" in args) {
-      return JSON.stringify({ error: "Only owner can edit sharedContext that describes shared background or cross-user context" });
+    if (context.relationship !== "owner" && typeof args === "object" && args && "relationshipNote" in args) {
+      return JSON.stringify({ error: "Only owner can edit relationshipNote" });
     }
     const patch = parseUserProfilePatch(args);
     if (Object.keys(patch).length === 0) {
@@ -548,7 +535,7 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     if (!userId || !["none", "npc"].includes(specialRole)) {
       return JSON.stringify({ error: "Invalid user_id or specialRole" });
     }
-    const updated = await context.userStore.setSpecialRole(userId, specialRole as "none" | "npc");
+    const updated = await context.userStore.setSpecialRole(userId, specialRole as "npc" | "none");
     await context.npcDirectory.refresh(context.userStore);
     return JSON.stringify(updated);
   }

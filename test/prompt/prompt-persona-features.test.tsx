@@ -10,7 +10,7 @@ async function main() {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        roleplayRequirements: "下雨天会更安静一点。"
+        rules: "下雨天会更安静一点。"
       });
       await harness.userStore.overwriteMemories("owner", [{ title: "当前用户偏好", content: "不喜欢被叫全名。" }]);
       const otherUser = await harness.userStore.overwriteMemories("20002", [{ title: "其他人记忆", content: "这个不该给当前用户用。" }]);
@@ -36,7 +36,7 @@ async function main() {
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "你好", timestampMs: Date.now() })]
       });
       const system = String(prompt[0]?.content ?? "");
-      assert.match(system, /角色边界与长期口吻：下雨天会更安静一点/);
+      assert.match(system, /角色规则：下雨天会更安静一点/);
       assert.match(system, /当前触发用户相关长期记忆/);
       assert.match(system, /当前用户偏好：不喜欢被叫全名/);
       assert.match(system, /最近内部工具轨迹/);
@@ -51,7 +51,7 @@ async function main() {
   await runCase("prompt builder injects explicit current user profile card", async () => {
     const harness = await createMemoryHarness();
     try {
-      await harness.userStore.registerKnownUser({ userId: "1259430720", nickname: "小堂弟", preferredAddress: "堂弟" });
+      await harness.userStore.registerKnownUser({ userId: "1259430720", preferredAddress: "堂弟" });
       const prompt = buildPrompt({
         sessionId: "private:1259430720",
         persona: await harness.personaStore.get(),
@@ -61,12 +61,10 @@ async function main() {
         userProfile: createPromptUserProfile({
           userId: "1259430720",
           senderName: "阿杰",
-          nickname: "小堂弟",
           relationship: "known",
           preferredAddress: "堂弟",
           gender: "男",
-          residence: "杭州",
-          specialRole: "none"
+          residence: "杭州"
         }),
         historySummary: null,
         recentMessages: [],
@@ -74,9 +72,8 @@ async function main() {
       });
       const system = String(prompt[0]?.content ?? "");
       assert.match(system, /当前触发用户：阿杰 \(1259430720\)/);
-      assert.match(system, /当前触发用户关系：熟人；特殊角色=none/);
+      assert.match(system, /当前触发用户关系：熟人$/m);
       assert.match(system, /当前触发用户补充资料：/);
-      assert.match(system, /档案昵称=小堂弟/);
       assert.match(system, /偏好称呼=堂弟/);
       assert.match(system, /性别=男/);
       assert.match(system, /住地=杭州/);
@@ -127,7 +124,7 @@ async function main() {
       const prompt = buildSetupPrompt({
         sessionId: "private:owner",
         persona,
-        missingFields: ["name", "identity", "personality"],
+        missingFields: ["name", "role", "personality"],
         recentMessages: [],
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "我叫小满，是个图书管理员", timestampMs: Date.now() })]
       });
@@ -211,9 +208,8 @@ async function main() {
     try {
       await harness.userStore.registerKnownUser({
         userId: "30003",
-        nickname: "NPC甲",
         preferredAddress: "甲",
-        sharedContext: "会一起跑剧情"
+        relationshipNote: "会一起跑剧情"
       });
       await harness.userStore.setSpecialRole("30003", "npc");
       const npcDirectory = new NpcDirectory();
@@ -225,9 +221,9 @@ async function main() {
         relationship: "owner",
         npcProfiles: npcDirectory.listProfiles().map((item) => ({
           userId: item.userId,
-          displayName: item.nickname ?? item.userId,
-          preferredAddress: item.preferredAddress ?? item.userId,
-          ...(item.sharedContext ? { sharedContext: item.sharedContext } : {})
+          displayName: item.preferredAddress ?? item.userId,
+          ...(item.preferredAddress ? { preferredAddress: item.preferredAddress } : {}),
+          ...(item.relationshipNote ? { relationshipNote: item.relationshipNote } : {})
         })),
         participantProfiles: [{ userId: "30003", displayName: "NPC甲", relationshipLabel: "npc" }],
         userProfile: createPromptUserProfile(),

@@ -2,12 +2,11 @@ import type { UserStore } from "./userStore.ts";
 
 export interface NpcProfile {
   userId: string;
-  nickname?: string;
   preferredAddress?: string;
   gender?: string;
   residence?: string;
   profileSummary?: string;
-  sharedContext?: string;
+  relationshipNote?: string;
 }
 
 export class NpcDirectory {
@@ -20,12 +19,11 @@ export class NpcDirectory {
         .filter((user) => user.specialRole === "npc")
         .map((user) => [user.userId, {
           userId: user.userId,
-          ...(user.nickname ? { nickname: user.nickname } : {}),
           ...(user.preferredAddress ? { preferredAddress: user.preferredAddress } : {}),
           ...(user.gender ? { gender: user.gender } : {}),
           ...(user.residence ? { residence: user.residence } : {}),
           ...(user.profileSummary ? { profileSummary: user.profileSummary } : {}),
-          ...(user.sharedContext ? { sharedContext: user.sharedContext } : {})
+          ...(user.relationshipNote ? { relationshipNote: user.relationshipNote } : {})
         }])
     );
   }

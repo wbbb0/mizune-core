@@ -61,7 +61,7 @@ export interface GenerationPromptParticipantProfile {
   gender?: string;
   residence?: string;
   profileSummary?: string;
-  sharedContext?: string;
+  relationshipNote?: string;
 }
 
 export interface GenerationPromptBatchMessage {
@@ -156,12 +156,12 @@ function buildNpcPromptProfiles(deps: GenerationPromptBuilderDeps, relevantUserI
   const relevant = new Set(Array.from(relevantUserIds));
   return deps.npcDirectory.listProfiles().filter((item) => relevant.has(item.userId)).map((item) => ({
     userId: item.userId,
-    displayName: item.nickname ?? item.userId,
+    displayName: item.preferredAddress ?? item.userId,
     ...(item.preferredAddress ? { preferredAddress: item.preferredAddress } : {}),
     ...(item.gender ? { gender: item.gender } : {}),
     ...(item.residence ? { residence: item.residence } : {}),
     ...(item.profileSummary ? { profileSummary: item.profileSummary } : {}),
-    ...(item.sharedContext ? { sharedContext: item.sharedContext } : {})
+    ...(item.relationshipNote ? { relationshipNote: item.relationshipNote } : {})
   }));
 }
 
@@ -170,13 +170,12 @@ function buildUserProfilePromptState(currentUser: StoredUser, senderName?: strin
   return {
     ...(currentUser?.userId ? { userId: currentUser.userId } : {}),
     ...(senderName ? { senderName } : {}),
-    ...(currentUser?.nickname ? { nickname: currentUser.nickname } : {}),
     ...(currentUser?.relationship ? { relationship: currentUser.relationship } : {}),
     ...(currentUser?.preferredAddress ? { preferredAddress: currentUser.preferredAddress } : {}),
     ...(currentUser?.gender ? { gender: currentUser.gender } : {}),
     ...(currentUser?.residence ? { residence: currentUser.residence } : {}),
     ...(currentUser?.profileSummary ? { profileSummary: currentUser.profileSummary } : {}),
-    ...(currentUser?.sharedContext ? { sharedContext: currentUser.sharedContext } : {}),
+    ...(currentUser?.relationshipNote ? { relationshipNote: currentUser.relationshipNote } : {}),
     ...(currentUser?.memories ? { memories: currentUser.memories } : {}),
     ...(currentUser?.specialRole ? { specialRole: currentUser.specialRole } : {})
   };

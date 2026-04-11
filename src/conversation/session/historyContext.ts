@@ -273,7 +273,7 @@ export async function extractWindowUsers(
   gender?: string;
   residence?: string;
   profileSummary?: string;
-  sharedContext?: string;
+  relationshipNote?: string;
 }>> {
   const participants = new Map<string, string>();
   for (const message of batchMessages) {
@@ -296,13 +296,13 @@ export async function extractWindowUsers(
           : "未建档";
       return {
         userId,
-        displayName: user?.nickname ?? displayName,
+        displayName: user?.preferredAddress ?? displayName,
         relationshipLabel,
         ...(user?.preferredAddress ? { preferredAddress: user.preferredAddress } : {}),
         ...(user?.gender ? { gender: user.gender } : {}),
         ...(user?.residence ? { residence: user.residence } : {}),
         ...(user?.profileSummary ? { profileSummary: user.profileSummary } : {}),
-        ...(user?.sharedContext ? { sharedContext: user.sharedContext } : {})
+        ...(user?.relationshipNote ? { relationshipNote: user.relationshipNote } : {})
       };
     })
   );

@@ -17,7 +17,7 @@ export interface PromptNpcProfile {
   gender?: string;
   residence?: string;
   profileSummary?: string;
-  sharedContext?: string;
+  relationshipNote?: string;
 }
 
 export interface PromptParticipantProfile {
@@ -28,19 +28,18 @@ export interface PromptParticipantProfile {
   gender?: string;
   residence?: string;
   profileSummary?: string;
-  sharedContext?: string;
+  relationshipNote?: string;
 }
 
 export interface PromptUserProfile {
   userId?: string;
   senderName?: string;
-  nickname?: string;
   relationship?: Relationship;
   preferredAddress?: string;
   gender?: string;
   residence?: string;
   profileSummary?: string;
-  sharedContext?: string;
+  relationshipNote?: string;
   memories?: MemoryEntry[];
   specialRole?: SpecialRole;
 }

@@ -52,7 +52,7 @@ export function createInternalTriggerDispatcher(
 
     const senderName = target.type === "group"
       ? `群 ${target.groupId ?? target.userId}`
-      : ((await userStore.getByUserId(target.userId))?.nickname ?? target.userId);
+      : ((await userStore.getByUserId(target.userId))?.preferredAddress ?? target.userId);
 
     const session = sessionManager.ensureSession({
       id: input.sessionId,

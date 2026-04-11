@@ -44,7 +44,6 @@ export class UserStore {
       activeUsers.push({
         userId: ownerId,
         memories: [],
-        specialRole: "none",
         createdAt: Date.now()
       });
       await this.writeAll(activeUsers);
@@ -63,25 +62,23 @@ export class UserStore {
 
   async registerKnownUser(input: {
     userId: string;
-    nickname?: string;
     preferredAddress?: string;
     gender?: string;
     residence?: string;
     profileSummary?: string;
-    sharedContext?: string;
+    relationshipNote?: string;
   }): Promise<User> {
     const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === input.userId);
 
     const next: PersistedUser = {
       userId: input.userId,
-      ...(input.nickname ? { nickname: input.nickname } : existing?.nickname ? { nickname: existing.nickname } : {}),
       ...(input.preferredAddress ? { preferredAddress: input.preferredAddress } : existing?.preferredAddress ? { preferredAddress: existing.preferredAddress } : {}),
       ...(input.gender ? { gender: input.gender } : existing?.gender ? { gender: existing.gender } : {}),
       ...(input.residence ? { residence: input.residence } : existing?.residence ? { residence: existing.residence } : {}),
       ...(input.profileSummary ? { profileSummary: input.profileSummary } : existing?.profileSummary ? { profileSummary: existing.profileSummary } : {}),
-      ...(input.sharedContext ? { sharedContext: input.sharedContext } : existing?.sharedContext ? { sharedContext: existing.sharedContext } : {}),
-      specialRole: existing?.specialRole ?? "none",
+      ...(input.relationshipNote ? { relationshipNote: input.relationshipNote } : existing?.relationshipNote ? { relationshipNote: existing.relationshipNote } : {}),
+      ...(existing?.specialRole ? { specialRole: existing.specialRole } : {}),
       memories: existing?.memories ?? [],
       createdAt: existing?.createdAt ?? Date.now()
     };
@@ -105,7 +102,6 @@ export class UserStore {
       const created: PersistedUser = {
         userId,
         memories: [],
-        specialRole: "none",
         createdAt: Date.now()
       };
       users.push(created);
@@ -124,8 +120,7 @@ export class UserStore {
     gender?: string;
     residence?: string;
     profileSummary?: string;
-    sharedContext?: string;
-    nickname?: string;
+    relationshipNote?: string;
   }): Promise<User> {
     const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === input.userId);
@@ -133,14 +128,12 @@ export class UserStore {
     if (!existing) {
       const created: PersistedUser = {
         userId: input.userId,
-        ...(input.nickname ? { nickname: input.nickname } : {}),
         ...(input.preferredAddress ? { preferredAddress: input.preferredAddress } : {}),
         ...(input.gender ? { gender: input.gender } : {}),
         ...(input.residence ? { residence: input.residence } : {}),
         ...(input.profileSummary ? { profileSummary: input.profileSummary } : {}),
-        ...(input.sharedContext ? { sharedContext: input.sharedContext } : {}),
+        ...(input.relationshipNote ? { relationshipNote: input.relationshipNote } : {}),
         memories: [],
-        specialRole: "none",
         createdAt: Date.now()
       };
       users.push(created);
@@ -151,40 +144,29 @@ export class UserStore {
 
     const updated: PersistedUser = {
       ...existing,
-      ...(input.nickname ? { nickname: input.nickname } : {}),
       ...(input.preferredAddress ? { preferredAddress: input.preferredAddress } : {}),
       ...(input.gender ? { gender: input.gender } : {}),
       ...(input.residence ? { residence: input.residence } : {}),
       ...(input.profileSummary ? { profileSummary: input.profileSummary } : {}),
-      ...(input.sharedContext ? { sharedContext: input.sharedContext } : {})
+      ...(input.relationshipNote ? { relationshipNote: input.relationshipNote } : {})
     };
     await this.replaceUser(users, updated);
     this.logger.info({ userId: input.userId }, "user_profile_updated");
     return toRuntimeUser(this.whitelistStore, updated);
   }
 
-  async touchSeenUser(input: { userId: string; nickname?: string }): Promise<User> {
+  async touchSeenUser(input: { userId: string }): Promise<User> {
     const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === input.userId);
 
     if (existing) {
-      if (input.nickname && existing.nickname !== input.nickname) {
-        const updated: PersistedUser = {
-          ...existing,
-          nickname: input.nickname
-        };
-        await this.replaceUser(users, updated);
-        return toRuntimeUser(this.whitelistStore, updated);
-      }
       return toRuntimeUser(this.whitelistStore, existing);
     }
 
     if (this.whitelistStore.getOwnerId() && input.userId === this.whitelistStore.getOwnerId()) {
       const created: PersistedUser = {
         userId: input.userId,
-        ...(input.nickname ? { nickname: input.nickname } : {}),
         memories: [],
-        specialRole: "none",
         createdAt: Date.now()
       };
       users.push(created);
@@ -196,9 +178,7 @@ export class UserStore {
 
     return toRuntimeUser(this.whitelistStore, {
       userId: input.userId,
-      ...(input.nickname ? { nickname: input.nickname } : {}),
       memories: [],
-      specialRole: "none",
       createdAt: Date.now()
     });
   }
@@ -213,7 +193,6 @@ export class UserStore {
     const existing = users.find((user) => user.userId === input.userId);
     const base: PersistedUser = existing ? toPersistedUser(existing) : {
       userId: input.userId,
-      specialRole: "none" as const,
       createdAt: Date.now(),
       memories: []
     };
@@ -267,7 +246,6 @@ export class UserStore {
     const existing = users.find((user) => user.userId === userId);
     const base: PersistedUser = existing ? toPersistedUser(existing) : {
       userId,
-      specialRole: "none" as const,
       createdAt: Date.now(),
       memories: []
     };
@@ -285,19 +263,17 @@ export class UserStore {
     return toRuntimeUser(this.whitelistStore, updated);
   }
 
-  async setSpecialRole(userId: string, specialRole: SpecialRole): Promise<User> {
+  async setSpecialRole(userId: string, specialRole: SpecialRole | "none"): Promise<User> {
     const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === userId);
     const base: PersistedUser = existing ? toPersistedUser(existing) : {
       userId,
-      specialRole: "none" as const,
       memories: [],
       createdAt: Date.now()
     };
-    const updated: PersistedUser = {
-      ...base,
-      specialRole
-    };
+    const updated: PersistedUser = specialRole === "none"
+      ? (({ specialRole: _sr, ...rest }) => rest)(base as PersistedUser & { specialRole?: SpecialRole })
+      : { ...base, specialRole };
     if (existing) {
       await this.replaceUser(users, updated);
     } else {
@@ -370,8 +346,22 @@ function normalizePersistedUsers(value: unknown): PersistedUser[] {
     if (typeof item !== "object" || item == null) {
       return item;
     }
-    const { relationship: _relationship, ...rest } = item as Record<string, unknown>;
-    return rest;
+    const {
+      relationship: _relationship,
+      nickname,
+      sharedContext,
+      specialRole,
+      ...rest
+    } = item as Record<string, unknown>;
+    return {
+      ...rest,
+      // 迁移 sharedContext → relationshipNote（若新字段已存在则保留新字段）
+      ...(!rest.relationshipNote && sharedContext ? { relationshipNote: sharedContext } : {}),
+      // 将 nickname 合并到 preferredAddress（若 preferredAddress 已存在则不覆盖）
+      ...(!rest.preferredAddress && nickname ? { preferredAddress: nickname } : {}),
+      // 过滤掉 "none"，仅保留实质性角色
+      ...(specialRole && specialRole !== "none" ? { specialRole } : {})
+    };
   }));
 }
 

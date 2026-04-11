@@ -31,8 +31,8 @@ async function main() {
       const setupStore = new SetupStateStore(dataDir, createWhitelistStore(), logger);
       const setupState = await setupStore.init(persona);
       assert.equal(persona.name, "");
-      assert.equal(persona.identity, "");
-      assert.equal(persona.roleplayRequirements, "");
+      assert.equal(persona.role, "");
+      assert.equal(persona.rules, "");
       assert.equal(setupState.state, "needs_persona");
     } finally {
       await rm(dataDir, { recursive: true, force: true });

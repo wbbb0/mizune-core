@@ -4,63 +4,51 @@ const personaFieldSchema = s.string().default("");
 
 export const personaSchema = s.object({
   name: personaFieldSchema,
-  identity: personaFieldSchema,
-  virtualAppearance: personaFieldSchema,
+  role: personaFieldSchema,
+  appearance: personaFieldSchema,
   personality: personaFieldSchema,
-  hobbies: personaFieldSchema,
-  likesAndDislikes: personaFieldSchema,
-  familyBackground: personaFieldSchema,
-  speakingStyle: personaFieldSchema,
-  secrets: personaFieldSchema,
-  residence: personaFieldSchema,
-  roleplayRequirements: personaFieldSchema
+  interests: personaFieldSchema,
+  background: personaFieldSchema,
+  speechStyle: personaFieldSchema,
+  rules: personaFieldSchema
 }).strict();
 
 export type Persona = Infer<typeof personaSchema>;
 
 export const editablePersonaFieldNames = [
   "name",
-  "identity",
-  "virtualAppearance",
+  "role",
+  "appearance",
   "personality",
-  "hobbies",
-  "likesAndDislikes",
-  "familyBackground",
-  "speakingStyle",
-  "secrets",
-  "residence",
-  "roleplayRequirements"
+  "interests",
+  "background",
+  "speechStyle",
+  "rules"
 ] as const;
 
 export type EditablePersonaFieldName = typeof editablePersonaFieldNames[number];
 
 export const personaFieldLabels: Record<EditablePersonaFieldName, string> = {
   name: "名字",
-  identity: "身份",
-  virtualAppearance: "外貌",
+  role: "角色定位",
+  appearance: "外貌",
   personality: "性格",
-  hobbies: "爱好",
-  likesAndDislikes: "喜欢/讨厌",
-  familyBackground: "家庭背景",
-  speakingStyle: "说话习惯",
-  secrets: "秘密",
-  residence: "住处",
-  roleplayRequirements: "额外角色要求"
+  interests: "兴趣与喜好",
+  background: "背景",
+  speechStyle: "说话方式",
+  rules: "行为规则"
 };
 
 export function createEmptyPersona(): Persona {
   return {
     name: "",
-    identity: "",
-    virtualAppearance: "",
+    role: "",
+    appearance: "",
     personality: "",
-    hobbies: "",
-    likesAndDislikes: "",
-    familyBackground: "",
-    speakingStyle: "",
-    secrets: "",
-    residence: "",
-    roleplayRequirements: ""
+    interests: "",
+    background: "",
+    speechStyle: "",
+    rules: ""
   };
 }
 
@@ -73,8 +61,25 @@ export function isPersonaComplete(persona: Persona): boolean {
 }
 
 export function normalizeStoredPersona(raw: unknown): Persona | null {
+  if (typeof raw !== "object" || raw === null) {
+    return null;
+  }
+  const obj = raw as Record<string, unknown>;
+
+  // 迁移旧字段名
+  const migrated: Record<string, unknown> = {
+    name: obj.name ?? "",
+    role: obj.role ?? obj.identity ?? "",
+    appearance: obj.appearance ?? obj.virtualAppearance ?? "",
+    personality: obj.personality ?? "",
+    interests: obj.interests ?? [obj.hobbies, obj.likesAndDislikes].filter(Boolean).join("；") ?? "",
+    background: obj.background ?? [obj.familyBackground, obj.residence, obj.secrets].filter(Boolean).join("；") ?? "",
+    speechStyle: obj.speechStyle ?? obj.speakingStyle ?? "",
+    rules: obj.rules ?? obj.roleplayRequirements ?? ""
+  };
+
   try {
-    return personaSchema.parse(raw);
+    return personaSchema.parse(migrated);
   } catch {
     return null;
   }

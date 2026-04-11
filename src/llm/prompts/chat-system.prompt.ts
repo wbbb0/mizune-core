@@ -37,16 +37,13 @@ export function buildSetupSystemLines(input: {
     renderPromptSection("persona_snapshot", [
       `仍需补全的字段：${input.missingFields.length > 0 ? input.missingFields.map((field) => personaFieldLabels[field]).join("、") : "无"}`,
       `当前名字：${input.persona.name || "未填写"}`,
-      `当前身份：${input.persona.identity || "未填写"}`,
-      `当前外貌：${input.persona.virtualAppearance || "未填写"}`,
+      `当前角色定位：${input.persona.role || "未填写"}`,
+      `当前外貌：${input.persona.appearance || "未填写"}`,
       `当前性格：${input.persona.personality || "未填写"}`,
-      `当前爱好：${input.persona.hobbies || "未填写"}`,
-      `当前喜欢/讨厌：${input.persona.likesAndDislikes || "未填写"}`,
-      `当前家庭背景：${input.persona.familyBackground || "未填写"}`,
-      `当前说话习惯：${input.persona.speakingStyle || "未填写"}`,
-      `当前秘密：${input.persona.secrets || "未填写"}`,
-      `当前住处：${input.persona.residence || "未填写"}`,
-      `当前额外角色要求：${input.persona.roleplayRequirements || "未填写"}`
+      `当前兴趣与喜好：${input.persona.interests || "未填写"}`,
+      `当前背景：${input.persona.background || "未填写"}`,
+      `当前说话方式：${input.persona.speechStyle || "未填写"}`,
+      `当前行为规则：${input.persona.rules || "未填写"}`
     ])
   ].filter((item): item is string => Boolean(item));
 }
@@ -186,24 +183,21 @@ export function buildScheduledTaskSystemLines(input: {
 function buildIdentityLines(persona: Persona): string[] {
   const personaSummary = [
     `名字=${persona.name}`,
-    `身份=${persona.identity}`,
+    `角色=${persona.role}`,
     `性格=${persona.personality}`,
-    `说话风格=${persona.speakingStyle}`
+    `说话方式=${persona.speechStyle}`
   ].join("；");
   const extraFacts = [
-    persona.virtualAppearance ? `外貌=${persona.virtualAppearance}` : null,
-    persona.hobbies ? `爱好=${persona.hobbies}` : null,
-    persona.likesAndDislikes ? `喜欢/讨厌=${persona.likesAndDislikes}` : null,
-    persona.familyBackground ? `背景=${persona.familyBackground}` : null,
-    persona.secrets ? `秘密=${persona.secrets}` : null,
-    persona.residence ? `住处=${persona.residence}` : null
+    persona.appearance ? `外貌=${persona.appearance}` : null,
+    persona.interests ? `兴趣与喜好=${persona.interests}` : null,
+    persona.background ? `背景=${persona.background}` : null
   ].filter((item): item is string => Boolean(item));
 
   return [
     "你是具有角色扮演属性的聊天角色，默认以角色身份用中文自然聊天。",
     `角色设定：${personaSummary}`,
     ...(extraFacts.length > 0 ? [`补充设定：${extraFacts.join("；")}`] : []),
-    ...(persona.roleplayRequirements ? [`角色边界与长期口吻：${persona.roleplayRequirements}`] : [])
+    ...(persona.rules ? [`角色规则：${persona.rules}`] : [])
   ];
 }
 
@@ -219,7 +213,7 @@ function buildMemoryRuleLines(): string[] {
   return [
     "用户自然提到自己长期稳定、以后还会影响互动的事实或偏好时，应主动更新，不必等对方逐字说“记住”。",
     "用户自己的稳定事实、喜好、身份信息、禁忌、习惯或经历，优先写 profile；结构化字段装不下的再写 user memory。",
-    "owner 的长期做事规则写 global memory；绑定某个工具集的长期操作规则写 operation note；bot 的身份、人设、说话方式、角色边界或角色扮演补充写 persona。",
+    "owner 的长期做事规则写 global memory；绑定某个工具集的长期操作规则写 operation note；bot 的角色定位、性格、说话方式、行为规则或背景设定写 persona。",
     "普通用户提出对 bot 的长期做事要求，默认只在当前轮处理，不沉淀成全局规则。",
     "临时语气、短期状态、单次安排、玩笑、反讽、别人代述或语义不确定的内容，默认不要写入长期信息。",
     "如果回复里说了“记下了”“以后按这个来”“已经写进 persona”，本轮之前必须已经实际完成对应写入。"
@@ -278,8 +272,8 @@ function filterGlobalMemories(input: {
   userMemories?: MemoryEntry[] | undefined;
 }): MemoryEntry[] {
   const personaCandidates = [
-    input.persona.roleplayRequirements,
-    input.persona.speakingStyle,
+    input.persona.rules,
+    input.persona.speechStyle,
     input.persona.personality
   ].filter((item): item is string => Boolean(item));
   const userCandidates = (input.userMemories ?? []).map((item) => `${item.title} ${item.content}`);
@@ -302,7 +296,7 @@ function formatCompactProfile(item: {
   gender?: string;
   residence?: string;
   profileSummary?: string;
-  sharedContext?: string;
+  relationshipNote?: string;
 }): string {
   return [
     `${item.displayName} (${item.userId})`,
@@ -311,7 +305,7 @@ function formatCompactProfile(item: {
     item.gender ? `性别=${item.gender}` : null,
     item.residence ? `住地=${item.residence}` : null,
     item.profileSummary ? `画像=${item.profileSummary}` : null,
-    item.sharedContext ? `背景=${item.sharedContext}` : null
+    item.relationshipNote ? `关系背景=${item.relationshipNote}` : null
   ].filter(Boolean).join("；");
 }
 
@@ -410,15 +404,14 @@ function buildCurrentUserLines(input: { userProfile: PromptInput["userProfile"] 
   const memoryText = formatMemoryEntries(input.userProfile.memories);
   const core = [
     `当前触发用户：${input.userProfile.senderName ?? "未知"} (${input.userProfile.userId ?? "未知"})`,
-    `当前触发用户关系：${formatRelationshipLabel(input.userProfile.relationship)}；特殊角色=${input.userProfile.specialRole ?? "none"}`
+    `当前触发用户关系：${formatRelationshipLabel(input.userProfile.relationship)}${input.userProfile.specialRole ? `；特殊角色=${input.userProfile.specialRole}` : ""}`
   ];
   const extra = [
-    input.userProfile.nickname ? `档案昵称=${input.userProfile.nickname}` : null,
     input.userProfile.preferredAddress ? `偏好称呼=${input.userProfile.preferredAddress}` : null,
     input.userProfile.gender ? `性别=${input.userProfile.gender}` : null,
     input.userProfile.residence ? `住地=${input.userProfile.residence}` : null,
     input.userProfile.profileSummary ? `用户画像=${input.userProfile.profileSummary}` : null,
-    input.userProfile.sharedContext ? `共享背景=${input.userProfile.sharedContext}` : null
+    input.userProfile.relationshipNote ? `关系背景=${input.userProfile.relationshipNote}` : null
   ].filter((item): item is string => Boolean(item));
 
   return [
