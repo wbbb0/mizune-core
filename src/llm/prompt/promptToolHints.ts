@@ -57,7 +57,7 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("发送已登记文件时优先用 chat_file_send_to_chat(file_ref=...)；file_id 只是稳定主键。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["local_file_view_media", "local_file_send_to_chat", "local_file_read", "local_file_search_items"])) {
+  if (hasAnyTool(visibleToolNames, ["local_file_view_media", "local_file_send_to_chat", "local_file_read", "local_file_search"])) {
     lines.push("local_file_* 处理本地路径；相对路径走本地文件根目录，也可使用绝对路径。");
     lines.push("本地图片查看用 local_file_view_media，本地路径发送用 local_file_send_to_chat。");
   }

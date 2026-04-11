@@ -51,27 +51,11 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "local_file_list_items",
-        description: "列出本地文件根目录下某个相对目录。",
+        name: "local_file_ls",
+        description: "查看本地路径：目录则列出内容，文件则返回元信息。path 默认为根目录。",
         parameters: {
           type: "object",
           properties: { path: { type: "string" } },
-          additionalProperties: false
-        }
-      }
-    },
-    isEnabled: isLocalFileToolEnabled
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "local_file_stat",
-        description: "查看单个本地文件或目录。",
-        parameters: {
-          type: "object",
-          properties: { path: { type: "string" } },
-          required: ["path"],
           additionalProperties: false
         }
       }
@@ -141,22 +125,6 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "local_file_mkdir",
-        description: "创建本地目录。",
-        parameters: {
-          type: "object",
-          properties: { path: { type: "string" } },
-          required: ["path"],
-          additionalProperties: false
-        }
-      }
-    },
-    isEnabled: isLocalFileToolEnabled
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
         name: "local_file_move",
         description: "移动或重命名本地文件或目录。",
         parameters: {
@@ -192,34 +160,15 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "local_file_search_items",
-        description: "按名称搜索本地文件或目录。",
+        name: "local_file_search",
+        description: "搜索本地文件。mode=name 按文件名搜索（默认），mode=content 在文本文件内容中查找。",
         parameters: {
           type: "object",
           properties: {
             query: { type: "string" },
             path: { type: "string" },
-            limit: { type: "integer", minimum: 1, maximum: 200 }
-          },
-          required: ["query"],
-          additionalProperties: false
-        }
-      }
-    },
-    isEnabled: isLocalFileToolEnabled
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "local_file_find_text",
-        description: "在本地文本文件里查找文本。",
-        parameters: {
-          type: "object",
-          properties: {
-            query: { type: "string" },
-            path: { type: "string" },
-            limit: { type: "integer", minimum: 1, maximum: 200 }
+            limit: { type: "integer", minimum: 1, maximum: 200 },
+            mode: { type: "string", enum: ["name", "content"] }
           },
           required: ["query"],
           additionalProperties: false
@@ -255,31 +204,15 @@ export const chatFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "chat_file_list",
-        description: "列出已登记的 chat file。",
-        parameters: {
-          type: "object",
-          properties: {
-            kind: { type: "string", enum: ["image", "animated_image", "video", "audio", "file"] },
-            origin: { type: "string", enum: ["chat_message", "browser_download", "browser_screenshot", "comfy_generated", "local_file_import", "user_upload"] },
-            limit: { type: "integer", minimum: 1, maximum: 100 }
-          },
-          additionalProperties: false
-        }
-      }
-    },
-    isEnabled: isChatFileToolEnabled
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "chat_file_get",
-        description: "查看单个 chat file。",
+        description: "列出或查找已登记的 chat file。传 file_ref 或 file_id 时精确查找单个文件；否则按 kind/origin 批量列出。",
         parameters: {
           type: "object",
           properties: {
             file_ref: { type: "string" },
-            file_id: { type: "string" }
+            file_id: { type: "string" },
+            kind: { type: "string", enum: ["image", "animated_image", "video", "audio", "file"] },
+            origin: { type: "string", enum: ["chat_message", "browser_download", "browser_screenshot", "comfy_generated", "local_file_import", "user_upload"] },
+            limit: { type: "integer", minimum: 1, maximum: 100 }
           },
           additionalProperties: false
         }
@@ -309,16 +242,13 @@ export const chatFileToolDescriptors: ToolDescriptor[] = [
 ];
 
 export const localFileToolHandlers: Record<string, ToolHandler> = {
-  async local_file_list_items(_toolCall, args, context) {
-    return JSON.stringify(await context.localFileService.listItems(getStringArg(args, "path") || "."));
-  },
-
-  async local_file_stat(_toolCall, args, context) {
-    const path = getStringArg(args, "path");
-    if (!path) {
-      return JSON.stringify({ error: "path is required" });
+  async local_file_ls(_toolCall, args, context) {
+    const path = getStringArg(args, "path") || ".";
+    const s = await context.localFileService.statItem(path);
+    if (s.kind === "directory") {
+      return JSON.stringify(await context.localFileService.listItems(path));
     }
-    return JSON.stringify(await context.localFileService.statItem(path));
+    return JSON.stringify(s);
   },
 
   async local_file_read(_toolCall, args, context) {
@@ -357,14 +287,6 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     return JSON.stringify(await context.localFileService.patchFile(path, patch));
   },
 
-  async local_file_mkdir(_toolCall, args, context) {
-    const path = getStringArg(args, "path");
-    if (!path) {
-      return JSON.stringify({ error: "path is required" });
-    }
-    return JSON.stringify(await context.localFileService.mkdir(path));
-  },
-
   async local_file_move(_toolCall, args, context) {
     const fromPath = getStringArg(args, "from_path");
     const toPath = getStringArg(args, "to_path");
@@ -382,24 +304,18 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     return JSON.stringify(await context.localFileService.deleteItem(path));
   },
 
-  async local_file_search_items(_toolCall, args, context) {
+  async local_file_search(_toolCall, args, context) {
     const query = getStringArg(args, "query");
     if (!query) {
       return JSON.stringify({ error: "query is required" });
     }
     const path = getStringArg(args, "path") || ".";
     const limit = getNumberArg(args, "limit") ?? 50;
+    const mode = getStringArg(args, "mode") || "name";
+    if (mode === "content") {
+      return JSON.stringify(await context.localFileService.findText(query, path, limit));
+    }
     return JSON.stringify(await context.localFileService.searchItems(query, path, limit));
-  },
-
-  async local_file_find_text(_toolCall, args, context) {
-    const query = getStringArg(args, "query");
-    if (!query) {
-      return JSON.stringify({ error: "query is required" });
-    }
-    const path = getStringArg(args, "path") || ".";
-    const limit = getNumberArg(args, "limit") ?? 50;
-    return JSON.stringify(await context.localFileService.findText(query, path, limit));
   },
 
   async local_file_send_to_chat(_toolCall, args, context) {
@@ -419,6 +335,14 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
 
 export const chatFileToolHandlers: Record<string, ToolHandler> = {
   async chat_file_list(_toolCall, args, context) {
+    const selector = getStringArg(args, "file_ref") || getStringArg(args, "file_id");
+    if (selector) {
+      const file = await resolveChatFile(context, selector);
+      return JSON.stringify({
+        ok: Boolean(file),
+        file: file ? mapWorkspaceFileToView(file) : null
+      });
+    }
     const kind = getStringArg(args, "kind");
     const origin = getStringArg(args, "origin") as ChatFileOrigin | null;
     const limit = getNumberArg(args, "limit") ?? 50;
@@ -428,18 +352,6 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
       .slice(0, limit)
       .map((item) => mapWorkspaceFileToView(item));
     return JSON.stringify({ ok: true, files });
-  },
-
-  async chat_file_get(_toolCall, args, context) {
-    const selector = getStringArg(args, "file_ref") || getStringArg(args, "file_id");
-    if (!selector) {
-      return JSON.stringify({ error: "file_ref or file_id is required" });
-    }
-    const file = await resolveChatFile(context, selector);
-    return JSON.stringify({
-      ok: Boolean(file),
-      file: file ? mapWorkspaceFileToView(file) : null
-    });
   },
 
   async chat_file_send_to_chat(_toolCall, args, context) {

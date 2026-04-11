@@ -170,16 +170,13 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ],
     toolNames: [
       "download_asset",
-      "local_file_list_items",
-      "local_file_stat",
+      "local_file_ls",
       "local_file_read",
       "local_file_write",
       "local_file_patch",
-      "local_file_mkdir",
       "local_file_move",
       "local_file_delete",
-      "local_file_search_items",
-      "local_file_find_text",
+      "local_file_search",
       "local_file_view_media",
       "local_file_send_to_chat"
     ]
@@ -198,7 +195,6 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ],
     toolNames: [
       "chat_file_list",
-      "chat_file_get",
       "chat_file_view_media",
       "chat_file_send_to_chat"
     ]
