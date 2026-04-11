@@ -172,7 +172,7 @@ const schedulerConfigSchema = s.object({
 
 const shellConfigSchema = s.object({
   enabled: s.boolean().default(false),
-  defaultTimeoutMs: s.number().int().positive().default(120000),
+  defaultTimeoutMs: s.number().int().positive().default(15000),
   maxTimeoutMs: s.number().int().positive().default(600000),
   maxOutputChars: s.number().int().positive().default(12000),
   sessionTtlMs: s.union([s.number().int().positive(), s.literal(null)]).default(null)

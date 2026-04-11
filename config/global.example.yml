@@ -111,9 +111,9 @@ scheduler:
   defaultTimezone: Asia/Shanghai
 shell:
   enabled: false
-  defaultTimeoutMs: 120000
+  defaultTimeoutMs: 15000
   maxTimeoutMs: 600000
-  maxOutputChars: 12000
+  maxOutputChars: 5000
   sessionTtlMs: null
 localFiles:
   enabled: true

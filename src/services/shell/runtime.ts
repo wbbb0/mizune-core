@@ -16,6 +16,7 @@ import type { ShellRunParams, ShellRunResult, ShellSession } from "./types.ts";
 interface InternalSessionState {
   view: ShellSession;
   pendingOutput: string;
+  pendingOutputTruncated: boolean;
   write: (data: string) => void;
   kill: (signal?: string) => void;
   expiresAtMs: number | null;
@@ -106,6 +107,7 @@ export class ShellRuntime {
     const state: InternalSessionState = {
       view,
       pendingOutput: "",
+      pendingOutputTruncated: false,
       write: spawned.io.write,
       kill: spawned.io.kill,
       expiresAtMs: this.computeNextExpiry()
@@ -114,8 +116,20 @@ export class ShellRuntime {
     this.sessions.set(resource.resourceId, state);
 
     spawned.io.onOutput((chunk) => {
-      state.pendingOutput += chunk;
-      state.view.outputTail = trimOutputTail(state.view.outputTail + chunk, this.config.shell.maxOutputChars);
+      const maxChars = this.config.shell.maxOutputChars;
+      // 在入口处截断 chunk，防止后续任何缓冲区临时膨胀
+      const safeChunk = chunk.length > maxChars ? trimOutputTail(chunk, maxChars) : chunk;
+
+      const newPending = state.pendingOutput + safeChunk;
+      if (newPending.length > maxChars) {
+        state.pendingOutput = trimOutputTail(newPending, maxChars);
+        state.pendingOutputTruncated = true;
+      } else {
+        state.pendingOutput = newPending;
+      }
+
+      const newTail = state.view.outputTail + safeChunk;
+      state.view.outputTail = newTail.length > maxChars ? trimOutputTail(newTail, maxChars) : newTail;
       state.view.updatedAtMs = Date.now();
     });
 
@@ -144,8 +158,7 @@ export class ShellRuntime {
       }
     }
 
-    const output = state.pendingOutput;
-    state.pendingOutput = "";
+    const output = drainPendingOutput(state);
 
     if (isClosedSession(state.view)) {
       const result: ShellRunResult = {
@@ -176,8 +189,7 @@ export class ShellRuntime {
     state.write(input);
     await waitForShellYield(500);
 
-    const output = state.pendingOutput;
-    state.pendingOutput = "";
+    const output = drainPendingOutput(state);
 
     if (isClosedSession(state.view)) {
       this.sessions.delete(resourceId);
@@ -192,8 +204,7 @@ export class ShellRuntime {
     await this.cleanupExpiredSessions();
     const state = await this.requireState(resourceId);
 
-    const output = state.pendingOutput;
-    state.pendingOutput = "";
+    const output = drainPendingOutput(state);
 
     if (isClosedSession(state.view)) {
       this.sessions.delete(resourceId);
@@ -347,4 +358,15 @@ function summarizeClosedShellSummary(session: ShellSession): string {
 function normalizeOptionalDescription(value: string | undefined): string | null {
   const normalized = String(value ?? "").trim();
   return normalized || null;
+}
+
+function drainPendingOutput(state: InternalSessionState): string {
+  const output = state.pendingOutput;
+  const truncated = state.pendingOutputTruncated;
+  state.pendingOutput = "";
+  state.pendingOutputTruncated = false;
+  if (truncated) {
+    return `[输出过长，已截取最后部分内容]\n${output}`;
+  }
+  return output;
 }
