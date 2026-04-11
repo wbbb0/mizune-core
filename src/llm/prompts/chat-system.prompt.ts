@@ -1,5 +1,5 @@
 import type { MemoryEntry } from "#memory/memoryEntry.ts";
-import { personaFieldLabels, type EditablePersonaFieldName, type Persona } from "#persona/personaSchema.ts";
+import { editablePersonaFieldNames, personaFieldLabels, type EditablePersonaFieldName, type Persona } from "#persona/personaSchema.ts";
 import type {
   PromptInput,
   PromptInteractionMode,
@@ -13,6 +13,17 @@ import type { ToolsetView } from "#llm/tools/toolsets.ts";
 import { renderPromptSection } from "./prompt-section.ts";
 import { isNearDuplicateText } from "#memory/similarity.ts";
 
+const PERSONA_FIELD_HINTS: Record<EditablePersonaFieldName, string> = {
+  name: "角色的名字",
+  role: "身份与基本设定，一两句话",
+  personality: "性格关键词，可多个",
+  speechStyle: "语气与说话习惯",
+  appearance: '外貌特征；或填"不设定"',
+  interests: "兴趣爱好与喜好禁忌",
+  background: "背景故事、家庭、住处等，可简短",
+  rules: '特殊边界或长期要求；如无则填"无特殊限制"'
+};
+
 const MAX_VISIBLE_MEMORIES = 4;
 const MAX_VISIBLE_PARTICIPANTS = 4;
 const MAX_VISIBLE_NPCS = 3;
@@ -25,27 +36,71 @@ export function buildSetupSystemLines(input: {
   missingFields: EditablePersonaFieldName[];
 }): string[] {
   return [
-    renderPromptSection("setup_mode", [
-      "当前实例仍处于初始化阶段，只做 owner 的 persona 设定补全。",
-      "只有在 owner 明确提供、确认，或当前消息图片足够支撑时才写入 persona；不要编造设定。",
-      "如果这条消息已经足够补上一些字段，就先写入再继续确认；如果仍有缺口，一次只追问少量最关键字段。",
-      "不要调用无关工具，也不要修改用户资料、关系或其他记忆。",
-      "当所有必填字段都已完成时，简短确认设定完成，并说明之后可以开始正常聊天。",
-      "输出保持私聊短句纯文本，不用标题、列表、代码块或 Markdown。"
-    ]),
+    renderPromptSection("setup_mode", buildSetupModeLines(input.persona, input.missingFields)),
     renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
-    renderPromptSection("persona_snapshot", [
-      `仍需补全的字段：${input.missingFields.length > 0 ? input.missingFields.map((field) => personaFieldLabels[field]).join("、") : "无"}`,
-      `当前名字：${input.persona.name || "未填写"}`,
-      `当前角色定位：${input.persona.role || "未填写"}`,
-      `当前外貌：${input.persona.appearance || "未填写"}`,
-      `当前性格：${input.persona.personality || "未填写"}`,
-      `当前兴趣与喜好：${input.persona.interests || "未填写"}`,
-      `当前背景：${input.persona.background || "未填写"}`,
-      `当前说话方式：${input.persona.speechStyle || "未填写"}`,
-      `当前行为规则：${input.persona.rules || "未填写"}`
-    ])
+    renderPromptSection("persona_snapshot", buildSetupSnapshotLines(input.persona, input.missingFields))
   ].filter((item): item is string => Boolean(item));
+}
+
+function buildSetupModeLines(persona: Persona, missingFields: EditablePersonaFieldName[]): string[] {
+  const missingSet = new Set(missingFields);
+  const totalMissing = missingFields.length;
+  const coreComplete = !missingSet.has("name") && !missingSet.has("role");
+  const behaviorComplete = coreComplete && !missingSet.has("personality") && !missingSet.has("speechStyle");
+
+  const identityRef = coreComplete
+    ? `"${persona.name}"（${persona.role}）`
+    : persona.name ? `"${persona.name}"` : null;
+
+  const phaseLines: string[] = [];
+
+  if (totalMissing === 0) {
+    phaseLines.push("所有 persona 字段已完成，告知 owner 可以开始正常聊天。");
+  } else if (!coreComplete && totalMissing === 8) {
+    phaseLines.push("当前实例处于初始化阶段，需要帮 owner 完成 persona 设定。");
+    phaseLines.push("先简要告知 owner：这是在设定角色人设，完成后即可正常聊天；然后从名字和角色定位开始追问。");
+  } else if (!coreComplete) {
+    const nextCore = missingSet.has("name") ? "名字" : "角色定位";
+    const alreadyHave = identityRef ? `已知角色名为 ${identityRef}，` : "";
+    phaseLines.push(`当前实例处于初始化阶段，${alreadyHave}角色核心设定未完成，当前最优先追问：${nextCore}。`);
+  } else if (!behaviorComplete) {
+    const behaviorMissing = (["personality", "speechStyle"] as const).filter((f) => missingSet.has(f));
+    phaseLines.push(`角色 ${identityRef} 的核心设定已完成，现在需要确认行为特征。`);
+    phaseLines.push(`当前优先追问：${behaviorMissing.map((f) => personaFieldLabels[f]).join("和")}。`);
+  } else if (totalMissing <= 2) {
+    const lastLabels = missingFields.map((f) => personaFieldLabels[f]).join("和");
+    phaseLines.push(`角色 ${identityRef} 设定基本完整，只剩 ${lastLabels}。`);
+    phaseLines.push(`直接问这${totalMissing === 1 ? "一" : "两"}个字段，写入后简短确认完成，告知可以开始正常聊天。`);
+  } else {
+    const remainingLabels = missingFields.map((f) => personaFieldLabels[f]).join("、");
+    phaseLines.push(`角色 ${identityRef} 主体特征已设定，现在补充剩余细节（${remainingLabels}）。`);
+    phaseLines.push("可以一次问完，允许 owner 简短回答或使用默认值。");
+  }
+
+  return [
+    ...phaseLines,
+    "owner 回复后先用工具写入能确认的内容，再追问仍缺的字段；不要先追问确认再写入。",
+    "只写入 owner 明确提供的内容，不要编造设定。",
+    "不要调用无关工具，不要修改用户资料、关系或其他记忆。",
+    "回复保持短句纯文本，不用标题、列表或 Markdown。"
+  ];
+}
+
+function buildSetupSnapshotLines(persona: Persona, missingFields: EditablePersonaFieldName[]): string[] {
+  const missingSet = new Set(missingFields);
+
+  const filledParts = editablePersonaFieldNames
+    .filter((field) => !missingSet.has(field) && persona[field]?.trim())
+    .map((field) => `${personaFieldLabels[field]}=${persona[field]}`);
+
+  const missingParts = missingFields.map((field) =>
+    `- ${personaFieldLabels[field]}：${PERSONA_FIELD_HINTS[field]}`
+  );
+
+  return [
+    ...(filledParts.length > 0 ? [`已设定：${filledParts.join("；")}`] : []),
+    ...(missingParts.length > 0 ? [`待补全：\n${missingParts.join("\n")}`] : [])
+  ];
 }
 
 export function buildBaseSystemLines(input: {
