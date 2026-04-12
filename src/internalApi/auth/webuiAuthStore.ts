@@ -71,6 +71,7 @@ export async function loadOrCreateWebuiAuth(dataDir: string, logger: Logger): Pr
       "Visit /webui/ and enter this password to log in."
     ].join(" | ")
   );
+  console.log(`\n[WebUI] 初始密码已生成：${password}\n`);
 
   return data;
 }
