@@ -2,6 +2,7 @@ import type { AppConfig } from "#config/config.ts";
 import { getBuiltinToolNames } from "#llm/builtinTools.ts";
 import type { BuiltinToolContext, Relationship } from "./core/shared.ts";
 import { getDefaultSessionModeId, requireSessionModeDefinition } from "#modes/registry.ts";
+import type { SessionModeSetupPhase } from "#modes/types.ts";
 
 export interface ToolsetDefinition {
   id: string;
@@ -78,7 +79,6 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
-    modeUniversal: true,
     id: "conversation_navigation",
     title: "跨会话导航",
     description: "检索可访问会话并读取上下文。",
@@ -96,7 +96,6 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
-    modeUniversal: true,
     id: "chat_delegation",
     title: "会话委派",
     description: "查找目标会话并把任务委派到其他聊天。",
@@ -114,7 +113,6 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
-    modeUniversal: true,
     id: "web_research",
     title: "网页检索与浏览",
     description: "搜索网页、打开页面、交互与截图。",
@@ -142,7 +140,6 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
-    modeUniversal: true,
     id: "shell_runtime",
     title: "Shell 运行时",
     description: "执行与交互 shell 会话，并复用 live_resource。",
@@ -164,7 +161,6 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
-    modeUniversal: true,
     id: "local_file_io",
     title: "本地文件",
     description: "浏览、编辑、搜索和发送本地文件。",
@@ -190,7 +186,6 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
-    modeUniversal: true,
     id: "chat_file_io",
     title: "聊天文件",
     description: "查看和发送已登记的 chat file。",
@@ -263,6 +258,27 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    id: "scenario_host_state",
+    title: "场景状态",
+    description: "读取和维护 scenario_host 会话的场景状态。",
+    promptGuidance: [
+      "主持剧情时先读取场景状态，再按需更新地点、目标、背包或世界事实。",
+      "状态工具主要用于内部维护，不要把完整状态原样念给玩家。"
+    ],
+    plannerSignals: [
+      "推进场景状态",
+      "维护地点、目标、背包或世界事实"
+    ],
+    toolNames: [
+      "get_scenario_state",
+      "update_scenario_state",
+      "set_current_location",
+      "manage_objective",
+      "manage_inventory",
+      "append_world_fact"
+    ]
+  },
+  {
     modeUniversal: true,
     id: "time_utils",
     title: "时间工具",
@@ -316,7 +332,7 @@ export function listTurnToolsets(input: {
   currentUser: BuiltinToolContext["currentUser"];
   modelRef: string[];
   includeDebugTools: boolean;
-  setupMode?: boolean;
+  setupPhase?: Pick<SessionModeSetupPhase, "setupToolsetOverrides">;
   modeId?: string;
 }): ToolsetView[] {
   const visibleToolNames = new Set(getBuiltinToolNames(
@@ -352,22 +368,25 @@ export function listTurnToolsets(input: {
         : {})
     }));
 
-  if (input.setupMode) {
-    return [
-      {
-        id: "memory_profile",
-        title: "记忆与资料",
-        description: "初始化阶段仅允许写入 persona 相关资料。",
-        toolNames: ["read_memory", "write_memory"],
-        promptGuidance: [
-          "初始化阶段只补全 persona；不要改用户资料、关系或其他记忆。"
-        ],
-        plannerSignals: [
-          "初始化 persona 补全"
-        ]
-      },
-      ...visibleSharedToolsets.filter((toolset) => toolset.id !== "memory_profile")
-    ];
+  if (input.setupPhase) {
+    const overrides = input.setupPhase.setupToolsetOverrides ?? [];
+    if (overrides.length > 0) {
+      const overrideIds = new Set(overrides.map((o) => o.toolsetId));
+      return [
+        ...overrides
+          .map((o) => ({
+            id: o.toolsetId,
+            title: o.title ?? o.toolsetId,
+            description: o.description ?? "",
+            toolNames: o.toolNames.filter((n) => visibleToolNames.has(n)),
+            ...(o.promptGuidance && o.promptGuidance.length > 0 ? { promptGuidance: o.promptGuidance } : {}),
+            ...(o.plannerSignals && o.plannerSignals.length > 0 ? { plannerSignals: o.plannerSignals } : {})
+          }))
+          .filter((t) => t.toolNames.length > 0),
+        ...visibleSharedToolsets.filter((t) => !overrideIds.has(t.id))
+      ];
+    }
+    return visibleSharedToolsets;
   }
 
   return TOOLSET_DEFINITIONS

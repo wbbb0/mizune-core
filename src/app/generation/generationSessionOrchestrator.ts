@@ -135,10 +135,23 @@ export function createGenerationSessionOrchestrator(
       const user = await userStore.getByUserId(last.userId);
       const relationship: Relationship = user?.relationship ?? "known";
       await historyCompressor.maybeCompress(sessionId);
-      const setupState = await setupStore.get();
-      const setupMode = setupState.state !== "ready" && last.chatType === "private" && relationship === "owner";
       let refreshedSession = sessionManager.getSession(sessionId);
       const sessionModeId = refreshedSession.modeId;
+      const setupState = await setupStore.get();
+      const setupMode = sessionModeId === "rp_assistant"
+        && setupState.state !== "ready"
+        && last.chatType === "private"
+        && relationship === "owner";
+      const rpAssistantSetupPhaseOverride = {
+        setupToolsetOverrides: [{
+          toolsetId: "memory_profile",
+          title: "记忆与资料",
+          description: "初始化阶段仅允许写入 persona 相关资料。",
+          toolNames: ["read_memory", "write_memory"],
+          promptGuidance: ["初始化阶段只补全 persona；不要改用户资料、关系或其他记忆。"],
+          plannerSignals: ["初始化 persona 补全"]
+        }]
+      };
       let visibleHistory = projectLlmVisibleHistoryFromTranscript(refreshedSession.internalTranscript, config);
       let historyForPrompt = visibleHistory.slice(0, Math.max(0, visibleHistory.length - messages.length));
       let resolvedModelRef = getDefaultMainModelRefs(config);
@@ -149,7 +162,7 @@ export function createGenerationSessionOrchestrator(
         modelRef: resolvedModelRef,
         includeDebugTools: interactionMode === "debug",
         modeId: sessionModeId,
-        ...(setupMode ? { setupMode: true } : {})
+        ...(setupMode ? { setupPhase: rpAssistantSetupPhaseOverride } : {})
       });
       let plannedToolsetIds = plannerToolsets.map((item) => item.id);
 
@@ -204,7 +217,7 @@ export function createGenerationSessionOrchestrator(
           modelRef: resolvedModelRef,
           includeDebugTools: interactionMode === "debug",
           modeId: sessionModeId,
-          ...(setupMode ? { setupMode: true } : {})
+          ...(setupMode ? { setupPhase: rpAssistantSetupPhaseOverride } : {})
         });
         plannedToolsetIds = gateResult.toolsetIds.filter((id) => plannerToolsets.some((item) => item.id === id));
         refreshedSession = sessionManager.getSession(sessionId);
@@ -280,6 +293,7 @@ export function createGenerationSessionOrchestrator(
           })
         : await services.promptBuilder.buildChatPromptMessages({
             sessionId,
+            modeId: sessionModeId,
             interactionMode,
             mainModelRef: resolvedModelRef,
             visibleToolNames: chatVisibleToolNames,
@@ -403,6 +417,7 @@ export function createGenerationSessionOrchestrator(
       ];
       const promptBuildResult = await services.promptBuilder.buildScheduledPromptMessages({
         sessionId,
+        modeId: session.modeId,
         interactionMode,
         visibleToolNames: scheduledVisibleToolNames,
         activeToolsets: activeScheduledToolsets,
