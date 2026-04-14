@@ -50,6 +50,14 @@ router.beforeEach(async (to) => {
   const auth = useAuthStore();
 
   if (to.meta.public) {
+    if (!auth.checked) {
+      await auth.check();
+    }
+
+    if (!auth.enabled) {
+      return { name: "sessions" };
+    }
+
     // Already authenticated → skip login page
     if (auth.authenticated) {
       return { name: "sessions" };
@@ -60,6 +68,10 @@ router.beforeEach(async (to) => {
   // Protected route: ensure auth status is checked
   if (!auth.checked) {
     await auth.check();
+  }
+
+  if (!auth.enabled) {
+    return true;
   }
 
   if (!auth.authenticated) {

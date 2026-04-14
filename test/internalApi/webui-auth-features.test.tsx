@@ -15,7 +15,7 @@ async function runCase(name: string, fn: () => Promise<void>) {
   process.stdout.write("ok\n");
 }
 
-async function createAuthTestApp(input?: { initialToken?: string }) {
+async function createAuthTestApp(input?: { initialToken?: string; authEnabled?: boolean }) {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-webui-auth-"));
   if (input?.initialToken) {
     await writeFile(getWebuiAuthFilePath(dataDir), JSON.stringify({ accessToken: input.initialToken }, null, 2), "utf8");
@@ -28,6 +28,7 @@ async function createAuthTestApp(input?: { initialToken?: string }) {
   const cookieName = buildCookieName(3000);
   registerAuthRoutes(app, {
     authData,
+    authEnabled: input?.authEnabled ?? true,
     dataDir,
     cookieName,
     defaultRpName: "llm-bot WebUI",
@@ -45,6 +46,9 @@ async function createAuthTestApp(input?: { initialToken?: string }) {
       return;
     }
     if (!request.url.startsWith("/api/auth/")) {
+      return;
+    }
+    if ((input?.authEnabled ?? true) === false) {
       return;
     }
     const cookie = request.cookies[cookieName];
@@ -154,6 +158,49 @@ async function main() {
       });
       assert.equal(authorized.statusCode, 200);
       assert.equal(typeof authorized.json().challenge, "string");
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("auth disabled reports disabled state and rejects auth mutations", async () => {
+    const { app } = await createAuthTestApp({ initialToken: "auth-secret", authEnabled: false });
+    try {
+      const me = await app.inject({
+        method: "GET",
+        url: "/api/auth/me"
+      });
+      assert.equal(me.statusCode, 200);
+      assert.deepEqual(me.json(), {
+        enabled: false,
+        authenticated: false
+      });
+
+      const settings = await app.inject({
+        method: "GET",
+        url: "/api/auth/settings"
+      });
+      assert.equal(settings.statusCode, 200);
+      assert.equal(settings.json().enabled, false);
+
+      const login = await app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { password: "auth-secret" }
+      });
+      assert.equal(login.statusCode, 409);
+      assert.equal(login.json().error, "WebUI auth is disabled");
+
+      const changePassword = await app.inject({
+        method: "POST",
+        url: "/api/auth/password",
+        payload: {
+          currentPassword: "auth-secret",
+          newPassword: "new-secret"
+        }
+      });
+      assert.equal(changePassword.statusCode, 409);
+      assert.equal(changePassword.json().error, "WebUI auth is disabled");
     } finally {
       await app.close();
     }

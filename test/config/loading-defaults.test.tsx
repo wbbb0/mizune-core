@@ -87,6 +87,27 @@ async function main() {
     });
   });
 
+  await runCase("loadConfig enables webui auth by default", async () => {
+    await withConfigDir("llm-bot-config-webui-auth-default-test", async (configDir) => {
+      await writeDefaultInstanceYaml(configDir);
+      await writeYaml(join(configDir, "global.yml"), {
+        internalApi: {
+          enabled: true,
+          webui: {
+            enabled: true
+          }
+        }
+      });
+
+      const config = loadConfig({
+        CONFIG_DIR: configDir
+      });
+
+      assert.equal(config.internalApi.webui.enabled, true);
+      assert.equal(config.internalApi.webui.auth.enabled, true);
+    });
+  });
+
   await runCase("loadConfig applies reasoning relay defaults for model profiles", async () => {
     await withConfigDir("llm-bot-config-reasoning-defaults-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);

@@ -99,10 +99,13 @@ internalApi:
   enabled: false
   port: 3030
   webui:
-    # 启用后在 /webui/ 提供 WebUI 界面，访问时需要输入 accessToken 认证。
-    # accessToken 在首次启动时自动生成并写入 data/webui-auth.json，同时打印到控制台。
+    # 启用后在 /webui/ 提供 WebUI 界面。
     # 启用时整个服务监听 0.0.0.0（可从局域网其他设备访问），禁用时仅 127.0.0.1。
     enabled: false
+    auth:
+      # WebUI 认证开关；关闭后页面访问与 internal API 不再要求登录。
+      # 首次启用认证时会自动生成密码并写入 data/webui-auth.json。
+      enabled: true
     port: 3031
     # 仅开发态 Vite WebUI 使用；用于放行反代或自定义域名访问。
     allowedHosts: []

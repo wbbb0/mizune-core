@@ -241,6 +241,39 @@ async function main() {
     });
   });
 
+  await runCase("loadConfig allows disabling webui auth independently", async () => {
+    await withConfigDir("llm-bot-config-webui-auth-override-test", async (configDir) => {
+      await writeDefaultInstanceYaml(configDir);
+      await writeYaml(join(configDir, "global.yml"), {
+        internalApi: {
+          enabled: true,
+          webui: {
+            enabled: true,
+            auth: {
+              enabled: true
+            }
+          }
+        }
+      });
+      await writeYaml(join(configDir, "instances", "default.yml"), {
+        internalApi: {
+          webui: {
+            auth: {
+              enabled: false
+            }
+          }
+        }
+      });
+
+      const config = loadConfig({
+        CONFIG_DIR: configDir
+      });
+
+      assert.equal(config.internalApi.webui.enabled, true);
+      assert.equal(config.internalApi.webui.auth.enabled, false);
+    });
+  });
+
   await runCase("loadConfig keeps valid sections when a sibling section is invalid", async () => {
     await withConfigDir("llm-bot-config-partial-section-recovery", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);

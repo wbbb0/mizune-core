@@ -108,6 +108,8 @@ internalApi:
   enabled: true
   webui:
     enabled: true
+    auth:
+      enabled: true
 ```
 
 然后把 `config/llm.providers.yml` 里的示例 provider 改成你自己实际可用的 key / baseUrl。
@@ -312,6 +314,8 @@ internalApi:
   enabled: true
   webui:
     enabled: true
+    auth:
+      enabled: true
 
 llm:
   enabled: true
@@ -343,6 +347,17 @@ llm:
 ```yml
 onebot:
   accessToken: your-token
+```
+
+如果希望 WebUI 仅作为内网管理面板、不要求登录，可以改为：
+
+```yml
+internalApi:
+  enabled: true
+  webui:
+    enabled: true
+    auth:
+      enabled: false
 ```
 
 ## 常用命令

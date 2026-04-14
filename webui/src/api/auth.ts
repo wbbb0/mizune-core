@@ -2,10 +2,12 @@ import type { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON
 import { api } from "./client";
 
 export interface AuthStatus {
+  enabled: boolean;
   authenticated: boolean;
 }
 
 export interface AuthSettings {
+  enabled: boolean;
   username: string;
   passwordUpdatedAt: number;
   passkey: null | {

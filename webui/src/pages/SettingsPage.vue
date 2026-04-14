@@ -28,7 +28,9 @@ const passkeyLabel = ref("当前设备");
 const supportsPasskey = computed(() => typeof window !== "undefined" && "PublicKeyCredential" in window);
 
 onMounted(() => {
-  void refreshSettings();
+  if (auth.enabled) {
+    void refreshSettings();
+  }
 });
 
 function selectItem(item: "auth" | "logout") {
@@ -132,7 +134,7 @@ function formatTime(value: number | null | undefined): string {
           <span class="text-ui text-text-secondary">认证</span>
           <LockKeyhole :size="14" :stroke-width="1.75" class="text-text-subtle" />
         </button>
-        <button class="list-row flex w-full items-center justify-between px-3 py-1.75 text-left" :class="{ 'is-selected': activeItem === 'logout' }" @click="selectItem('logout')">
+        <button v-if="auth.enabled" class="list-row flex w-full items-center justify-between px-3 py-1.75 text-left" :class="{ 'is-selected': activeItem === 'logout' }" @click="selectItem('logout')">
           <span class="text-ui text-text-secondary">退出登录</span>
           <LogOut :size="14" :stroke-width="1.75" class="text-text-subtle" />
         </button>
@@ -147,9 +149,14 @@ function formatTime(value: number | null | undefined): string {
 
         <div v-if="activeItem === 'auth'" class="scrollbar-thin flex-1 overflow-y-auto p-4">
           <div class="mx-auto flex w-full max-w-3xl flex-col gap-4">
-            <div v-if="loadingSettings" class="text-small text-text-muted">加载中…</div>
+            <div v-if="!auth.enabled" class="rounded-xl border border-border-default bg-surface-panel p-4">
+              <div class="mb-2 text-ui font-medium text-text-primary">认证已关闭</div>
+              <p class="m-0 text-small text-text-muted">当前实例在配置中关闭了 WebUI 认证，页面访问不再要求登录。若需恢复登录保护，请在配置中重新开启认证。</p>
+            </div>
 
-            <section class="rounded-xl border border-border-default bg-surface-panel p-4">
+            <div v-else-if="loadingSettings" class="text-small text-text-muted">加载中…</div>
+
+            <section v-if="auth.enabled" class="rounded-xl border border-border-default bg-surface-panel p-4">
               <div class="mb-4 flex items-start gap-3">
                 <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-text-secondary">
                   <LockKeyhole :size="18" :stroke-width="1.75" />
@@ -184,7 +191,7 @@ function formatTime(value: number | null | undefined): string {
               </form>
             </section>
 
-            <section class="rounded-xl border border-border-default bg-surface-panel p-4">
+            <section v-if="auth.enabled" class="rounded-xl border border-border-default bg-surface-panel p-4">
               <div class="mb-4 flex items-start gap-3">
                 <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-text-secondary">
                   <KeyRound :size="18" :stroke-width="1.75" />
@@ -226,7 +233,7 @@ function formatTime(value: number | null | undefined): string {
           </div>
         </div>
 
-        <div v-else class="flex flex-1 items-center justify-center p-4">
+        <div v-else-if="auth.enabled" class="flex flex-1 items-center justify-center p-4">
           <div class="flex w-full max-w-md flex-col gap-4 rounded-xl border border-border-default bg-surface-panel p-4">
             <div class="flex items-start gap-3">
               <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-text-secondary">
@@ -244,6 +251,8 @@ function formatTime(value: number | null | undefined): string {
             </div>
           </div>
         </div>
+
+        <div v-else class="panel-empty flex flex-1 items-center justify-center gap-2">当前实例未启用认证</div>
       </div>
     </template>
   </AppLayout>

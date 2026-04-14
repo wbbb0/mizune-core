@@ -8,7 +8,10 @@ const auth   = useAuthStore();
 
 // React to 401 responses emitted by the API client
 function onUnauthorized() {
-  auth.$patch({ authenticated: false });
+  auth.markUnauthorized();
+  if (!auth.enabled) {
+    return;
+  }
   router.push({ name: "login" });
 }
 

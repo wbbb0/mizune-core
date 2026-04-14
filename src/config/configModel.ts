@@ -155,6 +155,9 @@ const conversationConfigSchema = s.object({
 
 const internalApiWebuiConfigSchema = s.object({
   enabled: s.boolean().default(false),
+  auth: s.object({
+    enabled: s.boolean().default(true)
+  }).default(emptyObject),
   port: s.number().int().positive().default(3031),
   allowedHosts: s.array(s.string().trim().nonempty()).default([])
 }).default(emptyObject);

@@ -31,6 +31,7 @@ const FIXED_USERNAME = "admin";
 
 export function registerAuthRoutes(app: FastifyInstance, options: {
   authData: WebuiAuthData;
+  authEnabled: boolean;
   dataDir: string;
   cookieName: string;
   defaultRpName?: string;
@@ -43,16 +44,21 @@ export function registerAuthRoutes(app: FastifyInstance, options: {
   };
 
   app.get("/api/auth/me", async (request) => {
+    if (!options.authEnabled) {
+      return { enabled: false, authenticated: false };
+    }
+
     const cookie = request.cookies[cookieName];
     const authenticated = typeof cookie === "string" && verifySessionToken(
       options.authData.passwordHash,
       options.authData.sessionVersion,
       cookie
     );
-    return { authenticated };
+    return { enabled: true, authenticated };
   });
 
   app.get("/api/auth/settings", async () => ({
+    enabled: options.authEnabled,
     username: FIXED_USERNAME,
     passwordUpdatedAt: options.authData.passwordUpdatedAt,
     passkey: options.authData.passkey
@@ -65,6 +71,10 @@ export function registerAuthRoutes(app: FastifyInstance, options: {
   }));
 
   app.post("/api/auth/login", async (request, reply) => {
+    if (!options.authEnabled) {
+      return reply.status(409).send({ error: "WebUI auth is disabled" });
+    }
+
     const body = request.body as Record<string, unknown> | null;
     const password = typeof body?.password === "string" ? body.password : "";
     if (!password || !verifyPassword(password, options.authData.passwordHash)) {
@@ -75,6 +85,10 @@ export function registerAuthRoutes(app: FastifyInstance, options: {
   });
 
   app.post("/api/auth/password", async (request, reply) => {
+    if (!options.authEnabled) {
+      return reply.status(409).send({ error: "WebUI auth is disabled" });
+    }
+
     const body = request.body as Record<string, unknown> | null;
     const currentPassword = typeof body?.currentPassword === "string" ? body.currentPassword : "";
     const newPassword = typeof body?.newPassword === "string" ? body.newPassword.trim() : "";
@@ -95,6 +109,10 @@ export function registerAuthRoutes(app: FastifyInstance, options: {
   });
 
   app.post("/api/auth/passkey/register/options", async (request, reply) => {
+    if (!options.authEnabled) {
+      return reply.status(409).send({ error: "WebUI auth is disabled" });
+    }
+
     const ceremony = createPendingCeremony(request, options.allowedHosts ?? [], options.authData.rpId);
     if (!ceremony) {
       return reply.status(400).send({ error: "Passkey registration requires a valid WebUI origin" });
@@ -130,6 +148,10 @@ export function registerAuthRoutes(app: FastifyInstance, options: {
   });
 
   app.post("/api/auth/passkey/register/verify", async (request, reply) => {
+    if (!options.authEnabled) {
+      return reply.status(409).send({ error: "WebUI auth is disabled" });
+    }
+
     const pending = getPendingCeremony(state.pendingRegistration);
     if (!pending) {
       return reply.status(400).send({ error: "No active passkey registration" });
@@ -174,6 +196,10 @@ export function registerAuthRoutes(app: FastifyInstance, options: {
   });
 
   app.post("/api/auth/passkey/login/options", async (request, reply) => {
+    if (!options.authEnabled) {
+      return reply.status(409).send({ error: "WebUI auth is disabled" });
+    }
+
     if (!options.authData.passkey) {
       return reply.status(400).send({ error: "No passkey registered" });
     }
@@ -203,6 +229,10 @@ export function registerAuthRoutes(app: FastifyInstance, options: {
   });
 
   app.post("/api/auth/passkey/login/verify", async (request, reply) => {
+    if (!options.authEnabled) {
+      return reply.status(409).send({ error: "WebUI auth is disabled" });
+    }
+
     const pending = getPendingCeremony(state.pendingAuthentication);
     if (!pending || !options.authData.passkey) {
       return reply.status(400).send({ error: "No active passkey login" });
@@ -242,7 +272,11 @@ export function registerAuthRoutes(app: FastifyInstance, options: {
     }
   });
 
-  app.delete("/api/auth/passkey", async () => {
+  app.delete("/api/auth/passkey", async (_, reply) => {
+    if (!options.authEnabled) {
+      return reply.status(409).send({ error: "WebUI auth is disabled" });
+    }
+
     options.authData.passkey = null;
     await saveWebuiAuth(options.dataDir, options.authData);
     state.pendingRegistration = null;
@@ -251,6 +285,10 @@ export function registerAuthRoutes(app: FastifyInstance, options: {
   });
 
   app.post("/api/auth/logout", async (_, reply) => {
+    if (!options.authEnabled) {
+      return { ok: true };
+    }
+
     reply.clearCookie(cookieName, { path: "/" });
     return { ok: true };
   });

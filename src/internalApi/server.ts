@@ -53,6 +53,7 @@ function registerInternalApiRoutes(app: FastifyInstance, deps: InternalApiDeps):
 export async function startInternalApi(deps: InternalApiDeps) {
   const app = Fastify({ logger: false });
   const webuiEnabled = deps.config.internalApi.webui.enabled;
+  const webuiAuthEnabled = webuiEnabled && deps.config.internalApi.webui.auth.enabled;
   const externalWebuiMode = process.env.LLM_BOT_WEBUI_MODE === "external" && webuiEnabled;
 
   // Compute listen port early so the cookie name can be derived from it.
@@ -74,6 +75,7 @@ export async function startInternalApi(deps: InternalApiDeps) {
 
     registerAuthRoutes(app, {
       authData,
+      authEnabled: webuiAuthEnabled,
       dataDir: deps.config.dataDir,
       cookieName,
       defaultRpName: `${deps.config.appName} WebUI`,
@@ -105,8 +107,8 @@ export async function startInternalApi(deps: InternalApiDeps) {
     if (!request.url.startsWith("/api/") || isAuthExempt(request.url)) {
       return;
     }
-    if (!webuiEnabled) {
-      // WebUI disabled → internal API is unauthenticated (existing behaviour).
+    if (!webuiAuthEnabled) {
+      // WebUI auth disabled → internal API is unauthenticated.
       return;
     }
     const cookie = request.cookies[cookieName];

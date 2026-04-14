@@ -4,9 +4,15 @@ import { authApi } from "@/api/auth";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 
 export const useAuthStore = defineStore("auth", () => {
+  const enabled = ref(true);
   const authenticated = ref(false);
   const checked = ref(false);
   const ownerId = ref<string | null>(null);
+
+  function applyStatus(status: { enabled: boolean; authenticated: boolean }): void {
+    enabled.value = status.enabled;
+    authenticated.value = enabled.value ? status.authenticated : true;
+  }
 
   async function fetchOwnerId(): Promise<void> {
     try {
@@ -20,10 +26,16 @@ export const useAuthStore = defineStore("auth", () => {
   async function check(): Promise<void> {
     try {
       const res = await authApi.me();
-      authenticated.value = res.authenticated;
-      if (res.authenticated) await fetchOwnerId();
+      applyStatus(res);
+      if (authenticated.value || !enabled.value) {
+        await fetchOwnerId();
+      } else {
+        ownerId.value = null;
+      }
     } catch {
+      enabled.value = true;
       authenticated.value = false;
+      ownerId.value = null;
     } finally {
       checked.value = true;
     }
@@ -31,6 +43,7 @@ export const useAuthStore = defineStore("auth", () => {
 
   async function login(password: string): Promise<void> {
     await authApi.login(password);
+    enabled.value = true;
     authenticated.value = true;
     checked.value = true;
     await fetchOwnerId();
@@ -40,6 +53,7 @@ export const useAuthStore = defineStore("auth", () => {
     const options = await authApi.beginPasskeyLogin();
     const response = await startAuthentication({ optionsJSON: options });
     await authApi.finishPasskeyLogin(response);
+    enabled.value = true;
     authenticated.value = true;
     checked.value = true;
     await fetchOwnerId();
@@ -57,7 +71,18 @@ export const useAuthStore = defineStore("auth", () => {
 
   async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
     await authApi.changePassword(currentPassword, newPassword);
+    if (enabled.value) {
+      authenticated.value = false;
+      ownerId.value = null;
+    }
+  }
+
+  function markUnauthorized(): void {
+    if (!enabled.value) {
+      return;
+    }
     authenticated.value = false;
+    checked.value = true;
     ownerId.value = null;
   }
 
@@ -65,12 +90,15 @@ export const useAuthStore = defineStore("auth", () => {
     try {
       await authApi.logout();
     } finally {
-      authenticated.value = false;
-      ownerId.value = null;
+      if (enabled.value) {
+        authenticated.value = false;
+        ownerId.value = null;
+      }
     }
   }
 
   return {
+    enabled,
     authenticated,
     checked,
     ownerId,
@@ -80,6 +108,7 @@ export const useAuthStore = defineStore("auth", () => {
     registerPasskey,
     deletePasskey,
     changePassword,
+    markUnauthorized,
     logout
   };
 });

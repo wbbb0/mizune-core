@@ -4,7 +4,7 @@
 
 - debug webui 页面
 - PWA 安装入口（Chromium 与 Apple Safari 主屏安装）
-- owner 使用的登录与 passkey/WebAuthn
+- owner 使用的登录与 passkey/WebAuthn，可在配置中关闭认证，默认开启
 - 浏览器到 bot internal API 的代理访问
 - 从 config/instances/*.yml 自动发现可用 backend，并在页面切换
 - 通过通用 editor 接口查看和编辑 config 与运行数据资源
@@ -36,6 +36,16 @@ npm run dev:webui
 默认会把 Vite 开发服务器绑定到实例配置里的 `internalApi.webui.port`，并监听 `0.0.0.0`。开发态与生产态都继续服从 `internalApi.webui.enabled` 和 `internalApi.webui.port`。
 
 如果开发态需要通过反代域名访问，还要在 `internalApi.webui.allowedHosts` 中显式放行对应 host。
+
+如果只想关闭 WebUI 登录校验，但保留页面与 API 可访问性，可设置：
+
+```yml
+internalApi:
+    webui:
+        enabled: true
+        auth:
+            enabled: false
+```
 
 开发态下，bot internal API 会回退到 `internalApi.port`，Vite 再把 `/api` 代理过去；生产态则仍由 bot 自己在 `internalApi.webui.port` 上托管构建后的 WebUI 静态产物。
 
@@ -162,26 +172,9 @@ npm run build:webui
 - 页面路由使用 hash 模式，安装后的 PWA 在内部切换 `Sessions / Config / Data / Workspace / Settings` 时不会再触发浏览器级外部页面跳转
 - 当前只提供基础安装能力，不承诺离线可用，运行时 `/api/**` 数据不会被离线缓存
 
-## Passkey TODO
+## 认证说明
 
-目前还未实现登录与 passkey，后续按 owner-only 场景推进。
-
-### 第一阶段
-
-- 增加单 owner 密码登录
-- 登录成功后签发 httpOnly session cookie
-- 所有页面路由、server api 代理路由、SSE 握手统一校验 cookie
-
-### 第二阶段
-
-- 在已登录 owner 会话内注册 passkey
-- 登录页支持“密码登录”或“passkey 登录”
-- passkey 验证成功后仍然落到同一套 session cookie
-
-### 具体方案
-
-- 不引入多账号系统，webui 只有一个 owner 身份
-- passkey 注册必须在已登录状态下完成，不开放匿名注册
-- 服务端保存 WebAuthn challenge、credentialId、publicKey、counter、transports、创建时间和备注名称
-- WebAuthn 校验逻辑放在 webui server 层，不下沉到 bot internal API
-- backend 清单继续由服务端扫描 config/instances 生成，不允许页面手工编辑管理端地址
+- WebUI 默认开启认证。
+- 认证开启时，登录页支持密码登录和 passkey 登录，登录成功后统一落到同一套 httpOnly session cookie。
+- passkey 只能在已登录会话内注册，不开放匿名注册。
+- 关闭 `internalApi.webui.auth.enabled` 后，页面路由和 internal API 都不再要求登录；认证相关接口会返回“auth disabled”，设置页只展示关闭说明。
