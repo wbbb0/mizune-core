@@ -5,6 +5,7 @@ import { join } from "node:path";
 import pino from "pino";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { ScenarioHostStateStore } from "../../src/modes/scenarioHost/stateStore.ts";
+import { createInitialScenarioHostSessionState, isScenarioStateInitialized } from "../../src/modes/scenarioHost/types.ts";
 
 async function runCase(name: string, fn: () => Promise<void>) {
   process.stdout.write(`- ${name} ... `);
@@ -46,6 +47,7 @@ async function main() {
     const dataDir = await mkdtemp(join(tmpdir(), "scenario-host-store-"));
     try {
       const store = new ScenarioHostStateStore(dataDir, createTestAppConfig(), pino({ level: "silent" }));
+      await store.init();
       const initial = await store.ensure("private:10001", {
         playerUserId: "10001",
         playerDisplayName: "Alice"
@@ -57,13 +59,11 @@ async function main() {
   });
 
   await runCase("isScenarioStateInitialized returns false for fresh state", async () => {
-    const { createInitialScenarioHostSessionState, isScenarioStateInitialized } = await import("../../src/modes/scenarioHost/types.ts");
     const state = createInitialScenarioHostSessionState({ playerUserId: "u1", playerDisplayName: "Alice" });
     assert.equal(isScenarioStateInitialized(state), false);
   });
 
   await runCase("isScenarioStateInitialized returns true when initialized=true", async () => {
-    const { createInitialScenarioHostSessionState, isScenarioStateInitialized } = await import("../../src/modes/scenarioHost/types.ts");
     const state = createInitialScenarioHostSessionState({ playerUserId: "u1", playerDisplayName: "Alice" });
     assert.equal(isScenarioStateInitialized({ ...state, initialized: true }), true);
   });

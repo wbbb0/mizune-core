@@ -65,5 +65,5 @@ export function createInitialScenarioHostSessionState(input: {
 }
 
 export function isScenarioStateInitialized(state: ScenarioHostSessionState): boolean {
-  return state.initialized === true;
+  return state.initialized;
 }
