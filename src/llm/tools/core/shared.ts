@@ -45,6 +45,7 @@ import type { Persona } from "#persona/personaSchema.ts";
 import type { GenerationWebOutputCollector } from "#app/generation/generationTypes.ts";
 import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
 import type { ToolsetView } from "#llm/tools/toolsets.ts";
+import type { SessionModeDefinition } from "#modes/types.ts";
 
 export type Relationship = "owner" | "known";
 export type ToolAccessLevel = "any" | "owner" | "operator";
@@ -156,6 +157,8 @@ export interface BuiltinToolContext extends
   webOutputCollector?: GenerationWebOutputCollector;
   debugSnapshot?: PromptDebugSnapshot;
   activeInternalTrigger?: InternalSessionTriggerExecution | null;
+  persistSession?: (sessionId: string, reason: string) => void;
+  listSessionModes?: () => SessionModeDefinition[];
 }
 
 export type ToolHandler = (toolCall: LlmToolCall, args: unknown, context: BuiltinToolContext) => Promise<string | LlmToolExecutionResult>;

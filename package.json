@@ -17,6 +17,7 @@
     "#llm/*": "./src/llm/*",
     "#memory/*": "./src/memory/*",
     "#messages/*": "./src/messages/*",
+    "#modes/*": "./src/modes/*",
     "#persona/*": "./src/persona/*",
     "#requests/*": "./src/requests/*",
     "#runtime/*": "./src/runtime/*",

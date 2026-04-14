@@ -20,6 +20,8 @@ async function main() {
     config.shell.enabled = true;
     const names = getBuiltinTools("owner", config).map((tool) => tool.function.name);
     assert.ok(names.includes("end_turn_without_reply"));
+    assert.ok(names.includes("list_session_modes"));
+    assert.ok(names.includes("switch_session_mode"));
     assert.ok(names.includes("get_current_time"));
     assert.ok(names.includes("view_forward_record"));
     assert.ok(names.includes("chat_file_view_media"));
@@ -224,6 +226,54 @@ async function main() {
     assert.equal(typeof result, "object");
     assert.equal(JSON.parse(String((result as any).content)).ended, true);
     assert.equal((result as any).terminalResponse?.text, "");
+  });
+
+  await runCase("session mode tools expose available modes and reject switching when only rp_assistant exists", async () => {
+    const listed = await sessionToolHandlers.list_session_modes!(
+      { id: "tool_mode_list_1", type: "function", function: { name: "list_session_modes", arguments: "{}" } },
+      {},
+      {
+        lastMessage: {
+          sessionId: "private:owner",
+          userId: "owner",
+          senderName: "Owner"
+        },
+        listSessionModes: () => [{
+          id: "rp_assistant",
+          title: "RP Assistant",
+          description: "当前默认模式。"
+        }],
+        sessionManager: {
+          getModeId() {
+            return "rp_assistant";
+          }
+        }
+      } as any
+    );
+    assert.equal(JSON.parse(String(listed)).currentModeId, "rp_assistant");
+
+    const switched = await sessionToolHandlers.switch_session_mode!(
+      { id: "tool_mode_switch_1", type: "function", function: { name: "switch_session_mode", arguments: "{\"modeId\":\"some_other_mode\"}" } },
+      { modeId: "some_other_mode" },
+      {
+        lastMessage: {
+          sessionId: "private:owner",
+          userId: "owner",
+          senderName: "Owner"
+        },
+        listSessionModes: () => [{
+          id: "rp_assistant",
+          title: "RP Assistant",
+          description: "当前默认模式。"
+        }],
+        sessionManager: {
+          getModeId() {
+            return "rp_assistant";
+          }
+        }
+      } as any
+    );
+    assert.match(String(switched), /Unsupported session mode/);
   });
 
   await runCase("get_current_time returns configured timezone and precise clock values", async () => {

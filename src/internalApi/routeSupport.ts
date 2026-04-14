@@ -54,7 +54,12 @@ const webTurnBodySchema = z.object({
 
 const createSessionBodySchema = z.object({
   participantUserId: z.string().trim().min(1, "participantUserId is required"),
-  participantLabel: z.string().trim().min(1).optional()
+  participantLabel: z.string().trim().min(1).optional(),
+  modeId: z.string().trim().min(1).optional()
+});
+
+const switchSessionModeBodySchema = z.object({
+  modeId: z.string().trim().min(1, "modeId is required")
 });
 
 const uploadWorkspaceFileSchema = z.object({
@@ -116,6 +121,7 @@ export type ParsedShellSignalBody = z.infer<typeof shellSignalBodySchema>;
 export type ParsedSendTextBody = z.infer<typeof sendTextBodySchema>;
 export type ParsedWebTurnBody = z.infer<typeof webTurnBodySchema>;
 export type ParsedCreateSessionBody = z.infer<typeof createSessionBodySchema>;
+export type ParsedSwitchSessionModeBody = z.infer<typeof switchSessionModeBodySchema>;
 export type ParsedUploadAssetsBody = z.infer<typeof uploadWorkspaceFilesBodySchema>;
 export type ParsedConfigValidateBody = z.infer<typeof configValidateBodySchema>;
 export type ParsedConfigSaveBody = z.infer<typeof configSaveBodySchema>;
@@ -200,6 +206,10 @@ export function parseWebTurnBody(body: unknown): ParsedWebTurnBody | { error: st
 
 export function parseCreateSessionBody(body: unknown): ParsedCreateSessionBody | { error: string } {
   return parseWithSchema(createSessionBodySchema, body);
+}
+
+export function parseSwitchSessionModeBody(body: unknown): ParsedSwitchSessionModeBody | { error: string } {
+  return parseWithSchema(switchSessionModeBodySchema, body);
 }
 
 export function parseUploadAssetsBody(body: unknown): ParsedUploadAssetsBody | { error: string } {

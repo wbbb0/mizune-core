@@ -32,6 +32,7 @@ import {
   TURN_PLANNER_ALWAYS_TOOL_NAMES,
   type ToolsetView
 } from "#llm/tools/toolsets.ts";
+import { listSessionModes } from "#modes/registry.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -341,6 +342,8 @@ export function createGenerationExecutor(
         npcDirectory,
         ...(toolsetAccess ? { toolsetAccess } : {}),
         debugSnapshot,
+        persistSession,
+        listSessionModes,
         ...(webOutputCollector ? { webOutputCollector } : {}),
         ...(activeInternalTrigger !== undefined ? { activeInternalTrigger } : {})
       });

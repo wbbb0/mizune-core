@@ -4,6 +4,7 @@ import type { ChatAttachment } from "#services/workspace/types.ts";
 import type {
   InternalTranscriptItem,
   SessionHistoryMessage,
+  TranscriptSessionModeSwitchItem,
   TranscriptAssistantMessageItem,
   TranscriptUserMessageItem
 } from "./sessionTypes.ts";
@@ -54,6 +55,18 @@ export function formatStructuredMentionAllReference(): string {
 
 export function formatStructuredCount(kind: string, value: number | string): string {
   return formatStructuredTag("count", { kind, value: String(value) });
+}
+
+export function formatSessionModeSwitchContent(input: {
+  fromModeId: string;
+  toModeId: string;
+  timestampMs: number;
+}): string {
+  return formatStructuredTag("session_mode_switch", {
+    from_mode: input.fromModeId,
+    to_mode: input.toModeId,
+    timestamp: new Date(input.timestampMs).toISOString()
+  });
 }
 
 export function formatHistoryContent(input: {
@@ -230,12 +243,30 @@ export function createAssistantTranscriptMessageItem(input: {
   };
 }
 
+export function createSessionModeSwitchTranscriptItem(input: {
+  fromModeId: string;
+  toModeId: string;
+  timestampMs: number;
+}): TranscriptSessionModeSwitchItem {
+  return {
+    kind: "session_mode_switch",
+    role: "assistant",
+    llmVisible: true,
+    fromModeId: input.fromModeId,
+    toModeId: input.toModeId,
+    content: formatSessionModeSwitchContent(input),
+    timestampMs: input.timestampMs
+  };
+}
+
 export function projectTranscriptMessageItemToHistoryMessage(
-  item: TranscriptUserMessageItem | TranscriptAssistantMessageItem
+  item: TranscriptUserMessageItem | TranscriptAssistantMessageItem | TranscriptSessionModeSwitchItem
 ): SessionHistoryMessage {
   return {
     role: item.role,
-    content: item.kind === "user_message"
+    content: item.kind === "session_mode_switch"
+      ? item.content
+      : item.kind === "user_message"
       ? formatUserHistoryEntry({
           chatType: item.chatType,
           userId: item.userId,

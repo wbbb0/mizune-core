@@ -31,6 +31,7 @@ async function main() {
         id: "private:owner",
         type: "private",
         source: "onebot",
+        modeId: "rp_assistant",
         participantUserId: "owner",
         participantLabel: "Owner",
         replyDelivery: "web",
@@ -77,6 +78,15 @@ async function main() {
             timestampMs: 1
           },
           {
+            kind: "session_mode_switch",
+            role: "assistant",
+            llmVisible: true,
+            fromModeId: "rp_assistant",
+            toModeId: "rp_assistant",
+            content: "⟦session_mode_switch from_mode=\"rp_assistant\" to_mode=\"rp_assistant\" timestamp=\"2026-04-14T00:00:00.000Z\"⟧",
+            timestampMs: 2
+          },
+          {
             kind: "outbound_media_message",
             llmVisible: false,
             role: "assistant",
@@ -90,12 +100,12 @@ async function main() {
             messageId: null,
             toolName: "chat_file_send_to_chat",
             captionText: null,
-            timestampMs: 2
+            timestampMs: 3
           },
           {
             kind: "fallback_event",
             llmVisible: false,
-            timestampMs: 3,
+            timestampMs: 4,
             fallbackType: "model_candidate_switch",
             title: "模型切换 fallback",
             summary: "模型候选 main 请求失败，已切换到 backup",
@@ -108,7 +118,7 @@ async function main() {
           {
             kind: "internal_trigger_event",
             llmVisible: false,
-            timestampMs: 4,
+            timestampMs: 5,
             triggerKind: "scheduled_instruction",
             stage: "started",
             title: "内部触发器 · 开始执行",
@@ -162,6 +172,7 @@ async function main() {
         id: "private:google-tool",
         type: "private",
         source: "onebot",
+        modeId: "rp_assistant",
         participantUserId: "google-tool",
         participantLabel: "google-tool",
         replyDelivery: "onebot",
@@ -288,6 +299,7 @@ async function main() {
         id: "private:compat",
         type: "private",
         source: "onebot",
+        modeId: "rp_assistant",
         replyDelivery: "onebot",
         pendingMessages: [],
         historySummary: null,

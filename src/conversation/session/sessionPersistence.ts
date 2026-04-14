@@ -3,11 +3,13 @@ import { join } from "node:path";
 import type { Logger } from "pino";
 import { z } from "zod";
 import type { PersistedSessionState } from "./sessionManager.ts";
+import { getDefaultSessionModeId } from "#modes/registry.ts";
 
 const persistedSessionSchema = z.object({
   id: z.string().min(1),
   type: z.enum(["private", "group"]),
   source: z.enum(["onebot", "web"]).default("onebot"),
+  modeId: z.string().min(1).default(getDefaultSessionModeId()),
   participantUserId: z.string().min(1).optional(),
   participantLabel: z.string().min(1).nullable().optional(),
   replyDelivery: z.enum(["onebot", "web"]).default("onebot"),
@@ -75,6 +77,15 @@ const persistedSessionSchema = z.object({
       senderName: z.string().min(1),
       text: z.string(),
       reasoningContent: z.string().optional(),
+      timestampMs: z.number().int().nonnegative()
+    }),
+    z.object({
+      kind: z.literal("session_mode_switch"),
+      role: z.literal("assistant"),
+      llmVisible: z.literal(true),
+      fromModeId: z.string().min(1),
+      toModeId: z.string().min(1),
+      content: z.string(),
       timestampMs: z.number().int().nonnegative()
     }),
     z.object({

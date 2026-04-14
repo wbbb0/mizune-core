@@ -1,4 +1,5 @@
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
+import { getDefaultSessionModeId } from "#modes/registry.ts";
 import type { SessionState, PersistedSessionState } from "./sessionTypes.ts";
 
 // Creates and converts runtime session state snapshots.
@@ -16,6 +17,7 @@ export function createSessionState(target: {
     id: target.id,
     type: target.type,
     source: target.source ?? deriveSessionSource(target.id),
+    modeId: getDefaultSessionModeId(),
     participantUserId,
     participantLabel: target.participantLabel ?? participantUserId,
     replyDelivery: target.source ?? deriveSessionSource(target.id),
@@ -64,6 +66,7 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
     id: item.id,
     type: item.type,
     source: item.source ?? deriveSessionSource(item.id),
+    modeId: item.modeId ?? getDefaultSessionModeId(),
     participantUserId,
     participantLabel: item.participantLabel ?? participantUserId,
     replyDelivery: item.replyDelivery ?? item.source ?? deriveSessionSource(item.id),
@@ -147,6 +150,7 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     id: session.id,
     type: session.type,
     source: session.source,
+    modeId: session.modeId,
     participantUserId: session.participantUserId,
     participantLabel: session.participantLabel,
     replyDelivery: session.replyDelivery,

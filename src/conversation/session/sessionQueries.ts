@@ -70,6 +70,7 @@ export function getSessionViewSnapshot(session: SessionState): {
   id: string;
   type: "private" | "group";
   source: "onebot" | "web";
+  modeId: string;
   participantUserId: string;
   participantLabel: string | null;
   debugControl: SessionDebugControlState;
@@ -85,6 +86,7 @@ export function getSessionViewSnapshot(session: SessionState): {
     id: session.id,
     type: session.type,
     source: session.source,
+    modeId: session.modeId,
     participantUserId: session.participantUserId,
     participantLabel: session.participantLabel,
     debugControl: { ...session.debugControl },

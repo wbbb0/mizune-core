@@ -7,6 +7,7 @@ export type WebSessionStreamEvent =
   | {
       type: "ready";
       sessionId: string;
+      modeId: string;
       mutationEpoch: number;
       transcriptCount: number;
       lastActiveAt: number;
@@ -16,6 +17,7 @@ export type WebSessionStreamEvent =
   | {
       type: "reset";
       sessionId: string;
+      modeId: string;
       mutationEpoch: number;
       transcriptCount: number;
       lastActiveAt: number;
@@ -26,6 +28,7 @@ export type WebSessionStreamEvent =
   | {
       type: "status";
       sessionId: string;
+      modeId: string;
       mutationEpoch: number;
       lastActiveAt: number;
       phase: WebSessionPhase;
@@ -44,6 +47,7 @@ export type WebSessionStreamEvent =
 
 export type WebSessionStreamSnapshot = {
   sessionId: string;
+  modeId: string;
   mutationEpoch: number;
   transcript: InternalTranscriptItem[];
   lastActiveAt: number;
@@ -58,6 +62,7 @@ export function buildInitialSessionStreamEvents(
   const readyEvent: WebSessionStreamEvent = {
     type: "ready",
     sessionId: snapshot.sessionId,
+    modeId: snapshot.modeId,
     mutationEpoch: snapshot.mutationEpoch,
     transcriptCount: snapshot.transcript.length,
     lastActiveAt: snapshot.lastActiveAt,
@@ -73,6 +78,7 @@ export function buildInitialSessionStreamEvents(
     events.push({
       type: "reset",
       sessionId: snapshot.sessionId,
+      modeId: snapshot.modeId,
       mutationEpoch: snapshot.mutationEpoch,
       transcriptCount: snapshot.transcript.length,
       lastActiveAt: snapshot.lastActiveAt,
@@ -87,6 +93,7 @@ export function buildInitialSessionStreamEvents(
     events.push({
       type: "reset",
       sessionId: snapshot.sessionId,
+      modeId: snapshot.modeId,
       mutationEpoch: snapshot.mutationEpoch,
       transcriptCount: snapshot.transcript.length,
       lastActiveAt: snapshot.lastActiveAt,
@@ -114,6 +121,7 @@ export function diffSessionStreamEvents(
     events.push({
       type: "reset",
       sessionId: current.sessionId,
+      modeId: current.modeId,
       mutationEpoch: current.mutationEpoch,
       transcriptCount: current.transcript.length,
       lastActiveAt: current.lastActiveAt,
@@ -128,6 +136,7 @@ export function diffSessionStreamEvents(
     events.push({
       type: "reset",
       sessionId: current.sessionId,
+      modeId: current.modeId,
       mutationEpoch: current.mutationEpoch,
       transcriptCount: current.transcript.length,
       lastActiveAt: current.lastActiveAt,
@@ -147,12 +156,14 @@ export function diffSessionStreamEvents(
 
   if (
     current.lastActiveAt !== previous.lastActiveAt
+    || current.modeId !== previous.modeId
     || currentPhase.label !== previousPhase.label
     || currentPhase.kind !== previousPhase.kind
   ) {
     events.push({
       type: "status",
       sessionId: current.sessionId,
+      modeId: current.modeId,
       mutationEpoch: current.mutationEpoch,
       lastActiveAt: current.lastActiveAt,
       phase: currentPhase,

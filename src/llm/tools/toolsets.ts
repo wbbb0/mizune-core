@@ -1,6 +1,7 @@
 import type { AppConfig } from "#config/config.ts";
 import { getBuiltinToolNames } from "#llm/builtinTools.ts";
 import type { BuiltinToolContext, Relationship } from "./core/shared.ts";
+import { getDefaultSessionModeId, requireSessionModeDefinition } from "#modes/registry.ts";
 
 export interface ToolsetDefinition {
   id: string;
@@ -11,6 +12,7 @@ export interface ToolsetDefinition {
   plannerSignals?: string[];
   ownerOnly?: boolean;
   debugOnly?: boolean;
+  modeUniversal?: boolean;
 }
 
 export interface ToolsetView {
@@ -29,6 +31,7 @@ export const TURN_PLANNER_ALWAYS_TOOL_NAMES = [
 
 const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   {
+    modeUniversal: true,
     id: "chat_context",
     title: "会话上下文",
     description: "查看消息、转发和媒体上下文，必要时结束本轮回复。",
@@ -75,6 +78,7 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    modeUniversal: true,
     id: "conversation_navigation",
     title: "跨会话导航",
     description: "检索可访问会话并读取上下文。",
@@ -92,6 +96,7 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    modeUniversal: true,
     id: "chat_delegation",
     title: "会话委派",
     description: "查找目标会话并把任务委派到其他聊天。",
@@ -109,6 +114,7 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    modeUniversal: true,
     id: "web_research",
     title: "网页检索与浏览",
     description: "搜索网页、打开页面、交互与截图。",
@@ -136,6 +142,7 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    modeUniversal: true,
     id: "shell_runtime",
     title: "Shell 运行时",
     description: "执行与交互 shell 会话，并复用 live_resource。",
@@ -157,6 +164,7 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    modeUniversal: true,
     id: "local_file_io",
     title: "本地文件",
     description: "浏览、编辑、搜索和发送本地文件。",
@@ -182,6 +190,7 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    modeUniversal: true,
     id: "chat_file_io",
     title: "聊天文件",
     description: "查看和发送已登记的 chat file。",
@@ -254,6 +263,7 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    modeUniversal: true,
     id: "time_utils",
     title: "时间工具",
     description: "查询当前时间。",
@@ -265,6 +275,23 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ],
     toolNames: [
       "get_current_time"
+    ]
+  },
+  {
+    id: "session_mode_control",
+    title: "会话模式控制",
+    description: "查看并切换当前会话模式。",
+    promptGuidance: [
+      "只有用户明确要求切换当前会话模式时才执行切换。",
+      "切换前先查看可用模式；如果没有其他模式可切，只需明确说明。"
+    ],
+    plannerSignals: [
+      "切换当前会话模式"
+    ],
+    modeUniversal: true,
+    toolNames: [
+      "list_session_modes",
+      "switch_session_mode"
     ]
   },
   {
@@ -290,22 +317,8 @@ export function listTurnToolsets(input: {
   modelRef: string[];
   includeDebugTools: boolean;
   setupMode?: boolean;
+  modeId?: string;
 }): ToolsetView[] {
-  if (input.setupMode) {
-    return [{
-      id: "memory_profile",
-      title: "记忆与资料",
-      description: "初始化阶段仅允许写入 persona 相关资料。",
-      toolNames: ["read_memory", "write_memory"],
-      promptGuidance: [
-        "初始化阶段只补全 persona；不要改用户资料、关系或其他记忆。"
-      ],
-      plannerSignals: [
-        "初始化 persona 补全"
-      ]
-    }];
-  }
-
   const visibleToolNames = new Set(getBuiltinToolNames(
     input.relationship,
     input.currentUser,
@@ -315,8 +328,50 @@ export function listTurnToolsets(input: {
       includeDebugTools: input.includeDebugTools
     }
   ));
+  const mode = requireSessionModeDefinition(input.modeId ?? getDefaultSessionModeId());
+  const defaultModeToolsetIds = new Set(mode.defaultToolsetIds);
+  const visibleSharedToolsets = TOOLSET_DEFINITIONS
+    .filter((toolset) => toolset.modeUniversal === true)
+    .filter((toolset) => !(toolset.ownerOnly && input.relationship !== "owner"))
+    .filter((toolset) => !(toolset.debugOnly && !input.includeDebugTools))
+    .map((toolset) => ({
+      ...toolset,
+      toolNames: toolset.toolNames.filter((name) => visibleToolNames.has(name))
+    }))
+    .filter((toolset) => toolset.toolNames.length > 0)
+    .map((toolset) => ({
+      id: toolset.id,
+      title: toolset.title,
+      description: toolset.description,
+      toolNames: toolset.toolNames,
+      ...(toolset.promptGuidance && toolset.promptGuidance.length > 0
+        ? { promptGuidance: toolset.promptGuidance }
+        : {}),
+      ...(toolset.plannerSignals && toolset.plannerSignals.length > 0
+        ? { plannerSignals: toolset.plannerSignals }
+        : {})
+    }));
+
+  if (input.setupMode) {
+    return [
+      {
+        id: "memory_profile",
+        title: "记忆与资料",
+        description: "初始化阶段仅允许写入 persona 相关资料。",
+        toolNames: ["read_memory", "write_memory"],
+        promptGuidance: [
+          "初始化阶段只补全 persona；不要改用户资料、关系或其他记忆。"
+        ],
+        plannerSignals: [
+          "初始化 persona 补全"
+        ]
+      },
+      ...visibleSharedToolsets.filter((toolset) => toolset.id !== "memory_profile")
+    ];
+  }
 
   return TOOLSET_DEFINITIONS
+    .filter((toolset) => toolset.modeUniversal === true || defaultModeToolsetIds.has(toolset.id))
     .filter((toolset) => !(toolset.ownerOnly && input.relationship !== "owner"))
     .filter((toolset) => !(toolset.debugOnly && !input.includeDebugTools))
     .map((toolset) => ({

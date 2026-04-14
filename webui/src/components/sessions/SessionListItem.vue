@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { Ellipsis } from "lucide-vue-next";
 import type { SessionListItem } from "@/api/types";
 
 const props = defineProps<{
@@ -7,7 +8,10 @@ const props = defineProps<{
   selected: boolean;
 }>();
 
-const emit = defineEmits<{ select: [] }>();
+const emit = defineEmits<{
+  select: [];
+  openActions: [sessionId: string];
+}>();
 
 const display = computed(() => {
   return {
@@ -56,10 +60,18 @@ const relativeTime = computed(() => {
       </div>
     </div>
 
-    <!-- Active indicator -->
-    <span
-      v-if="session.isGenerating"
-      class="h-1.5 w-1.5 shrink-0 rounded-full bg-success"
-    />
+    <div class="relative flex shrink-0 items-center gap-2">
+      <span
+        v-if="session.isGenerating"
+        class="h-1.5 w-1.5 shrink-0 rounded-full bg-success"
+      />
+      <button
+        class="btn-ghost relative z-10"
+        title="会话操作"
+        @click.stop="emit('openActions', session.id)"
+      >
+        <Ellipsis :size="14" :stroke-width="2" />
+      </button>
+    </div>
   </button>
 </template>

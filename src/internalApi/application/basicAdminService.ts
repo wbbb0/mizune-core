@@ -1,6 +1,7 @@
 import type { InternalApiDeps } from "../types.ts";
-import type { ParsedCreateSessionBody } from "../routeSupport.ts";
+import type { ParsedCreateSessionBody, ParsedSwitchSessionModeBody } from "../routeSupport.ts";
 import type { SessionState } from "#conversation/session/sessionTypes.ts";
+import { getDefaultSessionModeId, listSessionModes, requireSessionModeDefinition } from "#modes/registry.ts";
 
 import { isSessionGenerating } from "#conversation/session/sessionQueries.ts";
 
@@ -9,6 +10,7 @@ function buildSessionSummary(session: SessionState) {
     id: session.id,
     type: session.type,
     source: session.source,
+    modeId: session.modeId,
     participantUserId: session.participantUserId,
     participantLabel: session.participantLabel,
     isGenerating: isSessionGenerating(session),
@@ -53,6 +55,12 @@ export function listSessions(deps: Pick<InternalApiDeps, "sessionManager">) {
   };
 }
 
+export function listAvailableSessionModes() {
+  return {
+    modes: listSessionModes()
+  };
+}
+
 export async function getSessionDetail(
   deps: Pick<InternalApiDeps, "sessionManager">,
   sessionId: string
@@ -77,6 +85,8 @@ export function createWebSession(
   body: ParsedCreateSessionBody
 ) {
   const sessionId = createWebSessionId();
+  const modeId = body.modeId ?? getDefaultSessionModeId();
+  requireSessionModeDefinition(modeId);
   const session = deps.sessionManager.ensureSession({
     id: sessionId,
     type: "private",
@@ -84,10 +94,26 @@ export function createWebSession(
     participantUserId: body.participantUserId,
     participantLabel: body.participantLabel ?? body.participantUserId
   });
+  deps.sessionManager.setModeId(session.id, modeId, { appendSwitchMarker: false });
   void deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(session.id));
   return {
     ok: true,
     session: buildSessionSummary(session)
+  };
+}
+
+export async function switchSessionMode(
+  deps: Pick<InternalApiDeps, "sessionManager" | "sessionPersistence">,
+  sessionId: string,
+  body: ParsedSwitchSessionModeBody
+) {
+  requireSessionModeDefinition(body.modeId);
+  deps.sessionManager.getSession(sessionId);
+  deps.sessionManager.setModeId(sessionId, body.modeId);
+  await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(sessionId));
+  return {
+    ok: true as const,
+    session: buildSessionSummary(deps.sessionManager.getSession(sessionId))
   };
 }
 

@@ -66,6 +66,9 @@ const itemTitle = computed(() => {
     case "assistant_message":
       title = `模型回复`;
       break;
+    case "session_mode_switch":
+      title = "会话模式切换";
+      break;
     case "direct_command":
       title = `${props.item.direction === "input" ? "指令输入" : "指令输出"} · ${props.item.commandName}`;
       break;
@@ -105,6 +108,7 @@ const itemTone = computed(() => {
     case "user_message":
       return "user";
     case "assistant_message":
+    case "session_mode_switch":
       return "assistant";
     case "direct_command":
       return props.item.direction === "input" ? "command" : "command-output";
@@ -132,6 +136,7 @@ const itemGlyph = computed<SessionGlyphModel>(() => {
     case "user_message":
       return { kind: "icon", component: User, size: 13, strokeWidth: 2.1 };
     case "assistant_message":
+    case "session_mode_switch":
       return { kind: "icon", component: Bot, size: 13, strokeWidth: 2 };
     case "direct_command":
       return { kind: "text", value: props.item.direction === "input" ? "." : ">" };
@@ -196,6 +201,8 @@ const metaChips = computed(() => {
       return props.item.chatType === "group"
         ? [`${props.item.senderName} (${props.item.userId})`]
         : [];
+    case "session_mode_switch":
+      return [`${props.item.fromModeId} -> ${props.item.toModeId}`];
     case "direct_command":
       return [props.item.direction === "input" ? "用户指令" : "指令返回"];
     case "status_message":
@@ -368,6 +375,10 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
           <TranscriptTextBlock :text="item.reasoningContent" tone="muted" />
         </TranscriptDisclosure>
         <TranscriptTextBlock :text="item.text" />
+      </div>
+
+      <div v-else-if="item.kind === 'session_mode_switch'" class="flex flex-col gap-2">
+        <TranscriptTextBlock :text="item.content" />
       </div>
 
       <div v-else-if="item.kind === 'direct_command'" class="flex flex-col gap-2">

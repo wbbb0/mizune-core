@@ -165,7 +165,37 @@ async function main() {
 
       assert.equal(response.statusCode, 200);
       assert.equal(response.json().session.id, "private:10001");
+      assert.equal(response.json().session.modeId, "rp_assistant");
       assert.equal(response.json().session.historyRevision, 0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("internal api exposes session modes and allows switching a session mode", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const modesResponse = await app.inject({
+        method: "GET",
+        url: "/api/session-modes"
+      });
+      assert.equal(modesResponse.statusCode, 200);
+      assert.deepEqual(modesResponse.json().modes, [{
+        id: "rp_assistant",
+        title: "RP Assistant",
+        description: "当前默认模式。保留现有角色扮演 + 助手能力。"
+      }]);
+
+      const switchResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/private:10001/mode",
+        payload: {
+          modeId: "rp_assistant"
+        }
+      });
+      assert.equal(switchResponse.statusCode, 200);
+      assert.equal(switchResponse.json().session.modeId, "rp_assistant");
     } finally {
       await app.close();
     }

@@ -42,6 +42,7 @@ import {
 import { projectLlmVisibleHistoryFromTranscript, projectVisibleMessagesFromTranscript } from "./sessionTranscript.ts";
 import {
   createAssistantTranscriptMessageItem,
+  createSessionModeSwitchTranscriptItem,
   createUserTranscriptMessageItem
 } from "./historyContext.ts";
 import {
@@ -324,6 +325,29 @@ export class SessionManager {
 
   getReplyDelivery(sessionId: string): SessionDelivery {
     return this.requireSession(sessionId).replyDelivery;
+  }
+
+  getModeId(sessionId: string): string {
+    return this.requireSession(sessionId).modeId;
+  }
+
+  setModeId(sessionId: string, modeId: string, options?: { appendSwitchMarker?: boolean }): boolean {
+    const session = this.requireSession(sessionId);
+    if (session.modeId === modeId) {
+      return false;
+    }
+    const previousModeId = session.modeId;
+    session.modeId = modeId;
+    session.lastActiveAt = Date.now();
+    if (options?.appendSwitchMarker !== false) {
+      appendInternalTranscriptState(session, createSessionModeSwitchTranscriptItem({
+        fromModeId: previousModeId,
+        toModeId: modeId,
+        timestampMs: Date.now()
+      }));
+      session.historyRevision += 1;
+    }
+    return true;
   }
 
   setReplyDelivery(sessionId: string, delivery: SessionDelivery): void {
@@ -663,6 +687,7 @@ export class SessionManager {
     id: string;
     type: "private" | "group";
     source: "onebot" | "web";
+    modeId: string;
     participantUserId: string;
     participantLabel: string | null;
     debugControl: SessionDebugControlState;

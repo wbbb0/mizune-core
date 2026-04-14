@@ -6,9 +6,11 @@ import {
   getHealthStatus,
   getPersona,
   getSessionDetail,
+  listAvailableSessionModes,
   listSessions,
   listUsers,
-  getWhitelist
+  getWhitelist,
+  switchSessionMode
 } from "../application/basicAdminService.ts";
 import { listRequests, listScheduledJobs } from "../application/operationsAdminService.ts";
 import {
@@ -22,6 +24,7 @@ import {
   parseWorkspaceFileQuery,
   parseWorkspacePathQuery,
   parseOrReply,
+  parseSwitchSessionModeBody,
   parseSessionParams,
   respondBadRequest,
   respondNotFound
@@ -231,13 +234,18 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
   app.get("/api/users", async () => listUsers(services.config));
 
   app.get("/api/sessions", async () => listSessions(services.config));
+  app.get("/api/session-modes", async () => listAvailableSessionModes());
 
   app.post("/api/sessions", async (request, reply) => {
     const body = parseCreateSessionBody(request.body);
     if (!parseOrReply(reply, body)) {
       return reply;
     }
-    return createWebSession(services.config, body);
+    try {
+      return createWebSession(services.config, body);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
   });
 
   app.get("/api/sessions/:sessionId", async (request, reply) => {
@@ -264,6 +272,22 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
       return respondNotFound(reply, "Session not found");
     }
     return result;
+  });
+
+  app.patch("/api/sessions/:sessionId/mode", async (request, reply) => {
+    const params = parseSessionParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    const body = parseSwitchSessionModeBody(request.body);
+    if (!parseOrReply(reply, body)) {
+      return reply;
+    }
+    try {
+      return await switchSessionMode(services.config, params.sessionId, body);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
   });
 
   app.get("/api/persona", async () => getPersona(services.config));

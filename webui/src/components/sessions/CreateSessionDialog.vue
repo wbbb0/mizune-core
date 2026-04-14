@@ -6,15 +6,17 @@ const props = defineProps<{
   open: boolean;
   busy?: boolean;
   errorMessage?: string;
+  modes?: Array<{ id: string; title: string; description: string }>;
 }>();
 
 const emit = defineEmits<{
   close: [];
-  submit: [payload: { participantUserId: string; participantLabel?: string }];
+  submit: [payload: { participantUserId: string; participantLabel?: string; modeId?: string }];
 }>();
 
 const participantUserId = ref("");
 const participantLabel = ref("");
+const modeId = ref("rp_assistant");
 const userIdInput = ref<HTMLInputElement | null>(null);
 
 const canSubmit = computed(() => participantUserId.value.trim().length > 0 && !props.busy);
@@ -23,6 +25,7 @@ watch(() => props.open, async (open) => {
   if (!open) {
     participantUserId.value = "";
     participantLabel.value = "";
+    modeId.value = props.modes?.[0]?.id ?? "rp_assistant";
     return;
   }
   await nextTick();
@@ -38,7 +41,8 @@ async function submit() {
   }
   emit("submit", {
     participantUserId: normalizedUserId,
-    ...(participantLabel.value.trim() ? { participantLabel: participantLabel.value.trim() } : {})
+    ...(participantLabel.value.trim() ? { participantLabel: participantLabel.value.trim() } : {}),
+    ...(modeId.value.trim() ? { modeId: modeId.value.trim() } : {})
   });
 }
 
@@ -85,8 +89,20 @@ function close() {
         </label>
       </div>
 
+      <label class="flex flex-col gap-1.5 text-small text-text-muted">
+        会话模式
+        <select v-model="modeId" class="input-base text-ui">
+          <option v-for="mode in modes ?? []" :key="mode.id" :value="mode.id">
+            {{ mode.title }}
+          </option>
+        </select>
+        <span class="text-small text-text-subtle">
+          {{ (modes ?? []).find((item) => item.id === modeId)?.description ?? "选择新会话的运行模式。" }}
+        </span>
+      </label>
+
       <div class="rounded border border-border-default bg-surface-sidebar px-3 py-2 text-small leading-5 text-text-muted">
-        当前默认会创建一个 `web:*` 私聊会话。
+        当前会创建一个 `web:*` 私聊会话，并绑定所选 mode。
       </div>
 
       <div

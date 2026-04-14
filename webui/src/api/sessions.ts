@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { SessionListItem, TranscriptFetchResult } from "./types";
+import type { SessionListItem, SessionModeOption, TranscriptFetchResult } from "./types";
 
 export const sessionsApi = {
   list(): Promise<{ sessions: SessionListItem[] }> {
@@ -17,8 +17,19 @@ export const sessionsApi = {
   create(body: {
     participantUserId: string;
     participantLabel?: string;
+    modeId?: string;
   }): Promise<{ ok: boolean; session: SessionListItem }> {
     return api.post("/api/sessions", body);
+  },
+
+  listModes(): Promise<{ modes: SessionModeOption[] }> {
+    return api.get("/api/session-modes");
+  },
+
+  switchMode(sessionId: string, body: {
+    modeId: string;
+  }): Promise<{ ok: boolean; session: SessionListItem }> {
+    return api.patch(`/api/sessions/${encodeURIComponent(sessionId)}/mode`, body);
   },
 
   remove(sessionId: string): Promise<{ ok: boolean }> {

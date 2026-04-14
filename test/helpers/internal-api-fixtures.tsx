@@ -16,6 +16,7 @@ export interface InternalApiFixtureState {
     id: string;
     type: "private" | "group";
     source: "onebot" | "web";
+    modeId: string;
     participantUserId: string;
     participantLabel: string | null;
     pendingMessages: Array<{ id?: number }>;
@@ -59,6 +60,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       id: "private:10001",
       type: "private",
       source: "onebot",
+      modeId: "rp_assistant",
       participantUserId: "10001",
       participantLabel: "Alice",
       pendingMessages: [{ id: 1 }],
@@ -237,6 +239,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           id: session.id,
           type: session.type,
           source: session.source,
+          modeId: session.modeId,
           participantUserId: session.participantUserId,
           participantLabel: session.participantLabel,
           debugControl: {
@@ -265,6 +268,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           id: sessionId,
           type: existing?.type ?? (sessionId.startsWith("group:") ? "group" : "private"),
           source: existing?.source ?? (sessionId.startsWith("web:") ? "web" : "onebot"),
+          modeId: existing?.modeId ?? "rp_assistant",
           participantUserId: existing?.participantUserId ?? "10001",
           participantLabel: existing?.participantLabel ?? "Alice",
           pendingMessages: [],
@@ -292,6 +296,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           id: target.id,
           type: target.type,
           source: target.source ?? "onebot",
+          modeId: "rp_assistant",
           participantUserId: target.participantUserId ?? target.id,
           participantLabel: target.participantLabel ?? target.participantUserId ?? target.id,
           pendingMessages: [],
@@ -315,6 +320,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           id: session.id,
           type: session.type,
           source: session.source,
+          modeId: session.modeId,
           participantUserId: session.participantUserId,
           participantLabel: session.participantLabel,
           pendingMessages: [],
@@ -332,6 +338,20 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       },
       appendSyntheticPendingMessage() {},
       appendHistory() {},
+      getModeId(sessionId: string) {
+        return state.sessions.find((item) => item.id === sessionId)?.modeId ?? "rp_assistant";
+      },
+      setModeId(sessionId: string, modeId: string) {
+        const session = state.sessions.find((item) => item.id === sessionId);
+        if (!session) {
+          throw new Error(`Session not found: ${sessionId}`);
+        }
+        if (session.modeId === modeId) {
+          return false;
+        }
+        session.modeId = modeId;
+        return true;
+      },
       hasActiveResponse(sessionId: string) {
         const count = (this as { __activeResponses: Map<string, number> }).__activeResponses.get(sessionId) ?? 0;
         if (count <= 0) {

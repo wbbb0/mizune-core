@@ -1,6 +1,13 @@
 import { defineStore } from "pinia";
 import { ref, shallowRef } from "vue";
-import type { SessionListItem, SessionPhase, TranscriptItem, SessionStreamEvent, TurnStreamEvent } from "@/api/types";
+import type {
+  SessionListItem,
+  SessionModeOption,
+  SessionPhase,
+  TranscriptItem,
+  SessionStreamEvent,
+  TurnStreamEvent
+} from "@/api/types";
 import { sessionsApi } from "@/api/sessions";
 
 const SESSION_DEBUG_ENABLED = import.meta.env.DEV;
@@ -19,6 +26,7 @@ export interface ActiveSession {
   id: string;
   type: "private" | "group";
   source: "onebot" | "web";
+  modeId: string;
   participantUserId: string;
   participantLabel: string | null;
   mutationEpoch: number;
@@ -36,6 +44,7 @@ export interface ActiveSession {
 
 export const useSessionsStore = defineStore("sessions", () => {
   const list = ref<SessionListItem[]>([]);
+  const modes = ref<SessionModeOption[]>([]);
   const selectedId = ref<string | null>(null);
   const active = shallowRef<ActiveSession | null>(null);
 
@@ -44,9 +53,13 @@ export const useSessionsStore = defineStore("sessions", () => {
   let _reconnectDelay = 1000;
 
   async function refresh(): Promise<void> {
-    const res = await sessionsApi.list();
-    list.value = res.sessions;
-    debugSession("refresh", { sessions: res.sessions.map((s) => s.id) });
+    const [sessionRes, modeRes] = await Promise.all([
+      sessionsApi.list(),
+      sessionsApi.listModes()
+    ]);
+    list.value = sessionRes.sessions;
+    modes.value = modeRes.modes;
+    debugSession("refresh", { sessions: sessionRes.sessions.map((s) => s.id), modes: modeRes.modes.map((m) => m.id) });
   }
 
   function _openStream(sessionId: string, epoch?: number, transcriptCount?: number): void {
@@ -61,6 +74,7 @@ export const useSessionsStore = defineStore("sessions", () => {
         id: sessionId,
         type: "private",
         source: "web",
+        modeId: "rp_assistant",
         participantUserId: "",
         participantLabel: null,
         mutationEpoch: currentEpoch,
@@ -156,6 +170,7 @@ export const useSessionsStore = defineStore("sessions", () => {
       active.value = {
         ...cur,
         streamStatus: "connected",
+        modeId: event.modeId,
         mutationEpoch: event.mutationEpoch,
         transcriptCount: event.transcriptCount,
         lastActiveAt: event.lastActiveAt,
@@ -168,6 +183,7 @@ export const useSessionsStore = defineStore("sessions", () => {
       active.value = {
         ...cur,
         mutationEpoch: event.mutationEpoch,
+        modeId: event.modeId,
         transcriptCount: 0,
         lastActiveAt: event.lastActiveAt,
         phase: event.phase,
@@ -186,6 +202,7 @@ export const useSessionsStore = defineStore("sessions", () => {
       active.value = {
         ...cur,
         mutationEpoch: event.mutationEpoch,
+        modeId: event.modeId,
         lastActiveAt: event.lastActiveAt,
         phase: event.phase
       };
@@ -236,6 +253,7 @@ export const useSessionsStore = defineStore("sessions", () => {
       type: selected?.type ?? "private",
       source: selected?.source ?? "web",
       participantUserId: selected?.participantUserId ?? "",
+      modeId: selected?.modeId ?? "rp_assistant",
       participantLabel: selected?.participantLabel ?? null,
       mutationEpoch: 0,
       transcriptCount: 0,
@@ -281,6 +299,7 @@ export const useSessionsStore = defineStore("sessions", () => {
   async function createSession(input: {
     participantUserId: string;
     participantLabel?: string;
+    modeId?: string;
   }): Promise<string> {
     const result = await sessionsApi.create(input);
     await refresh();
@@ -288,11 +307,30 @@ export const useSessionsStore = defineStore("sessions", () => {
     return result.session.id;
   }
 
+  async function switchSessionMode(sessionId: string, modeId: string): Promise<void> {
+    const result = await sessionsApi.switchMode(sessionId, { modeId });
+    list.value = list.value.map((item) => item.id === sessionId ? result.session : item);
+    if (active.value?.id === sessionId) {
+      active.value = {
+        ...active.value,
+        modeId: result.session.modeId
+      };
+    }
+  }
+
   async function deleteSelectedSession(): Promise<void> {
     const sessionId = selectedId.value;
     if (!sessionId) return;
     await sessionsApi.remove(sessionId);
     deselectSession();
+    await refresh();
+  }
+
+  async function deleteSession(sessionId: string): Promise<void> {
+    await sessionsApi.remove(sessionId);
+    if (selectedId.value === sessionId) {
+      deselectSession();
+    }
     await refresh();
   }
 
@@ -378,11 +416,14 @@ export const useSessionsStore = defineStore("sessions", () => {
 
   return {
     list,
+    modes,
     selectedId,
     active,
     refresh,
     createSession,
     deleteSelectedSession,
+    deleteSession,
+    switchSessionMode,
     selectSession,
     deselectSession,
     sendMessage,

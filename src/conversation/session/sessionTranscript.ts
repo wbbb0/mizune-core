@@ -2,6 +2,7 @@ import type { AppConfig } from "#config/config.ts";
 import { formatStructuredMediaReference, projectTranscriptMessageItemToHistoryMessage } from "./historyContext.ts";
 import type {
   InternalTranscriptItem,
+  TranscriptSessionModeSwitchItem,
   TranscriptAssistantMessageItem,
   TranscriptUserMessageItem,
   SessionHistoryMessage,
@@ -16,8 +17,10 @@ export function isTranscriptVisibleChatMessage(item: InternalTranscriptItem): bo
   return item.kind === "user_message" || item.kind === "assistant_message";
 }
 
-function isTranscriptHistoryMessage(item: InternalTranscriptItem): item is TranscriptUserMessageItem | TranscriptAssistantMessageItem {
-  return item.kind === "user_message" || item.kind === "assistant_message";
+function isTranscriptHistoryMessage(
+  item: InternalTranscriptItem
+): item is TranscriptUserMessageItem | TranscriptAssistantMessageItem | TranscriptSessionModeSwitchItem {
+  return item.kind === "user_message" || item.kind === "assistant_message" || item.kind === "session_mode_switch";
 }
 
 export function projectLlmVisibleHistoryFromTranscript(

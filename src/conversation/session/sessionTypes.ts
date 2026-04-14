@@ -127,6 +127,16 @@ export interface TranscriptAssistantMessageItem {
   timestampMs: number;
 }
 
+export interface TranscriptSessionModeSwitchItem {
+  kind: "session_mode_switch";
+  role: "assistant";
+  llmVisible: true;
+  fromModeId: string;
+  toModeId: string;
+  content: string;
+  timestampMs: number;
+}
+
 export interface InternalAssistantToolCallItem {
   kind: "assistant_tool_call";
   llmVisible: true;
@@ -245,6 +255,7 @@ export interface InternalTriggerEventItem {
 export type InternalTranscriptItem =
   | TranscriptUserMessageItem
   | TranscriptAssistantMessageItem
+  | TranscriptSessionModeSwitchItem
   | InternalAssistantToolCallItem
   | InternalToolResultItem
   | TranscriptOutboundMediaMessageItem
@@ -367,6 +378,7 @@ export interface SessionState {
   id: string;
   type: "private" | "group";
   source: SessionSource;
+  modeId: string;
   participantUserId: string;
   participantLabel: string | null;
   replyDelivery: SessionDelivery;
@@ -401,6 +413,7 @@ export interface PersistedSessionState {
   id: string;
   type: "private" | "group";
   source?: SessionSource;
+  modeId?: string;
   participantUserId?: string;
   participantLabel?: string | null;
   replyDelivery?: SessionDelivery;

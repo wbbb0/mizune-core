@@ -4,6 +4,7 @@ export interface SessionListItem {
   id: string;
   type: "private" | "group";
   source: "onebot" | "web";
+  modeId: string;
   participantUserId: string;
   participantLabel: string | null;
   isGenerating: boolean;
@@ -58,6 +59,16 @@ export interface AssistantMessageItem {
   senderName: string;
   text: string;
   reasoningContent?: string;
+  timestampMs: number;
+}
+
+export interface SessionModeSwitchItem {
+  kind: "session_mode_switch";
+  role: "assistant";
+  llmVisible: true;
+  fromModeId: string;
+  toModeId: string;
+  content: string;
   timestampMs: number;
 }
 
@@ -174,6 +185,7 @@ export interface InternalTriggerEventItem {
 export type TranscriptItem =
   | UserMessageItem
   | AssistantMessageItem
+  | SessionModeSwitchItem
   | AssistantToolCallItem
   | ToolResultItem
   | OutboundMediaMessageItem
@@ -197,10 +209,11 @@ export type SessionPhase =
   | { kind: "delivering"; label: string; previewText?: string | null };
 
 export type SessionStreamEvent =
-  | { type: "ready";   sessionId: string; mutationEpoch: number; transcriptCount: number; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
+  | { type: "ready";   sessionId: string; modeId: string; mutationEpoch: number; transcriptCount: number; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
   | {
       type: "reset";
       sessionId: string;
+      modeId: string;
       mutationEpoch: number;
       transcriptCount: number;
       lastActiveAt: number;
@@ -208,9 +221,15 @@ export type SessionStreamEvent =
       reason: "mutation_epoch_changed" | "transcript_cursor_ahead" | "transcript_gap_detected";
       timestampMs: number;
     }
-  | { type: "status";  sessionId: string; mutationEpoch: number; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
+  | { type: "status";  sessionId: string; modeId: string; mutationEpoch: number; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
   | { type: "transcript_item"; sessionId: string; mutationEpoch: number; index: number; totalCount: number; eventId: string; item: TranscriptItem; timestampMs: number }
   | { type: "session_error"; message: string };
+
+export interface SessionModeOption {
+  id: string;
+  title: string;
+  description: string;
+}
 
 export type TurnStreamEvent =
   | { type: "ready";    turnId: string; sessionId: string; timestampMs: number }

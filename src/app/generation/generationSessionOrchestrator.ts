@@ -138,6 +138,7 @@ export function createGenerationSessionOrchestrator(
       const setupState = await setupStore.get();
       const setupMode = setupState.state !== "ready" && last.chatType === "private" && relationship === "owner";
       let refreshedSession = sessionManager.getSession(sessionId);
+      const sessionModeId = refreshedSession.modeId;
       let visibleHistory = projectLlmVisibleHistoryFromTranscript(refreshedSession.internalTranscript, config);
       let historyForPrompt = visibleHistory.slice(0, Math.max(0, visibleHistory.length - messages.length));
       let resolvedModelRef = getDefaultMainModelRefs(config);
@@ -147,6 +148,7 @@ export function createGenerationSessionOrchestrator(
         currentUser: user,
         modelRef: resolvedModelRef,
         includeDebugTools: interactionMode === "debug",
+        modeId: sessionModeId,
         ...(setupMode ? { setupMode: true } : {})
       });
       let plannedToolsetIds = plannerToolsets.map((item) => item.id);
@@ -201,6 +203,7 @@ export function createGenerationSessionOrchestrator(
           currentUser: user,
           modelRef: resolvedModelRef,
           includeDebugTools: interactionMode === "debug",
+          modeId: sessionModeId,
           ...(setupMode ? { setupMode: true } : {})
         });
         plannedToolsetIds = gateResult.toolsetIds.filter((id) => plannerToolsets.some((item) => item.id === id));
@@ -362,12 +365,14 @@ export function createGenerationSessionOrchestrator(
         : null;
       const promptRelationship: Relationship = currentUser?.relationship ?? "known";
       const scheduledModelRef = getDefaultMainModelRefs(config);
+      const session = sessionManager.getSession(sessionId);
       const scheduledAvailableToolsets = listTurnToolsets({
         config,
         relationship: "owner",
         currentUser,
         modelRef: scheduledModelRef,
-        includeDebugTools: interactionMode === "debug"
+        includeDebugTools: interactionMode === "debug",
+        modeId: session.modeId
       });
       const scheduledVisibleToolNames = getBuiltinToolNames("owner", currentUser, config, {
         modelRef: scheduledModelRef,
@@ -383,7 +388,6 @@ export function createGenerationSessionOrchestrator(
         return ["comfy_image"].includes(toolset.id);
       });
       await historyCompressor.maybeCompress(sessionId);
-      const session = sessionManager.getSession(sessionId);
       const providerName = getPrimaryModelProfile(config, scheduledModelRef)?.provider ?? "unknown";
       const projectedHistory = projectLlmVisibleHistoryFromTranscript(session.internalTranscript, config);
       const participantProfiles = await extractWindowUsers(userStore, session.internalTranscript, []);

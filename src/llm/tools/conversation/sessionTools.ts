@@ -1,7 +1,39 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
+import { getSessionModeDefinition } from "#modes/registry.ts";
 
 export const sessionToolDescriptors: ToolDescriptor[] = [
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "list_session_modes",
+        description: "列出当前系统中可切换的会话模式。",
+        parameters: {
+          type: "object",
+          properties: {},
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "switch_session_mode",
+        description: "切换当前会话使用的模式。仅在用户明确要求切换当前会话模式时使用。",
+        parameters: {
+          type: "object",
+          properties: {
+            modeId: { type: "string" }
+          },
+          required: ["modeId"],
+          additionalProperties: false
+        }
+      }
+    }
+  },
   {
     definition: {
       type: "function",
@@ -55,6 +87,55 @@ export const sessionToolDescriptors: ToolDescriptor[] = [
 ];
 
 export const sessionToolHandlers: Record<string, ToolHandler> = {
+  async list_session_modes(_toolCall, _args, context) {
+    const modes = (context.listSessionModes?.() ?? []).map((mode) => ({
+      id: mode.id,
+      title: mode.title,
+      description: mode.description
+    }));
+    return JSON.stringify({
+      currentModeId: context.sessionManager.getModeId(context.lastMessage.sessionId),
+      modes
+    });
+  },
+  async switch_session_mode(_toolCall, args, context) {
+    const modeId = getStringArg(args, "modeId").trim();
+    if (!modeId) {
+      return JSON.stringify({ error: "modeId is required" });
+    }
+    const targetMode = getSessionModeDefinition(modeId);
+    if (!targetMode) {
+      return JSON.stringify({ error: `Unsupported session mode: ${modeId}` });
+    }
+    const currentModeId = context.sessionManager.getModeId(context.lastMessage.sessionId);
+    if (currentModeId === modeId) {
+      return JSON.stringify({
+        ok: true,
+        changed: false,
+        currentModeId,
+        message: `Current session mode is already ${modeId}`
+      });
+    }
+    const availableModes = context.listSessionModes?.() ?? [];
+    if (availableModes.length <= 1) {
+      return JSON.stringify({
+        ok: false,
+        changed: false,
+        currentModeId,
+        availableModes: availableModes.map((mode) => mode.id),
+        message: "Only rp_assistant is currently implemented; no other session mode can be selected yet"
+      });
+    }
+    context.sessionManager.setModeId(context.lastMessage.sessionId, modeId);
+    context.persistSession?.(context.lastMessage.sessionId, "session_mode_switched_by_tool");
+    return JSON.stringify({
+      ok: true,
+      changed: true,
+      fromModeId: currentModeId,
+      toModeId: modeId,
+      title: targetMode.title
+    });
+  },
   async end_turn_without_reply(_toolCall, args) {
     const reason = getStringArg(args, "reason").trim();
     return {

@@ -31,6 +31,7 @@ type SessionStreamableState = {
   id: string;
   type: "private" | "group";
   source: "onebot" | "web";
+  modeId: string;
   participantUserId: string;
   participantLabel: string | null;
   pendingMessages: Array<{ receivedAt?: number }>;
@@ -338,6 +339,7 @@ async function readSessionStreamSnapshot(
     transcript: [...session.internalTranscript],
     lastActiveAt: session.lastActiveAt,
     phase: session.phase,
-    activeAssistantResponseText: session.activeAssistantResponse?.text ?? null
+    activeAssistantResponseText: session.activeAssistantResponse?.text ?? null,
+    modeId: session.modeId
   };
 }
