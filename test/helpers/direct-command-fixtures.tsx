@@ -25,6 +25,10 @@ interface DirectCommandFixtureOptions {
   armDebugOnce?: (sessionId: string) => { enabled: boolean; oncePending: boolean };
   getDebugControlState?: (sessionId: string) => { enabled: boolean; oncePending: boolean };
   persistSession?: (sessionId: string, reason: string) => void;
+  getModeId?: (sessionId: string) => string;
+  scenarioHostStateStore?: {
+    write: (sessionId: string, state: unknown) => Promise<unknown>;
+  };
 }
 
 export function createDirectCommandFixture(options: DirectCommandFixtureOptions = {}) {
@@ -81,6 +85,9 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
       },
       getDebugControlState(sessionId: string) {
         return options.getDebugControlState?.(sessionId) ?? { enabled: false, oncePending: false };
+      },
+      getModeId(sessionId: string) {
+        return options.getModeId?.(sessionId) ?? "rp_assistant";
       }
     } as unknown as Parameters<typeof createDirectCommandHandler>[0]["sessionManager"],
     oneBotClient: {
@@ -99,6 +106,7 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
       options.flushSession?.(sessionId, flushOptions);
     },
     ...(options.forceCompactSession ? { forceCompactSession: options.forceCompactSession } : {}),
+    ...(options.scenarioHostStateStore ? { scenarioHostStateStore: options.scenarioHostStateStore as any } : {}),
     async sendImmediateText(params: SentImmediateText) {
       calls.push(params);
     }

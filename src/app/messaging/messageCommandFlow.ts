@@ -19,7 +19,8 @@ export function resolveChatDirectCommand(
     text: context.enrichedMessage.text,
     hasImages: context.enrichedMessage.images.length > 0,
     hasForwards: context.enrichedMessage.forwardIds.length > 0,
-    hasAudio: context.enrichedMessage.audioSources.length > 0
+    hasAudio: context.enrichedMessage.audioSources.length > 0,
+    sessionModeId: context.session.modeId
   });
 }
 

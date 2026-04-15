@@ -248,6 +248,76 @@ async function main() {
     assert.deepEqual(persistReasons, ["debug_once_armed", "debug_disabled"]);
   });
 
+  await runCase("reset command exists in parseDirectCommand", async () => {
+    const parsed = parseDirectCommand(".reset");
+    assert.ok(parsed, "reset command must be parseable");
+    assert.equal(parsed.name, "reset");
+  });
+
+  await runCase("reset command is not allowed in rp_assistant mode", async () => {
+    const parsed = parseDirectCommand(".reset");
+    assert.ok(parsed);
+    const allowed = canExecuteDirectCommand(parsed, {
+      phase: "chat",
+      setupState: "ready",
+      chatType: "private",
+      relationship: "owner",
+      sessionModeId: "rp_assistant"
+    });
+    assert.equal(allowed, false, "reset should not be allowed in rp_assistant mode");
+  });
+
+  await runCase("reset command is allowed in scenario_host mode", async () => {
+    const parsed = parseDirectCommand(".reset");
+    assert.ok(parsed);
+    const allowed = canExecuteDirectCommand(parsed, {
+      phase: "chat",
+      setupState: "ready",
+      chatType: "private",
+      relationship: "owner",
+      sessionModeId: "scenario_host"
+    });
+    assert.equal(allowed, true, "reset should be allowed in scenario_host mode");
+  });
+
+  await runCase("clear command is allowed regardless of sessionModeId", async () => {
+    const parsed = parseDirectCommand(".clear");
+    assert.ok(parsed);
+    const allowed = canExecuteDirectCommand(parsed, {
+      phase: "chat",
+      setupState: "ready",
+      chatType: "private",
+      relationship: "owner",
+      sessionModeId: "scenario_host"
+    });
+    assert.equal(allowed, true);
+  });
+
+  await runCase("resolveDispatchableDirectCommand returns reset only in scenario_host", async () => {
+    const inScenario = resolveDispatchableDirectCommand({
+      phase: "chat",
+      setupState: "ready",
+      chatType: "private",
+      relationship: "owner",
+      isAtMentioned: false,
+      text: ".reset",
+      sessionModeId: "scenario_host"
+    });
+    assert.ok(inScenario, "should resolve in scenario_host");
+    assert.equal(inScenario.name, "reset");
+
+    const inRp = resolveDispatchableDirectCommand({
+      phase: "chat",
+      setupState: "ready",
+      chatType: "private",
+      relationship: "owner",
+      isAtMentioned: false,
+      text: ".reset",
+      sessionModeId: "rp_assistant"
+    });
+    assert.equal(inRp, null, "should not resolve in rp_assistant");
+  });
+
   await runCase("debug once with inline text enqueues a synthetic message and flushes immediately", async () => {
     const debugMarkers: Array<Record<string, unknown>> = [];
     const syntheticMessages: Array<Record<string, unknown>> = [];

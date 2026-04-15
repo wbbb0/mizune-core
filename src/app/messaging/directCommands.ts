@@ -18,6 +18,7 @@ type DirectCommandArgsMap = {
   own: { userId?: string };
   compact: { keep?: number };
   debug: { mode?: DebugModeArg; inlineText?: string };
+  reset: {};
 };
 
 export type DirectCommandName = keyof DirectCommandArgsMap;
@@ -37,6 +38,7 @@ interface DirectCommandHandlerInput {
   sessionManager: SessionManager;
   oneBotClient: OneBotClient;
   logger: Logger;
+  scenarioHostStateStore?: import("#modes/scenarioHost/stateStore.ts").ScenarioHostStateStore;
   forceCompactSession?: (sessionId: string, retainMessageCount?: number) => Promise<boolean>;
   flushSession?: (sessionId: string, options?: { skipReplyGate?: boolean }) => void;
   persistSession: (sessionId: string, reason: string) => void;
@@ -74,6 +76,7 @@ interface DirectCommandRoutingContext {
   chatType: "private" | "group";
   relationship?: Relationship;
   isAtMentioned?: boolean;
+  sessionModeId?: string;
 }
 
 interface DirectCommandDispatchContext extends DirectCommandRoutingContext {
@@ -85,6 +88,7 @@ interface DirectCommandDispatchContext extends DirectCommandRoutingContext {
 
 interface DirectCommandDescriptor {
   name: DirectCommandName;
+  scope?: "universal" | string;
   help: string;
   dispatch?: {
     requireTextOnly?: boolean;
@@ -497,6 +501,40 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         }
       }
     }
+  },
+  {
+    name: "reset",
+    scope: "scenario_host",
+    help: ".reset 重置场景状态并清空会话历史（仅 scenario_host 模式）",
+    dispatch: {
+      requireTextOnly: true
+    },
+    routing: {
+      allowInPrivate: true,
+      allowInOwnerMentionedGroup: false
+    },
+    parse(text: string): ParsedDirectCommand | null {
+      return /^[。.]\s*reset\s*$/i.test(text)
+        ? { name: "reset" }
+        : null;
+    },
+    async execute(ctx: DirectCommandExecutionContext) {
+      if (!ctx.input.scenarioHostStateStore) {
+        await ctx.send("当前实例未启用场景状态存储。");
+        return;
+      }
+      const { createInitialScenarioHostSessionState } = await import("#modes/scenarioHost/types.ts");
+      const defaults = {
+        playerUserId: (ctx.session as any).participantUserId ?? ctx.incomingMessage.userId,
+        playerDisplayName: (ctx.session as any).participantLabel ?? (ctx.session as any).participantUserId ?? ctx.incomingMessage.userId
+      };
+      ctx.input.sessionManager.cancelGeneration(ctx.session.id);
+      ctx.input.sessionManager.clearSession(ctx.session.id);
+      await ctx.input.scenarioHostStateStore.write(ctx.session.id, createInitialScenarioHostSessionState(defaults));
+      ctx.input.persistSession(ctx.session.id, "scenario_reset_by_command");
+      ctx.input.logger.info({ sessionId: ctx.session.id }, "scenario_reset_by_command");
+      await ctx.send("场景已重置，会话上下文已清空。");
+    }
   }
 ];
 
@@ -530,6 +568,13 @@ export function canExecuteDirectCommand(command: ParsedDirectCommand, context: D
     return context.setupState === "needs_owner"
       && context.chatType === "private"
       && descriptor.routing?.allowBeforeOwnerBound === true;
+  }
+
+  // Scope check: if a command has a non-universal scope, only allow in the matching mode
+  if (descriptor.scope && descriptor.scope !== "universal") {
+    if (context.sessionModeId !== descriptor.scope) {
+      return false;
+    }
   }
 
   if (context.chatType === "private") {
