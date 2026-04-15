@@ -54,7 +54,8 @@ export function getHistoryForCompressionSnapshotByTokens(
   session: SessionState,
   config: AppConfig,
   triggerTokens: number,
-  retainTokens: number
+  retainTokens: number,
+  reportedInputTokens?: number
 ): {
   historySummary: string | null;
   messagesToCompress: ReturnType<typeof projectLlmVisibleHistoryFromTranscript>;
@@ -62,7 +63,7 @@ export function getHistoryForCompressionSnapshotByTokens(
   transcriptStartIndexToKeep: number;
   estimatedTotalTokens: number;
 } | null {
-  return projectCompressionHistorySnapshotByTokens(session, config, triggerTokens, retainTokens);
+  return projectCompressionHistorySnapshotByTokens(session, config, triggerTokens, retainTokens, reportedInputTokens);
 }
 
 // Builds a minimal session view for APIs and diagnostics.

@@ -159,7 +159,10 @@ export function projectCompressionHistorySnapshotByTokens(
   session: SessionState,
   config: AppConfig,
   triggerTokens: number,
-  retainTokens: number
+  retainTokens: number,
+  // Provider-reported input tokens from the last request. When provided, replaces
+  // the heuristic sum for the trigger check (more accurate than character estimation).
+  reportedInputTokens?: number
 ): {
   historySummary: string | null;
   messagesToCompress: SessionHistoryMessage[];
@@ -177,7 +180,11 @@ export function projectCompressionHistorySnapshotByTokens(
   }
 
   const weights = config.conversation.historyCompression.tokenEstimation;
-  const estimatedTotalTokens = recentMessages.reduce((sum, msg) => sum + estimateTokens(msg.content, weights), 0);
+  // Include history summary tokens in the heuristic (it's part of every LLM request
+  // but was previously excluded, causing underestimation when summaries grow large).
+  const summaryTokens = session.historySummary ? estimateTokens(session.historySummary, weights) : 0;
+  const messageTokens = recentMessages.reduce((sum, msg) => sum + estimateTokens(msg.content, weights), 0);
+  const estimatedTotalTokens = reportedInputTokens ?? (summaryTokens + messageTokens);
   if (estimatedTotalTokens <= triggerTokens) {
     return null;
   }

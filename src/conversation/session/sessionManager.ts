@@ -375,6 +375,10 @@ export class SessionManager {
     return this.requireSession(sessionId).historyRevision;
   }
 
+  getLastLlmUsage(sessionId: string): SessionUsageSnapshot | null {
+    return this.requireSession(sessionId).lastLlmUsage;
+  }
+
   isGenerating(sessionId: string): boolean {
     const session = this.requireSession(sessionId);
     return isSessionGenerating(session);
@@ -556,7 +560,12 @@ export class SessionManager {
   }
 
   // Returns a compression snapshot when the estimated token count exceeds the trigger threshold.
-  getHistoryForCompressionByTokens(sessionId: string, triggerTokens: number, retainTokens: number): {
+  getHistoryForCompressionByTokens(
+    sessionId: string,
+    triggerTokens: number,
+    retainTokens: number,
+    reportedInputTokens?: number
+  ): {
     historySummary: string | null;
     messagesToCompress: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
     retainedMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
@@ -564,7 +573,7 @@ export class SessionManager {
     estimatedTotalTokens: number;
   } | null {
     const session = this.requireSession(sessionId);
-    return getHistoryForCompressionSnapshotByTokens(session, this.config, triggerTokens, retainTokens);
+    return getHistoryForCompressionSnapshotByTokens(session, this.config, triggerTokens, retainTokens, reportedInputTokens);
   }
 
   applyCompressedHistory(

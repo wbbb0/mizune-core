@@ -71,10 +71,15 @@ export class HistoryCompressor {
     }
     this.inFlightSessions.add(sessionId);
     try {
+      // Use provider-reported input tokens from the last request as a more accurate
+      // trigger signal when available, falling back to the heuristic estimate otherwise.
+      const lastUsage = this.sessionManager.getLastLlmUsage(sessionId);
+      const reportedInputTokens = lastUsage?.inputTokens ?? undefined;
       const snapshot = this.sessionManager.getHistoryForCompressionByTokens(
         sessionId,
         options.triggerTokens,
-        options.retainTokens
+        options.retainTokens,
+        reportedInputTokens
       );
       if (!snapshot) {
         return false;
