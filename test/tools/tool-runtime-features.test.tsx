@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import pino from "pino";
 import { getBuiltinTools } from "../../src/llm/tools/index.ts";
+import { scenarioHostToolHandlers } from "../../src/llm/tools/conversation/scenarioHostTools.ts";
 import { sessionToolHandlers } from "../../src/llm/tools/conversation/sessionTools.ts";
 import { resourceToolHandlers } from "../../src/llm/tools/runtime/resourceTools.ts";
 import { debugToolHandlers } from "../../src/llm/tools/runtime/debugTools.ts";
@@ -22,6 +24,8 @@ async function main() {
     assert.ok(names.includes("end_turn_without_reply"));
     assert.ok(names.includes("list_session_modes"));
     assert.ok(names.includes("switch_session_mode"));
+    assert.ok(names.includes("get_scenario_state"));
+    assert.ok(names.includes("update_scenario_state"));
     assert.ok(names.includes("get_current_time"));
     assert.ok(names.includes("view_forward_record"));
     assert.ok(names.includes("chat_file_view_media"));
@@ -228,7 +232,7 @@ async function main() {
     assert.equal((result as any).terminalResponse?.text, "");
   });
 
-  await runCase("session mode tools expose available modes and reject switching when only rp_assistant exists", async () => {
+  await runCase("session mode tools expose available modes and can switch to scenario_host in private chats", async () => {
     const listed = await sessionToolHandlers.list_session_modes!(
       { id: "tool_mode_list_1", type: "function", function: { name: "list_session_modes", arguments: "{}" } },
       {},
@@ -241,7 +245,13 @@ async function main() {
         listSessionModes: () => [{
           id: "rp_assistant",
           title: "RP Assistant",
-          description: "当前默认模式。"
+          description: "当前默认模式。",
+          allowedChatTypes: ["private", "group"]
+        }, {
+          id: "scenario_host",
+          title: "Scenario Host",
+          description: "私聊剧情主持。",
+          allowedChatTypes: ["private"]
         }],
         sessionManager: {
           getModeId() {
@@ -252,9 +262,13 @@ async function main() {
     );
     assert.equal(JSON.parse(String(listed)).currentModeId, "rp_assistant");
 
+    const listedPayload = JSON.parse(String(listed));
+    assert.equal(listedPayload.currentModeId, "rp_assistant");
+    assert.equal(listedPayload.modes[1].id, "scenario_host");
+
     const switched = await sessionToolHandlers.switch_session_mode!(
-      { id: "tool_mode_switch_1", type: "function", function: { name: "switch_session_mode", arguments: "{\"modeId\":\"some_other_mode\"}" } },
-      { modeId: "some_other_mode" },
+      { id: "tool_mode_switch_1", type: "function", function: { name: "switch_session_mode", arguments: "{\"modeId\":\"scenario_host\"}" } },
+      { modeId: "scenario_host" },
       {
         lastMessage: {
           sessionId: "private:owner",
@@ -264,16 +278,173 @@ async function main() {
         listSessionModes: () => [{
           id: "rp_assistant",
           title: "RP Assistant",
-          description: "当前默认模式。"
+          description: "当前默认模式。",
+          allowedChatTypes: ["private", "group"]
+        }, {
+          id: "scenario_host",
+          title: "Scenario Host",
+          description: "私聊剧情主持。",
+          allowedChatTypes: ["private"]
         }],
         sessionManager: {
+          getSession() {
+            return {
+              id: "private:owner",
+              type: "private",
+              participantUserId: "owner",
+              participantLabel: "Owner"
+            };
+          },
+          getModeId() {
+            return "rp_assistant";
+          },
+          setModeId() {
+            return true;
+          }
+        },
+        scenarioHostStateStore: {
+          async ensureForSession() {
+            return {};
+          }
+        }
+      } as any
+    );
+    assert.equal(JSON.parse(String(switched)).toModeId, "scenario_host");
+  });
+
+  await runCase("session mode tools reject scenario_host in group chats", async () => {
+    const switched = await sessionToolHandlers.switch_session_mode!(
+      { id: "tool_mode_switch_group_1", type: "function", function: { name: "switch_session_mode", arguments: "{\"modeId\":\"scenario_host\"}" } },
+      { modeId: "scenario_host" },
+      {
+        lastMessage: {
+          sessionId: "group:1000",
+          userId: "owner",
+          senderName: "Owner"
+        },
+        sessionManager: {
+          getSession() {
+            return {
+              id: "group:1000",
+              type: "group"
+            };
+          },
           getModeId() {
             return "rp_assistant";
           }
         }
       } as any
     );
-    assert.match(String(switched), /Unsupported session mode/);
+    assert.match(String(switched), /does not support group chat/);
+  });
+
+  await runCase("scenario_host tools read and update structured session state", async () => {
+    let state = {
+      version: 1 as const,
+      title: "旧标题",
+      currentSituation: "旧局势",
+      currentLocation: null as string | null,
+      sceneSummary: "",
+      player: { userId: "owner", displayName: "Owner" },
+      inventory: [] as Array<{ ownerId: string; item: string; quantity: number }>,
+      objectives: [] as Array<{ id: string; title: string; status: "active" | "completed" | "failed"; summary: string }>,
+      worldFacts: [] as string[],
+      flags: {} as Record<string, string | number | boolean>,
+      turnIndex: 0
+    };
+    const context = {
+      lastMessage: {
+        sessionId: "private:owner",
+        userId: "owner",
+        senderName: "Owner"
+      },
+      sessionManager: {
+        getModeId() {
+          return "scenario_host";
+        },
+        getSession() {
+          return {
+            id: "private:owner",
+            participantUserId: "owner",
+            participantLabel: "Owner"
+          };
+        }
+      },
+      scenarioHostStateStore: {
+        async ensure() {
+          return state;
+        },
+        async update(_sessionId: string, updater: (current: typeof state) => typeof state) {
+          state = updater(state);
+          return state;
+        }
+      },
+      persistSession() {}
+    } as any;
+
+    const initial = await scenarioHostToolHandlers.get_scenario_state!(
+      { id: "tool_scenario_get_1", type: "function", function: { name: "get_scenario_state", arguments: "{}" } },
+      {},
+      context
+    );
+    assert.equal(JSON.parse(String(initial)).title, "旧标题");
+
+    const updated = await scenarioHostToolHandlers.update_scenario_state!(
+      { id: "tool_scenario_update_1", type: "function", function: { name: "update_scenario_state", arguments: "{\"title\":\"钟楼迷雾\",\"currentSituation\":\"玩家来到门前\",\"turnIndex\":2}" } },
+      { title: "钟楼迷雾", currentSituation: "玩家来到门前", turnIndex: 2 },
+      context
+    );
+    assert.equal(JSON.parse(String(updated)).turnIndex, 2);
+
+    const worldFact = await scenarioHostToolHandlers.append_world_fact!(
+      { id: "tool_scenario_fact_1", type: "function", function: { name: "append_world_fact", arguments: "{\"fact\":\"钟楼每隔一刻钟响一次\"}" } },
+      { fact: "钟楼每隔一刻钟响一次" },
+      context
+    );
+    assert.equal(JSON.parse(String(worldFact)).worldFacts[0], "钟楼每隔一刻钟响一次");
+  });
+
+  await runCase("update_scenario_state sets initialized=true when provided", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "tool-scenario-"));
+    try {
+      const { ScenarioHostStateStore } = await import("../../src/modes/scenarioHost/stateStore.ts");
+      const store = new ScenarioHostStateStore(dataDir, createTestAppConfig(), pino({ level: "silent" }));
+      const sessionId = "private:u1";
+
+      const handler = scenarioHostToolHandlers["update_scenario_state"];
+      assert.ok(handler, "update_scenario_state handler must exist");
+
+      // Initialize state first
+      await store.ensure(sessionId, { playerUserId: "u1", playerDisplayName: "Alice" });
+
+      const context = {
+        lastMessage: { sessionId, userId: "u1", senderName: "Alice" },
+        sessionManager: {
+          getModeId() { return "scenario_host"; },
+          getSession() {
+            return {
+              participantUserId: "u1",
+              participantLabel: "Alice"
+            };
+          }
+        },
+        scenarioHostStateStore: store,
+        persistSession: () => {}
+      } as any;
+
+      // Call with initialized=true
+      const result = await handler(
+        { id: "tc1", function: { name: "update_scenario_state", arguments: "" } } as any,
+        { title: "神秘城堡", initialized: true },
+        context
+      );
+
+      const parsed = JSON.parse(result as string);
+      assert.equal(parsed.initialized, true);
+      assert.equal(parsed.title, "神秘城堡");
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
   });
 
   await runCase("get_current_time returns configured timezone and precise clock values", async () => {
