@@ -21,6 +21,7 @@ type DirectCommandDeps = Pick<
   | "historyCompressor"
   | "setupStore"
   | "whitelistStore"
+  | "scenarioHostStateStore"
 > & {
   persistSession: (sessionId: string, reason: string) => void;
   assignOwner: (input: {
@@ -108,6 +109,7 @@ function createDeliveryHandleDirectCommand(
     sessionManager: deps.sessionManager,
     oneBotClient: deps.oneBotClient,
     logger: deps.logger,
+    scenarioHostStateStore: deps.scenarioHostStateStore,
     forceCompactSession: async (sessionId, retainMessageCount) => (
       deps.historyCompressor.forceCompact(sessionId, retainMessageCount)
     ),
