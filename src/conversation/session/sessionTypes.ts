@@ -370,6 +370,7 @@ export type SessionPhase =
   | { kind: "turn_planner_evaluating" }
   | { kind: "turn_planner_waiting" }
   | { kind: "requesting_llm" }
+  | { kind: "reasoning" }
   | { kind: "generating" }
   | { kind: "tool_calling"; toolNames: string[]; lastToolName: string | null }
   | { kind: "delivering" };
@@ -379,6 +380,7 @@ export interface SessionState {
   type: "private" | "group";
   source: SessionSource;
   modeId: string;
+  setupConfirmed: boolean;
   participantUserId: string;
   participantLabel: string | null;
   replyDelivery: SessionDelivery;

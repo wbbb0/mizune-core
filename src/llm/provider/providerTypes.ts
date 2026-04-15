@@ -63,6 +63,7 @@ export interface LlmGenerateParams {
   tools?: LlmToolDefinition[] | (() => LlmToolDefinition[]);
   consumeSteerMessages?: () => Promise<LlmMessage[]> | LlmMessage[];
   onTextDelta?: (delta: string) => Promise<void> | void;
+  onReasoningDelta?: (delta: string) => void;
   toolExecutor?: (toolCall: LlmToolCall) => Promise<string | LlmToolExecutionResult>;
   onAssistantToolCalls?: (message: LlmMessage) => Promise<void> | void;
   onToolResultMessage?: (message: LlmMessage, toolName: string) => Promise<void> | void;
@@ -127,6 +128,7 @@ export interface LlmProviderGenerateParams {
   abortSignal?: AbortSignal;
   tools?: LlmToolDefinition[];
   onTextDelta?: (delta: string) => Promise<void> | void;
+  onReasoningDelta?: (delta: string) => void;
   timeoutMsOverride?: number;
   enableThinkingOverride?: boolean;
   preferNativeNoThinkingChatEndpoint?: boolean;

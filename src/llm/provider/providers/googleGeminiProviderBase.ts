@@ -165,7 +165,7 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
               if ("text" in part && typeof part.text === "string" && part.text.length > 0) {
                 timeoutController.markFirstResponseReceived();
                 if (part.thought) {
-                  accumulator.appendReasoningDelta(part.text);
+                  accumulator.appendReasoningDelta(part.text, params.onReasoningDelta);
                 } else {
                   await accumulator.appendTextDelta(part.text, params.onTextDelta);
                 }

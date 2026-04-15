@@ -78,6 +78,7 @@ export class LlmClient {
         tools,
         ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
         ...(params.onTextDelta ? { onTextDelta: params.onTextDelta } : {}),
+        ...(params.onReasoningDelta ? { onReasoningDelta: params.onReasoningDelta } : {}),
         ...(params.toolExecutor ? { toolExecutor: params.toolExecutor } : {}),
         ...(params.onFallbackEvent ? { onFallbackEvent: params.onFallbackEvent } : {}),
         ...(params.modelOverride ? { modelOverride: params.modelOverride } : {}),
@@ -221,6 +222,7 @@ export class LlmClient {
       ],
       ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
       ...(params.onTextDelta ? { onTextDelta: params.onTextDelta } : {}),
+      ...(params.onReasoningDelta ? { onReasoningDelta: params.onReasoningDelta } : {}),
       ...(params.onFallbackEvent ? { onFallbackEvent: params.onFallbackEvent } : {}),
       ...(params.modelOverride ? { modelOverride: params.modelOverride } : {}),
       modelRefOverride: activeModelRefs,
@@ -277,6 +279,7 @@ export class LlmClient {
           ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
           ...(resolvedTools ? { tools: resolvedTools } : {}),
           ...(params.onTextDelta ? { onTextDelta: params.onTextDelta } : {}),
+          ...(params.onReasoningDelta ? { onReasoningDelta: params.onReasoningDelta } : {}),
           ...(params.timeoutMsOverride ? { timeoutMsOverride: params.timeoutMsOverride } : {}),
           ...(params.enableThinkingOverride != null ? { enableThinkingOverride: params.enableThinkingOverride } : {}),
           ...(params.preferNativeNoThinkingChatEndpoint != null

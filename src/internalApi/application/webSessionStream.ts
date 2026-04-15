@@ -219,6 +219,8 @@ function deriveWebSessionPhase(snapshot: WebSessionStreamSnapshot): WebSessionPh
       return { ...phase, label: "暂不回复，等待触发" };
     case "requesting_llm":
       return { ...phase, label: "正在发起请求" };
+    case "reasoning":
+      return { ...phase, label: "正在思考" };
     case "generating":
       return { ...phase, label: "正在生成回复" };
     case "tool_calling":

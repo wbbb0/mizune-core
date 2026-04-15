@@ -104,6 +104,7 @@ export function isSessionGenerating(session: SessionState): boolean {
   return [
     "turn_planner_evaluating",
     "requesting_llm",
+    "reasoning",
     "generating",
     "tool_calling"
   ].includes(session.phase.kind);
@@ -113,6 +114,7 @@ export function isSessionResponding(session: SessionState): boolean {
   return [
     "turn_planner_evaluating",
     "requesting_llm",
+    "reasoning",
     "generating",
     "tool_calling",
     "delivering"

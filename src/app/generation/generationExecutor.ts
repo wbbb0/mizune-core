@@ -469,6 +469,9 @@ export function createGenerationExecutor(
             ...(streamResponse === false
               ? {}
               : {
+                  onReasoningDelta: (_delta: string) => {
+                    sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "reasoning" });
+                  },
                   onTextDelta: async (delta: string) => {
                     sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "generating" });
                     streamBuffer += delta;

@@ -21,7 +21,7 @@ export interface ProviderStreamAccumulator {
   reasoningContent: string;
   sawReasoningContent: boolean;
   appendTextDelta: (delta: string, onTextDelta?: LlmProviderGenerateParams["onTextDelta"]) => Promise<void>;
-  appendReasoningDelta: (delta: string) => void;
+  appendReasoningDelta: (delta: string, onReasoningDelta?: (delta: string) => void) => void;
   replaceUsage: (usage: LlmUsage) => void;
 }
 
@@ -86,12 +86,13 @@ export function createProviderStreamAccumulator(input: {
       this.text += delta;
       await onTextDelta?.(delta);
     },
-    appendReasoningDelta(delta) {
+    appendReasoningDelta(delta, onReasoningDelta) {
       if (!delta) {
         return;
       }
       this.sawReasoningContent = true;
       this.reasoningContent += delta;
+      onReasoningDelta?.(delta);
     },
     replaceUsage(usage) {
       this.usage = usage;

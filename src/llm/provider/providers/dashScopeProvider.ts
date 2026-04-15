@@ -154,7 +154,7 @@ export class DashScopeProvider implements LlmProvider {
 
             if (typeof message.reasoning_content === "string" && message.reasoning_content.length > 0) {
               timeoutController.markFirstResponseReceived();
-              accumulator.appendReasoningDelta(message.reasoning_content);
+              accumulator.appendReasoningDelta(message.reasoning_content, params.onReasoningDelta);
             }
             const contentDelta = extractDashScopeText(message.content);
             if (contentDelta.length > 0) {

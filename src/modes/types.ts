@@ -3,6 +3,7 @@ export type SessionModeChatType = "private" | "group";
 export interface SessionModeSetupContext {
   globalSetupReady: boolean;
   sessionStateInitialized: boolean;
+  setupConfirmedByUser: boolean;
   chatType: "private" | "group";
   relationship: string;
 }
@@ -16,7 +17,7 @@ export interface SessionModeSetupToolsetOverride {
   plannerSignals?: string[];
 }
 
-export type SetupCompletionSignal = "global_setup_ready" | "session_state_initialized";
+export type SetupCompletionSignal = "global_setup_ready" | "session_state_initialized" | "user_command";
 
 export interface SessionModeSetupPhase {
   needsSetup(ctx: SessionModeSetupContext): boolean;

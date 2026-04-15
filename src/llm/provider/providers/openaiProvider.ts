@@ -213,7 +213,7 @@ export class OpenAiProvider implements LlmProvider {
             const delta = payload.choices?.[0]?.delta;
             if (typeof delta?.reasoning_content === "string") {
               timeoutController.markFirstResponseReceived();
-              accumulator.appendReasoningDelta(delta.reasoning_content);
+              accumulator.appendReasoningDelta(delta.reasoning_content, params.onReasoningDelta);
             }
             if (delta?.content) {
               timeoutController.markFirstResponseReceived();
