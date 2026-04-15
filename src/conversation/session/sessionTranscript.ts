@@ -1,6 +1,8 @@
 import type { AppConfig } from "#config/config.ts";
 import { formatStructuredMediaReference, projectTranscriptMessageItemToHistoryMessage } from "./historyContext.ts";
 import type {
+  InternalAssistantToolCallItem,
+  InternalToolResultItem,
   InternalTranscriptItem,
   TranscriptSessionModeSwitchItem,
   TranscriptAssistantMessageItem,
@@ -184,7 +186,21 @@ export function projectCompressionHistorySnapshotByTokens(
   // but was previously excluded, causing underestimation when summaries grow large).
   const summaryTokens = session.historySummary ? estimateTokens(session.historySummary, weights) : 0;
   const messageTokens = recentMessages.reduce((sum, msg) => sum + estimateTokens(msg.content, weights), 0);
-  const estimatedTotalTokens = reportedInputTokens ?? (summaryTokens + messageTokens);
+  // Include tool call and result tokens — these can be significant in tool-heavy sessions
+  // (shell output, file contents, browser snapshots, etc.) and were previously unaccounted.
+  // This only affects the trigger-side heuristic; the retain split still operates on messages.
+  const toolCallTokens = llmVisibleItems
+    .filter((item): item is InternalAssistantToolCallItem => item.kind === "assistant_tool_call")
+    .reduce((sum, item) => {
+      const argsTokens = item.toolCalls.reduce(
+        (s, tc) => s + estimateTokens(tc.function.arguments, weights), 0
+      );
+      return sum + estimateTokens(item.content, weights) + argsTokens;
+    }, 0);
+  const toolResultTokens = llmVisibleItems
+    .filter((item): item is InternalToolResultItem => item.kind === "tool_result")
+    .reduce((sum, item) => sum + estimateTokens(item.content, weights), 0);
+  const estimatedTotalTokens = reportedInputTokens ?? (summaryTokens + messageTokens + toolCallTokens + toolResultTokens);
   if (estimatedTotalTokens <= triggerTokens) {
     return null;
   }
