@@ -105,6 +105,7 @@ function buildSetupSnapshotLines(persona: Persona, missingFields: EditablePerson
 
 export function buildBaseSystemLines(input: {
   sessionMode: "private" | "group" | "unknown";
+  modeId?: string;
   interactionMode?: PromptInteractionMode;
   visibleToolNames?: string[] | undefined;
   activeToolsets?: ToolsetView[] | undefined;
@@ -117,7 +118,47 @@ export function buildBaseSystemLines(input: {
   recentToolEvents?: PromptInput["recentToolEvents"] | undefined;
   liveResources?: PromptInput["liveResources"] | undefined;
   operationNotes?: PromptOperationNote[] | undefined;
+  scenarioStateLines?: string[] | undefined;
+  isInSetup?: boolean | undefined;
 }): string[] {
+  if (input.modeId === "scenario_host") {
+    if (input.isInSetup) {
+      return [
+        renderPromptSection("host_setup_mode", buildScenarioHostSetupModeLines()),
+        renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
+        renderPromptSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
+        renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
+          activeToolsets: input.activeToolsets,
+          visibleToolNames: input.visibleToolNames
+        })),
+        renderPromptSection("participant_context", buildParticipantContextLines(input.sessionMode, input.participantProfiles))
+      ].filter((item): item is string => Boolean(item));
+    }
+    return [
+      renderPromptSection("host_identity", buildScenarioHostIdentityLines()),
+      renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
+      renderPromptSection("host_rules", buildScenarioHostRuleLines()),
+      renderPromptSection("context_rules", buildContextRuleLines({
+        visibleToolNames: input.visibleToolNames
+      })),
+      renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
+        activeToolsets: input.activeToolsets,
+        visibleToolNames: input.visibleToolNames
+      })),
+      renderPromptSection("live_resources", buildLiveResourceLines(input.liveResources)),
+      renderPromptSection("participant_context", buildParticipantContextLines(input.sessionMode, input.participantProfiles)),
+      renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
+      renderPromptSection("recent_tool_events", buildRecentToolEventLines(input.recentToolEvents)),
+      renderPromptSection("scenario_state", input.scenarioStateLines ?? []),
+      renderPromptSection("current_user", buildCurrentUserLines({
+        userProfile: {
+          ...input.userProfile,
+          memories: []
+        }
+      }))
+    ].filter((item): item is string => Boolean(item));
+  }
+
   const filteredGlobalMemories = filterGlobalMemories({
     persona: input.persona,
     globalMemories: input.globalMemories,
@@ -156,6 +197,38 @@ export function buildBaseSystemLines(input: {
       }
     }))
   ].filter((item): item is string => Boolean(item));
+}
+
+function buildScenarioHostIdentityLines(): string[] {
+  return [
+    "你是剧情主持模式下的场景主持者，负责描述环境、推进事件、控制非玩家角色，并回应玩家行动。",
+    "默认用中文主持，不要把自己当成普通陪聊助手，也不要回到 RP 助手的人设口吻。"
+  ];
+}
+
+function buildScenarioHostRuleLines(): string[] {
+  return [
+    "优先把玩家输入理解为行动声明、角色说话、观察查询或场外提问，并据此推进场景。",
+    "每轮都要给出可继续互动的场景反馈；若暂时无法推进，要明确说明阻碍。",
+    "保持轻规则主持；可以给出合理成败与代价，但不要引入复杂数值、骰点或长规则讲解。",
+    "不要把内部状态字段原样罗列给玩家，除非玩家明确要求查看总结或清单。",
+    "当前版本只服务单主玩家私聊场景。"
+  ];
+}
+
+function buildScenarioHostSetupModeLines(): string[] {
+  return [
+    "当前处于场景初始化阶段，故事基础信息尚未设定。",
+    "你的首要目标是：引导玩家提供场景信息，并在获取足够信息后调用 update_scenario_state，将 initialized 设为 true，完成初始化。",
+    "需要向玩家询问以下内容（可一次性提问，允许玩家简短回答）：",
+    "- 场景标题（title）：这是什么故事？",
+    "- 当前情况（currentSituation）：故事从哪里开始？玩家当前在哪、面对什么？",
+    "- 玩家角色（player）：玩家扮演的是谁？",
+    "信息收集完毕后，立即调用 update_scenario_state 填入以上字段，并将 initialized 设为 true。",
+    "初始化完成后，简短告知玩家可以开始行动，然后进入正常主持流程。",
+    "不要在初始化阶段进行剧情推进；只收集信息并写入状态。",
+    "回复保持简洁，不用 Markdown 标题或列表。"
+  ];
 }
 
 export function buildScheduledTaskSystemLines(input: {

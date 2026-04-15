@@ -40,6 +40,7 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
   };
   const system = buildBaseSystemLines({
     sessionMode: input.sessionId.startsWith("group:") ? "group" : input.sessionId.startsWith("private:") ? "private" : "unknown",
+    ...(input.modeId ? { modeId: input.modeId } : {}),
     ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
     ...(input.visibleToolNames ? { visibleToolNames: input.visibleToolNames } : {}),
     ...(input.activeToolsets ? { activeToolsets: input.activeToolsets } : {}),
@@ -48,10 +49,12 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
     participantProfiles: input.participantProfiles,
     userProfile: input.userProfile,
     globalMemories: input.globalMemories,
-    historySummary: input.historySummary,
-    recentToolEvents: input.recentToolEvents,
-    liveResources: input.liveResources,
-    ...(input.operationNotes ? { operationNotes: input.operationNotes } : {})
+      historySummary: input.historySummary,
+      recentToolEvents: input.recentToolEvents,
+      liveResources: input.liveResources,
+      ...(input.operationNotes ? { operationNotes: input.operationNotes } : {}),
+      ...(input.scenarioStateLines ? { scenarioStateLines: input.scenarioStateLines } : {}),
+      ...(input.isInSetup ? { isInSetup: input.isInSetup } : {})
   }).join("\n");
 
   const historyMessages: LlmMessage[] = input.recentMessages.map((message) => ({
@@ -77,6 +80,7 @@ export function buildScheduledTaskPrompt(input: ScheduledTaskPromptInput): LlmMe
   const system = [
     ...buildBaseSystemLines({
         sessionMode: input.targetContext.chatType,
+        ...(input.modeId ? { modeId: input.modeId } : {}),
         ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
         ...(input.visibleToolNames ? { visibleToolNames: input.visibleToolNames } : {}),
         ...(input.activeToolsets ? { activeToolsets: input.activeToolsets } : {}),
@@ -88,7 +92,8 @@ export function buildScheduledTaskPrompt(input: ScheduledTaskPromptInput): LlmMe
       historySummary: input.historySummary,
       recentToolEvents: input.recentToolEvents,
       liveResources: input.liveResources,
-      ...(input.operationNotes ? { operationNotes: input.operationNotes } : {})
+      ...(input.operationNotes ? { operationNotes: input.operationNotes } : {}),
+      ...(input.scenarioStateLines ? { scenarioStateLines: input.scenarioStateLines } : {})
     }),
     ...buildScheduledTaskSystemLines({
       trigger: input.trigger,

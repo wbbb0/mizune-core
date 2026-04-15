@@ -74,6 +74,11 @@ async function main() {
           return [];
         }
       } as any,
+      scenarioHostStateStore: {
+        async ensure() {
+          throw new Error("should not load scenario_host state in setup prompt");
+        }
+      } as any,
       shellRuntime: {
         async listSessionResources() {
           return [];
@@ -186,6 +191,11 @@ async function main() {
           return [];
         }
       } as any,
+      scenarioHostStateStore: {
+        async ensure() {
+          throw new Error("should not load scenario_host state in rp_assistant prompt");
+        }
+      } as any,
       shellRuntime: {
         async listSessionResources() {
           return [{
@@ -278,6 +288,273 @@ async function main() {
     assert.match(system, /res_browser_7 \| browser \| active \| Docs 7 \| 浏览第 7 个页面/);
     assert.match(system, /res_browser_1 \| browser \| active \| Docs 1/);
     assert.match(system, /res_shell_1 \| shell \| active \| npm test @ \/repo \| 跑测试/);
+  });
+
+  await runCase("scenario_host setup prompt uses host_setup_mode section when isInSetup=true", async () => {
+    const builder = createGenerationPromptBuilder({
+      config: createTestAppConfig({
+        llm: {
+          enabled: true,
+          mainRouting: {
+            smallModelRef: ["main"],
+            largeModelRef: ["main"]
+          },
+          models: { main: { supportsVision: false } }
+        }
+      }),
+      oneBotClient: {} as any,
+      audioStore: {} as any,
+      audioTranscriber: {
+        async transcribeMany() {
+          return [];
+        }
+      } as any,
+      npcDirectory: {
+        listProfiles() {
+          return [];
+        }
+      } as any,
+      browserService: {
+        async listPages() {
+          return { pages: [] };
+        }
+      } as any,
+      localFileService: {} as any,
+      chatFileStore: {} as any,
+      mediaVisionService: {
+        async prepareFilesForModel() {
+          return [];
+        }
+      } as any,
+      mediaCaptionService: {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      globalMemoryStore: {
+        async getAll() {
+          return [];
+        }
+      } as any,
+      operationNoteStore: {
+        async getAll() {
+          return [];
+        }
+      } as any,
+      setupStore: {
+        describeMissingFields() {
+          return [];
+        }
+      } as any,
+      shellRuntime: {
+        async listSessionResources() {
+          return [];
+        }
+      } as any,
+      scenarioHostStateStore: {
+        async ensure() {
+          return {
+            version: 1 as const,
+            title: "未命名场景",
+            currentSituation: "场景尚未开始，请根据玩家接下来的行动开始主持。",
+            currentLocation: null,
+            sceneSummary: "",
+            player: { userId: "u1", displayName: "Alice" },
+            inventory: [],
+            objectives: [],
+            worldFacts: [],
+            flags: {},
+            initialized: false,
+            turnIndex: 0
+          };
+        }
+      } as any
+    });
+
+    const result = await builder.buildChatPromptMessages({
+      sessionId: "private:u1",
+      modeId: "scenario_host",
+      interactionMode: "normal",
+      mainModelRef: ["main"],
+      visibleToolNames: [],
+      activeToolsets: [],
+      lateSystemMessages: [],
+      replayMessages: [],
+      persona: {
+        name: "主持者",
+        role: "",
+        personality: "",
+        speechStyle: "",
+        appearance: "",
+        interests: "",
+        background: "",
+        rules: ""
+      },
+      relationship: "owner",
+      participantProfiles: [],
+      currentUser: null,
+      historySummary: null,
+      historyForPrompt: [],
+      recentToolEvents: [],
+      debugMarkers: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      abortSignal: new AbortController().signal,
+      batchMessages: [{
+        userId: "u1",
+        senderName: "Alice",
+        text: "开始游戏",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: Date.now()
+      }],
+      isInSetup: true
+    });
+
+    const systemContent = result.promptMessages
+      .filter((m) => m.role === "system")
+      .map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)))
+      .join("\n");
+
+    assert.ok(systemContent.includes("host_setup_mode"), `Expected host_setup_mode section, got: ${systemContent.slice(0, 400)}`);
+    assert.ok(!systemContent.includes("host_identity"), `Expected no host_identity section in setup mode, got: ${systemContent.slice(0, 400)}`);
+  });
+
+  await runCase("scenario_host prompt injects scenario state and avoids rp identity lines", async () => {
+    const builder = createGenerationPromptBuilder({
+      config: createTestAppConfig(),
+      oneBotClient: {} as any,
+      audioStore: {} as any,
+      audioTranscriber: {
+        async transcribeMany() {
+          return [];
+        }
+      } as any,
+      npcDirectory: {
+        listProfiles() {
+          return [];
+        }
+      } as any,
+      browserService: {
+        async listPages() {
+          return { pages: [] };
+        }
+      } as any,
+      localFileService: {} as any,
+      chatFileStore: {} as any,
+      mediaVisionService: {
+        async prepareFilesForModel() {
+          return [];
+        }
+      } as any,
+      mediaCaptionService: {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      globalMemoryStore: {
+        async getAll() {
+          throw new Error("scenario_host should not read global memories");
+        }
+      } as any,
+      operationNoteStore: {
+        async getAll() {
+          throw new Error("scenario_host should not read operation notes");
+        }
+      } as any,
+      scenarioHostStateStore: {
+        async ensure() {
+          return {
+            version: 1,
+            title: "钟楼迷雾",
+            currentSituation: "玩家刚抵达废弃钟楼门口。",
+            currentLocation: "旧钟楼外",
+            sceneSummary: "夜色、迷雾、远处有钟声。",
+            player: { userId: "10001", displayName: "Tester" },
+            inventory: [{ ownerId: "10001", item: "提灯", quantity: 1 }],
+            objectives: [{ id: "obj_1", title: "进入钟楼", status: "active", summary: "找到入口" }],
+            worldFacts: ["钟楼附近会周期性响起钟声"],
+            flags: { heard_bell: true },
+            turnIndex: 3
+          };
+        }
+      } as any,
+      shellRuntime: {
+        async listSessionResources() {
+          return [];
+        }
+      } as any,
+      setupStore: {
+        describeMissingFields() {
+          return [];
+        }
+      } as any
+    });
+
+    const result = await builder.buildChatPromptMessages({
+      sessionId: "private:10001",
+      modeId: "scenario_host",
+      interactionMode: "normal",
+      mainModelRef: ["main"],
+      visibleToolNames: ["get_scenario_state"],
+      activeToolsets: [{
+        id: "scenario_host_state",
+        title: "场景状态",
+        description: "维护场景状态",
+        toolNames: ["get_scenario_state"]
+      }],
+      persona: {
+        name: "Bot",
+        role: "助手",
+        appearance: "",
+        personality: "",
+        interests: "",
+        background: "",
+        speechStyle: "",
+        rules: ""
+      },
+      relationship: "known",
+      participantProfiles: [],
+      currentUser: { userId: "10001", relationship: "known", memories: [{ id: "mem_1", title: "旧记忆", content: "不应出现", updatedAt: 1 }] } as any,
+      historySummary: null,
+      historyForPrompt: [],
+      recentToolEvents: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      batchMessages: [{
+        userId: "10001",
+        senderName: "Tester",
+        text: "我推开钟楼的门",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: Date.now()
+      }]
+    });
+
+    const system = String(result.promptMessages[0]?.content ?? "");
+    assert.match(system, /剧情主持模式下的场景主持者/);
+    assert.match(system, /标题=钟楼迷雾/);
+    assert.match(system, /当前位置=旧钟楼外/);
+    assert.doesNotMatch(system, /你是具有角色扮演属性的聊天角色/);
+    assert.doesNotMatch(system, /global_memory/);
   });
 }
 

@@ -271,8 +271,7 @@ export function createGenerationSessionOrchestrator(
           : [])
       ];
       const isPersonaSetupMode = setupMode && mode.setupPhase?.promptMode === "persona_setup";
-      // TODO: re-add after Task 6 adds isInSetup to buildChatPromptMessages
-      // const isChatWithSetupInjection = setupMode && mode.setupPhase?.promptMode === "chat_with_setup_injection";
+      const isChatWithSetupInjection = setupMode && mode.setupPhase?.promptMode === "chat_with_setup_injection";
 
       const promptBuildResult = isPersonaSetupMode
         ? await services.promptBuilder.buildSetupPromptMessages({
@@ -311,7 +310,8 @@ export function createGenerationSessionOrchestrator(
             internalTranscript: refreshedSession.internalTranscript,
             lastLlmUsage: refreshedSession.lastLlmUsage,
             abortSignal: abortController.signal,
-            batchMessages: toPromptBatchMessages(messages)
+            batchMessages: toPromptBatchMessages(messages),
+            ...(isChatWithSetupInjection ? { isInSetup: true } : {})
           });
 
       await services.runGeneration({

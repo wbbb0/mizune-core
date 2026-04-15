@@ -133,6 +133,7 @@ export interface PromptBatchMessage {
 
 export interface PromptInput {
   sessionId: string;
+  modeId?: string;
   interactionMode?: PromptInteractionMode;
   visibleToolNames?: string[];
   activeToolsets?: ToolsetView[];
@@ -151,11 +152,14 @@ export interface PromptInput {
   debugMarkers?: SessionDebugMarker[] | undefined;
   liveResources?: PromptLiveResource[] | undefined;
   operationNotes?: PromptOperationNote[] | undefined;
+  scenarioStateLines?: string[] | undefined;
+  isInSetup?: boolean | undefined;
   batchMessages: PromptBatchMessage[];
 }
 
 export interface InternalSessionTriggerPromptInput {
   sessionId: string;
+  modeId?: string;
   interactionMode?: PromptInteractionMode;
   visibleToolNames?: string[];
   activeToolsets?: ToolsetView[];
@@ -210,6 +214,7 @@ export interface InternalSessionTriggerPromptInput {
   debugMarkers?: PromptInput["debugMarkers"];
   liveResources?: PromptInput["liveResources"];
   operationNotes?: PromptInput["operationNotes"];
+  scenarioStateLines?: PromptInput["scenarioStateLines"];
   targetContext:
     | {
         chatType: "private";

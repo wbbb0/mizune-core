@@ -24,6 +24,7 @@ import type { ChatAttachment } from "#services/workspace/types.ts";
 import type { ToolsetView } from "#llm/tools/toolsets.ts";
 import type { OperationNoteEntry } from "#llm/prompt/operationNoteStore.ts";
 import { isNearDuplicateText } from "#memory/similarity.ts";
+import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 
 type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
@@ -93,6 +94,7 @@ export interface GenerationPromptBuildResult {
 export interface GenerationPromptBuilder {
   buildChatPromptMessages: (input: {
     sessionId: string;
+    modeId?: string;
     interactionMode: PromptInteractionMode;
     mainModelRef: string[];
     visibleToolNames: string[];
@@ -111,9 +113,11 @@ export interface GenerationPromptBuilder {
     lastLlmUsage: SessionUsageSnapshot | null;
     batchMessages: GenerationPromptBatchMessage[];
     abortSignal?: AbortSignal;
+    isInSetup?: boolean;
   }) => Promise<GenerationPromptBuildResult>;
   buildScheduledPromptMessages: (input: {
     sessionId: string;
+    modeId?: string;
     interactionMode: PromptInteractionMode;
     visibleToolNames: string[];
     activeToolsets: ToolsetView[];
@@ -149,6 +153,25 @@ export interface GenerationPromptBuilder {
     batchMessages: GenerationPromptBatchMessage[];
     abortSignal?: AbortSignal;
   }) => Promise<GenerationPromptBuildResult>;
+}
+
+function isScenarioHostMode(modeId?: string): boolean {
+  return modeId === "scenario_host";
+}
+
+function buildScenarioStateLines(state: ScenarioHostSessionState): string[] {
+  return [
+    `标题=${state.title}`,
+    `当前局势=${state.currentSituation}`,
+    `当前位置=${state.currentLocation ?? "未设定"}`,
+    `场景摘要=${state.sceneSummary || "无"}`,
+    `主玩家=${state.player.displayName} (${state.player.userId})`,
+    `背包=${state.inventory.length > 0 ? state.inventory.map((item: ScenarioHostSessionState["inventory"][number]) => `${item.ownerId}:${item.item}x${item.quantity}`).join("；") : "空"}`,
+    `目标=${state.objectives.length > 0 ? state.objectives.map((item: ScenarioHostSessionState["objectives"][number]) => `${item.id}:${item.title}[${item.status}] ${item.summary}`.trim()).join("；") : "无"}`,
+    `世界事实=${state.worldFacts.length > 0 ? state.worldFacts.join("；") : "无"}`,
+    `标记=${Object.keys(state.flags).length > 0 ? Object.entries(state.flags).map(([key, value]) => `${key}=${String(value)}`).join("；") : "无"}`,
+    `回合数=${state.turnIndex}`
+  ];
 }
 
 // Converts relevant NPC records into prompt-friendly profile payloads.
@@ -424,6 +447,7 @@ function resolveOperationNotes(
 export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps): GenerationPromptBuilder {
   const buildChatPromptMessages = async (input: {
     sessionId: string;
+    modeId?: string;
     interactionMode: PromptInteractionMode;
     mainModelRef: string[];
     visibleToolNames: string[];
@@ -442,7 +466,9 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     lastLlmUsage: SessionUsageSnapshot | null;
     batchMessages: GenerationPromptBatchMessage[];
     abortSignal?: AbortSignal;
+    isInSetup?: boolean;
   }) => {
+    const scenarioHostMode = isScenarioHostMode(input.modeId);
     const mainProfile = getPrimaryModelProfile(deps.config, input.mainModelRef);
     const mediaContext = await preparePromptMediaContext(deps, {
       historyForPrompt: input.historyForPrompt,
@@ -456,10 +482,23 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       ...input.participantProfiles.map((item) => item.userId),
       ...input.batchMessages.map((item) => item.userId)
     ]);
-    const globalMemories = await deps.globalMemoryStore.getAll();
-    const operationNotes = resolveOperationNotes(await deps.operationNoteStore.getAll(), {
-      activeToolsets: input.activeToolsets
-    });
+    const globalMemories = scenarioHostMode
+      ? []
+      : await deps.globalMemoryStore.getAll();
+    const operationNotes = scenarioHostMode
+      ? []
+      : resolveOperationNotes(await deps.operationNoteStore.getAll(), {
+          activeToolsets: input.activeToolsets
+        });
+    const scenarioState = scenarioHostMode
+      ? await deps.scenarioHostStateStore.ensure(input.sessionId, {
+          playerUserId: input.currentUser?.userId ?? input.batchMessages[input.batchMessages.length - 1]?.userId ?? "unknown_user",
+          playerDisplayName: input.currentUser?.preferredAddress
+            ?? input.batchMessages[input.batchMessages.length - 1]?.senderName
+            ?? input.currentUser?.userId
+            ?? "玩家"
+        })
+      : null;
     const liveResources = shouldIncludeLiveResources(input.visibleToolNames)
       ? await collectPromptLiveResources(deps)
       : [];
@@ -477,6 +516,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
 
     const promptMessages = buildPrompt({
       sessionId: input.sessionId,
+      ...(input.modeId ? { modeId: input.modeId } : {}),
       interactionMode: input.interactionMode,
       visibleToolNames: input.visibleToolNames,
       activeToolsets: input.activeToolsets,
@@ -487,7 +527,9 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       npcProfiles: buildNpcPromptProfiles(deps, relevantUserIds),
       participantProfiles: input.participantProfiles,
       userProfile: buildUserProfilePromptState(
-        input.currentUser,
+        scenarioHostMode
+          ? (input.currentUser ? { ...input.currentUser, memories: [] } : input.currentUser)
+          : input.currentUser,
         input.batchMessages[input.batchMessages.length - 1]?.senderName
       ),
       globalMemories,
@@ -496,6 +538,8 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       debugMarkers: input.debugMarkers,
       liveResources,
       operationNotes,
+      ...(scenarioState ? { scenarioStateLines: buildScenarioStateLines(scenarioState) } : {}),
+      ...(input.isInSetup ? { isInSetup: input.isInSetup } : {}),
       recentMessages: mediaContext.historyForPrompt,
       batchMessages: preparedBatchMessages
     });
@@ -527,6 +571,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
 
   const buildScheduledPromptMessages = async (input: {
     sessionId: string;
+    modeId?: string;
     interactionMode: PromptInteractionMode;
     visibleToolNames: string[];
     activeToolsets: ToolsetView[];
@@ -546,6 +591,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     targetContext: ScheduledPromptTargetContext;
     abortSignal?: AbortSignal;
   }) => {
+    const scenarioHostMode = isScenarioHostMode(input.modeId);
     const [mediaContext, liveResources, globalMemories, noteEntries] = await Promise.all([
       preparePromptMediaContext(deps, {
         historyForPrompt: input.historyForPrompt,
@@ -555,12 +601,19 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       shouldIncludeLiveResources(input.visibleToolNames)
         ? collectPromptLiveResources(deps)
         : Promise.resolve([]),
-      deps.globalMemoryStore.getAll(),
-      deps.operationNoteStore.getAll()
+      scenarioHostMode ? Promise.resolve([]) : deps.globalMemoryStore.getAll(),
+      scenarioHostMode ? Promise.resolve([]) : deps.operationNoteStore.getAll()
     ]);
     const operationNotes = resolveOperationNotes(noteEntries, {
       activeToolsets: input.activeToolsets
     });
+    const scenarioState = scenarioHostMode
+      ? await deps.scenarioHostStateStore.ensure(input.sessionId, {
+          playerUserId: input.currentUser?.userId ?? (input.targetContext.chatType === "private" ? input.targetContext.userId : "unknown_user"),
+          playerDisplayName: input.currentUser?.preferredAddress
+            ?? (input.targetContext.chatType === "private" ? input.targetContext.senderName : "玩家")
+        })
+      : null;
 
     const relevantUserIds = new Set<string>([
       ...(input.currentUser?.userId ? [input.currentUser.userId] : []),
@@ -570,6 +623,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
 
     const promptMessages = buildScheduledTaskPrompt({
       sessionId: input.sessionId,
+      ...(input.modeId ? { modeId: input.modeId } : {}),
       interactionMode: input.interactionMode,
       visibleToolNames: input.visibleToolNames,
       activeToolsets: input.activeToolsets,
@@ -581,7 +635,9 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       npcProfiles: buildNpcPromptProfiles(deps, relevantUserIds),
       participantProfiles: input.participantProfiles,
       userProfile: buildUserProfilePromptState(
-        input.currentUser,
+        scenarioHostMode
+          ? (input.currentUser ? { ...input.currentUser, memories: [] } : input.currentUser)
+          : input.currentUser,
         input.targetContext.chatType === "private" ? input.targetContext.senderName : undefined
       ),
       globalMemories,
@@ -590,6 +646,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       debugMarkers: input.debugMarkers,
       liveResources,
       operationNotes,
+      ...(scenarioState ? { scenarioStateLines: buildScenarioStateLines(scenarioState) } : {}),
       recentMessages: mediaContext.historyForPrompt,
       targetContext: input.targetContext
     });
