@@ -242,7 +242,7 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
       return reply;
     }
     try {
-      return createWebSession(services.config, body);
+      return await createWebSession(services.config, body);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
     }

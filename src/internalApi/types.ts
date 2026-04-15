@@ -19,6 +19,7 @@ import type { ChatMessageFileGcService } from "#services/workspace/chatMessageFi
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
+import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import {
   createEditorService,
   type EditorService
@@ -40,6 +41,7 @@ export interface InternalApiDeps {
   sessionManager: SessionManager;
   personaStore: PersonaStore;
   globalMemoryStore: GlobalMemoryStore;
+  scenarioHostStateStore: ScenarioHostStateStore;
   userStore: UserStore;
   whitelistStore: WhitelistStore;
   requestStore: RequestStore;
@@ -73,7 +75,7 @@ export interface InternalApiDeps {
 }
 
 export interface InternalApiServices {
-  config: Pick<InternalApiDeps, "config" | "whitelistStore" | "sessionManager" | "sessionPersistence" | "personaStore" | "globalMemoryStore" | "userStore" | "chatMessageFileGcService">;
+  config: Pick<InternalApiDeps, "config" | "whitelistStore" | "sessionManager" | "sessionPersistence" | "personaStore" | "globalMemoryStore" | "scenarioHostStateStore" | "userStore" | "chatMessageFileGcService">;
   editor: EditorService;
   dataBrowser: DataBrowserService;
   localFileAdmin: LocalFileAdminService;
@@ -94,6 +96,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       sessionPersistence: deps.sessionPersistence,
       personaStore: deps.personaStore,
       globalMemoryStore: deps.globalMemoryStore,
+      scenarioHostStateStore: deps.scenarioHostStateStore,
       userStore: deps.userStore,
       chatMessageFileGcService: deps.chatMessageFileGcService
     },

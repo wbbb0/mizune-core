@@ -4,6 +4,7 @@
         "npm --prefix webui": true,
         "npm exec": true,
         "npm install": true,
-        "npm run": true
+        "npm run": true,
+        "npx tsx": true
     },
 }

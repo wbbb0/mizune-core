@@ -1,7 +1,7 @@
 import type { InternalApiDeps } from "../types.ts";
 import type { ParsedCreateSessionBody, ParsedSwitchSessionModeBody } from "../routeSupport.ts";
 import type { SessionState } from "#conversation/session/sessionTypes.ts";
-import { getDefaultSessionModeId, listSessionModes, requireSessionModeDefinition } from "#modes/registry.ts";
+import { getDefaultSessionModeId, listSessionModes, requireSessionModeDefinition, sessionModeSupportsChatType } from "#modes/registry.ts";
 
 import { isSessionGenerating } from "#conversation/session/sessionQueries.ts";
 
@@ -57,8 +57,19 @@ export function listSessions(deps: Pick<InternalApiDeps, "sessionManager">) {
 
 export function listAvailableSessionModes() {
   return {
-    modes: listSessionModes()
+    modes: listSessionModes().map((mode) => ({
+      id: mode.id,
+      title: mode.title,
+      description: mode.description,
+      allowedChatTypes: mode.allowedChatTypes
+    }))
   };
+}
+
+function assertSessionModeAllowed(modeId: string, chatType: "private" | "group"): void {
+  if (!sessionModeSupportsChatType(modeId, chatType)) {
+    throw new Error(`Session mode ${modeId} does not support ${chatType} chat`);
+  }
 }
 
 export async function getSessionDetail(
@@ -80,13 +91,14 @@ export async function getSessionDetail(
   };
 }
 
-export function createWebSession(
-  deps: Pick<InternalApiDeps, "sessionManager" | "sessionPersistence">,
+export async function createWebSession(
+  deps: Pick<InternalApiDeps, "sessionManager" | "sessionPersistence" | "scenarioHostStateStore">,
   body: ParsedCreateSessionBody
 ) {
   const sessionId = createWebSessionId();
   const modeId = body.modeId ?? getDefaultSessionModeId();
   requireSessionModeDefinition(modeId);
+  assertSessionModeAllowed(modeId, "private");
   const session = deps.sessionManager.ensureSession({
     id: sessionId,
     type: "private",
@@ -95,7 +107,10 @@ export function createWebSession(
     participantLabel: body.participantLabel ?? body.participantUserId
   });
   deps.sessionManager.setModeId(session.id, modeId, { appendSwitchMarker: false });
-  void deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(session.id));
+  if (modeId === "scenario_host") {
+    await deps.scenarioHostStateStore.ensureForSession(deps.sessionManager.getSession(session.id));
+  }
+  await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(session.id));
   return {
     ok: true,
     session: buildSessionSummary(session)
@@ -103,13 +118,17 @@ export function createWebSession(
 }
 
 export async function switchSessionMode(
-  deps: Pick<InternalApiDeps, "sessionManager" | "sessionPersistence">,
+  deps: Pick<InternalApiDeps, "sessionManager" | "sessionPersistence" | "scenarioHostStateStore">,
   sessionId: string,
   body: ParsedSwitchSessionModeBody
 ) {
   requireSessionModeDefinition(body.modeId);
-  deps.sessionManager.getSession(sessionId);
+  const session = deps.sessionManager.getSession(sessionId);
+  assertSessionModeAllowed(body.modeId, session.type);
   deps.sessionManager.setModeId(sessionId, body.modeId);
+  if (body.modeId === "scenario_host") {
+    await deps.scenarioHostStateStore.ensureForSession(session);
+  }
   await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(sessionId));
   return {
     ok: true as const,

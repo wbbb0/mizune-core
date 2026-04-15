@@ -23,7 +23,8 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
     mediaVisionService: deps.mediaVisionService,
     mediaCaptionService: deps.mediaCaptionService,
     globalMemoryStore: deps.globalMemoryStore,
-    operationNoteStore: deps.operationNoteStore
+    operationNoteStore: deps.operationNoteStore,
+    scenarioHostStateStore: deps.scenarioHostStateStore
   });
 
   let flushSessionRef: ((

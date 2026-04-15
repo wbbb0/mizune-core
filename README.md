@@ -14,10 +14,19 @@
 
 - OneBot 事件接入与消息发送
 - Web 会话与 OneBot 会话并存
+- 会话级模式切换：默认 `rp_assistant`，可扩展更多模式
 - persona、users、memory、本地持久化
 - LLM 路由与工具调用
 - shell、workspace、搜索、浏览器、ComfyUI 等可选能力
 - 内部 API 与 WebUI 管理界面
+
+当前内置模式：
+
+- `rp_assistant`
+  现有默认模式，保留角色扮演 + 助手能力
+- `scenario_host`
+  轻规则单主玩家剧情主持模式
+  当前仅支持私聊，不支持群聊和多玩家
 
 ## 环境要求
 
