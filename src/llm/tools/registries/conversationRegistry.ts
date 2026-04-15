@@ -4,6 +4,7 @@ import { imageToolDescriptors, imageToolHandlers } from "../conversation/imageTo
 import { messageToolDescriptors, messageToolHandlers } from "../conversation/messageTools.ts";
 import { scenarioHostToolDescriptors, scenarioHostToolHandlers } from "../conversation/scenarioHostTools.ts";
 import { sessionToolDescriptors, sessionToolHandlers } from "../conversation/sessionTools.ts";
+import { setupDraftToolDescriptors, setupDraftToolHandlers } from "../conversation/setupDraftTools.ts";
 
 export const conversationToolDescriptors = [
   ...crossChatToolDescriptors,
@@ -11,7 +12,8 @@ export const conversationToolDescriptors = [
   ...imageToolDescriptors,
   ...messageToolDescriptors,
   ...scenarioHostToolDescriptors,
-  ...sessionToolDescriptors
+  ...sessionToolDescriptors,
+  ...setupDraftToolDescriptors
 ];
 
 export const conversationToolHandlers = {
@@ -20,5 +22,6 @@ export const conversationToolHandlers = {
   ...imageToolHandlers,
   ...messageToolHandlers,
   ...scenarioHostToolHandlers,
-  ...sessionToolHandlers
+  ...sessionToolHandlers,
+  ...setupDraftToolHandlers
 };

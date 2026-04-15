@@ -35,7 +35,7 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "update_scenario_state",
-        description: "更新当前 scenario_host 场景的受控字段，不可整体覆写完整状态。初始化完成后将 initialized 设为 true。",
+        description: "更新当前 scenario_host 场景的受控字段，不可整体覆写完整状态。",
         parameters: {
           type: "object",
           properties: {
@@ -43,8 +43,7 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
             currentSituation: { type: "string" },
             sceneSummary: { type: "string" },
             turnIndex: { type: "number" },
-            flags: { type: "object", additionalProperties: true },
-            initialized: { type: "boolean" }
+            flags: { type: "object", additionalProperties: true }
           },
           additionalProperties: false
         }
@@ -155,10 +154,6 @@ export const scenarioHostToolHandlers: Record<string, ToolHandler> = {
             .filter(([, value]) => ["string", "number", "boolean"].includes(typeof value))
         ) as Record<string, string | number | boolean>
       : undefined;
-    const rawInitialized = typeof args === "object" && args != null && "initialized" in args
-      ? (args as { initialized?: unknown }).initialized
-      : undefined;
-    const initialized = typeof rawInitialized === "boolean" ? rawInitialized : undefined;
     const state = await context.scenarioHostStateStore.update(
       context.lastMessage.sessionId,
       (current) => ({
@@ -167,8 +162,7 @@ export const scenarioHostToolHandlers: Record<string, ToolHandler> = {
         ...(currentSituation ? { currentSituation } : {}),
         ...(sceneSummary ? { sceneSummary } : {}),
         ...(Number.isFinite(turnIndex) ? { turnIndex: Math.max(0, Math.round(turnIndex!)) } : {}),
-        ...(flags ? { flags: { ...current.flags, ...flags } } : {}),
-        ...(initialized !== undefined ? { initialized } : {})
+        ...(flags ? { flags: { ...current.flags, ...flags } } : {})
       }),
       getScenarioDefaults(context)
     );

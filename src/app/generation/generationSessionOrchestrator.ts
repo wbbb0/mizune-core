@@ -144,7 +144,7 @@ export function createGenerationSessionOrchestrator(
       const setupCtx = await resolveSessionModeSetupContext(
         sessionModeId,
         sessionId,
-        { setupStore, scenarioHostStateStore },
+        { setupStore, scenarioHostStateStore, sessionManager },
         { chatType: last.chatType, relationship }
       );
       const setupMode = (mode.setupPhase?.needsSetup(setupCtx)) ?? false;

@@ -5,6 +5,7 @@ import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/mod
 import type { SessionManager } from "#conversation/session/sessionManager.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionManager.ts";
+import { requireSessionModeDefinition } from "#modes/registry.ts";
 
 type DebugModeArg = "on" | "off" | "once" | "status";
 
@@ -19,6 +20,7 @@ type DirectCommandArgsMap = {
   compact: { keep?: number };
   debug: { mode?: DebugModeArg; inlineText?: string };
   reset: {};
+  confirm: {};
 };
 
 export type DirectCommandName = keyof DirectCommandArgsMap;
@@ -534,6 +536,57 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       ctx.input.persistSession(ctx.session.id, "scenario_reset_by_command");
       ctx.input.logger.info({ sessionId: ctx.session.id }, "scenario_reset_by_command");
       await ctx.send("场景已重置，会话上下文已清空。");
+    }
+  },
+  {
+    name: "confirm",
+    help: ".confirm 确认当前模式初始化完成",
+    dispatch: {
+      requireTextOnly: true
+    },
+    routing: {
+      allowInPrivate: true,
+      allowInOwnerMentionedGroup: false
+    },
+    parse(text: string): ParsedDirectCommand | null {
+      return /^[。.]\s*confirm\s*$/i.test(text)
+        ? { name: "confirm" }
+        : null;
+    },
+    access(ctx: DirectCommandExecutionContext): string | null {
+      const modeDef = requireSessionModeDefinition(ctx.session.modeId);
+      if (!modeDef.setupPhase) {
+        return "当前模式不需要初始化确认。";
+      }
+      return null;
+    },
+    async execute(ctx: DirectCommandExecutionContext) {
+      const modeDef = requireSessionModeDefinition(ctx.session.modeId);
+      if (!modeDef.setupPhase) {
+        await ctx.send("当前模式不需要初始化确认。");
+        return;
+      }
+      // For scenario_host: mark initialized in persistent state so it survives restarts
+      if (ctx.session.modeId === "scenario_host" && ctx.input.scenarioHostStateStore) {
+        await ctx.input.scenarioHostStateStore.update(
+          ctx.session.id,
+          (current) => ({ ...current, initialized: true }),
+          {
+            playerUserId: (ctx.session as any).participantUserId ?? ctx.incomingMessage.userId,
+            playerDisplayName: (ctx.session as any).participantLabel ?? (ctx.session as any).participantUserId ?? ctx.incomingMessage.userId
+          }
+        );
+      }
+      // Mark confirmed in session (in-memory)
+      ctx.input.sessionManager.markSetupConfirmed(ctx.session.id);
+      // Handle onComplete policy immediately
+      if (modeDef.setupPhase.onComplete === "clear_session") {
+        ctx.input.sessionManager.cancelGeneration(ctx.session.id);
+        ctx.input.sessionManager.clearSession(ctx.session.id);
+      }
+      ctx.input.persistSession(ctx.session.id, "setup_confirmed_by_command");
+      ctx.input.logger.info({ sessionId: ctx.session.id, modeId: ctx.session.modeId }, "setup_confirmed_by_command");
+      await ctx.send("初始化已确认，已进入正常模式。");
     }
   }
 ];

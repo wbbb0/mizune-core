@@ -129,8 +129,10 @@ async function main() {
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "我叫小满，是个图书管理员", timestampMs: Date.now() })]
       });
       const system = String(prompt[0]?.content ?? "");
-      assert.match(system, /当前实例处于初始化阶段/);
-      assert.match(system, /先用工具写入能确认的内容，再追问仍缺的字段/);
+      assert.match(system, /当前处于初始化阶段/);
+      assert.match(system, /先用工具写入能确认的字段/);
+      assert.match(system, /send_setup_draft/);
+      assert.match(system, /\.confirm/);
       assert.doesNotMatch(system, /不要把对话带回普通聊天或闲聊/);
       assert.doesNotMatch(system, /当前时间（/);
       assert.doesNotMatch(system, /当前会话 ID：/);

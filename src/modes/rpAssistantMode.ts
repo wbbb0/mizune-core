@@ -21,8 +21,8 @@ export const rpAssistantModeDefinition: SessionModeDefinition = {
     "debug_owner"
   ],
   setupPhase: {
-    needsSetup({ globalSetupReady, chatType, relationship }) {
-      return !globalSetupReady && chatType === "private" && relationship === "owner";
+    needsSetup({ globalSetupReady, setupConfirmedByUser, chatType, relationship }) {
+      return !globalSetupReady && !setupConfirmedByUser && chatType === "private" && relationship === "owner";
     },
     setupToolsetOverrides: [
       {
@@ -32,10 +32,18 @@ export const rpAssistantModeDefinition: SessionModeDefinition = {
         toolNames: ["read_memory", "write_memory"],
         promptGuidance: ["初始化阶段只补全 persona；不要改用户资料、关系或其他记忆。"],
         plannerSignals: ["初始化 persona 补全"]
+      },
+      {
+        toolsetId: "setup_draft",
+        title: "设定草稿",
+        description: "以独立消息发送当前设定草稿供用户审阅。",
+        toolNames: ["send_setup_draft"],
+        promptGuidance: ["设定字段收集到一定程度后，用此工具发送格式化草稿；不要在回复正文中列出草稿内容。"],
+        plannerSignals: ["发送设定草稿"]
       }
     ],
     promptMode: "persona_setup",
-    completionSignal: "global_setup_ready",
+    completionSignal: "user_command",
     onComplete: "clear_session"
   }
 };

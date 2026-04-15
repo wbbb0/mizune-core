@@ -404,7 +404,7 @@ async function main() {
     assert.equal(JSON.parse(String(worldFact)).worldFacts[0], "钟楼每隔一刻钟响一次");
   });
 
-  await runCase("update_scenario_state sets initialized=true when provided", async () => {
+  await runCase("update_scenario_state ignores initialized field (only .confirm can set it)", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "tool-scenario-"));
     try {
       const { ScenarioHostStateStore } = await import("../../src/modes/scenarioHost/stateStore.ts");
@@ -432,15 +432,15 @@ async function main() {
         persistSession: () => {}
       } as any;
 
-      // Call with initialized=true
+      // Call with title only — initialized should remain false
       const result = await handler(
         { id: "tc1", function: { name: "update_scenario_state", arguments: "" } } as any,
-        { title: "神秘城堡", initialized: true },
+        { title: "神秘城堡" },
         context
       );
 
       const parsed = JSON.parse(result as string);
-      assert.equal(parsed.initialized, true);
+      assert.equal(parsed.initialized, false, "initialized should remain false — only .confirm can set it");
       assert.equal(parsed.title, "神秘城堡");
     } finally {
       await rm(dataDir, { recursive: true, force: true });

@@ -46,7 +46,6 @@ function buildSetupModeLines(persona: Persona, missingFields: EditablePersonaFie
   const missingSet = new Set(missingFields);
   const totalMissing = missingFields.length;
   const coreComplete = !missingSet.has("name") && !missingSet.has("role");
-  const behaviorComplete = coreComplete && !missingSet.has("personality") && !missingSet.has("speechStyle");
 
   const identityRef = coreComplete
     ? `"${persona.name}"（${persona.role}）`
@@ -55,34 +54,30 @@ function buildSetupModeLines(persona: Persona, missingFields: EditablePersonaFie
   const phaseLines: string[] = [];
 
   if (totalMissing === 0) {
-    phaseLines.push("所有 persona 字段已完成，告知 owner 可以开始正常聊天。");
+    phaseLines.push(`角色 ${identityRef ?? "persona"} 所有字段已填写完毕。`);
+    phaseLines.push("调用 send_setup_draft 向 owner 发送完整设定草稿供最终确认。");
+    phaseLines.push("发送草稿后，告知 owner 如果没有问题可以输入 .confirm 完成初始化，如有修改继续告诉你。");
   } else if (!coreComplete && totalMissing === 8) {
-    phaseLines.push("当前实例处于初始化阶段，需要帮 owner 完成 persona 设定。");
-    phaseLines.push("先简要告知 owner：这是在设定角色人设，完成后即可正常聊天；然后从名字和角色定位开始追问。");
+    phaseLines.push("当前实例处于初始化阶段，需要帮 owner 完成角色 persona 设定。");
+    phaseLines.push("简要告知 owner：正在设定角色人设，完成后即可正常聊天；然后从名字和角色定位开始询问。");
   } else if (!coreComplete) {
     const nextCore = missingSet.has("name") ? "名字" : "角色定位";
     const alreadyHave = identityRef ? `已知角色名为 ${identityRef}，` : "";
-    phaseLines.push(`当前实例处于初始化阶段，${alreadyHave}角色核心设定未完成，当前最优先追问：${nextCore}。`);
-  } else if (!behaviorComplete) {
-    const behaviorMissing = (["personality", "speechStyle"] as const).filter((f) => missingSet.has(f));
-    phaseLines.push(`角色 ${identityRef} 的核心设定已完成，现在需要确认行为特征。`);
-    phaseLines.push(`当前优先追问：${behaviorMissing.map((f) => personaFieldLabels[f]).join("和")}。`);
-  } else if (totalMissing <= 2) {
-    const lastLabels = missingFields.map((f) => personaFieldLabels[f]).join("和");
-    phaseLines.push(`角色 ${identityRef} 设定基本完整，只剩 ${lastLabels}。`);
-    phaseLines.push(`直接问这${totalMissing === 1 ? "一" : "两"}个字段，写入后简短确认完成，告知可以开始正常聊天。`);
+    phaseLines.push(`当前处于初始化阶段，${alreadyHave}核心设定未完成，当前优先询问：${nextCore}。`);
   } else {
     const remainingLabels = missingFields.map((f) => personaFieldLabels[f]).join("、");
-    phaseLines.push(`角色 ${identityRef} 主体特征已设定，现在补充剩余细节（${remainingLabels}）。`);
-    phaseLines.push("可以一次问完，允许 owner 简短回答或使用默认值。");
+    phaseLines.push(`角色 ${identityRef} 的核心设定已完成，还需补充：${remainingLabels}。`);
+    phaseLines.push("可以一次询问多个字段，允许 owner 简短回答或跳过某些字段。");
   }
 
   return [
     ...phaseLines,
-    "owner 回复后先用工具写入能确认的内容，再追问仍缺的字段；不要先追问确认再写入。",
-    "只写入 owner 明确提供的内容，不要编造设定。",
-    "不要调用无关工具，不要修改用户资料、关系或其他记忆。",
-    "回复保持短句纯文本，不用标题、列表或 Markdown。"
+    "owner 提供信息后，先用工具写入能确认的字段，再追问剩余字段；不要等所有字段都收集完才写入。",
+    "收集到足够信息（尤其是核心字段完整后），调用 send_setup_draft 发送格式化草稿，不要在回复正文中逐条列出设定。",
+    "草稿发出后告知 owner 满意则输入 .confirm 完成初始化，如有修改继续告诉你即可。",
+    "只写入 owner 明确提供的内容，不要编造设定；不要调用无关工具，不要修改用户资料或关系。",
+    "绝对不要在回复正文中输出 .confirm；.confirm 只能由 owner 自己输入，模型不可代替输出。",
+    "回复保持短句纯文本，不用 Markdown 标题或列表。"
   ];
 }
 
@@ -219,14 +214,16 @@ function buildScenarioHostRuleLines(): string[] {
 function buildScenarioHostSetupModeLines(): string[] {
   return [
     "当前处于场景初始化阶段，故事基础信息尚未设定。",
-    "你的首要目标是：引导玩家提供场景信息，并在获取足够信息后调用 update_scenario_state，将 initialized 设为 true，完成初始化。",
-    "需要向玩家询问以下内容（可一次性提问，允许玩家简短回答）：",
+    "你的目标是与玩家一来一回地逐步收集场景设定，不要要求玩家一次性填完所有内容。",
+    "优先询问并收集以下核心信息（可分多轮）：",
     "- 场景标题（title）：这是什么故事？",
-    "- 当前情况（currentSituation）：故事从哪里开始？玩家当前在哪、面对什么？",
-    "- 玩家角色（player）：玩家扮演的是谁？",
-    "信息收集完毕后，立即调用 update_scenario_state 填入以上字段，并将 initialized 设为 true。",
-    "初始化完成后，简短告知玩家可以开始行动，然后进入正常主持流程。",
-    "不要在初始化阶段进行剧情推进；只收集信息并写入状态。",
+    "- 当前情况（currentSituation）：故事从哪里开始，玩家当前在哪、面对什么？",
+    "- 玩家角色（currentSituation 中提及即可，或另外补充）",
+    "每当玩家提供信息后，立即调用对应工具写入已确认的字段（update_scenario_state 或 set_current_location），不要等所有字段都收集完。",
+    "收集到核心信息后，调用 send_setup_draft 将当前场景设定以格式化草稿发送给玩家核对；不要在回复正文中逐条列出字段。",
+    "草稿发出后，告知玩家如果满意可以输入 .confirm 完成初始化，如有修改继续告诉你即可。",
+    "不要在回复正文中输出 .confirm；.confirm 只能由玩家自己输入，不可由你代替输出。",
+    "初始化完成前不要进行任何剧情推进；只收集信息、写入状态、发送草稿。",
     "回复保持简洁，不用 Markdown 标题或列表。"
   ];
 }

@@ -544,7 +544,7 @@ export function createGenerationExecutor(
           const isComplete = await checkSetupCompletion(
             modeDef.setupPhase.completionSignal,
             sessionId,
-            { setupStore, scenarioHostStateStore }
+            { setupStore, scenarioHostStateStore, sessionManager }
           );
           if (isComplete && modeDef.setupPhase.onComplete === "clear_session") {
             sessionManager.clearSession(sessionId);

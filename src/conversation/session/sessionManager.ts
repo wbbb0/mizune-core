@@ -331,6 +331,14 @@ export class SessionManager {
     return this.requireSession(sessionId).modeId;
   }
 
+  markSetupConfirmed(sessionId: string): void {
+    this.requireSession(sessionId).setupConfirmed = true;
+  }
+
+  isSetupConfirmed(sessionId: string): boolean {
+    return this.requireSession(sessionId).setupConfirmed;
+  }
+
   setModeId(sessionId: string, modeId: string, options?: { appendSwitchMarker?: boolean }): boolean {
     const session = this.requireSession(sessionId);
     if (session.modeId === modeId) {

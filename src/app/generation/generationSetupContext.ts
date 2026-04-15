@@ -2,6 +2,7 @@ import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import { isScenarioStateInitialized } from "#modes/scenarioHost/types.ts";
 import type { SetupCompletionSignal, SessionModeSetupContext } from "#modes/types.ts";
+import type { SessionManager } from "#conversation/session/sessionManager.ts";
 
 export async function resolveSessionModeSetupContext(
   modeId: string,
@@ -9,6 +10,7 @@ export async function resolveSessionModeSetupContext(
   deps: {
     setupStore: SetupStateStore;
     scenarioHostStateStore: ScenarioHostStateStore;
+    sessionManager: SessionManager;
   },
   chatContext: {
     chatType: "private" | "group";
@@ -27,6 +29,7 @@ export async function resolveSessionModeSetupContext(
   return {
     globalSetupReady,
     sessionStateInitialized,
+    setupConfirmedByUser: deps.sessionManager.isSetupConfirmed(sessionId),
     chatType: chatContext.chatType,
     relationship: chatContext.relationship
   };
@@ -38,6 +41,7 @@ export async function checkSetupCompletion(
   deps: {
     setupStore: SetupStateStore;
     scenarioHostStateStore: ScenarioHostStateStore;
+    sessionManager: SessionManager;
   }
 ): Promise<boolean> {
   switch (completionSignal) {
@@ -48,6 +52,9 @@ export async function checkSetupCompletion(
     case "session_state_initialized": {
       const scenarioState = await deps.scenarioHostStateStore.get(sessionId);
       return scenarioState != null && isScenarioStateInitialized(scenarioState);
+    }
+    case "user_command": {
+      return deps.sessionManager.isSetupConfirmed(sessionId);
     }
   }
 }
