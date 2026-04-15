@@ -32,7 +32,8 @@ import {
   TURN_PLANNER_ALWAYS_TOOL_NAMES,
   type ToolsetView
 } from "#llm/tools/toolsets.ts";
-import { listSessionModes } from "#modes/registry.ts";
+import { listSessionModes, requireSessionModeDefinition } from "#modes/registry.ts";
+import { checkSetupCompletion } from "./generationSetupContext.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -125,6 +126,7 @@ export function createGenerationExecutor(
     personaStore,
     globalMemoryStore,
     operationNoteStore,
+    scenarioHostStateStore,
     setupStore,
     conversationAccess,
     npcDirectory,
@@ -337,6 +339,7 @@ export function createGenerationExecutor(
         personaStore,
         globalMemoryStore,
         operationNoteStore,
+        scenarioHostStateStore,
         setupStore,
         conversationAccess,
         npcDirectory,
@@ -531,9 +534,20 @@ export function createGenerationExecutor(
       throw error;
     } finally {
       const finishedCurrent = sessionManager.finishGeneration(sessionId, abortController);
-      if (finishedCurrent && setupMode && await setupStore.isReady()) {
-        sessionManager.clearSession(sessionId);
-        persistSession(sessionId, "setup_completed_session_cleared");
+      if (finishedCurrent && setupMode) {
+        const modeId = sessionManager.getModeId(sessionId);
+        const modeDef = requireSessionModeDefinition(modeId);
+        if (modeDef.setupPhase) {
+          const isComplete = await checkSetupCompletion(
+            modeDef.setupPhase.completionSignal,
+            sessionId,
+            { setupStore, scenarioHostStateStore }
+          );
+          if (isComplete && modeDef.setupPhase.onComplete === "clear_session") {
+            sessionManager.clearSession(sessionId);
+            persistSession(sessionId, "setup_completed_session_cleared");
+          }
+        }
       }
 
       if (!sessionManager.isResponseOpen(sessionId, responseEpoch)) {

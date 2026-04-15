@@ -18,6 +18,8 @@ import { supplementPlannedToolsets } from "./toolsetSupplement.ts";
 import { getProviderTranscriptProjector } from "./providerTranscriptProjector.ts";
 import { createInternalTriggerEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { projectLlmVisibleHistoryFromTranscript } from "#conversation/session/sessionTranscript.ts";
+import { requireSessionModeDefinition } from "#modes/registry.ts";
+import { resolveSessionModeSetupContext } from "./generationSetupContext.ts";
 
 // Normalizes runtime messages into the prompt-builder input shape.
 function toPromptBatchMessages(messages: GenerationRuntimeBatchMessage[]) {
@@ -79,6 +81,7 @@ export function createGenerationSessionOrchestrator(
     userStore,
     personaStore,
     setupStore,
+    scenarioHostStateStore,
     persistSession
   } = deps;
 
@@ -137,21 +140,14 @@ export function createGenerationSessionOrchestrator(
       await historyCompressor.maybeCompress(sessionId);
       let refreshedSession = sessionManager.getSession(sessionId);
       const sessionModeId = refreshedSession.modeId;
-      const setupState = await setupStore.get();
-      const setupMode = sessionModeId === "rp_assistant"
-        && setupState.state !== "ready"
-        && last.chatType === "private"
-        && relationship === "owner";
-      const rpAssistantSetupPhaseOverride = {
-        setupToolsetOverrides: [{
-          toolsetId: "memory_profile",
-          title: "记忆与资料",
-          description: "初始化阶段仅允许写入 persona 相关资料。",
-          toolNames: ["read_memory", "write_memory"],
-          promptGuidance: ["初始化阶段只补全 persona；不要改用户资料、关系或其他记忆。"],
-          plannerSignals: ["初始化 persona 补全"]
-        }]
-      };
+      const mode = requireSessionModeDefinition(sessionModeId);
+      const setupCtx = await resolveSessionModeSetupContext(
+        sessionModeId,
+        sessionId,
+        { setupStore, scenarioHostStateStore },
+        { chatType: last.chatType, relationship }
+      );
+      const setupMode = (mode.setupPhase?.needsSetup(setupCtx)) ?? false;
       let visibleHistory = projectLlmVisibleHistoryFromTranscript(refreshedSession.internalTranscript, config);
       let historyForPrompt = visibleHistory.slice(0, Math.max(0, visibleHistory.length - messages.length));
       let resolvedModelRef = getDefaultMainModelRefs(config);
@@ -162,7 +158,7 @@ export function createGenerationSessionOrchestrator(
         modelRef: resolvedModelRef,
         includeDebugTools: interactionMode === "debug",
         modeId: sessionModeId,
-        ...(setupMode ? { setupPhase: rpAssistantSetupPhaseOverride } : {})
+        ...(setupMode && mode.setupPhase ? { setupPhase: mode.setupPhase } : {})
       });
       let plannedToolsetIds = plannerToolsets.map((item) => item.id);
 
@@ -217,7 +213,7 @@ export function createGenerationSessionOrchestrator(
           modelRef: resolvedModelRef,
           includeDebugTools: interactionMode === "debug",
           modeId: sessionModeId,
-          ...(setupMode ? { setupPhase: rpAssistantSetupPhaseOverride } : {})
+          ...(setupMode && mode.setupPhase ? { setupPhase: mode.setupPhase } : {})
         });
         plannedToolsetIds = gateResult.toolsetIds.filter((id) => plannerToolsets.some((item) => item.id === id));
         refreshedSession = sessionManager.getSession(sessionId);
@@ -274,7 +270,11 @@ export function createGenerationSessionOrchestrator(
           ? [buildDebugMarkerSystemMessage(debugMarkers)].filter((item): item is string => Boolean(item))
           : [])
       ];
-      const promptBuildResult = setupMode
+      const isPersonaSetupMode = setupMode && mode.setupPhase?.promptMode === "persona_setup";
+      // TODO: re-add after Task 6 adds isInSetup to buildChatPromptMessages
+      // const isChatWithSetupInjection = setupMode && mode.setupPhase?.promptMode === "chat_with_setup_injection";
+
+      const promptBuildResult = isPersonaSetupMode
         ? await services.promptBuilder.buildSetupPromptMessages({
             sessionId,
             interactionMode,
@@ -340,7 +340,7 @@ export function createGenerationSessionOrchestrator(
         debugSnapshot: promptBuildResult.debugSnapshot,
         ...(setupMode
           ? {
-              availableToolNames: ["read_memory", "write_memory"],
+              availableToolNames: plannerToolsets.flatMap((t) => t.toolNames),
               setupMode: true
             }
           : {
