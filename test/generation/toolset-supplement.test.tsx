@@ -12,7 +12,7 @@ const AVAILABLE_TOOLSETS = [
   { id: "web_research", title: "网页检索与浏览", description: "", toolNames: ["open_page", "inspect_page"] },
   { id: "shell_runtime", title: "Shell 运行时", description: "", toolNames: ["shell_run"] },
   { id: "local_file_io", title: "本地文件", description: "", toolNames: ["download_asset", "local_file_read"] },
-  { id: "memory_profile", title: "记忆与资料", description: "", toolNames: ["write_memory"] },
+  { id: "memory_profile", title: "长期资料与规则", description: "", toolNames: ["upsert_user_memory"] },
   { id: "scheduler_admin", title: "定时任务管理", description: "", toolNames: ["create_scheduled_job"] }
 ];
 

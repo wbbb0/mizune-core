@@ -4,7 +4,7 @@ import type { AppConfig } from "#config/config.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import type { UserStore } from "#identity/userStore.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
-import type { GlobalMemoryStore } from "#memory/memoryStore.ts";
+import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
 import type { RequestStore } from "#requests/requestStore.ts";
 import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
@@ -40,7 +40,7 @@ export interface InternalApiDeps {
   oneBotClient: OneBotClient;
   sessionManager: SessionManager;
   personaStore: PersonaStore;
-  globalMemoryStore: GlobalMemoryStore;
+  globalRuleStore: GlobalRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
   userStore: UserStore;
   whitelistStore: WhitelistStore;
@@ -75,7 +75,7 @@ export interface InternalApiDeps {
 }
 
 export interface InternalApiServices {
-  config: Pick<InternalApiDeps, "config" | "whitelistStore" | "sessionManager" | "sessionPersistence" | "personaStore" | "globalMemoryStore" | "scenarioHostStateStore" | "userStore" | "chatMessageFileGcService">;
+  config: Pick<InternalApiDeps, "config" | "whitelistStore" | "sessionManager" | "sessionPersistence" | "personaStore" | "globalRuleStore" | "scenarioHostStateStore" | "userStore" | "chatMessageFileGcService">;
   editor: EditorService;
   dataBrowser: DataBrowserService;
   localFileAdmin: LocalFileAdminService;
@@ -95,7 +95,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       sessionManager: deps.sessionManager,
       sessionPersistence: deps.sessionPersistence,
       personaStore: deps.personaStore,
-      globalMemoryStore: deps.globalMemoryStore,
+      globalRuleStore: deps.globalRuleStore,
       scenarioHostStateStore: deps.scenarioHostStateStore,
       userStore: deps.userStore,
       chatMessageFileGcService: deps.chatMessageFileGcService

@@ -15,7 +15,7 @@ import { deepMergeAllReplaceArrays } from "#data/schema/helpers.ts";
 import { buildUiTreeFromMeta } from "#data/schema/ui.ts";
 import type { BaseSchema, Infer } from "#data/schema/index.ts";
 import { personaSchema } from "#persona/personaSchema.ts";
-import { memoryEntrySchema } from "#memory/memoryEntry.ts";
+import { globalRuleEntrySchema } from "#memory/globalRuleEntry.ts";
 import { userStoreSchema } from "#identity/userSchema.ts";
 import { whitelistFileSchema } from "#identity/whitelistSchema.ts";
 import { requestFileSchema } from "#requests/requestSchema.ts";
@@ -23,7 +23,7 @@ import { setupStateSchema } from "#identity/setupStateSchema.ts";
 import { membershipFileSchema } from "#identity/groupMembershipSchema.ts";
 import { runtimeResourceFileSchema } from "#runtime/resources/runtimeResourceSchema.ts";
 import { scheduledJobFileSchema } from "#runtime/scheduler/jobSchema.ts";
-import { operationNoteFileSchema } from "#llm/prompt/operationNoteStore.ts";
+import { toolsetRuleFileSchema } from "#llm/prompt/toolsetRuleStore.ts";
 import type { ConfigManager } from "#config/configManager.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
@@ -337,8 +337,8 @@ function buildEditorResourceMap(input: {
         await input.scheduler.reloadFromStore();
       }
     }),
-    single("global_memories", "Global Memories", "data", s.array(memoryEntrySchema).default([]), `${dataDir}/global-memories.json`),
-    single("operation_notes", "Operation Notes", "data", operationNoteFileSchema, `${dataDir}/operation-notes.json`)
+    single("global_rules", "Global Rules", "data", s.array(globalRuleEntrySchema).default([]), `${dataDir}/global-rules.json`),
+    single("toolset_rules", "Toolset Rules", "data", toolsetRuleFileSchema, `${dataDir}/toolset-rules.json`)
   ];
 
   return new Map(

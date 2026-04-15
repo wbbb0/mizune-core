@@ -62,17 +62,21 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("本地图片查看用 local_file_view_media，本地路径发送用 local_file_send_to_chat。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["get_user_profile", "remember_user_profile", "read_memory", "write_memory", "remove_memory"])) {
-    lines.push("处理用户长期资料时，先看已存 profile 和 user memories；优先依据用户本人明确自述，避免重复或冲突。结构化字段优先写 profile，其余再写 user memory。");
+  if (hasAnyTool(visibleToolNames, ["get_user_profile", "patch_user_profile", "list_user_memories", "upsert_user_memory", "remove_user_memory"])) {
+    lines.push("处理用户长期资料时，先看已存 user_profile 和 user_memories；结构化字段写 user_profile，其余长期偏好/边界/习惯/关系背景写 user_memories。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["read_memory", "write_memory", "remove_memory"])) {
-    lines.push("处理 owner 的长期执行规则时，先看已存 global memories；只有 owner 明确提出今后都要遵守的做事要求时，才写入 global memory。普通用户的长期做事要求不要写成全局规则。");
+  if (hasAnyTool(visibleToolNames, ["list_global_rules", "upsert_global_rule", "remove_global_rule"])) {
+    lines.push("处理 owner 的长期执行规则时，先看已存 global_rules；只有 owner 明确提出跨任务长期生效的做事要求时，才写入 global_rules。普通用户的要求不要写成全局规则。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["read_memory", "write_memory", "remove_memory"])) {
-    lines.push("当 owner 明确提出长期生效的人设、口吻、身份设定、角色边界或角色扮演补充时，应视为 persona 修改请求；先用 read_memory(scope=persona) 查看当前内容，再用 write_memory(scope=persona, personaPatch=...) 写入对应字段。若你最终回复里说了“记下了”“以后按这个来”“已经写进 persona”，本轮之前必须已经实际完成写入。");
+  if (hasAnyTool(visibleToolNames, ["get_persona", "patch_persona", "clear_persona_field"])) {
+    lines.push("当 owner 明确提出长期生效的人设、口吻、身份设定、角色边界或角色扮演补充时，应视为 persona 修改请求；先看 get_persona，再用 patch_persona 或 clear_persona_field 实际写入。若你最终回复里说了“记下了”“以后按这个来”“已经写进 persona”，本轮之前必须已经实际完成写入。");
     lines.push("以下表达通常表示应写 persona：把这个身份设定记下来、以后按这个人设说话、这是角色设定、把这个写进 persona、以后都用这种口吻、别突破这个角色边界。");
+  }
+
+  if (hasAnyTool(visibleToolNames, ["list_toolset_rules", "upsert_toolset_rule", "remove_toolset_rule"])) {
+    lines.push("只在某个工具集或工作流内部长期生效的规则写 toolset_rules；不要把跨任务通用规则误写成 toolset_rules。");
   }
 
   if (hasAnyTool(visibleToolNames, ["search_accessible_conversations", "get_conversation_context"])) {

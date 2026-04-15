@@ -27,9 +27,9 @@ export const rpAssistantModeDefinition: SessionModeDefinition = {
     setupToolsetOverrides: [
       {
         toolsetId: "memory_profile",
-        title: "记忆与资料",
+        title: "长期资料与规则",
         description: "初始化阶段仅允许写入 persona 相关资料。",
-        toolNames: ["read_memory", "write_memory"],
+        toolNames: ["get_persona", "patch_persona", "clear_persona_field"],
         promptGuidance: ["初始化阶段只补全 persona；不要改用户资料、关系或其他记忆。"],
         plannerSignals: ["初始化 persona 补全"]
       },

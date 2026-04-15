@@ -1,4 +1,5 @@
-import type { MemoryEntry } from "#memory/memoryEntry.ts";
+import type { GlobalRuleEntry } from "#memory/globalRuleEntry.ts";
+import type { UserMemoryEntry } from "#memory/userMemoryEntry.ts";
 import type { Persona } from "#persona/personaSchema.ts";
 import type { EditablePersonaFieldName } from "#persona/personaSchema.ts";
 import type { SpecialRole } from "#identity/specialRole.ts";
@@ -7,6 +8,7 @@ import type { SessionDebugMarker } from "#conversation/session/sessionManager.ts
 import type { ChatAttachment } from "#services/workspace/types.ts";
 import type { ToolsetView } from "#llm/tools/toolsets.ts";
 import type { LlmMessage } from "../llmClient.ts";
+import type { ToolsetRuleEntry } from "./toolsetRuleStore.ts";
 
 export type PromptInteractionMode = "normal" | "debug";
 
@@ -40,7 +42,6 @@ export interface PromptUserProfile {
   residence?: string;
   profileSummary?: string;
   relationshipNote?: string;
-  memories?: MemoryEntry[];
   specialRole?: SpecialRole;
 }
 
@@ -65,13 +66,6 @@ export interface PromptLiveResource {
   title?: string | null;
   description?: string | null;
   summary: string;
-}
-
-export interface PromptOperationNote {
-  id: string;
-  title: string;
-  content: string;
-  toolsetIds: string[];
 }
 
 export interface PromptEmojiVisual {
@@ -145,13 +139,14 @@ export interface PromptInput {
   npcProfiles: PromptNpcProfile[];
   participantProfiles: PromptParticipantProfile[];
   userProfile: PromptUserProfile;
-  globalMemories?: MemoryEntry[];
+  currentUserMemories?: UserMemoryEntry[];
+  globalRules?: GlobalRuleEntry[];
   historySummary?: string | null | undefined;
   recentMessages: PromptHistoryMessage[];
   recentToolEvents?: PromptToolEvent[] | undefined;
   debugMarkers?: SessionDebugMarker[] | undefined;
   liveResources?: PromptLiveResource[] | undefined;
-  operationNotes?: PromptOperationNote[] | undefined;
+  toolsetRules?: ToolsetRuleEntry[] | undefined;
   scenarioStateLines?: string[] | undefined;
   isInSetup?: boolean | undefined;
   batchMessages: PromptBatchMessage[];
@@ -207,13 +202,14 @@ export interface InternalSessionTriggerPromptInput {
   npcProfiles: PromptInput["npcProfiles"];
   participantProfiles: PromptInput["participantProfiles"];
   userProfile: PromptInput["userProfile"];
-  globalMemories?: PromptInput["globalMemories"];
+  currentUserMemories?: PromptInput["currentUserMemories"];
+  globalRules?: PromptInput["globalRules"];
   historySummary?: string | null | undefined;
   recentMessages: PromptInput["recentMessages"];
   recentToolEvents?: PromptInput["recentToolEvents"];
   debugMarkers?: PromptInput["debugMarkers"];
   liveResources?: PromptInput["liveResources"];
-  operationNotes?: PromptInput["operationNotes"];
+  toolsetRules?: PromptInput["toolsetRules"];
   scenarioStateLines?: PromptInput["scenarioStateLines"];
   targetContext:
     | {

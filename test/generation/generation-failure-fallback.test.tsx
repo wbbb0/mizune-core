@@ -81,8 +81,8 @@ async function main() {
     forwardResolver: {} as never,
     userStore: {} as never,
     personaStore: {} as never,
-    globalMemoryStore: {} as never,
-    operationNoteStore: {} as never,
+    globalRuleStore: {} as never,
+    toolsetRuleStore: {} as never,
     scenarioHostStateStore: {} as never,
     setupStore: {
       async isReady() {
@@ -159,8 +159,8 @@ async function main() {
       debugMarkers: [],
       toolTranscript: [],
       persona: null as never,
-      globalMemories: [],
-      operationNotes: [],
+      globalRules: [],
+      toolsetRules: [],
       currentUser: null as never,
       participantProfiles: [],
       imageCaptions: [],

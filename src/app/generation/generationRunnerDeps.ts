@@ -26,12 +26,12 @@ import type { MediaVisionService } from "#services/workspace/mediaVisionService.
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { UserStore } from "#identity/userStore.ts";
-import type { GlobalMemoryStore } from "#memory/memoryStore.ts";
+import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
 import type { SessionWorkPersistenceDeps } from "../session-work/sessionWorkCoreDeps.ts";
 import type { ComfyClient } from "#comfy/comfyClient.ts";
 import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
-import type { OperationNoteStore } from "#llm/prompt/operationNoteStore.ts";
+import type { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 
 export interface GenerationPromptBuilderDeps {
@@ -47,8 +47,8 @@ export interface GenerationPromptBuilderDeps {
   chatFileStore: ChatFileStore;
   mediaVisionService: MediaVisionService;
   mediaCaptionService: MediaCaptionService;
-  globalMemoryStore: GlobalMemoryStore;
-  operationNoteStore: OperationNoteStore;
+  globalRuleStore: GlobalRuleStore;
+  toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
 }
 
@@ -66,8 +66,8 @@ export interface GenerationIdentityDeps {
   userStore: UserStore;
   whitelistStore: WhitelistStore;
   personaStore: PersonaStore;
-  globalMemoryStore: GlobalMemoryStore;
-  operationNoteStore: OperationNoteStore;
+  globalRuleStore: GlobalRuleStore;
+  toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
   setupStore: SetupStateStore;
   conversationAccess: ConversationAccessService;

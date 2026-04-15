@@ -366,11 +366,11 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         return { prompt: "persona" };
       }
     } as unknown as InternalApiDeps["personaStore"],
-    globalMemoryStore: {
+    globalRuleStore: {
       async getAll() {
         return [];
       }
-    } as unknown as InternalApiDeps["globalMemoryStore"],
+    } as unknown as InternalApiDeps["globalRuleStore"],
     scenarioHostStateStore: {
       async ensureForSession(session: { id: string; participantUserId: string; participantLabel?: string | null }) {
         return {

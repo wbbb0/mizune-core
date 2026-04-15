@@ -18,7 +18,7 @@ import { RequestStore } from "#requests/requestStore.ts";
 import { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import { SetupStateStore } from "#identity/setupStateStore.ts";
 import { UserStore } from "#identity/userStore.ts";
-import { GlobalMemoryStore } from "#memory/memoryStore.ts";
+import { GlobalRuleStore } from "#memory/globalRuleStore.ts";
 import { EventRouter } from "#services/onebot/eventRouter.ts";
 import { OneBotClient } from "#services/onebot/onebotClient.ts";
 import { ShellRuntime } from "#services/shell/runtime.ts";
@@ -33,7 +33,7 @@ import { ComfyClient } from "#comfy/comfyClient.ts";
 import { ComfyTaskStore } from "#comfy/taskStore.ts";
 import { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import { RuntimeResourceRegistry } from "#runtime/resources/runtimeResourceRegistry.ts";
-import { OperationNoteStore } from "#llm/prompt/operationNoteStore.ts";
+import { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import { isOwnerBootstrapCommandText } from "../messaging/directCommands.ts";
 import type { AppBootstrapServices, AppServiceBootstrap, BootstrapRuntimeContext } from "./bootstrapTypes.ts";
@@ -75,8 +75,8 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
   const groupMembershipStore = new GroupMembershipStore(dataDir, logger);
   const userStore = new UserStore(dataDir, config, whitelistStore, logger);
   const personaStore = new PersonaStore(dataDir, config, logger);
-  const globalMemoryStore = new GlobalMemoryStore(dataDir, config, logger);
-  const operationNoteStore = new OperationNoteStore(dataDir, config, logger);
+  const globalRuleStore = new GlobalRuleStore(dataDir, config, logger);
+  const toolsetRuleStore = new ToolsetRuleStore(dataDir, config, logger);
   const scenarioHostStateStore = new ScenarioHostStateStore(dataDir, config, logger);
   const setupStore = new SetupStateStore(dataDir, whitelistStore, logger);
   const searchService = new SearchService(config, logger);
@@ -116,8 +116,8 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
     groupMembershipStore,
     userStore,
     personaStore,
-    globalMemoryStore,
-    operationNoteStore,
+    globalRuleStore,
+    toolsetRuleStore,
     scenarioHostStateStore,
     setupStore,
     searchService,
@@ -157,8 +157,8 @@ export async function initializeBootstrapState(
     | "userStore"
     | "npcDirectory"
     | "personaStore"
-    | "globalMemoryStore"
-    | "operationNoteStore"
+    | "globalRuleStore"
+    | "toolsetRuleStore"
     | "scenarioHostStateStore"
     | "setupStore"
     | "sessionManager"
@@ -183,8 +183,8 @@ export async function initializeBootstrapState(
     userStore,
     npcDirectory,
     personaStore,
-    globalMemoryStore,
-    operationNoteStore,
+    globalRuleStore,
+    toolsetRuleStore,
     scenarioHostStateStore,
     setupStore,
     sessionManager
@@ -204,8 +204,8 @@ export async function initializeBootstrapState(
   await userStore.init();
   await npcDirectory.refresh(userStore);
   await personaStore.init();
-  await globalMemoryStore.init();
-  await operationNoteStore.init();
+  await globalRuleStore.init();
+  await toolsetRuleStore.init();
   await scenarioHostStateStore.init();
   await setupStore.init(await personaStore.get());
   const persistedSessions = await sessionPersistence.loadAll();

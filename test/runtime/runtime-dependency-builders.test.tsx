@@ -34,8 +34,9 @@ function createServicesFixture() {
     forwardResolver: { key: "forwardResolver" },
     userStore: { key: "userStore" },
     personaStore: { key: "personaStore" },
-    globalMemoryStore: { key: "globalMemoryStore" },
-    operationNoteStore: { key: "operationNoteStore" },
+    globalRuleStore: { key: "globalRuleStore" },
+    toolsetRuleStore: { key: "toolsetRuleStore" },
+    scenarioHostStateStore: { key: "scenarioHostStateStore" },
     setupStore: { key: "setupStore" },
     conversationAccess: { key: "conversationAccess" },
     npcDirectory: { key: "npcDirectory" }

@@ -23,7 +23,8 @@ async function main() {
           { userId: "owner", displayName: "Owner", relationshipLabel: "owner" },
           { userId: "20002", displayName: "Other", relationshipLabel: otherUser.relationship }
         ],
-        userProfile: { memories: (await harness.userStore.getByUserId("owner"))?.memories ?? [] },
+        userProfile: {},
+        currentUserMemories: (await harness.userStore.getByUserId("owner"))?.memories ?? [],
         historySummary: null,
         recentMessages: [],
         recentToolEvents: [{
@@ -37,7 +38,8 @@ async function main() {
       });
       const system = String(prompt[0]?.content ?? "");
       assert.match(system, /角色规则：下雨天会更安静一点/);
-      assert.match(system, /当前触发用户相关长期记忆/);
+      assert.match(system, /⟦section name="current_user_memories"⟧/);
+      assert.match(system, /当前触发用户长期记忆/);
       assert.match(system, /当前用户偏好：不喜欢被叫全名/);
       assert.match(system, /最近内部工具轨迹/);
       assert.match(system, /open_page/);

@@ -52,8 +52,8 @@ async function main() {
         userStore: { async init() {} } as any,
         npcDirectory: { async refresh() {} } as any,
         personaStore: { async init() {}, async get() { return {}; } } as any,
-        globalMemoryStore: { async init() {} } as any,
-        operationNoteStore: { async init() {} } as any,
+        globalRuleStore: { async init() {} } as any,
+        toolsetRuleStore: { async init() {} } as any,
         scenarioHostStateStore: { async init() {} } as any,
         setupStore: { async init() {} } as any,
         sessionManager: { restoreSessions() {}, listSessions() { return []; } } as any

@@ -5,7 +5,8 @@ import type { AppConfig } from "#config/config.ts";
 import type { WhitelistStore } from "./whitelistStore.ts";
 import { FileSchemaStore } from "#data/fileSchemaStore.ts";
 import { readStructuredFileRaw } from "#data/schema/file.ts";
-import { createMemoryEntry, type MemoryEntry } from "#memory/memoryEntry.ts";
+import { createUserMemoryEntry, type UserMemoryEntry } from "#memory/userMemoryEntry.ts";
+import { findBestDuplicateMatch, normalizeTitleForDedup } from "#memory/similarity.ts";
 import { rotateBackup } from "#utils/rotatingBackup.ts";
 import type { Relationship } from "./relationship.ts";
 import type { SpecialRole } from "./specialRole.ts";
@@ -188,7 +189,14 @@ export class UserStore {
     memoryId?: string;
     title: string;
     content: string;
-  }): Promise<User> {
+    kind?: UserMemoryEntry["kind"];
+    source?: UserMemoryEntry["source"];
+    importance?: number;
+  }): Promise<{
+    user: User;
+    item: UserMemoryEntry;
+    action: "created" | "updated_existing";
+  }> {
     const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === input.userId);
     const base: PersistedUser = existing ? toPersistedUser(existing) : {
@@ -197,14 +205,29 @@ export class UserStore {
       memories: []
     };
     const memories = [...(base.memories ?? [])];
-    const nextMemory = createMemoryEntry({
-      ...(input.memoryId ? { id: input.memoryId } : {}),
+    const duplicate = input.memoryId
+      ? null
+      : findBestDuplicateMatch(
+          `${normalizeTitleForDedup(input.title)} ${input.content}`,
+          memories,
+          (item) => `${normalizeTitleForDedup(item.title)} ${item.content}`
+        );
+    const targetId = input.memoryId || duplicate?.id;
+    const action = targetId && memories.some((item) => item.id === targetId)
+      ? "updated_existing" as const
+      : "created" as const;
+    const nextMemory = createUserMemoryEntry({
+      ...(targetId ? { id: targetId } : {}),
+      ...(duplicate ? { createdAt: duplicate.createdAt } : {}),
       title: input.title,
-      content: input.content
+      content: input.content,
+      ...(input.kind !== undefined ? { kind: input.kind } : {}),
+      ...(input.source !== undefined ? { source: input.source } : {}),
+      ...(input.importance !== undefined ? { importance: input.importance } : {})
     });
     const targetIndex = memories.findIndex((item) => item.id === nextMemory.id);
     if (targetIndex >= 0) {
-      memories[targetIndex] = nextMemory;
+      memories[targetIndex] = { ...nextMemory, createdAt: memories[targetIndex]!.createdAt };
     } else {
       memories.push(nextMemory);
     }
@@ -218,8 +241,12 @@ export class UserStore {
       users.push(updated);
       await this.writeAll(users);
     }
-    this.logger.info({ userId: input.userId, memoryId: nextMemory.id }, "user_memory_upserted");
-    return toRuntimeUser(this.whitelistStore, updated);
+    this.logger.info({ userId: input.userId, memoryId: nextMemory.id, action }, "user_memory_upserted");
+    return {
+      user: toRuntimeUser(this.whitelistStore, updated),
+      item: nextMemory,
+      action
+    };
   }
 
   async removeMemory(userId: string, memoryId: string): Promise<User | null> {
@@ -241,7 +268,17 @@ export class UserStore {
     return toRuntimeUser(this.whitelistStore, updated);
   }
 
-  async overwriteMemories(userId: string, memories: Array<{ id?: string; title: string; content: string }>): Promise<User> {
+  async overwriteMemories(userId: string, memories: Array<{
+    id?: string;
+    title: string;
+    content: string;
+    kind?: UserMemoryEntry["kind"];
+    source?: UserMemoryEntry["source"];
+    importance?: number;
+    createdAt?: number;
+    updatedAt?: number;
+    lastUsedAt?: number;
+  }>): Promise<User> {
     const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === userId);
     const base: PersistedUser = existing ? toPersistedUser(existing) : {
@@ -251,7 +288,7 @@ export class UserStore {
     };
     const updated: PersistedUser = {
       ...base,
-      memories: memories.map((item) => createMemoryEntry(item))
+      memories: memories.map((item) => createUserMemoryEntry(item))
     };
     if (existing) {
       await this.replaceUser(users, updated);

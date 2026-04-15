@@ -48,13 +48,14 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
     npcProfiles: input.npcProfiles,
     participantProfiles: input.participantProfiles,
     userProfile: input.userProfile,
-    globalMemories: input.globalMemories,
-      historySummary: input.historySummary,
-      recentToolEvents: input.recentToolEvents,
-      liveResources: input.liveResources,
-      ...(input.operationNotes ? { operationNotes: input.operationNotes } : {}),
-      ...(input.scenarioStateLines ? { scenarioStateLines: input.scenarioStateLines } : {}),
-      ...(input.isInSetup ? { isInSetup: input.isInSetup } : {})
+    ...(input.currentUserMemories ? { currentUserMemories: input.currentUserMemories } : {}),
+    ...(input.globalRules ? { globalRules: input.globalRules } : {}),
+    historySummary: input.historySummary,
+    recentToolEvents: input.recentToolEvents,
+    liveResources: input.liveResources,
+    ...(input.toolsetRules ? { toolsetRules: input.toolsetRules } : {}),
+    ...(input.scenarioStateLines ? { scenarioStateLines: input.scenarioStateLines } : {}),
+    ...(input.isInSetup ? { isInSetup: input.isInSetup } : {})
   }).join("\n");
 
   const historyMessages: LlmMessage[] = input.recentMessages.map((message) => ({
@@ -88,11 +89,12 @@ export function buildScheduledTaskPrompt(input: ScheduledTaskPromptInput): LlmMe
       npcProfiles: input.npcProfiles,
       participantProfiles: input.participantProfiles,
       userProfile: input.userProfile,
-      globalMemories: input.globalMemories,
+      ...(input.currentUserMemories ? { currentUserMemories: input.currentUserMemories } : {}),
+      ...(input.globalRules ? { globalRules: input.globalRules } : {}),
       historySummary: input.historySummary,
       recentToolEvents: input.recentToolEvents,
       liveResources: input.liveResources,
-      ...(input.operationNotes ? { operationNotes: input.operationNotes } : {}),
+      ...(input.toolsetRules ? { toolsetRules: input.toolsetRules } : {}),
       ...(input.scenarioStateLines ? { scenarioStateLines: input.scenarioStateLines } : {})
     }),
     ...buildScheduledTaskSystemLines({

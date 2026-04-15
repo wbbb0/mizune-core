@@ -1,17 +1,18 @@
-import type { MemoryEntry } from "#memory/memoryEntry.ts";
+import type { GlobalRuleEntry } from "#memory/globalRuleEntry.ts";
+import type { UserMemoryEntry } from "#memory/userMemoryEntry.ts";
 import { editablePersonaFieldNames, personaFieldLabels, type EditablePersonaFieldName, type Persona } from "#persona/personaSchema.ts";
 import type {
   PromptInput,
   PromptInteractionMode,
   PromptLiveResource,
   PromptNpcProfile,
-  PromptOperationNote,
   PromptParticipantProfile,
   PromptToolEvent
 } from "#llm/prompt/promptTypes.ts";
 import type { ToolsetView } from "#llm/tools/toolsets.ts";
 import { renderPromptSection } from "./prompt-section.ts";
 import { isNearDuplicateText } from "#memory/similarity.ts";
+import type { ToolsetRuleEntry } from "#llm/prompt/toolsetRuleStore.ts";
 
 const PERSONA_FIELD_HINTS: Record<EditablePersonaFieldName, string> = {
   name: "角色的名字",
@@ -108,11 +109,12 @@ export function buildBaseSystemLines(input: {
   npcProfiles: PromptInput["npcProfiles"];
   participantProfiles: PromptInput["participantProfiles"];
   userProfile: PromptInput["userProfile"];
-  globalMemories?: PromptInput["globalMemories"] | undefined;
+  currentUserMemories?: PromptInput["currentUserMemories"] | undefined;
+  globalRules?: PromptInput["globalRules"] | undefined;
   historySummary?: string | null | undefined;
   recentToolEvents?: PromptInput["recentToolEvents"] | undefined;
   liveResources?: PromptInput["liveResources"] | undefined;
-  operationNotes?: PromptOperationNote[] | undefined;
+  toolsetRules?: PromptInput["toolsetRules"] | undefined;
   scenarioStateLines?: string[] | undefined;
   isInSetup?: boolean | undefined;
 }): string[] {
@@ -145,30 +147,36 @@ export function buildBaseSystemLines(input: {
       renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
       renderPromptSection("recent_tool_events", buildRecentToolEventLines(input.recentToolEvents)),
       renderPromptSection("scenario_state", input.scenarioStateLines ?? []),
-      renderPromptSection("current_user", buildCurrentUserLines({
-        userProfile: {
-          ...input.userProfile,
-          memories: []
-        }
+      renderPromptSection("current_user_profile", buildCurrentUserProfileLines({
+        userProfile: input.userProfile,
+        userMemories: []
       }))
     ].filter((item): item is string => Boolean(item));
   }
 
-  const filteredGlobalMemories = filterGlobalMemories({
+  const filteredGlobalRules = filterGlobalRules({
     persona: input.persona,
-    globalMemories: input.globalMemories,
-    userMemories: input.userProfile.memories
+    globalRules: input.globalRules,
+    userMemories: input.currentUserMemories
+  });
+  const filteredToolsetRules = filterToolsetRules({
+    persona: input.persona,
+    globalRules: filteredGlobalRules,
+    toolsetRules: input.toolsetRules
   });
   const filteredUserMemories = filterUserMemories({
-    globalMemories: filteredGlobalMemories,
-    userMemories: input.userProfile.memories
+    persona: input.persona,
+    globalRules: filteredGlobalRules,
+    toolsetRules: filteredToolsetRules,
+    userProfile: input.userProfile,
+    userMemories: input.currentUserMemories
   });
 
   return [
-    renderPromptSection("identity", buildIdentityLines(input.persona)),
+    renderPromptSection("persona", buildIdentityLines(input.persona)),
     renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
     renderPromptSection("reply_rules", buildReplyRuleLines()),
-    renderPromptSection("memory_rules", buildMemoryRuleLines()),
+    renderPromptSection("memory_write_decision", buildMemoryRuleLines()),
     renderPromptSection("context_rules", buildContextRuleLines({
       visibleToolNames: input.visibleToolNames
     })),
@@ -183,14 +191,13 @@ export function buildBaseSystemLines(input: {
     ]),
     renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
     renderPromptSection("recent_tool_events", buildRecentToolEventLines(input.recentToolEvents)),
-    renderPromptSection("operation_notes", buildOperationNoteLines(input.operationNotes)),
-    renderPromptSection("global_memory", buildGlobalMemoryLines(filteredGlobalMemories)),
-    renderPromptSection("current_user", buildCurrentUserLines({
-      userProfile: {
-        ...input.userProfile,
-        memories: filteredUserMemories
-      }
-    }))
+    renderPromptSection("global_rules", buildGlobalRuleLines(filteredGlobalRules)),
+    renderPromptSection("toolset_rules", buildToolsetRuleLines(filteredToolsetRules)),
+    renderPromptSection("current_user_profile", buildCurrentUserProfileLines({
+      userProfile: input.userProfile,
+      userMemories: filteredUserMemories
+    })),
+    renderPromptSection("current_user_memories", buildCurrentUserMemoryLines(filteredUserMemories))
   ].filter((item): item is string => Boolean(item));
 }
 
@@ -336,11 +343,15 @@ function buildReplyRuleLines(): string[] {
 
 function buildMemoryRuleLines(): string[] {
   return [
-    "用户自然提到自己长期稳定、以后还会影响互动的事实或偏好时，应主动更新，不必等对方逐字说“记住”。",
-    "用户自己的稳定事实、喜好、身份信息、禁忌、习惯或经历，优先写 profile；结构化字段装不下的再写 user memory。",
-    "owner 的长期做事规则写 global memory；绑定某个工具集的长期操作规则写 operation note；bot 的角色定位、性格、说话方式、行为规则或背景设定写 persona。",
-    "普通用户提出对 bot 的长期做事要求，默认只在当前轮处理，不沉淀成全局规则。",
-    "临时语气、短期状态、单次安排、玩笑、反讽、别人代述或语义不确定的内容，默认不要写入长期信息。",
+    "长期信息写入决策树：",
+    "1. bot 身份、人设、口吻、角色边界 -> persona。",
+    "2. owner 级、跨任务长期工作流偏好 -> global_rules。",
+    "3. 只在某个工具集或工作流里生效的长期规则 -> toolset_rules。",
+    "4. 稳定且结构化的用户卡片信息 -> user_profile。",
+    "5. 其余长期用户偏好、边界、习惯、关系背景或事实 -> user_memories。",
+    "6. 只对当前任务/当前轮有效，或语义不确定 -> 不写长期信息。",
+    "优先更新已有相近条目，不要把同一事实同时写进多个类别。",
+    "用户本人明确自述的可信度高于推断；弱推断默认不写。",
     "如果回复里说了“记下了”“以后按这个来”“已经写进 persona”，本轮之前必须已经实际完成对应写入。"
   ];
 }
@@ -381,36 +392,85 @@ function isNearDuplicate(source: string, candidates: string[]): boolean {
   return isNearDuplicateText(source, candidates, MEMORY_SIMILARITY_THRESHOLD);
 }
 
-function formatMemoryEntries(entries: MemoryEntry[] | undefined): string {
+function buildPersonaCandidateTexts(persona: Persona): string[] {
+  return [
+    persona.name,
+    persona.role,
+    persona.personality,
+    persona.speechStyle,
+    persona.rules
+  ].filter((item): item is string => Boolean(item));
+}
+
+function formatEntryLines(entries: Array<{ title: string; content: string }> | undefined): string {
   if (!entries || entries.length === 0) return "";
   return entries
-    .slice()
-    .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, MAX_VISIBLE_MEMORIES)
     .map((item) => `- ${item.title}：${item.content}`)
     .join("\n");
 }
 
-function filterGlobalMemories(input: {
+function filterGlobalRules(input: {
   persona: Persona;
-  globalMemories?: MemoryEntry[] | undefined;
-  userMemories?: MemoryEntry[] | undefined;
-}): MemoryEntry[] {
-  const personaCandidates = [
-    input.persona.rules,
-    input.persona.speechStyle,
-    input.persona.personality
-  ].filter((item): item is string => Boolean(item));
+  globalRules?: GlobalRuleEntry[] | undefined;
+  userMemories?: UserMemoryEntry[] | undefined;
+}): GlobalRuleEntry[] {
+  const personaCandidates = buildPersonaCandidateTexts(input.persona);
   const userCandidates = (input.userMemories ?? []).map((item) => `${item.title} ${item.content}`);
-  return (input.globalMemories ?? []).filter((item) => !isNearDuplicate(`${item.title} ${item.content}`, [...personaCandidates, ...userCandidates]));
+  return (input.globalRules ?? []).filter((item) => !isNearDuplicate(`${item.title} ${item.content}`, [...personaCandidates, ...userCandidates]));
+}
+
+function filterToolsetRules(input: {
+  persona: Persona;
+  globalRules: GlobalRuleEntry[];
+  toolsetRules?: ToolsetRuleEntry[] | undefined;
+}): ToolsetRuleEntry[] {
+  const higherPriorityCandidates = [
+    ...buildPersonaCandidateTexts(input.persona),
+    ...input.globalRules.map((item) => `${item.title} ${item.content}`)
+  ];
+  return (input.toolsetRules ?? []).filter((item) => !isNearDuplicate(`${item.title} ${item.content}`, higherPriorityCandidates));
+}
+
+function scoreUserMemory(memory: UserMemoryEntry): number {
+  const kindWeight = ({
+    boundary: 5,
+    preference: 4.5,
+    relationship: 4,
+    habit: 3,
+    fact: 2,
+    other: 1
+  } satisfies Record<UserMemoryEntry["kind"], number>)[memory.kind];
+  const importanceWeight = memory.importance ?? 0;
+  const lastUsedWeight = memory.lastUsedAt ? Math.max(0.5, 2 - ((Date.now() - memory.lastUsedAt) / (30 * 24 * 60 * 60 * 1000))) : 0;
+  const recencyWeight = Math.max(0, 2 - ((Date.now() - memory.updatedAt) / (45 * 24 * 60 * 60 * 1000)));
+  return kindWeight + importanceWeight + lastUsedWeight + recencyWeight;
 }
 
 function filterUserMemories(input: {
-  globalMemories: MemoryEntry[];
-  userMemories?: MemoryEntry[] | undefined;
-}): MemoryEntry[] {
-  const globalCandidates = input.globalMemories.map((item) => `${item.title} ${item.content}`);
-  return (input.userMemories ?? []).filter((item) => !isNearDuplicate(`${item.title} ${item.content}`, globalCandidates));
+  persona: Persona;
+  globalRules: GlobalRuleEntry[];
+  toolsetRules: ToolsetRuleEntry[];
+  userProfile: PromptInput["userProfile"];
+  userMemories?: UserMemoryEntry[] | undefined;
+}): UserMemoryEntry[] {
+  const profileCandidates = [
+    input.userProfile.preferredAddress,
+    input.userProfile.gender,
+    input.userProfile.residence,
+    input.userProfile.profileSummary,
+    input.userProfile.relationshipNote
+  ].filter((item): item is string => Boolean(item));
+  const higherPriorityCandidates = [
+    ...buildPersonaCandidateTexts(input.persona),
+    ...input.globalRules.map((item) => `${item.title} ${item.content}`),
+    ...input.toolsetRules.map((item) => `${item.title} ${item.content}`),
+    ...profileCandidates
+  ];
+  return (input.userMemories ?? [])
+    .filter((item) => !isNearDuplicate(`${item.title} ${item.content}`, higherPriorityCandidates))
+    .slice()
+    .sort((left, right) => scoreUserMemory(right) - scoreUserMemory(left));
 }
 
 function formatCompactProfile(item: {
@@ -503,11 +563,11 @@ function buildRecentToolEventLines(events: PromptToolEvent[] | undefined): strin
   return [`最近内部工具轨迹（仅供你延续当前任务，不要对用户直说）：\n${lines.join("\n")}`];
 }
 
-function buildOperationNoteLines(notes: PromptOperationNote[] | undefined): string[] {
-  if (!notes || notes.length === 0) {
+function buildToolsetRuleLines(rules: ToolsetRuleEntry[] | undefined): string[] {
+  if (!rules || rules.length === 0) {
     return [];
   }
-  return [`当前激活工具集相关的长期操作笔记：\n${notes.map((item) => `- ${item.title}：${item.content}`).join("\n")}`];
+  return [`当前激活工具集相关长期规则（最多 ${MAX_VISIBLE_MEMORIES} 条）：\n${formatEntryLines(rules)}`];
 }
 
 function formatCompactTimestamp(timestampMs: number): string {
@@ -520,13 +580,20 @@ function formatCompactTimestamp(timestampMs: number): string {
   }).format(new Date(timestampMs));
 }
 
-function buildGlobalMemoryLines(entries: MemoryEntry[]): string[] {
-  const memoryText = formatMemoryEntries(entries);
-  return memoryText ? [`当前长期全局行为要求（最多 ${MAX_VISIBLE_MEMORIES} 条）：\n${memoryText}`] : [];
+function buildGlobalRuleLines(entries: GlobalRuleEntry[]): string[] {
+  const ruleText = formatEntryLines(
+    entries
+      .slice()
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+  );
+  return ruleText ? [`当前长期全局行为规则（最多 ${MAX_VISIBLE_MEMORIES} 条）：\n${ruleText}`] : [];
 }
 
-function buildCurrentUserLines(input: { userProfile: PromptInput["userProfile"] }): string[] {
-  const memoryText = formatMemoryEntries(input.userProfile.memories);
+function buildCurrentUserProfileLines(input: {
+  userProfile: PromptInput["userProfile"];
+  userMemories: UserMemoryEntry[];
+}): string[] {
+  const memoryCandidates = input.userMemories.map((item) => `${item.title} ${item.content}`);
   const core = [
     `当前触发用户：${input.userProfile.senderName ?? "未知"} (${input.userProfile.userId ?? "未知"})`,
     `当前触发用户关系：${formatRelationshipLabel(input.userProfile.relationship)}${input.userProfile.specialRole ? `；特殊角色=${input.userProfile.specialRole}` : ""}`
@@ -535,16 +602,22 @@ function buildCurrentUserLines(input: { userProfile: PromptInput["userProfile"] 
     input.userProfile.preferredAddress ? `偏好称呼=${input.userProfile.preferredAddress}` : null,
     input.userProfile.gender ? `性别=${input.userProfile.gender}` : null,
     input.userProfile.residence ? `住地=${input.userProfile.residence}` : null,
-    input.userProfile.profileSummary ? `用户画像=${input.userProfile.profileSummary}` : null,
+    input.userProfile.profileSummary && !isNearDuplicate(input.userProfile.profileSummary, memoryCandidates)
+      ? `用户画像=${input.userProfile.profileSummary}`
+      : null,
     input.userProfile.relationshipNote ? `关系背景=${input.userProfile.relationshipNote}` : null
   ].filter((item): item is string => Boolean(item));
 
   return [
     ...core,
     ...(extra.length > 0 ? [`当前触发用户补充资料：${extra.join("；")}`] : []),
-    ...(memoryText ? [`当前触发用户相关长期记忆（最多 ${MAX_VISIBLE_MEMORIES} 条）：\n${memoryText}`] : []),
     ...(input.userProfile.specialRole === "npc" ? ["当前触发用户是 NPC/bot；把这轮优先当成协作或任务沟通。"] : [])
   ];
+}
+
+function buildCurrentUserMemoryLines(memories: UserMemoryEntry[] | undefined): string[] {
+  const memoryText = formatEntryLines(memories);
+  return memoryText ? [`当前触发用户长期记忆（最多 ${MAX_VISIBLE_MEMORIES} 条）：\n${memoryText}`] : [];
 }
 
 function buildToolsetGuidanceLines(input: {

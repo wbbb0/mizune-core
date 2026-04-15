@@ -1,46 +1,35 @@
+import { editablePersonaFieldNames } from "#persona/personaSchema.ts";
+import { detectScopeConflict, type ScopeConflictWarning } from "#memory/memoryCategory.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
-import { findBestDuplicateMatch } from "#memory/similarity.ts";
+
+const personaFieldEnums = [...editablePersonaFieldNames];
 
 export const profileToolDescriptors: ToolDescriptor[] = [
   {
     definition: {
       type: "function",
       function: {
-        name: "read_memory",
-        description: "读取长期记忆或 persona。scope=global 读取全局记忆（仅 owner）；scope=user 读取用户记忆（默认当前触发用户）；scope=persona 读取当前 persona。",
+        name: "get_persona",
+        description: "读取当前 persona。需要判断人设、口吻、角色边界或字段现状时使用。",
         parameters: {
           type: "object",
-          properties: {
-            scope: {
-              type: "string",
-              enum: ["global", "user", "persona"]
-            },
-            user_id: { type: "string" }
-          },
-          required: ["scope"],
+          properties: {},
           additionalProperties: false
         }
       }
     }
   },
   {
+    ownerOnly: true,
     definition: {
       type: "function",
       function: {
-        name: "write_memory",
-        description: "写入长期记忆或 persona。scope=global|user 时写 memory（可传 memoryId 更新）；scope=persona 时写入 personaPatch。",
+        name: "patch_persona",
+        description: "按字段 patch persona。只用于 bot 身份、人设、口吻、角色边界等长期 persona 设定。",
         parameters: {
           type: "object",
           properties: {
-            scope: {
-              type: "string",
-              enum: ["global", "user", "persona"]
-            },
-            user_id: { type: "string" },
-            memoryId: { type: "string" },
-            title: { type: "string" },
-            content: { type: "string" },
             personaPatch: {
               type: "object",
               properties: {
@@ -56,53 +45,97 @@ export const profileToolDescriptors: ToolDescriptor[] = [
               additionalProperties: false
             }
           },
-          required: ["scope"],
+          required: ["personaPatch"],
           additionalProperties: false
         }
       }
     }
   },
   {
+    ownerOnly: true,
     definition: {
       type: "function",
       function: {
-        name: "remove_memory",
-        description: "删除长期记忆，或清空 persona 字段。scope=global|user 时需 memoryId；scope=persona 时需 personaField。",
+        name: "clear_persona_field",
+        description: "清空一个 persona 字段。",
         parameters: {
           type: "object",
           properties: {
-            scope: {
-              type: "string",
-              enum: ["global", "user", "persona"]
-            },
-            user_id: { type: "string" },
-            memoryId: { type: "string" },
             personaField: {
               type: "string",
-              enum: [
-                "name",
-                "role",
-                "appearance",
-                "personality",
-                "interests",
-                "background",
-                "speechStyle",
-                "rules"
-              ]
+              enum: personaFieldEnums
             }
           },
-          required: ["scope"],
+          required: ["personaField"],
           additionalProperties: false
         }
       }
     }
   },
   {
+    ownerOnly: true,
     definition: {
       type: "function",
       function: {
-        name: "list_operation_notes",
-        description: "读取 operation notes。可按 toolset_ids 过滤。写入前优先先读，避免重复。",
+        name: "list_global_rules",
+        description: "读取 owner 级长期全局工作流规则。仅 owner 可用。",
+        parameters: {
+          type: "object",
+          properties: {},
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    ownerOnly: true,
+    definition: {
+      type: "function",
+      function: {
+        name: "upsert_global_rule",
+        description: "创建或更新 owner 级长期全局工作流规则。只用于跨任务通用执行偏好，不用于 persona，也不用于某个工具集局部规则。",
+        parameters: {
+          type: "object",
+          properties: {
+            ruleId: { type: "string" },
+            title: { type: "string" },
+            content: { type: "string" },
+            kind: {
+              type: "string",
+              enum: ["workflow", "constraint", "preference", "other"]
+            }
+          },
+          required: ["title", "content"],
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    ownerOnly: true,
+    definition: {
+      type: "function",
+      function: {
+        name: "remove_global_rule",
+        description: "删除一条全局规则。",
+        parameters: {
+          type: "object",
+          properties: {
+            ruleId: { type: "string" }
+          },
+          required: ["ruleId"],
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    ownerOnly: true,
+    definition: {
+      type: "function",
+      function: {
+        name: "list_toolset_rules",
+        description: "读取工具集绑定的长期规则。可按 toolset_ids 过滤。仅 owner 可用。",
         parameters: {
           type: "object",
           properties: {
@@ -117,15 +150,16 @@ export const profileToolDescriptors: ToolDescriptor[] = [
     }
   },
   {
+    ownerOnly: true,
     definition: {
       type: "function",
       function: {
-        name: "write_operation_note",
-        description: "写入工具集绑定的长期操作笔记。必须提供 title、content、toolset_ids。写入前应先读取现有 notes；若已有相近内容，优先更新，严禁创建重复内容。",
+        name: "upsert_toolset_rule",
+        description: "创建或更新仅绑定到指定 toolset_ids 的长期规则。不要把跨任务通用规则写进这里。",
         parameters: {
           type: "object",
           properties: {
-            noteId: { type: "string" },
+            ruleId: { type: "string" },
             title: { type: "string" },
             content: { type: "string" },
             toolset_ids: {
@@ -141,17 +175,18 @@ export const profileToolDescriptors: ToolDescriptor[] = [
     }
   },
   {
+    ownerOnly: true,
     definition: {
       type: "function",
       function: {
-        name: "remove_operation_note",
-        description: "删除一条 operation note，需要 noteId。",
+        name: "remove_toolset_rule",
+        description: "删除一条工具集规则。",
         parameters: {
           type: "object",
           properties: {
-            noteId: { type: "string" }
+            ruleId: { type: "string" }
           },
-          required: ["noteId"],
+          required: ["ruleId"],
           additionalProperties: false
         }
       }
@@ -162,10 +197,96 @@ export const profileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "get_user_profile",
-        description: "读取当前用户已存的长期 profile 和 memories。主动写入前优先先读，避免重复或冲突。",
+        description: "读取结构化用户资料。默认读取当前触发用户；owner 可传 user_id 查看其他用户。",
         parameters: {
           type: "object",
-          properties: {},
+          properties: {
+            user_id: { type: "string" }
+          },
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "patch_user_profile",
+        description: "按字段 patch 结构化用户资料。只写稳定、结构化、适合用户卡片的事实，不要把杂项长期记忆塞进 profileSummary。",
+        parameters: {
+          type: "object",
+          properties: {
+            user_id: { type: "string" },
+            preferredAddress: { type: "string" },
+            gender: { type: "string" },
+            residence: { type: "string" },
+            profileSummary: { type: "string" },
+            relationshipNote: { type: "string" }
+          },
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "list_user_memories",
+        description: "读取用户长期记忆。默认读取当前触发用户；owner 可传 user_id 查看其他用户。",
+        parameters: {
+          type: "object",
+          properties: {
+            user_id: { type: "string" }
+          },
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "upsert_user_memory",
+        description: "创建或更新用户长期记忆。只写用户特定的长期偏好、边界、习惯、关系背景或事实；结构化字段应优先写 user_profile。",
+        parameters: {
+          type: "object",
+          properties: {
+            user_id: { type: "string" },
+            memoryId: { type: "string" },
+            title: { type: "string" },
+            content: { type: "string" },
+            kind: {
+              type: "string",
+              enum: ["preference", "fact", "boundary", "habit", "relationship", "other"]
+            },
+            importance: {
+              type: "integer",
+              minimum: 1,
+              maximum: 5
+            }
+          },
+          required: ["title", "content"],
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "remove_user_memory",
+        description: "删除一条用户长期记忆。",
+        parameters: {
+          type: "object",
+          properties: {
+            user_id: { type: "string" },
+            memoryId: { type: "string" }
+          },
+          required: ["memoryId"],
           additionalProperties: false
         }
       }
@@ -215,27 +336,6 @@ export const profileToolDescriptors: ToolDescriptor[] = [
         }
       }
     }
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "remember_user_profile",
-        description: "为用户写入结构化长期 profile 字段，适合稳定且以后还会用到的自我信息。优先先看已存数据，避免重复或冲突。preferredAddress=称呼，profileSummary=用户画像，relationshipNote=与用户的关系背景（仅 owner 可写）。",
-        parameters: {
-          type: "object",
-          properties: {
-            user_id: { type: "string" },
-            preferredAddress: { type: "string" },
-            gender: { type: "string" },
-            residence: { type: "string" },
-            profileSummary: { type: "string" },
-            relationshipNote: { type: "string" }
-          },
-          additionalProperties: false
-        }
-      }
-    }
   }
 ];
 
@@ -245,8 +345,12 @@ function getStringField(args: unknown, key: string): string {
     : "";
 }
 
-function resolveTargetUserId(args: unknown, fallbackUserId: string): string {
-  return getStringField(args, "user_id") || fallbackUserId;
+function getIntegerField(args: unknown, key: string): number | null {
+  if (typeof args !== "object" || !args || !(key in args)) {
+    return null;
+  }
+  const value = Number((args as Record<string, unknown>)[key]);
+  return Number.isInteger(value) ? value : null;
 }
 
 function getStringArrayField(args: unknown, key: string): string[] {
@@ -256,6 +360,10 @@ function getStringArrayField(args: unknown, key: string): string[] {
   return ((args as Record<string, unknown>)[key] as unknown[])
     .map((item) => String(item ?? "").trim())
     .filter(Boolean);
+}
+
+function resolveTargetUserId(args: unknown, fallbackUserId: string): string {
+  return getStringField(args, "user_id") || fallbackUserId;
 }
 
 function requireOwnerOrSelf(
@@ -295,218 +403,190 @@ function parseUserProfilePatch(args: unknown): {
   };
 }
 
+function toUserProfilePayload(
+  user: {
+    userId: string;
+    relationship?: string;
+    specialRole?: string;
+    preferredAddress?: string;
+    gender?: string;
+    residence?: string;
+    profileSummary?: string;
+    relationshipNote?: string;
+  } | null,
+  senderName?: string
+) {
+  return {
+    user_id: user?.userId ?? null,
+    senderName: senderName ?? null,
+    relationship: user?.relationship ?? null,
+    specialRole: user?.specialRole ?? null,
+    preferredAddress: user?.preferredAddress ?? null,
+    gender: user?.gender ?? null,
+    residence: user?.residence ?? null,
+    profileSummary: user?.profileSummary ?? null,
+    relationshipNote: user?.relationshipNote ?? null
+  };
+}
+
+function withWarnings(base: Record<string, unknown>, warning: ScopeConflictWarning | null): string {
+  return JSON.stringify({
+    ...base,
+    ...(warning ? { warnings: [warning] } : {})
+  });
+}
+
+function parsePersonaPatch(args: unknown): Record<string, string> {
+  if (typeof args !== "object" || !args || !("personaPatch" in args) || typeof (args as { personaPatch?: unknown }).personaPatch !== "object") {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries((args as { personaPatch: Record<string, unknown> }).personaPatch)
+      .filter(([, value]) => typeof value === "string")
+      .map(([key, value]) => [key, String(value)])
+  );
+}
+
 export const profileToolHandlers: Record<string, ToolHandler> = {
-  async list_operation_notes(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can inspect operation notes");
+  async get_persona(_toolCall, _args, context) {
+    return JSON.stringify(await context.personaStore.get());
+  },
+  async patch_persona(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can update persona");
+    if (denied) {
+      return denied;
+    }
+    const personaPatch = parsePersonaPatch(args);
+    if (Object.keys(personaPatch).length === 0) {
+      return JSON.stringify({ error: "personaPatch with at least one string field is required" });
+    }
+    const updated = await context.personaStore.patch(personaPatch);
+    await context.setupStore.advanceAfterPersonaUpdate(updated);
+    return JSON.stringify({ action: "updated_existing", persona: updated });
+  },
+  async clear_persona_field(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can update persona");
+    if (denied) {
+      return denied;
+    }
+    const personaField = getStringField(args, "personaField");
+    if (!personaField || !personaFieldEnums.includes(personaField as typeof personaFieldEnums[number])) {
+      return JSON.stringify({ error: "personaField is required" });
+    }
+    const updated = await context.personaStore.patch({ [personaField]: "" });
+    await context.setupStore.advanceAfterPersonaUpdate(updated);
+    return JSON.stringify({ action: "updated_existing", persona: updated });
+  },
+  async list_global_rules(_toolCall, _args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can inspect global rules");
+    if (denied) {
+      return denied;
+    }
+    return JSON.stringify(await context.globalRuleStore.getAll());
+  },
+  async upsert_global_rule(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can edit global rules");
+    if (denied) {
+      return denied;
+    }
+    const title = getStringField(args, "title");
+    const content = getStringField(args, "content");
+    if (!title || !content) {
+      return JSON.stringify({ error: "title and content are required" });
+    }
+    const result = await context.globalRuleStore.upsert({
+      ...(getStringField(args, "ruleId") ? { ruleId: getStringField(args, "ruleId") } : {}),
+      title,
+      content,
+      ...(getStringField(args, "kind") ? { kind: getStringField(args, "kind") as "workflow" | "constraint" | "preference" | "other" } : {})
+    });
+    const warning = detectScopeConflict({
+      currentScope: "global_rules",
+      title,
+      content
+    });
+    return withWarnings({
+      action: result.action,
+      rule: result.item
+    }, warning);
+  },
+  async remove_global_rule(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can edit global rules");
+    if (denied) {
+      return denied;
+    }
+    const ruleId = getStringField(args, "ruleId");
+    if (!ruleId) {
+      return JSON.stringify({ error: "ruleId is required" });
+    }
+    const remaining = await context.globalRuleStore.remove(ruleId);
+    return JSON.stringify({ removed: true, ruleId, remaining });
+  },
+  async list_toolset_rules(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can inspect toolset rules");
     if (denied) {
       return denied;
     }
     const toolsetIds = new Set(getStringArrayField(args, "toolset_ids"));
-    const notes = await context.operationNoteStore.getAll();
+    const rules = await context.toolsetRuleStore.getAll();
     return JSON.stringify(
       toolsetIds.size > 0
-        ? notes.filter((item) => item.toolsetIds.some((id) => toolsetIds.has(id)))
-        : notes
+        ? rules.filter((item) => item.toolsetIds.some((id) => toolsetIds.has(id)))
+        : rules
     );
   },
-  async get_user_profile(_toolCall, _args, context) {
-    return JSON.stringify({
-      user_id: context.lastMessage.userId,
-      senderName: context.lastMessage.senderName,
-      relationship: context.currentUser?.relationship ?? null,
-      specialRole: context.currentUser?.specialRole ?? null,
-      preferredAddress: context.currentUser?.preferredAddress ?? null,
-      gender: context.currentUser?.gender ?? null,
-      residence: context.currentUser?.residence ?? null,
-      profileSummary: context.currentUser?.profileSummary ?? null,
-      relationshipNote: context.currentUser?.relationshipNote ?? null,
-      memories: context.currentUser?.memories ?? []
-    });
-  },
-  async read_memory(_toolCall, args, context) {
-    const scope = getStringField(args, "scope");
-    if (scope === "global") {
-      const denied = requireOwner(context.relationship, "Only owner can inspect global memories");
-      if (denied) {
-        return denied;
-      }
-      return JSON.stringify(await context.globalMemoryStore.getAll());
-    }
-    if (scope === "user") {
-      const userId = resolveTargetUserId(args, context.lastMessage.userId);
-      const denied = requireOwnerOrSelf(context, userId, "Only owner can inspect another user's memories");
-      if (denied) {
-        return denied;
-      }
-      const user = await context.userStore.getByUserId(userId);
-      return JSON.stringify(user?.memories ?? []);
-    }
-    if (scope === "persona") {
-      return JSON.stringify(await context.personaStore.get());
-    }
-    return JSON.stringify({ error: "scope must be global, user, or persona" });
-  },
-  async write_memory(_toolCall, args, context) {
-    const scope = getStringField(args, "scope");
-    if (scope === "global") {
-      const denied = requireOwner(context.relationship, "Only owner can edit global memories");
-      if (denied) {
-        return denied;
-      }
-      const title = getStringField(args, "title");
-      const content = getStringField(args, "content");
-      if (!title || !content) {
-        return JSON.stringify({ error: "title and content are required" });
-      }
-      return JSON.stringify(await context.globalMemoryStore.upsert({
-        ...(getStringField(args, "memoryId") ? { memoryId: getStringField(args, "memoryId") } : {}),
-        title,
-        content
-      }));
-    }
-    if (scope === "user") {
-      const userId = resolveTargetUserId(args, context.lastMessage.userId);
-      const denied = requireOwnerOrSelf(context, userId, "Only owner can edit another user's memories");
-      if (denied) {
-        return denied;
-      }
-      const title = getStringField(args, "title");
-      const content = getStringField(args, "content");
-      if (!title || !content) {
-        return JSON.stringify({ error: "title and content are required" });
-      }
-      const updated = await context.userStore.upsertMemory({
-        userId,
-        ...(getStringField(args, "memoryId") ? { memoryId: getStringField(args, "memoryId") } : {}),
-        title,
-        content
-      });
-      return JSON.stringify(updated.memories);
-    }
-    if (scope === "persona") {
-      const denied = requireOwner(context.relationship, "Only owner can update persona");
-      if (denied) {
-        return denied;
-      }
-      const personaPatch = typeof args === "object" && args && "personaPatch" in args && typeof (args as { personaPatch?: unknown }).personaPatch === "object"
-        ? Object.fromEntries(
-            Object.entries((args as { personaPatch: Record<string, unknown> }).personaPatch)
-              .filter(([, value]) => typeof value === "string")
-          )
-        : {};
-      if (Object.keys(personaPatch).length === 0) {
-        return JSON.stringify({ error: "personaPatch with at least one string field is required" });
-      }
-      const updated = await context.personaStore.patch(personaPatch);
-      await context.setupStore.advanceAfterPersonaUpdate(updated);
-      return JSON.stringify(updated);
-    }
-    return JSON.stringify({ error: "scope must be global, user, or persona" });
-  },
-  async write_operation_note(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can edit operation notes");
+  async upsert_toolset_rule(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can edit toolset rules");
     if (denied) {
       return denied;
     }
     const title = getStringField(args, "title");
     const content = getStringField(args, "content");
     const toolsetIds = getStringArrayField(args, "toolset_ids");
-    const noteId = getStringField(args, "noteId");
     if (!title || !content || toolsetIds.length === 0) {
       return JSON.stringify({ error: "title, content and toolset_ids are required" });
     }
-    const notes = await context.operationNoteStore.getAll();
-    const duplicate = findBestDuplicateMatch(
-      `${title} ${content} ${toolsetIds.join(" ")}`,
-      notes.filter((item) => !noteId || item.id !== noteId),
-      (item) => `${item.title} ${item.content} ${item.toolsetIds.join(" ")}`
-    );
-    if (duplicate && !noteId) {
-      return JSON.stringify({
-        error: "duplicate_operation_note",
-        message: "Found similar existing operation note; update it instead of creating a duplicate",
-        existing: duplicate
-      });
-    }
-    return JSON.stringify(await context.operationNoteStore.upsert({
-      ...(noteId ? { noteId } : duplicate?.id ? { noteId: duplicate.id } : {}),
+    const result = await context.toolsetRuleStore.upsert({
+      ...(getStringField(args, "ruleId") ? { ruleId: getStringField(args, "ruleId") } : {}),
       title,
       content,
       toolsetIds,
-      source: "model"
-    }));
-  },
-  async remove_memory(_toolCall, args, context) {
-    const scope = getStringField(args, "scope");
-    if (scope === "global") {
-      const denied = requireOwner(context.relationship, "Only owner can edit global memories");
-      if (denied) {
-        return denied;
-      }
-      const memoryId = getStringField(args, "memoryId");
-      if (!memoryId) {
-        return JSON.stringify({ error: "memoryId is required" });
-      }
-      return JSON.stringify(await context.globalMemoryStore.remove(memoryId));
-    }
-    if (scope === "user") {
-      const userId = resolveTargetUserId(args, context.lastMessage.userId);
-      const denied = requireOwnerOrSelf(context, userId, "Only owner can edit another user's memories");
-      if (denied) {
-        return denied;
-      }
-      const memoryId = getStringField(args, "memoryId");
-      if (!memoryId) {
-        return JSON.stringify({ error: "memoryId is required" });
-      }
-      const updated = await context.userStore.removeMemory(userId, memoryId);
-      if (!updated) {
-        return JSON.stringify({ error: "User not found" });
-      }
-      return JSON.stringify(updated.memories);
-    }
-    if (scope === "persona") {
-      const denied = requireOwner(context.relationship, "Only owner can update persona");
-      if (denied) {
-        return denied;
-      }
-      const personaField = getStringField(args, "personaField");
-      if (!personaField) {
-        return JSON.stringify({ error: "personaField is required" });
-      }
-      const updated = await context.personaStore.patch({ [personaField]: "" });
-      await context.setupStore.advanceAfterPersonaUpdate(updated);
-      return JSON.stringify(updated);
-    }
-    return JSON.stringify({ error: "scope must be global, user, or persona" });
-  },
-  async remove_operation_note(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can edit operation notes");
-    if (denied) {
-      return denied;
-    }
-    const noteId = getStringField(args, "noteId");
-    if (!noteId) {
-      return JSON.stringify({ error: "noteId is required" });
-    }
-    return JSON.stringify(await context.operationNoteStore.remove(noteId));
-  },
-  async register_known_user(_toolCall, args, context) {
-    const denied = requireOwner(context.relationship, "Only owner can register known users");
-    if (denied) {
-      return denied;
-    }
-    const userId = getStringField(args, "user_id");
-    if (!userId) {
-      return JSON.stringify({ error: "user_id is required" });
-    }
-    const updated = await context.userStore.registerKnownUser({
-      userId,
-      ...parseUserProfilePatch(args)
+      source: "owner_explicit"
     });
-    return JSON.stringify(updated);
+    const warning = detectScopeConflict({
+      currentScope: "toolset_rules",
+      title,
+      content
+    });
+    return withWarnings({
+      action: result.action,
+      rule: result.item
+    }, warning);
   },
-  async remember_user_profile(_toolCall, args, context) {
+  async remove_toolset_rule(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can edit toolset rules");
+    if (denied) {
+      return denied;
+    }
+    const ruleId = getStringField(args, "ruleId");
+    if (!ruleId) {
+      return JSON.stringify({ error: "ruleId is required" });
+    }
+    const remaining = await context.toolsetRuleStore.remove(ruleId);
+    return JSON.stringify({ removed: true, ruleId, remaining });
+  },
+  async get_user_profile(_toolCall, args, context) {
+    const userId = resolveTargetUserId(args, context.lastMessage.userId);
+    const denied = requireOwnerOrSelf(context, userId, "Only owner can inspect another user's profile");
+    if (denied) {
+      return denied;
+    }
+    const user = userId === context.lastMessage.userId
+      ? context.currentUser
+      : await context.userStore.getByUserId(userId);
+    return JSON.stringify(toUserProfilePayload(user, userId === context.lastMessage.userId ? context.lastMessage.senderName : undefined));
+  },
+  async patch_user_profile(_toolCall, args, context) {
     const userId = resolveTargetUserId(args, context.lastMessage.userId);
     const denied = requireOwnerOrSelf(context, userId, "Only owner can edit another user's profile");
     if (denied) {
@@ -522,6 +602,75 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     const updated = await context.userStore.patchUserProfile({
       userId,
       ...patch
+    });
+    return JSON.stringify({ action: "updated_existing", profile: toUserProfilePayload(updated, userId === context.lastMessage.userId ? context.lastMessage.senderName : undefined) });
+  },
+  async list_user_memories(_toolCall, args, context) {
+    const userId = resolveTargetUserId(args, context.lastMessage.userId);
+    const denied = requireOwnerOrSelf(context, userId, "Only owner can inspect another user's memories");
+    if (denied) {
+      return denied;
+    }
+    const user = userId === context.lastMessage.userId
+      ? context.currentUser
+      : await context.userStore.getByUserId(userId);
+    return JSON.stringify(user?.memories ?? []);
+  },
+  async upsert_user_memory(_toolCall, args, context) {
+    const userId = resolveTargetUserId(args, context.lastMessage.userId);
+    const denied = requireOwnerOrSelf(context, userId, "Only owner can edit another user's memories");
+    if (denied) {
+      return denied;
+    }
+    const title = getStringField(args, "title");
+    const content = getStringField(args, "content");
+    if (!title || !content) {
+      return JSON.stringify({ error: "title and content are required" });
+    }
+    const result = await context.userStore.upsertMemory({
+      userId,
+      ...(getStringField(args, "memoryId") ? { memoryId: getStringField(args, "memoryId") } : {}),
+      title,
+      content,
+      ...(getStringField(args, "kind") ? { kind: getStringField(args, "kind") as "preference" | "fact" | "boundary" | "habit" | "relationship" | "other" } : {}),
+      ...(getIntegerField(args, "importance") !== null ? { importance: getIntegerField(args, "importance")! } : {}),
+      source: context.relationship === "owner" && userId !== context.lastMessage.userId ? "owner_explicit" : "user_explicit"
+    });
+    const warning = detectScopeConflict({
+      currentScope: "user_memories",
+      title,
+      content
+    });
+    return withWarnings({
+      action: result.action,
+      memory: result.item
+    }, warning);
+  },
+  async remove_user_memory(_toolCall, args, context) {
+    const userId = resolveTargetUserId(args, context.lastMessage.userId);
+    const denied = requireOwnerOrSelf(context, userId, "Only owner can edit another user's memories");
+    if (denied) {
+      return denied;
+    }
+    const memoryId = getStringField(args, "memoryId");
+    if (!memoryId) {
+      return JSON.stringify({ error: "memoryId is required" });
+    }
+    const updated = await context.userStore.removeMemory(userId, memoryId);
+    return JSON.stringify({ removed: Boolean(updated), memoryId, remaining: updated?.memories ?? [] });
+  },
+  async register_known_user(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can register known users");
+    if (denied) {
+      return denied;
+    }
+    const userId = getStringField(args, "user_id");
+    if (!userId) {
+      return JSON.stringify({ error: "user_id is required" });
+    }
+    const updated = await context.userStore.registerKnownUser({
+      userId,
+      ...parseUserProfilePatch(args)
     });
     return JSON.stringify(updated);
   },

@@ -64,12 +64,12 @@ async function main() {
           return new Map();
         }
       } as any,
-      globalMemoryStore: {
+      globalRuleStore: {
         async getAll() {
           return [];
         }
       } as any,
-      operationNoteStore: {
+      toolsetRuleStore: {
         async getAll() {
           return [];
         }
@@ -181,12 +181,12 @@ async function main() {
           return new Map();
         }
       } as any,
-      globalMemoryStore: {
+      globalRuleStore: {
         async getAll() {
           return [];
         }
       } as any,
-      operationNoteStore: {
+      toolsetRuleStore: {
         async getAll() {
           return [];
         }
@@ -331,12 +331,12 @@ async function main() {
           return new Map();
         }
       } as any,
-      globalMemoryStore: {
+      globalRuleStore: {
         async getAll() {
           return [];
         }
       } as any,
-      operationNoteStore: {
+      toolsetRuleStore: {
         async getAll() {
           return [];
         }
@@ -461,14 +461,14 @@ async function main() {
           return new Map();
         }
       } as any,
-      globalMemoryStore: {
+      globalRuleStore: {
         async getAll() {
-          throw new Error("scenario_host should not read global memories");
+          throw new Error("scenario_host should not read global rules");
         }
       } as any,
-      operationNoteStore: {
+      toolsetRuleStore: {
         async getAll() {
-          throw new Error("scenario_host should not read operation notes");
+          throw new Error("scenario_host should not read toolset rules");
         }
       } as any,
       scenarioHostStateStore: {
@@ -554,7 +554,7 @@ async function main() {
     assert.match(system, /标题=钟楼迷雾/);
     assert.match(system, /当前位置=旧钟楼外/);
     assert.doesNotMatch(system, /你是具有角色扮演属性的聊天角色/);
-    assert.doesNotMatch(system, /global_memory/);
+    assert.doesNotMatch(system, /global_rules/);
   });
 }
 

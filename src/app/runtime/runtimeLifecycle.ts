@@ -13,7 +13,7 @@ import type { RequestStore } from "#requests/requestStore.ts";
 import type { SessionManager } from "#conversation/session/sessionManager.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
 import type { UserStore } from "#identity/userStore.ts";
-import type { GlobalMemoryStore } from "#memory/memoryStore.ts";
+import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
 import type { OneBotMessageEvent, OneBotRequestEvent } from "#services/onebot/types.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
@@ -48,7 +48,7 @@ export async function startInternalApiIfEnabled(input: {
   oneBotClient: OneBotClient;
   sessionManager: SessionManager;
   personaStore: PersonaStore;
-  globalMemoryStore: GlobalMemoryStore;
+  globalRuleStore: GlobalRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
   userStore: UserStore;
   whitelistStore: WhitelistStore;
@@ -106,7 +106,7 @@ export function subscribeRuntimeReload(input: {
   setInternalApi: (value: InternalApiController | null) => void;
   sessionManager: SessionManager;
   personaStore: PersonaStore;
-  globalMemoryStore: GlobalMemoryStore;
+  globalRuleStore: GlobalRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
   userStore: UserStore;
   whitelistStore: WhitelistStore;
@@ -172,7 +172,7 @@ export function subscribeRuntimeReload(input: {
       oneBotClient: input.oneBotClient,
       sessionManager: input.sessionManager,
       personaStore: input.personaStore,
-      globalMemoryStore: input.globalMemoryStore,
+      globalRuleStore: input.globalRuleStore,
       scenarioHostStateStore: input.scenarioHostStateStore,
       userStore: input.userStore,
       whitelistStore: input.whitelistStore,

@@ -1,5 +1,5 @@
 import { s, type Infer } from "#data/schema/index.ts";
-import { memoryEntrySchema } from "#memory/memoryEntry.ts";
+import { userMemoryEntrySchema } from "#memory/userMemoryEntry.ts";
 import type { Relationship } from "./relationship.ts";
 
 export const persistedUserSchema = s.object({
@@ -9,7 +9,7 @@ export const persistedUserSchema = s.object({
   residence: s.string().trim().nonempty().optional(),
   profileSummary: s.string().trim().nonempty().optional(),
   relationshipNote: s.string().trim().nonempty().optional(),
-  memories: s.array(memoryEntrySchema).default([]),
+  memories: s.array(userMemoryEntrySchema).default([]),
   specialRole: s.literal("npc").optional(),
   createdAt: s.number().int().min(0)
 }).strict();

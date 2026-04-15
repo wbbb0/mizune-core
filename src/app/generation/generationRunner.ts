@@ -22,8 +22,8 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
     chatFileStore: deps.chatFileStore,
     mediaVisionService: deps.mediaVisionService,
     mediaCaptionService: deps.mediaCaptionService,
-    globalMemoryStore: deps.globalMemoryStore,
-    operationNoteStore: deps.operationNoteStore,
+    globalRuleStore: deps.globalRuleStore,
+    toolsetRuleStore: deps.toolsetRuleStore,
     scenarioHostStateStore: deps.scenarioHostStateStore
   });
 

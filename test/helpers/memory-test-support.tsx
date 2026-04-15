@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
-import { GlobalMemoryStore } from "../../src/memory/memoryStore.ts";
+import { GlobalRuleStore } from "../../src/memory/globalRuleStore.ts";
 import { PersonaStore } from "../../src/persona/personaStore.ts";
 import { UserStore } from "../../src/identity/userStore.ts";
 import { createTestAppConfig } from "./config-fixtures.tsx";
@@ -29,15 +29,15 @@ export async function createMemoryHarness() {
   const logger = pino({ level: "silent" });
   const whitelistStore = createWhitelistStore();
   const personaStore = new PersonaStore(dataDir, config, logger);
-  const globalMemoryStore = new GlobalMemoryStore(dataDir, config, logger);
+  const globalRuleStore = new GlobalRuleStore(dataDir, config, logger);
   const userStore = new UserStore(dataDir, config, whitelistStore, logger);
   await personaStore.init();
-  await globalMemoryStore.init();
+  await globalRuleStore.init();
   await userStore.init();
   return {
     dataDir,
     personaStore,
-    globalMemoryStore,
+    globalRuleStore,
     userStore,
     whitelistStore,
     cleanup: async () => {

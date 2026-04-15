@@ -36,8 +36,8 @@ async function main() {
 
       const system = String(prompt[0]?.content ?? "");
       const batchText = readPromptMessageText(prompt[1]);
-      assert.match(system, /⟦section name="identity"⟧/);
-      assert.match(system, /⟦section name="current_user"⟧/);
+      assert.match(system, /⟦section name="persona"⟧/);
+      assert.match(system, /⟦section name="current_user_profile"⟧/);
       assert.match(system, /⟦section name="participant_context"⟧/);
       assert.match(system, /批次头和每条消息头只用于帮助你分清会话模式/);
       assert.match(batchText, /⟦trigger_batch session="群聊 123456" trigger_user="Bob \(10002\)" message_count="2" speaker_count="2"⟧/);
@@ -98,7 +98,7 @@ async function main() {
       const persona = await harness.personaStore.patch({
         rules: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
       });
-      await harness.globalMemoryStore.overwrite([
+      await harness.globalRuleStore.overwrite([
         {
           title: "重复的人设规则",
           content: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
@@ -124,10 +124,10 @@ async function main() {
           userId: "owner",
           senderName: "Owner",
           relationship: "owner",
-          residence: "杭州",
-          memories: (await harness.userStore.getByUserId("owner"))?.memories ?? []
+          residence: "杭州"
         }),
-        globalMemories: await harness.globalMemoryStore.getAll(),
+        currentUserMemories: (await harness.userStore.getByUserId("owner"))?.memories ?? [],
+        globalRules: await harness.globalRuleStore.getAll(),
         historySummary: null,
         recentMessages: [],
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "以后先说结论", timestampMs: Date.now() })]
@@ -135,10 +135,12 @@ async function main() {
 
       const system = String(prompt[0]?.content ?? "");
       assert.doesNotMatch(system, /⟦section name="participant_context"⟧/);
-      assert.match(system, /当前长期全局行为要求（最多 4 条）：/);
+      assert.match(system, /当前长期全局行为规则（最多 4 条）：/);
       assert.match(system, /- 输出规则：先给结论再展开。/);
       assert.doesNotMatch(system, /重复的人设规则/);
-      assert.match(system, /当前触发用户相关长期记忆（最多 4 条）：/);
+      assert.match(system, /⟦section name="current_user_profile"⟧/);
+      assert.match(system, /⟦section name="current_user_memories"⟧/);
+      assert.match(system, /当前触发用户长期记忆（最多 4 条）：/);
       assert.match(system, /- 饮食偏好：不喜欢香菜/);
     } finally {
       await harness.cleanup();

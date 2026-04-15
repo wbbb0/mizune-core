@@ -8,7 +8,6 @@ import { prepareAudioInputsForModel } from "#messages/audioSources.ts";
 import { buildPrompt, buildScheduledTaskPrompt, buildSetupPrompt } from "#llm/prompt/promptBuilder.ts";
 import type { PromptInteractionMode, PromptLiveResource } from "#llm/prompt/promptTypes.ts";
 import type { PromptAudioTranscription } from "#llm/prompt/promptTypes.ts";
-import type { PromptOperationNote } from "#llm/prompt/promptTypes.ts";
 import type {
   InternalTranscriptItem,
   SessionDebugMarker,
@@ -22,7 +21,7 @@ import type { PromptDebugSnapshot } from "#llm/tools/core/shared.ts";
 import type { GenerationPromptBuilderDeps } from "./generationRunnerDeps.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
 import type { ToolsetView } from "#llm/tools/toolsets.ts";
-import type { OperationNoteEntry } from "#llm/prompt/operationNoteStore.ts";
+import type { ToolsetRuleEntry } from "#llm/prompt/toolsetRuleStore.ts";
 import { isNearDuplicateText } from "#memory/similarity.ts";
 import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 
@@ -199,7 +198,6 @@ function buildUserProfilePromptState(currentUser: StoredUser, senderName?: strin
     ...(currentUser?.residence ? { residence: currentUser.residence } : {}),
     ...(currentUser?.profileSummary ? { profileSummary: currentUser.profileSummary } : {}),
     ...(currentUser?.relationshipNote ? { relationshipNote: currentUser.relationshipNote } : {}),
-    ...(currentUser?.memories ? { memories: currentUser.memories } : {}),
     ...(currentUser?.specialRole ? { specialRole: currentUser.specialRole } : {})
   };
 }
@@ -408,36 +406,29 @@ function extractSystemMessages(promptMessages: LlmMessage[]): string[] {
     .map((message) => typeof message.content === "string" ? message.content : JSON.stringify(message.content));
 }
 
-function resolveOperationNotes(
-  notes: OperationNoteEntry[],
+function resolveToolsetRules(
+  rules: ToolsetRuleEntry[],
   input: {
     activeToolsets: ToolsetView[];
   }
-): PromptOperationNote[] {
-  if (notes.length === 0) {
+): ToolsetRuleEntry[] {
+  if (rules.length === 0) {
     return [];
   }
 
   const activeToolsetIds = new Set(input.activeToolsets.map((item) => item.id));
-  const selected = notes
-    .filter((note) => note.toolsetIds.some((id) => activeToolsetIds.has(id)))
-    .map((note) => ({
-      id: note.id,
-      title: note.title,
-      content: note.content,
-      toolsetIds: note.toolsetIds
-    }));
-  const deduped: PromptOperationNote[] = [];
-  for (const note of selected) {
+  const selected = rules.filter((rule) => rule.toolsetIds.some((id) => activeToolsetIds.has(id)));
+  const deduped: ToolsetRuleEntry[] = [];
+  for (const rule of selected) {
     const exists = deduped.some((item) => (
-      item.id === note.id
+      item.id === rule.id
       || isNearDuplicateText(
-        `${note.title} ${note.content} ${note.toolsetIds.join(" ")}`,
+        `${rule.title} ${rule.content} ${rule.toolsetIds.join(" ")}`,
         [`${item.title} ${item.content} ${item.toolsetIds.join(" ")}`]
       )
     ));
     if (!exists) {
-      deduped.push(note);
+      deduped.push(rule);
     }
   }
   return deduped;
@@ -482,12 +473,12 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       ...input.participantProfiles.map((item) => item.userId),
       ...input.batchMessages.map((item) => item.userId)
     ]);
-    const globalMemories = scenarioHostMode
+    const globalRules = scenarioHostMode
       ? []
-      : await deps.globalMemoryStore.getAll();
-    const operationNotes = scenarioHostMode
+      : await deps.globalRuleStore.getAll();
+    const toolsetRules = scenarioHostMode
       ? []
-      : resolveOperationNotes(await deps.operationNoteStore.getAll(), {
+      : resolveToolsetRules(await deps.toolsetRuleStore.getAll(), {
           activeToolsets: input.activeToolsets
         });
     const scenarioState = scenarioHostMode
@@ -528,16 +519,17 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       participantProfiles: input.participantProfiles,
       userProfile: buildUserProfilePromptState(
         scenarioHostMode
-          ? (input.currentUser ? { ...input.currentUser, memories: [] } : input.currentUser)
+          ? input.currentUser
           : input.currentUser,
         input.batchMessages[input.batchMessages.length - 1]?.senderName
       ),
-      globalMemories,
+      currentUserMemories: scenarioHostMode ? [] : (input.currentUser?.memories ?? []),
+      globalRules,
       historySummary: input.historySummary,
       recentToolEvents: input.recentToolEvents,
       debugMarkers: input.debugMarkers,
       liveResources,
-      operationNotes,
+      toolsetRules,
       ...(scenarioState ? { scenarioStateLines: buildScenarioStateLines(scenarioState) } : {}),
       ...(input.isInSetup ? { isInSetup: input.isInSetup } : {}),
       recentMessages: mediaContext.historyForPrompt,
@@ -559,8 +551,8 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         debugMarkers: input.debugMarkers ?? [],
         toolTranscript: input.internalTranscript,
         persona: input.persona,
-        globalMemories,
-        operationNotes,
+        globalRules,
+        toolsetRules,
         currentUser: input.currentUser,
         participantProfiles: input.participantProfiles,
         imageCaptions: toImageCaptionEntries(mediaContext.captionMap),
@@ -592,7 +584,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     abortSignal?: AbortSignal;
   }) => {
     const scenarioHostMode = isScenarioHostMode(input.modeId);
-    const [mediaContext, liveResources, globalMemories, noteEntries] = await Promise.all([
+    const [mediaContext, liveResources, globalRules, toolsetRuleEntries] = await Promise.all([
       preparePromptMediaContext(deps, {
         historyForPrompt: input.historyForPrompt,
         reason: "scheduled_prompt",
@@ -601,10 +593,10 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       shouldIncludeLiveResources(input.visibleToolNames)
         ? collectPromptLiveResources(deps)
         : Promise.resolve([]),
-      scenarioHostMode ? Promise.resolve([]) : deps.globalMemoryStore.getAll(),
-      scenarioHostMode ? Promise.resolve([]) : deps.operationNoteStore.getAll()
+      scenarioHostMode ? Promise.resolve([]) : deps.globalRuleStore.getAll(),
+      scenarioHostMode ? Promise.resolve([]) : deps.toolsetRuleStore.getAll()
     ]);
-    const operationNotes = resolveOperationNotes(noteEntries, {
+    const toolsetRules = resolveToolsetRules(toolsetRuleEntries, {
       activeToolsets: input.activeToolsets
     });
     const scenarioState = scenarioHostMode
@@ -636,16 +628,17 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       participantProfiles: input.participantProfiles,
       userProfile: buildUserProfilePromptState(
         scenarioHostMode
-          ? (input.currentUser ? { ...input.currentUser, memories: [] } : input.currentUser)
+          ? input.currentUser
           : input.currentUser,
         input.targetContext.chatType === "private" ? input.targetContext.senderName : undefined
       ),
-      globalMemories,
+      currentUserMemories: scenarioHostMode ? [] : (input.currentUser?.memories ?? []),
+      globalRules,
       historySummary: input.historySummary,
       recentToolEvents: input.recentToolEvents,
       debugMarkers: input.debugMarkers,
       liveResources,
-      operationNotes,
+      toolsetRules,
       ...(scenarioState ? { scenarioStateLines: buildScenarioStateLines(scenarioState) } : {}),
       recentMessages: mediaContext.historyForPrompt,
       targetContext: input.targetContext
@@ -666,8 +659,8 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         debugMarkers: input.debugMarkers ?? [],
         toolTranscript: input.internalTranscript,
         persona: input.persona,
-        globalMemories,
-        operationNotes,
+        globalRules,
+        toolsetRules,
         currentUser: input.currentUser,
         participantProfiles: input.participantProfiles,
         imageCaptions: toImageCaptionEntries(mediaContext.captionMap),
@@ -741,8 +734,8 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         debugMarkers: input.debugMarkers ?? [],
         toolTranscript: input.internalTranscript,
         persona: input.persona,
-        globalMemories: [],
-        operationNotes: [],
+        globalRules: [],
+        toolsetRules: [],
         currentUser: input.currentUser,
         participantProfiles: input.participantProfiles,
         imageCaptions: toImageCaptionEntries(mediaContext.captionMap),

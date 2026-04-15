@@ -113,102 +113,109 @@ async function main() {
     }).map((tool) => tool.function.name).includes("dump_debug_literals"));
   });
 
-  await runCase("memory tool descriptions cover persona read/write surface", async () => {
+  await runCase("memory tool descriptions cover category-specific tool surface", async () => {
     const config = createForwardFeatureConfig();
     const tools = getBuiltinTools("owner", config);
-    const readMemory = tools.find((tool) => tool.function.name === "read_memory");
-    const writeMemory = tools.find((tool) => tool.function.name === "write_memory");
-    assert.match(String(readMemory?.function.description ?? ""), /scope=global|scope=user|scope=persona/);
-    assert.match(String(writeMemory?.function.description ?? ""), /scope=global\|user|scope=persona/);
+    const getPersona = tools.find((tool) => tool.function.name === "get_persona");
+    const upsertGlobalRule = tools.find((tool) => tool.function.name === "upsert_global_rule");
+    const upsertUserMemory = tools.find((tool) => tool.function.name === "upsert_user_memory");
+    assert.match(String(getPersona?.function.description ?? ""), /persona/);
+    assert.match(String(upsertGlobalRule?.function.description ?? ""), /全局工作流规则/);
+    assert.match(String(upsertUserMemory?.function.description ?? ""), /用户长期记忆/);
   });
 
   await runCase("memory tools are exposed to both owner and known users", async () => {
     const config = createForwardFeatureConfig();
     const ownerNames = getBuiltinTools("owner", config).map((tool) => tool.function.name);
     const knownNames = getBuiltinTools("known", config).map((tool) => tool.function.name);
-    assert.ok(ownerNames.includes("read_memory"));
-    assert.ok(ownerNames.includes("write_memory"));
-    assert.ok(ownerNames.includes("remove_memory"));
-    assert.ok(knownNames.includes("read_memory"));
-    assert.ok(knownNames.includes("write_memory"));
-    assert.ok(knownNames.includes("remove_memory"));
-    assert.ok(ownerNames.includes("list_operation_notes"));
-    assert.ok(ownerNames.includes("write_operation_note"));
-    assert.ok(ownerNames.includes("remove_operation_note"));
+    assert.ok(ownerNames.includes("get_persona"));
+    assert.ok(ownerNames.includes("patch_persona"));
+    assert.ok(ownerNames.includes("upsert_global_rule"));
+    assert.ok(ownerNames.includes("upsert_toolset_rule"));
+    assert.ok(ownerNames.includes("patch_user_profile"));
+    assert.ok(ownerNames.includes("upsert_user_memory"));
+    assert.ok(knownNames.includes("get_persona"));
+    assert.ok(knownNames.includes("patch_user_profile"));
+    assert.ok(knownNames.includes("upsert_user_memory"));
+    assert.ok(!knownNames.includes("upsert_global_rule"));
+    assert.ok(!knownNames.includes("upsert_toolset_rule"));
   });
 
-  await runCase("global memory handlers allow owner and reject non-owner", async () => {
-    const ownerResult = await profileToolHandlers.write_memory!(
-      { id: "tool_global_memory_1", type: "function", function: { name: "write_memory", arguments: "{\"scope\":\"global\",\"title\":\"输出顺序\",\"content\":\"先结论后细节\"}" } },
-      { scope: "global", title: "输出顺序", content: "先结论后细节" },
+  await runCase("global rule handlers allow owner and reject non-owner", async () => {
+    const ownerResult = await profileToolHandlers.upsert_global_rule!(
+      { id: "tool_global_rule_1", type: "function", function: { name: "upsert_global_rule", arguments: "{\"title\":\"输出顺序\",\"content\":\"先结论后细节\"}" } },
+      { title: "输出顺序", content: "先结论后细节" },
       {
         relationship: "owner",
-        globalMemoryStore: {
+        globalRuleStore: {
           async upsert(input: { title: string; content: string }) {
-            return [{ id: "mem_1", updatedAt: 1, ...input }];
+            return { action: "created", item: { id: "rule_1", updatedAt: 1, createdAt: 1, kind: "workflow", source: "owner_explicit", ...input }, rules: [] };
           }
         }
       } as any
     );
-    assert.equal(JSON.parse(String(ownerResult))[0].title, "输出顺序");
+    assert.equal(JSON.parse(String(ownerResult)).rule.title, "输出顺序");
 
-    const deniedResult = await profileToolHandlers.write_memory!(
-      { id: "tool_global_memory_2", type: "function", function: { name: "write_memory", arguments: "{\"scope\":\"global\",\"title\":\"输出顺序\",\"content\":\"先结论后细节\"}" } },
-      { scope: "global", title: "输出顺序", content: "先结论后细节" },
+    const deniedResult = await profileToolHandlers.upsert_global_rule!(
+      { id: "tool_global_rule_2", type: "function", function: { name: "upsert_global_rule", arguments: "{\"title\":\"输出顺序\",\"content\":\"先结论后细节\"}" } },
+      { title: "输出顺序", content: "先结论后细节" },
       {
         relationship: "known",
-        globalMemoryStore: {}
+        globalRuleStore: {}
       } as any
     );
-    assert.match(String(deniedResult), /Only owner can edit global memories/);
+    assert.match(String(deniedResult), /Only owner can edit global rules/);
   });
 
-  await runCase("operation note handlers reject duplicate creation and allow targeted updates", async () => {
+  await runCase("toolset rule handlers upsert duplicates into existing rules", async () => {
     const existing = [{
-      id: "note_1",
+      id: "rule_1",
       title: "网页登录处理",
       content: "只有在明确遇到登录任务时，才读取并使用站点凭据。",
       toolsetIds: ["web_research"],
-      source: "owner",
+      source: "owner_explicit",
+      createdAt: 1,
       updatedAt: 1
     }];
-    const duplicateResult = await profileToolHandlers.write_operation_note!(
-      { id: "tool_operation_note_1", type: "function", function: { name: "write_operation_note", arguments: "{\"title\":\"网页登录规则\",\"content\":\"只有在明确遇到登录任务时，才读取并使用站点凭据。\",\"toolset_ids\":[\"web_research\"]}" } },
+    const duplicateResult = await profileToolHandlers.upsert_toolset_rule!(
+      { id: "tool_toolset_rule_1", type: "function", function: { name: "upsert_toolset_rule", arguments: "{\"title\":\"网页登录规则\",\"content\":\"只有在明确遇到登录任务时，才读取并使用站点凭据。\",\"toolset_ids\":[\"web_research\"]}" } },
       { title: "网页登录规则", content: "只有在明确遇到登录任务时，才读取并使用站点凭据。", toolset_ids: ["web_research"] },
       {
         relationship: "owner",
-        operationNoteStore: {
-          async getAll() {
-            return existing;
+        toolsetRuleStore: {
+          async upsert() {
+            return { action: "updated_existing", item: existing[0], rules: existing };
           }
         }
       } as any
     );
-    assert.match(String(duplicateResult), /duplicate_operation_note/);
+    assert.equal(JSON.parse(String(duplicateResult)).action, "updated_existing");
 
-    const updateResult = await profileToolHandlers.write_operation_note!(
-      { id: "tool_operation_note_2", type: "function", function: { name: "write_operation_note", arguments: "{\"noteId\":\"note_1\",\"title\":\"网页登录处理\",\"content\":\"遇到明确登录任务时才读取并使用站点凭据。\",\"toolset_ids\":[\"web_research\"]}" } },
-      { noteId: "note_1", title: "网页登录处理", content: "遇到明确登录任务时才读取并使用站点凭据。", toolset_ids: ["web_research"] },
+    const updateResult = await profileToolHandlers.upsert_toolset_rule!(
+      { id: "tool_toolset_rule_2", type: "function", function: { name: "upsert_toolset_rule", arguments: "{\"ruleId\":\"rule_1\",\"title\":\"网页登录处理\",\"content\":\"遇到明确登录任务时才读取并使用站点凭据。\",\"toolset_ids\":[\"web_research\"]}" } },
+      { ruleId: "rule_1", title: "网页登录处理", content: "遇到明确登录任务时才读取并使用站点凭据。", toolset_ids: ["web_research"] },
       {
         relationship: "owner",
-        operationNoteStore: {
-          async getAll() {
-            return existing;
-          },
-          async upsert(input: { noteId?: string; title: string; content: string; toolsetIds: string[] }) {
-            return [{
-              id: input.noteId ?? "note_1",
-              title: input.title,
-              content: input.content,
-              toolsetIds: input.toolsetIds,
-              source: "model",
-              updatedAt: 2
-            }];
+        toolsetRuleStore: {
+          async upsert(input: { ruleId?: string; title: string; content: string; toolsetIds: string[] }) {
+            return {
+              action: "updated_existing",
+              item: {
+                id: input.ruleId ?? "rule_1",
+                title: input.title,
+                content: input.content,
+                toolsetIds: input.toolsetIds,
+                source: "owner_explicit",
+                createdAt: 1,
+                updatedAt: 2
+              },
+              rules: []
+            };
           }
         }
       } as any
     );
-    assert.equal(JSON.parse(String(updateResult))[0].id, "note_1");
+    assert.equal(JSON.parse(String(updateResult)).rule.id, "rule_1");
   });
 
   await runCase("scheduler tool description emphasizes future triggers and self-contained instructions", async () => {
@@ -572,8 +579,8 @@ async function main() {
           debugMarkers: [],
           toolTranscript: [],
           persona: { name: "Test Persona" },
-          globalMemories: [],
-          operationNotes: [],
+          globalRules: [],
+          toolsetRules: [],
           currentUser: null,
           participantProfiles: [],
           imageCaptions: [],

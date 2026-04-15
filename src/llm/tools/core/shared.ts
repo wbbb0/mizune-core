@@ -22,8 +22,8 @@ import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { ConversationAccessService } from "#identity/conversationAccessService.ts";
 import type { NpcDirectory } from "#identity/npcDirectory.ts";
-import type { GlobalMemoryStore } from "#memory/memoryStore.ts";
-import type { OperationNoteStore } from "#llm/prompt/operationNoteStore.ts";
+import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
+import type { ToolsetRuleStore, ToolsetRuleEntry } from "#llm/prompt/toolsetRuleStore.ts";
 import type { ComfyClient } from "#comfy/comfyClient.ts";
 import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
@@ -40,7 +40,6 @@ import type {
   GenerationPromptToolEvent
 } from "#app/generation/generationPromptBuilder.ts";
 import type { PromptLiveResource } from "../../prompt/promptTypes.ts";
-import type { PromptOperationNote } from "../../prompt/promptTypes.ts";
 import type { Persona } from "#persona/personaSchema.ts";
 import type { GenerationWebOutputCollector } from "#app/generation/generationTypes.ts";
 import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
@@ -87,8 +86,8 @@ export interface BuiltinToolStoreDeps {
   whitelistStore: WhitelistStore;
   userStore: UserStore;
   personaStore: PersonaStore;
-  globalMemoryStore: GlobalMemoryStore;
-  operationNoteStore: OperationNoteStore;
+  globalRuleStore: GlobalRuleStore;
+  toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
   setupStore: SetupStateStore;
   conversationAccess: ConversationAccessService;
@@ -121,8 +120,8 @@ export interface PromptDebugSnapshot {
   debugMarkers: SessionDebugMarker[];
   toolTranscript: InternalTranscriptItem[];
   persona: Persona;
-  globalMemories: Awaited<ReturnType<GlobalMemoryStore["getAll"]>>;
-  operationNotes: PromptOperationNote[];
+  globalRules: Awaited<ReturnType<GlobalRuleStore["getAll"]>>;
+  toolsetRules: ToolsetRuleEntry[];
   currentUser: Awaited<ReturnType<UserStore["getByUserId"]>>;
   participantProfiles: GenerationPromptParticipantProfile[];
   imageCaptions: Array<{ imageId: string; caption: string }>;

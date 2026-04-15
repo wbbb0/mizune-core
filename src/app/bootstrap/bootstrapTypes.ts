@@ -20,7 +20,7 @@ import type { SingleInstanceLock } from "#runtime/singleInstanceLock.ts";
 import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { UserStore } from "#identity/userStore.ts";
-import type { GlobalMemoryStore } from "#memory/memoryStore.ts";
+import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
 import type { loadConfig } from "#config/config.ts";
 import type { EventRouter } from "#services/onebot/eventRouter.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
@@ -35,7 +35,7 @@ import type { SearchService } from "#services/web/search/searchService.ts";
 import type { ComfyClient } from "#comfy/comfyClient.ts";
 import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
-import type { OperationNoteStore } from "#llm/prompt/operationNoteStore.ts";
+import type { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 
 export interface AppServiceBootstrap {
@@ -60,8 +60,8 @@ export interface AppServiceBootstrap {
   groupMembershipStore: GroupMembershipStore;
   userStore: UserStore;
   personaStore: PersonaStore;
-  globalMemoryStore: GlobalMemoryStore;
-  operationNoteStore: OperationNoteStore;
+  globalRuleStore: GlobalRuleStore;
+  toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
   setupStore: SetupStateStore;
   searchService: SearchService;

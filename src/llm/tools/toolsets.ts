@@ -54,26 +54,32 @@ const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   },
   {
     id: "memory_profile",
-    title: "记忆与资料",
-    description: "读取和维护用户资料、长期记忆与 persona。",
+    title: "长期资料与规则",
+    description: "读取和维护 persona、全局规则、工具集规则、用户资料与用户长期记忆。",
     promptGuidance: [
       "处理长期信息前先读现有资料，避免重复写入或写出冲突。",
-      "用户自己的稳定事实优先写 profile，其余再写 user memory。",
-      "owner 的长期做事规则写 global memory；绑定某个工具集的长期操作规则写 operation note；bot 的人设、口吻和角色边界写 persona。"
+      "按决策树选择写入目标：persona -> global_rules -> toolset_rules -> user_profile -> user_memories。",
+      "同一事实不要重复写进多个类别；优先更新已有相近条目。"
     ],
     plannerSignals: [
       "长期信息与偏好",
-      "读写资料、记忆、persona"
+      "读写 persona、规则、资料、长期记忆"
     ],
     toolNames: [
+      "get_persona",
+      "patch_persona",
+      "clear_persona_field",
+      "list_global_rules",
+      "upsert_global_rule",
+      "remove_global_rule",
+      "list_toolset_rules",
+      "upsert_toolset_rule",
+      "remove_toolset_rule",
       "get_user_profile",
-      "remember_user_profile",
-      "read_memory",
-      "write_memory",
-      "remove_memory",
-      "list_operation_notes",
-      "write_operation_note",
-      "remove_operation_note",
+      "patch_user_profile",
+      "list_user_memories",
+      "upsert_user_memory",
+      "remove_user_memory",
       "register_known_user",
       "set_user_special_role"
     ]

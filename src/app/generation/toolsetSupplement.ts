@@ -42,7 +42,7 @@ const TOOLSET_PATTERN_RULES: Array<{ toolsetId: string; reason: string; patterns
     toolsetId: "memory_profile",
     reason: "current_memory_intent",
     patterns: [
-      /记住|记下来|以后按这个来|长期|偏好|资料|档案|人设|persona|设定|角色设定|口吻|说话方式|身份|喜欢|讨厌/u
+      /记住|记下来|以后按这个来|长期|偏好|资料|档案|人设|persona|设定|角色设定|口吻|说话方式|身份|喜欢|讨厌|规则|全局规则|工具集规则/u
     ]
   },
   {

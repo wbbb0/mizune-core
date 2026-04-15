@@ -433,12 +433,14 @@ config/instances/acc1.yml
 - `sessions/`
 - `persona.json`
 - `users.json`
-- `global-memories.json`
-- `operation-notes.json`
+- `global-rules.json`
+- `toolset-rules.json`
 - `whitelist.json`
 - `scheduled-jobs.json`
 - `workspace/`
 - `webui-auth.json`
+
+旧版本的 `global-memories.json` 与 `operation-notes.json` 会在首次读取时自动迁移到新文件名。
 
 ## 反向代理注意事项
 
