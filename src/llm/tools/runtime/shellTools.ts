@@ -56,7 +56,7 @@ export const shellToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "shell_read",
-        description: "读取运行中的 shell resource 新输出。",
+        description: "读取后台 shell resource 自上次读取以来的新增输出。",
         parameters: {
           type: "object",
           properties: {
@@ -132,7 +132,8 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
     const input = getStringArg(args, "input")!;
 
     const result = await context.shellRuntime.interact(resourceId, input);
-    return JSON.stringify(result);
+    const { outputTail: _tail, ...session } = result.session;
+    return JSON.stringify({ output: result.output, session });
   },
 
   async shell_read(_toolCall, args, context) {
@@ -141,7 +142,8 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
 
     const resourceId = getStringArg(args, "resource_id")!;
     const result = await context.shellRuntime.read(resourceId);
-    return JSON.stringify(result);
+    const { outputTail: _tail, ...session } = result.session;
+    return JSON.stringify({ output: result.output, session });
   },
 
   async shell_signal(_toolCall, args, context) {

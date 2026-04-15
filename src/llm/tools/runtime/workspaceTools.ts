@@ -52,10 +52,13 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "local_file_ls",
-        description: "查看本地路径：目录则列出内容，文件则返回元信息。path 默认为根目录。",
+        description: "查看本地路径。目录：列出直接子项（返回 items 列表，含 truncated 标志），limit 默认 200，最大 500。文件：返回元信息。path 默认为工作区根目录（\".\"）。",
         parameters: {
           type: "object",
-          properties: { path: { type: "string" } },
+          properties: {
+            path: { type: "string" },
+            limit: { type: "integer", minimum: 1, maximum: 500, description: "目录列表最大条数，默认 200。" }
+          },
           additionalProperties: false
         }
       }
@@ -67,7 +70,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "local_file_read",
-        description: "读取本地文本文件，可按行截取。",
+        description: "读取本地文本文件，可按行截取。每次最多返回 400 行；超出时 truncated=true，用 start_line/end_line 分段继续读取。",
         parameters: {
           type: "object",
           properties: {
@@ -87,7 +90,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "local_file_write",
-        description: "写入本地文本文件。",
+        description: "写入本地文本文件。mode: overwrite（默认）覆盖或新建；append 追加到末尾；create 仅在文件不存在时创建，已存在则报错。",
         parameters: {
           type: "object",
           properties: {
@@ -107,7 +110,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "local_file_patch",
-        description: "用 unified diff patch 修改本地文本文件。",
+        description: "用 unified diff patch 修改已存在的本地文本文件。patch 格式同 git diff 输出（@@ 头 + context line），必须包含足够的上下文行以定位修改位置。",
         parameters: {
           type: "object",
           properties: {
@@ -161,7 +164,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "local_file_search",
-        description: "搜索本地文件。mode=name 按文件名搜索（默认），mode=content 在文本文件内容中查找。",
+        description: "搜索本地文件。mode=name（默认）按文件名匹配，返回路径列表；mode=content 在文本文件内容中全文查找，返回匹配行列表（含 path、line、text）。limit 默认 50，超限时 truncated=true。",
         parameters: {
           type: "object",
           properties: {
@@ -181,8 +184,24 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
+        name: "local_file_mkdir",
+        description: "创建本地目录（含中间层，等同 mkdir -p）。",
+        parameters: {
+          type: "object",
+          properties: { path: { type: "string" } },
+          required: ["path"],
+          additionalProperties: false
+        }
+      }
+    },
+    isEnabled: isLocalFileToolEnabled
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
         name: "local_file_send_to_chat",
-        description: "按路径发送本地文件到当前聊天。",
+        description: "发送本地文件到当前聊天。图片（jpg/png/gif/webp 等）直接以图片形式发送，此时不能附 text；其他格式以文本摘要形式发送，可用 text 附加说明。",
         parameters: {
           type: "object",
           properties: {
@@ -246,7 +265,9 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     const path = getStringArg(args, "path") || ".";
     const s = await context.localFileService.statItem(path);
     if (s.kind === "directory") {
-      return JSON.stringify(await context.localFileService.listItems(path));
+      const limit = getNumberArg(args, "limit") ?? 200;
+      const { root: _root, ...result } = await context.localFileService.listItems(path, limit);
+      return JSON.stringify(result);
     }
     return JSON.stringify(s);
   },
@@ -313,9 +334,19 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     const limit = getNumberArg(args, "limit") ?? 50;
     const mode = getStringArg(args, "mode") || "name";
     if (mode === "content") {
-      return JSON.stringify(await context.localFileService.findText(query, path, limit));
+      const { root: _root, ...result } = await context.localFileService.findText(query, path, limit);
+      return JSON.stringify(result);
     }
-    return JSON.stringify(await context.localFileService.searchItems(query, path, limit));
+    const { root: _root, ...result } = await context.localFileService.searchItems(query, path, limit);
+    return JSON.stringify(result);
+  },
+
+  async local_file_mkdir(_toolCall, args, context) {
+    const path = getStringArg(args, "path");
+    if (!path) {
+      return JSON.stringify({ error: "path is required" });
+    }
+    return JSON.stringify(await context.localFileService.mkdir(path));
   },
 
   async local_file_send_to_chat(_toolCall, args, context) {

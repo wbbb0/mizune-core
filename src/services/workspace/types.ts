@@ -12,6 +12,7 @@ export interface LocalFileListResult {
   root: string;
   path: string;
   items: LocalFileItemStat[];
+  truncated: boolean;
 }
 
 export interface LocalFileReadResult {

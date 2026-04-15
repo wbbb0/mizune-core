@@ -77,7 +77,7 @@ export class LocalFileService {
     };
   }
 
-  async listItems(relativePath = "."): Promise<LocalFileListResult> {
+  async listItems(relativePath = ".", limit = 200): Promise<LocalFileListResult> {
     const target = this.resolvePath(relativePath);
     const entries = await readdir(target.absolutePath, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") {
@@ -99,10 +99,13 @@ export class LocalFileService {
         updatedAtMs: itemStat.mtimeMs
       };
     }));
+    const sorted = items.sort((left, right) => left.path.localeCompare(right.path));
+    const truncated = sorted.length > limit;
     return {
       root: this.rootDir,
       path: target.relativePath,
-      items: items.sort((left, right) => left.path.localeCompare(right.path))
+      items: truncated ? sorted.slice(0, limit) : sorted,
+      truncated
     };
   }
 
