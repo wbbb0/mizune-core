@@ -229,6 +229,7 @@ export interface SessionModeOption {
   id: string;
   title: string;
   description: string;
+  allowedChatTypes?: Array<"private" | "group">;
 }
 
 export type TurnStreamEvent =

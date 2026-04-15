@@ -371,6 +371,26 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         return [];
       }
     } as unknown as InternalApiDeps["globalMemoryStore"],
+    scenarioHostStateStore: {
+      async ensureForSession(session: { id: string; participantUserId: string; participantLabel?: string | null }) {
+        return {
+          version: 1,
+          title: "未命名场景",
+          currentSituation: "场景尚未开始，请根据玩家接下来的行动开始主持。",
+          currentLocation: null,
+          sceneSummary: "",
+          player: {
+            userId: session.participantUserId,
+            displayName: session.participantLabel ?? session.participantUserId
+          },
+          inventory: [],
+          objectives: [],
+          worldFacts: [],
+          flags: {},
+          turnIndex: 0
+        };
+      }
+    } as unknown as InternalApiDeps["scenarioHostStateStore"],
     userStore: {
       async list() {
         return [{ userId: "10001", nickname: "Alice" }];

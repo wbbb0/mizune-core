@@ -1,6 +1,6 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
-import { getSessionModeDefinition } from "#modes/registry.ts";
+import { getSessionModeDefinition, sessionModeSupportsChatType } from "#modes/registry.ts";
 
 export const sessionToolDescriptors: ToolDescriptor[] = [
   {
@@ -91,7 +91,8 @@ export const sessionToolHandlers: Record<string, ToolHandler> = {
     const modes = (context.listSessionModes?.() ?? []).map((mode) => ({
       id: mode.id,
       title: mode.title,
-      description: mode.description
+      description: mode.description,
+      allowedChatTypes: mode.allowedChatTypes
     }));
     return JSON.stringify({
       currentModeId: context.sessionManager.getModeId(context.lastMessage.sessionId),
@@ -107,6 +108,10 @@ export const sessionToolHandlers: Record<string, ToolHandler> = {
     if (!targetMode) {
       return JSON.stringify({ error: `Unsupported session mode: ${modeId}` });
     }
+    const session = context.sessionManager.getSession(context.lastMessage.sessionId);
+    if (!sessionModeSupportsChatType(modeId, session.type)) {
+      return JSON.stringify({ error: `Session mode ${modeId} does not support ${session.type} chat` });
+    }
     const currentModeId = context.sessionManager.getModeId(context.lastMessage.sessionId);
     if (currentModeId === modeId) {
       return JSON.stringify({
@@ -116,17 +121,10 @@ export const sessionToolHandlers: Record<string, ToolHandler> = {
         message: `Current session mode is already ${modeId}`
       });
     }
-    const availableModes = context.listSessionModes?.() ?? [];
-    if (availableModes.length <= 1) {
-      return JSON.stringify({
-        ok: false,
-        changed: false,
-        currentModeId,
-        availableModes: availableModes.map((mode) => mode.id),
-        message: "Only rp_assistant is currently implemented; no other session mode can be selected yet"
-      });
-    }
     context.sessionManager.setModeId(context.lastMessage.sessionId, modeId);
+    if (modeId === "scenario_host") {
+      await context.scenarioHostStateStore.ensureForSession(session);
+    }
     context.persistSession?.(context.lastMessage.sessionId, "session_mode_switched_by_tool");
     return JSON.stringify({
       ok: true,

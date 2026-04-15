@@ -23,6 +23,7 @@ import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { GenerationWebOutputCollector } from "../generation/generationTypes.ts";
 import type { ComfyTaskRunner } from "#comfy/taskRunner.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
+import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 
 export interface InternalApiController {
   close: () => Promise<void>;
@@ -48,6 +49,7 @@ export async function startInternalApiIfEnabled(input: {
   sessionManager: SessionManager;
   personaStore: PersonaStore;
   globalMemoryStore: GlobalMemoryStore;
+  scenarioHostStateStore: ScenarioHostStateStore;
   userStore: UserStore;
   whitelistStore: WhitelistStore;
   requestStore: RequestStore;
@@ -105,6 +107,7 @@ export function subscribeRuntimeReload(input: {
   sessionManager: SessionManager;
   personaStore: PersonaStore;
   globalMemoryStore: GlobalMemoryStore;
+  scenarioHostStateStore: ScenarioHostStateStore;
   userStore: UserStore;
   whitelistStore: WhitelistStore;
   requestStore: RequestStore;
@@ -170,6 +173,7 @@ export function subscribeRuntimeReload(input: {
       sessionManager: input.sessionManager,
       personaStore: input.personaStore,
       globalMemoryStore: input.globalMemoryStore,
+      scenarioHostStateStore: input.scenarioHostStateStore,
       userStore: input.userStore,
       whitelistStore: input.whitelistStore,
       chatMessageFileGcService: input.chatMessageFileGcService,

@@ -46,6 +46,7 @@ import type { GenerationWebOutputCollector } from "#app/generation/generationTyp
 import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
 import type { ToolsetView } from "#llm/tools/toolsets.ts";
 import type { SessionModeDefinition } from "#modes/types.ts";
+import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 
 export type Relationship = "owner" | "known";
 export type ToolAccessLevel = "any" | "owner" | "operator";
@@ -88,6 +89,7 @@ export interface BuiltinToolStoreDeps {
   personaStore: PersonaStore;
   globalMemoryStore: GlobalMemoryStore;
   operationNoteStore: OperationNoteStore;
+  scenarioHostStateStore: ScenarioHostStateStore;
   setupStore: SetupStateStore;
   conversationAccess: ConversationAccessService;
   npcDirectory: NpcDirectory;

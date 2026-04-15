@@ -83,6 +83,7 @@ async function main() {
     personaStore: {} as never,
     globalMemoryStore: {} as never,
     operationNoteStore: {} as never,
+    scenarioHostStateStore: {} as never,
     setupStore: {
       async isReady() {
         return false;

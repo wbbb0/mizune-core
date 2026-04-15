@@ -184,18 +184,53 @@ async function main() {
       assert.deepEqual(modesResponse.json().modes, [{
         id: "rp_assistant",
         title: "RP Assistant",
-        description: "当前默认模式。保留现有角色扮演 + 助手能力。"
+        description: "当前默认模式。保留现有角色扮演 + 助手能力。",
+        allowedChatTypes: ["private", "group"]
+      }, {
+        id: "scenario_host",
+        title: "Scenario Host",
+        description: "轻规则单人剧情主持模式。当前仅支持私聊。",
+        allowedChatTypes: ["private"]
       }]);
 
       const switchResponse = await app.inject({
         method: "PATCH",
         url: "/api/sessions/private:10001/mode",
         payload: {
-          modeId: "rp_assistant"
+          modeId: "scenario_host"
         }
       });
       assert.equal(switchResponse.statusCode, 200);
-      assert.equal(switchResponse.json().session.modeId, "rp_assistant");
+      assert.equal(switchResponse.json().session.modeId, "scenario_host");
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("internal api rejects scenario_host for group sessions", async () => {
+    const deps = createInternalApiDeps();
+    deps.__state.sessions.push({
+      id: "group:20001",
+      type: "group",
+      source: "onebot",
+      modeId: "rp_assistant",
+      participantUserId: "20001",
+      participantLabel: "Group 20001",
+      pendingMessages: [],
+      isGenerating: false,
+      lastActiveAt: 123456
+    });
+    const app = await createInternalApiApp(deps);
+    try {
+      const switchResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/group:20001/mode",
+        payload: {
+          modeId: "scenario_host"
+        }
+      });
+      assert.equal(switchResponse.statusCode, 400);
+      assert.match(switchResponse.json().error, /does not support group chat/);
     } finally {
       await app.close();
     }

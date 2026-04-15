@@ -105,6 +105,19 @@ function onOpenSessionActions(sessionId: string) {
   actionsDialogSessionId.value = sessionId;
 }
 
+function currentActionsSession() {
+  return store.list.find((item) => item.id === actionsDialogSessionId.value) ?? null;
+}
+
+function modeSupportsCurrentSession(modeId: string): boolean {
+  const session = currentActionsSession();
+  const mode = store.modes.find((item) => item.id === modeId);
+  if (!session || !mode?.allowedChatTypes || mode.allowedChatTypes.length === 0) {
+    return true;
+  }
+  return mode.allowedChatTypes.includes(session.type);
+}
+
 function closeActionsDialog() {
   if (actionsDialogBusy.value) {
     return;
@@ -183,12 +196,15 @@ function closeActionsDialog() {
             v-for="mode in store.modes"
             :key="mode.id"
             class="flex items-start justify-between rounded-lg border border-border-default bg-surface-sidebar px-3 py-2 text-left hover:bg-surface-active disabled:opacity-60"
-            :disabled="actionsDialogBusy || !actionsDialogSessionId"
+            :disabled="actionsDialogBusy || !actionsDialogSessionId || !modeSupportsCurrentSession(mode.id)"
             @click="actionsDialogSessionId && onSwitchSessionMode(actionsDialogSessionId, mode.id)"
           >
             <div class="min-w-0 flex-1">
               <div class="text-ui font-medium text-text-secondary">{{ mode.title }}</div>
               <div class="mt-1 text-small text-text-muted">{{ mode.description }}</div>
+              <div v-if="!modeSupportsCurrentSession(mode.id)" class="mt-1 text-small text-text-subtle">
+                当前会话类型不支持此模式
+              </div>
             </div>
             <span
               v-if="store.list.find((item) => item.id === actionsDialogSessionId)?.modeId === mode.id"

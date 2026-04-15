@@ -36,6 +36,7 @@ import type { ComfyClient } from "#comfy/comfyClient.ts";
 import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import type { OperationNoteStore } from "#llm/prompt/operationNoteStore.ts";
+import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 
 export interface AppServiceBootstrap {
   config: ReturnType<typeof loadConfig>;
@@ -61,6 +62,7 @@ export interface AppServiceBootstrap {
   personaStore: PersonaStore;
   globalMemoryStore: GlobalMemoryStore;
   operationNoteStore: OperationNoteStore;
+  scenarioHostStateStore: ScenarioHostStateStore;
   setupStore: SetupStateStore;
   searchService: SearchService;
   browserService: BrowserService;

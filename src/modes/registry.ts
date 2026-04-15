@@ -1,8 +1,10 @@
 import { rpAssistantModeDefinition } from "./rpAssistantMode.ts";
+import { scenarioHostModeDefinition } from "./scenarioHost/mode.ts";
 import type { SessionModeDefinition } from "./types.ts";
 
 const SESSION_MODES: SessionModeDefinition[] = [
-  rpAssistantModeDefinition
+  rpAssistantModeDefinition,
+  scenarioHostModeDefinition
 ];
 
 const SESSION_MODE_BY_ID = new Map(SESSION_MODES.map((mode) => [mode.id, mode]));
@@ -25,4 +27,8 @@ export function requireSessionModeDefinition(modeId: string): SessionModeDefinit
     throw new Error(`Unsupported session mode: ${modeId}`);
   }
   return mode;
+}
+
+export function sessionModeSupportsChatType(modeId: string, chatType: "private" | "group"): boolean {
+  return requireSessionModeDefinition(modeId).allowedChatTypes.includes(chatType);
 }

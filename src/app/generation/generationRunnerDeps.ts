@@ -32,6 +32,7 @@ import type { ComfyClient } from "#comfy/comfyClient.ts";
 import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import type { OperationNoteStore } from "#llm/prompt/operationNoteStore.ts";
+import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 
 export interface GenerationPromptBuilderDeps {
   config: AppConfig;
@@ -48,6 +49,7 @@ export interface GenerationPromptBuilderDeps {
   mediaCaptionService: MediaCaptionService;
   globalMemoryStore: GlobalMemoryStore;
   operationNoteStore: OperationNoteStore;
+  scenarioHostStateStore: ScenarioHostStateStore;
 }
 
 export interface GenerationSessionRuntimeDeps {
@@ -66,6 +68,7 @@ export interface GenerationIdentityDeps {
   personaStore: PersonaStore;
   globalMemoryStore: GlobalMemoryStore;
   operationNoteStore: OperationNoteStore;
+  scenarioHostStateStore: ScenarioHostStateStore;
   setupStore: SetupStateStore;
   conversationAccess: ConversationAccessService;
   npcDirectory: NpcDirectory;
