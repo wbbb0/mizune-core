@@ -11,7 +11,7 @@ const props = defineProps<{
   schema: SchemaMeta;
   modelValue: unknown;
   inherited?: unknown; // read-only value from parent layers
-  backdrop?: boolean;
+  tone?: "local" | "inherited";
   disabled?: boolean;
 }>();
 
@@ -60,7 +60,11 @@ function currentStringValue(): string {
 
 <template>
   <!-- boolean -->
-  <label v-if="schema.kind === 'boolean'" class="flex cursor-pointer items-center gap-1.5 rounded-md" :class="backdrop ? 'editor-backdrop-field px-2 py-1' : ''">
+  <label
+    v-if="schema.kind === 'boolean'"
+    class="flex cursor-pointer items-center gap-1.5 rounded-md"
+    :class="tone === 'local' ? 'editor-layered-local-field px-2 py-1' : ''"
+  >
     <input
       type="checkbox"
       class="cursor-pointer accent-accent"
@@ -68,14 +72,17 @@ function currentStringValue(): string {
       :disabled="disabled"
       @change="onBoolChange"
     />
-    <span class="text-ui" :class="backdrop ? 'editor-backdrop-value' : 'text-text-primary'">{{ modelValue !== undefined ? modelValue : inherited }}</span>
+    <span
+      class="text-ui"
+      :class="tone === 'local' ? 'editor-layered-local-value' : tone === 'inherited' ? 'text-text-muted' : 'text-text-primary'"
+    >{{ modelValue !== undefined ? modelValue : inherited }}</span>
   </label>
 
   <!-- enum -->
   <select
     v-else-if="schema.kind === 'enum'"
     class="input-base h-6 max-w-60 px-1.5 py-0.5"
-    :class="backdrop ? 'editor-backdrop-input editor-backdrop-value' : ''"
+    :class="tone === 'local' ? 'editor-layered-local-input' : tone === 'inherited' ? 'editor-layered-inherited-input' : ''"
     :value="modelValue !== undefined ? String(modelValue) : String(inherited ?? '')"
     :disabled="disabled"
     @change="onEnumChange"
@@ -91,7 +98,7 @@ function currentStringValue(): string {
     v-else-if="schema.kind === 'number'"
     type="number"
     class="input-base h-6 max-w-40 px-1.5 py-0.5"
-    :class="backdrop ? 'editor-backdrop-input editor-backdrop-value' : ''"
+    :class="tone === 'local' ? 'editor-layered-local-input' : tone === 'inherited' ? 'editor-layered-inherited-input' : ''"
     :value="modelValue !== undefined ? modelValue as number : inherited as number"
     :step="schema.integer ? 1 : 'any'"
     :min="schema.min"
@@ -105,7 +112,7 @@ function currentStringValue(): string {
     <select
       v-if="dynamicOptions !== null && !dynamicOptionsError"
       class="input-base h-6 max-w-60 px-1.5 py-0.5"
-      :class="backdrop ? 'editor-backdrop-input editor-backdrop-value' : ''"
+      :class="tone === 'local' ? 'editor-layered-local-input' : tone === 'inherited' ? 'editor-layered-inherited-input' : ''"
       :value="currentStringValue()"
       :disabled="disabled"
       @change="onEnumChange"
@@ -116,7 +123,7 @@ function currentStringValue(): string {
     <span v-else-if="dynamicOptionsError" class="text-ui text-text-muted">
       <textarea
         class="input-base min-h-7 w-full max-w-120 resize-y text-ui leading-[1.4]"
-        :class="backdrop ? 'editor-backdrop-input editor-backdrop-value' : ''"
+        :class="tone === 'local' ? 'editor-layered-local-input' : tone === 'inherited' ? 'editor-layered-inherited-input' : ''"
         :value="currentStringValue()"
         :disabled="disabled"
         rows="2"
@@ -134,7 +141,7 @@ function currentStringValue(): string {
   <textarea
     v-else-if="schema.kind === 'string'"
     class="input-base min-h-7 w-full max-w-120 resize-y text-ui leading-[1.4]"
-    :class="backdrop ? 'editor-backdrop-input editor-backdrop-value' : ''"
+    :class="tone === 'local' ? 'editor-layered-local-input' : tone === 'inherited' ? 'editor-layered-inherited-input' : ''"
     :value="modelValue !== undefined ? String(modelValue) : String(inherited ?? '')"
     :disabled="disabled"
     rows="2"
@@ -145,7 +152,7 @@ function currentStringValue(): string {
   <textarea
     v-else
     class="input-base min-h-7 w-full max-w-120 resize-y font-mono text-ui leading-[1.4]"
-    :class="backdrop ? 'editor-backdrop-input editor-backdrop-value' : ''"
+    :class="tone === 'local' ? 'editor-layered-local-input' : tone === 'inherited' ? 'editor-layered-inherited-input' : ''"
     :value="JSON.stringify(modelValue !== undefined ? modelValue : inherited, null, 2)"
     :disabled="disabled"
     rows="3"

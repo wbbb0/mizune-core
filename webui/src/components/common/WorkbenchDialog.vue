@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from "vue";
 import { X } from "lucide-vue-next";
-import { useVisualViewportInset } from "@/composables/useVisualViewportInset";
 
 const props = withDefaults(defineProps<{
   open: boolean;
@@ -25,12 +24,10 @@ const emit = defineEmits<{
   close: [];
 }>();
 
-const { keyboardInsetPx, keyboardInsetStylePx } = useVisualViewportInset();
-
 const backdropStyle = computed(() => ({
   paddingTop: "max(1rem, env(safe-area-inset-top, 0px))",
   paddingRight: "max(1rem, env(safe-area-inset-right, 0px))",
-  paddingBottom: `calc(max(1rem, env(safe-area-inset-bottom, 0px)) + ${keyboardInsetStylePx.value})`,
+  paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))",
   paddingLeft: "max(1rem, env(safe-area-inset-left, 0px))"
 }));
 
@@ -38,12 +35,10 @@ const panelStyle = computed(() => (
   props.variant === "fullscreen"
     ? {
         width: "min(100%, calc(100vw - 2rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)))",
-        height: `calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - ${keyboardInsetStylePx.value})`,
-        marginBottom: keyboardInsetPx.value > 0 ? keyboardInsetStylePx.value : "0px"
+        height: "calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))"
       }
     : {
-        maxHeight: `calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - ${keyboardInsetStylePx.value})`,
-        marginBottom: keyboardInsetPx.value > 0 ? keyboardInsetStylePx.value : "0px"
+        maxHeight: "calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))"
       }
 ));
 
@@ -87,7 +82,6 @@ watch(() => props.open, (open) => {
     <div
       v-if="open"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-6 backdrop-blur-[1px]"
-      :class="{ 'items-end sm:items-center': keyboardInsetPx > 0 }"
       :style="backdropStyle"
       @click.self="onBackdropClick"
     >

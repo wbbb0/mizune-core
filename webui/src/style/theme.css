@@ -2,56 +2,56 @@
 :root,
 html[data-theme="dark"] {
   /* Surfaces */
-  --surface-app: #1e1e1e;
-  --surface-sidebar: #252526;
-  --surface-panel: #1e1e1e;
-  --surface-input: #3c3c3c;
-  --surface-muted: #333333;
-  --surface-hover: #2a2d2e;
-  --surface-active: #37373d;
-  --surface-selected: #094771;
-  --surface-selected-muted: #3a3d41;
+  --surface-app: #0b1220;
+  --surface-sidebar: #101827;
+  --surface-panel: #121c2d;
+  --surface-input: #182335;
+  --surface-muted: #1a2537;
+  --surface-hover: #172338;
+  --surface-active: #21314a;
+  --surface-selected: #16365f;
+  --surface-selected-muted: #15253d;
 
   /* Borders */
-  --border-subtle: color-mix(in srgb, #3c3c3c 70%, transparent);
-  --border-default: #3c3c3c;
-  --border-strong: #4a4a4a;
-  --border-focus: #0078d4;
-  --border-input: #3c3c3c;
+  --border-subtle: color-mix(in srgb, #31415c 64%, transparent);
+  --border-default: #2b3a54;
+  --border-strong: #41526f;
+  --border-focus: #4ea3ff;
+  --border-input: #31415c;
 
   /* Text */
-  --text-primary: #cccccc;
-  --text-secondary: #d4d4d4;
-  --text-muted: #858585;
-  --text-subtle: #6a6a6a;
-  --text-accent: #4daafc;
+  --text-primary: #d6deea;
+  --text-secondary: #f2f6fd;
+  --text-muted: #93a3bd;
+  --text-subtle: #677891;
+  --text-accent: #83c4ff;
   --text-on-accent: #ffffff;
 
   /* Accent / status */
-  --accent: #0078d4;
-  --accent-hover: #1a8ada;
-  --accent-active: #006bbf;
-  --success: #4ec9b0;
-  --warning: #dcdcaa;
-  --danger: #f44747;
-  --info: #9cdcfe;
+  --accent: #3f9cff;
+  --accent-hover: #5caeff;
+  --accent-active: #2c89ef;
+  --success: #47c59d;
+  --warning: #e5ba62;
+  --danger: #f26d7d;
+  --info: #72c6ff;
 
   /* Status surfaces */
   --surface-success: color-mix(in srgb, var(--success) 18%, var(--surface-panel));
   --surface-warning: color-mix(in srgb, var(--warning) 16%, var(--surface-panel));
   --surface-danger: color-mix(in srgb, var(--danger) 14%, var(--surface-panel));
   --surface-info: color-mix(in srgb, var(--info) 14%, var(--surface-panel));
-  --surface-backdrop: #252f39;
-  --surface-backdrop-soft: #2a3440;
-  --border-backdrop: #425363;
-  --text-backdrop: #9fb4c9;
-  --text-backdrop-strong: #bfd0e1;
-  --surface-backdrop-badge: #23303d;
+  --surface-backdrop: #162130;
+  --surface-backdrop-soft: #1b293c;
+  --border-backdrop: #38506c;
+  --text-backdrop: #a6bbd3;
+  --text-backdrop-strong: #d0dded;
+  --surface-backdrop-badge: #1a283a;
 
   /* Scrollbar */
   --scrollbar-bg: transparent;
-  --scrollbar-thumb: #424242;
-  --scrollbar-thumb-hover: #4f4f4f;
+  --scrollbar-thumb: #33445f;
+  --scrollbar-thumb-hover: #415674;
 
   /* Sizing */
   --activity-bar-width: 48px;

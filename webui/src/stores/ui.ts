@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
 const LIGHT_THEME_COLOR = "#f5f5f5";
-const DARK_THEME_COLOR = "#1e1e1e";
+const DARK_THEME_COLOR = "#0b1220";
 
 export const useUiStore = defineStore("ui", () => {
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)");

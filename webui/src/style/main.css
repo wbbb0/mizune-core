@@ -293,19 +293,25 @@ body {
   border-radius: 6px;
 }
 
-.editor-node-backdrop {
+.editor-node-layered-local {
   position: relative;
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
-.editor-node-backdrop::before {
+.editor-node-layered-local::before {
   content: "";
   position: absolute;
   top: 4px;
   bottom: 4px;
   left: -8px;
-  width: 2px;
+  width: 3px;
   border-radius: 999px;
-  background: var(--border-backdrop);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 72%, white 18%), color-mix(in srgb, var(--accent) 48%, transparent));
+}
+
+.editor-layered-local-label {
+  color: color-mix(in srgb, var(--text-accent) 82%, var(--text-secondary));
 }
 
 .editor-dirty-dot {
@@ -317,37 +323,58 @@ body {
   background: color-mix(in srgb, var(--accent) 78%, white 22%);
 }
 
-.editor-backdrop-badge {
+.editor-layer-badge {
   display: inline-flex;
   align-items: center;
   height: 16px;
   padding: 0 6px;
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: var(--surface-backdrop-badge);
-  color: var(--text-backdrop);
   font-size: 11px;
   line-height: 1;
   letter-spacing: 0.02em;
   flex-shrink: 0;
 }
 
-.editor-backdrop-value {
-  color: var(--text-backdrop);
+.editor-layer-badge-local {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface-panel));
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+  color: var(--text-accent);
 }
 
-.editor-backdrop-field {
-  background: var(--surface-backdrop);
-  border: 1px solid var(--border-backdrop);
+.editor-layer-badge-inherited {
+  background: color-mix(in srgb, var(--surface-muted) 72%, transparent);
+  border-color: var(--border-subtle);
+  color: var(--text-muted);
 }
 
-.editor-backdrop-input {
-  background: var(--surface-backdrop);
-  border-color: var(--border-backdrop);
-  color: var(--text-backdrop);
+.editor-layered-local-value {
+  color: var(--text-primary);
 }
 
-.editor-backdrop-input:focus {
-  border-color: var(--text-backdrop-strong);
+.editor-layered-local-field {
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-panel));
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border-default));
+}
+
+.editor-layered-local-input {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-input));
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border-input));
+  color: var(--text-primary);
+}
+
+.editor-layered-local-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 78%, white 10%);
+}
+
+.editor-layered-inherited-input {
+  background: color-mix(in srgb, var(--surface-sidebar) 58%, var(--surface-panel));
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.editor-layered-inherited-input:focus {
+  border-color: var(--border-default);
 }
 
 .spin {

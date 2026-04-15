@@ -116,8 +116,8 @@ export default defineConfig({
         scope: "/webui/",
         display: "standalone",
         orientation: "any",
-        background_color: "#1e1e1e",
-        theme_color: "#1e1e1e",
+        background_color: "#0b1220",
+        theme_color: "#0b1220",
         icons: [
           {
             src: "/webui/icons/icon-192.png",
