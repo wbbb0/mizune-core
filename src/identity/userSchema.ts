@@ -7,6 +7,8 @@ export const persistedUserSchema = s.object({
   preferredAddress: s.string().trim().nonempty().optional(),
   gender: s.string().trim().nonempty().optional(),
   residence: s.string().trim().nonempty().optional(),
+  timezone: s.string().trim().nonempty().optional(),
+  occupation: s.string().trim().nonempty().optional(),
   profileSummary: s.string().trim().nonempty().optional(),
   relationshipNote: s.string().trim().nonempty().optional(),
   memories: s.array(userMemoryEntrySchema).default([]),

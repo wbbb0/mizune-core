@@ -14,6 +14,7 @@ import type {
 // Keeps the composition root explicit while avoiding one giant unstructured literal.
 export function buildGenerationPromptBuilderDeps(services: AppServiceBootstrap): GenerationPromptBuilderDeps {
   return {
+    logger: services.logger,
     config: services.config,
     oneBotClient: services.oneBotClient,
     audioStore: services.audioStore,

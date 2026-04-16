@@ -60,27 +60,36 @@ export function isNearDuplicateText(
   });
 }
 
+export interface DuplicateMatch<T> {
+  item: T;
+  similarityScore: number;
+}
+
 export function findBestDuplicateMatch<T>(
   source: string,
   candidates: T[],
   candidateText: (item: T) => string,
   threshold: number = DEFAULT_TEXT_SIMILARITY_THRESHOLD
-): T | null {
-  let best: { item: T; score: number } | null = null;
+): DuplicateMatch<T> | null {
+  let best: DuplicateMatch<T> | null = null;
+  const normalizedSource = normalizeTextForSimilarity(source);
   for (const candidate of candidates) {
-    const score = bigramJaccardSimilarity(source, candidateText(candidate));
-    if (score >= threshold && (!best || score > best.score)) {
-      best = { item: candidate, score };
+    const text = candidateText(candidate);
+    const score = bigramJaccardSimilarity(source, text);
+    if (score >= threshold && (!best || score > best.similarityScore)) {
+      best = { item: candidate, similarityScore: score };
     }
-    const normalizedSource = normalizeTextForSimilarity(source);
-    const normalizedTarget = normalizeTextForSimilarity(candidateText(candidate));
+    const normalizedTarget = normalizeTextForSimilarity(text);
     if (
       normalizedSource === normalizedTarget
       || normalizedSource.includes(normalizedTarget)
       || normalizedTarget.includes(normalizedSource)
     ) {
-      return candidate;
+      return {
+        item: candidate,
+        similarityScore: score
+      };
     }
   }
-  return best?.item ?? null;
+  return best;
 }

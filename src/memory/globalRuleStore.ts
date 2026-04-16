@@ -3,25 +3,31 @@ import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import { FileSchemaStore } from "#data/fileSchemaStore.ts";
-import { readStructuredFileRaw } from "#data/schema/file.ts";
 import { s } from "#data/schema/index.ts";
 import { rotateBackup } from "#utils/rotatingBackup.ts";
-import { memoryEntrySchema } from "./memoryEntry.ts";
+import { detectScopeConflict, type ScopeConflictWarning } from "./memoryCategory.ts";
 import { createGlobalRuleEntry, globalRuleEntrySchema, type GlobalRuleEntry } from "./globalRuleEntry.ts";
 import { findBestDuplicateMatch, normalizeTitleForDedup } from "./similarity.ts";
+import {
+  buildMemoryDedupDetails,
+  buildMemoryWriteDiagnostics,
+  type MemoryDedupDetails,
+  type MemoryWriteAction
+} from "./writeResult.ts";
 
 const globalRuleStoreSchema = s.array(globalRuleEntrySchema).default([]);
-const legacyGlobalMemoryFileSchema = s.array(memoryEntrySchema).default([]);
 
 export interface GlobalRuleUpsertResult {
-  action: "created" | "updated_existing";
+  action: MemoryWriteAction;
+  finalAction: "created" | "updated_existing" | "warning_scope_conflict";
+  dedup: MemoryDedupDetails;
+  warning: ScopeConflictWarning | null;
   item: GlobalRuleEntry;
   rules: GlobalRuleEntry[];
 }
 
 export class GlobalRuleStore {
   private readonly filePath: string;
-  private readonly legacyFilePath: string;
   private readonly store: FileSchemaStore<typeof globalRuleStoreSchema>;
 
   constructor(
@@ -30,7 +36,6 @@ export class GlobalRuleStore {
     private readonly logger: Logger
   ) {
     this.filePath = join(dataDir, "global-rules.json");
-    this.legacyFilePath = join(dataDir, "global-memories.json");
     this.store = new FileSchemaStore({
       filePath: this.filePath,
       schema: globalRuleStoreSchema,
@@ -67,15 +72,17 @@ export class GlobalRuleStore {
           rules,
           (item) => `${normalizeTitleForDedup(item.title)} ${item.content}`
         );
-    const targetId = input.ruleId || duplicate?.id;
-    const action = targetId ? "updated_existing" as const : "created" as const;
+    const targetId = input.ruleId || duplicate?.item.id;
+    const action = targetId && rules.some((item) => item.id === targetId)
+      ? "updated_existing" as const
+      : "created" as const;
     const nextRule = createGlobalRuleEntry({
       ...(targetId ? { id: targetId } : {}),
       title: input.title,
       content: input.content,
       ...(input.kind !== undefined ? { kind: input.kind } : {}),
       ...(input.source !== undefined ? { source: input.source } : {}),
-      ...(duplicate ? { createdAt: duplicate.createdAt } : {})
+      ...(duplicate ? { createdAt: duplicate.item.createdAt } : {})
     });
     const targetIndex = rules.findIndex((item) => item.id === nextRule.id);
     if (targetIndex >= 0) {
@@ -83,9 +90,52 @@ export class GlobalRuleStore {
     } else {
       rules.push(nextRule);
     }
+    const dedup = buildMemoryDedupDetails({
+      explicitId: input.ruleId ?? null,
+      duplicateId: duplicate?.item.id ?? null,
+      similarityScore: duplicate?.similarityScore ?? null,
+      matchedExisting: targetIndex >= 0
+    });
+    const warning = detectScopeConflict({
+      currentScope: "global_rules",
+      title: input.title,
+      content: input.content
+    });
+    const diagnostics = buildMemoryWriteDiagnostics({
+      targetCategory: "global_rules",
+      action,
+      dedup,
+      warning
+    });
     await this.writeAll(rules);
-    this.logger.info({ ruleId: nextRule.id, action }, "global_rule_upserted");
-    return { action, item: nextRule, rules };
+    this.logger.info({
+      targetCategory: diagnostics.targetCategory,
+      ruleId: nextRule.id,
+      action: diagnostics.action,
+      finalAction: diagnostics.finalAction,
+      dedupMatchedBy: diagnostics.dedup.matchedBy,
+      dedupMatchedExistingId: diagnostics.dedup.matchedExistingId,
+      dedupSimilarityScore: diagnostics.dedup.similarityScore,
+      rerouteResult: diagnostics.reroute.result,
+      rerouteSuggestedScope: diagnostics.reroute.suggestedScope,
+      rerouteReason: diagnostics.reroute.reason
+    }, "global_rule_upserted");
+    if (warning) {
+      this.logger.warn({
+        targetCategory: "global_rules",
+        ruleId: nextRule.id,
+        suggestedScope: warning.suggestedScope,
+        reason: warning.reason
+      }, "memory_scope_conflict_detected");
+    }
+    return {
+      action,
+      finalAction: diagnostics.finalAction,
+      dedup,
+      warning,
+      item: nextRule,
+      rules
+    };
   }
 
   async remove(ruleId: string): Promise<GlobalRuleEntry[]> {
@@ -124,38 +174,8 @@ export class GlobalRuleStore {
       this.logger.warn({ error }, "global_rule_store_load_failed");
       throw error;
     }
-
-    const migrated = await this.migrateLegacyFile();
-    if (migrated) {
-      return migrated;
-    }
     await this.writeAll([]);
     return [];
-  }
-
-  private async migrateLegacyFile(): Promise<GlobalRuleEntry[] | null> {
-    let raw: unknown;
-    try {
-      raw = await readStructuredFileRaw(this.legacyFilePath);
-    } catch (error: unknown) {
-      const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code === "ENOENT") {
-        return null;
-      }
-      throw error;
-    }
-    const legacyEntries = legacyGlobalMemoryFileSchema.parse(raw);
-    const migrated = legacyEntries.map((item) => createGlobalRuleEntry({
-      id: item.id,
-      title: item.title,
-      content: item.content,
-      createdAt: item.updatedAt,
-      updatedAt: item.updatedAt,
-      source: "owner_explicit"
-    }));
-    await this.writeAll(migrated);
-    this.logger.info({ count: migrated.length, legacyFilePath: this.legacyFilePath }, "global_rule_store_migrated_legacy_file");
-    return migrated;
   }
 
   private async writeAll(rules: GlobalRuleEntry[]): Promise<void> {

@@ -55,6 +55,14 @@ export function detectScopeConflict(input: {
   content: string;
 }): ScopeConflictWarning | null {
   const text = `${input.title}\n${input.content}`;
+  if (input.currentScope === "persona" && matchesAny(text, GLOBAL_WORKFLOW_PATTERNS) && !matchesAny(text, PERSONA_PATTERNS)) {
+    return {
+      code: "warning_scope_conflict",
+      currentScope: input.currentScope,
+      suggestedScope: "global_rules",
+      reason: "内容更像跨任务长期工作流规则，不像 bot 身份、人设、口吻或角色边界。"
+    };
+  }
   if (input.currentScope === "global_rules" && matchesAny(text, PERSONA_PATTERNS)) {
     return {
       code: "warning_scope_conflict",

@@ -303,6 +303,8 @@ export async function extractWindowUsers(
   preferredAddress?: string;
   gender?: string;
   residence?: string;
+  timezone?: string;
+  occupation?: string;
   profileSummary?: string;
   relationshipNote?: string;
 }>> {
@@ -332,6 +334,8 @@ export async function extractWindowUsers(
         ...(user?.preferredAddress ? { preferredAddress: user.preferredAddress } : {}),
         ...(user?.gender ? { gender: user.gender } : {}),
         ...(user?.residence ? { residence: user.residence } : {}),
+        ...(user?.timezone ? { timezone: user.timezone } : {}),
+        ...(user?.occupation ? { occupation: user.occupation } : {}),
         ...(user?.profileSummary ? { profileSummary: user.profileSummary } : {}),
         ...(user?.relationshipNote ? { relationshipNote: user.relationshipNote } : {})
       };

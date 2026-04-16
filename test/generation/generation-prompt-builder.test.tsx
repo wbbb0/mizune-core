@@ -407,6 +407,131 @@ async function main() {
     assert.doesNotMatch(system, /current_user_profile/);
   });
 
+  await runCase("chat prompt logs suppressed lower-priority memory items", async () => {
+    const loggerEvents: Array<{ event: string; payload: Record<string, unknown> }> = [];
+    const builder = createGenerationPromptBuilder({
+      logger: {
+        info(payload: Record<string, unknown>, event: string) {
+          loggerEvents.push({ payload, event });
+        }
+      } as any,
+      config: createTestAppConfig(),
+      oneBotClient: {} as any,
+      audioStore: {} as any,
+      audioTranscriber: {
+        async transcribeMany() {
+          return [];
+        }
+      } as any,
+      npcDirectory: {
+        listProfiles() {
+          return [];
+        }
+      } as any,
+      browserService: {
+        async listPages() {
+          return { pages: [] };
+        }
+      } as any,
+      localFileService: {} as any,
+      chatFileStore: {} as any,
+      mediaVisionService: {
+        async prepareFilesForModel() {
+          return [];
+        }
+      } as any,
+      mediaCaptionService: {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      globalRuleStore: {
+        async getAll() {
+          return [{ id: "rule_1", title: "输出顺序", content: "先给结论再展开。", kind: "workflow", source: "owner_explicit", createdAt: 1, updatedAt: 1 }];
+        }
+      } as any,
+      toolsetRuleStore: {
+        async getAll() {
+          return [];
+        }
+      } as any,
+      scenarioHostStateStore: {
+        async ensure() {
+          throw new Error("should not load scenario_host state in rp_assistant prompt");
+        }
+      } as any,
+      shellRuntime: {
+        async listSessionResources() {
+          return [];
+        }
+      } as any,
+      setupStore: {
+        describeMissingFields() {
+          return [];
+        }
+      } as any
+    });
+
+    await builder.buildChatPromptMessages({
+      sessionId: "private:10001",
+      interactionMode: "normal",
+      mainModelRef: ["main"],
+      visibleToolNames: [],
+      activeToolsets: [],
+      persona: {
+        name: "Mizune",
+        role: "搭档",
+        appearance: "",
+        personality: "",
+        interests: "",
+        background: "",
+        speechStyle: "",
+        rules: ""
+      },
+      relationship: "known",
+      participantProfiles: [],
+      currentUser: {
+        userId: "10001",
+        relationship: "known",
+        memories: [{
+          id: "mem_1",
+          title: "输出顺序",
+          content: "先给结论再展开。",
+          kind: "fact",
+          source: "user_explicit",
+          createdAt: 1,
+          updatedAt: 1
+        }]
+      } as any,
+      historySummary: null,
+      historyForPrompt: [],
+      recentToolEvents: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      batchMessages: [{
+        userId: "10001",
+        senderName: "Tester",
+        text: "记住",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: Date.now()
+      }]
+    });
+
+    assert.equal(loggerEvents.some((item) => item.event === "prompt_memory_items_suppressed"), true);
+    const suppressionEvent = loggerEvents.find((item) => item.event === "prompt_memory_items_suppressed");
+    assert.equal((suppressionEvent?.payload.suppressions as Array<{ category: string }>)[0]?.category, "user_memories");
+  });
+
   await runCase("scenario_host setup prompt uses host_setup_mode section when isInSetup=true", async () => {
     const builder = createGenerationPromptBuilder({
       config: createTestAppConfig({

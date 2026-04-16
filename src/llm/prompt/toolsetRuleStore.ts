@@ -3,17 +3,24 @@ import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import { FileSchemaStore } from "#data/fileSchemaStore.ts";
-import { readStructuredFileRaw } from "#data/schema/file.ts";
 import type { Infer } from "#data/schema/types.ts";
 import { s } from "#data/schema/index.ts";
 import { rotateBackup } from "#utils/rotatingBackup.ts";
-import { findBestDuplicateMatch, normalizeTitleForDedup } from "#memory/similarity.ts";
+import { detectScopeConflict, type ScopeConflictWarning } from "#memory/memoryCategory.ts";
+import { findBestDuplicateMatch, normalizeTextForSimilarity, normalizeTitleForDedup } from "#memory/similarity.ts";
+import {
+  buildMemoryDedupDetails,
+  buildMemoryWriteDiagnostics,
+  type MemoryDedupDetails,
+  type MemoryWriteAction
+} from "#memory/writeResult.ts";
 
 export const toolsetRuleSchema = s.object({
   id: s.string().trim().nonempty(),
   title: s.string().trim().nonempty(),
   content: s.string().trim().nonempty(),
   toolsetIds: s.array(s.string().trim().nonempty()).min(1),
+  fingerprint: s.string().trim().nonempty(),
   source: s.enum(["owner_explicit", "inferred"] as const).default("owner_explicit"),
   createdAt: s.number().int().min(0).default(() => Date.now()),
   updatedAt: s.number().int().min(0).default(() => Date.now())
@@ -22,19 +29,11 @@ export const toolsetRuleSchema = s.object({
 export type ToolsetRuleEntry = Infer<typeof toolsetRuleSchema>;
 export const toolsetRuleFileSchema = s.array(toolsetRuleSchema).default([]);
 
-const legacyOperationNoteSchema = s.object({
-  id: s.string(),
-  title: s.string(),
-  content: s.string(),
-  toolsetIds: s.array(s.string()).min(1),
-  source: s.enum(["owner", "model"]).default("owner"),
-  updatedAt: s.number().int().min(0)
-}).strict();
-
-const legacyOperationNoteFileSchema = s.array(legacyOperationNoteSchema).default([]);
-
 export interface ToolsetRuleUpsertResult {
-  action: "created" | "updated_existing";
+  action: MemoryWriteAction;
+  finalAction: "created" | "updated_existing" | "warning_scope_conflict";
+  dedup: MemoryDedupDetails;
+  warning: ScopeConflictWarning | null;
   item: ToolsetRuleEntry;
   rules: ToolsetRuleEntry[];
 }
@@ -49,15 +48,33 @@ export function createToolsetRuleEntry(input: {
   updatedAt?: number;
 }): ToolsetRuleEntry {
   const now = Date.now();
+  const normalizedToolsetIds = Array.from(new Set(input.toolsetIds.map((item) => item.trim()).filter(Boolean)));
   return toolsetRuleSchema.parse({
     id: input.id ?? `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
     title: input.title.trim(),
     content: input.content.trim(),
-    toolsetIds: Array.from(new Set(input.toolsetIds.map((item) => item.trim()).filter(Boolean))),
+    toolsetIds: normalizedToolsetIds,
+    fingerprint: buildToolsetRuleFingerprint({
+      title: input.title,
+      content: input.content,
+      toolsetIds: normalizedToolsetIds
+    }),
     source: input.source ?? "owner_explicit",
     createdAt: input.createdAt ?? now,
     updatedAt: input.updatedAt ?? now
   });
+}
+
+function buildToolsetRuleFingerprint(input: {
+  title: string;
+  content: string;
+  toolsetIds: string[];
+}): string {
+  return [
+    normalizeTitleForDedup(input.title),
+    normalizeTextForSimilarity(input.content),
+    input.toolsetIds.slice().sort().join("|")
+  ].join("::");
 }
 
 function haveOverlappingToolsets(left: string[], right: string[]): boolean {
@@ -67,7 +84,6 @@ function haveOverlappingToolsets(left: string[], right: string[]): boolean {
 
 export class ToolsetRuleStore {
   private readonly filePath: string;
-  private readonly legacyFilePath: string;
   private readonly store: FileSchemaStore<typeof toolsetRuleFileSchema>;
 
   constructor(
@@ -76,7 +92,6 @@ export class ToolsetRuleStore {
     private readonly logger: Logger
   ) {
     this.filePath = join(dataDir, "toolset-rules.json");
-    this.legacyFilePath = join(dataDir, "operation-notes.json");
     this.store = new FileSchemaStore({
       filePath: this.filePath,
       schema: toolsetRuleFileSchema,
@@ -99,11 +114,6 @@ export class ToolsetRuleStore {
       this.logger.warn({ error }, "toolset_rule_store_load_failed");
       throw error;
     }
-
-    const migrated = await this.migrateLegacyFile();
-    if (migrated) {
-      return migrated;
-    }
     await this.writeAll([]);
     return [];
   }
@@ -119,19 +129,25 @@ export class ToolsetRuleStore {
     const duplicate = input.ruleId
       ? null
       : findBestDuplicateMatch(
-          `${normalizeTitleForDedup(input.title)} ${input.content}`,
+          buildToolsetRuleFingerprint({
+            title: input.title,
+            content: input.content,
+            toolsetIds: input.toolsetIds
+          }),
           rules.filter((item) => haveOverlappingToolsets(item.toolsetIds, input.toolsetIds)),
-          (item) => `${normalizeTitleForDedup(item.title)} ${item.content}`
+          (item) => item.fingerprint
         );
-    const targetId = input.ruleId || duplicate?.id;
-    const action = targetId ? "updated_existing" as const : "created" as const;
+    const targetId = input.ruleId || duplicate?.item.id;
+    const action = targetId && rules.some((item) => item.id === targetId)
+      ? "updated_existing" as const
+      : "created" as const;
     const nextRule = createToolsetRuleEntry({
       ...(targetId ? { id: targetId } : {}),
       title: input.title,
       content: input.content,
       toolsetIds: input.toolsetIds,
       ...(input.source !== undefined ? { source: input.source } : {}),
-      ...(duplicate ? { createdAt: duplicate.createdAt } : {})
+      ...(duplicate ? { createdAt: duplicate.item.createdAt } : {})
     });
     const targetIndex = rules.findIndex((item) => item.id === nextRule.id);
     if (targetIndex >= 0) {
@@ -139,9 +155,54 @@ export class ToolsetRuleStore {
     } else {
       rules.push(nextRule);
     }
+    const dedup = buildMemoryDedupDetails({
+      explicitId: input.ruleId ?? null,
+      duplicateId: duplicate?.item.id ?? null,
+      similarityScore: duplicate?.similarityScore ?? null,
+      matchedExisting: targetIndex >= 0
+    });
+    const warning = detectScopeConflict({
+      currentScope: "toolset_rules",
+      title: input.title,
+      content: input.content
+    });
+    const diagnostics = buildMemoryWriteDiagnostics({
+      targetCategory: "toolset_rules",
+      action,
+      dedup,
+      warning
+    });
     await this.writeAll(rules);
-    this.logger.info({ ruleId: nextRule.id, action }, "toolset_rule_upserted");
-    return { action, item: nextRule, rules };
+    this.logger.info({
+      targetCategory: diagnostics.targetCategory,
+      ruleId: nextRule.id,
+      action: diagnostics.action,
+      finalAction: diagnostics.finalAction,
+      dedupMatchedBy: diagnostics.dedup.matchedBy,
+      dedupMatchedExistingId: diagnostics.dedup.matchedExistingId,
+      dedupSimilarityScore: diagnostics.dedup.similarityScore,
+      rerouteResult: diagnostics.reroute.result,
+      rerouteSuggestedScope: diagnostics.reroute.suggestedScope,
+      rerouteReason: diagnostics.reroute.reason,
+      toolsetIds: nextRule.toolsetIds
+    }, "toolset_rule_upserted");
+    if (warning) {
+      this.logger.warn({
+        targetCategory: "toolset_rules",
+        ruleId: nextRule.id,
+        toolsetIds: nextRule.toolsetIds,
+        suggestedScope: warning.suggestedScope,
+        reason: warning.reason
+      }, "memory_scope_conflict_detected");
+    }
+    return {
+      action,
+      finalAction: diagnostics.finalAction,
+      dedup,
+      warning,
+      item: nextRule,
+      rules
+    };
   }
 
   async remove(ruleId: string): Promise<ToolsetRuleEntry[]> {
@@ -168,32 +229,6 @@ export class ToolsetRuleStore {
     await this.writeAll(nextRules);
     this.logger.info({ ruleCount: nextRules.length }, "toolset_rules_overwritten");
     return nextRules;
-  }
-
-  private async migrateLegacyFile(): Promise<ToolsetRuleEntry[] | null> {
-    let raw: unknown;
-    try {
-      raw = await readStructuredFileRaw(this.legacyFilePath);
-    } catch (error: unknown) {
-      const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code === "ENOENT") {
-        return null;
-      }
-      throw error;
-    }
-    const legacyEntries = legacyOperationNoteFileSchema.parse(raw);
-    const migrated = legacyEntries.map((item) => createToolsetRuleEntry({
-      id: item.id,
-      title: item.title,
-      content: item.content,
-      toolsetIds: item.toolsetIds,
-      source: item.source === "owner" ? "owner_explicit" : "inferred",
-      createdAt: item.updatedAt,
-      updatedAt: item.updatedAt
-    }));
-    await this.writeAll(migrated);
-    this.logger.info({ count: migrated.length, legacyFilePath: this.legacyFilePath }, "toolset_rule_store_migrated_legacy_file");
-    return migrated;
   }
 
   private async writeAll(rules: ToolsetRuleEntry[]): Promise<void> {

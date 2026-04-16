@@ -5,11 +5,19 @@ import type { AppConfig } from "#config/config.ts";
 import type { WhitelistStore } from "./whitelistStore.ts";
 import { FileSchemaStore } from "#data/fileSchemaStore.ts";
 import { readStructuredFileRaw } from "#data/schema/file.ts";
+import { detectScopeConflict, type ScopeConflictWarning } from "#memory/memoryCategory.ts";
 import { createUserMemoryEntry, type UserMemoryEntry } from "#memory/userMemoryEntry.ts";
 import { findBestDuplicateMatch, normalizeTitleForDedup } from "#memory/similarity.ts";
+import {
+  buildMemoryDedupDetails,
+  buildMemoryWriteDiagnostics,
+  type MemoryDedupDetails,
+  type MemoryWriteAction
+} from "#memory/writeResult.ts";
 import { rotateBackup } from "#utils/rotatingBackup.ts";
 import type { Relationship } from "./relationship.ts";
 import type { SpecialRole } from "./specialRole.ts";
+import { normalizeUserProfilePatch } from "./userProfile.ts";
 import { userStoreSchema, type PersistedUser, type User } from "./userSchema.ts";
 
 function resolveStoredRelationship(whitelistStore: Pick<WhitelistStore, "getOwnerId">, userId: string): Relationship {
@@ -66,19 +74,24 @@ export class UserStore {
     preferredAddress?: string;
     gender?: string;
     residence?: string;
+    timezone?: string;
+    occupation?: string;
     profileSummary?: string;
     relationshipNote?: string;
   }): Promise<User> {
     const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === input.userId);
+    const normalizedPatch = normalizeUserProfilePatch(input);
 
     const next: PersistedUser = {
       userId: input.userId,
-      ...(input.preferredAddress ? { preferredAddress: input.preferredAddress } : existing?.preferredAddress ? { preferredAddress: existing.preferredAddress } : {}),
-      ...(input.gender ? { gender: input.gender } : existing?.gender ? { gender: existing.gender } : {}),
-      ...(input.residence ? { residence: input.residence } : existing?.residence ? { residence: existing.residence } : {}),
-      ...(input.profileSummary ? { profileSummary: input.profileSummary } : existing?.profileSummary ? { profileSummary: existing.profileSummary } : {}),
-      ...(input.relationshipNote ? { relationshipNote: input.relationshipNote } : existing?.relationshipNote ? { relationshipNote: existing.relationshipNote } : {}),
+      ...(normalizedPatch.preferredAddress ? { preferredAddress: normalizedPatch.preferredAddress } : existing?.preferredAddress ? { preferredAddress: existing.preferredAddress } : {}),
+      ...(normalizedPatch.gender ? { gender: normalizedPatch.gender } : existing?.gender ? { gender: existing.gender } : {}),
+      ...(normalizedPatch.residence ? { residence: normalizedPatch.residence } : existing?.residence ? { residence: existing.residence } : {}),
+      ...(normalizedPatch.timezone ? { timezone: normalizedPatch.timezone } : existing?.timezone ? { timezone: existing.timezone } : {}),
+      ...(normalizedPatch.occupation ? { occupation: normalizedPatch.occupation } : existing?.occupation ? { occupation: existing.occupation } : {}),
+      ...(normalizedPatch.profileSummary ? { profileSummary: normalizedPatch.profileSummary } : existing?.profileSummary ? { profileSummary: existing.profileSummary } : {}),
+      ...(normalizedPatch.relationshipNote ? { relationshipNote: normalizedPatch.relationshipNote } : existing?.relationshipNote ? { relationshipNote: existing.relationshipNote } : {}),
       ...(existing?.specialRole ? { specialRole: existing.specialRole } : {}),
       memories: existing?.memories ?? [],
       createdAt: existing?.createdAt ?? Date.now()
@@ -120,20 +133,25 @@ export class UserStore {
     preferredAddress?: string;
     gender?: string;
     residence?: string;
+    timezone?: string;
+    occupation?: string;
     profileSummary?: string;
     relationshipNote?: string;
   }): Promise<User> {
     const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === input.userId);
+    const normalizedPatch = normalizeUserProfilePatch(input);
 
     if (!existing) {
       const created: PersistedUser = {
         userId: input.userId,
-        ...(input.preferredAddress ? { preferredAddress: input.preferredAddress } : {}),
-        ...(input.gender ? { gender: input.gender } : {}),
-        ...(input.residence ? { residence: input.residence } : {}),
-        ...(input.profileSummary ? { profileSummary: input.profileSummary } : {}),
-        ...(input.relationshipNote ? { relationshipNote: input.relationshipNote } : {}),
+        ...(normalizedPatch.preferredAddress ? { preferredAddress: normalizedPatch.preferredAddress } : {}),
+        ...(normalizedPatch.gender ? { gender: normalizedPatch.gender } : {}),
+        ...(normalizedPatch.residence ? { residence: normalizedPatch.residence } : {}),
+        ...(normalizedPatch.timezone ? { timezone: normalizedPatch.timezone } : {}),
+        ...(normalizedPatch.occupation ? { occupation: normalizedPatch.occupation } : {}),
+        ...(normalizedPatch.profileSummary ? { profileSummary: normalizedPatch.profileSummary } : {}),
+        ...(normalizedPatch.relationshipNote ? { relationshipNote: normalizedPatch.relationshipNote } : {}),
         memories: [],
         createdAt: Date.now()
       };
@@ -145,11 +163,13 @@ export class UserStore {
 
     const updated: PersistedUser = {
       ...existing,
-      ...(input.preferredAddress ? { preferredAddress: input.preferredAddress } : {}),
-      ...(input.gender ? { gender: input.gender } : {}),
-      ...(input.residence ? { residence: input.residence } : {}),
-      ...(input.profileSummary ? { profileSummary: input.profileSummary } : {}),
-      ...(input.relationshipNote ? { relationshipNote: input.relationshipNote } : {})
+      ...(normalizedPatch.preferredAddress ? { preferredAddress: normalizedPatch.preferredAddress } : {}),
+      ...(normalizedPatch.gender ? { gender: normalizedPatch.gender } : {}),
+      ...(normalizedPatch.residence ? { residence: normalizedPatch.residence } : {}),
+      ...(normalizedPatch.timezone ? { timezone: normalizedPatch.timezone } : {}),
+      ...(normalizedPatch.occupation ? { occupation: normalizedPatch.occupation } : {}),
+      ...(normalizedPatch.profileSummary ? { profileSummary: normalizedPatch.profileSummary } : {}),
+      ...(normalizedPatch.relationshipNote ? { relationshipNote: normalizedPatch.relationshipNote } : {})
     };
     await this.replaceUser(users, updated);
     this.logger.info({ userId: input.userId }, "user_profile_updated");
@@ -195,7 +215,10 @@ export class UserStore {
   }): Promise<{
     user: User;
     item: UserMemoryEntry;
-    action: "created" | "updated_existing";
+    action: MemoryWriteAction;
+    finalAction: "created" | "updated_existing" | "warning_scope_conflict";
+    dedup: MemoryDedupDetails;
+    warning: ScopeConflictWarning | null;
   }> {
     const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === input.userId);
@@ -212,13 +235,13 @@ export class UserStore {
           memories,
           (item) => `${normalizeTitleForDedup(item.title)} ${item.content}`
         );
-    const targetId = input.memoryId || duplicate?.id;
+    const targetId = input.memoryId || duplicate?.item.id;
     const action = targetId && memories.some((item) => item.id === targetId)
       ? "updated_existing" as const
       : "created" as const;
     const nextMemory = createUserMemoryEntry({
       ...(targetId ? { id: targetId } : {}),
-      ...(duplicate ? { createdAt: duplicate.createdAt } : {}),
+      ...(duplicate ? { createdAt: duplicate.item.createdAt } : {}),
       title: input.title,
       content: input.content,
       ...(input.kind !== undefined ? { kind: input.kind } : {}),
@@ -241,11 +264,52 @@ export class UserStore {
       users.push(updated);
       await this.writeAll(users);
     }
-    this.logger.info({ userId: input.userId, memoryId: nextMemory.id, action }, "user_memory_upserted");
+    const dedup = buildMemoryDedupDetails({
+      explicitId: input.memoryId ?? null,
+      duplicateId: duplicate?.item.id ?? null,
+      similarityScore: duplicate?.similarityScore ?? null,
+      matchedExisting: targetIndex >= 0
+    });
+    const warning = detectScopeConflict({
+      currentScope: "user_memories",
+      title: input.title,
+      content: input.content
+    });
+    const diagnostics = buildMemoryWriteDiagnostics({
+      targetCategory: "user_memories",
+      action,
+      dedup,
+      warning
+    });
+    this.logger.info({
+      targetCategory: diagnostics.targetCategory,
+      userId: input.userId,
+      memoryId: nextMemory.id,
+      action: diagnostics.action,
+      finalAction: diagnostics.finalAction,
+      dedupMatchedBy: diagnostics.dedup.matchedBy,
+      dedupMatchedExistingId: diagnostics.dedup.matchedExistingId,
+      dedupSimilarityScore: diagnostics.dedup.similarityScore,
+      rerouteResult: diagnostics.reroute.result,
+      rerouteSuggestedScope: diagnostics.reroute.suggestedScope,
+      rerouteReason: diagnostics.reroute.reason
+    }, "user_memory_upserted");
+    if (warning) {
+      this.logger.warn({
+        targetCategory: "user_memories",
+        userId: input.userId,
+        memoryId: nextMemory.id,
+        suggestedScope: warning.suggestedScope,
+        reason: warning.reason
+      }, "memory_scope_conflict_detected");
+    }
     return {
       user: toRuntimeUser(this.whitelistStore, updated),
       item: nextMemory,
-      action
+      action,
+      finalAction: diagnostics.finalAction,
+      dedup,
+      warning
     };
   }
 
@@ -376,30 +440,7 @@ export class UserStore {
 }
 
 function normalizePersistedUsers(value: unknown): PersistedUser[] {
-  if (!Array.isArray(value)) {
-    return userStoreSchema.parse(value);
-  }
-  return userStoreSchema.parse(value.map((item) => {
-    if (typeof item !== "object" || item == null) {
-      return item;
-    }
-    const {
-      relationship: _relationship,
-      nickname,
-      sharedContext,
-      specialRole,
-      ...rest
-    } = item as Record<string, unknown>;
-    return {
-      ...rest,
-      // 迁移 sharedContext → relationshipNote（若新字段已存在则保留新字段）
-      ...(!rest.relationshipNote && sharedContext ? { relationshipNote: sharedContext } : {}),
-      // 将 nickname 合并到 preferredAddress（若 preferredAddress 已存在则不覆盖）
-      ...(!rest.preferredAddress && nickname ? { preferredAddress: nickname } : {}),
-      // 过滤掉 "none"，仅保留实质性角色
-      ...(specialRole && specialRole !== "none" ? { specialRole } : {})
-    };
-  }));
+  return userStoreSchema.parse(value);
 }
 
 function toRuntimeUser(

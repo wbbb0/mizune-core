@@ -10,6 +10,11 @@ import {
   personaSchema,
   type Persona
 } from "./personaSchema.ts";
+import { detectScopeConflict, type ScopeConflictWarning } from "#memory/memoryCategory.ts";
+import {
+  buildMemoryDedupDetails,
+  buildMemoryWriteDiagnostics
+} from "#memory/writeResult.ts";
 
 export class PersonaStore {
   private readonly filePath: string;
@@ -65,14 +70,50 @@ export class PersonaStore {
   }
 
   async patch(patch: Partial<Persona>): Promise<Persona> {
+    return (await this.patchWithDiagnostics(patch)).persona;
+  }
+
+  async patchWithDiagnostics(patch: Partial<Persona>): Promise<{
+    persona: Persona;
+    warning: ScopeConflictWarning | null;
+  }> {
     const current = await this.get();
     const next = personaSchema.parse({
       ...current,
       ...patch
     });
+    const warning = detectPersonaPatchConflict(patch);
     await this.write(next);
-    this.logger.info({ patch }, "persona_updated");
-    return next;
+    const diagnostics = buildMemoryWriteDiagnostics({
+      targetCategory: "persona",
+      action: "updated_existing",
+      dedup: buildMemoryDedupDetails({ matchedExisting: false }),
+      warning
+    });
+    this.logger.info({
+      patch,
+      patchFields: Object.keys(patch),
+      targetCategory: diagnostics.targetCategory,
+      action: diagnostics.action,
+      finalAction: diagnostics.finalAction,
+      dedupMatchedBy: diagnostics.dedup.matchedBy,
+      dedupMatchedExistingId: diagnostics.dedup.matchedExistingId,
+      dedupSimilarityScore: diagnostics.dedup.similarityScore,
+      rerouteResult: diagnostics.reroute.result,
+      rerouteSuggestedScope: diagnostics.reroute.suggestedScope,
+      rerouteReason: diagnostics.reroute.reason
+    }, "persona_updated");
+    if (warning) {
+      this.logger.warn({
+        targetCategory: "persona",
+        suggestedScope: warning.suggestedScope,
+        reason: warning.reason
+      }, "memory_scope_conflict_detected");
+    }
+    return {
+      persona: next,
+      warning
+    };
   }
 
   private async createBackupIfNeeded(): Promise<void> {
@@ -92,4 +133,23 @@ export class PersonaStore {
       logger: this.logger
     });
   }
+}
+
+function detectPersonaPatchConflict(patch: Partial<Persona>): ScopeConflictWarning | null {
+  const candidateFields: Array<keyof Persona> = ["role", "speechStyle", "rules"];
+  for (const field of candidateFields) {
+    const value = patch[field];
+    if (!value?.trim()) {
+      continue;
+    }
+    const warning = detectScopeConflict({
+      currentScope: "persona",
+      title: field,
+      content: value
+    });
+    if (warning) {
+      return warning;
+    }
+  }
+  return null;
 }

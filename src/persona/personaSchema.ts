@@ -61,25 +61,8 @@ export function isPersonaComplete(persona: Persona): boolean {
 }
 
 export function normalizeStoredPersona(raw: unknown): Persona | null {
-  if (typeof raw !== "object" || raw === null) {
-    return null;
-  }
-  const obj = raw as Record<string, unknown>;
-
-  // 迁移旧字段名
-  const migrated: Record<string, unknown> = {
-    name: obj.name ?? "",
-    role: obj.role ?? obj.identity ?? "",
-    appearance: obj.appearance ?? obj.virtualAppearance ?? "",
-    personality: obj.personality ?? "",
-    interests: obj.interests ?? [obj.hobbies, obj.likesAndDislikes].filter(Boolean).join("；") ?? "",
-    background: obj.background ?? [obj.familyBackground, obj.residence, obj.secrets].filter(Boolean).join("；") ?? "",
-    speechStyle: obj.speechStyle ?? obj.speakingStyle ?? "",
-    rules: obj.rules ?? obj.roleplayRequirements ?? ""
-  };
-
   try {
-    return personaSchema.parse(migrated);
+    return personaSchema.parse(raw);
   } catch {
     return null;
   }

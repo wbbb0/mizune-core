@@ -48,6 +48,70 @@ async function main() {
       await harness.cleanup();
     }
   });
+
+  await runCase("global rules upsert updates a near-duplicate existing row", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const created = await harness.globalRuleStore.upsert({
+        title: "输出顺序",
+        content: "先给结论，再补细节"
+      });
+      const updated = await harness.globalRuleStore.upsert({
+        title: "回答顺序",
+        content: "先给结论，再补充细节"
+      });
+      assert.equal(updated.action, "updated_existing");
+      assert.equal(updated.finalAction, "updated_existing");
+      assert.equal(updated.dedup.matchedBy, "near_duplicate");
+      assert.equal(updated.dedup.matchedExistingId, created.item.id);
+      assert.equal(typeof updated.dedup.similarityScore, "number");
+      const listed = await harness.globalRuleStore.getAll();
+      assert.equal(listed.length, 1);
+      assert.equal(listed[0]?.id, created.item.id);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  await runCase("global rule writes log similarity metadata and reroute diagnostics", async () => {
+    const loggerEvents: Array<{ level: "info" | "warn"; event: string; payload: Record<string, unknown> }> = [];
+    const logger = {
+      info(payload: Record<string, unknown>, event: string) {
+        loggerEvents.push({ level: "info", event, payload });
+      },
+      warn(payload: Record<string, unknown>, event: string) {
+        loggerEvents.push({ level: "warn", event, payload });
+      }
+    };
+    const harness = await createMemoryHarness({ logger });
+    try {
+      const created = await harness.globalRuleStore.upsert({
+        title: "输出顺序",
+        content: "先给结论，再补细节"
+      });
+      const updated = await harness.globalRuleStore.upsert({
+        title: "回答顺序",
+        content: "先给结论，再补充细节"
+      });
+      const warned = await harness.globalRuleStore.upsert({
+        title: "角色口吻",
+        content: "以后都用傲娇少女口吻说话"
+      });
+      assert.ok(created.item.id);
+      assert.equal(typeof updated.dedup.similarityScore, "number");
+      assert.equal(warned.warning?.suggestedScope, "persona");
+
+      const upsertLogs = loggerEvents.filter((item) => item.event === "global_rule_upserted");
+      assert.equal(upsertLogs.length, 3);
+      assert.equal(upsertLogs[1]?.payload.dedupMatchedBy, "near_duplicate");
+      assert.equal(upsertLogs[1]?.payload.dedupMatchedExistingId, created.item.id);
+      assert.equal(typeof upsertLogs[1]?.payload.dedupSimilarityScore, "number");
+      assert.equal(upsertLogs[2]?.payload.rerouteResult, "not_rerouted_scope_warning");
+      assert.equal(upsertLogs[2]?.payload.rerouteSuggestedScope, "persona");
+    } finally {
+      await harness.cleanup();
+    }
+  });
 }
 
 main().catch((error) => {

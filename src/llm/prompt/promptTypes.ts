@@ -18,6 +18,8 @@ export interface PromptNpcProfile {
   preferredAddress?: string;
   gender?: string;
   residence?: string;
+  timezone?: string;
+  occupation?: string;
   profileSummary?: string;
   relationshipNote?: string;
 }
@@ -29,6 +31,8 @@ export interface PromptParticipantProfile {
   preferredAddress?: string;
   gender?: string;
   residence?: string;
+  timezone?: string;
+  occupation?: string;
   profileSummary?: string;
   relationshipNote?: string;
 }
@@ -40,6 +44,8 @@ export interface PromptUserProfile {
   preferredAddress?: string;
   gender?: string;
   residence?: string;
+  timezone?: string;
+  occupation?: string;
   profileSummary?: string;
   relationshipNote?: string;
   specialRole?: SpecialRole;

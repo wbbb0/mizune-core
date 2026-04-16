@@ -223,7 +223,7 @@ export const rpAssistantModeDefinition: SessionModeDefinition = {
         toolsetId: "memory_profile",
         title: "记忆与资料",
         description: "初始化阶段仅允许写入 persona 相关资料。",
-        toolNames: ["read_memory", "write_memory"],
+        toolNames: ["get_persona", "patch_persona", "clear_persona_field"],
         promptGuidance: ["初始化阶段只补全 persona；不要改用户资料、关系或其他记忆。"],
         plannerSignals: ["初始化 persona 补全"]
       }
@@ -362,7 +362,7 @@ But `mode` doesn't exist yet in the orchestrator — that's Task 5. So we need t
               toolsetId: "memory_profile",
               title: "记忆与资料",
               description: "初始化阶段仅允许写入 persona 相关资料。",
-              toolNames: ["read_memory", "write_memory"],
+              toolNames: ["get_persona", "patch_persona", "clear_persona_field"],
               promptGuidance: ["初始化阶段只补全 persona；不要改用户资料、关系或其他记忆。"],
               plannerSignals: ["初始化 persona 补全"]
             }]
@@ -600,7 +600,7 @@ Replace the `runGeneration` call's `setupMode` branch:
 ```typescript
         ...(setupMode
           ? {
-              availableToolNames: ["read_memory", "write_memory"],
+              availableToolNames: ["get_persona", "patch_persona", "clear_persona_field"],
               setupMode: true
             }
           : {

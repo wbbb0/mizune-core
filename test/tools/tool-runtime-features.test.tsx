@@ -141,6 +141,14 @@ async function main() {
     assert.ok(!knownNames.includes("upsert_toolset_rule"));
   });
 
+  await runCase("old polymorphic memory tools are no longer exposed", async () => {
+    const config = createForwardFeatureConfig();
+    const toolNames = getBuiltinTools("owner", config).map((tool) => tool.function.name);
+    assert.ok(!toolNames.includes("read_memory"));
+    assert.ok(!toolNames.includes("write_memory"));
+    assert.ok(!toolNames.includes("remove_memory"));
+  });
+
   await runCase("global rule handlers allow owner and reject non-owner", async () => {
     const ownerResult = await profileToolHandlers.upsert_global_rule!(
       { id: "tool_global_rule_1", type: "function", function: { name: "upsert_global_rule", arguments: "{\"title\":\"输出顺序\",\"content\":\"先结论后细节\"}" } },
@@ -167,6 +175,164 @@ async function main() {
     assert.match(String(deniedResult), /Only owner can edit global rules/);
   });
 
+  await runCase("memory handlers surface structured scope conflict warnings", async () => {
+    const personaWarningResult = await profileToolHandlers.patch_persona!(
+      { id: "tool_persona_warn_1", type: "function", function: { name: "patch_persona", arguments: "{\"personaPatch\":{\"rules\":\"所有任务默认先给结论再展开\"}}" } },
+      { personaPatch: { rules: "所有任务默认先给结论再展开" } },
+      {
+        relationship: "owner",
+        personaStore: {
+          async patchWithDiagnostics() {
+            return {
+              persona: { name: "", role: "", appearance: "", personality: "", interests: "", background: "", speechStyle: "", rules: "所有任务默认先给结论再展开" },
+              warning: {
+                code: "warning_scope_conflict",
+                currentScope: "persona",
+                suggestedScope: "global_rules",
+                reason: "内容更像跨任务长期工作流规则，不像 bot 身份、人设、口吻或角色边界。"
+              }
+            };
+          }
+        },
+        setupStore: {
+          async advanceAfterPersonaUpdate() {
+            return undefined;
+          }
+        }
+      } as any
+    );
+    const personaPayload = JSON.parse(String(personaWarningResult));
+    assert.equal(personaPayload.finalAction, "warning_scope_conflict");
+    assert.equal(personaPayload.warnings[0].suggestedScope, "global_rules");
+
+    const globalWarningResult = await profileToolHandlers.upsert_global_rule!(
+      { id: "tool_global_rule_warn_1", type: "function", function: { name: "upsert_global_rule", arguments: "{\"title\":\"角色口吻\",\"content\":\"以后都用傲娇少女口吻说话\"}" } },
+      { title: "角色口吻", content: "以后都用傲娇少女口吻说话" },
+      {
+        relationship: "owner",
+        globalRuleStore: {
+          async upsert(input: { title: string; content: string }) {
+            return {
+              action: "created",
+              finalAction: "warning_scope_conflict",
+              dedup: { matchedBy: "none", matchedExistingId: null },
+              warning: {
+                code: "warning_scope_conflict",
+                currentScope: "global_rules",
+                suggestedScope: "persona",
+                reason: "内容更像 bot 身份、人设、口吻或角色边界，而不是 owner 级通用工作流规则。"
+              },
+              item: { id: "rule_warn_1", updatedAt: 1, createdAt: 1, kind: "workflow", source: "owner_explicit", ...input },
+              rules: []
+            };
+          }
+        }
+      } as any
+    );
+    const globalPayload = JSON.parse(String(globalWarningResult));
+    assert.equal(globalPayload.finalAction, "warning_scope_conflict");
+    assert.equal(globalPayload.warnings[0].suggestedScope, "persona");
+    assert.equal(globalPayload.reroute.result, "not_rerouted_scope_warning");
+    assert.equal(globalPayload.reroute.suggestedScope, "persona");
+
+    const userWarningResult = await profileToolHandlers.upsert_user_memory!(
+      { id: "tool_user_memory_warn_1", type: "function", function: { name: "upsert_user_memory", arguments: "{\"title\":\"叫我\",\"content\":\"以后叫我老王\"}" } },
+      { title: "叫我", content: "以后叫我老王" },
+      {
+        relationship: "known",
+        lastMessage: {
+          sessionId: "private:10001",
+          userId: "10001",
+          senderName: "Tester"
+        },
+        userStore: {
+          async upsertMemory(input: { title: string; content: string }) {
+            return {
+              action: "created",
+              finalAction: "warning_scope_conflict",
+              dedup: { matchedBy: "none", matchedExistingId: null },
+              warning: {
+                code: "warning_scope_conflict",
+                currentScope: "user_memories",
+                suggestedScope: "user_profile",
+                reason: "内容更像结构化用户卡片字段，适合写入 user profile。"
+              },
+              item: { id: "mem_warn_1", updatedAt: 1, createdAt: 1, kind: "other", source: "user_explicit", ...input },
+              user: null
+            };
+          }
+        }
+      } as any
+    );
+    const userPayload = JSON.parse(String(userWarningResult));
+    assert.equal(userPayload.finalAction, "warning_scope_conflict");
+    assert.equal(userPayload.warnings[0].suggestedScope, "user_profile");
+    assert.equal(userPayload.reroute.result, "not_rerouted_scope_warning");
+    assert.equal(userPayload.reroute.suggestedScope, "user_profile");
+  });
+
+  await runCase("profile handlers preserve structured fields and user-memory handlers keep durable preferences in user memories", async () => {
+    const profileResult = await profileToolHandlers.patch_user_profile!(
+      { id: "tool_profile_patch_1", type: "function", function: { name: "patch_user_profile", arguments: "{\"timezone\":\"Asia/Shanghai\",\"occupation\":\"产品经理\",\"profileSummary\":\"做事很快\\n经常先给结论\"}" } },
+      { timezone: "Asia/Shanghai", occupation: "产品经理", profileSummary: "做事很快\n经常先给结论" },
+      {
+        relationship: "known",
+        lastMessage: {
+          sessionId: "private:10001",
+          userId: "10001",
+          senderName: "Tester"
+        },
+        userStore: {
+          async patchUserProfile() {
+            return {
+              userId: "10001",
+              relationship: "known",
+              timezone: "Asia/Shanghai",
+              occupation: "产品经理",
+              profileSummary: "做事很快；经常先给结论",
+              memories: [],
+              createdAt: 1
+            };
+          }
+        }
+      } as any
+    );
+    const profilePayload = JSON.parse(String(profileResult));
+    assert.equal(profilePayload.targetCategory, "user_profile");
+    assert.equal(profilePayload.profile.timezone, "Asia/Shanghai");
+    assert.equal(profilePayload.profile.occupation, "产品经理");
+
+    const userMemoryResult = await profileToolHandlers.upsert_user_memory!(
+      { id: "tool_user_memory_boundary_1", type: "function", function: { name: "upsert_user_memory", arguments: "{\"title\":\"交流边界\",\"content\":\"不要替我做决定\"}" } },
+      { title: "交流边界", content: "不要替我做决定" },
+      {
+        relationship: "known",
+        lastMessage: {
+          sessionId: "private:10001",
+          userId: "10001",
+          senderName: "Tester"
+        },
+        userStore: {
+          async upsertMemory(input: { title: string; content: string }) {
+            return {
+              action: "created",
+              finalAction: "created",
+              dedup: { matchedBy: "none", matchedExistingId: null },
+              warning: null,
+              item: { id: "mem_boundary_1", updatedAt: 1, createdAt: 1, kind: "boundary", source: "user_explicit", ...input },
+              user: null
+            };
+          }
+        }
+      } as any
+    );
+    const userMemoryPayload = JSON.parse(String(userMemoryResult));
+    assert.equal(userMemoryPayload.targetCategory, "user_memories");
+    assert.equal(userMemoryPayload.finalAction, "created");
+    assert.equal(userMemoryPayload.memory.kind, "boundary");
+    assert.equal(userMemoryPayload.reroute.result, "not_applicable");
+  });
+
   await runCase("toolset rule handlers upsert duplicates into existing rules", async () => {
     const existing = [{
       id: "rule_1",
@@ -184,12 +350,23 @@ async function main() {
         relationship: "owner",
         toolsetRuleStore: {
           async upsert() {
-            return { action: "updated_existing", item: existing[0], rules: existing };
+            return {
+              action: "updated_existing",
+              dedup: {
+                matchedBy: "near_duplicate",
+                matchedExistingId: "rule_1",
+                similarityScore: 0.88
+              },
+              item: existing[0],
+              rules: existing
+            };
           }
         }
       } as any
     );
-    assert.equal(JSON.parse(String(duplicateResult)).action, "updated_existing");
+    const duplicatePayload = JSON.parse(String(duplicateResult));
+    assert.equal(duplicatePayload.action, "updated_existing");
+    assert.equal(duplicatePayload.dedup.similarityScore, 0.88);
 
     const updateResult = await profileToolHandlers.upsert_toolset_rule!(
       { id: "tool_toolset_rule_2", type: "function", function: { name: "upsert_toolset_rule", arguments: "{\"ruleId\":\"rule_1\",\"title\":\"网页登录处理\",\"content\":\"遇到明确登录任务时才读取并使用站点凭据。\",\"toolset_ids\":[\"web_research\"]}" } },

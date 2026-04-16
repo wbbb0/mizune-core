@@ -23,7 +23,9 @@ import type { ChatAttachment } from "#services/workspace/types.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { ToolsetRuleEntry } from "#llm/prompt/toolsetRuleStore.ts";
 import { isNearDuplicateText } from "#memory/similarity.ts";
+import type { UserMemoryEntry } from "#memory/userMemoryEntry.ts";
 import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
+import { preparePromptMemoryContext } from "#llm/prompts/chat-system.prompt.ts";
 
 type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
@@ -70,6 +72,8 @@ export interface GenerationPromptParticipantProfile {
   preferredAddress?: string;
   gender?: string;
   residence?: string;
+  timezone?: string;
+  occupation?: string;
   profileSummary?: string;
   relationshipNote?: string;
 }
@@ -196,6 +200,8 @@ function buildNpcPromptProfiles(deps: GenerationPromptBuilderDeps, relevantUserI
     ...(item.preferredAddress ? { preferredAddress: item.preferredAddress } : {}),
     ...(item.gender ? { gender: item.gender } : {}),
     ...(item.residence ? { residence: item.residence } : {}),
+    ...(item.timezone ? { timezone: item.timezone } : {}),
+    ...(item.occupation ? { occupation: item.occupation } : {}),
     ...(item.profileSummary ? { profileSummary: item.profileSummary } : {}),
     ...(item.relationshipNote ? { relationshipNote: item.relationshipNote } : {})
   }));
@@ -210,6 +216,8 @@ function buildUserProfilePromptState(currentUser: StoredUser, senderName?: strin
     ...(currentUser?.preferredAddress ? { preferredAddress: currentUser.preferredAddress } : {}),
     ...(currentUser?.gender ? { gender: currentUser.gender } : {}),
     ...(currentUser?.residence ? { residence: currentUser.residence } : {}),
+    ...(currentUser?.timezone ? { timezone: currentUser.timezone } : {}),
+    ...(currentUser?.occupation ? { occupation: currentUser.occupation } : {}),
     ...(currentUser?.profileSummary ? { profileSummary: currentUser.profileSummary } : {}),
     ...(currentUser?.relationshipNote ? { relationshipNote: currentUser.relationshipNote } : {}),
     ...(currentUser?.specialRole ? { specialRole: currentUser.specialRole } : {})
@@ -455,6 +463,38 @@ function resolveToolsetRules(
   return deduped;
 }
 
+function logPromptMemorySuppressions(
+  deps: Pick<GenerationPromptBuilderDeps, "logger">,
+  input: {
+    sessionId: string;
+    modeId?: string;
+    persona: PersonaState;
+    userProfile: ReturnType<typeof buildUserProfilePromptState>;
+    globalRules: Awaited<ReturnType<GenerationPromptBuilderDeps["globalRuleStore"]["getAll"]>>;
+    toolsetRules: ToolsetRuleEntry[];
+    currentUserMemories: UserMemoryEntry[];
+  }
+): void {
+  if (!deps.logger || input.modeId === "scenario_host") {
+    return;
+  }
+  const prepared = preparePromptMemoryContext({
+    persona: input.persona,
+    globalRules: input.globalRules,
+    toolsetRules: input.toolsetRules,
+    userProfile: input.userProfile,
+    userMemories: input.currentUserMemories
+  });
+  if (prepared.suppressions.length === 0) {
+    return;
+  }
+  deps.logger.info({
+    sessionId: input.sessionId,
+    suppressionCount: prepared.suppressions.length,
+    suppressions: prepared.suppressions
+  }, "prompt_memory_items_suppressed");
+}
+
 // Builds chat, setup, and scheduled prompts from shared context helpers.
 export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps): GenerationPromptBuilder {
   const buildChatPromptMessages = async (input: {
@@ -526,6 +566,24 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
       }
     );
+    const userProfilePromptState = assistantMode
+      ? buildAssistantUserProfilePromptState(
+          input.currentUser,
+          input.batchMessages[input.batchMessages.length - 1]?.senderName
+        )
+      : buildUserProfilePromptState(
+          input.currentUser,
+          input.batchMessages[input.batchMessages.length - 1]?.senderName
+        );
+    logPromptMemorySuppressions(deps, {
+      sessionId: input.sessionId,
+      ...(input.modeId ? { modeId: input.modeId } : {}),
+      persona: input.persona,
+      userProfile: userProfilePromptState,
+      globalRules,
+      toolsetRules,
+      currentUserMemories: (scenarioHostMode || assistantMode) ? [] : (input.currentUser?.memories ?? [])
+    });
 
     const promptMessages = buildPrompt({
       sessionId: input.sessionId,
@@ -544,10 +602,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
             input.currentUser,
             input.batchMessages[input.batchMessages.length - 1]?.senderName
           )
-        : buildUserProfilePromptState(
-            input.currentUser,
-            input.batchMessages[input.batchMessages.length - 1]?.senderName
-          ),
+        : userProfilePromptState,
       currentUserMemories: (scenarioHostMode || assistantMode) ? [] : (input.currentUser?.memories ?? []),
       globalRules,
       historySummary: input.historySummary,
@@ -638,6 +693,24 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       ...input.participantProfiles.map((item) => item.userId),
       ...(input.targetContext.chatType === "private" ? [input.targetContext.userId] : [])
     ]);
+    const userProfilePromptState = assistantMode
+      ? buildAssistantUserProfilePromptState(
+          input.currentUser,
+          input.targetContext.chatType === "private" ? input.targetContext.senderName : undefined
+        )
+      : buildUserProfilePromptState(
+          input.currentUser,
+          input.targetContext.chatType === "private" ? input.targetContext.senderName : undefined
+        );
+    logPromptMemorySuppressions(deps, {
+      sessionId: input.sessionId,
+      ...(input.modeId ? { modeId: input.modeId } : {}),
+      persona: input.persona,
+      userProfile: userProfilePromptState,
+      globalRules,
+      toolsetRules,
+      currentUserMemories: (scenarioHostMode || assistantMode) ? [] : (input.currentUser?.memories ?? [])
+    });
 
     const promptMessages = buildScheduledTaskPrompt({
       sessionId: input.sessionId,
@@ -657,10 +730,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
             input.currentUser,
             input.targetContext.chatType === "private" ? input.targetContext.senderName : undefined
           )
-        : buildUserProfilePromptState(
-            input.currentUser,
-            input.targetContext.chatType === "private" ? input.targetContext.senderName : undefined
-          ),
+        : userProfilePromptState,
       currentUserMemories: (scenarioHostMode || assistantMode) ? [] : (input.currentUser?.memories ?? []),
       globalRules,
       historySummary: input.historySummary,

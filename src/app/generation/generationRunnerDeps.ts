@@ -43,6 +43,7 @@ import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 // The broad runtime bundle still exists at the composition root, but lower-level modules
 // should depend on the narrowest type below that matches the use case they own.
 export interface GenerationPromptBuilderDeps {
+  logger?: Logger;
   config: AppConfig;
   oneBotClient: OneBotClient;
   audioStore: AudioStore;

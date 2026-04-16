@@ -5,6 +5,7 @@ import pino from "pino";
 import { GlobalRuleStore } from "../../src/memory/globalRuleStore.ts";
 import { PersonaStore } from "../../src/persona/personaStore.ts";
 import { UserStore } from "../../src/identity/userStore.ts";
+import { ToolsetRuleStore } from "../../src/llm/prompt/toolsetRuleStore.ts";
 import { createTestAppConfig } from "./config-fixtures.tsx";
 
 export function createMemoryTestConfig() {
@@ -23,21 +24,26 @@ export function createWhitelistStore(ownerId = "owner") {
   };
 }
 
-export async function createMemoryHarness() {
+export async function createMemoryHarness(options?: {
+  logger?: any;
+}) {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-memory-test-"));
   const config = createMemoryTestConfig();
-  const logger = pino({ level: "silent" });
+  const logger = options?.logger ?? pino({ level: "silent" });
   const whitelistStore = createWhitelistStore();
   const personaStore = new PersonaStore(dataDir, config, logger);
   const globalRuleStore = new GlobalRuleStore(dataDir, config, logger);
+  const toolsetRuleStore = new ToolsetRuleStore(dataDir, config, logger);
   const userStore = new UserStore(dataDir, config, whitelistStore, logger);
   await personaStore.init();
   await globalRuleStore.init();
+  await toolsetRuleStore.init();
   await userStore.init();
   return {
     dataDir,
     personaStore,
     globalRuleStore,
+    toolsetRuleStore,
     userStore,
     whitelistStore,
     cleanup: async () => {

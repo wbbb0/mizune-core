@@ -109,7 +109,8 @@ async function main() {
         }
       ]);
       await harness.userStore.overwriteMemories("owner", [
-        { title: "饮食偏好", content: "不喜欢香菜" }
+        { title: "饮食偏好", content: "不喜欢香菜" },
+        { title: "作息", content: "经常熬夜" }
       ]);
 
       const prompt = buildPrompt({
@@ -124,7 +125,10 @@ async function main() {
           userId: "owner",
           senderName: "Owner",
           relationship: "owner",
-          residence: "杭州"
+          residence: "杭州",
+          timezone: "Asia/Shanghai",
+          occupation: "产品经理",
+          profileSummary: "不喜欢香菜。经常先给结论。"
         }),
         currentUserMemories: (await harness.userStore.getByUserId("owner"))?.memories ?? [],
         globalRules: await harness.globalRuleStore.getAll(),
@@ -140,8 +144,81 @@ async function main() {
       assert.doesNotMatch(system, /重复的人设规则/);
       assert.match(system, /⟦section name="current_user_profile"⟧/);
       assert.match(system, /⟦section name="current_user_memories"⟧/);
+      assert.match(system, /时区=Asia\/Shanghai/);
+      assert.match(system, /职业=产品经理/);
+      assert.match(system, /用户画像=经常先给结论/);
+      assert.doesNotMatch(system, /用户画像=.*不喜欢香菜/);
       assert.match(system, /当前触发用户长期记忆（最多 4 条）：/);
       assert.match(system, /- 饮食偏好：不喜欢香菜/);
+      assert.match(system, /- 作息：经常熬夜/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  await runCase("prompt builder keeps higher-priority rules and ranks user memories by kind and importance", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.patch({
+        role: "嘴硬但靠谱的搭档"
+      });
+      await harness.globalRuleStore.overwrite([
+        {
+          title: "输出顺序",
+          content: "先给结论再展开。"
+        }
+      ]);
+      await harness.userStore.overwriteMemories("owner", [
+        {
+          title: "输出顺序",
+          content: "先给结论再展开。",
+          kind: "fact",
+          updatedAt: Date.now(),
+          createdAt: Date.now()
+        },
+        {
+          title: "交流边界",
+          content: "不要替我做决定。",
+          kind: "boundary",
+          importance: 5,
+          updatedAt: Date.now() - (90 * 24 * 60 * 60 * 1000),
+          createdAt: Date.now() - (90 * 24 * 60 * 60 * 1000)
+        },
+        {
+          title: "饮食偏好",
+          content: "不喜欢香菜。",
+          kind: "fact",
+          updatedAt: Date.now(),
+          createdAt: Date.now()
+        }
+      ]);
+
+      const prompt = buildPrompt({
+        sessionId: "private:owner",
+        persona,
+        relationship: "owner",
+        npcProfiles: [],
+        participantProfiles: [],
+        userProfile: createPromptUserProfile({
+          userId: "owner",
+          senderName: "Owner",
+          relationship: "owner"
+        }),
+        currentUserMemories: (await harness.userStore.getByUserId("owner"))?.memories ?? [],
+        globalRules: await harness.globalRuleStore.getAll(),
+        historySummary: null,
+        recentMessages: [],
+        batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "记住这些", timestampMs: Date.now() })]
+      });
+
+      const system = String(prompt[0]?.content ?? "");
+      assert.match(system, /- 输出顺序：先给结论再展开。/);
+      assert.doesNotMatch(system, /当前触发用户长期记忆（最多 4 条）：\n- 输出顺序：先给结论再展开。/);
+      const boundaryIndex = system.indexOf("交流边界：不要替我做决定。");
+      const factIndex = system.indexOf("饮食偏好：不喜欢香菜。");
+      assert.ok(boundaryIndex >= 0);
+      assert.ok(factIndex >= 0);
+      assert.ok(boundaryIndex < factIndex);
     } finally {
       await harness.cleanup();
     }

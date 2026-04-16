@@ -463,7 +463,18 @@ config/instances/acc1.yml
 - `workspace/`
 - `webui-auth.json`
 
-旧版本的 `global-memories.json` 与 `operation-notes.json` 会在首次读取时自动迁移到新文件名。
+如果实例目录里还有旧版 memory 数据，先显式执行一次迁移：
+
+```bash
+npm run migrate:memory -- data/data/<instance>
+```
+
+迁移会：
+
+- 归并旧版 `global-memories.json` 到 `global-rules.json`
+- 归并旧版工具集规则文件到 `toolset-rules.json`
+- 规范化 `users.json` / `persona.json`
+- 去重并生成 `memory-migration-report.json` 审计报告
 
 ## 反向代理注意事项
 

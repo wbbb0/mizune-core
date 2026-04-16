@@ -1,5 +1,11 @@
 import { editablePersonaFieldNames } from "#persona/personaSchema.ts";
-import { detectScopeConflict, type ScopeConflictWarning } from "#memory/memoryCategory.ts";
+import type { MemoryCategory, ScopeConflictWarning } from "#memory/memoryCategory.ts";
+import {
+  buildMemoryRerouteDetails,
+  resolveMemoryWriteFinalAction,
+  type MemoryDedupDetails,
+  type MemoryWriteAction
+} from "#memory/writeResult.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
 
@@ -221,6 +227,8 @@ export const profileToolDescriptors: ToolDescriptor[] = [
             preferredAddress: { type: "string" },
             gender: { type: "string" },
             residence: { type: "string" },
+            timezone: { type: "string" },
+            occupation: { type: "string" },
             profileSummary: { type: "string" },
             relationshipNote: { type: "string" }
           },
@@ -306,6 +314,8 @@ export const profileToolDescriptors: ToolDescriptor[] = [
             preferredAddress: { type: "string" },
             gender: { type: "string" },
             residence: { type: "string" },
+            timezone: { type: "string" },
+            occupation: { type: "string" },
             profileSummary: { type: "string" },
             relationshipNote: { type: "string" }
           },
@@ -381,6 +391,8 @@ function parseUserProfilePatch(args: unknown): {
   preferredAddress?: string;
   gender?: string;
   residence?: string;
+  timezone?: string;
+  occupation?: string;
   profileSummary?: string;
   relationshipNote?: string;
 } {
@@ -393,6 +405,12 @@ function parseUserProfilePatch(args: unknown): {
       : {}),
     ...(typeof args === "object" && args && "residence" in args
       ? { residence: String((args as { residence: unknown }).residence) }
+      : {}),
+    ...(typeof args === "object" && args && "timezone" in args
+      ? { timezone: String((args as { timezone: unknown }).timezone) }
+      : {}),
+    ...(typeof args === "object" && args && "occupation" in args
+      ? { occupation: String((args as { occupation: unknown }).occupation) }
       : {}),
     ...(typeof args === "object" && args && "profileSummary" in args
       ? { profileSummary: String((args as { profileSummary: unknown }).profileSummary) }
@@ -411,6 +429,8 @@ function toUserProfilePayload(
     preferredAddress?: string;
     gender?: string;
     residence?: string;
+    timezone?: string;
+    occupation?: string;
     profileSummary?: string;
     relationshipNote?: string;
   } | null,
@@ -424,15 +444,40 @@ function toUserProfilePayload(
     preferredAddress: user?.preferredAddress ?? null,
     gender: user?.gender ?? null,
     residence: user?.residence ?? null,
+    timezone: user?.timezone ?? null,
+    occupation: user?.occupation ?? null,
     profileSummary: user?.profileSummary ?? null,
     relationshipNote: user?.relationshipNote ?? null
   };
 }
 
-function withWarnings(base: Record<string, unknown>, warning: ScopeConflictWarning | null): string {
+function serializeWriteResult(input: {
+  targetCategory: MemoryCategory;
+  action: MemoryWriteAction;
+  itemKey: string;
+  item: unknown;
+  itemId?: string | null;
+  warning?: ScopeConflictWarning | null;
+  dedup?: MemoryDedupDetails | null;
+}): string {
+  const warning = input.warning ?? null;
   return JSON.stringify({
-    ...base,
-    ...(warning ? { warnings: [warning] } : {})
+    targetCategory: input.targetCategory,
+    action: input.action,
+    finalAction: resolveMemoryWriteFinalAction(input.action, warning),
+    itemId: input.itemId ?? null,
+    ...(input.dedup
+      ? {
+          dedup: {
+            matchedBy: input.dedup.matchedBy,
+            matchedExistingId: input.dedup.matchedExistingId,
+            similarityScore: input.dedup.similarityScore ?? null
+          }
+        }
+      : {}),
+    reroute: buildMemoryRerouteDetails(warning),
+    ...(warning ? { warnings: [warning] } : {}),
+    [input.itemKey]: input.item
   });
 }
 
@@ -460,9 +505,21 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     if (Object.keys(personaPatch).length === 0) {
       return JSON.stringify({ error: "personaPatch with at least one string field is required" });
     }
-    const updated = await context.personaStore.patch(personaPatch);
-    await context.setupStore.advanceAfterPersonaUpdate(updated);
-    return JSON.stringify({ action: "updated_existing", persona: updated });
+    const personaStore = context.personaStore as {
+      patch: (patch: Record<string, string>) => Promise<unknown>;
+      patchWithDiagnostics?: (patch: Record<string, string>) => Promise<{ persona: unknown; warning: ScopeConflictWarning | null }>;
+    };
+    const result = personaStore.patchWithDiagnostics
+      ? await personaStore.patchWithDiagnostics(personaPatch)
+      : { persona: await personaStore.patch(personaPatch), warning: null };
+    await context.setupStore.advanceAfterPersonaUpdate(result.persona as any);
+    return serializeWriteResult({
+      targetCategory: "persona",
+      action: "updated_existing",
+      itemKey: "persona",
+      item: result.persona,
+      warning: result.warning
+    });
   },
   async clear_persona_field(_toolCall, args, context) {
     const denied = requireOwner(context.relationship, "Only owner can update persona");
@@ -473,9 +530,21 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     if (!personaField || !personaFieldEnums.includes(personaField as typeof personaFieldEnums[number])) {
       return JSON.stringify({ error: "personaField is required" });
     }
-    const updated = await context.personaStore.patch({ [personaField]: "" });
-    await context.setupStore.advanceAfterPersonaUpdate(updated);
-    return JSON.stringify({ action: "updated_existing", persona: updated });
+    const personaStore = context.personaStore as {
+      patch: (patch: Record<string, string>) => Promise<unknown>;
+      patchWithDiagnostics?: (patch: Record<string, string>) => Promise<{ persona: unknown; warning: ScopeConflictWarning | null }>;
+    };
+    const result = personaStore.patchWithDiagnostics
+      ? await personaStore.patchWithDiagnostics({ [personaField]: "" })
+      : { persona: await personaStore.patch({ [personaField]: "" }), warning: null };
+    await context.setupStore.advanceAfterPersonaUpdate(result.persona as any);
+    return serializeWriteResult({
+      targetCategory: "persona",
+      action: "updated_existing",
+      itemKey: "persona",
+      item: result.persona,
+      warning: result.warning
+    });
   },
   async list_global_rules(_toolCall, _args, context) {
     const denied = requireOwner(context.relationship, "Only owner can inspect global rules");
@@ -500,15 +569,15 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
       content,
       ...(getStringField(args, "kind") ? { kind: getStringField(args, "kind") as "workflow" | "constraint" | "preference" | "other" } : {})
     });
-    const warning = detectScopeConflict({
-      currentScope: "global_rules",
-      title,
-      content
-    });
-    return withWarnings({
+    return serializeWriteResult({
+      targetCategory: "global_rules",
       action: result.action,
-      rule: result.item
-    }, warning);
+      itemKey: "rule",
+      item: result.item,
+      itemId: result.item.id,
+      dedup: result.dedup,
+      warning: result.warning
+    });
   },
   async remove_global_rule(_toolCall, args, context) {
     const denied = requireOwner(context.relationship, "Only owner can edit global rules");
@@ -553,15 +622,15 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
       toolsetIds,
       source: "owner_explicit"
     });
-    const warning = detectScopeConflict({
-      currentScope: "toolset_rules",
-      title,
-      content
-    });
-    return withWarnings({
+    return serializeWriteResult({
+      targetCategory: "toolset_rules",
       action: result.action,
-      rule: result.item
-    }, warning);
+      itemKey: "rule",
+      item: result.item,
+      itemId: result.item.id,
+      dedup: result.dedup,
+      warning: result.warning
+    });
   },
   async remove_toolset_rule(_toolCall, args, context) {
     const denied = requireOwner(context.relationship, "Only owner can edit toolset rules");
@@ -603,7 +672,13 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
       userId,
       ...patch
     });
-    return JSON.stringify({ action: "updated_existing", profile: toUserProfilePayload(updated, userId === context.lastMessage.userId ? context.lastMessage.senderName : undefined) });
+    return serializeWriteResult({
+      targetCategory: "user_profile",
+      action: "updated_existing",
+      itemKey: "profile",
+      item: toUserProfilePayload(updated, userId === context.lastMessage.userId ? context.lastMessage.senderName : undefined),
+      itemId: userId
+    });
   },
   async list_user_memories(_toolCall, args, context) {
     const userId = resolveTargetUserId(args, context.lastMessage.userId);
@@ -636,15 +711,15 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
       ...(getIntegerField(args, "importance") !== null ? { importance: getIntegerField(args, "importance")! } : {}),
       source: context.relationship === "owner" && userId !== context.lastMessage.userId ? "owner_explicit" : "user_explicit"
     });
-    const warning = detectScopeConflict({
-      currentScope: "user_memories",
-      title,
-      content
-    });
-    return withWarnings({
+    return serializeWriteResult({
+      targetCategory: "user_memories",
       action: result.action,
-      memory: result.item
-    }, warning);
+      itemKey: "memory",
+      item: result.item,
+      itemId: result.item.id,
+      dedup: result.dedup,
+      warning: result.warning
+    });
   },
   async remove_user_memory(_toolCall, args, context) {
     const userId = resolveTargetUserId(args, context.lastMessage.userId);
