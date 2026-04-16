@@ -201,6 +201,10 @@ export interface TranscriptGateDecisionItem {
   waitPassCount?: number | undefined;
   replyDecision?: "reply_small" | "reply_large" | "wait" | "ignore" | undefined;
   topicDecision?: string | undefined;
+  requiredCapabilities?: string[] | undefined;
+  contextDependencies?: string[] | undefined;
+  recentDomainReuse?: string[] | undefined;
+  followupMode?: string | undefined;
   toolsetIds?: string[] | undefined;
   timestampMs: number;
 }

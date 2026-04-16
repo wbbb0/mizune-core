@@ -9,7 +9,7 @@
 - [x] Session identity parsing/building has been centralized and covered by focused tests.
 - [x] `SessionManager` internals have been split into dedicated helper modules such as store/lifecycle/history/debug/trigger-queue ownership.
 - [x] Toolset metadata has been split from supplement heuristics, and supplement signal extraction now lives in its own module.
-- [ ] Toolset supplement selection still leans on a regex-heavy intent table; replacing that last table with more structured runtime signals remains follow-up work.
+- [x] Toolset supplement selection now consumes structured planner semantics plus runtime facts/recent-domain signals instead of relying on a regex-heavy intent table.
 - [x] Some downstream callers now depend on narrower session capability interfaces instead of the full `SessionManager`, including debounce/compression, conversation access, setup context, direct commands, the messaging ingress flow, part of the internal API surface, several generation subflows, and tool runtime wiring.
 - [x] A first batch of obsolete `SessionManager` façade passthroughs with no remaining external callers has been deleted, and affected tests were migrated to the clearer session/history APIs.
 - [x] Bootstrap-time session persistence restore now depends on a tiny restore/list capability instead of the whole session façade.
@@ -25,7 +25,7 @@
 - [x] Browser orchestration now receives injected backend/runtime/profile/resource collaborators from the composition root instead of constructing them inside `BrowserService`.
 - [x] Generation and internal API code now flow through grouped domain deps at their main entrypoints instead of defaulting to one near-global runtime bag, while lower-level modules still keep narrower capability slices.
 - [x] Phase 4 coordination cleanup is complete for the targeted flows: bootstrap no longer depends on direct-command parsing, admin messaging no longer polls for session state, and timing assumptions are explicit where they still remain.
-- [ ] The refactor is functionally closed except for the last toolset supplement follow-up above; once that regex-heavy table is replaced, the original optimization plan can be considered complete.
+- [x] The original optimization plan is now functionally closed: the last regex-heavy toolset supplement table has been replaced by structured planner/runtime signals plus a deterministic resolver.
 
 ---
 
@@ -34,7 +34,7 @@
 - [x] Session-related behavior is no longer concentrated in a single oversized manager class.
 - [x] The generation pipeline no longer receives a near-global service graph as a default dependency shape.
 - [x] Session identity parsing/building rules are centralized in one domain module instead of repeated in multiple files.
-- [ ] Toolset planning no longer depends primarily on a growing pile of regex-based supplementation rules.
+- [x] Toolset planning no longer depends primarily on a growing pile of regex-based supplementation rules.
 - [x] Browser runtime responsibilities are split into smaller services with explicit ownership boundaries.
 - [x] Polling sleeps and patch-style timing hacks are replaced by explicit state transitions, events, or shared policy helpers.
 - [x] Bootstrap, routing, generation, tool runtime, and internal API layers have narrower session dependency contracts.
@@ -108,10 +108,10 @@
 
 ### 4. Toolset Planning Cleanup
 
-- [ ] Stop growing the current toolset planner mainly through static tables plus increasingly broad regex supplements.
+- [x] Stop growing the current toolset planner mainly through static tables plus increasingly broad regex supplements.
 - [x] Separate toolset declaration from heuristic selection policy.
 - [x] Move mode-specific toolset policy closer to the mode definition or a dedicated planning config layer.
-- [ ] Replace fragile string-pattern supplementation with more structured signals where possible, such as:
+- [x] Replace fragile string-pattern supplementation with more structured signals where possible, such as:
   - message features
   - recent tool-domain activity
   - explicit referenced artifacts
@@ -185,8 +185,8 @@
 
 - [x] Split toolset metadata declarations from planner heuristics.
 - [x] Audit current supplementation patterns and group them by actual business intent.
-- [ ] Replace the most brittle regex-only cases with structured message features first.
-- [ ] Keep only heuristics that still have clear, defensible semantics after cleanup.
+- [x] Replace the most brittle regex-only cases with structured message features first.
+- [x] Keep only heuristics that still have clear, defensible semantics after cleanup.
 - [x] Ensure setup and mode-specific toolset overrides remain explicit and local.
 
 ### Workstream E: Browser Module Refactor

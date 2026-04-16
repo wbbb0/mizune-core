@@ -155,6 +155,10 @@ const persistedSessionSchema = z.object({
       waitPassCount: z.number().int().nonnegative().optional(),
       replyDecision: z.enum(["reply_small", "reply_large", "wait", "ignore"]).optional(),
       topicDecision: z.string().optional(),
+      requiredCapabilities: z.array(z.string()).optional(),
+      contextDependencies: z.array(z.string()).optional(),
+      recentDomainReuse: z.array(z.string()).optional(),
+      followupMode: z.string().optional(),
       toolsetIds: z.array(z.string()).optional(),
       timestampMs: z.number().int().nonnegative()
     }),

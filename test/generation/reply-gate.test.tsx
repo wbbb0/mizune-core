@@ -91,6 +91,49 @@ async function main() {
     assert.match(user, /⟦planner_batch_message index="1"/);
   });
 
+  await runCase("reply gate parses structured planner semantics while keeping reason first", async () => {
+    const gate = createReplyGate(createConfig(), {
+      resultText: [
+        "reason: 需要先看引用并打开网页",
+        "reply_decision: reply_small",
+        "topic_decision: continue_topic",
+        "required_capabilities: web_navigation, local_file_access",
+        "context_dependencies: structured_message_context, prior_web_context",
+        "recent_domain_reuse: web_research",
+        "followup_mode: explicit_reference",
+        "toolset_ids: web_research"
+      ].join("\n")
+    });
+
+    const result = await gate.decide({
+      sessionId: "private:owner",
+      chatType: "private",
+      relationship: "owner",
+      recentMessages: [],
+      availableToolsets: [{
+        id: "web_research",
+        title: "网页检索与浏览",
+        description: "搜索网页、打开页面、交互与截图。",
+        toolNames: ["open_page"]
+      }],
+      batchMessages: [
+        createReplyGateBatchMessage({
+          senderName: "Owner",
+          text: "把这个页面里刚才那张图存下来",
+          replyMessageId: "msg-1",
+          timestampMs: Date.now()
+        })
+      ]
+    });
+
+    assert.equal(result.reason, "需要先看引用并打开网页");
+    assert.deepEqual(result.requiredCapabilities, ["web_navigation", "local_file_access"]);
+    assert.deepEqual(result.contextDependencies, ["structured_message_context", "prior_web_context"]);
+    assert.deepEqual(result.recentDomainReuse, ["web_research"]);
+    assert.equal(result.followupMode, "explicit_reference");
+    assert.deepEqual(result.toolsetIds, ["web_research"]);
+  });
+
   await runCase("generation reply gate bypasses audio-only batches", async () => {
     let llmCalled = false;
     const result = await handleGenerationTurnPlanner(
@@ -125,7 +168,11 @@ async function main() {
       createGenerationReplyGateInput()
     );
 
-    assert.deepEqual(result, { action: "continue", resolvedModelRef: ["main"], toolsetIds: [] });
+    assert.equal(result.action, "continue");
+    if (result.action === "continue") {
+      assert.deepEqual(result.resolvedModelRef, ["main"]);
+      assert.deepEqual(result.toolsetIds, []);
+    }
     assert.equal(llmCalled, false);
   });
 
@@ -189,7 +236,11 @@ async function main() {
       })
     );
 
-    assert.deepEqual(result, { action: "continue", resolvedModelRef: ["main"], toolsetIds: [] });
+    assert.equal(result.action, "continue");
+    if (result.action === "continue") {
+      assert.deepEqual(result.resolvedModelRef, ["main"]);
+      assert.deepEqual(result.toolsetIds, []);
+    }
     assert.deepEqual(compactCalls, [{ sessionId: "private:audio", keep: 1 }]);
     assert.deepEqual(persistReasons, ["turn_planner_topic_switch_compacted"]);
   });

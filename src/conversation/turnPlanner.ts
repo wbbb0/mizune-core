@@ -11,6 +11,28 @@ import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
 import type { ToolsetView } from "#llm/tools/toolsets.ts";
 
+export type TurnPlannerRequiredCapability =
+  | "external_info_lookup"
+  | "web_navigation"
+  | "local_file_access"
+  | "shell_execution"
+  | "memory_write"
+  | "scheduler_management"
+  | "time_lookup"
+  | "social_admin"
+  | "conversation_navigation"
+  | "chat_delegation"
+  | "image_generation";
+
+export type TurnPlannerContextDependency =
+  | "structured_message_context"
+  | "prior_web_context"
+  | "prior_shell_context"
+  | "prior_file_context"
+  | "prior_chat_context";
+
+export type TurnPlannerFollowupMode = "none" | "elliptical" | "explicit_reference";
+
 export interface TurnPlannerInput {
   sessionId: string;
   chatType: "private" | "group";
@@ -40,6 +62,10 @@ export interface TurnPlannerResult {
   replyDecision: "reply_small" | "reply_large" | "wait";
   topicDecision: "continue_topic" | "new_topic";
   reason: string;
+  requiredCapabilities: TurnPlannerRequiredCapability[];
+  contextDependencies: TurnPlannerContextDependency[];
+  recentDomainReuse: string[];
+  followupMode: TurnPlannerFollowupMode;
   toolsetIds: string[];
   reasoningContent?: string;
 }
@@ -79,6 +105,10 @@ export class TurnPlanner {
         replyDecision: "reply_small",
         topicDecision: "continue_topic",
         reason: "turn planner disabled",
+        requiredCapabilities: [],
+        contextDependencies: [],
+        recentDomainReuse: [],
+        followupMode: "none",
         toolsetIds: []
       };
     }
@@ -172,6 +202,10 @@ export class TurnPlanner {
         replyDecision: "reply_small",
         topicDecision: "continue_topic",
         reason: "turn planner failed",
+        requiredCapabilities: [],
+        contextDependencies: [],
+        recentDomainReuse: [],
+        followupMode: "none",
         toolsetIds: []
       };
     }
@@ -209,11 +243,19 @@ export class TurnPlanner {
 
   private parseDecision(raw: string): TurnPlannerResult {
     const trimmed = raw.trim();
+    const structured = parseStructuredPlannerResult(trimmed);
+    if (structured) {
+      return structured;
+    }
     const line4Match = trimmed.match(/^(.+?)\s*\|\s*(reply_small|reply_large|wait|reply|topic_switch)\s*\|\s*(continue_topic|new_topic)\s*\|\s*(.+)\s*$/is);
     if (line4Match) {
       return {
         ...normalizeParsedDecisions(line4Match[2], line4Match[3]),
         reason: summarizeReasonForLog(line4Match[1] ?? "", 160),
+        requiredCapabilities: [],
+        contextDependencies: [],
+        recentDomainReuse: [],
+        followupMode: "none",
         toolsetIds: parseToolsetIds(line4Match[4] ?? "")
       };
     }
@@ -223,6 +265,10 @@ export class TurnPlanner {
       return {
         ...normalizeParsedDecisions(tripleMatch[2], tripleMatch[3]),
         reason: summarizeReasonForLog(tripleMatch[1] ?? "", 160),
+        requiredCapabilities: [],
+        contextDependencies: [],
+        recentDomainReuse: [],
+        followupMode: "none",
         toolsetIds: []
       };
     }
@@ -232,6 +278,10 @@ export class TurnPlanner {
         decision?: unknown;
         replyDecision?: unknown;
         topicDecision?: unknown;
+        requiredCapabilities?: unknown;
+        contextDependencies?: unknown;
+        recentDomainReuse?: unknown;
+        followupMode?: unknown;
         reason?: unknown;
         toolsetIds?: unknown;
         toolsets?: unknown;
@@ -239,6 +289,10 @@ export class TurnPlanner {
       return {
         ...normalizeParsedDecisions(parsed.replyDecision ?? parsed.decision, parsed.topicDecision),
         reason: summarizeReasonForLog(typeof parsed.reason === "string" ? parsed.reason : "", 160),
+        requiredCapabilities: parseRequiredCapabilities(parsed.requiredCapabilities),
+        contextDependencies: parseContextDependencies(parsed.contextDependencies),
+        recentDomainReuse: parseStringList(parsed.recentDomainReuse),
+        followupMode: normalizeFollowupMode(parsed.followupMode),
         toolsetIds: parseUnknownToolsetIds(parsed.toolsetIds ?? parsed.toolsets)
       };
     } catch {
@@ -249,6 +303,10 @@ export class TurnPlanner {
     return {
       ...normalizeParsedDecisions(fallbackDecision ?? "reply_small", "continue_topic"),
       reason: summarizeReasonForLog(trimmed, 160),
+      requiredCapabilities: [],
+      contextDependencies: [],
+      recentDomainReuse: [],
+      followupMode: "none",
       toolsetIds: []
     };
   }
@@ -296,6 +354,10 @@ export class TurnPlanner {
         replyDecision: "reply_small",
         topicDecision: "continue_topic",
         reason: normalized.reason || "wait coerced to reply",
+        requiredCapabilities: normalized.requiredCapabilities,
+        contextDependencies: normalized.contextDependencies,
+        recentDomainReuse: normalized.recentDomainReuse,
+        followupMode: normalized.followupMode,
         toolsetIds: []
       };
     }
@@ -319,11 +381,62 @@ function parseUnknownToolsetIds(value: unknown): string[] {
 }
 
 function parseToolsetIds(value: string): string[] {
-  const normalized = sanitizeReason(value).toLowerCase();
+  const normalized = sanitizeReason(value);
   if (!normalized || normalized === "-" || normalized === "none") {
     return [];
   }
   return normalized.split(/[\s,，|]+/g).map((item) => item.trim()).filter(Boolean);
+}
+
+function parseStructuredPlannerResult(raw: string): TurnPlannerResult | null {
+  const fieldMap = new Map<string, string>();
+  for (const line of raw.split(/\r?\n/g)) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const match = trimmed.match(/^([a-z_]+)\s*:\s*(.*)$/);
+    if (!match) {
+      return null;
+    }
+    fieldMap.set(match[1] ?? "", (match[2] ?? "").trim());
+  }
+  if (!fieldMap.has("reason") || !fieldMap.has("reply_decision") || !fieldMap.has("topic_decision")) {
+    return null;
+  }
+  return {
+    ...normalizeParsedDecisions(fieldMap.get("reply_decision"), fieldMap.get("topic_decision")),
+    reason: summarizeReasonForLog(fieldMap.get("reason") ?? "", 160),
+    requiredCapabilities: parseRequiredCapabilities(fieldMap.get("required_capabilities")),
+    contextDependencies: parseContextDependencies(fieldMap.get("context_dependencies")),
+    recentDomainReuse: parseStringList(fieldMap.get("recent_domain_reuse")),
+    followupMode: normalizeFollowupMode(fieldMap.get("followup_mode")),
+    toolsetIds: parseToolsetIds(fieldMap.get("toolset_ids") ?? "")
+  };
+}
+
+function parseStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value === "string") {
+    const normalized = sanitizeReason(value);
+    if (!normalized || normalized.toLowerCase() === "none" || normalized === "-") {
+      return [];
+    }
+    return normalized.split(/[\s,，|]+/g).map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function parseRequiredCapabilities(value: unknown): TurnPlannerRequiredCapability[] {
+  return parseStringList(value)
+    .filter((item): item is TurnPlannerRequiredCapability => isRequiredCapability(item));
+}
+
+function parseContextDependencies(value: unknown): TurnPlannerContextDependency[] {
+  return parseStringList(value)
+    .filter((item): item is TurnPlannerContextDependency => isContextDependency(item));
 }
 
 function isAbortError(error: unknown): boolean {
@@ -365,6 +478,40 @@ function normalizeTopicDecision(input: unknown): TurnPlannerResult["topicDecisio
     return "new_topic";
   }
   return "continue_topic";
+}
+
+function normalizeFollowupMode(input: unknown): TurnPlannerFollowupMode {
+  const normalized = typeof input === "string" ? input.trim().toLowerCase() : "";
+  if (normalized === "elliptical" || normalized === "explicit_reference") {
+    return normalized;
+  }
+  return "none";
+}
+
+function isRequiredCapability(value: string): value is TurnPlannerRequiredCapability {
+  return [
+    "external_info_lookup",
+    "web_navigation",
+    "local_file_access",
+    "shell_execution",
+    "memory_write",
+    "scheduler_management",
+    "time_lookup",
+    "social_admin",
+    "conversation_navigation",
+    "chat_delegation",
+    "image_generation"
+  ].includes(value);
+}
+
+function isContextDependency(value: string): value is TurnPlannerContextDependency {
+  return [
+    "structured_message_context",
+    "prior_web_context",
+    "prior_shell_context",
+    "prior_file_context",
+    "prior_chat_context"
+  ].includes(value);
 }
 
 function normalizeParsedDecisions(

@@ -101,20 +101,10 @@ async function main() {
       availableToolsetIds: ["chat_context", "web_research", "local_file_io", "shell_runtime"],
       signals: {
         hasStructuredResolvableContent: true,
-        hasWebIntent: false,
-        hasShellIntent: false,
-        hasLocalFileIntent: false,
-        hasMemoryIntent: false,
-        hasSchedulerIntent: false,
-        hasTimeIntent: false,
-        hasSocialIntent: false,
-        hasConversationNavigationIntent: false,
-        hasDelegationIntent: false,
-        hasComfyIntent: false,
-        hasDownloadIntent: true,
-        hasWebContextReference: false,
-        hasFollowupReference: true,
-        isEllipticalFollowup: true,
+        requiredCapabilities: ["local_file_access"],
+        contextDependencies: ["structured_message_context"],
+        recentDomainReuse: [],
+        followupMode: "elliptical",
         recentDomains: {
           hasWeb: true,
           hasShell: false,
@@ -126,7 +116,7 @@ async function main() {
 
     assert.deepEqual(decisions, [
       { toolsetId: "chat_context", reason: "structured_content" },
-      { toolsetId: "local_file_io", reason: "web_download_linkage" }
+      { toolsetId: "local_file_io", reason: "planner_local_file_access" }
     ]);
   });
 }

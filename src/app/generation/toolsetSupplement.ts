@@ -1,3 +1,4 @@
+import type { TurnPlannerResult } from "#conversation/turnPlanner.ts";
 import type { GenerationRuntimeBatchMessage } from "./generationExecutor.ts";
 import type { GenerationPromptToolEvent } from "./generationPromptBuilder.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
@@ -9,6 +10,7 @@ export interface ToolsetSupplementInput {
   availableToolsets: ToolsetView[];
   batchMessages: GenerationRuntimeBatchMessage[];
   recentToolEvents: GenerationPromptToolEvent[];
+  plannerDecision?: TurnPlannerResult | null;
 }
 
 export interface ToolsetSupplementResult {
@@ -23,7 +25,8 @@ export function supplementPlannedToolsets(input: ToolsetSupplementInput): Toolse
   const signals = buildToolsetSupplementSignals({
     availableToolsets: input.availableToolsets,
     batchMessages: input.batchMessages,
-    recentToolEvents: input.recentToolEvents
+    recentToolEvents: input.recentToolEvents,
+    plannerDecision: input.plannerDecision ?? null
   });
   const reasons: string[] = [];
 

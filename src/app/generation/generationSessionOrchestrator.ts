@@ -198,6 +198,7 @@ export function createGenerationSessionOrchestrator(
         ...(setupMode && mode.setupPhase ? { setupPhase: mode.setupPhase } : {})
       });
       let plannedToolsetIds = plannerToolsets.map((item) => item.id);
+      let plannerDecision = undefined;
 
       if (!(setupMode || options?.skipReplyGate)) {
         const gateResult = await handleGenerationTurnPlanner(
@@ -253,6 +254,7 @@ export function createGenerationSessionOrchestrator(
           ...(setupMode && mode.setupPhase ? { setupPhase: mode.setupPhase } : {})
         });
         plannedToolsetIds = gateResult.toolsetIds.filter((id) => plannerToolsets.some((item) => item.id === id));
+        plannerDecision = gateResult.action === "continue" ? gateResult.plannerDecision : undefined;
         refreshedSession = sessionManager.getSession(sessionId);
         visibleHistory = projectLlmVisibleHistoryFromTranscript(refreshedSession.internalTranscript, config);
         historyForPrompt = visibleHistory.slice(0, Math.max(0, visibleHistory.length - messages.length));
@@ -270,7 +272,8 @@ export function createGenerationSessionOrchestrator(
           selectedToolsetIds: plannedToolsetIds,
           availableToolsets: plannerToolsets,
           batchMessages: messages,
-          recentToolEvents: refreshedSession.recentToolEvents
+          recentToolEvents: refreshedSession.recentToolEvents,
+          ...(plannerDecision ? { plannerDecision } : {})
         });
         if (supplement.addedToolsetIds.length > 0) {
           logger.info({

@@ -45,20 +45,40 @@ async function main() {
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
       batchMessages: [createBatchMessage({ replyMessageId: "msg-1", text: "你接着说" })],
-      recentToolEvents: []
+      recentToolEvents: [],
+      plannerDecision: {
+        reason: "需要看引用",
+        replyDecision: "reply_small",
+        topicDecision: "continue_topic",
+        requiredCapabilities: [],
+        contextDependencies: ["structured_message_context"],
+        recentDomainReuse: [],
+        followupMode: "explicit_reference",
+        toolsetIds: []
+      }
     });
     assert.deepEqual(result.toolsetIds, ["chat_context"]);
   });
 
-  await runCase("supplement links web download flows to local_file_io", async () => {
+  await runCase("supplement maps planner capabilities to final toolsets without regex intent tables", async () => {
     const result = supplementPlannedToolsets({
-      selectedToolsetIds: ["web_research"],
+      selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
       batchMessages: [createBatchMessage({ text: "把这个页面里的图下下来保存到本地文件里" })],
-      recentToolEvents: []
+      recentToolEvents: [],
+      plannerDecision: {
+        reason: "需要打开网页并存本地",
+        replyDecision: "reply_small",
+        topicDecision: "continue_topic",
+        requiredCapabilities: ["web_navigation", "local_file_access"],
+        contextDependencies: [],
+        recentDomainReuse: [],
+        followupMode: "none",
+        toolsetIds: []
+      }
     });
     assert.deepEqual(result.toolsetIds, ["web_research", "local_file_io"]);
-    assert.deepEqual(result.addedToolsetIds, ["local_file_io"]);
+    assert.deepEqual(result.addedToolsetIds, ["web_research", "local_file_io"]);
   });
 
   await runCase("supplement inherits recent browser activity for short followups", async () => {
@@ -66,6 +86,16 @@ async function main() {
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
       batchMessages: [createBatchMessage({ text: "继续，点进去看看" })],
+      plannerDecision: {
+        reason: "延续上轮操作",
+        replyDecision: "reply_small",
+        topicDecision: "continue_topic",
+        requiredCapabilities: [],
+        contextDependencies: [],
+        recentDomainReuse: [],
+        followupMode: "elliptical",
+        toolsetIds: []
+      },
       recentToolEvents: [{
         toolName: "open_page",
         argsSummary: "url=https://example.com",
@@ -82,6 +112,16 @@ async function main() {
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
       batchMessages: [createBatchMessage({ text: "继续看看" })],
+      plannerDecision: {
+        reason: "延续终端排查",
+        replyDecision: "reply_small",
+        topicDecision: "continue_topic",
+        requiredCapabilities: [],
+        contextDependencies: [],
+        recentDomainReuse: [],
+        followupMode: "elliptical",
+        toolsetIds: []
+      },
       recentToolEvents: [{
         toolName: "shell_run",
         argsSummary: "cmd=npm test",

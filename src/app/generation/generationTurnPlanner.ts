@@ -4,6 +4,7 @@ import type { GenerationPromptHistoryMessage } from "./generationPromptBuilder.t
 import type { GenerationCurrentUser, GenerationTurnPlannerDeps } from "./generationRunnerDeps.ts";
 import type { GenerationRuntimeBatchMessage, GenerationSendTarget } from "./generationExecutor.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
+import type { TurnPlannerResult } from "#conversation/turnPlanner.ts";
 
 export interface GenerationTurnPlannerInput {
   sessionId: string;
@@ -22,7 +23,7 @@ export interface GenerationTurnPlannerHandlers {
 }
 
 export type GenerationTurnPlannerResult =
-  | { action: "continue"; resolvedModelRef: string[]; toolsetIds: string[] }
+  | { action: "continue"; resolvedModelRef: string[]; toolsetIds: string[]; plannerDecision?: TurnPlannerResult | undefined }
   | { action: "skip" };
 
 // Evaluates turn-planner policy and applies reschedule side effects when needed.
@@ -168,6 +169,10 @@ export async function handleGenerationTurnPlanner(
       ...(typeof finalWaitPassCount === "number" ? { waitPassCount: finalWaitPassCount } : {}),
       replyDecision: planner.replyDecision,
       topicDecision: planner.topicDecision,
+      ...(planner.requiredCapabilities.length > 0 ? { requiredCapabilities: planner.requiredCapabilities } : {}),
+      ...(planner.contextDependencies.length > 0 ? { contextDependencies: planner.contextDependencies } : {}),
+      ...(planner.recentDomainReuse.length > 0 ? { recentDomainReuse: planner.recentDomainReuse } : {}),
+      ...(planner.followupMode !== "none" ? { followupMode: planner.followupMode } : {}),
       ...(planner.toolsetIds.length > 0 ? { toolsetIds: planner.toolsetIds } : {}),
       timestampMs: Date.now()
     });
@@ -181,6 +186,7 @@ export async function handleGenerationTurnPlanner(
   return {
     action: "continue",
     resolvedModelRef: getMainModelRefsForTier(config, planner.replyDecision === "reply_large" ? "large" : "small"),
-    toolsetIds: planner.toolsetIds
+    toolsetIds: planner.toolsetIds,
+    plannerDecision: planner
   };
 }
