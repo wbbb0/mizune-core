@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { BrowserService } from "../../src/services/web/browser/browserService.ts";
+import { BrowserSessionRuntime } from "../../src/services/web/browser/browserSessionRuntime.ts";
 import { prioritizeBrowserCandidates } from "../../src/services/web/browser/playwrightBrowserBackend.ts";
 import { createForwardFeatureConfig, runCase } from "../helpers/forward-test-support.tsx";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
@@ -153,6 +154,104 @@ async function main() {
     await assert.rejects(service.inspectPage({ resourceId: page.resource_id }), /Unknown resource_id/);
   });
 
+  await runCase("browser session overflow persists and expires evicted sessions immediately", async () => {
+    const service = createBrowserService();
+    const savedProfiles: Array<{ profileId: string; ownerSessionId: string }> = [];
+    const markedExpired: string[] = [];
+    const closedStates: Array<{ requestedUrl: string }> = [];
+
+    (service as any).sessions = new BrowserSessionRuntime(1);
+    (service as any).profileStore = {
+      async ensureProfile(ownerSessionId: string) {
+        return {
+          profileId: `profile:${ownerSessionId}`,
+          ownerSessionId,
+          createdAtMs: 1,
+          lastUsedAtMs: 1
+        };
+      },
+      async loadProfile() {
+        return null;
+      },
+      async saveProfile(input: { profileId: string; ownerSessionId: string }) {
+        savedProfiles.push({
+          profileId: input.profileId,
+          ownerSessionId: input.ownerSessionId
+        });
+        return {
+          ...input,
+          createdAtMs: 1,
+          lastUsedAtMs: 1,
+          storageState: null,
+          sessionStorageByOrigin: {}
+        };
+      }
+    };
+    (service as any).resourceSync = {
+      resourceId: 0,
+      async registerOpenedPage() {
+        this.resourceId += 1;
+        return `resource_${this.resourceId}`;
+      },
+      async markExpired(resourceId: string) {
+        markedExpired.push(resourceId);
+      },
+      async touchPage() {},
+      async markClosed() {},
+      async markMissingAsExpired() {},
+      async listActivePages() {
+        return [];
+      },
+      logExpiredSessions() {}
+    };
+    (service as any).playwrightBackend = {
+      name: "playwright",
+      async open(input: { url: string; requestedUrl: string; profileId: string | null }) {
+        return {
+          state: { requestedUrl: input.requestedUrl, profileId: input.profileId },
+          snapshot: {
+            profileId: input.profileId,
+            requestedUrl: input.requestedUrl,
+            resolvedUrl: input.url,
+            title: `Opened ${input.requestedUrl}`,
+            contentType: "text/html",
+            lines: ["L1 overflow test"],
+            links: [],
+            elements: [],
+            truncated: false
+          }
+        };
+      },
+      async interact() {
+        throw new Error("should not interact in overflow test");
+      },
+      async captureScreenshot() {
+        return Buffer.from("fake");
+      },
+      async persistState() {
+        return {
+          storageState: { cookies: [] },
+          sessionStorageByOrigin: {}
+        };
+      },
+      async close(state: { requestedUrl: string }) {
+        closedStates.push(state);
+      }
+    };
+
+    const first = await service.openPage({ url: "https://example.com/one", ownerSessionId: "private:10001" });
+    const second = await service.openPage({ url: "https://example.com/two", ownerSessionId: "private:10002" });
+
+    assert.equal(first.resource_id, "resource_1");
+    assert.equal(second.resource_id, "resource_2");
+    assert.deepEqual(markedExpired, ["resource_1"]);
+    assert.deepEqual(savedProfiles, [{
+      profileId: "profile:private:10001",
+      ownerSessionId: "private:10001"
+    }]);
+    assert.deepEqual(closedStates, [{ requestedUrl: "https://example.com/one", profileId: "profile:private:10001" }]);
+  });
+
   await runCase("browser sessions expire after ttl and active access extends ttl", async () => {
     const service = createBrowserService();
     (service as any).config.browser.sessionTtlMs = 3_600_000;
@@ -192,10 +291,10 @@ async function main() {
             sessionStorageByOrigin: {}
           };
         },
-        async close(state: unknown) {
-          closedStates.push(state);
-        }
-      };
+      async close(state: unknown) {
+        closedStates.push(state);
+      }
+    };
 
       const page = await service.openPage({ url: "https://example.com/ttl", ownerSessionId: "private:10001" });
       now += 1_800_000;

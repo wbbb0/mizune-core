@@ -157,9 +157,7 @@ export class BrowserService {
       ownerSessionId,
       profileId: openResult.snapshot.profileId
     });
-    for (const session of evicted) {
-      void session.backend.close(session.state).catch(() => undefined);
-    }
+    await Promise.all(evicted.map((session) => this.disposeEvictedSession(session)));
 
     return {
       ok: true,
@@ -539,6 +537,23 @@ export class BrowserService {
       storageState: persisted.storageState,
       sessionStorageByOrigin: persisted.sessionStorageByOrigin
     });
+  }
+
+  private async disposeEvictedSession(session: BrowserSessionRecord): Promise<void> {
+    try {
+      await this.persistSessionProfile(session);
+      await session.backend.close(session.state);
+    } catch (error: unknown) {
+      this.logger.warn(
+        {
+          resourceId: session.resourceId,
+          backend: session.backend.name,
+          error: error instanceof Error ? error.message : String(error)
+        },
+        "browser_session_close_failed"
+      );
+    }
+    await this.resourceSync.markExpired(session.resourceId);
   }
 }
 

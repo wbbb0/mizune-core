@@ -15,6 +15,7 @@
 - [x] Source-level type coupling to the full `SessionManager` is now limited to the concrete composition root and direct `SessionManager`-focused tests; downstream runtime modules use narrower capability slices instead.
 - [x] Toolset selection now has separate declaration, runtime selection, supplement-signal, and supplement-policy layers, with focused tests covering setup overrides and supplement decisions.
 - [x] Browser runtime orchestration now delegates target resolution, asset import, and resource-registry sync to explicit browser-domain modules instead of keeping them as one large `BrowserService` file.
+- [ ] Browser orchestration has been split, but `BrowserService` still constructs concrete collaborators internally; composition-root injection for browser submodules is not finished yet.
 - [ ] Generation and internal API code still depend on several broad dependency bags; dependency narrowing has started, and generation/tool/internal-API sub-deps now use more explicit session capability groups, but the main executor/runtime graph is still broad.
 - [ ] Flow-control timing cleanup and deeper bootstrap/internal-API cleanup have not started in earnest.
 - [ ] The next priority is to move from the completed session/planner/browser slice into timing cleanup and broader dependency-bag reduction without re-broadening contracts.
@@ -185,7 +186,7 @@
 
 - [x] Extract registry/persistence/import concerns from `BrowserService`.
 - [x] Keep one orchestration entrypoint, but make internals domain-oriented and testable.
-- [x] Reduce constructor breadth by passing smaller collaborators.
+- [ ] Reduce constructor breadth by passing smaller collaborators.
 - [x] Add comments around page session expiry and profile persistence invariants.
 
 ### Workstream F: Coordination Timing Refactor
