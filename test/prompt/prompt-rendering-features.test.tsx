@@ -221,6 +221,69 @@ async function main() {
     }
   });
 
+  await runCase("assistant mode keeps message headers but excludes rp and memory sections", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.patch({
+        name: "Bot",
+        role: "角色助手",
+        personality: "冷静",
+        speechStyle: "简洁",
+        rules: "始终带角色口吻"
+      });
+      const prompt = buildPrompt({
+        sessionId: "group:123456",
+        modeId: "assistant",
+        persona,
+        relationship: "known",
+        npcProfiles: [
+          { userId: "npc_1", displayName: "Npc" }
+        ],
+        participantProfiles: [
+          { userId: "10001", displayName: "Alice", relationshipLabel: "熟人" }
+        ],
+        userProfile: createPromptUserProfile({ userId: "10002", senderName: "Bob", relationship: "known", residence: "杭州" }),
+        currentUserMemories: [{
+          id: "mem_1",
+          title: "饮食偏好",
+          content: "不吃香菜",
+          kind: "preference",
+          source: "user_explicit",
+          createdAt: 1,
+          updatedAt: 1
+        }],
+        globalRules: [{
+          id: "rule_1",
+          title: "输出规则",
+          content: "先给结论",
+          kind: "workflow",
+          source: "owner_explicit",
+          createdAt: 1,
+          updatedAt: 1
+        }],
+        historySummary: "之前聊过搜索和文件处理。",
+        recentMessages: [],
+        batchMessages: [
+          createPromptBatchMessage({ userId: "10002", senderName: "Bob", text: "帮我查一下", timestampMs: Date.UTC(2026, 2, 16, 9, 13, 10) })
+        ]
+      });
+
+      const system = String(prompt[0]?.content ?? "");
+      const batchText = readPromptMessageText(prompt[1]);
+      assert.doesNotMatch(system, /⟦section name="persona"⟧/);
+      assert.doesNotMatch(system, /⟦section name="memory_write_decision"⟧/);
+      assert.doesNotMatch(system, /⟦section name="global_rules"⟧/);
+      assert.doesNotMatch(system, /⟦section name="current_user_profile"⟧/);
+      assert.doesNotMatch(system, /⟦section name="current_user_memories"⟧/);
+      assert.doesNotMatch(system, /⟦section name="participant_context"⟧/);
+      assert.match(system, /普通中文 assistant/);
+      assert.match(batchText, /⟦trigger_batch session="群聊 123456" trigger_user="Bob \(10002\)" message_count="1" speaker_count="1"⟧/);
+      assert.match(batchText, /⟦trigger_message index="1" speaker="Bob \(10002\)" trigger_user="yes" time="2026\/03\/16 17:13:10"⟧/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   await runCase("conversation access allows self private, npc private, and shared groups only", async () => {
     const harness = await createMemoryHarness();
     try {

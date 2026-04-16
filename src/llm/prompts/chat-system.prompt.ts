@@ -118,6 +118,24 @@ export function buildBaseSystemLines(input: {
   scenarioStateLines?: string[] | undefined;
   isInSetup?: boolean | undefined;
 }): string[] {
+  if (input.modeId === "assistant") {
+    return [
+      renderPromptSection("assistant_identity", buildAssistantIdentityLines()),
+      renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
+      renderPromptSection("reply_rules", buildReplyRuleLines()),
+      renderPromptSection("context_rules", buildContextRuleLines({
+        visibleToolNames: input.visibleToolNames
+      })),
+      renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
+        activeToolsets: input.activeToolsets,
+        visibleToolNames: input.visibleToolNames
+      })),
+      renderPromptSection("live_resources", buildLiveResourceLines(input.liveResources)),
+      renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
+      renderPromptSection("recent_tool_events", buildRecentToolEventLines(input.recentToolEvents))
+    ].filter((item): item is string => Boolean(item));
+  }
+
   if (input.modeId === "scenario_host") {
     if (input.isInSetup) {
       return [
@@ -199,6 +217,13 @@ export function buildBaseSystemLines(input: {
     })),
     renderPromptSection("current_user_memories", buildCurrentUserMemoryLines(filteredUserMemories))
   ].filter((item): item is string => Boolean(item));
+}
+
+function buildAssistantIdentityLines(): string[] {
+  return [
+    "你是普通中文 assistant，优先直接理解并完成用户请求。",
+    "不要把自己当成角色扮演人物，也不要编造 persona、关系或背景设定。"
+  ];
 }
 
 function buildScenarioHostIdentityLines(): string[] {

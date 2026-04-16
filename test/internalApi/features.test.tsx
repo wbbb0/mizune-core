@@ -187,6 +187,11 @@ async function main() {
         description: "当前默认模式。保留现有角色扮演 + 助手能力。",
         allowedChatTypes: ["private", "group"]
       }, {
+        id: "assistant",
+        title: "Assistant",
+        description: "普通助手模式。不读取 persona、记忆或用户资料，仅保留本会话功能工具。",
+        allowedChatTypes: ["private", "group"]
+      }, {
         id: "scenario_host",
         title: "Scenario Host",
         description: "轻规则单人剧情主持模式。当前仅支持私聊。",

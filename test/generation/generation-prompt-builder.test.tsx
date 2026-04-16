@@ -290,6 +290,123 @@ async function main() {
     assert.match(system, /res_shell_1 \| shell \| active \| npm test @ \/repo \| 跑测试/);
   });
 
+  await runCase("assistant chat prompt does not load persona memory rule or scenario stores", async () => {
+    const builder = createGenerationPromptBuilder({
+      config: createTestAppConfig(),
+      oneBotClient: {} as any,
+      audioStore: {} as any,
+      audioTranscriber: {
+        async transcribeMany() {
+          return [];
+        }
+      } as any,
+      npcDirectory: {
+        listProfiles() {
+          throw new Error("assistant should not load npc profiles");
+        }
+      } as any,
+      browserService: {
+        async listPages() {
+          return { pages: [] };
+        }
+      } as any,
+      localFileService: {} as any,
+      chatFileStore: {} as any,
+      mediaVisionService: {
+        async prepareFilesForModel() {
+          return [];
+        }
+      } as any,
+      mediaCaptionService: {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      globalRuleStore: {
+        async getAll() {
+          throw new Error("assistant should not load global rules");
+        }
+      } as any,
+      toolsetRuleStore: {
+        async getAll() {
+          throw new Error("assistant should not load toolset rules");
+        }
+      } as any,
+      scenarioHostStateStore: {
+        async ensure() {
+          throw new Error("assistant should not load scenario state");
+        }
+      } as any,
+      shellRuntime: {
+        async listSessionResources() {
+          return [];
+        }
+      } as any,
+      setupStore: {
+        describeMissingFields() {
+          return [];
+        }
+      } as any
+    });
+
+    const result = await builder.buildChatPromptMessages({
+      sessionId: "private:10001",
+      modeId: "assistant",
+      interactionMode: "normal",
+      mainModelRef: ["main"],
+      visibleToolNames: [],
+      activeToolsets: [],
+      persona: {
+        name: "Ignored Persona",
+        role: "助手",
+        appearance: "",
+        personality: "",
+        interests: "",
+        background: "",
+        speechStyle: "",
+        rules: ""
+      },
+      relationship: "known",
+      participantProfiles: [{
+        userId: "10002",
+        displayName: "Bob",
+        relationshipLabel: "熟人"
+      }],
+      currentUser: {
+        userId: "10001",
+        relationship: "known",
+        memories: [{ id: "mem_1", title: "旧记忆", content: "不应出现", updatedAt: 1 }]
+      } as any,
+      historySummary: "之前讨论过文件处理。",
+      historyForPrompt: [],
+      recentToolEvents: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      batchMessages: [{
+        userId: "10001",
+        senderName: "Tester",
+        text: "继续",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: Date.now()
+      }]
+    });
+
+    const system = String(result.promptMessages[0]?.content ?? "");
+    assert.match(system, /普通中文 assistant/);
+    assert.doesNotMatch(system, /current_user_memories/);
+    assert.doesNotMatch(system, /current_user_profile/);
+  });
+
   await runCase("scenario_host setup prompt uses host_setup_mode section when isInSetup=true", async () => {
     const builder = createGenerationPromptBuilder({
       config: createTestAppConfig({

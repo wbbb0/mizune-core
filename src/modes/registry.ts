@@ -1,9 +1,11 @@
+import { assistantModeDefinition } from "./assistantMode.ts";
 import { rpAssistantModeDefinition } from "./rpAssistantMode.ts";
 import { scenarioHostModeDefinition } from "./scenarioHost/mode.ts";
 import type { SessionModeDefinition } from "./types.ts";
 
 const SESSION_MODES: SessionModeDefinition[] = [
   rpAssistantModeDefinition,
+  assistantModeDefinition,
   scenarioHostModeDefinition
 ];
 
