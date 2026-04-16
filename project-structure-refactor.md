@@ -13,6 +13,7 @@
 - [x] A first batch of obsolete `SessionManager` façade passthroughs with no remaining external callers has been deleted, and affected tests were migrated to the clearer session/history APIs.
 - [x] Bootstrap-time session persistence restore now depends on a tiny restore/list capability instead of the whole session façade.
 - [x] Source-level type coupling to the full `SessionManager` is now limited to the concrete composition root and direct `SessionManager`-focused tests; downstream runtime modules use narrower capability slices instead.
+- [x] Focused tests now lock in session lifecycle/epoch guards, internal trigger queue behavior, toolset selection policy, and browser split boundaries.
 - [x] Toolset selection now has separate declaration, runtime selection, supplement-signal, and supplement-policy layers, with focused tests covering setup overrides and supplement decisions.
 - [x] Browser runtime orchestration now delegates target resolution, asset import, and resource-registry sync to explicit browser-domain modules instead of keeping them as one large `BrowserService` file.
 - [ ] Browser orchestration has been split, but `BrowserService` still constructs concrete collaborators internally; composition-root injection for browser submodules is not finished yet.
@@ -63,8 +64,8 @@
 
 ### 1. Session Domain Decomposition
 
-- [ ] Split the current session domain into smaller responsibilities instead of continuing to expand `SessionManager`.
-- [ ] Separate at least the following concerns:
+- [x] Split the current session domain into smaller responsibilities instead of continuing to expand `SessionManager`.
+- [x] Separate at least the following concerns:
   - session store / lookup
   - lifecycle and phase transitions
   - transcript and visible history projection
@@ -72,7 +73,7 @@
   - outbound sent-message tracking / retract window
   - internal trigger queue
   - compression snapshot application
-- [ ] Ensure callers depend on the narrowest session capability they need.
+- [x] Ensure callers depend on the narrowest session capability they need.
 - [ ] Remove duplicated “epoch match then mutate” patterns where a smaller domain helper can own the invariant.
 
 ### 2. Runtime Dependency Narrowing
@@ -101,26 +102,26 @@
 
 ### 4. Toolset Planning Cleanup
 
-- [ ] Stop growing the current toolset planner mainly through static tables plus increasingly broad regex supplements.
-- [ ] Separate toolset declaration from heuristic selection policy.
-- [ ] Move mode-specific toolset policy closer to the mode definition or a dedicated planning config layer.
-- [ ] Replace fragile string-pattern supplementation with more structured signals where possible, such as:
+- [x] Stop growing the current toolset planner mainly through static tables plus increasingly broad regex supplements.
+- [x] Separate toolset declaration from heuristic selection policy.
+- [x] Move mode-specific toolset policy closer to the mode definition or a dedicated planning config layer.
+- [x] Replace fragile string-pattern supplementation with more structured signals where possible, such as:
   - message features
   - recent tool-domain activity
   - explicit referenced artifacts
   - mode/setup state
-- [ ] Keep final toolset visibility rules auditable and easy to explain.
+- [x] Keep final toolset visibility rules auditable and easy to explain.
 
 ### 5. Browser Runtime Separation
 
-- [ ] Split browser concerns into explicit modules instead of keeping session runtime, profile persistence, resource registry integration, and asset import in one service.
-- [ ] Separate at least:
+- [x] Split browser concerns into explicit modules instead of keeping session runtime, profile persistence, resource registry integration, and asset import in one service.
+- [x] Separate at least:
   - browser session orchestration
   - browser profile persistence
   - browser resource registry sync
   - screenshot / download asset import
   - backend-specific Playwright integration
-- [ ] Make backend-independent orchestration easier to test without a browser process.
+- [x] Make backend-independent orchestration easier to test without a browser process.
 
 ### 6. Flow-Control Patch Removal
 
@@ -211,7 +212,7 @@
 
 - [x] Introduce unified session identity helpers.
 - [x] Introduce narrower dependency interfaces without major behavioral changes.
-- [ ] Add baseline tests around current session, trigger, generation, and toolset behavior before larger movement.
+- [x] Add baseline tests around current session, trigger, generation, and toolset behavior before larger movement.
 
 ### Phase 2: Session-Centric Extraction
 
@@ -253,8 +254,8 @@
 ## Testing Requirements
 
 - [x] Add unit tests for the new session identity module.
-- [ ] Add or update tests around session lifecycle transitions and epoch/response guards.
-- [ ] Add focused tests for internal trigger queue behavior after extraction.
+- [x] Add or update tests around session lifecycle transitions and epoch/response guards.
+- [x] Add focused tests for internal trigger queue behavior after extraction.
 - [x] Add tests for toolset planning inputs and outputs after heuristic cleanup.
 - [x] Add tests for browser service split boundaries where backend-free validation is possible.
 - [ ] Update any affected admin/API tests after dependency narrowing.
