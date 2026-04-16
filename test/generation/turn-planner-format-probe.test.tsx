@@ -176,6 +176,17 @@ async function main() {
         rawText: "reason: ok",
         parse: {
           ok: true,
+          rawData: {
+            reason: "ok",
+            replyDecision: "reply_small",
+            topicDecision: "continue_topic",
+            requiredCapabilities: [],
+            contextDependencies: [],
+            recentDomainReuse: [],
+            followupMode: "none",
+            toolsetIds: [],
+            normalizationWarnings: []
+          },
           data: {
             reason: "ok",
             replyDecision: "reply_small",
@@ -184,7 +195,8 @@ async function main() {
             contextDependencies: [],
             recentDomainReuse: [],
             followupMode: "none",
-            toolsetIds: []
+            toolsetIds: [],
+            normalizationWarnings: []
           }
         }
       },
