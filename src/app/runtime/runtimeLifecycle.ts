@@ -16,8 +16,6 @@ import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
 import type { OneBotMessageEvent, OneBotRequestEvent } from "#services/onebot/types.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
-import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
-import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { GenerationWebOutputCollector } from "../generation/generationTypes.ts";
 import type { ComfyTaskRunner } from "#comfy/taskRunner.ts";
@@ -62,15 +60,6 @@ export async function startInternalApiIfEnabled(input: {
   shellRuntime: ShellRuntime;
   configManager: ConfigManager;
   sessionPersistence: SessionPersistence;
-  persistSession: (sessionId: string, reason: string) => void;
-  flushSession: (
-    sessionId: string,
-    options?: {
-      skipReplyGate?: boolean;
-      delivery?: "onebot" | "web";
-      webOutputCollector?: import("../generation/generationTypes.ts").GenerationWebOutputCollector;
-    }
-  ) => void;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {
@@ -81,8 +70,6 @@ export async function startInternalApiIfEnabled(input: {
   localFileService: LocalFileService;
   chatFileStore: ChatFileStore;
   chatMessageFileGcService: import("#services/workspace/chatMessageFileGcService.ts").ChatMessageFileGcService;
-  mediaVisionService: MediaVisionService;
-  mediaCaptionService: MediaCaptionService;
 }): Promise<InternalApiController | null> {
   return input.config.internalApi.enabled
     ? startInternalApi(input)
@@ -98,8 +85,6 @@ export function subscribeRuntimeReload(input: {
   localFileService: LocalFileService;
   chatFileStore: ChatFileStore;
   chatMessageFileGcService: import("#services/workspace/chatMessageFileGcService.ts").ChatMessageFileGcService;
-  mediaVisionService: MediaVisionService;
-  mediaCaptionService: MediaCaptionService;
   searchService: { reloadConfig: () => void };
   scheduler: Scheduler;
   comfyTemplateCatalog: ComfyTemplateCatalogService;
@@ -118,15 +103,6 @@ export function subscribeRuntimeReload(input: {
   scheduledJobStore: ScheduledJobStore;
   shellRuntime: ShellRuntime;
   sessionPersistence: SessionPersistence;
-  persistSession: (sessionId: string, reason: string) => void;
-  flushSession: (
-    sessionId: string,
-    options?: {
-      skipReplyGate?: boolean;
-      delivery?: "onebot" | "web";
-      webOutputCollector?: import("../generation/generationTypes.ts").GenerationWebOutputCollector;
-    }
-  ) => void;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {

@@ -171,7 +171,14 @@ export function createAdminMessagingService(input: {
                 listener(event);
               }
               previousSnapshot = currentSnapshot;
-            } catch {
+            } catch (error: unknown) {
+              if (isSessionNotFoundError(error)) {
+                listener({
+                  type: "session_error",
+                  message: error.message
+                });
+                return;
+              }
               // Ignore transient snapshot failures; the next session event will re-sync.
             } finally {
               syncing = false;
@@ -289,21 +296,45 @@ async function waitForSessionTurnCompletion(
   sessionId: string,
   startedAt: number
 ): Promise<void> {
-  const isSessionTurnSettled = () => {
-    const session = sessionManager.getSession(sessionId);
+  const getSessionTurnOutcome = (): "pending" | "settled" | "deleted" => {
+    let session;
+    try {
+      session = sessionManager.getSession(sessionId);
+    } catch (error: unknown) {
+      if (isSessionNotFoundError(error)) {
+        return "deleted";
+      }
+      throw error;
+    }
     const hasPendingRecentInput = session.pendingMessages.some((item) => (item.receivedAt ?? 0) >= startedAt);
-    return !(
-      sessionManager.hasActiveResponse(sessionId)
-      || session.debounceTimer != null
-      || hasPendingRecentInput
-    );
+    return sessionManager.hasActiveResponse(sessionId) || session.debounceTimer != null || hasPendingRecentInput
+      ? "pending"
+      : "settled";
   };
 
-  if (isSessionTurnSettled()) {
+  const initialOutcome = getSessionTurnOutcome();
+  if (initialOutcome === "settled") {
     return;
+  }
+  if (initialOutcome === "deleted") {
+    throw createSessionDeletedError(sessionId);
   }
 
   await new Promise<void>((resolve, reject) => {
+    const settleFromCurrentState = () => {
+      const outcome = getSessionTurnOutcome();
+      if (outcome === "pending") {
+        return;
+      }
+      clearTimeout(timeout);
+      unsubscribe();
+      if (outcome === "deleted") {
+        reject(createSessionDeletedError(sessionId));
+        return;
+      }
+      resolve();
+    };
+
     const timeout = setTimeout(() => {
       unsubscribe();
       reject(new Error("Timed out while waiting for session response"));
@@ -311,20 +342,19 @@ async function waitForSessionTurnCompletion(
     timeout.unref?.();
 
     const unsubscribe = sessionManager.subscribeSession(sessionId, () => {
-      if (!isSessionTurnSettled()) {
-        return;
-      }
-      clearTimeout(timeout);
-      unsubscribe();
-      resolve();
+      settleFromCurrentState();
     });
 
-    if (isSessionTurnSettled()) {
-      clearTimeout(timeout);
-      unsubscribe();
-      resolve();
-    }
+    settleFromCurrentState();
   });
+}
+
+function createSessionDeletedError(sessionId: string): Error {
+  return new Error(`Session was deleted before session response completed: ${sessionId}`);
+}
+
+function isSessionNotFoundError(error: unknown): error is Error {
+  return error instanceof Error && error.message.startsWith("Session not found:");
 }
 
 function extractGroupId(sessionId: string): string {

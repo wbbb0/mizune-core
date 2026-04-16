@@ -49,7 +49,6 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     localFileService,
     chatFileStore,
     chatMessageFileGcService,
-    mediaVisionService,
     mediaCaptionService,
     comfyClient,
     comfyTaskStore,
@@ -208,15 +207,11 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
       shellRuntime,
       configManager,
       sessionPersistence,
-      persistSession,
-      flushSession: sessionWorkCoordinator.flushSession,
       handleWebIncomingMessage,
       browserService,
       localFileService,
       chatFileStore,
-      chatMessageFileGcService,
-      mediaVisionService,
-      mediaCaptionService
+      chatMessageFileGcService
     });
 
     subscribeRuntimeReload({
@@ -228,8 +223,6 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
       localFileService,
       chatFileStore,
       chatMessageFileGcService,
-      mediaVisionService,
-      mediaCaptionService,
       searchService,
       scheduler,
       comfyTemplateCatalog,
@@ -252,8 +245,6 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
       scheduledJobStore,
       shellRuntime,
       sessionPersistence,
-      persistSession,
-      flushSession: sessionWorkCoordinator.flushSession,
       handleWebIncomingMessage
     });
     await configManager.start();

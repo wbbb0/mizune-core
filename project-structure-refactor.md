@@ -19,7 +19,7 @@
 - [x] Bootstrap-time owner binding detection now lives in a dedicated owner-bootstrap policy module instead of reusing the general direct-command parser from infrastructure wiring.
 - [x] Web session SSE updates and web-turn completion now subscribe to explicit session mutation notifications instead of polling session state on timers.
 - [x] Remaining generation-start timing backpressure is now centralized in a named runtime timing policy helper instead of an inline sleep constant in the executor.
-- [x] Internal API route registration now receives per-route domain service groups, and the top-level internal API dependency bag no longer carries several unused runtime services.
+- [x] Internal API route registration now receives per-route domain service groups, and the top-level internal API dependency bag plus runtime lifecycle restart helpers no longer carry several unused runtime services.
 - [ ] Browser orchestration has been split, but `BrowserService` still constructs concrete collaborators internally; composition-root injection for browser submodules is not finished yet.
 - [ ] Generation and internal API code still depend on several broad dependency bags; dependency narrowing has started, and generation/tool/internal-API sub-deps now use more explicit session capability groups, but the main executor/runtime graph is still broad.
 - [x] Phase 4 coordination cleanup is complete for the targeted flows: bootstrap no longer depends on direct-command parsing, admin messaging no longer polls for session state, and timing assumptions are explicit where they still remain.

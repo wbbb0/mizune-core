@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createAdminMessagingService } from "../../src/internalApi/application/messagingAdminService.ts";
+import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
+import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
 async function runCase(name: string, fn: () => Promise<void>) {
   process.stdout.write(`- ${name} ... `);
@@ -190,6 +192,116 @@ async function main() {
       text: "AB",
       timestampMs: 30
     });
+  });
+
+  await runCase("session stream emits session_error when subscribed session is deleted", async () => {
+    const sessionId = "web:session-stream-delete";
+    const sessionManager = new SessionManager(createTestAppConfig());
+    sessionManager.ensureSession({
+      id: sessionId,
+      type: "private",
+      source: "web",
+      participantUserId: "10001",
+      participantLabel: "Alice"
+    });
+
+    const service = createAdminMessagingService({
+      config: {
+        onebot: {
+          enabled: true
+        }
+      },
+      oneBotClient: {
+        async sendText() {
+          return {};
+        }
+      } as any,
+      chatFileStore: {
+        async getMany() {
+          return [];
+        }
+      } as any,
+      sessionManager,
+      async handleWebIncomingMessage() {}
+    });
+
+    const stream = await service.getWebSessionStream(
+      { sessionId },
+      { mutationEpoch: 0, transcriptCount: 0 }
+    );
+    const receivedEvents: Array<{ type: string; [key: string]: unknown }> = [];
+    const unsubscribe = stream.subscribe((event) => {
+      receivedEvents.push(event as { type: string; [key: string]: unknown });
+    });
+
+    assert.doesNotThrow(() => {
+      sessionManager.deleteSession(sessionId);
+    });
+    await nextTick();
+
+    unsubscribe();
+
+    const sessionErrorEvent = receivedEvents.find((event) => event.type === "session_error");
+    assert.equal(sessionErrorEvent?.type, "session_error");
+    assert.match(String(sessionErrorEvent?.message), /Session not found:/);
+  });
+
+  await runCase("web turn emits turn_error when session is deleted before completion", async () => {
+    const sessionId = "web:web-turn-delete";
+    const sessionManager = new SessionManager(createTestAppConfig());
+    sessionManager.ensureSession({
+      id: sessionId,
+      type: "private",
+      source: "web",
+      participantUserId: "10001",
+      participantLabel: "Alice"
+    });
+
+    const service = createAdminMessagingService({
+      config: {
+        onebot: {
+          enabled: true
+        }
+      },
+      oneBotClient: {
+        async sendText() {
+          return {};
+        }
+      } as any,
+      chatFileStore: {
+        async getMany() {
+          return [];
+        }
+      } as any,
+      sessionManager,
+      async handleWebIncomingMessage() {
+        sessionManager.deleteSession(sessionId);
+      }
+    });
+
+    const { turnId } = await service.startWebSessionTurn(
+      { sessionId },
+      {
+        userId: "10001",
+        senderName: "Alice",
+        text: "hello",
+        imageIds: [],
+        attachmentIds: []
+      }
+    );
+    const stream = service.getWebTurnStream({ sessionId }, { turnId });
+    const terminalEvent = await new Promise<{ type: string; [key: string]: unknown }>((resolve) => {
+      const unsubscribe = stream.subscribe((event) => {
+        if (event.type !== "turn_error" && event.type !== "complete") {
+          return;
+        }
+        unsubscribe();
+        resolve(event as { type: string; [key: string]: unknown });
+      });
+    });
+
+    assert.equal(terminalEvent.type, "turn_error");
+    assert.match(String(terminalEvent.message), /Session was deleted before session response completed/);
   });
 }
 

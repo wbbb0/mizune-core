@@ -43,6 +43,10 @@ export type WebSessionStreamEvent =
       eventId: string;
       item: InternalTranscriptItem;
       timestampMs: number;
+    }
+  | {
+      type: "session_error";
+      message: string;
     };
 
 export type WebSessionStreamSnapshot = {
