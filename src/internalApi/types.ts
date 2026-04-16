@@ -15,8 +15,6 @@ import type { GenerationWebOutputCollector } from "#app/generation/generationTyp
 import type { BrowserService } from "#services/web/browser/browserService.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { ChatMessageFileGcService } from "#services/workspace/chatMessageFileGcService.ts";
-import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
-import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import type {
@@ -127,15 +125,6 @@ export interface InternalApiDeps {
   shellRuntime: ShellRuntime;
   configManager: ConfigManager;
   sessionPersistence: SessionPersistence;
-  persistSession: (sessionId: string, reason: string) => void;
-  flushSession: (
-    sessionId: string,
-    options?: {
-      skipReplyGate?: boolean;
-      delivery?: "onebot" | "web";
-      webOutputCollector?: GenerationWebOutputCollector;
-    }
-  ) => void;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {
@@ -147,75 +136,77 @@ export interface InternalApiDeps {
   localFileService: LocalFileService;
   chatFileStore: ChatFileStore;
   chatMessageFileGcService: ChatMessageFileGcService;
-  mediaVisionService: MediaVisionService;
-  mediaCaptionService: MediaCaptionService;
 }
 
 export interface InternalApiServices {
-  config: InternalApiConfigSummaryDeps & InternalApiSessionWriteDeps & InternalApiSessionDeleteDeps & InternalApiPersonaDeps & InternalApiUserDeps & {
-    globalRuleStore: GlobalRuleStore;
+  basicRoutes: {
+    config: InternalApiConfigSummaryDeps & InternalApiSessionWriteDeps & InternalApiSessionDeleteDeps & InternalApiPersonaDeps & InternalApiUserDeps & {
+      globalRuleStore: GlobalRuleStore;
+    };
+    editor: EditorService;
+    dataBrowser: DataBrowserService;
+    localFileAdmin: LocalFileAdminService;
+    operations: InternalApiOperationsDeps;
+    workspace: InternalApiWorkspaceDeps;
   };
-  editor: EditorService;
-  dataBrowser: DataBrowserService;
-  localFileAdmin: LocalFileAdminService;
-  operations: InternalApiOperationsDeps;
-  messaging: InternalApiMessagingDeps;
-  uploads: InternalApiUploadsDeps;
-  shell: InternalApiShellDeps;
-  browser: InternalApiBrowserDeps;
-  workspace: InternalApiWorkspaceDeps;
+  messagingRoutes: InternalApiMessagingDeps;
+  uploadRoutes: InternalApiUploadsDeps;
+  shellRoutes: InternalApiShellDeps;
+  browserRoutes: InternalApiBrowserDeps;
 }
 
 export function createInternalApiServices(deps: InternalApiDeps): InternalApiServices {
   return {
-    config: {
-      config: deps.config,
-      whitelistStore: deps.whitelistStore,
-      sessionManager: deps.sessionManager,
-      sessionPersistence: deps.sessionPersistence,
-      personaStore: deps.personaStore,
-      globalRuleStore: deps.globalRuleStore,
-      scenarioHostStateStore: deps.scenarioHostStateStore,
-      userStore: deps.userStore,
-      chatMessageFileGcService: deps.chatMessageFileGcService
+    basicRoutes: {
+      config: {
+        config: deps.config,
+        whitelistStore: deps.whitelistStore,
+        sessionManager: deps.sessionManager,
+        sessionPersistence: deps.sessionPersistence,
+        personaStore: deps.personaStore,
+        globalRuleStore: deps.globalRuleStore,
+        scenarioHostStateStore: deps.scenarioHostStateStore,
+        userStore: deps.userStore,
+        chatMessageFileGcService: deps.chatMessageFileGcService
+      },
+      editor: createEditorService({
+        config: deps.config,
+        configManager: deps.configManager,
+        whitelistStore: deps.whitelistStore,
+        scheduler: deps.scheduler
+      }),
+      dataBrowser: createDataBrowserService({
+        config: deps.config
+      }),
+      localFileAdmin: createLocalFileAdminService({
+        localFileService: deps.localFileService,
+        chatFileStore: deps.chatFileStore
+      }),
+      operations: {
+        requestStore: deps.requestStore,
+        scheduledJobStore: deps.scheduledJobStore
+      },
+      workspace: {
+        localFileService: deps.localFileService,
+        chatFileStore: deps.chatFileStore,
+        oneBotClient: deps.oneBotClient
+      }
     },
-    editor: createEditorService({
-      config: deps.config,
-      configManager: deps.configManager,
-      whitelistStore: deps.whitelistStore,
-      scheduler: deps.scheduler
-    }),
-    dataBrowser: createDataBrowserService({
-      config: deps.config
-    }),
-    localFileAdmin: createLocalFileAdminService({
-      localFileService: deps.localFileService,
-      chatFileStore: deps.chatFileStore
-    }),
-    operations: {
-      requestStore: deps.requestStore,
-      scheduledJobStore: deps.scheduledJobStore
-    },
-    messaging: {
+    messagingRoutes: {
       config: deps.config,
       oneBotClient: deps.oneBotClient,
       sessionManager: deps.sessionManager,
       handleWebIncomingMessage: deps.handleWebIncomingMessage,
       chatFileStore: deps.chatFileStore
     },
-    uploads: {
+    uploadRoutes: {
       chatFileStore: deps.chatFileStore
     },
-    shell: {
+    shellRoutes: {
       shellRuntime: deps.shellRuntime
     },
-    browser: {
+    browserRoutes: {
       browserService: deps.browserService
-    },
-    workspace: {
-      localFileService: deps.localFileService,
-      chatFileStore: deps.chatFileStore,
-      oneBotClient: deps.oneBotClient
     }
   };
 }

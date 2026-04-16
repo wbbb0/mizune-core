@@ -8,9 +8,9 @@ async function runCase(name: string, fn: () => Promise<void>) {
   process.stdout.write("ok\n");
 }
 
-function sleep(ms: number) {
+function nextTick(): Promise<void> {
   return new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
+    setImmediate(resolve);
   });
 }
 
@@ -72,6 +72,9 @@ async function main() {
         },
         hasActiveResponse() {
           return false;
+        },
+        subscribeSession() {
+          return () => {};
         }
       } as any,
       async handleWebIncomingMessage() {}
@@ -109,6 +112,22 @@ async function main() {
       activeAssistantResponse: null
     };
 
+    const sessionManager = {
+      __listener: null as null | (() => void),
+      getSession() {
+        return sessionState;
+      },
+      hasActiveResponse() {
+        return false;
+      },
+      subscribeSession(_sessionId: string, listener: () => void) {
+        this.__listener = listener;
+        return () => {
+          this.__listener = null;
+        };
+      }
+    };
+
     const service = createAdminMessagingService({
       config: {
         onebot: {
@@ -125,14 +144,7 @@ async function main() {
           return [];
         }
       } as any,
-      sessionManager: {
-        getSession() {
-          return sessionState;
-        },
-        hasActiveResponse() {
-          return false;
-        }
-      } as any,
+      sessionManager: sessionManager as any,
       async handleWebIncomingMessage() {}
     });
 
@@ -159,7 +171,8 @@ async function main() {
     });
     sessionState.historyRevision = 2;
     sessionState.lastActiveAt = 130;
-    await sleep(320);
+    sessionManager.__listener?.();
+    await nextTick();
 
     unsubscribe();
 

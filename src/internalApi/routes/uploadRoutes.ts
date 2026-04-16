@@ -9,8 +9,8 @@ import { createAdminWorkspaceUploadService } from "../application/workspaceUploa
 
 const IMAGE_UPLOAD_BODY_LIMIT_BYTES = 32 * 1024 * 1024;
 
-export function registerUploadRoutes(app: FastifyInstance, services: InternalApiServices): void {
-  const workspaceUploads = createAdminWorkspaceUploadService(services.uploads);
+export function registerUploadRoutes(app: FastifyInstance, services: InternalApiServices["uploadRoutes"]): void {
+  const workspaceUploads = createAdminWorkspaceUploadService(services);
 
   app.post("/api/uploads/files", {
     bodyLimit: IMAGE_UPLOAD_BODY_LIMIT_BYTES

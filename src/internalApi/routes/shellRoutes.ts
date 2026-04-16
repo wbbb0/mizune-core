@@ -20,15 +20,15 @@ import {
 } from "../routeSupport.ts";
 import type { InternalApiServices } from "../types.ts";
 
-export function registerShellRoutes(app: FastifyInstance, services: InternalApiServices): void {
-  app.get("/api/shell/sessions", async () => listShellSessions(services.shell));
+export function registerShellRoutes(app: FastifyInstance, services: InternalApiServices["shellRoutes"]): void {
+  app.get("/api/shell/sessions", async () => listShellSessions(services));
 
   app.get("/api/shell/sessions/:sessionId", async (request, reply) => {
     const params = parseSessionParams(request.params);
     if (!parseOrReply(reply, params)) {
       return reply;
     }
-    const session = getShellSession(services.shell, params);
+    const session = getShellSession(services, params);
     if (!session) {
       return respondNotFound(reply, "Shell session not found");
     }
@@ -42,7 +42,7 @@ export function registerShellRoutes(app: FastifyInstance, services: InternalApiS
     }
 
     try {
-      const result = await runShellCommand(services.shell, body);
+      const result = await runShellCommand(services, body);
       return { ok: true, result };
     } catch (error: unknown) {
       return handleBadRequest(reply, error);
@@ -60,7 +60,7 @@ export function registerShellRoutes(app: FastifyInstance, services: InternalApiS
     }
 
     try {
-      const result = await interactWithShellSession(services.shell, params, body);
+      const result = await interactWithShellSession(services, params, body);
       return { ok: true, ...result };
     } catch (error: unknown) {
       return handleBadRequest(reply, error);
@@ -73,7 +73,7 @@ export function registerShellRoutes(app: FastifyInstance, services: InternalApiS
       return reply;
     }
     try {
-      const result = await readShellSession(services.shell, params);
+      const result = await readShellSession(services, params);
       return { ok: true, ...result };
     } catch (error: unknown) {
       return handleBadRequest(reply, error);
@@ -91,7 +91,7 @@ export function registerShellRoutes(app: FastifyInstance, services: InternalApiS
     }
 
     try {
-      const session = await signalShellSession(services.shell, params, body);
+      const session = await signalShellSession(services, params, body);
       return { ok: true, session };
     } catch (error: unknown) {
       return handleBadRequest(reply, error);
@@ -103,6 +103,6 @@ export function registerShellRoutes(app: FastifyInstance, services: InternalApiS
     if (!parseOrReply(reply, params)) {
       return reply;
     }
-    return closeShellSession(services.shell, params);
+    return closeShellSession(services, params);
   });
 }

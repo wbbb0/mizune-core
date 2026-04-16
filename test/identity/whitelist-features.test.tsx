@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
 import { EventRouter } from "../../src/services/onebot/eventRouter.ts";
-import { isOwnerBootstrapCommandText } from "../../src/app/messaging/directCommands.ts";
+import { isOwnerBootstrapCommandText } from "../../src/app/bootstrap/ownerBootstrapPolicy.ts";
 import { WhitelistStore } from "../../src/identity/whitelistStore.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 

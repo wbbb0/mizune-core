@@ -67,6 +67,7 @@ export class SessionManager {
   private readonly debugController = new SessionDebugController();
   private readonly sentMessageLog = new SessionSentMessageLog();
   private readonly historyService: SessionHistoryService;
+  private readonly sessionListeners = new Map<string, Set<() => void>>();
 
   constructor(config: AppConfig) {
     this.historyService = new SessionHistoryService(config);
@@ -85,17 +86,22 @@ export class SessionManager {
       type: message.chatType
     });
     this.sessionStore.set(sessionId, created);
+    this.notifySessionChanged(sessionId);
     return created;
   }
 
   appendPendingMessage(sessionId: string, message: ParsedIncomingMessage): SessionState {
     const session = this.requireSession(sessionId);
-    return appendSessionMessage(session, message);
+    const updated = appendSessionMessage(session, message);
+    this.notifySessionChanged(sessionId);
+    return updated;
   }
 
   appendSteerMessage(sessionId: string, message: ParsedIncomingMessage): SessionState {
     const session = this.requireSession(sessionId);
-    return appendSteerMessageState(session, message);
+    const updated = appendSteerMessageState(session, message);
+    this.notifySessionChanged(sessionId);
+    return updated;
   }
 
   // Ensures a session exists for a known target id and type.
@@ -113,6 +119,7 @@ export class SessionManager {
 
     const created = createSessionState(target);
     this.sessionStore.set(target.id, created);
+    this.notifySessionChanged(target.id);
     return created;
   }
 
@@ -139,7 +146,7 @@ export class SessionManager {
     }
   ): SessionState {
     const session = this.requireSession(sessionId);
-    return appendSessionMessage(session, {
+    const updated = appendSessionMessage(session, {
       ...message,
       audioSources: message.audioSources ?? [],
       audioIds: message.audioIds ?? [],
@@ -153,11 +160,17 @@ export class SessionManager {
       mentionedAll: message.mentionedAll ?? false,
       isAtMentioned: message.isAtMentioned ?? false
     });
+    this.notifySessionChanged(sessionId);
+    return updated;
   }
 
   consumeSteerMessages(sessionId: string): SessionMessage[] {
     const session = this.requireSession(sessionId);
-    return consumeSteerMessagesState(session);
+    const consumed = consumeSteerMessagesState(session);
+    if (consumed.length > 0) {
+      this.notifySessionChanged(sessionId);
+    }
+    return consumed;
   }
 
   hasPendingSteerMessages(sessionId: string): boolean {
@@ -166,7 +179,11 @@ export class SessionManager {
 
   promoteSteerMessagesToPending(sessionId: string): number {
     const session = this.requireSession(sessionId);
-    return promoteSteerMessagesToPendingState(session);
+    const promoted = promoteSteerMessagesToPendingState(session);
+    if (promoted > 0) {
+      this.notifySessionChanged(sessionId);
+    }
+    return promoted;
   }
 
   // Starts a normal generation cycle by consuming pending messages.
@@ -179,7 +196,9 @@ export class SessionManager {
     responseEpoch: number;
   } {
     const session = this.requireSession(sessionId);
-    return this.lifecycleController.beginGeneration(session);
+    const result = this.lifecycleController.beginGeneration(session);
+    this.notifySessionChanged(sessionId);
+    return result;
   }
 
   // Starts a synthetic generation cycle without consuming pending messages.
@@ -190,19 +209,29 @@ export class SessionManager {
     responseEpoch: number;
   } {
     const session = this.requireSession(sessionId);
-    return this.lifecycleController.beginSyntheticGeneration(session);
+    const result = this.lifecycleController.beginSyntheticGeneration(session);
+    this.notifySessionChanged(sessionId);
+    return result;
   }
 
   // Marks the active generation as finished if the abort controller still matches.
   finishGeneration(sessionId: string, abortController: AbortController): boolean {
     const session = this.requireSession(sessionId);
-    return this.lifecycleController.finishGeneration(session, abortController);
+    const finished = this.lifecycleController.finishGeneration(session, abortController);
+    if (finished) {
+      this.notifySessionChanged(sessionId);
+    }
+    return finished;
   }
 
   // Cancels the current generation request for a session.
   cancelGeneration(sessionId: string): boolean {
     const session = this.requireSession(sessionId);
-    return this.lifecycleController.cancelGeneration(session);
+    const cancelled = this.lifecycleController.cancelGeneration(session);
+    if (cancelled) {
+      this.notifySessionChanged(sessionId);
+    }
+    return cancelled;
   }
 
   // Aborts the outbound message queue for a session without cancelling generation.
@@ -210,7 +239,11 @@ export class SessionManager {
   // Generation and tool execution continue running.
   interruptOutbound(sessionId: string): boolean {
     const session = this.requireSession(sessionId);
-    return this.lifecycleController.interruptOutbound(session);
+    const interrupted = this.lifecycleController.interruptOutbound(session);
+    if (interrupted) {
+      this.notifySessionChanged(sessionId);
+    }
+    return interrupted;
   }
 
   setSessionPhaseIfEpochMatches(
@@ -223,6 +256,7 @@ export class SessionManager {
       return false;
     }
     setSessionPhaseState(session, phase);
+    this.notifySessionChanged(sessionId);
     return true;
   }
 
@@ -232,6 +266,7 @@ export class SessionManager {
     if (session.phase.kind === "idle" || session.phase.kind === "turn_planner_waiting") {
       setSessionPhaseState(session, { kind: "debouncing" });
     }
+    this.notifySessionChanged(sessionId);
   }
 
   clearDebounceTimer(sessionId: string): void {
@@ -242,6 +277,7 @@ export class SessionManager {
       if (session.phase.kind === "debouncing") {
         setSessionPhaseState(session, { kind: "idle" });
       }
+      this.notifySessionChanged(sessionId);
     }
   }
 
@@ -255,6 +291,7 @@ export class SessionManager {
     if (session.phase.kind === "turn_planner_evaluating" || session.phase.kind === "requesting_llm" || session.phase.kind === "idle") {
       setSessionPhaseState(session, { kind: "turn_planner_waiting" });
     }
+    this.notifySessionChanged(sessionId);
   }
 
   listSessions(): SessionState[] {
@@ -273,7 +310,12 @@ export class SessionManager {
     if (session.responseAbortController != null) {
       session.responseAbortController.abort();
     }
-    return this.sessionStore.delete(sessionId);
+    const deleted = this.sessionStore.delete(sessionId);
+    if (deleted) {
+      this.notifySessionChanged(sessionId);
+      this.sessionListeners.delete(sessionId);
+    }
+    return deleted;
   }
 
   getSession(sessionId: string): SessionState {
@@ -290,6 +332,7 @@ export class SessionManager {
 
   markSetupConfirmed(sessionId: string): void {
     this.requireSession(sessionId).setupConfirmed = true;
+    this.notifySessionChanged(sessionId);
   }
 
   isSetupConfirmed(sessionId: string): boolean {
@@ -307,11 +350,13 @@ export class SessionManager {
     if (options?.appendSwitchMarker !== false) {
       this.historyService.appendModeSwitch(session, previousModeId, modeId);
     }
+    this.notifySessionChanged(sessionId);
     return true;
   }
 
   setReplyDelivery(sessionId: string, delivery: SessionDelivery): void {
     this.requireSession(sessionId).replyDelivery = delivery;
+    this.notifySessionChanged(sessionId);
   }
 
   getPersistedSession(sessionId: string): PersistedSessionState {
@@ -363,6 +408,7 @@ export class SessionManager {
   }, timestampMs = Date.now()): void {
     const session = this.requireSession(sessionId);
     this.historyService.appendUserHistory(session, message, timestampMs);
+    this.notifySessionChanged(sessionId);
   }
 
   appendAssistantHistory(sessionId: string, message: {
@@ -373,16 +419,19 @@ export class SessionManager {
   }, timestampMs = Date.now()): void {
     const session = this.requireSession(sessionId);
     this.historyService.appendAssistantHistory(session, message, timestampMs);
+    this.notifySessionChanged(sessionId);
   }
 
   appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void {
     const session = this.requireSession(sessionId);
     this.historyService.appendInternalTranscript(session, item);
+    this.notifySessionChanged(sessionId);
   }
 
   appendDebugMarker(sessionId: string, marker: SessionDebugMarker): void {
     const session = this.requireSession(sessionId);
     this.debugController.appendMarker(session, marker);
+    this.notifySessionChanged(sessionId);
   }
 
   appendActiveAssistantResponseChunkIfResponseEpochMatches(
@@ -404,6 +453,7 @@ export class SessionManager {
       return false;
     }
     appendActiveAssistantResponseChunkState(session, target, chunk, timestampMs, options);
+    this.notifySessionChanged(sessionId);
     return true;
   }
 
@@ -416,7 +466,11 @@ export class SessionManager {
     if (session.responseEpoch !== expectedResponseEpoch) {
       return null;
     }
-    return finalizeActiveAssistantResponseState(session, timestampMs);
+    const finalized = finalizeActiveAssistantResponseState(session, timestampMs);
+    if (finalized) {
+      this.notifySessionChanged(sessionId);
+    }
+    return finalized;
   }
 
   setLastAssistantReasoningIfResponseEpochMatches(
@@ -439,12 +493,14 @@ export class SessionManager {
       session.responseAbortController.abort();
     }
     clearSessionState(session);
+    this.notifySessionChanged(sessionId);
   }
 
   // Restores persisted sessions back into runtime state.
   restoreSessions(items: PersistedSessionState[]): void {
     for (const item of items) {
       this.sessionStore.set(item.id, restoreSessionState(item));
+      this.notifySessionChanged(item.id);
     }
   }
 
@@ -494,6 +550,7 @@ export class SessionManager {
       return false;
     }
     this.historyService.applyCompressedHistory(session, payload);
+    this.notifySessionChanged(sessionId);
     return true;
   }
 
@@ -574,12 +631,16 @@ export class SessionManager {
 
   setDebugEnabled(sessionId: string, enabled: boolean): SessionDebugControlState {
     const session = this.requireSession(sessionId);
-    return this.debugController.setEnabled(session, enabled);
+    const state = this.debugController.setEnabled(session, enabled);
+    this.notifySessionChanged(sessionId);
+    return state;
   }
 
   armDebugOnce(sessionId: string): SessionDebugControlState {
     const session = this.requireSession(sessionId);
-    return this.debugController.armOnce(session);
+    const state = this.debugController.armOnce(session);
+    this.notifySessionChanged(sessionId);
+    return state;
   }
 
   consumeDebugMode(sessionId: string): boolean {
@@ -589,6 +650,7 @@ export class SessionManager {
   setInterruptibleGroupTriggerUser(sessionId: string, userId: string | null): void {
     const session = this.requireSession(sessionId);
     setInterruptibleGroupTriggerUserState(session, userId);
+    this.notifySessionChanged(sessionId);
   }
 
   matchesInterruptibleGroupTriggerUser(sessionId: string, userId: string): boolean {
@@ -603,12 +665,17 @@ export class SessionManager {
 
   completeResponse(sessionId: string, expectedResponseEpoch: number): boolean {
     const session = this.requireSession(sessionId);
-    return this.lifecycleController.completeResponse(session, expectedResponseEpoch);
+    const completed = this.lifecycleController.completeResponse(session, expectedResponseEpoch);
+    if (completed) {
+      this.notifySessionChanged(sessionId);
+    }
+    return completed;
   }
 
   recordSentMessage(sessionId: string, message: SessionSentMessage): void {
     const session = this.requireSession(sessionId);
     this.sentMessageLog.record(session, message);
+    this.notifySessionChanged(sessionId);
   }
 
   popRetractableSentMessages(sessionId: string, count: number, maxAgeMs: number, now = Date.now()): SessionSentMessage[] {
@@ -618,12 +685,34 @@ export class SessionManager {
 
   enqueueInternalTrigger(sessionId: string, trigger: InternalSessionTriggerExecution): number {
     const session = this.requireSession(sessionId);
-    return this.internalTriggerQueue.enqueue(session, trigger);
+    const size = this.internalTriggerQueue.enqueue(session, trigger);
+    this.notifySessionChanged(sessionId);
+    return size;
   }
 
   shiftInternalTrigger(sessionId: string): InternalSessionTriggerExecution | null {
     const session = this.requireSession(sessionId);
-    return this.internalTriggerQueue.shift(session);
+    const trigger = this.internalTriggerQueue.shift(session);
+    if (trigger) {
+      this.notifySessionChanged(sessionId);
+    }
+    return trigger;
+  }
+
+  subscribeSession(sessionId: string, listener: () => void): () => void {
+    this.requireSession(sessionId);
+    const listeners = this.getOrCreateSessionListeners(sessionId);
+    listeners.add(listener);
+    return () => {
+      const activeListeners = this.sessionListeners.get(sessionId);
+      if (!activeListeners) {
+        return;
+      }
+      activeListeners.delete(listener);
+      if (activeListeners.size === 0) {
+        this.sessionListeners.delete(sessionId);
+      }
+    };
   }
 
   private requireSession(sessionId: string): SessionState {
@@ -632,6 +721,26 @@ export class SessionManager {
       throw new Error(`Session not found: ${sessionId}`);
     }
     return session;
+  }
+
+  private getOrCreateSessionListeners(sessionId: string): Set<() => void> {
+    const existing = this.sessionListeners.get(sessionId);
+    if (existing) {
+      return existing;
+    }
+    const created = new Set<() => void>();
+    this.sessionListeners.set(sessionId, created);
+    return created;
+  }
+
+  private notifySessionChanged(sessionId: string): void {
+    const listeners = this.sessionListeners.get(sessionId);
+    if (!listeners || listeners.size === 0) {
+      return;
+    }
+    for (const listener of listeners) {
+      listener();
+    }
   }
 
   private withMutationEpoch(
@@ -644,6 +753,7 @@ export class SessionManager {
       return false;
     }
     mutate(session);
+    this.notifySessionChanged(sessionId);
     return true;
   }
 
@@ -659,6 +769,7 @@ export class SessionManager {
       return false;
     }
     mutate(session);
+    this.notifySessionChanged(sessionId);
     return true;
   }
 }

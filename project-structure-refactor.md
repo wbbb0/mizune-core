@@ -4,7 +4,7 @@
 >
 > This refactor is allowed to be invasive. Prioritize boundary clarity, single-responsibility structure, and long-term maintainability over backward compatibility. If an existing abstraction only survives by accumulating exceptions, replace it instead of preserving it.
 
-## Current Checkpoint (2026-04-15)
+## Current Checkpoint (2026-04-16)
 
 - [x] Session identity parsing/building has been centralized and covered by focused tests.
 - [x] `SessionManager` internals have been split into dedicated helper modules such as store/lifecycle/history/debug/trigger-queue ownership.
@@ -16,10 +16,14 @@
 - [x] Focused tests now lock in session lifecycle/epoch guards, internal trigger queue behavior, toolset selection policy, and browser split boundaries.
 - [x] Toolset selection now has separate declaration, runtime selection, supplement-signal, and supplement-policy layers, with focused tests covering setup overrides and supplement decisions.
 - [x] Browser runtime orchestration now delegates target resolution, asset import, and resource-registry sync to explicit browser-domain modules instead of keeping them as one large `BrowserService` file.
+- [x] Bootstrap-time owner binding detection now lives in a dedicated owner-bootstrap policy module instead of reusing the general direct-command parser from infrastructure wiring.
+- [x] Web session SSE updates and web-turn completion now subscribe to explicit session mutation notifications instead of polling session state on timers.
+- [x] Remaining generation-start timing backpressure is now centralized in a named runtime timing policy helper instead of an inline sleep constant in the executor.
+- [x] Internal API route registration now receives per-route domain service groups, and the top-level internal API dependency bag no longer carries several unused runtime services.
 - [ ] Browser orchestration has been split, but `BrowserService` still constructs concrete collaborators internally; composition-root injection for browser submodules is not finished yet.
 - [ ] Generation and internal API code still depend on several broad dependency bags; dependency narrowing has started, and generation/tool/internal-API sub-deps now use more explicit session capability groups, but the main executor/runtime graph is still broad.
-- [ ] Flow-control timing cleanup and deeper bootstrap/internal-API cleanup have not started in earnest.
-- [ ] The next priority is to move from the completed session/planner/browser slice into timing cleanup and broader dependency-bag reduction without re-broadening contracts.
+- [x] Phase 4 coordination cleanup is complete for the targeted flows: bootstrap no longer depends on direct-command parsing, admin messaging no longer polls for session state, and timing assumptions are explicit where they still remain.
+- [ ] The next priority is to move from the completed coordination/bootstrap slice into broader generation dependency-bag reduction and the final simplification pass without re-broadening contracts.
 
 ---
 
@@ -30,7 +34,7 @@
 - [x] Session identity parsing/building rules are centralized in one domain module instead of repeated in multiple files.
 - [x] Toolset planning no longer depends primarily on a growing pile of regex-based supplementation rules.
 - [x] Browser runtime responsibilities are split into smaller services with explicit ownership boundaries.
-- [ ] Polling sleeps and patch-style timing hacks are replaced by explicit state transitions, events, or shared policy helpers.
+- [x] Polling sleeps and patch-style timing hacks are replaced by explicit state transitions, events, or shared policy helpers.
 - [x] Bootstrap, routing, generation, tool runtime, and internal API layers have narrower session dependency contracts.
 - [x] Structural refactors include updated tests that lock in the new boundaries and current behavior.
 - [ ] During optimization, touched code paths gain concise explanatory comments where the logic would otherwise be non-obvious.
@@ -125,22 +129,22 @@
 
 ### 6. Flow-Control Patch Removal
 
-- [ ] Audit sleeps, polling loops, retry timing, and hardcoded control windows in generation, admin messaging, and command flows.
-- [ ] Replace fixed waits with explicit readiness checks or queue/event notifications.
-- [ ] Centralize remaining timing policies in named constants or shared runtime policy modules.
-- [ ] Remove business logic that depends on “wait a little and hope state settles.”
+- [x] Audit sleeps, polling loops, retry timing, and hardcoded control windows in generation, admin messaging, and command flows.
+- [x] Replace fixed waits with explicit readiness checks or queue/event notifications.
+- [x] Centralize remaining timing policies in named constants or shared runtime policy modules.
+- [x] Remove business logic that depends on “wait a little and hope state settles.”
 
 ### 7. Bootstrap / Routing / Command Boundary Cleanup
 
-- [ ] Remove cross-layer coupling where bootstrap or routing code depends directly on command parsing details.
-- [ ] Ensure startup flow depends on a dedicated owner-bootstrap policy instead of reusing general chat command parsing as an implicit signal.
-- [ ] Keep direct command routing scoped to messaging/application logic, not infrastructure bootstrap decisions.
+- [x] Remove cross-layer coupling where bootstrap or routing code depends directly on command parsing details.
+- [x] Ensure startup flow depends on a dedicated owner-bootstrap policy instead of reusing general chat command parsing as an implicit signal.
+- [x] Keep direct command routing scoped to messaging/application logic, not infrastructure bootstrap decisions.
 
 ### 8. Internal API Service Boundary Cleanup
 
-- [ ] Reduce the breadth of `InternalApiDeps` and similar admin-facing service bundles.
-- [ ] Split API-facing application services by domain rather than passing large mixed dependency objects through route registration.
-- [ ] Ensure internal API modules do not become a second service locator.
+- [x] Reduce the breadth of `InternalApiDeps` and similar admin-facing service bundles.
+- [x] Split API-facing application services by domain rather than passing large mixed dependency objects through route registration.
+- [x] Ensure internal API modules do not become a second service locator.
 
 ---
 
@@ -192,17 +196,17 @@
 
 ### Workstream F: Coordination Timing Refactor
 
-- [ ] Catalog current fixed sleeps, polling loops, and timing windows.
-- [ ] Replace them one by one with explicit state/event-driven coordination.
-- [ ] Keep temporary shared timing helpers only where true asynchronous backpressure still requires them.
-- [ ] Document the remaining timing assumptions with comments and tests.
+- [x] Catalog current fixed sleeps, polling loops, and timing windows.
+- [x] Replace them one by one with explicit state/event-driven coordination.
+- [x] Keep temporary shared timing helpers only where true asynchronous backpressure still requires them.
+- [x] Document the remaining timing assumptions with comments and tests.
 
 ### Workstream G: Internal API And Bootstrap Cleanup
 
-- [ ] Refactor bootstrap-time command coupling out of infrastructure wiring.
-- [ ] Reduce internal API dependency breadth through domain service extraction.
-- [ ] Keep route files thin and application services explicit.
-- [ ] Add comments where auth, WebUI hosting, and API exposure rules rely on subtle invariants.
+- [x] Refactor bootstrap-time command coupling out of infrastructure wiring.
+- [x] Reduce internal API dependency breadth through domain service extraction.
+- [x] Keep route files thin and application services explicit.
+- [x] Add comments where auth, WebUI hosting, and API exposure rules rely on subtle invariants.
 
 ---
 
@@ -228,9 +232,9 @@
 
 ### Phase 4: Coordination And Bootstrap Cleanup
 
-- [ ] Remove patch-style waits and polling loops.
-- [ ] Decouple bootstrap and command parsing.
-- [ ] Shrink internal API dependency surfaces.
+- [x] Remove patch-style waits and polling loops.
+- [x] Decouple bootstrap and command parsing.
+- [x] Shrink internal API dependency surfaces.
 
 ### Phase 5: Final Simplification Pass
 
@@ -258,8 +262,8 @@
 - [x] Add focused tests for internal trigger queue behavior after extraction.
 - [x] Add tests for toolset planning inputs and outputs after heuristic cleanup.
 - [x] Add tests for browser service split boundaries where backend-free validation is possible.
-- [ ] Update any affected admin/API tests after dependency narrowing.
-- [ ] Before each milestone is considered complete, run:
+- [x] Update any affected admin/API tests after dependency narrowing.
+- [x] Before each milestone is considered complete, run:
   - `npm run typecheck:all`
   - `npm run test`
 

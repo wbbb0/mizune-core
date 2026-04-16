@@ -15,8 +15,8 @@ import {
 import { replyWithSseStream } from "./sse.ts";
 import type { InternalApiServices } from "../types.ts";
 
-export function registerMessagingRoutes(app: FastifyInstance, services: InternalApiServices): void {
-  const messaging = createAdminMessagingService(services.messaging);
+export function registerMessagingRoutes(app: FastifyInstance, services: InternalApiServices["messagingRoutes"]): void {
+  const messaging = createAdminMessagingService(services);
 
   app.post("/api/sessions/:sessionId/web-turn", async (request, reply) => {
     const params = parseSessionParams(request.params);

@@ -187,14 +187,10 @@ export function subscribeRuntimeReload(input: {
       shellRuntime: input.shellRuntime,
       configManager: input.configManager,
       sessionPersistence: input.sessionPersistence,
-      persistSession: input.persistSession,
-      flushSession: input.flushSession,
       handleWebIncomingMessage: input.handleWebIncomingMessage,
       browserService: input.browserService,
       localFileService: input.localFileService,
-      chatFileStore: input.chatFileStore,
-      mediaVisionService: input.mediaVisionService,
-      mediaCaptionService: input.mediaCaptionService
+      chatFileStore: input.chatFileStore
     }));
   });
 }

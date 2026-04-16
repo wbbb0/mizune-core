@@ -36,7 +36,7 @@ import { RuntimeResourceRegistry } from "#runtime/resources/runtimeResourceRegis
 import { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import type { SessionBootstrapPersistenceAccess } from "#conversation/session/sessionCapabilities.ts";
-import { isOwnerBootstrapCommandText } from "../messaging/directCommands.ts";
+import { isOwnerBootstrapCommandText } from "./ownerBootstrapPolicy.ts";
 import type { AppBootstrapServices, AppServiceBootstrap, BootstrapRuntimeContext } from "./bootstrapTypes.ts";
 
 export function createBootstrapServices(context: BootstrapRuntimeContext): AppBootstrapServices {

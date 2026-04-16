@@ -65,6 +65,7 @@ export interface SessionCompressionAccess {
 export interface SessionStreamAccess {
   getSession(sessionId: string): SessionState;
   hasActiveResponse(sessionId: string): boolean;
+  subscribeSession(sessionId: string, listener: () => void): () => void;
 }
 
 export type SessionWebStreamState = Pick<
@@ -89,6 +90,7 @@ export type SessionWebStreamState = Pick<
 export interface SessionWebStreamAccess {
   getSession(sessionId: string): SessionWebStreamState;
   hasActiveResponse(sessionId: string): boolean;
+  subscribeSession(sessionId: string, listener: () => void): () => void;
 }
 
 export interface SessionToolRuntimeAccess {

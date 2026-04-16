@@ -6,6 +6,7 @@ import type { SessionDirectCommandAccess } from "#conversation/session/sessionCa
 import type { Relationship } from "#identity/relationship.ts";
 import type { InternalTranscriptItem, SessionState } from "#conversation/session/sessionTypes.ts";
 import { requireSessionModeDefinition } from "#modes/registry.ts";
+import { parseOwnerBootstrapCommand } from "#app/bootstrap/ownerBootstrapPolicy.ts";
 
 type DebugModeArg = "on" | "off" | "once" | "status";
 
@@ -411,13 +412,13 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       allowInOwnerMentionedGroup: false
     },
     parse(text: string): ParsedDirectCommand | null {
-      const match = text.match(/^[。.]\s*own(?:\s+(\d+))?\s*$/i);
-      if (!match) {
+      const command = parseOwnerBootstrapCommand(text);
+      if (!command) {
         return null;
       }
       return {
         name: "own",
-        ...(match[1] ? { userId: match[1] } : {})
+        ...(command.userId ? { userId: command.userId } : {})
       };
     },
     async execute(ctx: DirectCommandExecutionContext, command: ParsedDirectCommand) {
@@ -605,10 +606,6 @@ export function parseDirectCommand(text: string): ParsedDirectCommand | null {
     }
   }
   return null;
-}
-
-export function isOwnerBootstrapCommandText(text: string): boolean {
-  return parseDirectCommand(text)?.name === "own";
 }
 
 export function canExecuteDirectCommand(command: ParsedDirectCommand, context: DirectCommandRoutingContext): boolean {

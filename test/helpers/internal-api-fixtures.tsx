@@ -54,6 +54,16 @@ function createShellSession(overrides: Partial<ShellSession> = {}): ShellSession
 }
 
 export function createInternalApiDeps(): InternalApiDeps & { __state: InternalApiFixtureState } {
+  const sessionListeners = new Map<string, Set<() => void>>();
+  const notifySessionChanged = (sessionId: string) => {
+    const listeners = sessionListeners.get(sessionId);
+    if (!listeners) {
+      return;
+    }
+    for (const listener of listeners) {
+      listener();
+    }
+  };
   const state: InternalApiFixtureState = {
     sentMessages: [],
     sessions: [{
@@ -159,8 +169,6 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         return join(state.workspaceRoot, "workspace", "media", "file_image_1.png");
       }
     } as unknown as InternalApiDeps["chatFileStore"],
-    mediaVisionService: {} as unknown as InternalApiDeps["mediaVisionService"],
-    mediaCaptionService: {} as unknown as InternalApiDeps["mediaCaptionService"],
     localFileService: {
       rootDir: state.workspaceRoot,
       async listItems(relativePath = ".") {
@@ -281,6 +289,21 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           activeAssistantResponse: null
         };
       },
+      subscribeSession(sessionId: string, listener: () => void) {
+        const listeners = sessionListeners.get(sessionId) ?? new Set<() => void>();
+        listeners.add(listener);
+        sessionListeners.set(sessionId, listeners);
+        return () => {
+          const activeListeners = sessionListeners.get(sessionId);
+          if (!activeListeners) {
+            return;
+          }
+          activeListeners.delete(listener);
+          if (activeListeners.size === 0) {
+            sessionListeners.delete(sessionId);
+          }
+        };
+      },
       ensureSession(target: {
         id: string;
         type: "private" | "group";
@@ -304,6 +327,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           lastActiveAt: Date.now()
         };
         state.sessions.push(created);
+        notifySessionChanged(target.id);
         return created;
       },
       deleteSession(sessionId: string) {
@@ -312,6 +336,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           return false;
         }
         state.sessions.splice(index, 1);
+        notifySessionChanged(sessionId);
         return true;
       },
       getPersistedSession(sessionId: string) {
@@ -350,6 +375,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           return false;
         }
         session.modeId = modeId;
+        notifySessionChanged(sessionId);
         return true;
       },
       hasActiveResponse(sessionId: string) {
@@ -478,14 +504,6 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         return 987654321;
       }
     } as unknown as InternalApiDeps["sessionPersistence"],
-    persistSession() {},
-    flushSession(sessionId: string, options?: { delivery?: "onebot" | "web"; webOutputCollector?: { append: (chunk: string) => void } }) {
-      if (options?.delivery === "web") {
-        options.webOutputCollector?.append("web reply from fixture");
-        const manager = deps.sessionManager as unknown as { __activeResponses: Map<string, number> };
-        manager.__activeResponses.set(sessionId, 1);
-      }
-    },
     async handleWebIncomingMessage(incomingMessage, options) {
       options.webOutputCollector.append(`web handled: ${options.sessionId ?? "derived"}: ${incomingMessage.text}`);
     },
@@ -543,10 +561,10 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
 export async function createInternalApiApp(deps: InternalApiDeps) {
   const app = Fastify({ logger: false });
   const services = createInternalApiServices(deps);
-  registerBasicRoutes(app, services);
-  registerBrowserRoutes(app, services);
-  registerShellRoutes(app, services);
-  registerMessagingRoutes(app, services);
+  registerBasicRoutes(app, services.basicRoutes);
+  registerBrowserRoutes(app, services.browserRoutes);
+  registerShellRoutes(app, services.shellRoutes);
+  registerMessagingRoutes(app, services.messagingRoutes);
   await app.ready();
   return app;
 }

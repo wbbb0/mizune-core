@@ -29,7 +29,7 @@ import {
 export { type WebTurnStreamEvent } from "./webTurnBroker.ts";
 export { type WebSessionStreamEvent } from "./webSessionStream.ts";
 
-const WEB_SESSION_STREAM_POLL_MS = 250;
+const WEB_TURN_COMPLETION_TIMEOUT_MS = 5 * 60_000;
 
 export interface AdminMessagingService {
   sendInternalTextMessage(body: ParsedSendTextBody): Promise<unknown>;
@@ -151,13 +151,20 @@ export function createAdminMessagingService(input: {
         initialEvents: buildInitialSessionStreamEvents(initialSnapshot, query),
         subscribe(listener) {
           let closed = false;
-          let polling = false;
+          let syncing = false;
+          let resyncQueued = false;
 
-          const tick = async () => {
-            if (closed || polling) {
+          // Session mutations can arrive back-to-back while a snapshot diff is still in flight.
+          // Queue one follow-up sync so SSE clients observe the latest state without interval polling.
+          const syncSnapshot = async () => {
+            if (closed) {
               return;
             }
-            polling = true;
+            if (syncing) {
+              resyncQueued = true;
+              return;
+            }
+            syncing = true;
             try {
               const currentSnapshot = await readSessionStreamSnapshot(input, params.sessionId);
               for (const event of diffSessionStreamEvents(previousSnapshot, currentSnapshot)) {
@@ -165,20 +172,23 @@ export function createAdminMessagingService(input: {
               }
               previousSnapshot = currentSnapshot;
             } catch {
-              // Ignore transient polling failures and let the next tick retry.
+              // Ignore transient snapshot failures; the next session event will re-sync.
             } finally {
-              polling = false;
+              syncing = false;
+              if (resyncQueued && !closed) {
+                resyncQueued = false;
+                void syncSnapshot();
+              }
             }
           };
 
-          const timer = setInterval(() => {
-            void tick();
-          }, WEB_SESSION_STREAM_POLL_MS);
-          timer.unref?.();
+          const unsubscribe = input.sessionManager.subscribeSession(params.sessionId, () => {
+            void syncSnapshot();
+          });
 
           return () => {
             closed = true;
-            clearInterval(timer);
+            unsubscribe();
           };
         }
       };
@@ -279,24 +289,42 @@ async function waitForSessionTurnCompletion(
   sessionId: string,
   startedAt: number
 ): Promise<void> {
-  const timeoutAt = Date.now() + 300000;
-  while (true) {
+  const isSessionTurnSettled = () => {
     const session = sessionManager.getSession(sessionId);
     const hasPendingRecentInput = session.pendingMessages.some((item) => (item.receivedAt ?? 0) >= startedAt);
-    const stillWorking = sessionManager.hasActiveResponse(sessionId)
+    return !(
+      sessionManager.hasActiveResponse(sessionId)
       || session.debounceTimer != null
-      || hasPendingRecentInput;
+      || hasPendingRecentInput
+    );
+  };
 
-    if (!stillWorking) {
-      return;
-    }
-    if (Date.now() >= timeoutAt) {
-      throw new Error("Timed out while waiting for session response");
-    }
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 50);
-    });
+  if (isSessionTurnSettled()) {
+    return;
   }
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      reject(new Error("Timed out while waiting for session response"));
+    }, WEB_TURN_COMPLETION_TIMEOUT_MS);
+    timeout.unref?.();
+
+    const unsubscribe = sessionManager.subscribeSession(sessionId, () => {
+      if (!isSessionTurnSettled()) {
+        return;
+      }
+      clearTimeout(timeout);
+      unsubscribe();
+      resolve();
+    });
+
+    if (isSessionTurnSettled()) {
+      clearTimeout(timeout);
+      unsubscribe();
+      resolve();
+    }
+  });
 }
 
 function extractGroupId(sessionId: string): string {

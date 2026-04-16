@@ -7,8 +7,8 @@ import {
 } from "../routeSupport.ts";
 import type { InternalApiServices } from "../types.ts";
 
-export function registerBrowserRoutes(app: FastifyInstance, services: InternalApiServices): void {
-  const browser = createBrowserAdminService(services.browser);
+export function registerBrowserRoutes(app: FastifyInstance, services: InternalApiServices["browserRoutes"]): void {
+  const browser = createBrowserAdminService(services);
 
   app.get("/api/browser/profiles", async (_request, reply) => {
     try {

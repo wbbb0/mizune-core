@@ -38,6 +38,7 @@ import {
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import { listSessionModes, requireSessionModeDefinition } from "#modes/registry.ts";
 import { checkSetupCompletion } from "./generationSetupContext.ts";
+import { waitForGenerationAbortGraceWindow } from "#app/runtime/runtimeTimingPolicy.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -199,9 +200,7 @@ export function createGenerationExecutor(
     logger.info({ sessionId, messageCount: batchMessages.length, streaming: streamResponse !== false }, "generation_started");
 
     try {
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 150);
-      });
+      await waitForGenerationAbortGraceWindow(abortController.signal);
 
       if (abortController.signal.aborted) {
         return;

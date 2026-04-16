@@ -43,11 +43,11 @@ function resolveWebuiDistPath(): string {
 
 function registerInternalApiRoutes(app: FastifyInstance, deps: InternalApiDeps): void {
   const services = createInternalApiServices(deps);
-  registerBasicRoutes(app, services);
-  registerBrowserRoutes(app, services);
-  registerShellRoutes(app, services);
-  registerMessagingRoutes(app, services);
-  registerUploadRoutes(app, services);
+  registerBasicRoutes(app, services.basicRoutes);
+  registerBrowserRoutes(app, services.browserRoutes);
+  registerShellRoutes(app, services.shellRoutes);
+  registerMessagingRoutes(app, services.messagingRoutes);
+  registerUploadRoutes(app, services.uploadRoutes);
 }
 
 export async function startInternalApi(deps: InternalApiDeps) {
