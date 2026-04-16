@@ -255,6 +255,11 @@ async function main() {
           description: "当前默认模式。",
           allowedChatTypes: ["private", "group"]
         }, {
+          id: "assistant",
+          title: "Assistant",
+          description: "普通助手模式。",
+          allowedChatTypes: ["private", "group"]
+        }, {
           id: "scenario_host",
           title: "Scenario Host",
           description: "私聊剧情主持。",
@@ -271,7 +276,8 @@ async function main() {
 
     const listedPayload = JSON.parse(String(listed));
     assert.equal(listedPayload.currentModeId, "rp_assistant");
-    assert.equal(listedPayload.modes[1].id, "scenario_host");
+    assert.equal(listedPayload.modes[1].id, "assistant");
+    assert.equal(listedPayload.modes[2].id, "scenario_host");
 
     const switched = await sessionToolHandlers.switch_session_mode!(
       { id: "tool_mode_switch_1", type: "function", function: { name: "switch_session_mode", arguments: "{\"modeId\":\"scenario_host\"}" } },
@@ -286,6 +292,11 @@ async function main() {
           id: "rp_assistant",
           title: "RP Assistant",
           description: "当前默认模式。",
+          allowedChatTypes: ["private", "group"]
+        }, {
+          id: "assistant",
+          title: "Assistant",
+          description: "普通助手模式。",
           allowedChatTypes: ["private", "group"]
         }, {
           id: "scenario_host",

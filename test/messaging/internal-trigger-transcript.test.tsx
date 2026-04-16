@@ -285,6 +285,69 @@ async function main() {
     assert.equal(sessionManager.getReplyDelivery(sessionId), "web");
   });
 
+  await runCase("assistant internal trigger skips persona loading and participant profile extraction", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "private:owner";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    sessionManager.setModeId(sessionId, "assistant");
+
+    let capturedPromptInput: any = null;
+    let capturedRunInput: any = null;
+
+    const orchestrator = createGenerationSessionOrchestrator(createOrchestratorDeps({
+      config,
+      sessionManager,
+      userStore: {
+        async getByUserId() {
+          return { userId: "owner", relationship: "owner", memories: [{ id: "mem_1", title: "旧记忆", content: "不应出现", updatedAt: 1 }] };
+        }
+      } as never,
+      personaStore: {
+        async get() {
+          throw new Error("assistant flush should not load persona");
+        }
+      } as never,
+      setupStore: {} as never,
+      persistSession() {}
+    }), {
+      promptBuilder: {
+        async buildScheduledPromptMessages(input: any) {
+          capturedPromptInput = input;
+          return {
+            promptMessages: [],
+            debugSnapshot: {} as never
+          };
+        }
+      } as never,
+      async runGeneration(input) {
+        capturedRunInput = input;
+      },
+      processNextSessionWork() {}
+    });
+
+    await orchestrator.runInternalTriggerSession(sessionId, {
+      kind: "scheduled_instruction",
+      targetType: "private",
+      targetUserId: "owner",
+      targetSenderName: "Owner",
+      jobName: "daily",
+      instruction: "帮我看一下当前目录",
+      enqueuedAt: 1
+    });
+
+    assert.ok(capturedPromptInput);
+    assert.equal(capturedPromptInput.modeId, "assistant");
+    assert.deepEqual(capturedPromptInput.participantProfiles, []);
+    assert.equal(capturedPromptInput.persona.name, "");
+    assert.equal(capturedPromptInput.persona.role, "");
+    assert.equal(capturedPromptInput.currentUser.userId, "owner");
+    assert.ok(capturedRunInput);
+    assert.equal(capturedRunInput.availableToolsets.some((item: { id: string }) => item.id === "memory_profile"), false);
+    assert.equal(capturedRunInput.availableToolsets.some((item: { id: string }) => item.id === "conversation_navigation"), false);
+    assert.equal(capturedRunInput.availableToolsets.some((item: { id: string }) => item.id === "chat_delegation"), false);
+  });
+
   await runCase("flush session prepare failure clears active response state", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);

@@ -27,6 +27,16 @@ import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 
 type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
+const EMPTY_ASSISTANT_PERSONA: PersonaState = {
+  name: "",
+  role: "",
+  appearance: "",
+  personality: "",
+  interests: "",
+  background: "",
+  speechStyle: "",
+  rules: ""
+};
 const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "list_live_resources",
   "open_page",
@@ -158,6 +168,10 @@ function isScenarioHostMode(modeId?: string): boolean {
   return modeId === "scenario_host";
 }
 
+function isAssistantMode(modeId?: string): boolean {
+  return modeId === "assistant";
+}
+
 function buildScenarioStateLines(state: ScenarioHostSessionState): string[] {
   return [
     `标题=${state.title}`,
@@ -199,6 +213,13 @@ function buildUserProfilePromptState(currentUser: StoredUser, senderName?: strin
     ...(currentUser?.profileSummary ? { profileSummary: currentUser.profileSummary } : {}),
     ...(currentUser?.relationshipNote ? { relationshipNote: currentUser.relationshipNote } : {}),
     ...(currentUser?.specialRole ? { specialRole: currentUser.specialRole } : {})
+  };
+}
+
+function buildAssistantUserProfilePromptState(currentUser: StoredUser, senderName?: string) {
+  return {
+    ...(currentUser?.userId ? { userId: currentUser.userId } : {}),
+    ...(senderName ? { senderName } : {})
   };
 }
 
@@ -460,6 +481,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     isInSetup?: boolean;
   }) => {
     const scenarioHostMode = isScenarioHostMode(input.modeId);
+    const assistantMode = isAssistantMode(input.modeId);
     const mainProfile = getPrimaryModelProfile(deps.config, input.mainModelRef);
     const mediaContext = await preparePromptMediaContext(deps, {
       historyForPrompt: input.historyForPrompt,
@@ -473,10 +495,10 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       ...input.participantProfiles.map((item) => item.userId),
       ...input.batchMessages.map((item) => item.userId)
     ]);
-    const globalRules = scenarioHostMode
+    const globalRules = (scenarioHostMode || assistantMode)
       ? []
       : await deps.globalRuleStore.getAll();
-    const toolsetRules = scenarioHostMode
+    const toolsetRules = (scenarioHostMode || assistantMode)
       ? []
       : resolveToolsetRules(await deps.toolsetRuleStore.getAll(), {
           activeToolsets: input.activeToolsets
@@ -515,15 +537,18 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       replayMessages: input.replayMessages,
       persona: input.persona,
       relationship: input.relationship,
-      npcProfiles: buildNpcPromptProfiles(deps, relevantUserIds),
-      participantProfiles: input.participantProfiles,
-      userProfile: buildUserProfilePromptState(
-        scenarioHostMode
-          ? input.currentUser
-          : input.currentUser,
-        input.batchMessages[input.batchMessages.length - 1]?.senderName
-      ),
-      currentUserMemories: scenarioHostMode ? [] : (input.currentUser?.memories ?? []),
+      npcProfiles: assistantMode ? [] : buildNpcPromptProfiles(deps, relevantUserIds),
+      participantProfiles: assistantMode ? [] : input.participantProfiles,
+      userProfile: assistantMode
+        ? buildAssistantUserProfilePromptState(
+            input.currentUser,
+            input.batchMessages[input.batchMessages.length - 1]?.senderName
+          )
+        : buildUserProfilePromptState(
+            input.currentUser,
+            input.batchMessages[input.batchMessages.length - 1]?.senderName
+          ),
+      currentUserMemories: (scenarioHostMode || assistantMode) ? [] : (input.currentUser?.memories ?? []),
       globalRules,
       historySummary: input.historySummary,
       recentToolEvents: input.recentToolEvents,
@@ -550,11 +575,11 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         recentToolEvents: input.recentToolEvents,
         debugMarkers: input.debugMarkers ?? [],
         toolTranscript: input.internalTranscript,
-        persona: input.persona,
+        persona: assistantMode ? EMPTY_ASSISTANT_PERSONA : input.persona,
         globalRules,
         toolsetRules,
-        currentUser: input.currentUser,
-        participantProfiles: input.participantProfiles,
+        currentUser: assistantMode ? null : input.currentUser,
+        participantProfiles: assistantMode ? [] : input.participantProfiles,
         imageCaptions: toImageCaptionEntries(mediaContext.captionMap),
         lastLlmUsage: input.lastLlmUsage
       }
@@ -584,6 +609,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     abortSignal?: AbortSignal;
   }) => {
     const scenarioHostMode = isScenarioHostMode(input.modeId);
+    const assistantMode = isAssistantMode(input.modeId);
     const [mediaContext, liveResources, globalRules, toolsetRuleEntries] = await Promise.all([
       preparePromptMediaContext(deps, {
         historyForPrompt: input.historyForPrompt,
@@ -593,8 +619,8 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       shouldIncludeLiveResources(input.visibleToolNames)
         ? collectPromptLiveResources(deps)
         : Promise.resolve([]),
-      scenarioHostMode ? Promise.resolve([]) : deps.globalRuleStore.getAll(),
-      scenarioHostMode ? Promise.resolve([]) : deps.toolsetRuleStore.getAll()
+      (scenarioHostMode || assistantMode) ? Promise.resolve([]) : deps.globalRuleStore.getAll(),
+      (scenarioHostMode || assistantMode) ? Promise.resolve([]) : deps.toolsetRuleStore.getAll()
     ]);
     const toolsetRules = resolveToolsetRules(toolsetRuleEntries, {
       activeToolsets: input.activeToolsets
@@ -624,15 +650,18 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       trigger: input.trigger,
       persona: input.persona,
       relationship: input.relationship,
-      npcProfiles: buildNpcPromptProfiles(deps, relevantUserIds),
-      participantProfiles: input.participantProfiles,
-      userProfile: buildUserProfilePromptState(
-        scenarioHostMode
-          ? input.currentUser
-          : input.currentUser,
-        input.targetContext.chatType === "private" ? input.targetContext.senderName : undefined
-      ),
-      currentUserMemories: scenarioHostMode ? [] : (input.currentUser?.memories ?? []),
+      npcProfiles: assistantMode ? [] : buildNpcPromptProfiles(deps, relevantUserIds),
+      participantProfiles: assistantMode ? [] : input.participantProfiles,
+      userProfile: assistantMode
+        ? buildAssistantUserProfilePromptState(
+            input.currentUser,
+            input.targetContext.chatType === "private" ? input.targetContext.senderName : undefined
+          )
+        : buildUserProfilePromptState(
+            input.currentUser,
+            input.targetContext.chatType === "private" ? input.targetContext.senderName : undefined
+          ),
+      currentUserMemories: (scenarioHostMode || assistantMode) ? [] : (input.currentUser?.memories ?? []),
       globalRules,
       historySummary: input.historySummary,
       recentToolEvents: input.recentToolEvents,
@@ -658,11 +687,11 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         recentToolEvents: input.recentToolEvents,
         debugMarkers: input.debugMarkers ?? [],
         toolTranscript: input.internalTranscript,
-        persona: input.persona,
+        persona: assistantMode ? EMPTY_ASSISTANT_PERSONA : input.persona,
         globalRules,
         toolsetRules,
-        currentUser: input.currentUser,
-        participantProfiles: input.participantProfiles,
+        currentUser: assistantMode ? null : input.currentUser,
+        participantProfiles: assistantMode ? [] : input.participantProfiles,
         imageCaptions: toImageCaptionEntries(mediaContext.captionMap),
         lastLlmUsage: input.lastLlmUsage
       }

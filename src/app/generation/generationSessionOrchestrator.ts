@@ -24,6 +24,40 @@ import { projectLlmVisibleHistoryFromTranscript } from "#conversation/session/se
 import { requireSessionModeDefinition } from "#modes/registry.ts";
 import { resolveSessionModeSetupContext } from "./generationSetupContext.ts";
 
+const EMPTY_ASSISTANT_PERSONA = {
+  name: "",
+  role: "",
+  personality: "",
+  speechStyle: "",
+  appearance: "",
+  interests: "",
+  background: "",
+  rules: ""
+};
+
+function isAssistantMode(modeId: string): boolean {
+  return modeId === "assistant";
+}
+
+function selectScheduledActiveToolsetIds(modeId: string, triggerKind: InternalSessionTriggerExecution["kind"]): string[] {
+  if (isAssistantMode(modeId)) {
+    if (triggerKind === "comfy_task_failed") {
+      return ["comfy_image"];
+    }
+    if (triggerKind === "comfy_task_completed") {
+      return ["chat_context", "local_file_io", "chat_file_io", "comfy_image"];
+    }
+    return ["chat_context", "web_research", "shell_runtime", "local_file_io", "chat_file_io", "scheduler_admin", "time_utils", "comfy_image", "session_mode_control"];
+  }
+  if (triggerKind === "scheduled_instruction") {
+    return ["memory_profile", "chat_context", "conversation_navigation", "chat_delegation", "web_research", "local_file_io", "chat_file_io", "scheduler_admin", "time_utils"];
+  }
+  if (triggerKind === "comfy_task_completed") {
+    return ["chat_context", "local_file_io", "chat_file_io", "comfy_image"];
+  }
+  return ["comfy_image"];
+}
+
 // Normalizes runtime messages into the prompt-builder input shape.
 function toPromptBatchMessages(messages: GenerationRuntimeBatchMessage[]) {
   return messages.map((message) => ({
@@ -136,12 +170,13 @@ export function createGenerationSessionOrchestrator(
         return;
       }
       const interactionMode: PromptInteractionMode = sessionManager.consumeDebugMode(sessionId) ? "debug" : "normal";
-      const persona = await personaStore.get();
       const user = await userStore.getByUserId(last.userId);
       const relationship: Relationship = user?.relationship ?? "known";
       await historyCompressor.maybeCompress(sessionId);
       let refreshedSession = sessionManager.getSession(sessionId);
       const sessionModeId = refreshedSession.modeId;
+      const assistantMode = isAssistantMode(sessionModeId);
+      const persona = assistantMode ? EMPTY_ASSISTANT_PERSONA : await personaStore.get();
       const mode = requireSessionModeDefinition(sessionModeId);
       const setupCtx = await resolveSessionModeSetupContext(
         sessionModeId,
@@ -248,10 +283,12 @@ export function createGenerationSessionOrchestrator(
         }
         plannedToolsetIds = supplement.toolsetIds;
       }
-      const participantProfiles = await extractWindowUsers(userStore, refreshedSession.internalTranscript, messages.map((message) => ({
-          userId: message.userId,
-          senderName: message.senderName
-        })));
+      const participantProfiles = assistantMode
+        ? []
+        : await extractWindowUsers(userStore, refreshedSession.internalTranscript, messages.map((message) => ({
+            userId: message.userId,
+            senderName: message.senderName
+          })));
       const providerName = getPrimaryModelProfile(config, resolvedModelRef)?.provider ?? "unknown";
       const toolNamesFromPlanner = resolveToolNamesFromToolsets(plannerToolsets, plannedToolsetIds);
       const activeChatToolsets = plannerToolsets.filter((toolset) => plannedToolsetIds.includes(toolset.id));
@@ -374,7 +411,6 @@ export function createGenerationSessionOrchestrator(
     persistSession(sessionId, "internal_trigger_started");
 
     return (async () => {
-      const persona = await personaStore.get();
       const interactionMode: PromptInteractionMode = sessionManager.getDebugControlState(sessionId).enabled ? "debug" : "normal";
       const currentUser = trigger.targetUserId
         ? await userStore.getByUserId(trigger.targetUserId)
@@ -382,6 +418,8 @@ export function createGenerationSessionOrchestrator(
       const promptRelationship: Relationship = currentUser?.relationship ?? "known";
       const scheduledModelRef = getDefaultMainModelRefs(config);
       const session = sessionManager.getSession(sessionId);
+      const assistantMode = isAssistantMode(session.modeId);
+      const persona = assistantMode ? EMPTY_ASSISTANT_PERSONA : await personaStore.get();
       const scheduledAvailableToolsets = listTurnToolsets({
         config,
         relationship: "owner",
@@ -390,23 +428,18 @@ export function createGenerationSessionOrchestrator(
         includeDebugTools: interactionMode === "debug",
         modeId: session.modeId
       });
-      const scheduledVisibleToolNames = getBuiltinToolNames("owner", currentUser, config, {
-        modelRef: scheduledModelRef,
-        includeDebugTools: interactionMode === "debug"
-      });
-      const activeScheduledToolsets = scheduledAvailableToolsets.filter((toolset) => {
-        if (trigger.kind === "scheduled_instruction") {
-          return ["memory_profile", "chat_context", "conversation_navigation", "chat_delegation", "web_research", "workspace_io", "scheduler_admin", "time_utils"].includes(toolset.id);
-        }
-        if (trigger.kind === "comfy_task_completed") {
-          return ["chat_context", "workspace_io", "comfy_image"].includes(toolset.id);
-        }
-        return ["comfy_image"].includes(toolset.id);
-      });
+      const activeScheduledToolsetIds = new Set(selectScheduledActiveToolsetIds(session.modeId, trigger.kind));
+      const activeScheduledToolsets = scheduledAvailableToolsets.filter((toolset) => activeScheduledToolsetIds.has(toolset.id));
+      const scheduledVisibleToolNames = resolveToolNamesFromToolsets(
+        scheduledAvailableToolsets,
+        activeScheduledToolsets.map((toolset) => toolset.id)
+      );
       await historyCompressor.maybeCompress(sessionId);
       const providerName = getPrimaryModelProfile(config, scheduledModelRef)?.provider ?? "unknown";
       const projectedHistory = projectLlmVisibleHistoryFromTranscript(session.internalTranscript, config);
-      const participantProfiles = await extractWindowUsers(userStore, session.internalTranscript, []);
+      const participantProfiles = assistantMode
+        ? []
+        : await extractWindowUsers(userStore, session.internalTranscript, []);
       const projectedTranscript = getProviderTranscriptProjector(providerName).project({
         transcript: session.internalTranscript
       });
@@ -512,8 +545,8 @@ export function createGenerationSessionOrchestrator(
         participantProfiles,
         promptMessages: promptBuildResult.promptMessages,
         debugSnapshot: promptBuildResult.debugSnapshot,
-        plannedToolsetIds: [],
-        availableToolsets: [],
+        plannedToolsetIds: activeScheduledToolsets.map((toolset) => toolset.id),
+        availableToolsets: scheduledAvailableToolsets,
         streamResponse: false
       });
     })().catch((error: unknown) => {

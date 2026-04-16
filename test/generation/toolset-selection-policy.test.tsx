@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { listTurnToolsets, resolveToolNamesFromToolsets } from "../../src/llm/tools/toolsetSelectionPolicy.ts";
 import { decideToolsetSupplements } from "../../src/app/generation/toolsetSupplementPolicy.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { requireSessionModeDefinition } from "../../src/modes/registry.ts";
 
 async function runCase(name: string, fn: () => Promise<void>) {
   try {
@@ -62,6 +63,36 @@ async function main() {
       resolveToolNamesFromToolsets(toolsets, ["scenario_host_state", "time_utils"]).includes("get_current_time"),
       true
     );
+  });
+
+  await runCase("assistant mode defaults to local functional toolsets only", async () => {
+    const config = createTestAppConfig({
+      browser: { enabled: true, playwright: { enabled: true } },
+      shell: { enabled: true }
+    });
+    const toolsets = listTurnToolsets({
+      config,
+      relationship: "owner",
+      currentUser: null,
+      modelRef: ["main"],
+      includeDebugTools: false,
+      modeId: "assistant"
+    });
+
+    assert.equal(requireSessionModeDefinition("assistant").defaultToolsetIds.includes("comfy_image"), true);
+    assert.deepEqual(toolsets.map((item) => item.id), [
+      "chat_context",
+      "web_research",
+      "shell_runtime",
+      "local_file_io",
+      "chat_file_io",
+      "scheduler_admin",
+      "time_utils",
+      "session_mode_control"
+    ]);
+    assert.equal(toolsets.some((item) => item.id === "memory_profile"), false);
+    assert.equal(toolsets.some((item) => item.id === "conversation_navigation"), false);
+    assert.equal(toolsets.some((item) => item.id === "chat_delegation"), false);
   });
 
   await runCase("supplement policy stays auditable and ordered by available toolsets", async () => {
