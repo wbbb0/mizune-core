@@ -251,13 +251,9 @@ export class SessionManager {
     expectedEpoch: number,
     phase: SessionPhase
   ): boolean {
-    const session = this.requireSession(sessionId);
-    if (session.mutationEpoch !== expectedEpoch) {
-      return false;
-    }
-    setSessionPhaseState(session, phase);
-    this.notifySessionChanged(sessionId);
-    return true;
+    return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
+      setSessionPhaseState(session, phase);
+    });
   }
 
   setDebounceTimer(sessionId: string, timer: NodeJS.Timeout): void {
@@ -448,13 +444,9 @@ export class SessionManager {
       joinWithDoubleNewline?: boolean | undefined;
     }
   ): boolean {
-    const session = this.requireSession(sessionId);
-    if (session.responseEpoch !== expectedResponseEpoch || !isSessionResponding(session)) {
-      return false;
-    }
-    appendActiveAssistantResponseChunkState(session, target, chunk, timestampMs, options);
-    this.notifySessionChanged(sessionId);
-    return true;
+    return this.withResponseEpoch(sessionId, expectedResponseEpoch, true, (session) => {
+      appendActiveAssistantResponseChunkState(session, target, chunk, timestampMs, options);
+    });
   }
 
   finalizeActiveAssistantResponseIfResponseEpochMatches(
@@ -462,15 +454,9 @@ export class SessionManager {
     expectedResponseEpoch: number,
     timestampMs = Date.now()
   ): ActiveAssistantResponse | null {
-    const session = this.requireSession(sessionId);
-    if (session.responseEpoch !== expectedResponseEpoch) {
-      return null;
-    }
-    const finalized = finalizeActiveAssistantResponseState(session, timestampMs);
-    if (finalized) {
-      this.notifySessionChanged(sessionId);
-    }
-    return finalized;
+    return this.withResponseEpochResult(sessionId, expectedResponseEpoch, false, null, (session) => {
+      return finalizeActiveAssistantResponseState(session, timestampMs);
+    });
   }
 
   setLastAssistantReasoningIfResponseEpochMatches(
@@ -765,15 +751,28 @@ export class SessionManager {
     requireResponding: boolean,
     mutate: (session: SessionState) => void
   ): boolean {
+    return this.withResponseEpochResult(sessionId, expectedResponseEpoch, requireResponding, false, (session) => {
+      mutate(session);
+      return true;
+    });
+  }
+
+  private withResponseEpochResult<T>(
+    sessionId: string,
+    expectedResponseEpoch: number,
+    requireResponding: boolean,
+    fallback: T,
+    mutate: (session: SessionState) => T
+  ): T {
     const session = this.requireSession(sessionId);
     const responseEpochMatched = session.responseEpoch === expectedResponseEpoch;
     if (!responseEpochMatched || (requireResponding && !isSessionResponding(session))) {
-      return false;
+      return fallback;
     }
-    mutate(session);
+    const result = mutate(session);
     // Response-scoped writes share the same post-commit notification rule as mutation-epoch
     // writes: listeners should only re-read session state after the invariant has succeeded.
     this.notifySessionChanged(sessionId);
-    return true;
+    return result;
   }
 }

@@ -77,11 +77,16 @@ async function main() {
     const getScheduler = () => ({ key: "scheduler" } as any);
     const deps = buildSessionWorkCoordinatorDeps(services, persistSession, getScheduler);
 
-    for (const [key, value] of Object.entries(services)) {
-      assert.equal((deps as unknown as Record<string, unknown>)[key], value);
-    }
-    assert.equal(deps.persistSession, persistSession);
-    assert.equal(deps.getScheduler, getScheduler);
+    assert.equal(deps.promptBuilder.config, services.config);
+    assert.equal(deps.promptBuilder.mediaVisionService, services.mediaVisionService);
+    assert.equal(deps.sessionRuntime.logger, services.logger);
+    assert.equal(deps.sessionRuntime.sessionManager, services.sessionManager);
+    assert.equal(deps.identity.userStore, services.userStore);
+    assert.equal(deps.identity.npcDirectory, services.npcDirectory);
+    assert.equal(deps.toolRuntime.browserService, services.browserService);
+    assert.equal(deps.toolRuntime.forwardResolver, services.forwardResolver);
+    assert.equal(deps.lifecycle.persistSession, persistSession);
+    assert.equal(deps.lifecycle.getScheduler, getScheduler);
   });
 
   await runCase("createComfyTaskNotifications builds completion trigger payloads", async () => {

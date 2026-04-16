@@ -105,39 +105,41 @@ export function createGenerationExecutor(
   }
 ) {
   const {
-    config,
-    logger,
-    llmClient,
-    historyCompressor,
-    messageQueue,
+    promptBuilder,
+    sessionRuntime,
+    identity,
+    toolRuntime,
+    lifecycle
+  } = deps;
+  const { config, mediaVisionService, mediaCaptionService } = promptBuilder;
+  const { logger, llmClient, historyCompressor, messageQueue, sessionManager } = sessionRuntime;
+  const {
     oneBotClient,
-    sessionManager,
     audioStore,
     requestStore,
-    whitelistStore,
     scheduledJobStore,
     shellRuntime,
     searchService,
     browserService,
     localFileService,
     chatFileStore,
-    mediaVisionService,
-    mediaCaptionService,
     comfyClient,
     comfyTaskStore,
     comfyTemplateCatalog,
-    forwardResolver,
+    forwardResolver
+  } = toolRuntime;
+  const {
     userStore,
+    whitelistStore,
     personaStore,
     globalRuleStore,
     toolsetRuleStore,
     scenarioHostStateStore,
     setupStore,
     conversationAccess,
-    npcDirectory,
-    persistSession,
-    getScheduler
-  } = deps;
+    npcDirectory
+  } = identity;
+  const { persistSession, getScheduler } = lifecycle;
 
   const runGeneration = async (input: RunGenerationInput): Promise<void> => {
       const {

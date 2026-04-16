@@ -3,11 +3,11 @@ import { TurnPlanner, type TurnPlannerInput } from "../../src/conversation/turnP
 import type { AppConfig } from "../../src/config/config.ts";
 import type { LlmClient, LlmGenerateParams } from "../../src/llm/llmClient.ts";
 import type { GenerationTurnPlannerHandlers, GenerationTurnPlannerInput } from "../../src/app/generation/generationTurnPlanner.ts";
-import type { GenerationRunnerRuntimeDeps } from "../../src/app/generation/generationRunnerDeps.ts";
+import type { GenerationPromptBuilderDeps, GenerationTurnPlannerDeps } from "../../src/app/generation/generationRunnerDeps.ts";
 
 export type ReplyGateBatchMessage = TurnPlannerInput["batchMessages"][number];
 export type ReplyGateRecentMessage = TurnPlannerInput["recentMessages"][number];
-type GenerationReplyGateDeps = Pick<GenerationRunnerRuntimeDeps, "config" | "logger" | "llmClient" | "turnPlanner" | "debounceManager" | "historyCompressor" | "sessionManager" | "persistSession">;
+type GenerationReplyGateDeps = GenerationTurnPlannerDeps;
 
 interface ReplyGateHarnessOptions {
   resultText?: string;
@@ -49,26 +49,26 @@ export function createReplyGate(
     async prepareFilesForModel() {
       throw new Error("should not prepare emoji images when vision is disabled");
     }
-  } as unknown as GenerationRunnerRuntimeDeps["mediaVisionService"];
+  } as unknown as GenerationPromptBuilderDeps["mediaVisionService"];
 
   return new TurnPlanner(config, llmClient, {
     async getMany() {
       return [];
     }
-  } as unknown as GenerationRunnerRuntimeDeps["chatFileStore"], mediaVisionService, pino({ level: "silent" }));
+  } as unknown as GenerationPromptBuilderDeps["chatFileStore"], mediaVisionService, pino({ level: "silent" }));
 }
 
 export function createGenerationReplyGateDeps(
   overrides: Partial<GenerationReplyGateDeps> = {}
 ): GenerationReplyGateDeps {
   return {
-    config: overrides.config ?? (null as unknown as GenerationRunnerRuntimeDeps["config"]),
+    config: overrides.config ?? (null as unknown as GenerationTurnPlannerDeps["config"]),
     logger: pino({ level: "silent" }),
     llmClient: {
       isConfigured() {
         return true;
       }
-    } as GenerationRunnerRuntimeDeps["llmClient"],
+    } as GenerationTurnPlannerDeps["llmClient"],
     turnPlanner: overrides.turnPlanner ?? ({
       isEnabled() {
         return true;
@@ -76,21 +76,21 @@ export function createGenerationReplyGateDeps(
       async decide() {
         return { replyDecision: "reply_small", topicDecision: "continue_topic", reason: "should not run", toolsetIds: [] };
       }
-    } as unknown as GenerationRunnerRuntimeDeps["turnPlanner"]),
+    } as unknown as GenerationTurnPlannerDeps["turnPlanner"]),
     debounceManager: overrides.debounceManager ?? ({
       schedule() {
         throw new Error("unexpected debounce schedule");
       }
-    } as unknown as GenerationRunnerRuntimeDeps["debounceManager"]),
+    } as unknown as GenerationTurnPlannerDeps["debounceManager"]),
     historyCompressor: overrides.historyCompressor ?? ({
       async maybeCompress() {},
       async compactOldHistoryKeepingRecent() {}
-    } as unknown as GenerationRunnerRuntimeDeps["historyCompressor"]),
+    } as unknown as GenerationTurnPlannerDeps["historyCompressor"]),
     sessionManager: overrides.sessionManager ?? ({
       requeuePendingMessages() {
         throw new Error("unexpected message requeue");
       }
-    } as unknown as GenerationRunnerRuntimeDeps["sessionManager"]),
+    } as unknown as GenerationTurnPlannerDeps["sessionManager"]),
     persistSession: overrides.persistSession ?? (() => undefined)
   };
 }

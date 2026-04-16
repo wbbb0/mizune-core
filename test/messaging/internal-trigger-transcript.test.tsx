@@ -4,11 +4,64 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { createInternalTriggerDispatcher } from "../../src/app/session-work/internalTriggerDispatcher.ts";
 import { createGenerationSessionOrchestrator } from "../../src/app/generation/generationSessionOrchestrator.ts";
+import type { GenerationSessionOrchestratorDeps } from "../../src/app/generation/generationRunnerDeps.ts";
 
 async function runCase(name: string, fn: () => Promise<void>) {
   process.stdout.write(`- ${name} ... `);
   await fn();
   process.stdout.write("ok\n");
+}
+
+function createOrchestratorDeps(input: {
+  config: ReturnType<typeof createTestAppConfig>;
+  sessionManager: SessionManager;
+  historyCompressor?: unknown;
+  userStore?: unknown;
+  personaStore?: unknown;
+  setupStore?: unknown;
+  scenarioHostStateStore?: unknown;
+  turnPlanner?: unknown;
+  llmClient?: unknown;
+  debounceManager?: unknown;
+  persistSession?: (sessionId: string, reason: string) => void;
+}): GenerationSessionOrchestratorDeps {
+  const sharedUserStore = input.userStore ?? ({
+    async getByUserId() {
+      return null;
+    }
+  } as never);
+  return {
+    promptBuilder: {
+      config: input.config
+    },
+    sessionRuntime: {
+      logger: pino({ level: "silent" }),
+      sessionManager: input.sessionManager,
+      historyCompressor: input.historyCompressor ?? ({ async maybeCompress() { return false; } } as never),
+      llmClient: input.llmClient ?? ({} as never),
+      turnPlanner: input.turnPlanner ?? ({} as never),
+      debounceManager: input.debounceManager ?? ({} as never)
+    },
+    identity: {
+      userStore: sharedUserStore,
+      personaStore: input.personaStore ?? ({
+        async get() {
+          return null;
+        }
+      } as never),
+      setupStore: input.setupStore ?? ({} as never),
+      scenarioHostStateStore: input.scenarioHostStateStore ?? ({} as never)
+    },
+    lifecycle: {
+      logger: pino({ level: "silent" }),
+      sessionManager: input.sessionManager,
+      userStore: sharedUserStore,
+      persistSession: input.persistSession ?? (() => {}),
+      getScheduler() {
+        return {} as never;
+      }
+    }
+  } as never;
 }
 
 async function main() {
@@ -82,30 +135,14 @@ async function main() {
     sessionManager.ensureSession({ id: sessionId, type: "private" });
     const persistedReasons: string[] = [];
 
-    const orchestrator = createGenerationSessionOrchestrator({
+    const orchestrator = createGenerationSessionOrchestrator(createOrchestratorDeps({
       config,
-      logger: pino({ level: "silent" }),
       sessionManager,
-      historyCompressor: {
-        async maybeCompress() {
-          return false;
-        }
-      } as never,
-      userStore: {
-        async getByUserId() {
-          return null;
-        }
-      } as never,
-      personaStore: {
-        async get() {
-          return null;
-        }
-      } as never,
       setupStore: {} as never,
       persistSession(_sessionId: string, reason: string) {
         persistedReasons.push(reason);
       }
-    } as never, {
+    }), {
       promptBuilder: {
         async buildScheduledPromptMessages() {
           return {
@@ -161,28 +198,12 @@ async function main() {
     sessionManager.setReplyDelivery(sessionId, "onebot");
     const deliveries: Array<"onebot" | "web"> = [];
 
-    const orchestrator = createGenerationSessionOrchestrator({
+    const orchestrator = createGenerationSessionOrchestrator(createOrchestratorDeps({
       config,
-      logger: pino({ level: "silent" }),
       sessionManager,
-      historyCompressor: {
-        async maybeCompress() {
-          return false;
-        }
-      } as never,
-      userStore: {
-        async getByUserId() {
-          return null;
-        }
-      } as never,
-      personaStore: {
-        async get() {
-          return null;
-        }
-      } as never,
       setupStore: {} as never,
       persistSession() {}
-    } as never, {
+    }), {
       promptBuilder: {
         async buildScheduledPromptMessages() {
           return {
@@ -219,28 +240,12 @@ async function main() {
     sessionManager.setReplyDelivery(sessionId, "web");
     const deliveries: Array<"onebot" | "web"> = [];
 
-    const orchestrator = createGenerationSessionOrchestrator({
+    const orchestrator = createGenerationSessionOrchestrator(createOrchestratorDeps({
       config,
-      logger: pino({ level: "silent" }),
       sessionManager,
-      historyCompressor: {
-        async maybeCompress() {
-          return false;
-        }
-      } as never,
-      userStore: {
-        async getByUserId() {
-          return null;
-        }
-      } as never,
-      personaStore: {
-        async get() {
-          return null;
-        }
-      } as never,
       setupStore: {} as never,
       persistSession() {}
-    } as never, {
+    }), {
       promptBuilder: {
         async buildScheduledPromptMessages() {
           return {
@@ -295,23 +300,12 @@ async function main() {
     const persistedReasons: string[] = [];
     let processNextCalled = 0;
 
-    const orchestrator = createGenerationSessionOrchestrator({
+    const orchestrator = createGenerationSessionOrchestrator(createOrchestratorDeps({
       config,
-      logger: pino({ level: "silent" }),
       sessionManager,
       historyCompressor: {
         async maybeCompress() {
           throw new Error("compress failed");
-        }
-      } as never,
-      userStore: {
-        async getByUserId() {
-          return null;
-        }
-      } as never,
-      personaStore: {
-        async get() {
-          return null;
         }
       } as never,
       setupStore: {
@@ -325,7 +319,7 @@ async function main() {
       persistSession(_sessionId: string, reason: string) {
         persistedReasons.push(reason);
       }
-    } as never, {
+    }), {
       promptBuilder: {
         async buildChatPromptMessages() {
           return {
@@ -356,30 +350,14 @@ async function main() {
     const persistedReasons: string[] = [];
     let processNextCalled = 0;
 
-    const orchestrator = createGenerationSessionOrchestrator({
+    const orchestrator = createGenerationSessionOrchestrator(createOrchestratorDeps({
       config,
-      logger: pino({ level: "silent" }),
       sessionManager,
-      historyCompressor: {
-        async maybeCompress() {
-          return false;
-        }
-      } as never,
-      userStore: {
-        async getByUserId() {
-          return null;
-        }
-      } as never,
-      personaStore: {
-        async get() {
-          return null;
-        }
-      } as never,
       setupStore: {} as never,
       persistSession(_sessionId: string, reason: string) {
         persistedReasons.push(reason);
       }
-    } as never, {
+    }), {
       promptBuilder: {
         async buildScheduledPromptMessages() {
           throw new Error("prompt failed");

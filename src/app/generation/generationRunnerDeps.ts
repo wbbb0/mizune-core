@@ -103,6 +103,14 @@ export interface GenerationLifecycleDeps extends SessionWorkPersistenceDeps {
   getScheduler: () => Scheduler;
 }
 
+export interface GenerationRunnerDeps {
+  promptBuilder: GenerationPromptBuilderDeps;
+  sessionRuntime: GenerationSessionRuntimeDeps;
+  identity: GenerationIdentityDeps;
+  toolRuntime: GenerationToolRuntimeDeps;
+  lifecycle: GenerationLifecycleDeps;
+}
+
 export type GenerationCurrentUser = Awaited<ReturnType<GenerationIdentityDeps["userStore"]["getByUserId"]>>;
 export type GenerationPersona = Awaited<ReturnType<GenerationIdentityDeps["personaStore"]["get"]>>;
 
@@ -123,24 +131,17 @@ export type GenerationOutboundDeps =
   };
 
 export type GenerationExecutorDeps =
-  Pick<GenerationPromptBuilderDeps, "config" | "mediaVisionService" | "mediaCaptionService">
-  & GenerationSessionRuntimeDeps
-  & GenerationIdentityDeps
-  & GenerationToolRuntimeDeps
-  & GenerationLifecycleDeps;
-
-export type GenerationSessionOrchestratorDeps =
-  Pick<GenerationPromptBuilderDeps, "config">
-  & Pick<GenerationSessionRuntimeDeps, "logger" | "historyCompressor" | "llmClient" | "turnPlanner" | "debounceManager">
-  & Pick<GenerationIdentityDeps, "userStore" | "personaStore" | "setupStore" | "scenarioHostStateStore">
-  & Pick<GenerationLifecycleDeps, "persistSession">
+  Pick<GenerationRunnerDeps, "sessionRuntime" | "identity" | "toolRuntime" | "lifecycle">
   & {
-    sessionManager: SessionGenerationOrchestratorAccess;
+    promptBuilder: Pick<GenerationPromptBuilderDeps, "config" | "mediaVisionService" | "mediaCaptionService">;
   };
 
-export type GenerationRunnerRuntimeDeps =
-  GenerationPromptBuilderDeps
-  & GenerationSessionRuntimeDeps
-  & GenerationIdentityDeps
-  & GenerationToolRuntimeDeps
-  & GenerationLifecycleDeps;
+export type GenerationSessionOrchestratorDeps =
+  Pick<GenerationRunnerDeps, "lifecycle">
+  & {
+    promptBuilder: Pick<GenerationPromptBuilderDeps, "config">;
+    sessionRuntime: Pick<GenerationSessionRuntimeDeps, "logger" | "historyCompressor" | "llmClient" | "turnPlanner" | "debounceManager"> & {
+      sessionManager: SessionGenerationOrchestratorAccess;
+    };
+    identity: Pick<GenerationIdentityDeps, "userStore" | "personaStore" | "setupStore" | "scenarioHostStateStore">;
+  };

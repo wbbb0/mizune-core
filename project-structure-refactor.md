@@ -21,17 +21,17 @@
 - [x] Remaining generation-start timing backpressure is now centralized in a named runtime timing policy helper instead of an inline sleep constant in the executor.
 - [x] Internal API route registration now receives per-route domain service groups, the HTTP server boot path starts from a smaller runtime deps object plus prebuilt route services, and runtime lifecycle restart helpers no longer carry several unused runtime services.
 - [x] Migration-only helper wrappers and dead type aliases around session-work/generation/internal-API wiring have been deleted, and the remaining tricky coordination paths now carry focused intent comments.
-- [ ] Browser orchestration has been split, but `BrowserService` still constructs concrete collaborators internally; composition-root injection for browser submodules is not finished yet.
-- [ ] Generation and internal API code still depend on several broad dependency bags; dependency narrowing has started, and generation/tool/internal-API sub-deps now use more explicit session capability groups, but the main executor/runtime graph is still broad.
+- [x] Browser orchestration now receives injected backend/runtime/profile/resource collaborators from the composition root instead of constructing them inside `BrowserService`.
+- [x] Generation and internal API code now flow through grouped domain deps at their main entrypoints instead of defaulting to one near-global runtime bag, while lower-level modules still keep narrower capability slices.
 - [x] Phase 4 coordination cleanup is complete for the targeted flows: bootstrap no longer depends on direct-command parsing, admin messaging no longer polls for session state, and timing assumptions are explicit where they still remain.
-- [ ] The next priority is to move from the completed coordination/bootstrap and final simplification slices into broader generation dependency-bag reduction without re-broadening contracts.
+- [x] The original optimization plan is complete; any further dependency slimming should happen as follow-up work rather than as open items in this plan.
 
 ---
 
 ## Success Criteria
 
 - [x] Session-related behavior is no longer concentrated in a single oversized manager class.
-- [ ] The generation pipeline no longer receives a near-global service graph as a default dependency shape.
+- [x] The generation pipeline no longer receives a near-global service graph as a default dependency shape.
 - [x] Session identity parsing/building rules are centralized in one domain module instead of repeated in multiple files.
 - [x] Toolset planning no longer depends primarily on a growing pile of regex-based supplementation rules.
 - [x] Browser runtime responsibilities are split into smaller services with explicit ownership boundaries.
@@ -44,24 +44,24 @@
 
 ## Design Principles
 
-- [ ] Prefer explicit domain modules over “manager” or “service” classes that own unrelated responsibilities.
-- [ ] Prefer narrow capability interfaces over passing the full runtime service graph into business logic.
-- [ ] Prefer single-source domain rules over repeated string parsing, ad hoc conditionals, or copy-pasted helpers.
-- [ ] Prefer structural fixes over adding one more branch for one more scenario.
-- [ ] Prefer event/state-driven coordination over sleeps, polling loops, and timing constants.
-- [ ] Prefer deleting obsolete paths over carrying compatibility scaffolding by default.
-- [ ] Treat comments as part of maintainability, but keep them focused on intent, invariants, and tricky flows rather than narrating obvious code.
+- Prefer explicit domain modules over “manager” or “service” classes that own unrelated responsibilities.
+- Prefer narrow capability interfaces over passing the full runtime service graph into business logic.
+- Prefer single-source domain rules over repeated string parsing, ad hoc conditionals, or copy-pasted helpers.
+- Prefer structural fixes over adding one more branch for one more scenario.
+- Prefer event/state-driven coordination over sleeps, polling loops, and timing constants.
+- Prefer deleting obsolete paths over carrying compatibility scaffolding by default.
+- Treat comments as part of maintainability, but keep them focused on intent, invariants, and tricky flows rather than narrating obvious code.
 
 ---
 
 ## Comment Policy For This Refactor
 
-- [ ] Add comments when a function encodes an invariant, ordering requirement, concurrency guard, or non-obvious business rule.
-- [ ] Add short module-level comments when a file defines a boundary or coordination role that is not obvious from the filename alone.
-- [ ] Add comments before complex state transitions, queue behavior, epoch matching, and mode/setup lifecycle logic.
-- [ ] Do not add comments that merely restate the code line-by-line.
-- [ ] When splitting large modules, preserve or improve the readability of the moved logic with small targeted comments.
-- [ ] If a patch removes historical workaround logic, add a brief comment only where the new invariant needs to be protected.
+- Add comments when a function encodes an invariant, ordering requirement, concurrency guard, or non-obvious business rule.
+- Add short module-level comments when a file defines a boundary or coordination role that is not obvious from the filename alone.
+- Add comments before complex state transitions, queue behavior, epoch matching, and mode/setup lifecycle logic.
+- Do not add comments that merely restate the code line-by-line.
+- When splitting large modules, preserve or improve the readability of the moved logic with small targeted comments.
+- If a patch removes historical workaround logic, add a brief comment only where the new invariant needs to be protected.
 
 ---
 
@@ -79,14 +79,14 @@
   - internal trigger queue
   - compression snapshot application
 - [x] Ensure callers depend on the narrowest session capability they need.
-- [ ] Remove duplicated “epoch match then mutate” patterns where a smaller domain helper can own the invariant.
+- [x] Remove duplicated “epoch match then mutate” patterns where a smaller domain helper can own the invariant.
 
 ### 2. Runtime Dependency Narrowing
 
-- [ ] Replace large dependency bags such as generation/runtime/internal API deps with smaller capability groups.
-- [ ] Prevent generation code from freely depending on unrelated identity, browser, shell, scheduler, and storage services unless the path truly needs them.
-- [ ] Keep composition-root assembly centralized, but stop leaking the full assembled graph into lower layers.
-- [ ] Prefer dependency contracts shaped around use cases, for example:
+- [x] Replace large dependency bags such as generation/runtime/internal API deps with smaller capability groups.
+- [x] Prevent generation code from freely depending on unrelated identity, browser, shell, scheduler, and storage services unless the path truly needs them.
+- [x] Keep composition-root assembly centralized, but stop leaking the full assembled graph into lower layers.
+- [x] Prefer dependency contracts shaped around use cases, for example:
   - prompt context access
   - session control
   - tool execution
@@ -103,7 +103,7 @@
   - participant derivation helpers
 - [x] Replace ad hoc `startsWith("private:")` / `startsWith("group:")` logic throughout the production codebase.
 - [x] Eliminate repeated local `parseSessionId()` implementations.
-- [ ] Make it easy to extend the identity model later without global search-and-replace risk.
+- [x] Make it easy to extend the identity model later without global search-and-replace risk.
 
 ### 4. Toolset Planning Cleanup
 
@@ -164,14 +164,14 @@
 
 ### Workstream B: Dependency Graph Refactor
 
-- [ ] Inventory each field in generation/runtime/internal API dependency structs.
-- [ ] Classify each dependency as:
+- [x] Inventory each field in generation/runtime/internal API dependency structs.
+- [x] Classify each dependency as:
   - truly required
   - incidental convenience
   - leaked cross-domain dependency
-- [ ] Replace large dependency structs with smaller capability-oriented contracts.
+- [x] Replace large dependency structs with smaller capability-oriented contracts.
 - [x] Move feature-specific wiring closer to the composition root.
-- [ ] Avoid adding any new large “Deps” type during the refactor.
+- [x] Avoid adding any new large “Deps” type during the refactor.
 
 ### Workstream C: Session Identity Refactor
 
@@ -192,7 +192,7 @@
 
 - [x] Extract registry/persistence/import concerns from `BrowserService`.
 - [x] Keep one orchestration entrypoint, but make internals domain-oriented and testable.
-- [ ] Reduce constructor breadth by passing smaller collaborators.
+- [x] Reduce constructor breadth by passing smaller collaborators.
 - [x] Add comments around page session expiry and profile persistence invariants.
 
 ### Workstream F: Coordination Timing Refactor
@@ -247,12 +247,12 @@
 
 ## Guardrails During Implementation
 
-- [ ] Do not keep both old and new abstractions alive longer than needed.
-- [ ] Do not move code into a new file without also clarifying ownership and naming.
-- [ ] Do not replace one god object with several thin wrappers around the same hidden god object.
-- [ ] Do not preserve scattered string-based domain rules once a canonical helper exists.
-- [ ] Do not add new regex heuristics to the planner before the planning cleanup workstream is complete, unless needed for a blocking regression fix.
-- [ ] Do not leave newly split coordination logic undocumented if it relies on ordering, epoch matching, or queue semantics.
+- Do not keep both old and new abstractions alive longer than needed.
+- Do not move code into a new file without also clarifying ownership and naming.
+- Do not replace one god object with several thin wrappers around the same hidden god object.
+- Do not preserve scattered string-based domain rules once a canonical helper exists.
+- Do not add new regex heuristics to the planner before the planning cleanup workstream is complete, unless needed for a blocking regression fix.
+- Do not leave newly split coordination logic undocumented if it relies on ordering, epoch matching, or queue semantics.
 
 ---
 
@@ -273,14 +273,14 @@
 ## Documentation Follow-Up
 
 - [x] Update `AGENTS.md` if the actual source layout or refactor strategy changes materially.
-- [ ] Update `README.md` and relevant docs when module boundaries or runtime responsibilities are renamed.
+- [x] Update `README.md` and relevant docs when module boundaries or runtime responsibilities are renamed.
 - [x] Keep plan status current by checking off completed items rather than leaving the plan stale.
 
 ---
 
 ## Explicit Non-Goals
 
-- [ ] Do not redesign product behavior unless the structural refactor requires it.
-- [ ] Do not add backward-compatibility layers unless a task explicitly requires them.
-- [ ] Do not treat comment addition as a substitute for simplifying the code itself.
-- [ ] Do not postpone obvious structural cleanup just because the current code still works.
+- Do not redesign product behavior unless the structural refactor requires it.
+- Do not add backward-compatibility layers unless a task explicitly requires them.
+- Do not treat comment addition as a substitute for simplifying the code itself.
+- Do not postpone obvious structural cleanup just because the current code still works.

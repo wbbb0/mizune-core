@@ -38,6 +38,10 @@
 ## 目录说明
 
 - `src/`：后端源码
+  - `app/`：主调用链编排，按 `bootstrap / generation / messaging / runtime / session-work` 分域
+  - `conversation/session/`：会话域模型、生命周期、history/debug/trigger-queue 等拆分后的会话能力
+  - `internalApi/`：Fastify 内部 API、按 domain 分组的 application service 和 WebUI 托管
+  - `services/`：OneBot、shell、browser/search、workspace 等外部能力封装
 - `webui/`：Vue 3 + Vite WebUI
 - `config/`：配置文件与示例
 - `data/`：运行时数据，默认按实例分目录保存

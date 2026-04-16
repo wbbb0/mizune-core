@@ -23,78 +23,91 @@ async function main() {
   let processNextCalled = 0;
 
   const executor = createGenerationExecutor({
-    config,
-    logger,
-    llmClient: {
-      isConfigured() {
-        return true;
-      },
-      async generate() {
-        throw new Error("LLM API error: 400 Bad Request {\"error\":{\"type\":\"content_filter\"}}");
-      }
-    } as never,
-    turnPlanner: {} as never,
-    debounceManager: {} as never,
-    historyCompressor: {
-      async maybeCompress() {
-        return false;
-      }
-    } as never,
-    messageQueue: {
-      async enqueueText(params: {
-        send: () => Promise<void>;
-      }) {
-        await params.send();
-      },
-      getDrainPromise() {
-        return null;
-      }
-    } as never,
-    oneBotClient: {
-      async sendText(params: { text: string }) {
-        sentTexts.push(params.text);
-        return {
-          status: "ok",
-          retcode: 0,
-          data: {
-            message_id: sentTexts.length
-          }
-        };
-      }
-    } as never,
-    sessionManager,
-    audioStore: {} as never,
-    requestStore: {} as never,
-    whitelistStore: {} as never,
-    scheduledJobStore: {} as never,
-    shellRuntime: {} as never,
-    searchService: {} as never,
-    browserService: {} as never,
-    localFileService: {} as never,
-    chatFileStore: {} as never,
-    mediaVisionService: {} as never,
-    mediaCaptionService: {} as never,
-    comfyClient: {} as never,
-    comfyTaskStore: {} as never,
-    comfyTemplateCatalog: {} as never,
-    forwardResolver: {} as never,
-    userStore: {} as never,
-    personaStore: {} as never,
-    globalRuleStore: {} as never,
-    toolsetRuleStore: {} as never,
-    scenarioHostStateStore: {} as never,
-    setupStore: {
-      async isReady() {
-        return false;
-      }
-    } as never,
-    conversationAccess: {} as never,
-    npcDirectory: {} as never,
-    persistSession(_sessionId: string, reason: string) {
-      persistedReasons.push(reason);
+    promptBuilder: {
+      config,
+      mediaVisionService: {} as never,
+      mediaCaptionService: {} as never
     },
-    getScheduler() {
-      return {} as never;
+    sessionRuntime: {
+      logger,
+      llmClient: {
+        isConfigured() {
+          return true;
+        },
+        async generate() {
+          throw new Error("LLM API error: 400 Bad Request {\"error\":{\"type\":\"content_filter\"}}");
+        }
+      } as never,
+      turnPlanner: {} as never,
+      debounceManager: {} as never,
+      historyCompressor: {
+        async maybeCompress() {
+          return false;
+        }
+      } as never,
+      messageQueue: {
+        async enqueueText(params: {
+          send: () => Promise<void>;
+        }) {
+          await params.send();
+        },
+        getDrainPromise() {
+          return null;
+        }
+      } as never,
+      sessionManager
+    },
+    toolRuntime: {
+      oneBotClient: {
+        async sendText(params: { text: string }) {
+          sentTexts.push(params.text);
+          return {
+            status: "ok",
+            retcode: 0,
+            data: {
+              message_id: sentTexts.length
+            }
+          };
+        }
+      } as never,
+      audioStore: {} as never,
+      requestStore: {} as never,
+      scheduledJobStore: {} as never,
+      shellRuntime: {} as never,
+      searchService: {} as never,
+      browserService: {} as never,
+      localFileService: {} as never,
+      chatFileStore: {} as never,
+      comfyClient: {} as never,
+      comfyTaskStore: {} as never,
+      comfyTemplateCatalog: {} as never,
+      forwardResolver: {} as never
+    },
+    identity: {
+      userStore: {} as never,
+      whitelistStore: {} as never,
+      personaStore: {} as never,
+      globalRuleStore: {} as never,
+      toolsetRuleStore: {} as never,
+      scenarioHostStateStore: {} as never,
+      setupStore: {
+        async isReady() {
+          return false;
+        }
+      } as never,
+      conversationAccess: {} as never,
+      npcDirectory: {} as never
+    },
+    lifecycle: {
+      logger,
+      sessionManager,
+      userStore: {} as never,
+      persistSession(_sessionId: string, reason: string) {
+        persistedReasons.push(reason);
+      },
+      getScheduler() {
+        return {} as never;
+      }
     }
   }, {
     processNextSessionWork() {

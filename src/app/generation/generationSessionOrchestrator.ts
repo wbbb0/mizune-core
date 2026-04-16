@@ -77,16 +77,15 @@ export function createGenerationSessionOrchestrator(
   }
 ) {
   const {
-    config,
-    logger,
-    historyCompressor,
-    sessionManager,
-    userStore,
-    personaStore,
-    setupStore,
-    scenarioHostStateStore,
-    persistSession
+    promptBuilder,
+    sessionRuntime,
+    identity,
+    lifecycle
   } = deps;
+  const { config } = promptBuilder;
+  const { logger, historyCompressor, sessionManager } = sessionRuntime;
+  const { userStore, personaStore, setupStore, scenarioHostStateStore } = identity;
+  const { persistSession } = lifecycle;
 
   const resolveSessionReplyDelivery = (
     sessionId: string,
@@ -170,9 +169,9 @@ export function createGenerationSessionOrchestrator(
           {
             config,
             logger,
-            llmClient: deps.llmClient,
-            turnPlanner: deps.turnPlanner,
-            debounceManager: deps.debounceManager,
+            llmClient: sessionRuntime.llmClient,
+            turnPlanner: sessionRuntime.turnPlanner,
+            debounceManager: sessionRuntime.debounceManager,
             historyCompressor,
             sessionManager,
             persistSession

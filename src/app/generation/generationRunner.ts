@@ -3,29 +3,13 @@ import { createInternalTriggerEvent } from "#conversation/session/internalTransc
 import { createGenerationExecutor } from "./generationExecutor.ts";
 import { createGenerationPromptBuilder } from "./generationPromptBuilder.ts";
 import { createGenerationSessionOrchestrator } from "./generationSessionOrchestrator.ts";
-import type { GenerationRunnerRuntimeDeps } from "./generationRunnerDeps.ts";
+import type { GenerationRunnerDeps } from "./generationRunnerDeps.ts";
 
 // Composes the generation pipeline from prompt, execution, and session orchestration pieces.
-export function createGenerationRunner(deps: GenerationRunnerRuntimeDeps) {
-  const { logger, sessionManager } = deps;
+export function createGenerationRunner(deps: GenerationRunnerDeps) {
+  const { logger, sessionManager } = deps.sessionRuntime;
 
-  const promptBuilder = createGenerationPromptBuilder({
-    config: deps.config,
-    oneBotClient: deps.oneBotClient,
-    audioStore: deps.audioStore,
-    audioTranscriber: deps.audioTranscriber,
-    npcDirectory: deps.npcDirectory,
-    setupStore: deps.setupStore,
-    browserService: deps.browserService,
-    shellRuntime: deps.shellRuntime,
-    localFileService: deps.localFileService,
-    chatFileStore: deps.chatFileStore,
-    mediaVisionService: deps.mediaVisionService,
-    mediaCaptionService: deps.mediaCaptionService,
-    globalRuleStore: deps.globalRuleStore,
-    toolsetRuleStore: deps.toolsetRuleStore,
-    scenarioHostStateStore: deps.scenarioHostStateStore
-  });
+  const promptBuilder = createGenerationPromptBuilder(deps.promptBuilder);
 
   let flushSessionRef: ((
     sessionId: string,
@@ -79,7 +63,7 @@ export function createGenerationRunner(deps: GenerationRunnerRuntimeDeps) {
       trigger: nextTrigger,
       stage: "dequeued"
     }));
-    deps.persistSession(sessionId, "internal_trigger_dequeued");
+    deps.lifecycle.persistSession(sessionId, "internal_trigger_dequeued");
     void runInternalTriggerSession(sessionId, nextTrigger).then(() => {
       nextTrigger.resolveCompletion?.();
     }).catch((error: unknown) => {
@@ -87,11 +71,46 @@ export function createGenerationRunner(deps: GenerationRunnerRuntimeDeps) {
     });
   };
 
-  const generationExecutor = createGenerationExecutor(deps, {
+  const generationExecutor = createGenerationExecutor({
+    promptBuilder: {
+      config: deps.promptBuilder.config,
+      mediaVisionService: deps.promptBuilder.mediaVisionService,
+      mediaCaptionService: deps.promptBuilder.mediaCaptionService
+    },
+    sessionRuntime: deps.sessionRuntime,
+    identity: deps.identity,
+    toolRuntime: deps.toolRuntime,
+    lifecycle: deps.lifecycle
+  }, {
     processNextSessionWork
   });
 
-  const sessionOrchestrator = createGenerationSessionOrchestrator(deps, {
+  const sessionOrchestrator = createGenerationSessionOrchestrator({
+    promptBuilder: {
+      config: deps.promptBuilder.config
+    },
+    sessionRuntime: {
+      logger: deps.sessionRuntime.logger,
+      historyCompressor: deps.sessionRuntime.historyCompressor,
+      llmClient: deps.sessionRuntime.llmClient,
+      turnPlanner: deps.sessionRuntime.turnPlanner,
+      debounceManager: deps.sessionRuntime.debounceManager,
+      sessionManager: deps.sessionRuntime.sessionManager
+    },
+    identity: {
+      userStore: deps.identity.userStore,
+      personaStore: deps.identity.personaStore,
+      setupStore: deps.identity.setupStore,
+      scenarioHostStateStore: deps.identity.scenarioHostStateStore
+    },
+    lifecycle: {
+      persistSession: deps.lifecycle.persistSession,
+      logger: deps.lifecycle.logger,
+      sessionManager: deps.lifecycle.sessionManager,
+      userStore: deps.lifecycle.userStore,
+      getScheduler: deps.lifecycle.getScheduler
+    }
+  }, {
     promptBuilder,
     runGeneration: generationExecutor.runGeneration,
     processNextSessionWork

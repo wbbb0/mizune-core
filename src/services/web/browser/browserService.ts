@@ -67,39 +67,19 @@ type ScreenshotImageStore = {
 };
 
 export class BrowserService {
-  private readonly playwrightBackend: BrowserBackend;
-  private readonly sessions: BrowserSessionRuntime;
-  private readonly resourceRegistry: RuntimeResourceRegistry;
-  private readonly profileStore: BrowserProfileStore;
-  private readonly resourceSync: BrowserResourceSync;
-  private readonly assetStore: BrowserAssetStore;
-  private chatFileStore: ScreenshotImageStore;
-
   constructor(
-    private readonly config: AppConfig,
-    private readonly logger: Logger,
-    private readonly resolveSearchRef: (refId: string) => string | null,
-    dataDir: string,
-    chatFileStore: ScreenshotImageStore
-  ) {
-    this.chatFileStore = chatFileStore;
-    this.playwrightBackend = new PlaywrightBrowserBackend(config, logger);
-    this.sessions = new BrowserSessionRuntime(MAX_BROWSER_SESSIONS);
-    this.resourceRegistry = new RuntimeResourceRegistry(dataDir, logger);
-    this.profileStore = new BrowserProfileStore(dataDir, config, logger);
-    this.resourceSync = new BrowserResourceSync(this.resourceRegistry, logger);
-    this.assetStore = new BrowserAssetStore(config, () => this.chatFileStore);
-  }
+    private readonly deps: BrowserServiceDeps
+  ) {}
 
   async reloadConfig(): Promise<void> {
     await this.closeAllSessions("browser_sessions_closed_after_config_reload");
   }
 
   async openPage(input: OpenPageInput): Promise<OpenPageResult> {
-    if (!this.config.browser.enabled) {
+    if (!this.deps.config.browser.enabled) {
       throw new Error("Browser tools are disabled");
     }
-    if (!this.config.browser.playwright.enabled) {
+    if (!this.deps.config.browser.playwright.enabled) {
       throw new Error("Playwright browser backend is disabled");
     }
     await this.cleanupExpiredSessions();
@@ -112,18 +92,18 @@ export class BrowserService {
     }
 
     const resolvedRequestedUrl = refId
-      ? this.resolveSearchRef(refId)
+      ? this.deps.resolveSearchRef(refId)
       : validateHttpUrl(requestedUrl);
     if (!resolvedRequestedUrl) {
       throw new Error(refId ? `Unknown ref_id: ${refId}` : "url must be an absolute http or https URL");
     }
 
     const ownerSessionId = normalizeOptionalString(input.ownerSessionId);
-    const profile = ownerSessionId && this.config.browser.playwright.persistSessionState
-      ? await this.profileStore.ensureProfile(ownerSessionId)
+    const profile = ownerSessionId && this.deps.config.browser.playwright.persistSessionState
+      ? await this.deps.profileStore.ensureProfile(ownerSessionId)
       : null;
     const loadedProfile = profile
-      ? await this.profileStore.loadProfile(profile.profileId)
+      ? await this.deps.profileStore.loadProfile(profile.profileId)
       : null;
 
     const openResult = await this.openWithBackend({
@@ -144,12 +124,12 @@ export class BrowserService {
       ownerSessionId,
       profileId: openResult.snapshot.profileId
     };
-    const resourceId = await this.resourceSync.registerOpenedPage({
+    const resourceId = await this.deps.resourceSync.registerOpenedPage({
       ownerSessionId,
       description: normalizeOptionalString(input.description),
       session: sessionRecord
     });
-    const evicted = this.sessions.set(resourceId, {
+    const evicted = this.deps.sessions.set(resourceId, {
       backend: openResult.backend,
       state: openResult.state,
       snapshot: openResult.snapshot,
@@ -231,7 +211,7 @@ export class BrowserService {
     session.state = next.state;
     session.snapshot = next.snapshot;
     await this.persistSessionProfile(session);
-    await this.resourceSync.touchPage(resourceId, session);
+    await this.deps.resourceSync.touchPage(resourceId, session);
 
     return {
       ok: true,
@@ -270,10 +250,10 @@ export class BrowserService {
     }
 
     const session = await this.requireSession(normalizedResourceId, { touch: false });
-    this.sessions.delete(normalizedResourceId);
+    this.deps.sessions.delete(normalizedResourceId);
     await this.persistSessionProfile(session);
     await session.backend.close(session.state);
-    await this.resourceSync.markClosed(normalizedResourceId);
+    await this.deps.resourceSync.markClosed(normalizedResourceId);
     return {
       ok: true,
       resource_id: normalizedResourceId,
@@ -285,7 +265,7 @@ export class BrowserService {
     await this.cleanupExpiredSessions();
     return {
       ok: true,
-      pages: await this.resourceSync.listActivePages(this.sessions)
+      pages: await this.deps.resourceSync.listActivePages(this.deps.sessions)
     };
   }
 
@@ -334,7 +314,7 @@ export class BrowserService {
       }
     }
 
-    return this.assetStore.storeDownload({
+    return this.deps.assetStore.storeDownload({
       sourceUrl: String(sourceUrl),
       ...(sourceName ? { sourceName } : {}),
       ...(kind ? { kind } : {}),
@@ -346,12 +326,12 @@ export class BrowserService {
   async listProfiles(): Promise<BrowserProfileListResult> {
     return {
       ok: true,
-      profiles: await this.profileStore.listProfiles()
+      profiles: await this.deps.profileStore.listProfiles()
     };
   }
 
   async inspectProfile(profileId: string): Promise<BrowserProfileInspectResult> {
-    const profile = await this.profileStore.inspectProfile(profileId);
+    const profile = await this.deps.profileStore.inspectProfile(profileId);
     if (!profile) {
       throw new Error(`Unknown profile_id: ${profileId}`);
     }
@@ -367,15 +347,15 @@ export class BrowserService {
       throw new Error("profile_id is required");
     }
 
-    const liveSession = this.sessions.findByProfileId(normalizedProfileId);
+    const liveSession = this.deps.sessions.findByProfileId(normalizedProfileId);
     if (liveSession) {
       await this.persistSessionProfile(liveSession);
     } else {
-      const existing = await this.profileStore.inspectProfile(normalizedProfileId);
+      const existing = await this.deps.profileStore.inspectProfile(normalizedProfileId);
       if (!existing) {
         throw new Error(`Unknown profile_id: ${profileId}`);
       }
-      await this.profileStore.markUsed(normalizedProfileId);
+      await this.deps.profileStore.markUsed(normalizedProfileId);
     }
 
     return {
@@ -390,11 +370,11 @@ export class BrowserService {
     if (!normalizedProfileId) {
       throw new Error("profile_id is required");
     }
-    const cleared = await this.profileStore.clearProfile(normalizedProfileId);
+    const cleared = await this.deps.profileStore.clearProfile(normalizedProfileId);
     if (!cleared) {
       throw new Error(`Unknown profile_id: ${profileId}`);
     }
-    for (const session of this.sessions.values()) {
+    for (const session of this.deps.sessions.values()) {
       if (session.profileId === normalizedProfileId) {
         session.profileId = null;
       }
@@ -417,7 +397,7 @@ export class BrowserService {
       state: session.state,
       ...(targetId == null ? {} : { targetId })
     });
-    return this.assetStore.storeScreenshot({
+    return this.deps.assetStore.storeScreenshot({
       buffer,
       resourceId,
       profileId: session.profileId,
@@ -434,7 +414,7 @@ export class BrowserService {
     sessionStorageByOrigin: Record<string, Record<string, string>>;
     persistState: boolean;
   }): Promise<OpenedBrowserSession> {
-    const result = await this.playwrightBackend.open({
+    const result = await this.deps.playwrightBackend.open({
       url: input.resolvedUrl,
       requestedUrl: input.requestedUrl,
       profileId: input.profileId,
@@ -443,50 +423,50 @@ export class BrowserService {
       persistState: input.persistState
     });
     return {
-      backend: this.playwrightBackend,
+      backend: this.deps.playwrightBackend,
       state: result.state,
       snapshot: result.snapshot
     };
   }
 
   private async requireSession(resourceId: string, options?: { touch?: boolean }): Promise<BrowserSessionRecord> {
-    const session = this.sessions.get(resourceId);
+    const session = this.deps.sessions.get(resourceId);
     if (!session) {
-      await this.resourceSync.markMissingAsExpired(resourceId);
+      await this.deps.resourceSync.markMissingAsExpired(resourceId);
       throw new Error(`Unknown resource_id: ${resourceId}`);
     }
     if (options?.touch !== false) {
       const nextExpiry = this.computeNextExpiry();
-      const touched = this.sessions.touch(resourceId, nextExpiry);
+      const touched = this.deps.sessions.touch(resourceId, nextExpiry);
       if (!touched) {
-        await this.resourceSync.markMissingAsExpired(resourceId);
+        await this.deps.resourceSync.markMissingAsExpired(resourceId);
         throw new Error(`Unknown resource_id: ${resourceId}`);
       }
-      await this.resourceSync.touchPage(resourceId, touched);
+      await this.deps.resourceSync.touchPage(resourceId, touched);
     }
     return session;
   }
 
   private computeNextExpiry(): number {
-    return Date.now() + this.config.browser.sessionTtlMs;
+    return Date.now() + this.deps.config.browser.sessionTtlMs;
   }
 
   private async cleanupExpiredSessions(): Promise<void> {
     const now = Date.now();
-    const expiredSessions = this.sessions.collectExpired(now);
+    const expiredSessions = this.deps.sessions.collectExpired(now);
     if (expiredSessions.length === 0) {
       return;
     }
 
     for (const session of expiredSessions) {
       await this.persistSessionProfile(session).catch((error: unknown) => {
-        this.logger.warn(
+        this.deps.logger.warn(
           { profileId: session.profileId, error: error instanceof Error ? error.message : String(error) },
           "browser_profile_persist_failed"
         );
       });
       await session.backend.close(session.state).catch((error: unknown) => {
-        this.logger.warn(
+        this.deps.logger.warn(
           {
             resourceId: session.resourceId,
             backend: session.backend.name,
@@ -495,21 +475,21 @@ export class BrowserService {
           "browser_session_close_failed"
         );
       });
-      await this.resourceSync.markExpired(session.resourceId, now);
+      await this.deps.resourceSync.markExpired(session.resourceId, now);
     }
 
-    this.resourceSync.logExpiredSessions(expiredSessions.length);
+    this.deps.resourceSync.logExpiredSessions(expiredSessions.length);
   }
 
   private async closeAllSessions(logEvent: string): Promise<void> {
-    const existingSessions = this.sessions.clear();
+    const existingSessions = this.deps.sessions.clear();
 
     await Promise.all(existingSessions.map(async (session) => {
       try {
         await this.persistSessionProfile(session);
         await session.backend.close(session.state);
       } catch (error: unknown) {
-        this.logger.warn(
+        this.deps.logger.warn(
           {
             resourceId: session.resourceId,
             backend: session.backend.name,
@@ -518,20 +498,20 @@ export class BrowserService {
           "browser_session_close_failed"
         );
       }
-      await this.resourceSync.markExpired(session.resourceId);
+      await this.deps.resourceSync.markExpired(session.resourceId);
     }));
 
     if (existingSessions.length > 0) {
-      this.logger.info({ closedSessionCount: existingSessions.length }, logEvent);
+      this.deps.logger.info({ closedSessionCount: existingSessions.length }, logEvent);
     }
   }
 
   private async persistSessionProfile(session: BrowserSessionRecord): Promise<void> {
-    if (!session.profileId || !session.ownerSessionId || !this.config.browser.playwright.persistSessionState) {
+    if (!session.profileId || !session.ownerSessionId || !this.deps.config.browser.playwright.persistSessionState) {
       return;
     }
     const persisted = await session.backend.persistState(session.state);
-    await this.profileStore.saveProfile({
+    await this.deps.profileStore.saveProfile({
       profileId: session.profileId,
       ownerSessionId: session.ownerSessionId,
       storageState: persisted.storageState,
@@ -544,7 +524,7 @@ export class BrowserService {
       await this.persistSessionProfile(session);
       await session.backend.close(session.state);
     } catch (error: unknown) {
-      this.logger.warn(
+        this.deps.logger.warn(
         {
           resourceId: session.resourceId,
           backend: session.backend.name,
@@ -553,8 +533,39 @@ export class BrowserService {
         "browser_session_close_failed"
       );
     }
-    await this.resourceSync.markExpired(session.resourceId);
+    await this.deps.resourceSync.markExpired(session.resourceId);
   }
+}
+
+export interface BrowserServiceDeps {
+  config: AppConfig;
+  logger: Logger;
+  resolveSearchRef: (refId: string) => string | null;
+  playwrightBackend: BrowserBackend;
+  sessions: BrowserSessionRuntime;
+  profileStore: BrowserProfileStore;
+  resourceSync: BrowserResourceSync;
+  assetStore: BrowserAssetStore;
+}
+
+export function createBrowserServiceDeps(input: {
+  config: AppConfig;
+  logger: Logger;
+  resolveSearchRef: (refId: string) => string | null;
+  dataDir: string;
+  chatFileStore: ScreenshotImageStore;
+}): BrowserServiceDeps {
+  const resourceRegistry = new RuntimeResourceRegistry(input.dataDir, input.logger);
+  return {
+    config: input.config,
+    logger: input.logger,
+    resolveSearchRef: input.resolveSearchRef,
+    playwrightBackend: new PlaywrightBrowserBackend(input.config, input.logger),
+    sessions: new BrowserSessionRuntime(MAX_BROWSER_SESSIONS),
+    profileStore: new BrowserProfileStore(input.dataDir, input.config, input.logger),
+    resourceSync: new BrowserResourceSync(resourceRegistry, input.logger),
+    assetStore: new BrowserAssetStore(input.config, () => input.chatFileStore)
+  };
 }
 
 function normalizeOptionalString(value: string | undefined): string | null {

@@ -3,10 +3,10 @@ import type { ComfyTaskRecord } from "#comfy/taskSchema.ts";
 import type { InternalSessionTriggerExecution } from "#conversation/session/sessionTypes.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
 import type {
+  GenerationRunnerDeps,
   GenerationIdentityDeps,
   GenerationLifecycleDeps,
   GenerationPromptBuilderDeps,
-  GenerationRunnerRuntimeDeps,
   GenerationSessionRuntimeDeps,
   GenerationToolRuntimeDeps
 } from "../generation/generationRunnerDeps.ts";
@@ -94,13 +94,13 @@ export function buildSessionWorkCoordinatorDeps(
   services: AppServiceBootstrap,
   persistSession: (sessionId: string, reason: string) => void,
   getScheduler: () => Scheduler
-): GenerationRunnerRuntimeDeps {
+): GenerationRunnerDeps {
   return {
-    ...buildGenerationPromptBuilderDeps(services),
-    ...buildGenerationIdentityDeps(services),
-    ...buildGenerationToolRuntimeDeps(services),
-    ...buildGenerationLifecycleDeps(services, persistSession, getScheduler),
-    ...buildGenerationSessionRuntimeDeps(services)
+    promptBuilder: buildGenerationPromptBuilderDeps(services),
+    identity: buildGenerationIdentityDeps(services),
+    toolRuntime: buildGenerationToolRuntimeDeps(services),
+    lifecycle: buildGenerationLifecycleDeps(services, persistSession, getScheduler),
+    sessionRuntime: buildGenerationSessionRuntimeDeps(services)
   };
 }
 

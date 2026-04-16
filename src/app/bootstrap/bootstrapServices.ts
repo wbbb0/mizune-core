@@ -27,7 +27,7 @@ import { ChatMessageFileGcService } from "#services/workspace/chatMessageFileGcS
 import { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
 import { LocalFileService } from "#services/workspace/localFileService.ts";
-import { BrowserService } from "#services/web/browser/browserService.ts";
+import { BrowserService, createBrowserServiceDeps } from "#services/web/browser/browserService.ts";
 import { SearchService } from "#services/web/search/searchService.ts";
 import { ComfyClient } from "#comfy/comfyClient.ts";
 import { ComfyTaskStore } from "#comfy/taskStore.ts";
@@ -81,13 +81,13 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
   const scenarioHostStateStore = new ScenarioHostStateStore(dataDir, config, logger);
   const setupStore = new SetupStateStore(dataDir, whitelistStore, logger);
   const searchService = new SearchService(config, logger);
-  const browserService = new BrowserService(
+  const browserService = new BrowserService(createBrowserServiceDeps({
     config,
     logger,
-    (refId) => searchService.resolveReference(refId),
+    resolveSearchRef: (refId) => searchService.resolveReference(refId),
     dataDir,
     chatFileStore
-  );
+  }));
   const forwardResolver = new ForwardResolver(oneBotClient, logger);
   const conversationAccess = new ConversationAccessService(
     sessionManager,

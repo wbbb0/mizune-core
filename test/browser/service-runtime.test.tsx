@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { BrowserService } from "../../src/services/web/browser/browserService.ts";
+import { BrowserService, createBrowserServiceDeps } from "../../src/services/web/browser/browserService.ts";
 import { BrowserSessionRuntime } from "../../src/services/web/browser/browserSessionRuntime.ts";
 import { prioritizeBrowserCandidates } from "../../src/services/web/browser/playwrightBrowserBackend.ts";
 import { createForwardFeatureConfig, runCase } from "../helpers/forward-test-support.tsx";
@@ -8,18 +8,18 @@ import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 function createBrowserService() {
   const config = createForwardFeatureConfig();
   config.browser.playwright.enabled = true;
-  return new BrowserService(
+  return new BrowserService(createBrowserServiceDeps({
     config,
-    createSilentLogger(),
-    () => null,
-    "/tmp",
-    {
+    logger: createSilentLogger(),
+    resolveSearchRef: () => null,
+    dataDir: "/tmp",
+    chatFileStore: {
       async importBuffer() {
         return { fileId: "img_uploaded_1" };
       },
       async importRemoteSource() {
         return {
-          fileId: "file_uploaded_1",
+          fileId: "file_downloaded_1",
           kind: "file" as const,
           sourceName: "downloaded.bin",
           mimeType: "application/octet-stream",
@@ -27,14 +27,14 @@ function createBrowserService() {
         };
       }
     }
-  );
+  }));
 }
 
 async function main() {
   await runCase("browser service supports inspect patterns and screenshot capture on playwright backend", async () => {
     const service = createBrowserService();
     const screenshots: Array<{ targetId?: number }> = [];
-    (service as any).playwrightBackend = {
+    (service as any).deps.playwrightBackend = {
       name: "playwright",
       async open(input: { url: string; requestedUrl: string; profileId: string | null }) {
         return {
@@ -112,7 +112,7 @@ async function main() {
   await runCase("browser service reload closes existing playwright sessions", async () => {
     const service = createBrowserService();
     const closedStates: unknown[] = [];
-    (service as any).playwrightBackend = {
+    (service as any).deps.playwrightBackend = {
       name: "playwright",
       async open(input: { url: string; requestedUrl: string; profileId: string | null }) {
         return {
@@ -160,8 +160,8 @@ async function main() {
     const markedExpired: string[] = [];
     const closedStates: Array<{ requestedUrl: string }> = [];
 
-    (service as any).sessions = new BrowserSessionRuntime(1);
-    (service as any).profileStore = {
+    (service as any).deps.sessions = new BrowserSessionRuntime(1);
+    (service as any).deps.profileStore = {
       async ensureProfile(ownerSessionId: string) {
         return {
           profileId: `profile:${ownerSessionId}`,
@@ -187,7 +187,7 @@ async function main() {
         };
       }
     };
-    (service as any).resourceSync = {
+    (service as any).deps.resourceSync = {
       resourceId: 0,
       async registerOpenedPage() {
         this.resourceId += 1;
@@ -204,7 +204,7 @@ async function main() {
       },
       logExpiredSessions() {}
     };
-    (service as any).playwrightBackend = {
+    (service as any).deps.playwrightBackend = {
       name: "playwright",
       async open(input: { url: string; requestedUrl: string; profileId: string | null }) {
         return {
@@ -254,14 +254,14 @@ async function main() {
 
   await runCase("browser sessions expire after ttl and active access extends ttl", async () => {
     const service = createBrowserService();
-    (service as any).config.browser.sessionTtlMs = 3_600_000;
+    (service as any).deps.config.browser.sessionTtlMs = 3_600_000;
     const closedStates: unknown[] = [];
     let now = 1_000;
     const originalNow = Date.now;
 
     Date.now = () => now;
     try {
-      (service as any).playwrightBackend = {
+      (service as any).deps.playwrightBackend = {
         name: "playwright",
         async open(input: { url: string; requestedUrl: string; profileId: string | null }) {
           return {
@@ -305,7 +305,7 @@ async function main() {
 
       await assert.rejects(service.inspectPage({ resourceId: page.resource_id }), /Unknown resource_id/);
       const listed = await service.listPages();
-      const records = await (service as any).resourceRegistry.list("browser_page");
+      const records = await (service as any).deps.resourceSync.resourceRegistry.list("browser_page");
       assert.equal(closedStates.length, 1);
       assert.deepEqual(listed.pages, []);
       assert.equal(records[0]?.status, "expired");
@@ -323,7 +323,7 @@ async function main() {
       coordinate?: { x: number; y: number };
       filePaths?: string[];
     }> = [];
-    (service as any).playwrightBackend = {
+    (service as any).deps.playwrightBackend = {
       name: "playwright",
       async open(input: { url: string; requestedUrl: string; profileId: string | null }) {
         return {
@@ -454,7 +454,7 @@ async function main() {
   await runCase("browser service returns recoverable diagnostics for ambiguous semantic targets", async () => {
     const service = createBrowserService();
     let backendCalled = false;
-    (service as any).playwrightBackend = {
+    (service as any).deps.playwrightBackend = {
       name: "playwright",
       async open(input: { url: string; requestedUrl: string; profileId: string | null }) {
         return {
@@ -564,25 +564,36 @@ async function main() {
       kind?: string;
       proxyConsumer?: string;
     }> = [];
-    (service as any).chatFileStore = {
-      async importRemoteSource(input: {
-        source: string;
-        origin: string;
+    (service as any).deps.assetStore = {
+      async storeDownload(input: {
+        sourceUrl: string;
+        resourceId?: string | null;
+        targetId?: number | null;
         sourceName?: string;
         kind?: string;
-        proxyConsumer?: string;
       }) {
-        downloads.push(input);
+        downloads.push({
+          source: input.sourceUrl,
+          origin: "browser_download",
+          ...(input.sourceName ? { sourceName: input.sourceName } : {}),
+          ...(input.kind ? { kind: input.kind } : {}),
+          proxyConsumer: "browser"
+        });
         return {
-          fileId: "file_downloaded_1",
+          ok: true,
+          file_id: "file_downloaded_1",
           kind: (input.kind as "image" | "animated_image" | "video" | "audio" | "file" | undefined) ?? "file",
-          sourceName: input.sourceName ?? "downloaded.bin",
+          source_name: input.sourceName ?? "downloaded.bin",
           mimeType: "application/octet-stream",
-          sizeBytes: 777
+          sizeBytes: 777,
+          origin: "browser_download",
+          source_url: input.sourceUrl,
+          resource_id: input.resourceId ?? null,
+          target_id: input.targetId ?? null
         };
       }
     };
-    (service as any).playwrightBackend = {
+    (service as any).deps.playwrightBackend = {
       name: "playwright",
       async open(input: { url: string; requestedUrl: string; profileId: string | null }) {
         return {
