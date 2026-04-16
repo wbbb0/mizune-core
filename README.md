@@ -343,6 +343,7 @@ llm:
 ```yml
 onebot:
   enabled: true
+  provider: generic
   wsUrl: ws://127.0.0.1:3001
   httpUrl: http://127.0.0.1:3000
 
@@ -361,6 +362,24 @@ llm:
 onebot:
   accessToken: your-token
 ```
+
+如果你接的是 NapCat，并希望在回复生成期间显示“正在输入”，可以再补：
+
+```yml
+onebot:
+  provider: napcat
+  typing:
+    enabled: true
+    private: true
+    group: false
+```
+
+其中：
+
+- `typing.private`
+  控制私聊是否发送输入状态，默认开启
+- `typing.group`
+  控制群聊是否尝试发送输入状态，默认关闭
 
 如果希望 WebUI 仅作为内网管理面板、不要求登录，可以改为：
 

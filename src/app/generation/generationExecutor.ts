@@ -15,6 +15,7 @@ import {
 import { buildBuiltinToolContext, type PromptDebugSnapshot } from "#llm/tools/core/shared.ts";
 import type { PromptInteractionMode } from "#llm/prompt/promptTypes.ts";
 import { createGenerationOutbound } from "./generationOutbound.ts";
+import { createGenerationTypingWindow } from "./generationTypingWindow.ts";
 import type { GenerationPromptParticipantProfile } from "./generationPromptBuilder.ts";
 import type {
   GenerationCurrentUser,
@@ -197,6 +198,17 @@ export function createGenerationExecutor(
         })).content
       }));
     };
+    const typingWindow = createGenerationTypingWindow(
+      {
+        oneBotClient,
+        sessionManager
+      },
+      {
+        sessionId,
+        responseEpoch,
+        target: sendTarget
+      }
+    );
 
     persistSession(sessionId, "generation_started");
     logger.info({ sessionId, messageCount: batchMessages.length, streaming: streamResponse !== false }, "generation_started");
@@ -227,7 +239,6 @@ export function createGenerationExecutor(
             ...(webOutputCollector ? { webOutputCollector } : {})
           }
       );
-
       const isPlannerToolsetMode = !setupMode && Array.isArray(availableToolsets) && availableToolsets.length > 0;
       const activeToolsetIds = new Set((plannedToolsetIds ?? []).filter((id) => (
         availableToolsets?.some((item) => item.id === id) ?? false
@@ -476,6 +487,7 @@ export function createGenerationExecutor(
               : {
                   onReasoningDelta: (_delta: string) => {
                     sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "reasoning" });
+                    void typingWindow.startIfNeeded();
                   },
                   onTextDelta: async (delta: string) => {
                     sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "generating" });
@@ -570,6 +582,8 @@ export function createGenerationExecutor(
       } catch (error: unknown) {
         logger.warn({ err: error, sessionId }, "outbound_drain_failed");
       }
+
+      await typingWindow.stopIfStarted();
 
       if (lastResultReasoningContent) {
         sessionManager.setLastAssistantReasoningIfResponseEpochMatches(

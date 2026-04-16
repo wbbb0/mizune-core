@@ -417,9 +417,35 @@ async function main() {
       assert.equal(config.onebot.wsUrl, "ws://file.example/ws");
       assert.equal(config.onebot.httpUrl, "http://file.example/http");
       assert.equal(config.onebot.accessToken, "file-token");
+      assert.equal(config.onebot.provider, "generic");
       assert.equal(config.llm.enabled, false);
       assert.equal(config.internalApi.port, 3030);
       assert.equal(config.search.googleGrounding.enabled, false);
+    });
+  });
+
+  await runCase("loadConfig reads OneBot typing provider overrides from files", async () => {
+    await withConfigDir("llm-bot-config-onebot-typing-overrides-test", async (configDir) => {
+      await writeDefaultInstanceYaml(configDir);
+      await writeYaml(join(configDir, "global.yml"), {
+        onebot: {
+          provider: "napcat",
+          typing: {
+            enabled: true,
+            private: false,
+            group: true
+          }
+        }
+      });
+
+      const config = loadConfig({
+        CONFIG_DIR: configDir
+      });
+
+      assert.equal(config.onebot.provider, "napcat");
+      assert.equal(config.onebot.typing.enabled, true);
+      assert.equal(config.onebot.typing.private, false);
+      assert.equal(config.onebot.typing.group, true);
     });
   });
 

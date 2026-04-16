@@ -15,6 +15,7 @@ import type {
   OneBotRetrievedMessage,
   OneBotSendResult
 } from "./types.ts";
+import { createOneBotTypingAdapter } from "./typingAdapter.ts";
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000, 30000];
 
@@ -36,12 +37,18 @@ export class OneBotClient extends EventEmitter {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reconnectAttempt = 0;
   private stopped = false;
+  private readonly typingAdapter;
 
   constructor(
     private readonly config: AppConfig,
     private readonly logger: Logger
   ) {
     super();
+    this.typingAdapter = createOneBotTypingAdapter(
+      this.config,
+      this.logger,
+      <T extends OneBotApiResponse>(endpoint: string, body: Record<string, unknown>) => this.postApi<T>(endpoint, body)
+    );
   }
 
   async start(): Promise<void> {
@@ -80,6 +87,15 @@ export class OneBotClient extends EventEmitter {
       ...target,
       message: this.buildTextMessage(target.text)
     });
+  }
+
+  async setTyping(target: {
+    enabled: boolean;
+    chatType: "private" | "group";
+    userId: string;
+    groupId?: string;
+  }): Promise<boolean> {
+    return this.typingAdapter.setTyping(target);
   }
 
   async sendMessage(target: {
