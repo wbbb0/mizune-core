@@ -1,12 +1,12 @@
-import type { InternalSessionTriggerExecution } from "#conversation/session/sessionManager.ts";
+import type { InternalSessionTriggerExecution } from "#conversation/session/sessionTypes.ts";
 import { createInternalTriggerEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { createGenerationExecutor } from "./generationExecutor.ts";
 import { createGenerationPromptBuilder } from "./generationPromptBuilder.ts";
 import { createGenerationSessionOrchestrator } from "./generationSessionOrchestrator.ts";
-import type { GenerationRunnerDeps } from "./generationRunnerDeps.ts";
+import type { GenerationRunnerRuntimeDeps } from "./generationRunnerDeps.ts";
 
 // Composes the generation pipeline from prompt, execution, and session orchestration pieces.
-export function createGenerationRunner(deps: GenerationRunnerDeps) {
+export function createGenerationRunner(deps: GenerationRunnerRuntimeDeps) {
   const { logger, sessionManager } = deps;
 
   const promptBuilder = createGenerationPromptBuilder({

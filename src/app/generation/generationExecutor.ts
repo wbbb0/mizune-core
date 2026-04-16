@@ -16,8 +16,12 @@ import { buildBuiltinToolContext, type PromptDebugSnapshot } from "#llm/tools/co
 import type { PromptInteractionMode } from "#llm/prompt/promptTypes.ts";
 import { createGenerationOutbound } from "./generationOutbound.ts";
 import type { GenerationPromptParticipantProfile } from "./generationPromptBuilder.ts";
-import type { GenerationRunnerDeps } from "./generationRunnerDeps.ts";
-import type { InternalSessionTriggerExecution, InternalTranscriptItem, SessionDebugMarker } from "#conversation/session/sessionManager.ts";
+import type {
+  GenerationCurrentUser,
+  GenerationExecutorDeps,
+  GenerationPersona
+} from "./generationRunnerDeps.ts";
+import type { InternalSessionTriggerExecution, InternalTranscriptItem, SessionDebugMarker } from "#conversation/session/sessionTypes.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
 import {
   buildGenerationFailureAssistantMessage,
@@ -29,9 +33,9 @@ import {
 import type { GenerationWebOutputCollector } from "./generationTypes.ts";
 import {
   resolveToolNamesFromToolsets,
-  TURN_PLANNER_ALWAYS_TOOL_NAMES,
-  type ToolsetView
+  TURN_PLANNER_ALWAYS_TOOL_NAMES
 } from "#llm/tools/toolsets.ts";
+import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import { listSessionModes, requireSessionModeDefinition } from "#modes/registry.ts";
 import { checkSetupCompletion } from "./generationSetupContext.ts";
 
@@ -76,8 +80,8 @@ export interface RunGenerationInput {
   debugMarkers: SessionDebugMarker[];
   toolRelationship?: Relationship | undefined;
   activeInternalTrigger?: InternalSessionTriggerExecution | null;
-  currentUser: Awaited<ReturnType<GenerationRunnerDeps["userStore"]["getByUserId"]>>;
-  persona: Awaited<ReturnType<GenerationRunnerDeps["personaStore"]["get"]>>;
+  currentUser: GenerationCurrentUser;
+  persona: GenerationPersona;
   batchMessages: GenerationRuntimeBatchMessage[];
   sendTarget: GenerationSendTarget;
   participantProfiles: GenerationPromptParticipantProfile[];
@@ -94,7 +98,7 @@ export interface RunGenerationInput {
 
 // Executes a fully prepared generation request, including tools, streaming, and cleanup.
 export function createGenerationExecutor(
-  deps: GenerationRunnerDeps,
+  deps: GenerationExecutorDeps,
   handlers: {
     processNextSessionWork: (sessionId: string) => void;
   }

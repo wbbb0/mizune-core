@@ -4,9 +4,9 @@ import type { Persona } from "#persona/personaSchema.ts";
 import type { EditablePersonaFieldName } from "#persona/personaSchema.ts";
 import type { SpecialRole } from "#identity/specialRole.ts";
 import type { Relationship } from "#identity/relationship.ts";
-import type { SessionDebugMarker } from "#conversation/session/sessionManager.ts";
+import type { SessionDebugMarker } from "#conversation/session/sessionTypes.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
-import type { ToolsetView } from "#llm/tools/toolsets.ts";
+import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { LlmMessage } from "../llmClient.ts";
 import type { ToolsetRuleEntry } from "./toolsetRuleStore.ts";
 

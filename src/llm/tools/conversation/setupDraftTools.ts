@@ -1,5 +1,6 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
+import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 
 export const setupDraftToolDescriptors: ToolDescriptor[] = [
   {
@@ -31,9 +32,13 @@ export const setupDraftToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ error: "content is required" });
     }
     const sessionId = context.lastMessage.sessionId;
-    const userId = sessionId.startsWith("private:") ? sessionId.slice("private:".length) : undefined;
-    const groupId = sessionId.startsWith("group:") ? sessionId.slice("group:".length) : undefined;
-    const sendTarget = userId != null ? { userId, text: content } : { groupId: groupId!, text: content };
+    const parsedSession = parseChatSessionIdentity(sessionId);
+    if (!parsedSession) {
+      return JSON.stringify({ error: "unsupported session target" });
+    }
+    const sendTarget = parsedSession.kind === "private"
+      ? { userId: parsedSession.userId, text: content }
+      : { groupId: parsedSession.groupId, text: content };
     context.messageQueue.enqueueTextDetached({
       sessionId,
       text: content,

@@ -10,7 +10,6 @@ import type { BrowserService } from "#services/web/browser/browserService.ts";
 import type { AppConfig } from "#config/config.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
 import type { RequestStore } from "#requests/requestStore.ts";
-import type { SessionManager } from "#conversation/session/sessionManager.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
 import type { UserStore } from "#identity/userStore.ts";
 import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
@@ -24,6 +23,11 @@ import type { GenerationWebOutputCollector } from "../generation/generationTypes
 import type { ComfyTaskRunner } from "#comfy/taskRunner.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import type {
+  SessionAdminMutationAccess,
+  SessionAdminReadAccess,
+  SessionStreamAccess
+} from "#conversation/session/sessionCapabilities.ts";
 
 export interface InternalApiController {
   close: () => Promise<void>;
@@ -46,7 +50,7 @@ export async function startInternalApiIfEnabled(input: {
   config: AppConfig;
   logger: Logger;
   oneBotClient: OneBotClient;
-  sessionManager: SessionManager;
+  sessionManager: SessionAdminReadAccess & SessionAdminMutationAccess & SessionStreamAccess;
   personaStore: PersonaStore;
   globalRuleStore: GlobalRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
@@ -104,7 +108,7 @@ export function subscribeRuntimeReload(input: {
   setSchedulerStarted: (value: boolean) => void;
   getInternalApi: () => InternalApiController | null;
   setInternalApi: (value: InternalApiController | null) => void;
-  sessionManager: SessionManager;
+  sessionManager: SessionAdminReadAccess & SessionAdminMutationAccess & SessionStreamAccess;
   personaStore: PersonaStore;
   globalRuleStore: GlobalRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;

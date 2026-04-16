@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> Status note (2026-04-15): the repo has already absorbed most of this plan's intended behavior, but not by checking off this document step-by-step. Treat this file as historical implementation guidance, not as the current source of truth for refactor progress. For the active structural work, use `project-structure-refactor.md`.
+
 **Goal:** Decouple rp_assistant setup logic from the main pipeline and make it a generic per-mode setup lifecycle; add scenario_host-specific initialization flow with `initialized` flag; add scoped direct command system with `reset` for scenario_host.
 
 **Architecture:** `SessionModeDefinition` gains an optional `setupPhase` field that owns the entire setup lifecycle — `needsSetup()`, toolset overrides, prompt mode, completion signal, and post-completion action. A single new utility file (`generationSetupContext.ts`) computes setup context by reading the appropriate stores; it is the only place with mode-ID branch logic. The command system gets a `scope` field on each descriptor so `canExecuteDirectCommand` filters without touching mode ID anywhere else.

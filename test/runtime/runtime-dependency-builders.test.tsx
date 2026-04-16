@@ -78,7 +78,7 @@ async function main() {
     const deps = buildSessionWorkCoordinatorDeps(services, persistSession, getScheduler);
 
     for (const [key, value] of Object.entries(services)) {
-      assert.equal((deps as Record<string, unknown>)[key], value);
+      assert.equal((deps as unknown as Record<string, unknown>)[key], value);
     }
     assert.equal(deps.persistSession, persistSession);
     assert.equal(deps.getScheduler, getScheduler);

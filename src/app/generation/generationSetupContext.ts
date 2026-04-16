@@ -1,8 +1,8 @@
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
+import type { SessionSetupAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import { isScenarioStateInitialized } from "#modes/scenarioHost/types.ts";
 import type { SetupCompletionSignal, SessionModeSetupContext } from "#modes/types.ts";
-import type { SessionManager } from "#conversation/session/sessionManager.ts";
 
 export async function resolveSessionModeSetupContext(
   modeId: string,
@@ -10,7 +10,7 @@ export async function resolveSessionModeSetupContext(
   deps: {
     setupStore: SetupStateStore;
     scenarioHostStateStore: ScenarioHostStateStore;
-    sessionManager: SessionManager;
+    sessionManager: SessionSetupAccess;
   },
   chatContext: {
     chatType: "private" | "group";
@@ -41,7 +41,7 @@ export async function checkSetupCompletion(
   deps: {
     setupStore: SetupStateStore;
     scenarioHostStateStore: ScenarioHostStateStore;
-    sessionManager: SessionManager;
+    sessionManager: SessionSetupAccess;
   }
 ): Promise<boolean> {
   switch (completionSignal) {

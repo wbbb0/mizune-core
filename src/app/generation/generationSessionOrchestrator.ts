@@ -1,5 +1,5 @@
 import { extractWindowUsers } from "#conversation/session/historyContext.ts";
-import type { InternalSessionTriggerExecution, SessionDelivery } from "#conversation/session/sessionManager.ts";
+import type { InternalSessionTriggerExecution, SessionDelivery } from "#conversation/session/sessionTypes.ts";
 import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getBuiltinToolNames } from "#llm/builtinTools.ts";
 import type { PromptInteractionMode } from "#llm/prompt/promptTypes.ts";
@@ -10,7 +10,10 @@ import {
   TURN_PLANNER_ALWAYS_TOOL_NAMES
 } from "#llm/tools/toolsets.ts";
 import type { GenerationPromptBuilder } from "./generationPromptBuilder.ts";
-import type { GenerationRunnerDeps } from "./generationRunnerDeps.ts";
+import type {
+  GenerationSessionOrchestratorDeps,
+  GenerationSessionRuntimeDeps
+} from "./generationRunnerDeps.ts";
 import type { GenerationRuntimeBatchMessage, RunGenerationInput } from "./generationExecutor.ts";
 import type { GenerationWebOutputCollector } from "./generationTypes.ts";
 import { handleGenerationTurnPlanner } from "./generationTurnPlanner.ts";
@@ -43,7 +46,7 @@ function toPromptBatchMessages(messages: GenerationRuntimeBatchMessage[]) {
   }));
 }
 
-function buildDebugMarkerSystemMessage(markers: ReturnType<GenerationRunnerDeps["sessionManager"]["getDebugMarkers"]>): string | null {
+function buildDebugMarkerSystemMessage(markers: ReturnType<GenerationSessionRuntimeDeps["sessionManager"]["getDebugMarkers"]>): string | null {
   if (markers.length === 0) {
     return null;
   }
@@ -66,7 +69,7 @@ function buildDebugMarkerSystemMessage(markers: ReturnType<GenerationRunnerDeps[
 
 // Prepares session state and prompt inputs before delegating to the executor.
 export function createGenerationSessionOrchestrator(
-  deps: GenerationRunnerDeps,
+  deps: GenerationSessionOrchestratorDeps,
   services: {
     promptBuilder: GenerationPromptBuilder;
     runGeneration: (input: RunGenerationInput) => Promise<void>;

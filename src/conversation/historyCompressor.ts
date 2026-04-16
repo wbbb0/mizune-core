@@ -4,7 +4,7 @@ import { annotateStructuredMediaReferences, extractStructuredMediaIds } from "#i
 import type { LlmClient } from "#llm/llmClient.ts";
 import { buildHistorySummaryPrompt } from "#llm/prompts/history-summary.prompt.ts";
 import { resolveModelRefsForType } from "#llm/shared/modelProfiles.ts";
-import type { SessionManager } from "#conversation/session/sessionManager.ts";
+import type { SessionCompressionAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 
 export class HistoryCompressor {
@@ -13,7 +13,7 @@ export class HistoryCompressor {
   constructor(
     private readonly config: AppConfig,
     private readonly llmClient: LlmClient,
-    private readonly sessionManager: SessionManager,
+    private readonly sessionManager: SessionCompressionAccess,
     private readonly mediaCaptionService: MediaCaptionService,
     private readonly logger: Logger
   ) {}

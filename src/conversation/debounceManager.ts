@@ -1,11 +1,11 @@
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
-import type { SessionManager } from "#conversation/session/sessionManager.ts";
+import type { SessionDebounceAccess } from "#conversation/session/sessionCapabilities.ts";
 
 export class DebounceManager {
   constructor(
     private readonly logger: Logger,
-    private readonly sessionManager: SessionManager,
+    private readonly sessionManager: SessionDebounceAccess,
     private readonly config: AppConfig
   ) {}
 

@@ -1,4 +1,4 @@
-import type { SessionHistoryMessage } from "#conversation/session/sessionManager.ts";
+import type { SessionHistoryMessage } from "#conversation/session/sessionTypes.ts";
 import type { LlmMessage } from "#llm/llmClient.ts";
 import { renderPromptSection, renderPromptSectionRaw } from "./prompt-section.ts";
 

@@ -1,5 +1,5 @@
 import type { LlmMessage } from "#llm/llmClient.ts";
-import type { InternalTranscriptItem } from "#conversation/session/sessionManager.ts";
+import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { InternalAssistantToolCallItem } from "#conversation/session/sessionTypes.ts";
 import { projectTranscriptMessageItemToHistoryMessage } from "#conversation/session/historyContext.ts";
 

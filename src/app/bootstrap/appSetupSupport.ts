@@ -1,18 +1,21 @@
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
+import type {
+  SessionOutboundHistoryAccess,
+  SessionPersistenceAccess
+} from "#conversation/session/sessionCapabilities.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { Logger } from "pino";
 import type { PersonaStore } from "#persona/personaStore.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
-import type { SessionManager } from "#conversation/session/sessionManager.ts";
 import type { UserStore } from "#identity/userStore.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
-import type { InternalTranscriptItem } from "#conversation/session/sessionManager.ts";
+import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 
 export interface AppSetupSupportDeps {
   logger: Logger;
   oneBotClient: OneBotClient;
-  sessionManager: SessionManager;
+  sessionManager: SessionPersistenceAccess & SessionOutboundHistoryAccess;
   sessionPersistence: SessionPersistence;
   personaStore: PersonaStore;
   setupStore: SetupStateStore;

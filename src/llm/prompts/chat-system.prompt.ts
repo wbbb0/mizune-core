@@ -9,7 +9,7 @@ import type {
   PromptParticipantProfile,
   PromptToolEvent
 } from "#llm/prompt/promptTypes.ts";
-import type { ToolsetView } from "#llm/tools/toolsets.ts";
+import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import { renderPromptSection } from "./prompt-section.ts";
 import { isNearDuplicateText } from "#memory/similarity.ts";
 import type { ToolsetRuleEntry } from "#llm/prompt/toolsetRuleStore.ts";

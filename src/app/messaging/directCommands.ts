@@ -2,9 +2,9 @@ import type { Logger } from "pino";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { AppConfig } from "#config/config.ts";
 import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
-import type { SessionManager } from "#conversation/session/sessionManager.ts";
+import type { SessionDirectCommandAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { Relationship } from "#identity/relationship.ts";
-import type { InternalTranscriptItem } from "#conversation/session/sessionManager.ts";
+import type { InternalTranscriptItem, SessionState } from "#conversation/session/sessionTypes.ts";
 import { requireSessionModeDefinition } from "#modes/registry.ts";
 
 type DebugModeArg = "on" | "off" | "once" | "status";
@@ -37,7 +37,7 @@ interface DirectCommandIncomingMessage {
 
 interface DirectCommandHandlerInput {
   config: AppConfig;
-  sessionManager: SessionManager;
+  sessionManager: SessionDirectCommandAccess;
   oneBotClient: OneBotClient;
   logger: Logger;
   scenarioHostStateStore?: import("#modes/scenarioHost/stateStore.ts").ScenarioHostStateStore;
@@ -65,7 +65,7 @@ interface DirectCommandHandlerInput {
 
 interface DirectCommandExecutionContext {
   input: DirectCommandHandlerInput;
-  session: ReturnType<SessionManager["ensureSession"]>;
+  session: SessionState;
   incomingMessage: DirectCommandIncomingMessage;
   ownerAssignmentAvailable: boolean;
   send: (text: string) => Promise<void>;

@@ -1,26 +1,15 @@
 import type { BuiltinToolContext, ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOperator } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
+import {
+  buildGroupSessionId,
+  buildPrivateSessionId,
+  parseChatSessionIdentity
+} from "#conversation/session/sessionIdentity.ts";
 
 type SessionListItem = ReturnType<BuiltinToolContext["sessionManager"]["listSessions"]>[number];
 type FriendListItem = Awaited<ReturnType<BuiltinToolContext["oneBotClient"]["getFriendList"]>>[number];
 type GroupListItem = Awaited<ReturnType<BuiltinToolContext["oneBotClient"]["getGroupList"]>>[number];
-
-function parseSessionId(sessionId: string): { type: "private" | "group"; userId?: string; groupId?: string } | null {
-  if (sessionId.startsWith("private:")) {
-    return {
-      type: "private",
-      userId: sessionId.slice("private:".length)
-    };
-  }
-  if (sessionId.startsWith("group:")) {
-    return {
-      type: "group",
-      groupId: sessionId.slice("group:".length)
-    };
-  }
-  return null;
-}
 
 export const crossChatToolDescriptors: ToolDescriptor[] = [
   {
@@ -76,13 +65,13 @@ export const crossChatToolHandlers: Record<string, ToolHandler> = {
       type: item.type
     }));
     const friends = (await context.oneBotClient.getFriendList()).map((item: FriendListItem) => ({
-      sessionId: `private:${String(item.user_id)}`,
+      sessionId: buildPrivateSessionId(String(item.user_id)),
       source: "friend",
       title: `${item.remark ?? item.nickname ?? item.user_id}`,
       type: "private" as const
     }));
     const groups = (await context.oneBotClient.getGroupList()).map((item: GroupListItem) => ({
-      sessionId: `group:${String(item.group_id)}`,
+      sessionId: buildGroupSessionId(String(item.group_id)),
       source: "group",
       title: `${item.group_name ?? item.group_id}`,
       type: "group" as const
@@ -117,13 +106,13 @@ export const crossChatToolHandlers: Record<string, ToolHandler> = {
     if (!sessionId || !instruction) {
       return JSON.stringify({ error: "sessionId and instruction are required" });
     }
-    const parsed = parseSessionId(sessionId);
+    const parsed = parseChatSessionIdentity(sessionId);
     if (!parsed) {
       return JSON.stringify({ error: "Unsupported sessionId" });
     }
 
-    if (parsed.type === "private") {
-      const targetUserId = parsed.userId ?? "";
+    if (parsed.kind === "private") {
+      const targetUserId = parsed.userId;
       const isNpc = context.npcDirectory.isNpc(targetUserId);
       if (isNpc) {
         return JSON.stringify({ error: "现在不支持这个功能" });
@@ -138,7 +127,7 @@ export const crossChatToolHandlers: Record<string, ToolHandler> = {
         type: "private"
       });
     } else {
-      const targetGroupId = parsed.groupId ?? "";
+      const targetGroupId = parsed.groupId;
       const groups = await context.oneBotClient.getGroupList();
       const found = groups.some((item: GroupListItem) => String(item.group_id) === targetGroupId);
       if (!found) {

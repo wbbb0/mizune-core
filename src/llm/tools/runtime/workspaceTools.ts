@@ -1,6 +1,10 @@
 import { readFile } from "node:fs/promises";
 import type { ChatFileOrigin, ChatFileRecord } from "#services/workspace/types.ts";
 import type { OneBotMessageSegment } from "#services/onebot/types.ts";
+import {
+  getSessionChatType,
+  parseChatSessionIdentity
+} from "#conversation/session/sessionIdentity.ts";
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 import { inferSendableFileKind, resolveSendablePath } from "#services/workspace/sendablePath.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
@@ -11,13 +15,13 @@ const isLocalFileToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.l
 const isChatFileToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.chatFiles.enabled;
 
 function parseSessionTarget(sessionId: string): { userId?: string; groupId?: string } | null {
-  if (sessionId.startsWith("private:")) {
-    return { userId: sessionId.slice("private:".length) };
+  const parsed = parseChatSessionIdentity(sessionId);
+  if (!parsed) {
+    return null;
   }
-  if (sessionId.startsWith("group:")) {
-    return { groupId: sessionId.slice("group:".length) };
-  }
-  return null;
+  return parsed.kind === "private"
+    ? { userId: parsed.userId }
+    : { groupId: parsed.groupId };
 }
 
 function enqueueToolSend(
@@ -40,7 +44,7 @@ function buildAssistantHistoryTarget(
   senderName: string;
 } {
   return {
-    chatType: context.lastMessage.sessionId.startsWith("group:") ? "group" : "private",
+    chatType: getSessionChatType(context.lastMessage.sessionId) === "group" ? "group" : "private",
     userId: context.lastMessage.userId,
     senderName: context.lastMessage.senderName
   };

@@ -1,56 +1,30 @@
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { AppConfig } from "#config/config.ts";
-import {
-  beginGenerationState,
-  beginSyntheticGenerationState,
-  cancelGenerationState,
-  completeResponseState,
-  finishGenerationState,
-  interruptResponseState
-} from "./sessionLifecycle.ts";
 import { isSessionGenerating, isSessionResponding } from "./sessionQueries.ts";
 import {
   setSessionPhaseState,
-  appendDebugMarkerState,
-  appendHistoryEntry,
-  appendInternalTranscriptState,
   appendActiveAssistantResponseChunkState,
   appendSessionMessage,
   appendSteerMessageState,
-  applyCompressedHistoryState,
-  appendToolEventState,
   clearSessionState,
   consumeSteerMessagesState,
-  enqueueInternalTriggerState,
   finalizeActiveAssistantResponseState,
-  popRetractableSentMessagesState,
   promoteSteerMessagesToPendingState,
-  recordSentMessageState,
   requeuePendingMessagesState,
-  setSessionDebugControlState,
-  setInterruptibleGroupTriggerUserState,
-  setLastLlmUsageState,
-  setLastAssistantMessageReasoningState,
-  shiftInternalTriggerState
+  setInterruptibleGroupTriggerUserState
 } from "./sessionMutations.ts";
-import {
-  cloneSessionState,
-  getHistoryForCompressionSnapshot,
-  getHistoryForCompressionSnapshotByTokens,
-  getSessionViewSnapshot
-} from "./sessionQueries.ts";
-import { projectLlmVisibleHistoryFromTranscript, projectVisibleMessagesFromTranscript } from "./sessionTranscript.ts";
-import {
-  createAssistantTranscriptMessageItem,
-  createSessionModeSwitchTranscriptItem,
-  createUserTranscriptMessageItem
-} from "./historyContext.ts";
+import { SessionStore } from "./sessionStore.ts";
 import {
   buildSessionId,
   createSessionState,
   restoreSessionState,
   toPersistedSessionState
 } from "./sessionStateFactory.ts";
+import { SessionLifecycleController } from "./sessionLifecycleController.ts";
+import { SessionInternalTriggerQueue } from "./sessionInternalTriggerQueue.ts";
+import { SessionDebugController } from "./sessionDebugController.ts";
+import { SessionSentMessageLog } from "./sessionSentMessageLog.ts";
+import { SessionHistoryService } from "./sessionHistoryService.ts";
 import type {
   SessionPhase,
   ActiveAssistantResponse,
@@ -87,14 +61,21 @@ export type {
 
 // Owns the runtime session map and exposes the public session mutation API.
 export class SessionManager {
-  private readonly sessions = new Map<string, SessionState>();
+  private readonly sessionStore = new SessionStore();
+  private readonly lifecycleController = new SessionLifecycleController();
+  private readonly internalTriggerQueue = new SessionInternalTriggerQueue();
+  private readonly debugController = new SessionDebugController();
+  private readonly sentMessageLog = new SessionSentMessageLog();
+  private readonly historyService: SessionHistoryService;
 
-  constructor(private readonly config: AppConfig) { }
+  constructor(config: AppConfig) {
+    this.historyService = new SessionHistoryService(config);
+  }
 
   // Returns the existing session for an incoming message or creates a new one.
   getOrCreateSession(message: ParsedIncomingMessage): SessionState {
     const sessionId = buildSessionId(message);
-    const existing = this.sessions.get(sessionId);
+    const existing = this.sessionStore.get(sessionId);
     if (existing) {
       return existing;
     }
@@ -103,7 +84,7 @@ export class SessionManager {
       id: sessionId,
       type: message.chatType
     });
-    this.sessions.set(sessionId, created);
+    this.sessionStore.set(sessionId, created);
     return created;
   }
 
@@ -125,13 +106,13 @@ export class SessionManager {
     participantUserId?: string;
     participantLabel?: string | null;
   }): SessionState {
-    const existing = this.sessions.get(target.id);
+    const existing = this.sessionStore.get(target.id);
     if (existing) {
       return existing;
     }
 
     const created = createSessionState(target);
-    this.sessions.set(target.id, created);
+    this.sessionStore.set(target.id, created);
     return created;
   }
 
@@ -198,7 +179,7 @@ export class SessionManager {
     responseEpoch: number;
   } {
     const session = this.requireSession(sessionId);
-    return beginGenerationState(session);
+    return this.lifecycleController.beginGeneration(session);
   }
 
   // Starts a synthetic generation cycle without consuming pending messages.
@@ -209,19 +190,19 @@ export class SessionManager {
     responseEpoch: number;
   } {
     const session = this.requireSession(sessionId);
-    return beginSyntheticGenerationState(session);
+    return this.lifecycleController.beginSyntheticGeneration(session);
   }
 
   // Marks the active generation as finished if the abort controller still matches.
   finishGeneration(sessionId: string, abortController: AbortController): boolean {
     const session = this.requireSession(sessionId);
-    return finishGenerationState(session, abortController);
+    return this.lifecycleController.finishGeneration(session, abortController);
   }
 
   // Cancels the current generation request for a session.
   cancelGeneration(sessionId: string): boolean {
     const session = this.requireSession(sessionId);
-    return cancelGenerationState(session);
+    return this.lifecycleController.cancelGeneration(session);
   }
 
   // Aborts the outbound message queue for a session without cancelling generation.
@@ -229,11 +210,7 @@ export class SessionManager {
   // Generation and tool execution continue running.
   interruptOutbound(sessionId: string): boolean {
     const session = this.requireSession(sessionId);
-    if (session.responseAbortController == null || session.responseAbortController.signal.aborted) {
-      return false;
-    }
-    session.responseAbortController.abort();
-    return true;
+    return this.lifecycleController.interruptOutbound(session);
   }
 
   // Interrupts both generation and outbound response work for a session.
@@ -243,17 +220,7 @@ export class SessionManager {
     finalizedAssistant: boolean;
   } {
     const session = this.requireSession(sessionId);
-    const finalizedAssistant = finalizeActiveAssistantResponseState(session, Date.now());
-    const interrupted = interruptResponseState(session);
-    return {
-      ...interrupted,
-      finalizedAssistant: finalizedAssistant != null
-    };
-  }
-
-  setSessionPhase(sessionId: string, phase: SessionPhase): void {
-    const session = this.requireSession(sessionId);
-    setSessionPhaseState(session, phase);
+    return this.lifecycleController.interruptResponse(session);
   }
 
   setSessionPhaseIfEpochMatches(
@@ -301,11 +268,11 @@ export class SessionManager {
   }
 
   listSessions(): SessionState[] {
-    return Array.from(this.sessions.values()).map((session) => cloneSessionState(session));
+    return Array.from(this.sessionStore.values()).map((session) => this.historyService.clone(session));
   }
 
   deleteSession(sessionId: string): boolean {
-    const session = this.sessions.get(sessionId);
+    const session = this.sessionStore.get(sessionId);
     if (!session) {
       return false;
     }
@@ -316,7 +283,7 @@ export class SessionManager {
     if (session.responseAbortController != null) {
       session.responseAbortController.abort();
     }
-    return this.sessions.delete(sessionId);
+    return this.sessionStore.delete(sessionId);
   }
 
   getSession(sessionId: string): SessionState {
@@ -348,12 +315,7 @@ export class SessionManager {
     session.modeId = modeId;
     session.lastActiveAt = Date.now();
     if (options?.appendSwitchMarker !== false) {
-      appendInternalTranscriptState(session, createSessionModeSwitchTranscriptItem({
-        fromModeId: previousModeId,
-        toModeId: modeId,
-        timestampMs: Date.now()
-      }));
-      session.historyRevision += 1;
+      this.historyService.appendModeSwitch(session, previousModeId, modeId);
     }
     return true;
   }
@@ -394,30 +356,6 @@ export class SessionManager {
     return session.responseEpoch === expectedResponseEpoch && isSessionResponding(session);
   }
 
-  appendHistory(sessionId: string, role: "user" | "assistant", content: string, timestampMs = Date.now()): void {
-    const session = this.requireSession(sessionId);
-    const defaultUserId = session.type === "private"
-      ? session.participantUserId
-      : "unknown";
-    if (role === "user") {
-      appendHistoryEntry(session, createUserTranscriptMessageItem({
-        chatType: session.type,
-        userId: defaultUserId,
-        senderName: defaultUserId,
-        text: content,
-        timestampMs
-      }));
-      return;
-    }
-    appendHistoryEntry(session, createAssistantTranscriptMessageItem({
-      chatType: session.type,
-      userId: defaultUserId,
-      senderName: defaultUserId,
-      text: content,
-      timestampMs
-    }));
-  }
-
   appendUserHistory(sessionId: string, message: {
     chatType: "private" | "group";
     userId: string;
@@ -434,22 +372,7 @@ export class SessionManager {
     mentionedSelf?: boolean;
   }, timestampMs = Date.now()): void {
     const session = this.requireSession(sessionId);
-    appendHistoryEntry(session, createUserTranscriptMessageItem({
-      chatType: message.chatType,
-      userId: message.userId,
-      senderName: message.senderName,
-      text: message.text,
-      ...(message.imageIds ? { imageIds: message.imageIds } : {}),
-      ...(message.emojiIds ? { emojiIds: message.emojiIds } : {}),
-      ...(message.attachments ? { attachments: message.attachments } : {}),
-      ...(message.audioCount != null ? { audioCount: message.audioCount } : {}),
-      ...(message.forwardIds ? { forwardIds: message.forwardIds } : {}),
-      ...(message.replyMessageId !== undefined ? { replyMessageId: message.replyMessageId } : {}),
-      ...(message.mentionUserIds ? { mentionUserIds: message.mentionUserIds } : {}),
-      ...(message.mentionedAll !== undefined ? { mentionedAll: message.mentionedAll } : {}),
-      ...(message.mentionedSelf !== undefined ? { mentionedSelf: message.mentionedSelf } : {}),
-      timestampMs
-    }));
+    this.historyService.appendUserHistory(session, message, timestampMs);
   }
 
   appendAssistantHistory(sessionId: string, message: {
@@ -459,30 +382,17 @@ export class SessionManager {
     text: string;
   }, timestampMs = Date.now()): void {
     const session = this.requireSession(sessionId);
-    appendHistoryEntry(session, createAssistantTranscriptMessageItem({
-      ...message,
-      timestampMs
-    }));
+    this.historyService.appendAssistantHistory(session, message, timestampMs);
   }
 
   appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void {
     const session = this.requireSession(sessionId);
-    appendInternalTranscriptState(session, item);
+    this.historyService.appendInternalTranscript(session, item);
   }
 
   appendDebugMarker(sessionId: string, marker: SessionDebugMarker): void {
     const session = this.requireSession(sessionId);
-    appendDebugMarkerState(session, marker);
-  }
-
-  appendToolEvent(sessionId: string, event: SessionToolEvent): void {
-    const session = this.requireSession(sessionId);
-    appendToolEventState(session, event);
-  }
-
-  setLastLlmUsage(sessionId: string, usage: SessionUsageSnapshot): void {
-    const session = this.requireSession(sessionId);
-    setLastLlmUsageState(session, usage);
+    this.debugController.appendMarker(session, marker);
   }
 
   appendActiveAssistantResponseChunkIfResponseEpochMatches(
@@ -525,7 +435,7 @@ export class SessionManager {
     reasoningContent: string
   ): boolean {
     return this.withResponseEpoch(sessionId, expectedResponseEpoch, true, (session) => {
-      setLastAssistantMessageReasoningState(session, reasoningContent);
+      this.historyService.setLastAssistantReasoning(session, reasoningContent);
     });
   }
 
@@ -544,7 +454,7 @@ export class SessionManager {
   // Restores persisted sessions back into runtime state.
   restoreSessions(items: PersistedSessionState[]): void {
     for (const item of items) {
-      this.sessions.set(item.id, restoreSessionState(item));
+      this.sessionStore.set(item.id, restoreSessionState(item));
     }
   }
 
@@ -556,7 +466,7 @@ export class SessionManager {
     transcriptStartIndexToKeep: number;
   } | null {
     const session = this.requireSession(sessionId);
-    return getHistoryForCompressionSnapshot(session, this.config, triggerMessageCount, retainMessageCount);
+    return this.historyService.getHistoryForCompression(session, triggerMessageCount, retainMessageCount);
   }
 
   // Returns a compression snapshot when the estimated token count exceeds the trigger threshold.
@@ -573,18 +483,12 @@ export class SessionManager {
     estimatedTotalTokens: number;
   } | null {
     const session = this.requireSession(sessionId);
-    return getHistoryForCompressionSnapshotByTokens(session, this.config, triggerTokens, retainTokens, reportedInputTokens);
-  }
-
-  applyCompressedHistory(
-    sessionId: string,
-    payload: {
-      historySummary: string;
-      transcriptStartIndexToKeep: number;
-    }
-  ): void {
-    const session = this.requireSession(sessionId);
-    applyCompressedHistoryState(session, payload);
+    return this.historyService.getHistoryForCompressionByTokens(
+      session,
+      triggerTokens,
+      retainTokens,
+      reportedInputTokens
+    );
   }
 
   applyCompressedHistoryIfEpochMatches(
@@ -596,7 +500,7 @@ export class SessionManager {
     }
   ): boolean {
     return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
-      applyCompressedHistoryState(session, payload);
+      this.historyService.applyCompressedHistory(session, payload);
     });
   }
 
@@ -612,37 +516,8 @@ export class SessionManager {
     if (session.historyRevision !== expectedHistoryRevision) {
       return false;
     }
-    applyCompressedHistoryState(session, payload);
+    this.historyService.applyCompressedHistory(session, payload);
     return true;
-  }
-
-  appendHistoryIfEpochMatches(
-    sessionId: string,
-    expectedEpoch: number,
-    role: "user" | "assistant",
-    content: string,
-    timestampMs = Date.now()
-  ): boolean {
-    return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
-      const defaultUserId = session.type === "private"
-        ? session.participantUserId
-        : "unknown";
-      appendHistoryEntry(session, role === "user"
-        ? createUserTranscriptMessageItem({
-            chatType: session.type,
-            userId: defaultUserId,
-            senderName: defaultUserId,
-            text: content,
-            timestampMs
-          })
-        : createAssistantTranscriptMessageItem({
-            chatType: session.type,
-            userId: defaultUserId,
-            senderName: defaultUserId,
-            text: content,
-            timestampMs
-          }));
-    });
   }
 
   appendHistoryIfResponseEpochMatches(
@@ -657,10 +532,7 @@ export class SessionManager {
     timestampMs = Date.now()
   ): boolean {
     return this.withResponseEpoch(sessionId, expectedResponseEpoch, true, (session) => {
-      appendHistoryEntry(session, createAssistantTranscriptMessageItem({
-        ...target,
-        timestampMs
-      }));
+      this.historyService.appendAssistantHistory(session, target, timestampMs);
     });
   }
 
@@ -670,17 +542,7 @@ export class SessionManager {
     item: InternalTranscriptItem
   ): boolean {
     return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
-      appendInternalTranscriptState(session, item);
-    });
-  }
-
-  appendDebugMarkerIfEpochMatches(
-    sessionId: string,
-    expectedEpoch: number,
-    marker: SessionDebugMarker
-  ): boolean {
-    return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
-      appendDebugMarkerState(session, marker);
+      this.historyService.appendInternalTranscript(session, item);
     });
   }
 
@@ -690,13 +552,13 @@ export class SessionManager {
     event: SessionToolEvent
   ): boolean {
     return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
-      appendToolEventState(session, event);
+      this.historyService.appendToolEvent(session, event);
     });
   }
 
   setLastLlmUsageIfEpochMatches(sessionId: string, expectedEpoch: number, usage: SessionUsageSnapshot): boolean {
     return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
-      setLastLlmUsageState(session, usage);
+      this.historyService.setLastLlmUsage(session, usage);
     });
   }
 
@@ -717,47 +579,34 @@ export class SessionManager {
     lastActiveAt: number;
   } {
     const session = this.requireSession(sessionId);
-    return getSessionViewSnapshot(session);
+    return this.historyService.getSessionView(session);
   }
 
   getLlmVisibleHistory(sessionId: string): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }> {
     const session = this.requireSession(sessionId);
-    return projectLlmVisibleHistoryFromTranscript(session.internalTranscript, this.config);
-  }
-
-  getVisibleChatMessages(sessionId: string): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }> {
-    const session = this.requireSession(sessionId);
-    return projectVisibleMessagesFromTranscript(session.internalTranscript);
+    return this.historyService.getLlmVisibleHistory(session);
   }
 
   getDebugControlState(sessionId: string): SessionDebugControlState {
-    return { ...this.requireSession(sessionId).debugControl };
+    return this.debugController.getControlState(this.requireSession(sessionId));
   }
 
   getDebugMarkers(sessionId: string): SessionDebugMarker[] {
-    return [...this.requireSession(sessionId).debugMarkers];
+    return this.debugController.getMarkers(this.requireSession(sessionId));
   }
 
   setDebugEnabled(sessionId: string, enabled: boolean): SessionDebugControlState {
     const session = this.requireSession(sessionId);
-    return setSessionDebugControlState(session, {
-      enabled,
-      ...(enabled ? {} : { oncePending: false })
-    });
+    return this.debugController.setEnabled(session, enabled);
   }
 
   armDebugOnce(sessionId: string): SessionDebugControlState {
     const session = this.requireSession(sessionId);
-    return setSessionDebugControlState(session, { oncePending: true });
+    return this.debugController.armOnce(session);
   }
 
   consumeDebugMode(sessionId: string): boolean {
-    const session = this.requireSession(sessionId);
-    const active = session.debugControl.enabled || session.debugControl.oncePending;
-    if (session.debugControl.oncePending) {
-      setSessionDebugControlState(session, { oncePending: false });
-    }
-    return active;
+    return this.debugController.consume(this.requireSession(sessionId));
   }
 
   setInterruptibleGroupTriggerUser(sessionId: string, userId: string | null): void {
@@ -770,33 +619,38 @@ export class SessionManager {
     return session.interruptibleGroupTriggerUserId != null && session.interruptibleGroupTriggerUserId === userId;
   }
 
+  hasPendingInternalTriggers(sessionId: string): boolean {
+    const session = this.requireSession(sessionId);
+    return this.internalTriggerQueue.hasPending(session);
+  }
+
   completeResponse(sessionId: string, expectedResponseEpoch: number): boolean {
     const session = this.requireSession(sessionId);
-    return completeResponseState(session, expectedResponseEpoch);
+    return this.lifecycleController.completeResponse(session, expectedResponseEpoch);
   }
 
   recordSentMessage(sessionId: string, message: SessionSentMessage): void {
     const session = this.requireSession(sessionId);
-    recordSentMessageState(session, message);
+    this.sentMessageLog.record(session, message);
   }
 
   popRetractableSentMessages(sessionId: string, count: number, maxAgeMs: number, now = Date.now()): SessionSentMessage[] {
     const session = this.requireSession(sessionId);
-    return popRetractableSentMessagesState(session, count, maxAgeMs, now);
+    return this.sentMessageLog.popRetractable(session, count, maxAgeMs, now);
   }
 
   enqueueInternalTrigger(sessionId: string, trigger: InternalSessionTriggerExecution): number {
     const session = this.requireSession(sessionId);
-    return enqueueInternalTriggerState(session, trigger);
+    return this.internalTriggerQueue.enqueue(session, trigger);
   }
 
   shiftInternalTrigger(sessionId: string): InternalSessionTriggerExecution | null {
     const session = this.requireSession(sessionId);
-    return shiftInternalTriggerState(session);
+    return this.internalTriggerQueue.shift(session);
   }
 
   private requireSession(sessionId: string): SessionState {
-    const session = this.sessions.get(sessionId);
+    const session = this.sessionStore.get(sessionId);
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);
     }

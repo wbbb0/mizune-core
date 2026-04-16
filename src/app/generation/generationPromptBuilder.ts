@@ -12,7 +12,7 @@ import type {
   InternalTranscriptItem,
   SessionDebugMarker,
   SessionUsageSnapshot
-} from "#conversation/session/sessionManager.ts";
+} from "#conversation/session/sessionTypes.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { UserStore } from "#identity/userStore.ts";
@@ -20,7 +20,7 @@ import type { LlmMessage } from "#llm/llmClient.ts";
 import type { PromptDebugSnapshot } from "#llm/tools/core/shared.ts";
 import type { GenerationPromptBuilderDeps } from "./generationRunnerDeps.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
-import type { ToolsetView } from "#llm/tools/toolsets.ts";
+import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { ToolsetRuleEntry } from "#llm/prompt/toolsetRuleStore.ts";
 import { isNearDuplicateText } from "#memory/similarity.ts";
 import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";

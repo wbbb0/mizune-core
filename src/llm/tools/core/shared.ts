@@ -5,7 +5,6 @@ import type { ScheduledJobSchedule } from "#runtime/scheduler/types.ts";
 import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
-import type { SessionManager } from "#conversation/session/sessionManager.ts";
 import type { MessageQueue } from "#conversation/messageQueue.ts";
 import type { AppConfig } from "#config/config.ts";
 import type { ForwardResolver } from "#forwards/forwardResolver.ts";
@@ -28,11 +27,14 @@ import type { ComfyClient } from "#comfy/comfyClient.ts";
 import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import type {
+  SessionToolRuntimeAccess
+} from "#conversation/session/sessionCapabilities.ts";
+import type {
   InternalTranscriptItem,
   InternalSessionTriggerExecution,
   SessionDebugMarker,
   SessionUsageSnapshot
-} from "#conversation/session/sessionManager.ts";
+} from "#conversation/session/sessionTypes.ts";
 import type {
   GenerationPromptBatchMessage,
   GenerationPromptHistoryMessage,
@@ -43,7 +45,7 @@ import type { PromptLiveResource } from "../../prompt/promptTypes.ts";
 import type { Persona } from "#persona/personaSchema.ts";
 import type { GenerationWebOutputCollector } from "#app/generation/generationTypes.ts";
 import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
-import type { ToolsetView } from "#llm/tools/toolsets.ts";
+import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { SessionModeDefinition } from "#modes/types.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 
@@ -82,7 +84,7 @@ export interface BuiltinToolCommunicationDeps {
 
 export interface BuiltinToolStoreDeps {
   requestStore: RequestStore;
-  sessionManager: SessionManager;
+  sessionManager: SessionToolRuntimeAccess;
   whitelistStore: WhitelistStore;
   userStore: UserStore;
   personaStore: PersonaStore;

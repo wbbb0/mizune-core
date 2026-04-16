@@ -1,4 +1,12 @@
-import type { InternalApiDeps } from "../types.ts";
+import type {
+  InternalApiConfigSummaryDeps,
+  InternalApiPersonaDeps,
+  InternalApiSessionDeleteDeps,
+  InternalApiSessionReadDeps,
+  InternalApiSessionWriteDeps,
+  InternalApiUserDeps,
+  InternalApiWhitelistDeps
+} from "../types.ts";
 import type { ParsedCreateSessionBody, ParsedSwitchSessionModeBody } from "../routeSupport.ts";
 import type { SessionState } from "#conversation/session/sessionTypes.ts";
 import { getDefaultSessionModeId, listSessionModes, requireSessionModeDefinition, sessionModeSupportsChatType } from "#modes/registry.ts";
@@ -22,7 +30,7 @@ export function getHealthStatus() {
   return { ok: true };
 }
 
-export function getConfigSummary(deps: Pick<InternalApiDeps, "config" | "whitelistStore">) {
+export function getConfigSummary(deps: InternalApiConfigSummaryDeps) {
   const whitelist = deps.whitelistStore.getSnapshot();
   const runtimeMode = deps.config.onebot.enabled ? "onebot" : "webui_only";
   return {
@@ -43,13 +51,13 @@ export function getConfigSummary(deps: Pick<InternalApiDeps, "config" | "whiteli
   };
 }
 
-export async function listUsers(deps: Pick<InternalApiDeps, "userStore">) {
+export async function listUsers(deps: InternalApiUserDeps) {
   return {
     users: await deps.userStore.list()
   };
 }
 
-export function listSessions(deps: Pick<InternalApiDeps, "sessionManager">) {
+export function listSessions(deps: InternalApiSessionReadDeps) {
   return {
     sessions: deps.sessionManager.listSessions().map((session) => buildSessionSummary(session))
   };
@@ -73,7 +81,7 @@ function assertSessionModeAllowed(modeId: string, chatType: "private" | "group")
 }
 
 export async function getSessionDetail(
-  deps: Pick<InternalApiDeps, "sessionManager">,
+  deps: InternalApiSessionReadDeps,
   sessionId: string
 ) {
   const existing = deps.sessionManager.listSessions().find((item) => item.id === sessionId);
@@ -92,7 +100,7 @@ export async function getSessionDetail(
 }
 
 export async function createWebSession(
-  deps: Pick<InternalApiDeps, "sessionManager" | "sessionPersistence" | "scenarioHostStateStore">,
+  deps: InternalApiSessionWriteDeps,
   body: ParsedCreateSessionBody
 ) {
   const sessionId = createWebSessionId();
@@ -118,7 +126,7 @@ export async function createWebSession(
 }
 
 export async function switchSessionMode(
-  deps: Pick<InternalApiDeps, "sessionManager" | "sessionPersistence" | "scenarioHostStateStore">,
+  deps: InternalApiSessionWriteDeps,
   sessionId: string,
   body: ParsedSwitchSessionModeBody
 ) {
@@ -137,7 +145,7 @@ export async function switchSessionMode(
 }
 
 export async function deleteSession(
-  deps: Pick<InternalApiDeps, "sessionManager" | "sessionPersistence" | "chatMessageFileGcService">,
+  deps: InternalApiSessionDeleteDeps,
   sessionId: string
 ) {
   const deleted = deps.sessionManager.deleteSession(sessionId);
@@ -152,13 +160,13 @@ export async function deleteSession(
   return { ok: true as const };
 }
 
-export async function getPersona(deps: Pick<InternalApiDeps, "personaStore">) {
+export async function getPersona(deps: InternalApiPersonaDeps) {
   return {
     persona: await deps.personaStore.get()
   };
 }
 
-export function getWhitelist(deps: Pick<InternalApiDeps, "whitelistStore">) {
+export function getWhitelist(deps: InternalApiWhitelistDeps) {
   return {
     whitelist: deps.whitelistStore.getSnapshot()
   };

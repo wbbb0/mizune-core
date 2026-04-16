@@ -1,4 +1,8 @@
 import { createDirectCommandHandler } from "../messaging/directCommands.ts";
+import type {
+  SessionDirectCommandAccess,
+  SessionMessagingAccess
+} from "#conversation/session/sessionCapabilities.ts";
 import {
   createMessageEventHandler,
   processIncomingMessage,
@@ -10,12 +14,11 @@ import {
 import type { AppServiceBootstrap } from "../bootstrap/appServiceBootstrap.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { GenerationWebOutputCollector } from "../generation/generationTypes.ts";
-import type { InternalTranscriptItem } from "#conversation/session/sessionManager.ts";
+import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 
 type DirectCommandDeps = Pick<
   AppServiceBootstrap,
   | "config"
-  | "sessionManager"
   | "oneBotClient"
   | "logger"
   | "historyCompressor"
@@ -23,6 +26,7 @@ type DirectCommandDeps = Pick<
   | "whitelistStore"
   | "scenarioHostStateStore"
 > & {
+  sessionManager: SessionDirectCommandAccess & Pick<SessionMessagingAccess, "appendAssistantHistory" | "appendInternalTranscript">;
   persistSession: (sessionId: string, reason: string) => void;
   assignOwner: (input: {
     requesterUserId: string;
@@ -45,7 +49,9 @@ type DeliveryContext =
     };
 
 export function createRuntimeMessageIngress(input: {
-  services: MessageHandlerServices;
+  services: Omit<MessageHandlerServices, "sessionManager"> & {
+    sessionManager: SessionMessagingAccess;
+  };
   directCommandDeps: DirectCommandDeps;
   persistSession: (sessionId: string, reason: string) => void;
 }) {
@@ -119,7 +125,7 @@ function createDeliveryHandleDirectCommand(
       deps.onebotSendImmediateText,
       {
         sessionManager: deps.sessionManager
-      } as Pick<MessageHandlerServices, "sessionManager">,
+      },
       deps.persistSession,
       delivery
     ),
@@ -135,7 +141,9 @@ function createDeliveryHandleDirectCommand(
 
 function createDeliverySendImmediateText(
   onebotSendImmediateText: MessageSendImmediateText,
-  services: Pick<MessageHandlerServices, "sessionManager">,
+  services: {
+    sessionManager: Pick<SessionMessagingAccess, "appendAssistantHistory" | "appendInternalTranscript">;
+  },
   persistSession: (sessionId: string, reason: string) => void,
   delivery: DeliveryContext
 ): MessageSendImmediateText {

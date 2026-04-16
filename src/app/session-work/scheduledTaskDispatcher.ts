@@ -1,4 +1,4 @@
-import type { InternalSessionTriggerExecution } from "#conversation/session/sessionManager.ts";
+import type { InternalSessionTriggerExecution } from "#conversation/session/sessionTypes.ts";
 import { createInternalTriggerDispatcher } from "./internalTriggerDispatcher.ts";
 import type { ScheduledTaskDispatcherDeps } from "./scheduledTaskDispatcherDeps.ts";
 

@@ -64,7 +64,6 @@ async function main() {
     } as never,
     sessionManager,
     audioStore: {} as never,
-    audioTranscriber: {} as never,
     requestStore: {} as never,
     whitelistStore: {} as never,
     scheduledJobStore: {} as never,

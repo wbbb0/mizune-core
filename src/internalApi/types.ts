@@ -1,5 +1,4 @@
 import type { Logger } from "pino";
-import type { SessionManager } from "#conversation/session/sessionManager.ts";
 import type { AppConfig } from "#config/config.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import type { UserStore } from "#identity/userStore.ts";
@@ -20,6 +19,12 @@ import type { MediaCaptionService } from "#services/workspace/mediaCaptionServic
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import type {
+  SessionAdminMutationAccess,
+  SessionAdminReadAccess,
+  SessionStreamAccess,
+  SessionWebStreamAccess
+} from "#conversation/session/sessionCapabilities.ts";
 import {
   createEditorService,
   type EditorService
@@ -34,11 +39,83 @@ import {
   type LocalFileAdminService
 } from "./application/localFileAdminService.ts";
 
+// Domain-shaped dependency slices keep route/application code from depending on
+// the full internal API service graph when a smaller contract is enough.
+export interface InternalApiConfigSummaryDeps {
+  config: AppConfig;
+  whitelistStore: WhitelistStore;
+}
+
+export interface InternalApiUserDeps {
+  userStore: UserStore;
+}
+
+export interface InternalApiSessionReadDeps {
+  sessionManager: SessionAdminReadAccess;
+}
+
+export interface InternalApiSessionWriteDeps extends InternalApiSessionReadDeps {
+  sessionManager: SessionAdminReadAccess & SessionAdminMutationAccess;
+  sessionPersistence: SessionPersistence;
+  scenarioHostStateStore: ScenarioHostStateStore;
+}
+
+export interface InternalApiSessionDeleteDeps extends InternalApiSessionReadDeps {
+  sessionManager: SessionAdminReadAccess & Pick<SessionAdminMutationAccess, "deleteSession">;
+  sessionPersistence: SessionPersistence;
+  chatMessageFileGcService: ChatMessageFileGcService;
+}
+
+export interface InternalApiPersonaDeps {
+  personaStore: PersonaStore;
+}
+
+export interface InternalApiWhitelistDeps {
+  whitelistStore: WhitelistStore;
+}
+
+export interface InternalApiOperationsDeps {
+  requestStore: RequestStore;
+  scheduledJobStore: ScheduledJobStore;
+}
+
+export interface InternalApiMessagingDeps {
+  config: AppConfig;
+  oneBotClient: OneBotClient;
+  sessionManager: SessionWebStreamAccess;
+  handleWebIncomingMessage: (
+    incomingMessage: ParsedIncomingMessage,
+    options: {
+      webOutputCollector: GenerationWebOutputCollector;
+      sessionId?: string;
+    }
+  ) => Promise<void>;
+  chatFileStore: ChatFileStore;
+}
+
+export interface InternalApiUploadsDeps {
+  chatFileStore: ChatFileStore;
+}
+
+export interface InternalApiShellDeps {
+  shellRuntime: ShellRuntime;
+}
+
+export interface InternalApiBrowserDeps {
+  browserService: BrowserService;
+}
+
+export interface InternalApiWorkspaceDeps {
+  localFileService: LocalFileService;
+  chatFileStore: ChatFileStore;
+  oneBotClient: OneBotClient;
+}
+
 export interface InternalApiDeps {
   config: AppConfig;
   logger: Logger;
   oneBotClient: OneBotClient;
-  sessionManager: SessionManager;
+  sessionManager: SessionAdminReadAccess & SessionAdminMutationAccess & SessionStreamAccess;
   personaStore: PersonaStore;
   globalRuleStore: GlobalRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
@@ -75,16 +152,18 @@ export interface InternalApiDeps {
 }
 
 export interface InternalApiServices {
-  config: Pick<InternalApiDeps, "config" | "whitelistStore" | "sessionManager" | "sessionPersistence" | "personaStore" | "globalRuleStore" | "scenarioHostStateStore" | "userStore" | "chatMessageFileGcService">;
+  config: InternalApiConfigSummaryDeps & InternalApiSessionWriteDeps & InternalApiSessionDeleteDeps & InternalApiPersonaDeps & InternalApiUserDeps & {
+    globalRuleStore: GlobalRuleStore;
+  };
   editor: EditorService;
   dataBrowser: DataBrowserService;
   localFileAdmin: LocalFileAdminService;
-  operations: Pick<InternalApiDeps, "requestStore" | "scheduledJobStore">;
-  messaging: Pick<InternalApiDeps, "config" | "oneBotClient" | "sessionManager" | "handleWebIncomingMessage" | "chatFileStore">;
-  uploads: Pick<InternalApiDeps, "chatFileStore">;
-  shell: Pick<InternalApiDeps, "shellRuntime">;
-  browser: Pick<InternalApiDeps, "browserService">;
-  workspace: Pick<InternalApiDeps, "localFileService" | "chatFileStore" | "oneBotClient">;
+  operations: InternalApiOperationsDeps;
+  messaging: InternalApiMessagingDeps;
+  uploads: InternalApiUploadsDeps;
+  shell: InternalApiShellDeps;
+  browser: InternalApiBrowserDeps;
+  workspace: InternalApiWorkspaceDeps;
 }
 
 export function createInternalApiServices(deps: InternalApiDeps): InternalApiServices {

@@ -1,6 +1,11 @@
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import { getDefaultSessionModeId } from "#modes/registry.ts";
 import type { SessionState, PersistedSessionState } from "./sessionTypes.ts";
+import {
+  buildSessionId,
+  deriveParticipantUserId,
+  getSessionSource
+} from "./sessionIdentity.ts";
 
 // Creates and converts runtime session state snapshots.
 
@@ -16,12 +21,12 @@ export function createSessionState(target: {
   return {
     id: target.id,
     type: target.type,
-    source: target.source ?? deriveSessionSource(target.id),
+    source: target.source ?? getSessionSource(target.id),
     modeId: getDefaultSessionModeId(),
     setupConfirmed: false,
     participantUserId,
     participantLabel: target.participantLabel ?? participantUserId,
-    replyDelivery: target.source ?? deriveSessionSource(target.id),
+    replyDelivery: target.source ?? getSessionSource(target.id),
     debugControl: {
       enabled: false,
       oncePending: false
@@ -54,11 +59,7 @@ export function createSessionState(target: {
 }
 
 // Derives a stable session id from an incoming chat message.
-export function buildSessionId(message: ParsedIncomingMessage): string {
-  return message.chatType === "group"
-    ? `group:${message.groupId ?? "unknown"}`
-    : `private:${message.userId}`;
-}
+export { buildSessionId };
 
 // Restores a persisted session snapshot into runtime state.
 export function restoreSessionState(item: PersistedSessionState): SessionState {
@@ -66,12 +67,12 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
   return {
     id: item.id,
     type: item.type,
-    source: item.source ?? deriveSessionSource(item.id),
+    source: item.source ?? getSessionSource(item.id),
     modeId: item.modeId ?? getDefaultSessionModeId(),
     setupConfirmed: false,
     participantUserId,
     participantLabel: item.participantLabel ?? participantUserId,
-    replyDelivery: item.replyDelivery ?? item.source ?? deriveSessionSource(item.id),
+    replyDelivery: item.replyDelivery ?? item.source ?? getSessionSource(item.id),
     debugControl: {
       enabled: item.debugControl?.enabled === true,
       oncePending: false
@@ -171,21 +172,4 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     latestGapMs: session.latestGapMs,
     smoothedGapMs: session.smoothedGapMs
   };
-}
-
-function deriveSessionSource(sessionId: string): "onebot" | "web" {
-  return sessionId.startsWith("web:") ? "web" : "onebot";
-}
-
-function deriveParticipantUserId(sessionId: string, type: "private" | "group"): string {
-  if (type === "private" && sessionId.startsWith("private:")) {
-    return sessionId.slice("private:".length);
-  }
-  if (type === "group" && sessionId.startsWith("group:")) {
-    return sessionId.slice("group:".length);
-  }
-  if (sessionId.startsWith("web:")) {
-    return sessionId.slice("web:".length);
-  }
-  return sessionId;
 }

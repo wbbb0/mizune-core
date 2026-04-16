@@ -1,14 +1,14 @@
 import { getMainModelRefsForTier, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { GenerationPromptHistoryMessage } from "./generationPromptBuilder.ts";
-import type { GenerationRunnerDeps } from "./generationRunnerDeps.ts";
+import type { GenerationCurrentUser, GenerationTurnPlannerDeps } from "./generationRunnerDeps.ts";
 import type { GenerationRuntimeBatchMessage, GenerationSendTarget } from "./generationExecutor.ts";
-import type { ToolsetView } from "#llm/tools/toolsets.ts";
+import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 
 export interface GenerationTurnPlannerInput {
   sessionId: string;
   relationship: Relationship;
-  currentUser: Awaited<ReturnType<GenerationRunnerDeps["userStore"]["getByUserId"]>>;
+  currentUser: GenerationCurrentUser;
   batchMessages: GenerationRuntimeBatchMessage[];
   availableToolsets: ToolsetView[];
   sendTarget: GenerationSendTarget;
@@ -27,7 +27,7 @@ export type GenerationTurnPlannerResult =
 
 // Evaluates turn-planner policy and applies reschedule side effects when needed.
 export async function handleGenerationTurnPlanner(
-  deps: Pick<GenerationRunnerDeps, "config" | "logger" | "llmClient" | "turnPlanner" | "debounceManager" | "historyCompressor" | "sessionManager" | "persistSession">,
+  deps: GenerationTurnPlannerDeps,
   handlers: GenerationTurnPlannerHandlers,
   input: GenerationTurnPlannerInput
 ): Promise<GenerationTurnPlannerResult> {

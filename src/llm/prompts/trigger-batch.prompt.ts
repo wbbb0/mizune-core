@@ -14,6 +14,7 @@ import {
   formatBatchMessageHeader
 } from "#llm/shared/messageHeaderFormat.ts";
 import type { PromptBatchMessage } from "#llm/prompt/promptTypes.ts";
+import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import { formatPromptTimestamp } from "./history-message.prompt.ts";
 import { escapePromptBodyText } from "./prompt-escaping.ts";
 
@@ -158,18 +159,17 @@ function formatBatchTargetLabel(sessionId?: string): { mode: "private" | "group"
       targetLabel: "未知"
     };
   }
-  if (sessionId.startsWith("group:")) {
-    const groupId = sessionId.slice("group:".length) || "unknown";
+  const parsed = parseChatSessionIdentity(sessionId);
+  if (parsed?.kind === "group") {
     return {
       mode: "group",
-      targetLabel: `群聊 ${groupId}`
+      targetLabel: `群聊 ${parsed.groupId || "unknown"}`
     };
   }
-  if (sessionId.startsWith("private:")) {
-    const userId = sessionId.slice("private:".length) || "unknown";
+  if (parsed?.kind === "private") {
     return {
       mode: "private",
-      targetLabel: `私聊 ${userId}`
+      targetLabel: `私聊 ${parsed.userId || "unknown"}`
     };
   }
   return {

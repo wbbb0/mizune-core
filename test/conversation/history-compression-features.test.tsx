@@ -31,14 +31,39 @@ async function runCase(name: string, fn: () => Promise<void>) {
   process.stdout.write("ok\n");
 }
 
+function appendSimpleHistory(
+  sessionManager: SessionManager,
+  sessionId: string,
+  role: "user" | "assistant",
+  content: string,
+  timestampMs: number
+): void {
+  if (role === "user") {
+    sessionManager.appendUserHistory(sessionId, {
+      chatType: "private",
+      userId: "tester",
+      senderName: "tester",
+      text: content
+    }, timestampMs);
+    return;
+  }
+
+  sessionManager.appendAssistantHistory(sessionId, {
+    chatType: "private",
+    userId: "assistant",
+    senderName: "assistant",
+    text: content
+  }, timestampMs);
+}
+
 async function main() {
   await runCase("forceCompact uses default retain count from config", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "private:test", type: "private" });
-    sessionManager.appendHistory("private:test", "user", "hello", 1);
-    sessionManager.appendHistory("private:test", "assistant", "hi", 2);
-    sessionManager.appendHistory("private:test", "user", "more", 3);
-    sessionManager.appendHistory("private:test", "assistant", "later", 4);
+    appendSimpleHistory(sessionManager, "private:test", "user", "hello", 1);
+    appendSimpleHistory(sessionManager, "private:test", "assistant", "hi", 2);
+    appendSimpleHistory(sessionManager, "private:test", "user", "more", 3);
+    appendSimpleHistory(sessionManager, "private:test", "assistant", "later", 4);
     let capturedMessages: Array<{ content?: unknown }> | null = null;
 
     const compressor = new HistoryCompressor(
@@ -100,9 +125,9 @@ async function main() {
   await runCase("forceCompact accepts explicit zero retained history items", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "private:test", type: "private" });
-    sessionManager.appendHistory("private:test", "user", "hello", 1);
-    sessionManager.appendHistory("private:test", "assistant", "hi", 2);
-    sessionManager.appendHistory("private:test", "user", "more", 3);
+    appendSimpleHistory(sessionManager, "private:test", "user", "hello", 1);
+    appendSimpleHistory(sessionManager, "private:test", "assistant", "hi", 2);
+    appendSimpleHistory(sessionManager, "private:test", "user", "more", 3);
 
     const compressor = new HistoryCompressor(
       createConfig(),
@@ -149,7 +174,7 @@ async function main() {
   await runCase("compactOldHistoryKeepingRecent preserves the latest topic window", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "private:test", type: "private" });
-    sessionManager.appendHistory("private:test", "user", "old-1", 1);
+    appendSimpleHistory(sessionManager, "private:test", "user", "old-1", 1);
     sessionManager.appendInternalTranscript("private:test", {
       kind: "status_message",
       llmVisible: false,
@@ -158,8 +183,8 @@ async function main() {
       content: "old-status",
       timestampMs: 1
     });
-    sessionManager.appendHistory("private:test", "assistant", "old-2", 2);
-    sessionManager.appendHistory("private:test", "user", "new-1", 3);
+    appendSimpleHistory(sessionManager, "private:test", "assistant", "old-2", 2);
+    appendSimpleHistory(sessionManager, "private:test", "user", "new-1", 3);
     sessionManager.appendInternalTranscript("private:test", {
       kind: "status_message",
       llmVisible: false,
@@ -168,7 +193,7 @@ async function main() {
       content: "new-status",
       timestampMs: 3
     });
-    sessionManager.appendHistory("private:test", "assistant", "new-2", 4);
+    appendSimpleHistory(sessionManager, "private:test", "assistant", "new-2", 4);
 
     const compressor = new HistoryCompressor(
       createConfig(),
@@ -221,7 +246,7 @@ async function main() {
   await runCase("compression also absorbs leading tool items from retained window", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "private:test", type: "private" });
-    sessionManager.appendHistory("private:test", "user", "old-1", 1);
+    appendSimpleHistory(sessionManager, "private:test", "user", "old-1", 1);
     sessionManager.appendInternalTranscript("private:test", {
       kind: "assistant_tool_call",
       llmVisible: true,
@@ -244,9 +269,9 @@ async function main() {
       toolName: "search",
       content: "tool result"
     });
-    sessionManager.appendHistory("private:test", "assistant", "old-2", 4);
-    sessionManager.appendHistory("private:test", "user", "new-1", 5);
-    sessionManager.appendHistory("private:test", "assistant", "new-2", 6);
+    appendSimpleHistory(sessionManager, "private:test", "assistant", "old-2", 4);
+    appendSimpleHistory(sessionManager, "private:test", "user", "new-1", 5);
+    appendSimpleHistory(sessionManager, "private:test", "assistant", "new-2", 6);
 
     const compressor = new HistoryCompressor(
       createConfig(),
@@ -299,7 +324,7 @@ async function main() {
   await runCase("compression keeps retained window unchanged when it already starts with a normal message", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "private:test", type: "private" });
-    sessionManager.appendHistory("private:test", "user", "old-1", 1);
+    appendSimpleHistory(sessionManager, "private:test", "user", "old-1", 1);
     sessionManager.appendInternalTranscript("private:test", {
       kind: "assistant_tool_call",
       llmVisible: true,
@@ -322,9 +347,9 @@ async function main() {
       toolName: "search",
       content: "tool result"
     });
-    sessionManager.appendHistory("private:test", "assistant", "old-2", 4);
-    sessionManager.appendHistory("private:test", "user", "new-1", 5);
-    sessionManager.appendHistory("private:test", "assistant", "new-2", 6);
+    appendSimpleHistory(sessionManager, "private:test", "assistant", "old-2", 4);
+    appendSimpleHistory(sessionManager, "private:test", "user", "new-1", 5);
+    appendSimpleHistory(sessionManager, "private:test", "assistant", "new-2", 6);
 
     const compressor = new HistoryCompressor(
       createConfig(),
@@ -382,13 +407,20 @@ async function main() {
   await runCase("stale epoch writes are rejected after clear", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "private:test", type: "private" });
-    sessionManager.appendHistory("private:test", "user", "before", 1);
+    appendSimpleHistory(sessionManager, "private:test", "user", "before", 1);
 
     const oldEpoch = sessionManager.getMutationEpoch("private:test");
     sessionManager.clearSession("private:test");
 
     assert.equal(
-      sessionManager.appendHistoryIfEpochMatches("private:test", oldEpoch, "assistant", "stale", 2),
+      sessionManager.appendInternalTranscriptIfEpochMatches("private:test", oldEpoch, {
+        kind: "status_message",
+        llmVisible: false,
+        role: "assistant",
+        statusType: "system",
+        content: "stale",
+        timestampMs: 2
+      }),
       false
     );
     assert.equal(
@@ -424,9 +456,9 @@ async function main() {
   await runCase("compression results are rejected when history changes during summarization", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "private:test", type: "private" });
-    sessionManager.appendHistory("private:test", "user", "hello", 1);
-    sessionManager.appendHistory("private:test", "assistant", "hi", 2);
-    sessionManager.appendHistory("private:test", "user", "more", 3);
+    appendSimpleHistory(sessionManager, "private:test", "user", "hello", 1);
+    appendSimpleHistory(sessionManager, "private:test", "assistant", "hi", 2);
+    appendSimpleHistory(sessionManager, "private:test", "user", "more", 3);
 
     let releaseSummary!: () => void;
     const summaryGate = new Promise<void>((resolve) => {
@@ -466,7 +498,7 @@ async function main() {
     );
 
     const pendingCompression = compressor.forceCompact("private:test");
-    sessionManager.appendHistory("private:test", "user", "new info", 4);
+    appendSimpleHistory(sessionManager, "private:test", "user", "new info", 4);
     releaseSummary();
 
     const changed = await pendingCompression;

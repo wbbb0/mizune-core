@@ -1,6 +1,6 @@
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 import { sanitizeOutboundText } from "#llm/shared/outboundTextSanitizer.ts";
-import type { GenerationRunnerDeps } from "./generationRunnerDeps.ts";
+import type { GenerationOutboundDeps } from "./generationRunnerDeps.ts";
 import type { GenerationSendTarget } from "./generationExecutor.ts";
 import type { GenerationWebOutputCollector } from "./generationTypes.ts";
 
@@ -15,7 +15,7 @@ export interface GenerationOutboundInput {
 
 // Sends outbound assistant text and mirrors successful chunks into session history.
 export function createGenerationOutbound(
-  deps: Pick<GenerationRunnerDeps, "logger" | "messageQueue" | "oneBotClient" | "sessionManager" | "persistSession">,
+  deps: GenerationOutboundDeps,
   input: GenerationOutboundInput
 ) {
   const {

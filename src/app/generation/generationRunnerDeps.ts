@@ -8,7 +8,12 @@ import type { DebounceManager } from "../../conversation/debounceManager.ts";
 import type { HistoryCompressor } from "../../conversation/historyCompressor.ts";
 import type { MessageQueue } from "../../conversation/messageQueue.ts";
 import type { TurnPlanner } from "../../conversation/turnPlanner.ts";
-import type { SessionManager } from "#conversation/session/sessionManager.ts";
+import type {
+  SessionGenerationRuntimeAccess,
+  SessionGenerationOrchestratorAccess,
+  SessionGenerationOutboundAccess,
+  SessionTurnPlannerAccess
+} from "#conversation/session/sessionCapabilities.ts";
 import type { ForwardResolver } from "../../forwards/forwardResolver.ts";
 import type { AudioStore } from "#audio/audioStore.ts";
 import type { AudioTranscriber } from "#audio/audioTranscriber.ts";
@@ -54,7 +59,7 @@ export interface GenerationPromptBuilderDeps {
 
 export interface GenerationSessionRuntimeDeps {
   logger: Logger;
-  sessionManager: SessionManager;
+  sessionManager: SessionGenerationRuntimeAccess;
   llmClient: LlmClient;
   turnPlanner: TurnPlanner;
   debounceManager: DebounceManager;
@@ -95,9 +100,46 @@ export interface GenerationLifecycleDeps extends SessionWorkPersistenceDeps {
   getScheduler: () => Scheduler;
 }
 
-export interface GenerationRunnerDeps extends
-  GenerationPromptBuilderDeps,
-  GenerationSessionRuntimeDeps,
-  GenerationIdentityDeps,
-  GenerationToolRuntimeDeps,
-  GenerationLifecycleDeps {}
+export type GenerationCurrentUser = Awaited<ReturnType<GenerationIdentityDeps["userStore"]["getByUserId"]>>;
+export type GenerationPersona = Awaited<ReturnType<GenerationIdentityDeps["personaStore"]["get"]>>;
+
+export type GenerationTurnPlannerDeps =
+  Pick<GenerationPromptBuilderDeps, "config">
+  & Pick<GenerationSessionRuntimeDeps, "logger" | "llmClient" | "turnPlanner" | "debounceManager" | "historyCompressor">
+  & Pick<GenerationLifecycleDeps, "persistSession">
+  & {
+    sessionManager: SessionTurnPlannerAccess;
+  };
+
+export type GenerationOutboundDeps =
+  Pick<GenerationSessionRuntimeDeps, "logger" | "messageQueue">
+  & Pick<GenerationToolRuntimeDeps, "oneBotClient">
+  & Pick<GenerationLifecycleDeps, "persistSession">
+  & {
+    sessionManager: SessionGenerationOutboundAccess;
+  };
+
+export type GenerationExecutorDeps =
+  Pick<GenerationPromptBuilderDeps, "config" | "mediaVisionService" | "mediaCaptionService">
+  & GenerationSessionRuntimeDeps
+  & GenerationIdentityDeps
+  & GenerationToolRuntimeDeps
+  & GenerationLifecycleDeps;
+
+export type GenerationSessionOrchestratorDeps =
+  Pick<GenerationPromptBuilderDeps, "config">
+  & Pick<GenerationSessionRuntimeDeps, "logger" | "historyCompressor" | "llmClient" | "turnPlanner" | "debounceManager">
+  & Pick<GenerationIdentityDeps, "userStore" | "personaStore" | "setupStore" | "scenarioHostStateStore">
+  & Pick<GenerationLifecycleDeps, "persistSession">
+  & {
+    sessionManager: SessionGenerationOrchestratorAccess;
+  };
+
+export type GenerationRunnerRuntimeDeps =
+  GenerationPromptBuilderDeps
+  & GenerationSessionRuntimeDeps
+  & GenerationIdentityDeps
+  & GenerationToolRuntimeDeps
+  & GenerationLifecycleDeps;
+
+export interface GenerationRunnerDeps extends GenerationRunnerRuntimeDeps {}

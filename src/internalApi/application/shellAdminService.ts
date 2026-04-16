@@ -1,4 +1,4 @@
-import type { InternalApiDeps } from "../types.ts";
+import type { InternalApiShellDeps } from "../types.ts";
 import type {
   ParsedSessionParams,
   ParsedShellInteractBody,
@@ -6,21 +6,21 @@ import type {
   ParsedShellSignalBody
 } from "../routeSupport.ts";
 
-export function listShellSessions(deps: Pick<InternalApiDeps, "shellRuntime">) {
+export function listShellSessions(deps: InternalApiShellDeps) {
   return {
     sessions: deps.shellRuntime.listSessions()
   };
 }
 
 export function getShellSession(
-  deps: Pick<InternalApiDeps, "shellRuntime">,
+  deps: InternalApiShellDeps,
   params: ParsedSessionParams
 ) {
   return deps.shellRuntime.listSessions().find((item) => item.id === params.sessionId) ?? null;
 }
 
 export async function runShellCommand(
-  deps: Pick<InternalApiDeps, "shellRuntime">,
+  deps: InternalApiShellDeps,
   body: ParsedShellRunBody
 ) {
   return deps.shellRuntime.run({
@@ -32,7 +32,7 @@ export async function runShellCommand(
 }
 
 export async function interactWithShellSession(
-  deps: Pick<InternalApiDeps, "shellRuntime">,
+  deps: InternalApiShellDeps,
   params: ParsedSessionParams,
   body: ParsedShellInteractBody
 ) {
@@ -40,14 +40,14 @@ export async function interactWithShellSession(
 }
 
 export async function readShellSession(
-  deps: Pick<InternalApiDeps, "shellRuntime">,
+  deps: InternalApiShellDeps,
   params: ParsedSessionParams
 ) {
   return deps.shellRuntime.read(params.sessionId);
 }
 
 export async function signalShellSession(
-  deps: Pick<InternalApiDeps, "shellRuntime">,
+  deps: InternalApiShellDeps,
   params: ParsedSessionParams,
   body: ParsedShellSignalBody
 ) {
@@ -55,7 +55,7 @@ export async function signalShellSession(
 }
 
 export function closeShellSession(
-  deps: Pick<InternalApiDeps, "shellRuntime">,
+  deps: InternalApiShellDeps,
   params: ParsedSessionParams
 ) {
   deps.shellRuntime.closeSession(params.sessionId);

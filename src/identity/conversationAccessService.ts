@@ -1,6 +1,8 @@
 import type { Logger } from "pino";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
-import type { SessionManager } from "#conversation/session/sessionManager.ts";
+import type { SessionConversationCatalog } from "#conversation/session/sessionCapabilities.ts";
+import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
+import type { SessionState } from "#conversation/session/sessionTypes.ts";
 import type { GroupMembershipStore } from "./groupMembershipStore.ts";
 import type { NpcDirectory } from "./npcDirectory.ts";
 
@@ -14,25 +16,9 @@ export interface AccessibleSessionView {
   recentMessageCount: number;
 }
 
-function parseSessionId(sessionId: string): { type: "private" | "group"; userId?: string; groupId?: string } | null {
-  if (sessionId.startsWith("private:")) {
-    return {
-      type: "private",
-      userId: sessionId.slice("private:".length)
-    };
-  }
-  if (sessionId.startsWith("group:")) {
-    return {
-      type: "group",
-      groupId: sessionId.slice("group:".length)
-    };
-  }
-  return null;
-}
-
 export class ConversationAccessService {
   constructor(
-    private readonly sessionManager: SessionManager,
+    private readonly sessionCatalog: SessionConversationCatalog,
     private readonly oneBotClient: OneBotClient,
     private readonly npcDirectory: NpcDirectory,
     private readonly membershipStore: GroupMembershipStore,
@@ -40,29 +26,26 @@ export class ConversationAccessService {
   ) {}
 
   async canAccessSession(requesterUserId: string, sessionId: string): Promise<AccessibleSessionView | null> {
-    const parsed = parseSessionId(sessionId);
+    const parsed = parseChatSessionIdentity(sessionId);
     if (!parsed) {
       return null;
     }
 
-    const session = this.sessionManager.listSessions().find((item) => item.id === sessionId);
+    const session = this.sessionCatalog.listSessions().find((item) => item.id === sessionId);
     if (!session) {
       return null;
     }
 
-    if (parsed.type === "private") {
+    if (parsed.kind === "private") {
       if (parsed.userId === requesterUserId) {
-        return this.toView(session, parsed.userId ?? sessionId, "self_private");
+        return this.toView(session, parsed.userId, "self_private");
       }
-      if (parsed.userId && this.npcDirectory.isNpc(parsed.userId)) {
+      if (this.npcDirectory.isNpc(parsed.userId)) {
         return this.toView(session, parsed.userId, "npc_private");
       }
       return null;
     }
 
-    if (!parsed.groupId) {
-      return null;
-    }
     const isShared = await this.isSharedGroup(parsed.groupId, requesterUserId);
     if (!isShared) {
       return null;
@@ -72,7 +55,7 @@ export class ConversationAccessService {
 
   async listAccessibleSessions(requesterUserId: string, query = ""): Promise<AccessibleSessionView[]> {
     const normalizedQuery = query.trim().toLowerCase();
-    const sessions = this.sessionManager.listSessions();
+    const sessions = this.sessionCatalog.listSessions();
     const results: AccessibleSessionView[] = [];
     for (const session of sessions) {
       const visible = await this.canAccessSession(requesterUserId, session.id);
@@ -127,7 +110,7 @@ export class ConversationAccessService {
   }
 
   private toView(
-    session: ReturnType<SessionManager["listSessions"]>[number],
+    session: SessionState,
     title: string,
     reason: AccessibleSessionView["reason"]
   ): AccessibleSessionView {
@@ -138,7 +121,7 @@ export class ConversationAccessService {
       reason,
       lastActiveAt: session.lastActiveAt,
       historySummaryPreview: session.historySummary?.slice(0, 120) ?? null,
-      recentMessageCount: this.sessionManager.getLlmVisibleHistory(session.id).length
+      recentMessageCount: this.sessionCatalog.getLlmVisibleHistory(session.id).length
     };
   }
 }

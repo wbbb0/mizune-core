@@ -1,6 +1,6 @@
-import type { InternalApiDeps } from "../types.ts";
+import type { InternalApiOperationsDeps } from "../types.ts";
 
-export async function listRequests(deps: Pick<InternalApiDeps, "requestStore">) {
+export async function listRequests(deps: Pick<InternalApiOperationsDeps, "requestStore">) {
   const [friends, groups] = await Promise.all([
     deps.requestStore.listFriendRequests(),
     deps.requestStore.listGroupRequests()
@@ -13,7 +13,7 @@ export async function listRequests(deps: Pick<InternalApiDeps, "requestStore">) 
   };
 }
 
-export async function listScheduledJobs(deps: Pick<InternalApiDeps, "scheduledJobStore">) {
+export async function listScheduledJobs(deps: Pick<InternalApiOperationsDeps, "scheduledJobStore">) {
   return {
     jobs: await deps.scheduledJobStore.list()
   };

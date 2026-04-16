@@ -1,13 +1,14 @@
 import type { Relationship } from "#identity/relationship.ts";
 import type { AppServiceBootstrap } from "../bootstrap/appServiceBootstrap.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
-import type { InternalTranscriptItem } from "#conversation/session/sessionManager.ts";
-import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
+import type { SessionMessagingAccess } from "#conversation/session/sessionCapabilities.ts";
+import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
+import type { SessionDelivery, SessionState } from "#conversation/session/sessionTypes.ts";
 import type { parseDirectCommand } from "./directCommands.ts";
 
 export interface MessageEventHandlerDeps {
   inboundDelivery: SessionDelivery;
-  services: Pick<
+  services: Omit<Pick<
     AppServiceBootstrap,
     | "config"
     | "logger"
@@ -23,7 +24,9 @@ export interface MessageEventHandlerDeps {
     | "userStore"
     | "setupStore"
     | "conversationAccess"
-  >;
+  >, "sessionManager"> & {
+    sessionManager: SessionMessagingAccess;
+  };
   handleDirectCommand: (input: {
     command: ReturnType<typeof parseDirectCommand> extends infer T ? Exclude<T, null> : never;
     sessionId: string;
@@ -70,7 +73,7 @@ export interface MessageProcessingContext {
   setupState: Awaited<ReturnType<MessageHandlerServices["setupStore"]["get"]>>;
   user: Awaited<ReturnType<MessageHandlerServices["userStore"]["touchSeenUser"]>>;
   enrichedMessage: EnrichedIncomingMessage;
-  session: ReturnType<MessageHandlerServices["sessionManager"]["getOrCreateSession"]>;
+  session: SessionState;
 }
 
 export interface TriggerDecision {

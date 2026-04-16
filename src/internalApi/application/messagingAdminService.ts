@@ -1,5 +1,9 @@
-import type { SessionManager } from "#conversation/session/sessionManager.ts";
+import type {
+  SessionWebStreamAccess,
+  SessionWebStreamState
+} from "#conversation/session/sessionCapabilities.ts";
 import type { InternalTranscriptItem, SessionPhase } from "#conversation/session/sessionTypes.ts";
+import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
@@ -26,23 +30,6 @@ export { type WebTurnStreamEvent } from "./webTurnBroker.ts";
 export { type WebSessionStreamEvent } from "./webSessionStream.ts";
 
 const WEB_SESSION_STREAM_POLL_MS = 250;
-
-type SessionStreamableState = {
-  id: string;
-  type: "private" | "group";
-  source: "onebot" | "web";
-  modeId: string;
-  participantUserId: string;
-  participantLabel: string | null;
-  pendingMessages: Array<{ receivedAt?: number }>;
-  phase: SessionPhase;
-  historyRevision: number;
-  mutationEpoch: number;
-  lastActiveAt: number;
-  internalTranscript: InternalTranscriptItem[];
-  recentToolEvents: Array<{ toolName: string }>;
-  activeAssistantResponse: { text: string } | null;
-};
 
 export interface AdminMessagingService {
   sendInternalTextMessage(body: ParsedSendTextBody): Promise<unknown>;
@@ -77,9 +64,7 @@ export function createAdminMessagingService(input: {
   };
   oneBotClient: Pick<OneBotClient, "sendText">;
   chatFileStore: Pick<ChatFileStore, "getMany">;
-  sessionManager: Pick<SessionManager, "getSession" | "hasActiveResponse"> & {
-    getSession(sessionId: string): SessionStreamableState;
-  };
+  sessionManager: SessionWebStreamAccess;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {
@@ -202,9 +187,7 @@ export function createAdminMessagingService(input: {
 }
 
 async function runWebTurnInBackground(input: {
-  sessionManager: Pick<SessionManager, "getSession" | "hasActiveResponse"> & {
-    getSession(sessionId: string): SessionStreamableState;
-  };
+  sessionManager: SessionWebStreamAccess;
   chatFileStore: Pick<ChatFileStore, "getMany">;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
@@ -292,9 +275,7 @@ async function runWebTurnInBackground(input: {
 }
 
 async function waitForSessionTurnCompletion(
-  sessionManager: Pick<SessionManager, "getSession" | "hasActiveResponse"> & {
-    getSession(sessionId: string): SessionStreamableState;
-  },
+  sessionManager: SessionWebStreamAccess,
   sessionId: string,
   startedAt: number
 ): Promise<void> {
@@ -319,10 +300,11 @@ async function waitForSessionTurnCompletion(
 }
 
 function extractGroupId(sessionId: string): string {
-  if (!sessionId.startsWith("group:")) {
+  const parsed = parseChatSessionIdentity(sessionId);
+  if (parsed?.kind !== "group") {
     throw new Error(`Session is not a group session: ${sessionId}`);
   }
-  return sessionId.slice("group:".length);
+  return parsed.groupId;
 }
 
 async function readSessionStreamSnapshot(

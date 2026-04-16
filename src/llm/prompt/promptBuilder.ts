@@ -11,6 +11,7 @@ import {
   formatConversationHistoryPromptMessage,
   formatScheduledHistoryPromptMessage
 } from "../prompts/history-message.prompt.ts";
+import { getSessionChatType } from "#conversation/session/sessionIdentity.ts";
 import type { PromptInput, ScheduledTaskPromptInput, SetupPromptInput } from "./promptTypes.ts";
 
 export type {
@@ -39,7 +40,7 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
       : {})
   };
   const system = buildBaseSystemLines({
-    sessionMode: input.sessionId.startsWith("group:") ? "group" : input.sessionId.startsWith("private:") ? "private" : "unknown",
+    sessionMode: getSessionChatType(input.sessionId),
     ...(input.modeId ? { modeId: input.modeId } : {}),
     ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
     ...(input.visibleToolNames ? { visibleToolNames: input.visibleToolNames } : {}),

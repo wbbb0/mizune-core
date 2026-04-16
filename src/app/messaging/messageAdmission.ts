@@ -1,5 +1,6 @@
 import { resolveDispatchableDirectCommand, type ParsedDirectCommand } from "./directCommands.ts";
 import type { Relationship } from "#identity/relationship.ts";
+import { buildPrivateSessionId } from "#conversation/session/sessionIdentity.ts";
 
 export type SetupStateValue = "needs_owner" | "needs_persona" | "ready";
 
@@ -39,7 +40,7 @@ export function resolvePreRouterSetupDecision(input: {
     return {
       kind: "handle_bootstrap_command",
       command: bootstrapCommand,
-      sessionId: `private:${input.eventUserId}`,
+      sessionId: buildPrivateSessionId(input.eventUserId),
       incomingMessage: {
         chatType: "private",
         userId: input.eventUserId

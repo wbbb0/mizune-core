@@ -1,6 +1,7 @@
 import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
-import type { DebugLiteral } from "#conversation/session/sessionManager.ts";
+import type { DebugLiteral } from "#conversation/session/sessionTypes.ts";
+import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
 import { getStringArrayArg } from "../core/toolArgHelpers.ts";
@@ -105,11 +106,12 @@ export const debugToolHandlers: Record<string, ToolHandler> = {
     const bodies = await Promise.all(literals.map((literal) => renderDebugLiteral(literal, context)));
     const sentMessageIds: number[] = [];
     const sessionId = context.lastMessage.sessionId;
+    const parsedSession = parseChatSessionIdentity(sessionId);
 
     for (const body of bodies) {
-      const payload = sessionId.startsWith("group:")
+      const payload = parsedSession?.kind === "group"
         ? await context.oneBotClient.sendText({
-            groupId: sessionId.slice("group:".length),
+            groupId: parsedSession.groupId,
             text: body
           })
         : await context.oneBotClient.sendText({
