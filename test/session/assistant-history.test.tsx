@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
+import { SessionLifecycleController } from "../../src/conversation/session/sessionLifecycleController.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
 async function runCase(name: string, fn: () => Promise<void>) {
@@ -11,6 +12,7 @@ async function runCase(name: string, fn: () => Promise<void>) {
 async function main() {
   await runCase("interrupting a response clears preview without appending a merged assistant history item", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
+    const lifecycle = new SessionLifecycleController();
     sessionManager.ensureSession({ id: "private:test", type: "private" });
 
     const { responseEpoch } = sessionManager.beginSyntheticGeneration("private:test");
@@ -28,7 +30,7 @@ async function main() {
 
     assert.equal(buffered, true);
 
-    const interrupted = sessionManager.interruptResponse("private:test");
+    const interrupted = lifecycle.interruptResponse(sessionManager.getSession("private:test"));
     assert.equal(interrupted.finalizedAssistant, true);
 
     const session = sessionManager.getSession("private:test");
@@ -39,10 +41,11 @@ async function main() {
 
   await runCase("stale response epochs cannot append assistant chunks after interruption", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
+    const lifecycle = new SessionLifecycleController();
     sessionManager.ensureSession({ id: "private:test", type: "private" });
 
     const { responseEpoch } = sessionManager.beginSyntheticGeneration("private:test");
-    sessionManager.interruptResponse("private:test");
+    lifecycle.interruptResponse(sessionManager.getSession("private:test"));
 
     const appended = sessionManager.appendActiveAssistantResponseChunkIfResponseEpochMatches(
       "private:test",
@@ -62,6 +65,7 @@ async function main() {
 
   await runCase("newline-split assistant chunks remain only in active preview until sent history is appended", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
+    const lifecycle = new SessionLifecycleController();
     sessionManager.ensureSession({ id: "private:test", type: "private" });
 
     const { responseEpoch } = sessionManager.beginSyntheticGeneration("private:test");
@@ -91,7 +95,7 @@ async function main() {
       }
     );
 
-    const interrupted = sessionManager.interruptResponse("private:test");
+    const interrupted = lifecycle.interruptResponse(sessionManager.getSession("private:test"));
     assert.equal(interrupted.finalizedAssistant, true);
 
     const session = sessionManager.getSession("private:test");

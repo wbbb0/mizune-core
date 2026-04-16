@@ -121,6 +121,27 @@ export interface SessionToolRuntimeAccess {
   recordSentMessage(sessionId: string, message: SessionSentMessage): void;
 }
 
+export interface SessionBootstrapPersistenceAccess {
+  restoreSessions(items: PersistedSessionState[]): void;
+  listSessions(): SessionState[];
+}
+
+export type SessionAppRuntimeAccess =
+  SessionBootstrapPersistenceAccess
+  & SessionCompressionAccess
+  & SessionConversationCatalog
+  & SessionDebounceAccess
+  & SessionDirectCommandAccess
+  & SessionGenerationRuntimeAccess
+  & SessionMessagingAccess
+  & SessionOutboundHistoryAccess
+  & SessionPersistenceAccess
+  & SessionSetupAccess
+  & SessionAdminReadAccess
+  & SessionAdminMutationAccess
+  & SessionStreamAccess
+  & SessionWebStreamAccess;
+
 export interface SessionSetupAccess {
   isSetupConfirmed(sessionId: string): boolean;
 }

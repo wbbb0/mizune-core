@@ -424,13 +424,6 @@ async function main() {
       false
     );
     assert.equal(
-      sessionManager.applyCompressedHistoryIfEpochMatches("private:test", oldEpoch, {
-        historySummary: "stale summary",
-        transcriptStartIndexToKeep: 0
-      }),
-      false
-    );
-    assert.equal(
       sessionManager.setLastLlmUsageIfEpochMatches("private:test", oldEpoch, {
         inputTokens: 1,
         outputTokens: 1,

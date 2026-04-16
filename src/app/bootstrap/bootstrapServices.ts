@@ -35,6 +35,7 @@ import { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import { RuntimeResourceRegistry } from "#runtime/resources/runtimeResourceRegistry.ts";
 import { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import type { SessionBootstrapPersistenceAccess } from "#conversation/session/sessionCapabilities.ts";
 import { isOwnerBootstrapCommandText } from "../messaging/directCommands.ts";
 import type { AppBootstrapServices, AppServiceBootstrap, BootstrapRuntimeContext } from "./bootstrapTypes.ts";
 
@@ -137,32 +138,37 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
 }
 
 export async function initializeBootstrapState(
-  services: Pick<
-    AppServiceBootstrap,
-    | "logger"
-    | "dataDir"
-    | "whitelistStore"
-    | "sessionPersistence"
-    | "audioStore"
-    | "localFileService"
-    | "chatFileStore"
-    | "chatMessageFileGcService"
-    | "mediaVisionService"
-    | "mediaCaptionService"
-    | "comfyTaskStore"
-    | "comfyTemplateCatalog"
-    | "scheduledJobStore"
-    | "requestStore"
-    | "groupMembershipStore"
-    | "userStore"
-    | "npcDirectory"
-    | "personaStore"
-    | "globalRuleStore"
-    | "toolsetRuleStore"
-    | "scenarioHostStateStore"
-    | "setupStore"
-    | "sessionManager"
-  >
+  services: Omit<
+    Pick<
+      AppServiceBootstrap,
+      | "logger"
+      | "dataDir"
+      | "whitelistStore"
+      | "sessionPersistence"
+      | "audioStore"
+      | "localFileService"
+      | "chatFileStore"
+      | "chatMessageFileGcService"
+      | "mediaVisionService"
+      | "mediaCaptionService"
+      | "comfyTaskStore"
+      | "comfyTemplateCatalog"
+      | "scheduledJobStore"
+      | "requestStore"
+      | "groupMembershipStore"
+      | "userStore"
+      | "npcDirectory"
+      | "personaStore"
+      | "globalRuleStore"
+      | "toolsetRuleStore"
+      | "scenarioHostStateStore"
+      | "setupStore"
+      | "sessionManager"
+    >,
+    "sessionManager"
+  > & {
+    sessionManager: SessionBootstrapPersistenceAccess;
+  }
 ): Promise<void> {
   const {
     logger,

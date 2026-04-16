@@ -213,16 +213,6 @@ export class SessionManager {
     return this.lifecycleController.interruptOutbound(session);
   }
 
-  // Interrupts both generation and outbound response work for a session.
-  interruptResponse(sessionId: string): {
-    cancelledGeneration: boolean;
-    cancelledOutbound: boolean;
-    finalizedAssistant: boolean;
-  } {
-    const session = this.requireSession(sessionId);
-    return this.lifecycleController.interruptResponse(session);
-  }
-
   setSessionPhaseIfEpochMatches(
     sessionId: string,
     expectedEpoch: number,
@@ -489,19 +479,6 @@ export class SessionManager {
       retainTokens,
       reportedInputTokens
     );
-  }
-
-  applyCompressedHistoryIfEpochMatches(
-    sessionId: string,
-    expectedEpoch: number,
-    payload: {
-      historySummary: string;
-      transcriptStartIndexToKeep: number;
-    }
-  ): boolean {
-    return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
-      this.historyService.applyCompressedHistory(session, payload);
-    });
   }
 
   applyCompressedHistoryIfHistoryRevisionMatches(

@@ -11,22 +11,23 @@
 - [x] Toolset metadata has been split from supplement heuristics, and supplement signal extraction now lives in its own module.
 - [x] Some downstream callers now depend on narrower session capability interfaces instead of the full `SessionManager`, including debounce/compression, conversation access, setup context, direct commands, the messaging ingress flow, part of the internal API surface, several generation subflows, and tool runtime wiring.
 - [x] A first batch of obsolete `SessionManager` façade passthroughs with no remaining external callers has been deleted, and affected tests were migrated to the clearer session/history APIs.
-- [ ] `SessionManager` is still the main public facade for many callers; caller migration and passthrough deletion are not done yet.
+- [x] Bootstrap-time session persistence restore now depends on a tiny restore/list capability instead of the whole session façade.
+- [x] Source-level type coupling to the full `SessionManager` is now limited to the concrete composition root and direct `SessionManager`-focused tests; downstream runtime modules use narrower capability slices instead.
 - [ ] Generation and internal API code still depend on several broad dependency bags; dependency narrowing has started, and generation/tool/internal-API sub-deps now use more explicit session capability groups, but the main executor/runtime graph is still broad.
 - [ ] Browser split, flow-control timing cleanup, and deeper bootstrap/internal-API cleanup have not started in earnest.
-- [ ] The current priority is to finish the existing session/planner boundary cleanup slice before opening new refactor fronts.
+- [ ] The next priority is to move from the completed session/caller-migration slice into planner cleanup, browser split, and timing cleanup without re-broadening dependency contracts.
 
 ---
 
 ## Success Criteria
 
-- [ ] Session-related behavior is no longer concentrated in a single oversized manager class.
+- [x] Session-related behavior is no longer concentrated in a single oversized manager class.
 - [ ] The generation pipeline no longer receives a near-global service graph as a default dependency shape.
 - [x] Session identity parsing/building rules are centralized in one domain module instead of repeated in multiple files.
 - [ ] Toolset planning no longer depends primarily on a growing pile of regex-based supplementation rules.
 - [ ] Browser runtime responsibilities are split into smaller services with explicit ownership boundaries.
 - [ ] Polling sleeps and patch-style timing hacks are replaced by explicit state transitions, events, or shared policy helpers.
-- [ ] Bootstrap, routing, generation, tool runtime, and internal API layers have narrower dependency contracts.
+- [x] Bootstrap, routing, generation, tool runtime, and internal API layers have narrower session dependency contracts.
 - [ ] Structural refactors include updated tests that lock in the new boundaries and current behavior.
 - [ ] During optimization, touched code paths gain concise explanatory comments where the logic would otherwise be non-obvious.
 
@@ -149,8 +150,8 @@
 - [x] Extract transcript/history/query operations into a dedicated history service.
 - [x] Extract debug state and sent-message tracking into dedicated modules.
 - [x] Extract internal trigger queue ownership into a dedicated module.
-- [ ] Update callers incrementally to use smaller interfaces.
-- [ ] Delete dead passthrough methods from the old manager façade once migration is complete.
+- [x] Update callers incrementally to use smaller interfaces.
+- [x] Delete dead passthrough methods from the old manager façade once migration is complete.
 
 ### Workstream B: Dependency Graph Refactor
 
@@ -212,8 +213,8 @@
 ### Phase 2: Session-Centric Extraction
 
 - [x] Split `SessionManager` into smaller domain services.
-- [ ] Migrate generation, messaging, and admin code to the smaller session interfaces.
-- [ ] Remove obsolete façade methods and duplicated helper logic.
+- [x] Migrate generation, messaging, and admin code to the smaller session interfaces.
+- [x] Remove obsolete façade methods and duplicated helper logic.
 
 ### Phase 3: Planner And Browser Cleanup
 

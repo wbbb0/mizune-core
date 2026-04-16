@@ -7,7 +7,7 @@ import type { DebounceManager } from "../../conversation/debounceManager.ts";
 import type { HistoryCompressor } from "../../conversation/historyCompressor.ts";
 import type { MessageQueue } from "../../conversation/messageQueue.ts";
 import type { TurnPlanner } from "../../conversation/turnPlanner.ts";
-import type { SessionManager } from "#conversation/session/sessionManager.ts";
+import type { SessionAppRuntimeAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
 import type { ForwardResolver } from "../../forwards/forwardResolver.ts";
 import type { AudioStore } from "#audio/audioStore.ts";
@@ -46,7 +46,7 @@ export interface AppServiceBootstrap {
   npcDirectory: NpcDirectory;
   router: EventRouter;
   oneBotClient: OneBotClient;
-  sessionManager: SessionManager;
+  sessionManager: SessionAppRuntimeAccess;
   debounceManager: DebounceManager;
   llmClient: LlmClient;
   audioStore: AudioStore;
