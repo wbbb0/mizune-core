@@ -13,9 +13,11 @@
 - [x] A first batch of obsolete `SessionManager` façade passthroughs with no remaining external callers has been deleted, and affected tests were migrated to the clearer session/history APIs.
 - [x] Bootstrap-time session persistence restore now depends on a tiny restore/list capability instead of the whole session façade.
 - [x] Source-level type coupling to the full `SessionManager` is now limited to the concrete composition root and direct `SessionManager`-focused tests; downstream runtime modules use narrower capability slices instead.
+- [x] Toolset selection now has separate declaration, runtime selection, supplement-signal, and supplement-policy layers, with focused tests covering setup overrides and supplement decisions.
+- [x] Browser runtime orchestration now delegates target resolution, asset import, and resource-registry sync to explicit browser-domain modules instead of keeping them as one large `BrowserService` file.
 - [ ] Generation and internal API code still depend on several broad dependency bags; dependency narrowing has started, and generation/tool/internal-API sub-deps now use more explicit session capability groups, but the main executor/runtime graph is still broad.
-- [ ] Browser split, flow-control timing cleanup, and deeper bootstrap/internal-API cleanup have not started in earnest.
-- [ ] The next priority is to move from the completed session/caller-migration slice into planner cleanup, browser split, and timing cleanup without re-broadening dependency contracts.
+- [ ] Flow-control timing cleanup and deeper bootstrap/internal-API cleanup have not started in earnest.
+- [ ] The next priority is to move from the completed session/planner/browser slice into timing cleanup and broader dependency-bag reduction without re-broadening contracts.
 
 ---
 
@@ -24,11 +26,11 @@
 - [x] Session-related behavior is no longer concentrated in a single oversized manager class.
 - [ ] The generation pipeline no longer receives a near-global service graph as a default dependency shape.
 - [x] Session identity parsing/building rules are centralized in one domain module instead of repeated in multiple files.
-- [ ] Toolset planning no longer depends primarily on a growing pile of regex-based supplementation rules.
-- [ ] Browser runtime responsibilities are split into smaller services with explicit ownership boundaries.
+- [x] Toolset planning no longer depends primarily on a growing pile of regex-based supplementation rules.
+- [x] Browser runtime responsibilities are split into smaller services with explicit ownership boundaries.
 - [ ] Polling sleeps and patch-style timing hacks are replaced by explicit state transitions, events, or shared policy helpers.
 - [x] Bootstrap, routing, generation, tool runtime, and internal API layers have narrower session dependency contracts.
-- [ ] Structural refactors include updated tests that lock in the new boundaries and current behavior.
+- [x] Structural refactors include updated tests that lock in the new boundaries and current behavior.
 - [ ] During optimization, touched code paths gain concise explanatory comments where the logic would otherwise be non-obvious.
 
 ---
@@ -174,17 +176,17 @@
 ### Workstream D: Planner And Toolset Refactor
 
 - [x] Split toolset metadata declarations from planner heuristics.
-- [ ] Audit current supplementation patterns and group them by actual business intent.
+- [x] Audit current supplementation patterns and group them by actual business intent.
 - [x] Replace the most brittle regex-only cases with structured message features first.
-- [ ] Keep only heuristics that still have clear, defensible semantics after cleanup.
-- [ ] Ensure setup and mode-specific toolset overrides remain explicit and local.
+- [x] Keep only heuristics that still have clear, defensible semantics after cleanup.
+- [x] Ensure setup and mode-specific toolset overrides remain explicit and local.
 
 ### Workstream E: Browser Module Refactor
 
-- [ ] Extract registry/persistence/import concerns from `BrowserService`.
-- [ ] Keep one orchestration entrypoint, but make internals domain-oriented and testable.
-- [ ] Reduce constructor breadth by passing smaller collaborators.
-- [ ] Add comments around page session expiry and profile persistence invariants.
+- [x] Extract registry/persistence/import concerns from `BrowserService`.
+- [x] Keep one orchestration entrypoint, but make internals domain-oriented and testable.
+- [x] Reduce constructor breadth by passing smaller collaborators.
+- [x] Add comments around page session expiry and profile persistence invariants.
 
 ### Workstream F: Coordination Timing Refactor
 
@@ -218,9 +220,9 @@
 
 ### Phase 3: Planner And Browser Cleanup
 
-- [ ] Refactor toolset planning and supplementation.
-- [ ] Split browser runtime responsibilities.
-- [ ] Update tests and documentation to match the new boundaries.
+- [x] Refactor toolset planning and supplementation.
+- [x] Split browser runtime responsibilities.
+- [x] Update tests and documentation to match the new boundaries.
 
 ### Phase 4: Coordination And Bootstrap Cleanup
 
@@ -252,8 +254,8 @@
 - [x] Add unit tests for the new session identity module.
 - [ ] Add or update tests around session lifecycle transitions and epoch/response guards.
 - [ ] Add focused tests for internal trigger queue behavior after extraction.
-- [ ] Add tests for toolset planning inputs and outputs after heuristic cleanup.
-- [ ] Add tests for browser service split boundaries where backend-free validation is possible.
+- [x] Add tests for toolset planning inputs and outputs after heuristic cleanup.
+- [x] Add tests for browser service split boundaries where backend-free validation is possible.
 - [ ] Update any affected admin/API tests after dependency narrowing.
 - [ ] Before each milestone is considered complete, run:
   - `npm run typecheck:all`

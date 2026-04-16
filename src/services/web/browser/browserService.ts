@@ -1,13 +1,19 @@
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import { RuntimeResourceRegistry } from "#runtime/resources/runtimeResourceRegistry.ts";
-import type { BrowserPageResourceSummary } from "#runtime/resources/resourceTypes.ts";
 import { findMatches, normalizeLineNumber, normalizeWaitMs, renderSnapshot, validateHttpUrl } from "./contentExtraction.ts";
 import { BrowserProfileStore } from "./browserProfileStore.ts";
 import { PlaywrightBrowserBackend } from "./playwrightBrowserBackend.ts";
 import { BrowserSessionRuntime, type BrowserSessionRecord } from "./browserSessionRuntime.ts";
+import { BrowserAssetStore } from "./browserAssetStore.ts";
+import { BrowserResourceSync } from "./browserResourceSync.ts";
+import {
+  buildInteractionSuccessMessage,
+  extractDownloadSourceUrl,
+  resolveInteractionTarget,
+  validateInteractionInput
+} from "./browserInteractionPolicy.ts";
 import type {
-  BrowserActionTarget,
   BrowserBackend,
   BrowserPageListResult,
   BrowserProfileInspectResult,
@@ -65,18 +71,24 @@ export class BrowserService {
   private readonly sessions: BrowserSessionRuntime;
   private readonly resourceRegistry: RuntimeResourceRegistry;
   private readonly profileStore: BrowserProfileStore;
+  private readonly resourceSync: BrowserResourceSync;
+  private readonly assetStore: BrowserAssetStore;
+  private chatFileStore: ScreenshotImageStore;
 
   constructor(
     private readonly config: AppConfig,
     private readonly logger: Logger,
     private readonly resolveSearchRef: (refId: string) => string | null,
     dataDir: string,
-    private readonly chatFileStore: ScreenshotImageStore
+    chatFileStore: ScreenshotImageStore
   ) {
+    this.chatFileStore = chatFileStore;
     this.playwrightBackend = new PlaywrightBrowserBackend(config, logger);
     this.sessions = new BrowserSessionRuntime(MAX_BROWSER_SESSIONS);
     this.resourceRegistry = new RuntimeResourceRegistry(dataDir, logger);
     this.profileStore = new BrowserProfileStore(dataDir, config, logger);
+    this.resourceSync = new BrowserResourceSync(this.resourceRegistry, logger);
+    this.assetStore = new BrowserAssetStore(config, () => this.chatFileStore);
   }
 
   async reloadConfig(): Promise<void> {
@@ -123,23 +135,21 @@ export class BrowserService {
       persistState: Boolean(profile)
     });
     const expiresAt = this.computeNextExpiry();
-    const createdAtMs = Date.now();
-    const resource = await this.resourceRegistry.createBrowserPage({
+    const sessionRecord: BrowserSessionRecord = {
+      resourceId: "",
+      backend: openResult.backend,
+      state: openResult.state,
+      snapshot: openResult.snapshot,
+      expiresAt,
       ownerSessionId,
-      title: openResult.snapshot.title,
+      profileId: openResult.snapshot.profileId
+    };
+    const resourceId = await this.resourceSync.registerOpenedPage({
+      ownerSessionId,
       description: normalizeOptionalString(input.description),
-      summary: summarizeSnapshot(openResult.snapshot),
-      createdAtMs,
-      expiresAtMs: expiresAt,
-      browserPage: {
-        requestedUrl: openResult.snapshot.requestedUrl,
-        resolvedUrl: openResult.snapshot.resolvedUrl,
-        backend: openResult.backend.name,
-        title: openResult.snapshot.title,
-        profileId: openResult.snapshot.profileId
-      }
+      session: sessionRecord
     });
-    const evicted = this.sessions.set(resource.resourceId, {
+    const evicted = this.sessions.set(resourceId, {
       backend: openResult.backend,
       state: openResult.state,
       snapshot: openResult.snapshot,
@@ -153,7 +163,7 @@ export class BrowserService {
 
     return {
       ok: true,
-      ...renderSnapshot(resource.resourceId, openResult.backend.name, openResult.snapshot, line)
+      ...renderSnapshot(resourceId, openResult.backend.name, openResult.snapshot, line)
     };
   }
 
@@ -223,13 +233,7 @@ export class BrowserService {
     session.state = next.state;
     session.snapshot = next.snapshot;
     await this.persistSessionProfile(session);
-    await this.resourceRegistry.touch(resourceId, {
-      accessedAtMs: Date.now(),
-      expiresAtMs: session.expiresAt,
-      title: session.snapshot.title,
-      summary: summarizeSnapshot(session.snapshot),
-      status: "active"
-    });
+    await this.resourceSync.touchPage(resourceId, session);
 
     return {
       ok: true,
@@ -271,7 +275,7 @@ export class BrowserService {
     this.sessions.delete(normalizedResourceId);
     await this.persistSessionProfile(session);
     await session.backend.close(session.state);
-    await this.resourceRegistry.markStatus(normalizedResourceId, "closed", Date.now());
+    await this.resourceSync.markClosed(normalizedResourceId);
     return {
       ok: true,
       resource_id: normalizedResourceId,
@@ -281,40 +285,9 @@ export class BrowserService {
 
   async listPages(): Promise<BrowserPageListResult> {
     await this.cleanupExpiredSessions();
-    const records = await this.resourceRegistry.list("browser_page");
-    const pages: BrowserPageResourceSummary[] = [];
-
-    for (const record of records) {
-      if (!record.browserPage) {
-        continue;
-      }
-      const activeSession = this.sessions.get(record.resourceId);
-      const resolvedStatus = activeSession ? "active" : (record.status === "active" ? "expired" : record.status);
-      if (!activeSession && record.status === "active") {
-        await this.resourceRegistry.markStatus(record.resourceId, "expired", Date.now());
-      }
-      if (!activeSession || resolvedStatus !== "active") {
-        continue;
-      }
-      pages.push({
-        resource_id: record.resourceId,
-        status: resolvedStatus,
-        title: record.title,
-        description: record.description,
-        summary: record.summary,
-        requestedUrl: record.browserPage.requestedUrl,
-        resolvedUrl: record.browserPage.resolvedUrl,
-        backend: record.browserPage.backend,
-        profile_id: record.browserPage.profileId,
-        createdAtMs: record.createdAtMs,
-        lastAccessedAtMs: record.lastAccessedAtMs,
-        expiresAtMs: activeSession.expiresAt
-      });
-    }
-
     return {
       ok: true,
-      pages
+      pages: await this.resourceSync.listActivePages(this.sessions)
     };
   }
 
@@ -363,31 +336,13 @@ export class BrowserService {
       }
     }
 
-    const downloaded = await this.chatFileStore.importRemoteSource({
-      source: String(sourceUrl),
+    return this.assetStore.storeDownload({
+      sourceUrl: String(sourceUrl),
       ...(sourceName ? { sourceName } : {}),
       ...(kind ? { kind } : {}),
-      origin: "browser_download",
-      proxyConsumer: "browser",
-      sourceContext: {
-        source_url: String(sourceUrl),
-        ...(resolvedResourceId ? { resourceId: resolvedResourceId } : {}),
-        ...(resolvedTargetId != null ? { targetId: resolvedTargetId } : {})
-      }
+      ...(resolvedResourceId ? { resourceId: resolvedResourceId } : {}),
+      ...(resolvedTargetId != null ? { targetId: resolvedTargetId } : {})
     });
-
-    return {
-      ok: true,
-      file_id: downloaded.fileId,
-      kind: downloaded.kind,
-      source_name: downloaded.sourceName,
-      mimeType: downloaded.mimeType,
-      sizeBytes: downloaded.sizeBytes,
-      origin: "browser_download",
-      source_url: String(sourceUrl),
-      resource_id: resolvedResourceId,
-      target_id: resolvedTargetId
-    };
   }
 
   async listProfiles(): Promise<BrowserProfileListResult> {
@@ -464,36 +419,13 @@ export class BrowserService {
       state: session.state,
       ...(targetId == null ? {} : { targetId })
     });
-    if (buffer.byteLength > this.config.browser.playwright.screenshotMaxBytes) {
-      throw new Error(`Screenshot exceeds ${this.config.browser.playwright.screenshotMaxBytes} bytes`);
-    }
-
-    const uploaded = await this.chatFileStore.importBuffer({
+    return this.assetStore.storeScreenshot({
       buffer,
-      mimeType: "image/png",
-      sourceName: mode === "page" ? "browser-page.png" : `browser-element-${targetId}.png`,
-      kind: "image",
-      origin: "browser_screenshot",
-      sourceContext: {
-        resourceId,
-        mode,
-        ...(targetId == null ? {} : { targetId })
-      }
-    });
-    const fileId = uploaded.fileId;
-    if (!fileId) {
-      throw new Error("Failed to register screenshot image");
-    }
-    return {
-      ok: true,
-      resource_id: resourceId,
-      profile_id: session.profileId,
-      fileId,
-      mimeType: "image/png",
-      sizeBytes: buffer.byteLength,
+      resourceId,
+      profileId: session.profileId,
       mode,
-      target_id: targetId ?? null
-    };
+      ...(targetId == null ? {} : { targetId })
+    });
   }
 
   private async openWithBackend(input: {
@@ -522,23 +454,17 @@ export class BrowserService {
   private async requireSession(resourceId: string, options?: { touch?: boolean }): Promise<BrowserSessionRecord> {
     const session = this.sessions.get(resourceId);
     if (!session) {
-      await this.resourceRegistry.markStatus(resourceId, "expired", Date.now()).catch(() => null);
+      await this.resourceSync.markMissingAsExpired(resourceId);
       throw new Error(`Unknown resource_id: ${resourceId}`);
     }
     if (options?.touch !== false) {
       const nextExpiry = this.computeNextExpiry();
       const touched = this.sessions.touch(resourceId, nextExpiry);
       if (!touched) {
-        await this.resourceRegistry.markStatus(resourceId, "expired", Date.now()).catch(() => null);
+        await this.resourceSync.markMissingAsExpired(resourceId);
         throw new Error(`Unknown resource_id: ${resourceId}`);
       }
-      await this.resourceRegistry.touch(resourceId, {
-        accessedAtMs: Date.now(),
-        expiresAtMs: touched.expiresAt,
-        title: session.snapshot.title,
-        summary: summarizeSnapshot(session.snapshot),
-        status: "active"
-      });
+      await this.resourceSync.touchPage(resourceId, touched);
     }
     return session;
   }
@@ -571,10 +497,10 @@ export class BrowserService {
           "browser_session_close_failed"
         );
       });
-      await this.resourceRegistry.markStatus(session.resourceId, "expired", now).catch(() => null);
+      await this.resourceSync.markExpired(session.resourceId, now);
     }
 
-    this.logger.info({ expiredSessionCount: expiredSessions.length }, "browser_sessions_expired");
+    this.resourceSync.logExpiredSessions(expiredSessions.length);
   }
 
   private async closeAllSessions(logEvent: string): Promise<void> {
@@ -594,7 +520,7 @@ export class BrowserService {
           "browser_session_close_failed"
         );
       }
-      await this.resourceRegistry.markStatus(session.resourceId, "expired", Date.now()).catch(() => null);
+      await this.resourceSync.markExpired(session.resourceId);
     }));
 
     if (existingSessions.length > 0) {
@@ -614,285 +540,6 @@ export class BrowserService {
       sessionStorageByOrigin: persisted.sessionStorageByOrigin
     });
   }
-}
-
-function validateInteractionInput(input: InteractWithPageInput): string | null {
-  const hasCoordinate = hasBrowserCoordinate(input.coordinate);
-  const hasElementTarget = input.targetId !== undefined || hasSemanticTarget(input.target);
-  const hasTarget = hasElementTarget || hasCoordinate;
-  const disallowTarget = input.action === "wait"
-    || input.action === "scroll_down"
-    || input.action === "scroll_up"
-    || input.action === "go_back"
-    || input.action === "go_forward"
-    || input.action === "reload";
-
-  if (disallowTarget && hasTarget) {
-    return `action ${input.action} does not accept target_id, target or coordinate`;
-  }
-
-  if (hasCoordinate && hasElementTarget) {
-    return "coordinate cannot be combined with target_id or target";
-  }
-
-  if (hasCoordinate && input.action !== "click" && input.action !== "hover") {
-    return `action ${input.action} does not accept coordinate`;
-  }
-
-  if (input.action === "press") {
-    if (!String(input.key ?? "").trim()) {
-      return "press action requires non-empty key";
-    }
-    return null;
-  }
-
-  if (input.action === "type") {
-    if (!hasElementTarget) {
-      return "type action requires target_id or target";
-    }
-    if (input.text === undefined) {
-      return "type action requires text";
-    }
-    return null;
-  }
-
-  if (input.action === "upload") {
-    if (!hasElementTarget) {
-      return "upload action requires target_id or target";
-    }
-    if (!Array.isArray(input.filePaths) || input.filePaths.length === 0) {
-      return "upload action requires non-empty file_paths";
-    }
-    return null;
-  }
-
-  if (input.action === "select") {
-    if (!hasElementTarget) {
-      return "select action requires target_id or target";
-    }
-    if (!String(input.value ?? input.text ?? "").trim()) {
-      return "select action requires value";
-    }
-    return null;
-  }
-
-  if (input.action === "click"
-    || input.action === "hover"
-    || input.action === "check"
-    || input.action === "uncheck"
-    || input.action === "submit") {
-    return hasTarget ? null : `action ${input.action} requires target_id or target`;
-  }
-
-  return null;
-}
-
-function hasBrowserCoordinate(
-  coordinate: InteractWithPageInput["coordinate"] | undefined
-): boolean {
-  return Number.isFinite(coordinate?.x) && Number.isFinite(coordinate?.y);
-}
-
-function hasSemanticTarget(target: BrowserActionTarget | undefined): boolean {
-  if (!target) {
-    return false;
-  }
-  return Boolean(
-    target.role
-    || target.name
-    || target.text
-    || target.tag
-    || target.type
-    || target.hrefContains
-    || target.index !== undefined
-  );
-}
-
-function resolveInteractionTarget(
-  elements: readonly BrowserSnapshot["elements"][number][],
-  input: InteractWithPageInput
-): {
-  ok: true;
-  targetId: number | undefined;
-  resolvedTarget: BrowserSnapshot["elements"][number] | null;
-  candidateCount: number;
-  candidates: BrowserSnapshot["elements"];
-} | {
-  ok: false;
-  candidateCount: number;
-  candidates: BrowserSnapshot["elements"];
-  disambiguationRequired: boolean;
-  message: string;
-} {
-  if (input.targetId !== undefined) {
-    const resolvedTarget = elements.find((item) => item.id === input.targetId) ?? null;
-    if (!resolvedTarget) {
-      return {
-        ok: false,
-        candidateCount: 0,
-        candidates: [],
-        disambiguationRequired: false,
-        message: `未找到 target_id=${input.targetId} 对应的元素，请先重新 inspect_page。`
-      };
-    }
-    if (resolvedTarget.disabled) {
-      return {
-        ok: false,
-        candidateCount: 1,
-        candidates: [resolvedTarget],
-        disambiguationRequired: false,
-        message: `目标元素 #${resolvedTarget.id} 当前不可用（disabled）。`
-      };
-    }
-    return {
-      ok: true,
-      targetId: resolvedTarget.id,
-      resolvedTarget,
-      candidateCount: 1,
-      candidates: [resolvedTarget]
-    };
-  }
-
-  if (hasBrowserCoordinate(input.coordinate)) {
-    return {
-      ok: true,
-      targetId: undefined,
-      resolvedTarget: null,
-      candidateCount: 0,
-      candidates: []
-    };
-  }
-
-  if (!hasSemanticTarget(input.target)) {
-    return {
-      ok: true,
-      targetId: undefined,
-      resolvedTarget: null,
-      candidateCount: 0,
-      candidates: []
-    };
-  }
-
-  const matches = elements.filter((item) => matchesSemanticTarget(item, input.target!));
-  const visibleMatches = matches.filter((item) => !item.disabled && item.visibility === "visible");
-  const candidates = (visibleMatches.length > 0 ? visibleMatches : matches).slice(0, 5);
-  if (visibleMatches.length === 0) {
-    return {
-      ok: false,
-      candidateCount: matches.length,
-      candidates,
-      disambiguationRequired: false,
-      message: `未找到与目标描述匹配的可操作元素。`
-    };
-  }
-
-  const requestedIndex = input.target?.index;
-  if (requestedIndex !== undefined) {
-    const indexed = visibleMatches[requestedIndex - 1];
-    if (!indexed) {
-      return {
-        ok: false,
-        candidateCount: visibleMatches.length,
-        candidates,
-        disambiguationRequired: false,
-        message: `目标描述只匹配到 ${visibleMatches.length} 个候选，index=${requestedIndex} 超出范围。`
-      };
-    }
-    return {
-      ok: true,
-      targetId: indexed.id,
-      resolvedTarget: indexed,
-      candidateCount: visibleMatches.length,
-      candidates
-    };
-  }
-
-  if (visibleMatches.length > 1) {
-    return {
-      ok: false,
-      candidateCount: visibleMatches.length,
-      candidates,
-      disambiguationRequired: true,
-      message: `目标描述匹配到 ${visibleMatches.length} 个候选，请改用 target.index 或 target_id。`
-    };
-  }
-
-  const resolvedTarget = visibleMatches[0] ?? null;
-  return {
-    ok: true,
-    targetId: resolvedTarget?.id,
-    resolvedTarget,
-    candidateCount: visibleMatches.length,
-    candidates
-  };
-}
-
-function matchesSemanticTarget(element: BrowserSnapshot["elements"][number], target: BrowserActionTarget): boolean {
-  if (target.role && !stringIncludes(element.role, target.role)) {
-    return false;
-  }
-  if (target.name && !stringIncludes(element.name, target.name)) {
-    return false;
-  }
-  if (target.text && !stringIncludes(element.text, target.text)) {
-    return false;
-  }
-  if (target.tag && !stringIncludes(element.tag, target.tag, { exact: true })) {
-    return false;
-  }
-  if (target.type && !stringIncludes(element.type, target.type, { exact: true })) {
-    return false;
-  }
-  if (target.hrefContains && !stringIncludes(element.href, target.hrefContains)) {
-    return false;
-  }
-  return true;
-}
-
-function stringIncludes(
-  value: string | null | undefined,
-  expected: string,
-  options?: { exact?: boolean }
-): boolean {
-  const normalizedValue = String(value ?? "").trim().toLowerCase();
-  const normalizedExpected = String(expected ?? "").trim().toLowerCase();
-  if (!normalizedExpected) {
-    return true;
-  }
-  return options?.exact ? normalizedValue === normalizedExpected : normalizedValue.includes(normalizedExpected);
-}
-
-function buildInteractionSuccessMessage(action: InteractWithPageInput["action"], target: BrowserSnapshot["elements"][number] | null): string {
-  if (!target) {
-    return `已执行页面动作：${action}。`;
-  }
-  const label = target.name || target.text || target.locator_hint || `#${target.id}`;
-  return `已对元素 ${label} 执行 ${action}。`;
-}
-
-function extractDownloadSourceUrl(element: BrowserSnapshot["elements"][number]): string | null {
-  const candidates = [
-    element.href,
-    element.media_url,
-    element.poster_url,
-    ...element.source_urls
-  ];
-  for (const candidate of candidates) {
-    const resolved = validateHttpUrl(String(candidate ?? "").trim());
-    if (resolved) {
-      return resolved;
-    }
-  }
-  return null;
-}
-
-function summarizeSnapshot(snapshot: BrowserSnapshot): string {
-  const title = snapshot.title?.trim();
-  if (title) {
-    return title;
-  }
-  const firstLine = snapshot.lines.find((line) => line.trim())?.trim();
-  return firstLine ? firstLine.slice(0, 120) : snapshot.resolvedUrl;
 }
 
 function normalizeOptionalString(value: string | undefined): string | null {
