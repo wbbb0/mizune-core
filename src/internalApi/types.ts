@@ -155,6 +155,12 @@ export interface InternalApiServices {
   browserRoutes: InternalApiBrowserDeps;
 }
 
+export interface InternalApiRuntimeDeps {
+  config: AppConfig;
+  logger: Logger;
+  services: InternalApiServices;
+}
+
 export function createInternalApiServices(deps: InternalApiDeps): InternalApiServices {
   return {
     basicRoutes: {

@@ -13,7 +13,7 @@ import { registerUploadRoutes } from "./routes/uploadRoutes.ts";
 import { registerAuthRoutes } from "./routes/authRoutes.ts";
 import { loadOrCreateWebuiAuth } from "./auth/webuiAuthStore.ts";
 import { buildCookieName, verifySessionToken } from "./auth/webuiAuth.ts";
-import { createInternalApiServices, type InternalApiDeps, type InternalApiServices } from "./types.ts";
+import type { InternalApiRuntimeDeps, InternalApiServices } from "./types.ts";
 
 // Routes that do not require authentication.
 const AUTH_EXEMPT_PATHS = new Set([
@@ -49,9 +49,9 @@ function registerInternalApiRoutes(app: FastifyInstance, services: InternalApiSe
   registerUploadRoutes(app, services.uploadRoutes);
 }
 
-export async function startInternalApi(deps: InternalApiDeps) {
+export async function startInternalApi(deps: InternalApiRuntimeDeps) {
   const app = Fastify({ logger: false });
-  const services = createInternalApiServices(deps);
+  const { services } = deps;
   const webuiEnabled = deps.config.internalApi.webui.enabled;
   const webuiAuthEnabled = webuiEnabled && deps.config.internalApi.webui.auth.enabled;
   const externalWebuiMode = process.env.LLM_BOT_WEBUI_MODE === "external" && webuiEnabled;

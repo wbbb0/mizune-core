@@ -9,6 +9,7 @@ import { ComfyTaskRunner } from "#comfy/taskRunner.ts";
 import { createMessageListener, createRequestListener } from "./runtimeEvents.ts";
 import { createRuntimeMessageIngress } from "./messageIngress.ts";
 import { buildSessionWorkCoordinatorDeps, createComfyTaskNotifications } from "./runtimeDependencyBuilders.ts";
+import { createInternalApiServices } from "#internalApi/types.ts";
 import {
   shutdownRuntime,
   startInternalApiIfEnabled,
@@ -174,6 +175,28 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
 
   const onMessage = createMessageListener(logger, messageIngress.handleMessageEvent);
   const onRequest = createRequestListener(logger, requestStore);
+  const internalApiServices = createInternalApiServices({
+    config,
+    logger,
+    oneBotClient,
+    sessionManager,
+    personaStore,
+    globalRuleStore,
+    scenarioHostStateStore,
+    userStore,
+    whitelistStore,
+    requestStore,
+    scheduledJobStore,
+    scheduler,
+    shellRuntime,
+    configManager,
+    sessionPersistence,
+    handleWebIncomingMessage,
+    browserService,
+    localFileService,
+    chatFileStore,
+    chatMessageFileGcService
+  });
 
   try {
     if (config.onebot.enabled) {
@@ -194,24 +217,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     let internalApi = await startInternalApiIfEnabled({
       config,
       logger,
-      oneBotClient,
-      sessionManager,
-      personaStore,
-      globalRuleStore,
-      scenarioHostStateStore,
-      userStore,
-      whitelistStore,
-      requestStore,
-      scheduledJobStore,
-      scheduler,
-      shellRuntime,
-      configManager,
-      sessionPersistence,
-      handleWebIncomingMessage,
-      browserService,
-      localFileService,
-      chatFileStore,
-      chatMessageFileGcService
+      services: internalApiServices
     });
 
     subscribeRuntimeReload({
@@ -235,17 +241,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
       setInternalApi: (value) => {
         internalApi = value;
       },
-      sessionManager,
-      personaStore,
-      globalRuleStore,
-      scenarioHostStateStore,
-      userStore,
-      whitelistStore,
-      requestStore,
-      scheduledJobStore,
-      shellRuntime,
-      sessionPersistence,
-      handleWebIncomingMessage
+      services: internalApiServices
     });
     await configManager.start();
 

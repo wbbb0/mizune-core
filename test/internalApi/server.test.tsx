@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:net";
 import { startInternalApi } from "../../src/internalApi/server.ts";
+import { createInternalApiServices } from "../../src/internalApi/types.ts";
 import { createInternalApiDeps } from "../helpers/internal-api-fixtures.tsx";
 
 async function runCase(name: string, fn: () => Promise<void>) {
@@ -47,7 +48,11 @@ async function main() {
       }
     } as typeof deps.logger;
 
-    const server = await startInternalApi(deps);
+    const server = await startInternalApi({
+      config: deps.config,
+      logger: deps.logger,
+      services: createInternalApiServices(deps)
+    });
     await server.close();
 
     assert.deepEqual(capturedLogs, [

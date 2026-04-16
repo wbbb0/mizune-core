@@ -31,10 +31,12 @@
 - `logger.ts`：日志配置
 - `app/`：应用编排相关逻辑
   - `bootstrap/`：启动流程
-  - `generatrion/`：生成流程相关逻辑
+  - `generation/`：生成流程相关逻辑
   - `messaging/`：消息链路编排
   - `runtime/`：运行时装配
   - `session-work/`：会话工作流
+- `audio/`：音频缓存、转写与相关处理
+- `comfy/`：ComfyUI 任务、模板目录与执行编排
 - `bot/`：OneBot 客户端、事件路由、消息 ID 与类型定义
 - `config/`：配置模型、Schema、加载与管理
 - `conversation/`：会话、debounce、压缩、reply gate 等能力
@@ -45,12 +47,16 @@
 - `llm/`：模型接入、prompt、工具注册与调用链路
 - `memory/`：记忆数据结构与管理逻辑
 - `messages/`：消息段解析、规范化与格式处理
+- `modes/`：模式定义与模式专属状态、策略逻辑
 - `persona/`：persona 配置、Schema 与存储
-- `proxy/`：代理相关能力
 - `requests/`：好友/群申请缓存与审批逻辑
 - `runtime/`：运行时上下文与共享能力
-- `search/`：搜索与网页浏览能力
-- `shell/`：shell、作业、tmux 相关能力
+- `services/`：外部能力与运行时服务封装
+  - `onebot/`：OneBot 客户端与消息收发
+  - `proxy/`：代理相关能力
+  - `shell/`：shell、作业、tmux 相关能力
+  - `web/`：搜索、浏览器等网页能力
+  - `workspace/`：本地文件、聊天文件与媒体处理
 - `internalApi/`：内部 HTTP API 服务（Fastify）、路由与 WebUI 托管
 - `types/`：共享类型定义
 - `utils/`：通用工具函数
