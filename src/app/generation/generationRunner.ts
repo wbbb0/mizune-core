@@ -42,6 +42,8 @@ export function createGenerationRunner(deps: GenerationRunnerRuntimeDeps) {
     if (sessionManager.hasActiveResponse(sessionId)) {
       return;
     }
+    // Steer messages belong to the in-flight turn. Once that turn closes, promote them
+    // ahead of queued internal triggers so the next natural user input wins the next slot.
     if (sessionManager.hasPendingSteerMessages(sessionId)) {
       const promoted = sessionManager.promoteSteerMessagesToPending(sessionId);
       if (promoted > 0) {
@@ -62,6 +64,8 @@ export function createGenerationRunner(deps: GenerationRunnerRuntimeDeps) {
     if (!nextTrigger) {
       return;
     }
+    // Internal triggers only run after visible chat work is drained, so background jobs do
+    // not leapfrog fresh user messages or resume while a response is still open.
     logger.info(
       {
         sessionId,

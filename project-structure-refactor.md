@@ -20,10 +20,11 @@
 - [x] Web session SSE updates and web-turn completion now subscribe to explicit session mutation notifications instead of polling session state on timers.
 - [x] Remaining generation-start timing backpressure is now centralized in a named runtime timing policy helper instead of an inline sleep constant in the executor.
 - [x] Internal API route registration now receives per-route domain service groups, and the top-level internal API dependency bag plus runtime lifecycle restart helpers no longer carry several unused runtime services.
+- [x] Migration-only helper wrappers and dead type aliases around session-work/generation/internal-API wiring have been deleted, and the remaining tricky coordination paths now carry focused intent comments.
 - [ ] Browser orchestration has been split, but `BrowserService` still constructs concrete collaborators internally; composition-root injection for browser submodules is not finished yet.
 - [ ] Generation and internal API code still depend on several broad dependency bags; dependency narrowing has started, and generation/tool/internal-API sub-deps now use more explicit session capability groups, but the main executor/runtime graph is still broad.
 - [x] Phase 4 coordination cleanup is complete for the targeted flows: bootstrap no longer depends on direct-command parsing, admin messaging no longer polls for session state, and timing assumptions are explicit where they still remain.
-- [ ] The next priority is to move from the completed coordination/bootstrap slice into broader generation dependency-bag reduction and the final simplification pass without re-broadening contracts.
+- [ ] The next priority is to move from the completed coordination/bootstrap and final simplification slices into broader generation dependency-bag reduction without re-broadening contracts.
 
 ---
 
@@ -37,7 +38,7 @@
 - [x] Polling sleeps and patch-style timing hacks are replaced by explicit state transitions, events, or shared policy helpers.
 - [x] Bootstrap, routing, generation, tool runtime, and internal API layers have narrower session dependency contracts.
 - [x] Structural refactors include updated tests that lock in the new boundaries and current behavior.
-- [ ] During optimization, touched code paths gain concise explanatory comments where the logic would otherwise be non-obvious.
+- [x] During optimization, touched code paths gain concise explanatory comments where the logic would otherwise be non-obvious.
 
 ---
 
@@ -238,9 +239,9 @@
 
 ### Phase 5: Final Simplification Pass
 
-- [ ] Delete dead compatibility code and unused helper paths created during migration.
-- [ ] Re-check module ownership and file placement after all moves.
-- [ ] Add final high-signal comments to tricky coordination paths.
+- [x] Delete dead compatibility code and unused helper paths created during migration.
+- [x] Re-check module ownership and file placement after all moves.
+- [x] Add final high-signal comments to tricky coordination paths.
 
 ---
 
@@ -273,7 +274,7 @@
 
 - [ ] Update `AGENTS.md` if the actual source layout or refactor strategy changes materially.
 - [ ] Update `README.md` and relevant docs when module boundaries or runtime responsibilities are renamed.
-- [ ] Keep plan status current by checking off completed items rather than leaving the plan stale.
+- [x] Keep plan status current by checking off completed items rather than leaving the plan stale.
 
 ---
 

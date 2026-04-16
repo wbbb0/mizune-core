@@ -39,6 +39,9 @@ import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.
 import type { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 
+// These dependency contracts describe the generation pipeline in domain-shaped slices.
+// The broad runtime bundle still exists at the composition root, but lower-level modules
+// should depend on the narrowest type below that matches the use case they own.
 export interface GenerationPromptBuilderDeps {
   config: AppConfig;
   oneBotClient: OneBotClient;
@@ -141,5 +144,3 @@ export type GenerationRunnerRuntimeDeps =
   & GenerationIdentityDeps
   & GenerationToolRuntimeDeps
   & GenerationLifecycleDeps;
-
-export interface GenerationRunnerDeps extends GenerationRunnerRuntimeDeps {}

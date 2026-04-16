@@ -753,6 +753,8 @@ export class SessionManager {
       return false;
     }
     mutate(session);
+    // Notify only after the guarded mutation is committed so stream subscribers never
+    // observe a half-applied epoch-matched update.
     this.notifySessionChanged(sessionId);
     return true;
   }
@@ -769,6 +771,8 @@ export class SessionManager {
       return false;
     }
     mutate(session);
+    // Response-scoped writes share the same post-commit notification rule as mutation-epoch
+    // writes: listeners should only re-read session state after the invariant has succeeded.
     this.notifySessionChanged(sessionId);
     return true;
   }

@@ -13,7 +13,7 @@ import { registerUploadRoutes } from "./routes/uploadRoutes.ts";
 import { registerAuthRoutes } from "./routes/authRoutes.ts";
 import { loadOrCreateWebuiAuth } from "./auth/webuiAuthStore.ts";
 import { buildCookieName, verifySessionToken } from "./auth/webuiAuth.ts";
-import { createInternalApiServices, type InternalApiDeps } from "./types.ts";
+import { createInternalApiServices, type InternalApiDeps, type InternalApiServices } from "./types.ts";
 
 // Routes that do not require authentication.
 const AUTH_EXEMPT_PATHS = new Set([
@@ -41,8 +41,7 @@ function resolveWebuiDistPath(): string {
   return resolved ?? candidates[0]!;
 }
 
-function registerInternalApiRoutes(app: FastifyInstance, deps: InternalApiDeps): void {
-  const services = createInternalApiServices(deps);
+function registerInternalApiRoutes(app: FastifyInstance, services: InternalApiServices): void {
   registerBasicRoutes(app, services.basicRoutes);
   registerBrowserRoutes(app, services.browserRoutes);
   registerShellRoutes(app, services.shellRoutes);
@@ -52,6 +51,7 @@ function registerInternalApiRoutes(app: FastifyInstance, deps: InternalApiDeps):
 
 export async function startInternalApi(deps: InternalApiDeps) {
   const app = Fastify({ logger: false });
+  const services = createInternalApiServices(deps);
   const webuiEnabled = deps.config.internalApi.webui.enabled;
   const webuiAuthEnabled = webuiEnabled && deps.config.internalApi.webui.auth.enabled;
   const externalWebuiMode = process.env.LLM_BOT_WEBUI_MODE === "external" && webuiEnabled;
@@ -121,7 +121,7 @@ export async function startInternalApi(deps: InternalApiDeps) {
     }
   });
 
-  registerInternalApiRoutes(app, deps);
+  registerInternalApiRoutes(app, services);
 
   // When webui is enabled, bind to 0.0.0.0 on the webui port so external
   // devices (e.g. phones on the LAN) can reach the PWA.  Auth middleware
