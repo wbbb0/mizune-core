@@ -17,11 +17,19 @@ const modelProfileSchema = s.object({
 
 const createModelRefListSchema = () => s.oneOrMany(s.string().trim().nonempty().dynamicRef("llm_model_names")).min(1);
 
+const onebotTypingConfigSchema = s.object({
+  enabled: s.boolean().default(true),
+  private: s.boolean().default(true),
+  group: s.boolean().default(false)
+}).default(emptyObject);
+
 const onebotConfigSchema = s.object({
   enabled: s.boolean().default(true),
+  provider: s.enum(["generic", "napcat"] as const).default("generic"),
   wsUrl: s.string().url().default("ws://127.0.0.1:3001"),
   httpUrl: s.string().url().default("http://127.0.0.1:3000"),
-  accessToken: s.string().trim().nonempty().optional()
+  accessToken: s.string().trim().nonempty().optional(),
+  typing: onebotTypingConfigSchema
 }).default(emptyObject);
 
 const proxyDetailSchema = s.object({

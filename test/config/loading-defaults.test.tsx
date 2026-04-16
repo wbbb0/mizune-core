@@ -274,6 +274,26 @@ async function main() {
       assert.equal(config.shell.sessionTtlMs, null);
     });
   });
+
+  await runCase("loadConfig applies OneBot typing defaults", async () => {
+    await withConfigDir("llm-bot-config-onebot-typing-defaults-test", async (configDir) => {
+      await writeDefaultInstanceYaml(configDir);
+      await writeYaml(join(configDir, "global.yml"), {
+        onebot: {
+          enabled: true
+        }
+      });
+
+      const config = loadConfig({
+        CONFIG_DIR: configDir
+      });
+
+      assert.equal(config.onebot.provider, "generic");
+      assert.equal(config.onebot.typing.enabled, true);
+      assert.equal(config.onebot.typing.private, true);
+      assert.equal(config.onebot.typing.group, false);
+    });
+  });
 }
 
 main().catch((error) => {

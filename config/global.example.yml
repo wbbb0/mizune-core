@@ -13,8 +13,13 @@ proxy:
     port: 7891
 onebot:
   enabled: true
+  provider: generic
   wsUrl: ws://127.0.0.1:3001
   httpUrl: http://127.0.0.1:3000
+  typing:
+    enabled: true
+    private: true
+    group: false
 llm:
   enabled: false
   timeoutMs: 300000
