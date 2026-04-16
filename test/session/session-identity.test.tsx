@@ -4,8 +4,12 @@ import {
   buildPrivateSessionId,
   buildSessionId,
   deriveParticipantUserId,
+  formatSessionDisplayLabel,
+  getSessionDisplayInfo,
   getSessionChatType,
   getSessionSource,
+  isChatSessionIdentity,
+  isWebSessionIdentity,
   parseChatSessionIdentity,
   parseSessionIdentity
 } from "../../src/conversation/session/sessionIdentity.ts";
@@ -80,6 +84,36 @@ async function main() {
     assert.equal(deriveParticipantUserId("group:20002", "group"), "20002");
     assert.equal(deriveParticipantUserId("web:panel", "private"), "panel");
     assert.equal(deriveParticipantUserId("opaque", "group"), "opaque");
+  });
+
+  await runCase("display helpers centralize participant fallback and source labels", () => {
+    assert.equal(isChatSessionIdentity("private:10001"), true);
+    assert.equal(isChatSessionIdentity("web:panel"), false);
+    assert.equal(isWebSessionIdentity("web:panel"), true);
+    assert.equal(isWebSessionIdentity("group:20002"), false);
+
+    assert.deepEqual(
+      getSessionDisplayInfo({
+        sessionId: "group:20002",
+        participantLabel: null,
+        participantUserId: "20002"
+      }),
+      {
+        participantLabel: "20002",
+        sourceLabel: "OneBot",
+        kindLabel: "群聊",
+        sessionLabel: "群聊 20002"
+      }
+    );
+
+    assert.equal(
+      formatSessionDisplayLabel({
+        sessionId: "web:panel",
+        participantLabel: "Alice",
+        participantUserId: "web-user"
+      }),
+      "Web Alice"
+    );
   });
 }
 

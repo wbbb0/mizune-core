@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import { FileSchemaStore } from "#data/fileSchemaStore.ts";
 import type { AppConfig } from "#config/config.ts";
 import type { SessionState } from "#conversation/session/sessionTypes.ts";
+import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
 import {
   createInitialScenarioHostSessionState,
   scenarioHostSessionStateSchema,
@@ -60,7 +61,11 @@ export class ScenarioHostStateStore {
   async ensureForSession(session: Pick<SessionState, "id" | "participantUserId" | "participantLabel">): Promise<ScenarioHostSessionState> {
     return this.ensure(session.id, {
       playerUserId: session.participantUserId,
-      playerDisplayName: session.participantLabel ?? session.participantUserId
+      playerDisplayName: resolveSessionParticipantLabel({
+        sessionId: session.id,
+        participantLabel: session.participantLabel,
+        participantUserId: session.participantUserId
+      })
     });
   }
 

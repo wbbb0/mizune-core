@@ -10,6 +10,7 @@ import type {
 import type { ParsedCreateSessionBody, ParsedSwitchSessionModeBody } from "../routeSupport.ts";
 import type { SessionState } from "#conversation/session/sessionTypes.ts";
 import { getDefaultSessionModeId, listSessionModes, requireSessionModeDefinition, sessionModeSupportsChatType } from "#modes/registry.ts";
+import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
 
 import { isSessionGenerating } from "#conversation/session/sessionQueries.ts";
 
@@ -20,7 +21,12 @@ function buildSessionSummary(session: SessionState) {
     source: session.source,
     modeId: session.modeId,
     participantUserId: session.participantUserId,
-    participantLabel: session.participantLabel,
+    participantLabel: resolveSessionParticipantLabel({
+      sessionId: session.id,
+      participantLabel: session.participantLabel,
+      participantUserId: session.participantUserId,
+      type: session.type
+    }),
     isGenerating: isSessionGenerating(session),
     lastActiveAt: session.lastActiveAt
   };
@@ -112,7 +118,12 @@ export async function createWebSession(
     type: "private",
     source: "web",
     participantUserId: body.participantUserId,
-    participantLabel: body.participantLabel ?? body.participantUserId
+    participantLabel: resolveSessionParticipantLabel({
+      sessionId,
+      participantLabel: body.participantLabel,
+      participantUserId: body.participantUserId,
+      type: "private"
+    })
   });
   deps.sessionManager.setModeId(session.id, modeId, { appendSwitchMarker: false });
   if (modeId === "scenario_host") {

@@ -37,6 +37,13 @@ export type SessionIdentity =
 
 export type ChatSessionIdentity = PrivateSessionIdentity | GroupSessionIdentity;
 
+export interface SessionDisplayInfo {
+  participantLabel: string;
+  sourceLabel: "OneBot" | "Web";
+  kindLabel: "私聊" | "群聊" | "Web" | "未知";
+  sessionLabel: string;
+}
+
 export function buildPrivateSessionId(userId: string): string {
   return `private:${userId}`;
 }
@@ -95,6 +102,14 @@ export function parseChatSessionIdentity(sessionId: string): ChatSessionIdentity
     : null;
 }
 
+export function isChatSessionIdentity(sessionId: string): boolean {
+  return parseChatSessionIdentity(sessionId) != null;
+}
+
+export function isWebSessionIdentity(sessionId: string): boolean {
+  return parseSessionIdentity(sessionId).kind === "web";
+}
+
 export function getSessionChatType(sessionId: string): "private" | "group" | "unknown" {
   const parsed = parseSessionIdentity(sessionId);
   return parsed.kind === "private" || parsed.kind === "group"
@@ -104,6 +119,79 @@ export function getSessionChatType(sessionId: string): "private" | "group" | "un
 
 export function getSessionSource(sessionId: string): SessionSource {
   return parseSessionIdentity(sessionId).source;
+}
+
+export function getSessionSourceLabel(sessionId: string): "OneBot" | "Web" {
+  return getSessionSource(sessionId) === "web"
+    ? "Web"
+    : "OneBot";
+}
+
+export function resolveSessionParticipantLabel(input: {
+  sessionId: string;
+  participantLabel?: string | null | undefined;
+  participantUserId?: string | null | undefined;
+  type?: "private" | "group" | undefined;
+}): string {
+  const normalizedParticipantLabel = String(input.participantLabel ?? "").trim();
+  if (normalizedParticipantLabel) {
+    return normalizedParticipantLabel;
+  }
+
+  const normalizedParticipantUserId = String(input.participantUserId ?? "").trim();
+  if (normalizedParticipantUserId) {
+    return normalizedParticipantUserId;
+  }
+
+  const parsed = parseSessionIdentity(input.sessionId);
+  if (parsed.kind === "private") {
+    return parsed.userId;
+  }
+  if (parsed.kind === "group") {
+    return parsed.groupId;
+  }
+  if (parsed.kind === "web") {
+    return parsed.value;
+  }
+
+  if (input.type) {
+    return deriveParticipantUserId(input.sessionId, input.type);
+  }
+  return input.sessionId;
+}
+
+export function getSessionDisplayInfo(input: {
+  sessionId: string;
+  participantLabel?: string | null | undefined;
+  participantUserId?: string | null | undefined;
+  type?: "private" | "group" | undefined;
+}): SessionDisplayInfo {
+  const parsed = parseSessionIdentity(input.sessionId);
+  const participantLabel = resolveSessionParticipantLabel(input);
+  const kindLabel = parsed.kind === "private"
+    ? "私聊"
+    : parsed.kind === "group"
+      ? "群聊"
+      : parsed.kind === "web"
+        ? "Web"
+        : "未知";
+  return {
+    participantLabel,
+    sourceLabel: getSessionSourceLabel(input.sessionId),
+    kindLabel,
+    sessionLabel: parsed.kind === "unknown"
+      ? participantLabel
+      : `${kindLabel} ${participantLabel}`
+  };
+}
+
+export function formatSessionDisplayLabel(input: {
+  sessionId: string;
+  participantLabel?: string | null | undefined;
+  participantUserId?: string | null | undefined;
+  type?: "private" | "group" | undefined;
+}): string {
+  return getSessionDisplayInfo(input).sessionLabel;
 }
 
 export function deriveParticipantUserId(sessionId: string, type: "private" | "group"): string {

@@ -6,6 +6,7 @@ import type { SessionDirectCommandAccess } from "#conversation/session/sessionCa
 import type { Relationship } from "#identity/relationship.ts";
 import type { InternalTranscriptItem, SessionState } from "#conversation/session/sessionTypes.ts";
 import { requireSessionModeDefinition } from "#modes/registry.ts";
+import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
 import { parseOwnerBootstrapCommand } from "#app/bootstrap/ownerBootstrapPolicy.ts";
 
 type DebugModeArg = "on" | "off" | "once" | "status";
@@ -529,7 +530,12 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       const { createInitialScenarioHostSessionState } = await import("#modes/scenarioHost/types.ts");
       const defaults = {
         playerUserId: (ctx.session as any).participantUserId ?? ctx.incomingMessage.userId,
-        playerDisplayName: (ctx.session as any).participantLabel ?? (ctx.session as any).participantUserId ?? ctx.incomingMessage.userId
+        playerDisplayName: resolveSessionParticipantLabel({
+          sessionId: ctx.session.id,
+          participantLabel: (ctx.session as any).participantLabel,
+          participantUserId: (ctx.session as any).participantUserId ?? ctx.incomingMessage.userId,
+          type: ctx.session.type
+        })
       };
       ctx.input.sessionManager.cancelGeneration(ctx.session.id);
       ctx.input.sessionManager.clearSession(ctx.session.id);
@@ -574,7 +580,12 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
           (current) => ({ ...current, initialized: true }),
           {
             playerUserId: (ctx.session as any).participantUserId ?? ctx.incomingMessage.userId,
-            playerDisplayName: (ctx.session as any).participantLabel ?? (ctx.session as any).participantUserId ?? ctx.incomingMessage.userId
+            playerDisplayName: resolveSessionParticipantLabel({
+              sessionId: ctx.session.id,
+              participantLabel: (ctx.session as any).participantLabel,
+              participantUserId: (ctx.session as any).participantUserId ?? ctx.incomingMessage.userId,
+              type: ctx.session.type
+            })
           }
         );
       }

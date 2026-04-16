@@ -4,7 +4,8 @@ import type { SessionState, PersistedSessionState } from "./sessionTypes.ts";
 import {
   buildSessionId,
   deriveParticipantUserId,
-  getSessionSource
+  getSessionSource,
+  resolveSessionParticipantLabel
 } from "./sessionIdentity.ts";
 
 // Creates and converts runtime session state snapshots.
@@ -25,7 +26,12 @@ export function createSessionState(target: {
     modeId: getDefaultSessionModeId(),
     setupConfirmed: false,
     participantUserId,
-    participantLabel: target.participantLabel ?? participantUserId,
+    participantLabel: resolveSessionParticipantLabel({
+      sessionId: target.id,
+      participantLabel: target.participantLabel,
+      participantUserId,
+      type: target.type
+    }),
     replyDelivery: target.source ?? getSessionSource(target.id),
     debugControl: {
       enabled: false,
@@ -71,7 +77,12 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
     modeId: item.modeId ?? getDefaultSessionModeId(),
     setupConfirmed: false,
     participantUserId,
-    participantLabel: item.participantLabel ?? participantUserId,
+    participantLabel: resolveSessionParticipantLabel({
+      sessionId: item.id,
+      participantLabel: item.participantLabel,
+      participantUserId,
+      type: item.type
+    }),
     replyDelivery: item.replyDelivery ?? item.source ?? getSessionSource(item.id),
     debugControl: {
       enabled: item.debugControl?.enabled === true,
