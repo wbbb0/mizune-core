@@ -353,6 +353,51 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
       }
     },
     {
+      id: "user-self-info",
+      title: "用户自述稳定资料",
+      chatType: "private",
+      relationship: "owner",
+      currentUserSpecialRole: null,
+      recentMessages: [],
+      batchMessages: [createProbeBatchMessage({
+        text: "我现在住在上海，是产品经理，时区按北京时间算。"
+      }, now - 1_900)],
+      expectations: {
+        expectedReplyDecisions: ["reply_small", "reply_large"],
+        requiredToolsetIds: ["memory_profile"]
+      }
+    },
+    {
+      id: "user-long-term-boundary",
+      title: "长期偏好与边界",
+      chatType: "private",
+      relationship: "owner",
+      currentUserSpecialRole: null,
+      recentMessages: [],
+      batchMessages: [createProbeBatchMessage({
+        text: "以后叫我老王，别替我做决定。"
+      }, now - 1_800)],
+      expectations: {
+        expectedReplyDecisions: ["reply_small", "reply_large"],
+        requiredToolsetIds: ["memory_profile"]
+      }
+    },
+    {
+      id: "one-off-task-request",
+      title: "一次性任务要求",
+      chatType: "private",
+      relationship: "owner",
+      currentUserSpecialRole: null,
+      recentMessages: [],
+      batchMessages: [createProbeBatchMessage({
+        text: "这次把下面这段话润色成更正式的邮件。"
+      }, now - 1_700)],
+      expectations: {
+        expectedReplyDecisions: ["reply_small", "reply_large"],
+        forbiddenToolsetIds: ["memory_profile"]
+      }
+    },
+    {
       id: "scheduler-reminder",
       title: "提醒创建",
       chatType: "private",
@@ -720,6 +765,10 @@ function normalizeTurnPlannerProbeDecision(input: TurnPlannerProbeDecision): Tur
   if (input.requiredCapabilities.includes("shell_execution") && !toolsetIds.includes("shell_runtime")) {
     toolsetIds.push("shell_runtime");
     normalizationWarnings.push("capability_requires_shell_runtime");
+  }
+  if (input.requiredCapabilities.includes("memory_write") && !toolsetIds.includes("memory_profile")) {
+    toolsetIds.push("memory_profile");
+    normalizationWarnings.push("capability_requires_memory_profile");
   }
   if (
     (input.requiredCapabilities.includes("web_navigation") || input.requiredCapabilities.includes("external_info_lookup"))

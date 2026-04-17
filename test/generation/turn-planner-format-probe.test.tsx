@@ -78,6 +78,23 @@ async function main() {
     );
   });
 
+  await runCase("parseTurnPlannerProbeResponse adds memory_profile when memory_write is required", async () => {
+    const parsed = parseTurnPlannerProbeResponse([
+      "reason: 需要判断是否更新长期信息",
+      "reply_decision: reply_small",
+      "topic_decision: continue_topic",
+      "required_capabilities: memory_write",
+      "context_dependencies: none",
+      "recent_domain_reuse: none",
+      "followup_mode: none",
+      "toolset_ids: none"
+    ].join("\n"));
+
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.data?.toolsetIds, ["memory_profile"]);
+    assert.deepEqual(parsed.data?.normalizationWarnings, ["capability_requires_memory_profile"]);
+  });
+
   await runCase("runTurnPlannerFormatProbe only auto-adds chat_context for real structured batch content", async () => {
     const result = await runTurnPlannerFormatProbe({
       modelRef: ["lms_qwen35_a3b"],
@@ -269,13 +286,25 @@ async function main() {
 
   await runCase("createDefaultTurnPlannerProbeCases covers representative planner scenarios", async () => {
     const cases = createDefaultTurnPlannerProbeCases();
-    assert.equal(cases.length >= 12, true);
+    assert.equal(cases.length >= 15, true);
     assert.equal(cases.some((item) => item.id === "web-download"), true);
     assert.equal(cases.some((item) => item.id === "shell-debug"), true);
     assert.equal(cases.some((item) => item.id === "unfinished-wait"), true);
     assert.equal(cases.some((item) => item.id === "conversation-navigation"), true);
     assert.equal(cases.some((item) => item.id === "chat-delegation"), true);
     assert.equal(cases.some((item) => item.id === "structured-forward-context"), true);
+    assert.deepEqual(
+      cases.find((item) => item.id === "user-self-info")?.expectations?.requiredToolsetIds,
+      ["memory_profile"]
+    );
+    assert.deepEqual(
+      cases.find((item) => item.id === "user-long-term-boundary")?.expectations?.requiredToolsetIds,
+      ["memory_profile"]
+    );
+    assert.deepEqual(
+      cases.find((item) => item.id === "one-off-task-request")?.expectations?.forbiddenToolsetIds,
+      ["memory_profile"]
+    );
   });
 
   await runCase("evaluateTurnPlannerProbeSemantics reports mismatched required toolsets", async () => {
