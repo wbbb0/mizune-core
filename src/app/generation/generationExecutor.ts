@@ -103,6 +103,9 @@ export function createGenerationExecutor(
   deps: GenerationExecutorDeps,
   handlers: {
     processNextSessionWork: (sessionId: string) => void;
+  },
+  options?: {
+    waitForAbortGraceWindow?: (signal: AbortSignal) => Promise<void>;
   }
 ) {
   const {
@@ -214,7 +217,7 @@ export function createGenerationExecutor(
     logger.info({ sessionId, messageCount: batchMessages.length, streaming: streamResponse !== false }, "generation_started");
 
     try {
-      await waitForGenerationAbortGraceWindow(abortController.signal);
+      await (options?.waitForAbortGraceWindow ?? waitForGenerationAbortGraceWindow)(abortController.signal);
 
       if (abortController.signal.aborted) {
         return;

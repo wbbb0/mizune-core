@@ -5,9 +5,11 @@ import { join } from "node:path";
 import Fastify from "fastify";
 import fastifyCookie from "@fastify/cookie";
 import pino from "pino";
-import { buildCookieName, verifyPassword, verifySessionToken } from "../../src/internalApi/auth/webuiAuth.ts";
+import { buildCookieName, hashPassword, verifyPassword, verifySessionToken } from "../../src/internalApi/auth/webuiAuth.ts";
 import { getWebuiAuthFilePath, loadOrCreateWebuiAuth } from "../../src/internalApi/auth/webuiAuthStore.ts";
 import { registerAuthRoutes } from "../../src/internalApi/routes/authRoutes.ts";
+
+const TEST_PASSWORD_HASH_PARAMS = { N: 1024 } as const;
 
 async function runCase(name: string, fn: () => Promise<void>) {
   process.stdout.write(`- ${name} ... `);
@@ -15,10 +17,22 @@ async function runCase(name: string, fn: () => Promise<void>) {
   process.stdout.write("ok\n");
 }
 
-async function createAuthTestApp(input?: { initialToken?: string; authEnabled?: boolean }) {
+async function createAuthTestApp(input?: {
+  initialToken?: string;
+  passwordHash?: string;
+  authEnabled?: boolean;
+}) {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-webui-auth-"));
   if (input?.initialToken) {
     await writeFile(getWebuiAuthFilePath(dataDir), JSON.stringify({ accessToken: input.initialToken }, null, 2), "utf8");
+  } else if (input?.passwordHash) {
+    await writeFile(getWebuiAuthFilePath(dataDir), JSON.stringify({
+      passwordHash: input.passwordHash,
+      passwordUpdatedAt: 1,
+      sessionVersion: 1,
+      passkey: null,
+      rpName: "llm-bot WebUI"
+    }, null, 2), "utf8");
   }
 
   const authData = await loadOrCreateWebuiAuth(dataDir, pino({ level: "silent" }));
@@ -76,7 +90,9 @@ async function main() {
   });
 
   await runCase("password change invalidates old sessions and old password", async () => {
-    const { app, cookieName } = await createAuthTestApp({ initialToken: "old-secret" });
+    const { app, cookieName } = await createAuthTestApp({
+      passwordHash: hashPassword("old-secret", TEST_PASSWORD_HASH_PARAMS)
+    });
     try {
       const login = await app.inject({
         method: "POST",
@@ -133,7 +149,9 @@ async function main() {
   });
 
   await runCase("passkey registration options require an authenticated session", async () => {
-    const { app, cookieName } = await createAuthTestApp({ initialToken: "auth-secret" });
+    const { app, cookieName } = await createAuthTestApp({
+      passwordHash: hashPassword("auth-secret", TEST_PASSWORD_HASH_PARAMS)
+    });
     try {
       const unauthorized = await app.inject({
         method: "POST",
@@ -164,7 +182,10 @@ async function main() {
   });
 
   await runCase("auth disabled reports disabled state and rejects auth mutations", async () => {
-    const { app } = await createAuthTestApp({ initialToken: "auth-secret", authEnabled: false });
+    const { app } = await createAuthTestApp({
+      passwordHash: hashPassword("auth-secret", TEST_PASSWORD_HASH_PARAMS),
+      authEnabled: false
+    });
     try {
       const me = await app.inject({
         method: "GET",
@@ -201,6 +222,65 @@ async function main() {
       });
       assert.equal(changePassword.statusCode, 409);
       assert.equal(changePassword.json().error, "WebUI auth is disabled");
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("password change preserves explicit scrypt params from the existing hash", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-webui-auth-"));
+    const lowCostHash = hashPassword("old-secret", TEST_PASSWORD_HASH_PARAMS);
+    await writeFile(getWebuiAuthFilePath(dataDir), JSON.stringify({
+      passwordHash: lowCostHash,
+      passwordUpdatedAt: 1,
+      sessionVersion: 1,
+      passkey: null,
+      rpName: "llm-bot WebUI"
+    }, null, 2), "utf8");
+
+    const authData = await loadOrCreateWebuiAuth(dataDir, pino({ level: "silent" }));
+    const app = Fastify({ logger: false });
+    await app.register(fastifyCookie);
+    const cookieName = buildCookieName(3000);
+    registerAuthRoutes(app, {
+      authData,
+      authEnabled: true,
+      dataDir,
+      cookieName,
+      defaultRpName: "llm-bot WebUI",
+      allowedHosts: ["localhost"]
+    });
+    await app.ready();
+
+    try {
+      const login = await app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { password: "old-secret" }
+      });
+      const cookie = login.cookies[0]?.value;
+      assert.ok(cookie);
+
+      const change = await app.inject({
+        method: "POST",
+        url: "/api/auth/password",
+        cookies: { [cookieName]: cookie },
+        payload: {
+          currentPassword: "old-secret",
+          newPassword: "new-secret"
+        }
+      });
+      assert.equal(change.statusCode, 200);
+
+      const saved = JSON.parse(await readFile(getWebuiAuthFilePath(dataDir), "utf8")) as { passwordHash: string };
+      assert.match(saved.passwordHash, /N=1024/);
+
+      const newLogin = await app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { password: "new-secret" }
+      });
+      assert.equal(newLogin.statusCode, 200);
     } finally {
       await app.close();
     }

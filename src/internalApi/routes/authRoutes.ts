@@ -11,6 +11,7 @@ import type { AuthenticatorTransportFuture } from "@simplewebauthn/server";
 import {
   COOKIE_MAX_AGE_SECONDS,
   createSessionToken,
+  getPasswordHashParams,
   hashPassword,
   verifyPassword,
   verifySessionToken
@@ -100,7 +101,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: {
       return reply.status(401).send({ error: "Current password is incorrect" });
     }
 
-    options.authData.passwordHash = hashPassword(newPassword);
+    options.authData.passwordHash = hashPassword(newPassword, getPasswordHashParams(options.authData.passwordHash) ?? undefined);
     options.authData.passwordUpdatedAt = Date.now();
     options.authData.sessionVersion += 1;
     await saveWebuiAuth(options.dataDir, options.authData);

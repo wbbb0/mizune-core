@@ -51,7 +51,10 @@ async function waitForEvents(events: string[], count: number): Promise<void> {
   }
 }
 
-function createExecutorHarness(options?: { failAfterReasoning?: boolean }) {
+function createExecutorHarness(options?: {
+  failAfterReasoning?: boolean;
+  waitForAbortGraceWindow?: (signal: AbortSignal) => Promise<void>;
+}) {
   const config = createTestAppConfig({
     llm: {
       enabled: true
@@ -68,7 +71,7 @@ function createExecutorHarness(options?: { failAfterReasoning?: boolean }) {
     resolveDrain = resolve;
   });
 
-  const executor = createGenerationExecutor({
+  const executor = (createGenerationExecutor as any)({
     promptBuilder: {
       config,
       mediaVisionService: {} as never,
@@ -171,6 +174,8 @@ function createExecutorHarness(options?: { failAfterReasoning?: boolean }) {
     }
   }, {
     processNextSessionWork() {}
+  }, {
+    waitForAbortGraceWindow: options?.waitForAbortGraceWindow ?? (async () => {})
   });
 
   const runPromise = executor.runGeneration({
@@ -268,6 +273,22 @@ async function main() {
       "send:刚刚这次回复失败了，我暂时没拿到可用结果。你可以稍后重试；如果连续出现，请检查模型配置、上游接口状态或服务日志。",
       "typing:stop"
     ]);
+  });
+
+  await runCase("typing tests can bypass abort grace delay via injected wait function", async () => {
+    let waited = false;
+    const harness = createExecutorHarness({
+      async waitForAbortGraceWindow() {
+        waited = true;
+      }
+    });
+
+    await waitForEvents(harness.events, 2);
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.equal(waited, true);
+    assert.deepEqual(harness.events, ["typing:start", "send:你好", "typing:stop"]);
   });
 }
 
