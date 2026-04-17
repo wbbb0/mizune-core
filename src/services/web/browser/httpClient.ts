@@ -19,7 +19,7 @@ export class WebHttpClient {
 
     const requestInit: UndiciRequestInit = {
       ...init,
-      headers,
+      headers: Array.from(headers.entries()),
       ...(dispatcher ? { dispatcher } : {})
     };
 
