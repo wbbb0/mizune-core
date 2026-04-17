@@ -10,37 +10,17 @@ async function runCase(name: string, fn: () => Promise<void>) {
 }
 
 async function main() {
-  await runCase("queued messages are skipped after abort signal fires", async () => {
-    const logger = pino({ level: "silent" });
-    const queue = new MessageQueue(logger, createTestAppConfig());
-    const abortController = new AbortController();
-    const sent: string[] = [];
-
-    // Enqueue 3 messages with the same abort signal.
-    for (const text of ["msg1", "msg2", "msg3"]) {
-      queue.enqueueText({
-        sessionId: "s1",
-        text,
-        abortSignals: [abortController.signal],
-        send: async () => {
-          sent.push(text);
-        }
-      });
-    }
-
-    // Wait for the first message to be sent, then abort.
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
-    // msg1 should have been sent by now (delay is short for 4-char text).
-    // Wait a bit more to let msg1 finish sending.
-    await queue.getDrainPromise("s1")!.catch(() => {});
-
-    // Actually, all 3 might have sent because the delay is short.
-    // Instead, test a more controlled scenario below.
-  });
-
   await runCase("abort before any send skips all queued messages", async () => {
     const logger = pino({ level: "silent" });
-    const queue = new MessageQueue(logger, createTestAppConfig());
+    const queue = new MessageQueue(logger, createTestAppConfig({
+      conversation: {
+        outbound: {
+          instantReply: true,
+          randomFactorMin: 1,
+          randomFactorMax: 1
+        }
+      }
+    }));
     const abortController = new AbortController();
     const sent: string[] = [];
 
@@ -61,7 +41,15 @@ async function main() {
 
   await runCase("messages enqueued before abort complete; messages pending during abort are skipped", async () => {
     const logger = pino({ level: "silent" });
-    const queue = new MessageQueue(logger, createTestAppConfig());
+    const queue = new MessageQueue(logger, createTestAppConfig({
+      conversation: {
+        outbound: {
+          instantReply: true,
+          randomFactorMin: 1,
+          randomFactorMax: 1
+        }
+      }
+    }));
     const responseAbortController = new AbortController();
     const sent: string[] = [];
 

@@ -1,10 +1,28 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ShellRuntime } from "../../src/services/shell/runtime.ts";
 import { createForwardFeatureConfig, runCase } from "../helpers/forward-test-support.tsx";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
+
+async function waitForClosedResourceRecord(dataDir: string, resourceId: string): Promise<void> {
+  const deadline = Date.now() + 300;
+  while (Date.now() < deadline) {
+    try {
+      const raw = await readFile(join(dataDir, "live-resources.json"), "utf8");
+      const parsed = JSON.parse(raw) as { resources?: Array<{ resourceId?: string; status?: string }> };
+      const record = parsed.resources?.find((item) => item.resourceId === resourceId);
+      if (record?.status === "closed") {
+        return;
+      }
+    } catch {
+      // Ignore partial writes while closeSession's async persistence is still in flight.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(`Timed out waiting for closed shell resource ${resourceId}`);
+}
 
 async function main() {
   await runCase("shell runtime title tracks the live foreground command", async () => {
@@ -29,7 +47,7 @@ async function main() {
       assert.match(String(resources[0]?.title ?? ""), /sleep 5/);
 
       runtime.closeSession(String(result.resourceId));
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await waitForClosedResourceRecord(dataDir, String(result.resourceId));
     } finally {
       await rm(dataDir, { recursive: true, force: true });
     }

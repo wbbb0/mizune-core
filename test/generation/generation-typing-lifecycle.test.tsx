@@ -41,6 +41,16 @@ function createBatchMessage() {
   };
 }
 
+async function waitForEvents(events: string[], count: number): Promise<void> {
+  const deadline = Date.now() + 400;
+  while (events.length < count) {
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for ${count} events, got ${events.length}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 function createExecutorHarness(options?: { failAfterReasoning?: boolean }) {
   const config = createTestAppConfig({
     llm: {
@@ -226,7 +236,7 @@ async function main() {
   await runCase("typing starts on reasoning and stops after outbound drain", async () => {
     const harness = createExecutorHarness();
 
-    await new Promise((resolve) => setTimeout(resolve, 220));
+    await waitForEvents(harness.events, 2);
     assert.deepEqual(harness.events, ["typing:start", "send:你好"]);
 
     harness.resolveDrain();
@@ -238,7 +248,7 @@ async function main() {
   await runCase("typing stop is skipped when a newer response epoch takes over", async () => {
     const harness = createExecutorHarness();
 
-    await new Promise((resolve) => setTimeout(resolve, 220));
+    await waitForEvents(harness.events, 2);
     harness.sessionManager.beginSyntheticGeneration(harness.sessionId);
     harness.resolveDrain();
     await harness.runPromise;
@@ -249,7 +259,7 @@ async function main() {
   await runCase("typing also stops after fallback delivery on generation failure", async () => {
     const harness = createExecutorHarness({ failAfterReasoning: true });
 
-    await new Promise((resolve) => setTimeout(resolve, 220));
+    await waitForEvents(harness.events, 2);
     harness.resolveDrain();
     await harness.runPromise;
 
