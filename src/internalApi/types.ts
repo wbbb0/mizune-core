@@ -50,6 +50,7 @@ export interface InternalApiUserDeps {
 
 export interface InternalApiSessionReadDeps {
   sessionManager: SessionAdminReadAccess;
+  scenarioHostStateStore: ScenarioHostStateStore;
 }
 
 export interface InternalApiSessionWriteDeps extends InternalApiSessionReadDeps {

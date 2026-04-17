@@ -9,6 +9,7 @@ import { registerMessagingRoutes } from "../../src/internalApi/routes/messagingR
 import { registerShellRoutes } from "../../src/internalApi/routes/shellRoutes.ts";
 import { createInternalApiServices, type InternalApiDeps } from "../../src/internalApi/types.ts";
 import type { ShellRunParams, ShellRunResult, ShellSession } from "../../src/services/shell/types.ts";
+import type { ScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
 
 export interface InternalApiFixtureState {
   sentMessages: Array<{ userId?: string; groupId?: string; text: string }>;
@@ -19,10 +20,12 @@ export interface InternalApiFixtureState {
     modeId: string;
     participantUserId: string;
     participantLabel: string | null;
+    phase: { kind: string };
     pendingMessages: Array<{ id?: number }>;
     isGenerating: boolean;
     lastActiveAt: number;
   }>;
+  scenarioHostStates: Record<string, ScenarioHostSessionState>;
   shellSessions: ShellSession[];
   closedSessionIds: string[];
   configCheckForUpdatesCount: number;
@@ -73,10 +76,12 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       modeId: "rp_assistant",
       participantUserId: "10001",
       participantLabel: "Alice",
+      phase: { kind: "idle" },
       pendingMessages: [{ id: 1 }],
       isGenerating: false,
       lastActiveAt: 123456
     }],
+    scenarioHostStates: {},
     shellSessions: [createShellSession()],
     closedSessionIds: [],
     configCheckForUpdatesCount: 0,
@@ -279,6 +284,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           modeId: existing?.modeId ?? "rp_assistant",
           participantUserId: existing?.participantUserId ?? "10001",
           participantLabel: existing?.participantLabel ?? "Alice",
+          phase: existing?.phase ?? { kind: "idle" },
           pendingMessages: [],
           debounceTimer: null,
           isGenerating: false,
@@ -322,6 +328,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           modeId: "rp_assistant",
           participantUserId: target.participantUserId ?? target.id,
           participantLabel: target.participantLabel ?? target.participantUserId ?? target.id,
+          phase: { kind: "idle" },
           pendingMessages: [],
           isGenerating: false,
           lastActiveAt: Date.now()
@@ -398,8 +405,40 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       }
     } as unknown as InternalApiDeps["globalRuleStore"],
     scenarioHostStateStore: {
+      async get(sessionId: string) {
+        return state.scenarioHostStates[sessionId] ?? null;
+      },
+      async ensure(sessionId: string, defaults: { playerUserId: string; playerDisplayName: string }) {
+        const existing = state.scenarioHostStates[sessionId];
+        if (existing) {
+          return existing;
+        }
+        const created = {
+          version: 1,
+          title: "未命名场景",
+          currentSituation: "场景尚未开始，请根据玩家接下来的行动开始主持。",
+          currentLocation: null,
+          sceneSummary: "",
+          player: {
+            userId: defaults.playerUserId,
+            displayName: defaults.playerDisplayName
+          },
+          inventory: [],
+          objectives: [],
+          worldFacts: [],
+          flags: {},
+          initialized: false,
+          turnIndex: 0
+        } satisfies ScenarioHostSessionState;
+        state.scenarioHostStates[sessionId] = created;
+        return created;
+      },
       async ensureForSession(session: { id: string; participantUserId: string; participantLabel?: string | null }) {
-        return {
+        const existing = state.scenarioHostStates[session.id];
+        if (existing) {
+          return existing;
+        }
+        const created = {
           version: 1,
           title: "未命名场景",
           currentSituation: "场景尚未开始，请根据玩家接下来的行动开始主持。",
@@ -413,8 +452,15 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           objectives: [],
           worldFacts: [],
           flags: {},
+          initialized: false,
           turnIndex: 0
-        };
+        } satisfies ScenarioHostSessionState;
+        state.scenarioHostStates[session.id] = created;
+        return created;
+      },
+      async write(sessionId: string, nextState: ScenarioHostSessionState) {
+        state.scenarioHostStates[sessionId] = nextState;
+        return nextState;
       }
     } as unknown as InternalApiDeps["scenarioHostStateStore"],
     userStore: {

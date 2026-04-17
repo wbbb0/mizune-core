@@ -5,6 +5,7 @@ import MessageBubble from "./MessageBubble.vue";
 import TranscriptItem from "./TranscriptItem.vue";
 import VirtualMessageList from "./VirtualMessageList.vue";
 import Composer from "./Composer.vue";
+import SessionStatePanel from "./SessionStatePanel.vue";
 import ImagePreviewDialog from "@/components/common/ImagePreviewDialog.vue";
 import { useSessionsStore } from "@/stores/sessions";
 import { useAuthStore } from "@/stores/auth";
@@ -27,7 +28,7 @@ provide("transcriptExpandStates", transcriptExpandStates);
 watch(() => session.value?.id, () => { transcriptExpandStates.clear(); });
 
 // Tabs
-type Tab = "chat" | "transcript";
+type Tab = "chat" | "transcript" | "state";
 const tab = ref<Tab>("chat");
 
 type ChatTimelineItem =
@@ -261,6 +262,9 @@ async function onDeleteSession() {
           后台记录
           <span v-if="session?.transcriptCount" class="rounded-full bg-surface-muted px-1 text-[10px] text-text-muted">{{ session.transcriptCount }}</span>
         </button>
+        <button class="flex h-10 items-center gap-1 border-0 border-b-2 border-transparent bg-transparent px-3 text-small whitespace-nowrap text-text-muted transition-colors hover:text-text-primary" :class="{ 'border-b-accent text-text-secondary': tab === 'state' }" @click="tab = 'state'">
+          状态
+        </button>
       </div>
     </header>
 
@@ -347,8 +351,11 @@ async function onDeleteSession() {
         </VirtualMessageList>
       </div>
 
+      <SessionStatePanel v-show="tab === 'state'" :session="session" />
+
       <!-- Composer -->
       <Composer
+        v-if="tab !== 'state'"
         :session-type="isPrivate ? 'private' : 'group'"
         :locked-user-id="lockedUserId"
         :default-user-id="defaultUserId"

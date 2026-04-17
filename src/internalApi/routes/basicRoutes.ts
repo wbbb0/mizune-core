@@ -10,7 +10,8 @@ import {
   listSessions,
   listUsers,
   getWhitelist,
-  switchSessionMode
+  switchSessionMode,
+  updateSessionModeState
 } from "../application/basicAdminService.ts";
 import { listRequests, listScheduledJobs } from "../application/operationsAdminService.ts";
 import {
@@ -25,6 +26,7 @@ import {
   parseWorkspacePathQuery,
   parseOrReply,
   parseSwitchSessionModeBody,
+  parseUpdateSessionModeStateBody,
   parseSessionParams,
   respondBadRequest,
   respondNotFound
@@ -285,6 +287,22 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
     try {
       return await switchSessionMode(services.config, params.sessionId, body);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.patch("/api/sessions/:sessionId/mode-state", async (request, reply) => {
+    const params = parseSessionParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    const body = parseUpdateSessionModeStateBody(request.body);
+    if (!parseOrReply(reply, body)) {
+      return reply;
+    }
+    try {
+      return await updateSessionModeState(services.config, params.sessionId, body);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
     }

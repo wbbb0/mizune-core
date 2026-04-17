@@ -167,6 +167,140 @@ async function main() {
       assert.equal(response.json().session.id, "private:10001");
       assert.equal(response.json().session.modeId, "rp_assistant");
       assert.equal(response.json().session.historyRevision, 0);
+      assert.equal(response.json().modeState, null);
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("internal api exposes scenario_host mode state in session detail", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const switchResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/private:10001/mode",
+        payload: {
+          modeId: "scenario_host"
+        }
+      });
+      assert.equal(switchResponse.statusCode, 200);
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/sessions/private:10001"
+      });
+
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.json().modeState.kind, "scenario_host");
+      assert.equal(response.json().modeState.state.player.userId, "10001");
+      assert.equal(response.json().modeState.state.title, "未命名场景");
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("internal api updates scenario_host mode state", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const switchResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/private:10001/mode",
+        payload: {
+          modeId: "scenario_host"
+        }
+      });
+      assert.equal(switchResponse.statusCode, 200);
+
+      const updateResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/private:10001/mode-state",
+        payload: {
+          state: {
+            version: 1,
+            title: "雾港夜巡",
+            currentSituation: "码头上空有钟声回荡。",
+            currentLocation: "旧港码头",
+            sceneSummary: "玩家刚抵达旧港。",
+            player: {
+              userId: "10001",
+              displayName: "Alice"
+            },
+            inventory: [{ ownerId: "10001", item: "铜钥匙", quantity: 1 }],
+            objectives: [{ id: "find-bell", title: "找到钟楼", status: "active", summary: "先去高处确认钟声来源" }],
+            worldFacts: ["旧港每晚零点都会响钟。"],
+            flags: { alerted: true, suspicion: 2 },
+            initialized: true,
+            turnIndex: 3
+          }
+        }
+      });
+
+      assert.equal(updateResponse.statusCode, 200);
+      assert.equal(updateResponse.json().modeState.kind, "scenario_host");
+      assert.equal(updateResponse.json().modeState.state.title, "雾港夜巡");
+      assert.equal(updateResponse.json().modeState.state.initialized, true);
+      assert.deepEqual(updateResponse.json().modeState.state.inventory, [{ ownerId: "10001", item: "铜钥匙", quantity: 1 }]);
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/sessions/private:10001"
+      });
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.json().modeState.state.currentLocation, "旧港码头");
+      assert.equal(response.json().modeState.state.turnIndex, 3);
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("internal api rejects mode state updates for non-scenario sessions", async () => {
+    const app = await createInternalApiApp(createInternalApiDeps());
+    try {
+      const response = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/private:10001/mode-state",
+        payload: {
+          state: {
+            version: 1
+          }
+        }
+      });
+
+      assert.equal(response.statusCode, 400);
+      assert.match(response.json().error, /scenario_host/i);
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("internal api rejects invalid scenario_host mode state payloads", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const switchResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/private:10001/mode",
+        payload: {
+          modeId: "scenario_host"
+        }
+      });
+      assert.equal(switchResponse.statusCode, 200);
+
+      const response = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/private:10001/mode-state",
+        payload: {
+          state: {
+            version: 1,
+            title: "坏数据"
+          }
+        }
+      });
+
+      assert.equal(response.statusCode, 400);
+      assert.match(response.json().error, /currentSituation|player|inventory|objectives|worldFacts|flags|initialized|turnIndex/i);
     } finally {
       await app.close();
     }
@@ -221,6 +355,7 @@ async function main() {
       modeId: "rp_assistant",
       participantUserId: "20001",
       participantLabel: "Group 20001",
+      phase: { kind: "idle" },
       pendingMessages: [],
       isGenerating: false,
       lastActiveAt: 123456

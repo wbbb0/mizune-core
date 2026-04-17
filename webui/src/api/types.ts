@@ -232,6 +232,105 @@ export interface SessionModeOption {
   allowedChatTypes?: Array<"private" | "group">;
 }
 
+export interface SessionDebugControlState {
+  enabled: boolean;
+  oncePending: boolean;
+}
+
+export interface SessionToolEvent {
+  toolName: string;
+  argsSummary: string;
+  outcome: "success" | "error";
+  resultSummary: string;
+  timestampMs: number;
+}
+
+export interface SessionDebugMarker {
+  kind: "debug_enabled" | "debug_disabled" | "debug_once_armed" | "debug_once_consumed" | "debug_dump_sent";
+  timestampMs: number;
+  sentCount?: number;
+  note?: string;
+}
+
+export interface SessionUsageSnapshot {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+  cachedTokens: number | null;
+  reasoningTokens: number | null;
+  requestCount: number;
+  providerReported: boolean;
+  modelRef: string | null;
+  model: string | null;
+  capturedAt: number;
+}
+
+export interface SessionSentMessage {
+  messageId: number;
+  text: string;
+  sentAt: number;
+}
+
+export interface SessionDetailSnapshot {
+  id: string;
+  type: "private" | "group";
+  source: "onebot" | "web";
+  modeId: string;
+  participantUserId: string;
+  participantLabel: string | null;
+  debugControl: SessionDebugControlState;
+  historySummary: string | null;
+  internalTranscript: TranscriptItem[];
+  debugMarkers: SessionDebugMarker[];
+  recentToolEvents: SessionToolEvent[];
+  lastLlmUsage: SessionUsageSnapshot | null;
+  sentMessages: SessionSentMessage[];
+  lastActiveAt: number;
+  isGenerating: boolean;
+  historyRevision: number;
+  mutationEpoch: number;
+}
+
+export interface ScenarioHostObjective {
+  id: string;
+  title: string;
+  status: "active" | "completed" | "failed";
+  summary: string;
+}
+
+export interface ScenarioHostInventoryItem {
+  ownerId: string;
+  item: string;
+  quantity: number;
+}
+
+export interface ScenarioHostSessionState {
+  version: 1;
+  title: string;
+  currentSituation: string;
+  currentLocation: string | null;
+  sceneSummary: string;
+  player: {
+    userId: string;
+    displayName: string;
+  };
+  inventory: ScenarioHostInventoryItem[];
+  objectives: ScenarioHostObjective[];
+  worldFacts: string[];
+  flags: Record<string, string | number | boolean>;
+  initialized: boolean;
+  turnIndex: number;
+}
+
+export type SessionModeStateDetail =
+  | { kind: "scenario_host"; state: ScenarioHostSessionState }
+  | null;
+
+export interface SessionDetailResult {
+  session: SessionDetailSnapshot;
+  modeState: SessionModeStateDetail;
+}
+
 export type TurnStreamEvent =
   | { type: "ready";    turnId: string; sessionId: string; timestampMs: number }
   | { type: "chunk";    turnId: string; sessionId: string; chunk: string; timestampMs: number }

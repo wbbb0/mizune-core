@@ -1,5 +1,11 @@
 import { api } from "./client";
-import type { SessionListItem, SessionModeOption, TranscriptFetchResult } from "./types";
+import type {
+  ScenarioHostSessionState,
+  SessionDetailResult,
+  SessionListItem,
+  SessionModeOption,
+  TranscriptFetchResult
+} from "./types";
 
 export const sessionsApi = {
   list(): Promise<{ sessions: SessionListItem[] }> {
@@ -34,6 +40,16 @@ export const sessionsApi = {
 
   remove(sessionId: string): Promise<{ ok: boolean }> {
     return api.delete(`/api/sessions/${encodeURIComponent(sessionId)}`);
+  },
+
+  fetchDetail(sessionId: string): Promise<SessionDetailResult> {
+    return api.get(`/api/sessions/${encodeURIComponent(sessionId)}`);
+  },
+
+  updateModeState(sessionId: string, body: {
+    state: ScenarioHostSessionState;
+  }): Promise<{ ok: boolean; modeState: { kind: "scenario_host"; state: ScenarioHostSessionState } }> {
+    return api.patch(`/api/sessions/${encodeURIComponent(sessionId)}/mode-state`, body);
   },
 
   sendTurn(sessionId: string, body: {

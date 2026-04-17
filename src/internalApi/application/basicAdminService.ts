@@ -7,10 +7,15 @@ import type {
   InternalApiUserDeps,
   InternalApiWhitelistDeps
 } from "../types.ts";
-import type { ParsedCreateSessionBody, ParsedSwitchSessionModeBody } from "../routeSupport.ts";
+import type {
+  ParsedCreateSessionBody,
+  ParsedSwitchSessionModeBody,
+  ParsedUpdateSessionModeStateBody
+} from "../routeSupport.ts";
 import type { SessionState } from "#conversation/session/sessionTypes.ts";
 import { getDefaultSessionModeId, listSessionModes, requireSessionModeDefinition, sessionModeSupportsChatType } from "#modes/registry.ts";
 import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
+import { scenarioHostSessionStateSchema, type ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 
 import { isSessionGenerating } from "#conversation/session/sessionQueries.ts";
 
@@ -101,7 +106,23 @@ export async function getSessionDetail(
       isGenerating: isSessionGenerating(existing),
       historyRevision: deps.sessionManager.getHistoryRevision(sessionId),
       mutationEpoch: deps.sessionManager.getMutationEpoch(sessionId)
-    }
+    },
+    modeState: await getSessionModeStateDetail(deps, existing)
+  };
+}
+
+async function getSessionModeStateDetail(
+  deps: InternalApiSessionReadDeps,
+  session: SessionState
+): Promise<{ kind: "scenario_host"; state: ScenarioHostSessionState } | null> {
+  if (session.modeId !== "scenario_host") {
+    return null;
+  }
+
+  const state = await deps.scenarioHostStateStore.ensureForSession(session);
+  return {
+    kind: "scenario_host",
+    state
   };
 }
 
@@ -152,6 +173,30 @@ export async function switchSessionMode(
   return {
     ok: true as const,
     session: buildSessionSummary(deps.sessionManager.getSession(sessionId))
+  };
+}
+
+export async function updateSessionModeState(
+  deps: InternalApiSessionWriteDeps,
+  sessionId: string,
+  body: ParsedUpdateSessionModeStateBody
+) {
+  const session = deps.sessionManager.getSession(sessionId);
+  if (session.modeId !== "scenario_host") {
+    throw new Error(`Session mode ${session.modeId} does not support editable mode state; only scenario_host is supported`);
+  }
+
+  const state = await deps.scenarioHostStateStore.write(
+    sessionId,
+    scenarioHostSessionStateSchema.parse(body.state)
+  );
+
+  return {
+    ok: true as const,
+    modeState: {
+      kind: "scenario_host" as const,
+      state
+    }
   };
 }
 
