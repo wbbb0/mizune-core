@@ -6,6 +6,8 @@ import type { SessionDirectCommandAccess } from "#conversation/session/sessionCa
 import type { Relationship } from "#identity/relationship.ts";
 import type { InternalTranscriptItem, SessionState } from "#conversation/session/sessionTypes.ts";
 import { requireSessionModeDefinition } from "#modes/registry.ts";
+import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import { createInitialScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
 import { parseOwnerBootstrapCommand } from "#app/bootstrap/ownerBootstrapPolicy.ts";
 
@@ -42,7 +44,7 @@ interface DirectCommandHandlerInput {
   sessionManager: SessionDirectCommandAccess;
   oneBotClient: OneBotClient;
   logger: Logger;
-  scenarioHostStateStore?: import("#modes/scenarioHost/stateStore.ts").ScenarioHostStateStore;
+  scenarioHostStateStore?: ScenarioHostStateStore;
   forceCompactSession?: (sessionId: string, retainMessageCount?: number) => Promise<boolean>;
   flushSession?: (sessionId: string, options?: { skipReplyGate?: boolean }) => void;
   persistSession: (sessionId: string, reason: string) => void;
@@ -527,7 +529,6 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         await ctx.send("当前实例未启用场景状态存储。");
         return;
       }
-      const { createInitialScenarioHostSessionState } = await import("#modes/scenarioHost/types.ts");
       const defaults = {
         playerUserId: (ctx.session as any).participantUserId ?? ctx.incomingMessage.userId,
         playerDisplayName: resolveSessionParticipantLabel({
