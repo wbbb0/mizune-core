@@ -111,7 +111,7 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
         <section class="rounded-lg border border-border-default bg-surface-panel p-4">
           <div class="text-ui font-medium text-text-secondary">历史摘要</div>
           <div v-if="loading && !detail" class="mt-3 text-small text-text-subtle">加载中…</div>
-          <pre v-else class="mt-3 overflow-auto rounded-lg border border-border-default bg-surface-sidebar p-3 text-small leading-6 whitespace-pre-wrap text-text-muted">{{ detail?.session.historySummary || "暂无摘要" }}</pre>
+          <pre v-else class="mt-3 overflow-auto rounded-lg border border-border-default bg-surface-sidebar p-3 text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ detail?.session.historySummary || "暂无摘要" }}</pre>
         </section>
 
         <section class="rounded-lg border border-border-default bg-surface-panel p-4">
@@ -119,11 +119,11 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
           <div class="mt-3 grid gap-4 lg:grid-cols-2">
             <div class="rounded-lg border border-border-default bg-surface-sidebar p-3">
               <div class="text-small text-text-subtle">Debug Control</div>
-              <pre class="mt-2 overflow-auto text-small leading-6 whitespace-pre-wrap text-text-muted">{{ formatJson(detail?.session.debugControl ?? { enabled: false, oncePending: false }) }}</pre>
+              <pre class="mt-2 overflow-auto text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ formatJson(detail?.session.debugControl ?? { enabled: false, oncePending: false }) }}</pre>
             </div>
             <div class="rounded-lg border border-border-default bg-surface-sidebar p-3">
               <div class="text-small text-text-subtle">Last LLM Usage</div>
-              <pre class="mt-2 overflow-auto text-small leading-6 whitespace-pre-wrap text-text-muted">{{ formatJson(detail?.session.lastLlmUsage ?? null) }}</pre>
+              <pre class="mt-2 overflow-auto text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ formatJson(detail?.session.lastLlmUsage ?? null) }}</pre>
             </div>
           </div>
         </section>
@@ -139,8 +139,8 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
                 <span class="font-mono text-small text-text-secondary">{{ event.toolName }}</span>
                 <span class="text-small text-text-subtle">{{ formatTimestamp(event.timestampMs) }}</span>
               </div>
-              <div class="mt-1 text-small text-text-muted">参数：{{ event.argsSummary || "无" }}</div>
-              <div class="mt-1 text-small text-text-muted">结果：{{ event.resultSummary || "无" }}</div>
+              <div class="mt-1 whitespace-pre-wrap wrap-break-word text-small text-text-muted">参数：{{ event.argsSummary || "无" }}</div>
+              <div class="mt-1 whitespace-pre-wrap wrap-break-word text-small text-text-muted">结果：{{ event.resultSummary || "无" }}</div>
               <div class="mt-1 text-small" :class="event.outcome === 'error' ? 'text-danger' : 'text-success'">{{ event.outcome }}</div>
             </div>
           </div>
@@ -157,7 +157,7 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
                 <span class="font-mono text-small text-text-secondary">{{ marker.kind }}</span>
                 <span class="text-small text-text-subtle">{{ formatTimestamp(marker.timestampMs) }}</span>
               </div>
-              <div v-if="marker.note" class="mt-1 text-small text-text-muted">{{ marker.note }}</div>
+              <div v-if="marker.note" class="mt-1 whitespace-pre-wrap wrap-break-word text-small text-text-muted">{{ marker.note }}</div>
               <div v-if="marker.sentCount != null" class="mt-1 text-small text-text-muted">sentCount: {{ marker.sentCount }}</div>
             </div>
           </div>
@@ -174,7 +174,7 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
                 <span class="font-mono text-small text-text-secondary">messageId {{ message.messageId }}</span>
                 <span class="text-small text-text-subtle">{{ formatTimestamp(message.sentAt) }}</span>
               </div>
-              <div class="mt-1 text-small text-text-muted whitespace-pre-wrap">{{ message.text || "空文本" }}</div>
+              <div class="mt-1 whitespace-pre-wrap wrap-break-word text-small text-text-muted">{{ message.text || "空文本" }}</div>
             </div>
           </div>
         </section>

@@ -14,7 +14,7 @@ const textClass = computed(() => {
   return [
     "m-0 overflow-x-auto rounded-lg border border-border-default bg-surface-input p-2.5 font-mono text-mono",
     props.tone === "muted" ? "text-text-muted" : "text-text-primary",
-    props.wrap ? "whitespace-pre-wrap wrap-break-word" : "whitespace-pre"
+    props.wrap ? "whitespace-pre-wrap wrap-break-word" : "whitespace-pre-wrap wrap-break-word"
   ];
 });
 </script>

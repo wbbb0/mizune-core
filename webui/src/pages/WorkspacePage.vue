@@ -219,7 +219,7 @@ function formatTime(ms: number): string {
                 <img :src="fileImageSrc" :alt="selectedItem.name" class="max-h-[70vh] max-w-full rounded object-contain" />
               </button>
             </div>
-            <pre v-else-if="filePreview" class="scrollbar-thin m-0 flex-1 overflow-auto px-4 py-3 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap">{{ filePreview.content }}</pre>
+            <pre v-else-if="filePreview" class="scrollbar-thin m-0 flex-1 overflow-auto px-4 py-3 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap wrap-break-word">{{ filePreview.content }}</pre>
             <div v-else class="panel-empty flex flex-1 items-center justify-center gap-2">
               <RefreshCw :size="14" :stroke-width="2" class="spin" />
             </div>

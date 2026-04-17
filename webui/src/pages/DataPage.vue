@@ -318,7 +318,7 @@ function updateDraft(value: unknown) {
           </header>
 
           <div v-if="resource.kind === 'single_json'" class="scrollbar-thin flex-1 overflow-auto px-4 py-3">
-            <pre class="m-0 overflow-auto p-0 font-mono text-mono leading-6 text-text-primary whitespace-pre">{{ formattedJson }}</pre>
+            <pre class="m-0 overflow-auto p-0 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap wrap-break-word">{{ formattedJson }}</pre>
           </div>
 
           <div v-else class="flex min-h-0 flex-1 overflow-hidden">
@@ -358,7 +358,7 @@ function updateDraft(value: unknown) {
                   <span class="shrink-0 text-small text-text-subtle">{{ formatSize(itemDetail.size) }}</span>
                   <span class="shrink-0 text-small text-text-subtle">{{ formatTime(itemDetail.updatedAt) }}</span>
                 </div>
-                <pre class="m-0 overflow-auto px-4 py-3 font-mono text-mono leading-6 text-text-primary whitespace-pre">{{ formattedItemJson }}</pre>
+                <pre class="m-0 overflow-auto px-4 py-3 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap wrap-break-word">{{ formattedItemJson }}</pre>
               </template>
             </div>
           </div>
