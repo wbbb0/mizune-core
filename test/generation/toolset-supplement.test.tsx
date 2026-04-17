@@ -81,6 +81,27 @@ async function main() {
     assert.deepEqual(result.addedToolsetIds, ["web_research", "local_file_io"]);
   });
 
+  await runCase("supplement maps memory_write to memory_profile explicitly", async () => {
+    const result = supplementPlannedToolsets({
+      selectedToolsetIds: [],
+      availableToolsets: AVAILABLE_TOOLSETS,
+      batchMessages: [createBatchMessage({ text: "记住我以后叫我老王" })],
+      recentToolEvents: [],
+      plannerDecision: {
+        reason: "需要判断是否更新长期记忆",
+        replyDecision: "reply_small",
+        topicDecision: "continue_topic",
+        requiredCapabilities: ["memory_write"],
+        contextDependencies: [],
+        recentDomainReuse: [],
+        followupMode: "none",
+        toolsetIds: []
+      }
+    });
+    assert.deepEqual(result.toolsetIds, ["memory_profile"]);
+    assert.deepEqual(result.addedToolsetIds, ["memory_profile"]);
+  });
+
   await runCase("supplement inherits recent browser activity for short followups", async () => {
     const result = supplementPlannedToolsets({
       selectedToolsetIds: [],

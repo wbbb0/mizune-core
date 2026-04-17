@@ -44,15 +44,18 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   {
     id: "memory_profile",
     title: "长期资料与规则",
-    description: "读取和维护 persona、全局规则、工具集规则、用户资料与用户长期记忆。",
+    description: "读取和维护 persona、全局规则、工具集规则、用户资料与用户长期记忆；适合处理用户自述资料、长期偏好、边界和默认做法。",
     promptGuidance: [
       "处理长期信息前先读现有资料，避免重复写入或写出冲突。",
       "按决策树选择写入目标：persona -> global_rules -> toolset_rules -> user_profile -> user_memories。",
-      "同一事实不要重复写进多个类别；优先更新已有相近条目。"
+      "同一事实不要重复写进多个类别；优先更新已有相近条目。",
+      "遇到用户自述稳定资料或明确提出长期偏好/边界时，优先带上这组工具，先读取再判断是否需要写入。"
     ],
     plannerSignals: [
       "长期信息与偏好",
-      "读写 persona、规则、资料、长期记忆"
+      "读写 persona、规则、资料、长期记忆",
+      "用户自述自己的资料信息",
+      "长期偏好、边界、默认做法"
     ],
     toolNames: [
       "get_persona",
