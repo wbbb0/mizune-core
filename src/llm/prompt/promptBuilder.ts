@@ -32,6 +32,7 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
   const lastBatchMessage = input.batchMessages[input.batchMessages.length - 1];
   const batchRenderContext = {
     sessionId: input.sessionId,
+    ...(input.modeId ? { modeId: input.modeId } : {}),
     ...(input.userProfile.userId ?? lastBatchMessage?.userId
       ? { currentTriggerUserId: input.userProfile.userId ?? lastBatchMessage?.userId ?? "" }
       : {}),
@@ -61,7 +62,10 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
 
   const historyMessages: LlmMessage[] = input.recentMessages.map((message) => ({
     role: message.role,
-    content: formatConversationHistoryPromptMessage(message)
+    content: formatConversationHistoryPromptMessage(
+      message,
+      input.modeId ? { modeId: input.modeId } : undefined
+    )
   }));
 
   return [
@@ -106,7 +110,10 @@ export function buildScheduledTaskPrompt(input: ScheduledTaskPromptInput): LlmMe
 
   const historyMessages: LlmMessage[] = input.recentMessages.map((message) => ({
     role: message.role,
-    content: formatScheduledHistoryPromptMessage(message)
+    content: formatScheduledHistoryPromptMessage(
+      message,
+      input.modeId ? { modeId: input.modeId } : undefined
+    )
   }));
 
   const triggerMessage = buildTriggerMessage(input);

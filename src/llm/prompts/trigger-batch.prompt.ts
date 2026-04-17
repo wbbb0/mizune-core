@@ -15,11 +15,16 @@ import {
 } from "#llm/shared/messageHeaderFormat.ts";
 import type { PromptBatchMessage } from "#llm/prompt/promptTypes.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
+import {
+  formatScenarioHostParsedUserInput,
+  parseScenarioHostUserInput
+} from "#modes/scenarioHost/promptInputProtocol.ts";
 import { formatPromptTimestamp } from "./history-message.prompt.ts";
 import { escapePromptBodyText } from "./prompt-escaping.ts";
 
 type PromptBatchRenderContext = {
   sessionId?: string;
+  modeId?: string;
   currentTriggerUserId?: string;
   currentTriggerSenderName?: string;
 };
@@ -107,7 +112,15 @@ function formatUserBatchText(
       parts.push(formatStructuredMentionReference(mentionUserId));
     }
     if (message.text.trim()) {
+      if (context?.modeId === "scenario_host") {
+        const parsed = parseScenarioHostUserInput(message.text);
+        parts.push(formatScenarioHostParsedUserInput({
+          ...parsed,
+          content: escapePromptBodyText(parsed.content)
+        }));
+      } else {
         parts.push(escapePromptBodyText(message.text.trim()));
+      }
     }
     if ((message.audioSources ?? []).length > 0) {
       parts.push(formatStructuredCount("audio", message.audioSources.length));

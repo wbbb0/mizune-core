@@ -3,6 +3,7 @@ import {
   formatScheduledMessageHeader
 } from "#llm/shared/messageHeaderFormat.ts";
 import type { PromptHistoryMessage } from "#llm/prompt/promptTypes.ts";
+import { formatScenarioHostStructuredUserContent } from "#modes/scenarioHost/promptInputProtocol.ts";
 
 export function formatPromptTimestamp(timestampMs?: number | null): string {
   if (timestampMs == null) {
@@ -21,18 +22,30 @@ export function formatPromptTimestamp(timestampMs?: number | null): string {
   }).format(new Date(timestampMs));
 }
 
-export function formatConversationHistoryPromptMessage(message: PromptHistoryMessage): string {
+export function formatConversationHistoryPromptMessage(
+  message: PromptHistoryMessage,
+  options?: { modeId?: string }
+): string {
+  const content = options?.modeId === "scenario_host" && message.role === "user"
+    ? formatScenarioHostStructuredUserContent(message.content)
+    : message.content;
   return [
     formatConversationMessageHeader(formatPromptTimestamp(message.timestampMs)),
-    message.content,
+    content,
     "⟦/history_message⟧"
   ].join("\n");
 }
 
-export function formatScheduledHistoryPromptMessage(message: PromptHistoryMessage): string {
+export function formatScheduledHistoryPromptMessage(
+  message: PromptHistoryMessage,
+  options?: { modeId?: string }
+): string {
+  const content = options?.modeId === "scenario_host" && message.role === "user"
+    ? formatScenarioHostStructuredUserContent(message.content)
+    : message.content;
   return [
     formatScheduledMessageHeader(message.role, formatPromptTimestamp(message.timestampMs)),
-    message.content,
+    content,
     "⟦/scheduled_history_message⟧"
   ].join("\n");
 }

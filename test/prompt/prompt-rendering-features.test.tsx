@@ -361,6 +361,86 @@ async function main() {
     }
   });
 
+  await runCase("scenario_host rewrites prefixed user inputs for batch and history while normal mode keeps raw text", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.get();
+      const scenarioPrompt = buildPrompt({
+        sessionId: "private:owner",
+        modeId: "scenario_host",
+        persona,
+        relationship: "owner",
+        npcProfiles: [],
+        participantProfiles: [],
+        userProfile: createPromptUserProfile({ userId: "owner", senderName: "Owner", relationship: "owner" }),
+        historySummary: null,
+        recentMessages: [
+          { role: "user", content: "*推开钟楼木门", timestampMs: Date.UTC(2026, 2, 16, 9, 10, 0) },
+          { role: "user", content: "#别推进太快", timestampMs: Date.UTC(2026, 2, 16, 9, 10, 10) },
+          { role: "user", content: "里面有人吗", timestampMs: Date.UTC(2026, 2, 16, 9, 10, 20) }
+        ],
+        batchMessages: [
+          createPromptBatchMessage({
+            userId: "owner",
+            senderName: "Owner",
+            text: "*我先把提灯举高",
+            timestampMs: Date.UTC(2026, 2, 16, 9, 13, 10)
+          }),
+          createPromptBatchMessage({
+            userId: "owner",
+            senderName: "Owner",
+            text: "#先不要替我做决定",
+            timestampMs: Date.UTC(2026, 2, 16, 9, 13, 20)
+          }),
+          createPromptBatchMessage({
+            userId: "owner",
+            senderName: "Owner",
+            text: "你是谁",
+            timestampMs: Date.UTC(2026, 2, 16, 9, 13, 30)
+          })
+        ]
+      });
+
+      assert.match(String(scenarioPrompt[1]?.content ?? ""), /玩家动作：推开钟楼木门/);
+      assert.match(String(scenarioPrompt[2]?.content ?? ""), /场外指令：别推进太快/);
+      assert.match(String(scenarioPrompt[3]?.content ?? ""), /玩家对白：里面有人吗/);
+
+      const scenarioBatchText = readPromptMessageText(scenarioPrompt[4]);
+      assert.match(scenarioBatchText, /玩家动作：我先把提灯举高/);
+      assert.match(scenarioBatchText, /场外指令：先不要替我做决定/);
+      assert.match(scenarioBatchText, /玩家对白：你是谁/);
+
+      const normalPrompt = buildPrompt({
+        sessionId: "private:owner",
+        persona,
+        relationship: "owner",
+        npcProfiles: [],
+        participantProfiles: [],
+        userProfile: createPromptUserProfile({ userId: "owner", senderName: "Owner", relationship: "owner" }),
+        historySummary: null,
+        recentMessages: [
+          { role: "user", content: "*推开钟楼木门", timestampMs: Date.UTC(2026, 2, 16, 9, 10, 0) }
+        ],
+        batchMessages: [
+          createPromptBatchMessage({
+            userId: "owner",
+            senderName: "Owner",
+            text: "#先不要替我做决定",
+            timestampMs: Date.UTC(2026, 2, 16, 9, 13, 20)
+          })
+        ]
+      });
+
+      assert.match(String(normalPrompt[1]?.content ?? ""), /\*推开钟楼木门/);
+      assert.doesNotMatch(String(normalPrompt[1]?.content ?? ""), /玩家动作：/);
+      const normalBatchText = readPromptMessageText(normalPrompt[2]);
+      assert.match(normalBatchText, /#先不要替我做决定/);
+      assert.doesNotMatch(normalBatchText, /场外指令：/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   await runCase("conversation access allows self private, npc private, and shared groups only", async () => {
     const harness = await createMemoryHarness();
     try {

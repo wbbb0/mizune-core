@@ -669,6 +669,8 @@ async function main() {
 
     assert.ok(systemContent.includes("host_setup_mode"), `Expected host_setup_mode section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(!systemContent.includes("host_identity"), `Expected no host_identity section in setup mode, got: ${systemContent.slice(0, 400)}`);
+    assert.ok(!systemContent.includes("玩家动作"), `Expected no runtime scenario input protocol in setup mode, got: ${systemContent.slice(0, 400)}`);
+    assert.ok(!systemContent.includes("不要在段落结尾反问玩家下一步"), `Expected no runtime pacing rule in setup mode, got: ${systemContent.slice(0, 400)}`);
   });
 
   await runCase("scenario_host prompt injects scenario state and avoids rp identity lines", async () => {
@@ -795,6 +797,14 @@ async function main() {
     assert.match(system, /剧情主持模式下的场景主持者/);
     assert.match(system, /标题=钟楼迷雾/);
     assert.match(system, /当前位置=旧钟楼外/);
+    assert.match(system, /`\*` 开头表示玩家动作声明/);
+    assert.match(system, /`#` 开头表示场外指令或提问/);
+    assert.match(system, /无前缀文本默认视为玩家角色对白/);
+    assert.match(system, /先用叙事语气落地玩家刚刚声明的动作或对白已经发生/);
+    assert.match(system, /不要代替玩家决定、行动、说话或描写其内心/);
+    assert.match(system, /不要在段落结尾反问玩家下一步要做什么/);
+    assert.match(system, /不要默认列出可选行动让玩家选择/);
+    assert.match(system, /单轮只做小步推进/);
     assert.doesNotMatch(system, /你是具有角色扮演属性的聊天角色/);
     assert.doesNotMatch(system, /global_rules/);
   });
