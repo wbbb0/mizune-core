@@ -30,7 +30,7 @@
 
 ## 环境要求
 
-- Node.js 20+
+- Node.js 20.19+（WebUI 在 Vite 7 下需要）
 - npm
 - 至少一个可用的 LLM provider
 - 如果要接 OneBot，还需要一个可用的 OneBot 实现
