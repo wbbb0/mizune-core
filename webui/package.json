@@ -25,5 +25,10 @@
     "vite": "^7.3.2",
     "vite-plugin-pwa": "^1.2.0",
     "vue-tsc": "^3.2.6"
+  },
+  "overrides": {
+    "workbox-build": {
+      "@rollup/plugin-terser": "^1.0.0"
+    }
   }
 }
