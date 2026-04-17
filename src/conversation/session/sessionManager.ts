@@ -25,6 +25,7 @@ import { SessionInternalTriggerQueue } from "./sessionInternalTriggerQueue.ts";
 import { SessionDebugController } from "./sessionDebugController.ts";
 import { SessionSentMessageLog } from "./sessionSentMessageLog.ts";
 import { SessionHistoryService } from "./sessionHistoryService.ts";
+import { clearPendingTranscriptGroup, getTranscriptDeleteMessageId } from "./transcriptMetadata.ts";
 import type {
   SessionPhase,
   ActiveAssistantResponse,
@@ -39,7 +40,9 @@ import type {
   SessionSentMessage,
   SessionState,
   SessionToolEvent,
-  SessionUsageSnapshot
+  SessionUsageSnapshot,
+  TranscriptItemDeliveryRef,
+  TranscriptItemInvalidationReason
 } from "./sessionTypes.ts";
 
 export type {
@@ -412,6 +415,7 @@ export class SessionManager {
     userId: string;
     senderName: string;
     text: string;
+    deliveryRef?: TranscriptItemDeliveryRef;
   }, timestampMs = Date.now()): void {
     const session = this.requireSession(sessionId);
     this.historyService.appendAssistantHistory(session, message, timestampMs);
@@ -467,6 +471,12 @@ export class SessionManager {
     return this.withResponseEpoch(sessionId, expectedResponseEpoch, true, (session) => {
       this.historyService.setLastAssistantReasoning(session, reasoningContent);
     });
+  }
+
+  clearPendingTranscriptGroup(sessionId: string): void {
+    const session = this.requireSession(sessionId);
+    clearPendingTranscriptGroup(session);
+    this.notifySessionChanged(sessionId);
   }
 
   clearSession(sessionId: string): void {
@@ -548,6 +558,7 @@ export class SessionManager {
       userId: string;
       senderName: string;
       text: string;
+      deliveryRef?: TranscriptItemDeliveryRef;
     },
     timestampMs = Date.now()
   ): boolean {
@@ -669,6 +680,34 @@ export class SessionManager {
     return this.sentMessageLog.popRetractable(session, count, maxAgeMs, now);
   }
 
+  invalidateTranscriptItem(
+    sessionId: string,
+    itemId: string,
+    reason: TranscriptItemInvalidationReason,
+    timestampMs = Date.now()
+  ): InternalTranscriptItem[] {
+    const session = this.requireSession(sessionId);
+    const affected = invalidateTranscriptItems(session, (item) => item.id === itemId, reason, timestampMs);
+    if (affected.length > 0) {
+      this.notifySessionChanged(sessionId);
+    }
+    return affected;
+  }
+
+  invalidateTranscriptGroup(
+    sessionId: string,
+    groupId: string,
+    reason: TranscriptItemInvalidationReason,
+    timestampMs = Date.now()
+  ): InternalTranscriptItem[] {
+    const session = this.requireSession(sessionId);
+    const affected = invalidateTranscriptItems(session, (item) => item.groupId === groupId, reason, timestampMs);
+    if (affected.length > 0) {
+      this.notifySessionChanged(sessionId);
+    }
+    return affected;
+  }
+
   enqueueInternalTrigger(sessionId: string, trigger: InternalSessionTriggerExecution): number {
     const session = this.requireSession(sessionId);
     const size = this.internalTriggerQueue.enqueue(session, trigger);
@@ -775,4 +814,38 @@ export class SessionManager {
     this.notifySessionChanged(sessionId);
     return result;
   }
+}
+
+function invalidateTranscriptItems(
+  session: SessionState,
+  predicate: (item: InternalTranscriptItem) => boolean,
+  reason: TranscriptItemInvalidationReason,
+  timestampMs: number
+): InternalTranscriptItem[] {
+  const affected: InternalTranscriptItem[] = [];
+  const deletedMessageIds = new Set<number>();
+
+  for (const item of session.internalTranscript) {
+    if (!predicate(item) || item.invalidated === true) {
+      continue;
+    }
+    item.invalidated = true;
+    item.invalidatedAt = timestampMs;
+    item.invalidationReason = reason;
+    affected.push(item);
+    const messageId = getTranscriptDeleteMessageId(item);
+    if (messageId != null) {
+      deletedMessageIds.add(messageId);
+    }
+  }
+
+  if (affected.length === 0) {
+    return [];
+  }
+
+  if (deletedMessageIds.size > 0) {
+    session.sentMessages = session.sentMessages.filter((message) => !deletedMessageIds.has(message.messageId));
+  }
+  session.historyRevision += 1;
+  return affected;
 }

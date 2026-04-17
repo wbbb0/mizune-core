@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createAdminMessagingService } from "../../src/internalApi/application/messagingAdminService.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
-import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
+import type { InternalTranscriptItem, TranscriptAssistantMessageItem } from "../../src/conversation/session/sessionTypes.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
 async function runCase(name: string, fn: () => Promise<void>) {
@@ -19,6 +19,9 @@ function nextTick(): Promise<void> {
 async function main() {
   await runCase("session stream sends catch-up transcript events", async () => {
     const transcript: InternalTranscriptItem[] = [{
+      id: "item-1",
+      groupId: "group-1",
+      invalidated: false,
       kind: "user_message",
       role: "user",
       llmVisible: true,
@@ -87,10 +90,10 @@ async function main() {
       { mutationEpoch: 7, transcriptCount: 0 }
     );
 
-    assert.deepEqual(stream.initialEvents.map((event) => event.type), ["ready", "transcript_item"]);
+    assert.deepEqual(stream.initialEvents.map((event) => event.type), ["ready", "transcript_item_added"]);
     const transcriptEvent = stream.initialEvents[1];
-    assert.equal(transcriptEvent?.type, "transcript_item");
-    if (transcriptEvent?.type === "transcript_item") {
+    assert.equal(transcriptEvent?.type, "transcript_item_added");
+    if (transcriptEvent?.type === "transcript_item_added") {
       assert.equal(transcriptEvent.totalCount, 1);
       assert.equal(transcriptEvent.index, 0);
       assert.deepEqual(transcriptEvent.item, transcript[0]);
@@ -162,6 +165,9 @@ async function main() {
     });
 
     sessionState.internalTranscript.push({
+      id: "item-1",
+      groupId: "group-1",
+      invalidated: false,
       kind: "assistant_message",
       role: "assistant",
       llmVisible: true,
@@ -178,11 +184,14 @@ async function main() {
 
     unsubscribe();
 
-    assert.ok(receivedTypes.includes("transcript_item"));
-    const transcriptEvent = receivedEvents.find((event) => event.type === "transcript_item");
+    assert.ok(receivedTypes.includes("transcript_item_added"));
+    const transcriptEvent = receivedEvents.find((event) => event.type === "transcript_item_added");
     assert.equal(transcriptEvent?.totalCount, 1);
     assert.equal(transcriptEvent?.index, 0);
     assert.deepEqual(transcriptEvent?.item, {
+      id: "item-1",
+      groupId: "group-1",
+      invalidated: false,
       kind: "assistant_message",
       role: "assistant",
       llmVisible: true,
@@ -192,6 +201,102 @@ async function main() {
       text: "AB",
       timestampMs: 30
     });
+  });
+
+  await runCase("session stream emits transcript item patches for reasoning updates", async () => {
+    const sessionState = {
+      id: "private:10001",
+      type: "private" as const,
+      source: "onebot" as const,
+      participantUserId: "10001",
+      participantLabel: "Alice",
+      phase: { kind: "idle" },
+      pendingMessages: [] as Array<{ receivedAt?: number }>,
+      historyRevision: 1,
+      mutationEpoch: 2,
+      lastActiveAt: 100,
+      internalTranscript: [{
+        id: "item-1",
+        groupId: "group-1",
+        invalidated: false,
+        kind: "assistant_message" as const,
+        role: "assistant" as const,
+        llmVisible: true as const,
+        chatType: "private" as const,
+        userId: "10001",
+        senderName: "10001",
+        text: "AB",
+        timestampMs: 30
+      }] as TranscriptAssistantMessageItem[],
+      recentToolEvents: [] as Array<{ toolName: string }>,
+      activeAssistantResponse: null
+    };
+
+    const sessionManager = {
+      __listener: null as null | (() => void),
+      getSession() {
+        return sessionState;
+      },
+      hasActiveResponse() {
+        return false;
+      },
+      subscribeSession(_sessionId: string, listener: () => void) {
+        this.__listener = listener;
+        return () => {
+          this.__listener = null;
+        };
+      }
+    };
+
+    const service = createAdminMessagingService({
+      config: {
+        onebot: {
+          enabled: true
+        }
+      },
+      oneBotClient: {
+        async sendText() {
+          return {};
+        }
+      } as any,
+      chatFileStore: {
+        async getMany() {
+          return [];
+        }
+      } as any,
+      sessionManager: sessionManager as any,
+      async handleWebIncomingMessage() {}
+    });
+
+    const stream = await service.getWebSessionStream(
+      { sessionId: "private:10001" },
+      { mutationEpoch: 2, transcriptCount: 1 }
+    );
+    const receivedEvents: Array<{ type: string; [key: string]: unknown }> = [];
+    const unsubscribe = stream.subscribe((event) => {
+      receivedEvents.push(event as { type: string; [key: string]: unknown });
+    });
+
+    sessionState.internalTranscript[0] = {
+      ...sessionState.internalTranscript[0],
+      reasoningContent: "thoughts"
+    } as TranscriptAssistantMessageItem;
+    sessionManager.__listener?.();
+    await nextTick();
+
+    unsubscribe();
+
+    assert.deepEqual(receivedEvents, [{
+      type: "transcript_item_patched",
+      sessionId: "private:10001",
+      mutationEpoch: 2,
+      itemId: "item-1",
+      patch: {
+        reasoningContent: "thoughts"
+      },
+      timestampMs: receivedEvents[0]?.timestampMs
+    }]);
+    assert.equal(typeof receivedEvents[0]?.timestampMs, "number");
   });
 
   await runCase("session stream emits session_error when subscribed session is deleted", async () => {

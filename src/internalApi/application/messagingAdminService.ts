@@ -1,6 +1,7 @@
 import type {
   SessionWebStreamAccess,
-  SessionWebStreamState
+  SessionWebStreamState,
+  SessionAdminMutationAccess
 } from "#conversation/session/sessionCapabilities.ts";
 import type { InternalTranscriptItem, SessionPhase } from "#conversation/session/sessionTypes.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
@@ -25,6 +26,7 @@ import {
   type WebSessionStreamEvent,
   type WebSessionStreamSnapshot
 } from "./webSessionStream.ts";
+import { createTranscriptGroupId, normalizeTranscriptItem } from "#conversation/session/transcriptMetadata.ts";
 
 export { type WebTurnStreamEvent } from "./webTurnBroker.ts";
 export { type WebSessionStreamEvent } from "./webSessionStream.ts";
@@ -54,6 +56,8 @@ export interface AdminMessagingService {
     totalCount: number;
     hasMore: boolean;
   };
+  invalidateTranscriptItem(params: { sessionId: string; itemId: string }): Promise<{ ok: true; invalidatedItemIds: string[] }>;
+  invalidateTranscriptGroup(params: { sessionId: string; groupId: string }): Promise<{ ok: true; invalidatedItemIds: string[] }>;
 }
 
 export function createAdminMessagingService(input: {
@@ -62,9 +66,9 @@ export function createAdminMessagingService(input: {
       enabled: boolean;
     };
   };
-  oneBotClient: Pick<OneBotClient, "sendText">;
+  oneBotClient: Pick<OneBotClient, "sendText" | "deleteMessage">;
   chatFileStore: Pick<ChatFileStore, "getMany">;
-  sessionManager: SessionWebStreamAccess;
+  sessionManager: SessionWebStreamAccess & Pick<SessionAdminMutationAccess, "invalidateTranscriptItem" | "invalidateTranscriptGroup">;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {
@@ -130,17 +134,35 @@ export function createAdminMessagingService(input: {
 
     fetchTranscript(params, query) {
       const session = input.sessionManager.getSession(params.sessionId);
-      const transcript = session.internalTranscript;
+      const transcript = session.internalTranscript.map((item) => normalizeTranscriptItem(item, item.groupId ?? createTranscriptGroupId()));
       const totalCount = transcript.length;
       const beforeIndex = query.beforeIndex ?? totalCount;
       const clampedBefore = Math.min(beforeIndex, totalCount);
       const startIndex = Math.max(0, clampedBefore - query.limit);
       const items = transcript.slice(startIndex, clampedBefore).map((item, offset) => ({
-        eventId: `transcript:${session.mutationEpoch}:${startIndex + offset}`,
+        eventId: item.id ?? `transcript:${session.mutationEpoch}:${startIndex + offset}`,
         index: startIndex + offset,
         item
       }));
       return { items, totalCount, hasMore: startIndex > 0 };
+    },
+
+    async invalidateTranscriptItem(params) {
+      const affected = input.sessionManager.invalidateTranscriptItem(params.sessionId, params.itemId, "manual_single");
+      await performTranscriptDeletionSideEffects(input.oneBotClient, affected);
+      return {
+        ok: true,
+        invalidatedItemIds: affected.map((item) => item.id ?? "").filter((value) => value.length > 0)
+      };
+    },
+
+    async invalidateTranscriptGroup(params) {
+      const affected = input.sessionManager.invalidateTranscriptGroup(params.sessionId, params.groupId, "manual_group");
+      await performTranscriptDeletionSideEffects(input.oneBotClient, affected);
+      return {
+        ok: true,
+        invalidatedItemIds: affected.map((item) => item.id ?? "").filter((value) => value.length > 0)
+      };
     },
 
     async getWebSessionStream(params, query) {
@@ -201,6 +223,27 @@ export function createAdminMessagingService(input: {
       };
     }
   };
+}
+
+async function performTranscriptDeletionSideEffects(
+  oneBotClient: Pick<OneBotClient, "deleteMessage">,
+  items: InternalTranscriptItem[]
+): Promise<void> {
+  for (const item of items) {
+    const messageId = item.deliveryRef?.platform === "onebot"
+      ? item.deliveryRef.messageId
+      : item.kind === "outbound_media_message"
+      ? item.messageId
+      : null;
+    if (messageId == null) {
+      continue;
+    }
+    try {
+      await oneBotClient.deleteMessage(messageId);
+    } catch {
+      // Transcript invalidation is the source of truth; external retract failures are non-fatal.
+    }
+  }
 }
 
 async function runWebTurnInBackground(input: {
@@ -376,7 +419,7 @@ async function readSessionStreamSnapshot(
   return {
     sessionId: session.id,
     mutationEpoch: session.mutationEpoch,
-    transcript: [...session.internalTranscript],
+    transcript: session.internalTranscript.map((item) => normalizeTranscriptItem(item, item.groupId ?? createTranscriptGroupId())),
     lastActiveAt: session.lastActiveAt,
     phase: session.phase,
     activeAssistantResponseText: session.activeAssistantResponse?.text ?? null,

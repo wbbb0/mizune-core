@@ -162,7 +162,7 @@ export function promoteSteerMessagesToPendingState(session: SessionState): numbe
 // Appends a history entry and reapplies the configured history window.
 export function appendHistoryEntry(
   session: SessionState,
-  item: TranscriptUserMessageItem | TranscriptAssistantMessageItem
+  item: InternalTranscriptItem
 ): void {
   appendInternalTranscriptState(session, item);
   session.historyRevision += 1;
@@ -230,6 +230,8 @@ export function clearSessionState(session: SessionState): void {
   session.pendingMessages = [];
   session.pendingSteerMessages = [];
   session.pendingReplyGateWaitPasses = 0;
+  session.pendingTranscriptGroupId = null;
+  session.activeTranscriptGroupId = null;
   session.pendingInternalTriggers = [];
   session.interruptibleGroupTriggerUserId = null;
   session.historySummary = null;

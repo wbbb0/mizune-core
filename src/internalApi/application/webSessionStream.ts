@@ -1,5 +1,6 @@
 import type { InternalTranscriptItem, SessionPhase } from "#conversation/session/sessionTypes.ts";
 import type { ParsedWebSessionStreamQuery } from "../routeSupport.ts";
+import { buildTranscriptItemPatch, getTranscriptItemId } from "#conversation/session/transcriptMetadata.ts";
 
 export type WebSessionPhase = SessionPhase & { label: string };
 
@@ -35,13 +36,25 @@ export type WebSessionStreamEvent =
       timestampMs: number;
     }
   | {
-      type: "transcript_item";
+      type: "transcript_item_added";
       sessionId: string;
       mutationEpoch: number;
       index: number;
       totalCount: number;
-      eventId: string;
       item: InternalTranscriptItem;
+      timestampMs: number;
+    }
+  | {
+      type: "transcript_item_patched";
+      sessionId: string;
+      mutationEpoch: number;
+      itemId: string;
+      patch: {
+        reasoningContent?: string;
+        invalidated?: boolean;
+        invalidatedAt?: number;
+        invalidationReason?: "manual_single" | "manual_group" | "interrupt_cleanup" | "system";
+      };
       timestampMs: number;
     }
   | {
@@ -154,6 +167,7 @@ export function diffSessionStreamEvents(
   if (current.transcript.length > previous.transcript.length) {
     events.push(...buildTranscriptAppendEvents(current, previous.transcript.length));
   }
+  events.push(...buildTranscriptPatchEvents(previous, current));
 
   const previousPhase = deriveWebSessionPhase(previous);
   const currentPhase = deriveWebSessionPhase(current);
@@ -191,12 +205,11 @@ function buildTranscriptAppendEvents(
     }
 
     events.push({
-      type: "transcript_item",
+      type: "transcript_item_added",
       sessionId: snapshot.sessionId,
       mutationEpoch: snapshot.mutationEpoch,
       index,
       totalCount: snapshot.transcript.length,
-      eventId: buildTranscriptEventId(snapshot.mutationEpoch, index),
       item,
       timestampMs: Date.now()
     });
@@ -205,8 +218,39 @@ function buildTranscriptAppendEvents(
   return events;
 }
 
-function buildTranscriptEventId(mutationEpoch: number, index: number): string {
-  return `transcript:${mutationEpoch}:${index}`;
+function buildTranscriptPatchEvents(
+  previous: WebSessionStreamSnapshot,
+  current: WebSessionStreamSnapshot
+): WebSessionStreamEvent[] {
+  const events: WebSessionStreamEvent[] = [];
+  const comparableLength = Math.min(previous.transcript.length, current.transcript.length);
+
+  for (let index = 0; index < comparableLength; index += 1) {
+    const previousItem = previous.transcript[index];
+    const currentItem = current.transcript[index];
+    if (!previousItem || !currentItem) {
+      continue;
+    }
+    const previousId = getTranscriptItemId(previousItem);
+    const currentId = getTranscriptItemId(currentItem);
+    if (previousId !== currentId) {
+      continue;
+    }
+    const patch = buildTranscriptItemPatch(previousItem, currentItem);
+    if (!patch) {
+      continue;
+    }
+    events.push({
+      type: "transcript_item_patched",
+      sessionId: current.sessionId,
+      mutationEpoch: current.mutationEpoch,
+      itemId: currentId,
+      patch,
+      timestampMs: Date.now()
+    });
+  }
+
+  return events;
 }
 
 function deriveWebSessionPhase(snapshot: WebSessionStreamSnapshot): WebSessionPhase {

@@ -23,7 +23,25 @@ export interface StoredToolCall {
   };
 }
 
-export interface UserMessageItem {
+export type TranscriptItemInvalidationReason =
+  | "manual_single"
+  | "manual_group"
+  | "interrupt_cleanup"
+  | "system";
+
+export interface TranscriptItemMeta {
+  id: string;
+  groupId: string;
+  invalidated: boolean;
+  invalidatedAt?: number;
+  invalidationReason?: TranscriptItemInvalidationReason;
+  deliveryRef?: {
+    platform: "onebot";
+    messageId: number;
+  };
+}
+
+export interface UserMessageItem extends TranscriptItemMeta {
   kind: "user_message";
   role: "user";
   llmVisible: true;
@@ -50,7 +68,7 @@ export interface UserMessageItem {
   timestampMs: number;
 }
 
-export interface AssistantMessageItem {
+export interface AssistantMessageItem extends TranscriptItemMeta {
   kind: "assistant_message";
   role: "assistant";
   llmVisible: true;
@@ -62,7 +80,7 @@ export interface AssistantMessageItem {
   timestampMs: number;
 }
 
-export interface SessionModeSwitchItem {
+export interface SessionModeSwitchItem extends TranscriptItemMeta {
   kind: "session_mode_switch";
   role: "assistant";
   llmVisible: true;
@@ -72,7 +90,7 @@ export interface SessionModeSwitchItem {
   timestampMs: number;
 }
 
-export interface AssistantToolCallItem {
+export interface AssistantToolCallItem extends TranscriptItemMeta {
   kind: "assistant_tool_call";
   llmVisible: true;
   timestampMs: number;
@@ -81,7 +99,7 @@ export interface AssistantToolCallItem {
   reasoningContent?: string;
 }
 
-export interface ToolResultItem {
+export interface ToolResultItem extends TranscriptItemMeta {
   kind: "tool_result";
   llmVisible: true;
   timestampMs: number;
@@ -90,7 +108,7 @@ export interface ToolResultItem {
   content: string;
 }
 
-export interface OutboundMediaMessageItem {
+export interface OutboundMediaMessageItem extends TranscriptItemMeta {
   kind: "outbound_media_message";
   llmVisible: false;
   role: "assistant";
@@ -107,7 +125,7 @@ export interface OutboundMediaMessageItem {
   timestampMs: number;
 }
 
-export interface DirectCommandItem {
+export interface DirectCommandItem extends TranscriptItemMeta {
   kind: "direct_command";
   llmVisible: false;
   direction: "input" | "output";
@@ -117,7 +135,7 @@ export interface DirectCommandItem {
   timestampMs: number;
 }
 
-export interface StatusMessageItem {
+export interface StatusMessageItem extends TranscriptItemMeta {
   kind: "status_message";
   llmVisible: false;
   role: "assistant";
@@ -126,7 +144,7 @@ export interface StatusMessageItem {
   timestampMs: number;
 }
 
-export interface GateDecisionItem {
+export interface GateDecisionItem extends TranscriptItemMeta {
   kind: "gate_decision";
   llmVisible: false;
   action: "continue" | "wait" | "skip" | "topic_switch";
@@ -139,7 +157,7 @@ export interface GateDecisionItem {
   timestampMs: number;
 }
 
-export interface SystemMarkerItem {
+export interface SystemMarkerItem extends TranscriptItemMeta {
   kind: "system_marker";
   llmVisible: false;
   timestampMs: number;
@@ -147,7 +165,7 @@ export interface SystemMarkerItem {
   content: string;
 }
 
-export interface FallbackEventItem {
+export interface FallbackEventItem extends TranscriptItemMeta {
   kind: "fallback_event";
   llmVisible: false;
   timestampMs: number;
@@ -162,7 +180,7 @@ export interface FallbackEventItem {
   failureMessage?: string;
 }
 
-export interface InternalTriggerEventItem {
+export interface InternalTriggerEventItem extends TranscriptItemMeta {
   kind: "internal_trigger_event";
   llmVisible: false;
   timestampMs: number;
@@ -180,6 +198,13 @@ export interface InternalTriggerEventItem {
   autoIterationIndex?: number;
   maxAutoIterations?: number;
   details?: string;
+}
+
+export interface TranscriptItemPatch {
+  reasoningContent?: string;
+  invalidated?: boolean;
+  invalidatedAt?: number;
+  invalidationReason?: TranscriptItemInvalidationReason;
 }
 
 export type TranscriptItem =
@@ -222,7 +247,8 @@ export type SessionStreamEvent =
       timestampMs: number;
     }
   | { type: "status";  sessionId: string; modeId: string; mutationEpoch: number; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
-  | { type: "transcript_item"; sessionId: string; mutationEpoch: number; index: number; totalCount: number; eventId: string; item: TranscriptItem; timestampMs: number }
+  | { type: "transcript_item_added"; sessionId: string; mutationEpoch: number; index: number; totalCount: number; item: TranscriptItem; timestampMs: number }
+  | { type: "transcript_item_patched"; sessionId: string; mutationEpoch: number; itemId: string; patch: TranscriptItemPatch; timestampMs: number }
   | { type: "session_error"; message: string };
 
 export interface SessionModeOption {

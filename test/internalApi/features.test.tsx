@@ -222,6 +222,7 @@ async function main() {
       participantUserId: "20001",
       participantLabel: "Group 20001",
       pendingMessages: [],
+      internalTranscript: [],
       isGenerating: false,
       lastActiveAt: 123456
     });
@@ -504,6 +505,71 @@ async function main() {
       assert.match(streamResponse.body, /event: chunk/);
       assert.match(streamResponse.body, /web handled: private:10001: hello from panel/);
       assert.deepEqual(deps.__state.sentMessages, []);
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("internal api invalidates transcript items and groups and triggers onebot deletion side effects", async () => {
+    const deps = createInternalApiDeps();
+    deps.__state.sessions[0]!.internalTranscript = [{
+      id: "item-1",
+      groupId: "group-1",
+      invalidated: false,
+      kind: "assistant_message",
+      role: "assistant",
+      llmVisible: true,
+      chatType: "private",
+      userId: "10001",
+      senderName: "Alice",
+      text: "hello",
+      deliveryRef: {
+        platform: "onebot",
+        messageId: 41
+      },
+      timestampMs: 1
+    }, {
+      id: "item-2",
+      groupId: "group-1",
+      invalidated: false,
+      kind: "status_message",
+      llmVisible: false,
+      role: "assistant",
+      statusType: "system",
+      content: "working",
+      timestampMs: 2
+    }, {
+      id: "item-3",
+      groupId: "group-2",
+      invalidated: false,
+      kind: "assistant_message",
+      role: "assistant",
+      llmVisible: true,
+      chatType: "private",
+      userId: "10001",
+      senderName: "Alice",
+      text: "keep",
+      timestampMs: 3
+    }];
+    const app = await createInternalApiApp(deps);
+    try {
+      const singleResponse = await app.inject({
+        method: "DELETE",
+        url: `/api/sessions/${encodeURIComponent("private:10001")}/transcript/items/item-1`
+      });
+      assert.equal(singleResponse.statusCode, 200);
+      assert.deepEqual(singleResponse.json().invalidatedItemIds, ["item-1"]);
+      assert.equal(deps.__state.sessions[0]!.internalTranscript[0]!.invalidated, true);
+      assert.deepEqual(deps.__state.deletedMessageIds, [41]);
+
+      const groupResponse = await app.inject({
+        method: "DELETE",
+        url: `/api/sessions/${encodeURIComponent("private:10001")}/transcript/groups/group-1`
+      });
+      assert.equal(groupResponse.statusCode, 200);
+      assert.deepEqual(groupResponse.json().invalidatedItemIds, ["item-2"]);
+      assert.equal(deps.__state.sessions[0]!.internalTranscript[1]!.invalidated, true);
+      assert.equal(deps.__state.sessions[0]!.internalTranscript[2]!.invalidated, false);
     } finally {
       await app.close();
     }

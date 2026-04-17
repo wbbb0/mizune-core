@@ -86,6 +86,7 @@ export function appendIncomingHistory(
 }
 
 export function handleNonTriggeringMessage(
+  sessionManager: MessageHandlerServices["sessionManager"],
   logger: Logger,
   persistSession: MessageEventHandlerDeps["persistSession"],
   context: MessageProcessingContext,
@@ -95,6 +96,9 @@ export function handleNonTriggeringMessage(
     return false;
   }
 
+  if (context.session.pendingMessages.length === 0 && context.session.pendingSteerMessages.length === 0) {
+    sessionManager.clearPendingTranscriptGroup(context.session.id);
+  }
   persistSession(context.session.id, "group_message_monitored");
   logger.info(
     {

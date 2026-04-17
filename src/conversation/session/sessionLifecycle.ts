@@ -1,5 +1,6 @@
 import type { SessionState } from "./sessionTypes.ts";
 import { isSessionGenerating, isSessionResponding } from "./sessionQueries.ts";
+import { beginActiveTranscriptGroup, clearActiveTranscriptGroup } from "./transcriptMetadata.ts";
 
 // Manages generation/response lifecycle transitions for a session state.
 export function beginGenerationState(session: SessionState) {
@@ -7,6 +8,7 @@ export function beginGenerationState(session: SessionState) {
   const pendingReplyGateWaitPasses = session.pendingReplyGateWaitPasses;
   session.pendingMessages = [];
   session.pendingReplyGateWaitPasses = 0;
+  beginActiveTranscriptGroup(session);
   session.phase = { kind: "turn_planner_evaluating" };
   session.responseEpoch += 1;
   const abortController = new AbortController();
@@ -25,6 +27,7 @@ export function beginGenerationState(session: SessionState) {
 
 // Starts a synthetic generation cycle without consuming pending inbound messages.
 export function beginSyntheticGenerationState(session: SessionState) {
+  beginActiveTranscriptGroup(session);
   session.phase = { kind: "requesting_llm" };
   session.responseEpoch += 1;
   const abortController = new AbortController();
@@ -65,6 +68,7 @@ export function interruptResponseState(session: SessionState): { cancelledGenera
     cancelledOutbound = true;
   }
   session.phase = { kind: "idle" };
+  clearActiveTranscriptGroup(session);
   return { cancelledGeneration, cancelledOutbound };
 }
 
@@ -76,5 +80,6 @@ export function completeResponseState(session: SessionState, expectedResponseEpo
   session.phase = { kind: "idle" };
   session.responseAbortController = null;
   session.interruptibleGroupTriggerUserId = null;
+  clearActiveTranscriptGroup(session);
   return true;
 }

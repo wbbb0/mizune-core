@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject } from "vue";
+import { computed, inject, onBeforeUnmount } from "vue";
 import { Bot, GitBranch, Image as ImageIcon, Info, User, Wrench } from "lucide-vue-next";
 import type { StoredToolCall, TranscriptItem } from "@/api/types";
 import SessionGlyph, { type SessionGlyphModel } from "./SessionGlyph.vue";
@@ -11,19 +11,26 @@ import type { TranscriptExpandState } from "./ChatPanel.vue";
 const props = defineProps<{
   item: TranscriptItem;
   index: number;
-  eventId?: string;
+}>();
+
+const emit = defineEmits<{
+  openActions: [];
 }>();
 
 const expandStates = inject<Map<string, TranscriptExpandState>>("transcriptExpandStates");
+const invalidated = computed(() => props.item.invalidated === true);
+
+let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+let longPressTriggered = false;
 
 function getState(): TranscriptExpandState {
-  if (!expandStates || !props.eventId) {
+  if (!expandStates) {
     return { expanded: false, reasoningExpanded: false, plannerExpanded: false };
   }
-  if (!expandStates.has(props.eventId)) {
-    expandStates.set(props.eventId, { expanded: false, reasoningExpanded: false, plannerExpanded: false });
+  if (!expandStates.has(props.item.id)) {
+    expandStates.set(props.item.id, { expanded: false, reasoningExpanded: false, plannerExpanded: false });
   }
-  return expandStates.get(props.eventId)!;
+  return expandStates.get(props.item.id)!;
 }
 
 const expanded = computed(() => getState().expanded);
@@ -31,14 +38,23 @@ const reasoningExpanded = computed(() => getState().reasoningExpanded);
 const plannerExpanded = computed(() => getState().plannerExpanded);
 
 function toggleExpanded() {
+  if (invalidated.value) {
+    return;
+  }
   const s = getState();
   s.expanded = !s.expanded;
 }
 function toggleReasoningExpanded() {
+  if (invalidated.value) {
+    return;
+  }
   const s = getState();
   s.reasoningExpanded = !s.reasoningExpanded;
 }
 function togglePlannerExpanded() {
+  if (invalidated.value) {
+    return;
+  }
   const s = getState();
   s.plannerExpanded = !s.plannerExpanded;
 }
@@ -340,10 +356,61 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
       return "comfy_task_failed";
   }
 }
+
+function clearLongPressTimer(): void {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+}
+
+function openActions(): void {
+  if (invalidated.value) {
+    return;
+  }
+  emit("openActions");
+}
+
+function onContextMenu(event: MouseEvent): void {
+  if (invalidated.value) {
+    return;
+  }
+  event.preventDefault();
+  openActions();
+}
+
+function onTouchStart(): void {
+  if (invalidated.value) {
+    return;
+  }
+  longPressTriggered = false;
+  clearLongPressTimer();
+  longPressTimer = setTimeout(() => {
+    longPressTriggered = true;
+    openActions();
+  }, 450);
+}
+
+function onTouchEnd(): void {
+  clearLongPressTimer();
+  longPressTriggered = false;
+}
+
+onBeforeUnmount(() => {
+  clearLongPressTimer();
+});
 </script>
 
 <template>
-  <article class="grid grid-cols-[56px_minmax(0,1fr)] gap-2.5 border-b border-border-subtle px-3 py-2.5 max-[720px]:grid-cols-[42px_minmax(0,1fr)] max-[720px]:gap-2">
+  <article
+    class="grid grid-cols-[56px_minmax(0,1fr)] gap-2.5 border-b border-border-subtle px-3 py-2.5 max-[720px]:grid-cols-[42px_minmax(0,1fr)] max-[720px]:gap-2"
+    :class="invalidated ? 'cursor-not-allowed opacity-45' : 'cursor-context-menu'"
+    @contextmenu="onContextMenu"
+    @touchstart.passive="onTouchStart"
+    @touchend="onTouchEnd"
+    @touchcancel="onTouchEnd"
+    @touchmove="onTouchEnd"
+  >
     <div class="flex flex-col items-center gap-1.5 pt-0.5">
       <SessionGlyph :glyph="itemGlyph" :tone-class="toneGlyphClass" />
       <span class="font-mono text-small text-text-subtle">#{{ index }}</span>
@@ -365,8 +432,9 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
       </div>
 
       <div v-else-if="item.kind === 'assistant_message'" class="flex flex-col gap-2">
+        <TranscriptTextBlock v-if="invalidated && item.reasoningContent" :text="item.reasoningContent" tone="muted" />
         <TranscriptDisclosure
-          v-if="item.reasoningContent"
+          v-else-if="item.reasoningContent"
           :expanded="reasoningExpanded"
           collapsed-label="展开思考过程"
           expanded-label="收起思考过程"
@@ -390,8 +458,9 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
       </div>
 
       <div v-else-if="item.kind === 'assistant_tool_call'" class="flex flex-col gap-2">
+        <TranscriptTextBlock v-if="invalidated && item.reasoningContent" :text="item.reasoningContent" tone="muted" />
         <TranscriptDisclosure
-          v-if="item.reasoningContent"
+          v-else-if="item.reasoningContent"
           :expanded="reasoningExpanded"
           collapsed-label="展开思考过程"
           expanded-label="收起思考过程"
@@ -399,7 +468,17 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
         >
           <TranscriptTextBlock :text="item.reasoningContent" tone="muted" />
         </TranscriptDisclosure>
+        <template v-if="invalidated">
+          <TranscriptCard v-for="toolCall in item.toolCalls" :key="toolCall.id" :title="getDisplayToolName(toolCall) || '未知工具'">
+            <div class="font-mono text-small text-text-muted">toolCallId: {{ toolCall.id }}</div>
+            <TranscriptTextBlock v-if="getToolArguments(toolCall)" class="mt-2" :text="formatMaybeJson(getToolArguments(toolCall))" :wrap="false" />
+          </TranscriptCard>
+          <TranscriptCard v-if="item.content" title="模型工具消息">
+            <TranscriptTextBlock :text="item.content" />
+          </TranscriptCard>
+        </template>
         <TranscriptDisclosure
+          v-else
           :expanded="expanded"
           collapsed-label="展开参数"
           expanded-label="收起参数"
@@ -417,7 +496,12 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
       </div>
 
       <div v-else-if="item.kind === 'tool_result'" class="flex flex-col gap-2">
+        <TranscriptCard v-if="invalidated" title="工具输出">
+          <div v-if="item.toolCallId" class="font-mono text-small text-text-muted">toolCallId: {{ item.toolCallId }}</div>
+          <TranscriptTextBlock class="mt-2" :text="formatMaybeJson(item.content)" :wrap="false" />
+        </TranscriptCard>
         <TranscriptDisclosure
+          v-else
           :expanded="expanded"
           collapsed-label="展开结果"
           expanded-label="收起结果"
@@ -441,8 +525,9 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
       </div>
 
       <div v-else-if="item.kind === 'gate_decision'" class="flex flex-col gap-2">
+        <TranscriptTextBlock v-if="invalidated && item.reasoningContent" :text="item.reasoningContent" tone="muted" />
         <TranscriptDisclosure
-          v-if="item.reasoningContent"
+          v-else-if="item.reasoningContent"
           :expanded="reasoningExpanded"
           collapsed-label="展开思考过程"
           expanded-label="收起思考过程"
@@ -450,7 +535,22 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
         >
           <TranscriptTextBlock :text="item.reasoningContent" tone="muted" />
         </TranscriptDisclosure>
+        <TranscriptCard v-if="invalidated" title="规划输出">
+          <div class="grid gap-1.5">
+            <TranscriptCard v-for="row in plannerOutputRows" :key="row.key" compact>
+              <div class="flex items-start justify-between gap-3">
+                <span class="font-mono text-small text-text-subtle">{{ row.key }}</span>
+                <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ row.value ?? "null" }}</span>
+              </div>
+            </TranscriptCard>
+            <TranscriptCard compact>
+              <div class="mb-1 font-mono text-small text-text-subtle">reason</div>
+              <pre class="m-0 overflow-x-auto font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ plannerReasonText ?? "null" }}</pre>
+            </TranscriptCard>
+          </div>
+        </TranscriptCard>
         <TranscriptDisclosure
+          v-else
           :expanded="plannerExpanded"
           collapsed-label="展开规划输出"
           expanded-label="收起规划输出"
@@ -480,7 +580,16 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
 
       <div v-else-if="item.kind === 'fallback_event'" class="flex flex-col gap-2">
         <p class="m-0 whitespace-pre-wrap wrap-break-word text-text-muted">{{ item.summary }}</p>
+        <template v-if="invalidated">
+          <TranscriptCard title="详细信息">
+            <TranscriptTextBlock :text="item.details" />
+          </TranscriptCard>
+          <TranscriptCard v-if="item.failureMessage" title="发送给用户的兜底回复">
+            <TranscriptTextBlock :text="item.failureMessage" />
+          </TranscriptCard>
+        </template>
         <TranscriptDisclosure
+          v-else
           :expanded="expanded"
           collapsed-label="展开详细信息"
           expanded-label="收起详细信息"
@@ -498,8 +607,11 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
 
       <div v-else-if="item.kind === 'internal_trigger_event'" class="flex flex-col gap-2">
         <p class="m-0 whitespace-pre-wrap wrap-break-word text-text-muted">{{ item.summary }}</p>
+        <TranscriptCard v-if="invalidated && item.details" title="详细信息">
+          <TranscriptTextBlock :text="item.details" />
+        </TranscriptCard>
         <TranscriptDisclosure
-          v-if="item.details"
+          v-else-if="item.details"
           :expanded="expanded"
           collapsed-label="展开详细信息"
           expanded-label="收起详细信息"

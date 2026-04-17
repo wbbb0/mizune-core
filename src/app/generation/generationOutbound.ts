@@ -75,7 +75,13 @@ export function createGenerationOutbound(
       return true;
     };
 
-    const appendHistoryChunk = (timestampMs: number) => {
+    const appendHistoryChunk = (
+      timestampMs: number,
+      deliveryRef?: {
+        platform: "onebot";
+        messageId: number;
+      }
+    ) => {
       const appended = sessionManager.appendHistoryIfResponseEpochMatches(
         input.sessionId,
         input.responseEpoch,
@@ -83,7 +89,8 @@ export function createGenerationOutbound(
           chatType: input.sendTarget.chatType,
           userId: input.sendTarget.userId,
           senderName: input.sendTarget.senderName,
-          text: cleaned
+          text: cleaned,
+          ...(deliveryRef ? { deliveryRef } : {})
         },
         timestampMs
       );
@@ -124,7 +131,10 @@ export function createGenerationOutbound(
             sentAt: Date.now()
           });
         }
-        appendHistoryChunk(Date.now());
+        appendHistoryChunk(Date.now(), messageId != null ? {
+          platform: "onebot",
+          messageId
+        } : undefined);
         await appendBufferedChunk();
       }
     });

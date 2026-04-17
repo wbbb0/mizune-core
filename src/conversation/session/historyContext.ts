@@ -6,7 +6,8 @@ import type {
   SessionHistoryMessage,
   TranscriptSessionModeSwitchItem,
   TranscriptAssistantMessageItem,
-  TranscriptUserMessageItem
+  TranscriptUserMessageItem,
+  TranscriptItemDeliveryRef
 } from "./sessionTypes.ts";
 
 export function formatStructuredMediaReference(kind: MediaSemanticKind, imageId: string): string {
@@ -228,6 +229,7 @@ export function createAssistantTranscriptMessageItem(input: {
   senderName: string;
   text: string;
   reasoningContent?: string;
+  deliveryRef?: TranscriptItemDeliveryRef;
   timestampMs: number;
 }): TranscriptAssistantMessageItem {
   return {
@@ -239,6 +241,7 @@ export function createAssistantTranscriptMessageItem(input: {
     senderName: input.senderName,
     text: input.text,
     ...(input.reasoningContent ? { reasoningContent: input.reasoningContent } : {}),
+    ...(input.deliveryRef ? { deliveryRef: input.deliveryRef } : {}),
     timestampMs: input.timestampMs
   };
 }

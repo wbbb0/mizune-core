@@ -12,11 +12,11 @@ import type {
 } from "./sessionTypes.ts";
 
 export function isTranscriptLlmVisible(item: InternalTranscriptItem): boolean {
-  return item.llmVisible === true;
+  return item.llmVisible === true && item.invalidated !== true;
 }
 
 export function isTranscriptVisibleChatMessage(item: InternalTranscriptItem): boolean {
-  return item.kind === "user_message" || item.kind === "assistant_message";
+  return item.invalidated !== true && (item.kind === "user_message" || item.kind === "assistant_message");
 }
 
 function isTranscriptHistoryMessage(
@@ -41,6 +41,7 @@ export function projectVisibleMessagesFromTranscript(transcript: InternalTranscr
   timestampMs: number;
 }> {
   return transcript
+    .filter((item) => item.invalidated !== true)
     .filter(isTranscriptHistoryMessage)
     .map((item) => projectTranscriptMessageItemToHistoryMessage(item));
 }
@@ -70,6 +71,9 @@ export function projectChatTimelineFromTranscript(transcript: InternalTranscript
   const projected: ProjectedChatTimelineItem[] = [];
   for (const item of transcript) {
     if (item.kind === "user_message" || item.kind === "assistant_message") {
+      if (item.invalidated === true) {
+        continue;
+      }
       projected.push({
         kind: "text" as const,
         role: item.role,
@@ -80,6 +84,9 @@ export function projectChatTimelineFromTranscript(transcript: InternalTranscript
     }
 
     if (item.kind === "outbound_media_message") {
+      if (item.invalidated === true) {
+        continue;
+      }
       projected.push({
         kind: "image" as const,
         role: "assistant" as const,
