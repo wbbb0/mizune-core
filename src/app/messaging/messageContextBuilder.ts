@@ -49,20 +49,30 @@ export async function createMessageProcessingContext(
     )
   ]);
 
+  const preservedImageIds = incomingMessage.imageIds ?? [];
+  const preservedEmojiIds = incomingMessage.emojiIds ?? [];
+  const preservedAttachments = incomingMessage.attachments ?? [];
+  const importedImageRecords = importedImageAssets.filter((item): item is NonNullable<typeof item> => item != null);
+  const importedFileRecords = importedFileAssets.filter((item): item is NonNullable<typeof item> => item != null);
+
   const enrichedMessage = {
     ...incomingMessage,
     audioIds: registeredAudios.map((item: { id: string }) => item.id),
-    imageIds: importedImageAssets
-      .filter((item): item is NonNullable<typeof item> => item != null)
+    imageIds: Array.from(new Set([
+      ...preservedImageIds,
+      ...importedImageRecords
       .filter((item) => item.sourceContext.mediaKind !== "emoji")
       .map((item) => item.fileId),
-    emojiIds: importedImageAssets
-      .filter((item): item is NonNullable<typeof item> => item != null)
+    ])),
+    emojiIds: Array.from(new Set([
+      ...preservedEmojiIds,
+      ...importedImageRecords
       .filter((item) => item.sourceContext.mediaKind === "emoji")
       .map((item) => item.fileId),
-    attachments: [
-      ...importedImageAssets
-        .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    ])),
+    attachments: dedupeAttachmentsByFileId([
+      ...preservedAttachments,
+      ...importedImageRecords
         .map((item) => ({
           fileId: item.fileId,
           kind: item.kind,
@@ -71,8 +81,7 @@ export async function createMessageProcessingContext(
           mimeType: item.mimeType,
           semanticKind: item.sourceContext.mediaKind === "emoji" ? "emoji" : "image"
         })),
-      ...importedFileAssets
-        .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      ...importedFileRecords
         .map((item) => ({
           fileId: item.fileId,
           kind: item.kind,
@@ -80,7 +89,7 @@ export async function createMessageProcessingContext(
           sourceName: item.sourceName,
           mimeType: item.mimeType
         }))
-    ]
+    ])
   };
 
   return {
@@ -91,6 +100,19 @@ export async function createMessageProcessingContext(
       ? resolveTargetSession(services.sessionManager, incomingMessage, options.targetSessionId)
       : services.sessionManager.getOrCreateSession(enrichedMessage)
   };
+}
+
+function dedupeAttachmentsByFileId<T extends { fileId: string }>(attachments: T[]): T[] {
+  const seen = new Set<string>();
+  const deduped: T[] = [];
+  for (const attachment of attachments) {
+    if (seen.has(attachment.fileId)) {
+      continue;
+    }
+    seen.add(attachment.fileId);
+    deduped.push(attachment);
+  }
+  return deduped;
 }
 
 function resolveTargetSession(
