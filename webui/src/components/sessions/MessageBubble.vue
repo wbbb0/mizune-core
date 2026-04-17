@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount } from "vue";
-import { Bot, User, Users } from "lucide-vue-next";
+import { computed } from "vue";
+import { Bot, MoreHorizontal, User, Users } from "lucide-vue-next";
 import SessionGlyph, { type SessionGlyphModel } from "./SessionGlyph.vue";
 
 const props = defineProps<{
@@ -26,9 +26,6 @@ const emit = defineEmits<{
   openActions: [];
 }>();
 
-let longPressTimer: ReturnType<typeof setTimeout> | null = null;
-let longPressTriggered = false;
-
 const timeStr = computed(() => {
   if (!props.timestampMs) return "";
   const d = new Date(props.timestampMs);
@@ -49,63 +46,18 @@ const bubbleGlyphToneClass = computed(() => {
   return props.side === "right" ? "bg-surface-selected text-text-accent" : "bg-surface-success text-success";
 });
 
-function clearLongPressTimer(): void {
-  if (longPressTimer) {
-    clearTimeout(longPressTimer);
-    longPressTimer = null;
-  }
-}
-
 function openActions(): void {
   if (props.actionsEnabled === false) {
     return;
   }
   emit("openActions");
 }
-
-function onContextMenu(event: MouseEvent): void {
-  if (props.actionsEnabled === false) {
-    return;
-  }
-  event.preventDefault();
-  openActions();
-}
-
-function onTouchStart(): void {
-  if (props.actionsEnabled === false) {
-    return;
-  }
-  longPressTriggered = false;
-  clearLongPressTimer();
-  longPressTimer = setTimeout(() => {
-    longPressTriggered = true;
-    openActions();
-  }, 450);
-}
-
-function onTouchEnd(): void {
-  if (!longPressTriggered) {
-    clearLongPressTimer();
-    return;
-  }
-  clearLongPressTimer();
-  longPressTriggered = false;
-}
-
-onBeforeUnmount(() => {
-  clearLongPressTimer();
-});
 </script>
 
 <template>
   <div
     class="flex items-end gap-2 px-3 py-1"
     :class="{ 'flex-row-reverse': side === 'right' }"
-    @contextmenu="onContextMenu"
-    @touchstart.passive="onTouchStart"
-    @touchend="onTouchEnd"
-    @touchcancel="onTouchEnd"
-    @touchmove="onTouchEnd"
   >
     <SessionGlyph
       class="shrink-0"
@@ -144,9 +96,17 @@ onBeforeUnmount(() => {
           <span v-if="streaming" class="blink-cursor" />
         </template>
       </div>
-      <div v-if="timeStr || senderLabel || (metaChips?.length ?? 0) > 0" class="flex flex-wrap items-center gap-1 px-0.5 text-small text-text-subtle" :class="{ 'justify-end': side === 'right' }">
+      <div v-if="timeStr || senderLabel || (metaChips?.length ?? 0) > 0 || actionsEnabled !== false" class="flex flex-wrap items-center gap-1 px-0.5 text-small text-text-subtle" :class="{ 'justify-end': side === 'right' }">
         <span v-if="senderLabel">{{ senderLabel }}</span>
         <span v-if="timeStr">{{ timeStr }}</span>
+        <button
+          v-if="actionsEnabled !== false"
+          class="inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 text-text-subtle transition-colors hover:text-text-primary"
+          title="消息操作"
+          @click="openActions"
+        >
+          <MoreHorizontal :size="14" :stroke-width="2" />
+        </button>
         <span v-for="chip in metaChips ?? []" :key="chip" class="rounded-full border border-border-default bg-surface-input px-1.5 py-px text-[11px] leading-4 text-text-muted">{{ chip }}</span>
       </div>
     </div>

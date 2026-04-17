@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, reactive, provide, watch } from "vue";
-import { Wifi, WifiOff, Loader, RefreshCw, Trash2 } from "lucide-vue-next";
+import { Wifi, WifiOff, Loader, RefreshCw } from "lucide-vue-next";
 import MessageBubble from "./MessageBubble.vue";
 import TranscriptItem from "./TranscriptItem.vue";
 import VirtualMessageList from "./VirtualMessageList.vue";
@@ -14,7 +14,7 @@ import { ApiError } from "@/api/client";
 import type { TranscriptEntry } from "@/stores/sessions";
 import type { TranscriptItem as SessionTranscriptItem } from "@/api/types";
 import { useToastStore } from "@/stores/toasts";
-import { buildChatTimelineItems, type ChatTimelineItem } from "./chatTimeline";
+import { buildChatTimelineItems } from "./chatTimeline";
 
 const store = useSessionsStore();
 const auth  = useAuthStore();
@@ -40,6 +40,7 @@ interface TranscriptActionTarget {
   groupId: string;
   title: string;
   detail: string;
+  alreadyInvalidated: boolean;
 }
 
 const previewImage = ref<{ src: string; title: string } | null>(null);
@@ -56,12 +57,6 @@ const reversedMessages = computed(() =>
 const reversedTranscript = computed(() =>
   session.value ? [...session.value.transcript].reverse() : []
 );
-
-// Session header info
-const headerLabel = computed(() => {
-  if (!session.value) return "";
-  return session.value.participantLabel || session.value.participantUserId || session.value.id;
-});
 
 const statusColor = computed(() => {
   if (!session.value) return "";
@@ -113,7 +108,8 @@ function buildTranscriptActionTarget(entry: TranscriptEntry): TranscriptActionTa
     itemId: entry.item.id,
     groupId: entry.item.groupId,
     title: describeTranscriptItem(entry.item),
-    detail: `#${entry.index}`
+    detail: `#${entry.index}`,
+    alreadyInvalidated: entry.item.invalidated === true
   };
 }
 
@@ -191,15 +187,9 @@ async function onInvalidateGroup() {
   }
 }
 
-async function onDeleteSession() {
-  if (!session.value) {
-    return;
-  }
-  if (!window.confirm(`删除会话 ${headerLabel.value}？`)) {
-    return;
-  }
-  await store.deleteSelectedSession();
-}
+const invalidateActionsDisabled = computed(() => (
+  transcriptActionsBusy.value || transcriptActionsTarget.value?.alreadyInvalidated === true
+));
 </script>
 
 <template>
@@ -231,18 +221,8 @@ async function onDeleteSession() {
 
       <!-- Tabs -->
       <div class="flex shrink-0">
-        <button
-          v-if="session.source === 'web'"
-          class="flex h-10 items-center gap-1 border-0 bg-transparent px-2 text-small whitespace-nowrap text-text-muted transition-colors hover:text-danger"
-          @click="onDeleteSession"
-        >
-          <Trash2 :size="14" :stroke-width="1.75" />
-        </button>
         <button class="flex h-10 items-center gap-1 border-0 border-b-2 border-transparent bg-transparent px-3 text-small whitespace-nowrap text-text-muted transition-colors hover:text-text-primary" :class="{ 'border-b-accent text-text-secondary': tab === 'chat' }" @click="tab = 'chat'">聊天</button>
-        <button class="flex h-10 items-center gap-1 border-0 border-b-2 border-transparent bg-transparent px-3 text-small whitespace-nowrap text-text-muted transition-colors hover:text-text-primary" :class="{ 'border-b-accent text-text-secondary': tab === 'transcript' }" @click="tab = 'transcript'">
-          后台记录
-          <span v-if="session?.transcriptCount" class="rounded-full bg-surface-muted px-1 text-[10px] text-text-muted">{{ session.transcriptCount }}</span>
-        </button>
+        <button class="flex h-10 items-center gap-1 border-0 border-b-2 border-transparent bg-transparent px-3 text-small whitespace-nowrap text-text-muted transition-colors hover:text-text-primary" :class="{ 'border-b-accent text-text-secondary': tab === 'transcript' }" @click="tab = 'transcript'">后台</button>
         <button class="flex h-10 items-center gap-1 border-0 border-b-2 border-transparent bg-transparent px-3 text-small whitespace-nowrap text-text-muted transition-colors hover:text-text-primary" :class="{ 'border-b-accent text-text-secondary': tab === 'state' }" @click="tab = 'state'">
           状态
         </button>
@@ -295,7 +275,7 @@ async function onDeleteSession() {
               :tool-name="msg.kind === 'image' ? msg.toolName : undefined"
               :timestamp-ms="msg.timestampMs"
               @preview-image="msg.kind === 'image' ? previewImage = { src: msg.imageUrl, title: msg.sourceName || msg.fileRef || msg.fileId || '已发送图片' } : undefined"
-              @open-actions="openTranscriptActions({ itemId: msg.itemId, groupId: msg.groupId, title: msg.actionTitle, detail: msg.kind === 'text' ? (msg.label || msg.content.slice(0, 32) || '消息') : (msg.sourceName || msg.fileRef || msg.fileId || '图片') })"
+              @open-actions="openTranscriptActions({ itemId: msg.itemId, groupId: msg.groupId, title: msg.actionTitle, detail: msg.kind === 'text' ? (msg.label || msg.content.slice(0, 32) || '消息') : (msg.sourceName || msg.fileRef || msg.fileId || '图片'), alreadyInvalidated: false })"
             />
           </template>
         </VirtualMessageList>
@@ -371,23 +351,23 @@ async function onDeleteSession() {
 
       <button
         class="flex items-start justify-between rounded-lg border border-border-default bg-surface-sidebar px-3 py-3 text-left transition-colors hover:bg-surface-active disabled:opacity-60"
-        :disabled="transcriptActionsBusy"
+        :disabled="invalidateActionsDisabled"
         @click="onInvalidateSingle"
       >
         <span>
           <span class="block text-ui font-medium text-text-secondary">删除单条</span>
-          <span class="mt-1 block text-small text-text-muted">只将当前记录标记为失效；若可同步撤回外部消息，会一并尝试。</span>
+          <span class="mt-1 block text-small text-text-muted">{{ transcriptActionsTarget?.alreadyInvalidated ? "当前记录已失效，无需重复删除。" : "只将当前记录标记为失效；若可同步撤回外部消息，会一并尝试。" }}</span>
         </span>
       </button>
 
       <button
         class="flex items-start justify-between rounded-lg border border-danger/40 bg-danger/10 px-3 py-3 text-left transition-colors hover:bg-danger/15 disabled:opacity-60"
-        :disabled="transcriptActionsBusy"
+        :disabled="invalidateActionsDisabled"
         @click="onInvalidateGroup"
       >
         <span>
           <span class="block text-ui font-medium text-danger">删除整组</span>
-          <span class="mt-1 block text-small text-text-muted">删除这一轮 turn 的全部产物，包括消息、后台事件、回复和媒体状态记录。</span>
+          <span class="mt-1 block text-small text-text-muted">{{ transcriptActionsTarget?.alreadyInvalidated ? "当前记录所在分组已失效，无需重复删除。" : "删除这一轮 turn 的全部产物，包括消息、后台事件、回复和媒体状态记录。" }}</span>
         </span>
       </button>
     </div>

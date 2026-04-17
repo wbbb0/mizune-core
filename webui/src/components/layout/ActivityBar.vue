@@ -22,7 +22,7 @@ const currentRoute = computed(() => route.name as string);
 
 <template>
   <nav
-    class="flex pl-safe pt-safe pb-safe w-[calc(var(--activity-bar-width)+env(safe-area-inset-left))] shrink-0 select-none flex-col justify-between border-r border-border-default bg-surface-sidebar"
+    class="flex pl-safe pb-safe w-[calc(var(--activity-bar-width)+env(safe-area-inset-left))] shrink-0 select-none flex-col justify-between border-r border-border-default bg-surface-sidebar"
   >
     <!-- Top: navigation icons -->
     <div class="flex flex-col items-center">

@@ -67,22 +67,23 @@ defineExpose({ scrollToTop });
       :get-key="getKey"
       @scroll="onScroll"
     >
-      <template #default="{ item }">
-        <slot name="item" :item="item" />
+      <template #default="{ item, index }">
+        <div>
+          <slot name="item" :item="item" />
+          <div
+            v-if="index === items.length - 1 && (loadingMore || !hasMore)"
+            class="flex items-center justify-center py-2"
+          >
+            <Loader
+              v-if="loadingMore"
+              :size="12"
+              :stroke-width="2"
+              class="spin text-text-muted"
+            />
+            <span v-else class="text-small text-text-subtle">已加载全部</span>
+          </div>
+        </div>
       </template>
     </VList>
-    <!-- 底部状态行（最旧一侧）：仅在有内容时显示 -->
-    <div
-      v-if="loadingMore || (!hasMore && items.length > 0)"
-      class="flex shrink-0 items-center justify-center py-2"
-    >
-      <Loader
-        v-if="loadingMore"
-        :size="12"
-        :stroke-width="2"
-        class="spin text-text-muted"
-      />
-      <span v-else class="text-small text-text-subtle">已加载全部</span>
-    </div>
   </div>
 </template>

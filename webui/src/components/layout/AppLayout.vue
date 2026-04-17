@@ -59,7 +59,7 @@ const rootStyle = computed(() => (
 <template>
   <div
     class="flex h-full w-full overflow-hidden bg-surface-app text-text-primary"
-    :class="ui.isMobile ? 'fixed inset-0' : 'relative'"
+    :class="ui.isMobile ? 'fixed inset-0' : 'relative pt-safe'"
     :style="rootStyle"
   >
     <!-- ═══ DESKTOP / TABLET layout (≥768px) ═══ -->
