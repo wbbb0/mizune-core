@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@simplewebauthn/browser": "^13.3.0",
+    "heic-to": "^1.4.2",
     "lucide-vue-next": "^1.0.0",
     "pinia": "^3.0.4",
     "tailwindcss-safe-area": "^1.3.0",

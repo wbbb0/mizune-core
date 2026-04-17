@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import ToastViewport from "@/components/common/ToastViewport.vue";
 
 const router = useRouter();
 const auth   = useAuthStore();
@@ -21,4 +22,5 @@ onUnmounted(() => window.removeEventListener("api:unauthorized", onUnauthorized)
 
 <template>
   <RouterView />
+  <ToastViewport />
 </template>

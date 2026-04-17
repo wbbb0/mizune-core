@@ -370,6 +370,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     senderName?: string;
     text: string;
     imageIds?: string[];
+    attachmentIds?: string[];
   }): Promise<void> {
     const sessionId = selectedId.value;
     if (!sessionId) return;
@@ -381,7 +382,8 @@ export const useSessionsStore = defineStore("sessions", () => {
       userId: opts.userId,
       senderName: opts.senderName,
       text: opts.text,
-      imageIds: opts.imageIds
+      imageIds: opts.imageIds,
+      attachmentIds: opts.attachmentIds
     });
     _subscribeTurnStream(sessionId, turnId);
   }

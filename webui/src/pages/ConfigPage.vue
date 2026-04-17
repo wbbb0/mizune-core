@@ -1,21 +1,22 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
-import { RefreshCw, Save, CheckCircle, AlertCircle } from "lucide-vue-next";
+import { RefreshCw, Save } from "lucide-vue-next";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import SchemaNode from "@/components/editor/SchemaNode.vue";
 import { editorApi, type EditorResourceSummary, type EditorModel, type LayeredEditorModel, type SingleEditorModel } from "@/api/editor";
 import { useLayeredEditorState } from "@/composables/useLayeredEditorState";
 import { useUiStore } from "@/stores/ui";
+import { useToastStore } from "@/stores/toasts";
 
 // ── State ────────────────────────────────────────────────────────────────────
 const ui = useUiStore();
+const toast = useToastStore();
 const resources   = ref<EditorResourceSummary[]>([]);
 const selectedKey = ref<string | null>(null);
 const model       = ref<EditorModel | null>(null);
 const loading     = ref(false);
 const saving      = ref(false);
 const validating  = ref(false);
-const saveMsg     = ref<{ ok: boolean; text: string } | null>(null);
 const layout      = ref<InstanceType<typeof AppLayout> | null>(null);
 const {
   draftValue,
@@ -38,7 +39,6 @@ onMounted(async () => {
 watch(selectedKey, async (key) => {
   if (!key) { model.value = null; draftValue.value = null; return; }
   loading.value = true;
-  saveMsg.value = null;
   try {
     const res = await editorApi.load(key);
     model.value = res.editor;
@@ -51,12 +51,11 @@ watch(selectedKey, async (key) => {
 async function validate() {
   if (!selectedKey.value || !model.value || !canValidate.value) return;
   validating.value = true;
-  saveMsg.value = null;
   try {
     await editorApi.validate(selectedKey.value, draftValue.value);
-    saveMsg.value = { ok: true, text: "验证通过" };
+    toast.push({ type: "success", message: "验证通过" });
   } catch (e: unknown) {
-    saveMsg.value = { ok: false, text: e instanceof Error ? e.message : "验证失败" };
+    toast.push({ type: "error", message: e instanceof Error ? e.message : "验证失败" });
   } finally {
     validating.value = false;
   }
@@ -66,14 +65,13 @@ async function validate() {
 async function save() {
   if (!selectedKey.value || !model.value || !canSave.value) return;
   saving.value = true;
-  saveMsg.value = null;
   try {
     const res = await editorApi.save(selectedKey.value, draftValue.value);
-    saveMsg.value = { ok: true, text: `已保存 → ${res.path}` };
+    toast.push({ type: "success", message: `已保存 → ${res.path}` });
     const reloaded = await editorApi.load(selectedKey.value);
     model.value = reloaded.editor;
   } catch (e: unknown) {
-    saveMsg.value = { ok: false, text: e instanceof Error ? e.message : "保存失败" };
+    toast.push({ type: "error", message: e instanceof Error ? e.message : "保存失败" });
   } finally {
     saving.value = false;
   }
@@ -82,7 +80,6 @@ async function save() {
 async function reloadFromServer() {
   if (!selectedKey.value || !model.value || loading.value || saving.value || validating.value) return;
   loading.value = true;
-  saveMsg.value = null;
   try {
     const res = await editorApi.load(selectedKey.value);
     model.value = res.editor;
@@ -161,17 +158,6 @@ function updateDraft(value: unknown) {
               </button>
             </div>
           </header>
-
-          <!-- Save/validation message -->
-          <div
-            v-if="saveMsg"
-            class="mx-4 mt-3 inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-small"
-            :class="saveMsg.ok ? 'bg-surface-success text-success' : 'bg-surface-danger text-danger'"
-          >
-            <CheckCircle v-if="saveMsg.ok" :size="13" :stroke-width="2" />
-            <AlertCircle v-else :size="13" :stroke-width="2" />
-            {{ saveMsg.text }}
-          </div>
 
           <!-- Schema tree editor -->
           <div class="scrollbar-thin flex-1 overflow-y-auto px-4 py-3">

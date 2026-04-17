@@ -3,6 +3,9 @@ import { computed, ref, watch, nextTick, onUnmounted } from "vue";
 import { Send, Paperclip, X, Loader } from "lucide-vue-next";
 import { useVisualViewportInset } from "@/composables/useVisualViewportInset";
 import { uploadsApi, type UploadedFile } from "@/api/uploads";
+import { prepareFilesForUpload } from "@/api/uploadPreparation";
+import { useToastStore } from "@/stores/toasts";
+import { buildComposerSendPayload, type ComposerSendPayload } from "./composerPayload";
 
 const props = defineProps<{
   sessionType: "private" | "group";
@@ -14,7 +17,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  send: [payload: { userId: string; text: string; imageIds: string[] }];
+  send: [payload: ComposerSendPayload, callbacks: { resolve: () => void; reject: (error: unknown) => void }];
   userIdChange: [userId: string];
 }>();
 
@@ -31,7 +34,9 @@ const textareaRef  = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const attachments  = ref<(UploadedFile & { preview?: string })[]>([]);
 const uploading    = ref(false);
+const sending      = ref(false);
 const iosRootScrollGuardActive = ref(false);
+const toast = useToastStore();
 const { keyboardInsetPx } = useVisualViewportInset();
 let iosRootScrollGuardCleanup: (() => void) | null = null;
 
@@ -50,15 +55,34 @@ function resize() {
 
 function send() {
   const trimmed = text.value.trim();
-  if ((!trimmed && attachments.value.length === 0) || props.disabled || uploading.value) return;
-  emit("send", {
+  if ((!trimmed && attachments.value.length === 0) || props.disabled || uploading.value || sending.value) return;
+
+  const payload = buildComposerSendPayload({
     userId: userId.value.trim() || "10001",
     text: trimmed,
-    imageIds: attachments.value.filter((a) => a.kind === "image").map((a) => a.fileId)
+    attachments: attachments.value
   });
-  text.value = "";
-  attachments.value = [];
-  nextTick(resize);
+
+  sending.value = true;
+  const submitted = new Promise<void>((resolve, reject) => {
+    emit("send", payload, { resolve, reject });
+  });
+
+  void submitted.then(() => {
+    text.value = "";
+    for (const attachment of attachments.value) {
+      if (attachment.preview) {
+        URL.revokeObjectURL(attachment.preview);
+      }
+    }
+    attachments.value = [];
+    nextTick(resize);
+  }).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : "发送失败";
+    toast.push({ type: "error", message });
+  }).finally(() => {
+    sending.value = false;
+  });
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -164,22 +188,29 @@ async function onFilesSelected(e: Event) {
   if (!files.length) return;
   input.value = "";
 
-  // Build local previews immediately
-  const previews = files.map((f) => ({
-    file: f,
-    preview: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined
-  }));
-
   uploading.value = true;
+  let previews: Array<{ file: File; preview?: string }> = [];
   try {
-    const res = await uploadsApi.uploadFiles(files);
+    const preparedFiles = await prepareFilesForUpload(files);
+    previews = preparedFiles.map((f) => ({
+      file: f,
+      preview: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined
+    }));
+
+    const res = await uploadsApi.uploadFiles(preparedFiles);
     const uploaded = res.uploads.map((u, i) => ({
       ...u,
       preview: previews[i]?.preview
     }));
     attachments.value = [...attachments.value, ...uploaded];
   } catch (err) {
-    console.error("Upload failed:", err);
+    for (const preview of previews) {
+      if (preview.preview) {
+        URL.revokeObjectURL(preview.preview);
+      }
+    }
+    const message = err instanceof Error ? err.message : "上传失败";
+    toast.push({ type: "error", message });
   } finally {
     uploading.value = false;
   }
@@ -240,7 +271,7 @@ onUnmounted(() => {
       <input
         ref="fileInputRef"
         type="file"
-        accept="image/*,audio/*,video/*,.pdf,.txt,.json,.yaml,.yml,.md"
+        accept="image/*,.heic,.heif,audio/*,video/*,.pdf,.txt,.json,.yaml,.yml,.md"
         multiple
         style="display:none"
         @change="onFilesSelected"
@@ -248,7 +279,7 @@ onUnmounted(() => {
 
       <button
         class="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-border-default bg-transparent text-text-muted transition-colors hover:border-text-muted hover:text-text-primary disabled:cursor-default disabled:opacity-40"
-        :disabled="disabled || uploading"
+        :disabled="disabled || uploading || sending"
         title="附件 / 图片"
         @click="openFilePicker"
       >
@@ -269,7 +300,7 @@ onUnmounted(() => {
 
       <button
         class="flex h-7 w-7 shrink-0 items-center justify-center rounded border-0 bg-accent text-white transition-colors hover:bg-accent-hover disabled:cursor-default disabled:opacity-40"
-        :disabled="disabled || uploading || (!text.trim() && attachments.length === 0)"
+        :disabled="disabled || uploading || sending || (!text.trim() && attachments.length === 0)"
         title="发送 (Enter)"
         @click="send"
       >

@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { createHash } from "node:crypto";
 import {
   createWebSession,
   deleteSession,
@@ -118,6 +119,10 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
 
     try {
       const result = await services.localFileAdmin.readFileContent(query.path);
+      applyImageCacheHeaders(reply, request.headers["if-none-match"], result.contentType, result.buffer);
+      if (reply.statusCode === 304) {
+        return reply.send();
+      }
       reply.type(result.contentType);
       return reply.send(result.buffer);
     } catch (error: unknown) {
@@ -133,6 +138,10 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
 
     try {
       const result = await services.localFileAdmin.readSendableFileContent(query.path);
+      applyImageCacheHeaders(reply, request.headers["if-none-match"], result.contentType, result.buffer);
+      if (reply.statusCode === 304) {
+        return reply.send();
+      }
       reply.type(result.contentType);
       return reply.send(result.buffer);
     } catch (error: unknown) {
@@ -171,6 +180,10 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
         return respondNotFound(reply, "Chat file not found");
       }
 
+      applyImageCacheHeaders(reply, request.headers["if-none-match"], result.file.mimeType || "application/octet-stream", result.buffer);
+      if (reply.statusCode === 304) {
+        return reply.send();
+      }
       reply.header("Content-Disposition", `inline; filename="${encodeURIComponent(result.file.sourceName || result.file.fileId)}"`);
       reply.type(result.file.mimeType || "application/octet-stream");
       return reply.send(result.buffer);
@@ -315,4 +328,35 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
   app.get("/api/requests", async () => listRequests(services.operations));
 
   app.get("/api/scheduler/jobs", async () => listScheduledJobs(services.operations));
+}
+
+function applyImageCacheHeaders(
+  reply: { header: (name: string, value: string) => void; code: (statusCode: number) => void; statusCode: number },
+  ifNoneMatch: string | string[] | undefined,
+  contentType: string,
+  buffer: Buffer
+): void {
+  if (!contentType.startsWith("image/")) {
+    return;
+  }
+
+  const etag = `"${createHash("sha1").update(contentType).update(":").update(buffer).digest("hex")}"`;
+  reply.header("Cache-Control", "private, max-age=604800");
+  reply.header("ETag", etag);
+
+  if (matchesIfNoneMatch(ifNoneMatch, etag)) {
+    reply.code(304);
+  }
+}
+
+function matchesIfNoneMatch(ifNoneMatch: string | string[] | undefined, etag: string): boolean {
+  if (!ifNoneMatch) {
+    return false;
+  }
+
+  const values = Array.isArray(ifNoneMatch) ? ifNoneMatch : [ifNoneMatch];
+  return values
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .some((value) => value === "*" || value === etag);
 }

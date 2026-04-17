@@ -144,6 +144,9 @@ export default defineConfig({
         navigateFallback: "/webui/index.html",
         navigateFallbackDenylist: [/^\/api\//],
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
+        // The HEIF converter is only needed on demand during upload, so avoid
+        // precaching its large hashed chunk in the PWA manifest.
+        globIgnores: ["**/assets/heic-to-*.js"],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith("/api/"),

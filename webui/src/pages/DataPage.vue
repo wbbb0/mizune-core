@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, computed } from "vue";
-import { RefreshCw, ChevronRight, ChevronDown, Save, CheckCircle, AlertCircle } from "lucide-vue-next";
+import { RefreshCw, ChevronRight, ChevronDown, Save } from "lucide-vue-next";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import SchemaNode from "@/components/editor/SchemaNode.vue";
 import { dataApi, type DataResourceSummary, type DataResource, type DataResourceItem, type DirectoryItem } from "@/api/data";
 import { editorApi, type EditorResourceSummary, type EditorModel, type LayeredEditorModel, type SingleEditorModel } from "@/api/editor";
 import { useLayeredEditorState } from "@/composables/useLayeredEditorState";
 import { useUiStore } from "@/stores/ui";
+import { useToastStore } from "@/stores/toasts";
 
 type DataListResource =
   | {
@@ -26,6 +27,7 @@ type DataListResource =
 
 
 const ui = useUiStore();
+const toast = useToastStore();
 const layout = ref<InstanceType<typeof AppLayout> | null>(null);
 const resources = ref<DataListResource[]>([]);
 const selectedKey = ref<string | null>(null);
@@ -37,7 +39,6 @@ const loading = ref(false);
 const loadingItem = ref(false);
 const saving = ref(false);
 const validating = ref(false);
-const saveMsg = ref<{ ok: boolean; text: string } | null>(null);
 const {
   draftValue,
   isLayered,
@@ -101,7 +102,6 @@ watch(selectedKey, async (key) => {
   model.value = null;
   itemDetail.value = null;
   selectedItemKey.value = null;
-  saveMsg.value = null;
   if (!key) return;
 
   const target = resources.value.find((entry) => entry.key === key);
@@ -164,7 +164,6 @@ async function refreshSelected() {
 async function reloadFromServer() {
   if (!selectedKey.value || !model.value || loading.value || saving.value || validating.value) return;
   loading.value = true;
-  saveMsg.value = null;
   try {
     const res = await editorApi.load(selectedKey.value);
     model.value = res.editor;
@@ -176,12 +175,11 @@ async function reloadFromServer() {
 async function validate() {
   if (!selectedKey.value || !model.value || !canSubmit.value) return;
   validating.value = true;
-  saveMsg.value = null;
   try {
     await editorApi.validate(selectedKey.value, draftValue.value);
-    saveMsg.value = { ok: true, text: "验证通过" };
+    toast.push({ type: "success", message: "验证通过" });
   } catch (error: unknown) {
-    saveMsg.value = { ok: false, text: error instanceof Error ? error.message : "验证失败" };
+    toast.push({ type: "error", message: error instanceof Error ? error.message : "验证失败" });
   } finally {
     validating.value = false;
   }
@@ -190,13 +188,12 @@ async function validate() {
 async function save() {
   if (!selectedKey.value || !model.value || !canSubmit.value) return;
   saving.value = true;
-  saveMsg.value = null;
   try {
     const res = await editorApi.save(selectedKey.value, draftValue.value);
-    saveMsg.value = { ok: true, text: `已保存 → ${res.path}` };
+    toast.push({ type: "success", message: `已保存 → ${res.path}` });
     await refreshSelected();
   } catch (error: unknown) {
-    saveMsg.value = { ok: false, text: error instanceof Error ? error.message : "保存失败" };
+    toast.push({ type: "error", message: error instanceof Error ? error.message : "保存失败" });
   } finally {
     saving.value = false;
   }
@@ -282,16 +279,6 @@ function updateDraft(value: unknown) {
               </button>
             </div>
           </header>
-
-          <div
-            v-if="saveMsg"
-            class="mx-4 mt-3 inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-small"
-            :class="saveMsg.ok ? 'bg-surface-success text-success' : 'bg-surface-danger text-danger'"
-          >
-            <CheckCircle v-if="saveMsg.ok" :size="13" :stroke-width="2" />
-            <AlertCircle v-else :size="13" :stroke-width="2" />
-            {{ saveMsg.text }}
-          </div>
 
           <div class="scrollbar-thin flex-1 overflow-y-auto px-4 py-3">
             <SchemaNode

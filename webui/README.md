@@ -150,6 +150,7 @@ npm run build:webui
 
 - `Sessions`：查看基于 transcript 派生的聊天消息与完整后台记录，并发送调试消息
 - `Sessions` 聊天区会直接显示由 `send_workspace_file_to_chat` 发送出的工作区图片，并支持简单放大预览
+- `Sessions` 上传附件时会在浏览器侧自动把 `HEIC / HEIF` 图片转换成 `JPEG` 后再上传，避免模型接口不兼容
 - `Config`：编辑配置层的 instance 覆盖
 - `Data`：查看和编辑常见运行数据 JSON，例如 persona、users、whitelist、scheduled jobs
 - `Workspace`：浏览 workspace 文件树与已保存文件列表，并对图片与文本文件做只读预览

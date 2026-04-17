@@ -13,10 +13,12 @@ import { useAuthStore } from "@/stores/auth";
 import { ApiError } from "@/api/client";
 import type { TranscriptEntry } from "@/stores/sessions";
 import type { TranscriptItem as SessionTranscriptItem } from "@/api/types";
-import { fileApi } from "@/api/workspace";
+import { useToastStore } from "@/stores/toasts";
+import { buildChatTimelineItems, type ChatTimelineItem } from "./chatTimeline";
 
 const store = useSessionsStore();
 const auth  = useAuthStore();
+const toast = useToastStore();
 const session = computed(() => store.active);
 
 // Transcript item expand state — keyed by item.id, survives virtual scroll mount/unmount cycles
@@ -40,154 +42,15 @@ interface TranscriptActionTarget {
   detail: string;
 }
 
-type ChatTimelineItem =
-  | {
-      id: string;
-      itemId: string;
-      groupId: string;
-      actionTitle: string;
-      kind: "text";
-      role: "user" | "assistant";
-      side: "left" | "right";
-      content: string;
-      senderLabel?: string;
-      metaChips?: string[];
-      timestampMs: number;
-      label?: string;
-    }
-  | {
-      id: string;
-      itemId: string;
-      groupId: string;
-      actionTitle: string;
-      kind: "image";
-      role: "assistant";
-      side: "left" | "right";
-      sourceName: string | null;
-      fileRef: string | null;
-      fileId: string | null;
-      imageUrl: string;
-      toolName: string;
-      timestampMs: number;
-    };
-
 const previewImage = ref<{ src: string; title: string } | null>(null);
 const transcriptActionsTarget = ref<TranscriptActionTarget | null>(null);
 const transcriptActionsBusy = ref(false);
 
-function toChatTimelineItem(entry: TranscriptEntry): ChatTimelineItem | null {
-  if (entry.item.invalidated) {
-    return null;
-  }
-
-  if (entry.item.kind === "user_message" || entry.item.kind === "assistant_message") {
-    const side = resolveMessageSide(entry.item);
-    return {
-      id: entry.id,
-      itemId: entry.item.id,
-      groupId: entry.item.groupId,
-      actionTitle: entry.item.kind === "user_message" ? "消息" : "回复",
-      kind: "text",
-      role: entry.item.role,
-      side,
-      content: entry.item.text,
-      senderLabel: formatSenderLabel(entry.item),
-      metaChips: buildMetaChips(entry.item),
-      timestampMs: entry.item.timestampMs
-    };
-  }
-
-  if (entry.item.kind === "direct_command") {
-    return {
-      id: entry.id,
-      itemId: entry.item.id,
-      groupId: entry.item.groupId,
-      actionTitle: "指令消息",
-      kind: "text",
-      role: entry.item.role,
-      side: entry.item.role === "user" ? "right" : "left",
-      content: entry.item.content,
-      timestampMs: entry.item.timestampMs,
-      label: entry.item.direction === "input"
-        ? `指令输入 · ${entry.item.commandName}`
-        : `指令输出 · ${entry.item.commandName}`
-    };
-  }
-
-  if (entry.item.kind === "outbound_media_message") {
-    const imageUrl = entry.item.fileId
-      ? fileApi.getChatFileContentUrlById(entry.item.fileId)
-      : (entry.item.sourcePath ? fileApi.getLocalSendFileContentUrl(entry.item.sourcePath) : "");
-    if (!imageUrl) {
-      return null;
-    }
-    return {
-      id: entry.id,
-      itemId: entry.item.id,
-      groupId: entry.item.groupId,
-      actionTitle: "图片消息",
-      kind: "image",
-      role: "assistant",
-      side: "left",
-      sourceName: entry.item.sourceName,
-      fileRef: entry.item.fileRef,
-      fileId: entry.item.fileId,
-      imageUrl,
-      toolName: entry.item.toolName,
-      timestampMs: entry.item.timestampMs
-    };
-  }
-
-  return null;
-}
-
-function formatSenderLabel(item: Extract<SessionTranscriptItem, { kind: "user_message" | "assistant_message" }>): string | undefined {
-  if (item.chatType === "private" && item.kind === "assistant_message") {
-    return undefined;
-  }
-  const name = item.senderName.trim();
-  const userId = item.userId.trim();
-  if (!name) {
-    return userId || undefined;
-  }
-  if (!userId || userId === name) {
-    return name;
-  }
-  return `${name} · ${userId}`;
-}
-
-function buildMetaChips(item: Extract<SessionTranscriptItem, { kind: "user_message" | "assistant_message" }>): string[] {
-  if (item.kind !== "user_message") {
-    return [];
-  }
-  const chips: string[] = [];
-  if (item.replyMessageId) chips.push("回复");
-  if (item.mentionedSelf) chips.push("@我");
-  if (item.mentionedAll) chips.push("@全体");
-  if (item.imageIds.length > 0) chips.push(`图片 ${item.imageIds.length}`);
-  if (item.emojiIds.length > 0) chips.push(`表情 ${item.emojiIds.length}`);
-  if (item.audioCount > 0) chips.push(`语音 ${item.audioCount}`);
-  if (item.forwardIds.length > 0) chips.push(`转发 ${item.forwardIds.length}`);
-  return chips;
-}
-
-function resolveMessageSide(item: Extract<SessionTranscriptItem, { kind: "user_message" | "assistant_message" }>): "left" | "right" {
-  if (item.chatType === "private") {
-    return item.role === "user" ? "right" : "left";
-  }
-  if (item.role !== "user") {
-    return "left";
-  }
-  const selectedUserId = store.active?.composerUserId?.trim();
-  return selectedUserId && item.userId === selectedUserId ? "right" : "left";
-}
-
 const reversedMessages = computed(() =>
   session.value
-    ? session.value.transcript
-      .map((entry) => toChatTimelineItem(entry))
-      .filter((item): item is ChatTimelineItem => item != null)
-      .reverse()
+    ? buildChatTimelineItems(session.value.transcript, {
+      activeComposerUserId: session.value.composerUserId?.trim() ?? null
+    })
     : []
 );
 const reversedTranscript = computed(() =>
@@ -225,14 +88,15 @@ const defaultUserId = computed(() =>
       : undefined
 );
 
-async function onSend(payload: { userId: string; text: string; imageIds: string[] }) {
+async function onSend(
+  payload: { userId: string; text: string; imageIds: string[]; attachmentIds: string[] },
+  callbacks: { resolve: () => void; reject: (error: unknown) => void }
+) {
   try {
     await store.sendMessage(payload);
+    callbacks.resolve();
   } catch (error) {
-    const message = error instanceof ApiError || error instanceof Error
-      ? error.message
-      : "发送失败";
-    window.alert(message);
+    callbacks.reject(error);
   }
 }
 
@@ -302,7 +166,7 @@ async function onInvalidateSingle() {
     const message = error instanceof ApiError || error instanceof Error
       ? error.message
       : "删除失败";
-    window.alert(message);
+    toast.push({ type: "error", message });
   } finally {
     transcriptActionsBusy.value = false;
   }
@@ -321,7 +185,7 @@ async function onInvalidateGroup() {
     const message = error instanceof ApiError || error instanceof Error
       ? error.message
       : "删除失败";
-    window.alert(message);
+    toast.push({ type: "error", message });
   } finally {
     transcriptActionsBusy.value = false;
   }

@@ -134,9 +134,9 @@ onBeforeUnmount(() => {
           >
             <img :src="imageUrl" :alt="sourceName || fileRef || fileId || '图片消息'" class="max-h-72 w-full rounded object-contain" />
           </button>
-          <span class="text-small opacity-80">已发送图片</span>
+          <span class="text-small opacity-80">{{ role === 'user' ? '图片' : '已发送图片' }}</span>
           <span class="block wrap-break-word font-semibold">{{ sourceName || fileRef || fileId || "未命名图片" }}</span>
-          <span class="block font-mono text-small opacity-80">{{ toolName || "chat_file_send_to_chat" }}</span>
+          <span v-if="toolName" class="block font-mono text-small opacity-80">{{ toolName }}</span>
         </template>
         <template v-else>
           <span v-if="label" class="mb-1 block text-small opacity-80">{{ label }}</span>
