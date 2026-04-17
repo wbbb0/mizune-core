@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { buildChatTimelineItems } from "../../webui/src/components/sessions/chatTimeline.ts";
-import type { ChatTimelineTranscriptEntry } from "../../webui/src/components/sessions/chatTimeline.ts";
+import { buildChatTimelineItems } from "../../../webui/src/components/sessions/chatTimeline.ts";
+import type { ChatTimelineTranscriptEntry } from "../../../webui/src/components/sessions/chatTimeline.ts";
 
 async function runCase(name: string, fn: () => Promise<void> | void) {
   process.stdout.write(`- ${name} ... `);

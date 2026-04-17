@@ -10,7 +10,7 @@ async function runCase(name: string, fn: () => Promise<void>) {
 async function main() {
   await runCase("session state panel keeps code blocks scrollable", async () => {
     const source = await readFile(
-      new URL("../../webui/src/components/sessions/SessionStatePanel.vue", import.meta.url),
+      new URL("../../../webui/src/components/sessions/SessionStatePanel.vue", import.meta.url),
       "utf8"
     );
 
