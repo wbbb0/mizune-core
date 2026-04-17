@@ -84,7 +84,7 @@ export async function processIncomingMessage(
   }
 
   appendIncomingHistory(sessionManager, logger, context);
-  if (handleNonTriggeringMessage(logger, persistSession, context, triggerDecision)) {
+  if (handleNonTriggeringMessage(sessionManager, logger, persistSession, context, triggerDecision)) {
     return;
   }
 

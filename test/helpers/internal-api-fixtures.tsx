@@ -8,11 +8,13 @@ import { registerBrowserRoutes } from "../../src/internalApi/routes/browserRoute
 import { registerMessagingRoutes } from "../../src/internalApi/routes/messagingRoutes.ts";
 import { registerShellRoutes } from "../../src/internalApi/routes/shellRoutes.ts";
 import { createInternalApiServices, type InternalApiDeps } from "../../src/internalApi/types.ts";
-import type { ShellRunParams, ShellRunResult, ShellSession } from "../../src/services/shell/types.ts";
+import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
 import type { ScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
+import type { ShellRunParams, ShellRunResult, ShellSession } from "../../src/services/shell/types.ts";
 
 export interface InternalApiFixtureState {
   sentMessages: Array<{ userId?: string; groupId?: string; text: string }>;
+  deletedMessageIds: number[];
   sessions: Array<{
     id: string;
     type: "private" | "group";
@@ -22,6 +24,7 @@ export interface InternalApiFixtureState {
     participantLabel: string | null;
     phase: { kind: string };
     pendingMessages: Array<{ id?: number }>;
+    internalTranscript: InternalTranscriptItem[];
     isGenerating: boolean;
     lastActiveAt: number;
   }>;
@@ -69,6 +72,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
   };
   const state: InternalApiFixtureState = {
     sentMessages: [],
+    deletedMessageIds: [],
     sessions: [{
       id: "private:10001",
       type: "private",
@@ -78,6 +82,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       participantLabel: "Alice",
       phase: { kind: "idle" },
       pendingMessages: [{ id: 1 }],
+      internalTranscript: [],
       isGenerating: false,
       lastActiveAt: 123456
     }],
@@ -111,6 +116,10 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       async sendText(payload: { userId?: string; groupId?: string; text: string }) {
         state.sentMessages.push(payload);
         return { messageId: "123" };
+      },
+      async deleteMessage(messageId: number) {
+        state.deletedMessageIds.push(messageId);
+        return {};
       }
     } as unknown as InternalApiDeps["oneBotClient"],
     chatMessageFileGcService: {
@@ -261,7 +270,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           },
           historySummary: null,
           recentMessages: [],
-          internalTranscript: [],
+          internalTranscript: session.internalTranscript,
           debugMarkers: [],
           recentToolEvents: [],
           lastLlmUsage: null,
@@ -291,7 +300,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           historyRevision: 0,
           mutationEpoch: 0,
           lastActiveAt: 123456,
-          internalTranscript: [],
+          internalTranscript: existing?.internalTranscript ?? [],
           activeAssistantResponse: null
         };
       },
@@ -330,6 +339,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           participantLabel: target.participantLabel ?? target.participantUserId ?? target.id,
           phase: { kind: "idle" },
           pendingMessages: [],
+          internalTranscript: [],
           isGenerating: false,
           lastActiveAt: Date.now()
         };
@@ -346,6 +356,34 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         notifySessionChanged(sessionId);
         return true;
       },
+      invalidateTranscriptItem(sessionId: string, itemId: string) {
+        const session = state.sessions.find((item) => item.id === sessionId);
+        if (!session) {
+          return [];
+        }
+        const affected = session.internalTranscript.filter((item) => item.id === itemId && item.invalidated !== true);
+        for (const item of affected) {
+          item.invalidated = true;
+          item.invalidatedAt = Date.now();
+          item.invalidationReason = "manual_single";
+        }
+        notifySessionChanged(sessionId);
+        return affected;
+      },
+      invalidateTranscriptGroup(sessionId: string, groupId: string) {
+        const session = state.sessions.find((item) => item.id === sessionId);
+        if (!session) {
+          return [];
+        }
+        const affected = session.internalTranscript.filter((item) => item.groupId === groupId && item.invalidated !== true);
+        for (const item of affected) {
+          item.invalidated = true;
+          item.invalidatedAt = Date.now();
+          item.invalidationReason = "manual_group";
+        }
+        notifySessionChanged(sessionId);
+        return affected;
+      },
       getPersistedSession(sessionId: string) {
         const session = state.sessions.find((item) => item.id === sessionId)!;
         return {
@@ -356,8 +394,8 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           participantUserId: session.participantUserId,
           participantLabel: session.participantLabel,
           pendingMessages: [],
+          internalTranscript: session.internalTranscript,
           historySummary: null,
-          internalTranscript: [],
           debugMarkers: [],
           recentToolEvents: [],
           lastLlmUsage: null,

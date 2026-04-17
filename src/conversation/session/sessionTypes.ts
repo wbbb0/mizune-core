@@ -95,7 +95,23 @@ export interface SessionDebugMarker {
   note?: string | undefined;
 }
 
-export interface TranscriptUserMessageItem {
+export type TranscriptItemInvalidationReason = "manual_single" | "manual_group" | "interrupt_cleanup" | "system";
+
+export interface TranscriptItemDeliveryRef {
+  platform: "onebot";
+  messageId: number;
+}
+
+export interface TranscriptItemMeta {
+  id?: string | undefined;
+  groupId?: string | undefined;
+  invalidated?: boolean | undefined;
+  invalidatedAt?: number | undefined;
+  invalidationReason?: TranscriptItemInvalidationReason | undefined;
+  deliveryRef?: TranscriptItemDeliveryRef | undefined;
+}
+
+export interface TranscriptUserMessageItem extends TranscriptItemMeta {
   kind: "user_message";
   role: "user";
   llmVisible: true;
@@ -115,7 +131,7 @@ export interface TranscriptUserMessageItem {
   timestampMs: number;
 }
 
-export interface TranscriptAssistantMessageItem {
+export interface TranscriptAssistantMessageItem extends TranscriptItemMeta {
   kind: "assistant_message";
   role: "assistant";
   llmVisible: true;
@@ -127,7 +143,7 @@ export interface TranscriptAssistantMessageItem {
   timestampMs: number;
 }
 
-export interface TranscriptSessionModeSwitchItem {
+export interface TranscriptSessionModeSwitchItem extends TranscriptItemMeta {
   kind: "session_mode_switch";
   role: "assistant";
   llmVisible: true;
@@ -137,7 +153,7 @@ export interface TranscriptSessionModeSwitchItem {
   timestampMs: number;
 }
 
-export interface InternalAssistantToolCallItem {
+export interface InternalAssistantToolCallItem extends TranscriptItemMeta {
   kind: "assistant_tool_call";
   llmVisible: true;
   timestampMs: number;
@@ -147,7 +163,7 @@ export interface InternalAssistantToolCallItem {
   providerMetadata?: Record<string, unknown> | undefined;
 }
 
-export interface InternalToolResultItem {
+export interface InternalToolResultItem extends TranscriptItemMeta {
   kind: "tool_result";
   llmVisible: true;
   timestampMs: number;
@@ -156,7 +172,7 @@ export interface InternalToolResultItem {
   content: string;
 }
 
-export interface TranscriptOutboundMediaMessageItem {
+export interface TranscriptOutboundMediaMessageItem extends TranscriptItemMeta {
   kind: "outbound_media_message";
   llmVisible: false;
   role: "assistant";
@@ -173,7 +189,7 @@ export interface TranscriptOutboundMediaMessageItem {
   timestampMs: number;
 }
 
-export interface TranscriptDirectCommandItem {
+export interface TranscriptDirectCommandItem extends TranscriptItemMeta {
   kind: "direct_command";
   llmVisible: false;
   direction: "input" | "output";
@@ -183,7 +199,7 @@ export interface TranscriptDirectCommandItem {
   timestampMs: number;
 }
 
-export interface TranscriptStatusMessageItem {
+export interface TranscriptStatusMessageItem extends TranscriptItemMeta {
   kind: "status_message";
   llmVisible: false;
   role: "assistant";
@@ -192,7 +208,7 @@ export interface TranscriptStatusMessageItem {
   timestampMs: number;
 }
 
-export interface TranscriptGateDecisionItem {
+export interface TranscriptGateDecisionItem extends TranscriptItemMeta {
   kind: "gate_decision";
   llmVisible: false;
   action: "continue" | "wait" | "skip" | "topic_switch";
@@ -209,7 +225,7 @@ export interface TranscriptGateDecisionItem {
   timestampMs: number;
 }
 
-export interface InternalSystemMarkerItem {
+export interface InternalSystemMarkerItem extends TranscriptItemMeta {
   kind: "system_marker";
   llmVisible: false;
   timestampMs: number;
@@ -219,7 +235,7 @@ export interface InternalSystemMarkerItem {
 
 export type SessionFallbackEventType = "model_candidate_switch" | "generation_failure_reply";
 
-export interface InternalFallbackEventItem {
+export interface InternalFallbackEventItem extends TranscriptItemMeta {
   kind: "fallback_event";
   llmVisible: false;
   timestampMs: number;
@@ -236,7 +252,7 @@ export interface InternalFallbackEventItem {
 
 export type InternalTriggerStage = "received" | "queued" | "dequeued" | "started";
 
-export interface InternalTriggerEventItem {
+export interface InternalTriggerEventItem extends TranscriptItemMeta {
   kind: "internal_trigger_event";
   llmVisible: false;
   timestampMs: number;
@@ -392,6 +408,8 @@ export interface SessionState {
   pendingMessages: SessionMessage[];
   pendingSteerMessages: SessionMessage[];
   pendingReplyGateWaitPasses: number;
+  pendingTranscriptGroupId: string | null;
+  activeTranscriptGroupId: string | null;
   pendingInternalTriggers: InternalSessionTriggerExecution[];
   interruptibleGroupTriggerUserId: string | null;
   historySummary: string | null;
@@ -427,6 +445,8 @@ export interface PersistedSessionState {
     enabled?: boolean;
   };
   pendingMessages: PersistedSessionMessage[];
+  pendingTranscriptGroupId?: string | null;
+  activeTranscriptGroupId?: string | null;
   historySummary: string | null;
   internalTranscript: InternalTranscriptItem[];
   debugMarkers: SessionDebugMarker[];

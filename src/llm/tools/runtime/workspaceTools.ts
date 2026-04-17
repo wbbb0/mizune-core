@@ -426,7 +426,17 @@ async function sendResolvedPathToChat(
         return;
       }
       const payload = await context.oneBotClient.sendText({ ...target, text: summary });
-      recordDeliveredMessage(context, summary, payload.data?.message_id);
+      const messageId = recordDeliveredMessage(context, summary, payload.data?.message_id);
+      context.sessionManager.appendAssistantHistory(context.lastMessage.sessionId, {
+        ...buildAssistantHistoryTarget(context),
+        text: summary,
+        ...(messageId != null ? {
+          deliveryRef: {
+            platform: "onebot" as const,
+            messageId
+          }
+        } : {})
+      });
     });
     return {
       content: JSON.stringify({
@@ -478,7 +488,17 @@ async function sendChatFileToChat(
         return;
       }
       const payload = await context.oneBotClient.sendText({ ...target, text: summary });
-      recordDeliveredMessage(context, summary, payload.data?.message_id);
+      const messageId = recordDeliveredMessage(context, summary, payload.data?.message_id);
+      context.sessionManager.appendAssistantHistory(context.lastMessage.sessionId, {
+        ...buildAssistantHistoryTarget(context),
+        text: summary,
+        ...(messageId != null ? {
+          deliveryRef: {
+            platform: "onebot" as const,
+            messageId
+          }
+        } : {})
+      });
     });
     return {
       content: JSON.stringify({

@@ -5,6 +5,16 @@ const sessionParamsSchema = z.object({
   sessionId: z.string().trim().min(1, "sessionId is required")
 });
 
+const transcriptItemParamsSchema = z.object({
+  sessionId: z.string().trim().min(1, "sessionId is required"),
+  itemId: z.string().trim().min(1, "itemId is required")
+});
+
+const transcriptGroupParamsSchema = z.object({
+  sessionId: z.string().trim().min(1, "sessionId is required"),
+  groupId: z.string().trim().min(1, "groupId is required")
+});
+
 const webTurnStreamQuerySchema = z.object({
   turnId: z.string().trim().min(1, "turnId is required")
 });
@@ -117,6 +127,8 @@ const workspaceStoredFileParamsSchema = z.object({
 });
 
 export type ParsedSessionParams = z.infer<typeof sessionParamsSchema>;
+export type ParsedTranscriptItemParams = z.infer<typeof transcriptItemParamsSchema>;
+export type ParsedTranscriptGroupParams = z.infer<typeof transcriptGroupParamsSchema>;
 export type ParsedWebTurnStreamQuery = z.infer<typeof webTurnStreamQuerySchema>;
 export type ParsedWebSessionStreamQuery = z.infer<typeof webSessionStreamQuerySchema>;
 export type ParsedShellRunBody = z.infer<typeof shellRunBodySchema>;
@@ -179,6 +191,14 @@ function parseWithSchema<TSchema extends z.ZodTypeAny>(
 
 export function parseSessionParams(params: unknown): ParsedSessionParams | { error: string } {
   return parseWithSchema(sessionParamsSchema, params);
+}
+
+export function parseTranscriptItemParams(params: unknown): ParsedTranscriptItemParams | { error: string } {
+  return parseWithSchema(transcriptItemParamsSchema, params);
+}
+
+export function parseTranscriptGroupParams(params: unknown): ParsedTranscriptGroupParams | { error: string } {
+  return parseWithSchema(transcriptGroupParamsSchema, params);
 }
 
 export function parseWebTurnStreamQuery(query: unknown): ParsedWebTurnStreamQuery | { error: string } {

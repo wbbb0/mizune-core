@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onBeforeUnmount } from "vue";
 import { Bot, User, Users } from "lucide-vue-next";
 import SessionGlyph, { type SessionGlyphModel } from "./SessionGlyph.vue";
 
@@ -18,11 +18,16 @@ const props = defineProps<{
   toolName?: string;
   timestampMs?: number;
   streaming?: boolean;
+  actionsEnabled?: boolean;
 }>();
 
 const emit = defineEmits<{
   previewImage: [];
+  openActions: [];
 }>();
+
+let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+let longPressTriggered = false;
 
 const timeStr = computed(() => {
   if (!props.timestampMs) return "";
@@ -43,10 +48,65 @@ const bubbleGlyph = computed<SessionGlyphModel>(() => {
 const bubbleGlyphToneClass = computed(() => {
   return props.side === "right" ? "bg-surface-selected text-text-accent" : "bg-surface-success text-success";
 });
+
+function clearLongPressTimer(): void {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+}
+
+function openActions(): void {
+  if (props.actionsEnabled === false) {
+    return;
+  }
+  emit("openActions");
+}
+
+function onContextMenu(event: MouseEvent): void {
+  if (props.actionsEnabled === false) {
+    return;
+  }
+  event.preventDefault();
+  openActions();
+}
+
+function onTouchStart(): void {
+  if (props.actionsEnabled === false) {
+    return;
+  }
+  longPressTriggered = false;
+  clearLongPressTimer();
+  longPressTimer = setTimeout(() => {
+    longPressTriggered = true;
+    openActions();
+  }, 450);
+}
+
+function onTouchEnd(): void {
+  if (!longPressTriggered) {
+    clearLongPressTimer();
+    return;
+  }
+  clearLongPressTimer();
+  longPressTriggered = false;
+}
+
+onBeforeUnmount(() => {
+  clearLongPressTimer();
+});
 </script>
 
 <template>
-  <div class="flex items-end gap-2 px-3 py-1" :class="{ 'flex-row-reverse': side === 'right' }">
+  <div
+    class="flex items-end gap-2 px-3 py-1"
+    :class="{ 'flex-row-reverse': side === 'right' }"
+    @contextmenu="onContextMenu"
+    @touchstart.passive="onTouchStart"
+    @touchend="onTouchEnd"
+    @touchcancel="onTouchEnd"
+    @touchmove="onTouchEnd"
+  >
     <SessionGlyph
       class="shrink-0"
       :glyph="bubbleGlyph"

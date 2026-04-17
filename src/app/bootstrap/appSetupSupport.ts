@@ -73,7 +73,13 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
         chatType: params.groupId ? "group" : "private",
         userId: params.userId,
         senderName: params.userId,
-        text: params.text
+        text: params.text,
+        ...(messageId != null ? {
+          deliveryRef: {
+            platform: "onebot" as const,
+            messageId
+          }
+        } : {})
       }, Date.now());
       logger.info(
         {

@@ -19,19 +19,29 @@ import {
   createSessionModeSwitchTranscriptItem,
   createUserTranscriptMessageItem
 } from "./historyContext.ts";
+import {
+  ensurePendingTranscriptGroupId,
+  normalizeTranscriptItem,
+  resolveTranscriptOutputGroupId
+} from "./transcriptMetadata.ts";
 import type {
   InternalTranscriptItem,
   SessionMessage,
   SessionSentMessage,
   SessionState,
   SessionToolEvent,
-  SessionUsageSnapshot
+  SessionUsageSnapshot,
+  TranscriptItemDeliveryRef
 } from "./sessionTypes.ts";
 
 // Owns transcript/history bookkeeping and the projections derived from it.
 // This keeps lifecycle control separate from the session's conversational record.
 export class SessionHistoryService {
   constructor(private readonly config: AppConfig) { }
+
+  private appendNormalizedTranscript(session: SessionState, item: InternalTranscriptItem, groupId: string): void {
+    appendInternalTranscriptState(session, normalizeTranscriptItem(item, groupId));
+  }
 
   clone(session: SessionState): SessionState {
     return cloneSessionState(session);
@@ -47,7 +57,7 @@ export class SessionHistoryService {
       ? session.participantUserId
       : "unknown";
 
-    appendHistoryEntry(session, role === "user"
+    appendHistoryEntry(session, normalizeTranscriptItem(role === "user"
       ? createUserTranscriptMessageItem({
           chatType: session.type,
           userId: defaultUserId,
@@ -61,7 +71,9 @@ export class SessionHistoryService {
           senderName: defaultUserId,
           text: content,
           timestampMs
-        }));
+        }), role === "user"
+      ? ensurePendingTranscriptGroupId(session)
+      : resolveTranscriptOutputGroupId(session)));
   }
 
   appendUserHistory(
@@ -83,7 +95,7 @@ export class SessionHistoryService {
     },
     timestampMs = Date.now()
   ): void {
-    appendHistoryEntry(session, createUserTranscriptMessageItem({
+    appendHistoryEntry(session, normalizeTranscriptItem(createUserTranscriptMessageItem({
       chatType: message.chatType,
       userId: message.userId,
       senderName: message.senderName,
@@ -98,7 +110,7 @@ export class SessionHistoryService {
       ...(message.mentionedAll !== undefined ? { mentionedAll: message.mentionedAll } : {}),
       ...(message.mentionedSelf !== undefined ? { mentionedSelf: message.mentionedSelf } : {}),
       timestampMs
-    }));
+    }), ensurePendingTranscriptGroupId(session)));
   }
 
   appendAssistantHistory(
@@ -108,28 +120,29 @@ export class SessionHistoryService {
       userId: string;
       senderName: string;
       text: string;
+      deliveryRef?: TranscriptItemDeliveryRef;
     },
     timestampMs = Date.now()
   ): void {
-    appendHistoryEntry(session, createAssistantTranscriptMessageItem({
+    appendHistoryEntry(session, normalizeTranscriptItem(createAssistantTranscriptMessageItem({
       ...message,
       timestampMs
-    }));
+    }), resolveTranscriptOutputGroupId(session)));
   }
 
   appendModeSwitch(session: SessionState, fromModeId: string, toModeId: string, timestampMs = Date.now()): void {
     // Mode switches change the prompt-visible conversation context even without a
     // user/assistant message, so they still advance the history revision.
-    appendInternalTranscriptState(session, createSessionModeSwitchTranscriptItem({
+    this.appendNormalizedTranscript(session, createSessionModeSwitchTranscriptItem({
       fromModeId,
       toModeId,
       timestampMs
-    }));
+    }), resolveTranscriptOutputGroupId(session));
     session.historyRevision += 1;
   }
 
   appendInternalTranscript(session: SessionState, item: InternalTranscriptItem): void {
-    appendInternalTranscriptState(session, item);
+    this.appendNormalizedTranscript(session, item, item.groupId ?? resolveTranscriptOutputGroupId(session));
   }
 
   appendToolEvent(session: SessionState, event: SessionToolEvent): void {

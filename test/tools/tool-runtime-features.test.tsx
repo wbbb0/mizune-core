@@ -951,6 +951,7 @@ async function main() {
   await runCase("chat_file_send_to_chat keeps the turn open for non-image fallback sends", async () => {
     const sentTexts: any[] = [];
     const sentMetaCalls: any[] = [];
+    const assistantHistoryCalls: any[] = [];
     const queuedTasks: Array<() => Promise<void>> = [];
     const result = await chatFileToolHandlers.chat_file_send_to_chat!(
       { id: "tool_workspace_send_2", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_ref\":\"file_bead1234.txt\"}" } },
@@ -988,6 +989,9 @@ async function main() {
         sessionManager: {
           recordSentMessage(_sessionId: string, message: unknown) {
             sentMetaCalls.push(message);
+          },
+          appendAssistantHistory(_sessionId: string, message: unknown) {
+            assistantHistoryCalls.push(message);
           }
         }
       } as any
@@ -1015,6 +1019,16 @@ async function main() {
       messageId: 43,
       text: "chat file 已发送：file_bead1234.txt；file_id=file_file_1",
       sentAt: sentMetaCalls[0].sentAt
+    });
+    assert.deepEqual(assistantHistoryCalls[0], {
+      chatType: "private",
+      userId: "owner",
+      senderName: "Owner",
+      text: "chat file 已发送：file_bead1234.txt；file_id=file_file_1",
+      deliveryRef: {
+        platform: "onebot",
+        messageId: 43
+      }
     });
     assert.equal(typeof sentMetaCalls[0].sentAt, "number");
     assert.equal((result as any).terminalResponse, undefined);
@@ -1320,6 +1334,7 @@ async function main() {
   await runCase("local_file_send_to_chat sends file via absolute path", async () => {
     const queuedTasks: Array<() => Promise<void>> = [];
     const sentTexts: any[] = [];
+    const assistantHistoryCalls: any[] = [];
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-path-abs-"));
     const filePath = join(tempDir, "report.txt");
     await writeFile(filePath, "hello", "utf8");
@@ -1343,7 +1358,10 @@ async function main() {
             }
           },
           sessionManager: {
-            recordSentMessage() {}
+            recordSentMessage() {},
+            appendAssistantHistory(_sessionId: string, message: unknown) {
+              assistantHistoryCalls.push(message);
+            }
           }
         } as any
       );
@@ -1362,6 +1380,16 @@ async function main() {
       assert.deepEqual(sentTexts[0], {
         userId: "owner",
         text: `文件已发送：${filePath}`
+      });
+      assert.deepEqual(assistantHistoryCalls[0], {
+        chatType: "private",
+        userId: "owner",
+        senderName: "Owner",
+        text: `文件已发送：${filePath}`,
+        deliveryRef: {
+          platform: "onebot",
+          messageId: 77
+        }
       });
     } finally {
       await rm(tempDir, { recursive: true, force: true });

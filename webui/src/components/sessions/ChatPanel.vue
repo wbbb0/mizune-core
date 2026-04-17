@@ -7,9 +7,11 @@ import VirtualMessageList from "./VirtualMessageList.vue";
 import Composer from "./Composer.vue";
 import SessionStatePanel from "./SessionStatePanel.vue";
 import ImagePreviewDialog from "@/components/common/ImagePreviewDialog.vue";
+import WorkbenchDialog from "@/components/common/WorkbenchDialog.vue";
 import { useSessionsStore } from "@/stores/sessions";
 import { useAuthStore } from "@/stores/auth";
 import { ApiError } from "@/api/client";
+import type { TranscriptEntry } from "@/stores/sessions";
 import type { TranscriptItem as SessionTranscriptItem } from "@/api/types";
 import { fileApi } from "@/api/workspace";
 
@@ -17,7 +19,7 @@ const store = useSessionsStore();
 const auth  = useAuthStore();
 const session = computed(() => store.active);
 
-// Transcript item expand state — keyed by eventId, survives virtual scroll mount/unmount cycles
+// Transcript item expand state — keyed by item.id, survives virtual scroll mount/unmount cycles
 export interface TranscriptExpandState {
   expanded: boolean;
   reasoningExpanded: boolean;
@@ -31,9 +33,19 @@ watch(() => session.value?.id, () => { transcriptExpandStates.clear(); });
 type Tab = "chat" | "transcript" | "state";
 const tab = ref<Tab>("chat");
 
+interface TranscriptActionTarget {
+  itemId: string;
+  groupId: string;
+  title: string;
+  detail: string;
+}
+
 type ChatTimelineItem =
   | {
-      eventId: string;
+      id: string;
+      itemId: string;
+      groupId: string;
+      actionTitle: string;
       kind: "text";
       role: "user" | "assistant";
       side: "left" | "right";
@@ -44,7 +56,10 @@ type ChatTimelineItem =
       label?: string;
     }
   | {
-      eventId: string;
+      id: string;
+      itemId: string;
+      groupId: string;
+      actionTitle: string;
       kind: "image";
       role: "assistant";
       side: "left" | "right";
@@ -57,12 +72,21 @@ type ChatTimelineItem =
     };
 
 const previewImage = ref<{ src: string; title: string } | null>(null);
+const transcriptActionsTarget = ref<TranscriptActionTarget | null>(null);
+const transcriptActionsBusy = ref(false);
 
-function toChatTimelineItem(entry: { eventId: string; item: SessionTranscriptItem }): ChatTimelineItem | null {
+function toChatTimelineItem(entry: TranscriptEntry): ChatTimelineItem | null {
+  if (entry.item.invalidated) {
+    return null;
+  }
+
   if (entry.item.kind === "user_message" || entry.item.kind === "assistant_message") {
     const side = resolveMessageSide(entry.item);
     return {
-      eventId: entry.eventId,
+      id: entry.id,
+      itemId: entry.item.id,
+      groupId: entry.item.groupId,
+      actionTitle: entry.item.kind === "user_message" ? "消息" : "回复",
       kind: "text",
       role: entry.item.role,
       side,
@@ -75,7 +99,10 @@ function toChatTimelineItem(entry: { eventId: string; item: SessionTranscriptIte
 
   if (entry.item.kind === "direct_command") {
     return {
-      eventId: entry.eventId,
+      id: entry.id,
+      itemId: entry.item.id,
+      groupId: entry.item.groupId,
+      actionTitle: "指令消息",
       kind: "text",
       role: entry.item.role,
       side: entry.item.role === "user" ? "right" : "left",
@@ -95,7 +122,10 @@ function toChatTimelineItem(entry: { eventId: string; item: SessionTranscriptIte
       return null;
     }
     return {
-      eventId: entry.eventId,
+      id: entry.id,
+      itemId: entry.item.id,
+      groupId: entry.item.groupId,
+      actionTitle: "图片消息",
       kind: "image",
       role: "assistant",
       side: "left",
@@ -210,6 +240,93 @@ function onComposerUserIdChange(userId: string) {
   store.setComposerUserId(userId || null);
 }
 
+function openTranscriptActions(target: TranscriptActionTarget) {
+  transcriptActionsTarget.value = target;
+}
+
+function buildTranscriptActionTarget(entry: TranscriptEntry): TranscriptActionTarget {
+  return {
+    itemId: entry.item.id,
+    groupId: entry.item.groupId,
+    title: describeTranscriptItem(entry.item),
+    detail: `#${entry.index}`
+  };
+}
+
+function describeTranscriptItem(item: SessionTranscriptItem): string {
+  switch (item.kind) {
+    case "user_message":
+      return "用户消息";
+    case "assistant_message":
+      return "模型回复";
+    case "outbound_media_message":
+      return "发送图片";
+    case "direct_command":
+      return item.direction === "input" ? "指令输入" : "指令输出";
+    case "assistant_tool_call":
+      return "工具调用";
+    case "tool_result":
+      return "工具结果";
+    case "session_mode_switch":
+      return "模式切换";
+    case "status_message":
+      return "状态消息";
+    case "gate_decision":
+      return "Turn Planner 判定";
+    case "system_marker":
+      return "系统标记";
+    case "fallback_event":
+      return "兜底事件";
+    case "internal_trigger_event":
+      return "内部触发事件";
+  }
+}
+
+function closeTranscriptActions() {
+  if (transcriptActionsBusy.value) {
+    return;
+  }
+  transcriptActionsTarget.value = null;
+}
+
+async function onInvalidateSingle() {
+  const target = transcriptActionsTarget.value;
+  if (!target) {
+    return;
+  }
+  transcriptActionsBusy.value = true;
+  try {
+    await store.invalidateTranscriptItem(target.itemId);
+    transcriptActionsTarget.value = null;
+  } catch (error) {
+    const message = error instanceof ApiError || error instanceof Error
+      ? error.message
+      : "删除失败";
+    window.alert(message);
+  } finally {
+    transcriptActionsBusy.value = false;
+  }
+}
+
+async function onInvalidateGroup() {
+  const target = transcriptActionsTarget.value;
+  if (!target) {
+    return;
+  }
+  transcriptActionsBusy.value = true;
+  try {
+    await store.invalidateTranscriptGroup(target.groupId);
+    transcriptActionsTarget.value = null;
+  } catch (error) {
+    const message = error instanceof ApiError || error instanceof Error
+      ? error.message
+      : "删除失败";
+    window.alert(message);
+  } finally {
+    transcriptActionsBusy.value = false;
+  }
+}
+
 async function onDeleteSession() {
   if (!session.value) {
     return;
@@ -314,6 +431,7 @@ async function onDeleteSession() {
               :tool-name="msg.kind === 'image' ? msg.toolName : undefined"
               :timestamp-ms="msg.timestampMs"
               @preview-image="msg.kind === 'image' ? previewImage = { src: msg.imageUrl, title: msg.sourceName || msg.fileRef || msg.fileId || '已发送图片' } : undefined"
+              @open-actions="openTranscriptActions({ itemId: msg.itemId, groupId: msg.groupId, title: msg.actionTitle, detail: msg.kind === 'text' ? (msg.label || msg.content.slice(0, 32) || '消息') : (msg.sourceName || msg.fileRef || msg.fileId || '图片') })"
             />
           </template>
         </VirtualMessageList>
@@ -345,7 +463,7 @@ async function onDeleteSession() {
             <TranscriptItem
               :item="entry.item"
               :index="entry.index"
-              :event-id="entry.eventId"
+              @open-actions="openTranscriptActions(buildTranscriptActionTarget(entry))"
             />
           </template>
         </VirtualMessageList>
@@ -372,4 +490,42 @@ async function onDeleteSession() {
     :title="previewImage?.title"
     @close="previewImage = null"
   />
+
+  <WorkbenchDialog
+    :open="transcriptActionsTarget !== null"
+    title="消息操作"
+    :description="transcriptActionsTarget ? `${transcriptActionsTarget.title} · ${transcriptActionsTarget.detail}` : undefined"
+    width-class="max-w-md"
+    body-class="px-4 py-4"
+    @close="closeTranscriptActions"
+  >
+    <div class="flex flex-col gap-3">
+      <div v-if="transcriptActionsTarget" class="rounded-lg border border-border-default bg-surface-sidebar px-3 py-2">
+        <div class="text-small text-text-muted">目标</div>
+        <div class="mt-1 text-ui text-text-secondary">{{ transcriptActionsTarget.detail }}</div>
+      </div>
+
+      <button
+        class="flex items-start justify-between rounded-lg border border-border-default bg-surface-sidebar px-3 py-3 text-left transition-colors hover:bg-surface-active disabled:opacity-60"
+        :disabled="transcriptActionsBusy"
+        @click="onInvalidateSingle"
+      >
+        <span>
+          <span class="block text-ui font-medium text-text-secondary">删除单条</span>
+          <span class="mt-1 block text-small text-text-muted">只将当前记录标记为失效；若可同步撤回外部消息，会一并尝试。</span>
+        </span>
+      </button>
+
+      <button
+        class="flex items-start justify-between rounded-lg border border-danger/40 bg-danger/10 px-3 py-3 text-left transition-colors hover:bg-danger/15 disabled:opacity-60"
+        :disabled="transcriptActionsBusy"
+        @click="onInvalidateGroup"
+      >
+        <span>
+          <span class="block text-ui font-medium text-danger">删除整组</span>
+          <span class="mt-1 block text-small text-text-muted">删除这一轮 turn 的全部产物，包括消息、后台事件、回复和媒体状态记录。</span>
+        </span>
+      </button>
+    </div>
+  </WorkbenchDialog>
 </template>

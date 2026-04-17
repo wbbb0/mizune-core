@@ -5,6 +5,18 @@ import { z } from "zod";
 import type { PersistedSessionState } from "./sessionManager.ts";
 import { getDefaultSessionModeId } from "#modes/registry.ts";
 
+const transcriptMetaShape = {
+  id: z.string().min(1).optional(),
+  groupId: z.string().min(1).optional(),
+  invalidated: z.boolean().optional(),
+  invalidatedAt: z.number().int().nonnegative().optional(),
+  invalidationReason: z.enum(["manual_single", "manual_group", "interrupt_cleanup", "system"]).optional(),
+  deliveryRef: z.object({
+    platform: z.literal("onebot"),
+    messageId: z.number().int().nonnegative()
+  }).optional()
+};
+
 const persistedSessionSchema = z.object({
   id: z.string().min(1),
   type: z.enum(["private", "group"]),
@@ -40,9 +52,12 @@ const persistedSessionSchema = z.object({
     rawEvent: z.any().optional(),
     receivedAt: z.number().int().nonnegative()
   })),
+  pendingTranscriptGroupId: z.string().min(1).nullable().optional(),
+  activeTranscriptGroupId: z.string().min(1).nullable().optional(),
   historySummary: z.string().nullable(),
   internalTranscript: z.array(z.discriminatedUnion("kind", [
     z.object({
+      ...transcriptMetaShape,
       kind: z.literal("user_message"),
       role: z.literal("user"),
       llmVisible: z.literal(true),
@@ -69,6 +84,7 @@ const persistedSessionSchema = z.object({
       timestampMs: z.number().int().nonnegative()
     }),
     z.object({
+      ...transcriptMetaShape,
       kind: z.literal("assistant_message"),
       role: z.literal("assistant"),
       llmVisible: z.literal(true),
@@ -80,6 +96,7 @@ const persistedSessionSchema = z.object({
       timestampMs: z.number().int().nonnegative()
     }),
     z.object({
+      ...transcriptMetaShape,
       kind: z.literal("session_mode_switch"),
       role: z.literal("assistant"),
       llmVisible: z.literal(true),
@@ -89,6 +106,7 @@ const persistedSessionSchema = z.object({
       timestampMs: z.number().int().nonnegative()
     }),
     z.object({
+      ...transcriptMetaShape,
       kind: z.literal("assistant_tool_call"),
       llmVisible: z.literal(true),
       timestampMs: z.number().int().nonnegative(),
@@ -106,6 +124,7 @@ const persistedSessionSchema = z.object({
       providerMetadata: z.record(z.string(), z.unknown()).optional()
     }),
     z.object({
+      ...transcriptMetaShape,
       kind: z.literal("tool_result"),
       llmVisible: z.literal(true),
       timestampMs: z.number().int().nonnegative(),
@@ -114,6 +133,7 @@ const persistedSessionSchema = z.object({
       content: z.string()
     }),
     z.object({
+      ...transcriptMetaShape,
       kind: z.literal("outbound_media_message"),
       llmVisible: z.literal(false),
       role: z.literal("assistant"),
@@ -130,6 +150,7 @@ const persistedSessionSchema = z.object({
       timestampMs: z.number().int().nonnegative()
     }),
     z.object({
+      ...transcriptMetaShape,
       kind: z.literal("direct_command"),
       llmVisible: z.literal(false),
       direction: z.enum(["input", "output"]),
@@ -139,6 +160,7 @@ const persistedSessionSchema = z.object({
       timestampMs: z.number().int().nonnegative()
     }),
     z.object({
+      ...transcriptMetaShape,
       kind: z.literal("status_message"),
       llmVisible: z.literal(false),
       role: z.literal("assistant"),
@@ -147,6 +169,7 @@ const persistedSessionSchema = z.object({
       timestampMs: z.number().int().nonnegative()
     }),
     z.object({
+      ...transcriptMetaShape,
       kind: z.literal("gate_decision"),
       llmVisible: z.literal(false),
       action: z.enum(["continue", "wait", "skip", "topic_switch"]),
@@ -163,6 +186,7 @@ const persistedSessionSchema = z.object({
       timestampMs: z.number().int().nonnegative()
     }),
     z.object({
+      ...transcriptMetaShape,
       kind: z.literal("system_marker"),
       llmVisible: z.literal(false),
       timestampMs: z.number().int().nonnegative(),
@@ -170,6 +194,7 @@ const persistedSessionSchema = z.object({
       content: z.string()
     }),
     z.object({
+      ...transcriptMetaShape,
       kind: z.literal("fallback_event"),
       llmVisible: z.literal(false),
       timestampMs: z.number().int().nonnegative(),
@@ -184,6 +209,7 @@ const persistedSessionSchema = z.object({
       failureMessage: z.string().optional()
     }),
     z.object({
+      ...transcriptMetaShape,
       kind: z.literal("internal_trigger_event"),
       llmVisible: z.literal(false),
       timestampMs: z.number().int().nonnegative(),

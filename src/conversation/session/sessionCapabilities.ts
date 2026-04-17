@@ -10,7 +10,9 @@ import type {
   SessionSentMessage,
   SessionState,
   SessionToolEvent,
-  SessionUsageSnapshot
+  SessionUsageSnapshot,
+  TranscriptItemDeliveryRef,
+  TranscriptItemInvalidationReason
 } from "./sessionTypes.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 
@@ -114,6 +116,7 @@ export interface SessionToolRuntimeAccess {
       userId: string;
       senderName: string;
       text: string;
+      deliveryRef?: TranscriptItemDeliveryRef;
     },
     timestampMs?: number
   ): void;
@@ -187,6 +190,18 @@ export interface SessionAdminMutationAccess {
   setModeId(sessionId: string, modeId: string, options?: { appendSwitchMarker?: boolean }): boolean;
   getPersistedSession(sessionId: string): PersistedSessionState;
   deleteSession(sessionId: string): boolean;
+  invalidateTranscriptItem(
+    sessionId: string,
+    itemId: string,
+    reason: TranscriptItemInvalidationReason,
+    timestampMs?: number
+  ): InternalTranscriptItem[];
+  invalidateTranscriptGroup(
+    sessionId: string,
+    groupId: string,
+    reason: TranscriptItemInvalidationReason,
+    timestampMs?: number
+  ): InternalTranscriptItem[];
 }
 
 export interface SessionPersistenceAccess {
@@ -202,6 +217,7 @@ export interface SessionOutboundHistoryAccess {
       userId: string;
       senderName: string;
       text: string;
+      deliveryRef?: TranscriptItemDeliveryRef;
     },
     timestampMs?: number
   ): void;
@@ -281,6 +297,7 @@ export interface SessionDirectCommandAccess {
   setDebugEnabled(sessionId: string, enabled: boolean): SessionDebugControlState;
   armDebugOnce(sessionId: string): SessionDebugControlState;
   markSetupConfirmed(sessionId: string): void;
+  clearPendingTranscriptGroup(sessionId: string): void;
 }
 
 export interface SessionMessagingAccess {
@@ -313,6 +330,7 @@ export interface SessionMessagingAccess {
       userId: string;
       senderName: string;
       text: string;
+      deliveryRef?: TranscriptItemDeliveryRef;
     },
     timestampMs?: number
   ): void;
@@ -323,6 +341,7 @@ export interface SessionMessagingAccess {
   appendSteerMessage(sessionId: string, message: ParsedIncomingMessage): SessionState;
   interruptOutbound(sessionId: string): boolean;
   appendPendingMessage(sessionId: string, message: ParsedIncomingMessage): SessionState;
+  clearPendingTranscriptGroup(sessionId: string): void;
 }
 
 export interface SessionTurnPlannerAccess {
@@ -363,6 +382,7 @@ export interface SessionGenerationOutboundAccess {
       userId: string;
       senderName: string;
       text: string;
+      deliveryRef?: TranscriptItemDeliveryRef;
     },
     timestampMs?: number
   ): boolean;

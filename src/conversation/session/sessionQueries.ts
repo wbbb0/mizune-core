@@ -10,6 +10,11 @@ import type {
 } from "./sessionTypes.ts";
 import { projectCompressionHistorySnapshot, projectCompressionHistorySnapshotByTokens, projectLlmVisibleHistoryFromTranscript } from "./sessionTranscript.ts";
 import type { AppConfig } from "#config/config.ts";
+import { createTranscriptGroupId, normalizeTranscriptItem } from "./transcriptMetadata.ts";
+
+function normalizeTranscriptItems(items: InternalTranscriptItem[]): InternalTranscriptItem[] {
+  return items.map((item) => normalizeTranscriptItem(item, item.groupId ?? createTranscriptGroupId()));
+}
 
 // Provides read-only projections and snapshots derived from session state.
 export function cloneSessionState(session: SessionState): SessionState {
@@ -19,7 +24,7 @@ export function cloneSessionState(session: SessionState): SessionState {
     pendingMessages: [...session.pendingMessages],
     pendingSteerMessages: [...session.pendingSteerMessages],
     pendingInternalTriggers: [...session.pendingInternalTriggers],
-    internalTranscript: [...session.internalTranscript],
+    internalTranscript: normalizeTranscriptItems(session.internalTranscript),
     debugMarkers: [...session.debugMarkers],
     recentToolEvents: [...session.recentToolEvents],
     sentMessages: [...session.sentMessages],
@@ -92,7 +97,7 @@ export function getSessionViewSnapshot(session: SessionState): {
     participantLabel: session.participantLabel,
     debugControl: { ...session.debugControl },
     historySummary: session.historySummary,
-    internalTranscript: [...session.internalTranscript],
+    internalTranscript: normalizeTranscriptItems(session.internalTranscript),
     debugMarkers: [...session.debugMarkers],
     recentToolEvents: [...session.recentToolEvents],
     lastLlmUsage: session.lastLlmUsage,

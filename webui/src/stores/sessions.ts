@@ -5,6 +5,7 @@ import type {
   SessionModeOption,
   SessionPhase,
   TranscriptItem,
+  TranscriptItemPatch,
   SessionStreamEvent,
   TurnStreamEvent
 } from "@/api/types";
@@ -18,6 +19,7 @@ function debugSession(event: string, detail?: Record<string, unknown>): void {
 }
 
 export interface TranscriptEntry {
+  id: string;
   eventId: string;
   index: number;
   item: TranscriptItem;
@@ -60,6 +62,74 @@ export const useSessionsStore = defineStore("sessions", () => {
     list.value = sessionRes.sessions;
     modes.value = modeRes.modes;
     debugSession("refresh", { sessions: sessionRes.sessions.map((s) => s.id), modes: modeRes.modes.map((m) => m.id) });
+  }
+
+  function applyTranscriptPatch(
+    transcript: TranscriptEntry[],
+    itemId: string,
+    patch: TranscriptItemPatch
+  ): TranscriptEntry[] {
+    let changed = false;
+    const next = transcript.map((entry) => {
+      if (entry.id !== itemId) {
+        return entry;
+      }
+      changed = true;
+      return {
+        ...entry,
+        item: {
+          ...entry.item,
+          ...patch
+        }
+      };
+    });
+    return changed ? next : transcript;
+  }
+
+  function dedupeTranscriptEntries(entries: TranscriptEntry[]): TranscriptEntry[] {
+    const seen = new Set<string>();
+    const deduped: TranscriptEntry[] = [];
+    for (const entry of entries) {
+      if (seen.has(entry.id)) {
+        continue;
+      }
+      seen.add(entry.id);
+      deduped.push(entry);
+    }
+    return deduped;
+  }
+
+  function toTranscriptEntry(input: { eventId: string; index: number; item: TranscriptItem }): TranscriptEntry {
+    return {
+      id: input.item.id,
+      eventId: input.eventId,
+      index: input.index,
+      item: input.item
+    };
+  }
+
+  function applyLocalTranscriptInvalidation(itemIds: string[], reason: "manual_single" | "manual_group"): void {
+    if (itemIds.length === 0 || !active.value) {
+      return;
+    }
+    const touchedIds = new Set(itemIds);
+    const invalidatedAt = Date.now();
+    active.value = {
+      ...active.value,
+      transcript: active.value.transcript.map((entry) => (
+        touchedIds.has(entry.id)
+          ? {
+              ...entry,
+              item: {
+                ...entry.item,
+                invalidated: true,
+                invalidatedAt: entry.item.invalidatedAt ?? invalidatedAt,
+                invalidationReason: entry.item.invalidationReason ?? reason
+              }
+            }
+          : entry
+      ))
+    };
   }
 
   function _openStream(sessionId: string, epoch?: number, transcriptCount?: number): void {
@@ -110,7 +180,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 
     es.addEventListener("message", () => { /* ignore generic messages */ });
 
-    for (const eventType of ["ready", "reset", "status", "transcript_item", "session_error"] as const) {
+    for (const eventType of ["ready", "reset", "status", "transcript_item_added", "transcript_item_patched", "session_error"] as const) {
       es.addEventListener(eventType, (e: MessageEvent) => {
         if (_es !== es) return;
         try {
@@ -139,7 +209,7 @@ export const useSessionsStore = defineStore("sessions", () => {
       if (!cur || cur.id !== sessionId) return; // 会话已切换，丢弃
       active.value = {
         ...cur,
-        transcript: snap.items,
+        transcript: snap.items.map((item) => toTranscriptEntry(item)),
         transcriptCount: snap.totalCount,
         transcriptHasMore: snap.hasMore,
         transcriptLoadingMore: false
@@ -209,16 +279,36 @@ export const useSessionsStore = defineStore("sessions", () => {
       return;
     }
 
-    if (event.type === "transcript_item") {
-      const already = cur.transcript.some((t) => t.eventId === event.eventId);
-      if (!already) {
-        const transcript = [...cur.transcript, { eventId: event.eventId, index: event.index, item: event.item }];
-        const isAssistantMessage = event.item.kind === "assistant_message";
+    if (event.type === "transcript_item_added") {
+      const already = cur.transcript.some((entry) => entry.id === event.item.id);
+      if (already) {
+        return;
+      }
+      const transcript = [
+        ...cur.transcript,
+        {
+          id: event.item.id,
+          eventId: event.item.id,
+          index: event.index,
+          item: event.item
+        }
+      ];
+      const isAssistantMessage = event.item.kind === "assistant_message";
+      active.value = {
+        ...cur,
+        transcript,
+        transcriptCount: event.totalCount,
+        ...(isAssistantMessage ? { streamingText: null } : {})
+      };
+      return;
+    }
+
+    if (event.type === "transcript_item_patched") {
+      const transcript = applyTranscriptPatch(cur.transcript, event.itemId, event.patch);
+      if (transcript !== cur.transcript) {
         active.value = {
           ...cur,
-          transcript,
-          transcriptCount: event.totalCount,
-          ...(isAssistantMessage ? { streamingText: null } : {})
+          transcript
         };
       }
     }
@@ -396,7 +486,10 @@ export const useSessionsStore = defineStore("sessions", () => {
       if (!current || current.id !== sessionId) return;
       active.value = {
         ...current,
-        transcript: [...snap.items, ...current.transcript],
+        transcript: dedupeTranscriptEntries([
+          ...snap.items.map((item) => toTranscriptEntry(item)),
+          ...current.transcript
+        ]),
         transcriptHasMore: snap.hasMore,
         transcriptLoadingMore: false
       };
@@ -414,6 +507,24 @@ export const useSessionsStore = defineStore("sessions", () => {
     active.value = { ...cur, composerUserId: userId };
   }
 
+  async function invalidateTranscriptItem(itemId: string): Promise<void> {
+    const cur = active.value;
+    if (!cur) {
+      return;
+    }
+    const result = await sessionsApi.invalidateTranscriptItem(cur.id, itemId);
+    applyLocalTranscriptInvalidation(result.invalidatedItemIds, "manual_single");
+  }
+
+  async function invalidateTranscriptGroup(groupId: string): Promise<void> {
+    const cur = active.value;
+    if (!cur) {
+      return;
+    }
+    const result = await sessionsApi.invalidateTranscriptGroup(cur.id, groupId);
+    applyLocalTranscriptInvalidation(result.invalidatedItemIds, "manual_group");
+  }
+
   return {
     list,
     modes,
@@ -429,6 +540,8 @@ export const useSessionsStore = defineStore("sessions", () => {
     sendMessage,
     reloadTranscript,
     loadMoreTranscript,
-    setComposerUserId
+    setComposerUserId,
+    invalidateTranscriptItem,
+    invalidateTranscriptGroup
   };
 });

@@ -6,6 +6,8 @@ import {
   parseSendTextBody,
   parseOrReply,
   parseSessionParams,
+  parseTranscriptGroupParams,
+  parseTranscriptItemParams,
   parseWebSessionStreamQuery,
   parseWebTurnBody,
   parseWebTurnStreamQuery,
@@ -94,6 +96,26 @@ export function registerMessagingRoutes(app: FastifyInstance, services: Internal
     if (!parseOrReply(reply, query)) return reply;
     try {
       return messaging.fetchTranscript(params, query);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.delete("/api/sessions/:sessionId/transcript/items/:itemId", async (request, reply) => {
+    const params = parseTranscriptItemParams(request.params);
+    if (!parseOrReply(reply, params)) return reply;
+    try {
+      return await messaging.invalidateTranscriptItem(params);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.delete("/api/sessions/:sessionId/transcript/groups/:groupId", async (request, reply) => {
+    const params = parseTranscriptGroupParams(request.params);
+    if (!parseOrReply(reply, params)) return reply;
+    try {
+      return await messaging.invalidateTranscriptGroup(params);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
     }

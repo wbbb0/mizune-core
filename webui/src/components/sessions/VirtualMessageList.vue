@@ -1,4 +1,4 @@
-<script setup lang="ts" generic="TItem extends { eventId: string }">
+<script setup lang="ts" generic="TItem extends { id: string }">
 import { ref, watch, nextTick } from "vue";
 import { VList } from "virtua/vue";
 import { Loader } from "lucide-vue-next";
@@ -17,7 +17,7 @@ const listRef = ref<InstanceType<typeof VList>>();
 const lastScrollOffset = ref(0);
 
 function getKey(item: TItem): string {
-  return item.eventId;
+  return item.id;
 }
 
 function onScroll(offset: number) {
@@ -42,7 +42,7 @@ watch(
 
 // SSE 新条目插入顶部时，若用户在顶部附近则跟随
 watch(
-  () => props.items[0]?.eventId,
+  () => props.items[0]?.id,
   (newId, oldId) => {
     if (!oldId || !newId || newId === oldId) return;
     if (lastScrollOffset.value < 150) {
