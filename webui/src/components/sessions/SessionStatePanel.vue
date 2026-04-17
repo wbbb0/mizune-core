@@ -111,7 +111,7 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
         <section class="rounded-lg border border-border-default bg-surface-panel p-4">
           <div class="text-ui font-medium text-text-secondary">历史摘要</div>
           <div v-if="loading && !detail" class="mt-3 text-small text-text-subtle">加载中…</div>
-          <pre v-else class="mt-3 overflow-x-auto rounded-lg border border-border-default bg-surface-sidebar p-3 text-small leading-6 whitespace-pre-wrap text-text-muted">{{ detail?.session.historySummary || "暂无摘要" }}</pre>
+          <pre v-else class="mt-3 overflow-auto rounded-lg border border-border-default bg-surface-sidebar p-3 text-small leading-6 whitespace-pre-wrap text-text-muted">{{ detail?.session.historySummary || "暂无摘要" }}</pre>
         </section>
 
         <section class="rounded-lg border border-border-default bg-surface-panel p-4">
@@ -119,11 +119,11 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
           <div class="mt-3 grid gap-4 lg:grid-cols-2">
             <div class="rounded-lg border border-border-default bg-surface-sidebar p-3">
               <div class="text-small text-text-subtle">Debug Control</div>
-              <pre class="mt-2 overflow-x-auto text-small leading-6 whitespace-pre-wrap text-text-muted">{{ formatJson(detail?.session.debugControl ?? { enabled: false, oncePending: false }) }}</pre>
+              <pre class="mt-2 overflow-auto text-small leading-6 whitespace-pre-wrap text-text-muted">{{ formatJson(detail?.session.debugControl ?? { enabled: false, oncePending: false }) }}</pre>
             </div>
             <div class="rounded-lg border border-border-default bg-surface-sidebar p-3">
               <div class="text-small text-text-subtle">Last LLM Usage</div>
-              <pre class="mt-2 overflow-x-auto text-small leading-6 whitespace-pre-wrap text-text-muted">{{ formatJson(detail?.session.lastLlmUsage ?? null) }}</pre>
+              <pre class="mt-2 overflow-auto text-small leading-6 whitespace-pre-wrap text-text-muted">{{ formatJson(detail?.session.lastLlmUsage ?? null) }}</pre>
             </div>
           </div>
         </section>

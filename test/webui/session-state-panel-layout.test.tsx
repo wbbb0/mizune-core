@@ -1,0 +1,23 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+async function runCase(name: string, fn: () => Promise<void>) {
+  process.stdout.write(`- ${name} ... `);
+  await fn();
+  process.stdout.write("ok\n");
+}
+
+async function main() {
+  await runCase("session state panel keeps code blocks scrollable", async () => {
+    const source = await readFile(
+      new URL("../../webui/src/components/sessions/SessionStatePanel.vue", import.meta.url),
+      "utf8"
+    );
+
+    assert.match(source, /<pre[^>]*overflow-auto[^>]*>{{ detail\?\.session\.historySummary \|\| "暂无摘要" }}/);
+    assert.match(source, /<pre[^>]*overflow-auto[^>]*>{{ formatJson\(detail\?\.session\.debugControl/);
+    assert.match(source, /<pre[^>]*overflow-auto[^>]*>{{ formatJson\(detail\?\.session\.lastLlmUsage/);
+  });
+}
+
+void main();
