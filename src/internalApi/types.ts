@@ -81,7 +81,7 @@ export interface InternalApiOperationsDeps {
 export interface InternalApiMessagingDeps {
   config: AppConfig;
   oneBotClient: OneBotClient;
-  sessionManager: SessionWebStreamAccess & Pick<SessionAdminMutationAccess, "invalidateTranscriptItem" | "invalidateTranscriptGroup">;
+  sessionManager: SessionWebStreamAccess & Pick<SessionAdminMutationAccess, "excludeTranscriptItem" | "excludeTranscriptGroup">;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {

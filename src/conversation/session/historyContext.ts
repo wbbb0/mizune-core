@@ -317,6 +317,9 @@ export async function extractWindowUsers(
   }
 
   for (const message of recentMessages) {
+    if (message.runtimeExcluded === true) {
+      continue;
+    }
     if (message.kind === "user_message" || message.kind === "assistant_message") {
       participants.set(message.userId, message.senderName || message.userId);
     }

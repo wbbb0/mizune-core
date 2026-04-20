@@ -51,9 +51,9 @@ export type WebSessionStreamEvent =
       itemId: string;
       patch: {
         reasoningContent?: string;
-        invalidated?: boolean;
-        invalidatedAt?: number;
-        invalidationReason?: "manual_single" | "manual_group" | "interrupt_cleanup" | "system";
+        runtimeExcluded?: boolean;
+        runtimeExcludedAt?: number;
+        runtimeExclusionReason?: "manual_single" | "manual_group" | "interrupt_cleanup" | "system";
       };
       timestampMs: number;
     }

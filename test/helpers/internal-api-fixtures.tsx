@@ -356,30 +356,30 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         notifySessionChanged(sessionId);
         return true;
       },
-      invalidateTranscriptItem(sessionId: string, itemId: string) {
+      excludeTranscriptItem(sessionId: string, itemId: string) {
         const session = state.sessions.find((item) => item.id === sessionId);
         if (!session) {
           return [];
         }
-        const affected = session.internalTranscript.filter((item) => item.id === itemId && item.invalidated !== true);
+        const affected = session.internalTranscript.filter((item) => item.id === itemId && item.runtimeExcluded !== true);
         for (const item of affected) {
-          item.invalidated = true;
-          item.invalidatedAt = Date.now();
-          item.invalidationReason = "manual_single";
+          item.runtimeExcluded = true;
+          item.runtimeExcludedAt = Date.now();
+          item.runtimeExclusionReason = "manual_single";
         }
         notifySessionChanged(sessionId);
         return affected;
       },
-      invalidateTranscriptGroup(sessionId: string, groupId: string) {
+      excludeTranscriptGroup(sessionId: string, groupId: string) {
         const session = state.sessions.find((item) => item.id === sessionId);
         if (!session) {
           return [];
         }
-        const affected = session.internalTranscript.filter((item) => item.groupId === groupId && item.invalidated !== true);
+        const affected = session.internalTranscript.filter((item) => item.groupId === groupId && item.runtimeExcluded !== true);
         for (const item of affected) {
-          item.invalidated = true;
-          item.invalidatedAt = Date.now();
-          item.invalidationReason = "manual_group";
+          item.runtimeExcluded = true;
+          item.runtimeExcludedAt = Date.now();
+          item.runtimeExclusionReason = "manual_group";
         }
         notifySessionChanged(sessionId);
         return affected;

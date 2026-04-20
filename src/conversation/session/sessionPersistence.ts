@@ -8,9 +8,9 @@ import { getDefaultSessionModeId } from "#modes/registry.ts";
 const transcriptMetaShape = {
   id: z.string().min(1).optional(),
   groupId: z.string().min(1).optional(),
-  invalidated: z.boolean().optional(),
-  invalidatedAt: z.number().int().nonnegative().optional(),
-  invalidationReason: z.enum(["manual_single", "manual_group", "interrupt_cleanup", "system"]).optional(),
+  runtimeExcluded: z.boolean().optional(),
+  runtimeExcludedAt: z.number().int().nonnegative().optional(),
+  runtimeExclusionReason: z.enum(["manual_single", "manual_group", "interrupt_cleanup", "system"]).optional(),
   deliveryRef: z.object({
     platform: z.literal("onebot"),
     messageId: z.number().int().nonnegative()

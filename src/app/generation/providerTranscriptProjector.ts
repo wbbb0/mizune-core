@@ -2,6 +2,7 @@ import type { LlmMessage } from "#llm/llmClient.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { InternalAssistantToolCallItem } from "#conversation/session/sessionTypes.ts";
 import { projectTranscriptMessageItemToHistoryMessage } from "#conversation/session/historyContext.ts";
+import { isTranscriptRuntimeIncluded } from "#conversation/session/sessionTranscript.ts";
 
 export interface ProviderTranscriptProjection {
   replayMessages: LlmMessage[];
@@ -33,6 +34,7 @@ function createSummaryOnlyProjector(providerName: string): ProviderTranscriptPro
     providerName,
     project(input) {
       const lines = input.transcript
+        .filter(isTranscriptRuntimeIncluded)
         .slice(-12)
         .map(summarizeTranscriptItem)
         .filter((line): line is string => Boolean(line));
@@ -56,6 +58,9 @@ function createOpenAiStyleProjector(providerName: string): ProviderTranscriptPro
       const degradedLines: string[] = [];
 
       for (const item of input.transcript) {
+        if (!isTranscriptRuntimeIncluded(item)) {
+          continue;
+        }
         if (item.kind === "assistant_tool_call") {
           replayMessages.push({
             role: "assistant",
@@ -129,6 +134,9 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
       };
 
       for (const item of input.transcript) {
+        if (!isTranscriptRuntimeIncluded(item)) {
+          continue;
+        }
         if (item.kind === "user_message" || item.kind === "assistant_message") {
           clearActiveReplayableToolCalls();
           const historyMessage = projectTranscriptMessageItemToHistoryMessage(item);

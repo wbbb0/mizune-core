@@ -21,7 +21,7 @@ async function main() {
     const transcript: InternalTranscriptItem[] = [{
       id: "item-1",
       groupId: "group-1",
-      invalidated: false,
+      runtimeExcluded: false,
       kind: "user_message",
       role: "user",
       llmVisible: true,
@@ -167,7 +167,7 @@ async function main() {
     sessionState.internalTranscript.push({
       id: "item-1",
       groupId: "group-1",
-      invalidated: false,
+      runtimeExcluded: false,
       kind: "assistant_message",
       role: "assistant",
       llmVisible: true,
@@ -191,7 +191,7 @@ async function main() {
     assert.deepEqual(transcriptEvent?.item, {
       id: "item-1",
       groupId: "group-1",
-      invalidated: false,
+      runtimeExcluded: false,
       kind: "assistant_message",
       role: "assistant",
       llmVisible: true,
@@ -218,7 +218,7 @@ async function main() {
       internalTranscript: [{
         id: "item-1",
         groupId: "group-1",
-        invalidated: false,
+        runtimeExcluded: false,
         kind: "assistant_message" as const,
         role: "assistant" as const,
         llmVisible: true as const,

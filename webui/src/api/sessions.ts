@@ -91,11 +91,11 @@ export const sessionsApi = {
     return api.get(`/api/sessions/${encodeURIComponent(sessionId)}/transcript${query ? `?${query}` : ""}`);
   },
 
-  invalidateTranscriptItem(sessionId: string, itemId: string): Promise<{ ok: boolean; invalidatedItemIds: string[] }> {
+  excludeTranscriptItem(sessionId: string, itemId: string): Promise<{ ok: boolean; excludedItemIds: string[] }> {
     return api.delete(`/api/sessions/${encodeURIComponent(sessionId)}/transcript/items/${encodeURIComponent(itemId)}`);
   },
 
-  invalidateTranscriptGroup(sessionId: string, groupId: string): Promise<{ ok: boolean; invalidatedItemIds: string[] }> {
+  excludeTranscriptGroup(sessionId: string, groupId: string): Promise<{ ok: boolean; excludedItemIds: string[] }> {
     return api.delete(`/api/sessions/${encodeURIComponent(sessionId)}/transcript/groups/${encodeURIComponent(groupId)}`);
   }
 };

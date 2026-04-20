@@ -23,7 +23,7 @@ export interface StoredToolCall {
   };
 }
 
-export type TranscriptItemInvalidationReason =
+export type TranscriptItemRuntimeExclusionReason =
   | "manual_single"
   | "manual_group"
   | "interrupt_cleanup"
@@ -32,9 +32,9 @@ export type TranscriptItemInvalidationReason =
 export interface TranscriptItemMeta {
   id: string;
   groupId: string;
-  invalidated: boolean;
-  invalidatedAt?: number;
-  invalidationReason?: TranscriptItemInvalidationReason;
+  runtimeExcluded: boolean;
+  runtimeExcludedAt?: number;
+  runtimeExclusionReason?: TranscriptItemRuntimeExclusionReason;
   deliveryRef?: {
     platform: "onebot";
     messageId: number;
@@ -202,9 +202,9 @@ export interface InternalTriggerEventItem extends TranscriptItemMeta {
 
 export interface TranscriptItemPatch {
   reasoningContent?: string;
-  invalidated?: boolean;
-  invalidatedAt?: number;
-  invalidationReason?: TranscriptItemInvalidationReason;
+  runtimeExcluded?: boolean;
+  runtimeExcludedAt?: number;
+  runtimeExclusionReason?: TranscriptItemRuntimeExclusionReason;
 }
 
 export type TranscriptItem =

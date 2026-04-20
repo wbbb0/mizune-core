@@ -56,8 +56,8 @@ export interface AdminMessagingService {
     totalCount: number;
     hasMore: boolean;
   };
-  invalidateTranscriptItem(params: { sessionId: string; itemId: string }): Promise<{ ok: true; invalidatedItemIds: string[] }>;
-  invalidateTranscriptGroup(params: { sessionId: string; groupId: string }): Promise<{ ok: true; invalidatedItemIds: string[] }>;
+  excludeTranscriptItem(params: { sessionId: string; itemId: string }): Promise<{ ok: true; excludedItemIds: string[] }>;
+  excludeTranscriptGroup(params: { sessionId: string; groupId: string }): Promise<{ ok: true; excludedItemIds: string[] }>;
 }
 
 export function createAdminMessagingService(input: {
@@ -68,7 +68,7 @@ export function createAdminMessagingService(input: {
   };
   oneBotClient: Pick<OneBotClient, "sendText" | "deleteMessage">;
   chatFileStore: Pick<ChatFileStore, "getMany">;
-  sessionManager: SessionWebStreamAccess & Pick<SessionAdminMutationAccess, "invalidateTranscriptItem" | "invalidateTranscriptGroup">;
+  sessionManager: SessionWebStreamAccess & Pick<SessionAdminMutationAccess, "excludeTranscriptItem" | "excludeTranscriptGroup">;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {
@@ -147,21 +147,21 @@ export function createAdminMessagingService(input: {
       return { items, totalCount, hasMore: startIndex > 0 };
     },
 
-    async invalidateTranscriptItem(params) {
-      const affected = input.sessionManager.invalidateTranscriptItem(params.sessionId, params.itemId, "manual_single");
+    async excludeTranscriptItem(params) {
+      const affected = input.sessionManager.excludeTranscriptItem(params.sessionId, params.itemId, "manual_single");
       await performTranscriptDeletionSideEffects(input.oneBotClient, affected);
       return {
         ok: true,
-        invalidatedItemIds: affected.map((item) => item.id ?? "").filter((value) => value.length > 0)
+        excludedItemIds: affected.map((item) => item.id ?? "").filter((value) => value.length > 0)
       };
     },
 
-    async invalidateTranscriptGroup(params) {
-      const affected = input.sessionManager.invalidateTranscriptGroup(params.sessionId, params.groupId, "manual_group");
+    async excludeTranscriptGroup(params) {
+      const affected = input.sessionManager.excludeTranscriptGroup(params.sessionId, params.groupId, "manual_group");
       await performTranscriptDeletionSideEffects(input.oneBotClient, affected);
       return {
         ok: true,
-        invalidatedItemIds: affected.map((item) => item.id ?? "").filter((value) => value.length > 0)
+        excludedItemIds: affected.map((item) => item.id ?? "").filter((value) => value.length > 0)
       };
     },
 

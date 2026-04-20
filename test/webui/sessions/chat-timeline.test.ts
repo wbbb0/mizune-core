@@ -16,7 +16,7 @@ function createUserMessageEntry(): ChatTimelineTranscriptEntry {
     item: {
       id: "item-user-1",
       groupId: "group-user-1",
-      invalidated: false,
+      runtimeExcluded: false,
       kind: "user_message",
       role: "user",
       llmVisible: true,
@@ -87,7 +87,7 @@ async function main() {
       item: {
         id: "item-media-1",
         groupId: "group-media-1",
-        invalidated: false,
+        runtimeExcluded: false,
         kind: "outbound_media_message",
         llmVisible: false,
         role: "assistant",

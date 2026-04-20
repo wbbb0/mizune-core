@@ -113,7 +113,7 @@ export const useSessionsStore = defineStore("sessions", () => {
       return;
     }
     const touchedIds = new Set(itemIds);
-    const invalidatedAt = Date.now();
+    const runtimeExcludedAt = Date.now();
     active.value = {
       ...active.value,
       transcript: active.value.transcript.map((entry) => (
@@ -122,9 +122,9 @@ export const useSessionsStore = defineStore("sessions", () => {
               ...entry,
               item: {
                 ...entry.item,
-                invalidated: true,
-                invalidatedAt: entry.item.invalidatedAt ?? invalidatedAt,
-                invalidationReason: entry.item.invalidationReason ?? reason
+                runtimeExcluded: true,
+                runtimeExcludedAt: entry.item.runtimeExcludedAt ?? runtimeExcludedAt,
+                runtimeExclusionReason: entry.item.runtimeExclusionReason ?? reason
               }
             }
           : entry
@@ -509,22 +509,22 @@ export const useSessionsStore = defineStore("sessions", () => {
     active.value = { ...cur, composerUserId: userId };
   }
 
-  async function invalidateTranscriptItem(itemId: string): Promise<void> {
+  async function excludeTranscriptItem(itemId: string): Promise<void> {
     const cur = active.value;
     if (!cur) {
       return;
     }
-    const result = await sessionsApi.invalidateTranscriptItem(cur.id, itemId);
-    applyLocalTranscriptInvalidation(result.invalidatedItemIds, "manual_single");
+    const result = await sessionsApi.excludeTranscriptItem(cur.id, itemId);
+    applyLocalTranscriptInvalidation(result.excludedItemIds, "manual_single");
   }
 
-  async function invalidateTranscriptGroup(groupId: string): Promise<void> {
+  async function excludeTranscriptGroup(groupId: string): Promise<void> {
     const cur = active.value;
     if (!cur) {
       return;
     }
-    const result = await sessionsApi.invalidateTranscriptGroup(cur.id, groupId);
-    applyLocalTranscriptInvalidation(result.invalidatedItemIds, "manual_group");
+    const result = await sessionsApi.excludeTranscriptGroup(cur.id, groupId);
+    applyLocalTranscriptInvalidation(result.excludedItemIds, "manual_group");
   }
 
   return {
@@ -543,7 +543,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     reloadTranscript,
     loadMoreTranscript,
     setComposerUserId,
-    invalidateTranscriptItem,
-    invalidateTranscriptGroup
+    excludeTranscriptItem,
+    excludeTranscriptGroup
   };
 });

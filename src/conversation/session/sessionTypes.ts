@@ -95,7 +95,7 @@ export interface SessionDebugMarker {
   note?: string | undefined;
 }
 
-export type TranscriptItemInvalidationReason = "manual_single" | "manual_group" | "interrupt_cleanup" | "system";
+export type TranscriptItemRuntimeExclusionReason = "manual_single" | "manual_group" | "interrupt_cleanup" | "system";
 
 export interface TranscriptItemDeliveryRef {
   platform: "onebot";
@@ -105,9 +105,9 @@ export interface TranscriptItemDeliveryRef {
 export interface TranscriptItemMeta {
   id?: string | undefined;
   groupId?: string | undefined;
-  invalidated?: boolean | undefined;
-  invalidatedAt?: number | undefined;
-  invalidationReason?: TranscriptItemInvalidationReason | undefined;
+  runtimeExcluded?: boolean | undefined;
+  runtimeExcludedAt?: number | undefined;
+  runtimeExclusionReason?: TranscriptItemRuntimeExclusionReason | undefined;
   deliveryRef?: TranscriptItemDeliveryRef | undefined;
 }
 

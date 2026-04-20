@@ -26,18 +26,18 @@ async function main() {
     assert.doesNotMatch(source, /longPressTimer/);
   });
 
-  await runCase("transcript items use explicit action button and keep disclosures interactive when invalidated", async () => {
+  await runCase("transcript items use explicit action button and keep disclosures interactive when runtimeExcluded", async () => {
     const source = await readFile(new URL("../../../webui/src/components/sessions/TranscriptItem.vue", import.meta.url), "utf8");
 
     assert.match(source, /MoreHorizontal/);
     assert.match(source, /@click="openActions"/);
     assert.doesNotMatch(source, /@contextmenu=/);
     assert.doesNotMatch(source, /@touchstart/);
-    assert.doesNotMatch(source, /function toggleExpanded\(\)\s*{\s*if \(invalidated\.value\) \{/);
-    assert.doesNotMatch(source, /function toggleReasoningExpanded\(\)\s*{\s*if \(invalidated\.value\) \{/);
-    assert.doesNotMatch(source, /function togglePlannerExpanded\(\)\s*{\s*if \(invalidated\.value\) \{/);
-    assert.doesNotMatch(source, /TranscriptTextBlock v-if="invalidated && item\.reasoningContent"/);
-    assert.doesNotMatch(source, /TranscriptCard v-if="invalidated" title="规划输出"/);
+    assert.doesNotMatch(source, /function toggleExpanded\(\)\s*{\s*if \(runtimeExcluded\.value\) \{/);
+    assert.doesNotMatch(source, /function toggleReasoningExpanded\(\)\s*{\s*if \(runtimeExcluded\.value\) \{/);
+    assert.doesNotMatch(source, /function togglePlannerExpanded\(\)\s*{\s*if \(runtimeExcluded\.value\) \{/);
+    assert.doesNotMatch(source, /TranscriptTextBlock v-if="runtimeExcluded && item\.reasoningContent"/);
+    assert.doesNotMatch(source, /TranscriptCard v-if="runtimeExcluded" title="规划输出"/);
   });
 }
 

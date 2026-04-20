@@ -11,12 +11,16 @@ import type {
   SessionState
 } from "./sessionTypes.ts";
 
+export function isTranscriptRuntimeIncluded(item: InternalTranscriptItem): boolean {
+  return item.runtimeExcluded !== true;
+}
+
 export function isTranscriptLlmVisible(item: InternalTranscriptItem): boolean {
-  return item.llmVisible === true && item.invalidated !== true;
+  return item.llmVisible === true && isTranscriptRuntimeIncluded(item);
 }
 
 export function isTranscriptVisibleChatMessage(item: InternalTranscriptItem): boolean {
-  return item.invalidated !== true && (item.kind === "user_message" || item.kind === "assistant_message");
+  return isTranscriptRuntimeIncluded(item) && (item.kind === "user_message" || item.kind === "assistant_message");
 }
 
 function isTranscriptHistoryMessage(
@@ -30,6 +34,7 @@ export function projectLlmVisibleHistoryFromTranscript(
   config: AppConfig
 ): SessionHistoryMessage[] {
   const projected = transcript
+    .filter(isTranscriptLlmVisible)
     .filter(isTranscriptHistoryMessage)
     .map((item) => projectTranscriptMessageItemToHistoryMessage(item));
   return normalizeProjectedHistoryMessages(projected, config);
@@ -41,7 +46,7 @@ export function projectVisibleMessagesFromTranscript(transcript: InternalTranscr
   timestampMs: number;
 }> {
   return transcript
-    .filter((item) => item.invalidated !== true)
+    .filter(isTranscriptRuntimeIncluded)
     .filter(isTranscriptHistoryMessage)
     .map((item) => projectTranscriptMessageItemToHistoryMessage(item));
 }
@@ -71,7 +76,7 @@ export function projectChatTimelineFromTranscript(transcript: InternalTranscript
   const projected: ProjectedChatTimelineItem[] = [];
   for (const item of transcript) {
     if (item.kind === "user_message" || item.kind === "assistant_message") {
-      if (item.invalidated === true) {
+      if (item.runtimeExcluded === true) {
         continue;
       }
       projected.push({
@@ -84,7 +89,7 @@ export function projectChatTimelineFromTranscript(transcript: InternalTranscript
     }
 
     if (item.kind === "outbound_media_message") {
-      if (item.invalidated === true) {
+      if (item.runtimeExcluded === true) {
         continue;
       }
       projected.push({

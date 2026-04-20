@@ -20,7 +20,7 @@ import { handleGenerationTurnPlanner } from "./generationTurnPlanner.ts";
 import { supplementPlannedToolsets } from "./toolsetSupplement.ts";
 import { getProviderTranscriptProjector } from "./providerTranscriptProjector.ts";
 import { createInternalTriggerEvent } from "#conversation/session/internalTranscriptEvents.ts";
-import { projectLlmVisibleHistoryFromTranscript } from "#conversation/session/sessionTranscript.ts";
+import { createSessionTranscriptStore } from "#conversation/session/sessionTranscriptStore.ts";
 import { requireSessionModeDefinition } from "#modes/registry.ts";
 import { resolveSessionModeSetupContext } from "./generationSetupContext.ts";
 
@@ -185,7 +185,8 @@ export function createGenerationSessionOrchestrator(
         { chatType: last.chatType, relationship }
       );
       const setupMode = (mode.setupPhase?.needsSetup(setupCtx)) ?? false;
-      let visibleHistory = projectLlmVisibleHistoryFromTranscript(refreshedSession.internalTranscript, config);
+      let transcriptStore = createSessionTranscriptStore(refreshedSession, config);
+      let visibleHistory = transcriptStore.projectRuntimeHistory();
       let historyForPrompt = visibleHistory.slice(0, Math.max(0, visibleHistory.length - messages.length));
       let resolvedModelRef = getDefaultMainModelRefs(config);
       let plannerToolsets = listTurnToolsets({
@@ -256,7 +257,8 @@ export function createGenerationSessionOrchestrator(
         plannedToolsetIds = gateResult.toolsetIds.filter((id) => plannerToolsets.some((item) => item.id === id));
         plannerDecision = gateResult.action === "continue" ? gateResult.plannerDecision : undefined;
         refreshedSession = sessionManager.getSession(sessionId);
-        visibleHistory = projectLlmVisibleHistoryFromTranscript(refreshedSession.internalTranscript, config);
+        transcriptStore = createSessionTranscriptStore(refreshedSession, config);
+        visibleHistory = transcriptStore.projectRuntimeHistory();
         historyForPrompt = visibleHistory.slice(0, Math.max(0, visibleHistory.length - messages.length));
         if (plannerToolsets.length === 0) {
           logger.warn({
@@ -288,7 +290,7 @@ export function createGenerationSessionOrchestrator(
       }
       const participantProfiles = assistantMode
         ? []
-        : await extractWindowUsers(userStore, refreshedSession.internalTranscript, messages.map((message) => ({
+        : await extractWindowUsers(userStore, transcriptStore.runtimeItems(), messages.map((message) => ({
             userId: message.userId,
             senderName: message.senderName
           })));
@@ -303,7 +305,7 @@ export function createGenerationSessionOrchestrator(
       const recentToolEvents = refreshedSession.recentToolEvents;
       const debugMarkers = refreshedSession.debugMarkers;
       const projectedTranscript = getProviderTranscriptProjector(providerName).project({
-        transcript: refreshedSession.internalTranscript
+        transcript: transcriptStore.runtimeItems()
       });
       const historyForPromptMessages = projectedTranscript.replayCoversVisibleHistory ? [] : historyForPrompt;
       const lateSystemMessages = [
@@ -439,12 +441,13 @@ export function createGenerationSessionOrchestrator(
       );
       await historyCompressor.maybeCompress(sessionId);
       const providerName = getPrimaryModelProfile(config, scheduledModelRef)?.provider ?? "unknown";
-      const projectedHistory = projectLlmVisibleHistoryFromTranscript(session.internalTranscript, config);
+      const transcriptStore = createSessionTranscriptStore(session, config);
+      const projectedHistory = transcriptStore.projectRuntimeHistory();
       const participantProfiles = assistantMode
         ? []
-        : await extractWindowUsers(userStore, session.internalTranscript, []);
+        : await extractWindowUsers(userStore, transcriptStore.runtimeItems(), []);
       const projectedTranscript = getProviderTranscriptProjector(providerName).project({
-        transcript: session.internalTranscript
+        transcript: transcriptStore.runtimeItems()
       });
       const historyForPromptMessages = projectedTranscript.replayCoversVisibleHistory ? [] : projectedHistory;
       const lateSystemMessages = [

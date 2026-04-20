@@ -12,7 +12,7 @@ import type {
   SessionToolEvent,
   SessionUsageSnapshot,
   TranscriptItemDeliveryRef,
-  TranscriptItemInvalidationReason
+  TranscriptItemRuntimeExclusionReason
 } from "./sessionTypes.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 
@@ -190,16 +190,16 @@ export interface SessionAdminMutationAccess {
   setModeId(sessionId: string, modeId: string, options?: { appendSwitchMarker?: boolean }): boolean;
   getPersistedSession(sessionId: string): PersistedSessionState;
   deleteSession(sessionId: string): boolean;
-  invalidateTranscriptItem(
+  excludeTranscriptItem(
     sessionId: string,
     itemId: string,
-    reason: TranscriptItemInvalidationReason,
+    reason: TranscriptItemRuntimeExclusionReason,
     timestampMs?: number
   ): InternalTranscriptItem[];
-  invalidateTranscriptGroup(
+  excludeTranscriptGroup(
     sessionId: string,
     groupId: string,
-    reason: TranscriptItemInvalidationReason,
+    reason: TranscriptItemRuntimeExclusionReason,
     timestampMs?: number
   ): InternalTranscriptItem[];
 }

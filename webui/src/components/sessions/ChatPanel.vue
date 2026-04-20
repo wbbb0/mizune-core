@@ -109,7 +109,7 @@ function buildTranscriptActionTarget(entry: TranscriptEntry): TranscriptActionTa
     groupId: entry.item.groupId,
     title: describeTranscriptItem(entry.item),
     detail: `#${entry.index}`,
-    alreadyInvalidated: entry.item.invalidated === true
+    alreadyInvalidated: entry.item.runtimeExcluded === true
   };
 }
 
@@ -156,7 +156,7 @@ async function onInvalidateSingle() {
   }
   transcriptActionsBusy.value = true;
   try {
-    await store.invalidateTranscriptItem(target.itemId);
+    await store.excludeTranscriptItem(target.itemId);
     transcriptActionsTarget.value = null;
   } catch (error) {
     const message = error instanceof ApiError || error instanceof Error
@@ -175,7 +175,7 @@ async function onInvalidateGroup() {
   }
   transcriptActionsBusy.value = true;
   try {
-    await store.invalidateTranscriptGroup(target.groupId);
+    await store.excludeTranscriptGroup(target.groupId);
     transcriptActionsTarget.value = null;
   } catch (error) {
     const message = error instanceof ApiError || error instanceof Error

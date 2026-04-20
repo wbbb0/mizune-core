@@ -24,6 +24,7 @@ import {
   normalizeTranscriptItem,
   resolveTranscriptOutputGroupId
 } from "./transcriptMetadata.ts";
+import { createSessionTranscriptStore } from "./sessionTranscriptStore.ts";
 import type {
   InternalTranscriptItem,
   SessionMessage,
@@ -31,13 +32,18 @@ import type {
   SessionState,
   SessionToolEvent,
   SessionUsageSnapshot,
-  TranscriptItemDeliveryRef
+  TranscriptItemDeliveryRef,
+  TranscriptItemRuntimeExclusionReason
 } from "./sessionTypes.ts";
 
 // Owns transcript/history bookkeeping and the projections derived from it.
 // This keeps lifecycle control separate from the session's conversational record.
 export class SessionHistoryService {
   constructor(private readonly config: AppConfig) { }
+
+  private getTranscriptStore(session: SessionState) {
+    return createSessionTranscriptStore(session, this.config);
+  }
 
   private appendNormalizedTranscript(session: SessionState, item: InternalTranscriptItem, groupId: string): void {
     appendInternalTranscriptState(session, normalizeTranscriptItem(item, groupId));
@@ -167,7 +173,7 @@ export class SessionHistoryService {
     retainedMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
     transcriptStartIndexToKeep: number;
   } | null {
-    return getHistoryForCompressionSnapshot(session, this.config, triggerMessageCount, retainMessageCount);
+    return this.getTranscriptStore(session).projectCompressionSnapshot(triggerMessageCount, retainMessageCount);
   }
 
   getHistoryForCompressionByTokens(
@@ -182,9 +188,7 @@ export class SessionHistoryService {
     transcriptStartIndexToKeep: number;
     estimatedTotalTokens: number;
   } | null {
-    return getHistoryForCompressionSnapshotByTokens(
-      session,
-      this.config,
+    return this.getTranscriptStore(session).projectCompressionSnapshotByTokens(
       triggerTokens,
       retainTokens,
       reportedInputTokens
@@ -221,10 +225,28 @@ export class SessionHistoryService {
   }
 
   getLlmVisibleHistory(session: SessionState): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }> {
-    return projectLlmVisibleHistoryFromTranscript(session.internalTranscript, this.config);
+    return this.getTranscriptStore(session).projectRuntimeHistory();
   }
 
   getVisibleChatMessages(session: SessionState): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }> {
-    return projectVisibleMessagesFromTranscript(session.internalTranscript);
+    return this.getTranscriptStore(session).projectVisibleMessages();
+  }
+
+  excludeTranscriptItem(
+    session: SessionState,
+    itemId: string,
+    reason: TranscriptItemRuntimeExclusionReason,
+    timestampMs = Date.now()
+  ): InternalTranscriptItem[] {
+    return this.getTranscriptStore(session).excludeItem(itemId, reason, timestampMs);
+  }
+
+  excludeTranscriptGroup(
+    session: SessionState,
+    groupId: string,
+    reason: TranscriptItemRuntimeExclusionReason,
+    timestampMs = Date.now()
+  ): InternalTranscriptItem[] {
+    return this.getTranscriptStore(session).excludeGroup(groupId, reason, timestampMs);
   }
 }

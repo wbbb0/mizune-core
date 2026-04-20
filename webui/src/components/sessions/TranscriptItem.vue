@@ -18,7 +18,7 @@ const emit = defineEmits<{
 }>();
 
 const expandStates = inject<Map<string, TranscriptExpandState>>("transcriptExpandStates");
-const invalidated = computed(() => props.item.invalidated === true);
+const runtimeExcluded = computed(() => props.item.runtimeExcluded === true);
 
 function getState(): TranscriptExpandState {
   if (!expandStates) {
@@ -353,7 +353,7 @@ function openActions(): void {
 <template>
   <article
     class="grid grid-cols-[56px_minmax(0,1fr)] gap-2.5 border-b border-border-subtle px-3 py-2.5 max-[720px]:grid-cols-[42px_minmax(0,1fr)] max-[720px]:gap-2"
-    :class="invalidated ? 'opacity-45' : ''"
+    :class="runtimeExcluded ? 'opacity-45' : ''"
   >
     <div class="flex flex-col items-center gap-1.5 pt-0.5">
       <SessionGlyph :glyph="itemGlyph" :tone-class="toneGlyphClass" />

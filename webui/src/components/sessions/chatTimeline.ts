@@ -53,7 +53,7 @@ function toChatTimelineItems(
   entry: ChatTimelineTranscriptEntry,
   activeComposerUserId: string | null
 ): ChatTimelineItem[] {
-  if (entry.item.invalidated) {
+  if (entry.item.runtimeExcluded) {
     return [];
   }
 

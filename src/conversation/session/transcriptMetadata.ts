@@ -2,14 +2,14 @@ import { randomUUID } from "node:crypto";
 import type {
   InternalTranscriptItem,
   SessionState,
-  TranscriptItemInvalidationReason
+  TranscriptItemRuntimeExclusionReason
 } from "./sessionTypes.ts";
 
 export interface TranscriptItemPatch {
   reasoningContent?: string;
-  invalidated?: boolean;
-  invalidatedAt?: number;
-  invalidationReason?: TranscriptItemInvalidationReason;
+  runtimeExcluded?: boolean;
+  runtimeExcludedAt?: number;
+  runtimeExclusionReason?: TranscriptItemRuntimeExclusionReason;
 }
 
 export function createTranscriptItemId(): string {
@@ -57,9 +57,9 @@ export function normalizeTranscriptItem(
     ...item,
     id: item.id ?? createTranscriptItemId(),
     groupId: item.groupId ?? groupId,
-    invalidated: item.invalidated === true,
-    ...(item.invalidatedAt != null ? { invalidatedAt: item.invalidatedAt } : {}),
-    ...(item.invalidationReason ? { invalidationReason: item.invalidationReason } : {}),
+    runtimeExcluded: item.runtimeExcluded === true,
+    ...(item.runtimeExcludedAt != null ? { runtimeExcludedAt: item.runtimeExcludedAt } : {}),
+    ...(item.runtimeExclusionReason ? { runtimeExclusionReason: item.runtimeExclusionReason } : {}),
     ...(item.deliveryRef ? { deliveryRef: item.deliveryRef } : {})
   };
 }
@@ -79,14 +79,14 @@ export function buildTranscriptItemPatch(
   if (previousReasoning !== currentReasoning && typeof currentReasoning === "string") {
     patch.reasoningContent = currentReasoning;
   }
-  if ((previous.invalidated === true) !== (current.invalidated === true)) {
-    patch.invalidated = current.invalidated === true;
+  if ((previous.runtimeExcluded === true) !== (current.runtimeExcluded === true)) {
+    patch.runtimeExcluded = current.runtimeExcluded === true;
   }
-  if (previous.invalidatedAt !== current.invalidatedAt && current.invalidatedAt != null) {
-    patch.invalidatedAt = current.invalidatedAt;
+  if (previous.runtimeExcludedAt !== current.runtimeExcludedAt && current.runtimeExcludedAt != null) {
+    patch.runtimeExcludedAt = current.runtimeExcludedAt;
   }
-  if (previous.invalidationReason !== current.invalidationReason && current.invalidationReason != null) {
-    patch.invalidationReason = current.invalidationReason;
+  if (previous.runtimeExclusionReason !== current.runtimeExclusionReason && current.runtimeExclusionReason != null) {
+    patch.runtimeExclusionReason = current.runtimeExclusionReason;
   }
 
   return Object.keys(patch).length > 0 ? patch : null;

@@ -650,7 +650,7 @@ async function main() {
     deps.__state.sessions[0]!.internalTranscript = [{
       id: "item-1",
       groupId: "group-1",
-      invalidated: false,
+      runtimeExcluded: false,
       kind: "assistant_message",
       role: "assistant",
       llmVisible: true,
@@ -666,7 +666,7 @@ async function main() {
     }, {
       id: "item-2",
       groupId: "group-1",
-      invalidated: false,
+      runtimeExcluded: false,
       kind: "status_message",
       llmVisible: false,
       role: "assistant",
@@ -676,7 +676,7 @@ async function main() {
     }, {
       id: "item-3",
       groupId: "group-2",
-      invalidated: false,
+      runtimeExcluded: false,
       kind: "assistant_message",
       role: "assistant",
       llmVisible: true,
@@ -693,8 +693,8 @@ async function main() {
         url: `/api/sessions/${encodeURIComponent("private:10001")}/transcript/items/item-1`
       });
       assert.equal(singleResponse.statusCode, 200);
-      assert.deepEqual(singleResponse.json().invalidatedItemIds, ["item-1"]);
-      assert.equal(deps.__state.sessions[0]!.internalTranscript[0]!.invalidated, true);
+      assert.deepEqual(singleResponse.json().excludedItemIds, ["item-1"]);
+      assert.equal(deps.__state.sessions[0]!.internalTranscript[0]!.runtimeExcluded, true);
       assert.deepEqual(deps.__state.deletedMessageIds, [41]);
 
       const groupResponse = await app.inject({
@@ -702,9 +702,9 @@ async function main() {
         url: `/api/sessions/${encodeURIComponent("private:10001")}/transcript/groups/group-1`
       });
       assert.equal(groupResponse.statusCode, 200);
-      assert.deepEqual(groupResponse.json().invalidatedItemIds, ["item-2"]);
-      assert.equal(deps.__state.sessions[0]!.internalTranscript[1]!.invalidated, true);
-      assert.equal(deps.__state.sessions[0]!.internalTranscript[2]!.invalidated, false);
+      assert.deepEqual(groupResponse.json().excludedItemIds, ["item-2"]);
+      assert.equal(deps.__state.sessions[0]!.internalTranscript[1]!.runtimeExcluded, true);
+      assert.equal(deps.__state.sessions[0]!.internalTranscript[2]!.runtimeExcluded, false);
     } finally {
       await app.close();
     }

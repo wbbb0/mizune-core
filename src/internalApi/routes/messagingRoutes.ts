@@ -105,7 +105,7 @@ export function registerMessagingRoutes(app: FastifyInstance, services: Internal
     const params = parseTranscriptItemParams(request.params);
     if (!parseOrReply(reply, params)) return reply;
     try {
-      return await messaging.invalidateTranscriptItem(params);
+      return await messaging.excludeTranscriptItem(params);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
     }
@@ -115,7 +115,7 @@ export function registerMessagingRoutes(app: FastifyInstance, services: Internal
     const params = parseTranscriptGroupParams(request.params);
     if (!parseOrReply(reply, params)) return reply;
     try {
-      return await messaging.invalidateTranscriptGroup(params);
+      return await messaging.excludeTranscriptGroup(params);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
     }
