@@ -104,6 +104,7 @@ export interface SessionToolRuntimeAccess {
   getSessionView(sessionId: string): SessionViewSnapshot;
   getLlmVisibleHistory(sessionId: string): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
   getModeId(sessionId: string): string;
+  setTitle(sessionId: string, title: string, titleSource: "default" | "auto" | "manual"): SessionState;
   setModeId(sessionId: string, modeId: string, options?: { appendSwitchMarker?: boolean }): boolean;
   appendAssistantHistory(
     sessionId: string,
@@ -169,6 +170,7 @@ export interface SessionViewSnapshot {
 export interface SessionAdminReadAccess {
   listSessions(): SessionState[];
   getSessionView(sessionId: string): SessionViewSnapshot;
+  getLlmVisibleHistory(sessionId: string): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
   getHistoryRevision(sessionId: string): number;
   getMutationEpoch(sessionId: string): number;
 }
@@ -184,6 +186,8 @@ export interface SessionAdminMutationAccess {
     titleSource?: "default" | "auto" | "manual" | null;
   }): SessionState;
   getSession(sessionId: string): SessionState;
+  setTitle(sessionId: string, title: string, titleSource: "default" | "auto" | "manual"): SessionState;
+  appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void;
   setModeId(sessionId: string, modeId: string, options?: { appendSwitchMarker?: boolean }): boolean;
   getPersistedSession(sessionId: string): PersistedSessionState;
   deleteSession(sessionId: string): boolean;

@@ -119,6 +119,11 @@ function createExecutorHarness(options?: {
           return false;
         }
       } as never,
+      sessionCaptioner: {
+        async generateTitle() {
+          return null;
+        }
+      } as never,
       messageQueue: {
         async enqueueText(params: {
           send: () => Promise<void>;

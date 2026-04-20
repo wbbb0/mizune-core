@@ -132,6 +132,8 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
       return "状态消息";
     case "gate_decision":
       return "Turn Planner 判定";
+    case "title_generation_event":
+      return "标题生成";
     case "system_marker":
       return "系统标记";
     case "fallback_event":

@@ -18,6 +18,7 @@ import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { ChatMessageFileGcService } from "#services/workspace/chatMessageFileGcService.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import type {
   SessionAdminMutationAccess,
   SessionAdminReadAccess,
@@ -100,6 +101,7 @@ export interface InternalApiSessionWriteDeps extends InternalApiSessionReadDeps 
   sessionManager: SessionAdminReadAccess & SessionAdminMutationAccess;
   sessionPersistence: SessionPersistence;
   scenarioHostStateStore: ScenarioHostStateStore;
+  sessionCaptioner: SessionCaptioner;
 }
 
 export interface InternalApiSessionDeleteDeps extends InternalApiSessionReadDeps {
@@ -158,6 +160,7 @@ export interface InternalApiDeps {
   logger: Logger;
   oneBotClient: OneBotClient;
   sessionManager: SessionAdminReadAccess & SessionAdminMutationAccess & SessionStreamAccess;
+  sessionCaptioner: SessionCaptioner;
   personaStore: PersonaStore;
   globalRuleStore: GlobalRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
@@ -214,13 +217,14 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         whitelistStore: deps.whitelistStore,
         userIdentityStore: deps.userIdentityStore,
         sessionManager: deps.sessionManager,
-        sessionPersistence: deps.sessionPersistence,
-        personaStore: deps.personaStore,
-        globalRuleStore: deps.globalRuleStore,
-        scenarioHostStateStore: deps.scenarioHostStateStore,
-        userStore: deps.userStore,
-        chatMessageFileGcService: deps.chatMessageFileGcService
-      },
+      sessionPersistence: deps.sessionPersistence,
+      personaStore: deps.personaStore,
+      globalRuleStore: deps.globalRuleStore,
+      scenarioHostStateStore: deps.scenarioHostStateStore,
+      sessionCaptioner: deps.sessionCaptioner,
+      userStore: deps.userStore,
+      chatMessageFileGcService: deps.chatMessageFileGcService
+    },
       editor: createEditorService({
         config: deps.config,
         configManager: deps.configManager,

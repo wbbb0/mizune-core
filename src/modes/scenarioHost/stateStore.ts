@@ -58,7 +58,7 @@ export class ScenarioHostStateStore {
     );
   }
 
-  async ensureForSession(session: Pick<SessionState, "id" | "participantRef" | "title">): Promise<ScenarioHostSessionState> {
+  async ensureForSession(session: Pick<SessionState, "id" | "participantRef">): Promise<ScenarioHostSessionState> {
     const participantRef = resolveSessionParticipantRef({
       sessionId: session.id,
       type: "private",
@@ -69,7 +69,7 @@ export class ScenarioHostStateStore {
       playerDisplayName: resolveSessionParticipantLabel({
         sessionId: session.id,
         participantRef,
-        title: session.title
+        title: null
       })
     });
   }

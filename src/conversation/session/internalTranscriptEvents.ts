@@ -4,6 +4,9 @@ import type {
   InternalTriggerEventItem,
   InternalTriggerStage
 } from "./sessionTypes.ts";
+import type {
+  TranscriptTitleGenerationItem
+} from "./sessionTypes.ts";
 
 export function formatErrorDetails(error: unknown): string {
   if (error instanceof Error) {
@@ -58,6 +61,27 @@ export function createGenerationFailureFallbackEvent(input: {
     summary: "本轮生成失败，已发送兜底回复",
     details: input.details,
     failureMessage: input.failureMessage
+  };
+}
+
+export function createSessionTitleGenerationEvent(input: {
+  source: "auto" | "regenerate";
+  modeId: string;
+  title: string;
+  summary: string;
+  details: string;
+  timestampMs?: number;
+}): TranscriptTitleGenerationItem {
+  const sourceLabel = input.source === "auto" ? "自动生成" : "重新生成";
+  return {
+    kind: "title_generation_event",
+    llmVisible: false,
+    timestampMs: input.timestampMs ?? Date.now(),
+    source: input.source,
+    modeId: input.modeId,
+    title: `标题生成 · ${sourceLabel}`,
+    summary: input.summary,
+    details: input.details
   };
 }
 

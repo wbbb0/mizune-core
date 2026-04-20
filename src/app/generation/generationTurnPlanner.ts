@@ -36,6 +36,7 @@ export async function handleGenerationTurnPlanner(
     config,
     logger,
     llmClient,
+    sessionCaptioner,
     turnPlanner,
     debounceManager,
     historyCompressor,

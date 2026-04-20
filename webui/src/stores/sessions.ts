@@ -431,6 +431,26 @@ export const useSessionsStore = defineStore("sessions", () => {
     }
   }
 
+  async function renameSessionTitle(sessionId: string, title: string): Promise<NormalizedSessionListItem> {
+    const result = await sessionsApi.updateTitle(sessionId, { title });
+    const nextSession = normalizeSessionListItem(result.session);
+    list.value = list.value.map((item) => item.id === sessionId ? nextSession : item);
+    if (active.value?.id === sessionId) {
+      active.value = syncSessionDisplayFields(active.value, nextSession);
+    }
+    return nextSession;
+  }
+
+  async function regenerateSessionTitle(sessionId: string): Promise<NormalizedSessionListItem> {
+    const result = await sessionsApi.regenerateTitle(sessionId);
+    const nextSession = normalizeSessionListItem(result.session);
+    list.value = list.value.map((item) => item.id === sessionId ? nextSession : item);
+    if (active.value?.id === sessionId) {
+      active.value = syncSessionDisplayFields(active.value, nextSession);
+    }
+    return nextSession;
+  }
+
   async function deleteSelectedSession(): Promise<void> {
     const sessionId = selectedId.value;
     if (!sessionId) return;
@@ -558,6 +578,8 @@ export const useSessionsStore = defineStore("sessions", () => {
     deleteSelectedSession,
     deleteSession,
     switchSessionMode,
+    renameSessionTitle,
+    regenerateSessionTitle,
     selectSession,
     deselectSession,
     sendMessage,

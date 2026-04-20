@@ -37,6 +37,7 @@ import { RuntimeResourceRegistry } from "#runtime/resources/runtimeResourceRegis
 import { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import type { SessionBootstrapPersistenceAccess } from "#conversation/session/sessionCapabilities.ts";
+import { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import { isOwnerBootstrapCommandText } from "./ownerBootstrapPolicy.ts";
 import type { AppBootstrapServices, AppServiceBootstrap, BootstrapRuntimeContext } from "./bootstrapTypes.ts";
 
@@ -57,6 +58,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
   const sessionManager = new SessionManager(config);
   const debounceManager = new DebounceManager(logger, sessionManager, config);
   const llmClient = new LlmClient(config, logger);
+  const sessionCaptioner = new SessionCaptioner(config, llmClient, logger);
   const audioStore = new AudioStore(dataDir);
   const audioTranscriber = new AudioTranscriber(config, llmClient, audioStore, oneBotClient, logger);
   const localFileService = new LocalFileService(config, dataDir);
@@ -110,6 +112,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
     sessionManager,
     debounceManager,
     llmClient,
+    sessionCaptioner,
     audioStore,
     audioTranscriber,
     historyCompressor,

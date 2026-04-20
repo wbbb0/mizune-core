@@ -2,6 +2,13 @@
 import { computed, ref, watch } from "vue";
 import WorkbenchDialog from "@/components/common/WorkbenchDialog.vue";
 import { buildCreateSessionPayload } from "./createSessionPayload";
+import {
+  DEFAULT_CREATE_SESSION_MODE_ID,
+  readStoredCreateSessionModeId,
+  resolveCreateSessionModeId,
+  resolveCreateSessionTitlePlaceholder,
+  writeStoredCreateSessionModeId
+} from "./createSessionDefaults";
 
 const props = defineProps<{
   open: boolean;
@@ -15,16 +22,31 @@ const emit = defineEmits<{
   submit: [payload: { title?: string; modeId?: string }];
 }>();
 
+const modeStorage = typeof window !== "undefined" ? window.localStorage : null;
 const title = ref("");
-const modeId = ref("rp_assistant");
+const modeId = ref(readStoredCreateSessionModeId(modeStorage) ?? DEFAULT_CREATE_SESSION_MODE_ID);
 
 const canSubmit = computed(() => !props.busy);
+const titlePlaceholder = computed(() => resolveCreateSessionTitlePlaceholder(modeId.value));
 
-watch(() => props.open, async (open) => {
+watch(() => props.modes?.map((mode) => mode.id) ?? [], (modeIds) => {
+  if (modeIds.length === 0) {
+    return;
+  }
+  modeId.value = resolveCreateSessionModeId({
+    storedModeId: modeId.value,
+    availableModeIds: modeIds,
+    fallbackModeId: DEFAULT_CREATE_SESSION_MODE_ID
+  });
+}, { immediate: true });
+
+watch(modeId, (nextModeId) => {
+  writeStoredCreateSessionModeId(modeStorage, nextModeId);
+});
+
+watch(() => props.open, (open) => {
   if (!open) {
     title.value = "";
-    modeId.value = props.modes?.[0]?.id ?? "rp_assistant";
-    return;
   }
 }, { immediate: true });
 
@@ -59,7 +81,7 @@ function close() {
         <input
           v-model="title"
           class="input-base text-ui"
-          placeholder="例如 Owner"
+          :placeholder="titlePlaceholder"
         />
         <span class="text-small text-text-subtle">可选。用于列表、标题栏和聊天区展示。</span>
       </label>

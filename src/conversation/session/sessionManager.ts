@@ -41,6 +41,7 @@ import type {
   SessionSentMessage,
   SessionState,
   SessionToolEvent,
+  SessionTitleSource,
   SessionUsageSnapshot,
   TranscriptItemDeliveryRef,
   TranscriptItemRuntimeExclusionReason
@@ -142,6 +143,19 @@ export class SessionManager {
     this.sessionStore.set(target.id, created);
     this.notifySessionChanged(target.id);
     return created;
+  }
+
+  setTitle(sessionId: string, title: string, titleSource: SessionTitleSource): SessionState {
+    const session = this.requireSession(sessionId);
+    const normalizedTitle = String(title ?? "").trim();
+    if (!normalizedTitle) {
+      throw new Error("title is required");
+    }
+    session.title = normalizedTitle;
+    session.titleSource = titleSource;
+    session.lastActiveAt = Date.now();
+    this.notifySessionChanged(sessionId);
+    return session;
   }
 
   appendSyntheticPendingMessage(

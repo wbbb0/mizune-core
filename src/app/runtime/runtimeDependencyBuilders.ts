@@ -38,6 +38,7 @@ export function buildGenerationSessionRuntimeDeps(services: AppServiceBootstrap)
     logger: services.logger,
     sessionManager: services.sessionManager,
     llmClient: services.llmClient,
+    sessionCaptioner: services.sessionCaptioner,
     turnPlanner: services.turnPlanner,
     debounceManager: services.debounceManager,
     historyCompressor: services.historyCompressor,

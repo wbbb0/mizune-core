@@ -11,8 +11,10 @@ import {
   listSessions,
   listUsers,
   getWhitelist,
+  regenerateSessionTitle,
   switchSessionMode,
-  updateSessionModeState
+  updateSessionModeState,
+  updateSessionTitle
 } from "../application/basicAdminService.ts";
 import { listRequests, listScheduledJobs } from "../application/operationsAdminService.ts";
 import {
@@ -27,6 +29,7 @@ import {
   parseWorkspacePathQuery,
   parseOrReply,
   parseSwitchSessionModeBody,
+  parseUpdateSessionTitleBody,
   parseUpdateSessionModeStateBody,
   parseSessionParams,
   respondBadRequest,
@@ -274,6 +277,34 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
       return respondNotFound(reply, "Session not found");
     }
     return session;
+  });
+
+  app.patch("/api/sessions/:sessionId/title", async (request, reply) => {
+    const params = parseSessionParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    const body = parseUpdateSessionTitleBody(request.body);
+    if (!parseOrReply(reply, body)) {
+      return reply;
+    }
+    try {
+      return await updateSessionTitle(services.config, params.sessionId, body);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.post("/api/sessions/:sessionId/title/regenerate", async (request, reply) => {
+    const params = parseSessionParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    try {
+      return await regenerateSessionTitle(services.config, params.sessionId);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
   });
 
   app.delete("/api/sessions/:sessionId", async (request, reply) => {

@@ -116,6 +116,11 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       }
     }),
     logger: pino({ level: "silent" }),
+    sessionCaptioner: {
+      async generateTitle() {
+        return "Generated title";
+      }
+    } as unknown as InternalApiDeps["sessionCaptioner"],
     oneBotClient: {
       async sendText(payload: { userId?: string; groupId?: string; text: string }) {
         state.sentMessages.push(payload);
@@ -429,8 +434,27 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       },
       appendSyntheticPendingMessage() {},
       appendHistory() {},
+      appendInternalTranscript(sessionId: string, item: InternalTranscriptItem) {
+        const session = state.sessions.find((entry) => entry.id === sessionId);
+        if (!session) {
+          return;
+        }
+        session.internalTranscript.push(item);
+        notifySessionChanged(sessionId);
+      },
       getModeId(sessionId: string) {
         return state.sessions.find((item) => item.id === sessionId)?.modeId ?? "rp_assistant";
+      },
+      setTitle(sessionId: string, title: string, titleSource: "default" | "auto" | "manual") {
+        const session = state.sessions.find((item) => item.id === sessionId);
+        if (!session) {
+          throw new Error(`Session not found: ${sessionId}`);
+        }
+        session.title = title.trim();
+        session.titleSource = titleSource;
+        session.participantLabel = session.source === "web" ? session.title : session.participantLabel;
+        notifySessionChanged(sessionId);
+        return session as never;
       },
       setModeId(sessionId: string, modeId: string) {
         const session = state.sessions.find((item) => item.id === sessionId);

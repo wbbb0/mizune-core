@@ -28,28 +28,33 @@ async function main() {
       mediaVisionService: {} as never,
       mediaCaptionService: {} as never
     },
-    sessionRuntime: {
-      logger,
-      llmClient: {
-        isConfigured() {
-          return true;
+      sessionRuntime: {
+        logger,
+        llmClient: {
+          isConfigured() {
+            return true;
         },
         async generate() {
           throw new Error("LLM API error: 400 Bad Request {\"error\":{\"type\":\"content_filter\"}}");
         }
       } as never,
       turnPlanner: {} as never,
-      debounceManager: {} as never,
-      historyCompressor: {
-        async maybeCompress() {
-          return false;
-        }
-      } as never,
-      messageQueue: {
-        async enqueueText(params: {
-          send: () => Promise<void>;
-        }) {
-          await params.send();
+        debounceManager: {} as never,
+        historyCompressor: {
+          async maybeCompress() {
+            return false;
+          }
+        } as never,
+        sessionCaptioner: {
+          async generateTitle() {
+            return null;
+          }
+        } as never,
+        messageQueue: {
+          async enqueueText(params: {
+            send: () => Promise<void>;
+          }) {
+            await params.send();
         },
         getDrainPromise() {
           return null;

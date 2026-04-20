@@ -6,7 +6,7 @@ import {
   getSessionSource,
   resolveSessionParticipantRef
 } from "./sessionIdentity.ts";
-import { resolveDefaultSessionTitle } from "./sessionTitle.ts";
+import { resolveSessionDefaultTitle } from "./sessionTitle.ts";
 
 // Creates and converts runtime session state snapshots.
 
@@ -25,16 +25,23 @@ export function createSessionState(target: {
     type: target.type
   });
   const normalizedTitle = String(target.title ?? "").trim();
+  const source = target.source ?? getSessionSource(target.id);
   return {
     id: target.id,
     type: target.type,
-    source: target.source ?? getSessionSource(target.id),
+    source,
     modeId,
     setupConfirmed: false,
     participantRef,
-    title: normalizedTitle || resolveDefaultSessionTitle(modeId),
+    title: normalizedTitle || resolveSessionDefaultTitle({
+      source,
+      type: target.type,
+      id: target.id,
+      modeId,
+      participantRef
+    }),
     titleSource: target.titleSource ?? (normalizedTitle ? "manual" : "default"),
-    replyDelivery: target.source ?? getSessionSource(target.id),
+    replyDelivery: source,
     debugControl: {
       enabled: false,
       oncePending: false
@@ -74,16 +81,23 @@ export { buildSessionId };
 // Restores a persisted session snapshot into runtime state.
 export function restoreSessionState(item: PersistedSessionState): SessionState {
   const modeId = item.modeId ?? getDefaultSessionModeId();
+  const source = item.source ?? getSessionSource(item.id);
   const participantRef = resolveSessionParticipantRef({
     sessionId: item.id,
     type: item.type,
     participantRef: item.participantRef
   });
-  const title = String(item.title ?? "").trim() || resolveDefaultSessionTitle(modeId);
+  const title = String(item.title ?? "").trim() || resolveSessionDefaultTitle({
+    source,
+    type: item.type,
+    id: item.id,
+    modeId,
+    participantRef
+  });
   return {
     id: item.id,
     type: item.type,
-    source: item.source ?? getSessionSource(item.id),
+    source,
     modeId,
     setupConfirmed: false,
     participantRef,

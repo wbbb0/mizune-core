@@ -51,6 +51,16 @@ export const sessionsApi = {
     return api.patch(`/api/sessions/${encodeURIComponent(sessionId)}/mode-state`, body);
   },
 
+  updateTitle(sessionId: string, body: {
+    title: string;
+  }): Promise<{ ok: boolean; session: SessionListItem }> {
+    return api.patch(`/api/sessions/${encodeURIComponent(sessionId)}/title`, body);
+  },
+
+  regenerateTitle(sessionId: string): Promise<{ ok: boolean; session: SessionListItem }> {
+    return api.post(`/api/sessions/${encodeURIComponent(sessionId)}/title/regenerate`);
+  },
+
   sendTurn(sessionId: string, body: {
     userId: string;
     senderName?: string;

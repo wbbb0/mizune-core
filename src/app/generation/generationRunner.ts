@@ -93,6 +93,7 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
       logger: deps.sessionRuntime.logger,
       historyCompressor: deps.sessionRuntime.historyCompressor,
       llmClient: deps.sessionRuntime.llmClient,
+      sessionCaptioner: deps.sessionRuntime.sessionCaptioner,
       turnPlanner: deps.sessionRuntime.turnPlanner,
       debounceManager: deps.sessionRuntime.debounceManager,
       sessionManager: deps.sessionRuntime.sessionManager

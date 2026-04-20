@@ -77,6 +77,11 @@ export function createGenerationReplyGateDeps(
         return { replyDecision: "reply_small", topicDecision: "continue_topic", reason: "should not run", toolsetIds: [] };
       }
     } as unknown as GenerationTurnPlannerDeps["turnPlanner"]),
+    sessionCaptioner: overrides.sessionCaptioner ?? ({
+      async generateTitle() {
+        return null;
+      }
+    } as unknown as GenerationTurnPlannerDeps["sessionCaptioner"]),
     debounceManager: overrides.debounceManager ?? ({
       schedule() {
         throw new Error("unexpected debounce schedule");

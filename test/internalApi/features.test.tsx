@@ -617,6 +617,87 @@ async function main() {
     }
   });
 
+  await runCase("internal api updates web session title", async () => {
+    const app = await createInternalApiApp(createInternalApiDeps());
+    try {
+      const createResponse = await app.inject({
+        method: "POST",
+        url: "/api/sessions",
+        payload: { title: "Initial title" }
+      });
+      const sessionId = createResponse.json().session.id;
+
+      const response = await app.inject({
+        method: "PATCH",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/title`,
+        payload: { title: "Updated title" }
+      });
+
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.json().session.title, "Updated title");
+      assert.equal(response.json().session.titleSource, "manual");
+
+      const detail = await app.inject({
+        method: "GET",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}`
+      });
+      assert.equal(detail.statusCode, 200);
+      assert.equal(detail.json().session.title, "Updated title");
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("internal api regenerates web session title and records transcript event", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const createResponse = await app.inject({
+        method: "POST",
+        url: "/api/sessions",
+        payload: { title: "Initial title" }
+      });
+      const sessionId = createResponse.json().session.id;
+
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/title/regenerate`
+      });
+
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.json().session.title, "Generated title");
+      assert.equal(response.json().session.titleSource, "auto");
+
+      const detail = await app.inject({
+        method: "GET",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}`
+      });
+      assert.equal(detail.statusCode, 200);
+      assert.ok(detail.json().session.internalTranscript.some((item: { kind: string; source?: string; summary?: string }) => (
+        item.kind === "title_generation_event"
+        && item.source === "regenerate"
+        && item.summary === "Generated title"
+      )));
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("internal api rejects title regeneration for onebot sessions", async () => {
+    const app = await createInternalApiApp(createInternalApiDeps());
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/sessions/qqbot:p:10001/title/regenerate"
+      });
+
+      assert.equal(response.statusCode, 400);
+      assert.equal(response.json().error, "Only web sessions support title regeneration");
+    } finally {
+      await app.close();
+    }
+  });
+
   await runCase("internal api creates scenario_host web sessions with the scenario default title", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);

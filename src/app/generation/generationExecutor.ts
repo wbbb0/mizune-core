@@ -40,6 +40,7 @@ import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import { listSessionModes, requireSessionModeDefinition } from "#modes/registry.ts";
 import { checkSetupCompletion } from "./generationSetupContext.ts";
 import { waitForGenerationAbortGraceWindow } from "#app/runtime/runtimeTimingPolicy.ts";
+import { maybeAutoCaptionSessionTitle } from "./sessionCaptioner.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -116,7 +117,7 @@ export function createGenerationExecutor(
     lifecycle
   } = deps;
   const { config, mediaVisionService, mediaCaptionService } = promptBuilder;
-  const { logger, llmClient, historyCompressor, messageQueue, sessionManager } = sessionRuntime;
+  const { logger, llmClient, historyCompressor, messageQueue, sessionManager, sessionCaptioner } = sessionRuntime;
   const {
     oneBotClient,
     audioStore,
@@ -630,6 +631,17 @@ export function createGenerationExecutor(
       }
 
       if (sessionManager.completeResponse(sessionId, responseEpoch)) {
+        const sessionAfterCompletion = sessionManager.getSession(sessionId);
+        if (sessionAfterCompletion.source === "web" && sessionAfterCompletion.titleSource === "default") {
+          await maybeAutoCaptionSessionTitle({
+            sessionId,
+            sessionManager,
+            sessionCaptioner,
+            persistSession,
+            logger,
+            reason: "generation_completed_captioned"
+          });
+        }
         if (
           sendTarget.chatType === "private"
           && sessionManager.getSession(sessionId).pendingMessages.length === 0

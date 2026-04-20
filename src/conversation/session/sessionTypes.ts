@@ -278,6 +278,17 @@ export interface InternalTriggerEventItem extends TranscriptItemMeta {
   details?: string | undefined;
 }
 
+export interface TranscriptTitleGenerationItem extends TranscriptItemMeta {
+  kind: "title_generation_event";
+  llmVisible: false;
+  timestampMs: number;
+  source: "auto" | "regenerate";
+  modeId: string;
+  title: string;
+  summary: string;
+  details: string;
+}
+
 export type InternalTranscriptItem =
   | TranscriptUserMessageItem
   | TranscriptAssistantMessageItem
@@ -288,6 +299,7 @@ export type InternalTranscriptItem =
   | TranscriptDirectCommandItem
   | TranscriptStatusMessageItem
   | TranscriptGateDecisionItem
+  | TranscriptTitleGenerationItem
   | InternalSystemMarkerItem
   | InternalFallbackEventItem
   | InternalTriggerEventItem;

@@ -117,7 +117,7 @@ export function createGenerationSessionOrchestrator(
     lifecycle
   } = deps;
   const { config } = promptBuilder;
-  const { logger, historyCompressor, sessionManager } = sessionRuntime;
+  const { logger, historyCompressor, sessionManager, sessionCaptioner } = sessionRuntime;
   const { userStore, personaStore, setupStore, scenarioHostStateStore } = identity;
   const { persistSession } = lifecycle;
 
@@ -207,6 +207,7 @@ export function createGenerationSessionOrchestrator(
             config,
             logger,
             llmClient: sessionRuntime.llmClient,
+            sessionCaptioner,
             turnPlanner: sessionRuntime.turnPlanner,
             debounceManager: sessionRuntime.debounceManager,
             historyCompressor,

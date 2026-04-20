@@ -38,6 +38,7 @@ import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import type { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import type { SessionCaptioner } from "./sessionCaptioner.ts";
 
 // These dependency contracts describe the generation pipeline in domain-shaped slices.
 // The broad runtime bundle still exists at the composition root, but lower-level modules
@@ -65,6 +66,7 @@ export interface GenerationSessionRuntimeDeps {
   logger: Logger;
   sessionManager: SessionGenerationRuntimeAccess;
   llmClient: LlmClient;
+  sessionCaptioner: SessionCaptioner;
   turnPlanner: TurnPlanner;
   debounceManager: DebounceManager;
   historyCompressor: HistoryCompressor;
@@ -117,7 +119,7 @@ export type GenerationPersona = Awaited<ReturnType<GenerationIdentityDeps["perso
 
 export type GenerationTurnPlannerDeps =
   Pick<GenerationPromptBuilderDeps, "config">
-  & Pick<GenerationSessionRuntimeDeps, "logger" | "llmClient" | "turnPlanner" | "debounceManager" | "historyCompressor">
+  & Pick<GenerationSessionRuntimeDeps, "logger" | "llmClient" | "sessionCaptioner" | "turnPlanner" | "debounceManager" | "historyCompressor">
   & Pick<GenerationLifecycleDeps, "persistSession">
   & {
     sessionManager: SessionTurnPlannerAccess;
@@ -141,7 +143,7 @@ export type GenerationSessionOrchestratorDeps =
   Pick<GenerationRunnerDeps, "lifecycle">
   & {
     promptBuilder: Pick<GenerationPromptBuilderDeps, "config">;
-    sessionRuntime: Pick<GenerationSessionRuntimeDeps, "logger" | "historyCompressor" | "llmClient" | "turnPlanner" | "debounceManager"> & {
+    sessionRuntime: Pick<GenerationSessionRuntimeDeps, "logger" | "historyCompressor" | "llmClient" | "sessionCaptioner" | "turnPlanner" | "debounceManager"> & {
       sessionManager: SessionGenerationOrchestratorAccess;
     };
     identity: Pick<GenerationIdentityDeps, "userStore" | "personaStore" | "setupStore" | "scenarioHostStateStore">;

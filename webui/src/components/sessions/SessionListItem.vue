@@ -45,7 +45,10 @@ const relativeTime = computed(() => {
     <!-- Main content -->
     <div class="flex min-w-0 flex-1 flex-col gap-0.5">
       <div class="flex items-baseline gap-1.5">
-        <span class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-ui font-medium text-text-secondary">{{ display.label }}</span>
+        <span
+          class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-ui font-medium text-text-secondary"
+          :title="display.label"
+        >{{ display.label }}</span>
         <span class="shrink-0 text-small text-text-subtle">{{ relativeTime }}</span>
       </div>
       <div class="flex items-center">

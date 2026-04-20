@@ -31,6 +31,9 @@ async function main() {
 
     assert.match(source, /MoreHorizontal/);
     assert.match(source, /@click="openActions"/);
+    assert.match(source, /title_generation_event/);
+    assert.match(source, /item\.summary/);
+    assert.match(source, /source === 'auto' \? '自动生成' : '重新生成'/);
     assert.doesNotMatch(source, /@contextmenu=/);
     assert.doesNotMatch(source, /@touchstart/);
     assert.doesNotMatch(source, /function toggleExpanded\(\)\s*{\s*if \(runtimeExcluded\.value\) \{/);

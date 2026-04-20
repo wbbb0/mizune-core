@@ -14,6 +14,8 @@ async function main() {
       "utf8"
     );
 
+    assert.match(source, /标题/);
+    assert.match(source, /重新生成标题/);
     assert.match(source, /<pre[^>]*overflow-auto[^>]*>{{ detail\?\.session\.historySummary \|\| "暂无摘要" }}/);
     assert.match(source, /<pre[^>]*overflow-auto[^>]*>{{ formatJson\(detail\?\.session\.debugControl/);
     assert.match(source, /<pre[^>]*overflow-auto[^>]*>{{ formatJson\(detail\?\.session\.lastLlmUsage/);

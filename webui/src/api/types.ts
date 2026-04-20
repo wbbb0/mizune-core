@@ -166,6 +166,17 @@ export interface GateDecisionItem extends TranscriptItemMeta {
   timestampMs: number;
 }
 
+export interface TitleGenerationEventItem extends TranscriptItemMeta {
+  kind: "title_generation_event";
+  llmVisible: false;
+  timestampMs: number;
+  source: "auto" | "regenerate";
+  modeId: string;
+  title: string;
+  summary: string;
+  details: string;
+}
+
 export interface SystemMarkerItem extends TranscriptItemMeta {
   kind: "system_marker";
   llmVisible: false;
@@ -226,6 +237,7 @@ export type TranscriptItem =
   | DirectCommandItem
   | StatusMessageItem
   | GateDecisionItem
+  | TitleGenerationEventItem
   | SystemMarkerItem
   | FallbackEventItem
   | InternalTriggerEventItem;

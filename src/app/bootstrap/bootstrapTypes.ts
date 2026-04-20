@@ -38,6 +38,7 @@ import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import type { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 
 export interface AppServiceBootstrap {
   config: ReturnType<typeof loadConfig>;
@@ -50,6 +51,7 @@ export interface AppServiceBootstrap {
   sessionManager: SessionAppRuntimeAccess;
   debounceManager: DebounceManager;
   llmClient: LlmClient;
+  sessionCaptioner: SessionCaptioner;
   audioStore: AudioStore;
   audioTranscriber: AudioTranscriber;
   historyCompressor: HistoryCompressor;

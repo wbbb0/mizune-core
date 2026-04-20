@@ -12,11 +12,13 @@ import type {
 import type {
   ParsedCreateSessionBody,
   ParsedSwitchSessionModeBody,
-  ParsedUpdateSessionModeStateBody
+  ParsedUpdateSessionModeStateBody,
+  ParsedUpdateSessionTitleBody
 } from "../routeSupport.ts";
 import type { SessionParticipantRef, SessionState } from "#conversation/session/sessionTypes.ts";
 import { getDefaultSessionModeId, listSessionModes, requireSessionModeDefinition, sessionModeSupportsChatType } from "#modes/registry.ts";
 import { scenarioHostSessionStateSchema, type ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
+import { createSessionTitleGenerationEvent } from "#conversation/session/internalTranscriptEvents.ts";
 
 import { isSessionGenerating } from "#conversation/session/sessionQueries.ts";
 import { resolveDefaultSessionTitle } from "#conversation/session/sessionTitle.ts";
@@ -31,11 +33,10 @@ function resolveSessionParticipantRef(session: Pick<SessionState, "id" | "type">
   };
 }
 
-function toScenarioHostSession(session: SessionState): Pick<SessionState, "id" | "participantRef" | "title"> {
+function toScenarioHostSession(session: SessionState): Pick<SessionState, "id" | "participantRef"> {
   return {
     id: session.id,
-    participantRef: resolveSessionParticipantRef(session),
-    title: session.title
+    participantRef: resolveSessionParticipantRef(session)
   };
 }
 
@@ -223,6 +224,62 @@ export async function updateSessionModeState(
       kind: "scenario_host" as const,
       state
     }
+  };
+}
+
+export async function updateSessionTitle(
+  deps: InternalApiSessionWriteDeps,
+  sessionId: string,
+  body: ParsedUpdateSessionTitleBody
+) {
+  const session = deps.sessionManager.getSession(sessionId);
+  if (session.source !== "web") {
+    throw new Error("Only web sessions support title editing");
+  }
+  deps.sessionManager.setTitle(sessionId, body.title, "manual");
+  await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(sessionId));
+  return {
+    ok: true as const,
+    session: buildSessionSummary(deps.sessionManager.getSession(sessionId))
+  };
+}
+
+export async function regenerateSessionTitle(
+  deps: InternalApiSessionWriteDeps,
+  sessionId: string
+) {
+  const session = deps.sessionManager.getSession(sessionId);
+  if (session.source !== "web") {
+    throw new Error("Only web sessions support title regeneration");
+  }
+
+  const generated = await deps.sessionCaptioner.generateTitle({
+    sessionId,
+    modeId: session.modeId,
+    historySummary: session.historySummary,
+    history: deps.sessionManager.getLlmVisibleHistory(sessionId)
+  });
+  if (!generated) {
+    throw new Error("Failed to generate session title");
+  }
+  deps.sessionManager.setTitle(sessionId, generated, "auto");
+  deps.sessionManager.appendInternalTranscript(sessionId, createSessionTitleGenerationEvent({
+    source: "regenerate",
+    modeId: session.modeId,
+    title: generated,
+    summary: generated,
+    details: [
+      `sessionId: ${sessionId}`,
+      `modeId: ${session.modeId}`,
+      `historySummary: ${String(session.historySummary ?? "").trim() || "(none)"}`,
+      `historyCount: ${deps.sessionManager.getLlmVisibleHistory(sessionId).length}`
+    ].join("\n")
+  }));
+  await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(sessionId));
+
+  return {
+    ok: true as const,
+    session: buildSessionSummary(deps.sessionManager.getSession(sessionId))
   };
 }
 

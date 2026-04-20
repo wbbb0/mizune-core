@@ -91,6 +91,9 @@ const itemTitle = computed(() => {
     case "gate_decision":
       title = `Turn Planner 判定 · ${formatPlannerAction(props.item.action)}`;
       break;
+    case "title_generation_event":
+      title = props.item.title;
+      break;
     case "system_marker":
       title = `系统标记 · ${props.item.markerType}`;
       break;
@@ -126,6 +129,8 @@ const itemTone = computed(() => {
       return "outbound-media";
     case "gate_decision":
       return props.item.action === "wait" ? "gate-wait" : props.item.action === "skip" ? "gate-skip" : "gate";
+    case "title_generation_event":
+      return "status";
     case "system_marker":
       return "marker";
     case "fallback_event":
@@ -154,6 +159,8 @@ const itemGlyph = computed<SessionGlyphModel>(() => {
       return { kind: "icon", component: ImageIcon, size: 13, strokeWidth: 2 };
     case "gate_decision":
       return { kind: "icon", component: GitBranch, size: 13, strokeWidth: 2 };
+    case "title_generation_event":
+      return { kind: "icon", component: Info, size: 13, strokeWidth: 2.1 };
     case "system_marker":
       return { kind: "text", value: "M" };
     case "fallback_event":
@@ -233,6 +240,11 @@ const metaChips = computed(() => {
         props.item.topicDecision ? `topic=${props.item.topicDecision}` : null,
         props.item.toolsetIds && props.item.toolsetIds.length > 0 ? `toolsets=${props.item.toolsetIds.length}` : null
       ].filter(Boolean) as string[];
+    case "title_generation_event":
+      return [
+        props.item.source === "auto" ? "自动生成" : "重新生成",
+        props.item.modeId
+      ];
     case "system_marker":
       return [props.item.markerType];
     case "fallback_event":
@@ -488,6 +500,38 @@ function openActions(): void {
               <TranscriptCard compact>
                 <div class="mb-1 font-mono text-small text-text-subtle">reason</div>
                 <pre class="m-0 overflow-x-auto font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ plannerReasonText ?? "null" }}</pre>
+              </TranscriptCard>
+            </div>
+          </TranscriptCard>
+        </TranscriptDisclosure>
+      </div>
+
+      <div v-else-if="item.kind === 'title_generation_event'" class="flex flex-col gap-2">
+        <p class="m-0 whitespace-pre-wrap wrap-break-word text-text-muted">{{ item.summary }}</p>
+        <TranscriptDisclosure
+          :expanded="expanded"
+          collapsed-label="展开详细信息"
+          expanded-label="收起详细信息"
+          :summary="item.source === 'auto' ? '自动生成' : '重新生成'"
+          @toggle="toggleExpanded"
+        >
+          <TranscriptCard title="详细信息">
+            <div class="grid gap-1.5">
+              <TranscriptCard compact>
+                <div class="flex items-start justify-between gap-3">
+                  <span class="font-mono text-small text-text-subtle">source</span>
+                  <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ item.source }}</span>
+                </div>
+              </TranscriptCard>
+              <TranscriptCard compact>
+                <div class="flex items-start justify-between gap-3">
+                  <span class="font-mono text-small text-text-subtle">modeId</span>
+                  <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ item.modeId }}</span>
+                </div>
+              </TranscriptCard>
+              <TranscriptCard compact>
+                <div class="mb-1 font-mono text-small text-text-subtle">details</div>
+                <pre class="m-0 overflow-x-auto font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ item.details }}</pre>
               </TranscriptCard>
             </div>
           </TranscriptCard>
