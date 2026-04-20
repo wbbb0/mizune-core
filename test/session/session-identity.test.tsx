@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildGroupSessionId,
@@ -18,21 +19,14 @@ import { cloneSessionState } from "../../src/conversation/session/sessionQueries
 import { createSessionState } from "../../src/conversation/session/sessionStateFactory.ts";
 import { resolveSessionDisplayTitle } from "../../src/conversation/session/sessionTitle.ts";
 
-async function runCase(name: string, fn: () => Promise<void> | void) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("build helpers generate stable onebot session ids", () => {
+  test("build helpers generate stable onebot session ids", () => {
     assert.equal(buildPrivateSessionId("qqbot", "10001"), "qqbot:p:10001");
     assert.equal(buildGroupSessionId("qqbot", "20002"), "qqbot:g:20002");
     assert.equal(buildSessionId({ channelId: "qqbot", chatType: "private", userId: "10001" as const }), "qqbot:p:10001");
     assert.equal(buildSessionId({ channelId: "qqbot", chatType: "group", userId: "10001" as const, groupId: "20002" }), "qqbot:g:20002");
   });
 
-  await runCase("parseSessionIdentity distinguishes private group web and unknown ids", () => {
+  test("parseSessionIdentity distinguishes private group web and unknown ids", () => {
     assert.deepEqual(parseSessionIdentity("qqbot:p:10001"), {
       id: "qqbot:p:10001",
       kind: "private",
@@ -61,7 +55,7 @@ async function main() {
     });
   });
 
-  await runCase("parseChatSessionIdentity only accepts chat-backed private and group ids", () => {
+  test("parseChatSessionIdentity only accepts chat-backed private and group ids", () => {
     assert.deepEqual(parseChatSessionIdentity("qqbot:p:10001"), {
       id: "qqbot:p:10001",
       kind: "private",
@@ -80,7 +74,7 @@ async function main() {
     assert.equal(parseChatSessionIdentity("custom-id"), null);
   });
 
-  await runCase("chat type source and participant derivation stay centralized", () => {
+  test("chat type source and participant derivation stay centralized", () => {
     assert.equal(getSessionChatType("qqbot:p:10001"), "private");
     assert.equal(getSessionChatType("qqbot:g:20002"), "group");
     assert.equal(getSessionChatType("web:panel"), "unknown");
@@ -102,7 +96,7 @@ async function main() {
     });
   });
 
-  await runCase("display helpers centralize participant fallback and source labels", () => {
+  test("display helpers centralize participant fallback and source labels", () => {
     assert.equal(isChatSessionIdentity("qqbot:p:10001"), true);
     assert.equal(isChatSessionIdentity("web:panel"), false);
     assert.equal(isWebSessionIdentity("web:panel"), true);
@@ -133,7 +127,7 @@ async function main() {
     );
   });
 
-  await runCase("session display title prefers session title for web sessions", () => {
+  test("session display title prefers session title for web sessions", () => {
     assert.equal(resolveSessionDisplayTitle({
       id: "web:test",
       source: "web",
@@ -143,7 +137,7 @@ async function main() {
     }), "Investigate vite build");
   });
 
-  await runCase("group sessions keep group participant refs", () => {
+  test("group sessions keep group participant refs", () => {
     const session = createSessionState({
       id: "qqbot:g:20001",
       type: "group",
@@ -154,7 +148,7 @@ async function main() {
     assert.deepEqual(session.participantRef, { kind: "group", id: "20001" });
   });
 
-  await runCase("cloned session state deep copies participant refs", () => {
+  test("cloned session state deep copies participant refs", () => {
     const session = createSessionState({
       id: "qqbot:p:10001",
       type: "private",
@@ -165,9 +159,3 @@ async function main() {
     assert.deepEqual(cloned.participantRef, session.participantRef);
     assert.notStrictEqual(cloned.participantRef, session.participantRef);
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

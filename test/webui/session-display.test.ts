@@ -1,14 +1,8 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { normalizeSessionListItem, syncSessionDisplayFields } from "../../webui/src/stores/sessionDisplay.ts";
 
-async function runCase(name: string, fn: () => void | Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("web session uses title as display label", () => {
+  test("web session uses title as display label", () => {
     assert.equal(normalizeSessionListItem({
       id: "web:1",
       type: "private",
@@ -22,7 +16,7 @@ async function main() {
     }).displayLabel, "Warehouse infiltration");
   });
 
-  await runCase("onebot session keeps participant label even when title exists", () => {
+  test("onebot session keeps participant label even when title exists", () => {
     assert.equal(normalizeSessionListItem({
       id: "qqbot:p:10001",
       type: "private",
@@ -36,7 +30,7 @@ async function main() {
     }).displayLabel, "10001");
   });
 
-  await runCase("group session keeps group entry label even when title exists", () => {
+  test("group session keeps group entry label even when title exists", () => {
     assert.equal(normalizeSessionListItem({
       id: "qqbot:g:20001",
       type: "group",
@@ -50,7 +44,7 @@ async function main() {
     }).displayLabel, "群 20001");
   });
 
-  await runCase("selected active session syncs refreshed title and display label", () => {
+  test("selected active session syncs refreshed title and display label", () => {
     const current = {
       id: "web:1",
       type: "private" as const,
@@ -82,9 +76,3 @@ async function main() {
       lastActiveAt: 20
     });
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

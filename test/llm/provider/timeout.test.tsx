@@ -1,8 +1,9 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { LlmClient } from "../../../src/llm/llmClient.ts";
 import { createTestAppConfig } from "../../helpers/config-fixtures.tsx";
-import { runCase, withMockFetch } from "../../helpers/llm-test-support.tsx";
+import { withMockFetch } from "../../helpers/llm-test-support.tsx";
 
 function createDelayedSseResponse(events: Array<{ payload: unknown; delayMs: number }>) {
   const encoder = new TextEncoder();
@@ -43,8 +44,7 @@ function createDelayedSseResponse(events: Array<{ payload: unknown; delayMs: num
   );
 }
 
-async function main() {
-  await runCase("first token timeout treats reasoning_content as a valid first response", async () => {
+  test("first token timeout treats reasoning_content as a valid first response", async () => {
     const config = createTestAppConfig({
       llm: {
         enabled: true,
@@ -94,9 +94,3 @@ async function main() {
       assert.equal(result.text, "最终回复");
     });
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

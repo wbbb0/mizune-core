@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
@@ -5,12 +6,6 @@ import { SessionManager } from "../../src/conversation/session/sessionManager.ts
 import { createInternalTriggerDispatcher } from "../../src/app/session-work/internalTriggerDispatcher.ts";
 import { createGenerationSessionOrchestrator } from "../../src/app/generation/generationSessionOrchestrator.ts";
 import type { GenerationSessionOrchestratorDeps } from "../../src/app/generation/generationRunnerDeps.ts";
-
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
 
 function createOrchestratorDeps(input: {
   config: ReturnType<typeof createTestAppConfig>;
@@ -64,8 +59,7 @@ function createOrchestratorDeps(input: {
   } as never;
 }
 
-async function main() {
-  await runCase("internal trigger dispatcher records received and queued transcript events", async () => {
+  test("internal trigger dispatcher records received and queued transcript events", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);
     const sessionId = "qqbot:p:owner";
@@ -128,7 +122,7 @@ async function main() {
     await dispatchPromise;
   });
 
-  await runCase("internal trigger session records started transcript event", async () => {
+  test("internal trigger session records started transcript event", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);
     const sessionId = "qqbot:p:owner";
@@ -190,7 +184,7 @@ async function main() {
     assert.ok(persistedReasons.includes("internal_trigger_started"));
   });
 
-  await runCase("scheduled instruction resets reply delivery to the session source", async () => {
+  test("scheduled instruction resets reply delivery to the session source", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);
     const sessionId = "web:test";
@@ -232,7 +226,7 @@ async function main() {
     assert.equal(sessionManager.getReplyDelivery(sessionId), "web");
   });
 
-  await runCase("non-scheduled internal triggers keep the current reply delivery", async () => {
+  test("non-scheduled internal triggers keep the current reply delivery", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);
     const sessionId = "qqbot:p:owner";
@@ -285,7 +279,7 @@ async function main() {
     assert.equal(sessionManager.getReplyDelivery(sessionId), "web");
   });
 
-  await runCase("assistant internal trigger skips persona loading and participant profile extraction", async () => {
+  test("assistant internal trigger skips persona loading and participant profile extraction", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);
     const sessionId = "qqbot:p:owner";
@@ -348,7 +342,7 @@ async function main() {
     assert.equal(capturedRunInput.availableToolsets.some((item: { id: string }) => item.id === "chat_delegation"), false);
   });
 
-  await runCase("flush session prepare failure clears active response state", async () => {
+  test("flush session prepare failure clears active response state", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);
     const sessionId = "qqbot:p:owner";
@@ -405,7 +399,7 @@ async function main() {
     assert.ok(persistedReasons.includes("generation_finished"));
   });
 
-  await runCase("scheduled trigger prepare failure clears active response state", async () => {
+  test("scheduled trigger prepare failure clears active response state", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);
     const sessionId = "qqbot:p:owner";
@@ -449,9 +443,3 @@ async function main() {
     assert.equal(processNextCalled, 1);
     assert.ok(persistedReasons.includes("generation_finished"));
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

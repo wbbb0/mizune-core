@@ -1,17 +1,11 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { processIncomingMessage } from "../../src/app/messaging/messageEventHandler.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("active natural messages steer into the current generation instead of interrupting it", async () => {
+  test("active natural messages steer into the current generation instead of interrupting it", async () => {
     const config = createTestAppConfig({
       whitelist: {
         enabled: false
@@ -114,7 +108,7 @@ async function main() {
     assert.equal(sessionManager.getReplyDelivery(session.id), "web");
   });
 
-  await runCase("group non-mention messages do not change the session reply delivery flag", async () => {
+  test("group non-mention messages do not change the session reply delivery flag", async () => {
     const config = createTestAppConfig({
       whitelist: {
         enabled: false
@@ -197,7 +191,7 @@ async function main() {
     assert.equal(sessionManager.getReplyDelivery(session.id), "web");
   });
 
-  await runCase("group mention trigger updates the session reply delivery flag", async () => {
+  test("group mention trigger updates the session reply delivery flag", async () => {
     const config = createTestAppConfig({
       whitelist: {
         enabled: false
@@ -282,7 +276,7 @@ async function main() {
     assert.equal(sessionManager.getReplyDelivery(session.id), "onebot");
   });
 
-  await runCase("owner group mention triggers even when the group is not whitelisted", async () => {
+  test("owner group mention triggers even when the group is not whitelisted", async () => {
     const config = createTestAppConfig({
       whitelist: {
         enabled: true
@@ -365,9 +359,3 @@ async function main() {
     assert.equal(debounceScheduled, 1);
     assert.equal(sessionManager.getReplyDelivery(session.id), "onebot");
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

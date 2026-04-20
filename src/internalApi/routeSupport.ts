@@ -173,7 +173,7 @@ export function parseOrReply<TParsed>(
   parsed: TParsed | { error: string }
 ): parsed is TParsed {
   if (typeof parsed === "object" && parsed != null && "error" in parsed) {
-    respondBadRequest(reply, parsed.error);
+    reply.code(400).send({ error: parsed.error });
     return false;
   }
   return true;

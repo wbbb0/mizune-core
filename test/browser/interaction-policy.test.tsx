@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildInteractionSuccessMessage,
@@ -6,16 +7,6 @@ import {
   validateInteractionInput
 } from "../../src/services/web/browser/browserInteractionPolicy.ts";
 import type { BrowserSnapshot } from "../../src/services/web/browser/types.ts";
-
-async function runCase(name: string, fn: () => Promise<void>) {
-  try {
-    await fn();
-    console.log(`- ${name} ... ok`);
-  } catch (error) {
-    console.error(`- ${name} ... failed`);
-    throw error;
-  }
-}
 
 const elements: BrowserSnapshot["elements"] = [
   {
@@ -72,8 +63,7 @@ const elements: BrowserSnapshot["elements"] = [
   }
 ];
 
-async function main() {
-  await runCase("interaction policy rejects impossible target combinations", async () => {
+  test("interaction policy rejects impossible target combinations", async () => {
     assert.equal(
       validateInteractionInput({
         resourceId: "r1",
@@ -84,7 +74,7 @@ async function main() {
     );
   });
 
-  await runCase("semantic targets require disambiguation when multiple matches remain", async () => {
+  test("semantic targets require disambiguation when multiple matches remain", async () => {
     const duplicateButton: BrowserSnapshot["elements"][number] = {
       ...elements[0]!,
       id: 3,
@@ -109,10 +99,7 @@ async function main() {
     assert.equal(result.disambiguationRequired, true);
   });
 
-  await runCase("download source extraction and success messages stay explicit", async () => {
+  test("download source extraction and success messages stay explicit", async () => {
     assert.equal(extractDownloadSourceUrl(elements[1]!), "https://example.com/video.mp4");
     assert.equal(buildInteractionSuccessMessage("click", elements[0] ?? null), "已对元素 提交 执行 click。");
   });
-}
-
-void main();

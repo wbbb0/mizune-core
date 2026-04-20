@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,12 +11,6 @@ import { getWebuiAuthFilePath, loadOrCreateWebuiAuth } from "../../src/internalA
 import { registerAuthRoutes } from "../../src/internalApi/routes/authRoutes.ts";
 
 const TEST_PASSWORD_HASH_PARAMS = { N: 1024 } as const;
-
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
 
 async function createAuthTestApp(input?: {
   initialToken?: string;
@@ -75,8 +70,7 @@ async function createAuthTestApp(input?: {
   return { app, authData, dataDir, cookieName };
 }
 
-async function main() {
-  await runCase("legacy accessToken auth file is migrated to password auth", async () => {
+  test("legacy accessToken auth file is migrated to password auth", async () => {
     const { app, authData, dataDir, cookieName } = await createAuthTestApp({ initialToken: "legacy-secret" });
     try {
       assert.equal(verifyPassword("legacy-secret", authData.passwordHash), true);
@@ -89,7 +83,7 @@ async function main() {
     }
   });
 
-  await runCase("password change invalidates old sessions and old password", async () => {
+  test("password change invalidates old sessions and old password", async () => {
     const { app, cookieName } = await createAuthTestApp({
       passwordHash: hashPassword("old-secret", TEST_PASSWORD_HASH_PARAMS)
     });
@@ -148,7 +142,7 @@ async function main() {
     }
   });
 
-  await runCase("passkey registration options require an authenticated session", async () => {
+  test("passkey registration options require an authenticated session", async () => {
     const { app, cookieName } = await createAuthTestApp({
       passwordHash: hashPassword("auth-secret", TEST_PASSWORD_HASH_PARAMS)
     });
@@ -181,7 +175,7 @@ async function main() {
     }
   });
 
-  await runCase("auth disabled reports disabled state and rejects auth mutations", async () => {
+  test("auth disabled reports disabled state and rejects auth mutations", async () => {
     const { app } = await createAuthTestApp({
       passwordHash: hashPassword("auth-secret", TEST_PASSWORD_HASH_PARAMS),
       authEnabled: false
@@ -227,7 +221,7 @@ async function main() {
     }
   });
 
-  await runCase("password change preserves explicit scrypt params from the existing hash", async () => {
+  test("password change preserves explicit scrypt params from the existing hash", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-webui-auth-"));
     const lowCostHash = hashPassword("old-secret", TEST_PASSWORD_HASH_PARAMS);
     await writeFile(getWebuiAuthFilePath(dataDir), JSON.stringify({
@@ -285,9 +279,3 @@ async function main() {
       await app.close();
     }
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

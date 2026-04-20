@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,14 +8,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { ScenarioHostStateStore } from "../../src/modes/scenarioHost/stateStore.ts";
 import { createInitialScenarioHostSessionState, isScenarioStateInitialized } from "../../src/modes/scenarioHost/types.ts";
 
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("scenario_host state store initializes and persists per session state", async () => {
+  test("scenario_host state store initializes and persists per session state", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "scenario-host-store-"));
     try {
       const store = new ScenarioHostStateStore(dataDir, createTestAppConfig(), pino({ level: "silent" }));
@@ -43,7 +37,7 @@ async function main() {
     }
   });
 
-  await runCase("scenario_host state initializes with initialized=false", async () => {
+  test("scenario_host state initializes with initialized=false", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "scenario-host-store-"));
     try {
       const store = new ScenarioHostStateStore(dataDir, createTestAppConfig(), pino({ level: "silent" }));
@@ -58,18 +52,12 @@ async function main() {
     }
   });
 
-  await runCase("isScenarioStateInitialized returns false for fresh state", async () => {
+  test("isScenarioStateInitialized returns false for fresh state", async () => {
     const state = createInitialScenarioHostSessionState({ playerUserId: "u1", playerDisplayName: "Alice" });
     assert.equal(isScenarioStateInitialized(state), false);
   });
 
-  await runCase("isScenarioStateInitialized returns true when initialized=true", async () => {
+  test("isScenarioStateInitialized returns true when initialized=true", async () => {
     const state = createInitialScenarioHostSessionState({ playerUserId: "u1", playerDisplayName: "Alice" });
     assert.equal(isScenarioStateInitialized({ ...state, initialized: true }), true);
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

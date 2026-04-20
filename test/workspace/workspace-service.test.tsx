@@ -1,12 +1,13 @@
+import test from "node:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
-import { runCase } from "../helpers/config-test-support.tsx";
+
 import { LocalFileService } from "../../src/services/workspace/localFileService.ts";
 
-await runCase("workspace service rejects binary image files in text preview", async () => {
+test("workspace service rejects binary image files in text preview", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-service-"));
   try {
     const config = createTestAppConfig({

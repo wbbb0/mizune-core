@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { webToolHandlers } from "../../src/llm/tools/web/webTools.ts";
 import type { BrowserElement } from "../../src/services/web/browser/types.ts";
@@ -8,7 +9,7 @@ import {
   createBrowserOpenResult,
   createBrowserToolContext
 } from "../helpers/browser-fixtures.tsx";
-import { runCase } from "../helpers/forward-test-support.tsx";
+
 import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-test-support.tsx";
 
 const aboutLinkElement: BrowserElement = {
@@ -38,8 +39,7 @@ const aboutLinkElement: BrowserElement = {
   source_urls: []
 };
 
-async function main() {
-  await runCase("open_page accepts direct urls", async () => {
+  test("open_page accepts direct urls", async () => {
     const result = await webToolHandlers.open_page!(
       createFunctionToolCall("open_page", "tool_5"),
       { url: "https://vertexaisearch.cloud.google.com/redirect/1", description: "继续登录后台" },
@@ -62,7 +62,7 @@ async function main() {
     assert.equal(parsed.resolvedUrl, "https://openai.com");
   });
 
-  await runCase("open_page accepts ref ids", async () => {
+  test("open_page accepts ref ids", async () => {
     const result = await webToolHandlers.open_page!(
       createFunctionToolCall("open_page", "tool_6"),
       { ref_id: "search_1", line: 12 },
@@ -85,7 +85,7 @@ async function main() {
     assert.equal(parsed.resource_id, "res_browser_2");
   });
 
-  await runCase("inspect_page returns matching lines", async () => {
+  test("inspect_page returns matching lines", async () => {
     const result = await webToolHandlers.inspect_page!(
       createFunctionToolCall("inspect_page", "tool_7"),
       { resource_id: "res_browser_2", pattern: "OpenAI" },
@@ -107,7 +107,7 @@ async function main() {
     assert.equal(parsed.matches[0].lineNumber, 2);
   });
 
-  await runCase("interact_with_page forwards page actions", async () => {
+  test("interact_with_page forwards page actions", async () => {
     const result = await webToolHandlers.interact_with_page!(
       createFunctionToolCall("interact_with_page", "tool_8"),
       { resource_id: "res_browser_1", action: "click", target_id: 1, line: 20 },
@@ -142,7 +142,7 @@ async function main() {
     assert.equal(parsed.resolved_target.id, 1);
   });
 
-  await runCase("interact_with_page rejects unsupported actions before calling browser service", async () => {
+  test("interact_with_page rejects unsupported actions before calling browser service", async () => {
     let called = false;
     const result = await webToolHandlers.interact_with_page!(
       createFunctionToolCall("interact_with_page", "tool_8b"),
@@ -160,7 +160,7 @@ async function main() {
     assert.equal(called, false);
   });
 
-  await runCase("interact_with_page forwards semantic targets", async () => {
+  test("interact_with_page forwards semantic targets", async () => {
     const result = await webToolHandlers.interact_with_page!(
       createFunctionToolCall("interact_with_page", "tool_8c"),
       {
@@ -193,7 +193,7 @@ async function main() {
     assert.equal(parsed.candidate_count, 1);
   });
 
-  await runCase("interact_with_page keeps text input whitespace", async () => {
+  test("interact_with_page keeps text input whitespace", async () => {
     const result = await webToolHandlers.interact_with_page!(
       createFunctionToolCall("interact_with_page", "tool_8c2"),
       {
@@ -217,7 +217,7 @@ async function main() {
     assert.equal(parsed.ok, true);
   });
 
-  await runCase("interact_with_page resolves workspace uploads", async () => {
+  test("interact_with_page resolves workspace uploads", async () => {
     const result = await webToolHandlers.interact_with_page!(
       createFunctionToolCall("interact_with_page", "tool_8d"),
       {
@@ -245,7 +245,7 @@ async function main() {
     assert.equal(parsed.action, "upload");
   });
 
-  await runCase("interact_with_page forwards coordinate clicks", async () => {
+  test("interact_with_page forwards coordinate clicks", async () => {
     const result = await webToolHandlers.interact_with_page!(
       createFunctionToolCall("interact_with_page", "tool_8e"),
       {
@@ -270,7 +270,7 @@ async function main() {
     assert.equal(parsed.message, "已在坐标 (320, 240) 执行 click。");
   });
 
-  await runCase("close_page closes opened sessions", async () => {
+  test("close_page closes opened sessions", async () => {
     const result = await webToolHandlers.close_page!(
       createFunctionToolCall("close_page", "tool_9"),
       { resource_id: "res_browser_1" },
@@ -287,7 +287,7 @@ async function main() {
     assert.equal(parsed.closed, true);
   });
 
-  await runCase("capture_screenshot attaches page screenshot context", async () => {
+  test("capture_screenshot attaches page screenshot context", async () => {
     const result = await webToolHandlers.capture_screenshot!(
       createFunctionToolCall("capture_screenshot", "tool_10"),
       { resource_id: "res_browser_1" },
@@ -314,7 +314,7 @@ async function main() {
     assert.equal(result.supplementalMessages?.length, 1);
   });
 
-  await runCase("capture_screenshot supports element-level screenshot", async () => {
+  test("capture_screenshot supports element-level screenshot", async () => {
     const result = await webToolHandlers.capture_screenshot!(
       createFunctionToolCall("capture_screenshot", "tool_10a"),
       { resource_id: "res_browser_1", target_id: 3 },
@@ -342,7 +342,7 @@ async function main() {
     assert.equal(result.supplementalMessages?.length, 1);
   });
 
-  await runCase("download_asset supports direct urls", async () => {
+  test("download_asset supports direct urls", async () => {
     const result = await webToolHandlers.download_asset!(
       createFunctionToolCall("download_asset", "tool_10b"),
       { url: "https://example.com/video.mp4", source_name: "video.mp4", kind: "video" },
@@ -372,7 +372,7 @@ async function main() {
     assert.equal(parsed.file_id, "file_1");
   });
 
-  await runCase("download_asset supports browser resource targets", async () => {
+  test("download_asset supports browser resource targets", async () => {
     const result = await webToolHandlers.download_asset!(
       createFunctionToolCall("download_asset", "tool_10c"),
       { resource_id: "res_browser_1", target_id: 2 },
@@ -402,9 +402,3 @@ async function main() {
     assert.equal(parsed.target_id, 2);
     assert.equal(parsed.file_id, "file_2");
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

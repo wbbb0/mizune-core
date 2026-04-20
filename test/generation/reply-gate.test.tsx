@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import type { LlmMessage } from "../../src/llm/llmClient.ts";
 import { handleGenerationTurnPlanner } from "../../src/app/generation/generationTurnPlanner.ts";
@@ -26,14 +27,7 @@ function createConfig() {
   });
 }
 
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("reply gate prompt stays concise while preserving decision boundaries", async () => {
+  test("reply gate prompt stays concise while preserving decision boundaries", async () => {
     let capturedMessages: LlmMessage[] = [];
     const gate = createReplyGate(createConfig(), {
       async onGenerate(input) {
@@ -91,7 +85,7 @@ async function main() {
     assert.match(user, /⟦planner_batch_message index="1"/);
   });
 
-  await runCase("reply gate parses structured planner semantics while keeping reason first", async () => {
+  test("reply gate parses structured planner semantics while keeping reason first", async () => {
     const gate = createReplyGate(createConfig(), {
       resultText: [
         "reason: 需要先看引用并打开网页",
@@ -134,7 +128,7 @@ async function main() {
     assert.deepEqual(result.toolsetIds, ["web_research"]);
   });
 
-  await runCase("generation reply gate bypasses audio-only batches", async () => {
+  test("generation reply gate bypasses audio-only batches", async () => {
     let llmCalled = false;
     const result = await handleGenerationTurnPlanner(
       createGenerationReplyGateDeps({
@@ -176,7 +170,7 @@ async function main() {
     assert.equal(llmCalled, false);
   });
 
-  await runCase("reply gate no longer locally ignores explicit chat-closing acknowledgements", async () => {
+  test("reply gate no longer locally ignores explicit chat-closing acknowledgements", async () => {
     const gate = createReplyGate(createConfig(), {
       resultText: "礼貌收尾但仍可接住|reply_small|continue_topic"
     });
@@ -198,7 +192,7 @@ async function main() {
     assert.equal(result.replyDecision, "reply_small");
   });
 
-  await runCase("generation reply gate compacts old history on topic switch", async () => {
+  test("generation reply gate compacts old history on topic switch", async () => {
     const compactCalls: Array<{ sessionId: string; keep: number }> = [];
     const persistReasons: string[] = [];
     const result = await handleGenerationTurnPlanner(
@@ -245,7 +239,7 @@ async function main() {
     assert.deepEqual(persistReasons, ["turn_planner_topic_switch_compacted"]);
   });
 
-  await runCase("reply gate coerces model ignore decisions back to reply for normal requests", async () => {
+  test("reply gate coerces model ignore decisions back to reply for normal requests", async () => {
     const gate = createReplyGate(createConfig(), {
       resultText: "请求敏感内容|ignore"
     });
@@ -267,7 +261,7 @@ async function main() {
     assert.equal(result.replyDecision, "reply_small");
   });
 
-  await runCase("reply gate coerces no-reply wait decisions back to reply", async () => {
+  test("reply gate coerces no-reply wait decisions back to reply", async () => {
     const gate = createReplyGate(createConfig(), {
       resultText: "对方只是确认无需回复|wait"
     });
@@ -289,7 +283,7 @@ async function main() {
     assert.equal(result.replyDecision, "reply_small");
   });
 
-  await runCase("reply gate keeps wait only for clearly unfinished text", async () => {
+  test("reply gate keeps wait only for clearly unfinished text", async () => {
     const gate = createReplyGate(createConfig(), {
       resultText: "半句话未完|wait"
     });
@@ -312,7 +306,7 @@ async function main() {
     assert.equal(result.topicDecision, "continue_topic");
   });
 
-  await runCase("reply gate degrades to reply_small on LLM timeout error", async () => {
+  test("reply gate degrades to reply_small on LLM timeout error", async () => {
     const gate = createReplyGate(createConfig(), {
       async onGenerate() {
         throw new Error("LLM total timeout after 20000ms");
@@ -337,7 +331,7 @@ async function main() {
     assert.equal(result.topicDecision, "continue_topic");
   });
 
-  await runCase("reply gate degrades to reply_small on other LLM errors", async () => {
+  test("reply gate degrades to reply_small on other LLM errors", async () => {
     const gate = createReplyGate(createConfig(), {
       async onGenerate() {
         throw new Error("network error");
@@ -362,7 +356,7 @@ async function main() {
     assert.equal(result.topicDecision, "continue_topic");
   });
 
-  await runCase("reply gate parses topic_switch decisions", async () => {
+  test("reply gate parses topic_switch decisions", async () => {
     const gate = createReplyGate(createConfig(), {
       resultText: "明显换题了|reply_large|new_topic"
     });
@@ -391,9 +385,3 @@ async function main() {
     assert.equal(result.topicDecision, "new_topic");
     assert.equal(result.reason, "明显换题了");
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

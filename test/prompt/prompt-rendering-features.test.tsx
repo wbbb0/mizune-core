@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { ConversationAccessService } from "../../src/identity/conversationAccessService.ts";
@@ -6,11 +7,10 @@ import { NpcDirectory } from "../../src/identity/npcDirectory.ts";
 import { OneBotClient } from "../../src/services/onebot/onebotClient.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { buildPrompt } from "../../src/llm/prompt/promptBuilder.ts";
-import { createMemoryHarness, createMemoryTestConfig, runCase } from "../helpers/memory-test-support.tsx";
+import { createMemoryHarness, createMemoryTestConfig } from "../helpers/memory-test-support.tsx";
 import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageText } from "../helpers/prompt-fixtures.tsx";
 
-async function main() {
-  await runCase("prompt builder adds explicit batch metadata and trigger markers for multi-user group batches", async () => {
+  test("prompt builder adds explicit batch metadata and trigger markers for multi-user group batches", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
@@ -49,7 +49,7 @@ async function main() {
     }
   });
 
-  await runCase("prompt builder renders tool guidance from active toolsets only", async () => {
+  test("prompt builder renders tool guidance from active toolsets only", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
@@ -92,7 +92,7 @@ async function main() {
     }
   });
 
-  await runCase("prompt builder deduplicates private-context user info and overlapping memory text", async () => {
+  test("prompt builder deduplicates private-context user info and overlapping memory text", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
@@ -156,7 +156,7 @@ async function main() {
     }
   });
 
-  await runCase("prompt builder keeps higher-priority rules and ranks user memories by kind and importance", async () => {
+  test("prompt builder keeps higher-priority rules and ranks user memories by kind and importance", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
@@ -224,7 +224,7 @@ async function main() {
     }
   });
 
-  await runCase("prompt builder switches disclosure rules between normal and debug mode", async () => {
+  test("prompt builder switches disclosure rules between normal and debug mode", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.get();
@@ -273,7 +273,7 @@ async function main() {
     }
   });
 
-  await runCase("prompt builder omits empty placeholder sections", async () => {
+  test("prompt builder omits empty placeholder sections", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.get();
@@ -298,7 +298,7 @@ async function main() {
     }
   });
 
-  await runCase("assistant mode keeps message headers but excludes rp and memory sections", async () => {
+  test("assistant mode keeps message headers but excludes rp and memory sections", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
@@ -361,7 +361,7 @@ async function main() {
     }
   });
 
-  await runCase("scenario_host rewrites prefixed user inputs for batch and history while normal mode keeps raw text", async () => {
+  test("scenario_host rewrites prefixed user inputs for batch and history while normal mode keeps raw text", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.get();
@@ -441,7 +441,7 @@ async function main() {
     }
   });
 
-  await runCase("conversation access allows self private, npc private, and shared groups only", async () => {
+  test("conversation access allows self private, npc private, and shared groups only", async () => {
     const harness = await createMemoryHarness();
     try {
       await harness.userStore.registerKnownUser({ userId: "30003" });
@@ -490,9 +490,3 @@ async function main() {
       await harness.cleanup();
     }
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

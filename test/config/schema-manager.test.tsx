@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -12,7 +13,7 @@ import {
   s,
   writeConfigFile
 } from "../../src/data/schema/index.ts";
-import { runCase, withTempDir } from "../helpers/config-test-support.tsx";
+import { withTempDir } from "../helpers/config-test-support.tsx";
 
 const appSchema = s.object({
   server: s.object({
@@ -58,8 +59,7 @@ const appSchema = s.object({
     .describe("日志级别")
 }).strict();
 
-async function main() {
-  await runCase("parseConfig applies defaults and keeps inferred structure", async () => {
+  test("parseConfig applies defaults and keeps inferred structure", async () => {
     const config = parseConfig(appSchema, {
       server: {
         port: 9000
@@ -78,7 +78,7 @@ async function main() {
     assert.equal(config.logLevel, "info");
   });
 
-  await runCase("strict object schema rejects unknown keys", async () => {
+  test("strict object schema rejects unknown keys", async () => {
     assert.throws(
       () => parseConfig(appSchema, {
         server: {
@@ -93,7 +93,7 @@ async function main() {
     );
   });
 
-  await runCase("loadConfig merges layers and replaces arrays", async () => {
+  test("loadConfig merges layers and replaces arrays", async () => {
     await withTempDir("llm-bot-config-schema-load", async (dir: string) => {
       const baseFile = join(dir, "app.yml");
       const envFile = join(dir, "app.prod.yml");
@@ -144,7 +144,7 @@ async function main() {
     });
   });
 
-  await runCase("exportSchemaMeta and buildUiTree expose schema structure", async () => {
+  test("exportSchemaMeta and buildUiTree expose schema structure", async () => {
     const meta = exportSchemaMeta(appSchema);
     const uiTree = buildUiTree(appSchema);
 
@@ -160,7 +160,7 @@ async function main() {
     assert.equal((uiTree as any).children.admins.kind, "array");
   });
 
-  await runCase("createSchemaTemplate builds an empty object from nested defaults", async () => {
+  test("createSchemaTemplate builds an empty object from nested defaults", async () => {
     const template = createSchemaTemplate(appSchema);
 
     assert.deepEqual(template, {
@@ -178,7 +178,7 @@ async function main() {
     });
   });
 
-  await runCase("loadAndDumpConfig writes parsed config in requested format", async () => {
+  test("loadAndDumpConfig writes parsed config in requested format", async () => {
     await withTempDir("llm-bot-config-schema-dump", async (dir: string) => {
       const sourceFile = join(dir, "app.yml");
       const outputYaml = join(dir, "generated-config.yml");
@@ -212,6 +212,3 @@ async function main() {
       assert.equal(parsed.logLevel, "info");
     });
   });
-}
-
-await main();

@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -5,12 +6,6 @@ import { tmpdir } from "node:os";
 import pino from "pino";
 import { s } from "../../src/data/schema/index.ts";
 import { FileSchemaStore } from "../../src/data/fileSchemaStore.ts";
-
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "llm-bot-file-store-"));
@@ -25,8 +20,7 @@ const counterSchema = s.object({
   value: s.number().int()
 }).strict();
 
-async function main() {
-  await runCase("atomic writes tolerate concurrent writes to the same file", async () => {
+  test("atomic writes tolerate concurrent writes to the same file", async () => {
     await withTempDir(async (dir) => {
       const store = new FileSchemaStore({
         filePath: join(dir, "store.json"),
@@ -47,7 +41,7 @@ async function main() {
     });
   });
 
-  await runCase("readOrDefault regenerates a corrupted file", async () => {
+  test("readOrDefault regenerates a corrupted file", async () => {
     await withTempDir(async (dir) => {
       const filePath = join(dir, "store.json");
       const store = new FileSchemaStore({
@@ -67,9 +61,3 @@ async function main() {
       assert.deepEqual(rewritten, { value: 7 });
     });
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

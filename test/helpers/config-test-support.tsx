@@ -3,12 +3,6 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import YAML from "yaml";
 
-export async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
 export async function withTempDir(name: string, fn: (dir: string) => Promise<void>) {
   const dir = await mkdtemp(join(tmpdir(), `${name}-`));
   try {

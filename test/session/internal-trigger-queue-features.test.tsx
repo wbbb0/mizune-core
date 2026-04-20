@@ -1,19 +1,9 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { createSessionState } from "../../src/conversation/session/sessionStateFactory.ts";
 import { SessionInternalTriggerQueue } from "../../src/conversation/session/sessionInternalTriggerQueue.ts";
 
-async function runCase(name: string, fn: () => Promise<void>) {
-  try {
-    await fn();
-    console.log(`- ${name} ... ok`);
-  } catch (error) {
-    console.error(`- ${name} ... failed`);
-    throw error;
-  }
-}
-
-async function main() {
-  await runCase("internal trigger queue keeps fifo order and accurate size", async () => {
+  test("internal trigger queue keeps fifo order and accurate size", async () => {
     const queue = new SessionInternalTriggerQueue();
     const session = createSessionState({ id: "qqbot:p:test", type: "private" });
 
@@ -50,6 +40,3 @@ async function main() {
     assert.equal(queue.hasPending(session), false);
     assert.equal(queue.getSize(session), 0);
   });
-}
-
-void main();

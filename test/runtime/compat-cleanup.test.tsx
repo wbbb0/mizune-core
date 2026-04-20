@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -8,14 +9,7 @@ import { OneBotClient } from "../../src/services/onebot/onebotClient.ts";
 import { ScheduledJobStore } from "../../src/runtime/scheduler/jobStore.ts";
 import { parseToolArguments } from "../../src/llm/shared/toolArgs.ts";
 
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("scheduled job store clears legacy prompt-only records", async () => {
+  test("scheduled job store clears legacy prompt-only records", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-scheduled-job-compat-test-"));
     const logger = pino({ level: "silent" });
     const filePath = join(dataDir, "scheduled-jobs.json");
@@ -65,7 +59,7 @@ async function main() {
     }
   });
 
-  await runCase("tool argument parser preserves oversized numeric ids as strings", async () => {
+  test("tool argument parser preserves oversized numeric ids as strings", async () => {
     const parsed = parseToolArguments(
       '{"forward_id":7618160446138694072,"message_id":1234567890123456789,"link_id":7}',
       pino({ level: "silent" }),
@@ -82,7 +76,7 @@ async function main() {
     });
   });
 
-  await runCase("onebot getForwardMessage surfaces API failures", async () => {
+  test("onebot getForwardMessage surfaces API failures", async () => {
     const server = createServer((req, res) => {
       if (req.url !== "/get_forward_msg") {
         res.writeHead(404).end();
@@ -135,9 +129,3 @@ async function main() {
       });
     }
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

@@ -1,13 +1,13 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { initializeBootstrapState } from "../../src/app/bootstrap/bootstrapServices.ts";
-import { runCase } from "../helpers/forward-test-support.tsx";
+
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 
-async function main() {
-  await runCase("initializeBootstrapState clears persisted runtime resources on startup", async () => {
+  test("initializeBootstrapState clears persisted runtime resources on startup", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-runtime-resource-reset-"));
 
     try {
@@ -66,9 +66,3 @@ async function main() {
       await rm(dataDir, { recursive: true, force: true });
     }
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

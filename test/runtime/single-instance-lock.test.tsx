@@ -1,15 +1,10 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SingleInstanceLock, SingleInstanceLockError } from "../../src/runtime/singleInstanceLock.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
-
-function runCase(name: string, fn: () => Promise<void>) {
-  return fn().then(() => {
-    process.stdout.write(`- ${name} ... ok\n`);
-  });
-}
 
 async function withDataDir(name: string, fn: (dataDir: string) => Promise<void>) {
   const dataDir = await mkdtemp(join(tmpdir(), `${name}-`));
@@ -26,8 +21,7 @@ function createTestConfig(_dataDir: string) {
   });
 }
 
-async function main() {
-  await runCase("acquires and releases the instance lock", async () => {
+  test("acquires and releases the instance lock", async () => {
     await withDataDir("llm-bot-single-lock", async (dataDir) => {
       const lock = await SingleInstanceLock.acquire(dataDir, createTestConfig(dataDir));
       const filePath = join(dataDir, ".instance.lock");
@@ -38,7 +32,7 @@ async function main() {
     });
   });
 
-  await runCase("rejects when a live process already owns the lock", async () => {
+  test("rejects when a live process already owns the lock", async () => {
     await withDataDir("llm-bot-single-lock-live", async (dataDir) => {
       const filePath = join(dataDir, ".instance.lock");
       await writeFile(filePath, `${JSON.stringify({
@@ -56,7 +50,7 @@ async function main() {
     });
   });
 
-  await runCase("replaces a stale lock file", async () => {
+  test("replaces a stale lock file", async () => {
     await withDataDir("llm-bot-single-lock-stale", async (dataDir) => {
       const filePath = join(dataDir, ".instance.lock");
       await writeFile(filePath, `${JSON.stringify({
@@ -73,9 +67,3 @@ async function main() {
       await lock.release();
     });
   });
-}
-
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exit(1);
-});

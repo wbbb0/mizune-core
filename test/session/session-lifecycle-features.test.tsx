@@ -1,19 +1,9 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
-async function runCase(name: string, fn: () => Promise<void>) {
-  try {
-    await fn();
-    console.log(`- ${name} ... ok`);
-  } catch (error) {
-    console.error(`- ${name} ... failed`);
-    throw error;
-  }
-}
-
-async function main() {
-  await runCase("completeResponse only applies to the current response epoch", async () => {
+  test("completeResponse only applies to the current response epoch", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const sessionId = "qqbot:p:test";
     sessionManager.ensureSession({ id: sessionId, type: "private" });
@@ -32,7 +22,7 @@ async function main() {
     assert.equal(session.interruptibleGroupTriggerUserId, null);
   });
 
-  await runCase("epoch-guarded session mutations reject stale epochs after clear", async () => {
+  test("epoch-guarded session mutations reject stale epochs after clear", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const sessionId = "qqbot:p:test";
     sessionManager.ensureSession({ id: sessionId, type: "private" });
@@ -68,6 +58,3 @@ async function main() {
       false
     );
   });
-}
-
-void main();

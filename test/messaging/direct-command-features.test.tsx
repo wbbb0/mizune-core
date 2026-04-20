@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import {
   canExecuteDirectCommand,
@@ -9,10 +10,8 @@ import {
   resolvePreRouterSetupDecision
 } from "../../src/app/messaging/messageAdmission.ts";
 import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.tsx";
-import { runCase } from "../helpers/forward-test-support.tsx";
 
-async function main() {
-  await runCase("direct command parser supports owner bootstrap command", async () => {
+  test("direct command parser supports owner bootstrap command", async () => {
     assert.deepEqual(parseDirectCommand(".own"), { name: "own" });
     assert.deepEqual(parseDirectCommand("。own 123456"), { name: "own", userId: "123456" });
     assert.deepEqual(parseDirectCommand(".debug"), { name: "debug", mode: "status" });
@@ -23,7 +22,7 @@ async function main() {
     assert.deepEqual(parseDirectCommand(".compact 3"), { name: "compact", keep: 3 });
   });
 
-  await runCase("direct command routing helper centralizes bootstrap and group-owner rules", async () => {
+  test("direct command routing helper centralizes bootstrap and group-owner rules", async () => {
     const own = parseDirectCommand(".own");
     const debug = parseDirectCommand(".debug");
     assert.ok(own);
@@ -46,7 +45,7 @@ async function main() {
     }), false);
   });
 
-  await runCase("direct command dispatch helper rejects text commands when media is attached", async () => {
+  test("direct command dispatch helper rejects text commands when media is attached", async () => {
     assert.equal(resolveDispatchableDirectCommand({
       phase: "chat",
       setupState: "ready",
@@ -64,7 +63,7 @@ async function main() {
     }), { name: "debug", mode: "on" });
   });
 
-  await runCase("setup admission helpers centralize bootstrap and setup blocking rules", async () => {
+  test("setup admission helpers centralize bootstrap and setup blocking rules", async () => {
     const preRouterCommand = resolvePreRouterSetupDecision({
       setupState: "needs_owner",
       channelId: "qqbot",
@@ -105,7 +104,7 @@ async function main() {
     }
   });
 
-  await runCase("direct command responses request auto retract after one minute", async () => {
+  test("direct command responses request auto retract after one minute", async () => {
     const { calls, handler } = createDirectCommandFixture();
     await handler({
       command: { name: "help" },
@@ -123,7 +122,7 @@ async function main() {
     assert.match(firstCall.text, /\.own \[userId\]/);
   });
 
-  await runCase("stop command cancels generation without clearing session", async () => {
+  test("stop command cancels generation without clearing session", async () => {
     let cancelCalled = 0;
     let clearCalled = 0;
     const { calls, handler } = createDirectCommandFixture({
@@ -151,7 +150,7 @@ async function main() {
     assert.equal(firstCall.text, "已强行停止当前回答生成。");
   });
 
-  await runCase("compact command triggers forced compression", async () => {
+  test("compact command triggers forced compression", async () => {
     let cancelCalled = 0;
     const compactCalls: Array<{ sessionId: string; keep: number | undefined }> = [];
     const { calls, handler } = createDirectCommandFixture({
@@ -183,7 +182,7 @@ async function main() {
     assert.equal(firstCall.text, "当前会话历史已强制压缩。");
   });
 
-  await runCase("compact command forwards explicit keep count", async () => {
+  test("compact command forwards explicit keep count", async () => {
     const compactCalls: Array<{ sessionId: string; keep: number | undefined }> = [];
     const { handler } = createDirectCommandFixture({
       async forceCompactSession(sessionId: string, keep?: number) {
@@ -201,7 +200,7 @@ async function main() {
     assert.deepEqual(compactCalls, [{ sessionId: "qqbot:p:owner", keep: 3 }]);
   });
 
-  await runCase("debug command toggles session debug mode for owner only", async () => {
+  test("debug command toggles session debug mode for owner only", async () => {
     const debugState = { enabled: false, oncePending: false };
     const debugMarkers: Array<Record<string, unknown>> = [];
     const persistReasons: string[] = [];
@@ -250,13 +249,13 @@ async function main() {
     assert.deepEqual(persistReasons, ["debug_once_armed", "debug_disabled"]);
   });
 
-  await runCase("reset command exists in parseDirectCommand", async () => {
+  test("reset command exists in parseDirectCommand", async () => {
     const parsed = parseDirectCommand(".reset");
     assert.ok(parsed, "reset command must be parseable");
     assert.equal(parsed.name, "reset");
   });
 
-  await runCase("reset command is not allowed in rp_assistant mode", async () => {
+  test("reset command is not allowed in rp_assistant mode", async () => {
     const parsed = parseDirectCommand(".reset");
     assert.ok(parsed);
     const allowed = canExecuteDirectCommand(parsed, {
@@ -269,7 +268,7 @@ async function main() {
     assert.equal(allowed, false, "reset should not be allowed in rp_assistant mode");
   });
 
-  await runCase("reset command is allowed in scenario_host mode", async () => {
+  test("reset command is allowed in scenario_host mode", async () => {
     const parsed = parseDirectCommand(".reset");
     assert.ok(parsed);
     const allowed = canExecuteDirectCommand(parsed, {
@@ -282,7 +281,7 @@ async function main() {
     assert.equal(allowed, true, "reset should be allowed in scenario_host mode");
   });
 
-  await runCase("clear command is allowed regardless of sessionModeId", async () => {
+  test("clear command is allowed regardless of sessionModeId", async () => {
     const parsed = parseDirectCommand(".clear");
     assert.ok(parsed);
     const allowed = canExecuteDirectCommand(parsed, {
@@ -295,7 +294,7 @@ async function main() {
     assert.equal(allowed, true);
   });
 
-  await runCase("resolveDispatchableDirectCommand returns reset only in scenario_host", async () => {
+  test("resolveDispatchableDirectCommand returns reset only in scenario_host", async () => {
     const inScenario = resolveDispatchableDirectCommand({
       phase: "chat",
       setupState: "ready",
@@ -320,7 +319,7 @@ async function main() {
     assert.equal(inRp, null, "should not resolve in rp_assistant");
   });
 
-  await runCase("confirm command in scenario_host setup captions the session title from scenario state", async () => {
+  test("confirm command in scenario_host setup captions the session title from scenario state", async () => {
     const setTitleCalls: Array<{ sessionId: string; title: string; titleSource: "default" | "auto" | "manual" }> = [];
     const captionRequests: Array<Record<string, unknown>> = [];
 
@@ -405,7 +404,7 @@ async function main() {
     assert.equal(calls.at(-1)?.text, "初始化已确认，已进入正常模式。");
   });
 
-  await runCase("debug once with inline text enqueues a synthetic message and flushes immediately", async () => {
+  test("debug once with inline text enqueues a synthetic message and flushes immediately", async () => {
     const debugMarkers: Array<Record<string, unknown>> = [];
     const syntheticMessages: Array<Record<string, unknown>> = [];
     const flushCalls: Array<{ sessionId: string; options?: { skipReplyGate?: boolean } }> = [];
@@ -435,9 +434,3 @@ async function main() {
     assert.equal(syntheticMessages[0]!.text, "发我看下现在的完整系统消息");
     assert.deepEqual(flushCalls, [{ sessionId: "qqbot:p:owner", options: { skipReplyGate: true } }]);
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

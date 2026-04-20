@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -7,12 +8,6 @@ import pino from "pino";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { ChatFileStore } from "../../src/services/workspace/chatFileStore.ts";
 import { LocalFileService } from "../../src/services/workspace/localFileService.ts";
-
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "llm-bot-media-workspace-"));
@@ -79,8 +74,7 @@ const TINY_PNG = Buffer.from(
   "base64"
 );
 
-async function main() {
-  await runCase("importRemoteSource rejects corrupted downloaded images", async () => {
+  test("importRemoteSource rejects corrupted downloaded images", async () => {
     await withTempDir(async (dir) => {
       const chatFileStore = createChatFileStore(dir);
       await chatFileStore.init();
@@ -108,7 +102,7 @@ async function main() {
     });
   });
 
-  await runCase("importRemoteSource keeps valid downloaded images", async () => {
+  test("importRemoteSource keeps valid downloaded images", async () => {
     await withTempDir(async (dir) => {
       const chatFileStore = createChatFileStore(dir);
       await chatFileStore.init();
@@ -134,9 +128,3 @@ async function main() {
       }
     });
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

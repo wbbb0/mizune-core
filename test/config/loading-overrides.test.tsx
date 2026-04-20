@@ -1,17 +1,11 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadConfig } from "../../src/config/config.ts";
-import {
-  runCase,
-  withConfigDir,
-  writeLlmCatalog,
-  writeDefaultInstanceYaml,
-  writeYaml
-} from "../helpers/config-test-support.tsx";
+import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } from "../helpers/config-test-support.tsx";
 
-async function main() {
-  await runCase("loadConfig merges global proxy settings and feature proxy switches", async () => {
+  test("loadConfig merges global proxy settings and feature proxy switches", async () => {
     await withConfigDir("llm-bot-config-search-proxy-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeLlmCatalog(configDir, {
@@ -93,7 +87,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig keeps provider catalog independent from runtime overrides", async () => {
+  test("loadConfig keeps provider catalog independent from runtime overrides", async () => {
     await withConfigDir("llm-bot-config-provider-catalog-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeLlmCatalog(configDir, {
@@ -168,7 +162,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig ignores provider and model catalogs declared inside runtime layers", async () => {
+  test("loadConfig ignores provider and model catalogs declared inside runtime layers", async () => {
     await withConfigDir("llm-bot-config-runtime-catalog-ignored-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeLlmCatalog(configDir, {
@@ -218,7 +212,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig still supports CONFIG_INSTANCE for instance selection", async () => {
+  test("loadConfig still supports CONFIG_INSTANCE for instance selection", async () => {
     await withConfigDir("llm-bot-config-instance-env-test", async (configDir) => {
       await mkdir(join(configDir, "instances"), { recursive: true });
       await writeYaml(join(configDir, "global.yml"), {
@@ -248,7 +242,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig allows disabling webui auth independently", async () => {
+  test("loadConfig allows disabling webui auth independently", async () => {
     await withConfigDir("llm-bot-config-webui-auth-override-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeYaml(join(configDir, "global.yml"), {
@@ -281,7 +275,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig keeps valid sections when a sibling section is invalid", async () => {
+  test("loadConfig keeps valid sections when a sibling section is invalid", async () => {
     await withConfigDir("llm-bot-config-partial-section-recovery", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeYaml(join(configDir, "global.yml"), {
@@ -312,7 +306,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig keeps valid nested object fields when a sibling nested field is invalid", async () => {
+  test("loadConfig keeps valid nested object fields when a sibling nested field is invalid", async () => {
     await withConfigDir("llm-bot-config-nested-partial-recovery", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeYaml(join(configDir, "global.yml"), {
@@ -346,7 +340,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig skips a malformed instance file and keeps other valid layers", async () => {
+  test("loadConfig skips a malformed instance file and keeps other valid layers", async () => {
     await withConfigDir("llm-bot-config-malformed-instance-recovery", async (configDir) => {
       await mkdir(join(configDir, "instances"), { recursive: true });
       await writeYaml(join(configDir, "global.yml"), {
@@ -372,7 +366,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig ignores non-instance environment overrides", async () => {
+  test("loadConfig ignores non-instance environment overrides", async () => {
     await withConfigDir("llm-bot-config-env-ignored-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeYaml(join(configDir, "global.yml"), {
@@ -431,7 +425,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig reads OneBot typing provider overrides from files", async () => {
+  test("loadConfig reads OneBot typing provider overrides from files", async () => {
     await withConfigDir("llm-bot-config-onebot-typing-overrides-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeYaml(join(configDir, "global.yml"), {
@@ -456,7 +450,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig requires the selected instance config file", async () => {
+  test("loadConfig requires the selected instance config file", async () => {
     await withConfigDir("llm-bot-config-missing-instance-test", async (configDir) => {
       await writeYaml(join(configDir, "global.yml"), {
         appName: "runtime-app"
@@ -468,9 +462,3 @@ async function main() {
       );
     });
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

@@ -1,8 +1,8 @@
+import test from "node:test";
 import assert from "node:assert/strict";
-import { createMemoryHarness, runCase } from "../helpers/memory-test-support.tsx";
+import { createMemoryHarness } from "../helpers/memory-test-support.tsx";
 
-async function main() {
-  await runCase("user profile patch keeps structured extended fields and compacts profile summary", async () => {
+  test("user profile patch keeps structured extended fields and compacts profile summary", async () => {
     const harness = await createMemoryHarness();
     try {
       const updated = await harness.userStore.patchUserProfile({
@@ -24,7 +24,7 @@ async function main() {
     }
   });
 
-  await runCase("user memory writes infer concrete kinds for preferences and boundaries", async () => {
+  test("user memory writes infer concrete kinds for preferences and boundaries", async () => {
     const harness = await createMemoryHarness();
     try {
       const preference = await harness.userStore.upsertMemory({
@@ -44,7 +44,7 @@ async function main() {
     }
   });
 
-  await runCase("persona patch diagnostics warn when workflow defaults are written into persona rules", async () => {
+  test("persona patch diagnostics warn when workflow defaults are written into persona rules", async () => {
     const loggerEvents: Array<{ level: "info" | "warn"; event: string; payload: Record<string, unknown> }> = [];
     const logger = {
       info(payload: Record<string, unknown>, event: string) {
@@ -69,7 +69,7 @@ async function main() {
     }
   });
 
-  await runCase("persona identity and speech-style updates stay in persona without workflow warnings", async () => {
+  test("persona identity and speech-style updates stay in persona without workflow warnings", async () => {
     const harness = await createMemoryHarness();
     try {
       const result = await harness.personaStore.patchWithDiagnostics({
@@ -84,7 +84,7 @@ async function main() {
     }
   });
 
-  await runCase("mixed profile-like user memory input returns a profile warning instead of silently storing to the wrong category", async () => {
+  test("mixed profile-like user memory input returns a profile warning instead of silently storing to the wrong category", async () => {
     const harness = await createMemoryHarness();
     try {
       const result = await harness.userStore.upsertMemory({
@@ -98,7 +98,7 @@ async function main() {
     }
   });
 
-  await runCase("global and toolset rules keep category boundaries at store layer", async () => {
+  test("global and toolset rules keep category boundaries at store layer", async () => {
     const harness = await createMemoryHarness();
     try {
       const globalRule = await harness.globalRuleStore.upsert({
@@ -125,7 +125,7 @@ async function main() {
     }
   });
 
-  await runCase("toolset rule writes log reroute diagnostics for cross-category warnings", async () => {
+  test("toolset rule writes log reroute diagnostics for cross-category warnings", async () => {
     const loggerEvents: Array<{ level: "info" | "warn"; event: string; payload: Record<string, unknown> }> = [];
     const logger = {
       info(payload: Record<string, unknown>, event: string) {
@@ -151,9 +151,3 @@ async function main() {
       await harness.cleanup();
     }
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

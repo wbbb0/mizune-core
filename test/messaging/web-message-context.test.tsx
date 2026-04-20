@@ -1,15 +1,9 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { createMessageProcessingContext } from "../../src/app/messaging/messageContextBuilder.ts";
 import type { ParsedIncomingMessage } from "../../src/services/onebot/types.ts";
 
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("web message context preserves pre-resolved attachments and image ids", async () => {
+  test("web message context preserves pre-resolved attachments and image ids", async () => {
     const incomingMessage: ParsedIncomingMessage = {
       chatType: "private",
       userId: "2254600711",
@@ -87,7 +81,7 @@ async function main() {
     }]);
   });
 
-  await runCase("onebot message context resolves external users into internal user ids", async () => {
+  test("onebot message context resolves external users into internal user ids", async () => {
     const incomingMessage: ParsedIncomingMessage = {
       chatType: "private",
       userId: "2254600711",
@@ -152,6 +146,3 @@ async function main() {
 
     assert.equal(context.enrichedMessage.userId, "u_01TESTUSER000000000000000");
   });
-}
-
-void main();

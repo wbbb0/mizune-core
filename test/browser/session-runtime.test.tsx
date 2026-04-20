@@ -1,7 +1,7 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { BrowserSessionRuntime } from "../../src/services/web/browser/browserSessionRuntime.ts";
 import type { BrowserBackend } from "../../src/services/web/browser/types.ts";
-import { runCase } from "../helpers/forward-test-support.tsx";
 
 function createSnapshot(url: string) {
   return {
@@ -48,8 +48,7 @@ function createSessionInit(resourceId: string, expiresAt: number, profileId: str
   };
 }
 
-async function main() {
-  await runCase("session runtime supports basic get/touch/find/delete lifecycle", async () => {
+  test("session runtime supports basic get/touch/find/delete lifecycle", async () => {
     const runtime = new BrowserSessionRuntime(3);
     runtime.set("browser_page_1", createSessionInit("browser_page_1", 100, "profile-1"));
 
@@ -68,7 +67,7 @@ async function main() {
     assert.equal(runtime.get("browser_page_1"), undefined);
   });
 
-  await runCase("session runtime evicts oldest sessions when max is exceeded", async () => {
+  test("session runtime evicts oldest sessions when max is exceeded", async () => {
     const runtime = new BrowserSessionRuntime(2);
 
     const firstEvicted = runtime.set("browser_page_1", createSessionInit("browser_page_1", 100));
@@ -83,7 +82,7 @@ async function main() {
     assert.equal(runtime.get("browser_page_3")?.resourceId, "browser_page_3");
   });
 
-  await runCase("session runtime collectExpired only removes expired entries", async () => {
+  test("session runtime collectExpired only removes expired entries", async () => {
     const runtime = new BrowserSessionRuntime(4);
     runtime.set("browser_page_1", createSessionInit("browser_page_1", 100));
     runtime.set("browser_page_2", createSessionInit("browser_page_2", 200));
@@ -99,9 +98,3 @@ async function main() {
     assert.deepEqual(cleared.map((item) => item.resourceId), ["browser_page_3"]);
     assert.equal(runtime.values().length, 0);
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

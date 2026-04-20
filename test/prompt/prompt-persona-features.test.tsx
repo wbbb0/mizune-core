@@ -1,12 +1,12 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { NpcDirectory } from "../../src/identity/npcDirectory.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { buildPrompt, buildScheduledTaskPrompt, buildSetupPrompt } from "../../src/llm/prompt/promptBuilder.ts";
-import { createMemoryHarness, createMemoryTestConfig, runCase } from "../helpers/memory-test-support.tsx";
+import { createMemoryHarness, createMemoryTestConfig } from "../helpers/memory-test-support.tsx";
 import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageText } from "../helpers/prompt-fixtures.tsx";
 
-async function main() {
-  await runCase("prompt builder injects persona fields and current-user memories only", async () => {
+  test("prompt builder injects persona fields and current-user memories only", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
@@ -50,7 +50,7 @@ async function main() {
     }
   });
 
-  await runCase("prompt builder injects explicit current user profile card", async () => {
+  test("prompt builder injects explicit current user profile card", async () => {
     const harness = await createMemoryHarness();
     try {
       await harness.userStore.registerKnownUser({ userId: "1259430720", preferredAddress: "堂弟" });
@@ -84,7 +84,7 @@ async function main() {
     }
   });
 
-  await runCase("prompt builder marks scheduled triggers as internal task context", async () => {
+  test("prompt builder marks scheduled triggers as internal task context", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.get();
@@ -119,7 +119,7 @@ async function main() {
     }
   });
 
-  await runCase("setup prompt stays focused on persona completion", async () => {
+  test("setup prompt stays focused on persona completion", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.get();
@@ -143,7 +143,7 @@ async function main() {
     }
   });
 
-  await runCase("scheduled group prompt avoids inventing a target user", async () => {
+  test("scheduled group prompt avoids inventing a target user", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.get();
@@ -171,7 +171,7 @@ async function main() {
     }
   });
 
-  await runCase("session manager keeps scheduled task order and ignores stale generation finish", async () => {
+  test("session manager keeps scheduled task order and ignores stale generation finish", async () => {
     const sessionManager = new SessionManager(createMemoryTestConfig());
     const sessionId = "qqbot:p:owner";
     sessionManager.ensureSession({ id: sessionId, type: "private" });
@@ -207,7 +207,7 @@ async function main() {
     assert.equal(sessionManager.shiftInternalTrigger(sessionId), null);
   });
 
-  await runCase("prompt builder includes npc profiles only when they are relevant to current participants", async () => {
+  test("prompt builder includes npc profiles only when they are relevant to current participants", async () => {
     const harness = await createMemoryHarness();
     try {
       await harness.userStore.registerKnownUser({
@@ -244,7 +244,7 @@ async function main() {
     }
   });
 
-  await runCase("prompt builder adds stricter stop rules for npc trigger users", async () => {
+  test("prompt builder adds stricter stop rules for npc trigger users", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.get();
@@ -268,7 +268,7 @@ async function main() {
     }
   });
 
-  await runCase("prompt builder renders unified bracket message headers", async () => {
+  test("prompt builder renders unified bracket message headers", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.get();
@@ -291,9 +291,3 @@ async function main() {
       await harness.cleanup();
     }
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

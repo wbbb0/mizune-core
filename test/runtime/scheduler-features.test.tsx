@@ -1,8 +1,8 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { Scheduler } from "../../src/runtime/scheduler/scheduler.ts";
 import type { ScheduledJob } from "../../src/runtime/scheduler/types.ts";
-import { runCase } from "../helpers/forward-test-support.tsx";
 
 class InMemoryScheduledJobStore {
   constructor(private jobs: ScheduledJob[]) {}
@@ -57,8 +57,7 @@ function createCronJob(): ScheduledJob {
   };
 }
 
-async function main() {
-  await runCase("scheduler disables cron jobs after repeated consecutive failures", async () => {
+  test("scheduler disables cron jobs after repeated consecutive failures", async () => {
     const store = new InMemoryScheduledJobStore([createCronJob()]);
     const scheduler = new Scheduler(
       store as never,
@@ -81,9 +80,3 @@ async function main() {
     assert.equal(finalJob.state.nextRunAtMs, null);
     assert.match(String(finalJob.state.lastError ?? ""), /已自动停用/);
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

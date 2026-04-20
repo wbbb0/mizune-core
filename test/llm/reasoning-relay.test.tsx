@@ -1,16 +1,10 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { LlmClient } from "../../src/llm/llmClient.ts";
-import {
-  createLlmTestConfig,
-  createToolCallPayload,
-  createToolDefinition,
-  runCase,
-  withMockFetch
-} from "../helpers/llm-test-support.tsx";
+import { createLlmTestConfig, createToolCallPayload, createToolDefinition, withMockFetch } from "../helpers/llm-test-support.tsx";
 
-async function main() {
-  await runCase("same-round reasoning_content is relayed back to the follow-up tool request by default", async () => {
+  test("same-round reasoning_content is relayed back to the follow-up tool request by default", async () => {
     const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
 
     await withMockFetch([
@@ -58,7 +52,7 @@ async function main() {
     });
   });
 
-  await runCase("same-round reasoning relay can be disabled per model", async () => {
+  test("same-round reasoning relay can be disabled per model", async () => {
     const client = new LlmClient(createLlmTestConfig({
       returnReasoningContentForSameRoundMessages: false
     }), pino({ level: "silent" }));
@@ -95,7 +89,7 @@ async function main() {
     });
   });
 
-  await runCase("reasoning_content is not carried into a new generate call", async () => {
+  test("reasoning_content is not carried into a new generate call", async () => {
     const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
 
     await withMockFetch([
@@ -147,7 +141,7 @@ async function main() {
     });
   });
 
-  await runCase("same-round reasoning_content is preserved when a steer user message is inserted before the follow-up tool request", async () => {
+  test("same-round reasoning_content is preserved when a steer user message is inserted before the follow-up tool request", async () => {
     const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
     let consumeCount = 0;
 
@@ -194,7 +188,7 @@ async function main() {
     });
   });
 
-  await runCase("incoming assistant reasoning_content is stripped when all-message relay is disabled", async () => {
+  test("incoming assistant reasoning_content is stripped when all-message relay is disabled", async () => {
     const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
 
     await withMockFetch([
@@ -230,7 +224,7 @@ async function main() {
     });
   });
 
-  await runCase("incoming assistant reasoning_content is preserved when all-message relay is enabled", async () => {
+  test("incoming assistant reasoning_content is preserved when all-message relay is enabled", async () => {
     const client = new LlmClient(createLlmTestConfig({
       returnReasoningContentForAllMessages: true,
       returnReasoningContentForSameRoundMessages: false
@@ -268,9 +262,3 @@ async function main() {
       assert.equal(result.text, "ack");
     });
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

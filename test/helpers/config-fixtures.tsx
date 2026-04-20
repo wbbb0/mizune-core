@@ -8,6 +8,7 @@ import {
 } from "../../src/config/configModel.ts";
 import { deepMergeReplaceArrays, parseConfig } from "../../src/data/schema/index.ts";
 import type { AppConfig } from "../../src/config/config.ts";
+import { createTempDir } from "./temp-paths.ts";
 
 type DeepPartial<T> =
   T extends readonly (infer U)[]
@@ -269,6 +270,8 @@ export function createTestAppConfig(overrides: TestAppConfigOverrides = {}): App
     deepMergeReplaceArrays(baseTestCatalogConfig, normalized.catalogOverrides),
   );
 
+  const configDir = createTempDir("llm-bot-test-config");
+
   return {
     ...fileConfig,
     llm: {
@@ -279,13 +282,13 @@ export function createTestAppConfig(overrides: TestAppConfigOverrides = {}): App
       enabled: fileConfig.whitelist.enabled
     },
     configRuntime: {
-      configDir: "/tmp/llm-bot-test-config",
-      globalExampleConfigPath: "/tmp/llm-bot-test-config/global.example.yml",
-      globalConfigPath: "/tmp/llm-bot-test-config/global.yml",
-      llmProviderCatalogPath: "/tmp/llm-bot-test-config/llm.providers.yml",
-      llmModelCatalogPath: "/tmp/llm-bot-test-config/llm.models.yml",
+      configDir,
+      globalExampleConfigPath: `${configDir}/global.example.yml`,
+      globalConfigPath: `${configDir}/global.yml`,
+      llmProviderCatalogPath: `${configDir}/llm.providers.yml`,
+      llmModelCatalogPath: `${configDir}/llm.models.yml`,
       instanceName: "test",
-      instanceConfigPath: "/tmp/llm-bot-test-config/instances/test.yml",
+      instanceConfigPath: `${configDir}/instances/test.yml`,
       loadedConfigPaths: []
     }
   };

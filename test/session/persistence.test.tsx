@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -6,12 +7,6 @@ import pino from "pino";
 import { SessionPersistence } from "../../src/conversation/session/sessionPersistence.ts";
 import type { PersistedSessionState } from "../../src/conversation/session/sessionManager.ts";
 import { createSessionState, toPersistedSessionState } from "../../src/conversation/session/sessionStateFactory.ts";
-
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
 
 async function withDataDir(name: string, fn: (dataDir: string) => Promise<void>) {
   const dataDir = await mkdtemp(join(tmpdir(), `${name}-`));
@@ -22,8 +17,7 @@ async function withDataDir(name: string, fn: (dataDir: string) => Promise<void>)
   }
 }
 
-async function main() {
-  await runCase("session persistence round-trips title titleSource and participantRef", async () => {
+  test("session persistence round-trips title titleSource and participantRef", async () => {
     const session = createSessionState({
       id: "web:test",
       type: "private",
@@ -42,7 +36,7 @@ async function main() {
     assert.ok(!("participantUserId" in persisted));
   });
 
-  await runCase("session persistence round-trips current session shape", async () => {
+  test("session persistence round-trips current session shape", async () => {
     await withDataDir("llm-bot-session-persist-current-test", async (dataDir: string) => {
       const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
       await persistence.init();
@@ -184,7 +178,7 @@ async function main() {
     });
   });
 
-  await runCase("session persistence keeps google replay metadata for assistant tool calls", async () => {
+  test("session persistence keeps google replay metadata for assistant tool calls", async () => {
     await withDataDir("llm-bot-session-persist-google-tool-metadata-test", async (dataDir: string) => {
       const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
       await persistence.init();
@@ -246,7 +240,7 @@ async function main() {
     });
   });
 
-  await runCase("session persistence skips legacy session files missing current fields", async () => {
+  test("session persistence skips legacy session files missing current fields", async () => {
     await withDataDir("llm-bot-session-persist-legacy-test", async (dataDir: string) => {
       const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
       await persistence.init();
@@ -286,7 +280,7 @@ async function main() {
     });
   });
 
-  await runCase("session persistence loads usage snapshots without cached tokens as null", async () => {
+  test("session persistence loads usage snapshots without cached tokens as null", async () => {
     await withDataDir("llm-bot-session-persist-cached-tokens-compat-test", async (dataDir: string) => {
       const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
       await persistence.init();
@@ -360,9 +354,3 @@ async function main() {
       }]);
     });
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildTurnPlannerFormatProbePrompt,
@@ -12,14 +13,7 @@ import {
   type TurnPlannerProbeCaseResult
 } from "../../src/app/generation/turnPlannerFormatProbe.ts";
 
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("parseTurnPlannerProbeResponse extracts fixed-format fields", async () => {
+  test("parseTurnPlannerProbeResponse extracts fixed-format fields", async () => {
     const parsed = parseTurnPlannerProbeResponse([
       "reason: 需要查外部信息",
       "reply_decision: reply_small",
@@ -36,7 +30,7 @@ async function main() {
     assert.equal(parsed.data?.toolsetIds[0], "web_research");
   });
 
-  await runCase("parseTurnPlannerProbeResponse normalizes wait decisions to continue_topic", async () => {
+  test("parseTurnPlannerProbeResponse normalizes wait decisions to continue_topic", async () => {
     const parsed = parseTurnPlannerProbeResponse([
       "reason: 明显半句话未完",
       "reply_decision: wait",
@@ -55,7 +49,7 @@ async function main() {
     assert.deepEqual(parsed.data?.normalizationWarnings, ["wait_forces_continue_topic"]);
   });
 
-  await runCase("parseTurnPlannerProbeResponse adds obvious semantic toolset corrections", async () => {
+  test("parseTurnPlannerProbeResponse adds obvious semantic toolset corrections", async () => {
     const parsed = parseTurnPlannerProbeResponse([
       "reason: 需要看引用并下载页面文件",
       "reply_decision: reply_small",
@@ -78,7 +72,7 @@ async function main() {
     );
   });
 
-  await runCase("parseTurnPlannerProbeResponse adds memory_profile when memory_write is required", async () => {
+  test("parseTurnPlannerProbeResponse adds memory_profile when memory_write is required", async () => {
     const parsed = parseTurnPlannerProbeResponse([
       "reason: 需要判断是否更新长期信息",
       "reply_decision: reply_small",
@@ -95,7 +89,7 @@ async function main() {
     assert.deepEqual(parsed.data?.normalizationWarnings, ["capability_requires_memory_profile"]);
   });
 
-  await runCase("runTurnPlannerFormatProbe only auto-adds chat_context for real structured batch content", async () => {
+  test("runTurnPlannerFormatProbe only auto-adds chat_context for real structured batch content", async () => {
     const result = await runTurnPlannerFormatProbe({
       modelRef: ["lms_qwen35_a3b"],
       availableToolsets: [createProbeToolset("web_research"), createProbeToolset("chat_context")],
@@ -186,7 +180,7 @@ async function main() {
     }
   });
 
-  await runCase("summarizeTurnPlannerProbeResults counts format failures", async () => {
+  test("summarizeTurnPlannerProbeResults counts format failures", async () => {
     const summary = summarizeTurnPlannerProbeResults([
       {
         caseId: "ok-case",
@@ -233,7 +227,7 @@ async function main() {
     assert.deepEqual(summary.failedCaseIds, ["bad-case"]);
   });
 
-  await runCase("runTurnPlannerFormatProbe preserves per-case raw output and parse status", async () => {
+  test("runTurnPlannerFormatProbe preserves per-case raw output and parse status", async () => {
     const result = await runTurnPlannerFormatProbe({
       modelRef: ["lms_qwen35_a3b"],
       availableToolsets: [createProbeToolset("web_research")],
@@ -284,7 +278,7 @@ async function main() {
     assert.equal(result.summary.okCases, 1);
   });
 
-  await runCase("createDefaultTurnPlannerProbeCases covers representative planner scenarios", async () => {
+  test("createDefaultTurnPlannerProbeCases covers representative planner scenarios", async () => {
     const cases = createDefaultTurnPlannerProbeCases();
     assert.equal(cases.length >= 15, true);
     assert.equal(cases.some((item) => item.id === "web-download"), true);
@@ -307,7 +301,7 @@ async function main() {
     );
   });
 
-  await runCase("evaluateTurnPlannerProbeSemantics reports mismatched required toolsets", async () => {
+  test("evaluateTurnPlannerProbeSemantics reports mismatched required toolsets", async () => {
     const evaluation = evaluateTurnPlannerProbeSemantics({
       id: "structured-context",
       title: "结构化上下文补全",
@@ -337,7 +331,7 @@ async function main() {
     assert.deepEqual(evaluation.issues, ["missing_required_toolset:chat_context"]);
   });
 
-  await runCase("renderTurnPlannerProbeReport prints summary and failed cases", async () => {
+  test("renderTurnPlannerProbeReport prints summary and failed cases", async () => {
     const report = renderTurnPlannerProbeReport({
       modelRef: ["lms_qwen35_a3b"],
       summary: {
@@ -396,7 +390,7 @@ async function main() {
     assert.match(report, /bad-case/);
   });
 
-  await runCase("renderTurnPlannerProbeReport prints normalization warnings when applied", async () => {
+  test("renderTurnPlannerProbeReport prints normalization warnings when applied", async () => {
     const report = renderTurnPlannerProbeReport({
       modelRef: ["lms_qwen35_a3b"],
       summary: {
@@ -447,7 +441,7 @@ async function main() {
     assert.match(report, /semantic=ok/);
   });
 
-  await runCase("createTurnPlannerFormatProbeExecutor disables thinking for stable format probes", async () => {
+  test("createTurnPlannerFormatProbeExecutor disables thinking for stable format probes", async () => {
     let capturedEnableThinking: boolean | undefined;
     let capturedTools: unknown;
     const executor = createTurnPlannerFormatProbeExecutor({
@@ -485,7 +479,7 @@ async function main() {
     assert.equal(capturedTools, undefined);
   });
 
-  await runCase("buildTurnPlannerFormatProbePrompt removes the legacy pipe-format instruction", async () => {
+  test("buildTurnPlannerFormatProbePrompt removes the legacy pipe-format instruction", async () => {
     const messages = buildTurnPlannerFormatProbePrompt(
       createDefaultTurnPlannerProbeCases()[0]!,
       [createProbeToolset("web_research")]
@@ -501,6 +495,3 @@ async function main() {
       /必须严格输出下面 8 行/
     );
   });
-}
-
-void main();

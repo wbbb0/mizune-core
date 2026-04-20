@@ -1,13 +1,13 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import pino from "pino";
 import { loadConfig } from "../../src/config/config.ts";
 import { ConfigManager } from "../../src/config/configManager.ts";
-import { runCase, sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/config-test-support.tsx";
+import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/config-test-support.tsx";
 
-async function main() {
-  await runCase("config manager reloads changed config files", async () => {
+  test("config manager reloads changed config files", async () => {
     await withConfigDir("llm-bot-config-reload", async (configDir) => {
       await mkdir(join(configDir, "instances"), { recursive: true });
       await writeLlmCatalog(configDir, {
@@ -88,7 +88,7 @@ async function main() {
     });
   });
 
-  await runCase("config manager notices newly created instance config file", async () => {
+  test("config manager notices newly created instance config file", async () => {
     await withConfigDir("llm-bot-config-reload-instance-create", async (configDir) => {
       await mkdir(join(configDir, "instances"), { recursive: true });
       await writeLlmCatalog(configDir);
@@ -125,9 +125,3 @@ async function main() {
       assert.equal(config.shell.enabled, true);
     });
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

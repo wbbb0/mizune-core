@@ -1,14 +1,9 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { getProviderTranscriptProjector } from "../../src/app/generation/providerTranscriptProjector.ts";
 import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
-
-async function runCase(name: string, fn: () => Promise<void> | void) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
 
 function createExcludedUserMessage(overrides: Partial<InternalTranscriptItem> = {}): InternalTranscriptItem {
   return {
@@ -38,8 +33,7 @@ function createExcludedUserMessage(overrides: Partial<InternalTranscriptItem> = 
   } as any as InternalTranscriptItem;
 }
 
-async function main() {
-  await runCase("runtimeExcluded transcript items are excluded from llm-visible history but remain in raw session view", () => {
+  test("runtimeExcluded transcript items are excluded from llm-visible history but remain in raw session view", () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const session = sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
     const excludedMessage = createExcludedUserMessage();
@@ -54,7 +48,7 @@ async function main() {
     assert.equal((sessionView.internalTranscript[0] as any)?.runtimeExclusionReason, "manual_single");
   });
 
-  await runCase("runtimeExcluded assistant tool chains are excluded from openai-style replay", () => {
+  test("runtimeExcluded assistant tool chains are excluded from openai-style replay", () => {
     const projection = getProviderTranscriptProjector("openai").project({
       transcript: [
         {
@@ -94,9 +88,3 @@ async function main() {
 
     assert.deepEqual(projection.replayMessages, []);
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

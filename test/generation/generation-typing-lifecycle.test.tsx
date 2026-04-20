@@ -1,9 +1,9 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { createGenerationExecutor } from "../../src/app/generation/generationExecutor.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
-import { runCase } from "../helpers/config-test-support.tsx";
 
 function createUsage() {
   return {
@@ -296,8 +296,7 @@ function createExecutorHarness(options?: {
   };
 }
 
-async function main() {
-  await runCase("typing starts on reasoning and stops after outbound drain", async () => {
+  test("typing starts on reasoning and stops after outbound drain", async () => {
     const harness = createExecutorHarness();
 
     await waitForEvents(harness.events, 2);
@@ -309,7 +308,7 @@ async function main() {
     assert.deepEqual(harness.events, ["typing:start", "send:你好", "typing:stop"]);
   });
 
-  await runCase("typing stop is skipped when a newer response epoch takes over", async () => {
+  test("typing stop is skipped when a newer response epoch takes over", async () => {
     const harness = createExecutorHarness();
 
     await waitForEvents(harness.events, 2);
@@ -320,7 +319,7 @@ async function main() {
     assert.deepEqual(harness.events, ["typing:start", "send:你好"]);
   });
 
-  await runCase("typing also stops after fallback delivery on generation failure", async () => {
+  test("typing also stops after fallback delivery on generation failure", async () => {
     const harness = createExecutorHarness({ failAfterReasoning: true });
 
     await waitForEvents(harness.events, 2);
@@ -334,7 +333,7 @@ async function main() {
     ]);
   });
 
-  await runCase("typing tests can bypass abort grace delay via injected wait function", async () => {
+  test("typing tests can bypass abort grace delay via injected wait function", async () => {
     let waited = false;
     const harness = createExecutorHarness({
       async waitForAbortGraceWindow() {
@@ -350,7 +349,7 @@ async function main() {
     assert.deepEqual(harness.events, ["typing:start", "send:你好", "typing:stop"]);
   });
 
-  await runCase("disableStreamingSplit waits for the complete text before outbound send", async () => {
+  test("disableStreamingSplit waits for the complete text before outbound send", async () => {
     let continueStreaming!: () => void;
     const continuePromise = new Promise<void>((resolve) => {
       continueStreaming = resolve;
@@ -403,7 +402,7 @@ async function main() {
     ]);
   });
 
-  await runCase("default web titles are captioned only after outbound drain completes", async () => {
+  test("default web titles are captioned only after outbound drain completes", async () => {
     const harness = createExecutorHarness({
       sessionSource: "web",
       titleSource: "default",
@@ -426,7 +425,7 @@ async function main() {
     assert.equal(harness.sessionManager.getSession(harness.sessionId).titleSource, "auto");
   });
 
-  await runCase("compression forces title regeneration for auto-titled web sessions after turn completion", async () => {
+  test("compression forces title regeneration for auto-titled web sessions after turn completion", async () => {
     const harness = createExecutorHarness({
       sessionSource: "web",
       titleSource: "auto",
@@ -446,7 +445,7 @@ async function main() {
     assert.equal(harness.sessionManager.getSession(harness.sessionId).titleSource, "auto");
   });
 
-  await runCase("manual web titles are never auto-regenerated even when forced", async () => {
+  test("manual web titles are never auto-regenerated even when forced", async () => {
     const harness = createExecutorHarness({
       sessionSource: "web",
       titleSource: "manual",
@@ -462,9 +461,3 @@ async function main() {
     assert.equal(harness.sessionManager.getSession(harness.sessionId).title, "New Chat");
     assert.equal(harness.sessionManager.getSession(harness.sessionId).titleSource, "manual");
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

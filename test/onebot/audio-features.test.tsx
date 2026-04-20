@@ -1,13 +1,8 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { EventRouter } from "../../src/services/onebot/eventRouter.ts";
 import { buildUserBatchContent } from "../../src/llm/prompts/trigger-batch.prompt.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
-
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
 
 function createConfig() {
   return createTestAppConfig({
@@ -21,8 +16,7 @@ function createConfig() {
   });
 }
 
-async function main() {
-  await runCase("event router keeps audio-only messages", async () => {
+  test("event router keeps audio-only messages", async () => {
     const config = createConfig();
     const router = new EventRouter(config, config.configRuntime.instanceName);
     const parsed = router.toIncomingMessage({
@@ -52,7 +46,7 @@ async function main() {
     assert.deepEqual(parsed?.audioSources, ["https://example.com/audio/test.mp3"]);
   });
 
-  await runCase("prompt formatting attaches input_audio parts", async () => {
+  test("prompt formatting attaches input_audio parts", async () => {
     const content = buildUserBatchContent([{
       userId: "10001",
       senderName: "Tester",
@@ -82,9 +76,3 @@ async function main() {
     assert.equal(audioPart?.input_audio.format, "mp3");
     assert.equal(audioPart?.input_audio.mimeType, "audio/mpeg");
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

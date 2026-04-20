@@ -3,10 +3,12 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import pino from "pino";
 import { createTestAppConfig } from "./config-fixtures.tsx";
+import { createTempDir } from "./temp-paths.ts";
 import { registerBasicRoutes } from "../../src/internalApi/routes/basicRoutes.ts";
 import { registerBrowserRoutes } from "../../src/internalApi/routes/browserRoutes.ts";
 import { registerMessagingRoutes } from "../../src/internalApi/routes/messagingRoutes.ts";
 import { registerShellRoutes } from "../../src/internalApi/routes/shellRoutes.ts";
+import { registerUploadRoutes } from "../../src/internalApi/routes/uploadRoutes.ts";
 import { createInternalApiServices, type InternalApiDeps } from "../../src/internalApi/types.ts";
 import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
 import type { ScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
@@ -76,6 +78,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       listener();
     }
   };
+  const workspaceRoot = createTempDir("llm-bot-internal-api-workspace");
   const state: InternalApiFixtureState = {
     sentMessages: [],
     deletedMessageIds: [],
@@ -102,7 +105,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     whitelistReloadCount: 0,
     schedulerReloadCount: 0,
     browserProfiles: [{ profile_id: "browser_profile_fixture", ownerSessionId: "qqbot:p:10001" }],
-    workspaceRoot: "/tmp/llm-bot-internal-api-workspace"
+    workspaceRoot
   };
 
   mkdirSync(join(state.workspaceRoot, "docs"), { recursive: true });
@@ -264,6 +267,19 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           path: "photo.png",
           contentType: "image/png",
           buffer: Buffer.from("fixture-image")
+        };
+      },
+      resolvePath(relativePath: string) {
+        if (relativePath === "../escape") {
+          throw new Error("Workspace path cannot escape the root directory");
+        }
+        if (relativePath !== "photo.png") {
+          throw new Error(`Workspace path is not a file: ${relativePath}`);
+        }
+        return {
+          rootDir: state.workspaceRoot,
+          relativePath,
+          absolutePath: join(state.workspaceRoot, "workspace", "media", "file_image_1.png")
         };
       }
     } as unknown as InternalApiDeps["localFileService"],
@@ -446,6 +462,9 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           latestGapMs: null,
           smoothedGapMs: null
         };
+      },
+      getLlmVisibleHistory() {
+        return [];
       },
       appendSyntheticPendingMessage() {},
       appendHistory() {},
@@ -653,6 +672,30 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     sessionPersistence: {
       async save() {},
       async remove() {},
+      async loadAll() {
+        return state.sessions.map((session) => ({
+          id: session.id,
+          type: session.type,
+          source: session.source,
+          modeId: session.modeId,
+          participantRef: session.participantRef,
+          participantUserId: session.participantUserId,
+          participantLabel: session.participantLabel,
+          title: session.title,
+          titleSource: session.titleSource,
+          pendingMessages: [],
+          internalTranscript: session.internalTranscript,
+          historySummary: null,
+          debugMarkers: [],
+          recentToolEvents: [],
+          lastLlmUsage: null,
+          sentMessages: [],
+          lastActiveAt: session.lastActiveAt,
+          lastMessageAt: null,
+          latestGapMs: null,
+          smoothedGapMs: null
+        }));
+      },
       async getPersistedSessionMtimeMs() {
         return 987654321;
       }
@@ -718,6 +761,7 @@ export async function createInternalApiApp(deps: InternalApiDeps) {
   registerBrowserRoutes(app, services.browserRoutes);
   registerShellRoutes(app, services.shellRoutes);
   registerMessagingRoutes(app, services.messagingRoutes);
+  registerUploadRoutes(app, services.uploadRoutes);
   await app.ready();
   return app;
 }

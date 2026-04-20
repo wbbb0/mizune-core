@@ -1,8 +1,8 @@
+import test from "node:test";
 import assert from "node:assert/strict";
-import { createMemoryHarness, runCase } from "../helpers/memory-test-support.tsx";
+import { createMemoryHarness } from "../helpers/memory-test-support.tsx";
 
-async function main() {
-  await runCase("global rules support upsert and removal", async () => {
+  test("global rules support upsert and removal", async () => {
     const harness = await createMemoryHarness();
     try {
       const created = await harness.globalRuleStore.upsert({
@@ -33,7 +33,7 @@ async function main() {
     }
   });
 
-  await runCase("global rules support overwrite list semantics", async () => {
+  test("global rules support overwrite list semantics", async () => {
     const harness = await createMemoryHarness();
     try {
       const updated = await harness.globalRuleStore.overwrite([
@@ -49,7 +49,7 @@ async function main() {
     }
   });
 
-  await runCase("global rules upsert updates a near-duplicate existing row", async () => {
+  test("global rules upsert updates a near-duplicate existing row", async () => {
     const harness = await createMemoryHarness();
     try {
       const created = await harness.globalRuleStore.upsert({
@@ -73,7 +73,7 @@ async function main() {
     }
   });
 
-  await runCase("global rule writes log similarity metadata and reroute diagnostics", async () => {
+  test("global rule writes log similarity metadata and reroute diagnostics", async () => {
     const loggerEvents: Array<{ level: "info" | "warn"; event: string; payload: Record<string, unknown> }> = [];
     const logger = {
       info(payload: Record<string, unknown>, event: string) {
@@ -112,9 +112,3 @@ async function main() {
       await harness.cleanup();
     }
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

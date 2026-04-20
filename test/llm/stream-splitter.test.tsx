@@ -1,14 +1,8 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { splitReadySegments } from "../../src/llm/shared/streamSplitter.ts";
 
-function runCase(name: string, fn: () => void) {
-  process.stdout.write(`- ${name} ... `);
-  fn();
-  process.stdout.write("ok\n");
-}
-
-function main() {
-  runCase("single newlines flush ready chunks and mark them for double-newline rejoin", () => {
+  test("single newlines flush ready chunks and mark them for double-newline rejoin", () => {
     const result = splitReadySegments("第一段\n第二段");
 
     assert.deepEqual(result.ready, [
@@ -20,7 +14,7 @@ function main() {
     assert.equal(result.rest, "第二段");
   });
 
-  runCase("sentence-based splits do not request double-newline rejoin", () => {
+  test("sentence-based splits do not request double-newline rejoin", () => {
     const result = splitReadySegments("这是一个足够长的第一句。这里是第二句");
 
     assert.deepEqual(result.ready, [
@@ -32,7 +26,7 @@ function main() {
     assert.equal(result.rest, "这里是第二句");
   });
 
-  runCase("fenced markdown blocks stay intact in a single chunk", () => {
+  test("fenced markdown blocks stay intact in a single chunk", () => {
     const result = splitReadySegments("先看这个示例\n```ts\nconst value = 1;\nconsole.log(value);\n```\n最后一句");
 
     assert.deepEqual(result.ready, [
@@ -48,14 +42,14 @@ function main() {
     assert.equal(result.rest, "最后一句");
   });
 
-  runCase("incomplete fenced blocks stay buffered until closed", () => {
+  test("incomplete fenced blocks stay buffered until closed", () => {
     const result = splitReadySegments("```md\n- a\n- b");
 
     assert.deepEqual(result.ready, []);
     assert.equal(result.rest, "```md\n- a\n- b");
   });
 
-  runCase("markdown list blocks are preserved as one chunk", () => {
+  test("markdown list blocks are preserved as one chunk", () => {
     const result = splitReadySegments("- 第一项\n- 第二项\n收尾");
 
     assert.deepEqual(result.ready, [
@@ -67,7 +61,7 @@ function main() {
     assert.equal(result.rest, "收尾");
   });
 
-  runCase("blockquote markdown blocks are preserved as one chunk", () => {
+  test("blockquote markdown blocks are preserved as one chunk", () => {
     const result = splitReadySegments("> 第一行\n> 第二行\n结尾");
 
     assert.deepEqual(result.ready, [
@@ -79,7 +73,7 @@ function main() {
     assert.equal(result.rest, "结尾");
   });
 
-  runCase("markdown tables are preserved as one chunk", () => {
+  test("markdown tables are preserved as one chunk", () => {
     const result = splitReadySegments("| 列1 | 列2 |\n| --- | --- |\n| A | B |\n收尾");
 
     assert.deepEqual(result.ready, [
@@ -90,11 +84,3 @@ function main() {
     ]);
     assert.equal(result.rest, "收尾");
   });
-}
-
-try {
-  main();
-} catch (error) {
-  console.error(error);
-  process.exit(1);
-}

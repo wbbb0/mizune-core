@@ -1,9 +1,9 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildSessionWorkCoordinatorDeps,
   createComfyTaskNotifications
 } from "../../src/app/runtime/runtimeDependencyBuilders.ts";
-import { runCase } from "../helpers/forward-test-support.tsx";
 
 function createServicesFixture() {
   return {
@@ -70,8 +70,7 @@ function createTaskFixture(overrides: Record<string, unknown> = {}) {
   } as any;
 }
 
-async function main() {
-  await runCase("buildSessionWorkCoordinatorDeps keeps wiring references stable", async () => {
+  test("buildSessionWorkCoordinatorDeps keeps wiring references stable", async () => {
     const services = createServicesFixture();
     const persistSession = () => {};
     const getScheduler = () => ({ key: "scheduler" } as any);
@@ -89,7 +88,7 @@ async function main() {
     assert.equal(deps.lifecycle.getScheduler, getScheduler);
   });
 
-  await runCase("createComfyTaskNotifications builds completion trigger payloads", async () => {
+  test("createComfyTaskNotifications builds completion trigger payloads", async () => {
     const dispatched: Array<{ sessionId: string; trigger: any }> = [];
     const notifications = createComfyTaskNotifications({
       async dispatchInternalTrigger(sessionId, triggerFactory) {
@@ -118,7 +117,7 @@ async function main() {
     assert.deepEqual(dispatched[0]?.trigger.chatFilePaths, ["workspace/image.png", "workspace/image-2.png"]);
   });
 
-  await runCase("createComfyTaskNotifications builds failed trigger payloads with default error", async () => {
+  test("createComfyTaskNotifications builds failed trigger payloads with default error", async () => {
     const dispatched: Array<any> = [];
     const notifications = createComfyTaskNotifications({
       async dispatchInternalTrigger(_sessionId, triggerFactory) {
@@ -138,9 +137,3 @@ async function main() {
     assert.equal(dispatched[0]?.targetUserId, "owner");
     assert.equal(dispatched[0]?.lastError, "Comfy task failed");
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

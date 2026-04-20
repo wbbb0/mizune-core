@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,11 +13,10 @@ import { shellToolHandlers } from "../../src/llm/tools/runtime/shellTools.ts";
 import { timeToolHandlers } from "../../src/llm/tools/runtime/timeTools.ts";
 import { localFileToolHandlers, chatFileToolHandlers } from "../../src/llm/tools/runtime/workspaceTools.ts";
 import { profileToolHandlers } from "../../src/llm/tools/profile/profileTools.ts";
-import { createForwardFeatureConfig, runCase } from "../helpers/forward-test-support.tsx";
+import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
-async function main() {
-  await runCase("builtin tool list exposes forward, media, and message tools", async () => {
+  test("builtin tool list exposes forward, media, and message tools", async () => {
     const config = createForwardFeatureConfig();
     config.search.aliyunIqs.enabled = true;
     config.shell.enabled = true;
@@ -50,7 +50,7 @@ async function main() {
     assert.ok(names.includes("close_page"));
   });
 
-  await runCase("builtin tool list hides web tools when search is disabled", async () => {
+  test("builtin tool list hides web tools when search is disabled", async () => {
     const config = createForwardFeatureConfig();
     config.search.googleGrounding.enabled = false;
     config.search.aliyunIqs.enabled = false;
@@ -68,7 +68,7 @@ async function main() {
     assert.ok(!names.includes("close_page"));
   });
 
-  await runCase("builtin tool list hides external search tools when provider native search is enabled", async () => {
+  test("builtin tool list hides external search tools when provider native search is enabled", async () => {
     const config = createForwardFeatureConfig();
     config.search.googleGrounding.enabled = true;
     config.search.aliyunIqs.enabled = true;
@@ -92,7 +92,7 @@ async function main() {
     assert.ok(!names.includes("search_with_iqs_lite_advanced"));
   });
 
-  await runCase("all object tool schemas expose properties for provider compatibility", async () => {
+  test("all object tool schemas expose properties for provider compatibility", async () => {
     const tools = getBuiltinTools("owner", createForwardFeatureConfig());
     for (const tool of tools) {
       const parameters = tool.function.parameters ?? {};
@@ -105,7 +105,7 @@ async function main() {
     }
   });
 
-  await runCase("debug-only tools stay hidden unless the current turn is in debug mode", async () => {
+  test("debug-only tools stay hidden unless the current turn is in debug mode", async () => {
     const config = createForwardFeatureConfig();
     assert.ok(!getBuiltinTools("owner", config).map((tool) => tool.function.name).includes("dump_debug_literals"));
     assert.ok(getBuiltinTools("owner", config, undefined, {
@@ -113,7 +113,7 @@ async function main() {
     }).map((tool) => tool.function.name).includes("dump_debug_literals"));
   });
 
-  await runCase("memory tool descriptions cover category-specific tool surface", async () => {
+  test("memory tool descriptions cover category-specific tool surface", async () => {
     const config = createForwardFeatureConfig();
     const tools = getBuiltinTools("owner", config);
     const getPersona = tools.find((tool) => tool.function.name === "get_persona");
@@ -124,7 +124,7 @@ async function main() {
     assert.match(String(upsertUserMemory?.function.description ?? ""), /用户长期记忆/);
   });
 
-  await runCase("memory tools are exposed to both owner and known users", async () => {
+  test("memory tools are exposed to both owner and known users", async () => {
     const config = createForwardFeatureConfig();
     const ownerNames = getBuiltinTools("owner", config).map((tool) => tool.function.name);
     const knownNames = getBuiltinTools("known", config).map((tool) => tool.function.name);
@@ -141,7 +141,7 @@ async function main() {
     assert.ok(!knownNames.includes("upsert_toolset_rule"));
   });
 
-  await runCase("old polymorphic memory tools are no longer exposed", async () => {
+  test("old polymorphic memory tools are no longer exposed", async () => {
     const config = createForwardFeatureConfig();
     const toolNames = getBuiltinTools("owner", config).map((tool) => tool.function.name);
     assert.ok(!toolNames.includes("read_memory"));
@@ -149,7 +149,7 @@ async function main() {
     assert.ok(!toolNames.includes("remove_memory"));
   });
 
-  await runCase("global rule handlers allow owner and reject non-owner", async () => {
+  test("global rule handlers allow owner and reject non-owner", async () => {
     const ownerResult = await profileToolHandlers.upsert_global_rule!(
       { id: "tool_global_rule_1", type: "function", function: { name: "upsert_global_rule", arguments: "{\"title\":\"输出顺序\",\"content\":\"先结论后细节\"}" } },
       { title: "输出顺序", content: "先结论后细节" },
@@ -175,7 +175,7 @@ async function main() {
     assert.match(String(deniedResult), /Only owner can edit global rules/);
   });
 
-  await runCase("memory handlers surface structured scope conflict warnings", async () => {
+  test("memory handlers surface structured scope conflict warnings", async () => {
     const personaWarningResult = await profileToolHandlers.patch_persona!(
       { id: "tool_persona_warn_1", type: "function", function: { name: "patch_persona", arguments: "{\"personaPatch\":{\"rules\":\"所有任务默认先给结论再展开\"}}" } },
       { personaPatch: { rules: "所有任务默认先给结论再展开" } },
@@ -271,7 +271,7 @@ async function main() {
     assert.equal(userPayload.reroute.suggestedScope, "user_profile");
   });
 
-  await runCase("profile handlers preserve structured fields and user-memory handlers keep durable preferences in user memories", async () => {
+  test("profile handlers preserve structured fields and user-memory handlers keep durable preferences in user memories", async () => {
     const profileResult = await profileToolHandlers.patch_user_profile!(
       { id: "tool_profile_patch_1", type: "function", function: { name: "patch_user_profile", arguments: "{\"timezone\":\"Asia/Shanghai\",\"occupation\":\"产品经理\",\"profileSummary\":\"做事很快\\n经常先给结论\"}" } },
       { timezone: "Asia/Shanghai", occupation: "产品经理", profileSummary: "做事很快\n经常先给结论" },
@@ -333,7 +333,7 @@ async function main() {
     assert.equal(userMemoryPayload.reroute.result, "not_applicable");
   });
 
-  await runCase("toolset rule handlers upsert duplicates into existing rules", async () => {
+  test("toolset rule handlers upsert duplicates into existing rules", async () => {
     const existing = [{
       id: "rule_1",
       title: "网页登录处理",
@@ -395,7 +395,7 @@ async function main() {
     assert.equal(JSON.parse(String(updateResult)).rule.id, "rule_1");
   });
 
-  await runCase("scheduler tool description emphasizes future triggers and self-contained instructions", async () => {
+  test("scheduler tool description emphasizes future triggers and self-contained instructions", async () => {
     const config = createForwardFeatureConfig();
     const tools = getBuiltinTools("owner", config);
     const createJob = tools.find((tool) => tool.function.name === "create_scheduled_job");
@@ -404,7 +404,7 @@ async function main() {
     assert.match(String(createJob?.function.description ?? ""), /查资料、看图或调用其他工具/);
   });
 
-  await runCase("end_turn_without_reply requests a terminal empty response", async () => {
+  test("end_turn_without_reply requests a terminal empty response", async () => {
     const result = await sessionToolHandlers.end_turn_without_reply!(
       { id: "tool_end_turn_1", type: "function", function: { name: "end_turn_without_reply", arguments: "{\"reason\":\"明确收尾\"}" } },
       { reason: "明确收尾" },
@@ -416,7 +416,7 @@ async function main() {
     assert.equal((result as any).terminalResponse?.text, "");
   });
 
-  await runCase("session mode tools expose available modes and can switch to scenario_host in private chats", async () => {
+  test("session mode tools expose available modes and can switch to scenario_host in private chats", async () => {
     const listed = await sessionToolHandlers.list_session_modes!(
       { id: "tool_mode_list_1", type: "function", function: { name: "list_session_modes", arguments: "{}" } },
       {},
@@ -507,7 +507,7 @@ async function main() {
     assert.equal(JSON.parse(String(switched)).toModeId, "scenario_host");
   });
 
-  await runCase("session mode tools reject scenario_host in group chats", async () => {
+  test("session mode tools reject scenario_host in group chats", async () => {
     const switched = await sessionToolHandlers.switch_session_mode!(
       { id: "tool_mode_switch_group_1", type: "function", function: { name: "switch_session_mode", arguments: "{\"modeId\":\"scenario_host\"}" } },
       { modeId: "scenario_host" },
@@ -533,7 +533,7 @@ async function main() {
     assert.match(String(switched), /does not support group chat/);
   });
 
-  await runCase("scenario_host tools read and update structured session state", async () => {
+  test("scenario_host tools read and update structured session state", async () => {
     let state = {
       version: 1 as const,
       currentSituation: "旧局势",
@@ -601,7 +601,7 @@ async function main() {
     assert.equal(JSON.parse(String(worldFact)).worldFacts[0], "钟楼每隔一刻钟响一次");
   });
 
-  await runCase("update_scenario_state ignores initialized field (only .confirm can set it)", async () => {
+  test("update_scenario_state ignores initialized field (only .confirm can set it)", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "tool-scenario-"));
     try {
       const { ScenarioHostStateStore } = await import("../../src/modes/scenarioHost/stateStore.ts");
@@ -644,7 +644,7 @@ async function main() {
     }
   });
 
-  await runCase("get_current_time returns configured timezone and precise clock values", async () => {
+  test("get_current_time returns configured timezone and precise clock values", async () => {
     const result = await timeToolHandlers.get_current_time!(
       { id: "tool_time_1", type: "function", function: { name: "get_current_time", arguments: "{}" } },
       {},
@@ -684,7 +684,7 @@ async function main() {
     assert.equal(typeof payload.weekday, "string");
   });
 
-  await runCase("shell_run forwards resource description", async () => {
+  test("shell_run forwards resource description", async () => {
     const result = await shellToolHandlers.shell_run!(
       { id: "tool_shell_run_1", type: "function", function: { name: "shell_run", arguments: "{\"command\":\"pwd\",\"description\":\"确认当前目录\"}" } },
       { command: "pwd", description: "确认当前目录" },
@@ -709,7 +709,7 @@ async function main() {
     assert.equal(payload.status, "completed");
   });
 
-  await runCase("list_live_resources supports shell-only filtering", async () => {
+  test("list_live_resources supports shell-only filtering", async () => {
     const result = await resourceToolHandlers.list_live_resources!(
       { id: "tool_shell_list_1", type: "function", function: { name: "list_live_resources", arguments: "{\"type\":\"shell\"}" } },
       { type: "shell" },
@@ -747,7 +747,7 @@ async function main() {
     assert.equal(payload.live_resources[0].resource_id, "res_shell_1");
   });
 
-  await runCase("dump_debug_literals pushes one literal per outbound message without writing history", async () => {
+  test("dump_debug_literals pushes one literal per outbound message without writing history", async () => {
     const sentMetaCalls: any[] = [];
     const sentMessages: any[] = [];
     const result = await debugToolHandlers.dump_debug_literals!(
@@ -812,7 +812,7 @@ async function main() {
     assert.equal((result as any).terminalResponse?.text, "");
   });
 
-  await runCase("chat_file_send_to_chat rejects text when sending an image", async () => {
+  test("chat_file_send_to_chat rejects text when sending an image", async () => {
     const result = await chatFileToolHandlers.chat_file_send_to_chat!(
       { id: "tool_workspace_send_text_reject", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_id\":\"file_img_1\",\"text\":\"发你了\"}" } },
       { file_ref: "img_deadbeef.png", text: "发你了" },
@@ -843,7 +843,7 @@ async function main() {
     });
   });
 
-  await runCase("chat_file_send_to_chat sends a pure image and keeps the turn open", async () => {
+  test("chat_file_send_to_chat sends a pure image and keeps the turn open", async () => {
     const sentMessages: any[] = [];
     const sentMetaCalls: any[] = [];
     const transcriptCalls: any[] = [];
@@ -950,7 +950,7 @@ async function main() {
     }
   });
 
-  await runCase("chat_file_send_to_chat keeps the turn open for non-image fallback sends", async () => {
+  test("chat_file_send_to_chat keeps the turn open for non-image fallback sends", async () => {
     const sentTexts: any[] = [];
     const sentMetaCalls: any[] = [];
     const assistantHistoryCalls: any[] = [];
@@ -1036,7 +1036,7 @@ async function main() {
     assert.equal((result as any).terminalResponse, undefined);
   });
 
-  await runCase("chat_file_send_to_chat mirrors non-image fallback text into web delivery", async () => {
+  test("chat_file_send_to_chat mirrors non-image fallback text into web delivery", async () => {
     const webChunks: string[] = [];
     const queuedTasks: Array<() => Promise<void>> = [];
     const assistantHistoryCalls: any[] = [];
@@ -1102,7 +1102,7 @@ async function main() {
     }]);
   });
 
-  await runCase("chat_file_send_to_chat records image sends for web delivery", async () => {
+  test("chat_file_send_to_chat records image sends for web delivery", async () => {
     const transcriptCalls: any[] = [];
     const queuedTasks: Array<() => Promise<void>> = [];
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-web-"));
@@ -1182,7 +1182,7 @@ async function main() {
     }
   });
 
-  await runCase("chat_file_send_to_chat accepts stored filenames as file_ref", async () => {
+  test("chat_file_send_to_chat accepts stored filenames as file_ref", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-ref-"));
     const imagePath = join(tempDir, "file_deadbeef.jpg");
     await writeFile(imagePath, Buffer.from("fake-image-bytes"));
@@ -1264,7 +1264,7 @@ async function main() {
     }
   });
 
-  await runCase("local_file_send_to_chat sends workspace-relative image", async () => {
+  test("local_file_send_to_chat sends workspace-relative image", async () => {
     const queuedTasks: Array<() => Promise<void>> = [];
     const sentMessages: any[] = [];
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-path-rel-"));
@@ -1333,7 +1333,7 @@ async function main() {
     }
   });
 
-  await runCase("local_file_send_to_chat sends file via absolute path", async () => {
+  test("local_file_send_to_chat sends file via absolute path", async () => {
     const queuedTasks: Array<() => Promise<void>> = [];
     const sentTexts: any[] = [];
     const assistantHistoryCalls: any[] = [];
@@ -1398,7 +1398,7 @@ async function main() {
     }
   });
 
-  await runCase("local_file_send_to_chat resolves relative path through localFileService", async () => {
+  test("local_file_send_to_chat resolves relative path through localFileService", async () => {
     const result = await localFileToolHandlers.local_file_send_to_chat!(
       { id: "tool_workspace_send_path_rel_resolve", type: "function", function: { name: "local_file_send_to_chat", arguments: "{\"path\":\"outputs/demo.txt\"}" } },
       { path: "outputs/demo.txt" },
@@ -1423,7 +1423,7 @@ async function main() {
     assert.equal(JSON.parse(String((result as any).content ?? result)).path, "outputs/demo.txt");
   });
 
-  await runCase("list_live_resources merges browser and shell resources", async () => {
+  test("list_live_resources merges browser and shell resources", async () => {
     const result = await resourceToolHandlers.list_live_resources!(
       { id: "tool_resource_list_1", type: "function", function: { name: "list_live_resources", arguments: "{}" } },
       {},
@@ -1479,7 +1479,7 @@ async function main() {
     assert.equal(payload.live_resources[1].description, "查看首页文案");
   });
 
-  await runCase("list_live_resources only returns valid active resources", async () => {
+  test("list_live_resources only returns valid active resources", async () => {
     const result = await resourceToolHandlers.list_live_resources!(
       { id: "tool_resource_list_2", type: "function", function: { name: "list_live_resources", arguments: "{}" } },
       {},
@@ -1534,9 +1534,3 @@ async function main() {
     assert.equal(payload.live_resources[0].description, "查看当前工作目录");
     assert.equal(payload.live_resources[1].description, "继续支付流程");
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

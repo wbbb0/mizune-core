@@ -1,15 +1,9 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { createGenerationPromptBuilder } from "../../src/app/generation/generationPromptBuilder.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("setup prompt prepares image visuals when vision is enabled", async () => {
+  test("setup prompt prepares image visuals when vision is enabled", async () => {
     const capturedImageIdCalls: string[][] = [];
     const builder = createGenerationPromptBuilder({
       config: createTestAppConfig({
@@ -134,7 +128,7 @@ async function main() {
     assert.equal(content.some((part) => part.type === "image_url"), true);
   });
 
-  await runCase("chat prompt includes stable runtime resource summaries from browser and shell", async () => {
+  test("chat prompt includes stable runtime resource summaries from browser and shell", async () => {
     const browserPages = Array.from({ length: 7 }, (_, index) => ({
       resource_id: `res_browser_${index + 1}`,
       status: "active" as const,
@@ -290,7 +284,7 @@ async function main() {
     assert.match(system, /res_shell_1 \| shell \| active \| npm test @ \/repo \| 跑测试/);
   });
 
-  await runCase("assistant chat prompt does not load persona memory rule or scenario stores", async () => {
+  test("assistant chat prompt does not load persona memory rule or scenario stores", async () => {
     const builder = createGenerationPromptBuilder({
       config: createTestAppConfig(),
       oneBotClient: {} as any,
@@ -407,7 +401,7 @@ async function main() {
     assert.doesNotMatch(system, /current_user_profile/);
   });
 
-  await runCase("chat prompt logs suppressed lower-priority memory items", async () => {
+  test("chat prompt logs suppressed lower-priority memory items", async () => {
     const loggerEvents: Array<{ event: string; payload: Record<string, unknown> }> = [];
     const builder = createGenerationPromptBuilder({
       logger: {
@@ -532,7 +526,7 @@ async function main() {
     assert.equal((suppressionEvent?.payload.suppressions as Array<{ category: string }>)[0]?.category, "user_memories");
   });
 
-  await runCase("scenario_host setup prompt uses host_setup_mode section when isInSetup=true", async () => {
+  test("scenario_host setup prompt uses host_setup_mode section when isInSetup=true", async () => {
     const builder = createGenerationPromptBuilder({
       config: createTestAppConfig({
         llm: {
@@ -672,7 +666,7 @@ async function main() {
     assert.ok(!systemContent.includes("不要在段落结尾反问玩家下一步"), `Expected no runtime pacing rule in setup mode, got: ${systemContent.slice(0, 400)}`);
   });
 
-  await runCase("scenario_host prompt injects scenario state and avoids rp identity lines", async () => {
+  test("scenario_host prompt injects scenario state and avoids rp identity lines", async () => {
     const builder = createGenerationPromptBuilder({
       config: createTestAppConfig(),
       oneBotClient: {} as any,
@@ -806,9 +800,3 @@ async function main() {
     assert.doesNotMatch(system, /你是具有角色扮演属性的聊天角色/);
     assert.doesNotMatch(system, /global_rules/);
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

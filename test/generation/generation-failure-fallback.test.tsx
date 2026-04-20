@@ -1,10 +1,11 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { createGenerationExecutor } from "../../src/app/generation/generationExecutor.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 
-async function main() {
+test("unrecoverable model failures send and persist an assistant fallback reply", async () => {
   const config = createTestAppConfig({
     llm: {
       enabled: true
@@ -209,10 +210,4 @@ async function main() {
   assert.ok(persistedReasons.includes("assistant_response_finalized"));
   assert.ok(persistedReasons.includes("generation_finished"));
   assert.ok(persistedReasons.includes("internal_transcript_updated"));
-  process.stdout.write("- unrecoverable model failures send and persist an assistant fallback reply ... ok\n");
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
 });

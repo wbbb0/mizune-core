@@ -1,7 +1,8 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { BrowserSessionRuntime } from "../../src/services/web/browser/browserSessionRuntime.ts";
 import { BrowserSessionJanitor } from "../../src/services/web/browser/browserSessionJanitor.ts";
-import { createForwardFeatureConfig, runCase } from "../helpers/forward-test-support.tsx";
+import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 
 function createSessionRecord(expiresAt: number) {
@@ -43,8 +44,7 @@ function createSessionRecord(expiresAt: number) {
   };
 }
 
-async function main() {
-  await runCase("browser session janitor touches active sessions through the resource registry", async () => {
+  test("browser session janitor touches active sessions through the resource registry", async () => {
     const config = createForwardFeatureConfig();
     config.browser.playwright.enabled = true;
     config.browser.sessionTtlMs = 5_000;
@@ -91,7 +91,7 @@ async function main() {
     }
   });
 
-  await runCase("browser session janitor persists and closes expired sessions", async () => {
+  test("browser session janitor persists and closes expired sessions", async () => {
     const config = createForwardFeatureConfig();
     config.browser.playwright.enabled = true;
     const sessions = new BrowserSessionRuntime(4);
@@ -163,6 +163,3 @@ async function main() {
       Date.now = originalNow;
     }
   });
-}
-
-void main();

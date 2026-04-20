@@ -1,16 +1,10 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { loadConfig } from "../../src/config/config.ts";
-import {
-  runCase,
-  withConfigDir,
-  writeLlmCatalog,
-  writeDefaultInstanceYaml,
-  writeYaml
-} from "../helpers/config-test-support.tsx";
+import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } from "../helpers/config-test-support.tsx";
 
-async function main() {
-  await runCase("loadConfig keeps default refs without implicit model profiles", async () => {
+  test("loadConfig keeps default refs without implicit model profiles", async () => {
     await withConfigDir("llm-bot-config-default-ref-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeYaml(join(configDir, "global.example.yml"), {
@@ -55,7 +49,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig ignores global.example.yml during runtime loading", async () => {
+  test("loadConfig ignores global.example.yml during runtime loading", async () => {
     await withConfigDir("llm-bot-config-global-example-ignored-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeYaml(join(configDir, "global.example.yml"), {
@@ -89,7 +83,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig enables webui auth by default", async () => {
+  test("loadConfig enables webui auth by default", async () => {
     await withConfigDir("llm-bot-config-webui-auth-default-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeYaml(join(configDir, "global.yml"), {
@@ -110,7 +104,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig keeps outbound streaming split enabled by default", async () => {
+  test("loadConfig keeps outbound streaming split enabled by default", async () => {
     await withConfigDir("llm-bot-config-outbound-split-default-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeYaml(join(configDir, "global.yml"), {
@@ -130,7 +124,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig applies reasoning relay defaults for model profiles", async () => {
+  test("loadConfig applies reasoning relay defaults for model profiles", async () => {
     await withConfigDir("llm-bot-config-reasoning-defaults-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeLlmCatalog(configDir, {
@@ -190,7 +184,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig preserves explicit provider features and model capability flags", async () => {
+  test("loadConfig preserves explicit provider features and model capability flags", async () => {
     await withConfigDir("llm-bot-config-provider-feature-flags-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeLlmCatalog(configDir, {
@@ -275,7 +269,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig applies default browser session ttl", async () => {
+  test("loadConfig applies default browser session ttl", async () => {
     await withConfigDir("llm-bot-config-browser-session-ttl-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeYaml(join(configDir, "global.yml"), {
@@ -292,7 +286,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig applies default shell session ttl as null", async () => {
+  test("loadConfig applies default shell session ttl as null", async () => {
     await withConfigDir("llm-bot-config-shell-session-ttl-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeYaml(join(configDir, "global.yml"), {
@@ -309,7 +303,7 @@ async function main() {
     });
   });
 
-  await runCase("loadConfig applies OneBot typing defaults", async () => {
+  test("loadConfig applies OneBot typing defaults", async () => {
     await withConfigDir("llm-bot-config-onebot-typing-defaults-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeYaml(join(configDir, "global.yml"), {
@@ -328,9 +322,3 @@ async function main() {
       assert.equal(config.onebot.typing.group, false);
     });
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

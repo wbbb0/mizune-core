@@ -1,16 +1,10 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import {
   resolveComposerUserIdentity
 } from "../../../webui/src/components/sessions/composerUserIdentity.ts";
 
-async function runCase(name: string, fn: () => Promise<void> | void) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("web private sessions lock the participant user id", () => {
+  test("web private sessions lock the participant user id", () => {
     assert.deepEqual(resolveComposerUserIdentity({
       session: {
         type: "private",
@@ -24,7 +18,7 @@ async function main() {
     });
   });
 
-  await runCase("onebot private sessions lock the participant user id", () => {
+  test("onebot private sessions lock the participant user id", () => {
     assert.deepEqual(resolveComposerUserIdentity({
       session: {
         type: "private",
@@ -38,7 +32,7 @@ async function main() {
     });
   });
 
-  await runCase("group sessions keep editable user id with owner default", () => {
+  test("group sessions keep editable user id with owner default", () => {
     assert.deepEqual(resolveComposerUserIdentity({
       session: {
         type: "group",
@@ -51,6 +45,3 @@ async function main() {
       defaultUserId: "owner"
     });
   });
-}
-
-void main();

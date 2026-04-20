@@ -1,13 +1,13 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { EventRouter } from "../../src/services/onebot/eventRouter.ts";
 import { normalizeOneBotMessageId } from "../../src/services/onebot/messageId.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { forwardToolHandlers } from "../../src/llm/tools/conversation/forwardTools.ts";
 import { messageToolHandlers } from "../../src/llm/tools/conversation/messageTools.ts";
-import { createForwardFeatureConfig, runCase } from "../helpers/forward-test-support.tsx";
+import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
 
-async function main() {
-  await runCase("event router keeps forward ids even without text or images", async () => {
+  test("event router keeps forward ids even without text or images", async () => {
     const config = createForwardFeatureConfig();
     const router = new EventRouter(config, config.configRuntime.instanceName);
     const parsed = router.toIncomingMessage({
@@ -28,7 +28,7 @@ async function main() {
     assert.deepEqual(parsed?.forwardIds, ["forward-123"]);
   });
 
-  await runCase("event router keeps reply and mention references without text", async () => {
+  test("event router keeps reply and mention references without text", async () => {
     const config = createForwardFeatureConfig();
     const router = new EventRouter(config, config.configRuntime.instanceName);
     const parsed = router.toIncomingMessage({
@@ -57,7 +57,7 @@ async function main() {
     assert.equal(parsed?.isAtMentioned, true);
   });
 
-  await runCase("event router keeps emoji sources separate from normal images", async () => {
+  test("event router keeps emoji sources separate from normal images", async () => {
     const config = createForwardFeatureConfig();
     const router = new EventRouter(config, config.configRuntime.instanceName);
     const parsed = router.toIncomingMessage({
@@ -80,7 +80,7 @@ async function main() {
     assert.deepEqual(parsed?.emojiSources, ["https://example.com/emoji.gif"]);
   });
 
-  await runCase("view_forward_record repairs rounded forward_id from recent session refs", async () => {
+  test("view_forward_record repairs rounded forward_id from recent session refs", async () => {
     const sessionManager = new SessionManager(createForwardFeatureConfig());
     sessionManager.ensureSession({ id: "qqbot:p:owner", type: "private" });
     sessionManager.appendUserHistory("qqbot:p:owner", {
@@ -111,7 +111,7 @@ async function main() {
     assert.equal(JSON.parse(String(result)).forwardId, "7618168520610781740");
   });
 
-  await runCase("view_message repairs rounded message_id from recent session refs", async () => {
+  test("view_message repairs rounded message_id from recent session refs", async () => {
     const sessionManager = new SessionManager(createForwardFeatureConfig());
     sessionManager.ensureSession({ id: "qqbot:p:owner", type: "private" });
     sessionManager.appendUserHistory("qqbot:p:owner", {
@@ -150,15 +150,9 @@ async function main() {
     assert.equal(capturedMessageId, "1234567890123456789");
   });
 
-  await runCase("normalizeOneBotMessageId accepts string send results", async () => {
+  test("normalizeOneBotMessageId accepts string send results", async () => {
     assert.equal(normalizeOneBotMessageId("123456"), 123456);
     assert.equal(normalizeOneBotMessageId(123456), 123456);
     assert.equal(normalizeOneBotMessageId(""), null);
     assert.equal(normalizeOneBotMessageId("abc"), null);
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

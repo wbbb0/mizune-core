@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import {
@@ -15,8 +16,7 @@ function createDeferred<T>() {
   return { promise, resolve };
 }
 
-async function main() {
-  await runCase("session captioner reads independent model and timeout config", async () => {
+  test("session captioner reads independent model and timeout config", async () => {
     const config = createTestAppConfig({
       llm: {
         enabled: true,
@@ -67,7 +67,7 @@ async function main() {
     assert.match(capturedParams.messages[1].content as string, /会话模式：rp_assistant/);
   });
 
-  await runCase("scenario setup captioning uses location-and-situation prompt from structured state", async () => {
+  test("scenario setup captioning uses location-and-situation prompt from structured state", async () => {
     const config = createTestAppConfig({
       llm: {
         enabled: true,
@@ -133,7 +133,7 @@ async function main() {
     assert.doesNotMatch(capturedParams.messages[1].content as string, /最近消息：/);
   });
 
-  await runCase("session captioner availability follows independent config", async () => {
+  test("session captioner availability follows independent config", async () => {
     const enabledCaptioner = new SessionCaptioner(
       createTestAppConfig({
         llm: {
@@ -179,7 +179,7 @@ async function main() {
     assert.equal(disabledCaptioner.isAvailable(), false);
   });
 
-  await runCase("auto caption skips stale writes after newer history arrives", async () => {
+  test("auto caption skips stale writes after newer history arrives", async () => {
     const config = createTestAppConfig({
       llm: {
         enabled: true,
@@ -248,7 +248,7 @@ async function main() {
     assert.equal(titleWrites, 0);
   });
 
-  await runCase("auto caption policy only regenerates auto titles when forced", async () => {
+  test("auto caption policy only regenerates auto titles when forced", async () => {
     assert.equal(shouldAutoCaptionSessionTitle({ source: "web", titleSource: "default" }), true);
     assert.equal(shouldAutoCaptionSessionTitle({ source: "web", titleSource: "auto" }), false);
     assert.equal(shouldAutoCaptionSessionTitle({ source: "web", titleSource: "auto" }, { forceRegenerate: true }), true);
@@ -256,7 +256,7 @@ async function main() {
     assert.equal(shouldAutoCaptionSessionTitle({ source: "onebot", titleSource: "default" }, { forceRegenerate: true }), false);
   });
 
-  await runCase("forced regeneration can update auto-titled web sessions", async () => {
+  test("forced regeneration can update auto-titled web sessions", async () => {
     const config = createTestAppConfig({
       llm: {
         enabled: true,
@@ -318,13 +318,3 @@ async function main() {
     assert.equal(setTitleCalls, 1);
     assert.equal(appendedEvents, 1);
   });
-}
-
-function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  return fn().then(() => {
-    process.stdout.write("ok\n");
-  });
-}
-
-await main();

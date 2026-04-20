@@ -117,12 +117,6 @@ export async function withMockFetch(scenarios: any[], fn: () => Promise<void>) {
   }
 }
 
-export async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
 export function createToolCallPayload(reasoningContent: string) {
   return [
     {

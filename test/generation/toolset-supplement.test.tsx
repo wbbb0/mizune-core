@@ -1,11 +1,6 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { supplementPlannedToolsets } from "../../src/app/generation/toolsetSupplement.ts";
-
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
 
 const AVAILABLE_TOOLSETS = [
   { id: "chat_context", title: "会话上下文", description: "", toolNames: ["view_message", "chat_file_view_media"] },
@@ -39,8 +34,7 @@ function createBatchMessage(overrides: Partial<Parameters<typeof supplementPlann
   };
 }
 
-async function main() {
-  await runCase("supplement adds chat_context for structured content", async () => {
+  test("supplement adds chat_context for structured content", async () => {
     const result = supplementPlannedToolsets({
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
@@ -60,7 +54,7 @@ async function main() {
     assert.deepEqual(result.toolsetIds, ["chat_context"]);
   });
 
-  await runCase("supplement maps planner capabilities to final toolsets without regex intent tables", async () => {
+  test("supplement maps planner capabilities to final toolsets without regex intent tables", async () => {
     const result = supplementPlannedToolsets({
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
@@ -81,7 +75,7 @@ async function main() {
     assert.deepEqual(result.addedToolsetIds, ["web_research", "local_file_io"]);
   });
 
-  await runCase("supplement maps memory_write to memory_profile explicitly", async () => {
+  test("supplement maps memory_write to memory_profile explicitly", async () => {
     const result = supplementPlannedToolsets({
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
@@ -102,7 +96,7 @@ async function main() {
     assert.deepEqual(result.addedToolsetIds, ["memory_profile"]);
   });
 
-  await runCase("supplement inherits recent browser activity for short followups", async () => {
+  test("supplement inherits recent browser activity for short followups", async () => {
     const result = supplementPlannedToolsets({
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
@@ -128,7 +122,7 @@ async function main() {
     assert.deepEqual(result.toolsetIds, ["web_research"]);
   });
 
-  await runCase("supplement inherits recent shell activity for short followups", async () => {
+  test("supplement inherits recent shell activity for short followups", async () => {
     const result = supplementPlannedToolsets({
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
@@ -153,6 +147,3 @@ async function main() {
     });
     assert.deepEqual(result.toolsetIds, ["shell_runtime"]);
   });
-}
-
-void main();

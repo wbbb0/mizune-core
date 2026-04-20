@@ -1,8 +1,9 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { BrowserService, createBrowserServiceDeps } from "../../src/services/web/browser/browserService.ts";
 import { BrowserSessionRuntime } from "../../src/services/web/browser/browserSessionRuntime.ts";
 import { prioritizeBrowserCandidates } from "../../src/services/web/browser/playwrightBrowserBackend.ts";
-import { createForwardFeatureConfig, runCase } from "../helpers/forward-test-support.tsx";
+import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 
 function createBrowserService() {
@@ -30,8 +31,7 @@ function createBrowserService() {
   }));
 }
 
-async function main() {
-  await runCase("browser service supports inspect patterns and screenshot capture on playwright backend", async () => {
+  test("browser service supports inspect patterns and screenshot capture on playwright backend", async () => {
     const service = createBrowserService();
     const screenshots: Array<{ targetId?: number }> = [];
     (service as any).deps.playwrightBackend = {
@@ -109,7 +109,7 @@ async function main() {
     assert.deepEqual(screenshots, [{}, { targetId: 1 }]);
   });
 
-  await runCase("browser service reload closes existing playwright sessions", async () => {
+  test("browser service reload closes existing playwright sessions", async () => {
     const service = createBrowserService();
     const closedStates: unknown[] = [];
     (service as any).deps.playwrightBackend = {
@@ -154,7 +154,7 @@ async function main() {
     await assert.rejects(service.inspectPage({ resourceId: page.resource_id }), /Unknown resource_id/);
   });
 
-  await runCase("browser session overflow persists and expires evicted sessions immediately", async () => {
+  test("browser session overflow persists and expires evicted sessions immediately", async () => {
     const service = createBrowserService();
     const savedProfiles: Array<{ profileId: string; ownerSessionId: string }> = [];
     const markedExpired: string[] = [];
@@ -252,7 +252,7 @@ async function main() {
     assert.deepEqual(closedStates, [{ requestedUrl: "https://example.com/one", profileId: "profile:qqbot:p:10001" }]);
   });
 
-  await runCase("browser sessions expire after ttl and active access extends ttl", async () => {
+  test("browser sessions expire after ttl and active access extends ttl", async () => {
     const service = createBrowserService();
     (service as any).deps.config.browser.sessionTtlMs = 3_600_000;
     const closedStates: unknown[] = [];
@@ -314,7 +314,7 @@ async function main() {
     }
   });
 
-  await runCase("browser service supports semantic target resolution and forwards expanded actions", async () => {
+  test("browser service supports semantic target resolution and forwards expanded actions", async () => {
     const service = createBrowserService();
     const backendCalls: Array<{
       action: string;
@@ -451,7 +451,7 @@ async function main() {
     );
   });
 
-  await runCase("browser service returns recoverable diagnostics for ambiguous semantic targets", async () => {
+  test("browser service returns recoverable diagnostics for ambiguous semantic targets", async () => {
     const service = createBrowserService();
     let backendCalled = false;
     (service as any).deps.playwrightBackend = {
@@ -555,7 +555,7 @@ async function main() {
     assert.equal(backendCalled, false);
   });
 
-  await runCase("browser service downloads direct urls and page target media sources into workspace files", async () => {
+  test("browser service downloads direct urls and page target media sources into workspace files", async () => {
     const service = createBrowserService();
     const downloads: Array<{
       source: string;
@@ -704,7 +704,7 @@ async function main() {
     );
   });
 
-  await runCase("browser candidate ranking prioritizes main-content image links over navigation noise", async () => {
+  test("browser candidate ranking prioritizes main-content image links over navigation noise", async () => {
     const ranked = prioritizeBrowserCandidates([
       {
         candidateKey: "nav_1",
@@ -772,9 +772,3 @@ async function main() {
     assert.equal(ranked[1]?.inMainContent, false);
     assert.equal(ranked[1]?.href, "https://yande.re/post");
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

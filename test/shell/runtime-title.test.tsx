@@ -1,9 +1,10 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ShellRuntime } from "../../src/services/shell/runtime.ts";
-import { createForwardFeatureConfig, runCase } from "../helpers/forward-test-support.tsx";
+import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 
 async function waitForClosedResourceRecord(dataDir: string, resourceId: string): Promise<void> {
@@ -24,8 +25,7 @@ async function waitForClosedResourceRecord(dataDir: string, resourceId: string):
   throw new Error(`Timed out waiting for closed shell resource ${resourceId}`);
 }
 
-async function main() {
-  await runCase("shell runtime title tracks the live foreground command", async () => {
+  test("shell runtime title tracks the live foreground command", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-shell-runtime-title-"));
     const config = createForwardFeatureConfig();
     config.shell.enabled = true;
@@ -52,9 +52,3 @@ async function main() {
       await rm(dataDir, { recursive: true, force: true });
     }
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

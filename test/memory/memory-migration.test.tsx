@@ -1,16 +1,15 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrateMemoryDataDir } from "../../src/memory/migration.ts";
-import { runCase } from "../helpers/memory-test-support.tsx";
 
 async function readJson(filePath: string) {
   return JSON.parse(await readFile(filePath, "utf8")) as unknown;
 }
 
-async function main() {
-  await runCase("memory migration rewrites legacy data files into the new structure and emits a review report", async () => {
+  test("memory migration rewrites legacy data files into the new structure and emits a review report", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-memory-migration-test-"));
     try {
       await writeFile(join(dataDir, "users.json"), JSON.stringify([
@@ -72,9 +71,3 @@ async function main() {
       await rm(dataDir, { recursive: true, force: true });
     }
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

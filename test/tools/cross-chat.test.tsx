@@ -1,10 +1,10 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { crossChatToolHandlers } from "../../src/llm/tools/conversation/crossChatTools.ts";
-import { runCase } from "../helpers/forward-test-support.tsx";
+
 import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-test-support.tsx";
 
-async function main() {
-  await runCase("delegate_message_to_chat injects natural current-chat phrasing guidance", async () => {
+  test("delegate_message_to_chat injects natural current-chat phrasing guidance", async () => {
     const createdJobs: any[] = [];
     const result = await crossChatToolHandlers.delegate_message_to_chat!(
       createFunctionToolCall("delegate_message_to_chat", "tool_delegate_1"),
@@ -61,7 +61,7 @@ async function main() {
     assert.equal(createdJobs.length, 2);
   });
 
-  await runCase("delegate_message_to_chat rejects npc targets", async () => {
+  test("delegate_message_to_chat rejects npc targets", async () => {
     const result = await crossChatToolHandlers.delegate_message_to_chat!(
       createFunctionToolCall("delegate_message_to_chat", "tool_delegate_2"),
       { sessionId: "qqbot:p:30003", instruction: "帮我问一下。" },
@@ -107,9 +107,3 @@ async function main() {
     }
     assert.match(result, /现在不支持这个功能/);
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

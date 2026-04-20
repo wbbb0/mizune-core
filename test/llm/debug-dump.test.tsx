@@ -1,17 +1,13 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
 import { LlmClient } from "../../src/llm/llmClient.ts";
-import {
-  createLlmTestConfig,
-  createToolDefinition,
-  runCase
-} from "../helpers/llm-test-support.tsx";
+import { createLlmTestConfig, createToolDefinition } from "../helpers/llm-test-support.tsx";
 
-async function main() {
-  await runCase("api errors force request and error response dumps", async () => {
+  test("api errors force request and error response dumps", async () => {
     const dumpDir = await mkdtemp(join(tmpdir(), "llm-bot-dump-"));
     const config = createLlmTestConfig();
     config.dataDir = join(dumpDir, "acc-test");
@@ -57,9 +53,3 @@ async function main() {
       await rm(dumpDir, { recursive: true, force: true });
     }
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

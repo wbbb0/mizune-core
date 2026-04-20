@@ -1,15 +1,9 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
-async function runCase(name: string, fn: () => Promise<void> | void) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("debounce batch user messages share a group and interrupting input starts a new one", () => {
+  test("debounce batch user messages share a group and interrupting input starts a new one", () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const sessionId = "qqbot:p:test";
     sessionManager.ensureSession({ id: sessionId, type: "private" });
@@ -73,9 +67,3 @@ async function main() {
     const sessionAfterInterrupt = sessionManager.getSession(sessionId);
     assert.notEqual(sessionAfterInterrupt.internalTranscript[3]?.groupId, firstGroupId);
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

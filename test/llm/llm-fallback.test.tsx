@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { LlmClient } from "../../src/llm/llmClient.ts";
@@ -84,7 +85,6 @@ function createSseResponse(text: string) {
   );
 }
 
-async function main() {
   const client = new LlmClient(createConfig(), pino({ level: "silent" }));
   const originalFetch = globalThis.fetch;
   let callCount = 0;
@@ -126,13 +126,6 @@ async function main() {
 
     assert.equal(result.text, "fallback succeeded");
     assert.equal(callCount, 2);
-    process.stdout.write("- provider moderation/content_filter failures fall back to the next model ... ok\n");
   } finally {
     globalThis.fetch = originalFetch;
   }
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

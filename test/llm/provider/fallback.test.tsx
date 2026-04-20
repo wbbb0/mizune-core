@@ -1,18 +1,11 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { LlmClient } from "../../../src/llm/llmClient.ts";
 import { createTestAppConfig } from "../../helpers/config-fixtures.tsx";
-import {
-  createAssistantToolRoundtripMessages,
-  createLlmTestConfig,
-  createToolCallPayload,
-  createToolDefinition,
-  runCase,
-  withMockFetch
-} from "../../helpers/llm-test-support.tsx";
+import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCallPayload, createToolDefinition, withMockFetch } from "../../helpers/llm-test-support.tsx";
 
-async function main() {
-  await runCase("google ai studio passes tool history through without thoughtSignature when thinking is off", async () => {
+  test("google ai studio passes tool history through without thoughtSignature when thinking is off", async () => {
     const config = createTestAppConfig({
       llm: {
         enabled: true,
@@ -78,7 +71,7 @@ async function main() {
     });
   });
 
-  await runCase("google ai studio skips tool history without thoughtSignature when thinking is on", async () => {
+  test("google ai studio skips tool history without thoughtSignature when thinking is on", async () => {
     const config = createTestAppConfig({
       llm: {
         enabled: true,
@@ -141,7 +134,7 @@ async function main() {
     });
   });
 
-  await runCase("provider fallback stays sticky for the rest of one tool orchestration", async () => {
+  test("provider fallback stays sticky for the rest of one tool orchestration", async () => {
     const client = new LlmClient(createLlmTestConfig([
       {
         provider: "test",
@@ -198,7 +191,7 @@ async function main() {
     });
   });
 
-  await runCase("provider fallback emits structured fallback events", async () => {
+  test("provider fallback emits structured fallback events", async () => {
     const client = new LlmClient(createLlmTestConfig([
       {
         provider: "test",
@@ -257,7 +250,7 @@ async function main() {
     assert.match(fallbackEvents[0]?.details ?? "", /503 Service Unavailable/);
   });
 
-  await runCase("temporarily unavailable candidate falls back to the next model in the list", async () => {
+  test("temporarily unavailable candidate falls back to the next model in the list", async () => {
     const client = new LlmClient(createLlmTestConfig([
       {
         provider: "test",
@@ -304,7 +297,7 @@ async function main() {
     });
   });
 
-  await runCase("google missing thought signature request shape falls back to the next model", async () => {
+  test("google missing thought signature request shape falls back to the next model", async () => {
     const config = createTestAppConfig({
       llm: {
         enabled: true,
@@ -398,7 +391,7 @@ async function main() {
     });
   });
 
-  await runCase("empty-content candidate falls back to the next model in the list", async () => {
+  test("empty-content candidate falls back to the next model in the list", async () => {
     const client = new LlmClient(createLlmTestConfig([
       {
         provider: "test",
@@ -444,7 +437,7 @@ async function main() {
     });
   });
 
-  await runCase("policy-blocked candidate falls back to the next model in the list", async () => {
+  test("policy-blocked candidate falls back to the next model in the list", async () => {
     const client = new LlmClient(createLlmTestConfig([
       {
         provider: "test",
@@ -496,7 +489,7 @@ async function main() {
     });
   });
 
-  await runCase("invalid-request candidate does not fall back to the next model", async () => {
+  test("invalid-request candidate does not fall back to the next model", async () => {
     const client = new LlmClient(createLlmTestConfig([
       {
         provider: "test",
@@ -540,9 +533,3 @@ async function main() {
 
     assert.equal(sawSecondCandidate, false);
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

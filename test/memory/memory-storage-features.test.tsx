@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -6,10 +7,9 @@ import pino from "pino";
 import { normalizeTitleForDedup } from "../../src/memory/similarity.ts";
 import { PersonaStore } from "../../src/persona/personaStore.ts";
 import { SetupStateStore } from "../../src/identity/setupStateStore.ts";
-import { createIdentityStore, createMemoryHarness, createMemoryTestConfig, runCase } from "../helpers/memory-test-support.tsx";
+import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from "../helpers/memory-test-support.tsx";
 
-async function main() {
-  await runCase("persona store resets unsupported legacy persona shape and re-enters setup", async () => {
+  test("persona store resets unsupported legacy persona shape and re-enters setup", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-legacy-persona-test-"));
     const config = createMemoryTestConfig();
     const logger = pino({ level: "silent" });
@@ -40,7 +40,7 @@ async function main() {
     }
   });
 
-  await runCase("setup state starts in needs_persona for empty persona", async () => {
+  test("setup state starts in needs_persona for empty persona", async () => {
     const harness = await createMemoryHarness();
     try {
       const setupStore = new SetupStateStore(harness.dataDir, harness.userIdentityStore, pino({ level: "silent" }));
@@ -53,7 +53,7 @@ async function main() {
     }
   });
 
-  await runCase("user memories support overwrite list semantics", async () => {
+  test("user memories support overwrite list semantics", async () => {
     const harness = await createMemoryHarness();
     try {
       const updated = await harness.userStore.overwriteMemories("10001", [
@@ -69,7 +69,7 @@ async function main() {
     }
   });
 
-  await runCase("user memory upsert updates a near-duplicate existing row", async () => {
+  test("user memory upsert updates a near-duplicate existing row", async () => {
     const harness = await createMemoryHarness();
     try {
       const created = await harness.userStore.upsertMemory({
@@ -96,13 +96,13 @@ async function main() {
     }
   });
 
-  await runCase("title normalization canonicalizes recurring memory concepts", async () => {
+  test("title normalization canonicalizes recurring memory concepts", async () => {
     assert.equal(normalizeTitleForDedup("称呼"), "称呼偏好");
     assert.equal(normalizeTitleForDedup("用户称呼偏好"), "称呼偏好");
     assert.equal(normalizeTitleForDedup("说话方式"), "说话口吻");
   });
 
-  await runCase("user memory write logs expose dedup similarity and reroute diagnostics", async () => {
+  test("user memory write logs expose dedup similarity and reroute diagnostics", async () => {
     const loggerEvents: Array<{ level: "info" | "warn"; event: string; payload: Record<string, unknown> }> = [];
     const logger = {
       info(payload: Record<string, unknown>, event: string) {
@@ -145,9 +145,3 @@ async function main() {
       await harness.cleanup();
     }
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

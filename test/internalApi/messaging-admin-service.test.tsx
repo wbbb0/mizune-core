@@ -1,14 +1,9 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { createAdminMessagingService } from "../../src/internalApi/application/messagingAdminService.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import type { InternalTranscriptItem, TranscriptAssistantMessageItem } from "../../src/conversation/session/sessionTypes.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
-
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
 
 function nextTick(): Promise<void> {
   return new Promise<void>((resolve) => {
@@ -16,8 +11,7 @@ function nextTick(): Promise<void> {
   });
 }
 
-async function main() {
-  await runCase("session stream sends catch-up transcript events", async () => {
+  test("session stream sends catch-up transcript events", async () => {
     const transcript: InternalTranscriptItem[] = [{
       id: "item-1",
       groupId: "group-1",
@@ -100,7 +94,7 @@ async function main() {
     }
   });
 
-  await runCase("session stream emits transcript items incrementally", async () => {
+  test("session stream emits transcript items incrementally", async () => {
     const sessionState = {
       id: "qqbot:p:10001",
       type: "private" as const,
@@ -203,7 +197,7 @@ async function main() {
     });
   });
 
-  await runCase("session stream emits transcript item patches for reasoning updates", async () => {
+  test("session stream emits transcript item patches for reasoning updates", async () => {
     const sessionState = {
       id: "qqbot:p:10001",
       type: "private" as const,
@@ -299,7 +293,7 @@ async function main() {
     assert.equal(typeof receivedEvents[0]?.timestampMs, "number");
   });
 
-  await runCase("session stream emits session_error when subscribed session is deleted", async () => {
+  test("session stream emits session_error when subscribed session is deleted", async () => {
     const sessionId = "web:session-stream-delete";
     const sessionManager = new SessionManager(createTestAppConfig());
     sessionManager.ensureSession({
@@ -351,7 +345,7 @@ async function main() {
     assert.match(String(sessionErrorEvent?.message), /Session not found:/);
   });
 
-  await runCase("web turn emits turn_error when session is deleted before completion", async () => {
+  test("web turn emits turn_error when session is deleted before completion", async () => {
     const sessionId = "web:web-turn-delete";
     const sessionManager = new SessionManager(createTestAppConfig());
     sessionManager.ensureSession({
@@ -409,7 +403,7 @@ async function main() {
     assert.match(String(terminalEvent.message), /Session was deleted before session response completed/);
   });
 
-  await runCase("web turn uses the actual participant userId for web private sessions", async () => {
+  test("web turn uses the actual participant userId for web private sessions", async () => {
     const sessionId = "web:web-private";
     const sessionManager = new SessionManager(createTestAppConfig());
     sessionManager.ensureSession({
@@ -469,7 +463,7 @@ async function main() {
     });
   });
 
-  await runCase("web turn locks participant userId for onebot private sessions", async () => {
+  test("web turn locks participant userId for onebot private sessions", async () => {
     const sessionId = "qqbot:p:10001";
     const sessionManager = new SessionManager(createTestAppConfig());
     sessionManager.ensureSession({
@@ -529,7 +523,7 @@ async function main() {
     });
   });
 
-  await runCase("web turn keeps custom userId for group sessions", async () => {
+  test("web turn keeps custom userId for group sessions", async () => {
     const sessionId = "qqbot:g:20001";
     const sessionManager = new SessionManager(createTestAppConfig());
     sessionManager.ensureSession({
@@ -590,9 +584,3 @@ async function main() {
       groupId: "20001"
     });
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

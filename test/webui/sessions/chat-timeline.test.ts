@@ -1,12 +1,7 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { buildChatTimelineItems } from "../../../webui/src/components/sessions/chatTimeline.ts";
 import type { ChatTimelineTranscriptEntry } from "../../../webui/src/components/sessions/chatTimeline.ts";
-
-async function runCase(name: string, fn: () => Promise<void> | void) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
 
 function createUserMessageEntry(): ChatTimelineTranscriptEntry {
   return {
@@ -58,8 +53,7 @@ function createUserMessageEntry(): ChatTimelineTranscriptEntry {
   };
 }
 
-async function main() {
-  await runCase("chat timeline expands user message images into dedicated image cards", () => {
+  test("chat timeline expands user message images into dedicated image cards", () => {
     const items = buildChatTimelineItems([createUserMessageEntry()], {
       activeComposerUserId: "10001"
     });
@@ -79,7 +73,7 @@ async function main() {
     assert.equal(items[2]?.sourceName, null);
   });
 
-  await runCase("chat timeline keeps outbound media messages available in reverse chronological order", () => {
+  test("chat timeline keeps outbound media messages available in reverse chronological order", () => {
     const items = buildChatTimelineItems([createUserMessageEntry(), {
       id: "entry-media-1",
       eventId: "event-media-1",
@@ -110,6 +104,3 @@ async function main() {
     assert.equal(items[0]?.role, "assistant");
     assert.equal(items[0]?.imageUrl, "/api/chat-files/assistant-image-1/content");
   });
-}
-
-void main();

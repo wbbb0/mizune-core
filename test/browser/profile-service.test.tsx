@@ -1,7 +1,8 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { BrowserSessionRuntime } from "../../src/services/web/browser/browserSessionRuntime.ts";
 import { BrowserProfileService } from "../../src/services/web/browser/browserProfileService.ts";
-import { createForwardFeatureConfig, runCase } from "../helpers/forward-test-support.tsx";
+import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
 
 function createSnapshot(profileId: string | null) {
   return {
@@ -17,8 +18,7 @@ function createSnapshot(profileId: string | null) {
   };
 }
 
-async function main() {
-  await runCase("browser profile service saves active session state for a live profile", async () => {
+  test("browser profile service saves active session state for a live profile", async () => {
     const config = createForwardFeatureConfig();
     config.browser.playwright.enabled = true;
     const sessions = new BrowserSessionRuntime(4);
@@ -102,7 +102,7 @@ async function main() {
     }]);
   });
 
-  await runCase("browser profile service clears live profile bindings from runtime sessions", async () => {
+  test("browser profile service clears live profile bindings from runtime sessions", async () => {
     const config = createForwardFeatureConfig();
     config.browser.playwright.enabled = true;
     const sessions = new BrowserSessionRuntime(4);
@@ -166,6 +166,3 @@ async function main() {
     assert.equal(result.cleared, true);
     assert.equal(sessions.get("resource_1")?.profileId, null);
   });
-}
-
-void main();

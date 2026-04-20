@@ -1,15 +1,9 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal-api-fixtures.tsx";
 
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("internal api exposes config, whitelist, requests, and scheduler jobs", async () => {
+  test("internal api exposes config, whitelist, requests, and scheduler jobs", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
       const [configSummary, editors, configEditor, whitelist, requests, jobs] = await Promise.all([
@@ -44,7 +38,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api validates send-text target selection", async () => {
+  test("internal api validates send-text target selection", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
       const response = await app.inject({
@@ -60,12 +54,13 @@ async function main() {
     }
   });
 
-  await runCase("internal api validates and saves config editor values", async () => {
+  test("internal api validates and saves config editor values", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
-      await mkdir("/tmp/llm-bot-test-config/instances", { recursive: true });
-      await writeFile("/tmp/llm-bot-test-config/global.yml", [
+      const { configDir, globalConfigPath, instanceConfigPath } = deps.config.configRuntime;
+      await mkdir(`${configDir}/instances`, { recursive: true });
+      await writeFile(globalConfigPath, [
         "appName: global-app",
         "nodeEnv: production",
         "logLevel: info",
@@ -103,9 +98,9 @@ async function main() {
         }
       });
       assert.equal(saveResponse.statusCode, 200);
-      assert.equal(saveResponse.json().path, "/tmp/llm-bot-test-config/instances/test.yml");
+      assert.equal(saveResponse.json().path, instanceConfigPath);
       assert.equal(deps.__state.configCheckForUpdatesCount, 1);
-      const saved = await readFile("/tmp/llm-bot-test-config/instances/test.yml", "utf8");
+      const saved = await readFile(instanceConfigPath, "utf8");
       assert.match(saved, /appName: saved-from-webui/);
       assert.doesNotMatch(saved, /onebot:/);
       assert.doesNotMatch(saved, /nodeEnv: production/);
@@ -114,7 +109,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api exposes single-file editor resources", async () => {
+  test("internal api exposes single-file editor resources", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
@@ -139,7 +134,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api returns not found for unknown shell session", async () => {
+  test("internal api returns not found for unknown shell session", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
       const response = await app.inject({
@@ -154,7 +149,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api exposes session detail", async () => {
+  test("internal api exposes session detail", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
       const response = await app.inject({
@@ -180,7 +175,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api exposes scenario_host mode state in session detail", async () => {
+  test("internal api exposes scenario_host mode state in session detail", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
@@ -207,7 +202,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api updates scenario_host mode state", async () => {
+  test("internal api updates scenario_host mode state", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
@@ -261,7 +256,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api rejects mode state updates for non-scenario sessions", async () => {
+  test("internal api rejects mode state updates for non-scenario sessions", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
       const response = await app.inject({
@@ -281,7 +276,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api rejects invalid scenario_host mode state payloads", async () => {
+  test("internal api rejects invalid scenario_host mode state payloads", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
@@ -312,7 +307,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api exposes session modes and allows switching a session mode", async () => {
+  test("internal api exposes session modes and allows switching a session mode", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
@@ -352,7 +347,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api rejects scenario_host for group sessions", async () => {
+  test("internal api rejects scenario_host for group sessions", async () => {
     const deps = createInternalApiDeps();
     deps.__state.sessions.push({
       id: "qqbot:g:20001",
@@ -386,18 +381,18 @@ async function main() {
     }
   });
 
-  await runCase("internal api exposes workspace listing, text preview, workspace image content, and stored file content", async () => {
+  test("internal api exposes workspace listing, text preview, workspace image content, and stored file content", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
       const [listResponse, statResponse, fileResponse, imageContentResponse, sendContentResponse, filesResponse, storedFileResponse, contentResponse] = await Promise.all([
-        app.inject({ method: "GET", url: "/api/workspace/items" }),
-        app.inject({ method: "GET", url: "/api/workspace/stat?path=notes.txt" }),
-        app.inject({ method: "GET", url: "/api/workspace/file?path=notes.txt&startLine=1&endLine=2" }),
-        app.inject({ method: "GET", url: "/api/workspace/content?path=photo.png" }),
-        app.inject({ method: "GET", url: "/api/workspace/send-content?path=photo.png" }),
-        app.inject({ method: "GET", url: "/api/workspace/files" }),
-        app.inject({ method: "GET", url: "/api/workspace/files/asset_image_1" }),
-        app.inject({ method: "GET", url: "/api/workspace/files/asset_image_1/content" })
+        app.inject({ method: "GET", url: "/api/local-files/items" }),
+        app.inject({ method: "GET", url: "/api/local-files/stat?path=notes.txt" }),
+        app.inject({ method: "GET", url: "/api/local-files/file?path=notes.txt&startLine=1&endLine=2" }),
+        app.inject({ method: "GET", url: "/api/local-files/content?path=photo.png" }),
+        app.inject({ method: "GET", url: "/api/local-files/send-content?path=photo.png" }),
+        app.inject({ method: "GET", url: "/api/chat-files" }),
+        app.inject({ method: "GET", url: "/api/chat-files/file_image_1" }),
+        app.inject({ method: "GET", url: "/api/chat-files/file_image_1/content" })
       ]);
 
       assert.equal(listResponse.statusCode, 200);
@@ -414,7 +409,7 @@ async function main() {
       assert.equal(sendContentResponse.headers["content-type"], "image/png");
       assert.ok(sendContentResponse.body.length > 0);
       assert.equal(filesResponse.statusCode, 200);
-      assert.equal(filesResponse.json().files[0].fileId, "asset_image_1");
+      assert.equal(filesResponse.json().files[0].fileId, "file_image_1");
       assert.equal(storedFileResponse.statusCode, 200);
       assert.equal(storedFileResponse.json().file.sourceName, "fixture.png");
       assert.equal(contentResponse.statusCode, 200);
@@ -425,32 +420,32 @@ async function main() {
     }
   });
 
-  await runCase("internal api rejects workspace path escape and returns not found for missing stored file", async () => {
+  test("internal api rejects workspace path escape and returns not found for missing stored file", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
       const badPathResponse = await app.inject({
         method: "GET",
-        url: "/api/workspace/items?path=../escape"
+        url: "/api/local-files/items?path=../escape"
       });
       assert.equal(badPathResponse.statusCode, 400);
 
       const missingFileResponse = await app.inject({
         method: "GET",
-        url: "/api/workspace/files/missing_file"
+        url: "/api/chat-files/missing_file"
       });
       assert.equal(missingFileResponse.statusCode, 404);
-      assert.equal(missingFileResponse.json().error, "Workspace file not found");
+      assert.equal(missingFileResponse.json().error, "Chat file not found");
     } finally {
       await app.close();
     }
   });
 
-  await runCase("internal api rejects binary workspace files in text preview", async () => {
+  test("internal api rejects binary workspace files in text preview", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
       const response = await app.inject({
         method: "GET",
-        url: "/api/workspace/file?path=photo.png"
+        url: "/api/local-files/file?path=photo.png"
       });
 
       assert.equal(response.statusCode, 400);
@@ -460,7 +455,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api shell routes expose success payloads", async () => {
+  test("internal api shell routes expose success payloads", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
@@ -490,7 +485,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api send-text sends to selected target", async () => {
+  test("internal api send-text sends to selected target", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
@@ -507,7 +502,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api rejects send-text when onebot is disabled", async () => {
+  test("internal api rejects send-text when onebot is disabled", async () => {
     const deps = createInternalApiDeps();
     deps.config.onebot.enabled = false;
     const app = await createInternalApiApp(deps);
@@ -525,7 +520,7 @@ async function main() {
     }
   });
 
-  await runCase("config summary switches to webui-only semantics when onebot is disabled", async () => {
+  test("config summary switches to webui-only semantics when onebot is disabled", async () => {
     const deps = createInternalApiDeps();
     deps.config.onebot.enabled = false;
     const app = await createInternalApiApp(deps);
@@ -548,7 +543,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api creates web sessions with default title and participantRef", async () => {
+  test("internal api creates web sessions with default title and participantRef", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
@@ -601,7 +596,7 @@ async function main() {
     }
   });
 
-  await runCase("create session accepts manual title and marks it manual", async () => {
+  test("create session accepts manual title and marks it manual", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
       const response = await app.inject({
@@ -619,7 +614,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api updates web session title", async () => {
+  test("internal api updates web session title", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
       const createResponse = await app.inject({
@@ -650,7 +645,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api regenerates web session title and records transcript event", async () => {
+  test("internal api regenerates web session title and records transcript event", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
@@ -669,13 +664,13 @@ async function main() {
       assert.equal(response.statusCode, 200);
       assert.equal(response.json().session.title, "Generated title");
       assert.equal(response.json().session.titleSource, "auto");
-      assert.equal(response.json().session.titleGenerationAvailable, true);
 
       const detail = await app.inject({
         method: "GET",
         url: `/api/sessions/${encodeURIComponent(sessionId)}`
       });
       assert.equal(detail.statusCode, 200);
+      assert.equal(detail.json().session.titleGenerationAvailable, true);
       assert.ok(detail.json().session.internalTranscript.some((item: { kind: string; source?: string; summary?: string }) => (
         item.kind === "title_generation_event"
         && item.source === "regenerate"
@@ -686,7 +681,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api rejects title regeneration when session captioner is unavailable", async () => {
+  test("internal api rejects title regeneration when session captioner is unavailable", async () => {
     const deps = createInternalApiDeps();
     deps.sessionCaptioner = {
       isAvailable() {
@@ -717,7 +712,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api rejects title regeneration for onebot sessions", async () => {
+  test("internal api rejects title regeneration for onebot sessions", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
       const response = await app.inject({
@@ -732,7 +727,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api creates scenario_host web sessions with the scenario default title", async () => {
+  test("internal api creates scenario_host web sessions with the scenario default title", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
@@ -763,7 +758,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api web-turn starts turn and streams page-scoped response without onebot send", async () => {
+  test("internal api web-turn starts turn and streams page-scoped response without onebot send", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
@@ -801,7 +796,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api web-turn can inject into onebot sessions without sending to onebot", async () => {
+  test("internal api web-turn can inject into onebot sessions without sending to onebot", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
@@ -828,7 +823,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api invalidates transcript items and groups and triggers onebot deletion side effects", async () => {
+  test("internal api invalidates transcript items and groups and triggers onebot deletion side effects", async () => {
     const deps = createInternalApiDeps();
     deps.__state.sessions[0]!.internalTranscript = [{
       id: "item-1",
@@ -893,7 +888,7 @@ async function main() {
     }
   });
 
-  await runCase("internal api accepts file upload payloads above the default fastify body limit", async () => {
+  test("internal api accepts file upload payloads above the default fastify body limit", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
       const largeBuffer = Buffer.alloc(1024 * 1024 + 256 * 1024, 0xaa);
@@ -912,15 +907,9 @@ async function main() {
 
       assert.equal(response.statusCode, 200);
       assert.equal(response.json().ok, true);
-      assert.equal(response.json().uploads[0].fileId, "asset_image_1");
+      assert.equal(response.json().uploads[0].fileId, "file_image_1");
       assert.equal(response.json().uploads[0].sizeBytes, largeBuffer.byteLength);
     } finally {
       await app.close();
     }
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

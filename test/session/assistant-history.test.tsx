@@ -1,16 +1,10 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { SessionLifecycleController } from "../../src/conversation/session/sessionLifecycleController.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("interrupting a response clears preview without appending a merged assistant history item", async () => {
+  test("interrupting a response clears preview without appending a merged assistant history item", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const lifecycle = new SessionLifecycleController();
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
@@ -39,7 +33,7 @@ async function main() {
     assert.equal(llmVisibleHistory.length, 0);
   });
 
-  await runCase("stale response epochs cannot append assistant chunks after interruption", async () => {
+  test("stale response epochs cannot append assistant chunks after interruption", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const lifecycle = new SessionLifecycleController();
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
@@ -63,7 +57,7 @@ async function main() {
     assert.equal(sessionManager.getSession("qqbot:p:test").activeAssistantResponse, null);
   });
 
-  await runCase("newline-split assistant chunks remain only in active preview until sent history is appended", async () => {
+  test("newline-split assistant chunks remain only in active preview until sent history is appended", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const lifecycle = new SessionLifecycleController();
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
@@ -104,7 +98,7 @@ async function main() {
     assert.equal(llmVisibleHistory.length, 0);
   });
 
-  await runCase("steer messages can be consumed immediately or promoted into the next round", async () => {
+  test("steer messages can be consumed immediately or promoted into the next round", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
 
@@ -159,9 +153,3 @@ async function main() {
     assert.equal(session.pendingMessages.length, 1);
     assert.equal(session.pendingMessages[0]?.text, "转下一轮");
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

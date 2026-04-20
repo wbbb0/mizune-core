@@ -1,8 +1,8 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { MediaCaptionService } from "../../src/services/workspace/mediaCaptionService.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
-import { runCase } from "../helpers/llm-test-support.tsx";
 
 type TestFile = {
   fileId: string;
@@ -76,8 +76,7 @@ function createCaptionerConfig() {
   });
 }
 
-async function main() {
-  await runCase("media caption service requests richer captions and normalizes nsfw labels", async () => {
+  test("media caption service requests richer captions and normalizes nsfw labels", async () => {
     const chatFileStore = new FakeChatFileStore(new Map([
       ["file_nsfw", {
         fileId: "file_nsfw",
@@ -128,7 +127,7 @@ async function main() {
     assert.equal(captions.get("file_nsfw"), "NSFW 半裸人物站在卧室镜前自拍，长发披肩");
   });
 
-  await runCase("media caption service stores the actual fallback model when generation succeeds", async () => {
+  test("media caption service stores the actual fallback model when generation succeeds", async () => {
     const chatFileStore = new FakeChatFileStore(new Map([
       ["file_1", {
         fileId: "file_1",
@@ -177,7 +176,7 @@ async function main() {
     assert.equal(captions.get("file_1"), "窗边的小猫");
   });
 
-  await runCase("media caption service retries image and emoji-like files on demand", async () => {
+  test("media caption service retries image and emoji-like files on demand", async () => {
     const chatFileStore = new FakeChatFileStore(new Map([
       ["file_missing", {
         fileId: "file_missing",
@@ -235,9 +234,3 @@ async function main() {
     assert.equal(captions.get("file_failed"), "搞怪表情包");
     assert.equal(calls.length, 2);
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

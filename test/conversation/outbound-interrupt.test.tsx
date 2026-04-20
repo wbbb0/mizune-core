@@ -1,16 +1,10 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { MessageQueue } from "../../src/conversation/messageQueue.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("abort before any send skips all queued messages", async () => {
+  test("abort before any send skips all queued messages", async () => {
     const logger = pino({ level: "silent" });
     const queue = new MessageQueue(logger, createTestAppConfig({
       conversation: {
@@ -39,7 +33,7 @@ async function main() {
     assert.deepEqual(sent, []);
   });
 
-  await runCase("messages enqueued before abort complete; messages pending during abort are skipped", async () => {
+  test("messages enqueued before abort complete; messages pending during abort are skipped", async () => {
     const logger = pino({ level: "silent" });
     const queue = new MessageQueue(logger, createTestAppConfig({
       conversation: {
@@ -91,7 +85,7 @@ async function main() {
     assert.deepEqual(sent, ["msg1"]);
   });
 
-  await runCase("interruptOutbound aborts responseAbortController without cancelling generation", async () => {
+  test("interruptOutbound aborts responseAbortController without cancelling generation", async () => {
     const { SessionManager } = await import("../../src/conversation/session/sessionManager.ts");
     const { createTestAppConfig } = await import("../helpers/config-fixtures.tsx");
 
@@ -113,9 +107,3 @@ async function main() {
     // Second call is a no-op.
     assert.equal(sm.interruptOutbound("s1"), false);
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

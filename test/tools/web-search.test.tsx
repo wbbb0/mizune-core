@@ -1,10 +1,10 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { webToolHandlers } from "../../src/llm/tools/web/webTools.ts";
-import { runCase } from "../helpers/forward-test-support.tsx";
+
 import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-test-support.tsx";
 
-async function main() {
-  await runCase("ground_with_google_search returns provider result", async () => {
+  test("ground_with_google_search returns provider result", async () => {
     const result = await webToolHandlers.ground_with_google_search!(
       createFunctionToolCall("ground_with_google_search", "tool_4"),
       { query: "OpenAI" },
@@ -55,7 +55,7 @@ async function main() {
     assert.equal(parsed.results[0].ref_id, "search_1");
   });
 
-  await runCase("search_with_iqs_lite_advanced returns provider result", async () => {
+  test("search_with_iqs_lite_advanced returns provider result", async () => {
     const result = await webToolHandlers.search_with_iqs_lite_advanced!(
       createFunctionToolCall("search_with_iqs_lite_advanced", "tool_5"),
       { query: "OpenAI", num_results: 3, include_sites: ["openai.com"] },
@@ -111,9 +111,3 @@ async function main() {
     assert.equal(parsed.results[0].siteName, "OpenAI");
     assert.equal(parsed.results[0].ref_id, "search_2");
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

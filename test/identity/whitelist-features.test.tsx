@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -8,12 +9,6 @@ import { EventRouter } from "../../src/services/onebot/eventRouter.ts";
 import { isOwnerBootstrapCommandText } from "../../src/app/bootstrap/ownerBootstrapPolicy.ts";
 import { WhitelistStore } from "../../src/identity/whitelistStore.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
-
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
 
 function createPrivateMessageEvent(text: string) {
   return {
@@ -40,8 +35,7 @@ function createPrivateMessageEvent(text: string) {
   };
 }
 
-async function main() {
-  await runCase("whitelist store initializes users and groups from data defaults instead of config", async () => {
+  test("whitelist store initializes users and groups from data defaults instead of config", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-whitelist-"));
     try {
       const store = new WhitelistStore(dataDir, pino({ level: "silent" }));
@@ -58,7 +52,7 @@ async function main() {
     }
   });
 
-  await runCase("event router allows private .own before owner is bound even when whitelist is enabled", async () => {
+  test("event router allows private .own before owner is bound even when whitelist is enabled", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-identity-router-bootstrap-"));
     const config = createTestAppConfig({
       whitelist: {
@@ -79,7 +73,7 @@ async function main() {
     }
   });
 
-  await runCase("event router allows owner private messages when external identity points to owner", async () => {
+  test("event router allows owner private messages when external identity points to owner", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-identity-router-owner-"));
     try {
       const config = createTestAppConfig({
@@ -102,9 +96,3 @@ async function main() {
       await rm(dataDir, { recursive: true, force: true });
     }
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

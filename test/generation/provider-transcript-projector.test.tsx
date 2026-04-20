@@ -1,14 +1,8 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { getProviderTranscriptProjector } from "../../src/app/generation/providerTranscriptProjector.ts";
 import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
 
-async function runCase(name: string, fn: () => Promise<void> | void) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
   const transcript: InternalTranscriptItem[] = [
     {
       kind: "assistant_tool_call",
@@ -34,7 +28,7 @@ async function main() {
     }
   ];
 
-  await runCase("dashscope projector replays assistant tool calls and tool results", () => {
+  test("dashscope projector replays assistant tool calls and tool results", () => {
     const projection = getProviderTranscriptProjector("dashscope").project({ transcript });
     assert.equal(projection.replayMessages.length, 2);
     assert.equal(projection.replayMessages[0]?.role, "assistant");
@@ -42,14 +36,14 @@ async function main() {
     assert.deepEqual(projection.lateSystemMessages, []);
   });
 
-  await runCase("gemini projector silently skips tool calls without google replay metadata", () => {
+  test("gemini projector silently skips tool calls without google replay metadata", () => {
     const projection = getProviderTranscriptProjector("google").project({ transcript });
     assert.equal(projection.replayMessages.length, 0);
     assert.equal(projection.replayCoversVisibleHistory, false);
     assert.deepEqual(projection.lateSystemMessages, []);
   });
 
-  await runCase("gemini projector drops leading replayable tool chains without a preceding user turn", () => {
+  test("gemini projector drops leading replayable tool chains without a preceding user turn", () => {
     const projection = getProviderTranscriptProjector("google").project({
       transcript: [
         {
@@ -117,7 +111,7 @@ async function main() {
     );
   });
 
-  await runCase("gemini projector replays tool calls when google thought signatures exist and a user turn precedes them", () => {
+  test("gemini projector replays tool calls when google thought signatures exist and a user turn precedes them", () => {
     const projection = getProviderTranscriptProjector("google").project({
       transcript: [
         {
@@ -167,7 +161,7 @@ async function main() {
     assert.deepEqual(projection.lateSystemMessages, []);
   });
 
-  await runCase("gemini projector replays tool calls when assistant googleParts are persisted after a user turn", () => {
+  test("gemini projector replays tool calls when assistant googleParts are persisted after a user turn", () => {
     const projection = getProviderTranscriptProjector("google").project({
       transcript: [
         {
@@ -222,7 +216,7 @@ async function main() {
     assert.deepEqual(projection.lateSystemMessages, []);
   });
 
-  await runCase("gemini projector silently skips assistant googleParts without thought signatures", () => {
+  test("gemini projector silently skips assistant googleParts without thought signatures", () => {
     const projection = getProviderTranscriptProjector("google").project({
       transcript: [{
         kind: "assistant_tool_call",
@@ -253,7 +247,7 @@ async function main() {
     assert.deepEqual(projection.lateSystemMessages, []);
   });
 
-  await runCase("gemini projector preserves visible-message chronology for replayable transcript", () => {
+  test("gemini projector preserves visible-message chronology for replayable transcript", () => {
     const projection = getProviderTranscriptProjector("google").project({
       transcript: [
         {
@@ -328,7 +322,7 @@ async function main() {
     assert.deepEqual(projection.lateSystemMessages, []);
   });
 
-  await runCase("gemini projector silently skips foreign-provider tool calls while preserving visible messages", () => {
+  test("gemini projector silently skips foreign-provider tool calls while preserving visible messages", () => {
     const projection = getProviderTranscriptProjector("google").project({
       transcript: [
         {
@@ -393,7 +387,7 @@ async function main() {
     assert.deepEqual(projection.lateSystemMessages, []);
   });
 
-  await runCase("gemini projector skips tool calls that appear right after an assistant visible message", () => {
+  test("gemini projector skips tool calls that appear right after an assistant visible message", () => {
     const projection = getProviderTranscriptProjector("google").project({
       transcript: [
         {
@@ -470,9 +464,3 @@ async function main() {
       ["user", "assistant"]
     );
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

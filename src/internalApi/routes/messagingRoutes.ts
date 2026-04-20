@@ -127,7 +127,11 @@ export function registerMessagingRoutes(app: FastifyInstance, services: Internal
       return reply;
     }
 
-    const result = await messaging.sendInternalTextMessage(body);
-    return { ok: true, result };
+    try {
+      const result = await messaging.sendInternalTextMessage(body);
+      return { ok: true, result };
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
   });
 }

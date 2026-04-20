@@ -1,16 +1,10 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { LlmClient } from "../../../src/llm/llmClient.ts";
-import {
-  createAssistantToolRoundtripMessages,
-  createLlmTestConfig,
-  createToolDefinition,
-  runCase,
-  withMockFetch
-} from "../../helpers/llm-test-support.tsx";
+import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDefinition, withMockFetch } from "../../helpers/llm-test-support.tsx";
 
-async function main() {
-  await runCase("native search injects provider flag into request body", async () => {
+  test("native search injects provider flag into request body", async () => {
     const config = createLlmTestConfig({ supportsSearch: true });
     config.llm.providers.test!.features.search = {
       type: "flag",
@@ -45,7 +39,7 @@ async function main() {
     });
   });
 
-  await runCase("openai-compatible providers append builtin search tools from feature config", async () => {
+  test("openai-compatible providers append builtin search tools from feature config", async () => {
     const config = createLlmTestConfig({ supportsSearch: true });
     config.llm.providers.test!.features.search = {
       type: "builtin_tool",
@@ -81,7 +75,7 @@ async function main() {
     });
   });
 
-  await runCase("lmstudio uses native chat endpoint when tools are absent and thinking is disabled", async () => {
+  test("lmstudio uses native chat endpoint when tools are absent and thinking is disabled", async () => {
     const config = createLlmTestConfig({
       provider: "test",
       supportsVision: true
@@ -141,7 +135,7 @@ async function main() {
     });
   });
 
-  await runCase("lmstudio automatically uses native no-thinking chat endpoint without explicit prefer flag", async () => {
+  test("lmstudio automatically uses native no-thinking chat endpoint without explicit prefer flag", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "lmstudio";
     config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
@@ -176,7 +170,7 @@ async function main() {
     });
   });
 
-  await runCase("lmstudio retries with text+content native shape when server requires text discriminator", async () => {
+  test("lmstudio retries with text+content native shape when server requires text discriminator", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "lmstudio";
     config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
@@ -226,7 +220,7 @@ async function main() {
     });
   });
 
-  await runCase("lmstudio retries with legacy text+text shape after text+content fallback fails", async () => {
+  test("lmstudio retries with legacy text+text shape after text+content fallback fails", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "lmstudio";
     config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
@@ -292,7 +286,7 @@ async function main() {
     });
   });
 
-  await runCase("lmstudio does not retry with legacy shape when server requires content field", async () => {
+  test("lmstudio does not retry with legacy shape when server requires content field", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "lmstudio";
     config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
@@ -326,7 +320,7 @@ async function main() {
     });
   });
 
-  await runCase("lmstudio keeps openai-compatible chat completions when model thinking is not controllable", async () => {
+  test("lmstudio keeps openai-compatible chat completions when model thinking is not controllable", async () => {
     const config = createLlmTestConfig({
       thinkingControllable: false
     });
@@ -359,7 +353,7 @@ async function main() {
     });
   });
 
-  await runCase("lmstudio flattens text-only content parts for openai-compatible chat completions", async () => {
+  test("lmstudio flattens text-only content parts for openai-compatible chat completions", async () => {
     const config = createLlmTestConfig({
       thinkingControllable: false
     });
@@ -397,7 +391,7 @@ async function main() {
     });
   });
 
-  await runCase("lmstudio retries without tools when template reports no user query", async () => {
+  test("lmstudio retries without tools when template reports no user query", async () => {
     const config = createLlmTestConfig({
       thinkingControllable: false
     });
@@ -447,7 +441,7 @@ async function main() {
     });
   });
 
-  await runCase("lmstudio injects placeholder user when first non-system message is assistant", async () => {
+  test("lmstudio injects placeholder user when first non-system message is assistant", async () => {
     const config = createLlmTestConfig({
       thinkingControllable: false
     });
@@ -490,7 +484,7 @@ async function main() {
     });
   });
 
-  await runCase("google ai studio requests include configured harm block threshold", async () => {
+  test("google ai studio requests include configured harm block threshold", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "google";
     config.llm.providers.test!.harmBlockThreshold = "BLOCK_ONLY_HIGH";
@@ -528,7 +522,7 @@ async function main() {
     });
   });
 
-  await runCase("vertex ai requests use bearer auth and vertex publisher endpoint", async () => {
+  test("vertex ai requests use bearer auth and vertex publisher endpoint", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "vertex";
     config.llm.providers.test!.baseUrl = "https://us-central1-aiplatform.googleapis.com/v1/projects/demo-project/locations/us-central1/publishers/google";
@@ -567,7 +561,7 @@ async function main() {
     });
   });
 
-  await runCase("vertex express requests use API key query string and express endpoint", async () => {
+  test("vertex express requests use API key query string and express endpoint", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "vertex_express";
     delete config.llm.providers.test!.baseUrl;
@@ -606,7 +600,7 @@ async function main() {
     });
   });
 
-  await runCase("vertex express omits function part ids in replayed tool history", async () => {
+  test("vertex express omits function part ids in replayed tool history", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "vertex_express";
     delete config.llm.providers.test!.baseUrl;
@@ -669,7 +663,7 @@ async function main() {
     });
   });
 
-  await runCase("vertex express strips function part ids from replayed google parts metadata", async () => {
+  test("vertex express strips function part ids from replayed google parts metadata", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "vertex_express";
     delete config.llm.providers.test!.baseUrl;
@@ -724,7 +718,7 @@ async function main() {
     });
   });
 
-  await runCase("vertex express passes tool history through without thoughtSignature when thinking is off", async () => {
+  test("vertex express passes tool history through without thoughtSignature when thinking is off", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "vertex_express";
     delete config.llm.providers.test!.baseUrl;
@@ -765,7 +759,7 @@ async function main() {
     });
   });
 
-  await runCase("google ai studio drops invalid replayed tool chains that are not preceded by a user or tool turn", async () => {
+  test("google ai studio drops invalid replayed tool chains that are not preceded by a user or tool turn", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "google";
     const client = new LlmClient(config, pino({ level: "silent" }));
@@ -842,7 +836,7 @@ async function main() {
     });
   });
 
-  await runCase("openai-compatible requests explicitly convert multimodal content parts", async () => {
+  test("openai-compatible requests explicitly convert multimodal content parts", async () => {
     const client = new LlmClient(createLlmTestConfig({
       supportsVision: true,
       supportsAudioInput: true
@@ -913,9 +907,3 @@ async function main() {
       assert.equal(result.text, "done");
     });
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

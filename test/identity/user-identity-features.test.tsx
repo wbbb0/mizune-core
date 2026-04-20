@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -5,14 +6,7 @@ import { tmpdir } from "node:os";
 import pino from "pino";
 import { UserIdentityStore } from "../../src/identity/userIdentityStore.ts";
 
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("identity store binds one external identity to owner", async () => {
+  test("identity store binds one external identity to owner", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-user-identities-owner-"));
     try {
       const store = new UserIdentityStore(dataDir, pino({ level: "silent" }));
@@ -48,7 +42,7 @@ async function main() {
     }
   });
 
-  await runCase("identity store creates opaque ids for unknown users and reuses existing bindings", async () => {
+  test("identity store creates opaque ids for unknown users and reuses existing bindings", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-user-identities-generated-"));
     try {
       const store = new UserIdentityStore(dataDir, pino({ level: "silent" }));
@@ -71,7 +65,7 @@ async function main() {
     }
   });
 
-  await runCase("identity store rejects one-to-one binding conflicts", async () => {
+  test("identity store rejects one-to-one binding conflicts", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-user-identities-conflict-"));
     try {
       const store = new UserIdentityStore(dataDir, pino({ level: "silent" }));
@@ -102,9 +96,3 @@ async function main() {
       await rm(dataDir, { recursive: true, force: true });
     }
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

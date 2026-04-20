@@ -1,3 +1,4 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { HistoryCompressor } from "../../src/conversation/historyCompressor.ts";
@@ -25,12 +26,6 @@ function createConfig() {
   });
 }
 
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
 function appendSimpleHistory(
   sessionManager: SessionManager,
   sessionId: string,
@@ -56,8 +51,7 @@ function appendSimpleHistory(
   }, timestampMs);
 }
 
-async function main() {
-  await runCase("forceCompact uses default retain count from config", async () => {
+  test("forceCompact uses default retain count from config", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
     appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "hello", 1);
@@ -122,7 +116,7 @@ async function main() {
     assert.match(userPrompt, /summary_context/);
   });
 
-  await runCase("forceCompact accepts explicit zero retained history items", async () => {
+  test("forceCompact accepts explicit zero retained history items", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
     appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "hello", 1);
@@ -171,7 +165,7 @@ async function main() {
     assert.deepEqual(session.internalTranscript, []);
   });
 
-  await runCase("compactOldHistoryKeepingRecent preserves the latest topic window", async () => {
+  test("compactOldHistoryKeepingRecent preserves the latest topic window", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
     appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "old-1", 1);
@@ -243,7 +237,7 @@ async function main() {
     );
   });
 
-  await runCase("compression also absorbs leading tool items from retained window", async () => {
+  test("compression also absorbs leading tool items from retained window", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
     appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "old-1", 1);
@@ -321,7 +315,7 @@ async function main() {
     );
   });
 
-  await runCase("compression keeps retained window unchanged when it already starts with a normal message", async () => {
+  test("compression keeps retained window unchanged when it already starts with a normal message", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
     appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "old-1", 1);
@@ -404,7 +398,7 @@ async function main() {
     );
   });
 
-  await runCase("stale epoch writes are rejected after clear", async () => {
+  test("stale epoch writes are rejected after clear", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
     appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "before", 1);
@@ -446,7 +440,7 @@ async function main() {
     assert.equal(session.lastLlmUsage, null);
   });
 
-  await runCase("compression results are rejected when history changes during summarization", async () => {
+  test("compression results are rejected when history changes during summarization", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
     appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "hello", 1);
@@ -505,9 +499,3 @@ async function main() {
       ["hello", "hi", "more", "new info"]
     );
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

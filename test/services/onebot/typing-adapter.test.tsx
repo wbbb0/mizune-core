@@ -1,9 +1,9 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import type { OneBotApiResponse } from "../../../src/services/onebot/types.ts";
 import { createOneBotTypingAdapter } from "../../../src/services/onebot/typingAdapter.ts";
 import { createTestAppConfig } from "../../helpers/config-fixtures.tsx";
-import { runCase } from "../../helpers/config-test-support.tsx";
 
 function createOkResponse<T extends OneBotApiResponse>(): T {
   return {
@@ -13,8 +13,7 @@ function createOkResponse<T extends OneBotApiResponse>(): T {
   } as T;
 }
 
-async function main() {
-  await runCase("generic provider keeps typing as a no-op", async () => {
+  test("generic provider keeps typing as a no-op", async () => {
     const config = createTestAppConfig({
       onebot: {
         provider: "generic"
@@ -36,7 +35,7 @@ async function main() {
     assert.equal(called, 0);
   });
 
-  await runCase("napcat private typing uses set_input_status start event", async () => {
+  test("napcat private typing uses set_input_status start event", async () => {
     const config = createTestAppConfig({
       onebot: {
         provider: "napcat"
@@ -68,7 +67,7 @@ async function main() {
     }]);
   });
 
-  await runCase("napcat group typing stays disabled by default", async () => {
+  test("napcat group typing stays disabled by default", async () => {
     const config = createTestAppConfig({
       onebot: {
         provider: "napcat"
@@ -91,7 +90,7 @@ async function main() {
     assert.equal(called, 0);
   });
 
-  await runCase("napcat group typing includes group_id when enabled", async () => {
+  test("napcat group typing includes group_id when enabled", async () => {
     const config = createTestAppConfig({
       onebot: {
         provider: "napcat",
@@ -128,7 +127,7 @@ async function main() {
     }]);
   });
 
-  await runCase("napcat typing failures are swallowed", async () => {
+  test("napcat typing failures are swallowed", async () => {
     const config = createTestAppConfig({
       onebot: {
         provider: "napcat"
@@ -146,9 +145,3 @@ async function main() {
 
     assert.equal(applied, false);
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

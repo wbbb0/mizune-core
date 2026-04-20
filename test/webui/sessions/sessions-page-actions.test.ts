@@ -1,14 +1,8 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-async function runCase(name: string, fn: () => Promise<void>) {
-  process.stdout.write(`- ${name} ... `);
-  await fn();
-  process.stdout.write("ok\n");
-}
-
-async function main() {
-  await runCase("sessions page moves title actions into the session actions dialog", async () => {
+  test("sessions page moves title actions into the session actions dialog", async () => {
     const source = await readFile(
       new URL("../../../webui/src/pages/SessionsPage.vue", import.meta.url),
       "utf8"
@@ -21,6 +15,3 @@ async function main() {
     assert.match(source, /actionsDialogSupportsTitleEditing/);
     assert.match(source, /标题生成器不可用/);
   });
-}
-
-void main();

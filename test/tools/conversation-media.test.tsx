@@ -1,11 +1,11 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { imageToolHandlers } from "../../src/llm/tools/conversation/imageTools.ts";
 import { messageToolHandlers } from "../../src/llm/tools/conversation/messageTools.ts";
-import { createForwardFeatureConfig, runCase } from "../helpers/forward-test-support.tsx";
+import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
 import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-test-support.tsx";
 
-async function main() {
-  await runCase("chat_file_view_media injects multimodal follow-up content for images", async () => {
+  test("chat_file_view_media injects multimodal follow-up content for images", async () => {
     const result = await imageToolHandlers.chat_file_view_media!(
       createFunctionToolCall("chat_file_view_media", "tool_1"),
       { media_ids: ["file_test_1"] },
@@ -73,7 +73,7 @@ async function main() {
     assert.match(result.content, /"durationMs":2400/);
   });
 
-  await runCase("chat_file_view_media rejects requests above the hard limit", async () => {
+  test("chat_file_view_media rejects requests above the hard limit", async () => {
     const result = await imageToolHandlers.chat_file_view_media!(
       createFunctionToolCall("chat_file_view_media", "tool_2"),
       { media_ids: ["1", "2", "3", "4", "5", "6"] },
@@ -92,7 +92,7 @@ async function main() {
     assert.match(result, /at most 5/);
   });
 
-  await runCase("view_message normalizes reply, mentions, forward ids, and images", async () => {
+  test("view_message normalizes reply, mentions, forward ids, and images", async () => {
     const result = await messageToolHandlers.view_message!(
       createFunctionToolCall("view_message", "tool_3"),
       { message_id: "555" },
@@ -148,9 +148,3 @@ async function main() {
     assert.equal(parsed.segments[4].fileId, "file_test_1");
     assert.equal(parsed.segments[4].mediaKind, "image");
   });
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
