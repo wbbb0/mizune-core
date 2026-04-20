@@ -138,7 +138,8 @@ const conversationConfigSchema = s.object({
     randomRatioMax: s.number().min(1).max(2).default(1.25)
   }).default(emptyObject),
   outbound: s.object({
-    instantReply: s.boolean().default(false),
+    instantReply: s.boolean().title("瞬间回复").default(false),
+    disableStreamingSplit: s.boolean().title("不启用分割").default(false),
     baseDelayMs: s.number().int().min(0).default(1200),
     charDelayMs: s.number().int().min(0).default(200),
     maxDelayMs: s.number().int().min(0).default(20000),

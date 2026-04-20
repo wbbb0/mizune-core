@@ -82,6 +82,7 @@ conversation:
     plannerWaitMultiplier: 2
   outbound:
     instantReply: false
+    disableStreamingSplit: false
     baseDelayMs: 1200
     charDelayMs: 200
     maxDelayMs: 20000

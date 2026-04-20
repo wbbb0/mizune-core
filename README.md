@@ -319,6 +319,7 @@ dataDir: data/acc1
 
 适合本地调试、内网使用，或者先验证模型调用和会话流程。
 WebUI 上传附件时会在浏览器侧自动把 `HEIC / HEIF` 图片转换成 `JPEG` 后再上传，避免模型接口不兼容。
+如果希望模型完整生成结束后再一次性发送，而不是边生成边按句子/段落拆分发送，可以把 `conversation.outbound.disableStreamingSplit` 设为 `true`。
 
 关键配置：
 

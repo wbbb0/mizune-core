@@ -54,11 +54,21 @@ async function waitForEvents(events: string[], count: number): Promise<void> {
 function createExecutorHarness(options?: {
   failAfterReasoning?: boolean;
   waitForAbortGraceWindow?: (signal: AbortSignal) => Promise<void>;
+  configOverrides?: Parameters<typeof createTestAppConfig>[0];
+  customGenerate?: (input: {
+    onReasoningDelta?: (delta: string) => void;
+    onTextDelta?: (delta: string) => Promise<void>;
+  }) => Promise<{
+    text: string;
+    reasoningContent?: string;
+    usage: ReturnType<typeof createUsage>;
+  }>;
 }) {
   const config = createTestAppConfig({
     llm: {
       enabled: true
-    }
+    },
+    ...(options?.configOverrides ?? {})
   });
   const logger = pino({ level: "silent" });
   const sessionManager = new SessionManager(config);
@@ -87,6 +97,9 @@ function createExecutorHarness(options?: {
         onReasoningDelta?: (delta: string) => void;
         onTextDelta?: (delta: string) => Promise<void>;
       }) {
+        if (options?.customGenerate) {
+          return await options.customGenerate(input);
+        }
         input.onReasoningDelta?.("先想一下");
         if (options?.failAfterReasoning) {
           throw new Error("LLM failed after reasoning");
@@ -289,6 +302,59 @@ async function main() {
 
     assert.equal(waited, true);
     assert.deepEqual(harness.events, ["typing:start", "send:你好", "typing:stop"]);
+  });
+
+  await runCase("disableStreamingSplit waits for the complete text before outbound send", async () => {
+    let continueStreaming!: () => void;
+    const continuePromise = new Promise<void>((resolve) => {
+      continueStreaming = resolve;
+    });
+    let firstDeltaSeen!: () => void;
+    const firstDeltaSeenPromise = new Promise<void>((resolve) => {
+      firstDeltaSeen = resolve;
+    });
+
+    const harness = createExecutorHarness({
+      configOverrides: {
+        conversation: {
+          outbound: {
+            disableStreamingSplit: true
+          }
+        }
+      },
+      customGenerate: async (input) => {
+        input.onReasoningDelta?.("先想一下");
+        await input.onTextDelta?.("第一段足够长的句子。");
+        firstDeltaSeen();
+        await continuePromise;
+        await input.onTextDelta?.("第二段也足够长。");
+        return {
+          text: "第一段足够长的句子。第二段也足够长。",
+          reasoningContent: "",
+          usage: createUsage()
+        };
+      }
+    });
+
+    await firstDeltaSeenPromise;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.deepEqual(harness.events, ["typing:start"]);
+
+    continueStreaming();
+    await waitForEvents(harness.events, 2);
+    assert.deepEqual(harness.events, [
+      "typing:start",
+      "send:第一段足够长的句子。第二段也足够长。"
+    ]);
+
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.deepEqual(harness.events, [
+      "typing:start",
+      "send:第一段足够长的句子。第二段也足够长。",
+      "typing:stop"
+    ]);
   });
 }
 

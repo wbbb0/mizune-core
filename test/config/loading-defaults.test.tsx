@@ -108,6 +108,26 @@ async function main() {
     });
   });
 
+  await runCase("loadConfig keeps outbound streaming split enabled by default", async () => {
+    await withConfigDir("llm-bot-config-outbound-split-default-test", async (configDir) => {
+      await writeDefaultInstanceYaml(configDir);
+      await writeYaml(join(configDir, "global.yml"), {
+        conversation: {
+          outbound: {
+            instantReply: true
+          }
+        }
+      });
+
+      const config = loadConfig({
+        CONFIG_DIR: configDir
+      });
+
+      assert.equal(config.conversation.outbound.instantReply, true);
+      assert.equal(config.conversation.outbound.disableStreamingSplit, false);
+    });
+  });
+
   await runCase("loadConfig applies reasoning relay defaults for model profiles", async () => {
     await withConfigDir("llm-bot-config-reasoning-defaults-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);

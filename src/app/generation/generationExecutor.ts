@@ -225,6 +225,7 @@ export function createGenerationExecutor(
 
       let summary = "";
       let streamBuffer = "";
+      const disableStreamingSplit = config.conversation.outbound.disableStreamingSplit === true;
       const outbound = createGenerationOutbound(
         {
           logger,
@@ -495,6 +496,9 @@ export function createGenerationExecutor(
                   onTextDelta: async (delta: string) => {
                     sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "generating" });
                     streamBuffer += delta;
+                    if (disableStreamingSplit) {
+                      return;
+                    }
                     const split = splitReadySegments(streamBuffer);
                     streamBuffer = split.rest;
                     for (const chunk of split.ready) {
