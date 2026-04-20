@@ -178,7 +178,6 @@ function isAssistantMode(modeId?: string): boolean {
 
 function buildScenarioStateLines(state: ScenarioHostSessionState): string[] {
   return [
-    `标题=${state.title}`,
     `当前局势=${state.currentSituation}`,
     `当前位置=${state.currentLocation ?? "未设定"}`,
     `场景摘要=${state.sceneSummary || "无"}`,

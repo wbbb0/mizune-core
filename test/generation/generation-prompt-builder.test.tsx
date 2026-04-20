@@ -597,7 +597,6 @@ async function main() {
         async ensure() {
           return {
             version: 1 as const,
-            title: "未命名场景",
             currentSituation: "场景尚未开始，请根据玩家接下来的行动开始主持。",
             currentLocation: null,
             sceneSummary: "",
@@ -719,7 +718,6 @@ async function main() {
         async ensure() {
           return {
             version: 1,
-            title: "钟楼迷雾",
             currentSituation: "玩家刚抵达废弃钟楼门口。",
             currentLocation: "旧钟楼外",
             sceneSummary: "夜色、迷雾、远处有钟声。",
@@ -795,7 +793,7 @@ async function main() {
 
     const system = String(result.promptMessages[0]?.content ?? "");
     assert.match(system, /剧情主持模式下的场景主持者/);
-    assert.match(system, /标题=钟楼迷雾/);
+    assert.doesNotMatch(system, /标题=/);
     assert.match(system, /当前位置=旧钟楼外/);
     assert.match(system, /`\*` 开头表示玩家动作声明/);
     assert.match(system, /`#` 开头表示场外指令或提问/);

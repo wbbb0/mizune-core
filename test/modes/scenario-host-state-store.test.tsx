@@ -28,7 +28,6 @@ async function main() {
 
       await store.update("qqbot:p:10001", (current) => ({
         ...current,
-        title: "钟楼迷雾",
         turnIndex: 2
       }), {
         playerUserId: "10001",
@@ -36,7 +35,8 @@ async function main() {
       });
 
       const reloaded = await store.get("qqbot:p:10001");
-      assert.equal(reloaded?.title, "钟楼迷雾");
+      assert.ok(reloaded);
+      assert.ok(!("title" in reloaded));
       assert.equal(reloaded?.turnIndex, 2);
     } finally {
       await rm(dataDir, { recursive: true, force: true });

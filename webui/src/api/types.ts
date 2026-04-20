@@ -343,7 +343,6 @@ export interface ScenarioHostInventoryItem {
 
 export interface ScenarioHostSessionState {
   version: 1;
-  title: string;
   currentSituation: string;
   currentLocation: string | null;
   sceneSummary: string;

@@ -536,7 +536,6 @@ async function main() {
   await runCase("scenario_host tools read and update structured session state", async () => {
     let state = {
       version: 1 as const,
-      title: "旧标题",
       currentSituation: "旧局势",
       currentLocation: null as string | null,
       sceneSummary: "",
@@ -582,14 +581,17 @@ async function main() {
       {},
       context
     );
-    assert.equal(JSON.parse(String(initial)).title, "旧标题");
+    assert.ok(!("title" in JSON.parse(String(initial))));
 
     const updated = await scenarioHostToolHandlers.update_scenario_state!(
       { id: "tool_scenario_update_1", type: "function", function: { name: "update_scenario_state", arguments: "{\"title\":\"钟楼迷雾\",\"currentSituation\":\"玩家来到门前\",\"turnIndex\":2}" } },
       { title: "钟楼迷雾", currentSituation: "玩家来到门前", turnIndex: 2 },
       context
     );
-    assert.equal(JSON.parse(String(updated)).turnIndex, 2);
+    const updatedState = JSON.parse(String(updated));
+    assert.equal(updatedState.turnIndex, 2);
+    assert.equal(updatedState.currentSituation, "玩家来到门前");
+    assert.ok(!("title" in updatedState));
 
     const worldFact = await scenarioHostToolHandlers.append_world_fact!(
       { id: "tool_scenario_fact_1", type: "function", function: { name: "append_world_fact", arguments: "{\"fact\":\"钟楼每隔一刻钟响一次\"}" } },
@@ -627,7 +629,7 @@ async function main() {
         persistSession: () => {}
       } as any;
 
-      // Call with title only — initialized should remain false
+      // Call with title only — it should be ignored and leave the state unchanged
       const result = await handler(
         { id: "tc1", function: { name: "update_scenario_state", arguments: "" } } as any,
         { title: "神秘城堡" },
@@ -636,7 +638,7 @@ async function main() {
 
       const parsed = JSON.parse(result as string);
       assert.equal(parsed.initialized, false, "initialized should remain false — only .confirm can set it");
-      assert.equal(parsed.title, "神秘城堡");
+      assert.ok(!("title" in parsed));
     } finally {
       await rm(dataDir, { recursive: true, force: true });
     }

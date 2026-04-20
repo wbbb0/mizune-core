@@ -474,7 +474,6 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         }
         const created = {
           version: 1,
-          title: "未命名场景",
           currentSituation: "场景尚未开始，请根据玩家接下来的行动开始主持。",
           currentLocation: null,
           sceneSummary: "",
@@ -499,7 +498,6 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         }
         const created = {
           version: 1,
-          title: "未命名场景",
           currentSituation: "场景尚未开始，请根据玩家接下来的行动开始主持。",
           currentLocation: null,
           sceneSummary: "",

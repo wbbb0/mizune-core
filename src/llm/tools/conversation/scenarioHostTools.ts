@@ -50,7 +50,6 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
         parameters: {
           type: "object",
           properties: {
-            title: { type: "string" },
             currentSituation: { type: "string" },
             sceneSummary: { type: "string" },
             turnIndex: { type: "number" },
@@ -152,7 +151,6 @@ export const scenarioHostToolHandlers: Record<string, ToolHandler> = {
     if (denied) {
       return denied;
     }
-    const title = getStringArg(args, "title").trim();
     const currentSituation = getStringArg(args, "currentSituation").trim();
     const sceneSummary = getStringArg(args, "sceneSummary").trim();
     const turnIndex = getNumberArg(args, "turnIndex");
@@ -169,7 +167,6 @@ export const scenarioHostToolHandlers: Record<string, ToolHandler> = {
       context.lastMessage.sessionId,
       (current) => ({
         ...current,
-        ...(title ? { title } : {}),
         ...(currentSituation ? { currentSituation } : {}),
         ...(sceneSummary ? { sceneSummary } : {}),
         ...(Number.isFinite(turnIndex) ? { turnIndex: Math.max(0, Math.round(turnIndex!)) } : {}),

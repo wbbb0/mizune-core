@@ -78,8 +78,7 @@ function buildFlags(): ScenarioHostSessionState["flags"] {
 
 function buildDraftState(): ScenarioHostSessionState {
   return {
-    ...draft.value,
-    title: draft.value.title,
+    version: draft.value.version,
     currentSituation: draft.value.currentSituation,
     currentLocation: draft.value.currentLocation?.trim() ? draft.value.currentLocation.trim() : null,
     sceneSummary: draft.value.sceneSummary,
@@ -215,11 +214,6 @@ function removeFlag(index: number) {
     </div>
 
     <div class="grid gap-4 md:grid-cols-2">
-      <label class="flex flex-col gap-1.5 text-small text-text-muted">
-        场景标题
-        <input v-model="draft.title" class="input-base text-ui" />
-      </label>
-
       <label class="flex flex-col gap-1.5 text-small text-text-muted">
         当前地点
         <input :value="draft.currentLocation ?? ''" class="input-base text-ui" @input="onCurrentLocationInput" />

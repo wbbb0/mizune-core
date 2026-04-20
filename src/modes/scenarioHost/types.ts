@@ -20,7 +20,6 @@ export const scenarioHostPlayerSchema = s.object({
 
 export const scenarioHostSessionStateSchema = s.object({
   version: s.literal(1),
-  title: s.string().default("未命名场景"),
   currentSituation: s.string().default("场景尚未开始。"),
   currentLocation: s.union([s.string(), s.literal(null)]).default(null),
   sceneSummary: s.string().default(""),
@@ -47,7 +46,6 @@ export function createInitialScenarioHostSessionState(input: {
 }): ScenarioHostSessionState {
   return scenarioHostSessionStateSchema.parse({
     version: 1,
-    title: "未命名场景",
     currentSituation: "场景尚未开始，请根据玩家接下来的行动开始主持。",
     currentLocation: null,
     sceneSummary: "",

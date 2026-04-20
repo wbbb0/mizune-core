@@ -200,7 +200,7 @@ async function main() {
       assert.equal(response.statusCode, 200);
       assert.equal(response.json().modeState.kind, "scenario_host");
       assert.equal(response.json().modeState.state.player.userId, "10001");
-      assert.equal(response.json().modeState.state.title, "未命名场景");
+      assert.ok(!("title" in response.json().modeState.state));
     } finally {
       await app.close();
     }
@@ -225,7 +225,6 @@ async function main() {
         payload: {
           state: {
             version: 1,
-            title: "雾港夜巡",
             currentSituation: "码头上空有钟声回荡。",
             currentLocation: "旧港码头",
             sceneSummary: "玩家刚抵达旧港。",
@@ -245,7 +244,7 @@ async function main() {
 
       assert.equal(updateResponse.statusCode, 200);
       assert.equal(updateResponse.json().modeState.kind, "scenario_host");
-      assert.equal(updateResponse.json().modeState.state.title, "雾港夜巡");
+      assert.ok(!("title" in updateResponse.json().modeState.state));
       assert.equal(updateResponse.json().modeState.state.initialized, true);
       assert.deepEqual(updateResponse.json().modeState.state.inventory, [{ ownerId: "10001", item: "铜钥匙", quantity: 1 }]);
 
