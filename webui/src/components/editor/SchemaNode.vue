@@ -173,11 +173,6 @@ const canRestoreInherited = computed(() =>
   && path.value.length > 0
   && props.modelValue !== undefined
 );
-const showInheritedValue = computed(() =>
-  showLayeredTone.value
-  && props.modelValue === undefined
-  && props.inherited !== undefined
-);
 const showLocalValue = computed(() =>
   showLayeredTone.value
   && path.value.length > 0
@@ -189,16 +184,14 @@ function restoreInherited() {
   emit("update:modelValue", next);
 }
 
-const nodeClasses = computed(() => [
-  "editor-node",
+const nodeClasses = computed(() => (
   showLocalValue.value ? "editor-node-layered-local" : ""
-].filter(Boolean).join(" "));
+));
 
 const labelClasses = computed(() => [
   "tree-label",
   "text-small",
-  "font-medium",
-  showLocalValue.value ? "editor-layered-local-label" : "",
+  showLocalValue.value ? "font-bold" : "font-medium",
   currentPathDirty.value ? "tree-label-dirty" : ""
 ].filter(Boolean).join(" "));
 
@@ -467,7 +460,7 @@ function onUnionSelect(event: Event) {
 </script>
 
 <template>
-  <div v-if="node.kind === 'field'" :class="['flex min-w-0 flex-col items-stretch gap-1 py-1', nodeClasses]">
+  <div v-if="node.kind === 'field'" :class="['editor-field-row flex min-w-0 flex-col items-stretch gap-1 py-1 pr-0', nodeClasses]">
     <div v-if="showFieldHeader" class="flex min-w-0 items-center justify-between gap-2 py-px">
       <div class="min-w-0 flex flex-1 items-center gap-1">
         <template v-if="headerEditing">
@@ -482,12 +475,13 @@ function onUnionSelect(event: Event) {
           />
         </template>
         <span v-else-if="label" class="min-w-0 flex items-center gap-1 truncate text-small leading-[1.3]" :title="node.schema.description || label">
-          <span :class="currentPathDirty ? 'text-text-accent' : showLocalValue ? 'editor-layered-local-label' : 'text-text-muted'">
+          <span :class="[
+            currentPathDirty ? 'text-text-accent' : 'text-text-secondary',
+            showLocalValue ? 'font-bold' : 'font-medium'
+          ]">
             {{ label }}
             <span v-if="node.schema.optional" class="ml-px text-text-subtle">?</span>
           </span>
-          <span v-if="showLocalValue" class="editor-layer-badge editor-layer-badge-local">本层</span>
-          <span v-else-if="showInheritedValue" class="editor-layer-badge editor-layer-badge-inherited">继承</span>
           <span v-if="currentPathDirty" class="editor-dirty-dot" aria-hidden="true"></span>
         </span>
       </div>
@@ -510,7 +504,6 @@ function onUnionSelect(event: Event) {
       :schema="node.schema"
       :model-value="modelValue"
       :inherited="inherited"
-      :tone="showLocalValue ? 'local' : showInheritedValue ? 'inherited' : undefined"
       :disabled="disabled"
       @update:model-value="emit('update:modelValue', $event)"
     />
@@ -533,8 +526,6 @@ function onUnionSelect(event: Event) {
         </template>
         <span v-else :class="labelClasses" :title="node.schema.description">
           {{ label }}
-          <span v-if="showLocalValue" class="editor-layer-badge editor-layer-badge-local">本层</span>
-          <span v-else-if="showInheritedValue" class="editor-layer-badge editor-layer-badge-inherited">继承</span>
           <span v-if="currentPathDirty" class="editor-dirty-dot" aria-hidden="true"></span>
         </span>
       </template>
@@ -611,8 +602,6 @@ function onUnionSelect(event: Event) {
         </template>
         <span v-else :class="labelClasses">
           {{ label }}
-          <span v-if="showLocalValue" class="editor-layer-badge editor-layer-badge-local">本层</span>
-          <span v-else-if="showInheritedValue" class="editor-layer-badge editor-layer-badge-inherited">继承</span>
           <span v-if="currentPathDirty" class="editor-dirty-dot" aria-hidden="true"></span>
         </span>
       </template>
@@ -686,8 +675,6 @@ function onUnionSelect(event: Event) {
         </template>
         <span v-else :class="labelClasses">
           {{ label }}
-          <span v-if="showLocalValue" class="editor-layer-badge editor-layer-badge-local">本层</span>
-          <span v-else-if="showInheritedValue" class="editor-layer-badge editor-layer-badge-inherited">继承</span>
           <span v-if="currentPathDirty" class="editor-dirty-dot" aria-hidden="true"></span>
         </span>
       </template>

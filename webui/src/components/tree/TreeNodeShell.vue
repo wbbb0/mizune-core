@@ -31,7 +31,7 @@ const collapsibleIcon = computed(() => {
 <template>
   <div class="w-max min-w-full">
     <div
-      class="tree-shell-header relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md px-1 py-0.75"
+      class="tree-shell-header relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md px-1 py-0.75 pr-0"
       :class="['w-max min-w-full', { 'tree-shell-selected': selected }]"
     >
       <button

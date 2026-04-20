@@ -243,6 +243,16 @@ body {
   background: var(--surface-selected-muted);
 }
 
+.editor-field-row {
+  border-radius: 6px;
+  padding-inline-start: 4px;
+  transition: background 0.1s, color 0.1s;
+}
+
+.editor-field-row:hover {
+  background: var(--surface-hover);
+}
+
 /* Divider */
 .divider {
   height: 1px;
@@ -288,30 +298,20 @@ body {
   font-size: 14px;
 }
 
-.editor-node {
-  border: 1px solid transparent;
-  border-radius: 6px;
-}
-
 .editor-node-layered-local {
   position: relative;
-  border-color: color-mix(in srgb, var(--accent) 22%, var(--border-subtle));
-  background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
 .editor-node-layered-local::before {
   content: "";
   position: absolute;
-  top: 4px;
-  bottom: 4px;
-  left: -8px;
-  width: 3px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 72%, white 18%), color-mix(in srgb, var(--accent) 48%, transparent));
-}
-
-.editor-layered-local-label {
-  color: color-mix(in srgb, var(--text-accent) 82%, var(--text-secondary));
+  top: 6px;
+  bottom: 6px;
+  left: -7px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  opacity: 0.72;
 }
 
 .editor-dirty-dot {
@@ -321,60 +321,6 @@ body {
   flex-shrink: 0;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 78%, white 22%);
-}
-
-.editor-layer-badge {
-  display: inline-flex;
-  align-items: center;
-  height: 16px;
-  padding: 0 6px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  font-size: 11px;
-  line-height: 1;
-  letter-spacing: 0.02em;
-  flex-shrink: 0;
-}
-
-.editor-layer-badge-local {
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface-panel));
-  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
-  color: var(--text-accent);
-}
-
-.editor-layer-badge-inherited {
-  background: color-mix(in srgb, var(--surface-muted) 72%, transparent);
-  border-color: var(--border-subtle);
-  color: var(--text-muted);
-}
-
-.editor-layered-local-value {
-  color: var(--text-primary);
-}
-
-.editor-layered-local-field {
-  background: color-mix(in srgb, var(--accent) 7%, var(--surface-panel));
-  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border-default));
-}
-
-.editor-layered-local-input {
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface-input));
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--border-input));
-  color: var(--text-primary);
-}
-
-.editor-layered-local-input:focus {
-  border-color: color-mix(in srgb, var(--accent) 78%, white 10%);
-}
-
-.editor-layered-inherited-input {
-  background: color-mix(in srgb, var(--surface-sidebar) 58%, var(--surface-panel));
-  border-color: var(--border-subtle);
-  color: var(--text-secondary);
-}
-
-.editor-layered-inherited-input:focus {
-  border-color: var(--border-default);
 }
 
 .spin {

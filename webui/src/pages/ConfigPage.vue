@@ -135,14 +135,8 @@ function updateDraft(value: unknown) {
         <!-- Editor -->
         <template v-else-if="model">
           <!-- Toolbar -->
-          <header class="toolbar-header flex min-h-10 shrink-0 flex-wrap items-center gap-2.5 border-b px-4 py-1.5">
+          <header class="toolbar-header flex h-10 shrink-0 flex-wrap items-center gap-2.5 border-b px-4 py-1.5">
             <span class="rounded-full bg-surface-muted px-1.5 text-small text-text-subtle">{{ model.kind }}</span>
-            <div v-if="model.kind === 'layered'" class="flex min-w-0 items-center gap-2 text-small text-text-muted">
-              <span class="editor-layer-badge editor-layer-badge-local">本层</span>
-              <span class="truncate">当前实例显式写入</span>
-              <span class="editor-layer-badge editor-layer-badge-inherited">继承</span>
-              <span class="truncate">来自全局配置</span>
-            </div>
             <div class="ml-auto flex gap-1.5">
               <button class="btn btn-secondary" :disabled="loading || saving || validating || !model" @click="reloadFromServer">
                 <RefreshCw :size="13" :stroke-width="2" />
