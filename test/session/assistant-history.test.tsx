@@ -13,11 +13,11 @@ async function main() {
   await runCase("interrupting a response clears preview without appending a merged assistant history item", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const lifecycle = new SessionLifecycleController();
-    sessionManager.ensureSession({ id: "private:test", type: "private" });
+    sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
 
-    const { responseEpoch } = sessionManager.beginSyntheticGeneration("private:test");
+    const { responseEpoch } = sessionManager.beginSyntheticGeneration("qqbot:p:test");
     const buffered = sessionManager.appendActiveAssistantResponseChunkIfResponseEpochMatches(
-      "private:test",
+      "qqbot:p:test",
       responseEpoch,
       {
         chatType: "private",
@@ -30,11 +30,11 @@ async function main() {
 
     assert.equal(buffered, true);
 
-    const interrupted = lifecycle.interruptResponse(sessionManager.getSession("private:test"));
+    const interrupted = lifecycle.interruptResponse(sessionManager.getSession("qqbot:p:test"));
     assert.equal(interrupted.finalizedAssistant, true);
 
-    const session = sessionManager.getSession("private:test");
-    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+    const session = sessionManager.getSession("qqbot:p:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("qqbot:p:test");
     assert.equal(session.activeAssistantResponse, null);
     assert.equal(llmVisibleHistory.length, 0);
   });
@@ -42,13 +42,13 @@ async function main() {
   await runCase("stale response epochs cannot append assistant chunks after interruption", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const lifecycle = new SessionLifecycleController();
-    sessionManager.ensureSession({ id: "private:test", type: "private" });
+    sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
 
-    const { responseEpoch } = sessionManager.beginSyntheticGeneration("private:test");
-    lifecycle.interruptResponse(sessionManager.getSession("private:test"));
+    const { responseEpoch } = sessionManager.beginSyntheticGeneration("qqbot:p:test");
+    lifecycle.interruptResponse(sessionManager.getSession("qqbot:p:test"));
 
     const appended = sessionManager.appendActiveAssistantResponseChunkIfResponseEpochMatches(
-      "private:test",
+      "qqbot:p:test",
       responseEpoch,
       {
         chatType: "private",
@@ -60,17 +60,17 @@ async function main() {
     );
 
     assert.equal(appended, false);
-    assert.equal(sessionManager.getSession("private:test").activeAssistantResponse, null);
+    assert.equal(sessionManager.getSession("qqbot:p:test").activeAssistantResponse, null);
   });
 
   await runCase("newline-split assistant chunks remain only in active preview until sent history is appended", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const lifecycle = new SessionLifecycleController();
-    sessionManager.ensureSession({ id: "private:test", type: "private" });
+    sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
 
-    const { responseEpoch } = sessionManager.beginSyntheticGeneration("private:test");
+    const { responseEpoch } = sessionManager.beginSyntheticGeneration("qqbot:p:test");
     sessionManager.appendActiveAssistantResponseChunkIfResponseEpochMatches(
-      "private:test",
+      "qqbot:p:test",
       responseEpoch,
       {
         chatType: "private",
@@ -81,7 +81,7 @@ async function main() {
       10
     );
     sessionManager.appendActiveAssistantResponseChunkIfResponseEpochMatches(
-      "private:test",
+      "qqbot:p:test",
       responseEpoch,
       {
         chatType: "private",
@@ -95,20 +95,20 @@ async function main() {
       }
     );
 
-    const interrupted = lifecycle.interruptResponse(sessionManager.getSession("private:test"));
+    const interrupted = lifecycle.interruptResponse(sessionManager.getSession("qqbot:p:test"));
     assert.equal(interrupted.finalizedAssistant, true);
 
-    const session = sessionManager.getSession("private:test");
-    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+    const session = sessionManager.getSession("qqbot:p:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("qqbot:p:test");
     assert.equal(session.activeAssistantResponse, null);
     assert.equal(llmVisibleHistory.length, 0);
   });
 
   await runCase("steer messages can be consumed immediately or promoted into the next round", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
-    sessionManager.ensureSession({ id: "private:test", type: "private" });
+    sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
 
-    sessionManager.appendSteerMessage("private:test", {
+    sessionManager.appendSteerMessage("qqbot:p:test", {
       chatType: "private",
       userId: "10001",
       senderName: "tester",
@@ -127,13 +127,13 @@ async function main() {
       isAtMentioned: false
     });
 
-    assert.equal(sessionManager.hasPendingSteerMessages("private:test"), true);
-    const consumed = sessionManager.consumeSteerMessages("private:test");
+    assert.equal(sessionManager.hasPendingSteerMessages("qqbot:p:test"), true);
+    const consumed = sessionManager.consumeSteerMessages("qqbot:p:test");
     assert.equal(consumed.length, 1);
     assert.equal(consumed[0]?.text, "补充要求");
-    assert.equal(sessionManager.hasPendingSteerMessages("private:test"), false);
+    assert.equal(sessionManager.hasPendingSteerMessages("qqbot:p:test"), false);
 
-    sessionManager.appendSteerMessage("private:test", {
+    sessionManager.appendSteerMessage("qqbot:p:test", {
       chatType: "private",
       userId: "10001",
       senderName: "tester",
@@ -152,9 +152,9 @@ async function main() {
       isAtMentioned: false
     });
 
-    const promoted = sessionManager.promoteSteerMessagesToPending("private:test");
+    const promoted = sessionManager.promoteSteerMessagesToPending("qqbot:p:test");
     assert.equal(promoted, 1);
-    const session = sessionManager.getSession("private:test");
+    const session = sessionManager.getSession("qqbot:p:test");
     assert.equal(session.pendingSteerMessages.length, 0);
     assert.equal(session.pendingMessages.length, 1);
     assert.equal(session.pendingMessages[0]?.text, "转下一轮");

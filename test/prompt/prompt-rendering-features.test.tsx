@@ -17,7 +17,7 @@ async function main() {
         rules: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
       });
       const prompt = buildPrompt({
-        sessionId: "group:123456",
+        sessionId: "qqbot:g:123456",
         persona,
         relationship: "known",
         npcProfiles: [],
@@ -56,7 +56,7 @@ async function main() {
         rules: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
       });
       const prompt = buildPrompt({
-        sessionId: "private:owner",
+        sessionId: "qqbot:p:owner",
         visibleToolNames: ["list_available_toolsets", "request_toolset", "open_page", "inspect_page"],
         activeToolsets: [
           {
@@ -114,7 +114,7 @@ async function main() {
       ]);
 
       const prompt = buildPrompt({
-        sessionId: "private:owner",
+        sessionId: "qqbot:p:owner",
         persona,
         relationship: "owner",
         npcProfiles: [],
@@ -194,7 +194,7 @@ async function main() {
       ]);
 
       const prompt = buildPrompt({
-        sessionId: "private:owner",
+        sessionId: "qqbot:p:owner",
         persona,
         relationship: "owner",
         npcProfiles: [],
@@ -229,7 +229,7 @@ async function main() {
     try {
       const persona = await harness.personaStore.get();
       const normalPrompt = buildPrompt({
-        sessionId: "private:owner",
+        sessionId: "qqbot:p:owner",
         interactionMode: "normal",
         persona,
         relationship: "owner",
@@ -241,7 +241,7 @@ async function main() {
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "告诉我你刚才怎么查的", timestampMs: Date.now() })]
       });
       const debugPrompt = buildPrompt({
-        sessionId: "private:owner",
+        sessionId: "qqbot:p:owner",
         interactionMode: "debug",
         activeToolsets: [
           {
@@ -278,7 +278,7 @@ async function main() {
     try {
       const persona = await harness.personaStore.get();
       const prompt = buildPrompt({
-        sessionId: "private:owner",
+        sessionId: "qqbot:p:owner",
         persona,
         relationship: "owner",
         npcProfiles: [],
@@ -309,7 +309,7 @@ async function main() {
         rules: "始终带角色口吻"
       });
       const prompt = buildPrompt({
-        sessionId: "group:123456",
+        sessionId: "qqbot:g:123456",
         modeId: "assistant",
         persona,
         relationship: "known",
@@ -366,7 +366,7 @@ async function main() {
     try {
       const persona = await harness.personaStore.get();
       const scenarioPrompt = buildPrompt({
-        sessionId: "private:owner",
+        sessionId: "qqbot:p:owner",
         modeId: "scenario_host",
         persona,
         relationship: "owner",
@@ -411,7 +411,7 @@ async function main() {
       assert.match(scenarioBatchText, /玩家对白：你是谁/);
 
       const normalPrompt = buildPrompt({
-        sessionId: "private:owner",
+        sessionId: "qqbot:p:owner",
         persona,
         relationship: "owner",
         npcProfiles: [],
@@ -454,11 +454,11 @@ async function main() {
       await membershipStore.rememberSeen("123456", "10001");
 
       const sessionManager = new SessionManager(createMemoryTestConfig());
-      sessionManager.ensureSession({ id: "private:10001", type: "private" });
-      sessionManager.ensureSession({ id: "private:30003", type: "private" });
-      sessionManager.ensureSession({ id: "private:40004", type: "private" });
-      sessionManager.ensureSession({ id: "group:123456", type: "group" });
-      sessionManager.ensureSession({ id: "group:999999", type: "group" });
+      sessionManager.ensureSession({ id: "qqbot:p:10001", type: "private" });
+      sessionManager.ensureSession({ id: "qqbot:p:30003", type: "private" });
+      sessionManager.ensureSession({ id: "qqbot:p:40004", type: "private" });
+      sessionManager.ensureSession({ id: "qqbot:g:123456", type: "group" });
+      sessionManager.ensureSession({ id: "qqbot:g:999999", type: "group" });
 
       const oneBotClient = new OneBotClient(createMemoryTestConfig(), pino({ level: "silent" }));
       oneBotClient.getGroupMemberInfo = async (groupId: string, userId: string) => {
@@ -481,11 +481,11 @@ async function main() {
       const sharedGroup = await service.listAccessibleSessions("10001", "123456");
       const foreignGroup = await service.listAccessibleSessions("10001", "999999");
 
-      assert.equal(selfPrivate.some((item) => item.id === "private:10001"), true);
-      assert.equal(npcPrivate.some((item) => item.id === "private:30003"), true);
-      assert.equal(strangerPrivate.some((item) => item.id === "private:40004"), false);
-      assert.equal(sharedGroup.some((item) => item.id === "group:123456"), true);
-      assert.equal(foreignGroup.some((item) => item.id === "group:999999"), false);
+      assert.equal(selfPrivate.some((item) => item.id === "qqbot:p:10001"), true);
+      assert.equal(npcPrivate.some((item) => item.id === "qqbot:p:30003"), true);
+      assert.equal(strangerPrivate.some((item) => item.id === "qqbot:p:40004"), false);
+      assert.equal(sharedGroup.some((item) => item.id === "qqbot:g:123456"), true);
+      assert.equal(foreignGroup.some((item) => item.id === "qqbot:g:999999"), false);
     } finally {
       await harness.cleanup();
     }

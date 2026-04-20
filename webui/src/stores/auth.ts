@@ -16,8 +16,8 @@ export const useAuthStore = defineStore("auth", () => {
 
   async function fetchOwnerId(): Promise<void> {
     try {
-      const res = await authApi.whitelist();
-      ownerId.value = res.whitelist.ownerId ?? null;
+      const res = await authApi.configSummary();
+      ownerId.value = res.access.ownerId ?? null;
     } catch {
       // non-fatal: ownerId stays null
     }

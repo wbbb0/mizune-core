@@ -15,7 +15,7 @@ async function runCase(name: string, fn: () => Promise<void>) {
 async function main() {
   await runCase("completeResponse only applies to the current response epoch", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
-    const sessionId = "private:test";
+    const sessionId = "qqbot:p:test";
     sessionManager.ensureSession({ id: sessionId, type: "private" });
 
     const first = sessionManager.beginSyntheticGeneration(sessionId);
@@ -34,7 +34,7 @@ async function main() {
 
   await runCase("epoch-guarded session mutations reject stale epochs after clear", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
-    const sessionId = "private:test";
+    const sessionId = "qqbot:p:test";
     sessionManager.ensureSession({ id: sessionId, type: "private" });
     const oldEpoch = sessionManager.getMutationEpoch(sessionId);
 

@@ -64,14 +64,15 @@ export const crossChatToolHandlers: Record<string, ToolHandler> = {
       title: item.id,
       type: item.type
     }));
+    const channelId = context.config.configRuntime.instanceName;
     const friends = (await context.oneBotClient.getFriendList()).map((item: FriendListItem) => ({
-      sessionId: buildPrivateSessionId(String(item.user_id)),
+      sessionId: buildPrivateSessionId(channelId, String(item.user_id)),
       source: "friend",
       title: `${item.remark ?? item.nickname ?? item.user_id}`,
       type: "private" as const
     }));
     const groups = (await context.oneBotClient.getGroupList()).map((item: GroupListItem) => ({
-      sessionId: buildGroupSessionId(String(item.group_id)),
+      sessionId: buildGroupSessionId(channelId, String(item.group_id)),
       source: "group",
       title: `${item.group_name ?? item.group_id}`,
       type: "group" as const

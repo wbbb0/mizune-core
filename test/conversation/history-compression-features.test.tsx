@@ -59,11 +59,11 @@ function appendSimpleHistory(
 async function main() {
   await runCase("forceCompact uses default retain count from config", async () => {
     const sessionManager = new SessionManager(createConfig());
-    sessionManager.ensureSession({ id: "private:test", type: "private" });
-    appendSimpleHistory(sessionManager, "private:test", "user", "hello", 1);
-    appendSimpleHistory(sessionManager, "private:test", "assistant", "hi", 2);
-    appendSimpleHistory(sessionManager, "private:test", "user", "more", 3);
-    appendSimpleHistory(sessionManager, "private:test", "assistant", "later", 4);
+    sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "hello", 1);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "assistant", "hi", 2);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "more", 3);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "assistant", "later", 4);
     let capturedMessages: Array<{ content?: unknown }> | null = null;
 
     const compressor = new HistoryCompressor(
@@ -99,9 +99,9 @@ async function main() {
       pino({ level: "silent" })
     );
 
-    const changed = await compressor.forceCompact("private:test");
-    const session = sessionManager.getSession("private:test");
-    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+    const changed = await compressor.forceCompact("qqbot:p:test");
+    const session = sessionManager.getSession("qqbot:p:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("qqbot:p:test");
 
     assert.equal(changed, true);
     assert.equal(session.historySummary, "compressed summary");
@@ -124,10 +124,10 @@ async function main() {
 
   await runCase("forceCompact accepts explicit zero retained history items", async () => {
     const sessionManager = new SessionManager(createConfig());
-    sessionManager.ensureSession({ id: "private:test", type: "private" });
-    appendSimpleHistory(sessionManager, "private:test", "user", "hello", 1);
-    appendSimpleHistory(sessionManager, "private:test", "assistant", "hi", 2);
-    appendSimpleHistory(sessionManager, "private:test", "user", "more", 3);
+    sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "hello", 1);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "assistant", "hi", 2);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "more", 3);
 
     const compressor = new HistoryCompressor(
       createConfig(),
@@ -161,9 +161,9 @@ async function main() {
       pino({ level: "silent" })
     );
 
-    const changed = await compressor.forceCompact("private:test", 0);
-    const session = sessionManager.getSession("private:test");
-    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+    const changed = await compressor.forceCompact("qqbot:p:test", 0);
+    const session = sessionManager.getSession("qqbot:p:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("qqbot:p:test");
 
     assert.equal(changed, true);
     assert.equal(session.historySummary, "compressed summary");
@@ -173,9 +173,9 @@ async function main() {
 
   await runCase("compactOldHistoryKeepingRecent preserves the latest topic window", async () => {
     const sessionManager = new SessionManager(createConfig());
-    sessionManager.ensureSession({ id: "private:test", type: "private" });
-    appendSimpleHistory(sessionManager, "private:test", "user", "old-1", 1);
-    sessionManager.appendInternalTranscript("private:test", {
+    sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "old-1", 1);
+    sessionManager.appendInternalTranscript("qqbot:p:test", {
       kind: "status_message",
       llmVisible: false,
       role: "assistant",
@@ -183,9 +183,9 @@ async function main() {
       content: "old-status",
       timestampMs: 1
     });
-    appendSimpleHistory(sessionManager, "private:test", "assistant", "old-2", 2);
-    appendSimpleHistory(sessionManager, "private:test", "user", "new-1", 3);
-    sessionManager.appendInternalTranscript("private:test", {
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "assistant", "old-2", 2);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "new-1", 3);
+    sessionManager.appendInternalTranscript("qqbot:p:test", {
       kind: "status_message",
       llmVisible: false,
       role: "assistant",
@@ -193,7 +193,7 @@ async function main() {
       content: "new-status",
       timestampMs: 3
     });
-    appendSimpleHistory(sessionManager, "private:test", "assistant", "new-2", 4);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "assistant", "new-2", 4);
 
     const compressor = new HistoryCompressor(
       createConfig(),
@@ -227,9 +227,9 @@ async function main() {
       pino({ level: "silent" })
     );
 
-    const changed = await compressor.compactOldHistoryKeepingRecent("private:test", 2);
-    const session = sessionManager.getSession("private:test");
-    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+    const changed = await compressor.compactOldHistoryKeepingRecent("qqbot:p:test", 2);
+    const session = sessionManager.getSession("qqbot:p:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("qqbot:p:test");
 
     assert.equal(changed, true);
     assert.equal(session.historySummary, "compressed summary");
@@ -245,9 +245,9 @@ async function main() {
 
   await runCase("compression also absorbs leading tool items from retained window", async () => {
     const sessionManager = new SessionManager(createConfig());
-    sessionManager.ensureSession({ id: "private:test", type: "private" });
-    appendSimpleHistory(sessionManager, "private:test", "user", "old-1", 1);
-    sessionManager.appendInternalTranscript("private:test", {
+    sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "old-1", 1);
+    sessionManager.appendInternalTranscript("qqbot:p:test", {
       kind: "assistant_tool_call",
       llmVisible: true,
       timestampMs: 2,
@@ -261,7 +261,7 @@ async function main() {
         }
       }]
     });
-    sessionManager.appendInternalTranscript("private:test", {
+    sessionManager.appendInternalTranscript("qqbot:p:test", {
       kind: "tool_result",
       llmVisible: true,
       timestampMs: 3,
@@ -269,9 +269,9 @@ async function main() {
       toolName: "search",
       content: "tool result"
     });
-    appendSimpleHistory(sessionManager, "private:test", "assistant", "old-2", 4);
-    appendSimpleHistory(sessionManager, "private:test", "user", "new-1", 5);
-    appendSimpleHistory(sessionManager, "private:test", "assistant", "new-2", 6);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "assistant", "old-2", 4);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "new-1", 5);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "assistant", "new-2", 6);
 
     const compressor = new HistoryCompressor(
       createConfig(),
@@ -305,9 +305,9 @@ async function main() {
       pino({ level: "silent" })
     );
 
-    const changed = await compressor.compactOldHistoryKeepingRecent("private:test", 3);
-    const session = sessionManager.getSession("private:test");
-    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+    const changed = await compressor.compactOldHistoryKeepingRecent("qqbot:p:test", 3);
+    const session = sessionManager.getSession("qqbot:p:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("qqbot:p:test");
 
     assert.equal(changed, true);
     assert.equal(session.historySummary, "compressed summary");
@@ -323,9 +323,9 @@ async function main() {
 
   await runCase("compression keeps retained window unchanged when it already starts with a normal message", async () => {
     const sessionManager = new SessionManager(createConfig());
-    sessionManager.ensureSession({ id: "private:test", type: "private" });
-    appendSimpleHistory(sessionManager, "private:test", "user", "old-1", 1);
-    sessionManager.appendInternalTranscript("private:test", {
+    sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "old-1", 1);
+    sessionManager.appendInternalTranscript("qqbot:p:test", {
       kind: "assistant_tool_call",
       llmVisible: true,
       timestampMs: 2,
@@ -339,7 +339,7 @@ async function main() {
         }
       }]
     });
-    sessionManager.appendInternalTranscript("private:test", {
+    sessionManager.appendInternalTranscript("qqbot:p:test", {
       kind: "tool_result",
       llmVisible: true,
       timestampMs: 3,
@@ -347,9 +347,9 @@ async function main() {
       toolName: "search",
       content: "tool result"
     });
-    appendSimpleHistory(sessionManager, "private:test", "assistant", "old-2", 4);
-    appendSimpleHistory(sessionManager, "private:test", "user", "new-1", 5);
-    appendSimpleHistory(sessionManager, "private:test", "assistant", "new-2", 6);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "assistant", "old-2", 4);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "new-1", 5);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "assistant", "new-2", 6);
 
     const compressor = new HistoryCompressor(
       createConfig(),
@@ -383,9 +383,9 @@ async function main() {
       pino({ level: "silent" })
     );
 
-    const changed = await compressor.compactOldHistoryKeepingRecent("private:test", 2);
-    const session = sessionManager.getSession("private:test");
-    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+    const changed = await compressor.compactOldHistoryKeepingRecent("qqbot:p:test", 2);
+    const session = sessionManager.getSession("qqbot:p:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("qqbot:p:test");
 
     assert.equal(changed, true);
     assert.equal(session.historySummary, "compressed summary");
@@ -406,14 +406,14 @@ async function main() {
 
   await runCase("stale epoch writes are rejected after clear", async () => {
     const sessionManager = new SessionManager(createConfig());
-    sessionManager.ensureSession({ id: "private:test", type: "private" });
-    appendSimpleHistory(sessionManager, "private:test", "user", "before", 1);
+    sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "before", 1);
 
-    const oldEpoch = sessionManager.getMutationEpoch("private:test");
-    sessionManager.clearSession("private:test");
+    const oldEpoch = sessionManager.getMutationEpoch("qqbot:p:test");
+    sessionManager.clearSession("qqbot:p:test");
 
     assert.equal(
-      sessionManager.appendInternalTranscriptIfEpochMatches("private:test", oldEpoch, {
+      sessionManager.appendInternalTranscriptIfEpochMatches("qqbot:p:test", oldEpoch, {
         kind: "status_message",
         llmVisible: false,
         role: "assistant",
@@ -424,7 +424,7 @@ async function main() {
       false
     );
     assert.equal(
-      sessionManager.setLastLlmUsageIfEpochMatches("private:test", oldEpoch, {
+      sessionManager.setLastLlmUsageIfEpochMatches("qqbot:p:test", oldEpoch, {
         inputTokens: 1,
         outputTokens: 1,
         totalTokens: 2,
@@ -439,8 +439,8 @@ async function main() {
       false
     );
 
-    const session = sessionManager.getSession("private:test");
-    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+    const session = sessionManager.getSession("qqbot:p:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("qqbot:p:test");
     assert.equal(session.historySummary, null);
     assert.deepEqual(llmVisibleHistory, []);
     assert.equal(session.lastLlmUsage, null);
@@ -448,10 +448,10 @@ async function main() {
 
   await runCase("compression results are rejected when history changes during summarization", async () => {
     const sessionManager = new SessionManager(createConfig());
-    sessionManager.ensureSession({ id: "private:test", type: "private" });
-    appendSimpleHistory(sessionManager, "private:test", "user", "hello", 1);
-    appendSimpleHistory(sessionManager, "private:test", "assistant", "hi", 2);
-    appendSimpleHistory(sessionManager, "private:test", "user", "more", 3);
+    sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "hello", 1);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "assistant", "hi", 2);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "more", 3);
 
     let releaseSummary!: () => void;
     const summaryGate = new Promise<void>((resolve) => {
@@ -490,13 +490,13 @@ async function main() {
       pino({ level: "silent" })
     );
 
-    const pendingCompression = compressor.forceCompact("private:test");
-    appendSimpleHistory(sessionManager, "private:test", "user", "new info", 4);
+    const pendingCompression = compressor.forceCompact("qqbot:p:test");
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "new info", 4);
     releaseSummary();
 
     const changed = await pendingCompression;
-    const session = sessionManager.getSession("private:test");
-    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
+    const session = sessionManager.getSession("qqbot:p:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("qqbot:p:test");
 
     assert.equal(changed, false);
     assert.equal(session.historySummary, null);

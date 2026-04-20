@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { Logger } from "pino";
-import type { WhitelistStore } from "./whitelistStore.ts";
+import type { UserIdentityStore } from "./userIdentityStore.ts";
 import { FileSchemaStore } from "#data/fileSchemaStore.ts";
 import {
   getMissingPersonaFields,
@@ -16,7 +16,7 @@ export class SetupStateStore {
 
   constructor(
     dataDir: string,
-    private readonly whitelistStore: Pick<WhitelistStore, "getOwnerId">,
+    private readonly userIdentityStore: Pick<UserIdentityStore, "hasOwnerIdentity">,
     private readonly logger: Logger
   ) {
     this.store = new FileSchemaStore({
@@ -63,7 +63,7 @@ export class SetupStateStore {
     if (current.state === "ready") {
       return current;
     }
-    if (!this.whitelistStore.getOwnerId()) {
+    if (!await this.userIdentityStore.hasOwnerIdentity()) {
       return this.write({
         state: "needs_owner",
         ownerPromptSentAt: null,
@@ -95,14 +95,14 @@ export class SetupStateStore {
     } catch (error: unknown) {
       this.logger.warn({ error }, "setup_state_reset_to_initial");
     }
-    const initial = this.deriveInitialState(persona);
+    const initial = await this.deriveInitialState(persona);
     await this.write(initial);
     return initial;
   }
 
-  private deriveInitialState(persona?: Persona): SetupStateRecord {
+  private async deriveInitialState(persona?: Persona): Promise<SetupStateRecord> {
     const now = Date.now();
-    if (!this.whitelistStore.getOwnerId()) {
+    if (!await this.userIdentityStore.hasOwnerIdentity()) {
       return {
         state: "needs_owner",
         ownerPromptSentAt: null,

@@ -8,7 +8,8 @@ import { createForwardFeatureConfig, runCase } from "../helpers/forward-test-sup
 
 async function main() {
   await runCase("event router keeps forward ids even without text or images", async () => {
-    const router = new EventRouter(createForwardFeatureConfig());
+    const config = createForwardFeatureConfig();
+    const router = new EventRouter(config, config.configRuntime.instanceName);
     const parsed = router.toIncomingMessage({
       post_type: "message",
       message_type: "private",
@@ -28,7 +29,8 @@ async function main() {
   });
 
   await runCase("event router keeps reply and mention references without text", async () => {
-    const router = new EventRouter(createForwardFeatureConfig());
+    const config = createForwardFeatureConfig();
+    const router = new EventRouter(config, config.configRuntime.instanceName);
     const parsed = router.toIncomingMessage({
       post_type: "message",
       message_type: "group",
@@ -56,7 +58,8 @@ async function main() {
   });
 
   await runCase("event router keeps emoji sources separate from normal images", async () => {
-    const router = new EventRouter(createForwardFeatureConfig());
+    const config = createForwardFeatureConfig();
+    const router = new EventRouter(config, config.configRuntime.instanceName);
     const parsed = router.toIncomingMessage({
       post_type: "message",
       message_type: "private",
@@ -79,8 +82,8 @@ async function main() {
 
   await runCase("view_forward_record repairs rounded forward_id from recent session refs", async () => {
     const sessionManager = new SessionManager(createForwardFeatureConfig());
-    sessionManager.ensureSession({ id: "private:owner", type: "private" });
-    sessionManager.appendUserHistory("private:owner", {
+    sessionManager.ensureSession({ id: "qqbot:p:owner", type: "private" });
+    sessionManager.appendUserHistory("qqbot:p:owner", {
       chatType: "private",
       userId: "owner",
       senderName: "Owner",
@@ -93,7 +96,7 @@ async function main() {
       { id: "tool_forward_1", type: "function", function: { name: "view_forward_record", arguments: "{\"forward_id\":7618168520610782000}" } },
       { forward_id: "7618168520610782000" },
       {
-        lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
+        lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         sessionManager,
         forwardResolver: {
           async resolveForwardRecord(forwardId: string) {
@@ -110,8 +113,8 @@ async function main() {
 
   await runCase("view_message repairs rounded message_id from recent session refs", async () => {
     const sessionManager = new SessionManager(createForwardFeatureConfig());
-    sessionManager.ensureSession({ id: "private:owner", type: "private" });
-    sessionManager.appendUserHistory("private:owner", {
+    sessionManager.ensureSession({ id: "qqbot:p:owner", type: "private" });
+    sessionManager.appendUserHistory("qqbot:p:owner", {
       chatType: "private",
       userId: "owner",
       senderName: "Owner",
@@ -124,7 +127,7 @@ async function main() {
       { id: "tool_message_1", type: "function", function: { name: "view_message", arguments: "{\"message_id\":1234567890123456800}" } },
       { message_id: "1234567890123456800" },
       {
-        lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
+        lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         sessionManager,
         oneBotClient: {
           async getMessage(messageId: string) {

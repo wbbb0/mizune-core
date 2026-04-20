@@ -8,8 +8,8 @@ import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { Logger } from "pino";
 import type { PersonaStore } from "#persona/personaStore.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
+import type { UserIdentityStore } from "#identity/userIdentityStore.ts";
 import type { UserStore } from "#identity/userStore.ts";
-import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 
 export interface AppSetupSupportDeps {
@@ -19,7 +19,7 @@ export interface AppSetupSupportDeps {
   sessionPersistence: SessionPersistence;
   personaStore: PersonaStore;
   setupStore: SetupStateStore;
-  whitelistStore: WhitelistStore;
+  userIdentityStore: UserIdentityStore;
   userStore: UserStore;
 }
 
@@ -32,7 +32,7 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
     sessionPersistence,
     personaStore,
     setupStore,
-    whitelistStore,
+    userIdentityStore,
     userStore
   } = deps;
 
@@ -128,17 +128,18 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
   };
 
   // Notifies the owner when setup is still blocked on persona information.
-  const notifyOwnerSetupIfNeeded = async (options?: { force?: boolean; ownerId?: string }): Promise<void> => {
+  const notifyOwnerSetupIfNeeded = async (options?: { force?: boolean; ownerExternalId?: string }): Promise<void> => {
     const currentState = await setupStore.get();
-    const ownerId = options?.ownerId ?? whitelistStore.getOwnerId();
-    if (!ownerId || currentState.state !== "needs_persona") {
+    const ownerExternalId = options?.ownerExternalId
+      ?? (await userIdentityStore.findIdentityByInternalUserId("owner"))?.externalId;
+    if (!ownerExternalId || currentState.state !== "needs_persona") {
       return;
     }
     if (!options?.force && currentState.ownerPromptSentAt != null) {
       return;
     }
     await oneBotClient.sendText({
-      userId: ownerId,
+      userId: ownerExternalId,
       text: await buildSetupInstructionText()
     });
     await setupStore.markOwnerPromptSent();
@@ -146,6 +147,7 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
 
   // Assigns the owner and advances setup state after a valid private command.
   const assignOwner = async (params: {
+    channelId: string;
     requesterUserId: string;
     targetUserId: string;
     chatType: "private" | "group";
@@ -157,9 +159,9 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
     if (currentState.state === "ready") {
       return "当前实例已完成 OneBot 初始化，`.own` 不再可用。";
     }
-    const currentOwnerId = whitelistStore.getOwnerId();
-    if (currentOwnerId) {
-      return `当前实例已绑定管理者：${currentOwnerId}。请由该管理者继续完成设定。`;
+    const currentOwnerIdentity = await userIdentityStore.findIdentityByInternalUserId("owner");
+    if (currentOwnerIdentity) {
+      return `当前实例已绑定管理者：${currentOwnerIdentity.externalId}。请由该管理者继续完成设定。`;
     }
     const targetUserId = params.targetUserId.trim();
     if (!targetUserId) {
@@ -171,8 +173,11 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
       return "只能把已经在 OneBot 中与 bot 建立好友关系的用户 ID 设为管理者。";
     }
 
-    await whitelistStore.assignOwner(targetUserId);
-    await userStore.setOwner(targetUserId);
+    await userStore.ensureInternalUser("owner");
+    await userIdentityStore.bindOwnerIdentity({
+      channelId: params.channelId,
+      externalId: targetUserId
+    });
     await setupStore.advanceAfterOwnerBound(await personaStore.get());
 
     if (targetUserId !== params.requesterUserId) {
@@ -184,7 +189,7 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
       return `已将 ${targetUserId} 设为管理者，并通知对方继续完成角色设定。`;
     }
 
-    await notifyOwnerSetupIfNeeded({ force: true, ownerId: targetUserId });
+    await notifyOwnerSetupIfNeeded({ force: true, ownerExternalId: targetUserId });
     return "已将你设为管理者。接下来请继续补全角色设定。";
   };
 

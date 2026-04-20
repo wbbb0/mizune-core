@@ -42,7 +42,7 @@ async function main() {
     });
 
     const result = await gate.decide({
-      sessionId: "private:owner",
+      sessionId: "qqbot:p:owner",
       chatType: "group",
       relationship: "owner",
       currentUserSpecialRole: "npc",
@@ -106,7 +106,7 @@ async function main() {
     });
 
     const result = await gate.decide({
-      sessionId: "private:owner",
+      sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
       recentMessages: [],
@@ -182,7 +182,7 @@ async function main() {
     });
 
     const result = await gate.decide({
-      sessionId: "private:owner",
+      sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
       recentMessages: [],
@@ -241,7 +241,7 @@ async function main() {
       assert.deepEqual(result.resolvedModelRef, ["main"]);
       assert.deepEqual(result.toolsetIds, []);
     }
-    assert.deepEqual(compactCalls, [{ sessionId: "private:audio", keep: 1 }]);
+    assert.deepEqual(compactCalls, [{ sessionId: "qqbot:p:audio", keep: 1 }]);
     assert.deepEqual(persistReasons, ["turn_planner_topic_switch_compacted"]);
   });
 
@@ -251,7 +251,7 @@ async function main() {
     });
 
     const result = await gate.decide({
-      sessionId: "private:owner",
+      sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
       recentMessages: [],
@@ -273,7 +273,7 @@ async function main() {
     });
 
     const result = await gate.decide({
-      sessionId: "private:owner",
+      sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
       recentMessages: [],
@@ -295,7 +295,7 @@ async function main() {
     });
 
     const result = await gate.decide({
-      sessionId: "private:owner",
+      sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
       recentMessages: [],
@@ -320,7 +320,7 @@ async function main() {
     });
 
     const result = await gate.decide({
-      sessionId: "private:owner",
+      sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
       recentMessages: [],
@@ -345,7 +345,7 @@ async function main() {
     });
 
     const result = await gate.decide({
-      sessionId: "private:owner",
+      sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
       recentMessages: [],
@@ -368,7 +368,7 @@ async function main() {
     });
 
     const result = await gate.decide({
-      sessionId: "private:owner",
+      sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
       recentMessages: [

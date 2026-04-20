@@ -23,12 +23,13 @@ type DirectCommandDeps = Pick<
   | "logger"
   | "historyCompressor"
   | "setupStore"
-  | "whitelistStore"
   | "scenarioHostStateStore"
+  | "userIdentityStore"
 > & {
   sessionManager: SessionDirectCommandAccess & Pick<SessionMessagingAccess, "appendAssistantHistory" | "appendInternalTranscript">;
   persistSession: (sessionId: string, reason: string) => void;
   assignOwner: (input: {
+    channelId: string;
     requesterUserId: string;
     targetUserId: string;
     sessionId: string;
@@ -129,8 +130,9 @@ function createDeliveryHandleDirectCommand(
       deps.persistSession,
       delivery
     ),
-    isOwnerAssignmentAvailable: async () => (await deps.setupStore.get()).state !== "ready" && !deps.whitelistStore.getOwnerId(),
-    assignOwner: async ({ requesterUserId, targetUserId, sessionId, chatType }) => deps.assignOwner({
+    isOwnerAssignmentAvailable: async () => (await deps.setupStore.get()).state !== "ready" && !deps.userIdentityStore.hasOwnerIdentitySync(),
+    assignOwner: async ({ channelId, requesterUserId, targetUserId, sessionId, chatType }) => deps.assignOwner({
+      channelId,
       requesterUserId,
       targetUserId,
       sessionId,

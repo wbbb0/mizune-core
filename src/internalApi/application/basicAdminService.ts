@@ -44,6 +44,7 @@ export function getHealthStatus() {
 export function getConfigSummary(deps: InternalApiConfigSummaryDeps) {
   const whitelist = deps.whitelistStore.getSnapshot();
   const runtimeMode = deps.config.onebot.enabled ? "onebot" : "webui_only";
+  const ownerIdentity = deps.userIdentityStore.findIdentityByInternalUserIdSync("owner");
   return {
     runtimeMode,
     onebot: {
@@ -52,7 +53,7 @@ export function getConfigSummary(deps: InternalApiConfigSummaryDeps) {
       httpUrl: deps.config.onebot.httpUrl
     },
     access: {
-      ownerId: deps.config.onebot.enabled ? (whitelist.ownerId ?? null) : null,
+      ownerId: deps.config.onebot.enabled ? (ownerIdentity?.externalId ?? null) : null,
       whitelist: {
         enabled: deps.config.onebot.enabled ? deps.config.whitelist.enabled : false,
         users: deps.config.onebot.enabled ? whitelist.users : [],
@@ -138,11 +139,11 @@ export async function createWebSession(
     id: sessionId,
     type: "private",
     source: "web",
-    participantUserId: body.participantUserId,
+    participantUserId: "owner",
     participantLabel: resolveSessionParticipantLabel({
       sessionId,
       participantLabel: body.participantLabel,
-      participantUserId: body.participantUserId,
+      participantUserId: "owner",
       type: "private"
     })
   });

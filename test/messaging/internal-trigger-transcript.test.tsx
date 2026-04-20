@@ -68,7 +68,7 @@ async function main() {
   await runCase("internal trigger dispatcher records received and queued transcript events", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);
-    const sessionId = "private:owner";
+    const sessionId = "qqbot:p:owner";
     sessionManager.ensureSession({ id: sessionId, type: "private" });
     sessionManager.appendSyntheticPendingMessage(sessionId, {
       chatType: "private",
@@ -131,7 +131,7 @@ async function main() {
   await runCase("internal trigger session records started transcript event", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);
-    const sessionId = "private:owner";
+    const sessionId = "qqbot:p:owner";
     sessionManager.ensureSession({ id: sessionId, type: "private" });
     const persistedReasons: string[] = [];
 
@@ -235,7 +235,7 @@ async function main() {
   await runCase("non-scheduled internal triggers keep the current reply delivery", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);
-    const sessionId = "private:owner";
+    const sessionId = "qqbot:p:owner";
     sessionManager.ensureSession({ id: sessionId, type: "private" });
     sessionManager.setReplyDelivery(sessionId, "web");
     const deliveries: Array<"onebot" | "web"> = [];
@@ -288,7 +288,7 @@ async function main() {
   await runCase("assistant internal trigger skips persona loading and participant profile extraction", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);
-    const sessionId = "private:owner";
+    const sessionId = "qqbot:p:owner";
     sessionManager.ensureSession({ id: sessionId, type: "private" });
     sessionManager.setModeId(sessionId, "assistant");
 
@@ -351,7 +351,7 @@ async function main() {
   await runCase("flush session prepare failure clears active response state", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);
-    const sessionId = "private:owner";
+    const sessionId = "qqbot:p:owner";
     sessionManager.ensureSession({ id: sessionId, type: "private" });
     sessionManager.appendSyntheticPendingMessage(sessionId, {
       chatType: "private",
@@ -408,7 +408,7 @@ async function main() {
   await runCase("scheduled trigger prepare failure clears active response state", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);
-    const sessionId = "private:owner";
+    const sessionId = "qqbot:p:owner";
     sessionManager.ensureSession({ id: sessionId, type: "private" });
     const persistedReasons: string[] = [];
     let processNextCalled = 0;

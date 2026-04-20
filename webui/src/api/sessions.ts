@@ -21,7 +21,6 @@ export const sessionsApi = {
   },
 
   create(body: {
-    participantUserId: string;
     participantLabel?: string;
     modeId?: string;
   }): Promise<{ ok: boolean; session: SessionListItem }> {

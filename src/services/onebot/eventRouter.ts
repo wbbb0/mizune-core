@@ -1,4 +1,5 @@
 import type { AppConfig } from "#config/config.ts";
+import type { UserIdentityStore } from "#identity/userIdentityStore.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import { extractEventMessageText, parseIncomingMessage } from "./messageParsing.ts";
 import type { ParsedIncomingMessage, OneBotMessageEvent, OneBotMessageSegment } from "./types.ts";
@@ -6,9 +7,13 @@ import type { ParsedIncomingMessage, OneBotMessageEvent, OneBotMessageSegment } 
 export class EventRouter {
   constructor(
     private readonly config: AppConfig,
-    private readonly whitelistStore: Pick<WhitelistStore, "hasUser" | "getOwnerId"> = {
-      hasUser: () => false,
-      getOwnerId: () => undefined
+    private readonly channelId: string,
+    private readonly whitelistStore: Pick<WhitelistStore, "hasUser"> = {
+      hasUser: () => false
+    },
+    private readonly userIdentityStore: Pick<UserIdentityStore, "hasOwnerIdentitySync" | "findInternalUserIdSync"> = {
+      hasOwnerIdentitySync: () => false,
+      findInternalUserIdSync: () => undefined
     },
     private readonly isImplicitlyAllowedUser: (userId: string) => boolean = () => false,
     private readonly isOwnerBootstrapText: (text: string) => boolean = () => false
@@ -20,13 +25,13 @@ export class EventRouter {
         return true;
       }
 
-      if (!this.whitelistStore.getOwnerId() && this.isOwnerBootstrapText(extractEventMessageText(event))) {
+      if (!this.userIdentityStore.hasOwnerIdentitySync() && this.isOwnerBootstrapText(extractEventMessageText(event))) {
         return true;
       }
 
       const userId = String(event.user_id);
       const userMatched = this.whitelistStore.hasUser(userId)
-        || this.whitelistStore.getOwnerId() === userId
+        || this.userIdentityStore.findInternalUserIdSync({ channelId: this.channelId, externalId: userId }) === "owner"
         || this.isImplicitlyAllowedUser(userId);
       return userMatched;
     }
@@ -43,6 +48,6 @@ export class EventRouter {
       return null;
     }
 
-    return parseIncomingMessage(event);
+    return parseIncomingMessage(event, { channelId: this.channelId });
   }
 }

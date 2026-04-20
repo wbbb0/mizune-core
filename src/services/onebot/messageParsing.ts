@@ -29,7 +29,12 @@ export function isAtMentionedSelf(event: OneBotMessageEvent): boolean {
   return mentions.mentionedAll || mentions.mentionedSelf;
 }
 
-export function parseIncomingMessage(event: OneBotMessageEvent): ParsedIncomingMessage | null {
+export function parseIncomingMessage(
+  event: OneBotMessageEvent,
+  options?: {
+    channelId?: string;
+  }
+): ParsedIncomingMessage | null {
   const text = extractEventMessageText(event);
   const mediaSources = extractMediaSources(event.message);
   const images = mediaSources.map((item) => item.source);
@@ -57,6 +62,8 @@ export function parseIncomingMessage(event: OneBotMessageEvent): ParsedIncomingM
   }
 
   return {
+    ...(options?.channelId ? { channelId: options.channelId } : {}),
+    externalUserId: String(event.user_id),
     chatType: event.message_type,
     userId: String(event.user_id),
     ...(event.group_id != null ? { groupId: String(event.group_id) } : {}),

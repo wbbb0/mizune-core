@@ -11,6 +11,7 @@ export type PreRouterSetupDecision =
       command: ParsedDirectCommand;
       sessionId: string;
       incomingMessage: {
+        channelId: string;
         chatType: "private";
         userId: string;
       };
@@ -23,6 +24,7 @@ export type PreRouterSetupDecision =
 
 export function resolvePreRouterSetupDecision(input: {
   setupState: SetupStateValue;
+  channelId: string;
   eventMessageType: "private" | "group";
   eventUserId: string;
   selfId: string;
@@ -40,8 +42,9 @@ export function resolvePreRouterSetupDecision(input: {
     return {
       kind: "handle_bootstrap_command",
       command: bootstrapCommand,
-      sessionId: buildPrivateSessionId(input.eventUserId),
+      sessionId: buildPrivateSessionId(input.channelId, input.eventUserId),
       incomingMessage: {
+        channelId: input.channelId,
         chatType: "private",
         userId: input.eventUserId
       }
@@ -76,7 +79,7 @@ export function resolvePostRouterSetupDecision(input: {
   setupState: SetupStateValue;
   chatType: "private" | "group";
   relationship: Relationship;
-  ownerId?: string;
+  ownerBound: boolean;
 }): PostRouterSetupDecision {
   if (input.setupState === "ready") {
     return { kind: "allow" };
@@ -89,7 +92,7 @@ export function resolvePostRouterSetupDecision(input: {
   if (input.relationship !== "owner") {
     return {
       kind: "block_private_non_owner",
-      text: input.ownerId
+      text: input.ownerBound
         ? "当前实例仍在 OneBot 初始化阶段，暂时只接受管理者私聊补全角色设定。"
         : "当前实例还没有完成管理者绑定。请先发送 `.own` 完成认领。"
     };

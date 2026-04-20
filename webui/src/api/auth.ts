@@ -17,19 +17,13 @@ export interface AuthSettings {
   };
 }
 
-export interface WhitelistSnapshot {
-  ownerId?: string;
-  users: string[];
-  groups: string[];
-}
-
 export const authApi = {
   me(): Promise<AuthStatus> { return api.get("/api/auth/me"); },
   login(password: string): Promise<{ ok: boolean }> {
     return api.post("/api/auth/login", { password });
   },
   logout(): Promise<{ ok: boolean }> { return api.post("/api/auth/logout"); },
-  whitelist(): Promise<{ whitelist: WhitelistSnapshot }> { return api.get("/api/whitelist"); },
+  configSummary(): Promise<{ access: { ownerId: string | null } }> { return api.get("/api/config-summary"); },
   settings(): Promise<AuthSettings> { return api.get("/api/auth/settings"); },
   changePassword(currentPassword: string, newPassword: string): Promise<{ ok: boolean }> {
     return api.post("/api/auth/password", { currentPassword, newPassword });

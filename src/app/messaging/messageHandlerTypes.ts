@@ -13,6 +13,7 @@ export interface MessageEventHandlerDeps {
     | "config"
     | "logger"
     | "whitelistStore"
+    | "userIdentityStore"
     | "router"
     | "oneBotClient"
     | "sessionManager"
@@ -31,8 +32,10 @@ export interface MessageEventHandlerDeps {
     command: ReturnType<typeof parseDirectCommand> extends infer T ? Exclude<T, null> : never;
     sessionId: string;
     incomingMessage: {
+      channelId?: string;
       chatType: "private" | "group";
       userId: string;
+      externalUserId?: string;
       groupId?: string;
       relationship?: Relationship;
     };
@@ -64,6 +67,8 @@ export type MessageFlushSession = MessageEventHandlerDeps["flushSession"];
 export type DirectCommandInput = Parameters<MessageEventHandlerDeps["handleDirectCommand"]>[0];
 
 export type EnrichedIncomingMessage = ParsedIncomingMessage & {
+  channelId?: string;
+  externalUserId?: string;
   audioIds: string[];
   imageIds: string[];
   emojiIds: string[];

@@ -15,7 +15,7 @@ async function main() {
       await harness.userStore.overwriteMemories("owner", [{ title: "当前用户偏好", content: "不喜欢被叫全名。" }]);
       const otherUser = await harness.userStore.overwriteMemories("20002", [{ title: "其他人记忆", content: "这个不该给当前用户用。" }]);
       const prompt = buildPrompt({
-        sessionId: "private:owner",
+        sessionId: "qqbot:p:owner",
         persona,
         relationship: "owner",
         npcProfiles: [],
@@ -55,7 +55,7 @@ async function main() {
     try {
       await harness.userStore.registerKnownUser({ userId: "1259430720", preferredAddress: "堂弟" });
       const prompt = buildPrompt({
-        sessionId: "private:1259430720",
+        sessionId: "qqbot:p:1259430720",
         persona: await harness.personaStore.get(),
         relationship: "known",
         npcProfiles: [],
@@ -89,7 +89,7 @@ async function main() {
     try {
       const persona = await harness.personaStore.get();
       const prompt = buildScheduledTaskPrompt({
-        sessionId: "private:owner",
+        sessionId: "qqbot:p:owner",
         trigger: {
           kind: "scheduled_instruction",
           jobName: "五分钟提醒",
@@ -124,7 +124,7 @@ async function main() {
     try {
       const persona = await harness.personaStore.get();
       const prompt = buildSetupPrompt({
-        sessionId: "private:owner",
+        sessionId: "qqbot:p:owner",
         persona,
         missingFields: ["name", "role", "personality"],
         recentMessages: [],
@@ -148,7 +148,7 @@ async function main() {
     try {
       const persona = await harness.personaStore.get();
       const prompt = buildScheduledTaskPrompt({
-        sessionId: "group:123456",
+        sessionId: "qqbot:g:123456",
         trigger: {
           kind: "scheduled_instruction",
           jobName: "群提醒",
@@ -173,7 +173,7 @@ async function main() {
 
   await runCase("session manager keeps scheduled task order and ignores stale generation finish", async () => {
     const sessionManager = new SessionManager(createMemoryTestConfig());
-    const sessionId = "private:owner";
+    const sessionId = "qqbot:p:owner";
     sessionManager.ensureSession({ id: sessionId, type: "private" });
 
     const first = sessionManager.beginSyntheticGeneration(sessionId);
@@ -220,7 +220,7 @@ async function main() {
       await npcDirectory.refresh(harness.userStore);
       const persona = await harness.personaStore.get();
       const prompt = buildPrompt({
-        sessionId: "group:123456",
+        sessionId: "qqbot:g:123456",
         persona,
         relationship: "owner",
         npcProfiles: npcDirectory.listProfiles().map((item) => ({
@@ -249,7 +249,7 @@ async function main() {
     try {
       const persona = await harness.personaStore.get();
       const prompt = buildPrompt({
-        sessionId: "private:30003",
+        sessionId: "qqbot:p:30003",
         persona,
         relationship: "known",
         npcProfiles: [],
@@ -273,7 +273,7 @@ async function main() {
     try {
       const persona = await harness.personaStore.get();
       const prompt = buildPrompt({
-        sessionId: "private:10001",
+        sessionId: "qqbot:p:10001",
         persona,
         relationship: "owner",
         npcProfiles: [],

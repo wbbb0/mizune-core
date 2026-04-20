@@ -41,12 +41,12 @@ function createExcludedUserMessage(overrides: Partial<InternalTranscriptItem> = 
 async function main() {
   await runCase("runtimeExcluded transcript items are excluded from llm-visible history but remain in raw session view", () => {
     const sessionManager = new SessionManager(createTestAppConfig());
-    const session = sessionManager.ensureSession({ id: "private:test", type: "private" });
+    const session = sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
     const excludedMessage = createExcludedUserMessage();
     session.internalTranscript.push(excludedMessage);
 
-    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("private:test");
-    const sessionView = sessionManager.getSessionView("private:test");
+    const llmVisibleHistory = sessionManager.getLlmVisibleHistory("qqbot:p:test");
+    const sessionView = sessionManager.getSessionView("qqbot:p:test");
 
     assert.equal(llmVisibleHistory.length, 0);
     assert.equal(sessionView.internalTranscript.length, 1);

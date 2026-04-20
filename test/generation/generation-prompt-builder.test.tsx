@@ -92,7 +92,7 @@ async function main() {
     });
 
     const result = await builder.buildSetupPromptMessages({
-      sessionId: "private:10001",
+      sessionId: "qqbot:p:10001",
       interactionMode: "normal",
       persona: { prompt: "" } as any,
       historyForPrompt: [],
@@ -223,7 +223,7 @@ async function main() {
     });
 
     const result = await builder.buildChatPromptMessages({
-      sessionId: "private:10001",
+      sessionId: "qqbot:p:10001",
       interactionMode: "normal",
       mainModelRef: ["main"],
       visibleToolNames: ["list_live_resources", "shell_run", "open_page"],
@@ -350,7 +350,7 @@ async function main() {
     });
 
     const result = await builder.buildChatPromptMessages({
-      sessionId: "private:10001",
+      sessionId: "qqbot:p:10001",
       modeId: "assistant",
       interactionMode: "normal",
       mainModelRef: ["main"],
@@ -473,7 +473,7 @@ async function main() {
     });
 
     await builder.buildChatPromptMessages({
-      sessionId: "private:10001",
+      sessionId: "qqbot:p:10001",
       interactionMode: "normal",
       mainModelRef: ["main"],
       visibleToolNames: [],
@@ -614,7 +614,7 @@ async function main() {
     });
 
     const result = await builder.buildChatPromptMessages({
-      sessionId: "private:u1",
+      sessionId: "qqbot:p:u1",
       modeId: "scenario_host",
       interactionMode: "normal",
       mainModelRef: ["main"],
@@ -745,7 +745,7 @@ async function main() {
     });
 
     const result = await builder.buildChatPromptMessages({
-      sessionId: "private:10001",
+      sessionId: "qqbot:p:10001",
       modeId: "scenario_host",
       interactionMode: "normal",
       mainModelRef: ["main"],

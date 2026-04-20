@@ -46,7 +46,7 @@ function createServicesFixture() {
 function createTaskFixture(overrides: Record<string, unknown> = {}) {
   return {
     id: "task-1",
-    sessionId: "private:owner",
+    sessionId: "qqbot:p:owner",
     userId: "owner",
     templateId: "portrait",
     workflowFile: "portrait.json",
@@ -109,7 +109,7 @@ async function main() {
     ]);
 
     assert.equal(dispatched.length, 1);
-    assert.equal(dispatched[0]?.sessionId, "private:owner");
+    assert.equal(dispatched[0]?.sessionId, "qqbot:p:owner");
     assert.equal(dispatched[0]?.trigger.kind, "comfy_task_completed");
     assert.equal(dispatched[0]?.trigger.targetType, "group");
     assert.equal(dispatched[0]?.trigger.targetGroupId, "114514");

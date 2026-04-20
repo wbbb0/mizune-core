@@ -67,6 +67,7 @@ async function main() {
   await runCase("setup admission helpers centralize bootstrap and setup blocking rules", async () => {
     const preRouterCommand = resolvePreRouterSetupDecision({
       setupState: "needs_owner",
+      channelId: "qqbot",
       eventMessageType: "private",
       eventUserId: "10001",
       selfId: "20002",
@@ -75,6 +76,7 @@ async function main() {
     });
     const preRouterReject = resolvePreRouterSetupDecision({
       setupState: "needs_owner",
+      channelId: "qqbot",
       eventMessageType: "private",
       eventUserId: "10001",
       selfId: "20002",
@@ -85,13 +87,13 @@ async function main() {
       setupState: "needs_persona",
       chatType: "group",
       relationship: "owner",
-      ownerId: "10001"
+      ownerBound: true
     });
     const postRouterKnownUser = resolvePostRouterSetupDecision({
       setupState: "needs_persona",
       chatType: "private",
       relationship: "known",
-      ownerId: "10001"
+      ownerBound: true
     });
 
     assert.equal(preRouterCommand.kind, "handle_bootstrap_command");
@@ -107,7 +109,7 @@ async function main() {
     const { calls, handler } = createDirectCommandFixture();
     await handler({
       command: { name: "help" },
-      sessionId: "private:owner",
+      sessionId: "qqbot:p:owner",
       incomingMessage: { chatType: "private", userId: "owner" }
     });
 
@@ -137,7 +139,7 @@ async function main() {
 
     await handler({
       command: { name: "stop" },
-      sessionId: "private:owner",
+      sessionId: "qqbot:p:owner",
       incomingMessage: { chatType: "private", userId: "owner" }
     });
 
@@ -169,12 +171,12 @@ async function main() {
 
     await handler({
       command: { name: "compact" },
-      sessionId: "private:owner",
+      sessionId: "qqbot:p:owner",
       incomingMessage: { chatType: "private", userId: "owner" }
     });
 
     assert.equal(cancelCalled, 1);
-    assert.deepEqual(compactCalls, [{ sessionId: "private:owner", keep: undefined }]);
+    assert.deepEqual(compactCalls, [{ sessionId: "qqbot:p:owner", keep: undefined }]);
     assert.equal(calls.length, 1);
     const firstCall = calls[0];
     assert.ok(firstCall);
@@ -192,11 +194,11 @@ async function main() {
 
     await handler({
       command: { name: "compact", keep: 3 },
-      sessionId: "private:owner",
+      sessionId: "qqbot:p:owner",
       incomingMessage: { chatType: "private", userId: "owner" }
     });
 
-    assert.deepEqual(compactCalls, [{ sessionId: "private:owner", keep: 3 }]);
+    assert.deepEqual(compactCalls, [{ sessionId: "qqbot:p:owner", keep: 3 }]);
   });
 
   await runCase("debug command toggles session debug mode for owner only", async () => {
@@ -227,10 +229,10 @@ async function main() {
       }
     });
 
-    await handler({ command: { name: "debug", mode: "once" }, sessionId: "private:owner", incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" } });
-    await handler({ command: { name: "debug", mode: "status" }, sessionId: "private:owner", incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" } });
-    await handler({ command: { name: "debug", mode: "off" }, sessionId: "private:owner", incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" } });
-    await handler({ command: { name: "debug", mode: "on" }, sessionId: "private:owner", incomingMessage: { chatType: "private", userId: "owner", relationship: "known" } });
+    await handler({ command: { name: "debug", mode: "once" }, sessionId: "qqbot:p:owner", incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" } });
+    await handler({ command: { name: "debug", mode: "status" }, sessionId: "qqbot:p:owner", incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" } });
+    await handler({ command: { name: "debug", mode: "off" }, sessionId: "qqbot:p:owner", incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" } });
+    await handler({ command: { name: "debug", mode: "on" }, sessionId: "qqbot:p:owner", incomingMessage: { chatType: "private", userId: "owner", relationship: "known" } });
 
     assert.equal(calls.length, 4);
     const [firstCall, secondCall, thirdCall, fourthCall] = calls;
@@ -336,7 +338,7 @@ async function main() {
 
     await handler({
       command: { name: "debug", mode: "once", inlineText: "发我看下现在的完整系统消息" },
-      sessionId: "private:owner",
+      sessionId: "qqbot:p:owner",
       incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
     });
 
@@ -346,7 +348,7 @@ async function main() {
     assert.equal(debugMarkers[1]!.kind, "debug_once_consumed");
     assert.equal(syntheticMessages.length, 1);
     assert.equal(syntheticMessages[0]!.text, "发我看下现在的完整系统消息");
-    assert.deepEqual(flushCalls, [{ sessionId: "private:owner", options: { skipReplyGate: true } }]);
+    assert.deepEqual(flushCalls, [{ sessionId: "qqbot:p:owner", options: { skipReplyGate: true } }]);
   });
 }
 

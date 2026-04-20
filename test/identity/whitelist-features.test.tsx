@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
+import { UserIdentityStore } from "../../src/identity/userIdentityStore.ts";
 import { EventRouter } from "../../src/services/onebot/eventRouter.ts";
 import { isOwnerBootstrapCommandText } from "../../src/app/bootstrap/ownerBootstrapPolicy.ts";
 import { WhitelistStore } from "../../src/identity/whitelistStore.ts";
@@ -57,75 +58,49 @@ async function main() {
     }
   });
 
-  await runCase("whitelist store migrates legacy owner file into whitelist data", async () => {
-    const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-whitelist-owner-"));
-    try {
-      await writeFile(join(dataDir, "owner.json"), `${JSON.stringify({ ownerId: "10001" }, null, 2)}\n`, "utf8");
-      const store = new WhitelistStore(dataDir, pino({ level: "silent" }));
-
-      await store.init();
-
-      assert.deepEqual(store.getSnapshot(), { ownerId: "10001", users: ["10001"], groups: [] });
-      assert.deepEqual(
-        JSON.parse(await readFile(join(dataDir, "whitelist.json"), "utf8")),
-        { version: 2, ownerId: "10001", users: ["10001"], groups: [] }
-      );
-    } finally {
-      await rm(dataDir, { recursive: true, force: true });
-    }
-  });
-
-  await runCase("whitelist store treats owner as whitelisted and repairs missing owner user entry", async () => {
-    const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-whitelist-owner-repair-"));
-    try {
-      await writeFile(join(dataDir, "whitelist.json"), `${JSON.stringify({
-        version: 2,
-        ownerId: "10001",
-        users: [],
-        groups: []
-      }, null, 2)}\n`, "utf8");
-      const store = new WhitelistStore(dataDir, pino({ level: "silent" }));
-
-      await store.init();
-
-      assert.equal(store.hasUser("10001"), true);
-      assert.deepEqual(store.getSnapshot(), { ownerId: "10001", users: ["10001"], groups: [] });
-      assert.deepEqual(
-        JSON.parse(await readFile(join(dataDir, "whitelist.json"), "utf8")),
-        { version: 2, ownerId: "10001", users: ["10001"], groups: [] }
-      );
-    } finally {
-      await rm(dataDir, { recursive: true, force: true });
-    }
-  });
-
   await runCase("event router allows private .own before owner is bound even when whitelist is enabled", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-identity-router-bootstrap-"));
     const config = createTestAppConfig({
       whitelist: {
         enabled: true
       }
     });
-    const router = new EventRouter(config, {
-      hasUser: () => false,
-      getOwnerId: () => undefined
-    } as any, undefined, isOwnerBootstrapCommandText);
+    try {
+      const identityStore = new UserIdentityStore(dataDir, pino({ level: "silent" }));
+      await identityStore.init();
+      const router = new EventRouter(config, config.configRuntime.instanceName, {
+        hasUser: () => false
+      } as any, identityStore, undefined, isOwnerBootstrapCommandText);
 
-    assert.equal(router.toIncomingMessage(createPrivateMessageEvent(".own") as any)?.text, ".own");
-    assert.equal(router.toIncomingMessage(createPrivateMessageEvent("hello") as any), null);
+      assert.equal(router.toIncomingMessage(createPrivateMessageEvent(".own") as any)?.text, ".own");
+      assert.equal(router.toIncomingMessage(createPrivateMessageEvent("hello") as any), null);
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
   });
 
-  await runCase("event router allows owner private messages even when owner is missing from users array", async () => {
-    const config = createTestAppConfig({
-      whitelist: {
-        enabled: true
-      }
-    });
-    const router = new EventRouter(config, {
-      hasUser: () => false,
-      getOwnerId: () => "10001"
-    } as any, undefined, isOwnerBootstrapCommandText);
+  await runCase("event router allows owner private messages when external identity points to owner", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-identity-router-owner-"));
+    try {
+      const config = createTestAppConfig({
+        whitelist: {
+          enabled: true
+        }
+      });
+      const identityStore = new UserIdentityStore(dataDir, pino({ level: "silent" }));
+      await identityStore.init();
+      await identityStore.bindOwnerIdentity({
+        channelId: config.configRuntime.instanceName,
+        externalId: "10001"
+      });
+      const router = new EventRouter(config, config.configRuntime.instanceName, {
+        hasUser: () => false
+      } as any, identityStore, undefined, isOwnerBootstrapCommandText);
 
-    assert.equal(router.toIncomingMessage(createPrivateMessageEvent("hello") as any)?.text, "hello");
+      assert.equal(router.toIncomingMessage(createPrivateMessageEvent("hello") as any)?.text, "hello");
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
   });
 }
 

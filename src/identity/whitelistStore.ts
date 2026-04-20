@@ -1,29 +1,24 @@
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Logger } from "pino";
 import { FileSchemaStore } from "#data/fileSchemaStore.ts";
 import {
-  ownerRecordSchema,
   whitelistFileSchema,
   type WhitelistFile
 } from "./whitelistSchema.ts";
 
 export interface WhitelistSnapshot {
-  ownerId?: string;
   users: string[];
   groups: string[];
 }
 
 export class WhitelistStore {
   private readonly store: FileSchemaStore<typeof whitelistFileSchema>;
-  private readonly legacyOwnerFilePath: string;
   private current: WhitelistSnapshot = emptyWhitelist();
 
   constructor(
     dataDir: string,
     private readonly logger: Logger
   ) {
-    this.legacyOwnerFilePath = join(dataDir, "owner.json");
     this.store = new FileSchemaStore({
       filePath: join(dataDir, "whitelist.json"),
       schema: whitelistFileSchema,
@@ -40,27 +35,12 @@ export class WhitelistStore {
     return cloneSnapshot(this.current);
   }
 
-  getOwnerId(): string | undefined {
-    return this.current.ownerId;
-  }
-
   hasUser(userId: string): boolean {
-    return this.current.users.includes(userId) || this.current.ownerId === userId;
+    return this.current.users.includes(userId);
   }
 
   hasGroup(groupId: string): boolean {
     return this.current.groups.includes(groupId);
-  }
-
-  async assignOwner(userId: string): Promise<string> {
-    const normalizedUserId = ownerRecordSchema.parse({ ownerId: userId }).ownerId;
-    const next = await this.writeAll({
-      ...this.current,
-      ownerId: normalizedUserId,
-      users: uniqueSorted([...this.current.users, normalizedUserId])
-    });
-    this.logger.info({ ownerId: next.ownerId }, "owner_persisted");
-    return next.ownerId ?? normalizedUserId;
   }
 
   async addUser(userId: string): Promise<string[]> {
@@ -104,11 +84,10 @@ export class WhitelistStore {
   }
 
   async reloadFromDisk(): Promise<WhitelistSnapshot> {
-    const current = await this.readAll();
-    const next = await this.mergeLegacyOwner(current);
+    const next = await this.readAll();
     this.current = next;
     await this.writeAll(next);
-    return this.getSnapshot();
+    return cloneSnapshot(next);
   }
 
   private async readAll(): Promise<WhitelistSnapshot> {
@@ -129,52 +108,17 @@ export class WhitelistStore {
     const normalized = normalizeSnapshot(snapshot);
     await this.store.write({
       version: 2,
-      ...(normalized.ownerId ? { ownerId: normalized.ownerId } : {}),
       users: normalized.users,
       groups: normalized.groups
     });
     this.current = normalized;
     return this.getSnapshot();
   }
-
-  private async mergeLegacyOwner(snapshot: WhitelistSnapshot): Promise<WhitelistSnapshot> {
-    if (snapshot.ownerId) {
-      return snapshot;
-    }
-    const legacyOwnerId = await this.readLegacyOwnerId();
-    if (!legacyOwnerId) {
-      return snapshot;
-    }
-    return normalizeSnapshot({
-      ...snapshot,
-      ownerId: legacyOwnerId,
-      users: [...snapshot.users, legacyOwnerId]
-    });
-  }
-
-  private async readLegacyOwnerId(): Promise<string | undefined> {
-    try {
-      const raw = await readFile(this.legacyOwnerFilePath, "utf8");
-      return ownerRecordSchema.parse(JSON.parse(raw)).ownerId;
-    } catch (error: unknown) {
-      const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code === "ENOENT") {
-        return undefined;
-      }
-      this.logger.warn({ error, filePath: this.legacyOwnerFilePath }, "owner_data_load_failed");
-      throw error;
-    }
-  }
 }
 
 function normalizeSnapshot(snapshot: WhitelistSnapshot | WhitelistFile): WhitelistSnapshot {
-  const ownerId = getOwnerId(snapshot);
   return {
-    ...(ownerId ? { ownerId: ownerId.trim() } : {}),
-    users: uniqueSorted([
-      ...snapshot.users.map((item) => item.trim()).filter(Boolean),
-      ...(ownerId ? [ownerId.trim()] : [])
-    ]),
+    users: uniqueSorted(snapshot.users.map((item) => item.trim()).filter(Boolean)),
     groups: uniqueSorted(snapshot.groups.map((item) => item.trim()).filter(Boolean))
   };
 }
@@ -186,16 +130,8 @@ function emptyWhitelist(): WhitelistSnapshot {
   };
 }
 
-function getOwnerId(snapshot: WhitelistSnapshot | WhitelistFile): string | undefined {
-  if ("ownerId" in snapshot) {
-    return snapshot.ownerId;
-  }
-  return undefined;
-}
-
 function cloneSnapshot(snapshot: WhitelistSnapshot): WhitelistSnapshot {
   return {
-    ...(snapshot.ownerId ? { ownerId: snapshot.ownerId } : {}),
     users: [...snapshot.users],
     groups: [...snapshot.groups]
   };

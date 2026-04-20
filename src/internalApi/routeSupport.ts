@@ -63,7 +63,6 @@ const webTurnBodySchema = z.object({
 });
 
 const createSessionBodySchema = z.object({
-  participantUserId: z.string().trim().min(1, "participantUserId is required"),
   participantLabel: z.string().trim().min(1).optional(),
   modeId: z.string().trim().min(1).optional()
 });

@@ -12,7 +12,7 @@ async function main() {
   });
   const logger = pino({ level: "silent" });
   const sessionManager = new SessionManager(config);
-  const sessionId = "private:owner";
+  const sessionId = "qqbot:p:owner";
   const session = sessionManager.ensureSession({
     id: sessionId,
     type: "private"

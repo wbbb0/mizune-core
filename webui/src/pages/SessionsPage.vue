@@ -63,7 +63,6 @@ function closeCreateDialog() {
 }
 
 async function onCreateSessionSubmit(payload: {
-  participantUserId: string;
   participantLabel?: string;
   modeId?: string;
 }) {

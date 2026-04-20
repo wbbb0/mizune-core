@@ -47,10 +47,10 @@ async function main() {
         async close() {}
       } as any,
       state: { id: 1 },
-      snapshot: createSnapshot("profile:private:10001") as any,
+      snapshot: createSnapshot("profile:qqbot:p:10001") as any,
       expiresAt: Date.now() + 1_000,
-      ownerSessionId: "private:10001",
-      profileId: "profile:private:10001"
+      ownerSessionId: "qqbot:p:10001",
+      profileId: "profile:qqbot:p:10001"
     });
 
     const service = new BrowserProfileService({
@@ -89,12 +89,12 @@ async function main() {
       } as any
     });
 
-    const result = await service.saveProfile("profile:private:10001");
+    const result = await service.saveProfile("profile:qqbot:p:10001");
 
     assert.equal(result.saved, true);
     assert.deepEqual(savedProfiles, [{
-      profileId: "profile:private:10001",
-      ownerSessionId: "private:10001",
+      profileId: "profile:qqbot:p:10001",
+      ownerSessionId: "qqbot:p:10001",
       storageState: { cookies: ["a"] },
       sessionStorageByOrigin: {
         "https://example.com": { token: "abc" }
@@ -127,10 +127,10 @@ async function main() {
         async close() {}
       } as any,
       state: { id: 1 },
-      snapshot: createSnapshot("profile:private:10001") as any,
+      snapshot: createSnapshot("profile:qqbot:p:10001") as any,
       expiresAt: Date.now() + 1_000,
-      ownerSessionId: "private:10001",
-      profileId: "profile:private:10001"
+      ownerSessionId: "qqbot:p:10001",
+      profileId: "profile:qqbot:p:10001"
     });
 
     const service = new BrowserProfileService({
@@ -161,7 +161,7 @@ async function main() {
       } as any
     });
 
-    const result = await service.clearProfile("profile:private:10001");
+    const result = await service.clearProfile("profile:qqbot:p:10001");
 
     assert.equal(result.cleared, true);
     assert.equal(sessions.get("resource_1")?.profileId, null);

@@ -74,7 +74,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     sentMessages: [],
     deletedMessageIds: [],
     sessions: [{
-      id: "private:10001",
+      id: "qqbot:p:10001",
       type: "private",
       source: "onebot",
       modeId: "rp_assistant",
@@ -92,7 +92,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     configCheckForUpdatesCount: 0,
     whitelistReloadCount: 0,
     schedulerReloadCount: 0,
-    browserProfiles: [{ profile_id: "browser_profile_fixture", ownerSessionId: "private:10001" }],
+    browserProfiles: [{ profile_id: "browser_profile_fixture", ownerSessionId: "qqbot:p:10001" }],
     workspaceRoot: "/tmp/llm-bot-internal-api-workspace"
   };
 
@@ -288,7 +288,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         const existing = state.sessions.find((item) => item.id === sessionId);
         return {
           id: sessionId,
-          type: existing?.type ?? (sessionId.startsWith("group:") ? "group" : "private"),
+          type: existing?.type ?? (sessionId.startsWith("qqbot:g:") ? "group" : "private"),
           source: existing?.source ?? (sessionId.startsWith("web:") ? "web" : "onebot"),
           modeId: existing?.modeId ?? "rp_assistant",
           participantUserId: existing?.participantUserId ?? "10001",
@@ -506,10 +506,22 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         return [{ userId: "10001", nickname: "Alice" }];
       }
     } as unknown as InternalApiDeps["userStore"],
+    userIdentityStore: {
+      findIdentityByInternalUserIdSync(internalUserId: string) {
+        return internalUserId === "owner"
+          ? {
+              channelId: "qqbot",
+              scope: "private_user",
+              externalId: "10001",
+              internalUserId: "owner",
+              createdAt: 1
+            }
+          : undefined;
+      }
+    } as unknown as InternalApiDeps["userIdentityStore"],
     whitelistStore: {
       getSnapshot() {
         return {
-          ownerId: "10001",
           users: ["10001"],
           groups: ["20001"]
         };
@@ -517,7 +529,6 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       async reloadFromDisk() {
         state.whitelistReloadCount += 1;
         return {
-          ownerId: "10001",
           users: ["10001"],
           groups: ["20001"]
         };

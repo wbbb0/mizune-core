@@ -108,7 +108,7 @@ export function createGenerationReplyGateInput(
   overrides: Partial<GenerationTurnPlannerInput> = {}
 ): GenerationTurnPlannerInput {
   return {
-    sessionId: "private:audio",
+    sessionId: "qqbot:p:audio",
     relationship: "owner",
     currentUser: null,
     sendTarget: {

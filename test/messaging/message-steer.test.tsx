@@ -18,7 +18,7 @@ async function main() {
       }
     });
     const sessionManager = new SessionManager(config);
-    const session = sessionManager.ensureSession({ id: "private:10001", type: "private" });
+    const session = sessionManager.ensureSession({ id: "qqbot:p:10001", type: "private" });
     const started = sessionManager.beginSyntheticGeneration(session.id);
     const persistedReasons: string[] = [];
     let debounceScheduled = 0;
@@ -30,10 +30,15 @@ async function main() {
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
-          getOwnerId() {
-            return null;
-          },
           hasGroup() {
+            return false;
+          }
+        } as any,
+        userIdentityStore: {
+          async ensureUserIdentity() {
+            return { internalUserId: "u_test_user" };
+          },
+          async hasOwnerIdentity() {
             return false;
           }
         } as any,
@@ -116,7 +121,7 @@ async function main() {
       }
     });
     const sessionManager = new SessionManager(config);
-    const session = sessionManager.ensureSession({ id: "group:20001", type: "group" });
+    const session = sessionManager.ensureSession({ id: "qqbot:g:20001", type: "group" });
     sessionManager.setReplyDelivery(session.id, "web");
 
     await processIncomingMessage({
@@ -125,11 +130,16 @@ async function main() {
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
-          getOwnerId() {
-            return null;
-          },
           hasGroup() {
             return true;
+          }
+        } as any,
+        userIdentityStore: {
+          async ensureUserIdentity() {
+            return { internalUserId: "u_test_user" };
+          },
+          async hasOwnerIdentity() {
+            return false;
           }
         } as any,
         router: {} as any,
@@ -194,7 +204,7 @@ async function main() {
       }
     });
     const sessionManager = new SessionManager(config);
-    const session = sessionManager.ensureSession({ id: "group:20001", type: "group" });
+    const session = sessionManager.ensureSession({ id: "qqbot:g:20001", type: "group" });
     sessionManager.setReplyDelivery(session.id, "web");
     let debounceScheduled = 0;
 
@@ -204,11 +214,16 @@ async function main() {
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
-          getOwnerId() {
-            return null;
-          },
           hasGroup() {
             return true;
+          }
+        } as any,
+        userIdentityStore: {
+          async ensureUserIdentity() {
+            return { internalUserId: "u_test_user" };
+          },
+          async hasOwnerIdentity() {
+            return false;
           }
         } as any,
         router: {} as any,
@@ -274,7 +289,7 @@ async function main() {
       }
     });
     const sessionManager = new SessionManager(config);
-    const session = sessionManager.ensureSession({ id: "group:20001", type: "group" });
+    const session = sessionManager.ensureSession({ id: "qqbot:g:20001", type: "group" });
     let debounceScheduled = 0;
 
     await processIncomingMessage({
@@ -283,11 +298,16 @@ async function main() {
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
-          getOwnerId() {
-            return "10001";
-          },
           hasGroup() {
             return false;
+          }
+        } as any,
+        userIdentityStore: {
+          async ensureUserIdentity() {
+            return { internalUserId: "owner" };
+          },
+          async hasOwnerIdentity() {
+            return true;
           }
         } as any,
         router: {} as any,

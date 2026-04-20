@@ -126,6 +126,8 @@ export interface OneBotGroupMemberInfo {
 }
 
 export interface ParsedIncomingMessage {
+  channelId?: string;
+  externalUserId?: string;
   chatType: "private" | "group";
   userId: string;
   groupId?: string;

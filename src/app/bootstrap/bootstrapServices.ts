@@ -17,6 +17,7 @@ import { PersonaStore } from "#persona/personaStore.ts";
 import { RequestStore } from "#requests/requestStore.ts";
 import { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import { SetupStateStore } from "#identity/setupStateStore.ts";
+import { UserIdentityStore } from "#identity/userIdentityStore.ts";
 import { UserStore } from "#identity/userStore.ts";
 import { GlobalRuleStore } from "#memory/globalRuleStore.ts";
 import { EventRouter } from "#services/onebot/eventRouter.ts";
@@ -42,10 +43,13 @@ import type { AppBootstrapServices, AppServiceBootstrap, BootstrapRuntimeContext
 export function createBootstrapServices(context: BootstrapRuntimeContext): AppBootstrapServices {
   const { config, logger, dataDir } = context;
   const whitelistStore = new WhitelistStore(dataDir, logger);
+  const userIdentityStore = new UserIdentityStore(dataDir, logger);
   const npcDirectory = new NpcDirectory();
   const router = new EventRouter(
     config,
+    config.configRuntime.instanceName,
     whitelistStore,
+    userIdentityStore,
     (userId) => npcDirectory.isNpc(userId),
     isOwnerBootstrapCommandText
   );
@@ -74,12 +78,12 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
   const scheduledJobStore = new ScheduledJobStore(dataDir, logger);
   const requestStore = new RequestStore(dataDir, logger);
   const groupMembershipStore = new GroupMembershipStore(dataDir, logger);
-  const userStore = new UserStore(dataDir, config, whitelistStore, logger);
+  const userStore = new UserStore(dataDir, config, logger);
   const personaStore = new PersonaStore(dataDir, config, logger);
   const globalRuleStore = new GlobalRuleStore(dataDir, config, logger);
   const toolsetRuleStore = new ToolsetRuleStore(dataDir, config, logger);
   const scenarioHostStateStore = new ScenarioHostStateStore(dataDir, config, logger);
-  const setupStore = new SetupStateStore(dataDir, whitelistStore, logger);
+  const setupStore = new SetupStateStore(dataDir, userIdentityStore, logger);
   const searchService = new SearchService(config, logger);
   const browserService = new BrowserService(createBrowserServiceDeps({
     config,
@@ -115,6 +119,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
     scheduledJobStore,
     requestStore,
     groupMembershipStore,
+    userIdentityStore,
     userStore,
     personaStore,
     globalRuleStore,
@@ -156,6 +161,7 @@ export async function initializeBootstrapState(
       | "scheduledJobStore"
       | "requestStore"
       | "groupMembershipStore"
+      | "userIdentityStore"
       | "userStore"
       | "npcDirectory"
       | "personaStore"
@@ -186,6 +192,7 @@ export async function initializeBootstrapState(
     scheduledJobStore,
     requestStore,
     groupMembershipStore,
+    userIdentityStore,
     userStore,
     npcDirectory,
     personaStore,
@@ -207,6 +214,7 @@ export async function initializeBootstrapState(
   await scheduledJobStore.init();
   await requestStore.init();
   await groupMembershipStore.init();
+  await userIdentityStore.init();
   await userStore.init();
   await npcDirectory.refresh(userStore);
   await personaStore.init();

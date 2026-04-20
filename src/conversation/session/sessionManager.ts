@@ -86,7 +86,10 @@ export class SessionManager {
 
     const created = createSessionState({
       id: sessionId,
-      type: message.chatType
+      type: message.chatType,
+      ...(message.chatType === "private"
+        ? { participantUserId: message.userId }
+        : (message.groupId ? { participantUserId: message.groupId } : {}))
     });
     this.sessionStore.set(sessionId, created);
     this.notifySessionChanged(sessionId);

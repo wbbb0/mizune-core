@@ -43,7 +43,7 @@ function createSessionInit(resourceId: string, expiresAt: number, profileId: str
     state: { resourceId },
     snapshot: createSnapshot(`https://example.com/${resourceId}`),
     expiresAt,
-    ownerSessionId: "private:owner",
+    ownerSessionId: "qqbot:p:owner",
     profileId
   };
 }

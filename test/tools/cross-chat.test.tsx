@@ -8,7 +8,7 @@ async function main() {
     const createdJobs: any[] = [];
     const result = await crossChatToolHandlers.delegate_message_to_chat!(
       createFunctionToolCall("delegate_message_to_chat", "tool_delegate_1"),
-      { sessionId: "private:40004", instruction: "帮我问一下对方现在在不在。" },
+      { sessionId: "qqbot:p:40004", instruction: "帮我问一下对方现在在不在。" },
       {
         relationship: "owner",
         currentUser: { specialRole: "none" } as any,
@@ -23,7 +23,7 @@ async function main() {
         } as any,
         sessionManager: {
           ensureSession() {
-            return { id: "private:40004", type: "private" };
+            return { id: "qqbot:p:40004", type: "private" };
           }
         } as any,
         scheduledJobStore: {
@@ -64,7 +64,7 @@ async function main() {
   await runCase("delegate_message_to_chat rejects npc targets", async () => {
     const result = await crossChatToolHandlers.delegate_message_to_chat!(
       createFunctionToolCall("delegate_message_to_chat", "tool_delegate_2"),
-      { sessionId: "private:30003", instruction: "帮我问一下。" },
+      { sessionId: "qqbot:p:30003", instruction: "帮我问一下。" },
       {
         relationship: "owner",
         currentUser: { specialRole: "none" } as any,

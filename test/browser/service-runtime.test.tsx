@@ -96,7 +96,7 @@ async function main() {
       async close() {}
     };
 
-    const page = await service.openPage({ url: "https://example.com/with-links", ownerSessionId: "private:10001" });
+    const page = await service.openPage({ url: "https://example.com/with-links", ownerSessionId: "qqbot:p:10001" });
     const inspected = await service.inspectPage({ resourceId: page.resource_id, pattern: "web version|March 16" });
     assert.equal(inspected.matches.length > 0, true);
     assert.equal(page.links.length, 1);
@@ -147,7 +147,7 @@ async function main() {
       }
     };
 
-    const page = await service.openPage({ url: "https://example.com/reload", ownerSessionId: "private:10001" });
+    const page = await service.openPage({ url: "https://example.com/reload", ownerSessionId: "qqbot:p:10001" });
     await service.reloadConfig();
 
     assert.equal(closedStates.length, 1);
@@ -239,17 +239,17 @@ async function main() {
       }
     };
 
-    const first = await service.openPage({ url: "https://example.com/one", ownerSessionId: "private:10001" });
-    const second = await service.openPage({ url: "https://example.com/two", ownerSessionId: "private:10002" });
+    const first = await service.openPage({ url: "https://example.com/one", ownerSessionId: "qqbot:p:10001" });
+    const second = await service.openPage({ url: "https://example.com/two", ownerSessionId: "qqbot:p:10002" });
 
     assert.equal(first.resource_id, "resource_1");
     assert.equal(second.resource_id, "resource_2");
     assert.deepEqual(markedExpired, ["resource_1"]);
     assert.deepEqual(savedProfiles, [{
-      profileId: "profile:private:10001",
-      ownerSessionId: "private:10001"
+      profileId: "profile:qqbot:p:10001",
+      ownerSessionId: "qqbot:p:10001"
     }]);
-    assert.deepEqual(closedStates, [{ requestedUrl: "https://example.com/one", profileId: "profile:private:10001" }]);
+    assert.deepEqual(closedStates, [{ requestedUrl: "https://example.com/one", profileId: "profile:qqbot:p:10001" }]);
   });
 
   await runCase("browser sessions expire after ttl and active access extends ttl", async () => {
@@ -296,7 +296,7 @@ async function main() {
       }
     };
 
-      const page = await service.openPage({ url: "https://example.com/ttl", ownerSessionId: "private:10001" });
+      const page = await service.openPage({ url: "https://example.com/ttl", ownerSessionId: "qqbot:p:10001" });
       now += 1_800_000;
       await service.inspectPage({ resourceId: page.resource_id });
       now += 1_800_000;
@@ -403,7 +403,7 @@ async function main() {
       async close() {}
     };
 
-    const page = await service.openPage({ url: "https://example.com/search", ownerSessionId: "private:10001" });
+    const page = await service.openPage({ url: "https://example.com/search", ownerSessionId: "qqbot:p:10001" });
     const typed = await service.interactWithPage({
       resourceId: page.resource_id,
       action: "type",
@@ -541,7 +541,7 @@ async function main() {
       async close() {}
     };
 
-    const page = await service.openPage({ url: "https://example.com/filters", ownerSessionId: "private:10001" });
+    const page = await service.openPage({ url: "https://example.com/filters", ownerSessionId: "qqbot:p:10001" });
     const result = await service.interactWithPage({
       resourceId: page.resource_id,
       action: "check",
@@ -679,7 +679,7 @@ async function main() {
       async close() {}
     };
 
-    const page = await service.openPage({ url: "https://example.com/gallery", ownerSessionId: "private:10001" });
+    const page = await service.openPage({ url: "https://example.com/gallery", ownerSessionId: "qqbot:p:10001" });
     const byUrl = await service.downloadAsset({ url: "https://example.com/video.mp4", sourceName: "video.mp4", kind: "video" });
     const byTarget = await service.downloadAsset({ resourceId: page.resource_id, targetId: 1 });
     const byMediaTarget = await service.downloadAsset({ resourceId: page.resource_id, targetId: 2, kind: "video" });

@@ -19,6 +19,7 @@ import type { RequestStore } from "#requests/requestStore.ts";
 import type { SingleInstanceLock } from "#runtime/singleInstanceLock.ts";
 import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
+import type { UserIdentityStore } from "#identity/userIdentityStore.ts";
 import type { UserStore } from "#identity/userStore.ts";
 import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
 import type { loadConfig } from "#config/config.ts";
@@ -58,6 +59,7 @@ export interface AppServiceBootstrap {
   scheduledJobStore: ScheduledJobStore;
   requestStore: RequestStore;
   groupMembershipStore: GroupMembershipStore;
+  userIdentityStore: UserIdentityStore;
   userStore: UserStore;
   personaStore: PersonaStore;
   globalRuleStore: GlobalRuleStore;

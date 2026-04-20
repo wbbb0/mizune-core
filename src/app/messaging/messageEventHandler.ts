@@ -42,6 +42,7 @@ export async function processIncomingMessage(
     config,
     logger,
     whitelistStore,
+    userIdentityStore,
     sessionManager,
     debounceManager,
     audioStore,
@@ -53,12 +54,15 @@ export async function processIncomingMessage(
   } = services;
 
   const context = await createMessageProcessingContext(
-    { audioStore, chatFileStore, sessionManager, userStore, setupStore },
+    { audioStore, chatFileStore, sessionManager, userStore, setupStore, userIdentityStore },
     incomingMessage,
-    options
+    {
+      ...options,
+      delivery: deps.inboundDelivery
+    }
   );
 
-  if (deps.inboundDelivery === "onebot" && await handlePostRouterSetupDecision({ logger, whitelistStore }, context, sendImmediateText)) {
+  if (deps.inboundDelivery === "onebot" && await handlePostRouterSetupDecision({ logger, userIdentityStore }, context, sendImmediateText)) {
     return;
   }
 
@@ -106,6 +110,7 @@ export function createMessageEventHandler(deps: MessageEventHandlerDeps) {
     handleDirectCommand
   } = deps;
   const {
+    config,
     logger,
     router,
     oneBotClient,
@@ -117,6 +122,7 @@ export function createMessageEventHandler(deps: MessageEventHandlerDeps) {
     const rawText = resolveRawText(event);
     const preRouterDecision = resolvePreRouterSetupDecision({
       setupState: currentSetupState.state,
+      channelId: config.configRuntime.instanceName,
       eventMessageType: event.message_type,
       eventUserId: String(event.user_id),
       selfId: String(event.self_id),

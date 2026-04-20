@@ -16,10 +16,10 @@ export function createMemoryTestConfig() {
   });
 }
 
-export function createWhitelistStore(ownerId = "owner") {
+export function createIdentityStore(hasOwnerIdentity = true) {
   return {
-    getOwnerId() {
-      return ownerId;
+    async hasOwnerIdentity() {
+      return hasOwnerIdentity;
     }
   };
 }
@@ -30,11 +30,11 @@ export async function createMemoryHarness(options?: {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-memory-test-"));
   const config = createMemoryTestConfig();
   const logger = options?.logger ?? pino({ level: "silent" });
-  const whitelistStore = createWhitelistStore();
+  const userIdentityStore = createIdentityStore();
   const personaStore = new PersonaStore(dataDir, config, logger);
   const globalRuleStore = new GlobalRuleStore(dataDir, config, logger);
   const toolsetRuleStore = new ToolsetRuleStore(dataDir, config, logger);
-  const userStore = new UserStore(dataDir, config, whitelistStore, logger);
+  const userStore = new UserStore(dataDir, config, logger);
   await personaStore.init();
   await globalRuleStore.init();
   await toolsetRuleStore.init();
@@ -45,7 +45,7 @@ export async function createMemoryHarness(options?: {
     globalRuleStore,
     toolsetRuleStore,
     userStore,
-    whitelistStore,
+    userIdentityStore,
     cleanup: async () => {
       await rm(dataDir, { recursive: true, force: true });
     }

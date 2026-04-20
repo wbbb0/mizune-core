@@ -19,14 +19,14 @@ async function main() {
     try {
       const store = new ScenarioHostStateStore(dataDir, createTestAppConfig(), pino({ level: "silent" }));
       await store.init();
-      const initial = await store.ensure("private:10001", {
+      const initial = await store.ensure("qqbot:p:10001", {
         playerUserId: "10001",
         playerDisplayName: "Alice"
       });
       assert.equal(initial.player.displayName, "Alice");
       assert.equal(initial.turnIndex, 0);
 
-      await store.update("private:10001", (current) => ({
+      await store.update("qqbot:p:10001", (current) => ({
         ...current,
         title: "钟楼迷雾",
         turnIndex: 2
@@ -35,7 +35,7 @@ async function main() {
         playerDisplayName: "Alice"
       });
 
-      const reloaded = await store.get("private:10001");
+      const reloaded = await store.get("qqbot:p:10001");
       assert.equal(reloaded?.title, "钟楼迷雾");
       assert.equal(reloaded?.turnIndex, 2);
     } finally {
@@ -48,7 +48,7 @@ async function main() {
     try {
       const store = new ScenarioHostStateStore(dataDir, createTestAppConfig(), pino({ level: "silent" }));
       await store.init();
-      const initial = await store.ensure("private:10001", {
+      const initial = await store.ensure("qqbot:p:10001", {
         playerUserId: "10001",
         playerDisplayName: "Alice"
       });

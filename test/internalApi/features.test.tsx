@@ -121,7 +121,6 @@ async function main() {
       await mkdir(deps.config.dataDir, { recursive: true });
       const whitelistPath = `${deps.config.dataDir}/whitelist.json`;
       await writeFile(whitelistPath, JSON.stringify({
-        ownerId: "10001",
         users: ["10001"],
         groups: ["20001"]
       }, null, 2), "utf8");
@@ -160,11 +159,11 @@ async function main() {
     try {
       const response = await app.inject({
         method: "GET",
-        url: "/api/sessions/private:10001"
+        url: "/api/sessions/qqbot:p:10001"
       });
 
       assert.equal(response.statusCode, 200);
-      assert.equal(response.json().session.id, "private:10001");
+      assert.equal(response.json().session.id, "qqbot:p:10001");
       assert.equal(response.json().session.modeId, "rp_assistant");
       assert.equal(response.json().session.historyRevision, 0);
       assert.equal(response.json().modeState, null);
@@ -179,7 +178,7 @@ async function main() {
     try {
       const switchResponse = await app.inject({
         method: "PATCH",
-        url: "/api/sessions/private:10001/mode",
+        url: "/api/sessions/qqbot:p:10001/mode",
         payload: {
           modeId: "scenario_host"
         }
@@ -188,7 +187,7 @@ async function main() {
 
       const response = await app.inject({
         method: "GET",
-        url: "/api/sessions/private:10001"
+        url: "/api/sessions/qqbot:p:10001"
       });
 
       assert.equal(response.statusCode, 200);
@@ -206,7 +205,7 @@ async function main() {
     try {
       const switchResponse = await app.inject({
         method: "PATCH",
-        url: "/api/sessions/private:10001/mode",
+        url: "/api/sessions/qqbot:p:10001/mode",
         payload: {
           modeId: "scenario_host"
         }
@@ -215,7 +214,7 @@ async function main() {
 
       const updateResponse = await app.inject({
         method: "PATCH",
-        url: "/api/sessions/private:10001/mode-state",
+        url: "/api/sessions/qqbot:p:10001/mode-state",
         payload: {
           state: {
             version: 1,
@@ -245,7 +244,7 @@ async function main() {
 
       const response = await app.inject({
         method: "GET",
-        url: "/api/sessions/private:10001"
+        url: "/api/sessions/qqbot:p:10001"
       });
       assert.equal(response.statusCode, 200);
       assert.equal(response.json().modeState.state.currentLocation, "旧港码头");
@@ -260,7 +259,7 @@ async function main() {
     try {
       const response = await app.inject({
         method: "PATCH",
-        url: "/api/sessions/private:10001/mode-state",
+        url: "/api/sessions/qqbot:p:10001/mode-state",
         payload: {
           state: {
             version: 1
@@ -281,7 +280,7 @@ async function main() {
     try {
       const switchResponse = await app.inject({
         method: "PATCH",
-        url: "/api/sessions/private:10001/mode",
+        url: "/api/sessions/qqbot:p:10001/mode",
         payload: {
           modeId: "scenario_host"
         }
@@ -290,7 +289,7 @@ async function main() {
 
       const response = await app.inject({
         method: "PATCH",
-        url: "/api/sessions/private:10001/mode-state",
+        url: "/api/sessions/qqbot:p:10001/mode-state",
         payload: {
           state: {
             version: 1,
@@ -334,7 +333,7 @@ async function main() {
 
       const switchResponse = await app.inject({
         method: "PATCH",
-        url: "/api/sessions/private:10001/mode",
+        url: "/api/sessions/qqbot:p:10001/mode",
         payload: {
           modeId: "scenario_host"
         }
@@ -349,7 +348,7 @@ async function main() {
   await runCase("internal api rejects scenario_host for group sessions", async () => {
     const deps = createInternalApiDeps();
     deps.__state.sessions.push({
-      id: "group:20001",
+      id: "qqbot:g:20001",
       type: "group",
       source: "onebot",
       modeId: "rp_assistant",
@@ -365,7 +364,7 @@ async function main() {
     try {
       const switchResponse = await app.inject({
         method: "PATCH",
-        url: "/api/sessions/group:20001/mode",
+        url: "/api/sessions/qqbot:g:20001/mode",
         payload: {
           modeId: "scenario_host"
         }
@@ -547,14 +546,13 @@ async function main() {
         method: "POST",
         url: "/api/sessions",
         payload: {
-          participantUserId: "web-user-1",
           participantLabel: "Web User"
         }
       });
 
       assert.equal(createResponse.statusCode, 200);
       assert.equal(createResponse.json().session.source, "web");
-      assert.equal(createResponse.json().session.participantUserId, "web-user-1");
+      assert.equal(createResponse.json().session.participantUserId, "owner");
 
       const sessionId = createResponse.json().session.id;
       const listResponse = await app.inject({
@@ -587,7 +585,7 @@ async function main() {
       const createResponse = await app.inject({
         method: "POST",
         url: "/api/sessions",
-        payload: { participantUserId: "web-user-2", participantLabel: "Alice" }
+        payload: { participantLabel: "Alice" }
       });
       const sessionId = createResponse.json().session.id;
 
@@ -622,7 +620,7 @@ async function main() {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
-      const sessionId = "private:10001";
+      const sessionId = "qqbot:p:10001";
       const startResponse = await app.inject({
         method: "POST",
         url: `/api/sessions/${encodeURIComponent(sessionId)}/web-turn`,
@@ -638,7 +636,7 @@ async function main() {
 
       assert.equal(streamResponse.statusCode, 200);
       assert.match(streamResponse.body, /event: chunk/);
-      assert.match(streamResponse.body, /web handled: private:10001: hello from panel/);
+      assert.match(streamResponse.body, /web handled: qqbot:p:10001: hello from panel/);
       assert.deepEqual(deps.__state.sentMessages, []);
     } finally {
       await app.close();
@@ -690,7 +688,7 @@ async function main() {
     try {
       const singleResponse = await app.inject({
         method: "DELETE",
-        url: `/api/sessions/${encodeURIComponent("private:10001")}/transcript/items/item-1`
+        url: `/api/sessions/${encodeURIComponent("qqbot:p:10001")}/transcript/items/item-1`
       });
       assert.equal(singleResponse.statusCode, 200);
       assert.deepEqual(singleResponse.json().excludedItemIds, ["item-1"]);
@@ -699,7 +697,7 @@ async function main() {
 
       const groupResponse = await app.inject({
         method: "DELETE",
-        url: `/api/sessions/${encodeURIComponent("private:10001")}/transcript/groups/group-1`
+        url: `/api/sessions/${encodeURIComponent("qqbot:p:10001")}/transcript/groups/group-1`
       });
       assert.equal(groupResponse.statusCode, 200);
       assert.deepEqual(groupResponse.json().excludedItemIds, ["item-2"]);

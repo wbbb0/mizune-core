@@ -39,6 +39,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     sessionPersistence,
     scheduledJobStore,
     requestStore,
+    userIdentityStore,
     userStore,
     personaStore,
     globalRuleStore,
@@ -83,7 +84,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     sessionPersistence,
     personaStore,
     setupStore,
-    whitelistStore,
+    userIdentityStore,
     userStore
   });
 
@@ -134,6 +135,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
       chatFileStore,
       mediaCaptionService,
       requestStore,
+      userIdentityStore,
       userStore,
       setupStore,
       conversationAccess
@@ -145,12 +147,13 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
       logger,
       historyCompressor,
       setupStore,
-      whitelistStore,
+      userIdentityStore,
       scenarioHostStateStore,
       persistSession,
       flushSession: (sessionId, options) => sessionWorkCoordinator.flushSession(sessionId, options),
       onebotSendImmediateText: sendImmediateText,
-      assignOwner: async ({ requesterUserId, targetUserId, chatType }) => assignOwner({
+      assignOwner: async ({ channelId, requesterUserId, targetUserId, chatType }) => assignOwner({
+        channelId,
         requesterUserId,
         targetUserId,
         chatType
@@ -185,6 +188,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     scenarioHostStateStore,
     userStore,
     whitelistStore,
+    userIdentityStore,
     requestStore,
     scheduledJobStore,
     scheduler,

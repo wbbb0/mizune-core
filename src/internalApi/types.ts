@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
+import type { UserIdentityStore } from "#identity/userIdentityStore.ts";
 import type { UserStore } from "#identity/userStore.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
 import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
@@ -42,6 +43,7 @@ import {
 export interface InternalApiConfigSummaryDeps {
   config: AppConfig;
   whitelistStore: WhitelistStore;
+  userIdentityStore: UserIdentityStore;
 }
 
 export interface InternalApiUserDeps {
@@ -120,6 +122,7 @@ export interface InternalApiDeps {
   scenarioHostStateStore: ScenarioHostStateStore;
   userStore: UserStore;
   whitelistStore: WhitelistStore;
+  userIdentityStore: UserIdentityStore;
   requestStore: RequestStore;
   scheduledJobStore: ScheduledJobStore;
   scheduler: Scheduler;
@@ -168,6 +171,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       config: {
         config: deps.config,
         whitelistStore: deps.whitelistStore,
+        userIdentityStore: deps.userIdentityStore,
         sessionManager: deps.sessionManager,
         sessionPersistence: deps.sessionPersistence,
         personaStore: deps.personaStore,

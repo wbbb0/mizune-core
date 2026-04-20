@@ -41,7 +41,7 @@ async function main() {
       timestampMs: 1
     }];
     const sessionState = {
-      id: "private:10001",
+      id: "qqbot:p:10001",
       type: "private" as const,
       source: "onebot" as const,
       participantUserId: "10001",
@@ -86,7 +86,7 @@ async function main() {
     });
 
     const stream = await service.getWebSessionStream(
-      { sessionId: "private:10001" },
+      { sessionId: "qqbot:p:10001" },
       { mutationEpoch: 7, transcriptCount: 0 }
     );
 
@@ -102,7 +102,7 @@ async function main() {
 
   await runCase("session stream emits transcript items incrementally", async () => {
     const sessionState = {
-      id: "private:10001",
+      id: "qqbot:p:10001",
       type: "private" as const,
       source: "onebot" as const,
       participantUserId: "10001",
@@ -154,7 +154,7 @@ async function main() {
     });
 
     const stream = await service.getWebSessionStream(
-      { sessionId: "private:10001" },
+      { sessionId: "qqbot:p:10001" },
       { mutationEpoch: 2, transcriptCount: 0 }
     );
     const receivedTypes: string[] = [];
@@ -205,7 +205,7 @@ async function main() {
 
   await runCase("session stream emits transcript item patches for reasoning updates", async () => {
     const sessionState = {
-      id: "private:10001",
+      id: "qqbot:p:10001",
       type: "private" as const,
       source: "onebot" as const,
       participantUserId: "10001",
@@ -269,7 +269,7 @@ async function main() {
     });
 
     const stream = await service.getWebSessionStream(
-      { sessionId: "private:10001" },
+      { sessionId: "qqbot:p:10001" },
       { mutationEpoch: 2, transcriptCount: 1 }
     );
     const receivedEvents: Array<{ type: string; [key: string]: unknown }> = [];
@@ -288,7 +288,7 @@ async function main() {
 
     assert.deepEqual(receivedEvents, [{
       type: "transcript_item_patched",
-      sessionId: "private:10001",
+      sessionId: "qqbot:p:10001",
       mutationEpoch: 2,
       itemId: "item-1",
       patch: {

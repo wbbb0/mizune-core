@@ -11,7 +11,7 @@ async function runCase(name: string, fn: () => Promise<void> | void) {
 async function main() {
   await runCase("debounce batch user messages share a group and interrupting input starts a new one", () => {
     const sessionManager = new SessionManager(createTestAppConfig());
-    const sessionId = "private:test";
+    const sessionId = "qqbot:p:test";
     sessionManager.ensureSession({ id: sessionId, type: "private" });
 
     sessionManager.appendUserHistory(sessionId, {

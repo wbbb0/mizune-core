@@ -28,7 +28,7 @@ async function main() {
       await persistence.init();
 
       const session: PersistedSessionState = {
-        id: "private:owner",
+        id: "qqbot:p:owner",
         type: "private",
         source: "onebot",
         modeId: "rp_assistant",
@@ -169,7 +169,7 @@ async function main() {
       await persistence.init();
 
       const session: PersistedSessionState = {
-        id: "private:google-tool",
+        id: "qqbot:p:google-tool",
         type: "private",
         source: "onebot",
         modeId: "rp_assistant",
@@ -229,9 +229,9 @@ async function main() {
       const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
       await persistence.init();
 
-      const filePath = join(dataDir, "sessions", `${encodeURIComponent("private:legacy")}.json`);
+      const filePath = join(dataDir, "sessions", `${encodeURIComponent("qqbot:p:legacy")}.json`);
       await writeFile(filePath, JSON.stringify({
-        id: "private:legacy",
+        id: "qqbot:p:legacy",
         type: "private",
         pendingMessages: [
           {
@@ -269,9 +269,9 @@ async function main() {
       const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
       await persistence.init();
 
-      const filePath = join(dataDir, "sessions", `${encodeURIComponent("private:compat")}.json`);
+      const filePath = join(dataDir, "sessions", `${encodeURIComponent("qqbot:p:compat")}.json`);
       await writeFile(filePath, JSON.stringify({
-        id: "private:compat",
+        id: "qqbot:p:compat",
         type: "private",
         pendingMessages: [],
         historySummary: null,
@@ -296,7 +296,7 @@ async function main() {
       }, null, 2));
 
       assert.deepEqual(await persistence.loadAll(), [{
-        id: "private:compat",
+        id: "qqbot:p:compat",
         type: "private",
         source: "onebot",
         modeId: "rp_assistant",

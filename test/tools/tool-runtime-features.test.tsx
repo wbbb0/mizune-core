@@ -241,7 +241,7 @@ async function main() {
       {
         relationship: "known",
         lastMessage: {
-          sessionId: "private:10001",
+          sessionId: "qqbot:p:10001",
           userId: "10001",
           senderName: "Tester"
         },
@@ -278,7 +278,7 @@ async function main() {
       {
         relationship: "known",
         lastMessage: {
-          sessionId: "private:10001",
+          sessionId: "qqbot:p:10001",
           userId: "10001",
           senderName: "Tester"
         },
@@ -308,7 +308,7 @@ async function main() {
       {
         relationship: "known",
         lastMessage: {
-          sessionId: "private:10001",
+          sessionId: "qqbot:p:10001",
           userId: "10001",
           senderName: "Tester"
         },
@@ -422,7 +422,7 @@ async function main() {
       {},
       {
         lastMessage: {
-          sessionId: "private:owner",
+          sessionId: "qqbot:p:owner",
           userId: "owner",
           senderName: "Owner"
         },
@@ -461,7 +461,7 @@ async function main() {
       { modeId: "scenario_host" },
       {
         lastMessage: {
-          sessionId: "private:owner",
+          sessionId: "qqbot:p:owner",
           userId: "owner",
           senderName: "Owner"
         },
@@ -484,7 +484,7 @@ async function main() {
         sessionManager: {
           getSession() {
             return {
-              id: "private:owner",
+              id: "qqbot:p:owner",
               type: "private",
               participantUserId: "owner",
               participantLabel: "Owner"
@@ -513,14 +513,14 @@ async function main() {
       { modeId: "scenario_host" },
       {
         lastMessage: {
-          sessionId: "group:1000",
+          sessionId: "qqbot:g:1000",
           userId: "owner",
           senderName: "Owner"
         },
         sessionManager: {
           getSession() {
             return {
-              id: "group:1000",
+              id: "qqbot:g:1000",
               type: "group"
             };
           },
@@ -549,7 +549,7 @@ async function main() {
     };
     const context = {
       lastMessage: {
-        sessionId: "private:owner",
+        sessionId: "qqbot:p:owner",
         userId: "owner",
         senderName: "Owner"
       },
@@ -559,7 +559,7 @@ async function main() {
         },
         getSession() {
           return {
-            id: "private:owner",
+            id: "qqbot:p:owner",
             participantUserId: "owner",
             participantLabel: "Owner"
           };
@@ -604,7 +604,7 @@ async function main() {
     try {
       const { ScenarioHostStateStore } = await import("../../src/modes/scenarioHost/stateStore.ts");
       const store = new ScenarioHostStateStore(dataDir, createTestAppConfig(), pino({ level: "silent" }));
-      const sessionId = "private:u1";
+      const sessionId = "qqbot:p:u1";
 
       const handler = scenarioHostToolHandlers["update_scenario_state"];
       assert.ok(handler, "update_scenario_state handler must exist");
@@ -649,7 +649,7 @@ async function main() {
       {
         config: createForwardFeatureConfig(),
         relationship: "owner",
-        lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
+        lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         currentUser: null,
         oneBotClient: {},
         requestStore: {},
@@ -753,9 +753,9 @@ async function main() {
       { literals: ["full_system_prompt", "persona"] },
       {
         relationship: "owner",
-        lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
+        lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         debugSnapshot: {
-          sessionId: "private:owner",
+          sessionId: "qqbot:p:owner",
           systemMessages: ["system prompt"],
           visibleToolNames: [],
           activeToolsets: [],
@@ -815,7 +815,7 @@ async function main() {
       { id: "tool_workspace_send_text_reject", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_id\":\"file_img_1\",\"text\":\"发你了\"}" } },
       { file_ref: "img_deadbeef.png", text: "发你了" },
       {
-        lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
+        lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         chatFileStore: {
           async getFile(id: string) {
             if (id !== "img_deadbeef.png" && id !== "file_img_1") {
@@ -856,7 +856,7 @@ async function main() {
       { id: "tool_workspace_send_1", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_ref\":\"img_deadbeef.png\"}" } },
       { file_ref: "img_deadbeef.png" },
       {
-        lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
+        lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         chatFileStore: {
           async getFile(id: string) {
             if (id !== "img_deadbeef.png" && id !== "file_img_1") {
@@ -957,7 +957,7 @@ async function main() {
       { id: "tool_workspace_send_2", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_ref\":\"file_bead1234.txt\"}" } },
       { file_ref: "file_bead1234.txt" },
       {
-        lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
+        lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         chatFileStore: {
           async getFile(id: string) {
             if (id !== "file_bead1234.txt" && id !== "file_file_1") {
@@ -1049,7 +1049,7 @@ async function main() {
             webChunks.push(chunk);
           }
         },
-        lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
+        lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         chatFileStore: {
           async getFile(id: string) {
             if (id !== "file_bead1234.txt" && id !== "file_file_1") {
@@ -1113,7 +1113,7 @@ async function main() {
         { file_ref: "img_deadbeef.png" },
         {
           replyDelivery: "web",
-          lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
+          lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
           chatFileStore: {
             async getFile(id: string) {
               if (id !== "img_deadbeef.png" && id !== "file_img_1") {
@@ -1191,7 +1191,7 @@ async function main() {
         { id: "tool_workspace_send_3", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_ref\":\"file_deadbeef.jpg\"}" } },
         { file_ref: "file_deadbeef.jpg" },
         {
-          lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
+          lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
           chatFileStore: {
             async getFile(id: string) {
               if (id === "file_deadbeef") {
@@ -1276,7 +1276,7 @@ async function main() {
         { path: "outputs/diagram.png" },
         {
           config: createTestAppConfig(),
-          lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
+          lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
           localFileService: {
             resolvePath(relativePath: string) {
               assert.equal(relativePath, "outputs/diagram.png");
@@ -1345,7 +1345,7 @@ async function main() {
         { path: filePath },
         {
           config: createTestAppConfig(),
-          lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
+          lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
           oneBotClient: {
             async sendText(params: unknown) {
               sentTexts.push(params);
@@ -1402,7 +1402,7 @@ async function main() {
       { path: "outputs/demo.txt" },
       {
         config: createTestAppConfig(),
-        lastMessage: { sessionId: "private:owner", userId: "owner", senderName: "Owner" },
+        lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         localFileService: {
           resolvePath(relativePath: string) {
             assert.equal(relativePath, "outputs/demo.txt");

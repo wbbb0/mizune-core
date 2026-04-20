@@ -33,8 +33,10 @@ export type ParsedDirectCommand = {
 }[DirectCommandName];
 
 interface DirectCommandIncomingMessage {
+  channelId?: string;
   chatType: "private" | "group";
   userId: string;
+  externalUserId?: string;
   groupId?: string;
   relationship?: Relationship;
 }
@@ -60,6 +62,7 @@ interface DirectCommandHandlerInput {
   }) => Promise<void>;
   isOwnerAssignmentAvailable?: () => Promise<boolean>;
   assignOwner?: (params: {
+    channelId: string;
     requesterUserId: string;
     targetUserId: string;
     sessionId: string;
@@ -431,8 +434,9 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         return;
       }
       const result = await ctx.input.assignOwner({
-        requesterUserId: ctx.incomingMessage.userId,
-        targetUserId: ownCommand.userId?.trim() || ctx.incomingMessage.userId,
+        channelId: ctx.incomingMessage.channelId ?? "qqbot",
+        requesterUserId: ctx.incomingMessage.externalUserId ?? ctx.incomingMessage.userId,
+        targetUserId: ownCommand.userId?.trim() || ctx.incomingMessage.externalUserId || ctx.incomingMessage.userId,
         sessionId: ctx.session.id,
         chatType: ctx.incomingMessage.chatType
       });

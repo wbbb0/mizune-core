@@ -4,6 +4,7 @@ import type { SessionSource } from "./sessionTypes.ts";
 export interface PrivateSessionIdentity {
   id: string;
   kind: "private";
+  channelId: string;
   userId: string;
   source: "onebot";
 }
@@ -11,6 +12,7 @@ export interface PrivateSessionIdentity {
 export interface GroupSessionIdentity {
   id: string;
   kind: "group";
+  channelId: string;
   groupId: string;
   source: "onebot";
 }
@@ -26,7 +28,7 @@ export interface UnknownSessionIdentity {
   id: string;
   kind: "unknown";
   value: string;
-  source: "onebot";
+  source: SessionSource;
 }
 
 export type SessionIdentity =
@@ -44,36 +46,47 @@ export interface SessionDisplayInfo {
   sessionLabel: string;
 }
 
-export function buildPrivateSessionId(userId: string): string {
-  return `private:${userId}`;
+const sessionIdPattern = /^(?<channelId>[^:]+):(?<kind>p|g):(?<targetId>.+)$/;
+
+export function buildPrivateSessionId(channelId: string, userId: string): string {
+  return `${channelId}:p:${userId}`;
 }
 
-export function buildGroupSessionId(groupId: string): string {
-  return `group:${groupId}`;
+export function buildGroupSessionId(channelId: string, groupId: string): string {
+  return `${channelId}:g:${groupId}`;
 }
 
-export function buildSessionId(message: Pick<ParsedIncomingMessage, "chatType" | "userId" | "groupId">): string {
+export function buildSessionId(
+  message: Pick<ParsedIncomingMessage, "chatType" | "userId" | "groupId" | "channelId" | "externalUserId">
+): string {
+  const channelId = String(message.channelId ?? "qqbot").trim() || "qqbot";
+  const externalUserId = String(message.externalUserId ?? message.userId).trim() || message.userId;
   return message.chatType === "group"
-    ? buildGroupSessionId(message.groupId ?? "unknown")
-    : buildPrivateSessionId(message.userId);
+    ? buildGroupSessionId(channelId, message.groupId ?? "unknown")
+    : buildPrivateSessionId(channelId, externalUserId);
 }
 
 // Keep session-id parsing here so prefix rules stay consistent across runtime, tools, and admin flows.
 export function parseSessionIdentity(sessionId: string): SessionIdentity {
-  if (sessionId.startsWith("private:")) {
+  const matched = sessionId.match(sessionIdPattern);
+  if (matched?.groups) {
+    const channelId = matched.groups.channelId ?? "qqbot";
+    const kind = matched.groups.kind === "p" ? "private" : "group";
+    const targetId = matched.groups.targetId ?? "unknown";
+    if (kind === "private") {
+      return {
+        id: sessionId,
+        kind,
+        channelId,
+        userId: targetId,
+        source: "onebot"
+      };
+    }
     return {
       id: sessionId,
-      kind: "private",
-      userId: sessionId.slice("private:".length),
-      source: "onebot"
-    };
-  }
-
-  if (sessionId.startsWith("group:")) {
-    return {
-      id: sessionId,
-      kind: "group",
-      groupId: sessionId.slice("group:".length),
+      kind,
+      channelId,
+      groupId: targetId,
       source: "onebot"
     };
   }
@@ -91,7 +104,7 @@ export function parseSessionIdentity(sessionId: string): SessionIdentity {
     id: sessionId,
     kind: "unknown",
     value: sessionId,
-    source: "onebot"
+    source: sessionId.startsWith("web:") ? "web" : "onebot"
   };
 }
 

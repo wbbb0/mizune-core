@@ -389,7 +389,6 @@ export const useSessionsStore = defineStore("sessions", () => {
   }
 
   async function createSession(input: {
-    participantUserId: string;
     participantLabel?: string;
     modeId?: string;
   }): Promise<string> {

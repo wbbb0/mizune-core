@@ -15,7 +15,7 @@ async function runCase(name: string, fn: () => Promise<void>) {
 async function main() {
   await runCase("internal trigger queue keeps fifo order and accurate size", async () => {
     const queue = new SessionInternalTriggerQueue();
-    const session = createSessionState({ id: "private:test", type: "private" });
+    const session = createSessionState({ id: "qqbot:p:test", type: "private" });
 
     assert.equal(queue.hasPending(session), false);
     assert.equal(queue.getSize(session), 0);

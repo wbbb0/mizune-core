@@ -47,8 +47,10 @@ export async function dispatchChatDirectCommand(
     command,
     sessionId: context.session.id,
     incomingMessage: {
+      ...(context.enrichedMessage.channelId ? { channelId: context.enrichedMessage.channelId } : {}),
       chatType: context.enrichedMessage.chatType,
       userId: context.enrichedMessage.userId,
+      ...(context.enrichedMessage.externalUserId ? { externalUserId: context.enrichedMessage.externalUserId } : {}),
       ...(context.enrichedMessage.groupId ? { groupId: context.enrichedMessage.groupId } : {}),
       relationship: context.user.relationship
     }

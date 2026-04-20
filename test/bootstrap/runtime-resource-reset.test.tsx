@@ -49,6 +49,7 @@ async function main() {
         scheduledJobStore: { async init() {} } as any,
         requestStore: { async init() {} } as any,
         groupMembershipStore: { async init() {} } as any,
+        userIdentityStore: { async init() {} } as any,
         userStore: { async init() {} } as any,
         npcDirectory: { async refresh() {} } as any,
         personaStore: { async init() {}, async get() { return {}; } } as any,

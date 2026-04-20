@@ -36,7 +36,7 @@ async function main() {
             prompt: "legacy prompt field",
             targets: [
               {
-                sessionId: "private:owner"
+                sessionId: "qqbot:p:owner"
               }
             ],
             state: {

@@ -89,7 +89,7 @@ export function createBrowserToolContext(
     relationship: "owner",
     replyDelivery: "onebot",
     lastMessage: {
-      sessionId: "private:test",
+      sessionId: "qqbot:p:test",
       userId: "10001",
       senderName: "Tester"
     },

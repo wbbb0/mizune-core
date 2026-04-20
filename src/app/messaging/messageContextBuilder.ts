@@ -5,20 +5,29 @@ import type { MessageHandlerServices, MessageProcessingContext } from "./message
 export async function createMessageProcessingContext(
   services: Pick<
     MessageHandlerServices,
-    "audioStore" | "chatFileStore" | "sessionManager" | "userStore" | "setupStore"
+    "audioStore" | "chatFileStore" | "sessionManager" | "userStore" | "setupStore" | "userIdentityStore"
   >,
   incomingMessage: ParsedIncomingMessage,
   options?: {
     targetSessionId?: string;
+    delivery?: "onebot" | "web";
   }
 ): Promise<MessageProcessingContext> {
+  const channelId = incomingMessage.channelId ?? "qqbot";
+  const externalUserId = incomingMessage.externalUserId ?? incomingMessage.userId;
+  const resolvedUserId = options?.delivery === "web"
+    ? incomingMessage.userId
+    : (await services.userIdentityStore.ensureUserIdentity({
+        channelId,
+        externalId: externalUserId
+      })).internalUserId;
   const fileSources = incomingMessage.rawEvent
     ? extractFileSources(incomingMessage.rawEvent.message)
     : [];
   const [setupState, user, registeredAudios, importedImageAssets, importedFileAssets] = await Promise.all([
     services.setupStore.get(),
     services.userStore.touchSeenUser({
-      userId: incomingMessage.userId
+      userId: resolvedUserId
     }),
     services.audioStore.registerSources(incomingMessage.audioSources),
     Promise.all(
@@ -29,7 +38,7 @@ export async function createMessageProcessingContext(
           origin: "chat_message",
           sourceContext: {
             mediaKind: incomingMessage.emojiSources.includes(source) ? "emoji" : "image",
-            userId: incomingMessage.userId,
+            userId: resolvedUserId,
             senderName: incomingMessage.senderName
           }
         }).catch(() => null))
@@ -42,7 +51,7 @@ export async function createMessageProcessingContext(
         ...(fileSource.filename ? { sourceName: fileSource.filename } : {}),
         ...(fileSource.mimeType ? { mimeType: fileSource.mimeType } : {}),
         sourceContext: {
-          userId: incomingMessage.userId,
+          userId: resolvedUserId,
           senderName: incomingMessage.senderName
         }
       }).catch(() => null))
@@ -57,6 +66,9 @@ export async function createMessageProcessingContext(
 
   const enrichedMessage = {
     ...incomingMessage,
+    channelId,
+    externalUserId,
+    userId: resolvedUserId,
     audioIds: registeredAudios.map((item: { id: string }) => item.id),
     imageIds: Array.from(new Set([
       ...preservedImageIds,
@@ -97,7 +109,7 @@ export async function createMessageProcessingContext(
     user,
     enrichedMessage,
     session: options?.targetSessionId
-      ? resolveTargetSession(services.sessionManager, incomingMessage, options.targetSessionId)
+      ? resolveTargetSession(services.sessionManager, enrichedMessage, options.targetSessionId)
       : services.sessionManager.getOrCreateSession(enrichedMessage)
   };
 }

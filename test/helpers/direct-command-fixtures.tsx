@@ -34,7 +34,7 @@ interface DirectCommandFixtureOptions {
 export function createDirectCommandFixture(options: DirectCommandFixtureOptions = {}) {
   const calls: SentImmediateText[] = [];
   const session = {
-    id: "private:owner",
+    id: "qqbot:p:owner",
     type: "private",
     lastLlmUsage: null,
     isGenerating: false,

@@ -28,16 +28,15 @@ export async function handlePreRouterDecision(
 }
 
 export async function handlePostRouterSetupDecision(
-  services: Pick<MessageHandlerServices, "logger" | "whitelistStore">,
+  services: Pick<MessageHandlerServices, "logger" | "userIdentityStore">,
   context: MessageProcessingContext,
   sendImmediateText: MessageEventHandlerDeps["sendImmediateText"]
 ): Promise<boolean> {
-  const ownerId = services.whitelistStore.getOwnerId();
   const decision = resolvePostRouterSetupDecision({
     setupState: context.setupState.state,
     chatType: context.enrichedMessage.chatType,
     relationship: context.user.relationship,
-    ...(ownerId ? { ownerId } : {})
+    ownerBound: await services.userIdentityStore.hasOwnerIdentity()
   });
 
   if (decision.kind === "allow") {

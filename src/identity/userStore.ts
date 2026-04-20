@@ -2,7 +2,6 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
-import type { WhitelistStore } from "./whitelistStore.ts";
 import { FileSchemaStore } from "#data/fileSchemaStore.ts";
 import { readStructuredFileRaw } from "#data/schema/file.ts";
 import { detectScopeConflict, type ScopeConflictWarning } from "#memory/memoryCategory.ts";
@@ -20,8 +19,8 @@ import type { SpecialRole } from "./specialRole.ts";
 import { normalizeUserProfilePatch } from "./userProfile.ts";
 import { userStoreSchema, type PersistedUser, type User } from "./userSchema.ts";
 
-function resolveStoredRelationship(whitelistStore: Pick<WhitelistStore, "getOwnerId">, userId: string): Relationship {
-  if (whitelistStore.getOwnerId() === userId) {
+function resolveStoredRelationship(userId: string): Relationship {
+  if (userId === "owner") {
     return "owner";
   }
   return "known";
@@ -34,7 +33,6 @@ export class UserStore {
   constructor(
     dataDir: string,
     private readonly config: Pick<AppConfig, "backup">,
-    private readonly whitelistStore: Pick<WhitelistStore, "getOwnerId">,
     private readonly logger: Logger
   ) {
     this.filePath = join(dataDir, "users.json");
@@ -47,17 +45,7 @@ export class UserStore {
   }
 
   async init(): Promise<void> {
-    const activeUsers = await this.readRawAll();
-    const ownerId = this.whitelistStore.getOwnerId();
-    if (ownerId && !activeUsers.some((user) => user.userId === ownerId)) {
-      activeUsers.push({
-        userId: ownerId,
-        memories: [],
-        createdAt: Date.now()
-      });
-      await this.writeAll(activeUsers);
-      this.logger.info({ ownerId }, "owner_user_initialized");
-    }
+    await this.readRawAll();
   }
 
   async list(): Promise<User[]> {
@@ -103,12 +91,12 @@ export class UserStore {
       users.push(next);
       await this.writeAll(users);
     }
-    const runtimeUser = toRuntimeUser(this.whitelistStore, next);
+    const runtimeUser = toRuntimeUser(next);
     this.logger.info({ userId: input.userId, relationship: runtimeUser.relationship }, "known_user_registered");
     return runtimeUser;
   }
 
-  async setOwner(userId: string): Promise<User> {
+  async ensureInternalUser(userId: string): Promise<User> {
     const users = await this.readRawAll();
     const existing = users.find((user) => user.userId === userId);
 
@@ -120,12 +108,11 @@ export class UserStore {
       };
       users.push(created);
       await this.writeAll(users);
-      this.logger.info({ userId }, "owner_user_bound");
-      return toRuntimeUser(this.whitelistStore, created);
+      this.logger.info({ userId }, "user_created");
+      return toRuntimeUser(created);
     }
 
-    this.logger.info({ userId }, "owner_user_bound");
-    return toRuntimeUser(this.whitelistStore, existing);
+    return toRuntimeUser(existing);
   }
 
   async patchUserProfile(input: {
@@ -158,7 +145,7 @@ export class UserStore {
       users.push(created);
       await this.writeAll(users);
       this.logger.info({ userId: input.userId }, "user_profile_updated");
-      return toRuntimeUser(this.whitelistStore, created);
+      return toRuntimeUser(created);
     }
 
     const updated: PersistedUser = {
@@ -173,7 +160,7 @@ export class UserStore {
     };
     await this.replaceUser(users, updated);
     this.logger.info({ userId: input.userId }, "user_profile_updated");
-    return toRuntimeUser(this.whitelistStore, updated);
+    return toRuntimeUser(updated);
   }
 
   async touchSeenUser(input: { userId: string }): Promise<User> {
@@ -181,27 +168,10 @@ export class UserStore {
     const existing = users.find((user) => user.userId === input.userId);
 
     if (existing) {
-      return toRuntimeUser(this.whitelistStore, existing);
+      return toRuntimeUser(existing);
     }
 
-    if (this.whitelistStore.getOwnerId() && input.userId === this.whitelistStore.getOwnerId()) {
-      const created: PersistedUser = {
-        userId: input.userId,
-        memories: [],
-        createdAt: Date.now()
-      };
-      users.push(created);
-      await this.writeAll(users);
-      const runtimeUser = toRuntimeUser(this.whitelistStore, created);
-      this.logger.info({ userId: created.userId, relationship: runtimeUser.relationship }, "user_created");
-      return runtimeUser;
-    }
-
-    return toRuntimeUser(this.whitelistStore, {
-      userId: input.userId,
-      memories: [],
-      createdAt: Date.now()
-    });
+    return this.ensureInternalUser(input.userId);
   }
 
   async upsertMemory(input: {
@@ -304,7 +274,7 @@ export class UserStore {
       }, "memory_scope_conflict_detected");
     }
     return {
-      user: toRuntimeUser(this.whitelistStore, updated),
+      user: toRuntimeUser(updated),
       item: nextMemory,
       action,
       finalAction: diagnostics.finalAction,
@@ -321,7 +291,7 @@ export class UserStore {
     }
     const nextMemories = existing.memories.filter((item) => item.id !== memoryId);
     if (nextMemories.length === existing.memories.length) {
-      return toRuntimeUser(this.whitelistStore, existing);
+      return toRuntimeUser(existing);
     }
     const updated: PersistedUser = {
       ...existing,
@@ -329,7 +299,7 @@ export class UserStore {
     };
     await this.replaceUser(users, updated);
     this.logger.info({ userId, memoryId }, "user_memory_removed");
-    return toRuntimeUser(this.whitelistStore, updated);
+    return toRuntimeUser(updated);
   }
 
   async overwriteMemories(userId: string, memories: Array<{
@@ -361,7 +331,7 @@ export class UserStore {
       await this.writeAll(users);
     }
     this.logger.info({ userId, memoryCount: updated.memories.length }, "user_memories_overwritten");
-    return toRuntimeUser(this.whitelistStore, updated);
+    return toRuntimeUser(updated);
   }
 
   async setSpecialRole(userId: string, specialRole: SpecialRole | "none"): Promise<User> {
@@ -382,7 +352,7 @@ export class UserStore {
       await this.writeAll(users);
     }
     this.logger.info({ userId, specialRole }, "user_special_role_changed");
-    return toRuntimeUser(this.whitelistStore, updated);
+    return toRuntimeUser(updated);
   }
 
   private async readRawAll(): Promise<PersistedUser[]> {
@@ -405,7 +375,7 @@ export class UserStore {
   }
 
   private async readAll(): Promise<User[]> {
-    return (await this.readRawAll()).map((user) => toRuntimeUser(this.whitelistStore, user));
+    return (await this.readRawAll()).map((user) => toRuntimeUser(user));
   }
 
   private async replaceUser(users: Array<User | PersistedUser>, updated: User | PersistedUser): Promise<void> {
@@ -444,12 +414,11 @@ function normalizePersistedUsers(value: unknown): PersistedUser[] {
 }
 
 function toRuntimeUser(
-  whitelistStore: Pick<WhitelistStore, "getOwnerId">,
   user: PersistedUser
 ): User {
   return {
     ...user,
-    relationship: resolveStoredRelationship(whitelistStore, user.userId)
+    relationship: resolveStoredRelationship(user.userId)
   };
 }
 

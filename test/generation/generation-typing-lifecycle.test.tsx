@@ -72,7 +72,7 @@ function createExecutorHarness(options?: {
   });
   const logger = pino({ level: "silent" });
   const sessionManager = new SessionManager(config);
-  const sessionId = "private:owner";
+  const sessionId = "qqbot:p:owner";
   sessionManager.ensureSession({ id: sessionId, type: "private" });
   const started = sessionManager.beginSyntheticGeneration(sessionId);
   const events: string[] = [];

@@ -23,7 +23,8 @@ function createConfig() {
 
 async function main() {
   await runCase("event router keeps audio-only messages", async () => {
-    const router = new EventRouter(createConfig());
+    const config = createConfig();
+    const router = new EventRouter(config, config.configRuntime.instanceName);
     const parsed = router.toIncomingMessage({
       post_type: "message",
       message_type: "private",

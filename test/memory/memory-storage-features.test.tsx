@@ -6,7 +6,7 @@ import pino from "pino";
 import { normalizeTitleForDedup } from "../../src/memory/similarity.ts";
 import { PersonaStore } from "../../src/persona/personaStore.ts";
 import { SetupStateStore } from "../../src/identity/setupStateStore.ts";
-import { createMemoryHarness, createMemoryTestConfig, createWhitelistStore, runCase } from "../helpers/memory-test-support.tsx";
+import { createIdentityStore, createMemoryHarness, createMemoryTestConfig, runCase } from "../helpers/memory-test-support.tsx";
 
 async function main() {
   await runCase("persona store resets unsupported legacy persona shape and re-enters setup", async () => {
@@ -29,7 +29,7 @@ async function main() {
       }, null, 2));
       const personaStore = new PersonaStore(dataDir, config, logger);
       const persona = await personaStore.get();
-      const setupStore = new SetupStateStore(dataDir, createWhitelistStore(), logger);
+      const setupStore = new SetupStateStore(dataDir, createIdentityStore(true), logger);
       const setupState = await setupStore.init(persona);
       assert.equal(persona.name, "");
       assert.equal(persona.role, "");
@@ -43,7 +43,7 @@ async function main() {
   await runCase("setup state starts in needs_persona for empty persona", async () => {
     const harness = await createMemoryHarness();
     try {
-      const setupStore = new SetupStateStore(harness.dataDir, harness.whitelistStore, pino({ level: "silent" }));
+      const setupStore = new SetupStateStore(harness.dataDir, harness.userIdentityStore, pino({ level: "silent" }));
       const persona = await harness.personaStore.get();
       const state = await setupStore.init(persona);
       assert.equal(state.state, "needs_persona");

@@ -45,7 +45,7 @@ function createCronJob(): ScheduledJob {
       tz: "Asia/Shanghai"
     },
     instruction: "执行一个会失败的计划任务",
-    targets: [{ sessionId: "private:owner" }],
+    targets: [{ sessionId: "qqbot:p:owner" }],
     state: {
       nextRunAtMs: null,
       lastRunAtMs: null,
