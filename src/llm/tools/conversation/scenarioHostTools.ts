@@ -1,6 +1,7 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
 import type { ScenarioHostInventoryItem, ScenarioHostObjective, ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
+import { resolveSessionParticipantLabel, resolveSessionParticipantRef } from "#conversation/session/sessionIdentity.ts";
 
 function ensureScenarioHostMode(context: Parameters<ToolHandler>[2]): string | null {
   const modeId = context.sessionManager.getModeId(context.lastMessage.sessionId);
@@ -9,9 +10,19 @@ function ensureScenarioHostMode(context: Parameters<ToolHandler>[2]): string | n
 
 function getScenarioDefaults(context: Parameters<ToolHandler>[2]) {
   const session = context.sessionManager.getSession(context.lastMessage.sessionId);
+  const participantRef = resolveSessionParticipantRef({
+    sessionId: session.id,
+    type: session.type,
+    participantRef: session.participantRef
+  });
   return {
-    playerUserId: session.participantUserId,
-    playerDisplayName: session.participantLabel ?? session.participantUserId
+    playerUserId: participantRef.id,
+    playerDisplayName: resolveSessionParticipantLabel({
+      sessionId: session.id,
+      participantRef,
+      title: session.title,
+      type: session.type
+    })
   };
 }
 

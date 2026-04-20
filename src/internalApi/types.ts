@@ -22,8 +22,8 @@ import type {
   SessionAdminMutationAccess,
   SessionAdminReadAccess,
   SessionStreamAccess,
-  SessionWebStreamAccess
 } from "#conversation/session/sessionCapabilities.ts";
+import type { SessionParticipantRef, SessionTitleSource } from "#conversation/session/sessionTypes.ts";
 import {
   createEditorService,
   type EditorService
@@ -48,6 +48,47 @@ export interface InternalApiConfigSummaryDeps {
 
 export interface InternalApiUserDeps {
   userStore: UserStore;
+}
+
+export interface InternalApiSessionSummary {
+  id: string;
+  type: "private" | "group";
+  source: "onebot" | "web";
+  modeId: string;
+  participantUserId: string;
+  participantRef: SessionParticipantRef;
+  title: string | null;
+  titleSource: SessionTitleSource | null;
+  isGenerating: boolean;
+  lastActiveAt: number;
+}
+
+export interface InternalApiSessionDetail {
+  session: {
+    id: string;
+    type: "private" | "group";
+    source: "onebot" | "web";
+    modeId: string;
+    participantUserId: string;
+    participantRef: SessionParticipantRef;
+    title: string | null;
+    titleSource: SessionTitleSource | null;
+    debugControl: {
+      enabled: boolean;
+      oncePending: boolean;
+    };
+    historySummary: string | null;
+    internalTranscript: unknown[];
+    debugMarkers: unknown[];
+    recentToolEvents: unknown[];
+    lastLlmUsage: unknown;
+    sentMessages: unknown[];
+    lastActiveAt: number;
+    isGenerating: boolean;
+    historyRevision: number;
+    mutationEpoch: number;
+  };
+  modeState: unknown;
 }
 
 export interface InternalApiSessionReadDeps {
@@ -83,7 +124,7 @@ export interface InternalApiOperationsDeps {
 export interface InternalApiMessagingDeps {
   config: AppConfig;
   oneBotClient: OneBotClient;
-  sessionManager: SessionWebStreamAccess & Pick<SessionAdminMutationAccess, "excludeTranscriptItem" | "excludeTranscriptGroup">;
+  sessionManager: SessionStreamAccess & Pick<SessionAdminMutationAccess, "excludeTranscriptItem" | "excludeTranscriptGroup">;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {

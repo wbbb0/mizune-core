@@ -1,5 +1,6 @@
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
-import type { SessionSource } from "./sessionTypes.ts";
+import type { SessionParticipantRef, SessionSource } from "./sessionTypes.ts";
+import { resolveSessionDisplayTitle } from "./sessionTitle.ts";
 
 export interface PrivateSessionIdentity {
   id: string;
@@ -44,6 +45,7 @@ export interface SessionDisplayInfo {
   sourceLabel: "OneBot" | "Web";
   kindLabel: "私聊" | "群聊" | "Web" | "未知";
   sessionLabel: string;
+  displayTitle: string;
 }
 
 const sessionIdPattern = /^(?<channelId>[^:]+):(?<kind>p|g):(?<targetId>.+)$/;
@@ -68,14 +70,15 @@ export function buildSessionId(
 
 // Keep session-id parsing here so prefix rules stay consistent across runtime, tools, and admin flows.
 export function parseSessionIdentity(sessionId: string): SessionIdentity {
-  const matched = sessionId.match(sessionIdPattern);
+  const normalizedSessionId = String(sessionId ?? "");
+  const matched = normalizedSessionId.match(sessionIdPattern);
   if (matched?.groups) {
     const channelId = matched.groups.channelId ?? "qqbot";
     const kind = matched.groups.kind === "p" ? "private" : "group";
     const targetId = matched.groups.targetId ?? "unknown";
     if (kind === "private") {
       return {
-        id: sessionId,
+        id: normalizedSessionId,
         kind,
         channelId,
         userId: targetId,
@@ -83,7 +86,7 @@ export function parseSessionIdentity(sessionId: string): SessionIdentity {
       };
     }
     return {
-      id: sessionId,
+      id: normalizedSessionId,
       kind,
       channelId,
       groupId: targetId,
@@ -91,20 +94,20 @@ export function parseSessionIdentity(sessionId: string): SessionIdentity {
     };
   }
 
-  if (sessionId.startsWith("web:")) {
+  if (normalizedSessionId.startsWith("web:")) {
     return {
-      id: sessionId,
+      id: normalizedSessionId,
       kind: "web",
-      value: sessionId.slice("web:".length),
+      value: normalizedSessionId.slice("web:".length),
       source: "web"
     };
   }
 
   return {
-    id: sessionId,
+    id: normalizedSessionId,
     kind: "unknown",
-    value: sessionId,
-    source: sessionId.startsWith("web:") ? "web" : "onebot"
+    value: normalizedSessionId,
+    source: normalizedSessionId.startsWith("web:") ? "web" : "onebot"
   };
 }
 
@@ -142,45 +145,94 @@ export function getSessionSourceLabel(sessionId: string): "OneBot" | "Web" {
 
 export function resolveSessionParticipantLabel(input: {
   sessionId: string;
-  participantLabel?: string | null | undefined;
-  participantUserId?: string | null | undefined;
+  participantRef: SessionParticipantRef;
+  title?: string | null | undefined;
   type?: "private" | "group" | undefined;
 }): string {
-  const normalizedParticipantLabel = String(input.participantLabel ?? "").trim();
-  if (normalizedParticipantLabel) {
-    return normalizedParticipantLabel;
-  }
-
-  const normalizedParticipantUserId = String(input.participantUserId ?? "").trim();
-  if (normalizedParticipantUserId) {
-    return normalizedParticipantUserId;
-  }
-
   const parsed = parseSessionIdentity(input.sessionId);
+  const normalizedTitle = String(input.title ?? "").trim();
+  if (parsed.kind === "web" && normalizedTitle) {
+    return normalizedTitle;
+  }
+
+  return input.participantRef.id;
+}
+
+export function resolveSessionParticipantRef(input: {
+  sessionId: string;
+  type: "private" | "group";
+  participantRef?: SessionParticipantRef | null | undefined;
+}): SessionParticipantRef {
+  const normalizedSessionId = String(input.sessionId ?? "");
+  if (input.participantRef) {
+    return {
+      kind: input.participantRef.kind,
+      id: String(input.participantRef.id ?? "").trim() || deriveParticipantUserId(normalizedSessionId, input.type)
+    };
+  }
+
+  const parsed = parseSessionIdentity(normalizedSessionId);
   if (parsed.kind === "private") {
-    return parsed.userId;
+    return {
+      kind: "user",
+      id: parsed.userId
+    };
   }
   if (parsed.kind === "group") {
-    return parsed.groupId;
+    return {
+      kind: "group",
+      id: parsed.groupId
+    };
   }
   if (parsed.kind === "web") {
-    return parsed.value;
+    return {
+      kind: input.type === "group" ? "group" : "user",
+      id: parsed.value
+    };
   }
 
-  if (input.type) {
-    return deriveParticipantUserId(input.sessionId, input.type);
-  }
-  return input.sessionId;
+  return {
+    kind: input.type === "group" ? "group" : "user",
+    id: normalizedSessionId || deriveParticipantUserId(normalizedSessionId, input.type)
+  };
+}
+
+export function getSessionParticipantUserId(input: {
+  participantRef: SessionParticipantRef;
+}): string {
+  return input.participantRef.id;
+}
+
+export function getSessionParticipantLabel(input: {
+  participantRef: SessionParticipantRef;
+  title?: string | null | undefined;
+  sessionId: string;
+}): string {
+  return resolveSessionParticipantLabel({
+    sessionId: input.sessionId,
+    participantRef: input.participantRef,
+    title: input.title
+  });
 }
 
 export function getSessionDisplayInfo(input: {
   sessionId: string;
-  participantLabel?: string | null | undefined;
-  participantUserId?: string | null | undefined;
+  title?: string | null | undefined;
   type?: "private" | "group" | undefined;
+  participantRef?: SessionParticipantRef | null | undefined;
 }): SessionDisplayInfo {
   const parsed = parseSessionIdentity(input.sessionId);
-  const participantLabel = resolveSessionParticipantLabel(input);
+  const participantRef = input.participantRef ?? resolveSessionParticipantRef({
+    sessionId: input.sessionId,
+    type: parsed.kind === "group"
+      ? "group"
+      : "private"
+  });
+  const participantLabel = resolveSessionParticipantLabel({
+    sessionId: input.sessionId,
+    participantRef,
+    title: input.title
+  });
   const kindLabel = parsed.kind === "private"
     ? "私聊"
     : parsed.kind === "group"
@@ -192,6 +244,15 @@ export function getSessionDisplayInfo(input: {
     participantLabel,
     sourceLabel: getSessionSourceLabel(input.sessionId),
     kindLabel,
+    displayTitle: resolveSessionDisplayTitle({
+      id: input.sessionId,
+      source: getSessionSource(input.sessionId),
+      type: parsed.kind === "group"
+        ? "group"
+        : "private",
+      participantRef,
+      title: input.title ?? null
+    }),
     sessionLabel: parsed.kind === "unknown"
       ? participantLabel
       : `${kindLabel} ${participantLabel}`
@@ -200,9 +261,9 @@ export function getSessionDisplayInfo(input: {
 
 export function formatSessionDisplayLabel(input: {
   sessionId: string;
-  participantLabel?: string | null | undefined;
-  participantUserId?: string | null | undefined;
+  title?: string | null | undefined;
   type?: "private" | "group" | undefined;
+  participantRef?: SessionParticipantRef | null | undefined;
 }): string {
   return getSessionDisplayInfo(input).sessionLabel;
 }

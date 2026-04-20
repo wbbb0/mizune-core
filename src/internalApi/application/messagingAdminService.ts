@@ -1,6 +1,5 @@
 import type {
-  SessionWebStreamAccess,
-  SessionWebStreamState,
+  SessionStreamAccess,
   SessionAdminMutationAccess
 } from "#conversation/session/sessionCapabilities.ts";
 import type { InternalTranscriptItem, SessionPhase } from "#conversation/session/sessionTypes.ts";
@@ -68,7 +67,7 @@ export function createAdminMessagingService(input: {
   };
   oneBotClient: Pick<OneBotClient, "sendText" | "deleteMessage">;
   chatFileStore: Pick<ChatFileStore, "getMany">;
-  sessionManager: SessionWebStreamAccess & Pick<SessionAdminMutationAccess, "excludeTranscriptItem" | "excludeTranscriptGroup">;
+  sessionManager: SessionStreamAccess & Pick<SessionAdminMutationAccess, "excludeTranscriptItem" | "excludeTranscriptGroup">;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {
@@ -96,7 +95,7 @@ export function createAdminMessagingService(input: {
       const session = input.sessionManager.getSession(params.sessionId);
       const effectiveUserId = session.type === "group"
         ? body.userId
-        : session.participantUserId;
+        : session.participantRef.id;
       const senderName = body.senderName ?? effectiveUserId;
       const turnState = broker.create(params.sessionId);
 
@@ -250,7 +249,7 @@ async function performTranscriptDeletionSideEffects(
 }
 
 async function runWebTurnInBackground(input: {
-  sessionManager: SessionWebStreamAccess;
+  sessionManager: SessionStreamAccess;
   chatFileStore: Pick<ChatFileStore, "getMany">;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
@@ -338,12 +337,12 @@ async function runWebTurnInBackground(input: {
 }
 
 async function waitForSessionTurnCompletion(
-  sessionManager: SessionWebStreamAccess,
+  sessionManager: SessionStreamAccess,
   sessionId: string,
   startedAt: number
 ): Promise<void> {
   const getSessionTurnOutcome = (): "pending" | "settled" | "deleted" => {
-    let session;
+    let session: ReturnType<SessionStreamAccess["getSession"]>;
     try {
       session = sessionManager.getSession(sessionId);
     } catch (error: unknown) {

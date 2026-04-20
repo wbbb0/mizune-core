@@ -21,7 +21,7 @@ export const sessionsApi = {
   },
 
   create(body: {
-    participantLabel?: string;
+    title?: string;
     modeId?: string;
   }): Promise<{ ok: boolean; session: SessionListItem }> {
     return api.post("/api/sessions", body);

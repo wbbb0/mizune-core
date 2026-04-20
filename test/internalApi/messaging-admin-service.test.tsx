@@ -306,8 +306,8 @@ async function main() {
       id: sessionId,
       type: "private",
       source: "web",
-      participantUserId: "10001",
-      participantLabel: "Alice"
+      participantRef: { kind: "user", id: "10001" },
+      title: "Alice"
     });
 
     const service = createAdminMessagingService({
@@ -358,8 +358,8 @@ async function main() {
       id: sessionId,
       type: "private",
       source: "web",
-      participantUserId: "10001",
-      participantLabel: "Alice"
+      participantRef: { kind: "user", id: "10001" },
+      title: "Alice"
     });
 
     const service = createAdminMessagingService({
@@ -409,15 +409,15 @@ async function main() {
     assert.match(String(terminalEvent.message), /Session was deleted before session response completed/);
   });
 
-  await runCase("web turn locks participant userId for web private sessions", async () => {
+  await runCase("web turn uses the actual participant userId for web private sessions", async () => {
     const sessionId = "web:web-private";
     const sessionManager = new SessionManager(createTestAppConfig());
     sessionManager.ensureSession({
       id: sessionId,
       type: "private",
       source: "web",
-      participantUserId: "owner",
-      participantLabel: "Owner"
+      participantRef: { kind: "user", id: "10001" },
+      title: "Alice"
     });
 
     let resolveIncoming: ((value: { userId: string; senderName: string; chatType: string }) => void) | null = null;
@@ -463,7 +463,7 @@ async function main() {
     );
 
     assert.deepEqual(await incomingMessagePromise, {
-      userId: "owner",
+      userId: "10001",
       senderName: "Manual Sender",
       chatType: "private"
     });
@@ -476,8 +476,8 @@ async function main() {
       id: sessionId,
       type: "private",
       source: "onebot",
-      participantUserId: "owner",
-      participantLabel: "Owner"
+      participantRef: { kind: "user", id: "owner" },
+      title: "Owner"
     });
 
     let resolveIncoming: ((value: { userId: string; senderName: string; chatType: string }) => void) | null = null;
@@ -536,8 +536,8 @@ async function main() {
       id: sessionId,
       type: "group",
       source: "onebot",
-      participantUserId: "room:20001",
-      participantLabel: "Test Group"
+      participantRef: { kind: "group", id: "room:20001" },
+      title: "Test Group"
     });
 
     let resolveIncoming: ((value: { userId: string; senderName: string; chatType: string; groupId?: string }) => void) | null = null;

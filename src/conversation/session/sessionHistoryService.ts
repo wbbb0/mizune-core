@@ -60,7 +60,7 @@ export class SessionHistoryService {
     timestampMs = Date.now()
   ): void {
     const defaultUserId = session.type === "private"
-      ? session.participantUserId
+      ? session.participantRef.id
       : "unknown";
 
     appendHistoryEntry(session, normalizeTranscriptItem(role === "user"

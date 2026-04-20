@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, shallowRef } from "vue";
 import type {
-  SessionListItem,
+  SessionParticipantRef,
   SessionModeOption,
   SessionPhase,
   TranscriptItem,
@@ -10,6 +10,11 @@ import type {
   TurnStreamEvent
 } from "@/api/types";
 import { sessionsApi } from "@/api/sessions";
+import {
+  normalizeSessionListItem,
+  syncSessionDisplayFields,
+  type NormalizedSessionListItem
+} from "./sessionDisplay";
 
 const SESSION_DEBUG_ENABLED = import.meta.env.DEV;
 
@@ -24,13 +29,17 @@ export interface TranscriptEntry {
   index: number;
   item: TranscriptItem;
 }
+
 export interface ActiveSession {
   id: string;
   type: "private" | "group";
   source: "onebot" | "web";
   modeId: string;
   participantUserId: string;
-  participantLabel: string | null;
+  participantRef: SessionParticipantRef;
+  title: string | null;
+  titleSource: "default" | "auto" | "manual" | null;
+  participantLabel?: string | null;
   mutationEpoch: number;
   transcriptCount: number;
   lastActiveAt: number;
@@ -45,7 +54,7 @@ export interface ActiveSession {
 }
 
 export const useSessionsStore = defineStore("sessions", () => {
-  const list = ref<SessionListItem[]>([]);
+  const list = ref<NormalizedSessionListItem[]>([]);
   const modes = ref<SessionModeOption[]>([]);
   const selectedId = ref<string | null>(null);
   const active = shallowRef<ActiveSession | null>(null);
@@ -59,7 +68,13 @@ export const useSessionsStore = defineStore("sessions", () => {
       sessionsApi.list(),
       sessionsApi.listModes()
     ]);
-    list.value = sessionRes.sessions;
+    list.value = sessionRes.sessions.map((session) => normalizeSessionListItem(session));
+    if (selectedId.value && active.value) {
+      const selected = list.value.find((item) => item.id === selectedId.value);
+      if (selected) {
+        active.value = syncSessionDisplayFields(active.value, selected);
+      }
+    }
     modes.value = modeRes.modes;
     debugSession("refresh", { sessions: sessionRes.sessions.map((s) => s.id), modes: modeRes.modes.map((m) => m.id) });
   }
@@ -146,6 +161,9 @@ export const useSessionsStore = defineStore("sessions", () => {
         source: "web",
         modeId: "rp_assistant",
         participantUserId: "",
+        participantRef: { kind: "user", id: sessionId },
+        title: null,
+        titleSource: null,
         participantLabel: null,
         mutationEpoch: currentEpoch,
         transcriptCount: requestedTranscriptCount,
@@ -344,7 +362,10 @@ export const useSessionsStore = defineStore("sessions", () => {
       source: selected?.source ?? "web",
       participantUserId: selected?.participantUserId ?? "",
       modeId: selected?.modeId ?? "rp_assistant",
-      participantLabel: selected?.participantLabel ?? null,
+      participantRef: selected?.participantRef ?? { kind: "user", id: selected?.participantUserId ?? sessionId },
+      title: selected?.title ?? null,
+      titleSource: selected?.titleSource ?? null,
+      participantLabel: selected ? selected.participantLabel : null,
       mutationEpoch: 0,
       transcriptCount: 0,
       lastActiveAt: selected?.lastActiveAt ?? 0,
@@ -389,10 +410,13 @@ export const useSessionsStore = defineStore("sessions", () => {
   }
 
   async function createSession(input: {
-    participantLabel?: string;
+    title?: string;
     modeId?: string;
   }): Promise<string> {
-    const result = await sessionsApi.create(input);
+    const result = await sessionsApi.create({
+      ...(input.modeId ? { modeId: input.modeId } : {}),
+      ...(input.title?.trim() ? { title: input.title.trim() } : {})
+    });
     await refresh();
     selectSession(result.session.id);
     return result.session.id;
@@ -400,12 +424,10 @@ export const useSessionsStore = defineStore("sessions", () => {
 
   async function switchSessionMode(sessionId: string, modeId: string): Promise<void> {
     const result = await sessionsApi.switchMode(sessionId, { modeId });
-    list.value = list.value.map((item) => item.id === sessionId ? result.session : item);
+    const nextSession = normalizeSessionListItem(result.session);
+    list.value = list.value.map((item) => item.id === sessionId ? nextSession : item);
     if (active.value?.id === sessionId) {
-      active.value = {
-        ...active.value,
-        modeId: result.session.modeId
-      };
+      active.value = syncSessionDisplayFields(active.value, nextSession);
     }
   }
 

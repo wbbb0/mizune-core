@@ -22,6 +22,8 @@ export interface InternalApiFixtureState {
     modeId: string;
     participantUserId: string;
     participantLabel: string | null;
+    title: string | null;
+    titleSource: "default" | "auto" | "manual" | null;
     phase: { kind: string };
     pendingMessages: Array<{ id?: number }>;
     internalTranscript: InternalTranscriptItem[];
@@ -80,6 +82,8 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       modeId: "rp_assistant",
       participantUserId: "10001",
       participantLabel: "Alice",
+      title: "Alice",
+      titleSource: "manual",
       phase: { kind: "idle" },
       pendingMessages: [{ id: 1 }],
       internalTranscript: [],
@@ -264,6 +268,8 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           modeId: session.modeId,
           participantUserId: session.participantUserId,
           participantLabel: session.participantLabel,
+          title: session.title,
+          titleSource: session.titleSource,
           debugControl: {
             enabled: false,
             oncePending: false
@@ -293,6 +299,8 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           modeId: existing?.modeId ?? "rp_assistant",
           participantUserId: existing?.participantUserId ?? "10001",
           participantLabel: existing?.participantLabel ?? "Alice",
+          title: existing?.title ?? "Alice",
+          titleSource: existing?.titleSource ?? "manual",
           phase: existing?.phase ?? { kind: "idle" },
           pendingMessages: [],
           debounceTimer: null,
@@ -323,20 +331,31 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         id: string;
         type: "private" | "group";
         source?: "onebot" | "web";
-        participantUserId?: string;
-        participantLabel?: string | null;
+        participantRef?: {
+          kind: "user" | "group";
+          id: string;
+        };
+        title?: string | null;
+        titleSource?: "default" | "auto" | "manual" | null;
       }) {
         const existing = state.sessions.find((item) => item.id === target.id);
         if (existing) {
           return existing;
         }
+        const participantRef = target.participantRef ?? {
+          kind: target.type === "group" ? "group" : "user",
+          id: target.id
+        };
+        const title = target.title ?? null;
         const created = {
           id: target.id,
           type: target.type,
           source: target.source ?? "onebot",
           modeId: "rp_assistant",
-          participantUserId: target.participantUserId ?? target.id,
-          participantLabel: target.participantLabel ?? target.participantUserId ?? target.id,
+          participantUserId: participantRef.id,
+          participantLabel: title ?? participantRef.id,
+          title,
+          titleSource: target.titleSource ?? (title ? "manual" : "default"),
           phase: { kind: "idle" },
           pendingMessages: [],
           internalTranscript: [],
@@ -393,6 +412,8 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           modeId: session.modeId,
           participantUserId: session.participantUserId,
           participantLabel: session.participantLabel,
+          title: session.title,
+          titleSource: session.titleSource,
           pendingMessages: [],
           internalTranscript: session.internalTranscript,
           historySummary: null,
@@ -471,7 +492,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         state.scenarioHostStates[sessionId] = created;
         return created;
       },
-      async ensureForSession(session: { id: string; participantUserId: string; participantLabel?: string | null }) {
+      async ensureForSession(session: { id: string; participantRef: { kind: "user" | "group"; id: string }; title?: string | null }) {
         const existing = state.scenarioHostStates[session.id];
         if (existing) {
           return existing;
@@ -483,8 +504,8 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           currentLocation: null,
           sceneSummary: "",
           player: {
-            userId: session.participantUserId,
-            displayName: session.participantLabel ?? session.participantUserId
+            userId: session.participantRef.id,
+            displayName: session.title ?? session.participantRef.id
           },
           inventory: [],
           objectives: [],

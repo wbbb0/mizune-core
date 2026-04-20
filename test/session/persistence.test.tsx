@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import pino from "pino";
 import { SessionPersistence } from "../../src/conversation/session/sessionPersistence.ts";
 import type { PersistedSessionState } from "../../src/conversation/session/sessionManager.ts";
+import { createSessionState, toPersistedSessionState } from "../../src/conversation/session/sessionStateFactory.ts";
 
 async function runCase(name: string, fn: () => Promise<void>) {
   process.stdout.write(`- ${name} ... `);
@@ -22,6 +23,25 @@ async function withDataDir(name: string, fn: (dataDir: string) => Promise<void>)
 }
 
 async function main() {
+  await runCase("session persistence round-trips title titleSource and participantRef", async () => {
+    const session = createSessionState({
+      id: "web:test",
+      type: "private",
+      source: "web",
+      participantRef: { kind: "user", id: "owner" },
+      title: "New Chat",
+      titleSource: "default"
+    });
+
+    const persisted = toPersistedSessionState(session);
+
+    assert.deepEqual(persisted.participantRef, { kind: "user", id: "owner" });
+    assert.equal(persisted.title, "New Chat");
+    assert.equal(persisted.titleSource, "default");
+    assert.ok(!("participantLabel" in persisted));
+    assert.ok(!("participantUserId" in persisted));
+  });
+
   await runCase("session persistence round-trips current session shape", async () => {
     await withDataDir("llm-bot-session-persist-current-test", async (dataDir: string) => {
       const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
@@ -32,8 +52,9 @@ async function main() {
         type: "private",
         source: "onebot",
         modeId: "rp_assistant",
-        participantUserId: "owner",
-        participantLabel: "Owner",
+        participantRef: { kind: "user", id: "owner" },
+        title: "Owner",
+        titleSource: "manual",
         replyDelivery: "web",
         pendingMessages: [
           {
@@ -173,8 +194,9 @@ async function main() {
         type: "private",
         source: "onebot",
         modeId: "rp_assistant",
-        participantUserId: "google-tool",
-        participantLabel: "google-tool",
+        participantRef: { kind: "user", id: "google-tool" },
+        title: "google-tool",
+        titleSource: "manual",
         replyDelivery: "onebot",
         pendingMessages: [],
         historySummary: null,
@@ -273,6 +295,12 @@ async function main() {
       await writeFile(filePath, JSON.stringify({
         id: "qqbot:p:compat",
         type: "private",
+        participantRef: {
+          kind: "user",
+          id: "compat"
+        },
+        title: "Compat",
+        titleSource: "default",
         pendingMessages: [],
         historySummary: null,
         internalTranscript: [],
@@ -300,6 +328,12 @@ async function main() {
         type: "private",
         source: "onebot",
         modeId: "rp_assistant",
+        participantRef: {
+          kind: "user",
+          id: "compat"
+        },
+        title: "Compat",
+        titleSource: "default",
         replyDelivery: "onebot",
         pendingMessages: [],
         historySummary: null,

@@ -20,6 +20,7 @@ import {
   restoreSessionState,
   toPersistedSessionState
 } from "./sessionStateFactory.ts";
+import { resolveSessionParticipantRef } from "./sessionIdentity.ts";
 import { SessionLifecycleController } from "./sessionLifecycleController.ts";
 import { SessionInternalTriggerQueue } from "./sessionInternalTriggerQueue.ts";
 import { SessionDebugController } from "./sessionDebugController.ts";
@@ -87,9 +88,13 @@ export class SessionManager {
     const created = createSessionState({
       id: sessionId,
       type: message.chatType,
-      ...(message.chatType === "private"
-        ? { participantUserId: message.userId }
-        : (message.groupId ? { participantUserId: message.groupId } : {}))
+      participantRef: resolveSessionParticipantRef({
+        sessionId,
+        type: message.chatType,
+        participantRef: message.chatType === "group"
+          ? { kind: "group", id: message.groupId ?? "unknown" }
+          : { kind: "user", id: message.userId }
+      })
     });
     this.sessionStore.set(sessionId, created);
     this.notifySessionChanged(sessionId);
@@ -115,15 +120,25 @@ export class SessionManager {
     id: string;
     type: "private" | "group";
     source?: "onebot" | "web";
-    participantUserId?: string;
-    participantLabel?: string | null;
+    participantRef?: SessionState["participantRef"];
+    title?: string | null;
+    titleSource?: "default" | "auto" | "manual" | null;
   }): SessionState {
     const existing = this.sessionStore.get(target.id);
     if (existing) {
       return existing;
     }
 
-    const created = createSessionState(target);
+    const created = createSessionState({
+      id: target.id,
+      type: target.type,
+      ...(target.source ? { source: target.source } : {}),
+      ...(target.participantRef ? { participantRef: target.participantRef } : {}),
+      ...(target.title !== undefined ? {
+        title: target.title,
+        titleSource: target.titleSource ?? (String(target.title ?? "").trim() ? "manual" : "default")
+      } : {})
+    });
     this.sessionStore.set(target.id, created);
     this.notifySessionChanged(target.id);
     return created;

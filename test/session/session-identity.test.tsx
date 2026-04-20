@@ -11,8 +11,12 @@ import {
   isChatSessionIdentity,
   isWebSessionIdentity,
   parseChatSessionIdentity,
-  parseSessionIdentity
+  parseSessionIdentity,
+  resolveSessionParticipantRef
 } from "../../src/conversation/session/sessionIdentity.ts";
+import { cloneSessionState } from "../../src/conversation/session/sessionQueries.ts";
+import { createSessionState } from "../../src/conversation/session/sessionStateFactory.ts";
+import { resolveSessionDisplayTitle } from "../../src/conversation/session/sessionTitle.ts";
 
 async function runCase(name: string, fn: () => Promise<void> | void) {
   process.stdout.write(`- ${name} ... `);
@@ -88,6 +92,14 @@ async function main() {
     assert.equal(deriveParticipantUserId("qqbot:g:20002", "group"), "20002");
     assert.equal(deriveParticipantUserId("web:panel", "private"), "panel");
     assert.equal(deriveParticipantUserId("opaque", "group"), "opaque");
+
+    assert.deepEqual(resolveSessionParticipantRef({
+      sessionId: "web:panel",
+      type: "private"
+    }), {
+      kind: "user",
+      id: "panel"
+    });
   });
 
   await runCase("display helpers centralize participant fallback and source labels", () => {
@@ -99,10 +111,11 @@ async function main() {
     assert.deepEqual(
       getSessionDisplayInfo({
         sessionId: "qqbot:g:20002",
-        participantLabel: null,
-        participantUserId: "20002"
+        participantRef: { kind: "group", id: "20002" },
+        type: "group"
       }),
       {
+        displayTitle: "群 20002",
         participantLabel: "20002",
         sourceLabel: "OneBot",
         kindLabel: "群聊",
@@ -113,11 +126,44 @@ async function main() {
     assert.equal(
       formatSessionDisplayLabel({
         sessionId: "web:panel",
-        participantLabel: "Alice",
-        participantUserId: "web-user"
+        participantRef: { kind: "user", id: "web-user" },
+        title: "Alice"
       }),
       "Web Alice"
     );
+  });
+
+  await runCase("session display title prefers session title for web sessions", () => {
+    assert.equal(resolveSessionDisplayTitle({
+      id: "web:test",
+      source: "web",
+      type: "private",
+      title: "Investigate vite build",
+      participantRef: { kind: "user", id: "owner" }
+    }), "Investigate vite build");
+  });
+
+  await runCase("group sessions keep group participant refs", () => {
+    const session = createSessionState({
+      id: "qqbot:g:20001",
+      type: "group",
+      source: "onebot",
+      participantRef: { kind: "group", id: "20001" }
+    });
+
+    assert.deepEqual(session.participantRef, { kind: "group", id: "20001" });
+  });
+
+  await runCase("cloned session state deep copies participant refs", () => {
+    const session = createSessionState({
+      id: "qqbot:p:10001",
+      type: "private",
+      participantRef: { kind: "user", id: "10001" }
+    });
+    const cloned = cloneSessionState(session);
+
+    assert.deepEqual(cloned.participantRef, session.participantRef);
+    assert.notStrictEqual(cloned.participantRef, session.participantRef);
   });
 }
 

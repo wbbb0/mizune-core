@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import WorkbenchDialog from "@/components/common/WorkbenchDialog.vue";
+import { buildCreateSessionPayload } from "./createSessionPayload";
 
 const props = defineProps<{
   open: boolean;
@@ -11,27 +12,27 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: [];
-  submit: [payload: { participantLabel?: string; modeId?: string }];
+  submit: [payload: { title?: string; modeId?: string }];
 }>();
 
-const participantLabel = ref("");
+const title = ref("");
 const modeId = ref("rp_assistant");
 
 const canSubmit = computed(() => !props.busy);
 
 watch(() => props.open, async (open) => {
   if (!open) {
-    participantLabel.value = "";
+    title.value = "";
     modeId.value = props.modes?.[0]?.id ?? "rp_assistant";
     return;
   }
 }, { immediate: true });
 
 async function submit() {
-  emit("submit", {
-    ...(participantLabel.value.trim() ? { participantLabel: participantLabel.value.trim() } : {}),
-    ...(modeId.value.trim() ? { modeId: modeId.value.trim() } : {})
-  });
+  emit("submit", buildCreateSessionPayload({
+    title: title.value,
+    modeId: modeId.value
+  }));
 }
 
 function close() {
@@ -56,7 +57,7 @@ function close() {
       <label class="flex flex-col gap-1.5 text-small text-text-muted">
         显示名称
         <input
-          v-model="participantLabel"
+          v-model="title"
           class="input-base text-ui"
           placeholder="例如 Owner"
         />

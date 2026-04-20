@@ -534,11 +534,11 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         return;
       }
       const defaults = {
-        playerUserId: (ctx.session as any).participantUserId ?? ctx.incomingMessage.userId,
+        playerUserId: ctx.session.participantRef.id,
         playerDisplayName: resolveSessionParticipantLabel({
           sessionId: ctx.session.id,
-          participantLabel: (ctx.session as any).participantLabel,
-          participantUserId: (ctx.session as any).participantUserId ?? ctx.incomingMessage.userId,
+          participantRef: ctx.session.participantRef,
+          title: ctx.session.title,
           type: ctx.session.type
         })
       };
@@ -584,11 +584,11 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
           ctx.session.id,
           (current) => ({ ...current, initialized: true }),
           {
-            playerUserId: (ctx.session as any).participantUserId ?? ctx.incomingMessage.userId,
+            playerUserId: ctx.session.participantRef.id,
             playerDisplayName: resolveSessionParticipantLabel({
               sessionId: ctx.session.id,
-              participantLabel: (ctx.session as any).participantLabel,
-              participantUserId: (ctx.session as any).participantUserId ?? ctx.incomingMessage.userId,
+              participantRef: ctx.session.participantRef,
+              title: ctx.session.title,
               type: ctx.session.type
             })
           }

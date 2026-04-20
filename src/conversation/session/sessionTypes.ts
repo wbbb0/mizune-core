@@ -4,6 +4,12 @@ import type { ChatAttachment } from "#services/workspace/types.ts";
 
 export type SessionDelivery = "onebot" | "web";
 export type SessionSource = "onebot" | "web";
+export interface SessionParticipantRef {
+  kind: "user" | "group";
+  id: string;
+}
+
+export type SessionTitleSource = "default" | "auto" | "manual";
 
 export interface StoredToolCall {
   id: string;
@@ -401,8 +407,9 @@ export interface SessionState {
   source: SessionSource;
   modeId: string;
   setupConfirmed: boolean;
-  participantUserId: string;
-  participantLabel: string | null;
+  participantRef: SessionParticipantRef;
+  title: string | null;
+  titleSource: SessionTitleSource | null;
   replyDelivery: SessionDelivery;
   debugControl: SessionDebugControlState;
   pendingMessages: SessionMessage[];
@@ -438,8 +445,9 @@ export interface PersistedSessionState {
   type: "private" | "group";
   source?: SessionSource;
   modeId?: string;
-  participantUserId?: string;
-  participantLabel?: string | null;
+  participantRef: SessionParticipantRef;
+  title: string | null;
+  titleSource: SessionTitleSource | null;
   replyDelivery?: SessionDelivery;
   debugControl?: {
     enabled?: boolean;

@@ -1,12 +1,21 @@
 // ── Session list ──────────────────────────────────────────────────────────────
 
+export interface SessionParticipantRef {
+  kind: "user" | "group";
+  id: string;
+}
+
+export type SessionTitleSource = "default" | "auto" | "manual";
+
 export interface SessionListItem {
   id: string;
   type: "private" | "group";
   source: "onebot" | "web";
   modeId: string;
   participantUserId: string;
-  participantLabel: string | null;
+  participantRef: SessionParticipantRef;
+  title: string | null;
+  titleSource: SessionTitleSource | null;
   isGenerating: boolean;
   lastActiveAt: number;
 }
@@ -303,7 +312,9 @@ export interface SessionDetailSnapshot {
   source: "onebot" | "web";
   modeId: string;
   participantUserId: string;
-  participantLabel: string | null;
+  participantRef: SessionParticipantRef;
+  title: string | null;
+  titleSource: SessionTitleSource | null;
   debugControl: SessionDebugControlState;
   historySummary: string | null;
   internalTranscript: TranscriptItem[];

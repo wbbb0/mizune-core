@@ -1,8 +1,10 @@
 import type {
   InternalApiConfigSummaryDeps,
   InternalApiPersonaDeps,
+  InternalApiSessionDetail,
   InternalApiSessionDeleteDeps,
   InternalApiSessionReadDeps,
+  InternalApiSessionSummary,
   InternalApiSessionWriteDeps,
   InternalApiUserDeps,
   InternalApiWhitelistDeps
@@ -12,26 +14,42 @@ import type {
   ParsedSwitchSessionModeBody,
   ParsedUpdateSessionModeStateBody
 } from "../routeSupport.ts";
-import type { SessionState } from "#conversation/session/sessionTypes.ts";
+import type { SessionParticipantRef, SessionState } from "#conversation/session/sessionTypes.ts";
 import { getDefaultSessionModeId, listSessionModes, requireSessionModeDefinition, sessionModeSupportsChatType } from "#modes/registry.ts";
-import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
 import { scenarioHostSessionStateSchema, type ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 
 import { isSessionGenerating } from "#conversation/session/sessionQueries.ts";
+import { resolveDefaultSessionTitle } from "#conversation/session/sessionTitle.ts";
 
-function buildSessionSummary(session: SessionState) {
+function resolveSessionParticipantRef(session: Pick<SessionState, "id" | "type"> & { participantRef?: SessionParticipantRef | null | undefined; participantUserId?: string | null | undefined }): SessionParticipantRef {
+  if (session.participantRef) {
+    return session.participantRef;
+  }
+  return {
+    kind: session.type === "group" ? "group" : "user",
+    id: session.participantUserId || session.id
+  };
+}
+
+function toScenarioHostSession(session: SessionState): Pick<SessionState, "id" | "participantRef" | "title"> {
+  return {
+    id: session.id,
+    participantRef: resolveSessionParticipantRef(session),
+    title: session.title
+  };
+}
+
+function buildSessionSummary(session: SessionState): InternalApiSessionSummary {
+  const participantRef = resolveSessionParticipantRef(session);
   return {
     id: session.id,
     type: session.type,
     source: session.source,
     modeId: session.modeId,
-    participantUserId: session.participantUserId,
-    participantLabel: resolveSessionParticipantLabel({
-      sessionId: session.id,
-      participantLabel: session.participantLabel,
-      participantUserId: session.participantUserId,
-      type: session.type
-    }),
+    participantUserId: participantRef.id,
+    participantRef,
+    title: session.title,
+    titleSource: session.titleSource,
     isGenerating: isSessionGenerating(session),
     lastActiveAt: session.lastActiveAt
   };
@@ -95,15 +113,21 @@ function assertSessionModeAllowed(modeId: string, chatType: "private" | "group")
 export async function getSessionDetail(
   deps: InternalApiSessionReadDeps,
   sessionId: string
-) {
+): Promise<InternalApiSessionDetail | null> {
   const existing = deps.sessionManager.listSessions().find((item) => item.id === sessionId);
   if (!existing) {
     return null;
   }
 
+  const { participantLabel: _participantLabel, ...sessionView } = deps.sessionManager.getSessionView(sessionId);
+  const participantRef = resolveSessionParticipantRef(existing);
   return {
     session: {
-      ...deps.sessionManager.getSessionView(sessionId),
+      ...sessionView,
+      participantUserId: sessionView.participantUserId ?? participantRef.id,
+      participantRef,
+      title: existing.title,
+      titleSource: existing.titleSource,
       isGenerating: isSessionGenerating(existing),
       historyRevision: deps.sessionManager.getHistoryRevision(sessionId),
       mutationEpoch: deps.sessionManager.getMutationEpoch(sessionId)
@@ -120,7 +144,7 @@ async function getSessionModeStateDetail(
     return null;
   }
 
-  const state = await deps.scenarioHostStateStore.ensureForSession(session);
+  const state = await deps.scenarioHostStateStore.ensureForSession(toScenarioHostSession(session));
   return {
     kind: "scenario_host",
     state
@@ -135,21 +159,22 @@ export async function createWebSession(
   const modeId = body.modeId ?? getDefaultSessionModeId();
   requireSessionModeDefinition(modeId);
   assertSessionModeAllowed(modeId, "private");
+  const title = body.title?.trim() || resolveDefaultSessionTitle(modeId);
+  const participantRef: SessionParticipantRef = {
+    kind: "user",
+    id: "owner"
+  };
   const session = deps.sessionManager.ensureSession({
     id: sessionId,
     type: "private",
     source: "web",
-    participantUserId: "owner",
-    participantLabel: resolveSessionParticipantLabel({
-      sessionId,
-      participantLabel: body.participantLabel,
-      participantUserId: "owner",
-      type: "private"
-    })
+    participantRef,
+    title,
+    titleSource: body.title?.trim() ? "manual" : "default"
   });
   deps.sessionManager.setModeId(session.id, modeId, { appendSwitchMarker: false });
   if (modeId === "scenario_host") {
-    await deps.scenarioHostStateStore.ensureForSession(deps.sessionManager.getSession(session.id));
+    await deps.scenarioHostStateStore.ensureForSession(toScenarioHostSession(deps.sessionManager.getSession(session.id)));
   }
   await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(session.id));
   return {
@@ -168,7 +193,7 @@ export async function switchSessionMode(
   assertSessionModeAllowed(body.modeId, session.type);
   deps.sessionManager.setModeId(sessionId, body.modeId);
   if (body.modeId === "scenario_host") {
-    await deps.scenarioHostStateStore.ensureForSession(session);
+    await deps.scenarioHostStateStore.ensureForSession(toScenarioHostSession(session));
   }
   await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(sessionId));
   return {

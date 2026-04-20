@@ -11,6 +11,7 @@ import type {
 import { projectCompressionHistorySnapshot, projectCompressionHistorySnapshotByTokens, projectLlmVisibleHistoryFromTranscript } from "./sessionTranscript.ts";
 import type { AppConfig } from "#config/config.ts";
 import { createTranscriptGroupId, normalizeTranscriptItem } from "./transcriptMetadata.ts";
+import { resolveSessionParticipantLabel } from "./sessionIdentity.ts";
 
 function normalizeTranscriptItems(items: InternalTranscriptItem[]): InternalTranscriptItem[] {
   return items.map((item) => normalizeTranscriptItem(item, item.groupId ?? createTranscriptGroupId()));
@@ -20,6 +21,7 @@ function normalizeTranscriptItems(items: InternalTranscriptItem[]): InternalTran
 export function cloneSessionState(session: SessionState): SessionState {
   return {
     ...session,
+    participantRef: { ...session.participantRef },
     debugControl: { ...session.debugControl },
     pendingMessages: [...session.pendingMessages],
     pendingSteerMessages: [...session.pendingSteerMessages],
@@ -88,13 +90,18 @@ export function getSessionViewSnapshot(session: SessionState): {
   sentMessages: SessionSentMessage[];
   lastActiveAt: number;
 } {
+  const participantLabel = resolveSessionParticipantLabel({
+    sessionId: session.id,
+    participantRef: session.participantRef,
+    title: session.title
+  });
   return {
     id: session.id,
     type: session.type,
     source: session.source,
     modeId: session.modeId,
-    participantUserId: session.participantUserId,
-    participantLabel: session.participantLabel,
+    participantUserId: session.participantRef.id,
+    participantLabel,
     debugControl: { ...session.debugControl },
     historySummary: session.historySummary,
     internalTranscript: normalizeTranscriptItems(session.internalTranscript),

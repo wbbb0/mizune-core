@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { Ellipsis } from "lucide-vue-next";
-import type { SessionListItem } from "@/api/types";
+import type { NormalizedSessionListItem } from "@/stores/sessionDisplay";
 
 const props = defineProps<{
-  session: SessionListItem;
+  session: NormalizedSessionListItem;
   selected: boolean;
 }>();
 

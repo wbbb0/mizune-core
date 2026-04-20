@@ -165,6 +165,13 @@ async function main() {
       assert.equal(response.statusCode, 200);
       assert.equal(response.json().session.id, "qqbot:p:10001");
       assert.equal(response.json().session.modeId, "rp_assistant");
+      assert.equal(response.json().session.title, "Alice");
+      assert.equal(response.json().session.titleSource, "manual");
+      assert.deepEqual(response.json().session.participantRef, {
+        kind: "user",
+        id: "10001"
+      });
+      assert.ok(!("participantLabel" in response.json().session));
       assert.equal(response.json().session.historyRevision, 0);
       assert.equal(response.json().modeState, null);
     } finally {
@@ -354,6 +361,8 @@ async function main() {
       modeId: "rp_assistant",
       participantUserId: "20001",
       participantLabel: "Group 20001",
+      title: "Group 20001",
+      titleSource: "manual",
       phase: { kind: "idle" },
       pendingMessages: [],
       internalTranscript: [],
@@ -538,20 +547,25 @@ async function main() {
     }
   });
 
-  await runCase("internal api creates and deletes web sessions", async () => {
+  await runCase("internal api creates web sessions with default title and participantRef", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
       const createResponse = await app.inject({
         method: "POST",
         url: "/api/sessions",
-        payload: {
-          participantLabel: "Web User"
-        }
+        payload: { modeId: "rp_assistant" }
       });
 
       assert.equal(createResponse.statusCode, 200);
       assert.equal(createResponse.json().session.source, "web");
+      assert.equal(createResponse.json().session.title, "New Chat");
+      assert.equal(createResponse.json().session.titleSource, "default");
+      assert.deepEqual(createResponse.json().session.participantRef, {
+        kind: "user",
+        id: "owner"
+      });
+      assert.ok(!("participantLabel" in createResponse.json().session));
       assert.equal(createResponse.json().session.participantUserId, "owner");
 
       const sessionId = createResponse.json().session.id;
@@ -560,7 +574,15 @@ async function main() {
         url: "/api/sessions"
       });
       assert.equal(listResponse.statusCode, 200);
-      assert.ok(listResponse.json().sessions.some((item: { id: string }) => item.id === sessionId));
+      const createdSession = listResponse.json().sessions.find((item: { id: string }) => item.id === sessionId);
+      assert.ok(createdSession);
+      assert.equal(createdSession.title, "New Chat");
+      assert.equal(createdSession.titleSource, "default");
+      assert.deepEqual(createdSession.participantRef, {
+        kind: "user",
+        id: "owner"
+      });
+      assert.ok(!("participantLabel" in createdSession));
 
       const deleteResponse = await app.inject({
         method: "DELETE",
@@ -578,6 +600,55 @@ async function main() {
     }
   });
 
+  await runCase("create session accepts manual title and marks it manual", async () => {
+    const app = await createInternalApiApp(createInternalApiDeps());
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/sessions",
+        payload: { modeId: "scenario_host", title: "Warehouse infiltration" }
+      });
+
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.json().session.title, "Warehouse infiltration");
+      assert.equal(response.json().session.titleSource, "manual");
+      assert.ok(!("participantLabel" in response.json().session));
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("internal api creates scenario_host web sessions with the scenario default title", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const createResponse = await app.inject({
+        method: "POST",
+        url: "/api/sessions",
+        payload: {
+          modeId: "scenario_host"
+        }
+      });
+
+      assert.equal(createResponse.statusCode, 200);
+      const sessionId = createResponse.json().session.id;
+      assert.equal(createResponse.json().session.source, "web");
+      assert.equal(createResponse.json().session.title, "New Scenario");
+      assert.equal(createResponse.json().session.titleSource, "default");
+      assert.deepEqual(createResponse.json().session.participantRef, {
+        kind: "user",
+        id: "owner"
+      });
+      assert.ok(!("participantLabel" in createResponse.json().session));
+      assert.equal(createResponse.json().session.participantUserId, "owner");
+      assert.equal(deps.__state.sessions.find((item) => item.id === sessionId)?.title, "New Scenario");
+      assert.equal(deps.sessionManager.getPersistedSession(sessionId).title, "New Scenario");
+      assert.equal(deps.sessionManager.getPersistedSession(sessionId).titleSource, "default");
+    } finally {
+      await app.close();
+    }
+  });
+
   await runCase("internal api web-turn starts turn and streams page-scoped response without onebot send", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
@@ -585,7 +656,7 @@ async function main() {
       const createResponse = await app.inject({
         method: "POST",
         url: "/api/sessions",
-        payload: { participantLabel: "Alice" }
+        payload: { title: "Alice" }
       });
       const sessionId = createResponse.json().session.id;
 

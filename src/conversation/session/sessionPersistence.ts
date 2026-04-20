@@ -22,8 +22,12 @@ const persistedSessionSchema = z.object({
   type: z.enum(["private", "group"]),
   source: z.enum(["onebot", "web"]).default("onebot"),
   modeId: z.string().min(1).default(getDefaultSessionModeId()),
-  participantUserId: z.string().min(1).optional(),
-  participantLabel: z.string().min(1).nullable().optional(),
+  participantRef: z.object({
+    kind: z.enum(["user", "group"]),
+    id: z.string().min(1)
+  }),
+  title: z.string().nullable(),
+  titleSource: z.enum(["default", "auto", "manual"]).nullable(),
   replyDelivery: z.enum(["onebot", "web"]).default("onebot"),
   pendingMessages: z.array(z.object({
     userId: z.string().min(1),

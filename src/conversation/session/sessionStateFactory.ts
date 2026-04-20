@@ -1,12 +1,12 @@
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import { getDefaultSessionModeId } from "#modes/registry.ts";
-import type { SessionState, PersistedSessionState } from "./sessionTypes.ts";
+import type { SessionParticipantRef, SessionState, PersistedSessionState, SessionTitleSource } from "./sessionTypes.ts";
 import {
   buildSessionId,
-  deriveParticipantUserId,
   getSessionSource,
-  resolveSessionParticipantLabel
+  resolveSessionParticipantRef
 } from "./sessionIdentity.ts";
+import { resolveDefaultSessionTitle } from "./sessionTitle.ts";
 
 // Creates and converts runtime session state snapshots.
 
@@ -15,23 +15,25 @@ export function createSessionState(target: {
   id: string;
   type: "private" | "group";
   source?: "onebot" | "web";
-  participantUserId?: string;
-  participantLabel?: string | null;
+  participantRef?: SessionParticipantRef;
+  title?: string | null;
+  titleSource?: SessionTitleSource | null;
 }): SessionState {
-  const participantUserId = target.participantUserId ?? deriveParticipantUserId(target.id, target.type);
+  const modeId = getDefaultSessionModeId();
+  const participantRef = target.participantRef ?? resolveSessionParticipantRef({
+    sessionId: target.id,
+    type: target.type
+  });
+  const normalizedTitle = String(target.title ?? "").trim();
   return {
     id: target.id,
     type: target.type,
     source: target.source ?? getSessionSource(target.id),
-    modeId: getDefaultSessionModeId(),
+    modeId,
     setupConfirmed: false,
-    participantUserId,
-    participantLabel: resolveSessionParticipantLabel({
-      sessionId: target.id,
-      participantLabel: target.participantLabel,
-      participantUserId,
-      type: target.type
-    }),
+    participantRef,
+    title: normalizedTitle || resolveDefaultSessionTitle(modeId),
+    titleSource: target.titleSource ?? (normalizedTitle ? "manual" : "default"),
     replyDelivery: target.source ?? getSessionSource(target.id),
     debugControl: {
       enabled: false,
@@ -63,7 +65,7 @@ export function createSessionState(target: {
     generationAbortController: null,
     responseAbortController: null,
     activeAssistantResponse: null
-  };
+  } as SessionState;
 }
 
 // Derives a stable session id from an incoming chat message.
@@ -71,20 +73,22 @@ export { buildSessionId };
 
 // Restores a persisted session snapshot into runtime state.
 export function restoreSessionState(item: PersistedSessionState): SessionState {
-  const participantUserId = item.participantUserId ?? deriveParticipantUserId(item.id, item.type);
+  const modeId = item.modeId ?? getDefaultSessionModeId();
+  const participantRef = resolveSessionParticipantRef({
+    sessionId: item.id,
+    type: item.type,
+    participantRef: item.participantRef
+  });
+  const title = String(item.title ?? "").trim() || resolveDefaultSessionTitle(modeId);
   return {
     id: item.id,
     type: item.type,
     source: item.source ?? getSessionSource(item.id),
-    modeId: item.modeId ?? getDefaultSessionModeId(),
+    modeId,
     setupConfirmed: false,
-    participantUserId,
-    participantLabel: resolveSessionParticipantLabel({
-      sessionId: item.id,
-      participantLabel: item.participantLabel,
-      participantUserId,
-      type: item.type
-    }),
+    participantRef,
+    title,
+    titleSource: item.titleSource ?? (String(item.title ?? "").trim() ? "manual" : "default"),
     replyDelivery: item.replyDelivery ?? item.source ?? getSessionSource(item.id),
     debugControl: {
       enabled: item.debugControl?.enabled === true,
@@ -159,7 +163,7 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
     generationAbortController: null,
     responseAbortController: null,
     activeAssistantResponse: null
-  };
+  } as SessionState;
 }
 
 // Converts runtime session state into its persisted snapshot form.
@@ -169,8 +173,9 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     type: session.type,
     source: session.source,
     modeId: session.modeId,
-    participantUserId: session.participantUserId,
-    participantLabel: session.participantLabel,
+    participantRef: session.participantRef,
+    title: session.title,
+    titleSource: session.titleSource,
     replyDelivery: session.replyDelivery,
     debugControl: {
       enabled: session.debugControl.enabled

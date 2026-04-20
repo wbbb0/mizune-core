@@ -3,7 +3,7 @@ import type { Logger } from "pino";
 import { FileSchemaStore } from "#data/fileSchemaStore.ts";
 import type { AppConfig } from "#config/config.ts";
 import type { SessionState } from "#conversation/session/sessionTypes.ts";
-import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
+import { resolveSessionParticipantLabel, resolveSessionParticipantRef } from "#conversation/session/sessionIdentity.ts";
 import {
   createInitialScenarioHostSessionState,
   scenarioHostSessionStateSchema,
@@ -58,13 +58,18 @@ export class ScenarioHostStateStore {
     );
   }
 
-  async ensureForSession(session: Pick<SessionState, "id" | "participantUserId" | "participantLabel">): Promise<ScenarioHostSessionState> {
+  async ensureForSession(session: Pick<SessionState, "id" | "participantRef" | "title">): Promise<ScenarioHostSessionState> {
+    const participantRef = resolveSessionParticipantRef({
+      sessionId: session.id,
+      type: "private",
+      participantRef: session.participantRef
+    });
     return this.ensure(session.id, {
-      playerUserId: session.participantUserId,
+      playerUserId: participantRef.id,
       playerDisplayName: resolveSessionParticipantLabel({
         sessionId: session.id,
-        participantLabel: session.participantLabel,
-        participantUserId: session.participantUserId
+        participantRef,
+        title: session.title
       })
     });
   }

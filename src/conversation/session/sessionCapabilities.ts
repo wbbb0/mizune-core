@@ -11,6 +11,7 @@ import type {
   SessionState,
   SessionToolEvent,
   SessionUsageSnapshot,
+  SessionParticipantRef,
   TranscriptItemDeliveryRef,
   TranscriptItemRuntimeExclusionReason
 } from "./sessionTypes.ts";
@@ -70,24 +71,18 @@ export interface SessionStreamAccess {
   subscribeSession(sessionId: string, listener: () => void): () => void;
 }
 
-export type SessionWebStreamState = Pick<
-  SessionState,
-  | "id"
-  | "type"
-  | "source"
-  | "modeId"
-  | "participantUserId"
-  | "participantLabel"
-  | "pendingMessages"
-  | "phase"
-  | "historyRevision"
-  | "mutationEpoch"
-  | "lastActiveAt"
-  | "internalTranscript"
-  | "recentToolEvents"
-  | "activeAssistantResponse"
-  | "debounceTimer"
->;
+export interface SessionWebStreamState {
+  id: string;
+  type: "private" | "group";
+  modeId: string;
+  pendingMessages: SessionMessage[];
+  phase: SessionPhase;
+  mutationEpoch: number;
+  lastActiveAt: number;
+  internalTranscript: InternalTranscriptItem[];
+  activeAssistantResponse: SessionState["activeAssistantResponse"];
+  debounceTimer: NodeJS.Timeout | null;
+}
 
 export interface SessionWebStreamAccess {
   getSession(sessionId: string): SessionWebStreamState;
@@ -101,8 +96,9 @@ export interface SessionToolRuntimeAccess {
     id: string;
     type: "private" | "group";
     source?: "onebot" | "web";
-    participantUserId?: string;
-    participantLabel?: string | null;
+    participantRef?: SessionParticipantRef;
+    title?: string | null;
+    titleSource?: "default" | "auto" | "manual" | null;
   }): SessionState;
   getSession(sessionId: string): SessionState;
   getSessionView(sessionId: string): SessionViewSnapshot;
@@ -183,8 +179,9 @@ export interface SessionAdminMutationAccess {
     id: string;
     type: "private" | "group";
     source?: "onebot" | "web";
-    participantUserId?: string;
-    participantLabel?: string | null;
+    participantRef?: SessionParticipantRef;
+    title?: string | null;
+    titleSource?: "default" | "auto" | "manual" | null;
   }): SessionState;
   getSession(sessionId: string): SessionState;
   setModeId(sessionId: string, modeId: string, options?: { appendSwitchMarker?: boolean }): boolean;
@@ -229,8 +226,9 @@ export interface SessionInternalTriggerDispatchAccess {
     id: string;
     type: "private" | "group";
     source?: "onebot" | "web";
-    participantUserId?: string;
-    participantLabel?: string | null;
+    participantRef?: SessionParticipantRef;
+    title?: string | null;
+    titleSource?: "default" | "auto" | "manual" | null;
   }): SessionState;
   hasActiveResponse(sessionId: string): boolean;
   hasPendingInternalTriggers(sessionId: string): boolean;
@@ -243,8 +241,9 @@ export interface SessionDirectCommandAccess {
     id: string;
     type: "private" | "group";
     source?: "onebot" | "web";
-    participantUserId?: string;
-    participantLabel?: string | null;
+    participantRef?: SessionParticipantRef;
+    title?: string | null;
+    titleSource?: "default" | "auto" | "manual" | null;
   }): SessionState;
   appendDebugMarker(sessionId: string, marker: SessionDebugMarker): void;
   appendSyntheticPendingMessage(

@@ -63,7 +63,7 @@ function closeCreateDialog() {
 }
 
 async function onCreateSessionSubmit(payload: {
-  participantLabel?: string;
+  title?: string;
   modeId?: string;
 }) {
   createDialogBusy.value = true;
