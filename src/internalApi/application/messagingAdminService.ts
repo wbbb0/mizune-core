@@ -94,7 +94,10 @@ export function createAdminMessagingService(input: {
 
     async startWebSessionTurn(params, body) {
       const session = input.sessionManager.getSession(params.sessionId);
-      const senderName = body.senderName ?? body.userId;
+      const effectiveUserId = session.type === "group"
+        ? body.userId
+        : session.participantUserId;
+      const senderName = body.senderName ?? effectiveUserId;
       const turnState = broker.create(params.sessionId);
 
       broker.publish(turnState, {
@@ -112,7 +115,7 @@ export function createAdminMessagingService(input: {
         turnState,
         sessionId: params.sessionId,
         message: {
-          userId: body.userId,
+          userId: effectiveUserId,
           senderName,
           text: body.text,
           imageIds: body.imageIds,

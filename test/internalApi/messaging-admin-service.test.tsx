@@ -408,6 +408,188 @@ async function main() {
     assert.equal(terminalEvent.type, "turn_error");
     assert.match(String(terminalEvent.message), /Session was deleted before session response completed/);
   });
+
+  await runCase("web turn locks participant userId for web private sessions", async () => {
+    const sessionId = "web:web-private";
+    const sessionManager = new SessionManager(createTestAppConfig());
+    sessionManager.ensureSession({
+      id: sessionId,
+      type: "private",
+      source: "web",
+      participantUserId: "owner",
+      participantLabel: "Owner"
+    });
+
+    let resolveIncoming: ((value: { userId: string; senderName: string; chatType: string }) => void) | null = null;
+    const incomingMessagePromise = new Promise<{ userId: string; senderName: string; chatType: string }>((resolve) => {
+      resolveIncoming = resolve;
+    });
+
+    const service = createAdminMessagingService({
+      config: {
+        onebot: {
+          enabled: true
+        }
+      },
+      oneBotClient: {
+        async sendText() {
+          return {};
+        }
+      } as any,
+      chatFileStore: {
+        async getMany() {
+          return [];
+        }
+      } as any,
+      sessionManager,
+      async handleWebIncomingMessage(incomingMessage) {
+        resolveIncoming?.({
+          userId: incomingMessage.userId,
+          senderName: incomingMessage.senderName,
+          chatType: incomingMessage.chatType
+        });
+      }
+    });
+
+    await service.startWebSessionTurn(
+      { sessionId },
+      {
+        userId: "manual-user",
+        senderName: "Manual Sender",
+        text: "hello",
+        imageIds: [],
+        attachmentIds: []
+      }
+    );
+
+    assert.deepEqual(await incomingMessagePromise, {
+      userId: "owner",
+      senderName: "Manual Sender",
+      chatType: "private"
+    });
+  });
+
+  await runCase("web turn locks participant userId for onebot private sessions", async () => {
+    const sessionId = "qqbot:p:10001";
+    const sessionManager = new SessionManager(createTestAppConfig());
+    sessionManager.ensureSession({
+      id: sessionId,
+      type: "private",
+      source: "onebot",
+      participantUserId: "owner",
+      participantLabel: "Owner"
+    });
+
+    let resolveIncoming: ((value: { userId: string; senderName: string; chatType: string }) => void) | null = null;
+    const incomingMessagePromise = new Promise<{ userId: string; senderName: string; chatType: string }>((resolve) => {
+      resolveIncoming = resolve;
+    });
+
+    const service = createAdminMessagingService({
+      config: {
+        onebot: {
+          enabled: true
+        }
+      },
+      oneBotClient: {
+        async sendText() {
+          return {};
+        }
+      } as any,
+      chatFileStore: {
+        async getMany() {
+          return [];
+        }
+      } as any,
+      sessionManager,
+      async handleWebIncomingMessage(incomingMessage) {
+        resolveIncoming?.({
+          userId: incomingMessage.userId,
+          senderName: incomingMessage.senderName,
+          chatType: incomingMessage.chatType
+        });
+      }
+    });
+
+    await service.startWebSessionTurn(
+      { sessionId },
+      {
+        userId: "manual-user",
+        senderName: "Manual Sender",
+        text: "hello",
+        imageIds: [],
+        attachmentIds: []
+      }
+    );
+
+    assert.deepEqual(await incomingMessagePromise, {
+      userId: "owner",
+      senderName: "Manual Sender",
+      chatType: "private"
+    });
+  });
+
+  await runCase("web turn keeps custom userId for group sessions", async () => {
+    const sessionId = "qqbot:g:20001";
+    const sessionManager = new SessionManager(createTestAppConfig());
+    sessionManager.ensureSession({
+      id: sessionId,
+      type: "group",
+      source: "onebot",
+      participantUserId: "room:20001",
+      participantLabel: "Test Group"
+    });
+
+    let resolveIncoming: ((value: { userId: string; senderName: string; chatType: string; groupId?: string }) => void) | null = null;
+    const incomingMessagePromise = new Promise<{ userId: string; senderName: string; chatType: string; groupId?: string }>((resolve) => {
+      resolveIncoming = resolve;
+    });
+
+    const service = createAdminMessagingService({
+      config: {
+        onebot: {
+          enabled: true
+        }
+      },
+      oneBotClient: {
+        async sendText() {
+          return {};
+        }
+      } as any,
+      chatFileStore: {
+        async getMany() {
+          return [];
+        }
+      } as any,
+      sessionManager,
+      async handleWebIncomingMessage(incomingMessage) {
+        resolveIncoming?.({
+          userId: incomingMessage.userId,
+          senderName: incomingMessage.senderName,
+          chatType: incomingMessage.chatType,
+          ...(incomingMessage.groupId ? { groupId: incomingMessage.groupId } : {})
+        });
+      }
+    });
+
+    await service.startWebSessionTurn(
+      { sessionId },
+      {
+        userId: "manual-user",
+        senderName: "Manual Sender",
+        text: "hello",
+        imageIds: [],
+        attachmentIds: []
+      }
+    );
+
+    assert.deepEqual(await incomingMessagePromise, {
+      userId: "manual-user",
+      senderName: "Manual Sender",
+      chatType: "group",
+      groupId: "20001"
+    });
+  });
 }
 
 main().catch((error) => {

@@ -15,6 +15,7 @@ import type { TranscriptEntry } from "@/stores/sessions";
 import type { TranscriptItem as SessionTranscriptItem } from "@/api/types";
 import { useToastStore } from "@/stores/toasts";
 import { buildChatTimelineItems } from "./chatTimeline";
+import { resolveComposerUserIdentity } from "./composerUserIdentity";
 
 const store = useSessionsStore();
 const auth  = useAuthStore();
@@ -65,23 +66,21 @@ const statusColor = computed(() => {
   return "yellow";
 });
 
-// Composer userId logic
 const isPrivate = computed(() => session.value?.type === "private");
 
-// OneBot private sessions use a fixed remote user ID.
-const lockedUserId = computed(() => {
-  if (!session.value || !isPrivate.value || session.value.source !== "onebot") return undefined;
-  return session.value.participantUserId;
-});
+const composerIdentity = computed(() => resolveComposerUserIdentity({
+  session: session.value
+    ? {
+        type: session.value.type,
+        source: session.value.source,
+        participantUserId: session.value.participantUserId
+      }
+    : null,
+  ownerId: auth.ownerId
+}));
 
-// Web sessions default to the participant identity; OneBot group sessions use the owner identity.
-const defaultUserId = computed(() =>
-  session.value?.source === "web"
-    ? session.value.participantUserId
-    : !isPrivate.value
-      ? (auth.ownerId ?? undefined)
-      : undefined
-);
+const lockedUserId = computed(() => composerIdentity.value.lockedUserId);
+const defaultUserId = computed(() => composerIdentity.value.defaultUserId);
 
 async function onSend(
   payload: { userId: string; text: string; imageIds: string[]; attachmentIds: string[] },
