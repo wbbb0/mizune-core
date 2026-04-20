@@ -1,7 +1,10 @@
 export interface ComposerIdentitySession {
   type: "private" | "group";
   source: "onebot" | "web";
-  participantUserId: string;
+  participantRef: {
+    kind: "user" | "group";
+    id: string;
+  };
 }
 
 export function resolveComposerUserIdentity(input: {
@@ -20,7 +23,7 @@ export function resolveComposerUserIdentity(input: {
 
   if (input.session.type === "private") {
     return {
-      lockedUserId: input.session.participantUserId,
+      lockedUserId: input.session.participantRef.kind === "user" ? input.session.participantRef.id : undefined,
       defaultUserId: undefined
     };
   }

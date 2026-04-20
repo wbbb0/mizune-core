@@ -15,7 +15,7 @@ async function main() {
       session: {
         type: "private",
         source: "web",
-        participantUserId: "owner"
+        participantRef: { kind: "user", id: "owner" }
       },
       ownerId: "owner"
     }), {
@@ -29,7 +29,7 @@ async function main() {
       session: {
         type: "private",
         source: "onebot",
-        participantUserId: "owner"
+        participantRef: { kind: "user", id: "owner" }
       },
       ownerId: "owner"
     }), {
@@ -43,7 +43,7 @@ async function main() {
       session: {
         type: "group",
         source: "onebot",
-        participantUserId: "room:20001"
+        participantRef: { kind: "group", id: "room:20001" }
       },
       ownerId: "owner"
     }), {

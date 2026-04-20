@@ -23,6 +23,13 @@ function debugSession(event: string, detail?: Record<string, unknown>): void {
   console.debug("[sessions]", event, detail ?? {});
 }
 
+function resolveParticipantUserId(ref: SessionParticipantRef | null | undefined): string | null {
+  if (!ref || ref.kind !== "user") {
+    return null;
+  }
+  return ref.id || null;
+}
+
 export interface TranscriptEntry {
   id: string;
   eventId: string;
@@ -35,11 +42,10 @@ export interface ActiveSession {
   type: "private" | "group";
   source: "onebot" | "web";
   modeId: string;
-  participantUserId: string;
   participantRef: SessionParticipantRef;
   title: string | null;
   titleSource: "default" | "auto" | "manual" | null;
-  participantLabel?: string | null;
+  displayLabel: string | null;
   mutationEpoch: number;
   transcriptCount: number;
   lastActiveAt: number;
@@ -160,11 +166,10 @@ export const useSessionsStore = defineStore("sessions", () => {
         type: "private",
         source: "web",
         modeId: "rp_assistant",
-        participantUserId: "",
         participantRef: { kind: "user", id: sessionId },
         title: null,
         titleSource: null,
-        participantLabel: null,
+        displayLabel: null,
         mutationEpoch: currentEpoch,
         transcriptCount: requestedTranscriptCount,
         lastActiveAt: 0,
@@ -360,12 +365,11 @@ export const useSessionsStore = defineStore("sessions", () => {
       id: sessionId,
       type: selected?.type ?? "private",
       source: selected?.source ?? "web",
-      participantUserId: selected?.participantUserId ?? "",
       modeId: selected?.modeId ?? "rp_assistant",
-      participantRef: selected?.participantRef ?? { kind: "user", id: selected?.participantUserId ?? sessionId },
+      participantRef: selected?.participantRef ?? { kind: "user", id: sessionId },
       title: selected?.title ?? null,
       titleSource: selected?.titleSource ?? null,
-      participantLabel: selected ? selected.participantLabel : null,
+      displayLabel: selected?.displayLabel ?? null,
       mutationEpoch: 0,
       transcriptCount: 0,
       lastActiveAt: selected?.lastActiveAt ?? 0,
@@ -375,7 +379,7 @@ export const useSessionsStore = defineStore("sessions", () => {
       transcriptHasMore: false,
       transcriptLoadingMore: false,
       streamingText: null,
-      composerUserId: selected?.participantUserId ?? null
+      composerUserId: resolveParticipantUserId(selected?.participantRef)
     };
     void _initTranscriptAndStream(sessionId);
   }

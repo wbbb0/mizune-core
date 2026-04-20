@@ -5,27 +5,23 @@ import { sessionsApi } from "@/api/sessions";
 import type { SessionDetailResult } from "@/api/types";
 import type { ActiveSession } from "@/stores/sessions";
 import { ApiError } from "@/api/client";
-import { useSessionsStore } from "@/stores/sessions";
 import ScenarioHostStateEditor from "./ScenarioHostStateEditor.vue";
 
 const props = defineProps<{
   session: ActiveSession;
 }>();
 
-const sessionsStore = useSessionsStore();
-const session = computed(() => props.session);
 const detail = ref<SessionDetailResult | null>(null);
 const loading = ref(false);
-const titleSaving = ref(false);
-const titleDraft = ref("");
 const errorMessage = ref("");
 
 watch(() => [props.session.id, props.session.modeId] as const, () => {
   void loadDetail();
 }, { immediate: true });
 
-const isWebSession = computed(() => props.session.source === "web");
 const sessionTitle = computed(() => detail.value?.session.title ?? props.session.title ?? "未设置");
+const participantKindLabel = computed(() => props.session.participantRef.kind === "group" ? "群聊" : "用户");
+const participantIdLabel = computed(() => props.session.participantRef.id || "未设置");
 
 const commonFields = computed(() => [
   ["Session ID", props.session.id],
@@ -33,8 +29,8 @@ const commonFields = computed(() => [
   ["类型", props.session.type],
   ["模式", props.session.modeId],
   ["标题", sessionTitle.value],
-  ["参与者 ID", props.session.participantUserId],
-  ["参与者名称", props.session.participantLabel ?? "未设置"],
+  ["主体类型", participantKindLabel.value],
+  ["主体 ID", participantIdLabel.value],
   ["连接状态", props.session.streamStatus],
   ["当前阶段", props.session.phase.label],
   ["消息计数", String(props.session.transcriptCount)],
@@ -59,69 +55,12 @@ async function loadDetail() {
   errorMessage.value = "";
   try {
     detail.value = await sessionsApi.fetchDetail(props.session.id);
-    titleDraft.value = detail.value?.session.title ?? "";
   } catch (error: unknown) {
     errorMessage.value = error instanceof ApiError || error instanceof Error
       ? error.message
       : "载入会话状态失败";
   } finally {
     loading.value = false;
-  }
-}
-
-async function saveTitle() {
-  if (!isWebSession.value || titleSaving.value) {
-    return;
-  }
-  titleSaving.value = true;
-  errorMessage.value = "";
-  try {
-    const result = await sessionsStore.renameSessionTitle(props.session.id, titleDraft.value);
-    if (detail.value) {
-      detail.value = {
-        ...detail.value,
-        session: {
-          ...detail.value.session,
-          title: result.title,
-          titleSource: result.titleSource
-        }
-      };
-    }
-    titleDraft.value = result.title ?? "";
-  } catch (error: unknown) {
-    errorMessage.value = error instanceof ApiError || error instanceof Error
-      ? error.message
-      : "保存标题失败";
-  } finally {
-    titleSaving.value = false;
-  }
-}
-
-async function regenerateTitle() {
-  if (!isWebSession.value || titleSaving.value) {
-    return;
-  }
-  titleSaving.value = true;
-  errorMessage.value = "";
-  try {
-    const result = await sessionsStore.regenerateSessionTitle(props.session.id);
-    if (detail.value) {
-      detail.value = {
-        ...detail.value,
-        session: {
-          ...detail.value.session,
-          title: result.title,
-          titleSource: result.titleSource
-        }
-      };
-    }
-    titleDraft.value = result.title ?? "";
-  } catch (error: unknown) {
-    errorMessage.value = error instanceof ApiError || error instanceof Error
-      ? error.message
-      : "重新生成标题失败";
-  } finally {
-    titleSaving.value = false;
   }
 }
 
@@ -166,28 +105,10 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
         <section class="rounded-lg border border-border-default bg-surface-panel p-4">
           <div class="text-ui font-medium text-text-secondary">会话概览</div>
           <div class="mt-3 rounded-lg border border-border-default bg-surface-sidebar p-3">
-            <div class="flex flex-wrap items-start justify-between gap-3">
-              <div class="min-w-0 flex-1">
-                <div class="text-small text-text-subtle">标题</div>
-                <input
-                  v-if="isWebSession"
-                  v-model="titleDraft"
-                  class="input-base mt-1 w-full text-ui"
-                  :disabled="titleSaving || loading"
-                />
-                <div v-else class="mt-1 break-all text-ui text-text-secondary">{{ sessionTitle }}</div>
-                <div class="mt-1 text-small text-text-subtle">
-                  {{ detail?.session.titleSource === 'manual' ? '手动设置' : detail?.session.titleSource === 'auto' ? '自动生成' : '默认标题' }}
-                </div>
-              </div>
-              <div v-if="isWebSession" class="flex shrink-0 flex-wrap items-center gap-2">
-                <button class="btn btn-secondary" type="button" :disabled="titleSaving || loading" @click="saveTitle">
-                  {{ titleSaving ? "保存中…" : "保存标题" }}
-                </button>
-                <button class="btn btn-primary" type="button" :disabled="titleSaving || loading" @click="regenerateTitle">
-                  {{ titleSaving ? "生成中…" : "重新生成标题" }}
-                </button>
-              </div>
+            <div class="text-small text-text-subtle">标题</div>
+            <div class="mt-1 break-all text-ui text-text-secondary">{{ sessionTitle }}</div>
+            <div class="mt-1 text-small text-text-subtle">
+              {{ detail?.session.titleSource === 'manual' ? '手动设置' : detail?.session.titleSource === 'auto' ? '自动生成' : '默认标题' }}
             </div>
           </div>
           <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">

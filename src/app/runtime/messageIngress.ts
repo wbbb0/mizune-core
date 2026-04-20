@@ -24,6 +24,7 @@ type DirectCommandDeps = Pick<
   | "historyCompressor"
   | "setupStore"
   | "scenarioHostStateStore"
+  | "sessionCaptioner"
   | "userIdentityStore"
 > & {
   sessionManager: SessionDirectCommandAccess & Pick<SessionMessagingAccess, "appendAssistantHistory" | "appendInternalTranscript">;
@@ -116,6 +117,7 @@ function createDeliveryHandleDirectCommand(
     sessionManager: deps.sessionManager,
     oneBotClient: deps.oneBotClient,
     logger: deps.logger,
+    sessionCaptioner: deps.sessionCaptioner,
     scenarioHostStateStore: deps.scenarioHostStateStore,
     forceCompactSession: async (sessionId, retainMessageCount) => (
       deps.historyCompressor.forceCompact(sessionId, retainMessageCount)

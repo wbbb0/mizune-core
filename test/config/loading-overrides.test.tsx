@@ -133,6 +133,12 @@ async function main() {
             timeoutMs: 20000,
             recentMessageCount: 6,
             enableThinking: false
+          },
+          sessionCaptioner: {
+            enabled: true,
+            modelRef: "turnPlanner",
+            timeoutMs: 15000,
+            enableThinking: false
           }
         }
       });
@@ -156,6 +162,7 @@ async function main() {
       assert.equal(config.llm.providers.dashscope?.baseUrl, "https://dashscope.aliyuncs.com/compatible-mode/v1");
       assert.deepEqual(config.llm.mainRouting.smallModelRef, ["qwen35_lan"]);
       assert.deepEqual(config.llm.mainRouting.largeModelRef, ["qwen35_lan"]);
+      assert.deepEqual(config.llm.sessionCaptioner.modelRef, ["turnPlanner"]);
       assert.deepEqual(config.llm.turnPlanner.modelRef, ["qwen35_lan"]);
       assert.equal(config.llm.models.qwen35_lan, undefined);
     });

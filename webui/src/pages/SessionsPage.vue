@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { Plus, RefreshCw } from "lucide-vue-next";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import WorkbenchDialog from "@/components/common/WorkbenchDialog.vue";
 import SessionListItem from "@/components/sessions/SessionListItem.vue";
 import ChatPanel from "@/components/sessions/ChatPanel.vue";
 import CreateSessionDialog from "@/components/sessions/CreateSessionDialog.vue";
+import { ApiError } from "@/api/client";
+import { sessionsApi } from "@/api/sessions";
+import type { SessionDetailResult } from "@/api/types";
 import { useSessionsStore } from "@/stores/sessions";
 
 const store   = useSessionsStore();
@@ -16,6 +19,9 @@ const createDialogBusy = ref(false);
 const createDialogError = ref("");
 const actionsDialogSessionId = ref<string | null>(null);
 const actionsDialogBusy = ref(false);
+const actionsDialogError = ref("");
+const actionsDialogTitleDraft = ref("");
+const actionsDialogDetail = ref<SessionDetailResult["session"] | null>(null);
 
 // Fallback polling: only refresh list while stream is unavailable.
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -102,14 +108,101 @@ async function onSwitchSessionMode(sessionId: string, modeId: string) {
 
 function onOpenSessionActions(sessionId: string) {
   actionsDialogSessionId.value = sessionId;
+  actionsDialogError.value = "";
+  void loadActionsDialogDetail(sessionId);
 }
 
-function currentActionsSession() {
-  return store.list.find((item) => item.id === actionsDialogSessionId.value) ?? null;
+const actionsSession = computed(() => store.list.find((item) => item.id === actionsDialogSessionId.value) ?? null);
+const actionsSessionTitleSource = computed(() => actionsDialogDetail.value?.titleSource ?? actionsSession.value?.titleSource ?? null);
+const actionsDialogTitleGenerationAvailable = computed(() => actionsDialogDetail.value?.titleGenerationAvailable === true);
+const actionsDialogSupportsTitleEditing = computed(() => actionsSession.value?.source === "web");
+const actionsDialogTitleSourceLabel = computed(() => (
+  actionsSessionTitleSource.value === "manual"
+    ? "手动设置"
+    : actionsSessionTitleSource.value === "auto"
+      ? "自动生成"
+      : "默认标题"
+));
+
+function syncActionsTitleDraft() {
+  actionsDialogTitleDraft.value = actionsDialogDetail.value?.title ?? actionsSession.value?.title ?? "";
+}
+
+async function loadActionsDialogDetail(sessionId: string) {
+  syncActionsTitleDraft();
+  if (actionsSession.value?.source !== "web") {
+    actionsDialogDetail.value = null;
+    return;
+  }
+  try {
+    const detail = await sessionsApi.fetchDetail(sessionId);
+    if (actionsDialogSessionId.value !== sessionId) {
+      return;
+    }
+    actionsDialogDetail.value = detail.session;
+    syncActionsTitleDraft();
+  } catch (error: unknown) {
+    if (actionsDialogSessionId.value !== sessionId) {
+      return;
+    }
+    actionsDialogError.value = error instanceof ApiError || error instanceof Error
+      ? error.message
+      : "载入会话详情失败";
+  }
+}
+
+async function onSaveSessionTitle() {
+  if (!actionsDialogSessionId.value || !actionsDialogSupportsTitleEditing.value || actionsDialogBusy.value) {
+    return;
+  }
+  actionsDialogBusy.value = true;
+  actionsDialogError.value = "";
+  try {
+    const result = await store.renameSessionTitle(actionsDialogSessionId.value, actionsDialogTitleDraft.value);
+    actionsDialogDetail.value = actionsDialogDetail.value
+      ? {
+          ...actionsDialogDetail.value,
+          title: result.title,
+          titleSource: result.titleSource
+        }
+      : null;
+    syncActionsTitleDraft();
+  } catch (error: unknown) {
+    actionsDialogError.value = error instanceof ApiError || error instanceof Error
+      ? error.message
+      : "保存标题失败";
+  } finally {
+    actionsDialogBusy.value = false;
+  }
+}
+
+async function onRegenerateSessionTitle() {
+  if (!actionsDialogSessionId.value || !actionsDialogSupportsTitleEditing.value || !actionsDialogTitleGenerationAvailable.value || actionsDialogBusy.value) {
+    return;
+  }
+  actionsDialogBusy.value = true;
+  actionsDialogError.value = "";
+  try {
+    const result = await store.regenerateSessionTitle(actionsDialogSessionId.value);
+    actionsDialogDetail.value = actionsDialogDetail.value
+      ? {
+          ...actionsDialogDetail.value,
+          title: result.title,
+          titleSource: result.titleSource
+        }
+      : null;
+    syncActionsTitleDraft();
+  } catch (error: unknown) {
+    actionsDialogError.value = error instanceof ApiError || error instanceof Error
+      ? error.message
+      : "重新生成标题失败";
+  } finally {
+    actionsDialogBusy.value = false;
+  }
 }
 
 function modeSupportsCurrentSession(modeId: string): boolean {
-  const session = currentActionsSession();
+  const session = actionsSession.value;
   const mode = store.modes.find((item) => item.id === modeId);
   if (!session || !mode?.allowedChatTypes || mode.allowedChatTypes.length === 0) {
     return true;
@@ -122,6 +215,9 @@ function closeActionsDialog() {
     return;
   }
   actionsDialogSessionId.value = null;
+  actionsDialogError.value = "";
+  actionsDialogTitleDraft.value = "";
+  actionsDialogDetail.value = null;
 }
 </script>
 
@@ -164,7 +260,7 @@ function closeActionsDialog() {
     <!-- Mobile header slot: show current session label -->
     <template #mobile-header>
       <span v-if="store.active" class="font-mono text-ui font-medium text-text-secondary">
-        {{ store.active.participantLabel || store.active.participantUserId || store.active.id }}
+        {{ store.active.displayLabel || store.active.id }}
       </span>
     </template>
   </AppLayout>
@@ -181,13 +277,49 @@ function closeActionsDialog() {
   <WorkbenchDialog
     :open="Boolean(actionsDialogSessionId)"
     title="会话操作"
-    description="切换当前会话模式，或删除该会话。"
+    description="管理标题、切换当前会话模式，或删除该会话。"
     variant="content"
     width-class="max-w-lg"
     body-class="px-4 py-4"
     @close="closeActionsDialog"
   >
     <div class="flex flex-col gap-4">
+      <div
+        v-if="actionsDialogError"
+        class="rounded border border-[color:color-mix(in_srgb,var(--danger)_55%,transparent)] bg-surface-danger px-3 py-2 text-small text-danger"
+      >
+        {{ actionsDialogError }}
+      </div>
+
+      <div v-if="actionsDialogSupportsTitleEditing" class="flex flex-col gap-2">
+        <div class="text-small font-medium text-text-secondary">标题</div>
+        <div class="rounded-lg border border-border-default bg-surface-sidebar p-3">
+          <input
+            v-model="actionsDialogTitleDraft"
+            class="input-base w-full text-ui"
+            :disabled="actionsDialogBusy"
+            placeholder="输入会话标题"
+          />
+          <div class="mt-2 text-small text-text-subtle">{{ actionsDialogTitleSourceLabel }}</div>
+          <div v-if="actionsDialogDetail && !actionsDialogTitleGenerationAvailable" class="mt-1 text-small text-text-subtle">
+            标题生成器不可用
+          </div>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <button class="btn btn-secondary" type="button" :disabled="actionsDialogBusy" @click="onSaveSessionTitle">
+              {{ actionsDialogBusy ? "处理中…" : "保存标题" }}
+            </button>
+            <button
+              class="btn btn-primary"
+              type="button"
+              :disabled="actionsDialogBusy || !actionsDialogTitleGenerationAvailable"
+              @click="onRegenerateSessionTitle"
+            >
+              {{ actionsDialogBusy ? "处理中…" : "重新生成标题" }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div class="flex flex-col gap-2">
         <div class="text-small font-medium text-text-secondary">切换模式</div>
         <div class="flex flex-col gap-2">
@@ -206,7 +338,7 @@ function closeActionsDialog() {
               </div>
             </div>
             <span
-              v-if="store.list.find((item) => item.id === actionsDialogSessionId)?.modeId === mode.id"
+              v-if="actionsSession?.modeId === mode.id"
               class="ml-3 shrink-0 text-small text-text-subtle"
             >
               当前

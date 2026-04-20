@@ -1,16 +1,16 @@
 import type { SessionListItem, SessionTitleSource } from "../api/types.js";
 
 export type NormalizedSessionListItem = SessionListItem & {
-  participantLabel: string | null;
+  displayLabel: string | null;
 };
 
-function resolveParticipantEntryLabel(session: Pick<SessionListItem, "participantRef" | "participantUserId" | "id">): string | null {
+function resolveParticipantEntryLabel(session: Pick<SessionListItem, "participantRef" | "id">): string | null {
   return session.participantRef.kind === "group"
     ? `群 ${session.participantRef.id}`
-    : session.participantRef.id || session.participantUserId || session.id;
+    : session.participantRef.id || session.id;
 }
 
-export function resolveSessionDisplayLabel(session: Pick<SessionListItem, "source" | "title" | "participantRef" | "participantUserId" | "id">): string | null {
+export function resolveSessionDisplayLabel(session: Pick<SessionListItem, "source" | "title" | "participantRef" | "id">): string | null {
   if (session.source === "web") {
     const title = String(session.title ?? "").trim();
     if (title) {
@@ -23,7 +23,7 @@ export function resolveSessionDisplayLabel(session: Pick<SessionListItem, "sourc
 export function normalizeSessionListItem(session: SessionListItem): NormalizedSessionListItem {
   return {
     ...session,
-    participantLabel: resolveSessionDisplayLabel(session)
+    displayLabel: resolveSessionDisplayLabel(session)
   };
 }
 
@@ -31,11 +31,10 @@ export function syncSessionDisplayFields<T extends {
   type: SessionListItem["type"];
   source: SessionListItem["source"];
   modeId: string;
-  participantUserId: string;
   participantRef: SessionListItem["participantRef"];
   title: string | null;
   titleSource: SessionTitleSource | null;
-  participantLabel?: string | null;
+  displayLabel?: string | null;
   lastActiveAt: number;
 }>(current: T, next: NormalizedSessionListItem): T {
   return {
@@ -43,11 +42,10 @@ export function syncSessionDisplayFields<T extends {
     type: next.type,
     source: next.source,
     modeId: next.modeId,
-    participantUserId: next.participantUserId,
     participantRef: next.participantRef,
     title: next.title,
     titleSource: next.titleSource,
-    participantLabel: next.participantLabel,
+    displayLabel: next.displayLabel,
     lastActiveAt: next.lastActiveAt
   };
 }

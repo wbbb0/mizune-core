@@ -40,7 +40,7 @@ import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import { listSessionModes, requireSessionModeDefinition } from "#modes/registry.ts";
 import { checkSetupCompletion } from "./generationSetupContext.ts";
 import { waitForGenerationAbortGraceWindow } from "#app/runtime/runtimeTimingPolicy.ts";
-import { maybeAutoCaptionSessionTitle } from "./sessionCaptioner.ts";
+import { maybeAutoCaptionSessionTitle, shouldAutoCaptionSessionTitle } from "./sessionCaptioner.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -96,6 +96,7 @@ export interface RunGenerationInput {
   availableToolsets?: ToolsetView[] | undefined;
   setupMode?: boolean | undefined;
   streamResponse?: boolean | undefined;
+  forceRegenerateTitleAfterTurn?: boolean | undefined;
   webOutputCollector?: GenerationWebOutputCollector | undefined;
 }
 
@@ -170,6 +171,7 @@ export function createGenerationExecutor(
         availableToolsets,
         setupMode,
         streamResponse,
+        forceRegenerateTitleAfterTurn,
         webOutputCollector
       } = input;
     let outboundDrainPromise: Promise<void> | null = null;
@@ -631,28 +633,38 @@ export function createGenerationExecutor(
       }
 
       if (sessionManager.completeResponse(sessionId, responseEpoch)) {
-        const sessionAfterCompletion = sessionManager.getSession(sessionId);
-        if (sessionAfterCompletion.source === "web" && sessionAfterCompletion.titleSource === "default") {
-          await maybeAutoCaptionSessionTitle({
-            sessionId,
-            sessionManager,
-            sessionCaptioner,
-            persistSession,
-            logger,
-            reason: "generation_completed_captioned"
-          });
-        }
+        let captionForceRegenerate = forceRegenerateTitleAfterTurn === true;
         if (
           sendTarget.chatType === "private"
           && sessionManager.getSession(sessionId).pendingMessages.length === 0
           && !sessionManager.hasActiveResponse(sessionId)
         ) {
-          void historyCompressor.maybeCompress(sessionId).then((compressed) => {
+          try {
+            const compressed = await historyCompressor.maybeCompress(sessionId);
             if (compressed) {
+              captionForceRegenerate = true;
               persistSession(sessionId, "post_response_history_compressed");
             }
-          }).catch((error: unknown) => {
+          } catch (error: unknown) {
             logger.warn({ err: error, sessionId }, "post_response_history_compression_failed");
+          }
+        }
+        const sessionAfterCompletion = sessionManager.getSession(sessionId);
+        if (shouldAutoCaptionSessionTitle(sessionAfterCompletion, { forceRegenerate: captionForceRegenerate })) {
+          void maybeAutoCaptionSessionTitle({
+            sessionId,
+            sessionManager,
+            sessionCaptioner,
+            expectedHistoryRevision: sessionAfterCompletion.historyRevision,
+            forceRegenerate: captionForceRegenerate,
+            persistSession,
+            logger,
+            reason: captionForceRegenerate ? "generation_completed_title_regenerated" : "generation_completed_captioned"
+          }).catch((error: unknown) => {
+            logger.warn(
+              { err: error, sessionId, forceRegenerate: captionForceRegenerate },
+              "session_title_auto_caption_background_failed"
+            );
           });
         }
         handlers.processNextSessionWork(sessionId);

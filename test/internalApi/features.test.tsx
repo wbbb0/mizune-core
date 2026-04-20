@@ -167,6 +167,7 @@ async function main() {
       assert.equal(response.json().session.modeId, "rp_assistant");
       assert.equal(response.json().session.title, "Alice");
       assert.equal(response.json().session.titleSource, "manual");
+      assert.equal(response.json().session.titleGenerationAvailable, false);
       assert.deepEqual(response.json().session.participantRef, {
         kind: "user",
         id: "10001"
@@ -358,6 +359,7 @@ async function main() {
       type: "group",
       source: "onebot",
       modeId: "rp_assistant",
+      participantRef: { kind: "group", id: "20001" },
       participantUserId: "20001",
       participantLabel: "Group 20001",
       title: "Group 20001",
@@ -565,7 +567,7 @@ async function main() {
         id: "owner"
       });
       assert.ok(!("participantLabel" in createResponse.json().session));
-      assert.equal(createResponse.json().session.participantUserId, "owner");
+      assert.ok(!("participantUserId" in createResponse.json().session));
 
       const sessionId = createResponse.json().session.id;
       const listResponse = await app.inject({
@@ -667,6 +669,7 @@ async function main() {
       assert.equal(response.statusCode, 200);
       assert.equal(response.json().session.title, "Generated title");
       assert.equal(response.json().session.titleSource, "auto");
+      assert.equal(response.json().session.titleGenerationAvailable, true);
 
       const detail = await app.inject({
         method: "GET",
@@ -678,6 +681,37 @@ async function main() {
         && item.source === "regenerate"
         && item.summary === "Generated title"
       )));
+    } finally {
+      await app.close();
+    }
+  });
+
+  await runCase("internal api rejects title regeneration when session captioner is unavailable", async () => {
+    const deps = createInternalApiDeps();
+    deps.sessionCaptioner = {
+      isAvailable() {
+        return false;
+      },
+      async generateTitle() {
+        return "Should not be called";
+      }
+    } as unknown as typeof deps.sessionCaptioner;
+    const app = await createInternalApiApp(deps);
+    try {
+      const createResponse = await app.inject({
+        method: "POST",
+        url: "/api/sessions",
+        payload: { title: "Initial title" }
+      });
+      const sessionId = createResponse.json().session.id;
+
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/title/regenerate`
+      });
+
+      assert.equal(response.statusCode, 400);
+      assert.equal(response.json().error, "标题生成器不可用");
     } finally {
       await app.close();
     }
@@ -720,7 +754,7 @@ async function main() {
         id: "owner"
       });
       assert.ok(!("participantLabel" in createResponse.json().session));
-      assert.equal(createResponse.json().session.participantUserId, "owner");
+      assert.ok(!("participantUserId" in createResponse.json().session));
       assert.equal(deps.__state.sessions.find((item) => item.id === sessionId)?.title, "New Scenario");
       assert.equal(deps.sessionManager.getPersistedSession(sessionId).title, "New Scenario");
       assert.equal(deps.sessionManager.getPersistedSession(sessionId).titleSource, "default");

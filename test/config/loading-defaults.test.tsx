@@ -45,8 +45,10 @@ async function main() {
       assert.deepEqual(config.llm.mainRouting.smallModelRef, ["main"]);
       assert.deepEqual(config.llm.mainRouting.largeModelRef, ["main"]);
       assert.deepEqual(config.llm.summarizer.modelRef, ["summarizer"]);
+      assert.deepEqual(config.llm.sessionCaptioner.modelRef, ["sessionCaptioner"]);
       assert.deepEqual(config.llm.turnPlanner.modelRef, ["turnPlanner"]);
       assert.equal(config.llm.turnPlanner.supplementToolsets, true);
+      assert.equal(config.llm.sessionCaptioner.timeoutMs, 15000);
       assert.deepEqual(config.llm.providers, {});
       assert.deepEqual(config.llm.models, {});
       assert.equal(config.dataDir, "data/default");
@@ -158,6 +160,12 @@ async function main() {
             timeoutMs: 45000,
             enableThinking: false
           },
+          sessionCaptioner: {
+            enabled: true,
+            modelRef: "main",
+            timeoutMs: 15000,
+            enableThinking: false
+          },
           turnPlanner: {
             enabled: true,
             modelRef: "main",
@@ -226,6 +234,12 @@ async function main() {
             enabled: true,
             modelRef: "main",
             timeoutMs: 45000,
+            enableThinking: false
+          },
+          sessionCaptioner: {
+            enabled: true,
+            modelRef: "main",
+            timeoutMs: 15000,
             enableThinking: false
           },
           turnPlanner: {

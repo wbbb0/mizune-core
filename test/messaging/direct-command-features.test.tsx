@@ -320,6 +320,91 @@ async function main() {
     assert.equal(inRp, null, "should not resolve in rp_assistant");
   });
 
+  await runCase("confirm command in scenario_host setup captions the session title from scenario state", async () => {
+    const setTitleCalls: Array<{ sessionId: string; title: string; titleSource: "default" | "auto" | "manual" }> = [];
+    const captionRequests: Array<Record<string, unknown>> = [];
+
+    const { calls, handler } = createDirectCommandFixture({
+      session: {
+        id: "web:scenario",
+        source: "web",
+        modeId: "scenario_host",
+        type: "private",
+        participantRef: { kind: "user", id: "owner" },
+        title: "New Scenario",
+        titleSource: "default",
+        setupConfirmed: false,
+        historySummary: "旧的历史摘要"
+      },
+      scenarioHostStateStore: {
+        async write(_sessionId: string, state: unknown) {
+          return state;
+        },
+        async update(_sessionId, updater) {
+          return updater({
+            version: 1,
+            currentSituation: "玩家刚抵达旧港，准备开始摸排。",
+            currentLocation: "旧港码头",
+            sceneSummary: "夜色下的旧港刚刚展开调查。",
+            player: {
+              userId: "owner",
+              displayName: "Owner"
+            },
+            inventory: [],
+            objectives: [{
+              id: "find-bell",
+              title: "调查钟声",
+              status: "active",
+              summary: "先查清午夜钟声来源"
+            }],
+            worldFacts: [],
+            flags: {},
+            initialized: false,
+            turnIndex: 0
+          });
+        }
+      },
+      getModeId() {
+        return "scenario_host";
+      },
+      getLlmVisibleHistory() {
+        return [{
+          role: "assistant",
+          content: "这里的历史只是兜底，不是 setup 标题主输入",
+          timestampMs: 1
+        }];
+      },
+      setTitle(sessionId: string, title: string, titleSource: "default" | "auto" | "manual") {
+        setTitleCalls.push({ sessionId, title, titleSource });
+        return {} as never;
+      },
+      sessionCaptioner: {
+        isAvailable() {
+          return true;
+        },
+        async generateTitle(input: Record<string, unknown>) {
+          captionRequests.push(input);
+          return "旧港码头：初到与探查";
+        }
+      }
+    });
+
+    await handler({
+      command: { name: "confirm" },
+      sessionId: "web:scenario",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+
+    assert.deepEqual(setTitleCalls, [{
+      sessionId: "web:scenario",
+      title: "旧港码头：初到与探查",
+      titleSource: "auto"
+    }]);
+    assert.equal(captionRequests.length, 1);
+    assert.equal(captionRequests[0]?.reason, "scenario_setup");
+    assert.equal(calls.at(-1)?.text, "初始化已确认，已进入正常模式。");
+  });
+
   await runCase("debug once with inline text enqueues a synthetic message and flushes immediately", async () => {
     const debugMarkers: Array<Record<string, unknown>> = [];
     const syntheticMessages: Array<Record<string, unknown>> = [];

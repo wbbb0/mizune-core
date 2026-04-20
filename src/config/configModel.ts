@@ -311,6 +311,12 @@ const llmRuntimeConfigSchema = s.object({
     timeoutMs: s.number().int().positive().default(45000),
     enableThinking: s.boolean().default(false)
   }).default(emptyObject),
+  sessionCaptioner: s.object({
+    enabled: s.boolean().default(true),
+    modelRef: createModelRefListSchema().default(["sessionCaptioner"]),
+    timeoutMs: s.number().int().positive().default(15000),
+    enableThinking: s.boolean().default(false)
+  }).default(emptyObject),
   imageCaptioner: llmImageCaptionerConfigSchema,
   audioTranscription: llmAudioTranscriptionConfigSchema,
   turnPlanner: llmTurnPlannerConfigSchema,

@@ -293,6 +293,8 @@ export interface SessionDirectCommandAccess {
   ): void;
   getDebugControlState(sessionId: string): SessionDebugControlState;
   getLlmVisibleHistory(sessionId: string): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
+  setTitle(sessionId: string, title: string, titleSource: "default" | "auto" | "manual"): SessionState;
+  appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void;
   isGenerating(sessionId: string): boolean;
   cancelGeneration(sessionId: string): boolean;
   clearSession(sessionId: string): void;

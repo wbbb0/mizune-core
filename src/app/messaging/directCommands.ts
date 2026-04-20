@@ -1,13 +1,16 @@
 import type { Logger } from "pino";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { AppConfig } from "#config/config.ts";
+import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import type { SessionDirectCommandAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { InternalTranscriptItem, SessionState } from "#conversation/session/sessionTypes.ts";
 import { requireSessionModeDefinition } from "#modes/registry.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { createInitialScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
+import { createSessionTitleGenerationEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
 import { parseOwnerBootstrapCommand } from "#app/bootstrap/ownerBootstrapPolicy.ts";
 
@@ -46,6 +49,7 @@ interface DirectCommandHandlerInput {
   sessionManager: SessionDirectCommandAccess;
   oneBotClient: OneBotClient;
   logger: Logger;
+  sessionCaptioner?: SessionCaptioner;
   scenarioHostStateStore?: ScenarioHostStateStore;
   forceCompactSession?: (sessionId: string, retainMessageCount?: number) => Promise<boolean>;
   flushSession?: (sessionId: string, options?: { skipReplyGate?: boolean }) => void;
@@ -184,6 +188,51 @@ function triggerInlineDebugOnce(ctx: DirectCommandExecutionContext, inlineText: 
   });
   ctx.input.persistSession(ctx.session.id, "inline_debug_once_enqueued");
   ctx.input.flushSession(ctx.session.id, { skipReplyGate: true });
+}
+
+async function maybeCaptionScenarioSetupTitle(
+  ctx: DirectCommandExecutionContext,
+  scenarioState: ScenarioHostSessionState
+): Promise<void> {
+  if (ctx.session.modeId !== "scenario_host") {
+    return;
+  }
+  if (ctx.session.source !== "web") {
+    return;
+  }
+  if (ctx.session.titleSource === "manual") {
+    return;
+  }
+  if (!ctx.input.sessionCaptioner?.isAvailable()) {
+    return;
+  }
+
+  const title = await ctx.input.sessionCaptioner.generateTitle({
+    sessionId: ctx.session.id,
+    modeId: ctx.session.modeId,
+    reason: "scenario_setup",
+    historySummary: ctx.session.historySummary,
+    history: ctx.input.sessionManager.getLlmVisibleHistory(ctx.session.id),
+    scenarioState
+  });
+  if (!title) {
+    return;
+  }
+
+  ctx.input.sessionManager.setTitle(ctx.session.id, title, "auto");
+  ctx.input.sessionManager.appendInternalTranscript(ctx.session.id, createSessionTitleGenerationEvent({
+    source: "auto",
+    modeId: ctx.session.modeId,
+    title,
+    summary: title,
+    details: [
+      `sessionId: ${ctx.session.id}`,
+      "captionReason: scenario_setup",
+      `location: ${String(scenarioState.currentLocation ?? "").trim() || "(none)"}`,
+      `situation: ${String(scenarioState.currentSituation ?? "").trim() || "(none)"}`
+    ].join("\n")
+  }));
+  ctx.input.persistSession(ctx.session.id, "scenario_setup_title_captioned");
 }
 
 const directCommandDescriptors: DirectCommandDescriptor[] = [
@@ -580,7 +629,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       }
       // For scenario_host: mark initialized in persistent state so it survives restarts
       if (ctx.session.modeId === "scenario_host" && ctx.input.scenarioHostStateStore) {
-        await ctx.input.scenarioHostStateStore.update(
+        const nextState = await ctx.input.scenarioHostStateStore.update(
           ctx.session.id,
           (current) => ({ ...current, initialized: true }),
           {
@@ -593,6 +642,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
             })
           }
         );
+        await maybeCaptionScenarioSetupTitle(ctx, nextState);
       }
       // Mark confirmed in session (in-memory)
       ctx.input.sessionManager.markSetupConfirmed(ctx.session.id);

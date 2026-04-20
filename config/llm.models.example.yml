@@ -10,6 +10,18 @@ qwen35_plus:
   supportsTools: true
   supportsSearch: true
 
+# 会话标题生成模型
+sessionCaptioner:
+  provider: dashscope
+  model: qwen3.5-flash
+  modelType: chat
+  supportsThinking: true
+  thinkingControllable: true
+  supportsVision: false
+  supportsAudioInput: false
+  supportsTools: true
+  supportsSearch: false
+
 # 示例 2：LM Studio 本地模型（可开关思考）
 lmstudio_qwen3_8b:
   provider: lmstudio_local

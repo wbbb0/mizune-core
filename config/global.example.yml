@@ -40,6 +40,12 @@ llm:
       - gemini31_flash_lite_preview
     timeoutMs: 45000
     enableThinking: false
+  sessionCaptioner:
+    enabled: true
+    modelRef:
+      - qwen35_flash
+    timeoutMs: 15000
+    enableThinking: false
   imageCaptioner:
     enabled: true
     modelRef:

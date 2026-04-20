@@ -56,7 +56,6 @@ export interface InternalApiSessionSummary {
   type: "private" | "group";
   source: "onebot" | "web";
   modeId: string;
-  participantUserId: string;
   participantRef: SessionParticipantRef;
   title: string | null;
   titleSource: SessionTitleSource | null;
@@ -70,10 +69,10 @@ export interface InternalApiSessionDetail {
     type: "private" | "group";
     source: "onebot" | "web";
     modeId: string;
-    participantUserId: string;
     participantRef: SessionParticipantRef;
     title: string | null;
     titleSource: SessionTitleSource | null;
+    titleGenerationAvailable: boolean;
     debugControl: {
       enabled: boolean;
       oncePending: boolean;
@@ -95,6 +94,7 @@ export interface InternalApiSessionDetail {
 export interface InternalApiSessionReadDeps {
   sessionManager: SessionAdminReadAccess;
   scenarioHostStateStore: ScenarioHostStateStore;
+  sessionCaptioner: SessionCaptioner;
 }
 
 export interface InternalApiSessionWriteDeps extends InternalApiSessionReadDeps {

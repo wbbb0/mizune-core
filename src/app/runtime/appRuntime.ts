@@ -146,6 +146,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
       sessionManager,
       oneBotClient,
       logger,
+      sessionCaptioner,
       historyCompressor,
       setupStore,
       userIdentityStore,

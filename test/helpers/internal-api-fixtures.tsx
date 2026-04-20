@@ -20,6 +20,10 @@ export interface InternalApiFixtureState {
     type: "private" | "group";
     source: "onebot" | "web";
     modeId: string;
+    participantRef: {
+      kind: "user" | "group";
+      id: string;
+    };
     participantUserId: string;
     participantLabel: string | null;
     title: string | null;
@@ -80,6 +84,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       type: "private",
       source: "onebot",
       modeId: "rp_assistant",
+      participantRef: { kind: "user", id: "10001" },
       participantUserId: "10001",
       participantLabel: "Alice",
       title: "Alice",
@@ -117,6 +122,9 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     }),
     logger: pino({ level: "silent" }),
     sessionCaptioner: {
+      isAvailable() {
+        return true;
+      },
       async generateTitle() {
         return "Generated title";
       }
@@ -271,6 +279,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           type: session.type,
           source: session.source,
           modeId: session.modeId,
+          participantRef: session.participantRef,
           participantUserId: session.participantUserId,
           participantLabel: session.participantLabel,
           title: session.title,
@@ -302,6 +311,10 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           type: existing?.type ?? (sessionId.startsWith("qqbot:g:") ? "group" : "private"),
           source: existing?.source ?? (sessionId.startsWith("web:") ? "web" : "onebot"),
           modeId: existing?.modeId ?? "rp_assistant",
+          participantRef: existing?.participantRef ?? {
+            kind: (existing?.type ?? (sessionId.startsWith("qqbot:g:") ? "group" : "private")) === "group" ? "group" : "user",
+            id: existing?.participantUserId ?? "10001"
+          },
           participantUserId: existing?.participantUserId ?? "10001",
           participantLabel: existing?.participantLabel ?? "Alice",
           title: existing?.title ?? "Alice",
@@ -357,6 +370,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           type: target.type,
           source: target.source ?? "onebot",
           modeId: "rp_assistant",
+          participantRef,
           participantUserId: participantRef.id,
           participantLabel: title ?? participantRef.id,
           title,
@@ -415,6 +429,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           type: session.type,
           source: session.source,
           modeId: session.modeId,
+          participantRef: session.participantRef,
           participantUserId: session.participantUserId,
           participantLabel: session.participantLabel,
           title: session.title,

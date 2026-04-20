@@ -26,8 +26,21 @@ interface DirectCommandFixtureOptions {
   getDebugControlState?: (sessionId: string) => { enabled: boolean; oncePending: boolean };
   persistSession?: (sessionId: string, reason: string) => void;
   getModeId?: (sessionId: string) => string;
+  getLlmVisibleHistory?: (sessionId: string) => Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
+  setTitle?: (sessionId: string, title: string, titleSource: "default" | "auto" | "manual") => unknown;
+  appendInternalTranscript?: (sessionId: string, item: Record<string, unknown>) => void;
+  markSetupConfirmed?: (sessionId: string) => void;
   scenarioHostStateStore?: {
     write: (sessionId: string, state: unknown) => Promise<unknown>;
+    update?: (
+      sessionId: string,
+      updater: (current: any) => any | Promise<any>,
+      defaults: { playerUserId: string; playerDisplayName: string }
+    ) => Promise<unknown>;
+  };
+  sessionCaptioner?: {
+    isAvailable: () => boolean;
+    generateTitle: (input: Record<string, unknown>) => Promise<string | null>;
   };
 }
 
@@ -88,6 +101,20 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
       },
       getModeId(sessionId: string) {
         return options.getModeId?.(sessionId) ?? "rp_assistant";
+      },
+      getLlmVisibleHistory(sessionId: string) {
+        return options.getLlmVisibleHistory?.(sessionId) ?? [];
+      },
+      setTitle(sessionId: string, title: string, titleSource: "default" | "auto" | "manual") {
+        return options.setTitle?.(sessionId, title, titleSource) ?? session;
+      },
+      appendInternalTranscript(sessionId: string, item: Record<string, unknown>) {
+        options.appendInternalTranscript?.(sessionId, item);
+      },
+      markSetupConfirmed(sessionId: string) {
+        options.markSetupConfirmed?.(sessionId);
+      },
+      clearPendingTranscriptGroup() {
       }
     } as unknown as Parameters<typeof createDirectCommandHandler>[0]["sessionManager"],
     oneBotClient: {
@@ -107,6 +134,7 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
     },
     ...(options.forceCompactSession ? { forceCompactSession: options.forceCompactSession } : {}),
     ...(options.scenarioHostStateStore ? { scenarioHostStateStore: options.scenarioHostStateStore as any } : {}),
+    ...(options.sessionCaptioner ? { sessionCaptioner: options.sessionCaptioner as any } : {}),
     async sendImmediateText(params: SentImmediateText) {
       calls.push(params);
     }

@@ -51,10 +51,25 @@ async function waitForEvents(events: string[], count: number): Promise<void> {
   }
 }
 
+async function waitForCondition(predicate: () => boolean, message: string): Promise<void> {
+  const deadline = Date.now() + 400;
+  while (!predicate()) {
+    if (Date.now() >= deadline) {
+      throw new Error(message);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 function createExecutorHarness(options?: {
   failAfterReasoning?: boolean;
   waitForAbortGraceWindow?: (signal: AbortSignal) => Promise<void>;
   configOverrides?: Parameters<typeof createTestAppConfig>[0];
+  sessionSource?: "onebot" | "web";
+  titleSource?: "default" | "auto" | "manual" | null;
+  historyCompressed?: boolean;
+  forceRegenerateTitleAfterTurn?: boolean;
+  onGenerateTitle?: () => Promise<string | null> | string | null;
   customGenerate?: (input: {
     onReasoningDelta?: (delta: string) => void;
     onTextDelta?: (delta: string) => Promise<void>;
@@ -73,7 +88,14 @@ function createExecutorHarness(options?: {
   const logger = pino({ level: "silent" });
   const sessionManager = new SessionManager(config);
   const sessionId = "qqbot:p:owner";
-  sessionManager.ensureSession({ id: sessionId, type: "private" });
+  const delivery = options?.sessionSource === "web" ? "web" : "onebot";
+  sessionManager.ensureSession({
+    id: sessionId,
+    type: "private",
+    source: options?.sessionSource ?? "onebot",
+    title: options?.sessionSource === "web" ? "New Chat" : null,
+    titleSource: options?.titleSource ?? null
+  });
   const started = sessionManager.beginSyntheticGeneration(sessionId);
   const events: string[] = [];
   let resolveDrain!: () => void;
@@ -116,12 +138,21 @@ function createExecutorHarness(options?: {
       debounceManager: {} as never,
       historyCompressor: {
         async maybeCompress() {
+          if (options?.historyCompressed) {
+            events.push("history:compressed");
+            return true;
+          }
           return false;
         }
       } as never,
       sessionCaptioner: {
+        isAvailable() {
+          return true;
+        },
         async generateTitle() {
-          return null;
+          events.push("title:generate");
+          const result = await options?.onGenerateTitle?.();
+          return result ?? null;
         }
       } as never,
       messageQueue: {
@@ -210,7 +241,7 @@ function createExecutorHarness(options?: {
     persona: null as never,
     batchMessages: [createBatchMessage()],
     sendTarget: {
-      delivery: "onebot",
+      delivery,
       chatType: "private",
       userId: "owner",
       senderName: "Owner"
@@ -242,7 +273,17 @@ function createExecutorHarness(options?: {
       lastLlmUsage: null
     },
     availableToolNames: [],
-    streamResponse: true
+    streamResponse: true,
+    forceRegenerateTitleAfterTurn: options?.forceRegenerateTitleAfterTurn,
+    ...(delivery === "web"
+      ? {
+          webOutputCollector: {
+            async append(text: string) {
+              events.push(`send:${text}`);
+            }
+          }
+        }
+      : {})
   });
 
   return {
@@ -360,6 +401,66 @@ async function main() {
       "send:第一段足够长的句子。第二段也足够长。",
       "typing:stop"
     ]);
+  });
+
+  await runCase("default web titles are captioned only after outbound drain completes", async () => {
+    const harness = createExecutorHarness({
+      sessionSource: "web",
+      titleSource: "default",
+      onGenerateTitle: async () => "自动标题"
+    });
+
+    await waitForEvents(harness.events, 1);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.deepEqual(harness.events, ["send:你好"]);
+
+    harness.resolveDrain();
+    await harness.runPromise;
+    await waitForCondition(
+      () => harness.sessionManager.getSession(harness.sessionId).title === "自动标题",
+      "Timed out waiting for default web title caption"
+    );
+
+    assert.deepEqual(harness.events, ["send:你好", "title:generate"]);
+    assert.equal(harness.sessionManager.getSession(harness.sessionId).title, "自动标题");
+    assert.equal(harness.sessionManager.getSession(harness.sessionId).titleSource, "auto");
+  });
+
+  await runCase("compression forces title regeneration for auto-titled web sessions after turn completion", async () => {
+    const harness = createExecutorHarness({
+      sessionSource: "web",
+      titleSource: "auto",
+      historyCompressed: true,
+      onGenerateTitle: async () => "压缩后标题"
+    });
+
+    harness.resolveDrain();
+    await harness.runPromise;
+    await waitForCondition(
+      () => harness.sessionManager.getSession(harness.sessionId).title === "压缩后标题",
+      "Timed out waiting for compressed web title caption"
+    );
+
+    assert.deepEqual(harness.events, ["send:你好", "history:compressed", "title:generate"]);
+    assert.equal(harness.sessionManager.getSession(harness.sessionId).title, "压缩后标题");
+    assert.equal(harness.sessionManager.getSession(harness.sessionId).titleSource, "auto");
+  });
+
+  await runCase("manual web titles are never auto-regenerated even when forced", async () => {
+    const harness = createExecutorHarness({
+      sessionSource: "web",
+      titleSource: "manual",
+      forceRegenerateTitleAfterTurn: true,
+      onGenerateTitle: async () => "不该出现"
+    });
+
+    harness.resolveDrain();
+    await harness.runPromise;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.deepEqual(harness.events, ["send:你好"]);
+    assert.equal(harness.sessionManager.getSession(harness.sessionId).title, "New Chat");
+    assert.equal(harness.sessionManager.getSession(harness.sessionId).titleSource, "manual");
   });
 }
 

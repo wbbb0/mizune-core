@@ -390,7 +390,8 @@ export function createGenerationSessionOrchestrator(
             }
           : {
               plannedToolsetIds,
-              availableToolsets: plannerToolsets
+              availableToolsets: plannerToolsets,
+              forceRegenerateTitleAfterTurn: plannerDecision?.topicDecision === "new_topic"
             }),
         streamResponse: true,
         ...(options?.webOutputCollector ? { webOutputCollector: options.webOutputCollector } : {})

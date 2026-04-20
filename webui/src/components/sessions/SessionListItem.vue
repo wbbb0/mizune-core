@@ -16,7 +16,7 @@ const emit = defineEmits<{
 const display = computed(() => {
   return {
     badge: props.session.type === "group" ? "G" : props.session.source === "web" ? "W" : "P",
-    label: props.session.participantLabel || props.session.participantUserId || props.session.id
+    label: props.session.displayLabel || props.session.id
   };
 });
 

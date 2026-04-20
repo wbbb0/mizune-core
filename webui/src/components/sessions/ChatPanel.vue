@@ -73,7 +73,7 @@ const composerIdentity = computed(() => resolveComposerUserIdentity({
     ? {
         type: session.value.type,
         source: session.value.source,
-        participantUserId: session.value.participantUserId
+        participantRef: session.value.participantRef
       }
     : null,
   ownerId: auth.ownerId

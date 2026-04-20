@@ -23,32 +23,20 @@ import { createSessionTitleGenerationEvent } from "#conversation/session/interna
 import { isSessionGenerating } from "#conversation/session/sessionQueries.ts";
 import { resolveDefaultSessionTitle } from "#conversation/session/sessionTitle.ts";
 
-function resolveSessionParticipantRef(session: Pick<SessionState, "id" | "type"> & { participantRef?: SessionParticipantRef | null | undefined; participantUserId?: string | null | undefined }): SessionParticipantRef {
-  if (session.participantRef) {
-    return session.participantRef;
-  }
-  return {
-    kind: session.type === "group" ? "group" : "user",
-    id: session.participantUserId || session.id
-  };
-}
-
 function toScenarioHostSession(session: SessionState): Pick<SessionState, "id" | "participantRef"> {
   return {
     id: session.id,
-    participantRef: resolveSessionParticipantRef(session)
+    participantRef: session.participantRef
   };
 }
 
 function buildSessionSummary(session: SessionState): InternalApiSessionSummary {
-  const participantRef = resolveSessionParticipantRef(session);
   return {
     id: session.id,
     type: session.type,
     source: session.source,
     modeId: session.modeId,
-    participantUserId: participantRef.id,
-    participantRef,
+    participantRef: session.participantRef,
     title: session.title,
     titleSource: session.titleSource,
     isGenerating: isSessionGenerating(session),
@@ -120,15 +108,18 @@ export async function getSessionDetail(
     return null;
   }
 
-  const { participantLabel: _participantLabel, ...sessionView } = deps.sessionManager.getSessionView(sessionId);
-  const participantRef = resolveSessionParticipantRef(existing);
+  const {
+    participantLabel: _participantLabel,
+    participantUserId: _participantUserId,
+    ...sessionView
+  } = deps.sessionManager.getSessionView(sessionId);
   return {
     session: {
       ...sessionView,
-      participantUserId: sessionView.participantUserId ?? participantRef.id,
-      participantRef,
+      participantRef: existing.participantRef,
       title: existing.title,
       titleSource: existing.titleSource,
+      titleGenerationAvailable: existing.source === "web" && deps.sessionCaptioner.isAvailable(),
       isGenerating: isSessionGenerating(existing),
       historyRevision: deps.sessionManager.getHistoryRevision(sessionId),
       mutationEpoch: deps.sessionManager.getMutationEpoch(sessionId)
@@ -252,10 +243,14 @@ export async function regenerateSessionTitle(
   if (session.source !== "web") {
     throw new Error("Only web sessions support title regeneration");
   }
+  if (!deps.sessionCaptioner.isAvailable()) {
+    throw new Error("标题生成器不可用");
+  }
 
   const generated = await deps.sessionCaptioner.generateTitle({
     sessionId,
     modeId: session.modeId,
+    reason: "manual_regenerate",
     historySummary: session.historySummary,
     history: deps.sessionManager.getLlmVisibleHistory(sessionId)
   });

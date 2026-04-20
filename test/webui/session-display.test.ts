@@ -14,13 +14,12 @@ async function main() {
       type: "private",
       source: "web",
       modeId: "rp_assistant",
-      participantUserId: "owner",
       participantRef: { kind: "user", id: "owner" },
       title: "Warehouse infiltration",
       titleSource: "manual",
       isGenerating: false,
       lastActiveAt: 0
-    }).participantLabel, "Warehouse infiltration");
+    }).displayLabel, "Warehouse infiltration");
   });
 
   await runCase("onebot session keeps participant label even when title exists", () => {
@@ -29,13 +28,12 @@ async function main() {
       type: "private",
       source: "onebot",
       modeId: "rp_assistant",
-      participantUserId: "10001",
       participantRef: { kind: "user", id: "10001" },
       title: "Alice",
       titleSource: "manual",
       isGenerating: false,
       lastActiveAt: 0
-    }).participantLabel, "10001");
+    }).displayLabel, "10001");
   });
 
   await runCase("group session keeps group entry label even when title exists", () => {
@@ -44,13 +42,12 @@ async function main() {
       type: "group",
       source: "onebot",
       modeId: "rp_assistant",
-      participantUserId: "20001",
       participantRef: { kind: "group", id: "20001" },
       title: "Group title",
       titleSource: "manual",
       isGenerating: false,
       lastActiveAt: 0
-    }).participantLabel, "群 20001");
+    }).displayLabel, "群 20001");
   });
 
   await runCase("selected active session syncs refreshed title and display label", () => {
@@ -59,11 +56,10 @@ async function main() {
       type: "private" as const,
       source: "web" as const,
       modeId: "rp_assistant",
-      participantUserId: "owner",
       participantRef: { kind: "user" as const, id: "owner" },
       title: "Old title",
       titleSource: "manual" as const,
-      participantLabel: "Old title",
+      displayLabel: "Old title",
       lastActiveAt: 10
     };
     const refreshed = normalizeSessionListItem({
@@ -71,7 +67,6 @@ async function main() {
       type: "private",
       source: "web",
       modeId: "rp_assistant",
-      participantUserId: "owner",
       participantRef: { kind: "user", id: "owner" },
       title: "New title",
       titleSource: "manual",
@@ -83,7 +78,7 @@ async function main() {
       ...current,
       title: "New title",
       titleSource: "manual",
-      participantLabel: "New title",
+      displayLabel: "New title",
       lastActiveAt: 20
     });
   });

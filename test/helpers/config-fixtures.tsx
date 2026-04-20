@@ -42,6 +42,12 @@ const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
       timeoutMs: 1000,
       enableThinking: false
     },
+    sessionCaptioner: {
+      enabled: true,
+      modelRef: ["sessionCaptioner"],
+      timeoutMs: 1000,
+      enableThinking: false
+    },
     turnPlanner: {
       enabled: false,
       modelRef: ["main"],
@@ -170,6 +176,19 @@ const baseTestCatalogOverrides: DeepPartial<LlmCatalogConfig> = {
       model: "fake",
       modelType: "chat",
       supportsThinking: false,
+      thinkingControllable: true,
+      supportsVision: false,
+      supportsAudioInput: false,
+      supportsSearch: false,
+      supportsTools: true,
+      returnReasoningContentForAllMessages: false,
+      returnReasoningContentForSameRoundMessages: true
+    },
+    sessionCaptioner: {
+      provider: "test",
+      model: "fake-captain",
+      modelType: "chat",
+      supportsThinking: true,
       thinkingControllable: true,
       supportsVision: false,
       supportsAudioInput: false,

@@ -8,14 +8,17 @@ async function runCase(name: string, fn: () => Promise<void>) {
 }
 
 async function main() {
-  await runCase("session state panel keeps code blocks scrollable", async () => {
+  await runCase("session state panel keeps code blocks scrollable and no longer edits titles inline", async () => {
     const source = await readFile(
       new URL("../../../webui/src/components/sessions/SessionStatePanel.vue", import.meta.url),
       "utf8"
     );
 
     assert.match(source, /标题/);
-    assert.match(source, /重新生成标题/);
+    assert.doesNotMatch(source, /保存标题/);
+    assert.doesNotMatch(source, /重新生成标题/);
+    assert.match(source, /主体类型/);
+    assert.match(source, /主体 ID/);
     assert.match(source, /<pre[^>]*overflow-auto[^>]*>{{ detail\?\.session\.historySummary \|\| "暂无摘要" }}/);
     assert.match(source, /<pre[^>]*overflow-auto[^>]*>{{ formatJson\(detail\?\.session\.debugControl/);
     assert.match(source, /<pre[^>]*overflow-auto[^>]*>{{ formatJson\(detail\?\.session\.lastLlmUsage/);

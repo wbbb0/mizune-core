@@ -268,6 +268,7 @@ function emitConfigConsistencyWarnings(config: AppConfig): void {
     ["llm.mainRouting.smallModelRef", config.llm.mainRouting.smallModelRef],
     ["llm.mainRouting.largeModelRef", config.llm.mainRouting.largeModelRef],
     ["llm.summarizer.modelRef", config.llm.summarizer.modelRef],
+    ["llm.sessionCaptioner.modelRef", config.llm.sessionCaptioner.modelRef],
     ["llm.imageCaptioner.modelRef", config.llm.imageCaptioner.modelRef],
     ["llm.audioTranscription.modelRef", config.llm.audioTranscription.modelRef],
     ["llm.turnPlanner.modelRef", config.llm.turnPlanner.modelRef]
@@ -289,6 +290,7 @@ function emitConfigConsistencyWarnings(config: AppConfig): void {
     ["llm.mainRouting.smallModelRef", config.llm.mainRouting.smallModelRef, "chat"],
     ["llm.mainRouting.largeModelRef", config.llm.mainRouting.largeModelRef, "chat"],
     ["llm.summarizer.modelRef", config.llm.summarizer.modelRef, "chat"],
+    ["llm.sessionCaptioner.modelRef", config.llm.sessionCaptioner.modelRef, "chat"],
     ["llm.imageCaptioner.modelRef", config.llm.imageCaptioner.modelRef, "chat"],
     ["llm.audioTranscription.modelRef", config.llm.audioTranscription.modelRef, "transcription"],
     ["llm.turnPlanner.modelRef", config.llm.turnPlanner.modelRef, "chat"]
@@ -312,6 +314,7 @@ function emitConfigConsistencyWarnings(config: AppConfig): void {
 function shouldWarnForModelRefs(fieldName: string, modelRefs: string[]): boolean {
   const defaultPlaceholderByField: Record<string, string[]> = {
     "llm.summarizer.modelRef": ["summarizer"],
+    "llm.sessionCaptioner.modelRef": ["sessionCaptioner"],
     "llm.imageCaptioner.modelRef": ["imageCaptioner"],
     "llm.audioTranscription.modelRef": ["transcription"],
     "llm.turnPlanner.modelRef": ["turnPlanner"]
