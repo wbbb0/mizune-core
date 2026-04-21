@@ -5,6 +5,7 @@
 # Build outputs
 /dist/
 /webui/dist/
+/webui/dev-dist/
 
 # Runtime data
 /data/
