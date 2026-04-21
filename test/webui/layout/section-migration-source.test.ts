@@ -276,6 +276,10 @@ test("sessions section state resets on route leave and uses mobile main switchin
     new URL("../../../webui/src/sections/sessions/SessionsMainPane.vue", import.meta.url),
     "utf8"
   );
+  const mobileHeaderSource = await readFile(
+    new URL("../../../webui/src/sections/sessions/SessionsMobileHeader.vue", import.meta.url),
+    "utf8"
+  );
 
   assert.match(sectionSource, /onBeforeRouteLeave/);
   assert.match(sectionSource, /function resetState\(\)/);
@@ -303,7 +307,12 @@ test("sessions section state resets on route leave and uses mobile main switchin
   assert.match(listPaneSource, /openSessionActions/);
   assert.match(listPaneSource, /CreateSessionDialog/);
   assert.match(listPaneSource, /WorkbenchDialog/);
+  assert.doesNotMatch(listPaneSource, /const section = useSessionsSection\(\)/);
+  assert.doesNotMatch(listPaneSource, /section\.createDialogOpen/);
+  assert.doesNotMatch(listPaneSource, /section\.actionsDialogSessionId/);
   assert.match(mainPaneSource, /ChatPanel/);
+  assert.doesNotMatch(mobileHeaderSource, /const section = useSessionsSection\(\)/);
+  assert.doesNotMatch(mobileHeaderSource, /section\.mobileHeaderTitle/);
 });
 
 test("registry imports config section instead of wiring AppLayout per page", async () => {
