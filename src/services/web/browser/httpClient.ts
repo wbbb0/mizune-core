@@ -1,6 +1,7 @@
-import { fetch as undiciFetch, type Dispatcher, type RequestInit as UndiciRequestInit } from "undici";
+import { fetch as undiciFetch, type Dispatcher, type HeadersInit as UndiciHeadersInit, type RequestInit as UndiciRequestInit } from "undici";
 
 const DEFAULT_USER_AGENT = "llm-bot/0.1";
+type UndiciResponse = Awaited<ReturnType<typeof undiciFetch>>;
 
 export class WebHttpClient {
   constructor(
@@ -9,8 +10,8 @@ export class WebHttpClient {
     }
   ) {}
 
-  async fetch(url: string, init?: UndiciRequestInit): Promise<Response> {
-    const headers = new Headers(init?.headers ?? {});
+  async fetch(url: string, init?: UndiciRequestInit): Promise<UndiciResponse> {
+    const headers = new Headers(normalizeHeadersInit(init?.headers));
     if (!headers.has("User-Agent")) {
       headers.set("User-Agent", DEFAULT_USER_AGENT);
     }
@@ -51,7 +52,7 @@ export class WebHttpClient {
     return current;
   }
 
-  async readText(response: Response, maxChars: number): Promise<{ text: string; truncated: boolean }> {
+  async readText(response: UndiciResponse, maxChars: number): Promise<{ text: string; truncated: boolean }> {
     if (!response.body) {
       return { text: "", truncated: false };
     }
@@ -84,4 +85,27 @@ export class WebHttpClient {
       truncated
     };
   }
+}
+
+function normalizeHeadersInit(input: UndiciHeadersInit | undefined): Array<[string, string]> | undefined {
+  if (!input) {
+    return undefined;
+  }
+
+  if (Array.isArray(input)) {
+    return input.map(([key, value]) => [key, value]);
+  }
+
+  const iterator = (input as { [Symbol.iterator]?: () => Iterator<[string, string]> })[Symbol.iterator];
+  if (typeof iterator === "function") {
+    return Array.from(input as Iterable<[string, string]>, ([key, value]) => [key, value]);
+  }
+
+  if (typeof input === "object") {
+    return Object.entries(input).flatMap(([key, value]) => (
+      value == null ? [] : [[key, value]]
+    ));
+  }
+
+  return undefined;
 }
