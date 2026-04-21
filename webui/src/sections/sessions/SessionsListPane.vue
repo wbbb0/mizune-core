@@ -90,7 +90,7 @@ onMounted(() => {
       <div class="flex flex-col gap-4">
         <div
           v-if="actionsDialogError"
-          class="rounded border border-[color:color-mix(in_srgb,var(--danger)_55%,transparent)] bg-surface-danger px-3 py-2 text-small text-danger"
+          class="rounded border border-[color-mix(in_srgb,var(--danger)_55%,transparent)] bg-surface-danger px-3 py-2 text-small text-danger"
         >
           {{ actionsDialogError }}
         </div>
@@ -150,7 +150,7 @@ onMounted(() => {
 
         <div class="border-t border-border-subtle pt-4">
           <button
-            class="flex w-full items-center justify-center rounded-lg border border-[color:color-mix(in_srgb,var(--danger)_45%,transparent)] bg-surface-danger px-3 py-2 text-ui font-medium text-danger disabled:opacity-60"
+            class="flex w-full items-center justify-center rounded-lg border border-[color-mix(in_srgb,var(--danger)_45%,transparent)] bg-surface-danger px-3 py-2 text-ui font-medium text-danger disabled:opacity-60"
             :disabled="actionsDialogBusy || !actionsDialogSessionId"
             @click="actionsDialogSessionId && deleteSession(actionsDialogSessionId)"
           >

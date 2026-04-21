@@ -31,7 +31,7 @@ function toneClassFor(type: "success" | "error" | "info") {
         v-for="item in toasts"
         :key="item.id"
         type="button"
-        class="pointer-events-auto flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left shadow-lg backdrop-blur-sm transition-transform hover:-translate-y-0.25"
+        class="pointer-events-auto flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left shadow-lg backdrop-blur-sm transition-transform hover:-translate-y-px"
         :class="toneClassFor(item.type)"
         @click="toast.dismiss(item.id)"
       >

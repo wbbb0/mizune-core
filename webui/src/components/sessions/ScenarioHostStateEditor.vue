@@ -208,7 +208,7 @@ function removeFlag(index: number) {
 
     <div
       v-if="errorMessage"
-      class="rounded border border-[color:color-mix(in_srgb,var(--danger)_55%,transparent)] bg-surface-danger px-3 py-2 text-small text-danger"
+      class="rounded border border-[color-mix(in_srgb,var(--danger)_55%,transparent)] bg-surface-danger px-3 py-2 text-small text-danger"
     >
       {{ errorMessage }}
     </div>

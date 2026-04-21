@@ -20,7 +20,7 @@ const bottomNavItems = workbenchNavItems.filter((item) => item.placement === "bo
       <button
         v-for="item in primaryNavItems"
         :key="item.id"
-        class="relative flex h-[var(--activity-bar-width)] w-[var(--activity-bar-width)] cursor-pointer items-center justify-center border-0 bg-transparent text-text-muted transition-colors hover:text-text-secondary before:absolute before:top-1/2 before:left-0 before:h-6 before:w-0.5 before:-translate-y-1/2 before:rounded-r-[2px] before:bg-text-secondary before:content-[''] before:opacity-0"
+        class="relative flex h-(--activity-bar-width) w-(--activity-bar-width) cursor-pointer items-center justify-center border-0 bg-transparent text-text-muted transition-colors hover:text-text-secondary before:absolute before:top-1/2 before:left-0 before:h-6 before:w-0.5 before:-translate-y-1/2 before:rounded-r-xs before:bg-text-secondary before:content-[''] before:opacity-0"
         :class="{ 'text-text-secondary before:opacity-100': currentRoute === item.id }"
         :title="item.title"
         @click="router.push(item.path)"
@@ -34,7 +34,7 @@ const bottomNavItems = workbenchNavItems.filter((item) => item.placement === "bo
       <button
         v-for="item in bottomNavItems"
         :key="item.id"
-        class="relative flex h-[var(--activity-bar-width)] w-[var(--activity-bar-width)] cursor-pointer items-center justify-center border-0 bg-transparent text-text-muted transition-colors hover:text-text-secondary before:absolute before:top-1/2 before:left-0 before:h-6 before:w-0.5 before:-translate-y-1/2 before:rounded-r-[2px] before:bg-text-secondary before:content-[''] before:opacity-0"
+        class="relative flex h-(--activity-bar-width) w-(--activity-bar-width) cursor-pointer items-center justify-center border-0 bg-transparent text-text-muted transition-colors hover:text-text-secondary before:absolute before:top-1/2 before:left-0 before:h-6 before:w-0.5 before:-translate-y-1/2 before:rounded-r-xs before:bg-text-secondary before:content-[''] before:opacity-0"
         :class="{ 'text-text-secondary before:opacity-100': currentRoute === item.id }"
         :title="item.title"
         @click="router.push(item.path)"
