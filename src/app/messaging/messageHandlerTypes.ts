@@ -4,7 +4,7 @@ import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { SessionMessagingAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { SessionDelivery, SessionState } from "#conversation/session/sessionTypes.ts";
-import type { parseDirectCommand } from "./directCommands.ts";
+import type { ResolvedDirectCommand } from "./directCommands.ts";
 
 export interface MessageEventHandlerDeps {
   inboundDelivery: SessionDelivery;
@@ -29,7 +29,7 @@ export interface MessageEventHandlerDeps {
     sessionManager: SessionMessagingAccess;
   };
   handleDirectCommand: (input: {
-    command: ReturnType<typeof parseDirectCommand> extends infer T ? Exclude<T, null> : never;
+    command: ResolvedDirectCommand;
     sessionId: string;
     incomingMessage: {
       channelId?: string;

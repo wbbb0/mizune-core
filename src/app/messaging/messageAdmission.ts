@@ -1,4 +1,4 @@
-import { resolveDispatchableDirectCommand, type ParsedDirectCommand } from "./directCommands.ts";
+import { resolveDispatchableDirectCommand, type ResolvedDirectCommand } from "./directCommands.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import { buildPrivateSessionId } from "#conversation/session/sessionIdentity.ts";
 
@@ -8,7 +8,7 @@ export type PreRouterSetupDecision =
   | { kind: "allow" }
   | {
       kind: "handle_bootstrap_command";
-      command: ParsedDirectCommand;
+      command: ResolvedDirectCommand;
       sessionId: string;
       incomingMessage: {
         channelId: string;

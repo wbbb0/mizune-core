@@ -45,15 +45,15 @@ import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.t
     }), false);
   });
 
-  test("direct command dispatch helper rejects text commands when media is attached", async () => {
-    assert.equal(resolveDispatchableDirectCommand({
+  test("direct command dispatch helper reports unknown command when prefixed text carries media", async () => {
+    assert.deepEqual(resolveDispatchableDirectCommand({
       phase: "chat",
       setupState: "ready",
       chatType: "private",
       relationship: "owner",
       text: ".debug on",
       hasImages: true
-    }), null);
+    }), { name: "unknown", rawText: ".debug on" });
     assert.deepEqual(resolveDispatchableDirectCommand({
       phase: "chat",
       setupState: "ready",
@@ -61,6 +61,30 @@ import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.t
       relationship: "owner",
       text: ".debug on"
     }), { name: "debug", mode: "on" });
+  });
+
+  test("direct command dispatch helper treats any prefixed text as a command attempt", async () => {
+    assert.deepEqual(resolveDispatchableDirectCommand({
+      phase: "chat",
+      setupState: "ready",
+      chatType: "private",
+      relationship: "owner",
+      text: ".unknown test"
+    }), { name: "unknown", rawText: ".unknown test" });
+    assert.deepEqual(resolveDispatchableDirectCommand({
+      phase: "chat",
+      setupState: "ready",
+      chatType: "private",
+      relationship: "owner",
+      text: "。unknown test"
+    }), { name: "unknown", rawText: "。unknown test" });
+    assert.equal(resolveDispatchableDirectCommand({
+      phase: "chat",
+      setupState: "ready",
+      chatType: "private",
+      relationship: "owner",
+      text: "unknown test"
+    }), null);
   });
 
   test("setup admission helpers centralize bootstrap and setup blocking rules", async () => {
@@ -82,6 +106,15 @@ import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.t
       rawText: "你好",
       segmentCount: 1
     });
+    const preRouterUnknown = resolvePreRouterSetupDecision({
+      setupState: "needs_owner",
+      channelId: "qqbot",
+      eventMessageType: "private",
+      eventUserId: "10001",
+      selfId: "20002",
+      rawText: ".unknown",
+      segmentCount: 1
+    });
     const postRouterGroup = resolvePostRouterSetupDecision({
       setupState: "needs_persona",
       chatType: "group",
@@ -97,6 +130,10 @@ import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.t
 
     assert.equal(preRouterCommand.kind, "handle_bootstrap_command");
     assert.equal(preRouterReject.kind, "reject_private_before_owner_bound");
+    assert.equal(preRouterUnknown.kind, "handle_bootstrap_command");
+    if (preRouterUnknown.kind === "handle_bootstrap_command") {
+      assert.deepEqual(preRouterUnknown.command, { name: "unknown", rawText: ".unknown" });
+    }
     assert.equal(postRouterGroup.kind, "ignore_during_setup");
     assert.equal(postRouterKnownUser.kind, "block_private_non_owner");
     if (postRouterKnownUser.kind === "block_private_non_owner") {
@@ -316,7 +353,20 @@ import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.t
       text: ".reset",
       sessionModeId: "rp_assistant"
     });
-    assert.equal(inRp, null, "should not resolve in rp_assistant");
+    assert.deepEqual(inRp, { name: "unknown", rawText: ".reset" }, "should report unknown command in rp_assistant");
+  });
+
+  test("unknown direct command returns explicit error message", async () => {
+    const { calls, handler } = createDirectCommandFixture();
+
+    await handler({
+      command: { name: "unknown", rawText: ".not-found test" } as any,
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner" }
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.text, "未知指令：.not-found test\n发送 .help 查看可用指令。");
   });
 
   test("confirm command in scenario_host setup captions the session title from scenario state", async () => {

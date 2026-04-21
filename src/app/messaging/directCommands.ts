@@ -34,6 +34,11 @@ export type DirectCommandName = keyof DirectCommandArgsMap;
 export type ParsedDirectCommand = {
   [Name in DirectCommandName]: { name: Name } & DirectCommandArgsMap[Name];
 }[DirectCommandName];
+export interface UnknownDirectCommand {
+  name: "unknown";
+  rawText: string;
+}
+export type ResolvedDirectCommand = ParsedDirectCommand | UnknownDirectCommand;
 
 interface DirectCommandIncomingMessage {
   channelId?: string;
@@ -80,7 +85,7 @@ interface DirectCommandExecutionContext {
   incomingMessage: DirectCommandIncomingMessage;
   ownerAssignmentAvailable: boolean;
   send: (text: string) => Promise<void>;
-  commandName: DirectCommandName;
+  commandName: ResolvedDirectCommand["name"];
 }
 
 interface DirectCommandRoutingContext {
@@ -674,6 +679,20 @@ export function parseDirectCommand(text: string): ParsedDirectCommand | null {
   return null;
 }
 
+export function hasDirectCommandPrefix(text: string): boolean {
+  return /^[。.]/.test(text.trim());
+}
+
+function canAttemptDirectCommand(context: DirectCommandRoutingContext): boolean {
+  if (context.phase === "owner_bootstrap") {
+    return context.setupState === "needs_owner" && context.chatType === "private";
+  }
+  if (context.chatType === "private") {
+    return true;
+  }
+  return context.relationship === "owner" && context.isAtMentioned === true;
+}
+
 export function canExecuteDirectCommand(command: ParsedDirectCommand, context: DirectCommandRoutingContext): boolean {
   const descriptor = directCommandDescriptorMap.get(command.name);
   if (!descriptor) {
@@ -702,7 +721,7 @@ export function canExecuteDirectCommand(command: ParsedDirectCommand, context: D
     && context.isAtMentioned === true;
 }
 
-export function resolveDispatchableDirectCommand(context: DirectCommandDispatchContext): ParsedDirectCommand | null {
+export function resolveDispatchableDirectCommand(context: DirectCommandDispatchContext): ResolvedDirectCommand | null {
   const trimmedText = context.text.trim();
   if (!trimmedText) {
     return null;
@@ -724,13 +743,20 @@ export function resolveDispatchableDirectCommand(context: DirectCommandDispatchC
     }
   }
 
+  if (hasDirectCommandPrefix(trimmedText) && canAttemptDirectCommand(context)) {
+    return {
+      name: "unknown",
+      rawText: trimmedText
+    };
+  }
+
   return null;
 }
 
 export function createDirectCommandHandler(
   input: DirectCommandHandlerInput
 ): (params: {
-  command: ParsedDirectCommand;
+  command: ResolvedDirectCommand;
   sessionId: string;
   incomingMessage: DirectCommandIncomingMessage;
 }) => Promise<void> {
@@ -767,6 +793,11 @@ export function createDirectCommandHandler(
         autoRetractAfterMs: 60_000
       })
     };
+
+    if (params.command.name === "unknown") {
+      await context.send(`未知指令：${params.command.rawText}\n发送 .help 查看可用指令。`);
+      return;
+    }
 
     const descriptor = directCommandDescriptorMap.get(params.command.name);
     if (!descriptor) {
