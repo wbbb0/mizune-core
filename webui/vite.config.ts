@@ -160,7 +160,8 @@ export default defineConfig({
         ]
       },
       devOptions: {
-        enabled: true
+        enabled: true,
+        resolveTempFolder: () => "dev-dist"
       }
     })
   ],

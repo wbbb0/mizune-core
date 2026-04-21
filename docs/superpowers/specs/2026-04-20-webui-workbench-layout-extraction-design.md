@@ -303,7 +303,7 @@ webui/src/
 
 ### AppLayout
 
-现有 [AppLayout.vue](/home/wbbb/Workspace/nodejs/llm-onebot/webui/src/components/layout/AppLayout.vue:1) 混合承担了：
+现有 [AppLayout.vue](../../../webui/src/components/layout/AppLayout.vue:1) 混合承担了：
 
 - 工作台外壳
 - 移动端 `list/main` 切换
@@ -321,7 +321,7 @@ webui/src/
 
 ### ActivityBar
 
-现有 [ActivityBar.vue](/home/wbbb/Workspace/nodejs/llm-onebot/webui/src/components/layout/ActivityBar.vue:1) 应保留为工作台固定导航区的一部分，但其菜单来源应收口到 workbench 配置或 registry，而不是页面局部。
+现有 [ActivityBar.vue](../../../webui/src/components/layout/ActivityBar.vue:1) 应保留为工作台固定导航区的一部分，但其菜单来源应收口到 workbench 配置或 registry，而不是页面局部。
 
 ### Pages
 
@@ -337,7 +337,7 @@ webui/src/
 
 ### ChatPanel
 
-[ChatPanel.vue](/home/wbbb/Workspace/nodejs/llm-onebot/webui/src/components/sessions/ChatPanel.vue:197) 暂不纳入第一轮布局抽象，它未来更适合作为 `SessionsMainPane` 内部的业务组件，而不是工作台层组件。
+[ChatPanel.vue](../../../webui/src/components/sessions/ChatPanel.vue:197) 暂不纳入第一轮布局抽象，它未来更适合作为 `SessionsMainPane` 内部的业务组件，而不是工作台层组件。
 
 ## 第一阶段实现范围
 
@@ -385,7 +385,7 @@ webui/src/
 
 ### 2. 先迁 ConfigPage
 
-[ConfigPage.vue](/home/wbbb/Workspace/nodejs/llm-onebot/webui/src/pages/ConfigPage.vue:102) 最适合作为第一批：
+[ConfigPage.vue](../../../webui/src/pages/ConfigPage.vue:102) 最适合作为第一批：
 
 - 天然就是左侧清单 + 主区详情
 - 重复结构明显
@@ -400,14 +400,14 @@ webui/src/
 
 ### 3. 再迁 DataPage
 
-[DataPage.vue](/home/wbbb/Workspace/nodejs/llm-onebot/webui/src/pages/DataPage.vue:226) 作为第二批，用来验证：
+[DataPage.vue](../../../webui/src/pages/DataPage.vue:226) 作为第二批，用来验证：
 
 - list/detail 结构的通用性
 - 子层级目录项选择的适配能力
 
 ### 4. 再迁 SettingsPage
 
-[SettingsPage.vue](/home/wbbb/Workspace/nodejs/llm-onebot/webui/src/pages/SettingsPage.vue:127) 作为第三批，用来验证：
+[SettingsPage.vue](../../../webui/src/pages/SettingsPage.vue:127) 作为第三批，用来验证：
 
 - 左侧切换项
 - 主区内容
@@ -415,7 +415,7 @@ webui/src/
 
 ### 5. WorkspacePage 第二批后段迁移
 
-[WorkspacePage.vue](/home/wbbb/Workspace/nodejs/llm-onebot/webui/src/pages/WorkspacePage.vue:157) 应在 `Config/Data/Settings` 收口后再迁，用它验证：
+[WorkspacePage.vue](../../../webui/src/pages/WorkspacePage.vue:157) 应在 `Config/Data/Settings` 收口后再迁，用它验证：
 
 - 多模式 pane 内容
 - 图片预览
@@ -423,12 +423,12 @@ webui/src/
 
 ### 6. SessionsPage 最后迁移
 
-[SessionsPage.vue](/home/wbbb/Workspace/nodejs/llm-onebot/webui/src/pages/SessionsPage.vue:129) 不应成为第一轮抽象的依据。
+[SessionsPage.vue](../../../webui/src/pages/SessionsPage.vue:129) 不应成为第一轮抽象的依据。
 
 原因：
 
 - 其内部业务最复杂
-- [ChatPanel.vue](/home/wbbb/Workspace/nodejs/llm-onebot/webui/src/components/sessions/ChatPanel.vue:197) 已经内嵌了自己的多层布局
+- [ChatPanel.vue](../../../webui/src/components/sessions/ChatPanel.vue:197) 已经内嵌了自己的多层布局
 - 如果一开始就用它定义工作台抽象，容易把业务特例抬升到框架层
 
 ## 第一阶段明确不做的事
