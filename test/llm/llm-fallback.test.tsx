@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { LlmClient } from "../../src/llm/llmClient.ts";
+import { setFetchImplementationForTests } from "../../src/services/proxy/index.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
 function createConfig() {
@@ -86,10 +87,9 @@ function createSseResponse(text: string) {
 }
 
   const client = new LlmClient(createConfig(), pino({ level: "silent" }));
-  const originalFetch = globalThis.fetch;
   let callCount = 0;
 
-  globalThis.fetch = async (_url, init = {}) => {
+  setFetchImplementationForTests(async (_url, init = {}) => {
     const body = JSON.parse(String(init.body ?? "{}"));
     callCount += 1;
 
@@ -114,7 +114,7 @@ function createSseResponse(text: string) {
     assert.equal(callCount, 2);
     assert.equal(body.model, "fallback-model");
     return createSseResponse("fallback succeeded");
-  };
+  });
 
   try {
     const result = await client.generate({
@@ -127,5 +127,5 @@ function createSseResponse(text: string) {
     assert.equal(result.text, "fallback succeeded");
     assert.equal(callCount, 2);
   } finally {
-    globalThis.fetch = originalFetch;
+    setFetchImplementationForTests(null);
   }

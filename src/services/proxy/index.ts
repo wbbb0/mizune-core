@@ -30,6 +30,15 @@ interface ResolvedProxyConfig {
 const directHttpDispatcher = new Agent();
 const directHttpsDispatcher = new Agent();
 const proxyDispatcherCache = new Map<string, Dispatcher>();
+type ProxyFetchImplementation = (
+	requestUrl: string,
+	init?: UndiciRequestInit
+) => Promise<Awaited<ReturnType<typeof undiciFetch>> | Response>;
+let fetchImplementationForTests: ProxyFetchImplementation | null = null;
+
+export function setFetchImplementationForTests(fetchImpl: ProxyFetchImplementation | null): void {
+	fetchImplementationForTests = fetchImpl;
+}
 
 export function isProxyEnabled(
 	config: AppConfig,
@@ -95,8 +104,9 @@ export async function fetchWithProxy(
 	init?: UndiciRequestInit,
 	options: ProxyResolveOptions = {}
 ): Promise<Awaited<ReturnType<typeof undiciFetch>>> {
+	const fetchImpl = fetchImplementationForTests ?? undiciFetch;
 	if (!isProxyEnabled(config, consumer, options)) {
-		return undiciFetch(requestUrl, init);
+		return fetchImpl(requestUrl, init) as Promise<Awaited<ReturnType<typeof undiciFetch>>>;
 	}
 
 	const dispatcher = getDispatcherForUrl(config, consumer, requestUrl, options);
@@ -104,7 +114,7 @@ export async function fetchWithProxy(
 		...init,
 		dispatcher
 	};
-	return undiciFetch(requestUrl, requestInit);
+	return fetchImpl(requestUrl, requestInit) as Promise<Awaited<ReturnType<typeof undiciFetch>>>;
 }
 
 function resolveProxyConfig(

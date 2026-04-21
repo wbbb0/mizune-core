@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
 import { LlmClient } from "../../src/llm/llmClient.ts";
+import { setFetchImplementationForTests } from "../../src/services/proxy/index.ts";
 import { createLlmTestConfig, createToolDefinition } from "../helpers/llm-test-support.tsx";
 
   test("api errors force request and error response dumps", async () => {
@@ -15,16 +16,15 @@ import { createLlmTestConfig, createToolDefinition } from "../helpers/llm-test-s
       enabled: false
     };
     const client = new LlmClient(config, pino({ level: "silent" }));
-    const originalFetch = globalThis.fetch;
 
-    globalThis.fetch = async () => new Response(
+    setFetchImplementationForTests(async () => new Response(
       JSON.stringify({ error: "bad tool schema" }),
       {
         status: 400,
         statusText: "Bad Request",
         headers: { "Content-Type": "application/json" }
       }
-    );
+    ));
 
     try {
       await assert.rejects(
@@ -49,7 +49,7 @@ import { createLlmTestConfig, createToolDefinition } from "../helpers/llm-test-s
       assert.equal(responseDump.endpoint, "https://example.com/v1/chat/completions");
       assert.match(responseDump.errorBody, /bad tool schema/);
     } finally {
-      globalThis.fetch = originalFetch;
+      setFetchImplementationForTests(null);
       await rm(dumpDir, { recursive: true, force: true });
     }
   });

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createTestAppConfig } from "./config-fixtures.tsx";
+import { setFetchImplementationForTests } from "../../src/services/proxy/index.ts";
 import type { LlmMessage, LlmToolDefinition } from "../../src/llm/provider/providerTypes.ts";
 
 export function createLlmTestConfig(modelOverrides: any = {}) {
@@ -91,10 +92,9 @@ export function createSseResponse(payloads: any[]) {
 }
 
 export async function withMockFetch(scenarios: any[], fn: () => Promise<void>) {
-  const originalFetch = globalThis.fetch;
   let callIndex = 0;
 
-  globalThis.fetch = async (url, init = {}) => {
+  setFetchImplementationForTests(async (url, init = {}) => {
     const scenario = scenarios[callIndex];
     assert.ok(scenario, `unexpected fetch call #${callIndex + 1}`);
     const body = JSON.parse(String(init.body ?? "{}"));
@@ -107,13 +107,13 @@ export async function withMockFetch(scenarios: any[], fn: () => Promise<void>) {
       return scenario.response;
     }
     return createSseResponse(scenario.payloads);
-  };
+  });
 
   try {
     await fn();
     assert.equal(callIndex, scenarios.length);
   } finally {
-    globalThis.fetch = originalFetch;
+    setFetchImplementationForTests(null);
   }
 }
 
