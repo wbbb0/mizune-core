@@ -207,16 +207,24 @@ owner 可以通过显式指令进入配置态：
 - `.config rp`
 - `.config scenario`
 
+配置态统一基于临时草稿运行，而不是直接修改已保存配置：
+
+- `setup` 进入时加载空白草稿
+- `config` 进入时加载当前已保存配置的副本草稿
+- 配置过程中的字段增删改默认只作用于草稿
+- 只有 `.confirm` 才会把草稿持久化为正式配置
+- `.cancel` 会丢弃草稿，回退到进入配置前的已保存状态
+
 ### confirm / cancel
 
 - `.confirm`
-  - 提交当前 setup / config 的变更
+  - 提交当前 setup / config 草稿的变更
   - 更新对应 readiness
   - 清除当前会话工作态
   - 清空当前 session 历史
   - 返回明确提示“配置已确认，当前会话历史已清空”
 - `.cancel`
-  - 放弃当前工作态
+  - 放弃当前 setup / config 草稿
   - 清除当前会话工作态
   - 清空当前 session 历史
   - 返回明确提示“已退出配置流程，当前会话历史已清空”
@@ -241,6 +249,11 @@ owner 可以通过显式指令进入配置态：
 - `.config xxx` 仅 owner 可用
 - `.confirm` / `.cancel` 只在当前会话处于 setup / config 工作态时可用
 
+额外语义：
+
+- `.setup xxx` 表示以空白草稿重新开始该对象配置
+- `.config xxx` 表示以当前已保存配置为基础进入编辑
+
 ## Prompt 分层
 
 ### normal
@@ -259,6 +272,7 @@ owner 可以通过显式指令进入配置态：
 - 从空白或近空白状态补齐 `persona` 必需字段
 - 主动围绕缺失字段提问
 - 不处理 `rpProfile` 或 `scenarioProfile`
+- 写入目标是临时 `persona` 草稿，而不是正式存储
 
 ### mode_setup
 
@@ -267,6 +281,7 @@ owner 可以通过显式指令进入配置态：
 - 针对当前模式补齐专属全局 profile
 - `mode_setup(rp_assistant)` 只处理 `rpProfile`
 - `mode_setup(scenario)` 只处理 `scenarioProfile`
+- 写入目标是对应模式的临时 profile 草稿
 
 ### persona_config
 
@@ -275,6 +290,7 @@ owner 可以通过显式指令进入配置态：
 - 先读取当前 `persona`
 - 基于 owner 的显式要求做局部修改
 - 不默认重新收集所有字段
+- 操作对象是“当前已保存 persona 的副本草稿”
 
 ### mode_config
 
@@ -283,6 +299,7 @@ owner 可以通过显式指令进入配置态：
 - 先读取当前模式的 profile
 - 仅修改对应模式的数据
 - 不跨模式写入
+- 操作对象是“当前已保存 mode profile 的副本草稿”
 
 ## 工具暴露边界
 
@@ -306,6 +323,8 @@ owner 可以通过显式指令进入配置态：
 - `clear_persona_field`
 - 可选：`send_setup_draft`
 
+这些工具在配置态中只操作临时草稿，不直接写正式配置。
+
 ### mode_setup(rp_assistant) / mode_config(rp_assistant)
 
 只暴露 `rpProfile` 相关读写工具：
@@ -315,6 +334,8 @@ owner 可以通过显式指令进入配置态：
 - `clear_rp_profile_field`
 - 可选：`send_setup_draft`
 
+这些工具在配置态中只操作临时草稿，不直接写正式配置。
+
 ### mode_setup(scenario) / mode_config(scenario)
 
 只暴露 `scenarioProfile` 相关读写工具：
@@ -323,6 +344,8 @@ owner 可以通过显式指令进入配置态：
 - `patch_scenario_profile`
 - `clear_scenario_profile_field`
 - 可选：`send_setup_draft`
+
+这些工具在配置态中只操作临时草稿，不直接写正式配置。
 
 ## 行为规则
 
