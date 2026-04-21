@@ -600,7 +600,7 @@ function onUnionSelect(event: Event) {
             @click.stop
           />
         </template>
-        <span v-else :class="labelClasses">
+        <span v-else :class="labelClasses" :title="node.schema.description">
           {{ label }}
           <span v-if="currentPathDirty" class="editor-dirty-dot" aria-hidden="true"></span>
         </span>
@@ -673,7 +673,7 @@ function onUnionSelect(event: Event) {
             @click.stop
           />
         </template>
-        <span v-else :class="labelClasses">
+        <span v-else :class="labelClasses" :title="node.schema.description">
           {{ label }}
           <span v-if="currentPathDirty" class="editor-dirty-dot" aria-hidden="true"></span>
         </span>

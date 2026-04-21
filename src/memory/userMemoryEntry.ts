@@ -2,16 +2,22 @@ import { randomUUID } from "node:crypto";
 import { s, type Infer } from "#data/schema/index.ts";
 
 export const userMemoryEntrySchema = s.object({
-  id: s.string().trim().nonempty(),
-  title: s.string().trim().nonempty(),
-  content: s.string().trim().nonempty(),
-  kind: s.enum(["preference", "fact", "boundary", "habit", "relationship", "other"] as const).default("other"),
-  source: s.enum(["user_explicit", "owner_explicit", "inferred"] as const).default("user_explicit"),
-  createdAt: s.number().int().min(0).default(() => Date.now()),
-  updatedAt: s.number().int().min(0).default(() => Date.now()),
-  importance: s.number().int().min(1).max(5).optional(),
-  lastUsedAt: s.number().int().min(0).optional()
-}).strict();
+  id: s.string().trim().nonempty().title("ID"),
+  title: s.string().trim().nonempty().title("标题"),
+  content: s.string().trim().nonempty().title("内容"),
+  kind: s.enum(["preference", "fact", "boundary", "habit", "relationship", "other"] as const)
+    .title("类型")
+    .default("other"),
+  source: s.enum(["user_explicit", "owner_explicit", "inferred"] as const)
+    .title("来源")
+    .default("user_explicit"),
+  createdAt: s.number().int().min(0).title("创建时间").default(() => Date.now()),
+  updatedAt: s.number().int().min(0).title("更新时间").default(() => Date.now()),
+  importance: s.number().int().min(1).max(5).title("重要性").optional(),
+  lastUsedAt: s.number().int().min(0).title("最近使用时间").optional()
+}).title("记忆条目")
+  .describe("保存一条可长期复用的用户记忆。")
+  .strict();
 
 export type UserMemoryEntry = Infer<typeof userMemoryEntrySchema>;
 export type UserMemoryKind = UserMemoryEntry["kind"];

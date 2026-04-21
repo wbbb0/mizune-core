@@ -13,6 +13,7 @@ import {
   s,
   writeConfigFile
 } from "../../src/data/schema/index.ts";
+import { fileConfigSchema } from "../../src/config/configModel.ts";
 import { withTempDir } from "../helpers/config-test-support.tsx";
 
 const appSchema = s.object({
@@ -158,6 +159,34 @@ const appSchema = s.object({
     assert.equal((uiTree as any).children.server.kind, "group");
     assert.equal((uiTree as any).children.features.kind, "record");
     assert.equal((uiTree as any).children.admins.kind, "array");
+  });
+
+  test("exportSchemaMeta keeps editor labels in title and hover metadata in description", async () => {
+    const lockSchema = s.object({
+      group: s.object({
+        leaf: s.string()
+          .title("叶子标题")
+          .describe("叶子说明")
+      })
+        .title("分组标题")
+        .describe("分组说明")
+    })
+      .title("根标题")
+      .describe("根说明")
+      .strict();
+
+    const lockMeta = exportSchemaMeta(lockSchema) as any;
+    assert.equal(lockMeta.kind, "object");
+    assert.equal(lockMeta.title, "根标题");
+    assert.equal(lockMeta.description, "根说明");
+    assert.equal(lockMeta.fields.group.title, "分组标题");
+    assert.equal(lockMeta.fields.group.description, "分组说明");
+    assert.equal(lockMeta.fields.group.fields.leaf.title, "叶子标题");
+    assert.equal(lockMeta.fields.group.fields.leaf.description, "叶子说明");
+
+    const meta = exportSchemaMeta(fileConfigSchema) as any;
+    assert.equal(meta.kind, "object");
+    assert.equal(meta.fields.onebot.title, "OneBot");
   });
 
   test("createSchemaTemplate builds an empty object from nested defaults", async () => {

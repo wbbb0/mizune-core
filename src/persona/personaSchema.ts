@@ -1,17 +1,21 @@
 import { s, type Infer } from "#data/schema/index.ts";
 
-const personaFieldSchema = s.string().default("");
+function createPersonaFieldSchema(title: string) {
+  return s.string().title(title).default("");
+}
 
 export const personaSchema = s.object({
-  name: personaFieldSchema,
-  role: personaFieldSchema,
-  appearance: personaFieldSchema,
-  personality: personaFieldSchema,
-  interests: personaFieldSchema,
-  background: personaFieldSchema,
-  speechStyle: personaFieldSchema,
-  rules: personaFieldSchema
-}).strict();
+  name: createPersonaFieldSchema("名字"),
+  role: createPersonaFieldSchema("角色定位"),
+  appearance: createPersonaFieldSchema("外貌"),
+  personality: createPersonaFieldSchema("性格"),
+  interests: createPersonaFieldSchema("兴趣与喜好"),
+  background: createPersonaFieldSchema("背景"),
+  speechStyle: createPersonaFieldSchema("说话方式"),
+  rules: createPersonaFieldSchema("行为规则")
+}).title("人设")
+  .describe("定义默认角色形象、说话方式和行为约束。")
+  .strict();
 
 export type Persona = Infer<typeof personaSchema>;
 

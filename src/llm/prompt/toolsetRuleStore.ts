@@ -16,18 +16,27 @@ import {
 } from "#memory/writeResult.ts";
 
 export const toolsetRuleSchema = s.object({
-  id: s.string().trim().nonempty(),
-  title: s.string().trim().nonempty(),
-  content: s.string().trim().nonempty(),
-  toolsetIds: s.array(s.string().trim().nonempty()).min(1),
-  fingerprint: s.string().trim().nonempty(),
-  source: s.enum(["owner_explicit", "inferred"] as const).default("owner_explicit"),
-  createdAt: s.number().int().min(0).default(() => Date.now()),
-  updatedAt: s.number().int().min(0).default(() => Date.now())
-}).strict();
+  id: s.string().trim().nonempty().title("ID"),
+  title: s.string().trim().nonempty().title("标题"),
+  content: s.string().trim().nonempty().title("内容"),
+  toolsetIds: s.array(s.string().trim().nonempty().title("工具集 ID"))
+    .title("工具集")
+    .min(1),
+  fingerprint: s.string().trim().nonempty()
+    .title("指纹")
+    .describe("用于去重匹配的内部标识。"),
+  source: s.enum(["owner_explicit", "inferred"] as const).title("来源").default("owner_explicit"),
+  createdAt: s.number().int().min(0).title("创建时间").default(() => Date.now()),
+  updatedAt: s.number().int().min(0).title("更新时间").default(() => Date.now())
+}).title("工具集规则")
+  .describe("定义只在指定工具集下生效的长期规则。")
+  .strict();
 
 export type ToolsetRuleEntry = Infer<typeof toolsetRuleSchema>;
-export const toolsetRuleFileSchema = s.array(toolsetRuleSchema).default([]);
+export const toolsetRuleFileSchema = s.array(toolsetRuleSchema)
+  .title("工具集规则列表")
+  .describe("按列表保存仅对指定工具集生效的规则。")
+  .default([]);
 
 export interface ToolsetRuleUpsertResult {
   action: MemoryWriteAction;

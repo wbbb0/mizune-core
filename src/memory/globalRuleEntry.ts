@@ -2,14 +2,21 @@ import { randomUUID } from "node:crypto";
 import { s, type Infer } from "#data/schema/index.ts";
 
 export const globalRuleEntrySchema = s.object({
-  id: s.string().trim().nonempty(),
-  title: s.string().trim().nonempty(),
-  content: s.string().trim().nonempty(),
-  kind: s.enum(["workflow", "constraint", "preference", "other"] as const).default("workflow"),
-  source: s.enum(["owner_explicit", "inferred"] as const).default("owner_explicit"),
-  createdAt: s.number().int().min(0).default(() => Date.now()),
-  updatedAt: s.number().int().min(0).default(() => Date.now())
-}).strict();
+  id: s.string().trim().nonempty().title("ID"),
+  title: s.string().trim().nonempty().title("标题"),
+  content: s.string().trim().nonempty().title("内容"),
+  kind: s.enum(["workflow", "constraint", "preference", "other"] as const).title("类型").default("workflow"),
+  source: s.enum(["owner_explicit", "inferred"] as const).title("来源").default("owner_explicit"),
+  createdAt: s.number().int().min(0).title("创建时间").default(() => Date.now()),
+  updatedAt: s.number().int().min(0).title("更新时间").default(() => Date.now())
+}).title("全局规则")
+  .describe("定义对所有会话生效的长期规则。")
+  .strict();
+
+export const globalRuleFileSchema = s.array(globalRuleEntrySchema)
+  .title("全局规则列表")
+  .describe("按列表保存可编辑的全局规则。")
+  .default([]);
 
 export type GlobalRuleEntry = Infer<typeof globalRuleEntrySchema>;
 export type GlobalRuleKind = GlobalRuleEntry["kind"];

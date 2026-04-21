@@ -15,7 +15,7 @@ import { deepMergeAllReplaceArrays } from "#data/schema/helpers.ts";
 import { buildUiTreeFromMeta } from "#data/schema/ui.ts";
 import type { BaseSchema, Infer } from "#data/schema/index.ts";
 import { personaSchema } from "#persona/personaSchema.ts";
-import { globalRuleEntrySchema } from "#memory/globalRuleEntry.ts";
+import { globalRuleFileSchema } from "#memory/globalRuleEntry.ts";
 import { userStoreSchema } from "#identity/userSchema.ts";
 import { whitelistFileSchema } from "#identity/whitelistSchema.ts";
 import { requestFileSchema } from "#requests/requestSchema.ts";
@@ -294,7 +294,7 @@ function buildEditorResourceMap(input: {
     },
     {
       key: "llm_provider_catalog",
-      title: "LLM Provider Catalog",
+      title: "LLM 提供方目录",
       domain: "config",
       kind: "single",
       editable: true,
@@ -306,7 +306,7 @@ function buildEditorResourceMap(input: {
     },
     {
       key: "llm_model_catalog",
-      title: "LLM Model Catalog",
+      title: "LLM 模型目录",
       domain: "config",
       kind: "single",
       editable: true,
@@ -319,26 +319,26 @@ function buildEditorResourceMap(input: {
   ];
   const dataDir = input.config.dataDir;
   const dataResources: EditorResource<any>[] = [
-    single("persona", "Persona", "data", personaSchema, `${dataDir}/persona.json`),
-    single("users", "Users", "data", userStoreSchema, `${dataDir}/users.json`),
-    single("whitelist", "Whitelist", "data", whitelistFileSchema, `${dataDir}/whitelist.json`, {
+    single("persona", "人格设定", "data", personaSchema, `${dataDir}/persona.json`),
+    single("users", "用户列表", "data", userStoreSchema, `${dataDir}/users.json`),
+    single("whitelist", "白名单", "data", whitelistFileSchema, `${dataDir}/whitelist.json`, {
       afterSave: async () => {
         await input.whitelistStore.reloadFromDisk();
       }
     }),
-    single("requests", "Pending Requests", "data", requestFileSchema, `${dataDir}/pending-requests.json`),
-    single("setup_state", "Setup State", "data", setupStateSchema, `${dataDir}/setup-state.json`),
-    single("group_membership", "Group Membership Cache", "data", membershipFileSchema, `${dataDir}/group-membership-cache.json`),
-    single("live_resources", "Live Resources", "data", runtimeResourceFileSchema, `${dataDir}/live-resources.json`, {
+    single("requests", "待处理请求", "data", requestFileSchema, `${dataDir}/pending-requests.json`),
+    single("setup_state", "初始化状态", "data", setupStateSchema, `${dataDir}/setup-state.json`),
+    single("group_membership", "群成员缓存", "data", membershipFileSchema, `${dataDir}/group-membership-cache.json`),
+    single("live_resources", "运行时资源", "data", runtimeResourceFileSchema, `${dataDir}/live-resources.json`, {
       editable: false
     }),
-    single("scheduled_jobs", "Scheduled Jobs", "data", scheduledJobFileSchema, `${dataDir}/scheduled-jobs.json`, {
+    single("scheduled_jobs", "定时任务", "data", scheduledJobFileSchema, `${dataDir}/scheduled-jobs.json`, {
       afterSave: async () => {
         await input.scheduler.reloadFromStore();
       }
     }),
-    single("global_rules", "Global Rules", "data", s.array(globalRuleEntrySchema).default([]), `${dataDir}/global-rules.json`),
-    single("toolset_rules", "Toolset Rules", "data", toolsetRuleFileSchema, `${dataDir}/toolset-rules.json`)
+    single("global_rules", "全局规则列表", "data", globalRuleFileSchema, `${dataDir}/global-rules.json`),
+    single("toolset_rules", "工具集规则列表", "data", toolsetRuleFileSchema, `${dataDir}/toolset-rules.json`)
   ];
 
   return new Map(

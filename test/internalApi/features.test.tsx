@@ -1,15 +1,61 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { fileConfigSchema, llmProviderCatalogSchema } from "#config/configModel.ts";
+import { exportSchemaMeta } from "#data/schema/composites.ts";
 import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal-api-fixtures.tsx";
+
+  test("internal api exposes config editor schema metadata", async () => {
+    const app = await createInternalApiApp(createInternalApiDeps());
+    try {
+      const response = await app.inject({ method: "GET", url: "/api/editors/config" });
+      const schemaMeta = response.json().editor.schemaMeta;
+
+      assert.equal(response.statusCode, 200);
+      assert.equal(schemaMeta.kind, "object");
+      assert.equal(schemaMeta.fields.appName.title, "应用名称");
+      assert.equal(schemaMeta.fields.onebot.title, "OneBot");
+      assert.equal(schemaMeta.fields.llm.title, "LLM");
+      assert.equal(schemaMeta.fields.conversation.title, "会话");
+      assert.equal(
+        schemaMeta.fields.conversation.fields.historyCompression.description,
+        "控制会话历史在过长时如何压缩。"
+      );
+
+      const providerCatalogMeta = exportSchemaMeta(llmProviderCatalogSchema) as any;
+      assert.equal(providerCatalogMeta.kind, "record");
+      assert.equal(providerCatalogMeta.value.fields.features.fields.thinking.title, "思考");
+      assert.equal(providerCatalogMeta.value.fields.features.fields.search.title, "搜索");
+
+      const fileSchemaMeta = exportSchemaMeta(fileConfigSchema) as any;
+      assert.equal(fileSchemaMeta.kind, "object");
+      assert.equal(fileSchemaMeta.fields.comfy.fields.aspectRatios.value.title, "宽高比");
+      assert.equal(fileSchemaMeta.fields.comfy.fields.aspectRatios.value.fields.width.title, "宽度");
+      assert.equal(fileSchemaMeta.fields.comfy.fields.aspectRatios.value.fields.height.title, "高度");
+      assert.equal(fileSchemaMeta.fields.comfy.fields.templates.item.fields.parameterBindings.title, "参数绑定");
+      assert.equal(
+        fileSchemaMeta.fields.comfy.fields.templates.item.fields.parameterBindings.fields.positivePromptPath.title,
+        "正向提示词路径"
+      );
+      assert.equal(
+        fileSchemaMeta.fields.comfy.fields.templates.item.fields.parameterBindings.fields.widthPath.title,
+        "宽度路径"
+      );
+      assert.equal(
+        fileSchemaMeta.fields.comfy.fields.templates.item.fields.parameterBindings.fields.heightPath.title,
+        "高度路径"
+      );
+    } finally {
+      await app.close();
+    }
+  });
 
   test("internal api exposes config, whitelist, requests, and scheduler jobs", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
-      const [configSummary, editors, configEditor, whitelist, requests, jobs] = await Promise.all([
+      const [configSummary, editors, whitelist, requests, jobs] = await Promise.all([
         app.inject({ method: "GET", url: "/api/config-summary" }),
         app.inject({ method: "GET", url: "/api/editors" }),
-        app.inject({ method: "GET", url: "/api/editors/config" }),
         app.inject({ method: "GET", url: "/api/whitelist" }),
         app.inject({ method: "GET", url: "/api/requests" }),
         app.inject({ method: "GET", url: "/api/scheduler/jobs" })
@@ -17,19 +63,31 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
 
       assert.equal(configSummary.statusCode, 200);
       assert.equal(editors.statusCode, 200);
-      assert.equal(configEditor.statusCode, 200);
       assert.equal(configSummary.json().runtimeMode, "onebot");
       assert.equal(configSummary.json().access.ownerId, "10001");
       assert.deepEqual(configSummary.json().access.whitelist.users, ["10001"]);
       assert.equal(configSummary.json().onebot.enabled, true);
       assert.ok(editors.json().resources.some((resource: { key: string }) => resource.key === "config"));
-      assert.ok(editors.json().resources.some((resource: { key: string }) => resource.key === "whitelist"));
-      assert.equal(configEditor.json().editor.schemaMeta.kind, "object");
-      assert.equal(configEditor.json().editor.uiTree.kind, "group");
-      assert.deepEqual(configEditor.json().editor.layerFeatures, {
-        showBackdrop: true,
-        allowRestoreInherited: true
-      });
+      assert.equal(
+        editors.json().resources.find((resource: { key: string }) => resource.key === "users")?.title,
+        "用户列表"
+      );
+      assert.equal(
+        editors.json().resources.find((resource: { key: string }) => resource.key === "group_membership")?.title,
+        "群成员缓存"
+      );
+      assert.equal(
+        editors.json().resources.find((resource: { key: string }) => resource.key === "requests")?.title,
+        "待处理请求"
+      );
+      assert.equal(
+        editors.json().resources.find((resource: { key: string }) => resource.key === "global_rules")?.title,
+        "全局规则列表"
+      );
+      assert.equal(
+        editors.json().resources.find((resource: { key: string }) => resource.key === "toolset_rules")?.title,
+        "工具集规则列表"
+      );
       assert.deepEqual(whitelist.json().whitelist.users, ["10001"]);
       assert.deepEqual(requests.json().requests.groups, [{ groupId: "20002", userId: "10003" }]);
       assert.deepEqual(jobs.json().jobs, [{ id: "job-1", name: "daily" }]);
@@ -115,20 +173,82 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
     try {
       await mkdir(deps.config.dataDir, { recursive: true });
       const whitelistPath = `${deps.config.dataDir}/whitelist.json`;
+      const groupMembershipPath = `${deps.config.dataDir}/group-membership-cache.json`;
       await writeFile(whitelistPath, JSON.stringify({
         users: ["10001"],
         groups: ["20001"]
       }, null, 2), "utf8");
+      await writeFile(groupMembershipPath, JSON.stringify({
+        version: 1,
+        groups: {
+          "20001": {
+            "10001": {
+              isMember: true,
+              verifiedAt: 1710000000000
+            }
+          }
+        }
+      }, null, 2), "utf8");
 
-      const response = await app.inject({
+      const whitelistResponse = await app.inject({
         method: "GET",
         url: "/api/editors/whitelist"
       });
+      const usersResponse = await app.inject({
+        method: "GET",
+        url: "/api/editors/users"
+      });
+      const groupMembershipResponse = await app.inject({
+        method: "GET",
+        url: "/api/editors/group_membership"
+      });
+      const globalRulesResponse = await app.inject({
+        method: "GET",
+        url: "/api/editors/global_rules"
+      });
+      const toolsetRulesResponse = await app.inject({
+        method: "GET",
+        url: "/api/editors/toolset_rules"
+      });
 
-      assert.equal(response.statusCode, 200);
-      assert.equal(response.json().editor.kind, "single");
-      assert.equal(response.json().editor.file.path, whitelistPath);
-      assert.deepEqual(response.json().editor.current.users, ["10001"]);
+      assert.equal(whitelistResponse.statusCode, 200);
+      assert.equal(whitelistResponse.json().editor.kind, "single");
+      assert.equal(whitelistResponse.json().editor.file.path, whitelistPath);
+      assert.deepEqual(whitelistResponse.json().editor.current.users, ["10001"]);
+      assert.equal(whitelistResponse.json().editor.schemaMeta.title, "白名单");
+      assert.equal(whitelistResponse.json().editor.schemaMeta.options?.[0]?.title, "当前白名单");
+
+      assert.equal(usersResponse.statusCode, 200);
+      assert.equal(usersResponse.json().editor.kind, "single");
+      assert.equal(usersResponse.json().editor.schemaMeta.item.title, "用户");
+      assert.equal(usersResponse.json().editor.schemaMeta.item.fields.memories.title, "长期记忆");
+      assert.equal(usersResponse.json().editor.schemaMeta.description, "按列表保存所有用户的基础资料和长期记忆。");
+
+      assert.equal(groupMembershipResponse.statusCode, 200);
+      assert.equal(groupMembershipResponse.json().editor.kind, "single");
+      assert.equal(groupMembershipResponse.json().editor.file.path, groupMembershipPath);
+      assert.equal(groupMembershipResponse.json().editor.schemaMeta.title, "群成员缓存");
+      assert.equal(groupMembershipResponse.json().editor.schemaMeta.fields.groups.title, "群列表");
+      assert.equal(
+        groupMembershipResponse.json().editor.schemaMeta.fields.groups.description,
+        "按群 ID 缓存成员校验结果。"
+      );
+      assert.equal(groupMembershipResponse.json().editor.schemaMeta.fields.groups.value.title, "成员列表");
+      assert.equal(
+        groupMembershipResponse.json().editor.schemaMeta.fields.groups.value.description,
+        "按用户 ID 缓存成员校验结果。"
+      );
+      assert.equal(groupMembershipResponse.json().editor.schemaMeta.fields.groups.value.value.title, "成员记录");
+
+      assert.equal(globalRulesResponse.statusCode, 200);
+      assert.equal(globalRulesResponse.json().editor.kind, "single");
+      assert.equal(globalRulesResponse.json().editor.schemaMeta.title, "全局规则列表");
+      assert.equal(globalRulesResponse.json().editor.schemaMeta.description, "按列表保存可编辑的全局规则。");
+
+      assert.equal(toolsetRulesResponse.statusCode, 200);
+      assert.equal(toolsetRulesResponse.json().editor.kind, "single");
+      assert.equal(toolsetRulesResponse.json().editor.schemaMeta.title, "工具集规则列表");
+      assert.equal(toolsetRulesResponse.json().editor.schemaMeta.description, "按列表保存仅对指定工具集生效的规则。");
     } finally {
       await app.close();
     }

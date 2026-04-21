@@ -3,10 +3,9 @@ import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import { FileSchemaStore } from "#data/fileSchemaStore.ts";
-import { s } from "#data/schema/index.ts";
 import { rotateBackup } from "#utils/rotatingBackup.ts";
 import { detectScopeConflict, type ScopeConflictWarning } from "./memoryCategory.ts";
-import { createGlobalRuleEntry, globalRuleEntrySchema, type GlobalRuleEntry } from "./globalRuleEntry.ts";
+import { createGlobalRuleEntry, globalRuleFileSchema, type GlobalRuleEntry } from "./globalRuleEntry.ts";
 import { findBestDuplicateMatch, normalizeTitleForDedup } from "./similarity.ts";
 import {
   buildMemoryDedupDetails,
@@ -14,8 +13,6 @@ import {
   type MemoryDedupDetails,
   type MemoryWriteAction
 } from "./writeResult.ts";
-
-const globalRuleStoreSchema = s.array(globalRuleEntrySchema).default([]);
 
 export interface GlobalRuleUpsertResult {
   action: MemoryWriteAction;
@@ -28,7 +25,7 @@ export interface GlobalRuleUpsertResult {
 
 export class GlobalRuleStore {
   private readonly filePath: string;
-  private readonly store: FileSchemaStore<typeof globalRuleStoreSchema>;
+  private readonly store: FileSchemaStore<typeof globalRuleFileSchema>;
 
   constructor(
     dataDir: string,
@@ -38,7 +35,7 @@ export class GlobalRuleStore {
     this.filePath = join(dataDir, "global-rules.json");
     this.store = new FileSchemaStore({
       filePath: this.filePath,
-      schema: globalRuleStoreSchema,
+      schema: globalRuleFileSchema,
       logger,
       loadErrorEvent: "global_rule_store_load_failed"
     });
@@ -179,7 +176,7 @@ export class GlobalRuleStore {
   }
 
   private async writeAll(rules: GlobalRuleEntry[]): Promise<void> {
-    const validated = globalRuleStoreSchema.parse(rules);
+    const validated = globalRuleFileSchema.parse(rules);
     await this.createBackupIfNeeded();
     await this.store.write(validated);
   }
