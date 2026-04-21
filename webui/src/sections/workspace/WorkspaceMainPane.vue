@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { RefreshCw } from "lucide-vue-next";
-import ImagePreviewDialog from "@/components/common/ImagePreviewDialog.vue";
+import { openImagePreviewWindow } from "@/components/common/imagePreviewWindow";
+import { useWorkbenchWindows } from "@/composables/workbench/useWorkbenchWindows";
 import { useWorkspaceSection } from "@/composables/sections/useWorkspaceSection";
+
+const windows = useWorkbenchWindows();
 
 const {
   mode,
@@ -10,15 +13,19 @@ const {
   filePreview,
   previewError,
   fileImageSrc,
-  dialogImageSrc,
   loadingAssets,
   previewIcon,
   formatSize,
   formatTime,
-  selectedStoredFileImageUrl,
-  openImageDialog,
-  closeImageDialog
+  selectedStoredFileImageUrl
 } = useWorkspaceSection();
+
+function previewImage(src: string | null, title?: string) {
+  if (!src) {
+    return;
+  }
+  void openImagePreviewWindow(windows, { src, title });
+}
 </script>
 
 <template>
@@ -40,7 +47,7 @@ const {
           {{ previewError }}
         </div>
         <div v-else-if="fileImageSrc" class="scrollbar-thin flex flex-1 items-center justify-center overflow-auto px-4 py-4">
-          <button class="cursor-zoom-in overflow-hidden rounded-lg border border-border-default bg-surface-sidebar p-2" @click="openImageDialog(fileImageSrc)">
+          <button class="cursor-zoom-in overflow-hidden rounded-lg border border-border-default bg-surface-sidebar p-2" @click="previewImage(fileImageSrc, selectedItem.name)">
             <img :src="fileImageSrc" :alt="selectedItem.name" class="max-h-[70vh] max-w-full rounded object-contain" />
           </button>
         </div>
@@ -62,7 +69,7 @@ const {
 
         <div class="scrollbar-thin flex-1 overflow-auto px-4 py-4">
           <div v-if="selectedStoredFile.kind === 'image' || selectedStoredFile.kind === 'animated_image'" class="mb-4">
-            <button class="cursor-zoom-in overflow-hidden rounded-lg border border-border-default bg-surface-sidebar p-2" @click="openImageDialog(selectedStoredFileImageUrl)">
+            <button class="cursor-zoom-in overflow-hidden rounded-lg border border-border-default bg-surface-sidebar p-2" @click="previewImage(selectedStoredFileImageUrl, selectedStoredFile.sourceName || selectedStoredFile.fileId)">
               <img v-if="selectedStoredFileImageUrl" :src="selectedStoredFileImageUrl" :alt="selectedStoredFile.sourceName || selectedStoredFile.fileId" class="max-h-[65vh] w-full rounded object-contain" />
             </button>
           </div>
@@ -92,11 +99,5 @@ const {
       </template>
     </div>
 
-    <ImagePreviewDialog
-      :open="dialogImageSrc !== null"
-      :src="dialogImageSrc || ''"
-      :title="selectedStoredFile?.sourceName || selectedStoredFile?.fileRef || selectedItem?.name"
-      @close="closeImageDialog"
-    />
   </div>
 </template>

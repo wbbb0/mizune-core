@@ -65,10 +65,10 @@ function resetStore() {
     assert.match(source, /toast\.push/);
   });
 
-  test("config and data pages use toast instead of inline save containers", async () => {
+  test("config and data sections use toast instead of inline save containers", async () => {
     const [configSource, dataSource] = await Promise.all([
-      readFile(new URL("../../../webui/src/pages/ConfigPage.vue", import.meta.url), "utf8"),
-      readFile(new URL("../../../webui/src/pages/DataPage.vue", import.meta.url), "utf8")
+      readFile(new URL("../../../webui/src/composables/sections/useConfigSection.ts", import.meta.url), "utf8"),
+      readFile(new URL("../../../webui/src/composables/sections/useDataSection.ts", import.meta.url), "utf8")
     ]);
 
     assert.match(configSource, /useToastStore/);

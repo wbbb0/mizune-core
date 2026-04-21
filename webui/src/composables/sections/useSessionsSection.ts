@@ -4,7 +4,10 @@ import { ApiError } from "@/api/client";
 import { sessionsApi } from "@/api/sessions";
 import type { SessionDetailResult } from "@/api/types";
 import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
+import { useWorkbenchWindows } from "@/composables/workbench/useWorkbenchWindows";
+import { openCreateSessionWindow } from "@/components/sessions/createSessionWindow";
 import { useSessionsStore } from "@/stores/sessions";
+import { useToastStore } from "@/stores/toasts";
 import type { NormalizedSessionListItem } from "@/stores/sessionDisplay";
 
 type CreateSessionPayload = {
@@ -12,37 +15,18 @@ type CreateSessionPayload = {
   modeId?: string;
 };
 
+const CANCEL_WINDOW_ACTION = Symbol("cancel-window-action");
+
 type SessionsSectionState = {
   store: ReturnType<typeof useSessionsStore>;
   loading: Ref<boolean>;
-  createDialogOpen: Ref<boolean>;
-  createDialogBusy: Ref<boolean>;
-  createDialogError: Ref<string>;
-  actionsDialogSessionId: Ref<string | null>;
-  actionsDialogBusy: Ref<boolean>;
-  actionsDialogError: Ref<string>;
-  actionsDialogTitleDraft: Ref<string>;
-  actionsDialogDetail: Ref<SessionDetailResult["session"] | null>;
-  actionsSession: ComputedRef<NormalizedSessionListItem | null>;
-  actionsSessionTitleSource: ComputedRef<"default" | "auto" | "manual" | null>;
-  actionsDialogTitleGenerationAvailable: ComputedRef<boolean>;
-  actionsDialogSupportsTitleEditing: ComputedRef<boolean>;
-  actionsDialogTitleSourceLabel: ComputedRef<string>;
   mobileHeaderTitle: ComputedRef<string>;
   initializeSection: () => Promise<void>;
   resetState: () => void;
   selectSession: (sessionId: string) => void;
   refreshSessions: () => Promise<void>;
-  openCreateDialog: () => void;
-  closeCreateDialog: () => void;
-  submitCreateSession: (payload: CreateSessionPayload) => Promise<void>;
-  openSessionActions: (sessionId: string) => void;
-  closeSessionActions: () => void;
-  saveSessionTitle: () => Promise<void>;
-  regenerateSessionTitle: () => Promise<void>;
-  switchSessionMode: (sessionId: string, modeId: string) => Promise<void>;
-  deleteSession: (sessionId: string) => Promise<void>;
-  modeSupportsCurrentSession: (modeId: string) => boolean;
+  openCreateDialog: () => Promise<void>;
+  openSessionActions: (sessionId: string) => Promise<void>;
 };
 
 let sharedState: SessionsSectionState | null = null;
@@ -51,38 +35,12 @@ export function useSessionsSection() {
   if (!sharedState) {
     const store = useSessionsStore();
     const workbenchRuntime = useWorkbenchRuntime();
+    const windows = useWorkbenchWindows();
+    const toast = useToastStore();
     const loading = ref(false);
-    const createDialogOpen = ref(false);
-    const createDialogBusy = ref(false);
-    const createDialogError = ref("");
-    const actionsDialogSessionId = ref<string | null>(null);
-    const actionsDialogBusy = ref(false);
-    const actionsDialogError = ref("");
-    const actionsDialogTitleDraft = ref("");
-    const actionsDialogDetail = ref<SessionDetailResult["session"] | null>(null);
     const initialized = ref(false);
     let stateVersion = 0;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
-
-    const actionsSession = computed(() => (
-      store.list.find((item) => item.id === actionsDialogSessionId.value) ?? null
-    ));
-    const actionsSessionTitleSource = computed(() => (
-      actionsDialogDetail.value?.titleSource ?? actionsSession.value?.titleSource ?? null
-    ));
-    const actionsDialogTitleGenerationAvailable = computed(() => (
-      actionsDialogDetail.value?.titleGenerationAvailable === true
-    ));
-    const actionsDialogSupportsTitleEditing = computed(() => (
-      actionsSession.value?.source === "web"
-    ));
-    const actionsDialogTitleSourceLabel = computed(() => (
-      actionsSessionTitleSource.value === "manual"
-        ? "手动设置"
-        : actionsSessionTitleSource.value === "auto"
-          ? "自动生成"
-          : "默认标题"
-    ));
     const mobileHeaderTitle = computed(() => (
       store.active?.displayLabel || store.active?.id || ""
     ));
@@ -91,8 +49,29 @@ export function useSessionsSection() {
       return requestVersion !== stateVersion;
     }
 
-    function syncActionsTitleDraft() {
-      actionsDialogTitleDraft.value = actionsDialogDetail.value?.title ?? actionsSession.value?.title ?? "";
+    function reportError(error: unknown, fallback: string) {
+      const message = error instanceof ApiError || error instanceof Error
+        ? error.message
+        : fallback;
+      toast.push({ type: "error", message });
+    }
+
+    function resolveSessionModeLabel(session: NormalizedSessionListItem, modeId: string) {
+      const mode = store.modes.find((item) => item.id === modeId);
+      if (!mode) {
+        return modeId;
+      }
+      return mode.allowedChatTypes && mode.allowedChatTypes.length > 0 && !mode.allowedChatTypes.includes(session.type)
+        ? `${mode.title}（当前会话类型不支持）`
+        : mode.title;
+    }
+
+    function modeSupportsSession(session: NormalizedSessionListItem, modeId: string): boolean {
+      const mode = store.modes.find((item) => item.id === modeId);
+      if (!mode?.allowedChatTypes || mode.allowedChatTypes.length === 0) {
+        return true;
+      }
+      return mode.allowedChatTypes.includes(session.type);
     }
 
     function stopPolling() {
@@ -116,14 +95,6 @@ export function useSessionsSection() {
       initialized.value = false;
       stopPolling();
       loading.value = false;
-      createDialogOpen.value = false;
-      createDialogBusy.value = false;
-      createDialogError.value = "";
-      actionsDialogSessionId.value = null;
-      actionsDialogBusy.value = false;
-      actionsDialogError.value = "";
-      actionsDialogTitleDraft.value = "";
-      actionsDialogDetail.value = null;
       store.deselectSession();
     }
 
@@ -156,246 +127,201 @@ export function useSessionsSection() {
       workbenchRuntime.showMain();
     }
 
-    function openCreateDialog() {
-      createDialogError.value = "";
-      createDialogOpen.value = true;
+    async function openCreateDialog() {
+      await openCreateSessionWindow({
+        windows,
+        modes: store.modes.map((mode) => ({
+          id: mode.id,
+          title: mode.title,
+          description: mode.description
+        })),
+        submit: async (payload: CreateSessionPayload) => {
+          const requestVersion = stateVersion;
+          await store.createSession(payload);
+          if (!isStale(requestVersion)) {
+            workbenchRuntime.showMain();
+          }
+        },
+        reportError: (error) => {
+          reportError(error, "创建会话失败");
+        }
+      });
     }
 
-    function closeCreateDialog() {
-      if (createDialogBusy.value) {
+    async function openSessionActions(sessionId: string) {
+      const session = store.list.find((item) => item.id === sessionId);
+      if (!session) {
         return;
       }
-      createDialogOpen.value = false;
-      createDialogError.value = "";
-    }
 
-    async function submitCreateSession(payload: CreateSessionPayload) {
-      const requestVersion = stateVersion;
-      createDialogBusy.value = true;
-      createDialogError.value = "";
-      try {
-        await store.createSession(payload);
-        if (isStale(requestVersion)) {
-          return;
-        }
-        createDialogOpen.value = false;
-        createDialogError.value = "";
-        workbenchRuntime.showMain();
-      } catch (error: unknown) {
-        if (isStale(requestVersion)) {
-          return;
-        }
-        createDialogError.value = error instanceof Error ? error.message : "创建会话失败";
-      } finally {
-        if (!isStale(requestVersion)) {
-          createDialogBusy.value = false;
+      let detail: SessionDetailResult["session"] | null = null;
+      if (session.source === "web") {
+        try {
+          detail = (await sessionsApi.fetchDetail(sessionId)).session;
+        } catch (error: unknown) {
+          reportError(error, "载入会话详情失败");
         }
       }
-    }
 
-    async function loadActionsDialogDetail(sessionId: string) {
-      const requestVersion = stateVersion;
-      syncActionsTitleDraft();
-      if (actionsSession.value?.source !== "web") {
-        actionsDialogDetail.value = null;
-        return;
-      }
-      try {
-        const detail = await sessionsApi.fetchDetail(sessionId);
-        if (isStale(requestVersion) || actionsDialogSessionId.value !== sessionId) {
-          return;
-        }
-        actionsDialogDetail.value = detail.session;
-        syncActionsTitleDraft();
-      } catch (error: unknown) {
-        if (isStale(requestVersion) || actionsDialogSessionId.value !== sessionId) {
-          return;
-        }
-        actionsDialogError.value = error instanceof ApiError || error instanceof Error
-          ? error.message
-          : "载入会话详情失败";
-      }
-    }
+      const supportsTitleEditing = session.source === "web";
+      const titleGenerationAvailable = detail?.titleGenerationAvailable === true;
+      const titleSourceLabel = detail?.titleSource === "manual"
+        ? "手动设置"
+        : detail?.titleSource === "auto"
+          ? "自动生成"
+          : "默认标题";
 
-    function openSessionActions(sessionId: string) {
-      actionsDialogSessionId.value = sessionId;
-      actionsDialogError.value = "";
-      actionsDialogDetail.value = null;
-      syncActionsTitleDraft();
-      void loadActionsDialogDetail(sessionId);
-    }
-
-    function closeSessionActions() {
-      if (actionsDialogBusy.value) {
-        return;
-      }
-      actionsDialogSessionId.value = null;
-      actionsDialogError.value = "";
-      actionsDialogTitleDraft.value = "";
-      actionsDialogDetail.value = null;
-    }
-
-    async function saveSessionTitle() {
-      const requestVersion = stateVersion;
-      if (!actionsDialogSessionId.value || !actionsDialogSupportsTitleEditing.value || actionsDialogBusy.value) {
-        return;
-      }
-      actionsDialogBusy.value = true;
-      actionsDialogError.value = "";
-      try {
-        const result = await store.renameSessionTitle(actionsDialogSessionId.value, actionsDialogTitleDraft.value);
-        if (isStale(requestVersion) || actionsDialogSessionId.value !== result.id) {
-          return;
-        }
-        actionsDialogDetail.value = actionsDialogDetail.value
-          ? {
-              ...actionsDialogDetail.value,
-              title: result.title,
-              titleSource: result.titleSource
+      await windows.open({
+        kind: "dialog",
+        title: "会话操作",
+        description: "管理标题、切换当前会话模式，或删除该会话。",
+        size: "lg",
+        modal: true,
+        schema: {
+          fields: [
+            ...(supportsTitleEditing
+              ? [{
+                  kind: "string" as const,
+                  key: "title",
+                  label: "标题",
+                  defaultValue: detail?.title ?? session.title ?? "",
+                  placeholder: "输入会话标题"
+                }]
+              : []),
+            {
+              kind: "enum" as const,
+              key: "modeId",
+              label: "会话模式",
+              defaultValue: session.modeId,
+              options: store.modes.map((mode) => ({
+                label: resolveSessionModeLabel(session, mode.id),
+                value: mode.id
+              }))
             }
-          : null;
-        syncActionsTitleDraft();
-      } catch (error: unknown) {
-        if (isStale(requestVersion)) {
-          return;
-        }
-        actionsDialogError.value = error instanceof ApiError || error instanceof Error
-          ? error.message
-          : "保存标题失败";
-      } finally {
-        if (!isStale(requestVersion)) {
-          actionsDialogBusy.value = false;
-        }
-      }
-    }
-
-    async function regenerateSessionTitle() {
-      const requestVersion = stateVersion;
-      if (
-        !actionsDialogSessionId.value
-        || !actionsDialogSupportsTitleEditing.value
-        || !actionsDialogTitleGenerationAvailable.value
-        || actionsDialogBusy.value
-      ) {
-        return;
-      }
-      actionsDialogBusy.value = true;
-      actionsDialogError.value = "";
-      try {
-        const result = await store.regenerateSessionTitle(actionsDialogSessionId.value);
-        if (isStale(requestVersion) || actionsDialogSessionId.value !== result.id) {
-          return;
-        }
-        actionsDialogDetail.value = actionsDialogDetail.value
-          ? {
-              ...actionsDialogDetail.value,
-              title: result.title,
-              titleSource: result.titleSource
+          ]
+        },
+        blocks: [
+          ...(supportsTitleEditing
+            ? [{
+                kind: "text" as const,
+                content: `标题来源：${titleSourceLabel}${titleGenerationAvailable ? "" : "；标题生成器不可用"}`
+              }]
+            : []),
+          {
+            kind: "text" as const,
+            content: "切换模式会立即影响当前会话的后续行为。删除会话不可恢复。"
+          }
+        ],
+        actions: [
+          ...(supportsTitleEditing
+            ? [{
+                id: "rename",
+                label: "保存标题",
+                variant: "secondary" as const,
+                run: async ({ values }: { values: Record<string, unknown> }) => {
+                  try {
+                    await store.renameSessionTitle(sessionId, String(values.title ?? ""));
+                    return { sessionId };
+                  } catch (error: unknown) {
+                    reportError(error, "保存标题失败");
+                    throw error;
+                  }
+                }
+              }]
+            : []),
+          ...(supportsTitleEditing && titleGenerationAvailable
+            ? [{
+                id: "regenerate",
+                label: "重新生成标题",
+                variant: "primary" as const,
+                run: async () => {
+                  try {
+                    await store.regenerateSessionTitle(sessionId);
+                    return { sessionId };
+                  } catch (error: unknown) {
+                    reportError(error, "重新生成标题失败");
+                    throw error;
+                  }
+                }
+              }]
+            : []),
+          {
+            id: "switch-mode",
+            label: "切换模式",
+            variant: "primary" as const,
+            run: async ({ values }: { values: Record<string, unknown> }) => {
+              const modeId = String(values.modeId ?? "");
+              if (!modeSupportsSession(session, modeId)) {
+                const error = new Error("当前会话类型不支持此模式");
+                reportError(error, error.message);
+                throw error;
+              }
+              try {
+                await store.switchSessionMode(sessionId, modeId);
+                return { sessionId, modeId };
+              } catch (error: unknown) {
+                reportError(error, "切换模式失败");
+                throw error;
+              }
             }
-          : null;
-        syncActionsTitleDraft();
-      } catch (error: unknown) {
-        if (isStale(requestVersion)) {
-          return;
-        }
-        actionsDialogError.value = error instanceof ApiError || error instanceof Error
-          ? error.message
-          : "重新生成标题失败";
-      } finally {
-        if (!isStale(requestVersion)) {
-          actionsDialogBusy.value = false;
-        }
-      }
-    }
+          },
+          {
+            id: "delete",
+            label: "删除会话",
+            variant: "danger" as const,
+            run: async ({ windowId }: { windowId: string }) => {
+              const confirmResult = await windows.open({
+                kind: "child-dialog",
+                parentId: windowId,
+                title: "确认删除会话",
+                description: "删除后将立即移除当前会话，且无法恢复。",
+                size: "sm",
+                modal: true,
+                blocks: [
+                  {
+                    kind: "text" as const,
+                    content: `将删除会话「${session.displayLabel || session.id}」。此操作不可恢复。`
+                  }
+                ],
+                actions: [
+                  {
+                    id: "confirm-delete",
+                    label: "确认删除",
+                    variant: "danger",
+                    run: async () => {
+                      try {
+                        await store.deleteSession(sessionId);
+                        return { sessionId };
+                      } catch (error: unknown) {
+                        reportError(error, "删除会话失败");
+                        throw error;
+                      }
+                    }
+                  }
+                ]
+              });
 
-    async function switchSessionMode(sessionId: string, modeId: string) {
-      const requestVersion = stateVersion;
-      actionsDialogBusy.value = true;
-      actionsDialogError.value = "";
-      try {
-        await store.switchSessionMode(sessionId, modeId);
-        if (isStale(requestVersion)) {
-          return;
-        }
-        actionsDialogSessionId.value = null;
-      } catch (error: unknown) {
-        if (isStale(requestVersion)) {
-          return;
-        }
-        actionsDialogError.value = error instanceof ApiError || error instanceof Error
-          ? error.message
-          : "切换模式失败";
-      } finally {
-        if (!isStale(requestVersion)) {
-          actionsDialogBusy.value = false;
-        }
-      }
-    }
+              if (confirmResult.reason !== "action" || confirmResult.actionId !== "confirm-delete") {
+                throw CANCEL_WINDOW_ACTION;
+              }
 
-    async function deleteSession(sessionId: string) {
-      const requestVersion = stateVersion;
-      actionsDialogBusy.value = true;
-      actionsDialogError.value = "";
-      try {
-        await store.deleteSession(sessionId);
-        if (isStale(requestVersion)) {
-          return;
-        }
-        actionsDialogSessionId.value = null;
-      } catch (error: unknown) {
-        if (isStale(requestVersion)) {
-          return;
-        }
-        actionsDialogError.value = error instanceof ApiError || error instanceof Error
-          ? error.message
-          : "删除会话失败";
-      } finally {
-        if (!isStale(requestVersion)) {
-          actionsDialogBusy.value = false;
-        }
-      }
-    }
-
-    function modeSupportsCurrentSession(modeId: string): boolean {
-      const session = actionsSession.value;
-      const mode = store.modes.find((item) => item.id === modeId);
-      if (!session || !mode?.allowedChatTypes || mode.allowedChatTypes.length === 0) {
-        return true;
-      }
-      return mode.allowedChatTypes.includes(session.type);
+              return { sessionId };
+            }
+          }
+        ]
+      });
     }
 
     sharedState = {
       store,
       loading,
-      createDialogOpen,
-      createDialogBusy,
-      createDialogError,
-      actionsDialogSessionId,
-      actionsDialogBusy,
-      actionsDialogError,
-      actionsDialogTitleDraft,
-      actionsDialogDetail,
-      actionsSession,
-      actionsSessionTitleSource,
-      actionsDialogTitleGenerationAvailable,
-      actionsDialogSupportsTitleEditing,
-      actionsDialogTitleSourceLabel,
       mobileHeaderTitle,
       initializeSection,
       resetState,
       selectSession,
       refreshSessions,
       openCreateDialog,
-      closeCreateDialog,
-      submitCreateSession,
-      openSessionActions,
-      closeSessionActions,
-      saveSessionTitle,
-      regenerateSessionTitle,
-      switchSessionMode,
-      deleteSession,
-      modeSupportsCurrentSession
+      openSessionActions
     };
   }
 

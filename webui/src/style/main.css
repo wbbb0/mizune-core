@@ -189,6 +189,15 @@ body {
 .btn-secondary:hover {
   background: var(--surface-hover);
 }
+.btn-danger {
+  background: var(--surface-danger);
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+.btn-danger:hover {
+  background: color-mix(in srgb, var(--danger) 18%, var(--surface-panel));
+  border-color: color-mix(in srgb, var(--danger) 60%, transparent);
+}
 .btn-ghost {
   background: transparent;
   color: var(--text-muted);

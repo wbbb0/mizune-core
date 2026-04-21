@@ -13,7 +13,7 @@ const bottomNavItems = workbenchNavItems.filter((item) => item.placement === "bo
 
 <template>
   <nav
-    class="flex pl-safe pb-safe w-[calc(var(--activity-bar-width)+env(safe-area-inset-left))] shrink-0 select-none flex-col justify-between border-r border-border-default bg-surface-sidebar"
+    class="flex pl-safe w-[calc(var(--activity-bar-width)+env(safe-area-inset-left))] shrink-0 select-none flex-col justify-between border-r border-border-default bg-surface-sidebar"
   >
     <!-- Top: navigation icons -->
     <div class="flex flex-col items-center">

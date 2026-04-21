@@ -5,6 +5,7 @@ import { useVisualViewportInset } from "@/composables/useVisualViewportInset";
 import { uploadsApi, type UploadedFile } from "@/api/uploads";
 import { prepareFilesForUpload } from "@/api/uploadPreparation";
 import { useToastStore } from "@/stores/toasts";
+import { useUiStore } from "@/stores/ui";
 import { buildComposerSendPayload, type ComposerSendPayload } from "./composerPayload";
 
 const props = defineProps<{
@@ -37,11 +38,12 @@ const uploading    = ref(false);
 const sending      = ref(false);
 const iosRootScrollGuardActive = ref(false);
 const toast = useToastStore();
+const ui = useUiStore();
 const { keyboardInsetPx } = useVisualViewportInset();
 let iosRootScrollGuardCleanup: (() => void) | null = null;
 
 const composerStyle = computed(() => ({
-  paddingBottom: keyboardInsetPx.value > 0 ? "0.5rem" : `calc(env(safe-area-inset-bottom, 0px) + 0.5rem)`
+  paddingBottom: ui.isDesktop || keyboardInsetPx.value > 0 ? "0.5rem" : `calc(env(safe-area-inset-bottom, 0px) + 0.5rem)`
 }));
 
 // Auto-resize textarea

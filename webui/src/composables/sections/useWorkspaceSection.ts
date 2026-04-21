@@ -19,7 +19,6 @@ type WorkspaceSectionState = {
   filePreview: Ref<LocalFilePreview | null>;
   previewError: Ref<string | null>;
   fileImageSrc: Ref<string | null>;
-  dialogImageSrc: Ref<string | null>;
   currentRootItems: ComputedRef<LocalFileItem[]>;
   mobileHeaderTitle: ComputedRef<string>;
   selectedStoredFileImageUrl: ComputedRef<string | null>;
@@ -32,8 +31,6 @@ type WorkspaceSectionState = {
   previewIcon: (item: LocalFileItem | null) => typeof FolderOpen;
   formatSize: (bytes: number) => string;
   formatTime: (ms: number) => string;
-  openImageDialog: (src: string | null) => void;
-  closeImageDialog: () => void;
 };
 
 let sharedState: WorkspaceSectionState | null = null;
@@ -53,7 +50,6 @@ export function useWorkspaceSection() {
     const filePreview = ref<LocalFilePreview | null>(null);
     const previewError = ref<string | null>(null);
     const fileImageSrc = ref<string | null>(null);
-    const dialogImageSrc = ref<string | null>(null);
     const initialized = ref(false);
     let stateVersion = 0;
 
@@ -84,7 +80,6 @@ export function useWorkspaceSection() {
       filePreview.value = null;
       previewError.value = null;
       fileImageSrc.value = null;
-      dialogImageSrc.value = null;
     }
 
     function sortWorkspaceItems(items: LocalFileItem[]): LocalFileItem[] {
@@ -166,7 +161,6 @@ export function useWorkspaceSection() {
       filePreview.value = null;
       previewError.value = null;
       fileImageSrc.value = null;
-      dialogImageSrc.value = null;
 
       if (item.kind === "directory") {
         if (!expandedPaths.value.includes(item.path)) {
@@ -211,7 +205,6 @@ export function useWorkspaceSection() {
       filePreview.value = null;
       previewError.value = null;
       fileImageSrc.value = null;
-      dialogImageSrc.value = null;
       workbenchRuntime.showMain();
     }
 
@@ -241,14 +234,6 @@ export function useWorkspaceSection() {
       return new Date(ms).toLocaleString("zh-CN");
     }
 
-    function openImageDialog(src: string | null) {
-      dialogImageSrc.value = src;
-    }
-
-    function closeImageDialog() {
-      dialogImageSrc.value = null;
-    }
-
     sharedState = {
       mode,
       loadingFiles,
@@ -262,7 +247,6 @@ export function useWorkspaceSection() {
       filePreview,
       previewError,
       fileImageSrc,
-      dialogImageSrc,
       currentRootItems,
       mobileHeaderTitle,
       selectedStoredFileImageUrl,
@@ -274,9 +258,7 @@ export function useWorkspaceSection() {
       refreshCurrentMode,
       previewIcon,
       formatSize,
-      formatTime,
-      openImageDialog,
-      closeImageDialog
+      formatTime
     };
   }
 

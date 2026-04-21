@@ -6,20 +6,21 @@ import TranscriptItem from "./TranscriptItem.vue";
 import VirtualMessageList from "./VirtualMessageList.vue";
 import Composer from "./Composer.vue";
 import SessionStatePanel from "./SessionStatePanel.vue";
-import ImagePreviewDialog from "@/components/common/ImagePreviewDialog.vue";
-import WorkbenchDialog from "@/components/common/WorkbenchDialog.vue";
+import { openImagePreviewWindow } from "@/components/common/imagePreviewWindow";
 import { useSessionsStore } from "@/stores/sessions";
 import { useAuthStore } from "@/stores/auth";
 import { ApiError } from "@/api/client";
 import type { TranscriptEntry } from "@/stores/sessions";
 import type { TranscriptItem as SessionTranscriptItem } from "@/api/types";
 import { useToastStore } from "@/stores/toasts";
+import { useWorkbenchWindows } from "@/composables/workbench/useWorkbenchWindows";
 import { buildChatTimelineItems } from "./chatTimeline";
 import { resolveComposerUserIdentity } from "./composerUserIdentity";
 
 const store = useSessionsStore();
 const auth  = useAuthStore();
 const toast = useToastStore();
+const windows = useWorkbenchWindows();
 const session = computed(() => store.active);
 
 // Transcript item expand state — keyed by item.id, survives virtual scroll mount/unmount cycles
@@ -43,10 +44,6 @@ interface TranscriptActionTarget {
   detail: string;
   alreadyInvalidated: boolean;
 }
-
-const previewImage = ref<{ src: string; title: string } | null>(null);
-const transcriptActionsTarget = ref<TranscriptActionTarget | null>(null);
-const transcriptActionsBusy = ref(false);
 
 const reversedMessages = computed(() =>
   session.value
@@ -98,8 +95,69 @@ function onComposerUserIdChange(userId: string) {
   store.setComposerUserId(userId || null);
 }
 
+function previewImage(src: string, title: string) {
+  void openImagePreviewWindow(windows, { src, title });
+}
+
 function openTranscriptActions(target: TranscriptActionTarget) {
-  transcriptActionsTarget.value = target;
+  void windows.open({
+    kind: "dialog",
+    title: "消息操作",
+    description: `${target.title} · ${target.detail}`,
+    size: "md",
+    blocks: [
+      {
+        kind: "text",
+        content: `目标：${target.detail}`
+      }
+    ],
+    actions: [
+      {
+        id: "invalidate-single",
+        label: "删除单条",
+        variant: "secondary",
+        run: async () => {
+          if (target.alreadyInvalidated) {
+            const error = new Error("当前记录已失效，无需重复删除。");
+            toast.push({ type: "error", message: error.message });
+            throw error;
+          }
+          try {
+            await store.excludeTranscriptItem(target.itemId);
+            return { target: target.itemId };
+          } catch (error: unknown) {
+            const message = error instanceof ApiError || error instanceof Error
+              ? error.message
+              : "删除失败";
+            toast.push({ type: "error", message });
+            throw error;
+          }
+        }
+      },
+      {
+        id: "invalidate-group",
+        label: "删除整组",
+        variant: "danger",
+        run: async () => {
+          if (target.alreadyInvalidated) {
+            const error = new Error("当前记录所在分组已失效，无需重复删除。");
+            toast.push({ type: "error", message: error.message });
+            throw error;
+          }
+          try {
+            await store.excludeTranscriptGroup(target.groupId);
+            return { target: target.groupId };
+          } catch (error: unknown) {
+            const message = error instanceof ApiError || error instanceof Error
+              ? error.message
+              : "删除失败";
+            toast.push({ type: "error", message });
+            throw error;
+          }
+        }
+      }
+    ]
+  });
 }
 
 function buildTranscriptActionTarget(entry: TranscriptEntry): TranscriptActionTarget {
@@ -143,54 +201,6 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
   }
 }
 
-function closeTranscriptActions() {
-  if (transcriptActionsBusy.value) {
-    return;
-  }
-  transcriptActionsTarget.value = null;
-}
-
-async function onInvalidateSingle() {
-  const target = transcriptActionsTarget.value;
-  if (!target) {
-    return;
-  }
-  transcriptActionsBusy.value = true;
-  try {
-    await store.excludeTranscriptItem(target.itemId);
-    transcriptActionsTarget.value = null;
-  } catch (error) {
-    const message = error instanceof ApiError || error instanceof Error
-      ? error.message
-      : "删除失败";
-    toast.push({ type: "error", message });
-  } finally {
-    transcriptActionsBusy.value = false;
-  }
-}
-
-async function onInvalidateGroup() {
-  const target = transcriptActionsTarget.value;
-  if (!target) {
-    return;
-  }
-  transcriptActionsBusy.value = true;
-  try {
-    await store.excludeTranscriptGroup(target.groupId);
-    transcriptActionsTarget.value = null;
-  } catch (error) {
-    const message = error instanceof ApiError || error instanceof Error
-      ? error.message
-      : "删除失败";
-    toast.push({ type: "error", message });
-  } finally {
-    transcriptActionsBusy.value = false;
-  }
-}
-
-const invalidateActionsDisabled = computed(() => (
-  transcriptActionsBusy.value || transcriptActionsTarget.value?.alreadyInvalidated === true
-));
 </script>
 
 <template>
@@ -275,7 +285,7 @@ const invalidateActionsDisabled = computed(() => (
               :image-url="msg.kind === 'image' ? msg.imageUrl : undefined"
               :tool-name="msg.kind === 'image' ? msg.toolName : undefined"
               :timestamp-ms="msg.timestampMs"
-              @preview-image="msg.kind === 'image' ? previewImage = { src: msg.imageUrl, title: msg.sourceName || msg.fileRef || msg.fileId || '已发送图片' } : undefined"
+              @preview-image="msg.kind === 'image' ? previewImage(msg.imageUrl, msg.sourceName || msg.fileRef || msg.fileId || '已发送图片') : undefined"
               @open-actions="openTranscriptActions({ itemId: msg.itemId, groupId: msg.groupId, title: msg.actionTitle, detail: msg.kind === 'text' ? (msg.label || msg.content.slice(0, 32) || '消息') : (msg.sourceName || msg.fileRef || msg.fileId || '图片'), alreadyInvalidated: false })"
             />
           </template>
@@ -329,48 +339,4 @@ const invalidateActionsDisabled = computed(() => (
     </template>
   </div>
 
-  <ImagePreviewDialog
-    :open="previewImage !== null"
-    :src="previewImage?.src || ''"
-    :title="previewImage?.title"
-    @close="previewImage = null"
-  />
-
-  <WorkbenchDialog
-    :open="transcriptActionsTarget !== null"
-    title="消息操作"
-    :description="transcriptActionsTarget ? `${transcriptActionsTarget.title} · ${transcriptActionsTarget.detail}` : undefined"
-    width-class="max-w-md"
-    body-class="px-4 py-4"
-    @close="closeTranscriptActions"
-  >
-    <div class="flex flex-col gap-3">
-      <div v-if="transcriptActionsTarget" class="rounded-lg border border-border-default bg-surface-sidebar px-3 py-2">
-        <div class="text-small text-text-muted">目标</div>
-        <div class="mt-1 text-ui text-text-secondary">{{ transcriptActionsTarget.detail }}</div>
-      </div>
-
-      <button
-        class="flex items-start justify-between rounded-lg border border-border-default bg-surface-sidebar px-3 py-3 text-left transition-colors hover:bg-surface-active disabled:opacity-60"
-        :disabled="invalidateActionsDisabled"
-        @click="onInvalidateSingle"
-      >
-        <span>
-          <span class="block text-ui font-medium text-text-secondary">删除单条</span>
-          <span class="mt-1 block text-small text-text-muted">{{ transcriptActionsTarget?.alreadyInvalidated ? "当前记录已失效，无需重复删除。" : "只将当前记录标记为失效；若可同步撤回外部消息，会一并尝试。" }}</span>
-        </span>
-      </button>
-
-      <button
-        class="flex items-start justify-between rounded-lg border border-danger/40 bg-danger/10 px-3 py-3 text-left transition-colors hover:bg-danger/15 disabled:opacity-60"
-        :disabled="invalidateActionsDisabled"
-        @click="onInvalidateGroup"
-      >
-        <span>
-          <span class="block text-ui font-medium text-danger">删除整组</span>
-          <span class="mt-1 block text-small text-text-muted">{{ transcriptActionsTarget?.alreadyInvalidated ? "当前记录所在分组已失效，无需重复删除。" : "删除这一轮 turn 的全部产物，包括消息、后台事件、回复和媒体状态记录。" }}</span>
-        </span>
-      </button>
-    </div>
-  </WorkbenchDialog>
 </template>

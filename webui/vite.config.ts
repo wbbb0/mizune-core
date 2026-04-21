@@ -116,7 +116,10 @@ export default defineConfig({
         description: "llm-bot WebUI 管理界面",
         start_url: "/webui/#/sessions",
         scope: "/webui/",
-        display: "standalone",
+        display_override: [
+          "window-controls-overlay",
+          "standalone"
+        ],
         orientation: "any",
         background_color: "#0b1220",
         theme_color: "#0b1220",
@@ -157,7 +160,7 @@ export default defineConfig({
         ]
       },
       devOptions: {
-        enabled: false
+        enabled: true
       }
     })
   ],
