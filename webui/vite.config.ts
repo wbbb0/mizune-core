@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
+import { createGzipPrecompressionPlugin } from "./build/gzipPrecompression";
 
 const configDir = fileURLToPath(new URL(".", import.meta.url));
 
@@ -103,6 +104,7 @@ export default defineConfig({
   plugins: [
     vue(),
     tailwindcss(),
+    createGzipPrecompressionPlugin(),
     VitePWA({
       base: "/webui/",
       registerType: "autoUpdate",

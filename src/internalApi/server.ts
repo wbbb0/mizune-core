@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
 import fastifyCookie from "@fastify/cookie";
-import fastifyStatic from "@fastify/static";
 import { registerBasicRoutes } from "./routes/basicRoutes.ts";
 import { registerBrowserRoutes } from "./routes/browserRoutes.ts";
 import { registerMessagingRoutes } from "./routes/messagingRoutes.ts";
@@ -14,6 +13,7 @@ import { registerAuthRoutes } from "./routes/authRoutes.ts";
 import { loadOrCreateWebuiAuth } from "./auth/webuiAuthStore.ts";
 import { buildCookieName, verifySessionToken } from "./auth/webuiAuth.ts";
 import type { InternalApiRuntimeDeps, InternalApiServices } from "./types.ts";
+import { registerWebuiStaticRoutes } from "./webuiStatic.ts";
 
 // Routes that do not require authentication.
 const AUTH_EXEMPT_PATHS = new Set([
@@ -85,16 +85,7 @@ export async function startInternalApi(deps: InternalApiRuntimeDeps) {
     if (!externalWebuiMode) {
       const distPath = resolveWebuiDistPath();
       if (existsSync(distPath)) {
-        await app.register(fastifyStatic, {
-          root: distPath,
-          prefix: "/webui/",
-          wildcard: false,
-          decorateReply: false
-        });
-        // SPA fallback: all /webui/* routes that don't match a static file serve index.html
-        app.get("/webui/*", (_, reply) => {
-          void reply.sendFile("index.html");
-        });
+        await registerWebuiStaticRoutes(app, distPath);
         deps.logger.info({ distPath }, "webui_static_serving_enabled");
       } else {
         deps.logger.warn({ distPath }, "webui_dist_not_found — run `npm run build:webui` first");

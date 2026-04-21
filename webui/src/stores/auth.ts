@@ -1,7 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { authApi } from "@/api/auth";
-import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 
 export const useAuthStore = defineStore("auth", () => {
   const enabled = ref(true);
@@ -50,6 +49,7 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   async function loginWithPasskey(): Promise<void> {
+    const { startAuthentication } = await import("@simplewebauthn/browser");
     const options = await authApi.beginPasskeyLogin();
     const response = await startAuthentication({ optionsJSON: options });
     await authApi.finishPasskeyLogin(response);
@@ -60,6 +60,7 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   async function registerPasskey(label: string): Promise<void> {
+    const { startRegistration } = await import("@simplewebauthn/browser");
     const options = await authApi.beginPasskeyRegistration();
     const response = await startRegistration({ optionsJSON: options });
     await authApi.finishPasskeyRegistration(response, label);
