@@ -18,13 +18,15 @@
 /*.log
 
 # Local runtime config (keep examples)
-/config/**/*.yml
+/config/
 !/config/**/*.example.yml
 
 # Local assistant/workspace files
 /CLAUDE.md
 /GEMINI.md
 /.claude/
+/.superpowers/
+*.main-untracked-backup.md
 
 # Git worktrees
 /.worktrees/
