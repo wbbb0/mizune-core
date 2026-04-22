@@ -23,17 +23,9 @@ import { createInternalTriggerEvent } from "#conversation/session/internalTransc
 import { createSessionTranscriptStore } from "#conversation/session/sessionTranscriptStore.ts";
 import { requireSessionModeDefinition } from "#modes/registry.ts";
 import { resolveSessionModeSetupContext } from "./generationSetupContext.ts";
+import { createEmptyPersona } from "#persona/personaSchema.ts";
 
-const EMPTY_ASSISTANT_PERSONA = {
-  name: "",
-  role: "",
-  personality: "",
-  speechStyle: "",
-  appearance: "",
-  interests: "",
-  background: "",
-  rules: ""
-};
+const EMPTY_ASSISTANT_PERSONA = createEmptyPersona();
 
 function isAssistantMode(modeId: string): boolean {
   return modeId === "assistant";

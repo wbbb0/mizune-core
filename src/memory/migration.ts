@@ -239,12 +239,12 @@ function mapLegacyPersonaMemoryToField(entry: { title: string; content: string }
     return "speechStyle";
   }
   if (/(身份|角色|人设|定位)/u.test(text)) {
-    return "role";
+    return "coreIdentity";
   }
   if (/(背景|经历|家庭|住处)/u.test(text)) {
     return "background";
   }
-  return "rules";
+  return "background";
 }
 
 function mergePersonaField(current: string, incoming: string): string {
@@ -284,13 +284,18 @@ function migratePersona(raw: unknown) {
     let persona = createEmptyPersona();
     persona = personaSchema.parse({
       name: getString(obj.name) ?? "",
-      role: getString(obj.role) ?? getString(obj.identity) ?? "",
-      appearance: getString(obj.appearance) ?? getString(obj.virtualAppearance) ?? "",
+      coreIdentity: getString(obj.coreIdentity) ?? getString(obj.role) ?? getString(obj.identity) ?? "",
       personality: getString(obj.personality) ?? "",
       interests: [getString(obj.interests), getString(obj.hobbies), getString(obj.likesAndDislikes)].filter((item): item is string => Boolean(item)).join("；"),
-      background: [getString(obj.background), getString(obj.familyBackground), getString(obj.residence), getString(obj.secrets)].filter((item): item is string => Boolean(item)).join("；"),
-      speechStyle: getString(obj.speechStyle) ?? getString(obj.speakingStyle) ?? "",
-      rules: getString(obj.rules) ?? getString(obj.roleplayRequirements) ?? ""
+      background: [
+        getString(obj.background),
+        getString(obj.appearance),
+        getString(obj.virtualAppearance),
+        getString(obj.familyBackground),
+        getString(obj.residence),
+        getString(obj.secrets)
+      ].filter((item): item is string => Boolean(item)).join("；"),
+      speechStyle: getString(obj.speechStyle) ?? getString(obj.speakingStyle) ?? ""
     });
 
     const outputFormatRequirements = getString(obj.outputFormatRequirements);

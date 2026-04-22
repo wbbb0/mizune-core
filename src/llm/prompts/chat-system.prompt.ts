@@ -17,13 +17,11 @@ import { normalizeProfileSummary } from "#identity/userProfile.ts";
 
 const PERSONA_FIELD_HINTS: Record<EditablePersonaFieldName, string> = {
   name: "角色的名字",
-  role: "身份与基本设定，一两句话",
+  coreIdentity: "基础身份与长期设定，一两句话",
   personality: "性格关键词，可多个",
   speechStyle: "语气与说话习惯",
-  appearance: '外貌特征；或填"不设定"',
   interests: "兴趣爱好与喜好禁忌",
-  background: "背景故事、家庭、住处等，可简短",
-  rules: '特殊边界或长期要求；如无则填"无特殊限制"'
+  background: "背景故事、家庭、住处等，可简短"
 };
 
 const MAX_VISIBLE_MEMORIES = 4;
@@ -67,10 +65,10 @@ export function buildSetupSystemLines(input: {
 function buildSetupModeLines(persona: Persona, missingFields: EditablePersonaFieldName[]): string[] {
   const missingSet = new Set(missingFields);
   const totalMissing = missingFields.length;
-  const coreComplete = !missingSet.has("name") && !missingSet.has("role");
+  const coreComplete = !missingSet.has("name") && !missingSet.has("coreIdentity");
 
   const identityRef = coreComplete
-    ? `"${persona.name}"（${persona.role}）`
+    ? `"${persona.name}"（${persona.coreIdentity}）`
     : persona.name ? `"${persona.name}"` : null;
 
   const phaseLines: string[] = [];
@@ -79,11 +77,11 @@ function buildSetupModeLines(persona: Persona, missingFields: EditablePersonaFie
     phaseLines.push(`角色 ${identityRef ?? "persona"} 所有字段已填写完毕。`);
     phaseLines.push("调用 send_setup_draft 向 owner 发送完整设定草稿供最终确认。");
     phaseLines.push("发送草稿后，告知 owner 如果没有问题可以输入 .confirm 完成初始化，如有修改继续告诉你。");
-  } else if (!coreComplete && totalMissing === 8) {
+  } else if (!coreComplete && totalMissing === 4) {
     phaseLines.push("当前实例处于初始化阶段，需要帮 owner 完成角色 persona 设定。");
-    phaseLines.push("简要告知 owner：正在设定角色人设，完成后即可正常聊天；然后从名字和角色定位开始询问。");
+    phaseLines.push("简要告知 owner：正在设定角色人设，完成后即可正常聊天；然后从名字和基础身份开始询问。");
   } else if (!coreComplete) {
-    const nextCore = missingSet.has("name") ? "名字" : "角色定位";
+    const nextCore = missingSet.has("name") ? "名字" : "基础身份";
     const alreadyHave = identityRef ? `已知角色名为 ${identityRef}，` : "";
     phaseLines.push(`当前处于初始化阶段，${alreadyHave}核心设定未完成，当前优先询问：${nextCore}。`);
   } else {
@@ -357,12 +355,11 @@ export function buildScheduledTaskSystemLines(input: {
 function buildIdentityLines(persona: Persona): string[] {
   const personaSummary = [
     `名字=${persona.name}`,
-    `角色=${persona.role}`,
+    `基础身份=${persona.coreIdentity}`,
     `性格=${persona.personality}`,
     `说话方式=${persona.speechStyle}`
   ].join("；");
   const extraFacts = [
-    persona.appearance ? `外貌=${persona.appearance}` : null,
     persona.interests ? `兴趣与喜好=${persona.interests}` : null,
     persona.background ? `背景=${persona.background}` : null
   ].filter((item): item is string => Boolean(item));
@@ -371,7 +368,6 @@ function buildIdentityLines(persona: Persona): string[] {
     "你是具有角色扮演属性的聊天角色，默认以角色身份用中文自然聊天。",
     `角色设定：${personaSummary}`,
     ...(extraFacts.length > 0 ? [`补充设定：${extraFacts.join("；")}`] : []),
-    ...(persona.rules ? [`角色规则：${persona.rules}`] : [])
   ];
 }
 
@@ -460,10 +456,9 @@ function dedupeProfileSummaryAgainstMemories(
 function buildPersonaCandidateTexts(persona: Persona): string[] {
   return [
     persona.name,
-    persona.role,
+    persona.coreIdentity,
     persona.personality,
     persona.speechStyle,
-    persona.rules
   ].filter((item): item is string => Boolean(item));
 }
 

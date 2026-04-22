@@ -26,19 +26,11 @@ import { isNearDuplicateText } from "#memory/similarity.ts";
 import type { UserMemoryEntry } from "#memory/userMemoryEntry.ts";
 import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { preparePromptMemoryContext } from "#llm/prompts/chat-system.prompt.ts";
+import { createEmptyPersona } from "#persona/personaSchema.ts";
 
 type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
-const EMPTY_ASSISTANT_PERSONA: PersonaState = {
-  name: "",
-  role: "",
-  appearance: "",
-  personality: "",
-  interests: "",
-  background: "",
-  speechStyle: "",
-  rules: ""
-};
+const EMPTY_ASSISTANT_PERSONA: PersonaState = createEmptyPersona();
 const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "list_live_resources",
   "open_page",
