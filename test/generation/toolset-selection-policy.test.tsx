@@ -4,6 +4,7 @@ import { listTurnToolsets, resolveToolNamesFromToolsets } from "../../src/llm/to
 import { decideToolsetSupplements } from "../../src/app/generation/toolsetSupplementPolicy.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { requireSessionModeDefinition } from "../../src/modes/registry.ts";
+import { resolveSessionModeSetupContext } from "../../src/app/generation/generationSetupContext.ts";
 
   test("setup overrides keep shared toolsets while replacing overridden ids", async () => {
     const config = createTestAppConfig({
@@ -109,6 +110,44 @@ import { requireSessionModeDefinition } from "../../src/modes/registry.ts";
     });
 
     assert.equal(kind, "mode_setup");
+  });
+
+  test("setup context uses ready persona readiness before mode profile readiness", async () => {
+    const ctx = await resolveSessionModeSetupContext(
+      "rp_assistant",
+      "qqbot:p:test",
+      {
+        globalProfileReadinessStore: {
+          async get() {
+            return {
+              persona: "ready",
+              rp: "uninitialized",
+              scenario: "uninitialized",
+              updatedAt: 1
+            };
+          }
+        } as any,
+        sessionManager: {
+          isSetupConfirmed() {
+            return false;
+          },
+          getOperationMode() {
+            return { kind: "normal" };
+          }
+        } as any
+      },
+      {
+        chatType: "private",
+        relationship: "owner"
+      }
+    );
+
+    assert.equal(ctx.personaReady, true);
+    assert.equal(ctx.modeProfileReady, false);
+    assert.equal(
+      requireSessionModeDefinition("rp_assistant").setupPhase?.resolveOperationModeKind(ctx),
+      "mode_setup"
+    );
   });
 
   test("supplement policy stays auditable and ordered by available toolsets", async () => {

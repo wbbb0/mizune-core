@@ -2,6 +2,8 @@ import type { Logger } from "pino";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { AppConfig } from "#config/config.ts";
 import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
+import type { PersonaStore } from "#persona/personaStore.ts";
+import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import type { SessionDirectCommandAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { Relationship } from "#identity/relationship.ts";
@@ -14,6 +16,7 @@ import { createInitialScenarioHostSessionState } from "#modes/scenarioHost/types
 import { createSessionTitleGenerationEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
 import { parseOwnerBootstrapCommand } from "#app/bootstrap/ownerBootstrapPolicy.ts";
+import type { SessionModeSetupContext } from "#modes/types.ts";
 
 type DebugModeArg = "on" | "off" | "once" | "status";
 
@@ -57,6 +60,8 @@ interface DirectCommandHandlerInput {
   logger: Logger;
   sessionCaptioner?: SessionCaptioner;
   scenarioHostStateStore?: ScenarioHostStateStore;
+  personaStore: PersonaStore;
+  globalProfileReadinessStore: GlobalProfileReadinessStore;
   forceCompactSession?: (sessionId: string, retainMessageCount?: number) => Promise<boolean>;
   flushSession?: (sessionId: string, options?: { skipReplyGate?: boolean }) => void;
   persistSession: (sessionId: string, reason: string) => void;
@@ -239,6 +244,38 @@ async function maybeCaptionScenarioSetupTitle(
     ].join("\n")
   }));
   ctx.input.persistSession(ctx.session.id, "scenario_setup_title_captioned");
+}
+
+async function syncPersonaReadiness(ctx: DirectCommandExecutionContext): Promise<void> {
+  const persona = await ctx.input.personaStore.get();
+  await ctx.input.globalProfileReadinessStore.setPersonaReadiness(
+    ctx.input.personaStore.isComplete(persona) ? "ready" : "uninitialized"
+  );
+}
+
+async function resolveCurrentSetupOperation(
+  ctx: DirectCommandExecutionContext
+): Promise<ReturnType<typeof resolveSessionModeSetupOperation>> {
+  const modeDef = requireSessionModeDefinition(ctx.session.modeId);
+  if (!modeDef.setupPhase) {
+    return null;
+  }
+  const readiness = await ctx.input.globalProfileReadinessStore.get();
+  const setupContext: SessionModeSetupContext = {
+    personaReady: readiness.persona === "ready",
+    modeProfileReady: ctx.session.modeId === "rp_assistant"
+      ? readiness.rp === "ready"
+      : ctx.session.modeId === "scenario_host"
+        ? readiness.scenario === "ready"
+        : true,
+    operationMode: ctx.session.operationMode,
+    chatType: ctx.incomingMessage.chatType,
+    relationship: ctx.incomingMessage.relationship ?? "known"
+  };
+  return resolveSessionModeSetupOperation(
+    modeDef.setupPhase,
+    modeDef.setupPhase.resolveOperationModeKind(setupContext)
+  );
 }
 
 const directCommandDescriptors: DirectCommandDescriptor[] = [
@@ -652,14 +689,9 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       }
       // Mark confirmed in session (in-memory)
       ctx.input.sessionManager.markSetupConfirmed(ctx.session.id);
+      await syncPersonaReadiness(ctx);
       // Handle onComplete policy immediately
-      const setupOperationKind = ctx.session.operationMode.kind === "normal"
-        ? "mode_setup"
-        : ctx.session.operationMode.kind;
-      const setupOperation = resolveSessionModeSetupOperation(
-        modeDef.setupPhase,
-        setupOperationKind
-      );
+      const setupOperation = await resolveCurrentSetupOperation(ctx);
       if (setupOperation?.onComplete === "clear_session") {
         ctx.input.sessionManager.cancelGeneration(ctx.session.id);
         ctx.input.sessionManager.clearSession(ctx.session.id);

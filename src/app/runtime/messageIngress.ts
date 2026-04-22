@@ -23,6 +23,8 @@ type DirectCommandDeps = Pick<
   | "logger"
   | "historyCompressor"
   | "setupStore"
+  | "personaStore"
+  | "globalProfileReadinessStore"
   | "scenarioHostStateStore"
   | "sessionCaptioner"
   | "userIdentityStore"
@@ -119,6 +121,8 @@ function createDeliveryHandleDirectCommand(
     logger: deps.logger,
     sessionCaptioner: deps.sessionCaptioner,
     scenarioHostStateStore: deps.scenarioHostStateStore,
+    personaStore: deps.personaStore,
+    globalProfileReadinessStore: deps.globalProfileReadinessStore,
     forceCompactSession: async (sessionId, retainMessageCount) => (
       deps.historyCompressor.forceCompact(sessionId, retainMessageCount)
     ),

@@ -30,6 +30,14 @@ interface DirectCommandFixtureOptions {
   setTitle?: (sessionId: string, title: string, titleSource: "default" | "auto" | "manual") => unknown;
   appendInternalTranscript?: (sessionId: string, item: Record<string, unknown>) => void;
   markSetupConfirmed?: (sessionId: string) => void;
+  personaStore?: {
+    get: () => Promise<unknown>;
+    isComplete: (persona: unknown) => boolean;
+  };
+  globalProfileReadinessStore?: {
+    get: () => Promise<unknown>;
+    setPersonaReadiness: (status: "uninitialized" | "ready") => Promise<unknown>;
+  };
   scenarioHostStateStore?: {
     write: (sessionId: string, state: unknown) => Promise<unknown>;
     update?: (
@@ -49,6 +57,13 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
   const session = {
     id: "qqbot:p:owner",
     type: "private",
+    modeId: "rp_assistant",
+    operationMode: { kind: "normal" },
+    participantRef: { kind: "user", id: "owner" },
+    title: null,
+    titleSource: "default",
+    source: "onebot",
+    setupConfirmed: false,
     lastLlmUsage: null,
     isGenerating: false,
     pendingMessages: [],
@@ -131,6 +146,27 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
     },
     flushSession(sessionId: string, flushOptions?: { skipReplyGate?: boolean }) {
       options.flushSession?.(sessionId, flushOptions);
+    },
+    personaStore: options.personaStore as any ?? {
+      async get() {
+        return {};
+      },
+      isComplete() {
+        return false;
+      }
+    },
+    globalProfileReadinessStore: options.globalProfileReadinessStore as any ?? {
+      async get() {
+        return {
+          persona: "uninitialized",
+          rp: "uninitialized",
+          scenario: "uninitialized",
+          updatedAt: 1
+        };
+      },
+      async setPersonaReadiness() {
+        return null;
+      }
     },
     ...(options.forceCompactSession ? { forceCompactSession: options.forceCompactSession } : {}),
     ...(options.scenarioHostStateStore ? { scenarioHostStateStore: options.scenarioHostStateStore as any } : {}),

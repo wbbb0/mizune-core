@@ -229,8 +229,12 @@ export async function initializeBootstrapState(
   await globalRuleStore.init();
   await toolsetRuleStore.init();
   await scenarioHostStateStore.init();
-  await setupStore.init(await personaStore.get());
+  const currentPersona = await personaStore.get();
+  await setupStore.init(currentPersona);
   await globalProfileReadinessStore.init();
+  await globalProfileReadinessStore.setPersonaReadiness(
+    personaStore.isComplete(currentPersona) ? "ready" : "uninitialized"
+  );
   const persistedSessions = await sessionPersistence.loadAll();
   sessionManager.restoreSessions(persistedSessions);
   await chatMessageFileGcService.sweep({
