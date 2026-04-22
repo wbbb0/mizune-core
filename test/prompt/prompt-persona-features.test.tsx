@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { NpcDirectory } from "../../src/identity/npcDirectory.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { buildPrompt, buildScheduledTaskPrompt, buildSetupPrompt } from "../../src/llm/prompt/promptBuilder.ts";
+import { profileToolDescriptors, profileToolHandlers } from "../../src/llm/tools/profile/profileTools.ts";
 import { createMemoryHarness, createMemoryTestConfig } from "../helpers/memory-test-support.tsx";
 import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageText } from "../helpers/prompt-fixtures.tsx";
 
@@ -10,7 +11,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        rules: "下雨天会更安静一点。"
+        coreIdentity: "默认会把角色边界放在前面。"
       });
       await harness.userStore.overwriteMemories("owner", [{ title: "当前用户偏好", content: "不喜欢被叫全名。" }]);
       const otherUser = await harness.userStore.overwriteMemories("20002", [{ title: "其他人记忆", content: "这个不该给当前用户用。" }]);
@@ -37,17 +38,134 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "你好", timestampMs: Date.now() })]
       });
       const system = String(prompt[0]?.content ?? "");
-      assert.match(system, /角色规则：下雨天会更安静一点/);
+      assert.match(system, /基础身份=默认会把角色边界放在前面。/);
       assert.match(system, /⟦section name="current_user_memories"⟧/);
       assert.match(system, /当前触发用户长期记忆/);
       assert.match(system, /当前用户偏好：不喜欢被叫全名/);
       assert.match(system, /最近内部工具轨迹/);
       assert.match(system, /open_page/);
       assert.match(system, /navigation timeout/);
+      assert.doesNotMatch(system, /角色规则/);
+      assert.doesNotMatch(system, /外貌=/);
       assert.doesNotMatch(system, /这个不该给当前用户用/);
     } finally {
       await harness.cleanup();
     }
+  });
+
+  test("persona tool contract and handler only accept the new persona fields", async () => {
+    const patchDescriptor = profileToolDescriptors.find((item) => item.definition.function.name === "patch_persona");
+    const clearDescriptor = profileToolDescriptors.find((item) => item.definition.function.name === "clear_persona_field");
+    assert.ok(patchDescriptor);
+    assert.ok(clearDescriptor);
+
+    const personaPatchProperties = Object.keys((patchDescriptor!.definition.function.parameters as {
+      properties: { personaPatch: { properties: Record<string, unknown> } };
+    }).properties.personaPatch.properties);
+    assert.deepEqual(personaPatchProperties.sort(), [
+      "background",
+      "coreIdentity",
+      "interests",
+      "name",
+      "personality",
+      "speechStyle"
+    ]);
+
+    const personaFieldEnum = ((clearDescriptor!.definition.function.parameters as {
+      properties: { personaField: { enum: string[] } };
+    }).properties.personaField.enum) ?? [];
+    assert.deepEqual([...personaFieldEnum].sort(), [
+      "background",
+      "coreIdentity",
+      "interests",
+      "name",
+      "personality",
+      "speechStyle"
+    ]);
+
+    const capturedPatches: Record<string, string>[] = [];
+    const result = await profileToolHandlers.patch_persona!(
+      { id: "tool_persona_patch_1", type: "function", function: { name: "patch_persona", arguments: "{}" } },
+      {
+        personaPatch: {
+          name: "小满",
+          role: "旧角色",
+          appearance: "旧外貌",
+          coreIdentity: "全局对话代理",
+          personality: "克制",
+          interests: "阅读",
+          background: "本地运行",
+          speechStyle: "简洁",
+          rules: "旧规则"
+        }
+      },
+      {
+        relationship: "owner",
+        personaStore: {
+          async get() {
+            return {
+              name: "",
+              coreIdentity: "",
+              personality: "",
+              interests: "",
+              background: "",
+              speechStyle: ""
+            };
+          },
+          async patch(patch: Record<string, string>) {
+            capturedPatches.push(patch);
+            return {
+              name: patch.name ?? "",
+              coreIdentity: patch.coreIdentity ?? "",
+              personality: patch.personality ?? "",
+              interests: patch.interests ?? "",
+              background: patch.background ?? "",
+              speechStyle: patch.speechStyle ?? ""
+            };
+          }
+        } as never,
+        setupStore: {
+          async advanceAfterPersonaUpdate(persona: unknown) {
+            return persona;
+          }
+        } as never,
+        lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
+        config: {} as never,
+        replyDelivery: "direct" as never,
+        currentUser: null,
+        requestStore: {} as never,
+        sessionManager: {} as never,
+        whitelistStore: {} as never,
+        userStore: {} as never,
+        globalRuleStore: {} as never,
+        toolsetRuleStore: {} as never,
+        scenarioHostStateStore: {} as never,
+        conversationAccess: {} as never,
+        npcDirectory: {} as never,
+        scheduledJobStore: {} as never,
+        scheduler: {} as never,
+        messageQueue: {} as never,
+        shellRuntime: {} as never,
+        searchService: {} as never,
+        browserService: {} as never,
+        localFileService: {} as never,
+        comfyClient: {} as never,
+        comfyTaskStore: {} as never,
+        comfyTemplateCatalog: {} as never
+      } as never
+    );
+
+    assert.equal(capturedPatches.length, 1);
+    assert.deepEqual(capturedPatches[0], {
+      name: "小满",
+      coreIdentity: "全局对话代理",
+      personality: "克制",
+      interests: "阅读",
+      background: "本地运行",
+      speechStyle: "简洁"
+    });
+    assert.match(String(result), /"persona":/);
+    assert.doesNotMatch(String(result), /role|appearance|rules/);
   });
 
   test("prompt builder injects explicit current user profile card", async () => {
@@ -126,7 +244,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       const prompt = buildSetupPrompt({
         sessionId: "qqbot:p:owner",
         persona,
-        missingFields: ["name", "role", "personality"],
+        missingFields: ["name", "coreIdentity", "personality"],
         recentMessages: [],
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "我叫小满，是个图书管理员", timestampMs: Date.now() })]
       });

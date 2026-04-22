@@ -10,6 +10,7 @@ import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
 
 const personaFieldEnums = [...editablePersonaFieldNames];
+const personaPatchFieldNames = new Set(editablePersonaFieldNames);
 
 export const profileToolDescriptors: ToolDescriptor[] = [
   {
@@ -40,13 +41,11 @@ export const profileToolDescriptors: ToolDescriptor[] = [
               type: "object",
               properties: {
                 name: { type: "string" },
-                role: { type: "string" },
-                appearance: { type: "string" },
+                coreIdentity: { type: "string" },
                 personality: { type: "string" },
                 interests: { type: "string" },
                 background: { type: "string" },
-                speechStyle: { type: "string" },
-                rules: { type: "string" }
+                speechStyle: { type: "string" }
               },
               additionalProperties: false
             }
@@ -487,7 +486,7 @@ function parsePersonaPatch(args: unknown): Record<string, string> {
   }
   return Object.fromEntries(
     Object.entries((args as { personaPatch: Record<string, unknown> }).personaPatch)
-      .filter(([, value]) => typeof value === "string")
+      .filter(([key, value]) => personaPatchFieldNames.has(key as typeof editablePersonaFieldNames[number]) && typeof value === "string")
       .map(([key, value]) => [key, String(value)])
   );
 }
