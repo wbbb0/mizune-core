@@ -233,6 +233,7 @@ export function clearSessionState(session: SessionState): void {
   session.mutationEpoch += 1;
   session.historyRevision += 1;
   session.operationMode = createNormalSessionOperationMode();
+  session.setupConfirmed = false;
   session.pendingMessages = [];
   session.pendingSteerMessages = [];
   session.pendingReplyGateWaitPasses = 0;

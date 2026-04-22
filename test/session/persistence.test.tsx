@@ -101,6 +101,22 @@ test("clearSessionState resets operationMode to normal", () => {
   assert.deepEqual(session.operationMode, { kind: "normal" });
 });
 
+test("clearSessionState resets setupConfirmed", () => {
+  const session = createSessionState({
+    id: "web:clear-setup-confirmed",
+    type: "private",
+    source: "web",
+    participantRef: { kind: "user", id: "owner" },
+    title: "Clear Setup Confirmed",
+    titleSource: "manual"
+  });
+  session.setupConfirmed = true;
+
+  clearSessionState(session);
+
+  assert.equal(session.setupConfirmed, false);
+});
+
   test("session persistence round-trips current session shape", async () => {
     await withDataDir("llm-bot-session-persist-current-test", async (dataDir: string) => {
       const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));

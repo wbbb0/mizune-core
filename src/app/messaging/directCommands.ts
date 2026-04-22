@@ -680,6 +680,15 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         await ctx.send("当前模式不需要初始化确认。");
         return;
       }
+      const setupOperation = await resolveCurrentSetupOperation(ctx);
+      if (!setupOperation) {
+        await ctx.send(
+          ctx.incomingMessage.relationship === "owner"
+            ? "当前没有待确认的初始化流程。"
+            : "只有 owner 可以确认初始化。"
+        );
+        return;
+      }
       // For scenario_host: mark initialized in persistent state so it survives restarts
       if (ctx.session.modeId === "scenario_host" && ctx.input.scenarioHostStateStore) {
         const nextState = await ctx.input.scenarioHostStateStore.update(
@@ -697,7 +706,6 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         );
         await maybeCaptionScenarioSetupTitle(ctx, nextState);
       }
-      const setupOperation = await resolveCurrentSetupOperation(ctx);
       // Mark confirmed in session (in-memory)
       ctx.input.sessionManager.markSetupConfirmed(ctx.session.id);
       if (setupOperation?.kind === "persona_setup") {
@@ -712,7 +720,11 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       }
       ctx.input.persistSession(ctx.session.id, "setup_confirmed_by_command");
       ctx.input.logger.info({ sessionId: ctx.session.id, modeId: ctx.session.modeId }, "setup_confirmed_by_command");
-      await ctx.send("初始化已确认，已进入正常模式。");
+      await ctx.send(
+        setupOperation.onComplete === "clear_session"
+          ? "初始化已确认，当前会话历史已清空。"
+          : "初始化已确认，已进入正常模式。"
+      );
     }
   }
 ];

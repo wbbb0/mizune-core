@@ -11,11 +11,11 @@ export const scenarioHostModeDefinition: SessionModeDefinition = {
     "scenario_host_state"
   ],
   setupPhase: {
-    resolveOperationModeKind({ personaReady, modeProfileReady, operationMode, chatType }) {
+    resolveOperationModeKind({ personaReady, modeProfileReady, operationMode, chatType, relationship }) {
       if (operationMode.kind === "persona_setup" || operationMode.kind === "mode_setup") {
         return operationMode.kind;
       }
-      if (chatType !== "private") {
+      if (chatType !== "private" || relationship !== "owner") {
         return null;
       }
       if (!personaReady) {
@@ -70,7 +70,7 @@ export const scenarioHostModeDefinition: SessionModeDefinition = {
         ],
         promptMode: "chat_with_setup_injection",
         completionSignal: "user_command",
-        onComplete: "none"
+        onComplete: "clear_session"
       }
     ]
   }

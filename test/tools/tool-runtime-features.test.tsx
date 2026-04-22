@@ -177,8 +177,8 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
   test("memory handlers surface structured scope conflict warnings", async () => {
     const personaWarningResult = await profileToolHandlers.patch_persona!(
-      { id: "tool_persona_warn_1", type: "function", function: { name: "patch_persona", arguments: "{\"personaPatch\":{\"rules\":\"所有任务默认先给结论再展开\"}}" } },
-      { personaPatch: { rules: "所有任务默认先给结论再展开" } },
+      { id: "tool_persona_warn_1", type: "function", function: { name: "patch_persona", arguments: "{\"personaPatch\":{\"speechStyle\":\"所有任务默认先给结论再展开\"}}" } },
+      { personaPatch: { speechStyle: "所有任务默认先给结论再展开" } },
       {
         relationship: "owner",
         personaStore: {
@@ -187,7 +187,14 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
           },
           async patchWithDiagnostics() {
             return {
-              persona: { name: "", role: "", appearance: "", personality: "", interests: "", background: "", speechStyle: "", rules: "所有任务默认先给结论再展开" },
+              persona: {
+                name: "",
+                coreIdentity: "",
+                personality: "",
+                interests: "",
+                background: "",
+                speechStyle: "所有任务默认先给结论再展开"
+              },
               warning: {
                 code: "warning_scope_conflict",
                 currentScope: "persona",
