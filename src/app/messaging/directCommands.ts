@@ -653,9 +653,12 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       // Mark confirmed in session (in-memory)
       ctx.input.sessionManager.markSetupConfirmed(ctx.session.id);
       // Handle onComplete policy immediately
+      const setupOperationKind = ctx.session.operationMode.kind === "normal"
+        ? "mode_setup"
+        : ctx.session.operationMode.kind;
       const setupOperation = resolveSessionModeSetupOperation(
         modeDef.setupPhase,
-        ctx.session.operationMode.kind === "normal" ? null : ctx.session.operationMode.kind
+        setupOperationKind
       );
       if (setupOperation?.onComplete === "clear_session") {
         ctx.input.sessionManager.cancelGeneration(ctx.session.id);
