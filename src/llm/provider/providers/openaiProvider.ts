@@ -116,6 +116,9 @@ export class OpenAiProvider implements LlmProvider {
     if (thinkingFeature?.type === "flag") {
       setPropertyByPath(requestBody, thinkingFeature.path, resolvedEnableThinking);
     }
+    if (shouldSendLmStudioPreserveThinking(context, params.messages, resolvedEnableThinking)) {
+      requestBody.preserve_thinking = true;
+    }
     if (nativeSearchEnableKey) {
       setPropertyByPath(requestBody, nativeSearchEnableKey, true);
     }
@@ -374,6 +377,25 @@ function convertOpenAiMessageContent(message: LlmMessage): string | OpenAiReques
   }
 
   return parts;
+}
+
+function shouldSendLmStudioPreserveThinking(
+  context: LlmProviderRequestContext,
+  messages: LlmMessage[],
+  enableThinking: boolean
+): boolean {
+  if (context.providerConfig.type !== "lmstudio") {
+    return false;
+  }
+  if (!enableThinking || context.modelProfile.preserveThinking !== true) {
+    return false;
+  }
+
+  return messages.some((message) => (
+    message.role === "assistant"
+    && typeof message.reasoning_content === "string"
+    && message.reasoning_content.length > 0
+  ));
 }
 
 async function dumpRequest(

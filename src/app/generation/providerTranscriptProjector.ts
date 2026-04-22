@@ -14,6 +14,7 @@ export interface ProviderTranscriptProjector {
   providerName: string;
   project(input: {
     transcript: InternalTranscriptItem[];
+    preserveThinking?: boolean;
   }): ProviderTranscriptProjection;
 }
 
@@ -56,9 +57,25 @@ function createOpenAiStyleProjector(providerName: string): ProviderTranscriptPro
       const replayMessages: LlmMessage[] = [];
       const lateSystemMessages: string[] = [];
       const degradedLines: string[] = [];
+      let replayCoversVisibleHistory = false;
 
       for (const item of input.transcript) {
         if (!isTranscriptRuntimeIncluded(item)) {
+          continue;
+        }
+        if (
+          input.preserveThinking
+          && (item.kind === "user_message" || item.kind === "assistant_message" || item.kind === "session_mode_switch")
+        ) {
+          const historyMessage = projectTranscriptMessageItemToHistoryMessage(item);
+          replayMessages.push({
+            role: historyMessage.role,
+            content: historyMessage.content,
+            ...(item.kind === "assistant_message" && item.reasoningContent
+              ? { reasoning_content: item.reasoningContent }
+              : {})
+          });
+          replayCoversVisibleHistory = true;
           continue;
         }
         if (item.kind === "assistant_tool_call") {
@@ -95,7 +112,7 @@ function createOpenAiStyleProjector(providerName: string): ProviderTranscriptPro
       if (degradedLines.length > 0) {
         lateSystemMessages.push(`最近内部元数据摘要（provider=${providerName}）：\n${degradedLines.join("\n")}`);
       }
-      return { replayMessages, lateSystemMessages, replayCoversVisibleHistory: false };
+      return { replayMessages, lateSystemMessages, replayCoversVisibleHistory };
     }
   };
 }

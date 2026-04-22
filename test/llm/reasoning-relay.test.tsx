@@ -52,9 +52,9 @@ import { createLlmTestConfig, createToolCallPayload, createToolDefinition, withM
     });
   });
 
-  test("same-round reasoning relay can be disabled per model", async () => {
+  test("same-round reasoning relay remains enabled even when preserveThinking is disabled", async () => {
     const client = new LlmClient(createLlmTestConfig({
-      returnReasoningContentForSameRoundMessages: false
+      preserveThinking: false
     }), pino({ level: "silent" }));
 
     await withMockFetch([
@@ -68,7 +68,7 @@ import { createLlmTestConfig, createToolCallPayload, createToolDefinition, withM
       {
         assertRequest(body: any) {
           assert.equal(body.messages[1].role, "assistant");
-          assert.equal("reasoning_content" in body.messages[1], false);
+          assert.equal(body.messages[1].reasoning_content, "disabled-same-round-reasoning");
         },
         payloads: [{
           choices: [{
@@ -86,58 +86,6 @@ import { createLlmTestConfig, createToolCallPayload, createToolDefinition, withM
       });
 
       assert.equal(result.text, "done");
-    });
-  });
-
-  test("reasoning_content is not carried into a new generate call", async () => {
-    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
-
-    await withMockFetch([
-      {
-        assertRequest(body: any) {
-          assert.equal(body.messages.length, 1);
-          assert.equal("reasoning_content" in body.messages[0], false);
-        },
-        payloads: createToolCallPayload("round-1-reasoning")
-      },
-      {
-        assertRequest(body: any) {
-          assert.equal(body.messages[1].reasoning_content, "round-1-reasoning");
-        },
-        payloads: [{
-          choices: [{
-            delta: {
-              content: "first round done"
-            }
-          }]
-        }]
-      },
-      {
-        assertRequest(body: any) {
-          assert.equal(body.messages.length, 1);
-          assert.equal(body.messages[0].role, "user");
-          assert.equal("reasoning_content" in body.messages[0], false);
-        },
-        payloads: [{
-          choices: [{
-            delta: {
-              content: "second round done"
-            }
-          }]
-        }]
-      }
-    ], async () => {
-      const first = await client.generate({
-        messages: [{ role: "user", content: "first task" }],
-        tools: [createToolDefinition("lookup")],
-        toolExecutor: async () => "{\"ok\":true}"
-      });
-      const second = await client.generate({
-        messages: [{ role: "user", content: "second task" }]
-      });
-
-      assert.equal(first.text, "first round done");
-      assert.equal(second.text, "second round done");
     });
   });
 
@@ -188,8 +136,10 @@ import { createLlmTestConfig, createToolCallPayload, createToolDefinition, withM
     });
   });
 
-  test("incoming assistant reasoning_content is stripped when all-message relay is disabled", async () => {
-    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+  test("incoming assistant reasoning_content is stripped when preserveThinking is disabled", async () => {
+    const client = new LlmClient(createLlmTestConfig({
+      preserveThinking: false
+    }), pino({ level: "silent" }));
 
     await withMockFetch([
       {
@@ -224,10 +174,9 @@ import { createLlmTestConfig, createToolCallPayload, createToolDefinition, withM
     });
   });
 
-  test("incoming assistant reasoning_content is preserved when all-message relay is enabled", async () => {
+  test("incoming assistant reasoning_content is preserved when preserveThinking is enabled", async () => {
     const client = new LlmClient(createLlmTestConfig({
-      returnReasoningContentForAllMessages: true,
-      returnReasoningContentForSameRoundMessages: false
+      preserveThinking: true
     }), pino({ level: "silent" }));
 
     await withMockFetch([

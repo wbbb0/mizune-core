@@ -12,8 +12,7 @@ export function createLlmTestConfig(modelOverrides: any = {}) {
     supportsVision: false,
     supportsSearch: false,
     supportsTools: true,
-    returnReasoningContentForAllMessages: false,
-    returnReasoningContentForSameRoundMessages: true
+    preserveThinking: false
   };
   const fallbackModels = Array.isArray(modelOverrides)
     ? Object.fromEntries(modelOverrides.map((override, index) => [

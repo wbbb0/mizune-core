@@ -46,10 +46,10 @@ export class LlmClient {
     const requestedModelRefs = normalizeModelRefs(params.modelRefOverride ?? getDefaultMainModelRefs(this.config));
     let activeModelRefs = [...requestedModelRefs];
     const resolvedModelProfile = getPrimaryModelProfile(this.config, requestedModelRefs);
-    const reasoningRelayPolicy = resolveReasoningRelayPolicy(resolvedModelProfile);
+    const preserveThinking = resolvedModelProfile?.preserveThinking ?? false;
     const workingMessages = cloneMessagesForRequest(
       params.messages,
-      reasoningRelayPolicy.returnReasoningContentForAllMessages
+      preserveThinking
     );
     const maxIterations = this.config.llm.toolCallMaxIterations;
     const aggregatedUsage: LlmUsage = createEmptyUsage(requestedModelRefs[0] ?? null, null);
@@ -59,7 +59,7 @@ export class LlmClient {
       return steerMessages.length > 0
         ? cloneMessagesForRequest(
             steerMessages,
-            reasoningRelayPolicy.returnReasoningContentForAllMessages
+            preserveThinking
           )
         : [];
     };
@@ -108,11 +108,7 @@ export class LlmClient {
         tool_calls: streamed.toolCalls,
         ...(streamed.assistantMetadata ? { providerMetadata: streamed.assistantMetadata } : {})
       };
-      if (
-        shouldReturnSameRoundReasoning(reasoningRelayPolicy)
-        && typeof streamed.reasoningContent === "string"
-        && streamed.reasoningContent.length > 0
-      ) {
+      if (typeof streamed.reasoningContent === "string" && streamed.reasoningContent.length > 0) {
         assistantMessage.reasoning_content = streamed.reasoningContent;
       }
       workingMessages.push(assistantMessage);
@@ -197,7 +193,7 @@ export class LlmClient {
         }, toolCall.function.name);
         for (const message of cloneMessagesForRequest(
           supplementalMessages,
-          shouldReturnSameRoundReasoning(reasoningRelayPolicy)
+          true
         )) {
           workingMessages.push(message);
         }
@@ -518,28 +514,6 @@ function normalizeToolExecutionResult(input: string | LlmToolExecutionResult): L
     supplementalMessages: input.supplementalMessages ?? [],
     ...(input.terminalResponse ? { terminalResponse: input.terminalResponse } : {})
   };
-}
-
-function resolveReasoningRelayPolicy(
-  modelProfile: {
-    returnReasoningContentForAllMessages?: boolean;
-    returnReasoningContentForSameRoundMessages?: boolean;
-  } | undefined
-): {
-  returnReasoningContentForAllMessages: boolean;
-  returnReasoningContentForSameRoundMessages: boolean;
-} {
-  return {
-    returnReasoningContentForAllMessages: modelProfile?.returnReasoningContentForAllMessages ?? false,
-    returnReasoningContentForSameRoundMessages: modelProfile?.returnReasoningContentForSameRoundMessages ?? true
-  };
-}
-
-function shouldReturnSameRoundReasoning(policy: {
-  returnReasoningContentForAllMessages: boolean;
-  returnReasoningContentForSameRoundMessages: boolean;
-}): boolean {
-  return policy.returnReasoningContentForAllMessages || policy.returnReasoningContentForSameRoundMessages;
 }
 
 function cloneMessagesForRequest(messages: LlmMessage[], preserveAssistantReasoning: boolean): LlmMessage[] {

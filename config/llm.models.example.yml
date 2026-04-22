@@ -5,6 +5,7 @@ qwen35_plus:
   modelType: chat
   supportsThinking: true
   thinkingControllable: true
+  preserveThinking: false
   supportsVision: true
   supportsAudioInput: false
   supportsTools: true
@@ -17,19 +18,21 @@ sessionCaptioner:
   modelType: chat
   supportsThinking: true
   thinkingControllable: true
+  preserveThinking: false
   supportsVision: false
   supportsAudioInput: false
   supportsTools: true
   supportsSearch: false
 
-# 示例 2：LM Studio 本地模型（可开关思考）
-lmstudio_qwen3_8b:
+# 示例 2：LM Studio 本地模型（启用思考保留）
+lmstudio_qwen36:
   provider: lmstudio_local
-  model: qwen3-8b
+  model: qwen3.6-35b-a3b
   modelType: chat
   supportsThinking: true
   thinkingControllable: true
-  supportsVision: false
+  preserveThinking: true
+  supportsVision: true
   supportsAudioInput: false
   supportsTools: true
   supportsSearch: false
@@ -41,6 +44,7 @@ qwen3_asr_flash:
   modelType: transcription
   supportsThinking: false
   thinkingControllable: true
+  preserveThinking: false
   supportsVision: false
   supportsAudioInput: true
   supportsTools: false

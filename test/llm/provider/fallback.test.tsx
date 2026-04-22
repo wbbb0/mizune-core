@@ -30,8 +30,7 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
             supportsAudioInput: false,
             supportsSearch: false,
             supportsTools: true,
-            returnReasoningContentForAllMessages: false,
-            returnReasoningContentForSameRoundMessages: true
+            preserveThinking: false
           }
         }
       }
@@ -96,8 +95,7 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
             supportsAudioInput: false,
             supportsSearch: false,
             supportsTools: true,
-            returnReasoningContentForAllMessages: false,
-            returnReasoningContentForSameRoundMessages: true
+            preserveThinking: false
           }
         }
       }
@@ -328,8 +326,7 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
             supportsAudioInput: false,
             supportsSearch: false,
             supportsTools: true,
-            returnReasoningContentForAllMessages: false,
-            returnReasoningContentForSameRoundMessages: true
+            preserveThinking: false
           },
           fallback: {
             provider: "fallbackTest",
@@ -339,8 +336,7 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
             supportsAudioInput: false,
             supportsSearch: false,
             supportsTools: true,
-            returnReasoningContentForAllMessages: false,
-            returnReasoningContentForSameRoundMessages: true
+            preserveThinking: false
           }
         }
       }

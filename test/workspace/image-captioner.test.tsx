@@ -50,8 +50,7 @@ function createCaptionerConfig() {
           supportsAudioInput: false,
           supportsSearch: false,
           supportsTools: false,
-          returnReasoningContentForAllMessages: false,
-          returnReasoningContentForSameRoundMessages: true
+          preserveThinking: false
         },
         secondary: {
           provider: "vision",
@@ -61,8 +60,7 @@ function createCaptionerConfig() {
           supportsAudioInput: false,
           supportsSearch: false,
           supportsTools: false,
-          returnReasoningContentForAllMessages: false,
-          returnReasoningContentForSameRoundMessages: true
+          preserveThinking: false
         }
       },
       imageCaptioner: {

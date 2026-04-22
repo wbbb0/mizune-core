@@ -182,8 +182,7 @@ const baseTestCatalogOverrides: DeepPartial<LlmCatalogConfig> = {
       supportsAudioInput: false,
       supportsSearch: false,
       supportsTools: true,
-      returnReasoningContentForAllMessages: false,
-      returnReasoningContentForSameRoundMessages: true
+      preserveThinking: false
     },
     sessionCaptioner: {
       provider: "test",
@@ -195,8 +194,7 @@ const baseTestCatalogOverrides: DeepPartial<LlmCatalogConfig> = {
       supportsAudioInput: false,
       supportsSearch: false,
       supportsTools: true,
-      returnReasoningContentForAllMessages: false,
-      returnReasoningContentForSameRoundMessages: true
+      preserveThinking: false
     }
   }
 };

@@ -233,6 +233,9 @@ function buildDashScopeRequestBody(
   if (thinkingFeature?.type === "flag") {
     setPropertyByPath(parameters, thinkingFeature.path, enableThinking);
   }
+  if (shouldSendPreserveThinking(context, params.messages, enableThinking)) {
+    parameters.preserve_thinking = true;
+  }
   if (params.tools && params.tools.length > 0) {
     parameters.tools = params.tools;
   }
@@ -303,6 +306,22 @@ function convertVisionContent(content: string | LlmContentPart[]): Array<{ text?
 function buildAudioDataUrl(input: { data: string; format: string; mimeType?: string }): string {
   const mimeType = input.mimeType?.trim() || inferDashScopeAudioMimeType(input.format);
   return `data:${mimeType};base64,${input.data}`;
+}
+
+function shouldSendPreserveThinking(
+  context: LlmProviderRequestContext,
+  messages: LlmMessage[],
+  enableThinking: boolean
+): boolean {
+  if (!enableThinking || context.modelProfile.preserveThinking !== true) {
+    return false;
+  }
+
+  return messages.some((message) => (
+    message.role === "assistant"
+    && typeof message.reasoning_content === "string"
+    && message.reasoning_content.length > 0
+  ));
 }
 
 function inferDashScopeAudioMimeType(format: string): string {

@@ -489,7 +489,8 @@ export function createGenerationSessionOrchestrator(
       const recentToolEvents = refreshedSession.recentToolEvents;
       const debugMarkers = refreshedSession.debugMarkers;
       const projectedTranscript = getProviderTranscriptProjector(providerName).project({
-        transcript: transcriptStore.runtimeItems()
+        transcript: transcriptStore.runtimeItems(),
+        preserveThinking: getPrimaryModelProfile(config, resolvedModelRef)?.preserveThinking === true
       });
       const historyForPromptMessages = projectedTranscript.replayCoversVisibleHistory ? [] : historyForPrompt;
       const lateSystemMessages = [
@@ -672,7 +673,8 @@ export function createGenerationSessionOrchestrator(
         ? []
         : await extractWindowUsers(userStore, transcriptStore.runtimeItems(), []);
       const projectedTranscript = getProviderTranscriptProjector(providerName).project({
-        transcript: transcriptStore.runtimeItems()
+        transcript: transcriptStore.runtimeItems(),
+        preserveThinking: getPrimaryModelProfile(config, scheduledModelRef)?.preserveThinking === true
       });
       const historyForPromptMessages = projectedTranscript.replayCoversVisibleHistory ? [] : projectedHistory;
       const lateSystemMessages = [

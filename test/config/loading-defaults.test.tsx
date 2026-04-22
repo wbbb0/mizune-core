@@ -124,8 +124,8 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
     });
   });
 
-  test("loadConfig applies reasoning relay defaults for model profiles", async () => {
-    await withConfigDir("llm-bot-config-reasoning-defaults-test", async (configDir) => {
+  test("loadConfig applies preserveThinking defaults for model profiles", async () => {
+    await withConfigDir("llm-bot-config-preserve-thinking-defaults-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);
       await writeLlmCatalog(configDir, {
         providers: {
@@ -177,8 +177,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       assert.equal(config.llm.models.main?.supportsAudioInput, false);
       assert.equal(config.llm.models.main?.supportsSearch, false);
       assert.equal(config.llm.models.main?.thinkingControllable, true);
-      assert.equal(config.llm.models.main?.returnReasoningContentForAllMessages, false);
-      assert.equal(config.llm.models.main?.returnReasoningContentForSameRoundMessages, true);
+      assert.equal(config.llm.models.main?.preserveThinking, false);
       assert.equal(config.llm.providers.test?.harmBlockThreshold, "BLOCK_NONE");
       assert.deepEqual(config.llm.providers.test?.features, {});
     });

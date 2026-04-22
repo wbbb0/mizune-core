@@ -11,8 +11,7 @@ const modelProfileSchema = s.object({
   supportsAudioInput: s.boolean().title("支持音频输入").default(false),
   supportsSearch: s.boolean().title("支持搜索").default(false),
   supportsTools: s.boolean().title("支持工具").default(true),
-  returnReasoningContentForAllMessages: s.boolean().title("所有消息返回推理内容").default(false),
-  returnReasoningContentForSameRoundMessages: s.boolean().title("同轮消息返回推理内容").default(true)
+  preserveThinking: s.boolean().title("保留历史思考").default(false)
 }).title("模型配置").describe("定义一个模型别名对应的 provider 能力与特性。").default(emptyObject);
 
 const createModelRefListSchema = () => s.oneOrMany(s.string().trim().nonempty().dynamicRef("llm_model_names")).min(1);

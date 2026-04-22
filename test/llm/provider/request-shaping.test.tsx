@@ -75,6 +75,149 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
     });
   });
 
+  test("dashscope sends preserve_thinking when preserveThinking is enabled and assistant reasoning exists", async () => {
+    const config = createLlmTestConfig({
+      provider: "test",
+      preserveThinking: true
+    });
+    config.llm.providers.test!.type = "dashscope";
+    config.llm.providers.test!.features.thinking = {
+      type: "flag",
+      path: "enable_thinking"
+    };
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.parameters.enable_thinking, true);
+          assert.equal(body.parameters.preserve_thinking, true);
+          assert.equal(body.input.messages[0].role, "assistant");
+          assert.equal(body.input.messages[0].reasoning_content, "previous reasoning");
+        },
+        payloads: [{
+          output: {
+            choices: [{
+              message: {
+                content: [{ text: "done" }]
+              }
+            }]
+          },
+          usage: {
+            input_tokens: 5,
+            output_tokens: 1,
+            total_tokens: 6
+          }
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [
+          {
+            role: "assistant",
+            content: "previous answer",
+            reasoning_content: "previous reasoning"
+          },
+          {
+            role: "user",
+            content: "continue"
+          }
+        ],
+        enableThinkingOverride: true
+      });
+
+      assert.equal(result.text, "done");
+    });
+  });
+
+  test("dashscope omits preserve_thinking when no assistant reasoning is present", async () => {
+    const config = createLlmTestConfig({
+      provider: "test",
+      preserveThinking: true
+    });
+    config.llm.providers.test!.type = "dashscope";
+    config.llm.providers.test!.features.thinking = {
+      type: "flag",
+      path: "enable_thinking"
+    };
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.parameters.enable_thinking, true);
+          assert.equal("preserve_thinking" in body.parameters, false);
+        },
+        payloads: [{
+          output: {
+            choices: [{
+              message: {
+                content: [{ text: "done" }]
+              }
+            }]
+          },
+          usage: {
+            input_tokens: 4,
+            output_tokens: 1,
+            total_tokens: 5
+          }
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "hello" }],
+        enableThinkingOverride: true
+      });
+
+      assert.equal(result.text, "done");
+    });
+  });
+
+  test("lmstudio sends preserve_thinking on openai-compatible chat completions when assistant reasoning exists", async () => {
+    const config = createLlmTestConfig({
+      preserveThinking: true
+    });
+    config.llm.providers.test!.type = "lmstudio";
+    config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
+          assert.equal(url, "http://localhost:1234/v1/chat/completions");
+          assert.equal(body.enable_thinking, true);
+          assert.equal(body.preserve_thinking, true);
+          const assistantMessage = body.messages.find((message: any) => message.role === "assistant");
+          assert.equal(assistantMessage.reasoning_content, "previous reasoning");
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "done"
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [
+          {
+            role: "assistant",
+            content: "previous answer",
+            reasoning_content: "previous reasoning"
+          },
+          {
+            role: "user",
+            content: "continue"
+          }
+        ],
+        enableThinkingOverride: true
+      });
+
+      assert.equal(result.text, "done");
+    });
+  });
+
   test("lmstudio uses native chat endpoint when tools are absent and thinking is disabled", async () => {
     const config = createLlmTestConfig({
       provider: "test",
