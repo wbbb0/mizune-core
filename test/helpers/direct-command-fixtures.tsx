@@ -4,6 +4,7 @@ import { createTestAppConfig } from "./config-fixtures.tsx";
 type SentImmediateText = {
   sessionId: string;
   userId: string;
+  externalUserId?: string;
   groupId?: string;
   text: string;
   recordInHistory?: boolean;

@@ -1,6 +1,7 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
+import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 
 export const setupDraftToolDescriptors: ToolDescriptor[] = [
   {
@@ -8,7 +9,7 @@ export const setupDraftToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "send_setup_draft",
-        description: "将当前收集到的设定内容格式化后作为独立消息发送给用户，供用户核对。只在初始化阶段使用。",
+        description: "将当前收集到的设定内容格式化后作为独立消息发送给用户，供用户核对。只在 setup 或 config 草稿阶段使用。",
         parameters: {
           type: "object",
           properties: {
@@ -32,18 +33,52 @@ export const setupDraftToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ error: "content is required" });
     }
     const sessionId = context.lastMessage.sessionId;
-    const parsedSession = parseChatSessionIdentity(sessionId);
-    if (!parsedSession) {
-      return JSON.stringify({ error: "unsupported session target" });
-    }
-    const sendTarget = parsedSession.kind === "private"
-      ? { userId: parsedSession.userId, text: content }
-      : { groupId: parsedSession.groupId, text: content };
+    const session = context.sessionManager.getSession(sessionId);
     context.messageQueue.enqueueTextDetached({
       sessionId,
       text: content,
-      send: () => context.oneBotClient.sendText(sendTarget).then(() => undefined)
+      send: async () => {
+        if (context.replyDelivery === "web") {
+          await context.webOutputCollector?.append(content);
+          context.sessionManager.appendAssistantHistory(sessionId, {
+            chatType: session.type,
+            userId: context.lastMessage.userId,
+            senderName: context.lastMessage.senderName,
+            text: content
+          });
+          return;
+        }
+
+        const parsedSession = parseChatSessionIdentity(sessionId);
+        if (!parsedSession) {
+          throw new Error(`unsupported session target: ${sessionId}`);
+        }
+        const sendTarget = parsedSession.kind === "private"
+          ? { userId: parsedSession.userId, text: content }
+          : { groupId: parsedSession.groupId, text: content };
+        const payload = await context.oneBotClient.sendText(sendTarget);
+        const messageId = normalizeOneBotMessageId(payload.data?.message_id);
+        if (messageId != null) {
+          context.sessionManager.recordSentMessage(sessionId, {
+            messageId,
+            text: content,
+            sentAt: Date.now()
+          });
+        }
+        context.sessionManager.appendAssistantHistory(sessionId, {
+          chatType: session.type,
+          userId: context.lastMessage.userId,
+          senderName: context.lastMessage.senderName,
+          text: content,
+          ...(messageId != null ? {
+            deliveryRef: {
+              platform: "onebot" as const,
+              messageId
+            }
+          } : {})
+        });
+      }
     });
-    return JSON.stringify({ ok: true, sent: true });
+    return JSON.stringify({ ok: true, queued: true, sent: true });
   }
 };

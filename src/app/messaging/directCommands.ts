@@ -44,7 +44,12 @@ export interface UnknownDirectCommand {
   name: "unknown";
   rawText: string;
 }
-export type ResolvedDirectCommand = ParsedDirectCommand | UnknownDirectCommand;
+export interface InvalidDirectCommand {
+  name: "invalid";
+  rawText: string;
+  message: string;
+}
+export type ResolvedDirectCommand = ParsedDirectCommand | UnknownDirectCommand | InvalidDirectCommand;
 
 interface DirectCommandIncomingMessage {
   channelId?: string;
@@ -73,6 +78,7 @@ interface DirectCommandHandlerInput {
   sendImmediateText: (params: {
     sessionId: string;
     userId: string;
+    externalUserId?: string;
     groupId?: string;
     text: string;
     recordInHistory?: boolean;
@@ -253,17 +259,7 @@ async function enterConfigurationMode(
   target: ConfigTarget
 ): Promise<string> {
   const readiness = await readGlobalReadiness(ctx);
-  if (mode === "setup") {
-    if (target === "persona" && readiness.persona) {
-      return "persona 已初始化，请使用 `.config persona`。";
-    }
-    if (target === "rp" && readiness.rp) {
-      return "RP 资料已初始化，请使用 `.config rp`。";
-    }
-    if (target === "scenario" && readiness.scenario) {
-      return "Scenario 资料已初始化，请使用 `.config scenario`。";
-    }
-  } else {
+  if (mode === "config") {
     if (target === "persona" && !readiness.persona) {
       return "persona 尚未初始化，请先使用 `.setup persona`。";
     }
@@ -851,6 +847,29 @@ function canAttemptDirectCommand(context: DirectCommandRoutingContext): boolean 
   return context.relationship === "owner" && context.isAtMentioned === true;
 }
 
+function resolveInvalidDirectCommand(text: string): InvalidDirectCommand | null {
+  const matched = text.match(/^[。.]\s*(\S+)(?:\s+(.*))?$/i);
+  if (!matched) {
+    return null;
+  }
+  const commandWord = matched[1]?.toLowerCase();
+  if (commandWord === "setup") {
+    return {
+      name: "invalid",
+      rawText: text,
+      message: "`.setup` 需要一个目标参数：persona、rp 或 scenario。\n用法：`.setup persona` / `.setup rp` / `.setup scenario`。"
+    };
+  }
+  if (commandWord === "config") {
+    return {
+      name: "invalid",
+      rawText: text,
+      message: "`.config` 需要一个目标参数：persona、rp 或 scenario。\n用法：`.config persona` / `.config rp` / `.config scenario`。"
+    };
+  }
+  return null;
+}
+
 export function canExecuteDirectCommand(command: ParsedDirectCommand, context: DirectCommandRoutingContext): boolean {
   const descriptor = directCommandDescriptorMap.get(command.name);
   if (!descriptor) {
@@ -902,6 +921,10 @@ export function resolveDispatchableDirectCommand(context: DirectCommandDispatchC
   }
 
   if (hasDirectCommandPrefix(trimmedText) && canAttemptDirectCommand(context)) {
+    const invalid = resolveInvalidDirectCommand(trimmedText);
+    if (invalid) {
+      return invalid;
+    }
     return {
       name: "unknown",
       rawText: trimmedText
@@ -935,6 +958,7 @@ export function createDirectCommandHandler(
       send: async (text: string) => input.sendImmediateText({
         sessionId: session.id,
         userId: params.incomingMessage.userId,
+        ...(params.incomingMessage.externalUserId ? { externalUserId: params.incomingMessage.externalUserId } : {}),
         ...(params.incomingMessage.groupId ? { groupId: params.incomingMessage.groupId } : {}),
         text,
         recordInHistory: false,
@@ -954,6 +978,10 @@ export function createDirectCommandHandler(
 
     if (params.command.name === "unknown") {
       await context.send(`未知指令：${params.command.rawText}\n发送 .help 查看可用指令。`);
+      return;
+    }
+    if (params.command.name === "invalid") {
+      await context.send(params.command.message);
       return;
     }
 

@@ -1,6 +1,20 @@
 import type { GlobalRuleEntry } from "#memory/globalRuleEntry.ts";
 import type { UserMemoryEntry } from "#memory/userMemoryEntry.ts";
 import { editablePersonaFieldNames, personaFieldLabels, type EditablePersonaFieldName, type Persona } from "#persona/personaSchema.ts";
+import {
+  editableRpProfileFieldNames,
+  getMissingRpProfileFields,
+  rpProfileFieldLabels,
+  type EditableRpProfileFieldName,
+  type RpProfile
+} from "#modes/rpAssistant/profileSchema.ts";
+import {
+  editableScenarioProfileFieldNames,
+  getMissingScenarioProfileFields,
+  scenarioProfileFieldLabels,
+  type EditableScenarioProfileFieldName,
+  type ScenarioProfile
+} from "#modes/scenarioHost/profileSchema.ts";
 import type {
   PromptInput,
   PromptInteractionMode,
@@ -22,6 +36,23 @@ const PERSONA_FIELD_HINTS: Record<EditablePersonaFieldName, string> = {
   speechStyle: "语气与说话习惯",
   interests: "兴趣爱好与喜好禁忌",
   background: "背景故事、家庭、住处等，可简短"
+};
+
+const RP_PROFILE_FIELD_HINTS: Record<EditableRpProfileFieldName, string> = {
+  appearance: "RP 模式下的外貌、穿着或整体形象",
+  premise: "RP 默认前提、处境或现实起点",
+  relationship: "与用户的默认关系预设",
+  identityBoundary: "RP 中如何自处，以及不能越界的身份边界",
+  styleRules: "RP 互动时的表达风格、节奏或偏好",
+  hardRules: "RP 模式必须遵守、不可破坏的硬规则"
+};
+
+const SCENARIO_PROFILE_FIELD_HINTS: Record<EditableScenarioProfileFieldName, string> = {
+  theme: "题材、氛围或想要长期主持的类型",
+  hostStyle: "主持节奏、叙事口吻与推进方式",
+  worldBaseline: "默认世界观、背景前提与常驻设定",
+  safetyOrTabooRules: "需要避开或特殊处理的禁区、边界",
+  openingPattern: "常用开场方式、默认起手结构"
 };
 
 const MAX_VISIBLE_MEMORIES = 4;
@@ -62,6 +93,11 @@ export function buildSetupSystemLines(input: {
       phase === "config" ? "persona_config_mode" : "persona_setup_mode",
       buildPersonaDraftModeLines(input.persona, input.missingFields, phase)
     ),
+    renderPromptSection("draft_workflow", buildDraftWorkflowLines({
+      targetLabel: "persona",
+      phase,
+      allowSkipOptionalFields: true
+    })),
     renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
     renderPromptSection("persona_snapshot", buildSetupSnapshotLines(input.persona, input.missingFields))
   ].filter((item): item is string => Boolean(item));
@@ -107,11 +143,11 @@ function buildPersonaSetupModeLines(persona: Persona, missingFields: EditablePer
 
   return [
     ...phaseLines,
+    "每轮优先推进当前最关键的一步；最多同时追问 1-2 个强相关字段，不要把整份设定一次性问完。",
     "owner 提供信息后，先用工具写入能确认的字段，再追问剩余字段；不要等所有字段都收集完才写入。",
     "收集到足够信息（尤其是核心字段完整后），调用 send_setup_draft 发送格式化草稿，不要在回复正文中逐条列出设定。",
     "草稿发出后告知 owner 满意则输入 .confirm 完成初始化，如有修改继续告诉你即可。",
     "只写入 owner 明确提供的内容，不要编造设定；不要调用无关工具，不要修改用户资料或关系。",
-    "绝对不要在回复正文中输出 .confirm；.confirm 只能由 owner 自己输入，模型不可代替输出。",
     "回复保持短句纯文本，不用 Markdown 标题或列表。"
   ];
 }
@@ -132,8 +168,8 @@ function buildPersonaConfigModeLines(persona: Persona, missingFields: EditablePe
       ? `仍可补充的字段有：${missingLabels.join("、")}。`
       : "当前字段已完整，优先按 owner 的修改要求做局部调整。",
     "先理解 owner 具体想改什么，只修改明确要求的字段；不要默认重问全部设定，也不要擅自重写未提及内容。",
+    "若本轮只是微调单个字段，就直接修改那一项；只有遇到关键信息缺失、语义冲突或 owner 明确要求时再扩展询问。",
     "如需核对当前草稿，可先读取草稿并概括当前状态；完成本轮修改后调用 send_setup_draft 发送最新草稿。",
-    "草稿发出后告知 owner 满意则输入 .confirm 保存，想放弃则输入 .cancel；不要在回复正文中代替 owner 输出这些命令。",
     "只写入 owner 明确提供的内容，不要编造设定；不要调用无关工具，不要修改用户资料或关系。",
     "回复保持短句纯文本，不用 Markdown 标题或列表。"
   ];
@@ -173,24 +209,39 @@ export function buildBaseSystemLines(input: {
   liveResources?: PromptInput["liveResources"] | undefined;
   toolsetRules?: PromptInput["toolsetRules"] | undefined;
   scenarioStateLines?: string[] | undefined;
-  draftMode?: {
-    target: "rp" | "scenario";
-    phase: "setup" | "config";
-  } | undefined;
+  modeProfile?: PromptInput["modeProfile"] | undefined;
+  draftMode?: PromptInput["draftMode"] | undefined;
   isInSetup?: boolean | undefined;
 }): string[] {
   const draftMode = input.draftMode ?? (
     input.isInSetup
-      ? { target: "scenario" as const, phase: "setup" as const }
+      ? {
+          target: "scenario" as const,
+          phase: "setup" as const,
+          profile: {
+            theme: "",
+            hostStyle: "",
+            worldBaseline: "",
+            safetyOrTabooRules: "",
+            openingPattern: ""
+          },
+          missingFields: ["theme", "hostStyle", "worldBaseline"] as EditableScenarioProfileFieldName[]
+        }
       : undefined
   );
 
   if (draftMode?.target === "rp") {
     return [
+      renderPromptSection("global_persona_base", buildModeProfilePersonaBaseLines(input.persona, "RP")),
       renderPromptSection(
         draftMode.phase === "config" ? "rp_profile_config_mode" : "rp_profile_setup_mode",
-        buildRpProfileDraftModeLines(draftMode.phase)
+        buildRpProfileDraftModeLines(draftMode.profile, draftMode.missingFields, draftMode.phase)
       ),
+      renderPromptSection("draft_workflow", buildDraftWorkflowLines({
+        targetLabel: "RP 资料",
+        phase: draftMode.phase
+      })),
+      renderPromptSection("rp_profile_snapshot", buildRpProfileSnapshotLines(draftMode.profile, draftMode.missingFields)),
       renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
       renderPromptSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
       renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
@@ -202,10 +253,16 @@ export function buildBaseSystemLines(input: {
 
   if (draftMode?.target === "scenario") {
     return [
+      renderPromptSection("global_persona_base", buildModeProfilePersonaBaseLines(input.persona, "Scenario")),
       renderPromptSection(
         draftMode.phase === "config" ? "scenario_profile_config_mode" : "scenario_profile_setup_mode",
-        buildScenarioProfileDraftModeLines(draftMode.phase)
+        buildScenarioProfileDraftModeLines(draftMode.profile, draftMode.missingFields, draftMode.phase)
       ),
+      renderPromptSection("draft_workflow", buildDraftWorkflowLines({
+        targetLabel: "Scenario 资料",
+        phase: draftMode.phase
+      })),
+      renderPromptSection("scenario_profile_snapshot", buildScenarioProfileSnapshotLines(draftMode.profile, draftMode.missingFields)),
       renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
       renderPromptSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
       renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
@@ -217,6 +274,7 @@ export function buildBaseSystemLines(input: {
 
   if (input.modeId === "assistant") {
     return [
+      renderPromptSection("global_persona", buildSharedPersonaLines(input.persona)),
       renderPromptSection("assistant_identity", buildAssistantIdentityLines()),
       renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
       renderPromptSection("reply_rules", buildReplyRuleLines()),
@@ -235,7 +293,12 @@ export function buildBaseSystemLines(input: {
 
   if (input.modeId === "scenario_host") {
     return [
+      renderPromptSection("global_persona", buildSharedPersonaLines(input.persona)),
       renderPromptSection("host_identity", buildScenarioHostIdentityLines()),
+      renderPromptSection(
+        "scenario_profile",
+        input.modeProfile?.target === "scenario" ? buildScenarioProfileLines(input.modeProfile.profile) : []
+      ),
       renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
       renderPromptSection("host_rules", buildScenarioHostRuleLines()),
       renderPromptSection("context_rules", buildContextRuleLines({
@@ -257,6 +320,49 @@ export function buildBaseSystemLines(input: {
     ].filter((item): item is string => Boolean(item));
   }
 
+  if (input.modeId === "rp_assistant" || input.modeProfile?.target === "rp") {
+    const preparedMemoryContext = preparePromptMemoryContext({
+      persona: input.persona,
+      globalRules: input.globalRules,
+      toolsetRules: input.toolsetRules,
+      userProfile: input.userProfile,
+      userMemories: input.currentUserMemories
+    });
+
+    return [
+      renderPromptSection("global_persona", buildSharedPersonaLines(input.persona)),
+      renderPromptSection("rp_identity", buildRpAssistantIdentityLines()),
+      renderPromptSection(
+        "rp_profile",
+        input.modeProfile?.target === "rp" ? buildRpProfileLines(input.modeProfile.profile) : []
+      ),
+      renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
+      renderPromptSection("reply_rules", buildReplyRuleLines()),
+      renderPromptSection("memory_write_decision", buildMemoryRuleLines()),
+      renderPromptSection("context_rules", buildContextRuleLines({
+        visibleToolNames: input.visibleToolNames
+      })),
+      renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
+        activeToolsets: input.activeToolsets,
+        visibleToolNames: input.visibleToolNames
+      })),
+      renderPromptSection("live_resources", buildLiveResourceLines(input.liveResources)),
+      renderPromptSection("participant_context", [
+        ...buildParticipantContextLines(input.sessionMode, input.participantProfiles),
+        ...buildNpcContextLines(input.sessionMode, input.npcProfiles, input.participantProfiles)
+      ]),
+      renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
+      renderPromptSection("recent_tool_events", buildRecentToolEventLines(input.recentToolEvents)),
+      renderPromptSection("global_rules", buildGlobalRuleLines(preparedMemoryContext.globalRules)),
+      renderPromptSection("toolset_rules", buildToolsetRuleLines(preparedMemoryContext.toolsetRules)),
+      renderPromptSection("current_user_profile", buildCurrentUserProfileLines({
+        userProfile: input.userProfile,
+        userMemories: preparedMemoryContext.userMemories
+      })),
+      renderPromptSection("current_user_memories", buildCurrentUserMemoryLines(preparedMemoryContext.userMemories))
+    ].filter((item): item is string => Boolean(item));
+  }
+
   const preparedMemoryContext = preparePromptMemoryContext({
     persona: input.persona,
     globalRules: input.globalRules,
@@ -266,7 +372,7 @@ export function buildBaseSystemLines(input: {
   });
 
   return [
-    renderPromptSection("persona", buildIdentityLines(input.persona)),
+    renderPromptSection("global_persona", buildSharedPersonaLines(input.persona)),
     renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
     renderPromptSection("reply_rules", buildReplyRuleLines()),
     renderPromptSection("memory_write_decision", buildMemoryRuleLines()),
@@ -296,15 +402,23 @@ export function buildBaseSystemLines(input: {
 
 function buildAssistantIdentityLines(): string[] {
   return [
-    "你是普通中文 assistant，优先直接理解并完成用户请求。",
-    "不要把自己当成角色扮演人物，也不要编造 persona、关系或背景设定。"
+    "你当前以 AI assistant 模式工作，优先直接理解并完成用户请求。",
+    "以全局 persona 作为稳定的人格与口吻底座，但不要把对话强行演成角色扮演，也不要额外编造关系、剧情或只属于 RP 的设定。"
   ];
 }
 
 function buildScenarioHostIdentityLines(): string[] {
   return [
-    "你是剧情主持模式下的场景主持者，负责描述环境、推进事件、控制非玩家角色，并回应玩家行动。",
+    "你当前是剧情主持模式下的场景主持者，负责描述环境、推进事件、控制非玩家角色，并回应玩家行动。",
     "默认用中文主持，不要把自己当成普通陪聊助手，也不要回到 RP 助手的人设口吻。"
+  ];
+}
+
+function buildRpAssistantIdentityLines(): string[] {
+  return [
+    "你当前处于 RP assistant 模式，应以真人角色身份自然互动。",
+    "全局 persona 是你的长期人格底座；下面的 RP 全局资料是在此基础上的模式补充，必须一起遵守。",
+    "不要把自己说成模型、系统或普通助手；也不要跳出 RP 身份解释内部机制。"
   ];
 }
 
@@ -324,46 +438,132 @@ function buildScenarioHostRuleLines(): string[] {
   ];
 }
 
-function buildRpProfileDraftModeLines(phase: "setup" | "config"): string[] {
+function buildRpProfileDraftModeLines(
+  profile: RpProfile,
+  missingFields: EditableRpProfileFieldName[],
+  phase: "setup" | "config"
+): string[] {
+  const missingSet = new Set(missingFields);
+  const coreMissingFields = getMissingRpProfileFields(profile);
+  const coreMissingSet = new Set(coreMissingFields);
+  const filledLabels = editableRpProfileFieldNames
+    .filter((field) => !missingSet.has(field) && profile[field]?.trim())
+    .map((field) => rpProfileFieldLabels[field]);
+  const coreMissingLabels = coreMissingFields.map((field) => rpProfileFieldLabels[field]);
+  const optionalMissingLabels = editableRpProfileFieldNames
+    .filter((field) => !coreMissingSet.has(field) && missingSet.has(field))
+    .map((field) => rpProfileFieldLabels[field]);
+
   if (phase === "config") {
     return [
       "当前处于 RP 全局资料配置阶段，你正在编辑一份基于已保存 RP 资料复制出的临时草稿。",
-      "先理解 owner 想改哪些 RP 字段，只修改明确要求的部分；不要默认重置未提及内容，也不要要求从头重填。",
-      "RP 资料只服务 RP 模式；不要把这些要求写成 persona、用户资料或其他长期记忆。",
-      "如需核对现状，可先读取当前 RP 草稿；完成本轮修改后调用 send_setup_draft 发送最新草稿。",
-      "草稿发出后告知 owner 满意则输入 .confirm 保存，想放弃则输入 .cancel；不要在回复正文中代替 owner 输出这些命令。",
+      filledLabels.length > 0
+        ? `当前草稿已明确：${filledLabels.join("、")}。`
+        : "当前 RP 草稿仍接近空白，可按 owner 的要求逐步补齐。",
+      coreMissingLabels.length > 0
+        ? `核心字段仍缺：${coreMissingLabels.join("、")}；若 owner 本轮没有指定更高优先级目标，先补这些。`
+        : "当前核心字段已完整，优先按 owner 本轮明确要求做局部调整。",
+      optionalMissingLabels.length > 0
+        ? `可在需要时继续补充：${optionalMissingLabels.join("、")}。`
+        : "可选补充字段已齐全，除非 owner 明确要求，否则不要重问整份 RP 资料。",
+      "RP 资料只在全局 persona 底座上补充 RP 专属要求；不要把 persona 内容重复写入 RP 资料，也不要写到用户资料或其他长期记忆。",
+      "若本轮只是微调单个字段，就直接改那一项；只有遇到核心字段缺失、语义冲突或边界不清时再追问。",
+      "如需核对现状，优先概括或发送当前 RP 草稿；草稿发出后等待 owner 反馈，不要在同一回复继续追问新的长串字段。",
       "回复保持短句纯文本，不用 Markdown 标题或列表。"
     ];
   }
+
+  if (coreMissingLabels.length === 3) {
+    return [
+      "当前处于 RP 全局资料初始化阶段，需要从空白草稿开始建立 RP 专用资料。",
+      "先用 1-2 个紧密相关的问题补齐前提和身份边界，再继续确认硬规则；不要一上来把整份问卷全抛给 owner。",
+      "RP 资料只服务 RP 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
+      "owner 每提供一段明确设定，就立即用工具写入草稿；不要等所有信息都收集完再统一写入。",
+      "核心字段初步成形后，调用 send_setup_draft 发送当前 RP 草稿供 owner 核对。",
+      "回复保持短句纯文本，不用 Markdown 标题或列表。"
+    ];
+  }
+
+  if (coreMissingLabels.length > 0) {
+    return [
+      `当前 RP 草稿已有部分内容，但核心字段仍缺：${coreMissingLabels.join("、")}。`,
+      `当前优先确认：${coreMissingLabels[0]}；其余核心字段可在同一主题下顺势补齐。`,
+      "RP 资料只服务 RP 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
+      "owner 每提供一段明确设定，就立即用工具写入草稿；不要等所有信息都收集完再统一写入。",
+      "核心字段补得足够稳定后，调用 send_setup_draft 发送当前 RP 草稿供 owner 核对。",
+      "回复保持短句纯文本，不用 Markdown 标题或列表。"
+    ];
+  }
+
   return [
-    "当前处于 RP 全局资料初始化阶段，需要从空白草稿开始逐步补齐 RP 专用设定。",
-    "RP 资料只服务 RP 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
-    "优先补齐核心字段：前提、身份边界、硬规则；关系、风格规则、外貌等信息按 owner 提供的内容逐步补充。",
-    "owner 每提供一段明确设定，就立即用工具写入草稿；不要等所有信息都收集完再统一写入。",
-    "收集到核心信息后，调用 send_setup_draft 发送当前 RP 草稿供 owner 核对。",
-    "草稿发出后告知 owner 满意则输入 .confirm 完成初始化，如有修改继续告诉你；不要在回复正文中代替 owner 输出这些命令。",
+    "RP 核心字段已完成，可继续补充关系、风格规则、外貌等辅助信息。",
+    "只补 owner 明确提供或明确同意补充的内容；不要因为是 setup 就强行追问所有可选字段。",
+    "补充信息稳定后，调用 send_setup_draft 发送当前 RP 草稿供 owner 核对。",
     "回复保持短句纯文本，不用 Markdown 标题或列表。"
   ];
 }
 
-function buildScenarioProfileDraftModeLines(phase: "setup" | "config"): string[] {
+function buildScenarioProfileDraftModeLines(
+  profile: ScenarioProfile,
+  missingFields: EditableScenarioProfileFieldName[],
+  phase: "setup" | "config"
+): string[] {
+  const missingSet = new Set(missingFields);
+  const coreMissingFields = getMissingScenarioProfileFields(profile);
+  const coreMissingSet = new Set(coreMissingFields);
+  const filledLabels = editableScenarioProfileFieldNames
+    .filter((field) => !missingSet.has(field) && profile[field]?.trim())
+    .map((field) => scenarioProfileFieldLabels[field]);
+  const coreMissingLabels = coreMissingFields.map((field) => scenarioProfileFieldLabels[field]);
+  const optionalMissingLabels = editableScenarioProfileFieldNames
+    .filter((field) => !coreMissingSet.has(field) && missingSet.has(field))
+    .map((field) => scenarioProfileFieldLabels[field]);
+
   if (phase === "config") {
     return [
       "当前处于 Scenario 全局资料配置阶段，你正在编辑一份基于已保存 Scenario 资料复制出的临时草稿。",
-      "先理解 owner 想改哪些字段，只修改明确要求的部分；不要默认重置未提及内容，也不要要求从头重填。",
-      "Scenario 资料只服务 scenario_host 模式；不要把这些要求写成 persona、用户资料或其他长期记忆。",
-      "如需核对现状，可先读取当前 Scenario 草稿；完成本轮修改后调用 send_setup_draft 发送最新草稿。",
-      "草稿发出后告知 owner 满意则输入 .confirm 保存，想放弃则输入 .cancel；不要在回复正文中代替 owner 输出这些命令。",
+      filledLabels.length > 0
+        ? `当前草稿已明确：${filledLabels.join("、")}。`
+        : "当前 Scenario 草稿仍接近空白，可按 owner 的要求逐步补齐。",
+      coreMissingLabels.length > 0
+        ? `核心字段仍缺：${coreMissingLabels.join("、")}；若 owner 本轮没有指定更高优先级目标，先补这些。`
+        : "当前核心字段已完整，优先按 owner 本轮明确要求做局部调整。",
+      optionalMissingLabels.length > 0
+        ? `可在需要时继续补充：${optionalMissingLabels.join("、")}。`
+        : "可选补充字段已齐全，除非 owner 明确要求，否则不要重问整份 Scenario 资料。",
+      "Scenario 资料只服务 scenario_host 模式；它是在全局 persona 底座上的主持补充，不要改写 persona 或用户资料。",
+      "若本轮只是微调单个字段，就直接改那一项；只有遇到核心字段缺失、语义冲突或主持边界不清时再追问。",
+      "如需核对现状，优先概括或发送当前 Scenario 草稿；草稿发出后等待 owner 反馈，不要在同一回复继续追问新的长串字段。",
       "回复保持短句纯文本，不用 Markdown 标题或列表。"
     ];
   }
+
+  if (coreMissingLabels.length === 3) {
+    return [
+      "当前处于 Scenario 全局资料初始化阶段，需要从空白草稿开始建立主持所需的长期资料。",
+      "先用 1-2 个紧密相关的问题补齐主题和世界基线，再继续确认主持风格；不要一上来要求 owner 把整套设定一次说完。",
+      "Scenario 资料只服务 scenario_host 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
+      "owner 每提供一段明确设定，就立即用工具写入草稿；不要等所有信息都收集完再统一写入。",
+      "核心字段初步成形后，调用 send_setup_draft 发送当前 Scenario 草稿供 owner 核对。",
+      "回复保持短句纯文本，不用 Markdown 标题或列表。"
+    ];
+  }
+
+  if (coreMissingLabels.length > 0) {
+    return [
+      `当前 Scenario 草稿已有部分内容，但核心字段仍缺：${coreMissingLabels.join("、")}。`,
+      `当前优先确认：${coreMissingLabels[0]}；其余核心字段可在同一主题下顺势补齐。`,
+      "Scenario 资料只服务 scenario_host 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
+      "owner 每提供一段明确设定，就立即用工具写入草稿；不要等所有信息都收集完再统一写入。",
+      "核心字段补得足够稳定后，调用 send_setup_draft 发送当前 Scenario 草稿供 owner 核对。",
+      "回复保持短句纯文本，不用 Markdown 标题或列表。"
+    ];
+  }
+
   return [
-    "当前处于 Scenario 全局资料初始化阶段，需要从空白草稿开始逐步补齐主持所需的长期资料。",
-    "Scenario 资料只服务 scenario_host 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
-    "优先补齐核心字段：主题、主持风格、世界基线；安全/禁忌规则和开场模式按 owner 提供的内容继续补充。",
-    "owner 每提供一段明确设定，就立即用工具写入草稿；不要等所有信息都收集完再统一写入。",
-    "收集到核心信息后，调用 send_setup_draft 发送当前 Scenario 草稿供 owner 核对。",
-    "草稿发出后告知 owner 满意则输入 .confirm 完成初始化，如有修改继续告诉你；不要在回复正文中代替 owner 输出这些命令。",
+    "Scenario 核心字段已完成，可继续补充安全/禁忌规则、开场模式等辅助信息。",
+    "只补 owner 明确提供或明确同意补充的内容；不要因为是 setup 就强行追问所有可选字段。",
+    "补充信息稳定后，调用 send_setup_draft 发送当前 Scenario 草稿供 owner 核对。",
     "回复保持短句纯文本，不用 Markdown 标题或列表。"
   ];
 }
@@ -462,7 +662,22 @@ export function buildScheduledTaskSystemLines(input: {
   ].filter((item): item is string => Boolean(item));
 }
 
-function buildIdentityLines(persona: Persona): string[] {
+function buildModeProfilePersonaBaseLines(persona: Persona, modeLabel: "RP" | "Scenario"): string[] {
+  return [
+    `以下全局 persona 是当前实例在所有模式下共享的底座；当前 ${modeLabel} 资料只是建立在这层基础上的模式补充。`,
+    ...buildSharedPersonaSummaryLines(persona),
+    `不要把已属于 persona 的内容重复搬进 ${modeLabel} 资料，也不要在这里修改 persona 本身。`
+  ];
+}
+
+function buildSharedPersonaLines(persona: Persona): string[] {
+  return [
+    "以下全局 persona 在所有模式下都生效，是当前实例共享的人格与基础身份底座。",
+    ...buildSharedPersonaSummaryLines(persona)
+  ];
+}
+
+function buildSharedPersonaSummaryLines(persona: Persona): string[] {
   const personaSummary = [
     `名字=${persona.name}`,
     `基础身份=${persona.coreIdentity}`,
@@ -475,9 +690,122 @@ function buildIdentityLines(persona: Persona): string[] {
   ].filter((item): item is string => Boolean(item));
 
   return [
-    "你是具有角色扮演属性的聊天角色，默认以角色身份用中文自然聊天。",
-    `角色设定：${personaSummary}`,
-    ...(extraFacts.length > 0 ? [`补充设定：${extraFacts.join("；")}`] : []),
+    `全局 persona：${personaSummary}`,
+    ...(extraFacts.length > 0 ? [`全局补充设定：${extraFacts.join("；")}`] : [])
+  ];
+}
+
+function buildRpProfileLines(profile: RpProfile): string[] {
+  return buildModeProfileSummaryLines({
+    intro: "以下 RP 全局资料只在 rp_assistant 模式下生效，是建立在全局 persona 之上的模式补充。",
+    label: "RP 全局资料",
+    coreParts: [
+      profile.premise ? `前提=${profile.premise}` : null,
+      profile.identityBoundary ? `身份边界=${profile.identityBoundary}` : null,
+      profile.hardRules ? `硬规则=${profile.hardRules}` : null
+    ],
+    extraParts: [
+      profile.relationship ? `关系=${profile.relationship}` : null,
+      profile.styleRules ? `风格规则=${profile.styleRules}` : null,
+      profile.appearance ? `外貌=${profile.appearance}` : null
+    ]
+  });
+}
+
+function buildScenarioProfileLines(profile: ScenarioProfile): string[] {
+  return buildModeProfileSummaryLines({
+    intro: "以下 Scenario 全局资料只在 scenario_host 模式下生效，是建立在全局 persona 之上的主持补充。",
+    label: "Scenario 全局资料",
+    coreParts: [
+      profile.theme ? `主题=${profile.theme}` : null,
+      profile.hostStyle ? `主持风格=${profile.hostStyle}` : null,
+      profile.worldBaseline ? `世界基线=${profile.worldBaseline}` : null
+    ],
+    extraParts: [
+      profile.safetyOrTabooRules ? `安全/禁忌规则=${profile.safetyOrTabooRules}` : null,
+      profile.openingPattern ? `开场模式=${profile.openingPattern}` : null
+    ]
+  });
+}
+
+function buildModeProfileSummaryLines(input: {
+  intro: string;
+  label: string;
+  coreParts: Array<string | null>;
+  extraParts: Array<string | null>;
+}): string[] {
+  const coreParts = input.coreParts.filter((item): item is string => Boolean(item));
+  const extraParts = input.extraParts.filter((item): item is string => Boolean(item));
+
+  return [
+    input.intro,
+    coreParts.length > 0 ? `${input.label}：${coreParts.join("；")}` : `${input.label}：当前仍接近空白。`,
+    ...(extraParts.length > 0 ? [`模式补充：${extraParts.join("；")}`] : [])
+  ];
+}
+
+function buildDraftWorkflowLines(input: {
+  targetLabel: string;
+  phase: "setup" | "config";
+  allowSkipOptionalFields?: boolean | undefined;
+}): string[] {
+  return [
+    `你当前只在${input.targetLabel}的临时草稿上工作；除非 owner 输入 .confirm，否则任何改动都不会写回正式配置。`,
+    "如果 owner 输入 .cancel，应视为放弃本轮草稿并回到进入配置前的已保存状态。",
+    "每轮只推进最关键的一步：要么写入刚确认的信息，要么追问 1-2 个紧密相关的缺口，要么发送草稿供核对。",
+    input.phase === "setup"
+      ? `调用 send_setup_draft 后，只需简短告知 owner 满意可输入 .confirm 完成初始化；不要在同一回复继续追问新的长串字段。`
+      : `调用 send_setup_draft 后，只需简短告知 owner 满意可输入 .confirm 保存，不满意可继续修改或 .cancel 放弃；不要在同一回复继续追问新的长串字段。`,
+    input.allowSkipOptionalFields
+      ? "如果 owner 明确跳过某些可选字段，可以先继续后面的配置，不要强行补问。"
+      : "如果 owner 暂时不想补可选字段，就先保留为空，不要为了凑完整度强行追问。"
+  ];
+}
+
+function buildRpProfileSnapshotLines(
+  profile: RpProfile,
+  missingFields: EditableRpProfileFieldName[]
+): string[] {
+  return buildProfileSnapshotLines({
+    fieldNames: editableRpProfileFieldNames,
+    fieldLabels: rpProfileFieldLabels,
+    fieldHints: RP_PROFILE_FIELD_HINTS,
+    profile,
+    missingFields
+  });
+}
+
+function buildScenarioProfileSnapshotLines(
+  profile: ScenarioProfile,
+  missingFields: EditableScenarioProfileFieldName[]
+): string[] {
+  return buildProfileSnapshotLines({
+    fieldNames: editableScenarioProfileFieldNames,
+    fieldLabels: scenarioProfileFieldLabels,
+    fieldHints: SCENARIO_PROFILE_FIELD_HINTS,
+    profile,
+    missingFields
+  });
+}
+
+function buildProfileSnapshotLines<FieldName extends string>(input: {
+  fieldNames: readonly FieldName[];
+  fieldLabels: Record<FieldName, string>;
+  fieldHints: Record<FieldName, string>;
+  profile: Record<FieldName, string>;
+  missingFields: readonly FieldName[];
+}): string[] {
+  const missingSet = new Set(input.missingFields);
+  const filledParts = input.fieldNames
+    .filter((field) => !missingSet.has(field) && input.profile[field]?.trim())
+    .map((field) => `${input.fieldLabels[field]}=${input.profile[field]}`);
+  const missingParts = input.missingFields.map((field) =>
+    `- ${input.fieldLabels[field]}：${input.fieldHints[field]}`
+  );
+
+  return [
+    ...(filledParts.length > 0 ? [`已设定：${filledParts.join("；")}`] : []),
+    ...(missingParts.length > 0 ? [`待补全：\n${missingParts.join("\n")}`] : [])
   ];
 }
 

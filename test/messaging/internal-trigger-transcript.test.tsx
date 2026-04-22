@@ -6,6 +6,9 @@ import { SessionManager } from "../../src/conversation/session/sessionManager.ts
 import { createInternalTriggerDispatcher } from "../../src/app/session-work/internalTriggerDispatcher.ts";
 import { createGenerationSessionOrchestrator } from "../../src/app/generation/generationSessionOrchestrator.ts";
 import type { GenerationSessionOrchestratorDeps } from "../../src/app/generation/generationRunnerDeps.ts";
+import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
+import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
+import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
 
 function createOrchestratorDeps(input: {
   config: ReturnType<typeof createTestAppConfig>;
@@ -13,8 +16,11 @@ function createOrchestratorDeps(input: {
   historyCompressor?: unknown;
   userStore?: unknown;
   personaStore?: unknown;
+  rpProfileStore?: unknown;
+  scenarioProfileStore?: unknown;
   setupStore?: unknown;
   scenarioHostStateStore?: unknown;
+  globalProfileReadinessStore?: unknown;
   turnPlanner?: unknown;
   llmClient?: unknown;
   debounceManager?: unknown;
@@ -41,11 +47,31 @@ function createOrchestratorDeps(input: {
       userStore: sharedUserStore,
       personaStore: input.personaStore ?? ({
         async get() {
-          return null;
+          return createEmptyPersona();
+        }
+      } as never),
+      rpProfileStore: input.rpProfileStore ?? ({
+        async get() {
+          return createEmptyRpProfile();
+        }
+      } as never),
+      scenarioProfileStore: input.scenarioProfileStore ?? ({
+        async get() {
+          return createEmptyScenarioProfile();
         }
       } as never),
       setupStore: input.setupStore ?? ({} as never),
-      scenarioHostStateStore: input.scenarioHostStateStore ?? ({} as never)
+      scenarioHostStateStore: input.scenarioHostStateStore ?? ({} as never),
+      globalProfileReadinessStore: input.globalProfileReadinessStore ?? ({
+        async get() {
+          return {
+            persona: "ready",
+            rp: "ready",
+            scenario: "ready",
+            updatedAt: 1
+          };
+        }
+      } as never)
     },
     lifecycle: {
       logger: pino({ level: "silent" }),
@@ -279,7 +305,7 @@ function createOrchestratorDeps(input: {
     assert.equal(sessionManager.getReplyDelivery(sessionId), "web");
   });
 
-  test("assistant internal trigger skips persona loading and participant profile extraction", async () => {
+  test("assistant internal trigger keeps participant extraction disabled but now carries global persona", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);
     const sessionId = "qqbot:p:owner";
@@ -299,7 +325,13 @@ function createOrchestratorDeps(input: {
       } as never,
       personaStore: {
         async get() {
-          throw new Error("assistant flush should not load persona");
+          return {
+            ...createEmptyPersona(),
+            name: "小满",
+            coreIdentity: "图书管理员",
+            personality: "冷静",
+            speechStyle: "短句"
+          };
         }
       } as never,
       setupStore: {} as never,
@@ -333,8 +365,8 @@ function createOrchestratorDeps(input: {
     assert.ok(capturedPromptInput);
     assert.equal(capturedPromptInput.modeId, "assistant");
     assert.deepEqual(capturedPromptInput.participantProfiles, []);
-    assert.equal(capturedPromptInput.persona.name, "");
-    assert.equal(capturedPromptInput.persona.coreIdentity, "");
+    assert.equal(capturedPromptInput.persona.name, "小满");
+    assert.equal(capturedPromptInput.persona.coreIdentity, "图书管理员");
     assert.equal(capturedPromptInput.currentUser.userId, "owner");
     assert.ok(capturedRunInput);
     assert.equal(capturedRunInput.availableToolsets.some((item: { id: string }) => item.id === "memory_profile"), false);

@@ -12,6 +12,7 @@ import { debugToolHandlers } from "../../src/llm/tools/runtime/debugTools.ts";
 import { shellToolHandlers } from "../../src/llm/tools/runtime/shellTools.ts";
 import { timeToolHandlers } from "../../src/llm/tools/runtime/timeTools.ts";
 import { localFileToolHandlers, chatFileToolHandlers } from "../../src/llm/tools/runtime/workspaceTools.ts";
+import { setupDraftToolHandlers } from "../../src/llm/tools/conversation/setupDraftTools.ts";
 import { profileToolHandlers } from "../../src/llm/tools/profile/profileTools.ts";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
@@ -272,6 +273,132 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       {},
       rpContext
     ))).hardRules, "绝不跳出角色");
+  });
+
+  test("send_setup_draft uses web output collector for web sessions", async () => {
+    const appended: string[] = [];
+    const historyCalls: Array<{ sessionId: string; message: Record<string, unknown> }> = [];
+
+    const result = await setupDraftToolHandlers.send_setup_draft!(
+      { id: "tool_setup_draft_web_1", type: "function", function: { name: "send_setup_draft", arguments: "{\"content\":\"当前草稿：名字=小满\"}" } },
+      { content: "当前草稿：名字=小满" },
+      {
+        replyDelivery: "web",
+        lastMessage: {
+          sessionId: "web:persona-draft",
+          userId: "owner",
+          senderName: "Owner"
+        },
+        webOutputCollector: {
+          append(chunk: string) {
+            appended.push(chunk);
+          }
+        },
+        oneBotClient: {
+          async sendText() {
+            throw new Error("web draft should not use onebot sendText");
+          }
+        },
+        messageQueue: {
+          enqueueTextDetached(params: { send: () => Promise<void> | void }) {
+            void params.send();
+          }
+        },
+        sessionManager: {
+          getSession() {
+            return { type: "private" };
+          },
+          appendAssistantHistory(sessionId: string, message: Record<string, unknown>) {
+            historyCalls.push({ sessionId, message });
+          }
+        }
+      } as any
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(JSON.parse(String(result)), { ok: true, queued: true, sent: true });
+    assert.deepEqual(appended, ["当前草稿：名字=小满"]);
+    assert.deepEqual(historyCalls, [{
+      sessionId: "web:persona-draft",
+      message: {
+        chatType: "private",
+        userId: "owner",
+        senderName: "Owner",
+        text: "当前草稿：名字=小满"
+      }
+    }]);
+  });
+
+  test("send_setup_draft keeps onebot delivery and records sent history for chat sessions", async () => {
+    const sentTargets: Array<{ userId?: string; groupId?: string; text: string }> = [];
+    const sentMessages: Array<{ sessionId: string; message: Record<string, unknown> }> = [];
+    const historyCalls: Array<{ sessionId: string; message: Record<string, unknown> }> = [];
+
+    const result = await setupDraftToolHandlers.send_setup_draft!(
+      { id: "tool_setup_draft_onebot_1", type: "function", function: { name: "send_setup_draft", arguments: "{\"content\":\"当前 RP 草稿：前提=雨夜\"}" } },
+      { content: "当前 RP 草稿：前提=雨夜" },
+      {
+        replyDelivery: "onebot",
+        lastMessage: {
+          sessionId: "qqbot:p:10001",
+          userId: "owner",
+          senderName: "Owner"
+        },
+        oneBotClient: {
+          async sendText(target: { userId?: string; groupId?: string; text: string }) {
+            sentTargets.push(target);
+            return {
+              data: {
+                message_id: 12345
+              }
+            };
+          }
+        },
+        messageQueue: {
+          enqueueTextDetached(params: { send: () => Promise<void> | void }) {
+            void params.send();
+          }
+        },
+        sessionManager: {
+          getSession() {
+            return { type: "private" };
+          },
+          recordSentMessage(sessionId: string, message: Record<string, unknown>) {
+            sentMessages.push({ sessionId, message });
+          },
+          appendAssistantHistory(sessionId: string, message: Record<string, unknown>) {
+            historyCalls.push({ sessionId, message });
+          }
+        }
+      } as any
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(JSON.parse(String(result)), { ok: true, queued: true, sent: true });
+    assert.deepEqual(sentTargets, [{
+      userId: "10001",
+      text: "当前 RP 草稿：前提=雨夜"
+    }]);
+    assert.equal(sentMessages.length, 1);
+    assert.equal(sentMessages[0]?.sessionId, "qqbot:p:10001");
+    assert.equal(sentMessages[0]?.message.messageId, 12345);
+    assert.equal(sentMessages[0]?.message.text, "当前 RP 草稿：前提=雨夜");
+    assert.equal(typeof sentMessages[0]?.message.sentAt, "number");
+    assert.deepEqual(historyCalls, [{
+      sessionId: "qqbot:p:10001",
+      message: {
+        chatType: "private",
+        userId: "owner",
+        senderName: "Owner",
+        text: "当前 RP 草稿：前提=雨夜",
+        deliveryRef: {
+          platform: "onebot",
+          messageId: 12345
+        }
+      }
+    }]);
   });
 
   test("old polymorphic memory tools are no longer exposed", async () => {
@@ -903,9 +1030,10 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       { literals: ["full_system_prompt", "persona"] },
       {
         relationship: "owner",
-        lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
+        replyDelivery: "onebot",
+        lastMessage: { sessionId: "qqbot:p:2254600711", userId: "owner", senderName: "Owner" },
         debugSnapshot: {
-          sessionId: "qqbot:p:owner",
+          sessionId: "qqbot:p:2254600711",
           systemMessages: ["system prompt"],
           visibleToolNames: [],
           activeToolsets: [],
@@ -953,7 +1081,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     );
 
     assert.equal(sentMessages.length, 2);
-    assert.deepEqual(sentMessages[0], { userId: "owner", text: "system prompt" });
+    assert.deepEqual(sentMessages[0], { userId: "2254600711", text: "system prompt" });
     assert.match(sentMessages[1].text, /Test Persona/);
     assert.equal(sentMetaCalls.length, 3);
     assert.equal(sentMetaCalls[2].kind, "marker");

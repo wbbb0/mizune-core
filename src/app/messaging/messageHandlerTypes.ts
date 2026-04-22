@@ -48,6 +48,7 @@ export interface MessageEventHandlerDeps {
   sendImmediateText: (params: {
     sessionId: string;
     userId: string;
+    externalUserId?: string;
     groupId?: string;
     text: string;
     recordInHistory?: boolean;

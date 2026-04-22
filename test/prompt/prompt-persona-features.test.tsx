@@ -363,6 +363,8 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       });
       const system = String(prompt[0]?.content ?? "");
       assert.match(system, /当前处于初始化阶段/);
+      assert.match(system, /你当前只在persona的临时草稿上工作/);
+      assert.match(system, /最多同时追问 1-2 个强相关字段/);
       assert.match(system, /先用工具写入能确认的字段/);
       assert.match(system, /send_setup_draft/);
       assert.match(system, /\.confirm/);
@@ -394,6 +396,8 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       const system = String(prompt[0]?.content ?? "");
       assert.match(system, /persona_config_mode/);
       assert.match(system, /当前处于 persona 配置阶段/);
+      assert.match(system, /你当前只在persona的临时草稿上工作/);
+      assert.match(system, /\.confirm，否则任何改动都不会写回正式配置/);
       assert.match(system, /只修改明确要求的字段/);
       assert.match(system, /\.cancel/);
       assert.doesNotMatch(system, /当前实例处于初始化阶段/);

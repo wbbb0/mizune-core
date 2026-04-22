@@ -1,5 +1,6 @@
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 import { sanitizeOutboundText } from "#llm/shared/outboundTextSanitizer.ts";
+import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import type { GenerationOutboundDeps } from "./generationRunnerDeps.ts";
 import type { GenerationSendTarget } from "./generationExecutor.ts";
 import type { GenerationWebOutputCollector } from "./generationTypes.ts";
@@ -27,6 +28,19 @@ export function createGenerationOutbound(
   } = deps;
 
   let hasSentAssistantChunk = false;
+
+  const resolveOneBotSendTarget = (): { userId?: string; groupId?: string } => {
+    const parsedSession = parseChatSessionIdentity(input.sessionId);
+    if (parsedSession?.kind === "group") {
+      return { groupId: parsedSession.groupId };
+    }
+    if (parsedSession?.kind === "private") {
+      return { userId: parsedSession.userId };
+    }
+    return input.sendTarget.groupId
+      ? { groupId: input.sendTarget.groupId }
+      : { userId: input.sendTarget.userId };
+  };
 
   const enqueueChunk = async (
     chunk: string,
@@ -119,9 +133,7 @@ export function createGenerationOutbound(
 
         const payload = await oneBotClient.sendText({
           text: cleaned,
-          ...(input.sendTarget.chatType === "group" && input.sendTarget.groupId
-            ? { groupId: input.sendTarget.groupId }
-            : { userId: input.sendTarget.userId })
+          ...resolveOneBotSendTarget()
         });
         const messageId = normalizeOneBotMessageId(payload.data?.message_id);
         if (messageId != null) {

@@ -57,6 +57,7 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
     liveResources: input.liveResources,
     ...(input.toolsetRules ? { toolsetRules: input.toolsetRules } : {}),
     ...(input.scenarioStateLines ? { scenarioStateLines: input.scenarioStateLines } : {}),
+    ...(input.modeProfile ? { modeProfile: input.modeProfile } : {}),
     ...(input.draftMode ? { draftMode: input.draftMode } : {}),
     ...(input.isInSetup ? { isInSetup: input.isInSetup } : {})
   }).join("\n");
@@ -101,7 +102,8 @@ export function buildScheduledTaskPrompt(input: ScheduledTaskPromptInput): LlmMe
       recentToolEvents: input.recentToolEvents,
       liveResources: input.liveResources,
       ...(input.toolsetRules ? { toolsetRules: input.toolsetRules } : {}),
-      ...(input.scenarioStateLines ? { scenarioStateLines: input.scenarioStateLines } : {})
+      ...(input.scenarioStateLines ? { scenarioStateLines: input.scenarioStateLines } : {}),
+      ...(input.modeProfile ? { modeProfile: input.modeProfile } : {})
     }),
     ...buildScheduledTaskSystemLines({
       trigger: input.trigger,

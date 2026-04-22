@@ -2,6 +2,8 @@ import type { GlobalRuleEntry } from "#memory/globalRuleEntry.ts";
 import type { UserMemoryEntry } from "#memory/userMemoryEntry.ts";
 import type { Persona } from "#persona/personaSchema.ts";
 import type { EditablePersonaFieldName } from "#persona/personaSchema.ts";
+import type { EditableRpProfileFieldName, RpProfile } from "#modes/rpAssistant/profileSchema.ts";
+import type { EditableScenarioProfileFieldName, ScenarioProfile } from "#modes/scenarioHost/profileSchema.ts";
 import type { SpecialRole } from "#identity/specialRole.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { SessionDebugMarker } from "#conversation/session/sessionTypes.ts";
@@ -154,10 +156,30 @@ export interface PromptInput {
   liveResources?: PromptLiveResource[] | undefined;
   toolsetRules?: ToolsetRuleEntry[] | undefined;
   scenarioStateLines?: string[] | undefined;
-  draftMode?: {
-    target: "rp" | "scenario";
-    phase: "setup" | "config";
-  } | undefined;
+  modeProfile?:
+    | {
+        target: "rp";
+        profile: RpProfile;
+      }
+    | {
+        target: "scenario";
+        profile: ScenarioProfile;
+      }
+    | undefined;
+  draftMode?:
+    | {
+        target: "rp";
+        phase: "setup" | "config";
+        profile: RpProfile;
+        missingFields: EditableRpProfileFieldName[];
+      }
+    | {
+        target: "scenario";
+        phase: "setup" | "config";
+        profile: ScenarioProfile;
+        missingFields: EditableScenarioProfileFieldName[];
+      }
+    | undefined;
   isInSetup?: boolean | undefined;
   batchMessages: PromptBatchMessage[];
 }
@@ -221,6 +243,7 @@ export interface InternalSessionTriggerPromptInput {
   liveResources?: PromptInput["liveResources"];
   toolsetRules?: PromptInput["toolsetRules"];
   scenarioStateLines?: PromptInput["scenarioStateLines"];
+  modeProfile?: PromptInput["modeProfile"];
   targetContext:
     | {
         chatType: "private";

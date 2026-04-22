@@ -39,6 +39,8 @@ import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import type { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
+import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import type { SessionCaptioner } from "./sessionCaptioner.ts";
 
 // These dependency contracts describe the generation pipeline in domain-shaped slices.
@@ -78,6 +80,8 @@ export interface GenerationIdentityDeps {
   userStore: UserStore;
   whitelistStore: WhitelistStore;
   personaStore: PersonaStore;
+  rpProfileStore: RpProfileStore;
+  scenarioProfileStore: ScenarioProfileStore;
   globalRuleStore: GlobalRuleStore;
   toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
@@ -148,5 +152,5 @@ export type GenerationSessionOrchestratorDeps =
     sessionRuntime: Pick<GenerationSessionRuntimeDeps, "logger" | "historyCompressor" | "llmClient" | "sessionCaptioner" | "turnPlanner" | "debounceManager"> & {
       sessionManager: SessionGenerationOrchestratorAccess;
     };
-    identity: Pick<GenerationIdentityDeps, "userStore" | "personaStore" | "setupStore" | "scenarioHostStateStore" | "globalProfileReadinessStore">;
+    identity: Pick<GenerationIdentityDeps, "userStore" | "personaStore" | "rpProfileStore" | "scenarioProfileStore" | "setupStore" | "scenarioHostStateStore" | "globalProfileReadinessStore">;
   };

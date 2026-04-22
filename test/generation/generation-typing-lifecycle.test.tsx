@@ -66,6 +66,7 @@ function createExecutorHarness(options?: {
   waitForAbortGraceWindow?: (signal: AbortSignal) => Promise<void>;
   configOverrides?: Parameters<typeof createTestAppConfig>[0];
   sessionSource?: "onebot" | "web";
+  sessionId?: string;
   titleSource?: "default" | "auto" | "manual" | null;
   historyCompressed?: boolean;
   forceRegenerateTitleAfterTurn?: boolean;
@@ -87,7 +88,7 @@ function createExecutorHarness(options?: {
   });
   const logger = pino({ level: "silent" });
   const sessionManager = new SessionManager(config);
-  const sessionId = "qqbot:p:owner";
+  const sessionId = options?.sessionId ?? "qqbot:p:owner";
   const delivery = options?.sessionSource === "web" ? "web" : "onebot";
   sessionManager.ensureSession({
     id: sessionId,
@@ -98,6 +99,8 @@ function createExecutorHarness(options?: {
   });
   const started = sessionManager.beginSyntheticGeneration(sessionId);
   const events: string[] = [];
+  const typingCalls: Array<{ enabled: boolean; userId: string; groupId?: string }> = [];
+  const sendTextCalls: Array<{ text: string; userId?: string; groupId?: string }> = [];
   let resolveDrain!: () => void;
   const drainPromise = new Promise<void>((resolve) => {
     resolveDrain = resolve;
@@ -169,11 +172,13 @@ function createExecutorHarness(options?: {
     },
     toolRuntime: {
       oneBotClient: {
-        async setTyping(params: { enabled: boolean }) {
+        async setTyping(params: { enabled: boolean; userId: string; groupId?: string }) {
+          typingCalls.push(params);
           events.push(params.enabled ? "typing:start" : "typing:stop");
           return true;
         },
-        async sendText(params: { text: string }) {
+        async sendText(params: { text: string; userId?: string; groupId?: string }) {
+          sendTextCalls.push(params);
           events.push(`send:${params.text}`);
           return {
             status: "ok",
@@ -291,6 +296,8 @@ function createExecutorHarness(options?: {
     started,
     sessionManager,
     events,
+    typingCalls,
+    sendTextCalls,
     runPromise,
     resolveDrain
   };
@@ -331,6 +338,25 @@ function createExecutorHarness(options?: {
       "send:刚刚这次回复失败了，我暂时没拿到可用结果。你可以稍后重试；如果连续出现，请检查模型配置、上游接口状态或服务日志。",
       "typing:stop"
     ]);
+  });
+
+  test("private onebot delivery resolves external session target for typing and outbound send", async () => {
+    const harness = createExecutorHarness({
+      sessionId: "qqbot:p:2254600711"
+    });
+
+    await waitForEvents(harness.events, 2);
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.deepEqual(harness.typingCalls, [
+      { enabled: true, chatType: "private", userId: "2254600711" },
+      { enabled: false, chatType: "private", userId: "2254600711" }
+    ]);
+    assert.deepEqual(harness.sendTextCalls, [{
+      userId: "2254600711",
+      text: "你好"
+    }]);
   });
 
   test("typing tests can bypass abort grace delay via injected wait function", async () => {

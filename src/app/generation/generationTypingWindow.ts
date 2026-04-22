@@ -1,5 +1,6 @@
 import type { SessionManager } from "#conversation/session/sessionManager.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
+import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 
 interface GenerationTypingTarget {
   delivery: "onebot" | "web";
@@ -21,6 +22,21 @@ export function createGenerationTypingWindow(
 ) {
   let started = false;
 
+  const resolveTypingTarget = () => {
+    const parsedSession = parseChatSessionIdentity(input.sessionId);
+    if (parsedSession?.kind === "private") {
+      return {
+        chatType: "private" as const,
+        userId: parsedSession.userId
+      };
+    }
+    return {
+      chatType: input.target.chatType,
+      userId: input.target.userId,
+      ...(input.target.groupId ? { groupId: input.target.groupId } : {})
+    };
+  };
+
   const startIfNeeded = async (): Promise<void> => {
     if (started || input.target.delivery !== "onebot") {
       return;
@@ -28,11 +44,10 @@ export function createGenerationTypingWindow(
     if (deps.sessionManager.getSession(input.sessionId).responseEpoch !== input.responseEpoch) {
       return;
     }
+    const target = resolveTypingTarget();
     started = await deps.oneBotClient.setTyping({
       enabled: true,
-      chatType: input.target.chatType,
-      userId: input.target.userId,
-      ...(input.target.groupId ? { groupId: input.target.groupId } : {})
+      ...target
     });
   };
 
@@ -45,11 +60,10 @@ export function createGenerationTypingWindow(
     }
 
     started = false;
+    const target = resolveTypingTarget();
     await deps.oneBotClient.setTyping({
       enabled: false,
-      chatType: input.target.chatType,
-      userId: input.target.userId,
-      ...(input.target.groupId ? { groupId: input.target.groupId } : {})
+      ...target
     });
   };
 

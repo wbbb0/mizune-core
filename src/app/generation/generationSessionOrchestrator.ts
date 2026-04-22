@@ -23,12 +23,12 @@ import { createInternalTriggerEvent } from "#conversation/session/internalTransc
 import { createSessionTranscriptStore } from "#conversation/session/sessionTranscriptStore.ts";
 import { requireSessionModeDefinition } from "#modes/registry.ts";
 import { resolveSessionModeSetupContext } from "./generationSetupContext.ts";
-import { createEmptyPersona } from "#persona/personaSchema.ts";
+import { getMissingRpProfileFields, type RpProfile } from "#modes/rpAssistant/profileSchema.ts";
+import { getMissingScenarioProfileFields, type ScenarioProfile } from "#modes/scenarioHost/profileSchema.ts";
 import { resolveSessionModeSetupOperation } from "#modes/types.ts";
 import type { ProfileToolScope } from "#llm/tools/profileToolScope.ts";
 import type { SessionModeDefinition, SessionModeSetupOperation } from "#modes/types.ts";
-
-const EMPTY_ASSISTANT_PERSONA = createEmptyPersona();
+import type { PromptInput } from "#llm/prompt/promptTypes.ts";
 
 type ActiveDraftOperation = {
   kind: "persona_setup" | "mode_setup";
@@ -117,6 +117,81 @@ function resolveProfileToolScope(input: {
     return input.operationMode.modeId === "rp_assistant" ? "rp" : "scenario";
   }
   return "normal";
+}
+
+function resolveDraftModePromptState(input: {
+  activeDraftOperation: ActiveDraftOperation | null;
+  operationMode: { kind: string; modeId?: string; draft?: unknown };
+}): PromptInput["draftMode"] | undefined {
+  if (!input.activeDraftOperation || input.activeDraftOperation.target === "persona") {
+    return undefined;
+  }
+  if (input.operationMode.kind !== "mode_setup" && input.operationMode.kind !== "mode_config") {
+    return undefined;
+  }
+
+  if (input.activeDraftOperation.target === "rp" && input.operationMode.modeId === "rp_assistant") {
+    const profile = input.operationMode.draft as RpProfile;
+    return {
+      target: "rp",
+      phase: input.activeDraftOperation.phase,
+      profile,
+      missingFields: getMissingRpProfileFields(profile)
+    };
+  }
+
+  if (input.activeDraftOperation.target === "scenario" && input.operationMode.modeId === "scenario_host") {
+    const profile = input.operationMode.draft as ScenarioProfile;
+    return {
+      target: "scenario",
+      phase: input.activeDraftOperation.phase,
+      profile,
+      missingFields: getMissingScenarioProfileFields(profile)
+    };
+  }
+
+  return undefined;
+}
+
+function resolvePromptPersona(input: {
+  persona: Awaited<ReturnType<GenerationSessionOrchestratorDeps["identity"]["personaStore"]["get"]>>;
+  activeDraftOperation: ActiveDraftOperation | null;
+  operationMode: { kind: string; draft?: unknown };
+}): Awaited<ReturnType<GenerationSessionOrchestratorDeps["identity"]["personaStore"]["get"]>> {
+  if (
+    input.activeDraftOperation?.target === "persona"
+    && (input.operationMode.kind === "persona_setup" || input.operationMode.kind === "persona_config")
+  ) {
+    return input.operationMode.draft as Awaited<ReturnType<GenerationSessionOrchestratorDeps["identity"]["personaStore"]["get"]>>;
+  }
+  return input.persona;
+}
+
+async function resolvePromptModeProfile(input: {
+  sessionModeId: string;
+  activeDraftOperation: ActiveDraftOperation | null;
+  rpProfileStore: GenerationSessionOrchestratorDeps["identity"]["rpProfileStore"];
+  scenarioProfileStore: GenerationSessionOrchestratorDeps["identity"]["scenarioProfileStore"];
+}): Promise<PromptInput["modeProfile"] | undefined> {
+  if (input.activeDraftOperation) {
+    return undefined;
+  }
+
+  if (input.sessionModeId === "rp_assistant") {
+    return {
+      target: "rp",
+      profile: await input.rpProfileStore.get()
+    };
+  }
+
+  if (input.sessionModeId === "scenario_host") {
+    return {
+      target: "scenario",
+      profile: await input.scenarioProfileStore.get()
+    };
+  }
+
+  return undefined;
 }
 
 function isAssistantMode(modeId: string): boolean {
@@ -260,7 +335,7 @@ export function createGenerationSessionOrchestrator(
       let refreshedSession = sessionManager.getSession(sessionId);
       const sessionModeId = refreshedSession.modeId;
       const assistantMode = isAssistantMode(sessionModeId);
-      const persona = assistantMode ? EMPTY_ASSISTANT_PERSONA : await personaStore.get();
+      const persona = await personaStore.get();
       const mode = requireSessionModeDefinition(sessionModeId);
       const setupCtx = await resolveSessionModeSetupContext(
         sessionModeId,
@@ -418,18 +493,27 @@ export function createGenerationSessionOrchestrator(
           : [])
       ];
       const isPersonaSetupMode = activeDraftOperation?.promptMode === "persona_setup";
-      const draftMode = activeDraftOperation && activeDraftOperation.target !== "persona"
-        ? {
-            target: activeDraftOperation.target,
-            phase: activeDraftOperation.phase
-          }
-        : undefined;
+      const draftMode = resolveDraftModePromptState({
+        activeDraftOperation,
+        operationMode: refreshedSession.operationMode
+      });
+      const promptPersona = resolvePromptPersona({
+        persona,
+        activeDraftOperation,
+        operationMode: refreshedSession.operationMode
+      });
+      const modeProfile = await resolvePromptModeProfile({
+        sessionModeId,
+        activeDraftOperation,
+        rpProfileStore: identity.rpProfileStore,
+        scenarioProfileStore: identity.scenarioProfileStore
+      });
 
       const promptBuildResult = isPersonaSetupMode
         ? await services.promptBuilder.buildSetupPromptMessages({
             sessionId,
             interactionMode,
-            persona,
+            persona: promptPersona,
             phase: activeDraftOperation?.phase ?? "setup",
             historyForPrompt: historyForPromptMessages,
             recentToolEvents,
@@ -452,7 +536,7 @@ export function createGenerationSessionOrchestrator(
             activeToolsets: activeChatToolsets,
             lateSystemMessages,
             replayMessages: projectedTranscript.replayMessages,
-            persona,
+            persona: promptPersona,
             relationship,
             participantProfiles,
             currentUser: user,
@@ -464,6 +548,7 @@ export function createGenerationSessionOrchestrator(
             lastLlmUsage: refreshedSession.lastLlmUsage,
             abortSignal: abortController.signal,
             batchMessages: toPromptBatchMessages(messages),
+            ...(modeProfile ? { modeProfile } : {}),
             ...(draftMode ? { draftMode } : {})
           });
 
@@ -540,7 +625,7 @@ export function createGenerationSessionOrchestrator(
       const scheduledModelRef = getDefaultMainModelRefs(config);
       const session = sessionManager.getSession(sessionId);
       const assistantMode = isAssistantMode(session.modeId);
-      const persona = assistantMode ? EMPTY_ASSISTANT_PERSONA : await personaStore.get();
+      const persona = await personaStore.get();
       const scheduledAvailableToolsets = listTurnToolsets({
         config,
         relationship: "owner",
@@ -577,6 +662,14 @@ export function createGenerationSessionOrchestrator(
           ? [buildDebugMarkerSystemMessage(session.debugMarkers)].filter((item): item is string => Boolean(item))
           : [])
       ];
+      const modeProfile = session.operationMode.kind === "normal"
+        ? await resolvePromptModeProfile({
+            sessionModeId: session.modeId,
+            activeDraftOperation: null,
+            rpProfileStore: identity.rpProfileStore,
+            scenarioProfileStore: identity.scenarioProfileStore
+          })
+        : undefined;
       const promptBuildResult = await services.promptBuilder.buildScheduledPromptMessages({
         sessionId,
         modeId: session.modeId,
@@ -634,6 +727,7 @@ export function createGenerationSessionOrchestrator(
         internalTranscript: session.internalTranscript,
         lastLlmUsage: session.lastLlmUsage,
         abortSignal: abortController.signal,
+        ...(modeProfile ? { modeProfile } : {}),
         targetContext: trigger.targetType === "private"
           ? {
               chatType: "private",

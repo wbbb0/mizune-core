@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ensureAutomaticSetupOperationMode } from "../../src/app/messaging/messageSetupFlow.ts";
+import {
+  ensureAutomaticSetupOperationMode,
+  handlePostRouterSetupDecision
+} from "../../src/app/messaging/messageSetupFlow.ts";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
@@ -9,6 +12,7 @@ function createContext(input: {
   modeId: "rp_assistant" | "scenario_host";
   relationship?: "owner" | "stranger";
   chatType?: "private" | "group";
+  externalUserId?: string;
 }) {
   return {
     session: {
@@ -16,7 +20,9 @@ function createContext(input: {
       modeId: input.modeId
     },
     enrichedMessage: {
-      chatType: input.chatType ?? "private"
+      chatType: input.chatType ?? "private",
+      userId: "owner",
+      ...(input.externalUserId ? { externalUserId: input.externalUserId } : {})
     },
     user: {
       relationship: input.relationship ?? "owner"
@@ -246,4 +252,40 @@ test("automatic setup does not override an existing draft mode", async () => {
     }
   });
   assert.deepEqual(persistedReasons, []);
+});
+
+test("post-router setup block forwards external user id to immediate replies", async () => {
+  const sendCalls: Array<Record<string, unknown>> = [];
+
+  const handled = await handlePostRouterSetupDecision(
+    {
+      logger: {
+        info() {}
+      } as any,
+      userIdentityStore: {
+        async hasOwnerIdentity() {
+          return true;
+        }
+      } as any
+    },
+    {
+      ...createContext({
+        modeId: "rp_assistant",
+        relationship: "stranger",
+        externalUserId: "2254600711"
+      }),
+      setupState: {
+        state: "needs_persona"
+      }
+    } as any,
+    async (params) => {
+      sendCalls.push(params as Record<string, unknown>);
+    }
+  );
+
+  assert.equal(handled, true);
+  assert.equal(sendCalls.length, 1);
+  assert.equal(sendCalls[0]?.userId, "owner");
+  assert.equal(sendCalls[0]?.externalUserId, "2254600711");
+  assert.match(String(sendCalls[0]?.text ?? ""), /当前实例仍在 OneBot 初始化阶段/);
 });

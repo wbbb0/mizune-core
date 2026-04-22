@@ -36,7 +36,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
 
       const system = String(prompt[0]?.content ?? "");
       const batchText = readPromptMessageText(prompt[1]);
-      assert.match(system, /⟦section name="persona"⟧/);
+      assert.match(system, /⟦section name="global_persona"⟧/);
       assert.match(system, /⟦section name="current_user_profile"⟧/);
       assert.match(system, /⟦section name="participant_context"⟧/);
       assert.match(system, /批次头和每条消息头只用于帮助你分清会话模式/);
@@ -347,13 +347,13 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
 
       const system = String(prompt[0]?.content ?? "");
       const batchText = readPromptMessageText(prompt[1]);
-      assert.doesNotMatch(system, /⟦section name="persona"⟧/);
+      assert.match(system, /⟦section name="global_persona"⟧/);
       assert.doesNotMatch(system, /⟦section name="memory_write_decision"⟧/);
       assert.doesNotMatch(system, /⟦section name="global_rules"⟧/);
       assert.doesNotMatch(system, /⟦section name="current_user_profile"⟧/);
       assert.doesNotMatch(system, /⟦section name="current_user_memories"⟧/);
       assert.doesNotMatch(system, /⟦section name="participant_context"⟧/);
-      assert.match(system, /普通中文 assistant/);
+      assert.match(system, /AI assistant 模式工作/);
       assert.match(batchText, /⟦trigger_batch session="群聊 123456" trigger_user="Bob \(10002\)" message_count="1" speaker_count="1"⟧/);
       assert.match(batchText, /⟦trigger_message index="1" speaker="Bob \(10002\)" trigger_user="yes" time="2026\/03\/16 17:13:10"⟧/);
     } finally {

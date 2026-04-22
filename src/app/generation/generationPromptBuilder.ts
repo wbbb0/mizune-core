@@ -25,13 +25,12 @@ import type { ToolsetRuleEntry } from "#llm/prompt/toolsetRuleStore.ts";
 import { isNearDuplicateText } from "#memory/similarity.ts";
 import type { UserMemoryEntry } from "#memory/userMemoryEntry.ts";
 import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
+import { createEmptyScenarioProfile, getMissingScenarioProfileFields } from "#modes/scenarioHost/profileSchema.ts";
 import { preparePromptMemoryContext } from "#llm/prompts/chat-system.prompt.ts";
-import { createEmptyPersona } from "#persona/personaSchema.ts";
 import type { PromptInput } from "#llm/prompt/promptTypes.ts";
 
 type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
-const EMPTY_ASSISTANT_PERSONA: PersonaState = createEmptyPersona();
 const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "list_live_resources",
   "open_page",
@@ -119,6 +118,7 @@ export interface GenerationPromptBuilder {
     lastLlmUsage: SessionUsageSnapshot | null;
     batchMessages: GenerationPromptBatchMessage[];
     abortSignal?: AbortSignal;
+    modeProfile?: PromptInput["modeProfile"];
     draftMode?: PromptInput["draftMode"];
     isInSetup?: boolean;
   }) => Promise<GenerationPromptBuildResult>;
@@ -143,6 +143,7 @@ export interface GenerationPromptBuilder {
     lastLlmUsage: SessionUsageSnapshot | null;
     targetContext: ScheduledPromptTargetContext;
     abortSignal?: AbortSignal;
+    modeProfile?: PromptInput["modeProfile"];
   }) => Promise<GenerationPromptBuildResult>;
   buildSetupPromptMessages: (input: {
     sessionId: string;
@@ -512,6 +513,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     lastLlmUsage: SessionUsageSnapshot | null;
     batchMessages: GenerationPromptBatchMessage[];
     abortSignal?: AbortSignal;
+    modeProfile?: PromptInput["modeProfile"];
     draftMode?: PromptInput["draftMode"];
     isInSetup?: boolean;
   }) => {
@@ -519,7 +521,12 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const assistantMode = isAssistantMode(input.modeId);
     const draftMode = input.draftMode ?? (
       input.isInSetup
-        ? { target: "scenario" as const, phase: "setup" as const }
+        ? {
+            target: "scenario" as const,
+            phase: "setup" as const,
+            profile: createEmptyScenarioProfile(),
+            missingFields: getMissingScenarioProfileFields(createEmptyScenarioProfile())
+          }
         : null
     );
     const draftScopedMode = draftMode != null;
@@ -612,6 +619,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       liveResources,
       toolsetRules,
       ...(scenarioState ? { scenarioStateLines: buildScenarioStateLines(scenarioState) } : {}),
+      ...(input.modeProfile ? { modeProfile: input.modeProfile } : {}),
       ...(draftMode ? { draftMode } : {}),
       recentMessages: mediaContext.historyForPrompt,
       batchMessages: preparedBatchMessages
@@ -631,7 +639,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         recentToolEvents: input.recentToolEvents,
         debugMarkers: input.debugMarkers ?? [],
         toolTranscript: input.internalTranscript,
-        persona: assistantMode ? EMPTY_ASSISTANT_PERSONA : input.persona,
+        persona: input.persona,
         globalRules,
         toolsetRules,
         currentUser: assistantMode ? null : input.currentUser,
@@ -663,6 +671,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     lastLlmUsage: SessionUsageSnapshot | null;
     targetContext: ScheduledPromptTargetContext;
     abortSignal?: AbortSignal;
+    modeProfile?: PromptInput["modeProfile"];
   }) => {
     const scenarioHostMode = isScenarioHostMode(input.modeId);
     const assistantMode = isAssistantMode(input.modeId);
@@ -740,6 +749,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       liveResources,
       toolsetRules,
       ...(scenarioState ? { scenarioStateLines: buildScenarioStateLines(scenarioState) } : {}),
+      ...(input.modeProfile ? { modeProfile: input.modeProfile } : {}),
       recentMessages: mediaContext.historyForPrompt,
       targetContext: input.targetContext
     });
@@ -758,7 +768,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         recentToolEvents: input.recentToolEvents,
         debugMarkers: input.debugMarkers ?? [],
         toolTranscript: input.internalTranscript,
-        persona: assistantMode ? EMPTY_ASSISTANT_PERSONA : input.persona,
+        persona: input.persona,
         globalRules,
         toolsetRules,
         currentUser: assistantMode ? null : input.currentUser,

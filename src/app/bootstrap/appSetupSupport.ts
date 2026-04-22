@@ -49,6 +49,7 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
   const sendImmediateText = async (params: {
     sessionId: string;
     userId: string;
+    externalUserId?: string;
     groupId?: string;
     text: string;
     recordInHistory?: boolean;
@@ -58,7 +59,9 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
   }) => {
     const payload = await oneBotClient.sendText({
       text: params.text,
-      ...(params.groupId ? { groupId: params.groupId } : { userId: params.userId })
+      ...(params.groupId
+        ? { groupId: params.groupId }
+        : { userId: params.externalUserId ?? params.userId })
     });
     const messageId = normalizeOneBotMessageId(payload.data?.message_id);
     if ((params.recordForRetract ?? true) && messageId != null) {

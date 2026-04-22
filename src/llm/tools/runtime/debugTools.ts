@@ -109,23 +109,30 @@ export const debugToolHandlers: Record<string, ToolHandler> = {
     const parsedSession = parseChatSessionIdentity(sessionId);
 
     for (const body of bodies) {
-      const payload = parsedSession?.kind === "group"
-        ? await context.oneBotClient.sendText({
-            groupId: parsedSession.groupId,
-            text: body
-          })
-        : await context.oneBotClient.sendText({
-            userId: context.lastMessage.userId,
-            text: body
+      if (context.replyDelivery === "web") {
+        await context.webOutputCollector?.append(body);
+      } else {
+        if (!parsedSession) {
+          return JSON.stringify({ error: `unsupported session target: ${sessionId}` });
+        }
+        const payload = parsedSession.kind === "group"
+          ? await context.oneBotClient.sendText({
+              groupId: parsedSession.groupId,
+              text: body
+            })
+          : await context.oneBotClient.sendText({
+              userId: parsedSession.userId,
+              text: body
+            });
+        const messageId = normalizeOneBotMessageId(payload.data?.message_id);
+        if (messageId != null) {
+          sentMessageIds.push(messageId);
+          context.sessionManager.recordSentMessage(sessionId, {
+            messageId,
+            text: body,
+            sentAt: Date.now()
           });
-      const messageId = normalizeOneBotMessageId(payload.data?.message_id);
-      if (messageId != null) {
-        sentMessageIds.push(messageId);
-        context.sessionManager.recordSentMessage(sessionId, {
-          messageId,
-          text: body,
-          sentAt: Date.now()
-        });
+        }
       }
     }
 

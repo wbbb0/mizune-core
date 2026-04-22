@@ -51,6 +51,8 @@ export function buildGenerationIdentityDeps(services: AppServiceBootstrap): Gene
     userStore: services.userStore,
     whitelistStore: services.whitelistStore,
     personaStore: services.personaStore,
+    rpProfileStore: services.rpProfileStore,
+    scenarioProfileStore: services.scenarioProfileStore,
     globalRuleStore: services.globalRuleStore,
     toolsetRuleStore: services.toolsetRuleStore,
     scenarioHostStateStore: services.scenarioHostStateStore,

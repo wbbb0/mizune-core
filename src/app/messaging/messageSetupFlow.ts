@@ -120,6 +120,7 @@ export async function handlePostRouterSetupDecision(
   await sendImmediateText({
     sessionId: context.session.id,
     userId: context.enrichedMessage.userId,
+    ...(context.enrichedMessage.externalUserId ? { externalUserId: context.enrichedMessage.externalUserId } : {}),
     text: decision.text,
     recordInHistory: false,
     transcriptItem: {

@@ -93,6 +93,32 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
     }), null);
   });
 
+  test("setup and config without target resolve to explicit invalid-argument errors", async () => {
+    assert.deepEqual(resolveDispatchableDirectCommand({
+      phase: "chat",
+      setupState: "ready",
+      chatType: "private",
+      relationship: "owner",
+      text: ".setup"
+    }), {
+      name: "invalid",
+      rawText: ".setup",
+      message: "`.setup` 需要一个目标参数：persona、rp 或 scenario。\n用法：`.setup persona` / `.setup rp` / `.setup scenario`。"
+    });
+
+    assert.deepEqual(resolveDispatchableDirectCommand({
+      phase: "chat",
+      setupState: "ready",
+      chatType: "private",
+      relationship: "owner",
+      text: ".config"
+    }), {
+      name: "invalid",
+      rawText: ".config",
+      message: "`.config` 需要一个目标参数：persona、rp 或 scenario。\n用法：`.config persona` / `.config rp` / `.config scenario`。"
+    });
+  });
+
   test("setup admission helpers centralize bootstrap and setup blocking rules", async () => {
     const preRouterCommand = resolvePreRouterSetupDecision({
       setupState: "needs_owner",
@@ -375,6 +401,45 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
     assert.equal(calls[0]?.text, "未知指令：.not-found test\n发送 .help 查看可用指令。");
   });
 
+  test("invalid direct command returns explicit usage message", async () => {
+    const { calls, handler } = createDirectCommandFixture();
+
+    await handler({
+      command: {
+        name: "invalid",
+        rawText: ".setup",
+        message: "`.setup` 需要一个目标参数：persona、rp 或 scenario。\n用法：`.setup persona` / `.setup rp` / `.setup scenario`。"
+      } as any,
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner" }
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.text, "`.setup` 需要一个目标参数：persona、rp 或 scenario。\n用法：`.setup persona` / `.setup rp` / `.setup scenario`。");
+  });
+
+  test("direct command replies forward external user id for onebot delivery", async () => {
+    const { calls, handler } = createDirectCommandFixture();
+
+    await handler({
+      command: {
+        name: "invalid",
+        rawText: ".setup",
+        message: "`.setup` 需要一个目标参数：persona、rp 或 scenario。\n用法：`.setup persona` / `.setup rp` / `.setup scenario`。"
+      } as any,
+      sessionId: "qqbot:p:owner",
+      incomingMessage: {
+        chatType: "private",
+        userId: "owner",
+        externalUserId: "2254600711"
+      }
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.userId, "owner");
+    assert.equal(calls[0]?.externalUserId, "2254600711");
+  });
+
   test("setup command enters mode_setup with empty rp draft", async () => {
     let latestOperationMode: Record<string, unknown> | null = null;
     const { calls, handler } = createDirectCommandFixture({
@@ -417,6 +482,110 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       draft: createEmptyRpProfile()
     });
     assert.match(String(calls.at(-1)?.text ?? ""), /已进入 RP 资料 初始化流程/);
+  });
+
+  test("setup command restarts persona from an empty draft even after initialization", async () => {
+    let latestOperationMode: Record<string, unknown> | null = null;
+    const { calls, handler } = createDirectCommandFixture({
+      setOperationMode(_sessionId, operationMode) {
+        latestOperationMode = operationMode as Record<string, unknown>;
+        return operationMode;
+      },
+      personaStore: {
+        async get() {
+          return {
+            ...createEmptyPersona(),
+            name: "Mina",
+            coreIdentity: "创作者",
+            personality: "冷静",
+            speechStyle: "短句"
+          };
+        },
+        createEmpty() {
+          return createEmptyPersona();
+        },
+        isComplete() {
+          return true;
+        }
+      },
+      globalProfileReadinessStore: {
+        async get() {
+          return {
+            persona: "ready",
+            rp: "ready",
+            scenario: "ready",
+            updatedAt: 1
+          };
+        },
+        async setPersonaReadiness() {
+          return null;
+        }
+      } as any
+    });
+
+    await handler({
+      command: { name: "setup", target: "persona" },
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+
+    assert.deepEqual(latestOperationMode, {
+      kind: "persona_setup",
+      draft: createEmptyPersona()
+    });
+    assert.match(String(calls.at(-1)?.text ?? ""), /已进入 persona 初始化流程/);
+  });
+
+  test("setup command restarts scenario from an empty draft even after initialization", async () => {
+    let latestOperationMode: Record<string, unknown> | null = null;
+    const { calls, handler } = createDirectCommandFixture({
+      setOperationMode(_sessionId, operationMode) {
+        latestOperationMode = operationMode as Record<string, unknown>;
+        return operationMode;
+      },
+      scenarioProfileStore: {
+        async get() {
+          return {
+            ...createEmptyScenarioProfile(),
+            theme: "悬疑",
+            hostStyle: "冷静",
+            worldBaseline: "现代都市"
+          };
+        },
+        createEmpty() {
+          return createEmptyScenarioProfile();
+        },
+        isComplete() {
+          return true;
+        }
+      },
+      globalProfileReadinessStore: {
+        async get() {
+          return {
+            persona: "ready",
+            rp: "ready",
+            scenario: "ready",
+            updatedAt: 1
+          };
+        },
+        async setScenarioReadiness() {
+          return null;
+        }
+      } as any
+    });
+
+    await handler({
+      command: { name: "setup", target: "scenario" },
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+
+    assert.deepEqual(latestOperationMode, {
+      kind: "mode_setup",
+      modeId: "scenario_host",
+      draft: createEmptyScenarioProfile()
+    });
+    assert.match(String(calls.at(-1)?.text ?? ""), /已进入 Scenario 资料 初始化流程/);
   });
 
   test("config command clones saved persona into draft", async () => {
@@ -470,6 +639,32 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       draft: savedPersona
     });
     assert.match(String(calls.at(-1)?.text ?? ""), /已进入 persona 配置流程/);
+  });
+
+  test("config command still rejects uninitialized targets", async () => {
+    const { calls, handler } = createDirectCommandFixture({
+      globalProfileReadinessStore: {
+        async get() {
+          return {
+            persona: "ready",
+            rp: "uninitialized",
+            scenario: "uninitialized",
+            updatedAt: 1
+          };
+        },
+        async setPersonaReadiness() {
+          return null;
+        }
+      } as any
+    });
+
+    await handler({
+      command: { name: "config", target: "scenario" },
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+
+    assert.equal(calls.at(-1)?.text, "Scenario 资料尚未初始化，请先使用 `.setup scenario`。");
   });
 
   test("confirm command persists persona draft and clears session", async () => {
