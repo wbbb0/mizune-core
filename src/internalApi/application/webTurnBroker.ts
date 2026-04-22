@@ -8,18 +8,22 @@ export type WebTurnStreamEvent =
       timestampMs: number;
     }
   | {
-      type: "chunk";
+      type: "draft_delta";
       turnId: string;
       sessionId: string;
-      chunk: string;
+      delta: string;
+      timestampMs: number;
+    }
+  | {
+      type: "segment_committed";
+      turnId: string;
+      sessionId: string;
       timestampMs: number;
     }
   | {
       type: "complete";
       turnId: string;
       sessionId: string;
-      response: string;
-      chunks: string[];
       timestampMs: number;
     }
   | {

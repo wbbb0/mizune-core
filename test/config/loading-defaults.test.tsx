@@ -110,7 +110,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       await writeYaml(join(configDir, "global.yml"), {
         conversation: {
           outbound: {
-            instantReply: true
+            disableStreamingSplit: false
           }
         }
       });
@@ -119,7 +119,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         CONFIG_DIR: configDir
       });
 
-      assert.equal(config.conversation.outbound.instantReply, true);
+      assert.ok(!("instantReply" in config.conversation.outbound));
       assert.equal(config.conversation.outbound.disableStreamingSplit, false);
     });
   });

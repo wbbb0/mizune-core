@@ -44,11 +44,11 @@ import type {
 } from "#app/generation/generationPromptBuilder.ts";
 import type { PromptLiveResource } from "../../prompt/promptTypes.ts";
 import type { Persona } from "#persona/personaSchema.ts";
-import type { GenerationWebOutputCollector } from "#app/generation/generationTypes.ts";
 import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { SessionModeDefinition } from "#modes/types.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import type { GenerationCommittedTextSink } from "#app/generation/generationOutputContracts.ts";
 
 export type Relationship = "owner" | "known";
 export type ToolAccessLevel = "any" | "owner" | "operator";
@@ -159,7 +159,7 @@ export interface BuiltinToolContext extends
       message: string;
     };
   };
-  webOutputCollector?: GenerationWebOutputCollector;
+  committedTextSink?: GenerationCommittedTextSink;
   debugSnapshot?: PromptDebugSnapshot;
   activeInternalTrigger?: InternalSessionTriggerExecution | null;
   persistSession?: (sessionId: string, reason: string) => void;

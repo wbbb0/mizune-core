@@ -8,6 +8,12 @@ import { readFile } from "node:fs/promises";
     assert.match(source, /#default="\{ item, index \}"/);
     assert.match(source, /v-if="index === items\.length - 1 && \(loadingMore \|\| !hasMore\)"/);
     assert.doesNotMatch(source, /<div\s+v-if="loadingMore \|\| \(!hasMore && items\.length > 0\)"/);
+    assert.match(source, /scrollToIndex\(0, \{ align: "start" \}\)/);
+    assert.match(source, /props\.items\[0\]\?\.id/);
+    assert.match(source, /distFromBottom/);
+    assert.match(source, /scrollToTop/);
+    assert.doesNotMatch(source, /scrollToBottom/);
+    assert.doesNotMatch(source, /TOP_LOAD_THRESHOLD_PX/);
   });
 
   test("message bubble uses explicit action button instead of context menu or long press", async () => {

@@ -12,7 +12,10 @@ import type { ShellRuntime } from "#services/shell/runtime.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
 import type { ConfigManager } from "#config/configManager.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
-import type { GenerationWebOutputCollector } from "#app/generation/generationTypes.ts";
+import type {
+  GenerationCommittedTextSink,
+  GenerationDraftOverlaySink
+} from "#app/generation/generationOutputContracts.ts";
 import type { BrowserService } from "#services/web/browser/browserService.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { ChatMessageFileGcService } from "#services/workspace/chatMessageFileGcService.ts";
@@ -130,7 +133,8 @@ export interface InternalApiMessagingDeps {
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {
-      webOutputCollector: GenerationWebOutputCollector;
+      committedTextSink: GenerationCommittedTextSink;
+      draftOverlaySink?: GenerationDraftOverlaySink;
       sessionId?: string;
     }
   ) => Promise<void>;
@@ -176,7 +180,8 @@ export interface InternalApiDeps {
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {
-      webOutputCollector: GenerationWebOutputCollector;
+      committedTextSink: GenerationCommittedTextSink;
+      draftOverlaySink?: GenerationDraftOverlaySink;
       sessionId?: string;
     }
   ) => Promise<void>;

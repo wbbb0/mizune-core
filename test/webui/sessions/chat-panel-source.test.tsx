@@ -9,4 +9,7 @@ import { readFile } from "node:fs/promises";
     assert.doesNotMatch(source, /后台记录/);
     assert.doesNotMatch(source, /session\?\.transcriptCount/);
     assert.doesNotMatch(source, /Trash2/);
+    assert.match(source, /const reversedMessages = computed/);
+    assert.match(source, /const reversedTranscript = computed/);
+    assert.match(source, /streaming=|draftAssistantText|draftTurnId/);
   });

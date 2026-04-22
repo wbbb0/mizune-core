@@ -9,7 +9,6 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     const queue = new MessageQueue(logger, createTestAppConfig({
       conversation: {
         outbound: {
-          instantReply: true,
           randomFactorMin: 1,
           randomFactorMax: 1
         }
@@ -24,6 +23,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     await queue.enqueueText({
       sessionId: "s1",
       text: "should not send",
+      pacing: "immediate",
       abortSignals: [abortController.signal],
       send: async () => {
         sent.push("should not send");
@@ -38,7 +38,6 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     const queue = new MessageQueue(logger, createTestAppConfig({
       conversation: {
         outbound: {
-          instantReply: true,
           randomFactorMin: 1,
           randomFactorMax: 1
         }
@@ -51,6 +50,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     const p1 = queue.enqueueText({
       sessionId: "s1",
       text: "hi",
+      pacing: "immediate",
       abortSignals: [responseAbortController.signal],
       send: async () => {
         sent.push("msg1");
@@ -63,6 +63,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     queue.enqueueText({
       sessionId: "s1",
       text: "second message",
+      pacing: "immediate",
       abortSignals: [responseAbortController.signal],
       send: async () => {
         sent.push("msg2");
@@ -72,6 +73,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     queue.enqueueText({
       sessionId: "s1",
       text: "third message",
+      pacing: "immediate",
       abortSignals: [responseAbortController.signal],
       send: async () => {
         sent.push("msg3");

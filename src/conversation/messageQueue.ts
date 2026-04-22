@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
+import type { GenerationDeliveryPacing } from "#app/generation/generationOutputContracts.ts";
 
 function computeTypingDelayMs(text: string, cfg: AppConfig["conversation"]["outbound"]): number {
   return Math.min(cfg.baseDelayMs + text.length * cfg.charDelayMs, cfg.maxDelayMs);
@@ -77,6 +78,7 @@ export class MessageQueue {
   async enqueueText(params: {
     sessionId: string;
     text: string;
+    pacing: GenerationDeliveryPacing;
     send: () => Promise<void>;
     abortSignal?: AbortSignal;
     abortSignals?: AbortSignal[];
@@ -92,8 +94,12 @@ export class MessageQueue {
       }
 
       const cfg = this.config.conversation.outbound;
-      const baseDelayMs = cfg.instantReply ? 0 : computeTypingDelayMs(params.text, cfg);
-      const randomizedDelayMs = cfg.instantReply ? 0 : applyRandomFactor(baseDelayMs, cfg);
+      const baseDelayMs = params.pacing === "immediate"
+        ? 0
+        : computeTypingDelayMs(params.text, cfg);
+      const randomizedDelayMs = params.pacing === "immediate"
+        ? 0
+        : applyRandomFactor(baseDelayMs, cfg);
       const previousSentAt = this.lastSentAt.get(params.sessionId);
       const targetAt = (previousSentAt ?? Date.now()) + randomizedDelayMs;
       const waitMs = Math.max(0, targetAt - Date.now());
@@ -122,6 +128,7 @@ export class MessageQueue {
   enqueueTextDetached(params: {
     sessionId: string;
     text: string;
+    pacing: GenerationDeliveryPacing;
     send: () => Promise<void>;
     abortSignal?: AbortSignal;
     abortSignals?: AbortSignal[];

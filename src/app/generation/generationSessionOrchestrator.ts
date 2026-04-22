@@ -15,7 +15,10 @@ import type {
   GenerationSessionRuntimeDeps
 } from "./generationRunnerDeps.ts";
 import type { GenerationRuntimeBatchMessage, RunGenerationInput } from "./generationExecutor.ts";
-import type { GenerationWebOutputCollector } from "./generationTypes.ts";
+import type {
+  GenerationCommittedTextSink,
+  GenerationDraftOverlaySink
+} from "./generationOutputContracts.ts";
 import { handleGenerationTurnPlanner } from "./generationTurnPlanner.ts";
 import { supplementPlannedToolsets } from "./toolsetSupplement.ts";
 import { getProviderTranscriptProjector } from "./providerTranscriptProjector.ts";
@@ -305,7 +308,8 @@ export function createGenerationSessionOrchestrator(
     options?: {
       skipReplyGate?: boolean;
       delivery?: "onebot" | "web";
-      webOutputCollector?: GenerationWebOutputCollector;
+      committedTextSink?: GenerationCommittedTextSink;
+      draftOverlaySink?: GenerationDraftOverlaySink;
     }
   ) => {
     const resolvedDelivery = resolveSessionReplyDelivery(sessionId, options);
@@ -593,7 +597,8 @@ export function createGenerationSessionOrchestrator(
               forceRegenerateTitleAfterTurn: plannerDecision?.topicDecision === "new_topic"
             }),
         streamResponse: true,
-        ...(options?.webOutputCollector ? { webOutputCollector: options.webOutputCollector } : {})
+        ...(options?.committedTextSink ? { committedTextSink: options.committedTextSink } : {}),
+        ...(options?.draftOverlaySink ? { draftOverlaySink: options.draftOverlaySink } : {})
       });
     })().catch((error: unknown) => {
       if (sessionManager.isGenerating(sessionId)) {

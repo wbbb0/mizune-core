@@ -178,13 +178,15 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
   const handleWebIncomingMessage = async (
     incomingMessage: import("#services/onebot/types.ts").ParsedIncomingMessage,
     options: {
-      webOutputCollector: import("../generation/generationTypes.ts").GenerationWebOutputCollector;
+      committedTextSink: import("../generation/generationOutputContracts.ts").GenerationCommittedTextSink;
+      draftOverlaySink?: import("../generation/generationOutputContracts.ts").GenerationDraftOverlaySink;
       sessionId?: string;
     }
   ) => {
     await messageIngress.handleIncomingMessage(incomingMessage, {
       kind: "web",
-      collector: options.webOutputCollector,
+      committedTextSink: options.committedTextSink,
+      ...(options.draftOverlaySink ? { draftOverlaySink: options.draftOverlaySink } : {}),
       ...(options.sessionId ? { sessionId: options.sessionId } : {})
     });
   };

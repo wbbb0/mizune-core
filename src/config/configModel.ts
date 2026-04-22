@@ -138,14 +138,13 @@ const conversationConfigSchema = s.object({
     randomRatioMax: s.number().min(1).max(2).title("随机上限").default(1.25)
   }).title("防抖").default(emptyObject),
   outbound: s.object({
-    instantReply: s.boolean().title("瞬间回复").default(false),
     disableStreamingSplit: s.boolean().title("不启用分割").default(false),
     baseDelayMs: s.number().int().min(0).title("基础延迟毫秒").default(1200),
     charDelayMs: s.number().int().min(0).title("每字延迟毫秒").default(200),
     maxDelayMs: s.number().int().min(0).title("最大延迟毫秒").default(20000),
     randomFactorMin: s.number().min(0).max(2).title("随机倍率下限").default(0.8),
     randomFactorMax: s.number().min(0).max(2).title("随机倍率上限").default(1.25)
-  }).title("发送").describe("控制回复发送时机、分段与拟人化延迟。").default(emptyObject),
+  }).title("发送").describe("控制回复分段与需要拟人化节奏的投递目标延迟。").default(emptyObject),
   historyCompression: s.object({
     enabled: s.boolean().title("启用").default(true),
     triggerTokens: s.number().int().positive().title("触发 Token").default(15000),

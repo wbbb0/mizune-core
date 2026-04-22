@@ -54,9 +54,17 @@ export interface ActiveSession {
   transcript: TranscriptEntry[];
   transcriptHasMore: boolean;
   transcriptLoadingMore: boolean;
-  /** Live assistant text chunks while web-turn is in progress */
-  streamingText: string | null;
+  draftTurnId: string | null;
+  draftAssistantText: string | null;
   composerUserId: string | null;
+}
+
+function clearDraftOverlay(session: ActiveSession): ActiveSession {
+  return {
+    ...session,
+    draftTurnId: null,
+    draftAssistantText: null
+  };
 }
 
 export const useSessionsStore = defineStore("sessions", () => {
@@ -178,7 +186,8 @@ export const useSessionsStore = defineStore("sessions", () => {
         transcript: [],
         transcriptHasMore: false,
         transcriptLoadingMore: false,
-        streamingText: null,
+        draftTurnId: null,
+        draftAssistantText: null,
         composerUserId: null
       };
     } else {
@@ -284,7 +293,8 @@ export const useSessionsStore = defineStore("sessions", () => {
         transcript: [],
         transcriptHasMore: false,
         transcriptLoadingMore: false,
-        streamingText: null,
+        draftTurnId: null,
+        draftAssistantText: null,
         composerUserId: cur.composerUserId
       };
       void _initTranscriptAndStream(cur.id, event.mutationEpoch);
@@ -321,7 +331,7 @@ export const useSessionsStore = defineStore("sessions", () => {
         ...cur,
         transcript,
         transcriptCount: event.totalCount,
-        ...(isAssistantMessage ? { streamingText: null } : {})
+        ...(isAssistantMessage ? { draftAssistantText: null } : {})
       };
       return;
     }
@@ -378,7 +388,8 @@ export const useSessionsStore = defineStore("sessions", () => {
       transcript: [],
       transcriptHasMore: false,
       transcriptLoadingMore: false,
-      streamingText: null,
+      draftTurnId: null,
+      draftAssistantText: null,
       composerUserId: resolveParticipantUserId(selected?.participantRef)
     };
     void _initTranscriptAndStream(sessionId);
@@ -473,22 +484,53 @@ export const useSessionsStore = defineStore("sessions", () => {
 
   function _subscribeTurnStream(sessionId: string, turnId: string): void {
     const es = sessionsApi.openTurnStream(sessionId, turnId);
-    const chunks: string[] = [];
+    const setDraftState = (updater: (session: ActiveSession) => ActiveSession): void => {
+      if (active.value?.id !== sessionId) {
+        return;
+      }
+      active.value = updater(active.value);
+    };
 
-    es.addEventListener("chunk", (e: MessageEvent) => {
+    es.addEventListener("ready", () => {
+      setDraftState((session) => ({
+        ...session,
+        draftTurnId: turnId,
+        draftAssistantText: null
+      }));
+    });
+
+    es.addEventListener("draft_delta", (e: MessageEvent) => {
       try {
-        const ev = JSON.parse(e.data) as { chunk: string };
-        chunks.push(ev.chunk);
-        if (active.value?.id === sessionId) {
-          active.value = { ...active.value, streamingText: chunks.join("") };
+        const event = JSON.parse(e.data) as TurnStreamEvent;
+        if (event.type !== "draft_delta") {
+          return;
         }
+        setDraftState((session) => ({
+          ...session,
+          draftTurnId: event.turnId,
+          draftAssistantText: `${session.draftAssistantText ?? ""}${event.delta}`
+        }));
+      } catch { /* ignore */ }
+    });
+
+    es.addEventListener("segment_committed", (e: MessageEvent) => {
+      try {
+        const event = JSON.parse(e.data) as TurnStreamEvent;
+        if (event.type !== "segment_committed") {
+          return;
+        }
+        setDraftState((session) => ({
+          ...session,
+          draftTurnId: event.turnId,
+          draftAssistantText: null
+        }));
       } catch { /* ignore */ }
     });
 
     const cleanup = () => {
       es.close();
       if (active.value?.id === sessionId) {
-        active.value = { ...active.value, streamingText: null };
+        active.value = clearDraftOverlay(active.value);
       }
     };
 

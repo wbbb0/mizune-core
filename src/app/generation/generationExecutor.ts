@@ -1,6 +1,5 @@
 import { createBuiltinToolExecutor, getBuiltinTools } from "#llm/builtinTools.ts";
 import type { LlmMessage, LlmToolCall, LlmToolExecutionResult } from "#llm/llmClient.ts";
-import { splitReadySegments } from "#llm/shared/streamSplitter.ts";
 import { extractToolError, parseToolArguments } from "#llm/shared/toolArgs.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import {
@@ -15,6 +14,7 @@ import {
 import { buildBuiltinToolContext, type PromptDebugSnapshot } from "#llm/tools/core/shared.ts";
 import type { PromptInteractionMode } from "#llm/prompt/promptTypes.ts";
 import { createGenerationOutbound } from "./generationOutbound.ts";
+import { createGenerationSegmentCoordinator } from "./generationSegmentCoordinator.ts";
 import { createGenerationTypingWindow } from "./generationTypingWindow.ts";
 import type { GenerationPromptParticipantProfile } from "./generationPromptBuilder.ts";
 import type {
@@ -31,7 +31,10 @@ import {
   summarizeToolArgs,
   summarizeToolResult
 } from "./generationExecutorSupport.ts";
-import type { GenerationWebOutputCollector } from "./generationTypes.ts";
+import type {
+  GenerationCommittedTextSink,
+  GenerationDraftOverlaySink
+} from "./generationOutputContracts.ts";
 import {
   resolveToolNamesFromToolsets,
   TURN_PLANNER_ALWAYS_TOOL_NAMES
@@ -100,7 +103,8 @@ export interface RunGenerationInput {
   setupOnComplete?: "clear_session" | "none" | undefined;
   streamResponse?: boolean | undefined;
   forceRegenerateTitleAfterTurn?: boolean | undefined;
-  webOutputCollector?: GenerationWebOutputCollector | undefined;
+  committedTextSink?: GenerationCommittedTextSink | undefined;
+  draftOverlaySink?: GenerationDraftOverlaySink | undefined;
 }
 
 // Executes a fully prepared generation request, including tools, streaming, and cleanup.
@@ -176,7 +180,8 @@ export function createGenerationExecutor(
         setupMode,
         streamResponse,
         forceRegenerateTitleAfterTurn,
-        webOutputCollector
+        committedTextSink,
+        draftOverlaySink
       } = input;
     let outboundDrainPromise: Promise<void> | null = null;
     let lastResultReasoningContent = "";
@@ -231,7 +236,6 @@ export function createGenerationExecutor(
       }
 
       let summary = "";
-      let streamBuffer = "";
       const disableStreamingSplit = config.conversation.outbound.disableStreamingSplit === true;
       const outbound = createGenerationOutbound(
         {
@@ -247,9 +251,14 @@ export function createGenerationExecutor(
             abortController,
             responseAbortController,
             sendTarget,
-            ...(webOutputCollector ? { webOutputCollector } : {})
+            ...(committedTextSink ? { committedTextSink } : {})
           }
-      );
+        );
+      const segmentCoordinator = createGenerationSegmentCoordinator({
+        disableStreamingSplit,
+        committedSink: outbound,
+        ...(draftOverlaySink ? { draftOverlaySink } : {})
+      });
       const isPlannerToolsetMode = !setupMode && Array.isArray(availableToolsets) && availableToolsets.length > 0;
       const activeToolsetIds = new Set((plannedToolsetIds ?? []).filter((id) => (
         availableToolsets?.some((item) => item.id === id) ?? false
@@ -375,7 +384,7 @@ export function createGenerationExecutor(
         debugSnapshot,
         persistSession,
         listSessionModes,
-        ...(webOutputCollector ? { webOutputCollector } : {}),
+        ...(committedTextSink ? { committedTextSink } : {}),
         ...(activeInternalTrigger !== undefined ? { activeInternalTrigger } : {})
       });
 
@@ -496,24 +505,14 @@ export function createGenerationExecutor(
             },
             ...(streamResponse === false
               ? {}
-              : {
+                : {
                   onReasoningDelta: (_delta: string) => {
                     sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "reasoning" });
                     void typingWindow.startIfNeeded();
                   },
                   onTextDelta: async (delta: string) => {
                     sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "generating" });
-                    streamBuffer += delta;
-                    if (disableStreamingSplit) {
-                      return;
-                    }
-                    const split = splitReadySegments(streamBuffer);
-                    streamBuffer = split.rest;
-                    for (const chunk of split.ready) {
-                      await outbound.enqueueChunk(chunk.text, {
-                        joinWithDoubleNewline: chunk.joinWithDoubleNewline
-                      });
-                    }
+                    await segmentCoordinator.onTextDelta(delta);
                   }
                 })
           });
@@ -547,20 +546,19 @@ export function createGenerationExecutor(
           if (fallbackEventApplied) {
             persistSession(sessionId, "internal_transcript_updated");
           }
-          if (streamBuffer.trim()) {
-            await outbound.enqueueChunk(streamBuffer);
-            streamBuffer = "";
-          }
+          await segmentCoordinator.flushBufferedChunk();
           await outbound.enqueueChunk(failureMessage, {
             joinWithDoubleNewline: outbound.hasSentAssistantChunk()
           });
+          await draftOverlaySink?.fail(failureMessage);
           summary = "";
         }
       } else {
         summary = "LLM 未配置。请在 LLM catalog 文件中填写 provider 与 model 清单，在运行时配置中设置 llm.mainRouting.smallModelRef/largeModelRef，并将 llm.enabled 设为 true。";
       }
 
-      streamBuffer = await outbound.flushBufferedOutput(summary, streamBuffer, streamResponse);
+      await segmentCoordinator.flushSummary(summary, streamResponse);
+      await draftOverlaySink?.complete();
       outboundDrainPromise = outbound.getDrainPromise();
 
       persistSession(sessionId, "generation_completed");

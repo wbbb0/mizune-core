@@ -7,7 +7,10 @@ import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
-import type { GenerationWebOutputCollector } from "#app/generation/generationTypes.ts";
+import type {
+  GenerationCommittedTextSink,
+  GenerationDraftOverlaySink
+} from "#app/generation/generationOutputContracts.ts";
 import type {
   ParsedSendTextBody,
   ParsedWebSessionStreamQuery,
@@ -71,7 +74,8 @@ export function createAdminMessagingService(input: {
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {
-      webOutputCollector: GenerationWebOutputCollector;
+      committedTextSink: GenerationCommittedTextSink;
+      draftOverlaySink?: GenerationDraftOverlaySink;
       sessionId?: string;
     }
   ) => Promise<void>;
@@ -254,7 +258,8 @@ async function runWebTurnInBackground(input: {
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {
-      webOutputCollector: GenerationWebOutputCollector;
+      committedTextSink: GenerationCommittedTextSink;
+      draftOverlaySink?: GenerationDraftOverlaySink;
       sessionId?: string;
     }
   ) => Promise<void>;
@@ -301,13 +306,41 @@ async function runWebTurnInBackground(input: {
       isAtMentioned: false
     }, {
       sessionId: input.sessionId,
-      webOutputCollector: {
-        append(chunk) {
+      committedTextSink: {
+        commitText() {}
+      },
+      draftOverlaySink: {
+        appendDelta(delta) {
           input.broker.publish(input.turnState, {
-            type: "chunk",
+            type: "draft_delta",
             turnId: input.turnState.turnId,
             sessionId: input.sessionId,
-            chunk,
+            delta,
+            timestampMs: Date.now()
+          });
+        },
+        markCommitted() {
+          input.broker.publish(input.turnState, {
+            type: "segment_committed",
+            turnId: input.turnState.turnId,
+            sessionId: input.sessionId,
+            timestampMs: Date.now()
+          });
+        },
+        complete() {
+          input.broker.publish(input.turnState, {
+            type: "complete",
+            turnId: input.turnState.turnId,
+            sessionId: input.sessionId,
+            timestampMs: Date.now()
+          });
+        },
+        fail(message) {
+          input.broker.publish(input.turnState, {
+            type: "turn_error",
+            turnId: input.turnState.turnId,
+            sessionId: input.sessionId,
+            message,
             timestampMs: Date.now()
           });
         }
@@ -315,21 +348,14 @@ async function runWebTurnInBackground(input: {
     });
 
     await waitForSessionTurnCompletion(input.sessionManager, input.sessionId, input.turnState.createdAt);
-    input.broker.publish(input.turnState, {
-      type: "complete",
-      turnId: input.turnState.turnId,
-      sessionId: input.sessionId,
-      response: "",
-      chunks: [],
-      timestampMs: Date.now()
-    });
     input.broker.complete(input.turnState);
   } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     input.broker.publish(input.turnState, {
       type: "turn_error",
       turnId: input.turnState.turnId,
       sessionId: input.sessionId,
-      message: error instanceof Error ? error.message : String(error),
+      message,
       timestampMs: Date.now()
     });
     input.broker.fail(input.turnState);

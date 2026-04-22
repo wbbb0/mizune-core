@@ -21,6 +21,8 @@ export type ChatTimelineItem =
       metaChips?: string[];
       timestampMs: number;
       label?: string;
+      streaming?: boolean;
+      actionsEnabled?: boolean;
     }
   | {
       id: string;
@@ -42,11 +44,22 @@ export function buildChatTimelineItems(
   transcript: ChatTimelineTranscriptEntry[],
   options: {
     activeComposerUserId?: string | null;
+    draftAssistantText?: string | null;
+    draftTurnId?: string | null;
   } = {}
 ): ChatTimelineItem[] {
-  return [...transcript]
+  const items = [...transcript]
     .reverse()
     .flatMap((entry) => toChatTimelineItems(entry, options.activeComposerUserId ?? null));
+  const draftAssistantText = options.draftAssistantText ?? null;
+  if (!draftAssistantText || draftAssistantText.trim().length === 0) {
+    return items;
+  }
+  return [buildDraftAssistantItem({
+    transcript,
+    content: draftAssistantText,
+    turnId: options.draftTurnId ?? null
+  }), ...items];
 }
 
 function toChatTimelineItems(
@@ -124,6 +137,29 @@ function toChatTimelineItems(
   }
 
   return [];
+}
+
+function buildDraftAssistantItem(input: {
+  transcript: ChatTimelineTranscriptEntry[];
+  content: string;
+  turnId: string | null;
+}): ChatTimelineItem {
+  const latestTimestampMs = input.transcript.at(-1)?.item.timestampMs ?? Date.now();
+  const draftId = input.turnId ? `draft:${input.turnId}` : "draft:assistant";
+  return {
+    id: draftId,
+    itemId: draftId,
+    groupId: draftId,
+    actionTitle: "流式回复",
+    kind: "text",
+    role: "assistant",
+    side: "left",
+    content: input.content,
+    timestampMs: latestTimestampMs,
+    label: "生成中",
+    streaming: true,
+    actionsEnabled: false
+  };
 }
 
 function buildUserImageItems(

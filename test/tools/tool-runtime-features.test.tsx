@@ -275,7 +275,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     ))).hardRules, "绝不跳出角色");
   });
 
-  test("send_setup_draft uses web output collector for web sessions", async () => {
+  test("send_setup_draft uses committed text sink for web sessions", async () => {
     const appended: string[] = [];
     const historyCalls: Array<{ sessionId: string; message: Record<string, unknown> }> = [];
 
@@ -289,8 +289,8 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
           userId: "owner",
           senderName: "Owner"
         },
-        webOutputCollector: {
-          append(chunk: string) {
+        committedTextSink: {
+          commitText(chunk: string) {
             appended.push(chunk);
           }
         },
@@ -1322,8 +1322,8 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       { file_ref: "file_bead1234.txt" },
       {
         replyDelivery: "web",
-        webOutputCollector: {
-          append(chunk: string) {
+        committedTextSink: {
+          commitText(chunk: string) {
             webChunks.push(chunk);
           }
         },

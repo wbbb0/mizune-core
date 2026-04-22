@@ -32,6 +32,7 @@ function enqueueToolSend(
   context.messageQueue.enqueueTextDetached({
     sessionId: context.lastMessage.sessionId,
     text: previewText,
+    pacing: "humanized",
     send
   });
 }
@@ -418,7 +419,7 @@ async function sendResolvedPathToChat(
       : `本地文件已发送：${resolvedPath.sourcePath}`);
     enqueueToolSend(context, summary, async () => {
       if (context.replyDelivery === "web") {
-        await context.webOutputCollector?.append(summary);
+        await context.committedTextSink?.commitText(summary);
         context.sessionManager.appendAssistantHistory(context.lastMessage.sessionId, {
           ...buildAssistantHistoryTarget(context),
           text: summary
@@ -480,7 +481,7 @@ async function sendChatFileToChat(
     }
     enqueueToolSend(context, summary, async () => {
       if (context.replyDelivery === "web") {
-        await context.webOutputCollector?.append(summary);
+        await context.committedTextSink?.commitText(summary);
         context.sessionManager.appendAssistantHistory(context.lastMessage.sessionId, {
           ...buildAssistantHistoryTarget(context),
           text: summary

@@ -701,7 +701,9 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       }
     } as unknown as InternalApiDeps["sessionPersistence"],
     async handleWebIncomingMessage(incomingMessage, options) {
-      options.webOutputCollector.append(`web handled: ${options.sessionId ?? "derived"}: ${incomingMessage.text}`);
+      const text = `web handled: ${options.sessionId ?? "derived"}: ${incomingMessage.text}`;
+      options.draftOverlaySink?.appendDelta(text);
+      options.draftOverlaySink?.complete();
     },
     browserService: {
       async listProfiles() {

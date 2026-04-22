@@ -3,7 +3,10 @@ import { sanitizeOutboundText } from "#llm/shared/outboundTextSanitizer.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import type { GenerationOutboundDeps } from "./generationRunnerDeps.ts";
 import type { GenerationSendTarget } from "./generationExecutor.ts";
-import type { GenerationWebOutputCollector } from "./generationTypes.ts";
+import type {
+  GenerationCommittedTextSink,
+  GenerationDeliveryPacing
+} from "./generationOutputContracts.ts";
 
 export interface GenerationOutboundInput {
   sessionId: string;
@@ -11,7 +14,7 @@ export interface GenerationOutboundInput {
   abortController: AbortController;
   responseAbortController: AbortController;
   sendTarget: GenerationSendTarget;
-  webOutputCollector?: GenerationWebOutputCollector | undefined;
+  committedTextSink?: GenerationCommittedTextSink | undefined;
 }
 
 // Sends outbound assistant text and mirrors successful chunks into session history.
@@ -28,6 +31,9 @@ export function createGenerationOutbound(
   } = deps;
 
   let hasSentAssistantChunk = false;
+  const pacing: GenerationDeliveryPacing = input.sendTarget.delivery === "web"
+    ? "immediate"
+    : "humanized";
 
   const resolveOneBotSendTarget = (): { userId?: string; groupId?: string } => {
     const parsedSession = parseChatSessionIdentity(input.sessionId);
@@ -121,10 +127,11 @@ export function createGenerationOutbound(
     await messageQueue.enqueueText({
       sessionId: input.sessionId,
       text: cleaned,
+      pacing,
       abortSignals: [input.abortController.signal, input.responseAbortController.signal],
       send: async () => {
         if (input.sendTarget.delivery === "web") {
-          await input.webOutputCollector?.append(cleaned);
+          await input.committedTextSink?.commitText(cleaned);
           const sentAt = Date.now();
           appendHistoryChunk(sentAt);
           await appendBufferedChunk();

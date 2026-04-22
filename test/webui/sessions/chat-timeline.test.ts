@@ -100,7 +100,52 @@ function createUserMessageEntry(): ChatTimelineTranscriptEntry {
       activeComposerUserId: "10001"
     });
 
-    assert.equal(items[0]?.kind, "image");
+    const firstItem = items[0];
+    assert.equal(firstItem?.kind, "image");
+    assert.equal(firstItem?.role, "assistant");
+    if (firstItem?.kind !== "image") {
+      throw new Error("expected image item");
+    }
+    assert.equal(firstItem.imageUrl, "/api/chat-files/assistant-image-1/content");
+  });
+
+  test("chat timeline keeps newest items first and prepends draft assistant text to the head", () => {
+    const items = buildChatTimelineItems([createUserMessageEntry(), {
+      id: "entry-assistant-1",
+      eventId: "event-assistant-1",
+      index: 1,
+      item: {
+        id: "item-assistant-1",
+        groupId: "group-assistant-1",
+        runtimeExcluded: false,
+        kind: "assistant_message",
+        role: "assistant",
+        llmVisible: true,
+        chatType: "private",
+        userId: "bot",
+        senderName: "Bot",
+        text: "第一条正式回复",
+        timestampMs: 1710000001000
+      }
+    }], {
+      activeComposerUserId: "10001",
+      draftAssistantText: "正在流式补充"
+    });
+
+    assert.equal(items[0]?.kind, "text");
     assert.equal(items[0]?.role, "assistant");
-    assert.equal(items[0]?.imageUrl, "/api/chat-files/assistant-image-1/content");
+    assert.equal(items[0]?.content, "正在流式补充");
+    assert.equal(items[0]?.streaming, true);
+    assert.equal(items[0]?.actionsEnabled, false);
+
+    assert.equal(items[1]?.kind, "text");
+    assert.equal(items[1]?.role, "assistant");
+    assert.equal(items[1]?.content, "第一条正式回复");
+
+    assert.equal(items[2]?.kind, "text");
+    assert.equal(items[2]?.role, "user");
+    assert.equal(items[2]?.content, "图片在下面");
+
+    assert.equal(items[3]?.kind, "image");
+    assert.equal(items[4]?.kind, "image");
   });

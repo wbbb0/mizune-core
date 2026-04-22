@@ -907,7 +907,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
 
       assert.equal(streamResponse.statusCode, 200);
       assert.match(streamResponse.body, /event: ready/);
-      assert.match(streamResponse.body, /event: chunk/);
+      assert.match(streamResponse.body, /event: draft_delta/);
       assert.match(streamResponse.body, new RegExp(`web handled: ${sessionId}: hello from web`));
       assert.match(streamResponse.body, /event: complete/);
       assert.deepEqual(deps.__state.sentMessages, []);
@@ -935,7 +935,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       });
 
       assert.equal(streamResponse.statusCode, 200);
-      assert.match(streamResponse.body, /event: chunk/);
+      assert.match(streamResponse.body, /event: draft_delta/);
       assert.match(streamResponse.body, /web handled: qqbot:p:10001: hello from panel/);
       assert.deepEqual(deps.__state.sentMessages, []);
     } finally {

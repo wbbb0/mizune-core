@@ -160,6 +160,7 @@ function createExecutorHarness(options?: {
       } as never,
       messageQueue: {
         async enqueueText(params: {
+          pacing?: "humanized" | "immediate";
           send: () => Promise<void>;
         }) {
           await params.send();
@@ -282,8 +283,8 @@ function createExecutorHarness(options?: {
     forceRegenerateTitleAfterTurn: options?.forceRegenerateTitleAfterTurn,
     ...(delivery === "web"
       ? {
-          webOutputCollector: {
-            async append(text: string) {
+          committedTextSink: {
+            async commitText(text: string) {
               events.push(`send:${text}`);
             }
           }
@@ -375,6 +376,28 @@ function createExecutorHarness(options?: {
     assert.deepEqual(harness.events, ["typing:start", "send:你好", "typing:stop"]);
   });
 
+  test("web delivery commits each ready segment immediately without pacing delay", async () => {
+    const harness = createExecutorHarness({
+      sessionSource: "web",
+      customGenerate: async (input) => {
+        input.onReasoningDelta?.("先想一下");
+        await input.onTextDelta?.("第一段确实足够长而且会先提交。");
+        await input.onTextDelta?.("第二段同样足够长而且会立即提交。");
+        return {
+          text: "第一段确实足够长而且会先提交。第二段同样足够长而且会立即提交。",
+          reasoningContent: "",
+          usage: createUsage()
+        };
+      }
+    });
+
+    await waitForEvents(harness.events, 2);
+    assert.deepEqual(harness.events, [
+      "send:第一段确实足够长而且会先提交。",
+      "send:第二段同样足够长而且会立即提交。"
+    ]);
+  });
+
   test("disableStreamingSplit waits for the complete text before outbound send", async () => {
     let continueStreaming!: () => void;
     const continuePromise = new Promise<void>((resolve) => {
@@ -386,6 +409,7 @@ function createExecutorHarness(options?: {
     });
 
     const harness = createExecutorHarness({
+      sessionSource: "web",
       configOverrides: {
         conversation: {
           outbound: {
@@ -395,12 +419,12 @@ function createExecutorHarness(options?: {
       },
       customGenerate: async (input) => {
         input.onReasoningDelta?.("先想一下");
-        await input.onTextDelta?.("第一段足够长的句子。");
+        await input.onTextDelta?.("第一段确实足够长而且不会立即单独发送。");
         firstDeltaSeen();
         await continuePromise;
-        await input.onTextDelta?.("第二段也足够长。");
+        await input.onTextDelta?.("第二段同样足够长而且会在结束后一起发送。");
         return {
-          text: "第一段足够长的句子。第二段也足够长。",
+          text: "第一段确实足够长而且不会立即单独发送。第二段同样足够长而且会在结束后一起发送。",
           reasoningContent: "",
           usage: createUsage()
         };
@@ -409,23 +433,18 @@ function createExecutorHarness(options?: {
 
     await firstDeltaSeenPromise;
     await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.deepEqual(harness.events, ["typing:start"]);
+    assert.deepEqual(harness.events, []);
 
     continueStreaming();
-    await waitForEvents(harness.events, 2);
+    await waitForEvents(harness.events, 1);
     assert.deepEqual(harness.events, [
-      "typing:start",
-      "send:第一段足够长的句子。第二段也足够长。"
+      "send:第一段确实足够长而且不会立即单独发送。第二段同样足够长而且会在结束后一起发送。"
     ]);
 
     harness.resolveDrain();
     await harness.runPromise;
 
-    assert.deepEqual(harness.events, [
-      "typing:start",
-      "send:第一段足够长的句子。第二段也足够长。",
-      "typing:stop"
-    ]);
+    assert.deepEqual(harness.events, ["send:第一段确实足够长而且不会立即单独发送。第二段同样足够长而且会在结束后一起发送。"]);
   });
 
   test("default web titles are captioned only after outbound drain completes", async () => {

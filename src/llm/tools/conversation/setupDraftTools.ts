@@ -37,9 +37,10 @@ export const setupDraftToolHandlers: Record<string, ToolHandler> = {
     context.messageQueue.enqueueTextDetached({
       sessionId,
       text: content,
+      pacing: context.replyDelivery === "web" ? "immediate" : "humanized",
       send: async () => {
         if (context.replyDelivery === "web") {
-          await context.webOutputCollector?.append(content);
+          await context.committedTextSink?.commitText(content);
           context.sessionManager.appendAssistantHistory(sessionId, {
             chatType: session.type,
             userId: context.lastMessage.userId,

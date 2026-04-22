@@ -110,7 +110,7 @@ export const debugToolHandlers: Record<string, ToolHandler> = {
 
     for (const body of bodies) {
       if (context.replyDelivery === "web") {
-        await context.webOutputCollector?.append(body);
+        await context.committedTextSink?.commitText(body);
       } else {
         if (!parsedSession) {
           return JSON.stringify({ error: `unsupported session target: ${sessionId}` });

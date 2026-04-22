@@ -16,7 +16,8 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
     options?: {
       skipReplyGate?: boolean;
       delivery?: "onebot" | "web";
-      webOutputCollector?: import("./generationTypes.ts").GenerationWebOutputCollector;
+      committedTextSink?: import("./generationOutputContracts.ts").GenerationCommittedTextSink;
+      draftOverlaySink?: import("./generationOutputContracts.ts").GenerationDraftOverlaySink;
     }
   ) => void) | null = null;
 
@@ -129,7 +130,8 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
     options?: {
       skipReplyGate?: boolean;
       delivery?: "onebot" | "web";
-      webOutputCollector?: import("./generationTypes.ts").GenerationWebOutputCollector;
+      committedTextSink?: import("./generationOutputContracts.ts").GenerationCommittedTextSink;
+      draftOverlaySink?: import("./generationOutputContracts.ts").GenerationDraftOverlaySink;
     }
   ) => {
     sessionOrchestrator.flushSession(sessionId, options);

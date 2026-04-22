@@ -13,7 +13,10 @@ import {
 } from "../messaging/messageEventHandler.ts";
 import type { AppServiceBootstrap } from "../bootstrap/appServiceBootstrap.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
-import type { GenerationWebOutputCollector } from "../generation/generationTypes.ts";
+import type {
+  GenerationCommittedTextSink,
+  GenerationDraftOverlaySink
+} from "../generation/generationOutputContracts.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 
 type DirectCommandDeps = Pick<
@@ -50,7 +53,8 @@ type DeliveryContext =
     }
   | {
       kind: "web";
-      collector: GenerationWebOutputCollector;
+      committedTextSink: GenerationCommittedTextSink;
+      draftOverlaySink?: GenerationDraftOverlaySink;
       sessionId?: string;
     };
 
@@ -74,7 +78,8 @@ export function createRuntimeMessageIngress(input: {
         ? onebotDeps
         : buildMessageHandlerDeps(input.services, input.directCommandDeps, input.persistSession, {
             kind: "web",
-            collector: delivery.collector,
+            committedTextSink: delivery.committedTextSink,
+            ...(delivery.draftOverlaySink ? { draftOverlaySink: delivery.draftOverlaySink } : {}),
             ...(delivery.sessionId ? { sessionId: delivery.sessionId } : {}),
             handleDirectCommand: createDeliveryHandleDirectCommand(input.directCommandDeps, delivery)
           });
@@ -199,7 +204,8 @@ function createDeliveryFlushSession(
     flushSession(sessionId, {
       ...options,
       delivery: "web",
-      webOutputCollector: delivery.collector
+      committedTextSink: delivery.committedTextSink,
+      ...(delivery.draftOverlaySink ? { draftOverlaySink: delivery.draftOverlaySink } : {})
     });
   };
 }

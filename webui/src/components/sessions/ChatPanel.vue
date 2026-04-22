@@ -15,6 +15,7 @@ import type { TranscriptItem as SessionTranscriptItem } from "@/api/types";
 import { useToastStore } from "@/stores/toasts";
 import { useWorkbenchWindows } from "@/composables/workbench/useWorkbenchWindows";
 import { buildChatTimelineItems } from "./chatTimeline";
+import type { ChatTimelineItem } from "./chatTimeline";
 import { resolveComposerUserIdentity } from "./composerUserIdentity";
 
 const store = useSessionsStore();
@@ -48,7 +49,9 @@ interface TranscriptActionTarget {
 const reversedMessages = computed(() =>
   session.value
     ? buildChatTimelineItems(session.value.transcript, {
-      activeComposerUserId: session.value.composerUserId?.trim() ?? null
+      activeComposerUserId: session.value.composerUserId?.trim() ?? null,
+      draftAssistantText: session.value.draftAssistantText,
+      draftTurnId: session.value.draftTurnId
     })
     : []
 );
@@ -158,6 +161,29 @@ function openTranscriptActions(target: TranscriptActionTarget) {
       }
     ]
   });
+}
+
+function buildChatActionTarget(item: ChatTimelineItem): TranscriptActionTarget | null {
+  if (item.kind === "text" && item.actionsEnabled === false) {
+    return null;
+  }
+  return {
+    itemId: item.itemId,
+    groupId: item.groupId,
+    title: item.actionTitle,
+    detail: item.kind === "text"
+      ? (item.label || item.content.slice(0, 32) || "消息")
+      : (item.sourceName || item.fileRef || item.fileId || "图片"),
+    alreadyInvalidated: false
+  };
+}
+
+function openChatItemActions(item: ChatTimelineItem): void {
+  const target = buildChatActionTarget(item);
+  if (!target) {
+    return;
+  }
+  openTranscriptActions(target);
 }
 
 function buildTranscriptActionTarget(entry: TranscriptEntry): TranscriptActionTarget {
@@ -285,8 +311,10 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
               :image-url="msg.kind === 'image' ? msg.imageUrl : undefined"
               :tool-name="msg.kind === 'image' ? msg.toolName : undefined"
               :timestamp-ms="msg.timestampMs"
+              :streaming="msg.kind === 'text' ? msg.streaming : undefined"
+              :actions-enabled="msg.kind === 'text' ? msg.actionsEnabled : undefined"
               @preview-image="msg.kind === 'image' ? previewImage(msg.imageUrl, msg.sourceName || msg.fileRef || msg.fileId || '已发送图片') : undefined"
-              @open-actions="openTranscriptActions({ itemId: msg.itemId, groupId: msg.groupId, title: msg.actionTitle, detail: msg.kind === 'text' ? (msg.label || msg.content.slice(0, 32) || '消息') : (msg.sourceName || msg.fileRef || msg.fileId || '图片'), alreadyInvalidated: false })"
+              @open-actions="openChatItemActions(msg)"
             />
           </template>
         </VirtualMessageList>

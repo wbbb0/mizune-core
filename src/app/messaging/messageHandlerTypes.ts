@@ -4,6 +4,10 @@ import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { SessionMessagingAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { SessionDelivery, SessionState } from "#conversation/session/sessionTypes.ts";
+import type {
+  GenerationCommittedTextSink,
+  GenerationDraftOverlaySink
+} from "#app/generation/generationOutputContracts.ts";
 import type { ResolvedDirectCommand } from "./directCommands.ts";
 
 export interface MessageEventHandlerDeps {
@@ -59,9 +63,8 @@ export interface MessageEventHandlerDeps {
   flushSession: (sessionId: string, options?: {
     skipReplyGate?: boolean;
     delivery?: "onebot" | "web";
-    webOutputCollector?: {
-      append: (chunk: string) => Promise<void> | void;
-    };
+    committedTextSink?: GenerationCommittedTextSink;
+    draftOverlaySink?: GenerationDraftOverlaySink;
   }) => void;
 }
 
