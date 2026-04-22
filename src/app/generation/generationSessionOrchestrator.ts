@@ -24,11 +24,13 @@ import { supplementPlannedToolsets } from "./toolsetSupplement.ts";
 import { getProviderTranscriptProjector } from "./providerTranscriptProjector.ts";
 import { createInternalTriggerEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { createSessionTranscriptStore } from "#conversation/session/sessionTranscriptStore.ts";
+import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import { requireSessionModeDefinition } from "#modes/registry.ts";
 import { resolveSessionModeSetupContext } from "./generationSetupContext.ts";
 import { getMissingRpProfileFields, type RpProfile } from "#modes/rpAssistant/profileSchema.ts";
 import { getMissingScenarioProfileFields, type ScenarioProfile } from "#modes/scenarioHost/profileSchema.ts";
 import { resolveSessionModeSetupOperation } from "#modes/types.ts";
+import { resolveInternalUserIdForOneBotPrivateUser } from "#identity/userIdentityResolution.ts";
 import type { ProfileToolScope } from "#llm/tools/profileToolScope.ts";
 import type { SessionModeDefinition, SessionModeSetupOperation } from "#modes/types.ts";
 import type { PromptInput } from "#llm/prompt/promptTypes.ts";
@@ -623,8 +625,20 @@ export function createGenerationSessionOrchestrator(
 
     return (async () => {
       const interactionMode: PromptInteractionMode = sessionManager.getDebugControlState(sessionId).enabled ? "debug" : "normal";
+      const parsedSession = parseChatSessionIdentity(sessionId);
+      const resolvedTargetUserId = trigger.targetType === "private" && trigger.targetUserId
+        ? (
+            parsedSession?.kind === "private"
+              ? await resolveInternalUserIdForOneBotPrivateUser({
+                  channelId: parsedSession.channelId,
+                  externalUserId: trigger.targetUserId,
+                  userIdentityStore: lifecycle.userIdentityStore
+                })
+              : trigger.targetUserId
+          )
+        : null;
       const currentUser = trigger.targetUserId
-        ? await userStore.getByUserId(trigger.targetUserId)
+        ? await userStore.getByUserId(resolvedTargetUserId ?? trigger.targetUserId)
         : null;
       const promptRelationship: Relationship = currentUser?.relationship ?? "known";
       const scheduledModelRef = getDefaultMainModelRefs(config);

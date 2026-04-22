@@ -22,6 +22,7 @@ import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import type { ConversationAccessService } from "#identity/conversationAccessService.ts";
 import type { NpcDirectory } from "#identity/npcDirectory.ts";
+import type { UserIdentityStore } from "#identity/userIdentityStore.ts";
 import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
 import type { ToolsetRuleStore, ToolsetRuleEntry } from "#llm/prompt/toolsetRuleStore.ts";
 import type { ComfyClient } from "#comfy/comfyClient.ts";
@@ -96,6 +97,7 @@ export interface BuiltinToolStoreDeps {
   globalProfileReadinessStore: GlobalProfileReadinessStore;
   conversationAccess: ConversationAccessService;
   npcDirectory: NpcDirectory;
+  userIdentityStore?: Pick<UserIdentityStore, "findInternalUserId" | "findIdentityByInternalUserId">;
 }
 
 export interface BuiltinToolRuntimeDeps {

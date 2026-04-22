@@ -380,6 +380,7 @@ export function createGenerationExecutor(
         globalProfileReadinessStore,
         conversationAccess,
         npcDirectory,
+        userIdentityStore: lifecycle.userIdentityStore,
         ...(toolsetAccess ? { toolsetAccess } : {}),
         debugSnapshot,
         persistSession,

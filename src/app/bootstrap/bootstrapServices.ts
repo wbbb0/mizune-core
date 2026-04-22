@@ -106,6 +106,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
     oneBotClient,
     npcDirectory,
     groupMembershipStore,
+    userIdentityStore,
     logger
   );
   const shellRuntime = new ShellRuntime(config, logger, dataDir);

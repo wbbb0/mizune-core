@@ -472,6 +472,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
         oneBotClient,
         npcDirectory,
         membershipStore,
+        harness.userIdentityStore,
         pino({ level: "silent" })
       );
 

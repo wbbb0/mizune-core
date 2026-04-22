@@ -111,6 +111,7 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
       logger,
       sessionManager,
       userStore: {} as never,
+      userIdentityStore: {} as never,
       persistSession(_sessionId: string, reason: string) {
         persistedReasons.push(reason);
       },

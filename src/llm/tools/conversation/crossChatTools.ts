@@ -6,6 +6,7 @@ import {
   buildPrivateSessionId,
   parseChatSessionIdentity
 } from "#conversation/session/sessionIdentity.ts";
+import { resolveInternalUserIdForOneBotPrivateUser } from "#identity/userIdentityResolution.ts";
 
 type SessionListItem = ReturnType<BuiltinToolContext["sessionManager"]["listSessions"]>[number];
 type FriendListItem = Awaited<ReturnType<BuiltinToolContext["oneBotClient"]["getFriendList"]>>[number];
@@ -114,7 +115,14 @@ export const crossChatToolHandlers: Record<string, ToolHandler> = {
 
     if (parsed.kind === "private") {
       const targetUserId = parsed.userId;
-      const isNpc = context.npcDirectory.isNpc(targetUserId);
+      const targetInternalUserId = context.userIdentityStore
+        ? await resolveInternalUserIdForOneBotPrivateUser({
+            channelId: parsed.channelId,
+            externalUserId: targetUserId,
+            userIdentityStore: context.userIdentityStore
+          })
+        : targetUserId;
+      const isNpc = context.npcDirectory.isNpc(targetInternalUserId);
       if (isNpc) {
         return JSON.stringify({ error: "现在不支持这个功能" });
       }

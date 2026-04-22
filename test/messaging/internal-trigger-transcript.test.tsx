@@ -10,6 +10,21 @@ import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
 
+async function flushMicrotasks(rounds = 4): Promise<void> {
+  for (let index = 0; index < rounds; index += 1) {
+    await Promise.resolve();
+  }
+}
+
+async function waitForCondition(check: () => boolean, rounds = 20): Promise<void> {
+  for (let index = 0; index < rounds; index += 1) {
+    if (check()) {
+      return;
+    }
+    await flushMicrotasks();
+  }
+}
+
 function createOrchestratorDeps(input: {
   config: ReturnType<typeof createTestAppConfig>;
   sessionManager: SessionManager;
@@ -18,6 +33,7 @@ function createOrchestratorDeps(input: {
   personaStore?: unknown;
   rpProfileStore?: unknown;
   scenarioProfileStore?: unknown;
+  userIdentityStore?: unknown;
   setupStore?: unknown;
   scenarioHostStateStore?: unknown;
   globalProfileReadinessStore?: unknown;
@@ -77,6 +93,11 @@ function createOrchestratorDeps(input: {
       logger: pino({ level: "silent" }),
       sessionManager: input.sessionManager,
       userStore: sharedUserStore,
+      userIdentityStore: input.userIdentityStore ?? ({
+        async findInternalUserId() {
+          return undefined;
+        }
+      } as never),
       persistSession: input.persistSession ?? (() => {}),
       getScheduler() {
         return {} as never;
@@ -107,6 +128,11 @@ function createOrchestratorDeps(input: {
           return { nickname: "Owner" };
         }
       } as never,
+      userIdentityStore: {
+        async findInternalUserId() {
+          return "owner";
+        }
+      } as never,
       persistSession(_sessionId: string, reason: string) {
         persistedReasons.push(reason);
       }
@@ -132,7 +158,10 @@ function createOrchestratorDeps(input: {
       }
     });
 
-    await Promise.resolve();
+    await waitForCondition(() => {
+      const currentSession = sessionManager.getSession(sessionId);
+      return currentSession.pendingInternalTriggers.length === 1;
+    });
     const session = sessionManager.getSession(sessionId);
     const received = session.internalTranscript.find((item) => item.kind === "internal_trigger_event" && item.stage === "received");
     const queued = session.internalTranscript.find((item) => item.kind === "internal_trigger_event" && item.stage === "queued");
@@ -146,6 +175,56 @@ function createOrchestratorDeps(input: {
     const queuedTrigger = sessionManager.shiftInternalTrigger(sessionId);
     queuedTrigger?.resolveCompletion?.();
     await dispatchPromise;
+  });
+
+  test("internal trigger dispatcher resolves sender name through identity mapping for private sessions", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "dev:p:2254600711";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    let capturedTrigger: { targetSenderName?: string } | null = null;
+
+    const dispatcher = createInternalTriggerDispatcher({
+      logger: pino({ level: "silent" }),
+      sessionManager,
+      userStore: {
+        async getByUserId(userId: string) {
+          return userId === "owner"
+            ? { preferredAddress: "主人" }
+            : null;
+        }
+      } as never,
+      userIdentityStore: {
+        async findInternalUserId(input: { externalId: string }) {
+          return input.externalId === "2254600711" ? "owner" : undefined;
+        }
+      } as never,
+      persistSession() {}
+    }, {
+      async runInternalTriggerSession(_targetSessionId, trigger) {
+        capturedTrigger = { targetSenderName: trigger.targetSenderName };
+      }
+    });
+
+    await dispatcher.dispatchTrigger({
+      sessionId,
+      queueLogEvent: "internal_trigger_queued",
+      createTrigger(target) {
+        return {
+          kind: "scheduled_instruction",
+          targetType: target.type,
+          targetUserId: target.userId,
+          targetSenderName: target.senderName,
+          jobName: "daily_reminder",
+          instruction: "提醒喝水",
+          enqueuedAt: 1
+        };
+      }
+    });
+
+    assert.deepEqual(capturedTrigger, {
+      targetSenderName: "主人"
+    });
   });
 
   test("internal trigger session records started transcript event", async () => {
@@ -372,6 +451,61 @@ function createOrchestratorDeps(input: {
     assert.equal(capturedRunInput.availableToolsets.some((item: { id: string }) => item.id === "memory_profile"), false);
     assert.equal(capturedRunInput.availableToolsets.some((item: { id: string }) => item.id === "conversation_navigation"), false);
     assert.equal(capturedRunInput.availableToolsets.some((item: { id: string }) => item.id === "chat_delegation"), false);
+  });
+
+  test("scheduled private trigger resolves owner relationship from external user id", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "dev:p:2254600711";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+
+    let capturedPromptInput: any = null;
+
+    const orchestrator = createGenerationSessionOrchestrator(createOrchestratorDeps({
+      config,
+      sessionManager,
+      userStore: {
+        async getByUserId(userId: string) {
+          return userId === "owner"
+            ? { userId: "owner", relationship: "owner" }
+            : null;
+        }
+      } as never,
+      userIdentityStore: {
+        async findInternalUserId(input: { channelId: string; externalId: string }) {
+          return input.channelId === "dev" && input.externalId === "2254600711"
+            ? "owner"
+            : undefined;
+        }
+      } as never,
+      setupStore: {} as never,
+      persistSession() {}
+    }), {
+      promptBuilder: {
+        async buildScheduledPromptMessages(input: any) {
+          capturedPromptInput = input;
+          return {
+            promptMessages: [],
+            debugSnapshot: {} as never
+          };
+        }
+      } as never,
+      async runGeneration() {},
+      processNextSessionWork() {}
+    });
+
+    await orchestrator.runInternalTriggerSession(sessionId, {
+      kind: "scheduled_instruction",
+      targetType: "private",
+      targetUserId: "2254600711",
+      targetSenderName: "Owner",
+      jobName: "daily",
+      instruction: "提醒喝水",
+      enqueuedAt: 1
+    });
+
+    assert.equal(capturedPromptInput.relationship, "owner");
+    assert.equal(capturedPromptInput.currentUser?.userId, "owner");
   });
 
   test("flush session prepare failure clears active response state", async () => {

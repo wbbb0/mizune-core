@@ -107,3 +107,55 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     }
     assert.match(result, /现在不支持这个功能/);
   });
+
+  test("delegate_message_to_chat resolves private target identity before npc check", async () => {
+    const result = await crossChatToolHandlers.delegate_message_to_chat!(
+      createFunctionToolCall("delegate_message_to_chat", "tool_delegate_3"),
+      { sessionId: "dev:p:2254600711", instruction: "帮我问一下。" },
+      {
+        relationship: "owner",
+        currentUser: { specialRole: "none" } as any,
+        npcDirectory: {
+          isNpc(userId: string) {
+            return userId === "owner";
+          }
+        } as any,
+        userIdentityStore: {
+          async findInternalUserId(input: { externalId: string }) {
+            return input.externalId === "2254600711" ? "owner" : undefined;
+          }
+        } as any,
+        oneBotClient: {
+          async getFriendList() {
+            throw new Error("should not be called after npc mapping resolves");
+          },
+          async getGroupList() {
+            return [];
+          }
+        } as any,
+        sessionManager: {
+          ensureSession() {
+            throw new Error("should not create session for npc target");
+          }
+        } as any,
+        scheduledJobStore: {
+          async create() {
+            throw new Error("should not create job for npc target");
+          },
+          async remove() {}
+        } as any,
+        scheduler: {
+          async createJob() {
+            throw new Error("should not schedule job for npc target");
+          }
+        } as any,
+        config: { scheduler: { defaultTimezone: "Asia/Shanghai" } } as any
+      } as any
+    );
+
+    assert.equal(typeof result, "string");
+    if (typeof result !== "string") {
+      throw new Error("expected string tool error");
+    }
+    assert.match(result, /现在不支持这个功能/);
+  });

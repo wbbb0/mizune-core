@@ -1,6 +1,7 @@
 import type { InternalSessionTriggerExecution } from "#conversation/session/sessionTypes.ts";
 import { createInternalTriggerEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
+import { resolveStoredUserForSessionPrivateTarget } from "#identity/userIdentityResolution.ts";
 import type { ScheduledTaskDispatcherDeps } from "./scheduledTaskDispatcherDeps.ts";
 
 // Owns queue-or-run behavior for synthetic session triggers while depending on
@@ -35,7 +36,11 @@ export function createInternalTriggerDispatcher(
 
     const senderName = target.kind === "group"
       ? `群 ${target.groupId}`
-      : ((await userStore.getByUserId(target.userId))?.preferredAddress ?? target.userId);
+      : ((await resolveStoredUserForSessionPrivateTarget({
+          sessionId: input.sessionId,
+          userIdentityStore: deps.userIdentityStore,
+          userStore
+        }))?.preferredAddress ?? target.userId);
 
     const session = sessionManager.ensureSession({
       id: input.sessionId,

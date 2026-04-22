@@ -5,6 +5,11 @@ import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.
 import type { SessionState } from "#conversation/session/sessionTypes.ts";
 import type { GroupMembershipStore } from "./groupMembershipStore.ts";
 import type { NpcDirectory } from "./npcDirectory.ts";
+import type { UserIdentityStore } from "./userIdentityStore.ts";
+import {
+  resolveExternalUserIdForInternalUser,
+  resolveInternalUserIdForOneBotPrivateUser
+} from "./userIdentityResolution.ts";
 
 export interface AccessibleSessionView {
   id: string;
@@ -22,6 +27,7 @@ export class ConversationAccessService {
     private readonly oneBotClient: OneBotClient,
     private readonly npcDirectory: NpcDirectory,
     private readonly membershipStore: GroupMembershipStore,
+    private readonly userIdentityStore: Pick<UserIdentityStore, "findInternalUserId" | "findIdentityByInternalUserId">,
     private readonly logger: Logger
   ) {}
 
@@ -37,16 +43,25 @@ export class ConversationAccessService {
     }
 
     if (parsed.kind === "private") {
-      if (parsed.userId === requesterUserId) {
+      const targetInternalUserId = await resolveInternalUserIdForOneBotPrivateUser({
+        channelId: parsed.channelId,
+        externalUserId: parsed.userId,
+        userIdentityStore: this.userIdentityStore
+      });
+      if (targetInternalUserId === requesterUserId) {
         return this.toView(session, parsed.userId, "self_private");
       }
-      if (this.npcDirectory.isNpc(parsed.userId)) {
+      if (this.npcDirectory.isNpc(targetInternalUserId)) {
         return this.toView(session, parsed.userId, "npc_private");
       }
       return null;
     }
 
-    const isShared = await this.isSharedGroup(parsed.groupId, requesterUserId);
+    const requesterExternalUserId = await resolveExternalUserIdForInternalUser({
+      internalUserId: requesterUserId,
+      userIdentityStore: this.userIdentityStore
+    });
+    const isShared = await this.isSharedGroup(parsed.groupId, requesterExternalUserId ?? requesterUserId);
     if (!isShared) {
       return null;
     }

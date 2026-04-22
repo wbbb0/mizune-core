@@ -90,6 +90,7 @@ export function buildGenerationLifecycleDeps(
     logger: services.logger,
     sessionManager: services.sessionManager,
     userStore: services.userStore,
+    userIdentityStore: services.userIdentityStore,
     persistSession,
     getScheduler
   };

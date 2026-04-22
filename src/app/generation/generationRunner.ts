@@ -113,6 +113,7 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
       logger: deps.lifecycle.logger,
       sessionManager: deps.lifecycle.sessionManager,
       userStore: deps.lifecycle.userStore,
+      userIdentityStore: deps.lifecycle.userIdentityStore,
       getScheduler: deps.lifecycle.getScheduler
     }
   }, {

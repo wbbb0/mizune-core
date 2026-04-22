@@ -20,6 +20,18 @@ export function createIdentityStore(hasOwnerIdentity = true) {
   return {
     async hasOwnerIdentity() {
       return hasOwnerIdentity;
+    },
+    async findInternalUserId(input: { externalId: string }) {
+      return input.externalId;
+    },
+    async findIdentityByInternalUserId(internalUserId: string) {
+      return {
+        channelId: "qqbot",
+        scope: "private_user" as const,
+        externalId: internalUserId,
+        internalUserId,
+        createdAt: 1
+      };
     }
   };
 }
