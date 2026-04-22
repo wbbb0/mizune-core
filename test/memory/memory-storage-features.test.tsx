@@ -1,42 +1,146 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import pino from "pino";
 import { normalizeTitleForDedup } from "../../src/memory/similarity.ts";
-import { PersonaStore } from "../../src/persona/personaStore.ts";
+import { createEmptyPersona, type Persona } from "../../src/persona/personaSchema.ts";
+import { type GlobalProfileReadiness } from "../../src/identity/globalProfileReadinessSchema.ts";
+import { GlobalProfileReadinessStore } from "../../src/identity/globalProfileReadinessStore.ts";
 import { SetupStateStore } from "../../src/identity/setupStateStore.ts";
+import { RpProfileStore } from "../../src/modes/rpAssistant/profileStore.ts";
+import { createEmptyRpProfile, type RpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
+import { ScenarioProfileStore } from "../../src/modes/scenarioHost/profileStore.ts";
+import {
+  createEmptyScenarioProfile,
+  type ScenarioProfile
+} from "../../src/modes/scenarioHost/profileSchema.ts";
 import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from "../helpers/memory-test-support.tsx";
 
-  test("persona store resets unsupported legacy persona shape and re-enters setup", async () => {
-    const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-legacy-persona-test-"));
-    const config = createMemoryTestConfig();
-    const logger = pino({ level: "silent" });
+  test("persona completeness only depends on global persona fields", async () => {
+    const harness = await createMemoryHarness();
     try {
-      await writeFile(join(dataDir, "persona.json"), JSON.stringify({
-        virtualAppearance: "旧外貌",
-        personality: "旧性格",
-        hobbies: "旧爱好",
-        likesAndDislikes: "旧喜恶",
-        familyBackground: "旧背景",
-        speakingStyle: "旧口吻",
-        secrets: "旧秘密",
-        residence: "旧住处",
-        roleplayRequirements: "旧角色要求",
-        outputFormatRequirements: "旧输出要求",
-        memories: []
-      }, null, 2));
-      const personaStore = new PersonaStore(dataDir, config, logger);
-      const persona = await personaStore.get();
-      const setupStore = new SetupStateStore(dataDir, createIdentityStore(true), logger);
-      const setupState = await setupStore.init(persona);
-      assert.equal(persona.name, "");
-      assert.equal(persona.role, "");
-      assert.equal(persona.rules, "");
-      assert.equal(setupState.state, "needs_persona");
+      const personaStore = harness.personaStore;
+      const persona: Persona = {
+        ...createEmptyPersona(),
+        name: "小白",
+        coreIdentity: "跨任务对话代理",
+        personality: "冷静直接",
+        speechStyle: "简洁",
+        interests: "",
+        background: ""
+      };
+      assert.equal(personaStore.isComplete(persona), true);
+      assert.deepEqual(personaStore.describeMissingFields(persona), []);
+
+      const incomplete: Persona = {
+        ...createEmptyPersona(),
+        name: "小白",
+        coreIdentity: "",
+        personality: "冷静直接",
+        speechStyle: "",
+        interests: "阅读",
+        background: "本地部署"
+      };
+      assert.equal(personaStore.isComplete(incomplete), false);
+      assert.deepEqual(personaStore.describeMissingFields(incomplete), [
+        { key: "coreIdentity", label: "基础身份" },
+        { key: "speechStyle", label: "说话方式" }
+      ]);
     } finally {
-      await rm(dataDir, { recursive: true, force: true });
+      await harness.cleanup();
+    }
+  });
+
+  test("rpProfile completeness depends on premise identityBoundary and hardRules", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const rpStore = new RpProfileStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
+      const profile: RpProfile = {
+        ...createEmptyRpProfile(),
+        appearance: "成熟稳重",
+        premise: "与 owner 的长期角色扮演协作关系",
+        relationship: "",
+        identityBoundary: "只扮演设定角色，不越界到用户现实身份",
+        styleRules: "",
+        hardRules: "不输出越权内容"
+      };
+      assert.equal(rpStore.isComplete(profile), true);
+      assert.deepEqual(rpStore.describeMissingFields(profile), []);
+
+      const incomplete: RpProfile = {
+        ...createEmptyRpProfile(),
+        appearance: "",
+        premise: "长期陪伴",
+        relationship: "搭档",
+        identityBoundary: "",
+        styleRules: "口吻保持克制",
+        hardRules: ""
+      };
+      assert.equal(rpStore.isComplete(incomplete), false);
+      assert.deepEqual(rpStore.describeMissingFields(incomplete), [
+        { key: "identityBoundary", label: "身份边界" },
+        { key: "hardRules", label: "硬规则" }
+      ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("scenarioProfile completeness depends on theme hostStyle and worldBaseline", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const scenarioStore = new ScenarioProfileStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
+      const profile: ScenarioProfile = {
+        ...createEmptyScenarioProfile(),
+        theme: "赛博港口",
+        hostStyle: "旁白式主持",
+        worldBaseline: "默认世界有基础秩序与明确规则",
+        safetyOrTabooRules: "",
+        openingPattern: ""
+      } as ScenarioProfile;
+      assert.equal(scenarioStore.isComplete(profile), true);
+      assert.deepEqual(scenarioStore.describeMissingFields(profile), []);
+
+      const incomplete: ScenarioProfile = {
+        ...createEmptyScenarioProfile(),
+        theme: "",
+        hostStyle: "沉浸式主持",
+        worldBaseline: "",
+        safetyOrTabooRules: "避免暴力描写",
+        openingPattern: "开场白"
+      };
+      assert.equal(scenarioStore.isComplete(incomplete), false);
+      assert.deepEqual(scenarioStore.describeMissingFields(incomplete), [
+        { key: "theme", label: "主题" },
+        { key: "worldBaseline", label: "世界基线" }
+      ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("global profile readiness store can read and write persona rp and scenario readiness", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const readinessStore = new GlobalProfileReadinessStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
+      const initial = await readinessStore.get();
+      assert.equal(initial.persona, "uninitialized");
+      assert.equal(initial.rp, "uninitialized");
+      assert.equal(initial.scenario, "uninitialized");
+      assert.equal(typeof initial.updatedAt, "number");
+
+      const next: GlobalProfileReadiness = {
+        persona: "ready",
+        rp: "ready",
+        scenario: "ready",
+        updatedAt: 1234567890
+      };
+      await readinessStore.write(next);
+      assert.deepEqual(await readinessStore.get(), next);
+      assert.equal(await readinessStore.isPersonaReady(), true);
+      assert.equal(await readinessStore.isRpReady(), true);
+      assert.equal(await readinessStore.isScenarioReady(), true);
+    } finally {
+      await harness.cleanup();
     }
   });
 

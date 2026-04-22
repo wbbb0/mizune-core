@@ -6,8 +6,12 @@ import { FileSchemaStore } from "#data/fileSchemaStore.ts";
 import { rotateBackup } from "#utils/rotatingBackup.ts";
 import {
   createEmptyPersona,
+  describeMissingPersonaFields,
+  editablePersonaFieldNames,
+  isPersonaComplete,
   normalizeStoredPersona,
   personaSchema,
+  personaFieldLabels,
   type Persona
 } from "./personaSchema.ts";
 import { detectScopeConflict, type ScopeConflictWarning } from "#memory/memoryCategory.ts";
@@ -36,6 +40,21 @@ export class PersonaStore {
 
   async init(): Promise<void> {
     await this.get();
+  }
+
+  createEmpty(): Persona {
+    return createEmptyPersona();
+  }
+
+  isComplete(persona: Persona): boolean {
+    return isPersonaComplete(persona);
+  }
+
+  describeMissingFields(persona: Persona): Array<{ key: typeof editablePersonaFieldNames[number]; label: string }> {
+    return describeMissingPersonaFields(persona).map((key) => ({
+      key,
+      label: personaFieldLabels[key]
+    }));
   }
 
   async get(): Promise<Persona> {
@@ -136,7 +155,14 @@ export class PersonaStore {
 }
 
 function detectPersonaPatchConflict(patch: Partial<Persona>): ScopeConflictWarning | null {
-  const candidateFields: Array<keyof Persona> = ["role", "speechStyle", "rules"];
+  const candidateFields: Array<keyof Persona> = [
+    "name",
+    "coreIdentity",
+    "personality",
+    "interests",
+    "background",
+    "speechStyle"
+  ];
   for (const field of candidateFields) {
     const value = patch[field];
     if (!value?.trim()) {
