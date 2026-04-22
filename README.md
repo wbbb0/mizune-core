@@ -2,7 +2,7 @@
 
 一个基于 Node.js + TypeScript 的长期运行聊天代理服务。
 
-它可以接入 OneBot 作为消息入口，也可以完全不接 OneBot，只通过内置 WebUI 创建会话、发送消息和管理数据。项目内包含会话编排、历史压缩、reply gate、persona、用户资料、记忆持久化、工具调用、内部 API 和 WebUI。
+它可以接入 OneBot 作为消息入口，也可以完全不接 OneBot，只通过内置 WebUI 创建会话、发送消息和管理数据。项目内包含会话编排、历史压缩、reply gate、全局 persona、RP / Scenario 模式资料、用户资料、记忆持久化、工具调用、内部 API 和 WebUI。
 
 适合的使用方式：
 
@@ -15,7 +15,7 @@
 - OneBot 事件接入与消息发送
 - Web 会话与 OneBot 会话并存
 - 会话级模式切换：默认 `rp_assistant`，可扩展更多模式
-- persona、users、memory、本地持久化
+- persona、RP / Scenario 模式资料、users、memory、本地持久化
 - LLM 路由与工具调用
 - shell、workspace、搜索、浏览器、ComfyUI 等可选能力
 - 内部 API 与 WebUI 管理界面
@@ -468,6 +468,10 @@ config/instances/acc1.yml
 
 - `sessions/`
 - `persona.json`
+- `rp-profile.json`
+- `scenario-profile.json`
+- `global-profile-readiness.json`
+- `setup-state.json`
 - `users.json`
 - `global-rules.json`
 - `toolset-rules.json`
