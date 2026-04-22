@@ -26,8 +26,80 @@ import { resolveSessionModeSetupContext } from "./generationSetupContext.ts";
 import { createEmptyPersona } from "#persona/personaSchema.ts";
 import { resolveSessionModeSetupOperation } from "#modes/types.ts";
 import type { ProfileToolScope } from "#llm/tools/profileToolScope.ts";
+import type { SessionModeDefinition, SessionModeSetupOperation } from "#modes/types.ts";
 
 const EMPTY_ASSISTANT_PERSONA = createEmptyPersona();
+
+type ActiveDraftOperation = {
+  kind: "persona_setup" | "mode_setup";
+  phase: "setup" | "config";
+  target: "persona" | "rp" | "scenario";
+  promptMode: SessionModeSetupOperation["promptMode"];
+  setupToolsetOverrides?: SessionModeSetupOperation["setupToolsetOverrides"];
+  completionSignal?: SessionModeSetupOperation["completionSignal"];
+  onComplete?: SessionModeSetupOperation["onComplete"];
+};
+
+function toActiveDraftOperation(input: {
+  operation: SessionModeSetupOperation;
+  phase: "setup" | "config";
+  target: ActiveDraftOperation["target"];
+}): ActiveDraftOperation {
+  return {
+    kind: input.operation.kind,
+    phase: input.phase,
+    target: input.target,
+    promptMode: input.operation.promptMode,
+    setupToolsetOverrides: input.operation.setupToolsetOverrides,
+    ...(input.phase === "setup"
+      ? {
+          completionSignal: input.operation.completionSignal,
+          onComplete: input.operation.onComplete
+        }
+      : {})
+  };
+}
+
+function resolveActiveDraftOperation(input: {
+  mode: SessionModeDefinition;
+  sessionModeId: string;
+  operationMode: { kind: string; modeId?: string };
+  readinessOperation: SessionModeSetupOperation | null;
+}): ActiveDraftOperation | null {
+  const personaSetupOperation = resolveSessionModeSetupOperation(input.mode.setupPhase, "persona_setup");
+  const modeSetupOperation = resolveSessionModeSetupOperation(input.mode.setupPhase, "mode_setup");
+  const modeTarget = input.sessionModeId === "scenario_host" ? "scenario" : "rp";
+
+  switch (input.operationMode.kind) {
+    case "persona_setup":
+      return personaSetupOperation
+        ? toActiveDraftOperation({ operation: personaSetupOperation, phase: "setup", target: "persona" })
+        : null;
+    case "persona_config":
+      return personaSetupOperation
+        ? toActiveDraftOperation({ operation: personaSetupOperation, phase: "config", target: "persona" })
+        : null;
+    case "mode_setup":
+      return modeSetupOperation
+        ? toActiveDraftOperation({ operation: modeSetupOperation, phase: "setup", target: modeTarget })
+        : null;
+    case "mode_config":
+      return modeSetupOperation
+        ? toActiveDraftOperation({ operation: modeSetupOperation, phase: "config", target: modeTarget })
+        : null;
+    default:
+      break;
+  }
+
+  if (!input.readinessOperation) {
+    return null;
+  }
+  return toActiveDraftOperation({
+    operation: input.readinessOperation,
+    phase: "setup",
+    target: input.readinessOperation.kind === "persona_setup" ? "persona" : modeTarget
+  });
+}
 
 function resolveProfileToolScope(input: {
   operationMode: { kind: string; modeId?: string };
@@ -197,15 +269,21 @@ export function createGenerationSessionOrchestrator(
         { chatType: last.chatType, relationship }
       );
       const setupOperationKind = mode.setupPhase?.resolveOperationModeKind(setupCtx) ?? null;
-      const activeSetupOperation = resolveSessionModeSetupOperation(mode.setupPhase, setupOperationKind);
-      const setupMode = activeSetupOperation != null;
+      const readinessSetupOperation = resolveSessionModeSetupOperation(mode.setupPhase, setupOperationKind);
+      const activeDraftOperation = resolveActiveDraftOperation({
+        mode,
+        sessionModeId,
+        operationMode: refreshedSession.operationMode,
+        readinessOperation: readinessSetupOperation
+      });
+      const setupMode = activeDraftOperation != null;
       const profileToolScope = resolveProfileToolScope({
         operationMode: refreshedSession.operationMode,
-        activeSetupOperationKind: activeSetupOperation?.kind ?? null,
+        activeSetupOperationKind: activeDraftOperation?.kind ?? null,
         modeId: sessionModeId
       });
-      const setupPhaseSelection = activeSetupOperation?.setupToolsetOverrides
-        ? { setupPhase: { setupToolsetOverrides: activeSetupOperation.setupToolsetOverrides } }
+      const setupPhaseSelection = activeDraftOperation?.setupToolsetOverrides
+        ? { setupPhase: { setupToolsetOverrides: activeDraftOperation.setupToolsetOverrides } }
         : {};
       let transcriptStore = createSessionTranscriptStore(refreshedSession, config);
       let visibleHistory = transcriptStore.projectRuntimeHistory();
@@ -339,14 +417,20 @@ export function createGenerationSessionOrchestrator(
           ? [buildDebugMarkerSystemMessage(debugMarkers)].filter((item): item is string => Boolean(item))
           : [])
       ];
-      const isPersonaSetupMode = activeSetupOperation?.promptMode === "persona_setup";
-      const isChatWithSetupInjection = activeSetupOperation?.promptMode === "chat_with_setup_injection";
+      const isPersonaSetupMode = activeDraftOperation?.promptMode === "persona_setup";
+      const draftMode = activeDraftOperation && activeDraftOperation.target !== "persona"
+        ? {
+            target: activeDraftOperation.target,
+            phase: activeDraftOperation.phase
+          }
+        : undefined;
 
       const promptBuildResult = isPersonaSetupMode
         ? await services.promptBuilder.buildSetupPromptMessages({
             sessionId,
             interactionMode,
             persona,
+            phase: activeDraftOperation?.phase ?? "setup",
             historyForPrompt: historyForPromptMessages,
             recentToolEvents,
             debugMarkers,
@@ -380,7 +464,7 @@ export function createGenerationSessionOrchestrator(
             lastLlmUsage: refreshedSession.lastLlmUsage,
             abortSignal: abortController.signal,
             batchMessages: toPromptBatchMessages(messages),
-            ...(isChatWithSetupInjection ? { isInSetup: true } : {})
+            ...(draftMode ? { draftMode } : {})
           });
 
       await services.runGeneration({
@@ -411,8 +495,12 @@ export function createGenerationSessionOrchestrator(
           ? {
               availableToolNames: plannerToolsets.flatMap((t) => t.toolNames),
               setupMode: true,
-              setupCompletionSignal: activeSetupOperation.completionSignal,
-              setupOnComplete: activeSetupOperation.onComplete
+              ...(activeDraftOperation?.phase === "setup"
+                ? {
+                    setupCompletionSignal: activeDraftOperation.completionSignal,
+                    setupOnComplete: activeDraftOperation.onComplete
+                  }
+                : {})
             }
           : {
               plannedToolsetIds,

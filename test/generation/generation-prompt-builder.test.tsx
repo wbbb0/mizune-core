@@ -89,6 +89,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       sessionId: "qqbot:p:10001",
       interactionMode: "normal",
       persona: { prompt: "" } as any,
+      phase: "setup",
       historyForPrompt: [],
       recentToolEvents: [],
       internalTranscript: [],
@@ -522,7 +523,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.equal((suppressionEvent?.payload.suppressions as Array<{ category: string }>)[0]?.category, "user_memories");
   });
 
-  test("scenario_host setup prompt uses host_setup_mode section when isInSetup=true", async () => {
+  test("scenario_host profile setup prompt uses scenario profile setup section", async () => {
     const builder = createGenerationPromptBuilder({
       config: createTestAppConfig({
         llm: {
@@ -646,7 +647,10 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
         isAtMentioned: false,
         receivedAt: Date.now()
       }],
-      isInSetup: true
+      draftMode: {
+        target: "scenario",
+        phase: "setup"
+      }
     });
 
     const systemContent = result.promptMessages
@@ -654,7 +658,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       .map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)))
       .join("\n");
 
-    assert.ok(systemContent.includes("host_setup_mode"), `Expected host_setup_mode section, got: ${systemContent.slice(0, 400)}`);
+    assert.ok(systemContent.includes("scenario_profile_setup_mode"), `Expected scenario_profile_setup_mode section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(!systemContent.includes("host_identity"), `Expected no host_identity section in setup mode, got: ${systemContent.slice(0, 400)}`);
     assert.ok(!systemContent.includes("玩家动作"), `Expected no runtime scenario input protocol in setup mode, got: ${systemContent.slice(0, 400)}`);
     assert.ok(!systemContent.includes("不要在段落结尾反问玩家下一步"), `Expected no runtime pacing rule in setup mode, got: ${systemContent.slice(0, 400)}`);
@@ -791,4 +795,126 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.match(system, /单轮只做小步推进/);
     assert.doesNotMatch(system, /你是具有角色扮演属性的聊天角色/);
     assert.doesNotMatch(system, /global_rules/);
+  });
+
+  test("scenario_host profile config prompt uses config-specific profile guidance", async () => {
+    const builder = createGenerationPromptBuilder({
+      config: createTestAppConfig(),
+      oneBotClient: {} as any,
+      audioStore: {} as any,
+      audioTranscriber: {
+        async transcribeMany() {
+          return [];
+        }
+      } as any,
+      npcDirectory: {
+        listProfiles() {
+          return [];
+        }
+      } as any,
+      browserService: {
+        async listPages() {
+          return { pages: [] };
+        }
+      } as any,
+      localFileService: {} as any,
+      chatFileStore: {} as any,
+      mediaVisionService: {
+        async prepareFilesForModel() {
+          return [];
+        }
+      } as any,
+      mediaCaptionService: {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      globalRuleStore: {
+        async getAll() {
+          throw new Error("scenario config prompt should not load global rules");
+        }
+      } as any,
+      toolsetRuleStore: {
+        async getAll() {
+          throw new Error("scenario config prompt should not load toolset rules");
+        }
+      } as any,
+      scenarioHostStateStore: {
+        async ensure() {
+          throw new Error("scenario config prompt should not load runtime scenario state");
+        }
+      } as any,
+      shellRuntime: {
+        async listSessionResources() {
+          return [];
+        }
+      } as any,
+      setupStore: {
+        describeMissingFields() {
+          return [];
+        }
+      } as any
+    });
+
+    const result = await builder.buildChatPromptMessages({
+      sessionId: "qqbot:p:u1",
+      modeId: "scenario_host",
+      interactionMode: "normal",
+      mainModelRef: ["main"],
+      visibleToolNames: [],
+      activeToolsets: [],
+      lateSystemMessages: [],
+      replayMessages: [],
+      persona: {
+        name: "主持者",
+        coreIdentity: "",
+        personality: "",
+        speechStyle: "",
+        interests: "",
+        background: ""
+      },
+      relationship: "owner",
+      participantProfiles: [],
+      currentUser: null,
+      historySummary: null,
+      historyForPrompt: [],
+      recentToolEvents: [],
+      debugMarkers: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      abortSignal: new AbortController().signal,
+      batchMessages: [{
+        userId: "u1",
+        senderName: "Alice",
+        text: "把主持风格改紧凑一点",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: Date.now()
+      }],
+      draftMode: {
+        target: "scenario",
+        phase: "config"
+      }
+    });
+
+    const systemContent = result.promptMessages
+      .filter((m) => m.role === "system")
+      .map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)))
+      .join("\n");
+
+    assert.ok(systemContent.includes("scenario_profile_config_mode"), `Expected scenario_profile_config_mode section, got: ${systemContent.slice(0, 400)}`);
+    assert.match(systemContent, /当前处于 Scenario 全局资料配置阶段/);
+    assert.match(systemContent, /只修改明确要求的部分/);
+    assert.match(systemContent, /\.cancel/);
+    assert.ok(!systemContent.includes("host_identity"), `Expected no runtime host identity section, got: ${systemContent.slice(0, 400)}`);
+    assert.ok(!systemContent.includes("scenario_state"), `Expected no runtime scenario state section, got: ${systemContent.slice(0, 400)}`);
   });

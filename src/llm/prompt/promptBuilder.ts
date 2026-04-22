@@ -57,6 +57,7 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
     liveResources: input.liveResources,
     ...(input.toolsetRules ? { toolsetRules: input.toolsetRules } : {}),
     ...(input.scenarioStateLines ? { scenarioStateLines: input.scenarioStateLines } : {}),
+    ...(input.draftMode ? { draftMode: input.draftMode } : {}),
     ...(input.isInSetup ? { isInSetup: input.isInSetup } : {})
   }).join("\n");
 
@@ -179,6 +180,7 @@ export function buildSetupPrompt(input: SetupPromptInput): LlmMessage[] {
     sessionId: input.sessionId,
     ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
     persona: input.persona,
+    phase: input.phase,
     missingFields: input.missingFields
   }).join("\n");
 

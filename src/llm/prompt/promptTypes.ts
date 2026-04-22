@@ -154,6 +154,10 @@ export interface PromptInput {
   liveResources?: PromptLiveResource[] | undefined;
   toolsetRules?: ToolsetRuleEntry[] | undefined;
   scenarioStateLines?: string[] | undefined;
+  draftMode?: {
+    target: "rp" | "scenario";
+    phase: "setup" | "config";
+  } | undefined;
   isInSetup?: boolean | undefined;
   batchMessages: PromptBatchMessage[];
 }
@@ -238,6 +242,7 @@ export interface SetupPromptInput {
   lateSystemMessages?: string[] | undefined;
   replayMessages?: PromptInput["replayMessages"];
   persona: Persona;
+  phase: "setup" | "config";
   missingFields: EditablePersonaFieldName[];
   recentMessages: PromptInput["recentMessages"];
   recentToolEvents?: PromptInput["recentToolEvents"];

@@ -53,16 +53,31 @@ export function buildSetupSystemLines(input: {
   sessionId: string;
   interactionMode?: PromptInteractionMode;
   persona: Persona;
+  phase?: "setup" | "config";
   missingFields: EditablePersonaFieldName[];
 }): string[] {
+  const phase = input.phase ?? "setup";
   return [
-    renderPromptSection("setup_mode", buildSetupModeLines(input.persona, input.missingFields)),
+    renderPromptSection(
+      phase === "config" ? "persona_config_mode" : "persona_setup_mode",
+      buildPersonaDraftModeLines(input.persona, input.missingFields, phase)
+    ),
     renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
     renderPromptSection("persona_snapshot", buildSetupSnapshotLines(input.persona, input.missingFields))
   ].filter((item): item is string => Boolean(item));
 }
 
-function buildSetupModeLines(persona: Persona, missingFields: EditablePersonaFieldName[]): string[] {
+function buildPersonaDraftModeLines(
+  persona: Persona,
+  missingFields: EditablePersonaFieldName[],
+  phase: "setup" | "config"
+): string[] {
+  return phase === "config"
+    ? buildPersonaConfigModeLines(persona, missingFields)
+    : buildPersonaSetupModeLines(persona, missingFields);
+}
+
+function buildPersonaSetupModeLines(persona: Persona, missingFields: EditablePersonaFieldName[]): string[] {
   const missingSet = new Set(missingFields);
   const totalMissing = missingFields.length;
   const coreComplete = !missingSet.has("name") && !missingSet.has("coreIdentity");
@@ -101,6 +116,29 @@ function buildSetupModeLines(persona: Persona, missingFields: EditablePersonaFie
   ];
 }
 
+function buildPersonaConfigModeLines(persona: Persona, missingFields: EditablePersonaFieldName[]): string[] {
+  const missingSet = new Set(missingFields);
+  const filledLabels = editablePersonaFieldNames
+    .filter((field) => !missingSet.has(field) && persona[field]?.trim())
+    .map((field) => personaFieldLabels[field]);
+  const missingLabels = missingFields.map((field) => personaFieldLabels[field]);
+
+  return [
+    "当前处于 persona 配置阶段，你正在编辑一份基于已保存 persona 复制出的临时草稿。",
+    filledLabels.length > 0
+      ? `当前已有内容主要包括：${filledLabels.join("、")}。`
+      : "当前草稿仍接近空白，可按 owner 的要求逐步补齐。",
+    missingLabels.length > 0
+      ? `仍可补充的字段有：${missingLabels.join("、")}。`
+      : "当前字段已完整，优先按 owner 的修改要求做局部调整。",
+    "先理解 owner 具体想改什么，只修改明确要求的字段；不要默认重问全部设定，也不要擅自重写未提及内容。",
+    "如需核对当前草稿，可先读取草稿并概括当前状态；完成本轮修改后调用 send_setup_draft 发送最新草稿。",
+    "草稿发出后告知 owner 满意则输入 .confirm 保存，想放弃则输入 .cancel；不要在回复正文中代替 owner 输出这些命令。",
+    "只写入 owner 明确提供的内容，不要编造设定；不要调用无关工具，不要修改用户资料或关系。",
+    "回复保持短句纯文本，不用 Markdown 标题或列表。"
+  ];
+}
+
 function buildSetupSnapshotLines(persona: Persona, missingFields: EditablePersonaFieldName[]): string[] {
   const missingSet = new Set(missingFields);
 
@@ -135,8 +173,48 @@ export function buildBaseSystemLines(input: {
   liveResources?: PromptInput["liveResources"] | undefined;
   toolsetRules?: PromptInput["toolsetRules"] | undefined;
   scenarioStateLines?: string[] | undefined;
+  draftMode?: {
+    target: "rp" | "scenario";
+    phase: "setup" | "config";
+  } | undefined;
   isInSetup?: boolean | undefined;
 }): string[] {
+  const draftMode = input.draftMode ?? (
+    input.isInSetup
+      ? { target: "scenario" as const, phase: "setup" as const }
+      : undefined
+  );
+
+  if (draftMode?.target === "rp") {
+    return [
+      renderPromptSection(
+        draftMode.phase === "config" ? "rp_profile_config_mode" : "rp_profile_setup_mode",
+        buildRpProfileDraftModeLines(draftMode.phase)
+      ),
+      renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
+      renderPromptSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
+      renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
+        activeToolsets: input.activeToolsets,
+        visibleToolNames: input.visibleToolNames
+      }))
+    ].filter((item): item is string => Boolean(item));
+  }
+
+  if (draftMode?.target === "scenario") {
+    return [
+      renderPromptSection(
+        draftMode.phase === "config" ? "scenario_profile_config_mode" : "scenario_profile_setup_mode",
+        buildScenarioProfileDraftModeLines(draftMode.phase)
+      ),
+      renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
+      renderPromptSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
+      renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
+        activeToolsets: input.activeToolsets,
+        visibleToolNames: input.visibleToolNames
+      }))
+    ].filter((item): item is string => Boolean(item));
+  }
+
   if (input.modeId === "assistant") {
     return [
       renderPromptSection("assistant_identity", buildAssistantIdentityLines()),
@@ -156,18 +234,6 @@ export function buildBaseSystemLines(input: {
   }
 
   if (input.modeId === "scenario_host") {
-    if (input.isInSetup) {
-      return [
-        renderPromptSection("host_setup_mode", buildScenarioHostSetupModeLines()),
-        renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
-        renderPromptSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
-        renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
-          activeToolsets: input.activeToolsets,
-          visibleToolNames: input.visibleToolNames
-        })),
-        renderPromptSection("participant_context", buildParticipantContextLines(input.sessionMode, input.participantProfiles))
-      ].filter((item): item is string => Boolean(item));
-    }
     return [
       renderPromptSection("host_identity", buildScenarioHostIdentityLines()),
       renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
@@ -255,6 +321,50 @@ function buildScenarioHostRuleLines(): string[] {
     "不要在段落结尾反问玩家下一步要做什么，也不要默认列出可选行动让玩家选择。",
     "不要把内部状态字段原样罗列给玩家，除非玩家明确要求查看总结或清单。",
     "当前版本只服务单主玩家私聊场景。"
+  ];
+}
+
+function buildRpProfileDraftModeLines(phase: "setup" | "config"): string[] {
+  if (phase === "config") {
+    return [
+      "当前处于 RP 全局资料配置阶段，你正在编辑一份基于已保存 RP 资料复制出的临时草稿。",
+      "先理解 owner 想改哪些 RP 字段，只修改明确要求的部分；不要默认重置未提及内容，也不要要求从头重填。",
+      "RP 资料只服务 RP 模式；不要把这些要求写成 persona、用户资料或其他长期记忆。",
+      "如需核对现状，可先读取当前 RP 草稿；完成本轮修改后调用 send_setup_draft 发送最新草稿。",
+      "草稿发出后告知 owner 满意则输入 .confirm 保存，想放弃则输入 .cancel；不要在回复正文中代替 owner 输出这些命令。",
+      "回复保持短句纯文本，不用 Markdown 标题或列表。"
+    ];
+  }
+  return [
+    "当前处于 RP 全局资料初始化阶段，需要从空白草稿开始逐步补齐 RP 专用设定。",
+    "RP 资料只服务 RP 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
+    "优先补齐核心字段：前提、身份边界、硬规则；关系、风格规则、外貌等信息按 owner 提供的内容逐步补充。",
+    "owner 每提供一段明确设定，就立即用工具写入草稿；不要等所有信息都收集完再统一写入。",
+    "收集到核心信息后，调用 send_setup_draft 发送当前 RP 草稿供 owner 核对。",
+    "草稿发出后告知 owner 满意则输入 .confirm 完成初始化，如有修改继续告诉你；不要在回复正文中代替 owner 输出这些命令。",
+    "回复保持短句纯文本，不用 Markdown 标题或列表。"
+  ];
+}
+
+function buildScenarioProfileDraftModeLines(phase: "setup" | "config"): string[] {
+  if (phase === "config") {
+    return [
+      "当前处于 Scenario 全局资料配置阶段，你正在编辑一份基于已保存 Scenario 资料复制出的临时草稿。",
+      "先理解 owner 想改哪些字段，只修改明确要求的部分；不要默认重置未提及内容，也不要要求从头重填。",
+      "Scenario 资料只服务 scenario_host 模式；不要把这些要求写成 persona、用户资料或其他长期记忆。",
+      "如需核对现状，可先读取当前 Scenario 草稿；完成本轮修改后调用 send_setup_draft 发送最新草稿。",
+      "草稿发出后告知 owner 满意则输入 .confirm 保存，想放弃则输入 .cancel；不要在回复正文中代替 owner 输出这些命令。",
+      "回复保持短句纯文本，不用 Markdown 标题或列表。"
+    ];
+  }
+  return [
+    "当前处于 Scenario 全局资料初始化阶段，需要从空白草稿开始逐步补齐主持所需的长期资料。",
+    "Scenario 资料只服务 scenario_host 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
+    "优先补齐核心字段：主题、主持风格、世界基线；安全/禁忌规则和开场模式按 owner 提供的内容继续补充。",
+    "owner 每提供一段明确设定，就立即用工具写入草稿；不要等所有信息都收集完再统一写入。",
+    "收集到核心信息后，调用 send_setup_draft 发送当前 Scenario 草稿供 owner 核对。",
+    "草稿发出后告知 owner 满意则输入 .confirm 完成初始化，如有修改继续告诉你；不要在回复正文中代替 owner 输出这些命令。",
+    "回复保持短句纯文本，不用 Markdown 标题或列表。"
   ];
 }
 

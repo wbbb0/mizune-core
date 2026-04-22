@@ -27,6 +27,7 @@ import type { UserMemoryEntry } from "#memory/userMemoryEntry.ts";
 import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { preparePromptMemoryContext } from "#llm/prompts/chat-system.prompt.ts";
 import { createEmptyPersona } from "#persona/personaSchema.ts";
+import type { PromptInput } from "#llm/prompt/promptTypes.ts";
 
 type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
@@ -118,6 +119,7 @@ export interface GenerationPromptBuilder {
     lastLlmUsage: SessionUsageSnapshot | null;
     batchMessages: GenerationPromptBatchMessage[];
     abortSignal?: AbortSignal;
+    draftMode?: PromptInput["draftMode"];
     isInSetup?: boolean;
   }) => Promise<GenerationPromptBuildResult>;
   buildScheduledPromptMessages: (input: {
@@ -148,6 +150,7 @@ export interface GenerationPromptBuilder {
     lateSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
+    phase: "setup" | "config";
     historyForPrompt: GenerationPromptHistoryMessage[];
     recentToolEvents: GenerationPromptToolEvent[];
     debugMarkers?: SessionDebugMarker[];
@@ -509,10 +512,17 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     lastLlmUsage: SessionUsageSnapshot | null;
     batchMessages: GenerationPromptBatchMessage[];
     abortSignal?: AbortSignal;
+    draftMode?: PromptInput["draftMode"];
     isInSetup?: boolean;
   }) => {
     const scenarioHostMode = isScenarioHostMode(input.modeId);
     const assistantMode = isAssistantMode(input.modeId);
+    const draftMode = input.draftMode ?? (
+      input.isInSetup
+        ? { target: "scenario" as const, phase: "setup" as const }
+        : null
+    );
+    const draftScopedMode = draftMode != null;
     const mainProfile = getPrimaryModelProfile(deps.config, input.mainModelRef);
     const mediaContext = await preparePromptMediaContext(deps, {
       historyForPrompt: input.historyForPrompt,
@@ -526,15 +536,15 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       ...input.participantProfiles.map((item) => item.userId),
       ...input.batchMessages.map((item) => item.userId)
     ]);
-    const globalRules = (scenarioHostMode || assistantMode)
+    const globalRules = (scenarioHostMode || assistantMode || draftScopedMode)
       ? []
       : await deps.globalRuleStore.getAll();
-    const toolsetRules = (scenarioHostMode || assistantMode)
+    const toolsetRules = (scenarioHostMode || assistantMode || draftScopedMode)
       ? []
       : resolveToolsetRules(await deps.toolsetRuleStore.getAll(), {
           activeToolsets: input.activeToolsets
         });
-    const scenarioState = scenarioHostMode
+    const scenarioState = (scenarioHostMode && !draftScopedMode)
       ? await deps.scenarioHostStateStore.ensure(input.sessionId, {
           playerUserId: input.currentUser?.userId ?? input.batchMessages[input.batchMessages.length - 1]?.userId ?? "unknown_user",
           playerDisplayName: input.currentUser?.preferredAddress
@@ -602,7 +612,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       liveResources,
       toolsetRules,
       ...(scenarioState ? { scenarioStateLines: buildScenarioStateLines(scenarioState) } : {}),
-      ...(input.isInSetup ? { isInSetup: input.isInSetup } : {}),
+      ...(draftMode ? { draftMode } : {}),
       recentMessages: mediaContext.historyForPrompt,
       batchMessages: preparedBatchMessages
     });
@@ -765,6 +775,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     lateSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
+    phase: "setup" | "config";
     historyForPrompt: GenerationPromptHistoryMessage[];
     recentToolEvents: GenerationPromptToolEvent[];
     debugMarkers?: SessionDebugMarker[];
@@ -802,6 +813,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       replayMessages: input.replayMessages,
       includeBatchMediaCaptions: !mainProfile?.supportsVision,
       persona: input.persona,
+      phase: input.phase,
       missingFields: deps.setupStore.describeMissingFields(input.persona).map((item) => item.key),
       recentToolEvents: input.recentToolEvents,
       debugMarkers: input.debugMarkers,

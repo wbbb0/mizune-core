@@ -356,6 +356,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       const prompt = buildSetupPrompt({
         sessionId: "qqbot:p:owner",
         persona,
+        phase: "setup",
         missingFields: ["name", "coreIdentity", "personality"],
         recentMessages: [],
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "我叫小满，是个图书管理员", timestampMs: Date.now() })]
@@ -368,6 +369,35 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       assert.doesNotMatch(system, /不要把对话带回普通聊天或闲聊/);
       assert.doesNotMatch(system, /当前时间（/);
       assert.doesNotMatch(system, /当前会话 ID：/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("config prompt focuses on editing the current persona draft", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.patch({
+        name: "小满",
+        coreIdentity: "图书管理员",
+        personality: "冷静细致",
+        speechStyle: "简短直接"
+      });
+      const prompt = buildSetupPrompt({
+        sessionId: "qqbot:p:owner",
+        persona,
+        phase: "config",
+        missingFields: [],
+        recentMessages: [],
+        batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "把说话方式改柔和一点", timestampMs: Date.now() })]
+      });
+      const system = String(prompt[0]?.content ?? "");
+      assert.match(system, /persona_config_mode/);
+      assert.match(system, /当前处于 persona 配置阶段/);
+      assert.match(system, /只修改明确要求的字段/);
+      assert.match(system, /\.cancel/);
+      assert.doesNotMatch(system, /当前实例处于初始化阶段/);
+      assert.doesNotMatch(system, /然后从名字和基础身份开始询问/);
     } finally {
       await harness.cleanup();
     }
