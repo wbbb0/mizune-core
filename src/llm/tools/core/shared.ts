@@ -19,6 +19,7 @@ import type { MediaCaptionService } from "#services/workspace/mediaCaptionServic
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
+import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import type { ConversationAccessService } from "#identity/conversationAccessService.ts";
 import type { NpcDirectory } from "#identity/npcDirectory.ts";
 import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
@@ -92,6 +93,7 @@ export interface BuiltinToolStoreDeps {
   toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
   setupStore: SetupStateStore;
+  globalProfileReadinessStore: GlobalProfileReadinessStore;
   conversationAccess: ConversationAccessService;
   npcDirectory: NpcDirectory;
 }

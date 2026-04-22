@@ -102,6 +102,14 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       {
         relationship: "owner",
         personaStore: {
+          isComplete(persona: Record<string, string>) {
+            return Boolean(
+              persona.name
+              && persona.coreIdentity
+              && persona.personality
+              && persona.speechStyle
+            );
+          },
           async get() {
             return {
               name: "",
@@ -127,6 +135,11 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
         setupStore: {
           async advanceAfterPersonaUpdate(persona: unknown) {
             return persona;
+          }
+        } as never,
+        globalProfileReadinessStore: {
+          async setPersonaReadiness() {
+            return null;
           }
         } as never,
         lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
@@ -166,6 +179,105 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     });
     assert.match(String(result), /"persona":/);
     assert.doesNotMatch(String(result), /role|appearance|rules/);
+  });
+
+  test("patch_persona syncs global persona readiness after successful write", async () => {
+    const readinessUpdates: Array<"uninitialized" | "ready"> = [];
+
+    await profileToolHandlers.patch_persona!(
+      { id: "tool_persona_patch_ready_1", type: "function", function: { name: "patch_persona", arguments: "{}" } },
+      {
+        personaPatch: {
+          name: "小满",
+          coreIdentity: "全局对话代理",
+          personality: "克制",
+          speechStyle: "简洁"
+        }
+      },
+      {
+        relationship: "owner",
+        personaStore: {
+          isComplete(persona: Record<string, string>) {
+            return Boolean(
+              persona.name
+              && persona.coreIdentity
+              && persona.personality
+              && persona.speechStyle
+            );
+          },
+          async patch(patch: Record<string, string>) {
+            return {
+              name: patch.name ?? "",
+              coreIdentity: patch.coreIdentity ?? "",
+              personality: patch.personality ?? "",
+              interests: patch.interests ?? "",
+              background: patch.background ?? "",
+              speechStyle: patch.speechStyle ?? ""
+            };
+          }
+        } as never,
+        globalProfileReadinessStore: {
+          async setPersonaReadiness(status: "uninitialized" | "ready") {
+            readinessUpdates.push(status);
+            return null;
+          }
+        } as never,
+        setupStore: {
+          async advanceAfterPersonaUpdate(persona: unknown) {
+            return persona;
+          }
+        } as never
+      } as never
+    );
+
+    assert.deepEqual(readinessUpdates, ["ready"]);
+  });
+
+  test("clear_persona_field syncs global persona readiness after successful write", async () => {
+    const readinessUpdates: Array<"uninitialized" | "ready"> = [];
+
+    await profileToolHandlers.clear_persona_field!(
+      { id: "tool_persona_clear_ready_1", type: "function", function: { name: "clear_persona_field", arguments: "{}" } },
+      {
+        personaField: "speechStyle"
+      },
+      {
+        relationship: "owner",
+        personaStore: {
+          isComplete(persona: Record<string, string>) {
+            return Boolean(
+              persona.name
+              && persona.coreIdentity
+              && persona.personality
+              && persona.speechStyle
+            );
+          },
+          async patch(patch: Record<string, string>) {
+            return {
+              name: "小满",
+              coreIdentity: "全局对话代理",
+              personality: "克制",
+              interests: "",
+              background: "",
+              speechStyle: patch.speechStyle ?? "简洁"
+            };
+          }
+        } as never,
+        globalProfileReadinessStore: {
+          async setPersonaReadiness(status: "uninitialized" | "ready") {
+            readinessUpdates.push(status);
+            return null;
+          }
+        } as never,
+        setupStore: {
+          async advanceAfterPersonaUpdate(persona: unknown) {
+            return persona;
+          }
+        } as never
+      } as never
+    );
+
+    assert.deepEqual(readinessUpdates, ["uninitialized"]);
   });
 
   test("prompt builder injects explicit current user profile card", async () => {

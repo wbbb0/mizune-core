@@ -491,6 +491,15 @@ function parsePersonaPatch(args: unknown): Record<string, string> {
   );
 }
 
+async function syncPersonaReadiness(
+  context: Parameters<ToolHandler>[2],
+  persona: unknown
+): Promise<void> {
+  await context.globalProfileReadinessStore.setPersonaReadiness(
+    context.personaStore.isComplete(persona as never) ? "ready" : "uninitialized"
+  );
+}
+
 export const profileToolHandlers: Record<string, ToolHandler> = {
   async get_persona(_toolCall, _args, context) {
     return JSON.stringify(await context.personaStore.get());
@@ -512,6 +521,7 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
       ? await personaStore.patchWithDiagnostics(personaPatch)
       : { persona: await personaStore.patch(personaPatch), warning: null };
     await context.setupStore.advanceAfterPersonaUpdate(result.persona as any);
+    await syncPersonaReadiness(context, result.persona);
     return serializeWriteResult({
       targetCategory: "persona",
       action: "updated_existing",
@@ -537,6 +547,7 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
       ? await personaStore.patchWithDiagnostics({ [personaField]: "" })
       : { persona: await personaStore.patch({ [personaField]: "" }), warning: null };
     await context.setupStore.advanceAfterPersonaUpdate(result.persona as any);
+    await syncPersonaReadiness(context, result.persona);
     return serializeWriteResult({
       targetCategory: "persona",
       action: "updated_existing",

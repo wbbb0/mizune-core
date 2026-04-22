@@ -145,6 +145,7 @@ export function createGenerationExecutor(
     toolsetRuleStore,
     scenarioHostStateStore,
     setupStore,
+    globalProfileReadinessStore,
     conversationAccess,
     npcDirectory
   } = identity;
@@ -367,6 +368,7 @@ export function createGenerationExecutor(
         toolsetRuleStore,
         scenarioHostStateStore,
         setupStore,
+        globalProfileReadinessStore,
         conversationAccess,
         npcDirectory,
         ...(toolsetAccess ? { toolsetAccess } : {}),

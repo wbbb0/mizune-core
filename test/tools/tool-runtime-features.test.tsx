@@ -182,6 +182,9 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       {
         relationship: "owner",
         personaStore: {
+          isComplete() {
+            return false;
+          },
           async patchWithDiagnostics() {
             return {
               persona: { name: "", role: "", appearance: "", personality: "", interests: "", background: "", speechStyle: "", rules: "所有任务默认先给结论再展开" },
@@ -197,6 +200,11 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
         setupStore: {
           async advanceAfterPersonaUpdate() {
             return undefined;
+          }
+        },
+        globalProfileReadinessStore: {
+          async setPersonaReadiness() {
+            return null;
           }
         }
       } as any
