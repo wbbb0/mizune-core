@@ -37,6 +37,8 @@ import { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import { RuntimeResourceRegistry } from "#runtime/resources/runtimeResourceRegistry.ts";
 import { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
+import { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import type { SessionBootstrapPersistenceAccess } from "#conversation/session/sessionCapabilities.ts";
 import { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import { isOwnerBootstrapCommandText } from "./ownerBootstrapPolicy.ts";
@@ -86,6 +88,8 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
   const globalRuleStore = new GlobalRuleStore(dataDir, config, logger);
   const toolsetRuleStore = new ToolsetRuleStore(dataDir, config, logger);
   const scenarioHostStateStore = new ScenarioHostStateStore(dataDir, config, logger);
+  const rpProfileStore = new RpProfileStore(dataDir, config, logger);
+  const scenarioProfileStore = new ScenarioProfileStore(dataDir, config, logger);
   const setupStore = new SetupStateStore(dataDir, userIdentityStore, logger);
   const globalProfileReadinessStore = new GlobalProfileReadinessStore(dataDir, config, logger);
   const searchService = new SearchService(config, logger);
@@ -130,6 +134,8 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
     globalRuleStore,
     toolsetRuleStore,
     scenarioHostStateStore,
+    rpProfileStore,
+    scenarioProfileStore,
     setupStore,
     globalProfileReadinessStore,
     searchService,
@@ -174,6 +180,8 @@ export async function initializeBootstrapState(
       | "globalRuleStore"
       | "toolsetRuleStore"
       | "scenarioHostStateStore"
+      | "rpProfileStore"
+      | "scenarioProfileStore"
       | "setupStore"
       | "globalProfileReadinessStore"
       | "sessionManager"
@@ -206,6 +214,8 @@ export async function initializeBootstrapState(
     globalRuleStore,
     toolsetRuleStore,
     scenarioHostStateStore,
+    rpProfileStore,
+    scenarioProfileStore,
     setupStore,
     globalProfileReadinessStore,
     sessionManager
@@ -229,11 +239,21 @@ export async function initializeBootstrapState(
   await globalRuleStore.init();
   await toolsetRuleStore.init();
   await scenarioHostStateStore.init();
+  await rpProfileStore.init();
+  await scenarioProfileStore.init();
   const currentPersona = await personaStore.get();
+  const currentRpProfile = await rpProfileStore.get();
+  const currentScenarioProfile = await scenarioProfileStore.get();
   await setupStore.init(currentPersona);
   await globalProfileReadinessStore.init();
   await globalProfileReadinessStore.setPersonaReadiness(
     personaStore.isComplete(currentPersona) ? "ready" : "uninitialized"
+  );
+  await globalProfileReadinessStore.setRpReadiness(
+    rpProfileStore.isComplete(currentRpProfile) ? "ready" : "uninitialized"
+  );
+  await globalProfileReadinessStore.setScenarioReadiness(
+    scenarioProfileStore.isComplete(currentScenarioProfile) ? "ready" : "uninitialized"
   );
   const persistedSessions = await sessionPersistence.loadAll();
   sessionManager.restoreSessions(persistedSessions);

@@ -177,6 +177,7 @@ export function createBrowserToolContext(
     toolsetRuleStore: null as unknown as BuiltinToolContext["toolsetRuleStore"],
     scenarioHostStateStore: null as unknown as BuiltinToolContext["scenarioHostStateStore"],
     setupStore: null as unknown as BuiltinToolContext["setupStore"],
+    globalProfileReadinessStore: null as unknown as BuiltinToolContext["globalProfileReadinessStore"],
     conversationAccess: null as unknown as BuiltinToolContext["conversationAccess"],
     npcDirectory: null as unknown as BuiltinToolContext["npcDirectory"],
     scheduledJobStore: null as unknown as BuiltinToolContext["scheduledJobStore"],

@@ -101,6 +101,7 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
           return false;
         }
       } as never,
+      globalProfileReadinessStore: {} as never,
       conversationAccess: {} as never,
       npcDirectory: {} as never
     },

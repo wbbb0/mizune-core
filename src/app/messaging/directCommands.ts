@@ -3,22 +3,21 @@ import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { AppConfig } from "#config/config.ts";
 import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
+import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
+import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
+import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import type { SessionDirectCommandAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { InternalTranscriptItem, SessionState } from "#conversation/session/sessionTypes.ts";
-import { requireSessionModeDefinition } from "#modes/registry.ts";
-import { resolveSessionModeSetupOperation } from "#modes/types.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
-import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { createInitialScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
-import { createSessionTitleGenerationEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
 import { parseOwnerBootstrapCommand } from "#app/bootstrap/ownerBootstrapPolicy.ts";
-import type { SessionModeSetupContext } from "#modes/types.ts";
 
 type DebugModeArg = "on" | "off" | "once" | "status";
+type ConfigTarget = "persona" | "rp" | "scenario";
 
 type DirectCommandArgsMap = {
   clear: {};
@@ -30,8 +29,11 @@ type DirectCommandArgsMap = {
   own: { userId?: string };
   compact: { keep?: number };
   debug: { mode?: DebugModeArg; inlineText?: string };
+  setup: { target: ConfigTarget };
+  config: { target: ConfigTarget };
   reset: {};
   confirm: {};
+  cancel: {};
 };
 
 export type DirectCommandName = keyof DirectCommandArgsMap;
@@ -61,7 +63,10 @@ interface DirectCommandHandlerInput {
   sessionCaptioner?: SessionCaptioner;
   scenarioHostStateStore?: ScenarioHostStateStore;
   personaStore: PersonaStore;
+  rpProfileStore: RpProfileStore;
+  scenarioProfileStore: ScenarioProfileStore;
   globalProfileReadinessStore: GlobalProfileReadinessStore;
+  setupStore: SetupStateStore;
   forceCompactSession?: (sessionId: string, retainMessageCount?: number) => Promise<boolean>;
   flushSession?: (sessionId: string, options?: { skipReplyGate?: boolean }) => void;
   persistSession: (sessionId: string, reason: string) => void;
@@ -144,6 +149,12 @@ function requireOwner(ctx: DirectCommandExecutionContext): string | null {
     : "只有 owner 可以切换调试模式。";
 }
 
+function requireOwnerForConfiguration(ctx: DirectCommandExecutionContext): string | null {
+  return ctx.incomingMessage.relationship === "owner"
+    ? null
+    : "只有 owner 可以进入或确认配置流程。";
+}
+
 function appendDebugMarker(
   ctx: DirectCommandExecutionContext,
   marker: {
@@ -201,91 +212,128 @@ function triggerInlineDebugOnce(ctx: DirectCommandExecutionContext, inlineText: 
   ctx.input.flushSession(ctx.session.id, { skipReplyGate: true });
 }
 
-async function maybeCaptionScenarioSetupTitle(
-  ctx: DirectCommandExecutionContext,
-  scenarioState: ScenarioHostSessionState
-): Promise<void> {
-  if (ctx.session.modeId !== "scenario_host") {
-    return;
-  }
-  if (ctx.session.source !== "web") {
-    return;
-  }
-  if (ctx.session.titleSource === "manual") {
-    return;
-  }
-  if (!ctx.input.sessionCaptioner?.isAvailable()) {
-    return;
-  }
-
-  const title = await ctx.input.sessionCaptioner.generateTitle({
-    sessionId: ctx.session.id,
-    modeId: ctx.session.modeId,
-    reason: "scenario_setup",
-    historySummary: ctx.session.historySummary,
-    history: ctx.input.sessionManager.getLlmVisibleHistory(ctx.session.id),
-    scenarioState
-  });
-  if (!title) {
-    return;
-  }
-
-  ctx.input.sessionManager.setTitle(ctx.session.id, title, "auto");
-  ctx.input.sessionManager.appendInternalTranscript(ctx.session.id, createSessionTitleGenerationEvent({
-    source: "auto",
-    modeId: ctx.session.modeId,
-    title,
-    summary: title,
-    details: [
-      `sessionId: ${ctx.session.id}`,
-      "captionReason: scenario_setup",
-      `location: ${String(scenarioState.currentLocation ?? "").trim() || "(none)"}`,
-      `situation: ${String(scenarioState.currentSituation ?? "").trim() || "(none)"}`
-    ].join("\n")
-  }));
-  ctx.input.persistSession(ctx.session.id, "scenario_setup_title_captioned");
-}
-
-async function syncPersonaReadiness(ctx: DirectCommandExecutionContext): Promise<void> {
-  const persona = await ctx.input.personaStore.get();
-  await ctx.input.globalProfileReadinessStore.setPersonaReadiness(
-    ctx.input.personaStore.isComplete(persona) ? "ready" : "uninitialized"
-  );
-}
-
-async function syncModeProfileReadiness(ctx: DirectCommandExecutionContext): Promise<void> {
-  if (ctx.session.modeId === "rp_assistant") {
-    await ctx.input.globalProfileReadinessStore.setRpReadiness("ready");
-    return;
-  }
-  if (ctx.session.modeId === "scenario_host") {
-    await ctx.input.globalProfileReadinessStore.setScenarioReadiness("ready");
+function getTargetLabel(target: ConfigTarget): string {
+  switch (target) {
+    case "persona":
+      return "persona";
+    case "rp":
+      return "RP 资料";
+    case "scenario":
+      return "Scenario 资料";
   }
 }
 
-async function resolveCurrentSetupOperation(
+function getOperationTargetLabel(operationMode: SessionState["operationMode"]): string | null {
+  switch (operationMode.kind) {
+    case "persona_setup":
+    case "persona_config":
+      return "persona";
+    case "mode_setup":
+    case "mode_config":
+      return operationMode.modeId === "rp_assistant" ? "RP 资料" : "Scenario 资料";
+    default:
+      return null;
+  }
+}
+
+async function readGlobalReadiness(
   ctx: DirectCommandExecutionContext
-): Promise<ReturnType<typeof resolveSessionModeSetupOperation>> {
-  const modeDef = requireSessionModeDefinition(ctx.session.modeId);
-  if (!modeDef.setupPhase) {
-    return null;
-  }
+): Promise<{ persona: boolean; rp: boolean; scenario: boolean }> {
   const readiness = await ctx.input.globalProfileReadinessStore.get();
-  const setupContext: SessionModeSetupContext = {
-    personaReady: readiness.persona === "ready",
-    modeProfileReady: ctx.session.modeId === "rp_assistant"
-      ? readiness.rp === "ready"
-      : ctx.session.modeId === "scenario_host"
-        ? readiness.scenario === "ready"
-        : true,
-    operationMode: ctx.session.operationMode,
-    chatType: ctx.incomingMessage.chatType,
-    relationship: ctx.incomingMessage.relationship ?? "known"
+  return {
+    persona: readiness.persona === "ready",
+    rp: readiness.rp === "ready",
+    scenario: readiness.scenario === "ready"
   };
-  return resolveSessionModeSetupOperation(
-    modeDef.setupPhase,
-    modeDef.setupPhase.resolveOperationModeKind(setupContext)
+}
+
+async function enterConfigurationMode(
+  ctx: DirectCommandExecutionContext,
+  mode: "setup" | "config",
+  target: ConfigTarget
+): Promise<string> {
+  const readiness = await readGlobalReadiness(ctx);
+  if (mode === "setup") {
+    if (target === "persona" && readiness.persona) {
+      return "persona 已初始化，请使用 `.config persona`。";
+    }
+    if (target === "rp" && readiness.rp) {
+      return "RP 资料已初始化，请使用 `.config rp`。";
+    }
+    if (target === "scenario" && readiness.scenario) {
+      return "Scenario 资料已初始化，请使用 `.config scenario`。";
+    }
+  } else {
+    if (target === "persona" && !readiness.persona) {
+      return "persona 尚未初始化，请先使用 `.setup persona`。";
+    }
+    if (target === "rp" && !readiness.rp) {
+      return "RP 资料尚未初始化，请先使用 `.setup rp`。";
+    }
+    if (target === "scenario" && !readiness.scenario) {
+      return "Scenario 资料尚未初始化，请先使用 `.setup scenario`。";
+    }
+  }
+
+  if (target === "persona") {
+    ctx.input.sessionManager.setOperationMode(ctx.session.id, {
+      kind: mode === "setup" ? "persona_setup" : "persona_config",
+      draft: mode === "setup"
+        ? ctx.input.personaStore.createEmpty()
+        : await ctx.input.personaStore.get()
+    });
+  } else if (target === "rp") {
+    ctx.input.sessionManager.setOperationMode(ctx.session.id, {
+      kind: mode === "setup" ? "mode_setup" : "mode_config",
+      modeId: "rp_assistant",
+      draft: mode === "setup"
+        ? ctx.input.rpProfileStore.createEmpty()
+        : await ctx.input.rpProfileStore.get()
+    });
+  } else {
+    ctx.input.sessionManager.setOperationMode(ctx.session.id, {
+      kind: mode === "setup" ? "mode_setup" : "mode_config",
+      modeId: "scenario_host",
+      draft: mode === "setup"
+        ? ctx.input.scenarioProfileStore.createEmpty()
+        : await ctx.input.scenarioProfileStore.get()
+    });
+  }
+  ctx.input.persistSession(
+    ctx.session.id,
+    mode === "setup" ? `${target}_setup_mode_entered_by_command` : `${target}_config_mode_entered_by_command`
   );
+  return [
+    `已进入 ${getTargetLabel(target)}${mode === "setup" ? " 初始化" : " 配置"}流程。`,
+    "接下来修改的是临时草稿，使用 `.confirm` 保存，使用 `.cancel` 放弃。"
+  ].join("\n");
+}
+
+async function persistCurrentDraft(ctx: DirectCommandExecutionContext): Promise<boolean> {
+  const operationMode = ctx.input.sessionManager.getOperationMode(ctx.session.id);
+  if (operationMode.kind === "normal") {
+    return false;
+  }
+  if (operationMode.kind === "persona_setup" || operationMode.kind === "persona_config") {
+    await ctx.input.personaStore.write(operationMode.draft);
+    await ctx.input.setupStore.advanceAfterPersonaUpdate(operationMode.draft);
+    await ctx.input.globalProfileReadinessStore.setPersonaReadiness(
+      ctx.input.personaStore.isComplete(operationMode.draft) ? "ready" : "uninitialized"
+    );
+    return true;
+  }
+  if (operationMode.modeId === "rp_assistant") {
+    await ctx.input.rpProfileStore.write(operationMode.draft);
+    await ctx.input.globalProfileReadinessStore.setRpReadiness(
+      ctx.input.rpProfileStore.isComplete(operationMode.draft) ? "ready" : "uninitialized"
+    );
+    return true;
+  }
+  await ctx.input.scenarioProfileStore.write(operationMode.draft);
+  await ctx.input.globalProfileReadinessStore.setScenarioReadiness(
+    ctx.input.scenarioProfileStore.isComplete(operationMode.draft) ? "ready" : "uninitialized"
+  );
+  return true;
 }
 
 const directCommandDescriptors: DirectCommandDescriptor[] = [
@@ -615,6 +663,58 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
     }
   },
   {
+    name: "setup",
+    help: ".setup [persona|rp|scenario] 从空白草稿重新开始配置",
+    dispatch: {
+      requireTextOnly: true
+    },
+    routing: {
+      allowInPrivate: true,
+      allowInOwnerMentionedGroup: true
+    },
+    parse(text: string): ParsedDirectCommand | null {
+      const match = text.match(/^[。.]\s*setup\s+(persona|rp|scenario)\s*$/i);
+      if (!match) {
+        return null;
+      }
+      return {
+        name: "setup",
+        target: match[1]!.toLowerCase() as ConfigTarget
+      };
+    },
+    access: requireOwnerForConfiguration,
+    async execute(ctx: DirectCommandExecutionContext, command: ParsedDirectCommand) {
+      const setupCommand = command as Extract<ParsedDirectCommand, { name: "setup" }>;
+      await ctx.send(await enterConfigurationMode(ctx, "setup", setupCommand.target));
+    }
+  },
+  {
+    name: "config",
+    help: ".config [persona|rp|scenario] 基于当前配置进入编辑",
+    dispatch: {
+      requireTextOnly: true
+    },
+    routing: {
+      allowInPrivate: true,
+      allowInOwnerMentionedGroup: true
+    },
+    parse(text: string): ParsedDirectCommand | null {
+      const match = text.match(/^[。.]\s*config\s+(persona|rp|scenario)\s*$/i);
+      if (!match) {
+        return null;
+      }
+      return {
+        name: "config",
+        target: match[1]!.toLowerCase() as ConfigTarget
+      };
+    },
+    access: requireOwnerForConfiguration,
+    async execute(ctx: DirectCommandExecutionContext, command: ParsedDirectCommand) {
+      const configCommand = command as Extract<ParsedDirectCommand, { name: "config" }>;
+      await ctx.send(await enterConfigurationMode(ctx, "config", configCommand.target));
+    }
+  },
+  {
     name: "reset",
     scope: "scenario_host",
     help: ".reset 重置场景状态并清空会话历史（仅 scenario_host 模式）",
@@ -654,7 +754,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "confirm",
-    help: ".confirm 确认当前模式初始化完成",
+    help: ".confirm 保存当前草稿并退出配置流程",
     dispatch: {
       requireTextOnly: true
     },
@@ -667,64 +767,56 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         ? { name: "confirm" }
         : null;
     },
-    access(ctx: DirectCommandExecutionContext): string | null {
-      const modeDef = requireSessionModeDefinition(ctx.session.modeId);
-      if (!modeDef.setupPhase) {
-        return "当前模式不需要初始化确认。";
-      }
-      return null;
-    },
+    access: requireOwnerForConfiguration,
     async execute(ctx: DirectCommandExecutionContext) {
-      const modeDef = requireSessionModeDefinition(ctx.session.modeId);
-      if (!modeDef.setupPhase) {
-        await ctx.send("当前模式不需要初始化确认。");
+      const operationMode = ctx.input.sessionManager.getOperationMode(ctx.session.id);
+      if (operationMode.kind === "normal") {
+        await ctx.send("当前没有待确认的配置流程。");
         return;
       }
-      const setupOperation = await resolveCurrentSetupOperation(ctx);
-      if (!setupOperation) {
-        await ctx.send(
-          ctx.incomingMessage.relationship === "owner"
-            ? "当前没有待确认的初始化流程。"
-            : "只有 owner 可以确认初始化。"
-        );
+      if (!(await persistCurrentDraft(ctx))) {
+        await ctx.send("当前没有待确认的配置流程。");
         return;
       }
-      // For scenario_host: mark initialized in persistent state so it survives restarts
-      if (ctx.session.modeId === "scenario_host" && ctx.input.scenarioHostStateStore) {
-        const nextState = await ctx.input.scenarioHostStateStore.update(
-          ctx.session.id,
-          (current) => ({ ...current, initialized: true }),
-          {
-            playerUserId: ctx.session.participantRef.id,
-            playerDisplayName: resolveSessionParticipantLabel({
-              sessionId: ctx.session.id,
-              participantRef: ctx.session.participantRef,
-              title: ctx.session.title,
-              type: ctx.session.type
-            })
-          }
-        );
-        await maybeCaptionScenarioSetupTitle(ctx, nextState);
-      }
-      // Mark confirmed in session (in-memory)
       ctx.input.sessionManager.markSetupConfirmed(ctx.session.id);
-      if (setupOperation?.kind === "persona_setup") {
-        await syncPersonaReadiness(ctx);
-      } else if (setupOperation?.kind === "mode_setup") {
-        await syncModeProfileReadiness(ctx);
+      ctx.input.sessionManager.cancelGeneration(ctx.session.id);
+      ctx.input.sessionManager.clearSession(ctx.session.id);
+      ctx.input.persistSession(ctx.session.id, "configuration_confirmed_by_command");
+      ctx.input.logger.info({ sessionId: ctx.session.id, operationKind: operationMode.kind }, "configuration_confirmed_by_command");
+      await ctx.send("配置已确认，当前会话历史已清空。");
+    }
+  },
+  {
+    name: "cancel",
+    help: ".cancel 放弃当前草稿并退出配置流程",
+    dispatch: {
+      requireTextOnly: true
+    },
+    routing: {
+      allowInPrivate: true,
+      allowInOwnerMentionedGroup: false
+    },
+    parse(text: string): ParsedDirectCommand | null {
+      return /^[。.]\s*cancel\s*$/i.test(text)
+        ? { name: "cancel" }
+        : null;
+    },
+    access: requireOwnerForConfiguration,
+    async execute(ctx: DirectCommandExecutionContext) {
+      const operationMode = ctx.input.sessionManager.getOperationMode(ctx.session.id);
+      if (operationMode.kind === "normal") {
+        await ctx.send("当前没有正在进行的配置流程。");
+        return;
       }
-      // Handle onComplete policy immediately
-      if (setupOperation?.onComplete === "clear_session") {
-        ctx.input.sessionManager.cancelGeneration(ctx.session.id);
-        ctx.input.sessionManager.clearSession(ctx.session.id);
-      }
-      ctx.input.persistSession(ctx.session.id, "setup_confirmed_by_command");
-      ctx.input.logger.info({ sessionId: ctx.session.id, modeId: ctx.session.modeId }, "setup_confirmed_by_command");
-      await ctx.send(
-        setupOperation.onComplete === "clear_session"
-          ? "初始化已确认，当前会话历史已清空。"
-          : "初始化已确认，已进入正常模式。"
-      );
+      ctx.input.sessionManager.cancelGeneration(ctx.session.id);
+      ctx.input.sessionManager.clearSession(ctx.session.id);
+      ctx.input.persistSession(ctx.session.id, "configuration_cancelled_by_command");
+      ctx.input.logger.info({
+        sessionId: ctx.session.id,
+        operationKind: operationMode.kind,
+        target: getOperationTargetLabel(operationMode)
+      }, "configuration_cancelled_by_command");
+      await ctx.send("已退出配置流程，当前会话历史已清空。");
     }
   }
 ];

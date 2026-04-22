@@ -23,10 +23,14 @@ export interface MessageEventHandlerDeps {
     | "mediaCaptionService"
     | "requestStore"
     | "userStore"
+    | "personaStore"
+    | "rpProfileStore"
+    | "scenarioProfileStore"
     | "setupStore"
+    | "globalProfileReadinessStore"
     | "conversationAccess"
   >, "sessionManager"> & {
-    sessionManager: SessionMessagingAccess;
+    sessionManager: SessionMessagingAccess & import("#conversation/session/sessionCapabilities.ts").SessionOperationModeAccess;
   };
   handleDirectCommand: (input: {
     command: ResolvedDirectCommand;

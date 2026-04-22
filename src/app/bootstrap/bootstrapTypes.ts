@@ -39,6 +39,8 @@ import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import type { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
+import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 
 export interface AppServiceBootstrap {
@@ -68,6 +70,8 @@ export interface AppServiceBootstrap {
   globalRuleStore: GlobalRuleStore;
   toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
+  rpProfileStore: RpProfileStore;
+  scenarioProfileStore: ScenarioProfileStore;
   setupStore: SetupStateStore;
   globalProfileReadinessStore: GlobalProfileReadinessStore;
   searchService: SearchService;

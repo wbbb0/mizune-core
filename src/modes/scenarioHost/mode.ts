@@ -52,12 +52,12 @@ export const scenarioHostModeDefinition: SessionModeDefinition = {
         kind: "mode_setup",
         setupToolsetOverrides: [
           {
-            toolsetId: "scenario_setup_state",
-            title: "场景状态（初始化）",
-            description: "初始化阶段用于填写场景基础信息。",
-            toolNames: ["get_scenario_state", "update_scenario_state", "set_current_location"],
-            promptGuidance: ["收集到足够信息后逐字段写入；不要一次性追问所有字段，也不要编造设定。"],
-            plannerSignals: ["写入场景初始信息"]
+            toolsetId: "scenario_profile_draft",
+            title: "Scenario 资料草稿",
+            description: "初始化阶段用于填写 Scenario 全局资料草稿。",
+            toolNames: ["get_scenario_profile", "patch_scenario_profile", "clear_scenario_profile_field"],
+            promptGuidance: ["初始化阶段只补全 Scenario 全局资料；不要改 persona、用户资料或其他记忆。"],
+            plannerSignals: ["写入 Scenario 全局资料"]
           },
           {
             toolsetId: "setup_draft",

@@ -44,7 +44,7 @@ const scenarioProfileDraftSchema = z.object({
   openingPattern: z.string()
 });
 
-const sessionOperationModeSchema = z.discriminatedUnion("kind", [
+const sessionOperationModeSchema = z.union([
   z.object({
     kind: z.literal("normal")
   }),
@@ -54,8 +54,13 @@ const sessionOperationModeSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("mode_setup"),
-    modeId: z.union([z.literal("rp_assistant"), z.literal("scenario_host")]),
-    draft: z.union([rpProfileDraftSchema, scenarioProfileDraftSchema])
+    modeId: z.literal("rp_assistant"),
+    draft: rpProfileDraftSchema
+  }),
+  z.object({
+    kind: z.literal("mode_setup"),
+    modeId: z.literal("scenario_host"),
+    draft: scenarioProfileDraftSchema
   }),
   z.object({
     kind: z.literal("persona_config"),
@@ -63,8 +68,13 @@ const sessionOperationModeSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("mode_config"),
-    modeId: z.union([z.literal("rp_assistant"), z.literal("scenario_host")]),
-    draft: z.union([rpProfileDraftSchema, scenarioProfileDraftSchema])
+    modeId: z.literal("rp_assistant"),
+    draft: rpProfileDraftSchema
+  }),
+  z.object({
+    kind: z.literal("mode_config"),
+    modeId: z.literal("scenario_host"),
+    draft: scenarioProfileDraftSchema
   })
 ]);
 

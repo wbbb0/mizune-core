@@ -57,9 +57,15 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
         userStore: {
           touchSeenUser: async () => ({ relationship: "known" })
         } as any,
+        personaStore: {} as any,
         setupStore: {
           get: async () => ({ state: "ready" })
         } as any,
+        globalProfileReadinessStore: {
+          get: async () => ({ persona: "ready", rp: "ready", scenario: "ready" })
+        } as any,
+        rpProfileStore: {} as any,
+        scenarioProfileStore: {} as any,
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
@@ -157,9 +163,15 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
         userStore: {
           touchSeenUser: async () => ({ relationship: "known" })
         } as any,
+        personaStore: {} as any,
         setupStore: {
           get: async () => ({ state: "ready" })
         } as any,
+        globalProfileReadinessStore: {
+          get: async () => ({ persona: "ready", rp: "ready", scenario: "ready" })
+        } as any,
+        rpProfileStore: {} as any,
+        scenarioProfileStore: {} as any,
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
@@ -241,9 +253,15 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
         userStore: {
           touchSeenUser: async () => ({ relationship: "known" })
         } as any,
+        personaStore: {} as any,
         setupStore: {
           get: async () => ({ state: "ready" })
         } as any,
+        globalProfileReadinessStore: {
+          get: async () => ({ persona: "ready", rp: "ready", scenario: "ready" })
+        } as any,
+        rpProfileStore: {} as any,
+        scenarioProfileStore: {} as any,
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
@@ -325,9 +343,15 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
         userStore: {
           touchSeenUser: async () => ({ relationship: "owner" })
         } as any,
+        personaStore: {} as any,
         setupStore: {
           get: async () => ({ state: "ready" })
         } as any,
+        globalProfileReadinessStore: {
+          get: async () => ({ persona: "ready", rp: "ready", scenario: "ready" })
+        } as any,
+        rpProfileStore: {} as any,
+        scenarioProfileStore: {} as any,
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any

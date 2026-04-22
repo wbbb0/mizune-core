@@ -52,11 +52,19 @@ import { createSilentLogger } from "../helpers/browser-test-support.tsx";
         userIdentityStore: { async init() {} } as any,
         userStore: { async init() {} } as any,
         npcDirectory: { async refresh() {} } as any,
-        personaStore: { async init() {}, async get() { return {}; } } as any,
+        personaStore: { async init() {}, async get() { return {}; }, isComplete() { return false; } } as any,
         globalRuleStore: { async init() {} } as any,
         toolsetRuleStore: { async init() {} } as any,
         scenarioHostStateStore: { async init() {} } as any,
+        rpProfileStore: { async init() {}, async get() { return {}; }, isComplete() { return false; } } as any,
+        scenarioProfileStore: { async init() {}, async get() { return {}; }, isComplete() { return false; } } as any,
         setupStore: { async init() {} } as any,
+        globalProfileReadinessStore: {
+          async init() {},
+          async setPersonaReadiness() {},
+          async setRpReadiness() {},
+          async setScenarioReadiness() {}
+        } as any,
         sessionManager: { restoreSessions() {}, listSessions() { return []; } } as any
       });
 

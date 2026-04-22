@@ -334,7 +334,7 @@ function createOrchestratorDeps(input: {
     assert.equal(capturedPromptInput.modeId, "assistant");
     assert.deepEqual(capturedPromptInput.participantProfiles, []);
     assert.equal(capturedPromptInput.persona.name, "");
-    assert.equal(capturedPromptInput.persona.role, "");
+    assert.equal(capturedPromptInput.persona.coreIdentity, "");
     assert.equal(capturedPromptInput.currentUser.userId, "owner");
     assert.ok(capturedRunInput);
     assert.equal(capturedRunInput.availableToolsets.some((item: { id: string }) => item.id === "memory_profile"), false);

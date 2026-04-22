@@ -299,6 +299,8 @@ export interface SessionDirectCommandAccess {
     timestampMs?: number
   ): void;
   getDebugControlState(sessionId: string): SessionDebugControlState;
+  getOperationMode(sessionId: string): SessionOperationMode;
+  setOperationMode(sessionId: string, operationMode: SessionOperationMode): SessionOperationMode;
   getLlmVisibleHistory(sessionId: string): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
   setTitle(sessionId: string, title: string, titleSource: "default" | "auto" | "manual"): SessionState;
   appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void;

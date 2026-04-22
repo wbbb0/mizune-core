@@ -10,6 +10,9 @@ import {
   resolvePreRouterSetupDecision
 } from "../../src/app/messaging/messageAdmission.ts";
 import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.tsx";
+import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
+import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
+import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
 
   test("direct command parser supports owner bootstrap command", async () => {
     assert.deepEqual(parseDirectCommand(".own"), { name: "own" });
@@ -20,6 +23,9 @@ import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.t
     assert.deepEqual(parseDirectCommand(".stop"), { name: "stop" });
     assert.deepEqual(parseDirectCommand(".compact"), { name: "compact" });
     assert.deepEqual(parseDirectCommand(".compact 3"), { name: "compact", keep: 3 });
+    assert.deepEqual(parseDirectCommand(".setup rp"), { name: "setup", target: "rp" });
+    assert.deepEqual(parseDirectCommand(".config scenario"), { name: "config", target: "scenario" });
+    assert.deepEqual(parseDirectCommand(".cancel"), { name: "cancel" });
   });
 
   test("direct command routing helper centralizes bootstrap and group-owner rules", async () => {
@@ -369,107 +375,122 @@ import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.t
     assert.equal(calls[0]?.text, "未知指令：.not-found test\n发送 .help 查看可用指令。");
   });
 
-  test("confirm command in scenario_host setup captions the session title from scenario state", async () => {
-    const setTitleCalls: Array<{ sessionId: string; title: string; titleSource: "default" | "auto" | "manual" }> = [];
-    const captionRequests: Array<Record<string, unknown>> = [];
-
+  test("setup command enters mode_setup with empty rp draft", async () => {
+    let latestOperationMode: Record<string, unknown> | null = null;
     const { calls, handler } = createDirectCommandFixture({
-      session: {
-        id: "web:scenario",
-        source: "web",
-        modeId: "scenario_host",
-        type: "private",
-        participantRef: { kind: "user", id: "owner" },
-        title: "New Scenario",
-        titleSource: "default",
-        setupConfirmed: false,
-        historySummary: "旧的历史摘要"
+      setOperationMode(_sessionId, operationMode) {
+        latestOperationMode = operationMode as Record<string, unknown>;
+        return operationMode;
       },
-      scenarioHostStateStore: {
-        async write(_sessionId: string, state: unknown) {
-          return state;
+      rpProfileStore: {
+        createEmpty() {
+          return createEmptyRpProfile();
         },
-        async update(_sessionId, updater) {
-          return updater({
-            version: 1,
-            currentSituation: "玩家刚抵达旧港，准备开始摸排。",
-            currentLocation: "旧港码头",
-            sceneSummary: "夜色下的旧港刚刚展开调查。",
-            player: {
-              userId: "owner",
-              displayName: "Owner"
-            },
-            inventory: [],
-            objectives: [{
-              id: "find-bell",
-              title: "调查钟声",
-              status: "active",
-              summary: "先查清午夜钟声来源"
-            }],
-            worldFacts: [],
-            flags: {},
-            initialized: false,
-            turnIndex: 0
-          });
+        async get() {
+          return createEmptyRpProfile();
         }
       },
-      getModeId() {
-        return "scenario_host";
-      },
-      getLlmVisibleHistory() {
-        return [{
-          role: "assistant",
-          content: "这里的历史只是兜底，不是 setup 标题主输入",
-          timestampMs: 1
-        }];
-      },
-      setTitle(sessionId: string, title: string, titleSource: "default" | "auto" | "manual") {
-        setTitleCalls.push({ sessionId, title, titleSource });
-        return {} as never;
-      },
-      sessionCaptioner: {
-        isAvailable() {
-          return true;
+      globalProfileReadinessStore: {
+        async get() {
+          return {
+            persona: "ready",
+            rp: "uninitialized",
+            scenario: "ready",
+            updatedAt: 1
+          };
         },
-        async generateTitle(input: Record<string, unknown>) {
-          captionRequests.push(input);
-          return "旧港码头：初到与探查";
+        async setPersonaReadiness() {
+          return null;
         }
-      }
+      } as any
     });
 
     await handler({
-      command: { name: "confirm" },
-      sessionId: "web:scenario",
+      command: { name: "setup", target: "rp" },
+      sessionId: "qqbot:p:owner",
       incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
     });
 
-    assert.deepEqual(setTitleCalls, [{
-      sessionId: "web:scenario",
-      title: "旧港码头：初到与探查",
-      titleSource: "auto"
-    }]);
-    assert.equal(captionRequests.length, 1);
-    assert.equal(captionRequests[0]?.reason, "scenario_setup");
-    assert.equal(calls.at(-1)?.text, "初始化已确认，当前会话历史已清空。");
+    assert.deepEqual(latestOperationMode, {
+      kind: "mode_setup",
+      modeId: "rp_assistant",
+      draft: createEmptyRpProfile()
+    });
+    assert.match(String(calls.at(-1)?.text ?? ""), /已进入 RP 资料 初始化流程/);
   });
 
-  test("confirm command resolves implicit persona_setup for scenario_host and keeps persona readiness synced", async () => {
+  test("config command clones saved persona into draft", async () => {
+    let latestOperationMode: Record<string, unknown> | null = null;
+    const savedPersona = {
+      ...createEmptyPersona(),
+      name: "Mina",
+      coreIdentity: "创作者",
+      personality: "冷静",
+      speechStyle: "短句"
+    };
+    const { calls, handler } = createDirectCommandFixture({
+      setOperationMode(_sessionId, operationMode) {
+        latestOperationMode = operationMode as Record<string, unknown>;
+        return operationMode;
+      },
+      personaStore: {
+        async get() {
+          return savedPersona;
+        },
+        createEmpty() {
+          return createEmptyPersona();
+        },
+        isComplete() {
+          return true;
+        }
+      },
+      globalProfileReadinessStore: {
+        async get() {
+          return {
+            persona: "ready",
+            rp: "uninitialized",
+            scenario: "uninitialized",
+            updatedAt: 1
+          };
+        },
+        async setPersonaReadiness() {
+          return null;
+        }
+      } as any
+    });
+
+    await handler({
+      command: { name: "config", target: "persona" },
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+
+    assert.deepEqual(latestOperationMode, {
+      kind: "persona_config",
+      draft: savedPersona
+    });
+    assert.match(String(calls.at(-1)?.text ?? ""), /已进入 persona 配置流程/);
+  });
+
+  test("confirm command persists persona draft and clears session", async () => {
     let clearCalled = 0;
     let cancelCalled = 0;
+    const writtenPersonas: unknown[] = [];
+    const setupAdvanceCalls: unknown[] = [];
     const personaReadinessUpdates: Array<"uninitialized" | "ready"> = [];
 
     const { calls, handler } = createDirectCommandFixture({
       session: {
-        id: "qqbot:p:owner",
-        source: "onebot",
-        modeId: "scenario_host",
-        type: "private",
-        participantRef: { kind: "user", id: "owner" },
-        title: null,
-        titleSource: "default",
-        setupConfirmed: false,
-        operationMode: { kind: "normal" }
+        operationMode: {
+          kind: "persona_setup",
+          draft: {
+            ...createEmptyPersona(),
+            name: "小满",
+            coreIdentity: "助手",
+            personality: "克制",
+            speechStyle: "简洁"
+          }
+        }
       },
       cancelGeneration() {
         cancelCalled += 1;
@@ -478,50 +499,32 @@ import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.t
       clearSession() {
         clearCalled += 1;
       },
-      scenarioHostStateStore: {
-        async write(_sessionId: string, state: unknown) {
-          return state;
-        },
-        async update(_sessionId, updater) {
-          return updater({
-            version: 1,
-            currentSituation: "尚未开始",
-            currentLocation: null,
-            sceneSummary: "",
-            player: {
-              userId: "owner",
-              displayName: "Owner"
-            },
-            inventory: [],
-            objectives: [],
-            worldFacts: [],
-            flags: {},
-            initialized: false,
-            turnIndex: 0
-          });
-        }
-      },
       personaStore: {
         async get() {
-          return {
-            name: "",
-            coreIdentity: "",
-            personality: "",
-            interests: "",
-            background: "",
-            speechStyle: ""
-          };
+          return createEmptyPersona();
+        },
+        async write(persona: unknown) {
+          writtenPersonas.push(persona);
+        },
+        createEmpty() {
+          return createEmptyPersona();
         },
         isComplete() {
-          return false;
+          return true;
+        }
+      },
+      setupStore: {
+        async advanceAfterPersonaUpdate(persona: unknown) {
+          setupAdvanceCalls.push(persona);
+          return null;
         }
       },
       globalProfileReadinessStore: {
         async get() {
           return {
             persona: "uninitialized",
-            scenario: "uninitialized",
             rp: "uninitialized",
+            scenario: "uninitialized",
             updatedAt: 1
           };
         },
@@ -529,7 +532,7 @@ import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.t
           personaReadinessUpdates.push(status);
           return null;
         }
-      }
+      } as any
     });
 
     await handler({
@@ -540,67 +543,43 @@ import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.t
 
     assert.equal(cancelCalled, 1);
     assert.equal(clearCalled, 1);
-    assert.deepEqual(personaReadinessUpdates, ["uninitialized"]);
-    assert.equal(calls.at(-1)?.text, "初始化已确认，当前会话历史已清空。");
+    assert.equal(writtenPersonas.length, 1);
+    assert.equal(setupAdvanceCalls.length, 1);
+    assert.deepEqual(personaReadinessUpdates, ["ready"]);
+    assert.equal(calls.at(-1)?.text, "配置已确认，当前会话历史已清空。");
   });
 
-  test("confirm command marks scenario readiness ready when resolving mode_setup", async () => {
+  test("confirm command persists mode draft and updates mode readiness", async () => {
     let clearCalled = 0;
-    let cancelCalled = 0;
+    const writtenProfiles: unknown[] = [];
     const scenarioReadinessUpdates: Array<"uninitialized" | "ready"> = [];
 
     const { calls, handler } = createDirectCommandFixture({
       session: {
-        id: "qqbot:p:owner",
-        source: "onebot",
-        modeId: "scenario_host",
-        type: "private",
-        participantRef: { kind: "user", id: "owner" },
-        title: null,
-        titleSource: "default",
-        setupConfirmed: false,
-        operationMode: { kind: "normal" }
-      },
-      cancelGeneration() {
-        cancelCalled += 1;
-        return true;
+        modeId: "assistant",
+        operationMode: {
+          kind: "mode_config",
+          modeId: "scenario_host",
+          draft: {
+            ...createEmptyScenarioProfile(),
+            theme: "悬疑",
+            hostStyle: "克制",
+            worldBaseline: "现代都市"
+          }
+        }
       },
       clearSession() {
         clearCalled += 1;
       },
-      scenarioHostStateStore: {
-        async write(_sessionId: string, state: unknown) {
-          return state;
-        },
-        async update(_sessionId, updater) {
-          return updater({
-            version: 1,
-            currentSituation: "尚未开始",
-            currentLocation: null,
-            sceneSummary: "",
-            player: {
-              userId: "owner",
-              displayName: "Owner"
-            },
-            inventory: [],
-            objectives: [],
-            worldFacts: [],
-            flags: {},
-            initialized: false,
-            turnIndex: 0
-          });
-        }
-      },
-      personaStore: {
+      scenarioProfileStore: {
         async get() {
-          return {
-            name: "小满",
-            coreIdentity: "主持人",
-            personality: "克制",
-            interests: "",
-            background: "",
-            speechStyle: "简洁"
-          };
+          return createEmptyScenarioProfile();
+        },
+        async write(profile: unknown) {
+          writtenProfiles.push(profile);
+        },
+        createEmpty() {
+          return createEmptyScenarioProfile();
         },
         isComplete() {
           return true;
@@ -610,22 +589,16 @@ import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.t
         async get() {
           return {
             persona: "ready",
-            scenario: "uninitialized",
             rp: "uninitialized",
+            scenario: "ready",
             updatedAt: 1
           };
-        },
-        async setPersonaReadiness() {
-          return null;
-        },
-        async setRpReadiness() {
-          return null;
         },
         async setScenarioReadiness(status: "uninitialized" | "ready") {
           scenarioReadinessUpdates.push(status);
           return null;
         }
-      }
+      } as any
     });
 
     await handler({
@@ -634,86 +607,46 @@ import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.t
       incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
     });
 
-    assert.equal(cancelCalled, 1);
     assert.equal(clearCalled, 1);
+    assert.equal(writtenProfiles.length, 1);
     assert.deepEqual(scenarioReadinessUpdates, ["ready"]);
-    assert.equal(calls.at(-1)?.text, "初始化已确认，当前会话历史已清空。");
+    assert.equal(calls.at(-1)?.text, "配置已确认，当前会话历史已清空。");
   });
 
-  test("confirm command rejects non-owner scenario setup confirmation", async () => {
-    const scenarioReadinessUpdates: Array<"uninitialized" | "ready"> = [];
-    let scenarioInitialized = false;
-
+  test("cancel command exits configuration flow and clears session", async () => {
+    let clearCalled = 0;
     const { calls, handler } = createDirectCommandFixture({
       session: {
-        id: "qqbot:p:known",
-        source: "onebot",
-        modeId: "scenario_host",
-        type: "private",
-        participantRef: { kind: "user", id: "known" },
-        title: null,
-        titleSource: "default",
-        setupConfirmed: false,
-        operationMode: { kind: "normal" }
-      },
-      scenarioHostStateStore: {
-        async write(_sessionId: string, state: unknown) {
-          return state;
-        },
-        async update(_sessionId, updater) {
-          const nextState = updater({
-            version: 1,
-            currentSituation: "尚未开始",
-            currentLocation: null,
-            sceneSummary: "",
-            player: {
-              userId: "known",
-              displayName: "Known"
-            },
-            inventory: [],
-            objectives: [],
-            worldFacts: [],
-            flags: {},
-            initialized: false,
-            turnIndex: 0
-          });
-          scenarioInitialized = nextState.initialized;
-          return nextState;
+        operationMode: {
+          kind: "mode_setup",
+          modeId: "rp_assistant",
+          draft: {
+            ...createEmptyRpProfile(),
+            premise: "雨夜"
+          }
         }
       },
-      personaStore: {
-        async get() {
-          return {
-            name: "小满",
-            coreIdentity: "主持人",
-            personality: "克制",
-            interests: "",
-            background: "",
-            speechStyle: "简洁"
-          };
-        },
-        isComplete() {
-          return true;
-        }
-      },
-      globalProfileReadinessStore: {
-        async get() {
-          return {
-            persona: "ready",
-            scenario: "uninitialized",
-            rp: "uninitialized",
-            updatedAt: 1
-          };
-        },
-        async setPersonaReadiness() {
-          return null;
-        },
-        async setRpReadiness() {
-          return null;
-        },
-        async setScenarioReadiness(status: "uninitialized" | "ready") {
-          scenarioReadinessUpdates.push(status);
-          return null;
+      clearSession() {
+        clearCalled += 1;
+      }
+    });
+
+    await handler({
+      command: { name: "cancel" },
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+
+    assert.equal(clearCalled, 1);
+    assert.equal(calls.at(-1)?.text, "已退出配置流程，当前会话历史已清空。");
+  });
+
+  test("configuration commands reject non-owner", async () => {
+    const { calls, handler } = createDirectCommandFixture({
+      session: {
+        operationMode: {
+          kind: "persona_config",
+          draft: createEmptyPersona()
         }
       }
     });
@@ -724,82 +657,7 @@ import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.t
       incomingMessage: { chatType: "private", userId: "known", relationship: "known" }
     });
 
-    assert.equal(scenarioInitialized, false);
-    assert.deepEqual(scenarioReadinessUpdates, []);
-    assert.equal(calls.at(-1)?.text, "只有 owner 可以确认初始化。");
-  });
-
-  test("confirm command marks rp readiness ready when resolving mode_setup", async () => {
-    let clearCalled = 0;
-    let cancelCalled = 0;
-    const rpReadinessUpdates: Array<"uninitialized" | "ready"> = [];
-
-    const { calls, handler } = createDirectCommandFixture({
-      session: {
-        id: "qqbot:p:owner",
-        source: "onebot",
-        modeId: "rp_assistant",
-        type: "private",
-        participantRef: { kind: "user", id: "owner" },
-        title: null,
-        titleSource: "default",
-        setupConfirmed: false,
-        operationMode: { kind: "normal" }
-      },
-      cancelGeneration() {
-        cancelCalled += 1;
-        return true;
-      },
-      clearSession() {
-        clearCalled += 1;
-      },
-      personaStore: {
-        async get() {
-          return {
-            name: "小满",
-            coreIdentity: "助手",
-            personality: "克制",
-            interests: "",
-            background: "",
-            speechStyle: "简洁"
-          };
-        },
-        isComplete() {
-          return true;
-        }
-      },
-      globalProfileReadinessStore: {
-        async get() {
-          return {
-            persona: "ready",
-            scenario: "uninitialized",
-            rp: "uninitialized",
-            updatedAt: 1
-          };
-        },
-        async setPersonaReadiness() {
-          return null;
-        },
-        async setRpReadiness(status: "uninitialized" | "ready") {
-          rpReadinessUpdates.push(status);
-          return null;
-        },
-        async setScenarioReadiness() {
-          return null;
-        }
-      }
-    });
-
-    await handler({
-      command: { name: "confirm" },
-      sessionId: "qqbot:p:owner",
-      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
-    });
-
-    assert.equal(cancelCalled, 1);
-    assert.equal(clearCalled, 1);
-    assert.deepEqual(rpReadinessUpdates, ["ready"]);
-    assert.equal(calls.at(-1)?.text, "初始化已确认，当前会话历史已清空。");
+    assert.equal(calls.at(-1)?.text, "只有 owner 可以进入或确认配置流程。");
   });
 
   test("debug once with inline text enqueues a synthetic message and flushes immediately", async () => {

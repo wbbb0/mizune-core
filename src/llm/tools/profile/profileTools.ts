@@ -7,7 +7,11 @@ import {
   editableScenarioProfileFieldNames,
   type ScenarioProfile
 } from "#modes/scenarioHost/profileSchema.ts";
-import type { SessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
+import type {
+  SessionOperationMode,
+  SessionRpProfileOperationMode,
+  SessionScenarioProfileOperationMode
+} from "#conversation/session/sessionOperationMode.ts";
 import type { MemoryCategory, ScopeConflictWarning } from "#memory/memoryCategory.ts";
 import {
   buildMemoryRerouteDetails,
@@ -687,6 +691,22 @@ function resolvePersonaDraftOperation(context: Parameters<ToolHandler>[2]) {
 
 function resolveModeProfileDraftOperation(
   context: Parameters<ToolHandler>[2],
+  modeId: "rp_assistant"
+): {
+  sessionId: string;
+  operationMode: SessionRpProfileOperationMode;
+  draft: RpProfile;
+} | null;
+function resolveModeProfileDraftOperation(
+  context: Parameters<ToolHandler>[2],
+  modeId: "scenario_host"
+): {
+  sessionId: string;
+  operationMode: SessionScenarioProfileOperationMode;
+  draft: ScenarioProfile;
+} | null;
+function resolveModeProfileDraftOperation(
+  context: Parameters<ToolHandler>[2],
   modeId: "rp_assistant" | "scenario_host"
 ) {
   const sessionId = context.lastMessage?.sessionId;
@@ -699,6 +719,13 @@ function resolveModeProfileDraftOperation(
     || operationMode.modeId !== modeId
   ) {
     return null;
+  }
+  if (modeId === "rp_assistant") {
+    return {
+      sessionId,
+      operationMode,
+      draft: operationMode.draft
+    };
   }
   return {
     sessionId,

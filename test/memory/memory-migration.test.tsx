@@ -58,9 +58,9 @@ async function readJson(filePath: string) {
       assert.match(String(users[0]?.profileSummary ?? ""), /做事很快；经常先给结论/);
       assert.equal((users[0]?.memories as Array<unknown>).length, 2);
 
-      assert.equal(persona.role, "可靠搭档");
+      assert.equal(persona.coreIdentity, "可靠搭档");
       assert.equal(persona.speechStyle, "直接一点");
-      assert.equal(persona.rules, "保持角色一致。");
+      assert.equal(persona.background, "");
 
       assert.ok(globalRules.length >= 2);
       assert.equal(toolsetRules.length, 1);

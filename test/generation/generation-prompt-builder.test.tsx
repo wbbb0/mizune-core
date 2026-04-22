@@ -352,13 +352,11 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       activeToolsets: [],
       persona: {
         name: "Ignored Persona",
-        role: "助手",
-        appearance: "",
+        coreIdentity: "助手",
         personality: "",
         interests: "",
         background: "",
-        speechStyle: "",
-        rules: ""
+        speechStyle: ""
       },
       relationship: "known",
       participantProfiles: [{
@@ -474,13 +472,11 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       activeToolsets: [],
       persona: {
         name: "Mizune",
-        role: "搭档",
-        appearance: "",
+        coreIdentity: "搭档",
         personality: "",
         interests: "",
         background: "",
-        speechStyle: "",
-        rules: ""
+        speechStyle: ""
       },
       relationship: "known",
       participantProfiles: [],
@@ -617,13 +613,11 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       replayMessages: [],
       persona: {
         name: "主持者",
-        role: "",
+        coreIdentity: "",
         personality: "",
         speechStyle: "",
-        appearance: "",
         interests: "",
-        background: "",
-        rules: ""
+        background: ""
       },
       relationship: "owner",
       participantProfiles: [],
@@ -750,13 +744,11 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       }],
       persona: {
         name: "Bot",
-        role: "助手",
-        appearance: "",
+        coreIdentity: "助手",
         personality: "",
         interests: "",
         background: "",
-        speechStyle: "",
-        rules: ""
+        speechStyle: ""
       },
       relationship: "known",
       participantProfiles: [],

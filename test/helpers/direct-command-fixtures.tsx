@@ -30,15 +30,35 @@ interface DirectCommandFixtureOptions {
   setTitle?: (sessionId: string, title: string, titleSource: "default" | "auto" | "manual") => unknown;
   appendInternalTranscript?: (sessionId: string, item: Record<string, unknown>) => void;
   markSetupConfirmed?: (sessionId: string) => void;
+  getOperationMode?: (sessionId: string) => unknown;
+  setOperationMode?: (sessionId: string, operationMode: unknown) => unknown;
   personaStore?: {
     get: () => Promise<unknown>;
     isComplete: (persona: unknown) => boolean;
+    createEmpty?: () => unknown;
+    write?: (persona: unknown) => Promise<void>;
+  };
+  rpProfileStore?: {
+    get: () => Promise<unknown>;
+    isComplete?: (profile: unknown) => boolean;
+    createEmpty?: () => unknown;
+    write?: (profile: unknown) => Promise<void>;
+  };
+  scenarioProfileStore?: {
+    get: () => Promise<unknown>;
+    isComplete?: (profile: unknown) => boolean;
+    createEmpty?: () => unknown;
+    write?: (profile: unknown) => Promise<void>;
   };
   globalProfileReadinessStore?: {
     get: () => Promise<unknown>;
     setPersonaReadiness: (status: "uninitialized" | "ready") => Promise<unknown>;
     setRpReadiness?: (status: "uninitialized" | "ready") => Promise<unknown>;
     setScenarioReadiness?: (status: "uninitialized" | "ready") => Promise<unknown>;
+  };
+  setupStore?: {
+    get?: () => Promise<unknown>;
+    advanceAfterPersonaUpdate?: (persona: unknown) => Promise<unknown>;
   };
   scenarioHostStateStore?: {
     write: (sessionId: string, state: unknown) => Promise<unknown>;
@@ -116,6 +136,13 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
       getDebugControlState(sessionId: string) {
         return options.getDebugControlState?.(sessionId) ?? { enabled: false, oncePending: false };
       },
+      getOperationMode(sessionId: string) {
+        return options.getOperationMode?.(sessionId) ?? session.operationMode;
+      },
+      setOperationMode(sessionId: string, operationMode: unknown) {
+        session.operationMode = operationMode as any;
+        return options.setOperationMode?.(sessionId, operationMode) ?? operationMode;
+      },
       getModeId(sessionId: string) {
         return options.getModeId?.(sessionId) ?? "rp_assistant";
       },
@@ -153,6 +180,37 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
       async get() {
         return {};
       },
+      createEmpty() {
+        return {};
+      },
+      async write() {
+      },
+      isComplete() {
+        return false;
+      }
+    },
+    rpProfileStore: options.rpProfileStore as any ?? {
+      async get() {
+        return {};
+      },
+      createEmpty() {
+        return {};
+      },
+      async write() {
+      },
+      isComplete() {
+        return false;
+      }
+    },
+    scenarioProfileStore: options.scenarioProfileStore as any ?? {
+      async get() {
+        return {};
+      },
+      createEmpty() {
+        return {};
+      },
+      async write() {
+      },
       isComplete() {
         return false;
       }
@@ -173,6 +231,14 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
         return null;
       },
       async setScenarioReadiness() {
+        return null;
+      }
+    },
+    setupStore: options.setupStore as any ?? {
+      async get() {
+        return { state: "ready" };
+      },
+      async advanceAfterPersonaUpdate() {
         return null;
       }
     },

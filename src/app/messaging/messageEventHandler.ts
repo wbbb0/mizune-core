@@ -8,7 +8,12 @@ import {
 } from "./messageHandlerTypes.ts";
 import { createMessageProcessingContext } from "./messageContextBuilder.ts";
 import { dispatchChatDirectCommand, resolveChatDirectCommand } from "./messageCommandFlow.ts";
-import { handlePostRouterSetupDecision, handlePreRouterDecision, logDirectCommandFailed } from "./messageSetupFlow.ts";
+import {
+  ensureAutomaticSetupOperationMode,
+  handlePostRouterSetupDecision,
+  handlePreRouterDecision,
+  logDirectCommandFailed
+} from "./messageSetupFlow.ts";
 import {
   appendIncomingHistory,
   enqueueTriggeredMessage,
@@ -65,6 +70,18 @@ export async function processIncomingMessage(
   if (deps.inboundDelivery === "onebot" && await handlePostRouterSetupDecision({ logger, userIdentityStore }, context, sendImmediateText)) {
     return;
   }
+
+  await ensureAutomaticSetupOperationMode(
+    {
+      sessionManager,
+      globalProfileReadinessStore: services.globalProfileReadinessStore,
+      personaStore: services.personaStore,
+      rpProfileStore: services.rpProfileStore,
+      scenarioProfileStore: services.scenarioProfileStore
+    },
+    context,
+    persistSession
+  );
 
   const triggerDecision = deps.inboundDelivery === "web"
     ? {

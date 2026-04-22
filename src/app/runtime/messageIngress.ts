@@ -24,6 +24,8 @@ type DirectCommandDeps = Pick<
   | "historyCompressor"
   | "setupStore"
   | "personaStore"
+  | "rpProfileStore"
+  | "scenarioProfileStore"
   | "globalProfileReadinessStore"
   | "scenarioHostStateStore"
   | "sessionCaptioner"
@@ -54,7 +56,7 @@ type DeliveryContext =
 
 export function createRuntimeMessageIngress(input: {
   services: Omit<MessageHandlerServices, "sessionManager"> & {
-    sessionManager: SessionMessagingAccess;
+    sessionManager: SessionMessagingAccess & import("#conversation/session/sessionCapabilities.ts").SessionOperationModeAccess;
   };
   directCommandDeps: DirectCommandDeps;
   persistSession: (sessionId: string, reason: string) => void;
@@ -122,7 +124,10 @@ function createDeliveryHandleDirectCommand(
     sessionCaptioner: deps.sessionCaptioner,
     scenarioHostStateStore: deps.scenarioHostStateStore,
     personaStore: deps.personaStore,
+    rpProfileStore: deps.rpProfileStore,
+    scenarioProfileStore: deps.scenarioProfileStore,
     globalProfileReadinessStore: deps.globalProfileReadinessStore,
+    setupStore: deps.setupStore,
     forceCompactSession: async (sessionId, retainMessageCount) => (
       deps.historyCompressor.forceCompact(sessionId, retainMessageCount)
     ),
