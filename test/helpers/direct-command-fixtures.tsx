@@ -37,6 +37,8 @@ interface DirectCommandFixtureOptions {
   globalProfileReadinessStore?: {
     get: () => Promise<unknown>;
     setPersonaReadiness: (status: "uninitialized" | "ready") => Promise<unknown>;
+    setRpReadiness?: (status: "uninitialized" | "ready") => Promise<unknown>;
+    setScenarioReadiness?: (status: "uninitialized" | "ready") => Promise<unknown>;
   };
   scenarioHostStateStore?: {
     write: (sessionId: string, state: unknown) => Promise<unknown>;
@@ -165,6 +167,12 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
         };
       },
       async setPersonaReadiness() {
+        return null;
+      },
+      async setRpReadiness() {
+        return null;
+      },
+      async setScenarioReadiness() {
         return null;
       }
     },

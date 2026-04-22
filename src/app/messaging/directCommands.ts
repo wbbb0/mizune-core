@@ -253,6 +253,16 @@ async function syncPersonaReadiness(ctx: DirectCommandExecutionContext): Promise
   );
 }
 
+async function syncModeProfileReadiness(ctx: DirectCommandExecutionContext): Promise<void> {
+  if (ctx.session.modeId === "rp_assistant") {
+    await ctx.input.globalProfileReadinessStore.setRpReadiness("ready");
+    return;
+  }
+  if (ctx.session.modeId === "scenario_host") {
+    await ctx.input.globalProfileReadinessStore.setScenarioReadiness("ready");
+  }
+}
+
 async function resolveCurrentSetupOperation(
   ctx: DirectCommandExecutionContext
 ): Promise<ReturnType<typeof resolveSessionModeSetupOperation>> {
@@ -687,11 +697,15 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         );
         await maybeCaptionScenarioSetupTitle(ctx, nextState);
       }
+      const setupOperation = await resolveCurrentSetupOperation(ctx);
       // Mark confirmed in session (in-memory)
       ctx.input.sessionManager.markSetupConfirmed(ctx.session.id);
-      await syncPersonaReadiness(ctx);
+      if (setupOperation?.kind === "persona_setup") {
+        await syncPersonaReadiness(ctx);
+      } else if (setupOperation?.kind === "mode_setup") {
+        await syncModeProfileReadiness(ctx);
+      }
       // Handle onComplete policy immediately
-      const setupOperation = await resolveCurrentSetupOperation(ctx);
       if (setupOperation?.onComplete === "clear_session") {
         ctx.input.sessionManager.cancelGeneration(ctx.session.id);
         ctx.input.sessionManager.clearSession(ctx.session.id);

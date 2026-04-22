@@ -544,6 +544,164 @@ import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.t
     assert.equal(calls.at(-1)?.text, "初始化已确认，已进入正常模式。");
   });
 
+  test("confirm command marks scenario readiness ready when resolving mode_setup", async () => {
+    const scenarioReadinessUpdates: Array<"uninitialized" | "ready"> = [];
+
+    const { calls, handler } = createDirectCommandFixture({
+      session: {
+        id: "qqbot:p:owner",
+        source: "onebot",
+        modeId: "scenario_host",
+        type: "private",
+        participantRef: { kind: "user", id: "owner" },
+        title: null,
+        titleSource: "default",
+        setupConfirmed: false,
+        operationMode: { kind: "normal" }
+      },
+      scenarioHostStateStore: {
+        async write(_sessionId: string, state: unknown) {
+          return state;
+        },
+        async update(_sessionId, updater) {
+          return updater({
+            version: 1,
+            currentSituation: "尚未开始",
+            currentLocation: null,
+            sceneSummary: "",
+            player: {
+              userId: "owner",
+              displayName: "Owner"
+            },
+            inventory: [],
+            objectives: [],
+            worldFacts: [],
+            flags: {},
+            initialized: false,
+            turnIndex: 0
+          });
+        }
+      },
+      personaStore: {
+        async get() {
+          return {
+            name: "小满",
+            coreIdentity: "主持人",
+            personality: "克制",
+            interests: "",
+            background: "",
+            speechStyle: "简洁"
+          };
+        },
+        isComplete() {
+          return true;
+        }
+      },
+      globalProfileReadinessStore: {
+        async get() {
+          return {
+            persona: "ready",
+            scenario: "uninitialized",
+            rp: "uninitialized",
+            updatedAt: 1
+          };
+        },
+        async setPersonaReadiness() {
+          return null;
+        },
+        async setRpReadiness() {
+          return null;
+        },
+        async setScenarioReadiness(status: "uninitialized" | "ready") {
+          scenarioReadinessUpdates.push(status);
+          return null;
+        }
+      }
+    });
+
+    await handler({
+      command: { name: "confirm" },
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+
+    assert.deepEqual(scenarioReadinessUpdates, ["ready"]);
+    assert.equal(calls.at(-1)?.text, "初始化已确认，已进入正常模式。");
+  });
+
+  test("confirm command marks rp readiness ready when resolving mode_setup", async () => {
+    let clearCalled = 0;
+    let cancelCalled = 0;
+    const rpReadinessUpdates: Array<"uninitialized" | "ready"> = [];
+
+    const { calls, handler } = createDirectCommandFixture({
+      session: {
+        id: "qqbot:p:owner",
+        source: "onebot",
+        modeId: "rp_assistant",
+        type: "private",
+        participantRef: { kind: "user", id: "owner" },
+        title: null,
+        titleSource: "default",
+        setupConfirmed: false,
+        operationMode: { kind: "normal" }
+      },
+      cancelGeneration() {
+        cancelCalled += 1;
+        return true;
+      },
+      clearSession() {
+        clearCalled += 1;
+      },
+      personaStore: {
+        async get() {
+          return {
+            name: "小满",
+            coreIdentity: "助手",
+            personality: "克制",
+            interests: "",
+            background: "",
+            speechStyle: "简洁"
+          };
+        },
+        isComplete() {
+          return true;
+        }
+      },
+      globalProfileReadinessStore: {
+        async get() {
+          return {
+            persona: "ready",
+            scenario: "uninitialized",
+            rp: "uninitialized",
+            updatedAt: 1
+          };
+        },
+        async setPersonaReadiness() {
+          return null;
+        },
+        async setRpReadiness(status: "uninitialized" | "ready") {
+          rpReadinessUpdates.push(status);
+          return null;
+        },
+        async setScenarioReadiness() {
+          return null;
+        }
+      }
+    });
+
+    await handler({
+      command: { name: "confirm" },
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+
+    assert.equal(cancelCalled, 1);
+    assert.equal(clearCalled, 1);
+    assert.deepEqual(rpReadinessUpdates, ["ready"]);
+    assert.equal(calls.at(-1)?.text, "初始化已确认，已进入正常模式。");
+  });
+
   test("debug once with inline text enqueues a synthetic message and flushes immediately", async () => {
     const debugMarkers: Array<Record<string, unknown>> = [];
     const syntheticMessages: Array<Record<string, unknown>> = [];
