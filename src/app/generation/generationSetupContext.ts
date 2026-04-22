@@ -1,35 +1,35 @@
+import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { SessionSetupAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import { isScenarioStateInitialized } from "#modes/scenarioHost/types.ts";
 import type { SetupCompletionSignal, SessionModeSetupContext } from "#modes/types.ts";
+import type { SessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
 
 export async function resolveSessionModeSetupContext(
   modeId: string,
   sessionId: string,
   deps: {
-    setupStore: SetupStateStore;
-    scenarioHostStateStore: ScenarioHostStateStore;
-    sessionManager: SessionSetupAccess;
+    globalProfileReadinessStore: GlobalProfileReadinessStore;
+    sessionManager: SessionSetupAccess & {
+      getOperationMode(sessionId: string): SessionOperationMode;
+    };
   },
   chatContext: {
     chatType: "private" | "group";
     relationship: string;
   }
 ): Promise<SessionModeSetupContext> {
-  const setupState = await deps.setupStore.get();
-  const globalSetupReady = setupState.state === "ready";
-
-  let sessionStateInitialized = false;
-  if (modeId === "scenario_host") {
-    const scenarioState = await deps.scenarioHostStateStore.get(sessionId);
-    sessionStateInitialized = scenarioState != null && isScenarioStateInitialized(scenarioState);
-  }
+  const readiness = await deps.globalProfileReadinessStore.get();
 
   return {
-    globalSetupReady,
-    sessionStateInitialized,
-    setupConfirmedByUser: deps.sessionManager.isSetupConfirmed(sessionId),
+    personaReady: readiness.persona === "ready",
+    modeProfileReady: modeId === "rp_assistant"
+      ? readiness.rp === "ready"
+      : modeId === "scenario_host"
+        ? readiness.scenario === "ready"
+        : true,
+    operationMode: deps.sessionManager.getOperationMode(sessionId),
     chatType: chatContext.chatType,
     relationship: chatContext.relationship
   };

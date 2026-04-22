@@ -17,6 +17,7 @@ import { PersonaStore } from "#persona/personaStore.ts";
 import { RequestStore } from "#requests/requestStore.ts";
 import { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import { SetupStateStore } from "#identity/setupStateStore.ts";
+import { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import { UserIdentityStore } from "#identity/userIdentityStore.ts";
 import { UserStore } from "#identity/userStore.ts";
 import { GlobalRuleStore } from "#memory/globalRuleStore.ts";
@@ -86,6 +87,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
   const toolsetRuleStore = new ToolsetRuleStore(dataDir, config, logger);
   const scenarioHostStateStore = new ScenarioHostStateStore(dataDir, config, logger);
   const setupStore = new SetupStateStore(dataDir, userIdentityStore, logger);
+  const globalProfileReadinessStore = new GlobalProfileReadinessStore(dataDir, config, logger);
   const searchService = new SearchService(config, logger);
   const browserService = new BrowserService(createBrowserServiceDeps({
     config,
@@ -129,6 +131,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
     toolsetRuleStore,
     scenarioHostStateStore,
     setupStore,
+    globalProfileReadinessStore,
     searchService,
     browserService,
     localFileService,
@@ -172,6 +175,7 @@ export async function initializeBootstrapState(
       | "toolsetRuleStore"
       | "scenarioHostStateStore"
       | "setupStore"
+      | "globalProfileReadinessStore"
       | "sessionManager"
     >,
     "sessionManager"
@@ -203,6 +207,7 @@ export async function initializeBootstrapState(
     toolsetRuleStore,
     scenarioHostStateStore,
     setupStore,
+    globalProfileReadinessStore,
     sessionManager
   } = services;
 
@@ -225,6 +230,7 @@ export async function initializeBootstrapState(
   await toolsetRuleStore.init();
   await scenarioHostStateStore.init();
   await setupStore.init(await personaStore.get());
+  await globalProfileReadinessStore.init();
   const persistedSessions = await sessionPersistence.loadAll();
   sessionManager.restoreSessions(persistedSessions);
   await chatMessageFileGcService.sweep({

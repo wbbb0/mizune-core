@@ -19,6 +19,7 @@ import type { RequestStore } from "#requests/requestStore.ts";
 import type { SingleInstanceLock } from "#runtime/singleInstanceLock.ts";
 import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
+import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import type { UserIdentityStore } from "#identity/userIdentityStore.ts";
 import type { UserStore } from "#identity/userStore.ts";
 import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
@@ -68,6 +69,7 @@ export interface AppServiceBootstrap {
   toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
   setupStore: SetupStateStore;
+  globalProfileReadinessStore: GlobalProfileReadinessStore;
   searchService: SearchService;
   browserService: BrowserService;
   localFileService: LocalFileService;

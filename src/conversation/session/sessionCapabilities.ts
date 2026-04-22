@@ -401,7 +401,7 @@ export interface SessionGenerationOutboundAccess {
   recordSentMessage(sessionId: string, message: SessionSentMessage): void;
 }
 
-export interface SessionGenerationOrchestratorAccess extends SessionSetupAccess {
+export interface SessionGenerationOrchestratorAccess extends SessionSetupAccess, SessionOperationModeAccess {
   getSession(sessionId: string): SessionState;
   getReplyDelivery(sessionId: string): SessionDelivery;
   setReplyDelivery(sessionId: string, delivery: SessionDelivery): void;

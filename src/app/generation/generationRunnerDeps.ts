@@ -30,6 +30,7 @@ import type { MediaCaptionService } from "#services/workspace/mediaCaptionServic
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
+import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import type { UserStore } from "#identity/userStore.ts";
 import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
 import type { SessionWorkPersistenceDeps } from "../session-work/sessionWorkCoreDeps.ts";
@@ -81,6 +82,7 @@ export interface GenerationIdentityDeps {
   toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
   setupStore: SetupStateStore;
+  globalProfileReadinessStore: GlobalProfileReadinessStore;
   conversationAccess: ConversationAccessService;
   npcDirectory: NpcDirectory;
 }
@@ -146,5 +148,5 @@ export type GenerationSessionOrchestratorDeps =
     sessionRuntime: Pick<GenerationSessionRuntimeDeps, "logger" | "historyCompressor" | "llmClient" | "sessionCaptioner" | "turnPlanner" | "debounceManager"> & {
       sessionManager: SessionGenerationOrchestratorAccess;
     };
-    identity: Pick<GenerationIdentityDeps, "userStore" | "personaStore" | "setupStore" | "scenarioHostStateStore">;
+    identity: Pick<GenerationIdentityDeps, "userStore" | "personaStore" | "setupStore" | "scenarioHostStateStore" | "globalProfileReadinessStore">;
   };

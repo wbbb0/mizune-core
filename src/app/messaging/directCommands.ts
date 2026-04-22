@@ -7,6 +7,7 @@ import type { SessionDirectCommandAccess } from "#conversation/session/sessionCa
 import type { Relationship } from "#identity/relationship.ts";
 import type { InternalTranscriptItem, SessionState } from "#conversation/session/sessionTypes.ts";
 import { requireSessionModeDefinition } from "#modes/registry.ts";
+import { resolveSessionModeSetupOperation } from "#modes/types.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { createInitialScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
@@ -652,7 +653,11 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       // Mark confirmed in session (in-memory)
       ctx.input.sessionManager.markSetupConfirmed(ctx.session.id);
       // Handle onComplete policy immediately
-      if (modeDef.setupPhase.onComplete === "clear_session") {
+      const setupOperation = resolveSessionModeSetupOperation(
+        modeDef.setupPhase,
+        ctx.session.operationMode.kind === "normal" ? null : ctx.session.operationMode.kind
+      );
+      if (setupOperation?.onComplete === "clear_session") {
         ctx.input.sessionManager.cancelGeneration(ctx.session.id);
         ctx.input.sessionManager.clearSession(ctx.session.id);
       }

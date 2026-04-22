@@ -24,6 +24,7 @@ import { createSessionTranscriptStore } from "#conversation/session/sessionTrans
 import { requireSessionModeDefinition } from "#modes/registry.ts";
 import { resolveSessionModeSetupContext } from "./generationSetupContext.ts";
 import { createEmptyPersona } from "#persona/personaSchema.ts";
+import { resolveSessionModeSetupOperation } from "#modes/types.ts";
 
 const EMPTY_ASSISTANT_PERSONA = createEmptyPersona();
 
@@ -110,7 +111,7 @@ export function createGenerationSessionOrchestrator(
   } = deps;
   const { config } = promptBuilder;
   const { logger, historyCompressor, sessionManager, sessionCaptioner } = sessionRuntime;
-  const { userStore, personaStore, setupStore, scenarioHostStateStore } = identity;
+  const { userStore, personaStore, globalProfileReadinessStore } = identity;
   const { persistSession } = lifecycle;
 
   const resolveSessionReplyDelivery = (
@@ -173,10 +174,15 @@ export function createGenerationSessionOrchestrator(
       const setupCtx = await resolveSessionModeSetupContext(
         sessionModeId,
         sessionId,
-        { setupStore, scenarioHostStateStore, sessionManager },
+        { globalProfileReadinessStore, sessionManager },
         { chatType: last.chatType, relationship }
       );
-      const setupMode = (mode.setupPhase?.needsSetup(setupCtx)) ?? false;
+      const setupOperationKind = mode.setupPhase?.resolveOperationModeKind(setupCtx) ?? null;
+      const activeSetupOperation = resolveSessionModeSetupOperation(mode.setupPhase, setupOperationKind);
+      const setupMode = activeSetupOperation != null;
+      const setupPhaseSelection = activeSetupOperation?.setupToolsetOverrides
+        ? { setupPhase: { setupToolsetOverrides: activeSetupOperation.setupToolsetOverrides } }
+        : {};
       let transcriptStore = createSessionTranscriptStore(refreshedSession, config);
       let visibleHistory = transcriptStore.projectRuntimeHistory();
       let historyForPrompt = visibleHistory.slice(0, Math.max(0, visibleHistory.length - messages.length));
@@ -188,7 +194,7 @@ export function createGenerationSessionOrchestrator(
         modelRef: resolvedModelRef,
         includeDebugTools: interactionMode === "debug",
         modeId: sessionModeId,
-        ...(setupMode && mode.setupPhase ? { setupPhase: mode.setupPhase } : {})
+        ...setupPhaseSelection
       });
       let plannedToolsetIds = plannerToolsets.map((item) => item.id);
       let plannerDecision = undefined;
@@ -245,7 +251,7 @@ export function createGenerationSessionOrchestrator(
           modelRef: resolvedModelRef,
           includeDebugTools: interactionMode === "debug",
           modeId: sessionModeId,
-          ...(setupMode && mode.setupPhase ? { setupPhase: mode.setupPhase } : {})
+          ...setupPhaseSelection
         });
         plannedToolsetIds = gateResult.toolsetIds.filter((id) => plannerToolsets.some((item) => item.id === id));
         plannerDecision = gateResult.action === "continue" ? gateResult.plannerDecision : undefined;
@@ -307,8 +313,8 @@ export function createGenerationSessionOrchestrator(
           ? [buildDebugMarkerSystemMessage(debugMarkers)].filter((item): item is string => Boolean(item))
           : [])
       ];
-      const isPersonaSetupMode = setupMode && mode.setupPhase?.promptMode === "persona_setup";
-      const isChatWithSetupInjection = setupMode && mode.setupPhase?.promptMode === "chat_with_setup_injection";
+      const isPersonaSetupMode = activeSetupOperation?.promptMode === "persona_setup";
+      const isChatWithSetupInjection = activeSetupOperation?.promptMode === "chat_with_setup_injection";
 
       const promptBuildResult = isPersonaSetupMode
         ? await services.promptBuilder.buildSetupPromptMessages({
@@ -378,7 +384,9 @@ export function createGenerationSessionOrchestrator(
         ...(setupMode
           ? {
               availableToolNames: plannerToolsets.flatMap((t) => t.toolNames),
-              setupMode: true
+              setupMode: true,
+              setupCompletionSignal: activeSetupOperation.completionSignal,
+              setupOnComplete: activeSetupOperation.onComplete
             }
           : {
               plannedToolsetIds,

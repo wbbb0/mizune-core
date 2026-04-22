@@ -85,6 +85,32 @@ import { requireSessionModeDefinition } from "../../src/modes/registry.ts";
     assert.equal(toolsets.some((item) => item.id === "chat_delegation"), false);
   });
 
+  test("rp_assistant setup prefers persona_setup before mode_setup", async () => {
+    const mode = requireSessionModeDefinition("rp_assistant");
+    const kind = mode.setupPhase?.resolveOperationModeKind({
+      personaReady: false,
+      modeProfileReady: false,
+      operationMode: { kind: "normal" },
+      chatType: "private",
+      relationship: "owner"
+    });
+
+    assert.equal(kind, "persona_setup");
+  });
+
+  test("scenario_host enters mode_setup only after persona is ready", async () => {
+    const mode = requireSessionModeDefinition("scenario_host");
+    const kind = mode.setupPhase?.resolveOperationModeKind({
+      personaReady: true,
+      modeProfileReady: false,
+      operationMode: { kind: "normal" },
+      chatType: "private",
+      relationship: "owner"
+    });
+
+    assert.equal(kind, "mode_setup");
+  });
+
   test("supplement policy stays auditable and ordered by available toolsets", async () => {
     const decisions = decideToolsetSupplements({
       selectedToolsetIds: ["web_research"],

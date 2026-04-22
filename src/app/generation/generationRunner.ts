@@ -102,7 +102,8 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
       userStore: deps.identity.userStore,
       personaStore: deps.identity.personaStore,
       setupStore: deps.identity.setupStore,
-      scenarioHostStateStore: deps.identity.scenarioHostStateStore
+      scenarioHostStateStore: deps.identity.scenarioHostStateStore,
+      globalProfileReadinessStore: deps.identity.globalProfileReadinessStore
     },
     lifecycle: {
       persistSession: deps.lifecycle.persistSession,

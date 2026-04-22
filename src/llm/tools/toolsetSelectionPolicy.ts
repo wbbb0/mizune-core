@@ -2,7 +2,7 @@ import type { AppConfig } from "#config/config.ts";
 import { getBuiltinToolNames } from "#llm/builtinTools.ts";
 import type { BuiltinToolContext, Relationship } from "./core/shared.ts";
 import { getDefaultSessionModeId, requireSessionModeDefinition } from "#modes/registry.ts";
-import type { SessionModeSetupPhase, SessionModeSetupToolsetOverride } from "#modes/types.ts";
+import type { SessionModeSetupToolsetOverride } from "#modes/types.ts";
 import { TOOLSET_DEFINITIONS, toToolsetView } from "./toolsetCatalog.ts";
 import type { ToolsetView } from "./toolsetCatalog.ts";
 
@@ -17,7 +17,9 @@ export interface TurnToolsetSelectionInput {
   currentUser: BuiltinToolContext["currentUser"];
   modelRef: string[];
   includeDebugTools: boolean;
-  setupPhase?: Pick<SessionModeSetupPhase, "setupToolsetOverrides">;
+  setupPhase?: {
+    setupToolsetOverrides: SessionModeSetupToolsetOverride[];
+  };
   modeId?: string;
 }
 

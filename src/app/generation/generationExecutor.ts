@@ -38,6 +38,7 @@ import {
 } from "#llm/tools/toolsets.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import { listSessionModes, requireSessionModeDefinition } from "#modes/registry.ts";
+import type { SetupCompletionSignal } from "#modes/types.ts";
 import { checkSetupCompletion } from "./generationSetupContext.ts";
 import { waitForGenerationAbortGraceWindow } from "#app/runtime/runtimeTimingPolicy.ts";
 import { maybeAutoCaptionSessionTitle, shouldAutoCaptionSessionTitle } from "./sessionCaptioner.ts";
@@ -95,6 +96,8 @@ export interface RunGenerationInput {
   plannedToolsetIds?: string[] | undefined;
   availableToolsets?: ToolsetView[] | undefined;
   setupMode?: boolean | undefined;
+  setupCompletionSignal?: SetupCompletionSignal | undefined;
+  setupOnComplete?: "clear_session" | "none" | undefined;
   streamResponse?: boolean | undefined;
   forceRegenerateTitleAfterTurn?: boolean | undefined;
   webOutputCollector?: GenerationWebOutputCollector | undefined;
@@ -564,16 +567,16 @@ export function createGenerationExecutor(
       throw error;
     } finally {
       const finishedCurrent = sessionManager.finishGeneration(sessionId, abortController);
-      if (finishedCurrent && setupMode) {
+      if (finishedCurrent && setupMode && input.setupCompletionSignal && input.setupOnComplete) {
         const modeId = sessionManager.getModeId(sessionId);
         const modeDef = requireSessionModeDefinition(modeId);
         if (modeDef.setupPhase) {
           const isComplete = await checkSetupCompletion(
-            modeDef.setupPhase.completionSignal,
+            input.setupCompletionSignal,
             sessionId,
             { setupStore, scenarioHostStateStore, sessionManager }
           );
-          if (isComplete && modeDef.setupPhase.onComplete === "clear_session") {
+          if (isComplete && input.setupOnComplete === "clear_session") {
             sessionManager.clearSession(sessionId);
             persistSession(sessionId, "setup_completed_session_cleared");
           }

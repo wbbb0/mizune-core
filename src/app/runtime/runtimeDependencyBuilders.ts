@@ -55,6 +55,7 @@ export function buildGenerationIdentityDeps(services: AppServiceBootstrap): Gene
     toolsetRuleStore: services.toolsetRuleStore,
     scenarioHostStateStore: services.scenarioHostStateStore,
     setupStore: services.setupStore,
+    globalProfileReadinessStore: services.globalProfileReadinessStore,
     conversationAccess: services.conversationAccess,
     npcDirectory: services.npcDirectory
   };
