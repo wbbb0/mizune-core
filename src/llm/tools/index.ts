@@ -4,6 +4,12 @@ import type { AppConfig } from "#config/config.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { hasNativeSearchFeature } from "../provider/providerFeatures.ts";
 import { builtinToolHandlers, getBuiltinToolDescriptors } from "./toolRegistry.ts";
+import type { SessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
+import {
+  filterProfileToolNamesForScope,
+  resolveProfileToolScopeFromOperationMode,
+  type ProfileToolScope
+} from "./profileToolScope.ts";
 
 function hasToolAccess(
   tool: ToolDescriptor,
@@ -27,6 +33,7 @@ interface BuiltinToolSelectionOptions {
   modelRef?: string | string[];
   availableToolNames?: string[];
   includeDebugTools?: boolean;
+  profileToolScope?: ProfileToolScope | null;
 }
 
 function shouldHideExternalSearchTool(config: AppConfig | undefined, modelRef: string | string[] | undefined): boolean {
@@ -37,8 +44,15 @@ function shouldHideExternalSearchTool(config: AppConfig | undefined, modelRef: s
 }
 
 function selectBuiltinToolDescriptors(options: BuiltinToolSelectionOptions) {
+  const descriptors = getBuiltinToolDescriptors(options.config);
+  const profileScopedVisibleNames = options.profileToolScope
+    ? new Set(filterProfileToolNamesForScope(
+      descriptors.map((item) => item.definition.function.name),
+      options.profileToolScope
+    ))
+    : null;
   const allowedToolNames = options.availableToolNames
-    ? new Set(options.availableToolNames)
+    ? new Set(filterProfileToolNamesForScope(options.availableToolNames, options.profileToolScope))
     : null;
   const hideExternalSearchTool = shouldHideExternalSearchTool(options.config, options.modelRef);
   const modelSupportsTools = !options.config || !options.modelRef
@@ -46,12 +60,13 @@ function selectBuiltinToolDescriptors(options: BuiltinToolSelectionOptions) {
     : (getPrimaryModelProfile(options.config, options.modelRef)?.supportsTools ?? true);
 
   return modelSupportsTools
-    ? getBuiltinToolDescriptors(options.config)
+    ? descriptors
     .filter((tool) => tool.modelVisible !== false)
     .filter((tool) => !options.config || !tool.isEnabled || tool.isEnabled(options.config))
     .filter((tool) => hasToolAccess(tool, options.relationship, options.currentUser))
     .filter((tool) => options.includeDebugTools === true || tool.debugOnly !== true)
     .filter((tool) => !hideExternalSearchTool || !["ground_with_google_search", "search_with_iqs_lite_advanced"].includes(tool.definition.function.name))
+    .filter((tool) => !profileScopedVisibleNames || profileScopedVisibleNames.has(tool.definition.function.name))
     .filter((tool) => !allowedToolNames || allowedToolNames.has(tool.definition.function.name))
     .slice()
     .sort((left, right) => left.definition.function.name.localeCompare(right.definition.function.name))
@@ -66,6 +81,8 @@ export function getBuiltinTools(
     modelRef?: string | string[];
     availableToolNames?: string[];
     includeDebugTools?: boolean;
+    operationMode?: SessionOperationMode;
+    profileToolScope?: ProfileToolScope | null;
   }
 ): LlmToolDefinition[] {
   const resolvedCurrentUser = config == null && currentUserOrConfig && "llm" in currentUserOrConfig
@@ -82,7 +99,8 @@ export function getBuiltinTools(
     ...(resolvedConfig ? { config: resolvedConfig } : {}),
     ...(options?.modelRef ? { modelRef: options.modelRef } : {}),
     ...(options?.availableToolNames ? { availableToolNames: options.availableToolNames } : {}),
-    ...(options?.includeDebugTools === true ? { includeDebugTools: true } : {})
+    ...(options?.includeDebugTools === true ? { includeDebugTools: true } : {}),
+    profileToolScope: options?.profileToolScope ?? resolveProfileToolScopeFromOperationMode(options?.operationMode)
   })
     .map((tool) => tool.definition);
 }
@@ -95,6 +113,8 @@ export function getBuiltinToolNames(
     modelRef?: string | string[];
     availableToolNames?: string[];
     includeDebugTools?: boolean;
+    operationMode?: SessionOperationMode;
+    profileToolScope?: ProfileToolScope | null;
   }
 ): string[] {
   return getBuiltinTools(relationship, currentUserOrConfig, config, options)
@@ -107,6 +127,8 @@ export function createBuiltinToolExecutor(
     modelRef?: string | string[];
     availableToolNames?: string[];
     includeDebugTools?: boolean;
+    operationMode?: SessionOperationMode;
+    profileToolScope?: ProfileToolScope | null;
   }
 ): (toolCall: LlmToolCall, args: unknown) => Promise<string | LlmToolExecutionResult> {
   const allowedToolNames = new Set(
@@ -116,7 +138,8 @@ export function createBuiltinToolExecutor(
       config: context.config,
       ...(options?.modelRef ? { modelRef: options.modelRef } : {}),
       ...(options?.availableToolNames ? { availableToolNames: options.availableToolNames } : {}),
-      ...(options?.includeDebugTools === true ? { includeDebugTools: true } : {})
+      ...(options?.includeDebugTools === true ? { includeDebugTools: true } : {}),
+      profileToolScope: options?.profileToolScope ?? resolveProfileToolScopeFromOperationMode(options?.operationMode)
     })
       .map((tool) => tool.definition.function.name)
   );

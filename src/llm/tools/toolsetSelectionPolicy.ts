@@ -5,6 +5,7 @@ import { getDefaultSessionModeId, requireSessionModeDefinition } from "#modes/re
 import type { SessionModeSetupToolsetOverride } from "#modes/types.ts";
 import { TOOLSET_DEFINITIONS, toToolsetView } from "./toolsetCatalog.ts";
 import type { ToolsetView } from "./toolsetCatalog.ts";
+import type { ProfileToolScope } from "./profileToolScope.ts";
 
 export const TURN_PLANNER_ALWAYS_TOOL_NAMES = [
   "list_available_toolsets",
@@ -21,6 +22,7 @@ export interface TurnToolsetSelectionInput {
     setupToolsetOverrides: SessionModeSetupToolsetOverride[];
   };
   modeId?: string;
+  profileToolScope?: ProfileToolScope | null;
 }
 
 // Centralizes runtime toolset visibility and setup override policy so the catalog
@@ -32,7 +34,8 @@ export function listTurnToolsets(input: TurnToolsetSelectionInput): ToolsetView[
     input.config,
     {
       modelRef: input.modelRef,
-      includeDebugTools: input.includeDebugTools
+      includeDebugTools: input.includeDebugTools,
+      ...(input.profileToolScope !== undefined ? { profileToolScope: input.profileToolScope } : {})
     }
   ));
   const visibleSharedToolsets = listVisibleSharedToolsets(visibleToolNames, input.relationship, input.includeDebugTools);
@@ -42,6 +45,16 @@ export function listTurnToolsets(input: TurnToolsetSelectionInput): ToolsetView[
       input.setupPhase.setupToolsetOverrides ?? [],
       visibleToolNames,
       visibleSharedToolsets
+    );
+  }
+
+  if (input.profileToolScope && input.profileToolScope !== "normal") {
+    return buildProfileDraftToolsets(
+      input.profileToolScope,
+      visibleToolNames,
+      visibleSharedToolsets,
+      input.relationship,
+      input.includeDebugTools
     );
   }
 
@@ -99,6 +112,26 @@ function applySetupToolsetOverrides(
       .filter((toolset) => toolset.toolNames.length > 0),
     ...visibleSharedToolsets.filter((toolset) => !overrideIds.has(toolset.id))
   ];
+}
+
+function buildProfileDraftToolsets(
+  scope: Exclude<ProfileToolScope, "normal">,
+  visibleToolNames: Set<string>,
+  visibleSharedToolsets: ToolsetView[],
+  relationship: Relationship,
+  includeDebugTools: boolean
+): ToolsetView[] {
+  const toolsetId = scope === "persona"
+    ? "persona_profile_draft"
+    : scope === "rp"
+      ? "rp_profile_draft"
+      : "scenario_profile_draft";
+  const toolset = TOOLSET_DEFINITIONS.find((item) => item.id === toolsetId);
+  if (!toolset || !isToolsetVisible(toolset, relationship, includeDebugTools)) {
+    return visibleSharedToolsets;
+  }
+  const draftToolset = toToolsetView(toolset, visibleToolNames);
+  return draftToolset ? [draftToolset, ...visibleSharedToolsets] : visibleSharedToolsets;
 }
 
 function isToolsetVisible(

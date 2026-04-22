@@ -71,8 +71,19 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   }
 
   if (hasAnyTool(visibleToolNames, ["get_persona", "patch_persona", "clear_persona_field"])) {
-    lines.push("当 owner 明确提出长期生效的人设、口吻、身份设定、角色边界或角色扮演补充时，应视为 persona 修改请求；先看 get_persona，再用 patch_persona 或 clear_persona_field 实际写入。若你最终回复里说了“记下了”“以后按这个来”“已经写进 persona”，本轮之前必须已经实际完成写入。");
-    lines.push("以下表达通常表示应写 persona：把这个身份设定记下来、以后按这个人设说话、这是角色设定、把这个写进 persona、以后都用这种口吻、别突破这个角色边界。");
+    if (hasAnyTool(visibleToolNames, ["patch_persona", "clear_persona_field"])) {
+      lines.push("当前处于 persona 草稿编辑态；先看 get_persona，再用 patch_persona 或 clear_persona_field 修改当前会话草稿。这里改的是草稿，不是正式持久化数据。");
+    } else {
+      lines.push("get_persona 只用于查看当前正式 persona；本轮没有 persona 写入口，不要承诺“已经改了 persona”。需要修改时应引导进入对应配置流程。");
+    }
+  }
+
+  if (hasAnyTool(visibleToolNames, ["get_rp_profile", "patch_rp_profile", "clear_rp_profile_field"])) {
+    lines.push("当前处于 RP 全局资料草稿编辑态；先看 get_rp_profile，再用 patch_rp_profile 或 clear_rp_profile_field 修改当前会话草稿。这里改的是草稿，不是正式持久化数据。");
+  }
+
+  if (hasAnyTool(visibleToolNames, ["get_scenario_profile", "patch_scenario_profile", "clear_scenario_profile_field"])) {
+    lines.push("当前处于 Scenario 全局资料草稿编辑态；先看 get_scenario_profile，再用 patch_scenario_profile 或 clear_scenario_profile_field 修改当前会话草稿。这里改的是草稿，不是正式持久化数据。");
   }
 
   if (hasAnyTool(visibleToolNames, ["list_toolset_rules", "upsert_toolset_rule", "remove_toolset_rule"])) {

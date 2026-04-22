@@ -91,7 +91,7 @@ export interface SessionWebStreamAccess {
   subscribeSession(sessionId: string, listener: () => void): () => void;
 }
 
-export interface SessionToolRuntimeAccess {
+export interface SessionToolRuntimeAccess extends SessionOperationModeAccess {
   listSessions(): SessionState[];
   ensureSession(target: {
     id: string;

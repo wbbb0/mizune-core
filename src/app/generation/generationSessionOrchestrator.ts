@@ -25,8 +25,27 @@ import { requireSessionModeDefinition } from "#modes/registry.ts";
 import { resolveSessionModeSetupContext } from "./generationSetupContext.ts";
 import { createEmptyPersona } from "#persona/personaSchema.ts";
 import { resolveSessionModeSetupOperation } from "#modes/types.ts";
+import type { ProfileToolScope } from "#llm/tools/profileToolScope.ts";
 
 const EMPTY_ASSISTANT_PERSONA = createEmptyPersona();
+
+function resolveProfileToolScope(input: {
+  operationMode: { kind: string; modeId?: string };
+  activeSetupOperationKind: "persona_setup" | "mode_setup" | null;
+  modeId: string;
+}): ProfileToolScope {
+  if (
+    input.activeSetupOperationKind === "persona_setup"
+    || input.operationMode.kind === "persona_setup"
+    || input.operationMode.kind === "persona_config"
+  ) {
+    return "persona";
+  }
+  if (input.operationMode.kind === "mode_setup" || input.operationMode.kind === "mode_config") {
+    return input.operationMode.modeId === "rp_assistant" ? "rp" : "scenario";
+  }
+  return "normal";
+}
 
 function isAssistantMode(modeId: string): boolean {
   return modeId === "assistant";
@@ -180,6 +199,11 @@ export function createGenerationSessionOrchestrator(
       const setupOperationKind = mode.setupPhase?.resolveOperationModeKind(setupCtx) ?? null;
       const activeSetupOperation = resolveSessionModeSetupOperation(mode.setupPhase, setupOperationKind);
       const setupMode = activeSetupOperation != null;
+      const profileToolScope = resolveProfileToolScope({
+        operationMode: refreshedSession.operationMode,
+        activeSetupOperationKind: activeSetupOperation?.kind ?? null,
+        modeId: sessionModeId
+      });
       const setupPhaseSelection = activeSetupOperation?.setupToolsetOverrides
         ? { setupPhase: { setupToolsetOverrides: activeSetupOperation.setupToolsetOverrides } }
         : {};
@@ -194,6 +218,7 @@ export function createGenerationSessionOrchestrator(
         modelRef: resolvedModelRef,
         includeDebugTools: interactionMode === "debug",
         modeId: sessionModeId,
+        profileToolScope,
         ...setupPhaseSelection
       });
       let plannedToolsetIds = plannerToolsets.map((item) => item.id);
@@ -251,6 +276,7 @@ export function createGenerationSessionOrchestrator(
           modelRef: resolvedModelRef,
           includeDebugTools: interactionMode === "debug",
           modeId: sessionModeId,
+          profileToolScope,
           ...setupPhaseSelection
         });
         plannedToolsetIds = gateResult.toolsetIds.filter((id) => plannerToolsets.some((item) => item.id === id));
@@ -433,7 +459,12 @@ export function createGenerationSessionOrchestrator(
         currentUser,
         modelRef: scheduledModelRef,
         includeDebugTools: interactionMode === "debug",
-        modeId: session.modeId
+        modeId: session.modeId,
+        profileToolScope: resolveProfileToolScope({
+          operationMode: session.operationMode,
+          activeSetupOperationKind: null,
+          modeId: session.modeId
+        })
       });
       const activeScheduledToolsetIds = new Set(selectScheduledActiveToolsetIds(session.modeId, trigger.kind));
       const activeScheduledToolsets = scheduledAvailableToolsets.filter((toolset) => activeScheduledToolsetIds.has(toolset.id));

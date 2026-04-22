@@ -77,6 +77,63 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    id: "persona_profile_draft",
+    title: "全局人格草稿",
+    description: "读取和修改当前会话中的 persona 草稿。",
+    ownerOnly: true,
+    promptGuidance: [
+      "当前只允许围绕 persona 草稿工作；不要改全局规则、工具集规则或用户资料。",
+      "修改的是当前会话草稿，不是正式持久化数据。"
+    ],
+    plannerSignals: [
+      "编辑 persona 草稿",
+      "查看当前 persona 草稿"
+    ],
+    toolNames: [
+      "get_persona",
+      "patch_persona",
+      "clear_persona_field"
+    ]
+  },
+  {
+    id: "rp_profile_draft",
+    title: "RP 资料草稿",
+    description: "读取和修改当前会话中的 RP 全局资料草稿。",
+    ownerOnly: true,
+    promptGuidance: [
+      "当前只允许围绕 RP 全局资料草稿工作；不要改 persona 或其他长期规则。",
+      "修改的是当前会话草稿，不是正式持久化数据。"
+    ],
+    plannerSignals: [
+      "编辑 RP 草稿",
+      "查看当前 RP 草稿"
+    ],
+    toolNames: [
+      "get_rp_profile",
+      "patch_rp_profile",
+      "clear_rp_profile_field"
+    ]
+  },
+  {
+    id: "scenario_profile_draft",
+    title: "Scenario 资料草稿",
+    description: "读取和修改当前会话中的 Scenario 全局资料草稿。",
+    ownerOnly: true,
+    promptGuidance: [
+      "当前只允许围绕 Scenario 全局资料草稿工作；不要改 persona 或其他长期规则。",
+      "修改的是当前会话草稿，不是正式持久化数据。"
+    ],
+    plannerSignals: [
+      "编辑 Scenario 草稿",
+      "查看当前 Scenario 草稿"
+    ],
+    toolNames: [
+      "get_scenario_profile",
+      "patch_scenario_profile",
+      "clear_scenario_profile_field"
+    ]
+  },
+  {
     id: "conversation_navigation",
     title: "跨会话导航",
     description: "检索可访问会话并读取上下文。",

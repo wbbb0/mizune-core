@@ -1,4 +1,13 @@
 import { editablePersonaFieldNames } from "#persona/personaSchema.ts";
+import {
+  editableRpProfileFieldNames,
+  type RpProfile
+} from "#modes/rpAssistant/profileSchema.ts";
+import {
+  editableScenarioProfileFieldNames,
+  type ScenarioProfile
+} from "#modes/scenarioHost/profileSchema.ts";
+import type { SessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
 import type { MemoryCategory, ScopeConflictWarning } from "#memory/memoryCategory.ts";
 import {
   buildMemoryRerouteDetails,
@@ -11,6 +20,10 @@ import { requireOwner } from "../core/shared.ts";
 
 const personaFieldEnums = [...editablePersonaFieldNames];
 const personaPatchFieldNames = new Set(editablePersonaFieldNames);
+const rpProfileFieldEnums = [...editableRpProfileFieldNames];
+const rpProfilePatchFieldNames = new Set(editableRpProfileFieldNames);
+const scenarioProfileFieldEnums = [...editableScenarioProfileFieldNames];
+const scenarioProfilePatchFieldNames = new Set(editableScenarioProfileFieldNames);
 
 export const profileToolDescriptors: ToolDescriptor[] = [
   {
@@ -22,6 +35,135 @@ export const profileToolDescriptors: ToolDescriptor[] = [
         parameters: {
           type: "object",
           properties: {},
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    ownerOnly: true,
+    definition: {
+      type: "function",
+      function: {
+        name: "get_rp_profile",
+        description: "读取当前会话中的 RP 全局资料草稿。",
+        parameters: {
+          type: "object",
+          properties: {},
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    ownerOnly: true,
+    definition: {
+      type: "function",
+      function: {
+        name: "patch_rp_profile",
+        description: "按字段 patch 当前会话中的 RP 全局资料草稿，不直接写持久化存储。",
+        parameters: {
+          type: "object",
+          properties: {
+            profilePatch: {
+              type: "object",
+              properties: {
+                appearance: { type: "string" },
+                premise: { type: "string" },
+                relationship: { type: "string" },
+                identityBoundary: { type: "string" },
+                styleRules: { type: "string" },
+                hardRules: { type: "string" }
+              },
+              additionalProperties: false
+            }
+          },
+          required: ["profilePatch"],
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    ownerOnly: true,
+    definition: {
+      type: "function",
+      function: {
+        name: "clear_rp_profile_field",
+        description: "清空当前会话中的一个 RP 全局资料草稿字段。",
+        parameters: {
+          type: "object",
+          properties: {
+            profileField: {
+              type: "string",
+              enum: rpProfileFieldEnums
+            }
+          },
+          required: ["profileField"],
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    ownerOnly: true,
+    definition: {
+      type: "function",
+      function: {
+        name: "get_scenario_profile",
+        description: "读取当前会话中的 Scenario 全局资料草稿。",
+        parameters: {
+          type: "object",
+          properties: {},
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    ownerOnly: true,
+    definition: {
+      type: "function",
+      function: {
+        name: "patch_scenario_profile",
+        description: "按字段 patch 当前会话中的 Scenario 全局资料草稿，不直接写持久化存储。",
+        parameters: {
+          type: "object",
+          properties: {
+            profilePatch: {
+              type: "object",
+              properties: {
+                theme: { type: "string" },
+                hostStyle: { type: "string" },
+                worldBaseline: { type: "string" },
+                safetyOrTabooRules: { type: "string" },
+                openingPattern: { type: "string" }
+              },
+              additionalProperties: false
+            }
+          },
+          required: ["profilePatch"],
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    ownerOnly: true,
+    definition: {
+      type: "function",
+      function: {
+        name: "clear_scenario_profile_field",
+        description: "清空当前会话中的一个 Scenario 全局资料草稿字段。",
+        parameters: {
+          type: "object",
+          properties: {
+            profileField: {
+              type: "string",
+              enum: scenarioProfileFieldEnums
+            }
+          },
+          required: ["profileField"],
           additionalProperties: false
         }
       }
@@ -491,6 +633,20 @@ function parsePersonaPatch(args: unknown): Record<string, string> {
   );
 }
 
+function parseProfilePatch(
+  args: unknown,
+  allowedFieldNames: Set<string>
+): Record<string, string> {
+  if (typeof args !== "object" || !args || !("profilePatch" in args) || typeof (args as { profilePatch?: unknown }).profilePatch !== "object") {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries((args as { profilePatch: Record<string, unknown> }).profilePatch)
+      .filter(([key, value]) => allowedFieldNames.has(key) && typeof value === "string")
+      .map(([key, value]) => [key, String(value)])
+  );
+}
+
 async function syncPersonaReadiness(
   context: Parameters<ToolHandler>[2],
   persona: unknown
@@ -500,8 +656,72 @@ async function syncPersonaReadiness(
   );
 }
 
+function serializeDraftWriteResult(input: {
+  targetCategory: "persona_draft" | "rp_profile_draft" | "scenario_profile_draft";
+  itemKey: "persona" | "profile";
+  item: unknown;
+}): string {
+  return JSON.stringify({
+    targetCategory: input.targetCategory,
+    action: "updated_existing",
+    finalAction: "updated_existing",
+    [input.itemKey]: input.item
+  });
+}
+
+function resolvePersonaDraftOperation(context: Parameters<ToolHandler>[2]) {
+  const sessionId = context.lastMessage?.sessionId;
+  if (!sessionId || !context.sessionManager?.getOperationMode) {
+    return null;
+  }
+  const operationMode = context.sessionManager.getOperationMode(sessionId);
+  if (operationMode.kind !== "persona_setup" && operationMode.kind !== "persona_config") {
+    return null;
+  }
+  return {
+    sessionId,
+    operationMode,
+    draft: operationMode.draft
+  };
+}
+
+function resolveModeProfileDraftOperation(
+  context: Parameters<ToolHandler>[2],
+  modeId: "rp_assistant" | "scenario_host"
+) {
+  const sessionId = context.lastMessage?.sessionId;
+  if (!sessionId || !context.sessionManager?.getOperationMode) {
+    return null;
+  }
+  const operationMode = context.sessionManager.getOperationMode(sessionId);
+  if (
+    (operationMode.kind !== "mode_setup" && operationMode.kind !== "mode_config")
+    || operationMode.modeId !== modeId
+  ) {
+    return null;
+  }
+  return {
+    sessionId,
+    operationMode,
+    draft: operationMode.draft
+  };
+}
+
+function persistDraftOperation(
+  context: Parameters<ToolHandler>[2],
+  sessionId: string,
+  operationMode: SessionOperationMode
+) {
+  context.sessionManager.setOperationMode(sessionId, operationMode);
+  context.persistSession?.(sessionId, "profile_draft_updated");
+}
+
 export const profileToolHandlers: Record<string, ToolHandler> = {
   async get_persona(_toolCall, _args, context) {
+    const draftOperation = resolvePersonaDraftOperation(context);
+    if (draftOperation) {
+      return JSON.stringify(draftOperation.draft);
+    }
     return JSON.stringify(await context.personaStore.get());
   },
   async patch_persona(_toolCall, args, context) {
@@ -512,6 +732,22 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     const personaPatch = parsePersonaPatch(args);
     if (Object.keys(personaPatch).length === 0) {
       return JSON.stringify({ error: "personaPatch with at least one string field is required" });
+    }
+    const draftOperation = resolvePersonaDraftOperation(context);
+    if (draftOperation) {
+      const nextDraft = {
+        ...draftOperation.draft,
+        ...personaPatch
+      };
+      persistDraftOperation(context, draftOperation.sessionId, {
+        ...draftOperation.operationMode,
+        draft: nextDraft
+      });
+      return serializeDraftWriteResult({
+        targetCategory: "persona_draft",
+        itemKey: "persona",
+        item: nextDraft
+      });
     }
     const personaStore = context.personaStore as {
       patch: (patch: Record<string, string>) => Promise<unknown>;
@@ -539,6 +775,22 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     if (!personaField || !personaFieldEnums.includes(personaField as typeof personaFieldEnums[number])) {
       return JSON.stringify({ error: "personaField is required" });
     }
+    const draftOperation = resolvePersonaDraftOperation(context);
+    if (draftOperation) {
+      const nextDraft = {
+        ...draftOperation.draft,
+        [personaField]: ""
+      };
+      persistDraftOperation(context, draftOperation.sessionId, {
+        ...draftOperation.operationMode,
+        draft: nextDraft
+      });
+      return serializeDraftWriteResult({
+        targetCategory: "persona_draft",
+        itemKey: "persona",
+        item: nextDraft
+      });
+    }
     const personaStore = context.personaStore as {
       patch: (patch: Record<string, string>) => Promise<unknown>;
       patchWithDiagnostics?: (patch: Record<string, string>) => Promise<{ persona: unknown; warning: ScopeConflictWarning | null }>;
@@ -554,6 +806,128 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
       itemKey: "persona",
       item: result.persona,
       warning: result.warning
+    });
+  },
+  async get_rp_profile(_toolCall, _args, context) {
+    const draftOperation = resolveModeProfileDraftOperation(context, "rp_assistant");
+    if (!draftOperation) {
+      return JSON.stringify({ error: "RP profile draft is only available in rp setup/config mode" });
+    }
+    return JSON.stringify(draftOperation.draft);
+  },
+  async patch_rp_profile(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can update RP profile drafts");
+    if (denied) {
+      return denied;
+    }
+    const draftOperation = resolveModeProfileDraftOperation(context, "rp_assistant");
+    if (!draftOperation) {
+      return JSON.stringify({ error: "RP profile draft is only available in rp setup/config mode" });
+    }
+    const profilePatch = parseProfilePatch(args, rpProfilePatchFieldNames);
+    if (Object.keys(profilePatch).length === 0) {
+      return JSON.stringify({ error: "profilePatch with at least one string field is required" });
+    }
+    const nextDraft: RpProfile = {
+      ...(draftOperation.draft as RpProfile),
+      ...profilePatch
+    };
+    persistDraftOperation(context, draftOperation.sessionId, {
+      ...draftOperation.operationMode,
+      draft: nextDraft
+    });
+    return serializeDraftWriteResult({
+      targetCategory: "rp_profile_draft",
+      itemKey: "profile",
+      item: nextDraft
+    });
+  },
+  async clear_rp_profile_field(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can update RP profile drafts");
+    if (denied) {
+      return denied;
+    }
+    const draftOperation = resolveModeProfileDraftOperation(context, "rp_assistant");
+    if (!draftOperation) {
+      return JSON.stringify({ error: "RP profile draft is only available in rp setup/config mode" });
+    }
+    const profileField = getStringField(args, "profileField");
+    if (!profileField || !rpProfileFieldEnums.includes(profileField as typeof rpProfileFieldEnums[number])) {
+      return JSON.stringify({ error: "profileField is required" });
+    }
+    const nextDraft: RpProfile = {
+      ...(draftOperation.draft as RpProfile),
+      [profileField]: ""
+    };
+    persistDraftOperation(context, draftOperation.sessionId, {
+      ...draftOperation.operationMode,
+      draft: nextDraft
+    });
+    return serializeDraftWriteResult({
+      targetCategory: "rp_profile_draft",
+      itemKey: "profile",
+      item: nextDraft
+    });
+  },
+  async get_scenario_profile(_toolCall, _args, context) {
+    const draftOperation = resolveModeProfileDraftOperation(context, "scenario_host");
+    if (!draftOperation) {
+      return JSON.stringify({ error: "Scenario profile draft is only available in scenario setup/config mode" });
+    }
+    return JSON.stringify(draftOperation.draft);
+  },
+  async patch_scenario_profile(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can update scenario profile drafts");
+    if (denied) {
+      return denied;
+    }
+    const draftOperation = resolveModeProfileDraftOperation(context, "scenario_host");
+    if (!draftOperation) {
+      return JSON.stringify({ error: "Scenario profile draft is only available in scenario setup/config mode" });
+    }
+    const profilePatch = parseProfilePatch(args, scenarioProfilePatchFieldNames);
+    if (Object.keys(profilePatch).length === 0) {
+      return JSON.stringify({ error: "profilePatch with at least one string field is required" });
+    }
+    const nextDraft: ScenarioProfile = {
+      ...(draftOperation.draft as ScenarioProfile),
+      ...profilePatch
+    };
+    persistDraftOperation(context, draftOperation.sessionId, {
+      ...draftOperation.operationMode,
+      draft: nextDraft
+    });
+    return serializeDraftWriteResult({
+      targetCategory: "scenario_profile_draft",
+      itemKey: "profile",
+      item: nextDraft
+    });
+  },
+  async clear_scenario_profile_field(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can update scenario profile drafts");
+    if (denied) {
+      return denied;
+    }
+    const draftOperation = resolveModeProfileDraftOperation(context, "scenario_host");
+    if (!draftOperation) {
+      return JSON.stringify({ error: "Scenario profile draft is only available in scenario setup/config mode" });
+    }
+    const profileField = getStringField(args, "profileField");
+    if (!profileField || !scenarioProfileFieldEnums.includes(profileField as typeof scenarioProfileFieldEnums[number])) {
+      return JSON.stringify({ error: "profileField is required" });
+    }
+    const nextDraft: ScenarioProfile = {
+      ...(draftOperation.draft as ScenarioProfile),
+      [profileField]: ""
+    };
+    persistDraftOperation(context, draftOperation.sessionId, {
+      ...draftOperation.operationMode,
+      draft: nextDraft
+    });
+    return serializeDraftWriteResult({
+      targetCategory: "scenario_profile_draft",
+      itemKey: "profile",
+      item: nextDraft
     });
   },
   async list_global_rules(_toolCall, _args, context) {

@@ -13,6 +13,8 @@ import { shellToolHandlers } from "../../src/llm/tools/runtime/shellTools.ts";
 import { timeToolHandlers } from "../../src/llm/tools/runtime/timeTools.ts";
 import { localFileToolHandlers, chatFileToolHandlers } from "../../src/llm/tools/runtime/workspaceTools.ts";
 import { profileToolHandlers } from "../../src/llm/tools/profile/profileTools.ts";
+import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
+import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
@@ -139,6 +141,137 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.ok(knownNames.includes("upsert_user_memory"));
     assert.ok(!knownNames.includes("upsert_global_rule"));
     assert.ok(!knownNames.includes("upsert_toolset_rule"));
+  });
+
+  test("normal profile tool scope hides persona and mode profile write tools", async () => {
+    const config = createForwardFeatureConfig();
+    const names = getBuiltinTools("owner", config, undefined, {
+      profileToolScope: "normal"
+    }).map((tool) => tool.function.name);
+    assert.ok(names.includes("get_persona"));
+    assert.ok(!names.includes("patch_persona"));
+    assert.ok(!names.includes("clear_persona_field"));
+    assert.ok(!names.includes("get_rp_profile"));
+    assert.ok(!names.includes("patch_rp_profile"));
+    assert.ok(!names.includes("clear_rp_profile_field"));
+    assert.ok(!names.includes("get_scenario_profile"));
+    assert.ok(!names.includes("patch_scenario_profile"));
+    assert.ok(!names.includes("clear_scenario_profile_field"));
+  });
+
+  test("persona profile tool scope only exposes persona draft tools", async () => {
+    const config = createForwardFeatureConfig();
+    const names = getBuiltinTools("owner", config, undefined, {
+      profileToolScope: "persona"
+    }).map((tool) => tool.function.name);
+    assert.ok(names.includes("get_persona"));
+    assert.ok(names.includes("patch_persona"));
+    assert.ok(names.includes("clear_persona_field"));
+    assert.ok(!names.includes("get_rp_profile"));
+    assert.ok(!names.includes("patch_rp_profile"));
+    assert.ok(!names.includes("get_scenario_profile"));
+    assert.ok(!names.includes("patch_scenario_profile"));
+  });
+
+  test("rp and scenario profile tool scopes only expose their own draft tools", async () => {
+    const config = createForwardFeatureConfig();
+    const rpNames = getBuiltinTools("owner", config, undefined, {
+      profileToolScope: "rp"
+    }).map((tool) => tool.function.name);
+    const scenarioNames = getBuiltinTools("owner", config, undefined, {
+      profileToolScope: "scenario"
+    }).map((tool) => tool.function.name);
+
+    assert.ok(rpNames.includes("get_rp_profile"));
+    assert.ok(rpNames.includes("patch_rp_profile"));
+    assert.ok(rpNames.includes("clear_rp_profile_field"));
+    assert.ok(!rpNames.includes("get_persona"));
+    assert.ok(!rpNames.includes("patch_persona"));
+    assert.ok(!rpNames.includes("get_scenario_profile"));
+
+    assert.ok(scenarioNames.includes("get_scenario_profile"));
+    assert.ok(scenarioNames.includes("patch_scenario_profile"));
+    assert.ok(scenarioNames.includes("clear_scenario_profile_field"));
+    assert.ok(!scenarioNames.includes("get_persona"));
+    assert.ok(!scenarioNames.includes("patch_persona"));
+    assert.ok(!scenarioNames.includes("get_rp_profile"));
+  });
+
+  test("profile draft handlers read and update operationMode drafts instead of stores", async () => {
+    let personaOperationMode = {
+      kind: "persona_config" as const,
+      draft: {
+        ...createEmptyPersona(),
+        name: "小满"
+      }
+    };
+    let rpOperationMode = {
+      kind: "mode_config" as const,
+      modeId: "rp_assistant" as const,
+      draft: {
+        ...createEmptyRpProfile(),
+        premise: "雨夜"
+      }
+    };
+
+    const personaContext = {
+      relationship: "owner",
+      lastMessage: {
+        sessionId: "web:persona-draft",
+        userId: "owner",
+        senderName: "Owner"
+      },
+      sessionManager: {
+        getOperationMode() {
+          return personaOperationMode;
+        },
+        setOperationMode(_sessionId: string, operationMode: typeof personaOperationMode) {
+          personaOperationMode = operationMode;
+          return operationMode;
+        }
+      }
+    } as any;
+    const rpContext = {
+      relationship: "owner",
+      lastMessage: {
+        sessionId: "web:rp-draft",
+        userId: "owner",
+        senderName: "Owner"
+      },
+      sessionManager: {
+        getOperationMode() {
+          return rpOperationMode;
+        },
+        setOperationMode(_sessionId: string, operationMode: typeof rpOperationMode) {
+          rpOperationMode = operationMode;
+          return operationMode;
+        }
+      }
+    } as any;
+
+    await profileToolHandlers.patch_persona!(
+      { id: "tool_persona_draft_patch_1", type: "function", function: { name: "patch_persona", arguments: "{\"personaPatch\":{\"speechStyle\":\"短句\"}}" } },
+      { personaPatch: { speechStyle: "短句" } },
+      personaContext
+    );
+    await profileToolHandlers.patch_rp_profile!(
+      { id: "tool_rp_draft_patch_1", type: "function", function: { name: "patch_rp_profile", arguments: "{\"profilePatch\":{\"hardRules\":\"绝不跳出角色\"}}" } },
+      { profilePatch: { hardRules: "绝不跳出角色" } },
+      rpContext
+    );
+
+    assert.equal(personaOperationMode.draft.speechStyle, "短句");
+    assert.equal(rpOperationMode.draft.hardRules, "绝不跳出角色");
+    assert.equal(JSON.parse(String(await profileToolHandlers.get_persona!(
+      { id: "tool_persona_draft_get_1", type: "function", function: { name: "get_persona", arguments: "{}" } },
+      {},
+      personaContext
+    ))).speechStyle, "短句");
+    assert.equal(JSON.parse(String(await profileToolHandlers.get_rp_profile!(
+      { id: "tool_rp_draft_get_1", type: "function", function: { name: "get_rp_profile", arguments: "{}" } },
+      {},
+      rpContext
+    ))).hardRules, "绝不跳出角色");
   });
 
   test("old polymorphic memory tools are no longer exposed", async () => {
