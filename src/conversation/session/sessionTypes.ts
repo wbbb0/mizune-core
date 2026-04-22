@@ -1,5 +1,6 @@
 import type { OneBotMessageEvent } from "#services/onebot/types.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
+import type { SessionOperationMode } from "./sessionOperationMode.ts";
 // Defines the public session data contracts shared across conversation modules.
 
 export type SessionDelivery = "onebot" | "web";
@@ -418,6 +419,7 @@ export interface SessionState {
   type: "private" | "group";
   source: SessionSource;
   modeId: string;
+  operationMode: SessionOperationMode;
   setupConfirmed: boolean;
   participantRef: SessionParticipantRef;
   title: string | null;
@@ -457,6 +459,7 @@ export interface PersistedSessionState {
   type: "private" | "group";
   source?: SessionSource;
   modeId?: string;
+  operationMode?: SessionOperationMode;
   participantRef: SessionParticipantRef;
   title: string | null;
   titleSource: SessionTitleSource | null;

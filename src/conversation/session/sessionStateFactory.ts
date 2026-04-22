@@ -2,6 +2,10 @@ import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import { getDefaultSessionModeId } from "#modes/registry.ts";
 import type { SessionParticipantRef, SessionState, PersistedSessionState, SessionTitleSource } from "./sessionTypes.ts";
 import {
+  cloneSessionOperationMode,
+  createNormalSessionOperationMode
+} from "./sessionOperationMode.ts";
+import {
   buildSessionId,
   getSessionSource,
   resolveSessionParticipantRef
@@ -31,6 +35,7 @@ export function createSessionState(target: {
     type: target.type,
     source,
     modeId,
+    operationMode: createNormalSessionOperationMode(),
     setupConfirmed: false,
     participantRef,
     title: normalizedTitle || resolveSessionDefaultTitle({
@@ -99,6 +104,7 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
     type: item.type,
     source,
     modeId,
+    operationMode: cloneSessionOperationMode(item.operationMode ?? createNormalSessionOperationMode()),
     setupConfirmed: false,
     participantRef,
     title,
@@ -187,6 +193,7 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     type: session.type,
     source: session.source,
     modeId: session.modeId,
+    operationMode: cloneSessionOperationMode(session.operationMode),
     participantRef: session.participantRef,
     title: session.title,
     titleSource: session.titleSource,

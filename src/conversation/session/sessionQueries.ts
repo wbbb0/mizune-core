@@ -8,6 +8,7 @@ import type {
   SessionToolEvent,
   SessionUsageSnapshot
 } from "./sessionTypes.ts";
+import { cloneSessionOperationMode } from "./sessionOperationMode.ts";
 import { projectCompressionHistorySnapshot, projectCompressionHistorySnapshotByTokens, projectLlmVisibleHistoryFromTranscript } from "./sessionTranscript.ts";
 import type { AppConfig } from "#config/config.ts";
 import { createTranscriptGroupId, normalizeTranscriptItem } from "./transcriptMetadata.ts";
@@ -22,6 +23,7 @@ export function cloneSessionState(session: SessionState): SessionState {
   return {
     ...session,
     participantRef: { ...session.participantRef },
+    operationMode: cloneSessionOperationMode(session.operationMode),
     debugControl: { ...session.debugControl },
     pendingMessages: [...session.pendingMessages],
     pendingSteerMessages: [...session.pendingSteerMessages],

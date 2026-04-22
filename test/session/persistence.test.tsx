@@ -7,6 +7,9 @@ import pino from "pino";
 import { SessionPersistence } from "../../src/conversation/session/sessionPersistence.ts";
 import type { PersistedSessionState } from "../../src/conversation/session/sessionManager.ts";
 import { createSessionState, toPersistedSessionState } from "../../src/conversation/session/sessionStateFactory.ts";
+import { clearSessionState } from "../../src/conversation/session/sessionMutations.ts";
+import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
+import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 
 async function withDataDir(name: string, fn: (dataDir: string) => Promise<void>) {
   const dataDir = await mkdtemp(join(tmpdir(), `${name}-`));
@@ -17,7 +20,7 @@ async function withDataDir(name: string, fn: (dataDir: string) => Promise<void>)
   }
 }
 
-  test("session persistence round-trips title titleSource and participantRef", async () => {
+test("session persistence round-trips title titleSource and participantRef", async () => {
     const session = createSessionState({
       id: "web:test",
       type: "private",
@@ -33,8 +36,70 @@ async function withDataDir(name: string, fn: (dataDir: string) => Promise<void>)
     assert.equal(persisted.title, "New Chat");
     assert.equal(persisted.titleSource, "default");
     assert.ok(!("participantLabel" in persisted));
-    assert.ok(!("participantUserId" in persisted));
+  assert.ok(!("participantUserId" in persisted));
+});
+
+test("session persistence stores operationMode drafts", async () => {
+  await withDataDir("llm-bot-session-persist-operation-mode-test", async (dataDir: string) => {
+    const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
+    await persistence.init();
+
+    const session = createSessionState({
+      id: "web:operation-mode",
+      type: "private",
+      source: "web",
+      participantRef: { kind: "user", id: "owner" },
+      title: "Operation Mode",
+      titleSource: "manual"
+    });
+    session.operationMode = {
+      kind: "mode_setup",
+      modeId: "rp_assistant",
+      draft: {
+        ...createEmptyRpProfile(),
+        premise: "A rainy night"
+      }
+    };
+
+    const persisted = toPersistedSessionState(session);
+
+    assert.deepEqual(persisted.operationMode, {
+      kind: "mode_setup",
+      modeId: "rp_assistant",
+      draft: {
+        ...createEmptyRpProfile(),
+        premise: "A rainy night"
+      }
+    });
+
+    await persistence.save(persisted);
+    const [loaded] = await persistence.loadAll();
+    assert.ok(loaded);
+    assert.deepEqual(loaded.operationMode, persisted.operationMode);
   });
+});
+
+test("clearSessionState resets operationMode to normal", () => {
+  const session = createSessionState({
+    id: "web:clear-operation-mode",
+    type: "private",
+    source: "web",
+    participantRef: { kind: "user", id: "owner" },
+    title: "Clear Operation Mode",
+    titleSource: "manual"
+  });
+  session.operationMode = {
+    kind: "persona_config",
+    draft: {
+      ...createEmptyPersona(),
+      name: "Draft Persona"
+    }
+  };
+
+  clearSessionState(session);
+
+  assert.deepEqual(session.operationMode, { kind: "normal" });
+});
 
   test("session persistence round-trips current session shape", async () => {
     await withDataDir("llm-bot-session-persist-current-test", async (dataDir: string) => {
@@ -46,6 +111,7 @@ async function withDataDir(name: string, fn: (dataDir: string) => Promise<void>)
         type: "private",
         source: "onebot",
         modeId: "rp_assistant",
+        operationMode: { kind: "normal" },
         participantRef: { kind: "user", id: "owner" },
         title: "Owner",
         titleSource: "manual",
@@ -188,6 +254,7 @@ async function withDataDir(name: string, fn: (dataDir: string) => Promise<void>)
         type: "private",
         source: "onebot",
         modeId: "rp_assistant",
+        operationMode: { kind: "normal" },
         participantRef: { kind: "user", id: "google-tool" },
         title: "google-tool",
         titleSource: "manual",
@@ -322,6 +389,7 @@ async function withDataDir(name: string, fn: (dataDir: string) => Promise<void>)
         type: "private",
         source: "onebot",
         modeId: "rp_assistant",
+        operationMode: { kind: "normal" },
         participantRef: {
           kind: "user",
           id: "compat"

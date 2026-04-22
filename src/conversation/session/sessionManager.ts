@@ -11,6 +11,7 @@ import {
   finalizeActiveAssistantResponseState,
   promoteSteerMessagesToPendingState,
   requeuePendingMessagesState,
+  setSessionOperationModeState,
   setInterruptibleGroupTriggerUserState
 } from "./sessionMutations.ts";
 import { SessionStore } from "./sessionStore.ts";
@@ -46,6 +47,7 @@ import type {
   TranscriptItemDeliveryRef,
   TranscriptItemRuntimeExclusionReason
 } from "./sessionTypes.ts";
+import { cloneSessionOperationMode, type SessionOperationMode } from "./sessionOperationMode.ts";
 
 export type {
   ActiveAssistantResponse,
@@ -63,6 +65,7 @@ export type {
   SessionToolEvent,
   SessionUsageSnapshot
 } from "./sessionTypes.ts";
+export type { SessionOperationMode } from "./sessionOperationMode.ts";
 
 // Owns the runtime session map and exposes the public session mutation API.
 export class SessionManager {
@@ -361,6 +364,10 @@ export class SessionManager {
     return this.requireSession(sessionId).modeId;
   }
 
+  getOperationMode(sessionId: string): SessionOperationMode {
+    return cloneSessionOperationMode(this.requireSession(sessionId).operationMode);
+  }
+
   markSetupConfirmed(sessionId: string): void {
     this.requireSession(sessionId).setupConfirmed = true;
     this.notifySessionChanged(sessionId);
@@ -383,6 +390,13 @@ export class SessionManager {
     }
     this.notifySessionChanged(sessionId);
     return true;
+  }
+
+  setOperationMode(sessionId: string, operationMode: SessionOperationMode): SessionOperationMode {
+    const session = this.requireSession(sessionId);
+    setSessionOperationModeState(session, operationMode);
+    this.notifySessionChanged(sessionId);
+    return cloneSessionOperationMode(session.operationMode);
   }
 
   setReplyDelivery(sessionId: string, delivery: SessionDelivery): void {

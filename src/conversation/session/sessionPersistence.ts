@@ -4,6 +4,7 @@ import type { Logger } from "pino";
 import { z } from "zod";
 import type { PersistedSessionState } from "./sessionManager.ts";
 import { getDefaultSessionModeId } from "#modes/registry.ts";
+import { createNormalSessionOperationMode } from "./sessionOperationMode.ts";
 
 const transcriptMetaShape = {
   id: z.string().min(1).optional(),
@@ -17,11 +18,62 @@ const transcriptMetaShape = {
   }).optional()
 };
 
+const personaDraftSchema = z.object({
+  name: z.string(),
+  coreIdentity: z.string(),
+  personality: z.string(),
+  interests: z.string(),
+  background: z.string(),
+  speechStyle: z.string()
+});
+
+const rpProfileDraftSchema = z.object({
+  appearance: z.string(),
+  premise: z.string(),
+  relationship: z.string(),
+  identityBoundary: z.string(),
+  styleRules: z.string(),
+  hardRules: z.string()
+});
+
+const scenarioProfileDraftSchema = z.object({
+  theme: z.string(),
+  hostStyle: z.string(),
+  worldBaseline: z.string(),
+  safetyOrTabooRules: z.string(),
+  openingPattern: z.string()
+});
+
+const sessionOperationModeSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("normal")
+  }),
+  z.object({
+    kind: z.literal("persona_setup"),
+    draft: personaDraftSchema
+  }),
+  z.object({
+    kind: z.literal("mode_setup"),
+    modeId: z.union([z.literal("rp_assistant"), z.literal("scenario_host")]),
+    draft: z.union([rpProfileDraftSchema, scenarioProfileDraftSchema])
+  }),
+  z.object({
+    kind: z.literal("persona_config"),
+    draft: personaDraftSchema
+  }),
+  z.object({
+    kind: z.literal("mode_config"),
+    modeId: z.union([z.literal("rp_assistant"), z.literal("scenario_host")]),
+    draft: z.union([rpProfileDraftSchema, scenarioProfileDraftSchema])
+  })
+]);
+
 const persistedSessionSchema = z.object({
   id: z.string().min(1),
   type: z.enum(["private", "group"]),
   source: z.enum(["onebot", "web"]).default("onebot"),
   modeId: z.string().min(1).default(getDefaultSessionModeId()),
+  operationMode: sessionOperationModeSchema.default(createNormalSessionOperationMode()),
   participantRef: z.object({
     kind: z.enum(["user", "group"]),
     id: z.string().min(1)

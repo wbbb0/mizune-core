@@ -15,6 +15,7 @@ import type {
   TranscriptItemDeliveryRef,
   TranscriptItemRuntimeExclusionReason
 } from "./sessionTypes.ts";
+import type { SessionOperationMode } from "./sessionOperationMode.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 
 // These capability slices let downstream modules depend on the session surface
@@ -128,6 +129,11 @@ export interface SessionBootstrapPersistenceAccess {
   listSessions(): SessionState[];
 }
 
+export interface SessionOperationModeAccess {
+  getOperationMode(sessionId: string): SessionOperationMode;
+  setOperationMode(sessionId: string, operationMode: SessionOperationMode): SessionOperationMode;
+}
+
 export type SessionAppRuntimeAccess =
   SessionBootstrapPersistenceAccess
   & SessionCompressionAccess
@@ -141,6 +147,7 @@ export type SessionAppRuntimeAccess =
   & SessionSetupAccess
   & SessionAdminReadAccess
   & SessionAdminMutationAccess
+  & SessionOperationModeAccess
   & SessionStreamAccess
   & SessionWebStreamAccess;
 

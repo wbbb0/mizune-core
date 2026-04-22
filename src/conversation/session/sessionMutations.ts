@@ -14,6 +14,11 @@ import type {
   TranscriptUserMessageItem,
   SessionUsageSnapshot
 } from "./sessionTypes.ts";
+import {
+  cloneSessionOperationMode,
+  createNormalSessionOperationMode,
+  type SessionOperationMode
+} from "./sessionOperationMode.ts";
 
 const MAX_RECENT_TOOL_EVENTS = 12;
 const MAX_INTERNAL_TRANSCRIPT_ITEMS = 160;
@@ -227,6 +232,7 @@ export function appendDebugMarkerState(session: SessionState, marker: SessionDeb
 export function clearSessionState(session: SessionState): void {
   session.mutationEpoch += 1;
   session.historyRevision += 1;
+  session.operationMode = createNormalSessionOperationMode();
   session.pendingMessages = [];
   session.pendingSteerMessages = [];
   session.pendingReplyGateWaitPasses = 0;
@@ -249,6 +255,11 @@ export function clearSessionState(session: SessionState): void {
   session.generationAbortController = null;
   session.responseAbortController = null;
   session.activeAssistantResponse = null;
+}
+
+export function setSessionOperationModeState(session: SessionState, operationMode: SessionOperationMode): void {
+  session.operationMode = cloneSessionOperationMode(operationMode);
+  session.lastActiveAt = Date.now();
 }
 
 export function setSessionPhaseState(session: SessionState, phase: SessionPhase): void {
