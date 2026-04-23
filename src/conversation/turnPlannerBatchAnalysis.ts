@@ -6,7 +6,7 @@ export interface TurnPlannerBatchAnalysisMessage {
   attachments?: Array<{
     fileId: string;
     kind: string;
-    semanticKind?: "image" | "emoji";
+    semanticKind?: "image" | "emoji" | undefined;
   }>;
   forwardIds?: string[];
   replyMessageId?: string | null;

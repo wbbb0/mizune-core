@@ -5,18 +5,8 @@ import { z } from "zod";
 import type { PersistedSessionState } from "./sessionManager.ts";
 import { getDefaultSessionModeId } from "#modes/registry.ts";
 import { createNormalSessionOperationMode } from "./sessionOperationMode.ts";
-
-const transcriptMetaShape = {
-  id: z.string().min(1).optional(),
-  groupId: z.string().min(1).optional(),
-  runtimeExcluded: z.boolean().optional(),
-  runtimeExcludedAt: z.number().int().nonnegative().optional(),
-  runtimeExclusionReason: z.enum(["manual_single", "manual_group", "interrupt_cleanup", "system"]).optional(),
-  deliveryRef: z.object({
-    platform: z.literal("onebot"),
-    messageId: z.number().int().nonnegative()
-  }).optional()
-};
+import { chatAttachmentSchema } from "#types/chatContracts.ts";
+import { internalTranscriptItemSchema } from "./transcriptContract.ts";
 
 const personaDraftSchema = z.object({
   name: z.string(),
@@ -106,13 +96,7 @@ const persistedSessionSchema = z.object({
     emojiSources: z.array(z.string()),
     imageIds: z.array(z.string()),
     emojiIds: z.array(z.string()),
-    attachments: z.array(z.object({
-      fileId: z.string(),
-      kind: z.enum(["image", "file", "audio"]),
-      source: z.enum(["chat_message", "web_upload", "browser", "workspace"]),
-      sourceName: z.string().nullable(),
-      mimeType: z.string().nullable()
-    })).default([]),
+    attachments: z.array(chatAttachmentSchema).default([]),
     forwardIds: z.array(z.string()),
     replyMessageId: z.string().nullable(),
     mentionUserIds: z.array(z.string()),
@@ -124,180 +108,7 @@ const persistedSessionSchema = z.object({
   pendingTranscriptGroupId: z.string().min(1).nullable().optional(),
   activeTranscriptGroupId: z.string().min(1).nullable().optional(),
   historySummary: z.string().nullable(),
-  internalTranscript: z.array(z.discriminatedUnion("kind", [
-    z.object({
-      ...transcriptMetaShape,
-      kind: z.literal("user_message"),
-      role: z.literal("user"),
-      llmVisible: z.literal(true),
-      chatType: z.enum(["private", "group"]),
-      userId: z.string().min(1),
-      senderName: z.string().min(1),
-      text: z.string(),
-      imageIds: z.array(z.string()).default([]),
-      emojiIds: z.array(z.string()).default([]),
-      attachments: z.array(z.object({
-        fileId: z.string(),
-        kind: z.enum(["image", "animated_image", "video", "audio", "file"]),
-        source: z.enum(["chat_message", "web_upload", "browser", "workspace"]),
-        sourceName: z.string().nullable(),
-        mimeType: z.string().nullable(),
-        semanticKind: z.enum(["image", "emoji"]).optional()
-      })).default([]),
-      audioCount: z.number().int().nonnegative(),
-      forwardIds: z.array(z.string()).default([]),
-      replyMessageId: z.string().nullable(),
-      mentionUserIds: z.array(z.string()).default([]),
-      mentionedAll: z.boolean(),
-      mentionedSelf: z.boolean(),
-      timestampMs: z.number().int().nonnegative()
-    }),
-    z.object({
-      ...transcriptMetaShape,
-      kind: z.literal("assistant_message"),
-      role: z.literal("assistant"),
-      llmVisible: z.literal(true),
-      chatType: z.enum(["private", "group"]),
-      userId: z.string().min(1),
-      senderName: z.string().min(1),
-      text: z.string(),
-      reasoningContent: z.string().optional(),
-      timestampMs: z.number().int().nonnegative()
-    }),
-    z.object({
-      ...transcriptMetaShape,
-      kind: z.literal("session_mode_switch"),
-      role: z.literal("assistant"),
-      llmVisible: z.literal(true),
-      fromModeId: z.string().min(1),
-      toModeId: z.string().min(1),
-      content: z.string(),
-      timestampMs: z.number().int().nonnegative()
-    }),
-    z.object({
-      ...transcriptMetaShape,
-      kind: z.literal("assistant_tool_call"),
-      llmVisible: z.literal(true),
-      timestampMs: z.number().int().nonnegative(),
-      content: z.string(),
-      toolCalls: z.array(z.object({
-        id: z.string().min(1),
-        type: z.literal("function"),
-        function: z.object({
-          name: z.string().min(1),
-          arguments: z.string()
-        }),
-        providerMetadata: z.record(z.string(), z.unknown()).optional()
-      })),
-      reasoningContent: z.string().optional(),
-      providerMetadata: z.record(z.string(), z.unknown()).optional()
-    }),
-    z.object({
-      ...transcriptMetaShape,
-      kind: z.literal("tool_result"),
-      llmVisible: z.literal(true),
-      timestampMs: z.number().int().nonnegative(),
-      toolCallId: z.string().min(1),
-      toolName: z.string().min(1),
-      content: z.string()
-    }),
-    z.object({
-      ...transcriptMetaShape,
-      kind: z.literal("outbound_media_message"),
-      llmVisible: z.literal(false),
-      role: z.literal("assistant"),
-      delivery: z.enum(["onebot", "web"]),
-      mediaKind: z.literal("image"),
-      fileId: z.string().min(1).nullable(),
-      fileRef: z.string().nullable(),
-      sourceName: z.string().nullable(),
-      chatFilePath: z.string().nullable(),
-      sourcePath: z.string().nullable(),
-      messageId: z.number().int().nonnegative().nullable(),
-      toolName: z.union([z.literal("chat_file_send_to_chat"), z.literal("local_file_send_to_chat")]),
-      captionText: z.string().nullable().optional(),
-      timestampMs: z.number().int().nonnegative()
-    }),
-    z.object({
-      ...transcriptMetaShape,
-      kind: z.literal("direct_command"),
-      llmVisible: z.literal(false),
-      direction: z.enum(["input", "output"]),
-      role: z.enum(["user", "assistant"]),
-      commandName: z.string().min(1),
-      content: z.string(),
-      timestampMs: z.number().int().nonnegative()
-    }),
-    z.object({
-      ...transcriptMetaShape,
-      kind: z.literal("status_message"),
-      llmVisible: z.literal(false),
-      role: z.literal("assistant"),
-      statusType: z.enum(["system", "command"]),
-      content: z.string(),
-      timestampMs: z.number().int().nonnegative()
-    }),
-    z.object({
-      ...transcriptMetaShape,
-      kind: z.literal("gate_decision"),
-      llmVisible: z.literal(false),
-      action: z.enum(["continue", "wait", "skip", "topic_switch"]),
-      reason: z.string().nullable(),
-      reasoningContent: z.string().optional(),
-      waitPassCount: z.number().int().nonnegative().optional(),
-      replyDecision: z.enum(["reply_small", "reply_large", "wait", "ignore"]).optional(),
-      topicDecision: z.string().optional(),
-      requiredCapabilities: z.array(z.string()).optional(),
-      contextDependencies: z.array(z.string()).optional(),
-      recentDomainReuse: z.array(z.string()).optional(),
-      followupMode: z.string().optional(),
-      toolsetIds: z.array(z.string()).optional(),
-      timestampMs: z.number().int().nonnegative()
-    }),
-    z.object({
-      ...transcriptMetaShape,
-      kind: z.literal("system_marker"),
-      llmVisible: z.literal(false),
-      timestampMs: z.number().int().nonnegative(),
-      markerType: z.enum(["debug_enabled", "debug_disabled", "debug_once_armed", "debug_once_consumed", "debug_dump_sent"]),
-      content: z.string()
-    }),
-    z.object({
-      ...transcriptMetaShape,
-      kind: z.literal("fallback_event"),
-      llmVisible: z.literal(false),
-      timestampMs: z.number().int().nonnegative(),
-      fallbackType: z.enum(["model_candidate_switch", "generation_failure_reply"]),
-      title: z.string(),
-      summary: z.string(),
-      details: z.string(),
-      fromModelRef: z.string().optional(),
-      toModelRef: z.string().optional(),
-      fromProvider: z.string().optional(),
-      toProvider: z.string().optional(),
-      failureMessage: z.string().optional()
-    }),
-    z.object({
-      ...transcriptMetaShape,
-      kind: z.literal("internal_trigger_event"),
-      llmVisible: z.literal(false),
-      timestampMs: z.number().int().nonnegative(),
-      triggerKind: z.enum(["scheduled_instruction", "comfy_task_completed", "comfy_task_failed"]),
-      stage: z.enum(["received", "queued", "dequeued", "started"]),
-      title: z.string(),
-      summary: z.string(),
-      jobName: z.string().min(1),
-      targetType: z.enum(["private", "group"]),
-      targetUserId: z.string().optional(),
-      targetGroupId: z.string().optional(),
-      taskId: z.string().optional(),
-      templateId: z.string().optional(),
-      comfyPromptId: z.string().optional(),
-      autoIterationIndex: z.number().int().nonnegative().optional(),
-      maxAutoIterations: z.number().int().nonnegative().optional(),
-      details: z.string().optional()
-    })
-  ])),
+  internalTranscript: z.array(internalTranscriptItemSchema),
   debugMarkers: z.array(z.object({
     kind: z.enum(["debug_enabled", "debug_disabled", "debug_once_armed", "debug_once_consumed", "debug_dump_sent"]),
     timestampMs: z.number().int().nonnegative(),

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import pino from "pino";
 import { SessionPersistence } from "../../src/conversation/session/sessionPersistence.ts";
 import type { PersistedSessionState } from "../../src/conversation/session/sessionManager.ts";
-import { createSessionState, toPersistedSessionState } from "../../src/conversation/session/sessionStateFactory.ts";
+import { createSessionState, restoreSessionState, toPersistedSessionState } from "../../src/conversation/session/sessionStateFactory.ts";
 import { clearSessionState } from "../../src/conversation/session/sessionMutations.ts";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
@@ -115,6 +115,179 @@ test("clearSessionState resets setupConfirmed", () => {
   clearSessionState(session);
 
   assert.equal(session.setupConfirmed, false);
+});
+
+test("session persistence loads legacy title_generation_event transcript items", async () => {
+  await withDataDir("llm-bot-session-persist-title-event-test", async (dataDir: string) => {
+    const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
+    await persistence.init();
+
+    const session: PersistedSessionState = {
+      id: "web:legacy-title-event",
+      type: "private",
+      source: "web",
+      modeId: "assistant",
+      operationMode: { kind: "normal" },
+      participantRef: { kind: "user", id: "owner" },
+      title: "角色设定",
+      titleSource: "auto",
+      replyDelivery: "web",
+      pendingMessages: [],
+      pendingTranscriptGroupId: null,
+      activeTranscriptGroupId: null,
+      historySummary: null,
+      internalTranscript: [
+        {
+          kind: "title_generation_event",
+          llmVisible: false,
+          timestampMs: 10,
+          source: "auto",
+          modeId: "assistant",
+          title: "标题生成 · 自动生成",
+          summary: "角色设定",
+          details: "sessionId: web:legacy-title-event\nmodeId: assistant\nhistorySummary: (none)\nhistoryCount: 3"
+        }
+      ],
+      debugMarkers: [],
+      recentToolEvents: [],
+      lastLlmUsage: null,
+      sentMessages: [],
+      lastActiveAt: 10,
+      lastMessageAt: 10,
+      latestGapMs: null,
+      smoothedGapMs: null
+    };
+
+    await persistence.save(session);
+
+    assert.deepEqual(await persistence.loadAll(), [session]);
+  });
+});
+
+test("session persistence round-trips chat_file attachments in pending messages and transcript", async () => {
+  await withDataDir("llm-bot-session-persist-chat-file-attachments-test", async (dataDir: string) => {
+    const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
+    await persistence.init();
+
+    const session: PersistedSessionState = {
+      id: "web:chat-file-attachments",
+      type: "private",
+      source: "web",
+      modeId: "assistant",
+      operationMode: { kind: "normal" },
+      participantRef: { kind: "user", id: "owner" },
+      title: "Chat File Attachments",
+      titleSource: "manual",
+      replyDelivery: "web",
+      pendingMessages: [{
+        userId: "owner",
+        senderName: "Owner",
+        chatType: "private",
+        text: "带附件的消息",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        attachments: [{
+          fileId: "file_chat_1",
+          kind: "file",
+          source: "chat_file",
+          sourceName: "memo.txt",
+          mimeType: "text/plain"
+        }],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: 1
+      }],
+      pendingTranscriptGroupId: null,
+      activeTranscriptGroupId: null,
+      historySummary: null,
+      internalTranscript: [{
+        kind: "user_message",
+        role: "user",
+        llmVisible: true,
+        chatType: "private",
+        userId: "owner",
+        senderName: "Owner",
+        text: "看这个文件",
+        imageIds: [],
+        emojiIds: [],
+        attachments: [{
+          fileId: "file_chat_1",
+          kind: "file",
+          source: "chat_file",
+          sourceName: "memo.txt",
+          mimeType: "text/plain"
+        }],
+        audioCount: 0,
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        mentionedSelf: false,
+        timestampMs: 1
+      }],
+      debugMarkers: [],
+      recentToolEvents: [],
+      lastLlmUsage: null,
+      sentMessages: [],
+      lastActiveAt: 1,
+      lastMessageAt: 1,
+      latestGapMs: null,
+      smoothedGapMs: null
+    };
+
+    await persistence.save(session);
+
+    assert.deepEqual(await persistence.loadAll(), [session]);
+  });
+});
+
+test("restoreSessionState normalizes transcript metadata for loaded sessions", () => {
+  const restored = restoreSessionState({
+    id: "web:normalize-transcript",
+    type: "private",
+    source: "web",
+    modeId: "assistant",
+    operationMode: { kind: "normal" },
+    participantRef: { kind: "user", id: "owner" },
+    title: "Normalize Transcript",
+    titleSource: "manual",
+    replyDelivery: "web",
+    pendingMessages: [],
+    pendingTranscriptGroupId: null,
+    activeTranscriptGroupId: null,
+    historySummary: null,
+    internalTranscript: [{
+      kind: "assistant_message",
+      role: "assistant",
+      llmVisible: true,
+      chatType: "private",
+      userId: "owner",
+      senderName: "Owner",
+      text: "hello",
+      timestampMs: 1
+    }],
+    debugMarkers: [],
+    recentToolEvents: [],
+    lastLlmUsage: null,
+    sentMessages: [],
+    lastActiveAt: 1,
+    lastMessageAt: 1,
+    latestGapMs: null,
+    smoothedGapMs: null
+  });
+
+  const item = restored.internalTranscript[0];
+  assert.ok(item);
+  assert.ok(item.id);
+  assert.ok(item.groupId);
+  assert.equal(item.runtimeExcluded, false);
 });
 
   test("session persistence round-trips current session shape", async () => {

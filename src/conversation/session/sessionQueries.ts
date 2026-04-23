@@ -1,5 +1,6 @@
 import type {
   InternalTranscriptItem,
+  NormalizedInternalTranscriptItem,
   PersistedSessionState,
   SessionDebugMarker,
   SessionDebugControlState,
@@ -11,12 +12,8 @@ import type {
 import { cloneSessionOperationMode } from "./sessionOperationMode.ts";
 import { projectCompressionHistorySnapshot, projectCompressionHistorySnapshotByTokens, projectLlmVisibleHistoryFromTranscript } from "./sessionTranscript.ts";
 import type { AppConfig } from "#config/config.ts";
-import { createTranscriptGroupId, normalizeTranscriptItem } from "./transcriptMetadata.ts";
+import { normalizeTranscriptItems } from "./transcriptMetadata.ts";
 import { resolveSessionParticipantLabel } from "./sessionIdentity.ts";
-
-function normalizeTranscriptItems(items: InternalTranscriptItem[]): InternalTranscriptItem[] {
-  return items.map((item) => normalizeTranscriptItem(item, item.groupId ?? createTranscriptGroupId()));
-}
 
 // Provides read-only projections and snapshots derived from session state.
 export function cloneSessionState(session: SessionState): SessionState {
@@ -85,7 +82,7 @@ export function getSessionViewSnapshot(session: SessionState): {
   participantLabel: string | null;
   debugControl: SessionDebugControlState;
   historySummary: string | null;
-  internalTranscript: InternalTranscriptItem[];
+  internalTranscript: NormalizedInternalTranscriptItem[];
   debugMarkers: SessionDebugMarker[];
   recentToolEvents: SessionToolEvent[];
   lastLlmUsage: SessionUsageSnapshot | null;

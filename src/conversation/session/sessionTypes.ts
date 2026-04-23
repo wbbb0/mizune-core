@@ -1,6 +1,14 @@
 import type { OneBotMessageEvent } from "#services/onebot/types.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
 import type { SessionOperationMode } from "./sessionOperationMode.ts";
+import type {
+  InternalTranscriptItem as InternalTranscriptItemContract,
+  NormalizedInternalTranscriptItem,
+  StoredToolCall as StoredToolCallContract,
+  TranscriptItemDeliveryRef as TranscriptItemDeliveryRefContract,
+  TranscriptItemMeta as TranscriptItemMetaContract,
+  TranscriptItemRuntimeExclusionReason as TranscriptItemRuntimeExclusionReasonContract
+} from "./transcriptContract.ts";
 // Defines the public session data contracts shared across conversation modules.
 
 export type SessionDelivery = "onebot" | "web";
@@ -11,16 +19,6 @@ export interface SessionParticipantRef {
 }
 
 export type SessionTitleSource = "default" | "auto" | "manual";
-
-export interface StoredToolCall {
-  id: string;
-  type: "function";
-  function: {
-    name: string;
-    arguments: string;
-  };
-  providerMetadata?: Record<string, unknown> | undefined;
-}
 
 export interface SessionMessage {
   chatType: "private" | "group";
@@ -102,208 +100,27 @@ export interface SessionDebugMarker {
   note?: string | undefined;
 }
 
-export type TranscriptItemRuntimeExclusionReason = "manual_single" | "manual_group" | "interrupt_cleanup" | "system";
-
-export interface TranscriptItemDeliveryRef {
-  platform: "onebot";
-  messageId: number;
-}
-
-export interface TranscriptItemMeta {
-  id?: string | undefined;
-  groupId?: string | undefined;
-  runtimeExcluded?: boolean | undefined;
-  runtimeExcludedAt?: number | undefined;
-  runtimeExclusionReason?: TranscriptItemRuntimeExclusionReason | undefined;
-  deliveryRef?: TranscriptItemDeliveryRef | undefined;
-}
-
-export interface TranscriptUserMessageItem extends TranscriptItemMeta {
-  kind: "user_message";
-  role: "user";
-  llmVisible: true;
-  chatType: "private" | "group";
-  userId: string;
-  senderName: string;
-  text: string;
-  imageIds: string[];
-  emojiIds: string[];
-  attachments?: ChatAttachment[];
-  audioCount: number;
-  forwardIds: string[];
-  replyMessageId: string | null;
-  mentionUserIds: string[];
-  mentionedAll: boolean;
-  mentionedSelf: boolean;
-  timestampMs: number;
-}
-
-export interface TranscriptAssistantMessageItem extends TranscriptItemMeta {
-  kind: "assistant_message";
-  role: "assistant";
-  llmVisible: true;
-  chatType: "private" | "group";
-  userId: string;
-  senderName: string;
-  text: string;
-  reasoningContent?: string | undefined;
-  timestampMs: number;
-}
-
-export interface TranscriptSessionModeSwitchItem extends TranscriptItemMeta {
-  kind: "session_mode_switch";
-  role: "assistant";
-  llmVisible: true;
-  fromModeId: string;
-  toModeId: string;
-  content: string;
-  timestampMs: number;
-}
-
-export interface InternalAssistantToolCallItem extends TranscriptItemMeta {
-  kind: "assistant_tool_call";
-  llmVisible: true;
-  timestampMs: number;
-  content: string;
-  toolCalls: StoredToolCall[];
-  reasoningContent?: string | undefined;
-  providerMetadata?: Record<string, unknown> | undefined;
-}
-
-export interface InternalToolResultItem extends TranscriptItemMeta {
-  kind: "tool_result";
-  llmVisible: true;
-  timestampMs: number;
-  toolCallId: string;
-  toolName: string;
-  content: string;
-}
-
-export interface TranscriptOutboundMediaMessageItem extends TranscriptItemMeta {
-  kind: "outbound_media_message";
-  llmVisible: false;
-  role: "assistant";
-  delivery: SessionDelivery;
-  mediaKind: "image";
-  fileId: string | null;
-  fileRef: string | null;
-  sourceName: string | null;
-  chatFilePath: string | null;
-  sourcePath: string | null;
-  messageId: number | null;
-  toolName: "chat_file_send_to_chat" | "local_file_send_to_chat";
-  captionText?: string | null | undefined;
-  timestampMs: number;
-}
-
-export interface TranscriptDirectCommandItem extends TranscriptItemMeta {
-  kind: "direct_command";
-  llmVisible: false;
-  direction: "input" | "output";
-  role: "user" | "assistant";
-  commandName: string;
-  content: string;
-  timestampMs: number;
-}
-
-export interface TranscriptStatusMessageItem extends TranscriptItemMeta {
-  kind: "status_message";
-  llmVisible: false;
-  role: "assistant";
-  statusType: "system" | "command";
-  content: string;
-  timestampMs: number;
-}
-
-export interface TranscriptGateDecisionItem extends TranscriptItemMeta {
-  kind: "gate_decision";
-  llmVisible: false;
-  action: "continue" | "wait" | "skip" | "topic_switch";
-  reason: string | null;
-  reasoningContent?: string | undefined;
-  waitPassCount?: number | undefined;
-  replyDecision?: "reply_small" | "reply_large" | "wait" | "ignore" | undefined;
-  topicDecision?: string | undefined;
-  requiredCapabilities?: string[] | undefined;
-  contextDependencies?: string[] | undefined;
-  recentDomainReuse?: string[] | undefined;
-  followupMode?: string | undefined;
-  toolsetIds?: string[] | undefined;
-  timestampMs: number;
-}
-
-export interface InternalSystemMarkerItem extends TranscriptItemMeta {
-  kind: "system_marker";
-  llmVisible: false;
-  timestampMs: number;
-  markerType: SessionDebugMarker["kind"];
-  content: string;
-}
-
-export type SessionFallbackEventType = "model_candidate_switch" | "generation_failure_reply";
-
-export interface InternalFallbackEventItem extends TranscriptItemMeta {
-  kind: "fallback_event";
-  llmVisible: false;
-  timestampMs: number;
-  fallbackType: SessionFallbackEventType;
-  title: string;
-  summary: string;
-  details: string;
-  fromModelRef?: string | undefined;
-  toModelRef?: string | undefined;
-  fromProvider?: string | undefined;
-  toProvider?: string | undefined;
-  failureMessage?: string | undefined;
-}
-
-export type InternalTriggerStage = "received" | "queued" | "dequeued" | "started";
-
-export interface InternalTriggerEventItem extends TranscriptItemMeta {
-  kind: "internal_trigger_event";
-  llmVisible: false;
-  timestampMs: number;
-  triggerKind: InternalSessionTriggerExecution["kind"];
-  stage: InternalTriggerStage;
-  title: string;
-  summary: string;
-  jobName: string;
-  targetType: "private" | "group";
-  targetUserId?: string | undefined;
-  targetGroupId?: string | undefined;
-  taskId?: string | undefined;
-  templateId?: string | undefined;
-  comfyPromptId?: string | undefined;
-  autoIterationIndex?: number | undefined;
-  maxAutoIterations?: number | undefined;
-  details?: string | undefined;
-}
-
-export interface TranscriptTitleGenerationItem extends TranscriptItemMeta {
-  kind: "title_generation_event";
-  llmVisible: false;
-  timestampMs: number;
-  source: "auto" | "regenerate";
-  modeId: string;
-  title: string;
-  summary: string;
-  details: string;
-}
-
-export type InternalTranscriptItem =
-  | TranscriptUserMessageItem
-  | TranscriptAssistantMessageItem
-  | TranscriptSessionModeSwitchItem
-  | InternalAssistantToolCallItem
-  | InternalToolResultItem
-  | TranscriptOutboundMediaMessageItem
-  | TranscriptDirectCommandItem
-  | TranscriptStatusMessageItem
-  | TranscriptGateDecisionItem
-  | TranscriptTitleGenerationItem
-  | InternalSystemMarkerItem
-  | InternalFallbackEventItem
-  | InternalTriggerEventItem;
+export type StoredToolCall = StoredToolCallContract;
+export type TranscriptItemRuntimeExclusionReason = TranscriptItemRuntimeExclusionReasonContract;
+export type TranscriptItemDeliveryRef = TranscriptItemDeliveryRefContract;
+export type TranscriptItemMeta = TranscriptItemMetaContract;
+export type InternalTranscriptItem = InternalTranscriptItemContract;
+export type { NormalizedInternalTranscriptItem };
+export type TranscriptUserMessageItem = Extract<InternalTranscriptItem, { kind: "user_message" }>;
+export type TranscriptAssistantMessageItem = Extract<InternalTranscriptItem, { kind: "assistant_message" }>;
+export type TranscriptSessionModeSwitchItem = Extract<InternalTranscriptItem, { kind: "session_mode_switch" }>;
+export type InternalAssistantToolCallItem = Extract<InternalTranscriptItem, { kind: "assistant_tool_call" }>;
+export type InternalToolResultItem = Extract<InternalTranscriptItem, { kind: "tool_result" }>;
+export type TranscriptOutboundMediaMessageItem = Extract<InternalTranscriptItem, { kind: "outbound_media_message" }>;
+export type TranscriptDirectCommandItem = Extract<InternalTranscriptItem, { kind: "direct_command" }>;
+export type TranscriptStatusMessageItem = Extract<InternalTranscriptItem, { kind: "status_message" }>;
+export type TranscriptGateDecisionItem = Extract<InternalTranscriptItem, { kind: "gate_decision" }>;
+export type InternalSystemMarkerItem = Extract<InternalTranscriptItem, { kind: "system_marker" }>;
+export type InternalFallbackEventItem = Extract<InternalTranscriptItem, { kind: "fallback_event" }>;
+export type InternalTriggerEventItem = Extract<InternalTranscriptItem, { kind: "internal_trigger_event" }>;
+export type TranscriptTitleGenerationItem = Extract<InternalTranscriptItem, { kind: "title_generation_event" }>;
+export type SessionFallbackEventType = InternalFallbackEventItem["fallbackType"];
+export type InternalTriggerStage = InternalTriggerEventItem["stage"];
 
 export interface SessionUsageSnapshot {
   inputTokens: number | null;

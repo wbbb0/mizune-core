@@ -1,6 +1,7 @@
 import type { InternalTranscriptItem, SessionPhase } from "#conversation/session/sessionTypes.ts";
 import type { ParsedWebSessionStreamQuery } from "../routeSupport.ts";
 import { buildTranscriptItemPatch, getTranscriptItemId } from "#conversation/session/transcriptMetadata.ts";
+import type { TranscriptItemPatch } from "#conversation/session/transcriptContract.ts";
 
 export type WebSessionPhase = SessionPhase & { label: string };
 
@@ -49,12 +50,7 @@ export type WebSessionStreamEvent =
       sessionId: string;
       mutationEpoch: number;
       itemId: string;
-      patch: {
-        reasoningContent?: string;
-        runtimeExcluded?: boolean;
-        runtimeExcludedAt?: number;
-        runtimeExclusionReason?: "manual_single" | "manual_group" | "interrupt_cleanup" | "system";
-      };
+      patch: TranscriptItemPatch;
       timestampMs: number;
     }
   | {

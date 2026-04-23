@@ -28,7 +28,7 @@ import {
   type WebSessionStreamEvent,
   type WebSessionStreamSnapshot
 } from "./webSessionStream.ts";
-import { createTranscriptGroupId, normalizeTranscriptItem } from "#conversation/session/transcriptMetadata.ts";
+import { normalizeTranscriptItems } from "#conversation/session/transcriptMetadata.ts";
 
 export { type WebTurnStreamEvent } from "./webTurnBroker.ts";
 export { type WebSessionStreamEvent } from "./webSessionStream.ts";
@@ -140,7 +140,7 @@ export function createAdminMessagingService(input: {
 
     fetchTranscript(params, query) {
       const session = input.sessionManager.getSession(params.sessionId);
-      const transcript = session.internalTranscript.map((item) => normalizeTranscriptItem(item, item.groupId ?? createTranscriptGroupId()));
+      const transcript = normalizeTranscriptItems(session.internalTranscript);
       const totalCount = transcript.length;
       const beforeIndex = query.beforeIndex ?? totalCount;
       const clampedBefore = Math.min(beforeIndex, totalCount);
@@ -447,7 +447,7 @@ async function readSessionStreamSnapshot(
   return {
     sessionId: session.id,
     mutationEpoch: session.mutationEpoch,
-    transcript: session.internalTranscript.map((item) => normalizeTranscriptItem(item, item.groupId ?? createTranscriptGroupId())),
+    transcript: normalizeTranscriptItems(session.internalTranscript),
     lastActiveAt: session.lastActiveAt,
     phase: session.phase,
     activeAssistantResponseText: session.activeAssistantResponse?.text ?? null,

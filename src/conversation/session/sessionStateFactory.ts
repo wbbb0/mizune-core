@@ -11,6 +11,7 @@ import {
   resolveSessionParticipantRef
 } from "./sessionIdentity.ts";
 import { resolveSessionDefaultTitle } from "./sessionTitle.ts";
+import { normalizeTranscriptItems } from "./transcriptMetadata.ts";
 
 // Creates and converts runtime session state snapshots.
 
@@ -165,7 +166,7 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
     pendingInternalTriggers: [],
     interruptibleGroupTriggerUserId: null,
     historySummary: item.historySummary,
-    internalTranscript: [...item.internalTranscript],
+    internalTranscript: normalizeTranscriptItems(item.internalTranscript),
     debugMarkers: [...item.debugMarkers],
     recentToolEvents: [...item.recentToolEvents],
     lastLlmUsage: item.lastLlmUsage,
@@ -205,7 +206,7 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     pendingTranscriptGroupId: session.pendingTranscriptGroupId,
     activeTranscriptGroupId: session.activeTranscriptGroupId,
     historySummary: session.historySummary,
-    internalTranscript: [...session.internalTranscript],
+    internalTranscript: session.internalTranscript.map((item) => ({ ...item })),
     debugMarkers: [...session.debugMarkers],
     recentToolEvents: [...session.recentToolEvents],
     lastLlmUsage: session.lastLlmUsage,

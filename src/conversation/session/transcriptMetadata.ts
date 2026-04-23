@@ -1,16 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type {
   InternalTranscriptItem,
+  NormalizedInternalTranscriptItem,
   SessionState,
   TranscriptItemRuntimeExclusionReason
 } from "./sessionTypes.ts";
-
-export interface TranscriptItemPatch {
-  reasoningContent?: string;
-  runtimeExcluded?: boolean;
-  runtimeExcludedAt?: number;
-  runtimeExclusionReason?: TranscriptItemRuntimeExclusionReason;
-}
+import type { TranscriptItemPatch } from "./transcriptContract.ts";
 
 export function createTranscriptItemId(): string {
   return `ti_${randomUUID()}`;
@@ -52,7 +47,7 @@ export function resolveTranscriptOutputGroupId(session: SessionState): string {
 export function normalizeTranscriptItem(
   item: InternalTranscriptItem,
   groupId: string
-): InternalTranscriptItem {
+): NormalizedInternalTranscriptItem {
   return {
     ...item,
     id: item.id ?? createTranscriptItemId(),
@@ -62,6 +57,10 @@ export function normalizeTranscriptItem(
     ...(item.runtimeExclusionReason ? { runtimeExclusionReason: item.runtimeExclusionReason } : {}),
     ...(item.deliveryRef ? { deliveryRef: item.deliveryRef } : {})
   };
+}
+
+export function normalizeTranscriptItems(items: InternalTranscriptItem[]): NormalizedInternalTranscriptItem[] {
+  return items.map((item) => normalizeTranscriptItem(item, item.groupId ?? createTranscriptGroupId()));
 }
 
 export function getTranscriptItemId(item: InternalTranscriptItem): string {

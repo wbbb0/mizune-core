@@ -327,11 +327,11 @@ function formatPlannerAction(action: "continue" | "wait" | "skip" | "topic_switc
 }
 
 function getDisplayToolName(toolCall: StoredToolCall): string {
-  return String(toolCall.name ?? toolCall.function?.name ?? "").trim();
+  return String(toolCall.function?.name ?? "").trim();
 }
 
 function getToolArguments(toolCall: StoredToolCall): string {
-  return String(toolCall.arguments ?? toolCall.function?.arguments ?? "").trim();
+  return String(toolCall.function?.arguments ?? "").trim();
 }
 
 function formatMaybeJson(value: string): string {

@@ -1,3 +1,5 @@
+import type { ChatAttachment, ChatFileKind } from "#types/chatContracts.ts";
+
 export type LocalFileKind = "file" | "directory";
 
 export interface LocalFileItemStat {
@@ -82,7 +84,7 @@ export interface LocalFileFindTextResult {
   truncated: boolean;
 }
 
-export type ChatFileKind = "image" | "animated_image" | "video" | "audio" | "file";
+export type { ChatAttachment, ChatFileKind };
 export type ChatFileOrigin =
   | "chat_message"
   | "browser_download"
@@ -103,13 +105,4 @@ export interface ChatFileRecord {
   createdAtMs: number;
   sourceContext: Record<string, string | number | boolean | null>;
   caption: string | null;
-}
-
-export interface ChatAttachment {
-  fileId: string;
-  kind: ChatFileKind;
-  source: "chat_message" | "web_upload" | "browser" | "chat_file";
-  sourceName: string | null;
-  mimeType: string | null;
-  semanticKind?: "image" | "emoji";
 }
