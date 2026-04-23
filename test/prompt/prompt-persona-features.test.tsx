@@ -353,6 +353,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       const system = String(prompt[0]?.content ?? "");
       assert.match(system, /当前处于初始化阶段/);
       assert.match(system, /你当前只在persona的临时草稿上工作/);
+      assert.match(system, /保持主动、友好、helpful 的引导感/);
       assert.match(system, /最多同时追问 1-2 个强相关字段/);
       assert.match(system, /先用工具写入能确认的字段/);
       assert.match(system, /send_setup_draft/);
@@ -386,11 +387,44 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       assert.match(system, /persona_config_mode/);
       assert.match(system, /当前处于 persona 配置阶段/);
       assert.match(system, /你当前只在persona的临时草稿上工作/);
+      assert.match(system, /保持主动、友好、helpful 的引导感/);
       assert.match(system, /\.confirm，否则任何改动都不会写回正式配置/);
       assert.match(system, /只修改明确要求的字段/);
       assert.match(system, /\.cancel/);
       assert.doesNotMatch(system, /当前实例处于初始化阶段/);
       assert.doesNotMatch(system, /然后从名字和基础身份开始询问/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("setup prompt uses draft batch headers instead of trigger-user framing", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.get();
+      const prompt = buildSetupPrompt({
+        sessionId: "qqbot:p:owner",
+        persona,
+        phase: "setup",
+        missingFields: ["name", "temperament", "speakingStyle"],
+        recentMessages: [],
+        batchMessages: [createPromptBatchMessage({
+          userId: "owner",
+          senderName: "Owner",
+          text: "我叫小满，语气克制一点",
+          timestampMs: Date.UTC(2026, 2, 16, 9, 13, 0)
+        })]
+      });
+
+      const system = String(prompt[0]?.content ?? "");
+      const batchText = readPromptMessageText(prompt[1]);
+      assert.match(system, /当前配置流程处理的是 bot 自身的设定草稿/);
+      assert.match(system, /owner 在这里用第一人称提供的信息，默认是在描述 bot/);
+      assert.match(batchText, /^⟦draft_batch session="私聊 owner" message_count="1" speaker_count="1"⟧/);
+      assert.match(batchText, /以下消息属于当前 bot 设定草稿的配置输入/);
+      assert.match(batchText, /⟦draft_message index="1" speaker="Owner \(owner\)" time="2026\/03\/16 17:13:00"⟧/);
+      assert.doesNotMatch(batchText, /trigger_user=/);
+      assert.doesNotMatch(batchText, /当前触发用户/);
     } finally {
       await harness.cleanup();
     }

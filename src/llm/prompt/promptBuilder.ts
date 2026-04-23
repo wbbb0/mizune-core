@@ -1,6 +1,7 @@
 import type { LlmMessage } from "../llmClient.ts";
 import {
   buildUserBatchContent,
+  buildProfileDraftBatchContent,
 } from "../prompts/trigger-batch.prompt.ts";
 import {
   buildBaseSystemLines,
@@ -70,6 +71,10 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
     )
   }));
 
+  const batchContentBuilder = input.draftMode || input.isInSetup
+    ? buildProfileDraftBatchContent
+    : buildUserBatchContent;
+
   return [
     { role: "system", content: system },
     ...(input.lateSystemMessages ?? []).map((content) => ({ role: "system" as const, content })),
@@ -78,7 +83,7 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
     ...(input.batchMessages.length > 0
       ? [{
           role: "user" as const,
-          content: buildUserBatchContent(input.batchMessages, batchRenderContext, input.includeBatchMediaCaptions)
+          content: batchContentBuilder(input.batchMessages, batchRenderContext, input.includeBatchMediaCaptions)
         }]
       : [])
   ];
@@ -199,7 +204,7 @@ export function buildSetupPrompt(input: SetupPromptInput): LlmMessage[] {
     ...(input.batchMessages.length > 0
       ? [{
           role: "user" as const,
-          content: buildUserBatchContent(input.batchMessages, batchRenderContext, input.includeBatchMediaCaptions)
+          content: buildProfileDraftBatchContent(input.batchMessages, batchRenderContext, input.includeBatchMediaCaptions)
         }]
       : [])
   ];

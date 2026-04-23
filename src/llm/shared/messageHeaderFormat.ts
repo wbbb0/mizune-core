@@ -70,7 +70,23 @@ export function formatBatchItemMessageHeader(input: MessageItemHeaderInput): str
   ]);
 }
 
-const LEADING_MESSAGE_HEADER_REGEX = /^(?:[\t ]*⟦(?:history_message|scheduled_history_message|trigger_batch|trigger_message)\b[^⟧\n]*⟧[\t ]*(?:\r?\n|$))+/;
+export function formatDraftBatchMessageHeader(input: Omit<MessageBatchHeaderInput, "triggerLabel">): string {
+  return buildHeaderTag("draft_batch", [
+    ["session", input.sessionLabel],
+    ["message_count", input.messageCount],
+    ["speaker_count", input.speakerCount]
+  ]);
+}
+
+export function formatDraftBatchItemMessageHeader(input: Omit<MessageItemHeaderInput, "isTriggerUser">): string {
+  return buildHeaderTag("draft_message", [
+    ["index", input.index],
+    ["speaker", input.speakerLabel],
+    ["time", input.timestampLabel]
+  ]);
+}
+
+const LEADING_MESSAGE_HEADER_REGEX = /^(?:[\t ]*⟦(?:history_message|scheduled_history_message|trigger_batch|trigger_message|draft_batch|draft_message)\b[^⟧\n]*⟧[\t ]*(?:\r?\n|$))+/;
 const LEADING_BLANK_LINES_REGEX = /^[\t ]*(?:\r?\n[\t ]*)+/;
 
 export function stripLeadingMessageHeaders(text: string): string {

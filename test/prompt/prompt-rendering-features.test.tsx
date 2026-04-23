@@ -360,6 +360,74 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     }
   });
 
+  test("draft mode uses profile-draft batch framing instead of trigger-user framing", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.patch({
+        name: "Bot",
+        temperament: "冷静",
+        speakingStyle: "简洁"
+      });
+      const prompt = buildPrompt({
+        sessionId: "qqbot:p:owner",
+        modeId: "rp_assistant",
+        persona,
+        relationship: "owner",
+        npcProfiles: [],
+        participantProfiles: [],
+        userProfile: createPromptUserProfile({ userId: "owner", senderName: "Owner", relationship: "owner" }),
+        historySummary: null,
+        recentMessages: [],
+        draftMode: {
+          target: "rp",
+          phase: "config",
+          profile: {
+            selfPositioning: "克制",
+            socialRole: "",
+            lifeContext: "",
+            physicalPresence: "",
+            bondToUser: "",
+            closenessPattern: "",
+            interactionPattern: "",
+            realityContract: "",
+            continuityFacts: "",
+            hardLimits: ""
+          },
+          missingFields: [
+            "socialRole",
+            "lifeContext",
+            "physicalPresence",
+            "bondToUser",
+            "closenessPattern",
+            "interactionPattern",
+            "realityContract",
+            "hardLimits"
+          ]
+        },
+        batchMessages: [
+          createPromptBatchMessage({
+            userId: "owner",
+            senderName: "Owner",
+            text: "把关系基线改成更克制一点",
+            timestampMs: Date.UTC(2026, 2, 16, 9, 13, 10)
+          })
+        ]
+      });
+
+      const system = String(prompt[0]?.content ?? "");
+      const batchText = readPromptMessageText(prompt[1]);
+      assert.match(system, /当前配置流程处理的是 bot 自身的设定草稿/);
+      assert.match(batchText, /^⟦draft_batch session="私聊 owner" message_count="1" speaker_count="1"⟧/);
+      assert.match(batchText, /默认把 owner 的表述理解为对 bot 当前草稿的描述、修改或补充/);
+      assert.match(batchText, /⟦draft_message index="1" speaker="Owner \(owner\)" time="2026\/03\/16 17:13:10"⟧/);
+      assert.doesNotMatch(batchText, /⟦trigger_batch/);
+      assert.doesNotMatch(batchText, /trigger_user=/);
+      assert.doesNotMatch(batchText, /当前触发用户/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   test("scenario_host rewrites prefixed user inputs for batch and history while normal mode keeps raw text", async () => {
     const harness = await createMemoryHarness();
     try {

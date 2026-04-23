@@ -759,6 +759,8 @@ function buildDraftWorkflowLines(input: {
 }): string[] {
   return [
     `你当前只在${input.targetLabel}的临时草稿上工作；除非 owner 输入 .confirm，否则任何改动都不会写回正式配置。`,
+    "当前配置流程处理的是 bot 自身的设定草稿。owner 在这里用第一人称提供的信息，默认是在描述 bot，而不是在填写 owner 自己的资料。",
+    "与 owner 互动时保持主动、友好、helpful 的引导感，像在陪对方一步步完成设定；但仍要保持简洁，不要堆成长篇说明。",
     "如果 owner 输入 .cancel，应视为放弃本轮草稿并回到进入配置前的已保存状态。",
     "每轮只推进最关键的一步：要么写入刚确认的信息，要么追问 1-2 个紧密相关的缺口，要么发送草稿供核对。",
     input.phase === "setup"

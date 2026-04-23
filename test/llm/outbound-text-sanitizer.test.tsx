@@ -58,6 +58,20 @@ import { sanitizeOutboundText } from "../../src/llm/shared/outboundTextSanitizer
     );
   });
 
+  test("strips leading draft-style message headers when requested", () => {
+    const input = [
+      "⟦draft_batch session=\"私聊 owner\" message_count=\"1\" speaker_count=\"1\"⟧",
+      "⟦draft_message index=\"1\" speaker=\"Owner (owner)\" time=\"2026/03/16 17:13:00\"⟧",
+      "",
+      "这份草稿可以确认。"
+    ].join("\n");
+
+    assert.equal(
+      sanitizeOutboundText(input, { stripLeadingMessageHeaders: true }),
+      "这份草稿可以确认。"
+    );
+  });
+
   test("keeps prompt-style message headers when stripping is not requested", () => {
     const input = "⟦trigger_message index=\"1\" speaker=\"Alice (10001)\" trigger_user=\"yes\" time=\"2026/03/16 17:13:00\"⟧\n收到啦";
 
