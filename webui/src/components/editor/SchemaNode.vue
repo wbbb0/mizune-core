@@ -3,8 +3,8 @@ import { ref, computed, watch } from "vue";
 import { Plus, Trash2, ArrowUp, ArrowDown, Pencil, Check, Undo2, Copy } from "lucide-vue-next";
 import SchemaField from "./SchemaField.vue";
 import TreeNodeShell from "@/components/tree/TreeNodeShell.vue";
-import type { LayerFeatures, UiNode } from "@/api/editor";
-import { deepEqual, removeValueAtPathAndPrune, type PathSegment } from "@/utils/editorState";
+import type { EditorFeatures, UiNode } from "@/api/editor";
+import { canUnsetNodeValue, deepEqual, removeValueAtPathAndPrune, type PathSegment } from "@/utils/editorState";
 
 type HeaderActionIcon = "trash" | "up" | "down" | "pencil" | "check" | "restore" | "copy";
 
@@ -23,12 +23,10 @@ const props = defineProps<{
   fieldKey?: string;
   modelValue: unknown;
   inherited?: unknown;
-  baseValue?: unknown;
   storedValue?: unknown;
   effectiveValue?: unknown;
   path?: PathSegment[];
-  isLayered?: boolean;
-  layerFeatures?: LayerFeatures;
+  editorFeatures?: EditorFeatures;
   depth?: number;
   disabled?: boolean;
   headerLabel?: string;
@@ -79,7 +77,7 @@ const headerMeta = computed(() => {
     return props.headerMeta;
   }
   if (props.node.kind === "array") {
-    return items.value.length;
+    return displayedItems.value.length;
   }
   if (props.node.kind === "record") {
     return recordEntries.value.length;
@@ -153,10 +151,6 @@ function childInheritedValue(key: string): unknown {
   return asObj(props.inherited)[key];
 }
 
-function childBaseValue(key: string): unknown {
-  return asObj(props.baseValue)[key];
-}
-
 function childStoredValue(key: string): unknown {
   return asObj(props.storedValue)[key];
 }
@@ -166,23 +160,35 @@ function childEffectiveValue(key: string): unknown {
 }
 
 const currentPathDirty = computed(() => !deepEqual(props.modelValue, props.storedValue));
-const showLayeredTone = computed(() => !!props.isLayered && !!props.layerFeatures?.showBackdrop);
-const canRestoreInherited = computed(() =>
-  !!props.isLayered
-  && !!props.layerFeatures?.allowRestoreInherited
-  && path.value.length > 0
-  && props.modelValue !== undefined
+const showReferenceTone = computed(() => !!props.editorFeatures?.showReferenceBackdrop);
+const canUnsetCurrentValue = computed(() =>
+  canUnsetNodeValue({
+    unsetMode: props.editorFeatures?.unsetMode ?? "disabled",
+    schemaOptional: props.node.schema.optional,
+    path: path.value,
+    modelValue: props.modelValue
+  })
 );
 const showLocalValue = computed(() =>
-  showLayeredTone.value
+  showReferenceTone.value
   && path.value.length > 0
   && props.modelValue !== undefined
 );
 
-function restoreInherited() {
+function unsetCurrentValue() {
   const next = removeValueAtPathAndPrune(props.modelValue, []);
   emit("update:modelValue", next);
 }
+
+const unsetActionTitle = computed(() => {
+  if (
+    props.editorFeatures?.unsetActionLabel
+    && (props.inherited !== undefined || props.editorFeatures.showReferenceBackdrop)
+  ) {
+    return props.editorFeatures.unsetActionLabel;
+  }
+  return "删除此项";
+});
 
 const nodeClasses = computed(() => (
   showLocalValue.value ? "editor-node-layered-local" : ""
@@ -197,12 +203,12 @@ const labelClasses = computed(() => [
 
 const mergedHeaderActions = computed<HeaderAction[]>(() => {
   const next = [...headerActions.value];
-  if (canRestoreInherited.value && !props.disabled) {
+  if (canUnsetCurrentValue.value && !props.disabled) {
     next.unshift({
-      key: `restore-${path.value.join(".") || "root"}`,
+      key: `unset-${path.value.join(".") || "root"}`,
       icon: "restore",
-      title: "恢复继承",
-      onClick: restoreInherited
+      title: unsetActionTitle.value,
+      onClick: unsetCurrentValue
     });
   }
   return next;
@@ -220,9 +226,9 @@ function onGroupChildUpdate(key: string, childValue: unknown) {
 
 const items = computed(() => asArr(props.modelValue));
 const inheritedItems = computed(() => asArr(props.inherited));
-const baseItems = computed(() => asArr(props.baseValue));
 const storedItems = computed(() => asArr(props.storedValue));
 const effectiveItems = computed(() => asArr(props.effectiveValue));
+const displayedItems = computed(() => props.modelValue !== undefined ? items.value : effectiveItems.value);
 
 function isComplexNode(node: UiNode): boolean {
   return node.kind !== "field";
@@ -234,10 +240,6 @@ function inheritedArrayItem(index: number): unknown {
   return inheritedItems.value[index];
 }
 
-function baseArrayItem(index: number): unknown {
-  return baseItems.value[index];
-}
-
 function storedArrayItem(index: number): unknown {
   return storedItems.value[index];
 }
@@ -247,25 +249,25 @@ function effectiveArrayItem(index: number): unknown {
 }
 
 function onArrayItemUpdate(index: number, childValue: unknown) {
-  const next = [...items.value];
+  const next = [...displayedItems.value];
   next[index] = childValue;
   emit("update:modelValue", next);
 }
 
 function addArrayItem() {
-  emit("update:modelValue", [...items.value, null]);
+  emit("update:modelValue", [...displayedItems.value, null]);
 }
 
 function removeArrayItem(index: number) {
-  const next = [...items.value];
+  const next = [...displayedItems.value];
   next.splice(index, 1);
   emit("update:modelValue", next.length > 0 ? next : undefined);
 }
 
 function moveArrayItem(index: number, offset: -1 | 1) {
   const targetIndex = index + offset;
-  if (targetIndex < 0 || targetIndex >= items.value.length) return;
-  const next = [...items.value];
+  if (targetIndex < 0 || targetIndex >= displayedItems.value.length) return;
+  const next = [...displayedItems.value];
   const [entry] = next.splice(index, 1);
   next.splice(targetIndex, 0, entry);
   emit("update:modelValue", next);
@@ -276,24 +278,20 @@ function jsonClone<T>(value: T): T {
 }
 
 function duplicateArrayItem(index: number) {
-  const next = [...items.value];
+  const next = [...displayedItems.value];
   const copy = jsonClone(next[index]);
   next.splice(index + 1, 0, copy);
   emit("update:modelValue", next);
 }
 
-const recordEntries = computed(() => Object.entries(asObj(props.modelValue)));
+const displayedRecord = computed(() => props.modelValue !== undefined ? asObj(props.modelValue) : asObj(props.effectiveValue));
+const recordEntries = computed(() => Object.entries(displayedRecord.value));
 const inheritedRecord = computed(() => asObj(props.inherited));
-const baseRecord = computed(() => asObj(props.baseValue));
 const storedRecord = computed(() => asObj(props.storedValue));
 const effectiveRecord = computed(() => asObj(props.effectiveValue));
 
 function inheritedRecordValue(key: string): unknown {
   return inheritedRecord.value[key];
-}
-
-function baseRecordValue(key: string): unknown {
-  return baseRecord.value[key];
 }
 
 function storedRecordValue(key: string): unknown {
@@ -305,7 +303,7 @@ function effectiveRecordValue(key: string): unknown {
 }
 
 function onRecordValueUpdate(key: string, childValue: unknown) {
-  const next = cloneRecord(props.modelValue);
+  const next = cloneRecord(displayedRecord.value);
   if (childValue === undefined) {
     delete next[key];
   } else {
@@ -315,7 +313,7 @@ function onRecordValueUpdate(key: string, childValue: unknown) {
 }
 
 function addRecordEntry() {
-  const next = cloneRecord(props.modelValue);
+  const next = cloneRecord(displayedRecord.value);
   let index = Object.keys(next).length + 1;
   let key = `key_${index}`;
   while (key in next) {
@@ -327,13 +325,13 @@ function addRecordEntry() {
 }
 
 function removeRecordEntry(key: string) {
-  const next = cloneRecord(props.modelValue);
+  const next = cloneRecord(displayedRecord.value);
   delete next[key];
   emitObjectWithoutUndefined(next);
 }
 
 function duplicateRecordEntry(key: string) {
-  const next = cloneRecord(props.modelValue);
+  const next = cloneRecord(displayedRecord.value);
   const copy = jsonClone(next[key]);
   let newKey = `${key}_copy`;
   let suffix = 2;
@@ -551,12 +549,10 @@ function onUnionSelect(event: Event) {
           :field-key="key"
           :model-value="asObj(modelValue)[key]"
           :inherited="childInheritedValue(key)"
-          :base-value="childBaseValue(key)"
           :stored-value="childStoredValue(key)"
           :effective-value="childEffectiveValue(key)"
           :path="appendPath(key)"
-          :is-layered="isLayered"
-          :layer-features="layerFeatures"
+          :editor-features="editorFeatures"
           :depth="depth + 1"
           :disabled="disabled"
           @update:model-value="onGroupChildUpdate(key, $event)"
@@ -572,12 +568,10 @@ function onUnionSelect(event: Event) {
         :field-key="key"
         :model-value="asObj(modelValue)[key]"
         :inherited="childInheritedValue(key)"
-        :base-value="childBaseValue(key)"
         :stored-value="childStoredValue(key)"
         :effective-value="childEffectiveValue(key)"
         :path="appendPath(key)"
-        :is-layered="isLayered"
-        :layer-features="layerFeatures"
+        :editor-features="editorFeatures"
         :depth="depth + 1"
         :disabled="disabled"
         @update:model-value="onGroupChildUpdate(key, $event)"
@@ -620,26 +614,24 @@ function onUnionSelect(event: Event) {
       </template>
 
       <div class="ml-1.5 border-l border-border-default pl-4">
-        <div v-for="(item, idx) in items" :key="idx" class="py-1">
+        <div v-for="(item, idx) in displayedItems" :key="idx" class="py-1">
           <SchemaNode
             :node="node.item"
             :field-key="isComplexNode(node.item) ? undefined : `项目 ${idx + 1}`"
             :header-meta="`#${idx + 1}`"
             :header-actions="disabled ? [] : [
               { key: `array-up-${idx}`, icon: 'up', title: '上移', disabled: idx === 0, onClick: () => moveArrayItem(idx, -1) },
-              { key: `array-down-${idx}`, icon: 'down', title: '下移', disabled: idx === items.length - 1, onClick: () => moveArrayItem(idx, 1) },
+              { key: `array-down-${idx}`, icon: 'down', title: '下移', disabled: idx === displayedItems.length - 1, onClick: () => moveArrayItem(idx, 1) },
               { key: `array-copy-${idx}`, icon: 'copy', title: '复制', onClick: () => duplicateArrayItem(idx) },
               { key: `array-remove-${idx}`, icon: 'trash', title: '删除', danger: true, onClick: () => removeArrayItem(idx) }
             ]"
             :header-label="isComplexNode(node.item) ? undefined : `项目 ${idx + 1}`"
-            :model-value="item"
+            :model-value="items[idx]"
             :inherited="inheritedArrayItem(idx)"
-            :base-value="baseArrayItem(idx)"
             :stored-value="storedArrayItem(idx)"
             :effective-value="effectiveArrayItem(idx)"
             :path="appendPath(idx)"
-            :is-layered="isLayered"
-            :layer-features="layerFeatures"
+            :editor-features="editorFeatures"
             :depth="depth + 1"
             :disabled="disabled"
             :force-header="!isComplexNode(node.item)"
@@ -702,14 +694,12 @@ function onUnionSelect(event: Event) {
             :header-edit-value="key"
             :header-edit-placeholder="'输入 key'"
             :header-actions="disabled ? [] : recordHeaderActions(key, idx)"
-            :model-value="value"
+            :model-value="asObj(modelValue)[key]"
             :inherited="inheritedRecordValue(key)"
-            :base-value="baseRecordValue(key)"
             :stored-value="storedRecordValue(key)"
             :effective-value="effectiveRecordValue(key)"
             :path="appendPath(key)"
-            :is-layered="isLayered"
-            :layer-features="layerFeatures"
+            :editor-features="editorFeatures"
             :depth="depth + 1"
             :disabled="disabled"
             :force-header="true"
@@ -743,12 +733,10 @@ function onUnionSelect(event: Event) {
       :node="unionOptions[selectedUnionIdx]!"
       :model-value="modelValue"
       :inherited="inherited"
-      :base-value="baseValue"
       :stored-value="storedValue"
       :effective-value="effectiveValue"
       :path="path"
-      :is-layered="isLayered"
-      :layer-features="layerFeatures"
+      :editor-features="editorFeatures"
       :depth="depth + 1"
       :disabled="disabled"
       @update:model-value="emit('update:modelValue', $event)"

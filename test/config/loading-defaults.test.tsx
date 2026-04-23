@@ -41,7 +41,17 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       assert.equal(config.llm.sessionCaptioner.timeoutMs, 15000);
       assert.deepEqual(config.llm.providers, {});
       assert.deepEqual(config.llm.models, {});
-      assert.deepEqual(config.llm.routingPresets, {});
+      assert.deepEqual(config.llm.routingPresets, {
+        default: {
+          mainSmall: [],
+          mainLarge: [],
+          summarizer: [],
+          sessionCaptioner: [],
+          imageCaptioner: [],
+          audioTranscription: [],
+          turnPlanner: []
+        }
+      });
       assert.equal(config.dataDir, "data/default");
     });
   });

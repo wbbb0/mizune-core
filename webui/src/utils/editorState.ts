@@ -1,4 +1,5 @@
 import { deepMerge } from "./deepMerge";
+import type { EditorModel, EditorUnsetMode } from "@/api/editor";
 
 export type PathSegment = string | number;
 
@@ -118,9 +119,139 @@ export function removeValueAtPathAndPrune<T>(value: T, path: PathSegment[]): T |
   return pruneValue(cloned) as T | undefined;
 }
 
+export function canUnsetNodeValue(input: {
+  unsetMode: EditorUnsetMode;
+  schemaOptional: boolean;
+  path: PathSegment[];
+  modelValue: unknown;
+}): boolean {
+  if (input.path.length === 0 || input.modelValue === undefined) {
+    return false;
+  }
+  if (input.unsetMode === "reference") {
+    return true;
+  }
+  if (input.unsetMode === "optional") {
+    return input.schemaOptional;
+  }
+  return false;
+}
+
 export function computeEffectiveValue(baseValue: unknown, draftValue: unknown): unknown {
   if (draftValue == null) {
     return baseValue;
   }
   return deepMerge(baseValue, draftValue);
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  return isPlainObject(value) ? value : {};
+}
+
+function completeRoutingPresetField(
+  draftPreset: Record<string, unknown>,
+  referencePreset: Record<string, unknown>,
+  field: string
+): unknown {
+  if (Object.prototype.hasOwnProperty.call(draftPreset, field)) {
+    return draftPreset[field];
+  }
+  return referencePreset[field] ?? [];
+}
+
+function computeRoutingPresetCatalogReferenceValue(draftValue: unknown): unknown {
+  const draftCatalog = asObject(draftValue);
+  const defaultPreset = asObject(draftCatalog.default);
+  const completedDefaultPreset = {
+    mainSmall: completeRoutingPresetField(defaultPreset, {}, "mainSmall"),
+    mainLarge: completeRoutingPresetField(defaultPreset, {}, "mainLarge"),
+    summarizer: completeRoutingPresetField(defaultPreset, {}, "summarizer"),
+    sessionCaptioner: completeRoutingPresetField(defaultPreset, {}, "sessionCaptioner"),
+    imageCaptioner: completeRoutingPresetField(defaultPreset, {}, "imageCaptioner"),
+    audioTranscription: completeRoutingPresetField(defaultPreset, {}, "audioTranscription"),
+    turnPlanner: completeRoutingPresetField(defaultPreset, {}, "turnPlanner")
+  };
+  const referenceCatalog: Record<string, unknown> = {
+    default: {}
+  };
+
+  for (const presetName of Object.keys(draftCatalog)) {
+    if (presetName === "default") {
+      continue;
+    }
+    referenceCatalog[presetName] = completedDefaultPreset;
+  }
+
+  return referenceCatalog;
+}
+
+function computeRoutingPresetCatalogEffectiveValue(referenceValue: unknown, draftValue: unknown): unknown {
+  const draftCatalog = asObject(draftValue);
+  const referenceCatalog = asObject(referenceValue);
+  const draftDefaultPreset = asObject(draftCatalog.default);
+  const defaultReferencePreset = {
+    mainSmall: completeRoutingPresetField(draftDefaultPreset, {}, "mainSmall"),
+    mainLarge: completeRoutingPresetField(draftDefaultPreset, {}, "mainLarge"),
+    summarizer: completeRoutingPresetField(draftDefaultPreset, {}, "summarizer"),
+    sessionCaptioner: completeRoutingPresetField(draftDefaultPreset, {}, "sessionCaptioner"),
+    imageCaptioner: completeRoutingPresetField(draftDefaultPreset, {}, "imageCaptioner"),
+    audioTranscription: completeRoutingPresetField(draftDefaultPreset, {}, "audioTranscription"),
+    turnPlanner: completeRoutingPresetField(draftDefaultPreset, {}, "turnPlanner")
+  };
+  const effectiveCatalog: Record<string, unknown> = {};
+
+  for (const presetName of Object.keys(draftCatalog)) {
+    const draftPreset = asObject(draftCatalog[presetName]);
+    const referencePreset = presetName === "default"
+      ? {}
+      : asObject(referenceCatalog[presetName] ?? defaultReferencePreset);
+
+    effectiveCatalog[presetName] = {
+      mainSmall: completeRoutingPresetField(draftPreset, referencePreset, "mainSmall"),
+      mainLarge: completeRoutingPresetField(draftPreset, referencePreset, "mainLarge"),
+      summarizer: completeRoutingPresetField(draftPreset, referencePreset, "summarizer"),
+      sessionCaptioner: completeRoutingPresetField(draftPreset, referencePreset, "sessionCaptioner"),
+      imageCaptioner: completeRoutingPresetField(draftPreset, referencePreset, "imageCaptioner"),
+      audioTranscription: completeRoutingPresetField(draftPreset, referencePreset, "audioTranscription"),
+      turnPlanner: completeRoutingPresetField(draftPreset, referencePreset, "turnPlanner")
+    };
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(effectiveCatalog, "default")) {
+    effectiveCatalog.default = {
+      mainSmall: [],
+      mainLarge: [],
+      summarizer: [],
+      sessionCaptioner: [],
+      imageCaptioner: [],
+      audioTranscription: [],
+      turnPlanner: []
+    };
+  }
+
+  return effectiveCatalog;
+}
+
+export function computeDraftReferenceValue(model: EditorModel, draftValue: unknown): unknown {
+  switch (model.editorFeatures.draftEffectiveMode) {
+    case "routing_preset_catalog":
+      return computeRoutingPresetCatalogReferenceValue(draftValue);
+    case "merge_reference":
+    case "draft_only":
+    default:
+      return model.referenceValue;
+  }
+}
+
+export function computeDraftEffectiveValue(model: EditorModel, draftValue: unknown): unknown {
+  const referenceValue = computeDraftReferenceValue(model, draftValue);
+  switch (model.editorFeatures.draftEffectiveMode) {
+    case "merge_reference":
+      return computeEffectiveValue(referenceValue, draftValue);
+    case "routing_preset_catalog":
+      return computeRoutingPresetCatalogEffectiveValue(referenceValue, draftValue);
+    case "draft_only":
+    default:
+      return draftValue;
+  }
 }

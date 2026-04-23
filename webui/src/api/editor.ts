@@ -44,42 +44,50 @@ export type UiNode =
   | { kind: "record"; schema: SchemaMeta; key: UiNode; value: UiNode }
   | { kind: "union";  schema: SchemaMeta; options: UiNode[] };
 
-export interface SingleEditorModel {
-  key: string;
-  title: string;
-  kind: "single";
-  editable: boolean;
-  schemaMeta: SchemaMeta;
-  uiTree: UiNode;
-  template: unknown;
-  current: unknown;
-  file: { path: string };
-}
-
 export interface LayerInfo {
   key: string;
   path: string;
   value: unknown;
 }
 
-export interface LayerFeatures {
-  showBackdrop: boolean;
-  allowRestoreInherited: boolean;
+export type EditorDraftEffectiveMode =
+  | "draft_only"
+  | "merge_reference"
+  | "routing_preset_catalog";
+
+export type EditorUnsetMode =
+  | "disabled"
+  | "optional"
+  | "reference";
+
+export interface EditorFeatures {
+  showReferenceBackdrop: boolean;
+  unsetMode: EditorUnsetMode;
+  unsetActionLabel: string | null;
+  draftEffectiveMode: EditorDraftEffectiveMode;
 }
 
-export interface LayeredEditorModel {
+interface BaseEditorModel {
   key: string;
   title: string;
-  kind: "layered";
   editable: boolean;
   schemaMeta: SchemaMeta;
   uiTree: UiNode;
   template: unknown;
-  baseValue: unknown;
   currentValue: unknown;
+  referenceValue: unknown;
   effectiveValue: unknown;
+  editorFeatures: EditorFeatures;
+}
+
+export interface SingleEditorModel extends BaseEditorModel {
+  kind: "single";
+  file: { path: string };
+}
+
+export interface LayeredEditorModel extends BaseEditorModel {
+  kind: "layered";
   writableLayerKey: string;
-  layerFeatures: LayerFeatures;
   layers: LayerInfo[];
 }
 
@@ -92,7 +100,7 @@ export const editorApi = {
   load(key: string): Promise<{ editor: EditorModel }> {
     return api.get(`/api/editors/${encodeURIComponent(key)}`);
   },
-  validate(key: string, value: unknown): Promise<{ ok: true; parsed: unknown; current: unknown; effective: unknown }> {
+  validate(key: string, value: unknown): Promise<{ ok: true; parsed: unknown; currentValue: unknown; referenceValue: unknown; effective: unknown }> {
     return api.post(`/api/editors/${encodeURIComponent(key)}/validate`, { value });
   },
   save(key: string, value: unknown): Promise<{ ok: true; path: string; parsed: unknown }> {

@@ -1,6 +1,6 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
-import { useLayeredEditorState } from "@/composables/useLayeredEditorState";
+import { useEditorDraftState } from "@/composables/useEditorDraftState";
 import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
 import { dataApi, type DataResourceSummary, type DataResource, type DataResourceItem, type DirectoryItem } from "@/api/data";
 import { editorApi, type EditorModel, type EditorResourceSummary } from "@/api/editor";
@@ -35,8 +35,7 @@ type DataSectionState = {
   saving: Ref<boolean>;
   validating: Ref<boolean>;
   draftValue: Ref<unknown>;
-  isLayered: ComputedRef<boolean>;
-  baseValue: ComputedRef<unknown>;
+  referenceValue: ComputedRef<unknown>;
   storedDraftValue: ComputedRef<unknown>;
   effectiveValue: ComputedRef<unknown>;
   isDirty: ComputedRef<boolean>;
@@ -74,13 +73,13 @@ export function useDataSection() {
     const validating = ref(false);
     const toast = useToastStore();
     const workbenchRuntime = useWorkbenchRuntime();
-    const layeredState = useLayeredEditorState(model);
+    const editorState = useEditorDraftState(model);
     let stateVersion = 0;
 
     const selectedResource = computed(() =>
       resources.value.find((entry) => entry.key === selectedKey.value) ?? null
     );
-    const canSubmit = computed(() => !!selectedResource.value?.editable && layeredState.isDirty.value && !validating.value && !saving.value);
+    const canSubmit = computed(() => !!selectedResource.value?.editable && editorState.isDirty.value && !validating.value && !saving.value);
 
     const formattedJson = computed(() => {
       if (!resource.value || resource.value.kind !== "single_json") return "";
@@ -120,7 +119,7 @@ export function useDataSection() {
       loadingItem.value = false;
       saving.value = false;
       validating.value = false;
-      layeredState.resetDraft(null);
+      editorState.resetDraft(null);
     }
 
     async function refreshResources() {
@@ -261,7 +260,7 @@ export function useDataSection() {
       if (!selectedKey.value || !model.value || !canSubmit.value) return;
       validating.value = true;
       try {
-        await editorApi.validate(selectedKey.value, layeredState.draftValue.value);
+        await editorApi.validate(selectedKey.value, editorState.draftValue.value);
         if (isStale(requestVersion)) {
           return;
         }
@@ -283,7 +282,7 @@ export function useDataSection() {
       if (!selectedKey.value || !model.value || !canSubmit.value) return;
       saving.value = true;
       try {
-        const res = await editorApi.save(selectedKey.value, layeredState.draftValue.value);
+        const res = await editorApi.save(selectedKey.value, editorState.draftValue.value);
         if (isStale(requestVersion)) {
           return;
         }
@@ -302,7 +301,7 @@ export function useDataSection() {
     }
 
     function updateDraft(value: unknown) {
-      layeredState.draftValue.value = value;
+      editorState.draftValue.value = value;
     }
 
     function formatSize(bytes: number): string {
@@ -335,12 +334,11 @@ export function useDataSection() {
       loadingItem,
       saving,
       validating,
-      draftValue: layeredState.draftValue,
-      isLayered: layeredState.isLayered,
-      baseValue: layeredState.baseValue,
-      storedDraftValue: layeredState.storedDraftValue,
-      effectiveValue: layeredState.effectiveValue,
-      isDirty: layeredState.isDirty,
+      draftValue: editorState.draftValue,
+      referenceValue: editorState.referenceValue,
+      storedDraftValue: editorState.storedDraftValue,
+      effectiveValue: editorState.effectiveValue,
+      isDirty: editorState.isDirty,
       canSubmit,
       formattedJson,
       formattedItemJson,

@@ -3,7 +3,6 @@ import { RefreshCw, ChevronRight, ChevronDown, Save } from "lucide-vue-next";
 import SchemaNode from "@/components/editor/SchemaNode.vue";
 import { useDataSection } from "@/composables/sections/useDataSection";
 import type { DirectoryItem } from "@/api/data";
-import type { LayeredEditorModel, SingleEditorModel } from "@/api/editor";
 
 const {
   selectedKey,
@@ -17,8 +16,7 @@ const {
   saving,
   validating,
   draftValue,
-  isLayered,
-  baseValue,
+  referenceValue,
   storedDraftValue,
   effectiveValue,
   canSubmit,
@@ -76,12 +74,10 @@ const {
         <SchemaNode
           :node="model.uiTree"
           :model-value="draftValue"
-          :inherited="model.kind === 'layered' ? baseValue : (model as SingleEditorModel).current"
-          :base-value="isLayered ? baseValue : undefined"
+          :inherited="referenceValue"
           :stored-value="storedDraftValue"
           :effective-value="effectiveValue"
-          :layer-features="model.kind === 'layered' ? (model as LayeredEditorModel).layerFeatures : undefined"
-          :is-layered="isLayered"
+          :editor-features="model.editorFeatures"
           :depth="0"
           @update:model-value="updateDraft"
         />

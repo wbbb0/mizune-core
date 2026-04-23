@@ -120,6 +120,59 @@ export function normalizeRoutingPresetCatalog(
   return normalized;
 }
 
+function createEffectiveRoutingPreset(
+  preset: LlmRoutingPreset,
+  defaultPreset: Required<LlmRoutingPreset>
+): Required<LlmRoutingPreset> {
+  const effectivePreset = createEmptyRoutingPreset();
+  for (const field of ROUTING_PRESET_FIELDS) {
+    if (hasPresetField(preset, field)) {
+      effectivePreset[field] = getPresetFieldValue(preset, field) ?? [];
+      continue;
+    }
+    effectivePreset[field] = defaultPreset[field];
+  }
+  return effectivePreset;
+}
+
+export function buildRoutingPresetReferenceCatalog(
+  catalog: Record<string, LlmRoutingPreset>
+): Record<string, LlmRoutingPreset> {
+  const normalizedCatalog = normalizeRoutingPresetCatalog(catalog);
+  const defaultPreset = normalizedCatalog.default as Required<LlmRoutingPreset>;
+  const referenceCatalog: Record<string, LlmRoutingPreset> = {
+    default: createEmptyRoutingPreset()
+  };
+
+  for (const presetName of Object.keys(normalizedCatalog)) {
+    if (presetName === "default") {
+      continue;
+    }
+    referenceCatalog[presetName] = defaultPreset;
+  }
+
+  return referenceCatalog;
+}
+
+export function buildEffectiveRoutingPresetCatalog(
+  catalog: Record<string, LlmRoutingPreset>
+): Record<string, Required<LlmRoutingPreset>> {
+  const normalizedCatalog = normalizeRoutingPresetCatalog(catalog);
+  const defaultPreset = normalizedCatalog.default as Required<LlmRoutingPreset>;
+  const effectiveCatalog: Record<string, Required<LlmRoutingPreset>> = {
+    default: defaultPreset
+  };
+
+  for (const [presetName, preset] of Object.entries(normalizedCatalog)) {
+    if (presetName === "default") {
+      continue;
+    }
+    effectiveCatalog[presetName] = createEffectiveRoutingPreset(preset, defaultPreset);
+  }
+
+  return effectiveCatalog;
+}
+
 function getDefaultRoutingPreset(config: AppConfig): Required<LlmRoutingPreset> {
   const defaultPreset = normalizeRoutingPresetCatalog(config.llm.routingPresets).default;
   return {
@@ -152,15 +205,7 @@ export function getEffectiveRoutingPreset(config: AppConfig): Required<LlmRoutin
   }
 
   const defaultPreset = getDefaultRoutingPreset(config);
-  const effectivePreset = createEmptyRoutingPreset();
-  for (const field of ROUTING_PRESET_FIELDS) {
-    if (hasPresetField(preset, field)) {
-      effectivePreset[field] = getPresetFieldValue(preset, field) ?? [];
-      continue;
-    }
-    effectivePreset[field] = defaultPreset[field];
-  }
-  return effectivePreset;
+  return createEffectiveRoutingPreset(preset, defaultPreset);
 }
 
 export function getModelRefsForRole(config: AppConfig, role: LlmRoutingRole): string[] {

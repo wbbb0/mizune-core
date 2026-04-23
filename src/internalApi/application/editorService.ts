@@ -33,9 +33,15 @@ import { runtimeResourceFileSchema } from "#runtime/resources/runtimeResourceSch
 import { scheduledJobFileSchema } from "#runtime/scheduler/jobSchema.ts";
 import { toolsetRuleFileSchema } from "#llm/prompt/toolsetRuleStore.ts";
 import type { ConfigManager } from "#config/configManager.ts";
-import { createEmptyRoutingPreset, normalizeRoutingPresetCatalog } from "#llm/shared/modelRouting.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
+import {
+  createDraftOnlyEditorValueState,
+  createEditorFeatures,
+  createRoutingPresetCatalogEditorValueState,
+  type EditorFeatures,
+  type EditorValueState
+} from "./editorValueState.ts";
 
 interface BaseEditorResource<TSchema extends BaseSchema<any>> {
   key: string;
@@ -43,11 +49,13 @@ interface BaseEditorResource<TSchema extends BaseSchema<any>> {
   domain: "config" | "data";
   schema: TSchema;
   editable: boolean;
+  editorFeatures?: Partial<EditorFeatures>;
 }
 
 interface SingleFileEditorResource<TSchema extends BaseSchema<any>> extends BaseEditorResource<TSchema> {
   kind: "single";
   filePath: string;
+  createValueState?: (currentValue: Infer<TSchema>) => EditorValueState<Infer<TSchema>>;
   afterSave?: () => Promise<void> | void;
 }
 
@@ -59,10 +67,6 @@ interface LayeredEditorResource<TSchema extends BaseSchema<any>> extends BaseEdi
     optional?: boolean;
   }>;
   writableLayerKey: string;
-  layerFeatures?: {
-    showBackdrop?: boolean;
-    allowRestoreInherited?: boolean;
-  };
   afterSave?: () => Promise<void> | void;
 }
 
@@ -86,7 +90,8 @@ export interface EditorService {
   validateDraft(resourceKey: string, value: unknown): Promise<{
     ok: true;
     parsed: unknown;
-    current: unknown;
+    currentValue: unknown;
+    referenceValue: unknown;
     effective: unknown;
   }>;
   saveDraft(resourceKey: string, value: unknown): Promise<{
@@ -130,13 +135,12 @@ export function createEditorService(input: {
         delete schemaMeta.fields.comfy;
       }
 
-      const template = createSchemaTemplate(resource.schema);
-      const editorTemplate = resource.key === "llm_routing_preset_catalog"
-        ? normalizeRoutingPresetCatalog(template as Record<string, never>)
-        : template;
+      const editorTemplate = resolveEditorValueState(resource, createSchemaTemplate(resource.schema)).currentValue;
+      const editorFeatures = resolveEditorFeatures(resource);
 
       if (resource.kind === "single") {
         const current = await readSingleResource(resource);
+        const valueState = resolveEditorValueState(resource, current);
         return {
           editor: {
             key: resource.key,
@@ -146,7 +150,10 @@ export function createEditorService(input: {
             schemaMeta,
             uiTree: buildUiTreeFromMeta(schemaMeta),
             template: editorTemplate,
-            current,
+            currentValue: valueState.currentValue,
+            referenceValue: valueState.referenceValue,
+            effectiveValue: valueState.effectiveValue,
+            editorFeatures,
             file: {
               path: resource.filePath
             }
@@ -165,9 +172,10 @@ export function createEditorService(input: {
           .filter((layer) => layer.key !== resource.writableLayerKey)
           .map((layer) => layer.value)
       );
+      const currentValue = writableLayer?.value ?? {};
       const effectiveValue = parseConfig(resource.schema, deepMergeAllReplaceArrays([
         baseValue,
-        writableLayer?.value ?? {}
+        currentValue
       ]));
       return {
         editor: {
@@ -178,14 +186,11 @@ export function createEditorService(input: {
           schemaMeta,
           uiTree: buildUiTreeFromMeta(schemaMeta),
           template: editorTemplate,
-          baseValue,
-          currentValue: writableLayer?.value ?? {},
+          currentValue,
+          referenceValue: baseValue,
           effectiveValue,
+          editorFeatures,
           writableLayerKey: resource.writableLayerKey,
-          layerFeatures: {
-            showBackdrop: resource.layerFeatures?.showBackdrop ?? false,
-            allowRestoreInherited: resource.layerFeatures?.allowRestoreInherited ?? false
-          },
           layers
         }
       };
@@ -195,11 +200,17 @@ export function createEditorService(input: {
       const resources = buildEditorResourceMap(input);
       const resource = getRequiredResource(resources, resourceKey);
       if (resource.kind === "single") {
+        const valueState = resolveEditorValueState(
+          resource,
+          parseConfig(resource.schema, value, { cloneInput: true })
+        );
+        const currentValue = resolveEditorValueState(resource, await readSingleResource(resource)).currentValue;
         return {
           ok: true as const,
-          parsed: normalizeEditorValue(resource, parseConfig(resource.schema, value, { cloneInput: true })),
-          current: await readSingleResource(resource),
-          effective: normalizeEditorValue(resource, value)
+          parsed: valueState.currentValue,
+          currentValue,
+          referenceValue: valueState.referenceValue,
+          effective: valueState.effectiveValue
         };
       }
 
@@ -219,7 +230,8 @@ export function createEditorService(input: {
       return {
         ok: true as const,
         parsed,
-        current,
+        currentValue: current,
+        referenceValue: deepMergeAllReplaceArrays(readonlyLayers),
         effective: parsed
       };
     },
@@ -232,13 +244,16 @@ export function createEditorService(input: {
       }
 
       if (resource.kind === "single") {
-        const parsed = normalizeEditorValue(resource, parseConfig(resource.schema, value, { cloneInput: true }));
-        await writeConfigFile(resource.filePath, parsed);
+        const valueState = resolveEditorValueState(
+          resource,
+          parseConfig(resource.schema, value, { cloneInput: true })
+        );
+        await writeConfigFile(resource.filePath, valueState.currentValue);
         await resource.afterSave?.();
         return {
           ok: true as const,
           path: resource.filePath,
-          parsed
+          parsed: valueState.currentValue
         };
       }
 
@@ -273,7 +288,7 @@ export function createEditorService(input: {
       }
       const raw = await readConfigFileRaw(catalogPath).catch(() => ({}));
       const normalizedRaw = optionKey === "llm_routing_preset_names"
-        ? normalizeRoutingPresetCatalog(raw as Record<string, ReturnType<typeof createEmptyRoutingPreset>>)
+        ? createRoutingPresetCatalogEditorValueState(raw as Record<string, never>).currentValue
         : raw;
       return { options: Object.keys(normalizedRaw).sort() };
     }
@@ -295,10 +310,12 @@ function buildEditorResourceMap(input: {
       editable: true,
       schema: fileConfigSchema,
       writableLayerKey: "instance",
-      layerFeatures: {
-        showBackdrop: true,
-        allowRestoreInherited: true
-      },
+      editorFeatures: createEditorFeatures({
+        showReferenceBackdrop: true,
+        unsetMode: "reference",
+        unsetActionLabel: "恢复继承",
+        draftEffectiveMode: "merge_reference"
+      }),
       layers: [
         { key: "global", path: input.config.configRuntime.globalConfigPath, optional: true },
         { key: "instance", path: input.config.configRuntime.instanceConfigPath }
@@ -315,6 +332,10 @@ function buildEditorResourceMap(input: {
       editable: true,
       schema: llmProviderCatalogSchema,
       filePath: input.config.configRuntime.llmProviderCatalogPath,
+      editorFeatures: createEditorFeatures({
+        unsetMode: "optional",
+        draftEffectiveMode: "draft_only"
+      }),
       afterSave: async () => {
         await input.configManager.checkForUpdates();
       }
@@ -327,6 +348,10 @@ function buildEditorResourceMap(input: {
       editable: true,
       schema: llmModelCatalogSchema,
       filePath: input.config.configRuntime.llmModelCatalogPath,
+      editorFeatures: createEditorFeatures({
+        unsetMode: "optional",
+        draftEffectiveMode: "draft_only"
+      }),
       afterSave: async () => {
         await input.configManager.checkForUpdates();
       }
@@ -339,6 +364,14 @@ function buildEditorResourceMap(input: {
       editable: true,
       schema: llmRoutingPresetCatalogSchema,
       filePath: input.config.configRuntime.llmRoutingPresetCatalogPath,
+      editorFeatures: createEditorFeatures({
+        unsetMode: "reference",
+        unsetActionLabel: "回退到 default",
+        draftEffectiveMode: "routing_preset_catalog"
+      }),
+      createValueState: (currentValue) => createRoutingPresetCatalogEditorValueState(
+        currentValue as Record<string, never>
+      ),
       afterSave: async () => {
         await input.configManager.checkForUpdates();
       }
@@ -395,6 +428,10 @@ function single<TSchema extends BaseSchema<any>>(
     editable: options?.editable ?? true,
     schema,
     filePath,
+    editorFeatures: createEditorFeatures({
+      unsetMode: "optional",
+      draftEffectiveMode: "draft_only"
+    }),
     ...(options?.afterSave ? { afterSave: options.afterSave } : {})
   };
 }
@@ -403,30 +440,30 @@ async function readSingleResource<TSchema extends BaseSchema<any>>(
   resource: SingleFileEditorResource<TSchema>
 ): Promise<Infer<TSchema>> {
   try {
-    return normalizeEditorValue(
-      resource,
-      parseConfig(resource.schema, await readStructuredFileRaw(resource.filePath))
-    ) as Infer<TSchema>;
+    return parseConfig(resource.schema, await readStructuredFileRaw(resource.filePath));
   } catch (error: unknown) {
     const nodeError = error as NodeJS.ErrnoException;
     if (nodeError.code === "ENOENT") {
-      return normalizeEditorValue(
-        resource,
-        parseConfig(resource.schema, createSchemaTemplate(resource.schema))
-      ) as Infer<TSchema>;
+      return parseConfig(resource.schema, createSchemaTemplate(resource.schema));
     }
     throw error;
   }
 }
 
-function normalizeEditorValue<TSchema extends BaseSchema<any>>(
+function resolveEditorValueState<TSchema extends BaseSchema<any>>(
   resource: EditorResource<TSchema>,
   value: Infer<TSchema>
-): Infer<TSchema> {
-  if (resource.key !== "llm_routing_preset_catalog") {
-    return value;
+): EditorValueState<Infer<TSchema>> {
+  if (resource.kind === "single" && resource.createValueState) {
+    return resource.createValueState(value);
   }
-  return normalizeRoutingPresetCatalog(value as Record<string, ReturnType<typeof createEmptyRoutingPreset>>) as Infer<TSchema>;
+  return createDraftOnlyEditorValueState(value);
+}
+
+function resolveEditorFeatures<TSchema extends BaseSchema<any>>(
+  resource: EditorResource<TSchema>
+): EditorFeatures {
+  return createEditorFeatures(resource.editorFeatures);
 }
 
 function getRequiredResource(

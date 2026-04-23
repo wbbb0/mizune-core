@@ -1,6 +1,6 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
-import { useLayeredEditorState } from "@/composables/useLayeredEditorState";
+import { useEditorDraftState } from "@/composables/useEditorDraftState";
 import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
 import { editorApi, type EditorModel, type EditorResourceSummary, type LayeredEditorModel, type SingleEditorModel } from "@/api/editor";
 import { useToastStore } from "@/stores/toasts";
@@ -13,8 +13,7 @@ type ConfigSectionState = {
   saving: Ref<boolean>;
   validating: Ref<boolean>;
   draftValue: Ref<unknown>;
-  isLayered: ComputedRef<boolean>;
-  baseValue: ComputedRef<unknown>;
+  referenceValue: ComputedRef<unknown>;
   storedDraftValue: ComputedRef<unknown>;
   effectiveValue: ComputedRef<unknown>;
   isDirty: ComputedRef<boolean>;
@@ -41,10 +40,10 @@ export function useConfigSection() {
     const validating = ref(false);
     const toast = useToastStore();
     const workbenchRuntime = useWorkbenchRuntime();
-    const layeredState = useLayeredEditorState(model);
+    const editorState = useEditorDraftState(model);
     let stateVersion = 0;
 
-    const canSave = computed(() => layeredState.isDirty.value && !validating.value && !saving.value);
+    const canSave = computed(() => editorState.isDirty.value && !validating.value && !saving.value);
     const canValidate = computed(() => !!model.value && !validating.value && !saving.value);
 
     function isStale(requestVersion: number) {
@@ -59,7 +58,7 @@ export function useConfigSection() {
       loading.value = false;
       saving.value = false;
       validating.value = false;
-      layeredState.resetDraft(null);
+      editorState.resetDraft(null);
     }
 
     async function refreshResources() {
@@ -103,7 +102,7 @@ export function useConfigSection() {
     }
 
     function updateDraft(value: unknown) {
-      layeredState.draftValue.value = value;
+      editorState.draftValue.value = value;
     }
 
     async function validate() {
@@ -113,7 +112,7 @@ export function useConfigSection() {
       }
       validating.value = true;
       try {
-        await editorApi.validate(selectedKey.value, layeredState.draftValue.value);
+        await editorApi.validate(selectedKey.value, editorState.draftValue.value);
         if (isStale(requestVersion)) {
           return;
         }
@@ -137,7 +136,7 @@ export function useConfigSection() {
       }
       saving.value = true;
       try {
-        const res = await editorApi.save(selectedKey.value, layeredState.draftValue.value);
+        const res = await editorApi.save(selectedKey.value, editorState.draftValue.value);
         if (isStale(requestVersion)) {
           return;
         }
@@ -185,12 +184,11 @@ export function useConfigSection() {
       loading,
       saving,
       validating,
-      draftValue: layeredState.draftValue,
-      isLayered: layeredState.isLayered,
-      baseValue: layeredState.baseValue,
-      storedDraftValue: layeredState.storedDraftValue,
-      effectiveValue: layeredState.effectiveValue,
-      isDirty: layeredState.isDirty,
+      draftValue: editorState.draftValue,
+      referenceValue: editorState.referenceValue,
+      storedDraftValue: editorState.storedDraftValue,
+      effectiveValue: editorState.effectiveValue,
+      isDirty: editorState.isDirty,
       canSave,
       canValidate,
       resetState,

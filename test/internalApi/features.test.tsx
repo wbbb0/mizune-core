@@ -134,9 +134,11 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         url: "/api/editors/config"
       });
       assert.equal(editorResponse.statusCode, 200);
-      assert.equal(editorResponse.json().editor.baseValue.appName, "global-app");
+      assert.equal(editorResponse.json().editor.referenceValue.appName, "global-app");
       assert.equal(editorResponse.json().editor.currentValue.appName, undefined);
       assert.equal(editorResponse.json().editor.effectiveValue.appName, "global-app");
+      assert.equal(editorResponse.json().editor.editorFeatures.unsetMode, "reference");
+      assert.equal(editorResponse.json().editor.editorFeatures.unsetActionLabel, "恢复继承");
 
       const validateResponse = await app.inject({
         method: "POST",
@@ -146,6 +148,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(validateResponse.statusCode, 200);
       assert.equal(validateResponse.json().ok, true);
       assert.equal(validateResponse.json().parsed.appName, "saved-from-webui");
+      assert.equal(validateResponse.json().currentValue.appName, undefined);
+      assert.equal(validateResponse.json().referenceValue.appName, "global-app");
       assert.equal(validateResponse.json().effective.onebot.wsUrl, "ws://global.example/ws");
 
       const saveResponse = await app.inject({
@@ -214,7 +218,9 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(whitelistResponse.statusCode, 200);
       assert.equal(whitelistResponse.json().editor.kind, "single");
       assert.equal(whitelistResponse.json().editor.file.path, whitelistPath);
-      assert.deepEqual(whitelistResponse.json().editor.current.users, ["10001"]);
+      assert.deepEqual(whitelistResponse.json().editor.currentValue.users, ["10001"]);
+      assert.equal(whitelistResponse.json().editor.referenceValue, undefined);
+      assert.deepEqual(whitelistResponse.json().editor.effectiveValue.users, ["10001"]);
       assert.equal(whitelistResponse.json().editor.schemaMeta.title, "白名单");
       assert.equal(whitelistResponse.json().editor.schemaMeta.options?.[0]?.title, "当前白名单");
 
@@ -270,6 +276,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         url: "/api/editors/llm_routing_preset_catalog"
       });
       assert.equal(editorResponse.statusCode, 200);
+      assert.equal(editorResponse.json().editor.editorFeatures.unsetMode, "reference");
       assert.deepEqual(editorResponse.json().editor.template, {
         default: {
           mainSmall: [],
@@ -281,7 +288,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
           turnPlanner: []
         }
       });
-      assert.deepEqual(editorResponse.json().editor.current.default, {
+      assert.equal(editorResponse.json().editor.editorFeatures.unsetActionLabel, "回退到 default");
+      assert.deepEqual(editorResponse.json().editor.currentValue.default, {
         mainSmall: [],
         mainLarge: [],
         summarizer: [],
@@ -290,8 +298,26 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         audioTranscription: [],
         turnPlanner: []
       });
-      assert.deepEqual(editorResponse.json().editor.current.dev, {
+      assert.deepEqual(editorResponse.json().editor.currentValue.dev, {
         mainSmall: ["main"]
+      });
+      assert.deepEqual(editorResponse.json().editor.referenceValue.dev, {
+        mainSmall: [],
+        mainLarge: [],
+        summarizer: [],
+        sessionCaptioner: [],
+        imageCaptioner: [],
+        audioTranscription: [],
+        turnPlanner: []
+      });
+      assert.deepEqual(editorResponse.json().editor.effectiveValue.dev, {
+        mainSmall: ["main"],
+        mainLarge: [],
+        summarizer: [],
+        sessionCaptioner: [],
+        imageCaptioner: [],
+        audioTranscription: [],
+        turnPlanner: []
       });
 
       const saveResponse = await app.inject({
@@ -320,6 +346,36 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.match(saved, /default:/);
       assert.match(saved, /mainLarge: \[\]/);
       assert.match(saved, /summarizer: \[\]/);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("internal api routing preset editor keeps missing fields effective via default fallback", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const catalogPath = deps.config.configRuntime.llmRoutingPresetCatalogPath;
+      await writeFile(catalogPath, [
+        "default:",
+        "  mainSmall:",
+        "    - fallback-main",
+        "  summarizer:",
+        "    - fallback-summary",
+        "dev:",
+        "  mainSmall:",
+        "    - dev-main"
+      ].join("\n"), "utf8");
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/editors/llm_routing_preset_catalog"
+      });
+
+      assert.equal(response.statusCode, 200);
+      assert.deepEqual(response.json().editor.referenceValue.dev.summarizer, ["fallback-summary"]);
+      assert.deepEqual(response.json().editor.effectiveValue.dev.summarizer, ["fallback-summary"]);
+      assert.deepEqual(response.json().editor.effectiveValue.dev.mainSmall, ["dev-main"]);
     } finally {
       await app.close();
     }
