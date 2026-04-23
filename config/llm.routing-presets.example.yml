@@ -1,0 +1,17 @@
+balanced:
+  mainSmall:
+    - qwen35_flash
+  mainLarge:
+    - qwen35_plus
+  summarizer:
+    - qwen35_flash
+    - gemini31_flash_lite_preview
+  sessionCaptioner:
+    - qwen35_flash
+  imageCaptioner:
+    - qwen35_35b_a3b
+    - gemini31_flash_lite_preview
+  audioTranscription:
+    - gemini25_flash_transcription
+  turnPlanner:
+    - qwen35_flash

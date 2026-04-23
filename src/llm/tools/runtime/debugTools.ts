@@ -1,4 +1,5 @@
-import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 import type { DebugLiteral } from "#conversation/session/sessionTypes.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
@@ -81,10 +82,11 @@ export const debugToolDescriptors: ToolDescriptor[] = [
 
 export const debugToolHandlers: Record<string, ToolHandler> = {
   async get_runtime_config(_toolCall, _args, context) {
+    const mainModelRefs = getModelRefsForRole(context.config, "main_small");
     return JSON.stringify({
       appName: context.config.appName,
-      model: getPrimaryModelProfile(context.config, getDefaultMainModelRefs(context.config))?.model ?? null,
-      modelRef: getDefaultMainModelRefs(context.config),
+      model: getPrimaryModelProfile(context.config, mainModelRefs)?.model ?? null,
+      modelRef: mainModelRefs,
       whitelistEnabled: context.config.whitelist.enabled
     });
   },

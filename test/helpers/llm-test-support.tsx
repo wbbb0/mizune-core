@@ -32,14 +32,24 @@ export function createLlmTestConfig(modelOverrides: any = {}) {
   return createTestAppConfig({
     llm: {
       enabled: true,
+      routingPreset: "test",
       mainRouting: {
-        smallModelRef: Array.isArray(modelOverrides)
-          ? Object.keys(fallbackModels)
-          : ["main"],
-        largeModelRef: ["main"],
         enableThinking: true
       },
       models: fallbackModels,
+      routingPresets: {
+        test: {
+          mainSmall: Array.isArray(modelOverrides)
+            ? Object.keys(fallbackModels)
+            : ["main"],
+          mainLarge: ["main"],
+          summarizer: ["main"],
+          sessionCaptioner: ["main"],
+          imageCaptioner: ["main"],
+          audioTranscription: ["transcription"],
+          turnPlanner: ["main"]
+        }
+      },
       toolCallMaxIterations: 4
     },
     search: {

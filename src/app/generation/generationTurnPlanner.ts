@@ -1,4 +1,5 @@
-import { getMainModelRefsForTier, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { GenerationPromptHistoryMessage } from "./generationPromptBuilder.ts";
 import type { GenerationCurrentUser, GenerationTurnPlannerDeps } from "./generationRunnerDeps.ts";
@@ -43,7 +44,7 @@ export async function handleGenerationTurnPlanner(
     sessionManager,
     persistSession
   } = deps;
-  const defaultModelRef = getMainModelRefsForTier(config, "small");
+  const defaultModelRef = getModelRefsForRole(config, "main_small");
 
   if (input.batchMessages.length === 0 || !llmClient.isConfigured(defaultModelRef)) {
     return { action: "continue", resolvedModelRef: defaultModelRef, toolsetIds: input.availableToolsets.map((item) => item.id) };
@@ -63,7 +64,7 @@ export async function handleGenerationTurnPlanner(
     return { action: "continue", resolvedModelRef: defaultModelRef, toolsetIds: input.availableToolsets.map((item) => item.id) };
   }
 
-  const plannerProfile = getPrimaryModelProfile(config, config.llm.turnPlanner.modelRef);
+  const plannerProfile = getPrimaryModelProfile(config, getModelRefsForRole(config, "turn_planner"));
   const hasEmojiWithoutGateVision = (
     input.batchMessages.some((message) => message.emojiIds.length > 0)
     || input.batchMessages.some((message) => (message.attachments ?? []).some((item) => item.semanticKind === "emoji"))
@@ -186,7 +187,10 @@ export async function handleGenerationTurnPlanner(
 
   return {
     action: "continue",
-    resolvedModelRef: getMainModelRefsForTier(config, planner.replyDecision === "reply_large" ? "large" : "small"),
+    resolvedModelRef: getModelRefsForRole(
+      config,
+      planner.replyDecision === "reply_large" ? "main_large" : "main_small"
+    ),
     toolsetIds: planner.toolsetIds,
     plannerDecision: planner
   };

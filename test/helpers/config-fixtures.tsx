@@ -27,38 +27,33 @@ const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
   logLevel: "silent",
   llm: {
     enabled: false,
+    routingPreset: "test",
     timeoutMs: 1000,
     firstTokenTimeoutMs: 1000,
     toolCallMaxIterations: 8,
     mainRouting: {
       enabled: true,
-      smallModelRef: ["main"],
-      largeModelRef: ["main"],
       timeoutMs: 1000,
       enableThinking: false
     },
     summarizer: {
       enabled: false,
-      modelRef: ["main"],
       timeoutMs: 1000,
       enableThinking: false
     },
     sessionCaptioner: {
       enabled: true,
-      modelRef: ["sessionCaptioner"],
       timeoutMs: 1000,
       enableThinking: false
     },
     turnPlanner: {
       enabled: false,
-      modelRef: ["main"],
       timeoutMs: 1000,
       recentMessageCount: 4,
       enableThinking: false
     },
     audioTranscription: {
       enabled: false,
-      modelRef: ["transcription"],
       timeoutMs: 1000,
       enableThinking: false,
       maxConcurrency: 2
@@ -195,6 +190,29 @@ const baseTestCatalogOverrides: DeepPartial<LlmCatalogConfig> = {
       supportsSearch: false,
       supportsTools: true,
       preserveThinking: false
+    },
+    transcription: {
+      provider: "test",
+      model: "fake-transcription",
+      modelType: "transcription",
+      supportsThinking: false,
+      thinkingControllable: true,
+      supportsVision: false,
+      supportsAudioInput: true,
+      supportsSearch: false,
+      supportsTools: false,
+      preserveThinking: false
+    }
+  },
+  routingPresets: {
+    test: {
+      mainSmall: ["main"],
+      mainLarge: ["main"],
+      summarizer: ["main"],
+      sessionCaptioner: ["sessionCaptioner"],
+      imageCaptioner: ["main"],
+      audioTranscription: ["transcription"],
+      turnPlanner: ["main"]
     }
   }
 };
@@ -253,9 +271,13 @@ export function createTestAppConfig(overrides: TestAppConfigOverrides = {}): App
   if (llmOverride?.models) {
     catalogOverrides.models = llmOverride.models;
   }
+  if (llmOverride?.routingPresets) {
+    catalogOverrides.routingPresets = llmOverride.routingPresets;
+  }
   if (runtimeOverrides.llm) {
     delete (runtimeOverrides.llm as Record<string, unknown>).providers;
     delete (runtimeOverrides.llm as Record<string, unknown>).models;
+    delete (runtimeOverrides.llm as Record<string, unknown>).routingPresets;
   }
 
   const normalized = normalizeModelOverrides(runtimeOverrides, catalogOverrides);
@@ -285,6 +307,7 @@ export function createTestAppConfig(overrides: TestAppConfigOverrides = {}): App
       globalConfigPath: `${configDir}/global.yml`,
       llmProviderCatalogPath: `${configDir}/llm.providers.yml`,
       llmModelCatalogPath: `${configDir}/llm.models.yml`,
+      llmRoutingPresetCatalogPath: `${configDir}/llm.routing-presets.yml`,
       instanceName: "test",
       instanceConfigPath: `${configDir}/instances/test.yml`,
       loadedConfigPaths: []

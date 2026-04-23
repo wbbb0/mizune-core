@@ -30,10 +30,12 @@ export async function writeLlmCatalog(
   value: {
     providers?: Record<string, unknown>;
     models?: Record<string, unknown>;
+    routingPresets?: Record<string, unknown>;
   } = {}
 ) {
   await writeYaml(join(configDir, "llm.providers.yml"), value.providers ?? {});
   await writeYaml(join(configDir, "llm.models.yml"), value.models ?? {});
+  await writeYaml(join(configDir, "llm.routing-presets.yml"), value.routingPresets ?? {});
 }
 
 export function sleep(ms: number) {

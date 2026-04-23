@@ -1,7 +1,8 @@
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import type { LlmClient, LlmMessage } from "#llm/llmClient.ts";
-import { normalizeModelRefs, resolveModelRefsForType } from "#llm/shared/modelProfiles.ts";
+import { normalizeModelRefs } from "#llm/shared/modelProfiles.ts";
+import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { prepareAudioInputsForModel } from "#messages/audioSources.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { AudioStore } from "./audioStore.ts";
@@ -50,11 +51,7 @@ export class AudioTranscriber {
   ) {}
 
   isEnabled(): boolean {
-    const accepted = resolveModelRefsForType(
-      this.config,
-      this.config.llm.audioTranscription.modelRef,
-      "transcription"
-    ).acceptedModelRefs;
+    const accepted = getModelRefsForRole(this.config, "audio_transcription");
     return this.config.llm.enabled
       && this.config.llm.audioTranscription.enabled
       && accepted.length > 0
@@ -62,23 +59,7 @@ export class AudioTranscriber {
   }
 
   getResolvedModelRefs(): string[] {
-    const resolved = resolveModelRefsForType(
-      this.config,
-      this.config.llm.audioTranscription.modelRef,
-      "transcription"
-    );
-    for (const rejected of resolved.rejectedModelRefs) {
-      if (rejected.reason === "unsupported_model_type") {
-        this.logger.warn(
-          {
-            modelRef: rejected.modelRef,
-            actualModelType: rejected.actualModelType ?? "unknown"
-          },
-          "audio_transcription_model_skipped_due_to_type"
-        );
-      }
-    }
-    return resolved.acceptedModelRefs;
+    return getModelRefsForRole(this.config, "audio_transcription");
   }
 
   schedule(audioIds: string[], reason: string): void {

@@ -26,7 +26,7 @@
 - `web` 会话会使用默认标题创建，之后可以在 WebUI 里手动修改，也可以由系统自动生成或重新生成标题。
 - `onebot` 以及未来其他 bot 来源的会话，默认标题会直接写成 `<来源>.<群|私聊>.<id>`，只用于展示，不走自动命名流程。
 - `titleSource` 只表示标题是谁设置的，以及后续能否被自动标题覆盖，不再承担展示职责。
-- 自动标题使用独立的 `llm.sessionCaptioner` 配置，不再和主对话路由共用模型列表或超时。
+- 自动标题使用独立的 `llm.sessionCaptioner` 配置，不再和主对话路由共用超时与开关；模型选择由 routing preset 单独决定。
 - 目前标题编辑与重新生成入口在 WebUI 的会话状态面板里，且仅对 `web` 会话开放。
 
 当前内置模式：
@@ -79,6 +79,7 @@ mkdir -p config/instances
 cp config/global.example.yml config/global.yml
 cp config/llm.providers.example.yml config/llm.providers.yml
 cp config/llm.models.example.yml config/llm.models.yml
+cp config/llm.routing-presets.example.yml config/llm.routing-presets.yml
 cp config/instances/acc1.example.yml config/instances/default.yml
 ```
 
@@ -92,12 +93,13 @@ config/instances/default.yml
 
 ### 3. 填最小可运行配置
 
-第一次跑起来，最少要把下面四类配置准备好：
+第一次跑起来，最少要把下面五类配置准备好：
 
 1. `config/llm.providers.yml`
 2. `config/llm.models.yml`
-3. `config/global.yml`
-4. `config/instances/default.yml`
+3. `config/llm.routing-presets.yml`
+4. `config/global.yml`
+5. `config/instances/default.yml`
 
 推荐按下面的职责来放：
 
@@ -105,6 +107,8 @@ config/instances/default.yml
   放 provider 连接信息，例如 `type`、`apiKey`、`baseUrl`、provider feature 开关
 - `config/llm.models.yml`
   放模型目录，定义每个 `modelRef` 对应哪个 provider、模型名和能力
+- `config/llm.routing-presets.yml`
+  放模型路由预设，定义每个运行角色应优先使用哪些 `modelRef`
 - `config/global.yml`
   放大多数共享配置，例如 LLM 开关、会话策略、工具开关、默认超时
 - `config/instances/<name>.yml`
@@ -119,11 +123,7 @@ config/instances/default.yml
 ```yml
 llm:
   enabled: true
-  mainRouting:
-    smallModelRef:
-      - qwen35_flash
-    largeModelRef:
-      - qwen35_plus
+  routingPreset: balanced
 
 onebot:
   enabled: false
@@ -138,7 +138,10 @@ internalApi:
 
 然后把 `config/llm.providers.yml` 里的示例 provider 改成你自己实际可用的 key / baseUrl。
 
-再确认 `config/llm.models.yml` 里被引用到的模型名确实存在，例如上面的：
+再确认：
+
+- `config/llm.routing-presets.yml` 里存在 `balanced`
+- `config/llm.models.yml` 里包含该 preset 所引用到的模型，例如：
 
 - `qwen35_flash`
 - `qwen35_plus`
@@ -180,12 +183,13 @@ data/<实例名>/webui-auth.json
 
 ### 1. 目录文件
 
-这两份文件不是实例覆盖层，而是全局模型目录：
+这三份文件不是实例覆盖层，而是全局目录文件：
 
 - `config/llm.providers.yml`
 - `config/llm.models.yml`
+- `config/llm.routing-presets.yml`
 
-它们定义“有哪些 provider / modelRef 可以被引用”。
+它们定义“有哪些 provider / modelRef / routing preset 可以被引用”。
 
 ### 2. 运行时配置层
 

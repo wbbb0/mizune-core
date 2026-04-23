@@ -22,16 +22,29 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
             provider: "test",
             model: "gpt-test",
             supportsTools: true
+          },
+          transcription: {
+            provider: "test",
+            model: "gpt-test-transcription",
+            modelType: "transcription"
+          }
+        },
+        routingPresets: {
+          reload: {
+            mainSmall: "main",
+            mainLarge: "main",
+            summarizer: "main",
+            sessionCaptioner: "main",
+            imageCaptioner: "main",
+            audioTranscription: "transcription",
+            turnPlanner: "main"
           }
         }
       });
       await writeYaml(join(configDir, "global.yml"), {
         llm: {
           enabled: true,
-          mainRouting: {
-            smallModelRef: "main",
-            largeModelRef: "main"
-          }
+          routingPreset: "reload"
         },
         search: {
           googleGrounding: {

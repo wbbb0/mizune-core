@@ -1,5 +1,6 @@
 import type { AppConfig } from "#config/config.ts";
-import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import {
 	Agent,
 	ProxyAgent,
@@ -53,7 +54,7 @@ export function isProxyEnabled(
 		return config.browser.playwright.proxy;
 	}
 
-	const resolvedModelRef = options.modelRef ?? getDefaultMainModelRefs(config);
+	const resolvedModelRef = options.modelRef ?? getModelRefsForRole(config, "main_small");
 	const modelProfile = getPrimaryModelProfile(config, resolvedModelRef);
 	if (!modelProfile) {
 		return false;

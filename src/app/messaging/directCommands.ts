@@ -7,7 +7,8 @@ import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
 import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
-import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { SessionDirectCommandAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { InternalTranscriptItem, SessionState } from "#conversation/session/sessionTypes.ts";
@@ -374,7 +375,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
     },
     async execute(ctx: DirectCommandExecutionContext) {
       const usage = ctx.session.lastLlmUsage;
-      const statusModelRef = usage?.modelRef ?? getDefaultMainModelRefs(ctx.input.config);
+      const statusModelRef = usage?.modelRef ?? getModelRefsForRole(ctx.input.config, "main_small");
       const statusModelProfile = getPrimaryModelProfile(ctx.input.config, statusModelRef);
       const debugState = ctx.input.sessionManager.getDebugControlState(ctx.session.id);
       const llmVisibleHistory = ctx.input.sessionManager.getLlmVisibleHistory(ctx.session.id);

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { loadConfig } from "../../src/config/config.ts";
+import { getModelRefsForRole } from "../../src/llm/shared/modelRouting.ts";
 import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } from "../helpers/config-test-support.tsx";
 
   test("loadConfig keeps default refs without implicit model profiles", async () => {
@@ -10,9 +11,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       await writeYaml(join(configDir, "global.example.yml"), {
         llm: {
           enabled: true,
-          mainRouting: {
-            smallModelRef: "should-not-be-read"
-          }
+          routingPreset: "should-not-be-read"
         }
       });
       await writeYaml(join(configDir, "global.yml"), {
@@ -36,15 +35,13 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         CONFIG_DIR: configDir
       });
 
-      assert.deepEqual(config.llm.mainRouting.smallModelRef, ["main"]);
-      assert.deepEqual(config.llm.mainRouting.largeModelRef, ["main"]);
-      assert.deepEqual(config.llm.summarizer.modelRef, ["summarizer"]);
-      assert.deepEqual(config.llm.sessionCaptioner.modelRef, ["sessionCaptioner"]);
-      assert.deepEqual(config.llm.turnPlanner.modelRef, ["turnPlanner"]);
+      assert.equal(config.llm.routingPreset, "");
+      assert.deepEqual(getModelRefsForRole(config, "main_small"), []);
       assert.equal(config.llm.turnPlanner.supplementToolsets, true);
       assert.equal(config.llm.sessionCaptioner.timeoutMs, 15000);
       assert.deepEqual(config.llm.providers, {});
       assert.deepEqual(config.llm.models, {});
+      assert.deepEqual(config.llm.routingPresets, {});
       assert.equal(config.dataDir, "data/default");
     });
   });
@@ -151,31 +148,41 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           main: {
             provider: "test",
             model: "gpt-test"
+          },
+          transcription: {
+            provider: "test",
+            model: "gpt-test-transcription",
+            modelType: "transcription"
+          }
+        },
+        routingPresets: {
+          test: {
+            mainSmall: "main",
+            mainLarge: "main",
+            summarizer: "main",
+            sessionCaptioner: "main",
+            imageCaptioner: "main",
+            audioTranscription: "transcription",
+            turnPlanner: "main"
           }
         }
       });
       await writeYaml(join(configDir, "global.yml"), {
         llm: {
           enabled: true,
-          mainRouting: {
-            smallModelRef: "main",
-            largeModelRef: "main"
-          },
+          routingPreset: "test",
           summarizer: {
             enabled: true,
-            modelRef: "main",
             timeoutMs: 45000,
             enableThinking: false
           },
           sessionCaptioner: {
             enabled: true,
-            modelRef: "main",
             timeoutMs: 15000,
             enableThinking: false
           },
           turnPlanner: {
             enabled: true,
-            modelRef: "main",
             timeoutMs: 20000,
             recentMessageCount: 6,
             enableThinking: false
@@ -226,31 +233,41 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
             thinkingControllable: false,
             supportsAudioInput: true,
             supportsSearch: true
+          },
+          transcription: {
+            provider: "test",
+            model: "gpt-test-transcription",
+            modelType: "transcription"
+          }
+        },
+        routingPresets: {
+          test: {
+            mainSmall: "main",
+            mainLarge: "main",
+            summarizer: "main",
+            sessionCaptioner: "main",
+            imageCaptioner: "main",
+            audioTranscription: "transcription",
+            turnPlanner: "main"
           }
         }
       });
       await writeYaml(join(configDir, "global.yml"), {
         llm: {
           enabled: true,
-          mainRouting: {
-            smallModelRef: "main",
-            largeModelRef: "main"
-          },
+          routingPreset: "test",
           summarizer: {
             enabled: true,
-            modelRef: "main",
             timeoutMs: 45000,
             enableThinking: false
           },
           sessionCaptioner: {
             enabled: true,
-            modelRef: "main",
             timeoutMs: 15000,
             enableThinking: false
           },
           turnPlanner: {
             enabled: true,
-            modelRef: "main",
             timeoutMs: 20000,
             recentMessageCount: 6,
             enableThinking: false

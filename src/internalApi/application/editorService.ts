@@ -1,7 +1,12 @@
 import { readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { AppConfig } from "#config/config.ts";
-import { fileConfigSchema, llmModelCatalogSchema, llmProviderCatalogSchema } from "#config/configModel.ts";
+import {
+  fileConfigSchema,
+  llmModelCatalogSchema,
+  llmProviderCatalogSchema,
+  llmRoutingPresetCatalogSchema
+} from "#config/configModel.ts";
 import type { ConfigRuntime } from "#config/configModel.ts";
 import { s } from "#data/schema/index.ts";
 import { createSchemaTemplate, exportSchemaMeta } from "#data/schema/composites.ts";
@@ -318,6 +323,18 @@ function buildEditorResourceMap(input: {
       afterSave: async () => {
         await input.configManager.checkForUpdates();
       }
+    },
+    {
+      key: "llm_routing_preset_catalog",
+      title: "LLM 路由预设目录",
+      domain: "config",
+      kind: "single",
+      editable: true,
+      schema: llmRoutingPresetCatalogSchema,
+      filePath: input.config.configRuntime.llmRoutingPresetCatalogPath,
+      afterSave: async () => {
+        await input.configManager.checkForUpdates();
+      }
     }
   ];
   const dataDir = input.config.dataDir;
@@ -416,6 +433,7 @@ function resolveDynamicRefCatalogPath(configRuntime: ConfigRuntime, optionKey: s
   switch (optionKey) {
     case "llm_provider_names": return configRuntime.llmProviderCatalogPath;
     case "llm_model_names": return configRuntime.llmModelCatalogPath;
+    case "llm_routing_preset_names": return configRuntime.llmRoutingPresetCatalogPath;
     default: return null;
   }
 }

@@ -1,6 +1,7 @@
 import { extractWindowUsers } from "#conversation/session/historyContext.ts";
 import type { InternalSessionTriggerExecution, SessionDelivery } from "#conversation/session/sessionTypes.ts";
-import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { getBuiltinToolNames } from "#llm/builtinTools.ts";
 import type { PromptInteractionMode } from "#llm/prompt/promptTypes.ts";
 import type { Relationship } from "#identity/relationship.ts";
@@ -367,7 +368,7 @@ export function createGenerationSessionOrchestrator(
       let transcriptStore = createSessionTranscriptStore(refreshedSession, config);
       let visibleHistory = transcriptStore.projectRuntimeHistory();
       let historyForPrompt = visibleHistory.slice(0, Math.max(0, visibleHistory.length - messages.length));
-      let resolvedModelRef = getDefaultMainModelRefs(config);
+      let resolvedModelRef = getModelRefsForRole(config, "main_small");
       let plannerToolsets = listTurnToolsets({
         config,
         relationship,
@@ -640,7 +641,7 @@ export function createGenerationSessionOrchestrator(
         ? await userStore.getByUserId(resolvedTargetUserId ?? trigger.targetUserId)
         : null;
       const promptRelationship: Relationship = currentUser?.relationship ?? "known";
-      const scheduledModelRef = getDefaultMainModelRefs(config);
+      const scheduledModelRef = getModelRefsForRole(config, "main_small");
       const session = sessionManager.getSession(sessionId);
       const mode = requireSessionModeDefinition(session.modeId);
       const assistantMode = isAssistantMode(session.modeId);

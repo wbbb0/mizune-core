@@ -9,10 +9,6 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
     const config = createTestAppConfig({
       llm: {
         enabled: true,
-        mainRouting: {
-          smallModelRef: ["main"],
-          largeModelRef: ["main"]
-        },
         providers: {
           googleTest: {
             type: "google",
@@ -74,10 +70,6 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
     const config = createTestAppConfig({
       llm: {
         enabled: true,
-        mainRouting: {
-          smallModelRef: ["main"],
-          largeModelRef: ["main"]
-        },
         providers: {
           googleTest: {
             type: "google",
@@ -299,9 +291,16 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
     const config = createTestAppConfig({
       llm: {
         enabled: true,
-        mainRouting: {
-          smallModelRef: ["main", "fallback"],
-          largeModelRef: ["main", "fallback"]
+        routingPresets: {
+          test: {
+            mainSmall: ["main", "fallback"],
+            mainLarge: ["main", "fallback"],
+            summarizer: ["main"],
+            sessionCaptioner: ["sessionCaptioner"],
+            imageCaptioner: ["main"],
+            audioTranscription: ["transcription"],
+            turnPlanner: ["main"]
+          }
         },
         providers: {
           googleTest: {

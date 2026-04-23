@@ -8,6 +8,7 @@ import {
   llmCatalogSchema,
   llmModelCatalogSchema,
   llmProviderCatalogSchema,
+  llmRoutingPresetCatalogSchema,
   type ConfigRuntime,
   type ConfigSummary,
   type FileConfig,
@@ -17,7 +18,7 @@ import { deepMergeAllReplaceArrays, parseConfig } from "#data/schema/index.ts";
 import type { BaseSchema } from "#data/schema/base.ts";
 import { ObjectSchema } from "#data/schema/composites.ts";
 import { isPlainObject } from "#data/schema/helpers.ts";
-import { resolveModelRefsForType, type SupportedModelType } from "#llm/shared/modelProfiles.ts";
+import { getValidatedRoutingPreset } from "#llm/shared/modelRouting.ts";
 
 const envSchema = z.object({
   CONFIG_DIR: z.string().optional().describe("环境变量：配置目录路径"),
@@ -29,6 +30,7 @@ const DEFAULT_INSTANCE_NAME = "default";
 const DEFAULT_DATA_DIR = "data";
 const DEFAULT_LLM_PROVIDER_CATALOG_FILE = "llm.providers.yml";
 const DEFAULT_LLM_MODEL_CATALOG_FILE = "llm.models.yml";
+const DEFAULT_LLM_ROUTING_PRESET_CATALOG_FILE = "llm.routing-presets.yml";
 
 export type AppConfig = Omit<FileConfig, "whitelist" | "llm"> & {
   whitelist: {
@@ -92,6 +94,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const globalConfigPath = resolve(configDir, "global.yml");
   const llmProviderCatalogPath = resolve(configDir, DEFAULT_LLM_PROVIDER_CATALOG_FILE);
   const llmModelCatalogPath = resolve(configDir, DEFAULT_LLM_MODEL_CATALOG_FILE);
+  const llmRoutingPresetCatalogPath = resolve(configDir, DEFAULT_LLM_ROUTING_PRESET_CATALOG_FILE);
   const instanceName = parsedEnv.CONFIG_INSTANCE ?? DEFAULT_INSTANCE_NAME;
   const instanceConfigPath = parsedEnv.CONFIG_INSTANCE_FILE != null
     ? resolveConfigPath(configDir, parsedEnv.CONFIG_INSTANCE_FILE)
@@ -112,7 +115,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   ]));
   const llmCatalog = parseConfig(llmCatalogSchema, {
     providers: sanitizeSchemaLayer(llmProviderCatalogSchema, loadYamlFile(llmProviderCatalogPath), llmProviderCatalogPath),
-    models: sanitizeSchemaLayer(llmModelCatalogSchema, loadYamlFile(llmModelCatalogPath), llmModelCatalogPath)
+    models: sanitizeSchemaLayer(llmModelCatalogSchema, loadYamlFile(llmModelCatalogPath), llmModelCatalogPath),
+    routingPresets: sanitizeSchemaLayer(
+      llmRoutingPresetCatalogSchema,
+      loadYamlFile(llmRoutingPresetCatalogPath),
+      llmRoutingPresetCatalogPath
+    )
   });
   const fileConfig: AppConfig = {
     ...runtimeConfig,
@@ -133,9 +141,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     globalConfigPath,
     llmProviderCatalogPath,
     llmModelCatalogPath,
+    llmRoutingPresetCatalogPath,
     instanceName,
     instanceConfigPath,
-    loadedConfigPaths: [globalConfigPath, llmProviderCatalogPath, llmModelCatalogPath, instanceConfigPath].filter(
+    loadedConfigPaths: [
+      globalConfigPath,
+      llmProviderCatalogPath,
+      llmModelCatalogPath,
+      llmRoutingPresetCatalogPath,
+      instanceConfigPath
+    ].filter(
       (filePath): filePath is string => filePath != null && existsSync(filePath)
     )
   });
@@ -251,10 +266,6 @@ function normalizeDataDir(dataDir: string, instanceName: string): string {
 }
 
 function emitConfigConsistencyWarnings(config: AppConfig): void {
-  if (!config.llm.enabled) {
-    return;
-  }
-
   for (const [modelRef, profile] of Object.entries(config.llm.models)) {
     if (!(profile.provider in config.llm.providers)) {
       process.emitWarning(
@@ -263,69 +274,14 @@ function emitConfigConsistencyWarnings(config: AppConfig): void {
       );
     }
   }
-
-  for (const [fieldName, modelRefs] of [
-    ["llm.mainRouting.smallModelRef", config.llm.mainRouting.smallModelRef],
-    ["llm.mainRouting.largeModelRef", config.llm.mainRouting.largeModelRef],
-    ["llm.summarizer.modelRef", config.llm.summarizer.modelRef],
-    ["llm.sessionCaptioner.modelRef", config.llm.sessionCaptioner.modelRef],
-    ["llm.imageCaptioner.modelRef", config.llm.imageCaptioner.modelRef],
-    ["llm.audioTranscription.modelRef", config.llm.audioTranscription.modelRef],
-    ["llm.turnPlanner.modelRef", config.llm.turnPlanner.modelRef]
-  ] as const) {
-    if (!shouldWarnForModelRefs(fieldName, modelRefs)) {
-      continue;
-    }
-    for (const modelRef of modelRefs) {
-      if (!(modelRef in config.llm.models)) {
-        process.emitWarning(
-          `Config reference ${fieldName} includes unknown model ${modelRef}; define it in ${config.configRuntime.llmModelCatalogPath}`,
-          "ConfigLoadWarning"
-        );
-      }
-    }
+  if (!config.llm.enabled) {
+    return;
   }
 
-  for (const [fieldName, modelRefs, requiredModelType] of [
-    ["llm.mainRouting.smallModelRef", config.llm.mainRouting.smallModelRef, "chat"],
-    ["llm.mainRouting.largeModelRef", config.llm.mainRouting.largeModelRef, "chat"],
-    ["llm.summarizer.modelRef", config.llm.summarizer.modelRef, "chat"],
-    ["llm.sessionCaptioner.modelRef", config.llm.sessionCaptioner.modelRef, "chat"],
-    ["llm.imageCaptioner.modelRef", config.llm.imageCaptioner.modelRef, "chat"],
-    ["llm.audioTranscription.modelRef", config.llm.audioTranscription.modelRef, "transcription"],
-    ["llm.turnPlanner.modelRef", config.llm.turnPlanner.modelRef, "chat"]
-  ] as Array<[string, string[], SupportedModelType]>) {
-    if (!shouldWarnForModelRefs(fieldName, modelRefs)) {
-      continue;
-    }
-    const resolved = resolveModelRefsForType(config, modelRefs, requiredModelType);
-    for (const rejected of resolved.rejectedModelRefs) {
-      if (rejected.reason !== "unsupported_model_type") {
-        continue;
-      }
-      process.emitWarning(
-        `Config reference ${fieldName} includes model ${rejected.modelRef} with modelType ${rejected.actualModelType ?? "unknown"}; expected ${requiredModelType}, so this fallback will be skipped`,
-        "ConfigLoadWarning"
-      );
-    }
+  const routingPresetValidation = getValidatedRoutingPreset(config);
+  for (const warning of routingPresetValidation.warnings) {
+    process.emitWarning(warning, "ConfigLoadWarning");
   }
-}
-
-function shouldWarnForModelRefs(fieldName: string, modelRefs: string[]): boolean {
-  const defaultPlaceholderByField: Record<string, string[]> = {
-    "llm.summarizer.modelRef": ["summarizer"],
-    "llm.sessionCaptioner.modelRef": ["sessionCaptioner"],
-    "llm.imageCaptioner.modelRef": ["imageCaptioner"],
-    "llm.audioTranscription.modelRef": ["transcription"],
-    "llm.turnPlanner.modelRef": ["turnPlanner"]
-  };
-  const defaultRefs = defaultPlaceholderByField[fieldName];
-  return !defaultRefs || !sameStringArray(modelRefs, defaultRefs);
-}
-
-function sameStringArray(left: string[], right: string[]): boolean {
-  return left.length === right.length
-    && left.every((value, index) => value === right[index]);
 }
 
 export function toConfigSummary(
