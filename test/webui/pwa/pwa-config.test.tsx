@@ -8,4 +8,5 @@ test("vite pwa autoUpdate explicitly enables immediate service worker activation
   assert.match(source, /workbox:\s*{[\s\S]*skipWaiting:\s*true/);
   assert.match(source, /workbox:\s*{[\s\S]*clientsClaim:\s*true/);
   assert.match(source, /devOptions:\s*{[\s\S]*enabled:\s*true/);
+  assert.match(source, /devOptions:\s*{[\s\S]*suppressWarnings:\s*true/);
 });

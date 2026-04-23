@@ -161,6 +161,7 @@ export default defineConfig({
       },
       devOptions: {
         enabled: true,
+        suppressWarnings: true,
         resolveTempFolder: () => "dev-dist"
       }
     })
