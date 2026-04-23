@@ -99,6 +99,19 @@ import { resolveSessionModeSetupContext } from "../../src/app/generation/generat
     assert.equal(kind, "persona_setup");
   });
 
+  test("assistant mode requires persona_setup when global persona is not ready", async () => {
+    const mode = requireSessionModeDefinition("assistant");
+    const kind = mode.setupPhase?.resolveOperationModeKind({
+      personaReady: false,
+      modeProfileReady: true,
+      operationMode: { kind: "normal" },
+      chatType: "private",
+      relationship: "owner"
+    });
+
+    assert.equal(kind, "persona_setup");
+  });
+
   test("scenario_host enters mode_setup only after persona is ready", async () => {
     const mode = requireSessionModeDefinition("scenario_host");
     const kind = mode.setupPhase?.resolveOperationModeKind({

@@ -1,10 +1,15 @@
 import type { SessionModeDefinition } from "./types.ts";
+import { createOwnerPrivateGlobalProfileSetupPhase } from "./globalProfileSetup.ts";
 
 export const rpAssistantModeDefinition: SessionModeDefinition = {
   id: "rp_assistant",
   title: "RP Assistant",
   description: "当前默认模式。保留现有角色扮演 + 助手能力。",
   allowedChatTypes: ["private", "group"],
+  globalProfileAccess: {
+    persona: true,
+    modeProfile: "rp"
+  },
   defaultToolsetIds: [
     "chat_context",
     "memory_profile",
@@ -20,68 +25,8 @@ export const rpAssistantModeDefinition: SessionModeDefinition = {
     "time_utils",
     "debug_owner"
   ],
-  setupPhase: {
-    resolveOperationModeKind({ personaReady, modeProfileReady, operationMode, chatType, relationship }) {
-      if (operationMode.kind === "persona_setup" || operationMode.kind === "mode_setup") {
-        return operationMode.kind;
-      }
-      if (chatType !== "private" || relationship !== "owner") {
-        return null;
-      }
-      if (!personaReady) {
-        return "persona_setup";
-      }
-      return modeProfileReady ? null : "mode_setup";
-    },
-    operations: [
-      {
-        kind: "persona_setup",
-        setupToolsetOverrides: [
-          {
-            toolsetId: "memory_profile",
-            title: "长期资料与规则",
-            description: "初始化阶段仅允许写入 persona 相关资料。",
-            toolNames: ["get_persona", "patch_persona", "clear_persona_field"],
-            promptGuidance: ["初始化阶段只补全 persona；不要改用户资料、关系或其他记忆。"],
-            plannerSignals: ["初始化 persona 补全"]
-          },
-          {
-            toolsetId: "setup_draft",
-            title: "设定草稿",
-            description: "以独立消息发送当前设定草稿供用户审阅。",
-            toolNames: ["send_setup_draft"],
-            promptGuidance: ["设定字段收集到一定程度后，用此工具发送格式化草稿；不要在回复正文中列出草稿内容。"],
-            plannerSignals: ["发送设定草稿"]
-          }
-        ],
-        promptMode: "persona_setup",
-        completionSignal: "user_command",
-        onComplete: "clear_session"
-      },
-      {
-        kind: "mode_setup",
-        setupToolsetOverrides: [
-          {
-            toolsetId: "rp_profile_draft",
-            title: "RP 资料草稿",
-            description: "初始化阶段仅允许写入 RP 全局资料草稿。",
-            toolNames: ["get_rp_profile", "patch_rp_profile", "clear_rp_profile_field"],
-            promptGuidance: ["初始化阶段只补全 RP 全局资料；不要改 persona、用户资料或其他记忆。"],
-            plannerSignals: ["初始化 RP 全局资料"]
-          },
-          {
-            toolsetId: "setup_draft",
-            title: "设定草稿",
-            description: "以独立消息发送当前设定草稿供用户审阅。",
-            toolNames: ["send_setup_draft"],
-            promptGuidance: ["设定字段收集到一定程度后，用此工具发送格式化草稿；不要在回复正文中列出草稿内容。"],
-            plannerSignals: ["发送设定草稿"]
-          }
-        ],
-        promptMode: "chat_with_setup_injection",
-        completionSignal: "user_command",
-        onComplete: "clear_session"
-      }
-    ]
-  }
+  setupPhase: createOwnerPrivateGlobalProfileSetupPhase({
+    persona: true,
+    modeProfile: "rp"
+  })
 };

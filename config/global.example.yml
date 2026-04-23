@@ -73,6 +73,8 @@ llm:
   debugDump:
     enabled: false
 conversation:
+  setup:
+    skipPersonaInitialization: false
   historyWindow:
     maxRecentMessages: 80
     maxImageReferences: 5

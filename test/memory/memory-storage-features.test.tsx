@@ -147,11 +147,34 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
   test("setup state starts in needs_persona for empty persona", async () => {
     const harness = await createMemoryHarness();
     try {
-      const setupStore = new SetupStateStore(harness.dataDir, harness.userIdentityStore, pino({ level: "silent" }));
+      const setupStore = new SetupStateStore(harness.dataDir, createMemoryTestConfig(), harness.userIdentityStore, pino({ level: "silent" }));
       const persona = await harness.personaStore.get();
       const state = await setupStore.init(persona);
       assert.equal(state.state, "needs_persona");
       assert.ok(setupStore.describeMissingFields(persona).length > 0);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("setup state can skip persona initialization through config", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const setupStore = new SetupStateStore(
+        harness.dataDir,
+        createMemoryTestConfig({
+          conversation: {
+            setup: {
+              skipPersonaInitialization: true
+            }
+          }
+        }),
+        harness.userIdentityStore,
+        pino({ level: "silent" })
+      );
+      const persona = await harness.personaStore.get();
+      const state = await setupStore.init(persona);
+      assert.equal(state.state, "ready");
     } finally {
       await harness.cleanup();
     }

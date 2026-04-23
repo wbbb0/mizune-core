@@ -67,13 +67,12 @@ function toActiveDraftOperation(input: {
 
 function resolveActiveDraftOperation(input: {
   mode: SessionModeDefinition;
-  sessionModeId: string;
   operationMode: { kind: string; modeId?: string };
   readinessOperation: SessionModeSetupOperation | null;
 }): ActiveDraftOperation | null {
   const personaSetupOperation = resolveSessionModeSetupOperation(input.mode.setupPhase, "persona_setup");
   const modeSetupOperation = resolveSessionModeSetupOperation(input.mode.setupPhase, "mode_setup");
-  const modeTarget = input.sessionModeId === "scenario_host" ? "scenario" : "rp";
+  const modeTarget = input.mode.globalProfileAccess.modeProfile;
 
   switch (input.operationMode.kind) {
     case "persona_setup":
@@ -85,11 +84,11 @@ function resolveActiveDraftOperation(input: {
         ? toActiveDraftOperation({ operation: personaSetupOperation, phase: "config", target: "persona" })
         : null;
     case "mode_setup":
-      return modeSetupOperation
+      return modeSetupOperation && modeTarget
         ? toActiveDraftOperation({ operation: modeSetupOperation, phase: "setup", target: modeTarget })
         : null;
     case "mode_config":
-      return modeSetupOperation
+      return modeSetupOperation && modeTarget
         ? toActiveDraftOperation({ operation: modeSetupOperation, phase: "config", target: modeTarget })
         : null;
     default:
@@ -102,7 +101,7 @@ function resolveActiveDraftOperation(input: {
   return toActiveDraftOperation({
     operation: input.readinessOperation,
     phase: "setup",
-    target: input.readinessOperation.kind === "persona_setup" ? "persona" : modeTarget
+    target: input.readinessOperation.kind === "persona_setup" ? "persona" : (modeTarget ?? "persona")
   });
 }
 
@@ -173,7 +172,7 @@ function resolvePromptPersona(input: {
 }
 
 async function resolvePromptModeProfile(input: {
-  sessionModeId: string;
+  mode: SessionModeDefinition;
   activeDraftOperation: ActiveDraftOperation | null;
   rpProfileStore: GenerationSessionOrchestratorDeps["identity"]["rpProfileStore"];
   scenarioProfileStore: GenerationSessionOrchestratorDeps["identity"]["scenarioProfileStore"];
@@ -182,14 +181,14 @@ async function resolvePromptModeProfile(input: {
     return undefined;
   }
 
-  if (input.sessionModeId === "rp_assistant") {
+  if (input.mode.globalProfileAccess.modeProfile === "rp") {
     return {
       target: "rp",
       profile: await input.rpProfileStore.get()
     };
   }
 
-  if (input.sessionModeId === "scenario_host") {
+  if (input.mode.globalProfileAccess.modeProfile === "scenario") {
     return {
       target: "scenario",
       profile: await input.scenarioProfileStore.get()
@@ -353,7 +352,6 @@ export function createGenerationSessionOrchestrator(
       const readinessSetupOperation = resolveSessionModeSetupOperation(mode.setupPhase, setupOperationKind);
       const activeDraftOperation = resolveActiveDraftOperation({
         mode,
-        sessionModeId,
         operationMode: refreshedSession.operationMode,
         readinessOperation: readinessSetupOperation
       });
@@ -510,7 +508,7 @@ export function createGenerationSessionOrchestrator(
         operationMode: refreshedSession.operationMode
       });
       const modeProfile = await resolvePromptModeProfile({
-        sessionModeId,
+        mode,
         activeDraftOperation,
         rpProfileStore: identity.rpProfileStore,
         scenarioProfileStore: identity.scenarioProfileStore
@@ -644,6 +642,7 @@ export function createGenerationSessionOrchestrator(
       const promptRelationship: Relationship = currentUser?.relationship ?? "known";
       const scheduledModelRef = getDefaultMainModelRefs(config);
       const session = sessionManager.getSession(sessionId);
+      const mode = requireSessionModeDefinition(session.modeId);
       const assistantMode = isAssistantMode(session.modeId);
       const persona = await personaStore.get();
       const scheduledAvailableToolsets = listTurnToolsets({
@@ -685,7 +684,7 @@ export function createGenerationSessionOrchestrator(
       ];
       const modeProfile = session.operationMode.kind === "normal"
         ? await resolvePromptModeProfile({
-            sessionModeId: session.modeId,
+            mode,
             activeDraftOperation: null,
             rpProfileStore: identity.rpProfileStore,
             scenarioProfileStore: identity.scenarioProfileStore

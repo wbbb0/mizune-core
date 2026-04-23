@@ -124,6 +124,19 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
     });
   });
 
+  test("loadConfig keeps persona initialization enabled by default", async () => {
+    await withConfigDir("llm-bot-config-persona-setup-default-test", async (configDir) => {
+      await writeDefaultInstanceYaml(configDir);
+      await writeYaml(join(configDir, "global.yml"), {});
+
+      const config = loadConfig({
+        CONFIG_DIR: configDir
+      });
+
+      assert.equal(config.conversation.setup.skipPersonaInitialization, false);
+    });
+  });
+
   test("loadConfig applies preserveThinking defaults for model profiles", async () => {
     await withConfigDir("llm-bot-config-preserve-thinking-defaults-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);

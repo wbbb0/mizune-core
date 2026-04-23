@@ -15,6 +15,7 @@ import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import { createInitialScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
 import { parseOwnerBootstrapCommand } from "#app/bootstrap/ownerBootstrapPolicy.ts";
+import { resolvePersonaReadinessStatus } from "#persona/personaSetupPolicy.ts";
 
 type DebugModeArg = "on" | "off" | "once" | "status";
 type ConfigTarget = "persona" | "rp" | "scenario";
@@ -314,7 +315,7 @@ async function persistCurrentDraft(ctx: DirectCommandExecutionContext): Promise<
     await ctx.input.personaStore.write(operationMode.draft);
     await ctx.input.setupStore.advanceAfterPersonaUpdate(operationMode.draft);
     await ctx.input.globalProfileReadinessStore.setPersonaReadiness(
-      ctx.input.personaStore.isComplete(operationMode.draft) ? "ready" : "uninitialized"
+      resolvePersonaReadinessStatus(ctx.input.config, operationMode.draft)
     );
     return true;
   }

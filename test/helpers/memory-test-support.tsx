@@ -8,11 +8,12 @@ import { UserStore } from "../../src/identity/userStore.ts";
 import { ToolsetRuleStore } from "../../src/llm/prompt/toolsetRuleStore.ts";
 import { createTestAppConfig } from "./config-fixtures.tsx";
 
-export function createMemoryTestConfig() {
+export function createMemoryTestConfig(overrides: Parameters<typeof createTestAppConfig>[0] = {}) {
   return createTestAppConfig({
     shell: {
       enabled: true
-    }
+    },
+    ...overrides
   });
 }
 

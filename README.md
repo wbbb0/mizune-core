@@ -406,6 +406,16 @@ internalApi:
       enabled: false
 ```
 
+如果你在联调其他功能时想先跳过全局 persona 初始化门槛，可以临时加上：
+
+```yml
+conversation:
+  setup:
+    skipPersonaInitialization: true
+```
+
+默认是 `false`。开启后仍然可以手动使用 `.setup persona` / `.config persona` 编辑 persona，只是不再阻塞会话进入正常模式。
+
 ## 常用命令
 
 ```bash

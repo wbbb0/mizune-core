@@ -444,7 +444,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       }, {
         id: "assistant",
         title: "Assistant",
-        description: "普通助手模式。不读取 persona、记忆或用户资料，仅保留本会话功能工具。",
+        description: "普通助手模式。使用全局 persona 作为人格底座，但不读取长期记忆、用户资料或模式专属资料。",
         allowedChatTypes: ["private", "group"]
       }, {
         id: "scenario_host",

@@ -48,13 +48,14 @@ export async function ensureAutomaticSetupOperationMode(
   }
 
   const readiness = await services.globalProfileReadinessStore.get();
+  const modeProfileReady = modeDef.globalProfileAccess.modeProfile === "rp"
+    ? readiness.rp === "ready"
+    : modeDef.globalProfileAccess.modeProfile === "scenario"
+      ? readiness.scenario === "ready"
+      : true;
   const setupContext: SessionModeSetupContext = {
     personaReady: readiness.persona === "ready",
-    modeProfileReady: context.session.modeId === "rp_assistant"
-      ? readiness.rp === "ready"
-      : context.session.modeId === "scenario_host"
-        ? readiness.scenario === "ready"
-        : true,
+    modeProfileReady,
     operationMode: currentOperationMode,
     chatType: context.enrichedMessage.chatType,
     relationship: context.user.relationship
@@ -68,7 +69,7 @@ export async function ensureAutomaticSetupOperationMode(
     persistSession(context.session.id, "persona_setup_mode_auto_entered");
     return;
   }
-  if (nextOperationKind === "mode_setup" && context.session.modeId === "rp_assistant") {
+  if (nextOperationKind === "mode_setup" && modeDef.globalProfileAccess.modeProfile === "rp") {
     services.sessionManager.setOperationMode(context.session.id, {
       kind: "mode_setup",
       modeId: "rp_assistant",
@@ -77,7 +78,7 @@ export async function ensureAutomaticSetupOperationMode(
     persistSession(context.session.id, "rp_setup_mode_auto_entered");
     return;
   }
-  if (nextOperationKind === "mode_setup" && context.session.modeId === "scenario_host") {
+  if (nextOperationKind === "mode_setup" && modeDef.globalProfileAccess.modeProfile === "scenario") {
     services.sessionManager.setOperationMode(context.session.id, {
       kind: "mode_setup",
       modeId: "scenario_host",

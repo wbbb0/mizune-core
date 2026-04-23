@@ -3,6 +3,12 @@ import type { SessionOperationMode } from "#conversation/session/sessionOperatio
 export type SessionModeChatType = "private" | "group";
 export type SessionModeOperationKind = Exclude<SessionOperationMode["kind"], "normal">;
 export type SessionModeSetupOperationKind = Extract<SessionModeOperationKind, "persona_setup" | "mode_setup">;
+export type SessionModeProfileTarget = "rp" | "scenario";
+
+export interface SessionModeGlobalProfileAccess {
+  persona: boolean;
+  modeProfile: SessionModeProfileTarget | null;
+}
 
 export interface SessionModeSetupContext {
   personaReady: boolean;
@@ -58,5 +64,6 @@ export interface SessionModeDefinition {
   description: string;
   allowedChatTypes: SessionModeChatType[];
   defaultToolsetIds: string[];
+  globalProfileAccess: SessionModeGlobalProfileAccess;
   setupPhase?: SessionModeSetupPhase;
 }

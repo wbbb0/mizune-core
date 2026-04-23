@@ -118,6 +118,9 @@ const llmProviderSchema = s.object({
 }).title("Provider 配置").describe("定义一个 LLM provider 的连接信息与能力开关。").default(emptyObject);
 
 const conversationConfigSchema = s.object({
+  setup: s.object({
+    skipPersonaInitialization: s.boolean().title("跳过 Persona 初始化").default(false)
+  }).title("初始化").describe("控制是否跳过全局 persona 初始化门槛；用于联调时快速进入其他功能。").default(emptyObject),
   historyWindow: s.object({
     maxRecentMessages: s.number().int().positive().title("最大近期消息数").default(50),
     maxImageReferences: s.number().int().positive().title("最大图片引用数").default(5)

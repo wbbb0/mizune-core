@@ -1,14 +1,15 @@
 import { join } from "node:path";
 import type { Logger } from "pino";
+import type { AppConfig } from "#config/config.ts";
 import type { UserIdentityStore } from "./userIdentityStore.ts";
 import { FileSchemaStore } from "#data/fileSchemaStore.ts";
 import {
   getMissingPersonaFields,
-  isPersonaComplete,
   personaFieldLabels,
   type EditablePersonaFieldName,
   type Persona
 } from "#persona/personaSchema.ts";
+import { isPersonaInitializationRequired } from "#persona/personaSetupPolicy.ts";
 import { setupStateSchema, type SetupStateRecord } from "./setupStateSchema.ts";
 
 export class SetupStateStore {
@@ -16,6 +17,7 @@ export class SetupStateStore {
 
   constructor(
     dataDir: string,
+    private readonly config: Pick<AppConfig, "conversation">,
     private readonly userIdentityStore: Pick<UserIdentityStore, "hasOwnerIdentity">,
     private readonly logger: Logger
   ) {
@@ -52,7 +54,7 @@ export class SetupStateStore {
       return current;
     }
     return this.write({
-      state: isPersonaComplete(persona) ? "ready" : "needs_persona",
+      state: isPersonaInitializationRequired(this.config, persona) ? "needs_persona" : "ready",
       ownerPromptSentAt: null,
       updatedAt: Date.now()
     });
@@ -71,7 +73,7 @@ export class SetupStateStore {
       });
     }
     return this.write({
-      state: isPersonaComplete(persona) ? "ready" : "needs_persona",
+      state: isPersonaInitializationRequired(this.config, persona) ? "needs_persona" : "ready",
       ownerPromptSentAt: current.ownerPromptSentAt,
       updatedAt: Date.now()
     });
@@ -110,7 +112,7 @@ export class SetupStateStore {
       };
     }
     return {
-      state: persona && isPersonaComplete(persona) ? "ready" : "needs_persona",
+      state: persona && !isPersonaInitializationRequired(this.config, persona) ? "ready" : "needs_persona",
       ownerPromptSentAt: null,
       updatedAt: now
     };

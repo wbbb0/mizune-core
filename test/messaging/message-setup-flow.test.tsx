@@ -9,7 +9,7 @@ import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
 
 function createContext(input: {
-  modeId: "rp_assistant" | "scenario_host";
+  modeId: "assistant" | "rp_assistant" | "scenario_host";
   relationship?: "owner" | "stranger";
   chatType?: "private" | "group";
   externalUserId?: string;
@@ -71,6 +71,59 @@ test("automatic setup enters persona_setup before mode setup", async () => {
       } as any
     },
     createContext({ modeId: "rp_assistant" }) as any,
+    (_sessionId: string, reason: string) => {
+      persistedReasons.push(reason);
+    }
+  );
+
+  assert.deepEqual(latestOperationMode, {
+    kind: "persona_setup",
+    draft: createEmptyPersona()
+  });
+  assert.deepEqual(persistedReasons, ["persona_setup_mode_auto_entered"]);
+});
+
+test("assistant mode also enters persona_setup when global persona is not ready", async () => {
+  let latestOperationMode: unknown = { kind: "normal" };
+  const persistedReasons: string[] = [];
+
+  await ensureAutomaticSetupOperationMode(
+    {
+      sessionManager: {
+        getOperationMode() {
+          return latestOperationMode;
+        },
+        setOperationMode(_sessionId: string, operationMode: unknown) {
+          latestOperationMode = operationMode;
+          return operationMode;
+        }
+      } as any,
+      globalProfileReadinessStore: {
+        async get() {
+          return {
+            persona: "uninitialized",
+            rp: "ready",
+            scenario: "ready"
+          };
+        }
+      } as any,
+      personaStore: {
+        createEmpty() {
+          return createEmptyPersona();
+        }
+      } as any,
+      rpProfileStore: {
+        createEmpty() {
+          return createEmptyRpProfile();
+        }
+      } as any,
+      scenarioProfileStore: {
+        createEmpty() {
+          return createEmptyScenarioProfile();
+        }
+      } as any
+    },
+    createContext({ modeId: "assistant" }) as any,
     (_sessionId: string, reason: string) => {
       persistedReasons.push(reason);
     }

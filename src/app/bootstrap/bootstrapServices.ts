@@ -43,6 +43,7 @@ import type { SessionBootstrapPersistenceAccess } from "#conversation/session/se
 import { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import { isOwnerBootstrapCommandText } from "./ownerBootstrapPolicy.ts";
 import type { AppBootstrapServices, AppServiceBootstrap, BootstrapRuntimeContext } from "./bootstrapTypes.ts";
+import { resolvePersonaReadinessStatus } from "#persona/personaSetupPolicy.ts";
 
 export function createBootstrapServices(context: BootstrapRuntimeContext): AppBootstrapServices {
   const { config, logger, dataDir } = context;
@@ -90,7 +91,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
   const scenarioHostStateStore = new ScenarioHostStateStore(dataDir, config, logger);
   const rpProfileStore = new RpProfileStore(dataDir, config, logger);
   const scenarioProfileStore = new ScenarioProfileStore(dataDir, config, logger);
-  const setupStore = new SetupStateStore(dataDir, userIdentityStore, logger);
+  const setupStore = new SetupStateStore(dataDir, config, userIdentityStore, logger);
   const globalProfileReadinessStore = new GlobalProfileReadinessStore(dataDir, config, logger);
   const searchService = new SearchService(config, logger);
   const browserService = new BrowserService(createBrowserServiceDeps({
@@ -159,6 +160,7 @@ export async function initializeBootstrapState(
   services: Omit<
     Pick<
       AppServiceBootstrap,
+      | "config"
       | "logger"
       | "dataDir"
       | "whitelistStore"
@@ -195,6 +197,7 @@ export async function initializeBootstrapState(
   const {
     logger,
     dataDir,
+    config,
     whitelistStore,
     sessionPersistence,
     audioStore,
@@ -248,7 +251,7 @@ export async function initializeBootstrapState(
   await setupStore.init(currentPersona);
   await globalProfileReadinessStore.init();
   await globalProfileReadinessStore.setPersonaReadiness(
-    personaStore.isComplete(currentPersona) ? "ready" : "uninitialized"
+    resolvePersonaReadinessStatus(config, currentPersona)
   );
   await globalProfileReadinessStore.setRpReadiness(
     rpProfileStore.isComplete(currentRpProfile) ? "ready" : "uninitialized"

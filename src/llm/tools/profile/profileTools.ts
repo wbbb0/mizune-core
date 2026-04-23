@@ -12,6 +12,7 @@ import type {
   SessionRpProfileOperationMode,
   SessionScenarioProfileOperationMode
 } from "#conversation/session/sessionOperationMode.ts";
+import { resolvePersonaReadinessStatus } from "#persona/personaSetupPolicy.ts";
 import type { MemoryCategory, ScopeConflictWarning } from "#memory/memoryCategory.ts";
 import {
   buildMemoryRerouteDetails,
@@ -656,7 +657,7 @@ async function syncPersonaReadiness(
   persona: unknown
 ): Promise<void> {
   await context.globalProfileReadinessStore.setPersonaReadiness(
-    context.personaStore.isComplete(persona as never) ? "ready" : "uninitialized"
+    resolvePersonaReadinessStatus(context.config, persona as never)
   );
 }
 

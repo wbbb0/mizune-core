@@ -5,6 +5,7 @@ import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import { isScenarioStateInitialized } from "#modes/scenarioHost/types.ts";
 import type { SetupCompletionSignal, SessionModeSetupContext } from "#modes/types.ts";
 import type { SessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
+import { requireSessionModeDefinition } from "#modes/registry.ts";
 
 export async function resolveSessionModeSetupContext(
   modeId: string,
@@ -21,14 +22,16 @@ export async function resolveSessionModeSetupContext(
   }
 ): Promise<SessionModeSetupContext> {
   const readiness = await deps.globalProfileReadinessStore.get();
+  const mode = requireSessionModeDefinition(modeId);
+  const modeProfileReady = mode.globalProfileAccess.modeProfile === "rp"
+    ? readiness.rp === "ready"
+    : mode.globalProfileAccess.modeProfile === "scenario"
+      ? readiness.scenario === "ready"
+      : true;
 
   return {
     personaReady: readiness.persona === "ready",
-    modeProfileReady: modeId === "rp_assistant"
-      ? readiness.rp === "ready"
-      : modeId === "scenario_host"
-        ? readiness.scenario === "ready"
-        : true,
+    modeProfileReady,
     operationMode: deps.sessionManager.getOperationMode(sessionId),
     chatType: chatContext.chatType,
     relationship: chatContext.relationship

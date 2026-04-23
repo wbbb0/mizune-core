@@ -4,8 +4,10 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { initializeBootstrapState } from "../../src/app/bootstrap/bootstrapServices.ts";
+import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
+import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
   test("initializeBootstrapState clears persisted runtime resources on startup", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-runtime-resource-reset-"));
@@ -34,6 +36,7 @@ import { createSilentLogger } from "../helpers/browser-test-support.tsx";
       }, null, 2), "utf8");
 
       await initializeBootstrapState({
+        config: createTestAppConfig(),
         logger: createSilentLogger(),
         dataDir,
         whitelistStore: { async init() {} } as any,
@@ -52,7 +55,7 @@ import { createSilentLogger } from "../helpers/browser-test-support.tsx";
         userIdentityStore: { async init() {} } as any,
         userStore: { async init() {} } as any,
         npcDirectory: { async refresh() {} } as any,
-        personaStore: { async init() {}, async get() { return {}; }, isComplete() { return false; } } as any,
+        personaStore: { async init() {}, async get() { return createEmptyPersona(); }, isComplete() { return false; } } as any,
         globalRuleStore: { async init() {} } as any,
         toolsetRuleStore: { async init() {} } as any,
         scenarioHostStateStore: { async init() {} } as any,

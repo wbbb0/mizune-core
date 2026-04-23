@@ -9,6 +9,7 @@ export async function createAppServiceBootstrap(): Promise<AppServiceBootstrap> 
   const context = await createBootstrapRuntimeContext();
   const services = createBootstrapServices(context);
   await initializeBootstrapState({
+    config: context.config,
     logger: context.logger,
     dataDir: context.dataDir,
     ...services
