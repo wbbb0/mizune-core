@@ -254,6 +254,77 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
     }
   });
 
+  test("internal api auto-completes default routing preset template on load and save", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const catalogPath = deps.config.configRuntime.llmRoutingPresetCatalogPath;
+      await writeFile(catalogPath, [
+        "dev:",
+        "  mainSmall:",
+        "    - main"
+      ].join("\n"), "utf8");
+
+      const editorResponse = await app.inject({
+        method: "GET",
+        url: "/api/editors/llm_routing_preset_catalog"
+      });
+      assert.equal(editorResponse.statusCode, 200);
+      assert.deepEqual(editorResponse.json().editor.template, {
+        default: {
+          mainSmall: [],
+          mainLarge: [],
+          summarizer: [],
+          sessionCaptioner: [],
+          imageCaptioner: [],
+          audioTranscription: [],
+          turnPlanner: []
+        }
+      });
+      assert.deepEqual(editorResponse.json().editor.current.default, {
+        mainSmall: [],
+        mainLarge: [],
+        summarizer: [],
+        sessionCaptioner: [],
+        imageCaptioner: [],
+        audioTranscription: [],
+        turnPlanner: []
+      });
+      assert.deepEqual(editorResponse.json().editor.current.dev, {
+        mainSmall: ["main"]
+      });
+
+      const saveResponse = await app.inject({
+        method: "POST",
+        url: "/api/editors/llm_routing_preset_catalog/save",
+        payload: {
+          value: {
+            dev: {
+              mainSmall: ["main"],
+              summarizer: []
+            }
+          }
+        }
+      });
+      assert.equal(saveResponse.statusCode, 200);
+      assert.deepEqual(saveResponse.json().parsed.default, {
+        mainSmall: [],
+        mainLarge: [],
+        summarizer: [],
+        sessionCaptioner: [],
+        imageCaptioner: [],
+        audioTranscription: [],
+        turnPlanner: []
+      });
+      const saved = await readFile(catalogPath, "utf8");
+      assert.match(saved, /default:/);
+      assert.match(saved, /mainLarge: \[\]/);
+      assert.match(saved, /summarizer: \[\]/);
+    } finally {
+      await app.close();
+    }
+  });
+
   test("internal api returns not found for unknown shell session", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {

@@ -167,6 +167,108 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
     });
   });
 
+  test("loadConfig falls back missing preset roles to default and keeps explicit empty lists", async () => {
+    await withConfigDir("llm-bot-config-routing-preset-fallback-test", async (configDir) => {
+      await writeDefaultInstanceYaml(configDir);
+      await writeLlmCatalog(configDir, {
+        providers: {
+          test: {
+            baseUrl: "https://example.com/v1",
+            apiKey: "test-key"
+          }
+        },
+        models: {
+          defaultMain: {
+            provider: "test",
+            model: "default-main"
+          },
+          defaultSummary: {
+            provider: "test",
+            model: "default-summary"
+          },
+          defaultPlan: {
+            provider: "test",
+            model: "default-plan"
+          },
+          transcription: {
+            provider: "test",
+            model: "default-transcription",
+            modelType: "transcription"
+          },
+          devMain: {
+            provider: "test",
+            model: "dev-main"
+          }
+        },
+        routingPresets: {
+          default: {
+            mainSmall: "defaultMain",
+            mainLarge: "defaultMain",
+            summarizer: "defaultSummary",
+            sessionCaptioner: "defaultSummary",
+            imageCaptioner: "defaultSummary",
+            audioTranscription: "transcription",
+            turnPlanner: "defaultPlan"
+          },
+          dev: {
+            mainSmall: "devMain",
+            mainLarge: [],
+            audioTranscription: []
+          }
+        }
+      });
+      await writeYaml(join(configDir, "global.yml"), {
+        llm: {
+          enabled: true,
+          routingPreset: "dev"
+        }
+      });
+
+      const config = loadConfig({
+        CONFIG_DIR: configDir
+      });
+
+      assert.deepEqual(getModelRefsForRole(config, "main_small"), ["devMain"]);
+      assert.deepEqual(getModelRefsForRole(config, "main_large"), []);
+      assert.deepEqual(getModelRefsForRole(config, "summarizer"), ["defaultSummary"]);
+      assert.deepEqual(getModelRefsForRole(config, "session_captioner"), ["defaultSummary"]);
+      assert.deepEqual(getModelRefsForRole(config, "audio_transcription"), []);
+      assert.deepEqual(getModelRefsForRole(config, "turn_planner"), ["defaultPlan"]);
+    });
+  });
+
+  test("loadConfig injects empty default routing preset when catalog does not define one", async () => {
+    await withConfigDir("llm-bot-config-routing-preset-default-injected-test", async (configDir) => {
+      await writeDefaultInstanceYaml(configDir);
+      await writeLlmCatalog(configDir, {
+        routingPresets: {
+          custom: {
+            mainSmall: [],
+            mainLarge: []
+          }
+        }
+      });
+
+      const config = loadConfig({
+        CONFIG_DIR: configDir
+      });
+
+      assert.deepEqual(config.llm.routingPresets.default, {
+        mainSmall: [],
+        mainLarge: [],
+        summarizer: [],
+        sessionCaptioner: [],
+        imageCaptioner: [],
+        audioTranscription: [],
+        turnPlanner: []
+      });
+      assert.deepEqual(config.llm.routingPresets.custom, {
+        mainSmall: [],
+        mainLarge: []
+      });
+    });
+  });
+
   test("loadConfig ignores provider and model catalogs declared inside runtime layers", async () => {
     await withConfigDir("llm-bot-config-runtime-catalog-ignored-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);

@@ -14,7 +14,7 @@ const modelProfileSchema = s.object({
   preserveThinking: s.boolean().title("保留历史思考").default(false)
 }).title("模型配置").describe("定义一个模型别名对应的 provider 能力与特性。").default(emptyObject);
 
-const createModelRefListSchema = () => s.oneOrMany(s.string().trim().nonempty().dynamicRef("llm_model_names")).min(1);
+const createModelRefListSchema = () => s.oneOrMany(s.string().trim().nonempty().dynamicRef("llm_model_names")).optional();
 
 const llmRoutingPresetSchema = s.object({
   mainSmall: createModelRefListSchema().title("主路由轻量模型"),

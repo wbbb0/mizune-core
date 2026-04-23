@@ -33,6 +33,7 @@ import { runtimeResourceFileSchema } from "#runtime/resources/runtimeResourceSch
 import { scheduledJobFileSchema } from "#runtime/scheduler/jobSchema.ts";
 import { toolsetRuleFileSchema } from "#llm/prompt/toolsetRuleStore.ts";
 import type { ConfigManager } from "#config/configManager.ts";
+import { createEmptyRoutingPreset, normalizeRoutingPresetCatalog } from "#llm/shared/modelRouting.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
 
@@ -130,6 +131,9 @@ export function createEditorService(input: {
       }
 
       const template = createSchemaTemplate(resource.schema);
+      const editorTemplate = resource.key === "llm_routing_preset_catalog"
+        ? normalizeRoutingPresetCatalog(template as Record<string, never>)
+        : template;
 
       if (resource.kind === "single") {
         const current = await readSingleResource(resource);
@@ -141,7 +145,7 @@ export function createEditorService(input: {
             editable: resource.editable,
             schemaMeta,
             uiTree: buildUiTreeFromMeta(schemaMeta),
-            template,
+            template: editorTemplate,
             current,
             file: {
               path: resource.filePath
@@ -173,7 +177,7 @@ export function createEditorService(input: {
           editable: resource.editable,
           schemaMeta,
           uiTree: buildUiTreeFromMeta(schemaMeta),
-          template,
+          template: editorTemplate,
           baseValue,
           currentValue: writableLayer?.value ?? {},
           effectiveValue,
@@ -193,9 +197,9 @@ export function createEditorService(input: {
       if (resource.kind === "single") {
         return {
           ok: true as const,
-          parsed: parseConfig(resource.schema, value, { cloneInput: true }),
+          parsed: normalizeEditorValue(resource, parseConfig(resource.schema, value, { cloneInput: true })),
           current: await readSingleResource(resource),
-          effective: value
+          effective: normalizeEditorValue(resource, value)
         };
       }
 
@@ -228,7 +232,7 @@ export function createEditorService(input: {
       }
 
       if (resource.kind === "single") {
-        const parsed = parseConfig(resource.schema, value, { cloneInput: true });
+        const parsed = normalizeEditorValue(resource, parseConfig(resource.schema, value, { cloneInput: true }));
         await writeConfigFile(resource.filePath, parsed);
         await resource.afterSave?.();
         return {
@@ -268,7 +272,10 @@ export function createEditorService(input: {
         throw new Error(`Unknown editor option key: ${optionKey}`);
       }
       const raw = await readConfigFileRaw(catalogPath).catch(() => ({}));
-      return { options: Object.keys(raw).sort() };
+      const normalizedRaw = optionKey === "llm_routing_preset_names"
+        ? normalizeRoutingPresetCatalog(raw as Record<string, ReturnType<typeof createEmptyRoutingPreset>>)
+        : raw;
+      return { options: Object.keys(normalizedRaw).sort() };
     }
   };
 }
@@ -396,14 +403,30 @@ async function readSingleResource<TSchema extends BaseSchema<any>>(
   resource: SingleFileEditorResource<TSchema>
 ): Promise<Infer<TSchema>> {
   try {
-    return parseConfig(resource.schema, await readStructuredFileRaw(resource.filePath));
+    return normalizeEditorValue(
+      resource,
+      parseConfig(resource.schema, await readStructuredFileRaw(resource.filePath))
+    ) as Infer<TSchema>;
   } catch (error: unknown) {
     const nodeError = error as NodeJS.ErrnoException;
     if (nodeError.code === "ENOENT") {
-      return parseConfig(resource.schema, createSchemaTemplate(resource.schema));
+      return normalizeEditorValue(
+        resource,
+        parseConfig(resource.schema, createSchemaTemplate(resource.schema))
+      ) as Infer<TSchema>;
     }
     throw error;
   }
+}
+
+function normalizeEditorValue<TSchema extends BaseSchema<any>>(
+  resource: EditorResource<TSchema>,
+  value: Infer<TSchema>
+): Infer<TSchema> {
+  if (resource.key !== "llm_routing_preset_catalog") {
+    return value;
+  }
+  return normalizeRoutingPresetCatalog(value as Record<string, ReturnType<typeof createEmptyRoutingPreset>>) as Infer<TSchema>;
 }
 
 function getRequiredResource(

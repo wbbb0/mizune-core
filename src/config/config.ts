@@ -18,7 +18,10 @@ import { deepMergeAllReplaceArrays, parseConfig } from "#data/schema/index.ts";
 import type { BaseSchema } from "#data/schema/base.ts";
 import { ObjectSchema } from "#data/schema/composites.ts";
 import { isPlainObject } from "#data/schema/helpers.ts";
-import { getValidatedRoutingPreset } from "#llm/shared/modelRouting.ts";
+import {
+  getValidatedRoutingPreset,
+  normalizeRoutingPresetCatalog
+} from "#llm/shared/modelRouting.ts";
 
 const envSchema = z.object({
   CONFIG_DIR: z.string().optional().describe("环境变量：配置目录路径"),
@@ -116,11 +119,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const llmCatalog = parseConfig(llmCatalogSchema, {
     providers: sanitizeSchemaLayer(llmProviderCatalogSchema, loadYamlFile(llmProviderCatalogPath), llmProviderCatalogPath),
     models: sanitizeSchemaLayer(llmModelCatalogSchema, loadYamlFile(llmModelCatalogPath), llmModelCatalogPath),
-    routingPresets: sanitizeSchemaLayer(
+    routingPresets: normalizeRoutingPresetCatalog(sanitizeSchemaLayer(
       llmRoutingPresetCatalogSchema,
       loadYamlFile(llmRoutingPresetCatalogPath),
       llmRoutingPresetCatalogPath
-    )
+    ) as LlmCatalogConfig["routingPresets"])
   });
   const fileConfig: AppConfig = {
     ...runtimeConfig,
