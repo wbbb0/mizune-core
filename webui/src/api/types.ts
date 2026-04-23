@@ -19,6 +19,11 @@ export interface SessionListItem {
   lastActiveAt: number;
 }
 
+export type SessionListStreamEvent =
+  | { type: "ready"; sessions: SessionListItem[]; timestampMs: number }
+  | { type: "session_upsert"; session: SessionListItem; timestampMs: number }
+  | { type: "session_removed"; sessionId: string; timestampMs: number };
+
 // ── Transcript items (mirrors bot InternalTranscriptItem) ─────────────────────
 
 export interface StoredToolCall {

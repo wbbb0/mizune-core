@@ -12,6 +12,10 @@ export const sessionsApi = {
     return api.get("/api/sessions");
   },
 
+  openListStream(): EventSource {
+    return api.sse("/api/sessions/stream");
+  },
+
   sendText(body: {
     userId?: string;
     groupId?: string;

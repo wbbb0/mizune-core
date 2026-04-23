@@ -27,6 +27,13 @@ export function normalizeSessionListItem(session: SessionListItem): NormalizedSe
   };
 }
 
+export function sortSessionListItems(left: NormalizedSessionListItem, right: NormalizedSessionListItem): number {
+  if (right.lastActiveAt !== left.lastActiveAt) {
+    return right.lastActiveAt - left.lastActiveAt;
+  }
+  return left.id.localeCompare(right.id);
+}
+
 export function syncSessionDisplayFields<T extends {
   type: SessionListItem["type"];
   source: SessionListItem["source"];

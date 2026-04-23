@@ -1,6 +1,8 @@
 import { defineStore } from "pinia";
 import { ref, shallowRef } from "vue";
 import type {
+  SessionListItem,
+  SessionListStreamEvent,
   SessionParticipantRef,
   SessionModeOption,
   SessionPhase,
@@ -12,6 +14,7 @@ import type {
 import { sessionsApi } from "@/api/sessions";
 import {
   normalizeSessionListItem,
+  sortSessionListItems,
   syncSessionDisplayFields,
   type NormalizedSessionListItem
 } from "./sessionDisplay";
@@ -74,15 +77,18 @@ export const useSessionsStore = defineStore("sessions", () => {
   const active = shallowRef<ActiveSession | null>(null);
 
   let _es: EventSource | null = null;
+  let _listEs: EventSource | null = null;
   let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let _listReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let _reconnectDelay = 1000;
+  let _listReconnectDelay = 1000;
 
   async function refresh(): Promise<void> {
     const [sessionRes, modeRes] = await Promise.all([
       sessionsApi.list(),
       sessionsApi.listModes()
     ]);
-    list.value = sessionRes.sessions.map((session) => normalizeSessionListItem(session));
+    list.value = sessionRes.sessions.map((session) => normalizeSessionListItem(session)).sort(sortSessionListItems);
     if (selectedId.value && active.value) {
       const selected = list.value.find((item) => item.id === selectedId.value);
       if (selected) {
@@ -90,7 +96,32 @@ export const useSessionsStore = defineStore("sessions", () => {
       }
     }
     modes.value = modeRes.modes;
+    _openListStream();
     debugSession("refresh", { sessions: sessionRes.sessions.map((s) => s.id), modes: modeRes.modes.map((m) => m.id) });
+  }
+
+  function applySessionUpsert(session: SessionListItem): void {
+    const nextSession = normalizeSessionListItem(session);
+    const existingIndex = list.value.findIndex((item) => item.id === nextSession.id);
+
+    if (existingIndex === -1) {
+      list.value = [...list.value, nextSession].sort(sortSessionListItems);
+    } else {
+      list.value = list.value
+        .map((item) => item.id === nextSession.id ? nextSession : item)
+        .sort(sortSessionListItems);
+    }
+
+    if (active.value?.id === nextSession.id) {
+      active.value = syncSessionDisplayFields(active.value, nextSession);
+    }
+  }
+
+  function applySessionRemoved(sessionId: string): void {
+    list.value = list.value.filter((item) => item.id !== sessionId);
+    if (selectedId.value === sessionId) {
+      deselectSession();
+    }
   }
 
   function applyTranscriptPatch(
@@ -233,6 +264,48 @@ export const useSessionsStore = defineStore("sessions", () => {
     };
   }
 
+  function _openListStream(): void {
+    if (_listEs) {
+      return;
+    }
+
+    const es = sessionsApi.openListStream();
+    _listEs = es;
+    _listReconnectDelay = 1000;
+
+    es.addEventListener("message", () => { /* ignore generic messages */ });
+
+    for (const eventType of ["ready", "session_upsert", "session_removed"] as const) {
+      es.addEventListener(eventType, (e: MessageEvent) => {
+        if (_listEs !== es) return;
+        try {
+          const event = JSON.parse(e.data) as SessionListStreamEvent;
+          if (event.type === "ready") {
+            list.value = event.sessions.map((session) => normalizeSessionListItem(session)).sort(sortSessionListItems);
+            if (selectedId.value && active.value) {
+              const selected = list.value.find((item) => item.id === selectedId.value);
+              if (selected) {
+                active.value = syncSessionDisplayFields(active.value, selected);
+              }
+            }
+            return;
+          }
+          if (event.type === "session_upsert") {
+            applySessionUpsert(event.session);
+            return;
+          }
+          applySessionRemoved(event.sessionId);
+        } catch { /* malformed event */ }
+      });
+    }
+
+    es.onerror = () => {
+      if (_listEs !== es) return;
+      _closeListStream();
+      _scheduleListReconnect();
+    };
+  }
+
   /** REST 拉末尾 25 条后开 SSE（REST 失败时降级为 SSE from 0） */
   async function _initTranscriptAndStream(sessionId: string, epoch?: number): Promise<void> {
     try {
@@ -361,9 +434,23 @@ export const useSessionsStore = defineStore("sessions", () => {
     }, _reconnectDelay);
   }
 
+  function _scheduleListReconnect(): void {
+    if (_listReconnectTimer) return;
+    _listReconnectTimer = setTimeout(() => {
+      _listReconnectTimer = null;
+      _openListStream();
+      _listReconnectDelay = Math.min(_listReconnectDelay * 2, 15_000);
+    }, _listReconnectDelay);
+  }
+
   function _closeStream(): void {
     if (_es) { _es.close(); _es = null; }
     if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+  }
+
+  function _closeListStream(): void {
+    if (_listEs) { _listEs.close(); _listEs = null; }
+    if (_listReconnectTimer) { clearTimeout(_listReconnectTimer); _listReconnectTimer = null; }
   }
 
   function selectSession(sessionId: string): void {

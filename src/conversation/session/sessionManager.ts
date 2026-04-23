@@ -76,6 +76,7 @@ export class SessionManager {
   private readonly sentMessageLog = new SessionSentMessageLog();
   private readonly historyService: SessionHistoryService;
   private readonly sessionListeners = new Map<string, Set<() => void>>();
+  private readonly allSessionListeners = new Set<() => void>();
 
   constructor(config: AppConfig) {
     this.historyService = new SessionHistoryService(config);
@@ -786,6 +787,13 @@ export class SessionManager {
     };
   }
 
+  subscribeSessions(listener: () => void): () => void {
+    this.allSessionListeners.add(listener);
+    return () => {
+      this.allSessionListeners.delete(listener);
+    };
+  }
+
   private requireSession(sessionId: string): SessionState {
     const session = this.sessionStore.get(sessionId);
     if (!session) {
@@ -806,11 +814,15 @@ export class SessionManager {
 
   private notifySessionChanged(sessionId: string): void {
     const listeners = this.sessionListeners.get(sessionId);
-    if (!listeners || listeners.size === 0) {
-      return;
+    if (listeners && listeners.size > 0) {
+      for (const listener of listeners) {
+        listener();
+      }
     }
-    for (const listener of listeners) {
-      listener();
+    if (this.allSessionListeners.size > 0) {
+      for (const listener of this.allSessionListeners) {
+        listener();
+      }
     }
   }
 

@@ -19,6 +19,11 @@ import type { SessionParticipantRef, SessionState } from "#conversation/session/
 import { getDefaultSessionModeId, listSessionModes, requireSessionModeDefinition, sessionModeSupportsChatType } from "#modes/registry.ts";
 import { scenarioHostSessionStateSchema, type ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { createSessionTitleGenerationEvent } from "#conversation/session/internalTranscriptEvents.ts";
+import {
+  buildInitialSessionListStreamEvents,
+  diffSessionListStreamEvents,
+  type SessionListStreamEvent
+} from "./sessionListStream.ts";
 
 import { isSessionGenerating } from "#conversation/session/sessionQueries.ts";
 import { resolveDefaultSessionTitle } from "#conversation/session/sessionTitle.ts";
@@ -79,6 +84,26 @@ export async function listUsers(deps: InternalApiUserDeps) {
 export function listSessions(deps: InternalApiSessionReadDeps) {
   return {
     sessions: deps.sessionManager.listSessions().map((session) => buildSessionSummary(session))
+  };
+}
+
+export function getSessionListStream(deps: InternalApiSessionReadDeps): {
+  initialEvents: SessionListStreamEvent[];
+  subscribe: (listener: (event: SessionListStreamEvent) => void) => () => void;
+} {
+  let previousSessions = deps.sessionManager.listSessions().map((session) => buildSessionSummary(session));
+
+  return {
+    initialEvents: buildInitialSessionListStreamEvents(previousSessions),
+    subscribe(listener) {
+      return deps.sessionManager.subscribeSessions(() => {
+        const currentSessions = deps.sessionManager.listSessions().map((session) => buildSessionSummary(session));
+        for (const event of diffSessionListStreamEvents(previousSessions, currentSessions)) {
+          listener(event);
+        }
+        previousSessions = currentSessions;
+      });
+    }
   };
 }
 

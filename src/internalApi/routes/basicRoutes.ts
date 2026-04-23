@@ -6,6 +6,7 @@ import {
   getConfigSummary,
   getHealthStatus,
   getPersona,
+  getSessionListStream,
   getSessionDetail,
   listAvailableSessionModes,
   listSessions,
@@ -17,6 +18,7 @@ import {
   updateSessionTitle
 } from "../application/basicAdminService.ts";
 import { listRequests, listScheduledJobs } from "../application/operationsAdminService.ts";
+import { replyWithSseStream } from "./sse.ts";
 import {
   parseCreateSessionBody,
   parseConfigSaveBody,
@@ -252,6 +254,10 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
   app.get("/api/users", async () => listUsers(services.config));
 
   app.get("/api/sessions", async () => listSessions(services.config));
+  app.get("/api/sessions/stream", async (request, reply) => {
+    const stream = getSessionListStream(services.config);
+    replyWithSseStream(request, reply, stream);
+  });
   app.get("/api/session-modes", async () => listAvailableSessionModes());
 
   app.post("/api/sessions", async (request, reply) => {

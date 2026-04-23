@@ -12,3 +12,13 @@ test("sessions store uses draft overlay events instead of chunk streaming text",
   assert.doesNotMatch(source, /streamingText/);
   assert.doesNotMatch(source, /addEventListener\("chunk"/);
 });
+
+test("sessions store subscribes session list stream and handles upsert remove events", async () => {
+  const source = await readFile(new URL("../../../webui/src/stores/sessions.ts", import.meta.url), "utf8");
+
+  assert.match(source, /openListStream/);
+  assert.match(source, /session_upsert/);
+  assert.match(source, /session_removed/);
+  assert.match(source, /syncSessionDisplayFields/);
+  assert.match(source, /sortSessionListItems/);
+});

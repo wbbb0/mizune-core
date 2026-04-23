@@ -69,12 +69,15 @@ function createShellSession(overrides: Partial<ShellSession> = {}): ShellSession
 
 export function createInternalApiDeps(): InternalApiDeps & { __state: InternalApiFixtureState } {
   const sessionListeners = new Map<string, Set<() => void>>();
+  const allSessionListeners = new Set<() => void>();
   const notifySessionChanged = (sessionId: string) => {
     const listeners = sessionListeners.get(sessionId);
-    if (!listeners) {
-      return;
+    if (listeners) {
+      for (const listener of listeners) {
+        listener();
+      }
     }
-    for (const listener of listeners) {
+    for (const listener of allSessionListeners) {
       listener();
     }
   };
@@ -359,6 +362,12 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           if (activeListeners.size === 0) {
             sessionListeners.delete(sessionId);
           }
+        };
+      },
+      subscribeSessions(listener: () => void) {
+        allSessionListeners.add(listener);
+        return () => {
+          allSessionListeners.delete(listener);
         };
       },
       ensureSession(target: {

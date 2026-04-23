@@ -70,6 +70,7 @@ export interface SessionStreamAccess {
   getSession(sessionId: string): SessionState;
   hasActiveResponse(sessionId: string): boolean;
   subscribeSession(sessionId: string, listener: () => void): () => void;
+  subscribeSessions(listener: () => void): () => void;
 }
 
 export interface SessionWebStreamState {
@@ -180,6 +181,7 @@ export interface SessionAdminReadAccess {
   getLlmVisibleHistory(sessionId: string): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
   getHistoryRevision(sessionId: string): number;
   getMutationEpoch(sessionId: string): number;
+  subscribeSessions(listener: () => void): () => void;
 }
 
 // Admin mutations for creating, switching, persisting, and deleting sessions.

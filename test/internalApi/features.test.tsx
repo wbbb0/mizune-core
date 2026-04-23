@@ -805,6 +805,16 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
     }
   });
 
+  test("internal api registers session list stream route", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      assert.match(app.printRoutes(), /s(?:.|\n)*ssion(?:.|\n)*s \(GET, HEAD, POST\)(?:.|\n)*stream \(GET, HEAD\)/);
+    } finally {
+      await app.close();
+    }
+  });
+
   test("internal api updates web session title", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
