@@ -555,7 +555,7 @@ export function createGenerationExecutor(
           summary = "";
         }
       } else {
-        summary = "LLM 未配置。请在 LLM catalog 文件中填写 provider 与 model 清单，在运行时配置中设置 llm.mainRouting.smallModelRef/largeModelRef，并将 llm.enabled 设为 true。";
+        summary = "LLM 未配置。请在 LLM catalog 文件中填写 provider、model 与 routing preset 清单，在运行时配置中设置 llm.routingPreset，并将 llm.enabled 设为 true。";
       }
 
       await segmentCoordinator.flushSummary(summary, streamResponse);

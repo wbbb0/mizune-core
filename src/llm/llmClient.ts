@@ -1,5 +1,6 @@
 import type { AppConfig } from "#config/config.ts";
-import { getDefaultMainModelRefs, getPrimaryModelProfile, normalizeModelRefs } from "#llm/shared/modelProfiles.ts";
+import { getPrimaryModelProfile, normalizeModelRefs } from "#llm/shared/modelProfiles.ts";
+import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { Logger } from "pino";
 import { getLlmProvider, hasLlmProvider } from "./provider/providerRegistry.ts";
 import {
@@ -34,7 +35,7 @@ export class LlmClient {
     private readonly logger: Logger
   ) { }
 
-  isConfigured(modelRef: string | string[] = getDefaultMainModelRefs(this.config)): boolean {
+  isConfigured(modelRef: string | string[] = getModelRefsForRole(this.config, "main_small")): boolean {
     return this.config.llm.enabled && this.resolveProviderContexts(modelRef).length > 0;
   }
 
@@ -43,7 +44,7 @@ export class LlmClient {
   }
 
   private async runWithTools(params: LlmGenerateParams): Promise<LlmGenerateResult> {
-    const requestedModelRefs = normalizeModelRefs(params.modelRefOverride ?? getDefaultMainModelRefs(this.config));
+    const requestedModelRefs = normalizeModelRefs(params.modelRefOverride ?? getModelRefsForRole(this.config, "main_small"));
     let activeModelRefs = [...requestedModelRefs];
     const resolvedModelProfile = getPrimaryModelProfile(this.config, requestedModelRefs);
     const preserveThinking = resolvedModelProfile?.preserveThinking ?? false;
@@ -249,7 +250,7 @@ export class LlmClient {
       throw new Error("LLM 功能未启用");
     }
 
-    const requestedModelRefs = normalizeModelRefs(params.modelRefOverride ?? getDefaultMainModelRefs(this.config));
+    const requestedModelRefs = normalizeModelRefs(params.modelRefOverride ?? getModelRefsForRole(this.config, "main_small"));
     const providerContexts = this.resolveProviderContexts(requestedModelRefs, params.modelOverride);
     if (providerContexts.length === 0) {
       throw new Error("LLM 配置不完整");
@@ -399,8 +400,8 @@ export class LlmClient {
       case "get_runtime_config":
         return JSON.stringify({
           appName: this.config.appName,
-          model: getPrimaryModelProfile(this.config, getDefaultMainModelRefs(this.config))?.model ?? null,
-          modelRef: getDefaultMainModelRefs(this.config),
+          model: getPrimaryModelProfile(this.config, getModelRefsForRole(this.config, "main_small"))?.model ?? null,
+          modelRef: getModelRefsForRole(this.config, "main_small"),
           whitelistEnabled: this.config.whitelist.enabled
         });
       case "echo":

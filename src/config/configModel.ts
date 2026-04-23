@@ -16,6 +16,16 @@ const modelProfileSchema = s.object({
 
 const createModelRefListSchema = () => s.oneOrMany(s.string().trim().nonempty().dynamicRef("llm_model_names")).min(1);
 
+const llmRoutingPresetSchema = s.object({
+  mainSmall: createModelRefListSchema().title("主路由轻量模型"),
+  mainLarge: createModelRefListSchema().title("主路由完整模型"),
+  summarizer: createModelRefListSchema().title("总结器"),
+  sessionCaptioner: createModelRefListSchema().title("会话标题生成"),
+  imageCaptioner: createModelRefListSchema().title("图片描述"),
+  audioTranscription: createModelRefListSchema().title("音频转写"),
+  turnPlanner: createModelRefListSchema().title("轮次规划")
+}).title("模型路由预设").describe("为各个模型角色提供统一的模型引用列表。");
+
 const onebotTypingConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(true),
   private: s.boolean().title("私聊").default(true),
@@ -46,7 +56,6 @@ const proxyConfigSchema = s.object({
 
 const llmTurnPlannerConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(true),
-  modelRef: createModelRefListSchema().title("模型引用").default(["turnPlanner"]),
   timeoutMs: s.number().int().positive().title("超时毫秒").default(20000),
   enableThinking: s.boolean().title("启用思考").default(false),
   recentMessageCount: s.number().int().positive().title("近期消息数").default(6),
@@ -56,7 +65,6 @@ const llmTurnPlannerConfigSchema = s.object({
 
 const llmImageCaptionerConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(true),
-  modelRef: createModelRefListSchema().title("模型引用").default(["imageCaptioner"]),
   timeoutMs: s.number().int().positive().title("超时毫秒").default(30000),
   enableThinking: s.boolean().title("启用思考").default(false),
   maxConcurrency: s.number().int().positive().title("最大并发").default(2)
@@ -64,7 +72,6 @@ const llmImageCaptionerConfigSchema = s.object({
 
 const llmAudioTranscriptionConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(true),
-  modelRef: createModelRefListSchema().title("模型引用").default(["transcription"]),
   timeoutMs: s.number().int().positive().title("超时毫秒").default(30000),
   enableThinking: s.boolean().title("启用思考").default(false),
   maxConcurrency: s.number().int().positive().title("最大并发").default(2)
@@ -76,8 +83,6 @@ const llmDebugDumpSchema = s.object({
 
 const llmMainRoutingConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(true),
-  smallModelRef: createModelRefListSchema().title("轻量模型").default(["main"]),
-  largeModelRef: createModelRefListSchema().title("完整模型").default(["main"]),
   timeoutMs: s.number().int().positive().title("超时毫秒").default(300000),
   enableThinking: s.boolean().title("启用思考").default(true)
 }).title("主路由").describe("在主回复链路中选择不同规模的模型。").default(emptyObject);
@@ -299,19 +304,18 @@ const backupConfigSchema = s.object({
 
 const llmRuntimeConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(false),
+  routingPreset: s.string().trim().dynamicRef("llm_routing_preset_names").title("模型路由预设").default(""),
   timeoutMs: s.number().int().positive().title("超时毫秒").default(300000),
   firstTokenTimeoutMs: s.number().int().positive().title("首 Token 超时毫秒").default(30000),
   toolCallMaxIterations: s.number().int().positive().title("工具调用最大轮次").default(8),
   mainRouting: llmMainRoutingConfigSchema,
   summarizer: s.object({
     enabled: s.boolean().title("启用").default(true),
-    modelRef: createModelRefListSchema().title("模型引用").default(["summarizer"]),
     timeoutMs: s.number().int().positive().title("超时毫秒").default(45000),
     enableThinking: s.boolean().title("启用思考").default(false)
   }).title("总结器").describe("用于历史压缩和内容总结。").default(emptyObject),
   sessionCaptioner: s.object({
     enabled: s.boolean().title("启用").default(true),
-    modelRef: createModelRefListSchema().title("模型引用").default(["sessionCaptioner"]),
     timeoutMs: s.number().int().positive().title("超时毫秒").default(15000),
     enableThinking: s.boolean().title("启用思考").default(false)
   }).title("会话标题生成").describe("为会话生成简短标题。").default(emptyObject),
@@ -331,9 +335,15 @@ export const llmModelCatalogSchema = s.record(
   modelProfileSchema
 ).title("模型目录").describe("维护可引用的模型别名列表。").default({});
 
+export const llmRoutingPresetCatalogSchema = s.record(
+  s.string().trim().nonempty(),
+  llmRoutingPresetSchema
+).title("模型路由预设目录").describe("维护可引用的模型路由预设。").default({});
+
 export const llmCatalogSchema = s.object({
   providers: llmProviderCatalogSchema,
-  models: llmModelCatalogSchema
+  models: llmModelCatalogSchema,
+  routingPresets: llmRoutingPresetCatalogSchema
 }).title("LLM 目录").default(emptyObject);
 
 export const fileConfigSchema = s.object({
@@ -365,6 +375,7 @@ export const configRuntimeSchema = s.object({
   globalConfigPath: s.string().trim().nonempty(),
   llmProviderCatalogPath: s.string().trim().nonempty(),
   llmModelCatalogPath: s.string().trim().nonempty(),
+  llmRoutingPresetCatalogPath: s.string().trim().nonempty(),
   instanceName: s.string().trim().nonempty(),
   instanceConfigPath: s.string().trim().nonempty(),
   loadedConfigPaths: s.array(s.string().trim().nonempty()).default([])
@@ -383,6 +394,7 @@ export type LlmRuntimeConfig = Infer<typeof llmRuntimeConfigSchema>;
 export type LlmCatalogConfig = Infer<typeof llmCatalogSchema>;
 export type ConfigRuntime = Infer<typeof configRuntimeSchema>;
 export type ModelProfile = Infer<typeof modelProfileSchema>;
+export type LlmRoutingPreset = Infer<typeof llmRoutingPresetSchema>;
 export type ProxyConfig = Infer<typeof proxyConfigSchema>;
 export type LlmProviderConfig = Infer<typeof llmProviderSchema>;
 export type OnebotConfig = Infer<typeof onebotConfigSchema>;

@@ -9,10 +9,6 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       config: createTestAppConfig({
         llm: {
           enabled: true,
-          mainRouting: {
-            smallModelRef: ["main"],
-            largeModelRef: ["main"]
-          },
           models: {
             main: {
               supportsVision: true
@@ -531,10 +527,6 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       config: createTestAppConfig({
         llm: {
           enabled: true,
-          mainRouting: {
-            smallModelRef: ["main"],
-            largeModelRef: ["main"]
-          },
           models: { main: { supportsVision: false } }
         }
       }),

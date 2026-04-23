@@ -1,5 +1,6 @@
 import type { AppConfig } from "#config/config.ts";
-import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { LlmProviderConfig, ModelProfile } from "#config/configModel.ts";
 import type { LlmProviderRequestContext } from "./providerTypes.ts";
 
@@ -33,7 +34,7 @@ export function getProviderFeatureFromContext(
 
 export function hasNativeSearchFeature(
   config: AppConfig,
-  modelRef: string | string[] = getDefaultMainModelRefs(config)
+  modelRef: string | string[] = getModelRefsForRole(config, "main_small")
 ): boolean {
   return getProviderFeature(config, modelRef, "search") != null;
 }

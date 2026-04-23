@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadConfig } from "../../src/config/config.ts";
+import { getModelRefsForRole } from "../../src/llm/shared/modelRouting.ts";
 import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } from "../helpers/config-test-support.tsx";
 
   test("loadConfig merges global proxy settings and feature proxy switches", async () => {
@@ -105,32 +106,42 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           turnPlanner: {
             provider: "dashscope",
             model: "qwen3.5-flash"
+          },
+          transcription: {
+            provider: "dashscope",
+            model: "qwen-audio-asr",
+            modelType: "transcription"
+          }
+        },
+        routingPresets: {
+          shared: {
+            mainSmall: "main",
+            mainLarge: "main",
+            summarizer: "turnPlanner",
+            sessionCaptioner: "turnPlanner",
+            imageCaptioner: "main",
+            audioTranscription: "transcription",
+            turnPlanner: "turnPlanner"
           }
         }
       });
       await writeYaml(join(configDir, "global.yml"), {
         llm: {
           enabled: true,
-          mainRouting: {
-            smallModelRef: "main",
-            largeModelRef: "main"
-          },
+          routingPreset: "shared",
           summarizer: {
             enabled: true,
-            modelRef: "turnPlanner",
             timeoutMs: 45000,
             enableThinking: false
           },
           turnPlanner: {
             enabled: true,
-            modelRef: "turnPlanner",
             timeoutMs: 20000,
             recentMessageCount: 6,
             enableThinking: false
           },
           sessionCaptioner: {
             enabled: true,
-            modelRef: "turnPlanner",
             timeoutMs: 15000,
             enableThinking: false
           }
@@ -138,13 +149,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       });
       await writeYaml(join(configDir, "instances-acc2.yml"), {
         llm: {
-          mainRouting: {
-            smallModelRef: "qwen35_lan",
-            largeModelRef: "qwen35_lan"
-          },
-          turnPlanner: {
-            modelRef: "qwen35_lan"
-          }
+          routingPreset: "missing-preset"
         }
       });
 
@@ -154,10 +159,10 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       });
 
       assert.equal(config.llm.providers.dashscope?.baseUrl, "https://dashscope.aliyuncs.com/compatible-mode/v1");
-      assert.deepEqual(config.llm.mainRouting.smallModelRef, ["qwen35_lan"]);
-      assert.deepEqual(config.llm.mainRouting.largeModelRef, ["qwen35_lan"]);
-      assert.deepEqual(config.llm.sessionCaptioner.modelRef, ["turnPlanner"]);
-      assert.deepEqual(config.llm.turnPlanner.modelRef, ["qwen35_lan"]);
+      assert.equal(config.llm.routingPreset, "missing-preset");
+      assert.deepEqual(getModelRefsForRole(config, "main_small"), []);
+      assert.deepEqual(getModelRefsForRole(config, "session_captioner"), []);
+      assert.deepEqual(getModelRefsForRole(config, "turn_planner"), []);
       assert.equal(config.llm.models.qwen35_lan, undefined);
     });
   });
@@ -176,16 +181,29 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           catalogMain: {
             provider: "catalogProvider",
             model: "catalog-model"
+          },
+          transcription: {
+            provider: "catalogProvider",
+            model: "catalog-transcription",
+            modelType: "transcription"
+          }
+        },
+        routingPresets: {
+          catalog: {
+            mainSmall: "catalogMain",
+            mainLarge: "catalogMain",
+            summarizer: "catalogMain",
+            sessionCaptioner: "catalogMain",
+            imageCaptioner: "catalogMain",
+            audioTranscription: "transcription",
+            turnPlanner: "catalogMain"
           }
         }
       });
       await writeYaml(join(configDir, "global.yml"), {
         llm: {
           enabled: true,
-          mainRouting: {
-            smallModelRef: "catalogMain",
-            largeModelRef: "catalogMain"
-          },
+          routingPreset: "catalog",
           providers: {
             ignoredProvider: {
               baseUrl: "https://ignored.example/v1",

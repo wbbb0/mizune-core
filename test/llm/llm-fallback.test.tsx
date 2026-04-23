@@ -9,9 +9,16 @@ function createConfig() {
   return createTestAppConfig({
     llm: {
       enabled: true,
-      mainRouting: {
-        smallModelRef: ["blocked_model", "fallback_model"],
-        largeModelRef: ["blocked_model", "fallback_model"]
+      routingPresets: {
+        test: {
+          mainSmall: ["blocked_model", "fallback_model"],
+          mainLarge: ["blocked_model", "fallback_model"],
+          summarizer: ["blocked_model", "fallback_model"],
+          sessionCaptioner: ["blocked_model", "fallback_model"],
+          imageCaptioner: ["blocked_model", "fallback_model"],
+          audioTranscription: ["transcription"],
+          turnPlanner: ["blocked_model", "fallback_model"]
+        }
       },
       providers: {
         blocked_provider: {

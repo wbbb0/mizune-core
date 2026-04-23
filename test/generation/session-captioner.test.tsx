@@ -20,14 +20,8 @@ function createDeferred<T>() {
     const config = createTestAppConfig({
       llm: {
         enabled: true,
-        mainRouting: {
-          smallModelRef: ["main"],
-          largeModelRef: ["main"],
-          enableThinking: true
-        },
         sessionCaptioner: {
           enabled: true,
-          modelRef: ["sessionCaptioner"],
           timeoutMs: 9876,
           enableThinking: false
         }
@@ -73,7 +67,6 @@ function createDeferred<T>() {
         enabled: true,
         sessionCaptioner: {
           enabled: true,
-          modelRef: ["sessionCaptioner"],
           timeoutMs: 4321,
           enableThinking: false
         }
@@ -139,8 +132,7 @@ function createDeferred<T>() {
         llm: {
           enabled: true,
           sessionCaptioner: {
-            enabled: true,
-            modelRef: ["sessionCaptioner"]
+            enabled: true
           }
         }
       }),
@@ -161,8 +153,7 @@ function createDeferred<T>() {
         llm: {
           enabled: true,
           sessionCaptioner: {
-            enabled: false,
-            modelRef: ["sessionCaptioner"]
+            enabled: false
           }
         }
       }),
@@ -184,8 +175,7 @@ function createDeferred<T>() {
       llm: {
         enabled: true,
         sessionCaptioner: {
-          enabled: true,
-          modelRef: ["sessionCaptioner"]
+          enabled: true
         }
       }
     });
@@ -261,8 +251,7 @@ function createDeferred<T>() {
       llm: {
         enabled: true,
         sessionCaptioner: {
-          enabled: true,
-          modelRef: ["sessionCaptioner"]
+          enabled: true
         }
       }
     });

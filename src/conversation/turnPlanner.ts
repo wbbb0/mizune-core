@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
-import { getPrimaryModelProfile, resolveModelRefsForType } from "#llm/shared/modelProfiles.ts";
+import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { analyzeTurnPlannerBatch } from "./turnPlannerBatchAnalysis.ts";
 import type { LlmClient } from "#llm/llmClient.ts";
 import type { Relationship } from "#identity/relationship.ts";
@@ -312,19 +313,7 @@ export class TurnPlanner {
   }
 
   private resolveModelRefs(): string[] {
-    const resolved = resolveModelRefsForType(this.config, this.config.llm.turnPlanner.modelRef, "chat");
-    for (const rejected of resolved.rejectedModelRefs) {
-      if (rejected.reason === "unsupported_model_type") {
-        this.logger.warn(
-          {
-            modelRef: rejected.modelRef,
-            actualModelType: rejected.actualModelType ?? "unknown"
-          },
-          "turn_planner_model_skipped_due_to_type"
-        );
-      }
-    }
-    return resolved.acceptedModelRefs;
+    return getModelRefsForRole(this.config, "turn_planner");
   }
 
   private normalizeDecision(

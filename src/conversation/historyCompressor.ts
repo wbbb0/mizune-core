@@ -3,7 +3,7 @@ import type { AppConfig } from "#config/config.ts";
 import { annotateStructuredMediaReferences, extractStructuredMediaIds } from "#images/imageReferences.ts";
 import type { LlmClient } from "#llm/llmClient.ts";
 import { buildHistorySummaryPrompt } from "#llm/prompts/history-summary.prompt.ts";
-import { resolveModelRefsForType } from "#llm/shared/modelProfiles.ts";
+import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { SessionCompressionAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 
@@ -204,18 +204,6 @@ export class HistoryCompressor {
   }
 
   private resolveModelRefs(): string[] {
-    const resolved = resolveModelRefsForType(this.config, this.config.llm.summarizer.modelRef, "chat");
-    for (const rejected of resolved.rejectedModelRefs) {
-      if (rejected.reason === "unsupported_model_type") {
-        this.logger.warn(
-          {
-            modelRef: rejected.modelRef,
-            actualModelType: rejected.actualModelType ?? "unknown"
-          },
-          "history_compressor_model_skipped_due_to_type"
-        );
-      }
-    }
-    return resolved.acceptedModelRefs;
+    return getModelRefsForRole(this.config, "summarizer");
   }
 }

@@ -63,9 +63,19 @@ function createCaptionerConfig() {
           preserveThinking: false
         }
       },
+      routingPresets: {
+        test: {
+          mainSmall: ["main"],
+          mainLarge: ["main"],
+          summarizer: ["main"],
+          sessionCaptioner: ["sessionCaptioner"],
+          imageCaptioner: ["primary", "secondary"],
+          audioTranscription: ["transcription"],
+          turnPlanner: ["main"]
+        }
+      },
       imageCaptioner: {
         enabled: true,
-        modelRef: ["primary", "secondary"],
         timeoutMs: 1000,
         enableThinking: false,
         maxConcurrency: 2

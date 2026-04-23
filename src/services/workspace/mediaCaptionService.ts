@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
-import { normalizeModelRefs, resolveModelRefsForType } from "#llm/shared/modelProfiles.ts";
+import { normalizeModelRefs } from "#llm/shared/modelProfiles.ts";
+import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { LlmClient, LlmMessage } from "#llm/llmClient.ts";
 import type { ChatFileStore } from "./chatFileStore.ts";
 import type { MediaVisionService } from "./mediaVisionService.ts";
@@ -220,8 +221,7 @@ export class MediaCaptionService {
   }
 
   private resolveModelRefs(): string[] {
-    const resolved = resolveModelRefsForType(this.config, this.config.llm.imageCaptioner.modelRef, "chat");
-    return resolved.acceptedModelRefs;
+    return getModelRefsForRole(this.config, "image_captioner");
   }
 }
 

@@ -74,20 +74,3 @@ export function resolveModelRefsForType(
       : undefined
   };
 }
-
-export function getDefaultMainModelRefs(config: AppConfig): string[] {
-  return resolveModelRefsForType(config, config.llm.mainRouting.smallModelRef, "chat").acceptedModelRefs;
-}
-
-export function getMainModelRefsForTier(
-  config: AppConfig,
-  tier: "small" | "large"
-): string[] {
-  return resolveModelRefsForType(
-    config,
-    tier === "large"
-      ? config.llm.mainRouting.largeModelRef
-      : config.llm.mainRouting.smallModelRef,
-    "chat"
-  ).acceptedModelRefs;
-}

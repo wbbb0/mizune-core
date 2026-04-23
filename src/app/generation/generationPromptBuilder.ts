@@ -3,7 +3,8 @@ import {
   buildPromptImageCaptions,
   collectReferencedImageIds
 } from "#images/imagePromptContext.ts";
-import { getDefaultMainModelRefs, getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { prepareAudioInputsForModel } from "#messages/audioSources.ts";
 import { buildPrompt, buildScheduledTaskPrompt, buildSetupPrompt } from "#llm/prompt/promptBuilder.ts";
 import type { PromptInteractionMode, PromptLiveResource } from "#llm/prompt/promptTypes.ts";
@@ -796,7 +797,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     batchMessages: GenerationPromptBatchMessage[];
     abortSignal?: AbortSignal;
   }) => {
-    const mainProfile = getPrimaryModelProfile(deps.config, getDefaultMainModelRefs(deps.config));
+    const mainProfile = getPrimaryModelProfile(deps.config, getModelRefsForRole(deps.config, "main_small"));
     const mediaContext = await preparePromptMediaContext(deps, {
       historyForPrompt: input.historyForPrompt,
       batchMessages: input.batchMessages,

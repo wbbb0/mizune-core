@@ -5,7 +5,7 @@ import type { SessionState } from "#conversation/session/sessionTypes.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { LlmClient } from "#llm/llmClient.ts";
 import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
-import { normalizeModelRefs } from "#llm/shared/modelProfiles.ts";
+import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { createSessionTitleGenerationEvent } from "#conversation/session/internalTranscriptEvents.ts";
 
 export interface SessionCaptioningAccess {
@@ -99,7 +99,7 @@ export class SessionCaptioner {
     if (!captionerConfig.enabled) {
       return [];
     }
-    return normalizeModelRefs(captionerConfig.modelRef);
+    return getModelRefsForRole(this.config, "session_captioner");
   }
 }
 
