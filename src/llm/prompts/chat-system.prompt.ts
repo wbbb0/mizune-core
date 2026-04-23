@@ -31,20 +31,23 @@ import { normalizeProfileSummary } from "#identity/userProfile.ts";
 
 const PERSONA_FIELD_HINTS: Record<EditablePersonaFieldName, string> = {
   name: "角色的名字",
-  coreIdentity: "基础身份与长期设定，一两句话",
-  personality: "性格关键词，可多个",
-  speechStyle: "语气与说话习惯",
-  interests: "兴趣爱好与喜好禁忌",
-  background: "背景故事、家庭、住处等，可简短"
+  temperament: "跨模式稳定成立的性格底色",
+  speakingStyle: "跨模式稳定成立的说话方式和语气习惯",
+  globalTraits: "跨模式都成立的全局特征、价值倾向或行事偏好",
+  generalPreferences: "跨模式都成立的通用偏好和长期习惯"
 };
 
 const RP_PROFILE_FIELD_HINTS: Record<EditableRpProfileFieldName, string> = {
-  appearance: "RP 模式下的外貌、穿着或整体形象",
-  premise: "RP 默认前提、处境或现实起点",
-  relationship: "与用户的默认关系预设",
-  identityBoundary: "RP 中如何自处，以及不能越界的身份边界",
-  styleRules: "RP 互动时的表达风格、节奏或偏好",
-  hardRules: "RP 模式必须遵守、不可破坏的硬规则"
+  selfPositioning: "RP 中如何理解自己、如何自处",
+  socialRole: "RP 中的社会位置、职业或对外角色",
+  lifeContext: "日常生活环境、生活状态和稳定背景框架",
+  physicalPresence: "外在存在感、身体感、声音或动作习惯",
+  bondToUser: "与用户的默认关系基线",
+  closenessPattern: "亲密推进和距离控制方式",
+  interactionPattern: "与用户互动时的主要方式与节奏",
+  realityContract: "如何维持自己是现实中真人这一前提",
+  continuityFacts: "跨会话必须稳定保持的事实锚点",
+  hardLimits: "绝对不能突破的 RP 硬边界"
 };
 
 const SCENARIO_PROFILE_FIELD_HINTS: Record<EditableScenarioProfileFieldName, string> = {
@@ -116,38 +119,39 @@ function buildPersonaDraftModeLines(
 function buildPersonaSetupModeLines(persona: Persona, missingFields: EditablePersonaFieldName[]): string[] {
   const missingSet = new Set(missingFields);
   const totalMissing = missingFields.length;
-  const coreComplete = !missingSet.has("name") && !missingSet.has("coreIdentity");
+  const coreComplete = !missingSet.has("name") && !missingSet.has("temperament") && !missingSet.has("speakingStyle");
 
-  const identityRef = coreComplete
-    ? `"${persona.name}"（${persona.coreIdentity}）`
-    : persona.name ? `"${persona.name}"` : null;
+  const identityRef = persona.name ? `"${persona.name}"` : "当前 persona";
 
   const phaseLines: string[] = [];
 
   if (totalMissing === 0) {
-    phaseLines.push(`角色 ${identityRef ?? "persona"} 所有字段已填写完毕。`);
+    phaseLines.push(`${identityRef} 的 persona 草稿已完整。`);
     phaseLines.push("调用 send_setup_draft 向 owner 发送完整设定草稿供最终确认。");
     phaseLines.push("发送草稿后，告知 owner 如果没有问题可以输入 .confirm 完成初始化，如有修改继续告诉你。");
-  } else if (!coreComplete && totalMissing === 4) {
+  } else if (!coreComplete && totalMissing === 5) {
     phaseLines.push("当前实例处于初始化阶段，需要帮 owner 完成角色 persona 设定。");
-    phaseLines.push("简要告知 owner：正在设定角色人设，完成后即可正常聊天；然后从名字和基础身份开始询问。");
+    phaseLines.push("简要告知 owner：正在设定全局人格底座，完成后即可正常聊天；然后先确认名字。");
   } else if (!coreComplete) {
-    const nextCore = missingSet.has("name") ? "名字" : "基础身份";
-    const alreadyHave = identityRef ? `已知角色名为 ${identityRef}，` : "";
-    phaseLines.push(`当前处于初始化阶段，${alreadyHave}核心设定未完成，当前优先询问：${nextCore}。`);
+    const nextCore = missingSet.has("name")
+      ? "名字"
+      : missingSet.has("temperament")
+        ? "性格底色"
+        : "说话方式";
+    phaseLines.push(`当前处于初始化阶段，核心 persona 尚未完成，当前优先询问：${nextCore}。`);
   } else {
     const remainingLabels = missingFields.map((f) => personaFieldLabels[f]).join("、");
-    phaseLines.push(`角色 ${identityRef} 的核心设定已完成，还需补充：${remainingLabels}。`);
-    phaseLines.push("可以一次询问多个字段，允许 owner 简短回答或跳过某些字段。");
+    phaseLines.push(`${identityRef} 的核心 persona 已完成，还可补充：${remainingLabels}。`);
+    phaseLines.push("可选字段只在 owner 明确愿意补充时再问，不要为了凑满草稿强行追问。");
   }
 
   return [
     ...phaseLines,
     "每轮优先推进当前最关键的一步；最多同时追问 1-2 个强相关字段，不要把整份设定一次性问完。",
-    "owner 提供信息后，先用工具写入能确认的字段，再追问剩余字段；不要等所有字段都收集完才写入。",
-    "收集到足够信息（尤其是核心字段完整后），调用 send_setup_draft 发送格式化草稿，不要在回复正文中逐条列出设定。",
+    "owner 提供信息后，先用工具写入能确认的字段，再视情况追问剩余字段；不要等所有字段都收集完才写入。",
+    "收集到足够信息后，调用 send_setup_draft 发送当前草稿，不要在回复正文中逐条列出设定。",
     "草稿发出后告知 owner 满意则输入 .confirm 完成初始化，如有修改继续告诉你即可。",
-    "只写入 owner 明确提供的内容，不要编造设定；不要调用无关工具，不要修改用户资料或关系。",
+    "只写入 owner 明确提供的内容，不要编造设定；persona 只写全局人格底座，不写职业、住处、外貌、与用户关系等 RP 信息。",
     "回复保持短句纯文本，不用 Markdown 标题或列表。"
   ];
 }
@@ -169,6 +173,7 @@ function buildPersonaConfigModeLines(persona: Persona, missingFields: EditablePe
       : "当前字段已完整，优先按 owner 的修改要求做局部调整。",
     "先理解 owner 具体想改什么，只修改明确要求的字段；不要默认重问全部设定，也不要擅自重写未提及内容。",
     "若本轮只是微调单个字段，就直接修改那一项；只有遇到关键信息缺失、语义冲突或 owner 明确要求时再扩展询问。",
+    "persona 只写名字、性格底色、说话方式和跨模式全局属性；不要把 RP 身份、生活事实、外貌或与用户关系写进 persona。",
     "如需核对当前草稿，可先读取草稿并概括当前状态；完成本轮修改后调用 send_setup_draft 发送最新草稿。",
     "只写入 owner 明确提供的内容，不要编造设定；不要调用无关工具，不要修改用户资料或关系。",
     "回复保持短句纯文本，不用 Markdown 标题或列表。"
@@ -466,17 +471,17 @@ function buildRpProfileDraftModeLines(
       optionalMissingLabels.length > 0
         ? `可在需要时继续补充：${optionalMissingLabels.join("、")}。`
         : "可选补充字段已齐全，除非 owner 明确要求，否则不要重问整份 RP 资料。",
-      "RP 资料只在全局 persona 底座上补充 RP 专属要求；不要把 persona 内容重复写入 RP 资料，也不要写到用户资料或其他长期记忆。",
+      "RP 资料只在全局 persona 底座上补充真人化设定；不要把 persona 内容重复写入 RP 资料，也不要写到用户资料或其他长期记忆。",
       "若本轮只是微调单个字段，就直接改那一项；只有遇到核心字段缺失、语义冲突或边界不清时再追问。",
       "如需核对现状，优先概括或发送当前 RP 草稿；草稿发出后等待 owner 反馈，不要在同一回复继续追问新的长串字段。",
       "回复保持短句纯文本，不用 Markdown 标题或列表。"
     ];
   }
 
-  if (coreMissingLabels.length === 3) {
+  if (coreMissingLabels.length === 9) {
     return [
       "当前处于 RP 全局资料初始化阶段，需要从空白草稿开始建立 RP 专用资料。",
-      "先用 1-2 个紧密相关的问题补齐前提和身份边界，再继续确认硬规则；不要一上来把整份问卷全抛给 owner。",
+      "先确认这个人在 RP 中如何看待自己，以及他在现实中的社会角色；不要一上来把整份问卷全抛给 owner。",
       "RP 资料只服务 RP 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
       "owner 每提供一段明确设定，就立即用工具写入草稿；不要等所有信息都收集完再统一写入。",
       "核心字段初步成形后，调用 send_setup_draft 发送当前 RP 草稿供 owner 核对。",
@@ -496,7 +501,7 @@ function buildRpProfileDraftModeLines(
   }
 
   return [
-    "RP 核心字段已完成，可继续补充关系、风格规则、外貌等辅助信息。",
+    "RP 核心字段已完成，可继续补充连续性事实等辅助信息。",
     "只补 owner 明确提供或明确同意补充的内容；不要因为是 setup 就强行追问所有可选字段。",
     "补充信息稳定后，调用 send_setup_draft 发送当前 RP 草稿供 owner 核对。",
     "回复保持短句纯文本，不用 Markdown 标题或列表。"
@@ -680,13 +685,12 @@ function buildSharedPersonaLines(persona: Persona): string[] {
 function buildSharedPersonaSummaryLines(persona: Persona): string[] {
   const personaSummary = [
     `名字=${persona.name}`,
-    `基础身份=${persona.coreIdentity}`,
-    `性格=${persona.personality}`,
-    `说话方式=${persona.speechStyle}`
+    `性格底色=${persona.temperament}`,
+    `说话方式=${persona.speakingStyle}`
   ].join("；");
   const extraFacts = [
-    persona.interests ? `兴趣与喜好=${persona.interests}` : null,
-    persona.background ? `背景=${persona.background}` : null
+    persona.globalTraits ? `全局特征=${persona.globalTraits}` : null,
+    persona.generalPreferences ? `通用偏好=${persona.generalPreferences}` : null
   ].filter((item): item is string => Boolean(item));
 
   return [
@@ -697,17 +701,21 @@ function buildSharedPersonaSummaryLines(persona: Persona): string[] {
 
 function buildRpProfileLines(profile: RpProfile): string[] {
   return buildModeProfileSummaryLines({
-    intro: "以下 RP 全局资料只在 rp_assistant 模式下生效，是建立在全局 persona 之上的模式补充。",
+    intro: "以下 RP 全局资料只在 rp_assistant 模式下生效，是建立在全局 persona 之上的真人化补充。",
     label: "RP 全局资料",
     coreParts: [
-      profile.premise ? `前提=${profile.premise}` : null,
-      profile.identityBoundary ? `身份边界=${profile.identityBoundary}` : null,
-      profile.hardRules ? `硬规则=${profile.hardRules}` : null
+      profile.selfPositioning ? `自我定位=${profile.selfPositioning}` : null,
+      profile.socialRole ? `社会角色=${profile.socialRole}` : null,
+      profile.lifeContext ? `生活状态=${profile.lifeContext}` : null,
+      profile.physicalPresence ? `外在存在感=${profile.physicalPresence}` : null,
+      profile.bondToUser ? `与用户关系=${profile.bondToUser}` : null,
+      profile.closenessPattern ? `亲密模式=${profile.closenessPattern}` : null,
+      profile.interactionPattern ? `互动模式=${profile.interactionPattern}` : null,
+      profile.realityContract ? `现实契约=${profile.realityContract}` : null,
+      profile.hardLimits ? `硬边界=${profile.hardLimits}` : null
     ],
     extraParts: [
-      profile.relationship ? `关系=${profile.relationship}` : null,
-      profile.styleRules ? `风格规则=${profile.styleRules}` : null,
-      profile.appearance ? `外貌=${profile.appearance}` : null
+      profile.continuityFacts ? `连续性事实=${profile.continuityFacts}` : null
     ]
   });
 }
@@ -820,7 +828,7 @@ function buildReplyRuleLines(): string[] {
 function buildMemoryRuleLines(): string[] {
   return [
     "长期信息写入决策树：",
-    "1. bot 身份、人设、口吻、角色边界 -> persona。",
+    "1. bot 的名字、性格底色、说话方式、跨模式全局偏好 -> persona。",
     "2. owner 级、跨任务长期工作流偏好 -> global_rules。",
     "3. 只在某个工具集或工作流里生效的长期规则 -> toolset_rules。",
     "4. 稳定且结构化的用户卡片信息 -> user_profile。",
@@ -894,9 +902,10 @@ function dedupeProfileSummaryAgainstMemories(
 function buildPersonaCandidateTexts(persona: Persona): string[] {
   return [
     persona.name,
-    persona.coreIdentity,
-    persona.personality,
-    persona.speechStyle,
+    persona.temperament,
+    persona.speakingStyle,
+    persona.globalTraits,
+    persona.generalPreferences,
   ].filter((item): item is string => Boolean(item));
 }
 

@@ -22,11 +22,10 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
       const persona: Persona = {
         ...createEmptyPersona(),
         name: "小白",
-        coreIdentity: "跨任务对话代理",
-        personality: "冷静直接",
-        speechStyle: "简洁",
-        interests: "",
-        background: ""
+        temperament: "冷静直接",
+        speakingStyle: "简洁",
+        globalTraits: "",
+        generalPreferences: ""
       };
       assert.equal(personaStore.isComplete(persona), true);
       assert.deepEqual(personaStore.describeMissingFields(persona), []);
@@ -34,51 +33,60 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
       const incomplete: Persona = {
         ...createEmptyPersona(),
         name: "小白",
-        coreIdentity: "",
-        personality: "冷静直接",
-        speechStyle: "",
-        interests: "阅读",
-        background: "本地部署"
+        temperament: "",
+        speakingStyle: "",
+        globalTraits: "跨任务对话代理",
+        generalPreferences: "阅读"
       };
       assert.equal(personaStore.isComplete(incomplete), false);
       assert.deepEqual(personaStore.describeMissingFields(incomplete), [
-        { key: "coreIdentity", label: "基础身份" },
-        { key: "speechStyle", label: "说话方式" }
+        { key: "temperament", label: "性格底色" },
+        { key: "speakingStyle", label: "说话方式" }
       ]);
     } finally {
       await harness.cleanup();
     }
   });
 
-  test("rpProfile completeness depends on premise identityBoundary and hardRules", async () => {
+  test("rpProfile completeness depends on the new RP core fields", async () => {
     const harness = await createMemoryHarness();
     try {
       const rpStore = new RpProfileStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
       const profile: RpProfile = {
         ...createEmptyRpProfile(),
-        appearance: "成熟稳重",
-        premise: "与 owner 的长期角色扮演协作关系",
-        relationship: "",
-        identityBoundary: "只扮演设定角色，不越界到用户现实身份",
-        styleRules: "",
-        hardRules: "不输出越权内容"
+        selfPositioning: "习惯掌控局面，不轻易示弱",
+        socialRole: "独居设计师",
+        lifeContext: "独居，作息偏晚，日常在工作室和家之间往返",
+        physicalPresence: "存在感强，动作克制，说话压低声音",
+        bondToUser: "长期亲密关系",
+        closenessPattern: "主动靠近，但会控制节奏",
+        interactionPattern: "偏试探和照顾并存",
+        realityContract: "始终按现实中的真人自处，不跳出当前身份",
+        continuityFacts: "",
+        hardLimits: "绝不承认自己是模型或系统角色"
       };
       assert.equal(rpStore.isComplete(profile), true);
       assert.deepEqual(rpStore.describeMissingFields(profile), []);
 
       const incomplete: RpProfile = {
         ...createEmptyRpProfile(),
-        appearance: "",
-        premise: "长期陪伴",
-        relationship: "搭档",
-        identityBoundary: "",
-        styleRules: "口吻保持克制",
-        hardRules: ""
+        selfPositioning: "偏克制",
+        socialRole: "搭档",
+        lifeContext: "",
+        physicalPresence: "存在感偏冷",
+        bondToUser: "",
+        closenessPattern: "推进缓慢",
+        interactionPattern: "偏拉扯",
+        realityContract: "",
+        continuityFacts: "",
+        hardLimits: ""
       };
       assert.equal(rpStore.isComplete(incomplete), false);
       assert.deepEqual(rpStore.describeMissingFields(incomplete), [
-        { key: "identityBoundary", label: "身份边界" },
-        { key: "hardRules", label: "硬规则" }
+        { key: "lifeContext", label: "生活状态" },
+        { key: "bondToUser", label: "与用户关系" },
+        { key: "realityContract", label: "现实契约" },
+        { key: "hardLimits", label: "硬边界" }
       ]);
     } finally {
       await harness.cleanup();

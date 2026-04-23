@@ -20,20 +20,23 @@ const transcriptMetaShape = {
 
 const personaDraftSchema = z.object({
   name: z.string(),
-  coreIdentity: z.string(),
-  personality: z.string(),
-  interests: z.string(),
-  background: z.string(),
-  speechStyle: z.string()
+  temperament: z.string(),
+  speakingStyle: z.string(),
+  globalTraits: z.string(),
+  generalPreferences: z.string()
 });
 
 const rpProfileDraftSchema = z.object({
-  appearance: z.string(),
-  premise: z.string(),
-  relationship: z.string(),
-  identityBoundary: z.string(),
-  styleRules: z.string(),
-  hardRules: z.string()
+  selfPositioning: z.string(),
+  socialRole: z.string(),
+  lifeContext: z.string(),
+  physicalPresence: z.string(),
+  bondToUser: z.string(),
+  closenessPattern: z.string(),
+  interactionPattern: z.string(),
+  realityContract: z.string(),
+  continuityFacts: z.string(),
+  hardLimits: z.string()
 });
 
 const scenarioProfileDraftSchema = z.object({

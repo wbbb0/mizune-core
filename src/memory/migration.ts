@@ -236,15 +236,15 @@ function dedupeToolsetRules(rules: ToolsetRuleEntry[]) {
 function mapLegacyPersonaMemoryToField(entry: { title: string; content: string }): keyof Persona {
   const text = `${entry.title}\n${entry.content}`;
   if (/(口吻|语气|说话方式|说话风格)/u.test(text)) {
-    return "speechStyle";
+    return "speakingStyle";
   }
-  if (/(身份|角色|人设|定位)/u.test(text)) {
-    return "coreIdentity";
+  if (/(性格|气质|人设|定位)/u.test(text)) {
+    return "temperament";
   }
-  if (/(背景|经历|家庭|住处)/u.test(text)) {
-    return "background";
+  if (/(偏好|习惯|喜好|审美|倾向)/u.test(text)) {
+    return "generalPreferences";
   }
-  return "background";
+  return "globalTraits";
 }
 
 function mergePersonaField(current: string, incoming: string): string {
@@ -284,10 +284,21 @@ function migratePersona(raw: unknown) {
     let persona = createEmptyPersona();
     persona = personaSchema.parse({
       name: getString(obj.name) ?? "",
-      coreIdentity: getString(obj.coreIdentity) ?? getString(obj.role) ?? getString(obj.identity) ?? "",
-      personality: getString(obj.personality) ?? "",
-      interests: [getString(obj.interests), getString(obj.hobbies), getString(obj.likesAndDislikes)].filter((item): item is string => Boolean(item)).join("；"),
-      background: [
+      temperament: [
+        getString(obj.temperament),
+        getString(obj.personality),
+        getString(obj.coreIdentity),
+        getString(obj.role),
+        getString(obj.identity)
+      ].filter((item): item is string => Boolean(item)).join("；"),
+      globalTraits: [
+        getString(obj.globalTraits),
+        getString(obj.interests),
+        getString(obj.hobbies),
+        getString(obj.likesAndDislikes)
+      ].filter((item): item is string => Boolean(item)).join("；"),
+      generalPreferences: [
+        getString(obj.generalPreferences),
         getString(obj.background),
         getString(obj.appearance),
         getString(obj.virtualAppearance),
@@ -295,7 +306,7 @@ function migratePersona(raw: unknown) {
         getString(obj.residence),
         getString(obj.secrets)
       ].filter((item): item is string => Boolean(item)).join("；"),
-      speechStyle: getString(obj.speechStyle) ?? getString(obj.speakingStyle) ?? ""
+      speakingStyle: getString(obj.speakingStyle) ?? getString(obj.speechStyle) ?? ""
     });
 
     const outputFormatRequirements = getString(obj.outputFormatRequirements);

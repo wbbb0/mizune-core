@@ -57,7 +57,7 @@ import { createMemoryHarness } from "../helpers/memory-test-support.tsx";
     const harness = await createMemoryHarness({ logger });
     try {
       const result = await harness.personaStore.patchWithDiagnostics({
-        speechStyle: "所有任务默认先给结论再展开。"
+        speakingStyle: "所有任务默认先给结论再展开。"
       });
       assert.equal(result.warning?.suggestedScope, "global_rules");
       const updateLog = loggerEvents.find((item) => item.event === "persona_updated");
@@ -73,12 +73,12 @@ import { createMemoryHarness } from "../helpers/memory-test-support.tsx";
     const harness = await createMemoryHarness();
     try {
       const result = await harness.personaStore.patchWithDiagnostics({
-        coreIdentity: "嘴硬但靠谱的搭档",
-        speechStyle: "说话直接一点，但别太凶。"
+        globalTraits: "嘴硬但靠谱的搭档",
+        speakingStyle: "说话直接一点，但别太凶。"
       });
       assert.equal(result.warning, null);
-      assert.equal(result.persona.coreIdentity, "嘴硬但靠谱的搭档");
-      assert.equal(result.persona.speechStyle, "说话直接一点，但别太凶。");
+      assert.equal(result.persona.globalTraits, "嘴硬但靠谱的搭档");
+      assert.equal(result.persona.speakingStyle, "说话直接一点，但别太凶。");
     } finally {
       await harness.cleanup();
     }

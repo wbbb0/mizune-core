@@ -73,12 +73,16 @@ export const profileToolDescriptors: ToolDescriptor[] = [
             profilePatch: {
               type: "object",
               properties: {
-                appearance: { type: "string" },
-                premise: { type: "string" },
-                relationship: { type: "string" },
-                identityBoundary: { type: "string" },
-                styleRules: { type: "string" },
-                hardRules: { type: "string" }
+                selfPositioning: { type: "string" },
+                socialRole: { type: "string" },
+                lifeContext: { type: "string" },
+                physicalPresence: { type: "string" },
+                bondToUser: { type: "string" },
+                closenessPattern: { type: "string" },
+                interactionPattern: { type: "string" },
+                realityContract: { type: "string" },
+                continuityFacts: { type: "string" },
+                hardLimits: { type: "string" }
               },
               additionalProperties: false
             }
@@ -180,7 +184,7 @@ export const profileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "patch_persona",
-        description: "按字段 patch persona。只用于 bot 身份、人设、口吻、角色边界等长期 persona 设定。",
+        description: "按字段 patch persona。只用于 bot 的名字、性格底色、说话方式和跨模式全局偏好。",
         parameters: {
           type: "object",
           properties: {
@@ -188,11 +192,10 @@ export const profileToolDescriptors: ToolDescriptor[] = [
               type: "object",
               properties: {
                 name: { type: "string" },
-                coreIdentity: { type: "string" },
-                personality: { type: "string" },
-                interests: { type: "string" },
-                background: { type: "string" },
-                speechStyle: { type: "string" }
+                temperament: { type: "string" },
+                speakingStyle: { type: "string" },
+                globalTraits: { type: "string" },
+                generalPreferences: { type: "string" }
               },
               additionalProperties: false
             }

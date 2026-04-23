@@ -81,9 +81,9 @@
 当前仓库已经把长期资料拆成三层全局 profile，而不是继续把所有信息塞进单层 `persona`：
 
 - `persona`
-  - 只负责 bot 的全局人格、身份、口吻和长期边界
+  - 只负责 bot 的全局人格底色、说话方式和跨模式全局偏好
 - `rpProfile`
-  - 只负责 `rp_assistant` 模式所需的全局资料
+  - 只负责 `rp_assistant` 模式下的真人化设定、关系基线与现实契约
 - `scenarioProfile`
   - 只负责 `scenario_host` 模式所需的全局资料
 

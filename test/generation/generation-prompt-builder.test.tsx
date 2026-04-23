@@ -240,16 +240,10 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       ],
       persona: {
         name: "Bot",
-        identity: "助手",
-        personality: "冷静",
+        temperament: "冷静",
         speakingStyle: "简洁",
-        virtualAppearance: "",
-        hobbies: "",
-        likesAndDislikes: "",
-        familyBackground: "",
-        secrets: "",
-        residence: "",
-        roleplayRequirements: ""
+        globalTraits: "助手",
+        generalPreferences: ""
       } as any,
       relationship: "known",
       participantProfiles: [],
@@ -353,11 +347,10 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       activeToolsets: [],
       persona: {
         name: "Ignored Persona",
-        coreIdentity: "助手",
-        personality: "",
-        interests: "",
-        background: "",
-        speechStyle: ""
+        temperament: "",
+        speakingStyle: "",
+        globalTraits: "助手",
+        generalPreferences: ""
       },
       relationship: "known",
       participantProfiles: [{
@@ -396,7 +389,8 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
     const system = String(result.promptMessages[0]?.content ?? "");
     assert.match(system, /⟦section name="global_persona"⟧/);
-    assert.match(system, /全局 persona：名字=Ignored Persona；基础身份=助手；性格=；说话方式=/);
+    assert.match(system, /全局 persona：名字=Ignored Persona；性格底色=；说话方式=/);
+    assert.match(system, /全局补充设定：全局特征=助手/);
     assert.match(system, /AI assistant 模式工作/);
     assert.doesNotMatch(system, /current_user_memories/);
     assert.doesNotMatch(system, /current_user_profile/);
@@ -476,11 +470,10 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       activeToolsets: [],
       persona: {
         name: "Mizune",
-        coreIdentity: "搭档",
-        personality: "",
-        interests: "",
-        background: "",
-        speechStyle: ""
+        temperament: "",
+        speakingStyle: "",
+        globalTraits: "搭档",
+        generalPreferences: ""
       },
       relationship: "known",
       participantProfiles: [],
@@ -617,11 +610,10 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       replayMessages: [],
       persona: {
         name: "主持者",
-        coreIdentity: "",
-        personality: "",
-        speechStyle: "",
-        interests: "",
-        background: ""
+        temperament: "",
+        speakingStyle: "",
+        globalTraits: "",
+        generalPreferences: ""
       },
       relationship: "owner",
       participantProfiles: [],
@@ -674,7 +666,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.ok(systemContent.includes("draft_workflow"), `Expected draft_workflow section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("scenario_profile_snapshot"), `Expected scenario_profile_snapshot section, got: ${systemContent.slice(0, 400)}`);
     assert.match(systemContent, /以下全局 persona 是当前实例在所有模式下共享的底座/);
-    assert.match(systemContent, /全局 persona：名字=主持者；基础身份=；性格=；说话方式=/);
+    assert.match(systemContent, /全局 persona：名字=主持者；性格底色=；说话方式=/);
     assert.match(systemContent, /当前 Scenario 资料只是建立在这层基础上的模式补充/);
     assert.match(systemContent, /你当前只在Scenario 资料的临时草稿上工作/);
     assert.match(systemContent, /待补全：[\s\S]*- 主题：题材、氛围或想要长期主持的类型/);
@@ -767,11 +759,10 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       }],
       persona: {
         name: "Bot",
-        coreIdentity: "助手",
-        personality: "",
-        interests: "",
-        background: "",
-        speechStyle: ""
+        temperament: "",
+        speakingStyle: "",
+        globalTraits: "助手",
+        generalPreferences: ""
       },
       relationship: "known",
       participantProfiles: [],
@@ -812,7 +803,8 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
     const system = String(result.promptMessages[0]?.content ?? "");
     assert.match(system, /⟦section name="global_persona"⟧/);
-    assert.match(system, /全局 persona：名字=Bot；基础身份=助手；性格=；说话方式=/);
+    assert.match(system, /全局 persona：名字=Bot；性格底色=；说话方式=/);
+    assert.match(system, /全局补充设定：全局特征=助手/);
     assert.match(system, /剧情主持模式下的场景主持者/);
     assert.match(system, /⟦section name="scenario_profile"⟧/);
     assert.match(system, /Scenario 全局资料：主题=钟楼怪谈；主持风格=冷静克制；世界基线=海边小城潜伏超自然异象/);
@@ -899,11 +891,10 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       activeToolsets: [],
       persona: {
         name: "小满",
-        coreIdentity: "图书管理员",
-        personality: "冷静细致",
-        speechStyle: "短句克制",
-        interests: "旧书、黑咖啡",
-        background: "住在老城区公寓"
+        temperament: "冷静细致",
+        speakingStyle: "短句克制",
+        globalTraits: "图书管理员",
+        generalPreferences: "旧书、黑咖啡"
       },
       relationship: "owner",
       participantProfiles: [],
@@ -933,23 +924,26 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       modeProfile: {
         target: "rp",
         profile: {
-          appearance: "黑色风衣，短发",
-          premise: "雨夜同居",
-          relationship: "恋人",
-          identityBoundary: "始终按真人自处",
-          styleRules: "靠近时会压低声音，动作克制",
-          hardRules: "绝不跳出角色"
+          selfPositioning: "冷静克制，不轻易示弱",
+          socialRole: "图书管理员",
+          lifeContext: "雨夜同居",
+          physicalPresence: "黑色风衣，短发",
+          bondToUser: "恋人",
+          closenessPattern: "靠近时会压低声音",
+          interactionPattern: "动作克制",
+          realityContract: "始终按真人自处",
+          continuityFacts: "",
+          hardLimits: "绝不跳出角色"
         }
       }
     });
 
     const system = String(result.promptMessages[0]?.content ?? "");
     assert.match(system, /⟦section name="global_persona"⟧/);
-    assert.match(system, /全局 persona：名字=小满；基础身份=图书管理员；性格=冷静细致；说话方式=短句克制/);
-    assert.match(system, /全局补充设定：兴趣与喜好=旧书、黑咖啡；背景=住在老城区公寓/);
+    assert.match(system, /全局 persona：名字=小满；性格底色=冷静细致；说话方式=短句克制/);
+    assert.match(system, /全局补充设定：全局特征=图书管理员；通用偏好=旧书、黑咖啡/);
     assert.match(system, /⟦section name="rp_profile"⟧/);
-    assert.match(system, /RP 全局资料：前提=雨夜同居；身份边界=始终按真人自处；硬规则=绝不跳出角色/);
-    assert.match(system, /模式补充：关系=恋人；风格规则=靠近时会压低声音，动作克制；外貌=黑色风衣，短发/);
+    assert.match(system, /RP 全局资料：自我定位=冷静克制，不轻易示弱；社会角色=图书管理员；生活状态=雨夜同居；外在存在感=黑色风衣，短发；与用户关系=恋人；亲密模式=靠近时会压低声音；互动模式=动作克制；现实契约=始终按真人自处；硬边界=绝不跳出角色/);
     assert.match(system, /RP assistant 模式/);
     assert.doesNotMatch(system, /scenario_state/);
   });
@@ -1024,11 +1018,10 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       replayMessages: [],
       persona: {
         name: "主持者",
-        coreIdentity: "",
-        personality: "",
-        speechStyle: "",
-        interests: "",
-        background: ""
+        temperament: "",
+        speakingStyle: "",
+        globalTraits: "",
+        generalPreferences: ""
       },
       relationship: "owner",
       participantProfiles: [],
@@ -1163,11 +1156,10 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       replayMessages: [],
       persona: {
         name: "小满",
-        coreIdentity: "图书管理员",
-        personality: "冷静细致",
-        speechStyle: "短句克制",
-        interests: "旧书、黑咖啡",
-        background: "住在老城区公寓"
+        temperament: "冷静细致",
+        speakingStyle: "短句克制",
+        globalTraits: "图书管理员",
+        generalPreferences: "旧书、黑咖啡"
       },
       relationship: "owner",
       participantProfiles: [],
@@ -1200,14 +1192,18 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
         target: "rp",
         phase: "config",
         profile: {
-          appearance: "",
-          premise: "雨夜同居",
-          relationship: "",
-          identityBoundary: "始终按真人自处",
-          styleRules: "",
-          hardRules: "绝不跳出角色"
+          selfPositioning: "冷静克制，不轻易示弱",
+          socialRole: "图书管理员",
+          lifeContext: "雨夜同居",
+          physicalPresence: "",
+          bondToUser: "",
+          closenessPattern: "",
+          interactionPattern: "",
+          realityContract: "始终按真人自处",
+          continuityFacts: "",
+          hardLimits: "绝不跳出角色"
         },
-        missingFields: ["appearance", "relationship", "styleRules"]
+        missingFields: ["physicalPresence", "bondToUser", "closenessPattern", "interactionPattern", "continuityFacts"]
       }
     });
 
@@ -1220,11 +1216,12 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.ok(systemContent.includes("global_persona_base"), `Expected global_persona_base section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("draft_workflow"), `Expected draft_workflow section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("rp_profile_snapshot"), `Expected rp_profile_snapshot section, got: ${systemContent.slice(0, 400)}`);
-    assert.match(systemContent, /全局 persona：名字=小满；基础身份=图书管理员；性格=冷静细致；说话方式=短句克制/);
-    assert.match(systemContent, /全局补充设定：兴趣与喜好=旧书、黑咖啡；背景=住在老城区公寓/);
+    assert.match(systemContent, /全局 persona：名字=小满；性格底色=冷静细致；说话方式=短句克制/);
+    assert.match(systemContent, /全局补充设定：全局特征=图书管理员；通用偏好=旧书、黑咖啡/);
     assert.match(systemContent, /当前 RP 资料只是建立在这层基础上的模式补充/);
     assert.match(systemContent, /不要把已属于 persona 的内容重复搬进 RP 资料/);
-    assert.match(systemContent, /当前草稿已明确：前提、身份边界、硬规则/);
-    assert.match(systemContent, /可在需要时继续补充：外貌、关系、风格规则/);
-    assert.match(systemContent, /已设定：前提=雨夜同居；身份边界=始终按真人自处；硬规则=绝不跳出角色/);
+    assert.match(systemContent, /当前草稿已明确：自我定位、社会角色、生活状态、现实契约、硬边界/);
+    assert.match(systemContent, /核心字段仍缺：外在存在感、与用户关系、亲密模式、互动模式/);
+    assert.match(systemContent, /可在需要时继续补充：连续性事实/);
+    assert.match(systemContent, /已设定：自我定位=冷静克制，不轻易示弱；社会角色=图书管理员；生活状态=雨夜同居；现实契约=始终按真人自处；硬边界=绝不跳出角色/);
   });

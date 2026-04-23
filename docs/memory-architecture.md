@@ -3,16 +3,26 @@
 ## Categories
 
 - `persona`
-  - 只描述 bot 自身的身份、角色边界、说话方式与长期人设约束。
+  - 只描述 bot 在所有模式下都成立的全局人格底座。
   - 当前字段收敛为：
     - `name`
-    - `role`
-    - `appearance`
-    - `personality`
-    - `interests`
-    - `background`
-    - `speechStyle`
-    - `rules`
+    - `temperament`
+    - `speakingStyle`
+    - `globalTraits`
+    - `generalPreferences`
+- `rpProfile`
+  - 只描述 `rp_assistant` 模式下的真人化设定、关系基线与现实契约。
+  - 当前字段收敛为：
+    - `selfPositioning`
+    - `socialRole`
+    - `lifeContext`
+    - `physicalPresence`
+    - `bondToUser`
+    - `closenessPattern`
+    - `interactionPattern`
+    - `realityContract`
+    - `continuityFacts`
+    - `hardLimits`
 - `global_rules`
   - owner 级、跨任务长期生效的默认工作流规则。
 - `toolset_rules`
@@ -59,6 +69,8 @@
   - 存放 `toolset_rules`。
 - `persona.json`
   - 存放结构化 `persona` 字段。
+- `rp-profile.json`
+  - 存放结构化 `rpProfile` 字段。
 
 显式迁移入口：
 
@@ -88,10 +100,11 @@ npm run migrate:memory -- data/data/<instance>
 注入顺序固定为：
 
 1. `persona`
-2. `global_rules`
-3. `toolset_rules`
-4. `current_user_profile`
-5. `current_user_memories`
+2. `rpProfile`（仅 `rp_assistant`）
+3. `global_rules`
+4. `toolset_rules`
+5. `current_user_profile`
+6. `current_user_memories`
 
 规则：
 
@@ -106,7 +119,9 @@ npm run migrate:memory -- data/data/<instance>
 Prompt 段标签语义：
 
 - `persona`
-  - bot 身份、人设和角色边界
+  - bot 的名字、性格底色、说话方式和跨模式全局偏好
+- `rpProfile`
+  - RP 模式下的真人化设定、关系基线和现实契约
 - `global_rules`
   - 默认工作流行为
 - `toolset_rules`

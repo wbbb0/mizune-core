@@ -211,7 +211,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       modeId: "rp_assistant" as const,
       draft: {
         ...createEmptyRpProfile(),
-        premise: "雨夜"
+        selfPositioning: "雨夜里也保持镇定"
       }
     };
 
@@ -251,28 +251,28 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     } as any;
 
     await profileToolHandlers.patch_persona!(
-      { id: "tool_persona_draft_patch_1", type: "function", function: { name: "patch_persona", arguments: "{\"personaPatch\":{\"speechStyle\":\"短句\"}}" } },
-      { personaPatch: { speechStyle: "短句" } },
+      { id: "tool_persona_draft_patch_1", type: "function", function: { name: "patch_persona", arguments: "{\"personaPatch\":{\"speakingStyle\":\"短句\"}}" } },
+      { personaPatch: { speakingStyle: "短句" } },
       personaContext
     );
     await profileToolHandlers.patch_rp_profile!(
-      { id: "tool_rp_draft_patch_1", type: "function", function: { name: "patch_rp_profile", arguments: "{\"profilePatch\":{\"hardRules\":\"绝不跳出角色\"}}" } },
-      { profilePatch: { hardRules: "绝不跳出角色" } },
+      { id: "tool_rp_draft_patch_1", type: "function", function: { name: "patch_rp_profile", arguments: "{\"profilePatch\":{\"hardLimits\":\"绝不跳出角色\"}}" } },
+      { profilePatch: { hardLimits: "绝不跳出角色" } },
       rpContext
     );
 
-    assert.equal(personaOperationMode.draft.speechStyle, "短句");
-    assert.equal(rpOperationMode.draft.hardRules, "绝不跳出角色");
+    assert.equal(personaOperationMode.draft.speakingStyle, "短句");
+    assert.equal(rpOperationMode.draft.hardLimits, "绝不跳出角色");
     assert.equal(JSON.parse(String(await profileToolHandlers.get_persona!(
       { id: "tool_persona_draft_get_1", type: "function", function: { name: "get_persona", arguments: "{}" } },
       {},
       personaContext
-    ))).speechStyle, "短句");
+    ))).speakingStyle, "短句");
     assert.equal(JSON.parse(String(await profileToolHandlers.get_rp_profile!(
       { id: "tool_rp_draft_get_1", type: "function", function: { name: "get_rp_profile", arguments: "{}" } },
       {},
       rpContext
-    ))).hardRules, "绝不跳出角色");
+    ))).hardLimits, "绝不跳出角色");
   });
 
   test("send_setup_draft uses committed text sink for web sessions", async () => {
@@ -437,8 +437,8 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
   test("memory handlers surface structured scope conflict warnings", async () => {
     const personaWarningResult = await profileToolHandlers.patch_persona!(
-      { id: "tool_persona_warn_1", type: "function", function: { name: "patch_persona", arguments: "{\"personaPatch\":{\"speechStyle\":\"所有任务默认先给结论再展开\"}}" } },
-      { personaPatch: { speechStyle: "所有任务默认先给结论再展开" } },
+      { id: "tool_persona_warn_1", type: "function", function: { name: "patch_persona", arguments: "{\"personaPatch\":{\"speakingStyle\":\"所有任务默认先给结论再展开\"}}" } },
+      { personaPatch: { speakingStyle: "所有任务默认先给结论再展开" } },
       {
         relationship: "owner",
         personaStore: {
@@ -449,17 +449,16 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
             return {
               persona: {
                 name: "",
-                coreIdentity: "",
-                personality: "",
-                interests: "",
-                background: "",
-                speechStyle: "所有任务默认先给结论再展开"
+                temperament: "",
+                speakingStyle: "所有任务默认先给结论再展开",
+                globalTraits: "",
+                generalPreferences: ""
               },
               warning: {
                 code: "warning_scope_conflict",
                 currentScope: "persona",
                 suggestedScope: "global_rules",
-                reason: "内容更像跨任务长期工作流规则，不像 bot 身份、人设、口吻或角色边界。"
+                reason: "内容更像跨任务长期工作流规则，不像 bot 的名字、性格底色、说话方式或跨模式全局偏好。"
               }
             };
           }
@@ -495,7 +494,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
                 code: "warning_scope_conflict",
                 currentScope: "global_rules",
                 suggestedScope: "persona",
-                reason: "内容更像 bot 身份、人设、口吻或角色边界，而不是 owner 级通用工作流规则。"
+                reason: "内容更像 bot 的名字、性格底色、说话方式或跨模式全局偏好，而不是 owner 级通用工作流规则。"
               },
               item: { id: "rule_warn_1", updatedAt: 1, createdAt: 1, kind: "workflow", source: "owner_explicit", ...input },
               rules: []

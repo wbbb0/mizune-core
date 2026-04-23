@@ -49,9 +49,9 @@ test("persona setup prompt reads the current draft instead of the saved persona"
   const savedPersona = {
     ...createEmptyPersona(),
     name: "旧名字",
-    coreIdentity: "旧身份",
-    personality: "旧性格",
-    speechStyle: "旧语气"
+    temperament: "旧性格",
+    speakingStyle: "旧语气",
+    globalTraits: "旧身份"
   };
 
   let capturedPersona: unknown = null;
@@ -185,15 +185,22 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
   const savedPersona = {
     ...createEmptyPersona(),
     name: "小满",
-    coreIdentity: "图书管理员",
-    personality: "冷静",
-    speechStyle: "短句"
+    temperament: "冷静",
+    speakingStyle: "短句",
+    globalTraits: "图书管理员"
   };
   const savedRpProfile = {
     ...createEmptyRpProfile(),
-    premise: "雨夜同居",
-    identityBoundary: "始终按真人自处",
-    hardRules: "绝不跳出角色"
+    selfPositioning: "冷静克制，不轻易示弱",
+    socialRole: "图书管理员",
+    lifeContext: "雨夜同居",
+    physicalPresence: "",
+    bondToUser: "",
+    closenessPattern: "",
+    interactionPattern: "",
+    realityContract: "始终按真人自处",
+    continuityFacts: "",
+    hardLimits: "绝不跳出角色"
   };
 
   let capturedModeProfile: unknown = null;
@@ -338,9 +345,9 @@ test("scenario_host normal prompt receives the saved scenario profile", async ()
   const savedPersona = {
     ...createEmptyPersona(),
     name: "主持者",
-    coreIdentity: "旁白",
-    personality: "克制",
-    speechStyle: "冷静"
+    temperament: "克制",
+    speakingStyle: "冷静",
+    globalTraits: "旁白"
   };
   const savedScenarioProfile = {
     ...createEmptyScenarioProfile(),

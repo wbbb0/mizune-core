@@ -6,53 +6,48 @@ function createPersonaFieldSchema(title: string) {
 
 export const personaSchema = s.object({
   name: createPersonaFieldSchema("名字"),
-  coreIdentity: createPersonaFieldSchema("基础身份"),
-  personality: createPersonaFieldSchema("性格"),
-  interests: createPersonaFieldSchema("兴趣与喜好"),
-  background: createPersonaFieldSchema("背景"),
-  speechStyle: createPersonaFieldSchema("说话方式"),
+  temperament: createPersonaFieldSchema("性格底色"),
+  speakingStyle: createPersonaFieldSchema("说话方式"),
+  globalTraits: createPersonaFieldSchema("全局特征"),
+  generalPreferences: createPersonaFieldSchema("通用偏好"),
 }).title("全局人格")
-  .describe("定义 bot 的全局人格、基础身份、性格与说话方式。")
+  .describe("定义 bot 在所有模式下共享的人格底色、说话方式与全局偏好。")
   .strict();
 
 export type Persona = Infer<typeof personaSchema>;
 
 export const editablePersonaFieldNames = [
   "name",
-  "coreIdentity",
-  "personality",
-  "interests",
-  "background",
-  "speechStyle"
+  "temperament",
+  "speakingStyle",
+  "globalTraits",
+  "generalPreferences"
 ] as const;
 
 export type EditablePersonaFieldName = typeof editablePersonaFieldNames[number];
 
 export const personaFieldLabels: Record<EditablePersonaFieldName, string> = {
   name: "名字",
-  coreIdentity: "基础身份",
-  personality: "性格",
-  interests: "兴趣与喜好",
-  background: "背景",
-  speechStyle: "说话方式"
+  temperament: "性格底色",
+  speakingStyle: "说话方式",
+  globalTraits: "全局特征",
+  generalPreferences: "通用偏好"
 };
 
 export function createEmptyPersona(): Persona {
   return {
     name: "",
-    coreIdentity: "",
-    personality: "",
-    interests: "",
-    background: "",
-    speechStyle: ""
+    temperament: "",
+    speakingStyle: "",
+    globalTraits: "",
+    generalPreferences: ""
   };
 }
 
 const requiredPersonaFieldNames = [
   "name",
-  "coreIdentity",
-  "personality",
-  "speechStyle"
+  "temperament",
+  "speakingStyle"
 ] as const satisfies readonly EditablePersonaFieldName[];
 
 export function describeMissingPersonaFields(persona: Persona): EditablePersonaFieldName[] {

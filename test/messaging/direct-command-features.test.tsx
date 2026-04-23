@@ -496,9 +496,9 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           return {
             ...createEmptyPersona(),
             name: "Mina",
-            coreIdentity: "创作者",
-            personality: "冷静",
-            speechStyle: "短句"
+            temperament: "冷静",
+            speakingStyle: "短句",
+            globalTraits: "创作者"
           };
         },
         createEmpty() {
@@ -593,9 +593,9 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
     const savedPersona = {
       ...createEmptyPersona(),
       name: "Mina",
-      coreIdentity: "创作者",
-      personality: "冷静",
-      speechStyle: "短句"
+      temperament: "冷静",
+      speakingStyle: "短句",
+      globalTraits: "创作者"
     };
     const { calls, handler } = createDirectCommandFixture({
       setOperationMode(_sessionId, operationMode) {
@@ -681,9 +681,9 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           draft: {
             ...createEmptyPersona(),
             name: "小满",
-            coreIdentity: "助手",
-            personality: "克制",
-            speechStyle: "简洁"
+            temperament: "克制",
+            speakingStyle: "简洁",
+            globalTraits: "助手"
           }
         }
       },
@@ -817,7 +817,7 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           modeId: "rp_assistant",
           draft: {
             ...createEmptyRpProfile(),
-            premise: "雨夜"
+            selfPositioning: "雨夜里仍保持镇定"
           }
         }
       },

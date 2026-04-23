@@ -157,11 +157,10 @@ export class PersonaStore {
 function detectPersonaPatchConflict(patch: Partial<Persona>): ScopeConflictWarning | null {
   const candidateFields: Array<keyof Persona> = [
     "name",
-    "coreIdentity",
-    "personality",
-    "interests",
-    "background",
-    "speechStyle"
+    "temperament",
+    "speakingStyle",
+    "globalTraits",
+    "generalPreferences"
   ];
   for (const field of candidateFields) {
     const value = patch[field];

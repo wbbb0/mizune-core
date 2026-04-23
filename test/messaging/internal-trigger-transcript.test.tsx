@@ -407,9 +407,9 @@ function createOrchestratorDeps(input: {
           return {
             ...createEmptyPersona(),
             name: "小满",
-            coreIdentity: "图书管理员",
-            personality: "冷静",
-            speechStyle: "短句"
+            temperament: "冷静",
+            speakingStyle: "短句",
+            globalTraits: "图书管理员"
           };
         }
       } as never,
@@ -445,7 +445,7 @@ function createOrchestratorDeps(input: {
     assert.equal(capturedPromptInput.modeId, "assistant");
     assert.deepEqual(capturedPromptInput.participantProfiles, []);
     assert.equal(capturedPromptInput.persona.name, "小满");
-    assert.equal(capturedPromptInput.persona.coreIdentity, "图书管理员");
+    assert.equal(capturedPromptInput.persona.globalTraits, "图书管理员");
     assert.equal(capturedPromptInput.currentUser.userId, "owner");
     assert.ok(capturedRunInput);
     assert.equal(capturedRunInput.availableToolsets.some((item: { id: string }) => item.id === "memory_profile"), false);

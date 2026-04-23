@@ -14,7 +14,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        speechStyle: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
+        speakingStyle: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
       });
       const prompt = buildPrompt({
         sessionId: "qqbot:g:123456",
@@ -53,7 +53,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        speechStyle: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
+        speakingStyle: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
       });
       const prompt = buildPrompt({
         sessionId: "qqbot:p:owner",
@@ -96,7 +96,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        speechStyle: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
+        speakingStyle: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
       });
       await harness.globalRuleStore.overwrite([
         {
@@ -160,7 +160,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        coreIdentity: "嘴硬但靠谱的搭档"
+        globalTraits: "嘴硬但靠谱的搭档"
       });
       await harness.globalRuleStore.overwrite([
         {
@@ -303,10 +303,9 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     try {
       const persona = await harness.personaStore.patch({
         name: "Bot",
-        coreIdentity: "角色助手",
-        personality: "冷静",
-        speechStyle: "简洁",
-        background: "始终带角色口吻"
+        temperament: "冷静",
+        speakingStyle: "简洁",
+        globalTraits: "始终带角色口吻"
       });
       const prompt = buildPrompt({
         sessionId: "qqbot:g:123456",

@@ -11,7 +11,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        coreIdentity: "默认会把角色边界放在前面。"
+        globalTraits: "默认会把角色边界放在前面。"
       });
       await harness.userStore.overwriteMemories("owner", [{ title: "当前用户偏好", content: "不喜欢被叫全名。" }]);
       const otherUser = await harness.userStore.overwriteMemories("20002", [{ title: "其他人记忆", content: "这个不该给当前用户用。" }]);
@@ -38,7 +38,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "你好", timestampMs: Date.now() })]
       });
       const system = String(prompt[0]?.content ?? "");
-      assert.match(system, /基础身份=默认会把角色边界放在前面。/);
+      assert.match(system, /全局特征=默认会把角色边界放在前面。/);
       assert.match(system, /⟦section name="current_user_memories"⟧/);
       assert.match(system, /当前触发用户长期记忆/);
       assert.match(system, /当前用户偏好：不喜欢被叫全名/);
@@ -63,24 +63,22 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       properties: { personaPatch: { properties: Record<string, unknown> } };
     }).properties.personaPatch.properties);
     assert.deepEqual(personaPatchProperties.sort(), [
-      "background",
-      "coreIdentity",
-      "interests",
+      "generalPreferences",
+      "globalTraits",
       "name",
-      "personality",
-      "speechStyle"
+      "speakingStyle",
+      "temperament"
     ]);
 
     const personaFieldEnum = ((clearDescriptor!.definition.function.parameters as {
       properties: { personaField: { enum: string[] } };
     }).properties.personaField.enum) ?? [];
     assert.deepEqual([...personaFieldEnum].sort(), [
-      "background",
-      "coreIdentity",
-      "interests",
+      "generalPreferences",
+      "globalTraits",
       "name",
-      "personality",
-      "speechStyle"
+      "speakingStyle",
+      "temperament"
     ]);
 
     const capturedPatches: Record<string, string>[] = [];
@@ -91,11 +89,10 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
           name: "小满",
           role: "旧角色",
           appearance: "旧外貌",
-          coreIdentity: "全局对话代理",
-          personality: "克制",
-          interests: "阅读",
-          background: "本地运行",
-          speechStyle: "简洁",
+          temperament: "克制",
+          speakingStyle: "简洁",
+          globalTraits: "全局对话代理",
+          generalPreferences: "阅读",
           rules: "旧规则"
         }
       },
@@ -105,30 +102,27 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
           isComplete(persona: Record<string, string>) {
             return Boolean(
               persona.name
-              && persona.coreIdentity
-              && persona.personality
-              && persona.speechStyle
+              && persona.temperament
+              && persona.speakingStyle
             );
           },
           async get() {
             return {
               name: "",
-              coreIdentity: "",
-              personality: "",
-              interests: "",
-              background: "",
-              speechStyle: ""
+              temperament: "",
+              speakingStyle: "",
+              globalTraits: "",
+              generalPreferences: ""
             };
           },
           async patch(patch: Record<string, string>) {
             capturedPatches.push(patch);
             return {
               name: patch.name ?? "",
-              coreIdentity: patch.coreIdentity ?? "",
-              personality: patch.personality ?? "",
-              interests: patch.interests ?? "",
-              background: patch.background ?? "",
-              speechStyle: patch.speechStyle ?? ""
+              temperament: patch.temperament ?? "",
+              speakingStyle: patch.speakingStyle ?? "",
+              globalTraits: patch.globalTraits ?? "",
+              generalPreferences: patch.generalPreferences ?? ""
             };
           }
         } as never,
@@ -171,11 +165,10 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     assert.equal(capturedPatches.length, 1);
     assert.deepEqual(capturedPatches[0], {
       name: "小满",
-      coreIdentity: "全局对话代理",
-      personality: "克制",
-      interests: "阅读",
-      background: "本地运行",
-      speechStyle: "简洁"
+      temperament: "克制",
+      speakingStyle: "简洁",
+      globalTraits: "全局对话代理",
+      generalPreferences: "阅读"
     });
     assert.match(String(result), /"persona":/);
     assert.doesNotMatch(String(result), /role|appearance|rules/);
@@ -189,9 +182,9 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       {
         personaPatch: {
           name: "小满",
-          coreIdentity: "全局对话代理",
-          personality: "克制",
-          speechStyle: "简洁"
+          temperament: "克制",
+          speakingStyle: "简洁",
+          globalTraits: "全局对话代理"
         }
       },
       {
@@ -200,19 +193,17 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
           isComplete(persona: Record<string, string>) {
             return Boolean(
               persona.name
-              && persona.coreIdentity
-              && persona.personality
-              && persona.speechStyle
+              && persona.temperament
+              && persona.speakingStyle
             );
           },
           async patch(patch: Record<string, string>) {
             return {
               name: patch.name ?? "",
-              coreIdentity: patch.coreIdentity ?? "",
-              personality: patch.personality ?? "",
-              interests: patch.interests ?? "",
-              background: patch.background ?? "",
-              speechStyle: patch.speechStyle ?? ""
+              temperament: patch.temperament ?? "",
+              speakingStyle: patch.speakingStyle ?? "",
+              globalTraits: patch.globalTraits ?? "",
+              generalPreferences: patch.generalPreferences ?? ""
             };
           }
         } as never,
@@ -239,7 +230,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     await profileToolHandlers.clear_persona_field!(
       { id: "tool_persona_clear_ready_1", type: "function", function: { name: "clear_persona_field", arguments: "{}" } },
       {
-        personaField: "speechStyle"
+        personaField: "speakingStyle"
       },
       {
         relationship: "owner",
@@ -247,19 +238,17 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
           isComplete(persona: Record<string, string>) {
             return Boolean(
               persona.name
-              && persona.coreIdentity
-              && persona.personality
-              && persona.speechStyle
+              && persona.temperament
+              && persona.speakingStyle
             );
           },
           async patch(patch: Record<string, string>) {
             return {
               name: "小满",
-              coreIdentity: "全局对话代理",
-              personality: "克制",
-              interests: "",
-              background: "",
-              speechStyle: patch.speechStyle ?? "简洁"
+              temperament: "克制",
+              speakingStyle: patch.speakingStyle ?? "简洁",
+              globalTraits: "全局对话代理",
+              generalPreferences: ""
             };
           }
         } as never,
@@ -357,7 +346,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
         sessionId: "qqbot:p:owner",
         persona,
         phase: "setup",
-        missingFields: ["name", "coreIdentity", "personality"],
+        missingFields: ["name", "temperament", "speakingStyle"],
         recentMessages: [],
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "我叫小满，是个图书管理员", timestampMs: Date.now() })]
       });
@@ -381,9 +370,9 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     try {
       const persona = await harness.personaStore.patch({
         name: "小满",
-        coreIdentity: "图书管理员",
-        personality: "冷静细致",
-        speechStyle: "简短直接"
+        temperament: "冷静细致",
+        speakingStyle: "简短直接",
+        globalTraits: "安静可靠"
       });
       const prompt = buildSetupPrompt({
         sessionId: "qqbot:p:owner",
