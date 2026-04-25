@@ -1326,7 +1326,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
             webChunks.push(chunk);
           }
         },
-        lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
+        lastMessage: { sessionId: "web:owner", userId: "owner", senderName: "Owner" },
         chatFileStore: {
           async getFile(id: string) {
             if (id !== "file_bead1234.txt" && id !== "file_file_1") {
@@ -1390,7 +1390,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
         { file_ref: "img_deadbeef.png" },
         {
           replyDelivery: "web",
-          lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
+          lastMessage: { sessionId: "web:owner", userId: "owner", senderName: "Owner" },
           chatFileStore: {
             async getFile(id: string) {
               if (id !== "img_deadbeef.png" && id !== "file_img_1") {

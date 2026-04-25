@@ -408,15 +408,15 @@ async function sendResolvedPathToChat(
   resolvedPath: ReturnType<typeof resolveSendablePath>,
   text: string | null
 ) {
-  const target = parseSessionTarget(context.lastMessage.sessionId);
-  if (!target) {
-    return JSON.stringify({ error: `unsupported session target: ${context.lastMessage.sessionId}` });
-  }
   const kind = inferSendableFileKind(resolvedPath.sourcePath);
   if (kind !== "image" && kind !== "animated_image") {
     const summary = text || (resolvedPath.pathMode === "absolute"
       ? `文件已发送：${resolvedPath.sourcePath}`
       : `本地文件已发送：${resolvedPath.sourcePath}`);
+    const target = context.replyDelivery === "web" ? null : parseSessionTarget(context.lastMessage.sessionId);
+    if (context.replyDelivery !== "web" && !target) {
+      return JSON.stringify({ error: `unsupported session target: ${context.lastMessage.sessionId}` });
+    }
     enqueueToolSend(context, summary, async () => {
       if (context.replyDelivery === "web") {
         await context.committedTextSink?.commitText(summary);
@@ -425,6 +425,9 @@ async function sendResolvedPathToChat(
           text: summary
         });
         return;
+      }
+      if (!target) {
+        throw new Error(`unsupported session target: ${context.lastMessage.sessionId}`);
       }
       const payload = await context.oneBotClient.sendText({ ...target, text: summary });
       const messageId = recordDeliveredMessage(context, summary, payload.data?.message_id);
@@ -475,8 +478,8 @@ async function sendChatFileToChat(
 ) {
   if (file.kind !== "image" && file.kind !== "animated_image") {
     const summary = text || `chat file 已发送：${file.fileRef}；file_id=${file.fileId}`;
-    const target = parseSessionTarget(context.lastMessage.sessionId);
-    if (!target) {
+    const target = context.replyDelivery === "web" ? null : parseSessionTarget(context.lastMessage.sessionId);
+    if (context.replyDelivery !== "web" && !target) {
       return JSON.stringify({ error: `unsupported session target: ${context.lastMessage.sessionId}` });
     }
     enqueueToolSend(context, summary, async () => {
@@ -487,6 +490,9 @@ async function sendChatFileToChat(
           text: summary
         });
         return;
+      }
+      if (!target) {
+        throw new Error(`unsupported session target: ${context.lastMessage.sessionId}`);
       }
       const payload = await context.oneBotClient.sendText({ ...target, text: summary });
       const messageId = recordDeliveredMessage(context, summary, payload.data?.message_id);
@@ -542,8 +548,8 @@ async function sendImageBytesToChat(
     outputExtras: Record<string, string>;
   }
 ) {
-  const target = parseSessionTarget(context.lastMessage.sessionId);
-  if (!target) {
+  const target = context.replyDelivery === "web" ? null : parseSessionTarget(context.lastMessage.sessionId);
+  if (context.replyDelivery !== "web" && !target) {
     return JSON.stringify({ error: `unsupported session target: ${context.lastMessage.sessionId}` });
   }
   const bytes = await readFile(input.absolutePath);
@@ -569,6 +575,9 @@ async function sendImageBytesToChat(
       return;
     }
 
+    if (!target) {
+      throw new Error(`unsupported session target: ${context.lastMessage.sessionId}`);
+    }
     const payload = await context.oneBotClient.sendMessage({ ...target, message: segments });
     const messageId = recordDeliveredMessage(context, input.previewText, payload.data?.message_id);
     context.sessionManager.appendInternalTranscript(context.lastMessage.sessionId, {
