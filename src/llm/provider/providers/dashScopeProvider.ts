@@ -1,5 +1,6 @@
 import { fetchWithProxy } from "#services/proxy/index.ts";
 import { getNativeSearchEnableKey } from "../nativeSearch.ts";
+import { dumpProviderRequest, dumpProviderResponse } from "../providerDebugDump.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
 import { setPropertyByPath } from "../requestShaping.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
@@ -79,7 +80,16 @@ export class DashScopeProvider implements LlmProvider {
     const endpoint = buildDashScopeEndpoint(context);
     const resolvedTimeoutMs = params.timeoutMsOverride ?? context.config.llm.timeoutMs;
     const resolvedEnableThinking = params.enableThinkingOverride ?? false;
-    const requestBody = buildDashScopeRequestBody(context, params, resolvedEnableThinking);
+    const requestMessages = buildDashScopeRequestMessages(context, params.messages);
+    const requestBody = buildDashScopeRequestBody(context, params, resolvedEnableThinking, requestMessages);
+    if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
+      await dumpProviderRequest(context, {
+        endpoint,
+        requestBody,
+        messages: requestMessages
+      });
+    }
+
     const timeoutController = createProviderTimeoutController({
       totalTimeoutMs: resolvedTimeoutMs,
       firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs
@@ -103,9 +113,25 @@ export class DashScopeProvider implements LlmProvider {
 
       if (!response.ok) {
         const errorText = await response.text();
+        await dumpDashScopeFailedResponse(context, {
+          endpoint,
+          requestBody,
+          requestMessages,
+          resolvedEnableThinking,
+          status: response.status,
+          statusText: response.statusText,
+          errorBody: errorText
+        });
         throw new Error(`LLM API error: ${response.status} ${response.statusText}${errorText ? ` ${errorText}` : ""}`);
       }
       if (!response.body) {
+        await dumpDashScopeFailedResponse(context, {
+          endpoint,
+          requestBody,
+          requestMessages,
+          resolvedEnableThinking,
+          error: "LLM stream body is missing"
+        });
         throw new Error("LLM stream body is missing");
       }
 
@@ -117,6 +143,7 @@ export class DashScopeProvider implements LlmProvider {
         model: context.model
       });
       const toolCalls = new Map<number, LlmToolCall>();
+      const responseChunks: unknown[] = [];
 
       while (true) {
         const { value, done } = await reader.read();
@@ -133,6 +160,7 @@ export class DashScopeProvider implements LlmProvider {
 
           for (const data of dataLines) {
             const payload = JSON.parse(data) as DashScopeStreamChunk;
+            responseChunks.push(payload);
             if (payload.usage) {
               const cachedTokens = numberOrNull(payload.usage.prompt_tokens_details?.cached_tokens) ?? 0;
               const reasoningTokens = numberOrNull(payload.usage.output_tokens_details?.reasoning_tokens) ?? 0;
@@ -168,6 +196,19 @@ export class DashScopeProvider implements LlmProvider {
             mergeIndexedToolCallDeltas(toolCalls, message.tool_calls ?? []);
           }
         }
+      }
+
+      if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
+        await dumpProviderResponse(context, {
+          model: context.model,
+          enableThinking: resolvedEnableThinking,
+          sawReasoningContent: accumulator.sawReasoningContent,
+          chunks: responseChunks,
+          finalText: accumulator.text,
+          reasoningContent: accumulator.reasoningContent,
+          toolCalls: Array.from(toolCalls.values()),
+          usage: accumulator.usage
+        });
       }
 
       if (!accumulator.text.trim() && toolCalls.size === 0) {
@@ -218,12 +259,9 @@ function buildDashScopeEndpoint(context: LlmProviderRequestContext): string {
 function buildDashScopeRequestBody(
   context: LlmProviderRequestContext,
   params: LlmProviderGenerateParams,
-  enableThinking: boolean
+  enableThinking: boolean,
+  requestMessages: DashScopeRequestMessage[]
 ): Record<string, unknown> {
-  const requestMessages = params.messages.map((message) => convertMessageForDashScope(
-    message,
-    context.modelProfile.supportsVision || context.modelProfile.supportsAudioInput
-  ));
   const parameters: Record<string, unknown> = {
     incremental_output: true,
     result_format: "message"
@@ -250,6 +288,48 @@ function buildDashScopeRequestBody(
     },
     parameters
   };
+}
+
+function buildDashScopeRequestMessages(
+  context: LlmProviderRequestContext,
+  messages: LlmMessage[]
+): DashScopeRequestMessage[] {
+  return messages.map((message) => convertMessageForDashScope(
+    message,
+    context.modelProfile.supportsVision || context.modelProfile.supportsAudioInput
+  ));
+}
+
+async function dumpDashScopeFailedResponse(
+  context: LlmProviderRequestContext,
+  payload: {
+    endpoint: string;
+    requestBody: unknown;
+    requestMessages: DashScopeRequestMessage[];
+    resolvedEnableThinking: boolean;
+    status?: number;
+    statusText?: string;
+    errorBody?: string;
+    error?: string;
+  }
+): Promise<void> {
+  await dumpProviderRequest(context, {
+    endpoint: payload.endpoint,
+    requestBody: payload.requestBody,
+    force: true,
+    messages: payload.requestMessages
+  });
+  await dumpProviderResponse(context, {
+    model: context.model,
+    enableThinking: payload.resolvedEnableThinking,
+    endpoint: payload.endpoint,
+    ...(payload.status != null ? { status: payload.status } : {}),
+    ...(payload.statusText ? { statusText: payload.statusText } : {}),
+    ...(payload.errorBody ? { errorBody: payload.errorBody } : {}),
+    ...(payload.error ? { error: payload.error } : {})
+  }, {
+    force: true
+  });
 }
 
 function convertMessageForDashScope(message: LlmMessage, supportsMultimodal: boolean): DashScopeRequestMessage {

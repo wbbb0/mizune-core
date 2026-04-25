@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import pino from "pino";
 import { LlmClient } from "../../src/llm/llmClient.ts";
 import { setFetchImplementationForTests } from "../../src/services/proxy/index.ts";
-import { createLlmTestConfig, createToolDefinition } from "../helpers/llm-test-support.tsx";
+import { createLlmTestConfig, createSseResponse, createToolDefinition } from "../helpers/llm-test-support.tsx";
 
   test("api errors force request and error response dumps", async () => {
     const dumpDir = await mkdtemp(join(tmpdir(), "llm-bot-dump-"));
@@ -48,6 +48,62 @@ import { createLlmTestConfig, createToolDefinition } from "../helpers/llm-test-s
       assert.equal(responseDump.statusText, "Bad Request");
       assert.equal(responseDump.endpoint, "https://example.com/v1/chat/completions");
       assert.match(responseDump.errorBody, /bad tool schema/);
+    } finally {
+      setFetchImplementationForTests(null);
+      await rm(dumpDir, { recursive: true, force: true });
+    }
+  });
+
+  test("dashscope empty responses write request and response dumps before throwing", async () => {
+    const dumpDir = await mkdtemp(join(tmpdir(), "llm-bot-dashscope-dump-"));
+    const config = createLlmTestConfig();
+    config.dataDir = join(dumpDir, "acc-test");
+    config.llm.debugDump = {
+      enabled: true
+    };
+    config.llm.providers.test!.type = "dashscope";
+    delete config.llm.providers.test!.baseUrl;
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    setFetchImplementationForTests(async () => createSseResponse([
+      {
+        output: {
+          choices: [{
+            message: {
+              role: "assistant",
+              content: ""
+            }
+          }]
+        },
+        usage: {
+          input_tokens: 7,
+          output_tokens: 0,
+          total_tokens: 7
+        }
+      }
+    ]));
+
+    try {
+      await assert.rejects(
+        client.generate({
+          messages: [{ role: "user", content: "ping" }]
+        }),
+        /LLM returned empty content/
+      );
+
+      const requestDump = JSON.parse(await readFile(join(config.dataDir, "dump", "last-request.json"), "utf8"));
+      const responseDump = JSON.parse(await readFile(join(config.dataDir, "dump", "last-response.json"), "utf8"));
+
+      assert.equal(requestDump.endpoint, "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation");
+      assert.equal(requestDump.requestBody.model, "fake-model");
+      assert.equal(requestDump.requestBody.parameters.incremental_output, true);
+      assert.equal(requestDump.messages[0].role, "user");
+
+      assert.equal(responseDump.model, "fake-model");
+      assert.equal(responseDump.enableThinking, false);
+      assert.equal(responseDump.finalText, "");
+      assert.equal(responseDump.chunks[0].usage.input_tokens, 7);
+      assert.deepEqual(responseDump.toolCalls, []);
     } finally {
       setFetchImplementationForTests(null);
       await rm(dumpDir, { recursive: true, force: true });
