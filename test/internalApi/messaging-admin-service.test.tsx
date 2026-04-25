@@ -46,7 +46,8 @@ function nextTick(): Promise<void> {
       lastActiveAt: 99,
       internalTranscript: transcript,
       recentToolEvents: [] as Array<{ toolName: string }>,
-      activeAssistantResponse: null
+      activeAssistantResponse: null,
+      activeAssistantDraftResponse: null
     };
 
     const service = createAdminMessagingService({
@@ -108,7 +109,8 @@ function nextTick(): Promise<void> {
       lastActiveAt: 100,
       internalTranscript: [] as InternalTranscriptItem[],
       recentToolEvents: [] as Array<{ toolName: string }>,
-      activeAssistantResponse: null
+      activeAssistantResponse: null,
+      activeAssistantDraftResponse: null
     };
 
     const sessionManager = {
@@ -223,7 +225,8 @@ function nextTick(): Promise<void> {
         timestampMs: 30
       }] as TranscriptAssistantMessageItem[],
       recentToolEvents: [] as Array<{ toolName: string }>,
-      activeAssistantResponse: null
+      activeAssistantResponse: null,
+      activeAssistantDraftResponse: null
     };
 
     const sessionManager = {

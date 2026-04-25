@@ -259,6 +259,7 @@ export function clearSessionState(session: SessionState): void {
   session.generationAbortController = null;
   session.responseAbortController = null;
   session.activeAssistantResponse = null;
+  session.activeAssistantDraftResponse = null;
 }
 
 export function setSessionOperationModeState(session: SessionState, operationMode: SessionOperationMode): void {
@@ -326,6 +327,56 @@ export function finalizeActiveAssistantResponseState(
 ): ActiveAssistantResponse | null {
   const active = session.activeAssistantResponse;
   session.activeAssistantResponse = null;
+  if (active == null || !active.text.trim()) {
+    return null;
+  }
+  return active;
+}
+
+export function setActiveAssistantDraftResponseState(
+  session: SessionState,
+  target: {
+    chatType: "private" | "group";
+    userId: string;
+    senderName: string;
+  },
+  text: string,
+  timestampMs: number
+): ActiveAssistantResponse | null {
+  const normalizedText = String(text ?? "");
+  if (!normalizedText.trim()) {
+    session.activeAssistantDraftResponse = null;
+    return null;
+  }
+
+  const existing = session.activeAssistantDraftResponse;
+  if (
+    existing == null
+    || existing.chatType !== target.chatType
+    || existing.userId !== target.userId
+    || existing.senderName !== target.senderName
+  ) {
+    session.activeAssistantDraftResponse = {
+      chatType: target.chatType,
+      userId: target.userId,
+      senderName: target.senderName,
+      text: normalizedText,
+      startedAt: timestampMs,
+      lastUpdatedAt: timestampMs
+    };
+    return session.activeAssistantDraftResponse;
+  }
+
+  existing.text = normalizedText;
+  existing.lastUpdatedAt = timestampMs;
+  return existing;
+}
+
+export function finalizeActiveAssistantDraftResponseState(
+  session: SessionState
+): ActiveAssistantResponse | null {
+  const active = session.activeAssistantDraftResponse;
+  session.activeAssistantDraftResponse = null;
   if (active == null || !active.text.trim()) {
     return null;
   }

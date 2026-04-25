@@ -5,7 +5,7 @@ import { processIncomingMessage } from "../../src/app/messaging/messageEventHand
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
-  test("active natural messages steer into the current generation instead of interrupting it", async () => {
+  test("active natural messages interrupt the current generation and queue the next turn", async () => {
     const config = createTestAppConfig({
       whitelist: {
         enabled: false
@@ -14,6 +14,18 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     const sessionManager = new SessionManager(config);
     const session = sessionManager.ensureSession({ id: "qqbot:p:10001", type: "private" });
     const started = sessionManager.beginSyntheticGeneration(session.id);
+    assert.equal(sessionManager.setActiveAssistantDraftResponseIfResponseEpochMatches(
+      session.id,
+      started.responseEpoch,
+      {
+        chatType: "private",
+        userId: "10001",
+        senderName: "tester"
+      },
+      "这是打断前已经流式展示的半截回答",
+      20
+    ), true);
+    const oldMutationEpoch = sessionManager.getMutationEpoch(session.id);
     const persistedReasons: string[] = [];
     let debounceScheduled = 0;
     let flushCalled = 0;
@@ -98,18 +110,39 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     });
 
     const current = sessionManager.getSession(session.id);
-    // Generation continues (not aborted), but outbound queue is interrupted.
-    assert.equal(started.abortController.signal.aborted, false);
+    // Natural user input interrupts the active answer instead of steering the old turn.
+    assert.equal(started.abortController.signal.aborted, true);
     assert.equal(started.responseAbortController.signal.aborted, true);
-    assert.equal(sessionManager.isResponseOpen(session.id, started.responseEpoch), true);
-    // Message is added to both steer (for current tool loop) and pending (for next generation).
+    assert.equal(sessionManager.isResponseOpen(session.id, started.responseEpoch), false);
+    assert.equal(sessionManager.hasActiveResponse(session.id), false);
+    assert.ok(sessionManager.getMutationEpoch(session.id) > oldMutationEpoch);
+    assert.equal(sessionManager.appendInternalTranscriptIfEpochMatches(session.id, oldMutationEpoch, {
+      kind: "status_message",
+      llmVisible: false,
+      role: "assistant",
+      statusType: "system",
+      content: "stale",
+      timestampMs: 1
+    }), false);
+    // Message is queued exactly once for the next generation.
     assert.equal(current.pendingMessages.length, 1);
-    assert.equal(current.pendingSteerMessages.length, 1);
+    assert.equal(current.pendingSteerMessages.length, 0);
     const llmVisibleHistory = sessionManager.getLlmVisibleHistory(session.id);
-    assert.equal(llmVisibleHistory.length, 1);
-    assert.equal(llmVisibleHistory[0]?.role, "user");
-    assert.ok(persistedReasons.includes("user_message_steered_and_outbound_interrupted"));
-    assert.equal(debounceScheduled, 0);
+    assert.deepEqual(llmVisibleHistory.map((item) => ({
+      role: item.role,
+      content: item.content
+    })), [
+      {
+        role: "assistant",
+        content: "这是打断前已经流式展示的半截回答"
+      },
+      {
+        role: "user",
+        content: "这是插入消息"
+      }
+    ]);
+    assert.ok(persistedReasons.includes("user_message_interrupted_active_response"));
+    assert.equal(debounceScheduled, 1);
     assert.equal(flushCalled, 0);
     assert.equal(sessionManager.getReplyDelivery(session.id), "web");
   });

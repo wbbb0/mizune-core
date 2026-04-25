@@ -269,6 +269,7 @@ export interface SessionState {
   generationAbortController: AbortController | null;
   responseAbortController: AbortController | null;
   activeAssistantResponse: ActiveAssistantResponse | null;
+  activeAssistantDraftResponse: ActiveAssistantResponse | null;
 }
 
 export interface PersistedSessionState {

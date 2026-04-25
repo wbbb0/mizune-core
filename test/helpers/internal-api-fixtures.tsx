@@ -380,7 +380,8 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           mutationEpoch: 0,
           lastActiveAt: 123456,
           internalTranscript: existing?.internalTranscript ?? [],
-          activeAssistantResponse: null
+          activeAssistantResponse: null,
+          activeAssistantDraftResponse: null
         };
       },
       subscribeSession(sessionId: string, listener: () => void) {

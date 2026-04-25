@@ -5,6 +5,7 @@ export interface ReadySegment {
 
 export interface SplitResult {
   ready: ReadySegment[];
+  readyConsumedEnds: number[];
   rest: string;
 }
 
@@ -29,6 +30,7 @@ interface ConsumedBlock {
 
 export function splitReadySegments(buffer: string): SplitResult {
   const ready: ReadySegment[] = [];
+  const readyConsumedEnds: number[] = [];
   let cursor = 0;
 
   while (cursor < buffer.length) {
@@ -47,6 +49,7 @@ export function splitReadySegments(buffer: string): SplitResult {
         joinWithDoubleNewline: true
       });
       cursor = markdownBlock.next;
+      readyConsumedEnds.push(cursor);
       continue;
     }
 
@@ -56,10 +59,12 @@ export function splitReadySegments(buffer: string): SplitResult {
     }
     ready.push(plainSegment.segment);
     cursor = plainSegment.next;
+    readyConsumedEnds.push(cursor);
   }
 
   return {
     ready,
+    readyConsumedEnds,
     rest: buffer.slice(cursor)
   };
 }

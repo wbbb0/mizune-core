@@ -10,3 +10,8 @@ export interface GenerationDraftOverlaySink {
   complete: () => Promise<void> | void;
   fail: (message: string) => Promise<void> | void;
 }
+
+export interface GenerationDraftStateSink {
+  replaceDraftText: (text: string) => Promise<void> | void;
+  clearDraftText: () => Promise<void> | void;
+}

@@ -82,7 +82,8 @@ export class MessageQueue {
     send: () => Promise<void>;
     abortSignal?: AbortSignal;
     abortSignals?: AbortSignal[];
-  }): Promise<void> {
+  }): Promise<boolean> {
+    let sent = false;
     await this.enqueue(params.sessionId, async () => {
       const effectiveAbortSignal = combineAbortSignals([
         params.abortSignal,
@@ -121,8 +122,10 @@ export class MessageQueue {
         return;
       }
       await params.send();
+      sent = true;
       this.lastSentAt.set(params.sessionId, Date.now());
     });
+    return sent;
   }
 
   enqueueTextDetached(params: {

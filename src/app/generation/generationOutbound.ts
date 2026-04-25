@@ -53,12 +53,12 @@ export function createGenerationOutbound(
     options?: {
       joinWithDoubleNewline?: boolean | undefined;
     }
-  ) => {
+  ): Promise<boolean> => {
     const cleaned = sanitizeOutboundText(chunk, {
       stripLeadingMessageHeaders: !hasSentAssistantChunk
     }).trim();
     if (!cleaned) {
-      return;
+      return false;
     }
     hasSentAssistantChunk = true;
     const appendBufferedChunk = async () => {
@@ -124,7 +124,7 @@ export function createGenerationOutbound(
       }
     };
 
-    await messageQueue.enqueueText({
+    return await messageQueue.enqueueText({
       sessionId: input.sessionId,
       text: cleaned,
       pacing,

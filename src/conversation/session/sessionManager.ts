@@ -8,9 +8,11 @@ import {
   appendSteerMessageState,
   clearSessionState,
   consumeSteerMessagesState,
+  finalizeActiveAssistantDraftResponseState,
   finalizeActiveAssistantResponseState,
   promoteSteerMessagesToPendingState,
   requeuePendingMessagesState,
+  setActiveAssistantDraftResponseState,
   setSessionOperationModeState,
   setInterruptibleGroupTriggerUserState
 } from "./sessionMutations.ts";
@@ -286,6 +288,42 @@ export class SessionManager {
     return interrupted;
   }
 
+  // Interrupts the active response and invalidates response-scoped background writes.
+  interruptResponse(sessionId: string): {
+    cancelledGeneration: boolean;
+    cancelledOutbound: boolean;
+    finalizedAssistant: boolean;
+    finalizedDraftAssistant: boolean;
+  } {
+    const session = this.requireSession(sessionId);
+    const finalizedDraftAssistant = finalizeActiveAssistantDraftResponseState(session);
+    if (finalizedDraftAssistant != null) {
+      this.historyService.appendAssistantHistory(
+        session,
+        {
+          chatType: finalizedDraftAssistant.chatType,
+          userId: finalizedDraftAssistant.userId,
+          senderName: finalizedDraftAssistant.senderName,
+          text: finalizedDraftAssistant.text
+        },
+        finalizedDraftAssistant.lastUpdatedAt
+      );
+    }
+    const interrupted = this.lifecycleController.interruptResponse(session);
+    if (
+      interrupted.cancelledGeneration
+      || interrupted.cancelledOutbound
+      || interrupted.finalizedAssistant
+      || finalizedDraftAssistant != null
+    ) {
+      this.notifySessionChanged(sessionId);
+    }
+    return {
+      ...interrupted,
+      finalizedDraftAssistant: finalizedDraftAssistant != null
+    };
+  }
+
   setSessionPhaseIfEpochMatches(
     sessionId: string,
     expectedEpoch: number,
@@ -508,6 +546,22 @@ export class SessionManager {
   ): ActiveAssistantResponse | null {
     return this.withResponseEpochResult(sessionId, expectedResponseEpoch, false, null, (session) => {
       return finalizeActiveAssistantResponseState(session, timestampMs);
+    });
+  }
+
+  setActiveAssistantDraftResponseIfResponseEpochMatches(
+    sessionId: string,
+    expectedResponseEpoch: number,
+    target: {
+      chatType: "private" | "group";
+      userId: string;
+      senderName: string;
+    },
+    text: string,
+    timestampMs = Date.now()
+  ): boolean {
+    return this.withResponseEpoch(sessionId, expectedResponseEpoch, true, (session) => {
+      setActiveAssistantDraftResponseState(session, target, text, timestampMs);
     });
   }
 

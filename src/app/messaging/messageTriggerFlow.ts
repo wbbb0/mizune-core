@@ -131,7 +131,10 @@ export function enqueueTriggeredMessage(
   context: MessageProcessingContext,
   persistSession: MessageEventHandlerDeps["persistSession"],
   flushSession: MessageEventHandlerDeps["flushSession"],
-  logger: Logger
+  logger: Logger,
+  options?: {
+    activeResponseAlreadyInterrupted?: boolean;
+  }
 ): void {
   if (shouldUpdateSessionReplyDelivery(inboundDelivery, context.enrichedMessage)) {
     services.sessionManager.setReplyDelivery(context.session.id, inboundDelivery);
@@ -148,17 +151,20 @@ export function enqueueTriggeredMessage(
     context.enrichedMessage.chatType === "private" ? "incoming_private_message" : "incoming_group_trigger"
   );
 
-  if (services.sessionManager.hasActiveResponse(context.session.id)) {
-    services.sessionManager.appendSteerMessage(context.session.id, context.enrichedMessage);
-    // Abort queued outbound messages that haven't been sent yet.
-    // Already-sent messages are unaffected; generation and tool execution continue.
-    const interrupted = services.sessionManager.interruptOutbound(context.session.id);
-    // Also add to pending so the message triggers a new generation cycle
-    // after the current one finishes (even if steer was consumed by the model,
-    // the response text was discarded due to the outbound abort).
+  if (options?.activeResponseAlreadyInterrupted || services.sessionManager.hasActiveResponse(context.session.id)) {
+    // Natural user input is treated as an interruption: stop the active turn and
+    // queue the new message exactly once for the next debounced response.
+    const interrupted = options?.activeResponseAlreadyInterrupted
+      ? null
+      : services.sessionManager.interruptResponse(context.session.id);
     services.sessionManager.appendPendingMessage(context.session.id, context.enrichedMessage);
-    persistSession(context.session.id, "user_message_steered_and_outbound_interrupted");
-    logger.info({ sessionId: context.session.id, interrupted }, "user_message_steered_and_outbound_interrupted");
+    persistSession(context.session.id, "user_message_interrupted_active_response");
+    services.debounceManager.schedule(context.session.id, () => {
+      flushSession(context.session.id);
+    });
+    if (!options?.activeResponseAlreadyInterrupted) {
+      logger.info({ sessionId: context.session.id, interrupted }, "user_message_interrupted_active_response");
+    }
     return;
   }
 

@@ -104,6 +104,13 @@ export async function processIncomingMessage(
     return;
   }
 
+  let activeResponseAlreadyInterrupted = false;
+  if (triggerDecision.shouldTriggerResponse && sessionManager.hasActiveResponse(context.session.id)) {
+    const interrupted = sessionManager.interruptResponse(context.session.id);
+    activeResponseAlreadyInterrupted = true;
+    logger.info({ sessionId: context.session.id, interrupted }, "user_message_interrupted_active_response");
+  }
+
   appendIncomingHistory(sessionManager, logger, context);
   if (handleNonTriggeringMessage(sessionManager, logger, persistSession, context, triggerDecision)) {
     return;
@@ -115,7 +122,8 @@ export async function processIncomingMessage(
     context,
     persistSession,
     flushSession,
-    logger
+    logger,
+    { activeResponseAlreadyInterrupted }
   );
   logReceivedMessage(logger, context, triggerDecision);
 }

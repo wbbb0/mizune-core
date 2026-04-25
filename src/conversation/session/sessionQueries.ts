@@ -34,6 +34,9 @@ export function cloneSessionState(session: SessionState): SessionState {
     activeAssistantResponse: session.activeAssistantResponse == null
       ? null
       : { ...session.activeAssistantResponse },
+    activeAssistantDraftResponse: session.activeAssistantDraftResponse == null
+      ? null
+      : { ...session.activeAssistantDraftResponse },
     phase: session.phase.kind === "tool_calling"
       ? { ...session.phase, toolNames: [...session.phase.toolNames] }
       : { ...session.phase }

@@ -6,7 +6,10 @@ import {
   finishGenerationState,
   interruptResponseState
 } from "./sessionLifecycle.ts";
-import { finalizeActiveAssistantResponseState } from "./sessionMutations.ts";
+import {
+  finalizeActiveAssistantDraftResponseState,
+  finalizeActiveAssistantResponseState
+} from "./sessionMutations.ts";
 import type { SessionState } from "./sessionTypes.ts";
 
 // Owns session generation/response lifecycle transitions. Keeping these rules in one controller
@@ -42,6 +45,7 @@ export class SessionLifecycleController {
     finalizedAssistant: boolean;
   } {
     const finalizedAssistant = finalizeActiveAssistantResponseState(session, Date.now());
+    finalizeActiveAssistantDraftResponseState(session);
     const interrupted = interruptResponseState(session);
     return {
       ...interrupted,

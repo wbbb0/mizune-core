@@ -61,6 +61,7 @@ export function cancelGenerationState(session: SessionState): boolean {
 
 // Interrupts both generation and outbound response state in one step.
 export function interruptResponseState(session: SessionState): { cancelledGeneration: boolean; cancelledOutbound: boolean } {
+  session.mutationEpoch += 1;
   const cancelledGeneration = cancelGenerationState(session);
   let cancelledOutbound = false;
   if (session.responseAbortController != null && !session.responseAbortController.signal.aborted) {

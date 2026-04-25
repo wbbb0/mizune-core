@@ -258,7 +258,37 @@ export function createGenerationExecutor(
       const segmentCoordinator = createGenerationSegmentCoordinator({
         disableStreamingSplit,
         committedSink: outbound,
-        ...(draftOverlaySink ? { draftOverlaySink } : {})
+        ...(draftOverlaySink ? {
+          draftOverlaySink,
+          draftStateSink: {
+            replaceDraftText(text: string) {
+              sessionManager.setActiveAssistantDraftResponseIfResponseEpochMatches(
+                sessionId,
+                responseEpoch,
+                {
+                  chatType: sendTarget.chatType,
+                  userId: sendTarget.userId,
+                  senderName: sendTarget.senderName
+                },
+                text,
+                Date.now()
+              );
+            },
+            clearDraftText() {
+              sessionManager.setActiveAssistantDraftResponseIfResponseEpochMatches(
+                sessionId,
+                responseEpoch,
+                {
+                  chatType: sendTarget.chatType,
+                  userId: sendTarget.userId,
+                  senderName: sendTarget.senderName
+                },
+                "",
+                Date.now()
+              );
+            }
+          }
+        } : {})
       });
       const isPlannerToolsetMode = !setupMode && Array.isArray(availableToolsets) && availableToolsets.length > 0;
       const activeToolsetIds = new Set((plannedToolsetIds ?? []).filter((id) => (
@@ -591,6 +621,8 @@ export function createGenerationExecutor(
       }
 
       if (!sessionManager.isResponseOpen(sessionId, responseEpoch)) {
+        await typingWindow.stopIfStarted();
+        await draftOverlaySink?.complete();
         if (finishedCurrent) {
           persistSession(sessionId, "generation_finished");
         }

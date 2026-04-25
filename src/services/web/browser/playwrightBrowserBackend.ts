@@ -338,8 +338,9 @@ export class PlaywrightBrowserBackend implements BrowserBackend {
         const tag = node.tagName.toLowerCase();
         const ariaLabel = node.getAttribute("aria-label");
         const role = node.getAttribute("role");
-        const innerText = typeof (node as { innerText?: unknown }).innerText === "string"
-          ? (node as { innerText: string }).innerText
+        const textNode = node as unknown as { innerText?: unknown };
+        const innerText = typeof textNode.innerText === "string"
+          ? textNode.innerText
           : "";
         const text = (innerText || node.textContent || "").trim();
         const type = tag === "input" ? (node.getAttribute("type") || "text") : null;
@@ -377,8 +378,9 @@ export class PlaywrightBrowserBackend implements BrowserBackend {
           : rawClassName && typeof rawClassName === "object" && "baseVal" in rawClassName
               ? String(rawClassName.baseVal ?? "")
               : "";
-        const value = typeof (node as { value?: unknown }).value === "string"
-          ? (node as { value: string }).value
+        const valueNode = node as unknown as { value?: unknown };
+        const value = typeof valueNode.value === "string"
+          ? valueNode.value
           : "";
         const inMainContent = Boolean(node.closest("main, article, [role=\"main\"], .content, .main, #content"));
         const inNavLike = Boolean(node.closest("nav, header, footer, aside, .sidebar, .menu, .pagination, .breadcrumb"));

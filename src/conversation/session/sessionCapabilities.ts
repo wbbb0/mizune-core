@@ -359,6 +359,12 @@ export interface SessionMessagingAccess {
   hasActiveResponse(sessionId: string): boolean;
   appendSteerMessage(sessionId: string, message: ParsedIncomingMessage): SessionState;
   interruptOutbound(sessionId: string): boolean;
+  interruptResponse(sessionId: string): {
+    cancelledGeneration: boolean;
+    cancelledOutbound: boolean;
+    finalizedAssistant: boolean;
+    finalizedDraftAssistant: boolean;
+  };
   appendPendingMessage(sessionId: string, message: ParsedIncomingMessage): SessionState;
   clearPendingTranscriptGroup(sessionId: string): void;
 }
@@ -457,6 +463,17 @@ export interface SessionGenerationExecutionAccess extends SessionSetupAccess {
     expectedResponseEpoch: number,
     timestampMs?: number
   ): SessionState["activeAssistantResponse"];
+  setActiveAssistantDraftResponseIfResponseEpochMatches(
+    sessionId: string,
+    expectedResponseEpoch: number,
+    target: {
+      chatType: "private" | "group";
+      userId: string;
+      senderName: string;
+    },
+    text: string,
+    timestampMs?: number
+  ): boolean;
   hasPendingSteerMessages(sessionId: string): boolean;
   promoteSteerMessagesToPending(sessionId: string): number;
   completeResponse(sessionId: string, expectedResponseEpoch: number): boolean;

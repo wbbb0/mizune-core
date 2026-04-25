@@ -487,8 +487,11 @@ export function createGenerationSessionOrchestrator(
       });
       const recentToolEvents = refreshedSession.recentToolEvents;
       const debugMarkers = refreshedSession.debugMarkers;
+      const replayTranscriptItems = refreshedSession.activeTranscriptGroupId == null
+        ? transcriptStore.runtimeItems()
+        : transcriptStore.runtimeItems().filter((item) => item.groupId !== refreshedSession.activeTranscriptGroupId);
       const projectedTranscript = getProviderTranscriptProjector(providerName).project({
-        transcript: transcriptStore.runtimeItems(),
+        transcript: replayTranscriptItems,
         preserveThinking: getPrimaryModelProfile(config, resolvedModelRef)?.preserveThinking === true
       });
       const historyForPromptMessages = projectedTranscript.replayCoversVisibleHistory ? [] : historyForPrompt;

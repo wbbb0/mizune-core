@@ -70,10 +70,12 @@ function createExecutorHarness(options?: {
   titleSource?: "default" | "auto" | "manual" | null;
   historyCompressed?: boolean;
   forceRegenerateTitleAfterTurn?: boolean;
+  captureDraftOverlay?: boolean;
   onGenerateTitle?: () => Promise<string | null> | string | null;
   customGenerate?: (input: {
     onReasoningDelta?: (delta: string) => void;
     onTextDelta?: (delta: string) => Promise<void>;
+    abortSignal?: AbortSignal;
     onAssistantToolCalls?: (message: {
       role: "assistant";
       content: string;
@@ -136,6 +138,7 @@ function createExecutorHarness(options?: {
           return true;
         },
       async generate(input: {
+        abortSignal?: AbortSignal;
         onReasoningDelta?: (delta: string) => void;
         onTextDelta?: (delta: string) => Promise<void>;
       }) {
@@ -304,7 +307,25 @@ function createExecutorHarness(options?: {
             async commitText(text: string) {
               events.push(`send:${text}`);
             }
-          }
+          },
+          ...(options?.captureDraftOverlay
+            ? {
+                draftOverlaySink: {
+                  appendDelta(delta: string) {
+                    events.push(`draft:${delta}`);
+                  },
+                  markCommitted() {
+                    events.push("draft:committed");
+                  },
+                  complete() {
+                    events.push("draft:complete");
+                  },
+                  fail(message: string) {
+                    events.push(`draft:fail:${message}`);
+                  }
+                }
+              }
+            : {})
         }
       : {})
   });
@@ -342,6 +363,65 @@ function createExecutorHarness(options?: {
     await harness.runPromise;
 
     assert.deepEqual(harness.events, ["typing:start", "send:你好"]);
+  });
+
+  test("typing stops when the active response is interrupted", async () => {
+    const harness = createExecutorHarness({
+      customGenerate: async (input) => {
+        input.onReasoningDelta?.("先想一下");
+        await waitForCondition(
+          () => input.abortSignal?.aborted === true,
+          "Timed out waiting for interrupt abort"
+        );
+        throw new Error("aborted");
+      }
+    });
+
+    await waitForEvents(harness.events, 1);
+    harness.sessionManager.interruptResponse(harness.sessionId);
+
+    await harness.runPromise;
+    assert.deepEqual(harness.events, ["typing:start", "typing:stop"]);
+  });
+
+  test("web draft overlay completes when the active response is interrupted", async () => {
+    const harness = createExecutorHarness({
+      sessionSource: "web",
+      captureDraftOverlay: true,
+      configOverrides: {
+        conversation: {
+          outbound: {
+            disableStreamingSplit: true
+          }
+        }
+      },
+      customGenerate: async (input) => {
+        await input.onTextDelta?.("这段已经流式展示但还没有提交。");
+        await waitForCondition(
+          () => input.abortSignal?.aborted === true,
+          "Timed out waiting for interrupt abort"
+        );
+        throw new Error("aborted");
+      }
+    });
+
+    await waitForEvents(harness.events, 1);
+    harness.sessionManager.interruptResponse(harness.sessionId);
+
+    await harness.runPromise;
+    assert.deepEqual(harness.events, [
+      "draft:这段已经流式展示但还没有提交。",
+      "draft:complete"
+    ]);
+    assert.deepEqual(harness.sessionManager.getLlmVisibleHistory(harness.sessionId).map((item) => ({
+      role: item.role,
+      content: item.content
+    })), [
+      {
+        role: "assistant",
+        content: "这段已经流式展示但还没有提交。"
+      }
+    ]);
   });
 
   test("typing also stops after fallback delivery on generation failure", async () => {
