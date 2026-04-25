@@ -116,6 +116,62 @@ function appendSimpleHistory(
     assert.match(userPrompt, /summary_context/);
   });
 
+  test("successful compression clears stale last LLM usage", async () => {
+    const sessionManager = new SessionManager(createConfig());
+    sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "hello", 1);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "assistant", "hi", 2);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "more", 3);
+    const epoch = sessionManager.getMutationEpoch("qqbot:p:test");
+    assert.equal(sessionManager.setLastLlmUsageIfEpochMatches("qqbot:p:test", epoch, {
+      inputTokens: 10000,
+      outputTokens: 1,
+      totalTokens: 10001,
+      reasoningTokens: null,
+      cachedTokens: null,
+      requestCount: 1,
+      providerReported: true,
+      modelRef: "main",
+      model: "fake",
+      capturedAt: 4
+    }), true);
+
+    const compressor = new HistoryCompressor(
+      createConfig(),
+      {
+        isConfigured() {
+          return true;
+        },
+        async generate() {
+          return {
+            text: "compressed summary",
+            usage: {
+              inputTokens: 1,
+              outputTokens: 1,
+              totalTokens: 2,
+              reasoningTokens: null,
+              cachedTokens: null,
+              requestCount: 1,
+              providerReported: true,
+              modelRef: "summarizer",
+              model: "fake"
+            }
+          };
+        }
+      } as any,
+      sessionManager,
+      {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      pino({ level: "silent" })
+    );
+
+    assert.equal(await compressor.forceCompact("qqbot:p:test", 1), true);
+    assert.equal(sessionManager.getSession("qqbot:p:test").lastLlmUsage, null);
+  });
+
   test("forceCompact accepts explicit zero retained history items", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });

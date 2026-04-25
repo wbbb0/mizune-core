@@ -7,7 +7,7 @@ import sharp from "sharp";
 import type { AppConfig } from "#config/config.ts";
 import { fetchWithProxy, type ProxyConsumer } from "#services/proxy/index.ts";
 import type { LocalFileService } from "./localFileService.ts";
-import type { ChatFileKind, ChatFileOrigin, ChatFileRecord } from "./types.ts";
+import type { ChatFileCaptionStatus, ChatFileKind, ChatFileOrigin, ChatFileRecord } from "./types.ts";
 
 const FILE_INDEX_FILE = "files.json";
 
@@ -15,7 +15,7 @@ export class ChatFileStore {
   private readonly storeRootDir: string;
   private readonly fileIndexPath: string;
   private readonly mediaDir: string;
-  private readonly writeChain = new Map<string, Promise<void>>();
+  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly config: AppConfig,
@@ -90,7 +90,10 @@ export class ChatFileStore {
       sizeBytes: input.buffer.byteLength,
       createdAtMs: Date.now(),
       sourceContext: input.sourceContext ?? {},
-      caption: null
+      caption: null,
+      captionStatus: "missing",
+      captionModelRef: null,
+      captionError: null
     };
     await this.upsertFile(record);
     return record;
@@ -174,11 +177,59 @@ export class ChatFileStore {
     });
   }
 
-  async updateCaption(fileId: string, caption: string | null): Promise<void> {
-    const file = await this.getRequiredFile(fileId);
-    await this.upsertFile({
-      ...file,
-      caption: caption ? String(caption) : null
+  async markCaptionsQueued(fileIds: string[]): Promise<void> {
+    const wanted = new Set(fileIds.map((item) => String(item ?? "").trim()).filter(Boolean));
+    if (wanted.size === 0) {
+      return;
+    }
+    await this.withWriteLock(async () => {
+      const files = await this.readFiles();
+      let changed = false;
+      const next = files.map((file) => {
+        if (!wanted.has(file.fileId) || file.caption) {
+          return file;
+        }
+        changed = true;
+        return {
+          ...file,
+          captionStatus: "queued" as const,
+          captionError: null
+        };
+      });
+      if (changed) {
+        await this.writeFiles(next);
+      }
+    });
+  }
+
+  async updateCaption(
+    fileId: string,
+    caption: string | null,
+    metadata?: {
+      status?: ChatFileCaptionStatus | undefined;
+      modelRef?: string | null | undefined;
+      error?: string | null | undefined;
+      updatedAtMs?: number | undefined;
+    }
+  ): Promise<void> {
+    const normalizedCaption = caption ? String(caption) : null;
+    const status = metadata?.status ?? (normalizedCaption ? "ready" : "missing");
+    await this.withWriteLock(async () => {
+      const files = await this.readFiles();
+      const file = files.find((item) => item.fileId === fileId);
+      if (!file) {
+        throw new Error(`unknown chat file: ${fileId}`);
+      }
+      await this.writeFiles(files.map((item) => item.fileId !== fileId
+        ? item
+        : {
+            ...item,
+            caption: normalizedCaption,
+            captionStatus: status,
+            captionUpdatedAtMs: metadata?.updatedAtMs ?? Date.now(),
+            captionModelRef: metadata?.modelRef === undefined ? file.captionModelRef ?? null : metadata.modelRef,
+            captionError: metadata?.error === undefined ? null : metadata.error
+          }));
     });
   }
 
@@ -194,7 +245,7 @@ export class ChatFileStore {
     }
     const absolutePath = await this.resolveAbsolutePath(fileId);
     await rm(absolutePath, { force: true });
-    await this.withWriteLock(fileId, async () => {
+    await this.withWriteLock(async () => {
       const files = await this.readFiles();
       await this.writeFiles(files.filter((item) => item.fileId !== fileId));
     });
@@ -210,7 +261,7 @@ export class ChatFileStore {
   }
 
   private async upsertFile(record: ChatFileRecord): Promise<void> {
-    await this.withWriteLock(record.fileId, async () => {
+    await this.withWriteLock(async () => {
       const files = await this.readFiles();
       const next = files.filter((item) => item.fileId !== record.fileId);
       next.push(record);
@@ -248,21 +299,17 @@ export class ChatFileStore {
     await writeFile(this.fileIndexPath, `${JSON.stringify(records, null, 2)}\n`, "utf8");
   }
 
-  private async withWriteLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
-    const previous = this.writeChain.get(key) ?? Promise.resolve();
+  private async withWriteLock<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.writeChain;
     let release: (() => void) | undefined;
-    const current = new Promise<void>((resolve) => {
+    this.writeChain = new Promise<void>((resolve) => {
       release = resolve;
     });
-    this.writeChain.set(key, previous.then(() => current));
     try {
-      await previous;
+      await previous.catch(() => undefined);
       return await operation();
     } finally {
       release?.();
-      if (this.writeChain.get(key) === current) {
-        this.writeChain.delete(key);
-      }
     }
   }
 }

@@ -3,6 +3,7 @@ import type { AppConfig } from "#config/config.ts";
 import type { LlmClient, LlmMessage } from "#llm/llmClient.ts";
 import { normalizeModelRefs } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
+import { KeyedDerivationRunner } from "#llm/derivations/keyedDerivationRunner.ts";
 import { prepareAudioInputsForModel } from "#messages/audioSources.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { AudioStore } from "./audioStore.ts";
@@ -37,10 +38,7 @@ function normalizeTranscription(raw: string): string {
 }
 
 export class AudioTranscriber {
-  private readonly queued = new Set<string>();
-  private readonly running = new Map<string, Promise<void>>();
-  private readonly waiters = new Map<string, Set<() => void>>();
-  private readonly pending: string[] = [];
+  private readonly runner: KeyedDerivationRunner;
 
   constructor(
     private readonly config: AppConfig,
@@ -48,7 +46,14 @@ export class AudioTranscriber {
     private readonly audioStore: AudioStore,
     private readonly oneBotClient: Pick<OneBotClient, "getRecord">,
     private readonly logger: Logger
-  ) {}
+  ) {
+    this.runner = new KeyedDerivationRunner({
+      name: "audio_transcription",
+      maxConcurrency: () => this.config.llm.audioTranscription.maxConcurrency,
+      run: (audioId) => this.runTranscription(audioId),
+      logger: this.logger
+    });
+  }
 
   isEnabled(): boolean {
     const accepted = getModelRefsForRole(this.config, "audio_transcription");
@@ -101,32 +106,8 @@ export class AudioTranscriber {
     }
 
     await this.audioStore.markTranscriptionsQueued(pendingIds);
-    for (const audioId of pendingIds) {
-      if (this.queued.has(audioId) || this.running.has(audioId)) {
-        continue;
-      }
-      this.queued.add(audioId);
-      this.pending.push(audioId);
-    }
     this.logger.debug({ audioCount: pendingIds.length, reason }, "audio_transcriber_enqueued");
-    this.pump();
-  }
-
-  private pump(): void {
-    const maxConcurrency = this.config.llm.audioTranscription.maxConcurrency;
-    while (this.running.size < maxConcurrency) {
-      const nextAudioId = this.pending.shift();
-      if (!nextAudioId) {
-        return;
-      }
-      this.queued.delete(nextAudioId);
-      const task = this.runTranscription(nextAudioId).finally(() => {
-        this.running.delete(nextAudioId);
-        this.notifyWaiters(nextAudioId);
-        this.pump();
-      });
-      this.running.set(nextAudioId, task);
-    }
+    this.runner.enqueue(pendingIds, { reason });
   }
 
   private async runTranscription(audioId: string): Promise<void> {
@@ -213,45 +194,7 @@ export class AudioTranscriber {
     if (!existing || existing.transcriptionStatus === "ready" || existing.transcriptionStatus === "failed") {
       return;
     }
-    if (abortSignal?.aborted) {
-      throw abortSignal.reason instanceof Error ? abortSignal.reason : new Error("Audio transcription wait aborted");
-    }
-    await new Promise<void>((resolve, reject) => {
-      const onAbort = () => {
-        this.removeWaiter(audioId, waiter);
-        reject(abortSignal?.reason instanceof Error ? abortSignal.reason : new Error("Audio transcription wait aborted"));
-      };
-      const waiter = () => {
-        abortSignal?.removeEventListener("abort", onAbort);
-        resolve();
-      };
-      const listeners = this.waiters.get(audioId) ?? new Set<() => void>();
-      listeners.add(waiter);
-      this.waiters.set(audioId, listeners);
-      abortSignal?.addEventListener("abort", onAbort, { once: true });
-    });
-  }
-
-  private notifyWaiters(audioId: string): void {
-    const listeners = this.waiters.get(audioId);
-    if (!listeners) {
-      return;
-    }
-    this.waiters.delete(audioId);
-    for (const listener of listeners) {
-      listener();
-    }
-  }
-
-  private removeWaiter(audioId: string, waiter: () => void): void {
-    const listeners = this.waiters.get(audioId);
-    if (!listeners) {
-      return;
-    }
-    listeners.delete(waiter);
-    if (listeners.size === 0) {
-      this.waiters.delete(audioId);
-    }
+    await this.runner.waitForCompletion(audioId, abortSignal);
   }
 }
 

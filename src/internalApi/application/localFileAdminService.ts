@@ -3,6 +3,7 @@ import type { LocalFileItemStat, LocalFileListResult, LocalFileReadResult, Local
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import { contentTypeFromPath, resolveSendablePath } from "#services/workspace/sendablePath.ts";
+import { chatFileCaptionToDerivedObservation, type DerivedObservation } from "#llm/derivations/derivedObservation.ts";
 
 export interface AdminWorkspaceFileRecord {
   fileId: string;
@@ -16,6 +17,11 @@ export interface AdminWorkspaceFileRecord {
   createdAtMs: number;
   sourceContext: Record<string, string | number | boolean | null>;
   caption: string | null;
+  captionStatus: ChatFileRecord["captionStatus"];
+  captionUpdatedAtMs: number | null;
+  captionModelRef: string | null;
+  captionError: string | null;
+  captionObservation: DerivedObservation;
 }
 
 export interface LocalFileAdminService {
@@ -101,6 +107,11 @@ function mapWorkspaceFileToAdminFile(file: ChatFileRecord): AdminWorkspaceFileRe
     sizeBytes: file.sizeBytes,
     createdAtMs: file.createdAtMs,
     sourceContext: file.sourceContext,
-    caption: file.caption
+    caption: file.caption,
+    captionStatus: file.captionStatus ?? (file.caption ? "ready" : "missing"),
+    captionUpdatedAtMs: file.captionUpdatedAtMs ?? null,
+    captionModelRef: file.captionModelRef ?? null,
+    captionError: file.captionError ?? null,
+    captionObservation: chatFileCaptionToDerivedObservation(file)
   };
 }

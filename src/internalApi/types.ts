@@ -20,6 +20,7 @@ import type { BrowserService } from "#services/web/browser/browserService.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { ChatMessageFileGcService } from "#services/workspace/chatMessageFileGcService.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
+import type { AudioStore } from "#audio/audioStore.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import type {
@@ -41,6 +42,7 @@ import {
   createLocalFileAdminService,
   type LocalFileAdminService
 } from "./application/localFileAdminService.ts";
+import type { DerivedObservation } from "#llm/derivations/derivedObservation.ts";
 
 // Domain-shaped dependency slices keep route/application code from depending on
 // the full internal API service graph when a smaller contract is enough.
@@ -81,6 +83,7 @@ export interface InternalApiSessionDetail {
       oncePending: boolean;
     };
     historySummary: string | null;
+    derivedObservations: DerivedObservation[];
     internalTranscript: unknown[];
     debugMarkers: unknown[];
     recentToolEvents: unknown[];
@@ -98,6 +101,8 @@ export interface InternalApiSessionReadDeps {
   sessionManager: SessionAdminReadAccess;
   scenarioHostStateStore: ScenarioHostStateStore;
   sessionCaptioner: SessionCaptioner;
+  chatFileStore: Pick<ChatFileStore, "getMany">;
+  audioStore: Pick<AudioStore, "getMany">;
 }
 
 export interface InternalApiSessionWriteDeps extends InternalApiSessionReadDeps {
@@ -188,6 +193,7 @@ export interface InternalApiDeps {
   browserService: BrowserService;
   localFileService: LocalFileService;
   chatFileStore: ChatFileStore;
+  audioStore: AudioStore;
   chatMessageFileGcService: ChatMessageFileGcService;
 }
 
@@ -227,6 +233,8 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       globalRuleStore: deps.globalRuleStore,
       scenarioHostStateStore: deps.scenarioHostStateStore,
       sessionCaptioner: deps.sessionCaptioner,
+      chatFileStore: deps.chatFileStore,
+      audioStore: deps.audioStore,
       userStore: deps.userStore,
       chatMessageFileGcService: deps.chatMessageFileGcService
     },

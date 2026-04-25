@@ -3,6 +3,11 @@ import { resolveSendablePath } from "#services/workspace/sendablePath.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
 import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
+import {
+  audioTranscriptionsFromDerivedObservations,
+  DerivedObservationReader,
+  imageCaptionMapFromDerivedObservations
+} from "#llm/derivations/derivedObservationReader.ts";
 
 const MAX_MEDIA_VIEW_PER_CALL = 5;
 
@@ -100,17 +105,27 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
           error: `Unsupported legacy media ids: ${unsupportedIds.join(", ")}`
         });
       }
-      const transcriptionMap = await context.audioStore.getTranscriptionMap(audioIds);
-      const audioAssets = await context.audioStore.getMany(audioIds);
-      const workspaceFiles = await context.chatFileStore.getMany(fileIds);
-      const assetCaptionMap = await context.mediaCaptionService.getCaptionMap(fileIds);
+      const [audioAssets, workspaceFiles, derivedObservations] = await Promise.all([
+        context.audioStore.getMany(audioIds),
+        context.chatFileStore.getMany(fileIds),
+        new DerivedObservationReader({
+          audioStore: context.audioStore,
+          chatFileStore: context.chatFileStore
+        }).read({ audioIds, chatFileIds: fileIds })
+      ]);
+      const assetCaptionMap = imageCaptionMapFromDerivedObservations(derivedObservations);
+      const transcriptionMap = new Map(
+        audioTranscriptionsFromDerivedObservations(derivedObservations, audioIds)
+          .filter((item) => item.status === "ready" && typeof item.text === "string")
+          .map((item) => [item.audioId, item.text as string])
+      );
       const attachedWorkspaceImages = await Promise.all(
         workspaceFiles
           .filter((item) => item.kind === "image" || item.kind === "animated_image")
           .map(async (item) => {
             try {
               const prepared = await context.mediaVisionService.prepareFileForModel(item.fileId);
-              const assetCaption = (await context.mediaCaptionService.getCaptionMap([item.fileId])).get(item.fileId) ?? item.caption;
+              const assetCaption = assetCaptionMap.get(item.fileId) ?? item.caption;
               return {
                 mediaId: item.fileId,
                 caption: assetCaption,

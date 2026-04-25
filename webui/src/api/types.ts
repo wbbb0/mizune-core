@@ -112,6 +112,28 @@ export interface SessionSentMessage {
   sentAt: number;
 }
 
+export type DerivedObservationSourceKind = "tool_result" | "chat_file" | "audio" | "session" | "history";
+export type DerivedObservationPurpose =
+  | "tool_replay_compaction"
+  | "image_caption"
+  | "audio_transcription"
+  | "session_title"
+  | "history_summary";
+export type DerivedObservationStatus = "missing" | "queued" | "ready" | "failed";
+
+export interface DerivedObservation {
+  sourceKind: DerivedObservationSourceKind;
+  sourceId: string;
+  purpose: DerivedObservationPurpose;
+  status: DerivedObservationStatus;
+  text: string | null;
+  modelRef?: string | null;
+  promptVersion?: string;
+  sourceHash?: string;
+  updatedAt?: number;
+  error?: string | null;
+}
+
 export interface SessionDetailSnapshot {
   id: string;
   type: "private" | "group";
@@ -123,6 +145,7 @@ export interface SessionDetailSnapshot {
   titleGenerationAvailable: boolean;
   debugControl: SessionDebugControlState;
   historySummary: string | null;
+  derivedObservations: DerivedObservation[];
   internalTranscript: TranscriptItem[];
   debugMarkers: SessionDebugMarker[];
   recentToolEvents: SessionToolEvent[];

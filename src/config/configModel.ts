@@ -154,7 +154,7 @@ const conversationConfigSchema = s.object({
   }).title("发送").describe("控制回复分段与需要拟人化节奏的投递目标延迟。").default(emptyObject),
   historyCompression: s.object({
     enabled: s.boolean().title("启用").default(true),
-    triggerTokens: s.number().int().positive().title("触发 Token").default(15000),
+    triggerTokens: s.number().int().positive().title("触发 Token").default(150000),
     retainTokens: s.number().int().positive().title("保留 Token").default(4000),
     retainMessageCount: s.number().int().min(0).title("保留消息数").default(8),
     tokenEstimation: s.object({

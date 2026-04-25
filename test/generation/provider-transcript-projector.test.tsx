@@ -103,6 +103,52 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     assert.equal(projection.replayMessages[3]?.role, "tool");
   });
 
+  test("openai-style projector keeps pinned old tool results raw", () => {
+    const pinnedTranscript: InternalTranscriptItem[] = [];
+    for (let index = 1; index <= 7; index += 1) {
+      pinnedTranscript.push({
+        kind: "assistant_tool_call",
+        llmVisible: true,
+        timestampMs: index * 2 - 1,
+        content: "",
+        toolCalls: [{
+          id: `call_pinned_${index}`,
+          type: "function",
+          function: {
+            name: "shell_run",
+            arguments: `{"cmd":"run ${index}"}`
+          }
+        }]
+      } as any);
+      pinnedTranscript.push({
+        kind: "tool_result",
+        llmVisible: true,
+        timestampMs: index * 2,
+        toolCallId: `call_pinned_${index}`,
+        toolName: "shell_run",
+        content: JSON.stringify({ stdout: `RAW-${index}`, exitCode: index === 1 ? 1 : 0 }),
+        observation: {
+          contentHash: `hash-pinned-${index}`,
+          inputTokensEstimate: 100,
+          summary: `summary ${index}`,
+          retention: "summary",
+          replayContent: JSON.stringify({ compacted: true, summary: `COMPACT-${index}` }),
+          replaySafe: true,
+          refetchable: true,
+          pinned: index === 1
+        }
+      } as any);
+    }
+
+    const projection = getProviderTranscriptProjector("openai").project({ transcript: pinnedTranscript });
+    const toolMessages = projection.replayMessages.filter((message) => message.role === "tool");
+
+    assert.equal(toolMessages[0]?.content, JSON.stringify({ stdout: "RAW-1", exitCode: 1 }));
+    assert.equal(toolMessages[1]?.content, JSON.stringify({ compacted: true, summary: "COMPACT-2" }));
+    assert.equal(toolMessages[2]?.content, JSON.stringify({ stdout: "RAW-3", exitCode: 0 }));
+    assert.equal(toolMessages[6]?.content, JSON.stringify({ stdout: "RAW-7", exitCode: 0 }));
+  });
+
   test("gemini projector silently skips tool calls without google replay metadata", () => {
     const projection = getProviderTranscriptProjector("google").project({ transcript });
     assert.equal(projection.replayMessages.length, 0);

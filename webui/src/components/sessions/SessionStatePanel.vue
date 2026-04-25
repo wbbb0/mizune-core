@@ -50,6 +50,15 @@ function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+function formatObservationLabel(purpose: string): string {
+  if (purpose === "tool_replay_compaction") return "工具结果压缩";
+  if (purpose === "image_caption") return "图片描述";
+  if (purpose === "audio_transcription") return "音频听写";
+  if (purpose === "session_title") return "会话标题";
+  if (purpose === "history_summary") return "历史摘要";
+  return purpose;
+}
+
 async function loadDetail() {
   loading.value = true;
   errorMessage.value = "";
@@ -123,6 +132,27 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
           <div class="text-ui font-medium text-text-secondary">历史摘要</div>
           <div v-if="loading && !detail" class="mt-3 text-small text-text-subtle">加载中…</div>
           <pre v-else class="mt-3 overflow-auto rounded-lg border border-border-default bg-surface-sidebar p-3 text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ detail?.session.historySummary || "暂无摘要" }}</pre>
+        </section>
+
+        <section class="rounded-lg border border-border-default bg-surface-panel p-4">
+          <div class="text-ui font-medium text-text-secondary">派生观察</div>
+          <div v-if="(detail?.session.derivedObservations.length ?? 0) === 0" class="mt-3 rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">
+            暂无派生观察
+          </div>
+          <div v-else class="mt-3 grid gap-3 lg:grid-cols-2">
+            <div v-for="(item, index) in detail?.session.derivedObservations ?? []" :key="`${item.sourceKind}-${item.sourceId}-${item.purpose}-${index}`" class="rounded-lg border border-border-default bg-surface-sidebar px-3 py-2">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="font-mono text-small text-text-secondary">{{ item.sourceKind }}:{{ item.sourceId }}</span>
+                <span class="text-small" :class="item.status === 'failed' ? 'text-danger' : item.status === 'ready' ? 'text-success' : 'text-text-subtle'">{{ item.status }}</span>
+              </div>
+              <div class="mt-1 text-small text-text-subtle">{{ formatObservationLabel(item.purpose) }}</div>
+              <div v-if="item.modelRef" class="mt-1 text-small text-text-muted">modelRef: {{ item.modelRef }}</div>
+              <div v-if="item.updatedAt" class="mt-1 text-small text-text-muted">updatedAt: {{ formatTimestamp(item.updatedAt) }}</div>
+              <div v-if="item.sourceHash" class="mt-1 font-mono text-small text-text-muted">hash: {{ item.sourceHash }}</div>
+              <div v-if="item.error" class="mt-1 whitespace-pre-wrap wrap-break-word text-small text-danger">{{ item.error }}</div>
+              <div v-if="item.text" class="mt-2 line-clamp-4 whitespace-pre-wrap wrap-break-word text-small text-text-muted">{{ item.text }}</div>
+            </div>
+          </div>
         </section>
 
         <section class="rounded-lg border border-border-default bg-surface-panel p-4">

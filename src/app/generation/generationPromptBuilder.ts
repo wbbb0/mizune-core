@@ -9,6 +9,11 @@ import { prepareAudioInputsForModel } from "#messages/audioSources.ts";
 import { buildPrompt, buildScheduledTaskPrompt, buildSetupPrompt } from "#llm/prompt/promptBuilder.ts";
 import type { PromptInteractionMode, PromptLiveResource } from "#llm/prompt/promptTypes.ts";
 import type { PromptAudioTranscription } from "#llm/prompt/promptTypes.ts";
+import {
+  audioTranscriptionsFromDerivedObservations,
+  DerivedObservationReader,
+  imageCaptionMapFromDerivedObservations
+} from "#llm/derivations/derivedObservationReader.ts";
 import type {
   InternalTranscriptItem,
   SessionDebugMarker,
@@ -246,18 +251,34 @@ async function preparePromptMediaContext(
       ?? []
   ))));
   const historyImageIds = collectReferencedImageIds(input.historyForPrompt);
-  const captionMap = await deps.mediaCaptionService.ensureReady(
-    Array.from(new Set([...historyImageIds, ...batchImageIds])),
+  const imageIds = Array.from(new Set([...historyImageIds, ...batchImageIds]));
+  const fallbackCaptionMap = await deps.mediaCaptionService.ensureReady(
+    imageIds,
     {
       reason: input.reason,
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     }
   );
+  const captionMap = await readImageCaptionMapFromDerivedObservations(deps, imageIds, fallbackCaptionMap);
 
   return {
     historyForPrompt: annotateHistoryMessagesWithCaptions(input.historyForPrompt, captionMap, { includeIds: true }),
     captionMap
   };
+}
+
+async function readImageCaptionMapFromDerivedObservations(
+  deps: GenerationPromptBuilderDeps,
+  imageIds: string[],
+  fallbackCaptionMap: Map<string, string>
+): Promise<Map<string, string>> {
+  if (imageIds.length === 0 || typeof deps.chatFileStore.getMany !== "function") {
+    return fallbackCaptionMap;
+  }
+  const observations = await new DerivedObservationReader({
+    chatFileStore: deps.chatFileStore
+  }).read({ chatFileIds: imageIds });
+  return imageCaptionMapFromDerivedObservations(observations);
 }
 
 async function preparePromptBatchMessages(
@@ -302,13 +323,7 @@ async function preparePromptBatchMessages(
         : {}),
       ...((options.shouldTranscribeAudio && audioIds.length > 0)
         ? {
-            audioTranscriptions: Array.from((await deps.audioTranscriber.ensureReady(
-              audioIds,
-              {
-                reason: "chat_prompt_audio_transcription",
-                ...(options.abortSignal ? { abortSignal: options.abortSignal } : {})
-              }
-            )).values()) as PromptAudioTranscription[]
+            audioTranscriptions: await preparePromptAudioTranscriptions(deps, audioIds, options)
           }
         : {}),
       emojiSources: message.emojiSources,
@@ -327,6 +342,30 @@ async function preparePromptBatchMessages(
       timestampMs: message.receivedAt
     };
   }));
+}
+
+async function preparePromptAudioTranscriptions(
+  deps: GenerationPromptBuilderDeps,
+  audioIds: string[],
+  options: {
+    abortSignal?: AbortSignal | undefined;
+  }
+): Promise<PromptAudioTranscription[]> {
+  const fallbackResults = Array.from((await deps.audioTranscriber.ensureReady(
+    audioIds,
+    {
+      reason: "chat_prompt_audio_transcription",
+      ...(options.abortSignal ? { abortSignal: options.abortSignal } : {})
+    }
+  )).values()) as PromptAudioTranscription[];
+
+  if (typeof deps.audioStore.getMany !== "function") {
+    return fallbackResults;
+  }
+  const observations = await new DerivedObservationReader({
+    audioStore: deps.audioStore
+  }).read({ audioIds });
+  return audioTranscriptionsFromDerivedObservations(observations, audioIds);
 }
 
 async function collectPromptLiveResources(deps: GenerationPromptBuilderDeps): Promise<PromptLiveResource[]> {

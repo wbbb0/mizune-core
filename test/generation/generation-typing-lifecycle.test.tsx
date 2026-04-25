@@ -74,6 +74,23 @@ function createExecutorHarness(options?: {
   customGenerate?: (input: {
     onReasoningDelta?: (delta: string) => void;
     onTextDelta?: (delta: string) => Promise<void>;
+    onAssistantToolCalls?: (message: {
+      role: "assistant";
+      content: string;
+      tool_calls: Array<{
+        id: string;
+        type: "function";
+        function: {
+          name: string;
+          arguments: string;
+        };
+      }>;
+    }) => Promise<void>;
+    onToolResultMessage?: (message: {
+      role: "tool";
+      tool_call_id: string;
+      content: string;
+    }, toolName: string) => Promise<void>;
   }) => Promise<{
     text: string;
     reasoningContent?: string;
@@ -505,4 +522,57 @@ function createExecutorHarness(options?: {
     assert.deepEqual(harness.events, ["send:你好"]);
     assert.equal(harness.sessionManager.getSession(harness.sessionId).title, "New Chat");
     assert.equal(harness.sessionManager.getSession(harness.sessionId).titleSource, "manual");
+  });
+
+  test("persisted tool result transcript items include compact observation metadata", async () => {
+    const rawToolContent = JSON.stringify({
+      path: "src/app/generation/providerTranscriptProjector.ts",
+      content: Array.from({ length: 120 }, (_, index) => `RAW-${index + 1}`).join("\n"),
+      startLine: 1,
+      endLine: 120,
+      totalLines: 300,
+      truncated: true
+    });
+    const harness = createExecutorHarness({
+      sessionSource: "web",
+      customGenerate: async (input) => {
+        await input.onAssistantToolCalls?.({
+          role: "assistant",
+          content: "",
+          tool_calls: [{
+            id: "call_read_1",
+            type: "function",
+            function: {
+              name: "local_file_read",
+              arguments: "{\"path\":\"src/app/generation/providerTranscriptProjector.ts\"}"
+            }
+          }]
+        });
+        await input.onToolResultMessage?.({
+          role: "tool",
+          tool_call_id: "call_read_1",
+          content: rawToolContent
+        }, "local_file_read");
+        await input.onTextDelta?.("读完了。");
+        return {
+          text: "读完了。",
+          reasoningContent: "",
+          usage: createUsage()
+        };
+      }
+    });
+
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    const toolResult = harness.sessionManager
+      .getSession(harness.sessionId)
+      .internalTranscript
+      .find((item) => item.kind === "tool_result");
+
+    assert.equal(toolResult?.kind, "tool_result");
+    assert.equal(toolResult?.content, rawToolContent);
+    assert.equal(toolResult?.observation?.resource?.kind, "local_file");
+    assert.equal(toolResult?.observation?.resource?.id, "src/app/generation/providerTranscriptProjector.ts");
+    assert.match(toolResult?.observation?.replayContent ?? "", /"compacted":true/);
   });

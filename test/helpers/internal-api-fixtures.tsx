@@ -199,6 +199,24 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           caption: null
         };
       },
+      async getMany(fileIds: string[]) {
+        if (!fileIds.includes("file_image_1")) {
+          return [];
+        }
+        return [{
+          fileId: "file_image_1",
+          fileRef: "upload_image1.png",
+          kind: "image",
+          origin: "user_upload",
+          chatFilePath: "workspace/media/file_image_1.png",
+          sourceName: "fixture.png",
+          mimeType: "image/png",
+          sizeBytes: 13,
+          createdAtMs: 123,
+          sourceContext: {},
+          caption: null
+        }];
+      },
       async resolveAbsolutePath(fileId: string) {
         if (fileId !== "file_image_1") {
           throw new Error(`Unknown workspace file: ${fileId}`);
@@ -206,6 +224,22 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         return join(state.workspaceRoot, "workspace", "media", "file_image_1.png");
       }
     } as unknown as InternalApiDeps["chatFileStore"],
+    audioStore: {
+      async getMany(audioIds: string[]) {
+        return audioIds
+          .filter((audioId) => audioId === "aud_fixture_1")
+          .map((audioId) => ({
+            id: audioId,
+            source: "https://example.com/audio.mp3",
+            createdAt: 123,
+            transcription: "测试音频",
+            transcriptionStatus: "ready" as const,
+            transcriptionUpdatedAt: 124,
+            transcriptionModelRef: "audio-model",
+            transcriptionError: null
+          }));
+      }
+    } as unknown as InternalApiDeps["audioStore"],
     localFileService: {
       rootDir: state.workspaceRoot,
       async listItems(relativePath = ".") {

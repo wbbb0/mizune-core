@@ -48,6 +48,7 @@ import type {
   TranscriptItemRuntimeExclusionReason
 } from "./sessionTypes.ts";
 import { cloneSessionOperationMode, type SessionOperationMode } from "./sessionOperationMode.ts";
+import type { ToolObservationSummary } from "./toolObservation.ts";
 
 export type {
   ActiveAssistantResponse,
@@ -552,6 +553,7 @@ export class SessionManager {
     historySummary: string | null;
     messagesToCompress: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
     retainedMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
+    toolObservationsToCompress: ToolObservationSummary[];
     transcriptStartIndexToKeep: number;
   } | null {
     const session = this.requireSession(sessionId);
@@ -568,6 +570,7 @@ export class SessionManager {
     historySummary: string | null;
     messagesToCompress: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
     retainedMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
+    toolObservationsToCompress: ToolObservationSummary[];
     transcriptStartIndexToKeep: number;
     estimatedTotalTokens: number;
   } | null {

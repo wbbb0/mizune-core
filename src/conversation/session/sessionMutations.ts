@@ -185,6 +185,9 @@ export function applyCompressedHistoryState(
   session.internalTranscript = session.internalTranscript.slice(
     Math.max(0, Math.min(payload.transcriptStartIndexToKeep, session.internalTranscript.length))
   );
+  // Provider usage describes the prompt before compression; discard it so the
+  // next compression check does not reuse stale input token counts.
+  session.lastLlmUsage = null;
   session.historyRevision += 1;
 }
 

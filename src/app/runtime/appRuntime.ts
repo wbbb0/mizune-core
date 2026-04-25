@@ -215,6 +215,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     browserService,
     localFileService,
     chatFileStore,
+    audioStore,
     chatMessageFileGcService
   });
 

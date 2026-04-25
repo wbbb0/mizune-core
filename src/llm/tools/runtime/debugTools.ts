@@ -6,6 +6,10 @@ import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
 import { getStringArrayArg } from "../core/toolArgHelpers.ts";
+import {
+  DerivedObservationReader,
+  imageCaptionMapFromDerivedObservations
+} from "#llm/derivations/derivedObservationReader.ts";
 
 const DEBUG_LITERALS: DebugLiteral[] = [
   "full_system_prompt",
@@ -195,7 +199,9 @@ async function renderDebugLiteral(literal: DebugLiteral, context: Parameters<Non
         }
       }
       const captionMap = imageIds.size > 0
-        ? await context.mediaCaptionService.getCaptionMap(Array.from(imageIds))
+        ? imageCaptionMapFromDerivedObservations(await new DerivedObservationReader({
+          chatFileStore: context.chatFileStore
+        }).read({ chatFileIds: Array.from(imageIds) }))
         : new Map<string, string>();
       return JSON.stringify(Array.from(captionMap.entries()).map(([imageId, caption]) => ({ imageId, caption })), null, 2);
     }

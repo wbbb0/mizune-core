@@ -85,6 +85,7 @@ export interface LocalFileFindTextResult {
 }
 
 export type { ChatAttachment, ChatFileKind };
+export type ChatFileCaptionStatus = "missing" | "queued" | "ready" | "failed";
 export type ChatFileOrigin =
   | "chat_message"
   | "browser_download"
@@ -105,4 +106,8 @@ export interface ChatFileRecord {
   createdAtMs: number;
   sourceContext: Record<string, string | number | boolean | null>;
   caption: string | null;
+  captionStatus?: ChatFileCaptionStatus | undefined;
+  captionUpdatedAtMs?: number | undefined;
+  captionModelRef?: string | null | undefined;
+  captionError?: string | null | undefined;
 }

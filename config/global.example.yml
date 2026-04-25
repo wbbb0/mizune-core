@@ -82,7 +82,7 @@ conversation:
     randomFactorMax: 1.25
   historyCompression:
     enabled: true
-    triggerTokens: 20000
+    triggerTokens: 150000
     retainTokens: 7000
     retainMessageCount: 8
     tokenEstimation:

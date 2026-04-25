@@ -77,7 +77,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
   const comfyClient = new ComfyClient(config, logger);
   const comfyTaskStore = new ComfyTaskStore(dataDir, logger);
   const comfyTemplateCatalog = new ComfyTemplateCatalogService(config, logger);
-  const historyCompressor = new HistoryCompressor(config, llmClient, sessionManager, mediaCaptionService, logger);
+  const historyCompressor = new HistoryCompressor(config, llmClient, sessionManager, mediaCaptionService, logger, chatFileStore);
   const turnPlanner = new TurnPlanner(config, llmClient, chatFileStore, mediaVisionService, logger);
   const messageQueue = new MessageQueue(logger, config);
   const sessionPersistence = new SessionPersistence(dataDir, logger);

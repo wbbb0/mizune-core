@@ -16,9 +16,11 @@ import type {
   ParsedUpdateSessionTitleBody
 } from "../routeSupport.ts";
 import type { SessionParticipantRef, SessionState } from "#conversation/session/sessionTypes.ts";
+import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import { getDefaultSessionModeId, listSessionModes, requireSessionModeDefinition, sessionModeSupportsChatType } from "#modes/registry.ts";
 import { scenarioHostSessionStateSchema, type ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { createSessionTitleGenerationEvent } from "#conversation/session/internalTranscriptEvents.ts";
+import { DerivedObservationReader } from "#llm/derivations/derivedObservationReader.ts";
 import {
   buildInitialSessionListStreamEvents,
   diffSessionListStreamEvents,
@@ -138,6 +140,11 @@ export async function getSessionDetail(
     participantUserId: _participantUserId,
     ...sessionView
   } = deps.sessionManager.getSessionView(sessionId);
+  const mediaIds = collectDerivedObservationMediaIds(sessionView.internalTranscript);
+  const derivedObservationReader = new DerivedObservationReader({
+    chatFileStore: deps.chatFileStore,
+    audioStore: deps.audioStore
+  });
   return {
     session: {
       ...sessionView,
@@ -145,12 +152,53 @@ export async function getSessionDetail(
       title: existing.title,
       titleSource: existing.titleSource,
       titleGenerationAvailable: existing.source === "web" && deps.sessionCaptioner.isAvailable(),
+      derivedObservations: await derivedObservationReader.read({
+        sessions: [existing],
+        chatFileIds: mediaIds.chatFileIds,
+        audioIds: mediaIds.audioIds
+      }),
       isGenerating: isSessionGenerating(existing),
       historyRevision: deps.sessionManager.getHistoryRevision(sessionId),
       mutationEpoch: deps.sessionManager.getMutationEpoch(sessionId)
     },
     modeState: await getSessionModeStateDetail(deps, existing)
   };
+}
+
+function collectDerivedObservationMediaIds(transcript: readonly InternalTranscriptItem[]): {
+  chatFileIds: string[];
+  audioIds: string[];
+} {
+  const chatFileIds = new Set<string>();
+  const audioIds = new Set<string>();
+  for (const item of transcript) {
+    if (item.kind === "user_message") {
+      for (const imageId of item.imageIds) {
+        chatFileIds.add(imageId);
+      }
+      for (const emojiId of item.emojiIds) {
+        chatFileIds.add(emojiId);
+      }
+      for (const attachment of item.attachments) {
+        chatFileIds.add(attachment.fileId);
+      }
+    }
+    for (const match of extractMediaIdsFromText(JSON.stringify(item))) {
+      if (match.startsWith("file_")) {
+        chatFileIds.add(match);
+      } else if (match.startsWith("aud_")) {
+        audioIds.add(match);
+      }
+    }
+  }
+  return {
+    chatFileIds: Array.from(chatFileIds),
+    audioIds: Array.from(audioIds)
+  };
+}
+
+function extractMediaIdsFromText(text: string): string[] {
+  return Array.from(String(text ?? "").matchAll(/\b(?:file|aud)_[a-zA-Z0-9_:-]+\b/g), (match) => match[0]);
 }
 
 async function getSessionModeStateDetail(

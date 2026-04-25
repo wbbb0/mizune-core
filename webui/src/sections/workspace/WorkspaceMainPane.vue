@@ -94,6 +94,14 @@ function previewImage(src: string | null, title?: string) {
             <dd class="min-w-0 font-mono text-text-secondary">{{ selectedStoredFile.chatFilePath }}</dd>
             <dt class="text-text-subtle">Caption</dt>
             <dd class="text-text-secondary">{{ selectedStoredFile.caption || "无" }}</dd>
+            <dt class="text-text-subtle">Caption 状态</dt>
+            <dd class="text-text-secondary">{{ selectedStoredFile.captionStatus || selectedStoredFile.captionObservation.status }}</dd>
+            <dt class="text-text-subtle">Caption 模型</dt>
+            <dd class="text-text-secondary">{{ selectedStoredFile.captionModelRef || "无" }}</dd>
+            <dt class="text-text-subtle">Caption 时间</dt>
+            <dd class="text-text-secondary">{{ selectedStoredFile.captionUpdatedAtMs ? new Date(selectedStoredFile.captionUpdatedAtMs).toLocaleString() : "无" }}</dd>
+            <dt class="text-text-subtle">Caption 错误</dt>
+            <dd class="text-text-secondary">{{ selectedStoredFile.captionError || "无" }}</dd>
           </dl>
         </div>
       </template>

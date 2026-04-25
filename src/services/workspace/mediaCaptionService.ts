@@ -3,6 +3,7 @@ import type { AppConfig } from "#config/config.ts";
 import { normalizeModelRefs } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { LlmClient, LlmMessage } from "#llm/llmClient.ts";
+import { KeyedDerivationRunner } from "#llm/derivations/keyedDerivationRunner.ts";
 import type { ChatFileStore } from "./chatFileStore.ts";
 import type { MediaVisionService } from "./mediaVisionService.ts";
 import type { ChatFileRecord } from "./types.ts";
@@ -36,18 +37,22 @@ function normalizeCaption(raw: string, fallbackLabel: string): string {
 }
 
 export class MediaCaptionService {
-  private readonly queued = new Set<string>();
-  private readonly running = new Map<string, Promise<void>>();
-  private readonly waiters = new Map<string, Set<() => void>>();
-  private readonly pending: string[] = [];
+  private readonly runner: KeyedDerivationRunner;
 
   constructor(
     private readonly config: AppConfig,
     private readonly llmClient: LlmClient,
-    private readonly chatFileStore: Pick<ChatFileStore, "getFile" | "getMany" | "updateCaption">,
+    private readonly chatFileStore: Pick<ChatFileStore, "getFile" | "getMany" | "markCaptionsQueued" | "updateCaption">,
     private readonly mediaVisionService: Pick<MediaVisionService, "prepareFileForModel">,
     private readonly logger: Logger
-  ) {}
+  ) {
+    this.runner = new KeyedDerivationRunner({
+      name: "media_caption",
+      maxConcurrency: () => this.config.llm.imageCaptioner.maxConcurrency,
+      run: (fileId) => this.runCaption(fileId),
+      logger: this.logger
+    });
+  }
 
   isEnabled(): boolean {
     const modelRefs = this.resolveModelRefs();
@@ -61,7 +66,7 @@ export class MediaCaptionService {
     const files = await this.chatFileStore.getMany(uniqueIds(fileIds));
     return new Map(
       files
-        .filter((item) => typeof item.caption === "string" && item.caption.length > 0)
+        .filter((item) => typeof item.caption === "string" && item.caption.length > 0 && item.captionStatus !== "failed")
         .map((item) => [item.fileId, item.caption as string])
     );
   }
@@ -95,32 +100,9 @@ export class MediaCaptionService {
     if (pendingIds.length === 0) {
       return;
     }
-    for (const fileId of pendingIds) {
-      if (this.queued.has(fileId) || this.running.has(fileId)) {
-        continue;
-      }
-      this.queued.add(fileId);
-      this.pending.push(fileId);
-    }
+    await this.chatFileStore.markCaptionsQueued(pendingIds);
     this.logger.debug({ fileCount: pendingIds.length, reason }, "media_caption_enqueued");
-    this.pump();
-  }
-
-  private pump(): void {
-    const maxConcurrency = this.config.llm.imageCaptioner.maxConcurrency;
-    while (this.running.size < maxConcurrency) {
-      const nextFileId = this.pending.shift();
-      if (!nextFileId) {
-        return;
-      }
-      this.queued.delete(nextFileId);
-      const task = this.runCaption(nextFileId).finally(() => {
-        this.running.delete(nextFileId);
-        this.notifyWaiters(nextFileId);
-        this.pump();
-      });
-      this.running.set(nextFileId, task);
-    }
+    this.runner.enqueue(pendingIds, { reason });
   }
 
   private async runCaption(fileId: string): Promise<void> {
@@ -160,15 +142,27 @@ export class MediaCaptionService {
       });
       const fallbackLabel = file.sourceContext.mediaKind === "emoji" ? "一个聊天表情" : "一张聊天图片";
       const caption = normalizeCaption(result.text, fallbackLabel);
-      await this.chatFileStore.updateCaption(fileId, caption);
+      const resolvedModelRef = result.usage.modelRef ?? normalizeModelRefs(modelRef)[0] ?? "unknown";
+      await this.chatFileStore.updateCaption(fileId, caption, {
+        status: "ready",
+        modelRef: resolvedModelRef,
+        error: null
+      });
       this.logger.debug({
         fileId,
-        modelRef: result.usage.modelRef ?? normalizeModelRefs(modelRef)[0] ?? "unknown",
+        modelRef: resolvedModelRef,
         caption
       }, "media_caption_succeeded");
     } catch (error: unknown) {
+      const resolvedModelRef = normalizeModelRefs(modelRef)[0] ?? "unknown";
+      await this.chatFileStore.updateCaption(fileId, null, {
+        status: "failed",
+        modelRef: resolvedModelRef,
+        error: error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240)
+      }).catch(() => undefined);
       this.logger.warn({
         fileId,
+        modelRef: resolvedModelRef,
         error: error instanceof Error ? error.message : String(error)
       }, "media_caption_failed");
     }
@@ -176,48 +170,10 @@ export class MediaCaptionService {
 
   private async waitForCompletion(fileId: string, abortSignal?: AbortSignal): Promise<void> {
     const existing = await this.chatFileStore.getFile(fileId);
-    if (!existing || existing.caption || !isCaptionableFile(existing)) {
+    if (!existing || existing.caption || existing.captionStatus === "failed" || !isCaptionableFile(existing)) {
       return;
     }
-    if (abortSignal?.aborted) {
-      throw abortSignal.reason instanceof Error ? abortSignal.reason : new Error("Media caption wait aborted");
-    }
-    await new Promise<void>((resolve, reject) => {
-      const onAbort = () => {
-        this.removeWaiter(fileId, waiter);
-        reject(abortSignal?.reason instanceof Error ? abortSignal.reason : new Error("Media caption wait aborted"));
-      };
-      const waiter = () => {
-        abortSignal?.removeEventListener("abort", onAbort);
-        resolve();
-      };
-      const listeners = this.waiters.get(fileId) ?? new Set<() => void>();
-      listeners.add(waiter);
-      this.waiters.set(fileId, listeners);
-      abortSignal?.addEventListener("abort", onAbort, { once: true });
-    });
-  }
-
-  private notifyWaiters(fileId: string): void {
-    const listeners = this.waiters.get(fileId);
-    if (!listeners) {
-      return;
-    }
-    this.waiters.delete(fileId);
-    for (const listener of listeners) {
-      listener();
-    }
-  }
-
-  private removeWaiter(fileId: string, waiter: () => void): void {
-    const listeners = this.waiters.get(fileId);
-    if (!listeners) {
-      return;
-    }
-    listeners.delete(waiter);
-    if (listeners.size === 0) {
-      this.waiters.delete(fileId);
-    }
+    await this.runner.waitForCompletion(fileId, abortSignal);
   }
 
   private resolveModelRefs(): string[] {

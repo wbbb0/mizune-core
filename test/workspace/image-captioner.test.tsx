@@ -8,6 +8,10 @@ type TestFile = {
   fileId: string;
   kind: "image" | "animated_image";
   caption: string | null;
+  captionStatus?: "missing" | "queued" | "ready" | "failed";
+  captionUpdatedAtMs?: number;
+  captionModelRef?: string | null;
+  captionError?: string | null;
   sourceContext: Record<string, string | number | boolean | null>;
 };
 
@@ -22,10 +26,33 @@ class FakeChatFileStore {
     return this.files.get(fileId) ?? null;
   }
 
-  async updateCaption(fileId: string, caption: string | null) {
+  async markCaptionsQueued(fileIds: string[]) {
+    for (const fileId of fileIds) {
+      const file = this.files.get(fileId);
+      if (file && !file.caption) {
+        file.captionStatus = "queued";
+        file.captionError = null;
+      }
+    }
+  }
+
+  async updateCaption(
+    fileId: string,
+    caption: string | null,
+    metadata?: {
+      status?: "missing" | "queued" | "ready" | "failed";
+      modelRef?: string | null;
+      error?: string | null;
+      updatedAtMs?: number;
+    }
+  ) {
     const file = this.files.get(fileId);
     assert.ok(file);
     file.caption = caption;
+    file.captionStatus = metadata?.status ?? (caption ? "ready" : "missing");
+    file.captionModelRef = metadata?.modelRef ?? null;
+    file.captionError = metadata?.error ?? null;
+    file.captionUpdatedAtMs = metadata?.updatedAtMs ?? Date.now();
   }
 }
 
@@ -182,6 +209,9 @@ function createCaptionerConfig() {
     const captions = await captioner.ensureReady(["file_1"], { reason: "test_fallback" });
 
     assert.equal(captions.get("file_1"), "窗边的小猫");
+    assert.equal((await chatFileStore.getFile("file_1"))?.captionStatus, "ready");
+    assert.equal((await chatFileStore.getFile("file_1"))?.captionModelRef, "secondary");
+    assert.equal((await chatFileStore.getFile("file_1"))?.captionError, null);
   });
 
   test("media caption service retries image and emoji-like files on demand", async () => {

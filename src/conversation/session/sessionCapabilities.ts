@@ -17,6 +17,7 @@ import type {
 } from "./sessionTypes.ts";
 import type { SessionOperationMode } from "./sessionOperationMode.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
+import type { ToolObservationSummary } from "./toolObservation.ts";
 
 // These capability slices let downstream modules depend on the session surface
 // they actually use instead of importing the whole SessionManager facade.
@@ -42,6 +43,7 @@ export interface SessionCompressionAccess {
     historySummary: string | null;
     messagesToCompress: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
     retainedMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
+    toolObservationsToCompress: ToolObservationSummary[];
     transcriptStartIndexToKeep: number;
   } | null;
   getHistoryForCompressionByTokens(
@@ -53,6 +55,7 @@ export interface SessionCompressionAccess {
     historySummary: string | null;
     messagesToCompress: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
     retainedMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
+    toolObservationsToCompress: ToolObservationSummary[];
     transcriptStartIndexToKeep: number;
     estimatedTotalTokens: number;
   } | null;

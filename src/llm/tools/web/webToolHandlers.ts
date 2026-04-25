@@ -4,6 +4,10 @@ import { getBooleanArg, getNumberArg, getStringArg, getStringArrayArg } from "..
 import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
 import type { BrowserActionTarget, BrowserCoordinate } from "#services/web/browser/types.ts";
 import { isBrowserInteractionAction } from "#services/web/browser/types.ts";
+import {
+  DerivedObservationReader,
+  imageCaptionMapFromDerivedObservations
+} from "#llm/derivations/derivedObservationReader.ts";
 
 export const webToolHandlers: Record<string, ToolHandler> = {
   async ground_with_google_search(_toolCall, args, context) {
@@ -350,7 +354,9 @@ async function buildScreenshotToolResult(
   if (!prepared) {
     return JSON.stringify(contentPayload);
   }
-  const caption = (await context.mediaCaptionService.getCaptionMap([imageId]).catch(() => new Map<string, string>())).get(imageId);
+  const caption = imageCaptionMapFromDerivedObservations(await new DerivedObservationReader({
+    chatFileStore: context.chatFileStore
+  }).read({ chatFileIds: [imageId] }).catch(() => [])).get(imageId);
   return {
     content: JSON.stringify(contentPayload),
     supplementalMessages: [{

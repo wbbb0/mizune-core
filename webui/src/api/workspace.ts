@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { DerivedObservation } from "./types";
 
 export interface LocalFileItem {
   path: string;
@@ -35,6 +36,11 @@ export interface ChatFileSummary {
   createdAtMs: number;
   sourceContext: Record<string, string | number | boolean | null>;
   caption: string | null;
+  captionStatus?: "missing" | "queued" | "ready" | "failed";
+  captionUpdatedAtMs: number | null;
+  captionModelRef: string | null;
+  captionError: string | null;
+  captionObservation: DerivedObservation;
 }
 
 export interface ChatFileDetail {

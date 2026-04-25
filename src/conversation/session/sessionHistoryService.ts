@@ -35,6 +35,7 @@ import type {
   TranscriptItemDeliveryRef,
   TranscriptItemRuntimeExclusionReason
 } from "./sessionTypes.ts";
+import type { ToolObservationSummary } from "./toolObservation.ts";
 
 // Owns transcript/history bookkeeping and the projections derived from it.
 // This keeps lifecycle control separate from the session's conversational record.
@@ -171,6 +172,7 @@ export class SessionHistoryService {
     historySummary: string | null;
     messagesToCompress: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
     retainedMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
+    toolObservationsToCompress: ToolObservationSummary[];
     transcriptStartIndexToKeep: number;
   } | null {
     return this.getTranscriptStore(session).projectCompressionSnapshot(triggerMessageCount, retainMessageCount);
@@ -185,6 +187,7 @@ export class SessionHistoryService {
     historySummary: string | null;
     messagesToCompress: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
     retainedMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
+    toolObservationsToCompress: ToolObservationSummary[];
     transcriptStartIndexToKeep: number;
     estimatedTotalTokens: number;
   } | null {

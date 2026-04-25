@@ -1,8 +1,10 @@
 import type { LlmMessage } from "#llm/llmClient.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
-import type { InternalAssistantToolCallItem } from "#conversation/session/sessionTypes.ts";
+import type { InternalAssistantToolCallItem, InternalToolResultItem } from "#conversation/session/sessionTypes.ts";
 import { projectTranscriptMessageItemToHistoryMessage } from "#conversation/session/historyContext.ts";
 import { isTranscriptRuntimeIncluded } from "#conversation/session/sessionTranscript.ts";
+
+const RECENT_RAW_TOOL_RESULT_COUNT = 5;
 
 export interface ProviderTranscriptProjection {
   replayMessages: LlmMessage[];
@@ -57,6 +59,7 @@ function createOpenAiStyleProjector(providerName: string): ProviderTranscriptPro
       const replayMessages: LlmMessage[] = [];
       const lateSystemMessages: string[] = [];
       const degradedLines: string[] = [];
+      const toolResultReplayContent = buildToolResultReplayContentMap(input.transcript);
       let replayCoversVisibleHistory = false;
 
       for (const item of input.transcript) {
@@ -100,7 +103,7 @@ function createOpenAiStyleProjector(providerName: string): ProviderTranscriptPro
           replayMessages.push({
             role: "tool",
             tool_call_id: item.toolCallId,
-            content: item.content
+            content: toolResultReplayContent.get(item.toolCallId) ?? item.content
           });
           continue;
         }
@@ -115,6 +118,44 @@ function createOpenAiStyleProjector(providerName: string): ProviderTranscriptPro
       return { replayMessages, lateSystemMessages, replayCoversVisibleHistory };
     }
   };
+}
+
+function buildToolResultReplayContentMap(transcript: InternalTranscriptItem[]): Map<string, string> {
+  const includedToolResults = transcript
+    .filter(isTranscriptRuntimeIncluded)
+    .filter((item): item is InternalToolResultItem => item.kind === "tool_result");
+  const firstRawIndex = Math.max(0, includedToolResults.length - RECENT_RAW_TOOL_RESULT_COUNT);
+  const replayContent = new Map<string, string>();
+
+  includedToolResults.forEach((item, index) => {
+    if (shouldReplayRawToolResult(item, index, firstRawIndex)) {
+      replayContent.set(item.toolCallId, item.content);
+      return;
+    }
+    replayContent.set(item.toolCallId, compactToolResultForReplay(item));
+  });
+
+  return replayContent;
+}
+
+function shouldReplayRawToolResult(item: InternalToolResultItem, index: number, firstRawIndex: number): boolean {
+  return index >= firstRawIndex || item.observation?.pinned === true;
+}
+
+function compactToolResultForReplay(item: InternalToolResultItem): string {
+  if (item.observation?.retention === "full") {
+    return item.content;
+  }
+  if (typeof item.observation?.replayContent === "string" && item.observation.replayContent.length > 0) {
+    return item.observation.replayContent;
+  }
+  const normalized = item.content.replace(/\s+/g, " ").trim();
+  return JSON.stringify({
+    ok: true,
+    compacted: true,
+    tool: item.toolName,
+    summary: normalized.length <= 300 ? normalized : `${normalized.slice(0, 300)}...`
+  });
 }
 
 function canReplayGoogleToolCallItem(item: InternalAssistantToolCallItem): boolean {

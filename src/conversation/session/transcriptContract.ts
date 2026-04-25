@@ -93,6 +93,24 @@ export const transcriptAssistantToolCallItemSchema = z.object({
   providerMetadata: z.record(z.string(), z.unknown()).optional()
 });
 
+export const transcriptToolObservationSchema = z.object({
+  contentHash: z.string().min(1),
+  inputTokensEstimate: z.number().int().nonnegative(),
+  summary: z.string(),
+  retention: z.enum(["full", "summary", "handle", "omitted"]),
+  replayContent: z.string(),
+  resource: z.object({
+    kind: z.enum(["local_file", "shell_session", "browser_page", "chat_file", "search_result", "external"]),
+    id: z.string().min(1),
+    locator: z.string().optional(),
+    version: z.string().optional()
+  }).optional(),
+  replaySafe: z.boolean(),
+  refetchable: z.boolean(),
+  pinned: z.boolean(),
+  duplicateOfToolCallId: z.string().min(1).optional()
+});
+
 export const transcriptToolResultItemSchema = z.object({
   ...transcriptItemMetaSchema.shape,
   kind: z.literal("tool_result"),
@@ -100,7 +118,8 @@ export const transcriptToolResultItemSchema = z.object({
   timestampMs: z.number().int().nonnegative(),
   toolCallId: z.string().min(1),
   toolName: z.string().min(1),
-  content: z.string()
+  content: z.string(),
+  observation: transcriptToolObservationSchema.optional()
 });
 
 export const transcriptOutboundMediaMessageItemSchema = z.object({
@@ -242,6 +261,7 @@ export const transcriptItemPatchSchema = z.object({
 });
 
 export type StoredToolCall = z.infer<typeof storedToolCallSchema>;
+export type TranscriptToolObservation = z.infer<typeof transcriptToolObservationSchema>;
 export type TranscriptItemRuntimeExclusionReason = (typeof transcriptItemRuntimeExclusionReasonValues)[number];
 export type TranscriptItemDeliveryRef = z.infer<typeof transcriptItemDeliveryRefSchema>;
 export type TranscriptItemMeta = z.infer<typeof transcriptItemMetaSchema>;

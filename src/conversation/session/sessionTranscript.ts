@@ -1,5 +1,6 @@
 import type { AppConfig } from "#config/config.ts";
 import { formatStructuredMediaReference, projectTranscriptMessageItemToHistoryMessage } from "./historyContext.ts";
+import type { ToolObservationSummary } from "./toolObservation.ts";
 import type {
   InternalAssistantToolCallItem,
   InternalToolResultItem,
@@ -154,6 +155,7 @@ export function projectCompressionHistorySnapshot(
   historySummary: string | null;
   messagesToCompress: SessionHistoryMessage[];
   retainedMessages: SessionHistoryMessage[];
+  toolObservationsToCompress: ToolObservationSummary[];
   transcriptStartIndexToKeep: number;
 } | null {
   const llmVisibleItems = session.internalTranscript.filter(isTranscriptLlmVisible);
@@ -181,6 +183,7 @@ export function projectCompressionHistorySnapshotByTokens(
   historySummary: string | null;
   messagesToCompress: SessionHistoryMessage[];
   retainedMessages: SessionHistoryMessage[];
+  toolObservationsToCompress: ToolObservationSummary[];
   transcriptStartIndexToKeep: number;
   estimatedTotalTokens: number;
 } | null {
@@ -249,6 +252,7 @@ function buildCompressionSnapshot(
   historySummary: string | null;
   messagesToCompress: SessionHistoryMessage[];
   retainedMessages: SessionHistoryMessage[];
+  toolObservationsToCompress: ToolObservationSummary[];
   transcriptStartIndexToKeep: number;
 } | null {
   const llmVisibleSplitIndex = resolveLlmVisibleSplitIndex(llmVisibleItems, visibleHistorySplitIndex);
@@ -260,6 +264,9 @@ function buildCompressionSnapshot(
     session.internalTranscript.slice(transcriptStartIndexToKeep),
     config
   );
+  const toolObservationsToCompress = collectToolObservationsToCompress(
+    session.internalTranscript.slice(0, transcriptStartIndexToKeep)
+  );
   const compressedMessageCount = Math.max(1, recentMessages.length - retainedMessages.length);
   if (compressedMessageCount === 0) {
     return null;
@@ -269,8 +276,25 @@ function buildCompressionSnapshot(
     historySummary: session.historySummary,
     messagesToCompress: recentMessages.slice(0, compressedMessageCount),
     retainedMessages,
+    toolObservationsToCompress,
     transcriptStartIndexToKeep
   };
+}
+
+function collectToolObservationsToCompress(items: InternalTranscriptItem[]): ToolObservationSummary[] {
+  return items
+    .filter(isTranscriptLlmVisible)
+    .filter((item): item is InternalToolResultItem => item.kind === "tool_result" && item.observation != null)
+    .map((item) => ({
+      toolName: item.toolName,
+      toolCallId: item.toolCallId,
+      summary: item.observation!.summary,
+      timestampMs: item.timestampMs,
+      contentHash: item.observation!.contentHash,
+      retention: item.observation!.retention,
+      ...(item.observation!.resource ? { resource: item.observation!.resource } : {}),
+      pinned: item.observation!.pinned
+    }));
 }
 
 function resolveLlmVisibleSplitIndex(

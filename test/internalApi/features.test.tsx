@@ -397,7 +397,27 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
   });
 
   test("internal api exposes session detail", async () => {
-    const app = await createInternalApiApp(createInternalApiDeps());
+    const deps = createInternalApiDeps();
+    deps.__state.sessions[0]?.internalTranscript.push({
+      kind: "user_message",
+      role: "user",
+      llmVisible: true,
+      chatType: "private",
+      userId: "10001",
+      senderName: "Alice",
+      text: '看这个 image_id="file_image_1" audio_id="aud_fixture_1"',
+      imageIds: ["file_image_1"],
+      emojiIds: [],
+      attachments: [],
+      audioCount: 1,
+      forwardIds: [],
+      replyMessageId: null,
+      mentionUserIds: [],
+      mentionedAll: false,
+      mentionedSelf: false,
+      timestampMs: 1
+    });
+    const app = await createInternalApiApp(deps);
     try {
       const response = await app.inject({
         method: "GET",
@@ -410,6 +430,10 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(response.json().session.title, "Alice");
       assert.equal(response.json().session.titleSource, "manual");
       assert.equal(response.json().session.titleGenerationAvailable, false);
+      assert.ok(response.json().session.derivedObservations.some((item: { purpose: string }) => item.purpose === "session_title"));
+      assert.ok(response.json().session.derivedObservations.some((item: { purpose: string }) => item.purpose === "history_summary"));
+      assert.ok(response.json().session.derivedObservations.some((item: { purpose: string; sourceId: string }) => item.purpose === "image_caption" && item.sourceId === "file_image_1"));
+      assert.ok(response.json().session.derivedObservations.some((item: { purpose: string; sourceId: string }) => item.purpose === "audio_transcription" && item.sourceId === "aud_fixture_1"));
       assert.deepEqual(response.json().session.participantRef, {
         kind: "user",
         id: "10001"
@@ -657,8 +681,10 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.ok(sendContentResponse.body.length > 0);
       assert.equal(filesResponse.statusCode, 200);
       assert.equal(filesResponse.json().files[0].fileId, "file_image_1");
+      assert.equal(filesResponse.json().files[0].captionObservation.purpose, "image_caption");
       assert.equal(storedFileResponse.statusCode, 200);
       assert.equal(storedFileResponse.json().file.sourceName, "fixture.png");
+      assert.equal(storedFileResponse.json().file.captionStatus, "missing");
       assert.equal(contentResponse.statusCode, 200);
       assert.equal(contentResponse.headers["content-type"], "image/png");
       assert.ok(contentResponse.body.length > 0);

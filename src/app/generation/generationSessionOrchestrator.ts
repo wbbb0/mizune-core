@@ -337,7 +337,7 @@ export function createGenerationSessionOrchestrator(
       const interactionMode: PromptInteractionMode = sessionManager.consumeDebugMode(sessionId) ? "debug" : "normal";
       const user = await userStore.getByUserId(last.userId);
       const relationship: Relationship = user?.relationship ?? "known";
-      await historyCompressor.maybeCompress(sessionId);
+      await historyCompressor.maybeCompress(sessionId, { triggerReason: "pre_generation" });
       let refreshedSession = sessionManager.getSession(sessionId);
       const sessionModeId = refreshedSession.modeId;
       const assistantMode = isAssistantMode(sessionModeId);
@@ -665,7 +665,7 @@ export function createGenerationSessionOrchestrator(
         scheduledAvailableToolsets,
         activeScheduledToolsets.map((toolset) => toolset.id)
       );
-      await historyCompressor.maybeCompress(sessionId);
+      await historyCompressor.maybeCompress(sessionId, { triggerReason: "scheduled_pre_generation" });
       const providerName = getPrimaryModelProfile(config, scheduledModelRef)?.provider ?? "unknown";
       const transcriptStore = createSessionTranscriptStore(session, config);
       const projectedHistory = transcriptStore.projectRuntimeHistory();

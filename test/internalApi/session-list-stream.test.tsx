@@ -107,7 +107,9 @@ test("session list service emits upsert when subscribed session title changes", 
       }
     },
     scenarioHostStateStore: {} as never,
-    sessionCaptioner: {} as never
+    sessionCaptioner: {} as never,
+    chatFileStore: {} as never,
+    audioStore: {} as never
   });
 
   const received = [...stream.initialEvents];

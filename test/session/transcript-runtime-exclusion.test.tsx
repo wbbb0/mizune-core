@@ -88,3 +88,96 @@ function createExcludedUserMessage(overrides: Partial<InternalTranscriptItem> = 
 
     assert.deepEqual(projection.replayMessages, []);
   });
+
+  test("openai-style replay compacts older tool results while keeping recent raw results", () => {
+    const transcript: InternalTranscriptItem[] = [];
+    for (let index = 1; index <= 6; index += 1) {
+      transcript.push({
+        id: `item-tool-call-${index}`,
+        groupId: `group-${index}`,
+        kind: "assistant_tool_call",
+        llmVisible: true,
+        timestampMs: index * 2 - 1,
+        content: "",
+        toolCalls: [{
+          id: `call_openai_${index}`,
+          type: "function",
+          function: {
+            name: "shell_run",
+            arguments: `{"cmd":"echo ${index}"}`
+          }
+        }]
+      } as any);
+      transcript.push({
+        id: `item-tool-result-${index}`,
+        groupId: `group-${index}`,
+        kind: "tool_result",
+        llmVisible: true,
+        timestampMs: index * 2,
+        toolCallId: `call_openai_${index}`,
+        toolName: "shell_run",
+        content: JSON.stringify({ stdout: `RAW-RESULT-${index}` }),
+        observation: {
+          contentHash: `hash-${index}`,
+          inputTokensEstimate: 100,
+          summary: `compact summary ${index}`,
+          retention: "summary",
+          replayContent: JSON.stringify({ compacted: true, summary: `COMPACT-RESULT-${index}` }),
+          replaySafe: true,
+          refetchable: true,
+          pinned: false
+        }
+      } as any);
+    }
+
+    const projection = getProviderTranscriptProjector("openai").project({ transcript });
+    const toolMessages = projection.replayMessages.filter((message) => message.role === "tool");
+
+    assert.equal(toolMessages.length, 6);
+    assert.equal(toolMessages[0]?.content, JSON.stringify({ compacted: true, summary: "COMPACT-RESULT-1" }));
+    assert.equal(toolMessages[1]?.content, JSON.stringify({ stdout: "RAW-RESULT-2" }));
+    assert.equal(toolMessages[5]?.content, JSON.stringify({ stdout: "RAW-RESULT-6" }));
+  });
+
+  test("openai-style replay keeps old tool results raw when observation retention is full", () => {
+    const transcript: InternalTranscriptItem[] = [];
+    for (let index = 1; index <= 6; index += 1) {
+      transcript.push({
+        kind: "assistant_tool_call",
+        llmVisible: true,
+        timestampMs: index * 2 - 1,
+        content: "",
+        toolCalls: [{
+          id: `call_full_${index}`,
+          type: "function",
+          function: {
+            name: "local_file_write",
+            arguments: `{"path":"tmp-${index}.txt"}`
+          }
+        }]
+      } as any);
+      transcript.push({
+        kind: "tool_result",
+        llmVisible: true,
+        timestampMs: index * 2,
+        toolCallId: `call_full_${index}`,
+        toolName: "local_file_write",
+        content: JSON.stringify({ ok: true, path: `tmp-${index}.txt` }),
+        observation: {
+          contentHash: `hash-full-${index}`,
+          inputTokensEstimate: 10,
+          summary: `write ${index}`,
+          retention: index === 1 ? "full" : "summary",
+          replayContent: JSON.stringify({ compacted: true, summary: `COMPACT-FULL-${index}` }),
+          replaySafe: true,
+          refetchable: false,
+          pinned: false
+        }
+      } as any);
+    }
+
+    const projection = getProviderTranscriptProjector("openai").project({ transcript });
+    const toolMessages = projection.replayMessages.filter((message) => message.role === "tool");
+
+    assert.equal(toolMessages[0]?.content, JSON.stringify({ ok: true, path: "tmp-1.txt" }));
+  });

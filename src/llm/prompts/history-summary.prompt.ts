@@ -1,4 +1,5 @@
 import type { SessionHistoryMessage } from "#conversation/session/sessionTypes.ts";
+import { formatToolObservationForSummary, type ToolObservationSummary } from "#conversation/session/toolObservation.ts";
 import type { LlmMessage } from "#llm/llmClient.ts";
 import { renderPromptSection, renderPromptSectionRaw } from "./prompt-section.ts";
 
@@ -6,6 +7,7 @@ export function buildHistorySummaryPrompt(input: {
   sessionId: string;
   existingSummary: string | null;
   messagesToCompress: SessionHistoryMessage[];
+  toolObservationsToCompress?: ToolObservationSummary[];
 }): LlmMessage[] {
   const system = [
     renderPromptSection("summary_identity", [
@@ -14,6 +16,7 @@ export function buildHistorySummaryPrompt(input: {
     renderPromptSection("summary_rules", [
       "【筛选原则】",
       "- 必须保留：稳定设定、用户长期偏好、关系进展、明确约定、持续中的任务、未完成话题、关键时间线及具体细节（如人名、地点、数据）。",
+      "- 若存在工具观察摘要，必须保留与当前任务有关的文件路径、命令结果、错误原因、网页资源、已验证结论和后续可重取线索。",
       "- 若某项设定或偏好在对话中发生了变化，保留最终状态并注明“（已更新）”，丢弃过时版本。",
       "- 坚决丢弃：寒暄客套、短期情绪噪音、重复确认、无信息量的接话。对于多媒体（图/音/转），仅提取其承载的长期事实，忽略媒介和提示格式。",
       "【整合逻辑】",
@@ -39,6 +42,11 @@ export function buildHistorySummaryPrompt(input: {
     renderPromptSection("summary_existing", [
       input.existingSummary ?? "<none>"
     ]),
+    (input.toolObservationsToCompress?.length ?? 0) > 0
+      ? renderPromptSectionRaw("summary_source_tool_observations", [
+          formatToolObservations(input.toolObservationsToCompress ?? [])
+        ])
+      : null,
     renderPromptSectionRaw("summary_source_messages", [
       formatMessages(input.messagesToCompress)
     ])
@@ -48,6 +56,16 @@ export function buildHistorySummaryPrompt(input: {
     { role: "system", content: system },
     { role: "user", content: text }
   ];
+}
+
+function formatToolObservations(items: ToolObservationSummary[]): string {
+  return items
+    .map((item, index) => [
+      `⟦summary_source_tool_observation index="${index + 1}" time="${formatTimestamp(item.timestampMs)}"⟧`,
+      formatToolObservationForSummary(item),
+      "⟦/summary_source_tool_observation⟧"
+    ].join("\n"))
+    .join("\n\n");
 }
 
 function formatMessages(messages: SessionHistoryMessage[]): string {

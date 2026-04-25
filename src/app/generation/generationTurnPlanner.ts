@@ -110,7 +110,9 @@ export async function handleGenerationTurnPlanner(
 
   if (planner.topicDecision === "new_topic" && planner.replyDecision !== "wait") {
     const preservedMessageCount = input.batchMessages.length;
-    const compressed = await historyCompressor.compactOldHistoryKeepingRecent(input.sessionId, preservedMessageCount);
+    const compressed = await historyCompressor.compactOldHistoryKeepingRecent(input.sessionId, preservedMessageCount, {
+      triggerReason: "turn_planner_topic_switch"
+    });
     logger.info(
       {
         sessionId: input.sessionId,

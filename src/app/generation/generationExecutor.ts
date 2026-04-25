@@ -6,6 +6,7 @@ import {
   createUserTranscriptMessageItem,
   projectTranscriptMessageItemToHistoryMessage
 } from "#conversation/session/historyContext.ts";
+import { buildToolObservation } from "#conversation/session/toolObservation.ts";
 import {
   createGenerationFailureFallbackEvent,
   createModelFallbackEvent,
@@ -484,7 +485,12 @@ export function createGenerationExecutor(
                 timestampMs: Date.now(),
                 toolCallId: message.tool_call_id ?? "",
                 toolName,
-                content
+                content,
+                observation: buildToolObservation({
+                  toolName,
+                  toolCallId: message.tool_call_id ?? "",
+                  content
+                })
               });
               if (applied) {
                 persistSession(sessionId, "internal_transcript_updated");
@@ -644,7 +650,7 @@ export function createGenerationExecutor(
           && !sessionManager.hasActiveResponse(sessionId)
         ) {
           try {
-            const compressed = await historyCompressor.maybeCompress(sessionId);
+            const compressed = await historyCompressor.maybeCompress(sessionId, { triggerReason: "post_response" });
             if (compressed) {
               captionForceRegenerate = true;
               persistSession(sessionId, "post_response_history_compressed");
