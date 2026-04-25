@@ -334,43 +334,22 @@ export class PlaywrightBrowserBackend implements BrowserBackend {
             && rect.height > 0;
         });
 
-      const readStringProperty = (
-        node: unknown,
-        property: "innerText" | "value",
-      ): string => {
-        const value = (node as { innerText?: string | null; value?: string | null })[property];
-        return typeof value === "string" ? value : "";
-      };
-
-      const readBooleanProperty = (
-        node: unknown,
-        property: "disabled" | "checked" | "selected",
-      ): boolean => (node as { disabled?: boolean; checked?: boolean; selected?: boolean })[property] === true;
-
-      const readClassName = (node: unknown): string => {
-        const className = (node as { className?: string | { baseVal?: string } | null }).className;
-        if (typeof className === "string") {
-          return className;
-        }
-        if (className && typeof className === "object" && "baseVal" in className) {
-          return String(className.baseVal ?? "");
-        }
-        return "";
-      };
-
       const candidates = nodes.map((node, index) => {
         const tag = node.tagName.toLowerCase();
         const ariaLabel = node.getAttribute("aria-label");
         const role = node.getAttribute("role");
-        const text = (readStringProperty(node, "innerText") || node.textContent || "").trim();
+        const innerText = typeof (node as { innerText?: unknown }).innerText === "string"
+          ? (node as { innerText: string }).innerText
+          : "";
+        const text = (innerText || node.textContent || "").trim();
         const type = tag === "input" ? (node.getAttribute("type") || "text") : null;
         const inputType = (type || "").toLowerCase();
-        const disabled = readBooleanProperty(node, "disabled") || node.getAttribute("aria-disabled") === "true";
+        const disabled = (node as { disabled?: unknown }).disabled === true || node.getAttribute("aria-disabled") === "true";
         const checked = inputType === "checkbox" || inputType === "radio"
-          ? Boolean(readBooleanProperty(node, "checked") || node.getAttribute("aria-checked") === "true")
+          ? Boolean((node as { checked?: unknown }).checked === true || node.getAttribute("aria-checked") === "true")
           : null;
         const selected = tag === "option" || tag === "select"
-          ? Boolean(readBooleanProperty(node, "selected") || node.getAttribute("aria-selected") === "true")
+          ? Boolean((node as { selected?: unknown }).selected === true || node.getAttribute("aria-selected") === "true")
           : null;
         const expandedAttribute = node.getAttribute("aria-expanded");
         const expanded = expandedAttribute == null ? null : expandedAttribute === "true";
@@ -392,7 +371,15 @@ export class PlaywrightBrowserBackend implements BrowserBackend {
               .map((item) => item.getAttribute("src"))
               .filter((item): item is string => Boolean(item))
           : [];
-        const className = readClassName(node);
+        const rawClassName = (node as { className?: string | { baseVal?: string } | null }).className;
+        const className = typeof rawClassName === "string"
+          ? rawClassName
+          : rawClassName && typeof rawClassName === "object" && "baseVal" in rawClassName
+              ? String(rawClassName.baseVal ?? "")
+              : "";
+        const value = typeof (node as { value?: unknown }).value === "string"
+          ? (node as { value: string }).value
+          : "";
         const inMainContent = Boolean(node.closest("main, article, [role=\"main\"], .content, .main, #content"));
         const inNavLike = Boolean(node.closest("nav, header, footer, aside, .sidebar, .menu, .pagination, .breadcrumb"));
         return {
@@ -406,7 +393,7 @@ export class PlaywrightBrowserBackend implements BrowserBackend {
           disabled,
           href: tag === "a" ? node.getAttribute("href") : null,
           placeholder: node.getAttribute("placeholder"),
-          value: readStringProperty(node, "value") || node.getAttribute("value") || null,
+          value: value || node.getAttribute("value") || null,
           checked,
           selected,
           expanded,
@@ -424,7 +411,9 @@ export class PlaywrightBrowserBackend implements BrowserBackend {
         };
       });
 
-      const bodyText = (doc.body ? readStringProperty(doc.body, "innerText") : "").trim();
+      const bodyText = (typeof (doc.body as { innerText?: unknown } | null)?.innerText === "string"
+        ? (doc.body as { innerText: string }).innerText
+        : "").trim();
       return {
         bodyText,
         elements: candidates,
