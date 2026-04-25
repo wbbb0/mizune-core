@@ -13,7 +13,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
         id: "call_openai_1",
         type: "function",
         function: {
-          name: "shell_run",
+          name: "terminal_run",
           arguments: "{\"cmd\":\"pwd\"}"
         }
       }]
@@ -23,7 +23,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
       llmVisible: true,
       timestampMs: 2,
       toolCallId: "call_openai_1",
-      toolName: "shell_run",
+      toolName: "terminal_run",
       content: "{\"stdout\":\"/repo\"}"
     }
   ];
@@ -78,7 +78,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
             id: "call_dashscope_1",
             type: "function",
             function: {
-              name: "shell_run",
+              name: "terminal_run",
               arguments: "{\"cmd\":\"pwd\"}"
             }
           }]
@@ -88,7 +88,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
           llmVisible: true,
           timestampMs: 4,
           toolCallId: "call_dashscope_1",
-          toolName: "shell_run",
+          toolName: "terminal_run",
           content: "{\"stdout\":\"/repo\"}"
         }
       ],
@@ -115,7 +115,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
           id: `call_pinned_${index}`,
           type: "function",
           function: {
-            name: "shell_run",
+            name: "terminal_run",
             arguments: `{"cmd":"run ${index}"}`
           }
         }]
@@ -125,7 +125,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
         llmVisible: true,
         timestampMs: index * 2,
         toolCallId: `call_pinned_${index}`,
-        toolName: "shell_run",
+        toolName: "terminal_run",
         content: JSON.stringify({ stdout: `RAW-${index}`, exitCode: index === 1 ? 1 : 0 }),
         observation: {
           contentHash: `hash-pinned-${index}`,

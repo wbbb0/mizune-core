@@ -174,7 +174,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     promptGuidance: [
       "只有当前问题依赖外部信息或网页状态时，才进入网页检索与浏览。",
       "先搜索或打开页面，再检查页面结构后交互；页面变化后重新检查，不要沿用旧定位。",
-      "需要保存网页资源或上传本地文件时，再配合文件工具处理。"
+      "需要保存网页图片、视频或链接资源时，用 download_asset；下载结果会登记为 workspace/chat file，后续再按文件引用查看或发送。"
     ],
     plannerSignals: [
       "外部信息与事实核查",
@@ -187,6 +187,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "inspect_page",
       "interact_with_page",
       "close_page",
+      "download_asset",
       "capture_screenshot",
       "list_browser_profiles",
       "inspect_browser_profile",
@@ -197,10 +198,10 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   {
     id: "shell_runtime",
     title: "Shell 运行时",
-    description: "执行与交互 shell 会话，并复用 live_resource。",
+    description: "执行与交互 terminal 会话，并复用 terminal resource。",
     promptGuidance: [
-      "需要运行命令、看日志或继续终端任务时，优先复用现有 shell 资源。",
-      "命令目标要具体，先验证当前状态，再做下一步；不要为了绕过限制而乱开新会话。"
+      "需要运行命令、看日志或继续终端任务时，先 terminal_list，再复用现有 terminal resource。",
+      "短命令用 terminal_run；长任务、watch/dev server 或交互程序用 terminal_start 后再 terminal_read/terminal_write/terminal_key。"
     ],
     plannerSignals: [
       "运行命令与终端交互",
@@ -208,11 +209,14 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ],
     ownerOnly: true,
     toolNames: [
-      "list_live_resources",
-      "shell_run",
-      "shell_interact",
-      "shell_read",
-      "shell_signal"
+      "terminal_list",
+      "terminal_run",
+      "terminal_start",
+      "terminal_read",
+      "terminal_write",
+      "terminal_key",
+      "terminal_signal",
+      "terminal_stop"
     ]
   },
   {
@@ -221,15 +225,15 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     description: "浏览、编辑、搜索和发送本地文件。",
     promptGuidance: [
       "处理本地文件时，先列出、搜索或查看现有内容，再读写或发送。",
-      "需要下载网页资源、保存中间结果或把本地产物发回聊天时，再使用这一组能力。"
+      "local_file_* 面向本地路径：创建目录、读写、移动、删除、搜索、查看媒体或把本地产物发回聊天。"
     ],
     plannerSignals: [
       "读写或搜索本地文件",
       "按路径发送本地文件"
     ],
     toolNames: [
-      "download_asset",
       "local_file_ls",
+      "local_file_mkdir",
       "local_file_read",
       "local_file_write",
       "local_file_patch",

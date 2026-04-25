@@ -48,9 +48,13 @@ const SUMMARY_TOOL_NAMES = new Set([
   "local_file_read",
   "local_file_search",
   "local_file_ls",
-  "shell_run",
-  "shell_read",
-  "shell_interact",
+  "terminal_run",
+  "terminal_start",
+  "terminal_read",
+  "terminal_write",
+  "terminal_key",
+  "terminal_signal",
+  "terminal_stop",
   "inspect_page",
   "interact_with_page",
   "open_page",
@@ -148,7 +152,7 @@ function extractResource(
     };
   }
 
-  if (toolName.startsWith("shell_")) {
+  if (toolName.startsWith("terminal_")) {
     const id = stringValue(parsed?.resource_id ?? parsed?.session_id ?? parsed?.sessionId ?? toolCallId);
     return id ? { kind: "shell_session", id } : undefined;
   }
@@ -196,7 +200,7 @@ function buildRefetchHint(
     return `如需当前页面细节，请再次调用 inspect_page resource_id=${resource.id}`;
   }
   if (resource.kind === "shell_session") {
-    return `如需终端后续输出，请再次调用 shell_read resource_id=${resource.id}`;
+    return `如需终端后续输出，请再次调用 terminal_read resource_id=${resource.id}`;
   }
   return null;
 }

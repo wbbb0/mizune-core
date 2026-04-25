@@ -43,10 +43,14 @@ const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "inspect_page",
   "interact_with_page",
   "close_page",
-  "shell_run",
-  "shell_interact",
-  "shell_read",
-  "shell_signal"
+  "terminal_list",
+  "terminal_run",
+  "terminal_start",
+  "terminal_read",
+  "terminal_write",
+  "terminal_key",
+  "terminal_signal",
+  "terminal_stop"
 ]);
 
 export interface GenerationPromptHistoryMessage {

@@ -3,6 +3,7 @@ import { resolveSendablePath } from "#services/workspace/sendablePath.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
 import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
+import { nextAction, type ToolNextAction } from "../core/toolNextActions.ts";
 import {
   audioTranscriptionsFromDerivedObservations,
   DerivedObservationReader,
@@ -71,7 +72,10 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
           transport: "data_url",
           animated: prepared.animated,
           durationMs: prepared.durationMs,
-          sampledFrameCount: prepared.sampledFrameCount
+          sampledFrameCount: prepared.sampledFrameCount,
+          next_actions: [
+            nextAction("local_file_send_to_chat", "把当前本地媒体文件发送到聊天", { path: resolved.sourcePath })
+          ]
         }),
         supplementalMessages: [{
           role: "user",
@@ -169,7 +173,8 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
             caption: assetCaptionMap.get(item.fileId) ?? item.caption
           })),
           audio: audioSummaries,
-          unavailable: []
+          unavailable: [],
+          next_actions: viewedMediaNextActions(workspaceFiles)
         }),
         supplementalMessages: attachedWorkspaceImages.some(Boolean)
           ? [{
@@ -205,6 +210,12 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
     }
   }
 };
+
+function viewedMediaNextActions(files: Array<{ fileId: string; fileRef: string }>): ToolNextAction[] {
+  return files.slice(0, MAX_MEDIA_VIEW_PER_CALL).map((file) =>
+    nextAction("chat_file_send_to_chat", "发送已查看的媒体文件到当前聊天", { file_ref: file.fileRef || file.fileId })
+  );
+}
 
 function getMediaIdsArg(args: unknown): string[] {
   if (typeof args !== "object" || !args || !("media_ids" in args)) {

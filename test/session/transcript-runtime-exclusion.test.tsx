@@ -62,7 +62,7 @@ function createExcludedUserMessage(overrides: Partial<InternalTranscriptItem> = 
             id: "call_openai_1",
             type: "function",
             function: {
-              name: "shell_run",
+              name: "terminal_run",
               arguments: "{\"cmd\":\"pwd\"}"
             }
           }],
@@ -77,7 +77,7 @@ function createExcludedUserMessage(overrides: Partial<InternalTranscriptItem> = 
           llmVisible: true,
           timestampMs: 2,
           toolCallId: "call_openai_1",
-          toolName: "shell_run",
+          toolName: "terminal_run",
           content: "{\"stdout\":\"/repo\"}",
           runtimeExcluded: true,
           runtimeExcludedAt: 2,
@@ -103,7 +103,7 @@ function createExcludedUserMessage(overrides: Partial<InternalTranscriptItem> = 
           id: `call_openai_${index}`,
           type: "function",
           function: {
-            name: "shell_run",
+            name: "terminal_run",
             arguments: `{"cmd":"echo ${index}"}`
           }
         }]
@@ -115,7 +115,7 @@ function createExcludedUserMessage(overrides: Partial<InternalTranscriptItem> = 
         llmVisible: true,
         timestampMs: index * 2,
         toolCallId: `call_openai_${index}`,
-        toolName: "shell_run",
+        toolName: "terminal_run",
         content: JSON.stringify({ stdout: `RAW-RESULT-${index}` }),
         observation: {
           contentHash: `hash-${index}`,

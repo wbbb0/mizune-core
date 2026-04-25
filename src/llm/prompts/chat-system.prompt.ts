@@ -28,6 +28,7 @@ import { renderPromptSection } from "./prompt-section.ts";
 import { isNearDuplicateText } from "#memory/similarity.ts";
 import type { ToolsetRuleEntry } from "#llm/prompt/toolsetRuleStore.ts";
 import { normalizeProfileSummary } from "#identity/userProfile.ts";
+import { buildToolHintLines } from "#llm/prompt/promptToolHints.ts";
 
 const PERSONA_FIELD_HINTS: Record<EditablePersonaFieldName, string> = {
   name: "角色的名字",
@@ -249,6 +250,7 @@ export function buildBaseSystemLines(input: {
       renderPromptSection("rp_profile_snapshot", buildRpProfileSnapshotLines(draftMode.profile, draftMode.missingFields)),
       renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
       renderPromptSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
+      renderPromptSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
       renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
         activeToolsets: input.activeToolsets,
         visibleToolNames: input.visibleToolNames
@@ -270,6 +272,7 @@ export function buildBaseSystemLines(input: {
       renderPromptSection("scenario_profile_snapshot", buildScenarioProfileSnapshotLines(draftMode.profile, draftMode.missingFields)),
       renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
       renderPromptSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
+      renderPromptSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
       renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
         activeToolsets: input.activeToolsets,
         visibleToolNames: input.visibleToolNames
@@ -286,6 +289,7 @@ export function buildBaseSystemLines(input: {
       renderPromptSection("context_rules", buildContextRuleLines({
         visibleToolNames: input.visibleToolNames
       })),
+      renderPromptSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
       renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
         activeToolsets: input.activeToolsets,
         visibleToolNames: input.visibleToolNames
@@ -309,6 +313,7 @@ export function buildBaseSystemLines(input: {
       renderPromptSection("context_rules", buildContextRuleLines({
         visibleToolNames: input.visibleToolNames
       })),
+      renderPromptSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
       renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
         activeToolsets: input.activeToolsets,
         visibleToolNames: input.visibleToolNames
@@ -347,6 +352,7 @@ export function buildBaseSystemLines(input: {
       renderPromptSection("context_rules", buildContextRuleLines({
         visibleToolNames: input.visibleToolNames
       })),
+      renderPromptSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
       renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
         activeToolsets: input.activeToolsets,
         visibleToolNames: input.visibleToolNames
@@ -384,6 +390,7 @@ export function buildBaseSystemLines(input: {
     renderPromptSection("context_rules", buildContextRuleLines({
       visibleToolNames: input.visibleToolNames
     })),
+    renderPromptSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
     renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
       activeToolsets: input.activeToolsets,
       visibleToolNames: input.visibleToolNames

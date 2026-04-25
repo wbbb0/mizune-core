@@ -217,13 +217,13 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       sessionId: "qqbot:p:10001",
       interactionMode: "normal",
       mainModelRef: ["main"],
-      visibleToolNames: ["list_live_resources", "shell_run", "open_page"],
+      visibleToolNames: ["terminal_list", "terminal_run", "open_page"],
       activeToolsets: [
         {
           id: "shell_runtime",
           title: "Shell 运行时",
           description: "执行与交互 shell 会话，并复用 live_resource。",
-          toolNames: ["list_live_resources", "shell_run"],
+          toolNames: ["terminal_list", "terminal_run"],
           promptGuidance: ["需要运行命令时优先复用现有 shell 资源。"]
         },
         {

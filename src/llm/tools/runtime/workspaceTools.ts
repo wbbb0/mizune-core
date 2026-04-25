@@ -10,6 +10,7 @@ import { inferSendableFileKind, resolveSendablePath } from "#services/workspace/
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
 import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
+import { nextAction, withNextActions, type ToolNextAction } from "../core/toolNextActions.ts";
 
 const isLocalFileToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.localFiles.enabled;
 const isChatFileToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.chatFiles.enabled;
@@ -153,7 +154,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "local_file_delete",
-        description: "删除本地文件或目录。",
+        description: "删除本地文件或整个目录；目录会递归删除。path 相对本地文件工作区根目录，也可传允许范围内的绝对路径。",
         parameters: {
           type: "object",
           properties: { path: { type: "string" } },
@@ -284,10 +285,11 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     }
     const startLine = getNumberArg(args, "start_line");
     const endLine = getNumberArg(args, "end_line");
-    return JSON.stringify(await context.localFileService.readFile(path, {
+    const result = await context.localFileService.readFile(path, {
       ...(startLine ? { startLine } : {}),
       ...(endLine ? { endLine } : {})
-    }));
+    });
+    return JSON.stringify(withNextActions(result as unknown as Record<string, unknown>, localFileReadNextActions(result)));
   },
 
   async local_file_write(_toolCall, args, context) {
@@ -376,7 +378,8 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
       const file = await resolveChatFile(context, selector);
       return JSON.stringify({
         ok: Boolean(file),
-        file: file ? mapWorkspaceFileToView(file) : null
+        file: file ? mapWorkspaceFileToView(file) : null,
+        ...(file ? { next_actions: chatFileNextActions(file) } : {})
       });
     }
     const kind = getStringArg(args, "kind");
@@ -402,6 +405,33 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
     return sendChatFileToChat(context, file, getStringArg(args, "text"));
   }
 };
+
+function localFileReadNextActions(result: {
+  path: string;
+  endLine: number;
+  totalLines: number;
+  truncated: boolean;
+}): ToolNextAction[] {
+  if (!result.truncated || result.endLine >= result.totalLines) {
+    return [];
+  }
+  return [
+    nextAction("local_file_read", "继续读取剩余内容", {
+      path: result.path,
+      start_line: result.endLine + 1,
+      end_line: result.totalLines
+    })
+  ];
+}
+
+function chatFileNextActions(file: ChatFileRecord): ToolNextAction[] {
+  const actions: ToolNextAction[] = [];
+  if (file.kind === "image" || file.kind === "animated_image" || file.kind === "video" || file.kind === "audio") {
+    actions.push(nextAction("chat_file_view_media", "查看该媒体文件内容", { media_ids: [file.fileId] }));
+  }
+  actions.push(nextAction("chat_file_send_to_chat", "把该文件发送到当前聊天", { file_ref: file.fileRef }));
+  return actions;
+}
 
 async function sendResolvedPathToChat(
   context: Parameters<NonNullable<typeof localFileToolHandlers.local_file_send_to_chat>>[2],

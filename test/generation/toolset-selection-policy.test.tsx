@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { listTurnToolsets, resolveToolNamesFromToolsets } from "../../src/llm/tools/toolsetSelectionPolicy.ts";
+import { TOOLSET_DEFINITIONS } from "../../src/llm/tools/toolsetCatalog.ts";
 import { decideToolsetSupplements } from "../../src/app/generation/toolsetSupplementPolicy.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { requireSessionModeDefinition } from "../../src/modes/registry.ts";
@@ -84,6 +85,21 @@ import { resolveSessionModeSetupContext } from "../../src/app/generation/generat
     assert.equal(toolsets.some((item) => item.id === "memory_profile"), false);
     assert.equal(toolsets.some((item) => item.id === "conversation_navigation"), false);
     assert.equal(toolsets.some((item) => item.id === "chat_delegation"), false);
+  });
+
+  test("toolset catalog keeps browser downloads separate from local file paths", async () => {
+    const webResearch = TOOLSET_DEFINITIONS.find((item) => item.id === "web_research");
+    const localFileIo = TOOLSET_DEFINITIONS.find((item) => item.id === "local_file_io");
+    assert.ok(webResearch);
+    assert.ok(localFileIo);
+
+    assert.ok(webResearch.toolNames.includes("download_asset"));
+    assert.ok(!localFileIo.toolNames.includes("download_asset"));
+    assert.ok(localFileIo.toolNames.includes("local_file_mkdir"));
+    assert.equal(
+      localFileIo.promptGuidance?.some((line) => /下载网页资源/.test(line)),
+      false
+    );
   });
 
   test("rp_assistant setup prefers persona_setup before mode_setup", async () => {

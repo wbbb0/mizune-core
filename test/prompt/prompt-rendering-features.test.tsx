@@ -92,6 +92,70 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     }
   });
 
+  test("prompt builder renders concise tool hints from visible tools", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.patch({
+        speakingStyle: "直接、简洁，优先把任务做完。"
+      });
+      const prompt = buildPrompt({
+        sessionId: "qqbot:p:owner",
+        visibleToolNames: [
+          "open_page",
+          "inspect_page",
+          "interact_with_page",
+          "chat_file_list",
+          "chat_file_view_media",
+          "chat_file_send_to_chat",
+          "local_file_read",
+          "local_file_delete",
+          "local_file_search",
+          "local_file_view_media"
+        ],
+        activeToolsets: [
+          {
+            id: "web_research",
+            title: "网页检索与浏览",
+            description: "搜索网页、打开页面、交互与截图。",
+            toolNames: ["open_page", "inspect_page", "interact_with_page"]
+          },
+          {
+            id: "chat_file_io",
+            title: "聊天文件",
+            description: "查看和发送已登记聊天文件。",
+            toolNames: ["chat_file_list", "chat_file_view_media", "chat_file_send_to_chat"]
+          },
+          {
+            id: "local_file_io",
+            title: "本地文件",
+            description: "读取、检索和删除本地文件。",
+            toolNames: ["local_file_read", "local_file_delete", "local_file_search", "local_file_view_media"]
+          }
+        ],
+        persona,
+        relationship: "owner",
+        npcProfiles: [],
+        participantProfiles: [],
+        userProfile: createPromptUserProfile({ userId: "owner", senderName: "Owner" }),
+        historySummary: null,
+        recentMessages: [],
+        batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "整理一下这些资料", timestampMs: Date.now() })]
+      });
+
+      const system = String(prompt[0]?.content ?? "");
+      assert.match(system, /⟦section name="tool_hints"⟧/);
+      assert.match(system, /做网页交互前优先先 inspect_page 看当前 elements/);
+      assert.match(system, /需要找已登记的图片、视频、音频或文件时，先调 chat_file_list/);
+      assert.match(system, /local_file_\* 处理模型可访问的本地文件工作区/);
+      assert.match(system, /相对的是配置里的 local files 工作区根目录，不是 shell 当前目录、不是仓库根目录、也不是 chat file 的 chat_file_path/);
+      assert.match(system, /local_file_delete；它支持删除文件或递归删除整个目录/);
+      assert.doesNotMatch(system, /需要继续操作浏览器或 shell 时/);
+      assert.doesNotMatch(system, /shell_run/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   test("prompt builder deduplicates private-context user info and overlapping memory text", async () => {
     const harness = await createMemoryHarness();
     try {

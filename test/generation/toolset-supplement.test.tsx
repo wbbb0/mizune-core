@@ -4,9 +4,9 @@ import { supplementPlannedToolsets } from "../../src/app/generation/toolsetSuppl
 
 const AVAILABLE_TOOLSETS = [
   { id: "chat_context", title: "会话上下文", description: "", toolNames: ["view_message", "chat_file_view_media"] },
-  { id: "web_research", title: "网页检索与浏览", description: "", toolNames: ["open_page", "inspect_page"] },
-  { id: "shell_runtime", title: "Shell 运行时", description: "", toolNames: ["shell_run"] },
-  { id: "local_file_io", title: "本地文件", description: "", toolNames: ["download_asset", "local_file_read"] },
+  { id: "web_research", title: "网页检索与浏览", description: "", toolNames: ["open_page", "inspect_page", "download_asset"] },
+  { id: "shell_runtime", title: "Shell 运行时", description: "", toolNames: ["terminal_run"] },
+  { id: "local_file_io", title: "本地文件", description: "", toolNames: ["local_file_read", "local_file_mkdir"] },
   { id: "memory_profile", title: "长期资料与规则", description: "", toolNames: ["upsert_user_memory"] },
   { id: "scheduler_admin", title: "定时任务管理", description: "", toolNames: ["create_scheduled_job"] }
 ];
@@ -75,6 +75,27 @@ function createBatchMessage(overrides: Partial<Parameters<typeof supplementPlann
     assert.deepEqual(result.addedToolsetIds, ["web_research", "local_file_io"]);
   });
 
+  test("supplement treats browser downloads as web navigation", async () => {
+    const result = supplementPlannedToolsets({
+      selectedToolsetIds: [],
+      availableToolsets: AVAILABLE_TOOLSETS,
+      batchMessages: [createBatchMessage({ text: "打开页面，把里面的图片下载下来" })],
+      recentToolEvents: [],
+      plannerDecision: {
+        reason: "需要在网页里定位并下载资源",
+        replyDecision: "reply_small",
+        topicDecision: "continue_topic",
+        requiredCapabilities: ["web_navigation"],
+        contextDependencies: [],
+        recentDomainReuse: [],
+        followupMode: "none",
+        toolsetIds: []
+      }
+    });
+    assert.deepEqual(result.toolsetIds, ["web_research"]);
+    assert.deepEqual(result.addedToolsetIds, ["web_research"]);
+  });
+
   test("supplement maps memory_write to memory_profile explicitly", async () => {
     const result = supplementPlannedToolsets({
       selectedToolsetIds: [],
@@ -138,7 +159,7 @@ function createBatchMessage(overrides: Partial<Parameters<typeof supplementPlann
         toolsetIds: []
       },
       recentToolEvents: [{
-        toolName: "shell_run",
+        toolName: "terminal_run",
         argsSummary: "cmd=npm test",
         outcome: "success",
         resultSummary: "running",

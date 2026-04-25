@@ -2,6 +2,7 @@ import type { LlmToolExecutionResult } from "../../llmClient.ts";
 import type { ToolHandler } from "../core/shared.ts";
 import { getBooleanArg, getNumberArg, getStringArg, getStringArrayArg } from "../core/toolArgHelpers.ts";
 import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
+import { nextAction, withNextActions, type ToolNextAction } from "../core/toolNextActions.ts";
 import type { BrowserActionTarget, BrowserCoordinate } from "#services/web/browser/types.ts";
 import { isBrowserInteractionAction } from "#services/web/browser/types.ts";
 import {
@@ -60,13 +61,14 @@ export const webToolHandlers: Record<string, ToolHandler> = {
     }
 
     try {
-      return JSON.stringify(await context.browserService.openPage({
+      const result = await context.browserService.openPage({
         ...(refId ? { refId } : {}),
         ...(url ? { url } : {}),
         ...(description ? { description } : {}),
         ...(line === undefined ? {} : { line }),
         ...(context.lastMessage.sessionId ? { ownerSessionId: context.lastMessage.sessionId } : {})
-      }));
+      });
+      return JSON.stringify(withNextActions(result as unknown as Record<string, unknown>, browserPageNextActions(String((result as { resource_id?: string }).resource_id ?? ""))));
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -83,11 +85,12 @@ export const webToolHandlers: Record<string, ToolHandler> = {
     }
 
     try {
-      return JSON.stringify(await context.browserService.inspectPage({
+      const result = await context.browserService.inspectPage({
         resourceId,
         ...(line === undefined ? {} : { line }),
         ...(pattern ? { pattern } : {})
-      }));
+      });
+      return JSON.stringify(withNextActions(result as unknown as Record<string, unknown>, browserInspectNextActions(resourceId)));
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -192,7 +195,7 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         ...(kind ? { kind } : {})
       });
       const file = await context.chatFileStore.getFile(result.file_id);
-      return JSON.stringify({
+      return JSON.stringify(withNextActions({
         ok: true,
         ...(file ? mapWorkspaceFileToView(file) : { file_id: result.file_id }),
         kind: result.kind,
@@ -201,7 +204,11 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         source_url: result.source_url,
         resource_id: result.resource_id,
         target_id: result.target_id
-      });
+      }, downloadedFileNextActions({
+        fileId: result.file_id,
+        ...(file?.fileRef ? { fileRef: file.fileRef } : {}),
+        kind: result.kind
+      })));
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -261,6 +268,40 @@ export const webToolHandlers: Record<string, ToolHandler> = {
     }
   }
 };
+
+function browserPageNextActions(resourceId: string): ToolNextAction[] {
+  if (!resourceId) {
+    return [];
+  }
+  return [
+    nextAction("inspect_page", "查看页面文本、链接和可交互元素", { resource_id: resourceId }),
+    nextAction("interact_with_page", "点击、输入、上传或提交页面元素", { resource_id: resourceId }),
+    nextAction("capture_screenshot", "查看页面或局部元素截图", { resource_id: resourceId }),
+    nextAction("download_asset", "保存页面中的图片、视频或链接资源", { resource_id: resourceId })
+  ];
+}
+
+function browserInspectNextActions(resourceId: string): ToolNextAction[] {
+  return [
+    nextAction("interact_with_page", "基于 inspect_page 返回的 target_id 或语义目标执行交互", { resource_id: resourceId }),
+    nextAction("capture_screenshot", "需要视觉确认时截图，可带 target_id 截局部", { resource_id: resourceId }),
+    nextAction("download_asset", "保存 inspect_page 中发现的媒体或链接资源", { resource_id: resourceId })
+  ];
+}
+
+function downloadedFileNextActions(input: {
+  fileId: string;
+  fileRef?: string | null;
+  kind: string;
+}): ToolNextAction[] {
+  const selector = input.fileRef ?? input.fileId;
+  const actions: ToolNextAction[] = [];
+  if (input.kind === "image" || input.kind === "animated_image" || input.kind === "video" || input.kind === "audio") {
+    actions.push(nextAction("chat_file_view_media", "查看下载得到的媒体内容", { media_ids: [input.fileId] }));
+  }
+  actions.push(nextAction("chat_file_send_to_chat", "把下载得到的文件发送到当前聊天", { file_ref: selector }));
+  return actions;
+}
 
 function getBrowserActionTarget(args: unknown, key: string): BrowserActionTarget | undefined {
   if (typeof args !== "object" || !args || !(key in args)) {

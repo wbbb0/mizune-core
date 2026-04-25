@@ -60,6 +60,10 @@ const aboutLinkElement: BrowserElement = {
     assert.equal(parsed.ok, true);
     assert.equal(parsed.resource_id, "res_browser_1");
     assert.equal(parsed.resolvedUrl, "https://openai.com");
+    assert.deepEqual(
+      parsed.next_actions.map((item: { tool: string }) => item.tool),
+      ["inspect_page", "interact_with_page", "capture_screenshot", "download_asset"]
+    );
   });
 
   test("open_page accepts ref ids", async () => {
@@ -105,6 +109,10 @@ const aboutLinkElement: BrowserElement = {
     const parsed = parseJsonToolResult<any>(result);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.matches[0].lineNumber, 2);
+    assert.deepEqual(
+      parsed.next_actions.map((item: { tool: string }) => item.tool),
+      ["interact_with_page", "capture_screenshot", "download_asset"]
+    );
   });
 
   test("interact_with_page forwards page actions", async () => {
@@ -401,4 +409,8 @@ const aboutLinkElement: BrowserElement = {
     assert.equal(parsed.resource_id, "res_browser_1");
     assert.equal(parsed.target_id, 2);
     assert.equal(parsed.file_id, "file_2");
+    assert.deepEqual(
+      parsed.next_actions.map((item: { tool: string }) => item.tool),
+      ["chat_file_view_media", "chat_file_send_to_chat"]
+    );
   });

@@ -46,7 +46,7 @@ test("local_file_read observation keeps raw content out of replay and preserves 
 
 test("tool_result transcript schema accepts optional observation metadata", () => {
   const observation = buildToolObservation({
-    toolName: "shell_run",
+    toolName: "terminal_run",
     toolCallId: "call_shell_1",
     content: JSON.stringify({
       stdout: "ok\n".repeat(100),
@@ -60,7 +60,7 @@ test("tool_result transcript schema accepts optional observation metadata", () =
     llmVisible: true,
     timestampMs: 1,
     toolCallId: "call_shell_1",
-    toolName: "shell_run",
+    toolName: "terminal_run",
     content: JSON.stringify({ stdout: "ok\n".repeat(100), stderr: "", exitCode: 0 }),
     observation
   });

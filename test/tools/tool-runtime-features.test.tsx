@@ -35,6 +35,8 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.ok(names.includes("view_message"));
     assert.ok(names.includes("chat_file_list"));
     assert.ok(names.includes("chat_file_send_to_chat"));
+    assert.ok(names.includes("local_file_mkdir"));
+    assert.ok(names.includes("local_file_delete"));
     assert.ok(names.includes("local_file_send_to_chat"));
     assert.ok(names.includes("ground_with_google_search"));
     assert.ok(names.includes("search_with_iqs_lite_advanced"));
@@ -43,14 +45,45 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.ok(names.includes("manage_scheduled_job"));
     assert.ok(names.includes("respond_request"));
     assert.ok(names.includes("set_chat_permission"));
-    assert.ok(names.includes("shell_run"));
-    assert.ok(names.includes("shell_interact"));
-    assert.ok(names.includes("shell_read"));
-    assert.ok(names.includes("shell_signal"));
+    assert.ok(names.includes("terminal_list"));
+    assert.ok(names.includes("terminal_run"));
+    assert.ok(names.includes("terminal_start"));
+    assert.ok(names.includes("terminal_read"));
+    assert.ok(names.includes("terminal_write"));
+    assert.ok(names.includes("terminal_key"));
+    assert.ok(names.includes("terminal_signal"));
+    assert.ok(names.includes("terminal_stop"));
+    assert.ok(!names.includes("shell_run"));
     assert.ok(names.includes("open_page"));
     assert.ok(names.includes("inspect_page"));
     assert.ok(names.includes("interact_with_page"));
     assert.ok(names.includes("close_page"));
+  });
+
+  test("local_file_delete descriptor makes recursive directory deletion explicit", async () => {
+    const config = createForwardFeatureConfig();
+    const descriptor = getBuiltinTools("owner", config)
+      .find((tool) => tool.function.name === "local_file_delete");
+    assert.ok(descriptor);
+    assert.match(descriptor.function.description, /整个目录/);
+    assert.match(descriptor.function.description, /递归删除/);
+    assert.match(descriptor.function.description, /相对本地文件工作区根目录/);
+  });
+
+  test("terminal_key schema exposes semantic tmux keys and key queues", async () => {
+    const config = createForwardFeatureConfig();
+    config.shell.enabled = true;
+    const descriptor = getBuiltinTools("owner", config)
+      .find((tool) => tool.function.name === "terminal_key");
+    assert.ok(descriptor);
+    const properties = descriptor.function.parameters?.properties as any;
+    assert.ok(properties.key.enum.includes("tmux_split_right"));
+    assert.ok(properties.key.enum.includes("tmux_detach"));
+    assert.deepEqual(properties.keys.items.enum, properties.key.enum);
+    assert.deepEqual(descriptor.function.parameters?.anyOf, [
+      { required: ["resource_id", "key"] },
+      { required: ["resource_id", "keys"] }
+    ]);
   });
 
   test("builtin tool list hides web tools when search is disabled", async () => {
@@ -64,7 +97,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.ok(!names.includes("search_with_iqs_lite_advanced"));
     assert.ok(!names.includes("list_live_resources"));
     assert.ok(!names.includes("capture_screenshot"));
-    assert.ok(!names.includes("shell_run"));
+    assert.ok(!names.includes("terminal_run"));
     assert.ok(!names.includes("open_page"));
     assert.ok(!names.includes("inspect_page"));
     assert.ok(!names.includes("interact_with_page"));
@@ -958,9 +991,75 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.equal(typeof payload.weekday, "string");
   });
 
-  test("shell_run forwards resource description", async () => {
-    const result = await shellToolHandlers.shell_run!(
-      { id: "tool_shell_run_1", type: "function", function: { name: "shell_run", arguments: "{\"command\":\"pwd\",\"description\":\"确认当前目录\"}" } },
+  test("chat_file_list exact lookup suggests view and send follow-ups", async () => {
+    const result = await chatFileToolHandlers.chat_file_list!(
+      { id: "tool_chat_file_list_1", type: "function", function: { name: "chat_file_list", arguments: "{\"file_ref\":\"chat_test0001.png\"}" } },
+      { file_ref: "chat_test0001.png" },
+      {
+        chatFileStore: {
+          async getFile() {
+            return null;
+          },
+          async listFiles() {
+            return [{
+              fileId: "file_test_1",
+              fileRef: "chat_test0001.png",
+              kind: "image",
+              origin: "browser_download",
+              chatFilePath: "workspace/media/file_test_1.png",
+              sourceName: "a.png",
+              mimeType: "image/png",
+              sizeBytes: 1,
+              createdAtMs: Date.now(),
+              sourceContext: {},
+              caption: null
+            }];
+          }
+        }
+      } as any
+    );
+
+    const payload = JSON.parse(String(result));
+    assert.equal(payload.ok, true);
+    assert.deepEqual(
+      payload.next_actions.map((item: { tool: string }) => item.tool),
+      ["chat_file_view_media", "chat_file_send_to_chat"]
+    );
+  });
+
+  test("local_file_read truncated output suggests the next read range", async () => {
+    const result = await localFileToolHandlers.local_file_read!(
+      { id: "tool_local_file_read_1", type: "function", function: { name: "local_file_read", arguments: "{\"path\":\"logs/app.log\"}" } },
+      { path: "logs/app.log" },
+      {
+        localFileService: {
+          async readFile(path: string) {
+            assert.equal(path, "logs/app.log");
+            return {
+              path,
+              content: "line 1\nline 2",
+              startLine: 1,
+              endLine: 2,
+              totalLines: 5,
+              truncated: true
+            };
+          }
+        }
+      } as any
+    );
+
+    const payload = JSON.parse(String(result));
+    assert.equal(payload.truncated, true);
+    assert.deepEqual(payload.next_actions[0], {
+      tool: "local_file_read",
+      reason: "继续读取剩余内容",
+      args: { path: "logs/app.log", start_line: 3, end_line: 5 }
+    });
+  });
+
+  test("terminal_run forwards resource description", async () => {
+    const result = await shellToolHandlers.terminal_run!(
+      { id: "tool_terminal_run_1", type: "function", function: { name: "terminal_run", arguments: "{\"command\":\"pwd\",\"description\":\"确认当前目录\"}" } },
       { command: "pwd", description: "确认当前目录" },
       {
         relationship: "owner",
@@ -983,11 +1082,101 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.equal(payload.status, "completed");
   });
 
-  test("list_live_resources supports shell-only filtering", async () => {
-    const result = await resourceToolHandlers.list_live_resources!(
-      { id: "tool_shell_list_1", type: "function", function: { name: "list_live_resources", arguments: "{\"type\":\"shell\"}" } },
-      { type: "shell" },
+  test("terminal_start, terminal_key and terminal_signal cover background and controls", async () => {
+    const runCalls: any[] = [];
+    const interactCalls: any[] = [];
+    const signalCalls: any[] = [];
+    const context = {
+      relationship: "owner",
+      shellRuntime: {
+        async run(input: any) {
+          runCalls.push(input);
+          return { status: "running", resource_id: "res_shell_1" };
+        },
+        async interact(resourceId: string, input: string) {
+          interactCalls.push({ resourceId, input });
+          return { output: "", session: { resource_id: resourceId, status: "active", outputTail: "" } };
+        },
+        async signal(resourceId: string, signal: string) {
+          signalCalls.push({ resourceId, signal });
+          return { ok: true, resource_id: resourceId, signal };
+        }
+      }
+    } as any;
+
+    await shellToolHandlers.terminal_start!(
+      { id: "tool_terminal_start_1", type: "function", function: { name: "terminal_start", arguments: "{}" } },
+      { command: "npm run dev", description: "开发服务器" },
+      context
+    );
+    await shellToolHandlers.terminal_key!(
+      { id: "tool_terminal_key_1", type: "function", function: { name: "terminal_key", arguments: "{}" } },
+      { resource_id: "res_shell_1", key: "ctrl_c" },
+      context
+    );
+    await shellToolHandlers.terminal_signal!(
+      { id: "tool_terminal_signal_1", type: "function", function: { name: "terminal_signal", arguments: "{}" } },
+      { resource_id: "res_shell_1", signal: "SIGKILL" },
+      context
+    );
+
+    assert.equal(runCalls[0].background, true);
+    assert.equal(runCalls[0].description, "开发服务器");
+    assert.deepEqual(interactCalls[0], { resourceId: "res_shell_1", input: "\u0003" });
+    assert.deepEqual(signalCalls[0], { resourceId: "res_shell_1", signal: "SIGKILL" });
+  });
+
+  test("terminal_key sends semantic tmux key queues in order", async () => {
+    const interactCalls: any[] = [];
+    const result = await shellToolHandlers.terminal_key!(
+      { id: "tool_terminal_key_queue_1", type: "function", function: { name: "terminal_key", arguments: "{}" } },
       {
+        resource_id: "res_shell_1",
+        keys: ["ctrl_c", "tmux_split_right", "tmux_zoom_pane", "tmux_detach"]
+      },
+      {
+        relationship: "owner",
+        shellRuntime: {
+          async interact(resourceId: string, input: string) {
+            interactCalls.push({ resourceId, input });
+            return { output: "ok", session: { resource_id: resourceId, status: "active", outputTail: "" } };
+          }
+        }
+      } as any
+    );
+
+    const payload = JSON.parse(String(result));
+    assert.equal(payload.output, "ok");
+    assert.deepEqual(interactCalls, [{
+      resourceId: "res_shell_1",
+      input: "\u0003\u0002%\u0002z\u0002d"
+    }]);
+  });
+
+  test("terminal_key rejects plain text inside key queues", async () => {
+    const result = await shellToolHandlers.terminal_key!(
+      { id: "tool_terminal_key_queue_2", type: "function", function: { name: "terminal_key", arguments: "{}" } },
+      { resource_id: "res_shell_1", keys: ["tmux_command_prompt", "kill-pane"] },
+      {
+        relationship: "owner",
+        shellRuntime: {
+          async interact() {
+            throw new Error("should not send invalid key queue");
+          }
+        }
+      } as any
+    );
+
+    const payload = JSON.parse(String(result));
+    assert.equal(payload.error, "unsupported key: kill-pane");
+  });
+
+  test("terminal_list returns shell resources", async () => {
+    const result = await shellToolHandlers.terminal_list!(
+      { id: "tool_terminal_list_1", type: "function", function: { name: "terminal_list", arguments: "{}" } },
+      {},
+      {
+        relationship: "owner",
         config: createForwardFeatureConfig(),
         shellRuntime: {
           async listSessionResources() {
@@ -1007,18 +1196,13 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
               expiresAtMs: null
             }];
           }
-        },
-        browserService: {
-          async listPages() {
-            throw new Error("should not list browser pages when type=shell");
-          }
         }
       } as any
     );
 
     const payload = JSON.parse(String(result));
-    assert.equal(payload.type, "shell");
-    assert.equal(payload.live_resources[0].resource_id, "res_shell_1");
+    assert.equal(payload.ok, true);
+    assert.equal(payload.terminals[0].resource_id, "res_shell_1");
   });
 
   test("dump_debug_literals pushes one literal per outbound message without writing history", async () => {
@@ -1698,7 +1882,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.equal(JSON.parse(String((result as any).content ?? result)).path, "outputs/demo.txt");
   });
 
-  test("list_live_resources merges browser and shell resources", async () => {
+  test("list_live_resources returns browser resources only", async () => {
     const result = await resourceToolHandlers.list_live_resources!(
       { id: "tool_resource_list_1", type: "function", function: { name: "list_live_resources", arguments: "{}" } },
       {},
@@ -1724,34 +1908,14 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
               }]
             };
           }
-        },
-        shellRuntime: {
-          async listSessionResources() {
-            return [{
-              resource_id: "res_shell_1",
-              status: "active",
-              command: "pwd",
-              cwd: "/tmp",
-              shell: "/bin/sh",
-              login: true,
-              tty: true,
-              title: "pwd @ /tmp",
-              description: "查看当前工作目录",
-              summary: "pwd (cwd=/tmp)",
-              createdAtMs: 2,
-              lastAccessedAtMs: 20,
-              expiresAtMs: null
-            }];
-          }
         }
       } as any
     );
 
     const payload = JSON.parse(String(result));
     assert.equal(payload.ok, true);
-    assert.deepEqual(payload.live_resources.map((item: any) => item.resource_id), ["res_shell_1", "res_browser_1"]);
-    assert.equal(payload.live_resources[0].description, "查看当前工作目录");
-    assert.equal(payload.live_resources[1].description, "查看首页文案");
+    assert.deepEqual(payload.live_resources.map((item: any) => item.resource_id), ["res_browser_1"]);
+    assert.equal(payload.live_resources[0].description, "查看首页文案");
   });
 
   test("list_live_resources only returns valid active resources", async () => {
@@ -1780,32 +1944,12 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
               }]
             };
           }
-        },
-        shellRuntime: {
-          async listSessionResources() {
-            return [{
-              resource_id: "res_shell_live",
-              status: "active",
-              command: "pwd",
-              cwd: "/tmp",
-              shell: "/bin/sh",
-              login: true,
-              tty: true,
-              title: "pwd @ /tmp",
-              description: "查看当前工作目录",
-              summary: "pwd (cwd=/tmp)",
-              createdAtMs: 2,
-              lastAccessedAtMs: 4,
-              expiresAtMs: null
-            }];
-          }
         }
       } as any
     );
 
     const payload = JSON.parse(String(result));
-    assert.deepEqual(payload.live_resources.map((item: any) => item.resource_id), ["res_shell_live", "res_browser_live"]);
+    assert.deepEqual(payload.live_resources.map((item: any) => item.resource_id), ["res_browser_live"]);
     assert.equal(payload.live_resources.every((item: any) => item.status === "active"), true);
-    assert.equal(payload.live_resources[0].description, "查看当前工作目录");
-    assert.equal(payload.live_resources[1].description, "继续支付流程");
+    assert.equal(payload.live_resources[0].description, "继续支付流程");
   });
