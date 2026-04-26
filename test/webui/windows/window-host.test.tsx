@@ -14,6 +14,7 @@ const typescript = require(`${ROOT}/webui/node_modules/typescript/lib/typescript
 const VUE_RUNTIME_URL = new URL("../../../webui/node_modules/vue/index.mjs", import.meta.url).href;
 const WINDOW_SIZING_URL = new URL("../../../webui/src/components/workbench/windows/windowSizing.ts", import.meta.url).href;
 const USE_WORKBENCH_WINDOWS_URL = new URL("../../../webui/src/composables/workbench/useWorkbenchWindows.ts", import.meta.url).href;
+const WORKBENCH_RUNTIME_URL = new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url).href;
 const WINDOW_SURFACE_PATH = `${ROOT}/webui/src/components/workbench/windows/WindowSurface.vue`;
 const WINDOW_HOST_PATH = `${ROOT}/webui/src/components/workbench/windows/WindowHost.vue`;
 const DIALOG_RENDERER_PATH = `${ROOT}/webui/src/components/workbench/windows/DialogRenderer.vue`;
@@ -201,6 +202,7 @@ const workbenchShellUrl = compileVueModule(WORKBENCH_SHELL_PATH, {
   "@/components/workbench/MobileWorkbench.vue": mobileWorkbenchStubUrl,
   "@/components/workbench/menu/MenuHost.vue": menuHostStubUrl,
   "@/stores/ui": uiStubUrl,
+  "@/components/workbench/runtime/workbenchRuntime": WORKBENCH_RUNTIME_URL,
   "@/composables/workbench/menu/useMenuRuntime": menuRuntimeStubUrl,
   "@/composables/workbench/useWorkbenchWindows": USE_WORKBENCH_WINDOWS_URL,
   "@/components/workbench/windows/WindowHost.vue": windowHostUrl

@@ -1,4 +1,5 @@
 import { ref } from "vue";
+import { useWorkbenchRuntimeContext } from "@/components/workbench/runtime/workbenchRuntime";
 
 const mobileScreen = ref<"list" | "main">("list");
 const auxOpen = ref(false);
@@ -29,5 +30,6 @@ const sharedWorkbenchRuntime = {
 };
 
 export function useWorkbenchRuntime() {
-  return sharedWorkbenchRuntime;
+  const providedRuntime = useWorkbenchRuntimeContext();
+  return providedRuntime ?? sharedWorkbenchRuntime;
 }

@@ -6,6 +6,7 @@ import { uploadsApi, type UploadedFile } from "@/api/uploads";
 import { prepareFilesForUpload } from "@/api/uploadPreparation";
 import { useToastStore } from "@/stores/toasts";
 import { useUiStore } from "@/stores/ui";
+import { useWorkbenchRuntimeContext } from "@/components/workbench/runtime/workbenchRuntime";
 import { buildComposerSendPayload, type ComposerSendPayload } from "./composerPayload";
 import { formatSendErrorMessage, formatUploadErrorMessage } from "./composerErrors";
 
@@ -41,7 +42,10 @@ const iosRootScrollGuardActive = ref(false);
 const composerRootRef = ref<HTMLElement | null>(null);
 const toast = useToastStore();
 const ui = useUiStore();
-const keyboardAvoidanceTarget = computed(() => composerRootRef.value?.parentElement ?? null);
+const workbenchRuntime = useWorkbenchRuntimeContext();
+const keyboardAvoidanceTarget = computed(() =>
+  workbenchRuntime?.keyboardAvoidanceBoundary.value ?? composerRootRef.value?.parentElement ?? null
+);
 const { keyboardInsetPx } = useVisualViewportInset({ target: keyboardAvoidanceTarget });
 let iosRootScrollGuardCleanup: (() => void) | null = null;
 
