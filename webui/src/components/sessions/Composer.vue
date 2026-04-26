@@ -37,13 +37,16 @@ const attachments  = ref<(UploadedFile & { preview?: string })[]>([]);
 const uploading    = ref(false);
 const sending      = ref(false);
 const iosRootScrollGuardActive = ref(false);
+const composerRootRef = ref<HTMLElement | null>(null);
 const toast = useToastStore();
 const ui = useUiStore();
-const { keyboardInsetPx } = useVisualViewportInset();
+const keyboardAvoidanceTarget = computed(() => composerRootRef.value?.parentElement ?? null);
+const { keyboardInsetPx } = useVisualViewportInset({ target: keyboardAvoidanceTarget });
 let iosRootScrollGuardCleanup: (() => void) | null = null;
 
 const composerStyle = computed(() => ({
-  paddingBottom: ui.isDesktop || keyboardInsetPx.value > 0 ? "0.5rem" : `calc(env(safe-area-inset-bottom, 0px) + 0.5rem)`
+  marginBottom: keyboardInsetPx.value > 0 ? `${keyboardInsetPx.value}px` : "0px",
+  paddingBottom: ui.isMobile && keyboardInsetPx.value === 0 ? `calc(env(safe-area-inset-bottom, 0px) + 0.5rem)` : "0.5rem"
 }));
 
 // Auto-resize textarea
@@ -234,6 +237,7 @@ onUnmounted(() => {
 
 <template>
   <div
+    ref="composerRootRef"
     class="border-t border-border-default bg-surface-sidebar px-3 pt-2"
     :style="composerStyle"
   >

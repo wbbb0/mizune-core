@@ -1,4 +1,21 @@
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, type Ref } from "vue";
+
+type KeyboardInsetInput = {
+  baselineViewportHeight: number;
+  viewportHeight: number;
+  viewportOffsetTop: number;
+  targetBottom?: number | null;
+};
+
+type VisualViewportInsetOptions = {
+  target?: Readonly<Ref<HTMLElement | null>>;
+};
+
+export function resolveKeyboardInsetPx(input: KeyboardInsetInput): number {
+  const viewportBottom = input.viewportOffsetTop + input.viewportHeight;
+  const boundaryBottom = input.targetBottom ?? input.baselineViewportHeight;
+  return Math.max(0, Math.round(boundaryBottom - viewportBottom));
+}
 
 function isEditableElement(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -22,10 +39,11 @@ function isEditableElement(target: EventTarget | null): boolean {
   return target.isContentEditable;
 }
 
-export function useVisualViewportInset() {
+export function useVisualViewportInset(options: VisualViewportInsetOptions = {}) {
   const keyboardInsetPx = ref(0);
   const editableFocused = ref(false);
   const viewportHeightPx = ref(typeof window !== "undefined" ? Math.round(window.visualViewport?.height ?? window.innerHeight) : 0);
+  const baselineViewportHeightPx = ref(viewportHeightPx.value);
   const deferredUpdateTimers: number[] = [];
   let virtualKeyboard: (Navigator & {
     virtualKeyboard?: {
@@ -34,22 +52,32 @@ export function useVisualViewportInset() {
     };
   })["virtualKeyboard"];
 
-  const update = () => {
-    if (typeof window !== "undefined") {
-      viewportHeightPx.value = Math.round(window.visualViewport?.height ?? window.innerHeight);
-    }
+  const readViewportHeight = () => (
+    typeof window !== "undefined"
+      ? Math.round(window.visualViewport?.height ?? window.innerHeight)
+      : 0
+  );
 
+  const update = () => {
+    const nextViewportHeight = readViewportHeight();
+    viewportHeightPx.value = nextViewportHeight;
     const activeElement = typeof document !== "undefined" ? document.activeElement : null;
     editableFocused.value = isEditableElement(activeElement);
 
     if (typeof window === "undefined" || !window.visualViewport || !editableFocused.value) {
       keyboardInsetPx.value = 0;
+      baselineViewportHeightPx.value = Math.max(baselineViewportHeightPx.value, nextViewportHeight);
       return;
     }
 
     const viewport = window.visualViewport;
-    const inset = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
-    keyboardInsetPx.value = inset > 0 ? inset : 0;
+    baselineViewportHeightPx.value = Math.max(baselineViewportHeightPx.value, nextViewportHeight);
+    keyboardInsetPx.value = resolveKeyboardInsetPx({
+      baselineViewportHeight: baselineViewportHeightPx.value,
+      viewportHeight: viewport.height,
+      viewportOffsetTop: viewport.offsetTop,
+      targetBottom: options.target?.value?.getBoundingClientRect().bottom ?? null
+    });
   };
 
   const clearDeferredUpdates = () => {
@@ -89,7 +117,7 @@ export function useVisualViewportInset() {
     viewport?.addEventListener("scroll", update);
     window.addEventListener("focusin", onFocusIn);
     window.addEventListener("focusout", onFocusOut);
-    window.addEventListener("orientationchange", update);
+    window.addEventListener("orientationchange", resetViewportBaseline);
 
     virtualKeyboard = (navigator as Navigator & {
       virtualKeyboard?: {
@@ -107,7 +135,7 @@ export function useVisualViewportInset() {
     viewport?.removeEventListener("scroll", update);
     window.removeEventListener("focusin", onFocusIn);
     window.removeEventListener("focusout", onFocusOut);
-    window.removeEventListener("orientationchange", update);
+    window.removeEventListener("orientationchange", resetViewportBaseline);
     virtualKeyboard?.removeEventListener?.("geometrychange", update);
     clearDeferredUpdates();
   });
@@ -118,4 +146,9 @@ export function useVisualViewportInset() {
     viewportHeightPx,
     viewportHeightStylePx: computed(() => `${viewportHeightPx.value}px`)
   };
+
+  function resetViewportBaseline() {
+    baselineViewportHeightPx.value = readViewportHeight();
+    update();
+  }
 }

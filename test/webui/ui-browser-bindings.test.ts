@@ -27,3 +27,12 @@ test("ui browser bindings stay outside the store and are installed from the webu
   assert.match(mainSource, /useUiStore\(pinia\)/);
   assert.match(mainSource, /cleanupUiBrowserBindings/);
 });
+
+test("visual viewport keyboard inset uses a stable pre-keyboard viewport baseline", async () => {
+  const source = await readFile(new URL("../../webui/src/composables/useVisualViewportInset.ts", import.meta.url), "utf8");
+
+  assert.match(source, /const baselineViewportHeightPx = ref/);
+  assert.match(source, /resolveKeyboardInsetPx\(\{/);
+  assert.match(source, /baselineViewportHeight:\s*baselineViewportHeightPx\.value/);
+  assert.doesNotMatch(source, /window\.innerHeight - viewport\.height - viewport\.offsetTop/);
+});
