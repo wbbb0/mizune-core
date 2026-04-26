@@ -28,13 +28,32 @@ export const transcriptItemDeliveryRefSchema = z.object({
   messageId: z.number().int().nonnegative()
 });
 
+export const transcriptTokenStatSourceValues = ["api_direct", "api_attributed", "estimated"] as const;
+
+export const transcriptTokenStatSchema = z.object({
+  tokens: z.number().int().nonnegative(),
+  source: z.enum(transcriptTokenStatSourceValues),
+  modelRef: z.string().min(1).nullable().optional(),
+  model: z.string().min(1).nullable().optional(),
+  providerReported: z.boolean().optional(),
+  sampleCount: z.number().int().positive().default(1),
+  updatedAt: z.number().int().nonnegative()
+});
+
+export const transcriptTokenStatsSchema = z.object({
+  input: transcriptTokenStatSchema.optional(),
+  output: transcriptTokenStatSchema.optional(),
+  reasoning: transcriptTokenStatSchema.optional()
+});
+
 export const transcriptItemMetaSchema = z.object({
   id: z.string().min(1).optional(),
   groupId: z.string().min(1).optional(),
   runtimeExcluded: z.boolean().optional(),
   runtimeExcludedAt: z.number().int().nonnegative().optional(),
   runtimeExclusionReason: z.enum(transcriptItemRuntimeExclusionReasonValues).optional(),
-  deliveryRef: transcriptItemDeliveryRefSchema.optional()
+  deliveryRef: transcriptItemDeliveryRefSchema.optional(),
+  tokenStats: transcriptTokenStatsSchema.optional()
 });
 
 export const transcriptUserMessageItemSchema = z.object({
@@ -257,10 +276,14 @@ export const transcriptItemPatchSchema = z.object({
   reasoningContent: z.string().optional(),
   runtimeExcluded: z.boolean().optional(),
   runtimeExcludedAt: z.number().int().nonnegative().optional(),
-  runtimeExclusionReason: z.enum(transcriptItemRuntimeExclusionReasonValues).optional()
+  runtimeExclusionReason: z.enum(transcriptItemRuntimeExclusionReasonValues).optional(),
+  tokenStats: transcriptTokenStatsSchema.optional()
 });
 
 export type StoredToolCall = z.infer<typeof storedToolCallSchema>;
+export type TranscriptTokenStatSource = (typeof transcriptTokenStatSourceValues)[number];
+export type TranscriptTokenStat = z.infer<typeof transcriptTokenStatSchema>;
+export type TranscriptTokenStats = z.infer<typeof transcriptTokenStatsSchema>;
 export type TranscriptToolObservation = z.infer<typeof transcriptToolObservationSchema>;
 export type TranscriptItemRuntimeExclusionReason = (typeof transcriptItemRuntimeExclusionReasonValues)[number];
 export type TranscriptItemDeliveryRef = z.infer<typeof transcriptItemDeliveryRefSchema>;

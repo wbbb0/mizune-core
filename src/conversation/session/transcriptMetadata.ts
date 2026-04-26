@@ -87,6 +87,9 @@ export function buildTranscriptItemPatch(
   if (previous.runtimeExclusionReason !== current.runtimeExclusionReason && current.runtimeExclusionReason != null) {
     patch.runtimeExclusionReason = current.runtimeExclusionReason;
   }
+  if (JSON.stringify(previous.tokenStats ?? null) !== JSON.stringify(current.tokenStats ?? null) && current.tokenStats != null) {
+    patch.tokenStats = current.tokenStats;
+  }
 
   return Object.keys(patch).length > 0 ? patch : null;
 }

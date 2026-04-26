@@ -160,6 +160,21 @@ export function diffSessionStreamEvents(
     return events;
   }
 
+  if (hasTranscriptIndexGap(previous, current)) {
+    events.push({
+      type: "reset",
+      sessionId: current.sessionId,
+      modeId: current.modeId,
+      mutationEpoch: current.mutationEpoch,
+      transcriptCount: current.transcript.length,
+      lastActiveAt: current.lastActiveAt,
+      phase: deriveWebSessionPhase(current),
+      reason: "transcript_gap_detected",
+      timestampMs: Date.now()
+    });
+    return events;
+  }
+
   if (current.transcript.length > previous.transcript.length) {
     events.push(...buildTranscriptAppendEvents(current, previous.transcript.length));
   }
@@ -186,6 +201,26 @@ export function diffSessionStreamEvents(
   }
 
   return events;
+}
+
+function hasTranscriptIndexGap(
+  previous: WebSessionStreamSnapshot,
+  current: WebSessionStreamSnapshot
+): boolean {
+  const comparableLength = Math.min(previous.transcript.length, current.transcript.length);
+
+  for (let index = 0; index < comparableLength; index += 1) {
+    const previousItem = previous.transcript[index];
+    const currentItem = current.transcript[index];
+    if (!previousItem || !currentItem) {
+      continue;
+    }
+    if (getTranscriptItemId(previousItem) !== getTranscriptItemId(currentItem)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function buildTranscriptAppendEvents(

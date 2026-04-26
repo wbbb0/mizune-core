@@ -65,8 +65,9 @@ export interface LlmGenerateParams {
   onTextDelta?: (delta: string) => Promise<void> | void;
   onReasoningDelta?: (delta: string) => void;
   toolExecutor?: (toolCall: LlmToolCall) => Promise<string | LlmToolExecutionResult>;
-  onAssistantToolCalls?: (message: LlmMessage) => Promise<void> | void;
+  onAssistantToolCalls?: (message: LlmMessage, usage?: LlmProviderCallUsage) => Promise<void> | void;
   onToolResultMessage?: (message: LlmMessage, toolName: string) => Promise<void> | void;
+  onProviderCallUsage?: (usage: LlmProviderCallUsage) => Promise<void> | void;
   onFallbackEvent?: (event: LlmFallbackEvent) => Promise<void> | void;
   modelOverride?: string;
   modelRefOverride?: string | string[];
@@ -92,6 +93,15 @@ export interface LlmGenerateResult {
   text: string;
   reasoningContent: string;
   usage: LlmUsage;
+  providerCallUsages?: LlmProviderCallUsage[];
+}
+
+export interface LlmProviderCallUsage {
+  iteration: number;
+  phase: "tool_call" | "final_response" | "terminal_response" | "fallback_response";
+  usage: LlmUsage;
+  text: string;
+  reasoningContent: string;
 }
 
 export interface LlmToolExecutionResult {

@@ -105,3 +105,87 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
       assert.equal(result.text, "已经补上风速");
     });
   });
+
+  test("tool-loop exposes per provider call usage for attribution", async () => {
+    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+    const callUsages: Array<{ phase: string; outputTokens: number | null; reasoningTokens: number | null }> = [];
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 1);
+        },
+        payloads: [
+          {
+            choices: [{
+              delta: {
+                tool_calls: [{
+                  index: 0,
+                  id: "tool-call-usage",
+                  type: "function",
+                  function: {
+                    name: "lookup",
+                    arguments: "{\"query\":\"weather\"}"
+                  }
+                }]
+              }
+            }]
+          },
+          {
+            usage: {
+              prompt_tokens: 20,
+              completion_tokens: 5,
+              total_tokens: 25,
+              completion_tokens_details: {
+                reasoning_tokens: 2
+              }
+            }
+          }
+        ]
+      },
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 3);
+        },
+        payloads: [
+          {
+            choices: [{
+              delta: {
+                content: "天气晴"
+              }
+            }]
+          },
+          {
+            usage: {
+              prompt_tokens: 30,
+              completion_tokens: 7,
+              total_tokens: 37,
+              completion_tokens_details: {
+                reasoning_tokens: 3
+              }
+            }
+          }
+        ]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "看天气" }],
+        tools: [createToolDefinition("lookup")],
+        toolExecutor: async () => "{\"ok\":true}",
+        onProviderCallUsage: (event) => {
+          callUsages.push({
+            phase: event.phase,
+            outputTokens: event.usage.outputTokens,
+            reasoningTokens: event.usage.reasoningTokens
+          });
+        }
+      });
+
+      assert.equal(result.text, "天气晴");
+      assert.deepEqual(callUsages, [
+        { phase: "tool_call", outputTokens: 5, reasoningTokens: 2 },
+        { phase: "final_response", outputTokens: 7, reasoningTokens: 3 }
+      ]);
+      assert.deepEqual(result.providerCallUsages?.map((event) => event.phase), ["tool_call", "final_response"]);
+    });
+  });

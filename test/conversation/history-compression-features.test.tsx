@@ -172,6 +172,41 @@ function appendSimpleHistory(
     assert.equal(sessionManager.getSession("qqbot:p:test").lastLlmUsage, null);
   });
 
+  test("maybeCompress skips repeated unchanged below-threshold token checks", async () => {
+    const sessionManager = new SessionManager(createConfig());
+    sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "hello", 1);
+    let snapshotChecks = 0;
+    const originalGetSnapshot = sessionManager.getHistoryForCompressionByTokens.bind(sessionManager);
+    sessionManager.getHistoryForCompressionByTokens = ((...args: Parameters<typeof originalGetSnapshot>) => {
+      snapshotChecks += 1;
+      return originalGetSnapshot(...args);
+    }) as typeof sessionManager.getHistoryForCompressionByTokens;
+
+    const compressor = new HistoryCompressor(
+      createConfig(),
+      {
+        isConfigured() {
+          return true;
+        },
+        async generate() {
+          throw new Error("should not summarize below threshold");
+        }
+      } as any,
+      sessionManager,
+      {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      pino({ level: "silent" })
+    );
+
+    assert.equal(await compressor.maybeCompress("qqbot:p:test"), false);
+    assert.equal(await compressor.maybeCompress("qqbot:p:test"), false);
+    assert.equal(snapshotChecks, 1);
+  });
+
   test("forceCompact accepts explicit zero retained history items", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });

@@ -1,6 +1,9 @@
 import type { AppConfig } from "#config/config.ts";
 import { formatStructuredMediaReference, projectTranscriptMessageItemToHistoryMessage } from "./historyContext.ts";
 import type { ToolObservationSummary } from "./toolObservation.ts";
+import { getCachedOrEstimatedInputTokens } from "./transcriptTokenStats.ts";
+import { estimateTokens } from "./tokenEstimator.ts";
+export { estimateTokens } from "./tokenEstimator.ts";
 import type {
   InternalAssistantToolCallItem,
   InternalToolResultItem,
@@ -111,41 +114,6 @@ export function projectChatTimelineFromTranscript(transcript: InternalTranscript
   return projected;
 }
 
-interface TokenEstimationWeights {
-  cjkTokens: number;
-  nonAsciiTokens: number;
-  asciiTokens: number;
-}
-
-// Estimates token count for a text string using a lightweight heuristic.
-// CJK characters are typically 2 tokens in most tokenizers; ASCII ~4 chars/token.
-export function estimateTokens(text: string, weights?: TokenEstimationWeights): number {
-  const cjkTokens = weights?.cjkTokens ?? 2;
-  const nonAsciiTokens = weights?.nonAsciiTokens ?? 1;
-  const asciiTokens = weights?.asciiTokens ?? 0.25;
-  let tokens = 0;
-  for (const char of text) {
-    const code = char.charCodeAt(0);
-    if (
-      (code >= 0x4E00 && code <= 0x9FFF) // CJK Unified Ideographs
-      || (code >= 0x3400 && code <= 0x4DBF) // CJK Extension A
-      || (code >= 0x20000 && code <= 0x2A6DF) // CJK Extension B (surrogate pair range)
-      || (code >= 0xF900 && code <= 0xFAFF) // CJK Compatibility Ideographs
-      || (code >= 0x3000 && code <= 0x303F) // CJK Symbols and Punctuation
-      || (code >= 0x30A0 && code <= 0x30FF) // Katakana
-      || (code >= 0x3040 && code <= 0x309F) // Hiragana
-      || (code >= 0xFF00 && code <= 0xFFEF) // Halfwidth/Fullwidth Forms
-    ) {
-      tokens += cjkTokens;
-    } else if (code > 127) {
-      tokens += nonAsciiTokens;
-    } else {
-      tokens += asciiTokens;
-    }
-  }
-  return Math.ceil(tokens);
-}
-
 export function projectCompressionHistorySnapshot(
   session: SessionState,
   config: AppConfig,
@@ -200,21 +168,18 @@ export function projectCompressionHistorySnapshotByTokens(
   // Include history summary tokens in the heuristic (it's part of every LLM request
   // but was previously excluded, causing underestimation when summaries grow large).
   const summaryTokens = session.historySummary ? estimateTokens(session.historySummary, weights) : 0;
-  const messageTokens = recentMessages.reduce((sum, msg) => sum + estimateTokens(msg.content, weights), 0);
+  const messageTokens = llmVisibleItems
+    .filter(isTranscriptHistoryMessage)
+    .reduce((sum, item) => sum + getCachedOrEstimatedInputTokens(item, config), 0);
   // Include tool call and result tokens — these can be significant in tool-heavy sessions
   // (shell output, file contents, browser snapshots, etc.) and were previously unaccounted.
   // This only affects the trigger-side heuristic; the retain split still operates on messages.
   const toolCallTokens = llmVisibleItems
     .filter((item): item is InternalAssistantToolCallItem => item.kind === "assistant_tool_call")
-    .reduce((sum, item) => {
-      const argsTokens = item.toolCalls.reduce(
-        (s, tc) => s + estimateTokens(tc.function.arguments, weights), 0
-      );
-      return sum + estimateTokens(item.content, weights) + argsTokens;
-    }, 0);
+    .reduce((sum, item) => sum + getCachedOrEstimatedInputTokens(item, config), 0);
   const toolResultTokens = llmVisibleItems
     .filter((item): item is InternalToolResultItem => item.kind === "tool_result")
-    .reduce((sum, item) => sum + estimateTokens(item.content, weights), 0);
+    .reduce((sum, item) => sum + getCachedOrEstimatedInputTokens(item, config), 0);
   const estimatedTotalTokens = reportedInputTokens ?? (summaryTokens + messageTokens + toolCallTokens + toolResultTokens);
   if (estimatedTotalTokens <= triggerTokens) {
     return null;

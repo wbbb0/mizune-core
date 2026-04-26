@@ -196,9 +196,10 @@ const toneGlyphClass = computed(() => {
 });
 
 const metaChips = computed(() => {
+  let chips: string[];
   switch (props.item.kind) {
     case "user_message":
-      return [
+      chips = [
         `${props.item.senderName} (${props.item.userId})`,
         ...(props.item.replyMessageId ? ["reply"] : []),
         ...(props.item.mentionedSelf ? ["@self"] : []),
@@ -208,54 +209,66 @@ const metaChips = computed(() => {
         ...(props.item.audioCount > 0 ? [`audio=${props.item.audioCount}`] : []),
         ...(props.item.forwardIds.length > 0 ? [`forward=${props.item.forwardIds.length}`] : [])
       ];
+      break;
     case "assistant_message":
-      return props.item.chatType === "group"
+      chips = props.item.chatType === "group"
         ? [`${props.item.senderName} (${props.item.userId})`]
         : [];
+      break;
     case "session_mode_switch":
-      return [`${props.item.fromModeId} -> ${props.item.toModeId}`];
+      chips = [`${props.item.fromModeId} -> ${props.item.toModeId}`];
+      break;
     case "direct_command":
-      return [props.item.direction === "input" ? "用户指令" : "指令返回"];
+      chips = [props.item.direction === "input" ? "用户指令" : "指令返回"];
+      break;
     case "status_message":
-      return [props.item.statusType === "command" ? "命令链路" : "系统链路"];
+      chips = [props.item.statusType === "command" ? "命令链路" : "系统链路"];
+      break;
     case "assistant_tool_call":
-      return [
+      chips = [
         ...toolNames.value,
         ...(props.item.toolCalls.length > 1 ? [`${props.item.toolCalls.length} 个调用`] : [])
       ];
+      break;
     case "tool_result":
-      return props.item.toolCallId ? [props.item.toolCallId] : [];
+      chips = props.item.toolCallId ? [props.item.toolCallId] : [];
+      break;
     case "outbound_media_message":
-      return [
+      chips = [
         props.item.fileId,
         props.item.fileRef,
         props.item.sourcePath,
         props.item.messageId != null ? `messageId=${props.item.messageId}` : null
       ].filter(Boolean) as string[];
+      break;
     case "gate_decision":
-      return [
+      chips = [
         `action=${props.item.action}`,
         props.item.replyDecision ? `reply=${props.item.replyDecision}` : null,
         props.item.waitPassCount != null ? `wait#${props.item.waitPassCount}` : null,
         props.item.topicDecision ? `topic=${props.item.topicDecision}` : null,
         props.item.toolsetIds && props.item.toolsetIds.length > 0 ? `toolsets=${props.item.toolsetIds.length}` : null
       ].filter(Boolean) as string[];
+      break;
     case "title_generation_event":
-      return [
+      chips = [
         props.item.source === "auto" ? "自动生成" : "重新生成",
         props.item.modeId
       ];
+      break;
     case "system_marker":
-      return [props.item.markerType];
+      chips = [props.item.markerType];
+      break;
     case "fallback_event":
-      return [
+      chips = [
         props.item.fallbackType === "model_candidate_switch" ? "模型切换" : "兜底回复",
         props.item.fromModelRef && props.item.toModelRef ? `${props.item.fromModelRef} -> ${props.item.toModelRef}` : null,
         props.item.fromProvider && props.item.toProvider ? `${props.item.fromProvider} -> ${props.item.toProvider}` : null,
         props.item.failureMessage ? "已发送兜底回复" : null
       ].filter(Boolean) as string[];
+      break;
     case "internal_trigger_event":
-      return [
+      chips = [
         formatTriggerKind(props.item.triggerKind),
         props.item.jobName,
         props.item.targetType === "group"
@@ -267,7 +280,9 @@ const metaChips = computed(() => {
           ? `iter=${props.item.autoIterationIndex + 1}/${props.item.maxAutoIterations}`
           : null
       ].filter(Boolean) as string[];
+      break;
   }
+  return [...chips, ...formatTokenStatChips(props.item.tokenStats)];
 });
 
 const plannerReasonText = computed(() => {
@@ -355,6 +370,17 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
     case "comfy_task_failed":
       return "comfy_task_failed";
   }
+}
+
+function formatTokenStatChips(tokenStats: TranscriptItem["tokenStats"] | undefined): string[] {
+  if (!tokenStats) {
+    return [];
+  }
+  return [
+    tokenStats.input ? `in=${tokenStats.input.tokens}${tokenStats.input.source === "estimated" ? "e" : ""}` : null,
+    tokenStats.output ? `out=${tokenStats.output.tokens}${tokenStats.output.source === "estimated" ? "e" : ""}` : null,
+    tokenStats.reasoning ? `think=${tokenStats.reasoning.tokens}${tokenStats.reasoning.source === "estimated" ? "e" : ""}` : null
+  ].filter(Boolean) as string[];
 }
 
 function openActions(): void {
