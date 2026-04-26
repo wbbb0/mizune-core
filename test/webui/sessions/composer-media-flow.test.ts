@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareFilesForUpload } from "../../../webui/src/api/uploadPreparation.ts";
+import { ApiError } from "../../../webui/src/api/client.ts";
+import { formatUploadErrorMessage } from "../../../webui/src/components/sessions/composerErrors.ts";
 import { buildComposerSendPayload } from "../../../webui/src/components/sessions/composerPayload.ts";
 
   test("composer payload sends image attachments as both imageIds and attachmentIds", () => {
@@ -107,4 +109,13 @@ import { buildComposerSendPayload } from "../../../webui/src/components/sessions
 
     assert.equal(prepared[0]?.name, "camera.jpg");
     assert.equal(prepared[0]?.type, "image/jpeg");
+  });
+
+  test("upload error message formatter keeps toast text useful for sparse errors", () => {
+    assert.equal(formatUploadErrorMessage(new Error("")), "上传失败：未知错误");
+    assert.equal(formatUploadErrorMessage(new ApiError(400, "")), "上传失败：HTTP 400");
+    assert.equal(formatUploadErrorMessage({ error: "Workspace image validation failed" }), "上传失败：Workspace image validation failed");
+    assert.equal(formatUploadErrorMessage({ message: "Payload Too Large", status: 413 }), "上传失败：Payload Too Large");
+    assert.equal(formatUploadErrorMessage("network down"), "上传失败：network down");
+    assert.equal(formatUploadErrorMessage(null), "上传失败：未知错误");
   });

@@ -7,6 +7,7 @@ import { prepareFilesForUpload } from "@/api/uploadPreparation";
 import { useToastStore } from "@/stores/toasts";
 import { useUiStore } from "@/stores/ui";
 import { buildComposerSendPayload, type ComposerSendPayload } from "./composerPayload";
+import { formatSendErrorMessage, formatUploadErrorMessage } from "./composerErrors";
 
 const props = defineProps<{
   sessionType: "private" | "group";
@@ -83,8 +84,7 @@ function send() {
     attachments.value = [];
     nextTick(resize);
   }).catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : "发送失败";
-    toast.push({ type: "error", message });
+    toast.push({ type: "error", message: formatSendErrorMessage(error) });
   }).finally(() => {
     sending.value = false;
   });
@@ -214,8 +214,7 @@ async function onFilesSelected(e: Event) {
         URL.revokeObjectURL(preview.preview);
       }
     }
-    const message = err instanceof Error ? err.message : "上传失败";
-    toast.push({ type: "error", message });
+    toast.push({ type: "error", message: formatUploadErrorMessage(err) });
   } finally {
     uploading.value = false;
   }
