@@ -53,3 +53,20 @@ test("workbench runtime exposes an active shell command facade", async () => {
   assert.match(wrapper, /runtime\.showList\(\)/);
   assert.match(shell, /const deactivateRuntime = activateWorkbenchRuntime\(runtime\)/);
 });
+
+test("desktop workbench sizes list pane through runtime resize state", async () => {
+  const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
+  const desktop = await readFile(new URL("../../../webui/src/components/workbench/DesktopWorkbench.vue", import.meta.url), "utf8");
+  const types = await readFile(new URL("../../../webui/src/components/workbench/types.ts", import.meta.url), "utf8");
+
+  assert.match(types, /desktopListPane/);
+  assert.match(runtime, /desktopListPaneWidthPx/);
+  assert.match(runtime, /setDesktopListPaneWidth/);
+  assert.match(runtime, /clampDesktopListPaneWidth/);
+  assert.match(desktop, /desktopListPaneStyle/);
+  assert.match(desktop, /startListPaneResize/);
+  assert.match(desktop, /role="separator"/);
+  assert.match(desktop, /aria-orientation="vertical"/);
+  assert.match(desktop, /@pointerdown="startListPaneResize"/);
+  assert.doesNotMatch(desktop, /w-\(--side-panel-width\)/);
+});

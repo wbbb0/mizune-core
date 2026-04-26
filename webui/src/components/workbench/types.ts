@@ -15,5 +15,10 @@ export type WorkbenchSection = {
   };
   layout: {
     mobileMainFlow: "list-main" | "main-only";
+    desktopListPane?: {
+      defaultWidthPx?: number;
+      minWidthPx?: number;
+      maxWidthPx?: number;
+    };
   };
 };
