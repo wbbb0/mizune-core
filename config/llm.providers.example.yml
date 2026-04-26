@@ -9,6 +9,10 @@ dashscope:
     search:
       type: flag
       path: enable_search
+deepseek:
+  type: deepseek
+  apiKey: replace-me
+  proxy: false
 vertex_express:
   type: vertex_express
   apiKey: replace-me

@@ -37,7 +37,20 @@ lmstudio_qwen36:
   supportsTools: true
   supportsSearch: false
 
-# 示例 3：语音转写模型（transcription）
+# 示例 3：DeepSeek 官方 API（支持思考开关与工具）
+deepseek_v4_pro:
+  provider: deepseek
+  model: deepseek-v4-pro
+  modelType: chat
+  supportsThinking: true
+  thinkingControllable: true
+  preserveThinking: true
+  supportsVision: false
+  supportsAudioInput: false
+  supportsTools: true
+  supportsSearch: false
+
+# 示例 4：语音转写模型（transcription）
 qwen3_asr_flash:
   provider: dashscope
   model: qwen3-asr-flash
