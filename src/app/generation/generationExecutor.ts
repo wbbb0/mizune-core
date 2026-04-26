@@ -492,6 +492,11 @@ export function createGenerationExecutor(
               analyze: analyzeBuiltinToolConcurrency,
               maxConcurrency: 4
             },
+            onProviderResponseComplete: async (event) => {
+              if (event.phase === "tool_call") {
+                await segmentCoordinator.flushBufferedChunk();
+              }
+            },
             toolExecutor: async (toolCall) => {
               activeToolCounts.set(toolCall.function.name, (activeToolCounts.get(toolCall.function.name) ?? 0) + 1);
               sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, {

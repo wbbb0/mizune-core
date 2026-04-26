@@ -1,8 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sanitizeOutboundText } from "../../src/llm/shared/outboundTextSanitizer.ts";
+import {
+  sanitizeOutboundText,
+  sanitizeOneBotOutboundText,
+  sanitizeStoredOutboundText
+} from "../../src/llm/shared/outboundTextSanitizer.ts";
 
-  test("strips list markers while keeping content", () => {
+  test("converts unordered list markers to middle dots for onebot", () => {
     const input = [
       "- 第一项",
       "* 第二项",
@@ -12,21 +16,21 @@ import { sanitizeOutboundText } from "../../src/llm/shared/outboundTextSanitizer
     ].join("\n");
 
     assert.equal(
-      sanitizeOutboundText(input),
-      ["第一项", "第二项", "第三项", "第四项", "第五项"].join("\n")
+      sanitizeOneBotOutboundText(input),
+      ["· 第一项", "· 第二项", "· 第三项", "第四项", "第五项"].join("\n")
     );
   });
 
   test("strips inline code wrappers", () => {
     assert.equal(
-      sanitizeOutboundText("你先运行 `npm run build`，再看 `dist/index.js`。"),
+      sanitizeOneBotOutboundText("你先运行 `npm run build`，再看 `dist/index.js`。"),
       "你先运行 npm run build，再看 dist/index.js。"
     );
   });
 
   test("strips bold and italic wrappers without touching plain underscores", () => {
     assert.equal(
-      sanitizeOutboundText("这是 **重点**，也是 *提示*，变量名保留为 user_name。"),
+      sanitizeOneBotOutboundText("这是 **重点**，也是 *提示*，变量名保留为 user_name。"),
       "这是 重点，也是 提示，变量名保留为 user_name。"
     );
   });
@@ -39,8 +43,56 @@ import { sanitizeOutboundText } from "../../src/llm/shared/outboundTextSanitizer
     ].join("\n");
 
     assert.equal(
-      sanitizeOutboundText(input),
+      sanitizeOneBotOutboundText(input),
       ["先别急", "看一下 npm run build 的输出", "如果还是不行，再把 报错原文 发我"].join("\n")
+    );
+  });
+
+  test("strips fenced code wrappers for onebot while preserving code body", () => {
+    const input = [
+      "示例：",
+      "```ts",
+      "const value = 1;",
+      "```"
+    ].join("\n");
+
+    assert.equal(
+      sanitizeOneBotOutboundText(input),
+      ["示例：", "const value = 1;"].join("\n")
+    );
+  });
+
+  test("strips markdown thematic breaks and setext heading underlines for onebot", () => {
+    const input = [
+      "一级标题",
+      "===",
+      "",
+      "正文第一段",
+      "---",
+      "正文第二段",
+      "***",
+      "结尾"
+    ].join("\n");
+
+    assert.equal(
+      sanitizeOneBotOutboundText(input),
+      ["一级标题", "正文第一段", "正文第二段", "结尾"].join("\n")
+    );
+  });
+
+  test("storage sanitizer keeps markdown formatting while stripping internal lines", () => {
+    const input = [
+      "⟦section name=\"debug\"⟧",
+      "**重点**",
+      "- 第一项",
+      "```ts",
+      "const value = 1;",
+      "```"
+    ].join("\n");
+
+    assert.equal(
+      sanitizeStoredOutboundText(input),
+      ["**重点**", "- 第一项", "```ts", "const value = 1;", "```"].join("\n")
     );
   });
 

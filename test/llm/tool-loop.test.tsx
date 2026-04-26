@@ -276,6 +276,70 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
     });
   });
 
+  test("provider response complete event is emitted before executing tool calls", async () => {
+    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+    const events: string[] = [];
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 1);
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "我先查一下",
+              tool_calls: [{
+                index: 0,
+                id: "tool-call-lookup",
+                type: "function",
+                function: {
+                  name: "lookup",
+                  arguments: "{}"
+                }
+              }]
+            }
+          }]
+        }]
+      },
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 3);
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "查完了"
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "查一下" }],
+        tools: [createToolDefinition("lookup")],
+        onProviderResponseComplete(event) {
+          events.push(`provider:${event.phase}:${event.text}`);
+        },
+        onAssistantToolCalls() {
+          events.push("assistant-tool-calls");
+        },
+        toolExecutor: async () => {
+          events.push("tool-executor");
+          return "{\"ok\":true}";
+        }
+      });
+
+      assert.equal(result.text, "查完了");
+      assert.deepEqual(events, [
+        "provider:tool_call:我先查一下",
+        "assistant-tool-calls",
+        "tool-executor",
+        "provider:final_response:查完了"
+      ]);
+    });
+  });
+
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;

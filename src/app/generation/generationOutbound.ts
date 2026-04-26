@@ -1,5 +1,8 @@
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
-import { sanitizeOutboundText } from "#llm/shared/outboundTextSanitizer.ts";
+import {
+  sanitizeOneBotOutboundText,
+  sanitizeStoredOutboundText
+} from "#llm/shared/outboundTextSanitizer.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import type { GenerationOutboundDeps } from "./generationRunnerDeps.ts";
 import type { GenerationSendTarget } from "./generationExecutor.ts";
@@ -54,10 +57,13 @@ export function createGenerationOutbound(
       joinWithDoubleNewline?: boolean | undefined;
     }
   ): Promise<boolean> => {
-    const cleaned = sanitizeOutboundText(chunk, {
+    const storedText = sanitizeStoredOutboundText(chunk, {
       stripLeadingMessageHeaders: !hasSentAssistantChunk
     }).trim();
-    if (!cleaned) {
+    const deliveryText = input.sendTarget.delivery === "onebot"
+      ? sanitizeOneBotOutboundText(storedText).trim()
+      : storedText;
+    if (!storedText || !deliveryText) {
       return false;
     }
     hasSentAssistantChunk = true;
@@ -70,7 +76,7 @@ export function createGenerationOutbound(
           userId: input.sendTarget.userId,
           senderName: input.sendTarget.senderName
         },
-        cleaned,
+        storedText,
         Date.now(),
         {
           joinWithDoubleNewline: options?.joinWithDoubleNewline ?? false
@@ -86,8 +92,8 @@ export function createGenerationOutbound(
       logger.info(
         {
           sessionId: input.sessionId,
-          contentLength: cleaned.length,
-          contentPreview: cleaned.slice(0, 120)
+          contentLength: storedText.length,
+          contentPreview: storedText.slice(0, 120)
         },
         "assistant_chunk_buffered"
       );
@@ -109,7 +115,7 @@ export function createGenerationOutbound(
           chatType: input.sendTarget.chatType,
           userId: input.sendTarget.userId,
           senderName: input.sendTarget.senderName,
-          text: cleaned,
+          text: storedText,
           ...(deliveryRef ? { deliveryRef } : {})
         },
         timestampMs
@@ -126,12 +132,12 @@ export function createGenerationOutbound(
 
     return await messageQueue.enqueueText({
       sessionId: input.sessionId,
-      text: cleaned,
+      text: deliveryText,
       pacing,
       abortSignals: [input.abortController.signal, input.responseAbortController.signal],
       send: async () => {
         if (input.sendTarget.delivery === "web") {
-          await input.committedTextSink?.commitText(cleaned);
+          await input.committedTextSink?.commitText(storedText);
           const sentAt = Date.now();
           appendHistoryChunk(sentAt);
           await appendBufferedChunk();
@@ -139,14 +145,14 @@ export function createGenerationOutbound(
         }
 
         const payload = await oneBotClient.sendText({
-          text: cleaned,
+          text: deliveryText,
           ...resolveOneBotSendTarget()
         });
         const messageId = normalizeOneBotMessageId(payload.data?.message_id);
         if (messageId != null) {
           sessionManager.recordSentMessage(input.sessionId, {
             messageId,
-            text: cleaned,
+            text: deliveryText,
             sentAt: Date.now()
           });
         }

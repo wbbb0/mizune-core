@@ -67,6 +67,7 @@ export interface LlmGenerateParams {
   onReasoningDelta?: (delta: string) => void;
   toolExecutor?: (toolCall: LlmToolCall) => Promise<string | LlmToolExecutionResult>;
   onAssistantToolCalls?: (message: LlmMessage, usage?: LlmProviderCallUsage) => Promise<void> | void;
+  onProviderResponseComplete?: (event: LlmProviderResponseCompleteEvent) => Promise<void> | void;
   onToolResultMessage?: (message: LlmMessage, toolName: string) => Promise<void> | void;
   toolConcurrency?: {
     analyze: (toolCall: LlmToolCall, index: number) => ToolExecutionEffect;
@@ -106,6 +107,15 @@ export interface LlmProviderCallUsage {
   phase: "tool_call" | "final_response" | "terminal_response" | "fallback_response";
   usage: LlmUsage;
   text: string;
+  reasoningContent: string;
+}
+
+export interface LlmProviderResponseCompleteEvent {
+  iteration: number;
+  phase: "tool_call" | "final_response" | "fallback_response";
+  text: string;
+  toolCalls: LlmToolCall[];
+  usage: LlmUsage;
   reasoningContent: string;
 }
 

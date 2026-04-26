@@ -43,7 +43,7 @@ test("segment coordinator does not mark skipped chunks as committed", async () =
   assert.deepEqual(draftStates, ["第一段已经足够长而且可以分割。"]);
 });
 
-test("segment coordinator keeps only uncommitted streamed draft text after a split commit", async () => {
+test("segment coordinator keeps only uncommitted streamed draft text after a paragraph split commit", async () => {
   const committedChunks: string[] = [];
   const draftStates: string[] = [];
   const coordinator = createGenerationSegmentCoordinator({
@@ -73,11 +73,11 @@ test("segment coordinator keeps only uncommitted streamed draft text after a spl
     }
   });
 
-  await coordinator.onTextDelta("第一段已经足够长而且可以分割。后面这点还没结束");
+  await coordinator.onTextDelta("第一段已经足够长而且可以分割。\n\n后面这点还没结束");
 
   assert.deepEqual(committedChunks, ["第一段已经足够长而且可以分割。"]);
   assert.deepEqual(draftStates, [
-    "第一段已经足够长而且可以分割。后面这点还没结束",
+    "第一段已经足够长而且可以分割。\n\n后面这点还没结束",
     "后面这点还没结束"
   ]);
 });

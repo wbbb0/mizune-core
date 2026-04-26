@@ -112,6 +112,14 @@ export class LlmClient {
         const usageEvent = buildProviderCallUsage(iteration, "final_response", streamed);
         providerCallUsages.push(usageEvent);
         await params.onProviderCallUsage?.(usageEvent);
+        await params.onProviderResponseComplete?.({
+          iteration,
+          phase: "final_response",
+          text: streamed.text,
+          toolCalls: [],
+          usage: streamed.usage,
+          reasoningContent: streamed.reasoningContent
+        });
         return {
           text: streamed.text,
           reasoningContent: lastReasoningContent,
@@ -123,6 +131,14 @@ export class LlmClient {
       const toolCallUsage = buildProviderCallUsage(iteration, "tool_call", streamed);
       providerCallUsages.push(toolCallUsage);
       await params.onProviderCallUsage?.(toolCallUsage);
+      await params.onProviderResponseComplete?.({
+        iteration,
+        phase: "tool_call",
+        text: streamed.text,
+        toolCalls: streamed.toolCalls,
+        usage: streamed.usage,
+        reasoningContent: streamed.reasoningContent
+      });
 
       const assistantMessage: LlmMessage = {
         role: "assistant",
@@ -270,6 +286,14 @@ export class LlmClient {
     const fallbackUsage = buildProviderCallUsage(maxIterations, "fallback_response", fallback);
     providerCallUsages.push(fallbackUsage);
     await params.onProviderCallUsage?.(fallbackUsage);
+    await params.onProviderResponseComplete?.({
+      iteration: maxIterations,
+      phase: "fallback_response",
+      text: fallback.text,
+      toolCalls: fallback.toolCalls,
+      usage: fallback.usage,
+      reasoningContent: fallback.reasoningContent
+    });
     return {
       text: fallback.text || `工具调用轮次已达到上限（${maxIterations}），请基于现有结果继续处理或缩小任务范围。`,
       reasoningContent: fallback.reasoningContent,

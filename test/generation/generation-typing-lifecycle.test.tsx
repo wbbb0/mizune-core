@@ -75,6 +75,18 @@ function createExecutorHarness(options?: {
   customGenerate?: (input: {
     onReasoningDelta?: (delta: string) => void;
     onTextDelta?: (delta: string) => Promise<void>;
+    onProviderResponseComplete?: (event: {
+      phase: "tool_call" | "final_response" | "fallback_response";
+      text: string;
+      toolCalls: Array<{
+        id: string;
+        type: "function";
+        function: {
+          name: string;
+          arguments: string;
+        };
+      }>;
+    }) => Promise<void>;
     abortSignal?: AbortSignal;
     onAssistantToolCalls?: (message: {
       role: "assistant";
@@ -141,6 +153,18 @@ function createExecutorHarness(options?: {
         abortSignal?: AbortSignal;
         onReasoningDelta?: (delta: string) => void;
         onTextDelta?: (delta: string) => Promise<void>;
+        onProviderResponseComplete?: (event: {
+          phase: "tool_call" | "final_response" | "fallback_response";
+          text: string;
+          toolCalls: Array<{
+            id: string;
+            type: "function";
+            function: {
+              name: string;
+              arguments: string;
+            };
+          }>;
+        }) => Promise<void>;
       }) {
         if (options?.customGenerate) {
           return await options.customGenerate(input);
@@ -457,6 +481,45 @@ function createExecutorHarness(options?: {
     }]);
   });
 
+  test("onebot delivery sends plain text while storing markdown response text", async () => {
+    const harness = createExecutorHarness({
+      customGenerate: async (input) => {
+        await input.onTextDelta?.("**重点**\n\n- 第一项\n- 第二项\n\n```ts\nconst value = 1;\n```");
+        return {
+          text: "**重点**\n\n- 第一项\n- 第二项\n\n```ts\nconst value = 1;\n```",
+          reasoningContent: "",
+          usage: createUsage()
+        };
+      }
+    });
+
+    await waitForEvents(harness.events, 2);
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.deepEqual(harness.sendTextCalls, [
+      {
+        userId: "owner",
+        text: ["重点", "", "· 第一项", "· 第二项"].join("\n")
+      },
+      {
+        userId: "owner",
+        text: "const value = 1;"
+      }
+    ]);
+
+    const assistantHistoryText = harness.sessionManager
+      .getSession(harness.sessionId)
+      .internalTranscript
+      .filter((item) => item.kind === "assistant_message")
+      .map((item) => item.text)
+      .join("\n\n");
+    assert.equal(
+      assistantHistoryText,
+      "**重点**\n\n- 第一项\n- 第二项\n\n```ts\nconst value = 1;\n```"
+    );
+  });
+
   test("typing tests can bypass abort grace delay via injected wait function", async () => {
     let waited = false;
     const harness = createExecutorHarness({
@@ -473,25 +536,54 @@ function createExecutorHarness(options?: {
     assert.deepEqual(harness.events, ["typing:start", "send:你好", "typing:stop"]);
   });
 
-  test("web delivery commits each ready segment immediately without pacing delay", async () => {
+  test("web delivery waits for paragraph boundaries instead of sentence boundaries", async () => {
+    let continueAfterSentence!: () => void;
+    const continueAfterSentencePromise = new Promise<void>((resolve) => {
+      continueAfterSentence = resolve;
+    });
+    let sentenceSeen!: () => void;
+    const sentenceSeenPromise = new Promise<void>((resolve) => {
+      sentenceSeen = resolve;
+    });
+    let continueAfterParagraphBoundary!: () => void;
+    const continueAfterParagraphBoundaryPromise = new Promise<void>((resolve) => {
+      continueAfterParagraphBoundary = resolve;
+    });
     const harness = createExecutorHarness({
       sessionSource: "web",
       customGenerate: async (input) => {
         input.onReasoningDelta?.("先想一下");
-        await input.onTextDelta?.("第一段确实足够长而且会先提交。");
-        await input.onTextDelta?.("第二段同样足够长而且会立即提交。");
+        await input.onTextDelta?.("第一段确实足够长但不会按句号提交。");
+        sentenceSeen();
+        await continueAfterSentencePromise;
+        await input.onTextDelta?.("第二句仍然属于同一段。\n\n");
+        await continueAfterParagraphBoundaryPromise;
+        await input.onTextDelta?.("第二段会等到收尾提交。");
         return {
-          text: "第一段确实足够长而且会先提交。第二段同样足够长而且会立即提交。",
+          text: "第一段确实足够长但不会按句号提交。第二句仍然属于同一段。\n\n第二段会等到收尾提交。",
           reasoningContent: "",
           usage: createUsage()
         };
       }
     });
 
-    await waitForEvents(harness.events, 2);
+    await sentenceSeenPromise;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.deepEqual(harness.events, []);
+
+    continueAfterSentence();
+    await waitForEvents(harness.events, 1);
     assert.deepEqual(harness.events, [
-      "send:第一段确实足够长而且会先提交。",
-      "send:第二段同样足够长而且会立即提交。"
+      "send:第一段确实足够长但不会按句号提交。第二句仍然属于同一段。"
+    ]);
+
+    continueAfterParagraphBoundary();
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.deepEqual(harness.events, [
+      "send:第一段确实足够长但不会按句号提交。第二句仍然属于同一段。",
+      "send:第二段会等到收尾提交。"
     ]);
   });
 
@@ -542,6 +634,135 @@ function createExecutorHarness(options?: {
     await harness.runPromise;
 
     assert.deepEqual(harness.events, ["send:第一段确实足够长而且不会立即单独发送。第二段同样足够长而且会在结束后一起发送。"]);
+  });
+
+  test("tool-call provider response boundary commits buffered text even when streaming split is disabled", async () => {
+    let continueAfterToolBoundary!: () => void;
+    const continueAfterToolBoundaryPromise = new Promise<void>((resolve) => {
+      continueAfterToolBoundary = resolve;
+    });
+    let toolBoundarySeen!: () => void;
+    const toolBoundarySeenPromise = new Promise<void>((resolve) => {
+      toolBoundarySeen = resolve;
+    });
+
+    const harness = createExecutorHarness({
+      sessionSource: "web",
+      configOverrides: {
+        conversation: {
+          outbound: {
+            disableStreamingSplit: true
+          }
+        }
+      },
+      customGenerate: async (input) => {
+        await input.onTextDelta?.("我先查一下");
+        await input.onProviderResponseComplete?.({
+          phase: "tool_call",
+          text: "我先查一下",
+          toolCalls: [{
+            id: "call_lookup_1",
+            type: "function",
+            function: {
+              name: "lookup",
+              arguments: "{}"
+            }
+          }]
+        });
+        await input.onAssistantToolCalls?.({
+          role: "assistant",
+          content: "我先查一下",
+          tool_calls: [{
+            id: "call_lookup_1",
+            type: "function",
+            function: {
+              name: "lookup",
+              arguments: "{}"
+            }
+          }]
+        });
+        toolBoundarySeen();
+        await continueAfterToolBoundaryPromise;
+        await input.onTextDelta?.("查完了。");
+        return {
+          text: "查完了。",
+          reasoningContent: "",
+          usage: createUsage()
+        };
+      }
+    });
+
+    await toolBoundarySeenPromise;
+    await waitForEvents(harness.events, 1);
+    assert.deepEqual(harness.events, ["send:我先查一下"]);
+
+    continueAfterToolBoundary();
+    await waitForEvents(harness.events, 2);
+    assert.deepEqual(harness.events, ["send:我先查一下", "send:查完了。"]);
+
+    harness.resolveDrain();
+    await harness.runPromise;
+  });
+
+  test("tool-call provider response boundary commits short buffered text before splitter threshold", async () => {
+    let continueAfterToolBoundary!: () => void;
+    const continueAfterToolBoundaryPromise = new Promise<void>((resolve) => {
+      continueAfterToolBoundary = resolve;
+    });
+    let toolBoundarySeen!: () => void;
+    const toolBoundarySeenPromise = new Promise<void>((resolve) => {
+      toolBoundarySeen = resolve;
+    });
+
+    const harness = createExecutorHarness({
+      sessionSource: "web",
+      customGenerate: async (input) => {
+        await input.onTextDelta?.("稍等");
+        await input.onProviderResponseComplete?.({
+          phase: "tool_call",
+          text: "稍等",
+          toolCalls: [{
+            id: "call_lookup_1",
+            type: "function",
+            function: {
+              name: "lookup",
+              arguments: "{}"
+            }
+          }]
+        });
+        await input.onAssistantToolCalls?.({
+          role: "assistant",
+          content: "稍等",
+          tool_calls: [{
+            id: "call_lookup_1",
+            type: "function",
+            function: {
+              name: "lookup",
+              arguments: "{}"
+            }
+          }]
+        });
+        toolBoundarySeen();
+        await continueAfterToolBoundaryPromise;
+        await input.onTextDelta?.("查完了。");
+        return {
+          text: "查完了。",
+          reasoningContent: "",
+          usage: createUsage()
+        };
+      }
+    });
+
+    await toolBoundarySeenPromise;
+    await waitForEvents(harness.events, 1);
+    assert.deepEqual(harness.events, ["send:稍等"]);
+
+    continueAfterToolBoundary();
+    await waitForEvents(harness.events, 2);
+    assert.deepEqual(harness.events, ["send:稍等", "send:查完了。"]);
+
+    harness.resolveDrain();
+    await harness.runPromise;
   });
 
   test("default web titles are captioned only after outbound drain completes", async () => {

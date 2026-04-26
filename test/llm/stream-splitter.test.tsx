@@ -2,40 +2,38 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { splitReadySegments } from "../../src/llm/shared/streamSplitter.ts";
 
-  test("single newlines flush ready chunks and mark them for double-newline rejoin", () => {
+  test("single newlines stay buffered until a paragraph boundary", () => {
     const result = splitReadySegments("第一段\n第二段");
 
-    assert.deepEqual(result.ready, [
-      {
-        text: "第一段",
-        joinWithDoubleNewline: true
-      }
-    ]);
-    assert.equal(result.rest, "第二段");
+    assert.deepEqual(result.ready, []);
+    assert.equal(result.rest, "第一段\n第二段");
   });
 
-  test("sentence-based splits do not request double-newline rejoin", () => {
+  test("sentence endings stay buffered inside the same paragraph", () => {
     const result = splitReadySegments("这是一个足够长的第一句。这里是第二句");
 
-    assert.deepEqual(result.ready, [
-      {
-        text: "这是一个足够长的第一句。",
-        joinWithDoubleNewline: false
-      }
-    ]);
-    assert.equal(result.rest, "这里是第二句");
+    assert.deepEqual(result.ready, []);
+    assert.equal(result.rest, "这是一个足够长的第一句。这里是第二句");
   });
 
-  test("fenced markdown blocks stay intact in a single chunk", () => {
-    const result = splitReadySegments("先看这个示例\n```ts\nconst value = 1;\nconsole.log(value);\n```\n最后一句");
+  test("paragraph boundaries flush complete paragraphs", () => {
+    const result = splitReadySegments("这是第一段。里面还有第二句。\n\n这是第二段");
 
     assert.deepEqual(result.ready, [
       {
-        text: "先看这个示例",
+        text: "这是第一段。里面还有第二句。",
         joinWithDoubleNewline: true
-      },
+      }
+    ]);
+    assert.equal(result.rest, "这是第二段");
+  });
+
+  test("paragraphs followed by markdown blocks stay in one segment", () => {
+    const result = splitReadySegments("先看这个示例：\n\n```ts\nconst value = 1;\nconsole.log(value);\n```\n\n最后一句");
+
+    assert.deepEqual(result.ready, [
       {
-        text: "```ts\nconst value = 1;\nconsole.log(value);\n```",
+        text: "先看这个示例：\n\n```ts\nconst value = 1;\nconsole.log(value);\n```",
         joinWithDoubleNewline: true
       }
     ]);
@@ -49,16 +47,28 @@ import { splitReadySegments } from "../../src/llm/shared/streamSplitter.ts";
     assert.equal(result.rest, "```md\n- a\n- b");
   });
 
-  test("markdown list blocks are preserved as one chunk", () => {
-    const result = splitReadySegments("- 第一项\n- 第二项\n收尾");
+  test("paragraphs followed by list blocks stay in one segment", () => {
+    const result = splitReadySegments("一个小标题：\n\n  - 项目a\n  - 项目b\n  - 项目c\n\n收尾");
 
     assert.deepEqual(result.ready, [
       {
-        text: "- 第一项\n- 第二项",
+        text: "一个小标题：\n\n  - 项目a\n  - 项目b\n  - 项目c",
         joinWithDoubleNewline: true
       }
     ]);
     assert.equal(result.rest, "收尾");
+  });
+
+  test("markdown thematic breaks are skipped during streaming split", () => {
+    const result = splitReadySegments("第一段\n\n---\n\n第二段");
+
+    assert.deepEqual(result.ready, [
+      {
+        text: "第一段",
+        joinWithDoubleNewline: true
+      }
+    ]);
+    assert.equal(result.rest, "第二段");
   });
 
   test("blockquote markdown blocks are preserved as one chunk", () => {
