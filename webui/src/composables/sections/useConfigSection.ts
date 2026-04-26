@@ -1,4 +1,4 @@
-import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
+import { computed, effectScope, ref, watch, type ComputedRef, type Ref } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
 import { useEditorDraftState } from "@/composables/useEditorDraftState";
 import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
@@ -92,9 +92,12 @@ export function useConfigSection() {
       }
     }
 
-    watch(selectedKey, (key) => {
-      void loadSelectedModel(key);
-    }, { immediate: true });
+    const sharedScope = effectScope(true);
+    sharedScope.run(() => {
+      watch(selectedKey, (key) => {
+        void loadSelectedModel(key);
+      }, { immediate: true });
+    });
 
     function selectResource(key: string) {
       selectedKey.value = key;

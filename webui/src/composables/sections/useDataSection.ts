@@ -1,4 +1,4 @@
-import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
+import { computed, effectScope, ref, watch, type ComputedRef, type Ref } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
 import { useEditorDraftState } from "@/composables/useEditorDraftState";
 import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
@@ -148,58 +148,61 @@ export function useDataSection() {
       ].sort((left, right) => left.key.localeCompare(right.key));
     }
 
-    watch(selectedKey, async (key) => {
-      const requestVersion = stateVersion;
-      const requestKey = key;
-      resource.value = null;
-      model.value = null;
-      itemDetail.value = null;
-      selectedItemKey.value = null;
-      if (!key) return;
+    const sharedScope = effectScope(true);
+    sharedScope.run(() => {
+      watch(selectedKey, async (key) => {
+        const requestVersion = stateVersion;
+        const requestKey = key;
+        resource.value = null;
+        model.value = null;
+        itemDetail.value = null;
+        selectedItemKey.value = null;
+        if (!key) return;
 
-      const target = resources.value.find((entry) => entry.key === key);
-      if (!target) return;
+        const target = resources.value.find((entry) => entry.key === key);
+        if (!target) return;
 
-      loading.value = true;
-      try {
-        if (target.source === "browser") {
-          const res = await dataApi.get(key);
+        loading.value = true;
+        try {
+          if (target.source === "browser") {
+            const res = await dataApi.get(key);
+            if (isStale(requestVersion) || selectedKey.value !== requestKey) {
+              return;
+            }
+            resource.value = res.resource;
+            return;
+          }
+
+          const res = await editorApi.load(key);
           if (isStale(requestVersion) || selectedKey.value !== requestKey) {
             return;
           }
-          resource.value = res.resource;
-          return;
+          model.value = res.editor;
+        } finally {
+          if (!isStale(requestVersion) && selectedKey.value === requestKey) {
+            loading.value = false;
+          }
         }
+      });
 
-        const res = await editorApi.load(key);
-        if (isStale(requestVersion) || selectedKey.value !== requestKey) {
-          return;
+      watch(selectedItemKey, async (itemKey) => {
+        const requestVersion = stateVersion;
+        const requestItemKey = itemKey;
+        itemDetail.value = null;
+        if (!itemKey || !selectedKey.value || selectedResource.value?.source !== "browser") return;
+        loadingItem.value = true;
+        try {
+          const res = await dataApi.getItem(selectedKey.value, itemKey);
+          if (isStale(requestVersion) || selectedItemKey.value !== requestItemKey) {
+            return;
+          }
+          itemDetail.value = res.item;
+        } finally {
+          if (!isStale(requestVersion) && selectedItemKey.value === requestItemKey) {
+            loadingItem.value = false;
+          }
         }
-        model.value = res.editor;
-      } finally {
-        if (!isStale(requestVersion) && selectedKey.value === requestKey) {
-          loading.value = false;
-        }
-      }
-    });
-
-    watch(selectedItemKey, async (itemKey) => {
-      const requestVersion = stateVersion;
-      const requestItemKey = itemKey;
-      itemDetail.value = null;
-      if (!itemKey || !selectedKey.value || selectedResource.value?.source !== "browser") return;
-      loadingItem.value = true;
-      try {
-        const res = await dataApi.getItem(selectedKey.value, itemKey);
-        if (isStale(requestVersion) || selectedItemKey.value !== requestItemKey) {
-          return;
-        }
-        itemDetail.value = res.item;
-      } finally {
-        if (!isStale(requestVersion) && selectedItemKey.value === requestItemKey) {
-          loadingItem.value = false;
-        }
-      }
+      });
     });
 
     function selectResource(key: string) {
