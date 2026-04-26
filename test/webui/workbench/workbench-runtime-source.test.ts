@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 
 test("workbench shell creates, provides, and activates a runtime", async () => {
   const shell = await readFile(new URL("../../../webui/src/components/workbench/WorkbenchShell.vue", import.meta.url), "utf8");
@@ -69,4 +69,13 @@ test("desktop workbench sizes list pane through runtime resize state", async () 
   assert.match(desktop, /aria-orientation="vertical"/);
   assert.match(desktop, /@pointerdown="startListPaneResize"/);
   assert.doesNotMatch(desktop, /w-\(--side-panel-width\)/);
+});
+
+test("legacy app layout shell is removed after workbench runtime migration", async () => {
+  const theme = await readFile(new URL("../../../webui/src/style/theme.css", import.meta.url), "utf8");
+
+  await assert.rejects(
+    access(new URL("../../../webui/src/components/layout/AppLayout.vue", import.meta.url))
+  );
+  assert.doesNotMatch(theme, /--side-panel-width/);
 });
