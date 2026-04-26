@@ -148,6 +148,7 @@ export interface InternalApiMessagingDeps {
 
 export interface InternalApiUploadsDeps {
   chatFileStore: ChatFileStore;
+  logger: Pick<Logger, "warn">;
 }
 
 export interface InternalApiShellDeps {
@@ -269,7 +270,8 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       chatFileStore: deps.chatFileStore
     },
     uploadRoutes: {
-      chatFileStore: deps.chatFileStore
+      chatFileStore: deps.chatFileStore,
+      logger: deps.logger
     },
     shellRoutes: {
       shellRuntime: deps.shellRuntime

@@ -30,7 +30,15 @@ export function registerUploadRoutes(app: FastifyInstance, services: InternalApi
         }))
       });
     } catch (error: unknown) {
-      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      services.logger.warn({
+        path: request.url,
+        fileCount: body.files.length,
+        fileNames: body.files.map((file) => file.sourceName ?? null),
+        mimeTypes: body.files.map((file) => file.mimeType),
+        error: message
+      }, "internal_api_upload_failed");
+      return respondBadRequest(reply, message);
     }
   });
 }

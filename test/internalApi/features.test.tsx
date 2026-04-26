@@ -1196,3 +1196,42 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       await app.close();
     }
   });
+
+  test("internal api logs workspace upload failures before returning an error response", async () => {
+    const deps = createInternalApiDeps();
+    const capturedLogs: Array<{ message: string; payload: Record<string, unknown> }> = [];
+    deps.logger = {
+      warn(payload: Record<string, unknown>, message?: string) {
+        capturedLogs.push({ message: message ?? "", payload });
+      }
+    } as typeof deps.logger;
+    deps.chatFileStore.importBuffer = async () => {
+      throw new Error("image decoder unavailable");
+    };
+
+    const app = await createInternalApiApp(deps);
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/uploads/files",
+        payload: {
+          files: [{
+            sourceName: "broken.png",
+            mimeType: "image/png",
+            contentBase64: Buffer.from("not really an image").toString("base64"),
+            kind: "image"
+          }]
+        }
+      });
+
+      assert.equal(response.statusCode, 400);
+      assert.equal(response.json().error, "image decoder unavailable");
+      assert.equal(capturedLogs.length, 1);
+      assert.equal(capturedLogs[0]?.message, "internal_api_upload_failed");
+      assert.equal(capturedLogs[0]?.payload.path, "/api/uploads/files");
+      assert.equal(capturedLogs[0]?.payload.fileCount, 1);
+      assert.equal(capturedLogs[0]?.payload.error, "image decoder unavailable");
+    } finally {
+      await app.close();
+    }
+  });

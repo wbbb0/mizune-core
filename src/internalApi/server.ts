@@ -67,6 +67,23 @@ export async function startInternalApi(deps: InternalApiRuntimeDeps) {
   // --- Cookie support (required for auth) ---
   await app.register(fastifyCookie);
 
+  app.setErrorHandler((error, request, reply) => {
+    const normalizedError = normalizeFastifyError(error);
+    const statusCode = normalizedError.statusCode >= 400 ? normalizedError.statusCode : 500;
+    if (statusCode >= 500) {
+      deps.logger.error({
+        err: error,
+        error: normalizedError.message,
+        method: request.method,
+        url: request.url,
+        statusCode
+      }, "internal_api_request_failed");
+    }
+    reply.status(statusCode).send({
+      error: statusCode >= 500 ? "Internal Server Error" : normalizedError.message
+    });
+  });
+
   // --- WebUI static files ---
   let authData: Awaited<ReturnType<typeof loadOrCreateWebuiAuth>> | null = null;
 
@@ -128,9 +145,31 @@ export async function startInternalApi(deps: InternalApiRuntimeDeps) {
   deps.logger.info({ port: listenPort, host: listenHost }, "internal_api_started");
 
   return {
+    inject: app.inject.bind(app),
     close: async () => {
       await app.close();
       deps.logger.info("internal_api_stopped");
     }
+  };
+}
+
+function normalizeFastifyError(error: unknown): { message: string; statusCode: number } {
+  if (!error || typeof error !== "object") {
+    return {
+      message: String(error || "Unknown error"),
+      statusCode: 500
+    };
+  }
+  const candidate = error as { message?: unknown; statusCode?: unknown; status?: unknown };
+  const statusCode = typeof candidate.statusCode === "number"
+    ? candidate.statusCode
+    : typeof candidate.status === "number"
+      ? candidate.status
+      : 500;
+  return {
+    message: typeof candidate.message === "string" && candidate.message.trim()
+      ? candidate.message
+      : "Unknown error",
+    statusCode
   };
 }

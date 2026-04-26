@@ -40,7 +40,7 @@ test("internal api server starts and stops with lifecycle logs", async () => {
       }
       capturedLogs.push({ message: message ?? "", payload });
     }
-  } as typeof deps.logger;
+  } as unknown as typeof deps.logger;
 
   const server = await startInternalApi({
     config: deps.config,
@@ -59,4 +59,41 @@ test("internal api server starts and stops with lifecycle logs", async () => {
       payload: null
     }
   ]);
+});
+
+test("internal api server logs uncaught request errors", async () => {
+  const deps = createInternalApiDeps();
+  const capturedErrors: Array<{ message: string; payload: Record<string, unknown> }> = [];
+  const port = await getFreePort();
+  deps.config.internalApi.port = port;
+  deps.logger = {
+    info() {},
+    error(payload: Record<string, unknown>, message?: string) {
+      capturedErrors.push({ message: message ?? "", payload });
+    }
+  } as unknown as typeof deps.logger;
+  deps.whitelistStore.getSnapshot = () => {
+    throw new Error("config summary exploded");
+  };
+
+  const server = await startInternalApi({
+    config: deps.config,
+    logger: deps.logger,
+    services: createInternalApiServices(deps)
+  });
+  try {
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/config-summary"
+    });
+
+    assert.equal(response.statusCode, 500);
+    assert.equal(capturedErrors.length, 1);
+    assert.equal(capturedErrors[0]?.message, "internal_api_request_failed");
+    assert.equal(capturedErrors[0]?.payload.method, "GET");
+    assert.equal(capturedErrors[0]?.payload.url, "/api/config-summary");
+    assert.equal(capturedErrors[0]?.payload.error, "config summary exploded");
+  } finally {
+    await server.close();
+  }
 });
