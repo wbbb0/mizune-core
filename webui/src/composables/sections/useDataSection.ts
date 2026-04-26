@@ -73,24 +73,25 @@ export function useDataSection() {
     const validating = ref(false);
     const toast = useToastStore();
     const workbenchRuntime = useWorkbenchRuntime();
-    const editorState = useEditorDraftState(model);
+    const sharedScope = effectScope(true);
+    const editorState = sharedScope.run(() => useEditorDraftState(model))!;
     let stateVersion = 0;
 
-    const selectedResource = computed(() =>
+    const selectedResource = sharedScope.run(() => computed(() =>
       resources.value.find((entry) => entry.key === selectedKey.value) ?? null
-    );
-    const canSubmit = computed(() => !!selectedResource.value?.editable && editorState.isDirty.value && !validating.value && !saving.value);
+    ))!;
+    const canSubmit = sharedScope.run(() => computed(() => !!selectedResource.value?.editable && editorState.isDirty.value && !validating.value && !saving.value))!;
 
-    const formattedJson = computed(() => {
+    const formattedJson = sharedScope.run(() => computed(() => {
       if (!resource.value || resource.value.kind !== "single_json") return "";
       return JSON.stringify(resource.value.value, null, 2);
-    });
+    }))!;
 
-    const formattedItemJson = computed(() =>
+    const formattedItemJson = sharedScope.run(() => computed(() =>
       itemDetail.value ? JSON.stringify(itemDetail.value.value, null, 2) : ""
-    );
+    ))!;
 
-    const mobileHeaderTitle = computed(() => {
+    const mobileHeaderTitle = sharedScope.run(() => computed(() => {
       if (selectedResource.value?.source === "editor" && model.value) {
         return model.value.title;
       }
@@ -101,7 +102,7 @@ export function useDataSection() {
         return resource.value.title;
       }
       return "";
-    });
+    }))!;
 
     function isStale(requestVersion: number) {
       return requestVersion !== stateVersion;
@@ -148,7 +149,6 @@ export function useDataSection() {
       ].sort((left, right) => left.key.localeCompare(right.key));
     }
 
-    const sharedScope = effectScope(true);
     sharedScope.run(() => {
       watch(selectedKey, async (key) => {
         const requestVersion = stateVersion;

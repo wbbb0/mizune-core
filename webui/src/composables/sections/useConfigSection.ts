@@ -40,11 +40,12 @@ export function useConfigSection() {
     const validating = ref(false);
     const toast = useToastStore();
     const workbenchRuntime = useWorkbenchRuntime();
-    const editorState = useEditorDraftState(model);
+    const sharedScope = effectScope(true);
+    const editorState = sharedScope.run(() => useEditorDraftState(model))!;
     let stateVersion = 0;
 
-    const canSave = computed(() => editorState.isDirty.value && !validating.value && !saving.value);
-    const canValidate = computed(() => !!model.value && !validating.value && !saving.value);
+    const canSave = sharedScope.run(() => computed(() => editorState.isDirty.value && !validating.value && !saving.value))!;
+    const canValidate = sharedScope.run(() => computed(() => !!model.value && !validating.value && !saving.value))!;
 
     function isStale(requestVersion: number) {
       return requestVersion !== stateVersion;
@@ -92,7 +93,6 @@ export function useConfigSection() {
       }
     }
 
-    const sharedScope = effectScope(true);
     sharedScope.run(() => {
       watch(selectedKey, (key) => {
         void loadSelectedModel(key);
