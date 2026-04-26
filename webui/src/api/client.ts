@@ -39,10 +39,10 @@ async function request<T>(
   }
 
   if (!res.ok) {
-    let message = res.statusText;
+    let message = res.statusText || `HTTP ${res.status}`;
     try {
-      const data = await res.json() as { error?: string };
-      if (data.error) message = data.error;
+      const data = await res.json() as { error?: string; message?: string; detail?: string };
+      message = data.error?.trim() || data.message?.trim() || data.detail?.trim() || message;
     } catch { /* ignore */ }
     throw new ApiError(res.status, message);
   }
