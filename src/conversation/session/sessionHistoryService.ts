@@ -1,6 +1,5 @@
 import type { AppConfig } from "#config/config.ts";
 import {
-  appendHistoryEntry,
   appendInternalTranscriptState,
   appendToolEventState,
   applyCompressedHistoryState,
@@ -9,8 +8,6 @@ import {
 } from "./sessionMutations.ts";
 import {
   cloneSessionState,
-  getHistoryForCompressionSnapshot,
-  getHistoryForCompressionSnapshotByTokens,
   getSessionViewSnapshot
 } from "./sessionQueries.ts";
 import { projectLlmVisibleHistoryFromTranscript, projectVisibleMessagesFromTranscript } from "./sessionTranscript.ts";
@@ -24,6 +21,10 @@ import {
   normalizeTranscriptItem,
   resolveTranscriptOutputGroupId
 } from "./transcriptMetadata.ts";
+import {
+  distributeProviderOutputTokenStats,
+  withEstimatedInputTokenStats
+} from "./transcriptTokenStats.ts";
 import { createSessionTranscriptStore } from "./sessionTranscriptStore.ts";
 import type {
   InternalTranscriptItem,
@@ -32,6 +33,7 @@ import type {
   SessionState,
   SessionToolEvent,
   SessionUsageSnapshot,
+  TranscriptAssistantMessageItem,
   TranscriptItemDeliveryRef,
   TranscriptItemRuntimeExclusionReason
 } from "./sessionTypes.ts";
@@ -47,7 +49,15 @@ export class SessionHistoryService {
   }
 
   private appendNormalizedTranscript(session: SessionState, item: InternalTranscriptItem, groupId: string): void {
-    appendInternalTranscriptState(session, normalizeTranscriptItem(item, groupId));
+    appendInternalTranscriptState(session, withEstimatedInputTokenStats(
+      normalizeTranscriptItem(item, groupId),
+      this.config
+    ));
+  }
+
+  private appendHistoryTranscript(session: SessionState, item: InternalTranscriptItem, groupId: string): void {
+    this.appendNormalizedTranscript(session, item, groupId);
+    session.historyRevision += 1;
   }
 
   clone(session: SessionState): SessionState {
@@ -64,7 +74,7 @@ export class SessionHistoryService {
       ? session.participantRef.id
       : "unknown";
 
-    appendHistoryEntry(session, normalizeTranscriptItem(role === "user"
+    this.appendHistoryTranscript(session, role === "user"
       ? createUserTranscriptMessageItem({
           chatType: session.type,
           userId: defaultUserId,
@@ -80,7 +90,7 @@ export class SessionHistoryService {
           timestampMs
         }), role === "user"
       ? ensurePendingTranscriptGroupId(session)
-      : resolveTranscriptOutputGroupId(session)));
+      : resolveTranscriptOutputGroupId(session));
   }
 
   appendUserHistory(
@@ -102,7 +112,7 @@ export class SessionHistoryService {
     },
     timestampMs = Date.now()
   ): void {
-    appendHistoryEntry(session, normalizeTranscriptItem(createUserTranscriptMessageItem({
+    this.appendHistoryTranscript(session, createUserTranscriptMessageItem({
       chatType: message.chatType,
       userId: message.userId,
       senderName: message.senderName,
@@ -117,7 +127,7 @@ export class SessionHistoryService {
       ...(message.mentionedAll !== undefined ? { mentionedAll: message.mentionedAll } : {}),
       ...(message.mentionedSelf !== undefined ? { mentionedSelf: message.mentionedSelf } : {}),
       timestampMs
-    }), ensurePendingTranscriptGroupId(session)));
+    }), ensurePendingTranscriptGroupId(session));
   }
 
   appendAssistantHistory(
@@ -131,10 +141,10 @@ export class SessionHistoryService {
     },
     timestampMs = Date.now()
   ): void {
-    appendHistoryEntry(session, normalizeTranscriptItem(createAssistantTranscriptMessageItem({
+    this.appendHistoryTranscript(session, createAssistantTranscriptMessageItem({
       ...message,
       timestampMs
-    }), resolveTranscriptOutputGroupId(session)));
+    }), resolveTranscriptOutputGroupId(session));
   }
 
   appendModeSwitch(session: SessionState, fromModeId: string, toModeId: string, timestampMs = Date.now()): void {
@@ -162,6 +172,50 @@ export class SessionHistoryService {
 
   setLastAssistantReasoning(session: SessionState, reasoningContent: string): boolean {
     return setLastAssistantMessageReasoningState(session, reasoningContent);
+  }
+
+  applyActiveResponseTokenStats(
+    session: SessionState,
+    input: {
+      outputTokens: number | null;
+      reasoningTokens: number | null;
+      modelRef: string | null;
+      model: string | null;
+      providerReported: boolean;
+      capturedAt: number;
+    }
+  ): boolean {
+    const groupId = session.activeTranscriptGroupId;
+    if (!groupId) {
+      return false;
+    }
+    const matchingIndexes: number[] = [];
+    const matchingItems: TranscriptAssistantMessageItem[] = [];
+    for (let index = 0; index < session.internalTranscript.length; index += 1) {
+      const item = session.internalTranscript[index];
+      if (item?.kind === "assistant_message" && item.groupId === groupId) {
+        matchingIndexes.push(index);
+        matchingItems.push(item);
+      }
+    }
+    if (matchingItems.length === 0) {
+      return false;
+    }
+    const updated = distributeProviderOutputTokenStats({
+      items: matchingItems,
+      ...input,
+      config: this.config
+    });
+    for (let index = 0; index < matchingIndexes.length; index += 1) {
+      const transcriptIndex = matchingIndexes[index];
+      const item = updated[index];
+      if (transcriptIndex == null || !item) {
+        continue;
+      }
+      session.internalTranscript[transcriptIndex] = item;
+    }
+    session.historyRevision += 1;
+    return true;
   }
 
   getHistoryForCompression(

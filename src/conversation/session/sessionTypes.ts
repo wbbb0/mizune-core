@@ -7,7 +7,9 @@ import type {
   StoredToolCall as StoredToolCallContract,
   TranscriptItemDeliveryRef as TranscriptItemDeliveryRefContract,
   TranscriptItemMeta as TranscriptItemMetaContract,
-  TranscriptItemRuntimeExclusionReason as TranscriptItemRuntimeExclusionReasonContract
+  TranscriptItemRuntimeExclusionReason as TranscriptItemRuntimeExclusionReasonContract,
+  TranscriptTokenStat as TranscriptTokenStatContract,
+  TranscriptTokenStats as TranscriptTokenStatsContract
 } from "./transcriptContract.ts";
 // Defines the public session data contracts shared across conversation modules.
 
@@ -104,6 +106,8 @@ export type StoredToolCall = StoredToolCallContract;
 export type TranscriptItemRuntimeExclusionReason = TranscriptItemRuntimeExclusionReasonContract;
 export type TranscriptItemDeliveryRef = TranscriptItemDeliveryRefContract;
 export type TranscriptItemMeta = TranscriptItemMetaContract;
+export type TranscriptTokenStat = TranscriptTokenStatContract;
+export type TranscriptTokenStats = TranscriptTokenStatsContract;
 export type InternalTranscriptItem = InternalTranscriptItemContract;
 export type { NormalizedInternalTranscriptItem };
 export type TranscriptUserMessageItem = Extract<InternalTranscriptItem, { kind: "user_message" }>;

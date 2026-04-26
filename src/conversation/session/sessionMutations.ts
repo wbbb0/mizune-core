@@ -21,7 +21,6 @@ import {
 } from "./sessionOperationMode.ts";
 
 const MAX_RECENT_TOOL_EVENTS = 12;
-const MAX_INTERNAL_TRANSCRIPT_ITEMS = 160;
 const MAX_DEBUG_MARKERS = 24;
 
 function updateSessionMessageTiming(session: SessionState, now: number): void {
@@ -201,9 +200,6 @@ export function appendToolEventState(session: SessionState, event: SessionToolEv
 
 export function appendInternalTranscriptState(session: SessionState, item: InternalTranscriptItem): void {
   session.internalTranscript.push(item);
-  if (session.internalTranscript.length > MAX_INTERNAL_TRANSCRIPT_ITEMS) {
-    session.internalTranscript = session.internalTranscript.slice(-MAX_INTERNAL_TRANSCRIPT_ITEMS);
-  }
 }
 
 export function setLastAssistantMessageReasoningState(session: SessionState, reasoningContent: string): boolean {

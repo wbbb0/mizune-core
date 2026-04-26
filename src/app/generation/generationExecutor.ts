@@ -1,5 +1,5 @@
 import { createBuiltinToolExecutor, getBuiltinTools } from "#llm/builtinTools.ts";
-import type { LlmMessage, LlmToolCall, LlmToolExecutionResult } from "#llm/llmClient.ts";
+import type { LlmMessage, LlmProviderCallUsage, LlmToolCall, LlmToolExecutionResult } from "#llm/llmClient.ts";
 import { extractToolError, parseToolArguments } from "#llm/shared/toolArgs.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import {
@@ -47,6 +47,7 @@ import type { SetupCompletionSignal } from "#modes/types.ts";
 import { checkSetupCompletion } from "./generationSetupContext.ts";
 import { waitForGenerationAbortGraceWindow } from "#app/runtime/runtimeTimingPolicy.ts";
 import { maybeAutoCaptionSessionTitle, shouldAutoCaptionSessionTitle } from "./sessionCaptioner.ts";
+import { createProviderOutputTokenStats } from "#conversation/session/transcriptTokenStats.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -187,6 +188,7 @@ export function createGenerationExecutor(
       } = input;
     let outboundDrainPromise: Promise<void> | null = null;
     let lastResultReasoningContent = "";
+    let finalProviderCallUsage: LlmProviderCallUsage | null = null;
     // 消费 steer 消息，注入到当前 tool iteration 的 prompt 上下文中。
     // 如果仅注入用户消息效果不够明显（模型没有及时收尾），
     // 可以在这里额外附加一条 system 提示，告知模型"用户发了新消息，请尽快结束当前工具链"。
@@ -518,7 +520,17 @@ export function createGenerationExecutor(
                 }
               }
             },
-            onAssistantToolCalls: async (message) => {
+            onAssistantToolCalls: async (message, usageEvent) => {
+              const tokenStats = usageEvent
+                ? createProviderOutputTokenStats({
+                    outputTokens: usageEvent.usage.outputTokens,
+                    reasoningTokens: usageEvent.usage.reasoningTokens,
+                    modelRef: usageEvent.usage.modelRef,
+                    model: usageEvent.usage.model,
+                    providerReported: usageEvent.usage.providerReported,
+                    capturedAt: Date.now()
+                  }, message.reasoning_content, config)
+                : undefined;
               const applied = sessionManager.appendInternalTranscriptIfEpochMatches(sessionId, expectedEpoch, {
                 kind: "assistant_tool_call",
                 llmVisible: true,
@@ -526,7 +538,8 @@ export function createGenerationExecutor(
                 content: typeof message.content === "string" ? message.content : JSON.stringify(message.content),
                 toolCalls: message.tool_calls ?? [],
                 ...(typeof message.reasoning_content === "string" ? { reasoningContent: message.reasoning_content } : {}),
-                ...(message.providerMetadata ? { providerMetadata: message.providerMetadata } : {})
+                ...(message.providerMetadata ? { providerMetadata: message.providerMetadata } : {}),
+                ...(tokenStats ? { tokenStats } : {})
               });
               if (applied) {
                 persistSession(sessionId, "internal_transcript_updated");
@@ -582,6 +595,9 @@ export function createGenerationExecutor(
           });
           summary = result.text;
           lastResultReasoningContent = result.reasoningContent ?? "";
+          finalProviderCallUsage = [...(result.providerCallUsages ?? [])].reverse()
+            .find((event) => event.phase === "final_response" || event.phase === "fallback_response" || event.phase === "terminal_response")
+            ?? null;
           const usageApplied = sessionManager.setLastLlmUsageIfEpochMatches(sessionId, expectedEpoch, {
             ...result.usage,
             capturedAt: Date.now()
@@ -670,6 +686,20 @@ export function createGenerationExecutor(
           responseEpoch,
           lastResultReasoningContent
         );
+      }
+
+      if (finalProviderCallUsage) {
+        const applied = sessionManager.applyActiveResponseTokenStatsIfResponseEpochMatches(sessionId, responseEpoch, {
+          outputTokens: finalProviderCallUsage.usage.outputTokens,
+          reasoningTokens: finalProviderCallUsage.usage.reasoningTokens,
+          modelRef: finalProviderCallUsage.usage.modelRef,
+          model: finalProviderCallUsage.usage.model,
+          providerReported: finalProviderCallUsage.usage.providerReported,
+          capturedAt: Date.now()
+        });
+        if (applied) {
+          persistSession(sessionId, "assistant_response_token_stats_updated");
+        }
       }
 
       const finalizedAssistant = sessionManager.finalizeActiveAssistantResponseIfResponseEpochMatches(

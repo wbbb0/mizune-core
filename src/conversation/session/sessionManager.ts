@@ -575,6 +575,23 @@ export class SessionManager {
     });
   }
 
+  applyActiveResponseTokenStatsIfResponseEpochMatches(
+    sessionId: string,
+    expectedResponseEpoch: number,
+    input: {
+      outputTokens: number | null;
+      reasoningTokens: number | null;
+      modelRef: string | null;
+      model: string | null;
+      providerReported: boolean;
+      capturedAt: number;
+    }
+  ): boolean {
+    return this.withResponseEpochResult(sessionId, expectedResponseEpoch, true, false, (session) => (
+      this.historyService.applyActiveResponseTokenStats(session, input)
+    ));
+  }
+
   clearPendingTranscriptGroup(sessionId: string): void {
     const session = this.requireSession(sessionId);
     clearPendingTranscriptGroup(session);

@@ -11,6 +11,7 @@ import {
   type LlmGenerateParams,
   type LlmGenerateResult,
   type LlmMessage,
+  type LlmProviderCallUsage,
   type LlmProviderRequestContext,
   type LlmToolCall,
   type LlmToolExecutionResult,
@@ -24,6 +25,7 @@ export type {
   LlmGenerateParams,
   LlmGenerateResult,
   LlmMessage,
+  LlmProviderCallUsage,
   LlmToolCall,
   LlmToolDefinition,
   LlmToolExecutionResult,
@@ -64,6 +66,7 @@ export class LlmClient {
     );
     const maxIterations = this.config.llm.toolCallMaxIterations;
     const aggregatedUsage: LlmUsage = createEmptyUsage(requestedModelRefs[0] ?? null, null);
+    const providerCallUsages: LlmProviderCallUsage[] = [];
     let lastReasoningContent = "";
     const consumeClonedSteerMessages = async (): Promise<LlmMessage[]> => {
       const steerMessages = await params.consumeSteerMessages?.() ?? [];
@@ -106,12 +109,20 @@ export class LlmClient {
       lastReasoningContent = streamed.reasoningContent;
 
       if (streamed.toolCalls.length === 0) {
+        const usageEvent = buildProviderCallUsage(iteration, "final_response", streamed);
+        providerCallUsages.push(usageEvent);
+        await params.onProviderCallUsage?.(usageEvent);
         return {
           text: streamed.text,
           reasoningContent: lastReasoningContent,
-          usage: aggregatedUsage
+          usage: aggregatedUsage,
+          providerCallUsages
         };
       }
+
+      const toolCallUsage = buildProviderCallUsage(iteration, "tool_call", streamed);
+      providerCallUsages.push(toolCallUsage);
+      await params.onProviderCallUsage?.(toolCallUsage);
 
       const assistantMessage: LlmMessage = {
         role: "assistant",
@@ -123,7 +134,7 @@ export class LlmClient {
         assistantMessage.reasoning_content = streamed.reasoningContent;
       }
       workingMessages.push(assistantMessage);
-      await params.onAssistantToolCalls?.(assistantMessage);
+      await params.onAssistantToolCalls?.(assistantMessage, toolCallUsage);
 
       const executeOneToolCall = async (toolCall: LlmToolCall): Promise<ExecutedToolCall> => {
         this.logger.info(
@@ -206,7 +217,8 @@ export class LlmClient {
           return {
             text: executed.terminalResponse.text,
             reasoningContent: lastReasoningContent,
-            usage: aggregatedUsage
+            usage: aggregatedUsage,
+            providerCallUsages
           };
         }
         const toolMessage: LlmMessage = {
@@ -255,10 +267,14 @@ export class LlmClient {
       tools: []
     });
     mergeUsage(aggregatedUsage, fallback.usage);
+    const fallbackUsage = buildProviderCallUsage(maxIterations, "fallback_response", fallback);
+    providerCallUsages.push(fallbackUsage);
+    await params.onProviderCallUsage?.(fallbackUsage);
     return {
       text: fallback.text || `工具调用轮次已达到上限（${maxIterations}），请基于现有结果继续处理或缩小任务范围。`,
       reasoningContent: fallback.reasoningContent,
-      usage: aggregatedUsage
+      usage: aggregatedUsage,
+      providerCallUsages
     };
   }
 
@@ -597,6 +613,24 @@ function cloneToolCall(toolCall: LlmToolCall): LlmToolCall {
       arguments: toolCall.function.arguments
     },
     ...(toolCall.providerMetadata ? { providerMetadata: structuredClone(toolCall.providerMetadata) } : {})
+  };
+}
+
+function buildProviderCallUsage(
+  iteration: number,
+  phase: LlmProviderCallUsage["phase"],
+  result: {
+    text: string;
+    reasoningContent: string;
+    usage: LlmUsage;
+  }
+): LlmProviderCallUsage {
+  return {
+    iteration,
+    phase,
+    usage: { ...result.usage },
+    text: result.text,
+    reasoningContent: result.reasoningContent
   };
 }
 

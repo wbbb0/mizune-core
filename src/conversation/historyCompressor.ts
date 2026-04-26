@@ -31,6 +31,7 @@ interface CompressionLogContext {
 
 export class HistoryCompressor {
   private readonly inFlightSessions = new Set<string>();
+  private readonly skippedTokenChecks = new Map<string, string>();
 
   constructor(
     private readonly config: AppConfig,
@@ -102,6 +103,15 @@ export class HistoryCompressor {
       // trigger signal when available, falling back to the heuristic estimate otherwise.
       const lastUsage = this.sessionManager.getLastLlmUsage(sessionId);
       const reportedInputTokens = lastUsage?.inputTokens ?? undefined;
+      const skipKey = [
+        options.expectedHistoryRevision,
+        lastUsage?.capturedAt ?? "no_usage",
+        options.triggerTokens,
+        options.retainTokens
+      ].join(":");
+      if (this.skippedTokenChecks.get(sessionId) === skipKey) {
+        return false;
+      }
       const logContext: CompressionLogContext = {
         triggerReason: options.triggerReason,
         triggerKind: "tokens",
@@ -118,9 +128,11 @@ export class HistoryCompressor {
         reportedInputTokens
       );
       if (!snapshot) {
+        this.skippedTokenChecks.set(sessionId, skipKey);
         this.logger.debug({ sessionId, ...logContext }, "history_compression_skipped_below_threshold");
         return false;
       }
+      this.skippedTokenChecks.delete(sessionId);
       return await this.runCompression(sessionId, snapshot, options.expectedHistoryRevision, false, {
         ...logContext,
         estimatedTotalTokens: snapshot.estimatedTotalTokens

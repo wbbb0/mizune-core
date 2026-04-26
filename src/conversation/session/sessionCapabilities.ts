@@ -458,6 +458,18 @@ export interface SessionGenerationExecutionAccess extends SessionSetupAccess {
     expectedResponseEpoch: number,
     reasoningContent: string
   ): boolean;
+  applyActiveResponseTokenStatsIfResponseEpochMatches(
+    sessionId: string,
+    expectedResponseEpoch: number,
+    input: {
+      outputTokens: number | null;
+      reasoningTokens: number | null;
+      modelRef: string | null;
+      model: string | null;
+      providerReported: boolean;
+      capturedAt: number;
+    }
+  ): boolean;
   finalizeActiveAssistantResponseIfResponseEpochMatches(
     sessionId: string,
     expectedResponseEpoch: number,
