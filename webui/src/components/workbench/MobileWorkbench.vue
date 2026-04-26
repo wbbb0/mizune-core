@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { createStatusbarMenuNodes, type WorkbenchStatusbarItem, type WorkbenchTopbarMenu } from "@/components/workbench/chrome";
 import { workbenchNavItems } from "@/components/workbench/navigation";
@@ -22,6 +22,8 @@ const mobileHeader = computed(() => props.section.regions.mobileHeader);
 const routeLabel = computed(() => props.section.title || workbenchNavItems.find((item) => item.id === route.name)?.title || "");
 const mobileNavItems = workbenchNavItems;
 const isMobileMainVisible = computed(() => props.runtime.isMobileMainVisible.value);
+const mobileHistoryArmed = ref(false);
+const mobileHistoryStateKey = "__workbenchMobileMain";
 
 const mobileWorkbenchTrigger = useMenuTrigger({
   baseId: "mobile-workbench-menu",
@@ -46,15 +48,60 @@ watch(
   () => [props.section.id, props.section.layout.mobileMainFlow] as const,
   () => {
     props.runtime.resetMobileStack();
+    mobileHistoryArmed.value = false;
   },
   { immediate: true }
 );
 
+function pushMobileHistoryEntry() {
+  if (typeof window === "undefined" || mobileHistoryArmed.value) {
+    return;
+  }
+
+  const currentState = typeof window.history.state === "object" && window.history.state !== null
+    ? window.history.state
+    : {};
+  window.history.pushState({
+    ...currentState,
+    [mobileHistoryStateKey]: {
+      sectionId: props.section.id
+    }
+  }, "", window.location.href);
+  mobileHistoryArmed.value = true;
+}
+
+function handlePopState() {
+  if (!props.runtime.isMobileMainVisible.value) {
+    return;
+  }
+  mobileHistoryArmed.value = false;
+  props.runtime.popMobileRegion();
+}
+
+watch(isMobileMainVisible, (visible) => {
+  if (!visible) {
+    return;
+  }
+  pushMobileHistoryEntry();
+});
+
 function goBack() {
+  if (mobileHistoryArmed.value && typeof window !== "undefined") {
+    window.history.back();
+    return;
+  }
   if (!props.runtime.popMobileRegion()) {
     props.runtime.showList();
   }
 }
+
+onMounted(() => {
+  window.addEventListener("popstate", handlePopState);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("popstate", handlePopState);
+});
 </script>
 
 <template>

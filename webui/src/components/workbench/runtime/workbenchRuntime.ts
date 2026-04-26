@@ -1,4 +1,4 @@
-import { computed, inject, provide, ref, type ComputedRef, type InjectionKey, type Ref } from "vue";
+import { computed, inject, provide, ref, shallowRef, type ComputedRef, type InjectionKey, type Ref, type ShallowRef } from "vue";
 import type { WorkbenchSection } from "@/components/workbench/types";
 
 export type MobileRegionStackEntry =
@@ -19,6 +19,7 @@ export type WorkbenchRuntime = {
 };
 
 const workbenchRuntimeKey: InjectionKey<WorkbenchRuntime> = Symbol("workbench-runtime");
+const activeWorkbenchRuntime = shallowRef<WorkbenchRuntime | null>(null);
 
 export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): WorkbenchRuntime {
   const mainRegionRef = ref<HTMLElement | null>(null);
@@ -74,4 +75,17 @@ export function provideWorkbenchRuntime(runtime: WorkbenchRuntime): void {
 
 export function useWorkbenchRuntimeContext(): WorkbenchRuntime | null {
   return inject(workbenchRuntimeKey, null);
+}
+
+export function activateWorkbenchRuntime(runtime: WorkbenchRuntime): () => void {
+  activeWorkbenchRuntime.value = runtime;
+  return () => {
+    if (activeWorkbenchRuntime.value === runtime) {
+      activeWorkbenchRuntime.value = null;
+    }
+  };
+}
+
+export function useActiveWorkbenchRuntime(): ShallowRef<WorkbenchRuntime | null> {
+  return activeWorkbenchRuntime;
 }
