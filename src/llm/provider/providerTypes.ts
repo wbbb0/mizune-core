@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import type { LlmProviderConfig, ModelProfile } from "#config/configModel.ts";
+import type { ToolExecutionEffect } from "../toolExecutionScheduler.ts";
 
 export interface LlmContentPartText {
   type: "text";
@@ -67,6 +68,10 @@ export interface LlmGenerateParams {
   toolExecutor?: (toolCall: LlmToolCall) => Promise<string | LlmToolExecutionResult>;
   onAssistantToolCalls?: (message: LlmMessage) => Promise<void> | void;
   onToolResultMessage?: (message: LlmMessage, toolName: string) => Promise<void> | void;
+  toolConcurrency?: {
+    analyze: (toolCall: LlmToolCall, index: number) => ToolExecutionEffect;
+    maxConcurrency?: number;
+  };
   onFallbackEvent?: (event: LlmFallbackEvent) => Promise<void> | void;
   modelOverride?: string;
   modelRefOverride?: string | string[];

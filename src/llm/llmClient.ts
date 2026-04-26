@@ -3,6 +3,7 @@ import { getPrimaryModelProfile, normalizeModelRefs } from "#llm/shared/modelPro
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { Logger } from "pino";
 import { getLlmProvider, hasLlmProvider } from "./provider/providerRegistry.ts";
+import { executeToolCallsWithDependencies } from "./toolExecutionScheduler.ts";
 import {
   createEmptyUsage,
   mergeUsage,
@@ -28,6 +29,15 @@ export type {
   LlmToolExecutionResult,
   LlmUsage
 } from "./provider/providerTypes.ts";
+
+interface ExecutedToolCall {
+  toolCall: LlmToolCall;
+  toolResult: string;
+  supplementalMessages: LlmMessage[];
+  terminalResponse?: {
+    text: string;
+  };
+}
 
 export class LlmClient {
   constructor(
@@ -115,7 +125,7 @@ export class LlmClient {
       workingMessages.push(assistantMessage);
       await params.onAssistantToolCalls?.(assistantMessage);
 
-      for (const toolCall of streamed.toolCalls) {
+      const executeOneToolCall = async (toolCall: LlmToolCall): Promise<ExecutedToolCall> => {
         this.logger.info(
           {
             toolName: toolCall.function.name,
@@ -176,24 +186,38 @@ export class LlmClient {
             },
             "tool_call_requested_terminal_response"
           );
+        }
+        return {
+          toolCall,
+          toolResult,
+          supplementalMessages,
+          ...(terminalResponse ? { terminalResponse } : {})
+        };
+      };
+
+      const executedToolCalls = await executeToolCallBatch({
+        toolCalls: streamed.toolCalls,
+        execute: executeOneToolCall,
+        ...(params.toolConcurrency ? { toolConcurrency: params.toolConcurrency } : {})
+      });
+
+      for (const executed of executedToolCalls) {
+        if (executed.terminalResponse) {
           return {
-            text: terminalResponse.text,
+            text: executed.terminalResponse.text,
             reasoningContent: lastReasoningContent,
             usage: aggregatedUsage
           };
         }
-        workingMessages.push({
+        const toolMessage: LlmMessage = {
           role: "tool",
-          tool_call_id: toolCall.id,
-          content: toolResult
-        });
-        await params.onToolResultMessage?.({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          content: toolResult
-        }, toolCall.function.name);
+          tool_call_id: executed.toolCall.id,
+          content: executed.toolResult
+        };
+        workingMessages.push(toolMessage);
+        await params.onToolResultMessage?.(toolMessage, executed.toolCall.function.name);
         for (const message of cloneMessagesForRequest(
-          supplementalMessages,
+          executed.supplementalMessages,
           true
         )) {
           workingMessages.push(message);
@@ -414,6 +438,34 @@ export class LlmClient {
         });
     }
   }
+}
+
+async function executeToolCallBatch(input: {
+  toolCalls: LlmToolCall[];
+  execute: (toolCall: LlmToolCall) => Promise<ExecutedToolCall>;
+  toolConcurrency?: LlmGenerateParams["toolConcurrency"];
+}): Promise<ExecutedToolCall[]> {
+  if (!input.toolConcurrency || input.toolCalls.length <= 1 || (input.toolConcurrency.maxConcurrency ?? 4) <= 1) {
+    const results: ExecutedToolCall[] = [];
+    for (const toolCall of input.toolCalls) {
+      const result = await input.execute(toolCall);
+      results.push(result);
+      if (result.terminalResponse) {
+        break;
+      }
+    }
+    return results;
+  }
+
+  const scheduledResults = await executeToolCallsWithDependencies({
+    calls: input.toolCalls,
+    analyze: input.toolConcurrency.analyze,
+    execute: input.execute,
+    isTerminalResult: result => result.terminalResponse != null,
+    ...(input.toolConcurrency.maxConcurrency != null ? { maxConcurrency: input.toolConcurrency.maxConcurrency } : {})
+  });
+
+  return scheduledResults.map(result => result.result);
 }
 
 function narrowActiveModelRefs(activeModelRefs: string[], selectedModelRef: string | null): string[] {

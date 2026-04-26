@@ -4,6 +4,92 @@ import pino from "pino";
 import { LlmClient } from "../../src/llm/llmClient.ts";
 import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../helpers/llm-test-support.tsx";
 
+  test("independent same-round tool calls run concurrently and replay results in tool-call order", async () => {
+    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+    const events: string[] = [];
+    const first = createDeferred<string>();
+    const second = createDeferred<string>();
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 1);
+          assert.equal(body.messages[0].role, "user");
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "tool-call-first",
+                  type: "function",
+                  function: {
+                    name: "read_a",
+                    arguments: "{}"
+                  }
+                },
+                {
+                  index: 1,
+                  id: "tool-call-second",
+                  type: "function",
+                  function: {
+                    name: "read_b",
+                    arguments: "{}"
+                  }
+                }
+              ]
+            }
+          }]
+        }]
+      },
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 4);
+          assert.equal(body.messages[1].role, "assistant");
+          assert.equal(body.messages[2].role, "tool");
+          assert.equal(body.messages[2].tool_call_id, "tool-call-first");
+          assert.equal(body.messages[2].content, "first-result");
+          assert.equal(body.messages[3].role, "tool");
+          assert.equal(body.messages[3].tool_call_id, "tool-call-second");
+          assert.equal(body.messages[3].content, "second-result");
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "done"
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      const generatePromise = client.generate({
+        messages: [{ role: "user", content: "read both" }],
+        tools: [createToolDefinition("read_a"), createToolDefinition("read_b")],
+        toolConcurrency: {
+          maxConcurrency: 2,
+          analyze: () => ({ kind: "parallel", reads: ["readonly"], writes: [] })
+        },
+        toolExecutor: async toolCall => {
+          events.push(`start:${toolCall.function.name}`);
+          if (toolCall.function.name === "read_a") {
+            return first.promise;
+          }
+          return second.promise;
+        }
+      });
+
+      await waitFor(() => events.length === 2);
+      assert.deepEqual(events, ["start:read_a", "start:read_b"]);
+
+      second.resolve("second-result");
+      first.resolve("first-result");
+
+      const result = await generatePromise;
+      assert.equal(result.text, "done");
+    });
+  });
+
   test("terminal tool responses stop the tool loop without a follow-up model call", async () => {
     const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
 
@@ -105,3 +191,23 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
       assert.equal(result.text, "已经补上风速");
     });
   });
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  assert.fail("condition was not met");
+}

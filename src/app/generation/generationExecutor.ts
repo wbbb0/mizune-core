@@ -40,6 +40,7 @@ import {
   resolveToolNamesFromToolsets,
   TURN_PLANNER_ALWAYS_TOOL_NAMES
 } from "#llm/tools/toolsets.ts";
+import { analyzeBuiltinToolConcurrency } from "#llm/tools/toolConcurrency.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import { listSessionModes, requireSessionModeDefinition } from "#modes/registry.ts";
 import type { SetupCompletionSignal } from "#modes/types.ts";
@@ -473,6 +474,10 @@ export function createGenerationExecutor(
 
       if (llmClient.isConfigured(resolvedModelRef)) {
         try {
+          const activeToolCounts = new Map<string, number>();
+          const listActiveToolNames = () => [...activeToolCounts.entries()]
+            .filter(([, count]) => count > 0)
+            .map(([name]) => name);
           sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "requesting_llm" });
           const result = await llmClient.generate({
             messages: promptMessages,
@@ -481,15 +486,37 @@ export function createGenerationExecutor(
             tools: resolveAllowedTools,
             abortSignal: abortController.signal,
             consumeSteerMessages,
+            toolConcurrency: {
+              analyze: analyzeBuiltinToolConcurrency,
+              maxConcurrency: 4
+            },
             toolExecutor: async (toolCall) => {
+              activeToolCounts.set(toolCall.function.name, (activeToolCounts.get(toolCall.function.name) ?? 0) + 1);
               sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, {
                 kind: "tool_calling",
-                toolNames: [toolCall.function.name],
+                toolNames: listActiveToolNames(),
                 lastToolName: toolCall.function.name
               });
-              const res = await toolExecutor(toolCall);
-              sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "requesting_llm" });
-              return res;
+              try {
+                return await toolExecutor(toolCall);
+              } finally {
+                const nextCount = (activeToolCounts.get(toolCall.function.name) ?? 1) - 1;
+                if (nextCount > 0) {
+                  activeToolCounts.set(toolCall.function.name, nextCount);
+                } else {
+                  activeToolCounts.delete(toolCall.function.name);
+                }
+                const remainingToolNames = listActiveToolNames();
+                if (remainingToolNames.length > 0) {
+                  sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, {
+                    kind: "tool_calling",
+                    toolNames: remainingToolNames,
+                    lastToolName: remainingToolNames[remainingToolNames.length - 1] ?? toolCall.function.name
+                  });
+                } else {
+                  sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "requesting_llm" });
+                }
+              }
             },
             onAssistantToolCalls: async (message) => {
               const applied = sessionManager.appendInternalTranscriptIfEpochMatches(sessionId, expectedEpoch, {
