@@ -109,14 +109,19 @@ test("workbench sections use a definition helper for default layout", async () =
   }
 });
 
-test("desktop workbench persists list pane width per section", async () => {
+test("desktop workbench persists list pane width globally", async () => {
   const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
 
   assert.match(runtime, /readStoredDesktopListPaneWidth/);
   assert.match(runtime, /writeStoredDesktopListPaneWidth/);
   assert.match(runtime, /localStorage/);
-  assert.match(runtime, /sectionId/);
-  assert.match(runtime, /workbench\.pane\.desktopList/);
+  assert.match(runtime, /workbench\.pane\.desktopList\.width/);
+  assert.match(runtime, /readStoredDesktopListPaneWidth\(\)/);
+  assert.match(runtime, /writeStoredDesktopListPaneWidth\(widthPx: number\)/);
+  assert.doesNotMatch(runtime, /resolveDesktopListPaneStorageKey/);
+  assert.doesNotMatch(runtime, /readStoredDesktopListPaneWidth\(sectionId/);
+  assert.doesNotMatch(runtime, /writeStoredDesktopListPaneWidth\(sectionId/);
+  assert.doesNotMatch(runtime, /writeStoredDesktopListPaneWidth\(section\.value\.id/);
   assert.match(runtime, /watch\(\(\)\s*=>\s*section\.value\.id/);
 });
 

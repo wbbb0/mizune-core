@@ -25,23 +25,19 @@ export type WorkbenchRuntime = {
 
 const workbenchRuntimeKey: InjectionKey<WorkbenchRuntime> = Symbol("workbench-runtime");
 const activeWorkbenchRuntime = shallowRef<WorkbenchRuntime | null>(null);
-const desktopListPaneStoragePrefix = "workbench.pane.desktopList";
+const desktopListPaneStorageKey = "workbench.pane.desktopList.width";
 const defaultDesktopListPane = {
   defaultWidthPx: 260,
   minWidthPx: 180,
   maxWidthPx: 520
 };
 
-function resolveDesktopListPaneStorageKey(sectionId: string) {
-  return `${desktopListPaneStoragePrefix}.${sectionId}`;
-}
-
-function readStoredDesktopListPaneWidth(sectionId: string): number | null {
+function readStoredDesktopListPaneWidth(): number | null {
   if (typeof window === "undefined") {
     return null;
   }
   try {
-    const value = window.localStorage.getItem(resolveDesktopListPaneStorageKey(sectionId));
+    const value = window.localStorage.getItem(desktopListPaneStorageKey);
     if (!value) {
       return null;
     }
@@ -52,12 +48,12 @@ function readStoredDesktopListPaneWidth(sectionId: string): number | null {
   }
 }
 
-function writeStoredDesktopListPaneWidth(sectionId: string, widthPx: number) {
+function writeStoredDesktopListPaneWidth(widthPx: number) {
   if (typeof window === "undefined") {
     return;
   }
   try {
-    window.localStorage.setItem(resolveDesktopListPaneStorageKey(sectionId), String(widthPx));
+    window.localStorage.setItem(desktopListPaneStorageKey, String(widthPx));
   } catch {
     // Layout resizing remains usable when storage is unavailable.
   }
@@ -79,7 +75,7 @@ export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): 
   }
 
   function resolveInitialDesktopListPaneWidth() {
-    return clampDesktopListPaneWidth(readStoredDesktopListPaneWidth(section.value.id) ?? resolveDesktopListPaneDefaultWidth());
+    return clampDesktopListPaneWidth(readStoredDesktopListPaneWidth() ?? resolveDesktopListPaneDefaultWidth());
   }
 
   function resolveDesktopListPaneMinWidth() {
@@ -103,7 +99,7 @@ export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): 
   function setDesktopListPaneWidth(widthPx: number) {
     const nextWidth = clampDesktopListPaneWidth(widthPx);
     desktopListPaneWidthPx.value = nextWidth;
-    writeStoredDesktopListPaneWidth(section.value.id, nextWidth);
+    writeStoredDesktopListPaneWidth(nextWidth);
   }
 
   function resetDesktopListPaneWidth() {
