@@ -4,7 +4,7 @@ import { useWorkbenchNavigation } from "@/components/workbench/runtime/workbench
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { dataApi, type DataResourceSummary, type DataResource, type DataResourceItem, type DirectoryItem } from "@/api/data";
 import { editorApi, type EditorModel, type EditorResourceSummary } from "@/api/editor";
-import { useToastStore } from "@/stores/toasts";
+import { useWorkbenchToasts } from "@/components/workbench/toasts/useWorkbenchToasts";
 
 type DataListResource =
   | {
@@ -68,7 +68,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
     const loadingItem = ref(false);
     const saving = ref(false);
     const validating = ref(false);
-    const toast = useToastStore();
+    const toast = useWorkbenchToasts();
     const workbenchNavigation = useWorkbenchNavigation();
     const editorState = useEditorDraftState(model);
     let stateVersion = 0;

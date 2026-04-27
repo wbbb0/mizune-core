@@ -12,7 +12,7 @@ import { useAuthStore } from "@/stores/auth";
 import { ApiError } from "@/api/client";
 import type { TranscriptEntry } from "@/stores/sessions";
 import type { TranscriptItem as SessionTranscriptItem } from "@/api/types";
-import { useToastStore } from "@/stores/toasts";
+import { useWorkbenchToasts } from "@/components/workbench/toasts/useWorkbenchToasts";
 import { useWorkbenchWindows } from "@/composables/workbench/useWorkbenchWindows";
 import { buildChatTimelineItems } from "./chatTimeline";
 import type { ChatTimelineItem } from "./chatTimeline";
@@ -20,7 +20,7 @@ import { resolveComposerUserIdentity } from "./composerUserIdentity";
 
 const store = useSessionsStore();
 const auth  = useAuthStore();
-const toast = useToastStore();
+const toast = useWorkbenchToasts();
 const windows = useWorkbenchWindows();
 const session = computed(() => store.active);
 

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { AlertCircle, CheckCircle2, Info } from "lucide-vue-next";
-import { useToastStore } from "@/stores/toasts";
+import { useWorkbenchToasts } from "@/components/workbench/toasts/useWorkbenchToasts";
 
-const toast = useToastStore();
+const toast = useWorkbenchToasts();
 
 const toasts = computed(() => toast.items.value);
 

@@ -1,26 +1,29 @@
-import { computed } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { workbenchNavItems } from "@/components/workbench/navigation";
+import { computed, type ComputedRef } from "vue";
 import type { WorkbenchStatusbarItem, WorkbenchTopbarMenu } from "@/components/workbench/chrome";
+import type { WorkbenchNavItem } from "@/components/workbench/navigation";
 import AuthStatusChip from "@/components/workbench/status/AuthStatusChip.vue";
 import { useUiStore } from "@/stores/ui";
 
-export function useWorkbenchChrome() {
-  const route = useRoute();
-  const router = useRouter();
+type WorkbenchChromeOptions = {
+  navItems: readonly WorkbenchNavItem[];
+  activeNavItemId: ComputedRef<string>;
+  onNavigate: (itemId: string) => void;
+};
+
+export function useWorkbenchChrome(options: WorkbenchChromeOptions) {
   const ui = useUiStore();
 
   const topbarMenus = computed<WorkbenchTopbarMenu[]>(() => [
     {
       id: "pages",
       label: "页面",
-      resolveItems: () => workbenchNavItems.map((item) => ({
+      resolveItems: () => options.navItems.map((item) => ({
         kind: "radio" as const,
         id: `page-${item.id}`,
         label: item.title,
-        checked: route.name === item.id,
+        checked: options.activeNavItemId.value === item.id,
         onSelect: () => {
-          void router.push(item.path);
+          options.onNavigate(item.id);
         }
       }))
     },

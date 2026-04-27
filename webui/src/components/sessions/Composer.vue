@@ -4,7 +4,7 @@ import { Send, Paperclip, X, Loader } from "lucide-vue-next";
 import { useVisualViewportInset } from "@/composables/useVisualViewportInset";
 import { uploadsApi, type UploadedFile } from "@/api/uploads";
 import { prepareFilesForUpload } from "@/api/uploadPreparation";
-import { useToastStore } from "@/stores/toasts";
+import { useWorkbenchToasts } from "@/components/workbench/toasts/useWorkbenchToasts";
 import { useUiStore } from "@/stores/ui";
 import { useWorkbenchRuntimeContext } from "@/components/workbench/runtime/workbenchRuntime";
 import { buildComposerSendPayload, type ComposerSendPayload } from "./composerPayload";
@@ -40,7 +40,7 @@ const uploading    = ref(false);
 const sending      = ref(false);
 const iosRootScrollGuardActive = ref(false);
 const composerRootRef = ref<HTMLElement | null>(null);
-const toast = useToastStore();
+const toast = useWorkbenchToasts();
 const ui = useUiStore();
 const workbenchRuntime = useWorkbenchRuntimeContext();
 const keyboardAvoidanceTarget = computed(() =>

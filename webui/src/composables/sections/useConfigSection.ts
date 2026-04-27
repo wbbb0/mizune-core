@@ -3,7 +3,7 @@ import { useEditorDraftState } from "@/composables/useEditorDraftState";
 import { useWorkbenchNavigation } from "@/components/workbench/runtime/workbenchRuntime";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { editorApi, type EditorModel, type EditorResourceSummary, type LayeredEditorModel, type SingleEditorModel } from "@/api/editor";
-import { useToastStore } from "@/stores/toasts";
+import { useWorkbenchToasts } from "@/components/workbench/toasts/useWorkbenchToasts";
 
 type ConfigSectionState = {
   resources: Ref<EditorResourceSummary[]>;
@@ -35,7 +35,7 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
     const loading = ref(false);
     const saving = ref(false);
     const validating = ref(false);
-    const toast = useToastStore();
+    const toast = useWorkbenchToasts();
     const workbenchNavigation = useWorkbenchNavigation();
     const editorState = useEditorDraftState(model);
     let stateVersion = 0;

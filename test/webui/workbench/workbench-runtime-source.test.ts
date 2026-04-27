@@ -16,6 +16,26 @@ test("workbench shell creates, provides, and activates a runtime", async () => {
   assert.match(shell, /onUnmounted/);
 });
 
+test("workbench core receives navigation from the app adapter", async () => {
+  const shell = await readFile(new URL("../../../webui/src/components/workbench/WorkbenchShell.vue", import.meta.url), "utf8");
+  const mobile = await readFile(new URL("../../../webui/src/components/workbench/MobileWorkbench.vue", import.meta.url), "utf8");
+  const desktop = await readFile(new URL("../../../webui/src/components/workbench/DesktopWorkbench.vue", import.meta.url), "utf8");
+  const activityBar = await readFile(new URL("../../../webui/src/components/layout/ActivityBar.vue", import.meta.url), "utf8");
+  const sectionHost = await readFile(new URL("../../../webui/src/sections/SectionHost.vue", import.meta.url), "utf8");
+
+  assert.match(shell, /navItems/);
+  assert.match(shell, /activeNavItemId/);
+  assert.match(desktop, /@navigate="emit\('navigate', \$event\)"/);
+  assert.match(mobile, /props\.navItems/);
+  assert.doesNotMatch(mobile, /useRoute/);
+  assert.doesNotMatch(mobile, /workbenchNavItems/);
+  assert.match(activityBar, /navItems/);
+  assert.doesNotMatch(activityBar, /useRouter/);
+  assert.doesNotMatch(activityBar, /workbenchNavItems/);
+  assert.match(sectionHost, /workbenchNavItems/);
+  assert.match(sectionHost, /router\.push\(item\.path\)/);
+});
+
 test("mobile workbench keeps list mounted under the main overlay", async () => {
   const source = await readFile(new URL("../../../webui/src/components/workbench/MobileWorkbench.vue", import.meta.url), "utf8");
   const types = await readFile(new URL("../../../webui/src/components/workbench/types.ts", import.meta.url), "utf8");
@@ -30,6 +50,18 @@ test("mobile workbench keeps list mounted under the main overlay", async () => {
   assert.match(sessionsSection, /defineWorkbenchSection/);
   assert.doesNotMatch(sessionsSection, /mainFlow:\s*"list-main"/);
   assert.doesNotMatch(source, /v-show="mobileScreen === 'list'"/);
+});
+
+test("mobile main-only sections do not synthesize list navigation", async () => {
+  const source = await readFile(new URL("../../../webui/src/components/workbench/MobileWorkbench.vue", import.meta.url), "utf8");
+  const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
+
+  assert.match(runtime, /hasMobileListFlow/);
+  assert.match(runtime, /canPopMobileRegion/);
+  assert.match(runtime, /if \(!hasMobileListFlow\.value\)/);
+  assert.match(source, /const hasMobileListFlow/);
+  assert.match(source, /v-if="hasMobileListFlow"/);
+  assert.match(source, /!visible \|\| !hasMobileListFlow\.value/);
 });
 
 test("mobile workbench maps browser history back to overlay stack pop", async () => {
@@ -76,17 +108,23 @@ test("desktop workbench sizes list pane through runtime resize state", async () 
   assert.doesNotMatch(types, /desktopListPane/);
   assert.match(sessionsSection, /defineWorkbenchSection/);
   assert.doesNotMatch(sessionsSection, /listPane:\s*\{\}/);
-  assert.match(runtime, /desktopListPaneWidthPx/);
-  assert.match(runtime, /setDesktopListPaneWidth/);
-  assert.match(runtime, /resetDesktopListPaneWidth/);
-  assert.match(runtime, /clampDesktopListPaneWidth/);
+  assert.match(runtime, /getDesktopPaneWidthPx/);
+  assert.match(runtime, /getDesktopPaneStyle/);
+  assert.match(runtime, /setDesktopPaneWidth/);
+  assert.match(runtime, /resetDesktopPaneWidth/);
+  assert.match(runtime, /clampDesktopPaneWidth/);
   assert.match(runtime, /layout\.desktop\.listPane/);
   assert.doesNotMatch(runtime, /layout\.desktopListPane/);
-  assert.match(desktop, /desktopListPaneStyle/);
+  assert.match(desktop, /listPaneStyle/);
+  assert.match(desktop, /getDesktopPaneStyle\("list"\)/);
+  assert.match(desktop, /setDesktopPaneWidth\("list"/);
+  assert.match(desktop, /hasListPane/);
   assert.match(desktop, /startListPaneResize/);
   assert.match(desktop, /resetListPaneResize/);
   assert.match(desktop, /role="separator"/);
   assert.match(desktop, /aria-orientation="vertical"/);
+  assert.match(desktop, /<aside v-if="hasListPane"/);
+  assert.match(desktop, /v-if="hasListPane"\s*\n\s*class="relative w-1/);
   assert.match(desktop, /@pointerdown="startListPaneResize"/);
   assert.match(desktop, /@dblclick="resetListPaneResize"/);
   assert.doesNotMatch(desktop, /w-\(--side-panel-width\)/);
@@ -109,19 +147,20 @@ test("workbench sections use a definition helper for default layout", async () =
   }
 });
 
-test("desktop workbench persists list pane width globally", async () => {
+test("desktop workbench persists pane widths by global pane id", async () => {
   const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
 
-  assert.match(runtime, /readStoredDesktopListPaneWidth/);
-  assert.match(runtime, /writeStoredDesktopListPaneWidth/);
+  assert.match(runtime, /readStoredDesktopPaneWidth/);
+  assert.match(runtime, /writeStoredDesktopPaneWidth/);
   assert.match(runtime, /localStorage/);
-  assert.match(runtime, /workbench\.pane\.desktopList\.width/);
-  assert.match(runtime, /readStoredDesktopListPaneWidth\(\)/);
-  assert.match(runtime, /writeStoredDesktopListPaneWidth\(widthPx: number\)/);
-  assert.doesNotMatch(runtime, /resolveDesktopListPaneStorageKey/);
-  assert.doesNotMatch(runtime, /readStoredDesktopListPaneWidth\(sectionId/);
-  assert.doesNotMatch(runtime, /writeStoredDesktopListPaneWidth\(sectionId/);
-  assert.doesNotMatch(runtime, /writeStoredDesktopListPaneWidth\(section\.value\.id/);
+  assert.match(runtime, /workbench\.pane\.desktop/);
+  assert.match(runtime, /resolveDesktopPaneStorageKey\(paneId: DesktopPaneId\)/);
+  assert.match(runtime, /readStoredDesktopPaneWidth\(paneId: DesktopPaneId\)/);
+  assert.match(runtime, /writeStoredDesktopPaneWidth\(paneId: DesktopPaneId, widthPx: number\)/);
+  assert.doesNotMatch(runtime, /desktopListPaneWidthPx/);
+  assert.doesNotMatch(runtime, /readStoredDesktopPaneWidth\(sectionId/);
+  assert.doesNotMatch(runtime, /writeStoredDesktopPaneWidth\(sectionId/);
+  assert.doesNotMatch(runtime, /writeStoredDesktopPaneWidth\(section\.value\.id/);
   assert.match(runtime, /watch\(\(\)\s*=>\s*section\.value\.id/);
 });
 

@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { useRoute } from "vue-router";
 import { createStatusbarMenuNodes, type WorkbenchStatusbarItem, type WorkbenchTopbarMenu } from "@/components/workbench/chrome";
-import { workbenchNavItems } from "@/components/workbench/navigation";
+import type { WorkbenchNavItem } from "@/components/workbench/navigation";
 import { useMenuTrigger } from "@/composables/workbench/menu/useMenuTrigger";
 import type { WorkbenchRuntime } from "@/components/workbench/runtime/workbenchRuntime";
 import type { WorkbenchSection } from "@/components/workbench/types";
@@ -10,18 +9,24 @@ import type { WorkbenchSection } from "@/components/workbench/types";
 const props = defineProps<{
   runtime: WorkbenchRuntime;
   section: WorkbenchSection;
+  navItems: readonly WorkbenchNavItem[];
+  activeNavItemId: string;
   topbarMenus: WorkbenchTopbarMenu[];
   statusbarItems: WorkbenchStatusbarItem[];
 }>();
 
-const route = useRoute();
+const emit = defineEmits<{
+  navigate: [itemId: string];
+}>();
 
 const listPane = computed(() => props.section.regions.listPane);
 const mainPane = computed(() => props.section.regions.mainPane);
 const mobileHeader = computed(() => props.section.regions.mobileHeader);
-const routeLabel = computed(() => props.section.title || workbenchNavItems.find((item) => item.id === route.name)?.title || "");
-const mobileNavItems = workbenchNavItems;
+const routeLabel = computed(() => props.section.title || props.navItems.find((item) => item.id === props.activeNavItemId)?.title || "");
+const mobileNavItems = computed(() => props.navItems);
+const hasMobileListFlow = computed(() => props.runtime.hasMobileListFlow.value);
 const isMobileMainVisible = computed(() => props.runtime.isMobileMainVisible.value);
+const canPopMobileRegion = computed(() => props.runtime.canPopMobileRegion.value);
 const mobileHistoryArmed = ref(false);
 const mobileHistoryStateKey = "__workbenchMobileMain";
 
@@ -79,18 +84,23 @@ function handlePopState() {
 }
 
 watch(isMobileMainVisible, (visible) => {
-  if (!visible) {
+  if (!visible || !hasMobileListFlow.value) {
     return;
   }
   pushMobileHistoryEntry();
 });
 
 function goBack() {
+  if (!hasMobileListFlow.value) {
+    return;
+  }
   if (mobileHistoryArmed.value && typeof window !== "undefined") {
     window.history.back();
     return;
   }
-  if (!props.runtime.popMobileRegion()) {
+  if (canPopMobileRegion.value) {
+    props.runtime.popMobileRegion();
+  } else {
     props.runtime.showList();
   }
 }
@@ -106,21 +116,22 @@ onUnmounted(() => {
 
 <template>
   <div class="fixed inset-0 flex h-full w-full overflow-hidden bg-surface-app text-text-primary">
-    <div class="absolute inset-0 flex flex-col bg-surface-app transition-transform duration-220 ease-[ease]">
+    <div v-if="hasMobileListFlow" class="absolute inset-0 flex flex-col bg-surface-app transition-transform duration-220 ease-[ease]">
       <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <header class="pt-safe flex h-[calc(44px+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border-default bg-surface-sidebar px-3">
           <span class="flex-1 font-semibold text-text-secondary">{{ routeLabel }}</span>
           <nav class="flex gap-1">
-            <router-link
+            <button
               v-for="item in mobileNavItems"
               :key="item.id"
-              :to="item.path"
-              class="flex h-10 w-10 items-center justify-center rounded text-text-muted no-underline"
-              :class="{ 'text-text-secondary': route.name === item.id }"
+              type="button"
+              class="flex h-10 w-10 items-center justify-center rounded border-0 bg-transparent text-text-muted"
+              :class="{ 'text-text-secondary': activeNavItemId === item.id }"
+              @click="emit('navigate', item.id)"
             >
               <component :is="item.icon" :size="20" :stroke-width="1.5" />
               <span class="sr-only">{{ item.title }}</span>
-            </router-link>
+            </button>
             <button
               class="flex h-10 w-10 items-center justify-center rounded border-0 bg-transparent text-text-muted"
               type="button"
@@ -149,7 +160,7 @@ onUnmounted(() => {
       :class="isMobileMainVisible ? 'translate-x-0' : 'pointer-events-none translate-x-full'"
     >
       <header class="pt-safe flex h-[calc(44px+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border-default bg-surface-sidebar px-3">
-        <button class="flex cursor-pointer items-center gap-1 border-0 bg-transparent px-0 py-1 text-ui text-accent" @click="goBack">
+        <button v-if="hasMobileListFlow" class="flex cursor-pointer items-center gap-1 border-0 bg-transparent px-0 py-1 text-ui text-accent" @click="goBack">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="15 18 9 12 15 6" />
           </svg>
