@@ -132,3 +132,23 @@ export function activateWorkbenchRuntime(runtime: WorkbenchRuntime): () => void 
 export function useActiveWorkbenchRuntime(): ShallowRef<WorkbenchRuntime | null> {
   return activeWorkbenchRuntime;
 }
+
+export function useWorkbenchNavigation() {
+  return {
+    showList() {
+      const runtime = activeWorkbenchRuntime.value;
+      if (runtime) {
+        runtime.showList();
+      }
+    },
+    showMain(detailKey?: string) {
+      const runtime = activeWorkbenchRuntime.value;
+      if (runtime) {
+        runtime.showMain(detailKey);
+      }
+    },
+    popMobileRegion() {
+      return activeWorkbenchRuntime.value?.popMobileRegion() ?? false;
+    }
+  };
+}

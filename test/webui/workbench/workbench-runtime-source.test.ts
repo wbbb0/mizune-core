@@ -34,23 +34,26 @@ test("mobile workbench maps browser history back to overlay stack pop", async ()
   assert.match(source, /props\.runtime\.popMobileRegion\(\)/);
 });
 
-test("legacy workbench runtime wrapper delegates to active runtime", async () => {
-  const source = await readFile(new URL("../../../webui/src/composables/workbench/useWorkbenchRuntime.ts", import.meta.url), "utf8");
+test("workbench navigation commands live in the runtime module", async () => {
+  const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
+  const configSection = await readFile(new URL("../../../webui/src/composables/sections/useConfigSection.ts", import.meta.url), "utf8");
 
-  assert.match(source, /useActiveWorkbenchRuntime/);
-  assert.match(source, /activeRuntime\.value/);
-  assert.doesNotMatch(source, /useWorkbenchRuntimeContext/);
+  assert.match(runtime, /export function useWorkbenchNavigation/);
+  assert.match(runtime, /activeWorkbenchRuntime\.value/);
+  assert.match(runtime, /runtime\.showMain\(detailKey\)/);
+  assert.match(runtime, /runtime\.showList\(\)/);
+  assert.match(configSection, /useWorkbenchNavigation/);
+  await assert.rejects(
+    access(new URL("../../../webui/src/composables/workbench/useWorkbenchRuntime.ts", import.meta.url))
+  );
 });
 
 test("workbench runtime exposes an active shell command facade", async () => {
   const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
-  const wrapper = await readFile(new URL("../../../webui/src/composables/workbench/useWorkbenchRuntime.ts", import.meta.url), "utf8");
   const shell = await readFile(new URL("../../../webui/src/components/workbench/WorkbenchShell.vue", import.meta.url), "utf8");
 
   assert.match(runtime, /export function useActiveWorkbenchRuntime/);
-  assert.match(wrapper, /useActiveWorkbenchRuntime/);
-  assert.match(wrapper, /runtime\.showMain\(detailKey\)/);
-  assert.match(wrapper, /runtime\.showList\(\)/);
+  assert.match(runtime, /useWorkbenchNavigation/);
   assert.match(shell, /const deactivateRuntime = activateWorkbenchRuntime\(runtime\)/);
 });
 

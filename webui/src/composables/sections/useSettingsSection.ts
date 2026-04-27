@@ -3,7 +3,7 @@ import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { authApi, type AuthSettings } from "@/api/auth";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
-import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
+import { useWorkbenchNavigation } from "@/components/workbench/runtime/workbenchRuntime";
 
 type SettingsSectionState = {
   auth: ReturnType<typeof useAuthStore>;
@@ -36,7 +36,7 @@ type SettingsSectionState = {
 export const useSettingsSection = createSharedSectionState<SettingsSectionState>(() => {
     const router = useRouter();
     const auth = useAuthStore();
-    const runtime = useWorkbenchRuntime();
+    const workbenchNavigation = useWorkbenchNavigation();
     const activeItem = ref<"auth" | "logout" | null>(null);
     const settings = ref<AuthSettings | null>(null);
     const loadingSettings = ref(false);
@@ -112,7 +112,7 @@ export const useSettingsSection = createSharedSectionState<SettingsSectionState>
 
     function selectItem(item: "auth" | "logout") {
       activeItem.value = item;
-      runtime.showMain();
+      workbenchNavigation.showMain();
     }
 
     async function submitPasswordChange() {

@@ -1,6 +1,6 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import { useEditorDraftState } from "@/composables/useEditorDraftState";
-import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
+import { useWorkbenchNavigation } from "@/components/workbench/runtime/workbenchRuntime";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { editorApi, type EditorModel, type EditorResourceSummary, type LayeredEditorModel, type SingleEditorModel } from "@/api/editor";
 import { useToastStore } from "@/stores/toasts";
@@ -36,7 +36,7 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
     const saving = ref(false);
     const validating = ref(false);
     const toast = useToastStore();
-    const workbenchRuntime = useWorkbenchRuntime();
+    const workbenchNavigation = useWorkbenchNavigation();
     const editorState = useEditorDraftState(model);
     let stateVersion = 0;
 
@@ -95,7 +95,7 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
 
     function selectResource(key: string) {
       selectedKey.value = key;
-      workbenchRuntime.showMain();
+      workbenchNavigation.showMain();
     }
 
     function updateDraft(value: unknown) {

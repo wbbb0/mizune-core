@@ -2,7 +2,7 @@ import { computed, ref, type ComputedRef, type Ref } from "vue";
 import { RefreshCw, FolderOpen, Image as ImageIcon, FileText, File, Folder } from "lucide-vue-next";
 import { fileApi, type ChatFileSummary, type LocalFilePreview, type LocalFileItem } from "@/api/workspace";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
-import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
+import { useWorkbenchNavigation } from "@/components/workbench/runtime/workbenchRuntime";
 
 type Mode = "files" | "stored-files";
 
@@ -34,7 +34,7 @@ type WorkspaceSectionState = {
 };
 
 export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionState>(() => {
-    const workbenchRuntime = useWorkbenchRuntime();
+    const workbenchNavigation = useWorkbenchNavigation();
     const mode = ref<Mode>("files");
     const loadingFiles = ref(false);
     const loadingAssets = ref(false);
@@ -164,7 +164,7 @@ export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionStat
           await toggleDirectory(item.path);
         }
         if (!isStale(requestVersion)) {
-          workbenchRuntime.showMain();
+          workbenchNavigation.showMain();
         }
         return;
       }
@@ -172,7 +172,7 @@ export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionStat
       if (isImageFile(item.name)) {
         fileImageSrc.value = fileApi.getLocalFileContentUrl(item.path);
         if (!isStale(requestVersion)) {
-          workbenchRuntime.showMain();
+          workbenchNavigation.showMain();
         }
         return;
       }
@@ -191,7 +191,7 @@ export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionStat
       }
 
       if (!isStale(requestVersion)) {
-        workbenchRuntime.showMain();
+        workbenchNavigation.showMain();
       }
     }
 
@@ -202,7 +202,7 @@ export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionStat
       filePreview.value = null;
       previewError.value = null;
       fileImageSrc.value = null;
-      workbenchRuntime.showMain();
+      workbenchNavigation.showMain();
     }
 
     function refreshCurrentMode() {

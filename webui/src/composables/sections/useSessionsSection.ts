@@ -3,7 +3,7 @@ import { ApiError } from "@/api/client";
 import { sessionsApi } from "@/api/sessions";
 import type { SessionDetailResult } from "@/api/types";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
-import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
+import { useWorkbenchNavigation } from "@/components/workbench/runtime/workbenchRuntime";
 import { useWorkbenchWindows } from "@/composables/workbench/useWorkbenchWindows";
 import { openCreateSessionWindow } from "@/components/sessions/createSessionWindow";
 import { useSessionsStore } from "@/stores/sessions";
@@ -31,7 +31,7 @@ type SessionsSectionState = {
 
 export const useSessionsSection = createSharedSectionState<SessionsSectionState>(() => {
     const store = useSessionsStore();
-    const workbenchRuntime = useWorkbenchRuntime();
+    const workbenchNavigation = useWorkbenchNavigation();
     const windows = useWorkbenchWindows();
     const toast = useToastStore();
     const loading = ref(false);
@@ -121,7 +121,7 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
 
     function selectSession(sessionId: string) {
       store.selectSession(sessionId);
-      workbenchRuntime.showMain();
+      workbenchNavigation.showMain();
     }
 
     async function openCreateDialog() {
@@ -136,7 +136,7 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
           const requestVersion = stateVersion;
           await store.createSession(payload);
           if (!isStale(requestVersion)) {
-            workbenchRuntime.showMain();
+            workbenchNavigation.showMain();
           }
         },
         reportError: (error) => {

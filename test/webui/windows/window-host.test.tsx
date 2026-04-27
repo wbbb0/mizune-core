@@ -106,23 +106,6 @@ const workbenchNavItemsStubUrl = createDataModule(`
   export const workbenchNavItems = [];
 `);
 
-const workbenchRuntimeStubUrl = createDataModule(`
-  export function useWorkbenchRuntime() {
-    return {
-      mobileScreen: { value: "list" },
-      auxOpen: { value: false },
-      topMenuOpen: { value: false },
-      bottomMenuOpen: { value: false },
-      showList() {},
-      showMain() {},
-      openAux() {},
-      closeAux() {},
-      toggleTopMenu() {},
-      toggleBottomMenu() {}
-    };
-  }
-`);
-
 const menuRuntimeStubUrl = createDataModule(`
   export function useMenuRuntime() {
     return {
