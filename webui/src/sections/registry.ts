@@ -32,7 +32,12 @@ function createPlaceholderSection(id: string, title: string): WorkbenchSection {
       mainPane: placeholderMainPane
     },
     layout: {
-      mobileMainFlow: "list-main"
+      mobile: {
+        mainFlow: "list-main"
+      },
+      desktop: {
+        listPane: {}
+      }
     }
   };
 }

@@ -682,7 +682,14 @@ test("workbench shell mounts the window host and delegates layout to the desktop
     props: {
       section: {
         title: "Workbench",
-        layout: { mobileMainFlow: "list-only" },
+        layout: {
+          mobile: {
+            mainFlow: "list-main"
+          },
+          desktop: {
+            listPane: {}
+          }
+        },
         regions: {
           listPane: markRaw({
             name: "ListPane",

@@ -18,9 +18,17 @@ test("workbench shell creates, provides, and activates a runtime", async () => {
 
 test("mobile workbench keeps list mounted under the main overlay", async () => {
   const source = await readFile(new URL("../../../webui/src/components/workbench/MobileWorkbench.vue", import.meta.url), "utf8");
+  const types = await readFile(new URL("../../../webui/src/components/workbench/types.ts", import.meta.url), "utf8");
+  const sessionsSection = await readFile(new URL("../../../webui/src/sections/sessions/index.ts", import.meta.url), "utf8");
 
   assert.match(source, /isMobileMainVisible/);
   assert.match(source, /popMobileRegion/);
+  assert.match(source, /layout\.mobile\.mainFlow/);
+  assert.doesNotMatch(source, /mobileMainFlow/);
+  assert.match(types, /mobile:\s*\{/);
+  assert.match(types, /mainFlow:/);
+  assert.match(sessionsSection, /mobile:\s*\{/);
+  assert.match(sessionsSection, /mainFlow:\s*"list-main"/);
   assert.doesNotMatch(source, /v-show="mobileScreen === 'list'"/);
 });
 
@@ -61,11 +69,18 @@ test("desktop workbench sizes list pane through runtime resize state", async () 
   const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
   const desktop = await readFile(new URL("../../../webui/src/components/workbench/DesktopWorkbench.vue", import.meta.url), "utf8");
   const types = await readFile(new URL("../../../webui/src/components/workbench/types.ts", import.meta.url), "utf8");
+  const sessionsSection = await readFile(new URL("../../../webui/src/sections/sessions/index.ts", import.meta.url), "utf8");
 
-  assert.match(types, /desktopListPane/);
+  assert.match(types, /desktop:\s*\{/);
+  assert.match(types, /listPane\?:/);
+  assert.doesNotMatch(types, /desktopListPane/);
+  assert.match(sessionsSection, /desktop:\s*\{/);
+  assert.match(sessionsSection, /listPane:\s*\{/);
   assert.match(runtime, /desktopListPaneWidthPx/);
   assert.match(runtime, /setDesktopListPaneWidth/);
   assert.match(runtime, /clampDesktopListPaneWidth/);
+  assert.match(runtime, /layout\.desktop\.listPane/);
+  assert.doesNotMatch(runtime, /layout\.desktopListPane/);
   assert.match(desktop, /desktopListPaneStyle/);
   assert.match(desktop, /startListPaneResize/);
   assert.match(desktop, /role="separator"/);

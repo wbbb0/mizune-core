@@ -45,7 +45,7 @@ const mobileWorkbenchTrigger = useMenuTrigger({
 });
 
 watch(
-  () => [props.section.id, props.section.layout.mobileMainFlow] as const,
+  () => [props.section.id, props.section.layout.mobile.mainFlow] as const,
   () => {
     props.runtime.resetMobileStack();
     mobileHistoryArmed.value = false;

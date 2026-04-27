@@ -42,17 +42,17 @@ export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): 
   }));
 
   function resolveDesktopListPaneDefaultWidth() {
-    return section.value.layout.desktopListPane?.defaultWidthPx ?? defaultDesktopListPane.defaultWidthPx;
+    return section.value.layout.desktop.listPane?.defaultWidthPx ?? defaultDesktopListPane.defaultWidthPx;
   }
 
   function resolveDesktopListPaneMinWidth() {
-    return section.value.layout.desktopListPane?.minWidthPx ?? defaultDesktopListPane.minWidthPx;
+    return section.value.layout.desktop.listPane?.minWidthPx ?? defaultDesktopListPane.minWidthPx;
   }
 
   function resolveDesktopListPaneMaxWidth() {
     return Math.max(
       resolveDesktopListPaneMinWidth(),
-      section.value.layout.desktopListPane?.maxWidthPx ?? defaultDesktopListPane.maxWidthPx
+      section.value.layout.desktop.listPane?.maxWidthPx ?? defaultDesktopListPane.maxWidthPx
     );
   }
 
@@ -68,7 +68,7 @@ export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): 
   }
 
   function resetMobileStack() {
-    mobileStack.value = section.value.layout.mobileMainFlow === "main-only"
+    mobileStack.value = section.value.layout.mobile.mainFlow === "main-only"
       ? [{ kind: "main", sectionId: section.value.id }]
       : [{ kind: "list", sectionId: section.value.id }];
   }

@@ -12,6 +12,11 @@ export const settingsSection = {
     mobileHeader: SettingsMobileHeader
   },
   layout: {
-    mobileMainFlow: "list-main"
+    mobile: {
+      mainFlow: "list-main"
+    },
+    desktop: {
+      listPane: {}
+    }
   }
 } satisfies WorkbenchSection;
