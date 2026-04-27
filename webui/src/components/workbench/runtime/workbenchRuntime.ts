@@ -1,4 +1,4 @@
-import { computed, inject, provide, ref, shallowRef, type ComputedRef, type InjectionKey, type Ref, type ShallowRef } from "vue";
+import { computed, inject, provide, ref, shallowRef, watch, type ComputedRef, type InjectionKey, type Ref, type ShallowRef } from "vue";
 import type { WorkbenchSection } from "@/components/workbench/types";
 
 export type MobileRegionStackEntry =
@@ -24,16 +24,48 @@ export type WorkbenchRuntime = {
 
 const workbenchRuntimeKey: InjectionKey<WorkbenchRuntime> = Symbol("workbench-runtime");
 const activeWorkbenchRuntime = shallowRef<WorkbenchRuntime | null>(null);
+const desktopListPaneStoragePrefix = "workbench.pane.desktopList";
 const defaultDesktopListPane = {
   defaultWidthPx: 260,
   minWidthPx: 180,
   maxWidthPx: 520
 };
 
+function resolveDesktopListPaneStorageKey(sectionId: string) {
+  return `${desktopListPaneStoragePrefix}.${sectionId}`;
+}
+
+function readStoredDesktopListPaneWidth(sectionId: string): number | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const value = window.localStorage.getItem(resolveDesktopListPaneStorageKey(sectionId));
+    if (!value) {
+      return null;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredDesktopListPaneWidth(sectionId: string, widthPx: number) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(resolveDesktopListPaneStorageKey(sectionId), String(widthPx));
+  } catch {
+    // Layout resizing remains usable when storage is unavailable.
+  }
+}
+
 export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): WorkbenchRuntime {
   const mainRegionRef = ref<HTMLElement | null>(null);
   const mobileStack = ref<MobileRegionStackEntry[]>([]);
-  const desktopListPaneWidthPx = ref(clampDesktopListPaneWidth(resolveDesktopListPaneDefaultWidth()));
+  const desktopListPaneWidthPx = ref(resolveInitialDesktopListPaneWidth());
   const mobileTop = computed(() => mobileStack.value[mobileStack.value.length - 1] ?? { kind: "list", sectionId: section.value.id });
   const isMobileMainVisible = computed(() => mobileTop.value.kind === "main");
   const keyboardAvoidanceBoundary = computed(() => mainRegionRef.value);
@@ -43,6 +75,10 @@ export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): 
 
   function resolveDesktopListPaneDefaultWidth() {
     return section.value.layout.desktop.listPane?.defaultWidthPx ?? defaultDesktopListPane.defaultWidthPx;
+  }
+
+  function resolveInitialDesktopListPaneWidth() {
+    return clampDesktopListPaneWidth(readStoredDesktopListPaneWidth(section.value.id) ?? resolveDesktopListPaneDefaultWidth());
   }
 
   function resolveDesktopListPaneMinWidth() {
@@ -64,7 +100,9 @@ export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): 
   }
 
   function setDesktopListPaneWidth(widthPx: number) {
-    desktopListPaneWidthPx.value = clampDesktopListPaneWidth(widthPx);
+    const nextWidth = clampDesktopListPaneWidth(widthPx);
+    desktopListPaneWidthPx.value = nextWidth;
+    writeStoredDesktopListPaneWidth(section.value.id, nextWidth);
   }
 
   function resetMobileStack() {
@@ -91,6 +129,10 @@ export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): 
     mobileStack.value = mobileStack.value.slice(0, -1);
     return true;
   }
+
+  watch(() => section.value.id, () => {
+    desktopListPaneWidthPx.value = resolveInitialDesktopListPaneWidth();
+  });
 
   resetMobileStack();
 

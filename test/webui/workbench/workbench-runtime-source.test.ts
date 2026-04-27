@@ -89,6 +89,17 @@ test("desktop workbench sizes list pane through runtime resize state", async () 
   assert.doesNotMatch(desktop, /w-\(--side-panel-width\)/);
 });
 
+test("desktop workbench persists list pane width per section", async () => {
+  const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
+
+  assert.match(runtime, /readStoredDesktopListPaneWidth/);
+  assert.match(runtime, /writeStoredDesktopListPaneWidth/);
+  assert.match(runtime, /localStorage/);
+  assert.match(runtime, /sectionId/);
+  assert.match(runtime, /workbench\.pane\.desktopList/);
+  assert.match(runtime, /watch\(\(\)\s*=>\s*section\.value\.id/);
+});
+
 test("legacy app layout shell is removed after workbench runtime migration", async () => {
   const theme = await readFile(new URL("../../../webui/src/style/theme.css", import.meta.url), "utf8");
 
