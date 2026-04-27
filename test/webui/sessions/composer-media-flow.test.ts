@@ -4,6 +4,11 @@ import { prepareFilesForUpload } from "../../../webui/src/api/uploadPreparation.
 import { ApiError } from "../../../webui/src/api/client.ts";
 import { formatUploadErrorMessage } from "../../../webui/src/components/sessions/composerErrors.ts";
 import { buildComposerSendPayload } from "../../../webui/src/components/sessions/composerPayload.ts";
+import {
+  COMPOSER_IMAGE_ACCEPT,
+  filterComposerImageFiles,
+  isComposerImageFile
+} from "../../../webui/src/components/sessions/composerAcceptedFiles.ts";
 
   test("composer payload sends image attachments as both imageIds and attachmentIds", () => {
     const payload = buildComposerSendPayload({
@@ -109,6 +114,23 @@ import { buildComposerSendPayload } from "../../../webui/src/components/sessions
 
     assert.equal(prepared[0]?.name, "camera.jpg");
     assert.equal(prepared[0]?.type, "image/jpeg");
+  });
+
+  test("composer accepts only image files before upload", () => {
+    const png = new File(["png"], "photo.png", { type: "image/png" });
+    const heic = new File(["heic"], "camera.HEIC", { type: "" });
+    const text = new File(["text"], "note.txt", { type: "text/plain" });
+    const pdf = new File(["pdf"], "doc.pdf", { type: "application/pdf" });
+
+    assert.equal(COMPOSER_IMAGE_ACCEPT, "image/*,.heic,.heif");
+    assert.equal(isComposerImageFile(png), true);
+    assert.equal(isComposerImageFile(heic), true);
+    assert.equal(isComposerImageFile(text), false);
+    assert.equal(isComposerImageFile(pdf), false);
+    assert.deepEqual(filterComposerImageFiles([png, text, heic, pdf]), {
+      accepted: [png, heic],
+      rejected: [text, pdf]
+    });
   });
 
   test("upload error message formatter keeps toast text useful for sparse errors", () => {

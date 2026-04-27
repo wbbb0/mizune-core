@@ -62,6 +62,9 @@ test("composer surfaces upload failures through toast", async () => {
 
   assert.match(source, /useWorkbenchToasts/);
   assert.match(source, /toast\.push/);
+  assert.match(source, /只能上传图片文件/);
+  assert.match(source, /filterComposerImageFiles/);
+  assert.match(source, /uploadImageFiles\(Array\.from\(event\.dataTransfer\?\.files \?\? \[\]\)\)/);
 });
 
 test("config and data sections use toast instead of inline save containers", async () => {

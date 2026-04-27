@@ -41,4 +41,10 @@ test("desktop layout keeps safe-area padding on the workbench shell, not the act
   assert.match(composerSource, /draftText\?: string/);
   assert.match(composerSource, /draftTextChange: \[text: string\]/);
   assert.match(composerSource, /get:\s*\(\) => props\.draftText \?\? ""/);
+  assert.match(composerSource, /:accept="COMPOSER_IMAGE_ACCEPT"/);
+  assert.doesNotMatch(composerSource, /audio\/\*|video\/\*|\\.pdf|\\.txt|\\.json|\\.yaml|\\.yml|\\.md/);
+  assert.match(composerSource, /function uploadImageFiles\(files: File\[\]\)/);
+  assert.match(composerSource, /@dragenter="onDragEnter"/);
+  assert.match(composerSource, /@dragover="onDragOver"/);
+  assert.match(composerSource, /@drop="onDrop"/);
 });

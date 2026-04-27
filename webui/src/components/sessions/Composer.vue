@@ -9,6 +9,7 @@ import { useUiStore } from "@/stores/ui";
 import { useWorkbenchRuntimeContext } from "@/components/workbench/runtime/workbenchRuntime";
 import { buildComposerSendPayload, type ComposerSendPayload } from "./composerPayload";
 import { formatSendErrorMessage, formatUploadErrorMessage } from "./composerErrors";
+import { COMPOSER_IMAGE_ACCEPT, filterComposerImageFiles } from "./composerAcceptedFiles";
 
 const props = defineProps<{
   sessionType: "private" | "group";
@@ -43,6 +44,7 @@ const fileInputRef = ref<HTMLInputElement | null>(null);
 const attachments  = ref<(UploadedFile & { preview?: string })[]>([]);
 const uploading    = ref(false);
 const sending      = ref(false);
+const draggingFiles = ref(false);
 const iosRootScrollGuardActive = ref(false);
 const composerRootRef = ref<HTMLElement | null>(null);
 const toast = useWorkbenchToasts();
@@ -196,16 +198,26 @@ function openFilePicker() {
   fileInputRef.value?.click();
 }
 
-async function onFilesSelected(e: Event) {
-  const input = e.target as HTMLInputElement;
-  const files = Array.from(input.files ?? []);
-  if (!files.length) return;
-  input.value = "";
+function hasDraggedFiles(event: DragEvent): boolean {
+  return Array.from(event.dataTransfer?.types ?? []).includes("Files");
+}
 
+async function uploadImageFiles(files: File[]) {
+  if (files.length === 0 || props.disabled || uploading.value || sending.value) {
+    return;
+  }
   uploading.value = true;
   let previews: Array<{ file: File; preview?: string }> = [];
   try {
-    const preparedFiles = await prepareFilesForUpload(files);
+    const { accepted, rejected } = filterComposerImageFiles(files);
+    if (rejected.length > 0) {
+      toast.push({ type: "error", message: "只能上传图片文件" });
+    }
+    if (accepted.length === 0) {
+      return;
+    }
+
+    const preparedFiles = await prepareFilesForUpload(accepted);
     previews = preparedFiles.map((f) => ({
       file: f,
       preview: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined
@@ -229,6 +241,49 @@ async function onFilesSelected(e: Event) {
   }
 }
 
+async function onFilesSelected(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const files = Array.from(input.files ?? []);
+  input.value = "";
+  await uploadImageFiles(files);
+}
+
+function onDragEnter(event: DragEvent) {
+  if (!hasDraggedFiles(event) || props.disabled || uploading.value || sending.value) {
+    return;
+  }
+  event.preventDefault();
+  draggingFiles.value = true;
+}
+
+function onDragOver(event: DragEvent) {
+  if (!hasDraggedFiles(event) || props.disabled || uploading.value || sending.value) {
+    return;
+  }
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "copy";
+  }
+  draggingFiles.value = true;
+}
+
+function onDragLeave(event: DragEvent) {
+  const nextTarget = event.relatedTarget;
+  if (nextTarget instanceof Node && composerRootRef.value?.contains(nextTarget)) {
+    return;
+  }
+  draggingFiles.value = false;
+}
+
+async function onDrop(event: DragEvent) {
+  if (!hasDraggedFiles(event)) {
+    return;
+  }
+  event.preventDefault();
+  draggingFiles.value = false;
+  await uploadImageFiles(Array.from(event.dataTransfer?.files ?? []));
+}
+
 function removeAttachment(fileId: string) {
   const idx = attachments.value.findIndex((a) => a.fileId === fileId);
   if (idx !== -1) {
@@ -246,9 +301,18 @@ onUnmounted(() => {
 <template>
   <div
     ref="composerRootRef"
-    class="border-t border-border-default bg-surface-sidebar px-3 pt-2"
+    class="relative border-t bg-surface-sidebar px-3 pt-2 transition-colors"
+    :class="draggingFiles ? 'border-accent bg-surface-selected-muted' : 'border-border-default'"
     :style="composerStyle"
+    @dragenter="onDragEnter"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
   >
+    <div
+      v-if="draggingFiles"
+      class="pointer-events-none absolute inset-1 rounded border border-dashed border-accent bg-surface-selected/60"
+    />
     <!-- User ID row -->
     <div class="mb-1.5 flex items-center gap-2">
       <label class="shrink-0 whitespace-nowrap text-small text-text-muted">发送方 ID</label>
@@ -285,7 +349,7 @@ onUnmounted(() => {
       <input
         ref="fileInputRef"
         type="file"
-        accept="image/*,.heic,.heif,audio/*,video/*,.pdf,.txt,.json,.yaml,.yml,.md"
+        :accept="COMPOSER_IMAGE_ACCEPT"
         multiple
         style="display:none"
         @change="onFilesSelected"
@@ -294,7 +358,7 @@ onUnmounted(() => {
       <button
         class="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-border-default bg-transparent text-text-muted transition-colors hover:border-text-muted hover:text-text-primary disabled:cursor-default disabled:opacity-40"
         :disabled="disabled || uploading || sending"
-        title="附件 / 图片"
+        title="上传图片"
         @click="openFilePicker"
       >
         <Paperclip :size="15" :stroke-width="1.75" />
