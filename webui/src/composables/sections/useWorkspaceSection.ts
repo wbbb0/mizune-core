@@ -1,8 +1,8 @@
 import { computed, ref, type ComputedRef, type Ref } from "vue";
-import { onBeforeRouteLeave } from "vue-router";
 import { RefreshCw, FolderOpen, Image as ImageIcon, FileText, File, Folder } from "lucide-vue-next";
 import { fileApi, type ChatFileSummary, type LocalFilePreview, type LocalFileItem } from "@/api/workspace";
-import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
+import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
+import { useWorkbenchNavigation } from "@/components/workbench/runtime/workbenchRuntime";
 
 type Mode = "files" | "stored-files";
 
@@ -33,11 +33,8 @@ type WorkspaceSectionState = {
   formatTime: (ms: number) => string;
 };
 
-let sharedState: WorkspaceSectionState | null = null;
-
-export function useWorkspaceSection() {
-  if (!sharedState) {
-    const workbenchRuntime = useWorkbenchRuntime();
+export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionState>(() => {
+    const workbenchNavigation = useWorkbenchNavigation();
     const mode = ref<Mode>("files");
     const loadingFiles = ref(false);
     const loadingAssets = ref(false);
@@ -167,7 +164,7 @@ export function useWorkspaceSection() {
           await toggleDirectory(item.path);
         }
         if (!isStale(requestVersion)) {
-          workbenchRuntime.showMain();
+          workbenchNavigation.showMain();
         }
         return;
       }
@@ -175,7 +172,7 @@ export function useWorkspaceSection() {
       if (isImageFile(item.name)) {
         fileImageSrc.value = fileApi.getLocalFileContentUrl(item.path);
         if (!isStale(requestVersion)) {
-          workbenchRuntime.showMain();
+          workbenchNavigation.showMain();
         }
         return;
       }
@@ -194,7 +191,7 @@ export function useWorkspaceSection() {
       }
 
       if (!isStale(requestVersion)) {
-        workbenchRuntime.showMain();
+        workbenchNavigation.showMain();
       }
     }
 
@@ -205,7 +202,7 @@ export function useWorkspaceSection() {
       filePreview.value = null;
       previewError.value = null;
       fileImageSrc.value = null;
-      workbenchRuntime.showMain();
+      workbenchNavigation.showMain();
     }
 
     function refreshCurrentMode() {
@@ -234,7 +231,7 @@ export function useWorkspaceSection() {
       return new Date(ms).toLocaleString("zh-CN");
     }
 
-    sharedState = {
+    return {
       mode,
       loadingFiles,
       loadingAssets,
@@ -260,13 +257,6 @@ export function useWorkspaceSection() {
       formatSize,
       formatTime
     };
-  }
-
-  onBeforeRouteLeave(() => {
-    sharedState?.resetState();
-  });
-
-  return sharedState;
-}
+});
 
 export type { ChatFileSummary, LocalFilePreview, LocalFileItem };

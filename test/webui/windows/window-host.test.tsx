@@ -14,6 +14,7 @@ const typescript = require(`${ROOT}/webui/node_modules/typescript/lib/typescript
 const VUE_RUNTIME_URL = new URL("../../../webui/node_modules/vue/index.mjs", import.meta.url).href;
 const WINDOW_SIZING_URL = new URL("../../../webui/src/components/workbench/windows/windowSizing.ts", import.meta.url).href;
 const USE_WORKBENCH_WINDOWS_URL = new URL("../../../webui/src/composables/workbench/useWorkbenchWindows.ts", import.meta.url).href;
+const WORKBENCH_RUNTIME_URL = new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url).href;
 const WINDOW_SURFACE_PATH = `${ROOT}/webui/src/components/workbench/windows/WindowSurface.vue`;
 const WINDOW_HOST_PATH = `${ROOT}/webui/src/components/workbench/windows/WindowHost.vue`;
 const DIALOG_RENDERER_PATH = `${ROOT}/webui/src/components/workbench/windows/DialogRenderer.vue`;
@@ -105,23 +106,6 @@ const workbenchNavItemsStubUrl = createDataModule(`
   export const workbenchNavItems = [];
 `);
 
-const workbenchRuntimeStubUrl = createDataModule(`
-  export function useWorkbenchRuntime() {
-    return {
-      mobileScreen: { value: "list" },
-      auxOpen: { value: false },
-      topMenuOpen: { value: false },
-      bottomMenuOpen: { value: false },
-      showList() {},
-      showMain() {},
-      openAux() {},
-      closeAux() {},
-      toggleTopMenu() {},
-      toggleBottomMenu() {}
-    };
-  }
-`);
-
 const menuRuntimeStubUrl = createDataModule(`
   export function useMenuRuntime() {
     return {
@@ -201,6 +185,7 @@ const workbenchShellUrl = compileVueModule(WORKBENCH_SHELL_PATH, {
   "@/components/workbench/MobileWorkbench.vue": mobileWorkbenchStubUrl,
   "@/components/workbench/menu/MenuHost.vue": menuHostStubUrl,
   "@/stores/ui": uiStubUrl,
+  "@/components/workbench/runtime/workbenchRuntime": WORKBENCH_RUNTIME_URL,
   "@/composables/workbench/menu/useMenuRuntime": menuRuntimeStubUrl,
   "@/composables/workbench/useWorkbenchWindows": USE_WORKBENCH_WINDOWS_URL,
   "@/components/workbench/windows/WindowHost.vue": windowHostUrl
@@ -697,7 +682,14 @@ test("workbench shell mounts the window host and delegates layout to the desktop
     props: {
       section: {
         title: "Workbench",
-        layout: { mobileMainFlow: "list-only" },
+        layout: {
+          mobile: {
+            mainFlow: "list-main"
+          },
+          desktop: {
+            listPane: {}
+          }
+        },
         regions: {
           listPane: markRaw({
             name: "ListPane",

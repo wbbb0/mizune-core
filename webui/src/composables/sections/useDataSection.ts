@@ -1,7 +1,7 @@
-import { computed, effectScope, ref, watch, type ComputedRef, type Ref } from "vue";
-import { onBeforeRouteLeave } from "vue-router";
+import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import { useEditorDraftState } from "@/composables/useEditorDraftState";
-import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
+import { useWorkbenchNavigation } from "@/components/workbench/runtime/workbenchRuntime";
+import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { dataApi, type DataResourceSummary, type DataResource, type DataResourceItem, type DirectoryItem } from "@/api/data";
 import { editorApi, type EditorModel, type EditorResourceSummary } from "@/api/editor";
 import { useToastStore } from "@/stores/toasts";
@@ -57,10 +57,7 @@ type DataSectionState = {
   resourceBadge: (resourceEntry: DataListResource) => string;
 };
 
-let sharedState: DataSectionState | null = null;
-
-export function useDataSection() {
-  if (!sharedState) {
+export const useDataSection = createSharedSectionState<DataSectionState>(() => {
     const resources = ref<DataListResource[]>([]);
     const selectedKey = ref<string | null>(null);
     const selectedItemKey = ref<string | null>(null);
@@ -72,26 +69,25 @@ export function useDataSection() {
     const saving = ref(false);
     const validating = ref(false);
     const toast = useToastStore();
-    const workbenchRuntime = useWorkbenchRuntime();
-    const sharedScope = effectScope(true);
-    const editorState = sharedScope.run(() => useEditorDraftState(model))!;
+    const workbenchNavigation = useWorkbenchNavigation();
+    const editorState = useEditorDraftState(model);
     let stateVersion = 0;
 
-    const selectedResource = sharedScope.run(() => computed(() =>
+    const selectedResource = computed(() =>
       resources.value.find((entry) => entry.key === selectedKey.value) ?? null
-    ))!;
-    const canSubmit = sharedScope.run(() => computed(() => !!selectedResource.value?.editable && editorState.isDirty.value && !validating.value && !saving.value))!;
+    );
+    const canSubmit = computed(() => !!selectedResource.value?.editable && editorState.isDirty.value && !validating.value && !saving.value);
 
-    const formattedJson = sharedScope.run(() => computed(() => {
+    const formattedJson = computed(() => {
       if (!resource.value || resource.value.kind !== "single_json") return "";
       return JSON.stringify(resource.value.value, null, 2);
-    }))!;
+    });
 
-    const formattedItemJson = sharedScope.run(() => computed(() =>
+    const formattedItemJson = computed(() =>
       itemDetail.value ? JSON.stringify(itemDetail.value.value, null, 2) : ""
-    ))!;
+    );
 
-    const mobileHeaderTitle = sharedScope.run(() => computed(() => {
+    const mobileHeaderTitle = computed(() => {
       if (selectedResource.value?.source === "editor" && model.value) {
         return model.value.title;
       }
@@ -102,7 +98,7 @@ export function useDataSection() {
         return resource.value.title;
       }
       return "";
-    }))!;
+    });
 
     function isStale(requestVersion: number) {
       return requestVersion !== stateVersion;
@@ -149,8 +145,7 @@ export function useDataSection() {
       ].sort((left, right) => left.key.localeCompare(right.key));
     }
 
-    sharedScope.run(() => {
-      watch(selectedKey, async (key) => {
+    watch(selectedKey, async (key) => {
         const requestVersion = stateVersion;
         const requestKey = key;
         resource.value = null;
@@ -183,9 +178,9 @@ export function useDataSection() {
             loading.value = false;
           }
         }
-      });
+    });
 
-      watch(selectedItemKey, async (itemKey) => {
+    watch(selectedItemKey, async (itemKey) => {
         const requestVersion = stateVersion;
         const requestItemKey = itemKey;
         itemDetail.value = null;
@@ -202,17 +197,16 @@ export function useDataSection() {
             loadingItem.value = false;
           }
         }
-      });
     });
 
     function selectResource(key: string) {
       selectedKey.value = key;
-      workbenchRuntime.showMain();
+      workbenchNavigation.showMain();
     }
 
     function selectDirectoryItem(key: string) {
       selectedItemKey.value = key;
-      workbenchRuntime.showMain();
+      workbenchNavigation.showMain();
     }
 
     async function refreshSelected() {
@@ -325,7 +319,7 @@ export function useDataSection() {
       return resourceEntry.kind === "directory_json" ? "目录" : "JSON";
     }
 
-    sharedState = {
+    return {
       resources,
       selectedKey,
       selectedItemKey,
@@ -359,13 +353,6 @@ export function useDataSection() {
       formatTime,
       resourceBadge
     };
-  }
-
-  onBeforeRouteLeave(() => {
-    sharedState?.resetState();
-  });
-
-  return sharedState;
-}
+});
 
 export type { DataResourceSummary, DataResource, DataResourceItem, DirectoryItem, EditorModel, EditorResourceSummary };

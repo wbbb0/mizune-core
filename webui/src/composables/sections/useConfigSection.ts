@@ -1,7 +1,7 @@
-import { computed, effectScope, ref, watch, type ComputedRef, type Ref } from "vue";
-import { onBeforeRouteLeave } from "vue-router";
+import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import { useEditorDraftState } from "@/composables/useEditorDraftState";
-import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
+import { useWorkbenchNavigation } from "@/components/workbench/runtime/workbenchRuntime";
+import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { editorApi, type EditorModel, type EditorResourceSummary, type LayeredEditorModel, type SingleEditorModel } from "@/api/editor";
 import { useToastStore } from "@/stores/toasts";
 
@@ -28,10 +28,7 @@ type ConfigSectionState = {
   reloadFromServer: () => Promise<void>;
 };
 
-let sharedState: ConfigSectionState | null = null;
-
-export function useConfigSection() {
-  if (!sharedState) {
+export const useConfigSection = createSharedSectionState<ConfigSectionState>(() => {
     const resources = ref<EditorResourceSummary[]>([]);
     const selectedKey = ref<string | null>(null);
     const model = ref<EditorModel | null>(null);
@@ -39,13 +36,12 @@ export function useConfigSection() {
     const saving = ref(false);
     const validating = ref(false);
     const toast = useToastStore();
-    const workbenchRuntime = useWorkbenchRuntime();
-    const sharedScope = effectScope(true);
-    const editorState = sharedScope.run(() => useEditorDraftState(model))!;
+    const workbenchNavigation = useWorkbenchNavigation();
+    const editorState = useEditorDraftState(model);
     let stateVersion = 0;
 
-    const canSave = sharedScope.run(() => computed(() => editorState.isDirty.value && !validating.value && !saving.value))!;
-    const canValidate = sharedScope.run(() => computed(() => !!model.value && !validating.value && !saving.value))!;
+    const canSave = computed(() => editorState.isDirty.value && !validating.value && !saving.value);
+    const canValidate = computed(() => !!model.value && !validating.value && !saving.value);
 
     function isStale(requestVersion: number) {
       return requestVersion !== stateVersion;
@@ -93,15 +89,13 @@ export function useConfigSection() {
       }
     }
 
-    sharedScope.run(() => {
-      watch(selectedKey, (key) => {
-        void loadSelectedModel(key);
-      }, { immediate: true });
-    });
+    watch(selectedKey, (key) => {
+      void loadSelectedModel(key);
+    }, { immediate: true });
 
     function selectResource(key: string) {
       selectedKey.value = key;
-      workbenchRuntime.showMain();
+      workbenchNavigation.showMain();
     }
 
     function updateDraft(value: unknown) {
@@ -180,7 +174,7 @@ export function useConfigSection() {
       }
     }
 
-    sharedState = {
+    return {
       resources,
       selectedKey,
       model,
@@ -202,13 +196,6 @@ export function useConfigSection() {
       save,
       reloadFromServer
     };
-  }
-
-  onBeforeRouteLeave(() => {
-    sharedState?.resetState();
-  });
-
-  return sharedState;
-}
+});
 
 export type { EditorResourceSummary, EditorModel, LayeredEditorModel, SingleEditorModel };

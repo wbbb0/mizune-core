@@ -1,9 +1,9 @@
 import { computed, ref, type ComputedRef, type Ref } from "vue";
-import { onBeforeRouteLeave } from "vue-router";
 import { ApiError } from "@/api/client";
 import { sessionsApi } from "@/api/sessions";
 import type { SessionDetailResult } from "@/api/types";
-import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
+import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
+import { useWorkbenchNavigation } from "@/components/workbench/runtime/workbenchRuntime";
 import { useWorkbenchWindows } from "@/composables/workbench/useWorkbenchWindows";
 import { openCreateSessionWindow } from "@/components/sessions/createSessionWindow";
 import { useSessionsStore } from "@/stores/sessions";
@@ -29,12 +29,9 @@ type SessionsSectionState = {
   openSessionActions: (sessionId: string) => Promise<void>;
 };
 
-let sharedState: SessionsSectionState | null = null;
-
-export function useSessionsSection() {
-  if (!sharedState) {
+export const useSessionsSection = createSharedSectionState<SessionsSectionState>(() => {
     const store = useSessionsStore();
-    const workbenchRuntime = useWorkbenchRuntime();
+    const workbenchNavigation = useWorkbenchNavigation();
     const windows = useWorkbenchWindows();
     const toast = useToastStore();
     const loading = ref(false);
@@ -124,7 +121,7 @@ export function useSessionsSection() {
 
     function selectSession(sessionId: string) {
       store.selectSession(sessionId);
-      workbenchRuntime.showMain();
+      workbenchNavigation.showMain();
     }
 
     async function openCreateDialog() {
@@ -139,7 +136,7 @@ export function useSessionsSection() {
           const requestVersion = stateVersion;
           await store.createSession(payload);
           if (!isStale(requestVersion)) {
-            workbenchRuntime.showMain();
+            workbenchNavigation.showMain();
           }
         },
         reportError: (error) => {
@@ -312,7 +309,7 @@ export function useSessionsSection() {
       });
     }
 
-    sharedState = {
+    return {
       store,
       loading,
       mobileHeaderTitle,
@@ -323,11 +320,4 @@ export function useSessionsSection() {
       openCreateDialog,
       openSessionActions
     };
-  }
-
-  onBeforeRouteLeave(() => {
-    sharedState?.resetState();
-  });
-
-  return sharedState;
-}
+});

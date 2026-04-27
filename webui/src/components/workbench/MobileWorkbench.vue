@@ -1,26 +1,29 @@
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { createStatusbarMenuNodes, type WorkbenchStatusbarItem, type WorkbenchTopbarMenu } from "@/components/workbench/chrome";
 import { workbenchNavItems } from "@/components/workbench/navigation";
 import { useMenuTrigger } from "@/composables/workbench/menu/useMenuTrigger";
-import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
+import type { WorkbenchRuntime } from "@/components/workbench/runtime/workbenchRuntime";
 import type { WorkbenchSection } from "@/components/workbench/types";
 
 const props = defineProps<{
+  runtime: WorkbenchRuntime;
   section: WorkbenchSection;
   topbarMenus: WorkbenchTopbarMenu[];
   statusbarItems: WorkbenchStatusbarItem[];
 }>();
 
 const route = useRoute();
-const { mobileScreen, showList, showMain } = useWorkbenchRuntime();
 
 const listPane = computed(() => props.section.regions.listPane);
 const mainPane = computed(() => props.section.regions.mainPane);
 const mobileHeader = computed(() => props.section.regions.mobileHeader);
 const routeLabel = computed(() => props.section.title || workbenchNavItems.find((item) => item.id === route.name)?.title || "");
 const mobileNavItems = workbenchNavItems;
+const isMobileMainVisible = computed(() => props.runtime.isMobileMainVisible.value);
+const mobileHistoryArmed = ref(false);
+const mobileHistoryStateKey = "__workbenchMobileMain";
 
 const mobileWorkbenchTrigger = useMenuTrigger({
   baseId: "mobile-workbench-menu",
@@ -42,23 +45,69 @@ const mobileWorkbenchTrigger = useMenuTrigger({
 });
 
 watch(
-  () => props.section.layout.mobileMainFlow,
-  (mobileMainFlow) => {
-    if (mobileMainFlow === "main-only") {
-      showMain();
-      return;
-    }
-
-    showList();
+  () => [props.section.id, props.section.layout.mobile.mainFlow] as const,
+  () => {
+    props.runtime.resetMobileStack();
+    mobileHistoryArmed.value = false;
   },
   { immediate: true }
 );
+
+function pushMobileHistoryEntry() {
+  if (typeof window === "undefined" || mobileHistoryArmed.value) {
+    return;
+  }
+
+  const currentState = typeof window.history.state === "object" && window.history.state !== null
+    ? window.history.state
+    : {};
+  window.history.pushState({
+    ...currentState,
+    [mobileHistoryStateKey]: {
+      sectionId: props.section.id
+    }
+  }, "", window.location.href);
+  mobileHistoryArmed.value = true;
+}
+
+function handlePopState() {
+  if (!props.runtime.isMobileMainVisible.value) {
+    return;
+  }
+  mobileHistoryArmed.value = false;
+  props.runtime.popMobileRegion();
+}
+
+watch(isMobileMainVisible, (visible) => {
+  if (!visible) {
+    return;
+  }
+  pushMobileHistoryEntry();
+});
+
+function goBack() {
+  if (mobileHistoryArmed.value && typeof window !== "undefined") {
+    window.history.back();
+    return;
+  }
+  if (!props.runtime.popMobileRegion()) {
+    props.runtime.showList();
+  }
+}
+
+onMounted(() => {
+  window.addEventListener("popstate", handlePopState);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("popstate", handlePopState);
+});
 </script>
 
 <template>
   <div class="fixed inset-0 flex h-full w-full overflow-hidden bg-surface-app text-text-primary">
     <div class="absolute inset-0 flex flex-col bg-surface-app transition-transform duration-220 ease-[ease]">
-      <div class="flex min-h-0 flex-1 flex-col overflow-hidden" v-show="mobileScreen === 'list'">
+      <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <header class="pt-safe flex h-[calc(44px+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border-default bg-surface-sidebar px-3">
           <span class="flex-1 font-semibold text-text-secondary">{{ routeLabel }}</span>
           <nav class="flex gap-1">
@@ -95,11 +144,12 @@ watch(
       </div>
     </div>
     <div
+      ref="runtime.mainRegionRef"
       class="absolute inset-0 z-10 flex flex-col bg-surface-app transition-transform duration-220 ease-[ease]"
-      :class="mobileScreen === 'main' ? 'translate-x-0' : 'pointer-events-none translate-x-full'"
+      :class="isMobileMainVisible ? 'translate-x-0' : 'pointer-events-none translate-x-full'"
     >
       <header class="pt-safe flex h-[calc(44px+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border-default bg-surface-sidebar px-3">
-        <button class="flex cursor-pointer items-center gap-1 border-0 bg-transparent px-0 py-1 text-ui text-accent" @click="showList()">
+        <button class="flex cursor-pointer items-center gap-1 border-0 bg-transparent px-0 py-1 text-ui text-accent" @click="goBack">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="15 18 9 12 15 6" />
           </svg>
