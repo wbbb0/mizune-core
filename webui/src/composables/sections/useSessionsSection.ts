@@ -9,6 +9,7 @@ import { openCreateSessionWindow } from "@/components/sessions/createSessionWind
 import { useSessionsStore } from "@/stores/sessions";
 import { useWorkbenchToasts } from "@/components/workbench/toasts/useWorkbenchToasts";
 import type { NormalizedSessionListItem } from "@/stores/sessionDisplay";
+import { createSessionWindowContext } from "@/components/sessions/sessionWindowContext";
 
 type CreateSessionPayload = {
   title?: string;
@@ -174,6 +175,7 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
         description: "管理标题、切换当前会话模式，或删除该会话。",
         size: "lg",
         modal: true,
+        context: createSessionWindowContext(sessionId),
         schema: {
           fields: [
             ...(supportsTitleEditing
@@ -274,6 +276,7 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
                 description: "删除后将立即移除当前会话，且无法恢复。",
                 size: "sm",
                 modal: true,
+                context: createSessionWindowContext(sessionId),
                 blocks: [
                   {
                     kind: "text" as const,
@@ -302,7 +305,11 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
                 throw CANCEL_WINDOW_ACTION;
               }
 
-              return { sessionId };
+              windows.closeByContext(createSessionWindowContext(sessionId), {
+                reason: "dismiss",
+                values: {}
+              });
+              throw CANCEL_WINDOW_ACTION;
             }
           }
         ]

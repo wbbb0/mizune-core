@@ -17,5 +17,7 @@ import { readFile } from "node:fs/promises";
     assert.match(source, /kind:\s*"child-dialog"/);
     assert.match(source, /title:\s*"确认删除会话"/);
     assert.match(source, /parentId:\s*windowId/);
+    assert.match(source, /context:\s*createSessionWindowContext\(sessionId\)/);
+    assert.match(source, /windows\.closeByContext\(createSessionWindowContext\(sessionId\)/);
     assert.match(source, /标题生成器不可用/);
   });

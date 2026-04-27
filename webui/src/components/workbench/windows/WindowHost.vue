@@ -7,7 +7,7 @@ import DialogRenderer from "./DialogRenderer.vue";
 import WindowSurface from "./WindowSurface.vue";
 
 const ui = useUiStore();
-const { desktopWindows, mobileWindows, close, focus, move } = useWorkbenchWindows();
+const { desktopWindows, mobileWindows, close, focus, move, get } = useWorkbenchWindows();
 
 const renderedWindows = computed(() => (ui.isMobile ? mobileWindows.value : desktopWindows.value));
 const activeModalWindow = computed(() => (
@@ -43,6 +43,9 @@ function resolveWindowValues(windowId: string) {
 }
 
 function handleClose(windowId: string) {
+  if (!get(windowId)) {
+    return;
+  }
   close(windowId, {
     reason: "close",
     values: resolveWindowValues(windowId)
@@ -59,6 +62,10 @@ function handleMove(windowId: string, position: { x: number; y: number }) {
 }
 
 function handleResolve(windowId: string, result: WindowResult<unknown, Record<string, unknown>>) {
+  if (!get(windowId)) {
+    dialogControllers.delete(windowId);
+    return;
+  }
   close(windowId, result);
   dialogControllers.delete(windowId);
 }

@@ -171,6 +171,14 @@ test.beforeEach(() => {
   document.body.innerHTML = "";
 });
 
+test("dialog actions can wrap inside narrow mobile dialogs", () => {
+  const source = readFileSync(DIALOG_RENDERER_PATH, "utf8");
+
+  assert.match(source, /flex flex-wrap items-center justify-end gap-2 border-t/);
+  assert.match(source, /btn btn-secondary max-w-full whitespace-normal text-left/);
+  assert.match(source, /max-w-full whitespace-normal text-left/);
+});
+
 function buildDefinition(runCalls?: Array<{ values: Record<string, unknown>; windowId: string }>) {
   return {
     kind: "dialog",

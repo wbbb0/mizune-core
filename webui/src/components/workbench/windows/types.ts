@@ -4,6 +4,11 @@ export type WindowSize = "auto" | "sm" | "md" | "lg" | "xl" | "full";
 
 export type WindowKind = "dialog" | "panel" | "child-dialog";
 
+export type WindowContext = {
+  kind: string;
+  id: string;
+};
+
 type DialogGroupValues<TValue> = unknown extends TValue
   ? Record<string, unknown>
   : NonNullable<TValue> extends Record<string, unknown>
@@ -125,6 +130,7 @@ export type WindowDefinition<
   showCloseButton?: boolean;
   closeOnBackdrop?: boolean;
   closeOnEscape?: boolean;
+  context?: WindowContext;
 };
 
 export type WindowDialogController<

@@ -17,6 +17,7 @@ import { useWorkbenchWindows } from "@/composables/workbench/useWorkbenchWindows
 import { buildChatTimelineItems } from "./chatTimeline";
 import type { ChatTimelineItem } from "./chatTimeline";
 import { resolveComposerUserIdentity } from "./composerUserIdentity";
+import { createSessionWindowContext } from "./sessionWindowContext";
 
 const store = useSessionsStore();
 const auth  = useAuthStore();
@@ -81,6 +82,7 @@ const composerIdentity = computed(() => resolveComposerUserIdentity({
 
 const lockedUserId = computed(() => composerIdentity.value.lockedUserId);
 const defaultUserId = computed(() => composerIdentity.value.defaultUserId);
+const composerDraftText = computed(() => store.getComposerDraftText(session.value?.id));
 
 async function onSend(
   payload: { userId: string; text: string; imageIds: string[]; attachmentIds: string[] },
@@ -98,16 +100,25 @@ function onComposerUserIdChange(userId: string) {
   store.setComposerUserId(userId || null);
 }
 
+function onComposerDraftTextChange(text: string) {
+  store.setComposerDraftText(session.value?.id, text);
+}
+
 function previewImage(src: string, title: string) {
   void openImagePreviewWindow(windows, { src, title });
 }
 
 function openTranscriptActions(target: TranscriptActionTarget) {
+  if (!session.value) {
+    return;
+  }
+
   void windows.open({
     kind: "dialog",
     title: "消息操作",
     description: `${target.title} · ${target.detail}`,
     size: "md",
+    context: createSessionWindowContext(session.value.id),
     blocks: [
       {
         kind: "text",
@@ -360,8 +371,10 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
         :session-type="isPrivate ? 'private' : 'group'"
         :locked-user-id="lockedUserId"
         :default-user-id="defaultUserId"
+        :draft-text="composerDraftText"
         :disabled="session.streamStatus !== 'connected'"
         @user-id-change="onComposerUserIdChange"
+        @draft-text-change="onComposerDraftTextChange"
         @send="onSend"
       />
     </template>

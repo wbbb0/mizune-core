@@ -20,6 +20,7 @@ import {
 } from "./sessionDisplay";
 
 const SESSION_DEBUG_ENABLED = import.meta.env.DEV;
+const COMPOSER_DRAFTS_STORAGE_KEY = "llm-onebot:composer-drafts:v1";
 
 function debugSession(event: string, detail?: Record<string, unknown>): void {
   if (!SESSION_DEBUG_ENABLED) return;
@@ -31,6 +32,44 @@ function resolveParticipantUserId(ref: SessionParticipantRef | null | undefined)
     return null;
   }
   return ref.id || null;
+}
+
+function readStoredComposerDrafts(): Record<string, string> {
+  if (typeof window === "undefined") {
+    return {};
+  }
+  try {
+    const raw = window.localStorage.getItem(COMPOSER_DRAFTS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    const drafts: Record<string, string> = {};
+    for (const [sessionId, text] of Object.entries(parsed)) {
+      if (sessionId.trim() && typeof text === "string" && text.length > 0) {
+        drafts[sessionId] = text;
+      }
+    }
+    return drafts;
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredComposerDrafts(drafts: Record<string, string>): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    const entries = Object.entries(drafts).filter(([, text]) => text.trim().length > 0);
+    if (entries.length === 0) {
+      window.localStorage.removeItem(COMPOSER_DRAFTS_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(COMPOSER_DRAFTS_STORAGE_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    // Storage is best-effort; losing local draft persistence must not break chat.
+  }
 }
 
 export interface TranscriptEntry {
@@ -75,6 +114,7 @@ export const useSessionsStore = defineStore("sessions", () => {
   const modes = ref<SessionModeOption[]>([]);
   const selectedId = ref<string | null>(null);
   const active = shallowRef<ActiveSession | null>(null);
+  const composerDraftTextBySessionId = ref<Record<string, string>>(readStoredComposerDrafts());
 
   let _es: EventSource | null = null;
   let _listEs: EventSource | null = null;
@@ -683,6 +723,28 @@ export const useSessionsStore = defineStore("sessions", () => {
     active.value = { ...cur, composerUserId: userId };
   }
 
+  function getComposerDraftText(sessionId: string | null | undefined): string {
+    if (!sessionId) {
+      return "";
+    }
+    return composerDraftTextBySessionId.value[sessionId] ?? "";
+  }
+
+  function setComposerDraftText(sessionId: string | null | undefined, text: string): void {
+    if (!sessionId) {
+      return;
+    }
+    const nextText = text;
+    const nextDrafts = { ...composerDraftTextBySessionId.value };
+    if (nextText.trim().length === 0) {
+      delete nextDrafts[sessionId];
+    } else {
+      nextDrafts[sessionId] = nextText;
+    }
+    composerDraftTextBySessionId.value = nextDrafts;
+    writeStoredComposerDrafts(nextDrafts);
+  }
+
   async function excludeTranscriptItem(itemId: string): Promise<void> {
     const cur = active.value;
     if (!cur) {
@@ -719,6 +781,8 @@ export const useSessionsStore = defineStore("sessions", () => {
     reloadTranscript,
     loadMoreTranscript,
     setComposerUserId,
+    getComposerDraftText,
+    setComposerDraftText,
     excludeTranscriptItem,
     excludeTranscriptGroup
   };

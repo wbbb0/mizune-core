@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { MenuNode, MenuSource } from "@/components/workbench/menu/types";
-import { useMenuRuntime } from "@/composables/workbench/menu/useMenuRuntime";
+import { SUBMENU_ACTIVATION_DELAY_MS, useMenuRuntime } from "@/composables/workbench/menu/useMenuRuntime";
 
 const props = defineProps<{
   items: MenuNode[];
@@ -8,35 +8,45 @@ const props = defineProps<{
   source: MenuSource;
 }>();
 
-const { openSubmenu, closeAllMenus } = useMenuRuntime();
+const { scheduleSubmenu, clearPendingSubmenu, closeAllMenus } = useMenuRuntime();
+
+function buildSubmenuEntry(item: Extract<MenuNode, { kind: "submenu" }>, anchor: HTMLElement | null) {
+  return {
+    id: `${props.menuId}:${item.id}`,
+    parentId: props.menuId,
+    source: props.source,
+    anchor: { element: anchor },
+    items: item.children
+  };
+}
 
 function onSelect(item: MenuNode, event: MouseEvent) {
   if (item.kind === "action") {
+    clearPendingSubmenu();
     item.onSelect();
     closeAllMenus();
     return;
   }
 
   if (item.kind === "toggle") {
+    clearPendingSubmenu();
     item.onToggle(!item.checked);
     closeAllMenus();
     return;
   }
 
   if (item.kind === "radio") {
+    clearPendingSubmenu();
     item.onSelect();
     closeAllMenus();
     return;
   }
 
   if (item.kind === "submenu") {
-    openSubmenu({
-      id: `${props.menuId}:${item.id}`,
-      parentId: props.menuId,
-      source: props.source,
-      anchor: { element: event.currentTarget as HTMLElement | null },
-      items: item.children
-    });
+    scheduleSubmenu(
+      buildSubmenuEntry(item, event.currentTarget as HTMLElement | null),
+      SUBMENU_ACTIVATION_DELAY_MS
+    );
   }
 }
 
@@ -45,13 +55,13 @@ function onHover(item: MenuNode, event: MouseEvent) {
     return;
   }
 
-  openSubmenu({
-    id: `${props.menuId}:${item.id}`,
-    parentId: props.menuId,
-    source: props.source,
-    anchor: { element: event.currentTarget as HTMLElement | null },
-    items: item.children
-  });
+  scheduleSubmenu(buildSubmenuEntry(item, event.currentTarget as HTMLElement | null));
+}
+
+function onLeave(item: MenuNode) {
+  if (item.kind === "submenu") {
+    clearPendingSubmenu();
+  }
 }
 </script>
 
@@ -65,6 +75,7 @@ function onHover(item: MenuNode, event: MouseEvent) {
         :data-menu-kind="item.kind"
         @click="onSelect(item, $event)"
         @mouseenter="onHover(item, $event)"
+        @mouseleave="onLeave(item)"
       >
         <span>{{ item.label }}</span>
         <span v-if="item.kind === 'submenu'">›</span>

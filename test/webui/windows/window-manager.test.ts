@@ -100,6 +100,76 @@ test("window manager closes descendant windows when closing a parent window", as
   assert.deepEqual(manager.snapshot(), []);
 });
 
+test("window manager closes windows by framework context without knowing business resources", async () => {
+  const manager = createWindowManager();
+
+  const sessionAParent = manager.open({
+    id: "session-a-parent",
+    kind: "dialog",
+    title: "Session A",
+    size: "md",
+    context: { kind: "session", id: "a" }
+  });
+  const sessionAChild = manager.open({
+    id: "session-a-child",
+    kind: "child-dialog",
+    title: "Session A child",
+    size: "sm",
+    parentId: "session-a-parent",
+    context: { kind: "session", id: "a" }
+  });
+  manager.openSync({
+    id: "session-b",
+    kind: "dialog",
+    title: "Session B",
+    size: "md",
+    context: { kind: "session", id: "b" }
+  });
+  manager.openSync({
+    id: "resource-a",
+    kind: "dialog",
+    title: "Different resource",
+    size: "md",
+    context: { kind: "file", id: "a" }
+  });
+
+  manager.closeByContext({ kind: "session", id: "a" }, {
+    reason: "dismiss",
+    values: { removed: true }
+  });
+
+  assert.deepEqual(manager.snapshot().map((window) => window.id), ["session-b", "resource-a"]);
+  await assert.deepEqual(await sessionAParent, {
+    reason: "dismiss",
+    values: { removed: true }
+  });
+  await assert.deepEqual(await sessionAChild, {
+    reason: "dismiss",
+    values: {}
+  });
+});
+
+test("window manager clones window context in definitions and snapshots", () => {
+  const manager = createWindowManager();
+  const definition = {
+    id: "contextual",
+    kind: "dialog" as const,
+    title: "Contextual",
+    size: "md" as const,
+    context: { kind: "session", id: "original" }
+  };
+
+  manager.openSync(definition);
+  definition.context.id = "mutated";
+
+  assert.deepEqual(manager.get("contextual")?.definition.context, { kind: "session", id: "original" });
+
+  const snapshot = manager.snapshot();
+  snapshot[0]!.definition.context!.id = "polluted";
+
+  assert.deepEqual(manager.get("contextual")?.definition.context, { kind: "session", id: "original" });
+});
+
 test("window manager isolates internal definition state from caller mutation and snapshot mutation", () => {
   const manager = createWindowManager();
   const definition = {

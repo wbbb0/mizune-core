@@ -388,9 +388,9 @@ function handleClose() {
       </form>
     </div>
 
-    <div class="flex items-center justify-end gap-2 border-t border-border-default p-4">
+    <div class="flex flex-wrap items-center justify-end gap-2 border-t border-border-default p-4">
       <button
-        class="btn btn-secondary"
+        class="btn btn-secondary max-w-full whitespace-normal text-left"
         :disabled="isBusy"
         data-action-kind="close"
         type="button"
@@ -403,6 +403,7 @@ function handleClose() {
         v-for="action in actions"
         :key="action.id"
         :class="[
+          'max-w-full whitespace-normal text-left',
           action.variant === 'danger'
             ? 'btn btn-danger'
             : action.variant === 'secondary'

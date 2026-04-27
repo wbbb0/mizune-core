@@ -69,6 +69,8 @@ body {
   line-height: var(--line-height-ui);
   color: var(--text-primary);
   background: var(--surface-app);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-bg);
+  scrollbar-width: thin;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -82,8 +84,8 @@ body {
 
 /* Scrollbars */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
   background: var(--scrollbar-bg);
@@ -99,6 +101,11 @@ body {
 /* Thin scrollbar inside panels */
 .scrollbar-thin::-webkit-scrollbar {
   width: 4px;
+  height: 4px;
+}
+.scrollbar-thin {
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-bg);
+  scrollbar-width: thin;
 }
 
 /* Monospace text */
