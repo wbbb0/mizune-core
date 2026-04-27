@@ -1,5 +1,5 @@
 import { computed, ref } from "vue";
-import type { WindowDefinition, WindowResult } from "@/components/workbench/windows/types";
+import type { WindowContext, WindowDefinition, WindowResult } from "@/components/workbench/windows/types";
 import { createWindowManager } from "./windowManager";
 
 type WindowManagerMode = "desktop" | "mobile";
@@ -31,6 +31,7 @@ type WindowManagerFacade = {
     windowId: string,
     result: WindowResult<TResult, TValues>
   ): void;
+  closeByContext(context: WindowContext, result?: WindowResult): void;
   get(windowId: string): WorkbenchRuntimeWindow | undefined;
   snapshot(): WorkbenchRuntimeWindow[];
   visibleStack(mode: WindowManagerMode): WorkbenchRuntimeWindow[];
@@ -79,6 +80,10 @@ const sharedWorkbenchWindows: WindowManagerFacade = {
   },
   close(windowId, result) {
     manager.close(windowId, result);
+    touch();
+  },
+  closeByContext(context, result) {
+    manager.closeByContext(context, result);
     touch();
   },
   get(windowId) {

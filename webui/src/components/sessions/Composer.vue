@@ -16,15 +16,20 @@ const props = defineProps<{
   lockedUserId?: string;
   /** Editable default sender for web/group sessions */
   defaultUserId?: string;
+  draftText?: string;
   disabled?: boolean;
 }>();
 
 const emit = defineEmits<{
   send: [payload: ComposerSendPayload, callbacks: { resolve: () => void; reject: (error: unknown) => void }];
   userIdChange: [userId: string];
+  draftTextChange: [text: string];
 }>();
 
-const text    = ref("");
+const text = computed({
+  get: () => props.draftText ?? "",
+  set: (value: string) => emit("draftTextChange", value)
+});
 const userId  = ref(props.lockedUserId ?? props.defaultUserId ?? "");
 
 // Sync if parent provides a new default later.
@@ -299,7 +304,7 @@ onUnmounted(() => {
         ref="textareaRef"
         v-model="text"
         class="min-h-7 max-h-40 min-w-0 flex-1 resize-none overflow-y-auto rounded border border-border-input bg-surface-input px-2.5 py-1.25 font-ui text-ui leading-6 text-text-primary outline-none placeholder:text-text-subtle focus:border-border-focus disabled:opacity-50"
-        placeholder="发送消息… (Enter 发送，Shift+Enter 换行)"
+        placeholder="⏎ 发送，⇧+⏎ 换行"
         rows="1"
         :disabled="disabled"
         @focus="onTextareaFocus"

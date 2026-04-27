@@ -44,22 +44,22 @@ const relativeTime = computed(() => {
 
     <!-- Main content -->
     <div class="flex min-w-0 flex-1 flex-col gap-0.5">
-      <div class="flex items-baseline gap-1.5">
+      <div class="flex min-w-0 items-baseline">
         <span
           class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-ui font-medium text-text-secondary"
           :title="display.label"
         >{{ display.label }}</span>
-        <span class="shrink-0 text-small text-text-subtle">{{ relativeTime }}</span>
       </div>
-      <div class="flex items-center">
+      <div class="flex min-w-0 items-center gap-2">
         <span
-          class="text-small text-text-muted"
+          class="shrink-0 text-small text-text-muted"
           :class="{
             'text-success': session.isGenerating
           }"
         >
           {{ session.isGenerating ? "生成中…" : "空闲" }}
         </span>
+        <span v-if="relativeTime" class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-small text-text-subtle">{{ relativeTime }}</span>
       </div>
     </div>
 

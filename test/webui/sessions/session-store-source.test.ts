@@ -16,4 +16,9 @@ test("sessions store handles draft overlays and session list stream events", asy
   assert.match(source, /session_removed/);
   assert.match(source, /syncSessionDisplayFields/);
   assert.match(source, /sortSessionListItems/);
+  assert.match(source, /COMPOSER_DRAFTS_STORAGE_KEY/);
+  assert.match(source, /composerDraftTextBySessionId/);
+  assert.match(source, /getComposerDraftText/);
+  assert.match(source, /setComposerDraftText/);
+  assert.match(source, /window\.localStorage\.setItem\(COMPOSER_DRAFTS_STORAGE_KEY/);
 });

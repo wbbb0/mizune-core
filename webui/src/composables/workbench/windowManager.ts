@@ -1,4 +1,4 @@
-import type { WindowDefinition, WindowResult } from "../../components/workbench/windows/types.js";
+import type { WindowContext, WindowDefinition, WindowResult } from "../../components/workbench/windows/types.js";
 
 type WindowPosition = {
   x: number;
@@ -31,6 +31,7 @@ type WindowManager = {
     windowId: string,
     result: WindowResult<TResult, TValues>
   ): void;
+  closeByContext(context: WindowContext, result?: WindowResult): void;
   get(windowId: string): RuntimeWindow | undefined;
   snapshot(): RuntimeWindow[];
   visibleStack(mode: WindowManagerMode): RuntimeWindow[];
@@ -74,6 +75,10 @@ function createDismissResult(): WindowResult<unknown, Record<string, unknown>> {
     reason: "dismiss",
     values: {}
   };
+}
+
+function sameWindowContext(a: WindowContext | undefined, b: WindowContext) {
+  return a?.kind === b.kind && a.id === b.id;
 }
 
 export function createWindowManager(): WindowManager {
@@ -231,6 +236,18 @@ export function createWindowManager(): WindowManager {
     }
   }
 
+  function closeByContext(context: WindowContext, result: WindowResult = createDismissResult()) {
+    const matchingWindowIds = windows
+      .filter((window) => sameWindowContext(window.definition.context, context))
+      .map((window) => window.id);
+
+    for (const windowId of matchingWindowIds) {
+      if (getWindow(windowId)) {
+        close(windowId, result);
+      }
+    }
+  }
+
   function get(windowId: string) {
     const window = getWindow(windowId);
     return window ? cloneWindow(window) : undefined;
@@ -255,6 +272,7 @@ export function createWindowManager(): WindowManager {
     focus,
     move,
     close,
+    closeByContext,
     get,
     snapshot,
     visibleStack

@@ -38,4 +38,7 @@ test("desktop layout keeps safe-area padding on the workbench shell, not the act
   assert.doesNotMatch(composerSource, /const keyboardAvoidanceTarget\s*=\s*computed\(\(\) => composerRootRef\.value\?\.parentElement \?\? null\)/);
   assert.match(composerSource, /useVisualViewportInset\(\{\s*target:\s*keyboardAvoidanceTarget\s*\}\)/);
   assert.doesNotMatch(composerSource, /ui\.isDesktop \|\| keyboardInsetPx\.value > 0/);
+  assert.match(composerSource, /draftText\?: string/);
+  assert.match(composerSource, /draftTextChange: \[text: string\]/);
+  assert.match(composerSource, /get:\s*\(\) => props\.draftText \?\? ""/);
 });

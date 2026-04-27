@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { RefreshCw } from "lucide-vue-next";
 import { sessionsApi } from "@/api/sessions";
 import type { SessionDetailResult } from "@/api/types";
 import type { ActiveSession } from "@/stores/sessions";
 import { ApiError } from "@/api/client";
 import ScenarioHostStateEditor from "./ScenarioHostStateEditor.vue";
+import TranscriptDisclosure from "./TranscriptDisclosure.vue";
 
 const props = defineProps<{
   session: ActiveSession;
@@ -14,6 +15,7 @@ const props = defineProps<{
 const detail = ref<SessionDetailResult | null>(null);
 const loading = ref(false);
 const errorMessage = ref("");
+const disclosureStates = reactive<Record<string, boolean>>({});
 
 watch(() => [props.session.id, props.session.modeId] as const, () => {
   void loadDetail();
@@ -48,6 +50,14 @@ function formatTimestamp(value: number | null | undefined): string {
 
 function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
+}
+
+function isDisclosureExpanded(id: string): boolean {
+  return disclosureStates[id] === true;
+}
+
+function toggleDisclosure(id: string): void {
+  disclosureStates[id] = !isDisclosureExpanded(id);
 }
 
 function formatObservationLabel(purpose: string): string {
@@ -111,9 +121,14 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
           {{ errorMessage }}
         </div>
 
-        <section class="rounded-lg border border-border-default bg-surface-panel p-4">
-          <div class="text-ui font-medium text-text-secondary">会话概览</div>
-          <div class="mt-3 rounded-lg border border-border-default bg-surface-sidebar p-3">
+        <TranscriptDisclosure
+          :expanded="isDisclosureExpanded('overview')"
+          collapsed-label="会话概览"
+          expanded-label="会话概览"
+          :summary="sessionTitle"
+          @toggle="toggleDisclosure('overview')"
+        >
+          <div class="rounded-lg border border-border-default bg-surface-sidebar p-3">
             <div class="text-small text-text-subtle">标题</div>
             <div class="mt-1 break-all text-ui text-text-secondary">{{ sessionTitle }}</div>
             <div class="mt-1 text-small text-text-subtle">
@@ -126,38 +141,51 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
               <div class="mt-1 break-all text-ui text-text-secondary">{{ value }}</div>
             </div>
           </div>
-        </section>
+        </TranscriptDisclosure>
 
-        <section class="rounded-lg border border-border-default bg-surface-panel p-4">
-          <div class="text-ui font-medium text-text-secondary">历史摘要</div>
-          <div v-if="loading && !detail" class="mt-3 text-small text-text-subtle">加载中…</div>
-          <pre v-else class="mt-3 overflow-auto rounded-lg border border-border-default bg-surface-sidebar p-3 text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ detail?.session.historySummary || "暂无摘要" }}</pre>
-        </section>
+        <TranscriptDisclosure
+          :expanded="isDisclosureExpanded('history-summary')"
+          collapsed-label="历史摘要"
+          expanded-label="历史摘要"
+          @toggle="toggleDisclosure('history-summary')"
+        >
+          <div v-if="loading && !detail" class="text-small text-text-subtle">加载中…</div>
+          <pre v-else class="overflow-auto rounded-lg border border-border-default bg-surface-sidebar p-3 text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ detail?.session.historySummary || "暂无摘要" }}</pre>
+        </TranscriptDisclosure>
 
-        <section class="rounded-lg border border-border-default bg-surface-panel p-4">
-          <div class="text-ui font-medium text-text-secondary">派生观察</div>
-          <div v-if="(detail?.session.derivedObservations.length ?? 0) === 0" class="mt-3 rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">
+        <TranscriptDisclosure
+          :expanded="isDisclosureExpanded('derived-observations')"
+          collapsed-label="派生观察"
+          expanded-label="派生观察"
+          :summary="`${detail?.session.derivedObservations.length ?? 0} 项`"
+          @toggle="toggleDisclosure('derived-observations')"
+        >
+          <div v-if="(detail?.session.derivedObservations.length ?? 0) === 0" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">
             暂无派生观察
           </div>
-          <div v-else class="mt-3 grid gap-3 lg:grid-cols-2">
-            <div v-for="(item, index) in detail?.session.derivedObservations ?? []" :key="`${item.sourceKind}-${item.sourceId}-${item.purpose}-${index}`" class="rounded-lg border border-border-default bg-surface-sidebar px-3 py-2">
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <span class="font-mono text-small text-text-secondary">{{ item.sourceKind }}:{{ item.sourceId }}</span>
+          <div v-else class="grid min-w-0 gap-3 lg:grid-cols-2">
+            <div v-for="(item, index) in detail?.session.derivedObservations ?? []" :key="`${item.sourceKind}-${item.sourceId}-${item.purpose}-${index}`" class="min-w-0 overflow-hidden rounded-lg border border-border-default bg-surface-sidebar px-3 py-2">
+              <div class="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <span class="min-w-0 break-all font-mono text-small text-text-secondary">{{ item.sourceKind }}:{{ item.sourceId }}</span>
                 <span class="text-small" :class="item.status === 'failed' ? 'text-danger' : item.status === 'ready' ? 'text-success' : 'text-text-subtle'">{{ item.status }}</span>
               </div>
               <div class="mt-1 text-small text-text-subtle">{{ formatObservationLabel(item.purpose) }}</div>
-              <div v-if="item.modelRef" class="mt-1 text-small text-text-muted">modelRef: {{ item.modelRef }}</div>
+              <div v-if="item.modelRef" class="mt-1 break-all text-small text-text-muted">modelRef: {{ item.modelRef }}</div>
               <div v-if="item.updatedAt" class="mt-1 text-small text-text-muted">updatedAt: {{ formatTimestamp(item.updatedAt) }}</div>
-              <div v-if="item.sourceHash" class="mt-1 font-mono text-small text-text-muted">hash: {{ item.sourceHash }}</div>
+              <div v-if="item.sourceHash" class="mt-1 break-all font-mono text-small text-text-muted">hash: {{ item.sourceHash }}</div>
               <div v-if="item.error" class="mt-1 whitespace-pre-wrap wrap-break-word text-small text-danger">{{ item.error }}</div>
               <div v-if="item.text" class="mt-2 line-clamp-4 whitespace-pre-wrap wrap-break-word text-small text-text-muted">{{ item.text }}</div>
             </div>
           </div>
-        </section>
+        </TranscriptDisclosure>
 
-        <section class="rounded-lg border border-border-default bg-surface-panel p-4">
-          <div class="text-ui font-medium text-text-secondary">调试与运行数据</div>
-          <div class="mt-3 grid gap-4 lg:grid-cols-2">
+        <TranscriptDisclosure
+          :expanded="isDisclosureExpanded('runtime-debug')"
+          collapsed-label="调试与运行数据"
+          expanded-label="调试与运行数据"
+          @toggle="toggleDisclosure('runtime-debug')"
+        >
+          <div class="grid gap-4 lg:grid-cols-2">
             <div class="rounded-lg border border-border-default bg-surface-sidebar p-3">
               <div class="text-small text-text-subtle">Debug Control</div>
               <pre class="mt-2 overflow-auto text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ formatJson(detail?.session.debugControl ?? { enabled: false, oncePending: false }) }}</pre>
@@ -167,14 +195,19 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
               <pre class="mt-2 overflow-auto text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ formatJson(detail?.session.lastLlmUsage ?? null) }}</pre>
             </div>
           </div>
-        </section>
+        </TranscriptDisclosure>
 
-        <section class="rounded-lg border border-border-default bg-surface-panel p-4">
-          <div class="text-ui font-medium text-text-secondary">最近工具事件</div>
-          <div v-if="(detail?.session.recentToolEvents.length ?? 0) === 0" class="mt-3 rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">
+        <TranscriptDisclosure
+          :expanded="isDisclosureExpanded('recent-tool-events')"
+          collapsed-label="最近工具事件"
+          expanded-label="最近工具事件"
+          :summary="`${detail?.session.recentToolEvents.length ?? 0} 项`"
+          @toggle="toggleDisclosure('recent-tool-events')"
+        >
+          <div v-if="(detail?.session.recentToolEvents.length ?? 0) === 0" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">
             暂无工具事件
           </div>
-          <div v-else class="mt-3 flex flex-col gap-2">
+          <div v-else class="flex flex-col gap-2">
             <div v-for="(event, index) in detail?.session.recentToolEvents ?? []" :key="`${event.toolName}-${event.timestampMs}-${index}`" class="rounded-lg border border-border-default bg-surface-sidebar px-3 py-2">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <span class="font-mono text-small text-text-secondary">{{ event.toolName }}</span>
@@ -185,14 +218,19 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
               <div class="mt-1 text-small" :class="event.outcome === 'error' ? 'text-danger' : 'text-success'">{{ event.outcome }}</div>
             </div>
           </div>
-        </section>
+        </TranscriptDisclosure>
 
-        <section class="rounded-lg border border-border-default bg-surface-panel p-4">
-          <div class="text-ui font-medium text-text-secondary">调试标记</div>
-          <div v-if="(detail?.session.debugMarkers.length ?? 0) === 0" class="mt-3 rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">
+        <TranscriptDisclosure
+          :expanded="isDisclosureExpanded('debug-markers')"
+          collapsed-label="调试标记"
+          expanded-label="调试标记"
+          :summary="`${detail?.session.debugMarkers.length ?? 0} 项`"
+          @toggle="toggleDisclosure('debug-markers')"
+        >
+          <div v-if="(detail?.session.debugMarkers.length ?? 0) === 0" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">
             暂无调试标记
           </div>
-          <div v-else class="mt-3 flex flex-col gap-2">
+          <div v-else class="flex flex-col gap-2">
             <div v-for="(marker, index) in detail?.session.debugMarkers ?? []" :key="`${marker.kind}-${marker.timestampMs}-${index}`" class="rounded-lg border border-border-default bg-surface-sidebar px-3 py-2">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <span class="font-mono text-small text-text-secondary">{{ marker.kind }}</span>
@@ -202,14 +240,19 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
               <div v-if="marker.sentCount != null" class="mt-1 text-small text-text-muted">sentCount: {{ marker.sentCount }}</div>
             </div>
           </div>
-        </section>
+        </TranscriptDisclosure>
 
-        <section class="rounded-lg border border-border-default bg-surface-panel p-4">
-          <div class="text-ui font-medium text-text-secondary">最近发送记录</div>
-          <div v-if="(detail?.session.sentMessages.length ?? 0) === 0" class="mt-3 rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">
+        <TranscriptDisclosure
+          :expanded="isDisclosureExpanded('sent-messages')"
+          collapsed-label="最近发送记录"
+          expanded-label="最近发送记录"
+          :summary="`${detail?.session.sentMessages.length ?? 0} 项`"
+          @toggle="toggleDisclosure('sent-messages')"
+        >
+          <div v-if="(detail?.session.sentMessages.length ?? 0) === 0" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">
             暂无发送记录
           </div>
-          <div v-else class="mt-3 flex flex-col gap-2">
+          <div v-else class="flex flex-col gap-2">
             <div v-for="message in detail?.session.sentMessages ?? []" :key="`${message.messageId}-${message.sentAt}`" class="rounded-lg border border-border-default bg-surface-sidebar px-3 py-2">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <span class="font-mono text-small text-text-secondary">messageId {{ message.messageId }}</span>
@@ -218,7 +261,7 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
               <div class="mt-1 whitespace-pre-wrap wrap-break-word text-small text-text-muted">{{ message.text || "空文本" }}</div>
             </div>
           </div>
-        </section>
+        </TranscriptDisclosure>
 
         <ScenarioHostStateEditor
           v-if="detail?.modeState?.kind === 'scenario_host'"
@@ -227,12 +270,17 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
           @saved="onScenarioHostSaved"
         />
 
-        <section v-else class="rounded-lg border border-border-default bg-surface-panel p-4">
-          <div class="text-ui font-medium text-text-secondary">模式专属状态</div>
-          <div class="mt-3 rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">
+        <TranscriptDisclosure
+          v-else
+          :expanded="isDisclosureExpanded('mode-state')"
+          collapsed-label="模式专属状态"
+          expanded-label="模式专属状态"
+          @toggle="toggleDisclosure('mode-state')"
+        >
+          <div class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">
             当前模式暂无可管理的结构化状态。
           </div>
-        </section>
+        </TranscriptDisclosure>
       </div>
     </div>
   </div>

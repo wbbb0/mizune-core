@@ -243,7 +243,7 @@ test.afterEach(() => {
   resetWindows();
 });
 
-test("window sizing resolves desktop sizes and mobile full-screen bounds", () => {
+test("window sizing resolves desktop sizes and mobile safe-area dialog bounds", () => {
   assert.match(resolveWindowSizing("auto", false).className, /w-auto/);
   assert.match(resolveWindowSizing("auto", false).className, /max-w-\[/);
   assert.match(resolveWindowSizing("md", false).style.maxHeight ?? "", /env\(safe-area-inset-top/);
@@ -255,8 +255,14 @@ test("window sizing resolves desktop sizes and mobile full-screen bounds", () =>
   assert.match(fullDesktop.style.height ?? "", /env\(safe-area-inset-top/);
 
   const mobile = resolveWindowSizing("xl", true);
-  assert.match(mobile.className, /w-full/);
   assert.match(mobile.className, /max-w-none/);
+  assert.match(mobile.style.width ?? "", /min\(38rem, var\(--workbench-window-safe-width\)\)/);
+  assert.match(mobile.style.maxHeight ?? "", /env\(safe-area-inset-top/);
+  assert.equal(mobile.style.height, undefined);
+
+  const mobileFull = resolveWindowSizing("full", true);
+  assert.match(mobileFull.style.width ?? "", /env\(safe-area-inset-left/);
+  assert.equal(mobileFull.style.height, undefined);
 });
 
 test("window host renders all desktop windows in manager order", async () => {
