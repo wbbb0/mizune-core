@@ -1,21 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { useToastStore } from "../../../webui/src/stores/toasts.ts";
+import { useWorkbenchToasts } from "../../../webui/src/components/workbench/toasts/useWorkbenchToasts.ts";
 
 function resetStore() {
-  const store = useToastStore();
+  const store = useWorkbenchToasts();
   for (const item of [...store.items.value]) {
     store.dismiss(item.id);
   }
   return store;
 }
 
-test("app mounts a global toast viewport", async () => {
-  const source = await readFile(new URL("../../../webui/src/App.vue", import.meta.url), "utf8");
+test("workbench shell mounts the toast viewport", async () => {
+  const source = await readFile(new URL("../../../webui/src/components/workbench/WorkbenchShell.vue", import.meta.url), "utf8");
+  const appSource = await readFile(new URL("../../../webui/src/App.vue", import.meta.url), "utf8");
 
   assert.match(source, /ToastViewport/);
   assert.match(source, /<ToastViewport\s*\/>/);
+  assert.doesNotMatch(appSource, /ToastViewport/);
 });
 
 test("toast store supports manual dismiss, duplicate reuse, and auto dismiss", async () => {
@@ -52,13 +54,13 @@ test("session chat surfaces action failures through toast instead of window.aler
   const source = await readFile(new URL("../../../webui/src/components/sessions/ChatPanel.vue", import.meta.url), "utf8");
 
   assert.doesNotMatch(source, /window\.alert/);
-  assert.match(source, /useToastStore/);
+  assert.match(source, /useWorkbenchToasts/);
 });
 
 test("composer surfaces upload failures through toast", async () => {
   const source = await readFile(new URL("../../../webui/src/components/sessions/Composer.vue", import.meta.url), "utf8");
 
-  assert.match(source, /useToastStore/);
+  assert.match(source, /useWorkbenchToasts/);
   assert.match(source, /toast\.push/);
 });
 
@@ -68,8 +70,8 @@ test("config and data sections use toast instead of inline save containers", asy
     readFile(new URL("../../../webui/src/composables/sections/useDataSection.ts", import.meta.url), "utf8")
   ]);
 
-  assert.match(configSource, /useToastStore/);
-  assert.match(dataSource, /useToastStore/);
+  assert.match(configSource, /useWorkbenchToasts/);
+  assert.match(dataSource, /useWorkbenchToasts/);
   assert.doesNotMatch(configSource, /saveMsg/);
   assert.doesNotMatch(dataSource, /saveMsg/);
 });

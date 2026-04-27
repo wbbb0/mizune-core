@@ -15,7 +15,7 @@ const typescript = require(`${ROOT}/webui/node_modules/typescript/lib/typescript
 const VUE_RUNTIME_URL = new URL("../../../webui/node_modules/vue/index.mjs", import.meta.url).href;
 const VUE_TEST_UTILS_URL = new URL("../../../webui/node_modules/@vue/test-utils/dist/vue-test-utils.esm-bundler.mjs", import.meta.url).href;
 const USE_WORKBENCH_WINDOWS_URL = new URL("../../../webui/src/composables/workbench/useWorkbenchWindows.ts", import.meta.url).href;
-const WORKBENCH_DIALOG_PATH = `${ROOT}/webui/src/components/common/WorkbenchDialog.vue`;
+const WORKBENCH_DIALOG_PATH = `${ROOT}/webui/src/components/workbench/windows/WorkbenchDialog.vue`;
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>");
 

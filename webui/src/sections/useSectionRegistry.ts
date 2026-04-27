@@ -13,7 +13,7 @@ const sectionsById: ReadonlyMap<string, WorkbenchSection> = new Map(
   workbenchSections.map((section) => [section.id, section] as const)
 );
 
-export function useWorkbenchRegistry(): WorkbenchRegistry {
+export function useSectionRegistry(): WorkbenchRegistry {
   function getSectionById(id: string): WorkbenchSection {
     const section = sectionsById.get(id);
     if (!section) {

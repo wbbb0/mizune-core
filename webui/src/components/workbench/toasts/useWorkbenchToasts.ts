@@ -53,7 +53,7 @@ function push(input: {
   return id;
 }
 
-export function useToastStore() {
+export function useWorkbenchToasts() {
   return {
     items,
     push,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import SectionHost from "@/components/workbench/SectionHost.vue";
+import SectionHost from "@/sections/SectionHost.vue";
 </script>
 
 <template>

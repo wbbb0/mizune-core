@@ -1,19 +1,21 @@
-import { computed, inject, provide, ref, shallowRef, watch, type ComputedRef, type InjectionKey, type Ref, type ShallowRef } from "vue";
+import { computed, inject, provide, reactive, ref, shallowRef, watch, type ComputedRef, type InjectionKey, type Ref, type ShallowRef } from "vue";
 import type { WorkbenchSection } from "@/components/workbench/types";
 
 export type MobileRegionStackEntry =
   | { kind: "list"; sectionId: string }
   | { kind: "main"; sectionId: string; detailKey?: string };
 
+export type DesktopPaneId = "list";
+
 export type WorkbenchRuntime = {
   section: ComputedRef<WorkbenchSection>;
   mainRegionRef: Ref<HTMLElement | null>;
   keyboardAvoidanceBoundary: ComputedRef<HTMLElement | null>;
-  desktopListPaneWidthPx: Ref<number>;
-  desktopListPaneStyle: ComputedRef<{ width: string }>;
-  clampDesktopListPaneWidth: (widthPx: number) => number;
-  setDesktopListPaneWidth: (widthPx: number) => void;
-  resetDesktopListPaneWidth: () => void;
+  getDesktopPaneWidthPx: (paneId: DesktopPaneId) => number;
+  getDesktopPaneStyle: (paneId: DesktopPaneId) => { width: string };
+  clampDesktopPaneWidth: (paneId: DesktopPaneId, widthPx: number) => number;
+  setDesktopPaneWidth: (paneId: DesktopPaneId, widthPx: number) => void;
+  resetDesktopPaneWidth: (paneId: DesktopPaneId) => void;
   hasMobileListFlow: ComputedRef<boolean>;
   mobileStack: Ref<MobileRegionStackEntry[]>;
   mobileTop: ComputedRef<MobileRegionStackEntry>;
@@ -27,19 +29,23 @@ export type WorkbenchRuntime = {
 
 const workbenchRuntimeKey: InjectionKey<WorkbenchRuntime> = Symbol("workbench-runtime");
 const activeWorkbenchRuntime = shallowRef<WorkbenchRuntime | null>(null);
-const desktopListPaneStorageKey = "workbench.pane.desktopList.width";
-const defaultDesktopListPane = {
+const desktopPaneStoragePrefix = "workbench.pane.desktop";
+const defaultDesktopPaneSize = {
   defaultWidthPx: 260,
   minWidthPx: 180,
   maxWidthPx: 520
 };
 
-function readStoredDesktopListPaneWidth(): number | null {
+function resolveDesktopPaneStorageKey(paneId: DesktopPaneId) {
+  return `${desktopPaneStoragePrefix}.${paneId}.width`;
+}
+
+function readStoredDesktopPaneWidth(paneId: DesktopPaneId): number | null {
   if (typeof window === "undefined") {
     return null;
   }
   try {
-    const value = window.localStorage.getItem(desktopListPaneStorageKey);
+    const value = window.localStorage.getItem(resolveDesktopPaneStorageKey(paneId));
     if (!value) {
       return null;
     }
@@ -50,12 +56,12 @@ function readStoredDesktopListPaneWidth(): number | null {
   }
 }
 
-function writeStoredDesktopListPaneWidth(widthPx: number) {
+function writeStoredDesktopPaneWidth(paneId: DesktopPaneId, widthPx: number) {
   if (typeof window === "undefined") {
     return;
   }
   try {
-    window.localStorage.setItem(desktopListPaneStorageKey, String(widthPx));
+    window.localStorage.setItem(resolveDesktopPaneStorageKey(paneId), String(widthPx));
   } catch {
     // Layout resizing remains usable when storage is unavailable.
   }
@@ -64,50 +70,67 @@ function writeStoredDesktopListPaneWidth(widthPx: number) {
 export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): WorkbenchRuntime {
   const mainRegionRef = ref<HTMLElement | null>(null);
   const mobileStack = ref<MobileRegionStackEntry[]>([]);
-  const desktopListPaneWidthPx = ref(resolveInitialDesktopListPaneWidth());
+  const desktopPaneWidthsPx = reactive<Record<DesktopPaneId, number>>({
+    list: resolveInitialDesktopPaneWidth("list")
+  });
   const hasMobileListFlow = computed(() => section.value.layout.mobile.mainFlow !== "main-only");
   const mobileTop = computed(() => mobileStack.value[mobileStack.value.length - 1] ?? { kind: "list", sectionId: section.value.id });
   const isMobileMainVisible = computed(() => mobileTop.value.kind === "main");
   const canPopMobileRegion = computed(() => hasMobileListFlow.value && mobileStack.value.length > 1);
   const keyboardAvoidanceBoundary = computed(() => mainRegionRef.value);
-  const desktopListPaneStyle = computed(() => ({
-    width: `${desktopListPaneWidthPx.value}px`
-  }));
 
-  function resolveDesktopListPaneDefaultWidth() {
-    return section.value.layout.desktop.listPane?.defaultWidthPx ?? defaultDesktopListPane.defaultWidthPx;
+  function resolveDesktopPaneDefaultWidth(paneId: DesktopPaneId) {
+    if (paneId !== "list") {
+      return defaultDesktopPaneSize.defaultWidthPx;
+    }
+    return section.value.layout.desktop.listPane?.defaultWidthPx ?? defaultDesktopPaneSize.defaultWidthPx;
   }
 
-  function resolveInitialDesktopListPaneWidth() {
-    return clampDesktopListPaneWidth(readStoredDesktopListPaneWidth() ?? resolveDesktopListPaneDefaultWidth());
+  function resolveInitialDesktopPaneWidth(paneId: DesktopPaneId) {
+    return clampDesktopPaneWidth(paneId, readStoredDesktopPaneWidth(paneId) ?? resolveDesktopPaneDefaultWidth(paneId));
   }
 
-  function resolveDesktopListPaneMinWidth() {
-    return section.value.layout.desktop.listPane?.minWidthPx ?? defaultDesktopListPane.minWidthPx;
+  function resolveDesktopPaneMinWidth(paneId: DesktopPaneId) {
+    if (paneId !== "list") {
+      return defaultDesktopPaneSize.minWidthPx;
+    }
+    return section.value.layout.desktop.listPane?.minWidthPx ?? defaultDesktopPaneSize.minWidthPx;
   }
 
-  function resolveDesktopListPaneMaxWidth() {
+  function resolveDesktopPaneMaxWidth(paneId: DesktopPaneId) {
     return Math.max(
-      resolveDesktopListPaneMinWidth(),
-      section.value.layout.desktop.listPane?.maxWidthPx ?? defaultDesktopListPane.maxWidthPx
+      resolveDesktopPaneMinWidth(paneId),
+      paneId === "list"
+        ? section.value.layout.desktop.listPane?.maxWidthPx ?? defaultDesktopPaneSize.maxWidthPx
+        : defaultDesktopPaneSize.maxWidthPx
     );
   }
 
-  function clampDesktopListPaneWidth(widthPx: number) {
+  function clampDesktopPaneWidth(paneId: DesktopPaneId, widthPx: number) {
     return Math.min(
-      resolveDesktopListPaneMaxWidth(),
-      Math.max(resolveDesktopListPaneMinWidth(), Math.round(widthPx))
+      resolveDesktopPaneMaxWidth(paneId),
+      Math.max(resolveDesktopPaneMinWidth(paneId), Math.round(widthPx))
     );
   }
 
-  function setDesktopListPaneWidth(widthPx: number) {
-    const nextWidth = clampDesktopListPaneWidth(widthPx);
-    desktopListPaneWidthPx.value = nextWidth;
-    writeStoredDesktopListPaneWidth(nextWidth);
+  function getDesktopPaneWidthPx(paneId: DesktopPaneId) {
+    return desktopPaneWidthsPx[paneId];
   }
 
-  function resetDesktopListPaneWidth() {
-    setDesktopListPaneWidth(resolveDesktopListPaneDefaultWidth());
+  function getDesktopPaneStyle(paneId: DesktopPaneId) {
+    return {
+      width: `${getDesktopPaneWidthPx(paneId)}px`
+    };
+  }
+
+  function setDesktopPaneWidth(paneId: DesktopPaneId, widthPx: number) {
+    const nextWidth = clampDesktopPaneWidth(paneId, widthPx);
+    desktopPaneWidthsPx[paneId] = nextWidth;
+    writeStoredDesktopPaneWidth(paneId, nextWidth);
+  }
+
+  function resetDesktopPaneWidth(paneId: DesktopPaneId) {
+    setDesktopPaneWidth(paneId, resolveDesktopPaneDefaultWidth(paneId));
   }
 
   function resetMobileStack() {
@@ -144,7 +167,7 @@ export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): 
   }
 
   watch(() => section.value.id, () => {
-    desktopListPaneWidthPx.value = resolveInitialDesktopListPaneWidth();
+    desktopPaneWidthsPx.list = resolveInitialDesktopPaneWidth("list");
   });
 
   resetMobileStack();
@@ -153,11 +176,11 @@ export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): 
     section,
     mainRegionRef,
     keyboardAvoidanceBoundary,
-    desktopListPaneWidthPx,
-    desktopListPaneStyle,
-    clampDesktopListPaneWidth,
-    setDesktopListPaneWidth,
-    resetDesktopListPaneWidth,
+    getDesktopPaneWidthPx,
+    getDesktopPaneStyle,
+    clampDesktopPaneWidth,
+    setDesktopPaneWidth,
+    resetDesktopPaneWidth,
     hasMobileListFlow,
     mobileStack,
     mobileTop,

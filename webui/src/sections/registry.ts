@@ -1,5 +1,5 @@
 import { defineWorkbenchSection, type WorkbenchSection } from "@/components/workbench/types";
-import { workbenchNavItems } from "@/components/workbench/navigation";
+import { workbenchNavItems } from "@/sections/navigation";
 import { sessionsSection } from "@/sections/sessions";
 import { configSection } from "@/sections/config";
 import { dataSection } from "@/sections/data";

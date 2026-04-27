@@ -7,7 +7,7 @@ import { useWorkbenchNavigation } from "@/components/workbench/runtime/workbench
 import { useWorkbenchWindows } from "@/composables/workbench/useWorkbenchWindows";
 import { openCreateSessionWindow } from "@/components/sessions/createSessionWindow";
 import { useSessionsStore } from "@/stores/sessions";
-import { useToastStore } from "@/stores/toasts";
+import { useWorkbenchToasts } from "@/components/workbench/toasts/useWorkbenchToasts";
 import type { NormalizedSessionListItem } from "@/stores/sessionDisplay";
 
 type CreateSessionPayload = {
@@ -33,7 +33,7 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
     const store = useSessionsStore();
     const workbenchNavigation = useWorkbenchNavigation();
     const windows = useWorkbenchWindows();
-    const toast = useToastStore();
+    const toast = useWorkbenchToasts();
     const loading = ref(false);
     const initialized = ref(false);
     let stateVersion = 0;

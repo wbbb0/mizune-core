@@ -22,7 +22,10 @@ test("desktop layout keeps safe-area padding on the workbench shell, not the act
 
   assert.doesNotMatch(workbenchShellSource, /pt-safe/);
   assert.match(topBarSource, /pt-safe/);
-  assert.match(activityBarSource, /from "@\/components\/workbench\/navigation"/);
+  assert.match(activityBarSource, /navItems/);
+  assert.match(activityBarSource, /emit\('navigate'/);
+  assert.doesNotMatch(activityBarSource, /useRouter/);
+  assert.doesNotMatch(activityBarSource, /useRoute/);
   assert.doesNotMatch(activityBarSource, /export const primaryNavItems/);
   assert.doesNotMatch(activityBarSource, /export const bottomNavItems/);
   assert.doesNotMatch(activityBarSource, /class="[^"]*\bpt-safe\b/);

@@ -102,8 +102,14 @@ const menuHostStubUrl = createDataModule(`
   };
 `);
 
-const workbenchNavItemsStubUrl = createDataModule(`
-  export const workbenchNavItems = [];
+const toastViewportStubUrl = createDataModule(`
+  import { h } from "${VUE_RUNTIME_URL}";
+  export default {
+    name: "ToastViewport",
+    render() {
+      return h("div", { "data-test": "toast-viewport" });
+    }
+  };
 `);
 
 const menuRuntimeStubUrl = createDataModule(`
@@ -184,6 +190,7 @@ const workbenchShellUrl = compileVueModule(WORKBENCH_SHELL_PATH, {
   "@/components/workbench/DesktopWorkbench.vue": desktopWorkbenchStubUrl,
   "@/components/workbench/MobileWorkbench.vue": mobileWorkbenchStubUrl,
   "@/components/workbench/menu/MenuHost.vue": menuHostStubUrl,
+  "@/components/workbench/toasts/ToastViewport.vue": toastViewportStubUrl,
   "@/stores/ui": uiStubUrl,
   "@/components/workbench/runtime/workbenchRuntime": WORKBENCH_RUNTIME_URL,
   "@/composables/workbench/menu/useMenuRuntime": menuRuntimeStubUrl,
@@ -712,6 +719,8 @@ test("workbench shell mounts the window host and delegates layout to the desktop
         }
       }
       ,
+      navItems: [],
+      activeNavItemId: "sessions",
       topbarMenus: [],
       statusbarItems: []
     },
