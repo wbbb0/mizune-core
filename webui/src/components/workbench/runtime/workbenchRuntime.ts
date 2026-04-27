@@ -14,9 +14,11 @@ export type WorkbenchRuntime = {
   clampDesktopListPaneWidth: (widthPx: number) => number;
   setDesktopListPaneWidth: (widthPx: number) => void;
   resetDesktopListPaneWidth: () => void;
+  hasMobileListFlow: ComputedRef<boolean>;
   mobileStack: Ref<MobileRegionStackEntry[]>;
   mobileTop: ComputedRef<MobileRegionStackEntry>;
   isMobileMainVisible: ComputedRef<boolean>;
+  canPopMobileRegion: ComputedRef<boolean>;
   resetMobileStack: () => void;
   showList: () => void;
   showMain: (detailKey?: string) => void;
@@ -63,8 +65,10 @@ export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): 
   const mainRegionRef = ref<HTMLElement | null>(null);
   const mobileStack = ref<MobileRegionStackEntry[]>([]);
   const desktopListPaneWidthPx = ref(resolveInitialDesktopListPaneWidth());
+  const hasMobileListFlow = computed(() => section.value.layout.mobile.mainFlow !== "main-only");
   const mobileTop = computed(() => mobileStack.value[mobileStack.value.length - 1] ?? { kind: "list", sectionId: section.value.id });
   const isMobileMainVisible = computed(() => mobileTop.value.kind === "main");
+  const canPopMobileRegion = computed(() => hasMobileListFlow.value && mobileStack.value.length > 1);
   const keyboardAvoidanceBoundary = computed(() => mainRegionRef.value);
   const desktopListPaneStyle = computed(() => ({
     width: `${desktopListPaneWidthPx.value}px`
@@ -107,16 +111,24 @@ export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): 
   }
 
   function resetMobileStack() {
-    mobileStack.value = section.value.layout.mobile.mainFlow === "main-only"
+    mobileStack.value = !hasMobileListFlow.value
       ? [{ kind: "main", sectionId: section.value.id }]
       : [{ kind: "list", sectionId: section.value.id }];
   }
 
   function showList() {
+    if (!hasMobileListFlow.value) {
+      resetMobileStack();
+      return;
+    }
     mobileStack.value = [{ kind: "list", sectionId: section.value.id }];
   }
 
   function showMain(detailKey?: string) {
+    if (!hasMobileListFlow.value) {
+      mobileStack.value = [{ kind: "main", sectionId: section.value.id, detailKey }];
+      return;
+    }
     mobileStack.value = [
       { kind: "list", sectionId: section.value.id },
       { kind: "main", sectionId: section.value.id, detailKey }
@@ -124,7 +136,7 @@ export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): 
   }
 
   function popMobileRegion() {
-    if (mobileStack.value.length <= 1) {
+    if (!canPopMobileRegion.value) {
       return false;
     }
     mobileStack.value = mobileStack.value.slice(0, -1);
@@ -146,9 +158,11 @@ export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): 
     clampDesktopListPaneWidth,
     setDesktopListPaneWidth,
     resetDesktopListPaneWidth,
+    hasMobileListFlow,
     mobileStack,
     mobileTop,
     isMobileMainVisible,
+    canPopMobileRegion,
     resetMobileStack,
     showList,
     showMain,

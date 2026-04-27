@@ -32,6 +32,18 @@ test("mobile workbench keeps list mounted under the main overlay", async () => {
   assert.doesNotMatch(source, /v-show="mobileScreen === 'list'"/);
 });
 
+test("mobile main-only sections do not synthesize list navigation", async () => {
+  const source = await readFile(new URL("../../../webui/src/components/workbench/MobileWorkbench.vue", import.meta.url), "utf8");
+  const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
+
+  assert.match(runtime, /hasMobileListFlow/);
+  assert.match(runtime, /canPopMobileRegion/);
+  assert.match(runtime, /if \(!hasMobileListFlow\.value\)/);
+  assert.match(source, /const hasMobileListFlow/);
+  assert.match(source, /v-if="hasMobileListFlow"/);
+  assert.match(source, /!visible \|\| !hasMobileListFlow\.value/);
+});
+
 test("mobile workbench maps browser history back to overlay stack pop", async () => {
   const source = await readFile(new URL("../../../webui/src/components/workbench/MobileWorkbench.vue", import.meta.url), "utf8");
 
@@ -83,10 +95,13 @@ test("desktop workbench sizes list pane through runtime resize state", async () 
   assert.match(runtime, /layout\.desktop\.listPane/);
   assert.doesNotMatch(runtime, /layout\.desktopListPane/);
   assert.match(desktop, /desktopListPaneStyle/);
+  assert.match(desktop, /hasListPane/);
   assert.match(desktop, /startListPaneResize/);
   assert.match(desktop, /resetListPaneResize/);
   assert.match(desktop, /role="separator"/);
   assert.match(desktop, /aria-orientation="vertical"/);
+  assert.match(desktop, /<aside v-if="hasListPane"/);
+  assert.match(desktop, /v-if="hasListPane"\s*\n\s*class="relative w-1/);
   assert.match(desktop, /@pointerdown="startListPaneResize"/);
   assert.match(desktop, /@dblclick="resetListPaneResize"/);
   assert.doesNotMatch(desktop, /w-\(--side-panel-width\)/);

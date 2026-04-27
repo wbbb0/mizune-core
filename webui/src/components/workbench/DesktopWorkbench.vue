@@ -16,6 +16,7 @@ const props = defineProps<{
 
 const listPane = computed(() => props.section.regions.listPane);
 const mainPane = computed(() => props.section.regions.mainPane);
+const hasListPane = computed(() => !!listPane.value);
 const desktopListPaneStyle = computed(() => props.runtime.desktopListPaneStyle.value);
 const desktopListPaneWidth = computed(() => props.runtime.desktopListPaneWidthPx.value);
 let resizeStartX = 0;
@@ -66,10 +67,11 @@ onUnmounted(stopListPaneResize);
       <TopBar :menus="topbarMenus" />
       <div class="flex min-h-0 flex-1 overflow-hidden">
         <ActivityBar />
-        <aside class="scrollbar-thin shrink-0 overflow-x-hidden overflow-y-auto bg-surface-sidebar" :style="desktopListPaneStyle">
-          <component :is="listPane" v-if="section.regions.listPane" />
+        <aside v-if="hasListPane" class="scrollbar-thin shrink-0 overflow-x-hidden overflow-y-auto bg-surface-sidebar" :style="desktopListPaneStyle">
+          <component :is="listPane" />
         </aside>
         <div
+          v-if="hasListPane"
           class="relative w-1 shrink-0 cursor-col-resize border-l border-border-default bg-surface-sidebar hover:bg-accent/25 focus:bg-accent/25 focus:outline-none"
           role="separator"
           aria-orientation="vertical"

@@ -21,7 +21,9 @@ const mainPane = computed(() => props.section.regions.mainPane);
 const mobileHeader = computed(() => props.section.regions.mobileHeader);
 const routeLabel = computed(() => props.section.title || workbenchNavItems.find((item) => item.id === route.name)?.title || "");
 const mobileNavItems = workbenchNavItems;
+const hasMobileListFlow = computed(() => props.runtime.hasMobileListFlow.value);
 const isMobileMainVisible = computed(() => props.runtime.isMobileMainVisible.value);
+const canPopMobileRegion = computed(() => props.runtime.canPopMobileRegion.value);
 const mobileHistoryArmed = ref(false);
 const mobileHistoryStateKey = "__workbenchMobileMain";
 
@@ -79,18 +81,23 @@ function handlePopState() {
 }
 
 watch(isMobileMainVisible, (visible) => {
-  if (!visible) {
+  if (!visible || !hasMobileListFlow.value) {
     return;
   }
   pushMobileHistoryEntry();
 });
 
 function goBack() {
+  if (!hasMobileListFlow.value) {
+    return;
+  }
   if (mobileHistoryArmed.value && typeof window !== "undefined") {
     window.history.back();
     return;
   }
-  if (!props.runtime.popMobileRegion()) {
+  if (canPopMobileRegion.value) {
+    props.runtime.popMobileRegion();
+  } else {
     props.runtime.showList();
   }
 }
@@ -106,7 +113,7 @@ onUnmounted(() => {
 
 <template>
   <div class="fixed inset-0 flex h-full w-full overflow-hidden bg-surface-app text-text-primary">
-    <div class="absolute inset-0 flex flex-col bg-surface-app transition-transform duration-220 ease-[ease]">
+    <div v-if="hasMobileListFlow" class="absolute inset-0 flex flex-col bg-surface-app transition-transform duration-220 ease-[ease]">
       <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <header class="pt-safe flex h-[calc(44px+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border-default bg-surface-sidebar px-3">
           <span class="flex-1 font-semibold text-text-secondary">{{ routeLabel }}</span>
@@ -149,7 +156,7 @@ onUnmounted(() => {
       :class="isMobileMainVisible ? 'translate-x-0' : 'pointer-events-none translate-x-full'"
     >
       <header class="pt-safe flex h-[calc(44px+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border-default bg-surface-sidebar px-3">
-        <button class="flex cursor-pointer items-center gap-1 border-0 bg-transparent px-0 py-1 text-ui text-accent" @click="goBack">
+        <button v-if="hasMobileListFlow" class="flex cursor-pointer items-center gap-1 border-0 bg-transparent px-0 py-1 text-ui text-accent" @click="goBack">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="15 18 9 12 15 6" />
           </svg>
