@@ -1,4 +1,4 @@
-import type { WorkbenchSection } from "@/components/workbench/types";
+import { defineWorkbenchSection, type WorkbenchSection } from "@/components/workbench/types";
 import { workbenchNavItems } from "@/components/workbench/navigation";
 import { sessionsSection } from "@/sections/sessions";
 import { configSection } from "@/sections/config";
@@ -24,22 +24,14 @@ const placeholderMainPane = defineComponent({
 });
 
 function createPlaceholderSection(id: string, title: string): WorkbenchSection {
-  return {
+  return defineWorkbenchSection({
     id,
     title,
     regions: {
       listPane: placeholderListPane,
       mainPane: placeholderMainPane
-    },
-    layout: {
-      mobile: {
-        mainFlow: "list-main"
-      },
-      desktop: {
-        listPane: {}
-      }
     }
-  };
+  });
 }
 
 export const workbenchSections: readonly WorkbenchSection[] = Object.freeze(

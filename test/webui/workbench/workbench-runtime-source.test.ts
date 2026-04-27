@@ -27,8 +27,8 @@ test("mobile workbench keeps list mounted under the main overlay", async () => {
   assert.doesNotMatch(source, /mobileMainFlow/);
   assert.match(types, /mobile:\s*\{/);
   assert.match(types, /mainFlow:/);
-  assert.match(sessionsSection, /mobile:\s*\{/);
-  assert.match(sessionsSection, /mainFlow:\s*"list-main"/);
+  assert.match(sessionsSection, /defineWorkbenchSection/);
+  assert.doesNotMatch(sessionsSection, /mainFlow:\s*"list-main"/);
   assert.doesNotMatch(source, /v-show="mobileScreen === 'list'"/);
 });
 
@@ -74,8 +74,8 @@ test("desktop workbench sizes list pane through runtime resize state", async () 
   assert.match(types, /desktop:\s*\{/);
   assert.match(types, /listPane\?:/);
   assert.doesNotMatch(types, /desktopListPane/);
-  assert.match(sessionsSection, /desktop:\s*\{/);
-  assert.match(sessionsSection, /listPane:\s*\{/);
+  assert.match(sessionsSection, /defineWorkbenchSection/);
+  assert.doesNotMatch(sessionsSection, /listPane:\s*\{\}/);
   assert.match(runtime, /desktopListPaneWidthPx/);
   assert.match(runtime, /setDesktopListPaneWidth/);
   assert.match(runtime, /clampDesktopListPaneWidth/);
@@ -87,6 +87,23 @@ test("desktop workbench sizes list pane through runtime resize state", async () 
   assert.match(desktop, /aria-orientation="vertical"/);
   assert.match(desktop, /@pointerdown="startListPaneResize"/);
   assert.doesNotMatch(desktop, /w-\(--side-panel-width\)/);
+});
+
+test("workbench sections use a definition helper for default layout", async () => {
+  const types = await readFile(new URL("../../../webui/src/components/workbench/types.ts", import.meta.url), "utf8");
+  const registry = await readFile(new URL("../../../webui/src/sections/registry.ts", import.meta.url), "utf8");
+  const sectionSources = await Promise.all(["sessions", "config", "data", "settings", "workspace"].map((name) =>
+    readFile(new URL(`../../../webui/src/sections/${name}/index.ts`, import.meta.url), "utf8")
+  ));
+
+  assert.match(types, /export function defineWorkbenchSection/);
+  assert.match(types, /defaultWorkbenchSectionLayout/);
+  assert.match(registry, /defineWorkbenchSection/);
+  for (const source of sectionSources) {
+    assert.match(source, /defineWorkbenchSection/);
+    assert.doesNotMatch(source, /satisfies WorkbenchSection/);
+    assert.doesNotMatch(source, /layout:\s*\{\s*mobile:\s*\{/s);
+  }
 });
 
 test("desktop workbench persists list pane width per section", async () => {

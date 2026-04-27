@@ -1,22 +1,14 @@
-import type { WorkbenchSection } from "@/components/workbench/types";
+import { defineWorkbenchSection } from "@/components/workbench/types";
 import WorkspaceListPane from "./WorkspaceListPane.vue";
 import WorkspaceMainPane from "./WorkspaceMainPane.vue";
 import WorkspaceMobileHeader from "./WorkspaceMobileHeader.vue";
 
-export const workspaceSection = {
+export const workspaceSection = defineWorkbenchSection({
   id: "files",
   title: "文件",
   regions: {
     listPane: WorkspaceListPane,
     mainPane: WorkspaceMainPane,
     mobileHeader: WorkspaceMobileHeader
-  },
-  layout: {
-    mobile: {
-      mainFlow: "list-main"
-    },
-    desktop: {
-      listPane: {}
-    }
   }
-} satisfies WorkbenchSection;
+});

@@ -1,22 +1,14 @@
-import type { WorkbenchSection } from "@/components/workbench/types";
+import { defineWorkbenchSection } from "@/components/workbench/types";
 import ConfigListPane from "./ConfigListPane.vue";
 import ConfigMainPane from "./ConfigMainPane.vue";
 import ConfigMobileHeader from "./ConfigMobileHeader.vue";
 
-export const configSection = {
+export const configSection = defineWorkbenchSection({
   id: "config",
   title: "配置",
   regions: {
     listPane: ConfigListPane,
     mainPane: ConfigMainPane,
     mobileHeader: ConfigMobileHeader
-  },
-  layout: {
-    mobile: {
-      mainFlow: "list-main"
-    },
-    desktop: {
-      listPane: {}
-    }
   }
-} satisfies WorkbenchSection;
+});
