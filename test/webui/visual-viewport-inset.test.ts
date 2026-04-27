@@ -2,35 +2,38 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { resolveKeyboardInsetPx } from "../../webui/src/composables/useVisualViewportInset.ts";
 
-test("keyboard inset is measured against target bottom when a target boundary is provided", () => {
-  const inset = resolveKeyboardInsetPx({
-    baselineViewportHeight: 900,
-    viewportHeight: 550,
-    viewportOffsetTop: 0,
-    targetBottom: 868
-  });
+test("keyboard inset resolves against target, fallback baseline, and visual viewport offset", () => {
+  const cases = [
+    {
+      name: "target boundary",
+      targetBottom: 868,
+      viewportOffsetTop: 0,
+      expected: 318
+    },
+    {
+      name: "baseline fallback",
+      targetBottom: null,
+      viewportOffsetTop: 0,
+      expected: 350
+    },
+    {
+      name: "viewport offset",
+      targetBottom: 868,
+      viewportOffsetTop: 24,
+      expected: 294
+    }
+  ];
 
-  assert.equal(inset, 318);
-});
-
-test("keyboard inset falls back to baseline viewport bottom without a target boundary", () => {
-  const inset = resolveKeyboardInsetPx({
-    baselineViewportHeight: 900,
-    viewportHeight: 550,
-    viewportOffsetTop: 0,
-    targetBottom: null
-  });
-
-  assert.equal(inset, 350);
-});
-
-test("keyboard inset accounts for visual viewport offset", () => {
-  const inset = resolveKeyboardInsetPx({
-    baselineViewportHeight: 900,
-    viewportHeight: 550,
-    viewportOffsetTop: 24,
-    targetBottom: 868
-  });
-
-  assert.equal(inset, 294);
+  for (const item of cases) {
+    assert.equal(
+      resolveKeyboardInsetPx({
+        baselineViewportHeight: 900,
+        viewportHeight: 550,
+        viewportOffsetTop: item.viewportOffsetTop,
+        targetBottom: item.targetBottom
+      }),
+      item.expected,
+      item.name
+    );
+  }
 });
