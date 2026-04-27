@@ -1,8 +1,8 @@
 import { computed, ref, type ComputedRef, type Ref } from "vue";
-import { onBeforeRouteLeave } from "vue-router";
 import { ApiError } from "@/api/client";
 import { sessionsApi } from "@/api/sessions";
 import type { SessionDetailResult } from "@/api/types";
+import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
 import { useWorkbenchWindows } from "@/composables/workbench/useWorkbenchWindows";
 import { openCreateSessionWindow } from "@/components/sessions/createSessionWindow";
@@ -29,10 +29,7 @@ type SessionsSectionState = {
   openSessionActions: (sessionId: string) => Promise<void>;
 };
 
-let sharedState: SessionsSectionState | null = null;
-
-export function useSessionsSection() {
-  if (!sharedState) {
+export const useSessionsSection = createSharedSectionState<SessionsSectionState>(() => {
     const store = useSessionsStore();
     const workbenchRuntime = useWorkbenchRuntime();
     const windows = useWorkbenchWindows();
@@ -312,7 +309,7 @@ export function useSessionsSection() {
       });
     }
 
-    sharedState = {
+    return {
       store,
       loading,
       mobileHeaderTitle,
@@ -323,11 +320,4 @@ export function useSessionsSection() {
       openCreateDialog,
       openSessionActions
     };
-  }
-
-  onBeforeRouteLeave(() => {
-    sharedState?.resetState();
-  });
-
-  return sharedState;
-}
+});

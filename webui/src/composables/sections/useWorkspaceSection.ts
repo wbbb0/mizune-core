@@ -1,7 +1,7 @@
 import { computed, ref, type ComputedRef, type Ref } from "vue";
-import { onBeforeRouteLeave } from "vue-router";
 import { RefreshCw, FolderOpen, Image as ImageIcon, FileText, File, Folder } from "lucide-vue-next";
 import { fileApi, type ChatFileSummary, type LocalFilePreview, type LocalFileItem } from "@/api/workspace";
+import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
 
 type Mode = "files" | "stored-files";
@@ -33,10 +33,7 @@ type WorkspaceSectionState = {
   formatTime: (ms: number) => string;
 };
 
-let sharedState: WorkspaceSectionState | null = null;
-
-export function useWorkspaceSection() {
-  if (!sharedState) {
+export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionState>(() => {
     const workbenchRuntime = useWorkbenchRuntime();
     const mode = ref<Mode>("files");
     const loadingFiles = ref(false);
@@ -234,7 +231,7 @@ export function useWorkspaceSection() {
       return new Date(ms).toLocaleString("zh-CN");
     }
 
-    sharedState = {
+    return {
       mode,
       loadingFiles,
       loadingAssets,
@@ -260,13 +257,6 @@ export function useWorkspaceSection() {
       formatSize,
       formatTime
     };
-  }
-
-  onBeforeRouteLeave(() => {
-    sharedState?.resetState();
-  });
-
-  return sharedState;
-}
+});
 
 export type { ChatFileSummary, LocalFilePreview, LocalFileItem };

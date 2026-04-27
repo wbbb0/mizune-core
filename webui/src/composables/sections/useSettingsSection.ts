@@ -1,7 +1,8 @@
 import { computed, ref, type ComputedRef, type Ref } from "vue";
-import { onBeforeRouteLeave, useRouter } from "vue-router";
+import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { authApi, type AuthSettings } from "@/api/auth";
+import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { useWorkbenchRuntime } from "@/composables/workbench/useWorkbenchRuntime";
 
 type SettingsSectionState = {
@@ -32,10 +33,7 @@ type SettingsSectionState = {
   formatTime: (value: number | null | undefined) => string;
 };
 
-let sharedState: SettingsSectionState | null = null;
-
-export function useSettingsSection() {
-  if (!sharedState) {
+export const useSettingsSection = createSharedSectionState<SettingsSectionState>(() => {
     const router = useRouter();
     const auth = useAuthStore();
     const runtime = useWorkbenchRuntime();
@@ -225,7 +223,7 @@ export function useSettingsSection() {
       return new Date(value).toLocaleString("zh-CN");
     }
 
-    sharedState = {
+    return {
       auth,
       activeItem,
       settings,
@@ -252,13 +250,6 @@ export function useSettingsSection() {
       logout,
       formatTime
     };
-  }
-
-  onBeforeRouteLeave(() => {
-    sharedState?.resetState();
-  });
-
-  return sharedState;
-}
+});
 
 export type { AuthSettings };
