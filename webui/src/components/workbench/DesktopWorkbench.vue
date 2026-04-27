@@ -53,6 +53,10 @@ function onListPaneResizeKeydown(event: KeyboardEvent) {
   }
 }
 
+function resetListPaneResize() {
+  props.runtime.resetDesktopListPaneWidth();
+}
+
 onUnmounted(stopListPaneResize);
 </script>
 
@@ -72,6 +76,7 @@ onUnmounted(stopListPaneResize);
           :aria-valuenow="desktopListPaneWidth"
           tabindex="0"
           @pointerdown="startListPaneResize"
+          @dblclick="resetListPaneResize"
           @keydown="onListPaneResizeKeydown"
         />
         <main ref="runtime.mainRegionRef" class="flex min-w-0 flex-1 flex-col overflow-hidden pr-safe">

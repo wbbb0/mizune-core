@@ -78,14 +78,17 @@ test("desktop workbench sizes list pane through runtime resize state", async () 
   assert.doesNotMatch(sessionsSection, /listPane:\s*\{\}/);
   assert.match(runtime, /desktopListPaneWidthPx/);
   assert.match(runtime, /setDesktopListPaneWidth/);
+  assert.match(runtime, /resetDesktopListPaneWidth/);
   assert.match(runtime, /clampDesktopListPaneWidth/);
   assert.match(runtime, /layout\.desktop\.listPane/);
   assert.doesNotMatch(runtime, /layout\.desktopListPane/);
   assert.match(desktop, /desktopListPaneStyle/);
   assert.match(desktop, /startListPaneResize/);
+  assert.match(desktop, /resetListPaneResize/);
   assert.match(desktop, /role="separator"/);
   assert.match(desktop, /aria-orientation="vertical"/);
   assert.match(desktop, /@pointerdown="startListPaneResize"/);
+  assert.match(desktop, /@dblclick="resetListPaneResize"/);
   assert.doesNotMatch(desktop, /w-\(--side-panel-width\)/);
 });
 

@@ -13,6 +13,7 @@ export type WorkbenchRuntime = {
   desktopListPaneStyle: ComputedRef<{ width: string }>;
   clampDesktopListPaneWidth: (widthPx: number) => number;
   setDesktopListPaneWidth: (widthPx: number) => void;
+  resetDesktopListPaneWidth: () => void;
   mobileStack: Ref<MobileRegionStackEntry[]>;
   mobileTop: ComputedRef<MobileRegionStackEntry>;
   isMobileMainVisible: ComputedRef<boolean>;
@@ -105,6 +106,10 @@ export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): 
     writeStoredDesktopListPaneWidth(section.value.id, nextWidth);
   }
 
+  function resetDesktopListPaneWidth() {
+    setDesktopListPaneWidth(resolveDesktopListPaneDefaultWidth());
+  }
+
   function resetMobileStack() {
     mobileStack.value = section.value.layout.mobile.mainFlow === "main-only"
       ? [{ kind: "main", sectionId: section.value.id }]
@@ -144,6 +149,7 @@ export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): 
     desktopListPaneStyle,
     clampDesktopListPaneWidth,
     setDesktopListPaneWidth,
+    resetDesktopListPaneWidth,
     mobileStack,
     mobileTop,
     isMobileMainVisible,
