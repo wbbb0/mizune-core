@@ -15,8 +15,8 @@ WebUI 当前采用统一的 workbench 外壳，而不是让每个页面各自拼
   - 同时挂载全局 `MenuHost` 与 `WindowHost`
 - `useWorkbenchRegistry`
   - 维护 section 注册表
-- `useWorkbenchRuntime`
-  - 管理移动端 `list/main` 等工作台级状态
+- `workbenchRuntime`
+  - 管理移动端 `list/main`、当前激活 workbench、键盘避让边界和桌面 pane 尺寸等工作台级运行状态
 
 当前 section 至少声明：
 
@@ -24,7 +24,8 @@ WebUI 当前采用统一的 workbench 外壳，而不是让每个页面各自拼
 - `regions.listPane`
 - `regions.mainPane`
 - 可选的 `regions.mobileHeader`
-- `layout.mobileMainFlow`
+- `layout.mobile.mainFlow`
+- 可选的 `layout.desktop.listPane`
 
 这样 page / route 只负责选择 section，布局行为由 workbench 统一承担。
 
@@ -32,9 +33,9 @@ WebUI 当前采用统一的 workbench 外壳，而不是让每个页面各自拼
 
 - `webui/src/components/workbench/SectionHost.vue`
 - `webui/src/components/workbench/WorkbenchShell.vue`
+- `webui/src/components/workbench/runtime/workbenchRuntime.ts`
 - `webui/src/components/workbench/types.ts`
 - `webui/src/composables/workbench/useWorkbenchRegistry.ts`
-- `webui/src/composables/workbench/useWorkbenchRuntime.ts`
 - `webui/src/sections/registry.ts`
 
 ## 桌面端与移动端布局
@@ -51,16 +52,31 @@ WebUI 当前采用统一的 workbench 外壳，而不是让每个页面各自拼
 
 移动端结构：
 
-- list / main 两屏切换由 `useWorkbenchRuntime` 控制
+- list / main 两屏切换由 `workbenchRuntime` 控制
 - list 屏显示 section 列表区域和工作台菜单入口
 - main 屏显示 section 主内容与移动端头部
 - 移动端不常驻完整桌面 chrome，而是把全局操作折叠进工作台菜单
+- main 屏作为覆盖层从右侧进入，list 屏保持挂载在下方
+- 浏览器返回在移动端优先弹出 main 覆盖层，再退回真实路由历史
 
 相关实现入口：
 
 - `webui/src/components/workbench/DesktopWorkbench.vue`
 - `webui/src/components/workbench/MobileWorkbench.vue`
-- `webui/src/composables/workbench/useWorkbenchRuntime.ts`
+- `webui/src/components/workbench/runtime/workbenchRuntime.ts`
+
+## 桌面 Pane 尺寸
+
+桌面端 pane 尺寸属于 workbench runtime 能力，不应由各 section 自己维护局部状态。
+
+当前约定：
+
+- `layout.desktop.listPane` 只声明约束和默认值
+- list pane 的实际宽度由 `workbenchRuntime` 统一维护
+- 用户拖拽后的 list pane 宽度以一份全局值持久化，而不是按 section 分开保存
+- section 切换时，runtime 会用当前 section 的 `minWidthPx` / `maxWidthPx` 对全局宽度重新 clamp
+- 双击分隔条重置为当前 section 的默认宽度，并写回全局宽度
+- 后续若扩展到更多 VS Code 风格 pane，可沿用“全局实际尺寸 + section 约束”的模型，再把 pane id 纳入 runtime 的统一尺寸 registry
 
 ## 全局 Chrome 与菜单系统
 
