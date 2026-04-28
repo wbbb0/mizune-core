@@ -2,6 +2,7 @@ import type { TurnPlannerContextDependency, TurnPlannerFollowupMode, TurnPlanner
 import type { GenerationRuntimeBatchMessage } from "./generationExecutor.ts";
 import type { GenerationPromptToolEvent } from "./generationPromptBuilder.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
+import { hasDiceRollSignal } from "#llm/tools/runtime/diceExpression.ts";
 
 type RecentToolsetDomains = {
   hasWeb: boolean;
@@ -17,6 +18,7 @@ export interface ToolsetSupplementSignals {
   recentDomainReuse: string[];
   followupMode: TurnPlannerFollowupMode;
   recentDomains: RecentToolsetDomains;
+  hasDiceRollSignal: boolean;
 }
 
 export function buildToolsetSupplementSignals(input: {
@@ -31,7 +33,8 @@ export function buildToolsetSupplementSignals(input: {
     contextDependencies: input.plannerDecision?.contextDependencies ?? [],
     recentDomainReuse: input.plannerDecision?.recentDomainReuse ?? [],
     followupMode: input.plannerDecision?.followupMode ?? "none",
-    recentDomains: summarizeRecentDomains(input.availableToolsets, input.recentToolEvents)
+    recentDomains: summarizeRecentDomains(input.availableToolsets, input.recentToolEvents),
+    hasDiceRollSignal: input.batchMessages.some((message) => hasDiceRollSignal(message.text))
   };
 }
 

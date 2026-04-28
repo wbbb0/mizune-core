@@ -353,6 +353,22 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    modeUniversal: true,
+    id: "dice_roller",
+    title: "骰子",
+    description: "随机投骰并计算骰子表达式。",
+    promptGuidance: [
+      "需要随机投骰时直接调用 roll_dice；表达式照抄用户意图，不确定骰面时按常见单骰用 1D6。"
+    ],
+    plannerSignals: [
+      "投骰、掷骰、roll dice",
+      "D20、D6、3D6+5"
+    ],
+    toolNames: [
+      "roll_dice"
+    ]
+  },
+  {
     id: "session_mode_control",
     title: "会话模式控制",
     description: "查看并切换当前会话模式。",

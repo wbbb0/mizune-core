@@ -80,6 +80,7 @@ import { resolveSessionModeSetupContext } from "../../src/app/generation/generat
       "chat_file_io",
       "scheduler_admin",
       "time_utils",
+      "dice_roller",
       "session_mode_control"
     ]);
     assert.equal(toolsets.some((item) => item.id === "memory_profile"), false);
@@ -194,7 +195,8 @@ import { resolveSessionModeSetupContext } from "../../src/app/generation/generat
           hasShell: false,
           hasLocalFiles: false,
           hasChatContext: false
-        }
+        },
+        hasDiceRollSignal: false
       }
     });
 

@@ -3,6 +3,7 @@ import type { ToolExecutionEffect } from "#llm/toolExecutionScheduler.ts";
 
 const READ_ONLY_TOOL_RESOURCES: Record<string, readonly string[]> = {
   get_current_time: ["time:current"],
+  roll_dice: ["random:dice"],
   get_runtime_config: ["runtime:config"],
   echo: [],
   list_live_resources: ["browser:*", "terminal:*"],

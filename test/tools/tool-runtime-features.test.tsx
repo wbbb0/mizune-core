@@ -30,6 +30,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.ok(names.includes("get_scenario_state"));
     assert.ok(names.includes("update_scenario_state"));
     assert.ok(names.includes("get_current_time"));
+    assert.ok(names.includes("roll_dice"));
     assert.ok(names.includes("view_forward_record"));
     assert.ok(names.includes("chat_file_view_media"));
     assert.ok(names.includes("view_message"));

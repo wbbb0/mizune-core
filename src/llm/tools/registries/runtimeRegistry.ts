@@ -1,4 +1,5 @@
 import type { AppConfig } from "#config/config.ts";
+import { diceToolDescriptors, diceToolHandlers } from "../runtime/diceTools.ts";
 import { debugToolDescriptors, debugToolHandlers } from "../runtime/debugTools.ts";
 import { getComfyToolDescriptors, comfyToolHandlers } from "../runtime/comfyTools.ts";
 import { resourceToolDescriptors, resourceToolHandlers } from "../runtime/resourceTools.ts";
@@ -21,6 +22,7 @@ const runtimeStaticToolDescriptorsRegistry = [
   ...shellToolDescriptors,
   ...localFileToolDescriptors,
   ...chatFileToolDescriptors,
+  ...diceToolDescriptors,
   ...timeToolDescriptors
 ];
 
@@ -40,5 +42,6 @@ export const runtimeToolHandlersRegistry = {
   ...shellToolHandlers,
   ...localFileToolHandlers,
   ...chatFileToolHandlers,
+  ...diceToolHandlers,
   ...timeToolHandlers
 };

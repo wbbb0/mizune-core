@@ -8,7 +8,8 @@ const AVAILABLE_TOOLSETS = [
   { id: "shell_runtime", title: "Shell 运行时", description: "", toolNames: ["terminal_run"] },
   { id: "local_file_io", title: "本地文件", description: "", toolNames: ["local_file_read", "local_file_mkdir"] },
   { id: "memory_profile", title: "长期资料与规则", description: "", toolNames: ["upsert_user_memory"] },
-  { id: "scheduler_admin", title: "定时任务管理", description: "", toolNames: ["create_scheduled_job"] }
+  { id: "scheduler_admin", title: "定时任务管理", description: "", toolNames: ["create_scheduled_job"] },
+  { id: "dice_roller", title: "骰子", description: "", toolNames: ["roll_dice"] }
 ];
 
 function createBatchMessage(overrides: Partial<Parameters<typeof supplementPlannedToolsets>[0]["batchMessages"][number]> = {}) {
@@ -115,6 +116,27 @@ function createBatchMessage(overrides: Partial<Parameters<typeof supplementPlann
     });
     assert.deepEqual(result.toolsetIds, ["memory_profile"]);
     assert.deepEqual(result.addedToolsetIds, ["memory_profile"]);
+  });
+
+  test("supplement adds dice_roller for dice notation without planner help", async () => {
+    const result = supplementPlannedToolsets({
+      selectedToolsetIds: [],
+      availableToolsets: AVAILABLE_TOOLSETS,
+      batchMessages: [createBatchMessage({ text: "帮我投 3D6+5+1D20" })],
+      recentToolEvents: [],
+      plannerDecision: {
+        reason: "需要投骰",
+        replyDecision: "reply_small",
+        topicDecision: "continue_topic",
+        requiredCapabilities: [],
+        contextDependencies: [],
+        recentDomainReuse: [],
+        followupMode: "none",
+        toolsetIds: []
+      }
+    });
+    assert.deepEqual(result.toolsetIds, ["dice_roller"]);
+    assert.deepEqual(result.addedToolsetIds, ["dice_roller"]);
   });
 
   test("supplement inherits recent browser activity for short followups", async () => {
