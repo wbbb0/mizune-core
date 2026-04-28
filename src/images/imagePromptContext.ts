@@ -9,13 +9,13 @@ export function collectReferencedImageIds(messages: Array<{ content: string }>):
   return Array.from(new Set(messages.flatMap((message) => extractStructuredMediaIds(message.content))));
 }
 
-export function annotateHistoryMessagesWithCaptions(
-  messages: Array<{ role: "user" | "assistant"; content: string; timestampMs?: number | null }>,
+export function annotateHistoryMessagesWithCaptions<T extends { role: "user" | "assistant"; content: string; timestampMs?: number | null }>(
+  messages: T[],
   captions: ReadonlyMap<string, string>,
   options?: {
     includeIds?: boolean;
   }
-): Array<{ role: "user" | "assistant"; content: string; timestampMs?: number | null }> {
+): T[] {
   return messages.map((message) => ({
     ...message,
     content: annotateStructuredMediaReferences(message.content, captions, options)

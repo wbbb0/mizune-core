@@ -10,7 +10,10 @@ import { buildTurnPlannerPrompt } from "#llm/prompts/turn-planner.prompt.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
+import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import type { ToolsetView } from "#llm/tools/toolsets.ts";
+import { annotateHistoryMessagesWithCaptions, collectReferencedImageIds } from "#images/imagePromptContext.ts";
+import { collectVisualAttachmentFileIds, isPendingChatAttachmentId } from "#services/workspace/chatAttachments.ts";
 
 export type TurnPlannerRequiredCapability =
   | "external_info_lookup"
@@ -71,6 +74,14 @@ export interface TurnPlannerResult {
   reasoningContent?: string;
 }
 
+type TurnPlannerMediaCaptionKind = "image" | "emoji";
+
+interface TurnPlannerMediaCaption {
+  imageId: string;
+  kind: TurnPlannerMediaCaptionKind;
+  caption: string;
+}
+
 const MAX_LOG_REASON_LENGTH = 96;
 const NO_REPLY_WAIT_REASON_PATTERNS = [
   /(?:无需回复|不需要回复|不用回复|无需回应|不用回应|不必回复|不必回应)/u,
@@ -91,7 +102,8 @@ export class TurnPlanner {
     private readonly llmClient: LlmClient,
     private readonly chatFileStore: Pick<ChatFileStore, "getMany">,
     private readonly mediaVisionService: Pick<MediaVisionService, "prepareFilesForModel">,
-    private readonly logger: Logger
+    private readonly logger: Logger,
+    private readonly mediaCaptionService?: Pick<MediaCaptionService, "ensureReady">
   ) {}
 
   isEnabled(): boolean {
@@ -119,6 +131,7 @@ export class TurnPlanner {
     const recentMessages = input.recentMessages.slice(-this.config.llm.turnPlanner.recentMessageCount);
     const batchAnalysis = analyzeTurnPlannerBatch(input.batchMessages);
     const plannerProfile = getPrimaryModelProfile(this.config, plannerModelRefs);
+    const captionContext = await this.prepareCaptionContext(input, recentMessages, plannerProfile?.supportsVision === true);
     const emojiImageIds = plannerProfile?.supportsVision
       ? Array.from(new Set(input.batchMessages.flatMap((message) => (
         message.attachments
@@ -167,6 +180,7 @@ export class TurnPlanner {
         batchMessageCount: input.batchMessages.length,
         batchFeatures: batchAnalysis.summaryTags,
         emojiInputCount: emojiInputs.length,
+        mediaCaptionCount: captionContext.mediaCaptions.length,
         availableToolsetCount: (input.availableToolsets ?? []).length
       },
       "turn_planner_started"
@@ -185,9 +199,10 @@ export class TurnPlanner {
         messages: buildTurnPlannerPrompt({
           ...input,
           availableToolsets: input.availableToolsets ?? [],
-          recentMessages,
+          recentMessages: captionContext.recentMessages,
           batchAnalysis,
-          emojiInputs
+          emojiInputs,
+          mediaCaptions: captionContext.mediaCaptions
         })
       });
       raw = result.text;
@@ -316,6 +331,52 @@ export class TurnPlanner {
     return getModelRefsForRole(this.config, "turn_planner");
   }
 
+  private async prepareCaptionContext(
+    input: TurnPlannerInput,
+    recentMessages: TurnPlannerInput["recentMessages"],
+    supportsVision: boolean
+  ): Promise<{
+    recentMessages: TurnPlannerInput["recentMessages"];
+    mediaCaptions: TurnPlannerMediaCaption[];
+  }> {
+    if (supportsVision || !this.mediaCaptionService) {
+      return { recentMessages, mediaCaptions: [] };
+    }
+
+    const historyImageIds = collectReferencedImageIds(recentMessages);
+    const batchRefs = collectBatchMediaRefs(input.batchMessages);
+    const imageIds = uniqueIds([...historyImageIds, ...batchRefs.map((item) => item.imageId)]);
+    if (imageIds.length === 0) {
+      return { recentMessages, mediaCaptions: [] };
+    }
+
+    try {
+      const captions = await this.mediaCaptionService.ensureReady(imageIds, {
+        reason: "turn_planner_caption_context",
+        ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+      });
+      return {
+        recentMessages: annotateHistoryMessagesWithCaptions(recentMessages, captions, { includeIds: true }),
+        mediaCaptions: batchRefs
+          .map((item) => {
+            const caption = captions.get(item.imageId);
+            return caption ? { ...item, caption } : null;
+          })
+          .filter((item): item is TurnPlannerMediaCaption => item != null)
+      };
+    } catch (error: unknown) {
+      this.logger.warn(
+        {
+          sessionId: input.sessionId,
+          imageIds,
+          error: error instanceof Error ? error.message : String(error)
+        },
+        "turn_planner_image_caption_context_failed"
+      );
+      return { recentMessages, mediaCaptions: [] };
+    }
+  }
+
   private normalizeDecision(
     parsed: TurnPlannerResult,
     input: TurnPlannerInput,
@@ -357,6 +418,43 @@ export class TurnPlanner {
       toolsetIds: []
     };
   }
+}
+
+function collectBatchMediaRefs(messages: TurnPlannerInput["batchMessages"]): Array<{
+  imageId: string;
+  kind: TurnPlannerMediaCaptionKind;
+}> {
+  const refs: Array<{ imageId: string; kind: TurnPlannerMediaCaptionKind }> = [];
+  const seen = new Set<string>();
+  const add = (imageId: string, kind: TurnPlannerMediaCaptionKind): void => {
+    const normalized = String(imageId ?? "").trim();
+    if (!normalized || isPendingChatAttachmentId(normalized) || seen.has(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+    refs.push({ imageId: normalized, kind });
+  };
+
+  for (const message of messages) {
+    for (const imageId of message.imageIds ?? []) {
+      add(imageId, "image");
+    }
+    for (const emojiId of message.emojiIds ?? []) {
+      add(emojiId, "emoji");
+    }
+    for (const imageId of collectVisualAttachmentFileIds(message.attachments, "image")) {
+      add(imageId, "image");
+    }
+    for (const emojiId of collectVisualAttachmentFileIds(message.attachments, "emoji")) {
+      add(emojiId, "emoji");
+    }
+  }
+
+  return refs;
+}
+
+function uniqueIds(ids: string[]): string[] {
+  return Array.from(new Set(ids.map((item) => String(item ?? "").trim()).filter(Boolean)));
 }
 
 function parseUnknownToolsetIds(value: unknown): string[] {

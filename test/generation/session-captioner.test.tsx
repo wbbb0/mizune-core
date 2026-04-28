@@ -61,6 +61,55 @@ function createDeferred<T>() {
     assert.match(capturedParams.messages[1].content as string, /会话模式：rp_assistant/);
   });
 
+  test("session captioner injects image captions for non-vision title models", async () => {
+    const config = createTestAppConfig({
+      llm: {
+        enabled: true,
+        models: {
+          sessionCaptioner: {
+            supportsVision: false
+          }
+        },
+        sessionCaptioner: {
+          enabled: true
+        }
+      }
+    });
+
+    let ensuredImageIds: string[] = [];
+    let capturedUserPrompt = "";
+    const captioner = new SessionCaptioner(config, {
+      isConfigured() {
+        return true;
+      },
+      async generate(params: any) {
+        capturedUserPrompt = params.messages[1].content;
+        return { text: "截图排版讨论" };
+      }
+    } as never, pino({ level: "silent" }), {
+      async ensureReady(imageIds: string[]) {
+        ensuredImageIds = imageIds;
+        return new Map([["file_screen_1", "一张后台配置页面截图，左侧是导航栏，右侧是模型配置表单"]]);
+      }
+    });
+
+    const title = await captioner.generateTitle({
+      sessionId: "web:test",
+      modeId: "assistant",
+      reason: "turn_auto",
+      historySummary: null,
+      history: [{
+        role: "user",
+        content: "帮我看这个页面\n⟦ref kind=\"image\" image_id=\"file_screen_1\"⟧",
+        timestampMs: 1
+      }]
+    });
+
+    assert.equal(title, "截图排版讨论");
+    assert.deepEqual(ensuredImageIds, ["file_screen_1"]);
+    assert.match(capturedUserPrompt, /图片描述：一张后台配置页面截图，左侧是导航栏，右侧是模型配置表单/);
+  });
+
   test("scenario setup captioning uses location-and-situation prompt from structured state", async () => {
     const config = createTestAppConfig({
       llm: {

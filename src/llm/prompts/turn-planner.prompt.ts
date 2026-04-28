@@ -61,6 +61,11 @@ export function buildTurnPlannerPrompt(input: {
     durationMs: number | null;
     sampledFrameCount: number | null;
   }>;
+  mediaCaptions?: Array<{
+    imageId: string;
+    kind: "image" | "emoji";
+    caption: string;
+  }>;
 }): LlmMessage[] {
   const system = [
     renderPromptSection("planner_identity", [
@@ -108,6 +113,9 @@ export function buildTurnPlannerPrompt(input: {
     renderPromptSectionRaw("planner_recent_messages", input.recentMessages.length > 0
       ? [formatMessages(input.recentMessages)]
       : ["<empty>"]),
+    renderPromptSection("planner_media_captions", (input.mediaCaptions ?? []).length > 0
+      ? formatMediaCaptions(input.mediaCaptions ?? [])
+      : ["count=0"]),
     renderPromptSection("planner_emoji_inputs", input.emojiInputs.length > 0
       ? [
           `count=${input.emojiInputs.length}`,
@@ -148,6 +156,19 @@ export function buildTurnPlannerPrompt(input: {
         }))
       ]
     }
+  ];
+}
+
+function formatMediaCaptions(input: Array<{
+  imageId: string;
+  kind: "image" | "emoji";
+  caption: string;
+}>): string[] {
+  return [
+    `count=${input.length}`,
+    ...input.map((item) => (
+      `- ${sanitizeCaptionLine(item.imageId)} ${item.kind} ${item.kind === "emoji" ? "表情" : "图片"}描述：${sanitizeCaptionLine(item.caption)}`
+    ))
   ];
 }
 
@@ -243,6 +264,14 @@ function sanitizeAttr(value: string): string {
     .replace(/⟦/g, "［")
     .replace(/⟧/g, "］")
     .replace(/\r?\n/g, " ");
+}
+
+function sanitizeCaptionLine(value: string): string {
+  return String(value ?? "")
+    .replace(/⟦/g, "［")
+    .replace(/⟧/g, "］")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function formatTimestamp(timestampMs?: number | null): string {

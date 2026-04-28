@@ -6,6 +6,9 @@ import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.
 import type { LlmClient } from "#llm/llmClient.ts";
 import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
+import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
+import { annotateHistoryMessagesWithCaptions, collectReferencedImageIds } from "#images/imagePromptContext.ts";
 import { createSessionTitleGenerationEvent } from "#conversation/session/internalTranscriptEvents.ts";
 
 export interface SessionCaptioningAccess {
@@ -49,7 +52,8 @@ export class SessionCaptioner {
   constructor(
     private readonly config: AppConfig,
     private readonly llmClient: LlmClient,
-    private readonly logger: Logger
+    private readonly logger: Logger,
+    private readonly mediaCaptionService?: Pick<MediaCaptionService, "ensureReady">
   ) {}
 
   isAvailable(): boolean {
@@ -63,7 +67,8 @@ export class SessionCaptioner {
     if (modelRefs.length === 0 || !this.llmClient.isConfigured(modelRefs)) {
       return null;
     }
-    const prompt = buildSessionCaptionPrompt(input);
+    const promptInput = await this.preparePromptInput(input, modelRefs);
+    const prompt = buildSessionCaptionPrompt(promptInput);
 
     try {
       const result = await this.llmClient.generate({
@@ -100,6 +105,35 @@ export class SessionCaptioner {
       return [];
     }
     return getModelRefsForRole(this.config, "session_captioner");
+  }
+
+  private async preparePromptInput(input: SessionCaptionerInput, modelRefs: string[]): Promise<SessionCaptionerInput> {
+    if (getPrimaryModelProfile(this.config, modelRefs)?.supportsVision === true || !this.mediaCaptionService) {
+      return input;
+    }
+
+    const imageIds = collectReferencedImageIds(input.history);
+    if (imageIds.length === 0) {
+      return input;
+    }
+
+    try {
+      const captions = await this.mediaCaptionService.ensureReady(imageIds, { reason: "session_title_caption" });
+      return {
+        ...input,
+        history: annotateHistoryMessagesWithCaptions(input.history, captions, { includeIds: true })
+      };
+    } catch (error: unknown) {
+      this.logger.warn(
+        {
+          sessionId: input.sessionId,
+          imageIds,
+          error: error instanceof Error ? error.message : String(error)
+        },
+        "session_title_image_caption_context_failed"
+      );
+      return input;
+    }
   }
 }
 

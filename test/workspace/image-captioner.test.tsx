@@ -111,7 +111,7 @@ function createCaptionerConfig() {
   });
 }
 
-  test("media caption service requests richer captions and normalizes nsfw labels", async () => {
+  test("media caption service requests detailed captions and preserves nsfw detail", async () => {
     const chatFileStore = new FakeChatFileStore(new Map([
       ["file_nsfw", {
         fileId: "file_nsfw",
@@ -126,11 +126,13 @@ function createCaptionerConfig() {
       },
       async generate(params: { messages: Array<{ role: string; content: unknown }> }) {
         const systemPrompt = String(params.messages[0]?.content ?? "");
+        assert.match(systemPrompt, /尽可能详细/);
         assert.match(systemPrompt, /主体、动作、场景、构图、穿着或外观/);
+        assert.match(systemPrompt, /画面中的可见文字/);
         assert.match(systemPrompt, /必须在开头加“NSFW ”/);
-        assert.match(systemPrompt, /尽量控制在 14 到 36 个字/);
+        assert.doesNotMatch(systemPrompt, /14 到 36 个字/);
         return {
-          text: "成人: 半裸人物站在卧室镜前自拍，长发披肩",
+          text: "成人: 半裸人物站在卧室镜前自拍，长发披肩，画面右侧有白色衣柜，左侧床铺凌乱，灯光偏暖",
           usage: {
             modelRef: "primary"
           }
@@ -159,7 +161,7 @@ function createCaptionerConfig() {
     );
     const captions = await captioner.ensureReady(["file_nsfw"], { reason: "test_nsfw" });
 
-    assert.equal(captions.get("file_nsfw"), "NSFW 半裸人物站在卧室镜前自拍，长发披肩");
+    assert.equal(captions.get("file_nsfw"), "NSFW 半裸人物站在卧室镜前自拍，长发披肩，画面右侧有白色衣柜，左侧床铺凌乱，灯光偏暖");
   });
 
   test("media caption service stores the actual fallback model when generation succeeds", async () => {

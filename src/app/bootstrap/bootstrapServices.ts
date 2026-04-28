@@ -62,7 +62,6 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
   const sessionManager = new SessionManager(config);
   const debounceManager = new DebounceManager(logger, sessionManager, config);
   const llmClient = new LlmClient(config, logger);
-  const sessionCaptioner = new SessionCaptioner(config, llmClient, logger);
   const audioStore = new AudioStore(dataDir);
   const audioTranscriber = new AudioTranscriber(config, llmClient, audioStore, oneBotClient, logger);
   const localFileService = new LocalFileService(config, dataDir);
@@ -74,11 +73,12 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
   );
   const mediaVisionService = new MediaVisionService(config, logger, chatFileStore);
   const mediaCaptionService = new MediaCaptionService(config, llmClient, chatFileStore, mediaVisionService, logger);
+  const sessionCaptioner = new SessionCaptioner(config, llmClient, logger, mediaCaptionService);
   const comfyClient = new ComfyClient(config, logger);
   const comfyTaskStore = new ComfyTaskStore(dataDir, logger);
   const comfyTemplateCatalog = new ComfyTemplateCatalogService(config, logger);
   const historyCompressor = new HistoryCompressor(config, llmClient, sessionManager, mediaCaptionService, logger, chatFileStore);
-  const turnPlanner = new TurnPlanner(config, llmClient, chatFileStore, mediaVisionService, logger);
+  const turnPlanner = new TurnPlanner(config, llmClient, chatFileStore, mediaVisionService, logger, mediaCaptionService);
   const messageQueue = new MessageQueue(logger, config);
   const sessionPersistence = new SessionPersistence(dataDir, logger);
   const scheduledJobStore = new ScheduledJobStore(dataDir, logger);

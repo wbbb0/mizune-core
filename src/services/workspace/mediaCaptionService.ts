@@ -13,10 +13,13 @@ function buildCaptionPrompt(): LlmMessage[] {
     {
       role: "system",
       content: [
-        "你是图片描述生成器，只负责为聊天里的单张图片生成一句简短但信息足够的中文描述。",
-        "优先描述主体、动作、场景、构图、穿着或外观、明显可见文字等可直接看见的信息，不要脑补看不见的细节。",
+        "你是图片描述生成器，只负责为聊天里的单张图片生成尽可能详细的中文描述，供不支持视觉输入的语言模型理解图片内容。",
+        "只描述画面中可直接看见的信息，不要脑补看不见的背景、身份、动机或事实。",
+        "请尽可能覆盖：主体、动作、场景、构图、穿着或外观、表情姿态、颜色、空间位置、物体关系、截图界面、图表结构、画面中的可见文字、可见状态和任何会影响聊天理解的细节。",
+        "如果是表情包或梗图，描述人物/动物/角色、动作表情、字幕文字、整体情绪和可能表达的聊天语气。",
+        "如果是应用、网页、聊天记录、报错、图表或文档截图，重点完整转写可见文字、按钮、字段、数值、错误信息和布局关系。",
         "如果画面含明显成人裸露、性暗示或其他 NSFW 内容，必须在开头加“NSFW ”，再用克制、中性、不露骨的中文描述可见内容。",
-        "输出一行中文，不要加引号、编号或额外解释，尽量控制在 14 到 36 个字。"
+        "输出一段中文纯文本，不要加引号、编号、Markdown 或额外解释；信息越完整越好。"
       ].join("\n")
     }
   ];
@@ -31,9 +34,7 @@ function normalizeCaption(raw: string, fallbackLabel: string): string {
   const isNsfw = Boolean(nsfwMatch);
   const body = (nsfwMatch?.[1] ?? singleLine).trim();
   const normalized = body || fallbackLabel;
-  const maxLength = isNsfw ? 40 : 36;
-  const clipped = normalized.length <= maxLength ? normalized : normalized.slice(0, maxLength);
-  return isNsfw ? `NSFW ${clipped}` : clipped;
+  return isNsfw ? `NSFW ${normalized}` : normalized;
 }
 
 export class MediaCaptionService {
