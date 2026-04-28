@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import SectionHost from "@/sections/SectionHost.vue";
+import WorkbenchViewHost from "@/sections/WorkbenchViewHost.vue";
 </script>
 
 <template>
-  <SectionHost section-id="sessions" />
+  <WorkbenchViewHost view-id="sessions" />
 </template>

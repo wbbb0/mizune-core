@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, reactive, ref, toRaw, watch } from "vue";
 import type {
-  DialogAction,
-  DialogBlock,
-  DialogField,
-  WindowDialogController,
-  WindowDefinition,
-  WindowResult
+  WorkbenchDialogAction,
+  WorkbenchDialogBlock,
+  WorkbenchDialogField,
+  WorkbenchWindowDialogController,
+  WorkbenchWindowDefinition,
+  WorkbenchWindowResult
 } from "./types";
 
 type DialogValues = Record<string, unknown>;
@@ -14,11 +14,11 @@ type DialogPath = string[];
 
 const props = defineProps<{
   windowId: string;
-  definition: WindowDefinition<DialogValues, unknown>;
+  definition: WorkbenchWindowDefinition<DialogValues, unknown>;
 }>();
 
 const emit = defineEmits<{
-  resolve: [result: WindowResult<unknown, DialogValues>];
+  resolve: [result: WorkbenchWindowResult<unknown, DialogValues>];
 }>();
 
 const values = reactive<DialogValues>({});
@@ -87,7 +87,7 @@ function setValueAtPath(path: DialogPath, nextValue: unknown) {
   current[path[path.length - 1]!] = nextValue;
 }
 
-function createDefaultValue(field: DialogField<DialogValues>) {
+function createDefaultValue(field: WorkbenchDialogField<DialogValues>) {
   switch (field.kind) {
     case "string":
     case "textarea":
@@ -105,11 +105,11 @@ function createDefaultValue(field: DialogField<DialogValues>) {
   }
 }
 
-function resolveNumberFallback(field: Extract<DialogField<DialogValues>, { kind: "number" }>) {
+function resolveNumberFallback(field: Extract<WorkbenchDialogField<DialogValues>, { kind: "number" }>) {
   return field.defaultValue ?? field.min ?? 0;
 }
 
-function createFieldValue(field: DialogField<DialogValues>, currentValues: DialogValues) {
+function createFieldValue(field: WorkbenchDialogField<DialogValues>, currentValues: DialogValues) {
   if (Object.prototype.hasOwnProperty.call(currentValues, field.key)) {
     const currentValue = currentValues[field.key];
     if (field.kind === "group") {
@@ -120,7 +120,7 @@ function createFieldValue(field: DialogField<DialogValues>, currentValues: Dialo
   return createDefaultValue(field);
 }
 
-function reconcileFields(fieldsToReconcile: readonly DialogField<DialogValues>[], currentValues: DialogValues) {
+function reconcileFields(fieldsToReconcile: readonly WorkbenchDialogField<DialogValues>[], currentValues: DialogValues) {
   return fieldsToReconcile.reduce<DialogValues>((accumulator, field) => {
     accumulator[field.key] = createFieldValue(field, currentValues);
     return accumulator;
@@ -145,7 +145,7 @@ function snapshotValues() {
   return clonePlain(toRaw(values)) as DialogValues;
 }
 
-defineExpose<WindowDialogController<DialogValues>>({
+defineExpose<WorkbenchWindowDialogController<DialogValues>>({
   snapshotValues
 });
 
@@ -153,7 +153,7 @@ function handleStringInput(fieldKey: string, event: Event, groupKey?: string) {
   setValueAtPath(resolvePath(fieldKey, groupKey), (event.target as HTMLInputElement | HTMLTextAreaElement).value);
 }
 
-function handleNumberInput(field: Extract<DialogField<DialogValues>, { kind: "number" }>, event: Event, groupKey?: string) {
+function handleNumberInput(field: Extract<WorkbenchDialogField<DialogValues>, { kind: "number" }>, event: Event, groupKey?: string) {
   const rawValue = (event.target as HTMLInputElement).value;
   setValueAtPath(resolvePath(field.key, groupKey), rawValue === "" ? resolveNumberFallback(field) : Number(rawValue));
 }
@@ -166,7 +166,7 @@ function handleSelectInput(fieldKey: string, event: Event, groupKey?: string) {
   setValueAtPath(resolvePath(fieldKey, groupKey), (event.target as HTMLSelectElement).value);
 }
 
-function resolveCustomFieldProps(field: Extract<DialogField<DialogValues>, { kind: "custom" }>, groupKey?: string) {
+function resolveCustomFieldProps(field: Extract<WorkbenchDialogField<DialogValues>, { kind: "custom" }>, groupKey?: string) {
   return {
     ...(field.props ?? {}),
     modelValue: getValueAtPath(resolvePath(field.key, groupKey)),
@@ -176,7 +176,7 @@ function resolveCustomFieldProps(field: Extract<DialogField<DialogValues>, { kin
   };
 }
 
-function resolveBlockProps(block: DialogBlock<DialogValues>) {
+function resolveBlockProps(block: WorkbenchDialogBlock<DialogValues>) {
   return block.kind === "component"
     ? {
         ...(block.props ?? {}),
@@ -191,7 +191,7 @@ function resolveComponentReference(component: unknown) {
   return toRaw(component as object);
 }
 
-async function handleAction(action: DialogAction<DialogValues, unknown>) {
+async function handleAction(action: WorkbenchDialogAction<DialogValues, unknown>) {
   if (busyActionId.value !== null) {
     return;
   }

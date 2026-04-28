@@ -6,11 +6,11 @@ import StatusBar from "@/components/workbench/StatusBar.vue";
 import type { WorkbenchRuntime } from "@/components/workbench/runtime/workbenchRuntime";
 import type { WorkbenchStatusbarItem, WorkbenchTopbarMenu } from "@/components/workbench/chrome";
 import type { WorkbenchNavItem } from "@/components/workbench/navigation";
-import type { WorkbenchSection } from "@/components/workbench/types";
+import type { WorkbenchView } from "@/components/workbench/types";
 
 const props = defineProps<{
   runtime: WorkbenchRuntime;
-  section: WorkbenchSection;
+  view: WorkbenchView;
   navItems: readonly WorkbenchNavItem[];
   activeNavItemId: string;
   topbarMenus: WorkbenchTopbarMenu[];
@@ -21,51 +21,51 @@ const emit = defineEmits<{
   navigate: [itemId: string];
 }>();
 
-const listPane = computed(() => props.section.regions.listPane);
-const mainPane = computed(() => props.section.regions.mainPane);
-const hasListPane = computed(() => !!listPane.value);
-const listPaneStyle = computed(() => props.runtime.getDesktopPaneStyle("list"));
-const listPaneWidth = computed(() => props.runtime.getDesktopPaneWidthPx("list"));
+const primarySidebar = computed(() => props.view.areas.primarySidebar);
+const mainArea = computed(() => props.view.areas.mainArea);
+const hasPrimarySidebar = computed(() => !!primarySidebar.value);
+const primarySidebarStyle = computed(() => props.runtime.getDesktopAreaStyle("primarySidebar"));
+const primarySidebarWidth = computed(() => props.runtime.getDesktopAreaWidthPx("primarySidebar"));
 let resizeStartX = 0;
 let resizeStartWidth = 0;
 
-function stopListPaneResize() {
-  window.removeEventListener("pointermove", resizeListPane);
-  window.removeEventListener("pointerup", stopListPaneResize);
-  window.removeEventListener("pointercancel", stopListPaneResize);
+function stopPrimarySidebarResize() {
+  window.removeEventListener("pointermove", resizePrimarySidebar);
+  window.removeEventListener("pointerup", stopPrimarySidebarResize);
+  window.removeEventListener("pointercancel", stopPrimarySidebarResize);
 }
 
-function resizeListPane(event: PointerEvent) {
-  props.runtime.setDesktopPaneWidth("list", resizeStartWidth + event.clientX - resizeStartX);
+function resizePrimarySidebar(event: PointerEvent) {
+  props.runtime.setDesktopAreaWidth("primarySidebar", resizeStartWidth + event.clientX - resizeStartX);
 }
 
-function startListPaneResize(event: PointerEvent) {
+function startPrimarySidebarResize(event: PointerEvent) {
   if (event.button !== 0) {
     return;
   }
   event.preventDefault();
   resizeStartX = event.clientX;
-  resizeStartWidth = props.runtime.getDesktopPaneWidthPx("list");
-  window.addEventListener("pointermove", resizeListPane);
-  window.addEventListener("pointerup", stopListPaneResize);
-  window.addEventListener("pointercancel", stopListPaneResize);
+  resizeStartWidth = props.runtime.getDesktopAreaWidthPx("primarySidebar");
+  window.addEventListener("pointermove", resizePrimarySidebar);
+  window.addEventListener("pointerup", stopPrimarySidebarResize);
+  window.addEventListener("pointercancel", stopPrimarySidebarResize);
 }
 
-function onListPaneResizeKeydown(event: KeyboardEvent) {
+function onPrimarySidebarResizeKeydown(event: KeyboardEvent) {
   if (event.key === "ArrowLeft") {
     event.preventDefault();
-    props.runtime.setDesktopPaneWidth("list", props.runtime.getDesktopPaneWidthPx("list") - 16);
+    props.runtime.setDesktopAreaWidth("primarySidebar", props.runtime.getDesktopAreaWidthPx("primarySidebar") - 16);
   } else if (event.key === "ArrowRight") {
     event.preventDefault();
-    props.runtime.setDesktopPaneWidth("list", props.runtime.getDesktopPaneWidthPx("list") + 16);
+    props.runtime.setDesktopAreaWidth("primarySidebar", props.runtime.getDesktopAreaWidthPx("primarySidebar") + 16);
   }
 }
 
-function resetListPaneResize() {
-  props.runtime.resetDesktopPaneWidth("list");
+function resetPrimarySidebarResize() {
+  props.runtime.resetDesktopAreaWidth("primarySidebar");
 }
 
-onUnmounted(stopListPaneResize);
+onUnmounted(stopPrimarySidebarResize);
 </script>
 
 <template>
@@ -78,22 +78,22 @@ onUnmounted(stopListPaneResize);
           :active-nav-item-id="activeNavItemId"
           @navigate="emit('navigate', $event)"
         />
-        <aside v-if="hasListPane" class="scrollbar-thin shrink-0 overflow-x-hidden overflow-y-auto bg-surface-sidebar" :style="listPaneStyle">
-          <component :is="listPane" />
+        <aside v-if="hasPrimarySidebar" class="scrollbar-thin shrink-0 overflow-x-hidden overflow-y-auto bg-surface-sidebar" :style="primarySidebarStyle">
+          <component :is="primarySidebar" />
         </aside>
         <div
-          v-if="hasListPane"
+          v-if="hasPrimarySidebar"
           class="relative w-1 shrink-0 cursor-col-resize border-l border-border-default bg-surface-sidebar hover:bg-accent/25 focus:bg-accent/25 focus:outline-none"
           role="separator"
           aria-orientation="vertical"
-          :aria-valuenow="listPaneWidth"
+          :aria-valuenow="primarySidebarWidth"
           tabindex="0"
-          @pointerdown="startListPaneResize"
-          @dblclick="resetListPaneResize"
-          @keydown="onListPaneResizeKeydown"
+          @pointerdown="startPrimarySidebarResize"
+          @dblclick="resetPrimarySidebarResize"
+          @keydown="onPrimarySidebarResizeKeydown"
         />
         <main ref="runtime.mainRegionRef" class="flex min-w-0 flex-1 flex-col overflow-hidden pr-safe">
-          <component :is="mainPane" />
+          <component :is="mainArea" />
         </main>
       </div>
       <StatusBar :items="statusbarItems" />

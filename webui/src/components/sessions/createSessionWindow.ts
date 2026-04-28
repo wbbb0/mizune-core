@@ -1,4 +1,4 @@
-import type { WindowDefinition, WindowResult } from "@/components/workbench/windows/types";
+import type { WorkbenchDialogDefinition, WorkbenchWindowResult } from "@/components/workbench/windows/types";
 import { buildCreateSessionPayload, type CreateSessionPayload } from "./createSessionPayload";
 import CreateSessionModeBlock from "./CreateSessionModeBlock.vue";
 import CreateSessionTitleField from "./CreateSessionTitleField.vue";
@@ -10,9 +10,9 @@ import {
 } from "./createSessionDefaults";
 
 type WindowOpener = {
-  open<TValues extends Record<string, unknown>, TResult>(
-    definition: WindowDefinition<TValues, TResult>
-  ): Promise<WindowResult<TResult, TValues>>;
+  openDialog<TValues extends Record<string, unknown>, TResult>(
+    definition: WorkbenchDialogDefinition<TValues, TResult>
+  ): Promise<WorkbenchWindowResult<TResult, TValues>>;
 };
 
 type CreateSessionWindowValues = {
@@ -44,8 +44,7 @@ export async function openCreateSessionWindow(input: {
   const storage = input.storage ?? (typeof window !== "undefined" ? window.localStorage : null);
   const defaultModeId = resolveModeId(input.modes, storage);
 
-  const result = await input.windows.open<CreateSessionWindowValues, CreateSessionPayload>({
-    kind: "dialog",
+  const result = await input.windows.openDialog<CreateSessionWindowValues, CreateSessionPayload>({
     title: "新建会话",
     description: "创建一个 owner Web 会话。这个表单只保留展示与模式字段。",
     size: "lg",

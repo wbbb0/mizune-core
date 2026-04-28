@@ -16,7 +16,7 @@ test("create session dialog keeps remembered mode, schema wiring, and dynamic ti
 
   assert.match(windowSource, /readStoredCreateSessionModeId/);
   assert.match(windowSource, /writeStoredCreateSessionModeId/);
-  assert.match(windowSource, /windows\.open/);
+  assert.match(windowSource, /windows\.openDialog/);
   assert.match(windowSource, /schema:/);
   assert.match(windowSource, /actions:/);
   assert.match(windowSource, /CreateSessionTitleField/);

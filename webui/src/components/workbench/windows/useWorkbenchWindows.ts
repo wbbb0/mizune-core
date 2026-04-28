@@ -1,8 +1,13 @@
 import { computed, ref } from "vue";
-import type { WindowContext, WindowDefinition, WindowResult } from "@/components/workbench/windows/types";
+import type {
+  WorkbenchDialogDefinition,
+  WorkbenchWindowContext,
+  WorkbenchWindowDefinition,
+  WorkbenchWindowResult
+} from "@/components/workbench/windows/types";
 import { createWindowManager } from "./windowManager";
 
-type WindowManagerMode = "desktop" | "mobile";
+type WorkbenchWindowMode = "desktop" | "mobile";
 
 export type WorkbenchRuntimeWindow = {
   id: string;
@@ -12,29 +17,35 @@ export type WorkbenchRuntimeWindow = {
     x: number;
     y: number;
   };
-  definition: WindowDefinition;
+  definition: WorkbenchWindowDefinition;
 };
 
-type WindowManagerFacade = {
+export type WorkbenchWindowManager = {
   manager: ReturnType<typeof createWindowManager>;
   desktopWindows: Readonly<{ value: WorkbenchRuntimeWindow[] }>;
   mobileWindows: Readonly<{ value: WorkbenchRuntimeWindow[] }>;
   openSync<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
-    definition: WindowDefinition<TValues, TResult>
+    definition: WorkbenchWindowDefinition<TValues, TResult>
   ): WorkbenchRuntimeWindow;
   open<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
-    definition: WindowDefinition<TValues, TResult>
-  ): Promise<WindowResult<TResult, TValues>>;
+    definition: WorkbenchWindowDefinition<TValues, TResult>
+  ): Promise<WorkbenchWindowResult<TResult, TValues>>;
+  openDialogSync<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
+    definition: WorkbenchDialogDefinition<TValues, TResult>
+  ): WorkbenchRuntimeWindow;
+  openDialog<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
+    definition: WorkbenchDialogDefinition<TValues, TResult>
+  ): Promise<WorkbenchWindowResult<TResult, TValues>>;
   focus(windowId: string): WorkbenchRuntimeWindow | undefined;
   move(windowId: string, position: { x: number; y: number }): WorkbenchRuntimeWindow | undefined;
   close<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
     windowId: string,
-    result: WindowResult<TResult, TValues>
+    result: WorkbenchWindowResult<TResult, TValues>
   ): void;
-  closeByContext(context: WindowContext, result?: WindowResult): void;
+  closeByContext(context: WorkbenchWindowContext, result?: WorkbenchWindowResult): void;
   get(windowId: string): WorkbenchRuntimeWindow | undefined;
   snapshot(): WorkbenchRuntimeWindow[];
-  visibleStack(mode: WindowManagerMode): WorkbenchRuntimeWindow[];
+  visibleStack(mode: WorkbenchWindowMode): WorkbenchRuntimeWindow[];
 };
 
 const manager = createWindowManager();
@@ -54,7 +65,17 @@ const mobileWindows = computed<WorkbenchRuntimeWindow[]>(() => {
   return manager.visibleStack("mobile") as WorkbenchRuntimeWindow[];
 });
 
-const sharedWorkbenchWindows: WindowManagerFacade = {
+function normalizeDialogDefinition<
+  TValues extends Record<string, unknown> = Record<string, unknown>,
+  TResult = unknown
+>(definition: WorkbenchDialogDefinition<TValues, TResult>): WorkbenchWindowDefinition<TValues, TResult> {
+  return {
+    ...definition,
+    kind: definition.kind ?? "dialog"
+  };
+}
+
+const sharedWorkbenchWindows: WorkbenchWindowManager = {
   manager,
   desktopWindows,
   mobileWindows,
@@ -65,6 +86,16 @@ const sharedWorkbenchWindows: WindowManagerFacade = {
   },
   open(definition) {
     const result = manager.open(definition);
+    touch();
+    return result;
+  },
+  openDialogSync(definition) {
+    const window = manager.openSync(normalizeDialogDefinition(definition)) as WorkbenchRuntimeWindow;
+    touch();
+    return window;
+  },
+  openDialog(definition) {
+    const result = manager.open(normalizeDialogDefinition(definition));
     touch();
     return result;
   },

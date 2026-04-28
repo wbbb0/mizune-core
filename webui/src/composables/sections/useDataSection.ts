@@ -201,12 +201,12 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
 
     function selectResource(key: string) {
       selectedKey.value = key;
-      workbenchNavigation.showMain();
+      workbenchNavigation.showArea("mainArea");
     }
 
     function selectDirectoryItem(key: string) {
       selectedItemKey.value = key;
-      workbenchNavigation.showMain();
+      workbenchNavigation.showArea("mainArea");
     }
 
     async function refreshSelected() {

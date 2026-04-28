@@ -4,11 +4,11 @@ import { createStatusbarMenuNodes, type WorkbenchStatusbarItem, type WorkbenchTo
 import type { WorkbenchNavItem } from "@/components/workbench/navigation";
 import { useMenuTrigger } from "@/composables/workbench/menu/useMenuTrigger";
 import type { WorkbenchRuntime } from "@/components/workbench/runtime/workbenchRuntime";
-import type { WorkbenchSection } from "@/components/workbench/types";
+import type { WorkbenchView } from "@/components/workbench/types";
 
 const props = defineProps<{
   runtime: WorkbenchRuntime;
-  section: WorkbenchSection;
+  view: WorkbenchView;
   navItems: readonly WorkbenchNavItem[];
   activeNavItemId: string;
   topbarMenus: WorkbenchTopbarMenu[];
@@ -19,16 +19,21 @@ const emit = defineEmits<{
   navigate: [itemId: string];
 }>();
 
-const listPane = computed(() => props.section.regions.listPane);
-const mainPane = computed(() => props.section.regions.mainPane);
-const mobileHeader = computed(() => props.section.regions.mobileHeader);
-const routeLabel = computed(() => props.section.title || props.navItems.find((item) => item.id === props.activeNavItemId)?.title || "");
+const mainArea = computed(() => props.view.areas.mainArea);
+const mobileHeader = computed(() => props.view.areas.mobileHeader);
+const routeLabel = computed(() => props.view.title || props.navItems.find((item) => item.id === props.activeNavItemId)?.title || "");
 const mobileNavItems = computed(() => props.navItems);
-const hasMobileListFlow = computed(() => props.runtime.hasMobileListFlow.value);
-const isMobileMainVisible = computed(() => props.runtime.isMobileMainVisible.value);
-const canPopMobileRegion = computed(() => props.runtime.canPopMobileRegion.value);
+const mobileRootAreaId = computed(() => props.runtime.mobileRootAreaId.value);
+const mobileRootArea = computed(() => props.view.areas[mobileRootAreaId.value]);
+const activeMobileArea = computed(() => props.view.areas[props.runtime.activeMobileAreaId.value] ?? mainArea.value);
+const hasMobileRootArea = computed(() => mobileRootAreaId.value !== "mainArea" && !!mobileRootArea.value);
+const isActiveMobileAreaVisible = computed(() =>
+  mobileRootAreaId.value === "mainArea" || props.runtime.activeMobileAreaId.value !== mobileRootAreaId.value
+);
+const isMobileOverlayVisible = computed(() => props.runtime.activeMobileAreaId.value !== mobileRootAreaId.value);
+const canPopMobileArea = computed(() => props.runtime.canPopMobileArea.value);
 const mobileHistoryArmed = ref(false);
-const mobileHistoryStateKey = "__workbenchMobileMain";
+const mobileHistoryStateKey = "__workbenchMobileArea";
 
 const mobileWorkbenchTrigger = useMenuTrigger({
   baseId: "mobile-workbench-menu",
@@ -50,9 +55,9 @@ const mobileWorkbenchTrigger = useMenuTrigger({
 });
 
 watch(
-  () => [props.section.id, props.section.layout.mobile.mainFlow] as const,
+  () => [props.view.id, props.view.layout.mobile.rootArea] as const,
   () => {
-    props.runtime.resetMobileStack();
+    props.runtime.resetMobileAreaStack();
     mobileHistoryArmed.value = false;
   },
   { immediate: true }
@@ -69,39 +74,37 @@ function pushMobileHistoryEntry() {
   window.history.pushState({
     ...currentState,
     [mobileHistoryStateKey]: {
-      sectionId: props.section.id
+      viewId: props.view.id,
+      areaId: props.runtime.activeMobileAreaId.value
     }
   }, "", window.location.href);
   mobileHistoryArmed.value = true;
 }
 
 function handlePopState() {
-  if (!props.runtime.isMobileMainVisible.value) {
+  if (!props.runtime.canPopMobileArea.value) {
     return;
   }
   mobileHistoryArmed.value = false;
-  props.runtime.popMobileRegion();
+  props.runtime.popMobileArea();
 }
 
-watch(isMobileMainVisible, (visible) => {
-  if (!visible || !hasMobileListFlow.value) {
+watch(isMobileOverlayVisible, (visible) => {
+  if (!visible) {
     return;
   }
   pushMobileHistoryEntry();
 });
 
 function goBack() {
-  if (!hasMobileListFlow.value) {
-    return;
-  }
   if (mobileHistoryArmed.value && typeof window !== "undefined") {
     window.history.back();
     return;
   }
-  if (canPopMobileRegion.value) {
-    props.runtime.popMobileRegion();
+  if (canPopMobileArea.value) {
+    props.runtime.popMobileArea();
   } else {
-    props.runtime.showList();
+    props.runtime.showRootArea();
   }
 }
 
@@ -116,7 +119,7 @@ onUnmounted(() => {
 
 <template>
   <div class="fixed inset-0 flex h-full w-full overflow-hidden bg-surface-app text-text-primary">
-    <div v-if="hasMobileListFlow" class="absolute inset-0 flex flex-col bg-surface-app transition-transform duration-220 ease-[ease]">
+    <div v-if="hasMobileRootArea" class="absolute inset-0 flex flex-col bg-surface-app transition-transform duration-220 ease-[ease]">
       <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <header class="pt-safe flex h-[calc(44px+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border-default bg-surface-sidebar px-3">
           <span class="flex-1 font-semibold text-text-secondary">{{ routeLabel }}</span>
@@ -151,25 +154,25 @@ onUnmounted(() => {
             </button>
           </nav>
         </header>
-        <component :is="listPane" v-if="section.regions.listPane" />
+        <component :is="mobileRootArea" />
       </div>
     </div>
     <div
       ref="runtime.mainRegionRef"
       class="absolute inset-0 z-10 flex flex-col bg-surface-app transition-transform duration-220 ease-[ease]"
-      :class="isMobileMainVisible ? 'translate-x-0' : 'pointer-events-none translate-x-full'"
+      :class="isActiveMobileAreaVisible ? 'translate-x-0' : 'pointer-events-none translate-x-full'"
     >
       <header class="pt-safe flex h-[calc(44px+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border-default bg-surface-sidebar px-3">
-        <button v-if="hasMobileListFlow" class="flex cursor-pointer items-center gap-1 border-0 bg-transparent px-0 py-1 text-ui text-accent" @click="goBack">
+        <button v-if="canPopMobileArea" class="flex cursor-pointer items-center gap-1 border-0 bg-transparent px-0 py-1 text-ui text-accent" @click="goBack">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="15 18 9 12 15 6" />
           </svg>
           <span>返回</span>
         </button>
-        <component :is="mobileHeader" v-if="section.regions.mobileHeader" />
+        <component :is="mobileHeader" v-if="view.areas.mobileHeader" />
       </header>
       <div class="min-h-0 flex-1 overflow-hidden">
-        <component :is="mainPane" />
+        <component :is="activeMobileArea" />
       </div>
     </div>
   </div>

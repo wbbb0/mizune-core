@@ -1,51 +1,53 @@
 import { computed, inject, provide, reactive, ref, shallowRef, watch, type ComputedRef, type InjectionKey, type Ref, type ShallowRef } from "vue";
-import type { WorkbenchSection } from "@/components/workbench/types";
+import type { WorkbenchAreaId, WorkbenchView } from "@/components/workbench/types";
 
-export type MobileRegionStackEntry =
-  | { kind: "list"; sectionId: string }
-  | { kind: "main"; sectionId: string; detailKey?: string };
+export type MobileAreaStackEntry = {
+  areaId: WorkbenchAreaId;
+  viewId: string;
+  detailKey?: string;
+};
 
-export type DesktopPaneId = "list";
+export type DesktopAreaId = "primarySidebar";
 
 export type WorkbenchRuntime = {
-  section: ComputedRef<WorkbenchSection>;
+  view: ComputedRef<WorkbenchView>;
   mainRegionRef: Ref<HTMLElement | null>;
   keyboardAvoidanceBoundary: ComputedRef<HTMLElement | null>;
-  getDesktopPaneWidthPx: (paneId: DesktopPaneId) => number;
-  getDesktopPaneStyle: (paneId: DesktopPaneId) => { width: string };
-  clampDesktopPaneWidth: (paneId: DesktopPaneId, widthPx: number) => number;
-  setDesktopPaneWidth: (paneId: DesktopPaneId, widthPx: number) => void;
-  resetDesktopPaneWidth: (paneId: DesktopPaneId) => void;
-  hasMobileListFlow: ComputedRef<boolean>;
-  mobileStack: Ref<MobileRegionStackEntry[]>;
-  mobileTop: ComputedRef<MobileRegionStackEntry>;
-  isMobileMainVisible: ComputedRef<boolean>;
-  canPopMobileRegion: ComputedRef<boolean>;
-  resetMobileStack: () => void;
-  showList: () => void;
-  showMain: (detailKey?: string) => void;
-  popMobileRegion: () => boolean;
+  getDesktopAreaWidthPx: (areaId: DesktopAreaId) => number;
+  getDesktopAreaStyle: (areaId: DesktopAreaId) => { width: string };
+  clampDesktopAreaWidth: (areaId: DesktopAreaId, widthPx: number) => number;
+  setDesktopAreaWidth: (areaId: DesktopAreaId, widthPx: number) => void;
+  resetDesktopAreaWidth: (areaId: DesktopAreaId) => void;
+  mobileRootAreaId: ComputedRef<WorkbenchAreaId>;
+  mobileAreaStack: Ref<MobileAreaStackEntry[]>;
+  mobileTopArea: ComputedRef<MobileAreaStackEntry>;
+  activeMobileAreaId: ComputedRef<WorkbenchAreaId>;
+  canPopMobileArea: ComputedRef<boolean>;
+  resetMobileAreaStack: () => void;
+  showArea: (areaId: WorkbenchAreaId, detailKey?: string) => void;
+  showRootArea: () => void;
+  popMobileArea: () => boolean;
 };
 
 const workbenchRuntimeKey: InjectionKey<WorkbenchRuntime> = Symbol("workbench-runtime");
 const activeWorkbenchRuntime = shallowRef<WorkbenchRuntime | null>(null);
-const desktopPaneStoragePrefix = "workbench.pane.desktop";
-const defaultDesktopPaneSize = {
+const desktopAreaStoragePrefix = "workbench.area.desktop";
+const defaultDesktopAreaSize = {
   defaultWidthPx: 260,
   minWidthPx: 180,
   maxWidthPx: 520
 };
 
-function resolveDesktopPaneStorageKey(paneId: DesktopPaneId) {
-  return `${desktopPaneStoragePrefix}.${paneId}.width`;
+function resolveDesktopAreaStorageKey(areaId: DesktopAreaId) {
+  return `${desktopAreaStoragePrefix}.${areaId}.width`;
 }
 
-function readStoredDesktopPaneWidth(paneId: DesktopPaneId): number | null {
+function readStoredDesktopAreaWidth(areaId: DesktopAreaId): number | null {
   if (typeof window === "undefined") {
     return null;
   }
   try {
-    const value = window.localStorage.getItem(resolveDesktopPaneStorageKey(paneId));
+    const value = window.localStorage.getItem(resolveDesktopAreaStorageKey(areaId));
     if (!value) {
       return null;
     }
@@ -56,140 +58,161 @@ function readStoredDesktopPaneWidth(paneId: DesktopPaneId): number | null {
   }
 }
 
-function writeStoredDesktopPaneWidth(paneId: DesktopPaneId, widthPx: number) {
+function writeStoredDesktopAreaWidth(areaId: DesktopAreaId, widthPx: number) {
   if (typeof window === "undefined") {
     return;
   }
   try {
-    window.localStorage.setItem(resolveDesktopPaneStorageKey(paneId), String(widthPx));
+    window.localStorage.setItem(resolveDesktopAreaStorageKey(areaId), String(widthPx));
   } catch {
     // Layout resizing remains usable when storage is unavailable.
   }
 }
 
-export function createWorkbenchRuntime(section: ComputedRef<WorkbenchSection>): WorkbenchRuntime {
+export function createWorkbenchRuntime(view: ComputedRef<WorkbenchView>): WorkbenchRuntime {
   const mainRegionRef = ref<HTMLElement | null>(null);
-  const mobileStack = ref<MobileRegionStackEntry[]>([]);
-  const desktopPaneWidthsPx = reactive<Record<DesktopPaneId, number>>({
-    list: resolveInitialDesktopPaneWidth("list")
+  const mobileAreaStack = ref<MobileAreaStackEntry[]>([]);
+  const desktopAreaWidthsPx = reactive<Record<DesktopAreaId, number>>({
+    primarySidebar: resolveInitialDesktopAreaWidth("primarySidebar")
   });
-  const hasMobileListFlow = computed(() => section.value.layout.mobile.mainFlow !== "main-only");
-  const mobileTop = computed(() => mobileStack.value[mobileStack.value.length - 1] ?? { kind: "list", sectionId: section.value.id });
-  const isMobileMainVisible = computed(() => mobileTop.value.kind === "main");
-  const canPopMobileRegion = computed(() => hasMobileListFlow.value && mobileStack.value.length > 1);
+  const mobileRootAreaId = computed(() => resolveMobileRootAreaId());
+  const mobileTopArea = computed(() => (
+    mobileAreaStack.value[mobileAreaStack.value.length - 1]
+    ?? createMobileAreaEntry(mobileRootAreaId.value)
+  ));
+  const activeMobileAreaId = computed(() => mobileTopArea.value.areaId);
+  const canPopMobileArea = computed(() => mobileAreaStack.value.length > 1);
   const keyboardAvoidanceBoundary = computed(() => mainRegionRef.value);
 
-  function resolveDesktopPaneDefaultWidth(paneId: DesktopPaneId) {
-    if (paneId !== "list") {
-      return defaultDesktopPaneSize.defaultWidthPx;
+  function resolveMobileRootAreaId(): WorkbenchAreaId {
+    const configuredAreaId = view.value.layout.mobile.rootArea;
+    if (configuredAreaId === "mainArea" || view.value.areas[configuredAreaId]) {
+      return configuredAreaId;
     }
-    return section.value.layout.desktop.listPane?.defaultWidthPx ?? defaultDesktopPaneSize.defaultWidthPx;
+    return "mainArea";
   }
 
-  function resolveInitialDesktopPaneWidth(paneId: DesktopPaneId) {
-    return clampDesktopPaneWidth(paneId, readStoredDesktopPaneWidth(paneId) ?? resolveDesktopPaneDefaultWidth(paneId));
-  }
-
-  function resolveDesktopPaneMinWidth(paneId: DesktopPaneId) {
-    if (paneId !== "list") {
-      return defaultDesktopPaneSize.minWidthPx;
-    }
-    return section.value.layout.desktop.listPane?.minWidthPx ?? defaultDesktopPaneSize.minWidthPx;
-  }
-
-  function resolveDesktopPaneMaxWidth(paneId: DesktopPaneId) {
-    return Math.max(
-      resolveDesktopPaneMinWidth(paneId),
-      paneId === "list"
-        ? section.value.layout.desktop.listPane?.maxWidthPx ?? defaultDesktopPaneSize.maxWidthPx
-        : defaultDesktopPaneSize.maxWidthPx
-    );
-  }
-
-  function clampDesktopPaneWidth(paneId: DesktopPaneId, widthPx: number) {
-    return Math.min(
-      resolveDesktopPaneMaxWidth(paneId),
-      Math.max(resolveDesktopPaneMinWidth(paneId), Math.round(widthPx))
-    );
-  }
-
-  function getDesktopPaneWidthPx(paneId: DesktopPaneId) {
-    return desktopPaneWidthsPx[paneId];
-  }
-
-  function getDesktopPaneStyle(paneId: DesktopPaneId) {
+  function createMobileAreaEntry(areaId: WorkbenchAreaId, detailKey?: string): MobileAreaStackEntry {
     return {
-      width: `${getDesktopPaneWidthPx(paneId)}px`
+      areaId,
+      viewId: view.value.id,
+      ...(detailKey === undefined ? {} : { detailKey })
     };
   }
 
-  function setDesktopPaneWidth(paneId: DesktopPaneId, widthPx: number) {
-    const nextWidth = clampDesktopPaneWidth(paneId, widthPx);
-    desktopPaneWidthsPx[paneId] = nextWidth;
-    writeStoredDesktopPaneWidth(paneId, nextWidth);
+  function resolveTargetMobileAreaId(areaId: WorkbenchAreaId): WorkbenchAreaId {
+    if (areaId === "mainArea" || view.value.areas[areaId]) {
+      return areaId;
+    }
+    return mobileRootAreaId.value;
   }
 
-  function resetDesktopPaneWidth(paneId: DesktopPaneId) {
-    setDesktopPaneWidth(paneId, resolveDesktopPaneDefaultWidth(paneId));
+  function resolveDesktopAreaDefaultWidth(areaId: DesktopAreaId) {
+    if (areaId !== "primarySidebar") {
+      return defaultDesktopAreaSize.defaultWidthPx;
+    }
+    return view.value.layout.desktop.primarySidebar?.defaultWidthPx ?? defaultDesktopAreaSize.defaultWidthPx;
   }
 
-  function resetMobileStack() {
-    mobileStack.value = !hasMobileListFlow.value
-      ? [{ kind: "main", sectionId: section.value.id }]
-      : [{ kind: "list", sectionId: section.value.id }];
+  function resolveInitialDesktopAreaWidth(areaId: DesktopAreaId) {
+    return clampDesktopAreaWidth(areaId, readStoredDesktopAreaWidth(areaId) ?? resolveDesktopAreaDefaultWidth(areaId));
   }
 
-  function showList() {
-    if (!hasMobileListFlow.value) {
-      resetMobileStack();
+  function resolveDesktopAreaMinWidth(areaId: DesktopAreaId) {
+    if (areaId !== "primarySidebar") {
+      return defaultDesktopAreaSize.minWidthPx;
+    }
+    return view.value.layout.desktop.primarySidebar?.minWidthPx ?? defaultDesktopAreaSize.minWidthPx;
+  }
+
+  function resolveDesktopAreaMaxWidth(areaId: DesktopAreaId) {
+    return Math.max(
+      resolveDesktopAreaMinWidth(areaId),
+      areaId === "primarySidebar"
+        ? view.value.layout.desktop.primarySidebar?.maxWidthPx ?? defaultDesktopAreaSize.maxWidthPx
+        : defaultDesktopAreaSize.maxWidthPx
+    );
+  }
+
+  function clampDesktopAreaWidth(areaId: DesktopAreaId, widthPx: number) {
+    return Math.min(
+      resolveDesktopAreaMaxWidth(areaId),
+      Math.max(resolveDesktopAreaMinWidth(areaId), Math.round(widthPx))
+    );
+  }
+
+  function getDesktopAreaWidthPx(areaId: DesktopAreaId) {
+    return desktopAreaWidthsPx[areaId];
+  }
+
+  function getDesktopAreaStyle(areaId: DesktopAreaId) {
+    return {
+      width: `${getDesktopAreaWidthPx(areaId)}px`
+    };
+  }
+
+  function setDesktopAreaWidth(areaId: DesktopAreaId, widthPx: number) {
+    const nextWidth = clampDesktopAreaWidth(areaId, widthPx);
+    desktopAreaWidthsPx[areaId] = nextWidth;
+    writeStoredDesktopAreaWidth(areaId, nextWidth);
+  }
+
+  function resetDesktopAreaWidth(areaId: DesktopAreaId) {
+    setDesktopAreaWidth(areaId, resolveDesktopAreaDefaultWidth(areaId));
+  }
+
+  function resetMobileAreaStack() {
+    mobileAreaStack.value = [createMobileAreaEntry(mobileRootAreaId.value)];
+  }
+
+  function showRootArea() {
+    resetMobileAreaStack();
+  }
+
+  function showArea(areaId: WorkbenchAreaId, detailKey?: string) {
+    const targetAreaId = resolveTargetMobileAreaId(areaId);
+    if (targetAreaId === mobileRootAreaId.value) {
+      mobileAreaStack.value = [createMobileAreaEntry(targetAreaId, detailKey)];
       return;
     }
-    mobileStack.value = [{ kind: "list", sectionId: section.value.id }];
-  }
-
-  function showMain(detailKey?: string) {
-    if (!hasMobileListFlow.value) {
-      mobileStack.value = [{ kind: "main", sectionId: section.value.id, detailKey }];
-      return;
-    }
-    mobileStack.value = [
-      { kind: "list", sectionId: section.value.id },
-      { kind: "main", sectionId: section.value.id, detailKey }
+    mobileAreaStack.value = [
+      createMobileAreaEntry(mobileRootAreaId.value),
+      createMobileAreaEntry(targetAreaId, detailKey)
     ];
   }
 
-  function popMobileRegion() {
-    if (!canPopMobileRegion.value) {
+  function popMobileArea() {
+    if (!canPopMobileArea.value) {
       return false;
     }
-    mobileStack.value = mobileStack.value.slice(0, -1);
+    mobileAreaStack.value = mobileAreaStack.value.slice(0, -1);
     return true;
   }
 
-  watch(() => section.value.id, () => {
-    desktopPaneWidthsPx.list = resolveInitialDesktopPaneWidth("list");
+  watch(() => view.value.id, () => {
+    desktopAreaWidthsPx.primarySidebar = resolveInitialDesktopAreaWidth("primarySidebar");
   });
 
-  resetMobileStack();
+  resetMobileAreaStack();
 
   return {
-    section,
+    view,
     mainRegionRef,
     keyboardAvoidanceBoundary,
-    getDesktopPaneWidthPx,
-    getDesktopPaneStyle,
-    clampDesktopPaneWidth,
-    setDesktopPaneWidth,
-    resetDesktopPaneWidth,
-    hasMobileListFlow,
-    mobileStack,
-    mobileTop,
-    isMobileMainVisible,
-    canPopMobileRegion,
-    resetMobileStack,
-    showList,
-    showMain,
-    popMobileRegion
+    getDesktopAreaWidthPx,
+    getDesktopAreaStyle,
+    clampDesktopAreaWidth,
+    setDesktopAreaWidth,
+    resetDesktopAreaWidth,
+    mobileRootAreaId,
+    mobileAreaStack,
+    mobileTopArea,
+    activeMobileAreaId,
+    canPopMobileArea,
+    resetMobileAreaStack,
+    showArea,
+    showRootArea,
+    popMobileArea
   };
 }
 
@@ -216,20 +239,20 @@ export function useActiveWorkbenchRuntime(): ShallowRef<WorkbenchRuntime | null>
 
 export function useWorkbenchNavigation() {
   return {
-    showList() {
+    showArea(areaId: WorkbenchAreaId, detailKey?: string) {
       const runtime = activeWorkbenchRuntime.value;
       if (runtime) {
-        runtime.showList();
+        runtime.showArea(areaId, detailKey);
       }
     },
-    showMain(detailKey?: string) {
+    showRootArea() {
       const runtime = activeWorkbenchRuntime.value;
       if (runtime) {
-        runtime.showMain(detailKey);
+        runtime.showRootArea();
       }
     },
-    popMobileRegion() {
-      return activeWorkbenchRuntime.value?.popMobileRegion() ?? false;
+    popArea() {
+      return activeWorkbenchRuntime.value?.popMobileArea() ?? false;
     }
   };
 }

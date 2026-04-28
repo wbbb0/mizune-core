@@ -1,4 +1,4 @@
-import type { WindowSize } from "./types.js";
+import type { WorkbenchWindowSize } from "./types.js";
 
 export type WindowSizing = {
   className: string;
@@ -7,7 +7,7 @@ export type WindowSizing = {
 
 const SAFE_AREA_WIDTH = "calc(100vw - 2rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))";
 const SAFE_AREA_HEIGHT = "calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))";
-const MOBILE_WIDTHS: Record<Exclude<WindowSize, "full">, string> = {
+const MOBILE_WIDTHS: Record<Exclude<WorkbenchWindowSize, "full">, string> = {
   auto: "min(24rem, var(--workbench-window-safe-width))",
   sm: "min(20rem, var(--workbench-window-safe-width))",
   md: "min(28rem, var(--workbench-window-safe-width))",
@@ -15,7 +15,7 @@ const MOBILE_WIDTHS: Record<Exclude<WindowSize, "full">, string> = {
   xl: "min(38rem, var(--workbench-window-safe-width))"
 };
 
-const DESKTOP_SIZES: Record<Exclude<WindowSize, "full">, string> = {
+const DESKTOP_SIZES: Record<Exclude<WorkbenchWindowSize, "full">, string> = {
   auto: "w-auto max-w-[min(92vw,24rem)]",
   sm: "w-[min(92vw,20rem)] max-w-sm",
   md: "w-[min(92vw,28rem)] max-w-md",
@@ -23,11 +23,11 @@ const DESKTOP_SIZES: Record<Exclude<WindowSize, "full">, string> = {
   xl: "w-[min(92vw,44rem)] max-w-xl"
 };
 
-export function resolveWindowSizing(size: WindowSize, isMobile: boolean): WindowSizing {
+export function resolveWindowSizing(size: WorkbenchWindowSize, isMobile: boolean): WindowSizing {
   if (isMobile) {
     const width = size === "full"
       ? SAFE_AREA_WIDTH
-      : MOBILE_WIDTHS[size as Exclude<WindowSize, "full">];
+      : MOBILE_WIDTHS[size as Exclude<WorkbenchWindowSize, "full">];
     return {
       className: "max-w-none",
       style: {
@@ -52,7 +52,7 @@ export function resolveWindowSizing(size: WindowSize, isMobile: boolean): Window
   }
 
   return {
-    className: DESKTOP_SIZES[size as Exclude<WindowSize, "full">],
+    className: DESKTOP_SIZES[size as Exclude<WorkbenchWindowSize, "full">],
     style: {
       maxHeight: SAFE_AREA_HEIGHT
     }

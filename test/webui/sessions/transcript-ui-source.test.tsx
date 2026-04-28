@@ -40,5 +40,5 @@ import { readFile } from "node:fs/promises";
     assert.doesNotMatch(source, /function toggleReasoningExpanded\(\)\s*{\s*if \(runtimeExcluded\.value\) \{/);
     assert.doesNotMatch(source, /function togglePlannerExpanded\(\)\s*{\s*if \(runtimeExcluded\.value\) \{/);
     assert.doesNotMatch(source, /TranscriptTextBlock v-if="runtimeExcluded && item\.reasoningContent"/);
-    assert.doesNotMatch(source, /TranscriptCard v-if="runtimeExcluded" title="规划输出"/);
+    assert.doesNotMatch(source, /WorkbenchCard v-if="runtimeExcluded" title="规划输出"/);
   });

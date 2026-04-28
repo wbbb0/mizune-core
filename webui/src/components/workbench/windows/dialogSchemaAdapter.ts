@@ -1,8 +1,8 @@
 import type { SchemaMeta } from "../../../../../src/data/schema/types.ts";
-import type { DialogField } from "./types.js";
+import type { WorkbenchDialogField } from "./types.js";
 
 type DialogValues = Record<string, unknown>;
-type SupportedField = DialogField<DialogValues>;
+type SupportedField = WorkbenchDialogField<DialogValues>;
 type SupportedGroupChild = Exclude<SupportedField, { kind: "group" }>;
 
 export function schemaMetaToDialogFields(meta: SchemaMeta): SupportedField[] {

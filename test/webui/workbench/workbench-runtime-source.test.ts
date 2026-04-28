@@ -21,7 +21,7 @@ test("workbench core receives navigation from the app adapter", async () => {
   const mobile = await readFile(new URL("../../../webui/src/components/workbench/MobileWorkbench.vue", import.meta.url), "utf8");
   const desktop = await readFile(new URL("../../../webui/src/components/workbench/DesktopWorkbench.vue", import.meta.url), "utf8");
   const activityBar = await readFile(new URL("../../../webui/src/components/layout/ActivityBar.vue", import.meta.url), "utf8");
-  const sectionHost = await readFile(new URL("../../../webui/src/sections/SectionHost.vue", import.meta.url), "utf8");
+  const viewHost = await readFile(new URL("../../../webui/src/sections/WorkbenchViewHost.vue", import.meta.url), "utf8");
 
   assert.match(shell, /navItems/);
   assert.match(shell, /activeNavItemId/);
@@ -32,36 +32,37 @@ test("workbench core receives navigation from the app adapter", async () => {
   assert.match(activityBar, /navItems/);
   assert.doesNotMatch(activityBar, /useRouter/);
   assert.doesNotMatch(activityBar, /workbenchNavItems/);
-  assert.match(sectionHost, /workbenchNavItems/);
-  assert.match(sectionHost, /router\.push\(item\.path\)/);
+  assert.match(viewHost, /workbenchNavItems/);
+  assert.match(viewHost, /router\.push\(item\.path\)/);
 });
 
-test("mobile workbench keeps list mounted under the main overlay", async () => {
+test("mobile workbench keeps root sidebar mounted under the active area overlay", async () => {
   const source = await readFile(new URL("../../../webui/src/components/workbench/MobileWorkbench.vue", import.meta.url), "utf8");
   const types = await readFile(new URL("../../../webui/src/components/workbench/types.ts", import.meta.url), "utf8");
-  const sessionsSection = await readFile(new URL("../../../webui/src/sections/sessions/index.ts", import.meta.url), "utf8");
+  const sessionsView = await readFile(new URL("../../../webui/src/sections/sessions/index.ts", import.meta.url), "utf8");
 
-  assert.match(source, /isMobileMainVisible/);
-  assert.match(source, /popMobileRegion/);
-  assert.match(source, /layout\.mobile\.mainFlow/);
+  assert.match(source, /activeMobileAreaId/);
+  assert.match(source, /popMobileArea/);
+  assert.match(source, /layout\.mobile\.rootArea/);
   assert.doesNotMatch(source, /mobileMainFlow/);
   assert.match(types, /mobile:\s*\{/);
-  assert.match(types, /mainFlow:/);
-  assert.match(sessionsSection, /defineWorkbenchSection/);
-  assert.doesNotMatch(sessionsSection, /mainFlow:\s*"list-main"/);
+  assert.match(types, /rootArea:/);
+  assert.doesNotMatch(types, new RegExp("main" + "Flow:"));
+  assert.match(sessionsView, /defineWorkbenchView/);
+  assert.doesNotMatch(sessionsView, /rootArea:\s*"primarySidebar"/);
   assert.doesNotMatch(source, /v-show="mobileScreen === 'list'"/);
 });
 
-test("mobile main-only sections do not synthesize list navigation", async () => {
+test("mobile root area resolves to the main area when the configured root is unavailable", async () => {
   const source = await readFile(new URL("../../../webui/src/components/workbench/MobileWorkbench.vue", import.meta.url), "utf8");
   const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
 
-  assert.match(runtime, /hasMobileListFlow/);
-  assert.match(runtime, /canPopMobileRegion/);
-  assert.match(runtime, /if \(!hasMobileListFlow\.value\)/);
-  assert.match(source, /const hasMobileListFlow/);
-  assert.match(source, /v-if="hasMobileListFlow"/);
-  assert.match(source, /!visible \|\| !hasMobileListFlow\.value/);
+  assert.match(runtime, /resolveMobileRootAreaId/);
+  assert.match(runtime, /view\.value\.layout\.mobile\.rootArea/);
+  assert.match(runtime, /return "mainArea"/);
+  assert.match(source, /const hasMobileRootArea/);
+  assert.match(source, /v-if="hasMobileRootArea"/);
+  assert.doesNotMatch(runtime, new RegExp("hasMobile" + "ListFlow"));
 });
 
 test("mobile workbench maps browser history back to overlay stack pop", async () => {
@@ -71,18 +72,21 @@ test("mobile workbench maps browser history back to overlay stack pop", async ()
   assert.match(source, /window\.history\.back\(\)/);
   assert.match(source, /addEventListener\("popstate"/);
   assert.match(source, /removeEventListener\("popstate"/);
-  assert.match(source, /props\.runtime\.popMobileRegion\(\)/);
+  assert.match(source, /props\.runtime\.popMobileArea\(\)/);
 });
 
 test("workbench navigation commands live in the runtime module", async () => {
   const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
-  const configSection = await readFile(new URL("../../../webui/src/composables/sections/useConfigSection.ts", import.meta.url), "utf8");
+  const configView = await readFile(new URL("../../../webui/src/composables/sections/useConfigSection.ts", import.meta.url), "utf8");
 
   assert.match(runtime, /export function useWorkbenchNavigation/);
   assert.match(runtime, /activeWorkbenchRuntime\.value/);
-  assert.match(runtime, /runtime\.showMain\(detailKey\)/);
-  assert.match(runtime, /runtime\.showList\(\)/);
-  assert.match(configSection, /useWorkbenchNavigation/);
+  assert.match(runtime, /runtime\.showArea\(areaId, detailKey\)/);
+  assert.match(runtime, /runtime\.showRootArea\(\)/);
+  assert.doesNotMatch(runtime, new RegExp("runtime\\.show" + "Main"));
+  assert.doesNotMatch(runtime, new RegExp("runtime\\.show" + "List"));
+  assert.match(configView, /useWorkbenchNavigation/);
+  assert.match(configView, /showArea\("mainArea"\)/);
   await assert.rejects(
     access(new URL("../../../webui/src/composables/workbench/useWorkbenchRuntime.ts", import.meta.url))
   );
@@ -97,71 +101,75 @@ test("workbench runtime exposes an active shell command facade", async () => {
   assert.match(shell, /const deactivateRuntime = activateWorkbenchRuntime\(runtime\)/);
 });
 
-test("desktop workbench sizes list pane through runtime resize state", async () => {
+test("desktop workbench sizes primary sidebar through runtime resize state", async () => {
   const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
   const desktop = await readFile(new URL("../../../webui/src/components/workbench/DesktopWorkbench.vue", import.meta.url), "utf8");
   const types = await readFile(new URL("../../../webui/src/components/workbench/types.ts", import.meta.url), "utf8");
-  const sessionsSection = await readFile(new URL("../../../webui/src/sections/sessions/index.ts", import.meta.url), "utf8");
+  const sessionsView = await readFile(new URL("../../../webui/src/sections/sessions/index.ts", import.meta.url), "utf8");
 
   assert.match(types, /desktop:\s*\{/);
-  assert.match(types, /listPane\?:/);
+  assert.match(types, /primarySidebar\?:/);
   assert.doesNotMatch(types, /desktopListPane/);
-  assert.match(sessionsSection, /defineWorkbenchSection/);
-  assert.doesNotMatch(sessionsSection, /listPane:\s*\{\}/);
-  assert.match(runtime, /getDesktopPaneWidthPx/);
-  assert.match(runtime, /getDesktopPaneStyle/);
-  assert.match(runtime, /setDesktopPaneWidth/);
-  assert.match(runtime, /resetDesktopPaneWidth/);
-  assert.match(runtime, /clampDesktopPaneWidth/);
-  assert.match(runtime, /layout\.desktop\.listPane/);
+  assert.match(sessionsView, /defineWorkbenchView/);
+  assert.doesNotMatch(sessionsView, /primarySidebar:\s*\{\}/);
+  assert.match(runtime, /getDesktopAreaWidthPx/);
+  assert.match(runtime, /getDesktopAreaStyle/);
+  assert.match(runtime, /setDesktopAreaWidth/);
+  assert.match(runtime, /resetDesktopAreaWidth/);
+  assert.match(runtime, /clampDesktopAreaWidth/);
+  assert.match(runtime, /layout\.desktop\.primarySidebar/);
   assert.doesNotMatch(runtime, /layout\.desktopListPane/);
-  assert.match(desktop, /listPaneStyle/);
-  assert.match(desktop, /getDesktopPaneStyle\("list"\)/);
-  assert.match(desktop, /setDesktopPaneWidth\("list"/);
-  assert.match(desktop, /hasListPane/);
-  assert.match(desktop, /startListPaneResize/);
-  assert.match(desktop, /resetListPaneResize/);
+  assert.match(desktop, /primarySidebarStyle/);
+  assert.match(desktop, /getDesktopAreaStyle\("primarySidebar"\)/);
+  assert.match(desktop, /setDesktopAreaWidth\("primarySidebar"/);
+  assert.match(desktop, /hasPrimarySidebar/);
+  assert.match(desktop, /startPrimarySidebarResize/);
+  assert.match(desktop, /resetPrimarySidebarResize/);
   assert.match(desktop, /role="separator"/);
   assert.match(desktop, /aria-orientation="vertical"/);
-  assert.match(desktop, /<aside v-if="hasListPane"/);
-  assert.match(desktop, /v-if="hasListPane"\s*\n\s*class="relative w-1/);
-  assert.match(desktop, /@pointerdown="startListPaneResize"/);
-  assert.match(desktop, /@dblclick="resetListPaneResize"/);
+  assert.match(desktop, /<aside v-if="hasPrimarySidebar"/);
+  assert.match(desktop, /v-if="hasPrimarySidebar"\s*\n\s*class="relative w-1/);
+  assert.match(desktop, /@pointerdown="startPrimarySidebarResize"/);
+  assert.match(desktop, /@dblclick="resetPrimarySidebarResize"/);
   assert.doesNotMatch(desktop, /w-\(--side-panel-width\)/);
 });
 
-test("workbench sections use a definition helper for default layout", async () => {
+test("workbench views use a definition helper for default layout", async () => {
   const types = await readFile(new URL("../../../webui/src/components/workbench/types.ts", import.meta.url), "utf8");
   const registry = await readFile(new URL("../../../webui/src/sections/registry.ts", import.meta.url), "utf8");
-  const sectionSources = await Promise.all(["sessions", "config", "data", "settings", "workspace"].map((name) =>
+  const viewSources = await Promise.all(["sessions", "config", "data", "settings", "workspace"].map((name) =>
     readFile(new URL(`../../../webui/src/sections/${name}/index.ts`, import.meta.url), "utf8")
   ));
 
-  assert.match(types, /export function defineWorkbenchSection/);
-  assert.match(types, /defaultWorkbenchSectionLayout/);
-  assert.match(registry, /defineWorkbenchSection/);
-  for (const source of sectionSources) {
-    assert.match(source, /defineWorkbenchSection/);
-    assert.doesNotMatch(source, /satisfies WorkbenchSection/);
+  assert.match(types, /export function defineWorkbenchView/);
+  assert.match(types, /defaultWorkbenchViewLayout/);
+  assert.match(registry, /defineWorkbenchView/);
+  for (const source of viewSources) {
+    assert.match(source, /defineWorkbenchView/);
+    assert.doesNotMatch(source, /satisfies WorkbenchView/);
     assert.doesNotMatch(source, /layout:\s*\{\s*mobile:\s*\{/s);
   }
 });
 
-test("desktop workbench persists pane widths by global pane id", async () => {
+test("desktop workbench persists area widths by global area id", async () => {
   const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
 
-  assert.match(runtime, /readStoredDesktopPaneWidth/);
-  assert.match(runtime, /writeStoredDesktopPaneWidth/);
+  assert.match(runtime, /readStoredDesktopAreaWidth/);
+  assert.match(runtime, /writeStoredDesktopAreaWidth/);
   assert.match(runtime, /localStorage/);
-  assert.match(runtime, /workbench\.pane\.desktop/);
-  assert.match(runtime, /resolveDesktopPaneStorageKey\(paneId: DesktopPaneId\)/);
-  assert.match(runtime, /readStoredDesktopPaneWidth\(paneId: DesktopPaneId\)/);
-  assert.match(runtime, /writeStoredDesktopPaneWidth\(paneId: DesktopPaneId, widthPx: number\)/);
+  assert.match(runtime, /workbench\.area\.desktop/);
+  assert.match(runtime, /resolveDesktopAreaStorageKey\(areaId: DesktopAreaId\)/);
+  assert.match(runtime, /readStoredDesktopAreaWidth\(areaId: DesktopAreaId\)/);
+  assert.match(runtime, /writeStoredDesktopAreaWidth\(areaId: DesktopAreaId, widthPx: number\)/);
   assert.doesNotMatch(runtime, /desktopListPaneWidthPx/);
-  assert.doesNotMatch(runtime, /readStoredDesktopPaneWidth\(sectionId/);
-  assert.doesNotMatch(runtime, /writeStoredDesktopPaneWidth\(sectionId/);
-  assert.doesNotMatch(runtime, /writeStoredDesktopPaneWidth\(section\.value\.id/);
-  assert.match(runtime, /watch\(\(\)\s*=>\s*section\.value\.id/);
+  for (const legacyName of [
+    "readStoredDesktop" + "PaneWidth",
+    "writeStoredDesktop" + "PaneWidth",
+    "section" + "Id"
+  ]) {
+    assert.doesNotMatch(runtime, new RegExp(legacyName));
+  }
+  assert.match(runtime, /watch\(\(\)\s*=>\s*view\.value\.id/);
 });
 
 test("legacy app layout shell is removed after workbench runtime migration", async () => {

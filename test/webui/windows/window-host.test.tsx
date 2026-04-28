@@ -13,7 +13,7 @@ const compilerSfc = require(`${ROOT}/webui/node_modules/@vue/compiler-sfc/dist/c
 const typescript = require(`${ROOT}/webui/node_modules/typescript/lib/typescript.js`);
 const VUE_RUNTIME_URL = new URL("../../../webui/node_modules/vue/index.mjs", import.meta.url).href;
 const WINDOW_SIZING_URL = new URL("../../../webui/src/components/workbench/windows/windowSizing.ts", import.meta.url).href;
-const USE_WORKBENCH_WINDOWS_URL = new URL("../../../webui/src/composables/workbench/useWorkbenchWindows.ts", import.meta.url).href;
+const USE_WORKBENCH_WINDOWS_URL = new URL("../../../webui/src/components/workbench/windows/useWorkbenchWindows.ts", import.meta.url).href;
 const WORKBENCH_RUNTIME_URL = new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url).href;
 const WINDOW_SURFACE_PATH = `${ROOT}/webui/src/components/workbench/windows/WindowSurface.vue`;
 const WINDOW_HOST_PATH = `${ROOT}/webui/src/components/workbench/windows/WindowHost.vue`;
@@ -75,9 +75,9 @@ const desktopWorkbenchStubUrl = createDataModule(`
   import { h } from "${VUE_RUNTIME_URL}";
   export default {
     name: "DesktopWorkbench",
-    props: { section: { type: Object, required: true } },
+    props: { view: { type: Object, required: true } },
     render() {
-      return h("div", { "data-test": "desktop-workbench" }, this.section?.title ?? "");
+      return h("div", { "data-test": "desktop-workbench" }, this.view?.title ?? "");
     }
   };
 `);
@@ -180,7 +180,7 @@ const dialogRendererUrl = compileVueModule(DIALOG_RENDERER_PATH, {
 const windowHostUrl = compileVueModule(WINDOW_HOST_PATH, {
   vue: vueStubUrl,
   "@/stores/ui": uiStubUrl,
-  "@/composables/workbench/useWorkbenchWindows": USE_WORKBENCH_WINDOWS_URL,
+  "@/components/workbench/windows/useWorkbenchWindows": USE_WORKBENCH_WINDOWS_URL,
   "./DialogRenderer.vue": dialogRendererUrl,
   "./WindowSurface.vue": windowSurfaceUrl
 });
@@ -194,7 +194,7 @@ const workbenchShellUrl = compileVueModule(WORKBENCH_SHELL_PATH, {
   "@/stores/ui": uiStubUrl,
   "@/components/workbench/runtime/workbenchRuntime": WORKBENCH_RUNTIME_URL,
   "@/composables/workbench/menu/useMenuRuntime": menuRuntimeStubUrl,
-  "@/composables/workbench/useWorkbenchWindows": USE_WORKBENCH_WINDOWS_URL,
+  "@/components/workbench/windows/useWorkbenchWindows": USE_WORKBENCH_WINDOWS_URL,
   "@/components/workbench/windows/WindowHost.vue": windowHostUrl
 });
 
@@ -267,7 +267,7 @@ test("window sizing resolves desktop sizes and mobile safe-area dialog bounds", 
 
 test("window host renders all desktop windows in manager order", async () => {
   uiState.isMobile = false;
-  const wrapper = await mountComponent(windowHostUrl, {});
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
 
   windowManager.openSync(buildWindow("parent"));
   windowManager.openSync(buildWindow("child", "parent"));
@@ -283,7 +283,7 @@ test("window host renders all desktop windows in manager order", async () => {
 
 test("window host routes schema windows through dialog renderer and closes on resolve", async () => {
   uiState.isMobile = false;
-  const wrapper = await mountComponent(windowHostUrl, {});
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
 
   windowManager.openSync({
     id: "schema-window",
@@ -317,7 +317,7 @@ test("window host routes schema windows through dialog renderer and closes on re
 
 test("window host renders only the top window on mobile", async () => {
   uiState.isMobile = true;
-  const wrapper = await mountComponent(windowHostUrl, {});
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
 
   windowManager.openSync(buildWindow("parent"));
   windowManager.openSync(buildWindow("child", "parent"));
@@ -331,7 +331,7 @@ test("window host renders only the top window on mobile", async () => {
 
 test("window host focuses a desktop window when it is pressed", async () => {
   uiState.isMobile = false;
-  const wrapper = await mountComponent(windowHostUrl, {});
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
 
   windowManager.openSync(buildWindow("parent"));
   windowManager.openSync(buildWindow("sibling"));
@@ -350,7 +350,7 @@ test("window host focuses a desktop window when it is pressed", async () => {
 
 test("window host focuses an inactive window when an input inside it receives focus", async () => {
   uiState.isMobile = false;
-  const wrapper = await mountComponent(windowHostUrl, {});
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
 
   windowManager.openSync({
     id: "dialog-with-input",
@@ -383,7 +383,7 @@ test("window host focuses an inactive window when an input inside it receives fo
 
 test("window host moves a desktop window when dragging its title bar", async () => {
   uiState.isMobile = false;
-  const wrapper = await mountComponent(windowHostUrl, {});
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
 
   windowManager.openSync(buildWindow("draggable"));
   await nextTick();
@@ -411,7 +411,7 @@ test("window host moves a desktop window when dragging its title bar", async () 
 
 test("window host clamps dragging so a window always keeps a visible grab area", async () => {
   uiState.isMobile = false;
-  const wrapper = await mountComponent(windowHostUrl, {});
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
 
   windowManager.openSync(buildWindow("clamped"));
   await nextTick();
@@ -461,7 +461,7 @@ test("window host clamps dragging so a window always keeps a visible grab area",
 
 test("window host renders a single modal backdrop and closes the top modal on backdrop click when allowed", async () => {
   uiState.isMobile = false;
-  const wrapper = await mountComponent(windowHostUrl, {});
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
 
   const opening = windowManager.open({
     id: "modal-window",
@@ -533,7 +533,7 @@ test("window host closes a window with an explicit close result", async () => {
       ]
     }
   });
-  const wrapper = await mountComponent(windowHostUrl, {});
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
   await nextTick();
 
   await wrapper.get('input[type="text"]').setValue("关闭前的值");
@@ -567,7 +567,7 @@ test("window host dismisses a modal with the current values on backdrop click", 
       ]
     }
   });
-  const wrapper = await mountComponent(windowHostUrl, {});
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
   await nextTick();
 
   await wrapper.get('input[type="text"]').setValue("遮罩关闭值");
@@ -617,7 +617,7 @@ test("window host only closes the top escape-enabled window on Escape", async ()
       ]
     }
   });
-  const wrapper = await mountComponent(windowHostUrl, {});
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
   await nextTick();
 
   window.dispatchEvent(new window.KeyboardEvent("keydown", {
@@ -693,24 +693,24 @@ test("workbench shell mounts the window host and delegates layout to the desktop
   windowManager.openSync(buildWindow("shell-window"));
   const wrapper = vueMount(WorkbenchShell, {
     props: {
-      section: {
+      view: {
         title: "Workbench",
         layout: {
           mobile: {
-            mainFlow: "list-main"
+            rootArea: "primarySidebar"
           },
           desktop: {
-            listPane: {}
+            primarySidebar: {}
           }
         },
-        regions: {
-          listPane: markRaw({
+        areas: {
+          primarySidebar: markRaw({
             name: "ListPane",
             render() {
               return null;
             }
           }),
-          mainPane: markRaw({
+          mainArea: markRaw({
             name: "MainPane",
             render() {
               return null;
@@ -728,7 +728,8 @@ test("workbench shell mounts the window host and delegates layout to the desktop
       navItems: [],
       activeNavItemId: "sessions",
       topbarMenus: [],
-      statusbarItems: []
+      statusbarItems: [],
+      isMobile: false
     },
     global: {
       stubs: {

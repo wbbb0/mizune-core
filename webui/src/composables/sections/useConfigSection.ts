@@ -95,7 +95,7 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
 
     function selectResource(key: string) {
       selectedKey.value = key;
-      workbenchNavigation.showMain();
+      workbenchNavigation.showArea("mainArea");
     }
 
     function updateDraft(value: unknown) {

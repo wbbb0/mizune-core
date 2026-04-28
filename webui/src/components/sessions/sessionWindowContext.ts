@@ -1,6 +1,6 @@
-import type { WindowContext } from "@/components/workbench/windows/types";
+import type { WorkbenchWindowContext } from "@/components/workbench/windows/types";
 
-export function createSessionWindowContext(sessionId: string): WindowContext {
+export function createSessionWindowContext(sessionId: string): WorkbenchWindowContext {
   return {
     kind: "session",
     id: sessionId

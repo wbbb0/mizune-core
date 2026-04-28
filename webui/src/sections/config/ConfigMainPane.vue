@@ -2,6 +2,7 @@
 import { RefreshCw, Save } from "lucide-vue-next";
 import SchemaNode from "@/components/editor/SchemaNode.vue";
 import { useConfigSection } from "@/composables/sections/useConfigSection";
+import { WorkbenchAreaHeader, WorkbenchEmptyState } from "@/components/workbench/primitives";
 
 const {
   selectedKey,
@@ -24,16 +25,19 @@ const {
 
 <template>
   <div class="flex h-full flex-col overflow-hidden">
-    <div v-if="!selectedKey" class="panel-empty flex flex-1 items-center justify-center gap-2">← 选择一个配置项</div>
+    <WorkbenchEmptyState v-if="!selectedKey" message="← 选择一个配置项" />
 
-    <div v-else-if="loading" class="panel-empty flex flex-1 items-center justify-center gap-2">
-      <RefreshCw :size="16" class="spin" :stroke-width="2" />
-      <span>加载中…</span>
-    </div>
+    <WorkbenchEmptyState v-else-if="loading">
+      <template #icon>
+        <RefreshCw :size="16" class="spin" :stroke-width="2" />
+      </template>
+      加载中…
+    </WorkbenchEmptyState>
 
     <template v-else-if="model">
-      <header class="toolbar-header flex h-10 shrink-0 flex-wrap items-center gap-2.5 border-b px-4 py-1.5">
+      <WorkbenchAreaHeader class="flex-wrap gap-2.5 px-4" :uppercase="false">
         <span class="rounded-full bg-surface-muted px-1.5 text-small text-text-subtle">{{ model.kind }}</span>
+        <template #actions>
         <div class="ml-auto flex gap-1.5">
           <button class="btn btn-secondary" :disabled="loading || saving || validating || !model" @click="reloadFromServer">
             <RefreshCw :size="13" :stroke-width="2" />
@@ -48,7 +52,8 @@ const {
             {{ saving ? "保存中…" : "保存" }}
           </button>
         </div>
-      </header>
+        </template>
+      </WorkbenchAreaHeader>
 
       <div class="scrollbar-thin flex-1 overflow-y-auto px-4 py-3">
         <SchemaNode

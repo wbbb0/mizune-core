@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error jsdom vendor path has no bundled declaration file in this workspace layout
 import { JSDOM } from "../../../webui/node_modules/jsdom/lib/api.js";
-import type { DialogField, WindowDefinition } from "../../../webui/src/components/workbench/windows/types.ts";
+import type { WorkbenchDialogField, WorkbenchWindowDefinition } from "../../../webui/src/components/workbench/windows/types.ts";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const require = createRequire(import.meta.url);
@@ -141,7 +141,7 @@ const typedGroupDefinition = {
       }
     ]
   }
-} satisfies WindowDefinition<{ profile: { alias: string } }>;
+} satisfies WorkbenchWindowDefinition<{ profile: { alias: string } }>;
 
 const invalidNestedGroupDefinition = {
   kind: "dialog",
@@ -165,7 +165,7 @@ const invalidNestedGroupDefinition = {
       }
     ]
   }
-} satisfies WindowDefinition<{ profile: { nested: { alias: string } } }>;
+} satisfies WorkbenchWindowDefinition<{ profile: { nested: { alias: string } } }>;
 
 test.beforeEach(() => {
   document.body.innerHTML = "";
@@ -221,7 +221,7 @@ test("dialog renderer type bindings keep group children aligned with the group v
   assert.ok(groupField);
   assert.equal(groupField.kind, "group");
 
-  const fields: DialogField<{ alias: string }>[] = groupField.kind === "group" ? groupField.fields : [];
+  const fields: WorkbenchDialogField<{ alias: string }>[] = groupField.kind === "group" ? groupField.fields : [];
   assert.equal(fields.length, 1);
   assert.equal(fields[0]?.key, "alias");
 });

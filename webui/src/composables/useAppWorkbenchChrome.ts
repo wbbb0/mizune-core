@@ -1,16 +1,16 @@
 import { computed, type ComputedRef } from "vue";
 import type { WorkbenchStatusbarItem, WorkbenchTopbarMenu } from "@/components/workbench/chrome";
 import type { WorkbenchNavItem } from "@/components/workbench/navigation";
-import AuthStatusChip from "@/components/workbench/status/AuthStatusChip.vue";
+import AuthStatusChip from "@/components/app/AuthStatusChip.vue";
 import { useUiStore } from "@/stores/ui";
 
-type WorkbenchChromeOptions = {
+type AppWorkbenchChromeOptions = {
   navItems: readonly WorkbenchNavItem[];
   activeNavItemId: ComputedRef<string>;
   onNavigate: (itemId: string) => void;
 };
 
-export function useWorkbenchChrome(options: WorkbenchChromeOptions) {
+export function useAppWorkbenchChrome(options: AppWorkbenchChromeOptions) {
   const ui = useUiStore();
 
   const topbarMenus = computed<WorkbenchTopbarMenu[]>(() => [

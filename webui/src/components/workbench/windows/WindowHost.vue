@@ -1,19 +1,21 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from "vue";
-import { useUiStore } from "@/stores/ui";
-import { useWorkbenchWindows } from "@/composables/workbench/useWorkbenchWindows";
-import type { WindowDialogController, WindowResult } from "./types";
+import { useWorkbenchWindows } from "@/components/workbench/windows/useWorkbenchWindows";
+import type { WorkbenchWindowDialogController, WorkbenchWindowResult } from "./types";
 import DialogRenderer from "./DialogRenderer.vue";
 import WindowSurface from "./WindowSurface.vue";
 
-const ui = useUiStore();
+const props = defineProps<{
+  isMobile: boolean;
+}>();
+
 const { desktopWindows, mobileWindows, close, focus, move, get } = useWorkbenchWindows();
 
-const renderedWindows = computed(() => (ui.isMobile ? mobileWindows.value : desktopWindows.value));
+const renderedWindows = computed(() => (props.isMobile ? mobileWindows.value : desktopWindows.value));
 const activeModalWindow = computed(() => (
   [...renderedWindows.value].reverse().find((window) => window.definition.modal) ?? null
 ));
-const dialogControllers = new Map<string, WindowDialogController>();
+const dialogControllers = new Map<string, WorkbenchWindowDialogController>();
 
 const inactiveWindowIds = computed(() => {
   const ids = new Set<string>();
@@ -32,7 +34,7 @@ function setDialogRendererRef(windowId: string, controller: unknown) {
     && "snapshotValues" in controller
     && typeof controller.snapshotValues === "function"
   ) {
-    dialogControllers.set(windowId, controller as WindowDialogController);
+    dialogControllers.set(windowId, controller as WorkbenchWindowDialogController);
     return;
   }
   dialogControllers.delete(windowId);
@@ -61,7 +63,7 @@ function handleMove(windowId: string, position: { x: number; y: number }) {
   move(windowId, position);
 }
 
-function handleResolve(windowId: string, result: WindowResult<unknown, Record<string, unknown>>) {
+function handleResolve(windowId: string, result: WorkbenchWindowResult<unknown, Record<string, unknown>>) {
   if (!get(windowId)) {
     dialogControllers.delete(windowId);
     return;
@@ -122,7 +124,7 @@ onBeforeUnmount(() => {
       v-for="window in renderedWindows"
       :key="window.id"
       :window="window"
-      :is-mobile="ui.isMobile"
+      :is-mobile="isMobile"
       :inactive="inactiveWindowIds.has(window.id)"
       @focus="handleFocus(window.id)"
       @move="handleMove(window.id, $event)"

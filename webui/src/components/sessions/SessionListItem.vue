@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import { Ellipsis } from "lucide-vue-next";
 import type { NormalizedSessionListItem } from "@/stores/sessionDisplay";
+import { WorkbenchListItem } from "@/components/workbench/primitives";
 
 const props = defineProps<{
   session: NormalizedSessionListItem;
@@ -31,16 +32,14 @@ const relativeTime = computed(() => {
 </script>
 
 <template>
-  <button
-    class="list-row flex w-full items-center gap-2.5 px-3 py-2 text-left text-text-primary"
-    :class="{ 'is-selected': selected }"
-    @click="emit('select')"
-  >
+  <WorkbenchListItem :selected="selected" :dense="false" multiline @select="emit('select')">
     <!-- Type badge -->
+    <template #leading>
     <span
       class="flex h-7 w-7 shrink-0 items-center justify-center rounded text-small font-bold"
       :class="session.type === 'private' ? 'bg-surface-selected text-text-accent' : 'bg-surface-success text-success'"
     >{{ display.badge }}</span>
+    </template>
 
     <!-- Main content -->
     <div class="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -63,6 +62,7 @@ const relativeTime = computed(() => {
       </div>
     </div>
 
+    <template #trailing>
     <div class="relative flex shrink-0 items-center gap-2">
       <span
         v-if="session.isGenerating"
@@ -76,5 +76,6 @@ const relativeTime = computed(() => {
         <Ellipsis :size="14" :stroke-width="2" />
       </button>
     </div>
-  </button>
+    </template>
+  </WorkbenchListItem>
 </template>

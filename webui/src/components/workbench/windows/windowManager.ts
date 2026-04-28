@@ -1,45 +1,45 @@
-import type { WindowContext, WindowDefinition, WindowResult } from "../../components/workbench/windows/types.js";
+import type { WorkbenchWindowContext, WorkbenchWindowDefinition, WorkbenchWindowResult } from "./types.js";
 
-type WindowPosition = {
+type WorkbenchWindowPosition = {
   x: number;
   y: number;
 };
 
-type RuntimeWindow<
+type ManagedWorkbenchWindow<
   TValues extends Record<string, unknown> = Record<string, unknown>,
   TResult = unknown
 > = {
   id: string;
   order: number;
   parentId?: string;
-  position: WindowPosition;
-  definition: WindowDefinition<TValues, TResult>;
+  position: WorkbenchWindowPosition;
+  definition: WorkbenchWindowDefinition<TValues, TResult>;
 };
 
-type WindowManagerMode = "desktop" | "mobile";
+type WorkbenchWindowMode = "desktop" | "mobile";
 
-type WindowManager = {
+type WorkbenchWindowStore = {
   openSync<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
-    definition: WindowDefinition<TValues, TResult>
-  ): RuntimeWindow<TValues, TResult>;
+    definition: WorkbenchWindowDefinition<TValues, TResult>
+  ): ManagedWorkbenchWindow<TValues, TResult>;
   open<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
-    definition: WindowDefinition<TValues, TResult>
-  ): Promise<WindowResult<TResult, TValues>>;
-  focus(windowId: string): RuntimeWindow | undefined;
-  move(windowId: string, position: WindowPosition): RuntimeWindow | undefined;
+    definition: WorkbenchWindowDefinition<TValues, TResult>
+  ): Promise<WorkbenchWindowResult<TResult, TValues>>;
+  focus(windowId: string): ManagedWorkbenchWindow | undefined;
+  move(windowId: string, position: WorkbenchWindowPosition): ManagedWorkbenchWindow | undefined;
   close<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
     windowId: string,
-    result: WindowResult<TResult, TValues>
+    result: WorkbenchWindowResult<TResult, TValues>
   ): void;
-  closeByContext(context: WindowContext, result?: WindowResult): void;
-  get(windowId: string): RuntimeWindow | undefined;
-  snapshot(): RuntimeWindow[];
-  visibleStack(mode: WindowManagerMode): RuntimeWindow[];
+  closeByContext(context: WorkbenchWindowContext, result?: WorkbenchWindowResult): void;
+  get(windowId: string): ManagedWorkbenchWindow | undefined;
+  snapshot(): ManagedWorkbenchWindow[];
+  visibleStack(mode: WorkbenchWindowMode): ManagedWorkbenchWindow[];
 };
 
 function cloneDefinition<TValues extends Record<string, unknown>, TResult>(
-  definition: WindowDefinition<TValues, TResult>
-): WindowDefinition<TValues, TResult> {
+  definition: WorkbenchWindowDefinition<TValues, TResult>
+): WorkbenchWindowDefinition<TValues, TResult> {
   const cloneValue = (value: unknown): unknown => {
     if (Array.isArray(value)) {
       return value.map((item) => cloneValue(item));
@@ -54,13 +54,13 @@ function cloneDefinition<TValues extends Record<string, unknown>, TResult>(
     return value;
   };
 
-  return cloneValue(definition) as WindowDefinition<TValues, TResult>;
+  return cloneValue(definition) as WorkbenchWindowDefinition<TValues, TResult>;
 }
 
 function cloneWindow<
   TValues extends Record<string, unknown> = Record<string, unknown>,
   TResult = unknown
->(window: RuntimeWindow<TValues, TResult>): RuntimeWindow<TValues, TResult> {
+>(window: ManagedWorkbenchWindow<TValues, TResult>): ManagedWorkbenchWindow<TValues, TResult> {
   return {
     id: window.id,
     order: window.order,
@@ -70,24 +70,24 @@ function cloneWindow<
   };
 }
 
-function createDismissResult(): WindowResult<unknown, Record<string, unknown>> {
+function createDismissResult(): WorkbenchWindowResult<unknown, Record<string, unknown>> {
   return {
     reason: "dismiss",
     values: {}
   };
 }
 
-function sameWindowContext(a: WindowContext | undefined, b: WindowContext) {
+function sameWindowContext(a: WorkbenchWindowContext | undefined, b: WorkbenchWindowContext) {
   return a?.kind === b.kind && a.id === b.id;
 }
 
-export function createWindowManager(): WindowManager {
-  const windows: RuntimeWindow[] = [];
-  const resolvers = new Map<string, (result: WindowResult) => void>();
+export function createWindowManager(): WorkbenchWindowStore {
+  const windows: ManagedWorkbenchWindow[] = [];
+  const resolvers = new Map<string, (result: WorkbenchWindowResult) => void>();
   let nextWindowIndex = 1;
 
   function buildWindowId<TValues extends Record<string, unknown>, TResult>(
-    definition: WindowDefinition<TValues, TResult>
+    definition: WorkbenchWindowDefinition<TValues, TResult>
   ) {
     return definition.id ?? `window-${nextWindowIndex++}`;
   }
@@ -153,7 +153,7 @@ export function createWindowManager(): WindowManager {
   }
 
   function openSync<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
-    definition: WindowDefinition<TValues, TResult>
+    definition: WorkbenchWindowDefinition<TValues, TResult>
   ) {
     const id = buildWindowId(definition);
     if (getWindow(id)) {
@@ -165,7 +165,7 @@ export function createWindowManager(): WindowManager {
       id,
       order: windows.length + 1,
       position: { x: 0, y: 0 },
-      definition: storedDefinition as WindowDefinition,
+      definition: storedDefinition as WorkbenchWindowDefinition,
       ...(storedDefinition.parentId ? { parentId: storedDefinition.parentId } : {})
     });
 
@@ -174,15 +174,15 @@ export function createWindowManager(): WindowManager {
     if (!openedWindow) {
       throw new Error(`Unknown window: ${id}`);
     }
-    return cloneWindow(openedWindow as RuntimeWindow<TValues, TResult>);
+    return cloneWindow(openedWindow as ManagedWorkbenchWindow<TValues, TResult>);
   }
 
   function open<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
-    definition: WindowDefinition<TValues, TResult>
+    definition: WorkbenchWindowDefinition<TValues, TResult>
   ) {
     const window = openSync(definition);
-    return new Promise<WindowResult<TResult, TValues>>((resolve) => {
-      resolvers.set(window.id, resolve as (result: WindowResult) => void);
+    return new Promise<WorkbenchWindowResult<TResult, TValues>>((resolve) => {
+      resolvers.set(window.id, resolve as (result: WorkbenchWindowResult) => void);
     });
   }
 
@@ -191,7 +191,7 @@ export function createWindowManager(): WindowManager {
     return cloneWindow(window);
   }
 
-  function move(windowId: string, position: WindowPosition) {
+  function move(windowId: string, position: WorkbenchWindowPosition) {
     const window = getWindow(windowId);
     if (!window) {
       throw new Error(`Unknown window: ${windowId}`);
@@ -203,7 +203,7 @@ export function createWindowManager(): WindowManager {
 
   function close<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
     windowId: string,
-    result: WindowResult<TResult, TValues>
+    result: WorkbenchWindowResult<TResult, TValues>
   ) {
     if (!getWindow(windowId)) {
       throw new Error(`Unknown window: ${windowId}`);
@@ -232,11 +232,11 @@ export function createWindowManager(): WindowManager {
     const resolve = resolvers.get(windowId);
     if (resolve) {
       resolvers.delete(windowId);
-      resolve(result as WindowResult);
+      resolve(result as WorkbenchWindowResult);
     }
   }
 
-  function closeByContext(context: WindowContext, result: WindowResult = createDismissResult()) {
+  function closeByContext(context: WorkbenchWindowContext, result: WorkbenchWindowResult = createDismissResult()) {
     const matchingWindowIds = windows
       .filter((window) => sameWindowContext(window.definition.context, context))
       .map((window) => window.id);
@@ -257,7 +257,7 @@ export function createWindowManager(): WindowManager {
     return windows.map(cloneWindow);
   }
 
-  function visibleStack(mode: WindowManagerMode) {
+  function visibleStack(mode: WorkbenchWindowMode) {
     if (mode === "mobile") {
       const topWindow = windows[windows.length - 1];
       return topWindow ? [cloneWindow(topWindow)] : [];

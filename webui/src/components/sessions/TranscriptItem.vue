@@ -3,8 +3,7 @@ import { computed, inject } from "vue";
 import { Bot, GitBranch, Image as ImageIcon, Info, MoreHorizontal, User, Wrench } from "lucide-vue-next";
 import type { StoredToolCall, TranscriptItem } from "@/api/types";
 import SessionGlyph, { type SessionGlyphModel } from "./SessionGlyph.vue";
-import TranscriptCard from "./TranscriptCard.vue";
-import TranscriptDisclosure from "./TranscriptDisclosure.vue";
+import { WorkbenchCard, WorkbenchDisclosure } from "@/components/workbench/primitives";
 import TranscriptTextBlock from "./TranscriptTextBlock.vue";
 import type { TranscriptExpandState } from "./ChatPanel.vue";
 
@@ -423,15 +422,15 @@ function openActions(): void {
       </div>
 
       <div v-else-if="item.kind === 'assistant_message'" class="flex flex-col gap-2">
-        <TranscriptDisclosure
+        <WorkbenchDisclosure
           v-if="item.reasoningContent"
           :expanded="reasoningExpanded"
-          collapsed-label="展开思考过程"
-          expanded-label="收起思考过程"
+          collapsed-title="展开思考过程"
+          expanded-title="收起思考过程"
           @toggle="toggleReasoningExpanded"
         >
           <TranscriptTextBlock :text="item.reasoningContent" tone="muted" />
-        </TranscriptDisclosure>
+        </WorkbenchDisclosure>
         <TranscriptTextBlock :text="item.text" />
       </div>
 
@@ -448,120 +447,120 @@ function openActions(): void {
       </div>
 
       <div v-else-if="item.kind === 'assistant_tool_call'" class="flex flex-col gap-2">
-        <TranscriptDisclosure
+        <WorkbenchDisclosure
           v-if="item.reasoningContent"
           :expanded="reasoningExpanded"
-          collapsed-label="展开思考过程"
-          expanded-label="收起思考过程"
+          collapsed-title="展开思考过程"
+          expanded-title="收起思考过程"
           @toggle="toggleReasoningExpanded"
         >
           <TranscriptTextBlock :text="item.reasoningContent" tone="muted" />
-        </TranscriptDisclosure>
-        <TranscriptDisclosure
+        </WorkbenchDisclosure>
+        <WorkbenchDisclosure
           :expanded="expanded"
-          collapsed-label="展开参数"
-          expanded-label="收起参数"
+          collapsed-title="展开参数"
+          expanded-title="收起参数"
           :summary="toolNames.length > 0 ? toolNames.join('、') : `${item.toolCalls.length} 个调用`"
           @toggle="toggleExpanded"
         >
-          <TranscriptCard v-for="toolCall in item.toolCalls" :key="toolCall.id" :title="getDisplayToolName(toolCall) || '未知工具'">
+          <WorkbenchCard v-for="toolCall in item.toolCalls" :key="toolCall.id" :title="getDisplayToolName(toolCall) || '未知工具'">
             <div class="font-mono text-small text-text-muted">toolCallId: {{ toolCall.id }}</div>
             <TranscriptTextBlock v-if="getToolArguments(toolCall)" class="mt-2" :text="formatMaybeJson(getToolArguments(toolCall))" :wrap="false" />
-          </TranscriptCard>
-          <TranscriptCard v-if="item.content" title="模型工具消息">
+          </WorkbenchCard>
+          <WorkbenchCard v-if="item.content" title="模型工具消息">
             <TranscriptTextBlock :text="item.content" />
-          </TranscriptCard>
-        </TranscriptDisclosure>
+          </WorkbenchCard>
+        </WorkbenchDisclosure>
       </div>
 
       <div v-else-if="item.kind === 'tool_result'" class="flex flex-col gap-2">
-        <TranscriptDisclosure
+        <WorkbenchDisclosure
           :expanded="expanded"
-          collapsed-label="展开结果"
-          expanded-label="收起结果"
+          collapsed-title="展开结果"
+          expanded-title="收起结果"
           :summary="item.toolName || '未知工具结果'"
           @toggle="toggleExpanded"
         >
-          <TranscriptCard title="工具输出">
+          <WorkbenchCard title="工具输出">
             <div v-if="item.toolCallId" class="font-mono text-small text-text-muted">toolCallId: {{ item.toolCallId }}</div>
             <TranscriptTextBlock class="mt-2" :text="formatMaybeJson(item.content)" :wrap="false" />
-          </TranscriptCard>
-        </TranscriptDisclosure>
+          </WorkbenchCard>
+        </WorkbenchDisclosure>
       </div>
 
       <div v-else-if="item.kind === 'outbound_media_message'" class="flex flex-col gap-2">
-        <TranscriptCard v-for="row in outboundMediaRows" :key="row.label">
+        <WorkbenchCard v-for="row in outboundMediaRows" :key="row.label">
           <div class="flex items-center justify-between gap-3">
             <div class="text-small tracking-[0.05em] text-text-subtle uppercase">{{ row.label }}</div>
             <div class="font-mono text-small text-text-muted">{{ row.value }}</div>
           </div>
-        </TranscriptCard>
+        </WorkbenchCard>
       </div>
 
       <div v-else-if="item.kind === 'gate_decision'" class="flex flex-col gap-2">
-        <TranscriptDisclosure
+        <WorkbenchDisclosure
           v-if="item.reasoningContent"
           :expanded="reasoningExpanded"
-          collapsed-label="展开思考过程"
-          expanded-label="收起思考过程"
+          collapsed-title="展开思考过程"
+          expanded-title="收起思考过程"
           @toggle="toggleReasoningExpanded"
         >
           <TranscriptTextBlock :text="item.reasoningContent" tone="muted" />
-        </TranscriptDisclosure>
-        <TranscriptDisclosure
+        </WorkbenchDisclosure>
+        <WorkbenchDisclosure
           :expanded="plannerExpanded"
-          collapsed-label="展开规划输出"
-          expanded-label="收起规划输出"
+          collapsed-title="展开规划输出"
+          expanded-title="收起规划输出"
           :summary="item.action"
           @toggle="togglePlannerExpanded"
         >
-          <TranscriptCard title="规划输出">
+          <WorkbenchCard title="规划输出">
             <div class="grid gap-1.5">
-              <TranscriptCard v-for="row in plannerOutputRows" :key="row.key" compact>
+              <WorkbenchCard v-for="row in plannerOutputRows" :key="row.key" compact>
                 <div class="flex items-start justify-between gap-3">
                   <span class="font-mono text-small text-text-subtle">{{ row.key }}</span>
                   <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ row.value ?? "null" }}</span>
                 </div>
-              </TranscriptCard>
-              <TranscriptCard compact>
+              </WorkbenchCard>
+              <WorkbenchCard compact>
                 <div class="mb-1 font-mono text-small text-text-subtle">reason</div>
                 <pre class="m-0 overflow-x-auto font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ plannerReasonText ?? "null" }}</pre>
-              </TranscriptCard>
+              </WorkbenchCard>
             </div>
-          </TranscriptCard>
-        </TranscriptDisclosure>
+          </WorkbenchCard>
+        </WorkbenchDisclosure>
       </div>
 
       <div v-else-if="item.kind === 'title_generation_event'" class="flex flex-col gap-2">
         <p class="m-0 whitespace-pre-wrap wrap-break-word text-text-muted">{{ item.summary }}</p>
-        <TranscriptDisclosure
+        <WorkbenchDisclosure
           :expanded="expanded"
-          collapsed-label="展开详细信息"
-          expanded-label="收起详细信息"
+          collapsed-title="展开详细信息"
+          expanded-title="收起详细信息"
           :summary="item.source === 'auto' ? '自动生成' : '重新生成'"
           @toggle="toggleExpanded"
         >
-          <TranscriptCard title="详细信息">
+          <WorkbenchCard title="详细信息">
             <div class="grid gap-1.5">
-              <TranscriptCard compact>
+              <WorkbenchCard compact>
                 <div class="flex items-start justify-between gap-3">
                   <span class="font-mono text-small text-text-subtle">source</span>
                   <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ item.source }}</span>
                 </div>
-              </TranscriptCard>
-              <TranscriptCard compact>
+              </WorkbenchCard>
+              <WorkbenchCard compact>
                 <div class="flex items-start justify-between gap-3">
                   <span class="font-mono text-small text-text-subtle">modeId</span>
                   <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ item.modeId }}</span>
                 </div>
-              </TranscriptCard>
-              <TranscriptCard compact>
+              </WorkbenchCard>
+              <WorkbenchCard compact>
                 <div class="mb-1 font-mono text-small text-text-subtle">details</div>
                 <pre class="m-0 overflow-x-auto font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ item.details }}</pre>
-              </TranscriptCard>
+              </WorkbenchCard>
             </div>
-          </TranscriptCard>
-        </TranscriptDisclosure>
+          </WorkbenchCard>
+        </WorkbenchDisclosure>
       </div>
 
       <div v-else-if="item.kind === 'system_marker'" class="flex flex-col gap-2">
@@ -570,36 +569,36 @@ function openActions(): void {
 
       <div v-else-if="item.kind === 'fallback_event'" class="flex flex-col gap-2">
         <p class="m-0 whitespace-pre-wrap wrap-break-word text-text-muted">{{ item.summary }}</p>
-        <TranscriptDisclosure
+        <WorkbenchDisclosure
           :expanded="expanded"
-          collapsed-label="展开详细信息"
-          expanded-label="收起详细信息"
+          collapsed-title="展开详细信息"
+          expanded-title="收起详细信息"
           :summary="item.fallbackType === 'model_candidate_switch' ? 'fallback' : '兜底回复'"
           @toggle="toggleExpanded"
         >
-          <TranscriptCard title="详细信息">
+          <WorkbenchCard title="详细信息">
             <TranscriptTextBlock :text="item.details" />
-          </TranscriptCard>
-          <TranscriptCard v-if="item.failureMessage" title="发送给用户的兜底回复">
+          </WorkbenchCard>
+          <WorkbenchCard v-if="item.failureMessage" title="发送给用户的兜底回复">
             <TranscriptTextBlock :text="item.failureMessage" />
-          </TranscriptCard>
-        </TranscriptDisclosure>
+          </WorkbenchCard>
+        </WorkbenchDisclosure>
       </div>
 
       <div v-else-if="item.kind === 'internal_trigger_event'" class="flex flex-col gap-2">
         <p class="m-0 whitespace-pre-wrap wrap-break-word text-text-muted">{{ item.summary }}</p>
-        <TranscriptDisclosure
+        <WorkbenchDisclosure
           v-if="item.details"
           :expanded="expanded"
-          collapsed-label="展开详细信息"
-          expanded-label="收起详细信息"
+          collapsed-title="展开详细信息"
+          expanded-title="收起详细信息"
           :summary="item.stage"
           @toggle="toggleExpanded"
         >
-          <TranscriptCard title="详细信息">
+          <WorkbenchCard title="详细信息">
             <TranscriptTextBlock :text="item.details" />
-          </TranscriptCard>
-        </TranscriptDisclosure>
+          </WorkbenchCard>
+        </WorkbenchDisclosure>
       </div>
     </div>
   </article>

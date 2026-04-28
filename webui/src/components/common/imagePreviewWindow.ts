@@ -1,10 +1,10 @@
-import type { WindowDefinition, WindowResult } from "@/components/workbench/windows/types";
+import type { WorkbenchDialogDefinition, WorkbenchWindowResult } from "@/components/workbench/windows/types";
 import ImagePreviewDialog from "./ImagePreviewDialog.vue";
 
 type WindowOpener = {
-  open<TValues extends Record<string, unknown>, TResult>(
-    definition: WindowDefinition<TValues, TResult>
-  ): Promise<WindowResult<TResult, TValues>>;
+  openDialog<TValues extends Record<string, unknown>, TResult>(
+    definition: WorkbenchDialogDefinition<TValues, TResult>
+  ): Promise<WorkbenchWindowResult<TResult, TValues>>;
 };
 
 export function openImagePreviewWindow(
@@ -15,8 +15,7 @@ export function openImagePreviewWindow(
     title?: string;
   }
 ) {
-  return windows.open({
-    kind: "dialog",
+  return windows.openDialog({
     title: input.title || input.alt || "图片预览",
     size: "full",
     blocks: [

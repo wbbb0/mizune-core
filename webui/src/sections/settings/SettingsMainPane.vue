@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { KeyRound, LockKeyhole, LogOut, Trash2 } from "lucide-vue-next";
 import { useSettingsSection } from "@/composables/sections/useSettingsSection";
+import { WorkbenchAreaHeader, WorkbenchCard, WorkbenchEmptyState } from "@/components/workbench/primitives";
 
 const {
   auth,
@@ -29,25 +30,23 @@ const {
 
 <template>
   <div class="flex h-full flex-col overflow-hidden">
-    <div v-if="!activeItem" class="panel-empty flex flex-1 items-center justify-center gap-2">
-      ← 选择一个设置项
-    </div>
+    <WorkbenchEmptyState v-if="!activeItem" message="← 选择一个设置项" />
 
     <template v-else>
-      <header class="toolbar-header flex h-10 shrink-0 items-center gap-2.5 border-b px-4">
-      <span class="text-ui font-medium text-text-secondary">{{ activeItem === "auth" ? "认证设置" : "退出登录" }}</span>
-      </header>
+      <WorkbenchAreaHeader class="gap-2.5 px-4" :uppercase="false">
+        <span class="text-ui font-medium text-text-secondary">{{ activeItem === "auth" ? "认证设置" : "退出登录" }}</span>
+      </WorkbenchAreaHeader>
 
       <div v-if="activeItem === 'auth'" class="scrollbar-thin flex-1 overflow-y-auto p-4">
         <div class="mx-auto flex w-full max-w-3xl flex-col gap-4">
-          <div v-if="!auth.enabled" class="rounded-xl border border-border-default bg-surface-panel p-4">
+          <WorkbenchCard v-if="!auth.enabled" surface="panel" padding="lg">
             <div class="mb-2 text-ui font-medium text-text-primary">认证已关闭</div>
             <p class="m-0 text-small text-text-muted">当前实例在配置中关闭了 WebUI 认证，页面访问不再要求登录。若需恢复登录保护，请在配置中重新开启认证。</p>
-          </div>
+          </WorkbenchCard>
 
           <div v-else-if="loadingSettings" class="text-small text-text-muted">加载中…</div>
 
-          <section v-if="auth.enabled" class="rounded-xl border border-border-default bg-surface-panel p-4">
+          <WorkbenchCard v-if="auth.enabled" surface="panel" padding="lg">
             <div class="mb-4 flex items-start gap-3">
               <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-text-secondary">
                 <LockKeyhole :size="18" :stroke-width="1.75" />
@@ -80,9 +79,9 @@ const {
                 </button>
               </div>
             </form>
-          </section>
+          </WorkbenchCard>
 
-          <section v-if="auth.enabled" class="rounded-xl border border-border-default bg-surface-panel p-4">
+          <WorkbenchCard v-if="auth.enabled" surface="panel" padding="lg">
             <div class="mb-4 flex items-start gap-3">
               <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-text-secondary">
                 <KeyRound :size="18" :stroke-width="1.75" />
@@ -95,12 +94,12 @@ const {
 
             <div v-if="!supportsPasskey" class="text-small text-text-muted">当前环境不支持 Passkey。</div>
             <template v-else>
-              <div class="mb-4 rounded-lg border border-border-default bg-surface-muted px-3 py-2 text-small text-text-muted">
+              <WorkbenchCard class="mb-4 text-small text-text-muted" surface="muted">
                 <div>当前状态：{{ settings?.passkey ? "已注册" : "未注册" }}</div>
                 <div v-if="settings?.passkey">标签：{{ settings.passkey.label }}</div>
                 <div v-if="settings?.passkey">创建时间：{{ formatTime(settings.passkey.createdAt) }}</div>
                 <div v-if="settings?.passkey">最近使用：{{ formatTime(settings.passkey.lastUsedAt) }}</div>
-              </div>
+              </WorkbenchCard>
 
               <div class="flex flex-col gap-3 md:flex-row md:items-end">
                 <label class="flex flex-1 flex-col gap-1 text-small text-text-muted">
@@ -120,12 +119,12 @@ const {
               <p v-if="passkeyError" class="m-0 mt-3 text-small text-danger">{{ passkeyError }}</p>
               <p v-if="passkeySuccess" class="m-0 mt-3 text-small text-success">{{ passkeySuccess }}</p>
             </template>
-          </section>
+          </WorkbenchCard>
         </div>
       </div>
 
       <div v-else-if="auth.enabled" class="flex flex-1 items-center justify-center p-4">
-        <div class="flex w-full max-w-md flex-col gap-4 rounded-xl border border-border-default bg-surface-panel p-4">
+        <WorkbenchCard class="flex w-full max-w-md flex-col gap-4" surface="panel" padding="lg">
           <div class="flex items-start gap-3">
             <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-text-secondary">
               <LogOut :size="18" :stroke-width="1.75" />
@@ -140,10 +139,10 @@ const {
               {{ loggingOut ? "退出中…" : "退出登录" }}
             </button>
           </div>
-        </div>
+        </WorkbenchCard>
       </div>
 
-      <div v-else class="panel-empty flex flex-1 items-center justify-center gap-2">当前实例未启用认证</div>
+      <WorkbenchEmptyState v-else message="当前实例未启用认证" />
     </template>
   </div>
 </template>

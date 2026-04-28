@@ -2,6 +2,7 @@
 import { onMounted } from "vue";
 import { useUiStore } from "@/stores/ui";
 import { useDataSection } from "@/composables/sections/useDataSection";
+import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@/components/workbench/primitives";
 
 const ui = useUiStore();
 const { resources, selectedKey, selectResource, refreshResources, resourceBadge } = useDataSection();
@@ -13,21 +14,18 @@ onMounted(() => {
 
 <template>
   <div class="flex h-full flex-col overflow-hidden">
-    <div v-if="!ui.isMobile" class="panel-header flex h-10 shrink-0 items-center border-b px-3">
-      <span class="text-small font-semibold tracking-[0.08em] text-text-muted uppercase">数据</span>
-    </div>
+    <WorkbenchAreaHeader v-if="!ui.isMobile" title="数据" />
     <div class="min-h-0 flex-1 overflow-y-auto">
-      <button
+      <WorkbenchListItem
         v-for="entry in resources"
         :key="entry.key"
-        class="list-row flex w-full items-center justify-between px-3 py-1.75 text-left"
-        :class="{ 'is-selected': selectedKey === entry.key }"
-        @click="selectResource(entry.key)"
+        :selected="selectedKey === entry.key"
+        :title="entry.title"
+        :meta="resourceBadge(entry)"
+        @select="selectResource(entry.key)"
       >
-        <span class="text-ui text-text-secondary">{{ entry.title }}</span>
-        <span class="rounded-full bg-surface-muted px-1.5 text-small text-text-subtle">{{ resourceBadge(entry) }}</span>
-      </button>
-      <div v-if="resources.length === 0" class="px-3 py-6 text-center text-small text-text-subtle">暂无数据资源</div>
+      </WorkbenchListItem>
+      <WorkbenchEmptyState v-if="resources.length === 0" :centered="false" class="justify-center px-3 py-6 text-center text-small text-text-subtle" message="暂无数据资源" />
     </div>
   </div>
 </template>

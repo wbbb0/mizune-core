@@ -1,9 +1,9 @@
-import type { WindowDefinition } from "../../../webui/src/components/workbench/windows/types.ts";
+import type { WorkbenchWindowDefinition } from "../../../webui/src/components/workbench/windows/types.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createWindowManager } from "../../../webui/src/composables/workbench/windowManager.ts";
+import { createWindowManager } from "../../../webui/src/components/workbench/windows/windowManager.ts";
 
-function buildWindow(id: string, parentId?: string): WindowDefinition {
+function buildWindow(id: string, parentId?: string): WorkbenchWindowDefinition {
   return {
     id,
     kind: parentId ? "child-dialog" : "dialog",

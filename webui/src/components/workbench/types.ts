@@ -1,60 +1,65 @@
 import type { Component } from "vue";
 
-type WorkbenchSectionLayout = {
+export type WorkbenchAreaId = "primarySidebar" | "mainArea" | "secondarySidebar" | "bottomPanel";
+
+export type WorkbenchAreaSize = {
+  defaultWidthPx?: number;
+  minWidthPx?: number;
+  maxWidthPx?: number;
+};
+
+export type WorkbenchViewLayout = {
   mobile: {
-    mainFlow: "list-main" | "main-only";
+    rootArea: WorkbenchAreaId;
   };
   desktop: {
-    listPane?: {
-      defaultWidthPx?: number;
-      minWidthPx?: number;
-      maxWidthPx?: number;
-    };
+    primarySidebar?: WorkbenchAreaSize;
+    secondarySidebar?: WorkbenchAreaSize;
+    bottomPanel?: WorkbenchAreaSize;
   };
 };
 
-export type WorkbenchSection = {
+export type WorkbenchViewAreas = {
+  primarySidebar?: Component;
+  mainArea: Component;
+  secondarySidebar?: Component;
+  bottomPanel?: Component;
+  mobileHeader?: Component;
+};
+
+export type WorkbenchView = {
   id: string;
   title: string;
-  regions: {
-    listPane?: Component;
-    mainPane: Component;
-    auxPane?: Component;
-    topbar?: Component;
-    statusbar?: Component;
-    mobileHeader?: Component;
-    mobileTopMenu?: Component;
-    mobileBottomMenu?: Component;
-  };
-  layout: WorkbenchSectionLayout;
+  areas: WorkbenchViewAreas;
+  layout: WorkbenchViewLayout;
 };
 
-export type WorkbenchSectionDefinition = Omit<WorkbenchSection, "layout"> & {
+export type WorkbenchViewDefinition = Omit<WorkbenchView, "layout"> & {
   layout?: Partial<{
-    mobile: Partial<WorkbenchSectionLayout["mobile"]>;
-    desktop: Partial<WorkbenchSectionLayout["desktop"]>;
+    mobile: Partial<WorkbenchViewLayout["mobile"]>;
+    desktop: Partial<WorkbenchViewLayout["desktop"]>;
   }>;
 };
 
-export const defaultWorkbenchSectionLayout: WorkbenchSectionLayout = {
+export const defaultWorkbenchViewLayout: WorkbenchViewLayout = {
   mobile: {
-    mainFlow: "list-main"
+    rootArea: "primarySidebar"
   },
   desktop: {
-    listPane: {}
+    primarySidebar: {}
   }
 };
 
-export function defineWorkbenchSection(definition: WorkbenchSectionDefinition): WorkbenchSection {
+export function defineWorkbenchView(definition: WorkbenchViewDefinition): WorkbenchView {
   return {
     ...definition,
     layout: {
       mobile: {
-        ...defaultWorkbenchSectionLayout.mobile,
+        ...defaultWorkbenchViewLayout.mobile,
         ...definition.layout?.mobile
       },
       desktop: {
-        ...defaultWorkbenchSectionLayout.desktop,
+        ...defaultWorkbenchViewLayout.desktop,
         ...definition.layout?.desktop
       }
     }

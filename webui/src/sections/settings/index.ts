@@ -1,14 +1,14 @@
-import { defineWorkbenchSection } from "@/components/workbench/types";
+import { defineWorkbenchView } from "@/components/workbench/types";
 import SettingsListPane from "./SettingsListPane.vue";
 import SettingsMainPane from "./SettingsMainPane.vue";
 import SettingsMobileHeader from "./SettingsMobileHeader.vue";
 
-export const settingsSection = defineWorkbenchSection({
+export const settingsView = defineWorkbenchView({
   id: "settings",
   title: "设置",
-  regions: {
-    listPane: SettingsListPane,
-    mainPane: SettingsMainPane,
+  areas: {
+    primarySidebar: SettingsListPane,
+    mainArea: SettingsMainPane,
     mobileHeader: SettingsMobileHeader
   }
 });

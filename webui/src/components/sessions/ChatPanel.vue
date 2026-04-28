@@ -13,7 +13,8 @@ import { ApiError } from "@/api/client";
 import type { TranscriptEntry } from "@/stores/sessions";
 import type { TranscriptItem as SessionTranscriptItem } from "@/api/types";
 import { useWorkbenchToasts } from "@/components/workbench/toasts/useWorkbenchToasts";
-import { useWorkbenchWindows } from "@/composables/workbench/useWorkbenchWindows";
+import { useWorkbenchWindows } from "@/components/workbench/windows/useWorkbenchWindows";
+import { WorkbenchAreaHeader, WorkbenchEmptyState } from "@/components/workbench/primitives";
 import { buildChatTimelineItems } from "./chatTimeline";
 import type { ChatTimelineItem } from "./chatTimeline";
 import { resolveComposerUserIdentity } from "./composerUserIdentity";
@@ -113,8 +114,7 @@ function openTranscriptActions(target: TranscriptActionTarget) {
     return;
   }
 
-  void windows.open({
-    kind: "dialog",
+  void windows.openDialog({
     title: "消息操作",
     description: `${target.title} · ${target.detail}`,
     size: "md",
@@ -243,7 +243,7 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
 <template>
   <div class="flex h-full min-h-0 flex-col overflow-hidden">
     <!-- Header -->
-    <header v-if="session" class="toolbar-header flex h-10 shrink-0 items-center justify-between gap-3 border-b px-4">
+    <WorkbenchAreaHeader v-if="session" class="justify-between gap-3 px-4" :uppercase="false">
       <div class="flex min-w-0 items-center gap-2">
         <span
           class="flex items-center"
@@ -275,17 +275,15 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
           状态
         </button>
       </div>
-    </header>
+    </WorkbenchAreaHeader>
 
     <!-- No session selected -->
-    <div v-if="!session" class="panel-empty flex flex-1 items-center justify-center">
-      <span>← 选择一个会话</span>
-    </div>
+    <WorkbenchEmptyState v-if="!session" message="← 选择一个会话" />
 
     <template v-else>
       <!-- Chat view: newest on top -->
       <div v-show="tab === 'chat'" class="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div class="sticky-toolbar flex shrink-0 items-center justify-between border-b px-3 py-1">
+        <WorkbenchAreaHeader class="justify-between px-3 py-1" :uppercase="false">
           <span class="text-small text-text-subtle">{{ session.transcriptCount }} 条消息</span>
           <button
             class="btn-ghost flex items-center gap-1 px-1.5 py-0.5 text-small text-text-muted hover:text-text-primary"
@@ -295,10 +293,8 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
             <RefreshCw :size="12" :stroke-width="2" />
             重新加载
           </button>
-        </div>
-        <div v-if="reversedMessages.length === 0" class="flex-1 px-6 py-6 text-center text-small text-text-subtle">
-          暂无消息
-        </div>
+        </WorkbenchAreaHeader>
+        <WorkbenchEmptyState v-if="reversedMessages.length === 0" class="px-6 py-6 text-small text-text-subtle" message="暂无消息" />
         <VirtualMessageList
           v-else
           class="min-h-0 flex-1"
@@ -333,7 +329,7 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
 
       <!-- Transcript view: newest on top -->
       <div v-show="tab === 'transcript'" class="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div class="sticky-toolbar flex shrink-0 items-center justify-between border-b px-3 py-1">
+        <WorkbenchAreaHeader class="justify-between px-3 py-1" :uppercase="false">
           <span class="text-small text-text-subtle">{{ session.transcriptCount }} 条记录</span>
           <button
             class="btn-ghost flex items-center gap-1 px-1.5 py-0.5 text-small text-text-muted hover:text-text-primary"
@@ -343,8 +339,8 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
             <RefreshCw :size="12" :stroke-width="2" />
             重新加载
           </button>
-        </div>
-        <div v-if="reversedTranscript.length === 0" class="flex-1 px-6 py-6 text-center text-small text-text-subtle">暂无记录</div>
+        </WorkbenchAreaHeader>
+        <WorkbenchEmptyState v-if="reversedTranscript.length === 0" class="px-6 py-6 text-small text-text-subtle" message="暂无记录" />
         <VirtualMessageList
           v-else
           class="min-h-0 flex-1"

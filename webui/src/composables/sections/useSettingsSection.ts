@@ -112,7 +112,7 @@ export const useSettingsSection = createSharedSectionState<SettingsSectionState>
 
     function selectItem(item: "auth" | "logout") {
       activeItem.value = item;
-      workbenchNavigation.showMain();
+      workbenchNavigation.showArea("mainArea");
     }
 
     async function submitPasswordChange() {

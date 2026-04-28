@@ -4,7 +4,7 @@ import { sessionsApi } from "@/api/sessions";
 import type { SessionDetailResult } from "@/api/types";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { useWorkbenchNavigation } from "@/components/workbench/runtime/workbenchRuntime";
-import { useWorkbenchWindows } from "@/composables/workbench/useWorkbenchWindows";
+import { useWorkbenchWindows } from "@/components/workbench/windows/useWorkbenchWindows";
 import { openCreateSessionWindow } from "@/components/sessions/createSessionWindow";
 import { useSessionsStore } from "@/stores/sessions";
 import { useWorkbenchToasts } from "@/components/workbench/toasts/useWorkbenchToasts";
@@ -122,7 +122,7 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
 
     function selectSession(sessionId: string) {
       store.selectSession(sessionId);
-      workbenchNavigation.showMain();
+      workbenchNavigation.showArea("mainArea");
     }
 
     async function openCreateDialog() {
@@ -137,7 +137,7 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
           const requestVersion = stateVersion;
           await store.createSession(payload);
           if (!isStale(requestVersion)) {
-            workbenchNavigation.showMain();
+            workbenchNavigation.showArea("mainArea");
           }
         },
         reportError: (error) => {
@@ -169,8 +169,7 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
           ? "自动生成"
           : "默认标题";
 
-      await windows.open({
-        kind: "dialog",
+      await windows.openDialog({
         title: "会话操作",
         description: "管理标题、切换当前会话模式，或删除该会话。",
         size: "lg",
@@ -269,7 +268,7 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
             label: "删除会话",
             variant: "danger" as const,
             run: async ({ windowId }: { windowId: string }) => {
-              const confirmResult = await windows.open({
+              const confirmResult = await windows.openDialog({
                 kind: "child-dialog",
                 parentId: windowId,
                 title: "确认删除会话",

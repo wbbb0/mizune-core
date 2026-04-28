@@ -164,7 +164,7 @@ export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionStat
           await toggleDirectory(item.path);
         }
         if (!isStale(requestVersion)) {
-          workbenchNavigation.showMain();
+          workbenchNavigation.showArea("mainArea");
         }
         return;
       }
@@ -172,7 +172,7 @@ export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionStat
       if (isImageFile(item.name)) {
         fileImageSrc.value = fileApi.getLocalFileContentUrl(item.path);
         if (!isStale(requestVersion)) {
-          workbenchNavigation.showMain();
+          workbenchNavigation.showArea("mainArea");
         }
         return;
       }
@@ -191,7 +191,7 @@ export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionStat
       }
 
       if (!isStale(requestVersion)) {
-        workbenchNavigation.showMain();
+        workbenchNavigation.showArea("mainArea");
       }
     }
 
@@ -202,7 +202,7 @@ export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionStat
       filePreview.value = null;
       previewError.value = null;
       fileImageSrc.value = null;
-      workbenchNavigation.showMain();
+      workbenchNavigation.showArea("mainArea");
     }
 
     function refreshCurrentMode() {

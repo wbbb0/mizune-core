@@ -3,6 +3,7 @@ import { RefreshCw, ChevronRight, ChevronDown, Save } from "lucide-vue-next";
 import SchemaNode from "@/components/editor/SchemaNode.vue";
 import { useDataSection } from "@/composables/sections/useDataSection";
 import type { DirectoryItem } from "@/api/data";
+import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@/components/workbench/primitives";
 
 const {
   selectedKey,
@@ -35,15 +36,17 @@ const {
 
 <template>
   <div class="flex h-full flex-col overflow-hidden">
-    <div v-if="!selectedKey" class="panel-empty flex flex-1 items-center justify-center gap-2">← 选择一个数据资源</div>
+    <WorkbenchEmptyState v-if="!selectedKey" message="← 选择一个数据资源" />
 
-    <div v-else-if="loading" class="panel-empty flex flex-1 items-center justify-center gap-2">
-      <RefreshCw :size="16" class="spin" :stroke-width="2" />
-      <span>加载中…</span>
-    </div>
+    <WorkbenchEmptyState v-else-if="loading">
+      <template #icon>
+        <RefreshCw :size="16" class="spin" :stroke-width="2" />
+      </template>
+      加载中…
+    </WorkbenchEmptyState>
 
     <template v-else-if="selectedResource?.source === 'editor' && model">
-      <header class="toolbar-header flex h-10 shrink-0 flex-wrap items-center gap-2.5 border-b px-4 py-1.5">
+      <WorkbenchAreaHeader class="flex-wrap gap-2.5 px-4" :uppercase="false">
         <span class="rounded-full bg-surface-muted px-1.5 text-small text-text-subtle">{{ model.kind }}</span>
         <template v-if="model.kind === 'layered'">
           <span class="text-small text-text-muted">层次：</span>
@@ -68,7 +71,7 @@ const {
             {{ saving ? "保存中…" : "保存" }}
           </button>
         </div>
-      </header>
+      </WorkbenchAreaHeader>
 
       <div class="scrollbar-thin flex-1 overflow-y-auto px-4 py-3">
         <SchemaNode
@@ -85,12 +88,14 @@ const {
     </template>
 
     <template v-else-if="selectedResource?.source === 'browser' && resource">
-      <header class="toolbar-header flex h-10 shrink-0 items-center gap-2.5 overflow-hidden border-b px-4">
+      <WorkbenchAreaHeader class="gap-2.5 overflow-hidden px-4" :uppercase="false">
         <span class="truncate font-mono text-small text-text-subtle">{{ resource.path }}</span>
+        <template #actions>
         <button class="btn-ghost ml-auto" :disabled="loading" @click="refreshSelected">
           <RefreshCw :size="13" :stroke-width="2" :class="{ spin: loading }" />
         </button>
-      </header>
+        </template>
+      </WorkbenchAreaHeader>
 
       <div v-if="resource.kind === 'single_json'" class="scrollbar-thin flex-1 overflow-auto px-4 py-3">
         <pre class="m-0 overflow-auto p-0 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap wrap-break-word">{{ formattedJson }}</pre>
@@ -98,12 +103,12 @@ const {
 
       <div v-else class="flex min-h-0 flex-1 overflow-hidden">
         <div class="scrollbar-thin w-55 shrink-0 overflow-y-auto border-r border-border-default">
-          <button
+          <WorkbenchListItem
             v-for="item in resource.items"
             :key="item.key"
-            class="list-row flex w-full flex-col gap-0.5 px-3 py-1.5 text-left"
-            :class="{ 'is-selected': selectedItemKey === item.key }"
-            @click="selectDirectoryItem(item.key)"
+            :selected="selectedItemKey === item.key"
+            multiline
+            @select="selectDirectoryItem(item.key)"
           >
             <div class="tree-head">
               <component
@@ -118,21 +123,23 @@ const {
               <span class="tree-meta">{{ formatSize(item.size) }}</span>
               <span class="tree-meta">{{ formatTime(item.updatedAt) }}</span>
             </div>
-          </button>
-          <div v-if="resource.items.length === 0" class="px-3 py-6 text-center text-small text-text-subtle">目录为空</div>
+          </WorkbenchListItem>
+          <WorkbenchEmptyState v-if="resource.items.length === 0" :centered="false" class="justify-center px-3 py-6 text-center text-small text-text-subtle" message="目录为空" />
         </div>
 
         <div class="scrollbar-thin flex flex-1 flex-col overflow-auto">
-          <div v-if="!selectedItemKey" class="panel-empty flex flex-1 items-center justify-center gap-2">← 选择一个文件</div>
-          <div v-else-if="loadingItem" class="panel-empty flex flex-1 items-center justify-center gap-2">
-            <RefreshCw :size="14" class="spin" :stroke-width="2" />
-          </div>
+          <WorkbenchEmptyState v-if="!selectedItemKey" message="← 选择一个文件" />
+          <WorkbenchEmptyState v-else-if="loadingItem">
+            <template #icon>
+              <RefreshCw :size="14" class="spin" :stroke-width="2" />
+            </template>
+          </WorkbenchEmptyState>
           <template v-else-if="itemDetail">
-            <div class="toolbar-header flex shrink-0 items-center gap-3 border-b px-4 py-1.5">
+            <WorkbenchAreaHeader class="gap-3 px-4" :uppercase="false">
               <span class="flex-1 truncate font-mono text-small text-text-muted">{{ itemDetail.path }}</span>
               <span class="shrink-0 text-small text-text-subtle">{{ formatSize(itemDetail.size) }}</span>
               <span class="shrink-0 text-small text-text-subtle">{{ formatTime(itemDetail.updatedAt) }}</span>
-            </div>
+            </WorkbenchAreaHeader>
             <pre class="m-0 overflow-auto px-4 py-3 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap wrap-break-word">{{ formattedItemJson }}</pre>
           </template>
         </div>
