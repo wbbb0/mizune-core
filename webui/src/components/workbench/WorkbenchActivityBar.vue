@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { WorkbenchNavItem } from "@/components/workbench/navigation";
+import type { WorkbenchNavItem } from "./navigation";
 
 const props = defineProps<{
   navItems: readonly WorkbenchNavItem[];

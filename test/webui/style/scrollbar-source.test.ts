@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 test("webui uses one thin scrollbar style globally", async () => {
   const source = await readFile(
-    new URL("../../../webui/src/style/main.css", import.meta.url),
+    new URL("../../../webui/src/style/workbench.css", import.meta.url),
     "utf8"
   );
 

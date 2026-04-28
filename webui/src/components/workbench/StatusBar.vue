@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { WorkbenchStatusbarItem } from "@/components/workbench/chrome";
+import type { WorkbenchStatusbarItem } from "./chrome";
 
 const props = defineProps<{
   items: WorkbenchStatusbarItem[];

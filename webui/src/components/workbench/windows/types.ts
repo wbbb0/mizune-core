@@ -2,7 +2,7 @@ import type { Component } from "vue";
 
 export type WorkbenchWindowSize = "auto" | "sm" | "md" | "lg" | "xl" | "full";
 
-export type WorkbenchWindowKind = "dialog" | "panel" | "child-dialog";
+export type WorkbenchWindowKind = "dialog" | "child-dialog";
 
 export type WorkbenchWindowContext = {
   kind: string;

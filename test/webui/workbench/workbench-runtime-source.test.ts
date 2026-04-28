@@ -5,14 +5,18 @@ import { access, readFile } from "node:fs/promises";
 test("workbench shell creates, provides, and activates a runtime", async () => {
   const shell = await readFile(new URL("../../../webui/src/components/workbench/WorkbenchShell.vue", import.meta.url), "utf8");
   const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
+  const controller = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchController.ts", import.meta.url), "utf8");
 
   assert.match(runtime, /export function createWorkbenchRuntime/);
   assert.match(runtime, /export function provideWorkbenchRuntime/);
   assert.match(runtime, /export function useWorkbenchRuntimeContext/);
   assert.match(runtime, /export function activateWorkbenchRuntime/);
-  assert.match(shell, /createWorkbenchRuntime/);
-  assert.match(shell, /provideWorkbenchRuntime/);
-  assert.match(shell, /activateWorkbenchRuntime/);
+  assert.match(controller, /export function createWorkbenchController/);
+  assert.match(controller, /provideWorkbenchRuntime/);
+  assert.match(controller, /activateWorkbenchRuntime/);
+  assert.match(shell, /createWorkbenchController/);
+  assert.match(shell, /provideWorkbenchController/);
+  assert.match(shell, /activateWorkbenchController/);
   assert.match(shell, /onUnmounted/);
 });
 
@@ -20,7 +24,7 @@ test("workbench core receives navigation from the app adapter", async () => {
   const shell = await readFile(new URL("../../../webui/src/components/workbench/WorkbenchShell.vue", import.meta.url), "utf8");
   const mobile = await readFile(new URL("../../../webui/src/components/workbench/MobileWorkbench.vue", import.meta.url), "utf8");
   const desktop = await readFile(new URL("../../../webui/src/components/workbench/DesktopWorkbench.vue", import.meta.url), "utf8");
-  const activityBar = await readFile(new URL("../../../webui/src/components/layout/ActivityBar.vue", import.meta.url), "utf8");
+  const activityBar = await readFile(new URL("../../../webui/src/components/workbench/WorkbenchActivityBar.vue", import.meta.url), "utf8");
   const viewHost = await readFile(new URL("../../../webui/src/sections/WorkbenchViewHost.vue", import.meta.url), "utf8");
 
   assert.match(shell, /navItems/);
@@ -95,13 +99,15 @@ test("workbench navigation commands live in the runtime module", async () => {
 test("workbench runtime exposes an active shell command facade", async () => {
   const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
   const shell = await readFile(new URL("../../../webui/src/components/workbench/WorkbenchShell.vue", import.meta.url), "utf8");
+  const controller = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchController.ts", import.meta.url), "utf8");
 
   assert.match(runtime, /export function useActiveWorkbenchRuntime/);
   assert.match(runtime, /useWorkbenchNavigation/);
-  assert.match(shell, /const deactivateRuntime = activateWorkbenchRuntime\(runtime\)/);
+  assert.match(controller, /export function useActiveWorkbenchController/);
+  assert.match(shell, /const deactivateController = activateWorkbenchController\(controller\)/);
 });
 
-test("desktop workbench sizes primary sidebar through runtime resize state", async () => {
+test("desktop workbench sizes desktop areas through runtime resize state", async () => {
   const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
   const desktop = await readFile(new URL("../../../webui/src/components/workbench/DesktopWorkbench.vue", import.meta.url), "utf8");
   const types = await readFile(new URL("../../../webui/src/components/workbench/types.ts", import.meta.url), "utf8");
@@ -109,28 +115,35 @@ test("desktop workbench sizes primary sidebar through runtime resize state", asy
 
   assert.match(types, /desktop:\s*\{/);
   assert.match(types, /primarySidebar\?:/);
+  assert.match(types, /secondarySidebar\?:/);
+  assert.match(types, /bottomPanel\?:/);
   assert.doesNotMatch(types, /desktopListPane/);
   assert.match(sessionsView, /defineWorkbenchView/);
   assert.doesNotMatch(sessionsView, /primarySidebar:\s*\{\}/);
-  assert.match(runtime, /getDesktopAreaWidthPx/);
+  assert.match(runtime, /getDesktopAreaSizePx/);
   assert.match(runtime, /getDesktopAreaStyle/);
-  assert.match(runtime, /setDesktopAreaWidth/);
-  assert.match(runtime, /resetDesktopAreaWidth/);
-  assert.match(runtime, /clampDesktopAreaWidth/);
-  assert.match(runtime, /layout\.desktop\.primarySidebar/);
+  assert.match(runtime, /setDesktopAreaSize/);
+  assert.match(runtime, /resetDesktopAreaSize/);
+  assert.match(runtime, /clampDesktopAreaSize/);
+  assert.match(runtime, /layout\.desktop\[areaId\]/);
   assert.doesNotMatch(runtime, /layout\.desktopListPane/);
   assert.match(desktop, /primarySidebarStyle/);
+  assert.match(desktop, /secondarySidebarStyle/);
+  assert.match(desktop, /bottomPanelStyle/);
   assert.match(desktop, /getDesktopAreaStyle\("primarySidebar"\)/);
-  assert.match(desktop, /setDesktopAreaWidth\("primarySidebar"/);
+  assert.match(desktop, /setDesktopAreaSize\(areaId/);
   assert.match(desktop, /hasPrimarySidebar/);
-  assert.match(desktop, /startPrimarySidebarResize/);
-  assert.match(desktop, /resetPrimarySidebarResize/);
+  assert.match(desktop, /hasSecondarySidebar/);
+  assert.match(desktop, /hasBottomPanel/);
+  assert.match(desktop, /startDesktopAreaResize/);
+  assert.match(desktop, /resetDesktopAreaResize/);
   assert.match(desktop, /role="separator"/);
   assert.match(desktop, /aria-orientation="vertical"/);
+  assert.match(desktop, /aria-orientation="horizontal"/);
   assert.match(desktop, /<aside v-if="hasPrimarySidebar"/);
   assert.match(desktop, /v-if="hasPrimarySidebar"\s*\n\s*class="relative w-1/);
-  assert.match(desktop, /@pointerdown="startPrimarySidebarResize"/);
-  assert.match(desktop, /@dblclick="resetPrimarySidebarResize"/);
+  assert.match(desktop, /@pointerdown="startDesktopAreaResize\('primarySidebar'/);
+  assert.match(desktop, /@dblclick="resetDesktopAreaResize\('primarySidebar'\)"/);
   assert.doesNotMatch(desktop, /w-\(--side-panel-width\)/);
 });
 
@@ -151,16 +164,16 @@ test("workbench views use a definition helper for default layout", async () => {
   }
 });
 
-test("desktop workbench persists area widths by global area id", async () => {
+test("desktop workbench persists area sizes by global area id", async () => {
   const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
 
-  assert.match(runtime, /readStoredDesktopAreaWidth/);
-  assert.match(runtime, /writeStoredDesktopAreaWidth/);
+  assert.match(runtime, /readStoredDesktopAreaSize/);
+  assert.match(runtime, /writeStoredDesktopAreaSize/);
   assert.match(runtime, /localStorage/);
   assert.match(runtime, /workbench\.area\.desktop/);
   assert.match(runtime, /resolveDesktopAreaStorageKey\(areaId: DesktopAreaId\)/);
-  assert.match(runtime, /readStoredDesktopAreaWidth\(areaId: DesktopAreaId\)/);
-  assert.match(runtime, /writeStoredDesktopAreaWidth\(areaId: DesktopAreaId, widthPx: number\)/);
+  assert.match(runtime, /readStoredDesktopAreaSize\(areaId: DesktopAreaId\)/);
+  assert.match(runtime, /writeStoredDesktopAreaSize\(areaId: DesktopAreaId, sizePx: number\)/);
   assert.doesNotMatch(runtime, /desktopListPaneWidthPx/);
   for (const legacyName of [
     "readStoredDesktop" + "PaneWidth",

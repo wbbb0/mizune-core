@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, watch, type ComponentPublicInstance } from "vue";
-import MenuList from "@/components/workbench/menu/MenuList.vue";
-import { useMenuRuntime } from "@/composables/workbench/menu/useMenuRuntime";
+import MenuList from "./MenuList.vue";
+import { useMenuRuntime } from "./useMenuRuntime";
 
 const { openMenus, closeAllMenus, closeMenu } = useMenuRuntime();
 

@@ -1,5 +1,5 @@
 import type { Component } from "vue";
-import type { MenuNode } from "@/components/workbench/menu/types";
+import type { MenuNode } from "./menu/types.js";
 
 export type WorkbenchTopbarMenu = {
   id: string;

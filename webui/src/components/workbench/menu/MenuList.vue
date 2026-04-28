@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { MenuNode, MenuSource } from "@/components/workbench/menu/types";
-import { SUBMENU_ACTIVATION_DELAY_MS, useMenuRuntime } from "@/composables/workbench/menu/useMenuRuntime";
+import type { MenuNode, MenuSource } from "./types";
+import { SUBMENU_ACTIVATION_DELAY_MS, useMenuRuntime } from "./useMenuRuntime";
 
 const props = defineProps<{
   items: MenuNode[];

@@ -1,5 +1,5 @@
-import type { MenuNode, MenuSource } from "@/components/workbench/menu/types";
-import { useMenuRuntime } from "@/composables/workbench/menu/useMenuRuntime";
+import type { MenuNode, MenuSource } from "./types.js";
+import { useMenuRuntime } from "./useMenuRuntime.js";
 
 const LONG_PRESS_MS = 420;
 

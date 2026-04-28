@@ -1,22 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  createMenuRuntime,
   SUBMENU_ACTIVATION_DELAY_MS,
-  SUBMENU_HOVER_DELAY_MS,
-  useMenuRuntime
-} from "../../../webui/src/composables/workbench/menu/useMenuRuntime.ts";
+  SUBMENU_HOVER_DELAY_MS
+} from "../../../webui/src/components/workbench/menu/menuRuntime.ts";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+let runtime = createMenuRuntime();
 
-function resetMenus() {
-  useMenuRuntime().closeAllMenus();
-}
+test.beforeEach(() => {
+  runtime = createMenuRuntime();
+});
 
-test.beforeEach(resetMenus);
-test.afterEach(resetMenus);
+test.afterEach(() => {
+  runtime.closeAllMenus();
+});
 
 test("submenu hover opens after a short cancellable delay", async () => {
-  const runtime = useMenuRuntime();
   runtime.openMenu({
     id: "root",
     source: "topbar",
@@ -38,7 +39,6 @@ test("submenu hover opens after a short cancellable delay", async () => {
 });
 
 test("submenu delay can be cancelled before it opens", async () => {
-  const runtime = useMenuRuntime();
   runtime.openMenu({
     id: "root",
     source: "topbar",
@@ -60,7 +60,6 @@ test("submenu delay can be cancelled before it opens", async () => {
 });
 
 test("submenu click uses a shorter delayed activation to avoid same-tap submenu selection", async () => {
-  const runtime = useMenuRuntime();
   runtime.openMenu({
     id: "root",
     source: "mobile-workbench",

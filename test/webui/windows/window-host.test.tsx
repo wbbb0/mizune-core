@@ -18,6 +18,7 @@ const WORKBENCH_RUNTIME_URL = new URL("../../../webui/src/components/workbench/r
 const WINDOW_SURFACE_PATH = `${ROOT}/webui/src/components/workbench/windows/WindowSurface.vue`;
 const WINDOW_HOST_PATH = `${ROOT}/webui/src/components/workbench/windows/WindowHost.vue`;
 const DIALOG_RENDERER_PATH = `${ROOT}/webui/src/components/workbench/windows/DialogRenderer.vue`;
+const DIALOG_FIELD_RENDERER_PATH = `${ROOT}/webui/src/components/workbench/windows/DialogFieldRenderer.vue`;
 const WORKBENCH_SHELL_PATH = `${ROOT}/webui/src/components/workbench/WorkbenchShell.vue`;
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>");
@@ -120,6 +121,25 @@ const menuRuntimeStubUrl = createDataModule(`
   }
 `);
 
+const workbenchControllerStubUrl = createDataModule(`
+  import { ref } from "${VUE_RUNTIME_URL}";
+  const emptyWindows = ref([]);
+  export function createWorkbenchController() {
+    return {
+      runtime: {},
+      menu: { closeAllMenus() {} },
+      windows: {
+        desktopWindows: emptyWindows,
+        mobileWindows: emptyWindows
+      }
+    };
+  }
+  export function provideWorkbenchController() {}
+  export function activateWorkbenchController() {
+    return () => {};
+  }
+`);
+
 const { uiState } = await import(uiStubUrl);
 const { routeState } = await import(routeStubUrl);
 const testUtilsUrl = new URL("../../../webui/node_modules/@vue/test-utils/dist/vue-test-utils.esm-bundler.mjs", import.meta.url).href;
@@ -172,8 +192,13 @@ const windowSurfaceUrl = compileVueModule(WINDOW_SURFACE_PATH, {
   "./windowSizing": WINDOW_SIZING_URL
 });
 
+const dialogFieldRendererUrl = compileVueModule(DIALOG_FIELD_RENDERER_PATH, {
+  vue: vueStubUrl
+});
+
 const dialogRendererUrl = compileVueModule(DIALOG_RENDERER_PATH, {
   vue: vueStubUrl,
+  "./DialogFieldRenderer.vue": dialogFieldRendererUrl,
   "./types.js": new URL("../../../webui/src/components/workbench/windows/types.ts", import.meta.url).href
 });
 
@@ -181,6 +206,7 @@ const windowHostUrl = compileVueModule(WINDOW_HOST_PATH, {
   vue: vueStubUrl,
   "@/stores/ui": uiStubUrl,
   "@/components/workbench/windows/useWorkbenchWindows": USE_WORKBENCH_WINDOWS_URL,
+  "./useWorkbenchWindows": USE_WORKBENCH_WINDOWS_URL,
   "./DialogRenderer.vue": dialogRendererUrl,
   "./WindowSurface.vue": windowSurfaceUrl
 });
@@ -188,14 +214,20 @@ const windowHostUrl = compileVueModule(WINDOW_HOST_PATH, {
 const workbenchShellUrl = compileVueModule(WORKBENCH_SHELL_PATH, {
   vue: vueStubUrl,
   "@/components/workbench/DesktopWorkbench.vue": desktopWorkbenchStubUrl,
+  "./DesktopWorkbench.vue": desktopWorkbenchStubUrl,
   "@/components/workbench/MobileWorkbench.vue": mobileWorkbenchStubUrl,
+  "./MobileWorkbench.vue": mobileWorkbenchStubUrl,
   "@/components/workbench/menu/MenuHost.vue": menuHostStubUrl,
+  "./menu/MenuHost.vue": menuHostStubUrl,
   "@/components/workbench/toasts/ToastViewport.vue": toastViewportStubUrl,
+  "./toasts/ToastViewport.vue": toastViewportStubUrl,
   "@/stores/ui": uiStubUrl,
   "@/components/workbench/runtime/workbenchRuntime": WORKBENCH_RUNTIME_URL,
+  "./runtime/workbenchController": workbenchControllerStubUrl,
   "@/composables/workbench/menu/useMenuRuntime": menuRuntimeStubUrl,
   "@/components/workbench/windows/useWorkbenchWindows": USE_WORKBENCH_WINDOWS_URL,
-  "@/components/workbench/windows/WindowHost.vue": windowHostUrl
+  "@/components/workbench/windows/WindowHost.vue": windowHostUrl,
+  "./windows/WindowHost.vue": windowHostUrl
 });
 
 const windowManager = useWorkbenchWindows();

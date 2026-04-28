@@ -12,7 +12,7 @@ test("desktop layout keeps safe-area padding on the workbench shell, not the act
     "utf8"
   );
   const activityBarSource = await readFile(
-    new URL("../../../webui/src/components/layout/ActivityBar.vue", import.meta.url),
+    new URL("../../../webui/src/components/workbench/WorkbenchActivityBar.vue", import.meta.url),
     "utf8"
   );
   const composerSource = await readFile(

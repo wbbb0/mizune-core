@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { createStatusbarMenuNodes, type WorkbenchStatusbarItem, type WorkbenchTopbarMenu } from "@/components/workbench/chrome";
-import type { WorkbenchNavItem } from "@/components/workbench/navigation";
-import { useMenuTrigger } from "@/composables/workbench/menu/useMenuTrigger";
-import type { WorkbenchRuntime } from "@/components/workbench/runtime/workbenchRuntime";
-import type { WorkbenchView } from "@/components/workbench/types";
+import { createStatusbarMenuNodes, type WorkbenchStatusbarItem, type WorkbenchTopbarMenu } from "./chrome";
+import type { WorkbenchNavItem } from "./navigation";
+import { useMenuTrigger } from "./menu/useMenuTrigger";
+import type { WorkbenchRuntime } from "./runtime/workbenchRuntime";
+import type { WorkbenchView } from "./types";
 
 const props = defineProps<{
   runtime: WorkbenchRuntime;

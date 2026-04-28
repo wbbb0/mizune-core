@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from "vue";
-import { useWorkbenchWindows } from "@/components/workbench/windows/useWorkbenchWindows";
+import { useWorkbenchWindows } from "./useWorkbenchWindows";
 import type { WorkbenchWindowDialogController, WorkbenchWindowResult } from "./types";
 import DialogRenderer from "./DialogRenderer.vue";
 import WindowSurface from "./WindowSurface.vue";

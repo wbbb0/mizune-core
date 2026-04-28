@@ -21,8 +21,7 @@ async function listSourceFiles(directory: URL): Promise<URL[]> {
 
 test("workbench core does not import app stores or app adapters", async () => {
   const roots = [
-    new URL("../../../webui/src/components/workbench/", import.meta.url),
-    new URL("../../../webui/src/composables/workbench/", import.meta.url)
+    new URL("../../../webui/src/components/workbench/", import.meta.url)
   ];
   const files = (await Promise.all(roots.map(listSourceFiles))).flat();
 
@@ -54,5 +53,5 @@ test("workbench exposes a single public API barrel", async () => {
   assert.match(source, /\.\/primitives/);
   assert.match(source, /windows\/types/);
   assert.match(source, /windows\/useWorkbenchWindows/);
-  assert.match(source, /runtime\/workbenchRuntime/);
+  assert.match(source, /runtime\/workbenchController/);
 });

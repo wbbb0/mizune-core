@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { computed, onUnmounted, watch } from "vue";
-import DesktopWorkbench from "@/components/workbench/DesktopWorkbench.vue";
-import MobileWorkbench from "@/components/workbench/MobileWorkbench.vue";
-import MenuHost from "@/components/workbench/menu/MenuHost.vue";
-import ToastViewport from "@/components/workbench/toasts/ToastViewport.vue";
-import WindowHost from "@/components/workbench/windows/WindowHost.vue";
-import { useMenuRuntime } from "@/composables/workbench/menu/useMenuRuntime";
-import { useWorkbenchWindows } from "@/components/workbench/windows/useWorkbenchWindows";
-import { activateWorkbenchRuntime, createWorkbenchRuntime, provideWorkbenchRuntime } from "@/components/workbench/runtime/workbenchRuntime";
-import type { WorkbenchStatusbarItem, WorkbenchTopbarMenu } from "@/components/workbench/chrome";
-import type { WorkbenchNavItem } from "@/components/workbench/navigation";
-import type { WorkbenchView } from "@/components/workbench/types";
+import DesktopWorkbench from "./DesktopWorkbench.vue";
+import MobileWorkbench from "./MobileWorkbench.vue";
+import MenuHost from "./menu/MenuHost.vue";
+import ToastViewport from "./toasts/ToastViewport.vue";
+import WindowHost from "./windows/WindowHost.vue";
+import { activateWorkbenchController, createWorkbenchController, provideWorkbenchController } from "./runtime/workbenchController";
+import type { WorkbenchStatusbarItem, WorkbenchTopbarMenu } from "./chrome";
+import type { WorkbenchNavItem } from "./navigation";
+import type { WorkbenchView } from "./types";
 
 const props = defineProps<{
   view: WorkbenchView;
@@ -25,17 +23,18 @@ const emit = defineEmits<{
   navigate: [itemId: string];
 }>();
 
-const { closeAllMenus } = useMenuRuntime();
-const { desktopWindows, mobileWindows } = useWorkbenchWindows();
+const controller = createWorkbenchController(computed(() => props.view));
+provideWorkbenchController(controller);
+const { closeAllMenus } = controller.menu;
+const { desktopWindows, mobileWindows } = controller.windows;
 
 const renderedWindows = computed(() => (props.isMobile ? mobileWindows.value : desktopWindows.value));
 const activeModalWindowId = computed(() => (
   [...renderedWindows.value].reverse().find((window) => window.definition.modal)?.id ?? null
 ));
-const runtime = createWorkbenchRuntime(computed(() => props.view));
-provideWorkbenchRuntime(runtime);
-const deactivateRuntime = activateWorkbenchRuntime(runtime);
-onUnmounted(deactivateRuntime);
+const runtime = controller.runtime;
+const deactivateController = activateWorkbenchController(controller);
+onUnmounted(deactivateController);
 
 watch(activeModalWindowId, (windowId) => {
   if (windowId) {

@@ -1,26 +1,24 @@
 export { default as WorkbenchShell } from "./WorkbenchShell.vue";
-export { default as DesktopWorkbench } from "./DesktopWorkbench.vue";
-export { default as MobileWorkbench } from "./MobileWorkbench.vue";
-export { default as TopBar } from "./TopBar.vue";
-export { default as StatusBar } from "./StatusBar.vue";
 
-export * from "./primitives";
+export * from "./primitives/index.js";
 
-export { default as MenuHost } from "./menu/MenuHost.vue";
-export { default as MenuList } from "./menu/MenuList.vue";
-export { default as ToastViewport } from "./toasts/ToastViewport.vue";
-export { default as WindowHost } from "./windows/WindowHost.vue";
-export { default as WindowSurface } from "./windows/WindowSurface.vue";
-export { default as DialogRenderer } from "./windows/DialogRenderer.vue";
-
-export * from "./types";
-export * from "./navigation";
-export * from "./chrome";
-export * from "./menu/types";
-export * from "./runtime/workbenchRuntime";
-export * from "./toasts/useWorkbenchToasts";
-export * from "./windows/types";
-export * from "./windows/useWorkbenchWindows";
-export * from "./windows/windowManager";
-export * from "./windows/windowSizing";
-export * from "./windows/dialogSchemaAdapter";
+export * from "./types.js";
+export * from "./navigation.js";
+export * from "./chrome.js";
+export * from "./menu/types.js";
+export * from "./runtime/workbenchController.js";
+export {
+  useWorkbenchNavigation,
+  useWorkbenchRuntimeContext,
+  useActiveWorkbenchRuntime
+} from "./runtime/workbenchRuntime.js";
+export type {
+  DesktopAreaId,
+  DesktopAreaStyle,
+  MobileAreaStackEntry,
+  WorkbenchRuntime
+} from "./runtime/workbenchRuntime.js";
+export * from "./toasts/useWorkbenchToasts.js";
+export * from "./windows/types.js";
+export * from "./windows/useWorkbenchWindows.js";
+export * from "./windows/windowSizing.js";

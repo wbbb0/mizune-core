@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, useTemplateRef } from "vue";
 import { X } from "lucide-vue-next";
 import { resolveWindowSizing } from "./windowSizing";
-import type { WorkbenchRuntimeWindow } from "@/components/workbench/windows/useWorkbenchWindows";
+import type { WorkbenchRuntimeWindow } from "./useWorkbenchWindows";
 
 const props = defineProps<{
   window: WorkbenchRuntimeWindow;

@@ -1,5 +1,5 @@
 import { computed, inject, provide, reactive, ref, shallowRef, watch, type ComputedRef, type InjectionKey, type Ref, type ShallowRef } from "vue";
-import type { WorkbenchAreaId, WorkbenchView } from "@/components/workbench/types";
+import type { WorkbenchAreaId, WorkbenchDesktopAreaId, WorkbenchView } from "../types.js";
 
 export type MobileAreaStackEntry = {
   areaId: WorkbenchAreaId;
@@ -7,17 +7,21 @@ export type MobileAreaStackEntry = {
   detailKey?: string;
 };
 
-export type DesktopAreaId = "primarySidebar";
+export type DesktopAreaId = WorkbenchDesktopAreaId;
+export type DesktopAreaStyle = {
+  width?: string;
+  height?: string;
+};
 
 export type WorkbenchRuntime = {
   view: ComputedRef<WorkbenchView>;
   mainRegionRef: Ref<HTMLElement | null>;
   keyboardAvoidanceBoundary: ComputedRef<HTMLElement | null>;
-  getDesktopAreaWidthPx: (areaId: DesktopAreaId) => number;
-  getDesktopAreaStyle: (areaId: DesktopAreaId) => { width: string };
-  clampDesktopAreaWidth: (areaId: DesktopAreaId, widthPx: number) => number;
-  setDesktopAreaWidth: (areaId: DesktopAreaId, widthPx: number) => void;
-  resetDesktopAreaWidth: (areaId: DesktopAreaId) => void;
+  getDesktopAreaSizePx: (areaId: DesktopAreaId) => number;
+  getDesktopAreaStyle: (areaId: DesktopAreaId) => DesktopAreaStyle;
+  clampDesktopAreaSize: (areaId: DesktopAreaId, sizePx: number) => number;
+  setDesktopAreaSize: (areaId: DesktopAreaId, sizePx: number) => void;
+  resetDesktopAreaSize: (areaId: DesktopAreaId) => void;
   mobileRootAreaId: ComputedRef<WorkbenchAreaId>;
   mobileAreaStack: Ref<MobileAreaStackEntry[]>;
   mobileTopArea: ComputedRef<MobileAreaStackEntry>;
@@ -32,17 +36,30 @@ export type WorkbenchRuntime = {
 const workbenchRuntimeKey: InjectionKey<WorkbenchRuntime> = Symbol("workbench-runtime");
 const activeWorkbenchRuntime = shallowRef<WorkbenchRuntime | null>(null);
 const desktopAreaStoragePrefix = "workbench.area.desktop";
-const defaultDesktopAreaSize = {
-  defaultWidthPx: 260,
-  minWidthPx: 180,
-  maxWidthPx: 520
+const desktopAreaIds = ["primarySidebar", "secondarySidebar", "bottomPanel"] as const satisfies readonly DesktopAreaId[];
+const defaultDesktopAreaSize: Record<DesktopAreaId, { defaultSizePx: number; minSizePx: number; maxSizePx: number }> = {
+  primarySidebar: {
+    defaultSizePx: 260,
+    minSizePx: 180,
+    maxSizePx: 520
+  },
+  secondarySidebar: {
+    defaultSizePx: 300,
+    minSizePx: 200,
+    maxSizePx: 640
+  },
+  bottomPanel: {
+    defaultSizePx: 240,
+    minSizePx: 120,
+    maxSizePx: 520
+  }
 };
 
 function resolveDesktopAreaStorageKey(areaId: DesktopAreaId) {
-  return `${desktopAreaStoragePrefix}.${areaId}.width`;
+  return `${desktopAreaStoragePrefix}.${areaId}.size`;
 }
 
-function readStoredDesktopAreaWidth(areaId: DesktopAreaId): number | null {
+function readStoredDesktopAreaSize(areaId: DesktopAreaId): number | null {
   if (typeof window === "undefined") {
     return null;
   }
@@ -58,12 +75,12 @@ function readStoredDesktopAreaWidth(areaId: DesktopAreaId): number | null {
   }
 }
 
-function writeStoredDesktopAreaWidth(areaId: DesktopAreaId, widthPx: number) {
+function writeStoredDesktopAreaSize(areaId: DesktopAreaId, sizePx: number) {
   if (typeof window === "undefined") {
     return;
   }
   try {
-    window.localStorage.setItem(resolveDesktopAreaStorageKey(areaId), String(widthPx));
+    window.localStorage.setItem(resolveDesktopAreaStorageKey(areaId), String(sizePx));
   } catch {
     // Layout resizing remains usable when storage is unavailable.
   }
@@ -72,8 +89,10 @@ function writeStoredDesktopAreaWidth(areaId: DesktopAreaId, widthPx: number) {
 export function createWorkbenchRuntime(view: ComputedRef<WorkbenchView>): WorkbenchRuntime {
   const mainRegionRef = ref<HTMLElement | null>(null);
   const mobileAreaStack = ref<MobileAreaStackEntry[]>([]);
-  const desktopAreaWidthsPx = reactive<Record<DesktopAreaId, number>>({
-    primarySidebar: resolveInitialDesktopAreaWidth("primarySidebar")
+  const desktopAreaSizesPx = reactive<Record<DesktopAreaId, number>>({
+    primarySidebar: resolveInitialDesktopAreaSize("primarySidebar"),
+    secondarySidebar: resolveInitialDesktopAreaSize("secondarySidebar"),
+    bottomPanel: resolveInitialDesktopAreaSize("bottomPanel")
   });
   const mobileRootAreaId = computed(() => resolveMobileRootAreaId());
   const mobileTopArea = computed(() => (
@@ -107,58 +126,49 @@ export function createWorkbenchRuntime(view: ComputedRef<WorkbenchView>): Workbe
     return mobileRootAreaId.value;
   }
 
-  function resolveDesktopAreaDefaultWidth(areaId: DesktopAreaId) {
-    if (areaId !== "primarySidebar") {
-      return defaultDesktopAreaSize.defaultWidthPx;
-    }
-    return view.value.layout.desktop.primarySidebar?.defaultWidthPx ?? defaultDesktopAreaSize.defaultWidthPx;
+  function resolveDesktopAreaDefaultSize(areaId: DesktopAreaId) {
+    return view.value.layout.desktop[areaId]?.defaultSizePx ?? defaultDesktopAreaSize[areaId].defaultSizePx;
   }
 
-  function resolveInitialDesktopAreaWidth(areaId: DesktopAreaId) {
-    return clampDesktopAreaWidth(areaId, readStoredDesktopAreaWidth(areaId) ?? resolveDesktopAreaDefaultWidth(areaId));
+  function resolveInitialDesktopAreaSize(areaId: DesktopAreaId) {
+    return clampDesktopAreaSize(areaId, readStoredDesktopAreaSize(areaId) ?? resolveDesktopAreaDefaultSize(areaId));
   }
 
-  function resolveDesktopAreaMinWidth(areaId: DesktopAreaId) {
-    if (areaId !== "primarySidebar") {
-      return defaultDesktopAreaSize.minWidthPx;
-    }
-    return view.value.layout.desktop.primarySidebar?.minWidthPx ?? defaultDesktopAreaSize.minWidthPx;
+  function resolveDesktopAreaMinSize(areaId: DesktopAreaId) {
+    return view.value.layout.desktop[areaId]?.minSizePx ?? defaultDesktopAreaSize[areaId].minSizePx;
   }
 
-  function resolveDesktopAreaMaxWidth(areaId: DesktopAreaId) {
+  function resolveDesktopAreaMaxSize(areaId: DesktopAreaId) {
     return Math.max(
-      resolveDesktopAreaMinWidth(areaId),
-      areaId === "primarySidebar"
-        ? view.value.layout.desktop.primarySidebar?.maxWidthPx ?? defaultDesktopAreaSize.maxWidthPx
-        : defaultDesktopAreaSize.maxWidthPx
+      resolveDesktopAreaMinSize(areaId),
+      view.value.layout.desktop[areaId]?.maxSizePx ?? defaultDesktopAreaSize[areaId].maxSizePx
     );
   }
 
-  function clampDesktopAreaWidth(areaId: DesktopAreaId, widthPx: number) {
+  function clampDesktopAreaSize(areaId: DesktopAreaId, sizePx: number) {
     return Math.min(
-      resolveDesktopAreaMaxWidth(areaId),
-      Math.max(resolveDesktopAreaMinWidth(areaId), Math.round(widthPx))
+      resolveDesktopAreaMaxSize(areaId),
+      Math.max(resolveDesktopAreaMinSize(areaId), Math.round(sizePx))
     );
   }
 
-  function getDesktopAreaWidthPx(areaId: DesktopAreaId) {
-    return desktopAreaWidthsPx[areaId];
+  function getDesktopAreaSizePx(areaId: DesktopAreaId) {
+    return desktopAreaSizesPx[areaId];
   }
 
   function getDesktopAreaStyle(areaId: DesktopAreaId) {
-    return {
-      width: `${getDesktopAreaWidthPx(areaId)}px`
-    };
+    const size = `${getDesktopAreaSizePx(areaId)}px`;
+    return areaId === "bottomPanel" ? { height: size } : { width: size };
   }
 
-  function setDesktopAreaWidth(areaId: DesktopAreaId, widthPx: number) {
-    const nextWidth = clampDesktopAreaWidth(areaId, widthPx);
-    desktopAreaWidthsPx[areaId] = nextWidth;
-    writeStoredDesktopAreaWidth(areaId, nextWidth);
+  function setDesktopAreaSize(areaId: DesktopAreaId, sizePx: number) {
+    const nextSize = clampDesktopAreaSize(areaId, sizePx);
+    desktopAreaSizesPx[areaId] = nextSize;
+    writeStoredDesktopAreaSize(areaId, nextSize);
   }
 
-  function resetDesktopAreaWidth(areaId: DesktopAreaId) {
-    setDesktopAreaWidth(areaId, resolveDesktopAreaDefaultWidth(areaId));
+  function resetDesktopAreaSize(areaId: DesktopAreaId) {
+    setDesktopAreaSize(areaId, resolveDesktopAreaDefaultSize(areaId));
   }
 
   function resetMobileAreaStack() {
@@ -190,7 +200,9 @@ export function createWorkbenchRuntime(view: ComputedRef<WorkbenchView>): Workbe
   }
 
   watch(() => view.value.id, () => {
-    desktopAreaWidthsPx.primarySidebar = resolveInitialDesktopAreaWidth("primarySidebar");
+    for (const areaId of desktopAreaIds) {
+      desktopAreaSizesPx[areaId] = resolveInitialDesktopAreaSize(areaId);
+    }
   });
 
   resetMobileAreaStack();
@@ -199,11 +211,11 @@ export function createWorkbenchRuntime(view: ComputedRef<WorkbenchView>): Workbe
     view,
     mainRegionRef,
     keyboardAvoidanceBoundary,
-    getDesktopAreaWidthPx,
+    getDesktopAreaSizePx,
     getDesktopAreaStyle,
-    clampDesktopAreaWidth,
-    setDesktopAreaWidth,
-    resetDesktopAreaWidth,
+    clampDesktopAreaSize,
+    setDesktopAreaSize,
+    resetDesktopAreaSize,
     mobileRootAreaId,
     mobileAreaStack,
     mobileTopArea,
@@ -225,10 +237,11 @@ export function useWorkbenchRuntimeContext(): WorkbenchRuntime | null {
 }
 
 export function activateWorkbenchRuntime(runtime: WorkbenchRuntime): () => void {
+  const previousRuntime = activeWorkbenchRuntime.value;
   activeWorkbenchRuntime.value = runtime;
   return () => {
     if (activeWorkbenchRuntime.value === runtime) {
-      activeWorkbenchRuntime.value = null;
+      activeWorkbenchRuntime.value = previousRuntime;
     }
   };
 }

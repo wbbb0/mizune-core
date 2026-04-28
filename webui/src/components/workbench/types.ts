@@ -1,11 +1,12 @@
 import type { Component } from "vue";
 
 export type WorkbenchAreaId = "primarySidebar" | "mainArea" | "secondarySidebar" | "bottomPanel";
+export type WorkbenchDesktopAreaId = Exclude<WorkbenchAreaId, "mainArea">;
 
 export type WorkbenchAreaSize = {
-  defaultWidthPx?: number;
-  minWidthPx?: number;
-  maxWidthPx?: number;
+  defaultSizePx?: number;
+  minSizePx?: number;
+  maxSizePx?: number;
 };
 
 export type WorkbenchViewLayout = {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import type { WorkbenchTopbarMenu } from "@/components/workbench/chrome";
-import { useMenuRuntime } from "@/composables/workbench/menu/useMenuRuntime";
+import type { WorkbenchTopbarMenu } from "./chrome";
+import { useMenuRuntime } from "./menu/useMenuRuntime";
 
 const props = defineProps<{
   menus: WorkbenchTopbarMenu[];

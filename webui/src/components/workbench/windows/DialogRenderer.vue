@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, toRaw, watch } from "vue";
+import DialogFieldRenderer from "./DialogFieldRenderer.vue";
 import type {
   WorkbenchDialogAction,
   WorkbenchDialogBlock,
@@ -44,10 +45,6 @@ function clonePlain<T>(input: T): T {
   return JSON.parse(JSON.stringify(input)) as T;
 }
 
-function resolvePath(fieldKey: string, groupKey?: string): DialogPath {
-  return groupKey ? [groupKey, fieldKey] : [fieldKey];
-}
-
 function getValueAtPath(path: DialogPath) {
   let current: unknown = values;
   for (const segment of path) {
@@ -57,16 +54,6 @@ function getValueAtPath(path: DialogPath) {
     current = current[segment];
   }
   return current;
-}
-
-function resolveTextValue(path: DialogPath) {
-  const value = getValueAtPath(path);
-  return typeof value === "string" ? value : "";
-}
-
-function resolveNumberValue(path: DialogPath) {
-  const value = getValueAtPath(path);
-  return typeof value === "number" ? value : 0;
 }
 
 function setValueAtPath(path: DialogPath, nextValue: unknown) {
@@ -103,10 +90,6 @@ function createDefaultValue(field: WorkbenchDialogField<DialogValues>) {
     case "custom":
       return undefined;
   }
-}
-
-function resolveNumberFallback(field: Extract<WorkbenchDialogField<DialogValues>, { kind: "number" }>) {
-  return field.defaultValue ?? field.min ?? 0;
 }
 
 function createFieldValue(field: WorkbenchDialogField<DialogValues>, currentValues: DialogValues) {
@@ -148,33 +131,6 @@ function snapshotValues() {
 defineExpose<WorkbenchWindowDialogController<DialogValues>>({
   snapshotValues
 });
-
-function handleStringInput(fieldKey: string, event: Event, groupKey?: string) {
-  setValueAtPath(resolvePath(fieldKey, groupKey), (event.target as HTMLInputElement | HTMLTextAreaElement).value);
-}
-
-function handleNumberInput(field: Extract<WorkbenchDialogField<DialogValues>, { kind: "number" }>, event: Event, groupKey?: string) {
-  const rawValue = (event.target as HTMLInputElement).value;
-  setValueAtPath(resolvePath(field.key, groupKey), rawValue === "" ? resolveNumberFallback(field) : Number(rawValue));
-}
-
-function handleBooleanInput(fieldKey: string, event: Event, groupKey?: string) {
-  setValueAtPath(resolvePath(fieldKey, groupKey), (event.target as HTMLInputElement).checked);
-}
-
-function handleSelectInput(fieldKey: string, event: Event, groupKey?: string) {
-  setValueAtPath(resolvePath(fieldKey, groupKey), (event.target as HTMLSelectElement).value);
-}
-
-function resolveCustomFieldProps(field: Extract<WorkbenchDialogField<DialogValues>, { kind: "custom" }>, groupKey?: string) {
-  return {
-    ...(field.props ?? {}),
-    modelValue: getValueAtPath(resolvePath(field.key, groupKey)),
-    values,
-    windowId: props.windowId,
-    busy: isBusy.value
-  };
-}
 
 function resolveBlockProps(block: WorkbenchDialogBlock<DialogValues>) {
   return block.kind === "component"
@@ -245,146 +201,16 @@ function handleClose() {
       </div>
 
       <form class="flex flex-col gap-4" @submit.prevent>
-        <template v-for="field in fields" :key="field.key">
-          <label v-if="field.kind === 'string'" class="flex flex-col gap-1.5 text-small text-text-muted">
-            {{ field.label }}
-            <input
-              :value="getValueAtPath(resolvePath(field.key)) ?? ''"
-              :placeholder="field.placeholder"
-              :required="field.required ?? false"
-              class="input-base text-ui"
-              type="text"
-              @input="handleStringInput(field.key, $event)"
-            />
-          </label>
-
-          <label v-else-if="field.kind === 'textarea'" class="flex flex-col gap-1.5 text-small text-text-muted">
-            {{ field.label }}
-            <textarea
-              :value="resolveTextValue(resolvePath(field.key))"
-              :placeholder="field.placeholder"
-              class="input-base min-h-28 text-ui"
-              @input="handleStringInput(field.key, $event)"
-            />
-          </label>
-
-          <label v-else-if="field.kind === 'number'" class="flex flex-col gap-1.5 text-small text-text-muted">
-            {{ field.label }}
-            <input
-              :value="resolveNumberValue(resolvePath(field.key))"
-              :max="field.max"
-              :min="field.min"
-              class="input-base text-ui"
-              type="number"
-              @input="handleNumberInput(field, $event)"
-            />
-          </label>
-
-          <label v-else-if="field.kind === 'boolean'" class="flex items-center gap-2 text-small text-text-muted">
-            <input
-              :checked="Boolean(getValueAtPath(resolvePath(field.key)))"
-              class="h-4 w-4 rounded border-border-default bg-surface-panel text-accent"
-              type="checkbox"
-              @change="handleBooleanInput(field.key, $event)"
-            />
-            <span>{{ field.label }}</span>
-          </label>
-
-          <label v-else-if="field.kind === 'enum'" class="flex flex-col gap-1.5 text-small text-text-muted">
-            {{ field.label }}
-            <select
-              :value="getValueAtPath(resolvePath(field.key)) ?? ''"
-              class="input-base text-ui"
-              @change="handleSelectInput(field.key, $event)"
-            >
-              <option v-for="option in field.options" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-
-          <fieldset
-            v-else-if="field.kind === 'group'"
-            class="flex flex-col gap-3 rounded border border-border-default bg-surface-sidebar px-3 py-3"
-          >
-            <legend class="px-1 text-small font-medium text-text-secondary">
-              {{ field.label }}
-            </legend>
-
-            <template v-for="childField in field.fields" :key="childField.key">
-              <label v-if="childField.kind === 'string'" class="flex flex-col gap-1.5 text-small text-text-muted">
-                {{ childField.label }}
-                <input
-                  :value="getValueAtPath(resolvePath(childField.key, field.key)) ?? ''"
-                  :placeholder="childField.placeholder"
-                  :required="childField.required ?? false"
-                  class="input-base text-ui"
-                  type="text"
-                  @input="handleStringInput(childField.key, $event, field.key)"
-                />
-              </label>
-
-              <label v-else-if="childField.kind === 'textarea'" class="flex flex-col gap-1.5 text-small text-text-muted">
-                {{ childField.label }}
-                <textarea
-                  :value="resolveTextValue(resolvePath(childField.key, field.key))"
-                  :placeholder="childField.placeholder"
-                  class="input-base min-h-28 text-ui"
-                  @input="handleStringInput(childField.key, $event, field.key)"
-                />
-              </label>
-
-              <label v-else-if="childField.kind === 'number'" class="flex flex-col gap-1.5 text-small text-text-muted">
-                {{ childField.label }}
-                <input
-                  :value="resolveNumberValue(resolvePath(childField.key, field.key))"
-                  :max="childField.max"
-                  :min="childField.min"
-                  class="input-base text-ui"
-                  type="number"
-                  @input="handleNumberInput(childField, $event, field.key)"
-                />
-              </label>
-
-              <label v-else-if="childField.kind === 'boolean'" class="flex items-center gap-2 text-small text-text-muted">
-                <input
-                  :checked="Boolean(getValueAtPath(resolvePath(childField.key, field.key)))"
-                  class="h-4 w-4 rounded border-border-default bg-surface-panel text-accent"
-                  type="checkbox"
-                  @change="handleBooleanInput(childField.key, $event, field.key)"
-                />
-                <span>{{ childField.label }}</span>
-              </label>
-
-              <label v-else-if="childField.kind === 'enum'" class="flex flex-col gap-1.5 text-small text-text-muted">
-                {{ childField.label }}
-                <select
-                  :value="getValueAtPath(resolvePath(childField.key, field.key)) ?? ''"
-                  class="input-base text-ui"
-                  @change="handleSelectInput(childField.key, $event, field.key)"
-                >
-                  <option v-for="option in childField.options" :key="option.value" :value="option.value">
-                    {{ option.label }}
-                  </option>
-                </select>
-              </label>
-
-              <component
-                v-else-if="childField.kind === 'custom'"
-                :is="resolveComponentReference(childField.component)"
-                v-bind="resolveCustomFieldProps(childField, field.key)"
-                @update:modelValue="setValueAtPath(resolvePath(childField.key, field.key), $event)"
-              />
-            </template>
-          </fieldset>
-
-          <component
-            v-else-if="field.kind === 'custom'"
-            :is="resolveComponentReference(field.component)"
-            v-bind="resolveCustomFieldProps(field)"
-            @update:modelValue="setValueAtPath(resolvePath(field.key), $event)"
-          />
-        </template>
+        <DialogFieldRenderer
+          v-for="field in fields"
+          :key="field.key"
+          :field="field"
+          :values="values"
+          :window-id="windowId"
+          :busy="isBusy"
+          :get-value-at-path="getValueAtPath"
+          :set-value-at-path="setValueAtPath"
+        />
       </form>
     </div>
 
