@@ -60,8 +60,11 @@ const SUMMARY_TOOL_NAMES = new Set([
   "open_page",
   "capture_screenshot",
   "download_asset",
+  "ground_with_google_search",
   "search_with_iqs_lite_advanced",
-  "ground_with_google_search"
+  "view_current_group_info",
+  "list_current_group_announcements",
+  "list_current_group_members"
 ]);
 
 const MAX_SUMMARY_TEXT_LENGTH = 260;
@@ -172,6 +175,19 @@ function extractResource(
     };
   }
 
+  if (isCurrentGroupContextTool(toolName)) {
+    const groupId = stringValue(parsed?.groupId ?? parsed?.group_id);
+    if (!groupId) {
+      return undefined;
+    }
+    const locator = buildCurrentGroupContextLocator(toolName, parsed);
+    return {
+      kind: "external",
+      id: `onebot:group:${groupId}`,
+      ...(locator ? { locator } : {})
+    };
+  }
+
   const fileId = stringValue(parsed?.file_id ?? parsed?.fileId);
   if (fileId) {
     return { kind: "chat_file", id: fileId };
@@ -202,7 +218,42 @@ function buildRefetchHint(
   if (resource.kind === "shell_session") {
     return `如需终端后续输出，请再次调用 terminal_read resource_id=${resource.id}`;
   }
+  if (isCurrentGroupContextTool(toolName)) {
+    if (toolName === "view_current_group_info") {
+      return "如需刷新当前群资料，请再次调用 view_current_group_info";
+    }
+    const query = stringValue(parsed?.query);
+    const limit = numberValue(parsed?.limit);
+    const args = [
+      query ? `query=${JSON.stringify(query)}` : null,
+      limit ? `limit=${limit}` : null
+    ].filter((item): item is string => Boolean(item)).join(" ");
+    return `如需刷新当前群${toolName === "list_current_group_announcements" ? "公告" : "成员"}，请再次调用 ${toolName}${args ? ` ${args}` : ""}`;
+  }
   return null;
+}
+
+function isCurrentGroupContextTool(toolName: string): boolean {
+  return toolName === "view_current_group_info"
+    || toolName === "list_current_group_announcements"
+    || toolName === "list_current_group_members";
+}
+
+function buildCurrentGroupContextLocator(
+  toolName: string,
+  parsed: Record<string, unknown> | null
+): string | undefined {
+  if (toolName === "view_current_group_info") {
+    return "info";
+  }
+  const query = stringValue(parsed?.query);
+  const limit = numberValue(parsed?.limit);
+  const parts = [
+    toolName === "list_current_group_announcements" ? "announcements" : "members",
+    query ? `query=${JSON.stringify(query)}` : null,
+    limit ? `limit=${limit}` : null
+  ].filter((item): item is string => Boolean(item));
+  return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
 function buildSummary(

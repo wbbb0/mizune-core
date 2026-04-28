@@ -235,6 +235,7 @@ function toPromptBatchMessages(messages: GenerationRuntimeBatchMessage[]) {
     imageIds: message.imageIds,
     emojiIds: message.emojiIds,
     ...(message.attachments ? { attachments: message.attachments } : {}),
+    ...(message.specialSegments && message.specialSegments.length > 0 ? { specialSegments: message.specialSegments } : {}),
     forwardIds: message.forwardIds,
     replyMessageId: message.replyMessageId,
     mentionUserIds: message.mentionUserIds,

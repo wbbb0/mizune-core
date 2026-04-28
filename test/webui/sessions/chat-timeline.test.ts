@@ -66,11 +66,13 @@ function createUserMessageEntry(): ChatTimelineTranscriptEntry {
     assert.equal(items[1]?.role, "user");
     assert.equal(items[1]?.imageUrl, "/api/chat-files/img-attachment/content");
     assert.equal(items[1]?.sourceName, "upload_image.png");
+    assert.equal(items[1]?.senderLabel, "Alice · 10001");
 
     assert.equal(items[2]?.kind, "image");
     assert.equal(items[2]?.role, "user");
     assert.equal(items[2]?.imageUrl, "/api/chat-files/emoji-1/content");
     assert.equal(items[2]?.sourceName, "emoji.gif");
+    assert.equal(items[2]?.senderLabel, "Alice · 10001");
 
     assert.equal(items[3]?.kind, "image");
     assert.equal(items[3]?.role, "user");
@@ -112,6 +114,26 @@ function createUserMessageEntry(): ChatTimelineTranscriptEntry {
       throw new Error("expected image item");
     }
     assert.equal(firstItem.imageUrl, "/api/chat-files/assistant-image-1/content");
+  });
+
+  test("chat timeline renders special-only user message segments as text", () => {
+    const entry = createUserMessageEntry();
+    if (entry.item.kind !== "user_message") {
+      throw new Error("expected user message");
+    }
+    entry.item.text = "";
+    entry.item.imageIds = [];
+    entry.item.attachments = [];
+    entry.item.specialSegments = [{ type: "dice", summary: "骰子：4" }];
+
+    const items = buildChatTimelineItems([entry], {
+      activeComposerUserId: "10001"
+    });
+
+    assert.equal(items.length, 1);
+    assert.equal(items[0]?.kind, "text");
+    assert.equal(items[0]?.content, "骰子：4");
+    assert.deepEqual(items[0]?.metaChips, ["消息段 1"]);
   });
 
   test("chat timeline keeps newest items first and prepends draft assistant text to the head", () => {

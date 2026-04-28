@@ -48,6 +48,7 @@ import { checkSetupCompletion } from "./generationSetupContext.ts";
 import { waitForGenerationAbortGraceWindow } from "#app/runtime/runtimeTimingPolicy.ts";
 import { maybeAutoCaptionSessionTitle, shouldAutoCaptionSessionTitle } from "./sessionCaptioner.ts";
 import { createProviderOutputTokenStats } from "#conversation/session/transcriptTokenStats.ts";
+import type { OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -61,6 +62,7 @@ export interface GenerationRuntimeBatchMessage {
   imageIds: string[];
   emojiIds: string[];
   attachments?: ChatAttachment[];
+  specialSegments?: OneBotSpecialSegmentSummary[];
   forwardIds: string[];
   replyMessageId: string | null;
   mentionUserIds: string[];

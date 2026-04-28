@@ -205,6 +205,7 @@ const metaChips = computed(() => {
         ...(props.item.mentionedAll ? ["@all"] : []),
         ...(props.item.imageIds.length > 0 ? [`image=${props.item.imageIds.length}`] : []),
         ...(props.item.emojiIds.length > 0 ? [`emoji=${props.item.emojiIds.length}`] : []),
+        ...((props.item.specialSegments?.length ?? 0) > 0 ? [`segment=${props.item.specialSegments?.length ?? 0}`] : []),
         ...(props.item.audioCount > 0 ? [`audio=${props.item.audioCount}`] : []),
         ...(props.item.forwardIds.length > 0 ? [`forward=${props.item.forwardIds.length}`] : [])
       ];
@@ -418,7 +419,12 @@ function openActions(): void {
       </header>
 
       <div v-if="item.kind === 'user_message'" class="flex flex-col gap-2">
-        <TranscriptTextBlock :text="item.text" />
+        <TranscriptTextBlock v-if="item.text" :text="item.text" />
+        <TranscriptTextBlock
+          v-if="(item.specialSegments?.length ?? 0) > 0"
+          :text="item.specialSegments?.map((segment) => segment.summary).join('\n') ?? ''"
+          tone="muted"
+        />
       </div>
 
       <div v-else-if="item.kind === 'assistant_message'" class="flex flex-col gap-2">

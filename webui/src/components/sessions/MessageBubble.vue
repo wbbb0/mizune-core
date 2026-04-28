@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { Bot, MoreHorizontal, User, Users } from "lucide-vue-next";
+import { Bot, User, Users } from "lucide-vue-next";
+import MessageMetaLine from "./MessageMetaLine.vue";
 import SessionGlyph, { type SessionGlyphModel } from "./SessionGlyph.vue";
 
 const props = defineProps<{
@@ -26,12 +27,6 @@ const emit = defineEmits<{
   openActions: [];
 }>();
 
-const timeStr = computed(() => {
-  if (!props.timestampMs) return "";
-  const d = new Date(props.timestampMs);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-});
-
 const bubbleGlyph = computed<SessionGlyphModel>(() => {
   if (props.side === "right") {
     return { kind: "icon", component: User, size: 14, strokeWidth: 2.1 };
@@ -46,12 +41,6 @@ const bubbleGlyphToneClass = computed(() => {
   return props.side === "right" ? "bg-surface-selected text-text-accent" : "bg-surface-success text-success";
 });
 
-function openActions(): void {
-  if (props.actionsEnabled === false) {
-    return;
-  }
-  emit("openActions");
-}
 </script>
 
 <template>
@@ -96,19 +85,14 @@ function openActions(): void {
           <span v-if="streaming" class="blink-cursor" />
         </template>
       </div>
-      <div v-if="timeStr || senderLabel || (metaChips?.length ?? 0) > 0 || actionsEnabled !== false" class="flex flex-wrap items-center gap-1 px-0.5 text-small text-text-subtle" :class="{ 'justify-end': side === 'right' }">
-        <span v-if="senderLabel">{{ senderLabel }}</span>
-        <span v-if="timeStr">{{ timeStr }}</span>
-        <button
-          v-if="actionsEnabled !== false"
-          class="inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 text-text-subtle transition-colors hover:text-text-primary"
-          title="消息操作"
-          @click="openActions"
-        >
-          <MoreHorizontal :size="14" :stroke-width="2" />
-        </button>
-        <span v-for="chip in metaChips ?? []" :key="chip" class="rounded-full border border-border-default bg-surface-input px-1.5 py-px text-[11px] leading-4 text-text-muted">{{ chip }}</span>
-      </div>
+      <MessageMetaLine
+        :align="side"
+        :sender-label="senderLabel"
+        :timestamp-ms="timestampMs"
+        :meta-chips="metaChips"
+        :actions-enabled="actionsEnabled"
+        @open-actions="emit('openActions')"
+      />
     </div>
   </div>
 </template>

@@ -97,6 +97,10 @@ const persistedSessionSchema = z.object({
     imageIds: z.array(z.string()),
     emojiIds: z.array(z.string()),
     attachments: z.array(chatAttachmentSchema).default([]),
+    specialSegments: z.array(z.object({
+      type: z.string().min(1),
+      summary: z.string()
+    })).optional(),
     forwardIds: z.array(z.string()),
     replyMessageId: z.string().nullable(),
     mentionUserIds: z.array(z.string()),

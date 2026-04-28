@@ -46,6 +46,7 @@ function createSessionMessage(
     imageIds: string[];
     emojiIds: string[];
     attachments?: SessionMessage["attachments"];
+    specialSegments?: SessionMessage["specialSegments"];
     forwardIds: string[];
     replyMessageId: string | null;
     mentionUserIds: string[];
@@ -78,6 +79,10 @@ function createSessionMessage(
   if (message.rawEvent != null) {
     pendingMessage.rawEvent = message.rawEvent;
   }
+  const specialSegments = message.specialSegments ?? [];
+  if (specialSegments.length > 0) {
+    pendingMessage.specialSegments = [...specialSegments];
+  }
   return pendingMessage;
 }
 
@@ -97,6 +102,7 @@ export function appendSessionMessage(
     imageIds: string[];
     emojiIds: string[];
     attachments?: SessionMessage["attachments"];
+    specialSegments?: SessionMessage["specialSegments"];
     forwardIds: string[];
     replyMessageId: string | null;
     mentionUserIds: string[];
@@ -127,6 +133,7 @@ export function appendSteerMessageState(
     imageIds: string[];
     emojiIds: string[];
     attachments?: SessionMessage["attachments"];
+    specialSegments?: SessionMessage["specialSegments"];
     forwardIds: string[];
     replyMessageId: string | null;
     mentionUserIds: string[];

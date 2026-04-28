@@ -5,6 +5,11 @@ export interface OneBotMessageSegment {
   data: Record<string, unknown>;
 }
 
+export interface OneBotSpecialSegmentSummary {
+  type: string;
+  summary: string;
+}
+
 export interface OneBotSender {
   user_id: number;
   nickname?: string;
@@ -115,6 +120,7 @@ export interface OneBotGroupItem {
   group_name?: string;
   member_count?: number;
   max_member_count?: number;
+  [key: string]: unknown;
 }
 
 export interface OneBotGroupMemberInfo {
@@ -123,6 +129,38 @@ export interface OneBotGroupMemberInfo {
   nickname?: string;
   card?: string;
   role?: string;
+}
+
+export interface OneBotGroupMemberItem extends OneBotGroupMemberInfo {
+  sex?: string;
+  age?: number;
+  area?: string;
+  join_time?: number;
+  last_sent_time?: number;
+  level?: string;
+  title?: string;
+  title_expire_time?: number;
+  card_changeable?: boolean;
+  shut_up_timestamp?: number;
+  [key: string]: unknown;
+}
+
+export interface OneBotGroupAnnouncementItem {
+  id?: string;
+  group_id?: number | string;
+  sender_id?: number | string;
+  user_id?: number | string;
+  publisher_id?: number | string;
+  sender_name?: string;
+  nickname?: string;
+  title?: string;
+  content?: string;
+  message?: string;
+  text?: string;
+  publish_time?: number;
+  time?: number;
+  pinned?: boolean;
+  [key: string]: unknown;
 }
 
 export interface ParsedIncomingMessage {
@@ -140,6 +178,7 @@ export interface ParsedIncomingMessage {
   imageIds: string[];
   emojiIds: string[];
   attachments?: ChatAttachment[];
+  specialSegments?: OneBotSpecialSegmentSummary[];
   forwardIds: string[];
   replyMessageId: string | null;
   mentionUserIds: string[];

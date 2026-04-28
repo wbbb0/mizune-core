@@ -180,6 +180,7 @@ export class SessionManager {
       imageIds?: string[];
       emojiIds?: string[];
       attachments?: SessionMessage["attachments"];
+      specialSegments?: SessionMessage["specialSegments"];
       forwardIds?: string[];
       replyMessageId?: string | null;
       mentionUserIds?: string[];
@@ -196,6 +197,7 @@ export class SessionManager {
       imageIds: message.imageIds ?? [],
       emojiIds: message.emojiIds ?? [],
       attachments: message.attachments ?? [],
+      ...(message.specialSegments && message.specialSegments.length > 0 ? { specialSegments: message.specialSegments } : {}),
       forwardIds: message.forwardIds ?? [],
       replyMessageId: message.replyMessageId ?? null,
       mentionUserIds: message.mentionUserIds ?? [],
@@ -484,6 +486,7 @@ export class SessionManager {
     imageIds?: string[];
     emojiIds?: string[];
     attachments?: SessionMessage["attachments"];
+    specialSegments?: SessionMessage["specialSegments"];
     audioCount?: number;
     forwardIds?: string[];
     replyMessageId?: string | null;

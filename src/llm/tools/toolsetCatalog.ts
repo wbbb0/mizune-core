@@ -24,19 +24,24 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     modeUniversal: true,
     id: "chat_context",
     title: "会话上下文",
-    description: "查看消息、转发和媒体上下文，必要时结束本轮回复。",
+    description: "查看消息、转发、媒体和当前群聊上下文，必要时结束本轮回复。",
     promptGuidance: [
       "需要补足 reply、forward、图片或表情上下文时，先展开引用再继续判断。",
+      "用户询问当前群资料、公告或成员时，只查看当前群；不要跨群查询或猜测其他群信息。",
       "结构化 id 必须逐字复制；看完上下文后只保留和当前回复相关的部分。",
       "只有最新消息明显只是收尾、不需要继续接话时，才结束本轮。"
     ],
     plannerSignals: [
       "查看 reply/forward/image 上下文",
+      "查看当前群资料、群公告或群成员",
       "先展开上下文再回复"
     ],
     toolNames: [
       "view_message",
       "view_forward_record",
+      "view_current_group_info",
+      "list_current_group_announcements",
+      "list_current_group_members",
       "chat_file_view_media",
       "end_turn_without_reply"
     ]

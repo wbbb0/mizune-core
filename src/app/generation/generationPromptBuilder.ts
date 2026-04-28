@@ -38,6 +38,7 @@ import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { createEmptyScenarioProfile, getMissingScenarioProfileFields } from "#modes/scenarioHost/profileSchema.ts";
 import { preparePromptMemoryContext } from "#llm/prompts/chat-system.prompt.ts";
 import type { PromptInput } from "#llm/prompt/promptTypes.ts";
+import type { OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 
 type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
@@ -95,6 +96,7 @@ export interface GenerationPromptBatchMessage {
   imageIds: string[];
   emojiIds: string[];
   attachments?: ChatAttachment[];
+  specialSegments?: OneBotSpecialSegmentSummary[];
   forwardIds: string[];
   replyMessageId: string | null;
   mentionUserIds: string[];
@@ -339,6 +341,7 @@ async function preparePromptBatchMessages(
       emojiCaptions: buildPromptImageCaptions(emojiFileIds, captionMap),
       ...(options.supportsVision ? { emojiVisuals: emojiVisuals.map((item) => ({ imageId: item.fileId, inputUrl: item.inputUrl, animated: item.animated, durationMs: item.durationMs, sampledFrameCount: item.sampledFrameCount })) } : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
+      ...(message.specialSegments && message.specialSegments.length > 0 ? { specialSegments: message.specialSegments } : {}),
       forwardIds: message.forwardIds,
       replyMessageId: message.replyMessageId,
       mentionUserIds: message.mentionUserIds,

@@ -1,5 +1,6 @@
 import { crossChatToolDescriptors, crossChatToolHandlers } from "../conversation/crossChatTools.ts";
 import { forwardToolDescriptors, forwardToolHandlers } from "../conversation/forwardTools.ts";
+import { groupContextToolDescriptors, groupContextToolHandlers } from "../conversation/groupContextTools.ts";
 import { imageToolDescriptors, imageToolHandlers } from "../conversation/imageTools.ts";
 import { messageToolDescriptors, messageToolHandlers } from "../conversation/messageTools.ts";
 import { scenarioHostToolDescriptors, scenarioHostToolHandlers } from "../conversation/scenarioHostTools.ts";
@@ -9,6 +10,7 @@ import { setupDraftToolDescriptors, setupDraftToolHandlers } from "../conversati
 export const conversationToolDescriptors = [
   ...crossChatToolDescriptors,
   ...forwardToolDescriptors,
+  ...groupContextToolDescriptors,
   ...imageToolDescriptors,
   ...messageToolDescriptors,
   ...scenarioHostToolDescriptors,
@@ -19,6 +21,7 @@ export const conversationToolDescriptors = [
 export const conversationToolHandlers = {
   ...crossChatToolHandlers,
   ...forwardToolHandlers,
+  ...groupContextToolHandlers,
   ...imageToolHandlers,
   ...messageToolHandlers,
   ...scenarioHostToolHandlers,

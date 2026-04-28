@@ -18,12 +18,17 @@ import { readFile } from "node:fs/promises";
 
   test("message bubble uses explicit action button instead of context menu or long press", async () => {
     const source = await readFile(new URL("../../../webui/src/components/sessions/MessageBubble.vue", import.meta.url), "utf8");
+    const metaSource = await readFile(new URL("../../../webui/src/components/sessions/MessageMetaLine.vue", import.meta.url), "utf8");
 
-    assert.match(source, /MoreHorizontal/);
-    assert.match(source, /@click="openActions"/);
+    assert.match(source, /MessageMetaLine/);
+    assert.match(metaSource, /MoreHorizontal/);
+    assert.match(metaSource, /@click="openActions"/);
     assert.doesNotMatch(source, /@contextmenu=/);
+    assert.doesNotMatch(metaSource, /@contextmenu=/);
     assert.doesNotMatch(source, /@touchstart/);
+    assert.doesNotMatch(metaSource, /@touchstart/);
     assert.doesNotMatch(source, /longPressTimer/);
+    assert.doesNotMatch(metaSource, /longPressTimer/);
   });
 
   test("transcript items use explicit action button and keep disclosures interactive when runtimeExcluded", async () => {

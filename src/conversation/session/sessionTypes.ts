@@ -1,4 +1,4 @@
-import type { OneBotMessageEvent } from "#services/onebot/types.ts";
+import type { OneBotMessageEvent, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
 import type { SessionOperationMode } from "./sessionOperationMode.ts";
 import type {
@@ -35,6 +35,7 @@ export interface SessionMessage {
   imageIds: string[];
   emojiIds: string[];
   attachments?: ChatAttachment[];
+  specialSegments?: OneBotSpecialSegmentSummary[];
   forwardIds: string[];
   replyMessageId: string | null;
   mentionUserIds: string[];
@@ -57,6 +58,7 @@ export interface PersistedSessionMessage {
   imageIds: string[];
   emojiIds: string[];
   attachments?: ChatAttachment[];
+  specialSegments?: OneBotSpecialSegmentSummary[];
   forwardIds: string[];
   replyMessageId: string | null;
   mentionUserIds: string[];

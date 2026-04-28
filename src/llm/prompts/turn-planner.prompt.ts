@@ -5,8 +5,10 @@ import {
   formatStructuredMentionAllReference,
   formatStructuredMentionReference,
   formatStructuredMentionSelfReference,
-  formatStructuredReplyReference
+  formatStructuredReplyReference,
+  formatStructuredSpecialSegment
 } from "#conversation/session/historyContext.ts";
+import type { OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import { renderPromptSection, renderPromptSectionRaw } from "./prompt-section.ts";
 
 export function buildTurnPlannerPrompt(input: {
@@ -27,6 +29,7 @@ export function buildTurnPlannerPrompt(input: {
       kind: string;
       semanticKind?: "image" | "emoji" | undefined;
     }>;
+    specialSegments?: OneBotSpecialSegmentSummary[];
     forwardIds: string[];
     replyMessageId: string | null;
     mentionUserIds: string[];
@@ -47,6 +50,7 @@ export function buildTurnPlannerPrompt(input: {
     imageMessageCount: number;
     emojiMessageCount: number;
     forwardMessageCount: number;
+    specialSegmentMessageCount: number;
     replyReferenceCount: number;
     mentionMessageCount: number;
   };
@@ -120,6 +124,7 @@ export function buildTurnPlannerPrompt(input: {
       `image_messages=${input.batchAnalysis.imageMessageCount}`,
       `emoji_messages=${input.batchAnalysis.emojiMessageCount}`,
       `forward_messages=${input.batchAnalysis.forwardMessageCount}`,
+      `special_segment_messages=${input.batchAnalysis.specialSegmentMessageCount}`,
       `reply_references=${input.batchAnalysis.replyReferenceCount}`,
       `mention_messages=${input.batchAnalysis.mentionMessageCount}`
     ]),
@@ -168,6 +173,7 @@ function formatBatch(input: Array<{
     kind: string;
     semanticKind?: "image" | "emoji" | undefined;
   }>;
+  specialSegments?: OneBotSpecialSegmentSummary[];
   forwardIds: string[];
   replyMessageId: string | null;
   mentionUserIds: string[];
@@ -206,6 +212,9 @@ function formatBatch(input: Array<{
       }
       if (message.audioSources.length > 0) {
         parts.push(formatStructuredCount("audio", message.audioSources.length));
+      }
+      for (const segment of message.specialSegments ?? []) {
+        parts.push(formatStructuredSpecialSegment(segment));
       }
       if ((message.imageIds ?? []).length > 0) {
         parts.push(formatStructuredCount("image_id", (message.imageIds ?? []).length));

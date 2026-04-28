@@ -1,4 +1,5 @@
 import type { MediaSemanticKind } from "#services/onebot/messageSegments.ts";
+import type { OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import type { UserStore } from "#identity/userStore.ts";
 import {
   dedupeResolvedChatAttachments,
@@ -59,6 +60,13 @@ export function formatStructuredMentionAllReference(): string {
   return formatStructuredTag("mention", { target: "all" });
 }
 
+export function formatStructuredSpecialSegment(segment: OneBotSpecialSegmentSummary): string {
+  return formatStructuredTag("segment", {
+    type: segment.type,
+    summary: segment.summary
+  });
+}
+
 export function formatStructuredCount(kind: string, value: number | string): string {
   return formatStructuredTag("count", { kind, value: String(value) });
 }
@@ -80,6 +88,7 @@ export function formatHistoryContent(input: {
   imageIds?: string[];
   emojiIds?: string[];
   attachments?: ChatAttachment[];
+  specialSegments?: OneBotSpecialSegmentSummary[];
   audioCount?: number;
   forwardIds?: string[];
   replyMessageId?: string | null;
@@ -108,6 +117,9 @@ export function formatHistoryContent(input: {
   }
   for (const mediaRef of collectStructuredMediaRefs(input)) {
     parts.push(formatStructuredMediaReference(mediaRef.kind, mediaRef.fileId));
+  }
+  for (const segment of input.specialSegments ?? []) {
+    parts.push(formatStructuredSpecialSegment(segment));
   }
   for (const forwardId of input.forwardIds ?? []) {
     parts.push(formatStructuredForwardReference(forwardId));
@@ -155,6 +167,7 @@ export function formatUserHistoryEntry(input: {
   imageIds?: string[];
   emojiIds?: string[];
   attachments?: ChatAttachment[];
+  specialSegments?: OneBotSpecialSegmentSummary[];
   audioCount?: number;
   forwardIds?: string[];
   replyMessageId?: string | null;
@@ -173,6 +186,9 @@ export function formatUserHistoryEntry(input: {
   }
   if (input.attachments) {
     contentInput.attachments = input.attachments;
+  }
+  if (input.specialSegments) {
+    contentInput.specialSegments = input.specialSegments;
   }
   if (input.audioCount) {
     contentInput.audioCount = input.audioCount;
@@ -219,6 +235,7 @@ export function createUserTranscriptMessageItem(input: {
   imageIds?: string[];
   emojiIds?: string[];
   attachments?: ChatAttachment[];
+  specialSegments?: OneBotSpecialSegmentSummary[];
   audioCount?: number;
   forwardIds?: string[];
   replyMessageId?: string | null;
@@ -238,6 +255,7 @@ export function createUserTranscriptMessageItem(input: {
     imageIds: [...(input.imageIds ?? [])],
     emojiIds: [...(input.emojiIds ?? [])],
     attachments: [...(input.attachments ?? [])],
+    ...(input.specialSegments && input.specialSegments.length > 0 ? { specialSegments: [...input.specialSegments] } : {}),
     audioCount: input.audioCount ?? 0,
     forwardIds: [...(input.forwardIds ?? [])],
     replyMessageId: input.replyMessageId ?? null,
@@ -303,6 +321,7 @@ export function projectTranscriptMessageItemToHistoryMessage(
           ...(item.imageIds.length > 0 ? { imageIds: item.imageIds } : {}),
           ...(item.emojiIds.length > 0 ? { emojiIds: item.emojiIds } : {}),
           ...(item.attachments && item.attachments.length > 0 ? { attachments: item.attachments } : {}),
+          ...(item.specialSegments && item.specialSegments.length > 0 ? { specialSegments: item.specialSegments } : {}),
           ...(item.audioCount > 0 ? { audioCount: item.audioCount } : {}),
           ...(item.forwardIds.length > 0 ? { forwardIds: item.forwardIds } : {}),
           ...(item.replyMessageId ? { replyMessageId: item.replyMessageId } : {}),

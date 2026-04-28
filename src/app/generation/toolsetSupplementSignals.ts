@@ -84,6 +84,7 @@ function hasStructuredResolvableContent(messages: GenerationRuntimeBatchMessage[
     || (message.forwardIds?.length ?? 0) > 0
     || (message.imageIds?.some((fileId) => !isPendingChatAttachmentId(fileId)) ?? false)
     || (message.emojiIds?.some((fileId) => !isPendingChatAttachmentId(fileId)) ?? false)
+    || (message.specialSegments?.length ?? 0) > 0
     || dedupeResolvedChatAttachments(message.attachments ?? []).length > 0
   ));
 }

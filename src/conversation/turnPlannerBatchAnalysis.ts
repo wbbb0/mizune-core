@@ -14,6 +14,7 @@ export interface TurnPlannerBatchAnalysisMessage {
     kind: string;
     semanticKind?: "image" | "emoji" | undefined;
   }>;
+  specialSegments?: Array<{ type: string; summary: string }>;
   forwardIds?: string[];
   replyMessageId?: string | null;
   mentionUserIds?: string[];
@@ -28,6 +29,7 @@ export interface TurnPlannerBatchAnalysis {
   imageMessageCount: number;
   emojiMessageCount: number;
   forwardMessageCount: number;
+  specialSegmentMessageCount: number;
   replyReferenceCount: number;
   mentionMessageCount: number;
   hasText: boolean;
@@ -35,6 +37,7 @@ export interface TurnPlannerBatchAnalysis {
   hasImages: boolean;
   hasEmoji: boolean;
   hasForward: boolean;
+  hasSpecialSegments: boolean;
   hasReplyReference: boolean;
   hasMentionSignal: boolean;
   hasStructuredResolvableContent: boolean;
@@ -55,6 +58,7 @@ export function analyzeTurnPlannerBatch(messages: TurnPlannerBatchAnalysisMessag
     imageMessageCount: 0,
     emojiMessageCount: 0,
     forwardMessageCount: 0,
+    specialSegmentMessageCount: 0,
     replyReferenceCount: 0,
     mentionMessageCount: 0,
     hasText: false,
@@ -62,6 +66,7 @@ export function analyzeTurnPlannerBatch(messages: TurnPlannerBatchAnalysisMessag
     hasImages: false,
     hasEmoji: false,
     hasForward: false,
+    hasSpecialSegments: false,
     hasReplyReference: false,
     hasMentionSignal: false,
     hasStructuredResolvableContent: false,
@@ -77,6 +82,7 @@ export function analyzeTurnPlannerBatch(messages: TurnPlannerBatchAnalysisMessag
     const hasEmoji = collectVisualAttachmentFileIds(attachments, "emoji").length > 0
       || (message.emojiIds?.some((fileId) => !isPendingChatAttachmentId(fileId)) ?? false);
     const hasForward = (message.forwardIds?.length ?? 0) > 0;
+    const hasSpecialSegments = (message.specialSegments?.length ?? 0) > 0;
     const hasReplyReference = Boolean(message.replyMessageId);
     const hasMention = hasMentionSignal(message);
 
@@ -100,6 +106,10 @@ export function analyzeTurnPlannerBatch(messages: TurnPlannerBatchAnalysisMessag
       analysis.forwardMessageCount += 1;
       analysis.hasForward = true;
     }
+    if (hasSpecialSegments) {
+      analysis.specialSegmentMessageCount += 1;
+      analysis.hasSpecialSegments = true;
+    }
     if (hasReplyReference) {
       analysis.replyReferenceCount += 1;
       analysis.hasReplyReference = true;
@@ -114,6 +124,7 @@ export function analyzeTurnPlannerBatch(messages: TurnPlannerBatchAnalysisMessag
     || analysis.hasImages
     || analysis.hasEmoji
     || analysis.hasForward
+    || analysis.hasSpecialSegments
     || analysis.hasReplyReference;
 
   if (analysis.hasAudio) {
@@ -127,6 +138,9 @@ export function analyzeTurnPlannerBatch(messages: TurnPlannerBatchAnalysisMessag
   }
   if (analysis.hasForward) {
     analysis.summaryTags.push("forward");
+  }
+  if (analysis.hasSpecialSegments) {
+    analysis.summaryTags.push("special_segment");
   }
   if (analysis.hasReplyReference) {
     analysis.summaryTags.push("reply_ref");

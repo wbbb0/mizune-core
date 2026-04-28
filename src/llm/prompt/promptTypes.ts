@@ -8,6 +8,7 @@ import type { SpecialRole } from "#identity/specialRole.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { SessionDebugMarker } from "#conversation/session/sessionTypes.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
+import type { OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { LlmMessage } from "../llmClient.ts";
 import type { ToolsetRuleEntry } from "./toolsetRuleStore.ts";
@@ -125,6 +126,7 @@ export interface PromptBatchMessage {
   emojiCaptions?: PromptImageCaption[];
   emojiVisuals?: PromptEmojiVisual[];
   attachments?: ChatAttachment[];
+  specialSegments?: OneBotSpecialSegmentSummary[];
   forwardIds: string[];
   replyMessageId: string | null;
   mentionUserIds: string[];

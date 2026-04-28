@@ -14,6 +14,10 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("需要展开消息、转发或图片引用时再调用查看工具；message_id、forward_id、image_id 必须逐字复制。");
   }
 
+  if (hasAnyTool(visibleToolNames, ["view_current_group_info", "list_current_group_announcements", "list_current_group_members"])) {
+    lines.push("当前群工具只能读取本会话所在群；查询群公告或群成员时用 query 缩小范围，并设置合理 limit。");
+  }
+
   if (visibleToolNames.has("generate_image_with_comfyui")) {
     lines.push("generate_image_with_comfyui 是异步工具：调用后不会立刻拿到图片，系统会在完成后把对应的 workspace file_id、file_ref 和 chat_file_path 再交还给你。");
     lines.push("收到 ComfyUI 完成通知后，你要自己判断下一步：先 chat_file_view_media 看图、直接 chat_file_send_to_chat 发图、继续改 prompt 再生成，或结束本轮。");

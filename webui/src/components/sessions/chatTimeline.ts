@@ -37,6 +37,9 @@ export type ChatTimelineItem =
       fileId: string | null;
       imageUrl: string;
       toolName?: string;
+      senderLabel?: string;
+      metaChips?: string[];
+      actionsEnabled?: boolean;
       timestampMs: number;
     };
 
@@ -77,7 +80,8 @@ function toChatTimelineItems(
       : [];
     const senderLabel = formatSenderLabel(entry.item);
     const metaChips = buildMetaChips(entry.item, imageItems.length);
-    const textItem = entry.item.text
+    const content = entry.item.kind === "user_message" ? buildUserMessageContent(entry.item) : entry.item.text;
+    const textItem = content
       ? {
           id: entry.id,
           itemId: entry.item.id,
@@ -86,7 +90,7 @@ function toChatTimelineItems(
           kind: "text" as const,
           role: entry.item.role,
           side,
-          content: entry.item.text,
+          content,
           ...(senderLabel ? { senderLabel } : {}),
           ...(metaChips.length > 0 ? { metaChips } : {}),
           timestampMs: entry.item.timestampMs
@@ -139,6 +143,13 @@ function toChatTimelineItems(
   return [];
 }
 
+function buildUserMessageContent(item: Extract<SessionTranscriptItem, { kind: "user_message" }>): string {
+  return [
+    item.text.trim(),
+    ...(item.specialSegments ?? []).map((segment) => segment.summary)
+  ].filter(Boolean).join("\n");
+}
+
 function buildDraftAssistantItem(input: {
   transcript: ChatTimelineTranscriptEntry[];
   content: string;
@@ -169,6 +180,7 @@ function buildUserImageItems(
   if (entry.item.kind !== "user_message") {
     return [];
   }
+  const senderLabel = formatSenderLabel(entry.item);
   const attachments = entry.item.attachments ?? [];
   const visualAttachments = attachments.filter((item) => (
     isResolvedChatFileId(item.fileId)
@@ -195,6 +207,7 @@ function buildUserImageItems(
       fileRef: null,
       fileId: item.fileId,
       imageUrl: getChatFileContentUrlById(item.fileId),
+      ...(senderLabel ? { senderLabel } : {}),
       timestampMs: entry.item.timestampMs
     })),
     ...fallbackFileIds.map((fileId, index) => ({
@@ -209,6 +222,7 @@ function buildUserImageItems(
       fileRef: null,
       fileId,
       imageUrl: getChatFileContentUrlById(fileId),
+      ...(senderLabel ? { senderLabel } : {}),
       timestampMs: entry.item.timestampMs
     })),
     ...fallbackEmojiFileIds.map((fileId, index) => ({
@@ -223,6 +237,7 @@ function buildUserImageItems(
       fileRef: null,
       fileId,
       imageUrl: getChatFileContentUrlById(fileId),
+      ...(senderLabel ? { senderLabel } : {}),
       timestampMs: entry.item.timestampMs
     }))
   ];
@@ -266,6 +281,7 @@ function buildMetaChips(
   const resolvedEmojiIdCount = item.emojiIds.filter(isResolvedChatFileId).length;
   if (resolvedImageIdCount > 0 && renderedImageCount === 0) chips.push(`图片 ${resolvedImageIdCount}`);
   if (resolvedEmojiIdCount > 0) chips.push(`表情 ${resolvedEmojiIdCount}`);
+  if ((item.specialSegments?.length ?? 0) > 0) chips.push(`消息段 ${item.specialSegments?.length ?? 0}`);
   if (item.audioCount > 0) chips.push(`语音 ${item.audioCount}`);
   if (item.forwardIds.length > 0) chips.push(`转发 ${item.forwardIds.length}`);
   return chips;

@@ -59,6 +59,7 @@ export function appendIncomingHistory(
     senderName: context.enrichedMessage.senderName,
     text: context.enrichedMessage.text,
     ...(context.enrichedMessage.attachments ? { attachments: context.enrichedMessage.attachments } : {}),
+    ...(context.enrichedMessage.specialSegments ? { specialSegments: context.enrichedMessage.specialSegments } : {}),
     audioCount: context.enrichedMessage.audioSources.length,
     forwardIds: context.enrichedMessage.forwardIds,
     replyMessageId: context.enrichedMessage.replyMessageId,

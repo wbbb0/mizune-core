@@ -91,6 +91,7 @@ export async function handleGenerationTurnPlanner(
       imageIds: message.imageIds.filter((fileId) => !isPendingChatAttachmentId(fileId)),
       emojiIds: message.emojiIds.filter((fileId) => !isPendingChatAttachmentId(fileId)),
       ...(attachments.length > 0 ? { attachments } : {}),
+      ...(message.specialSegments && message.specialSegments.length > 0 ? { specialSegments: message.specialSegments } : {}),
       forwardIds: message.forwardIds,
       replyMessageId: message.replyMessageId,
       mentionUserIds: message.mentionUserIds,

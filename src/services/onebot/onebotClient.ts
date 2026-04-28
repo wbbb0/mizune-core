@@ -12,6 +12,8 @@ import type {
   OneBotMessageSegment,
   OneBotGroupItem,
   OneBotGroupMemberInfo,
+  OneBotGroupMemberItem,
+  OneBotGroupAnnouncementItem,
   OneBotRetrievedMessage,
   OneBotSendResult
 } from "./types.ts";
@@ -188,6 +190,21 @@ export class OneBotClient extends EventEmitter {
     return data as OneBotGroupItem[];
   }
 
+  async getGroupInfo(groupId: string): Promise<OneBotGroupItem | null> {
+    const payload = await this.postApi<OneBotApiResponse>("get_group_info", {
+      group_id: Number(groupId),
+      no_cache: false
+    });
+    this.assertApiSuccess("get_group_info", payload, { groupId });
+    const data = payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)
+      ? payload.data as Record<string, unknown>
+      : null;
+    if (!data || typeof data.group_id !== "number") {
+      return null;
+    }
+    return data as OneBotGroupItem;
+  }
+
   async getGroupMemberInfo(groupId: string, userId: string): Promise<OneBotGroupMemberInfo | null> {
     const payload = await this.postApi<OneBotApiResponse>("get_group_member_info", {
       group_id: Number(groupId),
@@ -207,6 +224,23 @@ export class OneBotClient extends EventEmitter {
       ...(typeof data.card === "string" ? { card: data.card } : {}),
       ...(typeof data.role === "string" ? { role: data.role } : {})
     };
+  }
+
+  async getGroupMemberList(groupId: string): Promise<OneBotGroupMemberItem[]> {
+    const payload = await this.postApi<OneBotApiResponse>("get_group_member_list", {
+      group_id: Number(groupId)
+    });
+    this.assertApiSuccess("get_group_member_list", payload, { groupId });
+    const data = Array.isArray(payload.data) ? payload.data : [];
+    return data.filter(isRecord) as OneBotGroupMemberItem[];
+  }
+
+  async getGroupAnnouncements(groupId: string): Promise<OneBotGroupAnnouncementItem[]> {
+    const payload = await this.postApi<OneBotApiResponse>("_get_group_notice", {
+      group_id: Number(groupId)
+    });
+    this.assertApiSuccess("_get_group_notice", payload, { groupId });
+    return extractArrayPayload(payload.data).filter(isRecord) as OneBotGroupAnnouncementItem[];
   }
 
   async getForwardMessage(forwardId: string): Promise<unknown[]> {
@@ -438,4 +472,24 @@ export class OneBotClient extends EventEmitter {
       this.ws = null;
     }
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function extractArrayPayload(data: unknown): unknown[] {
+  if (Array.isArray(data)) {
+    return data;
+  }
+  if (!isRecord(data)) {
+    return [];
+  }
+  for (const key of ["notices", "notice", "items", "list", "data"]) {
+    const value = data[key];
+    if (Array.isArray(value)) {
+      return value;
+    }
+  }
+  return [];
 }

@@ -44,6 +44,66 @@ test("local_file_read observation keeps raw content out of replay and preserves 
   assert.match(observation.replayContent, /start_line=1 end_line=180/);
 });
 
+test("current group context observations compact results and preserve refetch hints", () => {
+  const tools = [
+    {
+      name: "view_current_group_info",
+      content: {
+        ok: true,
+        groupId: "123456",
+        groupName: "测试群",
+        summary: "当前群 测试群 (123456)，成员 42"
+      },
+      expectedLocator: "info",
+      expectedHint: /view_current_group_info/
+    },
+    {
+      name: "list_current_group_announcements",
+      content: {
+        ok: true,
+        groupId: "123456",
+        query: "维护",
+        limit: 10,
+        count: 1,
+        summary: "当前群 123456 公告查询返回 1/1 条，limit=10，query=\"维护\"",
+        items: [{ id: "n1", title: "维护通知", content: "今晚维护" }]
+      },
+      expectedLocator: "announcements query=\"维护\" limit=10",
+      expectedHint: /list_current_group_announcements query=\\"维护\\" limit=10/
+    },
+    {
+      name: "list_current_group_members",
+      content: {
+        ok: true,
+        groupId: "123456",
+        query: "Alice",
+        limit: 20,
+        count: 1,
+        summary: "当前群 123456 成员查询返回 1/1 人，limit=20，query=\"Alice\"",
+        items: [{ userId: "10001", displayName: "Alice" }]
+      },
+      expectedLocator: "members query=\"Alice\" limit=20",
+      expectedHint: /list_current_group_members query=\\"Alice\\" limit=20/
+    }
+  ];
+
+  for (const tool of tools) {
+    const observation = buildToolObservation({
+      toolName: tool.name,
+      toolCallId: `call-${tool.name}`,
+      content: JSON.stringify(tool.content)
+    });
+
+    assert.equal(observation.retention, "summary");
+    assert.equal(observation.resource?.kind, "external");
+    assert.equal(observation.resource?.id, "onebot:group:123456");
+    assert.equal(observation.resource?.locator, tool.expectedLocator);
+    assert.equal(observation.refetchable, true);
+    assert.match(observation.replayContent, /"compacted":true/);
+    assert.match(observation.replayContent, tool.expectedHint);
+  }
+});
+
 test("tool_result transcript schema accepts optional observation metadata", () => {
   const observation = buildToolObservation({
     toolName: "terminal_run",

@@ -5,6 +5,7 @@ import {
   extractMediaSources,
   extractMentions,
   extractReplyMessageId,
+  extractSpecialSegments,
   extractText
 } from "./messageSegments.ts";
 import type { OneBotMessageEvent, ParsedIncomingMessage } from "./types.ts";
@@ -45,6 +46,7 @@ export function parseIncomingMessage(
   const forwardIds = extractForwardIds(event.message);
   const replyMessageId = extractReplyMessageId(event.message);
   const mentions = extractMentions(event.message, event.self_id);
+  const specialSegments = extractSpecialSegments(event.message);
 
   if (
     !text
@@ -56,6 +58,7 @@ export function parseIncomingMessage(
     && !mentions.mentionedAll
     && !mentions.mentionedSelf
     && mentions.userIds.length === 0
+    && specialSegments.length === 0
   ) {
     return null;
   }
@@ -75,6 +78,7 @@ export function parseIncomingMessage(
     imageIds: [],
     emojiIds: [],
     attachments: [],
+    specialSegments,
     forwardIds,
     replyMessageId,
     mentionUserIds: mentions.userIds,

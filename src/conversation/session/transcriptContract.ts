@@ -28,6 +28,11 @@ export const transcriptItemDeliveryRefSchema = z.object({
   messageId: z.number().int().nonnegative()
 });
 
+export const transcriptSpecialSegmentSchema = z.object({
+  type: z.string().min(1),
+  summary: z.string()
+});
+
 export const transcriptTokenStatSourceValues = ["api_direct", "api_attributed", "estimated"] as const;
 
 export const transcriptTokenStatSchema = z.object({
@@ -68,6 +73,7 @@ export const transcriptUserMessageItemSchema = z.object({
   imageIds: z.array(z.string()).default([]),
   emojiIds: z.array(z.string()).default([]),
   attachments: z.array(chatAttachmentSchema).default([]),
+  specialSegments: z.array(transcriptSpecialSegmentSchema).optional(),
   audioCount: z.number().int().nonnegative(),
   forwardIds: z.array(z.string()).default([]),
   replyMessageId: z.string().nullable(),

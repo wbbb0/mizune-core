@@ -6,6 +6,7 @@ import {
   formatStructuredMentionReference,
   formatStructuredMentionSelfReference,
   formatStructuredReplyReference,
+  formatStructuredSpecialSegment,
   formatStructuredCount
 } from "#conversation/session/historyContext.ts";
 import type { LlmContentPart } from "#llm/llmClient.ts";
@@ -240,6 +241,9 @@ function buildMessageBodyText(
     if (includeMediaCaptions && caption) {
       parts.push(`图片描述：${escapePromptBodyText(caption)}`);
     }
+  }
+  for (const segment of message.specialSegments ?? []) {
+    parts.push(formatStructuredSpecialSegment(segment));
   }
   for (const forwardId of message.forwardIds ?? []) {
     parts.push(formatStructuredForwardReference(forwardId));

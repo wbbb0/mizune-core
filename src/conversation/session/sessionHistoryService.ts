@@ -103,6 +103,7 @@ export class SessionHistoryService {
       imageIds?: string[];
       emojiIds?: string[];
       attachments?: SessionMessage["attachments"];
+      specialSegments?: SessionMessage["specialSegments"];
       audioCount?: number;
       forwardIds?: string[];
       replyMessageId?: string | null;
@@ -120,6 +121,7 @@ export class SessionHistoryService {
       ...(message.imageIds ? { imageIds: message.imageIds } : {}),
       ...(message.emojiIds ? { emojiIds: message.emojiIds } : {}),
       ...(message.attachments ? { attachments: message.attachments } : {}),
+      ...(message.specialSegments ? { specialSegments: message.specialSegments } : {}),
       ...(message.audioCount != null ? { audioCount: message.audioCount } : {}),
       ...(message.forwardIds ? { forwardIds: message.forwardIds } : {}),
       ...(message.replyMessageId !== undefined ? { replyMessageId: message.replyMessageId } : {}),
