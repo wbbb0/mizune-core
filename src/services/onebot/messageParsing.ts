@@ -8,7 +8,6 @@ import {
   extractText
 } from "./messageSegments.ts";
 import type { OneBotMessageEvent, ParsedIncomingMessage } from "./types.ts";
-import type { ChatAttachment } from "#services/workspace/types.ts";
 
 export function extractEventMessageText(event: OneBotMessageEvent): string {
   const text = extractText(event.message).trim();
@@ -75,7 +74,7 @@ export function parseIncomingMessage(
     emojiSources,
     imageIds: [],
     emojiIds: [],
-    attachments: buildInitialAttachments(images, fileSources),
+    attachments: [],
     forwardIds,
     replyMessageId,
     mentionUserIds: mentions.userIds,
@@ -83,26 +82,4 @@ export function parseIncomingMessage(
     isAtMentioned: event.message_type === "group" ? isAtMentionedSelf(event) : false,
     rawEvent: event
   };
-}
-
-function buildInitialAttachments(
-  images: string[],
-  fileSources: Array<{ source: string; filename: string | null; mimeType: string | null }>
-): ChatAttachment[] {
-  return [
-    ...images.map((source, index) => ({
-      fileId: `pending:image:${index}:${source}`,
-      kind: "image" as const,
-      source: "chat_message" as const,
-      sourceName: null,
-      mimeType: null
-    })),
-    ...fileSources.map((item, index) => ({
-      fileId: `pending:file:${index}:${item.source}`,
-      kind: "file" as const,
-      source: "chat_message" as const,
-      sourceName: item.filename,
-      mimeType: item.mimeType
-    }))
-  ];
 }

@@ -1,5 +1,9 @@
 import { extractFileSources } from "#services/onebot/messageSegments.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
+import {
+  dedupeResolvedChatAttachments,
+  isPendingChatAttachmentId
+} from "#services/workspace/chatAttachments.ts";
 import type { MessageHandlerServices, MessageProcessingContext } from "./messageHandlerTypes.ts";
 
 export async function createMessageProcessingContext(
@@ -58,9 +62,9 @@ export async function createMessageProcessingContext(
     )
   ]);
 
-  const preservedImageIds = incomingMessage.imageIds ?? [];
-  const preservedEmojiIds = incomingMessage.emojiIds ?? [];
-  const preservedAttachments = incomingMessage.attachments ?? [];
+  const preservedImageIds = (incomingMessage.imageIds ?? []).filter((fileId) => !isPendingChatAttachmentId(fileId));
+  const preservedEmojiIds = (incomingMessage.emojiIds ?? []).filter((fileId) => !isPendingChatAttachmentId(fileId));
+  const preservedAttachments = dedupeResolvedChatAttachments(incomingMessage.attachments ?? []);
   const importedImageRecords = importedImageAssets.filter((item): item is NonNullable<typeof item> => item != null);
   const importedFileRecords = importedFileAssets.filter((item): item is NonNullable<typeof item> => item != null);
 
@@ -82,7 +86,7 @@ export async function createMessageProcessingContext(
       .filter((item) => item.sourceContext.mediaKind === "emoji")
       .map((item) => item.fileId),
     ])),
-    attachments: dedupeAttachmentsByFileId([
+    attachments: dedupeResolvedChatAttachments([
       ...preservedAttachments,
       ...importedImageRecords
         .map((item) => ({
@@ -112,19 +116,6 @@ export async function createMessageProcessingContext(
       ? resolveTargetSession(services.sessionManager, enrichedMessage, options.targetSessionId)
       : services.sessionManager.getOrCreateSession(enrichedMessage)
   };
-}
-
-function dedupeAttachmentsByFileId<T extends { fileId: string }>(attachments: T[]): T[] {
-  const seen = new Set<string>();
-  const deduped: T[] = [];
-  for (const attachment of attachments) {
-    if (seen.has(attachment.fileId)) {
-      continue;
-    }
-    seen.add(attachment.fileId);
-    deduped.push(attachment);
-  }
-  return deduped;
 }
 
 function resolveTargetSession(

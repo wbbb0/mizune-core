@@ -26,6 +26,10 @@ import type { LlmMessage } from "#llm/llmClient.ts";
 import type { PromptDebugSnapshot } from "#llm/tools/core/shared.ts";
 import type { GenerationPromptBuilderDeps } from "./generationRunnerDeps.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
+import {
+  collectVisualAttachmentFileIds,
+  dedupeResolvedChatAttachments
+} from "#services/workspace/chatAttachments.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { ToolsetRuleEntry } from "#llm/prompt/toolsetRuleStore.ts";
 import { isNearDuplicateText } from "#memory/similarity.ts";
@@ -249,10 +253,10 @@ async function preparePromptMediaContext(
   }
 ) {
   const batchImageIds = Array.from(new Set((input.batchMessages ?? []).flatMap((message) => (
-    message.attachments
-      ?.filter((item) => item.kind === "image" || item.kind === "animated_image")
-      .map((item) => item.fileId)
-      ?? []
+    [
+      ...collectVisualAttachmentFileIds(message.attachments, "image"),
+      ...collectVisualAttachmentFileIds(message.attachments, "emoji")
+    ]
   ))));
   const historyImageIds = collectReferencedImageIds(input.historyForPrompt);
   const imageIds = Array.from(new Set([...historyImageIds, ...batchImageIds]));
@@ -298,12 +302,9 @@ async function preparePromptBatchMessages(
 ) {
   return Promise.all(messages.map(async (message) => {
     const audioIds = message.audioIds ?? [];
-    const imageFileIds = (message.attachments ?? [])
-      .filter((item) => item.semanticKind !== "emoji" && (item.kind === "image" || item.kind === "animated_image"))
-      .map((item) => item.fileId);
-    const emojiFileIds = (message.attachments ?? [])
-      .filter((item) => item.semanticKind === "emoji" && (item.kind === "image" || item.kind === "animated_image"))
-      .map((item) => item.fileId);
+    const attachments = dedupeResolvedChatAttachments(message.attachments ?? []);
+    const imageFileIds = collectVisualAttachmentFileIds(attachments, "image");
+    const emojiFileIds = collectVisualAttachmentFileIds(attachments, "emoji");
     const imageVisuals = options.supportsVision
       ? await deps.mediaVisionService.prepareFilesForModel(imageFileIds)
       : [];
@@ -337,7 +338,7 @@ async function preparePromptBatchMessages(
       emojiIds: emojiFileIds,
       emojiCaptions: buildPromptImageCaptions(emojiFileIds, captionMap),
       ...(options.supportsVision ? { emojiVisuals: emojiVisuals.map((item) => ({ imageId: item.fileId, inputUrl: item.inputUrl, animated: item.animated, durationMs: item.durationMs, sampledFrameCount: item.sampledFrameCount })) } : {}),
-      ...(message.attachments ? { attachments: message.attachments } : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
       forwardIds: message.forwardIds,
       replyMessageId: message.replyMessageId,
       mentionUserIds: message.mentionUserIds,

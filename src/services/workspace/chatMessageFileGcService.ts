@@ -8,6 +8,7 @@ import type {
   TranscriptUserMessageItem
 } from "#conversation/session/sessionTypes.ts";
 import type { ChatFileStore } from "./chatFileStore.ts";
+import { isPendingChatAttachmentId } from "./chatAttachments.ts";
 
 export class ChatMessageFileGcService {
   constructor(
@@ -66,12 +67,12 @@ function collectReferencedFileIds(activeSessions: SessionState[], persistedSessi
 
 function collectFromMessage(fileIds: Set<string>, message: PersistedSessionMessage | SessionMessage): void {
   for (const fileId of [...message.imageIds, ...message.emojiIds]) {
-    if (fileId) {
+    if (fileId && !isPendingChatAttachmentId(fileId)) {
       fileIds.add(fileId);
     }
   }
   for (const attachment of message.attachments ?? []) {
-    if (attachment.fileId) {
+    if (attachment.fileId && !isPendingChatAttachmentId(attachment.fileId)) {
       fileIds.add(attachment.fileId);
     }
   }
@@ -89,12 +90,12 @@ function collectFromTranscriptItem(fileIds: Set<string>, item: InternalTranscrip
 
 function collectFromTranscriptUserMessage(fileIds: Set<string>, item: TranscriptUserMessageItem): void {
   for (const fileId of [...item.imageIds, ...item.emojiIds]) {
-    if (fileId) {
+    if (fileId && !isPendingChatAttachmentId(fileId)) {
       fileIds.add(fileId);
     }
   }
   for (const attachment of item.attachments ?? []) {
-    if (attachment.fileId) {
+    if (attachment.fileId && !isPendingChatAttachmentId(attachment.fileId)) {
       fileIds.add(attachment.fileId);
     }
   }

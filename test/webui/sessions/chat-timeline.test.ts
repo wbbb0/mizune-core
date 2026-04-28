@@ -58,7 +58,7 @@ function createUserMessageEntry(): ChatTimelineTranscriptEntry {
       activeComposerUserId: "10001"
     });
 
-    assert.equal(items.length, 3);
+    assert.equal(items.length, 4);
     assert.equal(items[0]?.kind, "text");
     assert.equal(items[0]?.metaChips, undefined);
 
@@ -69,8 +69,13 @@ function createUserMessageEntry(): ChatTimelineTranscriptEntry {
 
     assert.equal(items[2]?.kind, "image");
     assert.equal(items[2]?.role, "user");
-    assert.equal(items[2]?.imageUrl, "/api/chat-files/img-fallback/content");
-    assert.equal(items[2]?.sourceName, null);
+    assert.equal(items[2]?.imageUrl, "/api/chat-files/emoji-1/content");
+    assert.equal(items[2]?.sourceName, "emoji.gif");
+
+    assert.equal(items[3]?.kind, "image");
+    assert.equal(items[3]?.role, "user");
+    assert.equal(items[3]?.imageUrl, "/api/chat-files/img-fallback/content");
+    assert.equal(items[3]?.sourceName, null);
   });
 
   test("chat timeline keeps outbound media messages available in reverse chronological order", () => {

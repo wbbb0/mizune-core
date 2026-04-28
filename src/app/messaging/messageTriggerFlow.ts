@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
+import { collectVisualAttachmentFileIds } from "#services/workspace/chatAttachments.ts";
 import type {
   MessageEventHandlerDeps,
   MessageHandlerServices,
@@ -145,9 +146,10 @@ export function enqueueTriggeredMessage(
   }
 
   services.mediaCaptionService.schedule(
-    (context.enrichedMessage.attachments ?? [])
-      .filter((item) => item.kind === "image" || item.kind === "animated_image")
-      .map((item) => item.fileId),
+    [
+      ...collectVisualAttachmentFileIds(context.enrichedMessage.attachments, "image"),
+      ...collectVisualAttachmentFileIds(context.enrichedMessage.attachments, "emoji")
+    ],
     context.enrichedMessage.chatType === "private" ? "incoming_private_message" : "incoming_group_trigger"
   );
 

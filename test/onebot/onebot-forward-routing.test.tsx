@@ -78,6 +78,7 @@ import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx"
 
     assert.deepEqual(parsed?.images, ["https://example.com/emoji.gif", "https://example.com/pic.png"]);
     assert.deepEqual(parsed?.emojiSources, ["https://example.com/emoji.gif"]);
+    assert.deepEqual(parsed?.attachments, []);
   });
 
   test("view_forward_record repairs rounded forward_id from recent session refs", async () => {

@@ -170,18 +170,24 @@ function buildUserImageItems(
     return [];
   }
   const attachments = entry.item.attachments ?? [];
-  const imageAttachments = attachments.filter((item) => (
-    item.semanticKind !== "emoji" && (item.kind === "image" || item.kind === "animated_image")
+  const visualAttachments = attachments.filter((item) => (
+    isResolvedChatFileId(item.fileId)
+    &&
+    (item.kind === "image" || item.kind === "animated_image")
   ));
-  const seen = new Set(imageAttachments.map((item) => item.fileId));
-  const fallbackFileIds = entry.item.imageIds.filter((fileId) => !seen.has(fileId));
+  const seen = new Set(visualAttachments.map((item) => item.fileId));
+  const fallbackFileIds = entry.item.imageIds.filter((fileId) => isResolvedChatFileId(fileId) && !seen.has(fileId));
+  for (const fileId of fallbackFileIds) {
+    seen.add(fileId);
+  }
+  const fallbackEmojiFileIds = entry.item.emojiIds.filter((fileId) => isResolvedChatFileId(fileId) && !seen.has(fileId));
 
   return [
-    ...imageAttachments.map((item, index) => ({
+    ...visualAttachments.map((item, index) => ({
       id: `${entry.id}:image:${index}`,
       itemId: entry.item.id,
       groupId: entry.item.groupId,
-      actionTitle: "图片消息",
+      actionTitle: item.semanticKind === "emoji" ? "表情消息" : "图片消息",
       kind: "image" as const,
       role: "user" as const,
       side,
@@ -196,6 +202,20 @@ function buildUserImageItems(
       itemId: entry.item.id,
       groupId: entry.item.groupId,
       actionTitle: "图片消息",
+      kind: "image" as const,
+      role: "user" as const,
+      side,
+      sourceName: null,
+      fileRef: null,
+      fileId,
+      imageUrl: getChatFileContentUrlById(fileId),
+      timestampMs: entry.item.timestampMs
+    })),
+    ...fallbackEmojiFileIds.map((fileId, index) => ({
+      id: `${entry.id}:emoji:fallback:${index}`,
+      itemId: entry.item.id,
+      groupId: entry.item.groupId,
+      actionTitle: "表情消息",
       kind: "image" as const,
       role: "user" as const,
       side,
@@ -242,11 +262,18 @@ function buildMetaChips(
   if (item.replyMessageId) chips.push("回复");
   if (item.mentionedSelf) chips.push("@我");
   if (item.mentionedAll) chips.push("@全体");
-  if (item.imageIds.length > 0 && renderedImageCount === 0) chips.push(`图片 ${item.imageIds.length}`);
-  if (item.emojiIds.length > 0) chips.push(`表情 ${item.emojiIds.length}`);
+  const resolvedImageIdCount = item.imageIds.filter(isResolvedChatFileId).length;
+  const resolvedEmojiIdCount = item.emojiIds.filter(isResolvedChatFileId).length;
+  if (resolvedImageIdCount > 0 && renderedImageCount === 0) chips.push(`图片 ${resolvedImageIdCount}`);
+  if (resolvedEmojiIdCount > 0) chips.push(`表情 ${resolvedEmojiIdCount}`);
   if (item.audioCount > 0) chips.push(`语音 ${item.audioCount}`);
   if (item.forwardIds.length > 0) chips.push(`转发 ${item.forwardIds.length}`);
   return chips;
+}
+
+function isResolvedChatFileId(fileId: string | null | undefined): boolean {
+  const normalized = String(fileId ?? "").trim();
+  return normalized.length > 0 && !normalized.startsWith("pending:");
 }
 
 function resolveMessageSide(

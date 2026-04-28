@@ -1,5 +1,10 @@
 import type { MediaSemanticKind } from "#services/onebot/messageSegments.ts";
 import type { UserStore } from "#identity/userStore.ts";
+import {
+  dedupeResolvedChatAttachments,
+  getVisualAttachmentSemanticKind,
+  isPendingChatAttachmentId
+} from "#services/workspace/chatAttachments.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
 import type {
   InternalTranscriptItem,
@@ -101,25 +106,45 @@ export function formatHistoryContent(input: {
   if ((input.audioCount ?? 0) > 0) {
     parts.push(formatStructuredCount("audio", input.audioCount ?? 0));
   }
-  for (const emojiId of input.emojiIds ?? []) {
-    parts.push(formatStructuredEmojiReference(emojiId));
-  }
-  for (const imageId of input.imageIds ?? []) {
-    parts.push(formatStructuredImageReference(imageId));
-  }
-  for (const attachment of input.attachments ?? []) {
-    if (attachment.semanticKind === "emoji") {
-      parts.push(formatStructuredEmojiReference(attachment.fileId));
-      continue;
-    }
-    if (attachment.kind === "image" || attachment.kind === "animated_image") {
-      parts.push(formatStructuredImageReference(attachment.fileId));
-    }
+  for (const mediaRef of collectStructuredMediaRefs(input)) {
+    parts.push(formatStructuredMediaReference(mediaRef.kind, mediaRef.fileId));
   }
   for (const forwardId of input.forwardIds ?? []) {
     parts.push(formatStructuredForwardReference(forwardId));
   }
   return parts.join("\n") || "<empty>";
+}
+
+function collectStructuredMediaRefs(input: {
+  imageIds?: string[];
+  emojiIds?: string[];
+  attachments?: ChatAttachment[];
+}): Array<{ kind: MediaSemanticKind; fileId: string }> {
+  const refs: Array<{ kind: MediaSemanticKind; fileId: string }> = [];
+  const seen = new Set<string>();
+
+  const add = (kind: MediaSemanticKind, rawFileId: string): void => {
+    const fileId = String(rawFileId ?? "").trim();
+    if (!fileId || isPendingChatAttachmentId(fileId) || seen.has(fileId)) {
+      return;
+    }
+    seen.add(fileId);
+    refs.push({ kind, fileId });
+  };
+
+  for (const emojiId of input.emojiIds ?? []) {
+    add("emoji", emojiId);
+  }
+  for (const imageId of input.imageIds ?? []) {
+    add("image", imageId);
+  }
+  for (const attachment of dedupeResolvedChatAttachments(input.attachments ?? [])) {
+    const kind = getVisualAttachmentSemanticKind(attachment);
+    if (kind) {
+      add(kind, attachment.fileId);
+    }
+  }
+  return refs;
 }
 
 export function formatUserHistoryEntry(input: {

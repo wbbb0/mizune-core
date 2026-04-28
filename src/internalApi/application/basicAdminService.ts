@@ -21,6 +21,7 @@ import { getDefaultSessionModeId, listSessionModes, requireSessionModeDefinition
 import { scenarioHostSessionStateSchema, type ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { createSessionTitleGenerationEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { DerivedObservationReader } from "#llm/derivations/derivedObservationReader.ts";
+import { isPendingChatAttachmentId } from "#services/workspace/chatAttachments.ts";
 import {
   buildInitialSessionListStreamEvents,
   diffSessionListStreamEvents,
@@ -174,13 +175,19 @@ function collectDerivedObservationMediaIds(transcript: readonly InternalTranscri
   for (const item of transcript) {
     if (item.kind === "user_message") {
       for (const imageId of item.imageIds) {
-        chatFileIds.add(imageId);
+        if (!isPendingChatAttachmentId(imageId)) {
+          chatFileIds.add(imageId);
+        }
       }
       for (const emojiId of item.emojiIds) {
-        chatFileIds.add(emojiId);
+        if (!isPendingChatAttachmentId(emojiId)) {
+          chatFileIds.add(emojiId);
+        }
       }
       for (const attachment of item.attachments) {
-        chatFileIds.add(attachment.fileId);
+        if (!isPendingChatAttachmentId(attachment.fileId)) {
+          chatFileIds.add(attachment.fileId);
+        }
       }
     }
     for (const match of extractMediaIdsFromText(JSON.stringify(item))) {

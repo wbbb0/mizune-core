@@ -6,6 +6,11 @@ import type { GenerationCurrentUser, GenerationTurnPlannerDeps } from "./generat
 import type { GenerationRuntimeBatchMessage, GenerationSendTarget } from "./generationExecutor.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { TurnPlannerResult } from "#conversation/turnPlanner.ts";
+import {
+  collectVisualAttachmentFileIds,
+  dedupeResolvedChatAttachments,
+  isPendingChatAttachmentId
+} from "#services/workspace/chatAttachments.ts";
 
 export interface GenerationTurnPlannerInput {
   sessionId: string;
@@ -66,8 +71,8 @@ export async function handleGenerationTurnPlanner(
 
   const plannerProfile = getPrimaryModelProfile(config, getModelRefsForRole(config, "turn_planner"));
   const hasEmojiWithoutGateVision = (
-    input.batchMessages.some((message) => message.emojiIds.length > 0)
-    || input.batchMessages.some((message) => (message.attachments ?? []).some((item) => item.semanticKind === "emoji"))
+    input.batchMessages.some((message) => message.emojiIds.some((fileId) => !isPendingChatAttachmentId(fileId)))
+    || input.batchMessages.some((message) => collectVisualAttachmentFileIds(message.attachments, "emoji").length > 0)
   ) && !plannerProfile?.supportsVision;
   if (hasEmojiWithoutGateVision) {
     logger.info(
@@ -75,6 +80,25 @@ export async function handleGenerationTurnPlanner(
       "turn_planner_emoji_without_vision_continues_without_emoji_inputs"
     );
   }
+
+  const plannerBatchMessages = input.batchMessages.map((message) => {
+    const attachments = dedupeResolvedChatAttachments(message.attachments ?? []);
+    return {
+      senderName: message.senderName,
+      text: message.text,
+      images: message.images,
+      audioSources: message.audioSources,
+      imageIds: message.imageIds.filter((fileId) => !isPendingChatAttachmentId(fileId)),
+      emojiIds: message.emojiIds.filter((fileId) => !isPendingChatAttachmentId(fileId)),
+      ...(attachments.length > 0 ? { attachments } : {}),
+      forwardIds: message.forwardIds,
+      replyMessageId: message.replyMessageId,
+      mentionUserIds: message.mentionUserIds,
+      mentionedAll: message.mentionedAll,
+      mentionedSelf: message.isAtMentioned,
+      timestampMs: message.receivedAt
+    };
+  });
 
   const planner = await turnPlanner.decide({
     sessionId: input.sessionId,
@@ -84,21 +108,7 @@ export async function handleGenerationTurnPlanner(
     recentMessages: input.historyForPrompt,
     availableToolsets: input.availableToolsets,
     abortSignal: input.abortSignal,
-    batchMessages: input.batchMessages.map((message) => ({
-      senderName: message.senderName,
-      text: message.text,
-      images: message.images,
-      audioSources: message.audioSources,
-      imageIds: message.imageIds,
-      emojiIds: message.emojiIds,
-      ...(message.attachments ? { attachments: message.attachments } : {}),
-      forwardIds: message.forwardIds,
-      replyMessageId: message.replyMessageId,
-      mentionUserIds: message.mentionUserIds,
-      mentionedAll: message.mentionedAll,
-      mentionedSelf: message.isAtMentioned,
-      timestampMs: message.receivedAt
-    }))
+    batchMessages: plannerBatchMessages
   });
 
   if (input.abortSignal.aborted) {

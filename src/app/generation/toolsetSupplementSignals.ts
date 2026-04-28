@@ -1,5 +1,9 @@
 import type { TurnPlannerContextDependency, TurnPlannerFollowupMode, TurnPlannerRequiredCapability, TurnPlannerResult } from "#conversation/turnPlanner.ts";
 import type { GenerationRuntimeBatchMessage } from "./generationExecutor.ts";
+import {
+  dedupeResolvedChatAttachments,
+  isPendingChatAttachmentId
+} from "#services/workspace/chatAttachments.ts";
 import type { GenerationPromptToolEvent } from "./generationPromptBuilder.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import { hasDiceRollSignal } from "#llm/tools/runtime/diceExpression.ts";
@@ -78,8 +82,8 @@ function hasStructuredResolvableContent(messages: GenerationRuntimeBatchMessage[
   return messages.some((message) => (
     Boolean(message.replyMessageId)
     || (message.forwardIds?.length ?? 0) > 0
-    || (message.imageIds?.length ?? 0) > 0
-    || (message.emojiIds?.length ?? 0) > 0
-    || (message.attachments?.length ?? 0) > 0
+    || (message.imageIds?.some((fileId) => !isPendingChatAttachmentId(fileId)) ?? false)
+    || (message.emojiIds?.some((fileId) => !isPendingChatAttachmentId(fileId)) ?? false)
+    || dedupeResolvedChatAttachments(message.attachments ?? []).length > 0
   ));
 }

@@ -1,3 +1,9 @@
+import {
+  collectVisualAttachmentFileIds,
+  dedupeResolvedChatAttachments,
+  isPendingChatAttachmentId
+} from "#services/workspace/chatAttachments.ts";
+
 export interface TurnPlannerBatchAnalysisMessage {
   text?: string;
   audioSources?: string[];
@@ -63,13 +69,13 @@ export function analyzeTurnPlannerBatch(messages: TurnPlannerBatchAnalysisMessag
   };
 
   for (const message of messages) {
+    const attachments = dedupeResolvedChatAttachments(message.attachments ?? []);
     const hasText = Boolean(message.text?.trim());
     const hasAudio = (message.audioSources?.length ?? 0) > 0;
-    const hasImages = (message.attachments?.some((item) => (
-      (item.kind === "image" || item.kind === "animated_image") && item.semanticKind !== "emoji"
-    )) ?? false) || (message.imageIds?.length ?? 0) > 0;
-    const hasEmoji = (message.attachments?.some((item) => item.semanticKind === "emoji") ?? false)
-      || (message.emojiIds?.length ?? 0) > 0;
+    const hasImages = collectVisualAttachmentFileIds(attachments, "image").length > 0
+      || (message.imageIds?.some((fileId) => !isPendingChatAttachmentId(fileId)) ?? false);
+    const hasEmoji = collectVisualAttachmentFileIds(attachments, "emoji").length > 0
+      || (message.emojiIds?.some((fileId) => !isPendingChatAttachmentId(fileId)) ?? false);
     const hasForward = (message.forwardIds?.length ?? 0) > 0;
     const hasReplyReference = Boolean(message.replyMessageId);
     const hasMention = hasMentionSignal(message);
