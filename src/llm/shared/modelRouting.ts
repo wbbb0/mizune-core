@@ -12,6 +12,7 @@ export type LlmRoutingRole =
   | "summarizer"
   | "session_captioner"
   | "image_captioner"
+  | "image_inspector"
   | "audio_transcription"
   | "turn_planner";
 
@@ -62,6 +63,12 @@ const routingRoleDefinitions: Record<LlmRoutingRole, RoutingRoleDefinition & {
     presetField: "imageCaptioner",
     getModelRefs: (preset) => preset.imageCaptioner
   },
+  image_inspector: {
+    label: "图片精读",
+    requiredModelType: "chat",
+    presetField: "imageInspector",
+    getModelRefs: (preset) => preset.imageInspector
+  },
   audio_transcription: {
     label: "音频转写",
     requiredModelType: "transcription",
@@ -94,6 +101,7 @@ export function createEmptyRoutingPreset(): Required<LlmRoutingPreset> {
     summarizer: [],
     sessionCaptioner: [],
     imageCaptioner: [],
+    imageInspector: [],
     audioTranscription: [],
     turnPlanner: []
   };

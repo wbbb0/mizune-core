@@ -84,6 +84,7 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
       browserService: {} as never,
       localFileService: {} as never,
       chatFileStore: {} as never,
+      mediaInspectionService: {} as never,
       comfyClient: {} as never,
       comfyTaskStore: {} as never,
       comfyTemplateCatalog: {} as never,

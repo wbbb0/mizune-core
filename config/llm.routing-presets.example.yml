@@ -11,6 +11,9 @@ balanced:
   imageCaptioner:
     - qwen35_35b_a3b
     - gemini31_flash_lite_preview
+  imageInspector:
+    - gemini31_flash_lite_preview
+    - qwen35_35b_a3b
   audioTranscription:
     - gemini25_flash_transcription
   turnPlanner:

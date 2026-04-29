@@ -43,6 +43,11 @@ llm:
     timeoutMs: 30000
     enableThinking: false
     maxConcurrency: 2
+  imageInspector:
+    enabled: true
+    timeoutMs: 45000
+    enableThinking: false
+    maxConcurrency: 2
   audioTranscription:
     enabled: true
     timeoutMs: 30000

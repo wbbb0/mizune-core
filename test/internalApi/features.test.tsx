@@ -284,6 +284,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
           summarizer: [],
           sessionCaptioner: [],
           imageCaptioner: [],
+          imageInspector: [],
           audioTranscription: [],
           turnPlanner: []
         }
@@ -295,6 +296,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         summarizer: [],
         sessionCaptioner: [],
         imageCaptioner: [],
+        imageInspector: [],
         audioTranscription: [],
         turnPlanner: []
       });
@@ -307,6 +309,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         summarizer: [],
         sessionCaptioner: [],
         imageCaptioner: [],
+        imageInspector: [],
         audioTranscription: [],
         turnPlanner: []
       });
@@ -316,6 +319,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         summarizer: [],
         sessionCaptioner: [],
         imageCaptioner: [],
+        imageInspector: [],
         audioTranscription: [],
         turnPlanner: []
       });
@@ -339,6 +343,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         summarizer: [],
         sessionCaptioner: [],
         imageCaptioner: [],
+        imageInspector: [],
         audioTranscription: [],
         turnPlanner: []
       });

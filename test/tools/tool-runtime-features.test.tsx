@@ -19,6 +19,60 @@ import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.
 import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
+function createMediaToolVisibilityConfig(options: {
+  mainSupportsVision?: boolean;
+  imageInspectorEnabled?: boolean;
+  imageInspectorRefs?: string[];
+  inspectorSupportsVision?: boolean;
+} = {}) {
+  return createTestAppConfig({
+    llm: {
+      imageInspector: {
+        enabled: options.imageInspectorEnabled ?? true
+      },
+      models: {
+        main: {
+          supportsVision: options.mainSupportsVision ?? false
+        },
+        visualFallback: {
+          provider: "test",
+          model: "fake-visual-fallback",
+          supportsThinking: false,
+          thinkingControllable: true,
+          supportsVision: true,
+          supportsAudioInput: false,
+          supportsSearch: false,
+          supportsTools: true,
+          preserveThinking: false
+        },
+        inspector: {
+          provider: "test",
+          model: "fake-inspector",
+          supportsThinking: false,
+          thinkingControllable: true,
+          supportsVision: options.inspectorSupportsVision ?? true,
+          supportsAudioInput: false,
+          supportsSearch: false,
+          supportsTools: false,
+          preserveThinking: false
+        }
+      },
+      routingPresets: {
+        test: {
+          mainSmall: ["main"],
+          mainLarge: ["main"],
+          summarizer: ["main"],
+          sessionCaptioner: ["sessionCaptioner"],
+          imageCaptioner: ["main"],
+          imageInspector: options.imageInspectorRefs ?? ["inspector"],
+          audioTranscription: ["transcription"],
+          turnPlanner: ["main"]
+        }
+      }
+    }
+  });
+}
+
   test("builtin tool list exposes forward, media, and message tools", async () => {
     const config = createForwardFeatureConfig();
     config.search.aliyunIqs.enabled = true;
@@ -36,11 +90,13 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.ok(names.includes("list_current_group_announcements"));
     assert.ok(names.includes("list_current_group_members"));
     assert.ok(names.includes("chat_file_view_media"));
+    assert.ok(names.includes("chat_file_inspect_media"));
     assert.ok(names.includes("view_message"));
     assert.ok(names.includes("chat_file_list"));
     assert.ok(names.includes("chat_file_send_to_chat"));
     assert.ok(names.includes("local_file_mkdir"));
     assert.ok(names.includes("local_file_delete"));
+    assert.ok(names.includes("local_file_inspect_media"));
     assert.ok(names.includes("local_file_send_to_chat"));
     assert.ok(names.includes("ground_with_google_search"));
     assert.ok(names.includes("search_with_iqs_lite_advanced"));
@@ -62,6 +118,55 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.ok(names.includes("inspect_page"));
     assert.ok(names.includes("interact_with_page"));
     assert.ok(names.includes("close_page"));
+  });
+
+  test("media view tools require main model vision while media inspection tools do not", async () => {
+    const nonVisionConfig = createMediaToolVisibilityConfig();
+    const nonVisionNames = getBuiltinTools("owner", null, nonVisionConfig, {
+      modelRef: ["main"]
+    }).map((tool) => tool.function.name);
+    assert.ok(!nonVisionNames.includes("chat_file_view_media"));
+    assert.ok(!nonVisionNames.includes("local_file_view_media"));
+    assert.ok(nonVisionNames.includes("chat_file_inspect_media"));
+    assert.ok(nonVisionNames.includes("local_file_inspect_media"));
+
+    const visionConfig = createMediaToolVisibilityConfig({ mainSupportsVision: true });
+    const visionNames = getBuiltinTools("owner", null, visionConfig, {
+      modelRef: ["main"]
+    }).map((tool) => tool.function.name);
+    assert.ok(visionNames.includes("chat_file_view_media"));
+    assert.ok(visionNames.includes("local_file_view_media"));
+    assert.ok(visionNames.includes("chat_file_inspect_media"));
+    assert.ok(visionNames.includes("local_file_inspect_media"));
+
+    const fallbackVisionNames = getBuiltinTools("owner", null, nonVisionConfig, {
+      modelRef: ["main", "visualFallback"]
+    }).map((tool) => tool.function.name);
+    assert.ok(fallbackVisionNames.includes("chat_file_view_media"));
+    assert.ok(fallbackVisionNames.includes("local_file_view_media"));
+  });
+
+  test("media inspection tools are hidden when the image inspector is disabled or unrouted", async () => {
+    const disabledConfig = createMediaToolVisibilityConfig({ imageInspectorEnabled: false });
+    const disabledNames = getBuiltinTools("owner", null, disabledConfig, {
+      modelRef: ["main"]
+    }).map((tool) => tool.function.name);
+    assert.ok(!disabledNames.includes("chat_file_inspect_media"));
+    assert.ok(!disabledNames.includes("local_file_inspect_media"));
+
+    const unroutedConfig = createMediaToolVisibilityConfig({ imageInspectorRefs: [] });
+    const unroutedNames = getBuiltinTools("owner", null, unroutedConfig, {
+      modelRef: ["main"]
+    }).map((tool) => tool.function.name);
+    assert.ok(!unroutedNames.includes("chat_file_inspect_media"));
+    assert.ok(!unroutedNames.includes("local_file_inspect_media"));
+
+    const nonVisionInspectorConfig = createMediaToolVisibilityConfig({ inspectorSupportsVision: false });
+    const nonVisionInspectorNames = getBuiltinTools("owner", null, nonVisionInspectorConfig, {
+      modelRef: ["main"]
+    }).map((tool) => tool.function.name);
+    assert.ok(!nonVisionInspectorNames.includes("chat_file_inspect_media"));
+    assert.ok(!nonVisionInspectorNames.includes("local_file_inspect_media"));
   });
 
   test("local_file_delete descriptor makes recursive directory deletion explicit", async () => {

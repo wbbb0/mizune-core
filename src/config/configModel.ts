@@ -22,6 +22,7 @@ const llmRoutingPresetSchema = s.object({
   summarizer: createModelRefListSchema().title("总结器"),
   sessionCaptioner: createModelRefListSchema().title("会话标题生成"),
   imageCaptioner: createModelRefListSchema().title("图片描述"),
+  imageInspector: createModelRefListSchema().title("图片精读"),
   audioTranscription: createModelRefListSchema().title("音频转写"),
   turnPlanner: createModelRefListSchema().title("轮次规划")
 }).title("模型路由预设").describe("为各个模型角色提供统一的模型引用列表。");
@@ -69,6 +70,13 @@ const llmImageCaptionerConfigSchema = s.object({
   enableThinking: s.boolean().title("启用思考").default(false),
   maxConcurrency: s.number().int().positive().title("最大并发").default(2)
 }).title("图片描述").describe("为图片生成补充描述，供会话上下文使用。").default(emptyObject);
+
+const llmImageInspectorConfigSchema = s.object({
+  enabled: s.boolean().title("启用").default(true),
+  timeoutMs: s.number().int().positive().title("超时毫秒").default(45000),
+  enableThinking: s.boolean().title("启用思考").default(false),
+  maxConcurrency: s.number().int().positive().title("最大并发").default(2)
+}).title("图片精读").describe("按问题读取图片里的具体可见信息。").default(emptyObject);
 
 const llmAudioTranscriptionConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(true),
@@ -323,6 +331,7 @@ const llmRuntimeConfigSchema = s.object({
     enableThinking: s.boolean().title("启用思考").default(false)
   }).title("会话标题生成").describe("为会话生成简短标题。").default(emptyObject),
   imageCaptioner: llmImageCaptionerConfigSchema,
+  imageInspector: llmImageInspectorConfigSchema,
   audioTranscription: llmAudioTranscriptionConfigSchema,
   turnPlanner: llmTurnPlannerConfigSchema,
   debugDump: llmDebugDumpSchema

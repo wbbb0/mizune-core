@@ -27,6 +27,7 @@ import type { SearchService } from "#services/web/search/searchService.ts";
 import type { ShellRuntime } from "#services/shell/runtime.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
+import type { MediaInspectionService } from "#services/workspace/mediaInspectionService.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
@@ -101,6 +102,7 @@ export interface GenerationToolRuntimeDeps {
   browserService: BrowserService;
   localFileService: LocalFileService;
   chatFileStore: ChatFileStore;
+  mediaInspectionService: MediaInspectionService;
   forwardResolver: ForwardResolver;
   comfyClient: ComfyClient;
   comfyTaskStore: ComfyTaskStore;

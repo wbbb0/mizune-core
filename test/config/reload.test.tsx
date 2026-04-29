@@ -36,6 +36,7 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
             summarizer: "main",
             sessionCaptioner: "main",
             imageCaptioner: "main",
+            imageInspector: "main",
             audioTranscription: "transcription",
             turnPlanner: "main"
           }

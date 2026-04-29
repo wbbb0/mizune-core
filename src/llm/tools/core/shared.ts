@@ -16,6 +16,7 @@ import type { SearchService } from "#services/web/search/searchService.ts";
 import type { BrowserService } from "#services/web/browser/browserService.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
+import type { MediaInspectionService } from "#services/workspace/mediaInspectionService.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
@@ -60,7 +61,7 @@ export interface ToolDescriptor {
   ownerOnly?: boolean;
   debugOnly?: boolean;
   modelVisible?: boolean;
-  isEnabled?: (config: AppConfig) => boolean;
+  isEnabled?: (config: AppConfig, options?: { modelRef?: string | string[] }) => boolean;
 }
 
 export interface BuiltinToolActorContext {
@@ -81,6 +82,7 @@ export interface BuiltinToolCommunicationDeps {
   chatFileStore: ChatFileStore;
   mediaVisionService: MediaVisionService;
   mediaCaptionService: MediaCaptionService;
+  mediaInspectionService: MediaInspectionService;
   forwardResolver: ForwardResolver;
 }
 

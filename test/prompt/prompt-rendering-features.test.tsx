@@ -106,11 +106,13 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
           "interact_with_page",
           "chat_file_list",
           "chat_file_view_media",
+          "chat_file_inspect_media",
           "chat_file_send_to_chat",
           "local_file_read",
           "local_file_delete",
           "local_file_search",
-          "local_file_view_media"
+          "local_file_view_media",
+          "local_file_inspect_media"
         ],
         activeToolsets: [
           {
@@ -123,13 +125,13 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
             id: "chat_file_io",
             title: "聊天文件",
             description: "查看和发送已登记聊天文件。",
-            toolNames: ["chat_file_list", "chat_file_view_media", "chat_file_send_to_chat"]
+            toolNames: ["chat_file_list", "chat_file_view_media", "chat_file_inspect_media", "chat_file_send_to_chat"]
           },
           {
             id: "local_file_io",
             title: "本地文件",
             description: "读取、检索和删除本地文件。",
-            toolNames: ["local_file_read", "local_file_delete", "local_file_search", "local_file_view_media"]
+            toolNames: ["local_file_read", "local_file_delete", "local_file_search", "local_file_view_media", "local_file_inspect_media"]
           }
         ],
         persona,
@@ -146,6 +148,8 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       assert.match(system, /⟦section name="tool_hints"⟧/);
       assert.match(system, /做网页交互前优先先 inspect_page 看当前 elements/);
       assert.match(system, /需要找已登记的图片、视频、音频或文件时，先调 chat_file_list/);
+      assert.match(system, /需要从图片、截图、表格或界面里精确读取细节时，用图片精读工具按问题查看/);
+      assert.doesNotMatch(system, /inspect_media/);
       assert.match(system, /local_file_\* 处理模型可访问的本地文件工作区/);
       assert.match(system, /相对的是配置里的 local files 工作区根目录，不是 shell 当前目录、不是仓库根目录、也不是 chat file 的 chat_file_path/);
       assert.match(system, /local_file_delete；它支持删除文件或递归删除整个目录/);

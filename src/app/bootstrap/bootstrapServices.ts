@@ -27,6 +27,7 @@ import { ShellRuntime } from "#services/shell/runtime.ts";
 import { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import { ChatMessageFileGcService } from "#services/workspace/chatMessageFileGcService.ts";
 import { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
+import { MediaInspectionService } from "#services/workspace/mediaInspectionService.ts";
 import { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
 import { LocalFileService } from "#services/workspace/localFileService.ts";
 import { BrowserService, createBrowserServiceDeps } from "#services/web/browser/browserService.ts";
@@ -73,6 +74,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
   );
   const mediaVisionService = new MediaVisionService(config, logger, chatFileStore);
   const mediaCaptionService = new MediaCaptionService(config, llmClient, chatFileStore, mediaVisionService, logger);
+  const mediaInspectionService = new MediaInspectionService(config, llmClient, logger);
   const sessionCaptioner = new SessionCaptioner(config, llmClient, logger, mediaCaptionService);
   const comfyClient = new ComfyClient(config, logger);
   const comfyTaskStore = new ComfyTaskStore(dataDir, logger);
@@ -147,6 +149,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
     chatMessageFileGcService,
     mediaVisionService,
     mediaCaptionService,
+    mediaInspectionService,
     comfyClient,
     comfyTaskStore,
     comfyTemplateCatalog,

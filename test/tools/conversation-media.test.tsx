@@ -92,6 +92,160 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     assert.match(result, /at most 5/);
   });
 
+  test("chat_file_inspect_media asks inspector for registered chat images", async () => {
+    const result = await imageToolHandlers.chat_file_inspect_media!(
+      createFunctionToolCall("chat_file_inspect_media", "tool_inspect_1"),
+      { media_ids: ["file_test_1"], question: "读取表格金额列" },
+      {
+        chatFileStore: {
+          async getMany() {
+            return [{
+              fileId: "file_test_1",
+              fileRef: "chat_test0001.png",
+              kind: "image",
+              origin: "chat_message",
+              chatFilePath: "workspace/media/file_test_1.png",
+              sourceName: "table.png",
+              mimeType: "image/png",
+              sizeBytes: 1,
+              createdAtMs: Date.now(),
+              sourceContext: { mediaKind: "image" },
+              caption: null
+            }];
+          }
+        } as any,
+        mediaVisionService: {
+          async prepareFileForModel(fileId: string) {
+            assert.equal(fileId, "file_test_1");
+            return {
+              fileId: "file_test_1",
+              inputUrl: "data:image/png;base64,file_test_1",
+              kind: "image",
+              transport: "data_url",
+              animated: false,
+              durationMs: null,
+              sampledFrameCount: null
+            };
+          }
+        } as any,
+        mediaInspectionService: {
+          async inspectPreparedMedia(input: any) {
+            assert.equal(input.question, "读取表格金额列");
+            assert.deepEqual(input.media, [{
+              mediaId: "file_test_1",
+              inputUrl: "data:image/png;base64,file_test_1",
+              kind: "image",
+              animated: false,
+              durationMs: null,
+              sampledFrameCount: null
+            }]);
+            return {
+              ok: true,
+              requestedCount: 1,
+              results: [{
+                mediaId: "file_test_1",
+                status: "answered",
+                found: true,
+                answer: "金额列最大值是 9800。",
+                visibleContentSummary: "一张表格截图。",
+                nearMatches: [],
+                confidenceNotes: [],
+                rawAnswer: "{}",
+                parseStatus: "parsed",
+                schemaIssues: [],
+                modelRef: "vision"
+              }]
+            };
+          }
+        } as any
+      } as any
+    );
+
+    const parsed = parseJsonToolResult<any>(result);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.requestedCount, 1);
+    assert.equal(parsed.inspectedCount, 1);
+    assert.equal(parsed.results[0].answer, "金额列最大值是 9800。");
+  });
+
+  test("local_file_inspect_media asks inspector for a resolved local image path", async () => {
+    const result = await imageToolHandlers.local_file_inspect_media!(
+      createFunctionToolCall("local_file_inspect_media", "tool_inspect_2"),
+      { path: "screens/table.png", question: "读取 A1 单元格" },
+      {
+        localFileService: {
+          resolvePath(path: string) {
+            assert.equal(path, "screens/table.png");
+            return {
+              absolutePath: "/tmp/screens/table.png",
+              relativePath: "screens/table.png"
+            };
+          }
+        } as any,
+        mediaVisionService: {
+          async prepareAbsolutePathForModel(absolutePath: string, sourceName: string) {
+            assert.equal(absolutePath, "/tmp/screens/table.png");
+            assert.equal(sourceName, "table.png");
+            return {
+              fileId: "/tmp/screens/table.png",
+              inputUrl: "data:image/png;base64,local",
+              kind: "image",
+              transport: "data_url",
+              animated: false,
+              durationMs: null,
+              sampledFrameCount: null
+            };
+          }
+        } as any,
+        mediaInspectionService: {
+          async inspectPreparedMedia(input: any) {
+            assert.equal(input.question, "读取 A1 单元格");
+            assert.equal(input.media[0].mediaId, "table.png");
+            assert.equal(input.media[0].inputUrl, "data:image/png;base64,local");
+            return {
+              ok: true,
+              requestedCount: 1,
+              results: [{
+                mediaId: "table.png",
+                status: "answered",
+                found: true,
+                answer: "A1 是 日期。",
+                visibleContentSummary: null,
+                nearMatches: [],
+                confidenceNotes: [],
+                rawAnswer: "{}",
+                parseStatus: "parsed",
+                schemaIssues: [],
+                modelRef: "vision"
+              }]
+            };
+          }
+        } as any
+      } as any
+    );
+
+    const parsed = parseJsonToolResult<any>(result);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.path, "screens/table.png");
+    assert.equal(parsed.sourceName, "table.png");
+    assert.equal(parsed.results[0].answer, "A1 是 日期。");
+  });
+
+  test("chat_file_inspect_media rejects unsupported media ids", async () => {
+    const result = await imageToolHandlers.chat_file_inspect_media!(
+      createFunctionToolCall("chat_file_inspect_media", "tool_inspect_3"),
+      { media_ids: ["legacy-image"], question: "看图" },
+      {
+        chatFileStore: { async getMany() { return []; } } as any,
+        mediaVisionService: { async prepareFileForModel() { throw new Error("should not be called"); } } as any,
+        mediaInspectionService: { async inspectPreparedMedia() { throw new Error("should not be called"); } } as any
+      } as any
+    );
+
+    const parsed = parseJsonToolResult<any>(result);
+    assert.match(parsed.error, /Unsupported legacy media ids/);
+  });
+
   test("view_message normalizes reply, mentions, forward ids, and images", async () => {
     const result = await messageToolHandlers.view_message!(
       createFunctionToolCall("view_message", "tool_3"),

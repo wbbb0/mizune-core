@@ -7,6 +7,41 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { requireSessionModeDefinition } from "../../src/modes/registry.ts";
 import { resolveSessionModeSetupContext } from "../../src/app/generation/generationSetupContext.ts";
 
+function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
+  return createTestAppConfig({
+    llm: {
+      models: {
+        main: {
+          supportsVision: options.mainSupportsVision
+        },
+        inspector: {
+          provider: "test",
+          model: "fake-inspector",
+          supportsThinking: false,
+          thinkingControllable: true,
+          supportsVision: true,
+          supportsAudioInput: false,
+          supportsSearch: false,
+          supportsTools: false,
+          preserveThinking: false
+        }
+      },
+      routingPresets: {
+        test: {
+          mainSmall: ["main"],
+          mainLarge: ["main"],
+          summarizer: ["main"],
+          sessionCaptioner: ["sessionCaptioner"],
+          imageCaptioner: ["main"],
+          imageInspector: ["inspector"],
+          audioTranscription: ["transcription"],
+          turnPlanner: ["main"]
+        }
+      }
+    }
+  });
+}
+
   test("setup overrides keep shared toolsets while replacing overridden ids", async () => {
     const config = createTestAppConfig({
       browser: { enabled: true, playwright: { enabled: true } },
@@ -101,6 +136,52 @@ import { resolveSessionModeSetupContext } from "../../src/app/generation/generat
       localFileIo.promptGuidance?.some((line) => /下载网页资源/.test(line)),
       false
     );
+  });
+
+  test("media inspection tools stay next to existing media view toolsets", async () => {
+    const chatContext = TOOLSET_DEFINITIONS.find((item) => item.id === "chat_context");
+    const chatFileIo = TOOLSET_DEFINITIONS.find((item) => item.id === "chat_file_io");
+    const localFileIo = TOOLSET_DEFINITIONS.find((item) => item.id === "local_file_io");
+    assert.ok(chatContext);
+    assert.ok(chatFileIo);
+    assert.ok(localFileIo);
+
+    assert.ok(chatContext.toolNames.includes("chat_file_view_media"));
+    assert.ok(chatContext.toolNames.includes("chat_file_inspect_media"));
+    assert.ok(chatFileIo.toolNames.includes("chat_file_view_media"));
+    assert.ok(chatFileIo.toolNames.includes("chat_file_inspect_media"));
+    assert.ok(localFileIo.toolNames.includes("local_file_view_media"));
+    assert.ok(localFileIo.toolNames.includes("local_file_inspect_media"));
+  });
+
+  test("media toolsets expose direct view only for vision models while keeping inspection available", async () => {
+    const nonVisionToolsets = listTurnToolsets({
+      config: createMediaToolsetConfig({ mainSupportsVision: false }),
+      relationship: "owner",
+      currentUser: null,
+      modelRef: ["main"],
+      includeDebugTools: false,
+      modeId: "assistant"
+    });
+    const nonVisionNames = new Set(nonVisionToolsets.flatMap((toolset) => toolset.toolNames));
+    assert.equal(nonVisionNames.has("chat_file_view_media"), false);
+    assert.equal(nonVisionNames.has("local_file_view_media"), false);
+    assert.equal(nonVisionNames.has("chat_file_inspect_media"), true);
+    assert.equal(nonVisionNames.has("local_file_inspect_media"), true);
+
+    const visionToolsets = listTurnToolsets({
+      config: createMediaToolsetConfig({ mainSupportsVision: true }),
+      relationship: "owner",
+      currentUser: null,
+      modelRef: ["main"],
+      includeDebugTools: false,
+      modeId: "assistant"
+    });
+    const visionNames = new Set(visionToolsets.flatMap((toolset) => toolset.toolNames));
+    assert.equal(visionNames.has("chat_file_view_media"), true);
+    assert.equal(visionNames.has("local_file_view_media"), true);
+    assert.equal(visionNames.has("chat_file_inspect_media"), true);
+    assert.equal(visionNames.has("local_file_inspect_media"), true);
   });
 
   test("rp_assistant setup prefers persona_setup before mode_setup", async () => {

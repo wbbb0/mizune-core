@@ -46,6 +46,7 @@ export function createLlmTestConfig(modelOverrides: any = {}) {
           summarizer: ["main"],
           sessionCaptioner: ["main"],
           imageCaptioner: ["main"],
+          imageInspector: ["main"],
           audioTranscription: ["transcription"],
           turnPlanner: ["main"]
         }

@@ -111,6 +111,75 @@ function createCaptionerConfig() {
   });
 }
 
+function createMixedVisionCaptionerConfig() {
+  return createTestAppConfig({
+    llm: {
+      enabled: true,
+      providers: {
+        vision: {
+          type: "openai",
+          baseUrl: "https://example.com/v1",
+          apiKey: "test-key",
+          proxy: false
+        }
+      },
+      models: {
+        textOnly: {
+          provider: "vision",
+          model: "text-only-model",
+          supportsThinking: false,
+          supportsVision: false,
+          supportsAudioInput: false,
+          supportsSearch: false,
+          supportsTools: false,
+          preserveThinking: false
+        },
+        visual: {
+          provider: "vision",
+          model: "visual-model",
+          supportsThinking: false,
+          supportsVision: true,
+          supportsAudioInput: false,
+          supportsSearch: false,
+          supportsTools: false,
+          preserveThinking: false
+        }
+      },
+      routingPresets: {
+        test: {
+          mainSmall: ["main"],
+          mainLarge: ["main"],
+          summarizer: ["main"],
+          sessionCaptioner: ["sessionCaptioner"],
+          imageCaptioner: ["textOnly", "visual"],
+          imageInspector: ["visual"],
+          audioTranscription: ["transcription"],
+          turnPlanner: ["main"]
+        }
+      },
+      imageCaptioner: {
+        enabled: true,
+        timeoutMs: 1000,
+        enableThinking: false,
+        maxConcurrency: 2
+      }
+    }
+  });
+}
+
+function createRecordingLogger() {
+  const warnings: Array<{ payload: unknown; message: string }> = [];
+  return {
+    warnings,
+    logger: {
+      debug() {},
+      warn(payload: unknown, message: string) {
+        warnings.push({ payload, message });
+      }
+    } as any
+  };
+}
+
   test("media caption service requests detailed captions and preserves nsfw detail", async () => {
     const chatFileStore = new FakeChatFileStore(new Map([
       ["file_nsfw", {
@@ -273,4 +342,58 @@ function createCaptionerConfig() {
     assert.equal(captions.get("file_missing"), "会议室白板照片");
     assert.equal(captions.get("file_failed"), "搞怪表情包");
     assert.equal(calls.length, 2);
+  });
+
+  test("media caption service ignores non-vision captioner models and logs a warning", async () => {
+    const chatFileStore = new FakeChatFileStore(new Map([
+      ["file_vision", {
+        fileId: "file_vision",
+        kind: "image",
+        caption: null,
+        sourceContext: { mediaKind: "image" }
+      }]
+    ]));
+    const logger = createRecordingLogger();
+    const llmClient = {
+      isConfigured(modelRefs: string[]) {
+        assert.deepEqual(modelRefs, ["visual"]);
+        return true;
+      },
+      async generate(params: { modelRefOverride: string[] }) {
+        assert.deepEqual(params.modelRefOverride, ["visual"]);
+        return {
+          text: "白板上的流程图",
+          usage: {
+            modelRef: "visual"
+          }
+        };
+      }
+    } as any;
+
+    const captioner = new MediaCaptionService(
+      createMixedVisionCaptionerConfig(),
+      llmClient,
+      chatFileStore as any,
+      {
+        async prepareFileForModel(fileId: string) {
+          return {
+            fileId,
+            inputUrl: `data:image/png;base64,${fileId}`,
+            kind: "image",
+            transport: "data_url",
+            animated: false,
+            durationMs: null,
+            sampledFrameCount: null
+          };
+        }
+      } as any,
+      logger.logger
+    );
+    const captions = await captioner.ensureReady(["file_vision"], { reason: "mixed_vision" });
+
+    assert.equal(captions.get("file_vision"), "白板上的流程图");
+    assert.equal(logger.warnings.length, 1);
+    assert.equal(logger.warnings[0]?.message, "vision_model_ref_ignored");
+    assert.deepEqual((logger.warnings[0]?.payload as any).modelRefs, ["textOnly"]);
+    assert.equal((logger.warnings[0]?.payload as any).role, "image_captioner");
   });
