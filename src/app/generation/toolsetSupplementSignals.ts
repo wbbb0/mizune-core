@@ -1,12 +1,6 @@
 import type { TurnPlannerContextDependency, TurnPlannerFollowupMode, TurnPlannerRequiredCapability, TurnPlannerResult } from "#conversation/turnPlanner.ts";
-import type { GenerationRuntimeBatchMessage } from "./generationExecutor.ts";
-import {
-  dedupeResolvedChatAttachments,
-  isPendingChatAttachmentId
-} from "#services/workspace/chatAttachments.ts";
 import type { GenerationPromptToolEvent } from "./generationPromptBuilder.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
-import { hasDiceRollSignal } from "#llm/tools/runtime/diceExpression.ts";
 
 type RecentToolsetDomains = {
   hasWeb: boolean;
@@ -16,29 +10,24 @@ type RecentToolsetDomains = {
 };
 
 export interface ToolsetSupplementSignals {
-  hasStructuredResolvableContent: boolean;
   requiredCapabilities: TurnPlannerRequiredCapability[];
   contextDependencies: TurnPlannerContextDependency[];
   recentDomainReuse: string[];
   followupMode: TurnPlannerFollowupMode;
   recentDomains: RecentToolsetDomains;
-  hasDiceRollSignal: boolean;
 }
 
 export function buildToolsetSupplementSignals(input: {
   availableToolsets: ToolsetView[];
-  batchMessages: GenerationRuntimeBatchMessage[];
   recentToolEvents: GenerationPromptToolEvent[];
   plannerDecision?: TurnPlannerResult | null;
 }): ToolsetSupplementSignals {
   return {
-    hasStructuredResolvableContent: hasStructuredResolvableContent(input.batchMessages),
     requiredCapabilities: input.plannerDecision?.requiredCapabilities ?? [],
     contextDependencies: input.plannerDecision?.contextDependencies ?? [],
     recentDomainReuse: input.plannerDecision?.recentDomainReuse ?? [],
     followupMode: input.plannerDecision?.followupMode ?? "none",
-    recentDomains: summarizeRecentDomains(input.availableToolsets, input.recentToolEvents),
-    hasDiceRollSignal: input.batchMessages.some((message) => hasDiceRollSignal(message.text))
+    recentDomains: summarizeRecentDomains(input.availableToolsets, input.recentToolEvents)
   };
 }
 
@@ -76,15 +65,4 @@ function summarizeRecentDomains(
   }
 
   return { hasWeb, hasShell, hasLocalFiles, hasChatContext };
-}
-
-function hasStructuredResolvableContent(messages: GenerationRuntimeBatchMessage[]): boolean {
-  return messages.some((message) => (
-    Boolean(message.replyMessageId)
-    || (message.forwardIds?.length ?? 0) > 0
-    || (message.imageIds?.some((fileId) => !isPendingChatAttachmentId(fileId)) ?? false)
-    || (message.emojiIds?.some((fileId) => !isPendingChatAttachmentId(fileId)) ?? false)
-    || (message.specialSegments?.length ?? 0) > 0
-    || dedupeResolvedChatAttachments(message.attachments ?? []).length > 0
-  ));
 }

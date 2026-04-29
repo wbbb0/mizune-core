@@ -12,54 +12,10 @@ const AVAILABLE_TOOLSETS = [
   { id: "dice_roller", title: "骰子", description: "", toolNames: ["roll_dice"] }
 ];
 
-function createBatchMessage(overrides: Partial<Parameters<typeof supplementPlannedToolsets>[0]["batchMessages"][number]> = {}) {
-  return {
-    chatType: "private" as const,
-    userId: "u1",
-    senderName: "Tester",
-    text: "",
-    images: [],
-    audioSources: [],
-    audioIds: [],
-    emojiSources: [],
-    imageIds: [],
-    emojiIds: [],
-    attachments: [],
-    forwardIds: [],
-    replyMessageId: null,
-    mentionUserIds: [],
-    mentionedAll: false,
-    isAtMentioned: false,
-    receivedAt: Date.now(),
-    ...overrides
-  };
-}
-
-  test("supplement adds chat_context for structured content", async () => {
-    const result = supplementPlannedToolsets({
-      selectedToolsetIds: [],
-      availableToolsets: AVAILABLE_TOOLSETS,
-      batchMessages: [createBatchMessage({ replyMessageId: "msg-1", text: "你接着说" })],
-      recentToolEvents: [],
-      plannerDecision: {
-        reason: "需要看引用",
-        replyDecision: "reply_small",
-        topicDecision: "continue_topic",
-        requiredCapabilities: [],
-        contextDependencies: ["structured_message_context"],
-        recentDomainReuse: [],
-        followupMode: "explicit_reference",
-        toolsetIds: []
-      }
-    });
-    assert.deepEqual(result.toolsetIds, ["chat_context"]);
-  });
-
   test("supplement maps planner capabilities to final toolsets without regex intent tables", async () => {
     const result = supplementPlannedToolsets({
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
-      batchMessages: [createBatchMessage({ text: "把这个页面里的图下下来保存到本地文件里" })],
       recentToolEvents: [],
       plannerDecision: {
         reason: "需要打开网页并存本地",
@@ -80,7 +36,6 @@ function createBatchMessage(overrides: Partial<Parameters<typeof supplementPlann
     const result = supplementPlannedToolsets({
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
-      batchMessages: [createBatchMessage({ text: "打开页面，把里面的图片下载下来" })],
       recentToolEvents: [],
       plannerDecision: {
         reason: "需要在网页里定位并下载资源",
@@ -101,7 +56,6 @@ function createBatchMessage(overrides: Partial<Parameters<typeof supplementPlann
     const result = supplementPlannedToolsets({
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
-      batchMessages: [createBatchMessage({ text: "记住我以后叫我老王" })],
       recentToolEvents: [],
       plannerDecision: {
         reason: "需要判断是否更新长期记忆",
@@ -118,32 +72,10 @@ function createBatchMessage(overrides: Partial<Parameters<typeof supplementPlann
     assert.deepEqual(result.addedToolsetIds, ["memory_profile"]);
   });
 
-  test("supplement adds dice_roller for dice notation without planner help", async () => {
-    const result = supplementPlannedToolsets({
-      selectedToolsetIds: [],
-      availableToolsets: AVAILABLE_TOOLSETS,
-      batchMessages: [createBatchMessage({ text: "帮我投 3D6+5+1D20" })],
-      recentToolEvents: [],
-      plannerDecision: {
-        reason: "需要投骰",
-        replyDecision: "reply_small",
-        topicDecision: "continue_topic",
-        requiredCapabilities: [],
-        contextDependencies: [],
-        recentDomainReuse: [],
-        followupMode: "none",
-        toolsetIds: []
-      }
-    });
-    assert.deepEqual(result.toolsetIds, ["dice_roller"]);
-    assert.deepEqual(result.addedToolsetIds, ["dice_roller"]);
-  });
-
   test("supplement inherits recent browser activity for short followups", async () => {
     const result = supplementPlannedToolsets({
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
-      batchMessages: [createBatchMessage({ text: "继续，点进去看看" })],
       plannerDecision: {
         reason: "延续上轮操作",
         replyDecision: "reply_small",
@@ -169,7 +101,6 @@ function createBatchMessage(overrides: Partial<Parameters<typeof supplementPlann
     const result = supplementPlannedToolsets({
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
-      batchMessages: [createBatchMessage({ text: "继续看看" })],
       plannerDecision: {
         reason: "延续终端排查",
         replyDecision: "reply_small",

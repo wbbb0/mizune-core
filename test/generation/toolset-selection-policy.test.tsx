@@ -266,7 +266,6 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
       selectedToolsetIds: ["web_research"],
       availableToolsetIds: ["chat_context", "web_research", "local_file_io", "shell_runtime"],
       signals: {
-        hasStructuredResolvableContent: true,
         requiredCapabilities: ["local_file_access"],
         contextDependencies: ["structured_message_context"],
         recentDomainReuse: [],
@@ -276,13 +275,11 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
           hasShell: false,
           hasLocalFiles: false,
           hasChatContext: false
-        },
-        hasDiceRollSignal: false
+        }
       }
     });
 
     assert.deepEqual(decisions, [
-      { toolsetId: "chat_context", reason: "structured_content" },
       { toolsetId: "local_file_io", reason: "planner_local_file_access" }
     ]);
   });

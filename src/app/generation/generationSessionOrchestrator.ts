@@ -21,6 +21,7 @@ import type {
   GenerationDraftOverlaySink
 } from "./generationOutputContracts.ts";
 import { handleGenerationTurnPlanner } from "./generationTurnPlanner.ts";
+import { resolveAutoActivatedToolsets } from "./toolsetAutoActivation.ts";
 import { supplementPlannedToolsets } from "./toolsetSupplement.ts";
 import { getProviderTranscriptProjector } from "./providerTranscriptProjector.ts";
 import { createInternalTriggerEvent } from "#conversation/session/internalTranscriptEvents.ts";
@@ -203,7 +204,15 @@ function isAssistantMode(modeId: string): boolean {
   return modeId === "assistant";
 }
 
+// TODO: Route scheduled/internal triggers through the same toolset activation
+// pipeline as normal turns. This hand-maintained list can drift from mode
+// eligibility and deterministic auto-activation rules.
 function selectScheduledActiveToolsetIds(modeId: string, triggerKind: InternalSessionTriggerExecution["kind"]): string[] {
+  const withScenarioHostState = (toolsetIds: string[]): string[] => (
+    modeId === "scenario_host"
+      ? Array.from(new Set(["scenario_host_state", ...toolsetIds]))
+      : toolsetIds
+  );
   if (isAssistantMode(modeId)) {
     if (triggerKind === "comfy_task_failed") {
       return ["comfy_image"];
@@ -214,12 +223,12 @@ function selectScheduledActiveToolsetIds(modeId: string, triggerKind: InternalSe
     return ["chat_context", "web_research", "shell_runtime", "local_file_io", "chat_file_io", "scheduler_admin", "time_utils", "comfy_image", "session_mode_control"];
   }
   if (triggerKind === "scheduled_instruction") {
-    return ["memory_profile", "chat_context", "conversation_navigation", "chat_delegation", "web_research", "local_file_io", "chat_file_io", "scheduler_admin", "time_utils"];
+    return withScenarioHostState(["memory_profile", "chat_context", "conversation_navigation", "chat_delegation", "web_research", "local_file_io", "chat_file_io", "scheduler_admin", "time_utils"]);
   }
   if (triggerKind === "comfy_task_completed") {
-    return ["chat_context", "local_file_io", "chat_file_io", "comfy_image"];
+    return withScenarioHostState(["chat_context", "local_file_io", "chat_file_io", "comfy_image"]);
   }
-  return ["comfy_image"];
+  return withScenarioHostState(["comfy_image"]);
 }
 
 // Normalizes runtime messages into the prompt-builder input shape.
@@ -453,11 +462,30 @@ export function createGenerationSessionOrchestrator(
           }, "turn_planner_available_toolsets_empty_after_routing");
         }
       }
+      if (!setupMode && plannerToolsets.length > 0) {
+        const autoActivation = resolveAutoActivatedToolsets({
+          selectedToolsetIds: plannedToolsetIds,
+          availableToolsets: plannerToolsets,
+          batchMessages: messages,
+          recentMessages: historyForPrompt,
+          modeId: sessionModeId,
+          ...(plannerDecision ? { plannerDecision } : {})
+        });
+        if (autoActivation.addedToolsetIds.length > 0) {
+          logger.info({
+            sessionId,
+            plannerToolsetIds: plannedToolsetIds,
+            autoActivatedToolsetIds: autoActivation.toolsetIds,
+            addedToolsetIds: autoActivation.addedToolsetIds,
+            reasons: autoActivation.reasons
+          }, "turn_toolsets_auto_activated");
+          plannedToolsetIds = autoActivation.toolsetIds;
+        }
+      }
       if (!setupMode && config.llm.turnPlanner.supplementToolsets && plannerToolsets.length > 0) {
         const supplement = supplementPlannedToolsets({
           selectedToolsetIds: plannedToolsetIds,
           availableToolsets: plannerToolsets,
-          batchMessages: messages,
           recentToolEvents: refreshedSession.recentToolEvents,
           ...(plannerDecision ? { plannerDecision } : {})
         });

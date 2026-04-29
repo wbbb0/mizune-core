@@ -42,12 +42,6 @@ export function decideToolsetSupplements(input: {
     decisions.push({ toolsetId, reason });
   };
 
-  if (input.signals.hasStructuredResolvableContent) {
-    add("chat_context", "structured_content");
-  }
-  if (input.signals.hasDiceRollSignal) {
-    add("dice_roller", "dice_roll_signal");
-  }
   for (const rule of CAPABILITY_TOOLSET_RULES) {
     if (input.signals.requiredCapabilities.includes(rule.capability)) {
       add(rule.toolsetId, rule.reason);

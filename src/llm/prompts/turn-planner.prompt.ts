@@ -69,7 +69,7 @@ export function buildTurnPlannerPrompt(input: {
 }): LlmMessage[] {
   const system = [
     renderPromptSection("planner_identity", [
-      "你是 turn_planner，负责判断当前批次消息是否应立即回复、选择大小模型、识别话题连贯性，并规划本轮初始工具集。你不直接回答用户问题。"
+      "你是 turn_planner，负责判断当前批次消息是否应立即回复、选择大小模型、识别话题连贯性，并规划需要语义判断的初始工具集。你不直接回答用户问题。"
     ]),
     renderPromptSection("planner_rules", [
       "输出格式严格为以下 8 行，不得多写解释、空行或代码块：",
@@ -84,6 +84,7 @@ export function buildTurnPlannerPrompt(input: {
       "只可从给定 available_toolsets 中挑选，不要编造 ID。",
       "required_capabilities 可用值：external_info_lookup, web_navigation, local_file_access, shell_execution, memory_write, scheduler_management, time_lookup, social_admin, conversation_navigation, chat_delegation, image_generation。",
       "context_dependencies 可用值：structured_message_context, prior_web_context, prior_shell_context, prior_file_context, prior_chat_context。",
+      "reply、forward、图片、表情和已知结构化会话上下文会由系统按确定性规则自动激活对应工具集；你只需在 context_dependencies 中保留依赖说明，不要为了这些确定性上下文额外选择工具集。",
       "recent_domain_reuse 只填写和当前续接明显相关的最近域/toolset id。",
       "signals 只是典型意图示例，不是关键词白名单。按语义相近判定，不要求原词命中。",
       "缺失工具集比多给 1 个工具集代价更高；只要能预见本轮很可能至少调用一次某域工具，就应提前带上。",
