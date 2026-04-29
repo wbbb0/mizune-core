@@ -1,81 +1,41 @@
 # Mizune Core
 
-一个基于 Node.js + TypeScript 的长期运行聊天代理服务。
+Mizune Core 是一个基于 Node.js / TypeScript 的长期运行 LLM 聊天代理服务。它既可以作为 OneBot 机器人的后端，也可以不接入任何 bot，仅通过内置 WebUI 在本地或内网管理会话、配置与运行数据。
 
-它可以接入 OneBot 作为消息入口，也可以完全不接 OneBot，只通过内置 WebUI 创建会话、发送消息和管理数据。项目内包含会话编排、历史压缩、reply gate、全局 persona、RP / Scenario 模式资料、用户资料、记忆持久化、工具调用、内部 API 和 WebUI。
+项目重点不只是“转发消息给模型”，而是围绕长期会话运行做了一整套编排：会话状态、历史压缩、回复门控、发送队列、persona / 用户资料 / 记忆持久化、工具调用、内部 API 与 WebUI。
 
-适合的使用方式：
+## 适合场景
 
-- 作为 QQ / OneBot 机器人的后端运行
-- 作为只在本地或内网使用的 LLM 会话服务运行
-- 通过 WebUI 观察会话、修改配置、编辑运行数据
+- 运行一个可接入 QQ / OneBot 的 LLM 机器人后端
+- 在本地或内网部署一个带 WebUI 的私有 LLM 会话服务
+- 观察和调试长期会话、persona、记忆、工具调用与消息投递流程
+- 作为带 shell、workspace、浏览器、搜索、ComfyUI 等能力的代理运行时
 
-## 主要功能
+## 功能概览
 
 - OneBot 事件接入与消息发送
-- Web 会话与 OneBot 会话并存
-- 会话级模式切换：默认 `rp_assistant`，可扩展更多模式
-- persona、RP / Scenario 模式资料、users、memory、本地持久化
-- LLM 路由与工具调用
-- shell、workspace、搜索、浏览器、ComfyUI 等可选能力
-- 内部 API 与 WebUI 管理界面
+- WebUI 会话与 OneBot 会话并存
+- 会话级模式切换，当前内置 `rp_assistant` 与 `scenario_host`
+- persona、RP / Scenario 资料、用户资料、记忆和规则持久化
+- LLM provider / model / routing preset 分层配置
+- 历史压缩、自动会话标题、图片说明、音频转写、turn planner
+- shell、workspace 文件、网页搜索、浏览器、ComfyUI 等可选工具能力
+- Fastify 内部 API 与 Vue 3 + Tailwind WebUI
 
-## 会话标题规则
+## 技术栈
 
-- `session.title` 是会话标题的唯一真值，WebUI、内部 API 和持久化都直接以它为准。
-- `web` 会话会使用默认标题创建，之后可以在 WebUI 里手动修改，也可以由系统自动生成或重新生成标题。
-- `onebot` 以及未来其他 bot 来源的会话，默认标题会直接写成 `<来源>.<群|私聊>.<id>`，只用于展示，不走自动命名流程。
-- `titleSource` 只表示标题是谁设置的，以及后续能否被自动标题覆盖，不再承担展示职责。
-- 自动标题使用独立的 `llm.sessionCaptioner` 配置，不再和主对话路由共用超时与开关；模型选择由 routing preset 单独决定。
-- 目前标题编辑与重新生成入口在 WebUI 的会话状态面板里，且仅对 `web` 会话开放。
-
-当前内置模式：
-
-- `rp_assistant`
-  现有默认模式，保留角色扮演 + 助手能力
-- `scenario_host`
-  轻规则单主玩家剧情主持模式
-  当前仅支持私聊，不支持群聊和多玩家
-  输入协议：`*动作` 表示玩家动作声明，`#说明` 表示场外指令/提问，无前缀表示玩家角色对白
-  主持约束：默认只推动环境与非玩家角色，先叙事性落地玩家输入，再做小步推进；默认不用“接下来你要做什么”这类追问或选项列表收尾
-
-## 环境要求
-
-- Node.js 20.19+（WebUI 在 Vite 7 下需要）
-- npm
-- 至少一个可用的 LLM provider
-- 如果要接 OneBot，还需要一个可用的 OneBot 实现
-
-## 目录说明
-
-- `src/`：后端源码
-  - `app/`：主调用链编排，按 `bootstrap / generation / messaging / runtime / session-work` 分域
-  - `conversation/session/`：会话域模型、生命周期、history/debug/trigger-queue 等拆分后的会话能力
-  - `internalApi/`：Fastify 内部 API、按 domain 分组的 application service 和 WebUI 托管
-  - `services/`：OneBot、shell、browser/search、workspace 等外部能力封装
-- `webui/`：Vue 3 + Vite WebUI
-- `config/`：配置文件与示例
-- `data/`：运行时数据，默认按实例分目录保存
-- `test/`：测试
-- `deploy/`：systemd 示例
+- 后端：Node.js 20.19+、TypeScript、Fastify、Zod、pino
+- 前端：Vue 3、Vite、Tailwind CSS
+- 测试与构建：node:test、tsx、tsdown、Playwright
 
 ## 快速开始
 
-### 1. 安装依赖
-
-根目录和 WebUI 需要分别安装依赖：
+详细配置步骤见 [快速上手](docs/getting-started.md)。最短流程如下：
 
 ```bash
 npm install
 npm --prefix webui install
-```
 
-### 2. 准备配置文件
-
-先从示例文件复制一份：
-
-```bash
-mkdir -p config/instances
 cp config/global.example.yml config/global.yml
 cp config/llm.providers.example.yml config/llm.providers.yml
 cp config/llm.models.example.yml config/llm.models.yml
@@ -83,259 +43,82 @@ cp config/llm.routing-presets.example.yml config/llm.routing-presets.yml
 cp config/instances/acc1.example.yml config/instances/default.yml
 ```
 
-项目启动时一定会读取一个实例配置文件。默认实例名是 `default`，因此默认必须存在：
+然后编辑这些配置：
 
-```bash
-config/instances/default.yml
-```
+- `config/llm.providers.yml`：填写 provider 的 `apiKey` / `baseUrl`
+- `config/llm.models.yml`：确认模型引用指向可用 provider
+- `config/llm.routing-presets.yml`：确认默认 preset 引用到存在的模型
+- `config/global.yml`：开启 `llm`、`internalApi.webui`，或关闭 `onebot`
+- `config/instances/default.yml`：设置当前实例的数据目录、端口和 OneBot 地址
 
-如果这个文件不存在，程序会直接报错退出。
-
-### 3. 填最小可运行配置
-
-第一次跑起来，最少要把下面五类配置准备好：
-
-1. `config/llm.providers.yml`
-2. `config/llm.models.yml`
-3. `config/llm.routing-presets.yml`
-4. `config/global.yml`
-5. `config/instances/default.yml`
-
-推荐按下面的职责来放：
-
-- `config/llm.providers.yml`
-  放 provider 连接信息，例如 `type`、`apiKey`、`baseUrl`、provider feature 开关
-- `config/llm.models.yml`
-  放模型目录，定义每个 `modelRef` 对应哪个 provider、模型名和能力
-- `config/llm.routing-presets.yml`
-  放模型路由预设，定义每个运行角色应优先使用哪些 `modelRef`
-- `config/global.yml`
-  放大多数共享配置，例如 LLM 开关、会话策略、工具开关、默认超时
-- `config/instances/<name>.yml`
-  放某个实例自己的覆盖项，例如实例名对应的数据目录、OneBot 地址、端口、是否开启 WebUI
-
-### 4. 先跑通 WebUI-only
-
-如果你只是想先确认项目能工作，最简单的是先用 WebUI-only 模式，不接 OneBot。
-
-把 `config/global.yml` 里至少改成这样：
-
-```yml
-llm:
-  enabled: true
-  routingPreset: balanced
-
-onebot:
-  enabled: false
-
-internalApi:
-  enabled: true
-  webui:
-    enabled: true
-    auth:
-      enabled: true
-```
-
-然后把 `config/llm.providers.yml` 里的示例 provider 改成你自己实际可用的 key / baseUrl。
-
-再确认：
-
-- `config/llm.routing-presets.yml` 里存在 `balanced`
-- `config/llm.models.yml` 里包含该 preset 所引用到的模型，例如：
-
-- `qwen35_flash`
-- `qwen35_plus`
-
-### 5. 启动开发环境
+开发态启动：
 
 ```bash
 npm run dev
 ```
 
-这个命令会同时启动：
-
-- 后端开发进程
-- WebUI 的 Vite 开发服务器
-
-如果配置里启用了 WebUI，启动后可以访问：
-
-```text
-http://127.0.0.1:<internalApi.webui.port>/webui/#/sessions
-```
-
-默认示例端口是：
+默认 WebUI 地址通常是：
 
 ```text
 http://127.0.0.1:3031/webui/#/sessions
 ```
 
-首次启用 WebUI 时，系统会自动生成登录口令并写入当前实例的数据目录：
+首次开启 WebUI 认证时，登录口令会自动写入当前实例数据目录下的 `webui-auth.json`，同时在控制台输出提示。
 
-```text
-data/<实例名>/webui-auth.json
+## 常用命令
+
+```bash
+npm run dev              # 同时启动后端和 WebUI 开发服务
+npm run dev:bot          # 只启动后端开发进程
+npm run dev:webui        # 只启动 WebUI 开发服务
+
+npm run build            # 构建后端和 WebUI
+npm run start:bot        # 启动生产后端，WebUI 可由后端托管
+
+npm run typecheck:all    # TypeScript 检查
+npm run test             # 后端测试 + WebUI 构建检查
 ```
 
-同时也会在控制台打印提示。
+如果要使用 Playwright 浏览器能力，需要额外安装浏览器：
 
-## 配置加载规则
+```bash
+npm run install:browsers
+```
 
-项目的配置不是把所有 YAML 无差别拼在一起，而是分成两类：
+## 配置模型
 
-### 1. 目录文件
+配置分成“目录文件”和“运行时配置层”两类。
 
-这三份文件不是实例覆盖层，而是全局目录文件：
+目录文件定义可引用对象，不参与实例覆盖：
 
 - `config/llm.providers.yml`
 - `config/llm.models.yml`
 - `config/llm.routing-presets.yml`
 
-它们定义“有哪些 provider / modelRef / routing preset 可以被引用”。
-
-### 2. 运行时配置层
-
-真正参与运行时合并的是：
+运行时配置层按顺序合并：
 
 1. `config/global.yml`
 2. `config/instances/<instance>.yml`
 
-实例文件会覆盖 `global.yml` 里的同名字段。
-
-例如：
-
-- 共享的 `llm.timeoutMs`、`conversation`、`shell` 开关放 `global.yml`
-- 某个账号独有的 `onebot.wsUrl`、`internalApi.port`、`appName` 放实例文件
-
-### 3. 一个重要例外
-
-`comfy` 配置只能放在 `global.yml`，放到实例文件里会被忽略。
-
-## 实例配置怎么用
-
-### 默认实例名
-
-如果不传任何环境变量，实例名默认是：
-
-```text
-default
-```
-
-因此默认读取：
-
-```text
-config/instances/default.yml
-```
-
-### 指定实例名
-
-可以通过环境变量 `CONFIG_INSTANCE` 指定实例名：
+默认实例名是 `default`，因此默认读取 `config/instances/default.yml`。可以用环境变量切换实例：
 
 ```bash
 CONFIG_INSTANCE=acc1 npm run dev
 ```
 
-这时程序会读取：
-
-```text
-config/instances/acc1.yml
-```
-
-### 直接指定实例配置文件
-
-如果你不想按实例名查找，也可以直接指定文件路径：
+也可以直接指定实例配置文件：
 
 ```bash
 CONFIG_INSTANCE_FILE=config/instances/acc1.yml npm run dev
 ```
 
-`CONFIG_INSTANCE_FILE` 支持相对路径或绝对路径。
+更多配置说明见 [快速上手](docs/getting-started.md#配置文件职责)。
 
-### `CONFIG_INSTANCE` 和 `CONFIG_INSTANCE_FILE` 的区别
-
-- `CONFIG_INSTANCE=acc1`
-  代表“实例名是 `acc1`，配置文件默认找 `config/instances/acc1.yml`”
-- `CONFIG_INSTANCE_FILE=...`
-  代表“直接用这个文件做实例配置”
-
-实例名还会影响默认数据目录，因此通常更推荐用 `CONFIG_INSTANCE`。
-
-## `global.yml` 和 `instances/*.yml` 该怎么分
-
-可以按这个原则理解：
-
-- `global.yml`
-  放“所有实例通常共享”的行为策略
-- `instances/*.yml`
-  放“这个实例独有”的接入信息和运行入口
-
-推荐这样拆：
-
-### 放在 `global.yml`
-
-- `llm.enabled`
-- `llm.timeoutMs`
-- `conversation.*`
-- `shell.*`
-- `browser.*`
-- `workspace.*`
-- `search.*`
-- `scheduler.*`
-- `comfy.*`
-
-### 放在 `instances/<name>.yml`
-
-- `appName`
-- `dataDir`
-- `onebot.wsUrl`
-- `onebot.httpUrl`
-- `onebot.accessToken`
-- `internalApi.enabled`
-- `internalApi.port`
-- `internalApi.webui.enabled`
-- `internalApi.webui.port`
-- 某个实例要单独覆盖的模型引用
-
-## `dataDir` 和实例覆盖范围
-
-默认 `global.example.yml` 里写的是：
-
-```yml
-dataDir: data
-```
-
-当 `dataDir` 保持这个默认值时，程序会自动把它展开成：
-
-```text
-data/<实例名>
-```
-
-例如：
-
-- 默认实例 `default` -> `data/default`
-- `CONFIG_INSTANCE=acc1` -> `data/acc1`
-
-这意味着：
-
-- 不同实例默认各自有独立的数据目录
-- 会话、persona、users、whitelist、workspace、WebUI 登录数据都会按实例隔离
-
-如果你在实例配置里显式写：
-
-```yml
-dataDir: data/acc1
-```
-
-那就会直接使用这个路径，不再自动拼接。
-
-## 两种常见运行方式
+## 运行模式
 
 ### WebUI-only
 
-适合本地调试、内网使用，或者先验证模型调用和会话流程。
-WebUI 上传附件时会在浏览器侧自动把 `HEIC / HEIF` 图片转换成 `JPEG` 后再上传，避免模型接口不兼容。
-如果希望模型完整生成结束后再一次性发送，而不是边生成边按句子/段落拆分发送，可以把 `conversation.outbound.disableStreamingSplit` 设为 `true`。
-OneBot 等外部投递目标会继续按 `conversation.outbound` 里的延迟参数模拟发送间隔；WebUI 投递不再使用这些拟人化延迟，而是在形成正式分段后立即显示。
-
-关键配置：
+适合先验证模型调用、会话流程和 WebUI，不接 OneBot：
 
 ```yml
 onebot:
@@ -345,8 +128,6 @@ internalApi:
   enabled: true
   webui:
     enabled: true
-    auth:
-      enabled: true
 
 llm:
   enabled: true
@@ -354,9 +135,7 @@ llm:
 
 ### OneBot + WebUI
 
-适合真正接入 QQ / OneBot 使用。
-
-关键配置：
+适合实际接入 QQ / OneBot，同时保留 WebUI 作为观察与管理入口：
 
 ```yml
 onebot:
@@ -374,161 +153,66 @@ llm:
   enabled: true
 ```
 
-如果 OneBot 端需要鉴权，再补：
+如果 OneBot 端需要鉴权，在 `onebot.accessToken` 中配置 token。
 
-```yml
-onebot:
-  accessToken: your-token
+## 项目结构
+
+```text
+src/          后端源码
+webui/        Vue 3 + Tailwind WebUI
+config/       运行配置与示例配置
+data/         本地运行时数据
+docs/         长期维护文档
+test/         回归测试与测试辅助代码
+deploy/       systemd 服务示例
 ```
 
-如果你接的是 NapCat，并希望在回复生成期间显示“正在输入”，可以再补：
+`src/` 内部按运行域拆分：
 
-```yml
-onebot:
-  provider: napcat
-  typing:
-    enabled: true
-    private: true
-    group: false
-```
+- `app/`：启动、生成、消息、运行时和会话工作流编排
+- `conversation/`：会话状态、历史、压缩、reply gate 等
+- `llm/`：模型接入、prompt、工具注册与调用链路
+- `services/`：OneBot、shell、web、workspace 等外部能力封装
+- `internalApi/`：内部 HTTP API、应用服务与 WebUI 托管
+- `memory/`、`persona/`、`modes/`：长期状态和模式相关能力
 
-其中：
+## 文档
 
-- `typing.private`
-  控制私聊是否发送输入状态，默认开启
-- `typing.group`
-  控制群聊是否尝试发送输入状态，默认关闭
+- [快速上手](docs/getting-started.md)
+- [会话与资料模型](docs/architecture/session-and-profile-model.md)
+- [WebUI Workbench 架构](docs/architecture/webui-workbench.md)
+- [记忆架构](docs/memory-architecture.md)
+- [编辑器 Schema 元数据](docs/development/editor-schema-metadata.md)
 
-如果希望 WebUI 仅作为内网管理面板、不要求登录，可以改为：
+## 部署
 
-```yml
-internalApi:
-  enabled: true
-  webui:
-    enabled: true
-    auth:
-      enabled: false
-```
-
-如果你在联调其他功能时想先跳过全局 persona 初始化门槛，可以临时加上：
-
-```yml
-conversation:
-  setup:
-    skipPersonaInitialization: true
-```
-
-默认是 `false`。开启后仍然可以手动使用 `.setup persona` / `.config persona` 编辑 persona，只是不再阻塞会话进入正常模式。
-
-## 常用命令
-
-```bash
-npm run dev
-npm run dev:bot
-npm run dev:webui
-
-npm run build
-npm run build:bot
-npm run build:webui
-
-npm run typecheck:all
-npm run test
-```
-
-如果需要 Playwright 浏览器能力：
-
-```bash
-npm run install:browsers
-```
-
-## 生产启动
-
-先构建：
+生产构建：
 
 ```bash
 npm run build
-```
-
-再启动后端：
-
-```bash
 CONFIG_INSTANCE=acc1 npm run start:bot
 ```
 
-如果 `internalApi.webui.enabled: true`，生产态会由后端直接托管构建后的 WebUI。
-
-## systemd
-
-`deploy/` 里提供了 service 示例。`deploy/llm-bot@.service` 使用 `%i` 作为实例名，并传给：
-
-```text
-CONFIG_INSTANCE=%i
-```
-
-例如：
+`deploy/` 中提供了 systemd 示例，`llm-bot@.service` 使用 `%i` 作为实例名：
 
 ```bash
 systemctl --user enable --now llm-bot@acc1
 ```
 
-这会启动实例 `acc1`，对应读取：
+这会读取 `config/instances/acc1.yml`。
 
-```text
-config/instances/acc1.yml
-```
+## 数据持久化
 
-## 持久化数据
+默认 `dataDir: data` 会按实例名展开，例如：
 
-默认每个实例的数据目录下会有这些内容：
+- `default` -> `data/default`
+- `acc1` -> `data/acc1`
 
-- `sessions/`
-- `persona.json`
-- `rp-profile.json`
-- `scenario-profile.json`
-- `global-profile-readiness.json`
-- `setup-state.json`
-- `users.json`
-- `global-rules.json`
-- `toolset-rules.json`
-- `whitelist.json`
-- `scheduled-jobs.json`
-- `workspace/`
-- `webui-auth.json`
+会话、persona、users、whitelist、workspace、WebUI 登录数据等都会按实例隔离。
 
-如果实例目录里还有旧版 memory 数据，先显式执行一次迁移：
+## 开发约定
 
-```bash
-npm run migrate:memory -- data/data/<instance>
-```
-
-迁移会：
-
-- 归并旧版 `global-memories.json` 到 `global-rules.json`
-- 归并旧版工具集规则文件到 `toolset-rules.json`
-- 规范化 `users.json` / `persona.json`
-- 去重并生成 `memory-migration-report.json` 审计报告
-
-## 反向代理注意事项
-
-如果你把 WebUI 挂到 Nginx 之类的反向代理后面，需要关闭 SSE 缓冲，否则会影响会话流式更新：
-
-```nginx
-location / {
-  proxy_pass http://localhost:3031;
-  proxy_http_version 1.1;
-  proxy_set_header Host $host;
-  proxy_set_header Connection "";
-  proxy_buffering off;
-  proxy_request_buffering off;
-  proxy_cache off;
-  gzip off;
-  add_header X-Accel-Buffering no always;
-}
-```
-
-## 提交前检查
-
-按仓库约定，提交前至少运行：
+提交前至少运行：
 
 ```bash
 npm run typecheck:all
