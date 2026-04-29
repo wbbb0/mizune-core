@@ -62,7 +62,10 @@ function selectBuiltinToolDescriptors(options: BuiltinToolSelectionOptions) {
   return modelSupportsTools
     ? descriptors
     .filter((tool) => tool.modelVisible !== false)
-    .filter((tool) => !options.config || !tool.isEnabled || tool.isEnabled(options.config))
+    .filter((tool) => !options.config || !tool.isEnabled || tool.isEnabled(
+      options.config,
+      options.modelRef ? { modelRef: options.modelRef } : {}
+    ))
     .filter((tool) => hasToolAccess(tool, options.relationship, options.currentUser))
     .filter((tool) => options.includeDebugTools === true || tool.debugOnly !== true)
     .filter((tool) => !hideExternalSearchTool || !["ground_with_google_search", "search_with_iqs_lite_advanced"].includes(tool.definition.function.name))

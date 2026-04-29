@@ -70,6 +70,10 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("发送已登记文件时优先用 chat_file_send_to_chat(file_ref=...)；file_id 只是稳定主键。");
   }
 
+  if (hasAnyTool(visibleToolNames, ["chat_file_inspect_media", "local_file_inspect_media"])) {
+    lines.push("需要从图片、截图、表格或界面里精确读取细节时，用图片精读工具按问题查看。");
+  }
+
   if (hasAnyTool(visibleToolNames, ["local_file_view_media", "local_file_send_to_chat", "local_file_read", "local_file_search", "local_file_delete"])) {
     lines.push("local_file_* 处理模型可访问的本地文件工作区；path 传相对路径时，相对的是配置里的 local files 工作区根目录，不是 shell 当前目录、不是仓库根目录、也不是 chat file 的 chat_file_path。");
     lines.push("本地图片查看用 local_file_view_media，本地路径发送用 local_file_send_to_chat。");

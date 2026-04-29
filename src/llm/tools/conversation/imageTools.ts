@@ -1,4 +1,7 @@
 import type { LlmContentPart, LlmToolExecutionResult } from "../../llmClient.ts";
+import type { AppConfig } from "#config/config.ts";
+import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
+import { getVisionInputModelRefsForRole, hasVisionInputModelRef } from "#llm/shared/visionModelRouting.ts";
 import { resolveSendablePath } from "#services/workspace/sendablePath.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
@@ -18,7 +21,7 @@ export const imageToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "chat_file_view_media",
-        description: "加载已登记媒体供下一轮模型查看。",
+        description: "加载已登记媒体供支持视觉输入的当前模型直接查看。",
         parameters: {
           type: "object",
           properties: {
@@ -33,14 +36,39 @@ export const imageToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    isEnabled: isDirectMediaViewEnabled
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "chat_file_inspect_media",
+        description: "调用图片精读模型，按问题读取已登记图片中的具体可见信息。",
+        parameters: {
+          type: "object",
+          properties: {
+            media_ids: {
+              type: "array",
+              items: { type: "string" },
+              minItems: 1,
+              maxItems: MAX_MEDIA_VIEW_PER_CALL
+            },
+            question: { type: "string" }
+          },
+          required: ["media_ids", "question"],
+          additionalProperties: false
+        }
+      }
+    },
+    isEnabled: isMediaInspectionEnabled
   },
   {
     definition: {
       type: "function",
       function: {
         name: "local_file_view_media",
-        description: "按路径加载本地图片供下一轮模型查看。",
+        description: "按路径加载本地图片供支持视觉输入的当前模型直接查看。",
         parameters: {
           type: "object",
           properties: {
@@ -50,11 +78,79 @@ export const imageToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    isEnabled: isDirectMediaViewEnabled
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "local_file_inspect_media",
+        description: "调用图片精读模型，按问题读取本地图片中的具体可见信息。",
+        parameters: {
+          type: "object",
+          properties: {
+            path: { type: "string" },
+            question: { type: "string" }
+          },
+          required: ["path", "question"],
+          additionalProperties: false
+        }
+      }
+    },
+    isEnabled: isMediaInspectionEnabled
   }
 ];
 
+function isDirectMediaViewEnabled(config: AppConfig, options?: { modelRef?: string | string[] }): boolean {
+  const modelRef = options?.modelRef ?? getModelRefsForRole(config, "main_small");
+  return hasVisionInputModelRef(config, modelRef);
+}
+
+function isMediaInspectionEnabled(config: AppConfig): boolean {
+  return config.llm.imageInspector.enabled
+    && getVisionInputModelRefsForRole(config, "image_inspector").modelRefs.length > 0;
+}
+
 export const imageToolHandlers: Record<string, ToolHandler> = {
+  async local_file_inspect_media(_toolCall, args, context) {
+    const path = getStringArg(args, "path");
+    const question = getStringArg(args, "question");
+    if (!path) {
+      return JSON.stringify({ error: "path is required" });
+    }
+    if (!question) {
+      return JSON.stringify({ error: "question is required" });
+    }
+    try {
+      const resolved = resolveSendablePath(context.localFileService, path);
+      const prepared = await context.mediaVisionService.prepareAbsolutePathForModel(resolved.absolutePath, resolved.sourceName);
+      const inspection = await context.mediaInspectionService.inspectPreparedMedia({
+        question,
+        media: [{
+          mediaId: resolved.sourceName,
+          inputUrl: prepared.inputUrl,
+          kind: prepared.kind,
+          animated: prepared.animated,
+          durationMs: prepared.durationMs,
+          sampledFrameCount: prepared.sampledFrameCount
+        }]
+      });
+      return JSON.stringify({
+        ...inspection,
+        path: resolved.sourcePath,
+        sourceName: resolved.sourceName,
+        kind: prepared.kind,
+        animated: prepared.animated,
+        durationMs: prepared.durationMs,
+        sampledFrameCount: prepared.sampledFrameCount,
+        inspectedCount: inspection.results.length
+      });
+    } catch (error: unknown) {
+      return JSON.stringify({ error: error instanceof Error ? error.message : String(error) });
+    }
+  },
+
   async local_file_view_media(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     if (!path) {
@@ -88,6 +184,67 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
       return result;
     } catch (error: unknown) {
       return JSON.stringify({ error: error instanceof Error ? error.message : String(error) });
+    }
+  },
+
+  async chat_file_inspect_media(_toolCall, args, context) {
+    const mediaIds = getMediaIdsArg(args);
+    const question = getStringArg(args, "question");
+    if (mediaIds.length === 0) {
+      return JSON.stringify({ error: "media_ids must contain at least one id" });
+    }
+    if (mediaIds.length > MAX_MEDIA_VIEW_PER_CALL) {
+      return JSON.stringify({ error: `media_ids can contain at most ${MAX_MEDIA_VIEW_PER_CALL} ids` });
+    }
+    if (!question) {
+      return JSON.stringify({ error: "question is required" });
+    }
+
+    try {
+      const fileIds = mediaIds.filter((item) => item.startsWith("file_"));
+      const unsupportedIds = mediaIds.filter((item) => !item.startsWith("file_"));
+      if (unsupportedIds.length > 0) {
+        return JSON.stringify({
+          error: `Unsupported legacy media ids: ${unsupportedIds.join(", ")}`
+        });
+      }
+
+      const workspaceFiles = await context.chatFileStore.getMany(fileIds);
+      const preparedMedia = (await Promise.all(
+        workspaceFiles
+          .filter((item) => item.kind === "image" || item.kind === "animated_image")
+          .map(async (item) => {
+            try {
+              const prepared = await context.mediaVisionService.prepareFileForModel(item.fileId);
+              return {
+                mediaId: item.fileId,
+                inputUrl: prepared.inputUrl,
+                kind: prepared.kind,
+                animated: prepared.animated,
+                durationMs: prepared.durationMs,
+                sampledFrameCount: prepared.sampledFrameCount
+              };
+            } catch {
+              return null;
+            }
+          })
+      )).filter((item): item is NonNullable<typeof item> => Boolean(item));
+      const inspection = await context.mediaInspectionService.inspectPreparedMedia({
+        question,
+        media: preparedMedia
+      });
+
+      return JSON.stringify({
+        ...inspection,
+        requestedCount: mediaIds.length,
+        inspectedCount: inspection.results.length,
+        workspace: workspaceFiles.map((item) => mapWorkspaceFileToView(item)),
+        unavailable: fileIds.filter((fileId) => !preparedMedia.some((item) => item.mediaId === fileId))
+      });
+    } catch (error: unknown) {
+      return JSON.stringify({
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   },
 

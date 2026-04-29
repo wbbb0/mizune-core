@@ -120,6 +120,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
             summarizer: "turnPlanner",
             sessionCaptioner: "turnPlanner",
             imageCaptioner: "main",
+            imageInspector: "main",
             audioTranscription: "transcription",
             turnPlanner: "turnPlanner"
           }
@@ -207,6 +208,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
             summarizer: "defaultSummary",
             sessionCaptioner: "defaultSummary",
             imageCaptioner: "defaultSummary",
+            imageInspector: "defaultSummary",
             audioTranscription: "transcription",
             turnPlanner: "defaultPlan"
           },
@@ -232,6 +234,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       assert.deepEqual(getModelRefsForRole(config, "main_large"), []);
       assert.deepEqual(getModelRefsForRole(config, "summarizer"), ["defaultSummary"]);
       assert.deepEqual(getModelRefsForRole(config, "session_captioner"), ["defaultSummary"]);
+      assert.deepEqual(getModelRefsForRole(config, "image_inspector"), ["defaultSummary"]);
       assert.deepEqual(getModelRefsForRole(config, "audio_transcription"), []);
       assert.deepEqual(getModelRefsForRole(config, "turn_planner"), ["defaultPlan"]);
     });
@@ -259,6 +262,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         summarizer: [],
         sessionCaptioner: [],
         imageCaptioner: [],
+        imageInspector: [],
         audioTranscription: [],
         turnPlanner: []
       });
@@ -297,6 +301,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
             summarizer: "catalogMain",
             sessionCaptioner: "catalogMain",
             imageCaptioner: "catalogMain",
+            imageInspector: "catalogMain",
             audioTranscription: "transcription",
             turnPlanner: "catalogMain"
           }

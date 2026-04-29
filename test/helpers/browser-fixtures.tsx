@@ -114,6 +114,15 @@ export function createBrowserToolContext(
         return new Map<string, string>();
       }
     } as unknown as BuiltinToolContext["mediaCaptionService"],
+    mediaInspectionService: {
+      async inspectPreparedMedia() {
+        return {
+          ok: true,
+          requestedCount: 0,
+          results: []
+        };
+      }
+    } as unknown as BuiltinToolContext["mediaInspectionService"],
     chatFileStore: {
       async prepareImageFileForModel(fileId: string) {
         return {

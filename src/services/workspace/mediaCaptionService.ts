@@ -1,7 +1,7 @@
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import { normalizeModelRefs } from "#llm/shared/modelProfiles.ts";
-import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
+import { resolveVisionInputModelRefsForRole } from "#llm/shared/visionModelRouting.ts";
 import type { LlmClient, LlmMessage } from "#llm/llmClient.ts";
 import { KeyedDerivationRunner } from "#llm/derivations/keyedDerivationRunner.ts";
 import type { ChatFileStore } from "./chatFileStore.ts";
@@ -39,6 +39,7 @@ function normalizeCaption(raw: string, fallbackLabel: string): string {
 
 export class MediaCaptionService {
   private readonly runner: KeyedDerivationRunner;
+  private readonly unsupportedVisionWarningCache = new Set<string>();
 
   constructor(
     private readonly config: AppConfig,
@@ -178,7 +179,12 @@ export class MediaCaptionService {
   }
 
   private resolveModelRefs(): string[] {
-    return getModelRefsForRole(this.config, "image_captioner");
+    return resolveVisionInputModelRefsForRole({
+      config: this.config,
+      role: "image_captioner",
+      logger: this.logger,
+      warningCache: this.unsupportedVisionWarningCache
+    });
   }
 }
 

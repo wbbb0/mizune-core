@@ -39,6 +39,10 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       assert.deepEqual(getModelRefsForRole(config, "main_small"), []);
       assert.equal(config.llm.turnPlanner.supplementToolsets, true);
       assert.equal(config.llm.sessionCaptioner.timeoutMs, 15000);
+      assert.equal(config.llm.imageInspector.enabled, true);
+      assert.equal(config.llm.imageInspector.timeoutMs, 45000);
+      assert.equal(config.llm.imageInspector.enableThinking, false);
+      assert.equal(config.llm.imageInspector.maxConcurrency, 2);
       assert.deepEqual(config.llm.providers, {});
       assert.deepEqual(config.llm.models, {});
       assert.deepEqual(config.llm.routingPresets, {
@@ -48,6 +52,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           summarizer: [],
           sessionCaptioner: [],
           imageCaptioner: [],
+          imageInspector: [],
           audioTranscription: [],
           turnPlanner: []
         }
@@ -172,6 +177,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
             summarizer: "main",
             sessionCaptioner: "main",
             imageCaptioner: "main",
+            imageInspector: "main",
             audioTranscription: "transcription",
             turnPlanner: "main"
           }
@@ -257,6 +263,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
             summarizer: "main",
             sessionCaptioner: "main",
             imageCaptioner: "main",
+            imageInspector: "main",
             audioTranscription: "transcription",
             turnPlanner: "main"
           }

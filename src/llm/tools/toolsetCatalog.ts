@@ -43,6 +43,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "list_current_group_announcements",
       "list_current_group_members",
       "chat_file_view_media",
+      "chat_file_inspect_media",
       "end_turn_without_reply"
     ]
   },
@@ -246,6 +247,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "local_file_delete",
       "local_file_search",
       "local_file_view_media",
+      "local_file_inspect_media",
       "local_file_send_to_chat"
     ]
   },
@@ -264,6 +266,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     toolNames: [
       "chat_file_list",
       "chat_file_view_media",
+      "chat_file_inspect_media",
       "chat_file_send_to_chat"
     ]
   },

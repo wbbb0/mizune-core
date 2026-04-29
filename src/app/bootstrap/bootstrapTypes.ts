@@ -30,6 +30,7 @@ import type { ShellRuntime } from "#services/shell/runtime.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { ChatMessageFileGcService } from "#services/workspace/chatMessageFileGcService.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
+import type { MediaInspectionService } from "#services/workspace/mediaInspectionService.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { BrowserService } from "#services/web/browser/browserService.ts";
@@ -81,6 +82,7 @@ export interface AppServiceBootstrap {
   chatMessageFileGcService: ChatMessageFileGcService;
   mediaVisionService: MediaVisionService;
   mediaCaptionService: MediaCaptionService;
+  mediaInspectionService: MediaInspectionService;
   comfyClient: ComfyClient;
   comfyTaskStore: ComfyTaskStore;
   comfyTemplateCatalog: ComfyTemplateCatalogService;
