@@ -10,6 +10,8 @@ import { useWorkbenchRuntimeContext } from "@/components/workbench/runtime/workb
 import { buildComposerSendPayload, type ComposerSendPayload } from "./composerPayload";
 import { formatSendErrorMessage, formatUploadErrorMessage } from "./composerErrors";
 import { COMPOSER_IMAGE_ACCEPT, filterComposerImageFiles } from "./composerAcceptedFiles";
+import { filesFromClipboardData, filesFromDataTransfer, filesFromFileList } from "./composerFileSources";
+import { fingerprintComposerFiles, selectUniqueComposerFiles } from "./composerFileFingerprints";
 
 const props = defineProps<{
   sessionType: "private" | "group";
@@ -41,7 +43,7 @@ watch(userId, (value) => {
 }, { immediate: true });
 const textareaRef  = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
-const attachments  = ref<(UploadedFile & { preview?: string })[]>([]);
+const attachments  = ref<(UploadedFile & { preview?: string; uploadFingerprint?: string })[]>([]);
 const uploading    = ref(false);
 const sending      = ref(false);
 const draggingFiles = ref(false);
@@ -202,8 +204,12 @@ function hasDraggedFiles(event: DragEvent): boolean {
   return Array.from(event.dataTransfer?.types ?? []).includes("Files");
 }
 
-async function uploadImageFiles(files: File[]) {
-  if (files.length === 0 || props.disabled || uploading.value || sending.value) {
+function canAcceptFiles(): boolean {
+  return !props.disabled && !uploading.value && !sending.value;
+}
+
+async function uploadComposerFiles(files: File[]) {
+  if (files.length === 0 || !canAcceptFiles()) {
     return;
   }
   uploading.value = true;
@@ -218,15 +224,28 @@ async function uploadImageFiles(files: File[]) {
     }
 
     const preparedFiles = await prepareFilesForUpload(accepted);
-    previews = preparedFiles.map((f) => ({
+    const fingerprintedFiles = await fingerprintComposerFiles(preparedFiles);
+    const { unique, duplicateCount } = selectUniqueComposerFiles(
+      fingerprintedFiles,
+      attachments.value.flatMap((attachment) => attachment.uploadFingerprint ? [attachment.uploadFingerprint] : [])
+    );
+    if (duplicateCount > 0) {
+      toast.push({ type: "info", message: duplicateCount === 1 ? "已跳过重复图片" : `已跳过 ${duplicateCount} 个重复图片` });
+    }
+    if (unique.length === 0) {
+      return;
+    }
+
+    previews = unique.map(({ file: f }) => ({
       file: f,
       preview: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined
     }));
 
-    const res = await uploadsApi.uploadFiles(preparedFiles);
+    const res = await uploadsApi.uploadFiles(unique.map((item) => item.file));
     const uploaded = res.uploads.map((u, i) => ({
       ...u,
-      preview: previews[i]?.preview
+      preview: previews[i]?.preview,
+      uploadFingerprint: unique[i]?.fingerprint
     }));
     attachments.value = [...attachments.value, ...uploaded];
   } catch (err) {
@@ -243,13 +262,13 @@ async function uploadImageFiles(files: File[]) {
 
 async function onFilesSelected(e: Event) {
   const input = e.target as HTMLInputElement;
-  const files = Array.from(input.files ?? []);
+  const files = filesFromFileList(input.files);
   input.value = "";
-  await uploadImageFiles(files);
+  await uploadComposerFiles(files);
 }
 
 function onDragEnter(event: DragEvent) {
-  if (!hasDraggedFiles(event) || props.disabled || uploading.value || sending.value) {
+  if (!hasDraggedFiles(event) || !canAcceptFiles()) {
     return;
   }
   event.preventDefault();
@@ -257,7 +276,7 @@ function onDragEnter(event: DragEvent) {
 }
 
 function onDragOver(event: DragEvent) {
-  if (!hasDraggedFiles(event) || props.disabled || uploading.value || sending.value) {
+  if (!hasDraggedFiles(event) || !canAcceptFiles()) {
     return;
   }
   event.preventDefault();
@@ -281,7 +300,16 @@ async function onDrop(event: DragEvent) {
   }
   event.preventDefault();
   draggingFiles.value = false;
-  await uploadImageFiles(Array.from(event.dataTransfer?.files ?? []));
+  await uploadComposerFiles(filesFromDataTransfer(event.dataTransfer));
+}
+
+async function onPaste(event: ClipboardEvent) {
+  const files = filesFromClipboardData(event.clipboardData);
+  if (files.length === 0 || !canAcceptFiles()) {
+    return;
+  }
+  event.preventDefault();
+  await uploadComposerFiles(files);
 }
 
 function removeAttachment(fileId: string) {
@@ -374,6 +402,7 @@ onUnmounted(() => {
         @focus="onTextareaFocus"
         @blur="onTextareaBlur"
         @keydown="onKeydown"
+        @paste="onPaste"
       />
 
       <button

@@ -89,7 +89,11 @@ test("composer surfaces upload failures through toast", async () => {
   assert.match(source, /toast\.push/);
   assert.match(source, /只能上传图片文件/);
   assert.match(source, /filterComposerImageFiles/);
-  assert.match(source, /uploadImageFiles\(Array\.from\(event\.dataTransfer\?\.files \?\? \[\]\)\)/);
+  assert.match(source, /function canAcceptFiles\(\)/);
+  assert.match(source, /filesFromDataTransfer\(event\.dataTransfer\)/);
+  assert.match(source, /filesFromClipboardData\(event\.clipboardData\)/);
+  assert.match(source, /files\.length === 0 \|\| !canAcceptFiles\(\)/);
+  assert.match(source, /@paste="onPaste"/);
 });
 
 test("config and data sections use toast instead of inline save containers", async () => {
