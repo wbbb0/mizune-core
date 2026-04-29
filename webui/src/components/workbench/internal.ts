@@ -1,5 +1,7 @@
 export { default as DesktopWorkbench } from "./DesktopWorkbench.vue";
 export { default as MobileWorkbench } from "./MobileWorkbench.vue";
+export { default as WorkbenchRoot } from "./WorkbenchRoot.vue";
+export { default as WorkbenchShell } from "./WorkbenchShell.vue";
 export { default as TopBar } from "./TopBar.vue";
 export { default as StatusBar } from "./StatusBar.vue";
 export { default as WorkbenchActivityBar } from "./WorkbenchActivityBar.vue";

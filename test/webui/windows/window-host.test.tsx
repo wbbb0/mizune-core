@@ -14,12 +14,15 @@ const typescript = require(`${ROOT}/webui/node_modules/typescript/lib/typescript
 const VUE_RUNTIME_URL = new URL("../../../webui/node_modules/vue/index.mjs", import.meta.url).href;
 const WINDOW_SIZING_URL = new URL("../../../webui/src/components/workbench/windows/windowSizing.ts", import.meta.url).href;
 const USE_WORKBENCH_WINDOWS_URL = new URL("../../../webui/src/components/workbench/windows/useWorkbenchWindows.ts", import.meta.url).href;
+const WORKBENCH_CONTROLLER_URL = new URL("../../../webui/src/components/workbench/runtime/workbenchController.ts", import.meta.url).href;
 const WORKBENCH_RUNTIME_URL = new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url).href;
+const WORKBENCH_TYPES_URL = new URL("../../../webui/src/components/workbench/types.ts", import.meta.url).href;
 const WINDOW_SURFACE_PATH = `${ROOT}/webui/src/components/workbench/windows/WindowSurface.vue`;
 const WINDOW_HOST_PATH = `${ROOT}/webui/src/components/workbench/windows/WindowHost.vue`;
 const DIALOG_RENDERER_PATH = `${ROOT}/webui/src/components/workbench/windows/DialogRenderer.vue`;
 const DIALOG_FIELD_RENDERER_PATH = `${ROOT}/webui/src/components/workbench/windows/DialogFieldRenderer.vue`;
 const WORKBENCH_SHELL_PATH = `${ROOT}/webui/src/components/workbench/WorkbenchShell.vue`;
+const WORKBENCH_ROOT_PATH = `${ROOT}/webui/src/components/workbench/WorkbenchRoot.vue`;
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>");
 
@@ -35,8 +38,10 @@ Object.defineProperty(globalThis, "getComputedStyle", {
 });
 Object.defineProperty(globalThis, "MutationObserver", { value: dom.window.MutationObserver });
 
-const { nextTick, markRaw } = await import(VUE_RUNTIME_URL);
+const { nextTick, markRaw, computed, defineComponent } = await import(VUE_RUNTIME_URL);
 const { useWorkbenchWindows } = await import(USE_WORKBENCH_WINDOWS_URL);
+const { createWorkbenchController, activateWorkbenchController } = await import(WORKBENCH_CONTROLLER_URL);
+const { defineWorkbenchView } = await import(WORKBENCH_TYPES_URL);
 
 function createDataModule(source: string) {
   return `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}`;
@@ -230,6 +235,28 @@ const workbenchShellUrl = compileVueModule(WORKBENCH_SHELL_PATH, {
   "./windows/WindowHost.vue": windowHostUrl
 });
 
+const workbenchRootUrl = compileVueModule(WORKBENCH_ROOT_PATH, {
+  vue: vueStubUrl,
+  "./WorkbenchShell.vue": workbenchShellUrl,
+  "./menu/MenuHost.vue": menuHostStubUrl,
+  "./toasts/ToastViewport.vue": toastViewportStubUrl,
+  "./windows/WindowHost.vue": windowHostUrl,
+  "./runtime/workbenchController": WORKBENCH_CONTROLLER_URL
+});
+
+const EmptyArea = defineComponent({
+  name: "EmptyArea",
+  setup: () => () => null
+});
+const testView = defineWorkbenchView({
+  id: "window-host-test",
+  title: "Window Host Test",
+  areas: {
+    mainArea: EmptyArea
+  }
+});
+const testController = createWorkbenchController(computed(() => testView));
+activateWorkbenchController(testController);
 const windowManager = useWorkbenchWindows();
 
 function resetWindows() {
@@ -718,14 +745,14 @@ test("window surface keeps inactive styling and visible transform and size outpu
   assert.match(wrapper.text(), /Description/);
 });
 
-test("workbench shell mounts the window host and delegates layout to the desktop shell", async () => {
+test("workbench root mounts the window host and delegates layout to the workbench shell", async () => {
   const WindowHost = (await import(windowHostUrl)).default;
-  const WorkbenchShell = (await import(workbenchShellUrl)).default;
+  const WorkbenchRoot = (await import(workbenchRootUrl)).default;
 
-  windowManager.openSync(buildWindow("shell-window"));
-  const wrapper = vueMount(WorkbenchShell, {
+  const wrapper = vueMount(WorkbenchRoot, {
     props: {
       view: {
+        id: "workbench-root-test",
         title: "Workbench",
         layout: {
           mobile: {
@@ -770,6 +797,7 @@ test("workbench shell mounts the window host and delegates layout to the desktop
     }
   });
 
+  windowManager.openSync(buildWindow("shell-window"));
   await nextTick();
 
   assert.ok(wrapper.findComponent(WindowHost).exists());
@@ -777,4 +805,5 @@ test("workbench shell mounts the window host and delegates layout to the desktop
   assert.equal(wrapper.find('[data-test="desktop-workbench"]').exists(), true);
   assert.equal(wrapper.find('[data-test="menu-host"]').exists(), true);
   assert.match(wrapper.html(), /fixed inset-0 z-60 overflow-hidden/);
+  wrapper.unmount();
 });

@@ -11,7 +11,7 @@ async function readSectionSource(name: typeof sectionNames[number]) {
   );
 }
 
-test("shared section state survives route component unmounts from one lifecycle helper", async () => {
+test("shared section state resets from one route-aware lifecycle helper", async () => {
   const sectionSources = await Promise.all(sectionNames.map((name) => readSectionSource(name)));
   const sharedStateSource = await readFile(
     new URL("../../../webui/src/composables/sections/sharedSectionState.ts", import.meta.url),
@@ -25,5 +25,8 @@ test("shared section state survives route component unmounts from one lifecycle 
   }
 
   assert.match(sharedStateSource, /effectScope\(true\)/);
+  assert.match(sharedStateSource, /useRoute/);
+  assert.match(sharedStateSource, /watch\(/);
+  assert.match(sharedStateSource, /route\.name \?\? route\.fullPath/);
   assert.match(sharedStateSource, /onBeforeRouteLeave/);
 });

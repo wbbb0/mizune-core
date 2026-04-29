@@ -82,3 +82,22 @@ test("detached workbench services follow the active controller instead of cachin
     deactivateFirst();
   }
 });
+
+test("workbench services fail loudly when no root controller is active", () => {
+  const windows = useWorkbenchWindows();
+  const toasts = useWorkbenchToasts();
+
+  assert.throws(
+    () => windows.openDialogSync({
+      id: "missing-root-window",
+      kind: "dialog",
+      title: "missing root",
+      size: "sm"
+    }),
+    /Workbench controller is not active/
+  );
+  assert.throws(
+    () => toasts.push({ type: "info", message: "missing root" }),
+    /Workbench controller is not active/
+  );
+});

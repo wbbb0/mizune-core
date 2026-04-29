@@ -1,5 +1,11 @@
+import { defineComponent } from "vue";
 import { createRouter, createWebHashHistory } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+
+const WorkbenchRouteView = defineComponent({
+  name: "WorkbenchRouteView",
+  setup: () => () => null
+});
 
 const router = createRouter({
   history: createWebHashHistory("/webui/"),
@@ -12,36 +18,47 @@ const router = createRouter({
     },
     {
       path: "/",
-      redirect: "/sessions"
-    },
-    {
-      path: "/sessions",
-      name: "sessions",
-      component: () => import("@/pages/SessionsPage.vue")
-    },
-    {
-      path: "/config",
-      name: "config",
-      component: () => import("@/pages/ConfigPage.vue")
-    },
-    {
-      path: "/data",
-      name: "data",
-      component: () => import("@/pages/DataPage.vue")
-    },
-    {
-      path: "/files",
-      name: "files",
-      component: () => import("@/pages/WorkspacePage.vue")
-    },
-    {
-      path: "/settings",
-      name: "settings",
-      component: () => import("@/pages/SettingsPage.vue")
+      component: () => import("@/sections/AppWorkbenchRoot.vue"),
+      children: [
+        {
+          path: "",
+          redirect: { name: "sessions" }
+        },
+        {
+          path: "sessions",
+          name: "sessions",
+          component: WorkbenchRouteView,
+          meta: { workbenchViewId: "sessions" }
+        },
+        {
+          path: "config",
+          name: "config",
+          component: WorkbenchRouteView,
+          meta: { workbenchViewId: "config" }
+        },
+        {
+          path: "data",
+          name: "data",
+          component: WorkbenchRouteView,
+          meta: { workbenchViewId: "data" }
+        },
+        {
+          path: "files",
+          name: "files",
+          component: WorkbenchRouteView,
+          meta: { workbenchViewId: "files" }
+        },
+        {
+          path: "settings",
+          name: "settings",
+          component: WorkbenchRouteView,
+          meta: { workbenchViewId: "settings" }
+        }
+      ]
     },
     {
       path: "/:pathMatch(.*)*",
-      redirect: "/sessions"
+      redirect: { name: "sessions" }
     }
   ]
 });

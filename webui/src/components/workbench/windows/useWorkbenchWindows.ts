@@ -1,5 +1,5 @@
 import { computed } from "vue";
-import { useWorkbenchController, useWorkbenchControllerContext } from "../runtime/workbenchController.js";
+import { useWorkbenchController } from "../runtime/workbenchController.js";
 export type { WorkbenchRuntimeWindow, WorkbenchWindowManager } from "./windowService.js";
 import type { WorkbenchWindowManager } from "./windowService.js";
 
@@ -42,5 +42,5 @@ const dynamicWorkbenchWindows: WorkbenchWindowManager = {
 };
 
 export function useWorkbenchWindows() {
-  return useWorkbenchControllerContext()?.windows ?? dynamicWorkbenchWindows;
+  return dynamicWorkbenchWindows;
 }

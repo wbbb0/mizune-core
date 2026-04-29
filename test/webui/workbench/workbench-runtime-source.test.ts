@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 
-test("workbench shell creates, provides, and activates a runtime", async () => {
+test("workbench root creates, provides, and activates the shared runtime", async () => {
+  const root = await readFile(new URL("../../../webui/src/components/workbench/WorkbenchRoot.vue", import.meta.url), "utf8");
   const shell = await readFile(new URL("../../../webui/src/components/workbench/WorkbenchShell.vue", import.meta.url), "utf8");
   const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
   const controller = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchController.ts", import.meta.url), "utf8");
@@ -14,10 +15,15 @@ test("workbench shell creates, provides, and activates a runtime", async () => {
   assert.match(controller, /export function createWorkbenchController/);
   assert.match(controller, /provideWorkbenchRuntime/);
   assert.match(controller, /activateWorkbenchRuntime/);
-  assert.match(shell, /createWorkbenchController/);
-  assert.match(shell, /provideWorkbenchController/);
-  assert.match(shell, /activateWorkbenchController/);
-  assert.match(shell, /onUnmounted/);
+  assert.match(root, /createWorkbenchController/);
+  assert.match(root, /provideWorkbenchController/);
+  assert.match(root, /activateWorkbenchController/);
+  assert.match(root, /onUnmounted/);
+  assert.match(root, /<MenuHost/);
+  assert.match(root, /<ToastViewport/);
+  assert.match(root, /<WindowHost/);
+  assert.doesNotMatch(shell, /createWorkbenchController/);
+  assert.doesNotMatch(shell, /activateWorkbenchController/);
 });
 
 test("workbench core receives navigation from the app adapter", async () => {
@@ -25,7 +31,7 @@ test("workbench core receives navigation from the app adapter", async () => {
   const mobile = await readFile(new URL("../../../webui/src/components/workbench/MobileWorkbench.vue", import.meta.url), "utf8");
   const desktop = await readFile(new URL("../../../webui/src/components/workbench/DesktopWorkbench.vue", import.meta.url), "utf8");
   const activityBar = await readFile(new URL("../../../webui/src/components/workbench/WorkbenchActivityBar.vue", import.meta.url), "utf8");
-  const viewHost = await readFile(new URL("../../../webui/src/sections/WorkbenchViewHost.vue", import.meta.url), "utf8");
+  const appRoot = await readFile(new URL("../../../webui/src/sections/AppWorkbenchRoot.vue", import.meta.url), "utf8");
 
   assert.match(shell, /navItems/);
   assert.match(shell, /activeNavItemId/);
@@ -36,8 +42,9 @@ test("workbench core receives navigation from the app adapter", async () => {
   assert.match(activityBar, /navItems/);
   assert.doesNotMatch(activityBar, /useRouter/);
   assert.doesNotMatch(activityBar, /workbenchNavItems/);
-  assert.match(viewHost, /workbenchNavItems/);
-  assert.match(viewHost, /router\.push\(item\.path\)/);
+  assert.match(appRoot, /workbenchNavItems/);
+  assert.match(appRoot, /router\.push\(item\.path\)/);
+  assert.match(appRoot, /<WorkbenchRoot/);
 });
 
 test("mobile workbench keeps root sidebar mounted under the active area overlay", async () => {
@@ -98,13 +105,13 @@ test("workbench navigation commands live in the runtime module", async () => {
 
 test("workbench runtime exposes an active shell command facade", async () => {
   const runtime = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
-  const shell = await readFile(new URL("../../../webui/src/components/workbench/WorkbenchShell.vue", import.meta.url), "utf8");
+  const root = await readFile(new URL("../../../webui/src/components/workbench/WorkbenchRoot.vue", import.meta.url), "utf8");
   const controller = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchController.ts", import.meta.url), "utf8");
 
   assert.match(runtime, /export function useActiveWorkbenchRuntime/);
   assert.match(runtime, /useWorkbenchNavigation/);
   assert.match(controller, /export function useActiveWorkbenchController/);
-  assert.match(shell, /const deactivateController = activateWorkbenchController\(controller\)/);
+  assert.match(root, /const deactivateController = activateWorkbenchController\(controller\)/);
 });
 
 test("desktop workbench sizes desktop areas through runtime resize state", async () => {
@@ -140,9 +147,10 @@ test("desktop workbench sizes desktop areas through runtime resize state", async
   assert.match(desktop, /role="separator"/);
   assert.match(desktop, /aria-orientation="vertical"/);
   assert.match(desktop, /aria-orientation="horizontal"/);
-  assert.match(desktop, /<aside v-if="hasPrimarySidebar"/);
-  assert.match(desktop, /v-if="hasPrimarySidebar"\s*\n\s*class="relative w-1/);
-  assert.match(desktop, /border-r border-border-default/);
+  assert.match(desktop, /v-if="hasPrimarySidebar"\s*\n\s*class="relative shrink-0/);
+  assert.match(desktop, /absolute inset-y-0 -right-0\.5/);
+  assert.match(desktop, /before:bg-border-default/);
+  assert.doesNotMatch(desktop, /class="relative w-1 shrink-0/);
   assert.match(desktop, /@pointerdown="startDesktopAreaResize\('primarySidebar'/);
   assert.match(desktop, /@dblclick="resetDesktopAreaResize\('primarySidebar'\)"/);
   assert.doesNotMatch(desktop, /w-\(--side-panel-width\)/);
@@ -151,13 +159,31 @@ test("desktop workbench sizes desktop areas through runtime resize state", async
 test("detached window and toast services resolve the active controller at call time", async () => {
   const windows = await readFile(new URL("../../../webui/src/components/workbench/windows/useWorkbenchWindows.ts", import.meta.url), "utf8");
   const toasts = await readFile(new URL("../../../webui/src/components/workbench/toasts/useWorkbenchToasts.ts", import.meta.url), "utf8");
+  const controller = await readFile(new URL("../../../webui/src/components/workbench/runtime/workbenchController.ts", import.meta.url), "utf8");
 
   assert.match(windows, /dynamicWorkbenchWindows/);
-  assert.match(windows, /useWorkbenchControllerContext\(\)\?\.windows \?\? dynamicWorkbenchWindows/);
+  assert.match(windows, /return dynamicWorkbenchWindows/);
   assert.match(windows, /useWorkbenchController\(\)\.windows\.openDialog/);
   assert.match(toasts, /dynamicWorkbenchToasts/);
-  assert.match(toasts, /useWorkbenchControllerContext\(\)\?\.toasts \?\? dynamicWorkbenchToasts/);
+  assert.match(toasts, /return dynamicWorkbenchToasts/);
   assert.match(toasts, /useWorkbenchController\(\)\.toasts\.push/);
+  assert.match(controller, /Workbench controller is not active/);
+  assert.doesNotMatch(controller, /fallbackWorkbench/);
+});
+
+test("app workbench root is mounted once for protected workbench routes", async () => {
+  const router = await readFile(new URL("../../../webui/src/router.ts", import.meta.url), "utf8");
+  const appRoot = await readFile(new URL("../../../webui/src/sections/AppWorkbenchRoot.vue", import.meta.url), "utf8");
+
+  assert.match(router, /component:\s*\(\)\s*=>\s*import\("@\/sections\/AppWorkbenchRoot\.vue"\)/);
+  assert.match(router, /children:\s*\[/);
+  assert.match(router, /meta:\s*\{\s*workbenchViewId:\s*"sessions"\s*\}/);
+  assert.match(router, /meta:\s*\{\s*workbenchViewId:\s*"config"\s*\}/);
+  assert.match(router, /component:\s*WorkbenchRouteView/);
+  assert.doesNotMatch(router, /@\/pages\/SessionsPage\.vue/);
+  assert.doesNotMatch(router, /@\/pages\/ConfigPage\.vue/);
+  assert.match(appRoot, /route\.meta\.workbenchViewId/);
+  assert.match(appRoot, /getViewById\(activeNavItemId\.value\)/);
 });
 
 test("workbench views use a definition helper for default layout", async () => {

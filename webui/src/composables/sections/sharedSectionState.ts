@@ -1,5 +1,5 @@
-import { effectScope, type EffectScope } from "vue";
-import { onBeforeRouteLeave } from "vue-router";
+import { effectScope, watch, type EffectScope } from "vue";
+import { onBeforeRouteLeave, useRoute } from "vue-router";
 
 type ResettableSectionState = {
   resetState: () => void;
@@ -24,6 +24,15 @@ export function createSharedSectionState<TState extends ResettableSectionState>(
 
   return function useSharedSectionState() {
     const currentState = getState();
+    const route = useRoute();
+    watch(
+      () => route.name ?? route.fullPath,
+      (nextRouteKey, previousRouteKey) => {
+        if (nextRouteKey !== previousRouteKey) {
+          currentState.resetState();
+        }
+      }
+    );
     onBeforeRouteLeave(() => {
       currentState.resetState();
     });

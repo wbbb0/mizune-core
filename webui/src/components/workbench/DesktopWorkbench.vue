@@ -123,20 +123,25 @@ onUnmounted(stopDesktopAreaResize);
           :active-nav-item-id="activeNavItemId"
           @navigate="emit('navigate', $event)"
         />
-        <aside v-if="hasPrimarySidebar" class="scrollbar-thin shrink-0 overflow-x-hidden overflow-y-auto bg-surface-sidebar" :style="primarySidebarStyle">
-          <component :is="primarySidebar" />
-        </aside>
         <div
           v-if="hasPrimarySidebar"
-          class="relative w-1 shrink-0 cursor-col-resize border-r border-border-default bg-surface-sidebar hover:bg-accent/25 focus:bg-accent/25 focus:outline-none"
-          role="separator"
-          aria-orientation="vertical"
-          :aria-valuenow="primarySidebarSize"
-          tabindex="0"
-          @pointerdown="startDesktopAreaResize('primarySidebar', 'x', 1, $event)"
-          @dblclick="resetDesktopAreaResize('primarySidebar')"
-          @keydown="onVerticalResizeKeydown('primarySidebar', 1, $event)"
-        />
+          class="relative shrink-0 bg-surface-sidebar"
+          :style="primarySidebarStyle"
+        >
+          <aside class="scrollbar-thin h-full overflow-x-hidden overflow-y-auto">
+            <component :is="primarySidebar" />
+          </aside>
+          <div
+            class="absolute inset-y-0 -right-0.5 z-20 w-1 cursor-col-resize bg-transparent before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-border-default hover:bg-accent/25 focus:bg-accent/25 focus:outline-none"
+            role="separator"
+            aria-orientation="vertical"
+            :aria-valuenow="primarySidebarSize"
+            tabindex="0"
+            @pointerdown="startDesktopAreaResize('primarySidebar', 'x', 1, $event)"
+            @dblclick="resetDesktopAreaResize('primarySidebar')"
+            @keydown="onVerticalResizeKeydown('primarySidebar', 1, $event)"
+          />
+        </div>
         <section class="flex min-w-0 flex-1 flex-col overflow-hidden">
           <main ref="runtime.mainRegionRef" class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pr-safe">
             <component :is="mainArea" />
@@ -162,22 +167,23 @@ onUnmounted(stopDesktopAreaResize);
         </section>
         <div
           v-if="hasSecondarySidebar"
-          class="relative w-1 shrink-0 cursor-col-resize border-l border-border-default bg-surface-sidebar hover:bg-accent/25 focus:bg-accent/25 focus:outline-none"
-          role="separator"
-          aria-orientation="vertical"
-          :aria-valuenow="secondarySidebarSize"
-          tabindex="0"
-          @pointerdown="startDesktopAreaResize('secondarySidebar', 'x', -1, $event)"
-          @dblclick="resetDesktopAreaResize('secondarySidebar')"
-          @keydown="onVerticalResizeKeydown('secondarySidebar', -1, $event)"
-        />
-        <aside
-          v-if="hasSecondarySidebar"
-          class="scrollbar-thin shrink-0 overflow-x-hidden overflow-y-auto border-l border-border-default bg-surface-sidebar"
+          class="relative shrink-0 bg-surface-sidebar"
           :style="secondarySidebarStyle"
         >
-          <component :is="secondarySidebar" />
-        </aside>
+          <div
+            class="absolute inset-y-0 -left-0.5 z-20 w-1 cursor-col-resize bg-transparent before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-border-default hover:bg-accent/25 focus:bg-accent/25 focus:outline-none"
+            role="separator"
+            aria-orientation="vertical"
+            :aria-valuenow="secondarySidebarSize"
+            tabindex="0"
+            @pointerdown="startDesktopAreaResize('secondarySidebar', 'x', -1, $event)"
+            @dblclick="resetDesktopAreaResize('secondarySidebar')"
+            @keydown="onVerticalResizeKeydown('secondarySidebar', -1, $event)"
+          />
+          <aside class="scrollbar-thin h-full overflow-x-hidden overflow-y-auto">
+            <component :is="secondarySidebar" />
+          </aside>
+        </div>
       </div>
       <StatusBar :items="statusbarItems" />
     </div>

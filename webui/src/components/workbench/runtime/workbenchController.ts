@@ -1,6 +1,4 @@
 import {
-  computed,
-  defineComponent,
   getCurrentInstance,
   inject,
   provide,
@@ -12,7 +10,7 @@ import {
 import { createMenuRuntime, type WorkbenchMenuRuntime } from "../menu/menuRuntime.js";
 import { createWorkbenchToastService, type WorkbenchToastService } from "../toasts/toastService.js";
 import { createWorkbenchWindowService, type WorkbenchWindowManager } from "../windows/windowService.js";
-import { defineWorkbenchView, type WorkbenchView } from "../types.js";
+import type { WorkbenchView } from "../types.js";
 import {
   activateWorkbenchRuntime,
   createWorkbenchRuntime,
@@ -29,20 +27,6 @@ export type WorkbenchController = {
 
 const workbenchControllerKey: InjectionKey<WorkbenchController> = Symbol("workbench-controller");
 const activeWorkbenchController = shallowRef<WorkbenchController | null>(null);
-let fallbackWorkbenchController: WorkbenchController | null = null;
-
-const FallbackWorkbenchArea = defineComponent({
-  name: "FallbackWorkbenchArea",
-  setup: () => () => null
-});
-
-const fallbackWorkbenchView = defineWorkbenchView({
-  id: "__fallback__",
-  title: "",
-  areas: {
-    mainArea: FallbackWorkbenchArea
-  }
-});
 
 export function createWorkbenchController(view: ComputedRef<WorkbenchView>): WorkbenchController {
   return {
@@ -65,15 +49,12 @@ export function useWorkbenchControllerContext(): WorkbenchController | null {
   return inject(workbenchControllerKey, null);
 }
 
-function getFallbackWorkbenchController() {
-  fallbackWorkbenchController ??= createWorkbenchController(computed(() => fallbackWorkbenchView));
-  return fallbackWorkbenchController;
-}
-
 export function useWorkbenchController(): WorkbenchController {
-  return useWorkbenchControllerContext()
-    ?? activeWorkbenchController.value
-    ?? getFallbackWorkbenchController();
+  const controller = useWorkbenchControllerContext() ?? activeWorkbenchController.value;
+  if (!controller) {
+    throw new Error("Workbench controller is not active. Mount WorkbenchRoot before using workbench services.");
+  }
+  return controller;
 }
 
 export function activateWorkbenchController(controller: WorkbenchController): () => void {
