@@ -128,7 +128,7 @@ onUnmounted(stopDesktopAreaResize);
         </aside>
         <div
           v-if="hasPrimarySidebar"
-          class="relative w-1 shrink-0 cursor-col-resize border-l border-border-default bg-surface-sidebar hover:bg-accent/25 focus:bg-accent/25 focus:outline-none"
+          class="relative w-1 shrink-0 cursor-col-resize border-r border-border-default bg-surface-sidebar hover:bg-accent/25 focus:bg-accent/25 focus:outline-none"
           role="separator"
           aria-orientation="vertical"
           :aria-valuenow="primarySidebarSize"

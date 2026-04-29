@@ -142,9 +142,22 @@ test("desktop workbench sizes desktop areas through runtime resize state", async
   assert.match(desktop, /aria-orientation="horizontal"/);
   assert.match(desktop, /<aside v-if="hasPrimarySidebar"/);
   assert.match(desktop, /v-if="hasPrimarySidebar"\s*\n\s*class="relative w-1/);
+  assert.match(desktop, /border-r border-border-default/);
   assert.match(desktop, /@pointerdown="startDesktopAreaResize\('primarySidebar'/);
   assert.match(desktop, /@dblclick="resetDesktopAreaResize\('primarySidebar'\)"/);
   assert.doesNotMatch(desktop, /w-\(--side-panel-width\)/);
+});
+
+test("detached window and toast services resolve the active controller at call time", async () => {
+  const windows = await readFile(new URL("../../../webui/src/components/workbench/windows/useWorkbenchWindows.ts", import.meta.url), "utf8");
+  const toasts = await readFile(new URL("../../../webui/src/components/workbench/toasts/useWorkbenchToasts.ts", import.meta.url), "utf8");
+
+  assert.match(windows, /dynamicWorkbenchWindows/);
+  assert.match(windows, /useWorkbenchControllerContext\(\)\?\.windows \?\? dynamicWorkbenchWindows/);
+  assert.match(windows, /useWorkbenchController\(\)\.windows\.openDialog/);
+  assert.match(toasts, /dynamicWorkbenchToasts/);
+  assert.match(toasts, /useWorkbenchControllerContext\(\)\?\.toasts \?\? dynamicWorkbenchToasts/);
+  assert.match(toasts, /useWorkbenchController\(\)\.toasts\.push/);
 });
 
 test("workbench views use a definition helper for default layout", async () => {

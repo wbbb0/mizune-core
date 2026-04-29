@@ -1,4 +1,4 @@
-import { ref, type Ref } from "vue";
+import { ref } from "vue";
 
 export interface ToastItem {
   id: number;
@@ -7,7 +7,7 @@ export interface ToastItem {
 }
 
 export type WorkbenchToastService = {
-  items: Ref<ToastItem[]>;
+  items: Readonly<{ value: ToastItem[] }>;
   push: (input: {
     type: ToastItem["type"];
     message: string;
