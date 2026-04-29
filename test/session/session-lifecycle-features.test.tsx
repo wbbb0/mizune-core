@@ -58,3 +58,34 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       false
     );
   });
+
+  test("session history backfill boundary is initialized and advanced by clear and compression", async () => {
+    const sessionManager = new SessionManager(createTestAppConfig());
+    const sessionId = "qqbot:p:test";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    const createdBoundary = sessionManager.getSession(sessionId).historyBackfillBoundaryMs;
+    assert.ok(createdBoundary > 0);
+
+    sessionManager.getSession(sessionId).historyBackfillBoundaryMs = 1;
+    sessionManager.clearSession(sessionId);
+    assert.ok(sessionManager.getSession(sessionId).historyBackfillBoundaryMs >= createdBoundary);
+
+    sessionManager.appendUserHistory(sessionId, {
+      chatType: "private",
+      userId: "owner",
+      senderName: "Owner",
+      text: "old"
+    }, 10);
+    sessionManager.appendUserHistory(sessionId, {
+      chatType: "private",
+      userId: "owner",
+      senderName: "Owner",
+      text: "retained"
+    }, 20);
+    const revision = sessionManager.getHistoryRevision(sessionId);
+    assert.equal(sessionManager.applyCompressedHistoryIfHistoryRevisionMatches(sessionId, revision, {
+      historySummary: "old summary",
+      transcriptStartIndexToKeep: 1
+    }), true);
+    assert.equal(sessionManager.getSession(sessionId).historyBackfillBoundaryMs, 20);
+  });

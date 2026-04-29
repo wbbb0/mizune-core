@@ -368,3 +368,23 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       assert.equal(config.onebot.typing.group, false);
     });
   });
+
+  test("loadConfig applies OneBot history backfill defaults", async () => {
+    await withConfigDir("llm-bot-config-onebot-history-backfill-defaults-test", async (configDir) => {
+      await writeDefaultInstanceYaml(configDir);
+      await writeYaml(join(configDir, "global.yml"), {
+        onebot: {
+          provider: "napcat"
+        }
+      });
+
+      const config = loadConfig({
+        CONFIG_DIR: configDir
+      });
+
+      assert.equal(config.onebot.historyBackfill.enabled, false);
+      assert.equal(config.onebot.historyBackfill.maxMessagesPerSession, 20);
+      assert.equal(config.onebot.historyBackfill.maxTotalMessages, 100);
+      assert.equal(config.onebot.historyBackfill.requestDelayMs, 100);
+    });
+  });

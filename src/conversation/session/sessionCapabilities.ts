@@ -13,7 +13,8 @@ import type {
   SessionUsageSnapshot,
   SessionParticipantRef,
   TranscriptItemDeliveryRef,
-  TranscriptItemRuntimeExclusionReason
+  TranscriptItemRuntimeExclusionReason,
+  TranscriptItemSourceRef
 } from "./sessionTypes.ts";
 import type { SessionOperationMode } from "./sessionOperationMode.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
@@ -302,9 +303,39 @@ export interface SessionDirectCommandAccess {
       mentionUserIds?: string[];
       mentionedAll?: boolean;
       mentionedSelf?: boolean;
+      sourceRef?: TranscriptItemSourceRef;
     },
     timestampMs?: number
   ): void;
+  canInsertUserHistoryByTimestamp(
+    sessionId: string,
+    input: {
+      sourceRef?: TranscriptItemSourceRef;
+      timestampMs: number;
+    }
+  ): boolean;
+  insertUserHistoryByTimestamp(
+    sessionId: string,
+    message: {
+      chatType: "private" | "group";
+      userId: string;
+      senderName: string;
+      text: string;
+      imageIds?: string[];
+      emojiIds?: string[];
+      attachments?: SessionMessage["attachments"];
+      specialSegments?: SessionMessage["specialSegments"];
+      audioCount?: number;
+      forwardIds?: string[];
+      replyMessageId?: string | null;
+      mentionUserIds?: string[];
+      mentionedAll?: boolean;
+      mentionedSelf?: boolean;
+      sourceRef?: TranscriptItemSourceRef;
+    },
+    timestampMs?: number
+  ): boolean;
+  hasHistorySource(sessionId: string, sourceRef: TranscriptItemSourceRef): boolean;
   getDebugControlState(sessionId: string): SessionDebugControlState;
   getOperationMode(sessionId: string): SessionOperationMode;
   setOperationMode(sessionId: string, operationMode: SessionOperationMode): SessionOperationMode;
@@ -342,9 +373,11 @@ export interface SessionMessagingAccess {
       mentionUserIds?: string[];
       mentionedAll?: boolean;
       mentionedSelf?: boolean;
+      sourceRef?: TranscriptItemSourceRef;
     },
     timestampMs?: number
   ): void;
+  hasHistorySource(sessionId: string, sourceRef: TranscriptItemSourceRef): boolean;
   appendAssistantHistory(
     sessionId: string,
     message: {

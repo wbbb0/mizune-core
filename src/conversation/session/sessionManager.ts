@@ -47,7 +47,8 @@ import type {
   SessionTitleSource,
   SessionUsageSnapshot,
   TranscriptItemDeliveryRef,
-  TranscriptItemRuntimeExclusionReason
+  TranscriptItemRuntimeExclusionReason,
+  TranscriptItemSourceRef
 } from "./sessionTypes.ts";
 import { cloneSessionOperationMode, type SessionOperationMode } from "./sessionOperationMode.ts";
 import type { ToolObservationSummary } from "./toolObservation.ts";
@@ -493,10 +494,50 @@ export class SessionManager {
     mentionUserIds?: string[];
     mentionedAll?: boolean;
     mentionedSelf?: boolean;
+    sourceRef?: TranscriptItemSourceRef;
   }, timestampMs = Date.now()): void {
     const session = this.requireSession(sessionId);
     this.historyService.appendUserHistory(session, message, timestampMs);
     this.notifySessionChanged(sessionId);
+  }
+
+  canInsertUserHistoryByTimestamp(
+    sessionId: string,
+    input: {
+      sourceRef?: TranscriptItemSourceRef;
+      timestampMs: number;
+    }
+  ): boolean {
+    return this.historyService.canInsertUserHistoryByTimestamp(this.requireSession(sessionId), input);
+  }
+
+  insertUserHistoryByTimestamp(sessionId: string, message: {
+    chatType: "private" | "group";
+    userId: string;
+    senderName: string;
+    text: string;
+    imageIds?: string[];
+    emojiIds?: string[];
+    attachments?: SessionMessage["attachments"];
+    specialSegments?: SessionMessage["specialSegments"];
+    audioCount?: number;
+    forwardIds?: string[];
+    replyMessageId?: string | null;
+    mentionUserIds?: string[];
+    mentionedAll?: boolean;
+    mentionedSelf?: boolean;
+    sourceRef?: TranscriptItemSourceRef;
+  }, timestampMs = Date.now()): boolean {
+    const session = this.requireSession(sessionId);
+    const inserted = this.historyService.insertUserHistoryByTimestamp(session, message, timestampMs);
+    if (inserted) {
+      this.notifySessionChanged(sessionId);
+    }
+    return inserted;
+  }
+
+  hasHistorySource(sessionId: string, sourceRef: TranscriptItemSourceRef): boolean {
+    return this.historyService.hasSourceRef(this.requireSession(sessionId), sourceRef);
   }
 
   appendAssistantHistory(sessionId: string, message: {

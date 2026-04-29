@@ -13,7 +13,8 @@ import type {
   TranscriptSessionModeSwitchItem,
   TranscriptAssistantMessageItem,
   TranscriptUserMessageItem,
-  TranscriptItemDeliveryRef
+  TranscriptItemDeliveryRef,
+  TranscriptItemSourceRef
 } from "./sessionTypes.ts";
 
 export function formatStructuredMediaReference(kind: MediaSemanticKind, imageId: string): string {
@@ -242,6 +243,7 @@ export function createUserTranscriptMessageItem(input: {
   mentionUserIds?: string[];
   mentionedAll?: boolean;
   mentionedSelf?: boolean;
+  sourceRef?: TranscriptItemSourceRef;
   timestampMs: number;
 }): TranscriptUserMessageItem {
   return {
@@ -262,6 +264,7 @@ export function createUserTranscriptMessageItem(input: {
     mentionUserIds: [...(input.mentionUserIds ?? [])],
     mentionedAll: input.mentionedAll === true,
     mentionedSelf: input.mentionedSelf === true,
+    ...(input.sourceRef ? { sourceRef: input.sourceRef } : {}),
     timestampMs: input.timestampMs
   };
 }

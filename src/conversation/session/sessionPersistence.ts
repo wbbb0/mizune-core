@@ -112,6 +112,7 @@ const persistedSessionSchema = z.object({
   pendingTranscriptGroupId: z.string().min(1).nullable().optional(),
   activeTranscriptGroupId: z.string().min(1).nullable().optional(),
   historySummary: z.string().nullable(),
+  historyBackfillBoundaryMs: z.number().int().nonnegative().optional(),
   internalTranscript: z.array(internalTranscriptItemSchema),
   debugMarkers: z.array(z.object({
     kind: z.enum(["debug_enabled", "debug_disabled", "debug_once_armed", "debug_once_consumed", "debug_dump_sent"]),

@@ -16,6 +16,8 @@ import {
   startSchedulerIfEnabled,
   subscribeRuntimeReload
 } from "./runtimeLifecycle.ts";
+import { backfillOneBotSessionHistory } from "./oneBotHistoryBackfill.ts";
+import { createOneBotStartupIngressGate } from "./oneBotStartupIngressGate.ts";
 
 // Builds and starts the full application runtime on top of the shared service graph.
 export async function createAppRuntime(): Promise<AppLifecycleHooks> {
@@ -191,8 +193,15 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     });
   };
 
-  const onMessage = createMessageListener(logger, messageIngress.handleMessageEvent);
-  const onRequest = createRequestListener(logger, requestStore);
+  const oneBotStartupIngressGate = createOneBotStartupIngressGate({
+    logger,
+    handleMessageEvent: messageIngress.handleMessageEvent,
+    handleRequestEvent: (event) => requestStore.upsertFromEvent(event)
+  });
+  const onMessage = createMessageListener(logger, oneBotStartupIngressGate.handleMessageEvent);
+  const onRequest = createRequestListener(logger, {
+    upsertFromEvent: oneBotStartupIngressGate.handleRequestEvent
+  });
   const internalApiServices = createInternalApiServices({
     config,
     logger,
@@ -221,11 +230,24 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
 
   try {
     if (config.onebot.enabled) {
-      await oneBotClient.start();
-
-      // Register listeners ONLY AFTER client is started to avoid double processing during transitions
       oneBotClient.on("message", onMessage);
       oneBotClient.on("request", onRequest);
+      const oneBotHistoryImportBeforeMs = Date.now();
+      await oneBotClient.start();
+      await backfillOneBotSessionHistory({
+        config,
+        logger,
+        importBeforeMs: oneBotHistoryImportBeforeMs,
+        oneBotClient,
+        sessionManager,
+        audioStore,
+        chatFileStore,
+        userIdentityStore,
+        userStore,
+        setupStore,
+        persistSession
+      });
+      await oneBotStartupIngressGate.open();
 
       await notifyOwnerSetupIfNeeded();
     } else {

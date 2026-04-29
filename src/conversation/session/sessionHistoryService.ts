@@ -17,6 +17,7 @@ import {
   createUserTranscriptMessageItem
 } from "./historyContext.ts";
 import {
+  createTranscriptGroupId,
   ensurePendingTranscriptGroupId,
   normalizeTranscriptItem,
   resolveTranscriptOutputGroupId
@@ -35,7 +36,8 @@ import type {
   SessionUsageSnapshot,
   TranscriptAssistantMessageItem,
   TranscriptItemDeliveryRef,
-  TranscriptItemRuntimeExclusionReason
+  TranscriptItemRuntimeExclusionReason,
+  TranscriptItemSourceRef
 } from "./sessionTypes.ts";
 import type { ToolObservationSummary } from "./toolObservation.ts";
 
@@ -58,6 +60,46 @@ export class SessionHistoryService {
   private appendHistoryTranscript(session: SessionState, item: InternalTranscriptItem, groupId: string): void {
     this.appendNormalizedTranscript(session, item, groupId);
     session.historyRevision += 1;
+  }
+
+  private createUserHistoryTranscriptItem(
+    message: {
+      chatType: "private" | "group";
+      userId: string;
+      senderName: string;
+      text: string;
+      imageIds?: string[];
+      emojiIds?: string[];
+      attachments?: SessionMessage["attachments"];
+      specialSegments?: SessionMessage["specialSegments"];
+      audioCount?: number;
+      forwardIds?: string[];
+      replyMessageId?: string | null;
+      mentionUserIds?: string[];
+      mentionedAll?: boolean;
+      mentionedSelf?: boolean;
+      sourceRef?: TranscriptItemSourceRef;
+    },
+    timestampMs: number
+  ) {
+    return createUserTranscriptMessageItem({
+      chatType: message.chatType,
+      userId: message.userId,
+      senderName: message.senderName,
+      text: message.text,
+      ...(message.imageIds ? { imageIds: message.imageIds } : {}),
+      ...(message.emojiIds ? { emojiIds: message.emojiIds } : {}),
+      ...(message.attachments ? { attachments: message.attachments } : {}),
+      ...(message.specialSegments ? { specialSegments: message.specialSegments } : {}),
+      ...(message.audioCount != null ? { audioCount: message.audioCount } : {}),
+      ...(message.forwardIds ? { forwardIds: message.forwardIds } : {}),
+      ...(message.replyMessageId !== undefined ? { replyMessageId: message.replyMessageId } : {}),
+      ...(message.mentionUserIds ? { mentionUserIds: message.mentionUserIds } : {}),
+      ...(message.mentionedAll !== undefined ? { mentionedAll: message.mentionedAll } : {}),
+      ...(message.mentionedSelf !== undefined ? { mentionedSelf: message.mentionedSelf } : {}),
+      ...(message.sourceRef ? { sourceRef: message.sourceRef } : {}),
+      timestampMs
+    });
   }
 
   clone(session: SessionState): SessionState {
@@ -110,26 +152,59 @@ export class SessionHistoryService {
       mentionUserIds?: string[];
       mentionedAll?: boolean;
       mentionedSelf?: boolean;
+      sourceRef?: TranscriptItemSourceRef;
     },
     timestampMs = Date.now()
   ): void {
-    this.appendHistoryTranscript(session, createUserTranscriptMessageItem({
-      chatType: message.chatType,
-      userId: message.userId,
-      senderName: message.senderName,
-      text: message.text,
-      ...(message.imageIds ? { imageIds: message.imageIds } : {}),
-      ...(message.emojiIds ? { emojiIds: message.emojiIds } : {}),
-      ...(message.attachments ? { attachments: message.attachments } : {}),
-      ...(message.specialSegments ? { specialSegments: message.specialSegments } : {}),
-      ...(message.audioCount != null ? { audioCount: message.audioCount } : {}),
-      ...(message.forwardIds ? { forwardIds: message.forwardIds } : {}),
-      ...(message.replyMessageId !== undefined ? { replyMessageId: message.replyMessageId } : {}),
-      ...(message.mentionUserIds ? { mentionUserIds: message.mentionUserIds } : {}),
-      ...(message.mentionedAll !== undefined ? { mentionedAll: message.mentionedAll } : {}),
-      ...(message.mentionedSelf !== undefined ? { mentionedSelf: message.mentionedSelf } : {}),
+    if (message.sourceRef && this.hasSourceRef(session, message.sourceRef)) {
+      return;
+    }
+    this.appendHistoryTranscript(
+      session,
+      this.createUserHistoryTranscriptItem(message, timestampMs),
+      ensurePendingTranscriptGroupId(session)
+    );
+  }
+
+  canInsertUserHistoryByTimestamp(
+    session: SessionState,
+    input: {
+      sourceRef?: TranscriptItemSourceRef;
+      timestampMs: number;
+    }
+  ): boolean {
+    if (input.timestampMs < session.historyBackfillBoundaryMs) {
+      return false;
+    }
+    return input.sourceRef == null || !this.hasSourceRef(session, input.sourceRef);
+  }
+
+  insertUserHistoryByTimestamp(
+    session: SessionState,
+    message: Parameters<SessionHistoryService["appendUserHistory"]>[1],
+    timestampMs = Date.now()
+  ): boolean {
+    if (!this.canInsertUserHistoryByTimestamp(session, {
+      ...(message.sourceRef ? { sourceRef: message.sourceRef } : {}),
       timestampMs
-    }), ensurePendingTranscriptGroupId(session));
+    })) {
+      return false;
+    }
+    const item = withEstimatedInputTokenStats(
+      normalizeTranscriptItem(this.createUserHistoryTranscriptItem(message, timestampMs), createTranscriptGroupId()),
+      this.config
+    );
+    const insertIndex = findTranscriptInsertIndex(session.internalTranscript, timestampMs);
+    session.internalTranscript.splice(insertIndex, 0, item);
+    session.historyRevision += 1;
+    return true;
+  }
+
+  hasSourceRef(session: SessionState, sourceRef: TranscriptItemSourceRef): boolean {
+    return session.internalTranscript.some((item) => (
+      item.sourceRef?.platform === sourceRef.platform
+      && item.sourceRef.messageId === sourceRef.messageId
+    ));
   }
 
   appendAssistantHistory(
@@ -308,4 +383,14 @@ export class SessionHistoryService {
   ): InternalTranscriptItem[] {
     return this.getTranscriptStore(session).excludeGroup(groupId, reason, timestampMs);
   }
+}
+
+function findTranscriptInsertIndex(items: InternalTranscriptItem[], timestampMs: number): number {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item && item.timestampMs <= timestampMs) {
+      return index + 1;
+    }
+  }
+  return 0;
 }

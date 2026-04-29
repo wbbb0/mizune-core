@@ -8,6 +8,7 @@ import type {
   TranscriptItemDeliveryRef as TranscriptItemDeliveryRefContract,
   TranscriptItemMeta as TranscriptItemMetaContract,
   TranscriptItemRuntimeExclusionReason as TranscriptItemRuntimeExclusionReasonContract,
+  TranscriptItemSourceRef as TranscriptItemSourceRefContract,
   TranscriptTokenStat as TranscriptTokenStatContract,
   TranscriptTokenStats as TranscriptTokenStatsContract
 } from "./transcriptContract.ts";
@@ -106,6 +107,7 @@ export interface SessionDebugMarker {
 
 export type StoredToolCall = StoredToolCallContract;
 export type TranscriptItemRuntimeExclusionReason = TranscriptItemRuntimeExclusionReasonContract;
+export type TranscriptItemSourceRef = TranscriptItemSourceRefContract;
 export type TranscriptItemDeliveryRef = TranscriptItemDeliveryRefContract;
 export type TranscriptItemMeta = TranscriptItemMetaContract;
 export type TranscriptTokenStat = TranscriptTokenStatContract;
@@ -257,6 +259,7 @@ export interface SessionState {
   pendingInternalTriggers: InternalSessionTriggerExecution[];
   interruptibleGroupTriggerUserId: string | null;
   historySummary: string | null;
+  historyBackfillBoundaryMs: number;
   internalTranscript: InternalTranscriptItem[];
   debugMarkers: SessionDebugMarker[];
   recentToolEvents: SessionToolEvent[];
@@ -295,6 +298,7 @@ export interface PersistedSessionState {
   pendingTranscriptGroupId?: string | null;
   activeTranscriptGroupId?: string | null;
   historySummary: string | null;
+  historyBackfillBoundaryMs?: number;
   internalTranscript: InternalTranscriptItem[];
   debugMarkers: SessionDebugMarker[];
   recentToolEvents: SessionToolEvent[];

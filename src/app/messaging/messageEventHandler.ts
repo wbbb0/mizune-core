@@ -21,6 +21,10 @@ import {
   resolveTriggerDecision
 } from "./messageTriggerFlow.ts";
 import { logIgnoredMessage, logReceivedMessage, resolveRawText } from "./messageLogging.ts";
+import {
+  resolveIncomingOneBotSourceRef
+} from "./incomingHistory.ts";
+import { buildSessionId } from "#conversation/session/sessionIdentity.ts";
 
 export type {
   MessageEventHandlerDeps,
@@ -57,6 +61,21 @@ export async function processIncomingMessage(
     setupStore,
     conversationAccess
   } = services;
+
+  const sourceRef = resolveIncomingOneBotSourceRef(incomingMessage);
+  if (sourceRef != null) {
+    const sessionId = options?.targetSessionId ?? buildSessionId(incomingMessage);
+    if (hasHistorySource(sessionManager, sessionId, sourceRef)) {
+      logger.info(
+        {
+          sessionId,
+          sourceRef
+        },
+        "incoming_message_duplicate_ignored"
+      );
+      return;
+    }
+  }
 
   const context = await createMessageProcessingContext(
     { audioStore, chatFileStore, sessionManager, userStore, setupStore, userIdentityStore },
@@ -168,4 +187,19 @@ export function createMessageEventHandler(deps: MessageEventHandlerDeps) {
 
     await processIncomingMessage(deps, incomingMessage);
   };
+}
+
+function hasHistorySource(
+  sessionManager: MessageHandlerServices["sessionManager"],
+  sessionId: string,
+  sourceRef: NonNullable<ReturnType<typeof resolveIncomingOneBotSourceRef>>
+): boolean {
+  try {
+    return sessionManager.hasHistorySource(sessionId, sourceRef);
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message.startsWith("Session not found:")) {
+      return false;
+    }
+    throw error;
+  }
 }

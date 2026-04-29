@@ -33,13 +33,21 @@ const onebotTypingConfigSchema = s.object({
   group: s.boolean().title("群聊").default(false)
 }).title("输入状态").describe("控制 OneBot 输入中提示的发送范围。").default(emptyObject);
 
+const onebotHistoryBackfillConfigSchema = s.object({
+  enabled: s.boolean().title("启用").default(false),
+  maxMessagesPerSession: s.number().int().positive().title("单会话消息上限").default(20),
+  maxTotalMessages: s.number().int().positive().title("总消息上限").default(100),
+  requestDelayMs: s.number().int().min(0).title("请求间隔毫秒").default(100)
+}).title("历史补全").describe("启动时从支持历史扩展接口的 OneBot 实现拉取已有会话的缺失消息，只写入历史，不触发回复。").default(emptyObject);
+
 const onebotConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(true),
   provider: s.enum(["generic", "napcat"] as const).title("实现").default("generic"),
   wsUrl: s.string().url().title("WS 地址").default("ws://127.0.0.1:3001"),
   httpUrl: s.string().url().title("HTTP 地址").default("http://127.0.0.1:3000"),
   accessToken: s.string().trim().nonempty().title("访问令牌").optional(),
-  typing: onebotTypingConfigSchema
+  typing: onebotTypingConfigSchema,
+  historyBackfill: onebotHistoryBackfillConfigSchema
 }).title("OneBot").describe("配置 OneBot 连接方式与消息发送行为。").default(emptyObject);
 
 const proxyDetailSchema = s.object({

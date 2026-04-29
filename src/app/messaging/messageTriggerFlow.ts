@@ -8,6 +8,10 @@ import type {
   MessageProcessingContext,
   TriggerDecision
 } from "./messageHandlerTypes.ts";
+import {
+  appendIncomingHistoryTranscript,
+  resolveIncomingOneBotSourceRef
+} from "./incomingHistory.ts";
 
 export async function resolveTriggerDecision(
   services: Pick<
@@ -53,20 +57,11 @@ export function appendIncomingHistory(
   logger: Logger,
   context: MessageProcessingContext
 ): void {
-  sessionManager.appendUserHistory(context.session.id, {
-    chatType: context.enrichedMessage.chatType,
-    userId: context.enrichedMessage.userId,
-    senderName: context.enrichedMessage.senderName,
-    text: context.enrichedMessage.text,
-    ...(context.enrichedMessage.attachments ? { attachments: context.enrichedMessage.attachments } : {}),
-    ...(context.enrichedMessage.specialSegments ? { specialSegments: context.enrichedMessage.specialSegments } : {}),
-    audioCount: context.enrichedMessage.audioSources.length,
-    forwardIds: context.enrichedMessage.forwardIds,
-    replyMessageId: context.enrichedMessage.replyMessageId,
-    mentionUserIds: context.enrichedMessage.mentionUserIds,
-    mentionedAll: context.enrichedMessage.mentionedAll,
-    mentionedSelf: context.enrichedMessage.isAtMentioned
-  }, Date.now());
+  const sourceRef = resolveIncomingOneBotSourceRef(context.enrichedMessage);
+  appendIncomingHistoryTranscript(sessionManager, context, {
+    timestampMs: Date.now(),
+    ...(sourceRef ? { sourceRef } : {})
+  });
   logger.info(
     {
       sessionId: context.session.id,

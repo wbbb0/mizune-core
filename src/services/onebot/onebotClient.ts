@@ -14,10 +14,13 @@ import type {
   OneBotGroupMemberInfo,
   OneBotGroupMemberItem,
   OneBotGroupAnnouncementItem,
+  OneBotHistoryMessage,
+  OneBotLoginInfo,
   OneBotRetrievedMessage,
   OneBotSendResult
 } from "./types.ts";
 import { createOneBotTypingAdapter } from "./typingAdapter.ts";
+import { normalizeOneBotMessageId } from "./messageId.ts";
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000, 30000];
 
@@ -241,6 +244,54 @@ export class OneBotClient extends EventEmitter {
     });
     this.assertApiSuccess("_get_group_notice", payload, { groupId });
     return extractArrayPayload(payload.data).filter(isRecord) as OneBotGroupAnnouncementItem[];
+  }
+
+  async getLoginInfo(): Promise<OneBotLoginInfo> {
+    const payload = await this.postApi<OneBotApiResponse>("get_login_info", {});
+    this.assertApiSuccess("get_login_info", payload);
+    const data = isRecord(payload.data) ? payload.data : {};
+    const userId = typeof data.user_id === "number" ? data.user_id : null;
+    if (userId == null) {
+      throw new Error("OneBot API get_login_info returned no user_id");
+    }
+    return {
+      user_id: userId,
+      ...(typeof data.nickname === "string" ? { nickname: data.nickname } : {})
+    };
+  }
+
+  async getPrivateMessageHistory(input: {
+    userId: string;
+    count: number;
+    messageSeq?: number;
+  }): Promise<OneBotHistoryMessage[]> {
+    const payload = await this.postApi<OneBotApiResponse>("get_friend_msg_history", {
+      user_id: Number(input.userId),
+      count: input.count,
+      ...(input.messageSeq != null ? { message_seq: input.messageSeq } : {})
+    });
+    this.assertApiSuccess("get_friend_msg_history", payload, {
+      userId: input.userId,
+      count: input.count
+    });
+    return extractHistoryMessages(payload.data, "private");
+  }
+
+  async getGroupMessageHistory(input: {
+    groupId: string;
+    count: number;
+    messageSeq?: number;
+  }): Promise<OneBotHistoryMessage[]> {
+    const payload = await this.postApi<OneBotApiResponse>("get_group_msg_history", {
+      group_id: Number(input.groupId),
+      count: input.count,
+      ...(input.messageSeq != null ? { message_seq: input.messageSeq } : {})
+    });
+    this.assertApiSuccess("get_group_msg_history", payload, {
+      groupId: input.groupId,
+      count: input.count
+    });
+    return extractHistoryMessages(payload.data, "group");
   }
 
   async getForwardMessage(forwardId: string): Promise<unknown[]> {
@@ -485,11 +536,45 @@ function extractArrayPayload(data: unknown): unknown[] {
   if (!isRecord(data)) {
     return [];
   }
-  for (const key of ["notices", "notice", "items", "list", "data"]) {
+  for (const key of ["notices", "notice", "messages", "message", "items", "list", "data"]) {
     const value = data[key];
     if (Array.isArray(value)) {
       return value;
     }
   }
   return [];
+}
+
+function extractHistoryMessages(data: unknown, fallbackMessageType: "private" | "group"): OneBotHistoryMessage[] {
+  return extractArrayPayload(data)
+    .filter(isRecord)
+    .map((item) => normalizeHistoryMessage(item, fallbackMessageType))
+    .filter((item): item is OneBotHistoryMessage => item != null);
+}
+
+function normalizeHistoryMessage(
+  data: Record<string, unknown>,
+  fallbackMessageType: "private" | "group"
+): OneBotHistoryMessage | null {
+  const messageId = normalizeOneBotMessageId(data.message_id);
+  const message = Array.isArray(data.message) ? data.message as OneBotMessageSegment[] : [];
+  const rawMessage = typeof data.raw_message === "string" ? data.raw_message : "";
+  const userId = typeof data.user_id === "number" ? data.user_id : null;
+  if (messageId == null || userId == null || (message.length === 0 && !rawMessage)) {
+    return null;
+  }
+
+  return {
+    message_id: messageId,
+    real_id: typeof data.real_id === "number" ? data.real_id : null,
+    message_type: typeof data.message_type === "string" ? data.message_type : fallbackMessageType,
+    sub_type: typeof data.sub_type === "string" ? data.sub_type : null,
+    user_id: userId,
+    group_id: typeof data.group_id === "number" ? data.group_id : null,
+    message,
+    raw_message: rawMessage,
+    sender: isRecord(data.sender) ? data.sender : {},
+    time: typeof data.time === "number" ? data.time : null,
+    font: typeof data.font === "number" ? data.font : null
+  };
 }

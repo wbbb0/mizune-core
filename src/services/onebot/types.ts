@@ -48,6 +48,16 @@ export interface OneBotRetrievedMessage {
   font?: number | null;
 }
 
+export interface OneBotLoginInfo {
+  user_id: number;
+  nickname?: string;
+}
+
+export interface OneBotHistoryMessage extends Omit<OneBotRetrievedMessage, "message_id"> {
+  message_id: number | string | null;
+  message_type?: "private" | "group" | string | null;
+}
+
 export interface OneBotNoticeEvent {
   post_type: "notice";
   notice_type: string;

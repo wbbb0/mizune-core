@@ -15,7 +15,7 @@ export function createMessageListener(
 
 export function createRequestListener(
   logger: Logger,
-  requestStore: RequestStore
+  requestStore: Pick<RequestStore, "upsertFromEvent">
 ) {
   return (event: OneBotRequestEvent) => {
     void requestStore.upsertFromEvent(event).catch((error: unknown) => {

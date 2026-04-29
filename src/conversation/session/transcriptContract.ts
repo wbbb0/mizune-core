@@ -28,6 +28,11 @@ export const transcriptItemDeliveryRefSchema = z.object({
   messageId: z.number().int().nonnegative()
 });
 
+export const transcriptItemSourceRefSchema = z.object({
+  platform: z.literal("onebot"),
+  messageId: z.number().int().nonnegative()
+});
+
 export const transcriptSpecialSegmentSchema = z.object({
   type: z.string().min(1),
   summary: z.string()
@@ -57,6 +62,7 @@ export const transcriptItemMetaSchema = z.object({
   runtimeExcluded: z.boolean().optional(),
   runtimeExcludedAt: z.number().int().nonnegative().optional(),
   runtimeExclusionReason: z.enum(transcriptItemRuntimeExclusionReasonValues).optional(),
+  sourceRef: transcriptItemSourceRefSchema.optional(),
   deliveryRef: transcriptItemDeliveryRefSchema.optional(),
   tokenStats: transcriptTokenStatsSchema.optional()
 });
@@ -292,6 +298,7 @@ export type TranscriptTokenStat = z.infer<typeof transcriptTokenStatSchema>;
 export type TranscriptTokenStats = z.infer<typeof transcriptTokenStatsSchema>;
 export type TranscriptToolObservation = z.infer<typeof transcriptToolObservationSchema>;
 export type TranscriptItemRuntimeExclusionReason = (typeof transcriptItemRuntimeExclusionReasonValues)[number];
+export type TranscriptItemSourceRef = z.infer<typeof transcriptItemSourceRefSchema>;
 export type TranscriptItemDeliveryRef = z.infer<typeof transcriptItemDeliveryRefSchema>;
 export type TranscriptItemMeta = z.infer<typeof transcriptItemMetaSchema>;
 export type InternalTranscriptItem = z.infer<typeof internalTranscriptItemSchema>;

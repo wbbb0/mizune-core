@@ -24,6 +24,7 @@ export function createSessionState(target: {
   title?: string | null;
   titleSource?: SessionTitleSource | null;
 }): SessionState {
+  const now = Date.now();
   const modeId = getDefaultSessionModeId();
   const participantRef = target.participantRef ?? resolveSessionParticipantRef({
     sessionId: target.id,
@@ -60,6 +61,7 @@ export function createSessionState(target: {
     pendingInternalTriggers: [],
     interruptibleGroupTriggerUserId: null,
     historySummary: null,
+    historyBackfillBoundaryMs: now,
     internalTranscript: [],
     debugMarkers: [],
     recentToolEvents: [],
@@ -68,7 +70,7 @@ export function createSessionState(target: {
     phase: { kind: "idle" },
     responseEpoch: 0,
     messageQueue: [],
-    lastActiveAt: Date.now(),
+    lastActiveAt: now,
     lastMessageAt: null,
     latestGapMs: null,
     smoothedGapMs: null,
@@ -169,6 +171,7 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
     pendingInternalTriggers: [],
     interruptibleGroupTriggerUserId: null,
     historySummary: item.historySummary,
+    historyBackfillBoundaryMs: resolveHistoryBackfillBoundaryMs(item),
     internalTranscript: normalizeTranscriptItems(item.internalTranscript),
     debugMarkers: [...item.debugMarkers],
     recentToolEvents: [...item.recentToolEvents],
@@ -210,6 +213,7 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     pendingTranscriptGroupId: session.pendingTranscriptGroupId,
     activeTranscriptGroupId: session.activeTranscriptGroupId,
     historySummary: session.historySummary,
+    historyBackfillBoundaryMs: session.historyBackfillBoundaryMs,
     internalTranscript: session.internalTranscript.map((item) => ({ ...item })),
     debugMarkers: [...session.debugMarkers],
     recentToolEvents: [...session.recentToolEvents],
@@ -220,4 +224,20 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     latestGapMs: session.latestGapMs,
     smoothedGapMs: session.smoothedGapMs
   };
+}
+
+function resolveHistoryBackfillBoundaryMs(item: PersistedSessionState): number {
+  if (typeof item.historyBackfillBoundaryMs === "number" && Number.isFinite(item.historyBackfillBoundaryMs)) {
+    return Math.max(0, Math.trunc(item.historyBackfillBoundaryMs));
+  }
+  const earliestTranscriptTimestamp = item.internalTranscript.reduce<number | null>((earliest, entry) => {
+    if (!Number.isFinite(entry.timestampMs)) {
+      return earliest;
+    }
+    return earliest == null ? entry.timestampMs : Math.min(earliest, entry.timestampMs);
+  }, null);
+  if (earliestTranscriptTimestamp != null) {
+    return earliestTranscriptTimestamp;
+  }
+  return item.lastMessageAt ?? item.lastActiveAt;
 }

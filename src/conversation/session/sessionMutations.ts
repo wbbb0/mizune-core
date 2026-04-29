@@ -188,9 +188,9 @@ export function applyCompressedHistoryState(
   }
 ): void {
   session.historySummary = payload.historySummary;
-  session.internalTranscript = session.internalTranscript.slice(
-    Math.max(0, Math.min(payload.transcriptStartIndexToKeep, session.internalTranscript.length))
-  );
+  const startIndex = Math.max(0, Math.min(payload.transcriptStartIndexToKeep, session.internalTranscript.length));
+  session.internalTranscript = session.internalTranscript.slice(startIndex);
+  session.historyBackfillBoundaryMs = session.internalTranscript[0]?.timestampMs ?? Date.now();
   // Provider usage describes the prompt before compression; discard it so the
   // next compression check does not reuse stale input token counts.
   session.lastLlmUsage = null;
@@ -248,6 +248,7 @@ export function clearSessionState(session: SessionState): void {
   session.pendingInternalTriggers = [];
   session.interruptibleGroupTriggerUserId = null;
   session.historySummary = null;
+  session.historyBackfillBoundaryMs = Date.now();
   session.internalTranscript = [];
   session.debugMarkers = [];
   session.recentToolEvents = [];

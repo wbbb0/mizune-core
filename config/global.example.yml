@@ -20,6 +20,11 @@ onebot:
     enabled: true
     private: true
     group: false
+  historyBackfill:
+    enabled: false
+    maxMessagesPerSession: 20
+    maxTotalMessages: 100
+    requestDelayMs: 100
 llm:
   enabled: false
   routingPreset: balanced
