@@ -644,6 +644,46 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.equal(userMemoryPayload.reroute.result, "not_applicable");
   });
 
+  test("profile memory handler resolves bound OneBot external user ids before writing", async () => {
+    const writes: Array<{ userId: string; source: string | undefined }> = [];
+    const result = await profileToolHandlers.upsert_user_memory!(
+      { id: "tool_user_memory_external_id_1", type: "function", function: { name: "upsert_user_memory", arguments: "{\"user_id\":\"2254600711\",\"title\":\"骰子\",\"content\":\"使用 roll_dice\"}" } },
+      { user_id: "2254600711", title: "骰子", content: "使用 roll_dice" },
+      {
+        relationship: "owner",
+        lastMessage: {
+          sessionId: "acc1:p:2254600711",
+          userId: "owner",
+          senderName: "Owner"
+        },
+        userIdentityStore: {
+          async findInternalUserId(input: { channelId: string; externalId: string }) {
+            return input.channelId === "acc1" && input.externalId === "2254600711"
+              ? "owner"
+              : undefined;
+          }
+        },
+        userStore: {
+          async upsertMemory(input: { userId: string; source?: string; title: string; content: string }) {
+            writes.push({ userId: input.userId, source: input.source });
+            return {
+              action: "created",
+              finalAction: "created",
+              dedup: { matchedBy: "none", matchedExistingId: null },
+              warning: null,
+              item: { id: "mem_owner_1", updatedAt: 1, createdAt: 1, kind: "preference", source: input.source, title: input.title, content: input.content },
+              user: null
+            };
+          }
+        }
+      } as any
+    );
+
+    assert.equal(writes[0]?.userId, "owner");
+    assert.equal(writes[0]?.source, "user_explicit");
+    assert.equal(JSON.parse(String(result)).itemId, "mem_owner_1");
+  });
+
   test("toolset rule handlers upsert duplicates into existing rules", async () => {
     const existing = [{
       id: "rule_1",

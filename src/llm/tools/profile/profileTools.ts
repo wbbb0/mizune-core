@@ -12,6 +12,7 @@ import type {
   SessionRpProfileOperationMode,
   SessionScenarioProfileOperationMode
 } from "#conversation/session/sessionOperationMode.ts";
+import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import { resolvePersonaReadinessStatus } from "#persona/personaSetupPolicy.ts";
 import type { MemoryCategory, ScopeConflictWarning } from "#memory/memoryCategory.ts";
 import {
@@ -521,8 +522,23 @@ function getStringArrayField(args: unknown, key: string): string[] {
     .filter(Boolean);
 }
 
-function resolveTargetUserId(args: unknown, fallbackUserId: string): string {
-  return getStringField(args, "user_id") || fallbackUserId;
+async function resolveTargetUserId(args: unknown, context: Parameters<ToolHandler>[2]): Promise<string> {
+  return resolveCanonicalUserId(getStringField(args, "user_id") || context.lastMessage.userId, context);
+}
+
+async function resolveCanonicalUserId(userId: string, context: Parameters<ToolHandler>[2]): Promise<string> {
+  const normalizedUserId = userId.trim();
+  if (!normalizedUserId || normalizedUserId === context.lastMessage.userId) {
+    return normalizedUserId || context.lastMessage.userId;
+  }
+  const parsedSession = parseChatSessionIdentity(context.lastMessage.sessionId);
+  if (!parsedSession || !context.userIdentityStore?.findInternalUserId) {
+    return normalizedUserId;
+  }
+  return (await context.userIdentityStore.findInternalUserId({
+    channelId: parsedSession.channelId,
+    externalId: normalizedUserId
+  })) ?? normalizedUserId;
 }
 
 function requireOwnerOrSelf(
@@ -1060,7 +1076,7 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     return JSON.stringify({ removed: true, ruleId, remaining });
   },
   async get_user_profile(_toolCall, args, context) {
-    const userId = resolveTargetUserId(args, context.lastMessage.userId);
+    const userId = await resolveTargetUserId(args, context);
     const denied = requireOwnerOrSelf(context, userId, "Only owner can inspect another user's profile");
     if (denied) {
       return denied;
@@ -1071,7 +1087,7 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     return JSON.stringify(toUserProfilePayload(user, userId === context.lastMessage.userId ? context.lastMessage.senderName : undefined));
   },
   async patch_user_profile(_toolCall, args, context) {
-    const userId = resolveTargetUserId(args, context.lastMessage.userId);
+    const userId = await resolveTargetUserId(args, context);
     const denied = requireOwnerOrSelf(context, userId, "Only owner can edit another user's profile");
     if (denied) {
       return denied;
@@ -1096,7 +1112,7 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     });
   },
   async list_user_memories(_toolCall, args, context) {
-    const userId = resolveTargetUserId(args, context.lastMessage.userId);
+    const userId = await resolveTargetUserId(args, context);
     const denied = requireOwnerOrSelf(context, userId, "Only owner can inspect another user's memories");
     if (denied) {
       return denied;
@@ -1107,7 +1123,7 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     return JSON.stringify(user?.memories ?? []);
   },
   async upsert_user_memory(_toolCall, args, context) {
-    const userId = resolveTargetUserId(args, context.lastMessage.userId);
+    const userId = await resolveTargetUserId(args, context);
     const denied = requireOwnerOrSelf(context, userId, "Only owner can edit another user's memories");
     if (denied) {
       return denied;
@@ -1137,7 +1153,7 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     });
   },
   async remove_user_memory(_toolCall, args, context) {
-    const userId = resolveTargetUserId(args, context.lastMessage.userId);
+    const userId = await resolveTargetUserId(args, context);
     const denied = requireOwnerOrSelf(context, userId, "Only owner can edit another user's memories");
     if (denied) {
       return denied;
@@ -1158,8 +1174,9 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     if (!userId) {
       return JSON.stringify({ error: "user_id is required" });
     }
+    const resolvedUserId = await resolveCanonicalUserId(userId, context);
     const updated = await context.userStore.registerKnownUser({
-      userId,
+      userId: resolvedUserId,
       ...parseUserProfilePatch(args)
     });
     return JSON.stringify(updated);
@@ -1174,7 +1191,8 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     if (!userId || !["none", "npc"].includes(specialRole)) {
       return JSON.stringify({ error: "Invalid user_id or specialRole" });
     }
-    const updated = await context.userStore.setSpecialRole(userId, specialRole as "npc" | "none");
+    const resolvedUserId = await resolveCanonicalUserId(userId, context);
+    const updated = await context.userStore.setSpecialRole(resolvedUserId, specialRole as "npc" | "none");
     await context.npcDirectory.refresh(context.userStore);
     return JSON.stringify(updated);
   }

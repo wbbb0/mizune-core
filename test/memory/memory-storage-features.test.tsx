@@ -231,6 +231,31 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
     }
   });
 
+  test("user memory upsert rejects explicit memory ids that are absent from the target user", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const created = await harness.userStore.upsertMemory({
+        userId: "owner",
+        title: "群内掷骰子",
+        content: "使用 roll_dice",
+        kind: "preference"
+      });
+
+      await assert.rejects(
+        () => harness.userStore.upsertMemory({
+          userId: "2254600711",
+          memoryId: created.item.id,
+          title: "群内掷骰子",
+          content: "使用命令行 shuf",
+          kind: "preference"
+        }),
+        /memory .* not found/i
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   test("title normalization canonicalizes recurring memory concepts", async () => {
     assert.equal(normalizeTitleForDedup("称呼"), "称呼偏好");
     assert.equal(normalizeTitleForDedup("用户称呼偏好"), "称呼偏好");

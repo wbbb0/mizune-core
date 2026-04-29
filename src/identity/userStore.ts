@@ -198,6 +198,9 @@ export class UserStore {
       memories: []
     };
     const memories = [...(base.memories ?? [])];
+    if (input.memoryId && !memories.some((item) => item.id === input.memoryId)) {
+      throw new Error(`Memory ${input.memoryId} not found for user ${input.userId}`);
+    }
     const duplicate = input.memoryId
       ? null
       : findBestDuplicateMatch(
