@@ -7,6 +7,7 @@
     "#app/*": "./src/app/*",
     "#audio/*": "./src/audio/*",
     "#config/*": "./src/config/*",
+    "#contentSafety/*": "./src/contentSafety/*",
     "#comfy/*": "./src/comfy/*",
     "#conversation/*": "./src/conversation/*",
     "#data/*": "./src/data/*",

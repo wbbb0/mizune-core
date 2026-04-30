@@ -173,6 +173,44 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
     });
   });
 
+  test("dashscope sends content safety inspection header when fallback is enabled", async () => {
+    const config = createLlmTestConfig({
+      provider: "test"
+    });
+    config.llm.providers.test!.type = "dashscope";
+    config.contentSafety.routes.llmProviderFallback.dashscope.useDataInspectionHeader = true;
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(_body: any, _callIndex: number, init: RequestInit) {
+          const headers = init.headers as Record<string, string>;
+          assert.equal(headers["X-DashScope-DataInspection"], JSON.stringify({ input: "cip", output: "cip" }));
+        },
+        payloads: [{
+          output: {
+            choices: [{
+              message: {
+                content: [{ text: "done" }]
+              }
+            }]
+          },
+          usage: {
+            input_tokens: 4,
+            output_tokens: 1,
+            total_tokens: 5
+          }
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "hello" }]
+      });
+
+      assert.equal(result.text, "done");
+    });
+  });
+
   test("lmstudio sends preserve_thinking on openai-compatible chat completions when assistant reasoning exists", async () => {
     const config = createLlmTestConfig({
       preserveThinking: true
