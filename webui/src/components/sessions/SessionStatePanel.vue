@@ -69,6 +69,27 @@ function formatObservationLabel(purpose: string): string {
   return purpose;
 }
 
+function formatSafetySubject(kind: string): string {
+  if (kind === "text") return "文本";
+  if (kind === "image") return "图片";
+  if (kind === "emoji") return "表情";
+  if (kind === "audio_transcript") return "音频";
+  if (kind === "file") return "文件";
+  if (kind === "local_media") return "本地媒体";
+  return kind;
+}
+
+function formatSafetyLabels(labels: Array<{ label: string; riskLevel?: string; confidence?: number }>): string {
+  if (labels.length === 0) {
+    return "无标签";
+  }
+  return labels.map((item) => [
+    item.label,
+    item.riskLevel ? `risk=${item.riskLevel}` : null,
+    item.confidence != null ? `confidence=${item.confidence}` : null
+  ].filter(Boolean).join(" ")).join("，");
+}
+
 async function loadDetail() {
   loading.value = true;
   errorMessage.value = "";
@@ -173,6 +194,38 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
               <div v-if="item.sourceHash" class="mt-1 break-all font-mono text-small text-text-muted">hash: {{ item.sourceHash }}</div>
               <div v-if="item.error" class="mt-1 whitespace-pre-wrap wrap-break-word text-small text-danger">{{ item.error }}</div>
               <div v-if="item.text" class="mt-2 line-clamp-4 whitespace-pre-wrap wrap-break-word text-small text-text-muted">{{ item.text }}</div>
+            </WorkbenchCard>
+          </div>
+        </WorkbenchDisclosure>
+
+        <WorkbenchDisclosure
+          :expanded="isDisclosureExpanded('content-safety')"
+          collapsed-title="内容安全屏蔽记录"
+          expanded-title="内容安全屏蔽记录"
+          :summary="`${detail?.session.contentSafetyAudits.length ?? 0} 项`"
+          @toggle="toggleDisclosure('content-safety')"
+        >
+          <WorkbenchEmptyState v-if="(detail?.session.contentSafetyAudits.length ?? 0) === 0" :centered="false" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle" message="暂无屏蔽记录" />
+          <div v-else class="grid min-w-0 gap-3 lg:grid-cols-2">
+            <WorkbenchCard v-for="record in detail?.session.contentSafetyAudits ?? []" :key="record.key" class="min-w-0 overflow-hidden" surface="sidebar">
+              <div class="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <span class="font-mono text-small text-text-secondary">{{ record.key }}</span>
+                <span class="text-small" :class="record.decision === 'block' ? 'text-danger' : record.decision === 'review' ? 'text-warning' : 'text-text-subtle'">{{ record.decision }}</span>
+              </div>
+              <div class="mt-1 text-small text-text-subtle">{{ formatSafetySubject(record.subjectKind) }} · {{ formatTimestamp(record.checkedAtMs) }}</div>
+              <div class="mt-2 whitespace-pre-wrap wrap-break-word text-small text-text-muted">原因：{{ record.reason }}</div>
+              <div class="mt-1 break-all text-small text-text-muted">标签：{{ formatSafetyLabels(record.labels) }}</div>
+              <div v-if="record.fileId" class="mt-1 break-all font-mono text-small text-text-muted">fileId: {{ record.fileId }}</div>
+              <div v-if="record.sourceName" class="mt-1 break-all text-small text-text-muted">文件名：{{ record.sourceName }}</div>
+              <div v-if="record.requestId" class="mt-1 break-all font-mono text-small text-text-muted">requestId: {{ record.requestId }}</div>
+              <div v-if="record.originalText" class="mt-2">
+                <div class="mb-1 text-small text-text-subtle">原文</div>
+                <pre class="m-0 max-h-64 overflow-auto rounded border border-border-default bg-surface-sidebar p-2 text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ record.originalText }}</pre>
+              </div>
+              <div class="mt-2">
+                <div class="mb-1 text-small text-text-subtle">投影标记</div>
+                <pre class="m-0 max-h-36 overflow-auto rounded border border-border-default bg-surface-sidebar p-2 text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ record.marker }}</pre>
+              </div>
             </WorkbenchCard>
           </div>
         </WorkbenchDisclosure>

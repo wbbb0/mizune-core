@@ -16,7 +16,11 @@ export function buildContentSafetyMarker(input: {
   subjectRef?: string | undefined;
   markerConfig: AppConfig["contentSafety"]["marker"];
 }): string {
-  const parts = [`${SUBJECT_LABELS[input.subjectKind]}已屏蔽：${input.result.reason || "疑似违规"}`];
+  const subjectLabel = SUBJECT_LABELS[input.subjectKind];
+  const reason = input.result.reason || "疑似违规";
+  const parts = [isVisualSubject(input.subjectKind)
+    ? `用户发送了${subjectLabel}，但内容安全系统因为「${reason}」屏蔽了该${subjectLabel}。你应表现为知道用户发送了${subjectLabel}，但由于该原因不能查看、描述或评论该${subjectLabel}`
+    : `${subjectLabel}已屏蔽：${reason}`];
   if (input.markerConfig.includeSubjectRef && input.subjectRef) {
     parts.push(input.subjectRef);
   }
@@ -37,3 +41,6 @@ export function buildContentSafetyMarker(input: {
   return `[${parts.join("；")}]`;
 }
 
+function isVisualSubject(subjectKind: ModerationSubjectKind): boolean {
+  return subjectKind === "image" || subjectKind === "emoji" || subjectKind === "local_media";
+}

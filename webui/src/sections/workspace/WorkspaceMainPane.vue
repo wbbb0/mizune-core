@@ -21,6 +21,27 @@ const {
   selectedStoredFileImageUrl
 } = useWorkspaceSection();
 
+function formatSafetySubject(kind: string): string {
+  if (kind === "text") return "文本";
+  if (kind === "image") return "图片";
+  if (kind === "emoji") return "表情";
+  if (kind === "audio_transcript") return "音频";
+  if (kind === "file") return "文件";
+  if (kind === "local_media") return "本地媒体";
+  return kind;
+}
+
+function formatSafetyLabels(labels: Array<{ label: string; riskLevel?: string; confidence?: number }>): string {
+  if (labels.length === 0) {
+    return "无标签";
+  }
+  return labels.map((item) => [
+    item.label,
+    item.riskLevel ? `risk=${item.riskLevel}` : null,
+    item.confidence != null ? `confidence=${item.confidence}` : null
+  ].filter(Boolean).join(" ")).join("，");
+}
+
 function previewImage(src: string | null, title?: string) {
   if (!src) {
     return;
@@ -78,6 +99,29 @@ function previewImage(src: string | null, title?: string) {
           </div>
           <WorkbenchCard v-else class="mb-4 text-text-muted" surface="sidebar" padding="lg">
             当前只支持图片直接预览，该文件将展示元数据。
+          </WorkbenchCard>
+
+          <WorkbenchCard v-if="selectedStoredFile.contentSafety" class="mb-4" surface="sidebar">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="font-semibold text-text-secondary">内容安全屏蔽</div>
+              <span class="text-small" :class="selectedStoredFile.contentSafety.decision === 'block' ? 'text-danger' : selectedStoredFile.contentSafety.decision === 'review' ? 'text-warning' : 'text-text-subtle'">{{ selectedStoredFile.contentSafety.decision }}</span>
+            </div>
+            <dl class="mt-3 grid grid-cols-[120px_minmax(0,1fr)] gap-x-3 gap-y-2 text-ui">
+              <dt class="text-text-subtle">类型</dt>
+              <dd class="text-text-secondary">{{ formatSafetySubject(selectedStoredFile.contentSafety.subjectKind) }}</dd>
+              <dt class="text-text-subtle">原因</dt>
+              <dd class="whitespace-pre-wrap wrap-break-word text-text-secondary">{{ selectedStoredFile.contentSafety.reason }}</dd>
+              <dt class="text-text-subtle">标签</dt>
+              <dd class="wrap-break-word text-text-secondary">{{ formatSafetyLabels(selectedStoredFile.contentSafety.labels) }}</dd>
+              <dt class="text-text-subtle">审核时间</dt>
+              <dd class="text-text-secondary">{{ new Date(selectedStoredFile.contentSafety.checkedAtMs).toLocaleString() }}</dd>
+              <dt class="text-text-subtle">auditKey</dt>
+              <dd class="break-all font-mono text-text-secondary">{{ selectedStoredFile.contentSafety.key }}</dd>
+              <dt v-if="selectedStoredFile.contentSafety.requestId" class="text-text-subtle">requestId</dt>
+              <dd v-if="selectedStoredFile.contentSafety.requestId" class="break-all font-mono text-text-secondary">{{ selectedStoredFile.contentSafety.requestId }}</dd>
+              <dt class="text-text-subtle">投影标记</dt>
+              <dd class="whitespace-pre-wrap wrap-break-word text-text-secondary">{{ selectedStoredFile.contentSafety.marker }}</dd>
+            </dl>
           </WorkbenchCard>
 
           <dl class="grid grid-cols-[120px_minmax(0,1fr)] gap-x-3 gap-y-2 text-ui">

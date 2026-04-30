@@ -388,6 +388,16 @@ function formatTokenStatChips(tokenStats: TranscriptItem["tokenStats"] | undefin
   ].filter(Boolean) as string[];
 }
 
+function formatSafetySubject(kind: string): string {
+  if (kind === "text") return "文本";
+  if (kind === "image") return "图片";
+  if (kind === "emoji") return "表情";
+  if (kind === "audio_transcript") return "音频";
+  if (kind === "file") return "文件";
+  if (kind === "local_media") return "本地媒体";
+  return kind;
+}
+
 function openActions(): void {
   emit("openActions");
 }
@@ -430,6 +440,25 @@ function openActions(): void {
           :text="item.specialSegments?.map((segment) => segment.summary).join('\n') ?? ''"
           tone="muted"
         />
+        <WorkbenchDisclosure
+          v-if="(item.contentSafetyEvents?.length ?? 0) > 0"
+          :expanded="expanded"
+          collapsed-title="展开内容安全信息"
+          expanded-title="收起内容安全信息"
+          :summary="`${item.contentSafetyEvents?.length ?? 0} 项`"
+          @toggle="toggleExpanded"
+        >
+          <WorkbenchCard v-for="event in item.contentSafetyEvents ?? []" :key="event.auditKey ?? `${event.subjectKind}-${event.reason}`" surface="sidebar">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span class="text-small font-semibold text-text-secondary">{{ formatSafetySubject(event.subjectKind) }}</span>
+              <span class="text-small" :class="event.decision === 'block' ? 'text-danger' : event.decision === 'review' ? 'text-warning' : 'text-text-subtle'">{{ event.decision }}</span>
+            </div>
+            <div class="mt-1 whitespace-pre-wrap wrap-break-word text-small text-text-muted">原因：{{ event.reason }}</div>
+            <div v-if="event.fileId" class="mt-1 break-all font-mono text-small text-text-muted">fileId: {{ event.fileId }}</div>
+            <div v-if="event.auditKey" class="mt-1 break-all font-mono text-small text-text-muted">auditKey: {{ event.auditKey }}</div>
+            <pre v-if="event.marker" class="mt-2 max-h-32 overflow-auto rounded border border-border-default bg-surface-sidebar p-2 text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ event.marker }}</pre>
+          </WorkbenchCard>
+        </WorkbenchDisclosure>
       </div>
 
       <div v-else-if="item.kind === 'assistant_message'" class="flex flex-col gap-2">

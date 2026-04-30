@@ -77,6 +77,7 @@ export class SessionHistoryService {
       mentionedAll?: boolean;
       mentionedSelf?: boolean;
       sourceRef?: TranscriptItemSourceRef;
+      contentSafetyEvents?: import("./sessionTypes.ts").TranscriptContentSafetyEvent[];
     },
     timestampMs: number
   ) {
@@ -96,6 +97,7 @@ export class SessionHistoryService {
       ...(message.mentionedAll !== undefined ? { mentionedAll: message.mentionedAll } : {}),
       ...(message.mentionedSelf !== undefined ? { mentionedSelf: message.mentionedSelf } : {}),
       ...(message.sourceRef ? { sourceRef: message.sourceRef } : {}),
+      ...(message.contentSafetyEvents && message.contentSafetyEvents.length > 0 ? { contentSafetyEvents: message.contentSafetyEvents } : {}),
       timestampMs
     });
   }
@@ -151,6 +153,7 @@ export class SessionHistoryService {
       mentionedAll?: boolean;
       mentionedSelf?: boolean;
       sourceRef?: TranscriptItemSourceRef;
+      contentSafetyEvents?: import("./sessionTypes.ts").TranscriptContentSafetyEvent[];
     },
     timestampMs = Date.now()
   ): void {

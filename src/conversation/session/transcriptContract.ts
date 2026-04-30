@@ -62,6 +62,17 @@ export const transcriptTokenStatsSchema = z.object({
   reasoning: transcriptTokenStatSchema.optional()
 });
 
+export const transcriptContentSafetyEventSchema = z.object({
+  subjectKind: z.enum(["text", "image", "emoji", "audio_transcript", "file", "local_media"]),
+  decision: z.enum(["allow", "review", "block", "error"]),
+  marker: z.string().nullable(),
+  auditKey: z.string().min(1).nullable(),
+  fileId: z.string().min(1).optional(),
+  audioId: z.string().min(1).optional(),
+  contentHash: z.string().min(1).optional(),
+  reason: z.string()
+});
+
 export const transcriptItemMetaSchema = z.object({
   id: z.string().min(1).optional(),
   groupId: z.string().min(1).optional(),
@@ -70,6 +81,7 @@ export const transcriptItemMetaSchema = z.object({
   runtimeExclusionReason: z.enum(transcriptItemRuntimeExclusionReasonValues).optional(),
   sourceRef: transcriptItemSourceRefSchema.optional(),
   deliveryRef: transcriptItemDeliveryRefSchema.optional(),
+  contentSafetyEvents: z.array(transcriptContentSafetyEventSchema).optional(),
   tokenStats: transcriptTokenStatsSchema.optional()
 });
 
@@ -307,6 +319,7 @@ export type TranscriptToolObservation = z.infer<typeof transcriptToolObservation
 export type TranscriptItemRuntimeExclusionReason = (typeof transcriptItemRuntimeExclusionReasonValues)[number];
 export type TranscriptItemSourceRef = z.infer<typeof transcriptItemSourceRefSchema>;
 export type TranscriptItemDeliveryRef = z.infer<typeof transcriptItemDeliveryRefSchema>;
+export type TranscriptContentSafetyEvent = z.infer<typeof transcriptContentSafetyEventSchema>;
 export type TranscriptItemMeta = z.infer<typeof transcriptItemMetaSchema>;
 export type InternalTranscriptItem = z.infer<typeof internalTranscriptItemSchema>;
 export type NormalizedInternalTranscriptItem = InternalTranscriptItem & {

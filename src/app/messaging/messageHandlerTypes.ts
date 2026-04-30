@@ -4,6 +4,7 @@ import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { SessionMessagingAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { SessionDelivery, SessionState } from "#conversation/session/sessionTypes.ts";
+import type { ContentSafetyEvent } from "#contentSafety/contentSafetyTypes.ts";
 import type {
   GenerationCommittedTextSink,
   GenerationDraftOverlaySink
@@ -88,6 +89,7 @@ export interface MessageProcessingContext {
   user: Awaited<ReturnType<MessageHandlerServices["userStore"]["touchSeenUser"]>>;
   enrichedMessage: EnrichedIncomingMessage;
   session: SessionState;
+  contentSafetyEvents?: ContentSafetyEvent[];
 }
 
 export interface TriggerDecision {

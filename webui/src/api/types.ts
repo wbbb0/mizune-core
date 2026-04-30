@@ -104,6 +104,33 @@ export interface SessionSentMessage {
   sentAt: number;
 }
 
+export interface ContentSafetyAuditView {
+  key: string;
+  subjectKind: "text" | "image" | "emoji" | "audio_transcript" | "file" | "local_media";
+  decision: "allow" | "review" | "block" | "error";
+  marker: string;
+  reason: string;
+  labels: Array<{
+    label: string;
+    category?: string;
+    riskLevel?: "none" | "low" | "medium" | "high";
+    confidence?: number;
+    providerReason?: string;
+  }>;
+  providerId: string;
+  providerType: string;
+  requestId?: string;
+  rawDecision?: string;
+  originalText?: string;
+  fileId?: string;
+  audioId?: string;
+  contentHash?: string;
+  sourceName?: string;
+  sessionId?: string;
+  checkedAtMs: number;
+  expiresAtMs?: number;
+}
+
 export type DerivedObservationSourceKind = "tool_result" | "chat_file" | "audio" | "session" | "history";
 export type DerivedObservationPurpose =
   | "tool_replay_compaction"
@@ -142,6 +169,7 @@ export interface SessionDetailSnapshot {
   debugMarkers: SessionDebugMarker[];
   lastLlmUsage: SessionUsageSnapshot | null;
   sentMessages: SessionSentMessage[];
+  contentSafetyAudits: ContentSafetyAuditView[];
   lastActiveAt: number;
   isGenerating: boolean;
   historyRevision: number;

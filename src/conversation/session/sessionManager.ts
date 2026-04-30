@@ -493,6 +493,7 @@ export class SessionManager {
     mentionedAll?: boolean;
     mentionedSelf?: boolean;
     sourceRef?: TranscriptItemSourceRef;
+    contentSafetyEvents?: import("./sessionTypes.ts").TranscriptContentSafetyEvent[];
   }, timestampMs = Date.now()): void {
     const session = this.requireSession(sessionId);
     this.historyService.appendUserHistory(session, message, timestampMs);

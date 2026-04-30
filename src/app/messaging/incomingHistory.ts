@@ -45,7 +45,10 @@ export function createIncomingHistoryMessage(
     mentionUserIds: context.enrichedMessage.mentionUserIds,
     mentionedAll: context.enrichedMessage.mentionedAll,
     mentionedSelf: context.enrichedMessage.isAtMentioned,
-    ...(sourceRef ? { sourceRef } : {})
+    ...(sourceRef ? { sourceRef } : {}),
+    ...(context.contentSafetyEvents && context.contentSafetyEvents.length > 0
+      ? { contentSafetyEvents: context.contentSafetyEvents }
+      : {})
   };
 }
 

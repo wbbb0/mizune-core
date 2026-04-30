@@ -109,6 +109,9 @@ async function createHarness(files: ChatFileRecord[] = []) {
     {
       async getFile(fileId: string) {
         return fileMap.get(fileId) ?? null;
+      },
+      async resolveAbsolutePath(fileId: string) {
+        return `/tmp/${fileId}`;
       }
     }
   );
@@ -169,7 +172,8 @@ test("blocked media is hidden from LLM projection while original file remains au
     assert.deepEqual(result.rawMessage.imageIds, ["file_blocked"]);
     assert.deepEqual(result.projectedMessage.imageIds, []);
     assert.equal(result.projectedMessage.attachments?.length, 0);
-    assert.match(result.projectedMessage.text, /图片已屏蔽/);
+    assert.match(result.projectedMessage.text, /用户发送了图片/);
+    assert.match(result.projectedMessage.text, /不能查看、描述或评论该图片/);
 
     const record = await harness.store.getByFileId("file_blocked");
     assert.ok(record);
@@ -206,6 +210,9 @@ test("enabled content safety without configured providers warns by policy but al
     {
       async getFile() {
         return null;
+      },
+      async resolveAbsolutePath() {
+        return "/tmp/missing";
       }
     }
   );
@@ -222,4 +229,3 @@ test("enabled content safety without configured providers warns by policy but al
     await rm(dataDir, { recursive: true, force: true });
   }
 });
-

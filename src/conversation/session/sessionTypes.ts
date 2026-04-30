@@ -6,6 +6,7 @@ import type {
   NormalizedInternalTranscriptItem,
   StoredToolCall as StoredToolCallContract,
   TranscriptItemDeliveryRef as TranscriptItemDeliveryRefContract,
+  TranscriptContentSafetyEvent as TranscriptContentSafetyEventContract,
   TranscriptItemMeta as TranscriptItemMetaContract,
   TranscriptItemRuntimeExclusionReason as TranscriptItemRuntimeExclusionReasonContract,
   TranscriptItemSourceRef as TranscriptItemSourceRefContract,
@@ -101,6 +102,7 @@ export type StoredToolCall = StoredToolCallContract;
 export type TranscriptItemRuntimeExclusionReason = TranscriptItemRuntimeExclusionReasonContract;
 export type TranscriptItemSourceRef = TranscriptItemSourceRefContract;
 export type TranscriptItemDeliveryRef = TranscriptItemDeliveryRefContract;
+export type TranscriptContentSafetyEvent = TranscriptContentSafetyEventContract;
 export type TranscriptItemMeta = TranscriptItemMetaContract;
 export type TranscriptTokenStat = TranscriptTokenStatContract;
 export type TranscriptTokenStats = TranscriptTokenStatsContract;

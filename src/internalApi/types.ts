@@ -18,6 +18,7 @@ import type {
 } from "#app/generation/generationOutputContracts.ts";
 import type { BrowserService } from "#services/web/browser/browserService.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
+import type { ContentSafetyStore } from "#contentSafety/contentSafetyStore.ts";
 import type { ChatMessageFileGcService } from "#services/workspace/chatMessageFileGcService.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { AudioStore } from "#audio/audioStore.ts";
@@ -43,6 +44,7 @@ import {
   type LocalFileAdminService
 } from "./application/localFileAdminService.ts";
 import type { DerivedObservation } from "#llm/derivations/derivedObservation.ts";
+import type { ContentSafetyAuditView } from "#contentSafety/contentSafetyTypes.ts";
 
 // Domain-shaped dependency slices keep route/application code from depending on
 // the full internal API service graph when a smaller contract is enough.
@@ -88,6 +90,7 @@ export interface InternalApiSessionDetail {
     debugMarkers: unknown[];
     lastLlmUsage: unknown;
     sentMessages: unknown[];
+    contentSafetyAudits: ContentSafetyAuditView[];
     lastActiveAt: number;
     isGenerating: boolean;
     historyRevision: number;
@@ -102,6 +105,7 @@ export interface InternalApiSessionReadDeps {
   sessionCaptioner: SessionCaptioner;
   chatFileStore: Pick<ChatFileStore, "getMany">;
   audioStore: Pick<AudioStore, "getMany">;
+  contentSafetyStore?: Pick<ContentSafetyStore, "listBySessionId" | "getViewByFileId">;
 }
 
 export interface InternalApiSessionWriteDeps extends InternalApiSessionReadDeps {
@@ -194,6 +198,7 @@ export interface InternalApiDeps {
   localFileService: LocalFileService;
   chatFileStore: ChatFileStore;
   audioStore: AudioStore;
+  contentSafetyStore?: ContentSafetyStore;
   chatMessageFileGcService: ChatMessageFileGcService;
 }
 
@@ -235,6 +240,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       sessionCaptioner: deps.sessionCaptioner,
       chatFileStore: deps.chatFileStore,
       audioStore: deps.audioStore,
+      ...(deps.contentSafetyStore ? { contentSafetyStore: deps.contentSafetyStore } : {}),
       userStore: deps.userStore,
       chatMessageFileGcService: deps.chatMessageFileGcService
     },
@@ -249,7 +255,8 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       }),
       localFileAdmin: createLocalFileAdminService({
         localFileService: deps.localFileService,
-        chatFileStore: deps.chatFileStore
+        chatFileStore: deps.chatFileStore,
+        ...(deps.contentSafetyStore ? { contentSafetyStore: deps.contentSafetyStore } : {})
       }),
       operations: {
         requestStore: deps.requestStore,

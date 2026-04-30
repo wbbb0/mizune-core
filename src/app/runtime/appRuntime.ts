@@ -57,6 +57,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     localFileService,
     chatFileStore,
     chatMessageFileGcService,
+    contentSafetyStore,
     contentSafetyService,
     mediaCaptionService,
     comfyClient,
@@ -228,6 +229,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     localFileService,
     chatFileStore,
     audioStore,
+    contentSafetyStore,
     chatMessageFileGcService
   });
 

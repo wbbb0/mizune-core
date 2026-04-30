@@ -19,6 +19,7 @@ import type {
   ModerationSubjectKind
 } from "./contentSafetyTypes.ts";
 import { ContentSafetyStore } from "./contentSafetyStore.ts";
+import { createAliyunContentModerationProvider } from "./providers/aliyunContentModerationProvider.ts";
 import { createKeywordContentSafetyProvider } from "./providers/keywordContentSafetyProvider.ts";
 import { createNoopContentSafetyProvider } from "./providers/noopContentSafetyProvider.ts";
 
@@ -32,7 +33,7 @@ export class ContentSafetyService {
     private readonly config: AppConfig,
     private readonly logger: Logger,
     private readonly store: ContentSafetyStore,
-    private readonly chatFileStore: Pick<ChatFileStore, "getFile">
+    private readonly chatFileStore: Pick<ChatFileStore, "getFile" | "resolveAbsolutePath">
   ) {}
 
   async moderateIncomingMessage(input: {
@@ -104,11 +105,13 @@ export class ContentSafetyService {
 
     for (const media of mediaRefs) {
       const file = await this.chatFileStore.getFile(media.fileId).catch(() => null);
+      const absolutePath = file ? await this.chatFileStore.resolveAbsolutePath(media.fileId).catch(() => undefined) : undefined;
       const mediaResult = await this.moderateMedia({
         subjectKind: media.kind,
         fileId: media.fileId,
         sourceName: file?.sourceName ?? media.fileId,
         mimeType: file?.mimeType,
+        absolutePath,
         context,
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
       }, media.kind === "emoji" ? profile.emoji : profile.image);
@@ -294,6 +297,9 @@ export class ContentSafetyService {
     if (providerConfig.type === "keyword") {
       return createKeywordContentSafetyProvider(id, providerConfig);
     }
+    if (providerConfig.type === "aliyun_content_moderation") {
+      return createAliyunContentModerationProvider(id, providerConfig);
+    }
     this.warnOnce(`content_safety_provider_not_implemented:${id}`, {
       providerId: id,
       providerType: providerConfig.type
@@ -358,4 +364,3 @@ function collectMessageMediaRefs(
   }
   return refs;
 }
-

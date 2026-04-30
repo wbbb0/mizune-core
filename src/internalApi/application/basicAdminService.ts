@@ -158,6 +158,7 @@ export async function getSessionDetail(
         chatFileIds: mediaIds.chatFileIds,
         audioIds: mediaIds.audioIds
       }),
+      contentSafetyAudits: await deps.contentSafetyStore?.listBySessionId(sessionId) ?? [],
       isGenerating: isSessionGenerating(existing),
       historyRevision: deps.sessionManager.getHistoryRevision(sessionId),
       mutationEpoch: deps.sessionManager.getMutationEpoch(sessionId)

@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import type { Logger } from "pino";
-import type { ContentSafetyAuditRecord, ModerationDecision, ModerationSubjectKind } from "./contentSafetyTypes.ts";
+import type { ContentSafetyAuditRecord, ContentSafetyAuditView, ModerationDecision, ModerationSubjectKind } from "./contentSafetyTypes.ts";
 
 const moderationLabelSchema = z.object({
   label: z.string().min(1),
@@ -80,6 +80,19 @@ export class ContentSafetyStore {
     return [...current.records].reverse().find((item) => item.fileId === fileId) ?? null;
   }
 
+  async listBySessionId(sessionId: string): Promise<ContentSafetyAuditView[]> {
+    const current = await this.readFile();
+    return current.records
+      .filter((item) => item.sessionId === sessionId)
+      .map(toAuditView)
+      .sort((left, right) => right.checkedAtMs - left.checkedAtMs);
+  }
+
+  async getViewByFileId(fileId: string): Promise<ContentSafetyAuditView | null> {
+    const record = await this.getByFileId(fileId);
+    return record ? toAuditView(record) : null;
+  }
+
   async isBlockedFileId(fileId: string): Promise<{ blocked: true; marker: string; reason: string } | null> {
     const record = await this.getByFileId(fileId);
     if (!record || !isBlockingDecision(record.decision)) {
@@ -148,5 +161,27 @@ function isBlockingDecision(decision: ModerationDecision): boolean {
   return decision === "block" || decision === "review";
 }
 
-export type StoredContentSafetySubjectKind = ModerationSubjectKind;
+function toAuditView(record: ContentSafetyAuditRecord): ContentSafetyAuditView {
+  return {
+    key: record.key,
+    subjectKind: record.subjectKind,
+    decision: record.decision,
+    marker: record.marker,
+    reason: record.result.reason,
+    labels: record.result.labels,
+    providerId: record.result.providerId,
+    providerType: record.result.providerType,
+    ...(record.result.requestId ? { requestId: record.result.requestId } : {}),
+    ...(record.result.rawDecision ? { rawDecision: record.result.rawDecision } : {}),
+    ...(record.originalText !== undefined ? { originalText: record.originalText } : {}),
+    ...(record.fileId ? { fileId: record.fileId } : {}),
+    ...(record.audioId ? { audioId: record.audioId } : {}),
+    ...(record.contentHash ? { contentHash: record.contentHash } : {}),
+    ...(record.sourceName ? { sourceName: record.sourceName } : {}),
+    ...(record.sessionId ? { sessionId: record.sessionId } : {}),
+    checkedAtMs: record.checkedAtMs,
+    ...(record.expiresAtMs !== undefined ? { expiresAtMs: record.expiresAtMs } : {})
+  };
+}
 
+export type StoredContentSafetySubjectKind = ModerationSubjectKind;

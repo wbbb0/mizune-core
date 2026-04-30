@@ -11,6 +11,7 @@ import type {
   SessionState,
   SessionUsageSnapshot,
   SessionParticipantRef,
+  TranscriptContentSafetyEvent,
   TranscriptItemDeliveryRef,
   TranscriptItemRuntimeExclusionReason,
   TranscriptItemSourceRef
@@ -302,6 +303,7 @@ export interface SessionDirectCommandAccess {
       mentionedAll?: boolean;
       mentionedSelf?: boolean;
       sourceRef?: TranscriptItemSourceRef;
+      contentSafetyEvents?: TranscriptContentSafetyEvent[];
     },
     timestampMs?: number
   ): void;
@@ -330,6 +332,7 @@ export interface SessionDirectCommandAccess {
       mentionedAll?: boolean;
       mentionedSelf?: boolean;
       sourceRef?: TranscriptItemSourceRef;
+      contentSafetyEvents?: TranscriptContentSafetyEvent[];
     },
     timestampMs?: number
   ): boolean;
@@ -372,6 +375,7 @@ export interface SessionMessagingAccess {
       mentionedAll?: boolean;
       mentionedSelf?: boolean;
       sourceRef?: TranscriptItemSourceRef;
+      contentSafetyEvents?: TranscriptContentSafetyEvent[];
     },
     timestampMs?: number
   ): void;

@@ -75,6 +75,27 @@ export interface ContentSafetyEvent {
   reason: string;
 }
 
+export interface ContentSafetyAuditView {
+  key: string;
+  subjectKind: ModerationSubjectKind;
+  decision: ModerationDecision;
+  marker: string;
+  reason: string;
+  labels: ModerationLabel[];
+  providerId: string;
+  providerType: string;
+  requestId?: string | undefined;
+  rawDecision?: string | undefined;
+  originalText?: string | undefined;
+  fileId?: string | undefined;
+  audioId?: string | undefined;
+  contentHash?: string | undefined;
+  sourceName?: string | undefined;
+  sessionId?: string | undefined;
+  checkedAtMs: number;
+  expiresAtMs?: number | undefined;
+}
+
 export interface ContentSafetyAuditRecord {
   key: string;
   subjectKind: ModerationSubjectKind;
@@ -96,4 +117,3 @@ export interface ContentSafetyProjection {
   projectTranscriptItemForLlm: (input: InternalTranscriptItem) => Promise<InternalTranscriptItem>;
   guardChatFileForLlm: (fileId: string) => Promise<"allow" | { blocked: true; marker: string; reason: string }>;
 }
-

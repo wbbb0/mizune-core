@@ -194,13 +194,16 @@ contentSafety:
       enabled: false
       endpoint: green-cip.ap-southeast-1.aliyuncs.com
       regionId: ap-southeast-1
+      # 可以直接明文填写，也可以使用下面的 Env 字段从环境变量读取。
+      # accessKeyId: your-access-key-id
+      # accessKeySecret: your-access-key-secret
       accessKeyIdEnv: ALIBABA_CLOUD_ACCESS_KEY_ID
       accessKeySecretEnv: ALIBABA_CLOUD_ACCESS_KEY_SECRET
       timeoutMs: 6000
       proxy: false
       services:
-        text: ugc_moderation_byllm_global
-        image: bailianQueryImageCheck
+        text: llm_query_moderation
+        image: baselineCheck
   profiles:
     preLlm:
       text:

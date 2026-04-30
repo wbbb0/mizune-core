@@ -145,7 +145,8 @@ export async function processIncomingMessage(
       }, "incoming_message_content_safety_projected");
       context = {
         ...context,
-        enrichedMessage: moderation.projectedMessage
+        enrichedMessage: moderation.projectedMessage,
+        contentSafetyEvents: moderation.events
       };
     }
   }
