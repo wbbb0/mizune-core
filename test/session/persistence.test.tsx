@@ -149,7 +149,6 @@ test("session persistence loads legacy title_generation_event transcript items",
         }
       ],
       debugMarkers: [],
-      recentToolEvents: [],
       lastLlmUsage: null,
       sentMessages: [],
       lastActiveAt: 10,
@@ -233,7 +232,6 @@ test("session persistence round-trips chat_file attachments in pending messages 
         timestampMs: 1
       }],
       debugMarkers: [],
-      recentToolEvents: [],
       lastLlmUsage: null,
       sentMessages: [],
       lastActiveAt: 1,
@@ -274,7 +272,6 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
       timestampMs: 1
     }],
     debugMarkers: [],
-    recentToolEvents: [],
     lastLlmUsage: null,
     sentMessages: [],
     lastActiveAt: 1,
@@ -400,15 +397,6 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
           }
         ],
         debugMarkers: [],
-        recentToolEvents: [
-          {
-            toolName: "open_page",
-            argsSummary: "{\"url\":\"https://example.com\"}",
-            outcome: "success",
-            resultSummary: "opened example page",
-            timestampMs: 2
-          }
-        ],
         lastLlmUsage: {
           inputTokens: 12,
           outputTokens: 34,
@@ -482,7 +470,6 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
           }
         }],
         debugMarkers: [],
-        recentToolEvents: [],
         lastLlmUsage: null,
         sentMessages: [],
         lastActiveAt: 1,
@@ -555,7 +542,6 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
         historySummary: null,
         internalTranscript: [],
         debugMarkers: [],
-        recentToolEvents: [],
         lastLlmUsage: {
           inputTokens: 10,
           outputTokens: 20,
@@ -590,7 +576,6 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
         historySummary: null,
         internalTranscript: [],
         debugMarkers: [],
-        recentToolEvents: [],
         lastLlmUsage: {
           inputTokens: 10,
           outputTokens: 20,

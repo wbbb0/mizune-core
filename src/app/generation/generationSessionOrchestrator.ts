@@ -486,7 +486,7 @@ export function createGenerationSessionOrchestrator(
         const supplement = supplementPlannedToolsets({
           selectedToolsetIds: plannedToolsetIds,
           availableToolsets: plannerToolsets,
-          recentToolEvents: refreshedSession.recentToolEvents,
+          recentTranscriptItems: transcriptStore.runtimeItems(),
           ...(plannerDecision ? { plannerDecision } : {})
         });
         if (supplement.addedToolsetIds.length > 0) {
@@ -514,7 +514,6 @@ export function createGenerationSessionOrchestrator(
         includeDebugTools: interactionMode === "debug",
         availableToolNames: [...toolNamesFromPlanner, ...TURN_PLANNER_ALWAYS_TOOL_NAMES]
       });
-      const recentToolEvents = refreshedSession.recentToolEvents;
       const debugMarkers = refreshedSession.debugMarkers;
       const replayTranscriptItems = refreshedSession.activeTranscriptGroupId == null
         ? transcriptStore.runtimeItems()
@@ -554,7 +553,6 @@ export function createGenerationSessionOrchestrator(
             persona: promptPersona,
             phase: activeDraftOperation?.phase ?? "setup",
             historyForPrompt: historyForPromptMessages,
-            recentToolEvents,
             debugMarkers,
             internalTranscript: refreshedSession.internalTranscript,
             currentUser: user,
@@ -580,7 +578,6 @@ export function createGenerationSessionOrchestrator(
             currentUser: user,
             historySummary: refreshedSession.historySummary,
             historyForPrompt: historyForPromptMessages,
-            recentToolEvents,
             debugMarkers,
             internalTranscript: refreshedSession.internalTranscript,
             lastLlmUsage: refreshedSession.lastLlmUsage,
@@ -775,7 +772,6 @@ export function createGenerationSessionOrchestrator(
         currentUser,
         historySummary: session.historySummary,
         historyForPrompt: historyForPromptMessages,
-        recentToolEvents: session.recentToolEvents,
         debugMarkers: session.debugMarkers,
         internalTranscript: session.internalTranscript,
         lastLlmUsage: session.lastLlmUsage,

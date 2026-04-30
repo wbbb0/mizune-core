@@ -178,7 +178,6 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
       recentHistory: [],
       currentBatch: [],
       liveResources: [],
-      recentToolEvents: [],
       debugMarkers: [],
       toolTranscript: [],
       persona: null as never,

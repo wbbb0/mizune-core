@@ -41,8 +41,7 @@ import type {
 import type {
   GenerationPromptBatchMessage,
   GenerationPromptHistoryMessage,
-  GenerationPromptParticipantProfile,
-  GenerationPromptToolEvent
+  GenerationPromptParticipantProfile
 } from "#app/generation/generationPromptBuilder.ts";
 import type { PromptLiveResource } from "../../prompt/promptTypes.ts";
 import type { Persona } from "#persona/personaSchema.ts";
@@ -124,7 +123,6 @@ export interface PromptDebugSnapshot {
   recentHistory: GenerationPromptHistoryMessage[];
   currentBatch: GenerationPromptBatchMessage[];
   liveResources: PromptLiveResource[];
-  recentToolEvents: GenerationPromptToolEvent[];
   debugMarkers: SessionDebugMarker[];
   toolTranscript: InternalTranscriptItem[];
   persona: Persona;

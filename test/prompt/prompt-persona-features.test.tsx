@@ -28,13 +28,6 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
         currentUserMemories: (await harness.userStore.getByUserId("owner"))?.memories ?? [],
         historySummary: null,
         recentMessages: [],
-        recentToolEvents: [{
-          toolName: "open_page",
-          argsSummary: "{\"url\":\"https://example.com\"}",
-          outcome: "error",
-          resultSummary: "navigation timeout",
-          timestampMs: Date.now()
-        }],
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "你好", timestampMs: Date.now() })]
       });
       const system = String(prompt[0]?.content ?? "");
@@ -42,9 +35,6 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       assert.match(system, /⟦section name="current_user_memories"⟧/);
       assert.match(system, /当前触发用户长期记忆/);
       assert.match(system, /当前用户偏好：不喜欢被叫全名/);
-      assert.match(system, /最近内部工具轨迹/);
-      assert.match(system, /open_page/);
-      assert.match(system, /navigation timeout/);
       assert.doesNotMatch(system, /角色规则/);
       assert.doesNotMatch(system, /外貌=/);
       assert.doesNotMatch(system, /这个不该给当前用户用/);

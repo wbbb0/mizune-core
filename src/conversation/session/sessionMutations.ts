@@ -9,7 +9,6 @@ import type {
   SessionSentMessage,
   SessionState,
   SessionPhase,
-  SessionToolEvent,
   TranscriptAssistantMessageItem,
   TranscriptUserMessageItem,
   SessionUsageSnapshot
@@ -20,7 +19,6 @@ import {
   type SessionOperationMode
 } from "./sessionOperationMode.ts";
 
-const MAX_RECENT_TOOL_EVENTS = 12;
 const MAX_DEBUG_MARKERS = 24;
 
 function updateSessionMessageTiming(session: SessionState, now: number): void {
@@ -197,14 +195,6 @@ export function applyCompressedHistoryState(
   session.historyRevision += 1;
 }
 
-export function appendToolEventState(session: SessionState, event: SessionToolEvent): void {
-  session.recentToolEvents.push(event);
-  if (session.recentToolEvents.length > MAX_RECENT_TOOL_EVENTS) {
-    session.recentToolEvents = session.recentToolEvents.slice(-MAX_RECENT_TOOL_EVENTS);
-  }
-  session.historyRevision += 1;
-}
-
 export function appendInternalTranscriptState(session: SessionState, item: InternalTranscriptItem): void {
   session.internalTranscript.push(item);
 }
@@ -251,7 +241,6 @@ export function clearSessionState(session: SessionState): void {
   session.historyBackfillBoundaryMs = Date.now();
   session.internalTranscript = [];
   session.debugMarkers = [];
-  session.recentToolEvents = [];
   session.lastLlmUsage = null;
   session.sentMessages = [];
   session.phase = { kind: "idle" };

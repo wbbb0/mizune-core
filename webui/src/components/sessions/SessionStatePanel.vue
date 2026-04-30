@@ -196,27 +196,6 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
         </WorkbenchDisclosure>
 
         <WorkbenchDisclosure
-          :expanded="isDisclosureExpanded('recent-tool-events')"
-          collapsed-title="最近工具事件"
-          expanded-title="最近工具事件"
-          :summary="`${detail?.session.recentToolEvents.length ?? 0} 项`"
-          @toggle="toggleDisclosure('recent-tool-events')"
-        >
-          <WorkbenchEmptyState v-if="(detail?.session.recentToolEvents.length ?? 0) === 0" :centered="false" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle" message="暂无工具事件" />
-          <div v-else class="flex flex-col gap-2">
-            <WorkbenchCard v-for="(event, index) in detail?.session.recentToolEvents ?? []" :key="`${event.toolName}-${event.timestampMs}-${index}`" surface="sidebar">
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <span class="font-mono text-small text-text-secondary">{{ event.toolName }}</span>
-                <span class="text-small text-text-subtle">{{ formatTimestamp(event.timestampMs) }}</span>
-              </div>
-              <div class="mt-1 whitespace-pre-wrap wrap-break-word text-small text-text-muted">参数：{{ event.argsSummary || "无" }}</div>
-              <div class="mt-1 whitespace-pre-wrap wrap-break-word text-small text-text-muted">结果：{{ event.resultSummary || "无" }}</div>
-              <div class="mt-1 text-small" :class="event.outcome === 'error' ? 'text-danger' : 'text-success'">{{ event.outcome }}</div>
-            </WorkbenchCard>
-          </div>
-        </WorkbenchDisclosure>
-
-        <WorkbenchDisclosure
           :expanded="isDisclosureExpanded('debug-markers')"
           collapsed-title="调试标记"
           expanded-title="调试标记"

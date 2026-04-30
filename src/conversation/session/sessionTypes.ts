@@ -75,14 +75,6 @@ export interface SessionHistoryMessage {
   timestampMs: number;
 }
 
-export interface SessionToolEvent {
-  toolName: string;
-  argsSummary: string;
-  outcome: "success" | "error";
-  resultSummary: string;
-  timestampMs: number;
-}
-
 export type DebugLiteral =
   | "full_system_prompt"
   | "history_summary"
@@ -262,7 +254,6 @@ export interface SessionState {
   historyBackfillBoundaryMs: number;
   internalTranscript: InternalTranscriptItem[];
   debugMarkers: SessionDebugMarker[];
-  recentToolEvents: SessionToolEvent[];
   lastLlmUsage: SessionUsageSnapshot | null;
   sentMessages: SessionSentMessage[];
   phase: SessionPhase;
@@ -301,7 +292,6 @@ export interface PersistedSessionState {
   historyBackfillBoundaryMs?: number;
   internalTranscript: InternalTranscriptItem[];
   debugMarkers: SessionDebugMarker[];
-  recentToolEvents: SessionToolEvent[];
   lastLlmUsage: SessionUsageSnapshot | null;
   sentMessages: SessionSentMessage[];
   lastActiveAt: number;

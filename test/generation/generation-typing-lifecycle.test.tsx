@@ -311,7 +311,6 @@ function createExecutorHarness(options?: {
       recentHistory: [],
       currentBatch: [],
       liveResources: [],
-      recentToolEvents: [],
       debugMarkers: [],
       toolTranscript: [],
       persona: null as never,

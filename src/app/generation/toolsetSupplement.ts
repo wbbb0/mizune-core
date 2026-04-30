@@ -1,5 +1,5 @@
 import type { TurnPlannerResult } from "#conversation/turnPlanner.ts";
-import type { GenerationPromptToolEvent } from "./generationPromptBuilder.ts";
+import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import { decideToolsetSupplements } from "./toolsetSupplementPolicy.ts";
 import { buildToolsetSupplementSignals } from "./toolsetSupplementSignals.ts";
@@ -7,7 +7,7 @@ import { buildToolsetSupplementSignals } from "./toolsetSupplementSignals.ts";
 export interface ToolsetSupplementInput {
   selectedToolsetIds: string[];
   availableToolsets: ToolsetView[];
-  recentToolEvents: GenerationPromptToolEvent[];
+  recentTranscriptItems: InternalTranscriptItem[];
   plannerDecision?: TurnPlannerResult | null;
 }
 
@@ -22,7 +22,7 @@ export function supplementPlannedToolsets(input: ToolsetSupplementInput): Toolse
   const selected = new Set(input.selectedToolsetIds.filter((item) => availableToolsets.has(item)));
   const signals = buildToolsetSupplementSignals({
     availableToolsets: input.availableToolsets,
-    recentToolEvents: input.recentToolEvents,
+    recentTranscriptItems: input.recentTranscriptItems,
     plannerDecision: input.plannerDecision ?? null
   });
   const reasons: string[] = [];

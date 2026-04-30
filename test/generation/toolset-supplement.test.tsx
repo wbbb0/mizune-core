@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { supplementPlannedToolsets } from "../../src/app/generation/toolsetSupplement.ts";
+import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
 
 const AVAILABLE_TOOLSETS = [
   { id: "chat_context", title: "会话上下文", description: "", toolNames: ["view_message", "chat_file_view_media"] },
@@ -12,11 +13,22 @@ const AVAILABLE_TOOLSETS = [
   { id: "dice_roller", title: "骰子", description: "", toolNames: ["roll_dice"] }
 ];
 
+function toolResult(toolName: string): InternalTranscriptItem {
+  return {
+    kind: "tool_result",
+    llmVisible: true,
+    timestampMs: Date.now() - 1000,
+    toolCallId: `call-${toolName}`,
+    toolName,
+    content: "{}"
+  } as InternalTranscriptItem;
+}
+
   test("supplement maps planner capabilities to final toolsets without regex intent tables", async () => {
     const result = supplementPlannedToolsets({
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
-      recentToolEvents: [],
+      recentTranscriptItems: [],
       plannerDecision: {
         reason: "需要打开网页并存本地",
         replyDecision: "reply_small",
@@ -36,7 +48,7 @@ const AVAILABLE_TOOLSETS = [
     const result = supplementPlannedToolsets({
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
-      recentToolEvents: [],
+      recentTranscriptItems: [],
       plannerDecision: {
         reason: "需要在网页里定位并下载资源",
         replyDecision: "reply_small",
@@ -56,7 +68,7 @@ const AVAILABLE_TOOLSETS = [
     const result = supplementPlannedToolsets({
       selectedToolsetIds: [],
       availableToolsets: AVAILABLE_TOOLSETS,
-      recentToolEvents: [],
+      recentTranscriptItems: [],
       plannerDecision: {
         reason: "需要判断是否更新长期记忆",
         replyDecision: "reply_small",
@@ -86,13 +98,7 @@ const AVAILABLE_TOOLSETS = [
         followupMode: "elliptical",
         toolsetIds: []
       },
-      recentToolEvents: [{
-        toolName: "open_page",
-        argsSummary: "url=https://example.com",
-        outcome: "success",
-        resultSummary: "opened",
-        timestampMs: Date.now() - 1000
-      }]
+      recentTranscriptItems: [toolResult("open_page")]
     });
     assert.deepEqual(result.toolsetIds, ["web_research"]);
   });
@@ -111,13 +117,7 @@ const AVAILABLE_TOOLSETS = [
         followupMode: "elliptical",
         toolsetIds: []
       },
-      recentToolEvents: [{
-        toolName: "terminal_run",
-        argsSummary: "cmd=npm test",
-        outcome: "success",
-        resultSummary: "running",
-        timestampMs: Date.now() - 1000
-      }]
+      recentTranscriptItems: [toolResult("terminal_run")]
     });
     assert.deepEqual(result.toolsetIds, ["shell_runtime"]);
   });

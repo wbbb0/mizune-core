@@ -345,7 +345,6 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           recentMessages: [],
           internalTranscript: session.internalTranscript,
           debugMarkers: [],
-          recentToolEvents: [],
           lastLlmUsage: null,
           sentMessages: [],
           lastActiveAt: session.lastActiveAt
@@ -498,7 +497,6 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           internalTranscript: session.internalTranscript,
           historySummary: null,
           debugMarkers: [],
-          recentToolEvents: [],
           lastLlmUsage: null,
           sentMessages: [],
           lastActiveAt: session.lastActiveAt,
@@ -731,7 +729,6 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           internalTranscript: session.internalTranscript,
           historySummary: null,
           debugMarkers: [],
-          recentToolEvents: [],
           lastLlmUsage: null,
           sentMessages: [],
           lastActiveAt: session.lastActiveAt,

@@ -87,7 +87,6 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       persona: { prompt: "" } as any,
       phase: "setup",
       historyForPrompt: [],
-      recentToolEvents: [],
       internalTranscript: [],
       currentUser: null,
       participantProfiles: [],
@@ -246,7 +245,6 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       currentUser: { userId: "10001", relationship: "known" } as any,
       historySummary: null,
       historyForPrompt: [],
-      recentToolEvents: [],
       internalTranscript: [],
       lastLlmUsage: null,
       batchMessages: [{
@@ -361,7 +359,6 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       } as any,
       historySummary: "之前讨论过文件处理。",
       historyForPrompt: [],
-      recentToolEvents: [],
       internalTranscript: [],
       lastLlmUsage: null,
       batchMessages: [{
@@ -488,7 +485,6 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       } as any,
       historySummary: null,
       historyForPrompt: [],
-      recentToolEvents: [],
       internalTranscript: [],
       lastLlmUsage: null,
       batchMessages: [{
@@ -612,7 +608,6 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       currentUser: null,
       historySummary: null,
       historyForPrompt: [],
-      recentToolEvents: [],
       debugMarkers: [],
       internalTranscript: [],
       lastLlmUsage: null,
@@ -761,7 +756,6 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       currentUser: { userId: "10001", relationship: "known", memories: [{ id: "mem_1", title: "旧记忆", content: "不应出现", updatedAt: 1 }] } as any,
       historySummary: null,
       historyForPrompt: [],
-      recentToolEvents: [],
       internalTranscript: [],
       lastLlmUsage: null,
       batchMessages: [{
@@ -893,7 +887,6 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       currentUser: { userId: "u1", relationship: "owner" } as any,
       historySummary: null,
       historyForPrompt: [],
-      recentToolEvents: [],
       internalTranscript: [],
       lastLlmUsage: null,
       batchMessages: [{
@@ -1020,7 +1013,6 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       currentUser: null,
       historySummary: null,
       historyForPrompt: [],
-      recentToolEvents: [],
       debugMarkers: [],
       internalTranscript: [],
       lastLlmUsage: null,
@@ -1158,7 +1150,6 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       currentUser: null,
       historySummary: null,
       historyForPrompt: [],
-      recentToolEvents: [],
       debugMarkers: [],
       internalTranscript: [],
       lastLlmUsage: null,

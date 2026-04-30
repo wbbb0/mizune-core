@@ -134,13 +134,6 @@ const persistedSessionSchema = z.object({
     sentCount: z.number().int().nonnegative().optional(),
     note: z.string().optional()
   })),
-  recentToolEvents: z.array(z.object({
-    toolName: z.string().min(1),
-    argsSummary: z.string(),
-    outcome: z.enum(["success", "error"]),
-    resultSummary: z.string(),
-    timestampMs: z.number().int().nonnegative()
-  })),
   lastLlmUsage: z.object({
     inputTokens: z.number().int().nonnegative().nullable(),
     outputTokens: z.number().int().nonnegative().nullable(),

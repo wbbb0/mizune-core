@@ -18,7 +18,7 @@ import { readFile } from "node:fs/promises";
     assert.match(source, /<pre[^>]*overflow-auto[^>]*>{{ formatJson\(detail\?\.session\.lastLlmUsage/);
     assert.match(source, /WorkbenchDisclosure/);
     assert.match(source, /collapsed-title="派生观察"/);
-    assert.match(source, /collapsed-title="最近工具事件"/);
+    assert.doesNotMatch(source, /collapsed-title="最近工具事件"/);
     assert.match(source, /collapsed-title="最近发送记录"/);
     assert.match(source, /WorkbenchCard/);
     assert.match(source, /class="min-w-0 break-all font-mono text-small text-text-secondary"/);

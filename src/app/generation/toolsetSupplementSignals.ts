@@ -1,5 +1,5 @@
 import type { TurnPlannerContextDependency, TurnPlannerFollowupMode, TurnPlannerRequiredCapability, TurnPlannerResult } from "#conversation/turnPlanner.ts";
-import type { GenerationPromptToolEvent } from "./generationPromptBuilder.ts";
+import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 
 type RecentToolsetDomains = {
@@ -19,7 +19,7 @@ export interface ToolsetSupplementSignals {
 
 export function buildToolsetSupplementSignals(input: {
   availableToolsets: ToolsetView[];
-  recentToolEvents: GenerationPromptToolEvent[];
+  recentTranscriptItems: InternalTranscriptItem[];
   plannerDecision?: TurnPlannerResult | null;
 }): ToolsetSupplementSignals {
   return {
@@ -27,13 +27,13 @@ export function buildToolsetSupplementSignals(input: {
     contextDependencies: input.plannerDecision?.contextDependencies ?? [],
     recentDomainReuse: input.plannerDecision?.recentDomainReuse ?? [],
     followupMode: input.plannerDecision?.followupMode ?? "none",
-    recentDomains: summarizeRecentDomains(input.availableToolsets, input.recentToolEvents)
+    recentDomains: summarizeRecentDomains(input.availableToolsets, input.recentTranscriptItems)
   };
 }
 
 function summarizeRecentDomains(
   availableToolsets: ToolsetView[],
-  recentToolEvents: GenerationPromptToolEvent[]
+  recentTranscriptItems: InternalTranscriptItem[]
 ): RecentToolsetDomains {
   const toolToToolsets = new Map<string, Set<string>>();
   for (const toolset of availableToolsets) {
@@ -48,8 +48,20 @@ function summarizeRecentDomains(
   let hasShell = false;
   let hasLocalFiles = false;
   let hasChatContext = false;
-  for (const event of recentToolEvents.slice(-6)) {
-    const mapped = toolToToolsets.get(event.toolName);
+  const recentToolNames = recentTranscriptItems
+    .flatMap((item) => {
+      if (item.kind === "tool_result") {
+        return [item.toolName];
+      }
+      if (item.kind === "assistant_tool_call") {
+        return item.toolCalls.map((toolCall) => toolCall.function.name);
+      }
+      return [];
+    })
+    .slice(-6);
+
+  for (const toolName of recentToolNames) {
+    const mapped = toolToToolsets.get(toolName);
     if (mapped?.has("web_research")) {
       hasWeb = true;
     }

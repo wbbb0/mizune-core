@@ -6,7 +6,6 @@ import type {
   SessionDebugControlState,
   SessionSentMessage,
   SessionState,
-  SessionToolEvent,
   SessionUsageSnapshot
 } from "./sessionTypes.ts";
 import { cloneSessionOperationMode } from "./sessionOperationMode.ts";
@@ -27,7 +26,6 @@ export function cloneSessionState(session: SessionState): SessionState {
     pendingInternalTriggers: [...session.pendingInternalTriggers],
     internalTranscript: normalizeTranscriptItems(session.internalTranscript),
     debugMarkers: [...session.debugMarkers],
-    recentToolEvents: [...session.recentToolEvents],
     sentMessages: [...session.sentMessages],
     lastLlmUsage: session.lastLlmUsage == null ? null : { ...session.lastLlmUsage },
     messageQueue: [...session.messageQueue],
@@ -87,7 +85,6 @@ export function getSessionViewSnapshot(session: SessionState): {
   historySummary: string | null;
   internalTranscript: NormalizedInternalTranscriptItem[];
   debugMarkers: SessionDebugMarker[];
-  recentToolEvents: SessionToolEvent[];
   lastLlmUsage: SessionUsageSnapshot | null;
   sentMessages: SessionSentMessage[];
   lastActiveAt: number;
@@ -108,7 +105,6 @@ export function getSessionViewSnapshot(session: SessionState): {
     historySummary: session.historySummary,
     internalTranscript: normalizeTranscriptItems(session.internalTranscript),
     debugMarkers: [...session.debugMarkers],
-    recentToolEvents: [...session.recentToolEvents],
     lastLlmUsage: session.lastLlmUsage,
     sentMessages: [...session.sentMessages],
     lastActiveAt: session.lastActiveAt

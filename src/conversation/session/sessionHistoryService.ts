@@ -1,7 +1,6 @@
 import type { AppConfig } from "#config/config.ts";
 import {
   appendInternalTranscriptState,
-  appendToolEventState,
   applyCompressedHistoryState,
   setLastAssistantMessageReasoningState,
   setLastLlmUsageState
@@ -32,7 +31,6 @@ import type {
   SessionMessage,
   SessionSentMessage,
   SessionState,
-  SessionToolEvent,
   SessionUsageSnapshot,
   TranscriptAssistantMessageItem,
   TranscriptItemDeliveryRef,
@@ -237,10 +235,9 @@ export class SessionHistoryService {
 
   appendInternalTranscript(session: SessionState, item: InternalTranscriptItem): void {
     this.appendNormalizedTranscript(session, item, item.groupId ?? resolveTranscriptOutputGroupId(session));
-  }
-
-  appendToolEvent(session: SessionState, event: SessionToolEvent): void {
-    appendToolEventState(session, event);
+    if (item.llmVisible === true) {
+      session.historyRevision += 1;
+    }
   }
 
   setLastLlmUsage(session: SessionState, usage: SessionUsageSnapshot): void {
@@ -350,7 +347,6 @@ export class SessionHistoryService {
     historySummary: string | null;
     internalTranscript: InternalTranscriptItem[];
     debugMarkers: SessionState["debugMarkers"];
-    recentToolEvents: SessionToolEvent[];
     lastLlmUsage: SessionUsageSnapshot | null;
     sentMessages: SessionSentMessage[];
     lastActiveAt: number;

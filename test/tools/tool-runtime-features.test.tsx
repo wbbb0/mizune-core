@@ -1373,7 +1373,6 @@ function createMediaToolVisibilityConfig(options: {
           recentHistory: [],
           currentBatch: [],
           liveResources: [],
-          recentToolEvents: [],
           debugMarkers: [],
           toolTranscript: [],
           persona: { name: "Test Persona" },

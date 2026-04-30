@@ -60,14 +60,6 @@ export interface PromptHistoryMessage {
   timestampMs?: number | null;
 }
 
-export interface PromptToolEvent {
-  toolName: string;
-  argsSummary: string;
-  outcome: "success" | "error";
-  resultSummary: string;
-  timestampMs?: number | null;
-}
-
 export interface PromptLiveResource {
   resourceId: string;
   kind: "browser_page" | "shell_session";
@@ -153,7 +145,6 @@ export interface PromptInput {
   globalRules?: GlobalRuleEntry[];
   historySummary?: string | null | undefined;
   recentMessages: PromptHistoryMessage[];
-  recentToolEvents?: PromptToolEvent[] | undefined;
   debugMarkers?: SessionDebugMarker[] | undefined;
   liveResources?: PromptLiveResource[] | undefined;
   toolsetRules?: ToolsetRuleEntry[] | undefined;
@@ -240,7 +231,6 @@ export interface InternalSessionTriggerPromptInput {
   globalRules?: PromptInput["globalRules"];
   historySummary?: string | null | undefined;
   recentMessages: PromptInput["recentMessages"];
-  recentToolEvents?: PromptInput["recentToolEvents"];
   debugMarkers?: PromptInput["debugMarkers"];
   liveResources?: PromptInput["liveResources"];
   toolsetRules?: PromptInput["toolsetRules"];
@@ -270,7 +260,6 @@ export interface SetupPromptInput {
   phase: "setup" | "config";
   missingFields: EditablePersonaFieldName[];
   recentMessages: PromptInput["recentMessages"];
-  recentToolEvents?: PromptInput["recentToolEvents"];
   debugMarkers?: PromptInput["debugMarkers"];
   liveResources?: PromptInput["liveResources"];
   batchMessages: PromptInput["batchMessages"];

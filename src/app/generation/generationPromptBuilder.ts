@@ -64,14 +64,6 @@ export interface GenerationPromptHistoryMessage {
   timestampMs?: number | null;
 }
 
-export interface GenerationPromptToolEvent {
-  toolName: string;
-  argsSummary: string;
-  outcome: "success" | "error";
-  resultSummary: string;
-  timestampMs?: number | null;
-}
-
 export interface GenerationPromptParticipantProfile {
   userId: string;
   displayName: string;
@@ -128,7 +120,6 @@ export interface GenerationPromptBuilder {
     currentUser: StoredUser;
     historySummary: string | null;
     historyForPrompt: GenerationPromptHistoryMessage[];
-    recentToolEvents: GenerationPromptToolEvent[];
     debugMarkers?: SessionDebugMarker[];
     internalTranscript: InternalTranscriptItem[];
     lastLlmUsage: SessionUsageSnapshot | null;
@@ -153,7 +144,6 @@ export interface GenerationPromptBuilder {
     currentUser: StoredUser;
     historySummary: string | null;
     historyForPrompt: GenerationPromptHistoryMessage[];
-    recentToolEvents: GenerationPromptToolEvent[];
     debugMarkers?: SessionDebugMarker[];
     internalTranscript: InternalTranscriptItem[];
     lastLlmUsage: SessionUsageSnapshot | null;
@@ -169,7 +159,6 @@ export interface GenerationPromptBuilder {
     persona: PersonaState;
     phase: "setup" | "config";
     historyForPrompt: GenerationPromptHistoryMessage[];
-    recentToolEvents: GenerationPromptToolEvent[];
     debugMarkers?: SessionDebugMarker[];
     internalTranscript: InternalTranscriptItem[];
     currentUser: StoredUser;
@@ -555,7 +544,6 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     currentUser: StoredUser;
     historySummary: string | null;
     historyForPrompt: GenerationPromptHistoryMessage[];
-    recentToolEvents: GenerationPromptToolEvent[];
     debugMarkers?: SessionDebugMarker[];
     internalTranscript: InternalTranscriptItem[];
     lastLlmUsage: SessionUsageSnapshot | null;
@@ -662,7 +650,6 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       currentUserMemories: (scenarioHostMode || assistantMode) ? [] : (input.currentUser?.memories ?? []),
       globalRules,
       historySummary: input.historySummary,
-      recentToolEvents: input.recentToolEvents,
       debugMarkers: input.debugMarkers,
       liveResources,
       toolsetRules,
@@ -684,7 +671,6 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         recentHistory: mediaContext.historyForPrompt,
         currentBatch: input.batchMessages,
         liveResources,
-        recentToolEvents: input.recentToolEvents,
         debugMarkers: input.debugMarkers ?? [],
         toolTranscript: input.internalTranscript,
         persona: input.persona,
@@ -713,7 +699,6 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     currentUser: StoredUser;
     historySummary: string | null;
     historyForPrompt: GenerationPromptHistoryMessage[];
-    recentToolEvents: GenerationPromptToolEvent[];
     debugMarkers?: SessionDebugMarker[];
     internalTranscript: InternalTranscriptItem[];
     lastLlmUsage: SessionUsageSnapshot | null;
@@ -792,7 +777,6 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       currentUserMemories: (scenarioHostMode || assistantMode) ? [] : (input.currentUser?.memories ?? []),
       globalRules,
       historySummary: input.historySummary,
-      recentToolEvents: input.recentToolEvents,
       debugMarkers: input.debugMarkers,
       liveResources,
       toolsetRules,
@@ -813,7 +797,6 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         recentHistory: mediaContext.historyForPrompt,
         currentBatch: [],
         liveResources,
-        recentToolEvents: input.recentToolEvents,
         debugMarkers: input.debugMarkers ?? [],
         toolTranscript: input.internalTranscript,
         persona: input.persona,
@@ -835,7 +818,6 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     persona: PersonaState;
     phase: "setup" | "config";
     historyForPrompt: GenerationPromptHistoryMessage[];
-    recentToolEvents: GenerationPromptToolEvent[];
     debugMarkers?: SessionDebugMarker[];
     internalTranscript: InternalTranscriptItem[];
     currentUser: StoredUser;
@@ -873,7 +855,6 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       persona: input.persona,
       phase: input.phase,
       missingFields: deps.setupStore.describeMissingFields(input.persona).map((item) => item.key),
-      recentToolEvents: input.recentToolEvents,
       debugMarkers: input.debugMarkers,
       recentMessages: mediaContext.historyForPrompt,
       batchMessages: preparedBatchMessages
@@ -890,7 +871,6 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         recentHistory: mediaContext.historyForPrompt,
         currentBatch: input.batchMessages,
         liveResources: [],
-        recentToolEvents: input.recentToolEvents,
         debugMarkers: input.debugMarkers ?? [],
         toolTranscript: input.internalTranscript,
         persona: input.persona,

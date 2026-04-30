@@ -86,7 +86,6 @@ export interface InternalApiSessionDetail {
     derivedObservations: DerivedObservation[];
     internalTranscript: unknown[];
     debugMarkers: unknown[];
-    recentToolEvents: unknown[];
     lastLlmUsage: unknown;
     sentMessages: unknown[];
     lastActiveAt: number;

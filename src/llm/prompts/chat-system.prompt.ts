@@ -20,8 +20,7 @@ import type {
   PromptInteractionMode,
   PromptLiveResource,
   PromptNpcProfile,
-  PromptParticipantProfile,
-  PromptToolEvent
+  PromptParticipantProfile
 } from "#llm/prompt/promptTypes.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import { renderPromptSection } from "./prompt-section.ts";
@@ -211,7 +210,6 @@ export function buildBaseSystemLines(input: {
   currentUserMemories?: PromptInput["currentUserMemories"] | undefined;
   globalRules?: PromptInput["globalRules"] | undefined;
   historySummary?: string | null | undefined;
-  recentToolEvents?: PromptInput["recentToolEvents"] | undefined;
   liveResources?: PromptInput["liveResources"] | undefined;
   toolsetRules?: PromptInput["toolsetRules"] | undefined;
   scenarioStateLines?: string[] | undefined;
@@ -295,8 +293,7 @@ export function buildBaseSystemLines(input: {
         visibleToolNames: input.visibleToolNames
       })),
       renderPromptSection("live_resources", buildLiveResourceLines(input.liveResources)),
-      renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
-      renderPromptSection("recent_tool_events", buildRecentToolEventLines(input.recentToolEvents))
+      renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary))
     ].filter((item): item is string => Boolean(item));
   }
 
@@ -321,7 +318,6 @@ export function buildBaseSystemLines(input: {
       renderPromptSection("live_resources", buildLiveResourceLines(input.liveResources)),
       renderPromptSection("participant_context", buildParticipantContextLines(input.sessionMode, input.participantProfiles)),
       renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
-      renderPromptSection("recent_tool_events", buildRecentToolEventLines(input.recentToolEvents)),
       renderPromptSection("scenario_state", input.scenarioStateLines ?? []),
       renderPromptSection("current_user_profile", buildCurrentUserProfileLines({
         userProfile: input.userProfile,
@@ -363,7 +359,6 @@ export function buildBaseSystemLines(input: {
         ...buildNpcContextLines(input.sessionMode, input.npcProfiles, input.participantProfiles)
       ]),
       renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
-      renderPromptSection("recent_tool_events", buildRecentToolEventLines(input.recentToolEvents)),
       renderPromptSection("global_rules", buildGlobalRuleLines(preparedMemoryContext.globalRules)),
       renderPromptSection("toolset_rules", buildToolsetRuleLines(preparedMemoryContext.toolsetRules)),
       renderPromptSection("current_user_profile", buildCurrentUserProfileLines({
@@ -401,7 +396,6 @@ export function buildBaseSystemLines(input: {
       ...buildNpcContextLines(input.sessionMode, input.npcProfiles, input.participantProfiles)
     ]),
     renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
-    renderPromptSection("recent_tool_events", buildRecentToolEventLines(input.recentToolEvents)),
     renderPromptSection("global_rules", buildGlobalRuleLines(preparedMemoryContext.globalRules)),
     renderPromptSection("toolset_rules", buildToolsetRuleLines(preparedMemoryContext.toolsetRules)),
     renderPromptSection("current_user_profile", buildCurrentUserProfileLines({
@@ -1102,34 +1096,11 @@ function buildLiveResourceLines(resources: PromptLiveResource[] | undefined): st
   return [`当前可复用 live_resource（需要继续操作网页/终端时优先复用这些 resource_id）：\n${lines.join("\n")}`];
 }
 
-function buildRecentToolEventLines(events: PromptToolEvent[] | undefined): string[] {
-  if (!events || events.length === 0) {
-    return [];
-  }
-  const lines = events
-    .slice(-6)
-    .map((event) => {
-      const timestamp = event.timestampMs == null ? "时间未知" : formatCompactTimestamp(event.timestampMs);
-      return `- ${timestamp} ${event.toolName}(${event.argsSummary || "无参数"}) -> ${event.outcome}：${event.resultSummary || "无摘要"}`;
-    });
-  return [`最近内部工具轨迹（仅供你延续当前任务，不要对用户直说）：\n${lines.join("\n")}`];
-}
-
 function buildToolsetRuleLines(rules: ToolsetRuleEntry[] | undefined): string[] {
   if (!rules || rules.length === 0) {
     return [];
   }
   return [`当前激活工具集相关长期规则（最多 ${MAX_VISIBLE_MEMORIES} 条）：\n${formatEntryLines(rules)}`];
-}
-
-function formatCompactTimestamp(timestampMs: number): string {
-  return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false
-  }).format(new Date(timestampMs));
 }
 
 function buildGlobalRuleLines(entries: GlobalRuleEntry[]): string[] {

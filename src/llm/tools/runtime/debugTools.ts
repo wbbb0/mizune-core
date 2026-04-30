@@ -180,8 +180,7 @@ async function renderDebugLiteral(literal: DebugLiteral, context: Parameters<Non
         visibleToolNames: snapshot?.visibleToolNames ?? [],
         activeToolsets: snapshot?.activeToolsets ?? [],
         globalRules: snapshot?.globalRules ?? [],
-        toolsetRules: snapshot?.toolsetRules ?? [],
-        recentToolEvents: snapshot?.recentToolEvents ?? []
+        toolsetRules: snapshot?.toolsetRules ?? []
       }, null, 2);
     case "image_captions": {
       const imageIds = new Set<string>();

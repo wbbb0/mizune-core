@@ -43,7 +43,6 @@ import type {
   SessionMessage,
   SessionSentMessage,
   SessionState,
-  SessionToolEvent,
   SessionTitleSource,
   SessionUsageSnapshot,
   TranscriptItemDeliveryRef,
@@ -66,7 +65,6 @@ export type {
   SessionMessage,
   SessionSentMessage,
   SessionState,
-  SessionToolEvent,
   SessionUsageSnapshot
 } from "./sessionTypes.ts";
 export type { SessionOperationMode } from "./sessionOperationMode.ts";
@@ -742,16 +740,6 @@ export class SessionManager {
     });
   }
 
-  appendToolEventIfEpochMatches(
-    sessionId: string,
-    expectedEpoch: number,
-    event: SessionToolEvent
-  ): boolean {
-    return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
-      this.historyService.appendToolEvent(session, event);
-    });
-  }
-
   setLastLlmUsageIfEpochMatches(sessionId: string, expectedEpoch: number, usage: SessionUsageSnapshot): boolean {
     return this.withMutationEpoch(sessionId, expectedEpoch, (session) => {
       this.historyService.setLastLlmUsage(session, usage);
@@ -769,7 +757,6 @@ export class SessionManager {
     historySummary: string | null;
     internalTranscript: InternalTranscriptItem[];
     debugMarkers: SessionDebugMarker[];
-    recentToolEvents: SessionToolEvent[];
     lastLlmUsage: SessionUsageSnapshot | null;
     sentMessages: SessionSentMessage[];
     lastActiveAt: number;

@@ -45,7 +45,6 @@ function nextTick(): Promise<void> {
       mutationEpoch: 7,
       lastActiveAt: 99,
       internalTranscript: transcript,
-      recentToolEvents: [] as Array<{ toolName: string }>,
       activeAssistantResponse: null,
       activeAssistantDraftResponse: null
     };
@@ -108,7 +107,6 @@ function nextTick(): Promise<void> {
       mutationEpoch: 2,
       lastActiveAt: 100,
       internalTranscript: [] as InternalTranscriptItem[],
-      recentToolEvents: [] as Array<{ toolName: string }>,
       activeAssistantResponse: null,
       activeAssistantDraftResponse: null
     };
@@ -224,7 +222,6 @@ function nextTick(): Promise<void> {
         text: "AB",
         timestampMs: 30
       }] as TranscriptAssistantMessageItem[],
-      recentToolEvents: [] as Array<{ toolName: string }>,
       activeAssistantResponse: null,
       activeAssistantDraftResponse: null
     };

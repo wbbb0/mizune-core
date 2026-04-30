@@ -1,6 +1,6 @@
 import { createBuiltinToolExecutor, getBuiltinTools } from "#llm/builtinTools.ts";
 import type { LlmMessage, LlmProviderCallUsage, LlmToolCall, LlmToolExecutionResult } from "#llm/llmClient.ts";
-import { extractToolError, parseToolArguments } from "#llm/shared/toolArgs.ts";
+import { parseToolArguments } from "#llm/shared/toolArgs.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import {
   createUserTranscriptMessageItem,
@@ -26,11 +26,7 @@ import type {
 import type { InternalSessionTriggerExecution, InternalTranscriptItem, SessionDebugMarker } from "#conversation/session/sessionTypes.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
 import {
-  buildGenerationFailureAssistantMessage,
-  extractToolContent,
-  summarizeResultText,
-  summarizeToolArgs,
-  summarizeToolResult
+  buildGenerationFailureAssistantMessage
 } from "./generationExecutorSupport.ts";
 import type {
   GenerationCommittedTextSink,
@@ -440,30 +436,9 @@ export function createGenerationExecutor(
               ? { availableToolNames: resolveDynamicAllowedToolNames() }
               : {})
           });
-          const result = await rawToolExecutor(toolCall, args);
-          const eventApplied = sessionManager.appendToolEventIfEpochMatches(sessionId, expectedEpoch, {
-            toolName: toolCall.function.name,
-            argsSummary: summarizeToolArgs(args),
-            outcome: extractToolError(extractToolContent(result)) ? "error" : "success",
-            resultSummary: summarizeToolResult(result),
-            timestampMs: Date.now()
-          });
-          if (eventApplied) {
-            persistSession(sessionId, "tool_event_recorded");
-          }
-          return result;
+          return await rawToolExecutor(toolCall, args);
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
-          const eventApplied = sessionManager.appendToolEventIfEpochMatches(sessionId, expectedEpoch, {
-            toolName: toolCall.function.name,
-            argsSummary: summarizeToolArgs(args),
-            outcome: "error",
-            resultSummary: summarizeResultText(message, 220),
-            timestampMs: Date.now()
-          });
-          if (eventApplied) {
-            persistSession(sessionId, "tool_event_recorded");
-          }
           logger.warn(
             {
               toolName: toolCall.function.name,

@@ -78,14 +78,6 @@ export interface SessionDebugControlState {
   oncePending: boolean;
 }
 
-export interface SessionToolEvent {
-  toolName: string;
-  argsSummary: string;
-  outcome: "success" | "error";
-  resultSummary: string;
-  timestampMs: number;
-}
-
 export interface SessionDebugMarker {
   kind: "debug_enabled" | "debug_disabled" | "debug_once_armed" | "debug_once_consumed" | "debug_dump_sent";
   timestampMs: number;
@@ -148,7 +140,6 @@ export interface SessionDetailSnapshot {
   derivedObservations: DerivedObservation[];
   internalTranscript: TranscriptItem[];
   debugMarkers: SessionDebugMarker[];
-  recentToolEvents: SessionToolEvent[];
   lastLlmUsage: SessionUsageSnapshot | null;
   sentMessages: SessionSentMessage[];
   lastActiveAt: number;

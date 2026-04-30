@@ -9,7 +9,6 @@ import type {
   SessionPhase,
   SessionSentMessage,
   SessionState,
-  SessionToolEvent,
   SessionUsageSnapshot,
   SessionParticipantRef,
   TranscriptItemDeliveryRef,
@@ -172,7 +171,6 @@ export interface SessionViewSnapshot {
   historySummary: string | null;
   internalTranscript: InternalTranscriptItem[];
   debugMarkers: SessionDebugMarker[];
-  recentToolEvents: SessionToolEvent[];
   lastLlmUsage: SessionUsageSnapshot | null;
   sentMessages: SessionSentMessage[];
   lastActiveAt: number;
@@ -481,7 +479,6 @@ export interface SessionGenerationOrchestratorAccess extends SessionSetupAccess,
 
 export interface SessionGenerationExecutionAccess extends SessionSetupAccess {
   consumeSteerMessages(sessionId: string): SessionMessage[];
-  appendToolEventIfEpochMatches(sessionId: string, expectedEpoch: number, event: SessionToolEvent): boolean;
   setSessionPhaseIfEpochMatches(sessionId: string, expectedEpoch: number, phase: SessionPhase): boolean;
   appendInternalTranscriptIfEpochMatches(sessionId: string, expectedEpoch: number, item: InternalTranscriptItem): boolean;
   setLastLlmUsageIfEpochMatches(sessionId: string, expectedEpoch: number, usage: SessionUsageSnapshot): boolean;
