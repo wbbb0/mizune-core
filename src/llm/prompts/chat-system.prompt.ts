@@ -1149,14 +1149,9 @@ function buildToolsetGuidanceLines(input: {
   visibleToolNames?: string[] | undefined;
 }): string[] {
   const lines: string[] = [];
-  const activeToolsets = (input.activeToolsets ?? []).filter((item) => (item.promptGuidance?.length ?? 0) > 0);
+  const activeToolsets = input.activeToolsets ?? [];
   if (activeToolsets.length > 0) {
     lines.push(`当前激活工具集：${activeToolsets.map((item) => item.title).join("、")}`);
-    for (const toolset of activeToolsets) {
-      for (const guidance of toolset.promptGuidance ?? []) {
-        lines.push(`- ${toolset.title}：${guidance}`);
-      }
-    }
   }
   if ((input.visibleToolNames ?? []).includes("request_toolset")) {
     lines.push("若当前激活工具集不够完成任务，可先查看可申请的工具集，再申请补充。");

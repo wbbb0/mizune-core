@@ -132,10 +132,6 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
     assert.ok(webResearch.toolNames.includes("download_asset"));
     assert.ok(!localFileIo.toolNames.includes("download_asset"));
     assert.ok(localFileIo.toolNames.includes("local_file_mkdir"));
-    assert.equal(
-      localFileIo.promptGuidance?.some((line) => /下载网页资源/.test(line)),
-      false
-    );
   });
 
   test("media inspection tools stay next to existing media view toolsets", async () => {

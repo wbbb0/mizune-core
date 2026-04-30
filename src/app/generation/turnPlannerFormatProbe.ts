@@ -709,9 +709,6 @@ function toProbeToolsetView(definition: ToolsetDefinition): ToolsetView {
     title: definition.title,
     description: definition.description,
     toolNames: [...definition.toolNames],
-    ...(definition.promptGuidance && definition.promptGuidance.length > 0
-      ? { promptGuidance: [...definition.promptGuidance] }
-      : {}),
     ...(definition.plannerSignals && definition.plannerSignals.length > 0
       ? { plannerSignals: [...definition.plannerSignals] }
       : {})

@@ -23,7 +23,6 @@ export interface SessionModeSetupToolsetOverride {
   title?: string;
   description?: string;
   toolNames: string[];
-  promptGuidance?: string[];
   plannerSignals?: string[];
 }
 

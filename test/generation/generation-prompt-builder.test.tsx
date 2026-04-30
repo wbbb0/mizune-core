@@ -222,15 +222,13 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
           id: "shell_runtime",
           title: "Shell 运行时",
           description: "执行与交互 shell 会话，并复用 live_resource。",
-          toolNames: ["terminal_list", "terminal_run"],
-          promptGuidance: ["需要运行命令时优先复用现有 shell 资源。"]
+          toolNames: ["terminal_list", "terminal_run"]
         },
         {
           id: "web_research",
           title: "网页检索与浏览",
           description: "搜索网页、打开页面、交互与截图。",
-          toolNames: ["open_page"],
-          promptGuidance: ["需要网页状态时再进入网页检索与浏览。"]
+          toolNames: ["open_page"]
         }
       ],
       persona: {

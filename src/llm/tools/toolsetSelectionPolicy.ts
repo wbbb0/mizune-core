@@ -106,7 +106,6 @@ function applySetupToolsetOverrides(
         title: item.title ?? item.toolsetId,
         description: item.description ?? "",
         toolNames: item.toolNames.filter((toolName) => visibleToolNames.has(toolName)),
-        ...(item.promptGuidance && item.promptGuidance.length > 0 ? { promptGuidance: item.promptGuidance } : {}),
         ...(item.plannerSignals && item.plannerSignals.length > 0 ? { plannerSignals: item.plannerSignals } : {})
       }))
       .filter((toolset) => toolset.toolNames.length > 0),
