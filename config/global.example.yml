@@ -126,6 +126,13 @@ shell:
   maxTimeoutMs: 600000
   maxOutputChars: 5000
   sessionTtlMs: null
+  terminalEvents:
+    enabled: true
+    inputDetectionDebounceMs: 800
+    inputConfirmationMs: 1200
+    inputPromptCooldownMs: 30000
+    inputSuppressionAfterWriteMs: 1200
+    detectionTailMaxChars: 8000
 localFiles:
   enabled: true
   root: data

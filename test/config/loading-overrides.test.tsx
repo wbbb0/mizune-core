@@ -6,6 +6,36 @@ import { loadConfig } from "../../src/config/config.ts";
 import { getModelRefsForRole } from "../../src/llm/shared/modelRouting.ts";
 import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } from "../helpers/config-test-support.tsx";
 
+  test("loadConfig applies shell terminal event overrides", async () => {
+    await withConfigDir("llm-bot-config-shell-terminal-events-test", async (configDir) => {
+      await writeDefaultInstanceYaml(configDir);
+      await writeYaml(join(configDir, "global.yml"), {
+        shell: {
+          enabled: true,
+          terminalEvents: {
+            enabled: false,
+            inputDetectionDebounceMs: 50,
+            inputConfirmationMs: 60,
+            inputPromptCooldownMs: 70,
+            inputSuppressionAfterWriteMs: 80,
+            detectionTailMaxChars: 900
+          }
+        }
+      });
+
+      const config = loadConfig({
+        CONFIG_DIR: configDir
+      });
+
+      assert.equal(config.shell.terminalEvents.enabled, false);
+      assert.equal(config.shell.terminalEvents.inputDetectionDebounceMs, 50);
+      assert.equal(config.shell.terminalEvents.inputConfirmationMs, 60);
+      assert.equal(config.shell.terminalEvents.inputPromptCooldownMs, 70);
+      assert.equal(config.shell.terminalEvents.inputSuppressionAfterWriteMs, 80);
+      assert.equal(config.shell.terminalEvents.detectionTailMaxChars, 900);
+    });
+  });
+
   test("loadConfig merges global proxy settings and feature proxy switches", async () => {
     await withConfigDir("llm-bot-config-search-proxy-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);

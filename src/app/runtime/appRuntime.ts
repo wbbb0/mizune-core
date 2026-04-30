@@ -102,6 +102,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
   sessionWorkCoordinator = createSessionWorkCoordinator(
     buildSessionWorkCoordinatorDeps(services, persistSession, () => scheduler)
   );
+  shellRuntime.setEventHandler((event) => sessionWorkCoordinator.dispatchTerminalEvent(event));
 
   scheduler = new Scheduler(
     scheduledJobStore,

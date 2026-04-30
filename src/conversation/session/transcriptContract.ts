@@ -10,7 +10,13 @@ export const transcriptSystemMarkerKindValues = [
   "debug_dump_sent"
 ] as const;
 export const transcriptOutboundMediaToolNameValues = ["chat_file_send_to_chat", "local_file_send_to_chat"] as const;
-export const transcriptInternalTriggerKindValues = ["scheduled_instruction", "comfy_task_completed", "comfy_task_failed"] as const;
+export const transcriptInternalTriggerKindValues = [
+  "scheduled_instruction",
+  "comfy_task_completed",
+  "comfy_task_failed",
+  "terminal_session_closed",
+  "terminal_input_required"
+] as const;
 export const transcriptInternalTriggerStageValues = ["received", "queued", "dequeued", "started"] as const;
 
 export const storedToolCallSchema = z.object({
@@ -253,6 +259,7 @@ export const transcriptInternalTriggerEventItemSchema = z.object({
   comfyPromptId: z.string().optional(),
   autoIterationIndex: z.number().int().nonnegative().optional(),
   maxAutoIterations: z.number().int().nonnegative().optional(),
+  resourceId: z.string().optional(),
   details: z.string().optional()
 });
 

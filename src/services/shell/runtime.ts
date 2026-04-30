@@ -11,7 +11,16 @@ import {
   trimOutputTail,
   waitForShellYield
 } from "./core.ts";
-import type { ShellRunParams, ShellRunResult, ShellSession } from "./types.ts";
+import { detectTerminalInputPrompt, normalizeTerminalOutput } from "./inputPromptDetector.ts";
+import type {
+  ShellNotifyPolicy,
+  ShellRunOwner,
+  ShellRunParams,
+  ShellRunResult,
+  ShellRuntimeEvent,
+  ShellRuntimeEventHandler,
+  ShellSession
+} from "./types.ts";
 
 interface InternalSessionState {
   view: ShellSession;
@@ -20,6 +29,15 @@ interface InternalSessionState {
   write: (data: string) => void;
   kill: (signal?: string) => void;
   expiresAtMs: number | null;
+  owner: ShellRunOwner | null;
+  notifyPolicy: ShellNotifyPolicy;
+  returnedToModel: boolean;
+  inputDetectionTimer: ReturnType<typeof setTimeout> | null;
+  inputConfirmationTimer: ReturnType<typeof setTimeout> | null;
+  inputCandidateSignature: string | null;
+  lastInputPromptSignature: string | null;
+  lastInputPromptNotifiedAtMs: number | null;
+  inputDetectionSuppressedUntilMs: number;
 }
 
 function isClosedSession(session: ShellSession): boolean {
@@ -29,17 +47,24 @@ function isClosedSession(session: ShellSession): boolean {
 export class ShellRuntime {
   private readonly sessions = new Map<string, InternalSessionState>();
   private readonly resourceRegistry: RuntimeResourceRegistry;
+  private eventHandler: ShellRuntimeEventHandler | null;
 
   constructor(
     private readonly config: AppConfig,
     private readonly logger: Logger,
-    dataDir: string
+    dataDir: string,
+    options?: { onEvent?: ShellRuntimeEventHandler }
   ) {
     this.resourceRegistry = new RuntimeResourceRegistry(dataDir, logger);
+    this.eventHandler = options?.onEvent ?? null;
   }
 
   isEnabled(): boolean {
     return this.config.shell.enabled;
+  }
+
+  setEventHandler(handler: ShellRuntimeEventHandler | null): void {
+    this.eventHandler = handler;
   }
 
   async run(params: ShellRunParams): Promise<ShellRunResult> {
@@ -60,6 +85,7 @@ export class ShellRuntime {
     const tty = params.tty ?? true;
     const background = params.background ?? false;
     const timeoutMs = params.timeoutMs ?? this.config.shell.defaultTimeoutMs;
+    const notifyPolicy = params.notifyPolicy ?? (params.owner ? "notify_on_input_and_close" : "none");
     const now = Date.now();
 
     const spawned = spawnShellIo({
@@ -101,7 +127,15 @@ export class ShellRuntime {
       exitCode: null,
       signal: null,
       outputTail: "",
-      error: spawned.ptyFallbackError ? String(spawned.ptyFallbackError) : null
+      error: spawned.ptyFallbackError ? String(spawned.ptyFallbackError) : null,
+      ownerSessionId: params.owner?.sessionId ?? null,
+      ownerUserId: params.owner?.userId ?? null,
+      ownerSenderName: params.owner?.senderName ?? null,
+      notifyPolicy,
+      lastOutputAtMs: null,
+      lastInputAtMs: null,
+      lastInputPromptKind: null,
+      lastInputPromptAtMs: null
     };
 
     const state: InternalSessionState = {
@@ -110,7 +144,16 @@ export class ShellRuntime {
       pendingOutputTruncated: false,
       write: spawned.io.write,
       kill: spawned.io.kill,
-      expiresAtMs: this.computeNextExpiry()
+      expiresAtMs: this.computeNextExpiry(),
+      owner: params.owner ?? null,
+      notifyPolicy,
+      returnedToModel: background,
+      inputDetectionTimer: null,
+      inputConfirmationTimer: null,
+      inputCandidateSignature: null,
+      lastInputPromptSignature: null,
+      lastInputPromptNotifiedAtMs: null,
+      inputDetectionSuppressedUntilMs: 0
     };
 
     this.sessions.set(resource.resourceId, state);
@@ -131,6 +174,8 @@ export class ShellRuntime {
       const newTail = state.view.outputTail + safeChunk;
       state.view.outputTail = newTail.length > maxChars ? trimOutputTail(newTail, maxChars) : newTail;
       state.view.updatedAtMs = Date.now();
+      state.view.lastOutputAtMs = state.view.updatedAtMs;
+      this.scheduleInputDetection(resource.resourceId, state);
     });
 
     spawned.io.onError((error) => {
@@ -144,11 +189,13 @@ export class ShellRuntime {
       state.view.signal = signal;
       state.view.pid = null;
       state.view.updatedAtMs = Date.now();
+      this.cancelInputDetection(state);
       void this.resourceRegistry.touch(resource.resourceId, {
         accessedAtMs: state.view.updatedAtMs,
         summary: summarizeClosedShellSummary(state.view),
         status: "closed"
       });
+      this.emitClosedEventIfNeeded(resource.resourceId, state);
     });
 
     if (!background) {
@@ -171,6 +218,8 @@ export class ShellRuntime {
       return result;
     }
 
+    state.returnedToModel = true;
+    this.scheduleInputDetection(resource.resourceId, state);
     await this.touchSession(resource.resourceId, state);
     return {
       output,
@@ -187,6 +236,9 @@ export class ShellRuntime {
     }
 
     state.write(input);
+    state.view.lastInputAtMs = Date.now();
+    state.inputDetectionSuppressedUntilMs = state.view.lastInputAtMs + this.config.shell.terminalEvents.inputSuppressionAfterWriteMs;
+    state.lastInputPromptSignature = null;
     await waitForShellYield(500);
 
     const output = drainPendingOutput(state);
@@ -270,6 +322,7 @@ export class ShellRuntime {
   closeSession(resourceId: string): void {
     const state = this.sessions.get(resourceId);
     if (state) {
+      this.cancelInputDetection(state);
       state.kill("SIGKILL");
       this.sessions.delete(resourceId);
       void this.resourceRegistry.markStatus(resourceId, "closed", Date.now());
@@ -314,6 +367,7 @@ export class ShellRuntime {
     }
 
     for (const [resourceId, state] of expired) {
+      this.cancelInputDetection(state);
       state.kill("SIGKILL");
       this.sessions.delete(resourceId);
       await this.resourceRegistry.markStatus(resourceId, "expired", now).catch(() => null);
@@ -333,6 +387,149 @@ export class ShellRuntime {
     return liveCommand
       ? summarizeShellLiveTitle(liveCommand)
       : summarizeShellTitle(state.view.command, state.view.cwd);
+  }
+
+  private scheduleInputDetection(resourceId: string, state: InternalSessionState): void {
+    if (!this.shouldDetectInput(state)) {
+      return;
+    }
+    if (state.inputDetectionTimer) {
+      clearTimeout(state.inputDetectionTimer);
+    }
+    state.inputDetectionTimer = setTimeout(() => {
+      state.inputDetectionTimer = null;
+      this.detectInputCandidate(resourceId, state);
+    }, this.config.shell.terminalEvents.inputDetectionDebounceMs);
+    state.inputDetectionTimer.unref?.();
+  }
+
+  private detectInputCandidate(resourceId: string, state: InternalSessionState): void {
+    if (!this.shouldDetectInput(state) || Date.now() < state.inputDetectionSuppressedUntilMs) {
+      return;
+    }
+
+    const tail = trimOutputTail(state.view.outputTail, this.config.shell.terminalEvents.detectionTailMaxChars);
+    const candidate = detectTerminalInputPrompt(tail);
+    if (!candidate) {
+      state.inputCandidateSignature = null;
+      return;
+    }
+
+    const now = Date.now();
+    if (
+      state.lastInputPromptSignature === candidate.signature
+      && state.lastInputPromptNotifiedAtMs != null
+      && now - state.lastInputPromptNotifiedAtMs < this.config.shell.terminalEvents.inputPromptCooldownMs
+    ) {
+      return;
+    }
+
+    state.inputCandidateSignature = `${candidate.signature}:${this.buildTailSignature(state)}`;
+    if (state.inputConfirmationTimer) {
+      clearTimeout(state.inputConfirmationTimer);
+    }
+    state.inputConfirmationTimer = setTimeout(() => {
+      state.inputConfirmationTimer = null;
+      const currentTail = trimOutputTail(state.view.outputTail, this.config.shell.terminalEvents.detectionTailMaxChars);
+      const currentCandidate = detectTerminalInputPrompt(currentTail);
+      const currentSignature = currentCandidate
+        ? `${currentCandidate.signature}:${this.buildTailSignature(state)}`
+        : null;
+      if (
+        !currentCandidate
+        || currentSignature !== state.inputCandidateSignature
+        || !this.shouldDetectInput(state)
+        || Date.now() < state.inputDetectionSuppressedUntilMs
+      ) {
+        return;
+      }
+
+      state.lastInputPromptSignature = currentCandidate.signature;
+      state.lastInputPromptNotifiedAtMs = Date.now();
+      state.view.lastInputPromptKind = currentCandidate.kind;
+      state.view.lastInputPromptAtMs = state.lastInputPromptNotifiedAtMs;
+      this.emitInputRequiredEvent(resourceId, state, currentCandidate.kind, currentCandidate.promptText);
+    }, this.config.shell.terminalEvents.inputConfirmationMs);
+    state.inputConfirmationTimer.unref?.();
+  }
+
+  private shouldDetectInput(state: InternalSessionState): boolean {
+    return this.config.shell.terminalEvents.enabled
+      && state.returnedToModel
+      && state.view.status === "running"
+      && state.owner != null
+      && state.notifyPolicy === "notify_on_input_and_close";
+  }
+
+  private cancelInputDetection(state: InternalSessionState): void {
+    if (state.inputDetectionTimer) {
+      clearTimeout(state.inputDetectionTimer);
+      state.inputDetectionTimer = null;
+    }
+    if (state.inputConfirmationTimer) {
+      clearTimeout(state.inputConfirmationTimer);
+      state.inputConfirmationTimer = null;
+    }
+    state.inputCandidateSignature = null;
+  }
+
+  private buildTailSignature(state: InternalSessionState): string {
+    const tail = trimOutputTail(state.view.outputTail, this.config.shell.terminalEvents.detectionTailMaxChars);
+    return normalizeTerminalOutput(tail).slice(-500);
+  }
+
+  private emitClosedEventIfNeeded(resourceId: string, state: InternalSessionState): void {
+    if (
+      !this.config.shell.terminalEvents.enabled
+      || !state.returnedToModel
+      || !state.owner
+      || state.notifyPolicy === "none"
+    ) {
+      return;
+    }
+    const outputTruncated = state.pendingOutputTruncated;
+    const output = drainPendingOutput(state);
+    this.emitEvent({
+      kind: "session_closed",
+      owner: state.owner,
+      resourceId,
+      command: state.view.command,
+      cwd: state.view.cwd,
+      exitCode: state.view.exitCode,
+      signal: state.view.signal,
+      output,
+      outputTruncated
+    }, resourceId);
+  }
+
+  private emitInputRequiredEvent(
+    resourceId: string,
+    state: InternalSessionState,
+    promptKind: NonNullable<ShellSession["lastInputPromptKind"]>,
+    promptText: string
+  ): void {
+    if (!state.owner) {
+      return;
+    }
+    this.emitEvent({
+      kind: "input_required",
+      owner: state.owner,
+      resourceId,
+      command: state.view.command,
+      cwd: state.view.cwd,
+      promptKind,
+      promptText,
+      outputTail: trimOutputTail(state.view.outputTail, this.config.shell.terminalEvents.detectionTailMaxChars)
+    }, resourceId);
+  }
+
+  private emitEvent(event: ShellRuntimeEvent, resourceId: string): void {
+    if (!this.eventHandler) {
+      return;
+    }
+    void Promise.resolve(this.eventHandler(event)).catch((error: unknown) => {
+      this.logger.error({ error, resourceId }, "shell_runtime_event_dispatch_failed");
+    });
   }
 }
 

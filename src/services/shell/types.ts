@@ -1,3 +1,21 @@
+export type ShellNotifyPolicy =
+  | "none"
+  | "notify_on_close"
+  | "notify_on_input_and_close";
+
+export interface ShellRunOwner {
+  sessionId: string;
+  userId: string;
+  senderName: string;
+}
+
+export type TerminalInputPromptKind =
+  | "confirmation"
+  | "password"
+  | "selection"
+  | "text_input"
+  | "unknown_prompt";
+
 export interface ShellSession {
   id: string;
   command: string;
@@ -13,6 +31,14 @@ export interface ShellSession {
   signal: string | null;
   outputTail: string;
   error: string | null;
+  ownerSessionId: string | null;
+  ownerUserId: string | null;
+  ownerSenderName: string | null;
+  notifyPolicy: ShellNotifyPolicy;
+  lastOutputAtMs: number | null;
+  lastInputAtMs: number | null;
+  lastInputPromptKind: TerminalInputPromptKind | null;
+  lastInputPromptAtMs: number | null;
 }
 
 export interface ShellSessionResourceSummary {
@@ -40,6 +66,8 @@ export interface ShellRunParams {
   login?: boolean;
   tty?: boolean;
   background?: boolean;
+  owner?: ShellRunOwner;
+  notifyPolicy?: ShellNotifyPolicy;
 }
 
 export interface ShellRunResult {
@@ -49,3 +77,28 @@ export interface ShellRunResult {
   exitCode?: number | null;
   signal?: string | null;
 }
+
+export type ShellRuntimeEvent =
+  | {
+      kind: "session_closed";
+      owner: ShellRunOwner;
+      resourceId: string;
+      command: string;
+      cwd: string;
+      exitCode: number | null;
+      signal: string | null;
+      output: string;
+      outputTruncated: boolean;
+    }
+  | {
+      kind: "input_required";
+      owner: ShellRunOwner;
+      resourceId: string;
+      command: string;
+      cwd: string;
+      promptKind: TerminalInputPromptKind;
+      promptText: string;
+      outputTail: string;
+    };
+
+export type ShellRuntimeEventHandler = (event: ShellRuntimeEvent) => void | Promise<void>;

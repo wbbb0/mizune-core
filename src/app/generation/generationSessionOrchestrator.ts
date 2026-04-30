@@ -214,6 +214,9 @@ function selectScheduledActiveToolsetIds(modeId: string, triggerKind: InternalSe
       : toolsetIds
   );
   if (isAssistantMode(modeId)) {
+    if (triggerKind === "terminal_session_closed" || triggerKind === "terminal_input_required") {
+      return ["chat_context", "shell_runtime", "local_file_io", "chat_file_io", "time_utils"];
+    }
     if (triggerKind === "comfy_task_failed") {
       return ["comfy_image"];
     }
@@ -228,7 +231,80 @@ function selectScheduledActiveToolsetIds(modeId: string, triggerKind: InternalSe
   if (triggerKind === "comfy_task_completed") {
     return withScenarioHostState(["chat_context", "local_file_io", "chat_file_io", "comfy_image"]);
   }
-  return withScenarioHostState(["comfy_image"]);
+  if (triggerKind === "comfy_task_failed") {
+    return withScenarioHostState(["comfy_image"]);
+  }
+  return withScenarioHostState(["chat_context", "shell_runtime", "local_file_io", "chat_file_io", "time_utils"]);
+}
+
+function toScheduledPromptTrigger(trigger: InternalSessionTriggerExecution) {
+  if (trigger.kind === "scheduled_instruction") {
+    return {
+      kind: "scheduled_instruction" as const,
+      jobName: trigger.jobName,
+      taskInstruction: trigger.instruction
+    };
+  }
+  if (trigger.kind === "comfy_task_completed") {
+    return {
+      kind: "comfy_task_completed" as const,
+      jobName: trigger.jobName,
+      taskInstruction: trigger.instruction,
+      taskId: trigger.taskId,
+      templateId: trigger.templateId,
+      positivePrompt: trigger.positivePrompt,
+      aspectRatio: trigger.aspectRatio,
+      resolvedWidth: trigger.resolvedWidth,
+      resolvedHeight: trigger.resolvedHeight,
+      workspaceFileIds: trigger.workspaceFileIds,
+      chatFilePaths: trigger.chatFilePaths,
+      comfyPromptId: trigger.comfyPromptId,
+      autoIterationIndex: trigger.autoIterationIndex,
+      maxAutoIterations: trigger.maxAutoIterations
+    };
+  }
+  if (trigger.kind === "comfy_task_failed") {
+    return {
+      kind: "comfy_task_failed" as const,
+      jobName: trigger.jobName,
+      taskInstruction: trigger.instruction,
+      taskId: trigger.taskId,
+      templateId: trigger.templateId,
+      positivePrompt: trigger.positivePrompt,
+      aspectRatio: trigger.aspectRatio,
+      resolvedWidth: trigger.resolvedWidth,
+      resolvedHeight: trigger.resolvedHeight,
+      comfyPromptId: trigger.comfyPromptId,
+      lastError: trigger.lastError,
+      autoIterationIndex: trigger.autoIterationIndex,
+      maxAutoIterations: trigger.maxAutoIterations
+    };
+  }
+  if (trigger.kind === "terminal_session_closed") {
+    return {
+      kind: "terminal_session_closed" as const,
+      jobName: trigger.jobName,
+      taskInstruction: trigger.instruction,
+      resourceId: trigger.resourceId,
+      command: trigger.command,
+      cwd: trigger.cwd,
+      exitCode: trigger.exitCode,
+      signal: trigger.signal,
+      output: trigger.output,
+      outputTruncated: trigger.outputTruncated
+    };
+  }
+  return {
+    kind: "terminal_input_required" as const,
+    jobName: trigger.jobName,
+    taskInstruction: trigger.instruction,
+    resourceId: trigger.resourceId,
+    command: trigger.command,
+    cwd: trigger.cwd,
+    promptKind: trigger.promptKind,
+    promptText: trigger.promptText,
+    outputTail: trigger.outputTail
+  };
 }
 
 // Normalizes runtime messages into the prompt-builder input shape.
@@ -728,44 +804,7 @@ export function createGenerationSessionOrchestrator(
         activeToolsets: activeScheduledToolsets,
         lateSystemMessages,
         replayMessages: projectedTranscript.replayMessages,
-        trigger: trigger.kind === "scheduled_instruction"
-          ? {
-              kind: "scheduled_instruction",
-              jobName: trigger.jobName,
-              taskInstruction: trigger.instruction
-            }
-          : trigger.kind === "comfy_task_completed"
-            ? {
-                kind: "comfy_task_completed",
-                jobName: trigger.jobName,
-                taskInstruction: trigger.instruction,
-                taskId: trigger.taskId,
-                templateId: trigger.templateId,
-                positivePrompt: trigger.positivePrompt,
-                aspectRatio: trigger.aspectRatio,
-                resolvedWidth: trigger.resolvedWidth,
-                resolvedHeight: trigger.resolvedHeight,
-                workspaceFileIds: trigger.workspaceFileIds,
-                chatFilePaths: trigger.chatFilePaths,
-                comfyPromptId: trigger.comfyPromptId,
-                autoIterationIndex: trigger.autoIterationIndex,
-                maxAutoIterations: trigger.maxAutoIterations
-              }
-            : {
-                kind: "comfy_task_failed",
-                jobName: trigger.jobName,
-                taskInstruction: trigger.instruction,
-                taskId: trigger.taskId,
-                templateId: trigger.templateId,
-                positivePrompt: trigger.positivePrompt,
-                aspectRatio: trigger.aspectRatio,
-                resolvedWidth: trigger.resolvedWidth,
-                resolvedHeight: trigger.resolvedHeight,
-                comfyPromptId: trigger.comfyPromptId,
-                lastError: trigger.lastError,
-                autoIterationIndex: trigger.autoIterationIndex,
-                maxAutoIterations: trigger.maxAutoIterations
-              },
+        trigger: toScheduledPromptTrigger(trigger),
         persona,
         relationship: promptRelationship,
         participantProfiles,

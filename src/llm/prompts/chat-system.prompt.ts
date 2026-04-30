@@ -628,6 +628,16 @@ export function buildScheduledTaskSystemLines(input: {
         lastError: string;
         autoIterationIndex: number;
         maxAutoIterations: number;
+      }
+    | {
+        kind: "terminal_session_closed";
+        jobName: string;
+        taskInstruction: string;
+      }
+    | {
+        kind: "terminal_input_required";
+        jobName: string;
+        taskInstruction: string;
       };
   targetContext:
     | {
@@ -660,10 +670,30 @@ export function buildScheduledTaskSystemLines(input: {
     ].filter((item): item is string => Boolean(item));
   }
 
+  if (input.trigger.kind === "comfy_task_failed") {
+    return [
+      renderPromptSection("comfy_task_failed", [
+        "下面这次执行是图片生成失败后的内部回调，不是用户刚刚发来了一条新消息。",
+        "你之前发起的图片生成任务失败了；先判断是直接重试还是向用户简短说明。"
+      ])
+    ].filter((item): item is string => Boolean(item));
+  }
+
+  if (input.trigger.kind === "terminal_session_closed") {
+    return [
+      renderPromptSection("terminal_session_closed", [
+        "下面这次执行是后台终端完成后的内部回调，不是用户刚刚发来了一条新消息。",
+        "先根据终端输出判断任务是否成功；如果还需要继续处理，可以复用 resource_id 或相关工具。",
+        "只有需要向用户同步结论、请求决策或交付结果时才发送自然消息。"
+      ])
+    ].filter((item): item is string => Boolean(item));
+  }
+
   return [
-    renderPromptSection("comfy_task_failed", [
-      "下面这次执行是图片生成失败后的内部回调，不是用户刚刚发来了一条新消息。",
-      "你之前发起的图片生成任务失败了；先判断是直接重试还是向用户简短说明。"
+    renderPromptSection("terminal_input_required", [
+      "下面这次执行是后台终端可能等待输入的内部回调，不是用户刚刚发来了一条新消息。",
+      "这个检测是启发式结果，不是绝对事实；先根据提示文本和最近输出判断是否真的需要输入。",
+      "能确定的低风险确认可以继续操作；不确定或需要用户决定时，向用户简短询问。"
     ])
   ].filter((item): item is string => Boolean(item));
 }

@@ -63,6 +63,14 @@ function createShellSession(overrides: Partial<ShellSession> = {}): ShellSession
     signal: null,
     outputTail: "",
     error: null,
+    ownerSessionId: null,
+    ownerUserId: null,
+    ownerSenderName: null,
+    notifyPolicy: "none",
+    lastOutputAtMs: null,
+    lastInputAtMs: null,
+    lastInputPromptKind: null,
+    lastInputPromptAtMs: null,
     ...overrides
   };
 }

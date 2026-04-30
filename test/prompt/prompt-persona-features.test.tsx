@@ -328,6 +328,44 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     }
   });
 
+  test("prompt builder marks terminal triggers as internal runtime callbacks", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.get();
+      const prompt = buildScheduledTaskPrompt({
+        sessionId: "qqbot:p:owner",
+        trigger: {
+          kind: "terminal_input_required",
+          jobName: "终端可能等待输入",
+          taskInstruction: "后台终端任务可能正在等待输入。请根据提示判断是否可以继续输入；不确定时向用户询问。",
+          resourceId: "res_shell_1",
+          command: "npm install",
+          cwd: "/tmp/project",
+          promptKind: "confirmation",
+          promptText: "Proceed? [y/N]",
+          outputTail: "Proceed? [y/N] "
+        },
+        persona,
+        relationship: "owner",
+        npcProfiles: [],
+        participantProfiles: [],
+        userProfile: createPromptUserProfile(),
+        historySummary: null,
+        recentMessages: [],
+        targetContext: { chatType: "private", userId: "owner", senderName: "Owner" }
+      });
+      const system = String(prompt[0]?.content ?? "");
+      const triggerMessage = String(prompt[1]?.content ?? "");
+      assert.match(system, /后台终端可能等待输入的内部回调/);
+      assert.match(system, /这个检测是启发式结果，不是绝对事实/);
+      assert.match(triggerMessage, /resource_id：res_shell_1/);
+      assert.match(triggerMessage, /输入类型：confirmation/);
+      assert.match(triggerMessage, /提示文本：Proceed\? \[y\/N\]/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   test("setup prompt stays focused on persona completion", async () => {
     const harness = await createMemoryHarness();
     try {

@@ -215,10 +215,58 @@ export interface ComfyTaskFailedTriggerExecution {
   rejectCompletion?: (error: unknown) => void;
 }
 
+export type TerminalInputPromptKind =
+  | "confirmation"
+  | "password"
+  | "selection"
+  | "text_input"
+  | "unknown_prompt";
+
+export interface TerminalSessionClosedTriggerExecution {
+  kind: "terminal_session_closed";
+  targetType: "private" | "group";
+  targetUserId?: string;
+  targetGroupId?: string;
+  targetSenderName: string;
+  jobName: string;
+  instruction: string;
+  enqueuedAt: number;
+  resourceId: string;
+  command: string;
+  cwd: string;
+  exitCode: number | null;
+  signal: string | null;
+  output: string;
+  outputTruncated: boolean;
+  resolveCompletion?: () => void;
+  rejectCompletion?: (error: unknown) => void;
+}
+
+export interface TerminalInputRequiredTriggerExecution {
+  kind: "terminal_input_required";
+  targetType: "private" | "group";
+  targetUserId?: string;
+  targetGroupId?: string;
+  targetSenderName: string;
+  jobName: string;
+  instruction: string;
+  enqueuedAt: number;
+  resourceId: string;
+  command: string;
+  cwd: string;
+  promptKind: TerminalInputPromptKind;
+  promptText: string;
+  outputTail: string;
+  resolveCompletion?: () => void;
+  rejectCompletion?: (error: unknown) => void;
+}
+
 export type InternalSessionTriggerExecution =
   | ScheduledInstructionTriggerExecution
   | ComfyTaskCompletedTriggerExecution
-  | ComfyTaskFailedTriggerExecution;
+  | ComfyTaskFailedTriggerExecution
+  | TerminalSessionClosedTriggerExecution
+  | TerminalInputRequiredTriggerExecution;
 
 export type SessionPhase =
   | { kind: "idle" }

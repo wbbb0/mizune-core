@@ -204,12 +204,22 @@ const schedulerConfigSchema = s.object({
   defaultTimezone: s.string().trim().nonempty().title("默认时区").default("Asia/Shanghai")
 }).title("定时任务").describe("控制计划任务系统与默认时区。").default(emptyObject);
 
+const shellTerminalEventsConfigSchema = s.object({
+  enabled: s.boolean().title("启用").default(true),
+  inputDetectionDebounceMs: s.number().int().min(0).title("输入检测防抖毫秒").default(800),
+  inputConfirmationMs: s.number().int().min(0).title("输入检测确认毫秒").default(1200),
+  inputPromptCooldownMs: s.number().int().min(0).title("同一输入提示冷却毫秒").default(30000),
+  inputSuppressionAfterWriteMs: s.number().int().min(0).title("写入后抑制检测毫秒").default(1200),
+  detectionTailMaxChars: s.number().int().positive().title("输入检测最大尾部字符数").default(8000)
+}).title("Terminal 事件").describe("控制后台 terminal 完成和等待输入事件。").default(emptyObject);
+
 const shellConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(false),
   defaultTimeoutMs: s.number().int().positive().title("默认超时毫秒").default(15000),
   maxTimeoutMs: s.number().int().positive().title("最大超时毫秒").default(600000),
   maxOutputChars: s.number().int().positive().title("最大输出字符数").default(12000),
-  sessionTtlMs: s.union([s.number().int().positive(), s.literal(null)]).title("会话存活毫秒").default(null)
+  sessionTtlMs: s.union([s.number().int().positive(), s.literal(null)]).title("会话存活毫秒").default(null),
+  terminalEvents: shellTerminalEventsConfigSchema
 }).title("Shell").describe("控制 shell 工具的超时、输出与会话保活。").default(emptyObject);
 
 const localFilesConfigSchema = s.object({

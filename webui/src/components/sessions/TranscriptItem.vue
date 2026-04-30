@@ -276,6 +276,7 @@ const metaChips = computed(() => {
           : `user=${props.item.targetUserId ?? "unknown"}`,
         props.item.templateId ? `template=${props.item.templateId}` : null,
         props.item.taskId ? `task=${props.item.taskId}` : null,
+        props.item.resourceId ? `resource=${props.item.resourceId}` : null,
         props.item.autoIterationIndex != null && props.item.maxAutoIterations != null
           ? `iter=${props.item.autoIterationIndex + 1}/${props.item.maxAutoIterations}`
           : null
@@ -361,7 +362,7 @@ function formatMaybeJson(value: string): string {
   }
 }
 
-function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed" | "comfy_task_failed"): string {
+function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed" | "comfy_task_failed" | "terminal_session_closed" | "terminal_input_required"): string {
   switch (kind) {
     case "scheduled_instruction":
       return "scheduled_instruction";
@@ -369,6 +370,10 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
       return "comfy_task_completed";
     case "comfy_task_failed":
       return "comfy_task_failed";
+    case "terminal_session_closed":
+      return "terminal_session_closed";
+    case "terminal_input_required":
+      return "terminal_input_required";
   }
 }
 
