@@ -382,7 +382,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         CONFIG_DIR: configDir
       });
 
-      assert.equal(config.onebot.historyBackfill.enabled, false);
+      assert.equal(config.onebot.historyBackfill.enabled, true);
       assert.equal(config.onebot.historyBackfill.maxMessagesPerSession, 20);
       assert.equal(config.onebot.historyBackfill.maxTotalMessages, 100);
       assert.equal(config.onebot.historyBackfill.requestDelayMs, 100);

@@ -34,7 +34,7 @@ const onebotTypingConfigSchema = s.object({
 }).title("输入状态").describe("控制 OneBot 输入中提示的发送范围。").default(emptyObject);
 
 const onebotHistoryBackfillConfigSchema = s.object({
-  enabled: s.boolean().title("启用").default(false),
+  enabled: s.boolean().title("启用").default(true),
   maxMessagesPerSession: s.number().int().positive().title("单会话消息上限").default(20),
   maxTotalMessages: s.number().int().positive().title("总消息上限").default(100),
   requestDelayMs: s.number().int().min(0).title("请求间隔毫秒").default(100)

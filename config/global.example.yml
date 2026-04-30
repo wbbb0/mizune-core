@@ -21,7 +21,7 @@ onebot:
     private: true
     group: false
   historyBackfill:
-    enabled: false
+    enabled: true
     maxMessagesPerSession: 20
     maxTotalMessages: 100
     requestDelayMs: 100

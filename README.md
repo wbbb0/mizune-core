@@ -144,7 +144,7 @@ onebot:
   wsUrl: ws://127.0.0.1:3001
   httpUrl: http://127.0.0.1:3000
   historyBackfill:
-    enabled: false
+    enabled: true
     maxMessagesPerSession: 20
     maxTotalMessages: 100
     requestDelayMs: 100
@@ -160,7 +160,9 @@ llm:
 
 如果 OneBot 端需要鉴权，在 `onebot.accessToken` 中配置 token。
 
-如果你接的是 NapCat，并希望启动时只为已经存在的 OneBot 会话补全服务中断期间的 QQ 历史消息，可以开启：
+历史补全默认启用，但只有 `provider: napcat` 会调用 OneBot 扩展历史接口。`generic` OneBot 会跳过该能力。
+
+如果你接的是 NapCat，并希望启动时只为已经存在的 OneBot 会话补全服务中断期间的 QQ 历史消息，可以这样配置：
 
 ```yml
 onebot:
@@ -172,7 +174,7 @@ onebot:
     requestDelayMs: 100
 ```
 
-历史补全只写入会话历史，不进入回复触发、排队和生成流程。`generic` OneBot 不会调用该扩展能力。
+历史补全只写入会话历史，不进入回复触发、排队和生成流程。
 
 ## 项目结构
 
