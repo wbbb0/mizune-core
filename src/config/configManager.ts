@@ -5,6 +5,7 @@ import type { AppConfig } from "#config/config.ts";
 import { loadConfig, toConfigSummary } from "#config/config.ts";
 
 const CONFIG_POLL_INTERVAL_MS = 1000;
+type FileState = string | null;
 
 type ConfigReloadListener = (params: {
   previousConfig: AppConfig;
@@ -16,7 +17,7 @@ export class ConfigManager {
   private readonly env: NodeJS.ProcessEnv;
   private readonly logger: Logger;
   private timer: NodeJS.Timeout | null = null;
-  private lastFileStates = new Map<string, number | null>();
+  private lastFileStates = new Map<string, FileState>();
   private reloading = false;
 
   constructor(
@@ -60,8 +61,8 @@ export class ConfigManager {
     }
 
     const nextStates = await this.collectFileStates();
-    const changed = statesDiffer(this.lastFileStates, nextStates);
-    if (!changed) {
+    const changedPaths = getChangedPaths(this.lastFileStates, nextStates);
+    if (changedPaths.length === 0) {
       return false;
     }
 
@@ -70,10 +71,11 @@ export class ConfigManager {
       const previousConfig = structuredClone(this.config);
       const reloadedConfig = loadConfig(this.env);
       syncPlainObject(this.config as unknown as Record<string, unknown>, reloadedConfig as unknown as Record<string, unknown>);
-      this.lastFileStates = nextStates;
+      this.lastFileStates = await this.collectFileStates();
 
       this.logger.info(
         {
+          changedPaths,
           startup: toConfigSummary(this.config)
         },
         "config_reloaded"
@@ -89,6 +91,7 @@ export class ConfigManager {
     } catch (error: unknown) {
       this.logger.error(
         {
+          changedPaths,
           error: error instanceof Error ? { message: error.message, stack: error.stack } : String(error)
         },
         "config_reload_failed"
@@ -100,48 +103,60 @@ export class ConfigManager {
   }
 
   private captureCurrentFileStates(): void {
-    const fileStates = new Map<string, number | null>();
-    for (const filePath of [
-      this.config.configRuntime.globalConfigPath,
-      this.config.configRuntime.llmProviderCatalogPath,
-      this.config.configRuntime.llmModelCatalogPath,
-      ...(this.config.configRuntime.instanceConfigPath ? [this.config.configRuntime.instanceConfigPath] : []),
-      resolve(this.config.configRuntime.configDir, "templates")
-    ]) {
+    const fileStates = new Map<string, FileState>();
+    for (const filePath of getWatchedConfigRootPaths(this.config)) {
       fileStates.set(filePath, null);
     }
     this.lastFileStates = fileStates;
   }
 
-  private async collectFileStates(): Promise<Map<string, number | null>> {
+  private async collectFileStates(): Promise<Map<string, FileState>> {
     const watchedPaths = await getWatchedConfigPaths(this.config);
     const entries = await Promise.all(
-      watchedPaths.map(async (filePath) => [filePath, await getFileMtimeMs(filePath)] as const)
+      watchedPaths.map(async (filePath) => [filePath, await getFileState(filePath)] as const)
     );
     return new Map(entries);
   }
 }
 
 async function getWatchedConfigPaths(config: AppConfig): Promise<string[]> {
-  const basePaths = [
-    config.configRuntime.globalConfigPath,
-    config.configRuntime.llmProviderCatalogPath,
-    config.configRuntime.llmModelCatalogPath,
-    ...(config.configRuntime.instanceConfigPath ? [config.configRuntime.instanceConfigPath] : [])
-  ];
-
-  const templateRoot = resolve(config.configRuntime.configDir, "templates");
+  const basePaths = getWatchedConfigRootPaths(config);
+  const templateRoot = getComfyTemplateRootPath(config);
   const templatePaths = await collectDirectoryFilePaths(templateRoot);
   return [
     ...basePaths,
-    templateRoot,
     ...templatePaths
   ];
 }
 
-async function getFileMtimeMs(filePath: string): Promise<number | null> {
+function getWatchedConfigRootPaths(config: AppConfig): string[] {
+  return dedupePaths([
+    ...config.configRuntime.loadedConfigPaths,
+    config.configRuntime.globalConfigPath,
+    config.configRuntime.llmProviderCatalogPath,
+    config.configRuntime.llmModelCatalogPath,
+    config.configRuntime.llmRoutingPresetCatalogPath,
+    config.configRuntime.instanceConfigPath,
+    getComfyTemplateRootPath(config)
+  ]);
+}
+
+function getComfyTemplateRootPath(config: AppConfig): string {
+  return resolve(config.configRuntime.configDir, config.comfy.templateRoot);
+}
+
+function dedupePaths(paths: string[]): string[] {
+  return Array.from(new Set(paths));
+}
+
+async function getFileState(filePath: string): Promise<FileState> {
   try {
-    return (await stat(filePath)).mtimeMs;
+    const fileStat = await stat(filePath);
+    return [
+      fileStat.isDirectory() ? "dir" : "file",
+      fileStat.mtimeMs,
+      fileStat.size
+    ].join(":");
   } catch {
     return null;
   }
@@ -163,16 +178,19 @@ async function collectDirectoryFilePaths(rootDir: string): Promise<string[]> {
   }
 }
 
-function statesDiffer(current: Map<string, number | null>, next: Map<string, number | null>): boolean {
-  if (current.size !== next.size) {
-    return true;
-  }
+function getChangedPaths(current: Map<string, FileState>, next: Map<string, FileState>): string[] {
+  const changedPaths: string[] = [];
   for (const [filePath, nextMtime] of next.entries()) {
     if (!current.has(filePath) || current.get(filePath) !== nextMtime) {
-      return true;
+      changedPaths.push(filePath);
     }
   }
-  return false;
+  for (const filePath of current.keys()) {
+    if (!next.has(filePath)) {
+      changedPaths.push(filePath);
+    }
+  }
+  return changedPaths;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
