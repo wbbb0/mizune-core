@@ -159,6 +159,70 @@ comfy:
       resultPolicy:
         maxAutoIterations: 1
         defaultActionHint: decide_by_model
+contentSafety:
+  # 可选功能，默认关闭。启用后如果 provider 未配置或调用失败，只记录 warning 并放行，不影响正常聊天。
+  enabled: false
+  failPolicy: allow
+  audit:
+    preserveOriginalText: true
+    preserveOriginalFiles: true
+    maxOriginalTextChars: 20000
+  cache:
+    enabled: true
+    ttlMs: 2592000000
+  marker:
+    includeProvider: true
+    includeLabels: true
+    includeConfidence: false
+    includeSubjectRef: true
+  providers:
+    # 本地关键词 provider 用于联调审核链路；生产可替换为 aliyun_content_moderation。
+    localKeyword:
+      type: keyword
+      enabled: false
+      blockedTextKeywords: []
+      blockedMediaNameKeywords: []
+    aliyunCm:
+      type: aliyun_content_moderation
+      enabled: false
+      endpoint: green-cip.ap-southeast-1.aliyuncs.com
+      regionId: ap-southeast-1
+      accessKeyIdEnv: ALIBABA_CLOUD_ACCESS_KEY_ID
+      accessKeySecretEnv: ALIBABA_CLOUD_ACCESS_KEY_SECRET
+      timeoutMs: 6000
+      proxy: false
+      services:
+        text: ugc_moderation_byllm_global
+        image: bailianQueryImageCheck
+  profiles:
+    preLlm:
+      text:
+        provider: aliyunCm
+        action: replace_in_projection
+        blockRiskLevels: [high]
+        reviewRiskLevels: [medium]
+      image:
+        provider: aliyunCm
+        action: hide_from_projection_and_mark
+        blockRiskLevels: [high]
+        reviewRiskLevels: [medium]
+      emoji:
+        provider: aliyunCm
+        action: hide_from_projection_and_mark
+      audio:
+        provider: aliyunCm
+        action: mark_unavailable
+      unsupportedFilePolicy: mark
+  routes:
+    inbound:
+      onebot: preLlm
+      web: preLlm
+    toolMedia:
+      chatFile: preLlm
+      localFile: preLlm
+    llmProviderFallback:
+      dashscope:
+        useDataInspectionHeader: false
 search:
   googleGrounding:
     enabled: false
