@@ -173,6 +173,7 @@ contentSafety:
   audit:
     preserveOriginalText: true
     preserveOriginalFiles: true
+    exposeOriginalInAdminApi: true
     maxOriginalTextChars: 20000
   cache:
     enabled: true
@@ -204,6 +205,9 @@ contentSafety:
       services:
         text: llm_query_moderation
         image: baselineCheck
+      variants:
+        text: text_plus
+        image: image
   profiles:
     preLlm:
       text:

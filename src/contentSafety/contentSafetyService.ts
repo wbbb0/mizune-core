@@ -94,7 +94,9 @@ export class ContentSafetyService {
           sessionId: input.sessionId,
           originalText: projectedText
         });
-        projectedText = marker.marker;
+        projectedText = ruleKeepsOriginalContent(profile.text)
+          ? appendMarker(projectedText, marker.marker)
+          : marker.marker;
         events.push(marker.event);
       }
     }
@@ -126,7 +128,9 @@ export class ContentSafetyService {
         fileId: media.fileId,
         sourceName: file?.sourceName ?? media.fileId
       });
-      blockedFileIds.add(media.fileId);
+      if (ruleHidesMediaFromProjection(media.kind === "emoji" ? profile.emoji : profile.image)) {
+        blockedFileIds.add(media.fileId);
+      }
       projectedText = appendMarker(projectedText, marker.marker);
       events.push(marker.event);
     }
@@ -189,9 +193,9 @@ export class ContentSafetyService {
       return allowResult("unconfigured", "unconfigured");
     }
     try {
-      return await provider.moderateText(input);
+      return applyModerationRule(await provider.moderateText(input), rule);
     } catch (error: unknown) {
-      this.logger.warn({ err: error, providerId: provider.id }, "content_safety_text_failed_allowing");
+      this.logger.warn({ error: toSafeErrorLog(error), providerId: provider.id }, "content_safety_text_failed_allowing");
       return allowResult(provider.id, provider.type);
     }
   }
@@ -205,9 +209,9 @@ export class ContentSafetyService {
       return allowResult("unconfigured", "unconfigured");
     }
     try {
-      return await provider.moderateMedia(input);
+      return applyModerationRule(await provider.moderateMedia(input), rule);
     } catch (error: unknown) {
-      this.logger.warn({ err: error, providerId: provider.id }, "content_safety_media_failed_allowing");
+      this.logger.warn({ error: toSafeErrorLog(error), providerId: provider.id }, "content_safety_media_failed_allowing");
       return allowResult(provider.id, provider.type);
     }
   }
@@ -221,18 +225,19 @@ export class ContentSafetyService {
     fileId?: string | undefined;
     sourceName?: string | undefined;
   }): Promise<{ marker: string; event: ContentSafetyEvent }> {
-    const marker = buildContentSafetyMarker({
-      subjectKind: input.subjectKind,
-      result: input.result,
-      subjectRef: input.subjectRef,
-      markerConfig: this.config.contentSafety.marker
-    });
     const contentHash = input.originalText ? contentSafetyHashText(input.originalText) : undefined;
     const key = input.fileId
       ? `file:${input.fileId}`
       : contentHash
         ? `text:${contentHash}`
         : `${input.subjectKind}:${input.result.providerId}:${input.result.checkedAtMs}`;
+    const marker = buildContentSafetyMarker({
+      subjectKind: input.subjectKind,
+      result: input.result,
+      subjectRef: input.subjectRef,
+      auditKey: key,
+      markerConfig: this.config.contentSafety.marker
+    });
     const record: ContentSafetyAuditRecord = {
       key,
       subjectKind: input.subjectKind,
@@ -318,6 +323,77 @@ export class ContentSafetyService {
 
 function shouldProjectAsBlocked(result: ModerationResult): boolean {
   return result.decision === "block" || result.decision === "review";
+}
+
+function ruleKeepsOriginalContent(rule: RuleConfig): boolean {
+  return rule.action === "mark";
+}
+
+function ruleHidesMediaFromProjection(rule: RuleConfig): boolean {
+  return rule.action === "hide_from_projection_and_mark"
+    || rule.action === "mark_unavailable"
+    || rule.action === "block_message";
+}
+
+function applyModerationRule(result: ModerationResult, rule: RuleConfig): ModerationResult {
+  if (rule.action === "allow") {
+    return {
+      ...result,
+      decision: "allow",
+      reason: "allowed"
+    };
+  }
+  const maxConfidence = Math.max(...result.labels
+    .map((item) => item.confidence)
+    .filter((item): item is number => typeof item === "number"), 0);
+  const risks = collectRiskLevels(result);
+  const blockByConfidence = rule.blockConfidenceGte !== undefined && maxConfidence >= rule.blockConfidenceGte;
+  if (blockByConfidence || risks.some((risk) => rule.blockRiskLevels.includes(risk))) {
+    return {
+      ...result,
+      decision: "block",
+      reason: result.reason || "命中内容安全阻断策略"
+    };
+  }
+  if (risks.some((risk) => rule.reviewRiskLevels.includes(risk))) {
+    return {
+      ...result,
+      decision: "review",
+      reason: result.reason || "命中内容安全复核策略"
+    };
+  }
+  return {
+    ...result,
+    decision: "allow",
+    reason: "allowed"
+  };
+}
+
+function collectRiskLevels(result: ModerationResult): Array<NonNullable<import("./contentSafetyTypes.ts").ModerationLabel["riskLevel"]>> {
+  const risks = result.labels
+    .map((item) => item.riskLevel)
+    .filter((item): item is NonNullable<import("./contentSafetyTypes.ts").ModerationLabel["riskLevel"]> => item !== undefined);
+  if (risks.length === 0 && result.decision === "block") {
+    return ["high"];
+  }
+  if (risks.length === 0 && result.decision === "review") {
+    return ["medium"];
+  }
+  return risks;
+}
+
+function toSafeErrorLog(error: unknown): { message: string; name?: string; code?: unknown; status?: unknown; requestId?: unknown } {
+  if (!(error instanceof Error)) {
+    return { message: String(error) };
+  }
+  const details = error as Error & { code?: unknown; status?: unknown; requestId?: unknown };
+  return {
+    message: error.message,
+    ...(error.name ? { name: error.name } : {}),
+    ...(details.code !== undefined ? { code: details.code } : {}),
+    ...(details.status !== undefined ? { status: details.status } : {}),
+    ...(details.requestId !== undefined ? { requestId: details.requestId } : {})
+  };
 }
 
 function allowResult(providerId: string, providerType: string): ModerationResult {

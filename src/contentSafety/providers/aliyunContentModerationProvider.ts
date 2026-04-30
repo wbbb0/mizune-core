@@ -54,7 +54,8 @@ export function createAliyunContentModerationProvider(
       accessKeyId,
       accessKeySecret,
       endpoint: providerConfig.endpoint,
-      regionId: providerConfig.regionId
+      regionId: providerConfig.regionId,
+      ...resolveProxyOptions(providerConfig.proxy)
     })
     : null;
 
@@ -63,62 +64,70 @@ export function createAliyunContentModerationProvider(
     type: "aliyun_content_moderation",
     capabilities: new Set(["text", "audio_transcript", "image", "emoji", "local_media"]),
     async moderateText(input: ModerateTextInput) {
-      if (!client) {
-        throw new Error("content safety aliyun_content_moderation provider is missing accessKeyId/accessKeySecret");
-      }
-      const service = providerConfig.services.text ?? DEFAULT_TEXT_SERVICE;
-      const serviceParameters = JSON.stringify({
-        content: input.text
-      });
-      if (isTextModerationPlusService(service)) {
-        const response = await client.textModerationPlus(new TextModerationPlusRequest({
+      try {
+        if (!client) {
+          throw new Error("content safety aliyun_content_moderation provider is missing accessKeyId/accessKeySecret");
+        }
+        const service = providerConfig.services.text ?? DEFAULT_TEXT_SERVICE;
+        const serviceParameters = JSON.stringify({
+          content: input.text
+        });
+        if (providerConfig.variants.text === "text_plus") {
+          const response = await withTimeout(client.textModerationPlus(new TextModerationPlusRequest({
+            service,
+            serviceParameters
+          })), providerConfig.timeoutMs, "aliyun text moderation plus timed out");
+          return normalizeTextPlusResponse({
+            providerId: id,
+            body: response.body
+          });
+        }
+        const response = await withTimeout(client.textModeration(new TextModerationRequest({
           service,
           serviceParameters
-        }));
-        return normalizeTextPlusResponse({
+        })), providerConfig.timeoutMs, "aliyun text moderation timed out");
+        return normalizeTextResponse({
           providerId: id,
           body: response.body
         });
+      } catch (error: unknown) {
+        throw toProviderError(error);
       }
-      const response = await client.textModeration(new TextModerationRequest({
-        service,
-        serviceParameters
-      }));
-      return normalizeTextResponse({
-        providerId: id,
-        body: response.body
-      });
     },
     async moderateMedia(input: ModerateMediaInput) {
-      if (!client) {
-        throw new Error("content safety aliyun_content_moderation provider is missing accessKeyId/accessKeySecret");
+      try {
+        if (!client) {
+          throw new Error("content safety aliyun_content_moderation provider is missing accessKeyId/accessKeySecret");
+        }
+        if (!input.absolutePath) {
+          throw new Error("aliyun_content_moderation image moderation requires an absolute local path or public image URL");
+        }
+        const imageUrl = isHttpUrl(input.absolutePath)
+          ? input.absolutePath
+          : null;
+        const uploadedImage = imageUrl
+          ? null
+          : await uploadLocalImageForModeration(client, providerConfig, input.absolutePath, input.sourceName);
+        const response = await withTimeout(client.imageModeration(new ImageModerationRequest({
+          service: providerConfig.services.image ?? DEFAULT_IMAGE_SERVICE,
+          serviceParameters: JSON.stringify({
+            ...(imageUrl ? { imageUrl } : {}),
+            ...(uploadedImage
+              ? {
+                ossBucketName: uploadedImage.bucketName,
+                ossObjectName: uploadedImage.objectName
+              }
+              : {}),
+            dataId: input.fileId ?? input.sourceName
+          })
+        })), providerConfig.timeoutMs, "aliyun image moderation timed out");
+        return normalizeImageResponse({
+          providerId: id,
+          body: response.body
+        });
+      } catch (error: unknown) {
+        throw toProviderError(error);
       }
-      if (!input.absolutePath) {
-        throw new Error("aliyun_content_moderation image moderation requires a public image URL; local chat files are not uploaded yet");
-      }
-      const imageUrl = isHttpUrl(input.absolutePath)
-        ? input.absolutePath
-        : null;
-      const uploadedImage = imageUrl
-        ? null
-        : await uploadLocalImageForModeration(client, input.absolutePath, input.sourceName);
-      const response = await client.imageModeration(new ImageModerationRequest({
-        service: providerConfig.services.image ?? DEFAULT_IMAGE_SERVICE,
-        serviceParameters: JSON.stringify({
-          ...(imageUrl ? { imageUrl } : {}),
-          ...(uploadedImage
-            ? {
-              ossBucketName: uploadedImage.bucketName,
-              ossObjectName: uploadedImage.objectName
-            }
-            : {}),
-          dataId: input.fileId ?? input.sourceName
-        })
-      }));
-      return normalizeImageResponse({
-        providerId: id,
-        body: response.body
-      });
     }
   };
 }
@@ -129,8 +138,9 @@ function normalizeTextPlusResponse(input: {
 }): ModerationResult {
   const body = input.body;
   ensureSuccess(body?.code, body?.message);
+  const responseRiskLevel = normalizeRiskLevel(body?.data?.riskLevel);
   const labels = [
-    ...(body?.data?.result ?? []).map(toTextPlusLabel),
+    ...(body?.data?.result ?? []).map((item) => toTextPlusLabel(item, responseRiskLevel)),
     ...(body?.data?.attackResult ?? [])
       .filter((item) => item.attackLevel && item.attackLevel !== "none")
       .map((item) => ({
@@ -145,7 +155,7 @@ function normalizeTextPlusResponse(input: {
       .map((item) => ({
         label: item.label ?? "sensitive_data",
         category: "sensitive_data",
-        riskLevel: "medium",
+        riskLevel: riskLevelFromSensitiveLevel(item.sensitiveLevel) ?? "medium",
         ...(item.description ? { providerReason: item.description } : {})
       } satisfies ModerationLabel))
   ].filter((item) => !ALLOW_TEXT_LABELS.has(item.label.toLowerCase()));
@@ -226,10 +236,14 @@ function toImageLabel(item: ImageModerationResponseBodyDataResult): ModerationLa
   };
 }
 
-function toTextPlusLabel(item: TextModerationPlusResponseBodyDataResult): ModerationLabel {
+function toTextPlusLabel(
+  item: TextModerationPlusResponseBodyDataResult,
+  responseRiskLevel: ModerationLabel["riskLevel"]
+): ModerationLabel {
+  const safeLabel = item.label ? ALLOW_TEXT_LABELS.has(item.label.toLowerCase()) : false;
   return {
     label: item.label ?? "unknown",
-    riskLevel: item.label && ALLOW_TEXT_LABELS.has(item.label.toLowerCase()) ? "none" : "high",
+    riskLevel: safeLabel ? "none" : responseRiskLevel ?? "medium",
     ...(item.confidence === undefined ? {} : { confidence: item.confidence }),
     ...(item.description ? { providerReason: item.description } : {}),
     ...(item.riskWords ? { category: item.riskWords } : {})
@@ -266,6 +280,15 @@ function normalizeRiskLevel(value: string | undefined): ModerationLabel["riskLev
   return undefined;
 }
 
+function riskLevelFromSensitiveLevel(value: string | undefined): ModerationLabel["riskLevel"] {
+  const normalized = value?.toUpperCase();
+  if (normalized === "S0") return "none";
+  if (normalized === "S1") return "low";
+  if (normalized === "S2") return "medium";
+  if (normalized === "S3" || normalized === "S4") return "high";
+  return undefined;
+}
+
 function buildReason(labels: ModerationLabel[], fallback: string | undefined): string {
   const first = labels[0];
   return first
@@ -283,16 +306,13 @@ function resolveSecret(value: string | undefined, envName: string | undefined): 
   return value ?? (envName ? process.env[envName] : undefined);
 }
 
-function isTextModerationPlusService(service: string): boolean {
-  return service.endsWith("_pro") || service === "llm_query_moderation" || service === "llm_response_moderation";
-}
-
 async function uploadLocalImageForModeration(
   client: InstanceType<AliyunGreenClientCtor>,
+  providerConfig: ProviderConfig,
   absolutePath: string,
   sourceName: string | undefined
 ): Promise<{ bucketName: string; objectName: string }> {
-  const tokenResponse = await client.describeUploadToken();
+  const tokenResponse = await withTimeout(client.describeUploadToken(), providerConfig.timeoutMs, "aliyun upload token request timed out");
   ensureSuccess(tokenResponse.body?.code, tokenResponse.body?.msg);
   const token = tokenResponse.body?.data;
   if (!token?.accessKeyId || !token.accessKeySecret || !token.securityToken || !token.bucketName || !token.ossInternetEndPoint || !token.fileNamePrefix) {
@@ -304,9 +324,10 @@ async function uploadLocalImageForModeration(
     accessKeySecret: token.accessKeySecret,
     stsToken: token.securityToken,
     bucket: token.bucketName,
-    endpoint: token.ossInternetEndPoint
+    endpoint: token.ossInternetEndPoint,
+    ...resolveOssProxyOptions(providerConfig.proxy)
   });
-  await ossClient.put(objectName, absolutePath);
+  await withTimeout(ossClient.put(objectName, absolutePath), providerConfig.timeoutMs, "aliyun oss upload timed out");
   return {
     bucketName: token.bucketName,
     objectName
@@ -315,4 +336,69 @@ async function uploadLocalImageForModeration(
 
 function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
+}
+
+function resolveProxyOptions(enabled: boolean): Record<string, string> {
+  if (!enabled) {
+    return {};
+  }
+  const httpProxy = process.env.HTTP_PROXY ?? process.env.http_proxy;
+  const httpsProxy = process.env.HTTPS_PROXY ?? process.env.https_proxy ?? httpProxy;
+  return {
+    ...(httpProxy ? { httpProxy } : {}),
+    ...(httpsProxy ? { httpsProxy } : {})
+  };
+}
+
+function resolveOssProxyOptions(enabled: boolean): Record<string, string> {
+  if (!enabled) {
+    return {};
+  }
+  const proxy = process.env.HTTPS_PROXY ?? process.env.https_proxy ?? process.env.HTTP_PROXY ?? process.env.http_proxy;
+  return proxy ? { proxy } : {};
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+class ContentSafetyProviderError extends Error {
+  code?: unknown;
+  status?: unknown;
+  requestId?: unknown;
+
+  constructor(message: string, options?: { code?: unknown; status?: unknown; requestId?: unknown }) {
+    super(message);
+    this.name = "ContentSafetyProviderError";
+    if (options?.code !== undefined) this.code = options.code;
+    if (options?.status !== undefined) this.status = options.status;
+    if (options?.requestId !== undefined) this.requestId = options.requestId;
+  }
+}
+
+function toProviderError(error: unknown): ContentSafetyProviderError {
+  if (!(error instanceof Error)) {
+    return new ContentSafetyProviderError(String(error));
+  }
+  if (error instanceof ContentSafetyProviderError) {
+    return error;
+  }
+  const details = error as Error & { code?: unknown; status?: unknown; requestId?: unknown };
+  return new ContentSafetyProviderError(error.message, {
+    ...(details.code !== undefined ? { code: details.code } : {}),
+    ...(details.status !== undefined ? { status: details.status } : {}),
+    ...(details.requestId !== undefined ? { requestId: details.requestId } : {})
+  });
 }

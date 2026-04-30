@@ -96,14 +96,14 @@ function createChatFile(fileId: string, sourceName: string): ChatFileRecord {
   };
 }
 
-async function createHarness(files: ChatFileRecord[] = []) {
+async function createHarness(files: ChatFileRecord[] = [], config = createConfig()) {
   const dataDir = createTempDir("content-safety-service");
   await mkdir(dataDir, { recursive: true });
   const store = new ContentSafetyStore(dataDir, pino({ level: "silent" }));
   await store.init();
   const fileMap = new Map(files.map((file) => [file.fileId, file]));
   const service = new ContentSafetyService(
-    createConfig(),
+    config,
     pino({ level: "silent" }),
     store,
     {
@@ -134,7 +134,8 @@ test("blocked text is projected as a marker while raw text is kept in audit", as
     });
 
     assert.equal(result.rawMessage.text, "这是一段违规词测试");
-    assert.match(result.projectedMessage.text, /内容已屏蔽/);
+    assert.match(result.projectedMessage.text, /⟦内容安全/);
+    assert.match(result.projectedMessage.text, /类型: 内容/);
     assert.doesNotMatch(result.projectedMessage.text, /违规词测试/);
     assert.equal(result.events.length, 1);
 
@@ -173,7 +174,7 @@ test("blocked media is hidden from LLM projection while original file remains au
     assert.deepEqual(result.projectedMessage.imageIds, []);
     assert.equal(result.projectedMessage.attachments?.length, 0);
     assert.match(result.projectedMessage.text, /用户发送了图片/);
-    assert.match(result.projectedMessage.text, /不能查看、描述或评论该图片/);
+    assert.match(result.projectedMessage.text, /不要描述、猜测或评论图片内容/);
 
     const record = await harness.store.getByFileId("file_blocked");
     assert.ok(record);
@@ -182,6 +183,89 @@ test("blocked media is hidden from LLM projection while original file remains au
 
     const guard = await harness.service.guardChatFileForLlm("file_blocked");
     assert.notEqual(guard, "allow");
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("action allow bypasses risky provider result", async () => {
+  const config = createTestAppConfig({
+    contentSafety: {
+      enabled: true,
+      providers: {
+        localKeyword: {
+          type: "keyword",
+          enabled: true,
+          blockedTextKeywords: ["违规词"]
+        }
+      },
+      profiles: {
+        preLlm: {
+          text: {
+            provider: "localKeyword",
+            action: "allow"
+          }
+        }
+      },
+      routes: {
+        inbound: {
+          onebot: "preLlm"
+        }
+      }
+    }
+  });
+  const harness = await createHarness([], config);
+  try {
+    const message = createMessage({ text: "这是一段违规词测试" });
+    const result = await harness.service.moderateIncomingMessage({
+      message,
+      sessionId: "qqbot:p:test",
+      delivery: "onebot"
+    });
+    assert.equal(result.projectedMessage.text, "这是一段违规词测试");
+    assert.deepEqual(result.events, []);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("action mark keeps original text and appends audit marker", async () => {
+  const config = createTestAppConfig({
+    contentSafety: {
+      enabled: true,
+      providers: {
+        localKeyword: {
+          type: "keyword",
+          enabled: true,
+          blockedTextKeywords: ["违规词"]
+        }
+      },
+      profiles: {
+        preLlm: {
+          text: {
+            provider: "localKeyword",
+            action: "mark"
+          }
+        }
+      },
+      routes: {
+        inbound: {
+          onebot: "preLlm"
+        }
+      }
+    }
+  });
+  const harness = await createHarness([], config);
+  try {
+    const message = createMessage({ text: "这是一段违规词测试" });
+    const result = await harness.service.moderateIncomingMessage({
+      message,
+      sessionId: "qqbot:p:test",
+      delivery: "onebot"
+    });
+    assert.match(result.projectedMessage.text, /违规词测试/);
+    assert.match(result.projectedMessage.text, /⟦内容安全/);
+    assert.equal(result.events.length, 1);
   } finally {
     await harness.cleanup();
   }

@@ -348,6 +348,10 @@ const contentSafetyProviderConfigSchema = s.object({
     text: s.string().trim().nonempty().title("文本审核服务").optional(),
     image: s.string().trim().nonempty().title("图片审核服务").optional()
   }).title("服务").default(emptyObject),
+  variants: s.object({
+    text: s.enum(["text", "text_plus"] as const).title("文本接口").default("text_plus"),
+    image: s.enum(["image"] as const).title("图片接口").default("image")
+  }).title("接口变体").default(emptyObject),
   blockedTextKeywords: s.array(s.string().trim().nonempty()).title("文本阻断关键词").default([]),
   blockedMediaNameKeywords: s.array(s.string().trim().nonempty()).title("媒体文件名阻断关键词").default([])
 }).title("内容安全 Provider").default(emptyObject);
@@ -381,6 +385,7 @@ const contentSafetyConfigSchema = s.object({
   audit: s.object({
     preserveOriginalText: s.boolean().title("保留原始文本").default(true),
     preserveOriginalFiles: s.boolean().title("保留原始文件").default(true),
+    exposeOriginalInAdminApi: s.boolean().title("后台 API 暴露原始内容").default(true),
     maxOriginalTextChars: s.number().int().positive().title("原始文本最大字符数").default(20000)
   }).title("审计").default(emptyObject),
   cache: s.object({

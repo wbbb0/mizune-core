@@ -100,6 +100,7 @@ export interface InternalApiSessionDetail {
 }
 
 export interface InternalApiSessionReadDeps {
+  config?: AppConfig;
   sessionManager: SessionAdminReadAccess;
   scenarioHostStateStore: ScenarioHostStateStore;
   sessionCaptioner: SessionCaptioner;

@@ -14,31 +14,41 @@ export function buildContentSafetyMarker(input: {
   subjectKind: ModerationSubjectKind;
   result: ModerationResult;
   subjectRef?: string | undefined;
+  auditKey?: string | undefined;
   markerConfig: AppConfig["contentSafety"]["marker"];
 }): string {
   const subjectLabel = SUBJECT_LABELS[input.subjectKind];
   const reason = input.result.reason || "疑似违规";
-  const parts = [isVisualSubject(input.subjectKind)
-    ? `用户发送了${subjectLabel}，但内容安全系统因为「${reason}」屏蔽了该${subjectLabel}。你应表现为知道用户发送了${subjectLabel}，但由于该原因不能查看、描述或评论该${subjectLabel}`
-    : `${subjectLabel}已屏蔽：${reason}`];
+  const lines = [
+    "内容安全",
+    `类型: ${subjectLabel}`,
+    "状态: 已屏蔽",
+    `原因: ${reason}`,
+    isVisualSubject(input.subjectKind)
+      ? `要求: 用户发送了${subjectLabel}，但该${subjectLabel}不可见；不要描述、猜测或评论${subjectLabel}内容，只能说明因内容安全原因无法查看。`
+      : `要求: 原文不可见；不要复述或推测被屏蔽${subjectLabel}。`
+  ];
   if (input.markerConfig.includeSubjectRef && input.subjectRef) {
-    parts.push(input.subjectRef);
+    lines.push(`对象: ${input.subjectRef}`);
   }
   if (input.markerConfig.includeLabels && input.result.labels.length > 0) {
-    parts.push(`标签=${input.result.labels.map((item) => item.label).join(",")}`);
+    lines.push(`标签: ${input.result.labels.map((item) => item.label).join(",")}`);
   }
   if (input.markerConfig.includeConfidence) {
     const confidence = input.result.labels
       .map((item) => item.confidence)
       .filter((item): item is number => typeof item === "number");
     if (confidence.length > 0) {
-      parts.push(`置信度=${Math.max(...confidence)}`);
+      lines.push(`置信度: ${Math.max(...confidence)}`);
     }
   }
   if (input.markerConfig.includeProvider) {
-    parts.push(`来源=${input.result.providerId}`);
+    lines.push(`来源: ${input.result.providerId}`);
   }
-  return `[${parts.join("；")}]`;
+  if (input.auditKey) {
+    lines.push(`auditKey: ${input.auditKey}`);
+  }
+  return `⟦${lines.join("\n")}⟧`;
 }
 
 function isVisualSubject(subjectKind: ModerationSubjectKind): boolean {
