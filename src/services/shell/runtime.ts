@@ -38,6 +38,7 @@ interface InternalSessionState {
   lastInputPromptSignature: string | null;
   lastInputPromptNotifiedAtMs: number | null;
   inputDetectionSuppressedUntilMs: number;
+  closeEventSuppressed: boolean;
 }
 
 function isClosedSession(session: ShellSession): boolean {
@@ -153,7 +154,8 @@ export class ShellRuntime {
       inputCandidateSignature: null,
       lastInputPromptSignature: null,
       lastInputPromptNotifiedAtMs: null,
-      inputDetectionSuppressedUntilMs: 0
+      inputDetectionSuppressedUntilMs: 0,
+      closeEventSuppressed: false
     };
 
     this.sessions.set(resource.resourceId, state);
@@ -190,11 +192,13 @@ export class ShellRuntime {
       state.view.pid = null;
       state.view.updatedAtMs = Date.now();
       this.cancelInputDetection(state);
-      void this.resourceRegistry.touch(resource.resourceId, {
-        accessedAtMs: state.view.updatedAtMs,
-        summary: summarizeClosedShellSummary(state.view),
-        status: "closed"
-      });
+      if (!state.closeEventSuppressed) {
+        void this.resourceRegistry.touch(resource.resourceId, {
+          accessedAtMs: state.view.updatedAtMs,
+          summary: summarizeClosedShellSummary(state.view),
+          status: "closed"
+        });
+      }
       this.emitClosedEventIfNeeded(resource.resourceId, state);
     });
 
@@ -239,6 +243,7 @@ export class ShellRuntime {
     state.view.lastInputAtMs = Date.now();
     state.inputDetectionSuppressedUntilMs = state.view.lastInputAtMs + this.config.shell.terminalEvents.inputSuppressionAfterWriteMs;
     state.lastInputPromptSignature = null;
+    state.lastInputPromptNotifiedAtMs = null;
     await waitForShellYield(500);
 
     const output = drainPendingOutput(state);
@@ -323,10 +328,25 @@ export class ShellRuntime {
     const state = this.sessions.get(resourceId);
     if (state) {
       this.cancelInputDetection(state);
+      state.closeEventSuppressed = true;
       state.kill("SIGKILL");
       this.sessions.delete(resourceId);
       void this.resourceRegistry.markStatus(resourceId, "closed", Date.now());
     }
+  }
+
+  isInputPromptCurrent(input: {
+    resourceId: string;
+    promptSignature: string;
+    detectedAtMs: number;
+  }): boolean {
+    const state = this.sessions.get(input.resourceId);
+    if (!state || state.view.status !== "running") {
+      return false;
+    }
+    return state.lastInputPromptSignature === input.promptSignature
+      && state.lastInputPromptNotifiedAtMs === input.detectedAtMs
+      && (state.view.lastInputAtMs == null || state.view.lastInputAtMs < input.detectedAtMs);
   }
 
   private async requireState(resourceId: string): Promise<InternalSessionState> {
@@ -368,6 +388,7 @@ export class ShellRuntime {
 
     for (const [resourceId, state] of expired) {
       this.cancelInputDetection(state);
+      state.closeEventSuppressed = true;
       state.kill("SIGKILL");
       this.sessions.delete(resourceId);
       await this.resourceRegistry.markStatus(resourceId, "expired", now).catch(() => null);
@@ -404,7 +425,13 @@ export class ShellRuntime {
   }
 
   private detectInputCandidate(resourceId: string, state: InternalSessionState): void {
-    if (!this.shouldDetectInput(state) || Date.now() < state.inputDetectionSuppressedUntilMs) {
+    if (!this.shouldDetectInput(state)) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now < state.inputDetectionSuppressedUntilMs) {
+      this.scheduleSuppressionExpiryDetection(resourceId, state, state.inputDetectionSuppressedUntilMs - now);
       return;
     }
 
@@ -415,7 +442,6 @@ export class ShellRuntime {
       return;
     }
 
-    const now = Date.now();
     if (
       state.lastInputPromptSignature === candidate.signature
       && state.lastInputPromptNotifiedAtMs != null
@@ -448,7 +474,7 @@ export class ShellRuntime {
       state.lastInputPromptNotifiedAtMs = Date.now();
       state.view.lastInputPromptKind = currentCandidate.kind;
       state.view.lastInputPromptAtMs = state.lastInputPromptNotifiedAtMs;
-      this.emitInputRequiredEvent(resourceId, state, currentCandidate.kind, currentCandidate.promptText);
+      this.emitInputRequiredEvent(resourceId, state, currentCandidate.kind, currentCandidate.promptText, currentCandidate.signature);
     }, this.config.shell.terminalEvents.inputConfirmationMs);
     state.inputConfirmationTimer.unref?.();
   }
@@ -459,6 +485,17 @@ export class ShellRuntime {
       && state.view.status === "running"
       && state.owner != null
       && state.notifyPolicy === "notify_on_input_and_close";
+  }
+
+  private scheduleSuppressionExpiryDetection(resourceId: string, state: InternalSessionState, delayMs: number): void {
+    if (state.inputDetectionTimer) {
+      clearTimeout(state.inputDetectionTimer);
+    }
+    state.inputDetectionTimer = setTimeout(() => {
+      state.inputDetectionTimer = null;
+      this.detectInputCandidate(resourceId, state);
+    }, Math.max(1, delayMs));
+    state.inputDetectionTimer.unref?.();
   }
 
   private cancelInputDetection(state: InternalSessionState): void {
@@ -481,6 +518,7 @@ export class ShellRuntime {
   private emitClosedEventIfNeeded(resourceId: string, state: InternalSessionState): void {
     if (
       !this.config.shell.terminalEvents.enabled
+      || state.closeEventSuppressed
       || !state.returnedToModel
       || !state.owner
       || state.notifyPolicy === "none"
@@ -506,9 +544,10 @@ export class ShellRuntime {
     resourceId: string,
     state: InternalSessionState,
     promptKind: NonNullable<ShellSession["lastInputPromptKind"]>,
-    promptText: string
+    promptText: string,
+    promptSignature: string
   ): void {
-    if (!state.owner) {
+    if (!state.owner || state.lastInputPromptNotifiedAtMs == null) {
       return;
     }
     this.emitEvent({
@@ -519,6 +558,8 @@ export class ShellRuntime {
       cwd: state.view.cwd,
       promptKind,
       promptText,
+      promptSignature,
+      detectedAtMs: state.lastInputPromptNotifiedAtMs,
       outputTail: trimOutputTail(state.view.outputTail, this.config.shell.terminalEvents.detectionTailMaxChars)
     }, resourceId);
   }

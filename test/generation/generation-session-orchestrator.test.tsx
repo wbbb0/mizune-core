@@ -8,6 +8,14 @@ import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
 
+function createFakeShellRuntime() {
+  return {
+    isInputPromptCurrent() {
+      return true;
+    }
+  };
+}
+
 test("persona setup prompt reads the current draft instead of the saved persona", async () => {
   const config = createTestAppConfig({
     llm: {
@@ -103,6 +111,9 @@ test("persona setup prompt reads the current draft instead of the saved persona"
           };
         }
       }
+    } as any,
+    toolRuntime: {
+      shellRuntime: createFakeShellRuntime()
     } as any,
     lifecycle: {
       persistSession() {},
@@ -260,6 +271,9 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
         }
       }
     } as any,
+    toolRuntime: {
+      shellRuntime: createFakeShellRuntime()
+    } as any,
     lifecycle: {
       persistSession() {},
       getScheduler() {
@@ -411,6 +425,9 @@ test("scenario_host normal prompt receives the saved scenario profile", async ()
           };
         }
       }
+    } as any,
+    toolRuntime: {
+      shellRuntime: createFakeShellRuntime()
     } as any,
     lifecycle: {
       persistSession() {},
@@ -595,6 +612,9 @@ test("normal prompt provider replay excludes the active input batch", async () =
           };
         }
       }
+    } as any,
+    toolRuntime: {
+      shellRuntime: createFakeShellRuntime()
     } as any,
     lifecycle: {
       persistSession() {},

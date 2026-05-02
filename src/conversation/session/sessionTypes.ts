@@ -258,6 +258,8 @@ export interface TerminalInputRequiredTriggerExecution {
   cwd: string;
   promptKind: TerminalInputPromptKind;
   promptText: string;
+  promptSignature: string;
+  detectedAtMs: number;
   outputTail: string;
   resolveCompletion?: () => void;
   rejectCompletion?: (error: unknown) => void;

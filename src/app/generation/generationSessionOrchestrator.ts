@@ -364,11 +364,13 @@ export function createGenerationSessionOrchestrator(
     promptBuilder,
     sessionRuntime,
     identity,
+    toolRuntime,
     lifecycle
   } = deps;
   const { config } = promptBuilder;
   const { logger, historyCompressor, sessionManager, sessionCaptioner } = sessionRuntime;
   const { userStore, personaStore, globalProfileReadinessStore } = identity;
+  const { shellRuntime } = toolRuntime;
   const { persistSession } = lifecycle;
 
   const resolveSessionReplyDelivery = (
@@ -720,6 +722,24 @@ export function createGenerationSessionOrchestrator(
   };
 
   const runInternalTriggerSession = (sessionId: string, trigger: InternalSessionTriggerExecution): Promise<void> => {
+    if (
+      trigger.kind === "terminal_input_required"
+      && !shellRuntime.isInputPromptCurrent({
+        resourceId: trigger.resourceId,
+        promptSignature: trigger.promptSignature,
+        detectedAtMs: trigger.detectedAtMs
+      })
+    ) {
+      logger.info({
+        sessionId,
+        resourceId: trigger.resourceId,
+        promptKind: trigger.promptKind,
+        detectedAtMs: trigger.detectedAtMs
+      }, "terminal_input_trigger_stale_skipped");
+      queueMicrotask(() => services.processNextSessionWork(sessionId));
+      return Promise.resolve();
+    }
+
     const { abortController, responseAbortController, responseEpoch } = sessionManager.beginSyntheticGeneration(sessionId);
     const expectedEpoch = sessionManager.getMutationEpoch(sessionId);
     sessionManager.appendInternalTranscript(sessionId, createInternalTriggerEvent({

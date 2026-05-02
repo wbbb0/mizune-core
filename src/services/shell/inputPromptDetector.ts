@@ -53,9 +53,10 @@ export function stripAnsi(input: string): string {
 }
 
 export function normalizeCarriageReturns(input: string): string {
+  const normalizedNewlines = input.replace(/\r\n/g, "\n");
   const rows: string[] = [];
   let current = "";
-  for (const char of input) {
+  for (const char of normalizedNewlines) {
     if (char === "\r") {
       current = "";
       continue;
