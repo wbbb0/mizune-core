@@ -163,9 +163,15 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
 
     const parsed = parseJsonToolResult<any>(result);
     assert.equal(parsed.ok, true);
-    assert.equal(parsed.requestedCount, 1);
-    assert.equal(parsed.inspectedCount, 1);
+    assert.equal(parsed.requested_count, 1);
+    assert.equal(parsed.inspected_count, 1);
+    assert.equal(parsed.results[0].media_id, "file_test_1");
     assert.equal(parsed.results[0].answer, "金额列最大值是 9800。");
+    assert.equal(parsed.results[0].visible_content_summary, "一张表格截图。");
+    assert.equal(parsed.workspace, undefined);
+    assert.equal(parsed.results[0].rawAnswer, undefined);
+    assert.equal(parsed.results[0].parseStatus, undefined);
+    assert.equal(parsed.results[0].modelRef, undefined);
   });
 
   test("local_file_inspect_media asks inspector for a resolved local image path", async () => {
@@ -227,7 +233,7 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     const parsed = parseJsonToolResult<any>(result);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.path, "screens/table.png");
-    assert.equal(parsed.sourceName, "table.png");
+    assert.equal(parsed.source_name, "table.png");
     assert.equal(parsed.results[0].answer, "A1 是 日期。");
   });
 
