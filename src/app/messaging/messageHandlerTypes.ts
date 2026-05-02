@@ -41,9 +41,8 @@ export interface MessageEventHandlerDeps {
     | "setupStore"
     | "globalProfileReadinessStore"
     | "conversationAccess"
-  >, "sessionManager"> & {
+  >, "sessionManager" | "contentSafetyService"> & {
     sessionManager: SessionMessagingAccess & import("#conversation/session/sessionCapabilities.ts").SessionOperationModeAccess;
-    contentSafetyService?: Pick<import("#contentSafety/contentSafetyService.ts").ContentSafetyService, "moderateIncomingMessage">;
   };
   handleDirectCommand: (input: {
     command: ResolvedDirectCommand;

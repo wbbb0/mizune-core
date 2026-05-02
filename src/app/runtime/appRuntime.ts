@@ -142,7 +142,6 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
       debounceManager,
       audioStore,
       chatFileStore,
-      contentSafetyService,
       mediaCaptionService,
       requestStore,
       userIdentityStore,

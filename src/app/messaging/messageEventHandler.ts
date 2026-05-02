@@ -56,7 +56,6 @@ export async function processIncomingMessage(
     debounceManager,
     audioStore,
     chatFileStore,
-    contentSafetyService,
     mediaCaptionService,
     userStore,
     setupStore,
@@ -114,33 +113,6 @@ export async function processIncomingMessage(
     return;
   }
 
-  if (contentSafetyService) {
-    const moderation = await contentSafetyService.moderateIncomingMessage({
-      message: context.enrichedMessage,
-      sessionId: context.session.id,
-      delivery: deps.inboundDelivery
-    });
-    if (moderation.events.length > 0) {
-      logger.warn({
-        sessionId: context.session.id,
-        eventCount: moderation.events.length,
-        events: moderation.events.map((event) => ({
-          subjectKind: event.subjectKind,
-          decision: event.decision,
-          auditKey: event.auditKey,
-          fileId: event.fileId,
-          contentHash: event.contentHash,
-          reason: event.reason
-        }))
-      }, "incoming_message_content_safety_projected");
-      context = {
-        ...context,
-        enrichedMessage: moderation.projectedMessage,
-        contentSafetyEvents: moderation.events
-      };
-    }
-  }
-
   const triggerDecision = deps.inboundDelivery === "web"
     ? {
         groupMatched: false,
@@ -161,7 +133,6 @@ export async function processIncomingMessage(
         context
       );
   const hasActiveResponseAtAdmission = sessionManager.hasActiveResponse(context.session.id);
-
   let activeResponseAlreadyInterrupted = false;
   if (
     triggerDecision.shouldTriggerResponse

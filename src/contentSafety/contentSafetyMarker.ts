@@ -6,6 +6,7 @@ const SUBJECT_LABELS: Record<ModerationSubjectKind, string> = {
   text: "内容",
   image: "图片",
   emoji: "表情",
+  audio: "音频",
   audio_transcript: "音频",
   file: "文件",
   local_media: "媒体"
@@ -59,5 +60,5 @@ export function buildContentSafetyMarker(input: {
 }
 
 function isVisualSubject(subjectKind: ModerationSubjectKind): boolean {
-  return subjectKind === "image" || subjectKind === "emoji" || subjectKind === "local_media";
+  return subjectKind === "image" || subjectKind === "emoji" || subjectKind === "audio" || subjectKind === "local_media";
 }

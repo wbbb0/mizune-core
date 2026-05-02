@@ -63,6 +63,7 @@ export interface LlmGenerateParams {
   abortSignal?: AbortSignal;
   tools?: LlmToolDefinition[] | (() => LlmToolDefinition[]);
   consumeSteerMessages?: () => Promise<LlmMessage[]> | LlmMessage[];
+  projectMessagesBeforeProvider?: (messages: LlmMessage[]) => Promise<LlmMessage[]> | LlmMessage[];
   onTextDelta?: (delta: string) => Promise<void> | void;
   onReasoningDelta?: (delta: string) => void;
   toolExecutor?: (toolCall: LlmToolCall) => Promise<string | LlmToolExecutionResult>;

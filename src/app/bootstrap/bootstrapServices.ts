@@ -75,7 +75,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
     config.chatFiles.gcGracePeriodMs
   );
   const contentSafetyStore = new ContentSafetyStore(dataDir, logger);
-  const contentSafetyService = new ContentSafetyService(config, logger, contentSafetyStore, chatFileStore);
+  const contentSafetyService = new ContentSafetyService(config, logger, contentSafetyStore, chatFileStore, audioStore);
   const mediaVisionService = new MediaVisionService(config, logger, chatFileStore, contentSafetyService);
   const mediaCaptionService = new MediaCaptionService(config, llmClient, chatFileStore, mediaVisionService, logger, contentSafetyService);
   const mediaInspectionService = new MediaInspectionService(config, llmClient, logger);

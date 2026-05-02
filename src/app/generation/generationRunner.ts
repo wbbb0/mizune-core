@@ -76,7 +76,8 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
     promptBuilder: {
       config: deps.promptBuilder.config,
       mediaVisionService: deps.promptBuilder.mediaVisionService,
-      mediaCaptionService: deps.promptBuilder.mediaCaptionService
+      mediaCaptionService: deps.promptBuilder.mediaCaptionService,
+      ...(deps.promptBuilder.contentSafetyService ? { contentSafetyService: deps.promptBuilder.contentSafetyService } : {})
     },
     sessionRuntime: deps.sessionRuntime,
     identity: deps.identity,
@@ -88,7 +89,8 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
 
   const sessionOrchestrator = createGenerationSessionOrchestrator({
     promptBuilder: {
-      config: deps.promptBuilder.config
+      config: deps.promptBuilder.config,
+      ...(deps.promptBuilder.contentSafetyService ? { contentSafetyService: deps.promptBuilder.contentSafetyService } : {})
     },
     sessionRuntime: {
       logger: deps.sessionRuntime.logger,

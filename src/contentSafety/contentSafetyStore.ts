@@ -25,7 +25,7 @@ const moderationResultSchema = z.object({
 
 const auditRecordSchema = z.object({
   key: z.string().min(1),
-  subjectKind: z.enum(["text", "image", "emoji", "audio_transcript", "file", "local_media"]),
+  subjectKind: z.enum(["text", "image", "emoji", "audio", "audio_transcript", "file", "local_media"]),
   decision: z.enum(["allow", "review", "block", "error"]),
   marker: z.string(),
   result: moderationResultSchema,
@@ -80,10 +80,16 @@ export class ContentSafetyStore {
     return [...current.records].reverse().find((item) => item.fileId === fileId) ?? null;
   }
 
+  async getByAudioId(audioId: string): Promise<ContentSafetyAuditRecord | null> {
+    const current = await this.readFile();
+    return [...current.records].reverse().find((item) => item.audioId === audioId) ?? null;
+  }
+
   async listBySessionId(sessionId: string): Promise<ContentSafetyAuditView[]> {
     const current = await this.readFile();
     return current.records
       .filter((item) => item.sessionId === sessionId)
+      .filter((item) => isBlockingDecision(item.decision))
       .map(toAuditView)
       .sort((left, right) => right.checkedAtMs - left.checkedAtMs);
   }

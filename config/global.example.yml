@@ -179,6 +179,14 @@ contentSafety:
   cache:
     enabled: true
     ttlMs: 2592000000
+    version: 1
+    storeAllowResults: true
+  textBatch:
+    enabled: true
+    maxMessages: 10
+    maxChars: 4000
+    singleMessageMaxChars: 1200
+    maxLocateConcurrency: 5
   marker:
     includeProvider: true
     includeLabels: true
@@ -229,9 +237,8 @@ contentSafety:
         action: mark_unavailable
       unsupportedFilePolicy: mark
   routes:
-    inbound:
-      onebot: preLlm
-      web: preLlm
+    prompt:
+      preLlm: preLlm
     toolMedia:
       chatFile: preLlm
       localFile: preLlm

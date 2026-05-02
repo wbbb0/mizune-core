@@ -468,6 +468,14 @@ export function createGenerationExecutor(
             tools: resolveAllowedTools,
             abortSignal: abortController.signal,
             consumeSteerMessages,
+            projectMessagesBeforeProvider: async (messages) => (
+              (await promptBuilder.contentSafetyService?.projectLlmMessages({
+                sessionId,
+                source: "provider_call_preflight",
+                messages,
+                abortSignal: abortController.signal
+              }))?.messages ?? messages
+            ),
             toolConcurrency: {
               analyze: analyzeBuiltinToolConcurrency,
               maxConcurrency: 4

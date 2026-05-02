@@ -1,10 +1,8 @@
-import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
-import type { EnrichedIncomingMessage } from "#app/messaging/messageHandlerTypes.ts";
-
 export type ModerationSubjectKind =
   | "text"
   | "image"
   | "emoji"
+  | "audio"
   | "audio_transcript"
   | "file"
   | "local_media";
@@ -47,7 +45,7 @@ export interface ModerateTextInput {
 }
 
 export interface ModerateMediaInput {
-  subjectKind: "image" | "emoji" | "file" | "local_media";
+  subjectKind: "image" | "emoji" | "audio" | "file" | "local_media";
   fileId?: string | undefined;
   sourceName?: string | undefined;
   mimeType?: string | undefined;
@@ -110,10 +108,4 @@ export interface ContentSafetyAuditRecord {
   sessionId?: string | undefined;
   checkedAtMs: number;
   expiresAtMs?: number | undefined;
-}
-
-export interface ContentSafetyProjection {
-  projectIncomingMessage: (input: EnrichedIncomingMessage) => Promise<EnrichedIncomingMessage>;
-  projectTranscriptItemForLlm: (input: InternalTranscriptItem) => Promise<InternalTranscriptItem>;
-  guardChatFileForLlm: (fileId: string) => Promise<"allow" | { blocked: true; marker: string; reason: string }>;
 }

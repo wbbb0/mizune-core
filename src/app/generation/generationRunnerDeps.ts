@@ -43,6 +43,7 @@ import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
 import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import type { SessionCaptioner } from "./sessionCaptioner.ts";
+import type { ContentSafetyService } from "#contentSafety/contentSafetyService.ts";
 
 // These dependency contracts describe the generation pipeline in domain-shaped slices.
 // The broad runtime bundle still exists at the composition root, but lower-level modules
@@ -61,6 +62,7 @@ export interface GenerationPromptBuilderDeps {
   chatFileStore: ChatFileStore;
   mediaVisionService: MediaVisionService;
   mediaCaptionService: MediaCaptionService;
+  contentSafetyService?: Pick<ContentSafetyService, "projectPromptMessages" | "projectLlmMessages">;
   globalRuleStore: GlobalRuleStore;
   toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
@@ -144,13 +146,13 @@ export type GenerationOutboundDeps =
 export type GenerationExecutorDeps =
   Pick<GenerationRunnerDeps, "sessionRuntime" | "identity" | "toolRuntime" | "lifecycle">
   & {
-    promptBuilder: Pick<GenerationPromptBuilderDeps, "config" | "mediaVisionService" | "mediaCaptionService">;
+    promptBuilder: Pick<GenerationPromptBuilderDeps, "config" | "mediaVisionService" | "mediaCaptionService" | "contentSafetyService">;
   };
 
 export type GenerationSessionOrchestratorDeps =
   Pick<GenerationRunnerDeps, "lifecycle">
   & {
-    promptBuilder: Pick<GenerationPromptBuilderDeps, "config">;
+    promptBuilder: Pick<GenerationPromptBuilderDeps, "config" | "contentSafetyService">;
     sessionRuntime: Pick<GenerationSessionRuntimeDeps, "logger" | "historyCompressor" | "llmClient" | "sessionCaptioner" | "turnPlanner" | "debounceManager"> & {
       sessionManager: SessionGenerationOrchestratorAccess;
     };

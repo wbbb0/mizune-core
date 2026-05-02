@@ -64,7 +64,7 @@ export const transcriptTokenStatsSchema = z.object({
 });
 
 export const transcriptContentSafetyEventSchema = z.object({
-  subjectKind: z.enum(["text", "image", "emoji", "audio_transcript", "file", "local_media"]),
+  subjectKind: z.enum(["text", "image", "emoji", "audio", "audio_transcript", "file", "local_media"]),
   decision: z.enum(["allow", "review", "block", "error"]),
   marker: z.string().nullable(),
   auditKey: z.string().min(1).nullable(),

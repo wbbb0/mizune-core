@@ -13,7 +13,7 @@ export function createNoopContentSafetyProvider(id = "noop"): ContentModerationP
   return {
     id,
     type: "noop",
-    capabilities: new Set(["text", "image", "emoji", "audio_transcript", "file", "local_media"]),
+    capabilities: new Set(["text", "image", "emoji", "audio", "audio_transcript", "file", "local_media"]),
     async moderateText(_input: ModerateTextInput) {
       return allow("text");
     },
@@ -22,4 +22,3 @@ export function createNoopContentSafetyProvider(id = "noop"): ContentModerationP
     }
   };
 }
-

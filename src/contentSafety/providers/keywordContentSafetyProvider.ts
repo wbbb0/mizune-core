@@ -14,7 +14,7 @@ export function createKeywordContentSafetyProvider(id: string, providerConfig: P
   return {
     id,
     type: "keyword",
-    capabilities: new Set(["text", "image", "emoji", "file", "local_media", "audio_transcript"]),
+    capabilities: new Set(["text", "image", "emoji", "audio", "file", "local_media", "audio_transcript"]),
     async moderateText(input: ModerateTextInput) {
       const normalized = input.text.toLowerCase();
       const keyword = blockedTextKeywords.find((item) => normalized.includes(item));
@@ -57,4 +57,3 @@ function blockResult(providerId: string, subject: string, keyword: string): Mode
     checkedAtMs: Date.now()
   };
 }
-

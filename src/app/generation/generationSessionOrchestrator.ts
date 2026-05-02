@@ -330,6 +330,66 @@ function toPromptBatchMessages(messages: GenerationRuntimeBatchMessage[]) {
   }));
 }
 
+type PromptBatchMessages = ReturnType<typeof toPromptBatchMessages>;
+
+function applyPromptBatchProjectionToRuntimeMessages(
+  messages: GenerationRuntimeBatchMessage[],
+  projected: PromptBatchMessages
+): GenerationRuntimeBatchMessage[] {
+  return messages.map((message, index) => {
+    const projection = projected[index];
+    if (!projection) {
+      return message;
+    }
+    const projectedMessage = {
+      ...message,
+      text: projection.text,
+      audioIds: projection.audioIds,
+      audioSources: projection.audioSources,
+      imageIds: projection.imageIds,
+      emojiIds: projection.emojiIds,
+      ...(projection.specialSegments ? { specialSegments: projection.specialSegments } : {})
+    };
+    return Object.prototype.hasOwnProperty.call(projection, "attachments")
+      ? { ...projectedMessage, attachments: projection.attachments ?? [] }
+      : projectedMessage;
+  });
+}
+
+async function projectGenerationPromptSafety(input: {
+  contentSafetyService: GenerationSessionOrchestratorDeps["promptBuilder"]["contentSafetyService"];
+  sessionId: string;
+  source: string;
+  historyForPrompt: PromptInput["recentMessages"];
+  batchMessages: GenerationRuntimeBatchMessage[];
+  abortSignal: AbortSignal;
+}): Promise<{
+  historyForPrompt: PromptInput["recentMessages"];
+  promptBatchMessages: PromptBatchMessages;
+  runtimeBatchMessages: GenerationRuntimeBatchMessage[];
+}> {
+  const promptBatchMessages = toPromptBatchMessages(input.batchMessages);
+  const projected = await input.contentSafetyService?.projectPromptMessages({
+    sessionId: input.sessionId,
+    source: input.source,
+    recentMessages: input.historyForPrompt,
+    batchMessages: promptBatchMessages,
+    abortSignal: input.abortSignal
+  });
+  if (!projected) {
+    return {
+      historyForPrompt: input.historyForPrompt,
+      promptBatchMessages,
+      runtimeBatchMessages: input.batchMessages
+    };
+  }
+  return {
+    historyForPrompt: projected.recentMessages,
+    promptBatchMessages: projected.batchMessages,
+    runtimeBatchMessages: applyPromptBatchProjectionToRuntimeMessages(input.batchMessages, projected.batchMessages)
+  };
+}
+
 function buildDebugMarkerSystemMessage(markers: ReturnType<GenerationSessionRuntimeDeps["sessionManager"]["getDebugMarkers"]>): string | null {
   if (markers.length === 0) {
     return null;
@@ -464,6 +524,22 @@ export function createGenerationSessionOrchestrator(
             excludeGroupId: refreshedSession.activeTranscriptGroupId
           })
         : [];
+      let promptSafety = await projectGenerationPromptSafety({
+        contentSafetyService: promptBuilder.contentSafetyService,
+        sessionId,
+        source: "chat_prompt",
+        historyForPrompt,
+        batchMessages: messages,
+        abortSignal: abortController.signal
+      });
+      let ambientRecallSafety = await projectGenerationPromptSafety({
+        contentSafetyService: promptBuilder.contentSafetyService,
+        sessionId,
+        source: "chat_prompt_ambient_recall",
+        historyForPrompt: ambientRecallForPrompt,
+        batchMessages: [],
+        abortSignal: abortController.signal
+      });
       let resolvedModelRef = getModelRefsForRole(config, "main_small");
       let plannerToolsets = listTurnToolsets({
         config,
@@ -500,7 +576,7 @@ export function createGenerationSessionOrchestrator(
             sessionId,
             relationship,
             currentUser: user,
-            batchMessages: messages,
+            batchMessages: promptSafety.runtimeBatchMessages,
             availableToolsets: plannerToolsets,
             sendTarget: {
               delivery: resolvedDelivery,
@@ -509,7 +585,7 @@ export function createGenerationSessionOrchestrator(
               ...(last.groupId ? { groupId: last.groupId } : {}),
               senderName: last.senderName
             },
-            historyForPrompt,
+            historyForPrompt: promptSafety.historyForPrompt,
             pendingReplyGateWaitPasses,
             abortSignal: abortController.signal
           }
@@ -543,9 +619,25 @@ export function createGenerationSessionOrchestrator(
         });
         ambientRecallForPrompt = includeAmbientRecall
           ? transcriptStore.projectAmbientRecallForPrompt({
-              excludeGroupId: refreshedSession.activeTranscriptGroupId
-            })
+            excludeGroupId: refreshedSession.activeTranscriptGroupId
+          })
           : [];
+        promptSafety = await projectGenerationPromptSafety({
+          contentSafetyService: promptBuilder.contentSafetyService,
+          sessionId,
+          source: "chat_prompt",
+          historyForPrompt,
+          batchMessages: messages,
+          abortSignal: abortController.signal
+        });
+        ambientRecallSafety = await projectGenerationPromptSafety({
+          contentSafetyService: promptBuilder.contentSafetyService,
+          sessionId,
+          source: "chat_prompt_ambient_recall",
+          historyForPrompt: ambientRecallForPrompt,
+          batchMessages: [],
+          abortSignal: abortController.signal
+        });
         if (plannerToolsets.length === 0) {
           logger.warn({
             sessionId,
@@ -559,8 +651,8 @@ export function createGenerationSessionOrchestrator(
         const autoActivation = resolveAutoActivatedToolsets({
           selectedToolsetIds: plannedToolsetIds,
           availableToolsets: plannerToolsets,
-          batchMessages: messages,
-          recentMessages: historyForPrompt,
+          batchMessages: promptSafety.runtimeBatchMessages,
+          recentMessages: promptSafety.historyForPrompt,
           modeId: sessionModeId,
           ...(plannerDecision ? { plannerDecision } : {})
         });
@@ -615,7 +707,9 @@ export function createGenerationSessionOrchestrator(
         transcript: replayTranscriptItems,
         preserveThinking: getPrimaryModelProfile(config, resolvedModelRef)?.preserveThinking === true
       });
-      const historyForPromptMessages = projectedTranscript.replayCoversVisibleHistory ? ambientRecallForPrompt : historyForPrompt;
+      const historyForPromptMessages = projectedTranscript.replayCoversVisibleHistory
+        ? ambientRecallSafety.historyForPrompt
+        : promptSafety.historyForPrompt;
       const lateSystemMessages = [
         ...projectedTranscript.lateSystemMessages,
         ...(interactionMode === "debug"
@@ -654,7 +748,8 @@ export function createGenerationSessionOrchestrator(
             lateSystemMessages,
             replayMessages: projectedTranscript.replayMessages,
             abortSignal: abortController.signal,
-            batchMessages: toPromptBatchMessages(messages)
+            batchMessages: promptSafety.promptBatchMessages,
+            contentSafetyAlreadyProjected: true
           })
         : await services.promptBuilder.buildChatPromptMessages({
             sessionId,
@@ -675,7 +770,8 @@ export function createGenerationSessionOrchestrator(
             internalTranscript: refreshedSession.internalTranscript,
             lastLlmUsage: refreshedSession.lastLlmUsage,
             abortSignal: abortController.signal,
-            batchMessages: toPromptBatchMessages(messages),
+            batchMessages: promptSafety.promptBatchMessages,
+            contentSafetyAlreadyProjected: true,
             ...(modeProfile ? { modeProfile } : {}),
             ...(draftMode ? { draftMode } : {})
           });

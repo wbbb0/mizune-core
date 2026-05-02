@@ -391,8 +391,17 @@ const contentSafetyConfigSchema = s.object({
   }).title("审计").default(emptyObject),
   cache: s.object({
     enabled: s.boolean().title("启用缓存").default(true),
-    ttlMs: s.number().int().positive().title("缓存 TTL 毫秒").default(30 * 24 * 60 * 60 * 1000)
+    ttlMs: s.number().int().positive().title("缓存 TTL 毫秒").default(30 * 24 * 60 * 60 * 1000),
+    version: s.number().int().min(0).title("缓存版本").default(1),
+    storeAllowResults: s.boolean().title("缓存放行结果").default(true)
   }).title("缓存").default(emptyObject),
+  textBatch: s.object({
+    enabled: s.boolean().title("启用文本批量审核").default(true),
+    maxMessages: s.number().int().positive().title("单批最大消息数").default(10),
+    maxChars: s.number().int().positive().title("单批最大字符数").default(4000),
+    singleMessageMaxChars: s.number().int().positive().title("单条独立审核字符数").default(1200),
+    maxLocateConcurrency: s.number().int().positive().title("命中定位最大并发").default(5)
+  }).title("文本批量审核").default(emptyObject),
   marker: s.object({
     includeProvider: s.boolean().title("包含 Provider").default(true),
     includeLabels: s.boolean().title("包含标签").default(true),
@@ -408,10 +417,9 @@ const contentSafetyConfigSchema = s.object({
     contentSafetyProfileConfigSchema
   ).title("Profile 列表").default({}),
   routes: s.object({
-    inbound: s.object({
-      onebot: s.string().trim().nonempty().title("OneBot 入站 Profile").optional(),
-      web: s.string().trim().nonempty().title("Web 入站 Profile").optional()
-    }).title("入站").default(emptyObject),
+    prompt: s.object({
+      preLlm: s.string().trim().nonempty().title("LLM 调用前 Profile").optional()
+    }).title("Prompt 调用前").default(emptyObject),
     toolMedia: s.object({
       chatFile: s.string().trim().nonempty().title("聊天文件 Profile").optional(),
       localFile: s.string().trim().nonempty().title("本地文件 Profile").optional()

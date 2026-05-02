@@ -77,12 +77,20 @@ export class LlmClient {
           )
         : [];
     };
+    const projectMessagesBeforeProvider = async (messages: LlmMessage[]): Promise<LlmMessage[]> => {
+      if (!params.projectMessagesBeforeProvider) {
+        return messages;
+      }
+      const projected = await params.projectMessagesBeforeProvider(cloneMessagesForRequest(messages, preserveThinking));
+      return cloneMessagesForRequest(projected, preserveThinking);
+    };
 
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
       const steerMessages = await consumeClonedSteerMessages();
       if (steerMessages.length > 0) {
         workingMessages.push(...steerMessages);
       }
+      workingMessages.splice(0, workingMessages.length, ...await projectMessagesBeforeProvider(workingMessages));
 
       const tools = typeof params.tools === "function"
         ? params.tools()
@@ -260,15 +268,16 @@ export class LlmClient {
       "tool_call_iteration_limit_reached"
     );
 
-    const fallback = await this.streamChatCompletion({
-      messages: [
+    const fallbackMessages = await projectMessagesBeforeProvider([
         ...workingMessages,
         ...(await consumeClonedSteerMessages()),
         {
           role: "system",
           content: `你已达到工具调用轮次上限（${maxIterations}）。不要再调用任何工具。请基于现有工具结果直接回复用户；如果任务仍未完成，请简要说明已完成内容、未完成部分和下一步建议。`
         }
-      ],
+      ]);
+    const fallback = await this.streamChatCompletion({
+      messages: fallbackMessages,
       ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
       ...(params.onTextDelta ? { onTextDelta: params.onTextDelta } : {}),
       ...(params.onReasoningDelta ? { onReasoningDelta: params.onReasoningDelta } : {}),
