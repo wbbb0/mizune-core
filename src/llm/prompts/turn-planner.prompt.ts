@@ -74,13 +74,13 @@ export function buildTurnPlannerPrompt(input: {
     renderPromptSection("planner_rules", [
       "输出格式严格为以下 8 行，不得多写解释、空行或代码块：",
       "reason: <中文简短理由，少于20字>",
-      "reply_decision: <reply_small|reply_large|wait>",
+      "reply_decision: <reply_small|reply_large|wait|no_reply>",
       "topic_decision: <continue_topic|new_topic>",
       "required_capabilities: <逗号分隔能力标签；无则填 none>",
       "context_dependencies: <逗号分隔依赖标签；无则填 none>",
       "recent_domain_reuse: <逗号分隔最近域/toolset id；无则填 none>",
       "followup_mode: <none|elliptical|explicit_reference>",
-      "toolset_ids: <逗号分隔工具集 ID；无则填 none；wait 时填 none>",
+      "toolset_ids: <逗号分隔工具集 ID；无则填 none；wait/no_reply 时填 none>",
       "只可从给定 available_toolsets 中挑选，不要编造 ID。",
       "required_capabilities 可用值：external_info_lookup, web_navigation, local_file_access, shell_execution, memory_write, scheduler_management, time_lookup, social_admin, conversation_navigation, chat_delegation, image_generation。",
       "context_dependencies 可用值：structured_message_context, prior_web_context, prior_shell_context, prior_file_context, prior_chat_context。",
@@ -94,8 +94,10 @@ export function buildTurnPlannerPrompt(input: {
       "判断原则：",
       "1. 末尾意图优先；有明确问题/指令/关键信息就应 reply。",
       "2. 区分该回与能答：即使可能拒答或信息不足，仍应 reply，由主模型处理。",
-      "3. 含语音/图片/转发/引用通常应 reply，不可仅因文本短判 wait。",
-      "4. 仅在明显半句话未完时判 wait。"
+      "3. 私聊默认 reply_small，不要输出 no_reply；私聊里即使只是寒暄、确认或收尾，也交给主模型处理。",
+      "4. 群聊中当前批次明显不需要机器人回应时可判 no_reply，例如他人闲聊、对其他人的回应、单纯反馈或无关收尾；no_reply 不选择任何工具集。",
+      "5. 含语音/图片/转发/引用通常应 reply，不可仅因文本短判 wait。",
+      "6. 仅在明显半句话未完时判 wait。"
     ])
   ].filter((item): item is string => Boolean(item)).join("\n");
 

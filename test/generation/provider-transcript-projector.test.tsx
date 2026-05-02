@@ -103,6 +103,63 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     assert.equal(projection.replayMessages[3]?.role, "tool");
   });
 
+  test("provider projectors do not replay ambient group messages as visible history", () => {
+    const transcript: InternalTranscriptItem[] = [
+      {
+        kind: "user_message",
+        role: "user",
+        llmVisible: true,
+        runtimeVisibility: "ambient",
+        chatType: "group",
+        userId: "u1",
+        senderName: "Alice",
+        text: "普通群聊环境",
+        imageIds: [],
+        emojiIds: [],
+        attachments: [],
+        audioCount: 0,
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        mentionedSelf: false,
+        timestampMs: 1
+      },
+      {
+        kind: "user_message",
+        role: "user",
+        llmVisible: true,
+        chatType: "group",
+        userId: "u2",
+        senderName: "Bob",
+        text: "@bot 当前问题",
+        imageIds: [],
+        emojiIds: [],
+        attachments: [],
+        audioCount: 0,
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        mentionedSelf: true,
+        timestampMs: 2
+      }
+    ];
+
+    const openaiProjection = getProviderTranscriptProjector("openai").project({
+      transcript,
+      preserveThinking: true
+    });
+    const googleProjection = getProviderTranscriptProjector("google").project({ transcript });
+
+    assert.equal(openaiProjection.replayCoversVisibleHistory, true);
+    assert.equal(googleProjection.replayCoversVisibleHistory, true);
+    assert.equal(openaiProjection.replayMessages.some((message) => String(message.content).includes("普通群聊环境")), false);
+    assert.equal(googleProjection.replayMessages.some((message) => String(message.content).includes("普通群聊环境")), false);
+    assert.equal(openaiProjection.replayMessages.some((message) => String(message.content).includes("@bot 当前问题")), true);
+    assert.equal(googleProjection.replayMessages.some((message) => String(message.content).includes("@bot 当前问题")), true);
+  });
+
   test("openai-style projector keeps pinned old tool results raw", () => {
     const pinnedTranscript: InternalTranscriptItem[] = [];
     for (let index = 1; index <= 7; index += 1) {

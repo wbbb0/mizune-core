@@ -101,6 +101,7 @@ conversation:
       asciiTokens: 0.25
   group:
     requireAtMention: true
+    ambientRecallMessageCount: 8
 whitelist:
   enabled: true
 internalApi:

@@ -210,6 +210,9 @@ function buildTranscriptActionTarget(entry: TranscriptEntry): TranscriptActionTa
 function describeTranscriptItem(item: SessionTranscriptItem): string {
   switch (item.kind) {
     case "user_message":
+      if (item.runtimeVisibility === "ambient") {
+        return "环境消息";
+      }
       return "用户消息";
     case "assistant_message":
       return "模型回复";

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { chatAttachmentSchema } from "../../types/chatContracts.ts";
 
 export const transcriptItemRuntimeExclusionReasonValues = ["manual_single", "manual_group", "interrupt_cleanup", "system"] as const;
+export const transcriptItemRuntimeVisibilityValues = ["default", "ambient"] as const;
 export const transcriptSystemMarkerKindValues = [
   "debug_enabled",
   "debug_disabled",
@@ -77,6 +78,7 @@ export const transcriptItemMetaSchema = z.object({
   id: z.string().min(1).optional(),
   groupId: z.string().min(1).optional(),
   runtimeExcluded: z.boolean().optional(),
+  runtimeVisibility: z.enum(transcriptItemRuntimeVisibilityValues).optional(),
   runtimeExcludedAt: z.number().int().nonnegative().optional(),
   runtimeExclusionReason: z.enum(transcriptItemRuntimeExclusionReasonValues).optional(),
   sourceRef: transcriptItemSourceRefSchema.optional(),
@@ -220,7 +222,7 @@ export const transcriptGateDecisionItemSchema = z.object({
   reason: z.string().nullable(),
   reasoningContent: z.string().optional(),
   waitPassCount: z.number().int().nonnegative().optional(),
-  replyDecision: z.enum(["reply_small", "reply_large", "wait", "ignore"]).optional(),
+  replyDecision: z.enum(["reply_small", "reply_large", "wait", "no_reply", "ignore"]).optional(),
   topicDecision: z.string().optional(),
   requiredCapabilities: z.array(z.string()).optional(),
   contextDependencies: z.array(z.string()).optional(),
@@ -308,6 +310,7 @@ export const internalTranscriptItemSchema = z.discriminatedUnion("kind", [
 export const transcriptItemPatchSchema = z.object({
   reasoningContent: z.string().optional(),
   runtimeExcluded: z.boolean().optional(),
+  runtimeVisibility: z.enum(transcriptItemRuntimeVisibilityValues).optional(),
   runtimeExcludedAt: z.number().int().nonnegative().optional(),
   runtimeExclusionReason: z.enum(transcriptItemRuntimeExclusionReasonValues).optional(),
   tokenStats: transcriptTokenStatsSchema.optional()
@@ -319,6 +322,7 @@ export type TranscriptTokenStat = z.infer<typeof transcriptTokenStatSchema>;
 export type TranscriptTokenStats = z.infer<typeof transcriptTokenStatsSchema>;
 export type TranscriptToolObservation = z.infer<typeof transcriptToolObservationSchema>;
 export type TranscriptItemRuntimeExclusionReason = (typeof transcriptItemRuntimeExclusionReasonValues)[number];
+export type TranscriptItemRuntimeVisibility = (typeof transcriptItemRuntimeVisibilityValues)[number];
 export type TranscriptItemSourceRef = z.infer<typeof transcriptItemSourceRefSchema>;
 export type TranscriptItemDeliveryRef = z.infer<typeof transcriptItemDeliveryRefSchema>;
 export type TranscriptContentSafetyEvent = z.infer<typeof transcriptContentSafetyEventSchema>;
@@ -328,5 +332,6 @@ export type NormalizedInternalTranscriptItem = InternalTranscriptItem & {
   id: string;
   groupId: string;
   runtimeExcluded: boolean;
+  runtimeVisibility?: TranscriptItemRuntimeVisibility;
 };
 export type TranscriptItemPatch = z.infer<typeof transcriptItemPatchSchema>;

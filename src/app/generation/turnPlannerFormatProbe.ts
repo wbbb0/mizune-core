@@ -7,7 +7,7 @@ import {
   type ToolsetView
 } from "#llm/tools/toolsetCatalog.ts";
 
-export type TurnPlannerProbeReplyDecision = "reply_small" | "reply_large" | "wait";
+export type TurnPlannerProbeReplyDecision = "reply_small" | "reply_large" | "wait" | "no_reply";
 export type TurnPlannerProbeTopicDecision = "continue_topic" | "new_topic";
 export type TurnPlannerProbeFollowupMode = "none" | "elliptical" | "explicit_reference";
 
@@ -133,7 +133,7 @@ const DEFAULT_PROBE_TOOLSET_IDS = [
 const PROBE_FORMAT_GUIDANCE = [
   "你正在参加 turn_planner 格式稳定性实验，必须严格输出下面 8 行，不得多写任何解释、前后缀、代码块或空行：",
   "reason: <少于20字的中文理由>",
-  "reply_decision: <reply_small|reply_large|wait>",
+  "reply_decision: <reply_small|reply_large|wait|no_reply>",
   "topic_decision: <continue_topic|new_topic>",
   "required_capabilities: <逗号分隔标签；无则填 none>",
   "context_dependencies: <逗号分隔标签；无则填 none>",
@@ -724,7 +724,7 @@ function parseListField(value: string): string[] {
 }
 
 function isReplyDecision(value: string): value is TurnPlannerProbeReplyDecision {
-  return value === "reply_small" || value === "reply_large" || value === "wait";
+  return value === "reply_small" || value === "reply_large" || value === "wait" || value === "no_reply";
 }
 
 function isTopicDecision(value: string): value is TurnPlannerProbeTopicDecision {
@@ -754,6 +754,16 @@ function normalizeTurnPlannerProbeDecision(input: TurnPlannerProbeDecision): Tur
   if (input.replyDecision === "wait" && topicDecision !== "continue_topic") {
     topicDecision = "continue_topic";
     normalizationWarnings.push("wait_forces_continue_topic");
+  }
+  if (input.replyDecision === "no_reply") {
+    return {
+      ...input,
+      topicDecision: "continue_topic",
+      toolsetIds: [],
+      normalizationWarnings: topicDecision === "continue_topic"
+        ? [...normalizationWarnings, ...(input.toolsetIds.length > 0 ? ["no_reply_clears_toolsets"] : [])]
+        : [...normalizationWarnings, "no_reply_forces_continue_topic", ...(input.toolsetIds.length > 0 ? ["no_reply_clears_toolsets"] : [])]
+    };
   }
   if (input.requiredCapabilities.includes("local_file_access") && !toolsetIds.includes("local_file_io")) {
     toolsetIds.push("local_file_io");

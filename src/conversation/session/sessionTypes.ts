@@ -9,6 +9,7 @@ import type {
   TranscriptContentSafetyEvent as TranscriptContentSafetyEventContract,
   TranscriptItemMeta as TranscriptItemMetaContract,
   TranscriptItemRuntimeExclusionReason as TranscriptItemRuntimeExclusionReasonContract,
+  TranscriptItemRuntimeVisibility as TranscriptItemRuntimeVisibilityContract,
   TranscriptItemSourceRef as TranscriptItemSourceRefContract,
   TranscriptTokenStat as TranscriptTokenStatContract,
   TranscriptTokenStats as TranscriptTokenStatsContract
@@ -100,6 +101,7 @@ export interface SessionDebugMarker {
 
 export type StoredToolCall = StoredToolCallContract;
 export type TranscriptItemRuntimeExclusionReason = TranscriptItemRuntimeExclusionReasonContract;
+export type TranscriptItemRuntimeVisibility = TranscriptItemRuntimeVisibilityContract;
 export type TranscriptItemSourceRef = TranscriptItemSourceRefContract;
 export type TranscriptItemDeliveryRef = TranscriptItemDeliveryRefContract;
 export type TranscriptContentSafetyEvent = TranscriptContentSafetyEventContract;

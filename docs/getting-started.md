@@ -273,6 +273,8 @@ conversation:
 
 OneBot 等外部投递目标仍会按 `conversation.outbound` 中的延迟参数模拟发送间隔；WebUI 投递会在形成正式分段后立即显示。
 
+群聊中未触发回复的普通消息会作为环境消息记录，不默认进入 LLM prompt。后续有人明确 @ bot 或回复 bot 时，会按 `conversation.group.ambientRecallMessageCount` 召回最近若干条环境消息，供模型理解“刚才他们聊的内容”；设为 `0` 可关闭这段额外上下文。
+
 ## persona 初始化
 
 如果联调其他功能时想先跳过全局 persona 初始化门槛，可以临时加上：
