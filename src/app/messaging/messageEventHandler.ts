@@ -145,6 +145,9 @@ export async function processIncomingMessage(
     ? {
         groupMatched: false,
         matchedPendingGroupTrigger: false,
+        replyToBot: false,
+        textIntentCorrection: false,
+        textIntentWaitMore: false,
         shouldTriggerResponse: true,
         threadAction: "reply_now" as const,
         replyDecision: "reply_small" as const,
@@ -157,11 +160,12 @@ export async function processIncomingMessage(
         { config, whitelistStore, conversationAccess, sessionManager },
         context
       );
+  const hasActiveResponseAtAdmission = sessionManager.hasActiveResponse(context.session.id);
 
   let activeResponseAlreadyInterrupted = false;
   if (
     triggerDecision.shouldTriggerResponse
-    && sessionManager.hasActiveResponse(context.session.id)
+    && hasActiveResponseAtAdmission
     && (triggerDecision.interruptPolicy === "soft_interrupt" || triggerDecision.interruptPolicy === "abort_generation")
   ) {
     const interrupted = sessionManager.interruptResponse(context.session.id);
@@ -175,6 +179,13 @@ export async function processIncomingMessage(
         transcriptGroup: "standalone"
       }
     : undefined);
+  appendAdmissionDecisionTranscript(
+    sessionManager,
+    deps.inboundDelivery,
+    context,
+    triggerDecision,
+    hasActiveResponseAtAdmission
+  );
 
   if (triggerDecision.threadAction === "wait_more") {
     sessionManager.appendPendingMessage(context.session.id, context.enrichedMessage);
@@ -223,7 +234,39 @@ export async function processIncomingMessage(
 }
 
 function isAmbientOnlyDecision(input: { threadAction: string }): boolean {
-  return input.threadAction === "ambient_only" || input.threadAction === "drop_due_cooldown";
+  return input.threadAction === "ambient_only";
+}
+
+function appendAdmissionDecisionTranscript(
+  sessionManager: MessageHandlerServices["sessionManager"],
+  inboundDelivery: MessageEventHandlerDeps["inboundDelivery"],
+  context: Parameters<typeof logReceivedMessage>[1],
+  triggerDecision: Parameters<typeof logReceivedMessage>[2],
+  hasActiveResponse: boolean
+): void {
+  sessionManager.appendInternalTranscript(context.session.id, {
+    kind: "admission_decision",
+    llmVisible: false,
+    delivery: inboundDelivery,
+    chatType: context.enrichedMessage.chatType,
+    userId: context.enrichedMessage.userId,
+    ...(context.enrichedMessage.groupId ? { groupId: context.enrichedMessage.groupId } : {}),
+    groupMatched: triggerDecision.groupMatched,
+    matchedPendingGroupTrigger: triggerDecision.matchedPendingGroupTrigger,
+    replyToBot: triggerDecision.replyToBot,
+    textIntentCorrection: triggerDecision.textIntentCorrection,
+    textIntentWaitMore: triggerDecision.textIntentWaitMore,
+    shouldTriggerResponse: triggerDecision.shouldTriggerResponse,
+    threadAction: triggerDecision.threadAction,
+    replyDecision: triggerDecision.replyDecision,
+    interruptPolicy: triggerDecision.interruptPolicy,
+    contextPolicy: triggerDecision.contextPolicy,
+    priority: triggerDecision.priority,
+    reason: triggerDecision.reason,
+    isAtMentioned: context.enrichedMessage.isAtMentioned,
+    hasActiveResponse,
+    timestampMs: Date.now()
+  });
 }
 
 // Handles incoming OneBot message events and routes them into session work.

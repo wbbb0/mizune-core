@@ -119,6 +119,7 @@ export type TranscriptOutboundMediaMessageItem = Extract<InternalTranscriptItem,
 export type TranscriptDirectCommandItem = Extract<InternalTranscriptItem, { kind: "direct_command" }>;
 export type TranscriptStatusMessageItem = Extract<InternalTranscriptItem, { kind: "status_message" }>;
 export type TranscriptGateDecisionItem = Extract<InternalTranscriptItem, { kind: "gate_decision" }>;
+export type TranscriptAdmissionDecisionItem = Extract<InternalTranscriptItem, { kind: "admission_decision" }>;
 export type InternalSystemMarkerItem = Extract<InternalTranscriptItem, { kind: "system_marker" }>;
 export type InternalFallbackEventItem = Extract<InternalTranscriptItem, { kind: "fallback_event" }>;
 export type InternalTriggerEventItem = Extract<InternalTranscriptItem, { kind: "internal_trigger_event" }>;

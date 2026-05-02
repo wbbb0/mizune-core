@@ -59,14 +59,11 @@ export function projectLlmVisibleHistoryWithAmbientRecallFromTranscript(
   const excludeGroupId = options.excludeGroupId ?? null;
   const ambientRecallIds = collectAmbientRecallIds(transcript, excludeGroupId, options.ambientMessageCount);
 
-  const projected = transcript
-    .filter((item) => !excludeGroupId || item.groupId !== excludeGroupId)
-    .filter((item) => (
-      isTranscriptLlmVisible(item)
-      || (options.ambientMessageCount > 0 && isTranscriptAmbient(item) && ambientRecallIds.has(item.id ?? ""))
-    ))
-    .filter(isTranscriptHistoryMessage)
-    .map((item) => projectPromptHistoryMessageWithAmbientMarker(item));
+  const projected = projectPromptHistoryMessages(transcript, {
+    excludeGroupId,
+    includeLlmVisibleHistory: true,
+    ambientRecallIds
+  });
   return normalizeProjectedHistoryMessages(projected, config);
 }
 
@@ -81,15 +78,30 @@ export function projectAmbientRecallFromTranscript(
   const excludeGroupId = options.excludeGroupId ?? null;
   const ambientRecallIds = collectAmbientRecallIds(transcript, excludeGroupId, options.ambientMessageCount);
 
-  const projected = transcript
-    .filter((item) => !excludeGroupId || item.groupId !== excludeGroupId)
+  const projected = projectPromptHistoryMessages(transcript, {
+    excludeGroupId,
+    includeLlmVisibleHistory: false,
+    ambientRecallIds
+  });
+  return normalizeProjectedHistoryMessages(projected, config);
+}
+
+function projectPromptHistoryMessages(
+  transcript: InternalTranscriptItem[],
+  options: {
+    excludeGroupId: string | null;
+    includeLlmVisibleHistory: boolean;
+    ambientRecallIds: Set<string>;
+  }
+): SessionHistoryMessage[] {
+  return transcript
+    .filter((item) => !options.excludeGroupId || item.groupId !== options.excludeGroupId)
     .filter((item) => (
-      isTranscriptLlmVisible(item)
-      || (options.ambientMessageCount > 0 && isTranscriptAmbient(item) && ambientRecallIds.has(item.id ?? ""))
+      (options.includeLlmVisibleHistory && isTranscriptLlmVisible(item))
+      || (isTranscriptAmbient(item) && options.ambientRecallIds.has(item.id ?? ""))
     ))
     .filter(isTranscriptHistoryMessage)
     .map((item) => projectPromptHistoryMessageWithAmbientMarker(item));
-  return normalizeProjectedHistoryMessages(projected, config);
 }
 
 function collectAmbientRecallIds(

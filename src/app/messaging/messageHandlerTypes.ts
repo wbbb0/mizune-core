@@ -102,6 +102,9 @@ export interface MessageProcessingContext {
 export interface TriggerDecision {
   groupMatched: boolean;
   matchedPendingGroupTrigger: boolean;
+  replyToBot: boolean;
+  textIntentCorrection: boolean;
+  textIntentWaitMore: boolean;
   shouldTriggerResponse: boolean;
   threadAction: AdmissionThreadAction;
   replyDecision: AdmissionReplyDecision;
