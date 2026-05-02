@@ -2,7 +2,7 @@ import type { LlmMessage } from "#llm/llmClient.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { InternalAssistantToolCallItem, InternalToolResultItem } from "#conversation/session/sessionTypes.ts";
 import { projectTranscriptMessageItemToHistoryMessage } from "#conversation/session/historyContext.ts";
-import { isTranscriptRuntimeIncluded } from "#conversation/session/sessionTranscript.ts";
+import { isTranscriptLlmVisible, isTranscriptRuntimeIncluded } from "#conversation/session/sessionTranscript.ts";
 
 const RECENT_RAW_TOOL_RESULT_COUNT = 5;
 
@@ -69,6 +69,7 @@ function createOpenAiStyleProjector(providerName: string): ProviderTranscriptPro
         if (
           input.preserveThinking
           && (item.kind === "user_message" || item.kind === "assistant_message" || item.kind === "session_mode_switch")
+          && isTranscriptLlmVisible(item)
         ) {
           const historyMessage = projectTranscriptMessageItemToHistoryMessage(item);
           replayMessages.push({
@@ -210,7 +211,7 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
         if (!isTranscriptRuntimeIncluded(item)) {
           continue;
         }
-        if (item.kind === "user_message" || item.kind === "assistant_message") {
+        if ((item.kind === "user_message" || item.kind === "assistant_message") && isTranscriptLlmVisible(item)) {
           clearActiveReplayableToolCalls();
           const historyMessage = projectTranscriptMessageItemToHistoryMessage(item);
           replayMessages.push({

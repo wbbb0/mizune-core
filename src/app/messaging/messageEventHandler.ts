@@ -103,16 +103,6 @@ export async function processIncomingMessage(
     persistSession
   );
 
-  const triggerDecision = deps.inboundDelivery === "web"
-    ? {
-        groupMatched: false,
-        matchedPendingGroupTrigger: false,
-        shouldTriggerResponse: true
-      }
-    : await resolveTriggerDecision(
-        { config, whitelistStore, conversationAccess, sessionManager },
-        context
-      );
   const command = resolveChatDirectCommand(context);
   if (command) {
     try {
@@ -151,14 +141,68 @@ export async function processIncomingMessage(
     }
   }
 
+  const triggerDecision = deps.inboundDelivery === "web"
+    ? {
+        groupMatched: false,
+        matchedPendingGroupTrigger: false,
+        shouldTriggerResponse: true,
+        threadAction: "reply_now" as const,
+        replyDecision: "reply_small" as const,
+        interruptPolicy: "soft_interrupt" as const,
+        contextPolicy: "new_thread" as const,
+        priority: "normal" as const,
+        reason: "Web 输入默认回复"
+      }
+    : await resolveTriggerDecision(
+        { config, whitelistStore, conversationAccess, sessionManager },
+        context
+      );
+
   let activeResponseAlreadyInterrupted = false;
-  if (triggerDecision.shouldTriggerResponse && sessionManager.hasActiveResponse(context.session.id)) {
+  if (
+    triggerDecision.shouldTriggerResponse
+    && sessionManager.hasActiveResponse(context.session.id)
+    && (triggerDecision.interruptPolicy === "soft_interrupt" || triggerDecision.interruptPolicy === "abort_generation")
+  ) {
     const interrupted = sessionManager.interruptResponse(context.session.id);
     activeResponseAlreadyInterrupted = true;
     logger.info({ sessionId: context.session.id, interrupted }, "user_message_interrupted_active_response");
   }
 
-  appendIncomingHistory(sessionManager, logger, context);
+  appendIncomingHistory(sessionManager, logger, context, isAmbientOnlyDecision(triggerDecision)
+    ? {
+        runtimeVisibility: "ambient",
+        transcriptGroup: "standalone"
+      }
+    : undefined);
+
+  if (triggerDecision.threadAction === "wait_more") {
+    sessionManager.appendPendingMessage(context.session.id, context.enrichedMessage);
+    persistSession(context.session.id, "group_message_wait_more");
+    if (!sessionManager.hasActiveResponse(context.session.id)) {
+      debounceManager.schedule(context.session.id, () => {
+        flushSession(context.session.id);
+      }, {
+        reason: "gate_wait",
+        multiplierOverride: config.conversation.debounce.plannerWaitMultiplier
+      });
+    }
+    logReceivedMessage(logger, context, triggerDecision);
+    return;
+  }
+
+  if (triggerDecision.threadAction === "queue_next_thread") {
+    sessionManager.appendPendingMessage(context.session.id, context.enrichedMessage);
+    persistSession(context.session.id, "group_message_queued_next_thread");
+    if (!sessionManager.hasActiveResponse(context.session.id)) {
+      debounceManager.schedule(context.session.id, () => {
+        flushSession(context.session.id);
+      });
+    }
+    logReceivedMessage(logger, context, triggerDecision);
+    return;
+  }
+
   if (handleNonTriggeringMessage(sessionManager, logger, persistSession, context, triggerDecision)) {
     return;
   }
@@ -170,9 +214,16 @@ export async function processIncomingMessage(
     persistSession,
     flushSession,
     logger,
-    { activeResponseAlreadyInterrupted }
+    {
+      activeResponseAlreadyInterrupted,
+      interruptPolicy: triggerDecision.interruptPolicy
+    }
   );
   logReceivedMessage(logger, context, triggerDecision);
+}
+
+function isAmbientOnlyDecision(input: { threadAction: string }): boolean {
+  return input.threadAction === "ambient_only" || input.threadAction === "drop_due_cooldown";
 }
 
 // Handles incoming OneBot message events and routes them into session work.

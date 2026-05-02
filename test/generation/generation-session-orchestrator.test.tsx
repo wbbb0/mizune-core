@@ -670,3 +670,163 @@ test("normal prompt provider replay excludes the active input batch", async () =
   assert.equal(capturedHistoryForPrompt.length, 0);
   assert.deepEqual(capturedBatchMessages.map((message) => message.text), ["当前问题"]);
 });
+
+test("normal prompt history excludes active transcript group instead of subtracting batch count", async () => {
+  const config = createTestAppConfig({
+    llm: {
+      enabled: true
+    }
+  });
+  const logger = pino({ level: "silent" });
+  const sessionManager = new SessionManager(config);
+  const sessionId = "qqbot:g:20001";
+  sessionManager.ensureSession({
+    id: sessionId,
+    type: "group",
+    source: "onebot"
+  });
+  sessionManager.appendUserHistory(sessionId, {
+    chatType: "group",
+    userId: "u1",
+    senderName: "Alice",
+    text: "@bot 当前问题"
+  }, 10);
+  sessionManager.appendPendingMessage(sessionId, {
+    channelId: "qqbot",
+    chatType: "group",
+    userId: "u1",
+    groupId: "20001",
+    senderName: "Alice",
+    text: "@bot 当前问题",
+    images: [],
+    audioSources: [],
+    audioIds: [],
+    emojiSources: [],
+    imageIds: [],
+    emojiIds: [],
+    forwardIds: [],
+    replyMessageId: null,
+    mentionUserIds: [],
+    mentionedAll: false,
+    isAtMentioned: true
+  });
+  sessionManager.appendUserHistory(sessionId, {
+    chatType: "group",
+    userId: "u2",
+    senderName: "Bob",
+    text: "中间插入的非当前批次消息"
+  }, 20, { transcriptGroup: "standalone" });
+
+  let capturedHistoryForPrompt: Array<{ role: string; content: string }> = [];
+  let capturedBatchMessages: Array<{ text: string }> = [];
+  let resolveRunGeneration!: () => void;
+  const runGenerationDone = new Promise<void>((resolve) => {
+    resolveRunGeneration = resolve;
+  });
+
+  const orchestrator = createGenerationSessionOrchestrator({
+    promptBuilder: { config } as any,
+    sessionRuntime: {
+      logger,
+      historyCompressor: {
+        async maybeCompress() {
+          return false;
+        }
+      },
+      llmClient: {} as never,
+      sessionCaptioner: {} as never,
+      turnPlanner: {} as never,
+      debounceManager: {} as never,
+      sessionManager
+    } as any,
+    identity: {
+      userStore: {
+        async getByUserId(userId: string) {
+          return {
+            userId,
+            relationship: "known"
+          };
+        }
+      },
+      personaStore: {
+        async get() {
+          return createEmptyPersona();
+        }
+      },
+      rpProfileStore: {
+        async get() {
+          return createEmptyRpProfile();
+        }
+      },
+      scenarioProfileStore: {
+        async get() {
+          return createEmptyScenarioProfile();
+        }
+      },
+      setupStore: {} as never,
+      scenarioHostStateStore: {} as never,
+      globalProfileReadinessStore: {
+        async get() {
+          return {
+            persona: "ready",
+            rp: "ready",
+            scenario: "ready",
+            updatedAt: 1
+          };
+        }
+      }
+    } as any,
+    toolRuntime: {
+      shellRuntime: createFakeShellRuntime()
+    } as any,
+    lifecycle: {
+      persistSession() {},
+      getScheduler() {
+        return {} as never;
+      }
+    } as any
+  }, {
+    promptBuilder: {
+      async buildChatPromptMessages(input: {
+        historyForPrompt: Array<{ role: string; content: string }>;
+        batchMessages: Array<{ text: string }>;
+      }) {
+        capturedHistoryForPrompt = input.historyForPrompt;
+        capturedBatchMessages = input.batchMessages;
+        return {
+          promptMessages: [{ role: "system" as const, content: "chat" }],
+          debugSnapshot: {
+            sessionId,
+            systemMessages: ["chat"],
+            visibleToolNames: [],
+            activeToolsets: [],
+            historySummary: null,
+            recentHistory: [],
+            currentBatch: [],
+            liveResources: [],
+            debugMarkers: [],
+            toolTranscript: [],
+            persona: createEmptyPersona(),
+            globalRules: [],
+            toolsetRules: [],
+            currentUser: null,
+            participantProfiles: [],
+            imageCaptions: [],
+            lastLlmUsage: null
+          }
+        };
+      }
+    } as any,
+    async runGeneration() {
+      resolveRunGeneration();
+    },
+    processNextSessionWork() {}
+  });
+
+  orchestrator.flushSession(sessionId, { skipReplyGate: true });
+  await runGenerationDone;
+
+  assert.equal(capturedHistoryForPrompt.some((message) => message.content.includes("@bot 当前问题")), false);
+  assert.equal(capturedHistoryForPrompt.some((message) => message.content.includes("中间插入的非当前批次消息")), true);
+  assert.deepEqual(capturedBatchMessages.map((message) => message.text), ["@bot 当前问题"]);
+});

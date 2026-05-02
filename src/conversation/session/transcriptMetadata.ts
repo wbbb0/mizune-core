@@ -48,11 +48,13 @@ export function normalizeTranscriptItem(
   item: InternalTranscriptItem,
   groupId: string
 ): NormalizedInternalTranscriptItem {
+  const { runtimeVisibility, ...rest } = item;
   return {
-    ...item,
+    ...rest,
     id: item.id ?? createTranscriptItemId(),
     groupId: item.groupId ?? groupId,
     runtimeExcluded: item.runtimeExcluded === true,
+    ...(runtimeVisibility && runtimeVisibility !== "default" ? { runtimeVisibility } : {}),
     ...(item.runtimeExcludedAt != null ? { runtimeExcludedAt: item.runtimeExcludedAt } : {}),
     ...(item.runtimeExclusionReason ? { runtimeExclusionReason: item.runtimeExclusionReason } : {}),
     ...(item.deliveryRef ? { deliveryRef: item.deliveryRef } : {})
@@ -80,6 +82,9 @@ export function buildTranscriptItemPatch(
   }
   if ((previous.runtimeExcluded === true) !== (current.runtimeExcluded === true)) {
     patch.runtimeExcluded = current.runtimeExcluded === true;
+  }
+  if (previous.runtimeVisibility !== current.runtimeVisibility && current.runtimeVisibility != null) {
+    patch.runtimeVisibility = current.runtimeVisibility;
   }
   if (previous.runtimeExcludedAt !== current.runtimeExcludedAt && current.runtimeExcludedAt != null) {
     patch.runtimeExcludedAt = current.runtimeExcludedAt;

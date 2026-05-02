@@ -12,6 +12,7 @@ import {
   appendIncomingHistoryTranscript,
   resolveIncomingOneBotSourceRef
 } from "./incomingHistory.ts";
+import { resolveAdmissionDecision } from "./conversationAdmissionPolicy.ts";
 
 export async function resolveTriggerDecision(
   services: Pick<
@@ -34,33 +35,47 @@ export async function resolveTriggerDecision(
       context.session.id,
       context.enrichedMessage.userId
     );
-  const shouldTriggerResponse = context.enrichedMessage.chatType === "private"
-    ? true
-    : (
-        (context.enrichedMessage.isAtMentioned || matchedPendingGroupTrigger)
-        && (
-          context.user.relationship === "owner"
-          || !services.config.whitelist.enabled
-          || groupMatched
-        )
-      );
 
-  return {
+  return resolveAdmissionDecision({
+    config: services.config,
+    message: context.enrichedMessage,
+    relationship: context.user.relationship,
     groupMatched,
     matchedPendingGroupTrigger,
-    shouldTriggerResponse
-  };
+    replyToBot: isReplyToBot(context.session, context.enrichedMessage.replyMessageId),
+    hasActiveResponse: services.sessionManager.hasActiveResponse(context.session.id)
+  });
+}
+
+function isReplyToBot(
+  session: { sentMessages: Array<{ messageId: number }> },
+  replyMessageId: string | null
+): boolean {
+  if (!replyMessageId) {
+    return false;
+  }
+  const numericId = Number(replyMessageId);
+  if (!Number.isSafeInteger(numericId)) {
+    return false;
+  }
+  return session.sentMessages.some((item) => item.messageId === numericId);
 }
 
 export function appendIncomingHistory(
   sessionManager: MessageHandlerServices["sessionManager"],
   logger: Logger,
-  context: MessageProcessingContext
+  context: MessageProcessingContext,
+  options?: {
+    runtimeVisibility?: Parameters<MessageHandlerServices["sessionManager"]["appendUserHistory"]>[1]["runtimeVisibility"];
+    transcriptGroup?: "pending" | "standalone";
+  }
 ): void {
   const sourceRef = resolveIncomingOneBotSourceRef(context.enrichedMessage);
   appendIncomingHistoryTranscript(sessionManager, context, {
     timestampMs: Date.now(),
-    ...(sourceRef ? { sourceRef } : {})
+    ...(sourceRef ? { sourceRef } : {}),
+    ...(options?.runtimeVisibility ? { runtimeVisibility: options.runtimeVisibility } : {}),
+    ...(options?.transcriptGroup ? { transcriptGroup: options.transcriptGroup } : {})
   });
   logger.info(
     {
@@ -131,6 +146,7 @@ export function enqueueTriggeredMessage(
   logger: Logger,
   options?: {
     activeResponseAlreadyInterrupted?: boolean;
+    interruptPolicy?: TriggerDecision["interruptPolicy"];
   }
 ): void {
   if (shouldUpdateSessionReplyDelivery(inboundDelivery, context.enrichedMessage)) {
@@ -149,7 +165,14 @@ export function enqueueTriggeredMessage(
     context.enrichedMessage.chatType === "private" ? "incoming_private_message" : "incoming_group_trigger"
   );
 
-  if (options?.activeResponseAlreadyInterrupted || services.sessionManager.hasActiveResponse(context.session.id)) {
+  const hasActiveResponse = services.sessionManager.hasActiveResponse(context.session.id);
+  const shouldInterruptActiveResponse = options?.activeResponseAlreadyInterrupted
+    || (
+      hasActiveResponse
+      && (options?.interruptPolicy === "soft_interrupt" || options?.interruptPolicy === "abort_generation")
+    );
+
+  if (shouldInterruptActiveResponse) {
     // Natural user input is treated as an interruption: stop the active turn and
     // queue the new message exactly once for the next debounced response.
     const interrupted = options?.activeResponseAlreadyInterrupted
@@ -163,6 +186,18 @@ export function enqueueTriggeredMessage(
     if (!options?.activeResponseAlreadyInterrupted) {
       logger.info({ sessionId: context.session.id, interrupted }, "user_message_interrupted_active_response");
     }
+    return;
+  }
+
+  if (hasActiveResponse) {
+    services.sessionManager.appendPendingMessage(context.session.id, context.enrichedMessage);
+    persistSession(context.session.id, "user_message_queued_during_active_response");
+    logger.info({
+      sessionId: context.session.id,
+      chatType: context.enrichedMessage.chatType,
+      userId: context.enrichedMessage.userId,
+      interruptPolicy: options?.interruptPolicy ?? "none"
+    }, "user_message_queued_during_active_response");
     return;
   }
 

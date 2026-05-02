@@ -18,6 +18,7 @@ const emit = defineEmits<{
 
 const expandStates = inject<Map<string, TranscriptExpandState>>("transcriptExpandStates");
 const runtimeExcluded = computed(() => props.item.runtimeExcluded === true);
+const runtimeAmbient = computed(() => props.item.runtimeVisibility === "ambient");
 
 function getState(): TranscriptExpandState {
   if (!expandStates) {
@@ -106,10 +107,16 @@ const itemTitle = computed(() => {
   if (!props.item.llmVisible) {
     title += " · 隐藏";
   }
+  if (runtimeAmbient.value) {
+    title += " · 环境";
+  }
   return title;
 });
 
 const itemTone = computed(() => {
+  if (runtimeAmbient.value) {
+    return "ambient";
+  }
   switch (props.item.kind) {
     case "user_message":
       return "user";
@@ -171,6 +178,8 @@ const itemGlyph = computed<SessionGlyphModel>(() => {
 
 const toneGlyphClass = computed(() => {
   switch (itemTone.value) {
+    case "ambient":
+      return "bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] text-text-muted";
     case "user":
       return "bg-[color-mix(in_srgb,var(--surface-selected)_70%,transparent)] text-text-accent";
     case "assistant":
@@ -200,6 +209,7 @@ const metaChips = computed(() => {
     case "user_message":
       chips = [
         `${props.item.senderName} (${props.item.userId})`,
+        ...(runtimeAmbient.value ? ["ambient"] : []),
         ...(props.item.replyMessageId ? ["reply"] : []),
         ...(props.item.mentionedSelf ? ["@self"] : []),
         ...(props.item.mentionedAll ? ["@all"] : []),

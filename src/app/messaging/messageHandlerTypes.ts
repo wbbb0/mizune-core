@@ -10,6 +10,13 @@ import type {
   GenerationDraftOverlaySink
 } from "#app/generation/generationOutputContracts.ts";
 import type { ResolvedDirectCommand } from "./directCommands.ts";
+import type {
+  AdmissionContextPolicy,
+  AdmissionInterruptPolicy,
+  AdmissionPriority,
+  AdmissionReplyDecision,
+  AdmissionThreadAction
+} from "./conversationAdmissionPolicy.ts";
 
 export interface MessageEventHandlerDeps {
   inboundDelivery: SessionDelivery;
@@ -96,4 +103,10 @@ export interface TriggerDecision {
   groupMatched: boolean;
   matchedPendingGroupTrigger: boolean;
   shouldTriggerResponse: boolean;
+  threadAction: AdmissionThreadAction;
+  replyDecision: AdmissionReplyDecision;
+  interruptPolicy: AdmissionInterruptPolicy;
+  contextPolicy: AdmissionContextPolicy;
+  priority: AdmissionPriority;
+  reason: string;
 }

@@ -454,8 +454,16 @@ export function createGenerationSessionOrchestrator(
         ? { setupPhase: { setupToolsetOverrides: activeDraftOperation.setupToolsetOverrides } }
         : {};
       let transcriptStore = createSessionTranscriptStore(refreshedSession, config);
-      let visibleHistory = transcriptStore.projectRuntimeHistory();
-      let historyForPrompt = visibleHistory.slice(0, Math.max(0, visibleHistory.length - messages.length));
+      const includeAmbientRecall = last.chatType === "group";
+      let historyForPrompt = transcriptStore.projectRuntimeHistoryForPrompt({
+        excludeGroupId: refreshedSession.activeTranscriptGroupId,
+        includeAmbientRecall
+      });
+      let ambientRecallForPrompt = includeAmbientRecall
+        ? transcriptStore.projectAmbientRecallForPrompt({
+            excludeGroupId: refreshedSession.activeTranscriptGroupId
+          })
+        : [];
       let resolvedModelRef = getModelRefsForRole(config, "main_small");
       let plannerToolsets = listTurnToolsets({
         config,
@@ -529,8 +537,15 @@ export function createGenerationSessionOrchestrator(
         plannerDecision = gateResult.action === "continue" ? gateResult.plannerDecision : undefined;
         refreshedSession = sessionManager.getSession(sessionId);
         transcriptStore = createSessionTranscriptStore(refreshedSession, config);
-        visibleHistory = transcriptStore.projectRuntimeHistory();
-        historyForPrompt = visibleHistory.slice(0, Math.max(0, visibleHistory.length - messages.length));
+        historyForPrompt = transcriptStore.projectRuntimeHistoryForPrompt({
+          excludeGroupId: refreshedSession.activeTranscriptGroupId,
+          includeAmbientRecall
+        });
+        ambientRecallForPrompt = includeAmbientRecall
+          ? transcriptStore.projectAmbientRecallForPrompt({
+              excludeGroupId: refreshedSession.activeTranscriptGroupId
+            })
+          : [];
         if (plannerToolsets.length === 0) {
           logger.warn({
             sessionId,
@@ -600,7 +615,7 @@ export function createGenerationSessionOrchestrator(
         transcript: replayTranscriptItems,
         preserveThinking: getPrimaryModelProfile(config, resolvedModelRef)?.preserveThinking === true
       });
-      const historyForPromptMessages = projectedTranscript.replayCoversVisibleHistory ? [] : historyForPrompt;
+      const historyForPromptMessages = projectedTranscript.replayCoversVisibleHistory ? ambientRecallForPrompt : historyForPrompt;
       const lateSystemMessages = [
         ...projectedTranscript.lateSystemMessages,
         ...(interactionMode === "debug"
