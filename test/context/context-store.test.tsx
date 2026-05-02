@@ -95,6 +95,158 @@ test("ContextStore upserts and soft-deletes user facts", async () => {
   }
 });
 
+test("ContextStore updates same-slot user facts by specific title", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    const created = harness.store.upsertUserFact({
+      userId: "user_1",
+      title: "早餐习惯",
+      content: "早餐固定吃希腊酸奶加蓝莓和奇亚籽",
+      kind: "habit"
+    });
+
+    const updated = harness.store.upsertUserFact({
+      userId: "user_1",
+      title: "早餐习惯",
+      content: "早餐改成全麦吐司配牛油果，不再吃酸奶",
+      kind: "habit"
+    });
+
+    assert.equal(updated.action, "updated_existing");
+    assert.equal(updated.item.id, created.item.id);
+    assert.equal(updated.dedup.matchedExistingId, created.item.id);
+    const facts = harness.store.listUserFacts("user_1");
+    assert.equal(facts.length, 1);
+    assert.equal(facts[0]?.content, "早餐改成全麦吐司配牛油果，不再吃酸奶");
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextStore removes facts without leaving related search chunks active", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    const fact = harness.store.upsertUserFact({
+      userId: "user_1",
+      title: "早餐习惯",
+      content: "早餐固定吃全麦吐司配牛油果，不再吃酸奶",
+      kind: "habit"
+    });
+    harness.store.upsertUserSearchChunk({
+      itemId: "ctx_breakfast_old",
+      userId: "user_1",
+      sessionId: "qqbot:p:user_1",
+      title: "近期用户消息",
+      text: "用户：我早餐固定吃希腊酸奶加蓝莓和奇亚籽。",
+      source: "user_explicit",
+      createdAt: 100,
+      updatedAt: 100
+    });
+    harness.store.upsertUserSearchChunk({
+      itemId: "ctx_breakfast_new",
+      userId: "user_1",
+      sessionId: "qqbot:p:user_1",
+      title: "当前消息",
+      text: "用户：更新一下，我早餐改成全麦吐司配牛油果，不再吃酸奶。",
+      source: "user_explicit",
+      createdAt: 200,
+      updatedAt: 200
+    });
+    harness.store.upsertUserSearchChunk({
+      itemId: "ctx_unrelated",
+      userId: "user_1",
+      sessionId: "qqbot:p:user_1",
+      text: "用户正在处理 Orama 检索链路",
+      source: "system",
+      createdAt: 300,
+      updatedAt: 300
+    });
+
+    const removed = harness.store.removeUserFact("user_1", fact.item.id);
+
+    assert.equal(removed.removed, true);
+    assert.equal(removed.suppressedSearchCount, 2);
+    assert.deepEqual(harness.store.listUserFacts("user_1"), []);
+    assert.deepEqual(harness.store.listUserSearchDocuments("user_1").map((item) => item.itemId), ["ctx_unrelated"]);
+    const superseded = harness.store.listContextItems({ userId: "user_1", status: "superseded" }).items;
+    assert.deepEqual(superseded.map((item) => item.itemId).sort(), ["ctx_breakfast_new", "ctx_breakfast_old"]);
+    assert.ok(superseded.every((item) => item.supersededBy === fact.item.id));
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextStore resolves remove and replace by text only on unique matches", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    const breakfast = harness.store.upsertUserFact({
+      userId: "user_1",
+      title: "早餐习惯",
+      content: "早餐固定吃酸奶",
+      kind: "habit"
+    });
+    harness.store.upsertUserFact({
+      userId: "user_1",
+      title: "咖啡偏好",
+      content: "喜欢拿铁",
+      kind: "preference"
+    });
+
+    const replaced = harness.store.replaceUserFactByText({
+      userId: "user_1",
+      query: "早餐",
+      title: "早餐习惯",
+      content: "早餐固定吃全麦吐司",
+      kind: "habit"
+    });
+    assert.equal(replaced.replaced, true);
+    assert.equal(replaced.match?.id, breakfast.item.id);
+    assert.equal(harness.store.listUserFacts("user_1").find((item) => item.id === breakfast.item.id)?.content, "早餐固定吃全麦吐司");
+
+    const ambiguous = harness.store.removeUserFactByText("user_1", "偏好习惯");
+    assert.equal(ambiguous.removed, false);
+    assert.equal(ambiguous.reason, "ambiguous");
+    assert.equal(harness.store.listUserFacts("user_1").length, 2);
+
+    const removed = harness.store.removeUserFactByText("user_1", "咖啡");
+    assert.equal(removed.removed, true);
+    assert.equal(removed.match?.title, "咖啡偏好");
+    assert.deepEqual(harness.store.listUserFacts("user_1").map((item) => item.title), ["早餐习惯"]);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextStore keeps users and database files isolated", async () => {
+  const left = await createContextStoreHarness();
+  const right = await createContextStoreHarness();
+  try {
+    left.store.upsertUserFact({
+      userId: "user_1",
+      title: "早餐习惯",
+      content: "早餐固定吃全麦吐司"
+    });
+    left.store.upsertUserFact({
+      userId: "user_2",
+      title: "早餐习惯",
+      content: "早餐固定吃燕麦"
+    });
+    right.store.upsertUserFact({
+      userId: "user_1",
+      title: "早餐习惯",
+      content: "早餐固定吃饭团"
+    });
+
+    assert.deepEqual(left.store.listUserFacts("user_1").map((item) => item.content), ["早餐固定吃全麦吐司"]);
+    assert.deepEqual(left.store.listUserFacts("user_2").map((item) => item.content), ["早餐固定吃燕麦"]);
+    assert.deepEqual(right.store.listUserFacts("user_1").map((item) => item.content), ["早餐固定吃饭团"]);
+    assert.notEqual(left.store.getStatus().dbPath, right.store.getStatus().dbPath);
+  } finally {
+    await left.cleanup();
+    await right.cleanup();
+  }
+});
+
 test("ContextStore stores searchable user chunks separately from always-injected facts", async () => {
   const harness = await createContextStoreHarness();
   try {

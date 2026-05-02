@@ -25,6 +25,12 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
     assert.deepEqual(parseDirectCommand(".compact 3"), { name: "compact", keep: 3 });
     assert.deepEqual(parseDirectCommand(".remember 我喜欢 Orama"), { name: "remember", content: "我喜欢 Orama" });
     assert.deepEqual(parseDirectCommand(".forget mem_1"), { name: "forget", memoryId: "mem_1" });
+    assert.deepEqual(parseDirectCommand(".forget 早餐习惯"), { name: "forget", memoryId: "早餐习惯" });
+    assert.deepEqual(parseDirectCommand(".replace-memory 早餐 => 早餐固定吃全麦吐司"), {
+      name: "replaceMemory",
+      query: "早餐",
+      content: "早餐固定吃全麦吐司"
+    });
     assert.deepEqual(parseDirectCommand(".setup rp"), { name: "setup", target: "rp" });
     assert.deepEqual(parseDirectCommand(".config scenario"), { name: "config", target: "scenario" });
     assert.deepEqual(parseDirectCommand(".cancel"), { name: "cancel" });
@@ -453,6 +459,65 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
     assert.deepEqual(removes, [{ userId: "owner", memoryId: "mem_created" }]);
     assert.match(calls[0]?.text ?? "", /已记住/);
     assert.equal(calls[1]?.text, "已忘记：mem_created");
+  });
+
+  test("forget and replace-memory direct commands support text lookup", async () => {
+    const callsToStore: Array<Record<string, unknown>> = [];
+    const { calls, handler } = createDirectCommandFixture({
+      contextStore: {
+        upsertUserFact(input: Record<string, unknown>) {
+          return { item: { id: "unused", title: String(input.title) } };
+        },
+        removeUserFact() {
+          return { removed: false, suppressedSearchCount: 0, remaining: [] };
+        },
+        removeUserFactByText(userId: string, query: string) {
+          callsToStore.push({ method: "removeByText", userId, query });
+          return {
+            removed: true,
+            match: { id: "mem_breakfast", title: "早餐习惯", content: "早餐固定吃酸奶" },
+            candidates: [],
+            suppressedSearchCount: 1,
+            remaining: []
+          };
+        },
+        replaceUserFactByText(input: Record<string, unknown>) {
+          callsToStore.push({ method: "replaceByText", ...input });
+          return {
+            replaced: true,
+            result: { item: { id: "mem_breakfast", title: String(input.title) } },
+            candidates: [],
+            remaining: []
+          };
+        }
+      }
+    });
+
+    await handler({
+      command: { name: "forget", memoryId: "早餐习惯" } as any,
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner" }
+    });
+    await handler({
+      command: { name: "replaceMemory", query: "早餐", content: "早餐固定吃全麦吐司" } as any,
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+
+    assert.deepEqual(callsToStore, [
+      { method: "removeByText", userId: "owner", query: "早餐习惯" },
+      {
+        method: "replaceByText",
+        userId: "owner",
+        query: "早餐",
+        title: "早餐固定吃全麦吐司",
+        content: "早餐固定吃全麦吐司",
+        source: "owner_explicit",
+        importance: 4
+      }
+    ]);
+    assert.match(calls[0]?.text ?? "", /已忘记：早餐习惯/);
+    assert.match(calls[1]?.text ?? "", /已替换：早餐固定吃全麦吐司/);
   });
 
   test("direct command replies forward external user id for onebot delivery", async () => {

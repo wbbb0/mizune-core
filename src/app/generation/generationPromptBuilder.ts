@@ -33,6 +33,7 @@ import {
 } from "#services/workspace/chatAttachments.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { ToolsetRuleEntry } from "#llm/prompt/toolsetRuleStore.ts";
+import { extractExplicitUserFactCandidates } from "#context/userFactExtraction.ts";
 import { isNearDuplicateText } from "#memory/similarity.ts";
 import type { UserMemoryEntry } from "#memory/userMemoryEntry.ts";
 import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
@@ -493,7 +494,7 @@ function upsertPromptContextChunks(
     }
     for (const [index, message] of input.historyForPrompt.entries()) {
       const text = truncateContextChunk(`${message.role === "assistant" ? "助手" : "用户"}：${message.content}`);
-      if (!isSearchableContextText(text)) {
+      if (!isSearchableContextText(text, { role: message.role })) {
         continue;
       }
       deps.contextStore.upsertUserSearchChunk({
@@ -521,14 +522,14 @@ function upsertPromptContextChunks(
             userId: input.userId,
             title: fact.title,
             content: fact.content,
-            kind: "preference",
+            kind: fact.kind ?? "preference",
             source: "user_explicit",
             importance: 4
           });
         }
       }
       const text = truncateContextChunk(buildBatchContextChunkText(message));
-      if (!isSearchableContextText(text)) {
+      if (!isSearchableContextText(text, { role: "user" })) {
         continue;
       }
       const itemId = buildContextChunkId({
@@ -617,27 +618,6 @@ function buildBatchContextChunkText(message: GenerationPromptBatchMessage): stri
   return lines.join("\n");
 }
 
-function extractExplicitUserFactCandidates(text: string): Array<{ title: string; content: string }> {
-  const trimmed = text.trim();
-  if (!trimmed || trimmed.length > 500) {
-    return [];
-  }
-  const match = /^(?:请|帮我|麻烦)?(?:你)?记住[：:\s]*(?<content>[\s\S]{2,200})$/u.exec(trimmed)
-    ?? /^(?:以后|之后)(?:请|帮我|麻烦)?(?:你)?记住[：:\s]*(?<content>[\s\S]{2,200})$/u.exec(trimmed);
-  const content = match?.groups?.content?.trim();
-  if (!content || /^(?:一下|这件事|这个|这些|吧|哦|哈)+$/u.test(content)) {
-    return [];
-  }
-  const normalized = content.replace(/[。！？!?\s]+$/u, "").trim();
-  if (normalized.length < 2) {
-    return [];
-  }
-  return [{
-    title: normalized.length > 24 ? `${normalized.slice(0, 24)}...` : normalized,
-    content: normalized
-  }];
-}
-
 function buildContextChunkId(input: {
   kind: "history" | "batch";
   sessionId: string;
@@ -674,10 +654,36 @@ function truncateContextChunk(text: string): string {
     : trimmed;
 }
 
-function isSearchableContextText(text: string): boolean {
+function isSearchableContextText(text: string, options: { role: "assistant" | "user" | "system" }): boolean {
   const normalized = text.trim();
-  return normalized.length >= 2 && normalized !== "用户：<empty>" && normalized !== "助手：<empty>";
+  if (normalized.length < 2 || normalized === "用户：<empty>" || normalized === "助手：<empty>") {
+    return false;
+  }
+  return options.role !== "assistant" || !isLowSignalAssistantContextText(normalized);
 }
+
+function isLowSignalAssistantContextText(text: string): boolean {
+  const compact = text
+    .replace(/^助手：/u, "")
+    .toLocaleLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, "");
+  if (compact.length > 14 || /[a-z0-9]/iu.test(compact)) {
+    return false;
+  }
+  return LOW_SIGNAL_ASSISTANT_CONTEXT_TERMS.some((term) => compact.includes(term));
+}
+
+const LOW_SIGNAL_ASSISTANT_CONTEXT_TERMS = [
+  "收到",
+  "好的",
+  "好",
+  "明白",
+  "了解",
+  "记下",
+  "记录",
+  "已更新",
+  "已记下"
+];
 
 function buildScheduledQueryText(trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"]): string {
   switch (trigger.kind) {

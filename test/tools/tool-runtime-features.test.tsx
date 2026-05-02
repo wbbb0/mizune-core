@@ -786,6 +786,103 @@ function createMediaToolVisibilityConfig(options: {
     assert.equal(JSON.parse(String(result)).itemId, "mem_owner_1");
   });
 
+  test("profile memory handlers resolve current sender display name to current user", async () => {
+    const inspectedUserIds: string[] = [];
+    const result = await profileToolHandlers.list_user_memories!(
+      { id: "tool_user_memory_sender_name_1", type: "function", function: { name: "list_user_memories", arguments: "{\"user_id\":\"CLI User\"}" } },
+      { user_id: "CLI User" },
+      {
+        relationship: "owner",
+        lastMessage: {
+          sessionId: "acc1:p:30015",
+          userId: "owner",
+          senderName: "CLI User"
+        },
+        contextStore: {
+          listUserFacts(userId: string) {
+            inspectedUserIds.push(userId);
+            return [];
+          }
+        }
+      } as any
+    );
+
+    assert.deepEqual(inspectedUserIds, ["owner"]);
+    assert.deepEqual(JSON.parse(String(result)), []);
+  });
+
+  test("profile memory handlers remove and replace memories by text query", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const removeResult = await profileToolHandlers.remove_user_memory!(
+      { id: "tool_user_memory_remove_query_1", type: "function", function: { name: "remove_user_memory", arguments: "{\"query\":\"早餐\"}" } },
+      { query: "早餐" },
+      {
+        relationship: "known",
+        lastMessage: {
+          sessionId: "qqbot:p:10001",
+          userId: "10001",
+          senderName: "Tester"
+        },
+        contextStore: {
+          removeUserFactByText(userId: string, query: string) {
+            calls.push({ method: "removeByText", userId, query });
+            return {
+              removed: true,
+              match: { id: "mem_breakfast", title: "早餐习惯", content: "早餐固定吃酸奶", updatedAt: 1 },
+              candidates: [{ item: { id: "mem_breakfast", title: "早餐习惯", content: "早餐固定吃酸奶", updatedAt: 1 }, score: 1 }],
+              suppressedSearchCount: 2,
+              remaining: []
+            };
+          }
+        }
+      } as any
+    );
+    const removePayload = JSON.parse(String(removeResult));
+    assert.equal(removePayload.removed, true);
+    assert.equal(removePayload.matchedMemoryId, "mem_breakfast");
+    assert.equal(removePayload.suppressedSearchCount, 2);
+
+    const replaceResult = await profileToolHandlers.replace_user_memory!(
+      { id: "tool_user_memory_replace_query_1", type: "function", function: { name: "replace_user_memory", arguments: "{\"query\":\"早餐\",\"title\":\"早餐习惯\",\"content\":\"早餐固定吃全麦吐司\"}" } },
+      { query: "早餐", title: "早餐习惯", content: "早餐固定吃全麦吐司" },
+      {
+        relationship: "known",
+        lastMessage: {
+          sessionId: "qqbot:p:10001",
+          userId: "10001",
+          senderName: "Tester"
+        },
+        contextStore: {
+          replaceUserFactByText(input: Record<string, unknown>) {
+            calls.push({ method: "replaceByText", ...input });
+            return {
+              replaced: true,
+              match: { id: "mem_breakfast", title: "早餐习惯", content: "早餐固定吃酸奶", updatedAt: 1 },
+              candidates: [],
+              result: { item: { id: "mem_breakfast", title: "早餐习惯", content: "早餐固定吃全麦吐司" } },
+              remaining: []
+            };
+          }
+        }
+      } as any
+    );
+    const replacePayload = JSON.parse(String(replaceResult));
+    assert.equal(replacePayload.replaced, true);
+    assert.equal(replacePayload.matchedMemoryId, "mem_breakfast");
+    assert.equal(replacePayload.memory.content, "早餐固定吃全麦吐司");
+    assert.deepEqual(calls, [
+      { method: "removeByText", userId: "10001", query: "早餐" },
+      {
+        method: "replaceByText",
+        userId: "10001",
+        query: "早餐",
+        title: "早餐习惯",
+        content: "早餐固定吃全麦吐司",
+        source: "user_explicit"
+      }
+    ]);
+  });
+
   test("toolset rule handlers upsert duplicates into existing rules", async () => {
     const existing = [{
       id: "rule_1",

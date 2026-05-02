@@ -33,6 +33,7 @@ type DirectCommandArgsMap = {
   compact: { keep?: number };
   remember: { content: string };
   forget: { memoryId: string };
+  replaceMemory: { query: string; content: string };
   debug: { mode?: DebugModeArg; inlineText?: string };
   setup: { target: ConfigTarget };
   config: { target: ConfigTarget };
@@ -77,7 +78,7 @@ interface DirectCommandHandlerInput {
   scenarioProfileStore: ScenarioProfileStore;
   globalProfileReadinessStore: GlobalProfileReadinessStore;
   setupStore: SetupStateStore;
-  contextStore: Pick<ContextStore, "upsertUserFact" | "removeUserFact">;
+  contextStore: Pick<ContextStore, "upsertUserFact" | "removeUserFact" | "removeUserFactByText" | "replaceUserFactByText">;
   forceCompactSession?: (sessionId: string, retainMessageCount?: number) => Promise<boolean>;
   flushSession?: (sessionId: string, options?: { skipReplyGate?: boolean }) => void;
   persistSession: (sessionId: string, reason: string) => void;
@@ -511,7 +512,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "forget",
-    help: ".forget <memoryId> 删除当前用户一条长期记忆",
+    help: ".forget <memoryId|文本> 删除当前用户一条长期记忆；传文本时只在唯一高置信匹配时删除",
     dispatch: {
       requireTextOnly: true
     },
@@ -520,14 +521,51 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       allowInOwnerMentionedGroup: true
     },
     parse(text: string): ParsedDirectCommand | null {
-      const match = text.match(/^[。.]\s*forget\s+(\S+)\s*$/i);
-      return match?.[1] ? { name: "forget", memoryId: match[1] } : null;
+      const match = text.match(/^[。.]\s*forget\s+([\s\S]{1,500})$/i);
+      const target = match?.[1]?.trim();
+      return target ? { name: "forget", memoryId: target } : null;
     },
     async execute(ctx: DirectCommandExecutionContext, command: ParsedDirectCommand) {
       const forgetCommand = command as Extract<ParsedDirectCommand, { name: "forget" }>;
       const result = ctx.input.contextStore.removeUserFact(ctx.incomingMessage.userId, forgetCommand.memoryId);
+      if (!result.removed) {
+        const textResult = ctx.input.contextStore.removeUserFactByText(ctx.incomingMessage.userId, forgetCommand.memoryId);
+        ctx.input.persistSession(ctx.session.id, textResult.removed ? "user_memory_forgotten_by_text_command" : "user_memory_forget_command_noop");
+        await ctx.send(formatForgetByTextCommandResult(forgetCommand.memoryId, textResult));
+        return;
+      }
       ctx.input.persistSession(ctx.session.id, result.removed ? "user_memory_forgotten_by_command" : "user_memory_forget_command_noop");
       await ctx.send(result.removed ? `已忘记：${forgetCommand.memoryId}` : `没有找到这条记忆：${forgetCommand.memoryId}`);
+    }
+  },
+  {
+    name: "replaceMemory",
+    help: ".replace-memory <旧文本> => <新内容> 替换当前用户一条长期记忆；歧义时只返回候选",
+    dispatch: {
+      requireTextOnly: true
+    },
+    routing: {
+      allowInPrivate: true,
+      allowInOwnerMentionedGroup: true
+    },
+    parse(text: string): ParsedDirectCommand | null {
+      const match = text.match(/^[。.]\s*replace-memory\s+([\s\S]{1,240}?)\s*=>\s*([\s\S]{1,500})$/i);
+      const query = match?.[1]?.trim();
+      const content = match?.[2]?.trim();
+      return query && content ? { name: "replaceMemory", query, content } : null;
+    },
+    async execute(ctx: DirectCommandExecutionContext, command: ParsedDirectCommand) {
+      const replaceCommand = command as Extract<ParsedDirectCommand, { name: "replaceMemory" }>;
+      const result = ctx.input.contextStore.replaceUserFactByText({
+        userId: ctx.incomingMessage.userId,
+        query: replaceCommand.query,
+        title: replaceCommand.content.length > 24 ? `${replaceCommand.content.slice(0, 24)}...` : replaceCommand.content,
+        content: replaceCommand.content,
+        source: ctx.incomingMessage.relationship === "owner" ? "owner_explicit" : "user_explicit",
+        importance: 4
+      });
+      ctx.input.persistSession(ctx.session.id, result.replaced ? "user_memory_replaced_by_text_command" : "user_memory_replace_command_noop");
+      await ctx.send(formatReplaceMemoryCommandResult(replaceCommand.query, result));
     }
   },
   {
@@ -875,6 +913,39 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
 const directCommandDescriptorMap = new Map<DirectCommandName, DirectCommandDescriptor>();
 for (const descriptor of directCommandDescriptors) {
   directCommandDescriptorMap.set(descriptor.name, descriptor);
+}
+
+function formatForgetByTextCommandResult(
+  query: string,
+  result: ReturnType<ContextStore["removeUserFactByText"]>
+): string {
+  if (result.removed && result.match) {
+    return `已忘记：${result.match.title}\nID：${result.match.id}`;
+  }
+  if (result.reason === "ambiguous") {
+    return `找到多条可能匹配“${query}”的记忆，请改用 ID 删除：\n${formatMemoryCandidates(result.candidates)}`;
+  }
+  return `没有找到与“${query}”匹配的长期记忆。`;
+}
+
+function formatReplaceMemoryCommandResult(
+  query: string,
+  result: ReturnType<ContextStore["replaceUserFactByText"]>
+): string {
+  if (result.replaced && result.result) {
+    return `已替换：${result.result.item.title}\nID：${result.result.item.id}`;
+  }
+  if (result.reason === "ambiguous") {
+    return `找到多条可能匹配“${query}”的记忆，请先用更明确的旧文本或 ID：\n${formatMemoryCandidates(result.candidates)}`;
+  }
+  return `没有找到与“${query}”匹配的长期记忆。`;
+}
+
+function formatMemoryCandidates(candidates: Array<{ item: { id: string; title: string; content: string }; score: number }>): string {
+  return candidates
+    .slice(0, 5)
+    .map((candidate) => `- ${candidate.item.title}（ID：${candidate.item.id}，score=${candidate.score.toFixed(3)}）：${candidate.item.content}`)
+    .join("\n");
 }
 
 export function parseDirectCommand(text: string): ParsedDirectCommand | null {

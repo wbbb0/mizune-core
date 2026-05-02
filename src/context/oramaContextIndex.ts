@@ -102,8 +102,7 @@ export class OramaContextIndex {
         score: hit.score,
         updatedAt: hit.document.updatedAt
       }))
-      .filter((item) => item.score >= input.minScore)
-      .slice(0, input.limit);
+      .filter((item) => item.score >= input.minScore);
   }
 
   reset(): void {

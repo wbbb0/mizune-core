@@ -2,6 +2,7 @@ import type { Logger } from "pino";
 import { createHash } from "node:crypto";
 import type { AppConfig } from "#config/config.ts";
 import { ContextEmbeddingService } from "./contextEmbeddingService.ts";
+import { selectRetrievedUserContext } from "./contextSelectionPolicy.ts";
 import type { ContextStore } from "./contextStore.ts";
 import { OramaContextIndex } from "./oramaContextIndex.ts";
 import type { ContextRetrievalDebugReport, ContextRetrievedItem, ContextSearchDocument } from "./contextTypes.ts";
@@ -131,7 +132,7 @@ export class ContextRetrievalService {
         signature: buildIndexSignature(profile.profileId, indexedDocuments),
         documents: indexedDocuments
       });
-      const selected = await index.search({
+      const searchCandidates = await index.search({
         userId: input.userId,
         queryText,
         queryVector: queryEmbedding.vectors[0] ?? [],
@@ -139,7 +140,12 @@ export class ContextRetrievalService {
         candidateMultiplier: this.config.context.retrieval.candidateMultiplier,
         minScore: this.config.context.retrieval.minScore
       });
-      const results = [...alwaysItems, ...selected].slice(0, this.config.context.retrieval.maxResults);
+      const results = selectRetrievedUserContext({
+        queryText,
+        alwaysItems,
+        searchItems: searchCandidates,
+        maxResults: this.config.context.retrieval.maxResults
+      });
       this.lastDebugReport = {
         userId: input.userId,
         queryText,
@@ -147,7 +153,7 @@ export class ContextRetrievalService {
         candidateCount: alwaysDocuments.length + documents.length,
         indexedCount: indexedDocuments.length,
         selectedCount: results.length,
-        droppedCount: Math.max(0, indexedDocuments.length - selected.length),
+        droppedCount: Math.max(0, indexedDocuments.length - (results.length - alwaysItems.length)),
         createdAt: Date.now()
       };
       return results;

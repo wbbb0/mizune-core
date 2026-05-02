@@ -82,8 +82,8 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     }
   }
 
-  if (hasAnyTool(visibleToolNames, ["get_user_profile", "patch_user_profile", "list_user_memories", "upsert_user_memory", "remove_user_memory"])) {
-    lines.push("处理用户长期资料时，先看已存 user_profile 和 user_memories；结构化字段写 user_profile，其余长期偏好/边界/习惯/关系背景写 user_memories。");
+  if (hasAnyTool(visibleToolNames, ["get_user_profile", "patch_user_profile", "list_user_memories", "upsert_user_memory", "remove_user_memory", "replace_user_memory"])) {
+    lines.push("处理用户长期资料时，先看已存 user_profile 和 user_memories；结构化字段写 user_profile，其余长期偏好/边界/习惯/关系背景写 user_memories。用户要求忘记或改掉某条记忆但没给 ID 时，用 query 文本定位；若返回歧义候选，不要猜测写入。");
   }
 
   if (hasAnyTool(visibleToolNames, ["list_global_rules", "upsert_global_rule", "remove_global_rule"])) {

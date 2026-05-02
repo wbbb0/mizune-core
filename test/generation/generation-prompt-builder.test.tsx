@@ -1353,6 +1353,10 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
         role: "assistant",
         content: "我们刚看过 SQLite schema。",
         timestampMs: 100
+      }, {
+        role: "assistant",
+        content: "收到。",
+        timestampMs: 150
       }],
       internalTranscript: [],
       lastLlmUsage: null,
@@ -1385,6 +1389,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     }]);
     assert.equal(upsertedChunks.length, 2);
     assert.ok(upsertedChunks.some((item) => item.itemId.startsWith("ctx_history_") && item.text.includes("SQLite schema")));
+    assert.ok(upsertedChunks.every((item) => !item.text.includes("收到。")));
     const batchChunk = upsertedChunks.find((item) => item.itemId.startsWith("ctx_batch_"));
     assert.ok(batchChunk);
     assert.equal(retrievalCalls.length, 1);

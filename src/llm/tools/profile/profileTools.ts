@@ -437,14 +437,43 @@ export const profileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "remove_user_memory",
-        description: "删除一条用户长期记忆。",
+        description: "删除一条用户长期记忆。优先传 memoryId；不知道 ID 时可传 query，系统只会在唯一高置信匹配时删除，歧义时返回候选。",
         parameters: {
           type: "object",
           properties: {
             user_id: { type: "string" },
-            memoryId: { type: "string" }
+            memoryId: { type: "string" },
+            query: { type: "string" }
           },
-          required: ["memoryId"],
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "replace_user_memory",
+        description: "按文本定位并替换一条用户长期记忆。query 用来定位旧记忆；只有唯一高置信匹配时才替换，歧义时返回候选并不写入。",
+        parameters: {
+          type: "object",
+          properties: {
+            user_id: { type: "string" },
+            query: { type: "string" },
+            title: { type: "string" },
+            content: { type: "string" },
+            kind: {
+              type: "string",
+              enum: ["preference", "fact", "boundary", "habit", "relationship", "other"]
+            },
+            importance: {
+              type: "integer",
+              minimum: 1,
+              maximum: 5
+            }
+          },
+          required: ["query", "title", "content"],
           additionalProperties: false
         }
       }
@@ -531,6 +560,9 @@ async function resolveCanonicalUserId(userId: string, context: Parameters<ToolHa
   if (!normalizedUserId || normalizedUserId === context.lastMessage.userId) {
     return normalizedUserId || context.lastMessage.userId;
   }
+  if (normalizedUserId === context.lastMessage.senderName) {
+    return context.lastMessage.userId;
+  }
   const parsedSession = parseChatSessionIdentity(context.lastMessage.sessionId);
   if (!parsedSession || !context.userIdentityStore?.findInternalUserId) {
     return normalizedUserId;
@@ -613,6 +645,26 @@ function toUserProfilePayload(
     occupation: user?.occupation ?? null,
     profileSummary: user?.profileSummary ?? null,
     relationshipNote: user?.relationshipNote ?? null
+  };
+}
+
+function toUserMemoryTextMatchPayload(match: {
+  item: {
+    id: string;
+    title: string;
+    content: string;
+    kind?: string;
+    updatedAt: number;
+  };
+  score: number;
+}) {
+  return {
+    memoryId: match.item.id,
+    title: match.item.title,
+    content: match.item.content,
+    kind: match.item.kind ?? null,
+    updatedAt: match.item.updatedAt,
+    score: Number(match.score.toFixed(3))
   };
 }
 
@@ -1156,11 +1208,60 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
       return denied;
     }
     const memoryId = getStringField(args, "memoryId");
-    if (!memoryId) {
-      return JSON.stringify({ error: "memoryId is required" });
+    const query = getStringField(args, "query");
+    if (!memoryId && !query) {
+      return JSON.stringify({ error: "memoryId or query is required" });
     }
-    const result = context.contextStore.removeUserFact(userId, memoryId);
-    return JSON.stringify({ removed: result.removed, memoryId, remaining: result.remaining });
+    if (memoryId) {
+      const result = context.contextStore.removeUserFact(userId, memoryId);
+      return JSON.stringify({
+        removed: result.removed,
+        memoryId,
+        suppressedSearchCount: result.suppressedSearchCount,
+        remaining: result.remaining
+      });
+    }
+    const result = context.contextStore.removeUserFactByText(userId, query);
+    return JSON.stringify({
+      removed: result.removed,
+      reason: result.reason ?? null,
+      query,
+      matchedMemoryId: result.match?.id ?? null,
+      candidates: result.candidates.map(toUserMemoryTextMatchPayload),
+      suppressedSearchCount: result.suppressedSearchCount,
+      remaining: result.remaining
+    });
+  },
+  async replace_user_memory(_toolCall, args, context) {
+    const userId = await resolveTargetUserId(args, context);
+    const denied = requireOwnerOrSelf(context, userId, "Only owner can edit another user's memories");
+    if (denied) {
+      return denied;
+    }
+    const query = getStringField(args, "query");
+    const title = getStringField(args, "title");
+    const content = getStringField(args, "content");
+    if (!query || !title || !content) {
+      return JSON.stringify({ error: "query, title and content are required" });
+    }
+    const result = context.contextStore.replaceUserFactByText({
+      userId,
+      query,
+      title,
+      content,
+      ...(getStringField(args, "kind") ? { kind: getStringField(args, "kind") as "preference" | "fact" | "boundary" | "habit" | "relationship" | "other" } : {}),
+      ...(getIntegerField(args, "importance") !== null ? { importance: getIntegerField(args, "importance")! } : {}),
+      source: context.relationship === "owner" && userId !== context.lastMessage.userId ? "owner_explicit" : "user_explicit"
+    });
+    return JSON.stringify({
+      replaced: result.replaced,
+      reason: result.reason ?? null,
+      query,
+      matchedMemoryId: result.match?.id ?? null,
+      candidates: result.candidates.map(toUserMemoryTextMatchPayload),
+      memory: result.result?.item ?? null,
+      remaining: result.remaining
+    });
   },
   async register_known_user(_toolCall, args, context) {
     const denied = requireOwner(context.relationship, "Only owner can register known users");

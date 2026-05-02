@@ -63,7 +63,22 @@ interface DirectCommandFixtureOptions {
   };
   contextStore?: {
     upsertUserFact: (input: Record<string, unknown>) => { item: { id: string; title: string } };
-    removeUserFact: (userId: string, memoryId: string) => { removed: boolean; remaining: unknown[] };
+    removeUserFact: (userId: string, memoryId: string) => { removed: boolean; suppressedSearchCount?: number; remaining: unknown[] };
+    removeUserFactByText?: (userId: string, query: string) => {
+      removed: boolean;
+      reason?: "not_found" | "ambiguous";
+      match?: { id: string; title: string; content: string };
+      candidates: Array<{ item: { id: string; title: string; content: string }; score: number }>;
+      suppressedSearchCount: number;
+      remaining: unknown[];
+    };
+    replaceUserFactByText?: (input: Record<string, unknown>) => {
+      replaced: boolean;
+      reason?: "not_found" | "ambiguous";
+      result?: { item: { id: string; title: string } };
+      candidates: Array<{ item: { id: string; title: string; content: string }; score: number }>;
+      remaining: unknown[];
+    };
   };
   scenarioHostStateStore?: {
     write: (sessionId: string, state: unknown) => Promise<unknown>;
@@ -252,7 +267,13 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
         return { item: { id: "mem_fixture", title: String(input.title ?? "") } };
       },
       removeUserFact() {
-        return { removed: true, remaining: [] };
+        return { removed: true, suppressedSearchCount: 0, remaining: [] };
+      },
+      removeUserFactByText() {
+        return { removed: false, reason: "not_found" as const, candidates: [], suppressedSearchCount: 0, remaining: [] };
+      },
+      replaceUserFactByText() {
+        return { replaced: false, reason: "not_found" as const, candidates: [], remaining: [] };
       }
     },
     ...(options.forceCompactSession ? { forceCompactSession: options.forceCompactSession } : {}),

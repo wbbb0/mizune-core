@@ -78,6 +78,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "list_user_memories",
       "upsert_user_memory",
       "remove_user_memory",
+      "replace_user_memory",
       "register_known_user",
       "set_user_special_role"
     ]

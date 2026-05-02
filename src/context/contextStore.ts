@@ -5,7 +5,7 @@ import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import type { PersistedUser, User } from "#identity/userSchema.ts";
 import { detectScopeConflict, type ScopeConflictWarning } from "#memory/memoryCategory.ts";
-import { findBestDuplicateMatch, normalizeTitleForDedup } from "#memory/similarity.ts";
+import { bigramJaccardSimilarity, findBestDuplicateMatch, normalizeTitleForDedup } from "#memory/similarity.ts";
 import { createUserMemoryEntry, type UserMemoryEntry } from "#memory/userMemoryEntry.ts";
 import {
   buildMemoryDedupDetails,
@@ -13,6 +13,7 @@ import {
   type MemoryDedupDetails,
   type MemoryWriteAction
 } from "#memory/writeResult.ts";
+import { contextTermOverlapScore, informativeContextTerms } from "./contextTextTerms.ts";
 import type {
   ContextEmbeddingProfile,
   ContextItem,
@@ -212,14 +213,17 @@ export class ContextStore {
     if (input.memoryId && !existingFacts.some((item) => item.id === input.memoryId)) {
       throw new Error(`Memory ${input.memoryId} not found for user ${input.userId}`);
     }
-    const duplicate = input.memoryId
+    const exactTitleMatch = input.memoryId
+      ? null
+      : findSameSlotUserFact(input.title, existingFacts);
+    const duplicate = input.memoryId || exactTitleMatch
       ? null
       : findBestDuplicateMatch(
           `${normalizeTitleForDedup(input.title)} ${input.content}`,
           existingFacts,
           (item) => `${normalizeTitleForDedup(item.title)} ${item.content}`
         );
-    const targetId = input.memoryId || duplicate?.item.id;
+    const targetId = input.memoryId || exactTitleMatch?.id || duplicate?.item.id;
     const existingTarget = targetId
       ? existingFacts.find((item) => item.id === targetId) ?? null
       : null;
@@ -254,8 +258,8 @@ export class ContextStore {
     });
     const dedup = buildMemoryDedupDetails({
       explicitId: input.memoryId ?? null,
-      duplicateId: duplicate?.item.id ?? null,
-      similarityScore: duplicate?.similarityScore ?? null,
+      duplicateId: exactTitleMatch?.id ?? duplicate?.item.id ?? null,
+      similarityScore: exactTitleMatch ? 1 : duplicate?.similarityScore ?? null,
       matchedExisting
     });
     const warning = detectScopeConflict({
@@ -302,27 +306,171 @@ export class ContextStore {
 
   removeUserFact(userId: string, memoryId: string): {
     removed: boolean;
+    suppressedSearchCount: number;
     remaining: UserMemoryEntry[];
   } {
-    const result = this.requireDb().prepare(`
-      UPDATE context_items
-      SET status = 'deleted', updated_at = @updatedAt
-      WHERE item_id = @itemId
-        AND scope = 'user'
-        AND source_type = 'fact'
-        AND user_id = @userId
-        AND status != 'deleted'
-    `).run({
-      itemId: memoryId,
-      userId,
-      updatedAt: Date.now()
+    const db = this.requireDb();
+    const now = Date.now();
+    const remove = db.transaction(() => {
+      const fact = db.prepare(`
+        SELECT *
+        FROM context_items
+        WHERE item_id = @itemId
+          AND scope = 'user'
+          AND source_type = 'fact'
+          AND user_id = @userId
+          AND status != 'deleted'
+      `).get({
+        itemId: memoryId,
+        userId
+      }) as ContextItemRow | undefined;
+      if (!fact) {
+        return { removed: false, suppressedSearchCount: 0 };
+      }
+      const result = db.prepare(`
+        UPDATE context_items
+        SET status = 'deleted', updated_at = @updatedAt
+        WHERE item_id = @itemId
+          AND scope = 'user'
+          AND source_type = 'fact'
+          AND user_id = @userId
+          AND status != 'deleted'
+      `).run({
+        itemId: memoryId,
+        userId,
+        updatedAt: now
+      });
+      const searchRows = db.prepare(`
+        SELECT *
+        FROM context_items
+        WHERE scope = 'user'
+          AND source_type IN ('chunk', 'summary')
+          AND retrieval_policy = 'search'
+          AND status = 'active'
+          AND user_id = @userId
+      `).all({ userId }) as ContextItemRow[];
+      const relatedIds = searchRows
+        .filter((row) => isRelatedToRemovedFact(row, fact))
+        .map((row) => row.item_id);
+      if (relatedIds.length > 0) {
+        db.prepare(`
+          UPDATE context_items
+          SET status = 'superseded',
+              superseded_by = ?,
+              valid_to = ?,
+              updated_at = ?
+          WHERE item_id IN (${relatedIds.map(() => "?").join(",")})
+        `).run(memoryId, now, now, ...relatedIds);
+      }
+      return {
+        removed: result.changes > 0,
+        suppressedSearchCount: relatedIds.length
+      };
     });
-    if (result.changes > 0) {
-      this.logger.info({ userId, memoryId }, "user_memory_removed");
+    const result = remove() as { removed: boolean; suppressedSearchCount: number };
+    if (result.removed) {
+      this.logger.info({ userId, memoryId, suppressedSearchCount: result.suppressedSearchCount }, "user_memory_removed");
     }
     return {
-      removed: result.changes > 0,
+      removed: result.removed,
+      suppressedSearchCount: result.suppressedSearchCount,
       remaining: this.listUserFacts(userId)
+    };
+  }
+
+  findUserFactsByText(input: {
+    userId: string;
+    query: string;
+    limit?: number;
+  }): Array<{
+    item: UserMemoryEntry;
+    score: number;
+  }> {
+    const query = input.query.trim();
+    if (!query) {
+      return [];
+    }
+    const limit = Math.min(Math.max(input.limit ?? 5, 1), 20);
+    return this.listUserFacts(input.userId)
+      .map((item) => ({
+        item,
+        score: scoreUserFactTextMatch(query, item)
+      }))
+      .filter((match) => match.score >= USER_FACT_TEXT_MATCH_MIN_SCORE)
+      .sort((left, right) => right.score - left.score || right.item.updatedAt - left.item.updatedAt)
+      .slice(0, limit);
+  }
+
+  removeUserFactByText(userId: string, query: string): {
+    removed: boolean;
+    reason?: "not_found" | "ambiguous";
+    match?: UserMemoryEntry;
+    candidates: Array<{ item: UserMemoryEntry; score: number }>;
+    suppressedSearchCount: number;
+    remaining: UserMemoryEntry[];
+  } {
+    const candidates = this.findUserFactsByText({ userId, query });
+    const unique = resolveUniqueUserFactTextMatch(candidates);
+    if (!unique) {
+      return {
+        removed: false,
+        reason: candidates.length === 0 ? "not_found" : "ambiguous",
+        candidates,
+        suppressedSearchCount: 0,
+        remaining: this.listUserFacts(userId)
+      };
+    }
+    const removed = this.removeUserFact(userId, unique.item.id);
+    return {
+      removed: removed.removed,
+      match: unique.item,
+      candidates,
+      suppressedSearchCount: removed.suppressedSearchCount,
+      remaining: removed.remaining
+    };
+  }
+
+  replaceUserFactByText(input: {
+    userId: string;
+    query: string;
+    title: string;
+    content: string;
+    kind?: UserMemoryEntry["kind"];
+    source?: UserMemoryEntry["source"];
+    importance?: number;
+  }): {
+    replaced: boolean;
+    reason?: "not_found" | "ambiguous";
+    match?: UserMemoryEntry;
+    candidates: Array<{ item: UserMemoryEntry; score: number }>;
+    result?: ReturnType<ContextStore["upsertUserFact"]>;
+    remaining: UserMemoryEntry[];
+  } {
+    const candidates = this.findUserFactsByText({ userId: input.userId, query: input.query });
+    const unique = resolveUniqueUserFactTextMatch(candidates);
+    if (!unique) {
+      return {
+        replaced: false,
+        reason: candidates.length === 0 ? "not_found" : "ambiguous",
+        candidates,
+        remaining: this.listUserFacts(input.userId)
+      };
+    }
+    const result = this.upsertUserFact({
+      userId: input.userId,
+      memoryId: unique.item.id,
+      title: input.title,
+      content: input.content,
+      ...(input.kind !== undefined ? { kind: input.kind } : {}),
+      ...(input.source !== undefined ? { source: input.source } : {}),
+      ...(input.importance !== undefined ? { importance: input.importance } : {})
+    });
+    return {
+      replaced: true,
+      match: unique.item,
+      candidates,
+      result,
+      remaining: this.listUserFacts(input.userId)
     };
   }
 
@@ -1309,6 +1457,101 @@ function parseContextItemImportLine(line: string): ContextItem | null {
     return null;
   }
 }
+
+function findSameSlotUserFact(title: string, facts: UserMemoryEntry[]): UserMemoryEntry | null {
+  const normalizedTitle = normalizeTitleForDedup(title);
+  if (!isSpecificUserFactTitle(normalizedTitle)) {
+    return null;
+  }
+  return facts.find((item) => normalizeTitleForDedup(item.title) === normalizedTitle) ?? null;
+}
+
+function isRelatedToRemovedFact(row: ContextItemRow, fact: ContextItemRow): boolean {
+  const rowText = [row.title, row.text].filter(Boolean).join(" ");
+  const factTitle = fact.title ?? "";
+  if (isSpecificUserFactTitle(normalizeTitleForDedup(factTitle)) && contextTermOverlapScore(rowText, factTitle) >= 0.18) {
+    return true;
+  }
+  const factTerms = informativeContextTerms([fact.title, fact.text].filter(Boolean).join(" "));
+  const rowTerms = informativeContextTerms(rowText);
+  if (factTerms.size === 0 || rowTerms.size === 0) {
+    return false;
+  }
+  let matched = 0;
+  for (const term of factTerms) {
+    if (rowTerms.has(term)) {
+      matched += 1;
+    }
+  }
+  return matched / factTerms.size >= 0.48;
+}
+
+function isSpecificUserFactTitle(title: string): boolean {
+  return title.length >= 4 && !GENERIC_USER_FACT_TITLES.has(title);
+}
+
+const GENERIC_USER_FACT_TITLES = new Set([
+  "偏好",
+  "习惯",
+  "事实",
+  "其他",
+  "用户偏好",
+  "用户习惯",
+  "长期记忆"
+]);
+
+function scoreUserFactTextMatch(query: string, item: UserMemoryEntry): number {
+  const target = [item.title, item.content].filter(Boolean).join(" ");
+  const normalizedQuery = normalizeTextForContextMatch(query);
+  const normalizedTarget = normalizeTextForContextMatch(target);
+  if (!normalizedQuery || !normalizedTarget) {
+    return 0;
+  }
+  if (item.id === query.trim()) {
+    return 1;
+  }
+  if (normalizedQuery === normalizedTarget || normalizedTarget.includes(normalizedQuery)) {
+    return 1;
+  }
+  if (normalizedQuery.includes(normalizedTarget)) {
+    return 0.92;
+  }
+  const titleScore = item.title ? Math.max(
+    contextTermOverlapScore(item.title, query),
+    contextTermOverlapScore(query, item.title)
+  ) : 0;
+  const textScore = Math.max(
+    contextTermOverlapScore(target, query),
+    contextTermOverlapScore(query, target)
+  );
+  const bigramScore = bigramJaccardSimilarity(query, target);
+  return Math.max(titleScore * 0.95, textScore * 0.85, bigramScore);
+}
+
+function resolveUniqueUserFactTextMatch(
+  candidates: Array<{ item: UserMemoryEntry; score: number }>
+): { item: UserMemoryEntry; score: number } | null {
+  const top = candidates[0];
+  if (!top || top.score < USER_FACT_TEXT_MATCH_UNIQUE_SCORE) {
+    return null;
+  }
+  const second = candidates[1];
+  if (second && top.score - second.score < USER_FACT_TEXT_MATCH_UNIQUE_GAP) {
+    return null;
+  }
+  return top;
+}
+
+function normalizeTextForContextMatch(text: string): string {
+  return text
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, "");
+}
+
+const USER_FACT_TEXT_MATCH_MIN_SCORE = 0.18;
+const USER_FACT_TEXT_MATCH_UNIQUE_SCORE = 0.42;
+const USER_FACT_TEXT_MATCH_UNIQUE_GAP = 0.12;
 
 function buildContextItemWhere(
   input: ContextItemFilterInput,

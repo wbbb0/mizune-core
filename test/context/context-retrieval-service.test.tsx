@@ -125,6 +125,37 @@ test("ContextRetrievalService fails open when embedding is unavailable", async (
   }), []);
 });
 
+test("ContextRetrievalService keeps always facts when embedding search fails", async () => {
+  const service = new ContextRetrievalService(
+    createTestAppConfig(),
+    {
+      listUserAlwaysDocuments() {
+        return [createDocument("fact_1", "我的早餐习惯是全麦吐司配牛油果", "always")];
+      },
+      listUserSearchDocuments() {
+        return [createDocument("ctx_1", "旧早餐是酸奶")];
+      }
+    } as any,
+    {
+      isConfigured() {
+        return true;
+      },
+      async embedTexts() {
+        throw new Error("embedding timeout");
+      }
+    } as any,
+    pino({ level: "silent" })
+  );
+
+  const results = await service.retrieveUserContext({
+    userId: "user_1",
+    queryText: "我早餐吃什么"
+  });
+
+  assert.deepEqual(results.map((item) => item.itemId), ["fact_1"]);
+  assert.equal(service.getLastDebugReport()?.error, "embedding timeout");
+});
+
 test("ContextRetrievalService limits synchronous document embedding on prompt path", async () => {
   const documents: ContextSearchDocument[] = [
     createDocument("ctx_1", "第一条"),
