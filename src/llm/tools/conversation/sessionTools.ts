@@ -1,5 +1,6 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
+import { conversationContextPolicy, keepRawUnlessLargePolicy, stateChangePolicy } from "../core/resultObservationPresets.ts";
 import { getSessionModeDefinition, sessionModeSupportsChatType } from "#modes/registry.ts";
 
 export const sessionToolDescriptors: ToolDescriptor[] = [
@@ -15,7 +16,8 @@ export const sessionToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     definition: {
@@ -32,7 +34,8 @@ export const sessionToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: stateChangePolicy()
   },
   {
     definition: {
@@ -48,7 +51,8 @@ export const sessionToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 0 })
   },
   {
     definition: {
@@ -64,7 +68,8 @@ export const sessionToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     definition: {
@@ -82,7 +87,8 @@ export const sessionToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: conversationContextPolicy()
   }
 ];
 

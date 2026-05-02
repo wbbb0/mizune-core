@@ -243,7 +243,7 @@ export class LlmClient {
           content: executed.toolResult
         };
         workingMessages.push(toolMessage);
-        await params.onToolResultMessage?.(toolMessage, executed.toolCall.function.name);
+        await params.onToolResultMessage?.(toolMessage, executed.toolCall);
         for (const message of cloneMessagesForRequest(
           executed.supplementalMessages,
           true

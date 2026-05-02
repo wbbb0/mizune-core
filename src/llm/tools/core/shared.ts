@@ -50,6 +50,7 @@ import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { SessionModeDefinition } from "#modes/types.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import type { GenerationCommittedTextSink } from "#app/generation/generationOutputContracts.ts";
+import type { ToolResultObservationPolicy } from "./resultObservation.ts";
 
 export type Relationship = "owner" | "known";
 export type ToolAccessLevel = "any" | "owner" | "operator";
@@ -61,6 +62,7 @@ export interface ToolDescriptor {
   debugOnly?: boolean;
   modelVisible?: boolean;
   isEnabled?: (config: AppConfig, options?: { modelRef?: string | string[] }) => boolean;
+  resultObservation?: ToolResultObservationPolicy;
 }
 
 export interface BuiltinToolActorContext {

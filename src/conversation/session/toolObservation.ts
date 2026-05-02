@@ -1,4 +1,10 @@
 import { createHash } from "node:crypto";
+import {
+  resolveToolResultCompactor,
+  type ToolObservationResource,
+  type ToolResultObservationContext,
+  type ToolResultObservationPolicy
+} from "#llm/tools/core/resultObservation.ts";
 
 export type ToolObservationRetention = "full" | "summary" | "handle" | "omitted";
 export type ToolObservationResourceKind =
@@ -24,6 +30,8 @@ export interface ToolObservation {
   replaySafe: boolean;
   refetchable: boolean;
   pinned: boolean;
+  preserveRecentRawCount?: number;
+  includeInHistorySummary?: boolean;
   duplicateOfToolCallId?: string;
 }
 
@@ -42,6 +50,13 @@ export interface BuildToolObservationInput {
   toolName: string;
   toolCallId?: string;
   content: string;
+  args?: Record<string, unknown>;
+  policy?: ToolResultObservationPolicy;
+}
+
+interface ToolObservationPolicyError {
+  step: string;
+  message: string;
 }
 
 const SUMMARY_TOOL_NAMES = new Set([
@@ -72,12 +87,29 @@ const MAX_SUMMARY_TEXT_LENGTH = 260;
 export function buildToolObservation(input: BuildToolObservationInput): ToolObservation {
   const parsed = parseJsonObject(input.content);
   const contentHash = hashContent(input.content);
-  const resource = extractResource(input.toolName, input.toolCallId, parsed);
-  const refetchHint = buildRefetchHint(input.toolName, parsed, resource);
-  const summary = buildSummary(input.toolName, parsed, resource);
-  const retention = resolveRetention(input.toolName, input.content, parsed);
-  const pinned = shouldPinToolResult(input.toolName, parsed);
-  const replayContent = JSON.stringify({
+  const estimatedTokens = estimateTokens(input.content);
+  const args = input.args ?? {};
+  const baseContext: ToolResultObservationContext = {
+    toolName: input.toolName,
+    toolCallId: input.toolCallId ?? "",
+    args,
+    rawContent: input.content,
+    parsedContent: parsed,
+    rawLength: input.content.length,
+    estimatedTokens
+  };
+  const policyErrors: ToolObservationPolicyError[] = [];
+  const resource = safePolicyCallback(policyErrors, "resource", () => input.policy?.resource?.(baseContext) ?? null, null)
+    ?? extractResource(input.toolName, input.toolCallId, parsed, args);
+  const refetchContext = { ...baseContext, resource: resource ?? null };
+  const refetchHint = safePolicyCallback(policyErrors, "refetchHint", () => input.policy?.refetchHint?.(refetchContext) ?? null, null)
+    ?? buildRefetchHint(input.toolName, parsed, resource, args);
+  const pinned = safePolicyCallback(policyErrors, "pinned", () => input.policy?.pinned?.(baseContext) ?? null, null)
+    ?? shouldPinToolResult(input.toolName, parsed);
+  const policyResult = buildPolicyObservation(input, baseContext, resource ?? null, refetchHint, pinned, policyErrors);
+  const summary = policyResult?.summary ?? buildSummary(input.toolName, parsed, resource);
+  const retention = policyResult?.retention ?? resolveRetention(input.toolName, input.content, parsed);
+  const replayContent = policyResult?.replayContent ?? JSON.stringify({
     ok: !hasToolError(parsed),
     compacted: retention !== "full",
     tool: input.toolName,
@@ -85,18 +117,138 @@ export function buildToolObservation(input: BuildToolObservationInput): ToolObse
     summary,
     ...(refetchHint ? { refetch_hint: refetchHint } : {})
   });
+  const resolvedResource = policyResult?.resource === null
+    ? undefined
+    : policyResult?.resource ?? resource;
+  const resolvedPinned = policyResult?.pinned ?? pinned;
+  const resolvedRefetchHint = policyResult?.refetchHint ?? refetchHint;
 
   return {
     contentHash,
-    inputTokensEstimate: estimateTokens(input.content),
+    inputTokensEstimate: estimatedTokens,
     summary,
     retention,
     replayContent,
-    ...(resource ? { resource } : {}),
-    replaySafe: true,
-    refetchable: Boolean(refetchHint),
-    pinned,
+    ...(resolvedResource ? { resource: resolvedResource } : {}),
+    replaySafe: input.policy?.replaySafe ?? true,
+    refetchable: Boolean(resolvedRefetchHint),
+    pinned: resolvedPinned,
+    ...(input.policy?.preserveRecentRawCount != null ? { preserveRecentRawCount: input.policy.preserveRecentRawCount } : {}),
+    ...(input.policy?.includeInHistorySummary != null ? { includeInHistorySummary: input.policy.includeInHistorySummary } : {}),
     ...(parsed?.duplicate_of_tool_call_id ? { duplicateOfToolCallId: String(parsed.duplicate_of_tool_call_id) } : {})
+  };
+}
+
+function buildPolicyObservation(
+  input: BuildToolObservationInput,
+  context: ToolResultObservationContext,
+  resource: ToolObservationResource | null,
+  refetchHint: string | null,
+  pinned: boolean,
+  policyErrors: ToolObservationPolicyError[]
+): {
+  summary: string;
+  retention: ToolObservationRetention;
+  replayContent: string;
+  resource?: ToolObservation["resource"] | null;
+  refetchHint?: string | null;
+  pinned?: boolean;
+} | null {
+  if (!input.policy) {
+    return null;
+  }
+
+  const methodErrorCount = policyErrors.length;
+  const method = safePolicyCallback(policyErrors, "method", () => input.policy?.method(context) ?? null, null);
+  if (policyErrors.length > methodErrorCount) {
+    return buildPolicyFailureObservation(input.toolName, resource, refetchHint, pinned, policyErrors.at(-1));
+  }
+  if (method == null) {
+    if (policyErrors.length > 0) {
+      return buildPolicyFailureObservation(input.toolName, resource, refetchHint, pinned, policyErrors.at(-1));
+    }
+    return input.policy
+      ? {
+          summary: buildSummary(input.toolName, context.parsedContent, resource ?? undefined),
+          retention: "full",
+          replayContent: input.content,
+          resource,
+          refetchHint,
+          pinned
+        }
+      : null;
+  }
+
+  const compactor = resolveToolResultCompactor(method, input.policy);
+  if (!compactor) {
+    return buildPolicyFailureObservation(input.toolName, resource, refetchHint, true, {
+      step: "compactor",
+      message: `结果压缩器未找到：${method}`
+    });
+  }
+
+  // 压缩器只生成面向 replay/summary 的观察视图，原始 content 仍保存在 transcript。
+  const compacted = safePolicyCallback(policyErrors, `compactor:${method}`, () => compactor({
+    ...context,
+    resource,
+    refetchHint,
+    pinned
+  }), null);
+  if (!compacted) {
+    return buildPolicyFailureObservation(input.toolName, resource, refetchHint, true, policyErrors.at(-1));
+  }
+  return {
+    summary: compacted.summary,
+    retention: "summary",
+    replayContent: compacted.replayContent,
+    resource: compacted.resource === undefined ? resource : compacted.resource,
+    refetchHint: compacted.refetchHint === undefined ? refetchHint : compacted.refetchHint,
+    pinned: compacted.pinned ?? pinned
+  };
+}
+
+function safePolicyCallback<T>(
+  errors: ToolObservationPolicyError[],
+  step: string,
+  callback: () => T,
+  fallback: T
+): T {
+  try {
+    return callback();
+  } catch (error) {
+    errors.push({ step, message: errorToMessage(error) });
+    return fallback;
+  }
+}
+
+function buildPolicyFailureObservation(
+  toolName: string,
+  resource: ToolObservationResource | null,
+  refetchHint: string | null,
+  pinned: boolean,
+  error: ToolObservationPolicyError | undefined
+): {
+  summary: string;
+  retention: ToolObservationRetention;
+  replayContent: string;
+  resource?: ToolObservation["resource"] | null;
+  refetchHint?: string | null;
+  pinned?: boolean;
+} {
+  const detail = error ? `${error.step}: ${error.message}` : "未知错误";
+  const summary = `${toolName} 结果观察策略执行失败，已改用安全摘要：${detail}`;
+  return {
+    summary,
+    retention: "summary",
+    replayContent: JSON.stringify({
+      ok: false,
+      compacted: true,
+      tool: toolName,
+      summary
+    }),
+    resource,
+    refetchHint,
+    pinned
   };
 }
 
@@ -138,10 +290,12 @@ function hasToolError(parsed: Record<string, unknown> | null): boolean {
 function extractResource(
   toolName: string,
   toolCallId: string | undefined,
-  parsed: Record<string, unknown> | null
+  parsed: Record<string, unknown> | null,
+  args: Record<string, unknown> = {}
 ): ToolObservation["resource"] | undefined {
   if (toolName.startsWith("local_file_")) {
-    const path = stringValue(parsed?.path ?? parsed?.fromPath ?? parsed?.from_path ?? parsed?.toPath ?? parsed?.to_path);
+    const path = stringValue(parsed?.path ?? parsed?.fromPath ?? parsed?.from_path ?? parsed?.toPath ?? parsed?.to_path
+      ?? args.path ?? args.from_path ?? args.to_path);
     if (!path) {
       return undefined;
     }
@@ -198,7 +352,8 @@ function extractResource(
 function buildRefetchHint(
   toolName: string,
   parsed: Record<string, unknown> | null,
-  resource: ToolObservation["resource"] | undefined
+  resource: ToolObservation["resource"] | undefined | null,
+  args: Record<string, unknown> = {}
 ): string | null {
   if (!resource) {
     return null;
@@ -229,6 +384,14 @@ function buildRefetchHint(
       limit ? `limit=${limit}` : null
     ].filter((item): item is string => Boolean(item)).join(" ");
     return `如需刷新当前群${toolName === "list_current_group_announcements" ? "公告" : "成员"}，请再次调用 ${toolName}${args ? ` ${args}` : ""}`;
+  }
+  if (toolName === "local_file_ls" && resource.kind === "local_file") {
+    return `如需完整目录列表，请再次调用 local_file_ls path=${resource.id} limit=500`;
+  }
+  if (toolName === "local_file_search" && resource.kind === "local_file") {
+    const query = stringValue(args.query);
+    const mode = stringValue(args.mode);
+    return `如需完整命中，请再次调用 local_file_search${query ? ` query=${JSON.stringify(query)}` : ""} path=${resource.id}${mode ? ` mode=${mode}` : ""} limit=200`;
   }
   return null;
 }
@@ -322,4 +485,8 @@ function numberValue(value: unknown): number | null {
 function compactText(value: string, maxLength: number): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength)}...`;
+}
+
+function errorToMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

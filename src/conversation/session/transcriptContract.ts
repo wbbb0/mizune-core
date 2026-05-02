@@ -157,6 +157,8 @@ export const transcriptToolObservationSchema = z.object({
   replaySafe: z.boolean(),
   refetchable: z.boolean(),
   pinned: z.boolean(),
+  preserveRecentRawCount: z.number().int().nonnegative().optional(),
+  includeInHistorySummary: z.boolean().optional(),
   duplicateOfToolCallId: z.string().min(1).optional()
 });
 

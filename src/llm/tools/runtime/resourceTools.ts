@@ -1,4 +1,5 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
+import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
 
 export const resourceToolDescriptors: ToolDescriptor[] = [
   {
@@ -19,7 +20,8 @@ export const resourceToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: (config) => config.browser.enabled
+    isEnabled: (config) => config.browser.enabled,
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   }
 ];
 

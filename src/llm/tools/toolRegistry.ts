@@ -14,6 +14,11 @@ export function getBuiltinToolDescriptors(config?: AppConfig) {
   ];
 }
 
+export function getBuiltinToolDescriptorByName(name: string, config?: AppConfig) {
+  return getBuiltinToolDescriptors(config)
+    .find((tool) => tool.definition.function.name === name);
+}
+
 export const builtinToolHandlers: Record<string, ToolHandler> = {
   ...runtimeToolHandlersRegistry,
   ...conversationToolHandlers,

@@ -7,6 +7,7 @@ import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
 import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
 import { nextAction, type ToolNextAction } from "../core/toolNextActions.ts";
+import { directMediaViewPolicy, mediaInspectionPolicy } from "../core/resultObservationPresets.ts";
 import {
   audioTranscriptionsFromDerivedObservations,
   DerivedObservationReader,
@@ -38,7 +39,8 @@ export const imageToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isDirectMediaViewEnabled
+    isEnabled: isDirectMediaViewEnabled,
+    resultObservation: directMediaViewPolicy()
   },
   {
     definition: {
@@ -62,7 +64,8 @@ export const imageToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isMediaInspectionEnabled
+    isEnabled: isMediaInspectionEnabled,
+    resultObservation: mediaInspectionPolicy()
   },
   {
     definition: {
@@ -80,7 +83,8 @@ export const imageToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isDirectMediaViewEnabled
+    isEnabled: isDirectMediaViewEnabled,
+    resultObservation: directMediaViewPolicy()
   },
   {
     definition: {
@@ -99,7 +103,8 @@ export const imageToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isMediaInspectionEnabled
+    isEnabled: isMediaInspectionEnabled,
+    resultObservation: mediaInspectionPolicy()
   }
 ];
 

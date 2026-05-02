@@ -1,6 +1,7 @@
 import type { BuiltinToolContext, ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOperator } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
+import { keepRawUnlessLargePolicy, stateChangePolicy } from "../core/resultObservationPresets.ts";
 import {
   buildGroupSessionId,
   buildPrivateSessionId,
@@ -28,7 +29,8 @@ export const crossChatToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     accessLevel: "operator",
@@ -48,7 +50,8 @@ export const crossChatToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: stateChangePolicy()
   }
 ];
 

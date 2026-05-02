@@ -9,6 +9,11 @@ import {
   imageCaptionToDerivedObservation,
   toolObservationToDerivedObservation
 } from "../../src/llm/derivations/derivedObservation.ts";
+import {
+  debugDumpPolicy,
+  localFileListPolicy
+} from "../../src/llm/tools/core/resultObservationPresets.ts";
+import type { ToolResultObservationPolicy } from "../../src/llm/tools/core/resultObservation.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
 
@@ -42,6 +47,116 @@ test("local_file_read observation keeps raw content out of replay and preserves 
   assert.match(observation.replayContent, /"compacted":true/);
   assert.match(observation.replayContent, /local_file_read/);
   assert.match(observation.replayContent, /start_line=1 end_line=180/);
+});
+
+test("local_file_ls policy keeps small results raw and compacts large directory listings", () => {
+  const smallRaw = JSON.stringify({
+    path: "src",
+    items: [{ name: "index.ts", kind: "file" }]
+  });
+  const small = buildToolObservation({
+    toolName: "local_file_ls",
+    toolCallId: "call_ls_small",
+    content: smallRaw,
+    args: { path: "src" },
+    policy: localFileListPolicy()
+  });
+  assert.equal(small.retention, "full");
+  assert.equal(small.replayContent, smallRaw);
+
+  const largeRaw = JSON.stringify({
+    path: "src",
+    items: Array.from({ length: 45 }, (_, index) => ({
+      name: index % 5 === 0 ? `dir-${index}` : `file-${index}.ts`,
+      kind: index % 5 === 0 ? "directory" : "file"
+    }))
+  });
+  const large = buildToolObservation({
+    toolName: "local_file_ls",
+    toolCallId: "call_ls_large",
+    content: largeRaw,
+    args: { path: "src" },
+    policy: localFileListPolicy()
+  });
+
+  assert.equal(large.retention, "summary");
+  assert.equal(large.resource?.kind, "local_file");
+  assert.equal(large.resource?.id, "src");
+  assert.match(large.summary, /45 项/);
+  assert.match(large.replayContent, /"compacted":true/);
+  assert.doesNotMatch(large.replayContent, /file-44/);
+});
+
+test("debug dump observation hides literal bodies from replay and history summary", () => {
+  const observation = buildToolObservation({
+    toolName: "dump_debug_literals",
+    toolCallId: "call_debug",
+    content: JSON.stringify({
+      ok: true,
+      literals: ["full_system_prompt"],
+      count: 1,
+      messageIds: [123]
+    }),
+    args: { literals: ["full_system_prompt"] },
+    policy: debugDumpPolicy()
+  });
+
+  assert.equal(observation.retention, "summary");
+  assert.equal(observation.includeInHistorySummary, false);
+  assert.equal(observation.preserveRecentRawCount, 0);
+  assert.match(observation.replayContent, /full_system_prompt/);
+  assert.doesNotMatch(observation.replayContent, /system prompt body/);
+});
+
+test("policy failures produce safe compacted observations without raw replay", () => {
+  const rawSecret = JSON.stringify({ ok: true, body: "VERY_SECRET_LITERAL" });
+  const failingPolicy: ToolResultObservationPolicy = {
+    method() {
+      throw new Error("method boom");
+    },
+    replaySafe: false,
+    preserveRecentRawCount: 0
+  };
+
+  const observation = buildToolObservation({
+    toolName: "custom_sensitive_tool",
+    toolCallId: "call_policy_fail",
+    content: rawSecret,
+    policy: failingPolicy
+  });
+
+  assert.equal(observation.retention, "summary");
+  assert.equal(observation.replaySafe, false);
+  assert.equal(observation.preserveRecentRawCount, 0);
+  assert.match(observation.summary, /观察策略执行失败/);
+  assert.match(observation.replayContent, /method boom/);
+  assert.doesNotMatch(observation.replayContent, /VERY_SECRET_LITERAL/);
+});
+
+test("compactor failures produce safe compacted observations without raw replay", () => {
+  const rawSecret = JSON.stringify({ ok: true, body: "COMPACTOR_SECRET_LITERAL" });
+  const failingPolicy: ToolResultObservationPolicy = {
+    method() {
+      return "broken";
+    },
+    compactors: {
+      broken() {
+        throw new Error("compactor boom");
+      }
+    }
+  };
+
+  const observation = buildToolObservation({
+    toolName: "custom_sensitive_tool",
+    toolCallId: "call_compactor_fail",
+    content: rawSecret,
+    policy: failingPolicy
+  });
+
+  assert.equal(observation.retention, "summary");
+  assert.match(observation.summary, /观察策略执行失败/);
+  assert.match(observation.replayContent, /compactor boom/);
+  assert.doesNotMatch(observation.replayContent, /COMPACTOR_SECRET_LITERAL/);
 });
 
 test("current group context observations compact results and preserve refetch hints", () => {

@@ -2,6 +2,7 @@ import type { ShellRunParams, ShellRunResult } from "#services/shell/types.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
 import { getBooleanArg, getNumberArg, getStringArg, getStringArrayArg } from "../core/toolArgHelpers.ts";
+import { keepRawUnlessLargePolicy, terminalPolicy } from "../core/resultObservationPresets.ts";
 
 const isShellToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.shell.enabled;
 const TERMINAL_KEY_NAMES = [
@@ -43,7 +44,8 @@ export const shellToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     ownerOnly: true,
@@ -71,7 +73,8 @@ export const shellToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: terminalPolicy()
   },
   {
     ownerOnly: true,
@@ -98,7 +101,8 @@ export const shellToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: terminalPolicy()
   },
   {
     ownerOnly: true,
@@ -117,7 +121,8 @@ export const shellToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: terminalPolicy()
   },
   {
     ownerOnly: true,
@@ -137,7 +142,8 @@ export const shellToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: terminalPolicy()
   },
   {
     ownerOnly: true,
@@ -174,7 +180,8 @@ export const shellToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: terminalPolicy()
   },
   {
     ownerOnly: true,
@@ -194,7 +201,8 @@ export const shellToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: terminalPolicy()
   },
   {
     ownerOnly: true,
@@ -213,7 +221,8 @@ export const shellToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: terminalPolicy()
   }
 ];
 

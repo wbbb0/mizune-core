@@ -1,6 +1,7 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { resolveForwardIdArg } from "../core/structuredIdResolver.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
+import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
 
 export const forwardToolDescriptors: ToolDescriptor[] = [
   {
@@ -18,7 +19,8 @@ export const forwardToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   }
 ];
 

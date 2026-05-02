@@ -250,6 +250,7 @@ function collectToolObservationsToCompress(items: InternalTranscriptItem[]): Too
   return items
     .filter(isTranscriptLlmVisible)
     .filter((item): item is InternalToolResultItem => item.kind === "tool_result" && item.observation != null)
+    .filter((item) => item.observation!.includeInHistorySummary !== false)
     .map((item) => ({
       toolName: item.toolName,
       toolCallId: item.toolCallId,

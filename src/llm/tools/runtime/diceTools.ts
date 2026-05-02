@@ -1,5 +1,6 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
+import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
 import { rollDiceExpression } from "./diceExpression.ts";
 
 export const diceToolDescriptors: ToolDescriptor[] = [
@@ -21,7 +22,8 @@ export const diceToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 5 })
   }
 ];
 

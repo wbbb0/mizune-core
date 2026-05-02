@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AppConfig } from "#config/config.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
+import { stateChangePolicy } from "../core/resultObservationPresets.ts";
 import { setJsonPointerValue } from "#comfy/workflowPatch.ts";
 
 function buildComfyToolDescriptor(config: AppConfig): ToolDescriptor {
@@ -35,7 +36,8 @@ function buildComfyToolDescriptor(config: AppConfig): ToolDescriptor {
         }
       }
     },
-    isEnabled: (currentConfig) => currentConfig.comfy.enabled
+    isEnabled: (currentConfig) => currentConfig.comfy.enabled,
+    resultObservation: stateChangePolicy()
   };
 }
 
