@@ -108,6 +108,9 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
       scenarioHostStateStore: deps.identity.scenarioHostStateStore,
       globalProfileReadinessStore: deps.identity.globalProfileReadinessStore
     },
+    toolRuntime: {
+      shellRuntime: deps.toolRuntime.shellRuntime
+    },
     lifecycle: {
       persistSession: deps.lifecycle.persistSession,
       logger: deps.lifecycle.logger,

@@ -98,6 +98,8 @@ export type ShellRuntimeEvent =
       cwd: string;
       promptKind: TerminalInputPromptKind;
       promptText: string;
+      promptSignature: string;
+      detectedAtMs: number;
       outputTail: string;
     };
 

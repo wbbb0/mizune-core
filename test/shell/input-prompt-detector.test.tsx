@@ -41,6 +41,12 @@ describe("terminal input prompt detector", () => {
     assert.equal(detectTerminalInputPrompt(normalized)?.kind, "confirmation");
   });
 
+  test("preserves CRLF line endings as normal newlines", () => {
+    const normalized = normalizeTerminalOutput("Preparing\r\nEnter branch name: ");
+    assert.equal(normalized, "Preparing\nEnter branch name: ");
+    assert.equal(detectTerminalInputPrompt(normalized)?.kind, "text_input");
+  });
+
   test("does not treat common logs as prompts", () => {
     assert.equal(detectTerminalInputPrompt("ERROR: failed to compile"), null);
     assert.equal(detectTerminalInputPrompt("error TS2322: Type 'string' is not assignable"), null);

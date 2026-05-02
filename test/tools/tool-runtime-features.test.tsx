@@ -1231,17 +1231,42 @@ function createMediaToolVisibilityConfig(options: {
     assert.equal(payload.status, "completed");
   });
 
-  test("terminal_start, terminal_key and terminal_signal cover background and controls", async () => {
+  test("terminal_start returns background follow-up guidance", async () => {
     const runCalls: any[] = [];
+    const context = {
+      relationship: "owner",
+      lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
+      shellRuntime: {
+        async run(input: any) {
+          runCalls.push(input);
+          return { status: "running", resourceId: "res_shell_1" };
+        }
+      }
+    } as any;
+
+    const startResult = await shellToolHandlers.terminal_start!(
+      { id: "tool_terminal_start_1", type: "function", function: { name: "terminal_start", arguments: "{}" } },
+      { command: "npm run dev", description: "开发服务器" },
+      context
+    );
+
+    const startPayload = JSON.parse(String(startResult));
+    assert.equal(startPayload.status, "running");
+    assert.equal(startPayload.notify_policy, "notify_on_input_and_close");
+    assert.equal(startPayload.background_followup.will_trigger_on_close, true);
+    assert.equal(startPayload.background_followup.will_trigger_on_input, true);
+    assert.match(startPayload.background_followup.message, /自动作为内部回调再次触发/);
+    assert.equal(runCalls[0].background, true);
+    assert.equal(runCalls[0].description, "开发服务器");
+    assert.equal(runCalls[0].notifyPolicy, "notify_on_input_and_close");
+  });
+
+  test("terminal_key and terminal_signal cover background controls", async () => {
     const interactCalls: any[] = [];
     const signalCalls: any[] = [];
     const context = {
       relationship: "owner",
       shellRuntime: {
-        async run(input: any) {
-          runCalls.push(input);
-          return { status: "running", resource_id: "res_shell_1" };
-        },
         async interact(resourceId: string, input: string) {
           interactCalls.push({ resourceId, input });
           return { output: "", session: { resource_id: resourceId, status: "active", outputTail: "" } };
@@ -1253,11 +1278,6 @@ function createMediaToolVisibilityConfig(options: {
       }
     } as any;
 
-    await shellToolHandlers.terminal_start!(
-      { id: "tool_terminal_start_1", type: "function", function: { name: "terminal_start", arguments: "{}" } },
-      { command: "npm run dev", description: "开发服务器" },
-      context
-    );
     await shellToolHandlers.terminal_key!(
       { id: "tool_terminal_key_1", type: "function", function: { name: "terminal_key", arguments: "{}" } },
       { resource_id: "res_shell_1", key: "ctrl_c" },
@@ -1269,8 +1289,6 @@ function createMediaToolVisibilityConfig(options: {
       context
     );
 
-    assert.equal(runCalls[0].background, true);
-    assert.equal(runCalls[0].description, "开发服务器");
     assert.deepEqual(interactCalls[0], { resourceId: "res_shell_1", input: "\u0003" });
     assert.deepEqual(signalCalls[0], { resourceId: "res_shell_1", signal: "SIGKILL" });
   });

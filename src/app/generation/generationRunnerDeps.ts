@@ -155,4 +155,5 @@ export type GenerationSessionOrchestratorDeps =
       sessionManager: SessionGenerationOrchestratorAccess;
     };
     identity: Pick<GenerationIdentityDeps, "userStore" | "personaStore" | "rpProfileStore" | "scenarioProfileStore" | "setupStore" | "scenarioHostStateStore" | "globalProfileReadinessStore">;
+    toolRuntime: Pick<GenerationToolRuntimeDeps, "shellRuntime">;
   };

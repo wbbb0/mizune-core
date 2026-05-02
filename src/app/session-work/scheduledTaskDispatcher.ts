@@ -93,6 +93,8 @@ export function createScheduledTaskDispatcher(
             ...common,
             promptKind: event.promptKind,
             promptText: event.promptText,
+            promptSignature: event.promptSignature,
+            detectedAtMs: event.detectedAtMs,
             outputTail: event.outputTail
           } as InternalSessionTriggerExecution;
         }
