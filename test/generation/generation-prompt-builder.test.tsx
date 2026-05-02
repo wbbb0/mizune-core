@@ -3,6 +3,16 @@ import assert from "node:assert/strict";
 import { createGenerationPromptBuilder } from "../../src/app/generation/generationPromptBuilder.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
+type TestPromptHistoryMessage = {
+  role: "user" | "assistant";
+  content: string;
+  timestampMs?: number | null;
+};
+
+type TestPromptBatchMessage = {
+  text: string;
+};
+
 function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {}) {
   return {
     config: createTestAppConfig(),
@@ -378,20 +388,26 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
         }
       } as any,
       contentSafetyService: {
-        async projectPromptMessages(input: {
-          recentMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs?: number | null }>;
-          batchMessages: Array<{ text: string }>;
+        async projectPromptMessages<
+          H extends TestPromptHistoryMessage,
+          B extends TestPromptBatchMessage
+        >(input: {
+          recentMessages: H[];
+          batchMessages: B[];
         }) {
           return {
-            recentMessages: input.recentMessages.map((message) => message.role === "user"
-              ? { ...message, content: "⟦内容安全\n类型: 内容\n状态: 已屏蔽\n⟧" }
-              : message),
+            recentMessages: input.recentMessages.map((message) => (message.role === "user"
+              ? { ...message, content: "⟦内容安全\n类型: 内容\n状态: 已屏蔽\n⟧" } as H
+              : message)),
             batchMessages: input.batchMessages.map((message) => ({
               ...message,
               text: "⟦内容安全\n类型: 内容\n状态: 已屏蔽\n⟧"
-            })),
+            } as B)),
             events: []
           };
+        },
+        async projectLlmMessages<T extends { messages: unknown[] }>(input: T) {
+          return { ...input, events: [] };
         }
       },
       globalRuleStore: {
@@ -470,9 +486,12 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
   test("chat prompt applies content safety projection to provider replay messages", async () => {
     const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
       contentSafetyService: {
-        async projectPromptMessages(input: {
-          recentMessages: Array<{ role: "user" | "assistant"; content: string }>;
-          batchMessages: Array<{ text: string }>;
+        async projectPromptMessages<
+          H extends TestPromptHistoryMessage,
+          B extends TestPromptBatchMessage
+        >(input: {
+          recentMessages: H[];
+          batchMessages: B[];
         }) {
           return { ...input, events: [] };
         },
@@ -531,9 +550,12 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
   test("scheduled prompt applies content safety projection to trigger text", async () => {
     const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
       contentSafetyService: {
-        async projectPromptMessages(input: {
-          recentMessages: Array<{ role: "user" | "assistant"; content: string }>;
-          batchMessages: Array<{ text: string }>;
+        async projectPromptMessages<
+          H extends TestPromptHistoryMessage,
+          B extends TestPromptBatchMessage
+        >(input: {
+          recentMessages: H[];
+          batchMessages: B[];
         }) {
           return { ...input, events: [] };
         },

@@ -8,6 +8,15 @@ import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
 
+type TestPromptHistoryMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+type TestPromptBatchMessage = {
+  text: string;
+};
+
 function createFakeShellRuntime() {
   return {
     isInputPromptCurrent() {
@@ -856,7 +865,7 @@ test("turn planner receives content-safety projected history and batch", async (
     userId: "owner",
     senderName: "Owner",
     text: "历史回答"
-  }, 2, { transcriptGroup: "standalone" });
+  }, 2);
   sessionManager.appendPendingMessage(sessionId, {
     channelId: "qqbot",
     externalUserId: "2254600711",
@@ -888,18 +897,21 @@ test("turn planner receives content-safety projected history and batch", async (
     promptBuilder: {
       config,
       contentSafetyService: {
-        async projectPromptMessages(input: {
-          recentMessages: Array<{ role: "user" | "assistant"; content: string }>;
-          batchMessages: Array<{ text: string }>;
+        async projectPromptMessages<
+          H extends TestPromptHistoryMessage,
+          B extends TestPromptBatchMessage
+        >(input: {
+          recentMessages: H[];
+          batchMessages: B[];
         }) {
           return {
-            recentMessages: input.recentMessages.map((message) => message.role === "user"
-              ? { ...message, content: "⟦内容安全: history⟧" }
-              : message),
+            recentMessages: input.recentMessages.map((message) => (message.role === "user"
+              ? { ...message, content: "⟦内容安全: history⟧" } as H
+              : message)),
             batchMessages: input.batchMessages.map((message) => ({
               ...message,
               text: "⟦内容安全: batch⟧"
-            })),
+            } as B)),
             events: []
           };
         },
