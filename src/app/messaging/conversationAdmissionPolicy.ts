@@ -1,24 +1,26 @@
 import type { AppConfig } from "#config/config.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
+import { analyzeAdmissionTextIntent } from "./conversationAdmissionIntent.ts";
 
 export type AdmissionThreadAction =
   | "ambient_only"
-  | "join_active_thread"
   | "wait_more"
   | "reply_now"
   | "soft_interrupt"
-  | "queue_next_thread"
-  | "drop_due_cooldown";
+  | "queue_next_thread";
 
-export type AdmissionReplyDecision = "no_reply" | "reply_small" | "reply_large" | "wait";
+export type AdmissionReplyDecision = "no_reply" | "reply_small" | "wait";
 export type AdmissionInterruptPolicy = "none" | "soft_interrupt" | "abort_generation" | "queue";
-export type AdmissionContextPolicy = "ambient_buffer" | "merge_batch" | "new_thread" | "ignore";
+export type AdmissionContextPolicy = "ambient_buffer" | "merge_batch" | "new_thread";
 export type AdmissionPriority = "low" | "normal" | "high" | "owner";
 
 export interface AdmissionDecision {
   groupMatched: boolean;
   matchedPendingGroupTrigger: boolean;
+  replyToBot: boolean;
+  textIntentCorrection: boolean;
+  textIntentWaitMore: boolean;
   shouldTriggerResponse: boolean;
   threadAction: AdmissionThreadAction;
   replyDecision: AdmissionReplyDecision;
@@ -27,14 +29,6 @@ export interface AdmissionDecision {
   priority: AdmissionPriority;
   reason: string;
 }
-
-const WAIT_MORE_PATTERNS = [
-  /(?:等下|等等|稍等|等我|我贴|我发|我接着|继续发|后面还有|完整日志|先别回|还没说完)/u
-] as const;
-
-const CORRECTION_PATTERNS = [
-  /(?:不对|不是|改一下|我说错了|重新|应该是|别管.*?了|不用.*?了)/u
-] as const;
 
 export function resolveAdmissionDecision(input: {
   config: AppConfig;
@@ -60,10 +54,16 @@ export function resolveAdmissionDecision(input: {
   const directlyAddressed = input.message.isAtMentioned || input.replyToBot;
   const sameTriggerUser = input.matchedPendingGroupTrigger;
   const owner = input.relationship === "owner";
+  const textIntent = analyzeAdmissionTextIntent(text);
+  const decisionContext = {
+    ...input,
+    textIntentCorrection: textIntent.correction,
+    textIntentWaitMore: textIntent.waitMore
+  };
 
-  if (input.hasActiveResponse && sameTriggerUser && looksLikeCorrection(text)) {
+  if (input.hasActiveResponse && sameTriggerUser && textIntent.correction) {
     return {
-      ...base(input),
+      ...base(decisionContext),
       shouldTriggerResponse: true,
       threadAction: "soft_interrupt",
       replyDecision: "reply_small",
@@ -74,9 +74,9 @@ export function resolveAdmissionDecision(input: {
     };
   }
 
-  if (sameTriggerUser && looksLikeWaitMore(text)) {
+  if (sameTriggerUser && textIntent.waitMore) {
     return {
-      ...base(input),
+      ...base(decisionContext),
       shouldTriggerResponse: false,
       threadAction: "wait_more",
       replyDecision: "wait",
@@ -89,7 +89,7 @@ export function resolveAdmissionDecision(input: {
 
   if (input.hasActiveResponse && directlyAddressed && !sameTriggerUser && !owner) {
     return {
-      ...base(input),
+      ...base(decisionContext),
       shouldTriggerResponse: true,
       threadAction: "queue_next_thread",
       replyDecision: "no_reply",
@@ -102,7 +102,7 @@ export function resolveAdmissionDecision(input: {
 
   if (directlyAddressed || sameTriggerUser || ownerAllowsNonMention(input)) {
     return {
-      ...base(input),
+      ...base(decisionContext),
       shouldTriggerResponse: true,
       threadAction: "reply_now",
       replyDecision: "reply_small",
@@ -113,16 +113,22 @@ export function resolveAdmissionDecision(input: {
     };
   }
 
-  return noReply(input, "普通群聊环境");
+  return noReply(decisionContext, "普通群聊环境");
 }
 
 function base(input: {
   groupMatched: boolean;
   matchedPendingGroupTrigger: boolean;
-}): Pick<AdmissionDecision, "groupMatched" | "matchedPendingGroupTrigger"> {
+  replyToBot?: boolean;
+  textIntentCorrection?: boolean;
+  textIntentWaitMore?: boolean;
+}): Pick<AdmissionDecision, "groupMatched" | "matchedPendingGroupTrigger" | "replyToBot" | "textIntentCorrection" | "textIntentWaitMore"> {
   return {
     groupMatched: input.groupMatched,
-    matchedPendingGroupTrigger: input.matchedPendingGroupTrigger
+    matchedPendingGroupTrigger: input.matchedPendingGroupTrigger,
+    replyToBot: input.replyToBot === true,
+    textIntentCorrection: input.textIntentCorrection === true,
+    textIntentWaitMore: input.textIntentWaitMore === true
   };
 }
 
@@ -133,6 +139,9 @@ function privateDecision(input: {
   return {
     groupMatched: false,
     matchedPendingGroupTrigger: false,
+    replyToBot: false,
+    textIntentCorrection: false,
+    textIntentWaitMore: false,
     shouldTriggerResponse: true,
     threadAction: "reply_now",
     replyDecision: "reply_small",
@@ -146,6 +155,9 @@ function privateDecision(input: {
 function noReply(input: {
   groupMatched: boolean;
   matchedPendingGroupTrigger: boolean;
+  replyToBot?: boolean;
+  textIntentCorrection?: boolean;
+  textIntentWaitMore?: boolean;
 }, reason: string): AdmissionDecision {
   return {
     ...base(input),
@@ -157,14 +169,6 @@ function noReply(input: {
     priority: "low",
     reason
   };
-}
-
-function looksLikeWaitMore(text: string): boolean {
-  return WAIT_MORE_PATTERNS.some((pattern) => pattern.test(text));
-}
-
-function looksLikeCorrection(text: string): boolean {
-  return CORRECTION_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 function ownerAllowsNonMention(input: {

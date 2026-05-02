@@ -105,6 +105,44 @@ test("admission policy treats active wait-correction as correction before wait_m
   assert.equal(decision.replyDecision, "reply_small");
 });
 
+test("admission policy recognizes common follow-up wait phrases from current trigger user", () => {
+  const config = createTestAppConfig({ whitelist: { enabled: false } });
+
+  for (const text of ["先别急，我整理一下", "日志太长，后面还有两段", "下一段我马上发"]) {
+    const decision = resolveAdmissionDecision({
+      config,
+      message: createMessage({ text }),
+      relationship: "known",
+      groupMatched: true,
+      matchedPendingGroupTrigger: true,
+      replyToBot: false,
+      hasActiveResponse: true
+    });
+
+    assert.equal(decision.threadAction, "wait_more", text);
+    assert.equal(decision.replyDecision, "wait", text);
+    assert.equal(decision.shouldTriggerResponse, false, text);
+  }
+});
+
+test("admission policy keeps active current-user ambiguous text queued instead of hard-interrupting", () => {
+  const config = createTestAppConfig({ whitelist: { enabled: false } });
+
+  const decision = resolveAdmissionDecision({
+    config,
+    message: createMessage({ text: "我不是很懂这个地方" }),
+    relationship: "known",
+    groupMatched: true,
+    matchedPendingGroupTrigger: true,
+    replyToBot: false,
+    hasActiveResponse: true
+  });
+
+  assert.equal(decision.threadAction, "reply_now");
+  assert.equal(decision.interruptPolicy, "none");
+  assert.equal(decision.contextPolicy, "merge_batch");
+});
+
 test("admission policy queues another user's mention while a response is active", () => {
   const config = createTestAppConfig({ whitelist: { enabled: false } });
 

@@ -232,6 +232,31 @@ export const transcriptGateDecisionItemSchema = z.object({
   timestampMs: z.number().int().nonnegative()
 });
 
+export const transcriptAdmissionDecisionItemSchema = z.object({
+  ...transcriptItemMetaSchema.shape,
+  kind: z.literal("admission_decision"),
+  llmVisible: z.literal(false),
+  delivery: z.enum(["onebot", "web"]),
+  chatType: z.enum(["private", "group"]),
+  userId: z.string().min(1),
+  groupId: z.string().min(1).optional(),
+  groupMatched: z.boolean(),
+  matchedPendingGroupTrigger: z.boolean(),
+  replyToBot: z.boolean(),
+  textIntentCorrection: z.boolean(),
+  textIntentWaitMore: z.boolean(),
+  shouldTriggerResponse: z.boolean(),
+  threadAction: z.enum(["ambient_only", "wait_more", "reply_now", "soft_interrupt", "queue_next_thread"]),
+  replyDecision: z.enum(["no_reply", "reply_small", "wait"]),
+  interruptPolicy: z.enum(["none", "soft_interrupt", "abort_generation", "queue"]),
+  contextPolicy: z.enum(["ambient_buffer", "merge_batch", "new_thread"]),
+  priority: z.enum(["low", "normal", "high", "owner"]),
+  reason: z.string(),
+  isAtMentioned: z.boolean(),
+  hasActiveResponse: z.boolean(),
+  timestampMs: z.number().int().nonnegative()
+});
+
 export const transcriptSystemMarkerItemSchema = z.object({
   ...transcriptItemMetaSchema.shape,
   kind: z.literal("system_marker"),
@@ -301,6 +326,7 @@ export const internalTranscriptItemSchema = z.discriminatedUnion("kind", [
   transcriptDirectCommandItemSchema,
   transcriptStatusMessageItemSchema,
   transcriptGateDecisionItemSchema,
+  transcriptAdmissionDecisionItemSchema,
   transcriptSystemMarkerItemSchema,
   transcriptFallbackEventItemSchema,
   transcriptInternalTriggerEventItemSchema,

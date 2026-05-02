@@ -235,9 +235,17 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
     assert.equal(sessionManager.getReplyDelivery(session.id), "web");
     const transcript = sessionManager.getSessionView(session.id).internalTranscript;
-    assert.equal(transcript.length, 1);
+    assert.equal(transcript.length, 2);
     assert.equal(transcript[0]?.kind, "user_message");
     assert.equal(transcript[0]?.runtimeVisibility, "ambient");
+    assert.equal(transcript[1]?.kind, "admission_decision");
+    if (transcript[1]?.kind === "admission_decision") {
+      assert.equal(transcript[1].threadAction, "ambient_only");
+      assert.equal(transcript[1].shouldTriggerResponse, false);
+      assert.equal(transcript[1].textIntentCorrection, false);
+      assert.equal(transcript[1].textIntentWaitMore, false);
+      assert.equal(transcript[1].reason, "普通群聊环境");
+    }
     assert.equal(sessionManager.getLlmVisibleHistory(session.id).length, 0);
   });
 
