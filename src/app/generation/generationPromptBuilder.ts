@@ -3,7 +3,6 @@ import {
   buildPromptImageCaptions,
   collectReferencedImageIds
 } from "#images/imagePromptContext.ts";
-import { createHash } from "node:crypto";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { prepareAudioInputsForModel } from "#messages/audioSources.ts";
@@ -33,7 +32,6 @@ import {
 } from "#services/workspace/chatAttachments.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { ToolsetRuleEntry } from "#llm/prompt/toolsetRuleStore.ts";
-import { extractExplicitUserFactCandidates } from "#context/userFactExtraction.ts";
 import { isNearDuplicateText } from "#memory/similarity.ts";
 import type { UserMemoryEntry } from "#memory/userMemoryEntry.ts";
 import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
@@ -59,7 +57,6 @@ const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "terminal_signal",
   "terminal_stop"
 ]);
-const MAX_CONTEXT_CHUNK_CHARS = 1200;
 
 export interface GenerationPromptHistoryMessage {
   role: "user" | "assistant";
@@ -649,219 +646,6 @@ function buildBatchQueryText(messages: GenerationPromptBatchMessage[]): string {
     .trim();
 }
 
-function upsertPromptContextChunks(
-  deps: GenerationPromptBuilderDeps,
-  input: {
-    sessionId: string;
-    userId: string;
-    historyForPrompt: GenerationPromptHistoryMessage[];
-    batchMessages: GenerationPromptBatchMessage[];
-  }
-): string[] {
-  if (!deps.contextStore || typeof deps.contextStore.upsertUserSearchChunk !== "function") {
-    return [];
-  }
-  try {
-    const currentBatchItemIds: string[] = [];
-    if (typeof deps.contextStore.upsertRawMessages === "function") {
-      deps.contextStore.upsertRawMessages(buildBatchRawMessages({
-        sessionId: input.sessionId,
-        batchMessages: input.batchMessages
-      }));
-    }
-    for (const [index, message] of input.historyForPrompt.entries()) {
-      const text = truncateContextChunk(`${message.role === "assistant" ? "助手" : "用户"}：${message.content}`);
-      if (!isSearchableContextText(text, { role: message.role })) {
-        continue;
-      }
-      deps.contextStore.upsertUserSearchChunk({
-        itemId: buildContextChunkId({
-          kind: "history",
-          sessionId: input.sessionId,
-          userId: input.userId,
-          timestampMs: message.timestampMs ?? 0,
-          index,
-          text
-        }),
-        userId: input.userId,
-        sessionId: input.sessionId,
-        title: message.role === "assistant" ? "近期助手回复" : "近期用户消息",
-        text,
-        source: "system",
-        createdAt: message.timestampMs ?? Date.now(),
-        updatedAt: message.timestampMs ?? Date.now()
-      });
-    }
-    for (const [index, message] of input.batchMessages.entries()) {
-      if (message.userId === input.userId && typeof deps.contextStore.upsertUserFact === "function") {
-        for (const fact of extractExplicitUserFactCandidates(message.text)) {
-          deps.contextStore.upsertUserFact({
-            userId: input.userId,
-            title: fact.title,
-            content: fact.content,
-            kind: fact.kind ?? "preference",
-            source: "user_explicit",
-            importance: 4
-          });
-        }
-      }
-      const text = truncateContextChunk(buildBatchContextChunkText(message));
-      if (!isSearchableContextText(text, { role: "user" })) {
-        continue;
-      }
-      const itemId = buildContextChunkId({
-        kind: "batch",
-        sessionId: input.sessionId,
-        userId: input.userId,
-        timestampMs: message.receivedAt,
-        index,
-        text
-      });
-      deps.contextStore.upsertUserSearchChunk({
-        itemId,
-        userId: input.userId,
-        sessionId: input.sessionId,
-        title: `当前消息：${message.senderName}`,
-        text,
-        source: "user_explicit",
-        createdAt: message.receivedAt,
-        updatedAt: message.receivedAt
-      });
-      currentBatchItemIds.push(itemId);
-    }
-    deps.contextStore.sweepUserSearchChunks({
-      userId: input.userId,
-      maxChunks: deps.config.context.retention.maxUserSearchChunks,
-      maxAgeMs: deps.config.context.retention.maxSearchChunkAgeDays * 24 * 60 * 60 * 1000
-    });
-    return currentBatchItemIds;
-  } catch (error) {
-    deps.logger?.warn({
-      sessionId: input.sessionId,
-      userId: input.userId,
-      error: error instanceof Error ? error.message : String(error)
-    }, "context_chunk_deposition_failed_open");
-    return [];
-  }
-}
-
-function buildBatchRawMessages(input: {
-  sessionId: string;
-  batchMessages: GenerationPromptBatchMessage[];
-}) {
-  const chatType = input.sessionId.startsWith("qqbot:g:") ? "group" as const : "private" as const;
-  const ingestedAt = Date.now();
-  return input.batchMessages.map((message, index) => ({
-    messageId: buildRawMessageId({
-      sessionId: input.sessionId,
-      userId: message.userId,
-      timestampMs: message.receivedAt,
-      index,
-      text: message.text
-    }),
-    userId: message.userId,
-    sessionId: input.sessionId,
-    chatType,
-    role: "user" as const,
-    speakerId: message.userId,
-    timestampMs: message.receivedAt,
-    text: message.text,
-    segments: message.specialSegments ?? [],
-    attachmentRefs: {
-      imageIds: message.imageIds,
-      emojiIds: message.emojiIds,
-      audioIds: message.audioIds,
-      forwardIds: message.forwardIds,
-      replyMessageId: message.replyMessageId,
-      attachmentFileIds: (message.attachments ?? []).map((attachment) => attachment.fileId)
-    },
-    sensitivity: "normal" as const,
-    ingestedAt
-  }));
-}
-
-function buildBatchContextChunkText(message: GenerationPromptBatchMessage): string {
-  const lines = [`${message.senderName}：${message.text.trim() || "<empty>"}`];
-  const mediaRefs = [
-    ...message.imageIds.map((id) => `image:${id}`),
-    ...message.emojiIds.map((id) => `emoji:${id}`),
-    ...message.audioIds.map((id) => `audio:${id}`),
-    ...message.forwardIds.map((id) => `forward:${id}`),
-    ...(message.replyMessageId ? [`reply:${message.replyMessageId}`] : [])
-  ];
-  if (mediaRefs.length > 0) {
-    lines.push(`媒体引用：${mediaRefs.join("；")}`);
-  }
-  return lines.join("\n");
-}
-
-function buildContextChunkId(input: {
-  kind: "history" | "batch";
-  sessionId: string;
-  userId: string;
-  timestampMs: number;
-  index: number;
-  text: string;
-}): string {
-  const digest = createHash("sha256")
-    .update(JSON.stringify(input))
-    .digest("hex")
-    .slice(0, 24);
-  return `ctx_${input.kind}_${digest}`;
-}
-
-function buildRawMessageId(input: {
-  sessionId: string;
-  userId: string;
-  timestampMs: number;
-  index: number;
-  text: string;
-}): string {
-  const digest = createHash("sha256")
-    .update(JSON.stringify(input))
-    .digest("hex")
-    .slice(0, 24);
-  return `raw_${digest}`;
-}
-
-function truncateContextChunk(text: string): string {
-  const trimmed = text.trim();
-  return trimmed.length > MAX_CONTEXT_CHUNK_CHARS
-    ? `${trimmed.slice(0, MAX_CONTEXT_CHUNK_CHARS)}...`
-    : trimmed;
-}
-
-function isSearchableContextText(text: string, options: { role: "assistant" | "user" | "system" }): boolean {
-  const normalized = text.trim();
-  if (normalized.length < 2 || normalized === "用户：<empty>" || normalized === "助手：<empty>") {
-    return false;
-  }
-  return options.role !== "assistant" || !isLowSignalAssistantContextText(normalized);
-}
-
-function isLowSignalAssistantContextText(text: string): boolean {
-  const compact = text
-    .replace(/^助手：/u, "")
-    .toLocaleLowerCase()
-    .replace(/[\s\p{P}\p{S}]+/gu, "");
-  if (compact.length > 14 || /[a-z0-9]/iu.test(compact)) {
-    return false;
-  }
-  return LOW_SIGNAL_ASSISTANT_CONTEXT_TERMS.some((term) => compact.includes(term));
-}
-
-const LOW_SIGNAL_ASSISTANT_CONTEXT_TERMS = [
-  "收到",
-  "好的",
-  "好",
-  "明白",
-  "了解",
-  "记下",
-  "记录",
-  "已更新",
-  "已记下"
-];
-
 function buildScheduledQueryText(trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"]): string {
   switch (trigger.kind) {
     case "scheduled_instruction":
@@ -1054,14 +838,6 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
           input.currentUser,
           safetyProjected.batchMessages[safetyProjected.batchMessages.length - 1]?.senderName
         );
-    const currentTurnChunkIds = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
-      ? []
-      : upsertPromptContextChunks(deps, {
-          sessionId: input.sessionId,
-          userId: input.currentUser.userId,
-          historyForPrompt: mediaContext.historyForPrompt,
-          batchMessages: input.batchMessages
-        });
     const currentUserMemories = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
       ? []
       : deps.contextStore?.listUserFacts(input.currentUser.userId) ?? [];
@@ -1070,10 +846,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       : await deps.contextRetrievalService?.retrieveUserContext({
           userId: input.currentUser.userId,
           queryText: buildBatchQueryText(input.batchMessages),
-          excludeItemIds: [
-            ...currentUserMemories.map((item) => item.id),
-            ...currentTurnChunkIds
-          ],
+          excludeItemIds: currentUserMemories.map((item) => item.id),
           ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
         }) ?? [];
     logPromptMemorySuppressions(deps, {

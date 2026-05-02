@@ -106,6 +106,9 @@ const itemTitle = computed(() => {
     case "internal_trigger_event":
       title = props.item.title;
       break;
+    case "context_extraction_event":
+      title = props.item.title;
+      break;
   }
   if (!props.item.llmVisible) {
     title += " · 隐藏";
@@ -148,6 +151,8 @@ const itemTone = computed(() => {
       return props.item.fallbackType === "generation_failure_reply" ? "gate-skip" : "gate";
     case "internal_trigger_event":
       return "status";
+    case "context_extraction_event":
+      return props.item.status === "enqueue_failed" || props.item.status === "process_failed" ? "gate-skip" : "status";
   }
 });
 
@@ -180,6 +185,8 @@ const itemGlyph = computed<SessionGlyphModel>(() => {
       return { kind: "text", value: "F" };
     case "internal_trigger_event":
       return { kind: "text", value: "I" };
+    case "context_extraction_event":
+      return { kind: "text", value: "M" };
   }
 });
 
@@ -311,9 +318,32 @@ const metaChips = computed(() => {
           : null
       ].filter(Boolean) as string[];
       break;
+    case "context_extraction_event":
+      chips = [
+        formatContextExtractionStatus(props.item.status),
+        `users=${props.item.targetUserIds.length}`,
+        `messages=${props.item.messageCount}`,
+        props.item.created != null ? `created=${props.item.created}` : null,
+        props.item.replaced != null ? `replaced=${props.item.replaced}` : null,
+        props.item.ignored != null ? `ignored=${props.item.ignored}` : null
+      ].filter(Boolean) as string[];
+      break;
   }
   return [...chips, ...formatTokenStatChips(props.item.tokenStats)];
 });
+
+function formatContextExtractionStatus(status: "queued" | "enqueue_failed" | "processed" | "process_failed"): string {
+  switch (status) {
+    case "queued":
+      return "已入队";
+    case "enqueue_failed":
+      return "入队失败";
+    case "processed":
+      return "已执行";
+    case "process_failed":
+      return "执行失败";
+  }
+}
 
 const plannerReasonText = computed(() => {
   if (props.item.kind !== "gate_decision") {
@@ -738,6 +768,25 @@ function openActions(): void {
         >
           <WorkbenchCard title="详细信息">
             <TranscriptTextBlock :text="item.details" />
+          </WorkbenchCard>
+        </WorkbenchDisclosure>
+      </div>
+
+      <div v-else-if="item.kind === 'context_extraction_event'" class="flex flex-col gap-2">
+        <p class="m-0 whitespace-pre-wrap wrap-break-word text-text-muted">{{ item.summary }}</p>
+        <WorkbenchDisclosure
+          v-if="item.details || item.errorMessage"
+          :expanded="expanded"
+          collapsed-title="展开详细信息"
+          expanded-title="收起详细信息"
+          :summary="item.status"
+          @toggle="toggleExpanded"
+        >
+          <WorkbenchCard v-if="item.details" title="详细信息">
+            <TranscriptTextBlock :text="item.details" />
+          </WorkbenchCard>
+          <WorkbenchCard v-if="item.errorMessage" title="错误信息">
+            <TranscriptTextBlock :text="item.errorMessage" />
           </WorkbenchCard>
         </WorkbenchDisclosure>
       </div>

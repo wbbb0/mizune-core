@@ -35,6 +35,7 @@ import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadine
 import type { UserStore } from "#identity/userStore.ts";
 import type { ContextRetrievalService } from "#context/contextRetrievalService.ts";
 import type { ContextStore } from "#context/contextStore.ts";
+import type { ContextExtractionQueue } from "#context/contextExtractionQueue.ts";
 import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
 import type { SessionWorkPersistenceDeps } from "../session-work/sessionWorkCoreDeps.ts";
 import type { ComfyClient } from "#comfy/comfyClient.ts";
@@ -68,7 +69,7 @@ export interface GenerationPromptBuilderDeps {
   globalRuleStore: GlobalRuleStore;
   toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
-  contextStore?: Pick<ContextStore, "listUserFacts" | "upsertUserFact" | "upsertRawMessages" | "upsertUserSearchChunk" | "sweepUserSearchChunks">;
+  contextStore?: Pick<ContextStore, "listUserFacts">;
   contextRetrievalService?: Pick<ContextRetrievalService, "retrieveUserContext">;
 }
 
@@ -119,6 +120,7 @@ export interface GenerationToolRuntimeDeps {
 export interface GenerationLifecycleDeps extends SessionWorkPersistenceDeps {
   persistSession: (sessionId: string, reason: string) => void;
   getScheduler: () => Scheduler;
+  contextExtractionQueue?: Pick<ContextExtractionQueue, "enqueueTurn">;
 }
 
 export interface GenerationRunnerDeps {

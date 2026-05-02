@@ -208,7 +208,17 @@ const contextConfigSchema = s.object({
     summaryAfterDays: s.number().int().positive().title("摘要化天数").default(30),
     deletedRetentionDays: s.number().int().positive().title("已删除项保留天数").default(14),
     maintenanceIntervalMs: s.number().int().positive().title("维护间隔毫秒").default(60 * 60 * 1000)
-  }).title("保留策略").describe("控制自动沉淀的可检索片段容量。长期事实不受此限制。").default(emptyObject)
+  }).title("保留策略").describe("控制自动沉淀的可检索片段容量。长期事实不受此限制。").default(emptyObject),
+  extraction: s.object({
+    enabled: s.boolean().title("启用").default(true),
+    debounceMs: s.number().int().positive().title("抽取防抖毫秒").default(90 * 1000),
+    maxDelayMs: s.number().int().positive().title("最大延迟毫秒").default(5 * 60 * 1000),
+    maxTurnsPerBatch: s.number().int().positive().title("每批最大轮数").default(3),
+    minConfidence: s.number().min(0).max(1).title("最低置信度").default(0.7),
+    relatedMemoryLimit: s.number().int().min(0).title("相关旧记忆数量").default(8),
+    timeoutMs: s.number().int().positive().title("超时毫秒").default(30 * 1000),
+    enableThinking: s.boolean().title("启用思考").default(false)
+  }).title("记忆抽取").describe("在回复完成后低频抽取当前轮中可长期保留的用户记忆；复用 llm.summarizer 模型，summarizer 不可用时自动跳过，失败时不阻断正常聊天。").default(emptyObject)
 }).title("上下文").describe("控制统一上下文存储、向量化和检索。").default(emptyObject);
 
 const internalApiWebuiConfigSchema = s.object({

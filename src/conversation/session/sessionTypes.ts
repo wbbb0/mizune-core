@@ -124,6 +124,7 @@ export type InternalSystemMarkerItem = Extract<InternalTranscriptItem, { kind: "
 export type InternalFallbackEventItem = Extract<InternalTranscriptItem, { kind: "fallback_event" }>;
 export type InternalTriggerEventItem = Extract<InternalTranscriptItem, { kind: "internal_trigger_event" }>;
 export type TranscriptTitleGenerationItem = Extract<InternalTranscriptItem, { kind: "title_generation_event" }>;
+export type TranscriptContextExtractionEventItem = Extract<InternalTranscriptItem, { kind: "context_extraction_event" }>;
 export type SessionFallbackEventType = InternalFallbackEventItem["fallbackType"];
 export type InternalTriggerStage = InternalTriggerEventItem["stage"];
 

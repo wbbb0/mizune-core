@@ -2,6 +2,7 @@ import type { AppServiceBootstrap } from "../bootstrap/bootstrapTypes.ts";
 import type { ComfyTaskRecord } from "#comfy/taskSchema.ts";
 import type { InternalSessionTriggerExecution } from "#conversation/session/sessionTypes.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
+import type { ContextExtractionQueue } from "#context/contextExtractionQueue.ts";
 import type {
   GenerationRunnerDeps,
   GenerationIdentityDeps,
@@ -89,7 +90,8 @@ export function buildGenerationToolRuntimeDeps(services: AppServiceBootstrap): G
 export function buildGenerationLifecycleDeps(
   services: AppServiceBootstrap,
   persistSession: (sessionId: string, reason: string) => void,
-  getScheduler: () => Scheduler
+  getScheduler: () => Scheduler,
+  contextExtractionQueue?: Pick<ContextExtractionQueue, "enqueueTurn">
 ): GenerationLifecycleDeps {
   return {
     logger: services.logger,
@@ -97,20 +99,22 @@ export function buildGenerationLifecycleDeps(
     userStore: services.userStore,
     userIdentityStore: services.userIdentityStore,
     persistSession,
-    getScheduler
+    getScheduler,
+    ...(contextExtractionQueue ? { contextExtractionQueue } : {})
   };
 }
 
 export function buildSessionWorkCoordinatorDeps(
   services: AppServiceBootstrap,
   persistSession: (sessionId: string, reason: string) => void,
-  getScheduler: () => Scheduler
+  getScheduler: () => Scheduler,
+  contextExtractionQueue?: Pick<ContextExtractionQueue, "enqueueTurn">
 ): GenerationRunnerDeps {
   return {
     promptBuilder: buildGenerationPromptBuilderDeps(services),
     identity: buildGenerationIdentityDeps(services),
     toolRuntime: buildGenerationToolRuntimeDeps(services),
-    lifecycle: buildGenerationLifecycleDeps(services, persistSession, getScheduler),
+    lifecycle: buildGenerationLifecycleDeps(services, persistSession, getScheduler, contextExtractionQueue),
     sessionRuntime: buildGenerationSessionRuntimeDeps(services)
   };
 }

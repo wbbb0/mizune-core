@@ -2,7 +2,8 @@ import type {
   InternalFallbackEventItem,
   InternalSessionTriggerExecution,
   InternalTriggerEventItem,
-  InternalTriggerStage
+  InternalTriggerStage,
+  TranscriptContextExtractionEventItem
 } from "./sessionTypes.ts";
 import type {
   TranscriptTitleGenerationItem
@@ -83,6 +84,86 @@ export function createSessionTitleGenerationEvent(input: {
     summary: input.summary,
     details: input.details
   };
+}
+
+export function createContextExtractionEvent(input: {
+  status: "queued" | "enqueue_failed" | "processed" | "process_failed";
+  targetUserIds: string[];
+  messageCount: number;
+  created?: number;
+  replaced?: number;
+  ignored?: number;
+  error?: unknown;
+  timestampMs?: number;
+}): TranscriptContextExtractionEventItem {
+  const failed = input.status === "enqueue_failed" || input.status === "process_failed";
+  const targetCount = input.targetUserIds.length;
+  const summary = buildContextExtractionSummary({
+    status: input.status,
+    targetCount,
+    messageCount: input.messageCount,
+    ...(input.created != null ? { created: input.created } : {}),
+    ...(input.replaced != null ? { replaced: input.replaced } : {}),
+    ...(input.ignored != null ? { ignored: input.ignored } : {})
+  });
+  const details = [
+    `targetUserIds: ${input.targetUserIds.join(", ") || "none"}`,
+    `messageCount: ${input.messageCount}`,
+    input.created != null ? `created: ${input.created}` : null,
+    input.replaced != null ? `replaced: ${input.replaced}` : null,
+    input.ignored != null ? `ignored: ${input.ignored}` : null
+  ].filter(Boolean).join("\n");
+  return {
+    kind: "context_extraction_event",
+    llmVisible: false,
+    timestampMs: input.timestampMs ?? Date.now(),
+    status: input.status,
+    title: formatContextExtractionTitle(input.status),
+    summary,
+    targetUserIds: input.targetUserIds,
+    messageCount: input.messageCount,
+    ...(input.created != null ? { created: input.created } : {}),
+    ...(input.replaced != null ? { replaced: input.replaced } : {}),
+    ...(input.ignored != null ? { ignored: input.ignored } : {}),
+    details,
+    ...(failed ? { errorMessage: formatErrorDetails(input.error) } : {})
+  };
+}
+
+function formatContextExtractionTitle(status: "queued" | "enqueue_failed" | "processed" | "process_failed"): string {
+  switch (status) {
+    case "queued":
+      return "记忆抽取 · 已入队";
+    case "enqueue_failed":
+      return "记忆抽取 · 入队失败";
+    case "processed":
+      return "记忆抽取 · 已执行";
+    case "process_failed":
+      return "记忆抽取 · 执行失败";
+  }
+}
+
+function buildContextExtractionSummary(input: {
+  status: "queued" | "enqueue_failed" | "processed" | "process_failed";
+  targetCount: number;
+  messageCount: number;
+  created?: number;
+  replaced?: number;
+  ignored?: number;
+}): string {
+  switch (input.status) {
+    case "queued":
+      return `记忆抽取已入队，目标用户 ${input.targetCount} 个，候选消息 ${input.messageCount} 条`;
+    case "enqueue_failed":
+      return `记忆抽取入队失败，目标用户 ${input.targetCount} 个，候选消息 ${input.messageCount} 条；本轮回复不受影响`;
+    case "processed":
+      return [
+        `记忆抽取已执行，目标用户 ${input.targetCount} 个，候选消息 ${input.messageCount} 条`,
+        `创建 ${input.created ?? 0} 条，替换 ${input.replaced ?? 0} 条，忽略 ${input.ignored ?? 0} 条`
+      ].join("；");
+    case "process_failed":
+      return `记忆抽取执行失败，目标用户 ${input.targetCount} 个，候选消息 ${input.messageCount} 条；其他功能不受影响`;
+  }
 }
 
 export function createInternalTriggerEvent(input: {

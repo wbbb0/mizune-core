@@ -19,6 +19,7 @@ export const transcriptInternalTriggerKindValues = [
   "terminal_input_required"
 ] as const;
 export const transcriptInternalTriggerStageValues = ["received", "queued", "dequeued", "started"] as const;
+export const transcriptContextExtractionStatusValues = ["queued", "enqueue_failed", "processed", "process_failed"] as const;
 
 export const storedToolCallSchema = z.object({
   id: z.string().min(1),
@@ -316,6 +317,23 @@ export const transcriptTitleGenerationItemSchema = z.object({
   details: z.string()
 });
 
+export const transcriptContextExtractionEventItemSchema = z.object({
+  ...transcriptItemMetaSchema.shape,
+  kind: z.literal("context_extraction_event"),
+  llmVisible: z.literal(false),
+  timestampMs: z.number().int().nonnegative(),
+  status: z.enum(transcriptContextExtractionStatusValues),
+  title: z.string(),
+  summary: z.string(),
+  targetUserIds: z.array(z.string().min(1)),
+  messageCount: z.number().int().nonnegative(),
+  created: z.number().int().nonnegative().optional(),
+  replaced: z.number().int().nonnegative().optional(),
+  ignored: z.number().int().nonnegative().optional(),
+  details: z.string().optional(),
+  errorMessage: z.string().optional()
+});
+
 export const internalTranscriptItemSchema = z.discriminatedUnion("kind", [
   transcriptUserMessageItemSchema,
   transcriptAssistantMessageItemSchema,
@@ -330,7 +348,8 @@ export const internalTranscriptItemSchema = z.discriminatedUnion("kind", [
   transcriptSystemMarkerItemSchema,
   transcriptFallbackEventItemSchema,
   transcriptInternalTriggerEventItemSchema,
-  transcriptTitleGenerationItemSchema
+  transcriptTitleGenerationItemSchema,
+  transcriptContextExtractionEventItemSchema
 ]);
 
 export const transcriptItemPatchSchema = z.object({

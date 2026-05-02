@@ -240,6 +240,8 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
       return "兜底事件";
     case "internal_trigger_event":
       return "内部触发事件";
+    case "context_extraction_event":
+      return "记忆抽取";
   }
 }
 

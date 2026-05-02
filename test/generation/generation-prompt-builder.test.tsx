@@ -1551,7 +1551,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     assert.match(systemContent, /已设定：自我定位=冷静克制，不轻易示弱；社会角色=图书管理员；生活状态=雨夜同居；现实契约=始终按真人自处；硬边界=绝不跳出角色/);
   });
 
-  test("chat prompt persists searchable context chunks and excludes current batch from retrieval", async () => {
+  test("chat prompt retrieves context without depositing current turn into memory store", async () => {
     const rawMessages: Array<{ messageId: string; text: string; userId: string }> = [];
     const upsertedChunks: Array<{ itemId: string; text: string }> = [];
     const upsertedFacts: Array<{ title: string; content: string }> = [];
@@ -1599,7 +1599,16 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       } as any,
       contextStore: {
         listUserFacts() {
-          return [];
+          return [{
+            id: "mem_pref_1",
+            title: "检索偏好",
+            content: "用户喜欢 Orama 版上下文检索",
+            kind: "preference",
+            source: "user_explicit",
+            createdAt: 1,
+            updatedAt: 1,
+            importance: 4
+          }];
         },
         upsertUserFact(input: { title: string; content: string }) {
           upsertedFacts.push({ title: input.title, content: input.content });
@@ -1695,27 +1704,18 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       }]
     });
 
-    assert.equal(rawMessages.length, 1);
-    assert.ok(rawMessages[0]?.messageId.startsWith("raw_"));
-    assert.equal(rawMessages[0]?.userId, "10001");
-    assert.equal(rawMessages[0]?.text, "记住我喜欢 Orama 版上下文检索");
-    assert.deepEqual(upsertedFacts, [{
-      title: "我喜欢 Orama 版上下文检索",
-      content: "我喜欢 Orama 版上下文检索"
-    }]);
-    assert.equal(upsertedChunks.length, 2);
-    assert.ok(upsertedChunks.some((item) => item.itemId.startsWith("ctx_history_") && item.text.includes("SQLite schema")));
-    assert.ok(upsertedChunks.every((item) => !item.text.includes("收到。")));
-    const batchChunk = upsertedChunks.find((item) => item.itemId.startsWith("ctx_batch_"));
-    assert.ok(batchChunk);
+    assert.equal(rawMessages.length, 0);
+    assert.equal(upsertedFacts.length, 0);
+    assert.equal(upsertedChunks.length, 0);
     assert.equal(retrievalCalls.length, 1);
     assert.equal(retrievalCalls[0]?.queryText, "Tester：记住我喜欢 Orama 版上下文检索");
-    assert.deepEqual(retrievalCalls[0]?.excludeItemIds, [batchChunk.itemId]);
+    assert.deepEqual(retrievalCalls[0]?.excludeItemIds, ["mem_pref_1"]);
     assert.match(String(result.promptMessages[0]?.content ?? ""), /retrieved_user_context/);
     assert.match(String(result.promptMessages[0]?.content ?? ""), /用户之前在处理 SQLite 迁移/);
+    assert.match(String(result.promptMessages[0]?.content ?? ""), /用户喜欢 Orama 版上下文检索/);
   });
 
-  test("chat prompt fails open when context chunk deposition fails", async () => {
+  test("chat prompt does not depend on context deposition methods", async () => {
     const builder = createGenerationPromptBuilder({
       config: createTestAppConfig(),
       oneBotClient: {} as any,

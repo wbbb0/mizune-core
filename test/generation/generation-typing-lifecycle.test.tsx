@@ -72,6 +72,8 @@ function createExecutorHarness(options?: {
   forceRegenerateTitleAfterTurn?: boolean;
   captureDraftOverlay?: boolean;
   onGenerateTitle?: () => Promise<string | null> | string | null;
+  currentUser?: { userId: string; relationship: "owner" | "known" };
+  contextExtractionQueue?: { enqueueTurn: (turn: unknown) => void };
   customGenerate?: (input: {
     onReasoningDelta?: (delta: string) => void;
     onTextDelta?: (delta: string) => Promise<void>;
@@ -269,7 +271,8 @@ function createExecutorHarness(options?: {
       persistSession() {},
       getScheduler() {
         return {} as never;
-      }
+      },
+      ...(options?.contextExtractionQueue ? { contextExtractionQueue: options.contextExtractionQueue } : {})
     }
   }, {
     processNextSessionWork() {}
@@ -287,7 +290,7 @@ function createExecutorHarness(options?: {
     interactionMode: "normal",
     internalTranscript: [],
     debugMarkers: [],
-    currentUser: null as never,
+    currentUser: (options?.currentUser ?? null) as never,
     persona: null as never,
     batchMessages: [createBatchMessage()],
     sendTarget: {
@@ -375,6 +378,64 @@ function createExecutorHarness(options?: {
     await harness.runPromise;
 
     assert.deepEqual(harness.events, ["typing:start", "send:你好", "typing:stop"]);
+  });
+
+  test("context extraction enqueue failure does not block generation completion", async () => {
+    const harness = createExecutorHarness({
+      currentUser: {
+        userId: "owner",
+        relationship: "owner"
+      },
+      contextExtractionQueue: {
+        enqueueTurn() {
+          throw new Error("queue unavailable");
+        }
+      }
+    });
+
+    await waitForEvents(harness.events, 2);
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.deepEqual(harness.events, ["typing:start", "send:你好", "typing:stop"]);
+    assert.equal(harness.sessionManager.hasActiveResponse(harness.sessionId), false);
+    const event = harness.sessionManager
+      .getSession(harness.sessionId)
+      .internalTranscript
+      .find((item) => item.kind === "context_extraction_event");
+    assert.equal(event?.kind, "context_extraction_event");
+    assert.equal(event?.status, "enqueue_failed");
+    assert.deepEqual(event?.targetUserIds, ["owner"]);
+    assert.match(event?.errorMessage ?? "", /queue unavailable/);
+  });
+
+  test("context extraction enqueue is visible in backend transcript", async () => {
+    const enqueuedTurns: unknown[] = [];
+    const harness = createExecutorHarness({
+      currentUser: {
+        userId: "owner",
+        relationship: "owner"
+      },
+      contextExtractionQueue: {
+        enqueueTurn(turn) {
+          enqueuedTurns.push(turn);
+        }
+      }
+    });
+
+    await waitForEvents(harness.events, 2);
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.equal(enqueuedTurns.length, 1);
+    const event = harness.sessionManager
+      .getSession(harness.sessionId)
+      .internalTranscript
+      .find((item) => item.kind === "context_extraction_event");
+    assert.equal(event?.kind, "context_extraction_event");
+    assert.equal(event?.status, "queued");
+    assert.deepEqual(event?.targetUserIds, ["owner"]);
+    assert.equal(event?.messageCount, 1);
   });
 
   test("typing stop is skipped when a newer response epoch takes over", async () => {

@@ -8,6 +8,7 @@ import {
 } from "#conversation/session/historyContext.ts";
 import { buildToolObservation } from "#conversation/session/toolObservation.ts";
 import {
+  createContextExtractionEvent,
   createGenerationFailureFallbackEvent,
   createModelFallbackEvent,
   formatErrorDetails
@@ -725,6 +726,51 @@ export function createGenerationExecutor(
           "history_assistant_appended"
         );
         persistSession(sessionId, "assistant_response_finalized");
+        if (input.currentUser?.userId && lifecycle.contextExtractionQueue) {
+          const targetUserIds = collectExtractionUserIds(input.batchMessages);
+          try {
+            for (const userId of targetUserIds) {
+              lifecycle.contextExtractionQueue.enqueueTurn({
+                sessionId,
+                userId,
+                chatType: sendTarget.chatType,
+                senderName: input.batchMessages.find((message) => message.userId === userId)?.senderName ?? sendTarget.senderName,
+                userMessages: input.batchMessages.map((message) => ({
+                  userId: message.userId,
+                  senderName: message.senderName,
+                  text: message.text,
+                  receivedAt: message.receivedAt
+                })),
+                assistantText: finalizedAssistant.text,
+                completedAt: Date.now()
+              });
+            }
+            appendContextExtractionTranscriptEvent({
+              sessionManager,
+              persistSession,
+              sessionId,
+              expectedEpoch,
+              status: "queued",
+              targetUserIds,
+              messageCount: input.batchMessages.length
+            });
+          } catch (error) {
+            logger.warn({
+              sessionId,
+              error: error instanceof Error ? error.message : String(error)
+            }, "context_extraction_enqueue_failed_open");
+            appendContextExtractionTranscriptEvent({
+              sessionManager,
+              persistSession,
+              sessionId,
+              expectedEpoch,
+              status: "enqueue_failed",
+              targetUserIds,
+              messageCount: input.batchMessages.length,
+              error
+            });
+          }
+        }
       }
 
       if (finishedCurrent) {
@@ -781,4 +827,45 @@ export function createGenerationExecutor(
   return {
     runGeneration
   };
+}
+
+function collectExtractionUserIds(messages: GenerationRuntimeBatchMessage[]): string[] {
+  const userIds: string[] = [];
+  const seen = new Set<string>();
+  for (const message of messages) {
+    if (!message.text.trim() || seen.has(message.userId)) {
+      continue;
+    }
+    seen.add(message.userId);
+    userIds.push(message.userId);
+  }
+  return userIds;
+}
+
+function appendContextExtractionTranscriptEvent(input: {
+  sessionManager: Pick<GenerationExecutorDeps["sessionRuntime"]["sessionManager"], "appendInternalTranscriptIfEpochMatches">;
+  persistSession: GenerationExecutorDeps["lifecycle"]["persistSession"];
+  sessionId: string;
+  expectedEpoch: number;
+  status: "queued" | "enqueue_failed";
+  targetUserIds: string[];
+  messageCount: number;
+  error?: unknown;
+}): void {
+  if (input.targetUserIds.length === 0) {
+    return;
+  }
+  const applied = input.sessionManager.appendInternalTranscriptIfEpochMatches(
+    input.sessionId,
+    input.expectedEpoch,
+    createContextExtractionEvent({
+      status: input.status,
+      targetUserIds: input.targetUserIds,
+      messageCount: input.messageCount,
+      ...(input.error !== undefined ? { error: input.error } : {})
+    })
+  );
+  if (applied) {
+    input.persistSession(input.sessionId, "context_extraction_transcript_updated");
+  }
 }

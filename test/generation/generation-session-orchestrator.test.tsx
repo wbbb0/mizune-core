@@ -888,6 +888,7 @@ test("turn planner receives content-safety projected history and batch", async (
 
   let capturedPlannerBatchMessages: Array<{ text: string }> = [];
   let capturedPlannerHistory: Array<{ role: string; content: string }> = [];
+  let capturedRunGenerationBatchMessages: Array<{ text: string }> = [];
   let resolveRunGeneration!: () => void;
   const runGenerationDone = new Promise<void>((resolve) => {
     resolveRunGeneration = resolve;
@@ -1034,7 +1035,8 @@ test("turn planner receives content-safety projected history and batch", async (
         };
       }
     } as any,
-    async runGeneration() {
+    async runGeneration(input: { batchMessages: Array<{ text: string }> }) {
+      capturedRunGenerationBatchMessages = input.batchMessages;
       resolveRunGeneration();
     },
     processNextSessionWork() {}
@@ -1045,4 +1047,5 @@ test("turn planner receives content-safety projected history and batch", async (
 
   assert.deepEqual(capturedPlannerHistory.map((message) => message.content), ["⟦内容安全: history⟧", "历史回答"]);
   assert.deepEqual(capturedPlannerBatchMessages.map((message) => message.text), ["⟦内容安全: batch⟧"]);
+  assert.deepEqual(capturedRunGenerationBatchMessages.map((message) => message.text), ["⟦内容安全: batch⟧"]);
 });

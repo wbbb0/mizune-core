@@ -12,6 +12,9 @@ import { createRuntimeMessageIngress } from "./messageIngress.ts";
 import { buildSessionWorkCoordinatorDeps, createComfyTaskNotifications } from "./runtimeDependencyBuilders.ts";
 import { createInternalApiServices } from "#internalApi/types.ts";
 import { ContextMaintenanceService } from "#context/contextMaintenanceService.ts";
+import { ContextExtractionQueue } from "#context/contextExtractionQueue.ts";
+import { ContextExtractionService, type ContextExtractionTurn } from "#context/contextExtractionService.ts";
+import { createContextExtractionEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import {
   shutdownRuntime,
   startInternalApiIfEnabled,
@@ -109,11 +112,35 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
   let sessionWorkCoordinator!: ReturnType<typeof createSessionWorkCoordinator>;
   let comfyTaskRunner!: ComfyTaskRunner;
   let contextMaintenanceService!: ContextMaintenanceService;
+  let contextExtractionQueue!: ContextExtractionQueue;
 
   let scheduler!: Scheduler;
   let schedulerStarted = false;
+  const contextExtractionService = new ContextExtractionService(config, llmClient, contextStore, logger);
+  contextExtractionQueue = new ContextExtractionQueue(config, contextExtractionService, logger, {
+    onBatchProcessed: (event) => {
+      sessionManager.appendInternalTranscript(event.sessionId, createContextExtractionEvent({
+        status: "processed",
+        targetUserIds: [event.userId],
+        messageCount: countExtractionMessages(event.turns),
+        created: event.result.created,
+        replaced: event.result.replaced,
+        ignored: event.result.ignored
+      }));
+      persistSession(event.sessionId, "context_extraction_processed");
+    },
+    onBatchFailed: (event) => {
+      sessionManager.appendInternalTranscript(event.sessionId, createContextExtractionEvent({
+        status: "process_failed",
+        targetUserIds: [event.userId],
+        messageCount: countExtractionMessages(event.turns),
+        error: event.error
+      }));
+      persistSession(event.sessionId, "context_extraction_failed");
+    }
+  });
   sessionWorkCoordinator = createSessionWorkCoordinator(
-    buildSessionWorkCoordinatorDeps(services, persistSession, () => scheduler)
+    buildSessionWorkCoordinatorDeps(services, persistSession, () => scheduler, contextExtractionQueue)
   );
   shellRuntime.setEventHandler((event) => sessionWorkCoordinator.dispatchTerminalEvent(event));
 
@@ -331,6 +358,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
           schedulerStarted,
           scheduler,
           contextMaintenanceService,
+          contextExtractionQueue,
           comfyTaskRunner,
           singleInstanceLock,
           logger
@@ -354,4 +382,10 @@ function summarizeWhitelist(whitelistStore: WhitelistStore): { userWhitelistSize
 function isWhitelistEmpty(whitelistStore: WhitelistStore): boolean {
   const snapshot = whitelistStore.getSnapshot();
   return snapshot.users.length === 0 && snapshot.groups.length === 0;
+}
+
+function countExtractionMessages(turns: ContextExtractionTurn[]): number {
+  return turns.reduce((count, turn) => (
+    count + turn.userMessages.filter((message) => message.text.trim().length > 0).length
+  ), 0);
 }

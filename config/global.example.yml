@@ -121,6 +121,16 @@ context:
     summaryAfterDays: 30
     deletedRetentionDays: 14
     maintenanceIntervalMs: 3600000
+  extraction:
+    # 回复完成后用 llm.summarizer 抽取长期用户记忆；summarizer 不可用时自动跳过。
+    enabled: true
+    debounceMs: 90000
+    maxDelayMs: 300000
+    maxTurnsPerBatch: 3
+    minConfidence: 0.7
+    relatedMemoryLimit: 8
+    timeoutMs: 30000
+    enableThinking: false
 whitelist:
   enabled: true
 internalApi:

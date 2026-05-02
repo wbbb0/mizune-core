@@ -788,7 +788,7 @@ export function createGenerationSessionOrchestrator(
         debugMarkers,
         currentUser: user,
         persona,
-        batchMessages: messages,
+        batchMessages: promptSafety.runtimeBatchMessages,
         sendTarget: {
           delivery: resolvedDelivery,
           chatType: last.chatType,
