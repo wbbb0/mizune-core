@@ -14,7 +14,8 @@ export type LlmRoutingRole =
   | "image_captioner"
   | "image_inspector"
   | "audio_transcription"
-  | "turn_planner";
+  | "turn_planner"
+  | "embedding";
 
 interface RoutingRoleDefinition {
   label: string;
@@ -80,6 +81,12 @@ const routingRoleDefinitions: Record<LlmRoutingRole, RoutingRoleDefinition & {
     requiredModelType: "chat",
     presetField: "turnPlanner",
     getModelRefs: (preset) => preset.turnPlanner
+  },
+  embedding: {
+    label: "向量模型",
+    requiredModelType: "embedding",
+    presetField: "embedding",
+    getModelRefs: (preset) => preset.embedding
   }
 };
 
@@ -103,7 +110,8 @@ export function createEmptyRoutingPreset(): Required<LlmRoutingPreset> {
     imageCaptioner: [],
     imageInspector: [],
     audioTranscription: [],
-    turnPlanner: []
+    turnPlanner: [],
+    embedding: []
   };
 }
 

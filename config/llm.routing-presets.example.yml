@@ -18,3 +18,5 @@ balanced:
     - gemini25_flash_transcription
   turnPlanner:
     - qwen35_flash
+  embedding:
+    - text_embedding_v4

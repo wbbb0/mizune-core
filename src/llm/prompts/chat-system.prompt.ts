@@ -208,6 +208,7 @@ export function buildBaseSystemLines(input: {
   participantProfiles: PromptInput["participantProfiles"];
   userProfile: PromptInput["userProfile"];
   currentUserMemories?: PromptInput["currentUserMemories"] | undefined;
+  retrievedUserContext?: PromptInput["retrievedUserContext"] | undefined;
   globalRules?: PromptInput["globalRules"] | undefined;
   historySummary?: string | null | undefined;
   liveResources?: PromptInput["liveResources"] | undefined;
@@ -359,6 +360,7 @@ export function buildBaseSystemLines(input: {
         ...buildNpcContextLines(input.sessionMode, input.npcProfiles, input.participantProfiles)
       ]),
       renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
+      renderPromptSection("retrieved_user_context", buildRetrievedUserContextLines(input.retrievedUserContext)),
       renderPromptSection("global_rules", buildGlobalRuleLines(preparedMemoryContext.globalRules)),
       renderPromptSection("toolset_rules", buildToolsetRuleLines(preparedMemoryContext.toolsetRules)),
       renderPromptSection("current_user_profile", buildCurrentUserProfileLines({
@@ -396,6 +398,7 @@ export function buildBaseSystemLines(input: {
       ...buildNpcContextLines(input.sessionMode, input.npcProfiles, input.participantProfiles)
     ]),
     renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
+    renderPromptSection("retrieved_user_context", buildRetrievedUserContextLines(input.retrievedUserContext)),
     renderPromptSection("global_rules", buildGlobalRuleLines(preparedMemoryContext.globalRules)),
     renderPromptSection("toolset_rules", buildToolsetRuleLines(preparedMemoryContext.toolsetRules)),
     renderPromptSection("current_user_profile", buildCurrentUserProfileLines({
@@ -1077,6 +1080,18 @@ function buildNpcContextLines(
 
 function buildHistorySummaryLines(historySummary?: string | null | undefined): string[] {
   return historySummary ? [`较早历史摘要：${historySummary}`] : [];
+}
+
+function buildRetrievedUserContextLines(items: PromptInput["retrievedUserContext"] | undefined): string[] {
+  if (!items || items.length === 0) {
+    return [];
+  }
+  const lines = items.map((item) => {
+    const title = item.title?.trim() ? `${item.title.trim()}：` : "";
+    const source = item.sourceType === "summary" ? "摘要" : item.sourceType === "chunk" ? "片段" : "事实";
+    return `- ${source} score=${item.score.toFixed(3)} ${title}${item.text}`;
+  });
+  return [`按当前消息语义召回的用户上下文：\n${lines.join("\n")}`];
 }
 
 function buildLiveResourceLines(resources: PromptLiveResource[] | undefined): string[] {

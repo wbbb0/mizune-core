@@ -18,12 +18,12 @@ export const persistedUserSchema = s.object({
   specialRole: s.literal("npc").title("特殊角色").optional(),
   createdAt: s.number().int().min(0).title("创建时间")
 }).title("用户")
-  .describe("保存单个用户的基础资料和长期记忆。")
+  .describe("保存单个用户的基础资料。长期记忆已迁移到上下文记忆。")
   .strict();
 
 export const userStoreSchema = s.array(persistedUserSchema)
   .title("用户列表")
-  .describe("按列表保存所有用户的基础资料和长期记忆。")
+  .describe("按列表保存所有用户的基础资料。长期记忆由上下文记忆存储管理。")
   .default([]);
 
 export type PersistedUser = Infer<typeof persistedUserSchema>;

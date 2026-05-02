@@ -7,6 +7,7 @@ import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
 import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
+import type { ContextStore } from "#context/contextStore.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { SessionDirectCommandAccess } from "#conversation/session/sessionCapabilities.ts";
@@ -30,6 +31,8 @@ type DirectCommandArgsMap = {
   stop: {};
   own: { userId?: string };
   compact: { keep?: number };
+  remember: { content: string };
+  forget: { memoryId: string };
   debug: { mode?: DebugModeArg; inlineText?: string };
   setup: { target: ConfigTarget };
   config: { target: ConfigTarget };
@@ -74,6 +77,7 @@ interface DirectCommandHandlerInput {
   scenarioProfileStore: ScenarioProfileStore;
   globalProfileReadinessStore: GlobalProfileReadinessStore;
   setupStore: SetupStateStore;
+  contextStore: Pick<ContextStore, "upsertUserFact" | "removeUserFact">;
   forceCompactSession?: (sessionId: string, retainMessageCount?: number) => Promise<boolean>;
   flushSession?: (sessionId: string, options?: { skipReplyGate?: boolean }) => void;
   persistSession: (sessionId: string, reason: string) => void;
@@ -475,6 +479,55 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       ctx.input.persistSession(ctx.session.id, "session_cleared");
       ctx.input.logger.info({ sessionId: ctx.session.id, cancelled }, "session_cleared_by_command");
       await ctx.send("当前会话上下文已清空。");
+    }
+  },
+  {
+    name: "remember",
+    help: ".remember <内容> 将内容记入当前用户长期记忆",
+    dispatch: {
+      requireTextOnly: true
+    },
+    routing: {
+      allowInPrivate: true,
+      allowInOwnerMentionedGroup: true
+    },
+    parse(text: string): ParsedDirectCommand | null {
+      const match = text.match(/^[。.]\s*remember\s+([\s\S]{1,500})$/i);
+      const content = match?.[1]?.trim();
+      return content ? { name: "remember", content } : null;
+    },
+    async execute(ctx: DirectCommandExecutionContext, command: ParsedDirectCommand) {
+      const rememberCommand = command as Extract<ParsedDirectCommand, { name: "remember" }>;
+      const created = ctx.input.contextStore.upsertUserFact({
+        userId: ctx.incomingMessage.userId,
+        title: rememberCommand.content.length > 24 ? `${rememberCommand.content.slice(0, 24)}...` : rememberCommand.content,
+        content: rememberCommand.content,
+        source: ctx.incomingMessage.relationship === "owner" ? "owner_explicit" : "user_explicit",
+        importance: 4
+      });
+      ctx.input.persistSession(ctx.session.id, "user_memory_remembered_by_command");
+      await ctx.send(`已记住：${created.item.title}\nID：${created.item.id}`);
+    }
+  },
+  {
+    name: "forget",
+    help: ".forget <memoryId> 删除当前用户一条长期记忆",
+    dispatch: {
+      requireTextOnly: true
+    },
+    routing: {
+      allowInPrivate: true,
+      allowInOwnerMentionedGroup: true
+    },
+    parse(text: string): ParsedDirectCommand | null {
+      const match = text.match(/^[。.]\s*forget\s+(\S+)\s*$/i);
+      return match?.[1] ? { name: "forget", memoryId: match[1] } : null;
+    },
+    async execute(ctx: DirectCommandExecutionContext, command: ParsedDirectCommand) {
+      const forgetCommand = command as Extract<ParsedDirectCommand, { name: "forget" }>;
+      const result = ctx.input.contextStore.removeUserFact(ctx.incomingMessage.userId, forgetCommand.memoryId);
+      ctx.input.persistSession(ctx.session.id, result.removed ? "user_memory_forgotten_by_command" : "user_memory_forget_command_noop");
+      await ctx.send(result.removed ? `已忘记：${forgetCommand.memoryId}` : `没有找到这条记忆：${forgetCommand.memoryId}`);
     }
   },
   {

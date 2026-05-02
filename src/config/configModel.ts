@@ -4,7 +4,7 @@ const emptyObject = () => ({} as never);
 const modelProfileSchema = s.object({
   provider: s.string().trim().nonempty().dynamicRef("llm_provider_names").title("Provider"),
   model: s.string().trim().nonempty().title("模型名"),
-  modelType: s.enum(["chat", "transcription", "image_generation"] as const).title("模型类型").default("chat"),
+  modelType: s.enum(["chat", "transcription", "image_generation", "embedding"] as const).title("模型类型").default("chat"),
   supportsThinking: s.boolean().title("支持思考").default(false),
   thinkingControllable: s.boolean().title("可控制思考").default(true),
   supportsVision: s.boolean().title("支持视觉").default(false),
@@ -24,7 +24,8 @@ const llmRoutingPresetSchema = s.object({
   imageCaptioner: createModelRefListSchema().title("图片描述"),
   imageInspector: createModelRefListSchema().title("图片精读"),
   audioTranscription: createModelRefListSchema().title("音频转写"),
-  turnPlanner: createModelRefListSchema().title("轮次规划")
+  turnPlanner: createModelRefListSchema().title("轮次规划"),
+  embedding: createModelRefListSchema().title("向量模型")
 }).title("模型路由预设").describe("为各个模型角色提供统一的模型引用列表。");
 
 const onebotTypingConfigSchema = s.object({
@@ -183,6 +184,31 @@ const conversationConfigSchema = s.object({
     requireAtMention: s.boolean().title("需要 @").default(true)
   }).title("群聊").default(emptyObject)
 }).title("会话").describe("控制会话上下文、压缩和消息发送节奏。").default(emptyObject);
+
+const contextConfigSchema = s.object({
+  embedding: s.object({
+    timeoutMs: s.number().int().positive().title("超时毫秒").default(30000),
+    textPreprocessVersion: s.string().trim().nonempty().title("文本预处理版本").default("v1"),
+    chunkerVersion: s.string().trim().nonempty().title("切分版本").default("user-facts-v1")
+  }).title("向量化").describe("控制上下文检索使用的 embedding 调用和版本隔离。").default(emptyObject),
+  retrieval: s.object({
+    maxResults: s.number().int().positive().title("最大结果数").default(4),
+    candidateMultiplier: s.number().int().positive().title("候选倍率").default(4),
+    minScore: s.number().min(0).title("最低分数").default(0),
+    maxSynchronousEmbeddingDocuments: s.number().int().min(0).title("同步向量化文档上限").default(16)
+  }).title("检索").describe("控制上下文检索候选数量和过滤阈值。").default(emptyObject),
+  indexing: s.object({
+    maintenanceEmbeddingBatchSize: s.number().int().min(0).title("维护向量化批量").default(32),
+    rebuildOnMaintenance: s.boolean().title("维护时重建索引").default(true)
+  }).title("索引").describe("控制后台维护对 embedding 和 Orama 内存索引的处理。").default(emptyObject),
+  retention: s.object({
+    maxUserSearchChunks: s.number().int().positive().title("每用户最大检索片段数").default(500),
+    maxSearchChunkAgeDays: s.number().int().positive().title("检索片段保留天数").default(90),
+    summaryAfterDays: s.number().int().positive().title("摘要化天数").default(30),
+    deletedRetentionDays: s.number().int().positive().title("已删除项保留天数").default(14),
+    maintenanceIntervalMs: s.number().int().positive().title("维护间隔毫秒").default(60 * 60 * 1000)
+  }).title("保留策略").describe("控制自动沉淀的可检索片段容量。长期事实不受此限制。").default(emptyObject)
+}).title("上下文").describe("控制统一上下文存储、向量化和检索。").default(emptyObject);
 
 const internalApiWebuiConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(false),
@@ -375,6 +401,7 @@ export const fileConfigSchema = s.object({
   onebot: onebotConfigSchema,
   llm: llmRuntimeConfigSchema,
   conversation: conversationConfigSchema,
+  context: contextConfigSchema,
   whitelist: s.object({
     enabled: s.boolean().title("启用").default(true)
   }).title("白名单").describe("控制白名单功能是否生效。").default(emptyObject),
@@ -419,6 +446,7 @@ export type ProxyConfig = Infer<typeof proxyConfigSchema>;
 export type LlmProviderConfig = Infer<typeof llmProviderSchema>;
 export type OnebotConfig = Infer<typeof onebotConfigSchema>;
 export type ConversationConfig = Infer<typeof conversationConfigSchema>;
+export type ContextConfig = Infer<typeof contextConfigSchema>;
 export type InternalApiConfig = Infer<typeof internalApiConfigSchema>;
 export type SchedulerConfig = Infer<typeof schedulerConfigSchema>;
 export type ShellConfig = Infer<typeof shellConfigSchema>;

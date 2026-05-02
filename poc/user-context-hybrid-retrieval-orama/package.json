@@ -1,0 +1,17 @@
+{
+  "name": "user-context-hybrid-retrieval-orama-poc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Orama proof of concept for user-scoped hybrid context retrieval",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "demo": "node demo.mjs"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "dependencies": {
+    "@orama/orama": "^3.1.18"
+  }
+}

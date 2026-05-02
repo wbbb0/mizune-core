@@ -1,4 +1,7 @@
 import { ConversationAccessService } from "#identity/conversationAccessService.ts";
+import { ContextEmbeddingService } from "#context/contextEmbeddingService.ts";
+import { ContextRetrievalService } from "#context/contextRetrievalService.ts";
+import { ContextStore } from "#context/contextStore.ts";
 import { GroupMembershipStore } from "#identity/groupMembershipStore.ts";
 import { NpcDirectory } from "#identity/npcDirectory.ts";
 import { WhitelistStore } from "#identity/whitelistStore.ts";
@@ -46,7 +49,12 @@ import { isOwnerBootstrapCommandText } from "./ownerBootstrapPolicy.ts";
 import type { AppBootstrapServices, AppServiceBootstrap, BootstrapRuntimeContext } from "./bootstrapTypes.ts";
 import { resolvePersonaReadinessStatus } from "#persona/personaSetupPolicy.ts";
 
-export function createBootstrapServices(context: BootstrapRuntimeContext): AppBootstrapServices {
+export function createBootstrapServices(
+  context: BootstrapRuntimeContext,
+  options: {
+    oneBotClient?: OneBotClient;
+  } = {}
+): AppBootstrapServices {
   const { config, logger, dataDir } = context;
   const whitelistStore = new WhitelistStore(dataDir, logger);
   const userIdentityStore = new UserIdentityStore(dataDir, logger);
@@ -59,7 +67,7 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
     (userId) => npcDirectory.isNpc(userId),
     isOwnerBootstrapCommandText
   );
-  const oneBotClient = new OneBotClient(config, logger);
+  const oneBotClient = options.oneBotClient ?? new OneBotClient(config, logger);
   const sessionManager = new SessionManager(config);
   const debounceManager = new DebounceManager(logger, sessionManager, config);
   const llmClient = new LlmClient(config, logger);
@@ -87,6 +95,9 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
   const requestStore = new RequestStore(dataDir, logger);
   const groupMembershipStore = new GroupMembershipStore(dataDir, logger);
   const userStore = new UserStore(dataDir, config, logger);
+  const contextStore = new ContextStore(dataDir, config, logger);
+  const contextEmbeddingService = new ContextEmbeddingService(config, llmClient, logger);
+  const contextRetrievalService = new ContextRetrievalService(config, contextStore, contextEmbeddingService, logger);
   const personaStore = new PersonaStore(dataDir, config, logger);
   const globalRuleStore = new GlobalRuleStore(dataDir, config, logger);
   const toolsetRuleStore = new ToolsetRuleStore(dataDir, config, logger);
@@ -134,6 +145,9 @@ export function createBootstrapServices(context: BootstrapRuntimeContext): AppBo
     groupMembershipStore,
     userIdentityStore,
     userStore,
+    contextStore,
+    contextEmbeddingService,
+    contextRetrievalService,
     personaStore,
     globalRuleStore,
     toolsetRuleStore,
@@ -181,6 +195,7 @@ export async function initializeBootstrapState(
       | "groupMembershipStore"
       | "userIdentityStore"
       | "userStore"
+      | "contextStore"
       | "npcDirectory"
       | "personaStore"
       | "globalRuleStore"
@@ -216,6 +231,7 @@ export async function initializeBootstrapState(
     groupMembershipStore,
     userIdentityStore,
     userStore,
+    contextStore,
     npcDirectory,
     personaStore,
     globalRuleStore,
@@ -241,6 +257,11 @@ export async function initializeBootstrapState(
   await groupMembershipStore.init();
   await userIdentityStore.init();
   await userStore.init();
+  await contextStore.init();
+  const migratedUserMemoryCount = contextStore.migrateUserMemories(await userStore.list());
+  if (migratedUserMemoryCount > 0) {
+    await userStore.clearLegacyMemories();
+  }
   await npcDirectory.refresh(userStore);
   await personaStore.init();
   await globalRuleStore.init();

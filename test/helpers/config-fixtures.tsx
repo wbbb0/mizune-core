@@ -208,6 +208,18 @@ const baseTestCatalogOverrides: DeepPartial<LlmCatalogConfig> = {
       supportsSearch: false,
       supportsTools: false,
       preserveThinking: false
+    },
+    embedding: {
+      provider: "test",
+      model: "fake-embedding",
+      modelType: "embedding",
+      supportsThinking: false,
+      thinkingControllable: true,
+      supportsVision: false,
+      supportsAudioInput: false,
+      supportsSearch: false,
+      supportsTools: false,
+      preserveThinking: false
     }
   },
   routingPresets: {
@@ -219,7 +231,8 @@ const baseTestCatalogOverrides: DeepPartial<LlmCatalogConfig> = {
       imageCaptioner: ["main"],
       imageInspector: ["main"],
       audioTranscription: ["transcription"],
-      turnPlanner: ["main"]
+      turnPlanner: ["main"],
+      embedding: ["embedding"]
     }
   }
 };

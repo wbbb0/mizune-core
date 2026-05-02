@@ -3,6 +3,7 @@ import {
   buildPromptImageCaptions,
   collectReferencedImageIds
 } from "#images/imagePromptContext.ts";
+import { createHash } from "node:crypto";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { prepareAudioInputsForModel } from "#messages/audioSources.ts";
@@ -57,6 +58,7 @@ const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "terminal_signal",
   "terminal_stop"
 ]);
+const MAX_CONTEXT_CHUNK_CHARS = 1200;
 
 export interface GenerationPromptHistoryMessage {
   role: "user" | "assistant";
@@ -461,6 +463,235 @@ function toImageCaptionEntries(captionMap: Awaited<ReturnType<typeof prepareProm
   }));
 }
 
+function buildBatchQueryText(messages: GenerationPromptBatchMessage[]): string {
+  return messages
+    .map((message) => [message.senderName, message.text].filter(Boolean).join("："))
+    .filter((item) => item.trim().length > 0)
+    .join("\n")
+    .trim();
+}
+
+function upsertPromptContextChunks(
+  deps: GenerationPromptBuilderDeps,
+  input: {
+    sessionId: string;
+    userId: string;
+    historyForPrompt: GenerationPromptHistoryMessage[];
+    batchMessages: GenerationPromptBatchMessage[];
+  }
+): string[] {
+  if (!deps.contextStore || typeof deps.contextStore.upsertUserSearchChunk !== "function") {
+    return [];
+  }
+  try {
+    const currentBatchItemIds: string[] = [];
+    if (typeof deps.contextStore.upsertRawMessages === "function") {
+      deps.contextStore.upsertRawMessages(buildBatchRawMessages({
+        sessionId: input.sessionId,
+        batchMessages: input.batchMessages
+      }));
+    }
+    for (const [index, message] of input.historyForPrompt.entries()) {
+      const text = truncateContextChunk(`${message.role === "assistant" ? "助手" : "用户"}：${message.content}`);
+      if (!isSearchableContextText(text)) {
+        continue;
+      }
+      deps.contextStore.upsertUserSearchChunk({
+        itemId: buildContextChunkId({
+          kind: "history",
+          sessionId: input.sessionId,
+          userId: input.userId,
+          timestampMs: message.timestampMs ?? 0,
+          index,
+          text
+        }),
+        userId: input.userId,
+        sessionId: input.sessionId,
+        title: message.role === "assistant" ? "近期助手回复" : "近期用户消息",
+        text,
+        source: "system",
+        createdAt: message.timestampMs ?? Date.now(),
+        updatedAt: message.timestampMs ?? Date.now()
+      });
+    }
+    for (const [index, message] of input.batchMessages.entries()) {
+      if (message.userId === input.userId && typeof deps.contextStore.upsertUserFact === "function") {
+        for (const fact of extractExplicitUserFactCandidates(message.text)) {
+          deps.contextStore.upsertUserFact({
+            userId: input.userId,
+            title: fact.title,
+            content: fact.content,
+            kind: "preference",
+            source: "user_explicit",
+            importance: 4
+          });
+        }
+      }
+      const text = truncateContextChunk(buildBatchContextChunkText(message));
+      if (!isSearchableContextText(text)) {
+        continue;
+      }
+      const itemId = buildContextChunkId({
+        kind: "batch",
+        sessionId: input.sessionId,
+        userId: input.userId,
+        timestampMs: message.receivedAt,
+        index,
+        text
+      });
+      deps.contextStore.upsertUserSearchChunk({
+        itemId,
+        userId: input.userId,
+        sessionId: input.sessionId,
+        title: `当前消息：${message.senderName}`,
+        text,
+        source: "user_explicit",
+        createdAt: message.receivedAt,
+        updatedAt: message.receivedAt
+      });
+      currentBatchItemIds.push(itemId);
+    }
+    deps.contextStore.sweepUserSearchChunks({
+      userId: input.userId,
+      maxChunks: deps.config.context.retention.maxUserSearchChunks,
+      maxAgeMs: deps.config.context.retention.maxSearchChunkAgeDays * 24 * 60 * 60 * 1000
+    });
+    return currentBatchItemIds;
+  } catch (error) {
+    deps.logger?.warn({
+      sessionId: input.sessionId,
+      userId: input.userId,
+      error: error instanceof Error ? error.message : String(error)
+    }, "context_chunk_deposition_failed_open");
+    return [];
+  }
+}
+
+function buildBatchRawMessages(input: {
+  sessionId: string;
+  batchMessages: GenerationPromptBatchMessage[];
+}) {
+  const chatType = input.sessionId.startsWith("qqbot:g:") ? "group" as const : "private" as const;
+  const ingestedAt = Date.now();
+  return input.batchMessages.map((message, index) => ({
+    messageId: buildRawMessageId({
+      sessionId: input.sessionId,
+      userId: message.userId,
+      timestampMs: message.receivedAt,
+      index,
+      text: message.text
+    }),
+    userId: message.userId,
+    sessionId: input.sessionId,
+    chatType,
+    role: "user" as const,
+    speakerId: message.userId,
+    timestampMs: message.receivedAt,
+    text: message.text,
+    segments: message.specialSegments ?? [],
+    attachmentRefs: {
+      imageIds: message.imageIds,
+      emojiIds: message.emojiIds,
+      audioIds: message.audioIds,
+      forwardIds: message.forwardIds,
+      replyMessageId: message.replyMessageId,
+      attachmentFileIds: (message.attachments ?? []).map((attachment) => attachment.fileId)
+    },
+    sensitivity: "normal" as const,
+    ingestedAt
+  }));
+}
+
+function buildBatchContextChunkText(message: GenerationPromptBatchMessage): string {
+  const lines = [`${message.senderName}：${message.text.trim() || "<empty>"}`];
+  const mediaRefs = [
+    ...message.imageIds.map((id) => `image:${id}`),
+    ...message.emojiIds.map((id) => `emoji:${id}`),
+    ...message.audioIds.map((id) => `audio:${id}`),
+    ...message.forwardIds.map((id) => `forward:${id}`),
+    ...(message.replyMessageId ? [`reply:${message.replyMessageId}`] : [])
+  ];
+  if (mediaRefs.length > 0) {
+    lines.push(`媒体引用：${mediaRefs.join("；")}`);
+  }
+  return lines.join("\n");
+}
+
+function extractExplicitUserFactCandidates(text: string): Array<{ title: string; content: string }> {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length > 500) {
+    return [];
+  }
+  const match = /^(?:请|帮我|麻烦)?(?:你)?记住[：:\s]*(?<content>[\s\S]{2,200})$/u.exec(trimmed)
+    ?? /^(?:以后|之后)(?:请|帮我|麻烦)?(?:你)?记住[：:\s]*(?<content>[\s\S]{2,200})$/u.exec(trimmed);
+  const content = match?.groups?.content?.trim();
+  if (!content || /^(?:一下|这件事|这个|这些|吧|哦|哈)+$/u.test(content)) {
+    return [];
+  }
+  const normalized = content.replace(/[。！？!?\s]+$/u, "").trim();
+  if (normalized.length < 2) {
+    return [];
+  }
+  return [{
+    title: normalized.length > 24 ? `${normalized.slice(0, 24)}...` : normalized,
+    content: normalized
+  }];
+}
+
+function buildContextChunkId(input: {
+  kind: "history" | "batch";
+  sessionId: string;
+  userId: string;
+  timestampMs: number;
+  index: number;
+  text: string;
+}): string {
+  const digest = createHash("sha256")
+    .update(JSON.stringify(input))
+    .digest("hex")
+    .slice(0, 24);
+  return `ctx_${input.kind}_${digest}`;
+}
+
+function buildRawMessageId(input: {
+  sessionId: string;
+  userId: string;
+  timestampMs: number;
+  index: number;
+  text: string;
+}): string {
+  const digest = createHash("sha256")
+    .update(JSON.stringify(input))
+    .digest("hex")
+    .slice(0, 24);
+  return `raw_${digest}`;
+}
+
+function truncateContextChunk(text: string): string {
+  const trimmed = text.trim();
+  return trimmed.length > MAX_CONTEXT_CHUNK_CHARS
+    ? `${trimmed.slice(0, MAX_CONTEXT_CHUNK_CHARS)}...`
+    : trimmed;
+}
+
+function isSearchableContextText(text: string): boolean {
+  const normalized = text.trim();
+  return normalized.length >= 2 && normalized !== "用户：<empty>" && normalized !== "助手：<empty>";
+}
+
+function buildScheduledQueryText(trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"]): string {
+  switch (trigger.kind) {
+    case "scheduled_instruction":
+      return `${trigger.jobName}\n${trigger.taskInstruction}`.trim();
+    case "comfy_task_completed":
+      return `${trigger.jobName}\n${trigger.taskInstruction}\n${trigger.positivePrompt}`.trim();
+    case "comfy_task_failed":
+      return `${trigger.jobName}\n${trigger.taskInstruction}\n${trigger.lastError}`.trim();
+    default:
+      return "";
+  }
+}
+
 function extractSystemMessages(promptMessages: LlmMessage[]): string[] {
   return promptMessages
     .filter((message) => message.role === "system")
@@ -619,6 +850,28 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
           input.currentUser,
           input.batchMessages[input.batchMessages.length - 1]?.senderName
         );
+    const currentTurnChunkIds = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
+      ? []
+      : upsertPromptContextChunks(deps, {
+          sessionId: input.sessionId,
+          userId: input.currentUser.userId,
+          historyForPrompt: mediaContext.historyForPrompt,
+          batchMessages: input.batchMessages
+        });
+    const currentUserMemories = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
+      ? []
+      : deps.contextStore?.listUserFacts(input.currentUser.userId) ?? [];
+    const retrievedUserContext = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
+      ? []
+      : await deps.contextRetrievalService?.retrieveUserContext({
+          userId: input.currentUser.userId,
+          queryText: buildBatchQueryText(input.batchMessages),
+          excludeItemIds: [
+            ...currentUserMemories.map((item) => item.id),
+            ...currentTurnChunkIds
+          ],
+          ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+        }) ?? [];
     logPromptMemorySuppressions(deps, {
       sessionId: input.sessionId,
       ...(input.modeId ? { modeId: input.modeId } : {}),
@@ -626,7 +879,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       userProfile: userProfilePromptState,
       globalRules,
       toolsetRules,
-      currentUserMemories: (scenarioHostMode || assistantMode) ? [] : (input.currentUser?.memories ?? [])
+      currentUserMemories
     });
 
     const promptMessages = buildPrompt({
@@ -647,7 +900,8 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
             input.batchMessages[input.batchMessages.length - 1]?.senderName
           )
         : userProfilePromptState,
-      currentUserMemories: (scenarioHostMode || assistantMode) ? [] : (input.currentUser?.memories ?? []),
+      currentUserMemories,
+      retrievedUserContext,
       globalRules,
       historySummary: input.historySummary,
       debugMarkers: input.debugMarkers,
@@ -745,6 +999,17 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
           input.currentUser,
           input.targetContext.chatType === "private" ? input.targetContext.senderName : undefined
         );
+    const currentUserMemories = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
+      ? []
+      : deps.contextStore?.listUserFacts(input.currentUser.userId) ?? [];
+    const retrievedUserContext = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
+      ? []
+      : await deps.contextRetrievalService?.retrieveUserContext({
+          userId: input.currentUser.userId,
+          queryText: buildScheduledQueryText(input.trigger),
+          excludeItemIds: currentUserMemories.map((item) => item.id),
+          ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+        }) ?? [];
     logPromptMemorySuppressions(deps, {
       sessionId: input.sessionId,
       ...(input.modeId ? { modeId: input.modeId } : {}),
@@ -752,7 +1017,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       userProfile: userProfilePromptState,
       globalRules,
       toolsetRules,
-      currentUserMemories: (scenarioHostMode || assistantMode) ? [] : (input.currentUser?.memories ?? [])
+      currentUserMemories
     });
 
     const promptMessages = buildScheduledTaskPrompt({
@@ -774,7 +1039,8 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
             input.targetContext.chatType === "private" ? input.targetContext.senderName : undefined
           )
         : userProfilePromptState,
-      currentUserMemories: (scenarioHostMode || assistantMode) ? [] : (input.currentUser?.memories ?? []),
+      currentUserMemories,
+      retrievedUserContext,
       globalRules,
       historySummary: input.historySummary,
       debugMarkers: input.debugMarkers,

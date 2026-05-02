@@ -181,6 +181,7 @@ export function createBrowserToolContext(
     sessionManager: null as unknown as BuiltinToolContext["sessionManager"],
     whitelistStore: null as unknown as BuiltinToolContext["whitelistStore"],
     userStore: null as unknown as BuiltinToolContext["userStore"],
+    contextStore: null as unknown as BuiltinToolContext["contextStore"],
     personaStore: null as unknown as BuiltinToolContext["personaStore"],
     globalRuleStore: null as unknown as BuiltinToolContext["globalRuleStore"],
     toolsetRuleStore: null as unknown as BuiltinToolContext["toolsetRuleStore"],

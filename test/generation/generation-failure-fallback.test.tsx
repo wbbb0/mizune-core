@@ -92,6 +92,7 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
     },
     identity: {
       userStore: {} as never,
+      contextStore: {} as never,
       whitelistStore: {} as never,
       personaStore: {} as never,
       rpProfileStore: {} as never,

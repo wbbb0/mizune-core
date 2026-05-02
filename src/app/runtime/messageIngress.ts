@@ -32,6 +32,7 @@ type DirectCommandDeps = Pick<
   | "globalProfileReadinessStore"
   | "scenarioHostStateStore"
   | "sessionCaptioner"
+  | "contextStore"
   | "userIdentityStore"
 > & {
   sessionManager: SessionDirectCommandAccess & Pick<SessionMessagingAccess, "appendAssistantHistory" | "appendInternalTranscript">;
@@ -133,6 +134,7 @@ function createDeliveryHandleDirectCommand(
     scenarioProfileStore: deps.scenarioProfileStore,
     globalProfileReadinessStore: deps.globalProfileReadinessStore,
     setupStore: deps.setupStore,
+    contextStore: deps.contextStore,
     forceCompactSession: async (sessionId, retainMessageCount) => (
       deps.historyCompressor.forceCompact(sessionId, retainMessageCount)
     ),

@@ -23,6 +23,9 @@ import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { AudioStore } from "#audio/audioStore.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
+import type { ContextEmbeddingService } from "#context/contextEmbeddingService.ts";
+import type { ContextRetrievalService } from "#context/contextRetrievalService.ts";
+import type { ContextStore } from "#context/contextStore.ts";
 import type {
   SessionAdminMutationAccess,
   SessionAdminReadAccess,
@@ -54,6 +57,12 @@ export interface InternalApiConfigSummaryDeps {
 
 export interface InternalApiUserDeps {
   userStore: UserStore;
+}
+
+export interface InternalApiContextDeps {
+  contextStore: ContextStore;
+  contextEmbeddingService: ContextEmbeddingService;
+  contextRetrievalService: ContextRetrievalService;
 }
 
 export interface InternalApiSessionSummary {
@@ -174,6 +183,9 @@ export interface InternalApiDeps {
   globalRuleStore: GlobalRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
   userStore: UserStore;
+  contextStore: ContextStore;
+  contextEmbeddingService: ContextEmbeddingService;
+  contextRetrievalService: ContextRetrievalService;
   whitelistStore: WhitelistStore;
   userIdentityStore: UserIdentityStore;
   requestStore: RequestStore;
@@ -199,7 +211,7 @@ export interface InternalApiDeps {
 
 export interface InternalApiServices {
   basicRoutes: {
-    config: InternalApiConfigSummaryDeps & InternalApiSessionWriteDeps & InternalApiSessionDeleteDeps & InternalApiPersonaDeps & InternalApiUserDeps & {
+    config: InternalApiConfigSummaryDeps & InternalApiSessionWriteDeps & InternalApiSessionDeleteDeps & InternalApiPersonaDeps & InternalApiUserDeps & InternalApiContextDeps & {
       globalRuleStore: GlobalRuleStore;
     };
     editor: EditorService;
@@ -228,16 +240,19 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         whitelistStore: deps.whitelistStore,
         userIdentityStore: deps.userIdentityStore,
         sessionManager: deps.sessionManager,
-      sessionPersistence: deps.sessionPersistence,
-      personaStore: deps.personaStore,
-      globalRuleStore: deps.globalRuleStore,
-      scenarioHostStateStore: deps.scenarioHostStateStore,
-      sessionCaptioner: deps.sessionCaptioner,
-      chatFileStore: deps.chatFileStore,
-      audioStore: deps.audioStore,
-      userStore: deps.userStore,
-      chatMessageFileGcService: deps.chatMessageFileGcService
-    },
+        sessionPersistence: deps.sessionPersistence,
+        personaStore: deps.personaStore,
+        globalRuleStore: deps.globalRuleStore,
+        scenarioHostStateStore: deps.scenarioHostStateStore,
+        sessionCaptioner: deps.sessionCaptioner,
+        chatFileStore: deps.chatFileStore,
+        audioStore: deps.audioStore,
+        userStore: deps.userStore,
+        contextStore: deps.contextStore,
+        contextEmbeddingService: deps.contextEmbeddingService,
+        contextRetrievalService: deps.contextRetrievalService,
+        chatMessageFileGcService: deps.chatMessageFileGcService
+      },
       editor: createEditorService({
         config: deps.config,
         configManager: deps.configManager,

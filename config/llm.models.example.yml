@@ -62,3 +62,16 @@ qwen3_asr_flash:
   supportsAudioInput: true
   supportsTools: false
   supportsSearch: false
+
+# 示例 5：向量检索用 embedding 模型
+text_embedding_v4:
+  provider: dashscope
+  model: text-embedding-v4
+  modelType: embedding
+  supportsThinking: false
+  thinkingControllable: true
+  preserveThinking: false
+  supportsVision: false
+  supportsAudioInput: false
+  supportsTools: false
+  supportsSearch: false

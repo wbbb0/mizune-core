@@ -10,6 +10,7 @@ import type { AppConfig } from "#config/config.ts";
 import type { ForwardResolver } from "#forwards/forwardResolver.ts";
 import type { AudioStore } from "#audio/audioStore.ts";
 import type { UserStore } from "#identity/userStore.ts";
+import type { ContextStore } from "#context/contextStore.ts";
 import type { LlmToolCall, LlmToolDefinition, LlmToolExecutionResult } from "../../llmClient.ts";
 import type { ShellRuntime } from "#services/shell/runtime.ts";
 import type { SearchService } from "#services/web/search/searchService.ts";
@@ -90,6 +91,7 @@ export interface BuiltinToolStoreDeps {
   sessionManager: SessionToolRuntimeAccess;
   whitelistStore: WhitelistStore;
   userStore: UserStore;
+  contextStore: ContextStore;
   personaStore: PersonaStore;
   globalRuleStore: GlobalRuleStore;
   toolsetRuleStore: ToolsetRuleStore;

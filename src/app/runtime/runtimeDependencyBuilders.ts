@@ -29,6 +29,8 @@ export function buildGenerationPromptBuilderDeps(services: AppServiceBootstrap):
     mediaCaptionService: services.mediaCaptionService,
     globalRuleStore: services.globalRuleStore,
     toolsetRuleStore: services.toolsetRuleStore,
+    contextStore: services.contextStore,
+    contextRetrievalService: services.contextRetrievalService,
     scenarioHostStateStore: services.scenarioHostStateStore
   };
 }
@@ -49,6 +51,7 @@ export function buildGenerationSessionRuntimeDeps(services: AppServiceBootstrap)
 export function buildGenerationIdentityDeps(services: AppServiceBootstrap): GenerationIdentityDeps {
   return {
     userStore: services.userStore,
+    contextStore: services.contextStore,
     whitelistStore: services.whitelistStore,
     personaStore: services.personaStore,
     rpProfileStore: services.rpProfileStore,

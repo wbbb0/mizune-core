@@ -54,7 +54,8 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           imageCaptioner: [],
           imageInspector: [],
           audioTranscription: [],
-          turnPlanner: []
+          turnPlanner: [],
+          embedding: []
         }
       });
       assert.equal(config.dataDir, "data/default");

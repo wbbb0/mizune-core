@@ -1,5 +1,6 @@
 import type {
   InternalApiConfigSummaryDeps,
+  InternalApiContextDeps,
   InternalApiPersonaDeps,
   InternalApiSessionDetail,
   InternalApiSessionDeleteDeps,
@@ -82,6 +83,95 @@ export async function listUsers(deps: InternalApiUserDeps) {
   return {
     users: await deps.userStore.list()
   };
+}
+
+export function listContextItems(
+  deps: InternalApiContextDeps,
+  input: {
+    userId?: string;
+    scope?: string;
+    sourceType?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }
+) {
+  return deps.contextStore.listContextItems(input);
+}
+
+export function getContextStatus(deps: InternalApiContextDeps) {
+  return {
+    store: deps.contextStore.getStatus(),
+    embedding: deps.contextEmbeddingService.getStatus(),
+    stats: deps.contextStore.getContextStats(),
+    lastRetrieval: deps.contextRetrievalService.getLastDebugReport()
+  };
+}
+
+export function deleteContextItem(deps: InternalApiContextDeps, itemId: string) {
+  return deps.contextStore.deleteContextItem(itemId);
+}
+
+export function updateContextItem(
+  deps: InternalApiContextDeps,
+  input: Parameters<InternalApiContextDeps["contextStore"]["updateContextItem"]>[0]
+) {
+  return deps.contextStore.updateContextItem(input);
+}
+
+export function bulkDeleteContextItems(
+  deps: InternalApiContextDeps,
+  input: Parameters<InternalApiContextDeps["contextStore"]["bulkDeleteContextItems"]>[0]
+) {
+  return deps.contextStore.bulkDeleteContextItems(input);
+}
+
+export function exportContextItems(
+  deps: InternalApiContextDeps,
+  input: Parameters<InternalApiContextDeps["contextStore"]["exportContextItemsJsonl"]>[0]
+) {
+  return deps.contextStore.exportContextItemsJsonl(input);
+}
+
+export function importContextItems(deps: InternalApiContextDeps, jsonl: string) {
+  return deps.contextStore.importContextItemsJsonl(jsonl);
+}
+
+export function setContextItemPinned(deps: InternalApiContextDeps, itemId: string, pinned: boolean) {
+  return deps.contextStore.setContextItemPinned(itemId, pinned);
+}
+
+export function compactContextUser(deps: InternalApiContextDeps, input: {
+  userId: string;
+  olderThanMs: number;
+  maxSourceChunks?: number;
+}) {
+  return deps.contextStore.compactUserSearchChunks(input);
+}
+
+export function sweepDeletedContextItems(deps: InternalApiContextDeps, input: {
+  deletedBeforeMs: number;
+}) {
+  return deps.contextStore.sweepDeletedItems(input);
+}
+
+export function clearContextEmbeddings(
+  deps: InternalApiContextDeps,
+  input: Parameters<InternalApiContextDeps["contextStore"]["clearEmbeddings"]>[0]
+) {
+  return deps.contextStore.clearEmbeddings(input);
+}
+
+export function resetContextIndex(deps: InternalApiContextDeps, input?: { userId?: string }) {
+  return deps.contextRetrievalService.resetIndexes(input);
+}
+
+export async function rebuildContextIndex(deps: InternalApiContextDeps, input: {
+  userId?: string;
+  forceReembed?: boolean;
+  embeddingBatchSize?: number;
+}) {
+  return deps.contextRetrievalService.rebuildUserIndexes(input);
 }
 
 export function listSessions(deps: InternalApiSessionReadDeps) {

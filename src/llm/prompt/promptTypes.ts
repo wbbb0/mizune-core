@@ -12,6 +12,7 @@ import type { OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { LlmMessage } from "../llmClient.ts";
 import type { ToolsetRuleEntry } from "./toolsetRuleStore.ts";
+import type { ContextRetrievedItem } from "#context/contextTypes.ts";
 
 export type PromptInteractionMode = "normal" | "debug";
 
@@ -142,6 +143,7 @@ export interface PromptInput {
   participantProfiles: PromptParticipantProfile[];
   userProfile: PromptUserProfile;
   currentUserMemories?: UserMemoryEntry[];
+  retrievedUserContext?: ContextRetrievedItem[];
   globalRules?: GlobalRuleEntry[];
   historySummary?: string | null | undefined;
   recentMessages: PromptHistoryMessage[];
@@ -228,6 +230,7 @@ export interface InternalSessionTriggerPromptInput {
   participantProfiles: PromptInput["participantProfiles"];
   userProfile: PromptInput["userProfile"];
   currentUserMemories?: PromptInput["currentUserMemories"];
+  retrievedUserContext?: PromptInput["retrievedUserContext"];
   globalRules?: PromptInput["globalRules"];
   historySummary?: string | null | undefined;
   recentMessages: PromptInput["recentMessages"];

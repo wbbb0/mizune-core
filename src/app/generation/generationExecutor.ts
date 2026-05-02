@@ -406,6 +406,7 @@ export function createGenerationExecutor(
         comfyTemplateCatalog,
         forwardResolver,
         userStore,
+        contextStore: deps.identity.contextStore,
         personaStore,
         globalRuleStore,
         toolsetRuleStore,

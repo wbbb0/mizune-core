@@ -134,6 +134,9 @@ export function createEditorService(input: {
       if (resourceKey === "config" && schemaMeta.kind === "object") {
         delete schemaMeta.fields.comfy;
       }
+      if (resourceKey === "users" && schemaMeta.kind === "array" && schemaMeta.item.kind === "object") {
+        delete schemaMeta.item.fields.memories;
+      }
 
       const editorTemplate = resolveEditorValueState(resource, createSchemaTemplate(resource.schema)).currentValue;
       const editorFeatures = resolveEditorFeatures(resource);

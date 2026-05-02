@@ -2,6 +2,7 @@ import { fetchWithProxy } from "#services/proxy/index.ts";
 import { getNativeSearchEnableKey } from "../nativeSearch.ts";
 import { dumpProviderRequest, dumpProviderResponse } from "../providerDebugDump.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
+import { requestOpenAiCompatibleEmbeddings } from "../openAiCompatEmbedding.ts";
 import { setPropertyByPath } from "../requestShaping.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
 import {
@@ -14,6 +15,8 @@ import {
 import {
   createEmptyUsage,
   numberOrNull,
+  type LlmEmbeddingParams,
+  type LlmEmbeddingResult,
   type LlmContentPart,
   type LlmMessage,
   type LlmProvider,
@@ -230,6 +233,17 @@ export class DashScopeProvider implements LlmProvider {
       timeoutController.cleanup();
       params.abortSignal?.removeEventListener("abort", forwardAbort);
     }
+  }
+
+  async embed(
+    context: LlmProviderRequestContext,
+    params: LlmEmbeddingParams
+  ): Promise<LlmEmbeddingResult> {
+    return requestOpenAiCompatibleEmbeddings(context, params, {
+      endpointBaseUrl: context.baseUrl
+        .replace(/\/api\/v1\/?$/, "/compatible-mode/v1")
+        .replace(/\/$/, "")
+    });
   }
 }
 

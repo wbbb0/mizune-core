@@ -174,6 +174,20 @@ export class UserStore {
     return this.ensureInternalUser(input.userId);
   }
 
+  async clearLegacyMemories(): Promise<number> {
+    const users = await this.readRawAll();
+    const memoryCount = users.reduce((sum, user) => sum + (user.memories?.length ?? 0), 0);
+    if (memoryCount === 0) {
+      return 0;
+    }
+    await this.writeAll(users.map((user) => ({
+      ...user,
+      memories: []
+    })));
+    this.logger.info({ memoryCount }, "legacy_user_memories_cleared");
+    return memoryCount;
+  }
+
   async upsertMemory(input: {
     userId: string;
     memoryId?: string;

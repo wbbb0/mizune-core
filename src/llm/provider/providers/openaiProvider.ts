@@ -4,9 +4,12 @@ import { getNativeSearchEnableKey } from "../nativeSearch.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
 import { setPropertyByPath } from "../requestShaping.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
+import { requestOpenAiCompatibleEmbeddings } from "../openAiCompatEmbedding.ts";
 import {
   createEmptyUsage,
   numberOrNull,
+  type LlmEmbeddingParams,
+  type LlmEmbeddingResult,
   type LlmMessage,
   type LlmProvider,
   type LlmProviderGenerateParams,
@@ -276,6 +279,13 @@ export class OpenAiProvider implements LlmProvider {
       timeoutController.cleanup();
       params.abortSignal?.removeEventListener("abort", forwardAbort);
     }
+  }
+
+  async embed(
+    context: LlmProviderRequestContext,
+    params: LlmEmbeddingParams
+  ): Promise<LlmEmbeddingResult> {
+    return requestOpenAiCompatibleEmbeddings(context, params);
   }
 }
 

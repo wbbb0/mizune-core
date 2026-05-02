@@ -264,7 +264,8 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         imageCaptioner: [],
         imageInspector: [],
         audioTranscription: [],
-        turnPlanner: []
+        turnPlanner: [],
+        embedding: []
       });
       assert.deepEqual(config.llm.routingPresets.custom, {
         mainSmall: [],

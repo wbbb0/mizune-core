@@ -1,5 +1,6 @@
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import { createAppServiceBootstrap } from "../bootstrap/appServiceBootstrap.ts";
+import type { AppServiceBootstrapOptions } from "../bootstrap/appServiceBootstrap.ts";
 import { createAppSetupSupport } from "../bootstrap/appSetupSupport.ts";
 import { createSessionWorkCoordinator } from "../session-work/sessionWorkCoordinator.ts";
 import { toConfigSummary } from "#config/config.ts";
@@ -10,6 +11,7 @@ import { createMessageListener, createRequestListener } from "./runtimeEvents.ts
 import { createRuntimeMessageIngress } from "./messageIngress.ts";
 import { buildSessionWorkCoordinatorDeps, createComfyTaskNotifications } from "./runtimeDependencyBuilders.ts";
 import { createInternalApiServices } from "#internalApi/types.ts";
+import { ContextMaintenanceService } from "#context/contextMaintenanceService.ts";
 import {
   shutdownRuntime,
   startInternalApiIfEnabled,
@@ -19,9 +21,14 @@ import {
 import { backfillOneBotSessionHistory } from "./oneBotHistoryBackfill.ts";
 import { createOneBotStartupIngressGate } from "./oneBotStartupIngressGate.ts";
 
+export interface AppRuntimeOptions extends AppServiceBootstrapOptions {
+  forceOneBotStartup?: boolean;
+  disableBackgroundServices?: boolean;
+}
+
 // Builds and starts the full application runtime on top of the shared service graph.
-export async function createAppRuntime(): Promise<AppLifecycleHooks> {
-  const services = await createAppServiceBootstrap();
+export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise<AppLifecycleHooks> {
+  const services = await createAppServiceBootstrap(options);
   const {
     config,
     logger,
@@ -50,6 +57,9 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     globalRuleStore,
     toolsetRuleStore,
     scenarioHostStateStore,
+    contextStore,
+    contextEmbeddingService,
+    contextRetrievalService,
     setupStore,
     globalProfileReadinessStore,
     searchService,
@@ -96,6 +106,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
 
   let sessionWorkCoordinator!: ReturnType<typeof createSessionWorkCoordinator>;
   let comfyTaskRunner!: ComfyTaskRunner;
+  let contextMaintenanceService!: ContextMaintenanceService;
 
   let scheduler!: Scheduler;
   let schedulerStarted = false;
@@ -127,6 +138,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     notifyCompletedTask: comfyTaskNotifications.notifyCompletedTask,
     notifyFailedTask: comfyTaskNotifications.notifyFailedTask
   });
+  contextMaintenanceService = new ContextMaintenanceService(config, contextStore, contextRetrievalService, logger);
 
   const messageIngress = createRuntimeMessageIngress({
     services: {
@@ -162,6 +174,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
       rpProfileStore,
       scenarioProfileStore,
       globalProfileReadinessStore,
+      contextStore,
       userIdentityStore,
       scenarioHostStateStore,
       persistSession,
@@ -212,6 +225,9 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
     globalRuleStore,
     scenarioHostStateStore,
     userStore,
+    contextStore,
+    contextEmbeddingService,
+    contextRetrievalService,
     whitelistStore,
     userIdentityStore,
     requestStore,
@@ -229,7 +245,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
   });
 
   try {
-    if (config.onebot.enabled) {
+    if (config.onebot.enabled || options.forceOneBotStartup) {
       oneBotClient.on("message", onMessage);
       oneBotClient.on("request", onRequest);
       const oneBotHistoryImportBeforeMs = Date.now();
@@ -254,45 +270,53 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
       logger.info("onebot_disabled_startup_skipped");
     }
 
-    schedulerStarted = await startSchedulerIfEnabled(config, scheduler, logger);
-    await comfyTaskRunner.start();
+    if (!options.disableBackgroundServices) {
+      schedulerStarted = await startSchedulerIfEnabled(config, scheduler, logger);
+      contextMaintenanceService.start();
+      await comfyTaskRunner.start();
+    }
 
-    let internalApi = await startInternalApiIfEnabled({
-      config,
-      logger,
-      services: internalApiServices
-    });
+    let internalApi = options.disableBackgroundServices
+      ? null
+      : await startInternalApiIfEnabled({
+          config,
+          logger,
+          services: internalApiServices
+        });
 
-    subscribeRuntimeReload({
-      configManager,
-      config,
-      logger,
-      oneBotClient,
-      browserService,
-      localFileService,
-      chatFileStore,
-      chatMessageFileGcService,
-      searchService,
-      scheduler,
-      comfyTemplateCatalog,
-      comfyTaskRunner,
-      isSchedulerStarted: () => schedulerStarted,
-      setSchedulerStarted: (value) => {
-        schedulerStarted = value;
-      },
-      getInternalApi: () => internalApi,
-      setInternalApi: (value) => {
-        internalApi = value;
-      },
-      services: internalApiServices
-    });
-    await configManager.start();
+    if (!options.disableBackgroundServices) {
+      subscribeRuntimeReload({
+        configManager,
+        config,
+        logger,
+        oneBotClient,
+        browserService,
+        localFileService,
+        chatFileStore,
+        chatMessageFileGcService,
+        searchService,
+        scheduler,
+        comfyTemplateCatalog,
+        comfyTaskRunner,
+        isSchedulerStarted: () => schedulerStarted,
+        setSchedulerStarted: (value) => {
+          schedulerStarted = value;
+        },
+        getInternalApi: () => internalApi,
+        setInternalApi: (value) => {
+          internalApi = value;
+        },
+        services: internalApiServices
+      });
+      await configManager.start();
+    }
 
     if (config.whitelist.enabled && isWhitelistEmpty(whitelistStore)) {
       logger.warn("whitelist_enabled_but_empty");
     }
 
     return {
+      services,
       shutdown: async () => {
         await shutdownRuntime({
           configManager,
@@ -302,6 +326,7 @@ export async function createAppRuntime(): Promise<AppLifecycleHooks> {
           internalApi,
           schedulerStarted,
           scheduler,
+          contextMaintenanceService,
           comfyTaskRunner,
           singleInstanceLock,
           logger

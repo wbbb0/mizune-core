@@ -7,7 +7,7 @@ export function createMessageListener(
   handleMessageEvent: (event: OneBotMessageEvent) => Promise<void>
 ) {
   return (event: OneBotMessageEvent) => {
-    void handleMessageEvent(event).catch((error: unknown) => {
+    return handleMessageEvent(event).catch((error: unknown) => {
       logger.error({ error }, "message_user_upsert_failed");
     });
   };
@@ -18,7 +18,7 @@ export function createRequestListener(
   requestStore: Pick<RequestStore, "upsertFromEvent">
 ) {
   return (event: OneBotRequestEvent) => {
-    void requestStore.upsertFromEvent(event).catch((error: unknown) => {
+    return requestStore.upsertFromEvent(event).catch((error: unknown) => {
       logger.error({ error, requestType: event.request_type, flag: event.flag }, "request_cache_failed");
     });
   };

@@ -3,6 +3,8 @@ import { createProviderTimeoutController, rethrowProviderAbortReason } from "../
 import {
   createEmptyUsage,
   numberOrNull,
+  type LlmEmbeddingParams,
+  type LlmEmbeddingResult,
   type LlmContentPart,
   type LlmMessage,
   type LlmProvider,
@@ -112,6 +114,19 @@ export class LmStudioProvider implements LlmProvider {
         tools: []
       });
     }
+  }
+
+  async embed(
+    context: LlmProviderRequestContext,
+    params: LlmEmbeddingParams
+  ): Promise<LlmEmbeddingResult> {
+    return this.delegate.embed({
+      ...context,
+      providerConfig: {
+        ...context.providerConfig,
+        apiKey: context.providerConfig.apiKey ?? DEFAULT_API_KEY
+      }
+    }, params);
   }
 
   private async generateWithNativeChatEndpoint(

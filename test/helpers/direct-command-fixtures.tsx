@@ -61,6 +61,10 @@ interface DirectCommandFixtureOptions {
     get?: () => Promise<unknown>;
     advanceAfterPersonaUpdate?: (persona: unknown) => Promise<unknown>;
   };
+  contextStore?: {
+    upsertUserFact: (input: Record<string, unknown>) => { item: { id: string; title: string } };
+    removeUserFact: (userId: string, memoryId: string) => { removed: boolean; remaining: unknown[] };
+  };
   scenarioHostStateStore?: {
     write: (sessionId: string, state: unknown) => Promise<unknown>;
     update?: (
@@ -241,6 +245,14 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
       },
       async advanceAfterPersonaUpdate() {
         return null;
+      }
+    },
+    contextStore: options.contextStore as any ?? {
+      upsertUserFact(input: Record<string, unknown>) {
+        return { item: { id: "mem_fixture", title: String(input.title ?? "") } };
+      },
+      removeUserFact() {
+        return { removed: true, remaining: [] };
       }
     },
     ...(options.forceCompactSession ? { forceCompactSession: options.forceCompactSession } : {}),

@@ -11,6 +11,7 @@ import { registerShellRoutes } from "../../src/internalApi/routes/shellRoutes.ts
 import { registerUploadRoutes } from "../../src/internalApi/routes/uploadRoutes.ts";
 import { createInternalApiServices, type InternalApiDeps } from "../../src/internalApi/types.ts";
 import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
+import type { ContextManagementItem } from "../../src/context/contextTypes.ts";
 import type { ScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
 import type { ShellRunParams, ShellRunResult, ShellSession } from "../../src/services/shell/types.ts";
 
@@ -43,6 +44,7 @@ export interface InternalApiFixtureState {
   whitelistReloadCount: number;
   schedulerReloadCount: number;
   browserProfiles: Array<{ profile_id: string; ownerSessionId: string }>;
+  contextItems: ContextManagementItem[];
   workspaceRoot: string;
 }
 
@@ -108,6 +110,37 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     whitelistReloadCount: 0,
     schedulerReloadCount: 0,
     browserProfiles: [{ profile_id: "browser_profile_fixture", ownerSessionId: "qqbot:p:10001" }],
+    contextItems: [{
+      itemId: "ctx_fixture_chunk_1",
+      scope: "user",
+      sourceType: "chunk",
+      retrievalPolicy: "search",
+      status: "active",
+      userId: "10001",
+      sessionId: "qqbot:p:10001",
+      title: "近期聊天片段",
+      text: "Alice 最近在评估 Orama 版用户上下文检索。",
+      kind: "recent_dialogue",
+      source: "session_history",
+      importance: 1,
+      pinned: false,
+      sensitivity: "normal",
+      createdAt: 1000,
+      updatedAt: 2000
+    }, {
+      itemId: "ctx_fixture_fact_1",
+      scope: "user",
+      sourceType: "fact",
+      retrievalPolicy: "always",
+      status: "active",
+      userId: "10002",
+      title: "用户偏好",
+      text: "用户偏好简洁回答。",
+      pinned: true,
+      sensitivity: "normal",
+      createdAt: 900,
+      updatedAt: 1500
+    }],
     workspaceRoot
   };
 
@@ -625,6 +658,193 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         return [{ userId: "10001", nickname: "Alice" }];
       }
     } as unknown as InternalApiDeps["userStore"],
+    contextStore: {
+      getStatus() {
+        return {
+          available: true,
+          dbPath: "/tmp/context.sqlite"
+        };
+      },
+      getContextStats() {
+        return {
+          rawMessages: 1,
+          contextItems: state.contextItems.length,
+          embeddings: 0,
+          byScope: [{ scope: "user", count: state.contextItems.length }],
+          bySourceType: [],
+          byStatus: [],
+          sqlitePageCount: 1,
+          sqlitePageSize: 4096,
+          sqliteBytes: 4096
+        };
+      },
+      listContextItems(input: { userId?: string; scope?: string; sourceType?: string; status?: string; limit?: number; offset?: number } = {}) {
+        const items = state.contextItems
+          .filter((item) => !input.userId || item.userId === input.userId)
+          .filter((item) => !input.scope || item.scope === input.scope)
+          .filter((item) => !input.sourceType || item.sourceType === input.sourceType)
+          .filter((item) => !input.status || item.status === input.status)
+          .sort((left, right) => right.updatedAt - left.updatedAt || right.createdAt - left.createdAt || right.itemId.localeCompare(left.itemId));
+        const offset = Math.max(input.offset ?? 0, 0);
+        const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
+        return {
+          items: items.slice(offset, offset + limit),
+          total: items.length
+        };
+      },
+      deleteContextItem(itemId: string) {
+        const index = state.contextItems.findIndex((item) => item.itemId === itemId);
+        if (index === -1) {
+          return { deleted: false };
+        }
+        state.contextItems[index] = {
+          ...state.contextItems[index]!,
+          status: "deleted",
+          updatedAt: state.contextItems[index]!.updatedAt + 1
+        };
+        return { deleted: true };
+      },
+      updateContextItem(input: {
+        itemId: string;
+        title?: string | null;
+        text?: string;
+        retrievalPolicy?: "always" | "search" | "never";
+        status?: "active" | "archived" | "deleted" | "superseded";
+        sensitivity?: "normal" | "private" | "secret";
+        pinned?: boolean;
+        validTo?: number | null;
+        supersededBy?: string | null;
+      }) {
+        const index = state.contextItems.findIndex((item) => item.itemId === input.itemId);
+        if (index === -1) {
+          return { updated: false, item: null };
+        }
+        const nextItem = {
+          ...state.contextItems[index]!,
+          ...(input.text !== undefined ? { text: input.text } : {}),
+          ...(input.retrievalPolicy !== undefined ? { retrievalPolicy: input.retrievalPolicy } : {}),
+          ...(input.status !== undefined ? { status: input.status } : {}),
+          ...(input.sensitivity !== undefined ? { sensitivity: input.sensitivity } : {}),
+          ...(input.pinned !== undefined ? { pinned: input.pinned } : {}),
+          updatedAt: state.contextItems[index]!.updatedAt + 1
+        };
+        if (input.title !== undefined) {
+          if (input.title == null) {
+            delete nextItem.title;
+          } else {
+            nextItem.title = input.title;
+          }
+        }
+        if (input.validTo !== undefined) {
+          if (input.validTo == null) {
+            delete nextItem.validTo;
+          } else {
+            nextItem.validTo = input.validTo;
+          }
+        }
+        if (input.supersededBy !== undefined) {
+          if (input.supersededBy == null) {
+            delete nextItem.supersededBy;
+          } else {
+            nextItem.supersededBy = input.supersededBy;
+          }
+        }
+        state.contextItems[index] = nextItem;
+        return { updated: true, item: state.contextItems[index] };
+      },
+      bulkDeleteContextItems(input: { userId?: string; sourceType?: string }) {
+        let deletedCount = 0;
+        state.contextItems = state.contextItems.map((item) => {
+          if (
+            item.status !== "deleted"
+            && (!input.userId || item.userId === input.userId)
+            && (!input.sourceType || item.sourceType === input.sourceType)
+          ) {
+            deletedCount += 1;
+            return { ...item, status: "deleted" as const, updatedAt: item.updatedAt + 1 };
+          }
+          return item;
+        });
+        return { deletedCount };
+      },
+      exportContextItemsJsonl(input: { userId?: string } = {}) {
+        const items = state.contextItems.filter((item) => !input.userId || item.userId === input.userId);
+        return {
+          count: items.length,
+          jsonl: items.map((item) => JSON.stringify(item)).join("\n")
+        };
+      },
+      importContextItemsJsonl(jsonl: string) {
+        let importedCount = 0;
+        let skippedCount = 0;
+        for (const line of jsonl.split(/\r?\n/u)) {
+          if (!line.trim()) {
+            continue;
+          }
+          const item = JSON.parse(line) as (typeof state.contextItems)[number];
+          if (!item.itemId || !item.text) {
+            skippedCount += 1;
+            continue;
+          }
+          const index = state.contextItems.findIndex((entry) => entry.itemId === item.itemId);
+          if (index === -1) {
+            state.contextItems.push(item);
+          } else {
+            state.contextItems[index] = item;
+          }
+          importedCount += 1;
+        }
+        return { importedCount, skippedCount };
+      },
+      setContextItemPinned(itemId: string, pinned: boolean) {
+        const item = state.contextItems.find((entry) => entry.itemId === itemId);
+        if (!item) {
+          return { updated: false };
+        }
+        item.pinned = pinned;
+        item.updatedAt += 1;
+        return { updated: true };
+      },
+      compactUserSearchChunks() {
+        return { compactedCount: 0 };
+      },
+      sweepDeletedItems() {
+        const before = state.contextItems.length;
+        state.contextItems = state.contextItems.filter((item) => item.status !== "deleted");
+        return { deletedCount: before - state.contextItems.length };
+      },
+      clearEmbeddings() {
+        return { deletedCount: 0 };
+      }
+    } as unknown as InternalApiDeps["contextStore"],
+    contextEmbeddingService: {
+      getStatus() {
+        return {
+          configured: true,
+          modelRefs: ["embedding"],
+          timeoutMs: 30000,
+          textPreprocessVersion: "v1",
+          chunkerVersion: "user-facts-v1"
+        };
+      }
+    } as unknown as InternalApiDeps["contextEmbeddingService"],
+    contextRetrievalService: {
+      resetIndexes() {
+        return { resetCount: 0 };
+      },
+      async rebuildUserIndexes() {
+        return {
+          userCount: 1,
+          embeddedCount: 1,
+          indexedCount: 1,
+          skippedCount: 0,
+          errors: []
+        };
+      },
+      getLastDebugReport() {
+        return null;
+      }
+    } as unknown as InternalApiDeps["contextRetrievalService"],
     userIdentityStore: {
       findIdentityByInternalUserIdSync(internalUserId: string) {
         return internalUserId === "owner"

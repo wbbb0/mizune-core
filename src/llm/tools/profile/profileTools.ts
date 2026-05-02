@@ -1117,10 +1117,7 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     if (denied) {
       return denied;
     }
-    const user = userId === context.lastMessage.userId
-      ? context.currentUser
-      : await context.userStore.getByUserId(userId);
-    return JSON.stringify(user?.memories ?? []);
+    return JSON.stringify(context.contextStore.listUserFacts(userId));
   },
   async upsert_user_memory(_toolCall, args, context) {
     const userId = await resolveTargetUserId(args, context);
@@ -1133,7 +1130,7 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     if (!title || !content) {
       return JSON.stringify({ error: "title and content are required" });
     }
-    const result = await context.userStore.upsertMemory({
+    const result = context.contextStore.upsertUserFact({
       userId,
       ...(getStringField(args, "memoryId") ? { memoryId: getStringField(args, "memoryId") } : {}),
       title,
@@ -1162,8 +1159,8 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     if (!memoryId) {
       return JSON.stringify({ error: "memoryId is required" });
     }
-    const updated = await context.userStore.removeMemory(userId, memoryId);
-    return JSON.stringify({ removed: Boolean(updated), memoryId, remaining: updated?.memories ?? [] });
+    const result = context.contextStore.removeUserFact(userId, memoryId);
+    return JSON.stringify({ removed: result.removed, memoryId, remaining: result.remaining });
   },
   async register_known_user(_toolCall, args, context) {
     const denied = requireOwner(context.relationship, "Only owner can register known users");

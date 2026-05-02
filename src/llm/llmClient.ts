@@ -1,6 +1,6 @@
 import type { AppConfig } from "#config/config.ts";
 import { getPrimaryModelProfile, normalizeModelRefs } from "#llm/shared/modelProfiles.ts";
-import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
+import { getModelRefsForRole, resolveModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { Logger } from "pino";
 import { getLlmProvider, hasLlmProvider } from "./provider/providerRegistry.ts";
 import { executeToolCallsWithDependencies } from "./toolExecutionScheduler.ts";
@@ -8,6 +8,7 @@ import {
   createEmptyUsage,
   mergeUsage,
   type LlmFallbackEvent,
+  type LlmEmbeddingResult,
   type LlmGenerateParams,
   type LlmGenerateResult,
   type LlmMessage,
@@ -21,6 +22,8 @@ import { extractToolError, parseToolArguments } from "./shared/toolArgs.ts";
 
 export type {
   LlmContentPart,
+  LlmEmbeddingParams,
+  LlmEmbeddingResult,
   LlmFallbackEvent,
   LlmGenerateParams,
   LlmGenerateResult,
@@ -51,8 +54,90 @@ export class LlmClient {
     return this.config.llm.enabled && this.resolveProviderContexts(modelRef).length > 0;
   }
 
+  isEmbeddingConfigured(modelRef: string | string[] = getModelRefsForRole(this.config, "embedding")): boolean {
+    if (!this.config.llm.enabled) {
+      return false;
+    }
+    const acceptedModelRefs = resolveModelRefsForRole(this.config, "embedding").acceptedModelRefs;
+    const requestedRefs = normalizeModelRefs(modelRef).filter((ref) => acceptedModelRefs.includes(ref));
+    return this.resolveProviderContexts(requestedRefs).some((context) => {
+      const provider = getLlmProvider(context);
+      return typeof provider.embed === "function";
+    });
+  }
+
   async generate(params: LlmGenerateParams): Promise<LlmGenerateResult> {
     return this.runWithTools(params);
+  }
+
+  async embedTexts(input: {
+    texts: string[];
+    abortSignal?: AbortSignal;
+    modelRefOverride?: string | string[];
+    timeoutMsOverride?: number;
+  }): Promise<LlmEmbeddingResult & {
+    modelRef: string;
+    providerName: string;
+    model: string;
+  }> {
+    if (!this.config.llm.enabled) {
+      throw new Error("LLM 功能未启用");
+    }
+    const requestedModelRefs = normalizeModelRefs(input.modelRefOverride ?? getModelRefsForRole(this.config, "embedding"));
+    const acceptedEmbeddingRefs = resolveModelRefsForRole(this.config, "embedding").acceptedModelRefs;
+    const embeddingModelRefs = requestedModelRefs.filter((ref) => acceptedEmbeddingRefs.includes(ref));
+    const providerContexts = this.resolveProviderContexts(embeddingModelRefs);
+    if (providerContexts.length === 0) {
+      throw new Error("Embedding 模型未配置");
+    }
+
+    let lastError: unknown = null;
+    for (let index = 0; index < providerContexts.length; index += 1) {
+      const providerContext = providerContexts[index];
+      if (!providerContext) {
+        continue;
+      }
+      const provider = getLlmProvider(providerContext);
+      if (typeof provider.embed !== "function") {
+        lastError = new Error(`Provider ${providerContext.providerName} 不支持 embedding`);
+        this.logger.warn({
+          modelRef: providerContext.modelRef,
+          provider: providerContext.providerName,
+          model: providerContext.model
+        }, "embedding_provider_unsupported");
+        continue;
+      }
+      try {
+        const result = await provider.embed(providerContext, {
+          texts: input.texts,
+          ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
+          ...(input.timeoutMsOverride ? { timeoutMsOverride: input.timeoutMsOverride } : {})
+        });
+        return {
+          ...result,
+          modelRef: providerContext.modelRef,
+          providerName: providerContext.providerName,
+          model: providerContext.model
+        };
+      } catch (error) {
+        lastError = error;
+        const shouldFallback = index < providerContexts.length - 1 && shouldFallbackToNextModel(error);
+        this.logger.warn({
+          modelRef: providerContext.modelRef,
+          requestedModelRefs,
+          candidateIndex: providerContext.candidateIndex,
+          provider: providerContext.providerName,
+          model: providerContext.model,
+          shouldFallback,
+          error: serializeError(error)
+        }, shouldFallback ? "embedding_candidate_failed_fallback_next" : "embedding_candidate_failed");
+        if (!shouldFallback) {
+          throw error;
+        }
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error("Embedding request failed");
   }
 
   private async runWithTools(params: LlmGenerateParams): Promise<LlmGenerateResult> {

@@ -195,7 +195,7 @@ deploy/       systemd 服务示例
 - `llm/`：模型接入、prompt、工具注册与调用链路
 - `services/`：OneBot、shell、web、workspace 等外部能力封装
 - `internalApi/`：内部 HTTP API、应用服务与 WebUI 托管
-- `memory/`、`persona/`、`modes/`：长期状态和模式相关能力
+- `context/`、`memory/`、`persona/`、`modes/`：长期上下文、规则、资料和模式相关能力
 
 ## 文档
 
@@ -203,7 +203,9 @@ deploy/       systemd 服务示例
 - [会话与资料模型](docs/architecture/session-and-profile-model.md)
 - [WebUI Workbench 架构](docs/architecture/webui-workbench.md)
 - [记忆架构](docs/memory-architecture.md)
+- [用户上下文检索机制](docs/user-context-retrieval-explained.md)
 - [编辑器 Schema 元数据](docs/development/editor-schema-metadata.md)
+- [交互式 Bot 测试 CLI](docs/development/interactive-bot-cli.md)
 
 ## 部署
 

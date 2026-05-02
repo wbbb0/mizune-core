@@ -11,6 +11,7 @@ import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { ComfyTaskRunner } from "#comfy/taskRunner.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import type { InternalApiServices } from "#internalApi/types.ts";
+import type { ContextMaintenanceService } from "#context/contextMaintenanceService.ts";
 
 export interface InternalApiController {
   close: () => Promise<void>;
@@ -110,6 +111,7 @@ export async function shutdownRuntime(input: {
   internalApi: InternalApiController | null;
   schedulerStarted: boolean;
   scheduler: Scheduler;
+  contextMaintenanceService: ContextMaintenanceService;
   comfyTaskRunner: ComfyTaskRunner;
   singleInstanceLock: { release: () => Promise<void> };
   logger: Logger & { flush?: () => void | Promise<void> };
@@ -125,6 +127,7 @@ export async function shutdownRuntime(input: {
     if (input.schedulerStarted) {
       await input.scheduler.stop();
     }
+    input.contextMaintenanceService.stop();
     await input.comfyTaskRunner.stop();
     await input.oneBotClient.stop();
     input.logger.info("application_stopped");

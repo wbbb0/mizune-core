@@ -33,6 +33,8 @@ import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import type { UserStore } from "#identity/userStore.ts";
+import type { ContextRetrievalService } from "#context/contextRetrievalService.ts";
+import type { ContextStore } from "#context/contextStore.ts";
 import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
 import type { SessionWorkPersistenceDeps } from "../session-work/sessionWorkCoreDeps.ts";
 import type { ComfyClient } from "#comfy/comfyClient.ts";
@@ -64,6 +66,8 @@ export interface GenerationPromptBuilderDeps {
   globalRuleStore: GlobalRuleStore;
   toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
+  contextStore?: Pick<ContextStore, "listUserFacts" | "upsertUserFact" | "upsertRawMessages" | "upsertUserSearchChunk" | "sweepUserSearchChunks">;
+  contextRetrievalService?: Pick<ContextRetrievalService, "retrieveUserContext">;
 }
 
 export interface GenerationSessionRuntimeDeps {
@@ -79,6 +83,7 @@ export interface GenerationSessionRuntimeDeps {
 
 export interface GenerationIdentityDeps {
   userStore: UserStore;
+  contextStore: ContextStore;
   whitelistStore: WhitelistStore;
   personaStore: PersonaStore;
   rpProfileStore: RpProfileStore;

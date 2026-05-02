@@ -23,6 +23,8 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
     assert.deepEqual(parseDirectCommand(".stop"), { name: "stop" });
     assert.deepEqual(parseDirectCommand(".compact"), { name: "compact" });
     assert.deepEqual(parseDirectCommand(".compact 3"), { name: "compact", keep: 3 });
+    assert.deepEqual(parseDirectCommand(".remember 我喜欢 Orama"), { name: "remember", content: "我喜欢 Orama" });
+    assert.deepEqual(parseDirectCommand(".forget mem_1"), { name: "forget", memoryId: "mem_1" });
     assert.deepEqual(parseDirectCommand(".setup rp"), { name: "setup", target: "rp" });
     assert.deepEqual(parseDirectCommand(".config scenario"), { name: "config", target: "scenario" });
     assert.deepEqual(parseDirectCommand(".cancel"), { name: "cancel" });
@@ -416,6 +418,41 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0]?.text, "`.setup` 需要一个目标参数：persona、rp 或 scenario。\n用法：`.setup persona` / `.setup rp` / `.setup scenario`。");
+  });
+
+  test("remember and forget direct commands write context facts", async () => {
+    const writes: Record<string, unknown>[] = [];
+    const removes: Array<{ userId: string; memoryId: string }> = [];
+    const { calls, handler } = createDirectCommandFixture({
+      contextStore: {
+        upsertUserFact(input: Record<string, unknown>) {
+          writes.push(input);
+          return { item: { id: "mem_created", title: String(input.title) } };
+        },
+        removeUserFact(userId: string, memoryId: string) {
+          removes.push({ userId, memoryId });
+          return { removed: true, remaining: [] };
+        }
+      }
+    });
+
+    await handler({
+      command: { name: "remember", content: "我喜欢 Orama" } as any,
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+    await handler({
+      command: { name: "forget", memoryId: "mem_created" } as any,
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner" }
+    });
+
+    assert.equal(writes[0]?.userId, "owner");
+    assert.equal(writes[0]?.content, "我喜欢 Orama");
+    assert.equal(writes[0]?.source, "owner_explicit");
+    assert.deepEqual(removes, [{ userId: "owner", memoryId: "mem_created" }]);
+    assert.match(calls[0]?.text ?? "", /已记住/);
+    assert.equal(calls[1]?.text, "已忘记：mem_created");
   });
 
   test("direct command replies forward external user id for onebot delivery", async () => {

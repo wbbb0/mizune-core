@@ -661,8 +661,8 @@ function createMediaToolVisibilityConfig(options: {
           userId: "10001",
           senderName: "Tester"
         },
-        userStore: {
-          async upsertMemory(input: { title: string; content: string }) {
+        contextStore: {
+          upsertUserFact(input: { title: string; content: string }) {
             return {
               action: "created",
               finalAction: "warning_scope_conflict",
@@ -674,7 +674,6 @@ function createMediaToolVisibilityConfig(options: {
                 reason: "内容更像结构化用户卡片字段，适合写入 user profile。"
               },
               item: { id: "mem_warn_1", updatedAt: 1, createdAt: 1, kind: "other", source: "user_explicit", ...input },
-              user: null
             };
           }
         }
@@ -728,15 +727,14 @@ function createMediaToolVisibilityConfig(options: {
           userId: "10001",
           senderName: "Tester"
         },
-        userStore: {
-          async upsertMemory(input: { title: string; content: string }) {
+        contextStore: {
+          upsertUserFact(input: { title: string; content: string }) {
             return {
               action: "created",
               finalAction: "created",
               dedup: { matchedBy: "none", matchedExistingId: null },
               warning: null,
               item: { id: "mem_boundary_1", updatedAt: 1, createdAt: 1, kind: "boundary", source: "user_explicit", ...input },
-              user: null
             };
           }
         }
@@ -768,8 +766,8 @@ function createMediaToolVisibilityConfig(options: {
               : undefined;
           }
         },
-        userStore: {
-          async upsertMemory(input: { userId: string; source?: string; title: string; content: string }) {
+        contextStore: {
+          upsertUserFact(input: { userId: string; source?: string; title: string; content: string }) {
             writes.push({ userId: input.userId, source: input.source });
             return {
               action: "created",
@@ -777,7 +775,6 @@ function createMediaToolVisibilityConfig(options: {
               dedup: { matchedBy: "none", matchedExistingId: null },
               warning: null,
               item: { id: "mem_owner_1", updatedAt: 1, createdAt: 1, kind: "preference", source: input.source, title: input.title, content: input.content },
-              user: null
             };
           }
         }

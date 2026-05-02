@@ -1,12 +1,16 @@
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { loadConfig } from "#config/config.ts";
+import type { AppConfig } from "#config/config.ts";
 import { createLogger } from "../../logger.ts";
 import { SingleInstanceLock } from "#runtime/singleInstanceLock.ts";
 import type { BootstrapRuntimeContext } from "./bootstrapTypes.ts";
 
-export async function createBootstrapRuntimeContext(): Promise<BootstrapRuntimeContext> {
-  const config = loadConfig();
+export async function createBootstrapRuntimeContext(options: {
+  transformConfig?: (config: AppConfig) => AppConfig;
+} = {}): Promise<BootstrapRuntimeContext> {
+  const loadedConfig = loadConfig();
+  const config = options.transformConfig ? options.transformConfig(loadedConfig) : loadedConfig;
   const logger = createLogger(config);
   const dataDir = resolve(process.cwd(), config.dataDir);
   await mkdir(dataDir, { recursive: true });

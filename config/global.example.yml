@@ -101,6 +101,25 @@ conversation:
       asciiTokens: 0.25
   group:
     requireAtMention: true
+context:
+  embedding:
+    timeoutMs: 30000
+    textPreprocessVersion: v1
+    chunkerVersion: user-facts-v1
+  retrieval:
+    maxResults: 4
+    candidateMultiplier: 4
+    minScore: 0
+    maxSynchronousEmbeddingDocuments: 16
+  indexing:
+    maintenanceEmbeddingBatchSize: 32
+    rebuildOnMaintenance: true
+  retention:
+    maxUserSearchChunks: 500
+    maxSearchChunkAgeDays: 90
+    summaryAfterDays: 30
+    deletedRetentionDays: 14
+    maintenanceIntervalMs: 3600000
 whitelist:
   enabled: true
 internalApi:

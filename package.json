@@ -7,6 +7,7 @@
     "#app/*": "./src/app/*",
     "#audio/*": "./src/audio/*",
     "#config/*": "./src/config/*",
+    "#context/*": "./src/context/*",
     "#comfy/*": "./src/comfy/*",
     "#conversation/*": "./src/conversation/*",
     "#data/*": "./src/data/*",
@@ -22,6 +23,7 @@
     "#requests/*": "./src/requests/*",
     "#runtime/*": "./src/runtime/*",
     "#services/*": "./src/services/*",
+    "#testing/*": "./src/testing/*",
     "#types/*": "./src/types/*",
     "#utils/*": "./src/utils/*"
   },
@@ -43,6 +45,7 @@
     "test:bot": "node test/run-node-tests.mjs",
     "test:bot:serial": "node test/run-node-tests.mjs --serial",
     "test:webui": "npm run build:webui",
+    "test:interactive-bot": "tsx scripts/interactive-bot-cli.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
     "typecheck:all": "npm run typecheck && npm run typecheck:test"
@@ -53,7 +56,9 @@
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
     "@fastify/static": "^9.1.1",
+    "@orama/orama": "^3.1.18",
     "@simplewebauthn/server": "^13.3.0",
+    "better-sqlite3": "^12.9.0",
     "croner": "^10.0.1",
     "fastify": "^5.8.5",
     "jsonrepair": "^3.14.0",
@@ -69,6 +74,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.6.0",
     "@types/ws": "^8.18.1",
     "tsdown": "^0.21.9",

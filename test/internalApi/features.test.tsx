@@ -53,9 +53,10 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
   test("internal api exposes config, whitelist, requests, and scheduler jobs", async () => {
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
-      const [configSummary, editors, whitelist, requests, jobs] = await Promise.all([
+      const [configSummary, editors, contextStatus, whitelist, requests, jobs] = await Promise.all([
         app.inject({ method: "GET", url: "/api/config-summary" }),
         app.inject({ method: "GET", url: "/api/editors" }),
+        app.inject({ method: "GET", url: "/api/context/status" }),
         app.inject({ method: "GET", url: "/api/whitelist" }),
         app.inject({ method: "GET", url: "/api/requests" }),
         app.inject({ method: "GET", url: "/api/scheduler/jobs" })
@@ -63,7 +64,10 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
 
       assert.equal(configSummary.statusCode, 200);
       assert.equal(editors.statusCode, 200);
+      assert.equal(contextStatus.statusCode, 200);
       assert.equal(configSummary.json().runtimeMode, "onebot");
+      assert.equal(contextStatus.json().store.available, true);
+      assert.equal(contextStatus.json().embedding.configured, true);
       assert.equal(configSummary.json().access.ownerId, "10001");
       assert.deepEqual(configSummary.json().access.whitelist.users, ["10001"]);
       assert.equal(configSummary.json().onebot.enabled, true);
@@ -91,6 +95,214 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.deepEqual(whitelist.json().whitelist.users, ["10001"]);
       assert.deepEqual(requests.json().requests.groups, [{ groupId: "20002", userId: "10003" }]);
       assert.deepEqual(jobs.json().jobs, [{ id: "job-1", name: "daily" }]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("internal api lists and deletes context items", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const listResponse = await app.inject({
+        method: "GET",
+        url: "/api/context/items?userId=10001&scope=user&sourceType=chunk&status=active"
+      });
+
+      assert.equal(listResponse.statusCode, 200);
+      assert.equal(listResponse.json().total, 1);
+      assert.equal(listResponse.json().items[0].itemId, "ctx_fixture_chunk_1");
+      assert.equal(listResponse.json().items[0].text, "Alice 最近在评估 Orama 版用户上下文检索。");
+
+      const editResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/context/items/ctx_fixture_chunk_1",
+        payload: {
+          title: "已编辑上下文",
+          text: "编辑后的上下文内容"
+        }
+      });
+      assert.equal(editResponse.statusCode, 200);
+      assert.equal(editResponse.json().item.title, "已编辑上下文");
+      assert.equal(editResponse.json().item.text, "编辑后的上下文内容");
+
+      const pinResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/context/items/ctx_fixture_chunk_1/pinned",
+        payload: { pinned: true }
+      });
+      assert.equal(pinResponse.statusCode, 200);
+      assert.deepEqual(pinResponse.json(), { updated: true });
+
+      const pinnedListResponse = await app.inject({
+        method: "GET",
+        url: "/api/context/items?userId=10001&scope=user&sourceType=chunk&status=active"
+      });
+      assert.equal(pinnedListResponse.statusCode, 200);
+      assert.equal(pinnedListResponse.json().items[0].pinned, true);
+
+      const deleteResponse = await app.inject({
+        method: "DELETE",
+        url: "/api/context/items/ctx_fixture_chunk_1"
+      });
+      assert.equal(deleteResponse.statusCode, 200);
+      assert.deepEqual(deleteResponse.json(), { deleted: true });
+
+      const afterDeleteResponse = await app.inject({
+        method: "GET",
+        url: "/api/context/items?userId=10001&status=active"
+      });
+      assert.equal(afterDeleteResponse.statusCode, 200);
+      assert.equal(afterDeleteResponse.json().total, 0);
+
+      const deletedResponse = await app.inject({
+        method: "GET",
+        url: "/api/context/items?userId=10001&status=deleted"
+      });
+      assert.equal(deletedResponse.statusCode, 200);
+      assert.equal(deletedResponse.json().items[0].itemId, "ctx_fixture_chunk_1");
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("internal api exposes context maintenance actions", async () => {
+    const app = await createInternalApiApp(createInternalApiDeps());
+    try {
+      const bulkDeleteResponse = await app.inject({
+        method: "POST",
+        url: "/api/context/items/bulk-delete",
+        payload: {
+          userId: "10001",
+          sourceType: "chunk"
+        }
+      });
+      assert.equal(bulkDeleteResponse.statusCode, 200);
+      assert.equal(bulkDeleteResponse.json().deletedCount, 1);
+
+      const exportResponse = await app.inject({
+        method: "POST",
+        url: "/api/context/items/export",
+        payload: {
+          userId: "10001"
+        }
+      });
+      assert.equal(exportResponse.statusCode, 200);
+      assert.equal(exportResponse.json().count, 1);
+      assert.match(exportResponse.json().jsonl, /ctx_fixture_chunk_1/);
+
+      const importResponse = await app.inject({
+        method: "POST",
+        url: "/api/context/items/import",
+        payload: {
+          jsonl: JSON.stringify({
+            itemId: "ctx_imported",
+            scope: "user",
+            sourceType: "fact",
+            retrievalPolicy: "always",
+            status: "active",
+            userId: "10001",
+            text: "导入的上下文",
+            sensitivity: "normal",
+            createdAt: 1,
+            updatedAt: 1,
+            retrievedCount: 0
+          })
+        }
+      });
+      assert.equal(importResponse.statusCode, 200);
+      assert.equal(importResponse.json().importedCount, 1);
+
+      const compactResponse = await app.inject({
+        method: "POST",
+        url: "/api/context/maintenance/compact-user",
+        payload: {
+          userId: "10001",
+          olderThanDays: 1
+        }
+      });
+      assert.equal(compactResponse.statusCode, 200);
+      assert.equal(compactResponse.json().compactedCount, 0);
+
+      const clearEmbeddingsResponse = await app.inject({
+        method: "POST",
+        url: "/api/context/maintenance/clear-embeddings",
+        payload: {
+          userId: "10001"
+        }
+      });
+      assert.equal(clearEmbeddingsResponse.statusCode, 200);
+      assert.equal(clearEmbeddingsResponse.json().deletedCount, 0);
+
+      const resetIndexResponse = await app.inject({
+        method: "POST",
+        url: "/api/context/maintenance/reset-index",
+        payload: {
+          userId: "10001"
+        }
+      });
+      assert.equal(resetIndexResponse.statusCode, 200);
+      assert.equal(resetIndexResponse.json().resetCount, 0);
+
+      const rebuildIndexResponse = await app.inject({
+        method: "POST",
+        url: "/api/context/maintenance/rebuild-index",
+        payload: {
+          userId: "10001",
+          forceReembed: true,
+          embeddingBatchSize: 64
+        }
+      });
+      assert.equal(rebuildIndexResponse.statusCode, 200);
+      assert.equal(rebuildIndexResponse.json().embeddedCount, 1);
+      assert.equal(rebuildIndexResponse.json().indexedCount, 1);
+
+      const sweepResponse = await app.inject({
+        method: "POST",
+        url: "/api/context/maintenance/sweep-deleted",
+        payload: {
+          deletedBeforeDays: 1
+        }
+      });
+      assert.equal(sweepResponse.statusCode, 200);
+      assert.equal(sweepResponse.json().deletedCount, 1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("internal api rejects invalid context item filters and missing deletes", async () => {
+    const app = await createInternalApiApp(createInternalApiDeps());
+    try {
+      const invalidFilterResponse = await app.inject({
+        method: "GET",
+        url: "/api/context/items?scope=bad_scope"
+      });
+      assert.equal(invalidFilterResponse.statusCode, 400);
+      assert.match(invalidFilterResponse.json().error, /scope/);
+
+      const deleteResponse = await app.inject({
+        method: "DELETE",
+        url: "/api/context/items/missing"
+      });
+      assert.equal(deleteResponse.statusCode, 404);
+      assert.equal(deleteResponse.json().error, "Context item not found");
+
+      const invalidPinResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/context/items/ctx_fixture_chunk_1/pinned",
+        payload: { pinned: "yes" }
+      });
+      assert.equal(invalidPinResponse.statusCode, 400);
+      assert.equal(invalidPinResponse.json().error, "pinned boolean is required");
+
+      const emptyBulkDeleteResponse = await app.inject({
+        method: "POST",
+        url: "/api/context/items/bulk-delete",
+        payload: {}
+      });
+      assert.equal(emptyBulkDeleteResponse.statusCode, 400);
+      assert.equal(emptyBulkDeleteResponse.json().error, "at least one context filter is required");
     } finally {
       await app.close();
     }
@@ -227,8 +439,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(usersResponse.statusCode, 200);
       assert.equal(usersResponse.json().editor.kind, "single");
       assert.equal(usersResponse.json().editor.schemaMeta.item.title, "用户");
-      assert.equal(usersResponse.json().editor.schemaMeta.item.fields.memories.title, "长期记忆");
-      assert.equal(usersResponse.json().editor.schemaMeta.description, "按列表保存所有用户的基础资料和长期记忆。");
+      assert.ok(!("memories" in usersResponse.json().editor.schemaMeta.item.fields));
+      assert.equal(usersResponse.json().editor.schemaMeta.description, "按列表保存所有用户的基础资料。长期记忆由上下文记忆存储管理。");
 
       assert.equal(groupMembershipResponse.statusCode, 200);
       assert.equal(groupMembershipResponse.json().editor.kind, "single");
@@ -286,7 +498,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
           imageCaptioner: [],
           imageInspector: [],
           audioTranscription: [],
-          turnPlanner: []
+          turnPlanner: [],
+          embedding: []
         }
       });
       assert.equal(editorResponse.json().editor.editorFeatures.unsetActionLabel, "回退到 default");
@@ -298,7 +511,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         imageCaptioner: [],
         imageInspector: [],
         audioTranscription: [],
-        turnPlanner: []
+        turnPlanner: [],
+        embedding: []
       });
       assert.deepEqual(editorResponse.json().editor.currentValue.dev, {
         mainSmall: ["main"]
@@ -311,7 +525,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         imageCaptioner: [],
         imageInspector: [],
         audioTranscription: [],
-        turnPlanner: []
+        turnPlanner: [],
+        embedding: []
       });
       assert.deepEqual(editorResponse.json().editor.effectiveValue.dev, {
         mainSmall: ["main"],
@@ -321,7 +536,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         imageCaptioner: [],
         imageInspector: [],
         audioTranscription: [],
-        turnPlanner: []
+        turnPlanner: [],
+        embedding: []
       });
 
       const saveResponse = await app.inject({
@@ -345,7 +561,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         imageCaptioner: [],
         imageInspector: [],
         audioTranscription: [],
-        turnPlanner: []
+        turnPlanner: [],
+        embedding: []
       });
       const saved = await readFile(catalogPath, "utf8");
       assert.match(saved, /default:/);

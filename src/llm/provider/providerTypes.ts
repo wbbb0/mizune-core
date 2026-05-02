@@ -102,6 +102,17 @@ export interface LlmGenerateResult {
   providerCallUsages?: LlmProviderCallUsage[];
 }
 
+export interface LlmEmbeddingParams {
+  texts: string[];
+  abortSignal?: AbortSignal;
+  timeoutMsOverride?: number;
+}
+
+export interface LlmEmbeddingResult {
+  vectors: number[][];
+  usage: LlmUsage;
+}
+
 export interface LlmProviderCallUsage {
   iteration: number;
   phase: "tool_call" | "final_response" | "terminal_response" | "fallback_response";
@@ -175,6 +186,10 @@ export interface LlmProvider {
     context: LlmProviderRequestContext,
     params: LlmProviderGenerateParams
   ): Promise<LlmProviderGenerateResult>;
+  embed?(
+    context: LlmProviderRequestContext,
+    params: LlmEmbeddingParams
+  ): Promise<LlmEmbeddingResult>;
 }
 
 export function createEmptyUsage(modelRef: string | null, model: string | null): LlmUsage {

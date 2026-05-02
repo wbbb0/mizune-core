@@ -181,6 +181,19 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
           return [];
         }
       } as any,
+      contextStore: {
+        listUserFacts() {
+          return [{
+            id: "mem_1",
+            title: "输出顺序",
+            content: "先给结论再展开。",
+            kind: "fact",
+            source: "user_explicit",
+            createdAt: 1,
+            updatedAt: 1
+          }];
+        }
+      } as any,
       scenarioHostStateStore: {
         async ensure() {
           throw new Error("should not load scenario_host state in rp_assistant prompt");
@@ -436,6 +449,19 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       toolsetRuleStore: {
         async getAll() {
           return [];
+        }
+      } as any,
+      contextStore: {
+        listUserFacts() {
+          return [{
+            id: "mem_1",
+            title: "输出顺序",
+            content: "先给结论再展开。",
+            kind: "fact",
+            source: "user_explicit",
+            createdAt: 1,
+            updatedAt: 1
+          }];
         }
       } as any,
       scenarioHostStateStore: {
@@ -1207,4 +1233,277 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.match(systemContent, /核心字段仍缺：外在存在感、与用户关系、亲密模式、互动模式/);
     assert.match(systemContent, /可在需要时继续补充：连续性事实/);
     assert.match(systemContent, /已设定：自我定位=冷静克制，不轻易示弱；社会角色=图书管理员；生活状态=雨夜同居；现实契约=始终按真人自处；硬边界=绝不跳出角色/);
+  });
+
+  test("chat prompt persists searchable context chunks and excludes current batch from retrieval", async () => {
+    const rawMessages: Array<{ messageId: string; text: string; userId: string }> = [];
+    const upsertedChunks: Array<{ itemId: string; text: string }> = [];
+    const upsertedFacts: Array<{ title: string; content: string }> = [];
+    const retrievalCalls: Array<{ queryText: string; excludeItemIds: string[] }> = [];
+    const builder = createGenerationPromptBuilder({
+      config: createTestAppConfig(),
+      oneBotClient: {} as any,
+      audioStore: {} as any,
+      audioTranscriber: {
+        async transcribeMany() {
+          return [];
+        }
+      } as any,
+      npcDirectory: {
+        listProfiles() {
+          return [];
+        }
+      } as any,
+      browserService: {
+        async listPages() {
+          return { pages: [] };
+        }
+      } as any,
+      localFileService: {} as any,
+      chatFileStore: {} as any,
+      mediaVisionService: {
+        async prepareFilesForModel() {
+          return [];
+        }
+      } as any,
+      mediaCaptionService: {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      globalRuleStore: {
+        async getAll() {
+          return [];
+        }
+      } as any,
+      toolsetRuleStore: {
+        async getAll() {
+          return [];
+        }
+      } as any,
+      contextStore: {
+        listUserFacts() {
+          return [];
+        },
+        upsertUserFact(input: { title: string; content: string }) {
+          upsertedFacts.push({ title: input.title, content: input.content });
+          return {};
+        },
+        upsertRawMessages(input: Array<{ messageId: string; text: string; userId: string }>) {
+          rawMessages.push(...input);
+        },
+        upsertUserSearchChunk(input: { itemId: string; text: string }) {
+          upsertedChunks.push({ itemId: input.itemId, text: input.text });
+        },
+        sweepUserSearchChunks() {
+          return { deletedCount: 0 };
+        }
+      } as any,
+      contextRetrievalService: {
+        async retrieveUserContext(input: { queryText: string; excludeItemIds?: Iterable<string> }) {
+          retrievalCalls.push({
+            queryText: input.queryText,
+            excludeItemIds: Array.from(input.excludeItemIds ?? [])
+          });
+          return [{
+            itemId: "ctx_old_1",
+            scope: "user",
+            sourceType: "chunk",
+            userId: "10001",
+            title: "旧上下文",
+            text: "用户之前在处理 SQLite 迁移",
+            score: 0.91,
+            updatedAt: 1
+          }];
+        }
+      } as any,
+      scenarioHostStateStore: {
+        async ensure() {
+          throw new Error("should not load scenario_host state");
+        }
+      } as any,
+      shellRuntime: {
+        async listSessionResources() {
+          return [];
+        }
+      } as any,
+      setupStore: {
+        describeMissingFields() {
+          return [];
+        }
+      } as any
+    });
+
+    const result = await builder.buildChatPromptMessages({
+      sessionId: "qqbot:p:10001",
+      interactionMode: "normal",
+      mainModelRef: ["main"],
+      visibleToolNames: [],
+      activeToolsets: [],
+      persona: { prompt: "" } as any,
+      relationship: "known",
+      participantProfiles: [],
+      currentUser: {
+        userId: "10001",
+        relationship: "known",
+        memories: []
+      } as any,
+      historySummary: null,
+      historyForPrompt: [{
+        role: "assistant",
+        content: "我们刚看过 SQLite schema。",
+        timestampMs: 100
+      }],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      batchMessages: [{
+        userId: "10001",
+        senderName: "Tester",
+        text: "记住我喜欢 Orama 版上下文检索",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: 200
+      }]
+    });
+
+    assert.equal(rawMessages.length, 1);
+    assert.ok(rawMessages[0]?.messageId.startsWith("raw_"));
+    assert.equal(rawMessages[0]?.userId, "10001");
+    assert.equal(rawMessages[0]?.text, "记住我喜欢 Orama 版上下文检索");
+    assert.deepEqual(upsertedFacts, [{
+      title: "我喜欢 Orama 版上下文检索",
+      content: "我喜欢 Orama 版上下文检索"
+    }]);
+    assert.equal(upsertedChunks.length, 2);
+    assert.ok(upsertedChunks.some((item) => item.itemId.startsWith("ctx_history_") && item.text.includes("SQLite schema")));
+    const batchChunk = upsertedChunks.find((item) => item.itemId.startsWith("ctx_batch_"));
+    assert.ok(batchChunk);
+    assert.equal(retrievalCalls.length, 1);
+    assert.equal(retrievalCalls[0]?.queryText, "Tester：记住我喜欢 Orama 版上下文检索");
+    assert.deepEqual(retrievalCalls[0]?.excludeItemIds, [batchChunk.itemId]);
+    assert.match(String(result.promptMessages[0]?.content ?? ""), /retrieved_user_context/);
+    assert.match(String(result.promptMessages[0]?.content ?? ""), /用户之前在处理 SQLite 迁移/);
+  });
+
+  test("chat prompt fails open when context chunk deposition fails", async () => {
+    const builder = createGenerationPromptBuilder({
+      config: createTestAppConfig(),
+      oneBotClient: {} as any,
+      audioStore: {} as any,
+      audioTranscriber: {
+        async transcribeMany() {
+          return [];
+        }
+      } as any,
+      npcDirectory: {
+        listProfiles() {
+          return [];
+        }
+      } as any,
+      browserService: {
+        async listPages() {
+          return { pages: [] };
+        }
+      } as any,
+      localFileService: {} as any,
+      chatFileStore: {} as any,
+      mediaVisionService: {
+        async prepareFilesForModel() {
+          return [];
+        }
+      } as any,
+      mediaCaptionService: {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      globalRuleStore: {
+        async getAll() {
+          return [];
+        }
+      } as any,
+      toolsetRuleStore: {
+        async getAll() {
+          return [];
+        }
+      } as any,
+      contextStore: {
+        listUserFacts() {
+          return [];
+        },
+        upsertUserSearchChunk() {
+          throw new Error("context store unavailable");
+        },
+        sweepUserSearchChunks() {
+          throw new Error("context store unavailable");
+        }
+      } as any,
+      contextRetrievalService: {
+        async retrieveUserContext() {
+          return [];
+        }
+      } as any,
+      scenarioHostStateStore: {
+        async ensure() {
+          throw new Error("should not load scenario_host state");
+        }
+      } as any,
+      shellRuntime: {
+        async listSessionResources() {
+          return [];
+        }
+      } as any,
+      setupStore: {
+        describeMissingFields() {
+          return [];
+        }
+      } as any
+    });
+
+    const result = await builder.buildChatPromptMessages({
+      sessionId: "qqbot:p:10001",
+      interactionMode: "normal",
+      mainModelRef: ["main"],
+      visibleToolNames: [],
+      activeToolsets: [],
+      persona: { prompt: "" } as any,
+      relationship: "known",
+      participantProfiles: [],
+      currentUser: {
+        userId: "10001",
+        relationship: "known"
+      } as any,
+      historySummary: null,
+      historyForPrompt: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      batchMessages: [{
+        userId: "10001",
+        senderName: "Tester",
+        text: "这条消息仍应正常构建 prompt",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: 200
+      }]
+    });
+
+    assert.match(JSON.stringify(result.promptMessages.at(-1)?.content ?? ""), /这条消息仍应正常构建 prompt/);
   });
