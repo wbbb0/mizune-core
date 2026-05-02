@@ -7,11 +7,13 @@ import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
 import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
 import { nextAction, type ToolNextAction } from "../core/toolNextActions.ts";
+import { directMediaViewPolicy, mediaInspectionPolicy } from "../core/resultObservationPresets.ts";
 import {
   audioTranscriptionsFromDerivedObservations,
   DerivedObservationReader,
   imageCaptionMapFromDerivedObservations
 } from "#llm/derivations/derivedObservationReader.ts";
+import type { MediaInspectionResult, MediaInspectionResultItem } from "#services/workspace/mediaInspectionService.ts";
 
 const MAX_MEDIA_VIEW_PER_CALL = 5;
 
@@ -37,7 +39,8 @@ export const imageToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isDirectMediaViewEnabled
+    isEnabled: isDirectMediaViewEnabled,
+    resultObservation: directMediaViewPolicy()
   },
   {
     definition: {
@@ -61,7 +64,8 @@ export const imageToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isMediaInspectionEnabled
+    isEnabled: isMediaInspectionEnabled,
+    resultObservation: mediaInspectionPolicy()
   },
   {
     definition: {
@@ -79,7 +83,8 @@ export const imageToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isDirectMediaViewEnabled
+    isEnabled: isDirectMediaViewEnabled,
+    resultObservation: directMediaViewPolicy()
   },
   {
     definition: {
@@ -98,7 +103,8 @@ export const imageToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isMediaInspectionEnabled
+    isEnabled: isMediaInspectionEnabled,
+    resultObservation: mediaInspectionPolicy()
   }
 ];
 
@@ -137,14 +143,9 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
         }]
       });
       return JSON.stringify({
-        ...inspection,
+        ...buildCompactInspectionToolResult(inspection),
         path: resolved.sourcePath,
-        sourceName: resolved.sourceName,
-        kind: prepared.kind,
-        animated: prepared.animated,
-        durationMs: prepared.durationMs,
-        sampledFrameCount: prepared.sampledFrameCount,
-        inspectedCount: inspection.results.length
+        source_name: resolved.sourceName
       });
     } catch (error: unknown) {
       return JSON.stringify({ error: error instanceof Error ? error.message : String(error) });
@@ -235,10 +236,7 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
       });
 
       return JSON.stringify({
-        ...inspection,
-        requestedCount: mediaIds.length,
-        inspectedCount: inspection.results.length,
-        workspace: workspaceFiles.map((item) => mapWorkspaceFileToView(item)),
+        ...buildCompactInspectionToolResult(inspection, { requestedCount: mediaIds.length }),
         unavailable: fileIds.filter((fileId) => !preparedMedia.some((item) => item.mediaId === fileId))
       });
     } catch (error: unknown) {
@@ -372,6 +370,56 @@ function viewedMediaNextActions(files: Array<{ fileId: string; fileRef: string }
   return files.slice(0, MAX_MEDIA_VIEW_PER_CALL).map((file) =>
     nextAction("chat_file_send_to_chat", "发送已查看的媒体文件到当前聊天", { file_ref: file.fileRef || file.fileId })
   );
+}
+
+interface CompactInspectionToolResult {
+  ok: boolean;
+  requested_count: number;
+  inspected_count: number;
+  results: CompactInspectionToolResultItem[];
+}
+
+interface CompactInspectionToolResultItem {
+  media_id: string;
+  status: MediaInspectionResultItem["status"];
+  found?: boolean;
+  answer: string;
+  visible_content_summary?: string;
+  near_matches?: string[];
+  notes?: string[];
+}
+
+function buildCompactInspectionToolResult(
+  inspection: MediaInspectionResult,
+  options?: { requestedCount?: number }
+): CompactInspectionToolResult {
+  return {
+    ok: inspection.ok,
+    requested_count: options?.requestedCount ?? inspection.requestedCount,
+    inspected_count: inspection.results.length,
+    results: inspection.results.map(compactInspectionItem)
+  };
+}
+
+function compactInspectionItem(item: MediaInspectionResultItem): CompactInspectionToolResultItem {
+  const compact: CompactInspectionToolResultItem = {
+    media_id: item.mediaId,
+    status: item.status,
+    answer: item.status === "unstructured" && item.rawAnswer ? item.rawAnswer : item.answer
+  };
+  if (item.found !== null) {
+    compact.found = item.found;
+  }
+  if (item.visibleContentSummary) {
+    compact.visible_content_summary = item.visibleContentSummary;
+  }
+  if (item.nearMatches.length > 0) {
+    compact.near_matches = item.nearMatches;
+  }
+  if (item.confidenceNotes.length > 0) {
+    compact.notes = item.confidenceNotes;
+  }
+  return compact;
 }
 
 function getMediaIdsArg(args: unknown): string[] {

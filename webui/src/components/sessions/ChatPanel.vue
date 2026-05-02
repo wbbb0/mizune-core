@@ -210,6 +210,9 @@ function buildTranscriptActionTarget(entry: TranscriptEntry): TranscriptActionTa
 function describeTranscriptItem(item: SessionTranscriptItem): string {
   switch (item.kind) {
     case "user_message":
+      if (item.runtimeVisibility === "ambient") {
+        return "环境消息";
+      }
       return "用户消息";
     case "assistant_message":
       return "模型回复";
@@ -227,6 +230,8 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
       return "状态消息";
     case "gate_decision":
       return "Turn Planner 判定";
+    case "admission_decision":
+      return "Admission 判定";
     case "title_generation_event":
       return "标题生成";
     case "system_marker":

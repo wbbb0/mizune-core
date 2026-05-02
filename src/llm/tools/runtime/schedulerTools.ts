@@ -1,5 +1,6 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { parseScheduledJobSchedule, requireOwner } from "../core/shared.ts";
+import { keepRawUnlessLargePolicy, stateChangePolicy } from "../core/resultObservationPresets.ts";
 
 export const schedulerToolDescriptors: ToolDescriptor[] = [
   {
@@ -15,7 +16,8 @@ export const schedulerToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     ownerOnly: true,
@@ -55,7 +57,8 @@ export const schedulerToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: stateChangePolicy()
   },
   {
     ownerOnly: true,
@@ -77,7 +80,8 @@ export const schedulerToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: stateChangePolicy()
   }
 ];
 

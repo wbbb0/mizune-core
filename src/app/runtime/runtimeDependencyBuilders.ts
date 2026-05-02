@@ -27,6 +27,7 @@ export function buildGenerationPromptBuilderDeps(services: AppServiceBootstrap):
     chatFileStore: services.chatFileStore,
     mediaVisionService: services.mediaVisionService,
     mediaCaptionService: services.mediaCaptionService,
+    contentSafetyService: services.contentSafetyService,
     globalRuleStore: services.globalRuleStore,
     toolsetRuleStore: services.toolsetRuleStore,
     contextStore: services.contextStore,

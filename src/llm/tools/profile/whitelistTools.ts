@@ -1,5 +1,6 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
+import { keepRawUnlessLargePolicy, stateChangePolicy } from "../core/resultObservationPresets.ts";
 
 export const whitelistToolDescriptors: ToolDescriptor[] = [
   {
@@ -16,7 +17,8 @@ export const whitelistToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     definition: {
@@ -32,7 +34,8 @@ export const whitelistToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     ownerOnly: true,
@@ -55,7 +58,8 @@ export const whitelistToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: stateChangePolicy()
   }
 ];
 

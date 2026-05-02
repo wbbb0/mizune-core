@@ -164,15 +164,44 @@ function buildTriggerMessage(input: ScheduledTaskPromptInput): string {
     ].join("\n");
   }
 
+  if (input.trigger.kind === "comfy_task_failed") {
+    return [
+      `任务名称：${input.trigger.jobName}`,
+      `任务说明：${input.trigger.taskInstruction}`,
+      `模板：${input.trigger.templateId}`,
+      `prompt：${input.trigger.positivePrompt}`,
+      `比例：${input.trigger.aspectRatio} -> ${input.trigger.resolvedWidth}x${input.trigger.resolvedHeight}`,
+      `Comfy prompt_id：${input.trigger.comfyPromptId}`,
+      `失败原因：${input.trigger.lastError}`,
+      `自动迭代进度：${input.trigger.autoIterationIndex}/${input.trigger.maxAutoIterations}`
+    ].join("\n");
+  }
+
+  if (input.trigger.kind === "terminal_session_closed") {
+    return [
+      `任务名称：${input.trigger.jobName}`,
+      `任务说明：${input.trigger.taskInstruction}`,
+      `resource_id：${input.trigger.resourceId}`,
+      `命令：${input.trigger.command}`,
+      `cwd：${input.trigger.cwd}`,
+      `退出码：${input.trigger.exitCode ?? "无"}`,
+      `信号：${input.trigger.signal ?? "无"}`,
+      `输出是否截断：${input.trigger.outputTruncated ? "是" : "否"}`,
+      `输出：\n${input.trigger.output || "(无输出)"}`
+    ].join("\n");
+  }
+
+  // TODO: Add sensitive-input handling for password/token/code prompts before
+  // storing or replaying user-provided secret values.
   return [
     `任务名称：${input.trigger.jobName}`,
     `任务说明：${input.trigger.taskInstruction}`,
-    `模板：${input.trigger.templateId}`,
-    `prompt：${input.trigger.positivePrompt}`,
-    `比例：${input.trigger.aspectRatio} -> ${input.trigger.resolvedWidth}x${input.trigger.resolvedHeight}`,
-    `Comfy prompt_id：${input.trigger.comfyPromptId}`,
-    `失败原因：${input.trigger.lastError}`,
-    `自动迭代进度：${input.trigger.autoIterationIndex}/${input.trigger.maxAutoIterations}`
+    `resource_id：${input.trigger.resourceId}`,
+    `命令：${input.trigger.command}`,
+    `cwd：${input.trigger.cwd}`,
+    `输入类型：${input.trigger.promptKind}`,
+    `提示文本：${input.trigger.promptText}`,
+    `最近输出：\n${input.trigger.outputTail || "(无输出)"}`
   ].join("\n");
 }
 

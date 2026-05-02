@@ -2,7 +2,7 @@ import type { LlmMessage } from "#llm/llmClient.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { InternalAssistantToolCallItem, InternalToolResultItem } from "#conversation/session/sessionTypes.ts";
 import { projectTranscriptMessageItemToHistoryMessage } from "#conversation/session/historyContext.ts";
-import { isTranscriptRuntimeIncluded } from "#conversation/session/sessionTranscript.ts";
+import { isTranscriptLlmVisible, isTranscriptRuntimeIncluded } from "#conversation/session/sessionTranscript.ts";
 
 const RECENT_RAW_TOOL_RESULT_COUNT = 5;
 
@@ -69,6 +69,7 @@ function createOpenAiStyleProjector(providerName: string): ProviderTranscriptPro
         if (
           input.preserveThinking
           && (item.kind === "user_message" || item.kind === "assistant_message" || item.kind === "session_mode_switch")
+          && isTranscriptLlmVisible(item)
         ) {
           const historyMessage = projectTranscriptMessageItemToHistoryMessage(item);
           replayMessages.push({
@@ -124,11 +125,10 @@ function buildToolResultReplayContentMap(transcript: InternalTranscriptItem[]): 
   const includedToolResults = transcript
     .filter(isTranscriptRuntimeIncluded)
     .filter((item): item is InternalToolResultItem => item.kind === "tool_result");
-  const firstRawIndex = Math.max(0, includedToolResults.length - RECENT_RAW_TOOL_RESULT_COUNT);
   const replayContent = new Map<string, string>();
 
   includedToolResults.forEach((item, index) => {
-    if (shouldReplayRawToolResult(item, index, firstRawIndex)) {
+    if (shouldReplayRawToolResult(item, index, includedToolResults.length)) {
       replayContent.set(item.toolCallId, item.content);
       return;
     }
@@ -138,11 +138,26 @@ function buildToolResultReplayContentMap(transcript: InternalTranscriptItem[]): 
   return replayContent;
 }
 
-function shouldReplayRawToolResult(item: InternalToolResultItem, index: number, firstRawIndex: number): boolean {
-  return index >= firstRawIndex || item.observation?.pinned === true;
+function shouldReplayRawToolResult(item: InternalToolResultItem, index: number, totalCount: number): boolean {
+  if (item.observation?.replaySafe === false) {
+    return false;
+  }
+  const preserveCount = item.observation?.preserveRecentRawCount ?? RECENT_RAW_TOOL_RESULT_COUNT;
+  return index >= Math.max(0, totalCount - preserveCount) || item.observation?.pinned === true;
 }
 
 function compactToolResultForReplay(item: InternalToolResultItem): string {
+  if (item.observation?.replaySafe === false) {
+    if (typeof item.observation.replayContent === "string" && item.observation.replayContent.length > 0) {
+      return item.observation.replayContent;
+    }
+    return JSON.stringify({
+      ok: true,
+      compacted: true,
+      tool: item.toolName,
+      summary: item.observation.summary || "该工具结果已标记为不可安全 replay，历史上下文仅保留摘要占位。"
+    });
+  }
   if (item.observation?.retention === "full") {
     return item.content;
   }
@@ -184,6 +199,7 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
       const replayMessages: LlmMessage[] = [];
       const replayableToolCallIds = new Set<string>();
       const activeReplayableToolCallIds = new Set<string>();
+      const toolResultReplayContent = buildToolResultReplayContentMap(input.transcript);
       let replayCoversVisibleHistory = false;
       let lastReplayRole: LlmMessage["role"] | null = null;
 
@@ -195,7 +211,7 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
         if (!isTranscriptRuntimeIncluded(item)) {
           continue;
         }
-        if (item.kind === "user_message" || item.kind === "assistant_message") {
+        if ((item.kind === "user_message" || item.kind === "assistant_message") && isTranscriptLlmVisible(item)) {
           clearActiveReplayableToolCalls();
           const historyMessage = projectTranscriptMessageItemToHistoryMessage(item);
           replayMessages.push({
@@ -249,7 +265,7 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
             replayMessages.push({
               role: "tool",
               tool_call_id: item.toolCallId,
-              content: item.content
+              content: toolResultReplayContent.get(item.toolCallId) ?? item.content
             });
             lastReplayRole = "tool";
           }

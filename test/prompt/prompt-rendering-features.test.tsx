@@ -49,7 +49,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     }
   });
 
-  test("prompt builder renders tool guidance from active toolsets only", async () => {
+  test("prompt builder renders active toolset summary only", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
@@ -63,11 +63,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
             id: "web_research",
             title: "网页检索与浏览",
             description: "搜索网页、打开页面、交互与截图。",
-            toolNames: ["open_page", "inspect_page"],
-            promptGuidance: [
-              "只有当前问题依赖外部信息或网页状态时，才进入网页检索与浏览。",
-              "先搜索或打开页面，再检查页面结构后交互；页面变化后重新检查，不要沿用旧定位。"
-            ]
+            toolNames: ["open_page", "inspect_page"]
           }
         ],
         persona,
@@ -83,7 +79,6 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       const system = String(prompt[0]?.content ?? "");
       assert.match(system, /⟦section name="toolset_guidance"⟧/);
       assert.match(system, /当前激活工具集：网页检索与浏览/);
-      assert.match(system, /- 网页检索与浏览：只有当前问题依赖外部信息或网页状态时，才进入网页检索与浏览。/);
       assert.match(system, /若当前激活工具集不够完成任务，可先查看可申请的工具集，再申请补充。/);
       assert.doesNotMatch(system, /delegate_message_to_chat/);
       assert.doesNotMatch(system, /shell_run/);
@@ -146,15 +141,54 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
 
       const system = String(prompt[0]?.content ?? "");
       assert.match(system, /⟦section name="tool_hints"⟧/);
-      assert.match(system, /做网页交互前优先先 inspect_page 看当前 elements/);
-      assert.match(system, /需要找已登记的图片、视频、音频或文件时，先调 chat_file_list/);
+      assert.match(system, /网页交互前先 inspect_page/);
+      assert.match(system, /查已登记图片、视频、音频或文件时先 chat_file_list/);
       assert.match(system, /需要从图片、截图、表格或界面里精确读取细节时，用图片精读工具按问题查看/);
       assert.doesNotMatch(system, /inspect_media/);
+      assert.doesNotMatch(system, /download_asset 返回 workspace file_id/);
       assert.match(system, /local_file_\* 处理模型可访问的本地文件工作区/);
       assert.match(system, /相对的是配置里的 local files 工作区根目录，不是 shell 当前目录、不是仓库根目录、也不是 chat file 的 chat_file_path/);
       assert.match(system, /local_file_delete；它支持删除文件或递归删除整个目录/);
       assert.doesNotMatch(system, /需要继续操作浏览器或 shell 时/);
       assert.doesNotMatch(system, /shell_run/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("prompt builder keeps compact boundary hints for specialized tools", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.patch({
+        speakingStyle: "直接、简洁，优先把任务做完。"
+      });
+      const prompt = buildPrompt({
+        sessionId: "qqbot:p:owner",
+        visibleToolNames: [
+          "download_asset",
+          "capture_screenshot",
+          "search_accessible_conversations",
+          "get_conversation_context",
+          "get_scenario_state",
+          "update_scenario_state",
+          "list_session_modes",
+          "switch_session_mode"
+        ],
+        persona,
+        relationship: "owner",
+        npcProfiles: [],
+        participantProfiles: [],
+        userProfile: createPromptUserProfile({ userId: "owner", senderName: "Owner" }),
+        historySummary: null,
+        recentMessages: [],
+        batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "继续处理", timestampMs: Date.now() })]
+      });
+
+      const system = String(prompt[0]?.content ?? "");
+      assert.match(system, /download_asset\/capture_screenshot 返回 workspace file_id\/file_ref/);
+      assert.match(system, /只读最小必要范围；不要把其他会话信息混成当前会话事实/);
+      assert.match(system, /场景状态工具用于 scenario_host 内部维护/);
+      assert.match(system, /先 list_session_modes，再 switch_session_mode/);
     } finally {
       await harness.cleanup();
     }
@@ -316,8 +350,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
             id: "debug_owner",
             title: "调试导出",
             description: "导出调试字面量（仅调试模式）。",
-            toolNames: ["dump_debug_literals"],
-            promptGuidance: ["只有 owner 明确要求看原始调试材料时，才导出调试字面量。"]
+            toolNames: ["dump_debug_literals"]
           }
         ],
         persona,
@@ -335,7 +368,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       assert.match(normalSystem, /不要承认任何工具存在/);
       assert.match(debugSystem, /当前会话已进入 owner 调试模式/);
       assert.match(debugSystem, /包括工具名、调用原因、调用结果、失败原因、系统约束、后端编排和能力边界/);
-      assert.match(debugSystem, /只有 owner 明确要求看原始调试材料时，才导出调试字面量。/);
+      assert.match(debugSystem, /当前激活工具集：调试导出/);
     } finally {
       await harness.cleanup();
     }

@@ -1,4 +1,5 @@
 import type { ToolDescriptor } from "../core/shared.ts";
+import { browserPagePolicy, keepRawUnlessLargePolicy, searchResultPolicy } from "../core/resultObservationPresets.ts";
 export { webToolHandlers } from "./webToolHandlers.ts";
 
 const isGoogleSearchToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.search.googleGrounding.enabled;
@@ -22,7 +23,8 @@ export const webToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isGoogleSearchToolEnabled
+    isEnabled: isGoogleSearchToolEnabled,
+    resultObservation: searchResultPolicy()
   },
   {
     definition: {
@@ -48,7 +50,8 @@ export const webToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isAliyunIqsToolEnabled
+    isEnabled: isAliyunIqsToolEnabled,
+    resultObservation: searchResultPolicy()
   },
   {
     definition: {
@@ -68,7 +71,8 @@ export const webToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isBrowserToolEnabled
+    isEnabled: isBrowserToolEnabled,
+    resultObservation: browserPagePolicy()
   },
   {
     definition: {
@@ -88,7 +92,8 @@ export const webToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isBrowserToolEnabled
+    isEnabled: isBrowserToolEnabled,
+    resultObservation: browserPagePolicy()
   },
   {
     definition: {
@@ -144,7 +149,8 @@ export const webToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isBrowserToolEnabled
+    isEnabled: isBrowserToolEnabled,
+    resultObservation: browserPagePolicy()
   },
   {
     definition: {
@@ -162,7 +168,8 @@ export const webToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isBrowserToolEnabled
+    isEnabled: isBrowserToolEnabled,
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     definition: {
@@ -181,7 +188,8 @@ export const webToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isBrowserToolEnabled
+    isEnabled: isBrowserToolEnabled,
+    resultObservation: browserPagePolicy()
   },
   {
     definition: {
@@ -205,7 +213,8 @@ export const webToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isBrowserToolEnabled
+    isEnabled: isBrowserToolEnabled,
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     definition: {
@@ -220,7 +229,8 @@ export const webToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isBrowserToolEnabled
+    isEnabled: isBrowserToolEnabled,
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     definition: {
@@ -238,7 +248,8 @@ export const webToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isBrowserToolEnabled
+    isEnabled: isBrowserToolEnabled,
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     definition: {
@@ -256,7 +267,8 @@ export const webToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isBrowserToolEnabled
+    isEnabled: isBrowserToolEnabled,
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     definition: {
@@ -274,6 +286,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isBrowserToolEnabled
+    isEnabled: isBrowserToolEnabled,
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   }
 ];

@@ -248,12 +248,26 @@ export async function getSessionDetail(
         chatFileIds: mediaIds.chatFileIds,
         audioIds: mediaIds.audioIds
       }),
+      contentSafetyAudits: normalizeAdminContentSafetyAudits(
+        await deps.contentSafetyStore?.listBySessionId(sessionId) ?? [],
+        deps.config?.contentSafety.audit.exposeOriginalInAdminApi ?? true
+      ),
       isGenerating: isSessionGenerating(existing),
       historyRevision: deps.sessionManager.getHistoryRevision(sessionId),
       mutationEpoch: deps.sessionManager.getMutationEpoch(sessionId)
     },
     modeState: await getSessionModeStateDetail(deps, existing)
   };
+}
+
+function normalizeAdminContentSafetyAudits<T extends { originalText?: string | undefined }>(
+  records: T[],
+  exposeOriginal: boolean
+): T[] {
+  if (exposeOriginal) {
+    return records;
+  }
+  return records.map(({ originalText: _originalText, ...record }) => record as T);
 }
 
 function collectDerivedObservationMediaIds(transcript: readonly InternalTranscriptItem[]): {

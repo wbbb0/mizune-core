@@ -36,6 +36,7 @@ import {
   resolveToolNamesFromToolsets,
   TURN_PLANNER_ALWAYS_TOOL_NAMES
 } from "#llm/tools/toolsets.ts";
+import { getBuiltinToolDescriptorByName } from "#llm/tools/toolRegistry.ts";
 import { analyzeBuiltinToolConcurrency } from "#llm/tools/toolConcurrency.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import { listSessionModes, requireSessionModeDefinition } from "#modes/registry.ts";
@@ -468,6 +469,14 @@ export function createGenerationExecutor(
             tools: resolveAllowedTools,
             abortSignal: abortController.signal,
             consumeSteerMessages,
+            projectMessagesBeforeProvider: async (messages) => (
+              (await promptBuilder.contentSafetyService?.projectLlmMessages({
+                sessionId,
+                source: "provider_call_preflight",
+                messages,
+                abortSignal: abortController.signal
+              }))?.messages ?? messages
+            ),
             toolConcurrency: {
               analyze: analyzeBuiltinToolConcurrency,
               maxConcurrency: 4
@@ -530,10 +539,19 @@ export function createGenerationExecutor(
                 persistSession(sessionId, "internal_transcript_updated");
               }
             },
-            onToolResultMessage: async (message, toolName) => {
+            onToolResultMessage: async (message, toolCall) => {
               const content = typeof message.content === "string"
                 ? message.content
                 : JSON.stringify(message.content);
+              // Some tests and legacy custom generators still pass the tool name string here.
+              const toolName = typeof toolCall === "string" ? toolCall : toolCall.function.name;
+              const toolArguments = typeof toolCall === "string" ? "{}" : toolCall.function.arguments;
+              const toolCallId = typeof toolCall === "string" ? (message.tool_call_id ?? "") : toolCall.id;
+              const toolArgs = parseToolArguments(toolArguments || "{}", logger, {
+                toolName,
+                toolCallId
+              });
+              const toolDescriptor = getBuiltinToolDescriptorByName(toolName, config);
               const applied = sessionManager.appendInternalTranscriptIfEpochMatches(sessionId, expectedEpoch, {
                 kind: "tool_result",
                 llmVisible: true,
@@ -544,7 +562,11 @@ export function createGenerationExecutor(
                 observation: buildToolObservation({
                   toolName,
                   toolCallId: message.tool_call_id ?? "",
-                  content
+                  content,
+                  args: typeof toolArgs === "object" && toolArgs !== null && !Array.isArray(toolArgs)
+                    ? toolArgs as Record<string, unknown>
+                    : {},
+                  ...(toolDescriptor?.resultObservation ? { policy: toolDescriptor.resultObservation } : {})
                 })
               });
               if (applied) {

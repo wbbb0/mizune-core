@@ -63,12 +63,13 @@ export interface LlmGenerateParams {
   abortSignal?: AbortSignal;
   tools?: LlmToolDefinition[] | (() => LlmToolDefinition[]);
   consumeSteerMessages?: () => Promise<LlmMessage[]> | LlmMessage[];
+  projectMessagesBeforeProvider?: (messages: LlmMessage[]) => Promise<LlmMessage[]> | LlmMessage[];
   onTextDelta?: (delta: string) => Promise<void> | void;
   onReasoningDelta?: (delta: string) => void;
   toolExecutor?: (toolCall: LlmToolCall) => Promise<string | LlmToolExecutionResult>;
   onAssistantToolCalls?: (message: LlmMessage, usage?: LlmProviderCallUsage) => Promise<void> | void;
   onProviderResponseComplete?: (event: LlmProviderResponseCompleteEvent) => Promise<void> | void;
-  onToolResultMessage?: (message: LlmMessage, toolName: string) => Promise<void> | void;
+  onToolResultMessage?: (message: LlmMessage, toolCall: LlmToolCall | string) => Promise<void> | void;
   toolConcurrency?: {
     analyze: (toolCall: LlmToolCall, index: number) => ToolExecutionEffect;
     maxConcurrency?: number;

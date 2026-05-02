@@ -128,6 +128,7 @@ export interface GenerationPromptBuilder {
     lastLlmUsage: SessionUsageSnapshot | null;
     batchMessages: GenerationPromptBatchMessage[];
     abortSignal?: AbortSignal;
+    contentSafetyAlreadyProjected?: boolean;
     modeProfile?: PromptInput["modeProfile"];
     draftMode?: PromptInput["draftMode"];
     isInSetup?: boolean;
@@ -169,6 +170,7 @@ export interface GenerationPromptBuilder {
     lastLlmUsage: SessionUsageSnapshot | null;
     batchMessages: GenerationPromptBatchMessage[];
     abortSignal?: AbortSignal;
+    contentSafetyAlreadyProjected?: boolean;
   }) => Promise<GenerationPromptBuildResult>;
 }
 
@@ -269,6 +271,93 @@ async function preparePromptMediaContext(
   };
 }
 
+async function projectPromptContentSafety<
+  H extends GenerationPromptHistoryMessage,
+  B extends GenerationPromptBatchMessage
+>(
+  deps: GenerationPromptBuilderDeps,
+  input: {
+    sessionId: string;
+    source: string;
+    historyForPrompt: H[];
+    batchMessages: B[];
+    abortSignal?: AbortSignal | undefined;
+    contentSafetyAlreadyProjected?: boolean | undefined;
+  }
+): Promise<{ historyForPrompt: H[]; batchMessages: B[] }> {
+  if (input.contentSafetyAlreadyProjected === true) {
+    return {
+      historyForPrompt: input.historyForPrompt,
+      batchMessages: input.batchMessages
+    };
+  }
+  const projected = await deps.contentSafetyService?.projectPromptMessages({
+    sessionId: input.sessionId,
+    source: input.source,
+    recentMessages: input.historyForPrompt,
+    batchMessages: input.batchMessages,
+    ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+  });
+  if (!projected) {
+    return {
+      historyForPrompt: input.historyForPrompt,
+      batchMessages: input.batchMessages
+    };
+  }
+  return {
+    historyForPrompt: projected.recentMessages,
+    batchMessages: projected.batchMessages
+  };
+}
+
+async function projectReplayMessages(
+  deps: GenerationPromptBuilderDeps,
+  input: {
+    sessionId: string;
+    source: string;
+    replayMessages?: LlmMessage[] | undefined;
+    abortSignal?: AbortSignal | undefined;
+  }
+): Promise<LlmMessage[] | undefined> {
+  if (!input.replayMessages || input.replayMessages.length === 0) {
+    return input.replayMessages;
+  }
+  const projected = await deps.contentSafetyService?.projectLlmMessages({
+    sessionId: input.sessionId,
+    source: input.source,
+    messages: input.replayMessages,
+    ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+  });
+  return projected?.messages ?? input.replayMessages;
+}
+
+async function projectPromptMessageAtIndex(
+  deps: GenerationPromptBuilderDeps,
+  input: {
+    sessionId: string;
+    source: string;
+    messages: LlmMessage[];
+    index: number;
+    abortSignal?: AbortSignal | undefined;
+  }
+): Promise<LlmMessage[]> {
+  const message = input.messages[input.index];
+  if (!message) {
+    return input.messages;
+  }
+  const projected = await deps.contentSafetyService?.projectLlmMessages({
+    sessionId: input.sessionId,
+    source: input.source,
+    messages: [message],
+    ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+  });
+  const projectedMessage = projected?.messages[0];
+  if (!projectedMessage) {
+    return input.messages;
+  }
+  return input.messages.map((item, index) => index === input.index ? projectedMessage : item);
+}
+
 async function readImageCaptionMapFromDerivedObservations(
   deps: GenerationPromptBuilderDeps,
   imageIds: string[],
@@ -366,6 +455,94 @@ async function preparePromptAudioTranscriptions(
     audioStore: deps.audioStore
   }).read({ audioIds });
   return audioTranscriptionsFromDerivedObservations(observations, audioIds);
+}
+
+type PreparedPromptBatchMessage = Awaited<ReturnType<typeof preparePromptBatchMessages>>[number];
+
+async function projectPreparedBatchDerivedText(
+  deps: GenerationPromptBuilderDeps,
+  input: {
+    sessionId: string;
+    source: string;
+    batchMessages: PreparedPromptBatchMessage[];
+    abortSignal?: AbortSignal | undefined;
+  }
+): Promise<PreparedPromptBatchMessage[]> {
+  if (!deps.contentSafetyService) {
+    return input.batchMessages;
+  }
+
+  const messages = input.batchMessages.map((message) => ({
+    ...message,
+    ...(message.audioTranscriptions ? { audioTranscriptions: message.audioTranscriptions.map((item) => ({ ...item })) } : {}),
+    ...(message.imageCaptions ? { imageCaptions: message.imageCaptions.map((item) => ({ ...item })) } : {}),
+    ...(message.emojiCaptions ? { emojiCaptions: message.emojiCaptions.map((item) => ({ ...item })) } : {})
+  }));
+  const refs: Array<{
+    messageIndex: number;
+    collection: "audioTranscriptions" | "imageCaptions" | "emojiCaptions";
+    itemIndex: number;
+    field: "text" | "caption";
+  }> = [];
+  const llmMessages: LlmMessage[] = [];
+
+  for (const [messageIndex, message] of messages.entries()) {
+    for (const [itemIndex, transcription] of (message.audioTranscriptions ?? []).entries()) {
+      if (transcription.status === "ready" && transcription.text?.trim()) {
+        refs.push({ messageIndex, collection: "audioTranscriptions", itemIndex, field: "text" });
+        llmMessages.push({ role: "user", content: transcription.text });
+      }
+    }
+    for (const [itemIndex, caption] of (message.imageCaptions ?? []).entries()) {
+      if (caption.caption.trim()) {
+        refs.push({ messageIndex, collection: "imageCaptions", itemIndex, field: "caption" });
+        llmMessages.push({ role: "user", content: caption.caption });
+      }
+    }
+    for (const [itemIndex, caption] of (message.emojiCaptions ?? []).entries()) {
+      if (caption.caption.trim()) {
+        refs.push({ messageIndex, collection: "emojiCaptions", itemIndex, field: "caption" });
+        llmMessages.push({ role: "user", content: caption.caption });
+      }
+    }
+  }
+
+  if (llmMessages.length === 0) {
+    return messages;
+  }
+
+  const projected = await deps.contentSafetyService.projectLlmMessages({
+    sessionId: input.sessionId,
+    source: input.source,
+    messages: llmMessages,
+    ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+  });
+
+  for (const [index, ref] of refs.entries()) {
+    const content = projected.messages[index]?.content;
+    if (typeof content !== "string") {
+      continue;
+    }
+    const message = messages[ref.messageIndex];
+    const collection = message?.[ref.collection];
+    const item = collection?.[ref.itemIndex];
+    if (!message || !collection || !item) {
+      continue;
+    }
+    if (ref.collection === "audioTranscriptions" && ref.field === "text") {
+      collection[ref.itemIndex] = {
+        ...item,
+        text: content
+      };
+      continue;
+    }
+    collection[ref.itemIndex] = {
+      ...item,
+      caption: content
+    };
+  }
+
+  return messages;
 }
 
 async function collectPromptLiveResources(deps: GenerationPromptBuilderDeps): Promise<PromptLiveResource[]> {
@@ -786,6 +963,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     lastLlmUsage: SessionUsageSnapshot | null;
     batchMessages: GenerationPromptBatchMessage[];
     abortSignal?: AbortSignal;
+    contentSafetyAlreadyProjected?: boolean;
     modeProfile?: PromptInput["modeProfile"];
     draftMode?: PromptInput["draftMode"];
     isInSetup?: boolean;
@@ -804,9 +982,17 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     );
     const draftScopedMode = draftMode != null;
     const mainProfile = getPrimaryModelProfile(deps.config, input.mainModelRef);
-    const mediaContext = await preparePromptMediaContext(deps, {
+    const safetyProjected = await projectPromptContentSafety(deps, {
+      sessionId: input.sessionId,
+      source: "chat_prompt",
       historyForPrompt: input.historyForPrompt,
       batchMessages: input.batchMessages,
+      contentSafetyAlreadyProjected: input.contentSafetyAlreadyProjected,
+      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+    });
+    const mediaContext = await preparePromptMediaContext(deps, {
+      historyForPrompt: safetyProjected.historyForPrompt,
+      batchMessages: safetyProjected.batchMessages,
       reason: "chat_prompt",
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     });
@@ -814,7 +1000,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const relevantUserIds = new Set<string>([
       ...(input.currentUser?.userId ? [input.currentUser.userId] : []),
       ...input.participantProfiles.map((item) => item.userId),
-      ...input.batchMessages.map((item) => item.userId)
+      ...safetyProjected.batchMessages.map((item) => item.userId)
     ]);
     const globalRules = (scenarioHostMode || assistantMode || draftScopedMode)
       ? []
@@ -826,9 +1012,9 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         });
     const scenarioState = (scenarioHostMode && !draftScopedMode)
       ? await deps.scenarioHostStateStore.ensure(input.sessionId, {
-          playerUserId: input.currentUser?.userId ?? input.batchMessages[input.batchMessages.length - 1]?.userId ?? "unknown_user",
+          playerUserId: input.currentUser?.userId ?? safetyProjected.batchMessages[safetyProjected.batchMessages.length - 1]?.userId ?? "unknown_user",
           playerDisplayName: input.currentUser?.preferredAddress
-            ?? input.batchMessages[input.batchMessages.length - 1]?.senderName
+            ?? safetyProjected.batchMessages[safetyProjected.batchMessages.length - 1]?.senderName
             ?? input.currentUser?.userId
             ?? "玩家"
         })
@@ -836,9 +1022,9 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const liveResources = shouldIncludeLiveResources(input.visibleToolNames)
       ? await collectPromptLiveResources(deps)
       : [];
-    const preparedBatchMessages = await preparePromptBatchMessages(
+    const rawPreparedBatchMessages = await preparePromptBatchMessages(
       deps,
-      input.batchMessages,
+      safetyProjected.batchMessages,
       mediaContext.captionMap,
       {
         supportsAudioInput: mainProfile?.supportsAudioInput,
@@ -847,14 +1033,26 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
       }
     );
+    const preparedBatchMessages = await projectPreparedBatchDerivedText(deps, {
+      sessionId: input.sessionId,
+      source: "chat_prompt_derived_text",
+      batchMessages: rawPreparedBatchMessages,
+      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+    });
+    const replayMessages = await projectReplayMessages(deps, {
+      sessionId: input.sessionId,
+      source: "chat_prompt_replay",
+      replayMessages: input.replayMessages,
+      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+    });
     const userProfilePromptState = assistantMode
       ? buildAssistantUserProfilePromptState(
           input.currentUser,
-          input.batchMessages[input.batchMessages.length - 1]?.senderName
+          safetyProjected.batchMessages[safetyProjected.batchMessages.length - 1]?.senderName
         )
       : buildUserProfilePromptState(
           input.currentUser,
-          input.batchMessages[input.batchMessages.length - 1]?.senderName
+          safetyProjected.batchMessages[safetyProjected.batchMessages.length - 1]?.senderName
         );
     const currentTurnChunkIds = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
       ? []
@@ -895,7 +1093,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       visibleToolNames: input.visibleToolNames,
       activeToolsets: input.activeToolsets,
       lateSystemMessages: input.lateSystemMessages,
-      replayMessages: input.replayMessages,
+      replayMessages,
       persona: input.persona,
       relationship: input.relationship,
       npcProfiles: assistantMode ? [] : buildNpcPromptProfiles(deps, relevantUserIds),
@@ -903,7 +1101,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       userProfile: assistantMode
         ? buildAssistantUserProfilePromptState(
             input.currentUser,
-            input.batchMessages[input.batchMessages.length - 1]?.senderName
+            safetyProjected.batchMessages[safetyProjected.batchMessages.length - 1]?.senderName
           )
         : userProfilePromptState,
       currentUserMemories,
@@ -929,7 +1127,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         activeToolsets: input.activeToolsets,
         historySummary: input.historySummary,
         recentHistory: mediaContext.historyForPrompt,
-        currentBatch: input.batchMessages,
+        currentBatch: safetyProjected.batchMessages,
         liveResources,
         debugMarkers: input.debugMarkers ?? [],
         toolTranscript: input.internalTranscript,
@@ -968,9 +1166,16 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
   }) => {
     const scenarioHostMode = isScenarioHostMode(input.modeId);
     const assistantMode = isAssistantMode(input.modeId);
+    const safetyProjected = await projectPromptContentSafety(deps, {
+      sessionId: input.sessionId,
+      source: "scheduled_prompt",
+      historyForPrompt: input.historyForPrompt,
+      batchMessages: [],
+      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+    });
     const [mediaContext, liveResources, globalRules, toolsetRuleEntries] = await Promise.all([
       preparePromptMediaContext(deps, {
-        historyForPrompt: input.historyForPrompt,
+        historyForPrompt: safetyProjected.historyForPrompt,
         reason: "scheduled_prompt",
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
       }),
@@ -1026,14 +1231,20 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       currentUserMemories
     });
 
-    const promptMessages = buildScheduledTaskPrompt({
+    const replayMessages = await projectReplayMessages(deps, {
+      sessionId: input.sessionId,
+      source: "scheduled_prompt_replay",
+      replayMessages: input.replayMessages,
+      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+    });
+    const rawPromptMessages = buildScheduledTaskPrompt({
       sessionId: input.sessionId,
       ...(input.modeId ? { modeId: input.modeId } : {}),
       interactionMode: input.interactionMode,
       visibleToolNames: input.visibleToolNames,
       activeToolsets: input.activeToolsets,
       lateSystemMessages: input.lateSystemMessages,
-      replayMessages: input.replayMessages,
+      replayMessages,
       trigger: input.trigger,
       persona: input.persona,
       relationship: input.relationship,
@@ -1056,6 +1267,13 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       ...(input.modeProfile ? { modeProfile: input.modeProfile } : {}),
       recentMessages: mediaContext.historyForPrompt,
       targetContext: input.targetContext
+    });
+    const promptMessages = await projectPromptMessageAtIndex(deps, {
+      sessionId: input.sessionId,
+      source: "scheduled_prompt_trigger",
+      messages: rawPromptMessages,
+      index: rawPromptMessages.length - 1,
+      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     });
 
     return {
@@ -1097,18 +1315,27 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     lastLlmUsage: SessionUsageSnapshot | null;
     batchMessages: GenerationPromptBatchMessage[];
     abortSignal?: AbortSignal;
+    contentSafetyAlreadyProjected?: boolean;
   }) => {
     const mainProfile = getPrimaryModelProfile(deps.config, getModelRefsForRole(deps.config, "main_small"));
-    const mediaContext = await preparePromptMediaContext(deps, {
+    const safetyProjected = await projectPromptContentSafety(deps, {
+      sessionId: input.sessionId,
+      source: "setup_prompt",
       historyForPrompt: input.historyForPrompt,
       batchMessages: input.batchMessages,
+      contentSafetyAlreadyProjected: input.contentSafetyAlreadyProjected,
+      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+    });
+    const mediaContext = await preparePromptMediaContext(deps, {
+      historyForPrompt: safetyProjected.historyForPrompt,
+      batchMessages: safetyProjected.batchMessages,
       reason: "setup_prompt",
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     });
 
-    const preparedBatchMessages = await preparePromptBatchMessages(
+    const rawPreparedBatchMessages = await preparePromptBatchMessages(
       deps,
-      input.batchMessages,
+      safetyProjected.batchMessages,
       mediaContext.captionMap,
       {
         supportsAudioInput: mainProfile?.supportsAudioInput,
@@ -1117,12 +1344,24 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
       }
     );
+    const preparedBatchMessages = await projectPreparedBatchDerivedText(deps, {
+      sessionId: input.sessionId,
+      source: "setup_prompt_derived_text",
+      batchMessages: rawPreparedBatchMessages,
+      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+    });
+    const replayMessages = await projectReplayMessages(deps, {
+      sessionId: input.sessionId,
+      source: "setup_prompt_replay",
+      replayMessages: input.replayMessages,
+      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+    });
 
     const promptMessages = buildSetupPrompt({
       sessionId: input.sessionId,
       interactionMode: input.interactionMode,
       lateSystemMessages: input.lateSystemMessages,
-      replayMessages: input.replayMessages,
+      replayMessages,
       includeBatchMediaCaptions: !mainProfile?.supportsVision,
       persona: input.persona,
       phase: input.phase,
@@ -1141,7 +1380,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         activeToolsets: [],
         historySummary: null,
         recentHistory: mediaContext.historyForPrompt,
-        currentBatch: input.batchMessages,
+        currentBatch: safetyProjected.batchMessages,
         liveResources: [],
         debugMarkers: input.debugMarkers ?? [],
         toolTranscript: input.internalTranscript,

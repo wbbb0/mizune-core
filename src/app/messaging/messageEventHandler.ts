@@ -77,7 +77,7 @@ export async function processIncomingMessage(
     }
   }
 
-  const context = await createMessageProcessingContext(
+  let context = await createMessageProcessingContext(
     { audioStore, chatFileStore, sessionManager, userStore, setupStore, userIdentityStore },
     incomingMessage,
     {
@@ -102,16 +102,6 @@ export async function processIncomingMessage(
     persistSession
   );
 
-  const triggerDecision = deps.inboundDelivery === "web"
-    ? {
-        groupMatched: false,
-        matchedPendingGroupTrigger: false,
-        shouldTriggerResponse: true
-      }
-    : await resolveTriggerDecision(
-        { config, whitelistStore, conversationAccess, sessionManager },
-        context
-      );
   const command = resolveChatDirectCommand(context);
   if (command) {
     try {
@@ -123,14 +113,78 @@ export async function processIncomingMessage(
     return;
   }
 
+  const triggerDecision = deps.inboundDelivery === "web"
+    ? {
+        groupMatched: false,
+        matchedPendingGroupTrigger: false,
+        replyToBot: false,
+        textIntentCorrection: false,
+        textIntentWaitMore: false,
+        shouldTriggerResponse: true,
+        threadAction: "reply_now" as const,
+        replyDecision: "reply_small" as const,
+        interruptPolicy: "soft_interrupt" as const,
+        contextPolicy: "new_thread" as const,
+        priority: "normal" as const,
+        reason: "Web 输入默认回复"
+      }
+    : await resolveTriggerDecision(
+        { config, whitelistStore, conversationAccess, sessionManager },
+        context
+      );
+  const hasActiveResponseAtAdmission = sessionManager.hasActiveResponse(context.session.id);
   let activeResponseAlreadyInterrupted = false;
-  if (triggerDecision.shouldTriggerResponse && sessionManager.hasActiveResponse(context.session.id)) {
+  if (
+    triggerDecision.shouldTriggerResponse
+    && hasActiveResponseAtAdmission
+    && (triggerDecision.interruptPolicy === "soft_interrupt" || triggerDecision.interruptPolicy === "abort_generation")
+  ) {
     const interrupted = sessionManager.interruptResponse(context.session.id);
     activeResponseAlreadyInterrupted = true;
     logger.info({ sessionId: context.session.id, interrupted }, "user_message_interrupted_active_response");
   }
 
-  appendIncomingHistory(sessionManager, logger, context);
+  appendIncomingHistory(sessionManager, logger, context, isAmbientOnlyDecision(triggerDecision)
+    ? {
+        runtimeVisibility: "ambient",
+        transcriptGroup: "standalone"
+      }
+    : undefined);
+  appendAdmissionDecisionTranscript(
+    sessionManager,
+    deps.inboundDelivery,
+    context,
+    triggerDecision,
+    hasActiveResponseAtAdmission
+  );
+
+  if (triggerDecision.threadAction === "wait_more") {
+    sessionManager.appendPendingMessage(context.session.id, context.enrichedMessage);
+    persistSession(context.session.id, "group_message_wait_more");
+    if (!sessionManager.hasActiveResponse(context.session.id)) {
+      debounceManager.schedule(context.session.id, () => {
+        flushSession(context.session.id);
+      }, {
+        reason: "gate_wait",
+        multiplierOverride: config.conversation.debounce.plannerWaitMultiplier
+      });
+    }
+    logReceivedMessage(logger, context, triggerDecision);
+    return;
+  }
+
+  if (triggerDecision.threadAction === "queue_next_thread") {
+    sessionManager.appendPendingMessage(context.session.id, context.enrichedMessage);
+    persistSession(context.session.id, "group_message_queued_next_thread");
+    if (!sessionManager.hasActiveResponse(context.session.id)) {
+      debounceManager.schedule(context.session.id, () => {
+        flushSession(context.session.id);
+      });
+    }
+    logReceivedMessage(logger, context, triggerDecision);
+    return;
+  }
+
   if (handleNonTriggeringMessage(sessionManager, logger, persistSession, context, triggerDecision)) {
     return;
   }
@@ -142,9 +196,48 @@ export async function processIncomingMessage(
     persistSession,
     flushSession,
     logger,
-    { activeResponseAlreadyInterrupted }
+    {
+      activeResponseAlreadyInterrupted,
+      interruptPolicy: triggerDecision.interruptPolicy
+    }
   );
   logReceivedMessage(logger, context, triggerDecision);
+}
+
+function isAmbientOnlyDecision(input: { threadAction: string }): boolean {
+  return input.threadAction === "ambient_only";
+}
+
+function appendAdmissionDecisionTranscript(
+  sessionManager: MessageHandlerServices["sessionManager"],
+  inboundDelivery: MessageEventHandlerDeps["inboundDelivery"],
+  context: Parameters<typeof logReceivedMessage>[1],
+  triggerDecision: Parameters<typeof logReceivedMessage>[2],
+  hasActiveResponse: boolean
+): void {
+  sessionManager.appendInternalTranscript(context.session.id, {
+    kind: "admission_decision",
+    llmVisible: false,
+    delivery: inboundDelivery,
+    chatType: context.enrichedMessage.chatType,
+    userId: context.enrichedMessage.userId,
+    ...(context.enrichedMessage.groupId ? { groupId: context.enrichedMessage.groupId } : {}),
+    groupMatched: triggerDecision.groupMatched,
+    matchedPendingGroupTrigger: triggerDecision.matchedPendingGroupTrigger,
+    replyToBot: triggerDecision.replyToBot,
+    textIntentCorrection: triggerDecision.textIntentCorrection,
+    textIntentWaitMore: triggerDecision.textIntentWaitMore,
+    shouldTriggerResponse: triggerDecision.shouldTriggerResponse,
+    threadAction: triggerDecision.threadAction,
+    replyDecision: triggerDecision.replyDecision,
+    interruptPolicy: triggerDecision.interruptPolicy,
+    contextPolicy: triggerDecision.contextPolicy,
+    priority: triggerDecision.priority,
+    reason: triggerDecision.reason,
+    isAtMentioned: context.enrichedMessage.isAtMentioned,
+    hasActiveResponse,
+    timestampMs: Date.now()
+  });
 }
 
 // Handles incoming OneBot message events and routes them into session work.

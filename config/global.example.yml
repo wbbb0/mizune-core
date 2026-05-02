@@ -101,6 +101,7 @@ conversation:
       asciiTokens: 0.25
   group:
     requireAtMention: true
+    ambientRecallMessageCount: 8
 context:
   embedding:
     timeoutMs: 30000
@@ -145,6 +146,13 @@ shell:
   maxTimeoutMs: 600000
   maxOutputChars: 5000
   sessionTtlMs: null
+  terminalEvents:
+    enabled: true
+    inputDetectionDebounceMs: 800
+    inputConfirmationMs: 1200
+    inputPromptCooldownMs: 30000
+    inputSuppressionAfterWriteMs: 1200
+    detectionTailMaxChars: 8000
 localFiles:
   enabled: true
   root: data
@@ -178,6 +186,84 @@ comfy:
       resultPolicy:
         maxAutoIterations: 1
         defaultActionHint: decide_by_model
+contentSafety:
+  # 可选功能，默认关闭。启用后如果 provider 未配置或调用失败，只记录 warning 并放行，不影响正常聊天。
+  enabled: false
+  failPolicy: allow
+  audit:
+    preserveOriginalText: true
+    preserveOriginalFiles: true
+    exposeOriginalInAdminApi: true
+    maxOriginalTextChars: 20000
+  cache:
+    enabled: true
+    ttlMs: 2592000000
+    version: 1
+    storeAllowResults: true
+  textBatch:
+    enabled: true
+    maxMessages: 10
+    maxChars: 4000
+    singleMessageMaxChars: 1200
+    maxLocateConcurrency: 5
+  marker:
+    includeProvider: true
+    includeLabels: true
+    includeConfidence: false
+    includeSubjectRef: true
+  providers:
+    # 本地关键词 provider 用于联调审核链路；生产可替换为 aliyun_content_moderation。
+    localKeyword:
+      type: keyword
+      enabled: false
+      blockedTextKeywords: []
+      blockedMediaNameKeywords: []
+    aliyunCm:
+      type: aliyun_content_moderation
+      enabled: false
+      endpoint: green-cip.ap-southeast-1.aliyuncs.com
+      regionId: ap-southeast-1
+      # 可以直接明文填写，也可以使用下面的 Env 字段从环境变量读取。
+      # accessKeyId: your-access-key-id
+      # accessKeySecret: your-access-key-secret
+      accessKeyIdEnv: ALIBABA_CLOUD_ACCESS_KEY_ID
+      accessKeySecretEnv: ALIBABA_CLOUD_ACCESS_KEY_SECRET
+      timeoutMs: 6000
+      proxy: false
+      services:
+        text: llm_query_moderation
+        image: baselineCheck
+      variants:
+        text: text_plus
+        image: image
+  profiles:
+    preLlm:
+      text:
+        provider: aliyunCm
+        action: replace_in_projection
+        blockRiskLevels: [high]
+        reviewRiskLevels: [medium]
+      image:
+        provider: aliyunCm
+        action: hide_from_projection_and_mark
+        blockRiskLevels: [high]
+        reviewRiskLevels: [medium]
+      emoji:
+        provider: aliyunCm
+        action: hide_from_projection_and_mark
+      audio:
+        provider: aliyunCm
+        action: mark_unavailable
+      unsupportedFilePolicy: mark
+  routes:
+    prompt:
+      preLlm: preLlm
+    toolMedia:
+      chatFile: preLlm
+      localFile: preLlm
+    llmProviderFallback:
+      dashscope:
+        useDataInspectionHeader: false
 search:
   googleGrounding:
     enabled: false

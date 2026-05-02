@@ -6,6 +6,7 @@ import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
 import { getStringArrayArg } from "../core/toolArgHelpers.ts";
+import { debugDumpPolicy, keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
 import {
   DerivedObservationReader,
   imageCaptionMapFromDerivedObservations
@@ -39,7 +40,8 @@ export const debugToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     modelVisible: false,
@@ -54,7 +56,8 @@ export const debugToolDescriptors: ToolDescriptor[] = [
           additionalProperties: true
         }
       }
-    }
+    },
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 0, includeInHistorySummary: false })
   },
   {
     ownerOnly: true,
@@ -80,7 +83,8 @@ export const debugToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: debugDumpPolicy()
   }
 ];
 

@@ -181,7 +181,8 @@ const conversationConfigSchema = s.object({
     }).title("Token 估算").default(emptyObject)
   }).title("历史压缩").describe("控制会话历史在过长时如何压缩。").default(emptyObject),
   group: s.object({
-    requireAtMention: s.boolean().title("需要 @").default(true)
+    requireAtMention: s.boolean().title("需要 @").default(true),
+    ambientRecallMessageCount: s.number().int().min(0).title("环境消息召回数").default(8)
   }).title("群聊").default(emptyObject)
 }).title("会话").describe("控制会话上下文、压缩和消息发送节奏。").default(emptyObject);
 
@@ -230,12 +231,22 @@ const schedulerConfigSchema = s.object({
   defaultTimezone: s.string().trim().nonempty().title("默认时区").default("Asia/Shanghai")
 }).title("定时任务").describe("控制计划任务系统与默认时区。").default(emptyObject);
 
+const shellTerminalEventsConfigSchema = s.object({
+  enabled: s.boolean().title("启用").default(true),
+  inputDetectionDebounceMs: s.number().int().min(0).title("输入检测防抖毫秒").default(800),
+  inputConfirmationMs: s.number().int().min(0).title("输入检测确认毫秒").default(1200),
+  inputPromptCooldownMs: s.number().int().min(0).title("同一输入提示冷却毫秒").default(30000),
+  inputSuppressionAfterWriteMs: s.number().int().min(0).title("写入后抑制检测毫秒").default(1200),
+  detectionTailMaxChars: s.number().int().positive().title("输入检测最大尾部字符数").default(8000)
+}).title("Terminal 事件").describe("控制后台 terminal 完成和等待输入事件。").default(emptyObject);
+
 const shellConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(false),
   defaultTimeoutMs: s.number().int().positive().title("默认超时毫秒").default(15000),
   maxTimeoutMs: s.number().int().positive().title("最大超时毫秒").default(600000),
   maxOutputChars: s.number().int().positive().title("最大输出字符数").default(12000),
-  sessionTtlMs: s.union([s.number().int().positive(), s.literal(null)]).title("会话存活毫秒").default(null)
+  sessionTtlMs: s.union([s.number().int().positive(), s.literal(null)]).title("会话存活毫秒").default(null),
+  terminalEvents: shellTerminalEventsConfigSchema
 }).title("Shell").describe("控制 shell 工具的超时、输出与会话保活。").default(emptyObject);
 
 const localFilesConfigSchema = s.object({
@@ -347,6 +358,106 @@ const backupConfigSchema = s.object({
   profileRotateLimit: s.number().int().positive().title("配置轮换保留数").default(10)
 }).title("备份").describe("控制浏览器等配置文件的备份保留策略。").default(emptyObject);
 
+const contentSafetyProviderConfigSchema = s.object({
+  type: s.enum(["noop", "keyword", "aliyun_content_moderation", "dashscope_data_inspection"] as const).title("类型").default("noop"),
+  enabled: s.boolean().title("启用").default(true),
+  endpoint: s.string().trim().nonempty().title("Endpoint").optional(),
+  regionId: s.string().trim().nonempty().title("地域").optional(),
+  accessKeyId: s.string().trim().nonempty().title("AccessKeyId").optional(),
+  accessKeySecret: s.string().trim().nonempty().title("AccessKeySecret").optional(),
+  accessKeyIdEnv: s.string().trim().nonempty().title("AccessKeyId 环境变量").optional(),
+  accessKeySecretEnv: s.string().trim().nonempty().title("AccessKeySecret 环境变量").optional(),
+  apiKey: s.string().trim().nonempty().title("API Key").optional(),
+  apiKeyEnv: s.string().trim().nonempty().title("API Key 环境变量").optional(),
+  timeoutMs: s.number().int().positive().title("超时毫秒").default(6000),
+  proxy: s.boolean().title("使用代理").default(false),
+  services: s.object({
+    text: s.string().trim().nonempty().title("文本审核服务").optional(),
+    image: s.string().trim().nonempty().title("图片审核服务").optional()
+  }).title("服务").default(emptyObject),
+  variants: s.object({
+    text: s.enum(["text", "text_plus"] as const).title("文本接口").default("text_plus"),
+    image: s.enum(["image"] as const).title("图片接口").default("image")
+  }).title("接口变体").default(emptyObject),
+  blockedTextKeywords: s.array(s.string().trim().nonempty()).title("文本阻断关键词").default([]),
+  blockedMediaNameKeywords: s.array(s.string().trim().nonempty()).title("媒体文件名阻断关键词").default([])
+}).title("内容安全 Provider").default(emptyObject);
+
+const contentSafetyRuleConfigSchema = s.object({
+  provider: s.string().trim().nonempty().title("Provider").optional(),
+  action: s.enum([
+    "allow",
+    "mark",
+    "replace_in_projection",
+    "hide_from_projection_and_mark",
+    "mark_unavailable",
+    "block_message"
+  ] as const).title("动作").default("replace_in_projection"),
+  blockRiskLevels: s.array(s.enum(["high", "medium", "low", "none"] as const)).title("阻断风险等级").default(["high"]),
+  reviewRiskLevels: s.array(s.enum(["high", "medium", "low", "none"] as const)).title("复核风险等级").default(["medium"]),
+  blockConfidenceGte: s.number().min(0).max(100).title("阻断置信度阈值").optional()
+}).title("内容安全规则").default(emptyObject);
+
+const contentSafetyProfileConfigSchema = s.object({
+  text: contentSafetyRuleConfigSchema,
+  image: contentSafetyRuleConfigSchema,
+  emoji: contentSafetyRuleConfigSchema,
+  audio: contentSafetyRuleConfigSchema,
+  unsupportedFilePolicy: s.enum(["allow", "mark", "block"] as const).title("不支持文件策略").default("mark")
+}).title("内容安全 Profile").default(emptyObject);
+
+const contentSafetyConfigSchema = s.object({
+  enabled: s.boolean().title("启用").default(false),
+  failPolicy: s.enum(["allow", "mark"] as const).title("失败策略").default("allow"),
+  audit: s.object({
+    preserveOriginalText: s.boolean().title("保留原始文本").default(true),
+    preserveOriginalFiles: s.boolean().title("保留原始文件").default(true),
+    exposeOriginalInAdminApi: s.boolean().title("后台 API 暴露原始内容").default(true),
+    maxOriginalTextChars: s.number().int().positive().title("原始文本最大字符数").default(20000)
+  }).title("审计").default(emptyObject),
+  cache: s.object({
+    enabled: s.boolean().title("启用缓存").default(true),
+    ttlMs: s.number().int().positive().title("缓存 TTL 毫秒").default(30 * 24 * 60 * 60 * 1000),
+    version: s.number().int().min(0).title("缓存版本").default(1),
+    storeAllowResults: s.boolean().title("缓存放行结果").default(true)
+  }).title("缓存").default(emptyObject),
+  textBatch: s.object({
+    enabled: s.boolean().title("启用文本批量审核").default(true),
+    maxMessages: s.number().int().positive().title("单批最大消息数").default(10),
+    maxChars: s.number().int().positive().title("单批最大字符数").default(4000),
+    singleMessageMaxChars: s.number().int().positive().title("单条独立审核字符数").default(1200),
+    maxLocateConcurrency: s.number().int().positive().title("命中定位最大并发").default(5)
+  }).title("文本批量审核").default(emptyObject),
+  marker: s.object({
+    includeProvider: s.boolean().title("包含 Provider").default(true),
+    includeLabels: s.boolean().title("包含标签").default(true),
+    includeConfidence: s.boolean().title("包含置信度").default(false),
+    includeSubjectRef: s.boolean().title("包含对象引用").default(true)
+  }).title("屏蔽标记").default(emptyObject),
+  providers: s.record(
+    s.string().trim().nonempty(),
+    contentSafetyProviderConfigSchema
+  ).title("Provider 列表").default({}),
+  profiles: s.record(
+    s.string().trim().nonempty(),
+    contentSafetyProfileConfigSchema
+  ).title("Profile 列表").default({}),
+  routes: s.object({
+    prompt: s.object({
+      preLlm: s.string().trim().nonempty().title("LLM 调用前 Profile").optional()
+    }).title("Prompt 调用前").default(emptyObject),
+    toolMedia: s.object({
+      chatFile: s.string().trim().nonempty().title("聊天文件 Profile").optional(),
+      localFile: s.string().trim().nonempty().title("本地文件 Profile").optional()
+    }).title("工具媒体").default(emptyObject),
+    llmProviderFallback: s.object({
+      dashscope: s.object({
+        useDataInspectionHeader: s.boolean().title("使用 DashScope 内容安全请求头").default(false)
+      }).title("DashScope").default(emptyObject)
+    }).title("LLM Provider 兜底").default(emptyObject)
+  }).title("路由").default(emptyObject)
+}).title("内容安全").describe("在内容进入 LLM 前进行可选审核；默认关闭，失败时默认放行并记录警告。").default(emptyObject);
+
 const llmRuntimeConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(false),
   routingPreset: s.string().trim().dynamicRef("llm_routing_preset_names").title("模型路由预设").default(""),
@@ -411,6 +522,7 @@ export const fileConfigSchema = s.object({
   localFiles: localFilesConfigSchema,
   chatFiles: chatFilesConfigSchema,
   comfy: comfyConfigSchema,
+  contentSafety: contentSafetyConfigSchema,
   search: searchConfigSchema,
   browser: browserConfigSchema,
   backup: backupConfigSchema
@@ -456,6 +568,7 @@ export type ComfyConfig = Infer<typeof comfyConfigSchema>;
 export type ComfyTemplateConfig = Infer<typeof comfyTemplateConfigSchema>;
 export type SearchConfig = Infer<typeof searchConfigSchema>;
 export type BackupConfig = Infer<typeof backupConfigSchema>;
+export type ContentSafetyConfig = Infer<typeof contentSafetyConfigSchema>;
 
 export interface ConfigSummary {
   appName: string;

@@ -4,11 +4,19 @@ import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { SessionMessagingAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { SessionDelivery, SessionState } from "#conversation/session/sessionTypes.ts";
+import type { ContentSafetyEvent } from "#contentSafety/contentSafetyTypes.ts";
 import type {
   GenerationCommittedTextSink,
   GenerationDraftOverlaySink
 } from "#app/generation/generationOutputContracts.ts";
 import type { ResolvedDirectCommand } from "./directCommands.ts";
+import type {
+  AdmissionContextPolicy,
+  AdmissionInterruptPolicy,
+  AdmissionPriority,
+  AdmissionReplyDecision,
+  AdmissionThreadAction
+} from "./conversationAdmissionPolicy.ts";
 
 export interface MessageEventHandlerDeps {
   inboundDelivery: SessionDelivery;
@@ -33,7 +41,7 @@ export interface MessageEventHandlerDeps {
     | "setupStore"
     | "globalProfileReadinessStore"
     | "conversationAccess"
-  >, "sessionManager"> & {
+  >, "sessionManager" | "contentSafetyService"> & {
     sessionManager: SessionMessagingAccess & import("#conversation/session/sessionCapabilities.ts").SessionOperationModeAccess;
   };
   handleDirectCommand: (input: {
@@ -87,10 +95,20 @@ export interface MessageProcessingContext {
   user: Awaited<ReturnType<MessageHandlerServices["userStore"]["touchSeenUser"]>>;
   enrichedMessage: EnrichedIncomingMessage;
   session: SessionState;
+  contentSafetyEvents?: ContentSafetyEvent[];
 }
 
 export interface TriggerDecision {
   groupMatched: boolean;
   matchedPendingGroupTrigger: boolean;
+  replyToBot: boolean;
+  textIntentCorrection: boolean;
+  textIntentWaitMore: boolean;
   shouldTriggerResponse: boolean;
+  threadAction: AdmissionThreadAction;
+  replyDecision: AdmissionReplyDecision;
+  interruptPolicy: AdmissionInterruptPolicy;
+  contextPolicy: AdmissionContextPolicy;
+  priority: AdmissionPriority;
+  reason: string;
 }

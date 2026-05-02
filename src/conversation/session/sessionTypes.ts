@@ -6,8 +6,10 @@ import type {
   NormalizedInternalTranscriptItem,
   StoredToolCall as StoredToolCallContract,
   TranscriptItemDeliveryRef as TranscriptItemDeliveryRefContract,
+  TranscriptContentSafetyEvent as TranscriptContentSafetyEventContract,
   TranscriptItemMeta as TranscriptItemMetaContract,
   TranscriptItemRuntimeExclusionReason as TranscriptItemRuntimeExclusionReasonContract,
+  TranscriptItemRuntimeVisibility as TranscriptItemRuntimeVisibilityContract,
   TranscriptItemSourceRef as TranscriptItemSourceRefContract,
   TranscriptTokenStat as TranscriptTokenStatContract,
   TranscriptTokenStats as TranscriptTokenStatsContract
@@ -99,8 +101,10 @@ export interface SessionDebugMarker {
 
 export type StoredToolCall = StoredToolCallContract;
 export type TranscriptItemRuntimeExclusionReason = TranscriptItemRuntimeExclusionReasonContract;
+export type TranscriptItemRuntimeVisibility = TranscriptItemRuntimeVisibilityContract;
 export type TranscriptItemSourceRef = TranscriptItemSourceRefContract;
 export type TranscriptItemDeliveryRef = TranscriptItemDeliveryRefContract;
+export type TranscriptContentSafetyEvent = TranscriptContentSafetyEventContract;
 export type TranscriptItemMeta = TranscriptItemMetaContract;
 export type TranscriptTokenStat = TranscriptTokenStatContract;
 export type TranscriptTokenStats = TranscriptTokenStatsContract;
@@ -115,6 +119,7 @@ export type TranscriptOutboundMediaMessageItem = Extract<InternalTranscriptItem,
 export type TranscriptDirectCommandItem = Extract<InternalTranscriptItem, { kind: "direct_command" }>;
 export type TranscriptStatusMessageItem = Extract<InternalTranscriptItem, { kind: "status_message" }>;
 export type TranscriptGateDecisionItem = Extract<InternalTranscriptItem, { kind: "gate_decision" }>;
+export type TranscriptAdmissionDecisionItem = Extract<InternalTranscriptItem, { kind: "admission_decision" }>;
 export type InternalSystemMarkerItem = Extract<InternalTranscriptItem, { kind: "system_marker" }>;
 export type InternalFallbackEventItem = Extract<InternalTranscriptItem, { kind: "fallback_event" }>;
 export type InternalTriggerEventItem = Extract<InternalTranscriptItem, { kind: "internal_trigger_event" }>;
@@ -215,10 +220,60 @@ export interface ComfyTaskFailedTriggerExecution {
   rejectCompletion?: (error: unknown) => void;
 }
 
+export type TerminalInputPromptKind =
+  | "confirmation"
+  | "password"
+  | "selection"
+  | "text_input"
+  | "unknown_prompt";
+
+export interface TerminalSessionClosedTriggerExecution {
+  kind: "terminal_session_closed";
+  targetType: "private" | "group";
+  targetUserId?: string;
+  targetGroupId?: string;
+  targetSenderName: string;
+  jobName: string;
+  instruction: string;
+  enqueuedAt: number;
+  resourceId: string;
+  command: string;
+  cwd: string;
+  exitCode: number | null;
+  signal: string | null;
+  output: string;
+  outputTruncated: boolean;
+  resolveCompletion?: () => void;
+  rejectCompletion?: (error: unknown) => void;
+}
+
+export interface TerminalInputRequiredTriggerExecution {
+  kind: "terminal_input_required";
+  targetType: "private" | "group";
+  targetUserId?: string;
+  targetGroupId?: string;
+  targetSenderName: string;
+  jobName: string;
+  instruction: string;
+  enqueuedAt: number;
+  resourceId: string;
+  command: string;
+  cwd: string;
+  promptKind: TerminalInputPromptKind;
+  promptText: string;
+  promptSignature: string;
+  detectedAtMs: number;
+  outputTail: string;
+  resolveCompletion?: () => void;
+  rejectCompletion?: (error: unknown) => void;
+}
+
 export type InternalSessionTriggerExecution =
   | ScheduledInstructionTriggerExecution
   | ComfyTaskCompletedTriggerExecution
-  | ComfyTaskFailedTriggerExecution;
+  | ComfyTaskFailedTriggerExecution
+  | TerminalSessionClosedTriggerExecution
+  | TerminalInputRequiredTriggerExecution;
 
 export type SessionPhase =
   | { kind: "idle" }

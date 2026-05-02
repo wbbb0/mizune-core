@@ -5,6 +5,7 @@ import type { AppConfig } from "#config/config.ts";
 import { inferSendableFileKind } from "./sendablePath.ts";
 import type { ChatFileRecord } from "./types.ts";
 import type { ChatFileStore } from "./chatFileStore.ts";
+import type { ContentSafetyService } from "#contentSafety/contentSafetyService.ts";
 
 export interface PreparedWorkspaceVisual {
   fileId: string;
@@ -20,7 +21,8 @@ export class MediaVisionService {
   constructor(
     private readonly config: AppConfig,
     private readonly logger: Logger,
-    private readonly chatFileStore: Pick<ChatFileStore, "getFile" | "resolveAbsolutePath">
+    private readonly chatFileStore: Pick<ChatFileStore, "getFile" | "resolveAbsolutePath">,
+    private readonly contentSafetyService?: Pick<ContentSafetyService, "guardChatFileForLlm">
   ) {}
 
   async prepareFilesForModel(fileIds: string[]): Promise<PreparedWorkspaceVisual[]> {
@@ -33,6 +35,10 @@ export class MediaVisionService {
   }
 
   async prepareFileForModel(fileId: string): Promise<PreparedWorkspaceVisual> {
+    const guard = await this.contentSafetyService?.guardChatFileForLlm(fileId);
+    if (guard && guard !== "allow") {
+      throw new Error(`媒体已被内容安全屏蔽：${guard.reason}`);
+    }
     const file = await this.chatFileStore.getFile(fileId);
     if (!file) {
       throw new Error(`Workspace file not found: ${fileId}`);

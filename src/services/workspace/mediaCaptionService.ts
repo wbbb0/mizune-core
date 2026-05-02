@@ -7,6 +7,7 @@ import { KeyedDerivationRunner } from "#llm/derivations/keyedDerivationRunner.ts
 import type { ChatFileStore } from "./chatFileStore.ts";
 import type { MediaVisionService } from "./mediaVisionService.ts";
 import type { ChatFileRecord } from "./types.ts";
+import type { ContentSafetyService } from "#contentSafety/contentSafetyService.ts";
 
 function buildCaptionPrompt(): LlmMessage[] {
   return [
@@ -46,7 +47,8 @@ export class MediaCaptionService {
     private readonly llmClient: LlmClient,
     private readonly chatFileStore: Pick<ChatFileStore, "getFile" | "getMany" | "markCaptionsQueued" | "updateCaption">,
     private readonly mediaVisionService: Pick<MediaVisionService, "prepareFileForModel">,
-    private readonly logger: Logger
+    private readonly logger: Logger,
+    private readonly contentSafetyService?: Pick<ContentSafetyService, "guardChatFileForLlm">
   ) {
     this.runner = new KeyedDerivationRunner({
       name: "media_caption",
@@ -95,8 +97,10 @@ export class MediaCaptionService {
 
   private async enqueue(fileIds: string[], reason: string): Promise<void> {
     const existing = await this.chatFileStore.getMany(fileIds);
+    const blocked = await this.resolveBlockedFileIds(existing.map((item) => item.fileId));
     const pendingIds = existing
       .filter(isCaptionableFile)
+      .filter((item) => !blocked.has(item.fileId))
       .filter((item) => !item.caption)
       .map((item) => item.fileId);
     if (pendingIds.length === 0) {
@@ -110,6 +114,11 @@ export class MediaCaptionService {
   private async runCaption(fileId: string): Promise<void> {
     const modelRef = this.resolveModelRefs();
     try {
+      const guard = await this.contentSafetyService?.guardChatFileForLlm(fileId);
+      if (guard && guard !== "allow") {
+        this.logger.info({ fileId, reason: guard.reason }, "media_caption_skipped_content_safety");
+        return;
+      }
       const file = await this.chatFileStore.getFile(fileId);
       if (!file || !isCaptionableFile(file) || file.caption) {
         return;
@@ -185,6 +194,20 @@ export class MediaCaptionService {
       logger: this.logger,
       warningCache: this.unsupportedVisionWarningCache
     });
+  }
+
+  private async resolveBlockedFileIds(fileIds: string[]): Promise<Set<string>> {
+    if (!this.contentSafetyService) {
+      return new Set();
+    }
+    const blocked = new Set<string>();
+    await Promise.all(fileIds.map(async (fileId) => {
+      const guard = await this.contentSafetyService?.guardChatFileForLlm(fileId);
+      if (guard && guard !== "allow") {
+        blocked.add(fileId);
+      }
+    }));
+    return blocked;
   }
 }
 

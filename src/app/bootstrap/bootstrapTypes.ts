@@ -46,6 +46,8 @@ import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
 import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
+import type { ContentSafetyService } from "#contentSafety/contentSafetyService.ts";
+import type { ContentSafetyStore } from "#contentSafety/contentSafetyStore.ts";
 
 export interface AppServiceBootstrap {
   config: ReturnType<typeof loadConfig>;
@@ -86,6 +88,8 @@ export interface AppServiceBootstrap {
   localFileService: LocalFileService;
   chatFileStore: ChatFileStore;
   chatMessageFileGcService: ChatMessageFileGcService;
+  contentSafetyStore: ContentSafetyStore;
+  contentSafetyService: ContentSafetyService;
   mediaVisionService: MediaVisionService;
   mediaCaptionService: MediaCaptionService;
   mediaInspectionService: MediaInspectionService;

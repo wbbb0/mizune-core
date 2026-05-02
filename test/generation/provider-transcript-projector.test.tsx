@@ -103,6 +103,63 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     assert.equal(projection.replayMessages[3]?.role, "tool");
   });
 
+  test("provider projectors do not replay ambient group messages as visible history", () => {
+    const transcript: InternalTranscriptItem[] = [
+      {
+        kind: "user_message",
+        role: "user",
+        llmVisible: true,
+        runtimeVisibility: "ambient",
+        chatType: "group",
+        userId: "u1",
+        senderName: "Alice",
+        text: "普通群聊环境",
+        imageIds: [],
+        emojiIds: [],
+        attachments: [],
+        audioCount: 0,
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        mentionedSelf: false,
+        timestampMs: 1
+      },
+      {
+        kind: "user_message",
+        role: "user",
+        llmVisible: true,
+        chatType: "group",
+        userId: "u2",
+        senderName: "Bob",
+        text: "@bot 当前问题",
+        imageIds: [],
+        emojiIds: [],
+        attachments: [],
+        audioCount: 0,
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        mentionedSelf: true,
+        timestampMs: 2
+      }
+    ];
+
+    const openaiProjection = getProviderTranscriptProjector("openai").project({
+      transcript,
+      preserveThinking: true
+    });
+    const googleProjection = getProviderTranscriptProjector("google").project({ transcript });
+
+    assert.equal(openaiProjection.replayCoversVisibleHistory, true);
+    assert.equal(googleProjection.replayCoversVisibleHistory, true);
+    assert.equal(openaiProjection.replayMessages.some((message) => String(message.content).includes("普通群聊环境")), false);
+    assert.equal(googleProjection.replayMessages.some((message) => String(message.content).includes("普通群聊环境")), false);
+    assert.equal(openaiProjection.replayMessages.some((message) => String(message.content).includes("@bot 当前问题")), true);
+    assert.equal(googleProjection.replayMessages.some((message) => String(message.content).includes("@bot 当前问题")), true);
+  });
+
   test("openai-style projector keeps pinned old tool results raw", () => {
     const pinnedTranscript: InternalTranscriptItem[] = [];
     for (let index = 1; index <= 7; index += 1) {
@@ -147,6 +204,50 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     assert.equal(toolMessages[1]?.content, JSON.stringify({ compacted: true, summary: "COMPACT-2" }));
     assert.equal(toolMessages[2]?.content, JSON.stringify({ stdout: "RAW-3", exitCode: 0 }));
     assert.equal(toolMessages[6]?.content, JSON.stringify({ stdout: "RAW-7", exitCode: 0 }));
+  });
+
+  test("openai-style projector never replays raw unsafe tool results", () => {
+    const projection = getProviderTranscriptProjector("openai").project({
+      transcript: [
+        {
+          kind: "assistant_tool_call",
+          llmVisible: true,
+          timestampMs: 1,
+          content: "",
+          toolCalls: [{
+            id: "call_unsafe_1",
+            type: "function",
+            function: {
+              name: "dump_debug_literals",
+              arguments: "{}"
+            }
+          }]
+        },
+        {
+          kind: "tool_result",
+          llmVisible: true,
+          timestampMs: 2,
+          toolCallId: "call_unsafe_1",
+          toolName: "dump_debug_literals",
+          content: JSON.stringify({ ok: true, body: "RAW_UNSAFE_LITERAL" }),
+          observation: {
+            contentHash: "hash-unsafe",
+            inputTokensEstimate: 100,
+            summary: "debug dump 已发送给用户",
+            retention: "full",
+            replayContent: JSON.stringify({ compacted: true, summary: "SAFE_DEBUG_SUMMARY" }),
+            replaySafe: false,
+            refetchable: false,
+            pinned: true,
+            preserveRecentRawCount: 10
+          }
+        } as any
+      ]
+    });
+
+    const toolMessage = projection.replayMessages.find((message) => message.role === "tool");
+    assert.equal(toolMessage?.content, JSON.stringify({ compacted: true, summary: "SAFE_DEBUG_SUMMARY" }));
+    assert.doesNotMatch(String(toolMessage?.content ?? ""), /RAW_UNSAFE_LITERAL/);
   });
 
   test("gemini projector silently skips tool calls without google replay metadata", () => {
@@ -327,6 +428,76 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     assert.equal(projection.replayMessages[1]?.role, "assistant");
     assert.equal(projection.replayCoversVisibleHistory, true);
     assert.deepEqual(projection.lateSystemMessages, []);
+  });
+
+  test("gemini projector uses compact replay content for older replayable tool results", () => {
+    const toolCalls = Array.from({ length: 7 }, (_, index) => ({
+      id: `call_google_compact_${index + 1}`,
+      type: "function" as const,
+      function: {
+        name: "terminal_run",
+        arguments: `{"cmd":"run ${index + 1}"}`
+      },
+      providerMetadata: {
+        google: {
+          thoughtSignature: `sig-compact-${index + 1}`
+        }
+      }
+    }));
+    const transcript: InternalTranscriptItem[] = [
+      {
+        kind: "user_message",
+        role: "user",
+        llmVisible: true,
+        chatType: "private",
+        userId: "10001",
+        senderName: "Alice",
+        text: "继续",
+        imageIds: [],
+        emojiIds: [],
+        attachments: [],
+        audioCount: 0,
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        mentionedSelf: false,
+        timestampMs: 1
+      },
+      {
+        kind: "assistant_tool_call",
+        llmVisible: true,
+        timestampMs: 2,
+        content: "",
+        toolCalls
+      } as any,
+      ...toolCalls.map((toolCall, index) => ({
+        kind: "tool_result" as const,
+        llmVisible: true as const,
+        timestampMs: index + 3,
+        toolCallId: toolCall.id,
+        toolName: "terminal_run",
+        content: JSON.stringify({ stdout: `RAW-${index + 1}` }),
+        observation: {
+          contentHash: `hash-google-${index + 1}`,
+          inputTokensEstimate: 100,
+          summary: `summary ${index + 1}`,
+          retention: "summary" as const,
+          replayContent: JSON.stringify({ compacted: true, summary: `COMPACT-${index + 1}` }),
+          replaySafe: true,
+          refetchable: false,
+          pinned: false
+        }
+      }))
+    ];
+
+    const projection = getProviderTranscriptProjector("google").project({ transcript });
+    const toolMessages = projection.replayMessages.filter((message) => message.role === "tool");
+
+    assert.equal(toolMessages[0]?.content, JSON.stringify({ compacted: true, summary: "COMPACT-1" }));
+    assert.equal(toolMessages[1]?.content, JSON.stringify({ compacted: true, summary: "COMPACT-2" }));
+    assert.equal(toolMessages[2]?.content, JSON.stringify({ stdout: "RAW-3" }));
+    assert.equal(toolMessages[6]?.content, JSON.stringify({ stdout: "RAW-7" }));
   });
 
   test("gemini projector silently skips assistant googleParts without thought signatures", () => {

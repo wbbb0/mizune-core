@@ -1,5 +1,6 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getStringArg, getStringArrayArg } from "../core/toolArgHelpers.ts";
+import { keepRawUnlessLargePolicy, stateChangePolicy } from "../core/resultObservationPresets.ts";
 
 export const turnPlannerToolDescriptors: ToolDescriptor[] = [
   {
@@ -14,7 +15,8 @@ export const turnPlannerToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     definition: {
@@ -36,7 +38,8 @@ export const turnPlannerToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: stateChangePolicy()
   }
 ];
 

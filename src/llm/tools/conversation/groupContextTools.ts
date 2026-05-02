@@ -2,6 +2,7 @@ import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.
 import type { OneBotGroupAnnouncementItem, OneBotGroupMemberItem } from "#services/onebot/types.ts";
 import type { BuiltinToolContext, ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
+import { currentGroupContextPolicy } from "../core/resultObservationPresets.ts";
 
 const DEFAULT_ANNOUNCEMENT_LIMIT = 10;
 const MAX_ANNOUNCEMENT_LIMIT = 30;
@@ -22,7 +23,8 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: currentGroupContextPolicy()
   },
   {
     definition: {
@@ -39,7 +41,8 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: currentGroupContextPolicy()
   },
   {
     definition: {
@@ -56,7 +59,8 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: currentGroupContextPolicy()
   }
 ];
 

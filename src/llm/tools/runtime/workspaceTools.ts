@@ -11,6 +11,13 @@ import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
 import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
 import { nextAction, withNextActions, type ToolNextAction } from "../core/toolNextActions.ts";
+import {
+  keepRawUnlessLargePolicy,
+  localFileListPolicy,
+  localFileMutationPolicy,
+  localFileReadPolicy,
+  localFileSearchPolicy
+} from "../core/resultObservationPresets.ts";
 
 const isLocalFileToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.localFiles.enabled;
 const isChatFileToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.chatFiles.enabled;
@@ -69,7 +76,8 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isLocalFileToolEnabled
+    isEnabled: isLocalFileToolEnabled,
+    resultObservation: localFileListPolicy()
   },
   {
     definition: {
@@ -89,7 +97,8 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isLocalFileToolEnabled
+    isEnabled: isLocalFileToolEnabled,
+    resultObservation: localFileReadPolicy()
   },
   {
     definition: {
@@ -109,7 +118,8 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isLocalFileToolEnabled
+    isEnabled: isLocalFileToolEnabled,
+    resultObservation: localFileMutationPolicy()
   },
   {
     definition: {
@@ -128,7 +138,8 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isLocalFileToolEnabled
+    isEnabled: isLocalFileToolEnabled,
+    resultObservation: localFileMutationPolicy()
   },
   {
     definition: {
@@ -147,7 +158,8 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isLocalFileToolEnabled
+    isEnabled: isLocalFileToolEnabled,
+    resultObservation: localFileMutationPolicy()
   },
   {
     definition: {
@@ -163,7 +175,8 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isLocalFileToolEnabled
+    isEnabled: isLocalFileToolEnabled,
+    resultObservation: localFileMutationPolicy()
   },
   {
     definition: {
@@ -184,7 +197,8 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isLocalFileToolEnabled
+    isEnabled: isLocalFileToolEnabled,
+    resultObservation: localFileSearchPolicy()
   },
   {
     definition: {
@@ -200,7 +214,8 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isLocalFileToolEnabled
+    isEnabled: isLocalFileToolEnabled,
+    resultObservation: localFileMutationPolicy()
   },
   {
     definition: {
@@ -219,7 +234,8 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isLocalFileToolEnabled
+    isEnabled: isLocalFileToolEnabled,
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   }
 ];
 
@@ -243,7 +259,8 @@ export const chatFileToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isChatFileToolEnabled
+    isEnabled: isChatFileToolEnabled,
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     definition: {
@@ -262,7 +279,8 @@ export const chatFileToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isChatFileToolEnabled
+    isEnabled: isChatFileToolEnabled,
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   }
 ];
 

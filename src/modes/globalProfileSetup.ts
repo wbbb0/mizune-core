@@ -14,7 +14,6 @@ function createPersonaSetupToolsetOverrides(): SessionModeSetupToolsetOverride[]
       title: "长期资料与规则",
       description: "初始化阶段仅允许写入 persona 相关资料。",
       toolNames: ["get_persona", "patch_persona", "clear_persona_field"],
-      promptGuidance: ["初始化阶段只补全 persona；不要改用户资料、关系或其他记忆。"],
       plannerSignals: ["初始化 persona 补全"]
     },
     {
@@ -22,7 +21,6 @@ function createPersonaSetupToolsetOverrides(): SessionModeSetupToolsetOverride[]
       title: "设定草稿",
       description: "以独立消息发送当前设定草稿供用户审阅。",
       toolNames: ["send_setup_draft"],
-      promptGuidance: ["设定字段收集到一定程度后，用此工具发送格式化草稿；不要在回复正文中列出草稿内容。"],
       plannerSignals: ["发送设定草稿"]
     }
   ];
@@ -36,7 +34,6 @@ function createModeProfileSetupToolsetOverrides(target: NonNullable<SessionModeG
         title: "RP 资料草稿",
         description: "初始化阶段仅允许写入 RP 全局资料草稿。",
         toolNames: ["get_rp_profile", "patch_rp_profile", "clear_rp_profile_field"],
-        promptGuidance: ["初始化阶段只补全 RP 全局资料；不要改 persona、用户资料或其他记忆。"],
         plannerSignals: ["初始化 RP 全局资料"]
       },
       {
@@ -44,7 +41,6 @@ function createModeProfileSetupToolsetOverrides(target: NonNullable<SessionModeG
         title: "设定草稿",
         description: "以独立消息发送当前设定草稿供用户审阅。",
         toolNames: ["send_setup_draft"],
-        promptGuidance: ["设定字段收集到一定程度后，用此工具发送格式化草稿；不要在回复正文中列出草稿内容。"],
         plannerSignals: ["发送设定草稿"]
       }
     ];
@@ -56,7 +52,6 @@ function createModeProfileSetupToolsetOverrides(target: NonNullable<SessionModeG
       title: "Scenario 资料草稿",
       description: "初始化阶段用于填写 Scenario 全局资料草稿。",
       toolNames: ["get_scenario_profile", "patch_scenario_profile", "clear_scenario_profile_field"],
-      promptGuidance: ["初始化阶段只补全 Scenario 全局资料；不要改 persona、用户资料或其他记忆。"],
       plannerSignals: ["写入 Scenario 全局资料"]
     },
     {
@@ -64,7 +59,6 @@ function createModeProfileSetupToolsetOverrides(target: NonNullable<SessionModeG
       title: "设定草稿",
       description: "以独立消息发送当前场景草稿供用户审阅。",
       toolNames: ["send_setup_draft"],
-      promptGuidance: ["收集到一定量信息后，用此工具发送格式化草稿；不要在回复正文中列出草稿内容。"],
       plannerSignals: ["发送场景草稿"]
     }
   ];

@@ -101,13 +101,17 @@ export class DashScopeProvider implements LlmProvider {
     params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
 
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${context.providerConfig.apiKey}`,
+        "X-DashScope-SSE": "enable"
+      };
+      if (context.config.contentSafety.routes.llmProviderFallback.dashscope.useDataInspectionHeader) {
+        headers["X-DashScope-DataInspection"] = JSON.stringify({ input: "cip", output: "cip" });
+      }
       const response = await fetchWithProxy(context.config, "llm", endpoint, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${context.providerConfig.apiKey}`,
-          "X-DashScope-SSE": "enable"
-        },
+        headers,
         body: JSON.stringify(requestBody),
         signal: timeoutController.controller.signal
       }, {
@@ -125,6 +129,9 @@ export class DashScopeProvider implements LlmProvider {
           statusText: response.statusText,
           errorBody: errorText
         });
+        if (isDashScopeDataInspectionError(errorText)) {
+          throw new Error(`LLM API content safety rejected request: ${response.status} ${response.statusText}${errorText ? ` ${errorText}` : ""}`);
+        }
         throw new Error(`LLM API error: ${response.status} ${response.statusText}${errorText ? ` ${errorText}` : ""}`);
       }
       if (!response.body) {
@@ -245,6 +252,10 @@ export class DashScopeProvider implements LlmProvider {
         .replace(/\/$/, "")
     });
   }
+}
+
+function isDashScopeDataInspectionError(errorText: string): boolean {
+  return /data_inspection_failed|DataInspectionFailed/i.test(errorText);
 }
 
 function extractDashScopeText(content: string | Array<{ text?: string; image?: string; audio?: string }> | undefined): string {

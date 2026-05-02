@@ -40,6 +40,7 @@ function createOrchestratorDeps(input: {
   turnPlanner?: unknown;
   llmClient?: unknown;
   debounceManager?: unknown;
+  shellRuntime?: unknown;
   persistSession?: (sessionId: string, reason: string) => void;
 }): GenerationSessionOrchestratorDeps {
   const sharedUserStore = input.userStore ?? ({
@@ -88,6 +89,13 @@ function createOrchestratorDeps(input: {
           };
         }
       } as never)
+    },
+    toolRuntime: {
+      shellRuntime: input.shellRuntime ?? {
+        isInputPromptCurrent() {
+          return true;
+        }
+      }
     },
     lifecycle: {
       logger: pino({ level: "silent" }),
@@ -608,4 +616,60 @@ function createOrchestratorDeps(input: {
     assert.equal(sessionManager.hasActiveResponse(sessionId), false);
     assert.equal(processNextCalled, 1);
     assert.ok(persistedReasons.includes("generation_finished"));
+  });
+
+  test("stale terminal input trigger is skipped before starting generation", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "qqbot:p:owner";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    let processNextCalled = 0;
+    let runGenerationCalled = false;
+
+    const orchestrator = createGenerationSessionOrchestrator(createOrchestratorDeps({
+      config,
+      sessionManager,
+      setupStore: {} as never,
+      shellRuntime: {
+        isInputPromptCurrent() {
+          return false;
+        }
+      }
+    }), {
+      promptBuilder: {
+        async buildScheduledPromptMessages() {
+          throw new Error("stale terminal input trigger should not build a prompt");
+        }
+      } as never,
+      async runGeneration() {
+        runGenerationCalled = true;
+      },
+      processNextSessionWork() {
+        processNextCalled += 1;
+      }
+    });
+
+    await orchestrator.runInternalTriggerSession(sessionId, {
+      kind: "terminal_input_required",
+      targetType: "private",
+      targetUserId: "owner",
+      targetSenderName: "Owner",
+      jobName: "终端可能等待输入",
+      instruction: "后台终端任务可能正在等待输入。请根据提示判断是否可以继续输入；不确定时向用户询问。",
+      enqueuedAt: 1,
+      resourceId: "res_shell_1",
+      command: "npm install",
+      cwd: "/tmp/project",
+      promptKind: "confirmation",
+      promptText: "Proceed? [y/N]",
+      promptSignature: "confirmation:Proceed? [y/N]",
+      detectedAtMs: 100,
+      outputTail: "Proceed? [y/N] "
+    });
+    await flushMicrotasks();
+
+    assert.equal(runGenerationCalled, false);
+    assert.equal(sessionManager.hasActiveResponse(sessionId), false);
+    assert.equal(processNextCalled, 1);
+    assert.equal(sessionManager.getSession(sessionId).internalTranscript.length, 0);
   });

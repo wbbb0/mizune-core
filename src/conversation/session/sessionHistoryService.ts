@@ -77,6 +77,8 @@ export class SessionHistoryService {
       mentionedAll?: boolean;
       mentionedSelf?: boolean;
       sourceRef?: TranscriptItemSourceRef;
+      contentSafetyEvents?: import("./sessionTypes.ts").TranscriptContentSafetyEvent[];
+      runtimeVisibility?: import("./sessionTypes.ts").TranscriptItemRuntimeVisibility;
     },
     timestampMs: number
   ) {
@@ -96,6 +98,8 @@ export class SessionHistoryService {
       ...(message.mentionedAll !== undefined ? { mentionedAll: message.mentionedAll } : {}),
       ...(message.mentionedSelf !== undefined ? { mentionedSelf: message.mentionedSelf } : {}),
       ...(message.sourceRef ? { sourceRef: message.sourceRef } : {}),
+      ...(message.contentSafetyEvents && message.contentSafetyEvents.length > 0 ? { contentSafetyEvents: message.contentSafetyEvents } : {}),
+      ...(message.runtimeVisibility ? { runtimeVisibility: message.runtimeVisibility } : {}),
       timestampMs
     });
   }
@@ -151,8 +155,13 @@ export class SessionHistoryService {
       mentionedAll?: boolean;
       mentionedSelf?: boolean;
       sourceRef?: TranscriptItemSourceRef;
+      contentSafetyEvents?: import("./sessionTypes.ts").TranscriptContentSafetyEvent[];
+      runtimeVisibility?: import("./sessionTypes.ts").TranscriptItemRuntimeVisibility;
     },
-    timestampMs = Date.now()
+    timestampMs = Date.now(),
+    options?: {
+      transcriptGroup?: "pending" | "standalone";
+    }
   ): void {
     if (message.sourceRef && this.hasSourceRef(session, message.sourceRef)) {
       return;
@@ -160,7 +169,9 @@ export class SessionHistoryService {
     this.appendHistoryTranscript(
       session,
       this.createUserHistoryTranscriptItem(message, timestampMs),
-      ensurePendingTranscriptGroupId(session)
+      options?.transcriptGroup === "standalone"
+        ? createTranscriptGroupId()
+        : ensurePendingTranscriptGroupId(session)
     );
   }
 

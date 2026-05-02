@@ -77,6 +77,9 @@ function createConfig() {
     const user = userParts.find((part: { type: string; text?: string }) => part.type === "text")?.text ?? "";
     assert.match(system, /⟦section name="planner_identity"⟧/);
     assert.match(system, /⟦section name="planner_rules"⟧/);
+    assert.match(system, /reply_decision: <reply_small\|reply_large\|wait\|no_reply>/);
+    assert.match(system, /私聊默认 reply_small/);
+    assert.match(system, /群聊中当前批次明显不需要机器人回应时可判 no_reply/);
     assert.doesNotMatch(system, /包括但不限于/);
     assert.doesNotMatch(system, /像“取消这个吧”/);
     assert.match(user, /⟦section name="planner_batch_features"⟧/);
@@ -126,6 +129,75 @@ function createConfig() {
     assert.deepEqual(result.recentDomainReuse, ["web_research"]);
     assert.equal(result.followupMode, "explicit_reference");
     assert.deepEqual(result.toolsetIds, ["web_research"]);
+  });
+
+  test("group reply gate keeps no_reply and clears toolsets", async () => {
+    const gate = createReplyGate(createConfig(), {
+      resultText: "群里闲聊无需回应|no_reply|continue_topic|web_research"
+    });
+
+    const result = await gate.decide({
+      sessionId: "qqbot:g:100",
+      chatType: "group",
+      relationship: "known",
+      recentMessages: [],
+      availableToolsets: [{
+        id: "web_research",
+        title: "网页检索与浏览",
+        description: "搜索网页、打开页面、交互与截图。",
+        toolNames: ["open_page"]
+      }],
+      batchMessages: [
+        createReplyGateBatchMessage({
+          senderName: "GroupMember",
+          text: "我先去吃饭了",
+          timestampMs: Date.now()
+        })
+      ]
+    });
+
+    assert.equal(result.replyDecision, "no_reply");
+    assert.equal(result.topicDecision, "continue_topic");
+    assert.deepEqual(result.toolsetIds, []);
+  });
+
+  test("private reply gate coerces model no_reply back to reply_small", async () => {
+    const gate = createReplyGate(createConfig(), {
+      resultText: [
+        "reason: 私聊收尾",
+        "reply_decision: no_reply",
+        "topic_decision: continue_topic",
+        "required_capabilities: none",
+        "context_dependencies: none",
+        "recent_domain_reuse: none",
+        "followup_mode: none",
+        "toolset_ids: web_research"
+      ].join("\n")
+    });
+
+    const result = await gate.decide({
+      sessionId: "qqbot:p:owner",
+      chatType: "private",
+      relationship: "owner",
+      recentMessages: [],
+      availableToolsets: [{
+        id: "web_research",
+        title: "网页检索与浏览",
+        description: "搜索网页、打开页面、交互与截图。",
+        toolNames: ["open_page"]
+      }],
+      batchMessages: [
+        createReplyGateBatchMessage({
+          senderName: "Owner",
+          text: "收到啦",
+          timestampMs: Date.now()
+        })
+      ]
+    });
+
+    assert.equal(result.replyDecision, "reply_small");
+    assert.equal(result.topicDecision, "continue_topic");
+    assert.deepEqual(result.toolsetIds, []);
   });
 
   test("generation reply gate bypasses audio-only batches", async () => {
@@ -237,6 +309,142 @@ function createConfig() {
     }
     assert.deepEqual(compactCalls, [{ sessionId: "qqbot:p:audio", keep: 1 }]);
     assert.deepEqual(persistReasons, ["turn_planner_topic_switch_compacted"]);
+  });
+
+  test("generation reply gate records group no_reply and skips main model", async () => {
+    const transcriptItems: Array<Record<string, unknown>> = [];
+    const persistReasons: string[] = [];
+    const result = await handleGenerationTurnPlanner(
+      createGenerationReplyGateDeps({
+        config: createConfig(),
+        turnPlanner: {
+          isEnabled() {
+            return true;
+          },
+          async decide() {
+            return {
+              replyDecision: "no_reply",
+              topicDecision: "continue_topic",
+              reason: "群聊无需回应",
+              requiredCapabilities: [],
+              contextDependencies: [],
+              recentDomainReuse: [],
+              followupMode: "none",
+              toolsetIds: []
+            };
+          }
+        } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["turnPlanner"],
+        sessionManager: {
+          appendInternalTranscript(_sessionId: string, item: Record<string, unknown>) {
+            transcriptItems.push(item);
+          },
+          requeuePendingMessages() {
+            throw new Error("should not requeue no_reply batch");
+          }
+        } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["sessionManager"],
+        debounceManager: {
+          schedule() {
+            throw new Error("should not reschedule no_reply batch");
+          }
+        } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["debounceManager"],
+        persistSession(_sessionId, reason) {
+          persistReasons.push(reason);
+        }
+      }),
+      createGenerationReplyGateHandlers(),
+      createGenerationReplyGateInput({
+        sendTarget: {
+          delivery: "onebot",
+          chatType: "group",
+          groupId: "20001",
+          userId: "10001",
+          senderName: "Tester"
+        },
+        batchMessages: [
+          {
+            ...createGenerationReplyGateInput().batchMessages[0]!,
+            chatType: "group",
+            groupId: "20001",
+            audioSources: [],
+            text: "我先去吃饭了",
+            receivedAt: Date.now()
+          }
+        ]
+      })
+    );
+
+    assert.equal(result.action, "skip");
+    assert.equal(transcriptItems.length, 1);
+    assert.equal(transcriptItems[0]?.kind, "gate_decision");
+    assert.equal(transcriptItems[0]?.action, "skip");
+    assert.equal(transcriptItems[0]?.replyDecision, "no_reply");
+    assert.equal(transcriptItems[0]?.reason, "群聊无需回应");
+    assert.equal(transcriptItems[0]?.toolsetIds, undefined);
+    assert.deepEqual(persistReasons, ["turn_planner_skip_recorded"]);
+  });
+
+  test("generation reply gate coerces no_reply for explicit group mentions", async () => {
+    const transcriptItems: Array<Record<string, unknown>> = [];
+    const result = await handleGenerationTurnPlanner(
+      createGenerationReplyGateDeps({
+        config: createConfig(),
+        turnPlanner: {
+          isEnabled() {
+            return true;
+          },
+          async decide() {
+            return {
+              replyDecision: "no_reply",
+              topicDecision: "continue_topic",
+              reason: "误判无需回应",
+              requiredCapabilities: [],
+              contextDependencies: [],
+              recentDomainReuse: [],
+              followupMode: "none",
+              toolsetIds: []
+            };
+          }
+        } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["turnPlanner"],
+        sessionManager: {
+          appendInternalTranscript(_sessionId: string, item: Record<string, unknown>) {
+            transcriptItems.push(item);
+          },
+          requeuePendingMessages() {
+            throw new Error("should not requeue coerced no_reply batch");
+          }
+        } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["sessionManager"]
+      }),
+      createGenerationReplyGateHandlers(),
+      createGenerationReplyGateInput({
+        sendTarget: {
+          delivery: "onebot",
+          chatType: "group",
+          groupId: "20001",
+          userId: "10001",
+          senderName: "Tester"
+        },
+        batchMessages: [
+          {
+            ...createGenerationReplyGateInput().batchMessages[0]!,
+            chatType: "group",
+            groupId: "20001",
+            audioSources: [],
+            text: "@bot 这个怎么处理",
+            isAtMentioned: true,
+            receivedAt: Date.now()
+          }
+        ]
+      })
+    );
+
+    assert.equal(result.action, "continue");
+    if (result.action === "continue") {
+      assert.deepEqual(result.resolvedModelRef, ["main"]);
+      assert.deepEqual(result.toolsetIds, []);
+      assert.equal(result.plannerDecision?.replyDecision, "reply_small");
+    }
+    assert.equal(transcriptItems[0]?.replyDecision, "reply_small");
+    assert.equal(transcriptItems[0]?.action, "continue");
   });
 
   test("reply gate coerces model ignore decisions back to reply for normal requests", async () => {

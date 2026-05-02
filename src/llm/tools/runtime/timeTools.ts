@@ -1,4 +1,5 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
+import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
 
 function buildCurrentTimePayload(timezone: string): {
   nowMs: number;
@@ -45,7 +46,8 @@ export const timeToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 5 })
   }
 ];
 

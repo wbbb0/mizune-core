@@ -18,6 +18,7 @@ const emit = defineEmits<{
 
 const expandStates = inject<Map<string, TranscriptExpandState>>("transcriptExpandStates");
 const runtimeExcluded = computed(() => props.item.runtimeExcluded === true);
+const runtimeAmbient = computed(() => props.item.runtimeVisibility === "ambient");
 
 function getState(): TranscriptExpandState {
   if (!expandStates) {
@@ -90,6 +91,9 @@ const itemTitle = computed(() => {
     case "gate_decision":
       title = `Turn Planner 判定 · ${formatPlannerAction(props.item.action)}`;
       break;
+    case "admission_decision":
+      title = `Admission 判定 · ${formatAdmissionThreadAction(props.item.threadAction)}`;
+      break;
     case "title_generation_event":
       title = props.item.title;
       break;
@@ -106,10 +110,16 @@ const itemTitle = computed(() => {
   if (!props.item.llmVisible) {
     title += " · 隐藏";
   }
+  if (runtimeAmbient.value) {
+    title += " · 环境";
+  }
   return title;
 });
 
 const itemTone = computed(() => {
+  if (runtimeAmbient.value) {
+    return "ambient";
+  }
   switch (props.item.kind) {
     case "user_message":
       return "user";
@@ -128,6 +138,8 @@ const itemTone = computed(() => {
       return "outbound-media";
     case "gate_decision":
       return props.item.action === "wait" ? "gate-wait" : props.item.action === "skip" ? "gate-skip" : "gate";
+    case "admission_decision":
+      return props.item.shouldTriggerResponse ? "gate" : "gate-skip";
     case "title_generation_event":
       return "status";
     case "system_marker":
@@ -158,6 +170,8 @@ const itemGlyph = computed<SessionGlyphModel>(() => {
       return { kind: "icon", component: ImageIcon, size: 13, strokeWidth: 2 };
     case "gate_decision":
       return { kind: "icon", component: GitBranch, size: 13, strokeWidth: 2 };
+    case "admission_decision":
+      return { kind: "icon", component: GitBranch, size: 13, strokeWidth: 2 };
     case "title_generation_event":
       return { kind: "icon", component: Info, size: 13, strokeWidth: 2.1 };
     case "system_marker":
@@ -171,6 +185,8 @@ const itemGlyph = computed<SessionGlyphModel>(() => {
 
 const toneGlyphClass = computed(() => {
   switch (itemTone.value) {
+    case "ambient":
+      return "bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] text-text-muted";
     case "user":
       return "bg-[color-mix(in_srgb,var(--surface-selected)_70%,transparent)] text-text-accent";
     case "assistant":
@@ -200,6 +216,7 @@ const metaChips = computed(() => {
     case "user_message":
       chips = [
         `${props.item.senderName} (${props.item.userId})`,
+        ...(runtimeAmbient.value ? ["ambient"] : []),
         ...(props.item.replyMessageId ? ["reply"] : []),
         ...(props.item.mentionedSelf ? ["@self"] : []),
         ...(props.item.mentionedAll ? ["@all"] : []),
@@ -250,6 +267,18 @@ const metaChips = computed(() => {
         props.item.toolsetIds && props.item.toolsetIds.length > 0 ? `toolsets=${props.item.toolsetIds.length}` : null
       ].filter(Boolean) as string[];
       break;
+    case "admission_decision":
+      chips = [
+        `thread=${props.item.threadAction}`,
+        `reply=${props.item.replyDecision}`,
+        `interrupt=${props.item.interruptPolicy}`,
+        `context=${props.item.contextPolicy}`,
+        `priority=${props.item.priority}`,
+        props.item.shouldTriggerResponse ? "trigger" : "no-trigger",
+        props.item.textIntentCorrection ? "intent=correction" : null,
+        props.item.textIntentWaitMore ? "intent=wait_more" : null
+      ].filter(Boolean) as string[];
+      break;
     case "title_generation_event":
       chips = [
         props.item.source === "auto" ? "自动生成" : "重新生成",
@@ -276,6 +305,7 @@ const metaChips = computed(() => {
           : `user=${props.item.targetUserId ?? "unknown"}`,
         props.item.templateId ? `template=${props.item.templateId}` : null,
         props.item.taskId ? `task=${props.item.taskId}` : null,
+        props.item.resourceId ? `resource=${props.item.resourceId}` : null,
         props.item.autoIterationIndex != null && props.item.maxAutoIterations != null
           ? `iter=${props.item.autoIterationIndex + 1}/${props.item.maxAutoIterations}`
           : null
@@ -302,6 +332,38 @@ const plannerOutputRows = computed(() => {
     { key: "topicDecision", value: props.item.topicDecision ?? null },
     { key: "waitPassCount", value: props.item.waitPassCount != null ? String(props.item.waitPassCount) : null },
     { key: "toolsetIds", value: props.item.toolsetIds && props.item.toolsetIds.length > 0 ? props.item.toolsetIds.join(", ") : null }
+  ];
+});
+
+const admissionReasonText = computed(() => {
+  if (props.item.kind !== "admission_decision") {
+    return null;
+  }
+  return normalizeText(props.item.reason);
+});
+
+const admissionOutputRows = computed(() => {
+  if (props.item.kind !== "admission_decision") {
+    return [];
+  }
+  return [
+    { key: "delivery", value: props.item.delivery },
+    { key: "chatType", value: props.item.chatType },
+    { key: "userId", value: props.item.userId },
+    { key: "groupId", value: props.item.groupId ?? null },
+    { key: "groupMatched", value: String(props.item.groupMatched) },
+    { key: "matchedPendingGroupTrigger", value: String(props.item.matchedPendingGroupTrigger) },
+    { key: "replyToBot", value: String(props.item.replyToBot) },
+    { key: "textIntentCorrection", value: String(props.item.textIntentCorrection) },
+    { key: "textIntentWaitMore", value: String(props.item.textIntentWaitMore) },
+    { key: "shouldTriggerResponse", value: String(props.item.shouldTriggerResponse) },
+    { key: "threadAction", value: props.item.threadAction },
+    { key: "replyDecision", value: props.item.replyDecision },
+    { key: "interruptPolicy", value: props.item.interruptPolicy },
+    { key: "contextPolicy", value: props.item.contextPolicy },
+    { key: "priority", value: props.item.priority },
+    { key: "isAtMentioned", value: String(props.item.isAtMentioned) },
+    { key: "hasActiveResponse", value: String(props.item.hasActiveResponse) }
   ];
 });
 
@@ -341,6 +403,21 @@ function formatPlannerAction(action: "continue" | "wait" | "skip" | "topic_switc
   }
 }
 
+function formatAdmissionThreadAction(action: "ambient_only" | "wait_more" | "reply_now" | "soft_interrupt" | "queue_next_thread"): string {
+  switch (action) {
+    case "ambient_only":
+      return "环境记录";
+    case "wait_more":
+      return "等待补充";
+    case "reply_now":
+      return "进入回复";
+    case "soft_interrupt":
+      return "软打断";
+    case "queue_next_thread":
+      return "排队新话题";
+  }
+}
+
 function getDisplayToolName(toolCall: StoredToolCall): string {
   return String(toolCall.function?.name ?? "").trim();
 }
@@ -361,7 +438,7 @@ function formatMaybeJson(value: string): string {
   }
 }
 
-function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed" | "comfy_task_failed"): string {
+function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed" | "comfy_task_failed" | "terminal_session_closed" | "terminal_input_required"): string {
   switch (kind) {
     case "scheduled_instruction":
       return "scheduled_instruction";
@@ -369,6 +446,10 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
       return "comfy_task_completed";
     case "comfy_task_failed":
       return "comfy_task_failed";
+    case "terminal_session_closed":
+      return "terminal_session_closed";
+    case "terminal_input_required":
+      return "terminal_input_required";
   }
 }
 
@@ -381,6 +462,16 @@ function formatTokenStatChips(tokenStats: TranscriptItem["tokenStats"] | undefin
     tokenStats.output ? `out=${tokenStats.output.tokens}${tokenStats.output.source === "estimated" ? "e" : ""}` : null,
     tokenStats.reasoning ? `think=${tokenStats.reasoning.tokens}${tokenStats.reasoning.source === "estimated" ? "e" : ""}` : null
   ].filter(Boolean) as string[];
+}
+
+function formatSafetySubject(kind: string): string {
+  if (kind === "text") return "文本";
+  if (kind === "image") return "图片";
+  if (kind === "emoji") return "表情";
+  if (kind === "audio_transcript") return "音频";
+  if (kind === "file") return "文件";
+  if (kind === "local_media") return "本地媒体";
+  return kind;
 }
 
 function openActions(): void {
@@ -425,6 +516,25 @@ function openActions(): void {
           :text="item.specialSegments?.map((segment) => segment.summary).join('\n') ?? ''"
           tone="muted"
         />
+        <WorkbenchDisclosure
+          v-if="(item.contentSafetyEvents?.length ?? 0) > 0"
+          :expanded="expanded"
+          collapsed-title="展开内容安全信息"
+          expanded-title="收起内容安全信息"
+          :summary="`${item.contentSafetyEvents?.length ?? 0} 项`"
+          @toggle="toggleExpanded"
+        >
+          <WorkbenchCard v-for="event in item.contentSafetyEvents ?? []" :key="event.auditKey ?? `${event.subjectKind}-${event.reason}`" surface="sidebar">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span class="text-small font-semibold text-text-secondary">{{ formatSafetySubject(event.subjectKind) }}</span>
+              <span class="text-small" :class="event.decision === 'block' ? 'text-danger' : event.decision === 'review' ? 'text-warning' : 'text-text-subtle'">{{ event.decision }}</span>
+            </div>
+            <div class="mt-1 whitespace-pre-wrap wrap-break-word text-small text-text-muted">原因：{{ event.reason }}</div>
+            <div v-if="event.fileId" class="mt-1 break-all font-mono text-small text-text-muted">fileId: {{ event.fileId }}</div>
+            <div v-if="event.auditKey" class="mt-1 break-all font-mono text-small text-text-muted">auditKey: {{ event.auditKey }}</div>
+            <pre v-if="event.marker" class="mt-2 max-h-32 overflow-auto rounded border border-border-default bg-surface-sidebar p-2 text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ event.marker }}</pre>
+          </WorkbenchCard>
+        </WorkbenchDisclosure>
       </div>
 
       <div v-else-if="item.kind === 'assistant_message'" class="flex flex-col gap-2">
@@ -531,6 +641,31 @@ function openActions(): void {
               <WorkbenchCard compact>
                 <div class="mb-1 font-mono text-small text-text-subtle">reason</div>
                 <pre class="m-0 overflow-x-auto font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ plannerReasonText ?? "null" }}</pre>
+              </WorkbenchCard>
+            </div>
+          </WorkbenchCard>
+        </WorkbenchDisclosure>
+      </div>
+
+      <div v-else-if="item.kind === 'admission_decision'" class="flex flex-col gap-2">
+        <WorkbenchDisclosure
+          :expanded="plannerExpanded"
+          collapsed-title="展开接入判定"
+          expanded-title="收起接入判定"
+          :summary="item.threadAction"
+          @toggle="togglePlannerExpanded"
+        >
+          <WorkbenchCard title="接入判定">
+            <div class="grid gap-1.5">
+              <WorkbenchCard v-for="row in admissionOutputRows" :key="row.key" compact>
+                <div class="flex items-start justify-between gap-3">
+                  <span class="font-mono text-small text-text-subtle">{{ row.key }}</span>
+                  <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ row.value ?? "null" }}</span>
+                </div>
+              </WorkbenchCard>
+              <WorkbenchCard compact>
+                <div class="mb-1 font-mono text-small text-text-subtle">reason</div>
+                <pre class="m-0 overflow-x-auto font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ admissionReasonText ?? "null" }}</pre>
               </WorkbenchCard>
             </div>
           </WorkbenchCard>

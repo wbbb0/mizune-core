@@ -67,6 +67,8 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     localFileService,
     chatFileStore,
     chatMessageFileGcService,
+    contentSafetyStore,
+    contentSafetyService,
     mediaCaptionService,
     comfyClient,
     comfyTaskStore,
@@ -113,6 +115,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
   sessionWorkCoordinator = createSessionWorkCoordinator(
     buildSessionWorkCoordinatorDeps(services, persistSession, () => scheduler)
   );
+  shellRuntime.setEventHandler((event) => sessionWorkCoordinator.dispatchTerminalEvent(event));
 
   scheduler = new Scheduler(
     scheduledJobStore,
@@ -241,6 +244,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     localFileService,
     chatFileStore,
     audioStore,
+    contentSafetyStore,
     chatMessageFileGcService
   });
 

@@ -115,6 +115,9 @@ export function createInternalTriggerEvent(input: {
           maxAutoIterations: trigger.maxAutoIterations
         }
       : {}),
+    ...(trigger.kind === "terminal_session_closed" || trigger.kind === "terminal_input_required"
+      ? { resourceId: trigger.resourceId }
+      : {}),
     ...(details ? { details } : {})
   };
 }
@@ -143,12 +146,41 @@ function buildTriggerSummary(trigger: InternalSessionTriggerExecution, stage: In
   if (trigger.kind === "comfy_task_completed") {
     return `${stageLabel} Comfy 成功任务「${trigger.jobName}」，模板 ${trigger.templateId}，迭代 ${trigger.autoIterationIndex + 1}/${trigger.maxAutoIterations}`;
   }
-  return `${stageLabel} Comfy 失败任务「${trigger.jobName}」，模板 ${trigger.templateId}，迭代 ${trigger.autoIterationIndex + 1}/${trigger.maxAutoIterations}`;
+  if (trigger.kind === "comfy_task_failed") {
+    return `${stageLabel} Comfy 失败任务「${trigger.jobName}」，模板 ${trigger.templateId}，迭代 ${trigger.autoIterationIndex + 1}/${trigger.maxAutoIterations}`;
+  }
+  if (trigger.kind === "terminal_session_closed") {
+    return `${stageLabel}终端完成事件「${trigger.jobName}」，资源 ${trigger.resourceId}`;
+  }
+  return `${stageLabel}终端输入事件「${trigger.jobName}」，资源 ${trigger.resourceId}`;
 }
 
 function buildTriggerDetails(trigger: InternalSessionTriggerExecution): string | null {
   if (trigger.kind === "scheduled_instruction") {
     return trigger.instruction.trim() || null;
+  }
+
+  if (trigger.kind === "terminal_session_closed") {
+    return [
+      `resourceId: ${trigger.resourceId}`,
+      `command: ${trigger.command}`,
+      `cwd: ${trigger.cwd}`,
+      `exitCode: ${trigger.exitCode ?? "(none)"}`,
+      `signal: ${trigger.signal ?? "(none)"}`,
+      `outputTruncated: ${trigger.outputTruncated ? "true" : "false"}`,
+      `instruction: ${trigger.instruction}`
+    ].join("\n");
+  }
+
+  if (trigger.kind === "terminal_input_required") {
+    return [
+      `resourceId: ${trigger.resourceId}`,
+      `command: ${trigger.command}`,
+      `cwd: ${trigger.cwd}`,
+      `promptKind: ${trigger.promptKind}`,
+      `promptText: ${trigger.promptText}`,
+      `instruction: ${trigger.instruction}`
+    ].join("\n");
   }
 
   const lines = [

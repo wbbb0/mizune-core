@@ -192,6 +192,137 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
     });
   });
 
+  test("provider preflight projection covers steer messages and tool results", async () => {
+    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+    let consumeCount = 0;
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages[0].content, "看天气");
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              tool_calls: [{
+                index: 0,
+                id: "tool-call-projection",
+                type: "function",
+                function: {
+                  name: "lookup",
+                  arguments: "{\"query\":\"weather\"}"
+                }
+              }]
+            }
+          }]
+        }]
+      },
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages[2].role, "tool");
+          assert.equal(body.messages[2].content, "TOOL SAFE");
+          assert.equal(body.messages[3].role, "user");
+          assert.equal(body.messages[3].content, "STEER SAFE");
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "done"
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "看天气" }],
+        tools: [createToolDefinition("lookup")],
+        toolExecutor: async () => "TOOL RAW",
+        consumeSteerMessages: () => {
+          consumeCount += 1;
+          return consumeCount === 2 ? [{ role: "user", content: "STEER RAW" }] : [];
+        },
+        projectMessagesBeforeProvider: (messages) => messages.map((message) => {
+          if (message.content === "TOOL RAW") {
+            return { ...message, content: "TOOL SAFE" };
+          }
+          if (message.content === "STEER RAW") {
+            return { ...message, content: "STEER SAFE" };
+          }
+          return message;
+        })
+      });
+
+      assert.equal(result.text, "done");
+    });
+  });
+
+  test("provider preflight projection also covers max-iteration fallback messages", async () => {
+    const config = createLlmTestConfig();
+    config.llm.toolCallMaxIterations = 1;
+    const client = new LlmClient(config, pino({ level: "silent" }));
+    let consumeCount = 0;
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages[0].content, "看天气");
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              tool_calls: [{
+                index: 0,
+                id: "tool-call-fallback-projection",
+                type: "function",
+                function: {
+                  name: "lookup",
+                  arguments: "{\"query\":\"weather\"}"
+                }
+              }]
+            }
+          }]
+        }]
+      },
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages[2].role, "tool");
+          assert.equal(body.messages[2].content, "TOOL SAFE");
+          assert.equal(body.messages[3].role, "user");
+          assert.equal(body.messages[3].content, "STEER SAFE");
+          assert.equal(body.messages[4].role, "system");
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "fallback done"
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "看天气" }],
+        tools: [createToolDefinition("lookup")],
+        toolExecutor: async () => "TOOL RAW",
+        consumeSteerMessages: () => {
+          consumeCount += 1;
+          return consumeCount === 2 ? [{ role: "user", content: "STEER RAW" }] : [];
+        },
+        projectMessagesBeforeProvider: (messages) => messages.map((message) => {
+          if (message.content === "TOOL RAW") {
+            return { ...message, content: "TOOL SAFE" };
+          }
+          if (message.content === "STEER RAW") {
+            return { ...message, content: "STEER SAFE" };
+          }
+          return message;
+        })
+      });
+
+      assert.equal(result.text, "fallback done");
+    });
+  });
+
   test("tool-loop exposes per provider call usage for attribution", async () => {
     const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
     const callUsages: Array<{ phase: string; outputTokens: number | null; reasoningTokens: number | null }> = [];

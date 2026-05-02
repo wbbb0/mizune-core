@@ -106,7 +106,15 @@ const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
     defaultTimeoutMs: 1000,
     maxTimeoutMs: 5000,
     maxOutputChars: 4000,
-    sessionTtlMs: null
+    sessionTtlMs: null,
+    terminalEvents: {
+      enabled: true,
+      inputDetectionDebounceMs: 800,
+      inputConfirmationMs: 1200,
+      inputPromptCooldownMs: 30000,
+      inputSuppressionAfterWriteMs: 1200,
+      detectionTailMaxChars: 8000
+    }
   },
   localFiles: {
     enabled: true,

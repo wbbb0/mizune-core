@@ -101,7 +101,7 @@ export async function handleGenerationTurnPlanner(
     };
   });
 
-  const planner = await turnPlanner.decide({
+  let planner = await turnPlanner.decide({
     sessionId: input.sessionId,
     chatType: input.sendTarget.chatType,
     relationship: input.relationship,
@@ -119,7 +119,34 @@ export async function handleGenerationTurnPlanner(
   let finalAction: "continue" | "wait" | "skip" | "topic_switch" = "continue";
   let finalWaitPassCount: number | undefined;
 
-  if (planner.topicDecision === "new_topic" && planner.replyDecision !== "wait") {
+  if (planner.replyDecision === "no_reply" && shouldCoerceNoReplyToReply(input)) {
+    logger.info(
+      {
+        sessionId: input.sessionId,
+        reason: planner.reason || "explicit trigger no_reply not allowed"
+      },
+      "turn_planner_no_reply_coerced_to_reply"
+    );
+    planner = {
+      ...planner,
+      replyDecision: "reply_small",
+      topicDecision: "continue_topic",
+      toolsetIds: []
+    };
+  }
+
+  if (planner.replyDecision === "no_reply") {
+    logger.info(
+      {
+        sessionId: input.sessionId,
+        ...(planner.reason ? { reason: planner.reason } : {})
+      },
+      "reply_skipped_by_turn_planner_no_reply"
+    );
+    finalAction = "skip";
+  }
+
+  if (finalAction === "continue" && planner.topicDecision === "new_topic" && planner.replyDecision !== "wait") {
     const preservedMessageCount = input.batchMessages.length;
     const compressed = await historyCompressor.compactOldHistoryKeepingRecent(input.sessionId, preservedMessageCount, {
       triggerReason: "turn_planner_topic_switch"
@@ -194,7 +221,7 @@ export async function handleGenerationTurnPlanner(
     persistSession(input.sessionId, `turn_planner_${finalAction}_recorded`);
   }
 
-  if (finalAction === "wait") {
+  if (finalAction === "wait" || finalAction === "skip") {
     return { action: "skip" };
   }
 
@@ -207,4 +234,23 @@ export async function handleGenerationTurnPlanner(
     toolsetIds: planner.toolsetIds,
     plannerDecision: planner
   };
+}
+
+function shouldCoerceNoReplyToReply(input: GenerationTurnPlannerInput): boolean {
+  if (input.sendTarget.chatType === "private") {
+    return true;
+  }
+  return input.batchMessages.some((message) => (
+    message.isAtMentioned
+    || message.replyMessageId != null
+    || message.images.length > 0
+    || message.imageIds.length > 0
+    || message.audioSources.length > 0
+    || message.audioIds.length > 0
+    || message.emojiIds.length > 0
+    || (message.attachments?.length ?? 0) > 0
+    || (message.specialSegments?.length ?? 0) > 0
+    || message.forwardIds.length > 0
+    || message.mentionedAll
+  ));
 }

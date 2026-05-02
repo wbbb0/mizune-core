@@ -1,5 +1,6 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
+import { stateChangePolicy } from "../core/resultObservationPresets.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 
@@ -22,7 +23,8 @@ export const setupDraftToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: stateChangePolicy()
   }
 ];
 

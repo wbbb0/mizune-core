@@ -33,6 +33,8 @@ import { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts"
 import { MediaInspectionService } from "#services/workspace/mediaInspectionService.ts";
 import { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
 import { LocalFileService } from "#services/workspace/localFileService.ts";
+import { ContentSafetyService } from "#contentSafety/contentSafetyService.ts";
+import { ContentSafetyStore } from "#contentSafety/contentSafetyStore.ts";
 import { BrowserService, createBrowserServiceDeps } from "#services/web/browser/browserService.ts";
 import { SearchService } from "#services/web/search/searchService.ts";
 import { ComfyClient } from "#comfy/comfyClient.ts";
@@ -80,8 +82,10 @@ export function createBootstrapServices(
     logger,
     config.chatFiles.gcGracePeriodMs
   );
-  const mediaVisionService = new MediaVisionService(config, logger, chatFileStore);
-  const mediaCaptionService = new MediaCaptionService(config, llmClient, chatFileStore, mediaVisionService, logger);
+  const contentSafetyStore = new ContentSafetyStore(dataDir, logger);
+  const contentSafetyService = new ContentSafetyService(config, logger, contentSafetyStore, chatFileStore, audioStore);
+  const mediaVisionService = new MediaVisionService(config, logger, chatFileStore, contentSafetyService);
+  const mediaCaptionService = new MediaCaptionService(config, llmClient, chatFileStore, mediaVisionService, logger, contentSafetyService);
   const mediaInspectionService = new MediaInspectionService(config, llmClient, logger);
   const sessionCaptioner = new SessionCaptioner(config, llmClient, logger, mediaCaptionService);
   const comfyClient = new ComfyClient(config, logger);
@@ -161,6 +165,8 @@ export function createBootstrapServices(
     localFileService,
     chatFileStore,
     chatMessageFileGcService,
+    contentSafetyStore,
+    contentSafetyService,
     mediaVisionService,
     mediaCaptionService,
     mediaInspectionService,
@@ -210,6 +216,7 @@ export async function initializeBootstrapState(
     "sessionManager"
   > & {
     sessionManager: SessionBootstrapPersistenceAccess;
+    contentSafetyStore?: ContentSafetyStore;
   }
 ): Promise<void> {
   const {
@@ -222,6 +229,7 @@ export async function initializeBootstrapState(
     localFileService,
     chatFileStore,
     chatMessageFileGcService,
+    contentSafetyStore,
     mediaVisionService,
     mediaCaptionService,
     comfyTaskStore,
@@ -249,6 +257,7 @@ export async function initializeBootstrapState(
   await sessionPersistence.init();
   await localFileService.init();
   await chatFileStore.init();
+  await contentSafetyStore?.init();
   await audioStore.init();
   await comfyTaskStore.init();
   await comfyTemplateCatalog.init();

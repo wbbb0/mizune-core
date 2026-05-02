@@ -9,6 +9,7 @@ import {
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { resolveMessageIdArg } from "../core/structuredIdResolver.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
+import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
 
 export const messageToolDescriptors: ToolDescriptor[] = [
   {
@@ -26,7 +27,8 @@ export const messageToolDescriptors: ToolDescriptor[] = [
           additionalProperties: false
         }
       }
-    }
+    },
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   }
 ];
 

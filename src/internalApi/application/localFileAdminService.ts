@@ -4,6 +4,8 @@ import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import { contentTypeFromPath, resolveSendablePath } from "#services/workspace/sendablePath.ts";
 import { chatFileCaptionToDerivedObservation, type DerivedObservation } from "#llm/derivations/derivedObservation.ts";
+import type { ContentSafetyStore } from "#contentSafety/contentSafetyStore.ts";
+import type { ContentSafetyAuditView } from "#contentSafety/contentSafetyTypes.ts";
 
 export interface AdminWorkspaceFileRecord {
   fileId: string;
@@ -22,6 +24,7 @@ export interface AdminWorkspaceFileRecord {
   captionModelRef: string | null;
   captionError: string | null;
   captionObservation: DerivedObservation;
+  contentSafety: ContentSafetyAuditView | null;
 }
 
 export interface LocalFileAdminService {
@@ -38,6 +41,7 @@ export interface LocalFileAdminService {
 export function createLocalFileAdminService(input: {
   localFileService: Pick<LocalFileService, "listItems" | "statItem" | "readFile" | "readFileContent" | "resolvePath">;
   chatFileStore: Pick<ChatFileStore, "listFiles" | "getFile" | "resolveAbsolutePath">;
+  contentSafetyStore?: Pick<ContentSafetyStore, "getViewByFileId">;
 }): LocalFileAdminService {
   return {
     async listItems(path = ".") {
@@ -66,14 +70,14 @@ export function createLocalFileAdminService(input: {
 
     async listFiles() {
       return {
-        files: (await input.chatFileStore.listFiles()).map(mapWorkspaceFileToAdminFile)
+        files: await Promise.all((await input.chatFileStore.listFiles()).map((file) => mapWorkspaceFileToAdminFile(input, file)))
       };
     },
 
     async getFile(fileId) {
       const file = await input.chatFileStore.getFile(fileId);
       return {
-        file: file ? mapWorkspaceFileToAdminFile(file) : null
+        file: file ? await mapWorkspaceFileToAdminFile(input, file) : null
       };
     },
 
@@ -88,14 +92,17 @@ export function createLocalFileAdminService(input: {
 
       const absolutePath = await input.chatFileStore.resolveAbsolutePath(file.fileId);
       return {
-        file: mapWorkspaceFileToAdminFile(file),
+        file: await mapWorkspaceFileToAdminFile(input, file),
         buffer: await readFile(absolutePath)
       };
     }
   };
 }
 
-function mapWorkspaceFileToAdminFile(file: ChatFileRecord): AdminWorkspaceFileRecord {
+async function mapWorkspaceFileToAdminFile(
+  input: Pick<Parameters<typeof createLocalFileAdminService>[0], "contentSafetyStore">,
+  file: ChatFileRecord
+): Promise<AdminWorkspaceFileRecord> {
   return {
     fileId: file.fileId,
     fileRef: file.fileRef,
@@ -112,6 +119,7 @@ function mapWorkspaceFileToAdminFile(file: ChatFileRecord): AdminWorkspaceFileRe
     captionUpdatedAtMs: file.captionUpdatedAtMs ?? null,
     captionModelRef: file.captionModelRef ?? null,
     captionError: file.captionError ?? null,
-    captionObservation: chatFileCaptionToDerivedObservation(file)
+    captionObservation: chatFileCaptionToDerivedObservation(file),
+    contentSafety: await input.contentSafetyStore?.getViewByFileId(file.fileId) ?? null
   };
 }

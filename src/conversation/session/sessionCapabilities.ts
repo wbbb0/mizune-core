@@ -11,8 +11,10 @@ import type {
   SessionState,
   SessionUsageSnapshot,
   SessionParticipantRef,
+  TranscriptContentSafetyEvent,
   TranscriptItemDeliveryRef,
   TranscriptItemRuntimeExclusionReason,
+  TranscriptItemRuntimeVisibility,
   TranscriptItemSourceRef
 } from "./sessionTypes.ts";
 import type { SessionOperationMode } from "./sessionOperationMode.ts";
@@ -302,8 +304,11 @@ export interface SessionDirectCommandAccess {
       mentionedAll?: boolean;
       mentionedSelf?: boolean;
       sourceRef?: TranscriptItemSourceRef;
+      contentSafetyEvents?: TranscriptContentSafetyEvent[];
+      runtimeVisibility?: TranscriptItemRuntimeVisibility;
     },
-    timestampMs?: number
+    timestampMs?: number,
+    options?: { transcriptGroup?: "pending" | "standalone" }
   ): void;
   canInsertUserHistoryByTimestamp(
     sessionId: string,
@@ -330,6 +335,7 @@ export interface SessionDirectCommandAccess {
       mentionedAll?: boolean;
       mentionedSelf?: boolean;
       sourceRef?: TranscriptItemSourceRef;
+      contentSafetyEvents?: TranscriptContentSafetyEvent[];
     },
     timestampMs?: number
   ): boolean;
@@ -372,8 +378,11 @@ export interface SessionMessagingAccess {
       mentionedAll?: boolean;
       mentionedSelf?: boolean;
       sourceRef?: TranscriptItemSourceRef;
+      contentSafetyEvents?: TranscriptContentSafetyEvent[];
+      runtimeVisibility?: TranscriptItemRuntimeVisibility;
     },
-    timestampMs?: number
+    timestampMs?: number,
+    options?: { transcriptGroup?: "pending" | "standalone" }
   ): void;
   hasHistorySource(sessionId: string, sourceRef: TranscriptItemSourceRef): boolean;
   appendAssistantHistory(

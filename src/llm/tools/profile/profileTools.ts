@@ -23,6 +23,7 @@ import {
 } from "#memory/writeResult.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
+import { keepRawUnlessLargePolicy, stateChangePolicy } from "../core/resultObservationPresets.ts";
 
 const personaFieldEnums = [...editablePersonaFieldNames];
 const personaPatchFieldNames = new Set(editablePersonaFieldNames);
@@ -31,7 +32,7 @@ const rpProfilePatchFieldNames = new Set(editableRpProfileFieldNames);
 const scenarioProfileFieldEnums = [...editableScenarioProfileFieldNames];
 const scenarioProfilePatchFieldNames = new Set(editableScenarioProfileFieldNames);
 
-export const profileToolDescriptors: ToolDescriptor[] = [
+export const profileToolDescriptors: ToolDescriptor[] = ([
   {
     definition: {
       type: "function",
@@ -526,7 +527,19 @@ export const profileToolDescriptors: ToolDescriptor[] = [
       }
     }
   }
-];
+] as ToolDescriptor[]).map(applyProfileResultObservation);
+
+function applyProfileResultObservation(descriptor: ToolDescriptor): ToolDescriptor {
+  const name = descriptor.definition.function.name;
+  const readOnlyPrefixes = ["get_", "list_"];
+  const policy = readOnlyPrefixes.some((prefix) => name.startsWith(prefix))
+    ? keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
+    : stateChangePolicy();
+  return {
+    ...descriptor,
+    resultObservation: descriptor.resultObservation ?? policy
+  };
+}
 
 function getStringField(args: unknown, key: string): string {
   return typeof args === "object" && args && key in args

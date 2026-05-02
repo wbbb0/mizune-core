@@ -223,6 +223,29 @@ export interface InternalSessionTriggerPromptInput {
         lastError: string;
         autoIterationIndex: number;
         maxAutoIterations: number;
+      }
+    | {
+        kind: "terminal_session_closed";
+        jobName: string;
+        taskInstruction: string;
+        resourceId: string;
+        command: string;
+        cwd: string;
+        exitCode: number | null;
+        signal: string | null;
+        output: string;
+        outputTruncated: boolean;
+      }
+    | {
+        kind: "terminal_input_required";
+        jobName: string;
+        taskInstruction: string;
+        resourceId: string;
+        command: string;
+        cwd: string;
+        promptKind: string;
+        promptText: string;
+        outputTail: string;
       };
   persona: Persona;
   relationship: Relationship;

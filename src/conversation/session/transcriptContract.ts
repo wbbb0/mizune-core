@@ -2,6 +2,7 @@ import { z } from "zod";
 import { chatAttachmentSchema } from "../../types/chatContracts.ts";
 
 export const transcriptItemRuntimeExclusionReasonValues = ["manual_single", "manual_group", "interrupt_cleanup", "system"] as const;
+export const transcriptItemRuntimeVisibilityValues = ["default", "ambient"] as const;
 export const transcriptSystemMarkerKindValues = [
   "debug_enabled",
   "debug_disabled",
@@ -10,7 +11,13 @@ export const transcriptSystemMarkerKindValues = [
   "debug_dump_sent"
 ] as const;
 export const transcriptOutboundMediaToolNameValues = ["chat_file_send_to_chat", "local_file_send_to_chat"] as const;
-export const transcriptInternalTriggerKindValues = ["scheduled_instruction", "comfy_task_completed", "comfy_task_failed"] as const;
+export const transcriptInternalTriggerKindValues = [
+  "scheduled_instruction",
+  "comfy_task_completed",
+  "comfy_task_failed",
+  "terminal_session_closed",
+  "terminal_input_required"
+] as const;
 export const transcriptInternalTriggerStageValues = ["received", "queued", "dequeued", "started"] as const;
 
 export const storedToolCallSchema = z.object({
@@ -56,14 +63,27 @@ export const transcriptTokenStatsSchema = z.object({
   reasoning: transcriptTokenStatSchema.optional()
 });
 
+export const transcriptContentSafetyEventSchema = z.object({
+  subjectKind: z.enum(["text", "image", "emoji", "audio", "audio_transcript", "file", "local_media"]),
+  decision: z.enum(["allow", "review", "block", "error"]),
+  marker: z.string().nullable(),
+  auditKey: z.string().min(1).nullable(),
+  fileId: z.string().min(1).optional(),
+  audioId: z.string().min(1).optional(),
+  contentHash: z.string().min(1).optional(),
+  reason: z.string()
+});
+
 export const transcriptItemMetaSchema = z.object({
   id: z.string().min(1).optional(),
   groupId: z.string().min(1).optional(),
   runtimeExcluded: z.boolean().optional(),
+  runtimeVisibility: z.enum(transcriptItemRuntimeVisibilityValues).optional(),
   runtimeExcludedAt: z.number().int().nonnegative().optional(),
   runtimeExclusionReason: z.enum(transcriptItemRuntimeExclusionReasonValues).optional(),
   sourceRef: transcriptItemSourceRefSchema.optional(),
   deliveryRef: transcriptItemDeliveryRefSchema.optional(),
+  contentSafetyEvents: z.array(transcriptContentSafetyEventSchema).optional(),
   tokenStats: transcriptTokenStatsSchema.optional()
 });
 
@@ -139,6 +159,8 @@ export const transcriptToolObservationSchema = z.object({
   replaySafe: z.boolean(),
   refetchable: z.boolean(),
   pinned: z.boolean(),
+  preserveRecentRawCount: z.number().int().nonnegative().optional(),
+  includeInHistorySummary: z.boolean().optional(),
   duplicateOfToolCallId: z.string().min(1).optional()
 });
 
@@ -200,13 +222,38 @@ export const transcriptGateDecisionItemSchema = z.object({
   reason: z.string().nullable(),
   reasoningContent: z.string().optional(),
   waitPassCount: z.number().int().nonnegative().optional(),
-  replyDecision: z.enum(["reply_small", "reply_large", "wait", "ignore"]).optional(),
+  replyDecision: z.enum(["reply_small", "reply_large", "wait", "no_reply", "ignore"]).optional(),
   topicDecision: z.string().optional(),
   requiredCapabilities: z.array(z.string()).optional(),
   contextDependencies: z.array(z.string()).optional(),
   recentDomainReuse: z.array(z.string()).optional(),
   followupMode: z.string().optional(),
   toolsetIds: z.array(z.string()).optional(),
+  timestampMs: z.number().int().nonnegative()
+});
+
+export const transcriptAdmissionDecisionItemSchema = z.object({
+  ...transcriptItemMetaSchema.shape,
+  kind: z.literal("admission_decision"),
+  llmVisible: z.literal(false),
+  delivery: z.enum(["onebot", "web"]),
+  chatType: z.enum(["private", "group"]),
+  userId: z.string().min(1),
+  groupId: z.string().min(1).optional(),
+  groupMatched: z.boolean(),
+  matchedPendingGroupTrigger: z.boolean(),
+  replyToBot: z.boolean(),
+  textIntentCorrection: z.boolean(),
+  textIntentWaitMore: z.boolean(),
+  shouldTriggerResponse: z.boolean(),
+  threadAction: z.enum(["ambient_only", "wait_more", "reply_now", "soft_interrupt", "queue_next_thread"]),
+  replyDecision: z.enum(["no_reply", "reply_small", "wait"]),
+  interruptPolicy: z.enum(["none", "soft_interrupt", "abort_generation", "queue"]),
+  contextPolicy: z.enum(["ambient_buffer", "merge_batch", "new_thread"]),
+  priority: z.enum(["low", "normal", "high", "owner"]),
+  reason: z.string(),
+  isAtMentioned: z.boolean(),
+  hasActiveResponse: z.boolean(),
   timestampMs: z.number().int().nonnegative()
 });
 
@@ -253,6 +300,7 @@ export const transcriptInternalTriggerEventItemSchema = z.object({
   comfyPromptId: z.string().optional(),
   autoIterationIndex: z.number().int().nonnegative().optional(),
   maxAutoIterations: z.number().int().nonnegative().optional(),
+  resourceId: z.string().optional(),
   details: z.string().optional()
 });
 
@@ -278,6 +326,7 @@ export const internalTranscriptItemSchema = z.discriminatedUnion("kind", [
   transcriptDirectCommandItemSchema,
   transcriptStatusMessageItemSchema,
   transcriptGateDecisionItemSchema,
+  transcriptAdmissionDecisionItemSchema,
   transcriptSystemMarkerItemSchema,
   transcriptFallbackEventItemSchema,
   transcriptInternalTriggerEventItemSchema,
@@ -287,6 +336,7 @@ export const internalTranscriptItemSchema = z.discriminatedUnion("kind", [
 export const transcriptItemPatchSchema = z.object({
   reasoningContent: z.string().optional(),
   runtimeExcluded: z.boolean().optional(),
+  runtimeVisibility: z.enum(transcriptItemRuntimeVisibilityValues).optional(),
   runtimeExcludedAt: z.number().int().nonnegative().optional(),
   runtimeExclusionReason: z.enum(transcriptItemRuntimeExclusionReasonValues).optional(),
   tokenStats: transcriptTokenStatsSchema.optional()
@@ -298,13 +348,16 @@ export type TranscriptTokenStat = z.infer<typeof transcriptTokenStatSchema>;
 export type TranscriptTokenStats = z.infer<typeof transcriptTokenStatsSchema>;
 export type TranscriptToolObservation = z.infer<typeof transcriptToolObservationSchema>;
 export type TranscriptItemRuntimeExclusionReason = (typeof transcriptItemRuntimeExclusionReasonValues)[number];
+export type TranscriptItemRuntimeVisibility = (typeof transcriptItemRuntimeVisibilityValues)[number];
 export type TranscriptItemSourceRef = z.infer<typeof transcriptItemSourceRefSchema>;
 export type TranscriptItemDeliveryRef = z.infer<typeof transcriptItemDeliveryRefSchema>;
+export type TranscriptContentSafetyEvent = z.infer<typeof transcriptContentSafetyEventSchema>;
 export type TranscriptItemMeta = z.infer<typeof transcriptItemMetaSchema>;
 export type InternalTranscriptItem = z.infer<typeof internalTranscriptItemSchema>;
 export type NormalizedInternalTranscriptItem = InternalTranscriptItem & {
   id: string;
   groupId: string;
   runtimeExcluded: boolean;
+  runtimeVisibility?: TranscriptItemRuntimeVisibility;
 };
 export type TranscriptItemPatch = z.infer<typeof transcriptItemPatchSchema>;

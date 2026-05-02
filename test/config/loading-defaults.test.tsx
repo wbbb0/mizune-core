@@ -347,6 +347,12 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       });
 
       assert.equal(config.shell.sessionTtlMs, null);
+      assert.equal(config.shell.terminalEvents.enabled, true);
+      assert.equal(config.shell.terminalEvents.inputDetectionDebounceMs, 800);
+      assert.equal(config.shell.terminalEvents.inputConfirmationMs, 1200);
+      assert.equal(config.shell.terminalEvents.inputPromptCooldownMs, 30000);
+      assert.equal(config.shell.terminalEvents.inputSuppressionAfterWriteMs, 1200);
+      assert.equal(config.shell.terminalEvents.detectionTailMaxChars, 8000);
     });
   });
 

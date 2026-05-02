@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { DerivedObservation } from "./types";
+import type { ContentSafetyAuditView, DerivedObservation } from "./types";
 
 export interface LocalFileItem {
   path: string;
@@ -41,6 +41,7 @@ export interface ChatFileSummary {
   captionModelRef: string | null;
   captionError: string | null;
   captionObservation: DerivedObservation;
+  contentSafety: ContentSafetyAuditView | null;
 }
 
 export interface ChatFileDetail {

@@ -63,7 +63,7 @@ export interface TurnPlannerInput {
 }
 
 export interface TurnPlannerResult {
-  replyDecision: "reply_small" | "reply_large" | "wait";
+  replyDecision: "reply_small" | "reply_large" | "wait" | "no_reply";
   topicDecision: "continue_topic" | "new_topic";
   reason: string;
   requiredCapabilities: TurnPlannerRequiredCapability[];
@@ -263,7 +263,7 @@ export class TurnPlanner {
     if (structured) {
       return structured;
     }
-    const line4Match = trimmed.match(/^(.+?)\s*\|\s*(reply_small|reply_large|wait|reply|topic_switch)\s*\|\s*(continue_topic|new_topic)\s*\|\s*(.+)\s*$/is);
+    const line4Match = trimmed.match(/^(.+?)\s*\|\s*(reply_small|reply_large|wait|no_reply|ignore|reply|topic_switch)\s*\|\s*(continue_topic|new_topic)\s*\|\s*(.+)\s*$/is);
     if (line4Match) {
       return {
         ...normalizeParsedDecisions(line4Match[2], line4Match[3]),
@@ -276,7 +276,7 @@ export class TurnPlanner {
       };
     }
 
-    const tripleMatch = trimmed.match(/^(.+?)\s*\|\s*(reply_small|reply_large|wait|reply|topic_switch)\s*\|\s*(continue_topic|new_topic)\s*$/is);
+    const tripleMatch = trimmed.match(/^(.+?)\s*\|\s*(reply_small|reply_large|wait|no_reply|ignore|reply|topic_switch)\s*\|\s*(continue_topic|new_topic)\s*$/is);
     if (tripleMatch) {
       return {
         ...normalizeParsedDecisions(tripleMatch[2], tripleMatch[3]),
@@ -315,7 +315,7 @@ export class TurnPlanner {
       // ignore
     }
 
-    const fallbackDecision = trimmed.match(/\b(reply_small|reply_large|wait|reply|topic_switch)\b/is)?.[1];
+    const fallbackDecision = trimmed.match(/\b(reply_small|reply_large|wait|no_reply|ignore|reply|topic_switch)\b/is)?.[1];
     return {
       ...normalizeParsedDecisions(fallbackDecision ?? "reply_small", "continue_topic"),
       reason: summarizeReasonForLog(trimmed, 160),
@@ -383,10 +383,33 @@ export class TurnPlanner {
     batchAnalysis: ReturnType<typeof analyzeTurnPlannerBatch>
   ): TurnPlannerResult {
     const allowedToolsetIds = new Set((input.availableToolsets ?? []).map((item) => item.id));
-    const filteredToolsetIds = parsed.replyDecision === "wait"
+    const filteredToolsetIds = parsed.replyDecision === "wait" || parsed.replyDecision === "no_reply"
       ? []
       : Array.from(new Set(parsed.toolsetIds.filter((id) => allowedToolsetIds.has(id))));
     const normalized = { ...parsed, toolsetIds: filteredToolsetIds };
+
+    if (normalized.replyDecision === "no_reply") {
+      if (input.chatType === "private") {
+        this.logger.info(
+          {
+            sessionId: input.sessionId,
+            reason: normalized.reason || "private no_reply not allowed"
+          },
+          "turn_planner_no_reply_coerced_to_reply"
+        );
+        return {
+          ...normalized,
+          replyDecision: "reply_small",
+          topicDecision: "continue_topic",
+          toolsetIds: []
+        };
+      }
+      return {
+        ...normalized,
+        topicDecision: "continue_topic",
+        toolsetIds: []
+      };
+    }
 
     if (normalized.replyDecision !== "wait") {
       return normalized;
@@ -556,6 +579,9 @@ function normalizeReplyDecision(input: unknown): TurnPlannerResult["replyDecisio
   if (normalized === "wait") {
     return normalized;
   }
+  if (normalized === "no_reply" || normalized === "ignore") {
+    return "no_reply";
+  }
   return "reply_small";
 }
 
@@ -613,6 +639,12 @@ function normalizeParsedDecisions(
   }
   const replyDecision = normalizeReplyDecision(replyInput);
   if (replyDecision === "wait") {
+    return {
+      replyDecision,
+      topicDecision: "continue_topic"
+    };
+  }
+  if (replyDecision === "no_reply") {
     return {
       replyDecision,
       topicDecision: "continue_topic"

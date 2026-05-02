@@ -1,7 +1,8 @@
-import type { ShellRunParams } from "#services/shell/types.ts";
+import type { ShellRunParams, ShellRunResult } from "#services/shell/types.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
 import { getBooleanArg, getNumberArg, getStringArg, getStringArrayArg } from "../core/toolArgHelpers.ts";
+import { keepRawUnlessLargePolicy, terminalPolicy } from "../core/resultObservationPresets.ts";
 
 const isShellToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.shell.enabled;
 const TERMINAL_KEY_NAMES = [
@@ -43,7 +44,8 @@ export const shellToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
     ownerOnly: true,
@@ -51,7 +53,7 @@ export const shellToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "terminal_run",
-        description: "运行终端命令并等待结果。若超过 timeout_ms 仍未结束，命令会自动转入后台继续运行，返回 resource_id 供后续 terminal_read/terminal_write/terminal_key/terminal_signal 使用。开启新 terminal 资源时应尽量提供 description，说明这个会话是做什么的。\n\n【重要】禁止使用可能产生海量输出的命令（如 ls -R、find 不加 -maxdepth、cat 大文件等），这类命令会导致输出被截断且浪费上下文。如需列目录请用 ls -la 或 find . -maxdepth 2；如需查看文件请用 head/tail；如需搜索请用 grep -r --include 加限定条件。预计输出超大时请改用 terminal_start 后分批 terminal_read。",
+        description: "运行终端命令并等待结果。若超过 timeout_ms 仍未结束，命令会自动转入后台继续运行，返回 resource_id 供后续 terminal_read/terminal_write/terminal_key/terminal_signal 使用；默认情况下，后台命令完成或可能等待输入时，系统会自动把对应事件作为内部回调再次交给你处理。开启新 terminal 资源时应尽量提供 description，说明这个会话是做什么的。\n\n【重要】禁止使用可能产生海量输出的命令（如 ls -R、find 不加 -maxdepth、cat 大文件等），这类命令会导致输出被截断且浪费上下文。如需列目录请用 ls -la 或 find . -maxdepth 2；如需查看文件请用 head/tail；如需搜索请用 grep -r --include 加限定条件。预计输出超大时请改用 terminal_start 后分批 terminal_read。",
         parameters: {
           type: "object",
           properties: {
@@ -59,14 +61,20 @@ export const shellToolDescriptors: ToolDescriptor[] = [
             description: { type: "string", description: "给这个 shell 资源的用途说明，便于后续复用时识别。" },
             cwd: { type: "string" },
             timeout_ms: { type: "number", description: "等待完成的超时时长，默认 15000ms；超时后命令转入后台。" },
-            tty: { type: "boolean", description: "是否使用 PTY，默认 true" }
+            tty: { type: "boolean", description: "是否使用 PTY，默认 true" },
+            notify_policy: {
+              type: "string",
+              enum: ["none", "notify_on_close", "notify_on_input_and_close"],
+              description: "后台运行后何时自动回到本会话；默认 notify_on_input_and_close，完成或可能等待输入时触发；none 表示不自动触发。"
+            }
           },
           required: ["command"],
           additionalProperties: false
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: terminalPolicy()
   },
   {
     ownerOnly: true,
@@ -74,21 +82,27 @@ export const shellToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "terminal_start",
-        description: "启动终端命令并直接放入后台，立即返回 resource_id；用于长任务、交互程序、watch/dev server 或预计输出较大的命令。",
+        description: "启动终端命令并直接放入后台，立即返回 resource_id；用于长任务、交互程序、watch/dev server 或预计输出较大的命令。默认情况下，后台命令完成或可能等待输入时，系统会自动把对应事件作为内部回调再次交给你处理。",
         parameters: {
           type: "object",
           properties: {
             command: { type: "string" },
             description: { type: "string", description: "给这个 terminal 资源的用途说明，便于后续复用时识别。" },
             cwd: { type: "string" },
-            tty: { type: "boolean", description: "是否使用 PTY，默认 true" }
+            tty: { type: "boolean", description: "是否使用 PTY，默认 true" },
+            notify_policy: {
+              type: "string",
+              enum: ["none", "notify_on_close", "notify_on_input_and_close"],
+              description: "后台运行后何时自动回到本会话；默认 notify_on_input_and_close，完成或可能等待输入时触发；none 表示不自动触发。"
+            }
           },
           required: ["command"],
           additionalProperties: false
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: terminalPolicy()
   },
   {
     ownerOnly: true,
@@ -107,7 +121,8 @@ export const shellToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: terminalPolicy()
   },
   {
     ownerOnly: true,
@@ -127,7 +142,8 @@ export const shellToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: terminalPolicy()
   },
   {
     ownerOnly: true,
@@ -164,7 +180,8 @@ export const shellToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: terminalPolicy()
   },
   {
     ownerOnly: true,
@@ -184,7 +201,8 @@ export const shellToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: terminalPolicy()
   },
   {
     ownerOnly: true,
@@ -203,7 +221,8 @@ export const shellToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isShellToolEnabled
+    isEnabled: isShellToolEnabled,
+    resultObservation: terminalPolicy()
   }
 ];
 
@@ -221,8 +240,9 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
     if (denied) return denied;
 
     const runParams = buildShellRunParams(args);
+    bindShellRunOwner(runParams, args, context);
     const result = await context.shellRuntime.run(runParams);
-    return JSON.stringify(result);
+    return JSON.stringify(annotateShellRunResult(result, runParams.notifyPolicy));
   },
 
   async terminal_start(_toolCall, args, context) {
@@ -230,9 +250,10 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
     if (denied) return denied;
 
     const runParams = buildShellRunParams(args);
+    bindShellRunOwner(runParams, args, context);
     runParams.background = true;
     const result = await context.shellRuntime.run(runParams);
-    return JSON.stringify(result);
+    return JSON.stringify(annotateShellRunResult(result, runParams.notifyPolicy));
   },
 
   async terminal_write(_toolCall, args, context) {
@@ -322,6 +343,58 @@ function buildShellRunParams(args: unknown): ShellRunParams {
     runParams.tty = tty;
   }
   return runParams;
+}
+
+function bindShellRunOwner(runParams: ShellRunParams, args: unknown, context: Parameters<ToolHandler>[2]): void {
+  if (!context.lastMessage) {
+    return;
+  }
+  runParams.owner = {
+    sessionId: context.lastMessage.sessionId,
+    userId: context.lastMessage.userId,
+    senderName: context.lastMessage.senderName
+  };
+  const notifyPolicy = getStringArg(args, "notify_policy");
+  if (notifyPolicy === "none" || notifyPolicy === "notify_on_close" || notifyPolicy === "notify_on_input_and_close") {
+    runParams.notifyPolicy = notifyPolicy;
+  } else {
+    runParams.notifyPolicy = "notify_on_input_and_close";
+  }
+}
+
+function annotateShellRunResult(result: ShellRunResult, notifyPolicy: ShellRunParams["notifyPolicy"]): ShellRunResult & {
+  notify_policy?: ShellRunParams["notifyPolicy"];
+  background_followup?: {
+    will_trigger_on_close: boolean;
+    will_trigger_on_input: boolean;
+    message: string;
+  };
+} {
+  if (result.status !== "running" || !notifyPolicy) {
+    return result;
+  }
+  if (notifyPolicy === "none") {
+    return {
+      ...result,
+      notify_policy: notifyPolicy,
+      background_followup: {
+        will_trigger_on_close: false,
+        will_trigger_on_input: false,
+        message: "这个 terminal 已在后台运行，但 notify_policy=none，系统不会在完成或等待输入时自动触发你。需要继续时主动使用 terminal_read。"
+      }
+    };
+  }
+  return {
+    ...result,
+    notify_policy: notifyPolicy,
+    background_followup: {
+      will_trigger_on_close: true,
+      will_trigger_on_input: notifyPolicy === "notify_on_input_and_close",
+      message: notifyPolicy === "notify_on_input_and_close"
+        ? "这个 terminal 已在后台运行；系统会在它完成或可能等待输入时自动作为内部回调再次触发你继续处理。"
+        : "这个 terminal 已在后台运行；系统会在它完成时自动作为内部回调再次触发你继续处理。"
+    }
+  };
 }
 
 function terminalKeysArg(args: unknown): string[] {

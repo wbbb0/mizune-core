@@ -3,6 +3,67 @@ import assert from "node:assert/strict";
 import { createGenerationPromptBuilder } from "../../src/app/generation/generationPromptBuilder.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
+function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {}) {
+  return {
+    config: createTestAppConfig(),
+    oneBotClient: {} as any,
+    audioStore: {} as any,
+    audioTranscriber: {
+      async transcribeMany() {
+        return [];
+      }
+    } as any,
+    npcDirectory: {
+      listProfiles() {
+        return [];
+      }
+    } as any,
+    browserService: {
+      async listPages() {
+        return { pages: [] };
+      }
+    } as any,
+    localFileService: {} as any,
+    chatFileStore: {} as any,
+    mediaVisionService: {
+      async prepareFilesForModel() {
+        return [];
+      }
+    } as any,
+    mediaCaptionService: {
+      async ensureReady() {
+        return new Map();
+      }
+    } as any,
+    globalRuleStore: {
+      async getAll() {
+        return [];
+      }
+    } as any,
+    toolsetRuleStore: {
+      async getAll() {
+        return [];
+      }
+    } as any,
+    scenarioHostStateStore: {
+      async ensure() {
+        throw new Error("should not load scenario state");
+      }
+    } as any,
+    shellRuntime: {
+      async listSessionResources() {
+        return [];
+      }
+    } as any,
+    setupStore: {
+      describeMissingFields() {
+        return [];
+      }
+    } as any,
+    ...overrides
+  } as any;
+}
+
   test("setup prompt prepares image visuals when vision is enabled", async () => {
     const capturedImageIdCalls: string[][] = [];
     const builder = createGenerationPromptBuilder({
@@ -235,15 +296,13 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
           id: "shell_runtime",
           title: "Shell 运行时",
           description: "执行与交互 shell 会话，并复用 live_resource。",
-          toolNames: ["terminal_list", "terminal_run"],
-          promptGuidance: ["需要运行命令时优先复用现有 shell 资源。"]
+          toolNames: ["terminal_list", "terminal_run"]
         },
         {
           id: "web_research",
           title: "网页检索与浏览",
           description: "搜索网页、打开页面、交互与截图。",
-          toolNames: ["open_page"],
-          promptGuidance: ["需要网页状态时再进入网页检索与浏览。"]
+          toolNames: ["open_page"]
         }
       ],
       persona: {
@@ -284,6 +343,241 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.match(system, /res_browser_7 \| browser \| active \| Docs 7 \| 浏览第 7 个页面/);
     assert.match(system, /res_browser_1 \| browser \| active \| Docs 1/);
     assert.match(system, /res_shell_1 \| shell \| active \| npm test @ \/repo \| 跑测试/);
+  });
+
+  test("chat prompt applies content safety projection before rendering messages", async () => {
+    const builder = createGenerationPromptBuilder({
+      config: createTestAppConfig(),
+      oneBotClient: {} as any,
+      audioStore: {} as any,
+      audioTranscriber: {
+        async transcribeMany() {
+          return [];
+        }
+      } as any,
+      npcDirectory: {
+        listProfiles() {
+          return [];
+        }
+      } as any,
+      browserService: {
+        async listPages() {
+          return { pages: [] };
+        }
+      } as any,
+      localFileService: {} as any,
+      chatFileStore: {} as any,
+      mediaVisionService: {
+        async prepareFilesForModel() {
+          return [];
+        }
+      } as any,
+      mediaCaptionService: {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      contentSafetyService: {
+        async projectPromptMessages(input: {
+          recentMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs?: number | null }>;
+          batchMessages: Array<{ text: string }>;
+        }) {
+          return {
+            recentMessages: input.recentMessages.map((message) => message.role === "user"
+              ? { ...message, content: "⟦内容安全\n类型: 内容\n状态: 已屏蔽\n⟧" }
+              : message),
+            batchMessages: input.batchMessages.map((message) => ({
+              ...message,
+              text: "⟦内容安全\n类型: 内容\n状态: 已屏蔽\n⟧"
+            })),
+            events: []
+          };
+        }
+      },
+      globalRuleStore: {
+        async getAll() {
+          return [];
+        }
+      } as any,
+      toolsetRuleStore: {
+        async getAll() {
+          return [];
+        }
+      } as any,
+      scenarioHostStateStore: {
+        async ensure() {
+          throw new Error("should not load scenario state");
+        }
+      } as any,
+      shellRuntime: {
+        async listSessionResources() {
+          return [];
+        }
+      } as any,
+      setupStore: {
+        describeMissingFields() {
+          return [];
+        }
+      } as any
+    });
+
+    const result = await builder.buildChatPromptMessages({
+      sessionId: "qqbot:p:10001",
+      interactionMode: "normal",
+      mainModelRef: ["main"],
+      visibleToolNames: [],
+      activeToolsets: [],
+      persona: {
+        name: "Bot",
+        temperament: "冷静",
+        speakingStyle: "简洁",
+        globalTraits: "助手",
+        generalPreferences: ""
+      } as any,
+      relationship: "known",
+      participantProfiles: [],
+      currentUser: { userId: "10001", relationship: "known" } as any,
+      historySummary: null,
+      historyForPrompt: [{ role: "user", content: "原始历史", timestampMs: 1 }],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      batchMessages: [{
+        userId: "10001",
+        senderName: "Tester",
+        text: "原始当前消息",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: Date.now()
+      }]
+    });
+
+    const rendered = result.promptMessages.map((message) => String(message.content ?? "")).join("\n");
+    assert.match(rendered, /⟦内容安全/);
+    assert.doesNotMatch(rendered, /原始历史/);
+  assert.doesNotMatch(rendered, /原始当前消息/);
+  assert.match(result.debugSnapshot.currentBatch[0]?.text ?? "", /⟦内容安全/);
+  });
+
+  test("chat prompt applies content safety projection to provider replay messages", async () => {
+    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+      contentSafetyService: {
+        async projectPromptMessages(input: {
+          recentMessages: Array<{ role: "user" | "assistant"; content: string }>;
+          batchMessages: Array<{ text: string }>;
+        }) {
+          return { ...input, events: [] };
+        },
+        async projectLlmMessages(input: { messages: Array<{ role: string; content: unknown }> }) {
+          return {
+            messages: input.messages.map((message) => (
+              message.role === "user" && typeof message.content === "string" && message.content.includes("replay-unsafe")
+                ? { ...message, content: "⟦内容安全\n类型: 内容\n状态: 已屏蔽\n⟧" }
+                : message
+            )),
+            events: []
+          };
+        }
+      }
+    }));
+
+    const result = await builder.buildChatPromptMessages({
+      sessionId: "qqbot:p:10001",
+      interactionMode: "normal",
+      mainModelRef: ["main"],
+      visibleToolNames: [],
+      activeToolsets: [],
+      replayMessages: [{ role: "user", content: "replay-unsafe 原始 replay" }],
+      persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
+      relationship: "known",
+      participantProfiles: [],
+      currentUser: { userId: "10001", relationship: "known" } as any,
+      historySummary: null,
+      historyForPrompt: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      batchMessages: [{
+        userId: "10001",
+        senderName: "Tester",
+        text: "正常当前消息",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: Date.now()
+      }]
+    });
+
+    const rendered = result.promptMessages.map((message) => String(message.content ?? "")).join("\n");
+    assert.match(rendered, /⟦内容安全/);
+    assert.doesNotMatch(rendered, /replay-unsafe 原始 replay/);
+  });
+
+  test("scheduled prompt applies content safety projection to trigger text", async () => {
+    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+      contentSafetyService: {
+        async projectPromptMessages(input: {
+          recentMessages: Array<{ role: "user" | "assistant"; content: string }>;
+          batchMessages: Array<{ text: string }>;
+        }) {
+          return { ...input, events: [] };
+        },
+        async projectLlmMessages(input: { messages: Array<{ role: string; content: unknown }> }) {
+          return {
+            messages: input.messages.map((message) => (
+              message.role === "user" && typeof message.content === "string" && message.content.includes("scheduled-unsafe")
+                ? { ...message, content: "⟦内容安全\n类型: 内容\n状态: 已屏蔽\n⟧" }
+                : message
+            )),
+            events: []
+          };
+        }
+      }
+    }));
+
+    const result = await builder.buildScheduledPromptMessages({
+      sessionId: "qqbot:p:10001",
+      interactionMode: "normal",
+      visibleToolNames: [],
+      activeToolsets: [],
+      trigger: {
+        kind: "scheduled_instruction",
+        jobName: "测试任务",
+        taskInstruction: "scheduled-unsafe 原始任务"
+      },
+      persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
+      relationship: "known",
+      participantProfiles: [],
+      currentUser: { userId: "10001", relationship: "known" } as any,
+      historySummary: null,
+      historyForPrompt: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      targetContext: {
+        chatType: "private",
+        userId: "10001",
+        senderName: "Tester"
+      }
+    });
+
+    const rendered = result.promptMessages.map((message) => String(message.content ?? "")).join("\n");
+    assert.match(rendered, /⟦内容安全/);
+    assert.doesNotMatch(rendered, /scheduled-unsafe 原始任务/);
   });
 
   test("assistant chat prompt injects global persona but still avoids memory rule and scenario stores", async () => {

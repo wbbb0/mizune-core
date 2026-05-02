@@ -8,6 +8,14 @@ import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
 
+function createFakeShellRuntime() {
+  return {
+    isInputPromptCurrent() {
+      return true;
+    }
+  };
+}
+
 test("persona setup prompt reads the current draft instead of the saved persona", async () => {
   const config = createTestAppConfig({
     llm: {
@@ -103,6 +111,9 @@ test("persona setup prompt reads the current draft instead of the saved persona"
           };
         }
       }
+    } as any,
+    toolRuntime: {
+      shellRuntime: createFakeShellRuntime()
     } as any,
     lifecycle: {
       persistSession() {},
@@ -260,6 +271,9 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
         }
       }
     } as any,
+    toolRuntime: {
+      shellRuntime: createFakeShellRuntime()
+    } as any,
     lifecycle: {
       persistSession() {},
       getScheduler() {
@@ -411,6 +425,9 @@ test("scenario_host normal prompt receives the saved scenario profile", async ()
           };
         }
       }
+    } as any,
+    toolRuntime: {
+      shellRuntime: createFakeShellRuntime()
     } as any,
     lifecycle: {
       persistSession() {},
@@ -596,6 +613,9 @@ test("normal prompt provider replay excludes the active input batch", async () =
         }
       }
     } as any,
+    toolRuntime: {
+      shellRuntime: createFakeShellRuntime()
+    } as any,
     lifecycle: {
       persistSession() {},
       getScheduler() {
@@ -649,4 +669,368 @@ test("normal prompt provider replay excludes the active input batch", async () =
   assert.equal(capturedReplayMessages.some((message) => String(message.content).includes("旧问题")), true);
   assert.equal(capturedHistoryForPrompt.length, 0);
   assert.deepEqual(capturedBatchMessages.map((message) => message.text), ["当前问题"]);
+});
+
+test("normal prompt history excludes active transcript group instead of subtracting batch count", async () => {
+  const config = createTestAppConfig({
+    llm: {
+      enabled: true
+    }
+  });
+  const logger = pino({ level: "silent" });
+  const sessionManager = new SessionManager(config);
+  const sessionId = "qqbot:g:20001";
+  sessionManager.ensureSession({
+    id: sessionId,
+    type: "group",
+    source: "onebot"
+  });
+  sessionManager.appendUserHistory(sessionId, {
+    chatType: "group",
+    userId: "u1",
+    senderName: "Alice",
+    text: "@bot 当前问题"
+  }, 10);
+  sessionManager.appendPendingMessage(sessionId, {
+    channelId: "qqbot",
+    chatType: "group",
+    userId: "u1",
+    groupId: "20001",
+    senderName: "Alice",
+    text: "@bot 当前问题",
+    images: [],
+    audioSources: [],
+    audioIds: [],
+    emojiSources: [],
+    imageIds: [],
+    emojiIds: [],
+    forwardIds: [],
+    replyMessageId: null,
+    mentionUserIds: [],
+    mentionedAll: false,
+    isAtMentioned: true
+  });
+  sessionManager.appendUserHistory(sessionId, {
+    chatType: "group",
+    userId: "u2",
+    senderName: "Bob",
+    text: "中间插入的非当前批次消息"
+  }, 20, { transcriptGroup: "standalone" });
+
+  let capturedHistoryForPrompt: Array<{ role: string; content: string }> = [];
+  let capturedBatchMessages: Array<{ text: string }> = [];
+  let resolveRunGeneration!: () => void;
+  const runGenerationDone = new Promise<void>((resolve) => {
+    resolveRunGeneration = resolve;
+  });
+
+  const orchestrator = createGenerationSessionOrchestrator({
+    promptBuilder: { config } as any,
+    sessionRuntime: {
+      logger,
+      historyCompressor: {
+        async maybeCompress() {
+          return false;
+        }
+      },
+      llmClient: {} as never,
+      sessionCaptioner: {} as never,
+      turnPlanner: {} as never,
+      debounceManager: {} as never,
+      sessionManager
+    } as any,
+    identity: {
+      userStore: {
+        async getByUserId(userId: string) {
+          return {
+            userId,
+            relationship: "known"
+          };
+        }
+      },
+      personaStore: {
+        async get() {
+          return createEmptyPersona();
+        }
+      },
+      rpProfileStore: {
+        async get() {
+          return createEmptyRpProfile();
+        }
+      },
+      scenarioProfileStore: {
+        async get() {
+          return createEmptyScenarioProfile();
+        }
+      },
+      setupStore: {} as never,
+      scenarioHostStateStore: {} as never,
+      globalProfileReadinessStore: {
+        async get() {
+          return {
+            persona: "ready",
+            rp: "ready",
+            scenario: "ready",
+            updatedAt: 1
+          };
+        }
+      }
+    } as any,
+    toolRuntime: {
+      shellRuntime: createFakeShellRuntime()
+    } as any,
+    lifecycle: {
+      persistSession() {},
+      getScheduler() {
+        return {} as never;
+      }
+    } as any
+  }, {
+    promptBuilder: {
+      async buildChatPromptMessages(input: {
+        historyForPrompt: Array<{ role: string; content: string }>;
+        batchMessages: Array<{ text: string }>;
+      }) {
+        capturedHistoryForPrompt = input.historyForPrompt;
+        capturedBatchMessages = input.batchMessages;
+        return {
+          promptMessages: [{ role: "system" as const, content: "chat" }],
+          debugSnapshot: {
+            sessionId,
+            systemMessages: ["chat"],
+            visibleToolNames: [],
+            activeToolsets: [],
+            historySummary: null,
+            recentHistory: [],
+            currentBatch: [],
+            liveResources: [],
+            debugMarkers: [],
+            toolTranscript: [],
+            persona: createEmptyPersona(),
+            globalRules: [],
+            toolsetRules: [],
+            currentUser: null,
+            participantProfiles: [],
+            imageCaptions: [],
+            lastLlmUsage: null
+          }
+        };
+      }
+    } as any,
+    async runGeneration() {
+      resolveRunGeneration();
+    },
+    processNextSessionWork() {}
+  });
+
+  orchestrator.flushSession(sessionId, { skipReplyGate: true });
+  await runGenerationDone;
+
+  assert.equal(capturedHistoryForPrompt.some((message) => message.content.includes("@bot 当前问题")), false);
+  assert.equal(capturedHistoryForPrompt.some((message) => message.content.includes("中间插入的非当前批次消息")), true);
+  assert.deepEqual(capturedBatchMessages.map((message) => message.text), ["@bot 当前问题"]);
+});
+
+test("turn planner receives content-safety projected history and batch", async () => {
+  const config = createTestAppConfig({
+    llm: {
+      enabled: true
+    }
+  });
+  const logger = pino({ level: "silent" });
+  const sessionManager = new SessionManager(config);
+  const sessionId = "qqbot:p:2254600711";
+  sessionManager.ensureSession({
+    id: sessionId,
+    type: "private",
+    source: "onebot"
+  });
+  sessionManager.appendUserHistory(sessionId, {
+    chatType: "private",
+    userId: "owner",
+    senderName: "Owner",
+    text: "历史原文"
+  }, 1, { transcriptGroup: "standalone" });
+  sessionManager.appendAssistantHistory(sessionId, {
+    chatType: "private",
+    userId: "owner",
+    senderName: "Owner",
+    text: "历史回答"
+  }, 2, { transcriptGroup: "standalone" });
+  sessionManager.appendPendingMessage(sessionId, {
+    channelId: "qqbot",
+    externalUserId: "2254600711",
+    chatType: "private",
+    userId: "owner",
+    senderName: "Owner",
+    text: "当前原文",
+    images: [],
+    audioSources: [],
+    audioIds: [],
+    emojiSources: [],
+    imageIds: [],
+    emojiIds: [],
+    forwardIds: [],
+    replyMessageId: null,
+    mentionUserIds: [],
+    mentionedAll: false,
+    isAtMentioned: false
+  });
+
+  let capturedPlannerBatchMessages: Array<{ text: string }> = [];
+  let capturedPlannerHistory: Array<{ role: string; content: string }> = [];
+  let resolveRunGeneration!: () => void;
+  const runGenerationDone = new Promise<void>((resolve) => {
+    resolveRunGeneration = resolve;
+  });
+
+  const orchestrator = createGenerationSessionOrchestrator({
+    promptBuilder: {
+      config,
+      contentSafetyService: {
+        async projectPromptMessages(input: {
+          recentMessages: Array<{ role: "user" | "assistant"; content: string }>;
+          batchMessages: Array<{ text: string }>;
+        }) {
+          return {
+            recentMessages: input.recentMessages.map((message) => message.role === "user"
+              ? { ...message, content: "⟦内容安全: history⟧" }
+              : message),
+            batchMessages: input.batchMessages.map((message) => ({
+              ...message,
+              text: "⟦内容安全: batch⟧"
+            })),
+            events: []
+          };
+        },
+        async projectLlmMessages(input: { messages: unknown[] }) {
+          return { ...input, events: [] };
+        }
+      }
+    } as any,
+    sessionRuntime: {
+      logger,
+      historyCompressor: {
+        async maybeCompress() {
+          return false;
+        },
+        async compactOldHistoryKeepingRecent() {
+          return false;
+        }
+      },
+      llmClient: {
+        isConfigured() {
+          return true;
+        }
+      } as any,
+      sessionCaptioner: {} as never,
+      turnPlanner: {
+        isEnabled() {
+          return true;
+        },
+        async decide(input: {
+          recentMessages: Array<{ role: string; content: string }>;
+          batchMessages: Array<{ text: string }>;
+        }) {
+          capturedPlannerHistory = input.recentMessages;
+          capturedPlannerBatchMessages = input.batchMessages;
+          return {
+            replyDecision: "reply_small",
+            topicDecision: "continue_topic",
+            reason: "ok",
+            requiredCapabilities: [],
+            contextDependencies: [],
+            recentDomainReuse: [],
+            followupMode: "none",
+            toolsetIds: []
+          };
+        }
+      } as any,
+      debounceManager: {} as never,
+      sessionManager
+    } as any,
+    identity: {
+      userStore: {
+        async getByUserId(userId: string) {
+          return {
+            userId,
+            relationship: "owner"
+          };
+        }
+      },
+      personaStore: {
+        async get() {
+          return createEmptyPersona();
+        }
+      },
+      rpProfileStore: {
+        async get() {
+          return createEmptyRpProfile();
+        }
+      },
+      scenarioProfileStore: {
+        async get() {
+          return createEmptyScenarioProfile();
+        }
+      },
+      setupStore: {} as never,
+      scenarioHostStateStore: {} as never,
+      globalProfileReadinessStore: {
+        async get() {
+          return {
+            persona: "ready",
+            rp: "ready",
+            scenario: "ready",
+            updatedAt: 1
+          };
+        }
+      }
+    } as any,
+    toolRuntime: {
+      shellRuntime: createFakeShellRuntime()
+    } as any,
+    lifecycle: {
+      persistSession() {},
+      getScheduler() {
+        return {} as never;
+      }
+    } as any
+  }, {
+    promptBuilder: {
+      async buildChatPromptMessages() {
+        return {
+          promptMessages: [{ role: "system" as const, content: "chat" }],
+          debugSnapshot: {
+            sessionId,
+            systemMessages: ["chat"],
+            visibleToolNames: [],
+            activeToolsets: [],
+            historySummary: null,
+            recentHistory: [],
+            currentBatch: [],
+            liveResources: [],
+            debugMarkers: [],
+            toolTranscript: [],
+            persona: createEmptyPersona(),
+            globalRules: [],
+            toolsetRules: [],
+            currentUser: null,
+            participantProfiles: [],
+            imageCaptions: [],
+            lastLlmUsage: null
+          }
+        };
+      }
+    } as any,
+    async runGeneration() {
+      resolveRunGeneration();
+    },
+    processNextSessionWork() {}
+  });
+
+  orchestrator.flushSession(sessionId);
+  await runGenerationDone;
+
+  assert.deepEqual(capturedPlannerHistory.map((message) => message.content), ["⟦内容安全: history⟧", "历史回答"]);
+  assert.deepEqual(capturedPlannerBatchMessages.map((message) => message.text), ["⟦内容安全: batch⟧"]);
 });
