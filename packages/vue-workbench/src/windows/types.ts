@@ -1,9 +1,12 @@
 import type { Component } from "vue";
 
+/** 预设窗口宽度。full 在移动端/桌面端会按容器上限处理。 */
 export type WorkbenchWindowSize = "auto" | "sm" | "md" | "lg" | "xl" | "full";
 
+/** 当前窗口系统支持的窗口类型。 */
 export type WorkbenchWindowKind = "dialog" | "child-dialog";
 
+/** 业务上下文标识，用于批量关闭同类窗口或避免重复打开。 */
 export type WorkbenchWindowContext = {
   kind: string;
   id: string;
@@ -18,6 +21,7 @@ type WorkbenchDialogGroupValues<TValue> = unknown extends TValue
 export type WorkbenchDialogSchema<
   TValues extends Record<string, unknown> = Record<string, unknown>
 > = {
+  /** 表单字段列表，字段 key 会写入 action 收到的 values。 */
   fields: WorkbenchDialogField<TValues>[];
 };
 
@@ -106,12 +110,15 @@ export type WorkbenchDialogAction<
   TValues extends Record<string, unknown> = Record<string, unknown>,
   TResult = unknown
 > = {
+  /** 稳定动作 ID，会出现在窗口关闭结果中。 */
   id: string;
   label: string;
   variant?: "primary" | "secondary" | "danger";
+  /** 点击动作时执行。返回值会作为 action result 回传给 open/openDialog。 */
   run?: (context: { values: TValues; windowId: string }) => Promise<TResult> | TResult;
 };
 
+/** 运行时窗口定义。业务项目通常通过 useWorkbenchWindows().openDialog 传入。 */
 export type WorkbenchWindowDefinition<
   TValues extends Record<string, unknown> = Record<string, unknown>,
   TResult = unknown
@@ -133,6 +140,7 @@ export type WorkbenchWindowDefinition<
   context?: WorkbenchWindowContext;
 };
 
+/** 对话框便捷定义。kind 可省略，默认会按 dialog 处理。 */
 export type WorkbenchDialogDefinition<
   TValues extends Record<string, unknown> = Record<string, unknown>,
   TResult = unknown
@@ -143,9 +151,11 @@ export type WorkbenchDialogDefinition<
 export type WorkbenchWindowDialogController<
   TValues extends Record<string, unknown> = Record<string, unknown>
 > = {
+  /** 读取当前表单值，用于关闭窗口前生成 result。 */
   snapshotValues: () => TValues;
 };
 
+/** 窗口关闭结果。action 表示按钮动作，close 表示主动关闭，dismiss 表示背景/Escape 等取消。 */
 export type WorkbenchWindowResult<TResult = unknown, TValues extends Record<string, unknown> = Record<string, unknown>> =
   | { reason: "action"; actionId: string; values: TValues; result?: TResult }
   | { reason: "close"; values: TValues }

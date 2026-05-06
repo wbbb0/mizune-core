@@ -9,6 +9,7 @@ import { createWindowManager } from "./windowManager.js";
 
 type WorkbenchWindowMode = "desktop" | "mobile";
 
+/** 当前运行时中的窗口实例。 */
 export type WorkbenchRuntimeWindow = {
   id: string;
   order: number;
@@ -20,18 +21,23 @@ export type WorkbenchRuntimeWindow = {
   definition: WorkbenchWindowDefinition;
 };
 
+/** WorkbenchRoot 提供的窗口管理服务。 */
 export type WorkbenchWindowManager = {
   desktopWindows: Readonly<{ value: WorkbenchRuntimeWindow[] }>;
   mobileWindows: Readonly<{ value: WorkbenchRuntimeWindow[] }>;
+  /** 同步打开窗口并返回运行时窗口实例，不等待关闭结果。 */
   openSync<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
     definition: WorkbenchWindowDefinition<TValues, TResult>
   ): WorkbenchRuntimeWindow;
+  /** 打开窗口并等待关闭结果。 */
   open<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
     definition: WorkbenchWindowDefinition<TValues, TResult>
   ): Promise<WorkbenchWindowResult<TResult, TValues>>;
+  /** 同步打开 dialog，kind 默认补为 dialog。 */
   openDialogSync<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
     definition: WorkbenchDialogDefinition<TValues, TResult>
   ): WorkbenchRuntimeWindow;
+  /** 打开 dialog 并等待 action/close/dismiss 结果。 */
   openDialog<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
     definition: WorkbenchDialogDefinition<TValues, TResult>
   ): Promise<WorkbenchWindowResult<TResult, TValues>>;

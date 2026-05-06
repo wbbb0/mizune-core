@@ -1,18 +1,22 @@
 import { ref } from "vue";
 
+/** Toast 队列中的一条消息。 */
 export interface ToastItem {
   id: number;
   type: "success" | "error" | "info";
   message: string;
 }
 
+/** WorkbenchRoot 提供的全局 toast 服务。 */
 export type WorkbenchToastService = {
   items: Readonly<{ value: ToastItem[] }>;
+  /** 推入一条 toast。相同 type/message 会复用现有 toast 并重置自动关闭时间。 */
   push: (input: {
     type: ToastItem["type"];
     message: string;
     durationMs?: number;
   }) => number;
+  /** 立即关闭指定 toast。 */
   dismiss: (id: number) => void;
 };
 

@@ -9,6 +9,12 @@
 
 这些包当前作为源码包由 WebUI 通过 Vite / TypeScript alias 引用；后续需要跨仓库复用时，可以把 `packages/*` 发布为 npm 包。项目模板只应包含示例路由、section registry、theme token 和 API adapter 示例，不应被多个项目运行时引用。
 
+三个包的接入方式、主题 token、Tailwind `@source` 配置和代码示例见各包 README：
+
+- [`@workbench-kit/vue-workbench`](../../packages/vue-workbench/README.md)
+- [`@workbench-kit/vue-resource-editor`](../../packages/vue-resource-editor/README.md)
+- [`@workbench-kit/vue-file-workspace`](../../packages/vue-file-workspace/README.md)
+
 ## Workbench 外壳与 Section Contract
 
 WebUI 采用统一 workbench 外壳，而不是让每个页面各自拼整套布局。

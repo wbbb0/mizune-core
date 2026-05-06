@@ -3,6 +3,10 @@
 @import "tailwindcss-safe-area";
 @import "@workbench-kit/vue-workbench/style.css";
 
+@source "../../../packages/vue-workbench/src";
+@source "../../../packages/vue-resource-editor/src";
+@source "../../../packages/vue-file-workspace/src";
+
 /* Tree/list item primitives */
 .tree-head {
   display: flex;

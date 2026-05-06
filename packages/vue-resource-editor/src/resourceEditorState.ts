@@ -7,15 +7,23 @@ export type ResourceEditorNotification = {
   message: string;
 };
 
+/** createResourceEditorState 的接线选项。 */
 export type ResourceEditorStateOptions = {
+  /** 业务项目实现的资源编辑 client。 */
   client: ResourceEditorClient;
+  /** 可选资源域过滤。 */
   domain?: EditorResourceSummary["domain"];
+  /** true 时只保留 editable 资源。 */
   editableOnly?: boolean;
+  /** 选中资源后回调，通常用于移动端跳转 mainArea。 */
   onSelect?: () => void;
+  /** 校验/保存成功失败通知回调。 */
   notify?: (notification: ResourceEditorNotification) => void;
+  /** 自定义保存成功消息。 */
   saveSuccessMessage?: (path: string) => string;
 };
 
+/** 资源编辑页面可直接消费的一组响应式状态和动作。 */
 export type ResourceEditorState = {
   resources: Ref<EditorResourceSummary[]>;
   selectedKey: Ref<string | null>;
@@ -39,6 +47,7 @@ export type ResourceEditorState = {
   reloadFromServer: () => Promise<void>;
 };
 
+/** 创建通用资源编辑状态，封装 list/load/validate/save/reload 和草稿管理。 */
 export function createResourceEditorState(options: ResourceEditorStateOptions): ResourceEditorState {
   const resources = ref<EditorResourceSummary[]>([]);
   const selectedKey = ref<string | null>(null);

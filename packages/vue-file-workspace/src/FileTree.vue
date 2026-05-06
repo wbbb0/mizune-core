@@ -7,10 +7,15 @@ import type { LocalFileItem } from "./types";
 defineOptions({ name: "WorkspaceFileTree" });
 
 const props = withDefaults(defineProps<{
+  /** 当前层要渲染的文件/目录列表。 */
   items: LocalFileItem[];
+  /** 已展开目录 path 列表。 */
   expandedPaths: string[];
+  /** 目录 path 到其子项列表的缓存。 */
   itemsByPath: Record<string, LocalFileItem[]>;
+  /** 当前选中的文件或目录 path。 */
   selectedPath: string | null;
+  /** 当前递归深度。根层默认为 0。 */
   depth?: number;
 }>(), {
   depth: 0

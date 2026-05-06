@@ -17,6 +17,12 @@
 
 当前 WebUI 通过 `vite.config.ts` 和 `tsconfig.json` alias 直接引用这些源码包；跨项目复用时应发布这些包或使用 workspace 依赖，模板项目只负责生成业务项目骨架。
 
+详细接入方式、主题 token、Tailwind `@source` 配置和使用示例见各包 README：
+
+- [`@workbench-kit/vue-workbench`](../packages/vue-workbench/README.md)
+- [`@workbench-kit/vue-resource-editor`](../packages/vue-resource-editor/README.md)
+- [`@workbench-kit/vue-file-workspace`](../packages/vue-file-workspace/README.md)
+
 ## 安装
 
 在仓库根目录执行：

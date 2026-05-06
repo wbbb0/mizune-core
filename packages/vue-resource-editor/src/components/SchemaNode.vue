@@ -19,15 +19,25 @@ interface HeaderAction {
 }
 
 const props = defineProps<{
+  /** 当前节点的 UI tree。 */
   node: UiNode;
+  /** 当前节点在父对象中的 key，用于标题和路径展示。 */
   fieldKey?: string;
+  /** 当前节点的草稿值。 */
   modelValue: unknown;
+  /** 参考层或继承值，用于显示 reference backdrop。 */
   inherited?: unknown;
+  /** 已保存的当前层值，用于 dirty 判断。 */
   storedValue?: unknown;
+  /** 最终生效值。 */
   effectiveValue?: unknown;
+  /** 当前节点路径。根节点可省略。 */
   path?: PathSegment[];
+  /** 后端返回的编辑器功能开关。 */
   editorFeatures?: EditorFeatures;
+  /** 当前递归深度。 */
   depth?: number;
+  /** true 时禁用本节点及子节点编辑。 */
   disabled?: boolean;
   headerLabel?: string;
   headerMeta?: string | number;
