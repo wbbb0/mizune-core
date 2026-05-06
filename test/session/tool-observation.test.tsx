@@ -13,8 +13,12 @@ import {
   browserDownloadPolicy,
   browserPagePolicy,
   browserScreenshotPolicy,
+  chatFileListPolicy,
   debugDumpPolicy,
+  fileSendPolicy,
   localFileListPolicy,
+  localFileMutationPolicy,
+  localFileSearchPolicy,
   terminalPolicy
 } from "../../src/llm/tools/core/resultObservationPresets.ts";
 import type { ToolResultObservationPolicy } from "../../src/llm/tools/core/resultObservation.ts";
@@ -53,10 +57,10 @@ test("local_file_read observation keeps raw content out of replay and preserves 
   assert.match(observation.replayContent, /start_line=1 end_line=180/);
 });
 
-test("local_file_ls policy keeps small results raw and compacts large directory listings", () => {
+test("local_file_ls policy summarizes small and large directory listings", () => {
   const smallRaw = JSON.stringify({
     path: "src",
-    items: [{ name: "index.ts", kind: "file" }]
+    items: [{ path: "src/index.ts", name: "index.ts", kind: "file", sizeBytes: 10 }]
   });
   const small = buildToolObservation({
     toolName: "local_file_ls",
@@ -65,8 +69,26 @@ test("local_file_ls policy keeps small results raw and compacts large directory 
     args: { path: "src" },
     policy: localFileListPolicy()
   });
-  assert.equal(small.retention, "full");
-  assert.equal(small.replayContent, smallRaw);
+  assert.equal(small.retention, "summary");
+  assert.match(small.replayContent, /src\/index\.ts/);
+
+  const statRaw = JSON.stringify({
+    path: "src/index.ts",
+    name: "index.ts",
+    kind: "file",
+    sizeBytes: 10,
+    updatedAtMs: 123
+  });
+  const stat = buildToolObservation({
+    toolName: "local_file_ls",
+    toolCallId: "call_ls_file_stat",
+    content: statRaw,
+    args: { path: "src/index.ts" },
+    policy: localFileListPolicy()
+  });
+  assert.equal(stat.retention, "summary");
+  assert.match(stat.replayContent, /刷新文件元信息/);
+  assert.doesNotMatch(stat.replayContent, /完整目录列表/);
 
   const largeRaw = JSON.stringify({
     path: "src",
@@ -89,6 +111,163 @@ test("local_file_ls policy keeps small results raw and compacts large directory 
   assert.match(large.summary, /45 项/);
   assert.match(large.replayContent, /"compacted":true/);
   assert.doesNotMatch(large.replayContent, /file-44/);
+});
+
+test("local file search and mutations replay compact operational summaries", () => {
+  const search = buildToolObservation({
+    toolName: "local_file_search",
+    toolCallId: "call_search_1",
+    content: JSON.stringify({
+      path: "src",
+      query: "needle",
+      matches: Array.from({ length: 20 }, (_, index) => ({
+        path: `src/file-${index}.ts`,
+        line: index + 1,
+        text: `needle match ${index}`
+      })),
+      truncated: true
+    }),
+    args: { query: "needle", path: "src", mode: "content" },
+    policy: localFileSearchPolicy()
+  });
+  assert.equal(search.retention, "summary");
+  assert.match(search.replayContent, /"mode":"content"/);
+  assert.match(search.replayContent, /src\/file-0\.ts/);
+  assert.doesNotMatch(search.replayContent, /src\/file-19\.ts/);
+
+  const mutation = buildToolObservation({
+    toolName: "local_file_patch",
+    toolCallId: "call_patch_1",
+    content: JSON.stringify({
+      path: "src/app.ts",
+      hunksApplied: 2,
+      updatedAtMs: 123
+    }),
+    args: { path: "src/app.ts" },
+    policy: localFileMutationPolicy()
+  });
+  assert.equal(mutation.retention, "summary");
+  assert.match(mutation.replayContent, /"hunksApplied":2/);
+  assert.match(mutation.replayContent, /local_file_read path=src\/app\.ts/);
+
+  const deleted = buildToolObservation({
+    toolName: "local_file_delete",
+    toolCallId: "call_delete_1",
+    content: JSON.stringify({
+      path: "tmp/old.txt",
+      deleted: true
+    }),
+    args: { path: "tmp/old.txt" },
+    policy: localFileMutationPolicy()
+  });
+  assert.equal(deleted.retention, "summary");
+  assert.equal(deleted.refetchable, false);
+  assert.doesNotMatch(deleted.replayContent, /local_file_read path=tmp\/old\.txt/);
+
+  const mkdir = buildToolObservation({
+    toolName: "local_file_mkdir",
+    toolCallId: "call_mkdir_1",
+    content: JSON.stringify({
+      path: "tmp/new-dir",
+      kind: "directory"
+    }),
+    args: { path: "tmp/new-dir" },
+    policy: localFileMutationPolicy()
+  });
+  assert.match(mkdir.summary, /创建目录 tmp\/new-dir/);
+  assert.doesNotMatch(mkdir.summary, /创建目录本地文件/);
+  assert.match(mkdir.replayContent, /local_file_ls path=tmp\/new-dir/);
+});
+
+test("chat file list and send policies keep stable handles without raw records", () => {
+  const longCaption = `${"caption ".repeat(200)}tail`;
+  const list = buildToolObservation({
+    toolName: "chat_file_list",
+    toolCallId: "call_chat_files",
+    content: JSON.stringify({
+      ok: true,
+      files: Array.from({ length: 20 }, (_, index) => ({
+        file_id: `file_${index}`,
+        file_ref: `img_${index}.png`,
+        kind: "image",
+        origin: "browser_download",
+        source_name: `image-${index}.png`,
+        mime_type: "image/png",
+        size_bytes: 100 + index,
+        caption_status: "ready",
+        caption: longCaption
+      })),
+      totalMatched: 40,
+      returned: 20,
+      truncated: true,
+      filters: { query: "image", kind: "image", origin: null, limit: 20 }
+    }),
+    args: { query: "image", kind: "image" },
+    policy: chatFileListPolicy()
+  });
+  assert.equal(list.retention, "summary");
+  assert.match(list.replayContent, /"totalMatched":40/);
+  assert.match(list.replayContent, /img_0\.png/);
+  assert.doesNotMatch(list.replayContent, /img_19\.png/);
+  assert.doesNotMatch(list.replayContent, /caption caption caption caption caption caption caption caption caption caption caption caption caption caption/);
+
+  const exact = buildToolObservation({
+    toolName: "chat_file_list",
+    toolCallId: "call_chat_file_exact",
+    content: JSON.stringify({
+      ok: true,
+      file: {
+        file_id: "file_exact",
+        file_ref: "img_exact.png",
+        kind: "image",
+        origin: "browser_download",
+        source_name: "exact.png",
+        mime_type: "image/png",
+        size_bytes: 100,
+        caption_status: "missing"
+      },
+      next_actions: []
+    }),
+    args: { file_ref: "img_exact.png" },
+    policy: chatFileListPolicy()
+  });
+  assert.match(exact.replayContent, /"fileCount":1/);
+  assert.match(exact.replayContent, /"totalMatched":1/);
+
+  const missing = buildToolObservation({
+    toolName: "chat_file_list",
+    toolCallId: "call_chat_file_missing",
+    content: JSON.stringify({
+      ok: false,
+      file: null
+    }),
+    args: { file_ref: "missing.png" },
+    policy: chatFileListPolicy()
+  });
+  assert.equal(missing.resource, undefined);
+  assert.equal(missing.refetchable, true);
+  assert.match(missing.replayContent, /"ok":false/);
+  assert.match(missing.replayContent, /未找到/);
+  assert.doesNotMatch(missing.replayContent, /刷新该文件记录/);
+
+  const send = buildToolObservation({
+    toolName: "chat_file_send_to_chat",
+    toolCallId: "call_send_file",
+    content: JSON.stringify({
+      ok: true,
+      file_ref: "img_0.png",
+      file_id: "file_0",
+      deliveredAs: "image",
+      queued: true
+    }),
+    args: { file_ref: "img_0.png" },
+    policy: fileSendPolicy()
+  });
+  assert.equal(send.retention, "summary");
+  assert.equal(send.preserveRecentRawCount, 0);
+  assert.equal(send.resource?.kind, "chat_file");
+  assert.equal(send.resource?.id, "img_0.png");
+  assert.match(send.replayContent, /chat_file_send_to_chat file_ref/);
 });
 
 test("debug dump observation hides literal bodies from replay and history summary", () => {

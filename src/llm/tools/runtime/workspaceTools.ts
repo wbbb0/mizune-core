@@ -12,7 +12,8 @@ import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
 import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
 import { nextAction, withNextActions, type ToolNextAction } from "../core/toolNextActions.ts";
 import {
-  keepRawUnlessLargePolicy,
+  chatFileListPolicy,
+  fileSendPolicy,
   localFileListPolicy,
   localFileMutationPolicy,
   localFileReadPolicy,
@@ -65,7 +66,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "local_file_ls",
-        description: "查看本地路径。目录：列出直接子项（返回 items 列表，含 truncated 标志），limit 默认 200，最大 500。文件：返回元信息。path 默认为工作区根目录（\".\"）。",
+        description: "查看本地路径。目录只列出直接子项，返回 path、items、truncated；文件返回元信息。path 默认为工作区根目录（\".\"）。需要跨目录找文件时用 local_file_search，不要用巨大目录列表堆上下文。",
         parameters: {
           type: "object",
           properties: {
@@ -84,7 +85,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "local_file_read",
-        description: "读取本地文本文件，可按行截取。每次最多返回 400 行；超出时 truncated=true，用 start_line/end_line 分段继续读取。",
+        description: "读取本地文本文件，可按行截取。每次最多返回 400 行；超出时 truncated=true，并返回 next_actions 指向下一段。只读取任务需要的行段。",
         parameters: {
           type: "object",
           properties: {
@@ -105,7 +106,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "local_file_write",
-        description: "写入本地文本文件。mode: overwrite（默认）覆盖或新建；append 追加到末尾；create 仅在文件不存在时创建，已存在则报错。",
+        description: "写入本地文本文件。mode=overwrite 覆盖或新建；append 追加；create 仅在文件不存在时创建。小改动优先用 local_file_patch。",
         parameters: {
           type: "object",
           properties: {
@@ -126,7 +127,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "local_file_patch",
-        description: "用 unified diff patch 修改已存在的本地文本文件。patch 格式同 git diff 输出（@@ 头 + context line），必须包含足够的上下文行以定位修改位置。",
+        description: "用 unified diff patch 修改已存在的本地文本文件。适合局部修改；patch 必须包含 @@ hunk 头和足够上下文行，失败时按错误重新读取相关行段后再补 patch。",
         parameters: {
           type: "object",
           properties: {
@@ -183,7 +184,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "local_file_search",
-        description: "搜索本地文件。mode=name（默认）按文件名匹配，返回路径列表；mode=content 在文本文件内容中全文查找，返回匹配行列表（含 path、line、text）。limit 默认 50，超限时 truncated=true。",
+        description: "搜索本地文件。mode=name（默认）按路径/文件名匹配；mode=content 在文本文件内容中查找，返回 path、line、text。limit 默认 50，超限时 truncated=true。先用它定位文件，再 local_file_read 精读。",
         parameters: {
           type: "object",
           properties: {
@@ -235,7 +236,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
       }
     },
     isEnabled: isLocalFileToolEnabled,
-    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
+    resultObservation: fileSendPolicy()
   }
 ];
 
@@ -245,12 +246,13 @@ export const chatFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "chat_file_list",
-        description: "列出或查找已登记的 chat file。传 file_ref 或 file_id 时精确查找单个文件；否则按 kind/origin 批量列出。",
+        description: "列出或查找已登记的 chat file。优先传 file_ref 或 file_id 精确查找；也可用 query 按 file_ref、file_id、source_name、路径或 caption 模糊过滤，再按 kind/origin 缩小范围。默认不列出原始 chat_message 附件，除非 origin=chat_message。",
         parameters: {
           type: "object",
           properties: {
             file_ref: { type: "string" },
             file_id: { type: "string" },
+            query: { type: "string" },
             kind: { type: "string", enum: ["image", "animated_image", "video", "audio", "file"] },
             origin: { type: "string", enum: ["chat_message", "browser_download", "browser_screenshot", "comfy_generated", "local_file_import", "user_upload"] },
             limit: { type: "integer", minimum: 1, maximum: 100 }
@@ -260,14 +262,14 @@ export const chatFileToolDescriptors: ToolDescriptor[] = [
       }
     },
     isEnabled: isChatFileToolEnabled,
-    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
+    resultObservation: chatFileListPolicy()
   },
   {
     definition: {
       type: "function",
       function: {
         name: "chat_file_send_to_chat",
-        description: "发送已登记的 chat file 到当前聊天。",
+        description: "发送已登记的 chat file 到当前聊天。优先用 file_ref；不知道准确引用时先 chat_file_list query=... 查找。图片/动图直接发送，不能附 text；其他文件以文本摘要发送，可附 text。",
         parameters: {
           type: "object",
           properties: {
@@ -280,7 +282,7 @@ export const chatFileToolDescriptors: ToolDescriptor[] = [
       }
     },
     isEnabled: isChatFileToolEnabled,
-    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
+    resultObservation: fileSendPolicy()
   }
 ];
 
@@ -356,7 +358,7 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ error: "query is required" });
     }
     const path = getStringArg(args, "path") || ".";
-    const limit = getNumberArg(args, "limit") ?? 50;
+    const limit = clampInteger(getRawNumberArg(args, "limit"), 50, 1, 100);
     const mode = getStringArg(args, "mode") || "name";
     if (mode === "content") {
       const { root: _root, ...result } = await context.localFileService.findText(query, path, limit);
@@ -402,13 +404,30 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
     }
     const kind = getStringArg(args, "kind");
     const origin = getStringArg(args, "origin") as ChatFileOrigin | null;
-    const limit = getNumberArg(args, "limit") ?? 50;
-    const files = (await context.chatFileStore.listFiles())
+    const query = getStringArg(args, "query");
+    const limit = clampInteger(getRawNumberArg(args, "limit"), 50, 1, 100);
+    const normalizedQuery = String(query ?? "").trim().toLowerCase();
+    const matchedFiles = (await context.chatFileStore.listFiles())
       .filter((item) => !kind || item.kind === kind)
       .filter((item) => origin ? item.origin === origin : item.origin !== "chat_message")
+      .filter((item) => !normalizedQuery || chatFileMatchesQuery(item, normalizedQuery));
+    const files = matchedFiles
       .slice(0, limit)
       .map((item) => mapWorkspaceFileToView(item));
-    return JSON.stringify({ ok: true, files });
+    return JSON.stringify({
+      ok: true,
+      files,
+      totalMatched: matchedFiles.length,
+      returned: files.length,
+      truncated: matchedFiles.length > files.length,
+      filters: {
+        query: query ?? null,
+        kind: kind ?? null,
+        origin: origin ?? null,
+        limit,
+        defaultExcludedOrigin: origin ? null : "chat_message"
+      }
+    });
   },
 
   async chat_file_send_to_chat(_toolCall, args, context) {
@@ -449,6 +468,35 @@ function chatFileNextActions(file: ChatFileRecord): ToolNextAction[] {
   }
   actions.push(nextAction("chat_file_send_to_chat", "把该文件发送到当前聊天", { file_ref: file.fileRef }));
   return actions;
+}
+
+function chatFileMatchesQuery(file: ChatFileRecord, normalizedQuery: string): boolean {
+  const haystack = [
+    file.fileRef,
+    file.fileId,
+    file.sourceName,
+    file.chatFilePath,
+    file.mimeType,
+    file.caption,
+    ...Object.values(file.sourceContext ?? {}).map((item) => String(item ?? ""))
+  ].join("\n").toLowerCase();
+  return haystack.includes(normalizedQuery);
+}
+
+function getRawNumberArg(args: unknown, key: string): number | undefined {
+  if (typeof args !== "object" || !args || !(key in args)) {
+    return undefined;
+  }
+  const value = Number((args as Record<string, unknown>)[key]);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function clampInteger(value: number | undefined, fallback: number, min: number, max: number): number {
+  const candidate = value ?? fallback;
+  if (!Number.isFinite(candidate)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.floor(candidate)));
 }
 
 async function sendResolvedPathToChat(

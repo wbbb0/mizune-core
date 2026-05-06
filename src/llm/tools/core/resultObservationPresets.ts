@@ -11,7 +11,6 @@ import {
 } from "./resultObservation.ts";
 
 const LONG_RESULT_CHARS = 2000;
-const MANY_LIST_ITEMS = 30;
 
 export function keepRawUnlessLargePolicy(options?: {
   preserveRecentRawCount?: number;
@@ -30,17 +29,15 @@ export function localFileListPolicy(): ToolResultObservationPolicy {
   return {
     method(ctx) {
       if (hasError(ctx)) return "error_summary";
-      const items = arrayValue(ctx.parsedContent?.items) ?? [];
-      if (items.length > MANY_LIST_ITEMS || isTruncated(ctx) || ctx.rawLength > LONG_RESULT_CHARS) {
-        return "local_file_ls_summary";
-      }
-      return null;
+      return "local_file_ls_summary";
     },
     resource: localFileResource,
     refetchHint(ctx) {
-      return ctx.resource
-        ? `如需完整目录列表，请再次调用 local_file_ls path=${ctx.resource.id} limit=500`
-        : null;
+      if (!ctx.resource) return null;
+      const kind = stringValue(ctx.parsedContent?.kind);
+      return kind === "file"
+        ? `如需刷新文件元信息，请再次调用 local_file_ls path=${ctx.resource.id}`
+        : `如需完整目录列表，请再次调用 local_file_ls path=${ctx.resource.id} limit=500`;
     },
     preserveRecentRawCount: 1,
     compactors: {
@@ -77,14 +74,7 @@ export function localFileSearchPolicy(): ToolResultObservationPolicy {
   return {
     method(ctx) {
       if (hasError(ctx)) return "error_summary";
-      const items = arrayValue(ctx.parsedContent?.items)
-        ?? arrayValue(ctx.parsedContent?.matches)
-        ?? arrayValue(ctx.parsedContent?.results)
-        ?? [];
-      if (items.length > MANY_LIST_ITEMS || isTruncated(ctx) || ctx.rawLength > LONG_RESULT_CHARS) {
-        return "local_file_search_summary";
-      }
-      return null;
+      return "local_file_search_summary";
     },
     resource: localFileResource,
     refetchHint(ctx) {
@@ -105,16 +95,64 @@ export function localFileMutationPolicy(): ToolResultObservationPolicy {
   return {
     method(ctx) {
       if (hasError(ctx)) return "error_summary";
-      return ctx.rawLength > LONG_RESULT_CHARS ? "state_change_summary" : null;
+      return "local_file_mutation_summary";
     },
     resource: localFileResource,
-    refetchHint(ctx) {
-      return ctx.resource
-        ? `如需查看当前内容，请调用 local_file_read path=${ctx.resource.id}`
-        : null;
-    },
+    refetchHint: localFileMutationRefetchHint,
     pinned: hasError,
-    preserveRecentRawCount: 1
+    preserveRecentRawCount: 1,
+    compactors: {
+      local_file_mutation_summary: compactLocalFileMutation
+    }
+  };
+}
+
+export function chatFileListPolicy(): ToolResultObservationPolicy {
+  return {
+    method(ctx) {
+      if (hasError(ctx)) return "error_summary";
+      return "chat_file_list_summary";
+    },
+    resource: chatFileResource,
+    refetchHint(ctx) {
+      if (ctx.resource?.kind === "chat_file") {
+        return `如需刷新该文件记录，请再次调用 chat_file_list file_ref=${JSON.stringify(ctx.resource.id)}`;
+      }
+      const query = stringValue(ctx.args.query);
+      const kind = stringValue(ctx.args.kind);
+      const origin = stringValue(ctx.args.origin);
+      const args = [
+        query ? `query=${JSON.stringify(query)}` : null,
+        kind ? `kind=${kind}` : null,
+        origin ? `origin=${origin}` : null,
+        "limit=100"
+      ].filter((item): item is string => Boolean(item)).join(" ");
+      return `如需刷新 chat file 列表，请再次调用 chat_file_list ${args}`;
+    },
+    preserveRecentRawCount: 1,
+    compactors: {
+      chat_file_list_summary: compactChatFileList
+    }
+  };
+}
+
+export function fileSendPolicy(): ToolResultObservationPolicy {
+  return {
+    method(ctx) {
+      if (hasError(ctx)) return "error_summary";
+      return "file_send_summary";
+    },
+    resource: fileSendResource,
+    refetchHint(ctx) {
+      if (!ctx.resource) return null;
+      return ctx.resource.kind === "chat_file"
+        ? `如需再次发送该文件，请调用 chat_file_send_to_chat file_ref=${JSON.stringify(ctx.resource.id)}`
+        : `如需再次发送该本地文件，请调用 local_file_send_to_chat path=${JSON.stringify(ctx.resource.id)}`;
+    },
+    preserveRecentRawCount: 0,
+    compactors: {
+      file_send_summary: compactFileSend
+    }
   };
 }
 
@@ -371,13 +409,13 @@ function defaultMethod(ctx: ToolResultObservationContext): string | null {
 function localFileResource(ctx: ToolResultObservationContext): ToolObservationResource | null {
   const path = stringValue(
     ctx.parsedContent?.path
-    ?? ctx.parsedContent?.fromPath
-    ?? ctx.parsedContent?.from_path
     ?? ctx.parsedContent?.toPath
     ?? ctx.parsedContent?.to_path
+    ?? ctx.parsedContent?.fromPath
+    ?? ctx.parsedContent?.from_path
     ?? ctx.args.path
-    ?? ctx.args.from_path
     ?? ctx.args.to_path
+    ?? ctx.args.from_path
   );
   if (!path) return null;
   const startLine = numberValue(ctx.parsedContent?.startLine ?? ctx.parsedContent?.start_line);
@@ -388,6 +426,36 @@ function localFileResource(ctx: ToolResultObservationContext): ToolObservationRe
     ...(startLine && endLine ? { locator: `L${startLine}-L${endLine}` } : {}),
     ...(ctx.parsedContent?.updatedAtMs ? { version: `mtime:${String(ctx.parsedContent.updatedAtMs)}` } : {})
   };
+}
+
+function chatFileResource(ctx: ToolResultObservationContext): ToolObservationResource | null {
+  const file = objectValue(ctx.parsedContent?.file);
+  if ("file" in (ctx.parsedContent ?? {}) && !file) {
+    return null;
+  }
+  const id = stringValue(
+    ctx.parsedContent?.file_ref
+    ?? ctx.parsedContent?.fileRef
+    ?? ctx.parsedContent?.file_id
+    ?? ctx.parsedContent?.fileId
+    ?? file?.file_ref
+    ?? file?.fileRef
+    ?? file?.file_id
+    ?? file?.fileId
+    ?? ctx.args.file_ref
+    ?? ctx.args.file_id
+  );
+  return id ? { kind: "chat_file", id } : null;
+}
+
+function fileSendResource(ctx: ToolResultObservationContext): ToolObservationResource | null {
+  const fileRef = stringValue(ctx.parsedContent?.file_ref ?? ctx.parsedContent?.fileRef);
+  if (fileRef) return { kind: "chat_file", id: fileRef };
+  const fileId = stringValue(ctx.parsedContent?.file_id ?? ctx.parsedContent?.fileId);
+  if (fileId) return { kind: "chat_file", id: fileId };
+  const path = stringValue(ctx.parsedContent?.path ?? ctx.args.path);
+  if (path) return { kind: "local_file", id: path };
+  return null;
 }
 
 function browserResource(ctx: ToolResultObservationContext): ToolObservationResource | null {
@@ -438,6 +506,23 @@ function mediaResource(ctx: ToolResultObservationContext): ToolObservationResour
   return mediaId ? { kind: "chat_file", id: mediaId } : null;
 }
 
+function localFileMutationRefetchHint(ctx: ToolResultObservationContext & { resource: ToolObservationResource | null }): string | null {
+  if (ctx.toolName === "local_file_delete") return "";
+  const path = stringValue(
+    ctx.parsedContent?.path
+    ?? ctx.parsedContent?.toPath
+    ?? ctx.parsedContent?.to_path
+    ?? ctx.args.path
+    ?? ctx.args.to_path
+    ?? ctx.resource?.id
+  );
+  if (!path) return null;
+  if (ctx.toolName === "local_file_mkdir") {
+    return `如需查看目录内容，请调用 local_file_ls path=${path}`;
+  }
+  return `如需查看当前内容，请调用 local_file_read path=${path}`;
+}
+
 function objectValue(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -446,14 +531,27 @@ function objectValue(value: unknown): Record<string, unknown> | null {
 
 function compactLocalFileList(ctx: Parameters<ToolResultCompactor>[0]) {
   const items = arrayValue(ctx.parsedContent?.items) ?? [];
+  const kind = stringValue(ctx.parsedContent?.kind);
+  if (kind && items.length === 0) {
+    const path = stringValue(ctx.parsedContent?.path) ?? ctx.resource?.id ?? ".";
+    const summary = `本地路径 ${path} 是 ${kind === "directory" ? "目录" : "文件"}`;
+    return replayJson(ctx, summary, {
+      path,
+      name: ctx.parsedContent?.name ?? null,
+      kind,
+      sizeBytes: ctx.parsedContent?.sizeBytes ?? ctx.parsedContent?.size_bytes ?? null,
+      updatedAtMs: ctx.parsedContent?.updatedAtMs ?? ctx.parsedContent?.updated_at_ms ?? null
+    });
+  }
   const dirCount = items.filter((item) => itemKind(item) === "directory").length;
   const fileCount = items.filter((item) => itemKind(item) === "file").length;
-  const summary = `目录 ${ctx.resource?.id ?? "."} 返回 ${items.length} 项：${dirCount} 个目录，${fileCount} 个文件；结果过长，仅保留样本。`;
+  const summary = `目录 ${ctx.resource?.id ?? "."} 返回 ${items.length} 项：${dirCount} 个目录，${fileCount} 个文件${isTruncated(ctx) ? "；结果被截断" : ""}。`;
   return replayJson(ctx, summary, {
+    path: ctx.resource?.id ?? stringValue(ctx.parsedContent?.path) ?? ".",
     itemCount: items.length,
     directoryCount: dirCount,
     fileCount,
-    sample: items.slice(0, 12),
+    sample: items.map(compactLocalFileItemForReplay).slice(0, 16),
     truncated: isTruncated(ctx)
   });
 }
@@ -475,12 +573,104 @@ function compactLocalFileSearch(ctx: Parameters<ToolResultCompactor>[0]) {
     ?? arrayValue(ctx.parsedContent?.results)
     ?? [];
   const query = stringValue(ctx.args.query) ?? "<empty>";
-  const summary = `在 ${ctx.resource?.id ?? "."} 中搜索 ${JSON.stringify(query)}，返回 ${items.length} 条结果；结果过长，仅保留样本。`;
+  const mode = stringValue(ctx.args.mode)
+    ?? (arrayValue(ctx.parsedContent?.matches) ? "content" : "name");
+  const summary = `在 ${ctx.resource?.id ?? "."} 中按 ${mode} 搜索 ${JSON.stringify(query)}，返回 ${items.length} 条结果${isTruncated(ctx) ? "；结果被截断" : ""}。`;
   return replayJson(ctx, summary, {
     query,
+    mode,
     resultCount: items.length,
-    sample: items.slice(0, 10),
+    sample: items.map(compactLocalSearchItemForReplay).slice(0, 12),
     truncated: isTruncated(ctx)
+  });
+}
+
+function compactLocalFileMutation(ctx: Parameters<ToolResultCompactor>[0]) {
+  const path = stringValue(
+    ctx.parsedContent?.path
+    ?? ctx.parsedContent?.toPath
+    ?? ctx.parsedContent?.to_path
+    ?? ctx.parsedContent?.fromPath
+    ?? ctx.parsedContent?.from_path
+    ?? ctx.args.path
+    ?? ctx.args.to_path
+    ?? ctx.args.from_path
+  );
+  const action = localMutationAction(ctx.toolName);
+  const targetLabel = localMutationTargetLabel(ctx.toolName);
+  const summary = [
+    `${action}${targetLabel}${path ? ` ${path}` : ""}`,
+    ctx.parsedContent?.bytesWritten != null || ctx.parsedContent?.bytes_written != null
+      ? `bytes=${String(ctx.parsedContent.bytesWritten ?? ctx.parsedContent.bytes_written)}`
+      : null,
+    ctx.parsedContent?.hunksApplied != null || ctx.parsedContent?.hunks_applied != null
+      ? `hunks=${String(ctx.parsedContent.hunksApplied ?? ctx.parsedContent.hunks_applied)}`
+      : null,
+    ctx.parsedContent?.deleted === false ? "目标原本不存在" : null
+  ].filter((item): item is string => Boolean(item)).join("；");
+  return replayJson(ctx, summary, {
+    action: ctx.toolName,
+    path,
+    fromPath: ctx.parsedContent?.fromPath ?? ctx.parsedContent?.from_path ?? ctx.args.from_path ?? null,
+    toPath: ctx.parsedContent?.toPath ?? ctx.parsedContent?.to_path ?? ctx.args.to_path ?? null,
+    bytesWritten: ctx.parsedContent?.bytesWritten ?? ctx.parsedContent?.bytes_written ?? null,
+    hunksApplied: ctx.parsedContent?.hunksApplied ?? ctx.parsedContent?.hunks_applied ?? null,
+    deleted: ctx.parsedContent?.deleted ?? null,
+    updatedAtMs: ctx.parsedContent?.updatedAtMs ?? ctx.parsedContent?.updated_at_ms ?? null
+  });
+}
+
+function compactChatFileList(ctx: Parameters<ToolResultCompactor>[0]) {
+  const file = objectValue(ctx.parsedContent?.file);
+  const files = arrayValue(ctx.parsedContent?.files) ?? [];
+  const sample = (file ? [file] : files).map(compactChatFileForReplay).slice(0, file ? 1 : 12);
+  const ok = booleanValue(ctx.parsedContent?.ok);
+  if (ok === false && !file) {
+    const selector = stringValue(ctx.args.file_ref ?? ctx.args.file_id) ?? "<unknown>";
+    return replayJson(ctx, `chat file 未找到：${selector}`, {
+      ok: false,
+      selector,
+      found: false
+    });
+  }
+  const total = numberValue(ctx.parsedContent?.totalMatched ?? ctx.parsedContent?.total_matched)
+    ?? (file ? 1 : files.length);
+  const filters = objectValue(ctx.parsedContent?.filters);
+  const summary = file
+    ? `chat file ${stringValue(file.file_ref ?? file.fileRef ?? file.file_id ?? file.fileId) ?? ctx.resource?.id ?? ""} 已返回记录`
+    : `chat file 列表返回 ${files.length}/${total} 项${isTruncated(ctx) ? "；结果被截断" : ""}`;
+  return replayJson(ctx, summary, {
+    file: file ? sample[0] : null,
+    fileCount: file ? 1 : files.length,
+    totalMatched: total,
+    filters: filters ?? {
+      query: ctx.args.query ?? null,
+      kind: ctx.args.kind ?? null,
+      origin: ctx.args.origin ?? null
+    },
+    sample,
+    kindCounts: countBy(sample, "kind"),
+    originCounts: countBy(sample, "origin"),
+    truncated: isTruncated(ctx),
+    nextActions: arrayValue(ctx.parsedContent?.next_actions)?.slice(0, 4) ?? []
+  });
+}
+
+function compactFileSend(ctx: Parameters<ToolResultCompactor>[0]) {
+  const fileRef = stringValue(ctx.parsedContent?.file_ref ?? ctx.parsedContent?.fileRef);
+  const fileId = stringValue(ctx.parsedContent?.file_id ?? ctx.parsedContent?.fileId);
+  const path = stringValue(ctx.parsedContent?.path);
+  const deliveredAs = stringValue(ctx.parsedContent?.deliveredAs ?? ctx.parsedContent?.delivered_as);
+  const queued = booleanValue(ctx.parsedContent?.queued) === true;
+  const target = fileRef ?? fileId ?? path ?? ctx.resource?.id ?? "";
+  const summary = `${ctx.toolName} 已${queued ? "排队" : "完成"}发送${target ? `：${target}` : ""}${deliveredAs ? `；deliveredAs=${deliveredAs}` : ""}`;
+  return replayJson(ctx, summary, {
+    fileRef,
+    fileId,
+    path,
+    pathMode: ctx.parsedContent?.path_mode ?? ctx.parsedContent?.pathMode ?? null,
+    deliveredAs,
+    queued
   });
 }
 
@@ -625,6 +815,75 @@ function compactSearchResult(ctx: Parameters<ToolResultCompactor>[0]) {
   });
 }
 
+function compactLocalFileItemForReplay(item: unknown): Record<string, unknown> {
+  const record = objectValue(item);
+  if (!record) {
+    return { path: compactText(String(item ?? ""), 160) };
+  }
+  return {
+    path: record.path ?? null,
+    name: record.name ?? null,
+    kind: record.kind ?? record.type ?? null,
+    sizeBytes: record.sizeBytes ?? record.size_bytes ?? null,
+    updatedAtMs: record.updatedAtMs ?? record.updated_at_ms ?? null
+  };
+}
+
+function compactLocalSearchItemForReplay(item: unknown): Record<string, unknown> {
+  const record = objectValue(item);
+  if (!record) {
+    return { text: compactText(String(item ?? ""), 160) };
+  }
+  return {
+    path: record.path ?? null,
+    name: record.name ?? null,
+    kind: record.kind ?? record.type ?? null,
+    line: record.line ?? record.lineNumber ?? null,
+    text: stringValue(record.text) ? compactText(String(record.text), 180) : null
+  };
+}
+
+function compactChatFileForReplay(item: unknown): Record<string, unknown> {
+  const record = objectValue(item);
+  if (!record) {
+    return { fileRef: compactText(String(item ?? ""), 160) };
+  }
+  return {
+    fileRef: record.file_ref ?? record.fileRef ?? null,
+    fileId: record.file_id ?? record.fileId ?? null,
+    kind: record.kind ?? null,
+    origin: record.origin ?? null,
+    sourceName: record.source_name ?? record.sourceName ?? null,
+    mimeType: record.mime_type ?? record.mimeType ?? null,
+    sizeBytes: record.size_bytes ?? record.sizeBytes ?? null,
+    captionStatus: record.caption_status ?? record.captionStatus ?? null,
+    caption: stringValue(record.caption) ? compactText(String(record.caption), 80) : null,
+    createdAtMs: record.created_at_ms ?? record.createdAtMs ?? null
+  };
+}
+
+function countBy(items: Array<Record<string, unknown>>, key: string): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const item of items) {
+    const value = stringValue(item[key]) ?? "unknown";
+    counts[value] = (counts[value] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function localMutationAction(toolName: string): string {
+  if (toolName === "local_file_write") return "写入";
+  if (toolName === "local_file_patch") return "修改";
+  if (toolName === "local_file_move") return "移动";
+  if (toolName === "local_file_delete") return "删除";
+  if (toolName === "local_file_mkdir") return "创建";
+  return "更新";
+}
+
+function localMutationTargetLabel(toolName: string): string {
+  return toolName === "local_file_mkdir" ? "目录" : "本地文件";
+}
+
 function compactBrowserElementForReplay(item: unknown): Record<string, unknown> {
   const element = objectValue(item);
   if (!element) {
@@ -678,15 +937,19 @@ function replayJson(
   summary: string,
   data?: Record<string, unknown>
 ) {
+  const okOverride = data && typeof data.ok === "boolean" ? data.ok : null;
+  const replayData = data
+    ? Object.fromEntries(Object.entries(data).filter(([key]) => key !== "ok"))
+    : undefined;
   return {
     summary,
     replayContent: JSON.stringify({
-      ok: !hasError(ctx),
+      ok: okOverride ?? !hasError(ctx),
       compacted: true,
       tool: ctx.toolName,
       ...(ctx.resource ? { resource: ctx.resource } : {}),
       summary,
-      ...(data ? { data } : {}),
+      ...(replayData ? { data: replayData } : {}),
       ...(ctx.refetchHint ? { refetch_hint: ctx.refetchHint } : {})
     })
   };

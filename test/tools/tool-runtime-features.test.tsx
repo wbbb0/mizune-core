@@ -17,7 +17,13 @@ import {
   browserDownloadPolicy,
   browserPagePolicy,
   browserProfilePolicy,
-  browserScreenshotPolicy
+  browserScreenshotPolicy,
+  chatFileListPolicy,
+  fileSendPolicy,
+  localFileListPolicy,
+  localFileMutationPolicy,
+  localFileReadPolicy,
+  localFileSearchPolicy
 } from "../../src/llm/tools/core/resultObservationPresets.ts";
 import { setupDraftToolHandlers } from "../../src/llm/tools/conversation/setupDraftTools.ts";
 import { profileToolHandlers } from "../../src/llm/tools/profile/profileTools.ts";
@@ -239,6 +245,17 @@ function createMediaToolVisibilityConfig(options: {
     assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("download_asset", config)?.resultObservation), policyShape(browserDownloadPolicy()));
     assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("list_browser_profiles", config)?.resultObservation), policyShape(browserProfilePolicy()));
     assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("save_browser_profile", config)?.resultObservation), policyShape(browserProfilePolicy()));
+  });
+
+  test("workspace descriptors bind compact file observation policies", async () => {
+    const config = createForwardFeatureConfig();
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("local_file_ls", config)?.resultObservation), policyShape(localFileListPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("local_file_read", config)?.resultObservation), policyShape(localFileReadPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("local_file_search", config)?.resultObservation), policyShape(localFileSearchPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("local_file_patch", config)?.resultObservation), policyShape(localFileMutationPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("local_file_send_to_chat", config)?.resultObservation), policyShape(fileSendPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("chat_file_list", config)?.resultObservation), policyShape(chatFileListPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("chat_file_send_to_chat", config)?.resultObservation), policyShape(fileSendPolicy()));
   });
 
   test("builtin tool list hides external search tools when provider native search is enabled", async () => {
@@ -1296,6 +1313,111 @@ function createMediaToolVisibilityConfig(options: {
       payload.next_actions.map((item: { tool: string }) => item.tool),
       ["chat_file_view_media", "chat_file_send_to_chat"]
     );
+  });
+
+  test("chat_file_list filters by query and reports list window metadata", async () => {
+    const result = await chatFileToolHandlers.chat_file_list!(
+      { id: "tool_chat_file_list_2", type: "function", function: { name: "chat_file_list", arguments: "{\"query\":\"report\",\"limit\":1}" } },
+      { query: "report", limit: 1 },
+      {
+        chatFileStore: {
+          async listFiles() {
+            return [
+              {
+                fileId: "file_report_1",
+                fileRef: "file_report_1.pdf",
+                kind: "file",
+                origin: "browser_download",
+                chatFilePath: "workspace/media/file_report_1.pdf",
+                sourceName: "Quarterly Report.pdf",
+                mimeType: "application/pdf",
+                sizeBytes: 10,
+                createdAtMs: 1,
+                sourceContext: { source: "https://example.com/report.pdf" },
+                caption: "report summary"
+              },
+              {
+                fileId: "file_report_2",
+                fileRef: "file_report_2.pdf",
+                kind: "file",
+                origin: "user_upload",
+                chatFilePath: "workspace/media/file_report_2.pdf",
+                sourceName: "Another report.pdf",
+                mimeType: "application/pdf",
+                sizeBytes: 20,
+                createdAtMs: 2,
+                sourceContext: {},
+                caption: null
+              },
+              {
+                fileId: "file_chat_hidden",
+                fileRef: "chat_hidden.png",
+                kind: "image",
+                origin: "chat_message",
+                chatFilePath: "workspace/media/chat_hidden.png",
+                sourceName: "report hidden.png",
+                mimeType: "image/png",
+                sizeBytes: 30,
+                createdAtMs: 3,
+                sourceContext: {},
+                caption: null
+              }
+            ];
+          }
+        }
+      } as any
+    );
+
+    const payload = JSON.parse(String(result));
+    assert.equal(payload.ok, true);
+    assert.equal(payload.totalMatched, 2);
+    assert.equal(payload.returned, 1);
+    assert.equal(payload.truncated, true);
+    assert.equal(payload.filters.defaultExcludedOrigin, "chat_message");
+    assert.deepEqual(payload.files.map((item: { file_ref: string }) => item.file_ref), ["file_report_1.pdf"]);
+  });
+
+  test("chat_file_list clamps malformed limit values to schema bounds", async () => {
+    const files = Array.from({ length: 120 }, (_, index) => ({
+      fileId: `file_${index}`,
+      fileRef: `file_${index}.txt`,
+      kind: "file",
+      origin: "browser_download",
+      chatFilePath: `workspace/media/file_${index}.txt`,
+      sourceName: `file-${index}.txt`,
+      mimeType: "text/plain",
+      sizeBytes: index,
+      createdAtMs: index,
+      sourceContext: {},
+      caption: null,
+      captionStatus: "missing"
+    }));
+    const context = {
+      chatFileStore: {
+        async listFiles() {
+          return files;
+        }
+      }
+    } as any;
+
+    const zero = await chatFileToolHandlers.chat_file_list!(
+      { id: "tool_chat_file_list_limit_zero", type: "function", function: { name: "chat_file_list", arguments: "{\"limit\":0}" } },
+      { limit: 0 },
+      context
+    );
+    const zeroPayload = JSON.parse(String(zero));
+    assert.equal(zeroPayload.filters.limit, 1);
+    assert.equal(zeroPayload.returned, 1);
+
+    const huge = await chatFileToolHandlers.chat_file_list!(
+      { id: "tool_chat_file_list_limit_huge", type: "function", function: { name: "chat_file_list", arguments: "{\"limit\":1000}" } },
+      { limit: 1000 },
+      context
+    );
+    const hugePayload = JSON.parse(String(huge));
+    assert.equal(hugePayload.filters.limit, 100);
+    assert.equal(hugePayload.returned, 100);
+    assert.equal(hugePayload.truncated, true);
   });
 
   test("local_file_read truncated output suggests the next read range", async () => {
