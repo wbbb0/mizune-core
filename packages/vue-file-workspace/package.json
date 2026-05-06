@@ -1,5 +1,5 @@
 {
-  "name": "@llm-onebot/vue-file-workspace",
+  "name": "@workbench-kit/vue-file-workspace",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "peerDependencies": {
-    "@llm-onebot/vue-workbench": "0.1.0",
+    "@workbench-kit/vue-workbench": "0.1.0",
     "lucide-vue-next": "^1.0.0",
     "vue": "^3.5.0"
   }

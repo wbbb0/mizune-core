@@ -6,7 +6,7 @@ import router from "./router";
 import { useUiBrowserBindings } from "@/composables/useUiBrowserBindings";
 import { useUiStore } from "@/stores/ui";
 import { editorApi } from "@/api/editor";
-import { configureResourceEditorClient } from "@llm-onebot/vue-resource-editor";
+import { configureResourceEditorClient } from "@workbench-kit/vue-resource-editor";
 import "./style/main.css";
 
 registerSW({ immediate: true });

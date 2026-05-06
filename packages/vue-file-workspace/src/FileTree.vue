@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { FileText, Image as ImageIcon, File } from "lucide-vue-next";
-import { TreeNodeShell } from "@llm-onebot/vue-workbench";
+import { TreeNodeShell } from "@workbench-kit/vue-workbench";
 import type { LocalFileItem } from "./types";
 
 defineOptions({ name: "WorkspaceFileTree" });

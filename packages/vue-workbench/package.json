@@ -1,5 +1,5 @@
 {
-  "name": "@llm-onebot/vue-workbench",
+  "name": "@workbench-kit/vue-workbench",
   "version": "0.1.0",
   "private": true,
   "type": "module",

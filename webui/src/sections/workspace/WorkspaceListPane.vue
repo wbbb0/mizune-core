@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
 import { RefreshCw } from "lucide-vue-next";
-import { FileTree as WorkspaceFileTree } from "@llm-onebot/vue-file-workspace";
+import { FileTree as WorkspaceFileTree } from "@workbench-kit/vue-file-workspace";
 import { useWorkspaceSection } from "@/composables/sections/useWorkspaceSection";
 import type { ChatFileSummary } from "@/api/workspace";
-import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@llm-onebot/vue-workbench";
+import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@workbench-kit/vue-workbench";
 
 const {
   mode,

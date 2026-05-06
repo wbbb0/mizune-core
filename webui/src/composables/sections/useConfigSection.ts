@@ -1,5 +1,5 @@
-import { createResourceEditorState, type ResourceEditorState } from "@llm-onebot/vue-resource-editor";
-import { useWorkbenchNavigation, useWorkbenchToasts } from "@llm-onebot/vue-workbench";
+import { createResourceEditorState, type ResourceEditorState } from "@workbench-kit/vue-resource-editor";
+import { useWorkbenchNavigation, useWorkbenchToasts } from "@workbench-kit/vue-workbench";
 import { editorApi, type EditorModel, type EditorResourceSummary, type LayeredEditorModel, type SingleEditorModel } from "@/api/editor";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 

@@ -1,4 +1,4 @@
-import { defineWorkbenchView, type WorkbenchView } from "@llm-onebot/vue-workbench";
+import { defineWorkbenchView, type WorkbenchView } from "@workbench-kit/vue-workbench";
 import { workbenchNavItems } from "@/sections/navigation";
 import { sessionsView } from "@/sections/sessions";
 import { configView } from "@/sections/config";

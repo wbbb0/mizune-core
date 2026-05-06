@@ -6,7 +6,7 @@ import type { SessionDetailResult } from "@/api/types";
 import type { ActiveSession } from "@/stores/sessions";
 import { ApiError } from "@/api/client";
 import ScenarioHostStateEditor from "./ScenarioHostStateEditor.vue";
-import { WorkbenchAreaHeader, WorkbenchCard, WorkbenchDisclosure, WorkbenchEmptyState } from "@llm-onebot/vue-workbench";
+import { WorkbenchAreaHeader, WorkbenchCard, WorkbenchDisclosure, WorkbenchEmptyState } from "@workbench-kit/vue-workbench";
 
 const props = defineProps<{
   session: ActiveSession;

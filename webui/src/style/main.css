@@ -1,7 +1,7 @@
 @import "./theme.css";
 @import "tailwindcss";
 @import "tailwindcss-safe-area";
-@import "@llm-onebot/vue-workbench/style.css";
+@import "@workbench-kit/vue-workbench/style.css";
 
 /* Tree/list item primitives */
 .tree-head {

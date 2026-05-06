@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { RefreshCw, Save } from "lucide-vue-next";
-import { SchemaNode } from "@llm-onebot/vue-resource-editor";
+import { SchemaNode } from "@workbench-kit/vue-resource-editor";
 import { useConfigSection } from "@/composables/sections/useConfigSection";
-import { WorkbenchAreaHeader, WorkbenchEmptyState } from "@llm-onebot/vue-workbench";
+import { WorkbenchAreaHeader, WorkbenchEmptyState } from "@workbench-kit/vue-workbench";
 
 const {
   selectedKey,

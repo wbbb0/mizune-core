@@ -3,11 +3,11 @@ import { ApiError } from "@/api/client";
 import { sessionsApi } from "@/api/sessions";
 import type { SessionDetailResult } from "@/api/types";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
-import { useWorkbenchNavigation } from "@llm-onebot/vue-workbench";
-import { useWorkbenchWindows } from "@llm-onebot/vue-workbench";
+import { useWorkbenchNavigation } from "@workbench-kit/vue-workbench";
+import { useWorkbenchWindows } from "@workbench-kit/vue-workbench";
 import { openCreateSessionWindow } from "@/components/sessions/createSessionWindow";
 import { useSessionsStore } from "@/stores/sessions";
-import { useWorkbenchToasts } from "@llm-onebot/vue-workbench";
+import { useWorkbenchToasts } from "@workbench-kit/vue-workbench";
 import type { NormalizedSessionListItem } from "@/stores/sessionDisplay";
 import { createSessionWindowContext } from "@/components/sessions/sessionWindowContext";
 

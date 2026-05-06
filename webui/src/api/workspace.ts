@@ -1,8 +1,8 @@
 import { api } from "./client";
 import type { ContentSafetyAuditView, DerivedObservation } from "./types";
-import type { FileWorkspaceClient, LocalFileItem, LocalFileListResult, LocalFilePreview } from "@llm-onebot/vue-file-workspace";
+import type { FileWorkspaceClient, LocalFileItem, LocalFileListResult, LocalFilePreview } from "@workbench-kit/vue-file-workspace";
 
-export type { FileWorkspaceClient, LocalFileItem, LocalFileListResult, LocalFilePreview } from "@llm-onebot/vue-file-workspace";
+export type { FileWorkspaceClient, LocalFileItem, LocalFileListResult, LocalFilePreview } from "@workbench-kit/vue-file-workspace";
 
 export interface ChatFileSummary {
   fileId: string;

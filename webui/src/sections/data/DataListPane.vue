@@ -2,7 +2,7 @@
 import { onMounted } from "vue";
 import { useUiStore } from "@/stores/ui";
 import { useDataSection } from "@/composables/sections/useDataSection";
-import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@llm-onebot/vue-workbench";
+import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@workbench-kit/vue-workbench";
 
 const ui = useUiStore();
 const { resources, selectedKey, selectResource, refreshResources, resourceBadge } = useDataSection();

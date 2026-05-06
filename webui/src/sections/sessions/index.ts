@@ -1,4 +1,4 @@
-import { defineWorkbenchView } from "@llm-onebot/vue-workbench";
+import { defineWorkbenchView } from "@workbench-kit/vue-workbench";
 import SessionsListPane from "./SessionsListPane.vue";
 import SessionsMainPane from "./SessionsMainPane.vue";
 import SessionsMobileHeader from "./SessionsMobileHeader.vue";

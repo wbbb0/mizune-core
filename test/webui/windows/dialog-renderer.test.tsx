@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error jsdom vendor path has no bundled declaration file in this workspace layout
 import { JSDOM } from "../../../webui/node_modules/jsdom/lib/api.js";
-import type { WorkbenchDialogField, WorkbenchWindowDefinition } from "@llm-onebot/vue-workbench";
+import type { WorkbenchDialogField, WorkbenchWindowDefinition } from "@workbench-kit/vue-workbench";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const require = createRequire(import.meta.url);

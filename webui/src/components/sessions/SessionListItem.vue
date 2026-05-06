@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { Ellipsis } from "lucide-vue-next";
 import type { NormalizedSessionListItem } from "@/stores/sessionDisplay";
-import { WorkbenchListItem } from "@llm-onebot/vue-workbench";
+import { WorkbenchListItem } from "@workbench-kit/vue-workbench";
 
 const props = defineProps<{
   session: NormalizedSessionListItem;

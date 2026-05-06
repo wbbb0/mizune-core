@@ -13,10 +13,10 @@
     "paths": {
       "vue": ["webui/node_modules/vue/dist/vue.d.ts"],
       "lucide-vue-next": ["webui/node_modules/lucide-vue-next/dist/lucide-vue-next.d.ts"],
-      "@llm-onebot/vue-workbench": ["packages/vue-workbench/src/index.ts"],
-      "@llm-onebot/vue-workbench/runtime": ["packages/vue-workbench/src/runtime-api.ts"],
-      "@llm-onebot/vue-resource-editor": ["packages/vue-resource-editor/src/index.ts"],
-      "@llm-onebot/vue-file-workspace": ["packages/vue-file-workspace/src/index.ts"]
+      "@workbench-kit/vue-workbench": ["packages/vue-workbench/src/index.ts"],
+      "@workbench-kit/vue-workbench/runtime": ["packages/vue-workbench/src/runtime-api.ts"],
+      "@workbench-kit/vue-resource-editor": ["packages/vue-resource-editor/src/index.ts"],
+      "@workbench-kit/vue-file-workspace": ["packages/vue-file-workspace/src/index.ts"]
     },
     "noImplicitOverride": true,
     "noUncheckedIndexedAccess": true,

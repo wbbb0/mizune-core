@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createWindowManager, type WorkbenchWindowDefinition } from "@llm-onebot/vue-workbench/runtime";
+import { createWindowManager, type WorkbenchWindowDefinition } from "@workbench-kit/vue-workbench/runtime";
 
 function buildWindow(id: string, parentId?: string): WorkbenchWindowDefinition {
   return {

@@ -2,7 +2,7 @@
 import { ref, computed, watch } from "vue";
 import { Plus, Trash2, ArrowUp, ArrowDown, Pencil, Check, Undo2, Copy } from "lucide-vue-next";
 import SchemaField from "./SchemaField.vue";
-import { TreeNodeShell } from "@llm-onebot/vue-workbench";
+import { TreeNodeShell } from "@workbench-kit/vue-workbench";
 import type { EditorFeatures, UiNode } from "../types";
 import { canUnsetNodeValue, deepEqual, removeValueAtPathAndPrune, type PathSegment } from "../editorState";
 

@@ -3,7 +3,7 @@ import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { authApi, type AuthSettings } from "@/api/auth";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
-import { useWorkbenchNavigation } from "@llm-onebot/vue-workbench";
+import { useWorkbenchNavigation } from "@workbench-kit/vue-workbench";
 
 type SettingsSectionState = {
   auth: ReturnType<typeof useAuthStore>;

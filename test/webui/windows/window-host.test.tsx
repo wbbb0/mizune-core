@@ -37,7 +37,7 @@ Object.defineProperty(globalThis, "getComputedStyle", {
 });
 Object.defineProperty(globalThis, "MutationObserver", { value: dom.window.MutationObserver });
 
-const { resolveWindowSizing } = await import("@llm-onebot/vue-workbench/runtime");
+const { resolveWindowSizing } = await import("@workbench-kit/vue-workbench/runtime");
 const { nextTick, markRaw, computed, defineComponent } = await import(VUE_RUNTIME_URL);
 const { useWorkbenchWindows } = await import(USE_WORKBENCH_WINDOWS_URL);
 const { createWorkbenchController, activateWorkbenchController } = await import(WORKBENCH_CONTROLLER_URL);

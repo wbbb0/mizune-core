@@ -6,7 +6,7 @@ import {
   createWorkbenchController,
   defineWorkbenchView,
   useWorkbenchToasts
-} from "@llm-onebot/vue-workbench/runtime";
+} from "@workbench-kit/vue-workbench/runtime";
 
 const { computed, defineComponent } = await import(
   new URL("../../../webui/node_modules/vue/index.mjs", import.meta.url).href
