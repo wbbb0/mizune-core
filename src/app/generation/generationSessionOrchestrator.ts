@@ -541,12 +541,17 @@ export function createGenerationSessionOrchestrator(
         abortSignal: abortController.signal
       });
       let resolvedModelRef = getModelRefsForRole(config, "main_small");
+      const toolVisibilityContext = {
+        sessionId,
+        replyDelivery: resolvedDelivery
+      };
       let plannerToolsets = listTurnToolsets({
         config,
         relationship,
         currentUser: user,
         modelRef: resolvedModelRef,
         includeDebugTools: interactionMode === "debug",
+        visibilityContext: toolVisibilityContext,
         modeId: sessionModeId,
         profileToolScope,
         ...setupPhaseSelection
@@ -605,6 +610,7 @@ export function createGenerationSessionOrchestrator(
           currentUser: user,
           modelRef: resolvedModelRef,
           includeDebugTools: interactionMode === "debug",
+          visibilityContext: toolVisibilityContext,
           modeId: sessionModeId,
           profileToolScope,
           ...setupPhaseSelection
@@ -697,6 +703,7 @@ export function createGenerationSessionOrchestrator(
       const chatVisibleToolNames = getBuiltinToolNames(relationship, user, config, {
         modelRef: resolvedModelRef,
         includeDebugTools: interactionMode === "debug",
+        visibilityContext: toolVisibilityContext,
         availableToolNames: [...toolNamesFromPlanner, ...TURN_PLANNER_ALWAYS_TOOL_NAMES]
       });
       const debugMarkers = refreshedSession.debugMarkers;
@@ -882,12 +889,17 @@ export function createGenerationSessionOrchestrator(
       const mode = requireSessionModeDefinition(session.modeId);
       const assistantMode = isAssistantMode(session.modeId);
       const persona = await personaStore.get();
+      const scheduledReplyDelivery = resolveSessionReplyDelivery(sessionId, { trigger });
       const scheduledAvailableToolsets = listTurnToolsets({
         config,
         relationship: "owner",
         currentUser,
         modelRef: scheduledModelRef,
         includeDebugTools: interactionMode === "debug",
+        visibilityContext: {
+          sessionId,
+          replyDelivery: scheduledReplyDelivery
+        },
         modeId: session.modeId,
         profileToolScope: resolveProfileToolScope({
           operationMode: session.operationMode,
@@ -976,7 +988,7 @@ export function createGenerationSessionOrchestrator(
         batchMessages: [],
         resolvedModelRef: scheduledModelRef,
         sendTarget: {
-          delivery: resolveSessionReplyDelivery(sessionId, { trigger }) satisfies SessionDelivery,
+          delivery: scheduledReplyDelivery satisfies SessionDelivery,
           chatType: trigger.targetType,
           userId: trigger.targetUserId ?? trigger.targetGroupId ?? sessionId,
           ...(trigger.targetGroupId ? { groupId: trigger.targetGroupId } : {}),

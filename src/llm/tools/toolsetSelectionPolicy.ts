@@ -1,6 +1,6 @@
 import type { AppConfig } from "#config/config.ts";
 import { getBuiltinToolNames } from "#llm/builtinTools.ts";
-import type { BuiltinToolContext, Relationship } from "./core/shared.ts";
+import type { BuiltinToolContext, Relationship, ToolVisibilityContext } from "./core/shared.ts";
 import { getDefaultSessionModeId, requireSessionModeDefinition } from "#modes/registry.ts";
 import type { SessionModeSetupToolsetOverride } from "#modes/types.ts";
 import { TOOLSET_DEFINITIONS, toToolsetView } from "./toolsetCatalog.ts";
@@ -23,6 +23,7 @@ export interface TurnToolsetSelectionInput {
   };
   modeId?: string;
   profileToolScope?: ProfileToolScope | null;
+  visibilityContext?: ToolVisibilityContext;
 }
 
 // Centralizes runtime toolset visibility and setup override policy so the catalog
@@ -35,6 +36,7 @@ export function listTurnToolsets(input: TurnToolsetSelectionInput): ToolsetView[
     {
       modelRef: input.modelRef,
       includeDebugTools: input.includeDebugTools,
+      ...(input.visibilityContext ? { visibilityContext: input.visibilityContext } : {}),
       ...(input.profileToolScope !== undefined ? { profileToolScope: input.profileToolScope } : {})
     }
   ));

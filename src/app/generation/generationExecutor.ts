@@ -313,6 +313,10 @@ export function createGenerationExecutor(
       const resolveAllowedTools = () => getBuiltinTools(toolRelationship ?? relationship, currentUser, config, {
         modelRef: resolvedModelRef,
         includeDebugTools: interactionMode === "debug",
+        visibilityContext: {
+          sessionId,
+          replyDelivery: sendTarget.delivery
+        },
         ...(resolveDynamicAllowedToolNames().length > 0
           ? { availableToolNames: resolveDynamicAllowedToolNames() }
           : {})
@@ -435,6 +439,10 @@ export function createGenerationExecutor(
           const rawToolExecutor = createBuiltinToolExecutor(builtinToolContext, {
             modelRef: resolvedModelRef,
             includeDebugTools: interactionMode === "debug",
+            visibilityContext: {
+              sessionId,
+              replyDelivery: sendTarget.delivery
+            },
             ...(resolveDynamicAllowedToolNames().length > 0
               ? { availableToolNames: resolveDynamicAllowedToolNames() }
               : {})

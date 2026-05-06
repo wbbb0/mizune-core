@@ -1,6 +1,6 @@
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import type { OneBotGroupAnnouncementItem, OneBotGroupMemberItem } from "#services/onebot/types.ts";
-import type { BuiltinToolContext, ToolDescriptor, ToolHandler } from "../core/shared.ts";
+import type { BuiltinToolContext, ToolDescriptor, ToolHandler, ToolVisibilityContext } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
 import { currentGroupContextPolicy } from "../core/resultObservationPresets.ts";
 
@@ -12,6 +12,7 @@ const MAX_ANNOUNCEMENT_CONTENT_LENGTH = 1200;
 
 export const groupContextToolDescriptors: ToolDescriptor[] = [
   {
+    isVisible: isVisibleInCurrentOneBotGroupChat,
     definition: {
       type: "function",
       function: {
@@ -27,6 +28,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
     resultObservation: currentGroupContextPolicy()
   },
   {
+    isVisible: isVisibleInCurrentOneBotGroupChat,
     definition: {
       type: "function",
       function: {
@@ -45,6 +47,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
     resultObservation: currentGroupContextPolicy()
   },
   {
+    isVisible: isVisibleInCurrentOneBotGroupChat,
     definition: {
       type: "function",
       function: {
@@ -63,6 +66,17 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
     resultObservation: currentGroupContextPolicy()
   }
 ];
+
+function isVisibleInCurrentOneBotGroupChat(context: ToolVisibilityContext): boolean {
+  if (!context.sessionId) {
+    return true;
+  }
+  if (context.replyDelivery === "web") {
+    return false;
+  }
+  const parsed = parseChatSessionIdentity(context.sessionId);
+  return parsed?.kind === "group" && parsed.source === "onebot";
+}
 
 export const groupContextToolHandlers: Record<string, ToolHandler> = {
   async view_current_group_info(_toolCall, _args, context) {
