@@ -92,6 +92,26 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
     );
   });
 
+  test("chat context toolset filters current group tools by session visibility", async () => {
+    const config = createTestAppConfig();
+    const selectChatContextTools = (sessionId: string, replyDelivery: "onebot" | "web") => (
+      listTurnToolsets({
+        config,
+        relationship: "owner",
+        currentUser: null,
+        modelRef: ["main"],
+        includeDebugTools: false,
+        modeId: "assistant",
+        visibilityContext: { sessionId, replyDelivery }
+      }).find((item) => item.id === "chat_context")?.toolNames ?? []
+    );
+
+    assert.ok(selectChatContextTools("qqbot:g:123456", "onebot").includes("view_current_group_info"));
+    assert.ok(!selectChatContextTools("qqbot:p:10001", "onebot").includes("view_current_group_info"));
+    assert.ok(!selectChatContextTools("web:panel", "web").includes("view_current_group_info"));
+    assert.ok(!selectChatContextTools("qqbot:g:123456", "web").includes("view_current_group_info"));
+  });
+
   test("assistant mode defaults to local functional toolsets only", async () => {
     const config = createTestAppConfig({
       browser: { enabled: true, playwright: { enabled: true } },

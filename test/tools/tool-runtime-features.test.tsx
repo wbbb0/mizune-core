@@ -133,6 +133,35 @@ function createMediaToolVisibilityConfig(options: {
     assert.ok(names.includes("close_page"));
   });
 
+  test("current group context tools are visible only in non-web group chats", async () => {
+    const config = createForwardFeatureConfig();
+    const currentGroupToolNames = [
+      "view_current_group_info",
+      "list_current_group_announcements",
+      "list_current_group_members"
+    ];
+    const getNames = (sessionId: string, replyDelivery: "onebot" | "web") => new Set(
+      getBuiltinTools("owner", config, undefined, {
+        visibilityContext: { sessionId, replyDelivery }
+      }).map((tool) => tool.function.name)
+    );
+
+    const onebotGroup = getNames("qqbot:g:123456", "onebot");
+    for (const toolName of currentGroupToolNames) {
+      assert.equal(onebotGroup.has(toolName), true, `${toolName} should be visible in onebot group chats`);
+    }
+
+    for (const names of [
+      getNames("qqbot:p:10001", "onebot"),
+      getNames("web:panel", "web"),
+      getNames("qqbot:g:123456", "web")
+    ]) {
+      for (const toolName of currentGroupToolNames) {
+        assert.equal(names.has(toolName), false, `${toolName} should be hidden outside non-web group chats`);
+      }
+    }
+  });
+
   test("media view tools require main model vision while media inspection tools do not", async () => {
     const nonVisionConfig = createMediaToolVisibilityConfig();
     const nonVisionNames = getBuiltinTools("owner", null, nonVisionConfig, {
