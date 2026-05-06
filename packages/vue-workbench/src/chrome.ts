@@ -18,6 +18,6 @@ export function createStatusbarMenuNodes(items: WorkbenchStatusbarItem[]): MenuN
     kind: "component" as const,
     id: item.id,
     component: item.component,
-    props: item.props
+    ...(item.props === undefined ? {} : { props: item.props })
   }));
 }

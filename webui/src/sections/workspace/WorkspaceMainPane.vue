@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { RefreshCw } from "lucide-vue-next";
 import { openImagePreviewWindow } from "@/components/common/imagePreviewWindow";
-import { useWorkbenchWindows } from "@/components/workbench/windows/useWorkbenchWindows";
+import { useWorkbenchWindows } from "@llm-onebot/vue-workbench";
 import { useWorkspaceSection } from "@/composables/sections/useWorkspaceSection";
-import { WorkbenchAreaHeader, WorkbenchCard, WorkbenchEmptyState } from "@/components/workbench/primitives";
+import { WorkbenchAreaHeader, WorkbenchCard, WorkbenchEmptyState } from "@llm-onebot/vue-workbench";
 
 const windows = useWorkbenchWindows();
 

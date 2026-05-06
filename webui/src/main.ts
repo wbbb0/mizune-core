@@ -5,9 +5,12 @@ import App from "./App.vue";
 import router from "./router";
 import { useUiBrowserBindings } from "@/composables/useUiBrowserBindings";
 import { useUiStore } from "@/stores/ui";
+import { editorApi } from "@/api/editor";
+import { configureResourceEditorClient } from "@llm-onebot/vue-resource-editor";
 import "./style/main.css";
 
 registerSW({ immediate: true });
+configureResourceEditorClient(editorApi);
 
 const app = createApp(App);
 const pinia = createPinia();

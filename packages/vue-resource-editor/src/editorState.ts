@@ -1,5 +1,5 @@
 import { deepMerge } from "./deepMerge";
-import type { EditorModel, EditorUnsetMode } from "@/api/editor";
+import type { EditorModel, EditorUnsetMode } from "./types";
 
 export type PathSegment = string | number;
 

@@ -5,5 +5,5 @@
     "jsx": "preserve",
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "test/**/*.tsx"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "test/**/*.tsx", "test/**/*.d.ts"]
 }

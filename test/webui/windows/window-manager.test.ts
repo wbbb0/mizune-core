@@ -1,7 +1,6 @@
-import type { WorkbenchWindowDefinition } from "../../../webui/src/components/workbench/windows/types.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createWindowManager } from "../../../webui/src/components/workbench/windows/windowManager.ts";
+import { createWindowManager, type WorkbenchWindowDefinition } from "@llm-onebot/vue-workbench/runtime";
 
 function buildWindow(id: string, parentId?: string): WorkbenchWindowDefinition {
   return {

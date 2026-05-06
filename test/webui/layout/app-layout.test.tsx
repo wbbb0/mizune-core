@@ -4,15 +4,15 @@ import { readFile } from "node:fs/promises";
 
 test("desktop layout keeps safe-area padding on the workbench shell, not the activity bar", async () => {
   const workbenchShellSource = await readFile(
-    new URL("../../../webui/src/components/workbench/WorkbenchShell.vue", import.meta.url),
+    new URL("../../../packages/vue-workbench/src/WorkbenchShell.vue", import.meta.url),
     "utf8"
   );
   const topBarSource = await readFile(
-    new URL("../../../webui/src/components/workbench/TopBar.vue", import.meta.url),
+    new URL("../../../packages/vue-workbench/src/TopBar.vue", import.meta.url),
     "utf8"
   );
   const activityBarSource = await readFile(
-    new URL("../../../webui/src/components/workbench/WorkbenchActivityBar.vue", import.meta.url),
+    new URL("../../../packages/vue-workbench/src/WorkbenchActivityBar.vue", import.meta.url),
     "utf8"
   );
   const composerSource = await readFile(

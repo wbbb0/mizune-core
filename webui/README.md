@@ -1,6 +1,6 @@
 # webui
 
-独立 Nuxt 管理端，负责：
+独立 Vue 3 + Tailwind 管理端，负责：
 
 - debug webui 页面
 - PWA 安装入口（Chromium 与 Apple Safari 主屏安装）
@@ -8,6 +8,14 @@
 - 浏览器到 bot internal API 的代理访问
 - 从 config/instances/*.yml 自动发现可用 backend，并在页面切换
 - 通过通用 editor 接口查看和编辑 config 与运行数据资源
+
+前端共享能力在仓库根目录的 `packages/` 下维护：
+
+- `@llm-onebot/vue-workbench`：工作台外壳、导航、菜单、toast、窗口和基础 primitives
+- `@llm-onebot/vue-resource-editor`：schema 驱动资源编辑器
+- `@llm-onebot/vue-file-workspace`：通用文件树和文件预览契约
+
+当前 WebUI 通过 `vite.config.ts` 和 `tsconfig.json` alias 直接引用这些源码包；跨项目复用时应发布这些包或使用 workspace 依赖，模板项目只负责生成业务项目骨架。
 
 ## 安装
 

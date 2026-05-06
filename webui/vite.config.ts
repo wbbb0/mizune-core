@@ -168,7 +168,14 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@": resolve(configDir, "src")
+      "@": resolve(configDir, "src"),
+      "vue": resolve(configDir, "node_modules/vue"),
+      "lucide-vue-next": resolve(configDir, "node_modules/lucide-vue-next"),
+      "@llm-onebot/vue-workbench/style.css": resolve(configDir, "../packages/vue-workbench/src/style.css"),
+      "@llm-onebot/vue-workbench/runtime": resolve(configDir, "../packages/vue-workbench/src/runtime-api.ts"),
+      "@llm-onebot/vue-workbench": resolve(configDir, "../packages/vue-workbench/src/index.ts"),
+      "@llm-onebot/vue-resource-editor": resolve(configDir, "../packages/vue-resource-editor/src/index.ts"),
+      "@llm-onebot/vue-file-workspace": resolve(configDir, "../packages/vue-file-workspace/src/index.ts")
     }
   },
   server: {

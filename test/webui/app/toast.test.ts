@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { activateWorkbenchController, createWorkbenchController } from "../../../webui/src/components/workbench/runtime/workbenchController.ts";
-import { defineWorkbenchView } from "../../../webui/src/components/workbench/types.ts";
-import { useWorkbenchToasts } from "../../../webui/src/components/workbench/toasts/useWorkbenchToasts.ts";
+import {
+  activateWorkbenchController,
+  createWorkbenchController,
+  defineWorkbenchView,
+  useWorkbenchToasts
+} from "@llm-onebot/vue-workbench/runtime";
 
 const { computed, defineComponent } = await import(
   new URL("../../../webui/node_modules/vue/index.mjs", import.meta.url).href
@@ -35,8 +38,8 @@ test.after(() => {
 });
 
 test("workbench root mounts the toast viewport", async () => {
-  const source = await readFile(new URL("../../../webui/src/components/workbench/WorkbenchRoot.vue", import.meta.url), "utf8");
-  const shellSource = await readFile(new URL("../../../webui/src/components/workbench/WorkbenchShell.vue", import.meta.url), "utf8");
+  const source = await readFile(new URL("../../../packages/vue-workbench/src/WorkbenchRoot.vue", import.meta.url), "utf8");
+  const shellSource = await readFile(new URL("../../../packages/vue-workbench/src/WorkbenchShell.vue", import.meta.url), "utf8");
   const appSource = await readFile(new URL("../../../webui/src/App.vue", import.meta.url), "utf8");
 
   assert.match(source, /ToastViewport/);

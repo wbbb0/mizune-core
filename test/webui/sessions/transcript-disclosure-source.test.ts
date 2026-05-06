@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 test("workbench disclosure renders a single expandable card with scrollable body", async () => {
   const source = await readFile(
-    new URL("../../../webui/src/components/workbench/primitives/WorkbenchDisclosure.vue", import.meta.url),
+    new URL("../../../packages/vue-workbench/src/primitives/WorkbenchDisclosure.vue", import.meta.url),
     "utf8"
   );
 

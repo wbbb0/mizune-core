@@ -19,9 +19,11 @@ async function listSourceFiles(directory: URL): Promise<URL[]> {
   return files;
 }
 
-test("workbench core does not import app stores or app adapters", async () => {
+test("shared WebUI packages do not import app stores or app adapters", async () => {
   const roots = [
-    new URL("../../../webui/src/components/workbench/", import.meta.url)
+    new URL("../../../packages/vue-workbench/src/", import.meta.url),
+    new URL("../../../packages/vue-resource-editor/src/", import.meta.url),
+    new URL("../../../packages/vue-file-workspace/src/", import.meta.url)
   ];
   const files = (await Promise.all(roots.map(listSourceFiles))).flat();
 
@@ -37,11 +39,15 @@ test("workbench core does not import app stores or app adapters", async () => {
 
 test("workbench exposes a single public API barrel", async () => {
   const source = await readFile(
-    new URL("../../../webui/src/components/workbench/index.ts", import.meta.url),
+    new URL("../../../packages/vue-workbench/src/index.ts", import.meta.url),
+    "utf8"
+  );
+  const runtimeSource = await readFile(
+    new URL("../../../packages/vue-workbench/src/runtime-api.ts", import.meta.url),
     "utf8"
   );
   const primitiveSource = await readFile(
-    new URL("../../../webui/src/components/workbench/primitives/index.ts", import.meta.url),
+    new URL("../../../packages/vue-workbench/src/primitives/index.ts", import.meta.url),
     "utf8"
   );
 
@@ -49,9 +55,10 @@ test("workbench exposes a single public API barrel", async () => {
   assert.match(primitiveSource, /WorkbenchCard/);
   assert.match(primitiveSource, /WorkbenchDisclosure/);
   assert.match(primitiveSource, /WorkbenchAreaHeader/);
-  assert.match(source, /useWorkbenchToasts/);
   assert.match(source, /\.\/primitives/);
-  assert.match(source, /windows\/types/);
-  assert.match(source, /windows\/useWorkbenchWindows/);
-  assert.match(source, /runtime\/workbenchController/);
+  assert.match(source, /runtime-api/);
+  assert.match(runtimeSource, /useWorkbenchToasts/);
+  assert.match(runtimeSource, /windows\/types/);
+  assert.match(runtimeSource, /windows\/useWorkbenchWindows/);
+  assert.match(runtimeSource, /runtime\/workbenchController/);
 });

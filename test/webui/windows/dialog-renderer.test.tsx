@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error jsdom vendor path has no bundled declaration file in this workspace layout
 import { JSDOM } from "../../../webui/node_modules/jsdom/lib/api.js";
-import type { WorkbenchDialogField, WorkbenchWindowDefinition } from "../../../webui/src/components/workbench/windows/types.ts";
+import type { WorkbenchDialogField, WorkbenchWindowDefinition } from "@llm-onebot/vue-workbench";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const require = createRequire(import.meta.url);
@@ -15,9 +15,9 @@ const compilerSfc = require(`${ROOT}/webui/node_modules/@vue/compiler-sfc/dist/c
 const typescript = require(`${ROOT}/webui/node_modules/typescript/lib/typescript.js`);
 const VUE_RUNTIME_URL = new URL("../../../webui/node_modules/vue/index.mjs", import.meta.url).href;
 const VUE_TEST_UTILS_URL = new URL("../../../webui/node_modules/@vue/test-utils/dist/vue-test-utils.esm-bundler.mjs", import.meta.url).href;
-const DIALOG_RENDERER_PATH = `${ROOT}/webui/src/components/workbench/windows/DialogRenderer.vue`;
-const DIALOG_FIELD_RENDERER_PATH = `${ROOT}/webui/src/components/workbench/windows/DialogFieldRenderer.vue`;
-const TYPES_URL = new URL("../../../webui/src/components/workbench/windows/types.ts", import.meta.url).href;
+const DIALOG_RENDERER_PATH = `${ROOT}/packages/vue-workbench/src/windows/DialogRenderer.vue`;
+const DIALOG_FIELD_RENDERER_PATH = `${ROOT}/packages/vue-workbench/src/windows/DialogFieldRenderer.vue`;
+const TYPES_URL = new URL("../../../packages/vue-workbench/src/windows/types.ts", import.meta.url).href;
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>");
 

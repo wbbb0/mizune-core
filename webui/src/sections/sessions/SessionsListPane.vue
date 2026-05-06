@@ -3,7 +3,7 @@ import { onMounted } from "vue";
 import { Plus, RefreshCw } from "lucide-vue-next";
 import SessionListItem from "@/components/sessions/SessionListItem.vue";
 import { useSessionsSection } from "@/composables/sections/useSessionsSection";
-import { WorkbenchAreaHeader, WorkbenchEmptyState } from "@/components/workbench/primitives";
+import { WorkbenchAreaHeader, WorkbenchEmptyState } from "@llm-onebot/vue-workbench";
 
 const {
   store,

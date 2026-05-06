@@ -12,7 +12,7 @@ function branchSlice(source: string, startMarker: string, endMarker: string): st
 
 test("SchemaNode source keeps label priority and hover metadata wiring", async () => {
   const source = await readFile(
-    new URL("../../../webui/src/components/editor/SchemaNode.vue", import.meta.url),
+    new URL("../../../packages/vue-resource-editor/src/components/SchemaNode.vue", import.meta.url),
     "utf8"
   );
 

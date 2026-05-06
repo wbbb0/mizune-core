@@ -1,4 +1,4 @@
-import { defineWorkbenchView } from "@/components/workbench/types";
+import { defineWorkbenchView } from "@llm-onebot/vue-workbench";
 import DataListPane from "./DataListPane.vue";
 import DataMainPane from "./DataMainPane.vue";
 import DataMobileHeader from "./DataMobileHeader.vue";

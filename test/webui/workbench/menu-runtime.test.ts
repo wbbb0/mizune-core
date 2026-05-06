@@ -4,7 +4,7 @@ import {
   createMenuRuntime,
   SUBMENU_ACTIVATION_DELAY_MS,
   SUBMENU_HOVER_DELAY_MS
-} from "../../../webui/src/components/workbench/menu/menuRuntime.ts";
+} from "@llm-onebot/vue-workbench/runtime";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let runtime = createMenuRuntime();

@@ -5,24 +5,23 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error jsdom vendor path has no bundled declaration file in this workspace layout
 import { JSDOM } from "../../../webui/node_modules/jsdom/lib/api.js";
-import { resolveWindowSizing } from "../../../webui/src/components/workbench/windows/windowSizing.ts";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const require = createRequire(import.meta.url);
 const compilerSfc = require(`${ROOT}/webui/node_modules/@vue/compiler-sfc/dist/compiler-sfc.cjs.js`);
 const typescript = require(`${ROOT}/webui/node_modules/typescript/lib/typescript.js`);
 const VUE_RUNTIME_URL = new URL("../../../webui/node_modules/vue/index.mjs", import.meta.url).href;
-const WINDOW_SIZING_URL = new URL("../../../webui/src/components/workbench/windows/windowSizing.ts", import.meta.url).href;
-const USE_WORKBENCH_WINDOWS_URL = new URL("../../../webui/src/components/workbench/windows/useWorkbenchWindows.ts", import.meta.url).href;
-const WORKBENCH_CONTROLLER_URL = new URL("../../../webui/src/components/workbench/runtime/workbenchController.ts", import.meta.url).href;
-const WORKBENCH_RUNTIME_URL = new URL("../../../webui/src/components/workbench/runtime/workbenchRuntime.ts", import.meta.url).href;
-const WORKBENCH_TYPES_URL = new URL("../../../webui/src/components/workbench/types.ts", import.meta.url).href;
-const WINDOW_SURFACE_PATH = `${ROOT}/webui/src/components/workbench/windows/WindowSurface.vue`;
-const WINDOW_HOST_PATH = `${ROOT}/webui/src/components/workbench/windows/WindowHost.vue`;
-const DIALOG_RENDERER_PATH = `${ROOT}/webui/src/components/workbench/windows/DialogRenderer.vue`;
-const DIALOG_FIELD_RENDERER_PATH = `${ROOT}/webui/src/components/workbench/windows/DialogFieldRenderer.vue`;
-const WORKBENCH_SHELL_PATH = `${ROOT}/webui/src/components/workbench/WorkbenchShell.vue`;
-const WORKBENCH_ROOT_PATH = `${ROOT}/webui/src/components/workbench/WorkbenchRoot.vue`;
+const WINDOW_SIZING_URL = new URL("../../../packages/vue-workbench/src/windows/windowSizing.ts", import.meta.url).href;
+const USE_WORKBENCH_WINDOWS_URL = new URL("../../../packages/vue-workbench/src/windows/useWorkbenchWindows.ts", import.meta.url).href;
+const WORKBENCH_CONTROLLER_URL = new URL("../../../packages/vue-workbench/src/runtime/workbenchController.ts", import.meta.url).href;
+const WORKBENCH_RUNTIME_URL = new URL("../../../packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url).href;
+const WORKBENCH_TYPES_URL = new URL("../../../packages/vue-workbench/src/types.ts", import.meta.url).href;
+const WINDOW_SURFACE_PATH = `${ROOT}/packages/vue-workbench/src/windows/WindowSurface.vue`;
+const WINDOW_HOST_PATH = `${ROOT}/packages/vue-workbench/src/windows/WindowHost.vue`;
+const DIALOG_RENDERER_PATH = `${ROOT}/packages/vue-workbench/src/windows/DialogRenderer.vue`;
+const DIALOG_FIELD_RENDERER_PATH = `${ROOT}/packages/vue-workbench/src/windows/DialogFieldRenderer.vue`;
+const WORKBENCH_SHELL_PATH = `${ROOT}/packages/vue-workbench/src/WorkbenchShell.vue`;
+const WORKBENCH_ROOT_PATH = `${ROOT}/packages/vue-workbench/src/WorkbenchRoot.vue`;
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>");
 
@@ -38,6 +37,7 @@ Object.defineProperty(globalThis, "getComputedStyle", {
 });
 Object.defineProperty(globalThis, "MutationObserver", { value: dom.window.MutationObserver });
 
+const { resolveWindowSizing } = await import("@llm-onebot/vue-workbench/runtime");
 const { nextTick, markRaw, computed, defineComponent } = await import(VUE_RUNTIME_URL);
 const { useWorkbenchWindows } = await import(USE_WORKBENCH_WINDOWS_URL);
 const { createWorkbenchController, activateWorkbenchController } = await import(WORKBENCH_CONTROLLER_URL);
@@ -204,13 +204,11 @@ const dialogFieldRendererUrl = compileVueModule(DIALOG_FIELD_RENDERER_PATH, {
 const dialogRendererUrl = compileVueModule(DIALOG_RENDERER_PATH, {
   vue: vueStubUrl,
   "./DialogFieldRenderer.vue": dialogFieldRendererUrl,
-  "./types.js": new URL("../../../webui/src/components/workbench/windows/types.ts", import.meta.url).href
+  "./types.js": new URL("../../../packages/vue-workbench/src/windows/types.ts", import.meta.url).href
 });
 
 const windowHostUrl = compileVueModule(WINDOW_HOST_PATH, {
   vue: vueStubUrl,
-  "@/stores/ui": uiStubUrl,
-  "@/components/workbench/windows/useWorkbenchWindows": USE_WORKBENCH_WINDOWS_URL,
   "./useWorkbenchWindows": USE_WORKBENCH_WINDOWS_URL,
   "./DialogRenderer.vue": dialogRendererUrl,
   "./WindowSurface.vue": windowSurfaceUrl
@@ -218,20 +216,11 @@ const windowHostUrl = compileVueModule(WINDOW_HOST_PATH, {
 
 const workbenchShellUrl = compileVueModule(WORKBENCH_SHELL_PATH, {
   vue: vueStubUrl,
-  "@/components/workbench/DesktopWorkbench.vue": desktopWorkbenchStubUrl,
   "./DesktopWorkbench.vue": desktopWorkbenchStubUrl,
-  "@/components/workbench/MobileWorkbench.vue": mobileWorkbenchStubUrl,
   "./MobileWorkbench.vue": mobileWorkbenchStubUrl,
-  "@/components/workbench/menu/MenuHost.vue": menuHostStubUrl,
   "./menu/MenuHost.vue": menuHostStubUrl,
-  "@/components/workbench/toasts/ToastViewport.vue": toastViewportStubUrl,
   "./toasts/ToastViewport.vue": toastViewportStubUrl,
-  "@/stores/ui": uiStubUrl,
-  "@/components/workbench/runtime/workbenchRuntime": WORKBENCH_RUNTIME_URL,
   "./runtime/workbenchController": workbenchControllerStubUrl,
-  "@/composables/workbench/menu/useMenuRuntime": menuRuntimeStubUrl,
-  "@/components/workbench/windows/useWorkbenchWindows": USE_WORKBENCH_WINDOWS_URL,
-  "@/components/workbench/windows/WindowHost.vue": windowHostUrl,
   "./windows/WindowHost.vue": windowHostUrl
 });
 

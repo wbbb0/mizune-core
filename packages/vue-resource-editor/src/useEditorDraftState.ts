@@ -1,6 +1,6 @@
 import { computed, effectScope, ref, watch, type ComputedRef, type Ref } from "vue";
-import type { EditorModel } from "@/api/editor";
-import { computeDraftEffectiveValue, computeDraftReferenceValue, deepEqual } from "@/utils/editorState";
+import type { EditorModel } from "./types";
+import { computeDraftEffectiveValue, computeDraftReferenceValue, deepEqual } from "./editorState";
 
 type EditorDraftState = {
   draftValue: Ref<unknown>;

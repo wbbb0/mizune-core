@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 test("workbench stylesheet defines a danger button variant for destructive actions", async () => {
   const source = await readFile(
-    new URL("../../webui/src/style/workbench.css", import.meta.url),
+    new URL("../../packages/vue-workbench/src/style.css", import.meta.url),
     "utf8"
   );
 

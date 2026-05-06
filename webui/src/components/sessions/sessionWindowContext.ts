@@ -1,4 +1,4 @@
-import type { WorkbenchWindowContext } from "@/components/workbench/windows/types";
+import type { WorkbenchWindowContext } from "@llm-onebot/vue-workbench";
 
 export function createSessionWindowContext(sessionId: string): WorkbenchWindowContext {
   return {

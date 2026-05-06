@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const reporterPath = fileURLToPath(new URL("./reporters/failures-summary.mjs", import.meta.url));
+const webuiNodeResolvePath = fileURLToPath(new URL("./register-webui-node-resolve.mjs", import.meta.url));
 
 function collectTests(directory, prefix = "test") {
   return readdirSync(directory, { withFileTypes: true })
@@ -62,6 +63,8 @@ const testFiles = files.length > 0
 
 const result = spawnSync(process.execPath, [
   "--test",
+  "--import",
+  webuiNodeResolvePath,
   "--import",
   "tsx",
   `--test-concurrency=${concurrency}`,

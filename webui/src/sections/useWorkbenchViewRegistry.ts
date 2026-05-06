@@ -1,7 +1,7 @@
-import type { WorkbenchView } from "@/components/workbench/types";
+import type { WorkbenchView } from "@llm-onebot/vue-workbench";
 import { workbenchViews } from "@/sections/registry";
 
-export type { WorkbenchView } from "@/components/workbench/types";
+export type { WorkbenchView } from "@llm-onebot/vue-workbench";
 
 export type WorkbenchRegistry = {
   workbenchViews: readonly WorkbenchView[];

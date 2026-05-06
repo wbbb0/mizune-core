@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { KeyRound, LockKeyhole, LogOut, Trash2 } from "lucide-vue-next";
 import { useSettingsSection } from "@/composables/sections/useSettingsSection";
-import { WorkbenchAreaHeader, WorkbenchCard, WorkbenchEmptyState } from "@/components/workbench/primitives";
+import { WorkbenchAreaHeader, WorkbenchCard, WorkbenchEmptyState } from "@llm-onebot/vue-workbench";
 
 const {
   auth,

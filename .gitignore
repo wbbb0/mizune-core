@@ -30,3 +30,6 @@
 
 # Git worktrees
 /.worktrees/
+
+# AI tools
+.codex

@@ -4,8 +4,8 @@
  * Emits "update" with the new value whenever the user changes the input.
  */
 import { ref, watchEffect } from "vue";
-import type { SchemaMeta } from "@/api/editor";
-import { editorApi } from "@/api/editor";
+import type { SchemaMeta } from "../types";
+import { useResourceEditorClient } from "../resourceEditorClient";
 
 const props = defineProps<{
   schema: SchemaMeta;
@@ -19,13 +19,18 @@ const emit = defineEmits<{ "update:modelValue": [value: unknown] }>();
 // dynamic ref options
 const dynamicOptions = ref<string[] | null>(null);
 const dynamicOptionsError = ref(false);
+const editorClient = useResourceEditorClient();
 
 watchEffect(() => {
   if (props.schema.kind === "string" && props.schema.dynamicRef) {
     const key = props.schema.dynamicRef;
     dynamicOptions.value = null;
     dynamicOptionsError.value = false;
-    editorApi.options(key).then((res) => {
+    if (!editorClient?.options) {
+      dynamicOptionsError.value = true;
+      return;
+    }
+    editorClient.options(key).then((res) => {
       dynamicOptions.value = res.options;
     }).catch(() => {
       dynamicOptionsError.value = true;
@@ -53,6 +58,14 @@ function onEnumChange(e: Event) {
 
 function currentStringValue(): string {
   return props.modelValue !== undefined ? String(props.modelValue) : String(props.inherited ?? "");
+}
+
+function onJsonInput(event: Event) {
+  try {
+    emit("update:modelValue", JSON.parse((event.target as HTMLTextAreaElement).value));
+  } catch {
+    // Keep the previous valid value while the user is editing invalid JSON.
+  }
 }
 
 </script>
@@ -147,6 +160,6 @@ function currentStringValue(): string {
     :value="JSON.stringify(modelValue !== undefined ? modelValue : inherited, null, 2)"
     :disabled="disabled"
     rows="3"
-    @input="(e) => { try { emit('update:modelValue', JSON.parse((e.target as HTMLTextAreaElement).value)); } catch {} }"
+    @input="onJsonInput"
   />
 </template>

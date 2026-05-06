@@ -1,4 +1,4 @@
-import { defineWorkbenchView } from "@/components/workbench/types";
+import { defineWorkbenchView } from "@llm-onebot/vue-workbench";
 import SettingsListPane from "./SettingsListPane.vue";
 import SettingsMainPane from "./SettingsMainPane.vue";
 import SettingsMobileHeader from "./SettingsMobileHeader.vue";

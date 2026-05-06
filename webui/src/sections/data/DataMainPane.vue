@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { RefreshCw, ChevronRight, ChevronDown, Save, Trash2, Pin, Pencil, Layers, DatabaseZap, Download, Upload } from "lucide-vue-next";
-import SchemaNode from "@/components/editor/SchemaNode.vue";
+import { SchemaNode } from "@llm-onebot/vue-resource-editor";
 import { useDataSection } from "@/composables/sections/useDataSection";
 import type { DirectoryItem } from "@/api/data";
-import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@/components/workbench/primitives";
+import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@llm-onebot/vue-workbench";
 
 const {
   selectedKey,

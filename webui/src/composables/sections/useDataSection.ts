@@ -1,11 +1,11 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
-import { useEditorDraftState } from "@/composables/useEditorDraftState";
-import { useWorkbenchNavigation } from "@/components/workbench/runtime/workbenchRuntime";
+import { useEditorDraftState } from "@llm-onebot/vue-resource-editor";
+import { useWorkbenchNavigation } from "@llm-onebot/vue-workbench";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { contextApi, type ContextItemFilters, type ContextManagementItem, type ContextStatus } from "@/api/context";
 import { dataApi, type DataResourceSummary, type DataResource, type DataResourceItem, type DirectoryItem } from "@/api/data";
 import { editorApi, type EditorModel, type EditorResourceSummary } from "@/api/editor";
-import { useWorkbenchToasts } from "@/components/workbench/toasts/useWorkbenchToasts";
+import { useWorkbenchToasts } from "@llm-onebot/vue-workbench";
 
 type DataListResource =
   | {

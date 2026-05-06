@@ -1,28 +1,8 @@
 import { api } from "./client";
 import type { ContentSafetyAuditView, DerivedObservation } from "./types";
+import type { FileWorkspaceClient, LocalFileItem, LocalFileListResult, LocalFilePreview } from "@llm-onebot/vue-file-workspace";
 
-export interface LocalFileItem {
-  path: string;
-  name: string;
-  kind: "file" | "directory";
-  sizeBytes: number;
-  updatedAtMs: number;
-}
-
-export interface LocalFileListResult {
-  root: string;
-  path: string;
-  items: LocalFileItem[];
-}
-
-export interface LocalFilePreview {
-  path: string;
-  content: string;
-  startLine: number;
-  endLine: number;
-  totalLines: number;
-  truncated: boolean;
-}
+export type { FileWorkspaceClient, LocalFileItem, LocalFileListResult, LocalFilePreview } from "@llm-onebot/vue-file-workspace";
 
 export interface ChatFileSummary {
   fileId: string;
@@ -48,7 +28,19 @@ export interface ChatFileDetail {
   file: ChatFileSummary;
 }
 
-export const fileApi = {
+export const fileApi: FileWorkspaceClient & {
+  listLocalItems(path?: string): Promise<LocalFileListResult>;
+  statLocalItem(path?: string): Promise<LocalFileItem>;
+  readLocalFile(path: string, range?: { startLine?: number; endLine?: number }): Promise<LocalFilePreview>;
+  getLocalFileContentUrl(path: string): string;
+  getLocalSendFileContentUrl(path: string): string;
+  listChatFiles(): Promise<{ files: ChatFileSummary[] }>;
+  getChatFile(fileId: string): Promise<ChatFileDetail>;
+  getChatFileContentUrlById(fileId: string): string;
+} = {
+  listItems(path = "."): Promise<LocalFileListResult> {
+    return api.get(`/api/local-files/items?path=${encodeURIComponent(path)}`);
+  },
   listLocalItems(path = "."): Promise<LocalFileListResult> {
     return api.get(`/api/local-files/items?path=${encodeURIComponent(path)}`);
   },
@@ -65,7 +57,20 @@ export const fileApi = {
     }
     return api.get(`/api/local-files/file?${params.toString()}`);
   },
+  readFile(path: string, range?: { startLine?: number; endLine?: number }): Promise<LocalFilePreview> {
+    const params = new URLSearchParams({ path });
+    if (range?.startLine != null) {
+      params.set("startLine", String(range.startLine));
+    }
+    if (range?.endLine != null) {
+      params.set("endLine", String(range.endLine));
+    }
+    return api.get(`/api/local-files/file?${params.toString()}`);
+  },
   getLocalFileContentUrl(path: string): string {
+    return `/api/local-files/content?path=${encodeURIComponent(path)}`;
+  },
+  getContentUrl(path: string): string {
     return `/api/local-files/content?path=${encodeURIComponent(path)}`;
   },
   getLocalSendFileContentUrl(path: string): string {

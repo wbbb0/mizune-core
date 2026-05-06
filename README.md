@@ -181,6 +181,7 @@ onebot:
 ```text
 src/          后端源码
 webui/        Vue 3 + Tailwind WebUI
+packages/     WebUI 共享源码包（workbench、resource editor、file workspace）
 config/       运行配置与示例配置
 data/         本地运行时数据
 docs/         长期维护文档
@@ -196,6 +197,12 @@ deploy/       systemd 服务示例
 - `services/`：OneBot、shell、web、workspace 等外部能力封装
 - `internalApi/`：内部 HTTP API、应用服务与 WebUI 托管
 - `context/`、`memory/`、`persona/`、`modes/`：长期上下文、规则、资料和模式相关能力
+
+`packages/` 当前包含 repo 内复用的前端源码包：
+
+- `vue-workbench`：工作台外壳、导航、pane、菜单、toast、窗口和基础 primitives
+- `vue-resource-editor`：schema 驱动资源编辑器类型、渲染组件、草稿状态和 editor client 契约
+- `vue-file-workspace`：通用本地文件树与文件预览 client 契约
 
 ## 文档
 

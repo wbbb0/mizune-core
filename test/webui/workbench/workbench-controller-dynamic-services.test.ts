@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { activateWorkbenchController, createWorkbenchController } from "../../../webui/src/components/workbench/runtime/workbenchController.ts";
-import { defineWorkbenchView } from "../../../webui/src/components/workbench/types.ts";
-import { useWorkbenchToasts } from "../../../webui/src/components/workbench/toasts/useWorkbenchToasts.ts";
-import { useWorkbenchWindows } from "../../../webui/src/components/workbench/windows/useWorkbenchWindows.ts";
+import {
+  activateWorkbenchController,
+  createWorkbenchController,
+  defineWorkbenchView,
+  useWorkbenchToasts,
+  useWorkbenchWindows
+} from "@llm-onebot/vue-workbench/runtime";
 
 const { computed, defineComponent } = await import(
   new URL("../../../webui/node_modules/vue/index.mjs", import.meta.url).href

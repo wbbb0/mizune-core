@@ -1,4 +1,4 @@
-import type { WorkbenchDialogDefinition, WorkbenchWindowResult } from "@/components/workbench/windows/types";
+import type { WorkbenchDialogDefinition, WorkbenchWindowResult } from "@llm-onebot/vue-workbench";
 import { buildCreateSessionPayload, type CreateSessionPayload } from "./createSessionPayload";
 import CreateSessionModeBlock from "./CreateSessionModeBlock.vue";
 import CreateSessionTitleField from "./CreateSessionTitleField.vue";
