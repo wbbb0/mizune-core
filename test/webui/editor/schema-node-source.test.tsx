@@ -66,3 +66,31 @@ test("SchemaNode source keeps label priority and hover metadata wiring", async (
     "expected record branch header to expose node.schema.description in hover"
   );
 });
+
+test("SchemaNode source propagates schema default values through recursive branches", async () => {
+  const source = await readFile(
+    new URL("../../../packages/vue-resource-editor/src/components/SchemaNode.vue", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(
+    source,
+    /defaultValue\?: unknown;/,
+    "expected SchemaNode to accept a schema default value"
+  );
+  assert.match(
+    source,
+    /function childDefaultValue\(key: string\): unknown \{\s+return asObj\(props\.defaultValue\)\[key\];\s+\}/s,
+    "expected object children to receive their matching schema default value"
+  );
+  assert.match(
+    source,
+    /function defaultArrayItem\(index: number\): unknown \{\s+return defaultItems\.value\[index\];\s+\}/s,
+    "expected array items to receive their matching schema default value"
+  );
+  assert.match(
+    source,
+    /:default-value="defaultRecordValue\(key\)"/,
+    "expected record entries to pass through matching schema default values"
+  );
+});

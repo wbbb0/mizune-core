@@ -3,7 +3,7 @@
  * Renders a single leaf field based on schema kind.
  * Emits "update" with the new value whenever the user changes the input.
  */
-import { ref, watchEffect } from "vue";
+import { computed, ref, watchEffect } from "vue";
 import type { SchemaMeta } from "../types";
 import { useResourceEditorClient } from "../resourceEditorClient";
 
@@ -11,6 +11,7 @@ const props = defineProps<{
   schema: SchemaMeta;
   modelValue: unknown;
   inherited?: unknown; // read-only value from parent layers
+  defaultValue?: unknown;
   disabled?: boolean;
 }>();
 
@@ -20,6 +21,15 @@ const emit = defineEmits<{ "update:modelValue": [value: unknown] }>();
 const dynamicOptions = ref<string[] | null>(null);
 const dynamicOptionsError = ref(false);
 const editorClient = useResourceEditorClient();
+const displayedValue = computed(() => {
+  if (props.modelValue !== undefined) {
+    return props.modelValue;
+  }
+  if (props.inherited !== undefined) {
+    return props.inherited;
+  }
+  return props.defaultValue;
+});
 
 watchEffect(() => {
   if (props.schema.kind === "string" && props.schema.dynamicRef) {
@@ -57,7 +67,7 @@ function onEnumChange(e: Event) {
 }
 
 function currentStringValue(): string {
-  return props.modelValue !== undefined ? String(props.modelValue) : String(props.inherited ?? "");
+  return displayedValue.value !== undefined ? String(displayedValue.value) : "";
 }
 
 function onJsonInput(event: Event) {
@@ -79,20 +89,20 @@ function onJsonInput(event: Event) {
     <input
       type="checkbox"
       class="cursor-pointer accent-accent"
-      :checked="modelValue === true || (modelValue === undefined && inherited === true)"
+      :checked="displayedValue === true"
       :disabled="disabled"
       @change="onBoolChange"
     />
     <span
       class="text-ui text-text-primary"
-    >{{ modelValue !== undefined ? modelValue : inherited }}</span>
+    >{{ displayedValue }}</span>
   </label>
 
   <!-- enum -->
   <select
     v-else-if="schema.kind === 'enum'"
     class="input-base h-6 max-w-60 px-1.5 py-0.5"
-    :value="modelValue !== undefined ? String(modelValue) : String(inherited ?? '')"
+    :value="displayedValue !== undefined ? String(displayedValue) : ''"
     :disabled="disabled"
     @change="onEnumChange"
   >
@@ -107,7 +117,7 @@ function onJsonInput(event: Event) {
     v-else-if="schema.kind === 'number'"
     type="number"
     class="input-base h-6 max-w-40 px-1.5 py-0.5"
-    :value="modelValue !== undefined ? modelValue as number : inherited as number"
+    :value="displayedValue as number"
     :step="schema.integer ? 1 : 'any'"
     :min="schema.min"
     :max="schema.max"
@@ -147,7 +157,7 @@ function onJsonInput(event: Event) {
   <textarea
     v-else-if="schema.kind === 'string'"
     class="input-base min-h-7 w-full max-w-120 resize-y text-ui leading-[1.4]"
-    :value="modelValue !== undefined ? String(modelValue) : String(inherited ?? '')"
+    :value="displayedValue !== undefined ? String(displayedValue) : ''"
     :disabled="disabled"
     rows="2"
     @input="onInput"
@@ -157,7 +167,7 @@ function onJsonInput(event: Event) {
   <textarea
     v-else
     class="input-base min-h-7 w-full max-w-120 resize-y font-mono text-ui leading-[1.4]"
-    :value="JSON.stringify(modelValue !== undefined ? modelValue : inherited, null, 2)"
+    :value="JSON.stringify(displayedValue, null, 2)"
     :disabled="disabled"
     rows="3"
     @input="onJsonInput"

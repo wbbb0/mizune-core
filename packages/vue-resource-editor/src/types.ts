@@ -76,6 +76,7 @@ interface BaseEditorModel {
   schemaMeta: SchemaMeta;
   uiTree: UiNode;
   template: unknown;
+  schemaDefaultValue: unknown;
   currentValue: unknown;
   referenceValue: unknown;
   effectiveValue: unknown;

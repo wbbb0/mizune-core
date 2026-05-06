@@ -346,11 +346,18 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         url: "/api/editors/config"
       });
       assert.equal(editorResponse.statusCode, 200);
-      assert.equal(editorResponse.json().editor.referenceValue.appName, "global-app");
-      assert.equal(editorResponse.json().editor.currentValue.appName, undefined);
-      assert.equal(editorResponse.json().editor.effectiveValue.appName, "global-app");
-      assert.equal(editorResponse.json().editor.editorFeatures.unsetMode, "reference");
-      assert.equal(editorResponse.json().editor.editorFeatures.unsetActionLabel, "恢复继承");
+      const editor = editorResponse.json().editor;
+      assert.equal(editor.referenceValue.appName, "global-app");
+      assert.equal(editor.referenceValue.scheduler, undefined);
+      assert.equal(editor.schemaDefaultValue.scheduler.defaultTimezone, "Asia/Shanghai");
+      assert.equal(editor.schemaDefaultValue.shell.terminalEvents.enabled, true);
+      assert.equal(editor.schemaDefaultValue.shell.terminalEvents.inputDetectionDebounceMs, 800);
+      assert.equal(editor.currentValue.appName, undefined);
+      assert.equal(editor.effectiveValue.appName, "global-app");
+      assert.equal(editor.effectiveValue.scheduler.defaultTimezone, "Asia/Shanghai");
+      assert.equal(editor.effectiveValue.shell.terminalEvents.inputPromptCooldownMs, 30000);
+      assert.equal(editor.editorFeatures.unsetMode, "reference");
+      assert.equal(editor.editorFeatures.unsetActionLabel, "恢复继承");
 
       const validateResponse = await app.inject({
         method: "POST",

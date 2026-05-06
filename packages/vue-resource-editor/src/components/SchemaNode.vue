@@ -27,6 +27,8 @@ const props = defineProps<{
   modelValue: unknown;
   /** 参考层或继承值，用于显示 reference backdrop。 */
   inherited?: unknown;
+  /** schema 默认值，用于当前层和参考层都未定义时展示。 */
+  defaultValue?: unknown;
   /** 已保存的当前层值，用于 dirty 判断。 */
   storedValue?: unknown;
   /** 最终生效值。 */
@@ -161,6 +163,10 @@ function childInheritedValue(key: string): unknown {
   return asObj(props.inherited)[key];
 }
 
+function childDefaultValue(key: string): unknown {
+  return asObj(props.defaultValue)[key];
+}
+
 function childStoredValue(key: string): unknown {
   return asObj(props.storedValue)[key];
 }
@@ -236,6 +242,7 @@ function onGroupChildUpdate(key: string, childValue: unknown) {
 
 const items = computed(() => asArr(props.modelValue));
 const inheritedItems = computed(() => asArr(props.inherited));
+const defaultItems = computed(() => asArr(props.defaultValue));
 const storedItems = computed(() => asArr(props.storedValue));
 const effectiveItems = computed(() => asArr(props.effectiveValue));
 const displayedItems = computed(() => props.modelValue !== undefined ? items.value : effectiveItems.value);
@@ -248,6 +255,10 @@ const editingRecordKey = ref<string | null>(null);
 
 function inheritedArrayItem(index: number): unknown {
   return inheritedItems.value[index];
+}
+
+function defaultArrayItem(index: number): unknown {
+  return defaultItems.value[index];
 }
 
 function storedArrayItem(index: number): unknown {
@@ -297,11 +308,16 @@ function duplicateArrayItem(index: number) {
 const displayedRecord = computed(() => props.modelValue !== undefined ? asObj(props.modelValue) : asObj(props.effectiveValue));
 const recordEntries = computed(() => Object.entries(displayedRecord.value));
 const inheritedRecord = computed(() => asObj(props.inherited));
+const defaultRecord = computed(() => asObj(props.defaultValue));
 const storedRecord = computed(() => asObj(props.storedValue));
 const effectiveRecord = computed(() => asObj(props.effectiveValue));
 
 function inheritedRecordValue(key: string): unknown {
   return inheritedRecord.value[key];
+}
+
+function defaultRecordValue(key: string): unknown {
+  return defaultRecord.value[key];
 }
 
 function storedRecordValue(key: string): unknown {
@@ -512,6 +528,7 @@ function onUnionSelect(event: Event) {
       :schema="node.schema"
       :model-value="modelValue"
       :inherited="inherited"
+      :default-value="defaultValue"
       :disabled="disabled"
       @update:model-value="emit('update:modelValue', $event)"
     />
@@ -559,6 +576,7 @@ function onUnionSelect(event: Event) {
           :field-key="key"
           :model-value="asObj(modelValue)[key]"
           :inherited="childInheritedValue(key)"
+          :default-value="childDefaultValue(key)"
           :stored-value="childStoredValue(key)"
           :effective-value="childEffectiveValue(key)"
           :path="appendPath(key)"
@@ -578,6 +596,7 @@ function onUnionSelect(event: Event) {
         :field-key="key"
         :model-value="asObj(modelValue)[key]"
         :inherited="childInheritedValue(key)"
+        :default-value="childDefaultValue(key)"
         :stored-value="childStoredValue(key)"
         :effective-value="childEffectiveValue(key)"
         :path="appendPath(key)"
@@ -638,6 +657,7 @@ function onUnionSelect(event: Event) {
             :header-label="isComplexNode(node.item) ? undefined : `项目 ${idx + 1}`"
             :model-value="items[idx]"
             :inherited="inheritedArrayItem(idx)"
+            :default-value="defaultArrayItem(idx)"
             :stored-value="storedArrayItem(idx)"
             :effective-value="effectiveArrayItem(idx)"
             :path="appendPath(idx)"
@@ -706,6 +726,7 @@ function onUnionSelect(event: Event) {
             :header-actions="disabled ? [] : recordHeaderActions(key, idx)"
             :model-value="asObj(modelValue)[key]"
             :inherited="inheritedRecordValue(key)"
+            :default-value="defaultRecordValue(key)"
             :stored-value="storedRecordValue(key)"
             :effective-value="effectiveRecordValue(key)"
             :path="appendPath(key)"
@@ -743,6 +764,7 @@ function onUnionSelect(event: Event) {
       :node="unionOptions[selectedUnionIdx]!"
       :model-value="modelValue"
       :inherited="inherited"
+      :default-value="defaultValue"
       :stored-value="storedValue"
       :effective-value="effectiveValue"
       :path="path"
