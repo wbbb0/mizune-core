@@ -29,3 +29,16 @@ test("editorState source keeps reference and optional unset modes distinct", asy
     "expected optional-only editors to stay gated by schema.optional"
   );
 });
+
+test("editorState source merges schema defaults below reference and draft values", async () => {
+  const source = await readFile(
+    new URL("../../../packages/vue-resource-editor/src/editorState.ts", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(
+    source,
+    /case "merge_reference":\s+return computeEffectiveValue\(\s+computeEffectiveValue\(model\.schemaDefaultValue, referenceValue\),\s+draftValue\s+\);/s,
+    "expected merge_reference effective values to layer schema defaults below reference and draft"
+  );
+});

@@ -139,6 +139,7 @@ export function createEditorService(input: {
       }
 
       const editorTemplate = resolveEditorValueState(resource, createSchemaTemplate(resource.schema)).currentValue;
+      const schemaDefaultValue = createSchemaDefaultValue(resource.schema);
       const editorFeatures = resolveEditorFeatures(resource);
 
       if (resource.kind === "single") {
@@ -153,6 +154,7 @@ export function createEditorService(input: {
             schemaMeta,
             uiTree: buildUiTreeFromMeta(schemaMeta),
             template: editorTemplate,
+            schemaDefaultValue,
             currentValue: valueState.currentValue,
             referenceValue: valueState.referenceValue,
             effectiveValue: valueState.effectiveValue,
@@ -189,6 +191,7 @@ export function createEditorService(input: {
           schemaMeta,
           uiTree: buildUiTreeFromMeta(schemaMeta),
           template: editorTemplate,
+          schemaDefaultValue,
           currentValue,
           referenceValue: baseValue,
           effectiveValue,
@@ -467,6 +470,15 @@ function resolveEditorFeatures<TSchema extends BaseSchema<any>>(
   resource: EditorResource<TSchema>
 ): EditorFeatures {
   return createEditorFeatures(resource.editorFeatures);
+}
+
+function createSchemaDefaultValue<TSchema extends BaseSchema<any>>(schema: TSchema): unknown {
+  const template = createSchemaTemplate(schema);
+  try {
+    return parseConfig(schema, template, { cloneInput: true });
+  } catch {
+    return template;
+  }
 }
 
 function getRequiredResource(

@@ -3,7 +3,8 @@
  * Arrays are replaced (not concatenated), matching the bot's config behaviour.
  */
 export function deepMerge(base: unknown, override: unknown): unknown {
-  if (override === undefined || override === null) return base;
+  if (override === undefined) return base;
+  if (override === null) return null;
   if (base === undefined || base === null) return override;
   if (Array.isArray(override)) return override;
   if (typeof override !== "object" || typeof base !== "object") return override;

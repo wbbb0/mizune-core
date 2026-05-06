@@ -151,14 +151,14 @@ const appSchema = s.object({
 
     assert.equal(meta.kind, "object");
     assert.equal((meta as any).unknownKeys, "strict");
-    assert.equal((meta as any).fields.server.kind, "object");
-    assert.equal((meta as any).fields.logLevel.kind, "enum");
-    assert.deepEqual((meta as any).fields.logLevel.values, ["debug", "info", "warn", "error"]);
+    assert.equal((meta as any).fields.server.schema.kind, "object");
+    assert.equal((meta as any).fields.logLevel.schema.kind, "enum");
+    assert.deepEqual((meta as any).fields.logLevel.schema.values, ["debug", "info", "warn", "error"]);
 
     assert.equal(uiTree.kind, "group");
-    assert.equal((uiTree as any).children.server.kind, "group");
-    assert.equal((uiTree as any).children.features.kind, "record");
-    assert.equal((uiTree as any).children.admins.kind, "array");
+    assert.equal((uiTree as any).children.server.node.kind, "group");
+    assert.equal((uiTree as any).children.features.node.kind, "record");
+    assert.equal((uiTree as any).children.admins.node.kind, "array");
   });
 
   test("exportSchemaMeta keeps editor labels in title and hover metadata in description", async () => {
@@ -181,12 +181,33 @@ const appSchema = s.object({
     assert.equal(lockMeta.description, "根说明");
     assert.equal(lockMeta.fields.group.title, "分组标题");
     assert.equal(lockMeta.fields.group.description, "分组说明");
-    assert.equal(lockMeta.fields.group.fields.leaf.title, "叶子标题");
-    assert.equal(lockMeta.fields.group.fields.leaf.description, "叶子说明");
+    assert.equal(lockMeta.fields.group.schema.fields.leaf.title, "叶子标题");
+    assert.equal(lockMeta.fields.group.schema.fields.leaf.description, "叶子说明");
 
     const meta = exportSchemaMeta(fileConfigSchema) as any;
     assert.equal(meta.kind, "object");
     assert.equal(meta.fields.onebot.title, "OneBot");
+  });
+
+  test("object field metadata can label keys independently from value schema titles", async () => {
+    const createDetailSchema = () => s.object({
+      host: s.string().title("主机")
+    }).title("代理");
+    const proxySchema = s.object({
+      http: s.field(createDetailSchema().optional(), { title: "HTTP 代理" }),
+      https: s.field(createDetailSchema(), { title: "HTTPS 代理" })
+    });
+
+    const meta = exportSchemaMeta(proxySchema) as any;
+    const uiTree = buildUiTree(proxySchema) as any;
+
+    assert.equal(meta.fields.http.title, "HTTP 代理");
+    assert.equal(meta.fields.https.title, "HTTPS 代理");
+    assert.equal(meta.fields.http.schema.title, "代理");
+    assert.equal(meta.fields.https.schema.title, "代理");
+    assert.equal(uiTree.children.http.field.title, "HTTP 代理");
+    assert.equal(uiTree.children.https.field.title, "HTTPS 代理");
+    assert.equal(uiTree.children.http.node.schema.title, "代理");
   });
 
   test("createSchemaTemplate builds an empty object from nested defaults", async () => {

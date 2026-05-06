@@ -140,6 +140,7 @@ configureResourceEditorClient(editorApi);
     schemaMeta,
     uiTree,
     template,
+    schemaDefaultValue,
     currentValue,
     referenceValue,
     effectiveValue,
@@ -154,6 +155,7 @@ configureResourceEditorClient(editorApi);
 - `uiTree` 是用于渲染的 UI 树。
 - `currentValue` 是当前可编辑层的值。
 - `referenceValue` 是参考层或继承值。
+- `schemaDefaultValue` 是 schema 默认值展开后的最低优先级值。
 - `effectiveValue` 是最终生效值。
 - `editorFeatures` 控制参考背景、unset 行为和 draft effective 计算方式。
 
