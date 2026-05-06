@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import type { Plugin, ViteDevServer } from "vite";
 import vue from "@vitejs/plugin-vue";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
@@ -92,6 +93,7 @@ function getWebuiDevPort(): number {
 const apiTarget = getWebuiApiTarget();
 const devPort = getWebuiDevPort();
 const allowedHosts = loadWebuiDevConfig().allowedHosts;
+const webuiBase = "/webui/";
 const sharedProxy = {
   "/api": {
     target: apiTarget,
@@ -99,14 +101,48 @@ const sharedProxy = {
   }
 };
 
+function createDevServiceWorkerCleanupPlugin(): Plugin {
+  return {
+    name: "llm-bot-dev-service-worker-cleanup",
+    apply: "serve",
+    configureServer(server: ViteDevServer) {
+      server.middlewares.use(`${webuiBase}sw.js`, (_req, res) => {
+        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.end(`
+self.addEventListener("install", (event) => {
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((key) => caches.delete(key)));
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    await self.registration.unregister();
+    for (const client of windows) {
+      const url = new URL(client.url);
+      if (url.pathname.startsWith("${webuiBase}")) {
+        client.navigate(client.url);
+      }
+    }
+  })());
+});
+`);
+      });
+    }
+  };
+}
+
 export default defineConfig({
-  base: "/webui/",
+  base: webuiBase,
   plugins: [
     vue(),
     tailwindcss(),
+    createDevServiceWorkerCleanupPlugin(),
     createGzipPrecompressionPlugin(),
     VitePWA({
-      base: "/webui/",
+      base: webuiBase,
       registerType: "autoUpdate",
       injectRegister: false,
       includeAssets: ["icons/apple-touch-icon.png"],
@@ -160,7 +196,7 @@ export default defineConfig({
         ]
       },
       devOptions: {
-        enabled: true,
+        enabled: false,
         suppressWarnings: true,
         resolveTempFolder: () => "dev-dist"
       }

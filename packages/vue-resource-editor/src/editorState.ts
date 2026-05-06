@@ -138,7 +138,7 @@ export function canUnsetNodeValue(input: {
 }
 
 export function computeEffectiveValue(baseValue: unknown, draftValue: unknown): unknown {
-  if (draftValue == null) {
+  if (draftValue === undefined) {
     return baseValue;
   }
   return deepMerge(baseValue, draftValue);
@@ -247,7 +247,10 @@ export function computeDraftEffectiveValue(model: EditorModel, draftValue: unkno
   const referenceValue = computeDraftReferenceValue(model, draftValue);
   switch (model.editorFeatures.draftEffectiveMode) {
     case "merge_reference":
-      return computeEffectiveValue(referenceValue, draftValue);
+      return computeEffectiveValue(
+        computeEffectiveValue(model.schemaDefaultValue, referenceValue),
+        draftValue
+      );
     case "routing_preset_catalog":
       return computeRoutingPresetCatalogEffectiveValue(referenceValue, draftValue);
     case "draft_only":

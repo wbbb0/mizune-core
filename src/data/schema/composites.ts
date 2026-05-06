@@ -1,7 +1,20 @@
 import { BaseSchema } from "./base.ts";
 import { cloneDefault, compactObject, isPlainObject, makeIssue } from "./helpers.ts";
 import { BooleanSchema, EnumSchema, LiteralSchema, NumberSchema, StringSchema } from "./primitives.ts";
-import { ConfigParseError, type Infer, type InferShape, type ParseContext, type SchemaMeta, type SchemaTemplate, type Shape, type UnknownKeysPolicy } from "./types.ts";
+import {
+  ConfigParseError,
+  type FieldOptions,
+  type FieldSpec,
+  type Infer,
+  type InferShape,
+  type ObjectFieldMeta,
+  type ParseContext,
+  type SchemaMeta,
+  type SchemaTemplate,
+  type Shape,
+  type ShapeEntry,
+  type UnknownKeysPolicy
+} from "./types.ts";
 
 export class ArraySchema<TItem> extends BaseSchema<TItem[]> {
   private _minItems: number | undefined;
@@ -150,7 +163,8 @@ export class ObjectSchema<TShape extends Shape> extends BaseSchema<InferShape<TS
     const source = input as Record<string, unknown>;
     const result: Record<string, unknown> = {};
 
-    for (const [key, schema] of Object.entries(this.shape)) {
+    for (const [key, entry] of Object.entries(this.shape) as Array<[string, ShapeEntry]>) {
+      const schema = resolveShapeEntrySchema(entry);
       const parsed = schema.parse(source[key], {
         path: [...ctx.path, key],
       });
@@ -180,9 +194,9 @@ export class ObjectSchema<TShape extends Shape> extends BaseSchema<InferShape<TS
   }
 
   public toMeta(): SchemaMeta {
-    const fields: Record<string, SchemaMeta> = {};
-    for (const [key, schema] of Object.entries(this.shape)) {
-      fields[key] = schema.toMeta();
+    const fields: Record<string, ObjectFieldMeta> = {};
+    for (const [key, entry] of Object.entries(this.shape) as Array<[string, ShapeEntry]>) {
+      fields[key] = getShapeEntryMeta(entry);
     }
 
     return compactObject({
@@ -255,10 +269,11 @@ export class DiscriminatedUnionSchema<
 
     const discriminant = input[this.key];
     const matched = this.options.find((option) => {
-      const field = option.getShape()[this.key];
-      if (!field) {
+      const entry = option.getShape()[this.key];
+      if (!entry) {
         return false;
       }
+      const field = resolveShapeEntrySchema(entry);
       try {
         field.parse(discriminant, {
           path: [...ctx.path, this.key],
@@ -289,7 +304,8 @@ export class DiscriminatedUnionSchema<
       defaultValue: this._defaultValue !== undefined ? this.resolveDefault() : undefined,
       options: this.options.map((option) => {
         const meta = option.toMeta();
-        const discriminantMeta = option.getShape()[this.key]?.toMeta();
+        const discriminantEntry = option.getShape()[this.key];
+        const discriminantMeta = discriminantEntry ? resolveShapeEntrySchema(discriminantEntry).toMeta() : undefined;
         const inferredTitle = getSchemaMetaDisplayLabel(discriminantMeta);
         if (!inferredTitle || meta.title) {
           return meta;
@@ -311,6 +327,35 @@ function getSchemaMetaDisplayLabel(meta: SchemaMeta | undefined): string | undef
     return String(meta.values[0]);
   }
   return undefined;
+}
+
+function isFieldSpec(entry: ShapeEntry): entry is FieldSpec<BaseSchema<any>> {
+  return typeof entry === "object"
+    && entry !== null
+    && "__schemaField" in entry
+    && (entry as { __schemaField?: unknown }).__schemaField === true;
+}
+
+export function resolveShapeEntrySchema(entry: ShapeEntry): BaseSchema<any> {
+  return isFieldSpec(entry) ? entry.schema : entry;
+}
+
+function getShapeEntryMeta(entry: ShapeEntry): ObjectFieldMeta {
+  const schema = resolveShapeEntrySchema(entry);
+  const schemaMeta = schema.toMeta();
+  if (!isFieldSpec(entry)) {
+    return compactObject({
+      title: schemaMeta.title,
+      description: schemaMeta.description,
+      schema: schemaMeta,
+    }) as ObjectFieldMeta;
+  }
+
+  return compactObject({
+    title: entry.title ?? schemaMeta.title,
+    description: entry.description ?? schemaMeta.description,
+    schema: schemaMeta,
+  }) as ObjectFieldMeta;
 }
 
 export const s = {
@@ -353,6 +398,15 @@ export const s = {
     return new ObjectSchema(shape);
   },
 
+  field<TSchema extends BaseSchema<any>>(schema: TSchema, options: FieldOptions): FieldSpec<TSchema> {
+    return compactObject({
+      __schemaField: true,
+      schema,
+      title: options.title,
+      description: options.description,
+    }) as FieldSpec<TSchema>;
+  },
+
   union<TOptions extends readonly BaseSchema<any>[]>(options: TOptions): UnionSchema<TOptions> {
     return new UnionSchema(options);
   },
@@ -380,7 +434,8 @@ function buildSchemaTemplate(schema: BaseSchema<any>): unknown {
 
   if (schema instanceof ObjectSchema) {
     const result: Record<string, unknown> = {};
-    for (const [key, childSchema] of Object.entries(schema.getShape()) as Array<[string, BaseSchema<any>]>) {
+    for (const [key, entry] of Object.entries(schema.getShape()) as Array<[string, ShapeEntry]>) {
+      const childSchema = resolveShapeEntrySchema(entry);
       const childValue = buildSchemaTemplate(childSchema);
       if (childValue !== undefined) {
         result[key] = childValue;
@@ -402,7 +457,8 @@ function buildSchemaTemplate(schema: BaseSchema<any>): unknown {
     const firstOption = meta.kind === "union" ? meta.options[0] : undefined;
     if (firstOption?.kind === "object") {
       const result: Record<string, unknown> = {};
-      for (const [key, childMeta] of Object.entries(firstOption.fields)) {
+      for (const [key, fieldMeta] of Object.entries(firstOption.fields)) {
+        const childMeta = fieldMeta.schema;
         if (childMeta.hasDefault) {
           result[key] = cloneDefault(childMeta.defaultValue);
         } else if (childMeta.kind === "array") {

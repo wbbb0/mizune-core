@@ -105,8 +105,20 @@ const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
     enabled: false,
     defaultTimeoutMs: 1000,
     maxTimeoutMs: 5000,
+    idleTimeoutMs: 1200,
     maxOutputChars: 4000,
     sessionTtlMs: null,
+    cwd: {
+      defaultRoot: "localFiles.root",
+      allowedRoots: ["localFiles.root", "/tmp"],
+      allowAbsoluteOutsideRoots: false
+    },
+    commandPolicy: {
+      mode: "deny_known_dangerous",
+      denyPrefixes: ["rm -rf /", "mkfs", "dd if="],
+      denyStandalone: ["vim", "vi", "nano", "emacs", "less", "more", "tail -f", "nohup"],
+      warnPatterns: []
+    },
     terminalEvents: {
       enabled: true,
       inputDetectionDebounceMs: 800,

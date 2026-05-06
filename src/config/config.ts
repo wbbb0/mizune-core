@@ -16,8 +16,9 @@ import {
 } from "#config/configModel.ts";
 import { deepMergeAllReplaceArrays, parseConfig } from "#data/schema/index.ts";
 import type { BaseSchema } from "#data/schema/base.ts";
-import { ObjectSchema } from "#data/schema/composites.ts";
+import { ObjectSchema, resolveShapeEntrySchema } from "#data/schema/composites.ts";
 import { isPlainObject } from "#data/schema/helpers.ts";
+import type { ShapeEntry } from "#data/schema/types.ts";
 import {
   getValidatedRoutingPreset,
   normalizeRoutingPresetCatalog
@@ -219,12 +220,12 @@ function sanitizeSchemaObject(
   basePath: string[]
 ): Record<string, unknown> {
   const sanitized: Record<string, unknown> = {};
-  const shape = schema.getShape() as Record<string, BaseSchema<unknown>>;
+  const shape = schema.getShape() as Record<string, ShapeEntry>;
 
   for (const [key, value] of Object.entries(layer)) {
-    const fieldSchema = shape[key];
+    const fieldEntry = shape[key];
     const fieldPath = [...basePath, key];
-    if (!fieldSchema) {
+    if (!fieldEntry) {
       process.emitWarning(
         `Ignoring unknown config key ${fieldPath.join(".")} from ${sourcePath}`,
         "ConfigLoadWarning"
@@ -232,6 +233,7 @@ function sanitizeSchemaObject(
       continue;
     }
 
+    const fieldSchema = resolveShapeEntrySchema(fieldEntry);
     const sanitizedValue = sanitizeSchemaValue(fieldSchema, value, sourcePath, fieldPath);
     if (sanitizedValue !== undefined) {
       sanitized[key] = sanitizedValue;

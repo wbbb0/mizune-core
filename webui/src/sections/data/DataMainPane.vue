@@ -98,6 +98,7 @@ const {
           :node="model.uiTree"
           :model-value="draftValue"
           :inherited="referenceValue"
+          :default-value="model.schemaDefaultValue"
           :stored-value="storedDraftValue"
           :effective-value="effectiveValue"
           :editor-features="model.editorFeatures"

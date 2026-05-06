@@ -1,10 +1,8 @@
 import { spawn } from "node:child_process";
 import { execFile } from "node:child_process";
-import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { spawn as spawnPty } from "node-pty";
 import type { Logger } from "pino";
-import type { AppConfig } from "#config/config.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -15,12 +13,6 @@ export interface SpawnedShellIo {
   onOutput: (listener: (chunk: string) => void) => void;
   onError: (listener: (error: Error) => void) => void;
   onClose: (listener: (exitCode: number | null, signal: string | null) => void) => void;
-}
-
-export function resolveAllowedShellCwd(config: AppConfig, input: string | undefined, label = "cwd"): string {
-  const configuredRoot = String(config.localFiles.root ?? "").trim();
-  const defaultRoot = resolve(!configuredRoot || configuredRoot === "data" ? config.dataDir : configuredRoot);
-  return resolve(input?.trim() || defaultRoot);
 }
 
 export function getDefaultShell(shell?: string): string {

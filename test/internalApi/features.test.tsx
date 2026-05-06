@@ -18,31 +18,33 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(schemaMeta.fields.llm.title, "LLM");
       assert.equal(schemaMeta.fields.conversation.title, "会话");
       assert.equal(
-        schemaMeta.fields.conversation.fields.historyCompression.description,
+        schemaMeta.fields.conversation.schema.fields.historyCompression.description,
         "控制会话历史在过长时如何压缩。"
       );
 
       const providerCatalogMeta = exportSchemaMeta(llmProviderCatalogSchema) as any;
       assert.equal(providerCatalogMeta.kind, "record");
-      assert.equal(providerCatalogMeta.value.fields.features.fields.thinking.title, "思考");
-      assert.equal(providerCatalogMeta.value.fields.features.fields.search.title, "搜索");
+      assert.equal(providerCatalogMeta.value.fields.features.schema.fields.thinking.title, "思考");
+      assert.equal(providerCatalogMeta.value.fields.features.schema.fields.search.title, "搜索");
 
       const fileSchemaMeta = exportSchemaMeta(fileConfigSchema) as any;
       assert.equal(fileSchemaMeta.kind, "object");
-      assert.equal(fileSchemaMeta.fields.comfy.fields.aspectRatios.value.title, "宽高比");
-      assert.equal(fileSchemaMeta.fields.comfy.fields.aspectRatios.value.fields.width.title, "宽度");
-      assert.equal(fileSchemaMeta.fields.comfy.fields.aspectRatios.value.fields.height.title, "高度");
-      assert.equal(fileSchemaMeta.fields.comfy.fields.templates.item.fields.parameterBindings.title, "参数绑定");
+      assert.equal(fileSchemaMeta.fields.proxy.schema.fields.http.title, "HTTP 代理");
+      assert.equal(fileSchemaMeta.fields.proxy.schema.fields.https.title, "HTTPS 代理");
+      assert.equal(fileSchemaMeta.fields.comfy.schema.fields.aspectRatios.schema.value.title, "宽高比");
+      assert.equal(fileSchemaMeta.fields.comfy.schema.fields.aspectRatios.schema.value.fields.width.title, "宽度");
+      assert.equal(fileSchemaMeta.fields.comfy.schema.fields.aspectRatios.schema.value.fields.height.title, "高度");
+      assert.equal(fileSchemaMeta.fields.comfy.schema.fields.templates.schema.item.fields.parameterBindings.title, "参数绑定");
       assert.equal(
-        fileSchemaMeta.fields.comfy.fields.templates.item.fields.parameterBindings.fields.positivePromptPath.title,
+        fileSchemaMeta.fields.comfy.schema.fields.templates.schema.item.fields.parameterBindings.schema.fields.positivePromptPath.title,
         "正向提示词路径"
       );
       assert.equal(
-        fileSchemaMeta.fields.comfy.fields.templates.item.fields.parameterBindings.fields.widthPath.title,
+        fileSchemaMeta.fields.comfy.schema.fields.templates.schema.item.fields.parameterBindings.schema.fields.widthPath.title,
         "宽度路径"
       );
       assert.equal(
-        fileSchemaMeta.fields.comfy.fields.templates.item.fields.parameterBindings.fields.heightPath.title,
+        fileSchemaMeta.fields.comfy.schema.fields.templates.schema.item.fields.parameterBindings.schema.fields.heightPath.title,
         "高度路径"
       );
     } finally {
@@ -346,11 +348,18 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         url: "/api/editors/config"
       });
       assert.equal(editorResponse.statusCode, 200);
-      assert.equal(editorResponse.json().editor.referenceValue.appName, "global-app");
-      assert.equal(editorResponse.json().editor.currentValue.appName, undefined);
-      assert.equal(editorResponse.json().editor.effectiveValue.appName, "global-app");
-      assert.equal(editorResponse.json().editor.editorFeatures.unsetMode, "reference");
-      assert.equal(editorResponse.json().editor.editorFeatures.unsetActionLabel, "恢复继承");
+      const editor = editorResponse.json().editor;
+      assert.equal(editor.referenceValue.appName, "global-app");
+      assert.equal(editor.referenceValue.scheduler, undefined);
+      assert.equal(editor.schemaDefaultValue.scheduler.defaultTimezone, "Asia/Shanghai");
+      assert.equal(editor.schemaDefaultValue.shell.terminalEvents.enabled, true);
+      assert.equal(editor.schemaDefaultValue.shell.terminalEvents.inputDetectionDebounceMs, 800);
+      assert.equal(editor.currentValue.appName, undefined);
+      assert.equal(editor.effectiveValue.appName, "global-app");
+      assert.equal(editor.effectiveValue.scheduler.defaultTimezone, "Asia/Shanghai");
+      assert.equal(editor.effectiveValue.shell.terminalEvents.inputPromptCooldownMs, 30000);
+      assert.equal(editor.editorFeatures.unsetMode, "reference");
+      assert.equal(editor.editorFeatures.unsetActionLabel, "恢复继承");
 
       const validateResponse = await app.inject({
         method: "POST",
@@ -451,12 +460,12 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         groupMembershipResponse.json().editor.schemaMeta.fields.groups.description,
         "按群 ID 缓存成员校验结果。"
       );
-      assert.equal(groupMembershipResponse.json().editor.schemaMeta.fields.groups.value.title, "成员列表");
+      assert.equal(groupMembershipResponse.json().editor.schemaMeta.fields.groups.schema.value.title, "成员列表");
       assert.equal(
-        groupMembershipResponse.json().editor.schemaMeta.fields.groups.value.description,
+        groupMembershipResponse.json().editor.schemaMeta.fields.groups.schema.value.description,
         "按用户 ID 缓存成员校验结果。"
       );
-      assert.equal(groupMembershipResponse.json().editor.schemaMeta.fields.groups.value.value.title, "成员记录");
+      assert.equal(groupMembershipResponse.json().editor.schemaMeta.fields.groups.schema.value.value.title, "成员记录");
 
       assert.equal(globalRulesResponse.statusCode, 200);
       assert.equal(globalRulesResponse.json().editor.kind, "single");

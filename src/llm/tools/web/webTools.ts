@@ -1,5 +1,12 @@
 import type { ToolDescriptor } from "../core/shared.ts";
-import { browserPagePolicy, keepRawUnlessLargePolicy, searchResultPolicy } from "../core/resultObservationPresets.ts";
+import {
+  browserDownloadPolicy,
+  browserPagePolicy,
+  browserProfilePolicy,
+  browserScreenshotPolicy,
+  keepRawUnlessLargePolicy,
+  searchResultPolicy
+} from "../core/resultObservationPresets.ts";
 export { webToolHandlers } from "./webToolHandlers.ts";
 
 const isGoogleSearchToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.search.googleGrounding.enabled;
@@ -189,7 +196,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
       }
     },
     isEnabled: isBrowserToolEnabled,
-    resultObservation: browserPagePolicy()
+    resultObservation: browserScreenshotPolicy()
   },
   {
     definition: {
@@ -214,7 +221,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
       }
     },
     isEnabled: isBrowserToolEnabled,
-    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
+    resultObservation: browserDownloadPolicy()
   },
   {
     definition: {
@@ -230,7 +237,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
       }
     },
     isEnabled: isBrowserToolEnabled,
-    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
+    resultObservation: browserProfilePolicy()
   },
   {
     definition: {
@@ -249,7 +256,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
       }
     },
     isEnabled: isBrowserToolEnabled,
-    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
+    resultObservation: browserProfilePolicy()
   },
   {
     definition: {
@@ -268,7 +275,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
       }
     },
     isEnabled: isBrowserToolEnabled,
-    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
+    resultObservation: browserProfilePolicy()
   },
   {
     definition: {
@@ -287,6 +294,6 @@ export const webToolDescriptors: ToolDescriptor[] = [
       }
     },
     isEnabled: isBrowserToolEnabled,
-    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
+    resultObservation: browserProfilePolicy()
   }
 ];

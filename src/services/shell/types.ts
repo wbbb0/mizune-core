@@ -73,9 +73,29 @@ export interface ShellRunParams {
 export interface ShellRunResult {
   output: string;
   resourceId?: string;
-  status: "completed" | "running";
+  resource_id?: string;
+  status: "completed" | "running" | "rejected";
   exitCode?: number | null;
+  exit_code?: number | null;
   signal?: string | null;
+  command?: string;
+  cwd?: string;
+  effectiveTimeoutMs?: number;
+  effective_timeout_ms?: number;
+  outputTruncated?: boolean;
+  output_truncated?: boolean;
+  policy?: {
+    decision: "allow" | "deny";
+    reason: string | null;
+    warnings: string[];
+  };
+}
+
+export interface ShellInteractionResult {
+  output: string;
+  outputTruncated: boolean;
+  output_truncated: boolean;
+  session: ShellSession;
 }
 
 export type ShellRuntimeEvent =

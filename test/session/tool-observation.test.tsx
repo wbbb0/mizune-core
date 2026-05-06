@@ -10,8 +10,16 @@ import {
   toolObservationToDerivedObservation
 } from "../../src/llm/derivations/derivedObservation.ts";
 import {
+  browserDownloadPolicy,
+  browserPagePolicy,
+  browserScreenshotPolicy,
+  chatFileListPolicy,
   debugDumpPolicy,
-  localFileListPolicy
+  fileSendPolicy,
+  localFileListPolicy,
+  localFileMutationPolicy,
+  localFileSearchPolicy,
+  terminalPolicy
 } from "../../src/llm/tools/core/resultObservationPresets.ts";
 import type { ToolResultObservationPolicy } from "../../src/llm/tools/core/resultObservation.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
@@ -49,10 +57,10 @@ test("local_file_read observation keeps raw content out of replay and preserves 
   assert.match(observation.replayContent, /start_line=1 end_line=180/);
 });
 
-test("local_file_ls policy keeps small results raw and compacts large directory listings", () => {
+test("local_file_ls policy summarizes small and large directory listings", () => {
   const smallRaw = JSON.stringify({
     path: "src",
-    items: [{ name: "index.ts", kind: "file" }]
+    items: [{ path: "src/index.ts", name: "index.ts", kind: "file", sizeBytes: 10 }]
   });
   const small = buildToolObservation({
     toolName: "local_file_ls",
@@ -61,8 +69,26 @@ test("local_file_ls policy keeps small results raw and compacts large directory 
     args: { path: "src" },
     policy: localFileListPolicy()
   });
-  assert.equal(small.retention, "full");
-  assert.equal(small.replayContent, smallRaw);
+  assert.equal(small.retention, "summary");
+  assert.match(small.replayContent, /src\/index\.ts/);
+
+  const statRaw = JSON.stringify({
+    path: "src/index.ts",
+    name: "index.ts",
+    kind: "file",
+    sizeBytes: 10,
+    updatedAtMs: 123
+  });
+  const stat = buildToolObservation({
+    toolName: "local_file_ls",
+    toolCallId: "call_ls_file_stat",
+    content: statRaw,
+    args: { path: "src/index.ts" },
+    policy: localFileListPolicy()
+  });
+  assert.equal(stat.retention, "summary");
+  assert.match(stat.replayContent, /刷新文件元信息/);
+  assert.doesNotMatch(stat.replayContent, /完整目录列表/);
 
   const largeRaw = JSON.stringify({
     path: "src",
@@ -87,6 +113,163 @@ test("local_file_ls policy keeps small results raw and compacts large directory 
   assert.doesNotMatch(large.replayContent, /file-44/);
 });
 
+test("local file search and mutations replay compact operational summaries", () => {
+  const search = buildToolObservation({
+    toolName: "local_file_search",
+    toolCallId: "call_search_1",
+    content: JSON.stringify({
+      path: "src",
+      query: "needle",
+      matches: Array.from({ length: 20 }, (_, index) => ({
+        path: `src/file-${index}.ts`,
+        line: index + 1,
+        text: `needle match ${index}`
+      })),
+      truncated: true
+    }),
+    args: { query: "needle", path: "src", mode: "content" },
+    policy: localFileSearchPolicy()
+  });
+  assert.equal(search.retention, "summary");
+  assert.match(search.replayContent, /"mode":"content"/);
+  assert.match(search.replayContent, /src\/file-0\.ts/);
+  assert.doesNotMatch(search.replayContent, /src\/file-19\.ts/);
+
+  const mutation = buildToolObservation({
+    toolName: "local_file_patch",
+    toolCallId: "call_patch_1",
+    content: JSON.stringify({
+      path: "src/app.ts",
+      hunksApplied: 2,
+      updatedAtMs: 123
+    }),
+    args: { path: "src/app.ts" },
+    policy: localFileMutationPolicy()
+  });
+  assert.equal(mutation.retention, "summary");
+  assert.match(mutation.replayContent, /"hunksApplied":2/);
+  assert.match(mutation.replayContent, /local_file_read path=src\/app\.ts/);
+
+  const deleted = buildToolObservation({
+    toolName: "local_file_delete",
+    toolCallId: "call_delete_1",
+    content: JSON.stringify({
+      path: "tmp/old.txt",
+      deleted: true
+    }),
+    args: { path: "tmp/old.txt" },
+    policy: localFileMutationPolicy()
+  });
+  assert.equal(deleted.retention, "summary");
+  assert.equal(deleted.refetchable, false);
+  assert.doesNotMatch(deleted.replayContent, /local_file_read path=tmp\/old\.txt/);
+
+  const mkdir = buildToolObservation({
+    toolName: "local_file_mkdir",
+    toolCallId: "call_mkdir_1",
+    content: JSON.stringify({
+      path: "tmp/new-dir",
+      kind: "directory"
+    }),
+    args: { path: "tmp/new-dir" },
+    policy: localFileMutationPolicy()
+  });
+  assert.match(mkdir.summary, /创建目录 tmp\/new-dir/);
+  assert.doesNotMatch(mkdir.summary, /创建目录本地文件/);
+  assert.match(mkdir.replayContent, /local_file_ls path=tmp\/new-dir/);
+});
+
+test("chat file list and send policies keep stable handles without raw records", () => {
+  const longCaption = `${"caption ".repeat(200)}tail`;
+  const list = buildToolObservation({
+    toolName: "chat_file_list",
+    toolCallId: "call_chat_files",
+    content: JSON.stringify({
+      ok: true,
+      files: Array.from({ length: 20 }, (_, index) => ({
+        file_id: `file_${index}`,
+        file_ref: `img_${index}.png`,
+        kind: "image",
+        origin: "browser_download",
+        source_name: `image-${index}.png`,
+        mime_type: "image/png",
+        size_bytes: 100 + index,
+        caption_status: "ready",
+        caption: longCaption
+      })),
+      totalMatched: 40,
+      returned: 20,
+      truncated: true,
+      filters: { query: "image", kind: "image", origin: null, limit: 20 }
+    }),
+    args: { query: "image", kind: "image" },
+    policy: chatFileListPolicy()
+  });
+  assert.equal(list.retention, "summary");
+  assert.match(list.replayContent, /"totalMatched":40/);
+  assert.match(list.replayContent, /img_0\.png/);
+  assert.doesNotMatch(list.replayContent, /img_19\.png/);
+  assert.doesNotMatch(list.replayContent, /caption caption caption caption caption caption caption caption caption caption caption caption caption caption/);
+
+  const exact = buildToolObservation({
+    toolName: "chat_file_list",
+    toolCallId: "call_chat_file_exact",
+    content: JSON.stringify({
+      ok: true,
+      file: {
+        file_id: "file_exact",
+        file_ref: "img_exact.png",
+        kind: "image",
+        origin: "browser_download",
+        source_name: "exact.png",
+        mime_type: "image/png",
+        size_bytes: 100,
+        caption_status: "missing"
+      },
+      next_actions: []
+    }),
+    args: { file_ref: "img_exact.png" },
+    policy: chatFileListPolicy()
+  });
+  assert.match(exact.replayContent, /"fileCount":1/);
+  assert.match(exact.replayContent, /"totalMatched":1/);
+
+  const missing = buildToolObservation({
+    toolName: "chat_file_list",
+    toolCallId: "call_chat_file_missing",
+    content: JSON.stringify({
+      ok: false,
+      file: null
+    }),
+    args: { file_ref: "missing.png" },
+    policy: chatFileListPolicy()
+  });
+  assert.equal(missing.resource, undefined);
+  assert.equal(missing.refetchable, true);
+  assert.match(missing.replayContent, /"ok":false/);
+  assert.match(missing.replayContent, /未找到/);
+  assert.doesNotMatch(missing.replayContent, /刷新该文件记录/);
+
+  const send = buildToolObservation({
+    toolName: "chat_file_send_to_chat",
+    toolCallId: "call_send_file",
+    content: JSON.stringify({
+      ok: true,
+      file_ref: "img_0.png",
+      file_id: "file_0",
+      deliveredAs: "image",
+      queued: true
+    }),
+    args: { file_ref: "img_0.png" },
+    policy: fileSendPolicy()
+  });
+  assert.equal(send.retention, "summary");
+  assert.equal(send.preserveRecentRawCount, 0);
+  assert.equal(send.resource?.kind, "chat_file");
+  assert.equal(send.resource?.id, "img_0.png");
+  assert.match(send.replayContent, /chat_file_send_to_chat file_ref/);
+});
+
 test("debug dump observation hides literal bodies from replay and history summary", () => {
   const observation = buildToolObservation({
     toolName: "dump_debug_literals",
@@ -106,6 +289,220 @@ test("debug dump observation hides literal bodies from replay and history summar
   assert.equal(observation.preserveRecentRawCount, 0);
   assert.match(observation.replayContent, /full_system_prompt/);
   assert.doesNotMatch(observation.replayContent, /system prompt body/);
+});
+
+test("terminal policy compacts shell runtime results with continuation handles", () => {
+  const longOutput = `${"line\n".repeat(400)}TAIL-END`;
+  const observation = buildToolObservation({
+    toolName: "terminal_run",
+    toolCallId: "call_terminal_1",
+    content: JSON.stringify({
+      output: longOutput,
+      resource_id: "res_shell_1",
+      status: "running",
+      command: "npm run dev",
+      cwd: "/tmp/project",
+      output_truncated: true,
+      policy: {
+        decision: "allow",
+        reason: null,
+        warnings: ["command matched warning pattern: sudo"]
+      }
+    }),
+    args: { command: "npm run dev" },
+    policy: terminalPolicy()
+  });
+
+  assert.equal(observation.retention, "summary");
+  assert.equal(observation.resource?.kind, "shell_session");
+  assert.equal(observation.resource?.id, "res_shell_1");
+  assert.equal(observation.refetchable, true);
+  assert.match(observation.replayContent, /npm run dev/);
+  assert.match(observation.replayContent, /res_shell_1/);
+  assert.match(observation.replayContent, /outputTail/);
+  assert.match(observation.replayContent, /"outputTruncated":true/);
+  assert.doesNotMatch(observation.replayContent, /line\\nline\\nline\\nline\\nline\\nline\\nline\\nline\\nline\\nline/);
+});
+
+test("terminal and browser policies summarize small results so only recent replay keeps raw", () => {
+  const terminal = buildToolObservation({
+    toolName: "terminal_run",
+    toolCallId: "call_terminal_small",
+    content: JSON.stringify({
+      output: "ok\n",
+      status: "completed",
+      exitCode: 0,
+      command: "echo ok",
+      cwd: "/tmp"
+    }),
+    args: { command: "echo ok" },
+    policy: terminalPolicy()
+  });
+  assert.equal(terminal.retention, "summary");
+  assert.match(terminal.replayContent, /echo ok/);
+
+  const browser = buildToolObservation({
+    toolName: "open_page",
+    toolCallId: "call_browser_small",
+    content: JSON.stringify({
+      ok: true,
+      resource_id: "res_browser_small",
+      title: "Tiny",
+      resolvedUrl: "https://example.com",
+      lines: ["L1 Tiny page"],
+      elements: [{ id: 1, role: "link", name: "Home", action: "click" }]
+    }),
+    args: { url: "https://example.com" },
+    policy: browserPagePolicy()
+  });
+  assert.equal(browser.retention, "summary");
+  assert.match(browser.replayContent, /Home/);
+});
+
+test("terminal policy summarizes nested session status and pins non-zero nested exit codes", () => {
+  const observation = buildToolObservation({
+    toolName: "terminal_read",
+    toolCallId: "call_terminal_nested",
+    content: JSON.stringify({
+      output: "failed\n",
+      output_truncated: true,
+      session: {
+        id: "res_shell_nested",
+        status: "closed",
+        command: "npm test",
+        cwd: "/tmp/project",
+        exitCode: 1,
+        signal: null
+      }
+    }),
+    args: { resource_id: "res_shell_nested" },
+    policy: terminalPolicy()
+  });
+
+  assert.equal(observation.retention, "summary");
+  assert.equal(observation.pinned, true);
+  assert.match(observation.replayContent, /npm test/);
+  assert.match(observation.replayContent, /"status":"closed"/);
+  assert.match(observation.replayContent, /"exitCode":1/);
+  assert.match(observation.replayContent, /"outputTruncated":true/);
+});
+
+test("terminal policy uses error summaries and only refetches running sessions", () => {
+  const errorObservation = buildToolObservation({
+    toolName: "terminal_read",
+    toolCallId: "call_terminal_error",
+    content: JSON.stringify({
+      error: "Session res_shell_missing not found"
+    }),
+    args: { resource_id: "res_shell_missing" },
+    policy: terminalPolicy()
+  });
+  assert.equal(errorObservation.retention, "summary");
+  assert.equal(errorObservation.pinned, true);
+  assert.match(errorObservation.replayContent, /返回错误/);
+
+  const closedObservation = buildToolObservation({
+    toolName: "terminal_read",
+    toolCallId: "call_terminal_closed",
+    content: JSON.stringify({
+      output: "",
+      session: {
+        id: "res_shell_closed",
+        status: "closed",
+        exitCode: 0
+      }
+    }),
+    args: { resource_id: "res_shell_closed" },
+    policy: terminalPolicy()
+  });
+  assert.equal(closedObservation.resource?.id, "res_shell_closed");
+  assert.equal(closedObservation.refetchable, false);
+  assert.doesNotMatch(closedObservation.replayContent, /terminal_read resource_id=res_shell_closed/);
+});
+
+test("browser page policy compacts snapshots with line and element samples", () => {
+  const observation = buildToolObservation({
+    toolName: "interact_with_page",
+    toolCallId: "call_browser_1",
+    content: JSON.stringify({
+      ok: true,
+      resource_id: "res_browser_1",
+      action: "click",
+      message: "已命中元素 #1。",
+      snapshot: {
+        resource_id: "res_browser_1",
+        title: "Docs",
+        resolvedUrl: "https://example.com/docs",
+        revision: 3,
+        lineStart: 1,
+        lineEnd: 40,
+        truncated: true,
+        lines: Array.from({ length: 50 }, (_, index) => `L${index + 1} docs line ${index + 1}`),
+        elements: Array.from({ length: 30 }, (_, index) => ({
+          id: index + 1,
+          role: "button",
+          name: `Button ${index + 1}`,
+          action: "click"
+        }))
+      }
+    }),
+    args: { resource_id: "res_browser_1", action: "click" },
+    policy: browserPagePolicy()
+  });
+
+  assert.equal(observation.retention, "summary");
+  assert.equal(observation.resource?.kind, "browser_page");
+  assert.equal(observation.resource?.id, "res_browser_1");
+  assert.equal(observation.resource?.locator, "L1-L40");
+  assert.equal(observation.resource?.version, "https://example.com/docs");
+  assert.match(observation.replayContent, /Button 1/);
+  assert.match(observation.replayContent, /lineWindow/);
+  assert.match(observation.replayContent, /"truncated":true/);
+  assert.doesNotMatch(observation.replayContent, /Button 30/);
+});
+
+test("browser screenshot and download policies replay stable file handles only", () => {
+  const screenshot = buildToolObservation({
+    toolName: "capture_screenshot",
+    toolCallId: "call_screenshot_1",
+    content: JSON.stringify({
+      ok: true,
+      resource_id: "res_browser_1",
+      fileId: "file_screenshot_1",
+      fileRef: "chat:file_screenshot_1",
+      mode: "page",
+      mimeType: "image/png",
+      sizeBytes: 1234
+    }),
+    args: { resource_id: "res_browser_1" },
+    policy: browserScreenshotPolicy()
+  });
+  assert.equal(screenshot.preserveRecentRawCount, 0);
+  assert.equal(screenshot.resource?.kind, "chat_file");
+  assert.equal(screenshot.resource?.id, "file_screenshot_1");
+  assert.match(screenshot.replayContent, /file_screenshot_1/);
+
+  const download = buildToolObservation({
+    toolName: "download_asset",
+    toolCallId: "call_download_1",
+    content: JSON.stringify({
+      ok: true,
+      file_id: "file_download_1",
+      file_ref: "chat:file_download_1",
+      kind: "image",
+      source_url: "https://example.com/image.png",
+      resource_id: "res_browser_1",
+      mime_type: "image/png",
+      size_bytes: 4321
+    }),
+    args: { resource_id: "res_browser_1" },
+    policy: browserDownloadPolicy()
+  });
+  assert.equal(download.preserveRecentRawCount, 0);
+  assert.equal(download.resource?.kind, "chat_file");
+  assert.equal(download.resource?.id, "file_download_1");
+  assert.match(download.replayContent, /sourceUrl/);
+  assert.match(download.replayContent, /chat_file_send_to_chat/);
 });
 
 test("policy failures produce safe compacted observations without raw replay", () => {

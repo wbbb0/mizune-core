@@ -51,17 +51,19 @@ const onebotConfigSchema = s.object({
   historyBackfill: onebotHistoryBackfillConfigSchema
 }).title("OneBot").describe("配置 OneBot 连接方式与消息发送行为。").default(emptyObject);
 
-const proxyDetailSchema = s.object({
-  type: s.enum(["http", "https", "socks5"] as const).title("类型"),
-  host: s.string().trim().nonempty().title("主机"),
-  port: s.number().int().positive().title("端口"),
-  username: s.string().trim().nonempty().title("用户名").optional(),
-  password: s.string().trim().nonempty().title("密码").optional()
-}).title("代理");
+function createProxyDetailSchema() {
+  return s.object({
+    type: s.enum(["http", "https", "socks5"] as const).title("类型"),
+    host: s.string().trim().nonempty().title("主机"),
+    port: s.number().int().positive().title("端口"),
+    username: s.string().trim().nonempty().title("用户名").optional(),
+    password: s.string().trim().nonempty().title("密码").optional()
+  }).title("代理");
+}
 
 const proxyConfigSchema = s.object({
-  http: proxyDetailSchema.optional(),
-  https: proxyDetailSchema.optional()
+  http: s.field(createProxyDetailSchema().optional(), { title: "HTTP 代理" }),
+  https: s.field(createProxyDetailSchema().optional(), { title: "HTTPS 代理" })
 }).title("代理").describe("为支持代理的外部请求配置 HTTP 或 HTTPS 代理。").default(emptyObject);
 
 const llmTurnPlannerConfigSchema = s.object({
@@ -105,14 +107,14 @@ const llmMainRoutingConfigSchema = s.object({
 }).title("主路由").describe("在主回复链路中选择不同规模的模型。").default(emptyObject);
 
 const llmProviderFeatureFlagSchema = s.object({
-  type: s.literal("flag"),
-  path: s.string().trim().nonempty()
-}).strict();
+  type: s.literal("flag").title("类型"),
+  path: s.string().trim().nonempty().title("响应路径").describe("从 provider 响应中读取能力开关的字段路径。")
+}).title("响应标记能力").strict();
 
 const llmProviderFeatureBuiltinToolSchema = s.object({
-  type: s.literal("builtin_tool"),
-  tool: s.object({}).passthrough()
-}).strict();
+  type: s.literal("builtin_tool").title("类型"),
+  tool: s.object({}).passthrough().title("工具定义")
+}).title("内置工具能力").strict();
 
 const createLlmProviderFeatureSchema = () => s.union([
   llmProviderFeatureFlagSchema,
@@ -251,12 +253,41 @@ const shellTerminalEventsConfigSchema = s.object({
   detectionTailMaxChars: s.number().int().positive().title("输入检测最大尾部字符数").default(8000)
 }).title("Terminal 事件").describe("控制后台 terminal 完成和等待输入事件。").default(emptyObject);
 
+const shellCwdConfigSchema = s.object({
+  defaultRoot: s.string().trim().nonempty().title("默认工作目录根").default("localFiles.root"),
+  allowedRoots: s.array(s.string().trim().nonempty()).title("允许工作目录根").default(["localFiles.root"]),
+  allowAbsoluteOutsideRoots: s.boolean().title("允许绝对路径越过根目录").default(false)
+}).title("Shell 工作目录").describe("限制 shell 命令可用 cwd 范围。").default(emptyObject);
+
+const shellCommandPolicyConfigSchema = s.object({
+  mode: s.enum(["deny_known_dangerous"]).title("策略模式").default("deny_known_dangerous"),
+  denyPrefixes: s.array(s.string().trim().nonempty()).title("拒绝命令前缀").default([
+    "rm -rf /",
+    "mkfs",
+    "dd if="
+  ]),
+  denyStandalone: s.array(s.string().trim().nonempty()).title("拒绝交互命令").default([
+    "vim",
+    "vi",
+    "nano",
+    "emacs",
+    "less",
+    "more",
+    "tail -f",
+    "nohup"
+  ]),
+  warnPatterns: s.array(s.string().trim().nonempty()).title("警告匹配片段").default([])
+}).title("Shell 命令策略").describe("拒绝或标记高风险 shell 命令。").default(emptyObject);
+
 const shellConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(false),
   defaultTimeoutMs: s.number().int().positive().title("默认超时毫秒").default(15000),
   maxTimeoutMs: s.number().int().positive().title("最大超时毫秒").default(600000),
+  idleTimeoutMs: s.number().int().positive().title("输出静默返回毫秒").default(1200),
   maxOutputChars: s.number().int().positive().title("最大输出字符数").default(12000),
   sessionTtlMs: s.union([s.number().int().positive(), s.literal(null)]).title("会话存活毫秒").default(null),
+  cwd: shellCwdConfigSchema,
+  commandPolicy: shellCommandPolicyConfigSchema,
   terminalEvents: shellTerminalEventsConfigSchema
 }).title("Shell").describe("控制 shell 工具的超时、输出与会话保活。").default(emptyObject);
 
@@ -410,10 +441,10 @@ const contentSafetyRuleConfigSchema = s.object({
 }).title("内容安全规则").default(emptyObject);
 
 const contentSafetyProfileConfigSchema = s.object({
-  text: contentSafetyRuleConfigSchema,
-  image: contentSafetyRuleConfigSchema,
-  emoji: contentSafetyRuleConfigSchema,
-  audio: contentSafetyRuleConfigSchema,
+  text: s.field(contentSafetyRuleConfigSchema, { title: "文本规则" }),
+  image: s.field(contentSafetyRuleConfigSchema, { title: "图片规则" }),
+  emoji: s.field(contentSafetyRuleConfigSchema, { title: "表情规则" }),
+  audio: s.field(contentSafetyRuleConfigSchema, { title: "音频规则" }),
   unsupportedFilePolicy: s.enum(["allow", "mark", "block"] as const).title("不支持文件策略").default("mark")
 }).title("内容安全 Profile").default(emptyObject);
 
