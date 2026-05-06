@@ -118,6 +118,7 @@ context:
   retention:
     maxUserSearchChunks: 500
     maxSearchChunkAgeDays: 90
+    sessionFactRetentionDays: 14
     summaryAfterDays: 30
     deletedRetentionDays: 14
     maintenanceIntervalMs: 3600000

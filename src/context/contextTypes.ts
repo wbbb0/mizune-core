@@ -1,5 +1,5 @@
 export type ContextScope = "session" | "user" | "global" | "toolset" | "mode";
-export type ContextSourceType = "chunk" | "summary" | "fact" | "rule";
+export type ContextSourceType = "episode" | "chunk" | "summary" | "fact" | "rule";
 export type ContextRetrievalPolicy = "always" | "search" | "never";
 export type ContextItemStatus = "active" | "archived" | "deleted" | "superseded";
 export type ContextSensitivity = "normal" | "private" | "secret";
@@ -56,6 +56,7 @@ export interface ContextSearchDocument {
   sessionId?: string;
   title?: string;
   text: string;
+  embeddingTextHash: string;
   updatedAt: number;
   lastRetrievedAt?: number;
 }

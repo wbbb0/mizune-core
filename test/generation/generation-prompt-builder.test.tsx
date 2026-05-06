@@ -1828,3 +1828,68 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
 
     assert.match(JSON.stringify(result.promptMessages.at(-1)?.content ?? ""), /这条消息仍应正常构建 prompt/);
   });
+
+  test("chat prompt exposes session-scoped context from store without requiring semantic retrieval", async () => {
+    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+      contextStore: {
+        listUserFacts() {
+          return [];
+        },
+        listSessionFacts(sessionId: string) {
+          assert.equal(sessionId, "qqbot:p:10001");
+          return [{
+            id: "session_mem_1",
+            title: "会话用途",
+            content: "此会话专门用于记忆系统测试",
+            kind: "fact",
+            source: "inferred",
+            createdAt: 1,
+            updatedAt: 1,
+            importance: 4
+          }];
+        }
+      } as any,
+      contextRetrievalService: {
+        async retrieveUserContext() {
+          throw new Error("semantic retrieval should not be required for session context");
+        }
+      } as any
+    }));
+
+    const result = await builder.buildChatPromptMessages({
+      sessionId: "qqbot:p:10001",
+      interactionMode: "normal",
+      mainModelRef: ["main"],
+      visibleToolNames: [],
+      activeToolsets: [],
+      persona: { prompt: "" } as any,
+      relationship: "unknown",
+      participantProfiles: [],
+      currentUser: null,
+      historySummary: null,
+      historyForPrompt: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      batchMessages: [{
+        userId: "10001",
+        senderName: "Tester",
+        text: "继续",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: 200
+      }]
+    });
+
+    const system = String(result.promptMessages[0]?.content ?? "");
+    assert.match(system, /current_session_context/);
+    assert.match(system, /会话用途：此会话专门用于记忆系统测试/);
+  });

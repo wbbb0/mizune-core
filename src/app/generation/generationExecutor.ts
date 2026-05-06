@@ -726,8 +726,30 @@ export function createGenerationExecutor(
           "history_assistant_appended"
         );
         persistSession(sessionId, "assistant_response_finalized");
+        const targetUserIds = collectExtractionUserIds(input.batchMessages);
+        if (lifecycle.contextIngestionService && targetUserIds.length > 0) {
+          try {
+            lifecycle.contextIngestionService.ingestTurn({
+              sessionId,
+              chatType: sendTarget.chatType,
+              targetUserIds,
+              userMessages: input.batchMessages.map((message) => ({
+                userId: message.userId,
+                senderName: message.senderName,
+                text: message.text,
+                receivedAt: message.receivedAt
+              })),
+              assistantText: finalizedAssistant.text,
+              completedAt: Date.now()
+            });
+          } catch (error) {
+            logger.warn({
+              sessionId,
+              error: error instanceof Error ? error.message : String(error)
+            }, "context_ingestion_failed_open");
+          }
+        }
         if (input.currentUser?.userId && lifecycle.contextExtractionQueue) {
-          const targetUserIds = collectExtractionUserIds(input.batchMessages);
           try {
             for (const userId of targetUserIds) {
               lifecycle.contextExtractionQueue.enqueueTurn({

@@ -142,6 +142,7 @@ export interface PromptInput {
   npcProfiles: PromptNpcProfile[];
   participantProfiles: PromptParticipantProfile[];
   userProfile: PromptUserProfile;
+  currentSessionContext?: UserMemoryEntry[];
   currentUserMemories?: UserMemoryEntry[];
   retrievedUserContext?: ContextRetrievedItem[];
   globalRules?: GlobalRuleEntry[];
@@ -252,6 +253,7 @@ export interface InternalSessionTriggerPromptInput {
   npcProfiles: PromptInput["npcProfiles"];
   participantProfiles: PromptInput["participantProfiles"];
   userProfile: PromptInput["userProfile"];
+  currentSessionContext?: PromptInput["currentSessionContext"];
   currentUserMemories?: PromptInput["currentUserMemories"];
   retrievedUserContext?: PromptInput["retrievedUserContext"];
   globalRules?: PromptInput["globalRules"];

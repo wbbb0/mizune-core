@@ -11,7 +11,7 @@ export class ContextMaintenanceService {
     private readonly config: AppConfig,
     private readonly contextStore: Pick<
       ContextStore,
-      "listUserIdsWithSearchChunks" | "compactUserSearchChunks" | "sweepUserSearchChunks" | "sweepDeletedItems"
+      "listUserIdsWithSearchChunks" | "compactUserSearchChunks" | "sweepUserSearchChunks" | "sweepDeletedItems" | "sweepExpiredSessionFacts"
     >,
     private readonly contextRetrievalService: Pick<ContextRetrievalService, "rebuildUserIndexes">,
     private readonly logger: Logger
@@ -42,6 +42,7 @@ export class ContextMaintenanceService {
   async runOnce(reason: "startup" | "interval" | "manual" = "manual"): Promise<{
     compactedCount: number;
     sweptChunkCount: number;
+    sweptSessionFactCount: number;
     sweptDeletedCount: number;
     embeddedCount: number;
     indexedCount: number;
@@ -51,6 +52,7 @@ export class ContextMaintenanceService {
       return {
         compactedCount: 0,
         sweptChunkCount: 0,
+        sweptSessionFactCount: 0,
         sweptDeletedCount: 0,
         embeddedCount: 0,
         indexedCount: 0,
@@ -83,6 +85,7 @@ export class ContextMaintenanceService {
         deletedBeforeMs: retention.deletedRetentionDays * 24 * 60 * 60 * 1000,
         now
       });
+      const sweptSessionFacts = this.contextStore.sweepExpiredSessionFacts({ now });
       const rebuild = this.config.context.indexing.rebuildOnMaintenance
         ? await this.contextRetrievalService.rebuildUserIndexes({
             embeddingBatchSize: this.config.context.indexing.maintenanceEmbeddingBatchSize
@@ -96,12 +99,13 @@ export class ContextMaintenanceService {
       const result = {
         compactedCount,
         sweptChunkCount,
+        sweptSessionFactCount: sweptSessionFacts.deletedCount,
         sweptDeletedCount: sweptDeleted.deletedCount,
         embeddedCount: rebuild.embeddedCount,
         indexedCount: rebuild.indexedCount,
         skippedEmbeddingCount: rebuild.skippedCount
       };
-      if (compactedCount > 0 || sweptChunkCount > 0 || sweptDeleted.deletedCount > 0 || rebuild.embeddedCount > 0 || rebuild.indexedCount > 0 || rebuild.errors.length > 0) {
+      if (compactedCount > 0 || sweptChunkCount > 0 || sweptSessionFacts.deletedCount > 0 || sweptDeleted.deletedCount > 0 || rebuild.embeddedCount > 0 || rebuild.indexedCount > 0 || rebuild.errors.length > 0) {
         this.logger.info({ reason, ...result, errors: rebuild.errors }, "context_maintenance_completed");
       }
       return result;
@@ -113,6 +117,7 @@ export class ContextMaintenanceService {
       return {
         compactedCount: 0,
         sweptChunkCount: 0,
+        sweptSessionFactCount: 0,
         sweptDeletedCount: 0,
         embeddedCount: 0,
         indexedCount: 0,

@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
 import type BetterSqlite3 from "better-sqlite3";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
@@ -37,6 +38,7 @@ interface ContextItemRow {
   mode_id: string | null;
   title: string | null;
   text: string;
+  embedding_text_hash: string | null;
   kind: string | null;
   source: string | null;
   confidence: number | null;
@@ -54,6 +56,7 @@ interface ContextItemRow {
 }
 
 interface ContextItemFilterInput {
+  itemId?: string;
   userId?: string;
   scope?: string;
   sourceType?: string;
@@ -301,6 +304,92 @@ export class ContextStore {
       finalAction: diagnostics.finalAction,
       dedup,
       warning
+    };
+  }
+
+  listSessionFacts(sessionId: string): UserMemoryEntry[] {
+    if (!this.db) {
+      return [];
+    }
+    const now = Date.now();
+    const rows = this.db.prepare(`
+      SELECT *
+      FROM context_items
+      WHERE scope = 'session'
+        AND source_type = 'fact'
+        AND status = 'active'
+        AND session_id = ?
+        AND sensitivity != 'secret'
+        AND (valid_to IS NULL OR valid_to > ?)
+      ORDER BY updated_at DESC
+    `).all(sessionId, now) as ContextItemRow[];
+    return rows.map(rowToUserMemoryEntry);
+  }
+
+  upsertSessionFact(input: {
+    sessionId: string;
+    memoryId?: string;
+    title: string;
+    content: string;
+    kind?: UserMemoryEntry["kind"];
+    source?: UserMemoryEntry["source"];
+    importance?: number;
+    validTo?: number;
+    lastConfirmedAt?: number;
+  }): {
+    item: UserMemoryEntry;
+    action: "created" | "updated_existing";
+  } {
+    this.requireDb();
+    const existingFacts = this.listSessionFacts(input.sessionId);
+    if (input.memoryId && !existingFacts.some((item) => item.id === input.memoryId)) {
+      throw new Error(`Session memory ${input.memoryId} not found for session ${input.sessionId}`);
+    }
+    const exactTitleMatch = input.memoryId
+      ? null
+      : findSameSlotUserFact(input.title, existingFacts);
+    const targetId = input.memoryId || exactTitleMatch?.id;
+    const existingTarget = targetId
+      ? existingFacts.find((item) => item.id === targetId) ?? null
+      : null;
+    const nextMemory = createUserMemoryEntry({
+      ...(targetId ? { id: targetId } : {}),
+      ...(existingTarget ? { createdAt: existingTarget.createdAt } : {}),
+      title: input.title,
+      content: input.content,
+      ...(input.kind !== undefined ? { kind: input.kind } : {}),
+      ...(input.source !== undefined ? { source: input.source } : {}),
+      ...(input.importance !== undefined ? { importance: input.importance } : {})
+    });
+    this.upsertContextItem({
+      itemId: nextMemory.id,
+      scope: "session",
+      sourceType: "fact",
+      retrievalPolicy: "always",
+      status: "active",
+      sessionId: input.sessionId,
+      title: nextMemory.title,
+      text: nextMemory.content,
+      ...(nextMemory.kind !== undefined ? { kind: nextMemory.kind } : {}),
+      ...(nextMemory.source !== undefined ? { source: nextMemory.source } : {}),
+      ...(nextMemory.importance !== undefined ? { importance: nextMemory.importance } : {}),
+      sensitivity: "normal",
+      createdAt: nextMemory.createdAt,
+      updatedAt: nextMemory.updatedAt,
+      ...(input.validTo !== undefined ? { validTo: input.validTo } : {}),
+      ...(input.lastConfirmedAt !== undefined ? { lastConfirmedAt: input.lastConfirmedAt } : {}),
+      retrievedCount: 0,
+      ...(nextMemory.lastUsedAt !== undefined ? { lastRetrievedAt: nextMemory.lastUsedAt } : {})
+    });
+    const action = existingTarget ? "updated_existing" as const : "created" as const;
+    this.logger.info({
+      sessionId: input.sessionId,
+      memoryId: nextMemory.id,
+      action
+    }, "session_memory_upserted");
+    return {
+      item: nextMemory,
+      action
     };
   }
 
@@ -660,6 +749,8 @@ export class ContextStore {
       }
       fields.push("text = @text");
       params.text = text;
+      fields.push("embedding_text_hash = @embeddingTextHash");
+      params.embeddingTextHash = buildContextEmbeddingTextHash(text);
     }
     if (input.retrievalPolicy !== undefined) {
       fields.push("retrieval_policy = @retrievalPolicy");
@@ -709,6 +800,9 @@ export class ContextStore {
       WHERE item_id = @itemId
     `).run(params);
     if (result.changes > 0) {
+      if ("title" in input || input.text !== undefined) {
+        this.clearEmbeddings({ itemId: input.itemId });
+      }
       this.logger.info({ itemId: input.itemId }, "context_item_updated");
     }
     return {
@@ -803,6 +897,30 @@ export class ContextStore {
     `).run(cutoff);
     if (result.changes > 0) {
       this.logger.info({ deletedCount: result.changes, deletedBeforeMs: input.deletedBeforeMs }, "context_deleted_items_swept");
+    }
+    return { deletedCount: result.changes };
+  }
+
+  sweepExpiredSessionFacts(input: {
+    now?: number;
+  } = {}): {
+    deletedCount: number;
+  } {
+    if (!this.db) {
+      return { deletedCount: 0 };
+    }
+    const now = input.now ?? Date.now();
+    const result = this.db.prepare(`
+      DELETE FROM context_items
+      WHERE scope = 'session'
+        AND source_type = 'fact'
+        AND status = 'active'
+        AND pinned = 0
+        AND valid_to IS NOT NULL
+        AND valid_to <= ?
+    `).run(now);
+    if (result.changes > 0) {
+      this.logger.info({ deletedCount: result.changes }, "context_expired_session_facts_swept");
     }
     return { deletedCount: result.changes };
   }
@@ -991,6 +1109,37 @@ export class ContextStore {
     });
   }
 
+  upsertConversationEpisode(input: {
+    itemId: string;
+    userId: string;
+    sessionId: string;
+    title?: string;
+    text: string;
+    source?: string;
+    createdAt: number;
+    updatedAt: number;
+  }): void {
+    if (!this.db || !input.text.trim()) {
+      return;
+    }
+    this.upsertContextItem({
+      itemId: input.itemId,
+      scope: "user",
+      sourceType: "episode",
+      retrievalPolicy: "never",
+      status: "active",
+      userId: input.userId,
+      sessionId: input.sessionId,
+      ...(input.title ? { title: input.title } : {}),
+      text: input.text,
+      ...(input.source ? { source: input.source } : {}),
+      sensitivity: "normal",
+      createdAt: input.createdAt,
+      updatedAt: input.updatedAt,
+      retrievedCount: 0
+    });
+  }
+
   sweepUserSearchChunks(input: {
     userId: string;
     maxChunks: number;
@@ -1084,20 +1233,27 @@ export class ContextStore {
     return rows.map(rowToContextSearchDocument);
   }
 
-  getItemEmbeddings(itemIds: string[], embeddingProfileId: string): Map<string, number[]> {
+  getItemEmbeddings(
+    itemIds: string[],
+    embeddingProfileId: string,
+    expectedTextHashes?: Map<string, string>
+  ): Map<string, number[]> {
     if (!this.db || itemIds.length === 0) {
       return new Map();
     }
     const rows = this.db.prepare(`
-      SELECT item_id, vector
+      SELECT item_id, text_hash, vector
       FROM context_item_embeddings
       WHERE embedding_profile_id = ?
         AND item_id IN (${itemIds.map(() => "?").join(",")})
     `).all(embeddingProfileId, ...itemIds) as Array<{
       item_id: string;
+      text_hash: string;
       vector: Buffer;
     }>;
-    return new Map(rows.map((row) => [row.item_id, decodeVector(row.vector)]));
+    return new Map(rows
+      .filter((row) => !expectedTextHashes || expectedTextHashes.get(row.item_id) === row.text_hash)
+      .map((row) => [row.item_id, decodeVector(row.vector)]));
   }
 
   upsertEmbeddingProfile(profile: ContextEmbeddingProfile): void {
@@ -1129,23 +1285,26 @@ export class ContextStore {
   upsertItemEmbedding(input: {
     itemId: string;
     embeddingProfileId: string;
+    textHash: string;
     vector: number[];
   }): void {
     const now = Date.now();
     this.requireDb().prepare(`
       INSERT INTO context_item_embeddings (
-        item_id, embedding_profile_id, dimension, vector, created_at, updated_at
+        item_id, embedding_profile_id, text_hash, dimension, vector, created_at, updated_at
       )
       VALUES (
-        @itemId, @embeddingProfileId, @dimension, @vector, @createdAt, @updatedAt
+        @itemId, @embeddingProfileId, @textHash, @dimension, @vector, @createdAt, @updatedAt
       )
       ON CONFLICT(item_id, embedding_profile_id) DO UPDATE SET
+        text_hash = excluded.text_hash,
         dimension = excluded.dimension,
         vector = excluded.vector,
         updated_at = excluded.updated_at
     `).run({
       itemId: input.itemId,
       embeddingProfileId: input.embeddingProfileId,
+      textHash: input.textHash,
       dimension: input.vector.length,
       vector: encodeVector(input.vector),
       createdAt: now,
@@ -1183,6 +1342,7 @@ export class ContextStore {
         mode_id TEXT,
         title TEXT,
         text TEXT NOT NULL,
+        embedding_text_hash TEXT,
         kind TEXT,
         source TEXT,
         confidence REAL,
@@ -1211,6 +1371,7 @@ export class ContextStore {
       CREATE TABLE IF NOT EXISTS context_item_embeddings (
         item_id TEXT NOT NULL,
         embedding_profile_id TEXT NOT NULL,
+        text_hash TEXT NOT NULL DEFAULT '',
         dimension INTEGER NOT NULL,
         vector BLOB NOT NULL,
         created_at INTEGER NOT NULL,
@@ -1267,6 +1428,8 @@ export class ContextStore {
       CREATE INDEX IF NOT EXISTS idx_maintenance_jobs_status_time
         ON maintenance_jobs(status, scheduled_at);
     `);
+    ensureColumn(db, "context_items", "embedding_text_hash", "TEXT");
+    ensureColumn(db, "context_item_embeddings", "text_hash", "TEXT NOT NULL DEFAULT ''");
   }
 
   private upsertContextItem(item: ContextItem): void {
@@ -1274,14 +1437,14 @@ export class ContextStore {
       INSERT INTO context_items (
         item_id, scope, source_type, retrieval_policy, status,
         user_id, session_id, toolset_id, mode_id,
-        title, text, kind, source, confidence, importance, pinned, sensitivity,
+        title, text, embedding_text_hash, kind, source, confidence, importance, pinned, sensitivity,
         created_at, updated_at, valid_from, valid_to, superseded_by,
         last_confirmed_at, retrieved_count, last_retrieved_at
       )
       VALUES (
         @itemId, @scope, @sourceType, @retrievalPolicy, @status,
         @userId, @sessionId, @toolsetId, @modeId,
-        @title, @text, @kind, @source, @confidence, @importance, @pinned, @sensitivity,
+        @title, @text, @embeddingTextHash, @kind, @source, @confidence, @importance, @pinned, @sensitivity,
         @createdAt, @updatedAt, @validFrom, @validTo, @supersededBy,
         @lastConfirmedAt, @retrievedCount, @lastRetrievedAt
       )
@@ -1296,6 +1459,7 @@ export class ContextStore {
         mode_id = excluded.mode_id,
         title = excluded.title,
         text = excluded.text,
+        embedding_text_hash = excluded.embedding_text_hash,
         kind = excluded.kind,
         source = excluded.source,
         confidence = excluded.confidence,
@@ -1358,6 +1522,7 @@ function rowToContextSearchDocument(row: ContextItemRow): ContextSearchDocument 
     ...(row.session_id ? { sessionId: row.session_id } : {}),
     ...(row.title ? { title: row.title } : {}),
     text: row.text,
+    embeddingTextHash: row.embedding_text_hash ?? buildContextEmbeddingTextHash(row.text),
     updatedAt: row.updated_at,
     ...(row.last_retrieved_at !== null ? { lastRetrievedAt: row.last_retrieved_at } : {})
   };
@@ -1562,6 +1727,10 @@ function buildContextItemWhere(
 } {
   const where = [...extraWhere];
   const params: Array<string | number> = [];
+  if (input.itemId) {
+    where.push("item_id = ?");
+    params.push(input.itemId);
+  }
   if (input.userId) {
     where.push("user_id = ?");
     params.push(input.userId);
@@ -1604,6 +1773,18 @@ function decodeVector(buffer: Buffer): number[] {
   return values;
 }
 
+function buildContextEmbeddingTextHash(text: string): string {
+  return createHash("sha256").update(text).digest("base64url");
+}
+
+function ensureColumn(db: SqliteDatabase, tableName: string, columnName: string, definition: string): void {
+  const rows = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  if (rows.some((row) => row.name === columnName)) {
+    return;
+  }
+  db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+}
+
 function toSqlParams(item: ContextItem): Record<string, string | number | null> {
   return {
     itemId: item.itemId,
@@ -1617,6 +1798,7 @@ function toSqlParams(item: ContextItem): Record<string, string | number | null> 
     modeId: item.modeId ?? null,
     title: item.title ?? null,
     text: item.text,
+    embeddingTextHash: buildContextEmbeddingTextHash(item.text),
     kind: item.kind ?? null,
     source: item.source ?? null,
     confidence: item.confidence ?? null,

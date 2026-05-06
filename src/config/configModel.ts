@@ -205,6 +205,7 @@ const contextConfigSchema = s.object({
   retention: s.object({
     maxUserSearchChunks: s.number().int().positive().title("每用户最大检索片段数").default(500),
     maxSearchChunkAgeDays: s.number().int().positive().title("检索片段保留天数").default(90),
+    sessionFactRetentionDays: s.number().int().positive().title("会话事实保留天数").default(14),
     summaryAfterDays: s.number().int().positive().title("摘要化天数").default(30),
     deletedRetentionDays: s.number().int().positive().title("已删除项保留天数").default(14),
     maintenanceIntervalMs: s.number().int().positive().title("维护间隔毫秒").default(60 * 60 * 1000)

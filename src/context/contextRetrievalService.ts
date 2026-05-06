@@ -78,7 +78,8 @@ export class ContextRetrievalService {
       this.contextStore.upsertEmbeddingProfile(profile);
       const storedEmbeddings = this.contextStore.getItemEmbeddings(
         documents.map((item) => item.itemId),
-        profile.profileId
+        profile.profileId,
+        buildExpectedTextHashMap(documents)
       );
       const missingDocuments = documents
         .filter((item) => !storedEmbeddings.has(item.itemId))
@@ -102,6 +103,7 @@ export class ContextRetrievalService {
           this.contextStore.upsertItemEmbedding({
             itemId: document.itemId,
             embeddingProfileId: profile.profileId,
+            textHash: document.embeddingTextHash,
             vector
           });
           storedEmbeddings.set(document.itemId, vector);
@@ -246,7 +248,8 @@ export class ContextRetrievalService {
     const storedEmbeddings = reembedReport.embeddingProfileId
       ? this.contextStore.getItemEmbeddings(
           documents.map((item) => item.itemId),
-          reembedReport.embeddingProfileId
+          reembedReport.embeddingProfileId,
+          buildExpectedTextHashMap(documents)
         )
       : new Map<string, number[]>();
     const indexedDocuments = documents
@@ -366,7 +369,8 @@ export class ContextRetrievalService {
       this.contextStore.upsertEmbeddingProfile(profile);
       const storedEmbeddings = this.contextStore.getItemEmbeddings(
         documents.map((item) => item.itemId),
-        profile.profileId
+        profile.profileId,
+        buildExpectedTextHashMap(documents)
       );
       const targetDocuments = (input.force
         ? documents
@@ -400,6 +404,7 @@ export class ContextRetrievalService {
         this.contextStore.upsertItemEmbedding({
           itemId: document.itemId,
           embeddingProfileId: profile.profileId,
+          textHash: document.embeddingTextHash,
           vector
         });
         embeddedCount += 1;
@@ -431,6 +436,10 @@ function buildIndexSignature(
     embeddingProfileId,
     ...documents.map((item) => `${item.itemId}:${item.updatedAt}:${hashEmbeddingVector(item.embedding)}`)
   ].join("|");
+}
+
+function buildExpectedTextHashMap(documents: ContextSearchDocument[]): Map<string, string> {
+  return new Map(documents.map((item) => [item.itemId, item.embeddingTextHash]));
 }
 
 function toAlwaysRetrievedItem(document: ContextSearchDocument): ContextRetrievedItem {

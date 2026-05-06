@@ -841,6 +841,9 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const currentUserMemories = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
       ? []
       : deps.contextStore?.listUserFacts(input.currentUser.userId) ?? [];
+    const currentSessionContext = scenarioHostMode
+      ? []
+      : deps.contextStore?.listSessionFacts?.(input.sessionId) ?? [];
     const retrievedUserContext = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
       ? []
       : await deps.contextRetrievalService?.retrieveUserContext({
@@ -877,6 +880,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
             safetyProjected.batchMessages[safetyProjected.batchMessages.length - 1]?.senderName
           )
         : userProfilePromptState,
+      currentSessionContext,
       currentUserMemories,
       retrievedUserContext,
       globalRules,
@@ -986,6 +990,9 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const currentUserMemories = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
       ? []
       : deps.contextStore?.listUserFacts(input.currentUser.userId) ?? [];
+    const currentSessionContext = scenarioHostMode
+      ? []
+      : deps.contextStore?.listSessionFacts?.(input.sessionId) ?? [];
     const retrievedUserContext = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
       ? []
       : await deps.contextRetrievalService?.retrieveUserContext({
@@ -1029,6 +1036,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
             input.targetContext.chatType === "private" ? input.targetContext.senderName : undefined
           )
         : userProfilePromptState,
+      currentSessionContext,
       currentUserMemories,
       retrievedUserContext,
       globalRules,

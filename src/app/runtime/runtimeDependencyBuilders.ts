@@ -3,6 +3,7 @@ import type { ComfyTaskRecord } from "#comfy/taskSchema.ts";
 import type { InternalSessionTriggerExecution } from "#conversation/session/sessionTypes.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
 import type { ContextExtractionQueue } from "#context/contextExtractionQueue.ts";
+import type { ContextIngestionService } from "#context/contextIngestionService.ts";
 import type {
   GenerationRunnerDeps,
   GenerationIdentityDeps,
@@ -91,7 +92,8 @@ export function buildGenerationLifecycleDeps(
   services: AppServiceBootstrap,
   persistSession: (sessionId: string, reason: string) => void,
   getScheduler: () => Scheduler,
-  contextExtractionQueue?: Pick<ContextExtractionQueue, "enqueueTurn">
+  contextExtractionQueue?: Pick<ContextExtractionQueue, "enqueueTurn">,
+  contextIngestionService?: Pick<ContextIngestionService, "ingestTurn">
 ): GenerationLifecycleDeps {
   return {
     logger: services.logger,
@@ -100,7 +102,8 @@ export function buildGenerationLifecycleDeps(
     userIdentityStore: services.userIdentityStore,
     persistSession,
     getScheduler,
-    ...(contextExtractionQueue ? { contextExtractionQueue } : {})
+    ...(contextExtractionQueue ? { contextExtractionQueue } : {}),
+    ...(contextIngestionService ? { contextIngestionService } : {})
   };
 }
 
@@ -108,13 +111,20 @@ export function buildSessionWorkCoordinatorDeps(
   services: AppServiceBootstrap,
   persistSession: (sessionId: string, reason: string) => void,
   getScheduler: () => Scheduler,
-  contextExtractionQueue?: Pick<ContextExtractionQueue, "enqueueTurn">
+  contextExtractionQueue?: Pick<ContextExtractionQueue, "enqueueTurn">,
+  contextIngestionService?: Pick<ContextIngestionService, "ingestTurn">
 ): GenerationRunnerDeps {
   return {
     promptBuilder: buildGenerationPromptBuilderDeps(services),
     identity: buildGenerationIdentityDeps(services),
     toolRuntime: buildGenerationToolRuntimeDeps(services),
-    lifecycle: buildGenerationLifecycleDeps(services, persistSession, getScheduler, contextExtractionQueue),
+    lifecycle: buildGenerationLifecycleDeps(
+      services,
+      persistSession,
+      getScheduler,
+      contextExtractionQueue,
+      contextIngestionService
+    ),
     sessionRuntime: buildGenerationSessionRuntimeDeps(services)
   };
 }

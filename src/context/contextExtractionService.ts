@@ -5,6 +5,7 @@ import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { bigramJaccardSimilarity, isNearDuplicateText, normalizeTitleForDedup } from "#memory/similarity.ts";
 import type { UserMemoryEntry, UserMemoryKind } from "#memory/userMemoryEntry.ts";
 import type { ContextStore } from "./contextStore.ts";
+import type { ContextScope } from "./contextTypes.ts";
 
 export interface ContextExtractionTurnMessage {
   userId: string;
@@ -25,6 +26,7 @@ export interface ContextExtractionTurn {
 
 interface ExtractionCandidate {
   action: "create" | "replace" | "ignore";
+  scope?: ContextScope;
   replaceMemoryId?: string;
   title?: string;
   content?: string;
@@ -43,12 +45,13 @@ export interface ContextExtractionResult {
   ignored: number;
 }
 
-type ContextExtractionStore = Pick<ContextStore, "listUserFacts" | "upsertUserFact">;
-type NormalizedExtractionCandidate = Required<Omit<ExtractionCandidate, "replaceMemoryId">> & {
+type ContextExtractionStore = Pick<ContextStore, "listUserFacts" | "upsertUserFact" | "listSessionFacts" | "upsertSessionFact">;
+type NormalizedExtractionCandidate = Required<Omit<ExtractionCandidate, "replaceMemoryId" | "scope">> & {
+  scope: ContextScope;
   replaceMemoryId?: string;
 };
+type ScopedMemoryEntry = UserMemoryEntry & { scope: "user" | "session" };
 
-const LOW_SIGNAL_ASSISTANT_PATTERN = /^(好的|好|收到|明白|了解|记下了|已记下|已更新|ok|OK)[。.!！\s]*$/u;
 const MAX_RELATED_MEMORIES = 20;
 const MAX_MESSAGE_TEXT_CHARS = 500;
 const MAX_TOTAL_MESSAGE_TEXT_CHARS = 4000;
@@ -96,9 +99,13 @@ export class ContextExtractionService {
       }
 
       const existingMemories = this.contextStore.listUserFacts(input.userId);
+      const existingSessionMemories = this.contextStore.listSessionFacts(input.sessionId);
       const targetUserText = targetUserMessages.map((message) => message.text.trim()).join("\n").trim();
       const relatedMemories = selectRelatedMemories(
-        existingMemories,
+        [
+          ...existingMemories.map((memory): ScopedMemoryEntry => ({ ...memory, scope: "user" })),
+          ...existingSessionMemories.map((memory): ScopedMemoryEntry => ({ ...memory, scope: "session" }))
+        ],
         targetUserText || conversationText,
         config.relatedMemoryLimit
       );
@@ -122,6 +129,7 @@ export class ContextExtractionService {
         sessionId: input.sessionId,
         candidates: parsed.items ?? [],
         existingMemories,
+        existingSessionMemories,
         minConfidence: config.minConfidence
       });
     } catch (error) {
@@ -139,13 +147,16 @@ export class ContextExtractionService {
     sessionId: string;
     candidates: ExtractionCandidate[];
     existingMemories: UserMemoryEntry[];
+    existingSessionMemories: UserMemoryEntry[];
     minConfidence: number;
   }): ContextExtractionResult {
     let created = 0;
     let replaced = 0;
     let ignored = 0;
     const existingById = new Map(input.existingMemories.map((item) => [item.id, item]));
+    const existingSessionById = new Map(input.existingSessionMemories.map((item) => [item.id, item]));
     const acceptedTexts: string[] = input.existingMemories.map((item) => `${item.title}\n${item.content}`);
+    const acceptedSessionTexts: string[] = input.existingSessionMemories.map((item) => `${item.title}\n${item.content}`);
 
     for (const candidate of input.candidates) {
       const normalized = normalizeCandidate(candidate);
@@ -153,34 +164,54 @@ export class ContextExtractionService {
         ignored += 1;
         continue;
       }
+      if (normalized.scope !== "user" && normalized.scope !== "session") {
+        ignored += 1;
+        continue;
+      }
       const memoryText = `${normalized.title}\n${normalized.content}`;
-      const replacementTarget = resolveReplacementTarget(normalized, input.existingMemories, existingById);
+      const scopeMemories = normalized.scope === "session" ? input.existingSessionMemories : input.existingMemories;
+      const scopeExistingById = normalized.scope === "session" ? existingSessionById : existingById;
+      const replacementTarget = resolveReplacementTarget(normalized, scopeMemories, scopeExistingById);
       const replacingExisting = replacementTarget != null;
       if (normalized.action === "replace" && !replacementTarget) {
         ignored += 1;
         continue;
       }
-      if (!replacingExisting && isNearDuplicateText(memoryText, acceptedTexts)) {
+      const acceptedScopeTexts = normalized.scope === "session" ? acceptedSessionTexts : acceptedTexts;
+      if (!replacingExisting && isNearDuplicateText(memoryText, acceptedScopeTexts)) {
         ignored += 1;
         continue;
       }
 
       try {
-        const result = this.contextStore.upsertUserFact({
-          userId: input.userId,
-          ...(replacementTarget ? { memoryId: replacementTarget.id } : {}),
-          title: normalized.title,
-          content: normalized.content,
-          kind: normalized.kind,
-          source: "inferred",
-          importance: normalized.importance
-        });
+        const now = Date.now();
+        const result = normalized.scope === "session"
+          ? this.contextStore.upsertSessionFact({
+              sessionId: input.sessionId,
+              ...(replacementTarget ? { memoryId: replacementTarget.id } : {}),
+              title: normalized.title,
+              content: normalized.content,
+              kind: normalized.kind,
+              source: "inferred",
+              importance: normalized.importance,
+              validTo: buildSessionFactValidTo(this.config, now),
+              lastConfirmedAt: now
+            })
+          : this.contextStore.upsertUserFact({
+              userId: input.userId,
+              ...(replacementTarget ? { memoryId: replacementTarget.id } : {}),
+              title: normalized.title,
+              content: normalized.content,
+              kind: normalized.kind,
+              source: "inferred",
+              importance: normalized.importance
+            });
         if (replacingExisting || result.action === "updated_existing") {
           replaced += 1;
         } else {
           created += 1;
         }
-        acceptedTexts.push(memoryText);
+        acceptedScopeTexts.push(memoryText);
       } catch (error) {
         ignored += 1;
         this.logger.warn({
@@ -204,10 +235,10 @@ export class ContextExtractionService {
 }
 
 function selectRelatedMemories(
-  memories: UserMemoryEntry[],
+  memories: ScopedMemoryEntry[],
   queryText: string,
   limit: number
-): UserMemoryEntry[] {
+): ScopedMemoryEntry[] {
   if (limit <= 0 || memories.length === 0) {
     return [];
   }
@@ -246,20 +277,32 @@ function buildExtractionPrompt(input: {
   turns: ContextExtractionTurn[];
   targetUserMessages: ContextExtractionTurnMessage[];
   currentTurnMessages: ContextExtractionTurnMessage[];
-  relatedMemories: UserMemoryEntry[];
+  relatedMemories: ScopedMemoryEntry[];
 }): LlmMessage[] {
   return [
     {
       role: "system",
       content: [
-        "你是聊天记忆抽取器，只负责判断当前轮对话是否需要更新当前用户的长期记忆。",
-        "输入会包含当前 debounce batch 的完整对话；你只能为 target_user_id 对应用户抽取记忆。",
+        "你是聊天记忆抽取器，负责判断当前轮对话是否需要更新上下文记忆。",
+        "当前实现可以写入 scope=user 的长期用户事实，也可以写入 scope=session 的当前会话事实；其他 scope 必须识别出来但不要写入。",
+        "scope=user：只记录稳定、长期可复用、绑定 target_user_id 本人的事实，例如称呼、身份、职业、所在地、时区、长期偏好、长期习惯、明确边界、关系备注。",
+        "scope=session：只在当前 sessionId 内生效的信息，例如“此会话专门用于某项目/某测试/某主题”“本群这轮讨论只追踪某事项”“本会话接下来都围绕某目标”。这类内容应输出 create/replace 且 scope=session。",
+        "scope=global：所有用户和会话都适用的长期规则或运行偏好，例如全局回答原则、所有任务默认流程。当前 schema 尚不能写 global 记忆，必须输出 ignore。",
+        "scope=toolset：只和某类工具集/工具能力有关的长期规则，例如 shell、浏览器、workspace、ComfyUI 的默认使用规则。当前 schema 尚不能写 toolset 记忆，必须输出 ignore。",
+        "scope=mode：只和特定运行模式/角色模式有关的规则，例如 scenario_host 或 assistant mode 的行为边界。当前 schema 尚不能写 mode 记忆，必须输出 ignore。",
+        "输入会包含当前 debounce batch 的完整对话；为 scope=user 写入时只能为 target_user_id 对应用户抽取记忆。",
         "群聊中其他人的话只作为上下文，不要把其他群成员的信息写到 target_user_id 身上。",
-        "只记录稳定、长期可复用的信息：称呼、身份、职业、所在地、时区、长期偏好、长期习惯、明确边界、关系备注。",
-        "不要记录一次性任务、临时状态、当前正在做的事、闲聊、问题本身、助手猜测、助手为了本轮任务做出的总结。",
+        "不要把 session/global/toolset/mode 范围的信息降级写成 user 记忆；session 范围必须显式写 scope=session。",
+        "特别注意：用户说“以后所有任务默认……”“所有会话都……”“全局默认……”“任何时候都……”这类内容是 global/procedural 规则，不是 target_user_id 的用户画像或个人偏好；当前必须输出 ignore，不能写 scope=user。",
+        "可写 user 的偏好必须是用户本人长期属性或个人交流偏好，例如“叫我阿明”“我住杭州”“我喜欢简洁回答”；不可写 user 的规则包括“所有任务先列计划”“默认每次都执行某流程”“以后所有项目都使用某工具”。",
+        "不要记录一次性任务、临时状态、当前正在做的事、普通闲聊、问题本身、助手猜测、助手为了本轮任务做出的总结。",
+        "判定示例：用户说“以后所有任务默认先列三步计划。”，应输出 {\"items\":[{\"action\":\"ignore\",\"scope\":\"global\",\"confidence\":1}]}，绝不能写成 user 偏好。",
+        "判定示例：用户说“以后请叫我阿明。”，应输出 scope=user 的 create。",
+        "判定示例：用户说“此会话专门用于记忆系统测试。”，应输出 scope=session 的 create。",
+        "判定示例：用户说“帮我临时算一下 37 加 58。”，应输出 {\"items\":[]}。",
         "如果用户明确更正或改变旧信息，输出 replace，并优先使用 related_memories 中对应的 replaceMemoryId。",
         "如果没有值得长期保存的信息，输出 {\"items\":[]}。",
-        "只输出 JSON，不要解释。JSON 格式：{\"items\":[{\"action\":\"create|replace|ignore\",\"replaceMemoryId\":\"可选\",\"title\":\"短标题\",\"content\":\"完整记忆内容\",\"kind\":\"preference|fact|boundary|habit|relationship|other\",\"importance\":1-5,\"confidence\":0-1}]}"
+        "只输出 JSON，不要解释。JSON 格式：{\"items\":[{\"action\":\"create|replace|ignore\",\"scope\":\"user|session|global|toolset|mode\",\"replaceMemoryId\":\"可选\",\"title\":\"短标题\",\"content\":\"完整记忆内容\",\"kind\":\"preference|fact|boundary|habit|relationship|other\",\"importance\":1-5,\"confidence\":0-1}]}"
       ].join("\n")
     },
     {
@@ -281,8 +324,9 @@ function buildExtractionPrompt(input: {
         })),
         assistant_replies: input.turns
           .map((turn) => turn.assistantText.trim())
-          .filter((text) => text.length > 0 && !LOW_SIGNAL_ASSISTANT_PATTERN.test(text)),
+          .filter((text) => text.length > 0),
         related_memories: input.relatedMemories.map((memory) => ({
+          scope: memory.scope,
           id: memory.id,
           title: memory.title,
           content: memory.content,
@@ -409,9 +453,11 @@ function normalizeCandidate(candidate: ExtractionCandidate): NormalizedExtractio
   if (action !== "create" && action !== "replace" && action !== "ignore") {
     return null;
   }
+  const scope = normalizeScope(candidate.scope);
   if (action === "ignore") {
     return {
       action,
+      scope: scope ?? "user",
       title: "",
       content: "",
       kind: "other",
@@ -424,10 +470,14 @@ function normalizeCandidate(candidate: ExtractionCandidate): NormalizedExtractio
   if (!title || !content) {
     return null;
   }
+  if (!scope) {
+    return null;
+  }
   const importance = clampInteger(candidate.importance, 1, 5, 3);
   const confidence = clampNumber(candidate.confidence, 0, 1, 0);
   return {
     action,
+    scope,
     ...(typeof candidate.replaceMemoryId === "string" && candidate.replaceMemoryId.trim()
       ? { replaceMemoryId: candidate.replaceMemoryId.trim() }
       : {}),
@@ -437,6 +487,20 @@ function normalizeCandidate(candidate: ExtractionCandidate): NormalizedExtractio
     importance,
     confidence
   };
+}
+
+function normalizeScope(value: unknown): ContextScope | null {
+  return value === "session"
+    || value === "user"
+    || value === "global"
+    || value === "toolset"
+    || value === "mode"
+    ? value
+    : null;
+}
+
+function buildSessionFactValidTo(config: AppConfig, now: number): number {
+  return now + config.context.retention.sessionFactRetentionDays * 24 * 60 * 60 * 1000;
 }
 
 function normalizeKind(value: unknown): UserMemoryKind {

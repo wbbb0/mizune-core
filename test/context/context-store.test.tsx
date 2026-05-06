@@ -423,6 +423,7 @@ test("ContextStore supports stats, editing, bulk soft delete, deleted retention,
     harness.store.upsertItemEmbedding({
       itemId: "ctx_chunk_edit",
       embeddingProfileId: "profile_1",
+      textHash: harness.store.listUserSearchDocuments("user_1")[0]!.embeddingTextHash,
       vector: [1, 0, 0]
     });
 
@@ -448,11 +449,11 @@ test("ContextStore supports stats, editing, bulk soft delete, deleted retention,
 
     const stats = harness.store.getContextStats();
     assert.equal(stats.contextItems, 2);
-    assert.equal(stats.embeddings, 1);
+    assert.equal(stats.embeddings, 0);
     assert.ok(stats.bySourceType.some((item) => item.sourceType === "chunk" && item.count === 1));
 
     const cleared = harness.store.clearEmbeddings({ userId: "user_1" });
-    assert.equal(cleared.deletedCount, 1);
+    assert.equal(cleared.deletedCount, 0);
     assert.equal(harness.store.getContextStats().embeddings, 0);
 
     const deleted = harness.store.bulkDeleteContextItems({ userId: "user_1", sourceType: "chunk" });
@@ -499,6 +500,92 @@ test("ContextStore excludes secret facts and search documents from prompt-facing
 
     assert.deepEqual(harness.store.listUserFacts("user_1"), []);
     assert.deepEqual(harness.store.listUserSearchDocuments("user_1"), []);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextStore stores conversation episodes outside retrieval documents", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    harness.store.upsertConversationEpisode({
+      itemId: "ctx_episode_1",
+      userId: "user_1",
+      sessionId: "qqbot:p:user_1",
+      title: "对话回合",
+      text: "用户：今天在测试记忆写入\n助手：收到",
+      source: "auto_ingest",
+      createdAt: 100,
+      updatedAt: 100
+    });
+
+    const listed = harness.store.listContextItems({ userId: "user_1", sourceType: "episode" });
+    assert.equal(listed.total, 1);
+    assert.equal(listed.items[0]?.retrievalPolicy, "never");
+    assert.equal(listed.items[0]?.text, "用户：今天在测试记忆写入\n助手：收到");
+    assert.deepEqual(harness.store.listUserSearchDocuments("user_1"), []);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextStore upserts session facts independently from user facts", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    const created = harness.store.upsertSessionFact({
+      sessionId: "qqbot:p:user_1",
+      title: "会话用途",
+      content: "此会话专门用于记忆系统测试",
+      kind: "fact",
+      importance: 4
+    });
+    assert.equal(created.action, "created");
+
+    const updated = harness.store.upsertSessionFact({
+      sessionId: "qqbot:p:user_1",
+      title: "会话用途",
+      content: "此会话专门用于记忆系统二阶段测试",
+      kind: "fact",
+      importance: 5
+    });
+    assert.equal(updated.action, "updated_existing");
+    assert.equal(updated.item.id, created.item.id);
+
+    assert.deepEqual(harness.store.listUserFacts("user_1"), []);
+    const sessionFacts = harness.store.listSessionFacts("qqbot:p:user_1");
+    assert.equal(sessionFacts.length, 1);
+    assert.equal(sessionFacts[0]?.content, "此会话专门用于记忆系统二阶段测试");
+    assert.equal(sessionFacts[0]?.importance, 5);
+    assert.deepEqual(harness.store.listSessionFacts("qqbot:p:user_2"), []);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextStore sweeps expired session facts without touching active session facts", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    const now = Date.now();
+    harness.store.upsertSessionFact({
+      sessionId: "qqbot:p:user_1",
+      title: "过期会话用途",
+      content: "此会话曾用于旧测试",
+      validTo: now - 1_000
+    });
+    harness.store.upsertSessionFact({
+      sessionId: "qqbot:p:user_2",
+      title: "当前会话用途",
+      content: "此会话用于当前测试",
+      validTo: now + 10_000
+    });
+
+    const swept = harness.store.sweepExpiredSessionFacts({ now });
+
+    assert.equal(swept.deletedCount, 1);
+    assert.deepEqual(harness.store.listSessionFacts("qqbot:p:user_1"), []);
+    const activeFacts = harness.store.listSessionFacts("qqbot:p:user_2");
+    assert.equal(activeFacts.length, 1);
+    assert.equal(activeFacts[0]?.content, "此会话用于当前测试");
   } finally {
     await harness.cleanup();
   }

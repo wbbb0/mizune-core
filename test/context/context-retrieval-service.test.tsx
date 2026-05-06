@@ -278,6 +278,7 @@ function createDocument(
     retrievalPolicy,
     userId: "user_1",
     text,
+    embeddingTextHash: `hash:${text}`,
     updatedAt: 1
   };
 }

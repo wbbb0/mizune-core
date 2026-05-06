@@ -207,6 +207,7 @@ export function buildBaseSystemLines(input: {
   npcProfiles: PromptInput["npcProfiles"];
   participantProfiles: PromptInput["participantProfiles"];
   userProfile: PromptInput["userProfile"];
+  currentSessionContext?: PromptInput["currentSessionContext"] | undefined;
   currentUserMemories?: PromptInput["currentUserMemories"] | undefined;
   retrievedUserContext?: PromptInput["retrievedUserContext"] | undefined;
   globalRules?: PromptInput["globalRules"] | undefined;
@@ -360,6 +361,7 @@ export function buildBaseSystemLines(input: {
         ...buildNpcContextLines(input.sessionMode, input.npcProfiles, input.participantProfiles)
       ]),
       renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
+      renderPromptSection("current_session_context", buildCurrentSessionContextLines(input.currentSessionContext)),
       renderPromptSection("retrieved_user_context", buildRetrievedUserContextLines(input.retrievedUserContext)),
       renderPromptSection("global_rules", buildGlobalRuleLines(preparedMemoryContext.globalRules)),
       renderPromptSection("toolset_rules", buildToolsetRuleLines(preparedMemoryContext.toolsetRules)),
@@ -398,6 +400,7 @@ export function buildBaseSystemLines(input: {
       ...buildNpcContextLines(input.sessionMode, input.npcProfiles, input.participantProfiles)
     ]),
     renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
+    renderPromptSection("current_session_context", buildCurrentSessionContextLines(input.currentSessionContext)),
     renderPromptSection("retrieved_user_context", buildRetrievedUserContextLines(input.retrievedUserContext)),
     renderPromptSection("global_rules", buildGlobalRuleLines(preparedMemoryContext.globalRules)),
     renderPromptSection("toolset_rules", buildToolsetRuleLines(preparedMemoryContext.toolsetRules)),
@@ -1122,6 +1125,11 @@ function buildRetrievedUserContextLines(items: PromptInput["retrievedUserContext
     return `- ${source} score=${item.score.toFixed(3)} ${title}${item.text}`;
   });
   return [`按当前消息语义召回的用户上下文：\n${lines.join("\n")}`];
+}
+
+function buildCurrentSessionContextLines(items: PromptInput["currentSessionContext"] | undefined): string[] {
+  const text = formatEntryLines(items);
+  return text ? [`当前会话专属上下文（只适用于本 session，最多 ${MAX_VISIBLE_MEMORIES} 条）：\n${text}`] : [];
 }
 
 function buildLiveResourceLines(resources: PromptLiveResource[] | undefined): string[] {

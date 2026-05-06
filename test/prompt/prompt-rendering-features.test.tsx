@@ -461,6 +461,43 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
     }
   });
 
+  test("prompt builder renders current session context as session-scoped memory", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.get();
+      const prompt = buildPrompt({
+        sessionId: "qqbot:p:owner",
+        persona,
+        relationship: "owner",
+        npcProfiles: [],
+        participantProfiles: [],
+        userProfile: createPromptUserProfile({ userId: "owner", senderName: "Owner" }),
+        currentSessionContext: [{
+          id: "session_mem_1",
+          title: "会话用途",
+          content: "此会话专门用于记忆系统二阶段测试",
+          kind: "fact",
+          source: "inferred",
+          createdAt: 1,
+          updatedAt: 1,
+          importance: 4
+        }],
+        historySummary: null,
+        recentMessages: [],
+        batchMessages: [
+          createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "继续", timestampMs: Date.now() })
+        ]
+      });
+
+      const system = String(prompt[0]?.content ?? "");
+      assert.match(system, /⟦section name="current_session_context"⟧/);
+      assert.match(system, /当前会话专属上下文/);
+      assert.match(system, /会话用途：此会话专门用于记忆系统二阶段测试/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   test("draft mode uses profile-draft batch framing instead of trigger-user framing", async () => {
     const harness = await createMemoryHarness();
     try {
