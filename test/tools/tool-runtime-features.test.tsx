@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
 import { getBuiltinTools } from "../../src/llm/tools/index.ts";
+import { getBuiltinToolDescriptorByName } from "../../src/llm/tools/toolRegistry.ts";
 import { scenarioHostToolHandlers } from "../../src/llm/tools/conversation/scenarioHostTools.ts";
 import { sessionToolHandlers } from "../../src/llm/tools/conversation/sessionTools.ts";
 import { resourceToolHandlers } from "../../src/llm/tools/runtime/resourceTools.ts";
@@ -12,6 +13,12 @@ import { debugToolHandlers } from "../../src/llm/tools/runtime/debugTools.ts";
 import { shellToolHandlers } from "../../src/llm/tools/runtime/shellTools.ts";
 import { timeToolHandlers } from "../../src/llm/tools/runtime/timeTools.ts";
 import { localFileToolHandlers, chatFileToolHandlers } from "../../src/llm/tools/runtime/workspaceTools.ts";
+import {
+  browserDownloadPolicy,
+  browserPagePolicy,
+  browserProfilePolicy,
+  browserScreenshotPolicy
+} from "../../src/llm/tools/core/resultObservationPresets.ts";
 import { setupDraftToolHandlers } from "../../src/llm/tools/conversation/setupDraftTools.ts";
 import { profileToolHandlers } from "../../src/llm/tools/profile/profileTools.ts";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
@@ -195,6 +202,16 @@ function createMediaToolVisibilityConfig(options: {
     ]);
   });
 
+  test("terminal_run schema rejects non-positive timeout values", async () => {
+    const config = createForwardFeatureConfig();
+    config.shell.enabled = true;
+    const descriptor = getBuiltinTools("owner", config)
+      .find((tool) => tool.function.name === "terminal_run");
+    assert.ok(descriptor);
+    const properties = descriptor.function.parameters?.properties as any;
+    assert.equal(properties.timeout_ms.minimum, 1);
+  });
+
   test("builtin tool list hides web tools when search is disabled", async () => {
     const config = createForwardFeatureConfig();
     config.search.googleGrounding.enabled = false;
@@ -211,6 +228,17 @@ function createMediaToolVisibilityConfig(options: {
     assert.ok(!names.includes("inspect_page"));
     assert.ok(!names.includes("interact_with_page"));
     assert.ok(!names.includes("close_page"));
+  });
+
+  test("web research descriptors bind the intended result observation policies", async () => {
+    const config = createForwardFeatureConfig();
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("open_page", config)?.resultObservation), policyShape(browserPagePolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("inspect_page", config)?.resultObservation), policyShape(browserPagePolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("interact_with_page", config)?.resultObservation), policyShape(browserPagePolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("capture_screenshot", config)?.resultObservation), policyShape(browserScreenshotPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("download_asset", config)?.resultObservation), policyShape(browserDownloadPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("list_browser_profiles", config)?.resultObservation), policyShape(browserProfilePolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("save_browser_profile", config)?.resultObservation), policyShape(browserProfilePolicy()));
   });
 
   test("builtin tool list hides external search tools when provider native search is enabled", async () => {
@@ -1297,8 +1325,17 @@ function createMediaToolVisibilityConfig(options: {
       tool: "local_file_read",
       reason: "继续读取剩余内容",
       args: { path: "logs/app.log", start_line: 3, end_line: 5 }
-    });
   });
+});
+
+function policyShape(policy: any) {
+  return {
+    preserveRecentRawCount: policy?.preserveRecentRawCount ?? null,
+    compactorNames: Object.keys(policy?.compactors ?? {}).sort(),
+    hasResource: typeof policy?.resource === "function",
+    hasRefetchHint: typeof policy?.refetchHint === "function"
+  };
+}
 
   test("terminal_run forwards resource description", async () => {
     const result = await shellToolHandlers.terminal_run!(

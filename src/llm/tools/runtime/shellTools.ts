@@ -60,7 +60,7 @@ export const shellToolDescriptors: ToolDescriptor[] = [
             command: { type: "string" },
             description: { type: "string", description: "给这个 shell 资源的用途说明，便于后续复用时识别。" },
             cwd: { type: "string" },
-            timeout_ms: { type: "number", description: "等待完成的超时时长，默认 15000ms；超时后命令转入后台。" },
+            timeout_ms: { type: "number", minimum: 1, description: "等待完成的超时时长，默认 15000ms；超时后命令转入后台。" },
             tty: { type: "boolean", description: "是否使用 PTY，默认 true" },
             notify_policy: {
               type: "string",
@@ -265,7 +265,12 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
 
     const result = await context.shellRuntime.interact(resourceId, input);
     const { outputTail: _tail, ...session } = result.session;
-    return JSON.stringify({ output: result.output, session });
+    return JSON.stringify({
+      output: result.output,
+      outputTruncated: result.outputTruncated,
+      output_truncated: result.output_truncated,
+      session
+    });
   },
 
   async terminal_read(_toolCall, args, context) {
@@ -275,7 +280,12 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
     const resourceId = getStringArg(args, "resource_id")!;
     const result = await context.shellRuntime.read(resourceId);
     const { outputTail: _tail, ...session } = result.session;
-    return JSON.stringify({ output: result.output, session });
+    return JSON.stringify({
+      output: result.output,
+      outputTruncated: result.outputTruncated,
+      output_truncated: result.output_truncated,
+      session
+    });
   },
 
   async terminal_key(_toolCall, args, context) {
@@ -298,7 +308,12 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
     }
     const result = await context.shellRuntime.interact(resourceId, input);
     const { outputTail: _tail, ...session } = result.session;
-    return JSON.stringify({ output: result.output, session });
+    return JSON.stringify({
+      output: result.output,
+      outputTruncated: result.outputTruncated,
+      output_truncated: result.output_truncated,
+      session
+    });
   },
 
   async terminal_signal(_toolCall, args, context) {

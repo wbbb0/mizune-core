@@ -347,6 +347,14 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       });
 
       assert.equal(config.shell.sessionTtlMs, null);
+      assert.equal(config.shell.idleTimeoutMs, 1200);
+      assert.equal(config.shell.cwd.defaultRoot, "localFiles.root");
+      assert.deepEqual(config.shell.cwd.allowedRoots, ["localFiles.root"]);
+      assert.equal(config.shell.cwd.allowAbsoluteOutsideRoots, false);
+      assert.equal(config.shell.commandPolicy.mode, "deny_known_dangerous");
+      assert.deepEqual(config.shell.commandPolicy.denyPrefixes, ["rm -rf /", "mkfs", "dd if="]);
+      assert.ok(config.shell.commandPolicy.denyStandalone.includes("vim"));
+      assert.deepEqual(config.shell.commandPolicy.warnPatterns, []);
       assert.equal(config.shell.terminalEvents.enabled, true);
       assert.equal(config.shell.terminalEvents.inputDetectionDebounceMs, 800);
       assert.equal(config.shell.terminalEvents.inputConfirmationMs, 1200);

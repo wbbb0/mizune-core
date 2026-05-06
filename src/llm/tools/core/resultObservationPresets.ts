@@ -121,10 +121,8 @@ export function localFileMutationPolicy(): ToolResultObservationPolicy {
 export function terminalPolicy(): ToolResultObservationPolicy {
   return {
     method(ctx) {
-      if (hasError(ctx) || hasNonZeroExitCode(ctx)) return "terminal_summary";
-      return ctx.rawLength > LONG_RESULT_CHARS || Boolean(ctx.parsedContent?.outputTruncated)
-        ? "terminal_summary"
-        : null;
+      if (hasError(ctx)) return "error_summary";
+      return "terminal_summary";
     },
     resource(ctx) {
       const session = objectValue(ctx.parsedContent?.session);
@@ -141,10 +139,13 @@ export function terminalPolicy(): ToolResultObservationPolicy {
       return id ? { kind: "shell_session", id } : null;
     },
     refetchHint(ctx) {
-      return ctx.resource ? `如需终端后续输出，请再次调用 terminal_read resource_id=${ctx.resource.id}` : null;
+      if (!ctx.resource) return null;
+      return terminalStatus(ctx) === "running"
+        ? `如需终端后续输出，请再次调用 terminal_read resource_id=${ctx.resource.id}`
+        : "";
     },
     pinned(ctx) {
-      return hasError(ctx) || hasNonZeroExitCode(ctx);
+      return hasError(ctx) || hasNonZeroExitCode(ctx) || stringValue(ctx.parsedContent?.status) === "rejected";
     },
     preserveRecentRawCount: 1,
     compactors: {
@@ -157,7 +158,7 @@ export function browserPagePolicy(): ToolResultObservationPolicy {
   return {
     method(ctx) {
       if (hasError(ctx)) return "error_summary";
-      return ctx.rawLength > LONG_RESULT_CHARS || isTruncated(ctx) ? "browser_page_summary" : null;
+      return "browser_page_summary";
     },
     resource: browserResource,
     refetchHint(ctx) {
@@ -166,6 +167,57 @@ export function browserPagePolicy(): ToolResultObservationPolicy {
     preserveRecentRawCount: 1,
     compactors: {
       browser_page_summary: compactBrowserPage
+    }
+  };
+}
+
+export function browserScreenshotPolicy(): ToolResultObservationPolicy {
+  return {
+    method(ctx) {
+      if (hasError(ctx)) return "error_summary";
+      return "browser_media_handle_summary";
+    },
+    resource: mediaResource,
+    refetchHint(ctx) {
+      const fileId = stringValue(ctx.parsedContent?.file_id ?? ctx.parsedContent?.fileId);
+      return fileId ? `如需查看截图，请调用 chat_file_view_media media_ids=[${JSON.stringify(fileId)}]` : null;
+    },
+    preserveRecentRawCount: 0,
+    compactors: {
+      browser_media_handle_summary: compactBrowserMediaHandle
+    }
+  };
+}
+
+export function browserDownloadPolicy(): ToolResultObservationPolicy {
+  return {
+    method(ctx) {
+      if (hasError(ctx)) return "error_summary";
+      return "browser_download_handle_summary";
+    },
+    resource: mediaResource,
+    refetchHint(ctx) {
+      const fileRef = stringValue(ctx.parsedContent?.file_ref ?? ctx.parsedContent?.fileRef);
+      const fileId = stringValue(ctx.parsedContent?.file_id ?? ctx.parsedContent?.fileId);
+      const selector = fileRef ?? fileId;
+      return selector ? `如需发送下载文件，请调用 chat_file_send_to_chat file_ref=${JSON.stringify(selector)}` : null;
+    },
+    preserveRecentRawCount: 0,
+    compactors: {
+      browser_download_handle_summary: compactBrowserDownloadHandle
+    }
+  };
+}
+
+export function browserProfilePolicy(): ToolResultObservationPolicy {
+  return {
+    method(ctx) {
+      if (hasError(ctx)) return "error_summary";
+      return "browser_profile_summary";
+    },
+    preserveRecentRawCount: 1,
+    compactors: {
+      browser_profile_summary: compactBrowserProfile
     }
   };
 }
@@ -339,15 +391,38 @@ function localFileResource(ctx: ToolResultObservationContext): ToolObservationRe
 }
 
 function browserResource(ctx: ToolResultObservationContext): ToolObservationResource | null {
-  const id = stringValue(ctx.parsedContent?.resource_id ?? ctx.parsedContent?.resourceId ?? ctx.args.resource_id);
+  const snapshot = objectValue(ctx.parsedContent?.snapshot);
+  const id = stringValue(
+    ctx.parsedContent?.resource_id
+    ?? ctx.parsedContent?.resourceId
+    ?? snapshot?.resource_id
+    ?? snapshot?.resourceId
+    ?? ctx.args.resource_id
+  );
   if (!id) return null;
-  const lineStart = numberValue(ctx.parsedContent?.lineStart ?? ctx.parsedContent?.line_start);
-  const lineEnd = numberValue(ctx.parsedContent?.lineEnd ?? ctx.parsedContent?.line_end);
+  const lineStart = numberValue(
+    ctx.parsedContent?.lineStart
+    ?? ctx.parsedContent?.line_start
+    ?? snapshot?.lineStart
+    ?? snapshot?.line_start
+  );
+  const lineEnd = numberValue(
+    ctx.parsedContent?.lineEnd
+    ?? ctx.parsedContent?.line_end
+    ?? snapshot?.lineEnd
+    ?? snapshot?.line_end
+  );
+  const version = stringValue(
+    ctx.parsedContent?.resolvedUrl
+    ?? ctx.parsedContent?.resolved_url
+    ?? snapshot?.resolvedUrl
+    ?? snapshot?.resolved_url
+  );
   return {
     kind: "browser_page",
     id,
     ...(lineStart && lineEnd ? { locator: `L${lineStart}-L${lineEnd}` } : {}),
-    ...(ctx.parsedContent?.resolvedUrl ? { version: String(ctx.parsedContent.resolvedUrl) } : {})
+    ...(version ? { version } : {})
   };
 }
 
@@ -410,33 +485,130 @@ function compactLocalFileSearch(ctx: Parameters<ToolResultCompactor>[0]) {
 }
 
 function compactTerminal(ctx: Parameters<ToolResultCompactor>[0]) {
+  const session = objectValue(ctx.parsedContent?.session);
   const stdout = stringValue(ctx.parsedContent?.stdout ?? ctx.parsedContent?.output) ?? "";
   const stderr = stringValue(ctx.parsedContent?.stderr) ?? "";
-  const exitCode = ctx.parsedContent?.exitCode ?? ctx.parsedContent?.exit_code ?? ctx.parsedContent?.code ?? null;
+  const exitCode = ctx.parsedContent?.exitCode ?? ctx.parsedContent?.exit_code ?? ctx.parsedContent?.code
+    ?? session?.exitCode ?? session?.exit_code ?? session?.code ?? null;
+  const status = stringValue(ctx.parsedContent?.status ?? session?.status);
+  const command = stringValue(ctx.parsedContent?.command ?? session?.command);
+  const cwd = stringValue(ctx.parsedContent?.cwd ?? session?.cwd);
+  const policy = objectValue(ctx.parsedContent?.policy);
   const summary = [
     `终端工具 ${ctx.toolName} 返回`,
+    status ? `status=${status}` : null,
     exitCode != null ? `exitCode=${String(exitCode)}` : null,
+    command ? `command=${compactText(command, 100)}` : null,
     stderr ? `stderr=${compactText(stderr, 180)}` : null,
     stdout ? `输出尾部=${compactText(stdout.slice(-600), 240)}` : null
   ].filter((item): item is string => Boolean(item)).join("；");
   return replayJson(ctx, summary, {
     resourceId: ctx.resource?.id ?? null,
+    command,
+    cwd,
+    status,
     exitCode,
     stderr: compactText(stderr, 300),
-    outputTail: compactText(stdout.slice(-1200), 600)
+    outputTail: compactText(stdout.slice(-1200), 600),
+    outputTruncated: isTruncated(ctx),
+    policy: policy
+      ? {
+          decision: policy.decision ?? null,
+          reason: policy.reason ?? null,
+          warnings: arrayValue(policy.warnings)?.slice(0, 5) ?? []
+        }
+      : null
   });
 }
 
 function compactBrowserPage(ctx: Parameters<ToolResultCompactor>[0]) {
-  const title = stringValue(ctx.parsedContent?.title);
-  const url = stringValue(ctx.parsedContent?.resolvedUrl ?? ctx.parsedContent?.url);
-  const text = stringValue(ctx.parsedContent?.content ?? ctx.parsedContent?.text ?? ctx.parsedContent?.markdown) ?? "";
-  const summary = `浏览器页面 ${title ?? url ?? ctx.resource?.id ?? ""} 返回内容；${compactText(text, 320)}`;
+  const snapshot = objectValue(ctx.parsedContent?.snapshot) ?? ctx.parsedContent;
+  const title = stringValue(snapshot?.title);
+  const url = stringValue(snapshot?.resolvedUrl ?? snapshot?.resolved_url ?? snapshot?.url);
+  const lines = arrayValue(snapshot?.lines)?.map((item) => String(item)).slice(0, 12) ?? [];
+  const elements = arrayValue(snapshot?.elements)
+    ?.map(compactBrowserElementForReplay)
+    .slice(0, 12)
+    ?? [];
+  const matches = arrayValue(ctx.parsedContent?.matches ?? snapshot?.matches)
+    ?.map(compactBrowserMatchForReplay)
+    .slice(0, 10)
+    ?? [];
+  const action = stringValue(ctx.parsedContent?.action);
+  const message = stringValue(ctx.parsedContent?.message);
+  const revision = ctx.parsedContent?.revision ?? snapshot?.revision ?? null;
+  const summary = [
+    `浏览器页面 ${title ?? url ?? ctx.resource?.id ?? ""} 返回内容`,
+    action ? `action=${action}` : null,
+    message ? compactText(message, 160) : null,
+    lines.length > 0 ? `文本样本=${compactText(lines.join(" "), 260)}` : null,
+    elements.length > 0 ? `可交互元素=${elements.length} 个样本` : null
+  ].filter((item): item is string => Boolean(item)).join("；");
   return replayJson(ctx, summary, {
     title,
     url,
     resourceId: ctx.resource?.id ?? null,
-    locator: ctx.resource?.locator ?? null
+    revision,
+    locator: ctx.resource?.locator ?? null,
+    lineWindow: {
+      start: numberValue(snapshot?.lineStart ?? snapshot?.line_start) ?? null,
+      end: numberValue(snapshot?.lineEnd ?? snapshot?.line_end) ?? null,
+      sample: lines,
+      truncated: isTruncated(ctx) || booleanValue(snapshot?.truncated) === true
+    },
+    refs: elements,
+    matches,
+    action,
+    message
+  });
+}
+
+function compactBrowserMediaHandle(ctx: Parameters<ToolResultCompactor>[0]) {
+  const fileId = stringValue(ctx.parsedContent?.file_id ?? ctx.parsedContent?.fileId);
+  const fileRef = stringValue(ctx.parsedContent?.file_ref ?? ctx.parsedContent?.fileRef);
+  const resourceId = stringValue(ctx.parsedContent?.resource_id ?? ctx.parsedContent?.resourceId);
+  const targetId = ctx.parsedContent?.target_id ?? ctx.parsedContent?.targetId ?? null;
+  const summary = `浏览器截图已保存${fileId ? `：${fileId}` : ""}`;
+  return replayJson(ctx, summary, {
+    fileId,
+    fileRef,
+    resourceId,
+    targetId,
+    mode: ctx.parsedContent?.mode ?? null,
+    mimeType: ctx.parsedContent?.mime_type ?? ctx.parsedContent?.mimeType ?? null,
+    sizeBytes: ctx.parsedContent?.size_bytes ?? ctx.parsedContent?.sizeBytes ?? null
+  });
+}
+
+function compactBrowserDownloadHandle(ctx: Parameters<ToolResultCompactor>[0]) {
+  const fileId = stringValue(ctx.parsedContent?.file_id ?? ctx.parsedContent?.fileId);
+  const fileRef = stringValue(ctx.parsedContent?.file_ref ?? ctx.parsedContent?.fileRef);
+  const sourceUrl = stringValue(ctx.parsedContent?.source_url ?? ctx.parsedContent?.sourceUrl);
+  const summary = `浏览器下载已保存${fileId ? `：${fileId}` : ""}${sourceUrl ? `，来源 ${compactText(sourceUrl, 120)}` : ""}`;
+  return replayJson(ctx, summary, {
+    fileId,
+    fileRef,
+    kind: ctx.parsedContent?.kind ?? null,
+    sourceUrl,
+    resourceId: ctx.parsedContent?.resource_id ?? ctx.parsedContent?.resourceId ?? null,
+    targetId: ctx.parsedContent?.target_id ?? ctx.parsedContent?.targetId ?? null,
+    mimeType: ctx.parsedContent?.mime_type ?? ctx.parsedContent?.mimeType ?? null,
+    sizeBytes: ctx.parsedContent?.size_bytes ?? ctx.parsedContent?.sizeBytes ?? null
+  });
+}
+
+function compactBrowserProfile(ctx: Parameters<ToolResultCompactor>[0]) {
+  const profiles = arrayValue(ctx.parsedContent?.profiles) ?? [];
+  const profile = objectValue(ctx.parsedContent?.profile);
+  const profileId = stringValue(ctx.parsedContent?.profile_id ?? profile?.profile_id);
+  const summary = profileId
+    ? `浏览器 profile ${profileId} 已返回摘要`
+    : `浏览器 profile 列表返回 ${profiles.length} 项`;
+  return replayJson(ctx, summary, {
+    profileId,
+    profileCount: profiles.length,
+    origins: arrayValue(profile?.origins)?.slice(0, 12) ?? [],
+    sample: profiles.slice(0, 8)
   });
 }
 
@@ -451,6 +623,33 @@ function compactSearchResult(ctx: Parameters<ToolResultCompactor>[0]) {
     resultCount: results.length,
     sample: results.slice(0, 8)
   });
+}
+
+function compactBrowserElementForReplay(item: unknown): Record<string, unknown> {
+  const element = objectValue(item);
+  if (!element) {
+    return { text: compactText(String(item ?? ""), 120) };
+  }
+  return {
+    ref: element.ref ?? element.id ?? null,
+    role: element.role ?? null,
+    name: element.name ?? element.label ?? null,
+    action: element.action ?? null,
+    disabled: element.disabled === true,
+    text: stringValue(element.text) ? compactText(String(element.text), 120) : null,
+    href: element.href ?? null
+  };
+}
+
+function compactBrowserMatchForReplay(item: unknown): Record<string, unknown> {
+  const match = objectValue(item);
+  if (!match) {
+    return { text: compactText(String(item ?? ""), 160) };
+  }
+  return {
+    line: match.lineNumber ?? match.line ?? null,
+    text: stringValue(match.text) ? compactText(String(match.text), 180) : null
+  };
 }
 
 function compactGroupContext(ctx: Parameters<ToolResultCompactor>[0]) {
@@ -509,13 +708,27 @@ function hasError(ctx: ToolResultObservationContext): boolean {
 }
 
 function hasNonZeroExitCode(ctx: ToolResultObservationContext): boolean {
-  const exitCode = Number(ctx.parsedContent?.exitCode ?? ctx.parsedContent?.exit_code ?? ctx.parsedContent?.code);
+  const session = objectValue(ctx.parsedContent?.session);
+  const exitCode = Number(
+    ctx.parsedContent?.exitCode
+    ?? ctx.parsedContent?.exit_code
+    ?? ctx.parsedContent?.code
+    ?? session?.exitCode
+    ?? session?.exit_code
+    ?? session?.code
+  );
   return Number.isFinite(exitCode) && exitCode !== 0;
+}
+
+function terminalStatus(ctx: ToolResultObservationContext): string | null {
+  const session = objectValue(ctx.parsedContent?.session);
+  return stringValue(ctx.parsedContent?.status ?? session?.status);
 }
 
 function isTruncated(ctx: ToolResultObservationContext): boolean {
   return booleanValue(ctx.parsedContent?.truncated)
     ?? booleanValue(ctx.parsedContent?.outputTruncated)
+    ?? booleanValue(ctx.parsedContent?.output_truncated)
     ?? false;
 }
 

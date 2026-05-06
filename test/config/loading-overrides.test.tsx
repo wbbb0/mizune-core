@@ -36,6 +36,41 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
     });
   });
 
+  test("loadConfig applies shell cwd and command policy overrides", async () => {
+    await withConfigDir("llm-bot-config-shell-policy-test", async (configDir) => {
+      await writeDefaultInstanceYaml(configDir);
+      await writeYaml(join(configDir, "global.yml"), {
+        shell: {
+          enabled: true,
+          idleTimeoutMs: 2500,
+          cwd: {
+            defaultRoot: "/srv/work",
+            allowedRoots: ["/srv/work", "/tmp"],
+            allowAbsoluteOutsideRoots: false
+          },
+          commandPolicy: {
+            mode: "deny_known_dangerous",
+            denyPrefixes: ["rm -rf /important"],
+            denyStandalone: ["python -i"],
+            warnPatterns: ["sudo"]
+          }
+        }
+      });
+
+      const config = loadConfig({
+        CONFIG_DIR: configDir
+      });
+
+      assert.equal(config.shell.idleTimeoutMs, 2500);
+      assert.equal(config.shell.cwd.defaultRoot, "/srv/work");
+      assert.deepEqual(config.shell.cwd.allowedRoots, ["/srv/work", "/tmp"]);
+      assert.equal(config.shell.cwd.allowAbsoluteOutsideRoots, false);
+      assert.deepEqual(config.shell.commandPolicy.denyPrefixes, ["rm -rf /important"]);
+      assert.deepEqual(config.shell.commandPolicy.denyStandalone, ["python -i"]);
+      assert.deepEqual(config.shell.commandPolicy.warnPatterns, ["sudo"]);
+    });
+  });
+
   test("loadConfig merges global proxy settings and feature proxy switches", async () => {
     await withConfigDir("llm-bot-config-search-proxy-test", async (configDir) => {
       await writeDefaultInstanceYaml(configDir);

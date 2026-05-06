@@ -154,8 +154,30 @@ shell:
   enabled: false
   defaultTimeoutMs: 15000
   maxTimeoutMs: 600000
+  idleTimeoutMs: 1200
   maxOutputChars: 5000
   sessionTtlMs: null
+  cwd:
+    defaultRoot: localFiles.root
+    allowedRoots:
+      - localFiles.root
+    allowAbsoluteOutsideRoots: false
+  commandPolicy:
+    mode: deny_known_dangerous
+    denyPrefixes:
+      - rm -rf /
+      - mkfs
+      - dd if=
+    denyStandalone:
+      - vim
+      - vi
+      - nano
+      - emacs
+      - less
+      - more
+      - tail -f
+      - nohup
+    warnPatterns: []
   terminalEvents:
     enabled: true
     inputDetectionDebounceMs: 800

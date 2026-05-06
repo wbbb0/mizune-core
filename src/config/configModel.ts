@@ -250,12 +250,41 @@ const shellTerminalEventsConfigSchema = s.object({
   detectionTailMaxChars: s.number().int().positive().title("输入检测最大尾部字符数").default(8000)
 }).title("Terminal 事件").describe("控制后台 terminal 完成和等待输入事件。").default(emptyObject);
 
+const shellCwdConfigSchema = s.object({
+  defaultRoot: s.string().trim().nonempty().title("默认工作目录根").default("localFiles.root"),
+  allowedRoots: s.array(s.string().trim().nonempty()).title("允许工作目录根").default(["localFiles.root"]),
+  allowAbsoluteOutsideRoots: s.boolean().title("允许绝对路径越过根目录").default(false)
+}).title("Shell 工作目录").describe("限制 shell 命令可用 cwd 范围。").default(emptyObject);
+
+const shellCommandPolicyConfigSchema = s.object({
+  mode: s.enum(["deny_known_dangerous"]).title("策略模式").default("deny_known_dangerous"),
+  denyPrefixes: s.array(s.string().trim().nonempty()).title("拒绝命令前缀").default([
+    "rm -rf /",
+    "mkfs",
+    "dd if="
+  ]),
+  denyStandalone: s.array(s.string().trim().nonempty()).title("拒绝交互命令").default([
+    "vim",
+    "vi",
+    "nano",
+    "emacs",
+    "less",
+    "more",
+    "tail -f",
+    "nohup"
+  ]),
+  warnPatterns: s.array(s.string().trim().nonempty()).title("警告匹配片段").default([])
+}).title("Shell 命令策略").describe("拒绝或标记高风险 shell 命令。").default(emptyObject);
+
 const shellConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(false),
   defaultTimeoutMs: s.number().int().positive().title("默认超时毫秒").default(15000),
   maxTimeoutMs: s.number().int().positive().title("最大超时毫秒").default(600000),
+  idleTimeoutMs: s.number().int().positive().title("输出静默返回毫秒").default(1200),
   maxOutputChars: s.number().int().positive().title("最大输出字符数").default(12000),
   sessionTtlMs: s.union([s.number().int().positive(), s.literal(null)]).title("会话存活毫秒").default(null),
+  cwd: shellCwdConfigSchema,
+  commandPolicy: shellCommandPolicyConfigSchema,
   terminalEvents: shellTerminalEventsConfigSchema
 }).title("Shell").describe("控制 shell 工具的超时、输出与会话保活。").default(emptyObject);
 

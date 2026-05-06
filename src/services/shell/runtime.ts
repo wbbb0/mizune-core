@@ -6,14 +6,17 @@ import {
   buildShellArgs,
   getDefaultShell,
   resolveShellForegroundCommand,
-  resolveAllowedShellCwd,
   spawnShellIo,
   trimOutputTail,
   waitForShellYield
 } from "./core.ts";
+import { evaluateShellCommandPolicy, type ShellCommandPolicyResult } from "./commandPolicy.ts";
 import { detectTerminalInputPrompt, normalizeTerminalOutput } from "./inputPromptDetector.ts";
+import { ShellOutputBuffer } from "./outputBuffer.ts";
+import { resolveShellCwd } from "./pathPolicy.ts";
 import type {
   ShellNotifyPolicy,
+  ShellInteractionResult,
   ShellRunOwner,
   ShellRunParams,
   ShellRunResult,
@@ -24,13 +27,14 @@ import type {
 
 interface InternalSessionState {
   view: ShellSession;
-  pendingOutput: string;
-  pendingOutputTruncated: boolean;
+  pendingOutput: ShellOutputBuffer;
+  outputTail: ShellOutputBuffer;
   write: (data: string) => void;
   kill: (signal?: string) => void;
   expiresAtMs: number | null;
   owner: ShellRunOwner | null;
   notifyPolicy: ShellNotifyPolicy;
+  policy: ShellCommandPolicyResult;
   returnedToModel: boolean;
   inputDetectionTimer: ReturnType<typeof setTimeout> | null;
   inputConfirmationTimer: ReturnType<typeof setTimeout> | null;
@@ -80,12 +84,27 @@ export class ShellRuntime {
 
     await this.cleanupExpiredSessions();
 
-    const cwd = resolveAllowedShellCwd(this.config, params.cwd);
+    const policy = evaluateShellCommandPolicy(this.config, command);
+    if (policy.decision === "deny") {
+      return {
+        output: "",
+        status: "rejected",
+        command,
+        ...(params.cwd ? { cwd: params.cwd } : {}),
+        policy
+      };
+    }
+
+    const cwd = resolveShellCwd(this.config, params.cwd).cwd;
     const shell = getDefaultShell(params.shell);
     const login = params.login ?? true;
     const tty = params.tty ?? true;
     const background = params.background ?? false;
-    const timeoutMs = params.timeoutMs ?? this.config.shell.defaultTimeoutMs;
+    const timeoutMs = resolveShellTimeoutMs(
+      params.timeoutMs,
+      this.config.shell.defaultTimeoutMs,
+      this.config.shell.maxTimeoutMs
+    );
     const notifyPolicy = params.notifyPolicy ?? (params.owner ? "notify_on_input_and_close" : "none");
     const now = Date.now();
 
@@ -141,13 +160,14 @@ export class ShellRuntime {
 
     const state: InternalSessionState = {
       view,
-      pendingOutput: "",
-      pendingOutputTruncated: false,
+      pendingOutput: new ShellOutputBuffer(this.config.shell.maxOutputChars),
+      outputTail: new ShellOutputBuffer(this.config.shell.maxOutputChars),
       write: spawned.io.write,
       kill: spawned.io.kill,
       expiresAtMs: this.computeNextExpiry(),
       owner: params.owner ?? null,
       notifyPolicy,
+      policy,
       returnedToModel: background,
       inputDetectionTimer: null,
       inputConfirmationTimer: null,
@@ -161,20 +181,9 @@ export class ShellRuntime {
     this.sessions.set(resource.resourceId, state);
 
     spawned.io.onOutput((chunk) => {
-      const maxChars = this.config.shell.maxOutputChars;
-      // 在入口处截断 chunk，防止后续任何缓冲区临时膨胀
-      const safeChunk = chunk.length > maxChars ? trimOutputTail(chunk, maxChars) : chunk;
-
-      const newPending = state.pendingOutput + safeChunk;
-      if (newPending.length > maxChars) {
-        state.pendingOutput = trimOutputTail(newPending, maxChars);
-        state.pendingOutputTruncated = true;
-      } else {
-        state.pendingOutput = newPending;
-      }
-
-      const newTail = state.view.outputTail + safeChunk;
-      state.view.outputTail = newTail.length > maxChars ? trimOutputTail(newTail, maxChars) : newTail;
+      state.pendingOutput.append(chunk);
+      state.outputTail.append(chunk);
+      state.view.outputTail = state.outputTail.tail();
       state.view.updatedAtMs = Date.now();
       state.view.lastOutputAtMs = state.view.updatedAtMs;
       this.scheduleInputDetection(resource.resourceId, state);
@@ -204,19 +213,31 @@ export class ShellRuntime {
 
     if (!background) {
       const startWait = Date.now();
-      while (state.view.status === "running" && Date.now() - startWait < timeoutMs) {
+      while (
+        state.view.status === "running"
+        && Date.now() - startWait < timeoutMs
+        && !hasReachedIdleReturn(state, this.config.shell.idleTimeoutMs)
+      ) {
         await waitForShellYield(100);
       }
     }
 
-    const output = drainPendingOutput(state);
+    const drained = drainPendingOutput(state);
 
     if (isClosedSession(state.view)) {
       const result: ShellRunResult = {
-        output,
+        output: drained.output,
         status: "completed",
         exitCode: state.view.exitCode,
-        signal: state.view.signal
+        exit_code: state.view.exitCode,
+        signal: state.view.signal,
+        command,
+        cwd,
+        effectiveTimeoutMs: timeoutMs,
+        effective_timeout_ms: timeoutMs,
+        outputTruncated: drained.truncated,
+        output_truncated: drained.truncated,
+        policy
       };
       this.sessions.delete(resource.resourceId);
       return result;
@@ -226,13 +247,21 @@ export class ShellRuntime {
     this.scheduleInputDetection(resource.resourceId, state);
     await this.touchSession(resource.resourceId, state);
     return {
-      output,
+      output: drained.output,
       resourceId: resource.resourceId,
-      status: "running"
+      resource_id: resource.resourceId,
+      status: "running",
+      command,
+      cwd,
+      effectiveTimeoutMs: timeoutMs,
+      effective_timeout_ms: timeoutMs,
+      outputTruncated: drained.truncated,
+      output_truncated: drained.truncated,
+      policy
     };
   }
 
-  async interact(resourceId: string, input: string): Promise<{ output: string; session: ShellSession }> {
+  async interact(resourceId: string, input: string): Promise<ShellInteractionResult> {
     await this.cleanupExpiredSessions();
     const state = await this.requireState(resourceId);
     if (state.view.status !== "running") {
@@ -246,7 +275,7 @@ export class ShellRuntime {
     state.lastInputPromptNotifiedAtMs = null;
     await waitForShellYield(500);
 
-    const output = drainPendingOutput(state);
+    const drained = drainPendingOutput(state);
 
     if (isClosedSession(state.view)) {
       this.sessions.delete(resourceId);
@@ -254,14 +283,19 @@ export class ShellRuntime {
       await this.touchSession(resourceId, state);
     }
 
-    return { output, session: state.view };
+    return {
+      output: drained.output,
+      outputTruncated: drained.truncated,
+      output_truncated: drained.truncated,
+      session: state.view
+    };
   }
 
-  async read(resourceId: string): Promise<{ output: string; session: ShellSession }> {
+  async read(resourceId: string): Promise<ShellInteractionResult> {
     await this.cleanupExpiredSessions();
     const state = await this.requireState(resourceId);
 
-    const output = drainPendingOutput(state);
+    const drained = drainPendingOutput(state);
 
     if (isClosedSession(state.view)) {
       this.sessions.delete(resourceId);
@@ -269,7 +303,12 @@ export class ShellRuntime {
       await this.touchSession(resourceId, state);
     }
 
-    return { output, session: state.view };
+    return {
+      output: drained.output,
+      outputTruncated: drained.truncated,
+      output_truncated: drained.truncated,
+      session: state.view
+    };
   }
 
   async signal(resourceId: string, signal: string): Promise<ShellSession> {
@@ -525,8 +564,7 @@ export class ShellRuntime {
     ) {
       return;
     }
-    const outputTruncated = state.pendingOutputTruncated;
-    const output = drainPendingOutput(state);
+    const drained = drainPendingOutput(state);
     this.emitEvent({
       kind: "session_closed",
       owner: state.owner,
@@ -535,8 +573,8 @@ export class ShellRuntime {
       cwd: state.view.cwd,
       exitCode: state.view.exitCode,
       signal: state.view.signal,
-      output,
-      outputTruncated
+      output: drained.output,
+      outputTruncated: drained.truncated
     }, resourceId);
   }
 
@@ -598,13 +636,24 @@ function normalizeOptionalDescription(value: string | undefined): string | null 
   return normalized || null;
 }
 
-function drainPendingOutput(state: InternalSessionState): string {
-  const output = state.pendingOutput;
-  const truncated = state.pendingOutputTruncated;
-  state.pendingOutput = "";
-  state.pendingOutputTruncated = false;
+function drainPendingOutput(state: InternalSessionState): { output: string; truncated: boolean } {
+  const drained = state.pendingOutput.drain();
+  const output = drained.output;
+  const truncated = drained.truncated;
   if (truncated) {
-    return `[输出过长，已截取最后部分内容]\n${output}`;
+    return {
+      output: `[输出过长，已截取最后部分内容]\n${output}`,
+      truncated
+    };
   }
-  return output;
+  return { output, truncated };
+}
+
+function hasReachedIdleReturn(state: InternalSessionState, idleTimeoutMs: number): boolean {
+  return state.view.lastOutputAtMs != null && Date.now() - state.view.lastOutputAtMs >= idleTimeoutMs;
+}
+
+function resolveShellTimeoutMs(requested: number | undefined, defaultTimeoutMs: number, maxTimeoutMs: number): number {
+  const candidate = requested ?? defaultTimeoutMs;
+  return Math.max(1, Math.min(Math.round(candidate), maxTimeoutMs));
 }
