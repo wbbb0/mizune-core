@@ -74,7 +74,6 @@ function createExecutorHarness(options?: {
   onGenerateTitle?: () => Promise<string | null> | string | null;
   currentUser?: { userId: string; relationship: "owner" | "known" };
   contextExtractionQueue?: { enqueueTurn: (turn: unknown) => void };
-  contextIngestionService?: { ingestTurn: (turn: unknown) => void };
   customGenerate?: (input: {
     onReasoningDelta?: (delta: string) => void;
     onTextDelta?: (delta: string) => Promise<void>;
@@ -274,7 +273,6 @@ function createExecutorHarness(options?: {
         return {} as never;
       },
       ...(options?.contextExtractionQueue ? { contextExtractionQueue: options.contextExtractionQueue } : {}),
-      ...(options?.contextIngestionService ? { contextIngestionService: options.contextIngestionService } : {})
     }
   }, {
     processNextSessionWork() {}
@@ -411,7 +409,7 @@ function createExecutorHarness(options?: {
     assert.match(event?.errorMessage ?? "", /queue unavailable/);
   });
 
-  test("context extraction enqueue is visible in backend transcript", async () => {
+  test("context extraction enqueue does not add backend transcript noise", async () => {
     const enqueuedTurns: unknown[] = [];
     const harness = createExecutorHarness({
       currentUser: {
@@ -430,52 +428,11 @@ function createExecutorHarness(options?: {
     await harness.runPromise;
 
     assert.equal(enqueuedTurns.length, 1);
-    const event = harness.sessionManager
+    const events = harness.sessionManager
       .getSession(harness.sessionId)
       .internalTranscript
-      .find((item) => item.kind === "context_extraction_event");
-    assert.equal(event?.kind, "context_extraction_event");
-    assert.equal(event?.status, "queued");
-    assert.deepEqual(event?.targetUserIds, ["owner"]);
-    assert.equal(event?.messageCount, 1);
-  });
-
-  test("context ingestion runs after assistant response is finalized", async () => {
-    const ingestedTurns: unknown[] = [];
-    const harness = createExecutorHarness({
-      currentUser: {
-        userId: "owner",
-        relationship: "owner"
-      },
-      contextIngestionService: {
-        ingestTurn(turn) {
-          ingestedTurns.push(turn);
-        }
-      }
-    });
-
-    await waitForEvents(harness.events, 2);
-    harness.resolveDrain();
-    await harness.runPromise;
-
-    assert.equal(ingestedTurns.length, 1);
-    const turn = ingestedTurns[0] as {
-      sessionId: string;
-      chatType: "private";
-      targetUserIds: string[];
-      userMessages: Array<{ userId: string; senderName: string; text: string; receivedAt: number }>;
-      assistantText: string;
-      completedAt: number;
-    };
-    assert.equal(turn.sessionId, harness.sessionId);
-    assert.equal(turn.chatType, "private");
-    assert.deepEqual(turn.targetUserIds, ["owner"]);
-    assert.equal(turn.userMessages.length, 1);
-    assert.equal(turn.userMessages[0]?.userId, "owner");
-    assert.equal(turn.userMessages[0]?.senderName, "Owner");
-    assert.equal(turn.userMessages[0]?.text, "你好");
-    assert.equal(turn.assistantText, "你好");
-    assert.ok(Number.isFinite(turn.completedAt));
+      .filter((item) => item.kind === "context_extraction_event");
+    assert.deepEqual(events, []);
   });
 
   test("typing stop is skipped when a newer response epoch takes over", async () => {

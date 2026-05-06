@@ -4,11 +4,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
-import { ContextExtractionService, type ContextExtractionTurn } from "../../src/context/contextExtractionService.ts";
+import { ContextExtractionService, type ContextExtractionResult, type ContextExtractionTurn } from "../../src/context/contextExtractionService.ts";
 import { ContextStore } from "../../src/context/contextStore.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
-async function createHarness(generateText: string) {
+async function createHarness(generateText: string | (() => string)) {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-context-extraction-test-"));
   const config = createTestAppConfig({
     llm: {
@@ -44,7 +44,7 @@ async function createHarness(generateText: string) {
         generateCalls += 1;
         lastPromptMessages = input.messages;
         return {
-          text: generateText,
+          text: typeof generateText === "function" ? generateText() : generateText,
           reasoningContent: "",
           usage: {
             inputTokens: null,
@@ -104,12 +104,25 @@ function groupTurn(messages: ContextExtractionTurn["userMessages"], targetUserId
   };
 }
 
+function assertExtractionCounts(
+  result: ContextExtractionResult,
+  expected: { created: number; replaced: number; ignored: number }
+): void {
+  assert.deepEqual({
+    created: result.created,
+    replaced: result.replaced,
+    ignored: result.ignored
+  }, expected);
+}
+
 test("ContextExtractionService creates and replaces stable user memories", async () => {
   const harness = await createHarness(JSON.stringify({
     items: [
       {
         action: "replace",
+        operation: "update_existing",
         scope: "user",
+        slotKey: "breakfast_habit",
         title: "早餐习惯",
         content: "用户早餐改成全麦吐司配牛油果，不再吃酸奶",
         kind: "habit",
@@ -118,7 +131,9 @@ test("ContextExtractionService creates and replaces stable user memories", async
       },
       {
         action: "create",
+        operation: "create",
         scope: "user",
+        slotKey: "communication_preference",
         title: "回答偏好",
         content: "用户喜欢先给结论，再补充关键原因",
         kind: "preference",
@@ -127,6 +142,7 @@ test("ContextExtractionService creates and replaces stable user memories", async
       },
       {
         action: "create",
+        operation: "create",
         scope: "user",
         title: "低置信内容",
         content: "用户今天在测试记忆功能",
@@ -139,6 +155,7 @@ test("ContextExtractionService creates and replaces stable user memories", async
   try {
     const existing = harness.store.upsertUserFact({
       userId: "user_1",
+      slotKey: "breakfast_habit",
       title: "早餐习惯",
       content: "用户早餐固定吃希腊酸奶加蓝莓和奇亚籽",
       kind: "habit",
@@ -151,7 +168,7 @@ test("ContextExtractionService creates and replaces stable user memories", async
       turns: [turn("更新一下，我早餐改成全麦吐司配牛油果，不再吃酸奶。以后回答先给结论。")]
     });
 
-    assert.deepEqual(result, { created: 1, replaced: 1, ignored: 1 });
+    assertExtractionCounts(result, { created: 1, replaced: 1, ignored: 1 });
     const memories = harness.store.listUserFacts("user_1");
     assert.equal(memories.length, 2);
     assert.equal(memories.find((item) => item.id === existing.item.id)?.content, "用户早餐改成全麦吐司配牛油果，不再吃酸奶");
@@ -171,7 +188,7 @@ test("ContextExtractionService lets extractor decide no-op conversations", async
       turns: [turn("这个函数现在为什么报错？")]
     });
 
-    assert.deepEqual(result, { created: 0, replaced: 0, ignored: 0 });
+    assertExtractionCounts(result, { created: 0, replaced: 0, ignored: 0 });
     assert.equal(harness.getGenerateCalls(), 1);
   } finally {
     await harness.cleanup();
@@ -182,7 +199,9 @@ test("ContextExtractionService captures explicit session purpose as session-scop
   const harness = await createHarness(JSON.stringify({
     items: [{
       action: "create",
+      operation: "create",
       scope: "session",
+      slotKey: "session_purpose",
       title: "会话用途",
       content: "此会话专门用于记忆系统一阶段测试",
       kind: "other",
@@ -197,7 +216,7 @@ test("ContextExtractionService captures explicit session purpose as session-scop
       turns: [turn("此会话专门用于记忆系统一阶段测试。")]
     });
 
-    assert.deepEqual(result, { created: 1, replaced: 0, ignored: 0 });
+    assertExtractionCounts(result, { created: 1, replaced: 0, ignored: 0 });
     assert.deepEqual(harness.store.listUserFacts("user_1"), []);
     const sessionFacts = harness.store.listSessionFacts("qqbot:p:user_1");
     assert.equal(sessionFacts.length, 1);
@@ -219,7 +238,9 @@ test("ContextExtractionService replaces an existing session purpose when the use
   const harness = await createHarness(JSON.stringify({
     items: [{
       action: "replace",
+      operation: "update_existing",
       scope: "session",
+      slotKey: "session_purpose",
       title: "会话用途",
       content: "此会话现在专门用于记忆系统二阶段测试",
       kind: "fact",
@@ -230,6 +251,7 @@ test("ContextExtractionService replaces an existing session purpose when the use
   try {
     const existing = harness.store.upsertSessionFact({
       sessionId: "qqbot:p:user_1",
+      slotKey: "session_purpose",
       title: "会话用途",
       content: "此会话专门用于记忆系统一阶段测试",
       kind: "fact",
@@ -242,18 +264,19 @@ test("ContextExtractionService replaces an existing session purpose when the use
       turns: [turn("更新一下，此会话现在专门用于记忆系统二阶段测试。")]
     });
 
-    assert.deepEqual(result, { created: 0, replaced: 1, ignored: 0 });
+    assertExtractionCounts(result, { created: 0, replaced: 1, ignored: 0 });
     assert.deepEqual(harness.store.listUserFacts("user_1"), []);
     const sessionFacts = harness.store.listSessionFacts("qqbot:p:user_1");
     assert.equal(sessionFacts.length, 1);
     assert.equal(sessionFacts[0]?.id, existing.item.id);
     assert.equal(sessionFacts[0]?.content, "此会话现在专门用于记忆系统二阶段测试");
     const promptPayload = JSON.parse((harness.getLastPromptMessages()[1] as { content: string }).content) as {
-      related_memories: Array<{ scope: string; id: string }>;
+      related_memories: Array<{ scope: string; id: string; slotKey?: string }>;
     };
-    assert.deepEqual(promptPayload.related_memories.map((item) => ({ scope: item.scope, id: item.id })), [{
+    assert.deepEqual(promptPayload.related_memories.map((item) => ({ scope: item.scope, id: item.id, slotKey: item.slotKey })), [{
       scope: "session",
-      id: existing.item.id
+      id: existing.item.id,
+      slotKey: "session_purpose"
     }]);
   } finally {
     await harness.cleanup();
@@ -264,7 +287,9 @@ test("ContextExtractionService keeps explicit session agenda while ignoring one-
   const harness = await createHarness(JSON.stringify({
     items: [{
       action: "create",
+      operation: "create",
       scope: "session",
+      slotKey: "session_purpose",
       title: "会话用途",
       content: "此会话专门用于记忆系统测试",
       kind: "fact",
@@ -272,6 +297,7 @@ test("ContextExtractionService keeps explicit session agenda while ignoring one-
       confidence: 0.94
     }, {
       action: "ignore",
+      operation: "noop",
       scope: "session",
       confidence: 1
     }]
@@ -283,7 +309,7 @@ test("ContextExtractionService keeps explicit session agenda while ignoring one-
       turns: [turn("此会话专门用于记忆系统测试。顺手帮我算一下 2+2。")]
     });
 
-    assert.deepEqual(result, { created: 1, replaced: 0, ignored: 1 });
+    assertExtractionCounts(result, { created: 1, replaced: 0, ignored: 1 });
     assert.deepEqual(harness.store.listUserFacts("user_1"), []);
     const sessionFacts = harness.store.listSessionFacts("qqbot:p:user_1");
     assert.equal(sessionFacts.length, 1);
@@ -297,7 +323,9 @@ test("ContextExtractionService keeps group session purpose scoped to the group s
   const harness = await createHarness(JSON.stringify({
     items: [{
       action: "create",
+      operation: "create",
       scope: "session",
+      slotKey: "session_purpose",
       title: "会话用途",
       content: "本群此会话专门用于记忆系统测试",
       kind: "fact",
@@ -329,8 +357,8 @@ test("ContextExtractionService keeps group session purpose scoped to the group s
       turns: [groupTurn(messages, "user_2")]
     });
 
-    assert.deepEqual(first, { created: 1, replaced: 0, ignored: 0 });
-    assert.deepEqual(second, { created: 0, replaced: 0, ignored: 1 });
+    assertExtractionCounts(first, { created: 1, replaced: 0, ignored: 0 });
+    assertExtractionCounts(second, { created: 0, replaced: 0, ignored: 1 });
     assert.deepEqual(harness.store.listUserFacts("user_1"), []);
     assert.deepEqual(harness.store.listUserFacts("user_2"), []);
     const sessionFacts = harness.store.listSessionFacts("qqbot:g:group_1");
@@ -345,6 +373,7 @@ test("ContextExtractionService ignores create and replace candidates without an 
   const harness = await createHarness(JSON.stringify({
     items: [{
       action: "create",
+      operation: "create",
       title: "会话用途",
       content: "此会话专门用于记忆系统测试",
       kind: "fact",
@@ -352,6 +381,7 @@ test("ContextExtractionService ignores create and replace candidates without an 
       confidence: 0.95
     }, {
       action: "replace",
+      operation: "update_existing",
       scope: "unsupported",
       title: "回答偏好",
       content: "用户喜欢先给结论",
@@ -367,7 +397,7 @@ test("ContextExtractionService ignores create and replace candidates without an 
       turns: [turn("此会话专门用于记忆系统测试。")]
     });
 
-    assert.deepEqual(result, { created: 0, replaced: 0, ignored: 2 });
+    assertExtractionCounts(result, { created: 0, replaced: 0, ignored: 2 });
     assert.deepEqual(harness.store.listUserFacts("user_1"), []);
     assert.deepEqual(harness.store.listSessionFacts("qqbot:p:user_1"), []);
   } finally {
@@ -379,7 +409,9 @@ test("ContextExtractionService passes short stable facts to extractor", async ()
   const harness = await createHarness(JSON.stringify({
     items: [{
       action: "create",
+      operation: "create",
       scope: "user",
+      slotKey: "preferred_name",
       title: "称呼偏好",
       content: "用户希望被称为阿明",
       kind: "preference",
@@ -394,9 +426,256 @@ test("ContextExtractionService passes short stable facts to extractor", async ()
       turns: [turn("叫我阿明")]
     });
 
-    assert.deepEqual(result, { created: 1, replaced: 0, ignored: 0 });
+    assertExtractionCounts(result, { created: 1, replaced: 0, ignored: 0 });
     assert.equal(harness.store.listUserFacts("user_1")[0]?.content, "用户希望被称为阿明");
     assert.equal(harness.getGenerateCalls(), 1);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextExtractionService updates remembered nickname through recalled target memory", async () => {
+  let targetMemoryId = "";
+  const harness = await createHarness(() => JSON.stringify({
+    items: [{
+      action: "replace",
+      operation: "update_existing",
+      scope: "user",
+      targetMemoryId,
+      slotKey: "preferred_name",
+      title: "称呼偏好",
+      content: "用户希望被称为小王",
+      kind: "preference",
+      importance: 5,
+      confidence: 0.96
+    }]
+  }));
+  try {
+    const existing = harness.store.upsertUserFact({
+      userId: "user_1",
+      slotKey: "preferred_name",
+      title: "称呼偏好",
+      content: "用户希望被称为阿明",
+      kind: "preference",
+      importance: 5
+    });
+    targetMemoryId = existing.item.id;
+
+    const result = await harness.service.processTurns({
+      sessionId: "qqbot:p:user_1",
+      userId: "user_1",
+      turns: [turn("改一下，以后叫我小王，不要叫阿明了。")]
+    });
+
+    assertExtractionCounts(result, { created: 0, replaced: 1, ignored: 0 });
+    const memories = harness.store.listUserFacts("user_1");
+    assert.equal(memories.length, 1);
+    assert.equal(memories[0]?.id, existing.item.id);
+    assert.equal(memories[0]?.slotKey, "preferred_name");
+    assert.equal(memories[0]?.content, "用户希望被称为小王");
+    const promptPayload = JSON.parse((harness.getLastPromptMessages()[1] as { content: string }).content) as {
+      related_memories: Array<{ scope: string; id: string; slotKey?: string }>;
+    };
+    assert.deepEqual(promptPayload.related_memories.map((item) => ({ scope: item.scope, id: item.id, slotKey: item.slotKey })), [{
+      scope: "user",
+      id: existing.item.id,
+      slotKey: "preferred_name"
+    }]);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextExtractionService supersedes changed residence by slot key", async () => {
+  let targetMemoryId = "";
+  const harness = await createHarness(() => JSON.stringify({
+    items: [{
+      action: "replace",
+      operation: "invalidate_and_create",
+      scope: "user",
+      targetMemoryId,
+      conflictsWithMemoryIds: [targetMemoryId],
+      slotKey: "residence",
+      title: "常住地",
+      content: "用户现在常住杭州",
+      kind: "fact",
+      importance: 4,
+      confidence: 0.95
+    }]
+  }));
+  try {
+    const existing = harness.store.upsertUserFact({
+      userId: "user_1",
+      slotKey: "residence",
+      title: "常住地",
+      content: "用户常住上海",
+      kind: "fact",
+      importance: 4
+    });
+    targetMemoryId = existing.item.id;
+
+    const result = await harness.service.processTurns({
+      sessionId: "qqbot:p:user_1",
+      userId: "user_1",
+      turns: [turn("我现在搬到杭州了，以前上海那个地址不用了。")]
+    });
+
+    assertExtractionCounts(result, { created: 0, replaced: 1, ignored: 0 });
+    const activeFacts = harness.store.listUserFacts("user_1");
+    assert.equal(activeFacts.length, 1);
+    assert.notEqual(activeFacts[0]?.id, existing.item.id);
+    assert.equal(activeFacts[0]?.slotKey, "residence");
+    assert.equal(activeFacts[0]?.content, "用户现在常住杭州");
+    const superseded = harness.store.listContextItems({ userId: "user_1", status: "superseded" }).items;
+    assert.equal(superseded.length, 1);
+    assert.equal(superseded[0]?.itemId, existing.item.id);
+    assert.equal(superseded[0]?.supersededBy, activeFacts[0]?.id);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextExtractionService updates same-slot create candidates instead of dropping them as duplicates", async () => {
+  const harness = await createHarness(JSON.stringify({
+    items: [{
+      action: "create",
+      operation: "create",
+      scope: "user",
+      slotKey: "preferred_name",
+      title: "称呼偏好",
+      content: "用户希望被称为小王",
+      kind: "preference",
+      importance: 5,
+      confidence: 0.94
+    }]
+  }));
+  try {
+    const existing = harness.store.upsertUserFact({
+      userId: "user_1",
+      slotKey: "preferred_name",
+      title: "称呼偏好",
+      content: "用户希望被称为阿明",
+      kind: "preference"
+    });
+
+    const result = await harness.service.processTurns({
+      sessionId: "qqbot:p:user_1",
+      userId: "user_1",
+      turns: [turn("以后叫我小王。")]
+    });
+
+    assertExtractionCounts(result, { created: 0, replaced: 1, ignored: 0 });
+    assert.equal(harness.store.listUserFacts("user_1")[0]?.id, existing.item.id);
+    assert.equal(harness.store.listUserFacts("user_1")[0]?.content, "用户希望被称为小王");
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextExtractionService invalidates explicit conflict memories without relying on slot key", async () => {
+  let firstConflictId = "";
+  let secondConflictId = "";
+  const harness = await createHarness(() => JSON.stringify({
+    items: [{
+      action: "replace",
+      operation: "invalidate_and_create",
+      scope: "user",
+      targetMemoryId: firstConflictId,
+      conflictsWithMemoryIds: [firstConflictId, secondConflictId],
+      title: "常住地",
+      content: "用户现在常住杭州",
+      kind: "fact",
+      importance: 4,
+      confidence: 0.95
+    }]
+  }));
+  try {
+    const first = harness.store.upsertUserFact({
+      userId: "user_1",
+      title: "所在地",
+      content: "用户常住上海",
+      kind: "fact"
+    });
+    const second = harness.store.upsertUserFact({
+      userId: "user_1",
+      title: "城市",
+      content: "用户所在地是苏州",
+      kind: "fact"
+    });
+    firstConflictId = first.item.id;
+    secondConflictId = second.item.id;
+
+    const result = await harness.service.processTurns({
+      sessionId: "qqbot:p:user_1",
+      userId: "user_1",
+      turns: [turn("我现在搬到杭州了，上海和苏州那些旧信息都不用了。")]
+    });
+
+    assertExtractionCounts(result, { created: 0, replaced: 1, ignored: 0 });
+    const activeFacts = harness.store.listUserFacts("user_1");
+    assert.equal(activeFacts.length, 1);
+    assert.equal(activeFacts[0]?.content, "用户现在常住杭州");
+    const supersededIds = harness.store.listContextItems({ userId: "user_1", status: "superseded" }).items.map((item) => item.itemId).sort();
+    assert.deepEqual(supersededIds, [first.item.id, second.item.id].sort());
+    assert.deepEqual(result.items[0]?.targetMemoryIds?.sort(), [first.item.id, second.item.id].sort());
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextExtractionService recalls relevant same-slot memories beyond the related memory limit", async () => {
+  const harness = await createHarness(JSON.stringify({ items: [] }));
+  try {
+    for (let index = 0; index < 10; index += 1) {
+      harness.store.upsertUserFact({
+        userId: "user_1",
+        title: `无关事实 ${index}`,
+        content: `用户正在测试无关上下文 ${index}`,
+        kind: "other"
+      });
+    }
+    const residence = harness.store.upsertUserFact({
+      userId: "user_1",
+      slotKey: "residence",
+      title: "常住地",
+      content: "用户常住上海",
+      kind: "fact"
+    });
+
+    await harness.service.processTurns({
+      sessionId: "qqbot:p:user_1",
+      userId: "user_1",
+      turns: [turn("我搬到杭州了，之前的上海地址不用了。")]
+    });
+
+    const promptPayload = JSON.parse((harness.getLastPromptMessages()[1] as { content: string }).content) as {
+      related_memories: Array<{ id: string; slotKey?: string }>;
+    };
+    assert.ok(promptPayload.related_memories.some((item) => item.id === residence.item.id && item.slotKey === "residence"));
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextExtractionService ignores global procedural rules instead of writing user memory", async () => {
+  const harness = await createHarness(JSON.stringify({
+    items: [{
+      action: "ignore",
+      operation: "ignore_wrong_scope",
+      scope: "global",
+      confidence: 1
+    }]
+  }));
+  try {
+    const result = await harness.service.processTurns({
+      sessionId: "qqbot:p:user_1",
+      userId: "user_1",
+      turns: [turn("以后所有任务默认先列三步计划。")]
+    });
+
+    assertExtractionCounts(result, { created: 0, replaced: 0, ignored: 1 });
+    assert.deepEqual(harness.store.listUserFacts("user_1"), []);
+    assert.deepEqual(harness.store.listSessionFacts("qqbot:p:user_1"), []);
   } finally {
     await harness.cleanup();
   }
@@ -406,6 +685,7 @@ test("ContextExtractionService skips when target user has no text in batch", asy
   const harness = await createHarness(JSON.stringify({
     items: [{
       action: "create",
+      operation: "create",
       scope: "user",
       title: "错误记忆",
       content: "不应写入",
@@ -426,7 +706,7 @@ test("ContextExtractionService skips when target user has no text in batch", asy
       }])]
     });
 
-    assert.deepEqual(result, { created: 0, replaced: 0, ignored: 0 });
+    assertExtractionCounts(result, { created: 0, replaced: 0, ignored: 0 });
     assert.equal(harness.getGenerateCalls(), 0);
     assert.deepEqual(harness.store.listUserFacts("user_1"), []);
   } finally {
@@ -438,7 +718,9 @@ test("ContextExtractionService replaces unique same-title memory when replace id
   const harness = await createHarness(JSON.stringify({
     items: [{
       action: "replace",
+      operation: "update_existing",
       scope: "user",
+      slotKey: "communication_preference",
       title: "回答偏好",
       content: "用户喜欢先给结论",
       kind: "preference",
@@ -461,7 +743,7 @@ test("ContextExtractionService replaces unique same-title memory when replace id
       turns: [turn("更新一下，以后回答只要先给结论就行。")]
     });
 
-    assert.deepEqual(result, { created: 0, replaced: 1, ignored: 0 });
+    assertExtractionCounts(result, { created: 0, replaced: 1, ignored: 0 });
     const memories = harness.store.listUserFacts("user_1");
     assert.equal(memories.length, 1);
     assert.equal(memories[0]?.id, existing.item.id);

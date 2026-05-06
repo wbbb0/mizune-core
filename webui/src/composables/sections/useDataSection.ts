@@ -369,6 +369,8 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
     async function editContextItem(item: ContextManagementItem) {
       const title = window.prompt("标题", item.title ?? "");
       if (title == null) return;
+      const slotKey = window.prompt("slotKey，留空表示无", item.slotKey ?? "");
+      if (slotKey == null) return;
       const text = window.prompt("内容", item.text);
       if (text == null) return;
       const retrievalPolicy = window.prompt("retrievalPolicy: always / search / never", item.retrievalPolicy);
@@ -385,6 +387,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       try {
         await contextApi.updateItem(item.itemId, {
           title: title.trim() || null,
+          slotKey: slotKey.trim() || null,
           text,
           retrievalPolicy: retrievalPolicy.trim() as ContextManagementItem["retrievalPolicy"],
           status: status.trim() as ContextManagementItem["status"],
@@ -615,6 +618,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
         item.sourceType,
         item.retrievalPolicy,
         item.status,
+        item.slotKey ? `slot:${item.slotKey}` : null,
         item.userId ? `user:${item.userId}` : null,
         item.sessionId ? `session:${item.sessionId}` : null,
         item.pinned ? "pinned" : null

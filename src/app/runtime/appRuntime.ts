@@ -14,7 +14,6 @@ import { createInternalApiServices } from "#internalApi/types.ts";
 import { ContextMaintenanceService } from "#context/contextMaintenanceService.ts";
 import { ContextExtractionQueue } from "#context/contextExtractionQueue.ts";
 import { ContextExtractionService, type ContextExtractionTurn } from "#context/contextExtractionService.ts";
-import { ContextIngestionService } from "#context/contextIngestionService.ts";
 import { createContextExtractionEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import {
   shutdownRuntime,
@@ -114,7 +113,6 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
   let comfyTaskRunner!: ComfyTaskRunner;
   let contextMaintenanceService!: ContextMaintenanceService;
   let contextExtractionQueue!: ContextExtractionQueue;
-  const contextIngestionService = new ContextIngestionService(contextStore, logger);
 
   let scheduler!: Scheduler;
   let schedulerStarted = false;
@@ -127,7 +125,8 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
         messageCount: countExtractionMessages(event.turns),
         created: event.result.created,
         replaced: event.result.replaced,
-        ignored: event.result.ignored
+        ignored: event.result.ignored,
+        items: event.result.items
       }));
       persistSession(event.sessionId, "context_extraction_processed");
     },
@@ -146,8 +145,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
       services,
       persistSession,
       () => scheduler,
-      contextExtractionQueue,
-      contextIngestionService
+      contextExtractionQueue
     )
   );
   shellRuntime.setEventHandler((event) => sessionWorkCoordinator.dispatchTerminalEvent(event));

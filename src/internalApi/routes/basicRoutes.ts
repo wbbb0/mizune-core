@@ -580,6 +580,7 @@ function parseContextPinnedBody(body: unknown): { pinned: boolean } | null {
 
 function parseContextItemPatchBody(body: unknown): {
   title?: string | null;
+  slotKey?: string | null;
   text?: string;
   retrievalPolicy?: "always" | "search" | "never";
   status?: "active" | "archived" | "deleted" | "superseded";
@@ -594,6 +595,7 @@ function parseContextItemPatchBody(body: unknown): {
   }
   const patch: {
     title?: string | null;
+    slotKey?: string | null;
     text?: string;
     retrievalPolicy?: "always" | "search" | "never";
     status?: "active" | "archived" | "deleted" | "superseded";
@@ -605,6 +607,9 @@ function parseContextItemPatchBody(body: unknown): {
   } = {};
   if ("title" in body) {
     patch.title = body.title == null ? null : requireBodyString(body.title, "title");
+  }
+  if ("slotKey" in body) {
+    patch.slotKey = body.slotKey == null ? null : requireBodyString(body.slotKey, "slotKey");
   }
   if ("text" in body) {
     patch.text = requireBodyString(body.text, "text");

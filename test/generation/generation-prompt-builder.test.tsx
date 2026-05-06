@@ -1863,7 +1863,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       visibleToolNames: [],
       activeToolsets: [],
       persona: { prompt: "" } as any,
-      relationship: "unknown",
+      relationship: "known",
       participantProfiles: [],
       currentUser: null,
       historySummary: null,

@@ -123,6 +123,194 @@ test("ContextStore updates same-slot user facts by specific title", async () => 
   }
 });
 
+test("ContextStore updates active user facts by slot key without creating duplicates", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    const created = harness.store.upsertUserFact({
+      userId: "user_1",
+      slotKey: "residence",
+      title: "所在地",
+      content: "用户常住上海",
+      kind: "fact"
+    });
+
+    const updated = harness.store.upsertUserFact({
+      userId: "user_1",
+      slotKey: "residence",
+      title: "常住地",
+      content: "用户常住杭州",
+      kind: "fact"
+    });
+
+    assert.equal(updated.action, "updated_existing");
+    assert.equal(updated.item.id, created.item.id);
+    const facts = harness.store.listUserFacts("user_1");
+    assert.equal(facts.length, 1);
+    assert.equal(facts[0]?.id, created.item.id);
+    assert.equal(facts[0]?.title, "常住地");
+    assert.equal(facts[0]?.content, "用户常住杭州");
+    assert.equal(facts[0]?.slotKey, "residence");
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextStore can supersede same-slot user facts while keeping only the new fact active", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    const oldFact = harness.store.upsertUserFact({
+      userId: "user_1",
+      slotKey: "residence",
+      title: "常住地",
+      content: "用户常住上海",
+      kind: "fact"
+    });
+
+    const newFact = harness.store.upsertUserFact({
+      userId: "user_1",
+      slotKey: "residence",
+      writeMode: "supersede_existing",
+      title: "常住地",
+      content: "用户现在常住杭州",
+      kind: "fact"
+    });
+
+    assert.equal(newFact.action, "created");
+    assert.notEqual(newFact.item.id, oldFact.item.id);
+    const activeFacts = harness.store.listUserFacts("user_1");
+    assert.deepEqual(activeFacts.map((item) => item.id), [newFact.item.id]);
+    assert.equal(activeFacts[0]?.slotKey, "residence");
+    const superseded = harness.store.listContextItems({ userId: "user_1", status: "superseded" }).items;
+    assert.equal(superseded.length, 1);
+    assert.equal(superseded[0]?.itemId, oldFact.item.id);
+    assert.equal(superseded[0]?.supersededBy, newFact.item.id);
+    assert.equal(superseded[0]?.slotKey, "residence");
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextStore supersedes explicit target facts even without a slot key", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    const oldFact = harness.store.upsertUserFact({
+      userId: "user_1",
+      title: "旧所在地",
+      content: "用户常住上海",
+      kind: "fact"
+    });
+
+    const newFact = harness.store.upsertUserFact({
+      userId: "user_1",
+      supersedeMemoryIds: [oldFact.item.id],
+      writeMode: "supersede_existing",
+      title: "常住地",
+      content: "用户现在常住杭州",
+      kind: "fact"
+    });
+
+    assert.equal(newFact.action, "created");
+    assert.deepEqual(harness.store.listUserFacts("user_1").map((item) => item.id), [newFact.item.id]);
+    const superseded = harness.store.listContextItems({ userId: "user_1", status: "superseded" }).items;
+    assert.equal(superseded.length, 1);
+    assert.equal(superseded[0]?.itemId, oldFact.item.id);
+    assert.equal(superseded[0]?.supersededBy, newFact.item.id);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextStore normalizes slot keys before matching and storing", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    const created = harness.store.upsertUserFact({
+      userId: "user_1",
+      slotKey: " Residence ",
+      title: "常住地",
+      content: "用户常住上海",
+      kind: "fact"
+    });
+    const updated = harness.store.upsertUserFact({
+      userId: "user_1",
+      slotKey: "residence",
+      title: "常住地",
+      content: "用户现在常住杭州",
+      kind: "fact"
+    });
+
+    assert.equal(updated.item.id, created.item.id);
+    const facts = harness.store.listUserFacts("user_1");
+    assert.equal(facts.length, 1);
+    assert.equal(facts[0]?.slotKey, "residence");
+    assert.throws(() => harness.store.upsertUserFact({
+      userId: "user_1",
+      slotKey: "preferred-name",
+      title: "称呼",
+      content: "用户希望被称为小王"
+    }), /slotKey/);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextStore converges preexisting duplicate slot facts on the next write", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    const duplicateJsonl = [{
+      itemId: "ctx_residence_old_a",
+      scope: "user",
+      sourceType: "fact",
+      retrievalPolicy: "always",
+      status: "active",
+      userId: "user_1",
+      title: "常住地",
+      slotKey: "residence",
+      text: "用户常住上海",
+      kind: "fact",
+      source: "inferred",
+      sensitivity: "normal",
+      createdAt: 100,
+      updatedAt: 100,
+      retrievedCount: 0
+    }, {
+      itemId: "ctx_residence_old_b",
+      scope: "user",
+      sourceType: "fact",
+      retrievalPolicy: "always",
+      status: "active",
+      userId: "user_1",
+      title: "所在地",
+      slotKey: "residence",
+      text: "用户所在地是苏州",
+      kind: "fact",
+      source: "inferred",
+      sensitivity: "normal",
+      createdAt: 200,
+      updatedAt: 200,
+      retrievedCount: 0
+    }].map((item) => JSON.stringify(item)).join("\n");
+    harness.store.importContextItemsJsonl(duplicateJsonl);
+
+    const updated = harness.store.upsertUserFact({
+      userId: "user_1",
+      slotKey: "residence",
+      title: "常住地",
+      content: "用户现在常住杭州",
+      kind: "fact"
+    });
+
+    assert.equal(updated.action, "updated_existing");
+    const activeFacts = harness.store.listUserFacts("user_1");
+    assert.deepEqual(activeFacts.map((item) => item.id), ["ctx_residence_old_b"]);
+    assert.equal(activeFacts[0]?.content, "用户现在常住杭州");
+    const superseded = harness.store.listContextItems({ userId: "user_1", status: "superseded" }).items;
+    assert.deepEqual(superseded.map((item) => item.itemId), ["ctx_residence_old_a"]);
+    assert.equal(superseded[0]?.supersededBy, "ctx_residence_old_b");
+  } finally {
+    await harness.cleanup();
+  }
+});
+
 test("ContextStore removes facts without leaving related search chunks active", async () => {
   const harness = await createContextStoreHarness();
   try {
@@ -514,7 +702,7 @@ test("ContextStore stores conversation episodes outside retrieval documents", as
       sessionId: "qqbot:p:user_1",
       title: "对话回合",
       text: "用户：今天在测试记忆写入\n助手：收到",
-      source: "auto_ingest",
+      source: "system",
       createdAt: 100,
       updatedAt: 100
     });

@@ -3,9 +3,9 @@ import type { AppConfig } from "#config/config.ts";
 import type { LlmClient, LlmMessage } from "#llm/llmClient.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { bigramJaccardSimilarity, isNearDuplicateText, normalizeTitleForDedup } from "#memory/similarity.ts";
-import type { UserMemoryEntry, UserMemoryKind } from "#memory/userMemoryEntry.ts";
+import type { UserMemoryKind } from "#memory/userMemoryEntry.ts";
 import type { ContextStore } from "./contextStore.ts";
-import type { ContextScope } from "./contextTypes.ts";
+import type { ContextMemoryFactEntry, ContextScope } from "./contextTypes.ts";
 
 export interface ContextExtractionTurnMessage {
   userId: string;
@@ -26,8 +26,12 @@ export interface ContextExtractionTurn {
 
 interface ExtractionCandidate {
   action: "create" | "replace" | "ignore";
+  operation?: "noop" | "create" | "update_existing" | "invalidate_and_create" | "merge" | "ignore_wrong_scope";
   scope?: ContextScope;
   replaceMemoryId?: string;
+  targetMemoryId?: string;
+  conflictsWithMemoryIds?: string[];
+  slotKey?: string;
   title?: string;
   content?: string;
   kind?: UserMemoryKind;
@@ -43,14 +47,35 @@ export interface ContextExtractionResult {
   created: number;
   replaced: number;
   ignored: number;
+  items: ContextExtractionResultItem[];
+}
+
+export interface ContextExtractionResultItem {
+  result: "created" | "replaced" | "ignored";
+  scope?: Extract<ContextScope, "user" | "session">;
+  operation?: ExtractionOperation;
+  memoryId?: string;
+  targetMemoryIds?: string[];
+  slotKey?: string;
+  title?: string;
+  content?: string;
+  kind?: UserMemoryKind;
+  reason?: string;
 }
 
 type ContextExtractionStore = Pick<ContextStore, "listUserFacts" | "upsertUserFact" | "listSessionFacts" | "upsertSessionFact">;
-type NormalizedExtractionCandidate = Required<Omit<ExtractionCandidate, "replaceMemoryId" | "scope">> & {
+export type ExtractionOperation = NonNullable<ExtractionCandidate["operation"]>;
+type NormalizedExtractionCandidate = Required<Omit<
+  ExtractionCandidate,
+  "replaceMemoryId" | "targetMemoryId" | "conflictsWithMemoryIds" | "slotKey" | "scope" | "operation"
+>> & {
   scope: ContextScope;
-  replaceMemoryId?: string;
+  operation: ExtractionOperation;
+  targetMemoryId?: string;
+  conflictsWithMemoryIds: string[];
+  slotKey?: string;
 };
-type ScopedMemoryEntry = UserMemoryEntry & { scope: "user" | "session" };
+type ScopedMemoryEntry = ContextMemoryFactEntry & { scope: "user" | "session" };
 
 const MAX_RELATED_MEMORIES = 20;
 const MAX_MESSAGE_TEXT_CHARS = 500;
@@ -71,21 +96,21 @@ export class ContextExtractionService {
   }): Promise<ContextExtractionResult> {
     const config = this.config.context.extraction;
     if (!config.enabled || !this.config.llm.summarizer.enabled) {
-      return { created: 0, replaced: 0, ignored: 0 };
+      return emptyExtractionResult();
     }
     try {
       const targetUserMessages = input.turns.flatMap((turn) => (
         turn.userMessages.filter((message) => message.userId === input.userId && message.text.trim().length > 0)
       ));
       if (targetUserMessages.length === 0) {
-        return { created: 0, replaced: 0, ignored: 0 };
+        return emptyExtractionResult();
       }
       const currentTurnMessages = input.turns.flatMap((turn) => (
         turn.userMessages.filter((message) => message.text.trim().length > 0)
       ));
       const conversationText = currentTurnMessages.map((message) => message.text.trim()).join("\n").trim();
       if (!conversationText) {
-        return { created: 0, replaced: 0, ignored: 0 };
+        return emptyExtractionResult();
       }
 
       const modelRefs = getModelRefsForRole(this.config, "summarizer");
@@ -95,7 +120,7 @@ export class ContextExtractionService {
           userId: input.userId,
           modelRefs
         }, "context_extraction_skipped_llm_unconfigured");
-        return { created: 0, replaced: 0, ignored: 0 };
+        return emptyExtractionResult();
       }
 
       const existingMemories = this.contextStore.listUserFacts(input.userId);
@@ -138,7 +163,7 @@ export class ContextExtractionService {
         userId: input.userId,
         error: error instanceof Error ? error.message : String(error)
       }, "context_extraction_process_failed_open");
-      return { created: 0, replaced: 0, ignored: 0 };
+      return emptyExtractionResult();
     }
   }
 
@@ -146,13 +171,14 @@ export class ContextExtractionService {
     userId: string;
     sessionId: string;
     candidates: ExtractionCandidate[];
-    existingMemories: UserMemoryEntry[];
-    existingSessionMemories: UserMemoryEntry[];
+    existingMemories: ContextMemoryFactEntry[];
+    existingSessionMemories: ContextMemoryFactEntry[];
     minConfidence: number;
   }): ContextExtractionResult {
     let created = 0;
     let replaced = 0;
     let ignored = 0;
+    const items: ContextExtractionResultItem[] = [];
     const existingById = new Map(input.existingMemories.map((item) => [item.id, item]));
     const existingSessionById = new Map(input.existingSessionMemories.map((item) => [item.id, item]));
     const acceptedTexts: string[] = input.existingMemories.map((item) => `${item.title}\n${item.content}`);
@@ -160,12 +186,19 @@ export class ContextExtractionService {
 
     for (const candidate of input.candidates) {
       const normalized = normalizeCandidate(candidate);
-      if (!normalized || normalized.confidence < input.minConfidence || normalized.action === "ignore") {
+      if (!normalized || normalized.confidence < input.minConfidence || normalized.action === "ignore" || normalized.operation === "noop") {
         ignored += 1;
+        items.push(buildIgnoredExtractionItem(candidate, normalized, normalized ? "ignored_by_model_or_confidence" : "invalid_candidate"));
         continue;
       }
       if (normalized.scope !== "user" && normalized.scope !== "session") {
         ignored += 1;
+        items.push(buildIgnoredExtractionItem(candidate, normalized, "unsupported_scope"));
+        continue;
+      }
+      if (normalized.operation === "ignore_wrong_scope") {
+        ignored += 1;
+        items.push(buildIgnoredExtractionItem(candidate, normalized, "wrong_scope"));
         continue;
       }
       const memoryText = `${normalized.title}\n${normalized.content}`;
@@ -173,13 +206,29 @@ export class ContextExtractionService {
       const scopeExistingById = normalized.scope === "session" ? existingSessionById : existingById;
       const replacementTarget = resolveReplacementTarget(normalized, scopeMemories, scopeExistingById);
       const replacingExisting = replacementTarget != null;
-      if (normalized.action === "replace" && !replacementTarget) {
+      const needsExistingTarget = normalized.action === "replace"
+        || normalized.operation === "update_existing"
+        || normalized.operation === "merge";
+      if (needsExistingTarget && !replacementTarget) {
         ignored += 1;
+        items.push(buildIgnoredExtractionItem(candidate, normalized, "missing_replacement_target"));
         continue;
       }
-      const acceptedScopeTexts = normalized.scope === "session" ? acceptedSessionTexts : acceptedTexts;
-      if (!replacingExisting && isNearDuplicateText(memoryText, acceptedScopeTexts)) {
+      if (replacementTarget && isSameExtractionMemory(normalized, replacementTarget)) {
         ignored += 1;
+        items.push(buildIgnoredExtractionItem(candidate, normalized, "same_as_existing"));
+        continue;
+      }
+      const writeMode = normalized.operation === "invalidate_and_create"
+        ? "supersede_existing" as const
+        : "update_existing" as const;
+      const supersedeMemoryIds = normalized.operation === "invalidate_and_create"
+        ? collectCandidateTargetMemoryIds(normalized, replacementTarget, scopeExistingById)
+        : [];
+      const acceptedScopeTexts = normalized.scope === "session" ? acceptedSessionTexts : acceptedTexts;
+      if (!replacingExisting && !normalized.slotKey && isNearDuplicateText(memoryText, acceptedScopeTexts)) {
+        ignored += 1;
+        items.push(buildIgnoredExtractionItem(candidate, normalized, "near_duplicate"));
         continue;
       }
 
@@ -188,7 +237,10 @@ export class ContextExtractionService {
         const result = normalized.scope === "session"
           ? this.contextStore.upsertSessionFact({
               sessionId: input.sessionId,
-              ...(replacementTarget ? { memoryId: replacementTarget.id } : {}),
+              ...(replacementTarget && writeMode !== "supersede_existing" ? { memoryId: replacementTarget.id } : {}),
+              ...(normalized.slotKey ? { slotKey: normalized.slotKey } : replacementTarget?.slotKey ? { slotKey: replacementTarget.slotKey } : {}),
+              ...(supersedeMemoryIds.length > 0 ? { supersedeMemoryIds } : {}),
+              writeMode,
               title: normalized.title,
               content: normalized.content,
               kind: normalized.kind,
@@ -199,7 +251,10 @@ export class ContextExtractionService {
             })
           : this.contextStore.upsertUserFact({
               userId: input.userId,
-              ...(replacementTarget ? { memoryId: replacementTarget.id } : {}),
+              ...(replacementTarget && writeMode !== "supersede_existing" ? { memoryId: replacementTarget.id } : {}),
+              ...(normalized.slotKey ? { slotKey: normalized.slotKey } : replacementTarget?.slotKey ? { slotKey: replacementTarget.slotKey } : {}),
+              ...(supersedeMemoryIds.length > 0 ? { supersedeMemoryIds } : {}),
+              writeMode,
               title: normalized.title,
               content: normalized.content,
               kind: normalized.kind,
@@ -211,9 +266,23 @@ export class ContextExtractionService {
         } else {
           created += 1;
         }
+        items.push({
+          result: replacingExisting || result.action === "updated_existing" ? "replaced" : "created",
+          scope: normalized.scope,
+          operation: normalized.operation,
+          memoryId: result.item.id,
+          targetMemoryIds: supersedeMemoryIds.length > 0
+            ? supersedeMemoryIds
+            : replacementTarget ? [replacementTarget.id] : [],
+          ...(normalized.slotKey ? { slotKey: normalized.slotKey } : replacementTarget?.slotKey ? { slotKey: replacementTarget.slotKey } : {}),
+          title: normalized.title,
+          content: normalized.content,
+          kind: normalized.kind
+        });
         acceptedScopeTexts.push(memoryText);
       } catch (error) {
         ignored += 1;
+        items.push(buildIgnoredExtractionItem(candidate, normalized, "apply_failed"));
         this.logger.warn({
           sessionId: input.sessionId,
           userId: input.userId,
@@ -230,7 +299,7 @@ export class ContextExtractionService {
       replaced,
       ignored
     }, "context_extraction_applied");
-    return { created, replaced, ignored };
+    return { created, replaced, ignored, items };
   }
 }
 
@@ -256,19 +325,51 @@ function selectRelatedMemories(
     .map((item) => item.memory);
 }
 
-function scoreRelatedMemory(memory: UserMemoryEntry, queryText: string): number {
+function scoreRelatedMemory(memory: ContextMemoryFactEntry, queryText: string): number {
   const text = `${memory.title}\n${memory.content}`;
   const normalizedTitle = normalizeTitleForDedup(memory.title);
   let score = isNearDuplicateText(queryText, [text], 0.42) ? 2 : 0;
+  if (memory.slotKey && hasAnyText(queryText, slotKeyQueryHints(memory.slotKey))) {
+    score += 4;
+  }
   if (normalizedTitle && queryText.includes(normalizedTitle)) {
     score += 2;
   }
-  for (const term of ["早餐", "称呼", "口吻", "时区", "职业", "工作", "城市", "边界", "偏好"]) {
+  for (const term of ["早餐", "称呼", "叫我", "名字", "昵称", "口吻", "时区", "职业", "工作", "城市", "住", "搬", "地址", "所在地", "常住地", "边界", "偏好"]) {
     if (queryText.includes(term) && text.includes(term)) {
       score += 1;
     }
   }
   return score;
+}
+
+function slotKeyQueryHints(slotKey: string): string[] {
+  switch (slotKey) {
+    case "preferred_name":
+      return ["preferred_name", "称呼", "叫我", "名字", "昵称"];
+    case "residence":
+      return ["residence", "所在地", "常住地", "住", "搬", "地址", "城市"];
+    case "timezone":
+      return ["timezone", "时区", "时间"];
+    case "occupation":
+      return ["occupation", "职业", "工作", "身份"];
+    case "communication_preference":
+      return ["communication_preference", "回答", "回复", "口吻", "风格", "偏好"];
+    case "breakfast_habit":
+      return ["breakfast_habit", "早餐", "早饭"];
+    case "session_purpose":
+      return ["session_purpose", "此会话", "这个会话", "本会话", "专门用于", "主题"];
+    case "project_focus":
+      return ["project_focus", "项目", "关注", "目标"];
+    case "boundary":
+      return ["boundary", "边界", "不要", "不希望"];
+    default:
+      return [slotKey];
+  }
+}
+
+function hasAnyText(text: string, needles: string[]): boolean {
+  return needles.some((needle) => needle.length > 0 && text.includes(needle));
 }
 
 function buildExtractionPrompt(input: {
@@ -296,13 +397,22 @@ function buildExtractionPrompt(input: {
         "特别注意：用户说“以后所有任务默认……”“所有会话都……”“全局默认……”“任何时候都……”这类内容是 global/procedural 规则，不是 target_user_id 的用户画像或个人偏好；当前必须输出 ignore，不能写 scope=user。",
         "可写 user 的偏好必须是用户本人长期属性或个人交流偏好，例如“叫我阿明”“我住杭州”“我喜欢简洁回答”；不可写 user 的规则包括“所有任务先列计划”“默认每次都执行某流程”“以后所有项目都使用某工具”。",
         "不要记录一次性任务、临时状态、当前正在做的事、普通闲聊、问题本身、助手猜测、助手为了本轮任务做出的总结。",
+        "输入中的 related_memories 是与当前对话相关的已有记忆，必须优先用于判断是否更新、合并或替换旧记忆，而不是创建重复条目。",
+        "每条可写记忆都必须尽量输出 slotKey。slotKey 是同一主体下只能保留一个当前值的稳定槽位，用小写英文和下划线表示。",
+        "常用 slotKey：preferred_name=用户希望被如何称呼；residence=常住地/所在地；timezone=时区；occupation=职业/身份；communication_preference=长期交流偏好；breakfast_habit=早餐习惯；session_purpose=当前会话用途；project_focus=当前会话或项目关注点；boundary=长期边界。",
+        "如果新信息是对 related_memories 中旧信息的更正、变更、补充或同槽位新值，应输出 operation=update_existing，并填写 targetMemoryId。",
+        "如果旧信息需要保留审计但不应继续作为当前值，应输出 operation=invalidate_and_create，并填写 targetMemoryId、slotKey 和 conflictsWithMemoryIds。",
+        "如果新信息只是补充同一事实并能合并进旧条目，应输出 operation=merge，并填写 targetMemoryId；content 应给出合并后的完整当前事实。",
+        "如果确实是新槽位或 related_memories 中没有同类事实，才输出 operation=create。",
+        "如果信息属于 global/toolset/mode 或不该写入当前 schema，输出 action=ignore、operation=ignore_wrong_scope，并保留正确 scope。",
         "判定示例：用户说“以后所有任务默认先列三步计划。”，应输出 {\"items\":[{\"action\":\"ignore\",\"scope\":\"global\",\"confidence\":1}]}，绝不能写成 user 偏好。",
-        "判定示例：用户说“以后请叫我阿明。”，应输出 scope=user 的 create。",
-        "判定示例：用户说“此会话专门用于记忆系统测试。”，应输出 scope=session 的 create。",
+        "判定示例：用户说“以后请叫我阿明。”，应输出 scope=user、operation=create、slotKey=preferred_name。",
+        "判定示例：related_memories 里已有 preferred_name=阿明，用户说“以后叫我小王。”，应输出 scope=user、operation=update_existing、targetMemoryId=对应 id、slotKey=preferred_name。",
+        "判定示例：related_memories 里已有 residence=上海，用户说“我现在搬到杭州了。”，应输出 scope=user、operation=invalidate_and_create、targetMemoryId=对应 id、conflictsWithMemoryIds=[对应 id]、slotKey=residence。",
+        "判定示例：用户说“此会话专门用于记忆系统测试。”，应输出 scope=session、operation=create、slotKey=session_purpose。",
         "判定示例：用户说“帮我临时算一下 37 加 58。”，应输出 {\"items\":[]}。",
-        "如果用户明确更正或改变旧信息，输出 replace，并优先使用 related_memories 中对应的 replaceMemoryId。",
         "如果没有值得长期保存的信息，输出 {\"items\":[]}。",
-        "只输出 JSON，不要解释。JSON 格式：{\"items\":[{\"action\":\"create|replace|ignore\",\"scope\":\"user|session|global|toolset|mode\",\"replaceMemoryId\":\"可选\",\"title\":\"短标题\",\"content\":\"完整记忆内容\",\"kind\":\"preference|fact|boundary|habit|relationship|other\",\"importance\":1-5,\"confidence\":0-1}]}"
+        "只输出 JSON，不要解释。JSON 格式：{\"items\":[{\"action\":\"create|replace|ignore\",\"operation\":\"noop|create|update_existing|invalidate_and_create|merge|ignore_wrong_scope\",\"scope\":\"user|session|global|toolset|mode\",\"targetMemoryId\":\"可选\",\"conflictsWithMemoryIds\":[\"可选\"],\"slotKey\":\"可选\",\"title\":\"短标题\",\"content\":\"完整记忆内容\",\"kind\":\"preference|fact|boundary|habit|relationship|other\",\"importance\":1-5,\"confidence\":0-1}]}"
       ].join("\n")
     },
     {
@@ -328,6 +438,7 @@ function buildExtractionPrompt(input: {
         related_memories: input.relatedMemories.map((memory) => ({
           scope: memory.scope,
           id: memory.id,
+          slotKey: memory.slotKey,
           title: memory.title,
           content: memory.content,
           kind: memory.kind,
@@ -365,22 +476,83 @@ function truncatePromptText(text: string): string {
 
 function resolveReplacementTarget(
   candidate: NormalizedExtractionCandidate,
-  existingMemories: UserMemoryEntry[],
-  existingById: Map<string, UserMemoryEntry>
-): UserMemoryEntry | null {
-  if (candidate.action !== "replace") {
+  existingMemories: ContextMemoryFactEntry[],
+  existingById: Map<string, ContextMemoryFactEntry>
+): ContextMemoryFactEntry | null {
+  if (candidate.slotKey) {
+    const sameSlotMatches = existingMemories.filter((memory) => memory.slotKey === candidate.slotKey);
+    if (sameSlotMatches.length > 0) {
+      return sameSlotMatches[0] ?? null;
+    }
+  }
+  if (candidate.action !== "replace"
+    && candidate.operation !== "update_existing"
+    && candidate.operation !== "invalidate_and_create"
+    && candidate.operation !== "merge") {
     return null;
   }
-  if (candidate.replaceMemoryId) {
-    return existingById.get(candidate.replaceMemoryId) ?? null;
+  if (candidate.targetMemoryId) {
+    return existingById.get(candidate.targetMemoryId) ?? null;
+  }
+  const conflictMatches = candidate.conflictsWithMemoryIds
+    .map((id) => existingById.get(id) ?? null)
+    .filter((memory): memory is ContextMemoryFactEntry => memory != null);
+  if (conflictMatches.length === 1) {
+    return conflictMatches[0] ?? null;
   }
   return findUniqueReplacementTarget(candidate, existingMemories);
 }
 
+function collectCandidateTargetMemoryIds(
+  candidate: NormalizedExtractionCandidate,
+  replacementTarget: ContextMemoryFactEntry | null,
+  existingById: Map<string, ContextMemoryFactEntry>
+): string[] {
+  const ids: string[] = [];
+  const add = (id: string | undefined) => {
+    if (!id || ids.includes(id) || !existingById.has(id)) {
+      return;
+    }
+    ids.push(id);
+  };
+  add(replacementTarget?.id);
+  add(candidate.targetMemoryId);
+  for (const id of candidate.conflictsWithMemoryIds) {
+    add(id);
+  }
+  return ids;
+}
+
+function isSameExtractionMemory(
+  candidate: NormalizedExtractionCandidate,
+  existing: ContextMemoryFactEntry
+): boolean {
+  return normalizeTitleForDedup(candidate.title) === normalizeTitleForDedup(existing.title)
+    && candidate.content.trim() === existing.content.trim();
+}
+
+function buildIgnoredExtractionItem(
+  candidate: ExtractionCandidate,
+  normalized: NormalizedExtractionCandidate | null,
+  reason: string
+): ContextExtractionResultItem {
+  return {
+    result: "ignored",
+    ...(normalized?.scope === "user" || normalized?.scope === "session" ? { scope: normalized.scope } : {}),
+    ...(normalized?.operation ? { operation: normalized.operation } : {}),
+    ...(normalized?.targetMemoryId ? { targetMemoryIds: [normalized.targetMemoryId] } : {}),
+    ...(normalized?.slotKey ? { slotKey: normalized.slotKey } : {}),
+    ...(normalized?.title ? { title: normalized.title } : typeof candidate.title === "string" && candidate.title.trim() ? { title: candidate.title.trim().slice(0, 80) } : {}),
+    ...(normalized?.content ? { content: normalized.content } : typeof candidate.content === "string" && candidate.content.trim() ? { content: candidate.content.trim().slice(0, 800) } : {}),
+    ...(normalized?.kind ? { kind: normalized.kind } : {}),
+    reason
+  };
+}
+
 function findUniqueReplacementTarget(
   candidate: NormalizedExtractionCandidate,
-  existingMemories: UserMemoryEntry[]
-): UserMemoryEntry | null {
+  existingMemories: ContextMemoryFactEntry[]
+): ContextMemoryFactEntry | null {
   const normalizedTitle = normalizeTitleForDedup(candidate.title);
   const sameTitleMatches = existingMemories.filter((memory) => normalizeTitleForDedup(memory.title) === normalizedTitle);
   if (sameTitleMatches.length === 1) {
@@ -454,10 +626,22 @@ function normalizeCandidate(candidate: ExtractionCandidate): NormalizedExtractio
     return null;
   }
   const scope = normalizeScope(candidate.scope);
+  const operation = normalizeOperation(candidate.operation, action);
+  const targetMemoryId = normalizeOptionalId(candidate.targetMemoryId ?? candidate.replaceMemoryId);
+  const conflictsWithMemoryIds = Array.isArray(candidate.conflictsWithMemoryIds)
+    ? candidate.conflictsWithMemoryIds
+        .map((id) => normalizeOptionalId(id))
+        .filter((id): id is string => id != null)
+    : [];
+  const slotKey = normalizeSlotKey(candidate.slotKey);
   if (action === "ignore") {
     return {
       action,
+      operation,
       scope: scope ?? "user",
+      conflictsWithMemoryIds,
+      ...(targetMemoryId ? { targetMemoryId } : {}),
+      ...(slotKey ? { slotKey } : {}),
       title: "",
       content: "",
       kind: "other",
@@ -477,16 +661,62 @@ function normalizeCandidate(candidate: ExtractionCandidate): NormalizedExtractio
   const confidence = clampNumber(candidate.confidence, 0, 1, 0);
   return {
     action,
+    operation,
     scope,
-    ...(typeof candidate.replaceMemoryId === "string" && candidate.replaceMemoryId.trim()
-      ? { replaceMemoryId: candidate.replaceMemoryId.trim() }
-      : {}),
+    ...(targetMemoryId ? { targetMemoryId } : {}),
+    conflictsWithMemoryIds,
+    ...(slotKey ? { slotKey } : {}),
     title,
     content,
     kind: normalizeKind(candidate.kind),
     importance,
     confidence
   };
+}
+
+function normalizeOperation(value: unknown, action: ExtractionCandidate["action"]): ExtractionOperation {
+  if (value === "noop"
+    || value === "create"
+    || value === "update_existing"
+    || value === "invalidate_and_create"
+    || value === "merge"
+    || value === "ignore_wrong_scope") {
+    return value;
+  }
+  if (action === "replace") {
+    return "update_existing";
+  }
+  if (action === "ignore") {
+    return "noop";
+  }
+  return "create";
+}
+
+function normalizeOptionalId(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeSlotKey(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLocaleLowerCase();
+  if (!normalized || normalized.length > 80) {
+    return null;
+  }
+  for (const char of normalized) {
+    const code = char.charCodeAt(0);
+    const isLowerAscii = code >= 97 && code <= 122;
+    const isDigit = code >= 48 && code <= 57;
+    if (!isLowerAscii && !isDigit && char !== "_") {
+      return null;
+    }
+  }
+  return normalized;
+}
+
+function emptyExtractionResult(): ContextExtractionResult {
+  return { created: 0, replaced: 0, ignored: 0, items: [] };
 }
 
 function normalizeScope(value: unknown): ContextScope | null {

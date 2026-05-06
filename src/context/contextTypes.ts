@@ -15,6 +15,7 @@ export interface ContextItem {
   toolsetId?: string;
   modeId?: string;
   title?: string;
+  slotKey?: string;
   text: string;
   kind?: string;
   source?: string;
@@ -30,6 +31,19 @@ export interface ContextItem {
   lastConfirmedAt?: number;
   retrievedCount: number;
   lastRetrievedAt?: number;
+}
+
+export interface ContextMemoryFactEntry {
+  id: string;
+  title: string;
+  content: string;
+  kind: "preference" | "fact" | "boundary" | "habit" | "relationship" | "other";
+  source: "user_explicit" | "owner_explicit" | "inferred";
+  createdAt: number;
+  updatedAt: number;
+  importance?: number;
+  lastUsedAt?: number;
+  slotKey?: string;
 }
 
 export interface ContextRawMessage {
@@ -55,6 +69,7 @@ export interface ContextSearchDocument {
   userId?: string;
   sessionId?: string;
   title?: string;
+  slotKey?: string;
   text: string;
   embeddingTextHash: string;
   updatedAt: number;
@@ -79,6 +94,7 @@ export interface ContextRetrievedItem {
   userId?: string;
   sessionId?: string;
   title?: string;
+  slotKey?: string;
   text: string;
   score: number;
   updatedAt: number;
@@ -107,6 +123,7 @@ export interface ContextManagementItem {
   toolsetId?: string;
   modeId?: string;
   title?: string;
+  slotKey?: string;
   text: string;
   kind?: string;
   source?: string;
@@ -123,6 +140,7 @@ export interface ContextManagementItem {
 export interface ContextItemPatch {
   itemId: string;
   title?: string | null;
+  slotKey?: string | null;
   text?: string;
   retrievalPolicy?: ContextRetrievalPolicy;
   status?: ContextItemStatus;

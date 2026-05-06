@@ -53,7 +53,7 @@ test("ContextExtractionQueue isolates pending batches by session and user", asyn
           userId: input.userId,
           texts: input.turns.flatMap((turn) => turn.userMessages.map((message) => message.text))
         });
-        return { created: 0, replaced: 0, ignored: 0 };
+        return { created: 0, replaced: 0, ignored: 0, items: [] };
       }
     },
     pino({ level: "silent" }),

@@ -20,6 +20,7 @@ import type {
   ContextItem,
   ContextItemPatch,
   ContextManagementItem,
+  ContextMemoryFactEntry,
   ContextRawMessage,
   ContextSearchDocument
 } from "./contextTypes.ts";
@@ -37,6 +38,7 @@ interface ContextItemRow {
   toolset_id: string | null;
   mode_id: string | null;
   title: string | null;
+  slot_key: string | null;
   text: string;
   embedding_text_hash: string | null;
   kind: string | null;
@@ -177,7 +179,7 @@ export class ContextStore {
     return migratedCount;
   }
 
-  listUserFacts(userId: string): UserMemoryEntry[] {
+  listUserFacts(userId: string): ContextMemoryFactEntry[] {
     if (!this.db) {
       return [];
     }
@@ -193,12 +195,15 @@ export class ContextStore {
         AND (valid_to IS NULL OR valid_to > ?)
       ORDER BY updated_at DESC
     `).all(userId, now) as ContextItemRow[];
-    return rows.map(rowToUserMemoryEntry);
+    return rows.map(rowToContextMemoryFactEntry);
   }
 
   upsertUserFact(input: {
     userId: string;
     memoryId?: string;
+    slotKey?: string;
+    supersedeMemoryIds?: string[];
+    writeMode?: "update_existing" | "supersede_existing";
     title: string;
     content: string;
     kind?: UserMemoryEntry["kind"];
@@ -213,20 +218,38 @@ export class ContextStore {
   } {
     this.requireDb();
     const existingFacts = this.listUserFacts(input.userId);
-    if (input.memoryId && !existingFacts.some((item) => item.id === input.memoryId)) {
+    const explicitTarget = input.memoryId
+      ? existingFacts.find((item) => item.id === input.memoryId) ?? null
+      : null;
+    if (input.memoryId && !explicitTarget) {
       throw new Error(`Memory ${input.memoryId} not found for user ${input.userId}`);
     }
-    const exactTitleMatch = input.memoryId
+    const slotKey = normalizeContextSlotKeyOrThrow(input.slotKey);
+    const slotMatches = !slotKey
+      ? []
+      : findSameSlotKeyFacts(slotKey, existingFacts);
+    const slotMatch = slotMatches[0] ?? null;
+    const supersedeTargets = input.writeMode === "supersede_existing"
+      ? collectSupersedeTargets(existingFacts, [
+          ...(explicitTarget ? [explicitTarget.id] : []),
+          ...slotMatches.map((item) => item.id),
+          ...(input.supersedeMemoryIds ?? [])
+        ])
+      : [];
+    const shouldSupersede = supersedeTargets.length > 0;
+    const exactTitleMatch = input.memoryId || shouldSupersede
       ? null
       : findSameSlotUserFact(input.title, existingFacts);
-    const duplicate = input.memoryId || exactTitleMatch
+    const duplicate = input.memoryId || slotMatch || exactTitleMatch
       ? null
       : findBestDuplicateMatch(
           `${normalizeTitleForDedup(input.title)} ${input.content}`,
           existingFacts,
-          (item) => `${normalizeTitleForDedup(item.title)} ${item.content}`
+            (item) => `${normalizeTitleForDedup(item.title)} ${item.content}`
         );
-    const targetId = input.memoryId || exactTitleMatch?.id || duplicate?.item.id;
+    const targetId = shouldSupersede
+      ? undefined
+      : input.memoryId || slotMatch?.id || exactTitleMatch?.id || duplicate?.item.id;
     const existingTarget = targetId
       ? existingFacts.find((item) => item.id === targetId) ?? null
       : null;
@@ -249,6 +272,7 @@ export class ContextStore {
       status: "active",
       userId: input.userId,
       title: nextMemory.title,
+      ...(slotKey !== undefined ? { slotKey } : existingTarget?.slotKey ? { slotKey: existingTarget.slotKey } : {}),
       text: nextMemory.content,
       ...(nextMemory.kind !== undefined ? { kind: nextMemory.kind } : {}),
       ...(nextMemory.source !== undefined ? { source: nextMemory.source } : {}),
@@ -259,9 +283,20 @@ export class ContextStore {
       retrievedCount: 0,
       ...(nextMemory.lastUsedAt !== undefined ? { lastRetrievedAt: nextMemory.lastUsedAt } : {})
     });
+    for (const staleSlotMatch of shouldSupersede ? supersedeTargets : slotMatches) {
+      if (staleSlotMatch.id === nextMemory.id) {
+        continue;
+      }
+      this.updateContextItem({
+        itemId: staleSlotMatch.id,
+        status: "superseded",
+        supersededBy: nextMemory.id,
+        validTo: nextMemory.updatedAt
+      });
+    }
     const dedup = buildMemoryDedupDetails({
       explicitId: input.memoryId ?? null,
-      duplicateId: exactTitleMatch?.id ?? duplicate?.item.id ?? null,
+      duplicateId: supersedeTargets[0]?.id ?? slotMatch?.id ?? exactTitleMatch?.id ?? duplicate?.item.id ?? null,
       similarityScore: exactTitleMatch ? 1 : duplicate?.similarityScore ?? null,
       matchedExisting
     });
@@ -307,7 +342,7 @@ export class ContextStore {
     };
   }
 
-  listSessionFacts(sessionId: string): UserMemoryEntry[] {
+  listSessionFacts(sessionId: string): ContextMemoryFactEntry[] {
     if (!this.db) {
       return [];
     }
@@ -323,12 +358,15 @@ export class ContextStore {
         AND (valid_to IS NULL OR valid_to > ?)
       ORDER BY updated_at DESC
     `).all(sessionId, now) as ContextItemRow[];
-    return rows.map(rowToUserMemoryEntry);
+    return rows.map(rowToContextMemoryFactEntry);
   }
 
   upsertSessionFact(input: {
     sessionId: string;
     memoryId?: string;
+    slotKey?: string;
+    supersedeMemoryIds?: string[];
+    writeMode?: "update_existing" | "supersede_existing";
     title: string;
     content: string;
     kind?: UserMemoryEntry["kind"];
@@ -342,13 +380,31 @@ export class ContextStore {
   } {
     this.requireDb();
     const existingFacts = this.listSessionFacts(input.sessionId);
-    if (input.memoryId && !existingFacts.some((item) => item.id === input.memoryId)) {
+    const explicitTarget = input.memoryId
+      ? existingFacts.find((item) => item.id === input.memoryId) ?? null
+      : null;
+    if (input.memoryId && !explicitTarget) {
       throw new Error(`Session memory ${input.memoryId} not found for session ${input.sessionId}`);
     }
-    const exactTitleMatch = input.memoryId
+    const slotKey = normalizeContextSlotKeyOrThrow(input.slotKey);
+    const slotMatches = !slotKey
+      ? []
+      : findSameSlotKeyFacts(slotKey, existingFacts);
+    const slotMatch = slotMatches[0] ?? null;
+    const supersedeTargets = input.writeMode === "supersede_existing"
+      ? collectSupersedeTargets(existingFacts, [
+          ...(explicitTarget ? [explicitTarget.id] : []),
+          ...slotMatches.map((item) => item.id),
+          ...(input.supersedeMemoryIds ?? [])
+        ])
+      : [];
+    const shouldSupersede = supersedeTargets.length > 0;
+    const exactTitleMatch = input.memoryId || shouldSupersede
       ? null
       : findSameSlotUserFact(input.title, existingFacts);
-    const targetId = input.memoryId || exactTitleMatch?.id;
+    const targetId = shouldSupersede
+      ? undefined
+      : input.memoryId || slotMatch?.id || exactTitleMatch?.id;
     const existingTarget = targetId
       ? existingFacts.find((item) => item.id === targetId) ?? null
       : null;
@@ -369,6 +425,7 @@ export class ContextStore {
       status: "active",
       sessionId: input.sessionId,
       title: nextMemory.title,
+      ...(slotKey !== undefined ? { slotKey } : existingTarget?.slotKey ? { slotKey: existingTarget.slotKey } : {}),
       text: nextMemory.content,
       ...(nextMemory.kind !== undefined ? { kind: nextMemory.kind } : {}),
       ...(nextMemory.source !== undefined ? { source: nextMemory.source } : {}),
@@ -381,6 +438,17 @@ export class ContextStore {
       retrievedCount: 0,
       ...(nextMemory.lastUsedAt !== undefined ? { lastRetrievedAt: nextMemory.lastUsedAt } : {})
     });
+    for (const staleSlotMatch of shouldSupersede ? supersedeTargets : slotMatches) {
+      if (staleSlotMatch.id === nextMemory.id) {
+        continue;
+      }
+      this.updateContextItem({
+        itemId: staleSlotMatch.id,
+        status: "superseded",
+        supersededBy: nextMemory.id,
+        validTo: nextMemory.updatedAt
+      });
+    }
     const action = existingTarget ? "updated_existing" as const : "created" as const;
     this.logger.info({
       sessionId: input.sessionId,
@@ -741,6 +809,10 @@ export class ContextStore {
     if ("title" in input) {
       fields.push("title = @title");
       params.title = input.title?.trim() || null;
+    }
+    if ("slotKey" in input) {
+      fields.push("slot_key = @slotKey");
+      params.slotKey = normalizeContextSlotKeyOrThrow(input.slotKey) ?? null;
     }
     if (input.text !== undefined) {
       const text = input.text.trim();
@@ -1341,6 +1413,7 @@ export class ContextStore {
         toolset_id TEXT,
         mode_id TEXT,
         title TEXT,
+        slot_key TEXT,
         text TEXT NOT NULL,
         embedding_text_hash TEXT,
         kind TEXT,
@@ -1429,6 +1502,7 @@ export class ContextStore {
         ON maintenance_jobs(status, scheduled_at);
     `);
     ensureColumn(db, "context_items", "embedding_text_hash", "TEXT");
+    ensureColumn(db, "context_items", "slot_key", "TEXT");
     ensureColumn(db, "context_item_embeddings", "text_hash", "TEXT NOT NULL DEFAULT ''");
   }
 
@@ -1437,14 +1511,14 @@ export class ContextStore {
       INSERT INTO context_items (
         item_id, scope, source_type, retrieval_policy, status,
         user_id, session_id, toolset_id, mode_id,
-        title, text, embedding_text_hash, kind, source, confidence, importance, pinned, sensitivity,
+        title, slot_key, text, embedding_text_hash, kind, source, confidence, importance, pinned, sensitivity,
         created_at, updated_at, valid_from, valid_to, superseded_by,
         last_confirmed_at, retrieved_count, last_retrieved_at
       )
       VALUES (
         @itemId, @scope, @sourceType, @retrievalPolicy, @status,
         @userId, @sessionId, @toolsetId, @modeId,
-        @title, @text, @embeddingTextHash, @kind, @source, @confidence, @importance, @pinned, @sensitivity,
+        @title, @slotKey, @text, @embeddingTextHash, @kind, @source, @confidence, @importance, @pinned, @sensitivity,
         @createdAt, @updatedAt, @validFrom, @validTo, @supersededBy,
         @lastConfirmedAt, @retrievedCount, @lastRetrievedAt
       )
@@ -1458,6 +1532,7 @@ export class ContextStore {
         toolset_id = excluded.toolset_id,
         mode_id = excluded.mode_id,
         title = excluded.title,
+        slot_key = excluded.slot_key,
         text = excluded.text,
         embedding_text_hash = excluded.embedding_text_hash,
         kind = excluded.kind,
@@ -1498,8 +1573,8 @@ export class ContextStore {
   }
 }
 
-function rowToUserMemoryEntry(row: ContextItemRow): UserMemoryEntry {
-  return createUserMemoryEntry({
+function rowToContextMemoryFactEntry(row: ContextItemRow): ContextMemoryFactEntry {
+  const memory = createUserMemoryEntry({
     id: row.item_id,
     title: row.title ?? "长期事实",
     content: row.text,
@@ -1510,6 +1585,10 @@ function rowToUserMemoryEntry(row: ContextItemRow): UserMemoryEntry {
     ...(row.importance !== null ? { importance: row.importance } : {}),
     ...(row.last_retrieved_at !== null ? { lastUsedAt: row.last_retrieved_at } : {})
   });
+  return {
+    ...memory,
+    ...(normalizeContextSlotKey(row.slot_key) ? { slotKey: normalizeContextSlotKey(row.slot_key)! } : {})
+  };
 }
 
 function rowToContextSearchDocument(row: ContextItemRow): ContextSearchDocument {
@@ -1521,6 +1600,7 @@ function rowToContextSearchDocument(row: ContextItemRow): ContextSearchDocument 
     ...(row.user_id ? { userId: row.user_id } : {}),
     ...(row.session_id ? { sessionId: row.session_id } : {}),
     ...(row.title ? { title: row.title } : {}),
+    ...(normalizeContextSlotKey(row.slot_key) ? { slotKey: normalizeContextSlotKey(row.slot_key)! } : {}),
     text: row.text,
     embeddingTextHash: row.embedding_text_hash ?? buildContextEmbeddingTextHash(row.text),
     updatedAt: row.updated_at,
@@ -1540,6 +1620,7 @@ function rowToContextManagementItem(row: ContextItemRow): ContextManagementItem 
     ...(row.toolset_id ? { toolsetId: row.toolset_id } : {}),
     ...(row.mode_id ? { modeId: row.mode_id } : {}),
     ...(row.title ? { title: row.title } : {}),
+    ...(normalizeContextSlotKey(row.slot_key) ? { slotKey: normalizeContextSlotKey(row.slot_key)! } : {}),
     text: row.text,
     ...(row.kind ? { kind: row.kind } : {}),
     ...(row.source ? { source: row.source } : {}),
@@ -1566,6 +1647,7 @@ function rowToContextItem(row: ContextItemRow): ContextItem {
     ...(row.toolset_id ? { toolsetId: row.toolset_id } : {}),
     ...(row.mode_id ? { modeId: row.mode_id } : {}),
     ...(row.title ? { title: row.title } : {}),
+    ...(normalizeContextSlotKey(row.slot_key) ? { slotKey: normalizeContextSlotKey(row.slot_key)! } : {}),
     text: row.text,
     ...(row.kind ? { kind: row.kind } : {}),
     ...(row.source ? { source: row.source } : {}),
@@ -1602,6 +1684,7 @@ function parseContextItemImportLine(line: string): ContextItem | null {
       ...(parsed.toolsetId ? { toolsetId: parsed.toolsetId } : {}),
       ...(parsed.modeId ? { modeId: parsed.modeId } : {}),
       ...(parsed.title ? { title: parsed.title } : {}),
+      ...(normalizeContextSlotKey(parsed.slotKey) ? { slotKey: normalizeContextSlotKey(parsed.slotKey)! } : {}),
       text: parsed.text,
       ...(parsed.kind ? { kind: parsed.kind } : {}),
       ...(parsed.source ? { source: parsed.source } : {}),
@@ -1629,6 +1712,65 @@ function findSameSlotUserFact(title: string, facts: UserMemoryEntry[]): UserMemo
     return null;
   }
   return facts.find((item) => normalizeTitleForDedup(item.title) === normalizedTitle) ?? null;
+}
+
+function findSameSlotKeyFacts(slotKey: string, facts: ContextMemoryFactEntry[]): ContextMemoryFactEntry[] {
+  const normalizedSlotKey = normalizeContextSlotKey(slotKey);
+  if (!normalizedSlotKey) {
+    return [];
+  }
+  return facts.filter((item) => normalizeContextSlotKey(item.slotKey) === normalizedSlotKey);
+}
+
+function collectSupersedeTargets(facts: ContextMemoryFactEntry[], ids: string[]): ContextMemoryFactEntry[] {
+  const factsById = new Map(facts.map((item) => [item.id, item]));
+  const targets: ContextMemoryFactEntry[] = [];
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id)) {
+      continue;
+    }
+    const fact = factsById.get(id);
+    if (!fact) {
+      continue;
+    }
+    seen.add(id);
+    targets.push(fact);
+  }
+  return targets;
+}
+
+function normalizeContextSlotKey(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLocaleLowerCase();
+  if (!normalized || normalized.length > 80) {
+    return null;
+  }
+  for (const char of normalized) {
+    const code = char.charCodeAt(0);
+    const isLowerAscii = code >= 97 && code <= 122;
+    const isDigit = code >= 48 && code <= 57;
+    if (!isLowerAscii && !isDigit && char !== "_") {
+      return null;
+    }
+  }
+  return normalized;
+}
+
+function normalizeContextSlotKeyOrThrow(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null || value === "") {
+    return undefined;
+  }
+  const normalized = normalizeContextSlotKey(value);
+  if (!normalized) {
+    throw new Error("slotKey must contain only lowercase ASCII letters, digits, and underscores");
+  }
+  return normalized;
 }
 
 function isRelatedToRemovedFact(row: ContextItemRow, fact: ContextItemRow): boolean {
@@ -1797,6 +1939,7 @@ function toSqlParams(item: ContextItem): Record<string, string | number | null> 
     toolsetId: item.toolsetId ?? null,
     modeId: item.modeId ?? null,
     title: item.title ?? null,
+    slotKey: normalizeContextSlotKeyOrThrow(item.slotKey) ?? null,
     text: item.text,
     embeddingTextHash: buildContextEmbeddingTextHash(item.text),
     kind: item.kind ?? null,

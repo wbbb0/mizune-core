@@ -321,11 +321,7 @@ const metaChips = computed(() => {
     case "context_extraction_event":
       chips = [
         formatContextExtractionStatus(props.item.status),
-        `users=${props.item.targetUserIds.length}`,
-        `messages=${props.item.messageCount}`,
-        props.item.created != null ? `created=${props.item.created}` : null,
-        props.item.replaced != null ? `replaced=${props.item.replaced}` : null,
-        props.item.ignored != null ? `ignored=${props.item.ignored}` : null
+        props.item.status === "processed" ? `写入 ${contextExtractionWrittenCount.value} 条` : null
       ].filter(Boolean) as string[];
       break;
   }
@@ -351,6 +347,48 @@ const plannerReasonText = computed(() => {
   }
   return normalizeText(props.item.reason ?? "");
 });
+
+const contextExtractionWrittenCount = computed(() => {
+  if (props.item.kind !== "context_extraction_event") {
+    return 0;
+  }
+  return (props.item.created ?? 0) + (props.item.replaced ?? 0);
+});
+
+const contextExtractionStats = computed(() => {
+  if (props.item.kind !== "context_extraction_event") {
+    return [];
+  }
+  return [
+    { label: "目标用户", value: String(props.item.targetUserIds.length) },
+    { label: "候选消息", value: String(props.item.messageCount) },
+    { label: "创建", value: String(props.item.created ?? 0) },
+    { label: "更新", value: String(props.item.replaced ?? 0) },
+    { label: "忽略", value: String(props.item.ignored ?? 0) }
+  ];
+});
+
+const contextExtractionItems = computed(() => {
+  if (props.item.kind !== "context_extraction_event") {
+    return [];
+  }
+  return props.item.items ?? [];
+});
+
+function formatContextExtractionItemTitle(item: NonNullable<Extract<TranscriptItem, { kind: "context_extraction_event" }>["items"]>[number]): string {
+  const result = item.result === "created" ? "创建" : item.result === "replaced" ? "更新" : "忽略";
+  return `${result}${item.scope ? ` · ${item.scope}` : ""}${item.slotKey ? ` · ${item.slotKey}` : ""}`;
+}
+
+function formatContextExtractionItemMeta(item: NonNullable<Extract<TranscriptItem, { kind: "context_extraction_event" }>["items"]>[number]): string {
+  return [
+    item.operation ? `operation=${item.operation}` : null,
+    item.memoryId ? `memory=${item.memoryId}` : null,
+    item.targetMemoryIds && item.targetMemoryIds.length > 0 ? `target=${item.targetMemoryIds.join(", ")}` : null,
+    item.kind ? `kind=${item.kind}` : null,
+    item.reason ? `reason=${item.reason}` : null
+  ].filter(Boolean).join(" · ");
+}
 
 const plannerOutputRows = computed(() => {
   if (props.item.kind !== "gate_decision") {
@@ -775,15 +813,33 @@ function openActions(): void {
       <div v-else-if="item.kind === 'context_extraction_event'" class="flex flex-col gap-2">
         <p class="m-0 whitespace-pre-wrap wrap-break-word text-text-muted">{{ item.summary }}</p>
         <WorkbenchDisclosure
-          v-if="item.details || item.errorMessage"
+          v-if="item.details || item.errorMessage || contextExtractionItems.length > 0"
           :expanded="expanded"
           collapsed-title="展开详细信息"
           expanded-title="收起详细信息"
           :summary="item.status"
           @toggle="toggleExpanded"
         >
-          <WorkbenchCard v-if="item.details" title="详细信息">
-            <TranscriptTextBlock :text="item.details" />
+          <WorkbenchCard title="执行统计">
+            <div class="grid gap-2 sm:grid-cols-5">
+              <div v-for="stat in contextExtractionStats" :key="stat.label" class="min-w-0">
+                <div class="text-mini uppercase tracking-wide text-text-faint">{{ stat.label }}</div>
+                <div class="mt-0.5 text-small text-text-secondary">{{ stat.value }}</div>
+              </div>
+            </div>
+            <TranscriptTextBlock v-if="item.details" :text="item.details" class="mt-2" />
+          </WorkbenchCard>
+          <WorkbenchCard
+            v-for="memory in contextExtractionItems"
+            :key="`${memory.result}:${memory.memoryId ?? memory.title ?? memory.reason ?? ''}`"
+            :title="formatContextExtractionItemTitle(memory)"
+          >
+            <div v-if="formatContextExtractionItemMeta(memory)" class="mb-2 text-mini text-text-faint">
+              {{ formatContextExtractionItemMeta(memory) }}
+            </div>
+            <div v-if="memory.title" class="mb-1 text-small font-medium text-text-secondary">{{ memory.title }}</div>
+            <TranscriptTextBlock v-if="memory.content" :text="memory.content" />
+            <div v-else-if="memory.reason" class="text-small text-text-muted">{{ memory.reason }}</div>
           </WorkbenchCard>
           <WorkbenchCard v-if="item.errorMessage" title="错误信息">
             <TranscriptTextBlock :text="item.errorMessage" />
