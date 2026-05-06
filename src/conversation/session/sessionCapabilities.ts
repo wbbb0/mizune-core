@@ -216,6 +216,12 @@ export interface SessionAdminMutationAccess {
     reason: TranscriptItemRuntimeExclusionReason,
     timestampMs?: number
   ): InternalTranscriptItem[];
+  excludeTranscriptItemsAfter(
+    sessionId: string,
+    itemId: string,
+    reason: TranscriptItemRuntimeExclusionReason,
+    timestampMs?: number
+  ): InternalTranscriptItem[];
 }
 
 export interface SessionPersistenceAccess {

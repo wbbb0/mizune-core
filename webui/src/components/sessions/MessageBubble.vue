@@ -41,12 +41,20 @@ const bubbleGlyphToneClass = computed(() => {
   return props.side === "right" ? "bg-surface-selected text-text-accent" : "bg-surface-success text-success";
 });
 
+function openActions(): void {
+  if (props.actionsEnabled === false) {
+    return;
+  }
+  emit("openActions");
+}
+
 </script>
 
 <template>
   <div
     class="flex items-end gap-2 px-3 py-1"
     :class="{ 'flex-row-reverse': side === 'right' }"
+    @contextmenu.prevent="openActions"
   >
     <SessionGlyph
       class="shrink-0"
@@ -91,7 +99,7 @@ const bubbleGlyphToneClass = computed(() => {
         :timestamp-ms="timestampMs"
         :meta-chips="metaChips"
         :actions-enabled="actionsEnabled"
-        @open-actions="emit('openActions')"
+        @open-actions="openActions"
       />
     </div>
   </div>

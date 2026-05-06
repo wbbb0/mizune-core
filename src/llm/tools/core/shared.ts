@@ -56,12 +56,18 @@ import type { ToolResultObservationPolicy } from "./resultObservation.ts";
 export type Relationship = "owner" | "known";
 export type ToolAccessLevel = "any" | "owner" | "operator";
 
+export interface ToolVisibilityContext {
+  sessionId?: string | undefined;
+  replyDelivery?: SessionDelivery | undefined;
+}
+
 export interface ToolDescriptor {
   definition: LlmToolDefinition;
   accessLevel?: ToolAccessLevel;
   ownerOnly?: boolean;
   debugOnly?: boolean;
   modelVisible?: boolean;
+  isVisible?: (context: ToolVisibilityContext) => boolean;
   isEnabled?: (config: AppConfig, options?: { modelRef?: string | string[] }) => boolean;
   resultObservation?: ToolResultObservationPolicy;
 }

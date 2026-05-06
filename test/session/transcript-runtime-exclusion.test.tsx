@@ -33,6 +33,31 @@ function createExcludedUserMessage(overrides: Partial<InternalTranscriptItem> = 
   } as any as InternalTranscriptItem;
 }
 
+function createRuntimeUserMessage(id: string, timestampMs: number, text = id): InternalTranscriptItem {
+  return {
+    id,
+    groupId: `group-${id}`,
+    kind: "user_message",
+    role: "user",
+    llmVisible: true,
+    chatType: "private",
+    userId: "10001",
+    senderName: "Alice",
+    text,
+    imageIds: [],
+    emojiIds: [],
+    attachments: [],
+    audioCount: 0,
+    forwardIds: [],
+    replyMessageId: null,
+    mentionUserIds: [],
+    mentionedAll: false,
+    mentionedSelf: false,
+    timestampMs,
+    runtimeExcluded: false
+  } as any as InternalTranscriptItem;
+}
+
   test("runtimeExcluded transcript items are excluded from llm-visible history but remain in raw session view", () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const session = sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
@@ -46,6 +71,47 @@ function createExcludedUserMessage(overrides: Partial<InternalTranscriptItem> = 
     assert.equal(sessionView.internalTranscript.length, 1);
     assert.equal((sessionView.internalTranscript[0] as any)?.runtimeExcluded, true);
     assert.equal((sessionView.internalTranscript[0] as any)?.runtimeExclusionReason, "manual_single");
+  });
+
+  test("manual truncate after invalidates only messages after the boundary item", () => {
+    const sessionManager = new SessionManager(createTestAppConfig());
+    const sessionId = "qqbot:p:test";
+    const session = sessionManager.ensureSession({ id: sessionId, type: "private" });
+    session.internalTranscript.push(
+      createRuntimeUserMessage("item-before", 1, "保留在边界前"),
+      createRuntimeUserMessage("item-boundary", 2, "边界消息"),
+      createRuntimeUserMessage("item-after-1", 3, "删除后续 1"),
+      createRuntimeUserMessage("item-after-2", 4, "删除后续 2")
+    );
+
+    const affected = sessionManager.excludeTranscriptItemsAfter(
+      sessionId,
+      "item-boundary",
+      "manual_truncate_after",
+      100
+    );
+    assert.deepEqual(affected.map((item) => item.id), ["item-after-1", "item-after-2"]);
+
+    const view = sessionManager.getSessionView(sessionId).internalTranscript;
+    assert.equal(view[0]?.runtimeExcluded, false);
+    assert.equal(view[1]?.runtimeExcluded, false);
+    assert.equal(view[2]?.runtimeExcluded, true);
+    assert.equal(view[2]?.runtimeExcludedAt, 100);
+    assert.equal(view[2]?.runtimeExclusionReason, "manual_truncate_after");
+    assert.equal(view[3]?.runtimeExcluded, true);
+    assert.deepEqual(
+      sessionManager.getLlmVisibleHistory(sessionId).map((message) => message.content),
+      ["保留在边界前", "边界消息"]
+    );
+
+    const missing = sessionManager.excludeTranscriptItemsAfter(
+      sessionId,
+      "missing-item",
+      "manual_truncate_after",
+      200
+    );
+    assert.deepEqual(missing, []);
+    assert.equal(view[1]?.runtimeExcluded, false);
   });
 
   test("runtimeExcluded assistant tool chains are excluded from openai-style replay", () => {

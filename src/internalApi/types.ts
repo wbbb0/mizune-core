@@ -147,7 +147,7 @@ export interface InternalApiOperationsDeps {
 export interface InternalApiMessagingDeps {
   config: AppConfig;
   oneBotClient: OneBotClient;
-  sessionManager: SessionStreamAccess & Pick<SessionAdminMutationAccess, "excludeTranscriptItem" | "excludeTranscriptGroup">;
+  sessionManager: SessionStreamAccess & Pick<SessionAdminMutationAccess, "excludeTranscriptItem" | "excludeTranscriptGroup" | "excludeTranscriptItemsAfter">;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {

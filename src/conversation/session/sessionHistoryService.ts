@@ -390,6 +390,15 @@ export class SessionHistoryService {
   ): InternalTranscriptItem[] {
     return this.getTranscriptStore(session).excludeGroup(groupId, reason, timestampMs);
   }
+
+  excludeTranscriptItemsAfter(
+    session: SessionState,
+    itemId: string,
+    reason: TranscriptItemRuntimeExclusionReason,
+    timestampMs = Date.now()
+  ): InternalTranscriptItem[] {
+    return this.getTranscriptStore(session).excludeAfterItem(itemId, reason, timestampMs);
+  }
 }
 
 function findTranscriptInsertIndex(items: InternalTranscriptItem[], timestampMs: number): number {

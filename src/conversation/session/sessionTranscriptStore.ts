@@ -47,6 +47,11 @@ export interface SessionTranscriptStore {
     reason: TranscriptItemRuntimeExclusionReason,
     timestampMs: number
   ): InternalTranscriptItem[];
+  excludeAfterItem(
+    itemId: string,
+    reason: TranscriptItemRuntimeExclusionReason,
+    timestampMs: number
+  ): InternalTranscriptItem[];
 }
 
 export function createSessionTranscriptStore(session: SessionState, config: AppConfig): SessionTranscriptStore {
@@ -101,21 +106,33 @@ export function createSessionTranscriptStore(session: SessionState, config: AppC
     },
     excludeGroup(groupId, reason, timestampMs) {
       return applyRuntimeExclusion(session, (item) => item.groupId === groupId, reason, timestampMs);
+    },
+    excludeAfterItem(itemId, reason, timestampMs) {
+      const boundaryIndex = session.internalTranscript.findIndex((item) => item.id === itemId);
+      if (boundaryIndex === -1) {
+        return [];
+      }
+      return applyRuntimeExclusion(
+        session,
+        (_item, index) => index > boundaryIndex,
+        reason,
+        timestampMs
+      );
     }
   };
 }
 
 function applyRuntimeExclusion(
   session: SessionState,
-  predicate: (item: InternalTranscriptItem) => boolean,
+  predicate: (item: InternalTranscriptItem, index: number) => boolean,
   reason: TranscriptItemRuntimeExclusionReason,
   timestampMs: number
 ): InternalTranscriptItem[] {
   const affected: InternalTranscriptItem[] = [];
   const deletedMessageIds = new Set<number>();
 
-  for (const item of session.internalTranscript) {
-    if (!predicate(item) || item.runtimeExcluded === true) {
+  for (const [index, item] of session.internalTranscript.entries()) {
+    if (!predicate(item, index) || item.runtimeExcluded === true) {
       continue;
     }
     item.runtimeExcluded = true;

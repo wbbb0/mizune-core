@@ -1337,7 +1337,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
     }
   });
 
-  test("internal api invalidates transcript items and groups and triggers onebot deletion side effects", async () => {
+  test("internal api invalidates transcript items, groups, and later items with onebot deletion side effects", async () => {
     const deps = createInternalApiDeps();
     deps.__state.sessions[0]!.internalTranscript = [{
       id: "item-1",
@@ -1397,6 +1397,15 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.deepEqual(groupResponse.json().excludedItemIds, ["item-2"]);
       assert.equal(deps.__state.sessions[0]!.internalTranscript[1]!.runtimeExcluded, true);
       assert.equal(deps.__state.sessions[0]!.internalTranscript[2]!.runtimeExcluded, false);
+
+      const truncateResponse = await app.inject({
+        method: "DELETE",
+        url: `/api/sessions/${encodeURIComponent("qqbot:p:10001")}/transcript/items/item-1/after`
+      });
+      assert.equal(truncateResponse.statusCode, 200);
+      assert.deepEqual(truncateResponse.json().excludedItemIds, ["item-3"]);
+      assert.equal(deps.__state.sessions[0]!.internalTranscript[2]!.runtimeExcluded, true);
+      assert.equal(deps.__state.sessions[0]!.internalTranscript[2]!.runtimeExclusionReason, "manual_truncate_after");
     } finally {
       await app.close();
     }

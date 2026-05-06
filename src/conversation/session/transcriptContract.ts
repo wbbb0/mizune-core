@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { chatAttachmentSchema } from "../../types/chatContracts.ts";
 
-export const transcriptItemRuntimeExclusionReasonValues = ["manual_single", "manual_group", "interrupt_cleanup", "system"] as const;
+export const transcriptItemRuntimeExclusionReasonValues = ["manual_single", "manual_group", "manual_truncate_after", "interrupt_cleanup", "system"] as const;
 export const transcriptItemRuntimeVisibilityValues = ["default", "ambient"] as const;
 export const transcriptSystemMarkerKindValues = [
   "debug_enabled",
