@@ -664,7 +664,7 @@ const allowedScopes = [
 ⟦section name="retrieved_context"⟧
 - [fact] 2026-04-30 | 用户偏好先给结论，再展开理由。
 - [summary] 2026-04-30 | 之前评估过 Orama 作为轻量本地检索索引，保留可迁移边界。
-- [chunk] 2026-04-30 | 本次 POC 位于 poc/user-context-hybrid-retrieval-orama。
+- [chunk] 2026-04-30 | Orama 检索已迁入正式 `src/context` 实现。
 ⟦/section⟧
 ```
 
@@ -1054,7 +1054,7 @@ models:
 
 已完成 Orama POC：
 
-- `poc/user-context-hybrid-retrieval-orama`
+- 历史 `poc/user-context-hybrid-retrieval-orama` 已移除，保留正式 `src/context` 实现。
 - 验证 Orama hybrid search。
 - 验证中文 bigram tokenizer。
 - 验证用户过滤、recency、summary bonus、近重复抑制。

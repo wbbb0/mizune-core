@@ -136,6 +136,13 @@
 - `dist/` 和 `node_modules/` 属于产物或依赖，不作为源码修改目标
 - 准备提交 commit 前，必须至少跑通 `npm run typecheck:all` 和 `npm run test`
 
+## 真实模型调试入口
+
+- 默认测试入口 `npm run test` 不依赖真实模型；真实模型行为只用 opt-in 工具验证，不接入默认测试。
+- 记忆抽取 smoke：`npm run smoke:llm:memory`，脚本位于 `smoke/llm/context-memory-smoke.ts`，默认使用临时 `dataDir`，不读写实例正式数据。
+- 完整对话链路调试：`npm run test:interactive-bot`，脚本位于 `scripts/interactive-bot-cli.ts`，说明见 `docs/development/interactive-bot-cli.md`。
+- 真实模型 smoke 失败时，先区分模型服务/加载/配置问题与 prompt 行为漂移；本地模型首次加载超时可重试。
+
 ## 文档与 Agent 工作文件约定
 
 ### 1. `docs/` 只放长期保留的项目知识
