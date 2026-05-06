@@ -30,8 +30,8 @@ test("SchemaNode source keeps label priority and hover metadata wiring", async (
 
   assert.match(
     source,
-    /<span v-else-if="label" class="min-w-0 flex items-center gap-1 truncate text-small leading-\[1\.3\]" :title="node\.schema\.description \|\| label">/,
-    "expected field branch to keep hover bound to node.schema.description"
+    /<span v-else-if="label" class="min-w-0 flex items-center gap-1 truncate text-small leading-\[1\.3\]" :title="description \|\| label">/,
+    "expected field branch to keep hover bound to field-aware description"
   );
   const groupBranch = branchSlice(
     source,
@@ -40,8 +40,8 @@ test("SchemaNode source keeps label priority and hover metadata wiring", async (
   );
   assert.match(
     groupBranch,
-    /<span v-else :class="labelClasses" :title="node\.schema\.description">/,
-    "expected group branch to keep hover bound to node.schema.description"
+    /<span v-else :class="labelClasses" :title="description">/,
+    "expected group branch to keep hover bound to field-aware description"
   );
 
   const arrayBranch = branchSlice(
@@ -51,8 +51,8 @@ test("SchemaNode source keeps label priority and hover metadata wiring", async (
   );
   assert.match(
     arrayBranch,
-    /<span v-else :class="labelClasses" :title="node\.schema\.description">/,
-    "expected array branch header to expose node.schema.description in hover"
+    /<span v-else :class="labelClasses" :title="description">/,
+    "expected array branch header to expose field-aware description in hover"
   );
 
   const recordBranch = branchSlice(
@@ -62,8 +62,31 @@ test("SchemaNode source keeps label priority and hover metadata wiring", async (
   );
   assert.match(
     recordBranch,
-    /<span v-else :class="labelClasses" :title="node\.schema\.description">/,
-    "expected record branch header to expose node.schema.description in hover"
+    /<span v-else :class="labelClasses" :title="description">/,
+    "expected record branch header to expose field-aware description in hover"
+  );
+});
+
+test("SchemaNode source renders object children through field metadata wrappers", async () => {
+  const source = await readFile(
+    new URL("../../../packages/vue-resource-editor/src/components/SchemaNode.vue", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(
+    source,
+    /:node="child\.node"/,
+    "expected object child nodes to use the field wrapper's node"
+  );
+  assert.match(
+    source,
+    /:header-label="child\.field\.title"/,
+    "expected object child labels to prefer field-level titles"
+  );
+  assert.match(
+    source,
+    /:header-description="child\.field\.description"/,
+    "expected object child hover text to prefer field-level descriptions"
   );
 });
 

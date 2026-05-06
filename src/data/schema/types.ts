@@ -27,6 +27,12 @@ export type Primitive = string | number | boolean | null;
 
 export type DefaultValue<T> = T | (() => T);
 
+export type ObjectFieldMeta = {
+  title?: string;
+  description?: string;
+  schema: SchemaMeta;
+};
+
 export type SchemaMeta =
   | {
     kind: "string";
@@ -100,7 +106,7 @@ export type SchemaMeta =
     optional: boolean;
     hasDefault: boolean;
     defaultValue?: unknown;
-    fields: Record<string, SchemaMeta>;
+    fields: Record<string, ObjectFieldMeta>;
     unknownKeys: "strip" | "strict" | "passthrough";
   }
   | {
@@ -124,18 +130,37 @@ export type TemplateValue<T> =
 
 export type SchemaTemplate<TSchema> = TSchema extends BaseSchema<infer T> ? TemplateValue<T> : never;
 
-export type Shape = Record<string, BaseSchema<any>>;
+export type FieldOptions = {
+  title?: string;
+  description?: string;
+};
+
+export type FieldSpec<TSchema extends BaseSchema<any>> = FieldOptions & {
+  readonly __schemaField: true;
+  readonly schema: TSchema;
+};
+
+export type ShapeEntry = BaseSchema<any> | FieldSpec<BaseSchema<any>>;
+
+export type Shape = Record<string, ShapeEntry>;
+
+type InferShapeEntry<TEntry> =
+  TEntry extends FieldSpec<infer TSchema>
+    ? Infer<TSchema>
+    : TEntry extends BaseSchema<infer T>
+      ? T
+      : never;
 
 type OptionalShapeKeys<TShape extends Shape> = {
-  [K in keyof TShape]: undefined extends Infer<TShape[K]> ? K : never;
+  [K in keyof TShape]: undefined extends InferShapeEntry<TShape[K]> ? K : never;
 }[keyof TShape];
 
 type RequiredShapeKeys<TShape extends Shape> = Exclude<keyof TShape, OptionalShapeKeys<TShape>>;
 
 export type InferShape<TShape extends Shape> = {
-  [K in RequiredShapeKeys<TShape>]: Exclude<Infer<TShape[K]>, undefined>;
+  [K in RequiredShapeKeys<TShape>]: Exclude<InferShapeEntry<TShape[K]>, undefined>;
 } & {
-  [K in OptionalShapeKeys<TShape>]?: Exclude<Infer<TShape[K]>, undefined>;
+  [K in OptionalShapeKeys<TShape>]?: Exclude<InferShapeEntry<TShape[K]>, undefined>;
 };
 
 export type UnknownKeysPolicy = "strip" | "strict" | "passthrough";
@@ -148,7 +173,7 @@ export type UiNode =
   | {
     kind: "group";
     schema: Extract<SchemaMeta, { kind: "object" }>;
-    children: Record<string, UiNode>;
+    children: Record<string, { field: ObjectFieldMeta; node: UiNode }>;
   }
   | {
     kind: "array";

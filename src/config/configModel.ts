@@ -51,17 +51,19 @@ const onebotConfigSchema = s.object({
   historyBackfill: onebotHistoryBackfillConfigSchema
 }).title("OneBot").describe("配置 OneBot 连接方式与消息发送行为。").default(emptyObject);
 
-const proxyDetailSchema = s.object({
-  type: s.enum(["http", "https", "socks5"] as const).title("类型"),
-  host: s.string().trim().nonempty().title("主机"),
-  port: s.number().int().positive().title("端口"),
-  username: s.string().trim().nonempty().title("用户名").optional(),
-  password: s.string().trim().nonempty().title("密码").optional()
-}).title("代理");
+function createProxyDetailSchema() {
+  return s.object({
+    type: s.enum(["http", "https", "socks5"] as const).title("类型"),
+    host: s.string().trim().nonempty().title("主机"),
+    port: s.number().int().positive().title("端口"),
+    username: s.string().trim().nonempty().title("用户名").optional(),
+    password: s.string().trim().nonempty().title("密码").optional()
+  }).title("代理");
+}
 
 const proxyConfigSchema = s.object({
-  http: proxyDetailSchema.optional(),
-  https: proxyDetailSchema.optional()
+  http: s.field(createProxyDetailSchema().optional(), { title: "HTTP 代理" }),
+  https: s.field(createProxyDetailSchema().optional(), { title: "HTTPS 代理" })
 }).title("代理").describe("为支持代理的外部请求配置 HTTP 或 HTTPS 代理。").default(emptyObject);
 
 const llmTurnPlannerConfigSchema = s.object({
@@ -105,14 +107,14 @@ const llmMainRoutingConfigSchema = s.object({
 }).title("主路由").describe("在主回复链路中选择不同规模的模型。").default(emptyObject);
 
 const llmProviderFeatureFlagSchema = s.object({
-  type: s.literal("flag"),
-  path: s.string().trim().nonempty()
-}).strict();
+  type: s.literal("flag").title("类型"),
+  path: s.string().trim().nonempty().title("响应路径").describe("从 provider 响应中读取能力开关的字段路径。")
+}).title("响应标记能力").strict();
 
 const llmProviderFeatureBuiltinToolSchema = s.object({
-  type: s.literal("builtin_tool"),
-  tool: s.object({}).passthrough()
-}).strict();
+  type: s.literal("builtin_tool").title("类型"),
+  tool: s.object({}).passthrough().title("工具定义")
+}).title("内置工具能力").strict();
 
 const createLlmProviderFeatureSchema = () => s.union([
   llmProviderFeatureFlagSchema,
@@ -409,10 +411,10 @@ const contentSafetyRuleConfigSchema = s.object({
 }).title("内容安全规则").default(emptyObject);
 
 const contentSafetyProfileConfigSchema = s.object({
-  text: contentSafetyRuleConfigSchema,
-  image: contentSafetyRuleConfigSchema,
-  emoji: contentSafetyRuleConfigSchema,
-  audio: contentSafetyRuleConfigSchema,
+  text: s.field(contentSafetyRuleConfigSchema, { title: "文本规则" }),
+  image: s.field(contentSafetyRuleConfigSchema, { title: "图片规则" }),
+  emoji: s.field(contentSafetyRuleConfigSchema, { title: "表情规则" }),
+  audio: s.field(contentSafetyRuleConfigSchema, { title: "音频规则" }),
   unsupportedFilePolicy: s.enum(["allow", "mark", "block"] as const).title("不支持文件策略").default("mark")
 }).title("内容安全 Profile").default(emptyObject);
 

@@ -42,6 +42,7 @@ const props = defineProps<{
   /** true 时禁用本节点及子节点编辑。 */
   disabled?: boolean;
   headerLabel?: string;
+  headerDescription?: string;
   headerMeta?: string | number;
   headerActions?: HeaderAction[];
   headerEditing?: boolean;
@@ -84,6 +85,7 @@ function appendPath(segment: PathSegment): PathSegment[] {
 }
 
 const label = computed(() => props.headerLabel ?? props.node.schema.title ?? props.fieldKey ?? "");
+const description = computed(() => props.headerDescription ?? props.node.schema.description);
 const headerMeta = computed(() => {
   if (props.headerMeta !== undefined) {
     return props.headerMeta;
@@ -469,7 +471,7 @@ function getUnionOptionLabel(node: UiNode, index: number): string {
     for (const key of discriminatorKeys) {
       const child = node.children[key];
       if (!child) continue;
-      const label = getLeafLiteralLabel(child);
+      const label = getLeafLiteralLabel(child.node);
       if (label) return label;
     }
   }
@@ -498,7 +500,7 @@ function onUnionSelect(event: Event) {
             @keydown.enter.prevent="onHeaderEditEnter"
           />
         </template>
-        <span v-else-if="label" class="min-w-0 flex items-center gap-1 truncate text-small leading-[1.3]" :title="node.schema.description || label">
+        <span v-else-if="label" class="min-w-0 flex items-center gap-1 truncate text-small leading-[1.3]" :title="description || label">
           <span :class="[
             currentPathDirty ? 'text-text-accent' : 'text-text-secondary',
             showLocalValue ? 'font-bold' : 'font-medium'
@@ -549,7 +551,7 @@ function onUnionSelect(event: Event) {
             @click.stop
           />
         </template>
-        <span v-else :class="labelClasses" :title="node.schema.description">
+        <span v-else :class="labelClasses" :title="description">
           {{ label }}
           <span v-if="currentPathDirty" class="editor-dirty-dot" aria-hidden="true"></span>
         </span>
@@ -572,8 +574,10 @@ function onUnionSelect(event: Event) {
         <SchemaNode
           v-for="(child, key) in node.children"
           :key="key"
-          :node="child"
+          :node="child.node"
           :field-key="key"
+          :header-label="child.field.title"
+          :header-description="child.field.description"
           :model-value="asObj(modelValue)[key]"
           :inherited="childInheritedValue(key)"
           :default-value="childDefaultValue(key)"
@@ -592,8 +596,10 @@ function onUnionSelect(event: Event) {
       <SchemaNode
         v-for="(child, key) in node.children"
         :key="key"
-        :node="child"
+        :node="child.node"
         :field-key="key"
+        :header-label="child.field.title"
+        :header-description="child.field.description"
         :model-value="asObj(modelValue)[key]"
         :inherited="childInheritedValue(key)"
         :default-value="childDefaultValue(key)"
@@ -623,7 +629,7 @@ function onUnionSelect(event: Event) {
             @click.stop
           />
         </template>
-        <span v-else :class="labelClasses" :title="node.schema.description">
+        <span v-else :class="labelClasses" :title="description">
           {{ label }}
           <span v-if="currentPathDirty" class="editor-dirty-dot" aria-hidden="true"></span>
         </span>
@@ -695,7 +701,7 @@ function onUnionSelect(event: Event) {
             @click.stop
           />
         </template>
-        <span v-else :class="labelClasses" :title="node.schema.description">
+        <span v-else :class="labelClasses" :title="description">
           {{ label }}
           <span v-if="currentPathDirty" class="editor-dirty-dot" aria-hidden="true"></span>
         </span>

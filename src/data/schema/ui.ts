@@ -1,5 +1,5 @@
 import { BaseSchema } from "./base.ts";
-import type { SchemaMeta, UiNode } from "./types.ts";
+import type { ObjectFieldMeta, SchemaMeta, UiNode } from "./types.ts";
 
 export function buildUiTree(schema: BaseSchema<any>): UiNode {
   return buildUiTreeFromMeta(schema.toMeta());
@@ -8,9 +8,12 @@ export function buildUiTree(schema: BaseSchema<any>): UiNode {
 export function buildUiTreeFromMeta(meta: SchemaMeta): UiNode {
   switch (meta.kind) {
     case "object": {
-      const children: Record<string, UiNode> = {};
-      for (const [key, child] of Object.entries(meta.fields)) {
-        children[key] = buildUiTreeFromMeta(child);
+      const children: Record<string, { field: ObjectFieldMeta; node: UiNode }> = {};
+      for (const [key, field] of Object.entries(meta.fields)) {
+        children[key] = {
+          field,
+          node: buildUiTreeFromMeta(field.schema),
+        };
       }
       return {
         kind: "group",

@@ -12,6 +12,12 @@ export interface EditorResourceSummary {
 }
 
 /** 后端 schema 转换后的元数据。SchemaNode 依赖它渲染字段和默认值提示。 */
+export interface ObjectFieldMeta {
+  title?: string;
+  description?: string;
+  schema: SchemaMeta;
+}
+
 export interface SchemaMeta {
   kind: string;
   title?: string;
@@ -19,7 +25,7 @@ export interface SchemaMeta {
   optional: boolean;
   hasDefault: boolean;
   defaultValue?: unknown;
-  fields?: Record<string, SchemaMeta>;
+  fields?: Record<string, ObjectFieldMeta>;
   unknownKeys?: string;
   item?: SchemaMeta;
   key?: SchemaMeta;
@@ -36,7 +42,7 @@ export interface SchemaMeta {
 /** SchemaNode 使用的递归 UI 树。 */
 export type UiNode =
   | { kind: "field"; schema: SchemaMeta }
-  | { kind: "group"; schema: SchemaMeta; children: Record<string, UiNode> }
+  | { kind: "group"; schema: SchemaMeta; children: Record<string, { field: ObjectFieldMeta; node: UiNode }> }
   | { kind: "array"; schema: SchemaMeta; item: UiNode }
   | { kind: "record"; schema: SchemaMeta; key: UiNode; value: UiNode }
   | { kind: "union"; schema: SchemaMeta; options: UiNode[] };
