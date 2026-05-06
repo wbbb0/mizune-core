@@ -862,6 +862,20 @@ export class SessionManager {
     return affected;
   }
 
+  excludeTranscriptItemsAfter(
+    sessionId: string,
+    itemId: string,
+    reason: TranscriptItemRuntimeExclusionReason,
+    timestampMs = Date.now()
+  ): InternalTranscriptItem[] {
+    const session = this.requireSession(sessionId);
+    const affected = this.historyService.excludeTranscriptItemsAfter(session, itemId, reason, timestampMs);
+    if (affected.length > 0) {
+      this.notifySessionChanged(sessionId);
+    }
+    return affected;
+  }
+
   enqueueInternalTrigger(sessionId: string, trigger: InternalSessionTriggerExecution): number {
     const session = this.requireSession(sessionId);
     const size = this.internalTriggerQueue.enqueue(session, trigger);

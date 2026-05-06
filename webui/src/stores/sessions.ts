@@ -208,7 +208,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     };
   }
 
-  function applyLocalTranscriptInvalidation(itemIds: string[], reason: "manual_single" | "manual_group"): void {
+  function applyLocalTranscriptInvalidation(itemIds: string[], reason: "manual_single" | "manual_group" | "manual_truncate_after"): void {
     if (itemIds.length === 0 || !active.value) {
       return;
     }
@@ -763,6 +763,15 @@ export const useSessionsStore = defineStore("sessions", () => {
     applyLocalTranscriptInvalidation(result.excludedItemIds, "manual_group");
   }
 
+  async function excludeTranscriptItemsAfter(itemId: string): Promise<void> {
+    const cur = active.value;
+    if (!cur) {
+      return;
+    }
+    const result = await sessionsApi.excludeTranscriptItemsAfter(cur.id, itemId);
+    applyLocalTranscriptInvalidation(result.excludedItemIds, "manual_truncate_after");
+  }
+
   return {
     list,
     modes,
@@ -784,6 +793,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     getComposerDraftText,
     setComposerDraftText,
     excludeTranscriptItem,
-    excludeTranscriptGroup
+    excludeTranscriptGroup,
+    excludeTranscriptItemsAfter
   };
 });

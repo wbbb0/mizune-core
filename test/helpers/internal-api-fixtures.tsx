@@ -522,6 +522,24 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         notifySessionChanged(sessionId);
         return affected;
       },
+      excludeTranscriptItemsAfter(sessionId: string, itemId: string) {
+        const session = state.sessions.find((item) => item.id === sessionId);
+        if (!session) {
+          return [];
+        }
+        const boundaryIndex = session.internalTranscript.findIndex((item) => item.id === itemId);
+        if (boundaryIndex === -1) {
+          return [];
+        }
+        const affected = session.internalTranscript.slice(boundaryIndex + 1).filter((item) => item.runtimeExcluded !== true);
+        for (const item of affected) {
+          item.runtimeExcluded = true;
+          item.runtimeExcludedAt = Date.now();
+          item.runtimeExclusionReason = "manual_truncate_after";
+        }
+        notifySessionChanged(sessionId);
+        return affected;
+      },
       getPersistedSession(sessionId: string) {
         const session = state.sessions.find((item) => item.id === sessionId)!;
         return {

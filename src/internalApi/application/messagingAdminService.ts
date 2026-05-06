@@ -60,6 +60,7 @@ export interface AdminMessagingService {
   };
   excludeTranscriptItem(params: { sessionId: string; itemId: string }): Promise<{ ok: true; excludedItemIds: string[] }>;
   excludeTranscriptGroup(params: { sessionId: string; groupId: string }): Promise<{ ok: true; excludedItemIds: string[] }>;
+  excludeTranscriptItemsAfter(params: { sessionId: string; itemId: string }): Promise<{ ok: true; excludedItemIds: string[] }>;
 }
 
 export function createAdminMessagingService(input: {
@@ -70,7 +71,7 @@ export function createAdminMessagingService(input: {
   };
   oneBotClient: Pick<OneBotClient, "sendText" | "deleteMessage">;
   chatFileStore: Pick<ChatFileStore, "getMany">;
-  sessionManager: SessionStreamAccess & Pick<SessionAdminMutationAccess, "excludeTranscriptItem" | "excludeTranscriptGroup">;
+  sessionManager: SessionStreamAccess & Pick<SessionAdminMutationAccess, "excludeTranscriptItem" | "excludeTranscriptGroup" | "excludeTranscriptItemsAfter">;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {
@@ -164,6 +165,15 @@ export function createAdminMessagingService(input: {
 
     async excludeTranscriptGroup(params) {
       const affected = input.sessionManager.excludeTranscriptGroup(params.sessionId, params.groupId, "manual_group");
+      await performTranscriptDeletionSideEffects(input.oneBotClient, affected);
+      return {
+        ok: true,
+        excludedItemIds: affected.map((item) => item.id ?? "").filter((value) => value.length > 0)
+      };
+    },
+
+    async excludeTranscriptItemsAfter(params) {
+      const affected = input.sessionManager.excludeTranscriptItemsAfter(params.sessionId, params.itemId, "manual_truncate_after");
       await performTranscriptDeletionSideEffects(input.oneBotClient, affected);
       return {
         ok: true,

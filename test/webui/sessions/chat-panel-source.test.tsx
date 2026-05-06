@@ -12,4 +12,6 @@ import { readFile } from "node:fs/promises";
     assert.match(source, /const reversedMessages = computed/);
     assert.match(source, /const reversedTranscript = computed/);
     assert.match(source, /streaming=|draftAssistantText|draftTurnId/);
+    assert.match(source, /截断到此处/);
+    assert.match(source, /excludeTranscriptItemsAfter/);
   });

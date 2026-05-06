@@ -41,6 +41,33 @@ const commonFields = computed(() => [
   ["mutationEpoch", detail.value ? String(detail.value.session.mutationEpoch) : "载入中"]
 ]);
 
+const debugControlRows = computed(() => {
+  const debugControl = detail.value?.session.debugControl ?? { enabled: false, oncePending: false };
+  return [
+    ["调试开关", debugControl.enabled ? "已开启" : "关闭"],
+    ["单次调试", debugControl.oncePending ? "已等待触发" : "未启用"]
+  ];
+});
+
+const lastLlmUsageRows = computed(() => {
+  const usage = detail.value?.session.lastLlmUsage ?? null;
+  if (!usage) {
+    return [];
+  }
+  return [
+    ["模型引用", usage.modelRef || "暂无"],
+    ["模型", usage.model || "暂无"],
+    ["输入 tokens", formatMetric(usage.inputTokens)],
+    ["输出 tokens", formatMetric(usage.outputTokens)],
+    ["总 tokens", formatMetric(usage.totalTokens)],
+    ["缓存 tokens", formatMetric(usage.cachedTokens)],
+    ["推理 tokens", formatMetric(usage.reasoningTokens)],
+    ["请求数", formatMetric(usage.requestCount)],
+    ["Provider 上报", usage.providerReported ? "是" : "否"],
+    ["采集时间", formatTimestamp(usage.capturedAt)]
+  ];
+});
+
 function formatTimestamp(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) {
     return "暂无";
@@ -48,8 +75,11 @@ function formatTimestamp(value: number | null | undefined): string {
   return new Date(value).toLocaleString();
 }
 
-function formatJson(value: unknown): string {
-  return JSON.stringify(value, null, 2);
+function formatMetric(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "暂无";
+  }
+  return value.toLocaleString();
 }
 
 function isDisclosureExpanded(id: string): boolean {
@@ -238,12 +268,28 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
         >
           <div class="grid gap-4 lg:grid-cols-2">
             <WorkbenchCard surface="sidebar">
-              <div class="text-small text-text-subtle">Debug Control</div>
-              <pre class="mt-2 overflow-auto text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ formatJson(detail?.session.debugControl ?? { enabled: false, oncePending: false }) }}</pre>
+              <div class="text-small text-text-subtle">调试控制</div>
+              <div class="mt-2 grid gap-1.5">
+                <div v-for="[label, value] in debugControlRows" :key="label" class="flex items-start justify-between gap-3 rounded border border-border-subtle bg-surface-input px-2 py-1.5">
+                  <span class="text-small text-text-subtle">{{ label }}</span>
+                  <span class="text-right text-small text-text-secondary">{{ value }}</span>
+                </div>
+              </div>
             </WorkbenchCard>
             <WorkbenchCard surface="sidebar">
-              <div class="text-small text-text-subtle">Last LLM Usage</div>
-              <pre class="mt-2 overflow-auto text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ formatJson(detail?.session.lastLlmUsage ?? null) }}</pre>
+              <div class="text-small text-text-subtle">最近 LLM 用量</div>
+              <WorkbenchEmptyState
+                v-if="lastLlmUsageRows.length === 0"
+                :centered="false"
+                class="mt-2 rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle"
+                message="暂无 LLM 用量记录"
+              />
+              <div v-else class="mt-2 grid gap-1.5">
+                <div v-for="[label, value] in lastLlmUsageRows" :key="label" class="flex items-start justify-between gap-3 rounded border border-border-subtle bg-surface-input px-2 py-1.5">
+                  <span class="text-small text-text-subtle">{{ label }}</span>
+                  <span class="break-all text-right font-mono text-small text-text-secondary">{{ value }}</span>
+                </div>
+              </div>
             </WorkbenchCard>
           </div>
         </WorkbenchDisclosure>

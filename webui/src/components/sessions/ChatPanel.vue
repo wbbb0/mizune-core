@@ -122,7 +122,7 @@ function openTranscriptActions(target: TranscriptActionTarget) {
     blocks: [
       {
         kind: "text",
-        content: `目标：${target.detail}`
+        content: `目标：${target.detail}\n「截断到此处」会将此记录之后的所有记录置为失效。`
       }
     ],
     actions: [
@@ -165,6 +165,23 @@ function openTranscriptActions(target: TranscriptActionTarget) {
             const message = error instanceof ApiError || error instanceof Error
               ? error.message
               : "删除失败";
+            toast.push({ type: "error", message });
+            throw error;
+          }
+        }
+      },
+      {
+        id: "truncate-after",
+        label: "截断到此处",
+        variant: "danger",
+        run: async () => {
+          try {
+            await store.excludeTranscriptItemsAfter(target.itemId);
+            return { target: target.itemId };
+          } catch (error: unknown) {
+            const message = error instanceof ApiError || error instanceof Error
+              ? error.message
+              : "截断失败";
             toast.push({ type: "error", message });
             throw error;
           }

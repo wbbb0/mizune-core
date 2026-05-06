@@ -110,5 +110,9 @@ export const sessionsApi = {
 
   excludeTranscriptGroup(sessionId: string, groupId: string): Promise<{ ok: boolean; excludedItemIds: string[] }> {
     return api.delete(`/api/sessions/${encodeURIComponent(sessionId)}/transcript/groups/${encodeURIComponent(groupId)}`);
+  },
+
+  excludeTranscriptItemsAfter(sessionId: string, itemId: string): Promise<{ ok: boolean; excludedItemIds: string[] }> {
+    return api.delete(`/api/sessions/${encodeURIComponent(sessionId)}/transcript/items/${encodeURIComponent(itemId)}/after`);
   }
 };
