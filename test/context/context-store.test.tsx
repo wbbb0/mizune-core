@@ -750,6 +750,41 @@ test("ContextStore upserts session facts independently from user facts", async (
   }
 });
 
+test("ContextStore soft-deletes only target session scoped context items", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    const targetSessionFact = harness.store.upsertSessionFact({
+      sessionId: "qqbot:p:user_1",
+      title: "目标会话用途",
+      content: "此会话专门用于记忆系统测试"
+    });
+    harness.store.upsertSessionFact({
+      sessionId: "qqbot:p:user_2",
+      title: "其他会话用途",
+      content: "此会话用于别的任务"
+    });
+    harness.store.upsertUserFact({
+      userId: "user_1",
+      title: "用户偏好",
+      content: "用户偏好简洁回答"
+    });
+
+    const deleted = harness.store.deleteSessionScopedItems("qqbot:p:user_1");
+
+    assert.equal(deleted.deletedCount, 1);
+    assert.deepEqual(harness.store.listSessionFacts("qqbot:p:user_1"), []);
+    assert.equal(
+      harness.store.listContextItems({ scope: "session", status: "deleted" }).items
+        .some((item) => item.itemId === targetSessionFact.item.id),
+      true
+    );
+    assert.equal(harness.store.listSessionFacts("qqbot:p:user_2").length, 1);
+    assert.equal(harness.store.listUserFacts("user_1").length, 1);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
 test("ContextStore sweeps expired session facts without touching active session facts", async () => {
   const harness = await createContextStoreHarness();
   try {

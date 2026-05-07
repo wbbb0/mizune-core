@@ -158,3 +158,54 @@ test("ContextExtractionQueue reports failed extraction batches", async () => {
     turns: 1
   }]);
 });
+
+test("ContextExtractionQueue cancels pending batches for a deleted session", async () => {
+  const calls: string[] = [];
+  const queue = new ContextExtractionQueue(
+    createTestAppConfig({
+      context: {
+        extraction: {
+          enabled: true,
+          debounceMs: 30,
+          maxDelayMs: 100,
+          maxTurnsPerBatch: 3,
+          minConfidence: 0.7,
+          relatedMemoryLimit: 8,
+          timeoutMs: 1000,
+          enableThinking: false
+        }
+      }
+    }),
+    {
+      async processTurns(input) {
+        calls.push(input.sessionId);
+        return { created: 0, replaced: 0, ignored: 0, items: [] };
+      }
+    },
+    pino({ level: "silent" })
+  );
+
+  queue.enqueueTurn(createTurn({
+    sessionId: "qqbot:p:user_a",
+    userId: "user_a",
+    text: "记住这条即将被取消的会话记忆",
+    receivedAt: 100
+  }));
+  queue.enqueueTurn(createTurn({
+    sessionId: "qqbot:p:user_b",
+    userId: "user_b",
+    text: "记住这条仍然应该被抽取的会话记忆",
+    receivedAt: 101
+  }));
+
+  const cancelled = queue.cancelSession({ sessionId: "qqbot:p:user_a" });
+
+  await sleep(80);
+  queue.stop();
+
+  assert.deepEqual(cancelled, {
+    cancelledBatchCount: 1,
+    cancelledTurnCount: 1
+  });
+  assert.deepEqual(calls, ["qqbot:p:user_b"]);
+});

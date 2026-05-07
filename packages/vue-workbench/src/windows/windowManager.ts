@@ -49,6 +49,14 @@ function cloneDefinition<TValues extends Record<string, unknown>, TResult>(
       if (prototype !== Object.prototype && prototype !== null) {
         return value;
       }
+      if (
+        "setup" in value
+        || "render" in value
+        || "__vccOpts" in value
+        || "__asyncLoader" in value
+      ) {
+        return value;
+      }
       return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, cloneValue(entry)]));
     }
     return value;

@@ -112,6 +112,52 @@ export interface ContextRetrievalDebugReport {
   createdAt: number;
 }
 
+export type ContextPromptMemoryEntrySource = "semantic_retrieval";
+export type ContextPromptMemoryRetrievalSkipReason =
+  | "scenario_host_mode"
+  | "assistant_mode"
+  | "missing_user"
+  | "service_unavailable";
+
+export interface ContextPromptMemoryItem {
+  itemId: string;
+  entrySource: ContextPromptMemoryEntrySource;
+  scope: ContextScope;
+  sourceType: ContextSourceType;
+  title?: string;
+  slotKey?: string;
+  kind?: ContextMemoryFactEntry["kind"];
+  memorySource?: ContextMemoryFactEntry["source"];
+  text: string;
+  score?: number;
+  importance?: number;
+  updatedAt: number;
+}
+
+export interface ContextPromptMemoryReport {
+  sessionId: string;
+  modeId?: string;
+  userId?: string;
+  queryText: string;
+  currentUserFactCount: number;
+  availableUserFactCount: number;
+  userFactLimit: number;
+  userFactTruncated: boolean;
+  currentSessionFactCount: number;
+  availableSessionFactCount: number;
+  sessionFactLimit: number;
+  sessionFactTruncated: boolean;
+  retrievedUserContextCount: number;
+  selectedCount: number;
+  semanticRetrieval: {
+    attempted: boolean;
+    skippedReason?: ContextPromptMemoryRetrievalSkipReason;
+    debugReport?: ContextRetrievalDebugReport;
+  };
+  retrievedUserContext: ContextPromptMemoryItem[];
+  createdAt: number;
+}
+
 export interface ContextManagementItem {
   itemId: string;
   scope: ContextScope;

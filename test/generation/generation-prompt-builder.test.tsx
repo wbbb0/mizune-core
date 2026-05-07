@@ -1556,8 +1556,26 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     const upsertedChunks: Array<{ itemId: string; text: string }> = [];
     const upsertedFacts: Array<{ title: string; content: string }> = [];
     const retrievalCalls: Array<{ queryText: string; excludeItemIds: string[] }> = [];
+    const promptReports: Array<{
+      sessionId: string;
+      queryText: string;
+      currentUserMemories: unknown[];
+      availableUserFactCount: number;
+      userFactLimit: number;
+      currentSessionContext: unknown[];
+      availableSessionFactCount: number;
+      sessionFactLimit: number;
+      retrievedUserContext: unknown[];
+      semanticRetrievalAttempted: boolean;
+    }> = [];
     const builder = createGenerationPromptBuilder({
-      config: createTestAppConfig(),
+      config: createTestAppConfig({
+        context: {
+          retrieval: {
+            maxFixedUserFacts: 1
+          }
+        }
+      }),
       oneBotClient: {} as any,
       audioStore: {} as any,
       audioTranscriber: {
@@ -1608,6 +1626,15 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
             createdAt: 1,
             updatedAt: 1,
             importance: 4
+          }, {
+            id: "mem_pref_2",
+            title: "长尾偏好",
+            content: "这条长尾用户记忆不应该固定进入 prompt",
+            kind: "preference",
+            source: "user_explicit",
+            createdAt: 1,
+            updatedAt: 1,
+            importance: 1
           }];
         },
         upsertUserFact(input: { title: string; content: string }) {
@@ -1640,6 +1667,20 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
             score: 0.91,
             updatedAt: 1
           }];
+        },
+        recordPromptMemoryReport(input: {
+          sessionId: string;
+          queryText: string;
+          currentUserMemories: unknown[];
+          availableUserFactCount: number;
+          userFactLimit: number;
+          currentSessionContext: unknown[];
+          availableSessionFactCount: number;
+          sessionFactLimit: number;
+          retrievedUserContext: unknown[];
+          semanticRetrievalAttempted: boolean;
+        }) {
+          promptReports.push(input);
         }
       } as any,
       scenarioHostStateStore: {
@@ -1709,10 +1750,21 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     assert.equal(upsertedChunks.length, 0);
     assert.equal(retrievalCalls.length, 1);
     assert.equal(retrievalCalls[0]?.queryText, "Tester：记住我喜欢 Orama 版上下文检索");
-    assert.deepEqual(retrievalCalls[0]?.excludeItemIds, ["mem_pref_1"]);
+    assert.deepEqual(retrievalCalls[0]?.excludeItemIds, ["mem_pref_1", "mem_pref_2"]);
+    assert.equal(promptReports.length, 1);
+    assert.equal(promptReports[0]?.sessionId, "qqbot:p:10001");
+    assert.equal(promptReports[0]?.queryText, "Tester：记住我喜欢 Orama 版上下文检索");
+    assert.equal(promptReports[0]?.currentUserMemories.length, 1);
+    assert.equal(promptReports[0]?.availableUserFactCount, 2);
+    assert.equal(promptReports[0]?.userFactLimit, 1);
+    assert.equal(promptReports[0]?.currentSessionContext.length, 0);
+    assert.equal(promptReports[0]?.availableSessionFactCount, 0);
+    assert.equal(promptReports[0]?.retrievedUserContext.length, 1);
+    assert.equal(promptReports[0]?.semanticRetrievalAttempted, true);
     assert.match(String(result.promptMessages[0]?.content ?? ""), /retrieved_user_context/);
     assert.match(String(result.promptMessages[0]?.content ?? ""), /用户之前在处理 SQLite 迁移/);
     assert.match(String(result.promptMessages[0]?.content ?? ""), /用户喜欢 Orama 版上下文检索/);
+    assert.doesNotMatch(String(result.promptMessages[0]?.content ?? ""), /长尾用户记忆不应该固定进入 prompt/);
   });
 
   test("chat prompt does not depend on context deposition methods", async () => {

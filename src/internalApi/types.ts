@@ -26,7 +26,9 @@ import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import type { ContextEmbeddingService } from "#context/contextEmbeddingService.ts";
 import type { ContextRetrievalService } from "#context/contextRetrievalService.ts";
+import type { ContextSessionCleanupService } from "#context/contextSessionCleanupService.ts";
 import type { ContextStore } from "#context/contextStore.ts";
+import type { ContextPromptMemoryReport } from "#context/contextTypes.ts";
 import type {
   SessionAdminMutationAccess,
   SessionAdminReadAccess,
@@ -100,6 +102,7 @@ export interface InternalApiSessionDetail {
     lastLlmUsage: unknown;
     sentMessages: unknown[];
     contentSafetyAudits: ContentSafetyAuditView[];
+    memoryContext: ContextPromptMemoryReport | null;
     lastActiveAt: number;
     isGenerating: boolean;
     historyRevision: number;
@@ -116,6 +119,7 @@ export interface InternalApiSessionReadDeps {
   chatFileStore: Pick<ChatFileStore, "getMany">;
   audioStore: Pick<AudioStore, "getMany">;
   contentSafetyStore?: Pick<ContentSafetyStore, "listBySessionId" | "getViewByFileId">;
+  contextRetrievalService?: Pick<ContextRetrievalService, "getLastPromptMemoryReport">;
 }
 
 export interface InternalApiSessionWriteDeps extends InternalApiSessionReadDeps {
@@ -129,6 +133,7 @@ export interface InternalApiSessionDeleteDeps extends InternalApiSessionReadDeps
   sessionManager: SessionAdminReadAccess & Pick<SessionAdminMutationAccess, "deleteSession">;
   sessionPersistence: SessionPersistence;
   chatMessageFileGcService: ChatMessageFileGcService;
+  contextSessionCleanupService?: Pick<ContextSessionCleanupService, "cleanupDeletedSession">;
 }
 
 export interface InternalApiPersonaDeps {
@@ -213,6 +218,7 @@ export interface InternalApiDeps {
   audioStore: AudioStore;
   contentSafetyStore?: ContentSafetyStore;
   chatMessageFileGcService: ChatMessageFileGcService;
+  contextSessionCleanupService?: ContextSessionCleanupService;
 }
 
 export interface InternalApiServices {
@@ -258,7 +264,8 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         contextStore: deps.contextStore,
         contextEmbeddingService: deps.contextEmbeddingService,
         contextRetrievalService: deps.contextRetrievalService,
-        chatMessageFileGcService: deps.chatMessageFileGcService
+        chatMessageFileGcService: deps.chatMessageFileGcService,
+        ...(deps.contextSessionCleanupService ? { contextSessionCleanupService: deps.contextSessionCleanupService } : {})
       },
       editor: createEditorService({
         config: deps.config,

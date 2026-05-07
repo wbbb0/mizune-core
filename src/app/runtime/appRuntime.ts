@@ -14,6 +14,7 @@ import { createInternalApiServices } from "#internalApi/types.ts";
 import { ContextMaintenanceService } from "#context/contextMaintenanceService.ts";
 import { ContextExtractionQueue } from "#context/contextExtractionQueue.ts";
 import { ContextExtractionService, type ContextExtractionTurn } from "#context/contextExtractionService.ts";
+import { ContextSessionCleanupService } from "#context/contextSessionCleanupService.ts";
 import { createContextExtractionEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import {
   shutdownRuntime,
@@ -140,6 +141,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
       persistSession(event.sessionId, "context_extraction_failed");
     }
   });
+  const contextSessionCleanupService = new ContextSessionCleanupService(contextStore, contextExtractionQueue, logger);
   sessionWorkCoordinator = createSessionWorkCoordinator(
     buildSessionWorkCoordinatorDeps(
       services,
@@ -278,7 +280,8 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     chatFileStore,
     audioStore,
     contentSafetyStore,
-    chatMessageFileGcService
+    chatMessageFileGcService,
+    contextSessionCleanupService
   });
 
   try {

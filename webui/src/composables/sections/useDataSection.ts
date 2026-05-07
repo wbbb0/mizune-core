@@ -1,11 +1,12 @@
-import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
+import { computed, defineComponent, h, ref, watch, type ComputedRef, type Ref } from "vue";
 import { useEditorDraftState } from "@workbench-kit/vue-resource-editor";
-import { useWorkbenchNavigation } from "@workbench-kit/vue-workbench";
+import { useWorkbenchNavigation, useWorkbenchWindows } from "@workbench-kit/vue-workbench";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { contextApi, type ContextItemFilters, type ContextManagementItem, type ContextStatus } from "@/api/context";
 import { dataApi, type DataResourceSummary, type DataResource, type DataResourceItem, type DirectoryItem } from "@/api/data";
 import { editorApi, type EditorModel, type EditorResourceSummary } from "@/api/editor";
 import { useWorkbenchToasts } from "@workbench-kit/vue-workbench";
+import ContextItemsControlPanel from "@/sections/data/ContextItemsControlPanel.vue";
 
 type DataListResource =
   | {
@@ -64,6 +65,7 @@ type DataSectionState = {
   selectDirectoryItem: (key: string) => void;
   refreshSelected: () => Promise<void>;
   refreshContextItems: () => Promise<void>;
+  openContextFiltersDialog: () => Promise<void>;
   deleteContextItem: (itemId: string) => Promise<void>;
   editContextItem: (item: ContextManagementItem) => Promise<void>;
   toggleContextItemPinned: (item: ContextManagementItem) => Promise<void>;
@@ -109,6 +111,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
     const validating = ref(false);
     const toast = useWorkbenchToasts();
     const workbenchNavigation = useWorkbenchNavigation();
+    const windows = useWorkbenchWindows();
     const editorState = useEditorDraftState(model);
     let stateVersion = 0;
 
@@ -319,6 +322,73 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       }
     }
 
+    async function applyContextFilters(filters: ContextItemFilters) {
+      contextFilters.value = {
+        ...contextFilters.value,
+        ...filters,
+        userId: filters.userId?.trim() ?? "",
+        scope: filters.scope ?? "",
+        sourceType: filters.sourceType ?? "",
+        status: filters.status ?? "",
+        offset: filters.offset ?? 0
+      };
+      await refreshContextItems();
+    }
+
+    async function openContextFiltersDialog() {
+      const context = { kind: "data-context-controls", id: "context_items" };
+      windows.closeByContext(context);
+      const ControlPanelWindow = defineComponent({
+        name: "ContextItemsControlPanelWindow",
+        props: {
+          windowId: {
+            type: String,
+            required: true
+          }
+        },
+        setup(props) {
+          async function applyFiltersFromPanel(filters: ContextItemFilters) {
+            await applyContextFilters(filters);
+          }
+
+          return () => h(ContextItemsControlPanel, {
+            currentFilters: contextFilters.value,
+            contextTotal: contextTotal.value,
+            contextStatus: contextStatus.value,
+            loading: loading.value,
+            maintenanceBusy: contextMaintenanceBusy.value,
+            applyFilters: applyFiltersFromPanel,
+            refreshContextItems,
+            exportContextItems,
+            importContextItems,
+            compactContextUser,
+            sweepDeletedContextItems,
+            clearContextEmbeddings: () => clearContextEmbeddings({ parentWindowId: props.windowId }),
+            resetContextIndex,
+            rebuildContextIndex: () => rebuildContextIndex({ parentWindowId: props.windowId }),
+            bulkDeleteContextItems: () => bulkDeleteContextItems({ parentWindowId: props.windowId })
+          });
+        }
+      });
+      windows.openDialogSync({
+        title: "上下文记忆管理",
+        description: "筛选、导入导出与维护操作。",
+        size: "md",
+        modal: false,
+        showCloseButton: true,
+        footer: "hidden",
+        closeOnBackdrop: false,
+        closeOnEscape: true,
+        context,
+        blocks: [
+          {
+            kind: "component",
+            component: ControlPanelWindow
+          }
+        ]
+      } as never);
+    }
+
     async function loadContextItems(requestVersion: number) {
       const res = await contextApi.listItems({
         ...contextFilters.value,
@@ -345,7 +415,12 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
     async function deleteContextItem(itemId: string) {
       const requestVersion = stateVersion;
       if (!itemId || deletingContextItemId.value) return;
-      if (!window.confirm("删除这条上下文记忆？")) return;
+      if (!await confirmWorkbenchAction({
+        title: "确认删除上下文记忆",
+        content: "这条上下文记忆会被标记为 deleted，后续维护任务会清理已删除数据。",
+        confirmLabel: "删除",
+        variant: "danger"
+      })) return;
       deletingContextItemId.value = itemId;
       try {
         await contextApi.deleteItem(itemId);
@@ -456,8 +531,14 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       }
     }
 
-    async function bulkDeleteContextItems() {
-      if (!window.confirm("按当前过滤条件批量删除上下文记忆？")) return;
+    async function bulkDeleteContextItems(options: { parentWindowId?: string } = {}) {
+      if (!await confirmWorkbenchAction({
+        title: "确认批量删除",
+        content: "将按当前筛选条件批量标记上下文记忆为 deleted。请确认筛选条件正确。",
+        confirmLabel: "批量删除",
+        variant: "danger",
+        parentWindowId: options.parentWindowId
+      })) return;
       await runContextMaintenance(
         () => contextApi.bulkDelete(contextFilters.value),
         (result) => `已删除 ${result.deletedCount ?? 0} 条`
@@ -509,8 +590,14 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       );
     }
 
-    async function clearContextEmbeddings() {
-      if (!window.confirm("清空当前过滤范围的 embedding？下次检索会重新生成。")) return;
+    async function clearContextEmbeddings(options: { parentWindowId?: string } = {}) {
+      if (!await confirmWorkbenchAction({
+        title: "确认清空 embedding",
+        content: "将清空当前筛选范围的 embedding。下次检索或维护时会重新生成。",
+        confirmLabel: "清空 embedding",
+        variant: "danger",
+        parentWindowId: options.parentWindowId
+      })) return;
       await runContextMaintenance(
         () => contextApi.clearEmbeddings(contextFilters.value),
         (result) => `已清空 ${result.deletedCount ?? 0} 条 embedding`
@@ -524,8 +611,11 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       );
     }
 
-    async function rebuildContextIndex() {
-      const forceReembed = window.confirm("是否强制重新生成 embedding？选择取消时只补齐缺失 embedding 并重建索引。");
+    async function rebuildContextIndex(options: { parentWindowId?: string } = {}) {
+      const forceReembed = await chooseRebuildContextIndexMode(options);
+      if (forceReembed == null) {
+        return;
+      }
       await runContextMaintenance(
         () => contextApi.rebuildIndex({
           userId: contextFilters.value.userId?.trim() || undefined,
@@ -534,6 +624,70 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
         }),
         (result) => `已处理 ${result.userCount} 个用户，写入 ${result.embeddedCount} 条 embedding，索引 ${result.indexedCount} 条`
       );
+    }
+
+    async function confirmWorkbenchAction(input: {
+      title: string;
+      content: string;
+      confirmLabel: string;
+      variant?: "primary" | "secondary" | "danger";
+      parentWindowId?: string;
+    }): Promise<boolean> {
+      const result = await windows.openDialog({
+        ...(input.parentWindowId ? { kind: "child-dialog" as const, parentId: input.parentWindowId } : {}),
+        title: input.title,
+        size: "sm",
+        modal: true,
+        blocks: [
+          {
+            kind: "text",
+            content: input.content
+          }
+        ],
+        actions: [
+          {
+            id: "confirm",
+            label: input.confirmLabel,
+            variant: input.variant ?? "primary",
+            run: async () => ({ confirmed: true })
+          }
+        ]
+      });
+      return result.reason === "action" && result.actionId === "confirm";
+    }
+
+    async function chooseRebuildContextIndexMode(options: { parentWindowId?: string } = {}): Promise<boolean | null> {
+      const result = await windows.openDialog({
+        ...(options.parentWindowId ? { kind: "child-dialog" as const, parentId: options.parentWindowId } : {}),
+        title: "重建上下文索引",
+        description: "选择 embedding 处理方式。",
+        size: "sm",
+        modal: true,
+        blocks: [
+          {
+            kind: "text",
+            content: "只补齐缺失 embedding 通常更快；强制重新生成会重算当前范围内的 embedding。"
+          }
+        ],
+        actions: [
+          {
+            id: "missing-only",
+            label: "只补齐缺失",
+            variant: "secondary",
+            run: async () => ({ forceReembed: false })
+          },
+          {
+            id: "force",
+            label: "强制重新生成",
+            variant: "danger",
+            run: async () => ({ forceReembed: true })
+          }
+        ]
+      });
+      if (result.reason !== "action") {
+        return null;
+      }
+      return result.actionId === "force";
     }
 
     async function reloadFromServer() {
@@ -670,6 +824,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       selectDirectoryItem,
       refreshSelected,
       refreshContextItems,
+      openContextFiltersDialog,
       deleteContextItem,
       editContextItem,
       toggleContextItemPinned,

@@ -211,6 +211,39 @@ test("window manager isolates internal definition state from caller mutation and
   }
 });
 
+test("window manager preserves component block identity across definition snapshots", () => {
+  const manager = createWindowManager();
+  const ComponentBlock = {
+    name: "ComponentBlock",
+    setup() {
+      return () => null;
+    }
+  };
+
+  manager.openSync({
+    id: "component-window",
+    kind: "dialog",
+    title: "Component Window",
+    size: "md",
+    blocks: [
+      {
+        kind: "component",
+        component: ComponentBlock
+      }
+    ]
+  });
+
+  const firstBlock = manager.get("component-window")?.definition.blocks?.[0];
+  const secondBlock = manager.snapshot()[0]?.definition.blocks?.[0];
+  assert.ok(firstBlock);
+  assert.ok(secondBlock);
+  if (firstBlock.kind !== "component" || secondBlock.kind !== "component") {
+    assert.fail("expected component blocks");
+  }
+  assert.equal(firstBlock.component, ComponentBlock);
+  assert.equal(secondBlock.component, ComponentBlock);
+});
+
 test("window manager keeps focus below descendants even with unrelated windows mixed in", () => {
   const manager = createWindowManager();
 

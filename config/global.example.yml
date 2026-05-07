@@ -109,6 +109,8 @@ context:
     chunkerVersion: user-facts-v1
   retrieval:
     maxResults: 4
+    maxFixedUserFacts: 20
+    maxFixedSessionFacts: 20
     candidateMultiplier: 4
     minScore: 0
     maxSynchronousEmbeddingDocuments: 16

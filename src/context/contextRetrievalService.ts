@@ -5,11 +5,21 @@ import { ContextEmbeddingService } from "./contextEmbeddingService.ts";
 import { selectRetrievedUserContext } from "./contextSelectionPolicy.ts";
 import type { ContextStore } from "./contextStore.ts";
 import { OramaContextIndex } from "./oramaContextIndex.ts";
-import type { ContextRetrievalDebugReport, ContextRetrievedItem, ContextSearchDocument } from "./contextTypes.ts";
+import type {
+  ContextMemoryFactEntry,
+  ContextPromptMemoryItem,
+  ContextPromptMemoryReport,
+  ContextPromptMemoryRetrievalSkipReason,
+  ContextRetrievedItem,
+  ContextRetrievalDebugReport,
+  ContextSearchDocument
+} from "./contextTypes.ts";
 
 export class ContextRetrievalService {
   private readonly userIndexes = new Map<string, OramaContextIndex>();
   private lastDebugReport: ContextRetrievalDebugReport | null = null;
+  private readonly lastPromptMemoryReports = new Map<string, ContextPromptMemoryReport>();
+  private readonly maxPromptMemoryReports = 100;
 
   constructor(
     private readonly config: AppConfig,
@@ -214,6 +224,67 @@ export class ContextRetrievalService {
 
   getLastDebugReport(): ContextRetrievalDebugReport | null {
     return this.lastDebugReport;
+  }
+
+  recordPromptMemoryReport(input: {
+    sessionId: string;
+    modeId?: string;
+    userId?: string;
+    queryText: string;
+    currentUserMemories: readonly ContextMemoryFactEntry[];
+    availableUserFactCount: number;
+    userFactLimit: number;
+    currentSessionContext: readonly ContextMemoryFactEntry[];
+    availableSessionFactCount: number;
+    sessionFactLimit: number;
+    retrievedUserContext: readonly ContextRetrievedItem[];
+    semanticRetrievalAttempted: boolean;
+    semanticRetrievalSkippedReason?: ContextPromptMemoryRetrievalSkipReason;
+  }): ContextPromptMemoryReport {
+    const debugReport = input.semanticRetrievalAttempted
+      ? getMatchingDebugReport(this.lastDebugReport, {
+          userId: input.userId,
+          queryText: input.queryText
+        })
+      : null;
+    const semanticRetrieval: ContextPromptMemoryReport["semanticRetrieval"] = {
+      attempted: input.semanticRetrievalAttempted,
+      ...(input.semanticRetrievalSkippedReason ? { skippedReason: input.semanticRetrievalSkippedReason } : {}),
+      ...(debugReport ? { debugReport } : {})
+    };
+    const report: ContextPromptMemoryReport = {
+      sessionId: input.sessionId,
+      ...(input.modeId ? { modeId: input.modeId } : {}),
+      ...(input.userId ? { userId: input.userId } : {}),
+      queryText: input.queryText,
+      currentUserFactCount: input.currentUserMemories.length,
+      availableUserFactCount: input.availableUserFactCount,
+      userFactLimit: input.userFactLimit,
+      userFactTruncated: input.availableUserFactCount > input.currentUserMemories.length,
+      currentSessionFactCount: input.currentSessionContext.length,
+      availableSessionFactCount: input.availableSessionFactCount,
+      sessionFactLimit: input.sessionFactLimit,
+      sessionFactTruncated: input.availableSessionFactCount > input.currentSessionContext.length,
+      retrievedUserContextCount: input.retrievedUserContext.length,
+      selectedCount: input.currentUserMemories.length + input.currentSessionContext.length + input.retrievedUserContext.length,
+      semanticRetrieval,
+      retrievedUserContext: input.retrievedUserContext.map(toPromptMemoryRetrievedItem),
+      createdAt: Date.now()
+    };
+    this.lastPromptMemoryReports.delete(input.sessionId);
+    this.lastPromptMemoryReports.set(input.sessionId, report);
+    while (this.lastPromptMemoryReports.size > this.maxPromptMemoryReports) {
+      const oldestSessionId = this.lastPromptMemoryReports.keys().next().value;
+      if (!oldestSessionId) {
+        break;
+      }
+      this.lastPromptMemoryReports.delete(oldestSessionId);
+    }
+    return report;
+  }
+
+  getLastPromptMemoryReport(input: { sessionId: string }): ContextPromptMemoryReport | null {
+    return this.lastPromptMemoryReports.get(input.sessionId) ?? null;
   }
 
   async rebuildUserIndex(input: {
@@ -454,6 +525,36 @@ function toAlwaysRetrievedItem(document: ContextSearchDocument): ContextRetrieve
     score: 1,
     updatedAt: document.updatedAt
   };
+}
+
+function toPromptMemoryRetrievedItem(item: ContextRetrievedItem): ContextPromptMemoryItem {
+  return {
+    itemId: item.itemId,
+    entrySource: "semantic_retrieval",
+    scope: item.scope,
+    sourceType: item.sourceType,
+    ...(item.title ? { title: item.title } : {}),
+    ...(item.slotKey ? { slotKey: item.slotKey } : {}),
+    text: item.text,
+    score: item.score,
+    updatedAt: item.updatedAt
+  };
+}
+
+function getMatchingDebugReport(
+  report: ContextRetrievalDebugReport | null,
+  input: {
+    userId: string | undefined;
+    queryText: string;
+  }
+): ContextRetrievalDebugReport | null {
+  if (!report || !input.userId) {
+    return null;
+  }
+  if (report.userId !== input.userId || report.queryText !== input.queryText.trim()) {
+    return null;
+  }
+  return report;
 }
 
 function hashEmbeddingVector(vector: number[]): string {

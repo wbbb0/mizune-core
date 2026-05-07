@@ -901,6 +901,25 @@ export class ContextStore {
     return { deletedCount: result.changes };
   }
 
+  deleteSessionScopedItems(sessionId: string): {
+    deletedCount: number;
+  } {
+    if (!this.db) {
+      return { deletedCount: 0 };
+    }
+    const result = this.db.prepare(`
+      UPDATE context_items
+      SET status = 'deleted', updated_at = ?
+      WHERE scope = 'session'
+        AND session_id = ?
+        AND status != 'deleted'
+    `).run(Date.now(), sessionId);
+    if (result.changes > 0) {
+      this.logger.info({ sessionId, deletedCount: result.changes }, "context_session_scoped_items_deleted");
+    }
+    return { deletedCount: result.changes };
+  }
+
   exportContextItemsJsonl(input: ContextItemFilterInput = {}): {
     count: number;
     jsonl: string;

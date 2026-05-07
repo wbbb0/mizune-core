@@ -24,7 +24,7 @@ const sizing = computed(() => resolveWindowSizing(props.window.definition.size, 
 const surfaceClasses = computed(() => [
   "pointer-events-auto fixed left-1/2 top-1/2 flex min-h-0 min-w-0 flex-col overflow-hidden border border-border-strong bg-surface-panel shadow-[0_22px_70px_rgba(0,0,0,0.45)]",
   sizing.value.className,
-  props.inactive ? "window-inactive opacity-75" : "opacity-100"
+  props.inactive ? "window-inactive" : "opacity-100"
 ].join(" "));
 
 const bodyClasses = computed(() => [
@@ -39,7 +39,7 @@ const showCloseButton = computed(() => (
 const surfaceStyle = computed(() => ({
   ...sizing.value.style,
   maxHeight: sizing.value.style.maxHeight ?? "calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))",
-  zIndex: String(props.window.order),
+  zIndex: String(props.window.order * 2),
   transform: `translate3d(calc(-50% + ${props.window.position.x}px), calc(-50% + ${props.window.position.y}px), 0)`
 }));
 
@@ -59,6 +59,9 @@ function isInteractiveTarget(target: EventTarget | null) {
 }
 
 function handleSurfacePointerDown(event: PointerEvent) {
+  if (props.inactive) {
+    return;
+  }
   if (isInteractiveTarget(event.target)) {
     return;
   }
@@ -111,6 +114,23 @@ function handleWindowPointerUp(event: PointerEvent) {
 }
 
 function handleHeaderPointerDown(event: PointerEvent) {
+  if (props.inactive) {
+    if (props.isMobile || props.window.definition.movable === false || isInteractiveTarget(event.target)) {
+      return;
+    }
+    dragState = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: props.window.position.x,
+      originY: props.window.position.y
+    };
+    window.addEventListener("pointermove", handleWindowPointerMove);
+    window.addEventListener("pointerup", handleWindowPointerUp);
+    window.addEventListener("pointercancel", handleWindowPointerUp);
+    return;
+  }
+
   emit("focus");
 
   if (props.isMobile || props.window.definition.movable === false || isInteractiveTarget(event.target)) {
@@ -132,6 +152,13 @@ function handleHeaderPointerDown(event: PointerEvent) {
 onBeforeUnmount(() => {
   stopDragging();
 });
+
+function handleFocusIn() {
+  if (props.inactive) {
+    return;
+  }
+  emit("focus");
+}
 </script>
 
 <template>
@@ -141,7 +168,7 @@ onBeforeUnmount(() => {
     :class="surfaceClasses"
     :style="surfaceStyle"
     :aria-disabled="inactive ? 'true' : 'false'"
-    @focusin="emit('focus')"
+    @focusin="handleFocusIn"
     @pointerdown="handleSurfacePointerDown"
   >
     <header ref="header" class="flex items-start gap-3 border-b border-border-default bg-surface-sidebar px-4 py-3 select-none cursor-move" @pointerdown="handleHeaderPointerDown">
@@ -153,7 +180,7 @@ onBeforeUnmount(() => {
           {{ window.definition.description }}
         </div>
       </div>
-      <button v-if="showCloseButton" class="btn-ghost -mr-1 -mt-0.5" title="关闭" type="button" @click="emit('close')">
+      <button v-if="showCloseButton" class="btn-ghost -mr-1 -mt-0.5" title="关闭" type="button" :disabled="inactive" @click="emit('close')">
         <X :size="14" :stroke-width="2" />
       </button>
     </header>
@@ -163,3 +190,9 @@ onBeforeUnmount(() => {
     </div>
   </section>
 </template>
+
+<style scoped>
+.window-inactive {
+  filter: contrast(0.74) brightness(0.94);
+}
+</style>

@@ -1083,12 +1083,42 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         id: "owner"
       });
       assert.ok(!("participantLabel" in createdSession));
+      deps.__state.contextItems.push({
+        itemId: "ctx_session_delete_target",
+        scope: "session",
+        sourceType: "fact",
+        retrievalPolicy: "always",
+        status: "active",
+        sessionId,
+        title: "会话用途",
+        text: "此会话专门用于删除联动测试。",
+        pinned: true,
+        sensitivity: "normal",
+        createdAt: 1,
+        updatedAt: 1
+      }, {
+        itemId: "ctx_session_delete_other",
+        scope: "session",
+        sourceType: "fact",
+        retrievalPolicy: "always",
+        status: "active",
+        sessionId: "web:other",
+        title: "其他会话用途",
+        text: "此会话不应被目标会话删除影响。",
+        pinned: true,
+        sensitivity: "normal",
+        createdAt: 1,
+        updatedAt: 1
+      });
 
       const deleteResponse = await app.inject({
         method: "DELETE",
         url: `/api/sessions/${encodeURIComponent(sessionId)}`
       });
       assert.equal(deleteResponse.statusCode, 200);
+      assert.deepEqual(deps.__state.contextCleanupSessionIds, [sessionId]);
+      assert.equal(deps.__state.contextItems.find((item) => item.itemId === "ctx_session_delete_target")?.status, "deleted");
+      assert.equal(deps.__state.contextItems.find((item) => item.itemId === "ctx_session_delete_other")?.status, "active");
 
       const finalListResponse = await app.inject({
         method: "GET",

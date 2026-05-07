@@ -196,6 +196,8 @@ const contextConfigSchema = s.object({
   }).title("向量化").describe("控制上下文检索使用的 embedding 调用和版本隔离。").default(emptyObject),
   retrieval: s.object({
     maxResults: s.number().int().positive().title("最大结果数").default(4),
+    maxFixedUserFacts: s.number().int().min(0).title("固定插入用户事实上限").default(20),
+    maxFixedSessionFacts: s.number().int().min(0).title("固定插入会话事实上限").default(20),
     candidateMultiplier: s.number().int().positive().title("候选倍率").default(4),
     minScore: s.number().min(0).title("最低分数").default(0),
     maxSynchronousEmbeddingDocuments: s.number().int().min(0).title("同步向量化文档上限").default(16)

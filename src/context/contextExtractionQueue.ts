@@ -82,6 +82,33 @@ export class ContextExtractionQueue {
     this.pending.clear();
   }
 
+  cancelSession(input: { sessionId: string }): {
+    cancelledBatchCount: number;
+    cancelledTurnCount: number;
+  } {
+    let cancelledBatchCount = 0;
+    let cancelledTurnCount = 0;
+    for (const [queueKey, pending] of Array.from(this.pending.entries())) {
+      if (pending.sessionId !== input.sessionId) {
+        continue;
+      }
+      if (pending.timer) {
+        clearTimeout(pending.timer);
+      }
+      this.pending.delete(queueKey);
+      cancelledBatchCount += 1;
+      cancelledTurnCount += pending.turns.length;
+    }
+    if (cancelledBatchCount > 0) {
+      this.logger.info({
+        sessionId: input.sessionId,
+        cancelledBatchCount,
+        cancelledTurnCount
+      }, "context_extraction_session_cancelled");
+    }
+    return { cancelledBatchCount, cancelledTurnCount };
+  }
+
   private schedule(queueKey: string, delayOverrideMs?: number): void {
     const pending = this.pending.get(queueKey);
     if (!pending || this.runningSessions.has(queueKey)) {
