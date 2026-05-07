@@ -584,6 +584,23 @@ test("current group context observations compact results and preserve refetch hi
       expectedHint: /list_current_group_announcements query=\\"维护\\" limit=10/
     },
     {
+      name: "view_current_group_announcement",
+      content: {
+        ok: true,
+        groupId: "123456",
+        announcementId: "n1",
+        title: "维护通知",
+        startLine: 2,
+        requestedLineCount: 20,
+        endLine: 5,
+        nextStartLine: 6,
+        summary: "当前群 123456 公告 n1，标题「维护通知」，行 2-5/10",
+        content: "第二行\n第三行"
+      },
+      expectedLocator: "announcement id=\"n1\" L2-L5",
+      expectedHint: /view_current_group_announcement announcementId=\\"n1\\" startLine=6 lineCount=20/
+    },
+    {
       name: "list_current_group_members",
       content: {
         ok: true,
@@ -614,6 +631,33 @@ test("current group context observations compact results and preserve refetch hi
     assert.match(observation.replayContent, /"compacted":true/);
     assert.match(observation.replayContent, tool.expectedHint);
   }
+});
+
+test("current group announcement detail observation preserves long content excerpts", () => {
+  const observation = buildToolObservation({
+    toolName: "view_current_group_announcement",
+    toolCallId: "call_group_announcement_detail",
+    content: JSON.stringify({
+      ok: true,
+      groupId: "123456",
+      announcementId: "n1",
+      title: "长公告",
+      startLine: 1,
+      endLine: 80,
+      totalLines: 120,
+      nextStartLine: 81,
+      requestedLineCount: 80,
+      lineTruncated: true,
+      charTruncated: false,
+      summary: "当前群 123456 公告 n1，行 1-80/120",
+      content: "IMPORTANT_GROUP_ANNOUNCEMENT_CONTENT\n".repeat(300)
+    })
+  });
+
+  assert.equal(observation.retention, "summary");
+  assert.match(observation.replayContent, /IMPORTANT_GROUP_ANNOUNCEMENT_CONTENT/);
+  assert.match(observation.replayContent, /nextStartLine/);
+  assert.match(observation.replayContent, /startLine=81/);
 });
 
 test("tool_result transcript schema accepts optional observation metadata", () => {

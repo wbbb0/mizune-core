@@ -12,6 +12,7 @@ export { webToolHandlers } from "./webToolHandlers.ts";
 const isGoogleSearchToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.search.googleGrounding.enabled;
 const isAliyunIqsToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.search.aliyunIqs.enabled;
 const isBrowserToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.browser.enabled;
+const isBrowserDownloadToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.browser.enabled && config.chatFiles.enabled;
 
 export const webToolDescriptors: ToolDescriptor[] = [
   {
@@ -203,7 +204,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "download_asset",
-        description: "把远程链接或当前网页元素对应的图片、视频、音频、文件下载进工作区；支持直接给 url，也支持给 resource_id 加 target_id。成功后返回 workspace file_id / file_ref / chat_file_path。",
+        description: "把远程链接或当前网页元素对应的图片、视频、音频、文件下载进工作区；支持直接给 url，也支持给 resource_id 加 target_id。短下载直接返回 chat file handle；长下载返回 download resource_id，完成或失败后会内部回调。",
         parameters: {
           type: "object",
           properties: {
@@ -220,7 +221,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: isBrowserToolEnabled,
+    isEnabled: isBrowserDownloadToolEnabled,
     resultObservation: browserDownloadPolicy()
   },
   {

@@ -28,6 +28,7 @@ import { EventRouter } from "#services/onebot/eventRouter.ts";
 import { OneBotClient } from "#services/onebot/onebotClient.ts";
 import { ShellRuntime } from "#services/shell/runtime.ts";
 import { ChatFileStore } from "#services/workspace/chatFileStore.ts";
+import { DownloadRuntime } from "#services/workspace/downloadRuntime.ts";
 import { ChatMessageFileGcService } from "#services/workspace/chatMessageFileGcService.ts";
 import { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import { MediaInspectionService } from "#services/workspace/mediaInspectionService.ts";
@@ -77,6 +78,7 @@ export function createBootstrapServices(
   const audioTranscriber = new AudioTranscriber(config, llmClient, audioStore, oneBotClient, logger);
   const localFileService = new LocalFileService(config, dataDir);
   const chatFileStore = new ChatFileStore(config, logger, localFileService);
+  const downloadRuntime = new DownloadRuntime(config, logger, dataDir, chatFileStore);
   const chatMessageFileGcService = new ChatMessageFileGcService(
     chatFileStore,
     logger,
@@ -164,6 +166,7 @@ export function createBootstrapServices(
     browserService,
     localFileService,
     chatFileStore,
+    downloadRuntime,
     chatMessageFileGcService,
     contentSafetyStore,
     contentSafetyService,

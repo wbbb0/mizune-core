@@ -173,6 +173,47 @@ export interface OneBotGroupAnnouncementItem {
   [key: string]: unknown;
 }
 
+export interface OneBotGroupAtAllRemain {
+  can_at_all?: boolean;
+  remain_at_all_count_for_group?: number;
+  remain_at_all_count_for_uin?: number;
+  [key: string]: unknown;
+}
+
+export interface OneBotGroupFileItem {
+  file_id?: string;
+  file_name?: string;
+  file_size?: number;
+  busid?: number | string;
+  upload_time?: number;
+  dead_time?: number;
+  modify_time?: number;
+  download_times?: number;
+  uploader?: number | string;
+  uploader_name?: string;
+  [key: string]: unknown;
+}
+
+export interface OneBotGroupFolderItem {
+  folder_id?: string;
+  folder_name?: string;
+  create_time?: number;
+  creator?: number | string;
+  creator_name?: string;
+  total_file_count?: number;
+  [key: string]: unknown;
+}
+
+export interface OneBotGroupFilesResult {
+  files: OneBotGroupFileItem[];
+  folders: OneBotGroupFolderItem[];
+}
+
+export interface OneBotGroupFileUrlResult {
+  url: string;
+  [key: string]: unknown;
+}
+
 export interface ParsedIncomingMessage {
   channelId?: string;
   externalUserId?: string;

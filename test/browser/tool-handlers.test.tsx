@@ -378,6 +378,7 @@ const aboutLinkElement: BrowserElement = {
     const parsed = parseJsonToolResult<any>(result);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.file_id, "file_1");
+    assert.ok(parsed.handle_capabilities.some((item: { capability: string }) => item.capability === "send_to_chat"));
   });
 
   test("download_asset supports browser resource targets", async () => {
@@ -406,11 +407,13 @@ const aboutLinkElement: BrowserElement = {
 
     const parsed = parseJsonToolResult<any>(result);
     assert.equal(parsed.ok, true);
-    assert.equal(parsed.resource_id, "res_browser_1");
+    assert.equal(parsed.resource_id, "res_download_1");
+    assert.equal(parsed.browser_resource_id, "res_browser_1");
     assert.equal(parsed.target_id, 2);
     assert.equal(parsed.file_id, "file_2");
     assert.deepEqual(
       parsed.next_actions.map((item: { tool: string }) => item.tool),
       ["chat_file_view_media", "chat_file_send_to_chat"]
     );
+    assert.ok(parsed.handle_capabilities.some((item: { capability: string }) => item.capability === "inspect_media"));
   });

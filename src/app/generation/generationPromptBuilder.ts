@@ -44,6 +44,8 @@ type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
 const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "list_live_resources",
+  "read_download_resource",
+  "cancel_download_resource",
   "open_page",
   "inspect_page",
   "interact_with_page",
@@ -547,6 +549,7 @@ async function collectPromptLiveResources(deps: GenerationPromptBuilderDeps): Pr
     deps.browserService.listPages(),
     deps.shellRuntime.listSessionResources()
   ]);
+  const downloads = deps.downloadRuntime.list();
 
   return [
     ...browserPages.pages.map((item) => ({
@@ -566,6 +569,15 @@ async function collectPromptLiveResources(deps: GenerationPromptBuilderDeps): Pr
       description: item.description,
       summary: buildShellResourceSummary(item),
       lastAccessedAtMs: item.lastAccessedAtMs
+    })),
+    ...downloads.map((item) => ({
+      resourceId: item.resource_id,
+      kind: "download" as const,
+      status: downloadStatusToPromptStatus(item.status),
+      title: item.source_name,
+      description: item.source_url,
+      summary: buildDownloadResourceSummary(item),
+      lastAccessedAtMs: item.updated_at_ms
     }))
   ]
     .sort(comparePromptLiveResources)
@@ -615,6 +627,12 @@ function statusPriority(status: PromptLiveResource["status"]): number {
   }
 }
 
+function downloadStatusToPromptStatus(status: "running" | "completed" | "failed" | "cancelled"): PromptLiveResource["status"] {
+  if (status === "running") return "active";
+  if (status === "failed") return "unrecoverable";
+  return "closed";
+}
+
 function buildBrowserResourceSummary(item: {
   resolvedUrl: string;
   backend: "playwright";
@@ -629,6 +647,22 @@ function buildShellResourceSummary(item: {
   tty: boolean;
 }): string {
   return `${item.command.slice(0, 80)} | cwd=${item.cwd} | tty=${item.tty ? "on" : "off"}`;
+}
+
+function buildDownloadResourceSummary(item: {
+  status: "running" | "completed" | "failed" | "cancelled";
+  downloaded_bytes: number;
+  total_bytes: number | null;
+  percent: number | null;
+  file_ref: string | null;
+  error: string | null;
+}): string {
+  return [
+    `status=${item.status}`,
+    item.percent != null ? `progress=${item.percent}%` : `bytes=${item.downloaded_bytes}${item.total_bytes != null ? `/${item.total_bytes}` : ""}`,
+    item.file_ref ? `file_ref=${item.file_ref}` : null,
+    item.error ? `error=${item.error}` : null
+  ].filter((part): part is string => Boolean(part)).join(" | ");
 }
 
 function toImageCaptionEntries(captionMap: Awaited<ReturnType<typeof preparePromptMediaContext>>["captionMap"]) {
@@ -654,6 +688,10 @@ function buildScheduledQueryText(trigger: Parameters<typeof buildScheduledTaskPr
       return `${trigger.jobName}\n${trigger.taskInstruction}\n${trigger.positivePrompt}`.trim();
     case "comfy_task_failed":
       return `${trigger.jobName}\n${trigger.taskInstruction}\n${trigger.lastError}`.trim();
+    case "download_completed":
+      return `${trigger.jobName}\n${trigger.taskInstruction}\n${trigger.fileRef}\n${trigger.sourceName}`.trim();
+    case "download_failed":
+      return `${trigger.jobName}\n${trigger.taskInstruction}\n${trigger.error}`.trim();
     default:
       return "";
   }

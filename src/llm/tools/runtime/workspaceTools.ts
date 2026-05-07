@@ -9,7 +9,7 @@ import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 import { inferSendableFileKind, resolveSendablePath } from "#services/workspace/sendablePath.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
-import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
+import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
 import { nextAction, withNextActions, type ToolNextAction } from "../core/toolNextActions.ts";
 import {
   chatFileListPolicy,
@@ -254,7 +254,7 @@ export const chatFileToolDescriptors: ToolDescriptor[] = [
             file_id: { type: "string" },
             query: { type: "string" },
             kind: { type: "string", enum: ["image", "animated_image", "video", "audio", "file"] },
-            origin: { type: "string", enum: ["chat_message", "browser_download", "browser_screenshot", "comfy_generated", "local_file_import", "user_upload"] },
+            origin: { type: "string", enum: ["chat_message", "browser_download", "browser_screenshot", "comfy_generated", "group_file_download", "local_file_import", "user_upload"] },
             limit: { type: "integer", minimum: 1, maximum: 100 }
           },
           additionalProperties: false
@@ -396,10 +396,11 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
     const selector = getStringArg(args, "file_ref") || getStringArg(args, "file_id");
     if (selector) {
       const file = await resolveChatFile(context, selector);
+      const fileHandle = file ? buildChatFileHandleResultFromContext(file, context) : null;
       return JSON.stringify({
         ok: Boolean(file),
-        file: file ? mapWorkspaceFileToView(file) : null,
-        ...(file ? { next_actions: chatFileNextActions(file) } : {})
+        file: fileHandle,
+        ...(fileHandle ? { next_actions: fileHandle.next_actions ?? [] } : {})
       });
     }
     const kind = getStringArg(args, "kind");
@@ -413,7 +414,7 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
       .filter((item) => !normalizedQuery || chatFileMatchesQuery(item, normalizedQuery));
     const files = matchedFiles
       .slice(0, limit)
-      .map((item) => mapWorkspaceFileToView(item));
+      .map((item) => buildChatFileHandleResultFromContext(item, context));
     return JSON.stringify({
       ok: true,
       files,
@@ -459,15 +460,6 @@ function localFileReadNextActions(result: {
       end_line: result.totalLines
     })
   ];
-}
-
-function chatFileNextActions(file: ChatFileRecord): ToolNextAction[] {
-  const actions: ToolNextAction[] = [];
-  if (file.kind === "image" || file.kind === "animated_image" || file.kind === "video" || file.kind === "audio") {
-    actions.push(nextAction("chat_file_view_media", "查看该媒体文件内容", { media_ids: [file.fileId] }));
-  }
-  actions.push(nextAction("chat_file_send_to_chat", "把该文件发送到当前聊天", { file_ref: file.fileRef }));
-  return actions;
 }
 
 function chatFileMatchesQuery(file: ChatFileRecord, normalizedQuery: string): boolean {

@@ -101,6 +101,9 @@ function createMediaToolVisibilityConfig(options: {
     assert.ok(names.includes("view_forward_record"));
     assert.ok(names.includes("view_current_group_info"));
     assert.ok(names.includes("list_current_group_announcements"));
+    assert.ok(names.includes("view_current_group_announcement"));
+    assert.ok(names.includes("list_current_group_files"));
+    assert.ok(names.includes("download_current_group_file"));
     assert.ok(names.includes("list_current_group_members"));
     assert.ok(names.includes("chat_file_view_media"));
     assert.ok(names.includes("chat_file_inspect_media"));
@@ -138,6 +141,9 @@ function createMediaToolVisibilityConfig(options: {
     const currentGroupToolNames = [
       "view_current_group_info",
       "list_current_group_announcements",
+      "view_current_group_announcement",
+      "list_current_group_files",
+      "download_current_group_file",
       "list_current_group_members"
     ];
     const getNames = (sessionId: string, replyDelivery: "onebot" | "web") => new Set(
@@ -160,6 +166,21 @@ function createMediaToolVisibilityConfig(options: {
         assert.equal(names.has(toolName), false, `${toolName} should be hidden outside non-web group chats`);
       }
     }
+  });
+
+  test("download tools are hidden when chat files are disabled", async () => {
+    const config = createForwardFeatureConfig();
+    config.browser.enabled = true;
+    config.chatFiles.enabled = false;
+    const names = new Set(getBuiltinTools("owner", config, undefined, {
+      visibilityContext: { sessionId: "qqbot:g:123456", replyDelivery: "onebot" }
+    }).map((tool) => tool.function.name));
+
+    assert.equal(names.has("list_current_group_files"), true);
+    assert.equal(names.has("download_current_group_file"), false);
+    assert.equal(names.has("download_asset"), false);
+    assert.equal(names.has("read_download_resource"), false);
+    assert.equal(names.has("cancel_download_resource"), false);
   });
 
   test("media view tools require main model vision while media inspection tools do not", async () => {
@@ -253,6 +274,7 @@ function createMediaToolVisibilityConfig(options: {
     config.search.aliyunIqs.enabled = false;
     config.browser.enabled = false;
     config.shell.enabled = false;
+    config.chatFiles.enabled = false;
     const names = getBuiltinTools("owner", config).map((tool) => tool.function.name);
     assert.ok(!names.includes("ground_with_google_search"));
     assert.ok(!names.includes("search_with_iqs_lite_advanced"));
@@ -1342,6 +1364,52 @@ function createMediaToolVisibilityConfig(options: {
       payload.next_actions.map((item: { tool: string }) => item.tool),
       ["chat_file_view_media", "chat_file_send_to_chat"]
     );
+    assert.deepEqual(
+      payload.file.handle_capabilities.map((item: { capability: string }) => item.capability),
+      ["view_media", "inspect_media", "send_to_chat"]
+    );
+  });
+
+  test("chat file handle hints honor visible tool names", async () => {
+    const result = await chatFileToolHandlers.chat_file_list!(
+      { id: "tool_chat_file_list_visible_tools", type: "function", function: { name: "chat_file_list", arguments: "{\"file_ref\":\"chat_test0001.png\"}" } },
+      { file_ref: "chat_test0001.png" },
+      {
+        debugSnapshot: {
+          visibleToolNames: ["chat_file_send_to_chat"]
+        },
+        chatFileStore: {
+          async getFile() {
+            return null;
+          },
+          async listFiles() {
+            return [{
+              fileId: "file_test_1",
+              fileRef: "chat_test0001.png",
+              kind: "image",
+              origin: "browser_download",
+              chatFilePath: "workspace/media/file_test_1.png",
+              sourceName: "a.png",
+              mimeType: "image/png",
+              sizeBytes: 1,
+              createdAtMs: Date.now(),
+              sourceContext: {},
+              caption: null
+            }];
+          }
+        }
+      } as any
+    );
+
+    const payload = JSON.parse(String(result));
+    assert.deepEqual(
+      payload.file.handle_capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
+      [["view_media", false], ["inspect_media", false], ["send_to_chat", true]]
+    );
+    assert.deepEqual(
+      payload.next_actions.map((item: { tool: string }) => item.tool),
+      ["chat_file_send_to_chat"]
+    );
   });
 
   test("chat_file_list filters by query and reports list window metadata", async () => {
@@ -2356,6 +2424,11 @@ function policyShape(policy: any) {
               }]
             };
           }
+        },
+        downloadRuntime: {
+          list() {
+            return [];
+          }
         }
       } as any
     );
@@ -2391,6 +2464,11 @@ function policyShape(policy: any) {
                 expiresAtMs: 100
               }]
             };
+          }
+        },
+        downloadRuntime: {
+          list() {
+            return [];
           }
         }
       } as any

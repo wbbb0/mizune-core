@@ -83,8 +83,21 @@ export function createBrowserCloseResult(
 export function createBrowserToolContext(
   browserService: Partial<BrowserService>
 ): BuiltinToolContext {
+  const resolvedBrowserService = {
+    ...browserService,
+    async resolveDownloadAssetSource(input: any) {
+      return {
+        ok: true,
+        source_url: input.url ?? "https://example.com/download.bin",
+        source_name: input.sourceName ?? null,
+        kind: input.kind ?? null,
+        resource_id: input.resourceId ?? null,
+        target_id: input.targetId ?? null
+      };
+    }
+  };
   return {
-    browserService: browserService as unknown as BuiltinToolContext["browserService"],
+    browserService: resolvedBrowserService as unknown as BuiltinToolContext["browserService"],
     config: null as unknown as BuiltinToolContext["config"],
     relationship: "owner",
     replyDelivery: "onebot",
@@ -176,6 +189,40 @@ export function createBrowserToolContext(
         };
       }
     } as unknown as BuiltinToolContext["chatFileStore"],
+    downloadRuntime: {
+      async start(input: any) {
+        const downloaded = await (browserService.downloadAsset as any)?.({
+          url: input.sourceUrl,
+          sourceName: input.sourceName,
+          kind: input.kind,
+          resourceId: input.sourceContext?.resource_id,
+          targetId: input.sourceContext?.target_id
+        });
+        return {
+          ok: true,
+          resource_id: "res_download_1",
+          status: "completed",
+          source_url: input.sourceUrl,
+          source_name: input.sourceName ?? downloaded?.source_name ?? null,
+          origin: input.origin,
+          downloaded_bytes: downloaded?.sizeBytes ?? 0,
+          total_bytes: downloaded?.sizeBytes ?? null,
+          percent: 100,
+          mime_type: downloaded?.mimeType ?? null,
+          file_id: downloaded?.file_id ?? "file_1",
+          file_ref: null,
+          chat_file_path: null,
+          kind: downloaded?.kind ?? input.kind ?? "file",
+          size_bytes: downloaded?.sizeBytes ?? null,
+          error: null,
+          created_at_ms: Date.now(),
+          updated_at_ms: Date.now()
+        };
+      },
+      list() {
+        return [];
+      }
+    } as unknown as BuiltinToolContext["downloadRuntime"],
     forwardResolver: null as unknown as BuiltinToolContext["forwardResolver"],
     requestStore: null as unknown as BuiltinToolContext["requestStore"],
     sessionManager: null as unknown as BuiltinToolContext["sessionManager"],

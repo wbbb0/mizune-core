@@ -641,6 +641,16 @@ export function buildScheduledTaskSystemLines(input: {
         kind: "terminal_input_required";
         jobName: string;
         taskInstruction: string;
+      }
+    | {
+        kind: "download_completed";
+        jobName: string;
+        taskInstruction: string;
+      }
+    | {
+        kind: "download_failed";
+        jobName: string;
+        taskInstruction: string;
       };
   targetContext:
     | {
@@ -688,6 +698,25 @@ export function buildScheduledTaskSystemLines(input: {
         "下面这次执行是后台终端完成后的内部回调，不是用户刚刚发来了一条新消息。",
         "先根据终端输出判断任务是否成功；如果还需要继续处理，可以复用 resource_id 或相关工具。",
         "只有需要向用户同步结论、请求决策或交付结果时才发送自然消息。"
+      ])
+    ].filter((item): item is string => Boolean(item));
+  }
+
+  if (input.trigger.kind === "download_completed") {
+    return [
+      renderPromptSection("download_completed", [
+        "下面这次执行是后台下载完成后的内部回调，不是用户刚刚发来了一条新消息。",
+        "下载结果已导入 chat file；根据用户原始任务决定是否查看、发送或只做简短说明。",
+        "发送文件给用户时优先用 chat_file_send_to_chat(file_ref=...)。"
+      ])
+    ].filter((item): item is string => Boolean(item));
+  }
+
+  if (input.trigger.kind === "download_failed") {
+    return [
+      renderPromptSection("download_failed", [
+        "下面这次执行是后台下载失败后的内部回调，不是用户刚刚发来了一条新消息。",
+        "先根据错误判断是否能换来源或重试；需要用户决策时再简短询问。"
       ])
     ].filter((item): item is string => Boolean(item));
   }
@@ -1133,12 +1162,12 @@ function buildLiveResourceLines(resources: PromptLiveResource[] | undefined): st
     return [];
   }
   const lines = visible.map((item) => {
-    const kind = item.kind === "browser_page" ? "browser" : "shell";
+    const kind = item.kind === "browser_page" ? "browser" : item.kind === "download" ? "download" : "shell";
     const title = item.title?.trim() ? ` | ${item.title.trim()}` : "";
     const description = item.description?.trim() ? ` | ${item.description.trim()}` : "";
     return `- ${item.resourceId} | ${kind} | ${item.status}${title}${description} | ${item.summary}`;
   });
-  return [`当前可复用 live_resource（需要继续操作网页/终端时优先复用这些 resource_id）：\n${lines.join("\n")}`];
+  return [`当前可复用 live_resource（需要继续操作网页、终端或后台下载时优先复用这些 resource_id）：\n${lines.join("\n")}`];
 }
 
 function buildToolsetRuleLines(rules: ToolsetRuleEntry[] | undefined): string[] {

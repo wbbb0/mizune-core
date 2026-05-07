@@ -1,7 +1,7 @@
 import type { LlmToolExecutionResult } from "../../llmClient.ts";
 import type { ToolHandler } from "../core/shared.ts";
 import { getBooleanArg, getNumberArg, getStringArg, getStringArrayArg } from "../core/toolArgHelpers.ts";
-import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
+import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
 import { nextAction, withNextActions, type ToolNextAction } from "../core/toolNextActions.ts";
 import type { BrowserActionTarget, BrowserCoordinate } from "#services/web/browser/types.ts";
 import { isBrowserInteractionAction } from "#services/web/browser/types.ts";
@@ -187,28 +187,49 @@ export const webToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ error: "target_id requires resource_id" });
     }
     try {
-      const result = await context.browserService.downloadAsset({
+      const source = await context.browserService.resolveDownloadAssetSource({
         ...(url ? { url } : {}),
         ...(resourceId ? { resourceId } : {}),
         ...(targetId !== undefined ? { targetId } : {}),
         ...(sourceName ? { sourceName } : {}),
         ...(kind ? { kind } : {})
       });
-      const file = await context.chatFileStore.getFile(result.file_id);
-      return JSON.stringify(withNextActions({
+      const result = await context.downloadRuntime.start({
+        sourceUrl: source.source_url,
+        ...(source.source_name ? { sourceName: source.source_name } : {}),
+        ...(source.kind ? { kind: source.kind } : {}),
+        origin: "browser_download",
+        proxyConsumer: "browser",
+        owner: {
+          sessionId: context.lastMessage.sessionId,
+          userId: context.lastMessage.userId,
+          senderName: context.lastMessage.senderName
+        },
+        sourceContext: {
+          source_url: source.source_url,
+          ...(source.resource_id ? { resource_id: source.resource_id } : {}),
+          ...(source.target_id != null ? { target_id: source.target_id } : {})
+        }
+      });
+      const file = result.file_id ? await context.chatFileStore.getFile(result.file_id) : null;
+      const fileHandle = file ? buildChatFileHandleResultFromContext(file, context) : null;
+      return JSON.stringify({
         ok: true,
-        ...(file ? mapWorkspaceFileToView(file) : { file_id: result.file_id }),
-        kind: result.kind,
-        mime_type: file?.mimeType ?? result.mimeType,
-        size_bytes: file?.sizeBytes ?? result.sizeBytes,
-        source_url: result.source_url,
+        status: result.status,
         resource_id: result.resource_id,
-        target_id: result.target_id
-      }, downloadedFileNextActions({
-        fileId: result.file_id,
-        ...(file?.fileRef ? { fileRef: file.fileRef } : {}),
-        kind: result.kind
-      })));
+        ...(fileHandle ?? {}),
+        kind: file?.kind ?? result.kind,
+        mime_type: file?.mimeType ?? result.mime_type,
+        size_bytes: file?.sizeBytes ?? result.size_bytes,
+        source_url: result.source_url,
+        browser_resource_id: source.resource_id,
+        target_id: source.target_id,
+        downloaded_bytes: result.downloaded_bytes,
+        total_bytes: result.total_bytes,
+        percent: result.percent,
+        error: result.error,
+        ...(result.background_followup ? { background_followup: result.background_followup } : {})
+      });
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -287,20 +308,6 @@ function browserInspectNextActions(resourceId: string): ToolNextAction[] {
     nextAction("capture_screenshot", "需要视觉确认时截图，可带 target_id 截局部", { resource_id: resourceId }),
     nextAction("download_asset", "保存 inspect_page 中发现的媒体或链接资源", { resource_id: resourceId })
   ];
-}
-
-function downloadedFileNextActions(input: {
-  fileId: string;
-  fileRef?: string | null;
-  kind: string;
-}): ToolNextAction[] {
-  const selector = input.fileRef ?? input.fileId;
-  const actions: ToolNextAction[] = [];
-  if (input.kind === "image" || input.kind === "animated_image" || input.kind === "video" || input.kind === "audio") {
-    actions.push(nextAction("chat_file_view_media", "查看下载得到的媒体内容", { media_ids: [input.fileId] }));
-  }
-  actions.push(nextAction("chat_file_send_to_chat", "把下载得到的文件发送到当前聊天", { file_ref: selector }));
-  return actions;
 }
 
 function getBrowserActionTarget(args: unknown, key: string): BrowserActionTarget | undefined {
@@ -385,7 +392,7 @@ async function buildScreenshotToolResult(
   const contentPayload = file
     ? {
         ok: true,
-        ...mapWorkspaceFileToView(file),
+        ...buildChatFileHandleResultFromContext(file, context),
         mode: typeof result === "object" && result && "mode" in result ? (result as { mode?: unknown }).mode : null,
         resource_id: typeof result === "object" && result && "resource_id" in result ? (result as { resource_id?: unknown }).resource_id : null,
         profile_id: typeof result === "object" && result && "profile_id" in result ? (result as { profile_id?: unknown }).profile_id : null,

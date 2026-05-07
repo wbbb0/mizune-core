@@ -16,6 +16,7 @@ import type { ShellRuntime } from "#services/shell/runtime.ts";
 import type { SearchService } from "#services/web/search/searchService.ts";
 import type { BrowserService } from "#services/web/browser/browserService.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
+import type { DownloadRuntime } from "#services/workspace/downloadRuntime.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import type { MediaInspectionService } from "#services/workspace/mediaInspectionService.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
@@ -88,6 +89,7 @@ export interface BuiltinToolCommunicationDeps {
   oneBotClient: OneBotClient;
   audioStore: AudioStore;
   chatFileStore: ChatFileStore;
+  downloadRuntime: DownloadRuntime;
   mediaVisionService: MediaVisionService;
   mediaCaptionService: MediaCaptionService;
   mediaInspectionService: MediaInspectionService;

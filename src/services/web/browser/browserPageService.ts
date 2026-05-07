@@ -12,6 +12,7 @@ import type {
   BrowserPageListResult,
   BrowserScreenshotResult,
   ClosePageResult,
+  BrowserDownloadSourceResult,
   DownloadBrowserAssetInput,
   DownloadBrowserAssetResult,
   InspectPageInput,
@@ -237,10 +238,21 @@ export class BrowserPageService {
   }
 
   async downloadAsset(input: DownloadBrowserAssetInput): Promise<DownloadBrowserAssetResult> {
+    const source = await this.resolveDownloadAssetSource(input);
+    return this.deps.assetStore.storeDownload({
+      sourceUrl: source.source_url,
+      ...(source.source_name ? { sourceName: source.source_name } : {}),
+      ...(source.kind ? { kind: source.kind } : {}),
+      ...(source.resource_id ? { resourceId: source.resource_id } : {}),
+      ...(source.target_id != null ? { targetId: source.target_id } : {})
+    });
+  }
+
+  async resolveDownloadAssetSource(input: DownloadBrowserAssetInput): Promise<BrowserDownloadSourceResult> {
     await this.janitor.cleanupExpiredSessions();
     const directUrl = normalizeOptionalString(input.url);
     const resourceId = normalizeOptionalString(input.resourceId);
-    const sourceName = normalizeOptionalString(input.sourceName) ?? undefined;
+    const sourceName = normalizeOptionalString(input.sourceName) ?? null;
     const kind = input.kind;
 
     if (Boolean(directUrl) === Boolean(resourceId)) {
@@ -281,13 +293,14 @@ export class BrowserPageService {
       }
     }
 
-    return this.deps.assetStore.storeDownload({
-      sourceUrl: String(sourceUrl),
-      ...(sourceName ? { sourceName } : {}),
-      ...(kind ? { kind } : {}),
-      ...(resolvedResourceId ? { resourceId: resolvedResourceId } : {}),
-      ...(resolvedTargetId != null ? { targetId: resolvedTargetId } : {})
-    });
+    return {
+      ok: true,
+      source_url: String(sourceUrl),
+      source_name: sourceName,
+      kind: kind ?? null,
+      resource_id: resolvedResourceId,
+      target_id: resolvedTargetId
+    };
   }
 
   private async captureScreenshot(

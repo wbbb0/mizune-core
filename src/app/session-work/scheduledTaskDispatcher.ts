@@ -1,5 +1,6 @@
 import type { InternalSessionTriggerExecution } from "#conversation/session/sessionTypes.ts";
 import type { ShellRuntimeEvent } from "#services/shell/types.ts";
+import type { DownloadRuntimeEvent } from "#services/workspace/downloadRuntime.ts";
 import { createInternalTriggerDispatcher } from "./internalTriggerDispatcher.ts";
 import type { ScheduledTaskDispatcherDeps } from "./scheduledTaskDispatcherDeps.ts";
 
@@ -96,6 +97,48 @@ export function createScheduledTaskDispatcher(
             promptSignature: event.promptSignature,
             detectedAtMs: event.detectedAtMs,
             outputTail: event.outputTail
+          } as InternalSessionTriggerExecution;
+        }
+      });
+    },
+    async dispatchDownloadEvent(event: DownloadRuntimeEvent): Promise<void> {
+      await dispatcher.dispatchTrigger({
+        sessionId: event.owner.sessionId,
+        queueLogEvent: "download_event_queued",
+        createTrigger: (target): InternalSessionTriggerExecution => {
+          const common = {
+            targetType: target.type,
+            ...(target.type === "private"
+              ? { targetUserId: target.userId }
+              : (target.groupId ? { targetGroupId: target.groupId } : {})),
+            targetSenderName: target.senderName,
+            jobName: event.kind === "download_completed"
+              ? `下载已完成 (${event.file.sourceName.slice(0, 48)})`
+              : `下载失败 (${event.sourceUrl.slice(0, 48)})`,
+            instruction: event.kind === "download_completed"
+              ? "后台下载已完成。系统已把文件导入 chat file，请根据用户原始任务判断下一步；需要发送给用户时可调用 chat_file_send_to_chat。"
+              : "后台下载失败。请根据错误判断是否需要重试、换来源或告知用户。",
+            enqueuedAt: Date.now(),
+            resourceId: event.resourceId,
+            sourceUrl: event.sourceUrl
+          };
+          if (event.kind === "download_completed") {
+            return {
+              kind: "download_completed",
+              ...common,
+              fileId: event.file.fileId,
+              fileRef: event.file.fileRef,
+              chatFilePath: event.file.chatFilePath,
+              sourceName: event.file.sourceName,
+              mimeType: event.file.mimeType,
+              sizeBytes: event.file.sizeBytes,
+              fileKind: event.file.kind
+            } as InternalSessionTriggerExecution;
+          }
+          return {
+            kind: "download_failed",
+            ...common,
+            error: event.error
           } as InternalSessionTriggerExecution;
         }
       });

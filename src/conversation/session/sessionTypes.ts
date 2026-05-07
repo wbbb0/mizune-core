@@ -269,12 +269,52 @@ export interface TerminalInputRequiredTriggerExecution {
   rejectCompletion?: (error: unknown) => void;
 }
 
+export interface DownloadCompletedTriggerExecution {
+  kind: "download_completed";
+  targetType: "private" | "group";
+  targetUserId?: string;
+  targetGroupId?: string;
+  targetSenderName: string;
+  jobName: string;
+  instruction: string;
+  enqueuedAt: number;
+  resourceId: string;
+  sourceUrl: string;
+  fileId: string;
+  fileRef: string;
+  chatFilePath: string;
+  sourceName: string;
+  mimeType: string;
+  sizeBytes: number;
+  fileKind: string;
+  resolveCompletion?: () => void;
+  rejectCompletion?: (error: unknown) => void;
+}
+
+export interface DownloadFailedTriggerExecution {
+  kind: "download_failed";
+  targetType: "private" | "group";
+  targetUserId?: string;
+  targetGroupId?: string;
+  targetSenderName: string;
+  jobName: string;
+  instruction: string;
+  enqueuedAt: number;
+  resourceId: string;
+  sourceUrl: string;
+  error: string;
+  resolveCompletion?: () => void;
+  rejectCompletion?: (error: unknown) => void;
+}
+
 export type InternalSessionTriggerExecution =
   | ScheduledInstructionTriggerExecution
   | ComfyTaskCompletedTriggerExecution
   | ComfyTaskFailedTriggerExecution
   | TerminalSessionClosedTriggerExecution
-  | TerminalInputRequiredTriggerExecution;
+  | TerminalInputRequiredTriggerExecution
+  | DownloadCompletedTriggerExecution
+  | DownloadFailedTriggerExecution;
 
 export type SessionPhase =
   | { kind: "idle" }

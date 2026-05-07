@@ -25,7 +25,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     description: "查看消息、转发、媒体和当前群聊上下文，必要时结束本轮回复。",
     plannerSignals: [
       "查看 reply/forward/image 上下文",
-      "查看当前群资料、群公告或群成员",
+      "查看当前群资料、群公告全文、群文件或群成员",
       "先展开上下文再回复"
     ],
     toolNames: [
@@ -33,6 +33,9 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "view_forward_record",
       "view_current_group_info",
       "list_current_group_announcements",
+      "view_current_group_announcement",
+      "list_current_group_files",
+      "download_current_group_file",
       "list_current_group_members",
       "chat_file_view_media",
       "chat_file_inspect_media",
@@ -156,6 +159,9 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "interact_with_page",
       "close_page",
       "download_asset",
+      "list_live_resources",
+      "read_download_resource",
+      "cancel_download_resource",
       "capture_screenshot",
       "list_browser_profiles",
       "inspect_browser_profile",
@@ -215,6 +221,9 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ],
     toolNames: [
       "chat_file_list",
+      "list_live_resources",
+      "read_download_resource",
+      "cancel_download_resource",
       "chat_file_view_media",
       "chat_file_inspect_media",
       "chat_file_send_to_chat"

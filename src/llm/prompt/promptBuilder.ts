@@ -191,6 +191,32 @@ function buildTriggerMessage(input: ScheduledTaskPromptInput): string {
     ].join("\n");
   }
 
+  if (input.trigger.kind === "download_completed") {
+    return [
+      `任务名称：${input.trigger.jobName}`,
+      `任务说明：${input.trigger.taskInstruction}`,
+      `resource_id：${input.trigger.resourceId}`,
+      `来源 URL：${input.trigger.sourceUrl}`,
+      `file_id：${input.trigger.fileId}`,
+      `file_ref：${input.trigger.fileRef}`,
+      `chat_file_path：${input.trigger.chatFilePath}`,
+      `文件名：${input.trigger.sourceName}`,
+      `MIME：${input.trigger.mimeType}`,
+      `大小：${input.trigger.sizeBytes}`,
+      `类型：${input.trigger.fileKind}`
+    ].join("\n");
+  }
+
+  if (input.trigger.kind === "download_failed") {
+    return [
+      `任务名称：${input.trigger.jobName}`,
+      `任务说明：${input.trigger.taskInstruction}`,
+      `resource_id：${input.trigger.resourceId}`,
+      `来源 URL：${input.trigger.sourceUrl}`,
+      `失败原因：${input.trigger.error}`
+    ].join("\n");
+  }
+
   // TODO: Add sensitive-input handling for password/token/code prompts before
   // storing or replaying user-provided secret values.
   return [

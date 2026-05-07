@@ -35,6 +35,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     } as any,
     localFileService: {} as any,
     chatFileStore: {} as any,
+    downloadRuntime: { list() { return []; } } as any,
     mediaVisionService: {
       async prepareFilesForModel() {
         return [];
@@ -106,6 +107,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
+      downloadRuntime: { list() { return []; } } as any,
       mediaVisionService: {
         async prepareFilesForModel(imageIds: string[]) {
           capturedImageIdCalls.push(imageIds);
@@ -232,6 +234,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
+      downloadRuntime: { list() { return []; } } as any,
       mediaVisionService: {
         async prepareFilesForModel() {
           return [];
@@ -377,6 +380,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
+      downloadRuntime: { list() { return []; } } as any,
       mediaVisionService: {
         async prepareFilesForModel() {
           return [];
@@ -624,6 +628,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
+      downloadRuntime: { list() { return []; } } as any,
       mediaVisionService: {
         async prepareFilesForModel() {
           return [];
@@ -747,6 +752,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
+      downloadRuntime: { list() { return []; } } as any,
       mediaVisionService: {
         async prepareFilesForModel() {
           return [];
@@ -880,6 +886,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
+      downloadRuntime: { list() { return []; } } as any,
       mediaVisionService: {
         async prepareFilesForModel() {
           return [];
@@ -1026,6 +1033,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
+      downloadRuntime: { list() { return []; } } as any,
       mediaVisionService: {
         async prepareFilesForModel() {
           return [];
@@ -1173,6 +1181,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
+      downloadRuntime: { list() { return []; } } as any,
       mediaVisionService: {
         async prepareFilesForModel() {
           return [];
@@ -1297,6 +1306,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
+      downloadRuntime: { list() { return []; } } as any,
       mediaVisionService: {
         async prepareFilesForModel() {
           return [];
@@ -1434,6 +1444,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
+      downloadRuntime: { list() { return []; } } as any,
       mediaVisionService: {
         async prepareFilesForModel() {
           return [];
@@ -1577,6 +1588,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
+      downloadRuntime: { list() { return []; } } as any,
       mediaVisionService: {
         async prepareFilesForModel() {
           return [];
@@ -1737,6 +1749,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
+      downloadRuntime: { list() { return []; } } as any,
       mediaVisionService: {
         async prepareFilesForModel() {
           return [];

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 import { fetch as undiciFetch } from "undici";
 import type { Logger } from "pino";
@@ -114,6 +114,16 @@ export class ChatFileStore {
     const sourceName = input.sourceName ?? basename(input.sourcePath);
     const kind = input.kind ?? inferStoredFileKind(sourceName, input.mimeType);
     const mimeType = normalizeMimeType(input.mimeType, kind);
+    if (kind !== "image" && kind !== "animated_image") {
+      return this.importFileByCopy({
+        sourcePath: input.sourcePath,
+        sourceName,
+        mimeType,
+        kind,
+        origin: input.origin,
+        ...(input.sourceContext ? { sourceContext: input.sourceContext } : {})
+      });
+    }
     const buffer = await readFile(input.sourcePath);
     return this.importBuffer({
       buffer,
@@ -123,6 +133,42 @@ export class ChatFileStore {
       origin: input.origin,
       ...(input.sourceContext ? { sourceContext: input.sourceContext } : {})
     });
+  }
+
+  private async importFileByCopy(input: {
+    sourcePath: string;
+    sourceName: string;
+    mimeType: string;
+    kind: ChatFileKind;
+    origin: ChatFileOrigin;
+    sourceContext?: Record<string, string | number | boolean | null>;
+  }): Promise<ChatFileRecord> {
+    const ext = extname(input.sourceName) || extensionFromMimeType(input.mimeType) || defaultExtension(input.kind);
+    const fileId = buildStoredFileId();
+    const fileRef = buildStoredFileRef(fileId, input.origin, input.kind, ext);
+    const relativePath = join(String(this.config.chatFiles.root ?? "").trim() || "chat-files", "media", fileRef);
+    const absolutePath = this.localFileService.resolvePath(relativePath).absolutePath;
+    const fileStat = await stat(input.sourcePath);
+    await mkdir(dirname(absolutePath), { recursive: true });
+    await copyFile(input.sourcePath, absolutePath);
+    const record: ChatFileRecord = {
+      fileId,
+      fileRef,
+      kind: input.kind,
+      origin: input.origin,
+      chatFilePath: relativePath.replaceAll("\\", "/"),
+      sourceName: input.sourceName,
+      mimeType: input.mimeType,
+      sizeBytes: fileStat.size,
+      createdAtMs: Date.now(),
+      sourceContext: input.sourceContext ?? {},
+      caption: null,
+      captionStatus: "missing",
+      captionModelRef: null,
+      captionError: null
+    };
+    await this.upsertFile(record);
+    return record;
   }
 
   async importRemoteSource(input: {
@@ -341,6 +387,7 @@ function originPrefix(origin: ChatFileOrigin): string | null {
   if (origin === "comfy_generated") return "comfy";
   if (origin === "browser_download") return "web";
   if (origin === "browser_screenshot") return "shot";
+  if (origin === "group_file_download") return "grp";
   if (origin === "local_file_import") return "ws";
   if (origin === "user_upload") return "upload";
   if (origin === "chat_message") return "chat";

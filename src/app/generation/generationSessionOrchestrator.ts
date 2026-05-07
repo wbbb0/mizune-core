@@ -217,6 +217,9 @@ function selectScheduledActiveToolsetIds(modeId: string, triggerKind: InternalSe
     if (triggerKind === "terminal_session_closed" || triggerKind === "terminal_input_required") {
       return ["chat_context", "shell_runtime", "local_file_io", "chat_file_io", "time_utils"];
     }
+    if (triggerKind === "download_completed" || triggerKind === "download_failed") {
+      return ["chat_context", "web_research", "chat_file_io", "time_utils"];
+    }
     if (triggerKind === "comfy_task_failed") {
       return ["comfy_image"];
     }
@@ -233,6 +236,9 @@ function selectScheduledActiveToolsetIds(modeId: string, triggerKind: InternalSe
   }
   if (triggerKind === "comfy_task_failed") {
     return withScenarioHostState(["comfy_image"]);
+  }
+  if (triggerKind === "download_completed" || triggerKind === "download_failed") {
+    return withScenarioHostState(["chat_context", "web_research", "chat_file_io", "time_utils"]);
   }
   return withScenarioHostState(["chat_context", "shell_runtime", "local_file_io", "chat_file_io", "time_utils"]);
 }
@@ -292,6 +298,32 @@ function toScheduledPromptTrigger(trigger: InternalSessionTriggerExecution) {
       signal: trigger.signal,
       output: trigger.output,
       outputTruncated: trigger.outputTruncated
+    };
+  }
+  if (trigger.kind === "download_completed") {
+    return {
+      kind: "download_completed" as const,
+      jobName: trigger.jobName,
+      taskInstruction: trigger.instruction,
+      resourceId: trigger.resourceId,
+      sourceUrl: trigger.sourceUrl,
+      fileId: trigger.fileId,
+      fileRef: trigger.fileRef,
+      chatFilePath: trigger.chatFilePath,
+      sourceName: trigger.sourceName,
+      mimeType: trigger.mimeType,
+      sizeBytes: trigger.sizeBytes,
+      fileKind: trigger.fileKind
+    };
+  }
+  if (trigger.kind === "download_failed") {
+    return {
+      kind: "download_failed" as const,
+      jobName: trigger.jobName,
+      taskInstruction: trigger.instruction,
+      resourceId: trigger.resourceId,
+      sourceUrl: trigger.sourceUrl,
+      error: trigger.error
     };
   }
   return {

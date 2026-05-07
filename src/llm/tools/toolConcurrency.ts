@@ -6,7 +6,8 @@ const READ_ONLY_TOOL_RESOURCES: Record<string, readonly string[]> = {
   roll_dice: ["random:dice"],
   get_runtime_config: ["runtime:config"],
   echo: [],
-  list_live_resources: ["browser:*", "terminal:*"],
+  list_live_resources: ["browser:*", "terminal:*", "download:*"],
+  read_download_resource: ["download:*"],
   list_available_toolsets: ["toolsets:*"],
   list_session_modes: ["session_modes:*"],
   list_scheduled_jobs: ["scheduled_jobs:*"],
@@ -21,6 +22,8 @@ const READ_ONLY_TOOL_RESOURCES: Record<string, readonly string[]> = {
   search_joined_groups: ["onebot_contacts:*"],
   view_current_group_info: ["onebot_group:*"],
   list_current_group_announcements: ["onebot_group:*"],
+  view_current_group_announcement: ["onebot_group:*"],
+  list_current_group_files: ["onebot_group:*"],
   list_current_group_members: ["onebot_group:*"],
   list_pending_friend_requests: ["requests:*"],
   list_pending_group_requests: ["requests:*"],
@@ -75,6 +78,10 @@ export function analyzeBuiltinToolConcurrency(toolCall: LlmToolCall): ToolExecut
     case "terminal_signal":
     case "terminal_stop":
       return parallel([], [terminalKey(getStringArg(args, "resource_id"))]);
+    case "cancel_download_resource":
+      return parallel([], [downloadKey(getStringArg(args, "resource_id"))]);
+    case "download_current_group_file":
+      return parallel(["onebot_group:*"], ["download:*", "chat_file:*"]);
     case "inspect_page":
       return parallel([browserPageKey(getStringArg(args, "resource_id"))], []);
     case "capture_screenshot":
@@ -85,7 +92,7 @@ export function analyzeBuiltinToolConcurrency(toolCall: LlmToolCall): ToolExecut
     case "download_asset":
       return parallel(
         getStringArg(args, "resource_id") ? [browserPageKey(getStringArg(args, "resource_id"))] : ["web_download:*"],
-        ["chat_file:*"]
+        ["download:*", "chat_file:*"]
       );
     default:
       return { kind: "barrier" };
@@ -126,6 +133,10 @@ function localFileTreeKey(path: string | null): string {
 
 function terminalKey(resourceId: string | null): string {
   return `terminal:${resourceId ?? "*"}`;
+}
+
+function downloadKey(resourceId: string | null): string {
+  return `download:${resourceId ?? "*"}`;
 }
 
 function browserPageKey(resourceId: string | null): string {

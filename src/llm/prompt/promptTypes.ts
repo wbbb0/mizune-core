@@ -63,7 +63,7 @@ export interface PromptHistoryMessage {
 
 export interface PromptLiveResource {
   resourceId: string;
-  kind: "browser_page" | "shell_session";
+  kind: "browser_page" | "shell_session" | "download";
   status: "active" | "expired" | "closed" | "unrecoverable";
   title?: string | null;
   description?: string | null;
@@ -246,6 +246,28 @@ export interface InternalSessionTriggerPromptInput {
         promptKind: string;
         promptText: string;
         outputTail: string;
+      }
+    | {
+        kind: "download_completed";
+        jobName: string;
+        taskInstruction: string;
+        resourceId: string;
+        sourceUrl: string;
+        fileId: string;
+        fileRef: string;
+        chatFilePath: string;
+        sourceName: string;
+        mimeType: string;
+        sizeBytes: number;
+        fileKind: string;
+      }
+    | {
+        kind: "download_failed";
+        jobName: string;
+        taskInstruction: string;
+        resourceId: string;
+        sourceUrl: string;
+        error: string;
       };
   persona: Persona;
   relationship: Relationship;

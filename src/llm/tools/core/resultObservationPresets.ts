@@ -228,21 +228,29 @@ export function browserScreenshotPolicy(): ToolResultObservationPolicy {
 }
 
 export function browserDownloadPolicy(): ToolResultObservationPolicy {
+  return downloadResourcePolicy();
+}
+
+export function downloadResourcePolicy(): ToolResultObservationPolicy {
   return {
     method(ctx) {
       if (hasError(ctx)) return "error_summary";
-      return "browser_download_handle_summary";
+      return "download_handle_summary";
     },
-    resource: mediaResource,
+    resource: downloadOrMediaResource,
     refetchHint(ctx) {
       const fileRef = stringValue(ctx.parsedContent?.file_ref ?? ctx.parsedContent?.fileRef);
       const fileId = stringValue(ctx.parsedContent?.file_id ?? ctx.parsedContent?.fileId);
       const selector = fileRef ?? fileId;
-      return selector ? `如需发送下载文件，请调用 chat_file_send_to_chat file_ref=${JSON.stringify(selector)}` : null;
+      if (selector) {
+        return `如需发送下载文件，请调用 chat_file_send_to_chat file_ref=${JSON.stringify(selector)}`;
+      }
+      const resourceId = stringValue(ctx.parsedContent?.resource_id ?? ctx.parsedContent?.resourceId);
+      return resourceId ? `如需查看下载状态，请调用 read_download_resource resource_id=${JSON.stringify(resourceId)}` : null;
     },
     preserveRecentRawCount: 0,
     compactors: {
-      browser_download_handle_summary: compactBrowserDownloadHandle
+      download_handle_summary: compactDownloadHandle
     }
   };
 }
@@ -281,6 +289,8 @@ export function currentGroupContextPolicy(): ToolResultObservationPolicy {
   return {
     method(ctx) {
       if (hasError(ctx)) return "error_summary";
+      if (ctx.toolName === "view_current_group_announcement") return "group_announcement_detail_summary";
+      if (ctx.toolName === "download_current_group_file") return "download_handle_summary";
       return ctx.rawLength > LONG_RESULT_CHARS ? "group_context_summary" : null;
     },
     resource(ctx) {
@@ -295,17 +305,50 @@ export function currentGroupContextPolicy(): ToolResultObservationPolicy {
     },
     refetchHint(ctx) {
       if (ctx.toolName === "view_current_group_info") return "如需刷新当前群资料，请再次调用 view_current_group_info";
+      if (ctx.toolName === "view_current_group_announcement") {
+        const announcementId = stringValue(ctx.parsedContent?.announcementId ?? ctx.parsedContent?.announcement_id);
+        const nextStartLine = numberValue(ctx.parsedContent?.nextStartLine ?? ctx.parsedContent?.next_start_line);
+        const nextStartChar = numberValue(ctx.parsedContent?.nextStartChar ?? ctx.parsedContent?.next_start_char);
+        const startLine = nextStartLine ?? numberValue(ctx.parsedContent?.startLine ?? ctx.parsedContent?.start_line);
+        const startChar = nextStartChar ?? numberValue(ctx.parsedContent?.startChar ?? ctx.parsedContent?.start_char);
+        const lineCount = numberValue(
+          ctx.parsedContent?.requestedLineCount
+          ?? ctx.parsedContent?.lineCount
+          ?? ctx.parsedContent?.line_count
+        );
+        return [
+          nextStartLine ? "如需继续查看当前群公告原文，请再次调用 view_current_group_announcement" : "如需重新查看当前群公告原文片段，请再次调用 view_current_group_announcement",
+          announcementId ? `announcementId=${JSON.stringify(announcementId)}` : null,
+          startLine ? `startLine=${startLine}` : null,
+          startChar ? `startChar=${startChar}` : null,
+          lineCount ? `lineCount=${lineCount}` : null
+        ].filter((item): item is string => Boolean(item)).join(" ");
+      }
+      if (ctx.toolName === "download_current_group_file") {
+        const groupFileId = stringValue(ctx.parsedContent?.groupFileId ?? ctx.parsedContent?.group_file_id);
+        const resourceId = stringValue(ctx.parsedContent?.resource_id ?? ctx.parsedContent?.resourceId);
+        return resourceId
+          ? `如需查看下载状态，请调用 read_download_resource resource_id=${JSON.stringify(resourceId)}${groupFileId ? `；群文件 group_file_id=${JSON.stringify(groupFileId)}` : ""}`
+          : `如需查看下载状态，请调用 list_live_resources type=download${groupFileId ? `；群文件 group_file_id=${JSON.stringify(groupFileId)}` : ""}`;
+      }
       const query = stringValue(ctx.parsedContent?.query);
       const limit = numberValue(ctx.parsedContent?.limit);
       const args = [
         query ? `query=${JSON.stringify(query)}` : null,
         limit ? `limit=${limit}` : null
       ].filter((item): item is string => Boolean(item)).join(" ");
-      return `如需刷新当前群${ctx.toolName === "list_current_group_announcements" ? "公告" : "成员"}，请再次调用 ${ctx.toolName}${args ? ` ${args}` : ""}`;
+      const label = ctx.toolName === "list_current_group_announcements"
+        ? "公告"
+        : ctx.toolName === "list_current_group_files"
+          ? "文件"
+          : "成员";
+      return `如需刷新当前群${label}，请再次调用 ${ctx.toolName}${args ? ` ${args}` : ""}`;
     },
     preserveRecentRawCount: 1,
     compactors: {
-      group_context_summary: compactGroupContext
+      group_context_summary: compactGroupContext,
+      group_announcement_detail_summary: compactGroupAnnouncementDetail,
+      download_handle_summary: compactDownloadHandle
     }
   };
 }
@@ -504,6 +547,13 @@ function mediaResource(ctx: ToolResultObservationContext): ToolObservationResour
     ? stringValue((attached[0] as Record<string, unknown>).mediaId)
     : null;
   return mediaId ? { kind: "chat_file", id: mediaId } : null;
+}
+
+function downloadOrMediaResource(ctx: ToolResultObservationContext): ToolObservationResource | null {
+  const media = mediaResource(ctx);
+  if (media) return media;
+  const resourceId = stringValue(ctx.parsedContent?.resource_id ?? ctx.parsedContent?.resourceId ?? ctx.args.resource_id);
+  return resourceId ? { kind: "external", id: `download:${resourceId}` } : null;
 }
 
 function localFileMutationRefetchHint(ctx: ToolResultObservationContext & { resource: ToolObservationResource | null }): string | null {
@@ -770,20 +820,35 @@ function compactBrowserMediaHandle(ctx: Parameters<ToolResultCompactor>[0]) {
   });
 }
 
-function compactBrowserDownloadHandle(ctx: Parameters<ToolResultCompactor>[0]) {
+function compactDownloadHandle(ctx: Parameters<ToolResultCompactor>[0]) {
   const fileId = stringValue(ctx.parsedContent?.file_id ?? ctx.parsedContent?.fileId);
   const fileRef = stringValue(ctx.parsedContent?.file_ref ?? ctx.parsedContent?.fileRef);
   const sourceUrl = stringValue(ctx.parsedContent?.source_url ?? ctx.parsedContent?.sourceUrl);
-  const summary = `浏览器下载已保存${fileId ? `：${fileId}` : ""}${sourceUrl ? `，来源 ${compactText(sourceUrl, 120)}` : ""}`;
+  const resourceId = stringValue(ctx.parsedContent?.resource_id ?? ctx.parsedContent?.resourceId);
+  const status = stringValue(ctx.parsedContent?.status);
+  const summary = [
+    `下载${status ? ` status=${status}` : "已返回"}`,
+    fileId ? `file_id=${fileId}` : null,
+    resourceId ? `resource_id=${resourceId}` : null,
+    sourceUrl ? `来源 ${compactText(sourceUrl, 120)}` : null
+  ].filter((item): item is string => Boolean(item)).join("；");
   return replayJson(ctx, summary, {
     fileId,
     fileRef,
+    status,
     kind: ctx.parsedContent?.kind ?? null,
     sourceUrl,
-    resourceId: ctx.parsedContent?.resource_id ?? ctx.parsedContent?.resourceId ?? null,
+    resourceId,
+    groupFileId: ctx.parsedContent?.groupFileId ?? ctx.parsedContent?.group_file_id ?? null,
     targetId: ctx.parsedContent?.target_id ?? ctx.parsedContent?.targetId ?? null,
     mimeType: ctx.parsedContent?.mime_type ?? ctx.parsedContent?.mimeType ?? null,
-    sizeBytes: ctx.parsedContent?.size_bytes ?? ctx.parsedContent?.sizeBytes ?? null
+    sizeBytes: ctx.parsedContent?.size_bytes ?? ctx.parsedContent?.sizeBytes ?? null,
+    downloadedBytes: ctx.parsedContent?.downloaded_bytes ?? ctx.parsedContent?.downloadedBytes ?? null,
+    totalBytes: ctx.parsedContent?.total_bytes ?? ctx.parsedContent?.totalBytes ?? null,
+    percent: ctx.parsedContent?.percent ?? null,
+    error: ctx.parsedContent?.error ?? null,
+    nextActions: arrayValue(ctx.parsedContent?.next_actions)?.slice(0, 4) ?? [],
+    handleCapabilities: arrayValue(ctx.parsedContent?.handle_capabilities)?.slice(0, 6) ?? []
   });
 }
 
@@ -922,6 +987,25 @@ function compactGroupContext(ctx: Parameters<ToolResultCompactor>[0]) {
   });
 }
 
+function compactGroupAnnouncementDetail(ctx: Parameters<ToolResultCompactor>[0]) {
+  const summary = stringValue(ctx.parsedContent?.summary)
+    ?? "当前群公告原文片段已返回";
+  return replayJson(ctx, summary, {
+    groupResource: ctx.resource,
+    announcementId: ctx.parsedContent?.announcementId ?? ctx.parsedContent?.announcement_id ?? null,
+    title: ctx.parsedContent?.title ?? null,
+    startLine: ctx.parsedContent?.startLine ?? ctx.parsedContent?.start_line ?? null,
+    startChar: ctx.parsedContent?.startChar ?? ctx.parsedContent?.start_char ?? null,
+    endLine: ctx.parsedContent?.endLine ?? ctx.parsedContent?.end_line ?? null,
+    totalLines: ctx.parsedContent?.totalLines ?? ctx.parsedContent?.total_lines ?? null,
+    nextStartLine: ctx.parsedContent?.nextStartLine ?? ctx.parsedContent?.next_start_line ?? null,
+    nextStartChar: ctx.parsedContent?.nextStartChar ?? ctx.parsedContent?.next_start_char ?? null,
+    lineTruncated: ctx.parsedContent?.lineTruncated ?? ctx.parsedContent?.line_truncated ?? null,
+    charTruncated: ctx.parsedContent?.charTruncated ?? ctx.parsedContent?.char_truncated ?? null,
+    content: compactText(stringValue(ctx.parsedContent?.content) ?? "", 2400)
+  });
+}
+
 function compactMediaHandle(ctx: Parameters<ToolResultCompactor>[0]) {
   const summary = `${ctx.toolName} 已提供媒体上下文：${ctx.resource ? `${ctx.resource.kind}:${ctx.resource.id}` : "无资源句柄"}`;
   return replayJson(ctx, summary, {
@@ -957,10 +1041,29 @@ function replayJson(
 
 function currentGroupLocator(ctx: ToolResultObservationContext): string | undefined {
   if (ctx.toolName === "view_current_group_info") return "info";
+  if (ctx.toolName === "view_current_group_announcement") {
+    const announcementId = stringValue(ctx.parsedContent?.announcementId ?? ctx.parsedContent?.announcement_id);
+    const startLine = numberValue(ctx.parsedContent?.startLine ?? ctx.parsedContent?.start_line);
+    const endLine = numberValue(ctx.parsedContent?.endLine ?? ctx.parsedContent?.end_line);
+    return [
+      "announcement",
+      announcementId ? `id=${JSON.stringify(announcementId)}` : null,
+      startLine && endLine ? `L${startLine}-L${endLine}` : null
+    ].filter((item): item is string => Boolean(item)).join(" ");
+  }
+  if (ctx.toolName === "download_current_group_file") {
+    const groupFileId = stringValue(ctx.parsedContent?.groupFileId ?? ctx.parsedContent?.group_file_id);
+    const resourceId = stringValue(ctx.parsedContent?.resource_id ?? ctx.parsedContent?.resourceId);
+    return [
+      "file-download",
+      groupFileId ? `group_file_id=${JSON.stringify(groupFileId)}` : null,
+      resourceId ? `resource_id=${resourceId}` : null
+    ].filter((item): item is string => Boolean(item)).join(" ");
+  }
   const query = stringValue(ctx.parsedContent?.query);
   const limit = numberValue(ctx.parsedContent?.limit);
   return [
-    ctx.toolName === "list_current_group_announcements" ? "announcements" : "members",
+    ctx.toolName === "list_current_group_announcements" ? "announcements" : ctx.toolName === "list_current_group_files" ? "files" : "members",
     query ? `query=${JSON.stringify(query)}` : null,
     limit ? `limit=${limit}` : null
   ].filter((item): item is string => Boolean(item)).join(" ");

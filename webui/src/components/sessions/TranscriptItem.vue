@@ -12,6 +12,8 @@ const props = defineProps<{
   index: number;
 }>();
 
+type InternalTriggerKind = Extract<TranscriptItem, { kind: "internal_trigger_event" }>["triggerKind"];
+
 const emit = defineEmits<{
   openActions: [];
 }>();
@@ -468,7 +470,7 @@ function formatMaybeJson(value: string): string {
   }
 }
 
-function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed" | "comfy_task_failed" | "terminal_session_closed" | "terminal_input_required"): string {
+function formatTriggerKind(kind: InternalTriggerKind): string {
   switch (kind) {
     case "scheduled_instruction":
       return "scheduled_instruction";
@@ -480,6 +482,10 @@ function formatTriggerKind(kind: "scheduled_instruction" | "comfy_task_completed
       return "terminal_session_closed";
     case "terminal_input_required":
       return "terminal_input_required";
+    case "download_completed":
+      return "download_completed";
+    case "download_failed":
+      return "download_failed";
   }
 }
 

@@ -104,6 +104,10 @@ export class BrowserService {
     return this.pageService.downloadAsset(input);
   }
 
+  async resolveDownloadAssetSource(input: DownloadBrowserAssetInput) {
+    return this.pageService.resolveDownloadAssetSource(input);
+  }
+
   async listProfiles(): Promise<BrowserProfileListResult> {
     return this.profileService.listProfiles();
   }

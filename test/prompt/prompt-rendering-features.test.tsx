@@ -185,7 +185,8 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       });
 
       const system = String(prompt[0]?.content ?? "");
-      assert.match(system, /download_asset\/capture_screenshot 返回 workspace file_id\/file_ref/);
+      assert.match(system, /download_asset\/capture_screenshot 短下载会直接返回 workspace file_id\/file_ref/);
+      assert.match(system, /长下载会返回 download resource_id/);
       assert.match(system, /只读最小必要范围；不要把其他会话信息混成当前会话事实/);
       assert.match(system, /场景状态工具用于 scenario_host 内部维护/);
       assert.match(system, /先 list_session_modes，再 switch_session_mode/);

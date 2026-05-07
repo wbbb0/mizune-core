@@ -15,6 +15,7 @@ export function createSessionWorkCoordinator(deps: SessionWorkCoordinatorDeps) {
     dispatchScheduledPrompt: scheduledTaskDispatcher.dispatchScheduledPrompt,
     dispatchInternalTrigger: scheduledTaskDispatcher.dispatchInternalTrigger,
     dispatchTerminalEvent: scheduledTaskDispatcher.dispatchTerminalEvent,
+    dispatchDownloadEvent: scheduledTaskDispatcher.dispatchDownloadEvent,
     flushSession: generationRunner.flushSession
   };
 }

@@ -239,6 +239,15 @@ export interface DownloadBrowserAssetResult {
   target_id: number | null;
 }
 
+export interface BrowserDownloadSourceResult {
+  ok: true;
+  source_url: string;
+  source_name: string | null;
+  kind: "image" | "animated_image" | "video" | "audio" | "file" | null;
+  resource_id: string | null;
+  target_id: number | null;
+}
+
 export interface BrowserProfileSummary {
   profile_id: string;
   ownerSessionId: string;

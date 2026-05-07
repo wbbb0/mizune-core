@@ -91,6 +91,7 @@ export type ChatFileOrigin =
   | "browser_download"
   | "browser_screenshot"
   | "comfy_generated"
+  | "group_file_download"
   | "local_file_import"
   | "user_upload";
 

@@ -14,8 +14,8 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("需要展开消息、转发或图片引用时再调用查看工具；message_id、forward_id、image_id 必须逐字复制。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["view_current_group_info", "list_current_group_announcements", "list_current_group_members"])) {
-    lines.push("当前群工具只能读取本会话所在群；查询群公告或群成员时用 query 缩小范围，并设置合理 limit。");
+  if (hasAnyTool(visibleToolNames, ["view_current_group_info", "list_current_group_announcements", "view_current_group_announcement", "list_current_group_files", "download_current_group_file", "list_current_group_members"])) {
+    lines.push("当前群工具只能读取本会话所在群；查询群公告、群文件或群成员时用 query 缩小范围，并设置合理 limit；公告全文用 view_current_group_announcement 按 startLine/lineCount 分段查看；群文件先 list_current_group_files 再 download_current_group_file。");
   }
 
   if (visibleToolNames.has("generate_image_with_comfyui")) {
@@ -32,6 +32,8 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     "interact_with_page",
     "close_page",
     "download_asset",
+    "read_download_resource",
+    "cancel_download_resource",
     "capture_screenshot",
     "list_browser_profiles",
     "inspect_browser_profile",
@@ -55,7 +57,7 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
         visibleToolNames.has("download_asset") ? "download_asset" : "",
         visibleToolNames.has("capture_screenshot") ? "capture_screenshot" : ""
       ].filter(Boolean).join("/");
-      lines.push(`${fileTools} 返回 workspace file_id/file_ref；后续用 chat_file_* 查看或发送。`);
+      lines.push(`${fileTools} 短下载会直接返回 workspace file_id/file_ref；长下载会返回 download resource_id，完成或失败后会自动触发，也可用 read_download_resource 主动查看状态。`);
     }
     lines.push("遇到短信码、邮箱码、TOTP 或二次验证时，在当前会话向用户索取；验证码只用于当前步骤，不写入长期资料。");
   }
@@ -80,6 +82,10 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
 
   if (hasAnyTool(visibleToolNames, ["chat_file_list", "chat_file_view_media", "chat_file_send_to_chat"])) {
     lines.push("查已登记图片、视频、音频或文件时先 chat_file_list；发送时优先用 chat_file_send_to_chat(file_ref=...)，file_id 只是主键。");
+  }
+
+  if (hasAnyTool(visibleToolNames, ["list_live_resources", "read_download_resource", "cancel_download_resource"])) {
+    lines.push("后台下载资源用 list_live_resources(type=download) 查找，read_download_resource 查看单个状态；下载完成后结果会提示可用的 chat_file_* 后续工具。");
   }
 
   if (hasAnyTool(visibleToolNames, ["chat_file_inspect_media", "local_file_inspect_media"])) {

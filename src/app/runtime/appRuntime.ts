@@ -143,6 +143,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     buildSessionWorkCoordinatorDeps(services, persistSession, () => scheduler, contextExtractionQueue)
   );
   shellRuntime.setEventHandler((event) => sessionWorkCoordinator.dispatchTerminalEvent(event));
+  services.downloadRuntime.setEventHandler((event) => sessionWorkCoordinator.dispatchDownloadEvent(event));
 
   scheduler = new Scheduler(
     scheduledJobStore,

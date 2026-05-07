@@ -15,6 +15,8 @@ export const transcriptInternalTriggerKindValues = [
   "scheduled_instruction",
   "comfy_task_completed",
   "comfy_task_failed",
+  "download_completed",
+  "download_failed",
   "terminal_session_closed",
   "terminal_input_required"
 ] as const;

@@ -79,6 +79,9 @@ const SUMMARY_TOOL_NAMES = new Set([
   "search_with_iqs_lite_advanced",
   "view_current_group_info",
   "list_current_group_announcements",
+  "view_current_group_announcement",
+  "list_current_group_files",
+  "download_current_group_file",
   "list_current_group_members"
 ]);
 
@@ -109,12 +112,14 @@ export function buildToolObservation(input: BuildToolObservationInput): ToolObse
   const policyResult = buildPolicyObservation(input, baseContext, resource ?? null, refetchHint, pinned, policyErrors);
   const summary = policyResult?.summary ?? buildSummary(input.toolName, parsed, resource);
   const retention = policyResult?.retention ?? resolveRetention(input.toolName, input.content, parsed);
+  const replayData = buildDefaultReplayData(input.toolName, parsed);
   const replayContent = policyResult?.replayContent ?? JSON.stringify({
     ok: !hasToolError(parsed),
     compacted: retention !== "full",
     tool: input.toolName,
     ...(resource ? { resource } : {}),
     summary,
+    ...(replayData ? { data: replayData } : {}),
     ...(refetchHint ? { refetch_hint: refetchHint } : {})
   });
   const resolvedResource = policyResult?.resource === null
@@ -377,13 +382,40 @@ function buildRefetchHint(
     if (toolName === "view_current_group_info") {
       return "如需刷新当前群资料，请再次调用 view_current_group_info";
     }
+    if (toolName === "view_current_group_announcement") {
+      const announcementId = stringValue(parsed?.announcementId ?? parsed?.announcement_id);
+      const nextStartLine = numberValue(parsed?.nextStartLine ?? parsed?.next_start_line);
+      const nextStartChar = numberValue(parsed?.nextStartChar ?? parsed?.next_start_char);
+      const startLine = nextStartLine ?? numberValue(parsed?.startLine ?? parsed?.start_line);
+      const startChar = nextStartChar ?? numberValue(parsed?.startChar ?? parsed?.start_char);
+      const lineCount = numberValue(parsed?.requestedLineCount ?? parsed?.lineCount ?? parsed?.line_count);
+      return [
+        nextStartLine ? "如需继续查看当前群公告原文，请再次调用 view_current_group_announcement" : "如需重新查看当前群公告原文片段，请再次调用 view_current_group_announcement",
+        announcementId ? `announcementId=${JSON.stringify(announcementId)}` : null,
+        startLine ? `startLine=${startLine}` : null,
+        startChar ? `startChar=${startChar}` : null,
+        lineCount ? `lineCount=${lineCount}` : null
+      ].filter((item): item is string => Boolean(item)).join(" ");
+    }
+    if (toolName === "download_current_group_file") {
+      const groupFileId = stringValue(parsed?.groupFileId ?? parsed?.group_file_id);
+      const resourceId = stringValue(parsed?.resource_id ?? parsed?.resourceId);
+      return resourceId
+        ? `如需查看下载状态，请调用 read_download_resource resource_id=${JSON.stringify(resourceId)}${groupFileId ? `；群文件 group_file_id=${JSON.stringify(groupFileId)}` : ""}`
+        : `如需查看下载状态，请调用 list_live_resources type=download${groupFileId ? `；群文件 group_file_id=${JSON.stringify(groupFileId)}` : ""}`;
+    }
     const query = stringValue(parsed?.query);
     const limit = numberValue(parsed?.limit);
     const args = [
       query ? `query=${JSON.stringify(query)}` : null,
       limit ? `limit=${limit}` : null
     ].filter((item): item is string => Boolean(item)).join(" ");
-    return `如需刷新当前群${toolName === "list_current_group_announcements" ? "公告" : "成员"}，请再次调用 ${toolName}${args ? ` ${args}` : ""}`;
+    const label = toolName === "list_current_group_announcements"
+      ? "公告"
+      : toolName === "list_current_group_files"
+        ? "文件"
+        : "成员";
+    return `如需刷新当前群${label}，请再次调用 ${toolName}${args ? ` ${args}` : ""}`;
   }
   if (toolName === "local_file_ls" && resource.kind === "local_file") {
     return `如需完整目录列表，请再次调用 local_file_ls path=${resource.id} limit=500`;
@@ -399,6 +431,9 @@ function buildRefetchHint(
 function isCurrentGroupContextTool(toolName: string): boolean {
   return toolName === "view_current_group_info"
     || toolName === "list_current_group_announcements"
+    || toolName === "view_current_group_announcement"
+    || toolName === "list_current_group_files"
+    || toolName === "download_current_group_file"
     || toolName === "list_current_group_members";
 }
 
@@ -409,10 +444,29 @@ function buildCurrentGroupContextLocator(
   if (toolName === "view_current_group_info") {
     return "info";
   }
+  if (toolName === "view_current_group_announcement") {
+    const announcementId = stringValue(parsed?.announcementId ?? parsed?.announcement_id);
+    const startLine = numberValue(parsed?.startLine ?? parsed?.start_line);
+    const endLine = numberValue(parsed?.endLine ?? parsed?.end_line);
+    return [
+      "announcement",
+      announcementId ? `id=${JSON.stringify(announcementId)}` : null,
+      startLine && endLine ? `L${startLine}-L${endLine}` : null
+    ].filter((item): item is string => Boolean(item)).join(" ");
+  }
+  if (toolName === "download_current_group_file") {
+    const groupFileId = stringValue(parsed?.groupFileId ?? parsed?.group_file_id);
+    const resourceId = stringValue(parsed?.resource_id ?? parsed?.resourceId);
+    return [
+      "file-download",
+      groupFileId ? `group_file_id=${JSON.stringify(groupFileId)}` : null,
+      resourceId ? `resource_id=${resourceId}` : null
+    ].filter((item): item is string => Boolean(item)).join(" ");
+  }
   const query = stringValue(parsed?.query);
   const limit = numberValue(parsed?.limit);
   const parts = [
-    toolName === "list_current_group_announcements" ? "announcements" : "members",
+    toolName === "list_current_group_announcements" ? "announcements" : toolName === "list_current_group_files" ? "files" : "members",
     query ? `query=${JSON.stringify(query)}` : null,
     limit ? `limit=${limit}` : null
   ].filter((item): item is string => Boolean(item));
@@ -448,6 +502,43 @@ function summarizeParsedPayload(parsed: Record<string, unknown> | null): string 
     return compactText(preferred.join("；"), MAX_SUMMARY_TEXT_LENGTH);
   }
   return compactText(JSON.stringify(parsed), MAX_SUMMARY_TEXT_LENGTH);
+}
+
+function buildDefaultReplayData(toolName: string, parsed: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!parsed) {
+    return null;
+  }
+  if (toolName === "view_current_group_announcement") {
+    return {
+      announcementId: parsed.announcementId ?? parsed.announcement_id ?? null,
+      title: parsed.title ?? null,
+      startLine: parsed.startLine ?? parsed.start_line ?? null,
+      startChar: parsed.startChar ?? parsed.start_char ?? null,
+      endLine: parsed.endLine ?? parsed.end_line ?? null,
+      totalLines: parsed.totalLines ?? parsed.total_lines ?? null,
+      nextStartLine: parsed.nextStartLine ?? parsed.next_start_line ?? null,
+      nextStartChar: parsed.nextStartChar ?? parsed.next_start_char ?? null,
+      requestedLineCount: parsed.requestedLineCount ?? parsed.requested_line_count ?? null,
+      lineTruncated: parsed.lineTruncated ?? parsed.line_truncated ?? null,
+      charTruncated: parsed.charTruncated ?? parsed.char_truncated ?? null,
+      content: compactText(stringValue(parsed.content) ?? "", 2400)
+    };
+  }
+  if (toolName === "download_asset" || toolName === "download_current_group_file" || toolName === "read_download_resource" || toolName === "cancel_download_resource") {
+    return {
+      resourceId: parsed.resource_id ?? parsed.resourceId ?? null,
+      status: parsed.status ?? null,
+      fileId: parsed.file_id ?? parsed.fileId ?? null,
+      fileRef: parsed.file_ref ?? parsed.fileRef ?? null,
+      groupFileId: parsed.group_file_id ?? parsed.groupFileId ?? null,
+      kind: parsed.kind ?? null,
+      downloadedBytes: parsed.downloaded_bytes ?? parsed.downloadedBytes ?? null,
+      totalBytes: parsed.total_bytes ?? parsed.totalBytes ?? null,
+      percent: parsed.percent ?? null,
+      error: parsed.error ?? null
+    };
+  }
+  return null;
 }
 
 function parseJsonObject(content: string): Record<string, unknown> | null {

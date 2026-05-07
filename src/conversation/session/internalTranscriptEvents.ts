@@ -199,6 +199,9 @@ export function createInternalTriggerEvent(input: {
     ...(trigger.kind === "terminal_session_closed" || trigger.kind === "terminal_input_required"
       ? { resourceId: trigger.resourceId }
       : {}),
+    ...(trigger.kind === "download_completed" || trigger.kind === "download_failed"
+      ? { resourceId: trigger.resourceId }
+      : {}),
     ...(details ? { details } : {})
   };
 }
@@ -233,7 +236,13 @@ function buildTriggerSummary(trigger: InternalSessionTriggerExecution, stage: In
   if (trigger.kind === "terminal_session_closed") {
     return `${stageLabel}终端完成事件「${trigger.jobName}」，资源 ${trigger.resourceId}`;
   }
-  return `${stageLabel}终端输入事件「${trigger.jobName}」，资源 ${trigger.resourceId}`;
+  if (trigger.kind === "terminal_input_required") {
+    return `${stageLabel}终端输入事件「${trigger.jobName}」，资源 ${trigger.resourceId}`;
+  }
+  if (trigger.kind === "download_completed") {
+    return `${stageLabel}下载完成事件「${trigger.jobName}」，文件 ${trigger.fileRef}`;
+  }
+  return `${stageLabel}下载失败事件「${trigger.jobName}」，资源 ${trigger.resourceId}`;
 }
 
 function buildTriggerDetails(trigger: InternalSessionTriggerExecution): string | null {
@@ -260,6 +269,30 @@ function buildTriggerDetails(trigger: InternalSessionTriggerExecution): string |
       `cwd: ${trigger.cwd}`,
       `promptKind: ${trigger.promptKind}`,
       `promptText: ${trigger.promptText}`,
+      `instruction: ${trigger.instruction}`
+    ].join("\n");
+  }
+
+  if (trigger.kind === "download_completed") {
+    return [
+      `resourceId: ${trigger.resourceId}`,
+      `sourceUrl: ${trigger.sourceUrl}`,
+      `fileId: ${trigger.fileId}`,
+      `fileRef: ${trigger.fileRef}`,
+      `chatFilePath: ${trigger.chatFilePath}`,
+      `sourceName: ${trigger.sourceName}`,
+      `mimeType: ${trigger.mimeType}`,
+      `sizeBytes: ${trigger.sizeBytes}`,
+      `fileKind: ${trigger.fileKind}`,
+      `instruction: ${trigger.instruction}`
+    ].join("\n");
+  }
+
+  if (trigger.kind === "download_failed") {
+    return [
+      `resourceId: ${trigger.resourceId}`,
+      `sourceUrl: ${trigger.sourceUrl}`,
+      `error: ${trigger.error}`,
       `instruction: ${trigger.instruction}`
     ].join("\n");
   }

@@ -11,6 +11,9 @@ import type {
   OneBotRequestEvent,
   OneBotMessageSegment,
   OneBotGroupItem,
+  OneBotGroupAtAllRemain,
+  OneBotGroupFilesResult,
+  OneBotGroupFileUrlResult,
   OneBotGroupMemberInfo,
   OneBotGroupMemberItem,
   OneBotGroupAnnouncementItem,
@@ -208,6 +211,22 @@ export class OneBotClient extends EventEmitter {
     return data as OneBotGroupItem;
   }
 
+  async getGroupInfoEx(groupId: string): Promise<Record<string, unknown> | null> {
+    const payload = await this.postApi<OneBotApiResponse>("get_group_info_ex", {
+      group_id: Number(groupId)
+    });
+    this.assertApiSuccess("get_group_info_ex", payload, { groupId });
+    return isRecord(payload.data) ? payload.data : null;
+  }
+
+  async getGroupAtAllRemain(groupId: string): Promise<OneBotGroupAtAllRemain | null> {
+    const payload = await this.postApi<OneBotApiResponse>("get_group_at_all_remain", {
+      group_id: Number(groupId)
+    });
+    this.assertApiSuccess("get_group_at_all_remain", payload, { groupId });
+    return isRecord(payload.data) ? payload.data as OneBotGroupAtAllRemain : null;
+  }
+
   async getGroupMemberInfo(groupId: string, userId: string): Promise<OneBotGroupMemberInfo | null> {
     const payload = await this.postApi<OneBotApiResponse>("get_group_member_info", {
       group_id: Number(groupId),
@@ -244,6 +263,35 @@ export class OneBotClient extends EventEmitter {
     });
     this.assertApiSuccess("_get_group_notice", payload, { groupId });
     return extractArrayPayload(payload.data).filter(isRecord) as OneBotGroupAnnouncementItem[];
+  }
+
+  async getGroupRootFiles(groupId: string): Promise<OneBotGroupFilesResult> {
+    const payload = await this.postApi<OneBotApiResponse>("get_group_root_files", {
+      group_id: Number(groupId)
+    });
+    this.assertApiSuccess("get_group_root_files", payload, { groupId });
+    return normalizeGroupFilesPayload(payload.data);
+  }
+
+  async getGroupFilesByFolder(groupId: string, folderId: string): Promise<OneBotGroupFilesResult> {
+    const payload = await this.postApi<OneBotApiResponse>("get_group_files_by_folder", {
+      group_id: Number(groupId),
+      folder_id: folderId
+    });
+    this.assertApiSuccess("get_group_files_by_folder", payload, { groupId, folderId });
+    return normalizeGroupFilesPayload(payload.data);
+  }
+
+  async getGroupFileUrl(groupId: string, fileId: string, busid: string | number): Promise<OneBotGroupFileUrlResult | null> {
+    const payload = await this.postApi<OneBotApiResponse>("get_group_file_url", {
+      group_id: Number(groupId),
+      file_id: fileId,
+      busid: Number.isFinite(Number(busid)) ? Number(busid) : busid
+    });
+    this.assertApiSuccess("get_group_file_url", payload, { groupId, fileId, busid });
+    const data = isRecord(payload.data) ? payload.data : null;
+    const url = typeof data?.url === "string" ? data.url : null;
+    return url ? { ...data, url } : null;
   }
 
   async getLoginInfo(): Promise<OneBotLoginInfo> {
@@ -543,6 +591,16 @@ function extractArrayPayload(data: unknown): unknown[] {
     }
   }
   return [];
+}
+
+function normalizeGroupFilesPayload(data: unknown): OneBotGroupFilesResult {
+  const record = isRecord(data) ? data : {};
+  const files = Array.isArray(record.files) ? record.files : [];
+  const folders = Array.isArray(record.folders) ? record.folders : [];
+  return {
+    files: files.filter(isRecord),
+    folders: folders.filter(isRecord)
+  };
 }
 
 function extractHistoryMessages(data: unknown, fallbackMessageType: "private" | "group"): OneBotHistoryMessage[] {

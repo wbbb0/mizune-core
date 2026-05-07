@@ -31,6 +31,7 @@ import type { EventRouter } from "#services/onebot/eventRouter.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { ShellRuntime } from "#services/shell/runtime.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
+import type { DownloadRuntime } from "#services/workspace/downloadRuntime.ts";
 import type { ChatMessageFileGcService } from "#services/workspace/chatMessageFileGcService.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import type { MediaInspectionService } from "#services/workspace/mediaInspectionService.ts";
@@ -87,6 +88,7 @@ export interface AppServiceBootstrap {
   browserService: BrowserService;
   localFileService: LocalFileService;
   chatFileStore: ChatFileStore;
+  downloadRuntime: DownloadRuntime;
   chatMessageFileGcService: ChatMessageFileGcService;
   contentSafetyStore: ContentSafetyStore;
   contentSafetyService: ContentSafetyService;
