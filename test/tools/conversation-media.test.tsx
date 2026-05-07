@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { imageToolHandlers } from "../../src/llm/tools/conversation/imageTools.ts";
 import { messageToolHandlers } from "../../src/llm/tools/conversation/messageTools.ts";
 import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
@@ -71,6 +74,13 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     assert.ok(contentPart && typeof contentPart !== "string");
     assert.equal(contentPart.type, "image_url");
     assert.match(result.content, /"durationMs":2400/);
+    const payload = JSON.parse(result.content);
+    assert.equal(payload.handles[0].source, "chat_file");
+    assert.equal(payload.handles[0].selector.file_ref, "chat_test0001.gif");
+    assert.deepEqual(
+      payload.handles[0].capabilities.map((item: { capability: string }) => item.capability),
+      ["view_media", "inspect_media", "send_to_chat"]
+    );
   });
 
   test("chat_file_view_media rejects requests above the hard limit", async () => {
@@ -90,6 +100,62 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
       throw new Error("expected string tool error");
     }
     assert.match(result, /at most 5/);
+  });
+
+  test("chat_file_view_media next actions honor visible tool names", async () => {
+    const result = await imageToolHandlers.chat_file_view_media!(
+      createFunctionToolCall("chat_file_view_media", "tool_visible_actions_1"),
+      { media_ids: ["file_test_1"] },
+      {
+        debugSnapshot: {
+          visibleToolNames: ["chat_file_view_media"]
+        },
+        audioStore: {
+          async getMany() {
+            return [];
+          }
+        } as any,
+        chatFileStore: {
+          async getMany() {
+            return [{
+              fileId: "file_test_1",
+              fileRef: "chat_test0001.png",
+              kind: "image",
+              origin: "browser_download",
+              chatFilePath: "workspace/media/file_test_1.png",
+              sourceName: "a.png",
+              mimeType: "image/png",
+              sizeBytes: 1,
+              createdAtMs: Date.now(),
+              sourceContext: {},
+              caption: null
+            }];
+          }
+        } as any,
+        mediaVisionService: {
+          async prepareFileForModel() {
+            return {
+              fileId: "file_test_1",
+              inputUrl: "https://example.com/a.png",
+              kind: "image",
+              transport: "data_url",
+              animated: false,
+              durationMs: null,
+              sampledFrameCount: null
+            };
+          }
+        } as any
+      } as any
+    );
+    if (typeof result === "string") {
+      throw new Error("expected structured multimodal result");
+    }
+    const payload = JSON.parse(result.content);
+    assert.deepEqual(payload.next_actions, []);
+    assert.deepEqual(
+      payload.handles[0].capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
+      [["view_media", true], ["inspect_media", false], ["send_to_chat", false]]
+    );
   });
 
   test("chat_file_inspect_media asks inspector for registered chat images", async () => {
@@ -235,6 +301,97 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     assert.equal(parsed.path, "screens/table.png");
     assert.equal(parsed.source_name, "table.png");
     assert.equal(parsed.results[0].answer, "A1 是 日期。");
+  });
+
+  test("local_file_view_media returns a local file handle for follow-up tools", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-local-media-"));
+    const filePath = join(tempDir, "screen.png");
+    await writeFile(filePath, Buffer.from("fake image bytes"));
+    try {
+      const result = await imageToolHandlers.local_file_view_media!(
+        createFunctionToolCall("local_file_view_media", "tool_local_view_1"),
+        { path: filePath },
+        {
+          debugSnapshot: {
+            visibleToolNames: ["local_file_view_media", "local_file_inspect_media", "local_file_send_to_chat"]
+          },
+          localFileService: {} as any,
+          mediaVisionService: {
+            async prepareAbsolutePathForModel(absolutePath: string, sourceName: string) {
+              assert.equal(absolutePath, filePath);
+              assert.equal(sourceName, "screen.png");
+              return {
+                fileId: filePath,
+                inputUrl: "data:image/png;base64,local",
+                kind: "image",
+                transport: "data_url",
+                animated: false,
+                durationMs: null,
+                sampledFrameCount: null
+              };
+            }
+          } as any
+        } as any
+      );
+      if (typeof result === "string") {
+        throw new Error("expected structured multimodal result");
+      }
+      const payload = JSON.parse(result.content);
+      assert.equal(payload.handle.source, "local_file");
+      assert.equal(payload.handle.selector.path, filePath);
+      assert.deepEqual(
+        payload.handle_capabilities.map((item: { capability: string }) => item.capability),
+        ["read_text", "view_media", "inspect_media", "send_to_chat"]
+      );
+      assert.deepEqual(
+        payload.next_actions.map((item: { tool: string }) => item.tool),
+        ["local_file_send_to_chat"]
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("local_file_view_media omits send next action when send tool is hidden", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-local-media-hidden-"));
+    const filePath = join(tempDir, "screen.png");
+    await writeFile(filePath, Buffer.from("fake image bytes"));
+    try {
+      const result = await imageToolHandlers.local_file_view_media!(
+        createFunctionToolCall("local_file_view_media", "tool_local_view_hidden"),
+        { path: filePath },
+        {
+          debugSnapshot: {
+            visibleToolNames: ["local_file_view_media"]
+          },
+          localFileService: {} as any,
+          mediaVisionService: {
+            async prepareAbsolutePathForModel() {
+              return {
+                fileId: filePath,
+                inputUrl: "data:image/png;base64,local",
+                kind: "image",
+                transport: "data_url",
+                animated: false,
+                durationMs: null,
+                sampledFrameCount: null
+              };
+            }
+          } as any
+        } as any
+      );
+      if (typeof result === "string") {
+        throw new Error("expected structured multimodal result");
+      }
+      const payload = JSON.parse(result.content);
+      assert.deepEqual(payload.next_actions, []);
+      assert.deepEqual(
+        payload.handle_capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
+        [["read_text", false], ["view_media", true], ["inspect_media", false], ["send_to_chat", false]]
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   test("chat_file_inspect_media rejects unsupported media ids", async () => {

@@ -9,7 +9,10 @@ import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 import { inferSendableFileKind, resolveSendablePath } from "#services/workspace/sendablePath.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
-import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
+import {
+  buildChatFileHandleResultFromContext,
+  buildLocalFileHandleResultFromContext
+} from "../core/fileHandle.ts";
 import { nextAction, withNextActions, type ToolNextAction } from "../core/toolNextActions.ts";
 import {
   chatFileListPolicy,
@@ -295,7 +298,7 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
       const { root: _root, ...result } = await context.localFileService.listItems(path, limit);
       return JSON.stringify(result);
     }
-    return JSON.stringify(s);
+    return JSON.stringify(buildLocalFileHandleResultFromContext(s, context));
   },
 
   async local_file_read(_toolCall, args, context) {

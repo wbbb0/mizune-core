@@ -14,6 +14,7 @@ import {
   browserPagePolicy,
   browserScreenshotPolicy,
   chatFileListPolicy,
+  directMediaViewPolicy,
   debugDumpPolicy,
   fileSendPolicy,
   localFileListPolicy,
@@ -268,6 +269,67 @@ test("chat file list and send policies keep stable handles without raw records",
   assert.equal(send.resource?.kind, "chat_file");
   assert.equal(send.resource?.id, "img_0.png");
   assert.match(send.replayContent, /chat_file_send_to_chat file_ref/);
+});
+
+test("media view observation keeps compact handles and next actions", () => {
+  const observation = buildToolObservation({
+    toolName: "chat_file_view_media",
+    toolCallId: "call_view_media",
+    content: JSON.stringify({
+      ok: true,
+      workspace: [{
+        file_id: "file_1",
+        file_ref: "chat_0001.png",
+        kind: "image",
+        origin: "browser_download",
+        source_name: "cover.png",
+        mime_type: "image/png",
+        size_bytes: 123,
+        caption: `${"长图说明".repeat(80)}TAIL`
+      }],
+      handles: [{
+        source: "chat_file",
+        id: "file_1",
+        selector: { file_id: "file_1", file_ref: "chat_0001.png" },
+        file: {
+          file_id: "file_1",
+          file_ref: "chat_0001.png",
+          kind: "image",
+          source_name: "cover.png",
+          mime_type: "image/png",
+          size_bytes: 123
+        },
+        capabilities: [{
+          capability: "send_to_chat",
+          tool: "chat_file_send_to_chat",
+          available: true,
+          args: { file_ref: "chat_0001.png" }
+        }]
+      }],
+      audio: [{
+        mediaId: "aud_1",
+        kind: "audio",
+        source: "https://example.com/a.mp3",
+        transcriptionStatus: "ready",
+        transcription: `${"音频转写".repeat(120)}TAIL`
+      }],
+      next_actions: [{
+        tool: "chat_file_send_to_chat",
+        reason: "发送已查看的媒体文件到当前聊天",
+        args: { file_ref: "chat_0001.png" }
+      }]
+    }),
+    args: { media_ids: ["file_1"] },
+    policy: directMediaViewPolicy()
+  });
+
+  const replay = JSON.parse(observation.replayContent);
+  assert.equal(observation.retention, "summary");
+  assert.equal(replay.data.nextActions[0].tool, "chat_file_send_to_chat");
+  assert.equal(replay.data.handles[0].selector.file_ref, "chat_0001.png");
+  assert.equal(replay.data.workspace[0].fileRef, "chat_0001.png");
+  assert.equal(replay.data.audio[0].mediaId, "aud_1");
+  assert.doesNotMatch(observation.replayContent, /TAIL/);
 });
 
 test("debug dump observation hides literal bodies from replay and history summary", () => {

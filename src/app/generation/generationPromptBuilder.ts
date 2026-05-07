@@ -39,6 +39,7 @@ import { createEmptyScenarioProfile, getMissingScenarioProfileFields } from "#mo
 import { preparePromptMemoryContext } from "#llm/prompts/chat-system.prompt.ts";
 import type { PromptInput } from "#llm/prompt/promptTypes.ts";
 import type { OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
+import { buildChatFileHandleResult } from "#llm/tools/core/fileHandle.ts";
 
 type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
@@ -697,6 +698,32 @@ function buildScheduledQueryText(trigger: Parameters<typeof buildScheduledTaskPr
   }
 }
 
+async function enrichScheduledPromptTrigger(
+  deps: GenerationPromptBuilderDeps,
+  trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"],
+  visibleToolNames: string[]
+): Promise<Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"]> {
+  if (trigger.kind !== "comfy_task_completed" || trigger.workspaceFileIds.length === 0) {
+    return trigger;
+  }
+  try {
+    const files = await deps.chatFileStore.getMany(trigger.workspaceFileIds);
+    const resultFileHandles = files.map((file) =>
+      buildChatFileHandleResult(file, {
+        visibleToolNames,
+        defaultVisible: false,
+        nextActionMode: "default"
+      }).handle
+    );
+    return resultFileHandles.length > 0
+      ? { ...trigger, resultFileHandles }
+      : trigger;
+  } catch (error: unknown) {
+    deps.logger?.warn({ err: error }, "failed to enrich comfy scheduled prompt with result file handles");
+    return trigger;
+  }
+}
+
 function extractSystemMessages(promptMessages: LlmMessage[]): string[] {
   return promptMessages
     .filter((message) => message.role === "system")
@@ -984,7 +1011,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       batchMessages: [],
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     });
-    const [mediaContext, liveResources, globalRules, toolsetRuleEntries] = await Promise.all([
+    const [mediaContext, liveResources, globalRules, toolsetRuleEntries, scheduledTrigger] = await Promise.all([
       preparePromptMediaContext(deps, {
         historyForPrompt: safetyProjected.historyForPrompt,
         reason: "scheduled_prompt",
@@ -994,7 +1021,8 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         ? collectPromptLiveResources(deps)
         : Promise.resolve([]),
       (scenarioHostMode || assistantMode) ? Promise.resolve([]) : deps.globalRuleStore.getAll(),
-      (scenarioHostMode || assistantMode) ? Promise.resolve([]) : deps.toolsetRuleStore.getAll()
+      (scenarioHostMode || assistantMode) ? Promise.resolve([]) : deps.toolsetRuleStore.getAll(),
+      enrichScheduledPromptTrigger(deps, input.trigger, input.visibleToolNames)
     ]);
     const toolsetRules = resolveToolsetRules(toolsetRuleEntries, {
       activeToolsets: input.activeToolsets
@@ -1028,7 +1056,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       ? []
       : await deps.contextRetrievalService?.retrieveUserContext({
           userId: input.currentUser.userId,
-          queryText: buildScheduledQueryText(input.trigger),
+          queryText: buildScheduledQueryText(scheduledTrigger),
           excludeItemIds: currentUserMemories.map((item) => item.id),
           ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
         }) ?? [];
@@ -1056,7 +1084,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       activeToolsets: input.activeToolsets,
       lateSystemMessages: input.lateSystemMessages,
       replayMessages,
-      trigger: input.trigger,
+      trigger: scheduledTrigger,
       persona: input.persona,
       relationship: input.relationship,
       npcProfiles: assistantMode ? [] : buildNpcPromptProfiles(deps, relevantUserIds),

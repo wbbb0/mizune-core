@@ -1,11 +1,21 @@
+import { stat } from "node:fs/promises";
 import type { LlmContentPart, LlmToolExecutionResult } from "../../llmClient.ts";
 import type { AppConfig } from "#config/config.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { getVisionInputModelRefsForRole, hasVisionInputModelRef } from "#llm/shared/visionModelRouting.ts";
-import { resolveSendablePath } from "#services/workspace/sendablePath.ts";
+import { resolveSendablePath, type ResolvedSendablePath } from "#services/workspace/sendablePath.ts";
+import type { LocalFileItemStat } from "#services/workspace/types.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
 import { mapWorkspaceFileToView } from "../core/workspaceFileView.ts";
+import {
+  buildChatFileHandleResultFromContext,
+  buildLocalFileHandleResultFromContext
+} from "../core/fileHandle.ts";
+import type {
+  ChatFileHandleResult,
+  LocalFileHandleCapability
+} from "../core/fileHandle.ts";
 import { nextAction, type ToolNextAction } from "../core/toolNextActions.ts";
 import { directMediaViewPolicy, mediaInspectionPolicy } from "../core/resultObservationPresets.ts";
 import {
@@ -160,6 +170,9 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
     try {
       const resolved = resolveSendablePath(context.localFileService, path);
       const prepared = await context.mediaVisionService.prepareAbsolutePathForModel(resolved.absolutePath, resolved.sourceName);
+      const fileStat = await localFileStatFromResolvedPath(resolved);
+      const handleResult = buildLocalFileHandleResultFromContext(fileStat, context, { nextActionMode: "none" });
+      const nextActions = localViewedMediaNextActions(handleResult.handle_capabilities);
       const result: LlmToolExecutionResult = {
         content: JSON.stringify({
           ok: true,
@@ -170,9 +183,9 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
           animated: prepared.animated,
           durationMs: prepared.durationMs,
           sampledFrameCount: prepared.sampledFrameCount,
-          next_actions: [
-            nextAction("local_file_send_to_chat", "把当前本地媒体文件发送到聊天", { path: resolved.sourcePath })
-          ]
+          handle: handleResult.handle,
+          handle_capabilities: handleResult.handle_capabilities,
+          next_actions: nextActions
         }),
         supplementalMessages: [{
           role: "user",
@@ -306,6 +319,9 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
         transcriptionStatus: item.transcriptionStatus,
         transcriptionError: item.transcriptionError
       }));
+      const handleResults = workspaceFiles.map((item) =>
+        buildChatFileHandleResultFromContext(item, context, { nextActionMode: "none" })
+      );
 
       const result: LlmToolExecutionResult = {
         content: JSON.stringify({
@@ -327,9 +343,10 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
             ...mapWorkspaceFileToView(item),
             caption: assetCaptionMap.get(item.fileId) ?? item.caption
           })),
+          handles: handleResults.map((item) => item.handle),
           audio: audioSummaries,
           unavailable: [],
-          next_actions: viewedMediaNextActions(workspaceFiles)
+          next_actions: viewedMediaNextActions(handleResults)
         }),
         supplementalMessages: attachedWorkspaceImages.some(Boolean)
           ? [{
@@ -366,10 +383,28 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
   }
 };
 
-function viewedMediaNextActions(files: Array<{ fileId: string; fileRef: string }>): ToolNextAction[] {
-  return files.slice(0, MAX_MEDIA_VIEW_PER_CALL).map((file) =>
-    nextAction("chat_file_send_to_chat", "发送已查看的媒体文件到当前聊天", { file_ref: file.fileRef || file.fileId })
-  );
+async function localFileStatFromResolvedPath(resolved: ResolvedSendablePath): Promise<LocalFileItemStat> {
+  const itemStat = await stat(resolved.absolutePath);
+  return {
+    path: resolved.sourcePath,
+    name: resolved.sourceName,
+    kind: itemStat.isDirectory() ? "directory" : "file",
+    sizeBytes: itemStat.size,
+    updatedAtMs: itemStat.mtimeMs
+  };
+}
+
+function localViewedMediaNextActions(capabilities: LocalFileHandleCapability[]): ToolNextAction[] {
+  const send = capabilities.find((item) => item.capability === "send_to_chat" && item.available);
+  return send ? [nextAction(send.tool, send.reason, send.args)] : [];
+}
+
+function viewedMediaNextActions(files: ChatFileHandleResult[]): ToolNextAction[] {
+  return files
+    .slice(0, MAX_MEDIA_VIEW_PER_CALL)
+    .map((file) => file.handle_capabilities.find((item) => item.capability === "send_to_chat" && item.available))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .map((item) => nextAction(item.tool, item.reason, item.args));
 }
 
 interface CompactInspectionToolResult {

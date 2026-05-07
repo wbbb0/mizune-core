@@ -1412,6 +1412,84 @@ function createMediaToolVisibilityConfig(options: {
     );
   });
 
+  test("chat file handles only expose view capability for model-viewable images", async () => {
+    const result = await chatFileToolHandlers.chat_file_list!(
+      { id: "tool_chat_file_list_video_handle", type: "function", function: { name: "chat_file_list", arguments: "{\"file_ref\":\"clip.mp4\"}" } },
+      { file_ref: "clip.mp4" },
+      {
+        chatFileStore: {
+          async getFile() {
+            return null;
+          },
+          async listFiles() {
+            return [{
+              fileId: "file_video_1",
+              fileRef: "clip.mp4",
+              kind: "video",
+              origin: "browser_download",
+              chatFilePath: "workspace/media/clip.mp4",
+              sourceName: "clip.mp4",
+              mimeType: "video/mp4",
+              sizeBytes: 1024,
+              createdAtMs: Date.now(),
+              sourceContext: {},
+              caption: null
+            }];
+          }
+        }
+      } as any
+    );
+
+    const payload = JSON.parse(String(result));
+    assert.deepEqual(
+      payload.file.handle_capabilities.map((item: { capability: string }) => item.capability),
+      ["send_to_chat"]
+    );
+    assert.deepEqual(
+      payload.next_actions.map((item: { tool: string }) => item.tool),
+      ["chat_file_send_to_chat"]
+    );
+  });
+
+  test("empty visible tool list means chat file handle tools are unavailable", async () => {
+    const result = await chatFileToolHandlers.chat_file_list!(
+      { id: "tool_chat_file_list_empty_visible", type: "function", function: { name: "chat_file_list", arguments: "{\"file_ref\":\"chat_test0001.png\"}" } },
+      { file_ref: "chat_test0001.png" },
+      {
+        debugSnapshot: {
+          visibleToolNames: []
+        },
+        chatFileStore: {
+          async getFile() {
+            return null;
+          },
+          async listFiles() {
+            return [{
+              fileId: "file_test_1",
+              fileRef: "chat_test0001.png",
+              kind: "image",
+              origin: "browser_download",
+              chatFilePath: "workspace/media/file_test_1.png",
+              sourceName: "a.png",
+              mimeType: "image/png",
+              sizeBytes: 1,
+              createdAtMs: Date.now(),
+              sourceContext: {},
+              caption: null
+            }];
+          }
+        }
+      } as any
+    );
+
+    const payload = JSON.parse(String(result));
+    assert.deepEqual(
+      payload.file.handle_capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
+      [["view_media", false], ["inspect_media", false], ["send_to_chat", false]]
+    );
+    assert.deepEqual(payload.next_actions, []);
+  });
+
   test("chat_file_list filters by query and reports list window metadata", async () => {
     const result = await chatFileToolHandlers.chat_file_list!(
       { id: "tool_chat_file_list_2", type: "function", function: { name: "chat_file_list", arguments: "{\"query\":\"report\",\"limit\":1}" } },
@@ -1546,6 +1624,72 @@ function createMediaToolVisibilityConfig(options: {
       args: { path: "logs/app.log", start_line: 3, end_line: 5 }
   });
 });
+
+  test("local_file_ls single-file result includes a local file handle", async () => {
+    const result = await localFileToolHandlers.local_file_ls!(
+      { id: "tool_local_file_ls_handle", type: "function", function: { name: "local_file_ls", arguments: "{\"path\":\"docs/readme.md\"}" } },
+      { path: "docs/readme.md" },
+      {
+        debugSnapshot: {
+          visibleToolNames: ["local_file_read", "local_file_send_to_chat"]
+        },
+        localFileService: {
+          async statItem(path: string) {
+            assert.equal(path, "docs/readme.md");
+            return {
+              path,
+              name: "readme.md",
+              kind: "file",
+              sizeBytes: 42,
+              updatedAtMs: 123
+            };
+          }
+        }
+      } as any
+    );
+
+    const payload = JSON.parse(String(result));
+    assert.equal(payload.handle.source, "local_file");
+    assert.equal(payload.handle.selector.path, "docs/readme.md");
+    assert.deepEqual(
+      payload.handle_capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
+      [["read_text", true], ["send_to_chat", true]]
+    );
+    assert.deepEqual(
+      payload.next_actions.map((item: { tool: string }) => item.tool),
+      ["local_file_read", "local_file_send_to_chat"]
+    );
+  });
+
+  test("empty visible tool list means local file handle tools are unavailable", async () => {
+    const result = await localFileToolHandlers.local_file_ls!(
+      { id: "tool_local_file_ls_empty_visible", type: "function", function: { name: "local_file_ls", arguments: "{\"path\":\"docs/readme.md\"}" } },
+      { path: "docs/readme.md" },
+      {
+        debugSnapshot: {
+          visibleToolNames: []
+        },
+        localFileService: {
+          async statItem(path: string) {
+            return {
+              path,
+              name: "readme.md",
+              kind: "file",
+              sizeBytes: 42,
+              updatedAtMs: 123
+            };
+          }
+        }
+      } as any
+    );
+
+    const payload = JSON.parse(String(result));
+    assert.deepEqual(
+      payload.handle_capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
+      [["read_text", false], ["send_to_chat", false]]
+    );
+    assert.equal(payload.next_actions, undefined);
+  });
 
 function policyShape(policy: any) {
   return {

@@ -8,6 +8,7 @@ import type { SpecialRole } from "#identity/specialRole.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { SessionDebugMarker } from "#conversation/session/sessionTypes.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
+import type { ChatFileHandle } from "#llm/tools/core/fileHandle.ts";
 import type { OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { LlmMessage } from "../llmClient.ts";
@@ -205,6 +206,7 @@ export interface InternalSessionTriggerPromptInput {
         resolvedHeight: number;
         workspaceFileIds: string[];
         chatFilePaths: string[];
+        resultFileHandles?: ChatFileHandle[];
         comfyPromptId: string;
         autoIterationIndex: number;
         maxAutoIterations: number;

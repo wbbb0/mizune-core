@@ -606,6 +606,72 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     assert.doesNotMatch(rendered, /scheduled-unsafe 原始任务/);
   });
 
+  test("comfy completed scheduled prompt enriches result file handles from chat file store", async () => {
+    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+      chatFileStore: {
+        async getMany(fileIds: string[]) {
+          assert.deepEqual(fileIds, ["file_comfy_1"]);
+          return [{
+            fileId: "file_comfy_1",
+            fileRef: "chat_comfy0001.png",
+            kind: "image",
+            origin: "comfy_generated",
+            chatFilePath: "workspace/media/file_comfy_1.png",
+            sourceName: "result.png",
+            mimeType: "image/png",
+            sizeBytes: 123,
+            createdAtMs: 456,
+            sourceContext: {},
+            caption: null
+          }];
+        }
+      } as any
+    }));
+
+    const result = await builder.buildScheduledPromptMessages({
+      sessionId: "qqbot:p:10001",
+      interactionMode: "normal",
+      visibleToolNames: ["chat_file_view_media", "chat_file_send_to_chat"],
+      activeToolsets: [],
+      trigger: {
+        kind: "comfy_task_completed",
+        jobName: "图片任务",
+        taskInstruction: "检查结果后决定是否发送",
+        taskId: "task_1",
+        templateId: "template_a",
+        positivePrompt: "red house",
+        aspectRatio: "1:1",
+        resolvedWidth: 1024,
+        resolvedHeight: 1024,
+        workspaceFileIds: ["file_comfy_1"],
+        chatFilePaths: ["workspace/media/file_comfy_1.png"],
+        comfyPromptId: "prompt_1",
+        autoIterationIndex: 1,
+        maxAutoIterations: 2
+      },
+      persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
+      relationship: "known",
+      participantProfiles: [],
+      currentUser: { userId: "10001", relationship: "known" } as any,
+      historySummary: null,
+      historyForPrompt: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      targetContext: {
+        chatType: "private",
+        userId: "10001",
+        senderName: "Tester"
+      }
+    });
+
+    const rendered = result.promptMessages.map((message) => String(message.content ?? "")).join("\n");
+    assert.match(rendered, /结果文件 handle/);
+    assert.match(rendered, /chat_comfy0001\.png/);
+    assert.match(rendered, /view_media:chat_file_view_media/);
+    assert.match(rendered, /send_to_chat:chat_file_send_to_chat/);
+    assert.doesNotMatch(rendered, /inspect_media:chat_file_inspect_media/);
+  });
+
   test("assistant chat prompt injects global persona but still avoids memory rule and scenario stores", async () => {
     const builder = createGenerationPromptBuilder({
       config: createTestAppConfig(),

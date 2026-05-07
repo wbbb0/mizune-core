@@ -14,6 +14,7 @@ import {
 } from "../prompts/history-message.prompt.ts";
 import { getSessionChatType } from "#conversation/session/sessionIdentity.ts";
 import type { PromptInput, ScheduledTaskPromptInput, SetupPromptInput } from "./promptTypes.ts";
+import type { ChatFileHandle } from "#llm/tools/core/fileHandle.ts";
 
 export type {
   PromptBatchMessage,
@@ -151,6 +152,7 @@ function buildTriggerMessage(input: ScheduledTaskPromptInput): string {
   }
 
   if (input.trigger.kind === "comfy_task_completed") {
+    const handleLines = formatChatFileHandlesForPrompt(input.trigger.resultFileHandles);
     return [
       `任务名称：${input.trigger.jobName}`,
       `任务说明：${input.trigger.taskInstruction}`,
@@ -160,8 +162,9 @@ function buildTriggerMessage(input: ScheduledTaskPromptInput): string {
       `Comfy prompt_id：${input.trigger.comfyPromptId}`,
       `workspace file_id：${input.trigger.workspaceFileIds.join("、") || "无"}`,
       `chat_file_path：${input.trigger.chatFilePaths.join("、") || "无"}`,
+      handleLines ? `结果文件 handle：\n${handleLines}` : null,
       `自动迭代进度：${input.trigger.autoIterationIndex}/${input.trigger.maxAutoIterations}`
-    ].join("\n");
+    ].filter((item): item is string => Boolean(item)).join("\n");
   }
 
   if (input.trigger.kind === "comfy_task_failed") {
@@ -229,6 +232,20 @@ function buildTriggerMessage(input: ScheduledTaskPromptInput): string {
     `提示文本：${input.trigger.promptText}`,
     `最近输出：\n${input.trigger.outputTail || "(无输出)"}`
   ].join("\n");
+}
+
+function formatChatFileHandlesForPrompt(handles: ChatFileHandle[] | undefined): string {
+  if (!handles || handles.length === 0) {
+    return "";
+  }
+  return handles.map((handle) => {
+    const selector = handle.selector.file_ref || handle.selector.file_id;
+    const availableTools = handle.capabilities
+      .filter((item) => item.available)
+      .map((item) => `${item.capability}:${item.tool}`)
+      .join("、") || "无";
+    return `- ${selector} (${handle.file.kind}, ${handle.file.source_name ?? "unknown"}) 可用：${availableTools}`;
+  }).join("\n");
 }
 
 export function buildSetupPrompt(input: SetupPromptInput): LlmMessage[] {

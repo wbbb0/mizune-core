@@ -590,7 +590,12 @@ function compactLocalFileList(ctx: Parameters<ToolResultCompactor>[0]) {
       name: ctx.parsedContent?.name ?? null,
       kind,
       sizeBytes: ctx.parsedContent?.sizeBytes ?? ctx.parsedContent?.size_bytes ?? null,
-      updatedAtMs: ctx.parsedContent?.updatedAtMs ?? ctx.parsedContent?.updated_at_ms ?? null
+      updatedAtMs: ctx.parsedContent?.updatedAtMs ?? ctx.parsedContent?.updated_at_ms ?? null,
+      handle: compactFileHandleForReplay(ctx.parsedContent?.handle),
+      handleCapabilities: arrayValue(ctx.parsedContent?.handle_capabilities)
+        ?.map(compactFileHandleCapabilityForReplay)
+        .slice(0, 6) ?? [],
+      nextActions: arrayValue(ctx.parsedContent?.next_actions)?.slice(0, 4) ?? []
     });
   }
   const dirCount = items.filter((item) => itemKind(item) === "directory").length;
@@ -923,7 +928,78 @@ function compactChatFileForReplay(item: unknown): Record<string, unknown> {
     sizeBytes: record.size_bytes ?? record.sizeBytes ?? null,
     captionStatus: record.caption_status ?? record.captionStatus ?? null,
     caption: stringValue(record.caption) ? compactText(String(record.caption), 80) : null,
-    createdAtMs: record.created_at_ms ?? record.createdAtMs ?? null
+    createdAtMs: record.created_at_ms ?? record.createdAtMs ?? null,
+    handle: compactFileHandleForReplay(record.handle)
+  };
+}
+
+function compactMediaWorkspaceForReplay(item: unknown): Record<string, unknown> {
+  const compacted = compactChatFileForReplay(item);
+  const record = objectValue(item);
+  return {
+    ...compacted,
+    caption: record && stringValue(record.caption) ? compactText(String(record.caption), 120) : compacted.caption
+  };
+}
+
+function compactAudioSummaryForReplay(item: unknown): Record<string, unknown> {
+  const record = objectValue(item);
+  if (!record) {
+    return { source: compactText(String(item ?? ""), 160) };
+  }
+  return {
+    mediaId: record.mediaId ?? record.media_id ?? null,
+    kind: record.kind ?? null,
+    source: stringValue(record.source) ? compactText(String(record.source), 180) : null,
+    transcriptionStatus: record.transcriptionStatus ?? record.transcription_status ?? null,
+    transcriptionError: stringValue(record.transcriptionError ?? record.transcription_error)
+      ? compactText(String(record.transcriptionError ?? record.transcription_error), 180)
+      : null,
+    transcription: stringValue(record.transcription)
+      ? compactText(String(record.transcription), 360)
+      : null
+  };
+}
+
+function compactFileHandleForReplay(item: unknown): Record<string, unknown> | null {
+  const record = objectValue(item);
+  if (!record) {
+    return null;
+  }
+  const file = objectValue(record.file);
+  return {
+    source: record.source ?? null,
+    id: record.id ?? null,
+    selector: record.selector ?? null,
+    file: file
+      ? {
+          fileRef: file.file_ref ?? file.fileRef ?? null,
+          fileId: file.file_id ?? file.fileId ?? null,
+          path: file.path ?? file.chat_file_path ?? file.chatFilePath ?? null,
+          name: file.name ?? file.source_name ?? file.sourceName ?? null,
+          kind: file.kind ?? file.media_kind ?? file.mediaKind ?? null,
+          mimeType: file.mime_type ?? file.mimeType ?? null,
+          sizeBytes: file.size_bytes ?? file.sizeBytes ?? null
+        }
+      : null,
+    capabilities: (arrayValue(record.capabilities) ?? [])
+      .map(compactFileHandleCapabilityForReplay)
+      .slice(0, 6),
+    nextActions: arrayValue(record.next_actions)?.slice(0, 4) ?? []
+  };
+}
+
+function compactFileHandleCapabilityForReplay(item: unknown): Record<string, unknown> {
+  const record = objectValue(item);
+  if (!record) {
+    return { capability: compactText(String(item ?? ""), 80) };
+  }
+  return {
+    capability: record.capability ?? null,
+    tool: record.tool ?? null,
+    available: record.available ?? null,
+    args: record.args ?? null,
+    requires: record.requires ?? null
   };
 }
 
@@ -1011,8 +1087,21 @@ function compactMediaHandle(ctx: Parameters<ToolResultCompactor>[0]) {
   return replayJson(ctx, summary, {
     resource: ctx.resource,
     caption: ctx.parsedContent?.caption ?? null,
-    workspace: ctx.parsedContent?.workspace ?? null,
-    audio: ctx.parsedContent?.audio ?? null
+    workspace: (arrayValue(ctx.parsedContent?.workspace) ?? [])
+      .map(compactMediaWorkspaceForReplay)
+      .slice(0, 8),
+    handles: (arrayValue(ctx.parsedContent?.handles) ?? [])
+      .map(compactFileHandleForReplay)
+      .filter((item): item is Record<string, unknown> => Boolean(item))
+      .slice(0, 8),
+    handle: compactFileHandleForReplay(ctx.parsedContent?.handle),
+    handleCapabilities: arrayValue(ctx.parsedContent?.handle_capabilities)
+      ?.map(compactFileHandleCapabilityForReplay)
+      .slice(0, 6) ?? [],
+    audio: (arrayValue(ctx.parsedContent?.audio) ?? [])
+      .map(compactAudioSummaryForReplay)
+      .slice(0, 8),
+    nextActions: arrayValue(ctx.parsedContent?.next_actions)?.slice(0, 4) ?? []
   });
 }
 
