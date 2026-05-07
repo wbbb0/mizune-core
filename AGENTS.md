@@ -195,6 +195,10 @@ agent 在实现前后产生的 spec、plan、review、执行 checklist、临时�
 - 新建开发 worktree 默认放在仓库根目录的 `.worktrees/` 下，使用 `.worktrees/<branch-or-task-name>` 这类清晰路径；除非用户明确要求，不要把 worktree 开到主目录同级目录或其他散落位置。
 - 如果主目录正在运行 watch/dev 进程并监控主目录文件，worktree 中的源码修改默认不应触发主目录 dev 自动重启。
 - 主目录工作副本默认视为稳定运行副本；默认应优先在开发用 worktree 内完成代码修改、typecheck、test 与本地联调，确认大体可用后再决定是否合并到主目录验证。
+- 新建 worktree 后需要依赖目录时，优先降低网络流量：
+  - 如果新 worktree 的 `package-lock.json` 与主目录一致，可从主目录复制 `node_modules/` 和 `webui/node_modules/` 到新 worktree，跳过重复安装；复制后首次验证至少跑 `npm run typecheck:all`。
+  - 如果 lockfile 不一致、复制后的 native addon 报错，或依赖状态可疑，再回退到 `npm ci --prefer-offline` 和 `npm --prefix webui ci --prefer-offline`，优先使用本机 npm cache。
+  - 只有明确要求完全离线时才使用 `npm ci --offline` / `npm --prefix webui ci --offline`；缺包失败后应停下来说明，而不是自动联网下载。
 - 从 worktree 合并回 `main` 时，默认存在两种受用户指令控制的路径：
   - 直接整理为最终正式提交后合并到 `main`，合并后不再在 `main` 额外做本地测试
   - 先整理为 `wip` 提交合并到 `main` 做联调或验收，待主目录验证通过后，再把本次历史整理为最终正式提交
