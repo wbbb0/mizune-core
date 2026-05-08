@@ -59,3 +59,42 @@ test("chat file store serializes concurrent caption writes across files", async 
     await rm(rootDir, { recursive: true, force: true });
   }
 });
+
+test("chat file store enforces maxUploadBytes for direct buffer imports", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-"));
+  try {
+    const store = new ChatFileStore(
+      createTestAppConfig({
+        chatFiles: {
+          enabled: true,
+          root: "chat-files",
+          maxUploadBytes: 4
+        }
+      }),
+      createSilentLogger(),
+      {
+        rootDir,
+        resolvePath(path: string) {
+          return {
+            relativePath: path,
+            absolutePath: join(rootDir, path)
+          };
+        }
+      } as any
+    );
+    await store.init();
+
+    await assert.rejects(
+      store.importBuffer({
+        buffer: Buffer.from("12345"),
+        sourceName: "too-large.txt",
+        mimeType: "text/plain",
+        kind: "file",
+        origin: "user_upload"
+      }),
+      /chat file import exceeds maxUploadBytes/
+    );
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});

@@ -2240,10 +2240,7 @@ function policyShape(policy: any) {
     }
   });
 
-  test("local_file_send_to_chat sends file via absolute path", async () => {
-    const queuedTasks: Array<() => Promise<void>> = [];
-    const sentTexts: any[] = [];
-    const assistantHistoryCalls: any[] = [];
+  test("local_file_send_to_chat rejects absolute paths", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-path-abs-"));
     const filePath = join(tempDir, "report.txt");
     await writeFile(filePath, "hello", "utf8");
@@ -2255,50 +2252,12 @@ function policyShape(policy: any) {
         {
           config: createTestAppConfig(),
           lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
-          oneBotClient: {
-            async sendText(params: unknown) {
-              sentTexts.push(params);
-              return { status: "ok", retcode: 0, data: { message_id: 77 } };
-            }
-          },
-          messageQueue: {
-            enqueueTextDetached(params: { send: () => Promise<void> }) {
-              queuedTasks.push(params.send);
-            }
-          },
-          sessionManager: {
-            recordSentMessage() {},
-            appendAssistantHistory(_sessionId: string, message: unknown) {
-              assistantHistoryCalls.push(message);
-            }
-          }
+          messageQueue: {}
         } as any
       );
 
       assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
-        ok: true,
-        path: filePath,
-        path_mode: "absolute",
-        deliveredAs: "text_fallback",
-        queued: true
-      });
-      assert.equal(queuedTasks.length, 1);
-
-      await queuedTasks[0]!();
-
-      assert.deepEqual(sentTexts[0], {
-        userId: "owner",
-        text: `文件已发送：${filePath}`
-      });
-      assert.deepEqual(assistantHistoryCalls[0], {
-        chatType: "private",
-        userId: "owner",
-        senderName: "Owner",
-        text: `文件已发送：${filePath}`,
-        deliveryRef: {
-          platform: "onebot",
-          messageId: 77
-        }
+        error: "local file path must be relative to the workspace root"
       });
     } finally {
       await rm(tempDir, { recursive: true, force: true });

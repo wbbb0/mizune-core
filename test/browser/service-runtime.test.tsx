@@ -164,7 +164,9 @@ function createBrowserService() {
     (service as any).deps.profileStore = {
       async ensureProfile(ownerSessionId: string) {
         return {
-          profileId: `profile:${ownerSessionId}`,
+          profileId: ownerSessionId.endsWith("10001")
+            ? "browser_profile_0000000000000001"
+            : "browser_profile_0000000000000002",
           ownerSessionId,
           createdAtMs: 1,
           lastUsedAtMs: 1
@@ -246,10 +248,10 @@ function createBrowserService() {
     assert.equal(second.resource_id, "resource_2");
     assert.deepEqual(markedExpired, ["resource_1"]);
     assert.deepEqual(savedProfiles, [{
-      profileId: "profile:qqbot:p:10001",
+      profileId: "browser_profile_0000000000000001",
       ownerSessionId: "qqbot:p:10001"
     }]);
-    assert.deepEqual(closedStates, [{ requestedUrl: "https://example.com/one", profileId: "profile:qqbot:p:10001" }]);
+    assert.deepEqual(closedStates, [{ requestedUrl: "https://example.com/one", profileId: "browser_profile_0000000000000001" }]);
   });
 
   test("browser sessions expire after ttl and active access extends ttl", async () => {

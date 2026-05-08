@@ -167,7 +167,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "local_file_delete",
-        description: "删除本地文件或整个目录；目录会递归删除。path 相对本地文件工作区根目录，也可传允许范围内的绝对路径。",
+        description: "删除本地文件或整个目录；目录会递归删除。path 必须相对本地文件工作区根目录。",
         parameters: {
           type: "object",
           properties: { path: { type: "string" } },

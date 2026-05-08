@@ -10,6 +10,7 @@ import type { ConfigFormat, Infer } from "./schema/types.ts";
 export class FileSchemaStore<TSchema extends BaseSchema<any>> {
   private cachedValue: Infer<TSchema> | null = null;
   private cachedMtimeMs: number | null = null;
+  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly options: {
@@ -49,16 +50,18 @@ export class FileSchemaStore<TSchema extends BaseSchema<any>> {
   }
 
   async readOrCreate(factory: () => Infer<TSchema> | Promise<Infer<TSchema>>): Promise<Infer<TSchema>> {
-    try {
-      const current = await this.read();
-      if (current != null) {
-        return current;
+    return this.withWriteLock(async () => {
+      try {
+        const current = await this.read();
+        if (current != null) {
+          return current;
+        }
+      } catch {
+        // Fall through and regenerate the file from the provided factory.
       }
-    } catch {
-      // Fall through and regenerate the file from the provided factory.
-    }
-    const initial = await factory();
-    return this.write(initial);
+      const initial = await factory();
+      return this.writeUnlocked(initial);
+    });
   }
 
   async readOrDefault(fallback: Infer<TSchema>): Promise<Infer<TSchema>> {
@@ -66,6 +69,10 @@ export class FileSchemaStore<TSchema extends BaseSchema<any>> {
   }
 
   async write(value: Infer<TSchema>): Promise<Infer<TSchema>> {
+    return this.withWriteLock(() => this.writeUnlocked(value));
+  }
+
+  private async writeUnlocked(value: Infer<TSchema>): Promise<Infer<TSchema>> {
     const validated = parseConfig(this.options.schema, value, {
       cloneInput: true
     });
@@ -90,18 +97,28 @@ export class FileSchemaStore<TSchema extends BaseSchema<any>> {
   async update(
     updater: (current: Infer<TSchema> | null) => Infer<TSchema> | Promise<Infer<TSchema>>
   ): Promise<Infer<TSchema>> {
-    const current = await this.read();
-    const next = await updater(current);
-    return this.write(next);
+    return this.withWriteLock(async () => {
+      const current = await this.read();
+      const next = await updater(current);
+      return this.writeUnlocked(next);
+    });
   }
 
   async updateExisting(
     updater: (current: Infer<TSchema>) => Infer<TSchema> | Promise<Infer<TSchema>>,
     factory: () => Infer<TSchema> | Promise<Infer<TSchema>>
   ): Promise<Infer<TSchema>> {
-    const current = await this.readOrCreate(factory);
-    const next = await updater(current);
-    return this.write(next);
+    return this.withWriteLock(async () => {
+      let current: Infer<TSchema>;
+      try {
+        const existing = await this.read();
+        current = existing ?? (await factory());
+      } catch {
+        current = await factory();
+      }
+      const next = await updater(current);
+      return this.writeUnlocked(next);
+    });
   }
 
   async readFileText(): Promise<string | null> {
@@ -113,6 +130,25 @@ export class FileSchemaStore<TSchema extends BaseSchema<any>> {
         return null;
       }
       throw error;
+    }
+  }
+
+  private async withWriteLock<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.writeChain;
+    let release: (() => void) | undefined;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const chain = previous.catch(() => undefined).then(() => current);
+    this.writeChain = chain;
+    try {
+      await previous.catch(() => undefined);
+      return await operation();
+    } finally {
+      release?.();
+      if (this.writeChain === chain) {
+        this.writeChain = Promise.resolve();
+      }
     }
   }
 }

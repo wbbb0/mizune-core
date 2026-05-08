@@ -1,5 +1,5 @@
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, normalize, posix, resolve } from "node:path";
+import { mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import type { AppConfig } from "#config/config.ts";
 import type {
   LocalFileContentResult,
@@ -52,11 +52,7 @@ export class LocalFileService {
     const normalizedInput = String(inputPath ?? "").trim() || ".";
 
     if (isAbsolute(normalizedInput)) {
-      const absolutePath = resolve(normalizedInput);
-      return {
-        relativePath: absolutePath,
-        absolutePath
-      };
+      throw new Error("local file path must be relative to the workspace root");
     }
 
     const normalizedRelative = posix.normalize(normalizedInput.replaceAll("\\", "/"));
@@ -65,10 +61,8 @@ export class LocalFileService {
     }
     const cleanedRelative = normalizedRelative === "." ? "" : normalizedRelative;
     const absolutePath = resolve(this.rootDir, cleanedRelative);
-    const relativeFromRoot = normalize(absolutePath).startsWith(normalize(this.rootDir))
-      ? cleanedRelative
-      : null;
-    if (relativeFromRoot == null) {
+    const relativeFromRoot = relative(this.rootDir, absolutePath);
+    if (relativeFromRoot === ".." || relativeFromRoot.startsWith(`..${sep}`) || isAbsolute(relativeFromRoot)) {
       throw new Error("local file path cannot escape the root directory");
     }
     return {
@@ -79,6 +73,7 @@ export class LocalFileService {
 
   async listItems(relativePath = ".", limit = 200): Promise<LocalFileListResult> {
     const target = this.resolvePath(relativePath);
+    await this.assertPathWithinRealRoot(target.absolutePath);
     const entries = await readdir(target.absolutePath, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") {
         return [];
@@ -111,6 +106,7 @@ export class LocalFileService {
 
   async statItem(relativePath: string): Promise<LocalFileItemStat> {
     const target = this.resolvePath(relativePath);
+    await this.assertPathWithinRealRoot(target.absolutePath);
     const itemStat = await stat(target.absolutePath);
     return {
       path: target.relativePath,
@@ -126,6 +122,7 @@ export class LocalFileService {
     endLine?: number;
   }): Promise<LocalFileReadResult> {
     const target = this.resolvePath(relativePath);
+    await this.assertPathWithinRealRoot(target.absolutePath);
     const rawBuffer = await readFile(target.absolutePath);
     assertTextFile(rawBuffer, target.relativePath, this.config.localFiles.maxPatchFileBytes);
     const raw = rawBuffer.toString("utf8");
@@ -148,6 +145,7 @@ export class LocalFileService {
 
   async readFileContent(relativePath: string): Promise<LocalFileContentResult> {
     const target = this.resolvePath(relativePath);
+    await this.assertPathWithinRealRoot(target.absolutePath);
     const itemStat = await stat(target.absolutePath);
     if (itemStat.isDirectory()) {
       throw new Error(`local file path is not a file: ${target.relativePath}`);
@@ -161,6 +159,7 @@ export class LocalFileService {
 
   async writeFile(relativePath: string, content: string, mode: LocalFileWriteMode): Promise<LocalFileWriteResult> {
     const target = this.resolvePath(relativePath);
+    await this.assertPathWithinRealRoot(target.absolutePath);
     await mkdir(dirname(target.absolutePath), { recursive: true });
     const normalizedContent = String(content ?? "");
     if (Buffer.byteLength(normalizedContent, "utf8") > this.config.localFiles.maxPatchFileBytes) {
@@ -194,6 +193,7 @@ export class LocalFileService {
 
   async mkdir(relativePath: string): Promise<LocalFileItemStat> {
     const target = this.resolvePath(relativePath);
+    await this.assertPathWithinRealRoot(target.absolutePath);
     await mkdir(target.absolutePath, { recursive: true });
     return this.statItem(target.relativePath);
   }
@@ -201,6 +201,8 @@ export class LocalFileService {
   async moveItem(fromPath: string, toPath: string): Promise<LocalFileMoveResult> {
     const from = this.resolvePath(fromPath);
     const to = this.resolvePath(toPath);
+    await this.assertPathWithinRealRoot(from.absolutePath);
+    await this.assertPathWithinRealRoot(to.absolutePath);
     await mkdir(dirname(to.absolutePath), { recursive: true });
     await rename(from.absolutePath, to.absolutePath);
     return {
@@ -211,6 +213,7 @@ export class LocalFileService {
 
   async deleteItem(relativePath: string): Promise<LocalFileDeleteResult> {
     const target = this.resolvePath(relativePath);
+    await this.assertPathWithinRealRoot(target.absolutePath);
     const existed = await stat(target.absolutePath).then(() => true).catch(() => false);
     await rm(target.absolutePath, { recursive: true, force: true });
     return {
@@ -221,6 +224,7 @@ export class LocalFileService {
 
   async patchFile(relativePath: string, patch: string): Promise<LocalFilePatchResult> {
     const target = this.resolvePath(relativePath);
+    await this.assertPathWithinRealRoot(target.absolutePath);
     const originalBuffer = await readFile(target.absolutePath);
     assertTextFile(originalBuffer, target.relativePath, this.config.localFiles.maxPatchFileBytes);
     const original = originalBuffer.toString("utf8");
@@ -240,6 +244,7 @@ export class LocalFileService {
       throw new Error("query is required");
     }
     const target = this.resolvePath(relativePath);
+    await this.assertPathWithinRealRoot(target.absolutePath);
     const items: LocalFileSearchItem[] = [];
     let truncated = false;
     await this.walk(target.relativePath, async (itemPath, entryKind) => {
@@ -272,6 +277,7 @@ export class LocalFileService {
       throw new Error("query is required");
     }
     const target = this.resolvePath(relativePath);
+    await this.assertPathWithinRealRoot(target.absolutePath);
     const matches: LocalFileFindTextResult["matches"] = [];
     let truncated = false;
     await this.walk(target.relativePath, async (itemPath, entryKind) => {
@@ -323,6 +329,7 @@ export class LocalFileService {
     visitor: (itemPath: string, kind: "file" | "directory") => Promise<boolean>
   ): Promise<boolean> {
     const target = this.resolvePath(relativePath);
+    await this.assertPathWithinRealRoot(target.absolutePath);
     const entries = await readdir(target.absolutePath, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") {
         return [];
@@ -346,6 +353,35 @@ export class LocalFileService {
     }
     return true;
   }
+
+  private async assertPathWithinRealRoot(absolutePath: string): Promise<void> {
+    const rootRealPath = await realpath(this.rootDir);
+    const targetRealPath = await resolveExistingRealPath(absolutePath);
+    if (!isPathInsideRoot(targetRealPath, rootRealPath)) {
+      throw new Error("local file path cannot escape the root directory");
+    }
+  }
+}
+
+async function resolveExistingRealPath(absolutePath: string): Promise<string> {
+  try {
+    return await realpath(absolutePath);
+  } catch (error: unknown) {
+    const nodeError = error as NodeJS.ErrnoException;
+    if (nodeError.code !== "ENOENT") {
+      throw error;
+    }
+    const parentPath = dirname(absolutePath);
+    if (parentPath === absolutePath) {
+      throw error;
+    }
+    return resolve(await resolveExistingRealPath(parentPath), basename(absolutePath));
+  }
+}
+
+function isPathInsideRoot(candidatePath: string, rootPath: string): boolean {
+  const relativePath = relative(rootPath, candidatePath);
+  return relativePath === "" || (!relativePath.startsWith(`..${sep}`) && relativePath !== ".." && !isAbsolute(relativePath));
 }
 
 function basenameFromRelative(relativePath: string): string {

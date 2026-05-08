@@ -131,13 +131,11 @@ export async function startInternalApi(deps: InternalApiRuntimeDeps) {
 
   registerInternalApiRoutes(app, services);
 
-  // When webui is enabled, bind to 0.0.0.0 on the webui port so external
-  // devices (e.g. phones on the LAN) can reach the PWA.  Auth middleware
-  // protects all API routes, so public exposure is safe.
-  // When webui is disabled, stay on 127.0.0.1 (local-only, unauthenticated).
+  // Only expose the built-in WebUI on LAN when its auth middleware is enabled.
+  // Otherwise keep the unauthenticated API local-only.
   const listenHost = externalWebuiMode
     ? "127.0.0.1"
-    : webuiEnabled
+    : webuiEnabled && webuiAuthEnabled
       ? "0.0.0.0"
       : "127.0.0.1";
 

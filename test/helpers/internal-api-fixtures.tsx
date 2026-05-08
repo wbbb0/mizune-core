@@ -119,7 +119,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     whitelistReloadCount: 0,
     schedulerReloadCount: 0,
     contextCleanupSessionIds: [],
-    browserProfiles: [{ profile_id: "browser_profile_fixture", ownerSessionId: "qqbot:p:10001" }],
+    browserProfiles: [{ profile_id: "browser_profile_0000000000000001", ownerSessionId: "qqbot:p:10001" }],
     contextItems: [{
       itemId: "ctx_fixture_chunk_1",
       scope: "user",

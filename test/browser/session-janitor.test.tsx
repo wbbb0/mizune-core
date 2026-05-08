@@ -28,7 +28,7 @@ function createSessionRecord(expiresAt: number) {
     } as any,
     state: { id: 1 },
     snapshot: {
-      profileId: "profile:qqbot:p:10001",
+      profileId: "browser_profile_0000000000000001",
       requestedUrl: "https://example.com",
       resolvedUrl: "https://example.com",
       title: "Example",
@@ -40,7 +40,7 @@ function createSessionRecord(expiresAt: number) {
     } as any,
     expiresAt,
     ownerSessionId: "qqbot:p:10001",
-    profileId: "profile:qqbot:p:10001"
+    profileId: "browser_profile_0000000000000001"
   };
 }
 
