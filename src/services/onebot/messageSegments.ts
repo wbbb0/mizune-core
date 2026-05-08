@@ -1,4 +1,4 @@
-import type { OneBotMessageSegment, OneBotSpecialSegmentSummary } from "./types.ts";
+import type { OneBotMessageFileSummary, OneBotMessageSegment, OneBotSpecialSegmentSummary } from "./types.ts";
 
 export type MediaSemanticKind = "image" | "emoji";
 
@@ -17,11 +17,26 @@ export interface ExtractedAudioSource {
   source: string;
 }
 
-export interface ExtractedFileSource {
-  source: string;
+interface ExtractedFileBase {
   filename: string | null;
   mimeType: string | null;
+  sizeBytes: number | null;
 }
+
+export interface ExtractedDirectFileSource extends ExtractedFileBase {
+  sourceKind: "direct";
+  source: string;
+  fileId: string | null;
+  busid: string | number | null;
+}
+
+export interface ExtractedOneBotFileSource extends ExtractedFileBase {
+  sourceKind: "onebot_file";
+  fileId: string;
+  busid: string | number | null;
+}
+
+export type ExtractedFileSource = ExtractedDirectFileSource | ExtractedOneBotFileSource;
 
 export interface NormalizedMentionSegment {
   kind: "mention";
@@ -38,6 +53,7 @@ export interface NormalizedOtherSegment {
 export type NormalizedMessageToolSegment =
   | { kind: "text"; text: string }
   | { kind: "image"; source: string; viewable: boolean; mediaKind: MediaSemanticKind }
+  | { kind: "file"; fileId: string; filename: string | null; busid: string | number | null; sizeBytes: number | null; mimeType: string | null; summary: string }
   | { kind: "forward"; forwardId: string }
   | { kind: "reply"; messageId: string }
   | NormalizedMentionSegment
@@ -77,19 +93,62 @@ export function extractFileSources(segments: OneBotMessageSegment[]): ExtractedF
     if (segment.type !== "file") {
       continue;
     }
-    const source = getFirstNonEmptyString([
-      segment.data.url,
-      segment.data.path,
+    const fileId = getFirstNonEmptyString([
+      segment.data.file_id,
+      segment.data.fileId,
+      segment.data.id
+    ]);
+    const busid = getFirstNonEmptyScalar([
+      segment.data.busid,
+      segment.data.bus_id
+    ]);
+    const filename = getFirstNonEmptyString([
+      segment.data.name,
+      segment.data.filename,
+      segment.data.file_name,
       segment.data.file
     ]);
-    if (!source || seen.has(source)) {
+    const mimeType = getFirstNonEmptyString([segment.data.mimeType, segment.data.mime_type]);
+    const sizeBytes = getFiniteNumber(segment.data.file_size ?? segment.data.size);
+    const directSource = getFirstNonEmptyImportableSource([
+      segment.data.url,
+      segment.data.path,
+      segment.data.src,
+      segment.data.file
+    ]);
+    if (directSource) {
+      const dedupeKey = `direct:${directSource}`;
+      if (seen.has(dedupeKey)) {
+        continue;
+      }
+      seen.add(dedupeKey);
+      files.push({
+        sourceKind: "direct",
+        source: directSource,
+        fileId,
+        busid,
+        filename,
+        mimeType,
+        sizeBytes
+      });
       continue;
     }
-    seen.add(source);
+
+    if (!fileId) {
+      continue;
+    }
+    const dedupeKey = `onebot:${fileId}:${String(busid ?? "")}`;
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+    seen.add(dedupeKey);
     files.push({
-      source,
-      filename: getFirstNonEmptyString([segment.data.name, segment.data.filename, segment.data.file]),
-      mimeType: getFirstNonEmptyString([segment.data.mimeType, segment.data.mime_type])
+      sourceKind: "onebot_file",
+      fileId,
+      busid,
+      filename,
+      mimeType,
+      sizeBytes
     });
   }
   return files;
@@ -97,11 +156,36 @@ export function extractFileSources(segments: OneBotMessageSegment[]): ExtractedF
 
 export function extractSpecialSegments(segments: OneBotMessageSegment[]): OneBotSpecialSegmentSummary[] {
   return segments
-    .map((segment) => {
+    .map((segment): OneBotSpecialSegmentSummary | null => {
       const summary = summarizeSpecialSegment(segment);
-      return summary ? { type: segment.type, summary } : null;
+      if (!summary) {
+        return null;
+      }
+      return {
+        type: segment.type,
+        summary
+      };
     })
     .filter((item): item is OneBotSpecialSegmentSummary => item != null);
+}
+
+export function extractMessageFiles(segments: OneBotMessageSegment[]): OneBotMessageFileSummary[] {
+  return extractFileSources(segments)
+    .map((fileSource) => {
+      const fileId = fileSource.fileId;
+      if (!fileId) {
+        return null;
+      }
+      return {
+        fileId,
+        name: fileSource.filename,
+        busid: fileSource.busid,
+        sizeBytes: fileSource.sizeBytes,
+        mimeType: fileSource.mimeType,
+        downloadTool: "download_message_file" as const
+      };
+    })
+    .filter((item): item is OneBotMessageFileSummary => item != null);
 }
 
 export function extractMediaSources(segments: OneBotMessageSegment[]): ExtractedMediaSource[] {
@@ -242,6 +326,20 @@ export function normalizeSegmentsForTool(
       continue;
     }
 
+    const fileSource = segment.type === "file" ? extractFileSources([segment])[0] : null;
+    if (fileSource?.fileId) {
+      normalized.push({
+        kind: "file",
+        fileId: fileSource.fileId,
+        filename: fileSource.filename,
+        busid: fileSource.busid,
+        sizeBytes: fileSource.sizeBytes,
+        mimeType: fileSource.mimeType,
+        summary: formatMessageFileSummary(fileSource)
+      });
+      continue;
+    }
+
     const mention = getMentionTarget(segment, normalizedSelfId);
     if (mention) {
       normalized.push(mention);
@@ -256,6 +354,16 @@ export function normalizeSegmentsForTool(
   }
 
   return normalized;
+}
+
+function formatMessageFileSummary(file: ExtractedFileSource): string {
+  return `文件：${formatCompactFields([
+    file.filename ? `name=${file.filename}` : null,
+    `file_id=${file.fileId}`,
+    file.busid != null ? `busid=${String(file.busid)}` : null,
+    file.sizeBytes != null ? `size_bytes=${String(file.sizeBytes)}` : null,
+    file.mimeType ? `mime_type=${file.mimeType}` : null
+  ])}；需要读取时调用 download_message_file file_id=${file.fileId}`;
 }
 
 export function getImageSource(segment: OneBotMessageSegment): string | null {
@@ -497,6 +605,47 @@ function getFirstNonEmptyString(values: unknown[]): string | null {
     }
   }
   return null;
+}
+
+function getFirstNonEmptyScalar(values: unknown[]): string | number | null {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    const normalized = String(value ?? "").trim();
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
+function getFirstNonEmptyImportableSource(values: unknown[]): string | null {
+  for (const value of values) {
+    const normalized = String(value ?? "").trim();
+    if (!normalized) {
+      continue;
+    }
+    if (isImportableFileSource(normalized)) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
+function isImportableFileSource(value: string): boolean {
+  return /^https?:\/\//i.test(value)
+    || value.startsWith("/")
+    || value.startsWith("./")
+    || value.startsWith("../")
+    || /^[A-Za-z]:[\\/]/.test(value)
+    || value.includes("/")
+    || value.includes("\\");
+}
+
+function getFiniteNumber(value: unknown): number | null {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
 }
 
 function truncateValue(value: unknown): string {

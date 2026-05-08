@@ -12,7 +12,7 @@ const CAPABILITY_TOOLSET_RULES: Array<{
 }> = [
   { capability: "external_info_lookup", toolsetId: "web_research", reason: "planner_external_info_lookup" },
   { capability: "web_navigation", toolsetId: "web_research", reason: "planner_web_navigation" },
-  { capability: "local_file_access", toolsetId: "local_file_io", reason: "planner_local_file_access" },
+  { capability: "filesystem_access", toolsetId: "filesystem_io", reason: "planner_filesystem_access" },
   { capability: "shell_execution", toolsetId: "shell_runtime", reason: "planner_shell_execution" },
   { capability: "memory_write", toolsetId: "memory_profile", reason: "planner_memory_write" },
   { capability: "scheduler_management", toolsetId: "scheduler_admin", reason: "planner_scheduler_management" },
@@ -48,11 +48,11 @@ export function decideToolsetSupplements(input: {
     }
   }
 
-  if (selected.has("local_file_io") && input.signals.contextDependencies.includes("prior_web_context")) {
+  if (selected.has("filesystem_io") && input.signals.contextDependencies.includes("prior_web_context")) {
     add("web_research", "planner_prior_web_context");
   }
   if (selected.has("web_research") && input.signals.contextDependencies.includes("prior_file_context")) {
-    add("local_file_io", "planner_prior_file_context");
+    add("filesystem_io", "planner_prior_file_context");
   }
   if (selected.has("chat_context") && input.signals.contextDependencies.includes("prior_web_context")) {
     add("web_research", "chat_context_prior_web_context");
@@ -70,7 +70,7 @@ export function decideToolsetSupplements(input: {
       add("shell_runtime", "followup_recent_shell");
     }
     if (input.signals.recentDomains.hasLocalFiles) {
-      add("local_file_io", "followup_recent_workspace");
+      add("filesystem_io", "followup_recent_workspace");
     }
     if (input.signals.recentDomains.hasChatContext || input.signals.contextDependencies.includes("prior_chat_context")) {
       add("chat_context", "followup_recent_context");

@@ -81,6 +81,105 @@ import type { ParsedIncomingMessage } from "../../src/services/onebot/types.ts";
     }]);
   });
 
+  test("onebot message context does not auto-download NapCat file attachments", async () => {
+    const incomingMessage: ParsedIncomingMessage = {
+      chatType: "private",
+      userId: "2254600711",
+      senderName: "Alice",
+      text: "",
+      images: [],
+      audioSources: [],
+      audioIds: [],
+      emojiSources: [],
+      imageIds: [],
+      emojiIds: [],
+      attachments: [],
+      messageFiles: [{
+        fileId: "onebot-file-1",
+        name: "铅毒之果.pdf",
+        busid: null,
+        sizeBytes: 3673240,
+        mimeType: null,
+        downloadTool: "download_message_file"
+      }],
+      forwardIds: [],
+      replyMessageId: null,
+      mentionUserIds: [],
+      mentionedAll: false,
+      isAtMentioned: false,
+      rawEvent: {
+        post_type: "message",
+        message_type: "private",
+        sub_type: "friend",
+        message_id: 123,
+        user_id: 2254600711,
+        message: [{
+          type: "file",
+          data: {
+            file: "铅毒之果.pdf",
+            file_id: "onebot-file-1",
+            file_size: 3673240
+          }
+        }],
+        raw_message: "",
+        sender: { user_id: 2254600711, nickname: "Alice" },
+        self_id: 10000,
+        time: 1
+      }
+    };
+
+    const context = await createMessageProcessingContext({
+      setupStore: {
+        async get() {
+          return { phase: "ready" };
+        }
+      } as never,
+      userIdentityStore: {
+        async ensureUserIdentity() {
+          return {
+            channelId: "qqbot",
+            scope: "private_user",
+            externalId: "2254600711",
+            internalUserId: "u_01TESTUSER000000000000002",
+            createdAt: 1
+          };
+        }
+      } as never,
+      userStore: {
+        async touchSeenUser() {
+          return { relationship: "known" };
+        }
+      } as never,
+      audioStore: {
+        async registerSources() {
+          return [];
+        }
+      } as never,
+      chatFileStore: {
+        async importRemoteSource() {
+          throw new Error("message files should be downloaded only after download_message_file is called");
+        }
+      } as never,
+      sessionManager: {
+        getOrCreateSession() {
+          return { id: "qqbot:p:2254600711", type: "private" } as never;
+        }
+      } as never
+    }, incomingMessage, {
+      delivery: "onebot"
+    });
+
+    assert.deepEqual(context.enrichedMessage.attachments, []);
+    assert.deepEqual(context.enrichedMessage.messageFiles, [{
+      fileId: "onebot-file-1",
+      name: "铅毒之果.pdf",
+      busid: null,
+      sizeBytes: 3673240,
+      mimeType: null,
+      downloadTool: "download_message_file"
+    }]);
+  });
+
   test("onebot message context resolves external users into internal user ids", async () => {
     const incomingMessage: ParsedIncomingMessage = {
       chatType: "private",
@@ -147,7 +246,7 @@ import type { ParsedIncomingMessage } from "../../src/services/onebot/types.ts";
     assert.equal(context.enrichedMessage.userId, "u_01TESTUSER000000000000000");
   });
 
-  test("onebot message context replaces pending media placeholders with imported chat files", async () => {
+  test("onebot message context replaces pending media placeholders with imported assets", async () => {
     const incomingMessage: ParsedIncomingMessage = {
       chatType: "private",
       userId: "2254600711",

@@ -10,8 +10,8 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
 
   const lines: string[] = [];
 
-  if (hasAnyTool(visibleToolNames, ["view_message", "view_forward_record", "asset_media_view", "chat_file_view_media", "local_file_view_media"])) {
-    lines.push("需要展开消息、转发或图片引用时再调用查看工具；message_id、forward_id、image_id 必须逐字复制。");
+  if (hasAnyTool(visibleToolNames, ["view_message", "download_message_file", "view_forward_record", "asset_media_view", "filesystem_media_view"])) {
+    lines.push("看到 ⟦file ...⟧ 表示用户发来了文件；不要说没看到文件。需要展开消息、转发、图片或消息文件引用时再调用查看/下载工具；message_id、forward_id、image_id、file_id 必须逐字复制。消息文件只在确实需要读取、查看或发送内容时调用 download_message_file 下载。");
   }
 
   if (hasAnyTool(visibleToolNames, ["view_current_group_info", "list_current_group_announcements", "view_current_group_announcement", "list_current_group_files", "download_current_group_file", "list_current_group_members"])) {
@@ -82,8 +82,6 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
 
   if (hasAnyTool(visibleToolNames, ["asset_list", "asset_media_view", "asset_send_to_chat"])) {
     lines.push("查已登记图片、视频、音频或文件时先 asset_list；发送时优先用 asset_send_to_chat(asset_ref=...)，asset_id 只是主键。");
-  } else if (hasAnyTool(visibleToolNames, ["chat_file_list", "chat_file_view_media", "chat_file_send_to_chat"])) {
-    lines.push("查已登记图片、视频、音频或文件时先 chat_file_list；发送时优先用 chat_file_send_to_chat(file_ref=...)，file_id 只是主键。");
   }
 
   if (hasAnyTool(visibleToolNames, ["asset_document_overview", "asset_document_read", "asset_document_search", "asset_document_inspect"])) {
@@ -94,15 +92,15 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("后台下载资源用 list_live_resources(type=download) 查找，read_download_resource 查看单个状态；下载完成后结果会提示可用的 asset_* 后续工具。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["asset_media_inspect", "chat_file_inspect_media", "local_file_inspect_media"])) {
+  if (hasAnyTool(visibleToolNames, ["asset_media_inspect", "filesystem_media_inspect"])) {
     lines.push("需要从图片、截图、表格或界面里精确读取细节时，用图片精读工具按问题查看。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["local_file_view_media", "local_file_send_to_chat", "local_file_read", "local_file_search", "local_file_delete"])) {
-    lines.push("local_file_* 处理模型可访问的本地文件工作区；path 传相对路径时，相对的是配置里的 local files 工作区根目录，不是 shell 当前目录、不是仓库根目录、也不是 chat file 的 chat_file_path。");
-    lines.push("本地图片查看用 local_file_view_media，本地路径发送用 local_file_send_to_chat。");
-    if (visibleToolNames.has("local_file_delete")) {
-      lines.push("需要删除本地文件或整个目录时用 local_file_delete；它支持删除文件或递归删除整个目录。");
+  if (hasAnyTool(visibleToolNames, ["filesystem_media_view", "filesystem_send_to_chat", "filesystem_read", "filesystem_search", "filesystem_delete"])) {
+    lines.push("filesystem_* 处理模型可访问的本地文件系统；path 传相对路径时，相对的是配置里的 local files 工作区根目录，绝对路径按进程权限访问，不是 shell 当前目录、不是仓库根目录、也不是 asset store 内部路径。");
+    lines.push("本地图片查看用 filesystem_media_view，本地路径发送用 filesystem_send_to_chat。");
+    if (visibleToolNames.has("filesystem_delete")) {
+      lines.push("需要删除本地文件或整个目录时用 filesystem_delete；它支持删除文件或递归删除整个目录。");
     }
   }
 

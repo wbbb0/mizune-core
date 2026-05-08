@@ -6,7 +6,7 @@ import type { InternalTranscriptItem, SessionState } from "../../src/conversatio
 
 test("derived observation reader exposes media, session, history, and tool observations", async () => {
   const toolObservation = buildToolObservation({
-    toolName: "local_file_read",
+    toolName: "filesystem_read",
     toolCallId: "tool-1",
     content: JSON.stringify({
       path: "src/index.ts",
@@ -20,7 +20,7 @@ test("derived observation reader exposes media, session, history, and tool obser
     llmVisible: true,
     timestampMs: 30,
     toolCallId: "tool-1",
-    toolName: "local_file_read",
+    toolName: "filesystem_read",
     content: "{}",
     observation: toolObservation
   }];

@@ -707,7 +707,7 @@ export function buildScheduledTaskSystemLines(input: {
       renderPromptSection("download_completed", [
         "下面这次执行是后台下载完成后的内部回调，不是用户刚刚发来了一条新消息。",
         "下载结果已导入 asset；根据用户原始任务决定是否查看、发送或只做简短说明。",
-        "发送文件给用户时优先用 chat_file_send_to_chat(file_ref=...)。"
+        "发送文件给用户时优先用 asset_send_to_chat(asset_ref=...)。"
       ])
     ].filter((item): item is string => Boolean(item));
   }

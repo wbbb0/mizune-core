@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, normalize } from "node:path";
 import { fetch as undiciFetch } from "undici";
 import type { Logger } from "pino";
@@ -47,6 +47,7 @@ export class ChatFileStore {
     if (!(await fileExists(this.fileIndexPath))) {
       await this.writeFiles([]);
     }
+    await this.cleanupOrphanDocumentCaches();
   }
 
   async listFiles(): Promise<ChatFileRecord[]> {
@@ -120,7 +121,7 @@ export class ChatFileStore {
   }): Promise<ChatFileRecord> {
     const fileStat = await stat(input.sourcePath);
     if (fileStat.size > this.config.chatFiles.maxUploadBytes) {
-      throw new Error("chat file import exceeds maxUploadBytes");
+      throw new Error("asset import exceeds maxUploadBytes");
     }
     const sourceName = input.sourceName ?? basename(input.sourcePath);
     const kind = input.kind ?? inferStoredFileKind(sourceName, input.mimeType);
@@ -200,12 +201,12 @@ export class ChatFileStore {
         ? await fetchWithProxy(this.config, input.proxyConsumer, source)
         : await undiciFetch(source);
       if (!response.ok) {
-        throw new Error(`failed to download chat file: ${response.status} ${response.statusText}`);
+        throw new Error(`failed to download asset: ${response.status} ${response.statusText}`);
       }
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
       if (buffer.byteLength > this.config.chatFiles.maxUploadBytes) {
-        throw new Error("chat file import exceeds maxUploadBytes");
+        throw new Error("asset import exceeds maxUploadBytes");
       }
       const mimeType = input.mimeType ?? response.headers.get("content-type") ?? undefined;
       const sourceName = input.sourceName ?? inferFilenameFromUrl(source, mimeType, input.kind);
@@ -275,7 +276,7 @@ export class ChatFileStore {
       const files = await this.readFiles();
       const file = files.find((item) => item.fileId === fileId);
       if (!file) {
-        throw new Error(`unknown chat file: ${fileId}`);
+        throw new Error(`unknown asset: ${fileId}`);
       }
       await this.writeFiles(files.map((item) => item.fileId !== fileId
         ? item
@@ -303,6 +304,30 @@ export class ChatFileStore {
     return join(this.storeRootDir, "documents", stableDocumentCacheDirectoryName(normalizedFileId));
   }
 
+  async cleanupOrphanDocumentCaches(): Promise<{ removed: number; kept: number }> {
+    const documentsDir = join(this.storeRootDir, "documents");
+    const expected = new Set((await this.listFiles()).map((file) => stableDocumentCacheDirectoryName(file.fileId)));
+    let entries: string[];
+    try {
+      entries = await readdir(documentsDir);
+    } catch {
+      return { removed: 0, kept: 0 };
+    }
+    let removed = 0;
+    let kept = 0;
+    for (const entry of entries) {
+      if (expected.has(entry)) {
+        kept += 1;
+        continue;
+      }
+      await rm(join(documentsDir, entry), { recursive: true, force: true }).catch((error: unknown) => {
+        this.logger.warn({ entry, error }, "asset_document_orphan_cache_cleanup_failed");
+      });
+      removed += 1;
+    }
+    return { removed, kept };
+  }
+
   async deleteFile(fileId: string): Promise<boolean> {
     const file = await this.getFile(fileId);
     if (!file) {
@@ -323,7 +348,7 @@ export class ChatFileStore {
   private async getRequiredFile(fileId: string): Promise<ChatFileRecord> {
     const file = await this.getFile(fileId);
     if (!file) {
-      throw new Error(`unknown chat file: ${fileId}`);
+      throw new Error(`unknown asset: ${fileId}`);
     }
     return file;
   }

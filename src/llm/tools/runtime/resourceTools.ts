@@ -32,7 +32,7 @@ export const resourceToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "read_download_resource",
-        description: "读取后台下载资源状态。下载完成时会返回已登记的 chat file handle 和可继续处理的工具提示。",
+        description: "读取后台下载资源状态。下载完成时会返回已登记的 asset_handle 和可继续处理的工具提示。",
         parameters: {
           type: "object",
           properties: {
@@ -107,7 +107,7 @@ export const resourceToolHandlers: Record<string, ToolHandler> = {
         summary: [
           `status=${item.status}`,
           item.percent != null ? `progress=${item.percent}%` : `bytes=${item.downloaded_bytes}`,
-          item.file_ref ? `file_ref=${item.file_ref}` : null,
+          item.file_ref ? `asset_ref=${item.file_ref}` : null,
           item.error ? `error=${item.error}` : null
         ].filter((part): part is string => Boolean(part)).join("；"),
         createdAtMs: item.created_at_ms,

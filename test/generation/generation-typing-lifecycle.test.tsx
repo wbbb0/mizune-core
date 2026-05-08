@@ -904,7 +904,7 @@ function createExecutorHarness(options?: {
             id: "call_read_1",
             type: "function",
             function: {
-              name: "local_file_read",
+              name: "filesystem_read",
               arguments: "{\"path\":\"src/app/generation/providerTranscriptProjector.ts\"}"
             }
           }]
@@ -913,7 +913,7 @@ function createExecutorHarness(options?: {
           role: "tool",
           tool_call_id: "call_read_1",
           content: rawToolContent
-        }, "local_file_read");
+        }, "filesystem_read");
         await input.onTextDelta?.("读完了。");
         return {
           text: "读完了。",
@@ -933,7 +933,7 @@ function createExecutorHarness(options?: {
 
     assert.equal(toolResult?.kind, "tool_result");
     assert.equal(toolResult?.content, rawToolContent);
-    assert.equal(toolResult?.observation?.resource?.kind, "local_file");
+    assert.equal(toolResult?.observation?.resource?.kind, "filesystem");
     assert.equal(toolResult?.observation?.resource?.id, "src/app/generation/providerTranscriptProjector.ts");
     assert.match(toolResult?.observation?.replayContent ?? "", /"compacted":true/);
   });

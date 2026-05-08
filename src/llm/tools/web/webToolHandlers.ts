@@ -218,6 +218,7 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         status: result.status,
         resource_id: result.resource_id,
         ...(fileHandle ?? {}),
+        asset_ref: file?.fileRef ?? result.asset_ref ?? result.file_ref ?? null,
         kind: file?.kind ?? result.kind,
         mime_type: file?.mimeType ?? result.mime_type,
         size_bytes: file?.sizeBytes ?? result.size_bytes,
@@ -412,7 +413,7 @@ async function buildScreenshotToolResult(
       content: [
         {
           type: "text",
-          text: `以下截图来自浏览器工具，请结合它继续完成当前页面任务。file_id=${file?.fileId ?? imageId}${file?.fileRef ? ` file_ref=${file.fileRef}` : ""}${caption ? ` caption=${caption}` : ""}`
+          text: `以下截图来自浏览器工具，请结合它继续完成当前页面任务。asset_id=${file?.fileId ?? imageId}${file?.fileRef ? ` asset_ref=${file.fileRef}` : ""}${caption ? ` caption=${caption}` : ""}`
         },
         {
           type: "image_url",

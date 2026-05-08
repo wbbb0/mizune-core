@@ -39,7 +39,7 @@ export function createAdminWorkspaceUploadService(input: {
         if (buffer.byteLength === 0) {
           throw new Error("Uploaded file is empty");
         }
-        const kind = file.kind ?? (mimeType.startsWith("image/") ? "image" : mimeType.startsWith("audio/") ? "audio" : "file");
+        const kind = file.kind ?? inferUploadedFileKind(mimeType);
         const storedFile = await input.chatFileStore.importBuffer({
           buffer,
           mimeType,
@@ -64,4 +64,20 @@ export function createAdminWorkspaceUploadService(input: {
       };
     }
   };
+}
+
+function inferUploadedFileKind(mimeType: string): ChatFileKind {
+  if (mimeType === "image/gif" || mimeType === "image/apng") {
+    return "animated_image";
+  }
+  if (mimeType.startsWith("image/")) {
+    return "image";
+  }
+  if (mimeType.startsWith("video/")) {
+    return "video";
+  }
+  if (mimeType.startsWith("audio/")) {
+    return "audio";
+  }
+  return "file";
 }

@@ -54,7 +54,7 @@ import {
       "reason: 需要看引用并下载页面文件",
       "reply_decision: reply_small",
       "topic_decision: continue_topic",
-      "required_capabilities: web_navigation, local_file_access",
+      "required_capabilities: web_navigation, filesystem_access",
       "context_dependencies: structured_message_context",
       "recent_domain_reuse: none",
       "followup_mode: explicit_reference",
@@ -64,11 +64,11 @@ import {
     assert.equal(parsed.ok, true);
     assert.deepEqual(
       parsed.data?.toolsetIds,
-      ["web_research", "local_file_io"]
+      ["web_research", "filesystem_io"]
     );
     assert.deepEqual(
       parsed.data?.normalizationWarnings,
-      ["capability_requires_local_file_io"]
+      ["capability_requires_filesystem_io"]
     );
   });
 

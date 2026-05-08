@@ -37,7 +37,7 @@ function parseSessionTarget(sessionId: string): { userId?: string; groupId?: str
 }
 
 function enqueueToolSend(
-  context: Parameters<NonNullable<typeof localFileToolHandlers.local_file_send_to_chat>>[2],
+  context: Parameters<NonNullable<typeof localFileToolHandlers.filesystem_send_to_chat>>[2],
   previewText: string,
   send: () => Promise<void>
 ): void {
@@ -50,7 +50,7 @@ function enqueueToolSend(
 }
 
 function buildAssistantHistoryTarget(
-  context: Parameters<NonNullable<typeof localFileToolHandlers.local_file_send_to_chat>>[2]
+  context: Parameters<NonNullable<typeof localFileToolHandlers.filesystem_send_to_chat>>[2]
 ): {
   chatType: "private" | "group";
   userId: string;
@@ -68,8 +68,8 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "local_file_ls",
-        description: "查看本地路径。目录只列出直接子项，返回 path、items、truncated；文件返回元信息。path 默认为工作区根目录（\".\"）。需要跨目录找文件时用 local_file_search，不要用巨大目录列表堆上下文。",
+        name: "filesystem_list",
+        description: "查看本地路径。目录只列出直接子项，返回 path、items、truncated；文件返回元信息。path 默认为工作区根目录（\".\"）。需要跨目录找文件时用 filesystem_search，不要用巨大目录列表堆上下文。",
         parameters: {
           type: "object",
           properties: {
@@ -87,7 +87,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "local_file_read",
+        name: "filesystem_read",
         description: "读取本地文本文件，可按行截取。每次最多返回 400 行；超出时 truncated=true，并返回 next_actions 指向下一段。只读取任务需要的行段。",
         parameters: {
           type: "object",
@@ -108,8 +108,8 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "local_file_write",
-        description: "写入本地文本文件。mode=overwrite 覆盖或新建；append 追加；create 仅在文件不存在时创建。小改动优先用 local_file_patch。",
+        name: "filesystem_write",
+        description: "写入本地文本文件。mode=overwrite 覆盖或新建；append 追加；create 仅在文件不存在时创建。小改动优先用 filesystem_patch。",
         parameters: {
           type: "object",
           properties: {
@@ -129,7 +129,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "local_file_patch",
+        name: "filesystem_patch",
         description: "用 unified diff patch 修改已存在的本地文本文件。适合局部修改；patch 必须包含 @@ hunk 头和足够上下文行，失败时按错误重新读取相关行段后再补 patch。",
         parameters: {
           type: "object",
@@ -149,7 +149,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "local_file_move",
+        name: "filesystem_move",
         description: "移动或重命名本地文件或目录。",
         parameters: {
           type: "object",
@@ -169,7 +169,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "local_file_delete",
+        name: "filesystem_delete",
         description: "删除本地文件或整个目录；目录会递归删除。path 相对本地文件工作区根目录，也可传允许范围内的绝对路径。",
         parameters: {
           type: "object",
@@ -186,8 +186,8 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "local_file_search",
-        description: "搜索本地文件。mode=name（默认）按路径/文件名匹配；mode=content 在文本文件内容中查找，返回 path、line、text。limit 默认 50，超限时 truncated=true。先用它定位文件，再 local_file_read 精读。",
+        name: "filesystem_search",
+        description: "搜索本地文件。mode=name（默认）按路径/文件名匹配；mode=content 在文本文件内容中查找，返回 path、line、text。limit 默认 50，超限时 truncated=true。先用它定位文件，再 filesystem_read 精读。",
         parameters: {
           type: "object",
           properties: {
@@ -208,7 +208,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "local_file_mkdir",
+        name: "filesystem_mkdir",
         description: "创建本地目录（含中间层，等同 mkdir -p）。",
         parameters: {
           type: "object",
@@ -225,7 +225,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "local_file_send_to_chat",
+        name: "filesystem_send_to_chat",
         description: "发送本地文件到当前聊天。图片（jpg/png/gif/webp 等）直接以图片形式发送，此时不能附 text；其他格式以文本摘要形式发送，可用 text 附加说明。",
         parameters: {
           type: "object",
@@ -286,54 +286,11 @@ export const chatFileToolDescriptors: ToolDescriptor[] = [
     },
     isEnabled: isChatFileToolEnabled,
     resultObservation: fileSendPolicy()
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "chat_file_list",
-        description: "列出或查找已登记的 chat file。优先传 file_ref 或 file_id 精确查找；也可用 query 按 file_ref、file_id、source_name、路径或 caption 模糊过滤，再按 kind/origin 缩小范围。默认不列出原始 chat_message 附件，除非 origin=chat_message。",
-        parameters: {
-          type: "object",
-          properties: {
-            file_ref: { type: "string" },
-            file_id: { type: "string" },
-            query: { type: "string" },
-            kind: { type: "string", enum: ["image", "animated_image", "video", "audio", "file"] },
-            origin: { type: "string", enum: ["chat_message", "browser_download", "browser_screenshot", "comfy_generated", "group_file_download", "local_file_import", "user_upload"] },
-            limit: { type: "integer", minimum: 1, maximum: 100 }
-          },
-          additionalProperties: false
-        }
-      }
-    },
-    isEnabled: isChatFileToolEnabled,
-    resultObservation: chatFileListPolicy()
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "chat_file_send_to_chat",
-        description: "发送已登记的 chat file 到当前聊天。优先用 file_ref；不知道准确引用时先 chat_file_list query=... 查找。图片/动图直接发送，不能附 text；其他文件以文本摘要发送，可附 text。",
-        parameters: {
-          type: "object",
-          properties: {
-            file_ref: { type: "string" },
-            file_id: { type: "string" },
-            text: { type: "string" }
-          },
-          additionalProperties: false
-        }
-      }
-    },
-    isEnabled: isChatFileToolEnabled,
-    resultObservation: fileSendPolicy()
   }
 ];
 
 export const localFileToolHandlers: Record<string, ToolHandler> = {
-  async local_file_ls(_toolCall, args, context) {
+  async filesystem_list(_toolCall, args, context) {
     const path = getStringArg(args, "path") || ".";
     const s = await context.localFileService.statItem(path);
     if (s.kind === "directory") {
@@ -344,7 +301,7 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     return JSON.stringify(buildLocalFileHandleResultFromContext(s, context));
   },
 
-  async local_file_read(_toolCall, args, context) {
+  async filesystem_read(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     if (!path) {
       return JSON.stringify({ error: "path is required" });
@@ -358,7 +315,7 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     return JSON.stringify(withNextActions(result as unknown as Record<string, unknown>, localFileReadNextActions(result)));
   },
 
-  async local_file_write(_toolCall, args, context) {
+  async filesystem_write(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     if (!path) {
       return JSON.stringify({ error: "path is required" });
@@ -370,7 +327,7 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     return JSON.stringify(await context.localFileService.writeFile(path, content, mode as "overwrite" | "append" | "create"));
   },
 
-  async local_file_patch(_toolCall, args, context) {
+  async filesystem_patch(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     const patch = typeof args === "object" && args && "patch" in args
       ? String((args as Record<string, unknown>).patch ?? "")
@@ -381,7 +338,7 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     return JSON.stringify(await context.localFileService.patchFile(path, patch));
   },
 
-  async local_file_move(_toolCall, args, context) {
+  async filesystem_move(_toolCall, args, context) {
     const fromPath = getStringArg(args, "from_path");
     const toPath = getStringArg(args, "to_path");
     if (!fromPath || !toPath) {
@@ -390,7 +347,7 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     return JSON.stringify(await context.localFileService.moveItem(fromPath, toPath));
   },
 
-  async local_file_delete(_toolCall, args, context) {
+  async filesystem_delete(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     if (!path) {
       return JSON.stringify({ error: "path is required" });
@@ -398,7 +355,7 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     return JSON.stringify(await context.localFileService.deleteItem(path));
   },
 
-  async local_file_search(_toolCall, args, context) {
+  async filesystem_search(_toolCall, args, context) {
     const query = getStringArg(args, "query");
     if (!query) {
       return JSON.stringify({ error: "query is required" });
@@ -414,7 +371,7 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     return JSON.stringify(result);
   },
 
-  async local_file_mkdir(_toolCall, args, context) {
+  async filesystem_mkdir(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     if (!path) {
       return JSON.stringify({ error: "path is required" });
@@ -422,7 +379,7 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     return JSON.stringify(await context.localFileService.mkdir(path));
   },
 
-  async local_file_send_to_chat(_toolCall, args, context) {
+  async filesystem_send_to_chat(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     if (!path) {
       return JSON.stringify({ error: "path is required" });
@@ -438,16 +395,8 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
 };
 
 export const chatFileToolHandlers: Record<string, ToolHandler> = {
-  async asset_list(toolCall, args, context) {
-    return chatFileToolHandlers.chat_file_list!(toolCall, mapAssetArgsToChatFileArgs(args), context);
-  },
-
-  async asset_send_to_chat(toolCall, args, context) {
-    return chatFileToolHandlers.chat_file_send_to_chat!(toolCall, mapAssetArgsToChatFileArgs(args), context);
-  },
-
-  async chat_file_list(_toolCall, args, context) {
-    const selector = getStringArg(args, "file_ref") || getStringArg(args, "file_id");
+  async asset_list(_toolCall, args, context) {
+    const selector = getStringArg(args, "asset_ref") || getStringArg(args, "asset_id");
     if (selector) {
       const file = await resolveChatFile(context, selector);
       const fileHandle = file ? buildChatFileHandleResultFromContext(file, context) : null;
@@ -485,10 +434,10 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
     });
   },
 
-  async chat_file_send_to_chat(_toolCall, args, context) {
-    const selector = getStringArg(args, "file_ref") || getStringArg(args, "file_id");
+  async asset_send_to_chat(_toolCall, args, context) {
+    const selector = getStringArg(args, "asset_ref") || getStringArg(args, "asset_id");
     if (!selector) {
-      return JSON.stringify({ error: "file_ref or file_id is required" });
+      return JSON.stringify({ error: "asset_ref or asset_id is required" });
     }
     const file = await resolveChatFile(context, selector);
     if (!file) {
@@ -497,17 +446,6 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
     return sendChatFileToChat(context, file, getStringArg(args, "text"));
   }
 };
-
-function mapAssetArgsToChatFileArgs(args: unknown): Record<string, unknown> {
-  const record = typeof args === "object" && args
-    ? args as Record<string, unknown>
-    : {};
-  return {
-    ...record,
-    ...(record.asset_ref !== undefined ? { file_ref: record.asset_ref } : {}),
-    ...(record.asset_id !== undefined ? { file_id: record.asset_id } : {})
-  };
-}
 
 function localFileReadNextActions(result: {
   path: string;
@@ -519,7 +457,7 @@ function localFileReadNextActions(result: {
     return [];
   }
   return [
-    nextAction("local_file_read", "继续读取剩余内容", {
+    nextAction("filesystem_read", "继续读取剩余内容", {
       path: result.path,
       start_line: result.endLine + 1,
       end_line: result.totalLines
@@ -557,7 +495,7 @@ function clampInteger(value: number | undefined, fallback: number, min: number, 
 }
 
 async function sendResolvedPathToChat(
-  context: Parameters<NonNullable<typeof localFileToolHandlers.local_file_send_to_chat>>[2],
+  context: Parameters<NonNullable<typeof localFileToolHandlers.filesystem_send_to_chat>>[2],
   resolvedPath: ReturnType<typeof resolveSendablePath>,
   text: string | null
 ) {
@@ -607,7 +545,7 @@ async function sendResolvedPathToChat(
   }
 
   if (text) {
-    return JSON.stringify({ error: "local_file_send_to_chat 发送图片时不能附带 text" });
+    return JSON.stringify({ error: "filesystem_send_to_chat 发送图片时不能附带 text" });
   }
   return sendImageBytesToChat(context, {
     absolutePath: resolvedPath.absolutePath,
@@ -617,7 +555,7 @@ async function sendResolvedPathToChat(
     fileRef: null,
     chatFilePath: resolvedPath.chatFilePath,
     sourcePath: resolvedPath.sourcePath,
-    toolName: "local_file_send_to_chat",
+    toolName: "filesystem_send_to_chat",
     outputExtras: {
       path_mode: resolvedPath.pathMode
     }
@@ -625,12 +563,12 @@ async function sendResolvedPathToChat(
 }
 
 async function sendChatFileToChat(
-  context: Parameters<NonNullable<typeof localFileToolHandlers.local_file_send_to_chat>>[2],
+  context: Parameters<NonNullable<typeof localFileToolHandlers.filesystem_send_to_chat>>[2],
   file: ChatFileRecord,
   text: string | null
 ) {
   if (file.kind !== "image" && file.kind !== "animated_image") {
-    const summary = text || `chat file 已发送：${file.fileRef}；file_id=${file.fileId}`;
+    const summary = text || `asset 已发送：${file.fileRef}；asset_id=${file.fileId}`;
     const target = context.replyDelivery === "web" ? null : parseSessionTarget(context.lastMessage.sessionId);
     if (context.replyDelivery !== "web" && !target) {
       return JSON.stringify({ error: `unsupported session target: ${context.lastMessage.sessionId}` });
@@ -663,7 +601,7 @@ async function sendChatFileToChat(
     return {
       content: JSON.stringify({
         ok: true,
-        file_ref: file.fileRef,
+        asset_ref: file.fileRef,
         file_id: file.fileId,
         deliveredAs: "text_fallback",
         queued: true
@@ -672,7 +610,7 @@ async function sendChatFileToChat(
   }
 
   if (text) {
-    return JSON.stringify({ error: "chat_file_send_to_chat 发送图片时不能附带 text" });
+    return JSON.stringify({ error: "asset_send_to_chat 发送图片时不能附带 text" });
   }
   return sendImageBytesToChat(context, {
     absolutePath: await context.chatFileStore.resolveAbsolutePath(file.fileId),
@@ -682,13 +620,13 @@ async function sendChatFileToChat(
     fileRef: file.fileRef,
     chatFilePath: file.chatFilePath,
     sourcePath: null,
-    toolName: "chat_file_send_to_chat",
+    toolName: "asset_send_to_chat",
     outputExtras: {}
   });
 }
 
 async function sendImageBytesToChat(
-  context: Parameters<NonNullable<typeof localFileToolHandlers.local_file_send_to_chat>>[2],
+  context: Parameters<NonNullable<typeof localFileToolHandlers.filesystem_send_to_chat>>[2],
   input: {
     absolutePath: string;
     previewText: string;
@@ -697,7 +635,7 @@ async function sendImageBytesToChat(
     fileRef: string | null;
     chatFilePath: string | null;
     sourcePath: string | null;
-    toolName: "local_file_send_to_chat" | "chat_file_send_to_chat";
+    toolName: "filesystem_send_to_chat" | "asset_send_to_chat";
     outputExtras: Record<string, string>;
   }
 ) {
@@ -753,7 +691,7 @@ async function sendImageBytesToChat(
   return {
     content: JSON.stringify({
       ok: true,
-      ...(input.fileRef ? { file_ref: input.fileRef } : {}),
+      ...(input.fileRef ? { asset_ref: input.fileRef } : {}),
       ...(input.fileId ? { file_id: input.fileId } : {}),
       ...(input.sourcePath ? { path: input.sourcePath } : {}),
       ...input.outputExtras,
@@ -764,7 +702,7 @@ async function sendImageBytesToChat(
 }
 
 function recordDeliveredMessage(
-  context: Parameters<NonNullable<typeof localFileToolHandlers.local_file_send_to_chat>>[2],
+  context: Parameters<NonNullable<typeof localFileToolHandlers.filesystem_send_to_chat>>[2],
   text: string,
   messageIdValue: unknown
 ): number | null {
@@ -781,12 +719,12 @@ function recordDeliveredMessage(
 }
 
 async function buildUnknownAssetError(
-  context: Parameters<NonNullable<typeof localFileToolHandlers.local_file_send_to_chat>>[2],
+  context: Parameters<NonNullable<typeof localFileToolHandlers.filesystem_send_to_chat>>[2],
   requestedAssetRef: string
 ): Promise<string> {
   const normalized = String(requestedAssetRef ?? "").trim();
   if (!normalized) {
-    return "unknown chat file";
+    return "unknown asset";
   }
   const files = await context.chatFileStore.listFiles().catch(() => []);
   const matched = files.find((item) => (
@@ -796,13 +734,13 @@ async function buildUnknownAssetError(
     || item.chatFilePath.split("/").at(-1) === normalized
   ));
   if (matched) {
-    return `unknown chat file: ${normalized}; use file_ref=${matched.fileRef} or file_id=${matched.fileId}`;
+    return `unknown asset: ${normalized}; use asset_ref=${matched.fileRef} or asset_id=${matched.fileId}`;
   }
-  return `unknown chat file: ${normalized}`;
+  return `unknown asset: ${normalized}`;
 }
 
 async function resolveChatFile(
-  context: Parameters<NonNullable<typeof localFileToolHandlers.local_file_send_to_chat>>[2],
+  context: Parameters<NonNullable<typeof localFileToolHandlers.filesystem_send_to_chat>>[2],
   fileSelector: string
 ) {
   const normalized = String(fileSelector ?? "").trim();

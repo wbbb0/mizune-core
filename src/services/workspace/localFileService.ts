@@ -47,7 +47,7 @@ export class LocalFileService {
 
   resolvePath(inputPath = "."): { relativePath: string; absolutePath: string } {
     if (!this.isEnabled()) {
-      throw new Error("local files are disabled");
+      throw new Error("filesystem tools are disabled");
     }
     const normalizedInput = String(inputPath ?? "").trim() || ".";
 
@@ -61,7 +61,7 @@ export class LocalFileService {
 
     const normalizedRelative = posix.normalize(normalizedInput.replaceAll("\\", "/"));
     if (normalizedRelative === ".." || normalizedRelative.startsWith("../")) {
-      throw new Error("local file path cannot escape the root directory");
+      throw new Error("filesystem path cannot escape the root directory");
     }
     const cleanedRelative = normalizedRelative === "." ? "" : normalizedRelative;
     const absolutePath = resolve(this.rootDir, cleanedRelative);
@@ -69,7 +69,7 @@ export class LocalFileService {
       ? cleanedRelative
       : null;
     if (relativeFromRoot == null) {
-      throw new Error("local file path cannot escape the root directory");
+      throw new Error("filesystem path cannot escape the root directory");
     }
     return {
       relativePath: cleanedRelative || ".",
@@ -150,7 +150,7 @@ export class LocalFileService {
     const target = this.resolvePath(relativePath);
     const itemStat = await stat(target.absolutePath);
     if (itemStat.isDirectory()) {
-      throw new Error(`local file path is not a file: ${target.relativePath}`);
+      throw new Error(`filesystem path is not a file: ${target.relativePath}`);
     }
     return {
       path: target.relativePath,
@@ -164,12 +164,12 @@ export class LocalFileService {
     await mkdir(dirname(target.absolutePath), { recursive: true });
     const normalizedContent = String(content ?? "");
     if (Buffer.byteLength(normalizedContent, "utf8") > this.config.localFiles.maxPatchFileBytes) {
-      throw new Error("local file content exceeds maxPatchFileBytes");
+      throw new Error("filesystem file content exceeds maxPatchFileBytes");
     }
     if (mode === "create") {
       const existing = await stat(target.absolutePath).then(() => true).catch(() => false);
       if (existing) {
-        throw new Error(`local file already exists: ${target.relativePath}`);
+        throw new Error(`filesystem file already exists: ${target.relativePath}`);
       }
     }
     if (mode === "append") {

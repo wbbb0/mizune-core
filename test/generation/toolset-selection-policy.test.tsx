@@ -137,8 +137,8 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
       "chat_context",
       "web_research",
       "shell_runtime",
-      "local_file_io",
-      "chat_file_io",
+      "filesystem_io",
+      "asset_io",
       "scheduler_admin",
       "time_utils",
       "dice_roller",
@@ -151,29 +151,29 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
 
   test("toolset catalog keeps browser downloads separate from local file paths", async () => {
     const webResearch = TOOLSET_DEFINITIONS.find((item) => item.id === "web_research");
-    const localFileIo = TOOLSET_DEFINITIONS.find((item) => item.id === "local_file_io");
+    const localFileIo = TOOLSET_DEFINITIONS.find((item) => item.id === "filesystem_io");
     assert.ok(webResearch);
     assert.ok(localFileIo);
 
     assert.ok(webResearch.toolNames.includes("download_asset"));
     assert.ok(!localFileIo.toolNames.includes("download_asset"));
-    assert.ok(localFileIo.toolNames.includes("local_file_mkdir"));
+    assert.ok(localFileIo.toolNames.includes("filesystem_mkdir"));
   });
 
   test("media inspection tools stay next to existing media view toolsets", async () => {
     const chatContext = TOOLSET_DEFINITIONS.find((item) => item.id === "chat_context");
-    const chatFileIo = TOOLSET_DEFINITIONS.find((item) => item.id === "chat_file_io");
-    const localFileIo = TOOLSET_DEFINITIONS.find((item) => item.id === "local_file_io");
+    const chatFileIo = TOOLSET_DEFINITIONS.find((item) => item.id === "asset_io");
+    const localFileIo = TOOLSET_DEFINITIONS.find((item) => item.id === "filesystem_io");
     assert.ok(chatContext);
     assert.ok(chatFileIo);
     assert.ok(localFileIo);
 
-    assert.ok(chatContext.toolNames.includes("chat_file_view_media"));
-    assert.ok(chatContext.toolNames.includes("chat_file_inspect_media"));
-    assert.ok(chatFileIo.toolNames.includes("chat_file_view_media"));
-    assert.ok(chatFileIo.toolNames.includes("chat_file_inspect_media"));
-    assert.ok(localFileIo.toolNames.includes("local_file_view_media"));
-    assert.ok(localFileIo.toolNames.includes("local_file_inspect_media"));
+    assert.ok(chatContext.toolNames.includes("asset_media_view"));
+    assert.ok(chatContext.toolNames.includes("asset_media_inspect"));
+    assert.ok(chatFileIo.toolNames.includes("asset_media_view"));
+    assert.ok(chatFileIo.toolNames.includes("asset_media_inspect"));
+    assert.ok(localFileIo.toolNames.includes("filesystem_media_view"));
+    assert.ok(localFileIo.toolNames.includes("filesystem_media_inspect"));
   });
 
   test("media toolsets expose direct view only for vision models while keeping inspection available", async () => {
@@ -186,10 +186,10 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
       modeId: "assistant"
     });
     const nonVisionNames = new Set(nonVisionToolsets.flatMap((toolset) => toolset.toolNames));
-    assert.equal(nonVisionNames.has("chat_file_view_media"), false);
-    assert.equal(nonVisionNames.has("local_file_view_media"), false);
-    assert.equal(nonVisionNames.has("chat_file_inspect_media"), true);
-    assert.equal(nonVisionNames.has("local_file_inspect_media"), true);
+    assert.equal(nonVisionNames.has("asset_media_view"), false);
+    assert.equal(nonVisionNames.has("filesystem_media_view"), false);
+    assert.equal(nonVisionNames.has("asset_media_inspect"), true);
+    assert.equal(nonVisionNames.has("filesystem_media_inspect"), true);
 
     const visionToolsets = listTurnToolsets({
       config: createMediaToolsetConfig({ mainSupportsVision: true }),
@@ -200,10 +200,10 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
       modeId: "assistant"
     });
     const visionNames = new Set(visionToolsets.flatMap((toolset) => toolset.toolNames));
-    assert.equal(visionNames.has("chat_file_view_media"), true);
-    assert.equal(visionNames.has("local_file_view_media"), true);
-    assert.equal(visionNames.has("chat_file_inspect_media"), true);
-    assert.equal(visionNames.has("local_file_inspect_media"), true);
+    assert.equal(visionNames.has("asset_media_view"), true);
+    assert.equal(visionNames.has("filesystem_media_view"), true);
+    assert.equal(visionNames.has("asset_media_inspect"), true);
+    assert.equal(visionNames.has("filesystem_media_inspect"), true);
   });
 
   test("rp_assistant setup prefers persona_setup before mode_setup", async () => {
@@ -286,9 +286,9 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
   test("supplement policy stays auditable and ordered by available toolsets", async () => {
     const decisions = decideToolsetSupplements({
       selectedToolsetIds: ["web_research"],
-      availableToolsetIds: ["chat_context", "web_research", "local_file_io", "shell_runtime"],
+      availableToolsetIds: ["chat_context", "web_research", "filesystem_io", "shell_runtime"],
       signals: {
-        requiredCapabilities: ["local_file_access"],
+        requiredCapabilities: ["filesystem_access"],
         contextDependencies: ["structured_message_context"],
         recentDomainReuse: [],
         followupMode: "elliptical",
@@ -302,6 +302,6 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
     });
 
     assert.deepEqual(decisions, [
-      { toolsetId: "local_file_io", reason: "planner_local_file_access" }
+      { toolsetId: "filesystem_io", reason: "planner_filesystem_access" }
     ]);
   });

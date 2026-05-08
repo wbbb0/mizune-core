@@ -8,7 +8,7 @@ type TestInternalApiDeps = ReturnType<typeof createInternalApiDeps>;
 test("image content endpoints expose one-week cache headers and 304 responses", async () => {
   const cases = [
     {
-      name: "chat file image",
+      name: "asset image",
       url: "/api/chat-files/file_image_1/content"
     },
     {

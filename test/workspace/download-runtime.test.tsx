@@ -42,7 +42,7 @@ function createRuntime(rootDir: string, overrides: Parameters<typeof createTestA
   return { runtime, chatFileStore };
 }
 
-test("download runtime imports a short download as a chat file", async () => {
+test("download runtime imports a short download as a asset", async () => {
   await withTempDir(async (dir) => {
     const { runtime, chatFileStore } = createRuntime(dir);
     await chatFileStore.init();
@@ -64,7 +64,7 @@ test("download runtime imports a short download as a chat file", async () => {
         foregroundWaitMs: 1000
       });
       assert.equal(result.status, "completed");
-      assert.equal(result.file_ref?.endsWith(".txt"), true);
+      assert.equal(result.asset_ref?.endsWith(".txt"), true);
       assert.equal(result.source_name, "file.txt");
       assert.equal((await chatFileStore.listFiles()).length, 1);
     } finally {
@@ -73,7 +73,7 @@ test("download runtime imports a short download as a chat file", async () => {
   });
 });
 
-test("download runtime rejects responses larger than chat file limit", async () => {
+test("download runtime rejects responses larger than asset limit", async () => {
   await withTempDir(async (dir) => {
     const { runtime, chatFileStore } = createRuntime(dir);
     await chatFileStore.init();
@@ -170,7 +170,7 @@ test("download runtime cancellation wins over a concurrent import", async () => 
   });
 });
 
-test("download runtime fails fast when chat files are disabled", async () => {
+test("download runtime fails fast when assets are disabled", async () => {
   await withTempDir(async (dir) => {
     const { runtime } = createRuntime(dir, {
       chatFiles: {
@@ -182,7 +182,7 @@ test("download runtime fails fast when chat files are disabled", async () => {
         sourceUrl: "https://example.com/file.bin",
         origin: "browser_download"
       }),
-      /chat files are disabled/
+      /assets are disabled/
     );
   });
 });

@@ -66,6 +66,7 @@ function hasCurrentStructuredChatContent(messages: GenerationRuntimeBatchMessage
     || (message.forwardIds?.length ?? 0) > 0
     || (message.imageIds?.some((fileId) => !isPendingChatAttachmentId(fileId)) ?? false)
     || (message.emojiIds?.some((fileId) => !isPendingChatAttachmentId(fileId)) ?? false)
+    || (message.messageFiles?.length ?? 0) > 0
     || (message.specialSegments?.length ?? 0) > 0
     || dedupeResolvedChatAttachments(message.attachments ?? []).length > 0
   ));
@@ -75,7 +76,7 @@ function hasRecentStructuredChatContent(
   messages: Array<{ role: "user" | "assistant"; content: string; timestampMs?: number | null }>
 ): boolean {
   return collectReferencedImageIds(messages).length > 0
-    || messages.some((message) => /⟦ref\s+kind="(?:reply|forward|emoji|special)"/u.test(message.content));
+    || messages.some((message) => /⟦ref\s+kind="(?:reply|forward|emoji|file|special)"/u.test(message.content));
 }
 
 function plannerIndicatesPriorChatContext(plannerDecision: TurnPlannerResult | null): boolean {

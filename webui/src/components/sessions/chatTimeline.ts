@@ -146,6 +146,7 @@ function toChatTimelineItems(
 function buildUserMessageContent(item: Extract<SessionTranscriptItem, { kind: "user_message" }>): string {
   return [
     item.text.trim(),
+    ...(item.messageFiles ?? []).map((file) => `文件：${file.name || file.fileId}`),
     ...(item.specialSegments ?? []).map((segment) => segment.summary)
   ].filter(Boolean).join("\n");
 }
@@ -281,6 +282,7 @@ function buildMetaChips(
   const resolvedEmojiIdCount = item.emojiIds.filter(isResolvedChatFileId).length;
   if (resolvedImageIdCount > 0 && renderedImageCount === 0) chips.push(`图片 ${resolvedImageIdCount}`);
   if (resolvedEmojiIdCount > 0) chips.push(`表情 ${resolvedEmojiIdCount}`);
+  if ((item.messageFiles?.length ?? 0) > 0) chips.push(`文件 ${item.messageFiles?.length ?? 0}`);
   if ((item.specialSegments?.length ?? 0) > 0) chips.push(`消息段 ${item.specialSegments?.length ?? 0}`);
   if (item.audioCount > 0) chips.push(`语音 ${item.audioCount}`);
   if (item.forwardIds.length > 0) chips.push(`转发 ${item.forwardIds.length}`);

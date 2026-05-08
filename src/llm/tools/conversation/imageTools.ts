@@ -96,56 +96,7 @@ export const imageToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "chat_file_view_media",
-        description: "加载已登记媒体供支持视觉输入的当前模型直接查看。",
-        parameters: {
-          type: "object",
-          properties: {
-            media_ids: {
-              type: "array",
-              items: { type: "string" },
-              minItems: 1,
-              maxItems: MAX_MEDIA_VIEW_PER_CALL
-            }
-          },
-          required: ["media_ids"],
-          additionalProperties: false
-        }
-      }
-    },
-    isEnabled: isDirectMediaViewEnabled,
-    resultObservation: directMediaViewPolicy()
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "chat_file_inspect_media",
-        description: "调用图片精读模型，按问题读取已登记图片中的具体可见信息。",
-        parameters: {
-          type: "object",
-          properties: {
-            media_ids: {
-              type: "array",
-              items: { type: "string" },
-              minItems: 1,
-              maxItems: MAX_MEDIA_VIEW_PER_CALL
-            },
-            question: { type: "string" }
-          },
-          required: ["media_ids", "question"],
-          additionalProperties: false
-        }
-      }
-    },
-    isEnabled: isMediaInspectionEnabled,
-    resultObservation: mediaInspectionPolicy()
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "local_file_view_media",
+        name: "filesystem_media_view",
         description: "按路径加载本地图片供支持视觉输入的当前模型直接查看。",
         parameters: {
           type: "object",
@@ -164,7 +115,7 @@ export const imageToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
-        name: "local_file_inspect_media",
+        name: "filesystem_media_inspect",
         description: "调用图片精读模型，按问题读取本地图片中的具体可见信息。",
         parameters: {
           type: "object",
@@ -193,31 +144,7 @@ function isMediaInspectionEnabled(config: AppConfig): boolean {
 }
 
 export const imageToolHandlers: Record<string, ToolHandler> = {
-  async asset_media_inspect(toolCall, args, context) {
-    const mediaIds = await resolveAssetMediaIds(args, context);
-    if ("error" in mediaIds) {
-      return JSON.stringify(mediaIds);
-    }
-    const passthroughArgs = typeof args === "object" && args ? args as Record<string, unknown> : {};
-    return imageToolHandlers.chat_file_inspect_media!(toolCall, {
-      ...passthroughArgs,
-      media_ids: mediaIds.mediaIds
-    }, context);
-  },
-
-  async asset_media_view(toolCall, args, context) {
-    const mediaIds = await resolveAssetMediaIds(args, context);
-    if ("error" in mediaIds) {
-      return JSON.stringify(mediaIds);
-    }
-    const passthroughArgs = typeof args === "object" && args ? args as Record<string, unknown> : {};
-    return imageToolHandlers.chat_file_view_media!(toolCall, {
-      ...passthroughArgs,
-      media_ids: mediaIds.mediaIds
-    }, context);
-  },
-
-  async local_file_inspect_media(_toolCall, args, context) {
+  async filesystem_media_inspect(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     const question = getStringArg(args, "question");
     if (!path) {
@@ -250,7 +177,7 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
     }
   },
 
-  async local_file_view_media(_toolCall, args, context) {
+  async filesystem_media_view(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     if (!path) {
       return JSON.stringify({ error: "path is required" });
@@ -289,14 +216,18 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
     }
   },
 
-  async chat_file_inspect_media(_toolCall, args, context) {
-    const mediaIds = getMediaIdsArg(args);
+  async asset_media_inspect(_toolCall, args, context) {
+    const resolvedMediaIds = await resolveAssetMediaIds(args, context);
+    if ("error" in resolvedMediaIds) {
+      return JSON.stringify(resolvedMediaIds);
+    }
+    const mediaIds = resolvedMediaIds.mediaIds;
     const question = getStringArg(args, "question");
     if (mediaIds.length === 0) {
-      return JSON.stringify({ error: "media_ids must contain at least one id" });
+      return JSON.stringify({ error: "asset_refs or asset_ids must contain at least one selector" });
     }
     if (mediaIds.length > MAX_MEDIA_VIEW_PER_CALL) {
-      return JSON.stringify({ error: `media_ids can contain at most ${MAX_MEDIA_VIEW_PER_CALL} ids` });
+      return JSON.stringify({ error: `asset_refs and asset_ids can contain at most ${MAX_MEDIA_VIEW_PER_CALL} selectors` });
     }
     if (!question) {
       return JSON.stringify({ error: "question is required" });
@@ -347,13 +278,17 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
     }
   },
 
-  async chat_file_view_media(_toolCall, args, context) {
-    const mediaIds = getMediaIdsArg(args);
+  async asset_media_view(_toolCall, args, context) {
+    const resolvedMediaIds = await resolveAssetMediaIds(args, context);
+    if ("error" in resolvedMediaIds) {
+      return JSON.stringify(resolvedMediaIds);
+    }
+    const mediaIds = resolvedMediaIds.mediaIds;
     if (mediaIds.length === 0) {
-      return JSON.stringify({ error: "media_ids must contain at least one id" });
+      return JSON.stringify({ error: "asset_refs or asset_ids must contain at least one selector" });
     }
     if (mediaIds.length > MAX_MEDIA_VIEW_PER_CALL) {
-      return JSON.stringify({ error: `media_ids can contain at most ${MAX_MEDIA_VIEW_PER_CALL} ids` });
+      return JSON.stringify({ error: `asset_refs and asset_ids can contain at most ${MAX_MEDIA_VIEW_PER_CALL} selectors` });
     }
 
     try {
@@ -546,42 +481,25 @@ function compactInspectionItem(item: MediaInspectionResultItem): CompactInspecti
   return compact;
 }
 
-function getMediaIdsArg(args: unknown): string[] {
-  if (typeof args !== "object" || !args || !("media_ids" in args)) {
-    return [];
-  }
-  const raw = (args as { media_ids?: unknown }).media_ids;
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  const seen = new Set<string>();
-  const next: string[] = [];
-  for (const value of raw) {
-    const normalized = String(value ?? "").trim();
-    if (!normalized || seen.has(normalized)) {
-      continue;
-    }
-    seen.add(normalized);
-    next.push(normalized);
-  }
-  return next;
-}
-
 async function resolveAssetMediaIds(
   args: unknown,
   context: Parameters<ToolHandler>[2]
 ): Promise<{ mediaIds: string[] } | { error: string }> {
   const selectors = getAssetSelectorsArg(args);
-  if (selectors.length === 0) {
+  const totalSelectorCount = selectors.assetIds.length + selectors.assetRefs.length;
+  if (totalSelectorCount === 0) {
     return { error: "asset_ref or asset_id is required" };
   }
-  if (selectors.length > MAX_MEDIA_VIEW_PER_CALL) {
+  if (totalSelectorCount > MAX_MEDIA_VIEW_PER_CALL) {
     return { error: `asset selectors can contain at most ${MAX_MEDIA_VIEW_PER_CALL} items` };
   }
-  const files = await context.chatFileStore.listFiles();
-  const mediaIds: string[] = [];
+  const mediaIds = selectors.assetIds.filter((item) => item.startsWith("file_"));
   const missing: string[] = [];
-  for (const selector of selectors) {
+  missing.push(...selectors.assetIds.filter((item) => !item.startsWith("file_")));
+  const files = selectors.assetRefs.length > 0
+    ? await context.chatFileStore.listFiles()
+    : [];
+  for (const selector of selectors.assetRefs) {
     const file = files.find((item) => item.fileId === selector || item.fileRef === selector);
     if (!file) {
       missing.push(selector);
@@ -591,7 +509,9 @@ async function resolveAssetMediaIds(
       missing.push(selector);
       continue;
     }
-    mediaIds.push(file.fileId);
+    if (!mediaIds.includes(file.fileId)) {
+      mediaIds.push(file.fileId);
+    }
   }
   if (missing.length > 0) {
     return { error: `unknown or unsupported media asset: ${missing.join(", ")}` };
@@ -599,9 +519,9 @@ async function resolveAssetMediaIds(
   return { mediaIds };
 }
 
-function getAssetSelectorsArg(args: unknown): string[] {
+function getAssetSelectorsArg(args: unknown): { assetRefs: string[]; assetIds: string[] } {
   if (typeof args !== "object" || !args) {
-    return [];
+    return { assetRefs: [], assetIds: [] };
   }
   const record = args as {
     asset_ref?: unknown;
@@ -609,12 +529,15 @@ function getAssetSelectorsArg(args: unknown): string[] {
     asset_refs?: unknown;
     asset_ids?: unknown;
   };
-  const values = [
-    record.asset_ref,
-    record.asset_id,
-    ...(Array.isArray(record.asset_refs) ? record.asset_refs : []),
-    ...(Array.isArray(record.asset_ids) ? record.asset_ids : [])
-  ];
+  const refValues = [record.asset_ref, ...(Array.isArray(record.asset_refs) ? record.asset_refs : [])];
+  const idValues = [record.asset_id, ...(Array.isArray(record.asset_ids) ? record.asset_ids : [])];
+  return {
+    assetRefs: normalizeAssetSelectorValues(refValues),
+    assetIds: normalizeAssetSelectorValues(idValues)
+  };
+}
+
+function normalizeAssetSelectorValues(values: unknown[]): string[] {
   const seen = new Set<string>();
   const selectors: string[] = [];
   for (const value of values) {

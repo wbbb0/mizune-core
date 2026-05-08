@@ -99,19 +99,19 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
           "open_page",
           "inspect_page",
           "interact_with_page",
-          "chat_file_list",
-          "chat_file_view_media",
-          "chat_file_inspect_media",
-          "chat_file_send_to_chat",
+          "asset_list",
+          "asset_media_view",
+          "asset_media_inspect",
+          "asset_send_to_chat",
           "asset_document_overview",
           "asset_document_read",
           "asset_document_search",
           "asset_document_inspect",
-          "local_file_read",
-          "local_file_delete",
-          "local_file_search",
-          "local_file_view_media",
-          "local_file_inspect_media"
+          "filesystem_read",
+          "filesystem_delete",
+          "filesystem_search",
+          "filesystem_media_view",
+          "filesystem_media_inspect"
         ],
         activeToolsets: [
           {
@@ -121,16 +121,16 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
             toolNames: ["open_page", "inspect_page", "interact_with_page"]
           },
           {
-            id: "chat_file_io",
+            id: "asset_io",
             title: "聊天文件",
             description: "查看和发送已登记聊天文件。",
-            toolNames: ["chat_file_list", "chat_file_view_media", "chat_file_inspect_media", "chat_file_send_to_chat"]
+            toolNames: ["asset_list", "asset_media_view", "asset_media_inspect", "asset_send_to_chat"]
           },
           {
-            id: "local_file_io",
+            id: "filesystem_io",
             title: "本地文件",
             description: "读取、检索和删除本地文件。",
-            toolNames: ["local_file_read", "local_file_delete", "local_file_search", "local_file_view_media", "local_file_inspect_media"]
+            toolNames: ["filesystem_read", "filesystem_delete", "filesystem_search", "filesystem_media_view", "filesystem_media_inspect"]
           }
         ],
         persona,
@@ -146,15 +146,15 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       const system = String(prompt[0]?.content ?? "");
       assert.match(system, /⟦section name="tool_hints"⟧/);
       assert.match(system, /网页交互前先 inspect_page/);
-      assert.match(system, /查已登记图片、视频、音频或文件时先 chat_file_list/);
+      assert.match(system, /查已登记图片、视频、音频或文件时先 asset_list/);
       assert.match(system, /处理已登记文档时用 asset_document_overview/);
       assert.match(system, /asset_document_inspect 调文本精读模型/);
       assert.match(system, /需要从图片、截图、表格或界面里精确读取细节时，用图片精读工具按问题查看/);
       assert.doesNotMatch(system, /inspect_media/);
       assert.doesNotMatch(system, /download_asset 返回 workspace file_id/);
-      assert.match(system, /local_file_\* 处理模型可访问的本地文件工作区/);
-      assert.match(system, /相对的是配置里的 local files 工作区根目录，不是 shell 当前目录、不是仓库根目录、也不是 chat file 的 chat_file_path/);
-      assert.match(system, /local_file_delete；它支持删除文件或递归删除整个目录/);
+      assert.match(system, /filesystem_\* 处理模型可访问的本地文件系统/);
+      assert.match(system, /相对的是配置里的 local files 工作区根目录，绝对路径按进程权限访问/);
+      assert.match(system, /filesystem_delete；它支持删除文件或递归删除整个目录/);
       assert.doesNotMatch(system, /需要继续操作浏览器或 shell 时/);
       assert.doesNotMatch(system, /shell_run/);
     } finally {

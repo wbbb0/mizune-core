@@ -40,6 +40,7 @@ export interface DownloadRuntimeSnapshot {
   mime_type: string | null;
   file_id: string | null;
   file_ref: string | null;
+  asset_ref: string | null;
   chat_file_path: string | null;
   kind: ChatFileKind | null;
   size_bytes: number | null;
@@ -116,7 +117,7 @@ export class DownloadRuntime {
   async start(input: DownloadStartInput): Promise<DownloadRuntimeSnapshot> {
     await this.tmpReady;
     if (!this.config.chatFiles.enabled) {
-      throw new Error("chat files are disabled");
+      throw new Error("assets are disabled");
     }
     this.cleanupSettledTasks();
     const sourceUrl = validateHttpUrl(input.sourceUrl);
@@ -320,6 +321,7 @@ export class DownloadRuntime {
       mime_type: state.file?.mimeType ?? state.mimeType,
       file_id: state.file?.fileId ?? null,
       file_ref: state.file?.fileRef ?? null,
+      asset_ref: state.file?.fileRef ?? null,
       chat_file_path: state.file?.chatFilePath ?? null,
       kind: state.file?.kind ?? state.requestedKind,
       size_bytes: state.file?.sizeBytes ?? null,

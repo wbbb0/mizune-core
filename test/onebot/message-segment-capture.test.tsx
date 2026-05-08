@@ -51,6 +51,74 @@ test("event router keeps rich-card and location messages as special segments", (
   assert.match(parsed?.specialSegments?.[1]?.summary ?? "", /集合点/);
 });
 
+test("event router exposes file messages as structured message files", () => {
+  const config = createTestAppConfig();
+  const router = new EventRouter(config, config.configRuntime.instanceName);
+  const parsed = router.toIncomingMessage({
+    post_type: "message",
+    message_type: "private",
+    sub_type: "friend",
+    message_id: 3,
+    user_id: 10001,
+    message: [{
+      type: "file",
+      data: {
+        file: "铅毒之果.pdf",
+        file_id: "onebot-file-1",
+        file_size: 3673240
+      }
+    }],
+    raw_message: "[CQ:file,file=铅毒之果.pdf]",
+    sender: { user_id: 10001, nickname: "Tester" },
+    self_id: 20002,
+    time: Math.floor(Date.now() / 1000)
+  });
+
+  assert.equal(parsed?.text, "");
+  assert.deepEqual(parsed?.specialSegments, []);
+  assert.deepEqual(parsed?.messageFiles, [{
+    fileId: "onebot-file-1",
+    name: "铅毒之果.pdf",
+    busid: null,
+    sizeBytes: 3673240,
+    mimeType: null,
+    downloadTool: "download_message_file"
+  }]);
+});
+
+test("prompt formatting renders file messages as dedicated structured file tags", () => {
+  const content = buildUserBatchContent([{
+    userId: "10001",
+    senderName: "Tester",
+    text: "",
+    images: [],
+    audioSources: [],
+    audioIds: [],
+    emojiSources: [],
+    imageIds: [],
+    emojiIds: [],
+    messageFiles: [{
+      fileId: "onebot-file-1",
+      name: "report.pdf",
+      busid: null,
+      sizeBytes: 1234,
+      mimeType: null,
+      downloadTool: "download_message_file"
+    }],
+    forwardIds: [],
+    replyMessageId: null,
+    mentionUserIds: [],
+    mentionedAll: false,
+    mentionedSelf: false,
+    timestampMs: Date.now()
+  }]);
+
+  const text = content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
+  assert.match(text, /⟦file /);
+  assert.match(text, /file_id="onebot-file-1"/);
+  assert.match(text, /download_tool="download_message_file"/);
+});
+
 test("prompt formatting includes special segment summaries outside raw text", () => {
   const content = buildUserBatchContent([{
     userId: "10001",

@@ -417,10 +417,10 @@ const aboutLinkElement: BrowserElement = {
     assert.equal(parsed.target_id, 2);
     assert.equal(parsed.file_id, "file_2");
     assert.equal(parsed.asset_handle.asset_id, "file_2");
-    assert.equal(parsed.asset_handle.asset_ref, parsed.file_ref);
+    assert.equal(parsed.asset_handle.asset_ref, parsed.asset_ref);
     assert.deepEqual(
       parsed.next_actions.map((item: { tool: string }) => item.tool),
-      ["chat_file_view_media", "chat_file_send_to_chat"]
+      ["asset_media_view", "asset_send_to_chat"]
     );
     assert.ok(parsed.handle_capabilities.some((item: { capability: string }) => item.capability === "inspect_media"));
   });

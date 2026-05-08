@@ -22,6 +22,7 @@ function createUserMessage(id: string, timestampMs: number): InternalTranscriptI
     imageIds: [],
     emojiIds: [],
     attachments: [],
+    messageFiles: [],
     audioCount: 0,
     forwardIds: [],
     replyMessageId: null,

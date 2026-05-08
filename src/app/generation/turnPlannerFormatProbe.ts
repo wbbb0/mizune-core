@@ -122,7 +122,7 @@ const DEFAULT_PROBE_TOOLSET_IDS = [
   "chat_delegation",
   "web_research",
   "shell_runtime",
-  "local_file_io",
+  "filesystem_io",
   "memory_profile",
   "scheduler_admin",
   "social_admin",
@@ -140,7 +140,7 @@ const PROBE_FORMAT_GUIDANCE = [
   "recent_domain_reuse: <逗号分隔 toolset id；无则填 none>",
   "followup_mode: <none|elliptical|explicit_reference>",
   "toolset_ids: <逗号分隔 toolset id；无则填 none>",
-  "required_capabilities 可用标签：external_info_lookup, web_navigation, local_file_access, chat_context_lookup, shell_execution, memory_write, scheduler_management, time_lookup, social_admin, conversation_navigation, chat_delegation, image_generation",
+  "required_capabilities 可用标签：external_info_lookup, web_navigation, filesystem_access, chat_context_lookup, shell_execution, memory_write, scheduler_management, time_lookup, social_admin, conversation_navigation, chat_delegation, image_generation",
   "context_dependencies 可用标签：structured_message_context, prior_web_context, prior_shell_context, prior_file_context, prior_chat_context",
   "recent_domain_reuse 只可填写当前可用工具集中的 id。",
   "保持原 turn_planner 判定原则不变，只改变输出格式。缺失工具集比多给 1 个工具集代价更高。"
@@ -235,7 +235,7 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
       }, now - 20_000)],
       expectations: {
         expectedReplyDecisions: ["reply_small", "reply_large"],
-        requiredToolsetIds: ["web_research", "local_file_io"]
+        requiredToolsetIds: ["web_research", "filesystem_io"]
       }
     },
     {
@@ -283,7 +283,7 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
       }, now - 5_000)],
       expectations: {
         expectedReplyDecisions: ["reply_small", "reply_large"],
-        requiredToolsetIds: ["shell_runtime", "local_file_io"]
+        requiredToolsetIds: ["shell_runtime", "filesystem_io"]
       }
     },
     {
@@ -765,9 +765,9 @@ function normalizeTurnPlannerProbeDecision(input: TurnPlannerProbeDecision): Tur
         : [...normalizationWarnings, "no_reply_forces_continue_topic", ...(input.toolsetIds.length > 0 ? ["no_reply_clears_toolsets"] : [])]
     };
   }
-  if (input.requiredCapabilities.includes("local_file_access") && !toolsetIds.includes("local_file_io")) {
-    toolsetIds.push("local_file_io");
-    normalizationWarnings.push("capability_requires_local_file_io");
+  if (input.requiredCapabilities.includes("filesystem_access") && !toolsetIds.includes("filesystem_io")) {
+    toolsetIds.push("filesystem_io");
+    normalizationWarnings.push("capability_requires_filesystem_io");
   }
   if (input.requiredCapabilities.includes("shell_execution") && !toolsetIds.includes("shell_runtime")) {
     toolsetIds.push("shell_runtime");

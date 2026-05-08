@@ -38,7 +38,7 @@ import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { createEmptyScenarioProfile, getMissingScenarioProfileFields } from "#modes/scenarioHost/profileSchema.ts";
 import { preparePromptMemoryContext } from "#llm/prompts/chat-system.prompt.ts";
 import type { PromptInput } from "#llm/prompt/promptTypes.ts";
-import type { OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
+import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import { buildChatFileHandleResult } from "#llm/tools/core/fileHandle.ts";
 
 type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
@@ -91,6 +91,7 @@ export interface GenerationPromptBatchMessage {
   imageIds: string[];
   emojiIds: string[];
   attachments?: ChatAttachment[];
+  messageFiles?: OneBotMessageFileSummary[];
   specialSegments?: OneBotSpecialSegmentSummary[];
   forwardIds: string[];
   replyMessageId: string | null;
@@ -436,6 +437,7 @@ async function preparePromptBatchMessages(
       ...(options.supportsVision ? { emojiVisuals: emojiVisuals.map((item) => ({ imageId: item.fileId, inputUrl: item.inputUrl, animated: item.animated, durationMs: item.durationMs, sampledFrameCount: item.sampledFrameCount })) } : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
       ...(assetHandles.length > 0 ? { assetHandles } : {}),
+      ...(message.messageFiles && message.messageFiles.length > 0 ? { messageFiles: message.messageFiles } : {}),
       ...(message.specialSegments && message.specialSegments.length > 0 ? { specialSegments: message.specialSegments } : {}),
       forwardIds: message.forwardIds,
       replyMessageId: message.replyMessageId,
@@ -685,7 +687,7 @@ function buildDownloadResourceSummary(item: {
   return [
     `status=${item.status}`,
     item.percent != null ? `progress=${item.percent}%` : `bytes=${item.downloaded_bytes}${item.total_bytes != null ? `/${item.total_bytes}` : ""}`,
-    item.file_ref ? `file_ref=${item.file_ref}` : null,
+    item.file_ref ? `asset_ref=${item.file_ref}` : null,
     item.error ? `error=${item.error}` : null
   ].filter((part): part is string => Boolean(part)).join(" | ");
 }

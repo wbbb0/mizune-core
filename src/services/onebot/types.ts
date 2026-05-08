@@ -10,6 +10,15 @@ export interface OneBotSpecialSegmentSummary {
   summary: string;
 }
 
+export interface OneBotMessageFileSummary {
+  fileId: string;
+  name: string | null;
+  busid: string | number | null;
+  sizeBytes: number | null;
+  mimeType: string | null;
+  downloadTool: "download_message_file";
+}
+
 export interface OneBotSender {
   user_id: number;
   nickname?: string;
@@ -214,6 +223,14 @@ export interface OneBotGroupFileUrlResult {
   [key: string]: unknown;
 }
 
+export interface OneBotFileResult {
+  file: string | null;
+  url: string | null;
+  fileName: string | null;
+  fileSize: number | null;
+  [key: string]: unknown;
+}
+
 export interface ParsedIncomingMessage {
   channelId?: string;
   externalUserId?: string;
@@ -229,6 +246,7 @@ export interface ParsedIncomingMessage {
   imageIds: string[];
   emojiIds: string[];
   attachments?: ChatAttachment[];
+  messageFiles?: OneBotMessageFileSummary[];
   specialSegments?: OneBotSpecialSegmentSummary[];
   forwardIds: string[];
   replyMessageId: string | null;

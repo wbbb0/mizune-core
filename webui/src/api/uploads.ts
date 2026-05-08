@@ -31,9 +31,26 @@ export const uploadsApi = {
         sourceName: f.name,
         mimeType: f.type || "application/octet-stream",
         contentBase64: await fileToBase64(f),
-        kind: f.type.startsWith("image/") ? ("image" as const) : undefined
+        kind: inferUploadKind(f)
       }))
     );
     return api.post("/api/uploads/files", { files: encoded });
   }
 };
+
+function inferUploadKind(file: File): UploadedFile["kind"] | undefined {
+  const type = file.type.trim().toLowerCase();
+  if (type === "image/gif" || /\.(gif|apng)$/i.test(file.name)) {
+    return "animated_image";
+  }
+  if (type.startsWith("image/")) {
+    return "image";
+  }
+  if (type.startsWith("video/")) {
+    return "video";
+  }
+  if (type.startsWith("audio/")) {
+    return "audio";
+  }
+  return undefined;
+}

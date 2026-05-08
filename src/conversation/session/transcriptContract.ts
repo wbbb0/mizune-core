@@ -10,7 +10,7 @@ export const transcriptSystemMarkerKindValues = [
   "debug_once_consumed",
   "debug_dump_sent"
 ] as const;
-export const transcriptOutboundMediaToolNameValues = ["chat_file_send_to_chat", "local_file_send_to_chat"] as const;
+export const transcriptOutboundMediaToolNameValues = ["asset_send_to_chat", "filesystem_send_to_chat"] as const;
 export const transcriptInternalTriggerKindValues = [
   "scheduled_instruction",
   "comfy_task_completed",
@@ -46,6 +46,15 @@ export const transcriptItemSourceRefSchema = z.object({
 export const transcriptSpecialSegmentSchema = z.object({
   type: z.string().min(1),
   summary: z.string()
+});
+
+export const transcriptMessageFileSchema = z.object({
+  fileId: z.string().min(1),
+  name: z.string().nullable(),
+  busid: z.union([z.string(), z.number()]).nullable(),
+  sizeBytes: z.number().int().nonnegative().nullable(),
+  mimeType: z.string().nullable(),
+  downloadTool: z.literal("download_message_file")
 });
 
 export const transcriptTokenStatSourceValues = ["api_direct", "api_attributed", "estimated"] as const;
@@ -102,6 +111,7 @@ export const transcriptUserMessageItemSchema = z.object({
   imageIds: z.array(z.string()).default([]),
   emojiIds: z.array(z.string()).default([]),
   attachments: z.array(chatAttachmentSchema).default([]),
+  messageFiles: z.array(transcriptMessageFileSchema).default([]),
   specialSegments: z.array(transcriptSpecialSegmentSchema).optional(),
   audioCount: z.number().int().nonnegative(),
   forwardIds: z.array(z.string()).default([]),
@@ -154,7 +164,7 @@ export const transcriptToolObservationSchema = z.object({
   retention: z.enum(["full", "summary", "handle", "omitted"]),
   replayContent: z.string(),
   resource: z.object({
-    kind: z.enum(["local_file", "shell_session", "browser_page", "chat_file", "search_result", "external"]),
+    kind: z.enum(["filesystem", "shell_session", "browser_page", "asset", "search_result", "external"]),
     id: z.string().min(1),
     locator: z.string().optional(),
     version: z.string().optional()

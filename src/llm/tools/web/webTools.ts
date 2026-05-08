@@ -184,7 +184,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "capture_screenshot",
-        description: "对当前已打开页面截图；未传 target_id 时截整页，传 target_id 时截元素。返回截图对应的 workspace file_id / file_ref，并把截图附到下一轮视觉上下文里。",
+        description: "对当前已打开页面截图；未传 target_id 时截整页，传 target_id 时截元素。返回截图对应的 asset_id / asset_ref，并把截图附到下一轮视觉上下文里。",
         parameters: {
           type: "object",
           properties: {
@@ -204,7 +204,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "download_asset",
-        description: "把远程链接或当前网页元素对应的图片、视频、音频、文件下载进工作区；支持直接给 url，也支持给 resource_id 加 target_id。短下载直接返回 chat file handle；长下载返回 download resource_id，完成或失败后会内部回调。",
+        description: "把远程链接或当前网页元素对应的图片、视频、音频、文件下载进 asset store；支持直接给 url，也支持给 resource_id 加 target_id。短下载直接返回 asset_handle；长下载返回 download resource_id，完成或失败后会内部回调。",
         parameters: {
           type: "object",
           properties: {

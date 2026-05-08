@@ -1,4 +1,5 @@
 export const COMPOSER_IMAGE_ACCEPT = "image/*,.heic,.heif";
+export const COMPOSER_FILE_ACCEPT: string | undefined = undefined;
 
 const HEIF_EXTENSIONS = /\.(heic|heif)$/i;
 
@@ -7,20 +8,6 @@ export function isComposerImageFile(file: Pick<File, "name" | "type">): boolean 
   return type.startsWith("image/") || HEIF_EXTENSIONS.test(file.name);
 }
 
-export function filterComposerImageFiles(files: File[]): {
-  accepted: File[];
-  rejected: File[];
-} {
-  const accepted: File[] = [];
-  const rejected: File[] = [];
-
-  for (const file of files) {
-    if (isComposerImageFile(file)) {
-      accepted.push(file);
-    } else {
-      rejected.push(file);
-    }
-  }
-
-  return { accepted, rejected };
+export function filterComposerFiles(files: File[]): File[] {
+  return files;
 }

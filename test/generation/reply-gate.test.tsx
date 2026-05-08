@@ -94,7 +94,7 @@ function createConfig() {
         "reason: 需要先看引用并打开网页",
         "reply_decision: reply_small",
         "topic_decision: continue_topic",
-        "required_capabilities: web_navigation, local_file_access",
+        "required_capabilities: web_navigation, filesystem_access",
         "context_dependencies: structured_message_context, prior_web_context",
         "recent_domain_reuse: web_research",
         "followup_mode: explicit_reference",
@@ -124,7 +124,7 @@ function createConfig() {
     });
 
     assert.equal(result.reason, "需要先看引用并打开网页");
-    assert.deepEqual(result.requiredCapabilities, ["web_navigation", "local_file_access"]);
+    assert.deepEqual(result.requiredCapabilities, ["web_navigation", "filesystem_access"]);
     assert.deepEqual(result.contextDependencies, ["structured_message_context", "prior_web_context"]);
     assert.deepEqual(result.recentDomainReuse, ["web_research"]);
     assert.equal(result.followupMode, "explicit_reference");

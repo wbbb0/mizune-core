@@ -290,8 +290,8 @@ test("download_current_group_file resolves url and registers download handle", a
             percent: 100,
             mime_type: "application/pdf",
             file_id: "file_saved_1",
-            file_ref: "grp_saved.pdf",
-            chat_file_path: "chat-files/media/grp_saved.pdf",
+            asset_ref: "grp_saved.pdf",
+            asset_path: "chat-files/media/grp_saved.pdf",
             kind: "file",
             size_bytes: 1024,
             error: null,
@@ -326,7 +326,7 @@ test("download_current_group_file resolves url and registers download handle", a
   assert.equal(parsed.status, "completed");
   assert.equal(parsed.group_file_id, "file-1");
   assert.equal(parsed.file_id, "file_saved_1");
-  assert.equal(parsed.file_ref, "grp_saved.pdf");
+  assert.equal(parsed.asset_ref, "grp_saved.pdf");
   assert.equal(parsed.asset_handle.asset_id, "file_saved_1");
   assert.equal(parsed.asset_handle.asset_ref, "grp_saved.pdf");
   assert.equal(parsed.handle_capabilities.some((item: { capability: string }) => item.capability === "send_to_chat"), true);

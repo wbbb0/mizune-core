@@ -8,10 +8,10 @@ import { messageToolHandlers } from "../../src/llm/tools/conversation/messageToo
 import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
 import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-test-support.tsx";
 
-  test("chat_file_view_media injects multimodal follow-up content for images", async () => {
-    const result = await imageToolHandlers.chat_file_view_media!(
-      createFunctionToolCall("chat_file_view_media", "tool_1"),
-      { media_ids: ["file_test_1"] },
+  test("asset_media_view injects multimodal follow-up content for images", async () => {
+    const result = await imageToolHandlers.asset_media_view!(
+      createFunctionToolCall("asset_media_view", "tool_1"),
+      { asset_ids: ["file_test_1"] },
       {
         config: createForwardFeatureConfig(),
         audioStore: {
@@ -78,7 +78,7 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     assert.equal(payload.asset_handles[0].source, "asset");
     assert.equal(payload.asset_handles[0].asset_id, "file_test_1");
     assert.equal(payload.asset_handles[0].asset_ref, "chat_test0001.gif");
-    assert.equal(payload.handles[0].source, "chat_file");
+    assert.equal(payload.handles[0].source, "asset");
     assert.equal(payload.handles[0].selector.file_ref, "chat_test0001.gif");
     assert.deepEqual(
       payload.handles[0].capabilities.map((item: { capability: string }) => item.capability),
@@ -169,10 +169,10 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     );
   });
 
-  test("chat_file_view_media rejects requests above the hard limit", async () => {
-    const result = await imageToolHandlers.chat_file_view_media!(
-      createFunctionToolCall("chat_file_view_media", "tool_2"),
-      { media_ids: ["1", "2", "3", "4", "5", "6"] },
+  test("asset_media_view rejects requests above the hard limit", async () => {
+    const result = await imageToolHandlers.asset_media_view!(
+      createFunctionToolCall("asset_media_view", "tool_2"),
+      { asset_ids: ["1", "2", "3", "4", "5", "6"] },
       {
         audioStore: { async getTranscriptionMap() { return new Map(); }, async getMany() { return []; } } as any,
         chatFileStore: { async getMany() { return []; } } as any,
@@ -188,13 +188,13 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     assert.match(result, /at most 5/);
   });
 
-  test("chat_file_view_media next actions honor visible tool names", async () => {
-    const result = await imageToolHandlers.chat_file_view_media!(
-      createFunctionToolCall("chat_file_view_media", "tool_visible_actions_1"),
-      { media_ids: ["file_test_1"] },
+  test("asset_media_view next actions honor visible tool names", async () => {
+    const result = await imageToolHandlers.asset_media_view!(
+      createFunctionToolCall("asset_media_view", "tool_visible_actions_1"),
+      { asset_ids: ["file_test_1"] },
       {
         debugSnapshot: {
-          visibleToolNames: ["chat_file_view_media"]
+          visibleToolNames: ["asset_media_view"]
         },
         audioStore: {
           async getMany() {
@@ -244,10 +244,10 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     );
   });
 
-  test("chat_file_inspect_media asks inspector for registered chat images", async () => {
-    const result = await imageToolHandlers.chat_file_inspect_media!(
-      createFunctionToolCall("chat_file_inspect_media", "tool_inspect_1"),
-      { media_ids: ["file_test_1"], question: "读取表格金额列" },
+  test("asset_media_inspect asks inspector for registered chat images", async () => {
+    const result = await imageToolHandlers.asset_media_inspect!(
+      createFunctionToolCall("asset_media_inspect", "tool_inspect_1"),
+      { asset_ids: ["file_test_1"], question: "读取表格金额列" },
       {
         chatFileStore: {
           async getMany() {
@@ -326,9 +326,9 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     assert.equal(parsed.results[0].modelRef, undefined);
   });
 
-  test("local_file_inspect_media asks inspector for a resolved local image path", async () => {
-    const result = await imageToolHandlers.local_file_inspect_media!(
-      createFunctionToolCall("local_file_inspect_media", "tool_inspect_2"),
+  test("filesystem_media_inspect asks inspector for a resolved local image path", async () => {
+    const result = await imageToolHandlers.filesystem_media_inspect!(
+      createFunctionToolCall("filesystem_media_inspect", "tool_inspect_2"),
       { path: "screens/table.png", question: "读取 A1 单元格" },
       {
         localFileService: {
@@ -389,17 +389,17 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     assert.equal(parsed.results[0].answer, "A1 是 日期。");
   });
 
-  test("local_file_view_media returns a local file handle for follow-up tools", async () => {
+  test("filesystem_media_view returns a local file handle for follow-up tools", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-local-media-"));
     const filePath = join(tempDir, "screen.png");
     await writeFile(filePath, Buffer.from("fake image bytes"));
     try {
-      const result = await imageToolHandlers.local_file_view_media!(
-        createFunctionToolCall("local_file_view_media", "tool_local_view_1"),
+      const result = await imageToolHandlers.filesystem_media_view!(
+        createFunctionToolCall("filesystem_media_view", "tool_local_view_1"),
         { path: filePath },
         {
           debugSnapshot: {
-            visibleToolNames: ["local_file_view_media", "local_file_inspect_media", "local_file_send_to_chat"]
+            visibleToolNames: ["filesystem_media_view", "filesystem_media_inspect", "filesystem_send_to_chat"]
           },
           localFileService: {} as any,
           mediaVisionService: {
@@ -423,7 +423,7 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
         throw new Error("expected structured multimodal result");
       }
       const payload = JSON.parse(result.content);
-      assert.equal(payload.handle.source, "local_file");
+      assert.equal(payload.handle.source, "filesystem");
       assert.equal(payload.handle.selector.path, filePath);
       assert.equal("asset_handle" in payload, false);
       assert.deepEqual(
@@ -432,24 +432,24 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
       );
       assert.deepEqual(
         payload.next_actions.map((item: { tool: string }) => item.tool),
-        ["local_file_send_to_chat"]
+        ["filesystem_send_to_chat"]
       );
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
   });
 
-  test("local_file_view_media omits send next action when send tool is hidden", async () => {
+  test("filesystem_media_view omits send next action when send tool is hidden", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-local-media-hidden-"));
     const filePath = join(tempDir, "screen.png");
     await writeFile(filePath, Buffer.from("fake image bytes"));
     try {
-      const result = await imageToolHandlers.local_file_view_media!(
-        createFunctionToolCall("local_file_view_media", "tool_local_view_hidden"),
+      const result = await imageToolHandlers.filesystem_media_view!(
+        createFunctionToolCall("filesystem_media_view", "tool_local_view_hidden"),
         { path: filePath },
         {
           debugSnapshot: {
-            visibleToolNames: ["local_file_view_media"]
+            visibleToolNames: ["filesystem_media_view"]
           },
           localFileService: {} as any,
           mediaVisionService: {
@@ -481,10 +481,10 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     }
   });
 
-  test("chat_file_inspect_media rejects unsupported media ids", async () => {
-    const result = await imageToolHandlers.chat_file_inspect_media!(
-      createFunctionToolCall("chat_file_inspect_media", "tool_inspect_3"),
-      { media_ids: ["legacy-image"], question: "看图" },
+  test("asset_media_inspect rejects unsupported media ids", async () => {
+    const result = await imageToolHandlers.asset_media_inspect!(
+      createFunctionToolCall("asset_media_inspect", "tool_inspect_3"),
+      { asset_ids: ["legacy-image"], question: "看图" },
       {
         chatFileStore: { async getMany() { return []; } } as any,
         mediaVisionService: { async prepareFileForModel() { throw new Error("should not be called"); } } as any,
@@ -493,7 +493,7 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     );
 
     const parsed = parseJsonToolResult<any>(result);
-    assert.match(parsed.error, /Unsupported legacy media ids/);
+    assert.match(parsed.error, /unknown or unsupported media asset/);
   });
 
   test("view_message normalizes reply, mentions, forward ids, and images", async () => {
@@ -551,4 +551,99 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     assert.equal(parsed.segments[4].kind, "image");
     assert.equal(parsed.segments[4].fileId, "file_test_1");
     assert.equal(parsed.segments[4].mediaKind, "image");
+  });
+
+  test("view_message exposes file ids without downloading message files", async () => {
+    const result = await messageToolHandlers.view_message!(
+      createFunctionToolCall("view_message", "tool_file_view"),
+      { message_id: "556" },
+      {
+        oneBotClient: {
+          async getMessage() {
+            return {
+              message_id: 556,
+              message_type: "private",
+              user_id: 10001,
+              sender: { nickname: "Tester" },
+              time: 1710000000,
+              message: [{
+                type: "file",
+                data: {
+                  file: "report.pdf",
+                  file_id: "onebot-file-1",
+                  file_size: 1234
+                }
+              }]
+            };
+          }
+        } as any,
+        chatFileStore: {
+          async importRemoteSource() {
+            throw new Error("view_message should not download message files");
+          }
+        } as any
+      } as any
+    );
+
+    const parsed = parseJsonToolResult<any>(result);
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.attachments, []);
+    assert.equal(parsed.files[0].fileId, "onebot-file-1");
+    assert.equal(parsed.files[0].filename, "report.pdf");
+    assert.match(parsed.segments[0].summary, /download_message_file/);
+  });
+
+  test("download_message_file resolves OneBot file_id and returns an asset handle", async () => {
+    const result = await messageToolHandlers.download_message_file!(
+      createFunctionToolCall("download_message_file", "tool_file_download"),
+      { file_id: "onebot-file-1", source_name: "report.pdf" },
+      {
+        lastMessage: {
+          sessionId: "qqbot:p:10001",
+          userId: "u1",
+          senderName: "Tester"
+        },
+        oneBotClient: {
+          async getFile(fileId: string) {
+            assert.equal(fileId, "onebot-file-1");
+            return {
+              file: "/tmp/report.pdf",
+              url: "/tmp/report.pdf",
+              fileName: "report.pdf",
+              fileSize: 1234
+            };
+          }
+        } as any,
+        chatFileStore: {
+          async importRemoteSource(input: any) {
+            assert.equal(input.source, "/tmp/report.pdf");
+            assert.equal(input.sourceName, "report.pdf");
+            assert.equal(input.sourceContext.onebot_file_id, "onebot-file-1");
+            return {
+              fileId: "file_saved_1",
+              fileRef: "chat_saved.pdf",
+              kind: "file",
+              origin: "chat_message",
+              chatFilePath: "chat-files/media/chat_saved.pdf",
+              sourceName: "report.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: 1234,
+              createdAtMs: 1,
+              sourceContext: input.sourceContext,
+              caption: null,
+              captionStatus: "missing"
+            };
+          }
+        } as any,
+        debugSnapshot: {
+          visibleToolNames: ["asset_document_overview", "asset_document_read", "asset_send_to_chat"]
+        }
+      } as any
+    );
+
+    const parsed = parseJsonToolResult<any>(result);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.asset_id, "file_saved_1");
+    assert.equal(parsed.asset_handle.asset_ref, "chat_saved.pdf");
+    assert.equal(parsed.onebot_file_id, "onebot-file-1");
   });

@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
 import ExcelJS from "exceljs";
+import type { ContextEmbeddingService } from "#context/contextEmbeddingService.ts";
 import type { ChatFileRecord } from "#services/workspace/types.ts";
+import type { DocumentSummary, DocumentSummaryService } from "#services/workspace/documentSummaryService.ts";
 import {
   getTextInspectorModelRefs,
   type PreparedTextInspectionChunk,
@@ -43,12 +46,18 @@ const DEFAULT_INSPECT_CHUNKS = 6;
 const MAX_INSPECT_CHUNKS = 10;
 const INSPECT_CHUNK_CHARS = 1200;
 const INSPECT_CHUNK_LINES = 40;
-const DOCUMENT_TEXT_CACHE_VERSION = "document_text_v1";
-const DOCUMENT_CHUNK_VERSION = "document_chunk_v1";
+const DOCUMENT_CACHE_SCHEMA_VERSION = "document_asset_cache_v2";
+const DOCUMENT_PARSER_VERSION = "document_parser_v1";
+const DOCUMENT_CHUNKER_VERSION = "document_chunk_v1";
+const DOCUMENT_SUMMARY_PROMPT_VERSION = "document_summary_prompt_v1";
+const DOCUMENT_EMBEDDING_INDEX_VERSION = "document_embedding_index_v1";
 const DOCUMENT_TEXT_MANIFEST_FILE = "manifest.json";
 const DOCUMENT_TEXT_FILE = "text.txt";
 const DOCUMENT_CHUNKS_FILE = "chunks.jsonl";
+const DOCUMENT_SUMMARY_FILE = "summary.json";
+const DOCUMENT_EMBEDDINGS_FILE = "embeddings.json";
 const MAX_DOCUMENT_TEXT_CACHE_ENTRIES = 32;
+const MAX_EMBEDDING_CHUNKS_PER_SEARCH = 80;
 const OMITTED_PREFIX = "[chunk prefix omitted]\n";
 const OMITTED_SUFFIX = "\n[chunk suffix omitted]";
 
@@ -117,13 +126,14 @@ const UNSUPPORTED_BINARY_EXTENSIONS = new Set([".xls"]);
 type LoadedDocumentText = {
   parser: string;
   content: string;
+  fingerprint?: DocumentTextFingerprint;
   cache_hit?: boolean;
   chunk_metadata?: DocumentChunkMetadata[];
   chunk_cache_hit?: boolean;
 };
 
 type DocumentTextError = {
-  status: "unsupported" | "too_large" | "parse_failed";
+  status: "unsupported" | "too_large" | "parse_failed" | "empty_text";
   error: string;
   reason: string;
 };
@@ -131,7 +141,11 @@ type DocumentTextError = {
 type DocumentTextLoadResult = LoadedDocumentText | DocumentTextError;
 
 type DocumentTextFingerprint = {
-  version: string;
+  cacheSchemaVersion: string;
+  parserVersion: string;
+  chunkerVersion: string;
+  summaryPromptVersion: string;
+  embeddingProfileId: string;
   fileId: string;
   fileRef: string;
   chatFilePath: string;
@@ -142,6 +156,7 @@ type DocumentTextFingerprint = {
   absolutePath: string;
   fileStatSize: number;
   fileStatMtimeMs: number;
+  sourceHash: string;
 };
 
 type PersistedDocumentTextManifest = DocumentTextFingerprint & {
@@ -161,8 +176,38 @@ type DocumentChunkMetadata = {
   endOffset: number;
 };
 
+type PersistedDocumentSummary = {
+  cacheSchemaVersion: string;
+  summaryPromptVersion: string;
+  fileId: string;
+  fileRef: string;
+  sourceHash: string;
+  contentHash: string;
+  modelRef: string;
+  summary: DocumentSummary;
+  updatedAtMs: number;
+};
+
+type PersistedDocumentEmbeddingIndex = {
+  version: string;
+  cacheProfileId: string;
+  embeddingProfileId: string;
+  sourceHash: string;
+  parserVersion: string;
+  chunkerVersion: string;
+  chunks: Array<{
+    chunkId: string;
+    startLine: number;
+    endLine: number;
+    textHash: string;
+    vector: number[];
+  }>;
+  updatedAtMs: number;
+};
+
 const documentTextCache = new Map<string, LoadedDocumentText>();
 const pendingDocumentTextLoads = new Map<string, Promise<DocumentTextLoadResult>>();
+const assetDocumentLocks = new Map<string, Promise<void>>();
 
 type DocumentChunk = PreparedTextInspectionChunk & {
   indexText: string;
@@ -223,13 +268,14 @@ export const assetDocumentToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "asset_document_search",
-        description: "在已登记 asset 文档内搜索关键词，返回少量行号和片段。limit 默认 6，最多 12；需要原文时再用 asset_document_read 读取对应行段。",
+        description: "在已登记 asset 文档内检索信息，默认在 embedding 可用时使用 hybrid search，不可用时自动退回关键词搜索。limit 默认 6，最多 12；需要原文时再用 asset_document_read 读取对应行段。",
         parameters: {
           type: "object",
           properties: {
             asset_ref: { type: "string" },
             asset_id: { type: "string" },
             query: { type: "string" },
+            mode: { type: "string", enum: ["hybrid", "keyword"] },
             limit: { type: "integer", minimum: 1, maximum: MAX_SEARCH_LIMIT }
           },
           required: ["query"],
@@ -280,6 +326,17 @@ export const assetDocumentToolHandlers: Record<string, ToolHandler> = {
     }
     const lines = splitLines(text.content);
     const chunks = getDocumentChunks(text);
+    const headings = extractHeadings(lines).slice(0, MAX_HEADING_COUNT);
+    const summary = text.fingerprint
+      ? await loadOrCreateDocumentSummary({
+          file: resolved.file,
+          text,
+          chunks,
+          headings,
+          context,
+          assetRef: resolved.fileHandle.asset_handle.asset_ref
+        })
+      : null;
     return JSON.stringify({
       ok: true,
       status: "ready",
@@ -288,12 +345,16 @@ export const assetDocumentToolHandlers: Record<string, ToolHandler> = {
         parser: text.parser,
         cache_hit: text.cache_hit === true,
         chunk_cache_hit: text.chunk_cache_hit === true,
+        summary_cache_hit: summary?.cache_hit === true,
         character_count: text.content.length,
         line_count: lines.length,
         chunk_count: chunks.length,
         preview: compactChars(text.content, OVERVIEW_PREVIEW_CHARS),
         excerpt: compactChars(text.content, OVERVIEW_EXCERPT_CHARS),
-        headings: extractHeadings(lines).slice(0, MAX_HEADING_COUNT)
+        headings,
+        ...(summary?.summary ? { summary: summary.summary } : {}),
+        ...(summary?.status ? { summary_status: summary.status } : {}),
+        ...(summary?.error ? { summary_error: summary.error } : {})
       }
     });
   },
@@ -348,41 +409,27 @@ export const assetDocumentToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ ok: false, status: text.status, error: text.error, reason: text.reason, asset_handle: resolved.fileHandle.asset_handle });
     }
     const limit = clampInteger(getNumberArg(args, "limit") ?? DEFAULT_SEARCH_LIMIT, 1, MAX_SEARCH_LIMIT);
-    const lowerQuery = query.toLowerCase();
-    const allMatches = getDocumentChunks(text)
-      .flatMap((chunk) => splitLines(chunk.indexText)
-        .map((line, index) => ({
-          chunk,
-          line,
-          line_number: chunk.startLine + index,
-          char_start: line.toLowerCase().indexOf(lowerQuery)
-        }))
-        .filter((item) => item.char_start >= 0)
-        .map((item) => ({
-          ...item,
-          char_end: item.char_start + query.length
-        })));
-    const matchedLines = allMatches.slice(0, limit + 1);
-    const matches = matchedLines
-      .slice(0, limit)
-      .map((item) => ({
-        chunk_id: item.chunk.chunkId,
-        start_line: item.chunk.startLine,
-        end_line: item.chunk.endLine,
-        line_number: item.line_number,
-        char_start: item.char_start,
-        char_end: item.char_end,
-        snippet: buildSearchSnippet(item.line, lowerQuery)
-      }));
+    const requestedMode = getStringArg(args, "mode") === "keyword" ? "keyword" : "hybrid";
+    const search = await searchDocumentChunks({
+      query,
+      limit,
+      requestedMode,
+      text,
+      context
+    });
     return JSON.stringify({
       ok: true,
       status: "ready",
       asset_handle: resolved.fileHandle.asset_handle,
       query,
-      matches,
-      returned: matches.length,
-      total_matches: allMatches.length,
-      truncated: matchedLines.length > limit
+      search_mode: search.mode,
+      ...(search.embedding_profile_id ? { embedding_profile_id: search.embedding_profile_id } : {}),
+      ...(search.embedding_cache_hit !== undefined ? { embedding_cache_hit: search.embedding_cache_hit } : {}),
+      matches: search.matches,
+      returned: search.matches.length,
+      total_matches: search.total_matches,
+      truncated: search.truncated,
+      ...(search.fallback_reason ? { fallback_reason: search.fallback_reason } : {})
     });
   },
 
@@ -473,7 +520,7 @@ function assetDocumentResource(ctx: ToolResultObservationContext): ToolObservati
   const startLine = ctx.parsedContent?.start_line ?? ctx.parsedContent?.startLine;
   const endLine = ctx.parsedContent?.end_line ?? ctx.parsedContent?.endLine;
   return {
-    kind: "chat_file",
+    kind: "asset",
     id,
     ...(startLine && endLine ? { locator: `L${startLine}-L${endLine}` } : {}),
     ...(assetId ? { version: `asset:${assetId}` } : {})
@@ -510,6 +557,8 @@ function compactAssetDocumentResult(ctx: Parameters<ToolResultCompactor>[0]) {
           characterCount: document.character_count ?? document.characterCount ?? null,
           lineCount: document.line_count ?? document.lineCount ?? null,
           chunkCount: document.chunk_count ?? document.chunkCount ?? null,
+          summary: compactDocumentSummaryForReplay(document.summary),
+          summaryStatus: document.summary_status ?? document.summaryStatus ?? null,
           excerpt: document.excerpt ? compactText(String(document.excerpt), OVERVIEW_EXCERPT_CHARS) : null,
           preview: document.preview ? compactText(String(document.preview), OVERVIEW_PREVIEW_CHARS) : null,
           headings: arrayValue(document.headings)?.slice(0, MAX_HEADING_COUNT) ?? []
@@ -528,6 +577,8 @@ function compactAssetDocumentResult(ctx: Parameters<ToolResultCompactor>[0]) {
     search: matches.length > 0 || ctx.toolName === "asset_document_search"
       ? {
           query: ctx.parsedContent?.query ?? ctx.args.query ?? null,
+          mode: ctx.parsedContent?.search_mode ?? ctx.parsedContent?.searchMode ?? null,
+          embeddingProfileId: ctx.parsedContent?.embedding_profile_id ?? ctx.parsedContent?.embeddingProfileId ?? null,
           matches,
           returned: ctx.parsedContent?.returned ?? matches.length,
           totalMatches: ctx.parsedContent?.total_matches ?? null,
@@ -592,7 +643,7 @@ async function loadDocumentText(
   const absolutePath = absolutePathResult.absolutePath;
   const statResult = await statAssetFile(absolutePath);
   if ("error" in statResult) return statResult;
-  const fingerprint = buildDocumentTextFingerprint(file, absolutePath, statResult);
+  const fingerprint = await buildDocumentTextFingerprint(file, absolutePath, statResult, context);
   const cacheKey = buildDocumentTextCacheKey(fingerprint);
   const cached = getCachedDocumentText(cacheKey);
   if (cached) {
@@ -623,23 +674,33 @@ async function loadDocumentTextWithPersistentCache(
   fingerprint: DocumentTextFingerprint,
   context: Parameters<ToolHandler>[2]
 ): Promise<DocumentTextLoadResult> {
-  const persisted = await readPersistedDocumentText(file.fileId, fingerprint, context);
-  if (persisted) {
-    return markDocumentTextCacheHit(persisted);
-  }
-  const result = await loadDocumentTextUncached(file, absolutePath, {
-    size: fingerprint.fileStatSize,
-    mtimeMs: fingerprint.fileStatMtimeMs
+  return withAssetDocumentLock(file.fileId, async () => {
+    const persisted = await readPersistedDocumentText(file.fileId, fingerprint, context);
+    if (persisted) {
+      return markDocumentTextCacheHit(persisted);
+    }
+    const result = await loadDocumentTextUncached(file, absolutePath, {
+      size: fingerprint.fileStatSize,
+      mtimeMs: fingerprint.fileStatMtimeMs
+    });
+    if (!("error" in result)) {
+      if (!result.content.trim()) {
+        return {
+          status: "empty_text",
+          error: "empty_document_text",
+          reason: "文档解析成功，但没有提取到可读文本；如果是 PDF，可能是扫描件、加密文件或图片型页面。"
+        };
+      }
+      const withChunkMetadata: LoadedDocumentText = {
+        ...result,
+        fingerprint,
+        chunk_metadata: buildDocumentChunkMetadata(result.content)
+      };
+      await writePersistedDocumentText(file.fileId, fingerprint, withChunkMetadata, context);
+      return withChunkMetadata;
+    }
+    return result;
   });
-  if (!("error" in result)) {
-    const withChunkMetadata: LoadedDocumentText = {
-      ...result,
-      chunk_metadata: buildDocumentChunkMetadata(result.content)
-    };
-    await writePersistedDocumentText(file.fileId, fingerprint, withChunkMetadata, context);
-    return withChunkMetadata;
-  }
-  return result;
 }
 
 async function loadDocumentTextUncached(
@@ -722,13 +783,18 @@ async function statAssetFile(
   }
 }
 
-function buildDocumentTextFingerprint(
+async function buildDocumentTextFingerprint(
   file: ChatFileRecord,
   absolutePath: string,
-  fileStat: { size: number; mtimeMs: number }
-): DocumentTextFingerprint {
+  fileStat: { size: number; mtimeMs: number },
+  context: Parameters<ToolHandler>[2]
+): Promise<DocumentTextFingerprint> {
   return {
-    version: DOCUMENT_TEXT_CACHE_VERSION,
+    cacheSchemaVersion: DOCUMENT_CACHE_SCHEMA_VERSION,
+    parserVersion: DOCUMENT_PARSER_VERSION,
+    chunkerVersion: DOCUMENT_CHUNKER_VERSION,
+    summaryPromptVersion: DOCUMENT_SUMMARY_PROMPT_VERSION,
+    embeddingProfileId: getDocumentEmbeddingProfileId(context),
     fileId: file.fileId,
     fileRef: file.fileRef,
     chatFilePath: file.chatFilePath,
@@ -738,13 +804,18 @@ function buildDocumentTextFingerprint(
     sourceName: file.sourceName,
     absolutePath,
     fileStatSize: fileStat.size,
-    fileStatMtimeMs: fileStat.mtimeMs
+    fileStatMtimeMs: fileStat.mtimeMs,
+    sourceHash: await hashFile(absolutePath)
   };
 }
 
 function buildDocumentTextCacheKey(fingerprint: DocumentTextFingerprint): string {
   return [
-    fingerprint.version,
+    fingerprint.cacheSchemaVersion,
+    fingerprint.parserVersion,
+    fingerprint.chunkerVersion,
+    fingerprint.summaryPromptVersion,
+    fingerprint.embeddingProfileId,
     fingerprint.fileId,
     fingerprint.fileRef,
     fingerprint.chatFilePath,
@@ -754,7 +825,8 @@ function buildDocumentTextCacheKey(fingerprint: DocumentTextFingerprint): string
     fingerprint.sourceName,
     fingerprint.absolutePath,
     fingerprint.fileStatSize,
-    fingerprint.fileStatMtimeMs
+    fingerprint.fileStatMtimeMs,
+    fingerprint.sourceHash
   ].join("|");
 }
 
@@ -765,6 +837,7 @@ function rememberDocumentText(cacheKey: string, value: LoadedDocumentText): void
   documentTextCache.set(cacheKey, {
     parser: value.parser,
     content: value.content,
+    ...(value.fingerprint ? { fingerprint: value.fingerprint } : {}),
     ...(value.chunk_metadata ? { chunk_metadata: value.chunk_metadata } : {}),
     ...(value.chunk_cache_hit ? { chunk_cache_hit: value.chunk_cache_hit } : {})
   });
@@ -779,6 +852,7 @@ function markDocumentTextCacheHit(value: LoadedDocumentText): LoadedDocumentText
   return {
     parser: value.parser,
     content: value.content,
+    ...(value.fingerprint ? { fingerprint: value.fingerprint } : {}),
     cache_hit: true,
     ...(value.chunk_metadata ? { chunk_metadata: value.chunk_metadata } : {}),
     ...(value.chunk_cache_hit ? { chunk_cache_hit: value.chunk_cache_hit } : {})
@@ -839,7 +913,7 @@ async function writePersistedDocumentText(
       parser: value.parser,
       contentLength: value.content.length,
       contentHash: hashDocumentText(value.content),
-      chunkVersion: DOCUMENT_CHUNK_VERSION,
+      chunkVersion: DOCUMENT_CHUNKER_VERSION,
       chunkCount: chunkMetadata.length,
       updatedAtMs: Date.now()
     };
@@ -868,7 +942,7 @@ async function readPersistedDocumentChunks(
   content: string,
   manifest: PersistedDocumentTextManifest
 ): Promise<Pick<LoadedDocumentText, "chunk_metadata" | "chunk_cache_hit"> | null> {
-  if (manifest.chunkVersion !== DOCUMENT_CHUNK_VERSION) return null;
+  if (manifest.chunkVersion !== DOCUMENT_CHUNKER_VERSION) return null;
   try {
     const raw = await readFile(join(cacheDir, DOCUMENT_CHUNKS_FILE), "utf8");
     const metadata = parseDocumentChunkMetadataLines(raw);
@@ -895,6 +969,48 @@ function resolveDocumentTextCacheDir(
   }
 }
 
+async function withAssetDocumentLock<T>(fileId: string, operation: () => Promise<T>): Promise<T> {
+  const previous = assetDocumentLocks.get(fileId);
+  let release: (() => void) | undefined;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  assetDocumentLocks.set(fileId, current);
+  try {
+    await previous?.catch(() => undefined);
+    return await operation();
+  } finally {
+    release?.();
+    if (assetDocumentLocks.get(fileId) === current) {
+      assetDocumentLocks.delete(fileId);
+    }
+  }
+}
+
+function getDocumentSummaryService(context: Parameters<ToolHandler>[2]): DocumentSummaryService | null {
+  const candidate = (context as typeof context & { documentSummaryService?: DocumentSummaryService }).documentSummaryService;
+  return candidate ?? null;
+}
+
+function getContextEmbeddingService(context: Parameters<ToolHandler>[2]): Pick<ContextEmbeddingService, "isConfigured" | "getStatus" | "embedTexts"> | null {
+  const candidate = (context as typeof context & { contextEmbeddingService?: Pick<ContextEmbeddingService, "isConfigured" | "getStatus" | "embedTexts"> }).contextEmbeddingService;
+  return candidate ?? null;
+}
+
+function getDocumentEmbeddingProfileId(context: Parameters<ToolHandler>[2]): string {
+  const embeddingService = getContextEmbeddingService(context);
+  if (!embeddingService?.isConfigured()) {
+    return "embedding_disabled";
+  }
+  const status = embeddingService.getStatus();
+  return [
+    "document_embedding",
+    ...status.modelRefs,
+    status.textPreprocessVersion,
+    status.chunkerVersion
+  ].map((item) => encodeURIComponent(item)).join(":");
+}
+
 function parsePersistedDocumentTextManifest(raw: string): PersistedDocumentTextManifest | null {
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -917,11 +1033,29 @@ function hashDocumentText(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+async function hashFile(path: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash("sha256");
+    const stream = createReadStream(path);
+    stream.on("data", (chunk) => {
+      hash.update(chunk);
+    });
+    stream.on("error", reject);
+    stream.on("end", () => {
+      resolve(hash.digest("hex"));
+    });
+  });
+}
+
 function isSameDocumentTextFingerprint(
   manifest: DocumentTextFingerprint,
   fingerprint: DocumentTextFingerprint
 ): boolean {
-  return manifest.version === fingerprint.version
+  return manifest.cacheSchemaVersion === fingerprint.cacheSchemaVersion
+    && manifest.parserVersion === fingerprint.parserVersion
+    && manifest.chunkerVersion === fingerprint.chunkerVersion
+    && manifest.summaryPromptVersion === fingerprint.summaryPromptVersion
+    && manifest.embeddingProfileId === fingerprint.embeddingProfileId
     && manifest.fileId === fingerprint.fileId
     && manifest.fileRef === fingerprint.fileRef
     && manifest.chatFilePath === fingerprint.chatFilePath
@@ -931,11 +1065,16 @@ function isSameDocumentTextFingerprint(
     && manifest.sourceName === fingerprint.sourceName
     && manifest.absolutePath === fingerprint.absolutePath
     && manifest.fileStatSize === fingerprint.fileStatSize
-    && manifest.fileStatMtimeMs === fingerprint.fileStatMtimeMs;
+    && manifest.fileStatMtimeMs === fingerprint.fileStatMtimeMs
+    && manifest.sourceHash === fingerprint.sourceHash;
 }
 
 function isDocumentTextFingerprint(value: Partial<PersistedDocumentTextManifest>): value is DocumentTextFingerprint {
-  return typeof value.version === "string"
+  return typeof value.cacheSchemaVersion === "string"
+    && typeof value.parserVersion === "string"
+    && typeof value.chunkerVersion === "string"
+    && typeof value.summaryPromptVersion === "string"
+    && typeof value.embeddingProfileId === "string"
     && typeof value.fileId === "string"
     && typeof value.fileRef === "string"
     && typeof value.chatFilePath === "string"
@@ -945,7 +1084,8 @@ function isDocumentTextFingerprint(value: Partial<PersistedDocumentTextManifest>
     && typeof value.sourceName === "string"
     && typeof value.absolutePath === "string"
     && typeof value.fileStatSize === "number"
-    && typeof value.fileStatMtimeMs === "number";
+    && typeof value.fileStatMtimeMs === "number"
+    && typeof value.sourceHash === "string";
 }
 
 async function resolveAssetAbsolutePath(
@@ -956,6 +1096,310 @@ async function resolveAssetAbsolutePath(
     return { absolutePath: await context.chatFileStore.resolveAbsolutePath(file.fileId) };
   } catch (error: unknown) {
     return parseFailed("asset_file_unavailable", error);
+  }
+}
+
+async function loadOrCreateDocumentSummary(input: {
+  file: ChatFileRecord;
+  text: LoadedDocumentText;
+  chunks: DocumentChunk[];
+  headings: Array<{ line_number: number; text: string }>;
+  context: Parameters<ToolHandler>[2];
+  assetRef: string;
+}): Promise<{ status: "ready" | "not_configured" | "failed"; summary?: DocumentSummary; cache_hit?: boolean; error?: string } | null> {
+  const fingerprint = input.text.fingerprint;
+  if (!fingerprint) return null;
+  const service = getDocumentSummaryService(input.context);
+  if (!service?.isEnabled()) {
+    return { status: "not_configured" };
+  }
+  return withAssetDocumentLock(input.file.fileId, async () => {
+    const persisted = await readPersistedDocumentSummary(input.file.fileId, fingerprint, input.context);
+    if (persisted) {
+      return { status: "ready", summary: persisted.summary, cache_hit: true };
+    }
+    try {
+      const summaryResult = await service.summarizePreparedDocument({
+        assetRef: input.assetRef,
+        parser: input.text.parser,
+        characterCount: input.text.content.length,
+        lineCount: splitLines(input.text.content).length,
+        headings: input.headings,
+        chunks: input.chunks.slice(0, DEFAULT_INSPECT_CHUNKS).map((chunk) => ({
+          chunkId: chunk.chunkId,
+          startLine: chunk.startLine,
+          endLine: chunk.endLine,
+          text: chunk.text
+        })),
+        excerpt: compactChars(input.text.content, OVERVIEW_EXCERPT_CHARS)
+      });
+      if (!summaryResult.ok) {
+        return { status: "failed", error: summaryResult.error ?? "document_summary_failed" };
+      }
+      await writePersistedDocumentSummary(input.file.fileId, fingerprint, summaryResult.summary, input.context);
+      return { status: "ready", summary: summaryResult.summary, cache_hit: false };
+    } catch (error: unknown) {
+      return { status: "failed", error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+}
+
+async function readPersistedDocumentSummary(
+  fileId: string,
+  fingerprint: DocumentTextFingerprint,
+  context: Parameters<ToolHandler>[2]
+): Promise<PersistedDocumentSummary | null> {
+  const cacheDir = resolveDocumentTextCacheDir(context, fileId);
+  if (!cacheDir) return null;
+  try {
+    const raw = await readFile(join(cacheDir, DOCUMENT_SUMMARY_FILE), "utf8");
+    const parsed = JSON.parse(raw) as Partial<PersistedDocumentSummary>;
+    return parsed.cacheSchemaVersion === fingerprint.cacheSchemaVersion
+      && parsed.summaryPromptVersion === fingerprint.summaryPromptVersion
+      && parsed.fileId === fingerprint.fileId
+      && parsed.fileRef === fingerprint.fileRef
+      && parsed.sourceHash === fingerprint.sourceHash
+      && parsed.contentHash === hashDocumentText((await readFile(join(cacheDir, DOCUMENT_TEXT_FILE), "utf8")))
+      && objectValue(parsed.summary)
+      && typeof parsed.modelRef === "string"
+      ? parsed as PersistedDocumentSummary
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writePersistedDocumentSummary(
+  fileId: string,
+  fingerprint: DocumentTextFingerprint,
+  summary: DocumentSummary,
+  context: Parameters<ToolHandler>[2]
+): Promise<void> {
+  const cacheDir = resolveDocumentTextCacheDir(context, fileId);
+  if (!cacheDir) return;
+  const tempPath = join(cacheDir, `${DOCUMENT_SUMMARY_FILE}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`);
+  try {
+    await mkdir(cacheDir, { recursive: true });
+    const persisted: PersistedDocumentSummary = {
+      cacheSchemaVersion: fingerprint.cacheSchemaVersion,
+      summaryPromptVersion: fingerprint.summaryPromptVersion,
+      fileId: fingerprint.fileId,
+      fileRef: fingerprint.fileRef,
+      sourceHash: fingerprint.sourceHash,
+      contentHash: hashDocumentText(await readFile(join(cacheDir, DOCUMENT_TEXT_FILE), "utf8")),
+      modelRef: summary.modelRef,
+      summary,
+      updatedAtMs: Date.now()
+    };
+    await writeFile(tempPath, `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
+    await rename(tempPath, join(cacheDir, DOCUMENT_SUMMARY_FILE));
+  } catch {
+    await rmTempFile(tempPath);
+  }
+}
+
+async function searchDocumentChunks(input: {
+  query: string;
+  limit: number;
+  requestedMode: "hybrid" | "keyword";
+  text: LoadedDocumentText;
+  context: Parameters<ToolHandler>[2];
+}): Promise<{
+  mode: "keyword" | "hybrid" | "keyword_fallback";
+  matches: Array<Record<string, unknown>>;
+  total_matches: number;
+  truncated: boolean;
+  embedding_profile_id?: string;
+  embedding_cache_hit?: boolean;
+  fallback_reason?: string;
+}> {
+  const keyword = searchDocumentChunksByKeyword(input.text, input.query, input.limit);
+  if (input.requestedMode === "keyword") {
+    return { mode: "keyword", ...keyword };
+  }
+  const embeddingService = getContextEmbeddingService(input.context);
+  if (!embeddingService?.isConfigured() || !input.text.fingerprint) {
+    return {
+      mode: "keyword_fallback",
+      ...keyword,
+      fallback_reason: "embedding_not_configured"
+    };
+  }
+  try {
+    const chunks = getDocumentChunks(input.text).slice(0, MAX_EMBEDDING_CHUNKS_PER_SEARCH);
+    if (chunks.length === 0) {
+      return { mode: "hybrid", matches: [], total_matches: 0, truncated: false, embedding_profile_id: input.text.fingerprint.embeddingProfileId };
+    }
+    const embeddingIndex = await loadOrCreateDocumentEmbeddingIndex({
+      chunks,
+      fingerprint: input.text.fingerprint,
+      context: input.context,
+      embeddingService
+    });
+    const queryEmbedding = await embeddingService.embedTexts([input.query]);
+    const queryVector = queryEmbedding.vectors[0] ?? [];
+    const terms = extractSearchTerms(input.query);
+    const maxKeywordScore = Math.max(1, ...chunks.map((chunk) => scoreInspectionChunk(chunk.indexText, terms)));
+    const ranked = chunks
+      .map((chunk, index) => {
+        const indexed = embeddingIndex.index.chunks[index];
+        const vectorScore = indexed ? cosineSimilarity(queryVector, indexed.vector) : 0;
+        const keywordScore = scoreInspectionChunk(chunk.indexText, terms) / maxKeywordScore;
+        return {
+          chunk,
+          score: vectorScore * 0.75 + keywordScore * 0.25,
+          vectorScore,
+          keywordScore
+        };
+      })
+      .filter((item) => Number.isFinite(item.score) && item.score > 0)
+      .sort((left, right) => right.score - left.score || left.chunk.startLine - right.chunk.startLine);
+    const selected = ranked.slice(0, input.limit);
+    return {
+      mode: "hybrid",
+      embedding_profile_id: embeddingIndex.index.embeddingProfileId,
+      embedding_cache_hit: embeddingIndex.cacheHit,
+      total_matches: ranked.length,
+      truncated: ranked.length > input.limit,
+      matches: selected.map((item) => ({
+        chunk_id: item.chunk.chunkId,
+        start_line: item.chunk.startLine,
+        end_line: item.chunk.endLine,
+        line_number: item.chunk.startLine,
+        score: Number(item.score.toFixed(4)),
+        vector_score: Number(item.vectorScore.toFixed(4)),
+        keyword_score: Number(item.keywordScore.toFixed(4)),
+        snippet: buildHybridSearchSnippet(item.chunk.indexText, terms)
+      }))
+    };
+  } catch (error: unknown) {
+    return {
+      mode: "keyword_fallback",
+      ...keyword,
+      fallback_reason: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+function searchDocumentChunksByKeyword(
+  text: LoadedDocumentText,
+  query: string,
+  limit: number
+): {
+  matches: Array<Record<string, unknown>>;
+  total_matches: number;
+  truncated: boolean;
+} {
+  const lowerQuery = query.toLowerCase();
+  const allMatches = getDocumentChunks(text)
+    .flatMap((chunk) => splitLines(chunk.indexText)
+      .map((line, index) => ({
+        chunk,
+        line,
+        line_number: chunk.startLine + index,
+        char_start: line.toLowerCase().indexOf(lowerQuery)
+      }))
+      .filter((item) => item.char_start >= 0)
+      .map((item) => ({
+        ...item,
+        char_end: item.char_start + query.length
+      })));
+  const matchedLines = allMatches.slice(0, limit + 1);
+  return {
+    matches: matchedLines
+      .slice(0, limit)
+      .map((item) => ({
+        chunk_id: item.chunk.chunkId,
+        start_line: item.chunk.startLine,
+        end_line: item.chunk.endLine,
+        line_number: item.line_number,
+        char_start: item.char_start,
+        char_end: item.char_end,
+        snippet: buildSearchSnippet(item.line, lowerQuery)
+      })),
+    total_matches: allMatches.length,
+    truncated: matchedLines.length > limit
+  };
+}
+
+async function loadOrCreateDocumentEmbeddingIndex(input: {
+  chunks: DocumentChunk[];
+  fingerprint: DocumentTextFingerprint;
+  context: Parameters<ToolHandler>[2];
+  embeddingService: Pick<ContextEmbeddingService, "embedTexts">;
+}): Promise<{ index: PersistedDocumentEmbeddingIndex; cacheHit: boolean }> {
+  return withAssetDocumentLock(input.fingerprint.fileId, async () => {
+    const persisted = await readPersistedDocumentEmbeddingIndex(input.fingerprint.fileId, input.fingerprint, input.chunks, input.context);
+    if (persisted) return { index: persisted, cacheHit: true };
+    const batch = await input.embeddingService.embedTexts(input.chunks.map((chunk) => chunk.indexText));
+    const index: PersistedDocumentEmbeddingIndex = {
+      version: DOCUMENT_EMBEDDING_INDEX_VERSION,
+      cacheProfileId: input.fingerprint.embeddingProfileId,
+      embeddingProfileId: batch.profile.profileId,
+      sourceHash: input.fingerprint.sourceHash,
+      parserVersion: input.fingerprint.parserVersion,
+      chunkerVersion: input.fingerprint.chunkerVersion,
+      chunks: input.chunks.map((chunk, index) => ({
+        chunkId: chunk.chunkId,
+        startLine: chunk.startLine,
+        endLine: chunk.endLine,
+        textHash: hashDocumentText(chunk.indexText),
+        vector: batch.vectors[index] ?? []
+      })),
+      updatedAtMs: Date.now()
+    };
+    await writePersistedDocumentEmbeddingIndex(input.fingerprint.fileId, index, input.context);
+    return { index, cacheHit: false };
+  });
+}
+
+async function readPersistedDocumentEmbeddingIndex(
+  fileId: string,
+  fingerprint: DocumentTextFingerprint,
+  chunks: DocumentChunk[],
+  context: Parameters<ToolHandler>[2]
+): Promise<PersistedDocumentEmbeddingIndex | null> {
+  const cacheDir = resolveDocumentTextCacheDir(context, fileId);
+  if (!cacheDir) return null;
+  try {
+    const parsed = JSON.parse(await readFile(join(cacheDir, DOCUMENT_EMBEDDINGS_FILE), "utf8")) as PersistedDocumentEmbeddingIndex;
+    if (parsed.version !== DOCUMENT_EMBEDDING_INDEX_VERSION
+      || parsed.cacheProfileId !== fingerprint.embeddingProfileId
+      || parsed.sourceHash !== fingerprint.sourceHash
+      || parsed.parserVersion !== fingerprint.parserVersion
+      || parsed.chunkerVersion !== fingerprint.chunkerVersion
+      || parsed.chunks.length !== chunks.length) {
+      return null;
+    }
+    return parsed.chunks.every((item, index) => {
+      const chunk = chunks[index];
+      return chunk
+        && item.chunkId === chunk.chunkId
+        && item.startLine === chunk.startLine
+        && item.endLine === chunk.endLine
+        && item.textHash === hashDocumentText(chunk.indexText)
+        && Array.isArray(item.vector)
+        && item.vector.length > 0;
+    }) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writePersistedDocumentEmbeddingIndex(
+  fileId: string,
+  index: PersistedDocumentEmbeddingIndex,
+  context: Parameters<ToolHandler>[2]
+): Promise<void> {
+  const cacheDir = resolveDocumentTextCacheDir(context, fileId);
+  if (!cacheDir) return;
+  const tempPath = join(cacheDir, `${DOCUMENT_EMBEDDINGS_FILE}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`);
+  try {
+    await mkdir(cacheDir, { recursive: true });
+    await writeFile(tempPath, `${JSON.stringify(index)}\n`, "utf8");
+    await rename(tempPath, join(cacheDir, DOCUMENT_EMBEDDINGS_FILE));
+  } catch {
+    await rmTempFile(tempPath);
   }
 }
 
@@ -1111,6 +1555,36 @@ function buildSearchSnippet(line: string, lowerQuery: string): string {
   if (index < 0) return compactChars(line.trim(), SEARCH_SNIPPET_CHARS);
   const start = Math.max(0, index - Math.floor(SEARCH_SNIPPET_CHARS / 2));
   return compactChars(line.slice(start).trim(), SEARCH_SNIPPET_CHARS);
+}
+
+function buildHybridSearchSnippet(text: string, terms: string[]): string {
+  const lower = text.toLowerCase();
+  const matchedIndex = terms
+    .map((term) => lower.indexOf(term.toLowerCase()))
+    .filter((index) => index >= 0)
+    .sort((left, right) => left - right)[0];
+  if (matchedIndex == null) {
+    return compactChars(text.trim(), SEARCH_SNIPPET_CHARS);
+  }
+  const start = Math.max(0, matchedIndex - Math.floor(SEARCH_SNIPPET_CHARS / 2));
+  return compactChars(text.slice(start).trim(), SEARCH_SNIPPET_CHARS);
+}
+
+function cosineSimilarity(left: number[], right: number[]): number {
+  const length = Math.min(left.length, right.length);
+  if (length === 0) return 0;
+  let dot = 0;
+  let leftNorm = 0;
+  let rightNorm = 0;
+  for (let index = 0; index < length; index += 1) {
+    const leftValue = left[index] ?? 0;
+    const rightValue = right[index] ?? 0;
+    dot += leftValue * rightValue;
+    leftNorm += leftValue * leftValue;
+    rightNorm += rightValue * rightValue;
+  }
+  if (leftNorm <= 0 || rightNorm <= 0) return 0;
+  return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
 }
 
 function getDocumentChunks(text: LoadedDocumentText): DocumentChunk[] {
@@ -1408,6 +1882,18 @@ function compactCapabilityForReplay(value: unknown): Record<string, unknown> {
     available: record.available ?? null,
     args: record.args ?? null,
     requires: record.requires ?? null
+  };
+}
+
+function compactDocumentSummaryForReplay(value: unknown): Record<string, unknown> | null {
+  const summary = objectValue(value);
+  if (!summary) return null;
+  return {
+    brief: compactText(String(summary.brief ?? ""), 500),
+    outline: (arrayValue(summary.outline) ?? []).map((item) => compactText(String(item ?? ""), 180)).slice(0, 8),
+    key_facts: (arrayValue(summary.key_facts ?? summary.keyFacts) ?? []).map((item) => compactText(String(item ?? ""), 220)).slice(0, 8),
+    limitations: (arrayValue(summary.limitations) ?? []).map((item) => compactText(String(item ?? ""), 180)).slice(0, 6),
+    modelRef: summary.modelRef ?? summary.model_ref ?? null
   };
 }
 

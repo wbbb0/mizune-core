@@ -33,6 +33,7 @@ import { ChatMessageFileGcService } from "#services/workspace/chatMessageFileGcS
 import { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import { MediaInspectionService } from "#services/workspace/mediaInspectionService.ts";
 import { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
+import { DocumentSummaryService } from "#services/workspace/documentSummaryService.ts";
 import { TextInspectionService } from "#services/workspace/textInspectionService.ts";
 import { LocalFileService } from "#services/workspace/localFileService.ts";
 import { ContentSafetyService } from "#contentSafety/contentSafetyService.ts";
@@ -91,6 +92,7 @@ export function createBootstrapServices(
   const mediaCaptionService = new MediaCaptionService(config, llmClient, chatFileStore, mediaVisionService, logger, contentSafetyService);
   const mediaInspectionService = new MediaInspectionService(config, llmClient, logger);
   const textInspectionService = new TextInspectionService(config, llmClient, logger);
+  const documentSummaryService = new DocumentSummaryService(config, llmClient, logger);
   const sessionCaptioner = new SessionCaptioner(config, llmClient, logger, mediaCaptionService);
   const comfyClient = new ComfyClient(config, logger);
   const comfyTaskStore = new ComfyTaskStore(dataDir, logger);
@@ -176,6 +178,7 @@ export function createBootstrapServices(
     mediaCaptionService,
     mediaInspectionService,
     textInspectionService,
+    documentSummaryService,
     comfyClient,
     comfyTaskStore,
     comfyTemplateCatalog,

@@ -163,7 +163,7 @@ test("session persistence loads legacy title_generation_event transcript items",
   });
 });
 
-test("session persistence round-trips chat_file attachments in pending messages and transcript", async () => {
+test("session persistence round-trips asset attachments in pending messages and transcript", async () => {
   await withDataDir("llm-bot-session-persist-chat-file-attachments-test", async (dataDir: string) => {
     const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
     await persistence.init();
@@ -192,10 +192,11 @@ test("session persistence round-trips chat_file attachments in pending messages 
         attachments: [{
           fileId: "file_chat_1",
           kind: "file",
-          source: "chat_file",
+          source: "asset",
           sourceName: "memo.txt",
           mimeType: "text/plain"
         }],
+        messageFiles: [],
         forwardIds: [],
         replyMessageId: null,
         mentionUserIds: [],
@@ -219,10 +220,11 @@ test("session persistence round-trips chat_file attachments in pending messages 
         attachments: [{
           fileId: "file_chat_1",
           kind: "file",
-          source: "chat_file",
+          source: "asset",
           sourceName: "memo.txt",
           mimeType: "text/plain"
         }],
+        messageFiles: [],
         audioCount: 0,
         forwardIds: [],
         replyMessageId: null,
@@ -315,6 +317,7 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
             imageIds: [],
             emojiIds: [],
             attachments: [],
+            messageFiles: [],
             forwardIds: [],
             replyMessageId: null,
             mentionUserIds: [],
@@ -336,6 +339,7 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
             imageIds: [],
             emojiIds: [],
             attachments: [],
+            messageFiles: [],
             audioCount: 0,
             forwardIds: [],
             replyMessageId: null,
@@ -365,7 +369,7 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
             chatFilePath: "workspace/media/asset_img_1.png",
             sourcePath: null,
             messageId: null,
-            toolName: "chat_file_send_to_chat",
+            toolName: "asset_send_to_chat",
             captionText: null,
             timestampMs: 3
           },

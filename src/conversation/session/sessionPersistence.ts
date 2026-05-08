@@ -97,6 +97,14 @@ const persistedSessionSchema = z.object({
     imageIds: z.array(z.string()),
     emojiIds: z.array(z.string()),
     attachments: z.array(chatAttachmentSchema).default([]),
+    messageFiles: z.array(z.object({
+      fileId: z.string().min(1),
+      name: z.string().nullable(),
+      busid: z.union([z.string(), z.number()]).nullable(),
+      sizeBytes: z.number().int().nonnegative().nullable(),
+      mimeType: z.string().nullable(),
+      downloadTool: z.literal("download_message_file")
+    })).default([]),
     specialSegments: z.array(z.object({
       type: z.string().min(1),
       summary: z.string()

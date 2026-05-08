@@ -8,10 +8,10 @@ import {
 
 export type ToolObservationRetention = "full" | "summary" | "handle" | "omitted";
 export type ToolObservationResourceKind =
-  | "local_file"
+  | "filesystem"
   | "shell_session"
   | "browser_page"
-  | "chat_file"
+  | "asset"
   | "search_result"
   | "external";
 
@@ -60,9 +60,9 @@ interface ToolObservationPolicyError {
 }
 
 const SUMMARY_TOOL_NAMES = new Set([
-  "local_file_read",
-  "local_file_search",
-  "local_file_ls",
+  "filesystem_read",
+  "filesystem_search",
+  "filesystem_list",
   "terminal_run",
   "terminal_start",
   "terminal_read",
@@ -298,7 +298,7 @@ function extractResource(
   parsed: Record<string, unknown> | null,
   args: Record<string, unknown> = {}
 ): ToolObservation["resource"] | undefined {
-  if (toolName.startsWith("local_file_")) {
+  if (toolName.startsWith("filesystem_")) {
     const path = stringValue(parsed?.path ?? parsed?.fromPath ?? parsed?.from_path ?? parsed?.toPath ?? parsed?.to_path
       ?? args.path ?? args.from_path ?? args.to_path);
     if (!path) {
@@ -307,7 +307,7 @@ function extractResource(
     const startLine = numberValue(parsed?.startLine ?? parsed?.start_line);
     const endLine = numberValue(parsed?.endLine ?? parsed?.end_line);
     return {
-      kind: "local_file",
+      kind: "filesystem",
       id: path,
       ...(startLine && endLine ? { locator: `L${startLine}-L${endLine}` } : {}),
       ...(parsed?.updatedAtMs ? { version: `mtime:${String(parsed.updatedAtMs)}` } : {})
@@ -349,7 +349,7 @@ function extractResource(
 
   const fileId = stringValue(parsed?.file_id ?? parsed?.fileId);
   if (fileId) {
-    return { kind: "chat_file", id: fileId };
+    return { kind: "asset", id: fileId };
   }
   return undefined;
 }
@@ -363,11 +363,11 @@ function buildRefetchHint(
   if (!resource) {
     return null;
   }
-  if (toolName === "local_file_read" && resource.kind === "local_file") {
+  if (toolName === "filesystem_read" && resource.kind === "filesystem") {
     const startLine = numberValue(parsed?.startLine ?? parsed?.start_line);
     const endLine = numberValue(parsed?.endLine ?? parsed?.end_line);
     return [
-      `如需原文，请再次调用 local_file_read path=${resource.id}`,
+      `如需原文，请再次调用 filesystem_read path=${resource.id}`,
       startLine ? `start_line=${startLine}` : null,
       endLine ? `end_line=${endLine}` : null
     ].filter((item): item is string => Boolean(item)).join(" ");
@@ -417,13 +417,13 @@ function buildRefetchHint(
         : "成员";
     return `如需刷新当前群${label}，请再次调用 ${toolName}${args ? ` ${args}` : ""}`;
   }
-  if (toolName === "local_file_ls" && resource.kind === "local_file") {
-    return `如需完整目录列表，请再次调用 local_file_ls path=${resource.id} limit=500`;
+  if (toolName === "filesystem_list" && resource.kind === "filesystem") {
+    return `如需完整目录列表，请再次调用 filesystem_list path=${resource.id} limit=500`;
   }
-  if (toolName === "local_file_search" && resource.kind === "local_file") {
+  if (toolName === "filesystem_search" && resource.kind === "filesystem") {
     const query = stringValue(args.query);
     const mode = stringValue(args.mode);
-    return `如需完整命中，请再次调用 local_file_search${query ? ` query=${JSON.stringify(query)}` : ""} path=${resource.id}${mode ? ` mode=${mode}` : ""} limit=200`;
+    return `如需完整命中，请再次调用 filesystem_search${query ? ` query=${JSON.stringify(query)}` : ""} path=${resource.id}${mode ? ` mode=${mode}` : ""} limit=200`;
   }
   return null;
 }

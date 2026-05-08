@@ -95,7 +95,7 @@ export function imageCaptionMapFromDerivedObservations(
 ): Map<string, string> {
   return new Map(
     observations
-      .filter((item) => item.sourceKind === "chat_file" && item.purpose === "image_caption" && item.status === "ready" && typeof item.text === "string" && item.text.length > 0)
+      .filter((item) => item.sourceKind === "asset" && item.purpose === "image_caption" && item.status === "ready" && typeof item.text === "string" && item.text.length > 0)
       .map((item) => [item.sourceId, item.text as string])
   );
 }

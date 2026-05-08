@@ -116,7 +116,7 @@ export function createScheduledTaskDispatcher(
               ? `下载已完成 (${event.file.sourceName.slice(0, 48)})`
               : `下载失败 (${event.sourceUrl.slice(0, 48)})`,
             instruction: event.kind === "download_completed"
-              ? "后台下载已完成。系统已把文件导入 chat file，请根据用户原始任务判断下一步；需要发送给用户时可调用 chat_file_send_to_chat。"
+              ? "后台下载已完成。系统已把文件导入 asset，请根据用户原始任务判断下一步；需要发送给用户时可调用 asset_send_to_chat。"
               : "后台下载失败。请根据错误判断是否需要重试、换来源或告知用户。",
             enqueuedAt: Date.now(),
             resourceId: event.resourceId,

@@ -26,6 +26,7 @@ function nextTick(): Promise<void> {
       imageIds: [],
       emojiIds: [],
       attachments: [],
+      messageFiles: [],
       audioCount: 0,
       forwardIds: [],
       replyMessageId: null,

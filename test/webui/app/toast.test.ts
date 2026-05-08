@@ -90,8 +90,8 @@ test("composer surfaces upload failures through toast", async () => {
 
   assert.match(source, /useWorkbenchToasts/);
   assert.match(source, /toast\.push/);
-  assert.match(source, /只能上传图片文件/);
-  assert.match(source, /filterComposerImageFiles/);
+  assert.match(source, /添加附件/);
+  assert.match(source, /filterComposerFiles/);
   assert.match(source, /function canAcceptFiles\(\)/);
   assert.match(source, /filesFromDataTransfer\(event\.dataTransfer\)/);
   assert.match(source, /filesFromClipboardData\(event\.clipboardData\)/);

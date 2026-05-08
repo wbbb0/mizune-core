@@ -1,6 +1,21 @@
 <script setup lang="ts">
-import { computed, ref, watch, nextTick, onUnmounted } from "vue";
-import { Send, Paperclip, X, Loader } from "lucide-vue-next";
+import { computed, ref, watch, nextTick, onUnmounted, type Component } from "vue";
+import {
+  Send,
+  Paperclip,
+  X,
+  Loader,
+  File as FileIcon,
+  FileArchive,
+  FileAudio,
+  FileCode,
+  FileImage,
+  FileJson,
+  FileSpreadsheet,
+  FileText,
+  FileType,
+  FileVideo
+} from "lucide-vue-next";
 import { useVisualViewportInset } from "@/composables/useVisualViewportInset";
 import { uploadsApi, type UploadedFile } from "@/api/uploads";
 import { prepareFilesForUpload } from "@/api/uploadPreparation";
@@ -9,7 +24,7 @@ import { useUiStore } from "@/stores/ui";
 import { useWorkbenchRuntimeContext } from "@workbench-kit/vue-workbench";
 import { buildComposerSendPayload, type ComposerSendPayload } from "./composerPayload";
 import { formatSendErrorMessage, formatUploadErrorMessage } from "./composerErrors";
-import { COMPOSER_IMAGE_ACCEPT, filterComposerImageFiles } from "./composerAcceptedFiles";
+import { COMPOSER_FILE_ACCEPT, COMPOSER_IMAGE_ACCEPT, filterComposerFiles } from "./composerAcceptedFiles";
 import { filesFromClipboardData, filesFromDataTransfer, filesFromFileList } from "./composerFileSources";
 import { fingerprintComposerFiles, selectUniqueComposerFiles } from "./composerFileFingerprints";
 
@@ -43,10 +58,14 @@ watch(userId, (value) => {
 }, { immediate: true });
 const textareaRef  = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
-const attachments  = ref<(UploadedFile & { preview?: string; uploadFingerprint?: string })[]>([]);
+const imageInputRef = ref<HTMLInputElement | null>(null);
+type ComposerAttachment = UploadedFile & { preview?: string; uploadFingerprint?: string };
+
+const attachments  = ref<ComposerAttachment[]>([]);
 const uploading    = ref(false);
 const sending      = ref(false);
 const draggingFiles = ref(false);
+const attachmentMenuOpen = ref(false);
 const iosRootScrollGuardActive = ref(false);
 const composerRootRef = ref<HTMLElement | null>(null);
 const toast = useWorkbenchToasts();
@@ -196,7 +215,20 @@ function onTextareaBlur() {
   stopIosRootScrollGuard();
 }
 
+function toggleAttachmentMenu() {
+  if (props.disabled || uploading.value || sending.value) {
+    return;
+  }
+  attachmentMenuOpen.value = !attachmentMenuOpen.value;
+}
+
+function openImagePicker() {
+  attachmentMenuOpen.value = false;
+  imageInputRef.value?.click();
+}
+
 function openFilePicker() {
+  attachmentMenuOpen.value = false;
   fileInputRef.value?.click();
 }
 
@@ -212,13 +244,11 @@ async function uploadComposerFiles(files: File[]) {
   if (files.length === 0 || !canAcceptFiles()) {
     return;
   }
+  attachmentMenuOpen.value = false;
   uploading.value = true;
   let previews: Array<{ file: File; preview?: string }> = [];
   try {
-    const { accepted, rejected } = filterComposerImageFiles(files);
-    if (rejected.length > 0) {
-      toast.push({ type: "error", message: "只能上传图片文件" });
-    }
+    const accepted = filterComposerFiles(files);
     if (accepted.length === 0) {
       return;
     }
@@ -230,7 +260,7 @@ async function uploadComposerFiles(files: File[]) {
       attachments.value.flatMap((attachment) => attachment.uploadFingerprint ? [attachment.uploadFingerprint] : [])
     );
     if (duplicateCount > 0) {
-      toast.push({ type: "info", message: duplicateCount === 1 ? "已跳过重复图片" : `已跳过 ${duplicateCount} 个重复图片` });
+      toast.push({ type: "info", message: duplicateCount === 1 ? "已跳过重复文件" : `已跳过 ${duplicateCount} 个重复文件` });
     }
     if (unique.length === 0) {
       return;
@@ -272,6 +302,7 @@ function onDragEnter(event: DragEvent) {
     return;
   }
   event.preventDefault();
+  attachmentMenuOpen.value = false;
   draggingFiles.value = true;
 }
 
@@ -299,6 +330,7 @@ async function onDrop(event: DragEvent) {
     return;
   }
   event.preventDefault();
+  attachmentMenuOpen.value = false;
   draggingFiles.value = false;
   await uploadComposerFiles(filesFromDataTransfer(event.dataTransfer));
 }
@@ -309,6 +341,7 @@ async function onPaste(event: ClipboardEvent) {
     return;
   }
   event.preventDefault();
+  attachmentMenuOpen.value = false;
   await uploadComposerFiles(files);
 }
 
@@ -319,6 +352,57 @@ function removeAttachment(fileId: string) {
     if (removed?.preview) URL.revokeObjectURL(removed.preview);
     attachments.value.splice(idx, 1);
   }
+}
+
+function getAttachmentIcon(attachment: ComposerAttachment): Component {
+  const mimeType = attachment.mimeType.trim().toLowerCase();
+  const extension = getFileExtension(attachment.sourceName);
+  if (attachment.kind === "image" || attachment.kind === "animated_image" || mimeType.startsWith("image/")) {
+    return FileImage;
+  }
+  if (attachment.kind === "video" || mimeType.startsWith("video/")) {
+    return FileVideo;
+  }
+  if (attachment.kind === "audio" || mimeType.startsWith("audio/")) {
+    return FileAudio;
+  }
+  if (mimeType === "application/pdf" || extension === "pdf") {
+    return FileText;
+  }
+  if (["doc", "docx"].includes(extension)) {
+    return FileType;
+  }
+  if (["xls", "xlsx", "csv"].includes(extension)) {
+    return FileSpreadsheet;
+  }
+  if (["json"].includes(extension) || mimeType === "application/json") {
+    return FileJson;
+  }
+  if (["xml", "yaml", "yml", "md", "markdown", "txt", "log"].includes(extension) || mimeType.startsWith("text/")) {
+    return FileText;
+  }
+  if (["js", "jsx", "ts", "tsx", "vue", "css", "html", "sh", "py", "go", "rs", "java", "kt", "cpp", "c", "h"].includes(extension)) {
+    return FileCode;
+  }
+  if (["zip", "rar", "7z", "tar", "gz"].includes(extension)) {
+    return FileArchive;
+  }
+  return FileIcon;
+}
+
+function getAttachmentTypeLabel(attachment: ComposerAttachment): string {
+  const extension = getFileExtension(attachment.sourceName);
+  if (extension) {
+    return extension.toUpperCase();
+  }
+  if (attachment.mimeType) {
+    return attachment.mimeType.split("/").pop()?.toUpperCase() ?? "FILE";
+  }
+  return "FILE";
+}
+
+function getFileExtension(name: string): string {
+  return name.split(".").pop()?.trim().toLowerCase() ?? "";
 }
 
 onUnmounted(() => {
@@ -362,9 +446,13 @@ onUnmounted(() => {
         <Loader :size="14" class="spin" :stroke-width="2" />
         <span>上传中…</span>
       </div>
-      <div v-for="att in attachments" :key="att.fileId" class="relative flex max-w-20 items-center overflow-hidden rounded border border-border-default bg-surface-input">
-        <img v-if="att.preview" :src="att.preview" class="block h-14 w-14 object-cover" :alt="att.sourceName" />
-        <span v-else class="max-w-20 overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-1 font-mono text-small text-text-muted">{{ att.sourceName }}</span>
+      <div v-for="att in attachments" :key="att.fileId" class="relative flex h-14 max-w-36 items-center gap-1.5 overflow-hidden rounded border border-border-default bg-surface-input pr-5">
+        <img v-if="att.preview" :src="att.preview" class="block h-14 w-14 shrink-0 object-cover" :alt="att.sourceName" />
+        <div v-else class="flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-0.5 border-r border-border-default bg-surface-sidebar text-text-muted">
+          <component :is="getAttachmentIcon(att)" :size="20" :stroke-width="1.75" />
+          <span class="max-w-12 truncate font-mono text-[9px] leading-3 text-text-subtle">{{ getAttachmentTypeLabel(att) }}</span>
+        </div>
+        <span class="min-w-0 max-w-18 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-small text-text-muted">{{ att.sourceName }}</span>
         <button class="absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-0 bg-black/65 p-0 text-white hover:bg-danger" @click="removeAttachment(att.fileId)">
           <X :size="10" :stroke-width="2.5" />
         </button>
@@ -373,24 +461,50 @@ onUnmounted(() => {
 
     <!-- Input row -->
     <div class="flex items-end gap-1.5">
-      <!-- Hidden file input -->
+      <!-- Hidden file inputs -->
       <input
-        ref="fileInputRef"
+        ref="imageInputRef"
         type="file"
         :accept="COMPOSER_IMAGE_ACCEPT"
         multiple
         style="display:none"
         @change="onFilesSelected"
       />
+      <input
+        ref="fileInputRef"
+        type="file"
+        :accept="COMPOSER_FILE_ACCEPT"
+        multiple
+        style="display:none"
+        @change="onFilesSelected"
+      />
 
-      <button
-        class="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-border-default bg-transparent text-text-muted transition-colors hover:border-text-muted hover:text-text-primary disabled:cursor-default disabled:opacity-40"
-        :disabled="disabled || uploading || sending"
-        title="上传图片"
-        @click="openFilePicker"
-      >
-        <Paperclip :size="15" :stroke-width="1.75" />
-      </button>
+      <div class="relative shrink-0">
+        <button
+          class="flex h-7 w-7 items-center justify-center rounded border border-border-default bg-transparent text-text-muted transition-colors hover:border-text-muted hover:text-text-primary disabled:cursor-default disabled:opacity-40"
+          :disabled="disabled || uploading || sending"
+          title="添加附件"
+          aria-haspopup="menu"
+          :aria-expanded="attachmentMenuOpen"
+          @click="toggleAttachmentMenu"
+        >
+          <Paperclip :size="15" :stroke-width="1.75" />
+        </button>
+        <div
+          v-if="attachmentMenuOpen"
+          class="absolute bottom-8 left-0 z-20 w-30 overflow-hidden rounded border border-border-default bg-surface-input py-1 shadow-lg"
+          role="menu"
+        >
+          <button class="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-small text-text-secondary hover:bg-surface-selected" role="menuitem" @click="openImagePicker">
+            <FileImage :size="14" :stroke-width="1.75" />
+            <span>图片</span>
+          </button>
+          <button class="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-small text-text-secondary hover:bg-surface-selected" role="menuitem" @click="openFilePicker">
+            <FileIcon :size="14" :stroke-width="1.75" />
+            <span>文件</span>
+          </button>
+        </div>
+      </div>
 
       <textarea
         ref="textareaRef"

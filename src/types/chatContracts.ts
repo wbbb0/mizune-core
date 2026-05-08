@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const chatFileKindValues = ["image", "animated_image", "video", "audio", "file"] as const;
-export const chatAttachmentSourceValues = ["chat_message", "web_upload", "browser", "chat_file"] as const;
+export const chatAttachmentSourceValues = ["chat_message", "web_upload", "browser", "asset"] as const;
 export const chatAttachmentSemanticKindValues = ["image", "emoji"] as const;
 
 export const chatAttachmentSchema = z.object({

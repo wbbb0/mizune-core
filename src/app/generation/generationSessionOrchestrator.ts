@@ -215,32 +215,32 @@ function selectScheduledActiveToolsetIds(modeId: string, triggerKind: InternalSe
   );
   if (isAssistantMode(modeId)) {
     if (triggerKind === "terminal_session_closed" || triggerKind === "terminal_input_required") {
-      return ["chat_context", "shell_runtime", "local_file_io", "chat_file_io", "time_utils"];
+      return ["chat_context", "shell_runtime", "filesystem_io", "asset_io", "time_utils"];
     }
     if (triggerKind === "download_completed" || triggerKind === "download_failed") {
-      return ["chat_context", "web_research", "chat_file_io", "time_utils"];
+      return ["chat_context", "web_research", "asset_io", "time_utils"];
     }
     if (triggerKind === "comfy_task_failed") {
       return ["comfy_image"];
     }
     if (triggerKind === "comfy_task_completed") {
-      return ["chat_context", "local_file_io", "chat_file_io", "comfy_image"];
+      return ["chat_context", "filesystem_io", "asset_io", "comfy_image"];
     }
-    return ["chat_context", "web_research", "shell_runtime", "local_file_io", "chat_file_io", "scheduler_admin", "time_utils", "comfy_image", "session_mode_control"];
+    return ["chat_context", "web_research", "shell_runtime", "filesystem_io", "asset_io", "scheduler_admin", "time_utils", "comfy_image", "session_mode_control"];
   }
   if (triggerKind === "scheduled_instruction") {
-    return withScenarioHostState(["memory_profile", "chat_context", "conversation_navigation", "chat_delegation", "web_research", "local_file_io", "chat_file_io", "scheduler_admin", "time_utils"]);
+    return withScenarioHostState(["memory_profile", "chat_context", "conversation_navigation", "chat_delegation", "web_research", "filesystem_io", "asset_io", "scheduler_admin", "time_utils"]);
   }
   if (triggerKind === "comfy_task_completed") {
-    return withScenarioHostState(["chat_context", "local_file_io", "chat_file_io", "comfy_image"]);
+    return withScenarioHostState(["chat_context", "filesystem_io", "asset_io", "comfy_image"]);
   }
   if (triggerKind === "comfy_task_failed") {
     return withScenarioHostState(["comfy_image"]);
   }
   if (triggerKind === "download_completed" || triggerKind === "download_failed") {
-    return withScenarioHostState(["chat_context", "web_research", "chat_file_io", "time_utils"]);
+    return withScenarioHostState(["chat_context", "web_research", "asset_io", "time_utils"]);
   }
-  return withScenarioHostState(["chat_context", "shell_runtime", "local_file_io", "chat_file_io", "time_utils"]);
+  return withScenarioHostState(["chat_context", "shell_runtime", "filesystem_io", "asset_io", "time_utils"]);
 }
 
 function toScheduledPromptTrigger(trigger: InternalSessionTriggerExecution) {
@@ -352,6 +352,7 @@ function toPromptBatchMessages(messages: GenerationRuntimeBatchMessage[]) {
     imageIds: message.imageIds,
     emojiIds: message.emojiIds,
     ...(message.attachments ? { attachments: message.attachments } : {}),
+    ...(message.messageFiles && message.messageFiles.length > 0 ? { messageFiles: message.messageFiles } : {}),
     ...(message.specialSegments && message.specialSegments.length > 0 ? { specialSegments: message.specialSegments } : {}),
     forwardIds: message.forwardIds,
     replyMessageId: message.replyMessageId,
@@ -380,6 +381,7 @@ function applyPromptBatchProjectionToRuntimeMessages(
       audioSources: projection.audioSources,
       imageIds: projection.imageIds,
       emojiIds: projection.emojiIds,
+      ...(projection.messageFiles ? { messageFiles: projection.messageFiles } : {}),
       ...(projection.specialSegments ? { specialSegments: projection.specialSegments } : {})
     };
     return Object.prototype.hasOwnProperty.call(projection, "attachments")

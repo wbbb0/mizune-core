@@ -1,4 +1,3 @@
-import { extractFileSources } from "#services/onebot/messageSegments.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import {
   dedupeResolvedChatAttachments,
@@ -25,10 +24,7 @@ export async function createMessageProcessingContext(
         channelId,
         externalId: externalUserId
       })).internalUserId;
-  const fileSources = incomingMessage.rawEvent
-    ? extractFileSources(incomingMessage.rawEvent.message)
-    : [];
-  const [setupState, user, registeredAudios, importedImageAssets, importedFileAssets] = await Promise.all([
+  const [setupState, user, registeredAudios, importedImageAssets] = await Promise.all([
     services.setupStore.get(),
     services.userStore.touchSeenUser({
       userId: resolvedUserId
@@ -46,19 +42,6 @@ export async function createMessageProcessingContext(
             senderName: incomingMessage.senderName
           }
         }).catch(() => null))
-    ),
-    Promise.all(
-      fileSources.map(async (fileSource) => services.chatFileStore.importRemoteSource({
-        source: fileSource.source,
-        kind: "file",
-        origin: "chat_message",
-        ...(fileSource.filename ? { sourceName: fileSource.filename } : {}),
-        ...(fileSource.mimeType ? { mimeType: fileSource.mimeType } : {}),
-        sourceContext: {
-          userId: resolvedUserId,
-          senderName: incomingMessage.senderName
-        }
-      }).catch(() => null))
     )
   ]);
 
@@ -66,7 +49,6 @@ export async function createMessageProcessingContext(
   const preservedEmojiIds = (incomingMessage.emojiIds ?? []).filter((fileId) => !isPendingChatAttachmentId(fileId));
   const preservedAttachments = dedupeResolvedChatAttachments(incomingMessage.attachments ?? []);
   const importedImageRecords = importedImageAssets.filter((item): item is NonNullable<typeof item> => item != null);
-  const importedFileRecords = importedFileAssets.filter((item): item is NonNullable<typeof item> => item != null);
 
   const enrichedMessage = {
     ...incomingMessage,
@@ -95,16 +77,8 @@ export async function createMessageProcessingContext(
           source: "chat_message" as const,
           sourceName: item.sourceName,
           mimeType: item.mimeType,
-          semanticKind: item.sourceContext.mediaKind === "emoji" ? "emoji" : "image"
+          semanticKind: item.sourceContext.mediaKind === "emoji" ? "emoji" as const : "image" as const
         })),
-      ...importedFileRecords
-        .map((item) => ({
-          fileId: item.fileId,
-          kind: item.kind,
-          source: "chat_message" as const,
-          sourceName: item.sourceName,
-          mimeType: item.mimeType
-        }))
     ])
   };
 

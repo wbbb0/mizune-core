@@ -240,7 +240,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       mainModelRef: ["main"],
       visibleToolNames: ["asset_document_overview", "asset_document_search", "asset_document_read", "asset_document_inspect"],
       activeToolsets: [{
-        id: "chat_file_io",
+        id: "asset_io",
         title: "Chat file IO",
         description: "files",
         toolNames: ["asset_document_overview", "asset_document_search", "asset_document_read", "asset_document_inspect"]
@@ -717,7 +717,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     assert.doesNotMatch(rendered, /scheduled-unsafe 原始任务/);
   });
 
-  test("comfy completed scheduled prompt enriches result file handles from chat file store", async () => {
+  test("comfy completed scheduled prompt enriches result file handles from asset store", async () => {
     const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
       chatFileStore: {
         async getMany(fileIds: string[]) {
@@ -785,7 +785,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     assert.doesNotMatch(rendered, /inspect_media:asset_media_inspect/);
   });
 
-  test("download completed scheduled prompt enriches result asset handle from chat file store", async () => {
+  test("download completed scheduled prompt enriches result asset handle from asset store", async () => {
     const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
       chatFileStore: {
         async getFile(fileId: string) {

@@ -2,6 +2,7 @@ import {
   extractAudioSources,
   extractFileSources,
   extractForwardIds,
+  extractMessageFiles,
   extractMediaSources,
   extractMentions,
   extractReplyMessageId,
@@ -40,6 +41,7 @@ export function parseIncomingMessage(
   const images = mediaSources.map((item) => item.source);
   const audioSources = extractAudioSources(event.message);
   const fileSources = extractFileSources(event.message);
+  const messageFiles = extractMessageFiles(event.message);
   const emojiSources = mediaSources
     .filter((item) => item.kind === "emoji")
     .map((item) => item.source);
@@ -78,6 +80,7 @@ export function parseIncomingMessage(
     imageIds: [],
     emojiIds: [],
     attachments: [],
+    messageFiles,
     specialSegments,
     forwardIds,
     replyMessageId,

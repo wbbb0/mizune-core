@@ -36,6 +36,7 @@ import type { ChatMessageFileGcService } from "#services/workspace/chatMessageFi
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import type { MediaInspectionService } from "#services/workspace/mediaInspectionService.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
+import type { DocumentSummaryService } from "#services/workspace/documentSummaryService.ts";
 import type { TextInspectionService } from "#services/workspace/textInspectionService.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { BrowserService } from "#services/web/browser/browserService.ts";
@@ -97,6 +98,7 @@ export interface AppServiceBootstrap {
   mediaCaptionService: MediaCaptionService;
   mediaInspectionService: MediaInspectionService;
   textInspectionService: TextInspectionService;
+  documentSummaryService: DocumentSummaryService;
   comfyClient: ComfyClient;
   comfyTaskStore: ComfyTaskStore;
   comfyTemplateCatalog: ComfyTemplateCatalogService;

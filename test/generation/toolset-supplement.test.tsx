@@ -4,10 +4,10 @@ import { supplementPlannedToolsets } from "../../src/app/generation/toolsetSuppl
 import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
 
 const AVAILABLE_TOOLSETS = [
-  { id: "chat_context", title: "会话上下文", description: "", toolNames: ["view_message", "chat_file_view_media"] },
+  { id: "chat_context", title: "会话上下文", description: "", toolNames: ["view_message", "asset_media_view"] },
   { id: "web_research", title: "网页检索与浏览", description: "", toolNames: ["open_page", "inspect_page", "download_asset"] },
   { id: "shell_runtime", title: "Shell 运行时", description: "", toolNames: ["terminal_run"] },
-  { id: "local_file_io", title: "本地文件", description: "", toolNames: ["local_file_read", "local_file_mkdir"] },
+  { id: "filesystem_io", title: "本地文件", description: "", toolNames: ["filesystem_read", "filesystem_mkdir"] },
   { id: "memory_profile", title: "长期资料与规则", description: "", toolNames: ["upsert_user_memory"] },
   { id: "scheduler_admin", title: "定时任务管理", description: "", toolNames: ["create_scheduled_job"] },
   { id: "dice_roller", title: "骰子", description: "", toolNames: ["roll_dice"] }
@@ -33,15 +33,15 @@ function toolResult(toolName: string): InternalTranscriptItem {
         reason: "需要打开网页并存本地",
         replyDecision: "reply_small",
         topicDecision: "continue_topic",
-        requiredCapabilities: ["web_navigation", "local_file_access"],
+        requiredCapabilities: ["web_navigation", "filesystem_access"],
         contextDependencies: [],
         recentDomainReuse: [],
         followupMode: "none",
         toolsetIds: []
       }
     });
-    assert.deepEqual(result.toolsetIds, ["web_research", "local_file_io"]);
-    assert.deepEqual(result.addedToolsetIds, ["web_research", "local_file_io"]);
+    assert.deepEqual(result.toolsetIds, ["web_research", "filesystem_io"]);
+    assert.deepEqual(result.addedToolsetIds, ["web_research", "filesystem_io"]);
   });
 
   test("supplement treats browser downloads as web navigation", async () => {

@@ -29,26 +29,26 @@ test("resource wildcard keys conflict with specific keys", async () => {
 
   const run = executeToolCallsWithDependencies({
     calls: [
-      toolCall("local_file_search", { query: "needle" }),
-      toolCall("local_file_write", { path: "src/a.ts", content: "x" })
+      toolCall("filesystem_search", { query: "needle" }),
+      toolCall("filesystem_write", { path: "src/a.ts", content: "x" })
     ],
     analyze: analyzeBuiltinToolConcurrency,
     maxConcurrency: 2,
     execute: async call => {
       events.push(`start:${call.function.name}`);
-      if (call.function.name === "local_file_search") {
+      if (call.function.name === "filesystem_search") {
         return writer.promise;
       }
       return "write-result";
     }
   });
 
-  await waitFor(() => events.includes("start:local_file_search"));
-  assert.equal(events.includes("start:local_file_write"), false);
+  await waitFor(() => events.includes("start:filesystem_search"));
+  assert.equal(events.includes("start:filesystem_write"), false);
 
   writer.resolve("search-result");
   await run;
-  assert.deepEqual(events, ["start:local_file_search", "start:local_file_write"]);
+  assert.deepEqual(events, ["start:filesystem_search", "start:filesystem_write"]);
 });
 
 function toolCall(name: string, args: Record<string, unknown> = {}): LlmToolCall {

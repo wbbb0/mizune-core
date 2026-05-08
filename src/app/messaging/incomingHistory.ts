@@ -41,6 +41,7 @@ export function createIncomingHistoryMessage(
     ...(context.enrichedMessage.imageIds.length > 0 ? { imageIds: context.enrichedMessage.imageIds } : {}),
     ...(context.enrichedMessage.emojiIds.length > 0 ? { emojiIds: context.enrichedMessage.emojiIds } : {}),
     ...(context.enrichedMessage.attachments ? { attachments: context.enrichedMessage.attachments } : {}),
+    ...(context.enrichedMessage.messageFiles && context.enrichedMessage.messageFiles.length > 0 ? { messageFiles: context.enrichedMessage.messageFiles } : {}),
     ...(context.enrichedMessage.specialSegments ? { specialSegments: context.enrichedMessage.specialSegments } : {}),
     audioCount: context.enrichedMessage.audioSources.length,
     forwardIds: context.enrichedMessage.forwardIds,

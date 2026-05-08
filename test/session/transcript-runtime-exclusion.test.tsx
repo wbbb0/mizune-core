@@ -19,6 +19,7 @@ function createExcludedUserMessage(overrides: Partial<InternalTranscriptItem> = 
     imageIds: [],
     emojiIds: [],
     attachments: [],
+    messageFiles: [],
     audioCount: 0,
     forwardIds: [],
     replyMessageId: null,
@@ -47,6 +48,7 @@ function createRuntimeUserMessage(id: string, timestampMs: number, text = id): I
     imageIds: [],
     emojiIds: [],
     attachments: [],
+    messageFiles: [],
     audioCount: 0,
     forwardIds: [],
     replyMessageId: null,
@@ -217,7 +219,7 @@ function createRuntimeUserMessage(id: string, timestampMs: number, text = id): I
           id: `call_full_${index}`,
           type: "function",
           function: {
-            name: "local_file_write",
+            name: "filesystem_write",
             arguments: `{"path":"tmp-${index}.txt"}`
           }
         }]
@@ -227,7 +229,7 @@ function createRuntimeUserMessage(id: string, timestampMs: number, text = id): I
         llmVisible: true,
         timestampMs: index * 2,
         toolCallId: `call_full_${index}`,
-        toolName: "local_file_write",
+        toolName: "filesystem_write",
         content: JSON.stringify({ ok: true, path: `tmp-${index}.txt` }),
         observation: {
           contentHash: `hash-full-${index}`,

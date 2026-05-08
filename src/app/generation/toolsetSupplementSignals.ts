@@ -68,7 +68,7 @@ function summarizeRecentDomains(
     if (mapped?.has("shell_runtime")) {
       hasShell = true;
     }
-    if (mapped?.has("local_file_io")) {
+    if (mapped?.has("filesystem_io")) {
       hasLocalFiles = true;
     }
     if (mapped?.has("chat_context")) {

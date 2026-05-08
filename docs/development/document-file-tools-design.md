@@ -2,18 +2,18 @@
 
 ## 背景
 
-当前文件相关工具有两组命名：
+当前文件相关工具已经收敛为两组模型可见命名：
 
-- `local_file_*`：面向本地文件系统，按路径读写、搜索、发送；相对路径以 `localFiles.root` 为基准，绝对路径按进程权限访问。
-- `chat_file_*`：面向已登记到 `ChatFileStore` 的文件资源，按 `file_id/file_ref` 查找、查看媒体、发送。
+- `filesystem_*`：面向本地文件系统，按路径读写、搜索、发送；相对路径以 `localFiles.root` 为基准，绝对路径按进程权限访问。
+- `asset_*`：面向已登记到 asset store 的文件资源，按 `asset_id/asset_ref` 查找、查看媒体、发送。
 
 这两个名字能表达当前来源，但不适合作为长期命名：
 
 - `local_file` 没有表达清楚权限边界。当前 `LocalFileService` 对相对路径限制在 `localFiles.root`，但对绝对路径会直接解析并访问；因此它在工具启用且进程权限允许时，实际可以访问整个本机文件系统。
 - `chat_file` 已不准确；登记文件来源已经包括聊天附件、WebUI 上传、浏览器下载/截图、ComfyUI 生成、本地导入等，不只是聊天文件。
-- 文档能力会扩展出 view/search/read/inspect/summarize 等子操作，如果继续使用 `chat_file_document_*`，会继续放大 `chat_file` 这个历史名称。
+- 文档能力会扩展出 view/search/read/inspect/summarize 等子操作，因此统一放在 `asset_document_*` 下，不再扩展旧 `chat_file_document_*`。
 
-本文只评估命名与文档工具结构，不涉及代码改动。后续应等文件获取落地分支完成后，再基于新的文件登记/获取能力实施。
+本文记录当前已采纳的命名与文档工具结构，作为后续维护 asset/filesystem 工具边界的长期参考。
 
 ## 命名目标
 
@@ -60,17 +60,17 @@
 
 建议迁移：
 
-- `local_file_ls` -> `filesystem_list`
-- `local_file_read` -> `filesystem_read`
-- `local_file_search` -> `filesystem_search`
-- `local_file_write` -> `filesystem_write`
-- `local_file_patch` -> `filesystem_patch`
-- `local_file_move` -> `filesystem_move`
-- `local_file_delete` -> `filesystem_delete`
-- `local_file_mkdir` -> `filesystem_mkdir`
-- `local_file_send_to_chat` -> `filesystem_send_to_chat`
-- `local_file_view_media` -> `filesystem_media_view`
-- `local_file_inspect_media` -> `filesystem_media_inspect`
+- `filesystem_list` -> `filesystem_list`
+- `filesystem_read` -> `filesystem_read`
+- `filesystem_search` -> `filesystem_search`
+- `filesystem_write` -> `filesystem_write`
+- `filesystem_patch` -> `filesystem_patch`
+- `filesystem_move` -> `filesystem_move`
+- `filesystem_delete` -> `filesystem_delete`
+- `filesystem_mkdir` -> `filesystem_mkdir`
+- `filesystem_send_to_chat` -> `filesystem_send_to_chat`
+- `filesystem_media_view` -> `filesystem_media_view`
+- `filesystem_media_inspect` -> `filesystem_media_inspect`
 
 `filesystem_ls` 也可行，但 `list/read/search/write` 比 `ls` 更面向模型，建议借迁移机会统一为动词全称。
 
@@ -88,10 +88,10 @@
 
 建议迁移：
 
-- `chat_file_list` -> `asset_list`
-- `chat_file_send_to_chat` -> `asset_send_to_chat`
-- `chat_file_view_media` -> `asset_media_view`
-- `chat_file_inspect_media` -> `asset_media_inspect`
+- `asset_list` -> `asset_list`
+- `asset_send_to_chat` -> `asset_send_to_chat`
+- `asset_media_view` -> `asset_media_view`
+- `asset_media_inspect` -> `asset_media_inspect`
 
 新增文档工具自然归入：
 
@@ -233,13 +233,13 @@ export interface AssetHandleCapability {
 - 执行迁移期可以在现有 `handle` 旁新增 `asset_handle`，并暂时保留 `handle_capabilities`，等测试和提示词迁移完成后再收敛。
 - `legacy` 只用于过渡期调试和 WebUI 兼容，不作为模型首选字段。
 - `capabilities[].args` 必须使用 `asset_ref` / `asset_id`，例如 `{ "asset_ref": "report.pdf" }`。
-- 如果工具尚未重命名，过渡期可以让 `tool` 仍指向 `chat_file_*`，但同一阶段应在文档中标注这是兼容态；正式迁移完成后必须是 `asset_*`。
+- `tool` 必须指向 `asset_*`，旧 `chat_file_*` 不作为模型可见入口保留。
 
 实现建议：
 
 - 新增 `src/llm/tools/core/assetHandle.ts`。
 - 让现有 `chatFileHandle.ts` 退化为兼容 wrapper，或直接迁移调用方到 `buildAssetHandleFromChatFile()`。
-- `chat_file_list`、`download_asset`、`capture_screenshot`、`download_current_group_file`、`read_download_resource` 这些返回文件句柄的工具先统一输出 `asset_handle`。
+- `asset_list`、`download_asset`、`capture_screenshot`、`download_current_group_file`、`read_download_resource` 这些返回文件句柄的工具先统一输出 `asset_handle`。
 - 文档工具只消费 `asset_ref` / `asset_id`，不消费 `file_ref` / `file_id`。
 
 ## 路径文件登记为 Asset
@@ -283,7 +283,7 @@ export interface AssetHandleCapability {
 合入 `codex/napcat-group-context` 后，代码已经出现两个相关事实：
 
 - `DownloadRuntime` 会把浏览器下载、群文件下载先变成后台 download resource，完成后再登记到 `ChatFileStore`。
-- `ChatFileStore.importFileFromPath()` 对非图片文件改为 copy 进入 chat file store，不再把非图片整文件读入内存。
+- `ChatFileStore.importFileFromPath()` 对非图片文件改为 copy 进入 asset store，不再把非图片整文件读入内存。
 
 因此文档设计应把“登记为 asset”的入口分成三类：
 
@@ -310,7 +310,7 @@ export interface AssetHandleCapability {
 - `capabilities[].tool` 改成新工具名，例如 `asset_media_view`、`asset_send_to_chat`。
 - `capabilities[].args` 使用 `asset_ref` / `asset_id`，不继续使用 `file_ref` / `media_ids`。
 - 如果第一版内部仍保留 `file_ref` / `media_ids`，必须放进 `legacy` 或内部兼容层，不作为新模型-facing API。
-- `LocalFileHandle.capabilities` 继续使用 `path`，后续随 `local_file_*` 改名为 `filesystem_*`，不要把它改成 `asset_ref`。
+- `LocalFileHandle.capabilities` 继续使用 `path`，不要把路径文件改成 `asset_ref`。
 
 ## 文档工具边界
 
@@ -514,7 +514,7 @@ export interface AssetHandleCapability {
 
 当前 MVP 的 chunk/index 是“持久 metadata + 运行时重建文本窗口”：`chunks.jsonl` 保存 `chunk_id/start_line/end_line/start_offset/end_offset`，不重复保存全文；运行时从 `text.txt` 重建 `indexText`。`overview` 返回 `chunk_count`，`search` 返回命中行及所在 `chunk_id/start_line/end_line/line_number/char_start/char_end`，`inspect` 复用同一批 chunk 做相关性选择。
 
-缓存位置建议在 chat file root 下按 asset 隔离：
+缓存位置在 asset store root 下按 asset 隔离：
 
 ```text
 chat-files/
@@ -651,7 +651,7 @@ chat-files/
 - prompt tool hints / toolset rules 中出现的旧名称。
 - 测试里所有旧工具名。
 - README/config 示例中提到工具名的内容。
-- turn planner / toolset supplement 中的 capability 映射，例如 `local_file_access`、`local_file_io`、`chat_file_io`。
+- turn planner / toolset supplement 中的 capability 映射，例如 `filesystem_access`、`filesystem_io`、`asset_io`。
 - `toolConcurrency` 对读写类工具串行策略的工具名匹配。
 - mode 默认 toolset 列表。
 - prompt builder 和 internal trigger 里的提示文本，例如 `workspaceFileIds`、`chatFilePaths` 是否继续作为内部字段保留。
@@ -692,7 +692,7 @@ chat-files/
 
 ### `asset_handle.capabilities` 是否作为 asset 标准输出
 
-`codex/napcat-group-context` 已经把 `chat_file_list`、浏览器下载、截图、群文件下载等结果收敛到 `handle + handle_capabilities + next_actions`。这和 asset 设计方向一致。
+`codex/napcat-group-context` 已经把 `asset_list`、浏览器下载、截图、群文件下载等结果收敛到 `handle + handle_capabilities + next_actions`。这和 asset 设计方向一致。
 
 推荐把它升级为 asset 标准输出：
 
@@ -719,33 +719,33 @@ chat-files/
 
 ## 后续实施优先级
 
-当前实现状态应定义为“文档工具 MVP + asset_handle 过渡层”。文档解析、局部读取、关键词搜索、文本精读、解析文本缓存和 chunk metadata 缓存已经可用；但还不是完整的 `asset_* / filesystem_*` 命名收敛，也不是完整的 `DocumentAssetStore + summary/index 生命周期`。
+当前实现状态应定义为“文档 asset 工具第一版正式入口”。文档解析、局部读取、关键词搜索、文本精读、解析文本缓存、chunk metadata 缓存、模型摘要缓存和 hybrid search fallback 已经可用；模型可见工具名已收敛到 `asset_* / filesystem_*`。
 
 ### P0：可用性与 token 风险
 
 优先处理会直接影响模型能否发现文档工具、以及长期上下文是否被原文污染的问题：
 
-- 普通非视觉文件附件进入 batch prompt 时必须渲染 `asset_handle`，让用户直接上传 PDF/DOCX/XLSX/MD/TXT 后，模型无需先猜测 `chat_file_list`，即可按 capability 调用 `asset_document_overview/search/read/inspect`。
+- 普通非视觉文件附件进入 batch prompt 时必须渲染 `asset_handle`，让用户直接上传 PDF/DOCX/XLSX/MD/TXT 后，模型无需先猜测 `asset_list`，即可按 capability 调用 `asset_document_overview/search/read/inspect`。
 - `asset_document_read` 的 result observation replay 不应保留最多 4000 字原文；长期 replay 只保留 `asset_handle`、行号 locator、截断状态和短 snippet。需要原文时重新调用 `asset_document_read`。
 
 ### P1：模块边界与语义收敛
 
-- 把 `documentTools.ts` 中的解析、持久缓存、chunk metadata 读写拆出到最小 `DocumentExtractionService` / `DocumentAssetStore`，工具层只负责参数、结果和 observation。
-- 已收敛 `overview.summary` 语义：当前工具输出 `overview.document.excerpt`，明确表示低成本开头摘录；真正模型摘要仍留给后续 `DocumentSummaryService + summary.json`。
+- 已新增 `DocumentSummaryService`，`overview.document.summary` 只表示模型摘要；低成本开头内容使用 `overview.document.excerpt`。
+- `summary.json` 随 source hash、summary prompt version 和内容 hash 失效，不再把前 800 字截断冒充 summary。
 - 已收紧 `chatFiles.root` 语义：运行时要求相对路径，并拒绝绝对路径或 `..` 逃逸出 `localFiles.root`。
 
 ### P2：正式命名迁移
 
-- 已新增第一批 `asset_*` 入口，包括 `asset_list`、`asset_send_to_chat`、`asset_media_view`、`asset_media_inspect`；旧 `chat_file_*` 暂作为 legacy 调用入口保留。
-- 将 `local_file_*` 按当前权限语义收敛为 `filesystem_*`；只有先收紧绝对路径和 symlink 边界时，才考虑 `workspace_*`。
-- 已收敛 `asset_handle.capabilities` 中媒体和发送能力：模型首选参数统一为 `asset_ref` / `asset_id`，`media_ids` / `file_ref` 只保留在 legacy `chat_file` handle 和旧工具入口里。
+- 已完成 `asset_*` 入口，包括 `asset_list`、`asset_send_to_chat`、`asset_media_view`、`asset_media_inspect` 和 `asset_document_*`。
+- 已完成 `filesystem_*` 入口；当前权限语义仍按进程可访问文件系统描述，不命名为 `workspace_*`。
+- 已收敛 `asset_handle.capabilities` 中媒体和发送能力：模型首选参数统一为 `asset_ref` / `asset_id`，`media_ids` / `file_ref` 不作为新模型-facing API。
 
 ### P3：质量与检索增强
 
-- manifest 增加 `source_hash`、独立 parser/chunker version、summary prompt version、embedding profile。
-- 增加 orphan document cache maintenance、per-asset 锁、空文本/加密/扫描 PDF 等结构化状态。
-- 补有效 PDF/DOCX 成功测试、`TextInspectionService` 错误和非结构化输出测试。
-- 做 embedding/hybrid search，保留当前关键词搜索作为低成本 fallback。
+- manifest 已增加 `source_hash`、独立 parser/chunker version、summary prompt version、embedding profile。
+- 已增加 orphan document cache maintenance、per-asset 锁、空文本/扫描 PDF 等结构化状态。
+- 已接入 embedding/hybrid search；embedding 不可用或失败时保留关键词搜索作为低成本 fallback。
+- 仍可继续补更真实的 PDF/DOCX fixture 成功测试，以及更细的 `TextInspectionService` 错误和非结构化输出测试。
 
 ## 推荐结论
 
@@ -753,12 +753,12 @@ chat-files/
 
 - `8491b51 Add unified file handle hints` 合入后，文档工具的前置条件已经基本满足，可以开始 Phase 1：实现 `AssetHandle` adapter/mapping，并把返回已登记资源的工具迁移到 `asset_handle` 输出。
 - Phase 2 已接入 `asset_document_overview/read/search/inspect` MVP、PDF/DOCX/XLSX parser、进程内 + asset store 解析文本与 chunk metadata 缓存，以及 `textInspector` 文本精读模型路由。下一步应优先做 summary/outline 缓存或 embedding/hybrid search，而不是继续扩大一次性上下文预算。
-- 默认保持当前绝对路径访问语义时，`local_file_*` 改为 `filesystem_*`。
+- 默认保持当前绝对路径访问语义时，路径工具使用 `filesystem_*`。
 - 只有当先把 `localFiles` 收紧成真正的受控根目录访问时，才改为 `workspace_*`。
-- `chat_file_*` 改为 `asset_*`。
+- 文件资源工具使用 `asset_*`。
 - 文档工具使用 `asset_document_*`，其中概览工具命名为 `asset_document_overview`，避免和媒体 direct view 混淆。
 - 执行时先实现标准 `asset_handle`，再做工具重命名和文档工具。
 - 媒体工具同步使用 `asset_media_*` / `filesystem_media_*`。若采用受控工作区路线，则使用 `asset_media_*` / `workspace_media_*`。
 - 文档处理只对 asset 做缓存、摘要、检索和精读；路径文件先登记为 asset 后再处理。
 
-这套命名比 `chat_file_document_*` 更干净：既保留了二级命名空间方向，又把不准确的 `chat_file` 顶层替换成了更稳定的单词。
+这套命名比 `chat_file_document_*` 更干净：既保留了二级命名空间方向，又把不准确的历史顶层替换成了更稳定的 `asset`。

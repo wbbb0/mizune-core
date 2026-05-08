@@ -69,6 +69,7 @@ export class SessionHistoryService {
       imageIds?: string[];
       emojiIds?: string[];
       attachments?: SessionMessage["attachments"];
+      messageFiles?: SessionMessage["messageFiles"];
       specialSegments?: SessionMessage["specialSegments"];
       audioCount?: number;
       forwardIds?: string[];
@@ -90,6 +91,7 @@ export class SessionHistoryService {
       ...(message.imageIds ? { imageIds: message.imageIds } : {}),
       ...(message.emojiIds ? { emojiIds: message.emojiIds } : {}),
       ...(message.attachments ? { attachments: message.attachments } : {}),
+      ...(message.messageFiles ? { messageFiles: message.messageFiles } : {}),
       ...(message.specialSegments ? { specialSegments: message.specialSegments } : {}),
       ...(message.audioCount != null ? { audioCount: message.audioCount } : {}),
       ...(message.forwardIds ? { forwardIds: message.forwardIds } : {}),
@@ -147,6 +149,7 @@ export class SessionHistoryService {
       imageIds?: string[];
       emojiIds?: string[];
       attachments?: SessionMessage["attachments"];
+      messageFiles?: SessionMessage["messageFiles"];
       specialSegments?: SessionMessage["specialSegments"];
       audioCount?: number;
       forwardIds?: string[];

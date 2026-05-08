@@ -26,7 +26,7 @@ import type { ToolResultObservationPolicy } from "../../src/llm/tools/core/resul
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
 
-test("local_file_read observation keeps raw content out of replay and preserves a refetch handle", () => {
+test("filesystem_read observation keeps raw content out of replay and preserves a refetch handle", () => {
   const rawFileContent = Array.from({ length: 180 }, (_, index) => `RAW-LINE-${index + 1} const value${index} = ${index};`).join("\n");
   const rawToolContent = JSON.stringify({
     path: "src/app/generation/providerTranscriptProjector.ts",
@@ -38,7 +38,7 @@ test("local_file_read observation keeps raw content out of replay and preserves 
   });
 
   const observation = buildToolObservation({
-    toolName: "local_file_read",
+    toolName: "filesystem_read",
     toolCallId: "call_read_1",
     content: rawToolContent
   });
@@ -46,7 +46,7 @@ test("local_file_read observation keeps raw content out of replay and preserves 
   assert.equal(observation.retention, "summary");
   assert.equal(observation.refetchable, true);
   assert.equal(observation.replaySafe, true);
-  assert.equal(observation.resource?.kind, "local_file");
+  assert.equal(observation.resource?.kind, "filesystem");
   assert.equal(observation.resource?.id, "src/app/generation/providerTranscriptProjector.ts");
   assert.equal(observation.resource?.locator, "L1-L180");
   assert.ok(observation.contentHash.length >= 12);
@@ -54,17 +54,17 @@ test("local_file_read observation keeps raw content out of replay and preserves 
   assert.ok(observation.replayContent.length < rawToolContent.length / 2);
   assert.doesNotMatch(observation.replayContent, /RAW-LINE-120/);
   assert.match(observation.replayContent, /"compacted":true/);
-  assert.match(observation.replayContent, /local_file_read/);
+  assert.match(observation.replayContent, /filesystem_read/);
   assert.match(observation.replayContent, /start_line=1 end_line=180/);
 });
 
-test("local_file_ls policy summarizes small and large directory listings", () => {
+test("filesystem_list policy summarizes small and large directory listings", () => {
   const smallRaw = JSON.stringify({
     path: "src",
     items: [{ path: "src/index.ts", name: "index.ts", kind: "file", sizeBytes: 10 }]
   });
   const small = buildToolObservation({
-    toolName: "local_file_ls",
+    toolName: "filesystem_list",
     toolCallId: "call_ls_small",
     content: smallRaw,
     args: { path: "src" },
@@ -81,7 +81,7 @@ test("local_file_ls policy summarizes small and large directory listings", () =>
     updatedAtMs: 123
   });
   const stat = buildToolObservation({
-    toolName: "local_file_ls",
+    toolName: "filesystem_list",
     toolCallId: "call_ls_file_stat",
     content: statRaw,
     args: { path: "src/index.ts" },
@@ -99,7 +99,7 @@ test("local_file_ls policy summarizes small and large directory listings", () =>
     }))
   });
   const large = buildToolObservation({
-    toolName: "local_file_ls",
+    toolName: "filesystem_list",
     toolCallId: "call_ls_large",
     content: largeRaw,
     args: { path: "src" },
@@ -107,7 +107,7 @@ test("local_file_ls policy summarizes small and large directory listings", () =>
   });
 
   assert.equal(large.retention, "summary");
-  assert.equal(large.resource?.kind, "local_file");
+  assert.equal(large.resource?.kind, "filesystem");
   assert.equal(large.resource?.id, "src");
   assert.match(large.summary, /45 项/);
   assert.match(large.replayContent, /"compacted":true/);
@@ -116,7 +116,7 @@ test("local_file_ls policy summarizes small and large directory listings", () =>
 
 test("local file search and mutations replay compact operational summaries", () => {
   const search = buildToolObservation({
-    toolName: "local_file_search",
+    toolName: "filesystem_search",
     toolCallId: "call_search_1",
     content: JSON.stringify({
       path: "src",
@@ -137,7 +137,7 @@ test("local file search and mutations replay compact operational summaries", () 
   assert.doesNotMatch(search.replayContent, /src\/file-19\.ts/);
 
   const mutation = buildToolObservation({
-    toolName: "local_file_patch",
+    toolName: "filesystem_patch",
     toolCallId: "call_patch_1",
     content: JSON.stringify({
       path: "src/app.ts",
@@ -149,10 +149,10 @@ test("local file search and mutations replay compact operational summaries", () 
   });
   assert.equal(mutation.retention, "summary");
   assert.match(mutation.replayContent, /"hunksApplied":2/);
-  assert.match(mutation.replayContent, /local_file_read path=src\/app\.ts/);
+  assert.match(mutation.replayContent, /filesystem_read path=src\/app\.ts/);
 
   const deleted = buildToolObservation({
-    toolName: "local_file_delete",
+    toolName: "filesystem_delete",
     toolCallId: "call_delete_1",
     content: JSON.stringify({
       path: "tmp/old.txt",
@@ -163,10 +163,10 @@ test("local file search and mutations replay compact operational summaries", () 
   });
   assert.equal(deleted.retention, "summary");
   assert.equal(deleted.refetchable, false);
-  assert.doesNotMatch(deleted.replayContent, /local_file_read path=tmp\/old\.txt/);
+  assert.doesNotMatch(deleted.replayContent, /filesystem_read path=tmp\/old\.txt/);
 
   const mkdir = buildToolObservation({
-    toolName: "local_file_mkdir",
+    toolName: "filesystem_mkdir",
     toolCallId: "call_mkdir_1",
     content: JSON.stringify({
       path: "tmp/new-dir",
@@ -177,14 +177,14 @@ test("local file search and mutations replay compact operational summaries", () 
   });
   assert.match(mkdir.summary, /创建目录 tmp\/new-dir/);
   assert.doesNotMatch(mkdir.summary, /创建目录本地文件/);
-  assert.match(mkdir.replayContent, /local_file_ls path=tmp\/new-dir/);
+  assert.match(mkdir.replayContent, /filesystem_list path=tmp\/new-dir/);
 });
 
-test("chat file list and send policies keep stable handles without raw records", () => {
+test("asset list and send policies keep stable handles without raw records", () => {
   const longCaption = `${"caption ".repeat(200)}tail`;
   const list = buildToolObservation({
-    toolName: "chat_file_list",
-    toolCallId: "call_chat_files",
+    toolName: "asset_list",
+    toolCallId: "call_assets",
     content: JSON.stringify({
       ok: true,
       files: Array.from({ length: 20 }, (_, index) => ({
@@ -213,13 +213,13 @@ test("chat file list and send policies keep stable handles without raw records",
   assert.doesNotMatch(list.replayContent, /caption caption caption caption caption caption caption caption caption caption caption caption caption caption/);
 
   const exact = buildToolObservation({
-    toolName: "chat_file_list",
-    toolCallId: "call_chat_file_exact",
+    toolName: "asset_list",
+    toolCallId: "call_asset_exact",
     content: JSON.stringify({
       ok: true,
       file: {
         file_id: "file_exact",
-        file_ref: "img_exact.png",
+        asset_ref: "img_exact.png",
         kind: "image",
         origin: "browser_download",
         source_name: "exact.png",
@@ -229,20 +229,20 @@ test("chat file list and send policies keep stable handles without raw records",
       },
       next_actions: []
     }),
-    args: { file_ref: "img_exact.png" },
+    args: { asset_ref: "img_exact.png" },
     policy: chatFileListPolicy()
   });
   assert.match(exact.replayContent, /"fileCount":1/);
   assert.match(exact.replayContent, /"totalMatched":1/);
 
   const missing = buildToolObservation({
-    toolName: "chat_file_list",
-    toolCallId: "call_chat_file_missing",
+    toolName: "asset_list",
+    toolCallId: "call_asset_missing",
     content: JSON.stringify({
       ok: false,
       file: null
     }),
-    args: { file_ref: "missing.png" },
+    args: { asset_ref: "missing.png" },
     policy: chatFileListPolicy()
   });
   assert.equal(missing.resource, undefined);
@@ -252,34 +252,34 @@ test("chat file list and send policies keep stable handles without raw records",
   assert.doesNotMatch(missing.replayContent, /刷新该文件记录/);
 
   const send = buildToolObservation({
-    toolName: "chat_file_send_to_chat",
+    toolName: "asset_send_to_chat",
     toolCallId: "call_send_file",
     content: JSON.stringify({
       ok: true,
-      file_ref: "img_0.png",
+      asset_ref: "img_0.png",
       file_id: "file_0",
       deliveredAs: "image",
       queued: true
     }),
-    args: { file_ref: "img_0.png" },
+    args: { asset_ref: "img_0.png" },
     policy: fileSendPolicy()
   });
   assert.equal(send.retention, "summary");
   assert.equal(send.preserveRecentRawCount, 0);
-  assert.equal(send.resource?.kind, "chat_file");
+  assert.equal(send.resource?.kind, "asset");
   assert.equal(send.resource?.id, "img_0.png");
-  assert.match(send.replayContent, /chat_file_send_to_chat file_ref/);
+  assert.match(send.replayContent, /asset_send_to_chat asset_ref/);
 });
 
 test("media view observation keeps compact handles and next actions", () => {
   const observation = buildToolObservation({
-    toolName: "chat_file_view_media",
+    toolName: "asset_media_view",
     toolCallId: "call_view_media",
     content: JSON.stringify({
       ok: true,
       workspace: [{
         file_id: "file_1",
-        file_ref: "chat_0001.png",
+        asset_ref: "chat_0001.png",
         kind: "image",
         origin: "browser_download",
         source_name: "cover.png",
@@ -288,12 +288,12 @@ test("media view observation keeps compact handles and next actions", () => {
         caption: `${"长图说明".repeat(80)}TAIL`
       }],
       handles: [{
-        source: "chat_file",
+        source: "asset",
         id: "file_1",
-        selector: { file_id: "file_1", file_ref: "chat_0001.png" },
+        selector: { file_id: "file_1", asset_ref: "chat_0001.png" },
         file: {
           file_id: "file_1",
-          file_ref: "chat_0001.png",
+          asset_ref: "chat_0001.png",
           kind: "image",
           source_name: "cover.png",
           mime_type: "image/png",
@@ -301,9 +301,9 @@ test("media view observation keeps compact handles and next actions", () => {
         },
         capabilities: [{
           capability: "send_to_chat",
-          tool: "chat_file_send_to_chat",
+          tool: "asset_send_to_chat",
           available: true,
-          args: { file_ref: "chat_0001.png" }
+          args: { asset_ref: "chat_0001.png" }
         }]
       }],
       audio: [{
@@ -314,19 +314,19 @@ test("media view observation keeps compact handles and next actions", () => {
         transcription: `${"音频转写".repeat(120)}TAIL`
       }],
       next_actions: [{
-        tool: "chat_file_send_to_chat",
+        tool: "asset_send_to_chat",
         reason: "发送已查看的媒体文件到当前聊天",
-        args: { file_ref: "chat_0001.png" }
+        args: { asset_ref: "chat_0001.png" }
       }]
     }),
-    args: { media_ids: ["file_1"] },
+    args: { asset_ids: ["file_1"] },
     policy: directMediaViewPolicy()
   });
 
   const replay = JSON.parse(observation.replayContent);
   assert.equal(observation.retention, "summary");
-  assert.equal(replay.data.nextActions[0].tool, "chat_file_send_to_chat");
-  assert.equal(replay.data.handles[0].selector.file_ref, "chat_0001.png");
+  assert.equal(replay.data.nextActions[0].tool, "asset_send_to_chat");
+  assert.equal(replay.data.handles[0].selector.asset_ref ?? replay.data.handles[0].selector.file_ref, "chat_0001.png");
   assert.equal(replay.data.workspace[0].fileRef, "chat_0001.png");
   assert.equal(replay.data.audio[0].mediaId, "aud_1");
   assert.doesNotMatch(observation.replayContent, /TAIL/);
@@ -540,7 +540,7 @@ test("browser screenshot and download policies replay stable file handles only",
     policy: browserScreenshotPolicy()
   });
   assert.equal(screenshot.preserveRecentRawCount, 0);
-  assert.equal(screenshot.resource?.kind, "chat_file");
+  assert.equal(screenshot.resource?.kind, "asset");
   assert.equal(screenshot.resource?.id, "file_screenshot_1");
   assert.match(screenshot.replayContent, /file_screenshot_1/);
 
@@ -550,7 +550,7 @@ test("browser screenshot and download policies replay stable file handles only",
     content: JSON.stringify({
       ok: true,
       file_id: "file_download_1",
-      file_ref: "chat:file_download_1",
+      asset_ref: "chat:file_download_1",
       kind: "image",
       source_url: "https://example.com/image.png",
       resource_id: "res_browser_1",
@@ -561,10 +561,10 @@ test("browser screenshot and download policies replay stable file handles only",
     policy: browserDownloadPolicy()
   });
   assert.equal(download.preserveRecentRawCount, 0);
-  assert.equal(download.resource?.kind, "chat_file");
+  assert.equal(download.resource?.kind, "asset");
   assert.equal(download.resource?.id, "file_download_1");
   assert.match(download.replayContent, /sourceUrl/);
-  assert.match(download.replayContent, /chat_file_send_to_chat/);
+  assert.match(download.replayContent, /asset_send_to_chat/);
 });
 
 test("policy failures produce safe compacted observations without raw replay", () => {
@@ -750,7 +750,7 @@ test("tool_result transcript schema accepts optional observation metadata", () =
 
 test("compression snapshot and summary prompt include compacted tool observations", () => {
   const observation = buildToolObservation({
-    toolName: "local_file_read",
+    toolName: "filesystem_read",
     toolCallId: "tool-1",
     content: JSON.stringify({
       path: "src/conversation/session/sessionTranscript.ts",
@@ -772,7 +772,7 @@ test("compression snapshot and summary prompt include compacted tool observation
         id: "tool-1",
         type: "function",
         function: {
-          name: "local_file_read",
+          name: "filesystem_read",
           arguments: "{\"path\":\"src/conversation/session/sessionTranscript.ts\"}"
         }
       }]
@@ -782,7 +782,7 @@ test("compression snapshot and summary prompt include compacted tool observation
       llmVisible: true,
       timestampMs: 3,
       toolCallId: "tool-1",
-      toolName: "local_file_read",
+      toolName: "filesystem_read",
       content: JSON.stringify({ path: "src/conversation/session/sessionTranscript.ts", content: "旧工具读取内容" }),
       observation
     },
@@ -808,13 +808,13 @@ test("compression snapshot and summary prompt include compacted tool observation
   });
 
   assert.match(String(prompt[1]?.content ?? ""), /summary_source_tool_observations/);
-  assert.match(String(prompt[1]?.content ?? ""), /local_file_read/);
+  assert.match(String(prompt[1]?.content ?? ""), /filesystem_read/);
   assert.match(String(prompt[1]?.content ?? ""), /sessionTranscript\.ts/);
 });
 
 test("derived observation adapters expose tool, image, and audio observations without persistence migration", () => {
   const observation = buildToolObservation({
-    toolName: "local_file_read",
+    toolName: "filesystem_read",
     toolCallId: "tool-1",
     content: JSON.stringify({
       path: "src/conversation/session/toolObservation.ts",
@@ -834,7 +834,7 @@ test("derived observation adapters expose tool, image, and audio observations wi
   });
 
   assert.deepEqual(imageCaptionToDerivedObservation("file_1", "  一张猫图  "), {
-    sourceKind: "chat_file",
+    sourceKind: "asset",
     sourceId: "file_1",
     purpose: "image_caption",
     status: "ready",
@@ -875,6 +875,7 @@ function createHistoryMessage(role: "user" | "assistant", text: string, timestam
       imageIds: [],
       emojiIds: [],
       attachments: [],
+      messageFiles: [],
       audioCount: 0,
       forwardIds: [],
       replyMessageId: null,

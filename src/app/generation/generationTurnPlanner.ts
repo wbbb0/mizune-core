@@ -91,6 +91,7 @@ export async function handleGenerationTurnPlanner(
       imageIds: message.imageIds.filter((fileId) => !isPendingChatAttachmentId(fileId)),
       emojiIds: message.emojiIds.filter((fileId) => !isPendingChatAttachmentId(fileId)),
       ...(attachments.length > 0 ? { attachments } : {}),
+      ...(message.messageFiles && message.messageFiles.length > 0 ? { messageFiles: message.messageFiles } : {}),
       ...(message.specialSegments && message.specialSegments.length > 0 ? { specialSegments: message.specialSegments } : {}),
       forwardIds: message.forwardIds,
       replyMessageId: message.replyMessageId,
@@ -249,6 +250,7 @@ function shouldCoerceNoReplyToReply(input: GenerationTurnPlannerInput): boolean 
     || message.audioIds.length > 0
     || message.emojiIds.length > 0
     || (message.attachments?.length ?? 0) > 0
+    || (message.messageFiles?.length ?? 0) > 0
     || (message.specialSegments?.length ?? 0) > 0
     || message.forwardIds.length > 0
     || message.mentionedAll

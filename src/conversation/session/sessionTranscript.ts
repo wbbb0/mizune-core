@@ -168,7 +168,7 @@ export type ProjectedChatTimelineItem =
       chatFilePath: string | null;
       sourcePath: string | null;
       messageId: number | null;
-      toolName: "chat_file_send_to_chat" | "local_file_send_to_chat";
+      toolName: "asset_send_to_chat" | "filesystem_send_to_chat";
       captionText: string | null;
       timestampMs: number;
     };

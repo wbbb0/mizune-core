@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 import type { OneBotMessageEvent } from "#services/onebot/types.ts";
-import { extractText } from "#services/onebot/messageSegments.ts";
+import { extractFileSources, extractText, summarizeSegment } from "#services/onebot/messageSegments.ts";
 import type { MessageProcessingContext, TriggerDecision } from "./messageHandlerTypes.ts";
 
 function summarizeIgnoredMessageSegments(message: Array<{ type: string; data: Record<string, unknown> }>): Array<{
@@ -13,6 +13,18 @@ function summarizeIgnoredMessageSegments(message: Array<{ type: string; data: Re
       Object.entries(segment.data ?? {}).map(([key, value]) => [key, summarizeUnknownValue(value)])
     )
   }));
+}
+
+function summarizeNonTextSegments(message: Array<{ type: string; data: Record<string, unknown> }>): Array<{
+  type: string;
+  summary: string;
+}> {
+  return message
+    .filter((segment) => segment.type !== "text" && segment.type !== "at")
+    .map((segment) => ({
+      type: segment.type,
+      summary: truncateForLog(summarizeSegment(segment))
+    }));
 }
 
 function summarizeUnknownValue(value: unknown): string {
@@ -59,6 +71,8 @@ export function logReceivedMessage(
   context: MessageProcessingContext,
   triggerDecision: TriggerDecision
 ): void {
+  const rawSegments = context.enrichedMessage.rawEvent?.message ?? [];
+  const fileSources = extractFileSources(rawSegments);
   logger.info(
     {
       sessionId: context.session.id,
@@ -72,6 +86,21 @@ export function logReceivedMessage(
       audioCount: context.enrichedMessage.audioSources.length,
       imageIdCount: context.enrichedMessage.imageIds.length,
       emojiIdCount: context.enrichedMessage.emojiIds.length,
+      attachmentCount: context.enrichedMessage.attachments?.length ?? 0,
+      rawSegmentCount: rawSegments.length,
+      rawSegmentTypes: rawSegments.map((segment) => segment.type),
+      nonTextSegments: summarizeNonTextSegments(rawSegments),
+      fileSegmentCount: rawSegments.filter((segment) => segment.type === "file").length,
+      fileSourceCount: fileSources.length,
+      fileSources: fileSources.map((fileSource) => ({
+        sourceKind: fileSource.sourceKind,
+        ...(fileSource.sourceKind === "direct" ? { source: truncateForLog(fileSource.source) } : {}),
+        ...(fileSource.fileId ? { fileId: fileSource.fileId } : {}),
+        ...(fileSource.busid != null ? { busid: fileSource.busid } : {}),
+        filename: fileSource.filename,
+        mimeType: fileSource.mimeType,
+        sizeBytes: fileSource.sizeBytes
+      })),
       forwardCount: context.enrichedMessage.forwardIds.length,
       replyMessageId: context.enrichedMessage.replyMessageId,
       mentionUserCount: context.enrichedMessage.mentionUserIds.length,

@@ -14,8 +14,8 @@ export const assistantModeDefinition: SessionModeDefinition = {
     "chat_context",
     "web_research",
     "shell_runtime",
-    "local_file_io",
-    "chat_file_io",
+    "filesystem_io",
+    "asset_io",
     "scheduler_admin",
     "comfy_image",
     "time_utils"

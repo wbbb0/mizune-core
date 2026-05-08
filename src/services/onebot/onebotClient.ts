@@ -17,6 +17,7 @@ import type {
   OneBotGroupMemberInfo,
   OneBotGroupMemberItem,
   OneBotGroupAnnouncementItem,
+  OneBotFileResult,
   OneBotHistoryMessage,
   OneBotLoginInfo,
   OneBotRetrievedMessage,
@@ -292,6 +293,26 @@ export class OneBotClient extends EventEmitter {
     const data = isRecord(payload.data) ? payload.data : null;
     const url = typeof data?.url === "string" ? data.url : null;
     return url ? { ...data, url } : null;
+  }
+
+  async getFile(fileId: string): Promise<OneBotFileResult | null> {
+    const payload = await this.postApi<OneBotApiResponse>("get_file", {
+      file_id: fileId
+    });
+    this.assertApiSuccess("get_file", payload, { fileId });
+    const data = isRecord(payload.data) ? payload.data : {};
+    const file = firstNonEmptyString(data.file, data.path);
+    const url = firstNonEmptyString(data.url);
+    if (!file && !url) {
+      return null;
+    }
+    return {
+      ...data,
+      file,
+      url,
+      fileName: firstNonEmptyString(data.file_name, data.filename, data.name),
+      fileSize: finiteNumber(data.file_size ?? data.size)
+    };
   }
 
   async getLoginInfo(): Promise<OneBotLoginInfo> {
@@ -575,6 +596,21 @@ export class OneBotClient extends EventEmitter {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function firstNonEmptyString(...values: unknown[]): string | null {
+  for (const value of values) {
+    const normalized = String(value ?? "").trim();
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
+function finiteNumber(value: unknown): number | null {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
 }
 
 function extractArrayPayload(data: unknown): unknown[] {

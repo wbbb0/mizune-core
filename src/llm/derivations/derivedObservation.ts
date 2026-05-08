@@ -4,7 +4,7 @@ import type { InternalToolResultItem, InternalTranscriptItem, SessionState } fro
 import type { ToolObservation } from "#conversation/session/toolObservation.ts";
 import type { ChatFileCaptionStatus, ChatFileRecord } from "#services/workspace/types.ts";
 
-export type DerivedObservationSourceKind = "tool_result" | "chat_file" | "audio" | "session" | "history";
+export type DerivedObservationSourceKind = "tool_result" | "asset" | "audio" | "session" | "history";
 export type DerivedObservationPurpose =
   | "tool_replay_compaction"
   | "image_caption"
@@ -32,7 +32,7 @@ export function imageCaptionToDerivedObservation(
 ): DerivedObservation {
   const text = normalizeOptionalText(caption);
   return {
-    sourceKind: "chat_file",
+    sourceKind: "asset",
     sourceId: fileId,
     purpose: "image_caption",
     status: text ? "ready" : "missing",
@@ -44,7 +44,7 @@ export function chatFileCaptionToDerivedObservation(file: ChatFileRecord): Deriv
   const text = normalizeOptionalText(file.caption);
   const status = resolveChatFileCaptionStatus(file, text);
   return {
-    sourceKind: "chat_file",
+    sourceKind: "asset",
     sourceId: file.fileId,
     purpose: "image_caption",
     status,

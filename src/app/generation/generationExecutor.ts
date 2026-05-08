@@ -46,7 +46,7 @@ import { checkSetupCompletion } from "./generationSetupContext.ts";
 import { waitForGenerationAbortGraceWindow } from "#app/runtime/runtimeTimingPolicy.ts";
 import { maybeAutoCaptionSessionTitle, shouldAutoCaptionSessionTitle } from "./sessionCaptioner.ts";
 import { createProviderOutputTokenStats } from "#conversation/session/transcriptTokenStats.ts";
-import type { OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
+import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -60,6 +60,7 @@ export interface GenerationRuntimeBatchMessage {
   imageIds: string[];
   emojiIds: string[];
   attachments?: ChatAttachment[];
+  messageFiles?: OneBotMessageFileSummary[];
   specialSegments?: OneBotSpecialSegmentSummary[];
   forwardIds: string[];
   replyMessageId: string | null;
@@ -401,6 +402,8 @@ export function createGenerationExecutor(
         mediaCaptionService,
         mediaInspectionService,
         textInspectionService,
+        ...(deps.toolRuntime.documentSummaryService ? { documentSummaryService: deps.toolRuntime.documentSummaryService } : {}),
+        ...(deps.toolRuntime.contextEmbeddingService ? { contextEmbeddingService: deps.toolRuntime.contextEmbeddingService } : {}),
         requestStore,
         sessionManager,
         whitelistStore,

@@ -5,6 +5,7 @@ import {
   formatStructuredMentionAllReference,
   formatStructuredMentionReference,
   formatStructuredMentionSelfReference,
+  formatStructuredMessageFile,
   formatStructuredReplyReference,
   formatStructuredSpecialSegment,
   formatStructuredCount
@@ -250,6 +251,9 @@ function buildMessageBodyText(
   const assetHandlesText = formatAssetHandlesForPrompt(message.assetHandles);
   if (assetHandlesText) {
     parts.push(`附件 asset_handle：\n${assetHandlesText}`);
+  }
+  for (const file of message.messageFiles ?? []) {
+    parts.push(formatStructuredMessageFile(file));
   }
   for (const segment of message.specialSegments ?? []) {
     parts.push(formatStructuredSpecialSegment(segment));

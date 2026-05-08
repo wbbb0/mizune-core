@@ -33,9 +33,7 @@ const READ_ONLY_TOOL_RESOURCES: Record<string, readonly string[]> = {
   view_forward_record: ["forwards:*"],
   asset_list: ["chat_file:*"],
   asset_media_view: ["chat_file:*"],
-  chat_file_list: ["chat_file:*"],
-  chat_file_view_media: ["chat_file:*"],
-  local_file_view_media: ["local_file:*"],
+  filesystem_media_view: ["filesystem:*"],
   ground_with_google_search: ["web_search:*"],
   search_with_iqs_lite_advanced: ["web_search:*"],
   list_browser_profiles: ["browser_profile:*"],
@@ -56,17 +54,17 @@ export function analyzeBuiltinToolConcurrency(toolCall: LlmToolCall): ToolExecut
 
   const args = parseArgs(toolCall.function.arguments);
   switch (toolName) {
-    case "local_file_ls":
-    case "local_file_read":
+    case "filesystem_list":
+    case "filesystem_read":
       return parallel([localFileKey(getStringArg(args, "path"))], []);
-    case "local_file_search":
+    case "filesystem_search":
       return parallel([localFileTreeKey(getStringArg(args, "path"))], []);
-    case "local_file_write":
-    case "local_file_patch":
-    case "local_file_delete":
-    case "local_file_mkdir":
+    case "filesystem_write":
+    case "filesystem_patch":
+    case "filesystem_delete":
+    case "filesystem_mkdir":
       return parallel([], [localFileKey(getStringArg(args, "path"))]);
-    case "local_file_move":
+    case "filesystem_move":
       return parallel([], [
         localFileKey(getStringArg(args, "from_path")),
         localFileKey(getStringArg(args, "to_path"))
@@ -84,6 +82,8 @@ export function analyzeBuiltinToolConcurrency(toolCall: LlmToolCall): ToolExecut
       return parallel([], [downloadKey(getStringArg(args, "resource_id"))]);
     case "download_current_group_file":
       return parallel(["onebot_group:*"], ["download:*", "chat_file:*"]);
+    case "download_message_file":
+      return parallel(["messages:*"], ["chat_file:*"]);
     case "inspect_page":
       return parallel([browserPageKey(getStringArg(args, "resource_id"))], []);
     case "capture_screenshot":
@@ -126,11 +126,11 @@ function getStringArg(args: Record<string, unknown>, key: string): string | null
 }
 
 function localFileKey(path: string | null): string {
-  return `local_file:${path ?? "*"}`;
+  return `filesystem:${path ?? "*"}`;
 }
 
 function localFileTreeKey(path: string | null): string {
-  return path ? `local_file:${path}:*` : "local_file:*";
+  return path ? `filesystem:${path}:*` : "filesystem:*";
 }
 
 function terminalKey(resourceId: string | null): string {

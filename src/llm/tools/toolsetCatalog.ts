@@ -30,6 +30,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ],
     toolNames: [
       "view_message",
+      "download_message_file",
       "view_forward_record",
       "view_current_group_info",
       "list_current_group_announcements",
@@ -39,8 +40,6 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "list_current_group_members",
       "asset_media_view",
       "asset_media_inspect",
-      "chat_file_view_media",
-      "chat_file_inspect_media",
       "end_turn_without_reply"
     ]
   },
@@ -192,7 +191,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
-    id: "local_file_io",
+    id: "filesystem_io",
     title: "本地文件",
     description: "浏览、编辑、搜索和发送本地文件。",
     plannerSignals: [
@@ -200,30 +199,29 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "按路径发送本地文件"
     ],
     toolNames: [
-      "local_file_ls",
-      "local_file_mkdir",
-      "local_file_read",
-      "local_file_write",
-      "local_file_patch",
-      "local_file_move",
-      "local_file_delete",
-      "local_file_search",
-      "local_file_view_media",
-      "local_file_inspect_media",
-      "local_file_send_to_chat"
+      "filesystem_list",
+      "filesystem_mkdir",
+      "filesystem_read",
+      "filesystem_write",
+      "filesystem_patch",
+      "filesystem_move",
+      "filesystem_delete",
+      "filesystem_search",
+      "filesystem_media_view",
+      "filesystem_media_inspect",
+      "filesystem_send_to_chat"
     ]
   },
   {
-    id: "chat_file_io",
-    title: "聊天文件",
-    description: "查看和发送已登记的 chat file。",
+    id: "asset_io",
+    title: "登记资源",
+    description: "查看和发送已登记 asset。",
     plannerSignals: [
       "查看聊天导入文件",
       "发送已登记图片或附件"
     ],
     toolNames: [
       "asset_list",
-      "chat_file_list",
       "list_live_resources",
       "read_download_resource",
       "cancel_download_resource",
@@ -233,10 +231,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "asset_document_inspect",
       "asset_media_view",
       "asset_media_inspect",
-      "asset_send_to_chat",
-      "chat_file_view_media",
-      "chat_file_inspect_media",
-      "chat_file_send_to_chat"
+      "asset_send_to_chat"
     ]
   },
   {

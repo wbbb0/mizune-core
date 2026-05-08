@@ -42,6 +42,7 @@ function createUserMessageEntry(): ChatTimelineTranscriptEntry {
         sourceName: "note.txt",
         mimeType: "text/plain"
       }],
+      messageFiles: [],
       audioCount: 0,
       forwardIds: [],
       replyMessageId: null,
@@ -100,7 +101,7 @@ function createUserMessageEntry(): ChatTimelineTranscriptEntry {
         chatFilePath: "workspace/media/assistant.png",
         sourcePath: null,
         messageId: 12,
-        toolName: "chat_file_send_to_chat",
+        toolName: "asset_send_to_chat",
         timestampMs: 1710000001000
       }
     }], {
@@ -134,6 +135,33 @@ function createUserMessageEntry(): ChatTimelineTranscriptEntry {
     assert.equal(items[0]?.kind, "text");
     assert.equal(items[0]?.content, "骰子：4");
     assert.deepEqual(items[0]?.metaChips, ["消息段 1"]);
+  });
+
+  test("chat timeline renders structured file messages as text metadata", () => {
+    const entry = createUserMessageEntry();
+    if (entry.item.kind !== "user_message") {
+      throw new Error("expected user message");
+    }
+    entry.item.text = "";
+    entry.item.imageIds = [];
+    entry.item.attachments = [];
+    entry.item.messageFiles = [{
+      fileId: "onebot-file-1",
+      name: "report.pdf",
+      busid: null,
+      sizeBytes: 1234,
+      mimeType: "application/pdf",
+      downloadTool: "download_message_file"
+    }];
+
+    const items = buildChatTimelineItems([entry], {
+      activeComposerUserId: "10001"
+    });
+
+    assert.equal(items.length, 1);
+    assert.equal(items[0]?.kind, "text");
+    assert.equal(items[0]?.content, "文件：report.pdf");
+    assert.deepEqual(items[0]?.metaChips, ["文件 1"]);
   });
 
   test("chat timeline keeps newest items first and prepends draft assistant text to the head", () => {

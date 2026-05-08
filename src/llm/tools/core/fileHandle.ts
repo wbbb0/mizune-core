@@ -62,7 +62,7 @@ export interface AssetHandle {
 }
 
 export interface ChatFileHandle {
-  source: "chat_file";
+  source: "asset";
   id: string;
   selector: {
     file_id: string;
@@ -74,7 +74,7 @@ export interface ChatFileHandle {
 }
 
 export interface LocalFileHandle {
-  source: "local_file";
+  source: "filesystem";
   id: string;
   selector: {
     path: string;
@@ -111,9 +111,6 @@ export type LocalFileHandleResult = LocalFileItemStat & {
 };
 
 const DEFAULT_VISIBLE_CHAT_FILE_TOOLS = new Set([
-  "chat_file_view_media",
-  "chat_file_inspect_media",
-  "chat_file_send_to_chat",
   "asset_media_view",
   "asset_media_inspect",
   "asset_send_to_chat",
@@ -123,10 +120,10 @@ const DEFAULT_VISIBLE_CHAT_FILE_TOOLS = new Set([
 ]);
 
 const DEFAULT_VISIBLE_LOCAL_FILE_TOOLS = new Set([
-  "local_file_read",
-  "local_file_view_media",
-  "local_file_inspect_media",
-  "local_file_send_to_chat"
+  "filesystem_read",
+  "filesystem_media_view",
+  "filesystem_media_inspect",
+  "filesystem_send_to_chat"
 ]);
 
 const MEDIA_VIEW_KINDS = new Set<ChatFileKind>([
@@ -214,30 +211,30 @@ export function buildChatFileHandleCapabilities(
   if (MEDIA_VIEW_KINDS.has(file.kind)) {
     capabilities.push({
       capability: "view_media",
-      tool: "chat_file_view_media",
+      tool: "asset_media_view",
       reason: "查看该媒体文件内容",
-      available: visibleToolNames.has("chat_file_view_media"),
-      args: { media_ids: [file.fileId] }
+      available: visibleToolNames.has("asset_media_view"),
+      args: { asset_ref: selector }
     });
   }
 
   if (MEDIA_INSPECT_KINDS.has(file.kind)) {
     capabilities.push({
       capability: "inspect_media",
-      tool: "chat_file_inspect_media",
+      tool: "asset_media_inspect",
       reason: "按具体问题精读该图片内容",
-      available: visibleToolNames.has("chat_file_inspect_media"),
-      args: { media_ids: [file.fileId] },
+      available: visibleToolNames.has("asset_media_inspect"),
+      args: { asset_ref: selector },
       requires: ["question"]
     });
   }
 
   capabilities.push({
     capability: "send_to_chat",
-    tool: "chat_file_send_to_chat",
+    tool: "asset_send_to_chat",
     reason: "把该文件发送到当前聊天",
-    available: visibleToolNames.has("chat_file_send_to_chat"),
-    args: { file_ref: selector }
+    available: visibleToolNames.has("asset_send_to_chat"),
+    args: { asset_ref: selector }
   });
 
   return capabilities;
@@ -284,9 +281,9 @@ export function buildLocalFileHandleCapabilities(
   if (file.kind === "file") {
     capabilities.push({
       capability: "read_text",
-      tool: "local_file_read",
+      tool: "filesystem_read",
       reason: "按文本读取该本地文件",
-      available: visibleToolNames.has("local_file_read"),
+      available: visibleToolNames.has("filesystem_read"),
       args: { path: file.path }
     });
   }
@@ -294,16 +291,16 @@ export function buildLocalFileHandleCapabilities(
   if (file.kind === "file" && (mediaKind === "image" || mediaKind === "animated_image")) {
     capabilities.push({
       capability: "view_media",
-      tool: "local_file_view_media",
+      tool: "filesystem_media_view",
       reason: "查看该本地图片内容",
-      available: visibleToolNames.has("local_file_view_media"),
+      available: visibleToolNames.has("filesystem_media_view"),
       args: { path: file.path }
     });
     capabilities.push({
       capability: "inspect_media",
-      tool: "local_file_inspect_media",
+      tool: "filesystem_media_inspect",
       reason: "按具体问题精读该本地图片内容",
-      available: visibleToolNames.has("local_file_inspect_media"),
+      available: visibleToolNames.has("filesystem_media_inspect"),
       args: { path: file.path },
       requires: ["question"]
     });
@@ -312,9 +309,9 @@ export function buildLocalFileHandleCapabilities(
   if (file.kind === "file") {
     capabilities.push({
       capability: "send_to_chat",
-      tool: "local_file_send_to_chat",
+      tool: "filesystem_send_to_chat",
       reason: "把该本地文件发送到当前聊天",
-      available: visibleToolNames.has("local_file_send_to_chat"),
+      available: visibleToolNames.has("filesystem_send_to_chat"),
       args: { path: file.path }
     });
   }
@@ -328,7 +325,7 @@ function buildChatFileHandle(
   nextActions: ToolNextAction[]
 ): ChatFileHandle {
   return withNextActions({
-    source: "chat_file" as const,
+    source: "asset" as const,
     id: file.file_id,
     selector: {
       file_id: file.file_id,
@@ -478,7 +475,7 @@ function buildLocalFileHandle(
   nextActions: ToolNextAction[]
 ): LocalFileHandle {
   return withNextActions({
-    source: "local_file" as const,
+    source: "filesystem" as const,
     id: file.path,
     selector: { path: file.path },
     file: {

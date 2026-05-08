@@ -1,4 +1,5 @@
 import {
+  type ExtractedFileSource,
   extractFileSources,
   extractForwardIds,
   extractMentions,
@@ -6,10 +7,13 @@ import {
   extractText,
   normalizeSegmentsForTool
 } from "#services/onebot/messageSegments.ts";
+import { importOneBotMessageFile } from "#services/onebot/fileSourceImport.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { resolveMessageIdArg } from "../core/structuredIdResolver.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
 import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
+import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
+import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
 
 export const messageToolDescriptors: ToolDescriptor[] = [
   {
@@ -17,13 +21,34 @@ export const messageToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "view_message",
-        description: "按 prompt 里的精确 message_id 展开一条引用消息，返回正文、回复引用、提及、image ids 和 forward ids。",
+        description: "按 prompt 里的精确 message_id 展开一条引用消息，返回正文、回复引用、提及、image ids、forward ids 和消息文件提示。不会自动下载文件。",
         parameters: {
           type: "object",
           properties: {
             message_id: { type: "string" }
           },
           required: ["message_id"],
+          additionalProperties: false
+        }
+      }
+    },
+    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "download_message_file",
+        description: "按聊天消息里显示的 file_id 下载该消息文件并登记为 asset。私聊和群聊文件都使用这个工具；只有确实需要读取、查看或发送文件内容时才调用。",
+        parameters: {
+          type: "object",
+          properties: {
+            file_id: { type: "string" },
+            busid: { type: "string" },
+            source_name: { type: "string" },
+            mime_type: { type: "string" }
+          },
+          required: ["file_id"],
           additionalProperties: false
         }
       }
@@ -59,15 +84,7 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
             }
           }).catch(() => null))
       );
-      const workspaceFileAssets = await Promise.all(
-        extractFileSources(message.message).map(async (item) => context.chatFileStore.importRemoteSource({
-          source: item.source,
-          kind: "file",
-          origin: "chat_message",
-          ...(item.filename ? { sourceName: item.filename } : {}),
-          ...(item.mimeType ? { mimeType: item.mimeType } : {})
-        }).catch(() => null))
-      );
+      const fileSources = extractFileSources(message.message);
       let imageIndex = 0;
       const mentions = extractMentions(message.message);
       const sender = message.sender ?? {};
@@ -101,14 +118,9 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
             sourceName: item.sourceName,
             mimeType: item.mimeType,
             semanticKind: item.sourceContext.mediaKind === "emoji" ? "emoji" : "image"
-          })),
-          ...workspaceFileAssets.filter((item): item is NonNullable<typeof item> => Boolean(item)).map((item) => ({
-            fileId: item.fileId,
-            kind: item.kind,
-            sourceName: item.sourceName,
-            mimeType: item.mimeType
           }))
         ],
+        files: fileSources.map(formatExtractedFileSource),
         segments: normalizedSegments.map((segment) => {
           if (segment.kind === "image") {
             const registered = workspaceImageAssets[imageIndex];
@@ -139,6 +151,18 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
               messageId: segment.messageId
             };
           }
+          if (segment.kind === "file") {
+            return {
+              kind: segment.kind,
+              fileId: segment.fileId,
+              filename: segment.filename,
+              busid: segment.busid,
+              sizeBytes: segment.sizeBytes,
+              mimeType: segment.mimeType,
+              downloadTool: "download_message_file",
+              summary: segment.summary
+            };
+          }
           if (segment.kind === "text") {
             return {
               kind: segment.kind,
@@ -157,8 +181,73 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
         error: error instanceof Error ? error.message : String(error)
       });
     }
+  },
+
+  async download_message_file(_toolCall, args, context) {
+    const fileId = getStringArg(args, "file_id") || getStringArg(args, "fileId");
+    if (!fileId) {
+      return JSON.stringify({ error: "file_id is required" });
+    }
+    const busid = getStringArg(args, "busid") || null;
+    const sourceName = getStringArg(args, "source_name") || getStringArg(args, "sourceName") || null;
+    const mimeType = getStringArg(args, "mime_type") || getStringArg(args, "mimeType") || null;
+    const parsedSession = parseChatSessionIdentity(context.lastMessage.sessionId);
+    const groupId = parsedSession?.kind === "group" ? parsedSession.groupId : null;
+    const file = await importOneBotMessageFile({
+      fileSource: {
+        sourceKind: "onebot_file",
+        fileId,
+        busid,
+        filename: sourceName,
+        mimeType,
+        sizeBytes: null
+      },
+      chatFileStore: context.chatFileStore,
+      oneBotClient: context.oneBotClient,
+      origin: "chat_message",
+      groupId,
+      userId: context.lastMessage.userId,
+      senderName: context.lastMessage.senderName
+    });
+    if (!file) {
+      return JSON.stringify({
+        error: "message file download failed",
+        file_id: fileId,
+        ...(busid ? { busid } : {})
+      });
+    }
+    const fileHandle = buildChatFileHandleResultFromContext(file, context);
+    return JSON.stringify({
+      ok: true,
+      ...fileHandle,
+      asset_id: file.fileId,
+      asset_ref: file.fileRef,
+      ...(groupId ? { group_id: groupId } : {}),
+      onebot_file_id: fileId,
+      ...(busid ? { busid } : {})
+    });
   }
 };
+
+function formatExtractedFileSource(fileSource: ExtractedFileSource): Record<string, unknown> {
+  return fileSource.sourceKind === "direct"
+    ? {
+        sourceKind: fileSource.sourceKind,
+        fileId: fileSource.fileId,
+        busid: fileSource.busid,
+        filename: fileSource.filename,
+        mimeType: fileSource.mimeType,
+        sizeBytes: fileSource.sizeBytes
+      }
+    : {
+        sourceKind: fileSource.sourceKind,
+        fileId: fileSource.fileId,
+        busid: fileSource.busid,
+        filename: fileSource.filename,
+        mimeType: fileSource.mimeType,
+        sizeBytes: fileSource.sizeBytes
+      };
+}
 
 function formatTimestamp(timestampSeconds: number): string {
   return new Intl.DateTimeFormat("zh-CN", {

@@ -65,7 +65,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "download_current_group_file",
-        description: "下载当前群文件并登记为 chat file asset。必须传 fileId 和 busid；短下载直接返回文件 handle，长下载返回 download resource_id 并在完成后内部回调。只能在当前群聊内使用，不接受 groupId。",
+        description: "下载当前群文件并登记为 asset。必须传 fileId 和 busid；短下载直接返回 asset_handle，长下载返回 download resource_id 并在完成后内部回调。只能在当前群聊内使用，不接受 groupId。",
         parameters: {
           type: "object",
           properties: {
@@ -402,6 +402,7 @@ export const groupContextToolHandlers: Record<string, ToolHandler> = {
       status: result.status,
       resource_id: result.resource_id,
       ...(fileHandle ?? {}),
+      asset_ref: file?.fileRef ?? result.asset_ref ?? result.file_ref ?? null,
       source_url: result.source_url,
       downloaded_bytes: result.downloaded_bytes,
       total_bytes: result.total_bytes,

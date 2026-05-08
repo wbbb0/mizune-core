@@ -5,8 +5,9 @@ import { ApiError } from "../../../webui/src/api/client.ts";
 import { formatUploadErrorMessage } from "../../../webui/src/components/sessions/composerErrors.ts";
 import { buildComposerSendPayload } from "../../../webui/src/components/sessions/composerPayload.ts";
 import {
+  COMPOSER_FILE_ACCEPT,
   COMPOSER_IMAGE_ACCEPT,
-  filterComposerImageFiles,
+  filterComposerFiles,
   isComposerImageFile
 } from "../../../webui/src/components/sessions/composerAcceptedFiles.ts";
 import {
@@ -125,21 +126,18 @@ import {
     assert.equal(prepared[0]?.type, "image/jpeg");
   });
 
-  test("composer accepts only image files before upload", () => {
+  test("composer accepts arbitrary files before upload", () => {
     const png = new File(["png"], "photo.png", { type: "image/png" });
     const heic = new File(["heic"], "camera.HEIC", { type: "" });
     const text = new File(["text"], "note.txt", { type: "text/plain" });
     const pdf = new File(["pdf"], "doc.pdf", { type: "application/pdf" });
 
+    assert.equal(COMPOSER_FILE_ACCEPT, undefined);
     assert.equal(COMPOSER_IMAGE_ACCEPT, "image/*,.heic,.heif");
     assert.equal(isComposerImageFile(png), true);
     assert.equal(isComposerImageFile(heic), true);
-    assert.equal(isComposerImageFile(text), false);
-    assert.equal(isComposerImageFile(pdf), false);
-    assert.deepEqual(filterComposerImageFiles([png, text, heic, pdf]), {
-      accepted: [png, heic],
-      rejected: [text, pdf]
-    });
+    assert.equal(filterComposerFiles([png, text, heic, pdf]).length, 4);
+    assert.deepEqual(filterComposerFiles([png, text, heic, pdf]), [png, text, heic, pdf]);
   });
 
   test("composer file source helpers preserve multiple selected files", () => {

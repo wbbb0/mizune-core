@@ -284,6 +284,7 @@ export interface SessionDirectCommandAccess {
       imageIds?: string[];
       emojiIds?: string[];
       attachments?: SessionMessage["attachments"];
+      messageFiles?: SessionMessage["messageFiles"];
       specialSegments?: SessionMessage["specialSegments"];
       forwardIds?: string[];
       replyMessageId?: string | null;
@@ -302,6 +303,7 @@ export interface SessionDirectCommandAccess {
       imageIds?: string[];
       emojiIds?: string[];
       attachments?: SessionMessage["attachments"];
+      messageFiles?: SessionMessage["messageFiles"];
       specialSegments?: SessionMessage["specialSegments"];
       audioCount?: number;
       forwardIds?: string[];
@@ -333,6 +335,7 @@ export interface SessionDirectCommandAccess {
       imageIds?: string[];
       emojiIds?: string[];
       attachments?: SessionMessage["attachments"];
+      messageFiles?: SessionMessage["messageFiles"];
       specialSegments?: SessionMessage["specialSegments"];
       audioCount?: number;
       forwardIds?: string[];
@@ -376,6 +379,7 @@ export interface SessionMessagingAccess {
       imageIds?: string[];
       emojiIds?: string[];
       attachments?: SessionMessage["attachments"];
+      messageFiles?: SessionMessage["messageFiles"];
       specialSegments?: SessionMessage["specialSegments"];
       audioCount?: number;
       forwardIds?: string[];

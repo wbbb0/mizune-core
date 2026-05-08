@@ -1,8 +1,8 @@
 export type ToolObservationResourceKind =
-  | "local_file"
+  | "filesystem"
   | "shell_session"
   | "browser_page"
-  | "chat_file"
+  | "asset"
   | "search_result"
   | "external";
 

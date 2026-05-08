@@ -14,11 +14,12 @@ import type { MediaCaptionService } from "#services/workspace/mediaCaptionServic
 import type { ToolsetView } from "#llm/tools/toolsets.ts";
 import { annotateHistoryMessagesWithCaptions, collectReferencedImageIds } from "#images/imagePromptContext.ts";
 import { collectVisualAttachmentFileIds, isPendingChatAttachmentId } from "#services/workspace/chatAttachments.ts";
+import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 
 export type TurnPlannerRequiredCapability =
   | "external_info_lookup"
   | "web_navigation"
-  | "local_file_access"
+  | "filesystem_access"
   | "shell_execution"
   | "memory_write"
   | "scheduler_management"
@@ -53,6 +54,8 @@ export interface TurnPlannerInput {
     imageIds: string[];
     emojiIds: string[];
     attachments?: ChatAttachment[];
+    messageFiles?: OneBotMessageFileSummary[];
+    specialSegments?: OneBotSpecialSegmentSummary[];
     forwardIds: string[];
     replyMessageId: string | null;
     mentionUserIds: string[];
@@ -605,7 +608,7 @@ function isRequiredCapability(value: string): value is TurnPlannerRequiredCapabi
   return [
     "external_info_lookup",
     "web_navigation",
-    "local_file_access",
+    "filesystem_access",
     "shell_execution",
     "memory_write",
     "scheduler_management",

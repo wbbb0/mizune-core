@@ -29,19 +29,19 @@ export function localFileListPolicy(): ToolResultObservationPolicy {
   return {
     method(ctx) {
       if (hasError(ctx)) return "error_summary";
-      return "local_file_ls_summary";
+      return "filesystem_list_summary";
     },
     resource: localFileResource,
     refetchHint(ctx) {
       if (!ctx.resource) return null;
       const kind = stringValue(ctx.parsedContent?.kind);
       return kind === "file"
-        ? `如需刷新文件元信息，请再次调用 local_file_ls path=${ctx.resource.id}`
-        : `如需完整目录列表，请再次调用 local_file_ls path=${ctx.resource.id} limit=500`;
+        ? `如需刷新文件元信息，请再次调用 filesystem_list path=${ctx.resource.id}`
+        : `如需完整目录列表，请再次调用 filesystem_list path=${ctx.resource.id} limit=500`;
     },
     preserveRecentRawCount: 1,
     compactors: {
-      local_file_ls_summary: compactLocalFileList
+      filesystem_list_summary: compactLocalFileList
     }
   };
 }
@@ -50,7 +50,7 @@ export function localFileReadPolicy(): ToolResultObservationPolicy {
   return {
     method(ctx) {
       if (hasError(ctx)) return "error_summary";
-      return "local_file_read_summary";
+      return "filesystem_read_summary";
     },
     resource: localFileResource,
     refetchHint(ctx) {
@@ -58,14 +58,14 @@ export function localFileReadPolicy(): ToolResultObservationPolicy {
       const startLine = numberValue(ctx.parsedContent?.startLine ?? ctx.parsedContent?.start_line);
       const endLine = numberValue(ctx.parsedContent?.endLine ?? ctx.parsedContent?.end_line);
       return [
-        `如需原文，请再次调用 local_file_read path=${ctx.resource.id}`,
+        `如需原文，请再次调用 filesystem_read path=${ctx.resource.id}`,
         startLine ? `start_line=${startLine}` : null,
         endLine ? `end_line=${endLine}` : null
       ].filter((item): item is string => Boolean(item)).join(" ");
     },
     preserveRecentRawCount: 1,
     compactors: {
-      local_file_read_summary: compactLocalFileRead
+      filesystem_read_summary: compactLocalFileRead
     }
   };
 }
@@ -74,19 +74,19 @@ export function localFileSearchPolicy(): ToolResultObservationPolicy {
   return {
     method(ctx) {
       if (hasError(ctx)) return "error_summary";
-      return "local_file_search_summary";
+      return "filesystem_search_summary";
     },
     resource: localFileResource,
     refetchHint(ctx) {
       const query = stringValue(ctx.args.query);
       const mode = stringValue(ctx.args.mode);
       return ctx.resource
-        ? `如需完整命中，请再次调用 local_file_search${query ? ` query=${JSON.stringify(query)}` : ""} path=${ctx.resource.id}${mode ? ` mode=${mode}` : ""} limit=200`
+        ? `如需完整命中，请再次调用 filesystem_search${query ? ` query=${JSON.stringify(query)}` : ""} path=${ctx.resource.id}${mode ? ` mode=${mode}` : ""} limit=200`
         : null;
     },
     preserveRecentRawCount: 1,
     compactors: {
-      local_file_search_summary: compactLocalFileSearch
+      filesystem_search_summary: compactLocalFileSearch
     }
   };
 }
@@ -95,14 +95,14 @@ export function localFileMutationPolicy(): ToolResultObservationPolicy {
   return {
     method(ctx) {
       if (hasError(ctx)) return "error_summary";
-      return "local_file_mutation_summary";
+      return "filesystem_mutation_summary";
     },
     resource: localFileResource,
     refetchHint: localFileMutationRefetchHint,
     pinned: hasError,
     preserveRecentRawCount: 1,
     compactors: {
-      local_file_mutation_summary: compactLocalFileMutation
+      filesystem_mutation_summary: compactLocalFileMutation
     }
   };
 }
@@ -111,12 +111,12 @@ export function chatFileListPolicy(): ToolResultObservationPolicy {
   return {
     method(ctx) {
       if (hasError(ctx)) return "error_summary";
-      return "chat_file_list_summary";
+      return "asset_list_summary";
     },
     resource: chatFileResource,
     refetchHint(ctx) {
-      if (ctx.resource?.kind === "chat_file") {
-        return `如需刷新该文件记录，请再次调用 chat_file_list file_ref=${JSON.stringify(ctx.resource.id)}`;
+      if (ctx.resource?.kind === "asset") {
+        return `如需刷新该 asset 记录，请再次调用 asset_list asset_ref=${JSON.stringify(ctx.resource.id)}`;
       }
       const query = stringValue(ctx.args.query);
       const kind = stringValue(ctx.args.kind);
@@ -127,11 +127,11 @@ export function chatFileListPolicy(): ToolResultObservationPolicy {
         origin ? `origin=${origin}` : null,
         "limit=100"
       ].filter((item): item is string => Boolean(item)).join(" ");
-      return `如需刷新 chat file 列表，请再次调用 chat_file_list ${args}`;
+      return `如需刷新 asset 列表，请再次调用 asset_list ${args}`;
     },
     preserveRecentRawCount: 1,
     compactors: {
-      chat_file_list_summary: compactChatFileList
+      asset_list_summary: compactChatFileList
     }
   };
 }
@@ -145,9 +145,9 @@ export function fileSendPolicy(): ToolResultObservationPolicy {
     resource: fileSendResource,
     refetchHint(ctx) {
       if (!ctx.resource) return null;
-      return ctx.resource.kind === "chat_file"
-        ? `如需再次发送该文件，请调用 chat_file_send_to_chat file_ref=${JSON.stringify(ctx.resource.id)}`
-        : `如需再次发送该本地文件，请调用 local_file_send_to_chat path=${JSON.stringify(ctx.resource.id)}`;
+      return ctx.resource.kind === "asset"
+        ? `如需再次发送该文件，请调用 asset_send_to_chat asset_ref=${JSON.stringify(ctx.resource.id)}`
+        : `如需再次发送该本地文件，请调用 filesystem_send_to_chat path=${JSON.stringify(ctx.resource.id)}`;
     },
     preserveRecentRawCount: 0,
     compactors: {
@@ -218,7 +218,7 @@ export function browserScreenshotPolicy(): ToolResultObservationPolicy {
     resource: mediaResource,
     refetchHint(ctx) {
       const fileId = stringValue(ctx.parsedContent?.file_id ?? ctx.parsedContent?.fileId);
-      return fileId ? `如需查看截图，请调用 chat_file_view_media media_ids=[${JSON.stringify(fileId)}]` : null;
+      return fileId ? `如需查看截图，请调用 asset_media_view asset_id=${JSON.stringify(fileId)}` : null;
     },
     preserveRecentRawCount: 0,
     compactors: {
@@ -243,7 +243,7 @@ export function downloadResourcePolicy(): ToolResultObservationPolicy {
       const fileId = stringValue(ctx.parsedContent?.file_id ?? ctx.parsedContent?.fileId);
       const selector = fileRef ?? fileId;
       if (selector) {
-        return `如需发送下载文件，请调用 chat_file_send_to_chat file_ref=${JSON.stringify(selector)}`;
+        return `如需发送下载文件，请调用 asset_send_to_chat asset_ref=${JSON.stringify(selector)}`;
       }
       const resourceId = stringValue(ctx.parsedContent?.resource_id ?? ctx.parsedContent?.resourceId);
       return resourceId ? `如需查看下载状态，请调用 read_download_resource resource_id=${JSON.stringify(resourceId)}` : null;
@@ -362,9 +362,9 @@ export function directMediaViewPolicy(): ToolResultObservationPolicy {
     resource: mediaResource,
     refetchHint(ctx) {
       if (!ctx.resource) return null;
-      return ctx.toolName.startsWith("local_file_")
-        ? `如需重新查看媒体，请调用 local_file_view_media path=${ctx.resource.id}`
-        : `如需重新查看媒体，请调用 chat_file_view_media media_ids=[${JSON.stringify(ctx.resource.id)}]`;
+      return ctx.toolName.startsWith("filesystem_")
+        ? `如需重新查看媒体，请调用 filesystem_media_view path=${ctx.resource.id}`
+        : `如需重新查看媒体，请调用 asset_media_view asset_id=${JSON.stringify(ctx.resource.id)}`;
     },
     preserveRecentRawCount: 0,
     compactors: {
@@ -464,7 +464,7 @@ function localFileResource(ctx: ToolResultObservationContext): ToolObservationRe
   const startLine = numberValue(ctx.parsedContent?.startLine ?? ctx.parsedContent?.start_line);
   const endLine = numberValue(ctx.parsedContent?.endLine ?? ctx.parsedContent?.end_line);
   return {
-    kind: "local_file",
+    kind: "filesystem",
     id: path,
     ...(startLine && endLine ? { locator: `L${startLine}-L${endLine}` } : {}),
     ...(ctx.parsedContent?.updatedAtMs ? { version: `mtime:${String(ctx.parsedContent.updatedAtMs)}` } : {})
@@ -477,7 +477,8 @@ function chatFileResource(ctx: ToolResultObservationContext): ToolObservationRes
     return null;
   }
   const id = stringValue(
-    ctx.parsedContent?.file_ref
+    ctx.parsedContent?.asset_ref
+    ?? ctx.parsedContent?.file_ref
     ?? ctx.parsedContent?.fileRef
     ?? ctx.parsedContent?.file_id
     ?? ctx.parsedContent?.fileId
@@ -485,19 +486,20 @@ function chatFileResource(ctx: ToolResultObservationContext): ToolObservationRes
     ?? file?.fileRef
     ?? file?.file_id
     ?? file?.fileId
+    ?? ctx.args.asset_ref
     ?? ctx.args.file_ref
     ?? ctx.args.file_id
   );
-  return id ? { kind: "chat_file", id } : null;
+  return id ? { kind: "asset", id } : null;
 }
 
 function fileSendResource(ctx: ToolResultObservationContext): ToolObservationResource | null {
-  const fileRef = stringValue(ctx.parsedContent?.file_ref ?? ctx.parsedContent?.fileRef);
-  if (fileRef) return { kind: "chat_file", id: fileRef };
+  const fileRef = stringValue(ctx.parsedContent?.asset_ref ?? ctx.parsedContent?.file_ref ?? ctx.parsedContent?.fileRef);
+  if (fileRef) return { kind: "asset", id: fileRef };
   const fileId = stringValue(ctx.parsedContent?.file_id ?? ctx.parsedContent?.fileId);
-  if (fileId) return { kind: "chat_file", id: fileId };
+  if (fileId) return { kind: "asset", id: fileId };
   const path = stringValue(ctx.parsedContent?.path ?? ctx.args.path);
-  if (path) return { kind: "local_file", id: path };
+  if (path) return { kind: "filesystem", id: path };
   return null;
 }
 
@@ -539,14 +541,14 @@ function browserResource(ctx: ToolResultObservationContext): ToolObservationReso
 
 function mediaResource(ctx: ToolResultObservationContext): ToolObservationResource | null {
   const fileId = stringValue(ctx.parsedContent?.file_id ?? ctx.parsedContent?.fileId);
-  if (fileId) return { kind: "chat_file", id: fileId };
+  if (fileId) return { kind: "asset", id: fileId };
   const path = stringValue(ctx.parsedContent?.path ?? ctx.args.path);
-  if (path) return { kind: "local_file", id: path };
+  if (path) return { kind: "filesystem", id: path };
   const attached = arrayValue(ctx.parsedContent?.attached);
   const mediaId = attached && attached.length === 1 && typeof attached[0] === "object"
     ? stringValue((attached[0] as Record<string, unknown>).mediaId)
     : null;
-  return mediaId ? { kind: "chat_file", id: mediaId } : null;
+  return mediaId ? { kind: "asset", id: mediaId } : null;
 }
 
 function downloadOrMediaResource(ctx: ToolResultObservationContext): ToolObservationResource | null {
@@ -557,7 +559,7 @@ function downloadOrMediaResource(ctx: ToolResultObservationContext): ToolObserva
 }
 
 function localFileMutationRefetchHint(ctx: ToolResultObservationContext & { resource: ToolObservationResource | null }): string | null {
-  if (ctx.toolName === "local_file_delete") return "";
+  if (ctx.toolName === "filesystem_delete") return "";
   const path = stringValue(
     ctx.parsedContent?.path
     ?? ctx.parsedContent?.toPath
@@ -567,10 +569,10 @@ function localFileMutationRefetchHint(ctx: ToolResultObservationContext & { reso
     ?? ctx.resource?.id
   );
   if (!path) return null;
-  if (ctx.toolName === "local_file_mkdir") {
-    return `如需查看目录内容，请调用 local_file_ls path=${path}`;
+  if (ctx.toolName === "filesystem_mkdir") {
+    return `如需查看目录内容，请调用 filesystem_list path=${path}`;
   }
-  return `如需查看当前内容，请调用 local_file_read path=${path}`;
+  return `如需查看当前内容，请调用 filesystem_read path=${path}`;
 }
 
 function objectValue(value: unknown): Record<string, unknown> | null {
@@ -682,7 +684,7 @@ function compactChatFileList(ctx: Parameters<ToolResultCompactor>[0]) {
   const ok = booleanValue(ctx.parsedContent?.ok);
   if (ok === false && !file) {
     const selector = stringValue(ctx.args.file_ref ?? ctx.args.file_id) ?? "<unknown>";
-    return replayJson(ctx, `chat file 未找到：${selector}`, {
+    return replayJson(ctx, `asset 未找到：${selector}`, {
       ok: false,
       selector,
       found: false
@@ -692,8 +694,8 @@ function compactChatFileList(ctx: Parameters<ToolResultCompactor>[0]) {
     ?? (file ? 1 : files.length);
   const filters = objectValue(ctx.parsedContent?.filters);
   const summary = file
-    ? `chat file ${stringValue(file.file_ref ?? file.fileRef ?? file.file_id ?? file.fileId) ?? ctx.resource?.id ?? ""} 已返回记录`
-    : `chat file 列表返回 ${files.length}/${total} 项${isTruncated(ctx) ? "；结果被截断" : ""}`;
+    ? `asset ${stringValue(file.file_ref ?? file.fileRef ?? file.file_id ?? file.fileId) ?? ctx.resource?.id ?? ""} 已返回记录`
+    : `asset 列表返回 ${files.length}/${total} 项${isTruncated(ctx) ? "；结果被截断" : ""}`;
   return replayJson(ctx, summary, {
     file: file ? sample[0] : null,
     fileCount: file ? 1 : files.length,
@@ -921,7 +923,7 @@ function compactChatFileForReplay(item: unknown): Record<string, unknown> {
     return { fileRef: compactText(String(item ?? ""), 160) };
   }
   return {
-    fileRef: record.file_ref ?? record.fileRef ?? null,
+    fileRef: record.asset_ref ?? record.file_ref ?? record.fileRef ?? null,
     fileId: record.file_id ?? record.fileId ?? null,
     kind: record.kind ?? null,
     origin: record.origin ?? null,
@@ -975,7 +977,7 @@ function compactFileHandleForReplay(item: unknown): Record<string, unknown> | nu
     selector: record.selector ?? null,
     file: file
       ? {
-          fileRef: file.file_ref ?? file.fileRef ?? null,
+          fileRef: file.asset_ref ?? file.file_ref ?? file.fileRef ?? null,
           fileId: file.file_id ?? file.fileId ?? null,
           path: file.path ?? file.chat_file_path ?? file.chatFilePath ?? null,
           name: file.name ?? file.source_name ?? file.sourceName ?? null,
@@ -1037,16 +1039,16 @@ function countBy(items: Array<Record<string, unknown>>, key: string): Record<str
 }
 
 function localMutationAction(toolName: string): string {
-  if (toolName === "local_file_write") return "写入";
-  if (toolName === "local_file_patch") return "修改";
-  if (toolName === "local_file_move") return "移动";
-  if (toolName === "local_file_delete") return "删除";
-  if (toolName === "local_file_mkdir") return "创建";
+  if (toolName === "filesystem_write") return "写入";
+  if (toolName === "filesystem_patch") return "修改";
+  if (toolName === "filesystem_move") return "移动";
+  if (toolName === "filesystem_delete") return "删除";
+  if (toolName === "filesystem_mkdir") return "创建";
   return "更新";
 }
 
 function localMutationTargetLabel(toolName: string): string {
-  return toolName === "local_file_mkdir" ? "目录" : "本地文件";
+  return toolName === "filesystem_mkdir" ? "目录" : "本地文件";
 }
 
 function compactBrowserElementForReplay(item: unknown): Record<string, unknown> {

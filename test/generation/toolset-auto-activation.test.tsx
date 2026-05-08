@@ -4,7 +4,7 @@ import { resolveAutoActivatedToolsets } from "../../src/app/generation/toolsetAu
 import type { ToolsetView } from "../../src/llm/tools/toolsetCatalog.ts";
 
 const AVAILABLE_TOOLSETS: ToolsetView[] = [
-  { id: "chat_context", title: "会话上下文", description: "", toolNames: ["view_message", "chat_file_view_media"] },
+  { id: "chat_context", title: "会话上下文", description: "", toolNames: ["view_message", "asset_media_view"] },
   { id: "web_research", title: "网页检索与浏览", description: "", toolNames: ["open_page"] },
   { id: "dice_roller", title: "骰子", description: "", toolNames: ["roll_dice"] },
   { id: "scenario_host_state", title: "场景状态", description: "", toolNames: ["get_scenario_state"] }

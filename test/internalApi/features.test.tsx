@@ -646,6 +646,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       imageIds: ["file_image_1"],
       emojiIds: [],
       attachments: [],
+      messageFiles: [],
       audioCount: 1,
       forwardIds: [],
       replyMessageId: null,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject } from "vue";
-import { Bot, GitBranch, Image as ImageIcon, Info, MoreHorizontal, User, Wrench } from "lucide-vue-next";
+import { Bot, FileText, GitBranch, Image as ImageIcon, Info, MoreHorizontal, User, Wrench } from "lucide-vue-next";
 import type { StoredToolCall, TranscriptItem } from "@/api/types";
 import SessionGlyph, { type SessionGlyphModel } from "./SessionGlyph.vue";
 import { WorkbenchCard, WorkbenchDisclosure } from "@workbench-kit/vue-workbench";
@@ -231,6 +231,7 @@ const metaChips = computed(() => {
         ...(props.item.mentionedAll ? ["@all"] : []),
         ...(props.item.imageIds.length > 0 ? [`image=${props.item.imageIds.length}`] : []),
         ...(props.item.emojiIds.length > 0 ? [`emoji=${props.item.emojiIds.length}`] : []),
+        ...((props.item.messageFiles?.length ?? 0) > 0 ? [`file=${props.item.messageFiles?.length ?? 0}`] : []),
         ...((props.item.specialSegments?.length ?? 0) > 0 ? [`segment=${props.item.specialSegments?.length ?? 0}`] : []),
         ...(props.item.audioCount > 0 ? [`audio=${props.item.audioCount}`] : []),
         ...(props.item.forwardIds.length > 0 ? [`forward=${props.item.forwardIds.length}`] : [])
@@ -510,6 +511,24 @@ function formatSafetySubject(kind: string): string {
   return kind;
 }
 
+function formatFileSize(sizeBytes: number | null | undefined): string {
+  if (sizeBytes == null || !Number.isFinite(sizeBytes) || sizeBytes < 0) {
+    return "未知大小";
+  }
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`;
+  }
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = sizeBytes / 1024;
+  for (const unit of units) {
+    if (value < 1024 || unit === units[units.length - 1]) {
+      return `${value.toFixed(value >= 10 ? 1 : 2)} ${unit}`;
+    }
+    value /= 1024;
+  }
+  return `${sizeBytes} B`;
+}
+
 function openActions(): void {
   emit("openActions");
 }
@@ -548,6 +567,26 @@ function openActions(): void {
 
       <div v-if="item.kind === 'user_message'" class="flex flex-col gap-2">
         <TranscriptTextBlock v-if="item.text" :text="item.text" />
+        <div v-if="(item.messageFiles?.length ?? 0) > 0" class="grid grid-cols-1 gap-2 min-[860px]:grid-cols-2">
+          <div
+            v-for="file in item.messageFiles ?? []"
+            :key="`${file.fileId}:${file.busid ?? ''}`"
+            class="flex min-w-0 items-start gap-2 rounded-md border border-border-default bg-surface-input px-2.5 py-2"
+          >
+            <span class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded border border-border-subtle bg-surface-panel text-text-accent">
+              <FileText :size="15" :stroke-width="2" />
+            </span>
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-ui font-medium text-text-secondary">{{ file.name || '聊天文件' }}</div>
+              <div class="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-small text-text-muted">
+                <span>{{ formatFileSize(file.sizeBytes) }}</span>
+                <span v-if="file.mimeType">{{ file.mimeType }}</span>
+                <span v-if="file.busid != null">busid={{ file.busid }}</span>
+              </div>
+              <div class="mt-0.5 truncate font-mono text-small text-text-subtle">file_id={{ file.fileId }}</div>
+            </div>
+          </div>
+        </div>
         <TranscriptTextBlock
           v-if="(item.specialSegments?.length ?? 0) > 0"
           :text="item.specialSegments?.map((segment) => segment.summary).join('\n') ?? ''"

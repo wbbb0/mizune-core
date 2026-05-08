@@ -7,7 +7,7 @@ import { ChatFileStore } from "../../src/services/workspace/chatFileStore.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 
-test("chat file store serializes concurrent caption writes across files", async () => {
+test("asset store serializes concurrent caption writes across files", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-"));
   try {
     const store = new ChatFileStore(
@@ -60,7 +60,7 @@ test("chat file store serializes concurrent caption writes across files", async 
   }
 });
 
-test("chat file store removes document cache when deleting files", async () => {
+test("asset store removes document cache when deleting files", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-doc-cache-"));
   try {
     const store = new ChatFileStore(
@@ -101,7 +101,52 @@ test("chat file store removes document cache when deleting files", async () => {
   }
 });
 
-test("chat file store rejects absolute or escaping chatFiles.root", async () => {
+test("asset store cleans orphan document cache directories", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-orphan-doc-cache-"));
+  try {
+    const store = new ChatFileStore(
+      createTestAppConfig({
+        chatFiles: {
+          enabled: true,
+          root: "chat-files",
+          maxUploadBytes: 1024 * 1024
+        }
+      }),
+      createSilentLogger(),
+      {
+        rootDir,
+        resolvePath(path: string) {
+          return {
+            sourcePath: path,
+            absolutePath: join(rootDir, path)
+          };
+        }
+      } as any
+    );
+    await store.init();
+    const file = await store.importBuffer({
+      buffer: Buffer.from("document"),
+      sourceName: "document.txt",
+      mimeType: "text/plain",
+      kind: "file",
+      origin: "user_upload"
+    });
+    const liveCacheDir = store.resolveDocumentCacheDirectory(file.fileId);
+    const orphanCacheDir = join(rootDir, "chat-files", "documents", "id-orphan");
+    await mkdir(liveCacheDir, { recursive: true });
+    await mkdir(orphanCacheDir, { recursive: true });
+    await writeFile(join(liveCacheDir, "manifest.json"), "{}\n", "utf8");
+    await writeFile(join(orphanCacheDir, "manifest.json"), "{}\n", "utf8");
+
+    assert.deepEqual(await store.cleanupOrphanDocumentCaches(), { removed: 1, kept: 1 });
+    await stat(liveCacheDir);
+    await assert.rejects(stat(orphanCacheDir), /ENOENT/);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("asset store rejects absolute or escaping chatFiles.root", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-root-"));
   try {
     for (const configuredRoot of ["/tmp/chat-files", "C:\\chat-files", "../outside", "safe/..", "safe/../../outside"]) {
@@ -130,7 +175,7 @@ test("chat file store rejects absolute or escaping chatFiles.root", async () => 
   }
 });
 
-test("chat file store document cache directory cannot collapse to store root", async () => {
+test("asset store document cache directory cannot collapse to store root", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-safe-doc-cache-"));
   try {
     const store = new ChatFileStore(

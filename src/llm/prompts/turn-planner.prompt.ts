@@ -5,10 +5,11 @@ import {
   formatStructuredMentionAllReference,
   formatStructuredMentionReference,
   formatStructuredMentionSelfReference,
+  formatStructuredMessageFile,
   formatStructuredReplyReference,
   formatStructuredSpecialSegment
 } from "#conversation/session/historyContext.ts";
-import type { OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
+import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import { renderPromptSection, renderPromptSectionRaw } from "./prompt-section.ts";
 
 export function buildTurnPlannerPrompt(input: {
@@ -29,6 +30,7 @@ export function buildTurnPlannerPrompt(input: {
       kind: string;
       semanticKind?: "image" | "emoji" | undefined;
     }>;
+    messageFiles?: OneBotMessageFileSummary[];
     specialSegments?: OneBotSpecialSegmentSummary[];
     forwardIds: string[];
     replyMessageId: string | null;
@@ -50,6 +52,7 @@ export function buildTurnPlannerPrompt(input: {
     imageMessageCount: number;
     emojiMessageCount: number;
     forwardMessageCount: number;
+    fileMessageCount: number;
     specialSegmentMessageCount: number;
     replyReferenceCount: number;
     mentionMessageCount: number;
@@ -82,7 +85,7 @@ export function buildTurnPlannerPrompt(input: {
       "followup_mode: <none|elliptical|explicit_reference>",
       "toolset_ids: <逗号分隔工具集 ID；无则填 none；wait/no_reply 时填 none>",
       "只可从给定 available_toolsets 中挑选，不要编造 ID。",
-      "required_capabilities 可用值：external_info_lookup, web_navigation, local_file_access, shell_execution, memory_write, scheduler_management, time_lookup, social_admin, conversation_navigation, chat_delegation, image_generation。",
+      "required_capabilities 可用值：external_info_lookup, web_navigation, filesystem_access, shell_execution, memory_write, scheduler_management, time_lookup, social_admin, conversation_navigation, chat_delegation, image_generation。",
       "context_dependencies 可用值：structured_message_context, prior_web_context, prior_shell_context, prior_file_context, prior_chat_context。",
       "reply、forward、图片、表情和已知结构化会话上下文会由系统按确定性规则自动激活对应工具集；你只需在 context_dependencies 中保留依赖说明，不要为了这些确定性上下文额外选择工具集。",
       "recent_domain_reuse 只填写和当前续接明显相关的最近域/toolset id。",
@@ -135,6 +138,7 @@ export function buildTurnPlannerPrompt(input: {
       `image_messages=${input.batchAnalysis.imageMessageCount}`,
       `emoji_messages=${input.batchAnalysis.emojiMessageCount}`,
       `forward_messages=${input.batchAnalysis.forwardMessageCount}`,
+      `file_messages=${input.batchAnalysis.fileMessageCount}`,
       `special_segment_messages=${input.batchAnalysis.specialSegmentMessageCount}`,
       `reply_references=${input.batchAnalysis.replyReferenceCount}`,
       `mention_messages=${input.batchAnalysis.mentionMessageCount}`
@@ -197,6 +201,7 @@ function formatBatch(input: Array<{
     kind: string;
     semanticKind?: "image" | "emoji" | undefined;
   }>;
+  messageFiles?: OneBotMessageFileSummary[];
   specialSegments?: OneBotSpecialSegmentSummary[];
   forwardIds: string[];
   replyMessageId: string | null;
@@ -236,6 +241,9 @@ function formatBatch(input: Array<{
       }
       if (message.audioSources.length > 0) {
         parts.push(formatStructuredCount("audio", message.audioSources.length));
+      }
+      for (const file of message.messageFiles ?? []) {
+        parts.push(formatStructuredMessageFile(file));
       }
       for (const segment of message.specialSegments ?? []) {
         parts.push(formatStructuredSpecialSegment(segment));

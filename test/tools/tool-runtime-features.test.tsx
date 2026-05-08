@@ -111,19 +111,20 @@ function createMediaToolVisibilityConfig(options: {
     assert.ok(names.includes("list_current_group_files"));
     assert.ok(names.includes("download_current_group_file"));
     assert.ok(names.includes("list_current_group_members"));
-    assert.ok(names.includes("chat_file_view_media"));
-    assert.ok(names.includes("chat_file_inspect_media"));
+    assert.ok(names.includes("asset_media_view"));
+    assert.ok(names.includes("asset_media_inspect"));
     assert.ok(names.includes("view_message"));
-    assert.ok(names.includes("chat_file_list"));
-    assert.ok(names.includes("chat_file_send_to_chat"));
+    assert.ok(names.includes("download_message_file"));
+    assert.ok(names.includes("asset_list"));
+    assert.ok(names.includes("asset_send_to_chat"));
     assert.ok(names.includes("asset_document_overview"));
     assert.ok(names.includes("asset_document_read"));
     assert.ok(names.includes("asset_document_search"));
     assert.ok(names.includes("asset_document_inspect"));
-    assert.ok(names.includes("local_file_mkdir"));
-    assert.ok(names.includes("local_file_delete"));
-    assert.ok(names.includes("local_file_inspect_media"));
-    assert.ok(names.includes("local_file_send_to_chat"));
+    assert.ok(names.includes("filesystem_mkdir"));
+    assert.ok(names.includes("filesystem_delete"));
+    assert.ok(names.includes("filesystem_media_inspect"));
+    assert.ok(names.includes("filesystem_send_to_chat"));
     assert.ok(names.includes("ground_with_google_search"));
     assert.ok(names.includes("search_with_iqs_lite_advanced"));
     assert.ok(names.includes("list_live_resources"));
@@ -178,7 +179,7 @@ function createMediaToolVisibilityConfig(options: {
     }
   });
 
-  test("download tools are hidden when chat files are disabled", async () => {
+  test("download tools are hidden when assets are disabled", async () => {
     const config = createForwardFeatureConfig();
     config.browser.enabled = true;
     config.chatFiles.enabled = false;
@@ -198,25 +199,25 @@ function createMediaToolVisibilityConfig(options: {
     const nonVisionNames = getBuiltinTools("owner", null, nonVisionConfig, {
       modelRef: ["main"]
     }).map((tool) => tool.function.name);
-    assert.ok(!nonVisionNames.includes("chat_file_view_media"));
-    assert.ok(!nonVisionNames.includes("local_file_view_media"));
-    assert.ok(nonVisionNames.includes("chat_file_inspect_media"));
-    assert.ok(nonVisionNames.includes("local_file_inspect_media"));
+    assert.ok(!nonVisionNames.includes("asset_media_view"));
+    assert.ok(!nonVisionNames.includes("filesystem_media_view"));
+    assert.ok(nonVisionNames.includes("asset_media_inspect"));
+    assert.ok(nonVisionNames.includes("filesystem_media_inspect"));
 
     const visionConfig = createMediaToolVisibilityConfig({ mainSupportsVision: true });
     const visionNames = getBuiltinTools("owner", null, visionConfig, {
       modelRef: ["main"]
     }).map((tool) => tool.function.name);
-    assert.ok(visionNames.includes("chat_file_view_media"));
-    assert.ok(visionNames.includes("local_file_view_media"));
-    assert.ok(visionNames.includes("chat_file_inspect_media"));
-    assert.ok(visionNames.includes("local_file_inspect_media"));
+    assert.ok(visionNames.includes("asset_media_view"));
+    assert.ok(visionNames.includes("filesystem_media_view"));
+    assert.ok(visionNames.includes("asset_media_inspect"));
+    assert.ok(visionNames.includes("filesystem_media_inspect"));
 
     const fallbackVisionNames = getBuiltinTools("owner", null, nonVisionConfig, {
       modelRef: ["main", "visualFallback"]
     }).map((tool) => tool.function.name);
-    assert.ok(fallbackVisionNames.includes("chat_file_view_media"));
-    assert.ok(fallbackVisionNames.includes("local_file_view_media"));
+    assert.ok(fallbackVisionNames.includes("asset_media_view"));
+    assert.ok(fallbackVisionNames.includes("filesystem_media_view"));
   });
 
   test("media inspection tools are hidden when the image inspector is disabled or unrouted", async () => {
@@ -224,28 +225,28 @@ function createMediaToolVisibilityConfig(options: {
     const disabledNames = getBuiltinTools("owner", null, disabledConfig, {
       modelRef: ["main"]
     }).map((tool) => tool.function.name);
-    assert.ok(!disabledNames.includes("chat_file_inspect_media"));
-    assert.ok(!disabledNames.includes("local_file_inspect_media"));
+    assert.ok(!disabledNames.includes("asset_media_inspect"));
+    assert.ok(!disabledNames.includes("filesystem_media_inspect"));
 
     const unroutedConfig = createMediaToolVisibilityConfig({ imageInspectorRefs: [] });
     const unroutedNames = getBuiltinTools("owner", null, unroutedConfig, {
       modelRef: ["main"]
     }).map((tool) => tool.function.name);
-    assert.ok(!unroutedNames.includes("chat_file_inspect_media"));
-    assert.ok(!unroutedNames.includes("local_file_inspect_media"));
+    assert.ok(!unroutedNames.includes("asset_media_inspect"));
+    assert.ok(!unroutedNames.includes("filesystem_media_inspect"));
 
     const nonVisionInspectorConfig = createMediaToolVisibilityConfig({ inspectorSupportsVision: false });
     const nonVisionInspectorNames = getBuiltinTools("owner", null, nonVisionInspectorConfig, {
       modelRef: ["main"]
     }).map((tool) => tool.function.name);
-    assert.ok(!nonVisionInspectorNames.includes("chat_file_inspect_media"));
-    assert.ok(!nonVisionInspectorNames.includes("local_file_inspect_media"));
+    assert.ok(!nonVisionInspectorNames.includes("asset_media_inspect"));
+    assert.ok(!nonVisionInspectorNames.includes("filesystem_media_inspect"));
   });
 
-  test("local_file_delete descriptor makes recursive directory deletion explicit", async () => {
+  test("filesystem_delete descriptor makes recursive directory deletion explicit", async () => {
     const config = createForwardFeatureConfig();
     const descriptor = getBuiltinTools("owner", config)
-      .find((tool) => tool.function.name === "local_file_delete");
+      .find((tool) => tool.function.name === "filesystem_delete");
     assert.ok(descriptor);
     assert.match(descriptor.function.description, /整个目录/);
     assert.match(descriptor.function.description, /递归删除/);
@@ -310,13 +311,13 @@ function createMediaToolVisibilityConfig(options: {
 
   test("workspace descriptors bind compact file observation policies", async () => {
     const config = createForwardFeatureConfig();
-    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("local_file_ls", config)?.resultObservation), policyShape(localFileListPolicy()));
-    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("local_file_read", config)?.resultObservation), policyShape(localFileReadPolicy()));
-    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("local_file_search", config)?.resultObservation), policyShape(localFileSearchPolicy()));
-    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("local_file_patch", config)?.resultObservation), policyShape(localFileMutationPolicy()));
-    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("local_file_send_to_chat", config)?.resultObservation), policyShape(fileSendPolicy()));
-    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("chat_file_list", config)?.resultObservation), policyShape(chatFileListPolicy()));
-    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("chat_file_send_to_chat", config)?.resultObservation), policyShape(fileSendPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("filesystem_list", config)?.resultObservation), policyShape(localFileListPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("filesystem_read", config)?.resultObservation), policyShape(localFileReadPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("filesystem_search", config)?.resultObservation), policyShape(localFileSearchPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("filesystem_patch", config)?.resultObservation), policyShape(localFileMutationPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("filesystem_send_to_chat", config)?.resultObservation), policyShape(fileSendPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("asset_list", config)?.resultObservation), policyShape(chatFileListPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("asset_send_to_chat", config)?.resultObservation), policyShape(fileSendPolicy()));
   });
 
   test("builtin tool list hides external search tools when provider native search is enabled", async () => {
@@ -1340,10 +1341,10 @@ function createMediaToolVisibilityConfig(options: {
     assert.equal(typeof payload.weekday, "string");
   });
 
-  test("chat_file_list exact lookup suggests view and send follow-ups", async () => {
-    const result = await chatFileToolHandlers.chat_file_list!(
-      { id: "tool_chat_file_list_1", type: "function", function: { name: "chat_file_list", arguments: "{\"file_ref\":\"chat_test0001.png\"}" } },
-      { file_ref: "chat_test0001.png" },
+  test("asset_list exact lookup suggests view and send follow-ups", async () => {
+    const result = await chatFileToolHandlers.asset_list!(
+      { id: "tool_asset_list_1", type: "function", function: { name: "asset_list", arguments: "{\"asset_ref\":\"chat_test0001.png\"}" } },
+      { asset_ref: "chat_test0001.png" },
       {
         chatFileStore: {
           async getFile() {
@@ -1384,7 +1385,7 @@ function createMediaToolVisibilityConfig(options: {
     });
     assert.deepEqual(
       payload.next_actions.map((item: { tool: string }) => item.tool),
-      ["chat_file_view_media", "chat_file_send_to_chat"]
+      ["asset_media_view", "asset_send_to_chat"]
     );
     assert.deepEqual(
       payload.file.handle_capabilities.map((item: { capability: string }) => item.capability),
@@ -1408,12 +1409,12 @@ function createMediaToolVisibilityConfig(options: {
   });
 
   test("file handle hints honor chat and asset visible tool names separately", async () => {
-    const result = await chatFileToolHandlers.chat_file_list!(
-      { id: "tool_chat_file_list_visible_tools", type: "function", function: { name: "chat_file_list", arguments: "{\"file_ref\":\"chat_test0001.png\"}" } },
-      { file_ref: "chat_test0001.png" },
+    const result = await chatFileToolHandlers.asset_list!(
+      { id: "tool_asset_list_visible_tools", type: "function", function: { name: "asset_list", arguments: "{\"asset_ref\":\"chat_test0001.png\"}" } },
+      { asset_ref: "chat_test0001.png" },
       {
         debugSnapshot: {
-          visibleToolNames: ["chat_file_send_to_chat", "asset_send_to_chat"]
+          visibleToolNames: ["asset_send_to_chat", "asset_send_to_chat"]
         },
         chatFileStore: {
           async getFile() {
@@ -1447,17 +1448,17 @@ function createMediaToolVisibilityConfig(options: {
       payload.file.asset_handle.capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
       [["view_media", false], ["inspect_media", false], ["send_to_chat", true]]
     );
-    assert.equal(payload.file.asset_handle.capabilities.every((item: { args: Record<string, unknown> }) => "media_ids" in item.args || "file_ref" in item.args), false);
+    assert.equal(payload.file.asset_handle.capabilities.every((item: { args: Record<string, unknown> }) => !("asset_ids" in item.args) && !("file_ref" in item.args) && "asset_ref" in item.args), true);
     assert.deepEqual(
       payload.next_actions.map((item: { tool: string }) => item.tool),
-      ["chat_file_send_to_chat"]
+      ["asset_send_to_chat"]
     );
   });
 
-  test("chat file handles only expose view capability for model-viewable images", async () => {
-    const result = await chatFileToolHandlers.chat_file_list!(
-      { id: "tool_chat_file_list_video_handle", type: "function", function: { name: "chat_file_list", arguments: "{\"file_ref\":\"clip.mp4\"}" } },
-      { file_ref: "clip.mp4" },
+  test("asset handles only expose view capability for model-viewable images", async () => {
+    const result = await chatFileToolHandlers.asset_list!(
+      { id: "tool_asset_list_video_handle", type: "function", function: { name: "asset_list", arguments: "{\"asset_ref\":\"clip.mp4\"}" } },
+      { asset_ref: "clip.mp4" },
       {
         chatFileStore: {
           async getFile() {
@@ -1493,7 +1494,7 @@ function createMediaToolVisibilityConfig(options: {
     );
     assert.deepEqual(
       payload.next_actions.map((item: { tool: string }) => item.tool),
-      ["chat_file_send_to_chat"]
+      ["asset_send_to_chat"]
     );
     assert.deepEqual(
       payload.file.asset_handle.next_actions.map((item: { tool: string }) => item.tool),
@@ -1501,10 +1502,10 @@ function createMediaToolVisibilityConfig(options: {
     );
   });
 
-  test("empty visible tool list means chat file handle tools are unavailable", async () => {
-    const result = await chatFileToolHandlers.chat_file_list!(
-      { id: "tool_chat_file_list_empty_visible", type: "function", function: { name: "chat_file_list", arguments: "{\"file_ref\":\"chat_test0001.png\"}" } },
-      { file_ref: "chat_test0001.png" },
+  test("empty visible tool list means asset handle tools are unavailable", async () => {
+    const result = await chatFileToolHandlers.asset_list!(
+      { id: "tool_asset_list_empty_visible", type: "function", function: { name: "asset_list", arguments: "{\"asset_ref\":\"chat_test0001.png\"}" } },
+      { asset_ref: "chat_test0001.png" },
       {
         debugSnapshot: {
           visibleToolNames: []
@@ -1544,9 +1545,9 @@ function createMediaToolVisibilityConfig(options: {
     assert.deepEqual(payload.next_actions, []);
   });
 
-  test("chat_file_list filters by query and reports list window metadata", async () => {
-    const result = await chatFileToolHandlers.chat_file_list!(
-      { id: "tool_chat_file_list_2", type: "function", function: { name: "chat_file_list", arguments: "{\"query\":\"report\",\"limit\":1}" } },
+  test("asset_list filters by query and reports list window metadata", async () => {
+    const result = await chatFileToolHandlers.asset_list!(
+      { id: "tool_asset_list_2", type: "function", function: { name: "asset_list", arguments: "{\"query\":\"report\",\"limit\":1}" } },
       { query: "report", limit: 1 },
       {
         chatFileStore: {
@@ -1635,7 +1636,7 @@ function createMediaToolVisibilityConfig(options: {
     };
     const context = {
       debugSnapshot: {
-        visibleToolNames: ["asset_document_overview", "asset_document_read", "asset_document_search", "chat_file_send_to_chat"]
+        visibleToolNames: ["asset_document_overview", "asset_document_read", "asset_document_search", "asset_send_to_chat"]
       },
       chatFileStore: {
         async getFile(id: string) {
@@ -1729,6 +1730,213 @@ function createMediaToolVisibilityConfig(options: {
       assert.match(inspected.combined_answer, /找到 needle/);
       assert.ok(inspectedChunks.length > 0);
       assert.ok(inspectedChunks.some((chunk) => chunk.text.includes("needle")));
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document overview writes and reuses model summary cache", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-doc-summary-"));
+    const filePath = join(tempDir, "summary.md");
+    const cacheDir = join(tempDir, "documents", "file_summary_doc_1");
+    await writeFile(filePath, "# Summary\n重要事实 A\n重要事实 B\n", "utf8");
+    const file = {
+      fileId: "file_summary_doc_1",
+      fileRef: "summary.md",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/summary.md",
+      sourceName: "summary.md",
+      mimeType: "text/markdown",
+      sizeBytes: 64,
+      createdAtMs: 810,
+      sourceContext: {},
+      caption: null
+    };
+    let calls = 0;
+    const context = {
+      chatFileStore: {
+        async getFile() {
+          return file;
+        },
+        async listFiles() {
+          return [file];
+        },
+        async resolveAbsolutePath() {
+          return filePath;
+        },
+        resolveDocumentCacheDirectory() {
+          return cacheDir;
+        }
+      },
+      documentSummaryService: {
+        isEnabled() {
+          return true;
+        },
+        async summarizePreparedDocument() {
+          calls += 1;
+          return {
+            ok: true,
+            summary: {
+              brief: "模型摘要",
+              outline: ["Summary"],
+              key_facts: ["重要事实 A"],
+              limitations: [],
+              modelRef: "summarizer-test"
+            }
+          };
+        }
+      }
+    } as any;
+    try {
+      const first = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
+        { id: "tool_asset_doc_summary_1", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"summary.md\"}" } },
+        { asset_ref: "summary.md" },
+        context
+      )));
+      assert.equal(first.document.summary.brief, "模型摘要");
+      assert.equal(first.document.summary_cache_hit, false);
+      assert.equal(calls, 1);
+      assert.equal(JSON.parse(await readFile(join(cacheDir, "summary.json"), "utf8")).summary.brief, "模型摘要");
+
+      const second = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
+        { id: "tool_asset_doc_summary_2", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"summary.md\"}" } },
+        { asset_ref: "summary.md" },
+        context
+      )));
+      assert.equal(second.document.summary.brief, "模型摘要");
+      assert.equal(second.document.summary_cache_hit, true);
+      assert.equal(calls, 1);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document search uses hybrid embedding search when configured", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-doc-hybrid-"));
+    const filePath = join(tempDir, "hybrid.md");
+    const cacheDir = join(tempDir, "documents", "file_hybrid_doc_1");
+    const content = [
+      ...Array.from({ length: 42 }, (_, index) => `filler line ${index}`),
+      "semantic answer lives here",
+      "related renewal details"
+    ].join("\n");
+    await writeFile(filePath, content, "utf8");
+    const file = {
+      fileId: "file_hybrid_doc_1",
+      fileRef: "hybrid.md",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/hybrid.md",
+      sourceName: "hybrid.md",
+      mimeType: "text/markdown",
+      sizeBytes: Buffer.byteLength(content),
+      createdAtMs: 811,
+      sourceContext: {},
+      caption: null
+    };
+    const context = {
+      chatFileStore: {
+        async getFile() {
+          return file;
+        },
+        async listFiles() {
+          return [file];
+        },
+        async resolveAbsolutePath() {
+          return filePath;
+        },
+        resolveDocumentCacheDirectory() {
+          return cacheDir;
+        }
+      },
+      contextEmbeddingService: {
+        isConfigured() {
+          return true;
+        },
+        getStatus() {
+          return {
+            configured: true,
+            modelRefs: ["embedding-test"],
+            timeoutMs: 1000,
+            textPreprocessVersion: "tp-v1",
+            chunkerVersion: "chunk-v1"
+          };
+        },
+        async embedTexts(texts: string[]) {
+          return {
+            profile: {
+              profileId: "embedding:test",
+              instanceName: "test",
+              provider: "fake",
+              model: "fake-embedding",
+              dimension: 2,
+              distance: "cosine",
+              textPreprocessVersion: "tp-v1",
+              chunkerVersion: "chunk-v1"
+            },
+            vectors: texts.map((text) => text.includes("semantic answer") || text.includes("renewal question") ? [1, 0] : [0, 1])
+          };
+        }
+      }
+    } as any;
+    try {
+      const result = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
+        { id: "tool_asset_doc_hybrid", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"hybrid.md\",\"query\":\"renewal question\"}" } },
+        { asset_ref: "hybrid.md", query: "renewal question" },
+        context
+      )));
+      assert.equal(result.ok, true);
+      assert.equal(result.search_mode, "hybrid");
+      assert.equal(result.embedding_profile_id, "embedding:test");
+      assert.equal(result.embedding_cache_hit, false);
+      assert.equal(result.matches[0].chunk_id, "chunk_2");
+      assert.match(result.matches[0].snippet, /semantic answer/);
+      const firstEmbeddingIndex = JSON.parse(await readFile(join(cacheDir, "embeddings.json"), "utf8"));
+      assert.equal(firstEmbeddingIndex.embeddingProfileId, "embedding:test");
+      assert.match(firstEmbeddingIndex.cacheProfileId, /embedding-test/);
+
+      const changedProfileContext = {
+        ...context,
+        contextEmbeddingService: {
+          ...context.contextEmbeddingService,
+          getStatus() {
+            return {
+              configured: true,
+              modelRefs: ["embedding-next"],
+              timeoutMs: 1000,
+              textPreprocessVersion: "tp-v2",
+              chunkerVersion: "chunk-v1"
+            };
+          },
+          async embedTexts(texts: string[]) {
+            return {
+              profile: {
+                profileId: "embedding:next",
+                instanceName: "test",
+                provider: "fake",
+                model: "fake-embedding-next",
+                dimension: 2,
+                distance: "cosine",
+                textPreprocessVersion: "tp-v2",
+                chunkerVersion: "chunk-v1"
+              },
+              vectors: texts.map((text) => text.includes("semantic answer") || text.includes("renewal question") ? [1, 0] : [0, 1])
+            };
+          }
+        }
+      } as any;
+      const rebuilt = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
+        { id: "tool_asset_doc_hybrid_rebuild", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"hybrid.md\",\"query\":\"renewal question\"}" } },
+        { asset_ref: "hybrid.md", query: "renewal question" },
+        changedProfileContext
+      )));
+      assert.equal(rebuilt.search_mode, "hybrid");
+      assert.equal(rebuilt.embedding_profile_id, "embedding:next");
+      assert.equal(rebuilt.embedding_cache_hit, false);
+      const rebuiltEmbeddingIndex = JSON.parse(await readFile(join(cacheDir, "embeddings.json"), "utf8"));
+      assert.equal(rebuiltEmbeddingIndex.embeddingProfileId, "embedding:next");
+      assert.match(rebuiltEmbeddingIndex.cacheProfileId, /embedding-next/);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -1938,8 +2146,13 @@ function createMediaToolVisibilityConfig(options: {
       assert.equal(overview.document.cache_hit, false);
       assert.match(await readFile(join(cacheDir, "text.txt"), "utf8"), /persisted needle/);
       const manifest = JSON.parse(await readFile(join(cacheDir, "manifest.json"), "utf8"));
-      assert.equal(manifest.version, "document_text_v1");
+      assert.equal(manifest.cacheSchemaVersion, "document_asset_cache_v2");
+      assert.equal(manifest.parserVersion, "document_parser_v1");
+      assert.equal(manifest.chunkerVersion, "document_chunk_v1");
+      assert.equal(manifest.summaryPromptVersion, "document_summary_prompt_v1");
+      assert.equal(manifest.embeddingProfileId, "embedding_disabled");
       assert.equal(manifest.fileId, "file_persist_doc_1");
+      assert.equal(manifest.sourceHash, createHash("sha256").update("# Persist\npersisted needle\n").digest("hex"));
       assert.equal(manifest.parser, "plain_text_v1");
       assert.equal(manifest.contentLength, "# Persist\npersisted needle\n".length);
       assert.equal(manifest.contentHash, createHash("sha256").update("# Persist\npersisted needle\n").digest("hex"));
@@ -1982,7 +2195,11 @@ function createMediaToolVisibilityConfig(options: {
     await mkdir(cacheDir, { recursive: true });
     await writeFile(join(cacheDir, "text.txt"), persistedContent, "utf8");
     await writeFile(join(cacheDir, "manifest.json"), `${JSON.stringify({
-      version: "document_text_v1",
+      cacheSchemaVersion: "document_asset_cache_v2",
+      parserVersion: "document_parser_v1",
+      chunkerVersion: "document_chunk_v1",
+      summaryPromptVersion: "document_summary_prompt_v1",
+      embeddingProfileId: "embedding_disabled",
       fileId: file.fileId,
       fileRef: file.fileRef,
       chatFilePath: file.chatFilePath,
@@ -1993,6 +2210,7 @@ function createMediaToolVisibilityConfig(options: {
       absolutePath: filePath,
       fileStatSize: fileStat.size,
       fileStatMtimeMs: fileStat.mtimeMs,
+      sourceHash: createHash("sha256").update(sourceContent).digest("hex"),
       parser: "plain_text_v1",
       contentLength: persistedContent.length,
       contentHash: createHash("sha256").update(persistedContent).digest("hex"),
@@ -2070,7 +2288,11 @@ function createMediaToolVisibilityConfig(options: {
     await mkdir(cacheDir, { recursive: true });
     await writeFile(join(cacheDir, "text.txt"), persistedContent, "utf8");
     await writeFile(join(cacheDir, "manifest.json"), `${JSON.stringify({
-      version: "document_text_v1",
+      cacheSchemaVersion: "document_asset_cache_v2",
+      parserVersion: "document_parser_v1",
+      chunkerVersion: "document_chunk_v1",
+      summaryPromptVersion: "document_summary_prompt_v1",
+      embeddingProfileId: "embedding_disabled",
       fileId: file.fileId,
       fileRef: file.fileRef,
       chatFilePath: file.chatFilePath,
@@ -2081,6 +2303,7 @@ function createMediaToolVisibilityConfig(options: {
       absolutePath: filePath,
       fileStatSize: fileStat.size,
       fileStatMtimeMs: fileStat.mtimeMs,
+      sourceHash: createHash("sha256").update(persistedContent).digest("hex"),
       parser: "plain_text_v1",
       contentLength: persistedContent.length,
       contentHash: createHash("sha256").update(persistedContent).digest("hex"),
@@ -2813,7 +3036,7 @@ function createMediaToolVisibilityConfig(options: {
         ok: true,
         status: "completed",
         file_id: "file_doc_1",
-        file_ref: "notes.md",
+        asset_ref: "notes.md",
         asset_handle: {
           source: "asset",
           asset_id: "file_doc_1",
@@ -2995,7 +3218,7 @@ function createMediaToolVisibilityConfig(options: {
     }
   });
 
-  test("chat_file_list clamps malformed limit values to schema bounds", async () => {
+  test("asset_list clamps malformed limit values to schema bounds", async () => {
     const files = Array.from({ length: 120 }, (_, index) => ({
       fileId: `file_${index}`,
       fileRef: `file_${index}.txt`,
@@ -3018,8 +3241,8 @@ function createMediaToolVisibilityConfig(options: {
       }
     } as any;
 
-    const zero = await chatFileToolHandlers.chat_file_list!(
-      { id: "tool_chat_file_list_limit_zero", type: "function", function: { name: "chat_file_list", arguments: "{\"limit\":0}" } },
+    const zero = await chatFileToolHandlers.asset_list!(
+      { id: "tool_asset_list_limit_zero", type: "function", function: { name: "asset_list", arguments: "{\"limit\":0}" } },
       { limit: 0 },
       context
     );
@@ -3027,8 +3250,8 @@ function createMediaToolVisibilityConfig(options: {
     assert.equal(zeroPayload.filters.limit, 1);
     assert.equal(zeroPayload.returned, 1);
 
-    const huge = await chatFileToolHandlers.chat_file_list!(
-      { id: "tool_chat_file_list_limit_huge", type: "function", function: { name: "chat_file_list", arguments: "{\"limit\":1000}" } },
+    const huge = await chatFileToolHandlers.asset_list!(
+      { id: "tool_asset_list_limit_huge", type: "function", function: { name: "asset_list", arguments: "{\"limit\":1000}" } },
       { limit: 1000 },
       context
     );
@@ -3038,9 +3261,9 @@ function createMediaToolVisibilityConfig(options: {
     assert.equal(hugePayload.truncated, true);
   });
 
-  test("local_file_read truncated output suggests the next read range", async () => {
-    const result = await localFileToolHandlers.local_file_read!(
-      { id: "tool_local_file_read_1", type: "function", function: { name: "local_file_read", arguments: "{\"path\":\"logs/app.log\"}" } },
+  test("filesystem_read truncated output suggests the next read range", async () => {
+    const result = await localFileToolHandlers.filesystem_read!(
+      { id: "tool_filesystem_read_1", type: "function", function: { name: "filesystem_read", arguments: "{\"path\":\"logs/app.log\"}" } },
       { path: "logs/app.log" },
       {
         localFileService: {
@@ -3062,19 +3285,19 @@ function createMediaToolVisibilityConfig(options: {
     const payload = JSON.parse(String(result));
     assert.equal(payload.truncated, true);
     assert.deepEqual(payload.next_actions[0], {
-      tool: "local_file_read",
+      tool: "filesystem_read",
       reason: "继续读取剩余内容",
       args: { path: "logs/app.log", start_line: 3, end_line: 5 }
   });
 });
 
-  test("local_file_ls single-file result includes a local file handle", async () => {
-    const result = await localFileToolHandlers.local_file_ls!(
-      { id: "tool_local_file_ls_handle", type: "function", function: { name: "local_file_ls", arguments: "{\"path\":\"docs/readme.md\"}" } },
+  test("filesystem_list single-file result includes a local file handle", async () => {
+    const result = await localFileToolHandlers.filesystem_list!(
+      { id: "tool_filesystem_list_handle", type: "function", function: { name: "filesystem_list", arguments: "{\"path\":\"docs/readme.md\"}" } },
       { path: "docs/readme.md" },
       {
         debugSnapshot: {
-          visibleToolNames: ["local_file_read", "local_file_send_to_chat"]
+          visibleToolNames: ["filesystem_read", "filesystem_send_to_chat"]
         },
         localFileService: {
           async statItem(path: string) {
@@ -3092,7 +3315,7 @@ function createMediaToolVisibilityConfig(options: {
     );
 
     const payload = JSON.parse(String(result));
-    assert.equal(payload.handle.source, "local_file");
+    assert.equal(payload.handle.source, "filesystem");
     assert.equal(payload.handle.selector.path, "docs/readme.md");
     assert.deepEqual(
       payload.handle_capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
@@ -3100,13 +3323,13 @@ function createMediaToolVisibilityConfig(options: {
     );
     assert.deepEqual(
       payload.next_actions.map((item: { tool: string }) => item.tool),
-      ["local_file_read", "local_file_send_to_chat"]
+      ["filesystem_read", "filesystem_send_to_chat"]
     );
   });
 
   test("empty visible tool list means local file handle tools are unavailable", async () => {
-    const result = await localFileToolHandlers.local_file_ls!(
-      { id: "tool_local_file_ls_empty_visible", type: "function", function: { name: "local_file_ls", arguments: "{\"path\":\"docs/readme.md\"}" } },
+    const result = await localFileToolHandlers.filesystem_list!(
+      { id: "tool_filesystem_list_empty_visible", type: "function", function: { name: "filesystem_list", arguments: "{\"path\":\"docs/readme.md\"}" } },
       { path: "docs/readme.md" },
       {
         debugSnapshot: {
@@ -3374,10 +3597,10 @@ function policyShape(policy: any) {
     assert.equal((result as any).terminalResponse?.text, "");
   });
 
-  test("chat_file_send_to_chat rejects text when sending an image", async () => {
-    const result = await chatFileToolHandlers.chat_file_send_to_chat!(
-      { id: "tool_workspace_send_text_reject", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_id\":\"file_img_1\",\"text\":\"发你了\"}" } },
-      { file_ref: "img_deadbeef.png", text: "发你了" },
+  test("asset_send_to_chat rejects text when sending an image", async () => {
+    const result = await chatFileToolHandlers.asset_send_to_chat!(
+      { id: "tool_workspace_send_text_reject", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"file_id\":\"file_img_1\",\"text\":\"发你了\"}" } },
+      { asset_ref: "img_deadbeef.png", text: "发你了" },
       {
         lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         chatFileStore: {
@@ -3401,11 +3624,11 @@ function policyShape(policy: any) {
     );
 
     assert.deepEqual(JSON.parse(String(result)), {
-      error: "chat_file_send_to_chat 发送图片时不能附带 text"
+      error: "asset_send_to_chat 发送图片时不能附带 text"
     });
   });
 
-  test("chat_file_send_to_chat sends a pure image and keeps the turn open", async () => {
+  test("asset_send_to_chat sends a pure image and keeps the turn open", async () => {
     const sentMessages: any[] = [];
     const sentMetaCalls: any[] = [];
     const transcriptCalls: any[] = [];
@@ -3416,9 +3639,9 @@ function policyShape(policy: any) {
     await writeFile(imagePath, imageBytes);
 
     try {
-    const result = await chatFileToolHandlers.chat_file_send_to_chat!(
-      { id: "tool_workspace_send_1", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_ref\":\"img_deadbeef.png\"}" } },
-      { file_ref: "img_deadbeef.png" },
+    const result = await chatFileToolHandlers.asset_send_to_chat!(
+      { id: "tool_workspace_send_1", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"img_deadbeef.png\"}" } },
+      { asset_ref: "img_deadbeef.png" },
       {
         lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         chatFileStore: {
@@ -3468,7 +3691,7 @@ function policyShape(policy: any) {
     assert.equal(sentMetaCalls.length, 0);
     assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
       ok: true,
-      file_ref: "img_deadbeef.png",
+      asset_ref: "img_deadbeef.png",
       file_id: "file_img_1",
       deliveredAs: "image",
       queued: true
@@ -3500,7 +3723,7 @@ function policyShape(policy: any) {
       chatFilePath: "workspace/media/file_img_1.png",
       sourcePath: null,
       messageId: 42,
-      toolName: "chat_file_send_to_chat",
+      toolName: "asset_send_to_chat",
       captionText: null,
       timestampMs: transcriptCalls[0].timestampMs
     });
@@ -3512,14 +3735,14 @@ function policyShape(policy: any) {
     }
   });
 
-  test("chat_file_send_to_chat keeps the turn open for non-image fallback sends", async () => {
+  test("asset_send_to_chat keeps the turn open for non-image fallback sends", async () => {
     const sentTexts: any[] = [];
     const sentMetaCalls: any[] = [];
     const assistantHistoryCalls: any[] = [];
     const queuedTasks: Array<() => Promise<void>> = [];
-    const result = await chatFileToolHandlers.chat_file_send_to_chat!(
-      { id: "tool_workspace_send_2", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_ref\":\"file_bead1234.txt\"}" } },
-      { file_ref: "file_bead1234.txt" },
+    const result = await chatFileToolHandlers.asset_send_to_chat!(
+      { id: "tool_workspace_send_2", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"file_bead1234.txt\"}" } },
+      { asset_ref: "file_bead1234.txt" },
       {
         lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         chatFileStore: {
@@ -3566,7 +3789,7 @@ function policyShape(policy: any) {
     assert.equal(sentMetaCalls.length, 0);
     assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
       ok: true,
-      file_ref: "file_bead1234.txt",
+      asset_ref: "file_bead1234.txt",
       file_id: "file_file_1",
       deliveredAs: "text_fallback",
       queued: true
@@ -3577,18 +3800,18 @@ function policyShape(policy: any) {
     assert.equal(sentTexts.length, 1);
     assert.deepEqual(sentTexts[0], {
       userId: "owner",
-      text: "chat file 已发送：file_bead1234.txt；file_id=file_file_1"
+      text: "asset 已发送：file_bead1234.txt；asset_id=file_file_1"
     });
     assert.deepEqual(sentMetaCalls[0], {
       messageId: 43,
-      text: "chat file 已发送：file_bead1234.txt；file_id=file_file_1",
+      text: "asset 已发送：file_bead1234.txt；asset_id=file_file_1",
       sentAt: sentMetaCalls[0].sentAt
     });
     assert.deepEqual(assistantHistoryCalls[0], {
       chatType: "private",
       userId: "owner",
       senderName: "Owner",
-      text: "chat file 已发送：file_bead1234.txt；file_id=file_file_1",
+      text: "asset 已发送：file_bead1234.txt；asset_id=file_file_1",
       deliveryRef: {
         platform: "onebot",
         messageId: 43
@@ -3598,14 +3821,14 @@ function policyShape(policy: any) {
     assert.equal((result as any).terminalResponse, undefined);
   });
 
-  test("chat_file_send_to_chat mirrors non-image fallback text into web delivery", async () => {
+  test("asset_send_to_chat mirrors non-image fallback text into web delivery", async () => {
     const webChunks: string[] = [];
     const queuedTasks: Array<() => Promise<void>> = [];
     const assistantHistoryCalls: any[] = [];
 
-    const result = await chatFileToolHandlers.chat_file_send_to_chat!(
-      { id: "tool_workspace_send_2_web", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_ref\":\"file_bead1234.txt\"}" } },
-      { file_ref: "file_bead1234.txt" },
+    const result = await chatFileToolHandlers.asset_send_to_chat!(
+      { id: "tool_workspace_send_2_web", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"file_bead1234.txt\"}" } },
+      { asset_ref: "file_bead1234.txt" },
       {
         replyDelivery: "web",
         committedTextSink: {
@@ -3646,7 +3869,7 @@ function policyShape(policy: any) {
 
     assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
       ok: true,
-      file_ref: "file_bead1234.txt",
+      asset_ref: "file_bead1234.txt",
       file_id: "file_file_1",
       deliveredAs: "text_fallback",
       queued: true
@@ -3655,16 +3878,16 @@ function policyShape(policy: any) {
 
     await queuedTasks[0]!();
 
-    assert.deepEqual(webChunks, ["chat file 已发送：file_bead1234.txt；file_id=file_file_1"]);
+    assert.deepEqual(webChunks, ["asset 已发送：file_bead1234.txt；asset_id=file_file_1"]);
     assert.deepEqual(assistantHistoryCalls, [{
       chatType: "private",
       userId: "owner",
       senderName: "Owner",
-      text: "chat file 已发送：file_bead1234.txt；file_id=file_file_1"
+      text: "asset 已发送：file_bead1234.txt；asset_id=file_file_1"
     }]);
   });
 
-  test("chat_file_send_to_chat records image sends for web delivery", async () => {
+  test("asset_send_to_chat records image sends for web delivery", async () => {
     const transcriptCalls: any[] = [];
     const queuedTasks: Array<() => Promise<void>> = [];
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-web-"));
@@ -3672,9 +3895,9 @@ function policyShape(policy: any) {
     await writeFile(imagePath, Buffer.from("fake-image-bytes"));
 
     try {
-      const result = await chatFileToolHandlers.chat_file_send_to_chat!(
-        { id: "tool_workspace_send_web_img", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_ref\":\"img_deadbeef.png\"}" } },
-        { file_ref: "img_deadbeef.png" },
+      const result = await chatFileToolHandlers.asset_send_to_chat!(
+        { id: "tool_workspace_send_web_img", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"img_deadbeef.png\"}" } },
+        { asset_ref: "img_deadbeef.png" },
         {
           replyDelivery: "web",
           lastMessage: { sessionId: "web:owner", userId: "owner", senderName: "Owner" },
@@ -3713,7 +3936,7 @@ function policyShape(policy: any) {
 
       assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
         ok: true,
-        file_ref: "img_deadbeef.png",
+        asset_ref: "img_deadbeef.png",
         file_id: "file_img_1",
         deliveredAs: "image",
         queued: true
@@ -3734,7 +3957,7 @@ function policyShape(policy: any) {
         chatFilePath: "workspace/media/file_img_1.png",
         sourcePath: null,
         messageId: null,
-        toolName: "chat_file_send_to_chat",
+        toolName: "asset_send_to_chat",
         captionText: null,
         timestampMs: transcriptCalls[0].timestampMs
       });
@@ -3744,16 +3967,16 @@ function policyShape(policy: any) {
     }
   });
 
-  test("chat_file_send_to_chat accepts stored filenames as file_ref", async () => {
+  test("asset_send_to_chat accepts stored filenames as asset_ref", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-ref-"));
     const imagePath = join(tempDir, "file_deadbeef.jpg");
     await writeFile(imagePath, Buffer.from("fake-image-bytes"));
     const queuedTasks: Array<() => Promise<void>> = [];
     const sentMessages: any[] = [];
     try {
-      const result = await chatFileToolHandlers.chat_file_send_to_chat!(
-        { id: "tool_workspace_send_3", type: "function", function: { name: "chat_file_send_to_chat", arguments: "{\"file_ref\":\"file_deadbeef.jpg\"}" } },
-        { file_ref: "file_deadbeef.jpg" },
+      const result = await chatFileToolHandlers.asset_send_to_chat!(
+        { id: "tool_workspace_send_3", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"file_deadbeef.jpg\"}" } },
+        { asset_ref: "file_deadbeef.jpg" },
         {
           lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
           chatFileStore: {
@@ -3814,7 +4037,7 @@ function policyShape(policy: any) {
 
       assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
         ok: true,
-        file_ref: "img_deadbeef.jpg",
+        asset_ref: "img_deadbeef.jpg",
         file_id: "file_deadbeef",
         deliveredAs: "image",
         queued: true
@@ -3826,7 +4049,7 @@ function policyShape(policy: any) {
     }
   });
 
-  test("local_file_send_to_chat sends workspace-relative image", async () => {
+  test("filesystem_send_to_chat sends workspace-relative image", async () => {
     const queuedTasks: Array<() => Promise<void>> = [];
     const sentMessages: any[] = [];
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-path-rel-"));
@@ -3835,8 +4058,8 @@ function policyShape(policy: any) {
     await writeFile(imagePath, imageBytes);
 
     try {
-      const result = await localFileToolHandlers.local_file_send_to_chat!(
-        { id: "tool_workspace_send_path_rel", type: "function", function: { name: "local_file_send_to_chat", arguments: "{\"path\":\"outputs/diagram.png\"}" } },
+      const result = await localFileToolHandlers.filesystem_send_to_chat!(
+        { id: "tool_workspace_send_path_rel", type: "function", function: { name: "filesystem_send_to_chat", arguments: "{\"path\":\"outputs/diagram.png\"}" } },
         { path: "outputs/diagram.png" },
         {
           config: createTestAppConfig(),
@@ -3895,7 +4118,7 @@ function policyShape(policy: any) {
     }
   });
 
-  test("local_file_send_to_chat sends file via absolute path", async () => {
+  test("filesystem_send_to_chat sends file via absolute path", async () => {
     const queuedTasks: Array<() => Promise<void>> = [];
     const sentTexts: any[] = [];
     const assistantHistoryCalls: any[] = [];
@@ -3904,8 +4127,8 @@ function policyShape(policy: any) {
     await writeFile(filePath, "hello", "utf8");
 
     try {
-      const result = await localFileToolHandlers.local_file_send_to_chat!(
-        { id: "tool_workspace_send_path_abs", type: "function", function: { name: "local_file_send_to_chat", arguments: `{\"path\":\"${filePath}\"}` } },
+      const result = await localFileToolHandlers.filesystem_send_to_chat!(
+        { id: "tool_workspace_send_path_abs", type: "function", function: { name: "filesystem_send_to_chat", arguments: `{\"path\":\"${filePath}\"}` } },
         { path: filePath },
         {
           config: createTestAppConfig(),
@@ -3960,9 +4183,9 @@ function policyShape(policy: any) {
     }
   });
 
-  test("local_file_send_to_chat resolves relative path through localFileService", async () => {
-    const result = await localFileToolHandlers.local_file_send_to_chat!(
-      { id: "tool_workspace_send_path_rel_resolve", type: "function", function: { name: "local_file_send_to_chat", arguments: "{\"path\":\"outputs/demo.txt\"}" } },
+  test("filesystem_send_to_chat resolves relative path through localFileService", async () => {
+    const result = await localFileToolHandlers.filesystem_send_to_chat!(
+      { id: "tool_workspace_send_path_rel_resolve", type: "function", function: { name: "filesystem_send_to_chat", arguments: "{\"path\":\"outputs/demo.txt\"}" } },
       { path: "outputs/demo.txt" },
       {
         config: createTestAppConfig(),
