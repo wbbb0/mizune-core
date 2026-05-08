@@ -1,4 +1,4 @@
-import { basename, isAbsolute, resolve } from "node:path";
+import { basename, isAbsolute } from "node:path";
 import type { LocalFileService } from "./localFileService.ts";
 
 export interface ResolvedSendablePath {
@@ -18,24 +18,23 @@ export function resolveSendablePath(
     throw new Error("path is required");
   }
 
-  if (!isAbsolute(normalizedInput)) {
-    const resolvedPath = localFileService.resolvePath(normalizedInput);
+  const resolvedPath = localFileService.resolvePath(normalizedInput);
+  if (isAbsolute(normalizedInput)) {
     return {
       absolutePath: resolvedPath.absolutePath,
-      sourceName: basename(resolvedPath.relativePath),
-      sourcePath: resolvedPath.relativePath,
-      pathMode: "workspace_relative",
-      chatFilePath: resolvedPath.relativePath
+      sourceName: basename(resolvedPath.absolutePath),
+      sourcePath: resolvedPath.absolutePath,
+      pathMode: "absolute",
+      chatFilePath: null
     };
   }
 
-  const absolutePath = resolve(normalizedInput);
   return {
-    absolutePath,
-    sourceName: basename(absolutePath),
-    sourcePath: absolutePath,
-    pathMode: "absolute",
-    chatFilePath: null
+    absolutePath: resolvedPath.absolutePath,
+    sourceName: basename(resolvedPath.relativePath),
+    sourcePath: resolvedPath.relativePath,
+    pathMode: "workspace_relative",
+    chatFilePath: resolvedPath.relativePath
   };
 }
 

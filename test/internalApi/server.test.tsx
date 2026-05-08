@@ -97,3 +97,81 @@ test("internal api server logs uncaught request errors", async () => {
     await server.close();
   }
 });
+
+test("internal api keeps unauthenticated built-in webui local-only", async () => {
+  const deps = createInternalApiDeps();
+  const capturedLogs: Array<{ message: string; payload: unknown }> = [];
+  const port = await getFreePort();
+  deps.config.internalApi.webui.enabled = true;
+  deps.config.internalApi.webui.auth.enabled = false;
+  deps.config.internalApi.webui.port = port;
+  deps.logger = {
+    info(payload: unknown, message?: string) {
+      if (typeof payload === "string") {
+        capturedLogs.push({ message: payload, payload: null });
+        return;
+      }
+      if (message === "internal_api_started" || message === "internal_api_stopped") {
+        capturedLogs.push({ message: message ?? "", payload });
+      }
+    },
+    warn() {}
+  } as unknown as typeof deps.logger;
+
+  const server = await startInternalApi({
+    config: deps.config,
+    logger: deps.logger,
+    services: createInternalApiServices(deps)
+  });
+  await server.close();
+
+  assert.deepEqual(capturedLogs, [
+    {
+      message: "internal_api_started",
+      payload: { port, host: "127.0.0.1" }
+    },
+    {
+      message: "internal_api_stopped",
+      payload: null
+    }
+  ]);
+});
+
+test("internal api exposes authenticated built-in webui on lan", async () => {
+  const deps = createInternalApiDeps();
+  const capturedLogs: Array<{ message: string; payload: unknown }> = [];
+  const port = await getFreePort();
+  deps.config.internalApi.webui.enabled = true;
+  deps.config.internalApi.webui.auth.enabled = true;
+  deps.config.internalApi.webui.port = port;
+  deps.logger = {
+    info(payload: unknown, message?: string) {
+      if (typeof payload === "string") {
+        capturedLogs.push({ message: payload, payload: null });
+        return;
+      }
+      if (message === "internal_api_started" || message === "internal_api_stopped") {
+        capturedLogs.push({ message: message ?? "", payload });
+      }
+    },
+    warn() {}
+  } as unknown as typeof deps.logger;
+
+  const server = await startInternalApi({
+    config: deps.config,
+    logger: deps.logger,
+    services: createInternalApiServices(deps)
+  });
+  await server.close();
+
+  assert.deepEqual(capturedLogs, [
+    {
+      message: "internal_api_started",
+      payload: { port, host: "0.0.0.0" }
+    },
+    {
+      message: "internal_api_stopped",
+      payload: null
+    }
+  ]);
+});

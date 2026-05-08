@@ -9,6 +9,8 @@ import type {
   TranscriptTitleGenerationItem
 } from "./sessionTypes.ts";
 
+type ContextExtractionTranscriptItem = NonNullable<TranscriptContextExtractionEventItem["items"]>[number];
+
 export function formatErrorDetails(error: unknown): string {
   if (error instanceof Error) {
     const parts = [
@@ -93,6 +95,7 @@ export function createContextExtractionEvent(input: {
   created?: number;
   replaced?: number;
   ignored?: number;
+  items?: ContextExtractionTranscriptItem[];
   error?: unknown;
   timestampMs?: number;
 }): TranscriptContextExtractionEventItem {
@@ -104,14 +107,16 @@ export function createContextExtractionEvent(input: {
     messageCount: input.messageCount,
     ...(input.created != null ? { created: input.created } : {}),
     ...(input.replaced != null ? { replaced: input.replaced } : {}),
-    ...(input.ignored != null ? { ignored: input.ignored } : {})
+    ...(input.ignored != null ? { ignored: input.ignored } : {}),
+    ...(input.items ? { itemCount: input.items.length } : {})
   });
   const details = [
     `targetUserIds: ${input.targetUserIds.join(", ") || "none"}`,
     `messageCount: ${input.messageCount}`,
     input.created != null ? `created: ${input.created}` : null,
     input.replaced != null ? `replaced: ${input.replaced}` : null,
-    input.ignored != null ? `ignored: ${input.ignored}` : null
+    input.ignored != null ? `ignored: ${input.ignored}` : null,
+    input.items ? `items: ${input.items.length}` : null
   ].filter(Boolean).join("\n");
   return {
     kind: "context_extraction_event",
@@ -125,6 +130,7 @@ export function createContextExtractionEvent(input: {
     ...(input.created != null ? { created: input.created } : {}),
     ...(input.replaced != null ? { replaced: input.replaced } : {}),
     ...(input.ignored != null ? { ignored: input.ignored } : {}),
+    ...(input.items ? { items: input.items } : {}),
     details,
     ...(failed ? { errorMessage: formatErrorDetails(input.error) } : {})
   };
@@ -150,6 +156,7 @@ function buildContextExtractionSummary(input: {
   created?: number;
   replaced?: number;
   ignored?: number;
+  itemCount?: number;
 }): string {
   switch (input.status) {
     case "queued":
@@ -157,10 +164,7 @@ function buildContextExtractionSummary(input: {
     case "enqueue_failed":
       return `记忆抽取入队失败，目标用户 ${input.targetCount} 个，候选消息 ${input.messageCount} 条；本轮回复不受影响`;
     case "processed":
-      return [
-        `记忆抽取已执行，目标用户 ${input.targetCount} 个，候选消息 ${input.messageCount} 条`,
-        `创建 ${input.created ?? 0} 条，替换 ${input.replaced ?? 0} 条，忽略 ${input.ignored ?? 0} 条`
-      ].join("；");
+      return `记忆抽取完成：写入 ${(input.created ?? 0) + (input.replaced ?? 0)} 条`;
     case "process_failed":
       return `记忆抽取执行失败，目标用户 ${input.targetCount} 个，候选消息 ${input.messageCount} 条；其他功能不受影响`;
   }

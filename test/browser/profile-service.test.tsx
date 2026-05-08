@@ -4,6 +4,8 @@ import { BrowserSessionRuntime } from "../../src/services/web/browser/browserSes
 import { BrowserProfileService } from "../../src/services/web/browser/browserProfileService.ts";
 import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
 
+const PROFILE_ID = "browser_profile_0000000000000001";
+
 function createSnapshot(profileId: string | null) {
   return {
     profileId,
@@ -47,10 +49,10 @@ function createSnapshot(profileId: string | null) {
         async close() {}
       } as any,
       state: { id: 1 },
-      snapshot: createSnapshot("profile:qqbot:p:10001") as any,
+      snapshot: createSnapshot(PROFILE_ID) as any,
       expiresAt: Date.now() + 1_000,
       ownerSessionId: "qqbot:p:10001",
-      profileId: "profile:qqbot:p:10001"
+      profileId: PROFILE_ID
     });
 
     const service = new BrowserProfileService({
@@ -89,11 +91,11 @@ function createSnapshot(profileId: string | null) {
       } as any
     });
 
-    const result = await service.saveProfile("profile:qqbot:p:10001");
+    const result = await service.saveProfile(PROFILE_ID);
 
     assert.equal(result.saved, true);
     assert.deepEqual(savedProfiles, [{
-      profileId: "profile:qqbot:p:10001",
+      profileId: PROFILE_ID,
       ownerSessionId: "qqbot:p:10001",
       storageState: { cookies: ["a"] },
       sessionStorageByOrigin: {
@@ -127,10 +129,10 @@ function createSnapshot(profileId: string | null) {
         async close() {}
       } as any,
       state: { id: 1 },
-      snapshot: createSnapshot("profile:qqbot:p:10001") as any,
+      snapshot: createSnapshot(PROFILE_ID) as any,
       expiresAt: Date.now() + 1_000,
       ownerSessionId: "qqbot:p:10001",
-      profileId: "profile:qqbot:p:10001"
+      profileId: PROFILE_ID
     });
 
     const service = new BrowserProfileService({
@@ -161,7 +163,7 @@ function createSnapshot(profileId: string | null) {
       } as any
     });
 
-    const result = await service.clearProfile("profile:qqbot:p:10001");
+    const result = await service.clearProfile(PROFILE_ID);
 
     assert.equal(result.cleared, true);
     assert.equal(sessions.get("resource_1")?.profileId, null);

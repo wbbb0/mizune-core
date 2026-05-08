@@ -47,6 +47,7 @@
     "test:bot:serial": "node test/run-node-tests.mjs --serial",
     "test:webui": "npm run build:webui",
     "test:interactive-bot": "tsx scripts/interactive-bot-cli.ts",
+    "smoke:llm:memory": "tsx smoke/llm/context-memory-smoke.ts --preset local_qwen --instance web --timeout-ms 180000",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
     "typecheck:all": "npm run typecheck && npm run typecheck:test"

@@ -17,6 +17,7 @@ export interface ContextManagementItem {
   toolsetId?: string;
   modeId?: string;
   title?: string;
+  slotKey?: string;
   text: string;
   kind?: string;
   source?: string;
@@ -73,6 +74,7 @@ export interface ContextStatus {
 
 export interface ContextItemPatch {
   title?: string | null;
+  slotKey?: string | null;
   text?: string;
   retrievalPolicy?: ContextRetrievalPolicy;
   status?: ContextItemStatus;

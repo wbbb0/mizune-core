@@ -664,7 +664,7 @@ const allowedScopes = [
 ⟦section name="retrieved_context"⟧
 - [fact] 2026-04-30 | 用户偏好先给结论，再展开理由。
 - [summary] 2026-04-30 | 之前评估过 Orama 作为轻量本地检索索引，保留可迁移边界。
-- [chunk] 2026-04-30 | 本次 POC 位于 poc/user-context-hybrid-retrieval-orama。
+- [chunk] 2026-04-30 | Orama 检索已迁入正式 `src/context` 实现。
 ⟦/section⟧
 ```
 
@@ -732,8 +732,8 @@ const policy = {
 5. 处理 fact：
    - pinned fact 不自动删除。
    - 低 confidence、长期未命中、重复 fact 标为 review candidate。
-   - 冲突 fact 进入人工复核，不自动覆盖。
-   - 新事实明确替代旧事实时，把旧事实标记为 `superseded`，并设置 `supersededBy`。
+  - 同一 `slotKey` 下的新事实应自动更新当前 fact；明确替代旧事实时，把旧事实标记为 `superseded`，并设置 `supersededBy`。
+  - 无法用 `slotKey`、目标 memory id 或唯一相似匹配确认的冲突 fact 才进入人工复核，不自动覆盖。
    - 有 `validTo` 且已过期的 fact 不再注入，但仍保留用于追溯。
 
 6. 清理索引：
@@ -872,7 +872,6 @@ interface ContextStore {
 }
 
 interface ContextMaintenanceService {
-  ingestTurn(input: IngestTurnInput): Promise<void>;
   compactUser(userId: string): Promise<CompactionReport>;
   garbageCollect(input: GarbageCollectInput): Promise<GarbageCollectReport>;
   rebuildIndex(profileId: string): Promise<RebuildIndexReport>;
@@ -1032,7 +1031,8 @@ models:
   - 已提供后台 re-embed / rebuild index：维护服务按批量上限补齐缺失 embedding 并重建 Orama 内存索引；内部 API 和 WebUI 可手动触发，也可选择强制 re-embed。
   - 已提供最近一次 retrieval debug report，便于解释候选数量、索引数量、选中数量和失败原因。
   - `sensitivity=secret` 已从 prompt-facing facts 和 search documents 中排除。
-  - 已提供保守的显式 fact candidate 抽取，只处理用户明确说“记住...”的当前触发用户消息。
+  - 已提供 scope-aware fact/session 抽取，抽取器会接收相关已有记忆，并通过 `operation`、`targetMemoryId`、`slotKey` 和 `conflictsWithMemoryIds` 表达创建、更新、合并或失效新建。
+  - 同一 `slotKey` 的 active fact 写入会自动收敛：更新当前值后把其他同槽位 active 条目标为 `superseded`。
   - 手动设置 `supersededBy` 时会自动把条目标记为 `superseded`，并在未显式设置 `validTo` 时自动写入失效时间。
 - 阶段 3 已完成基础项：
   - 内部 API 和 WebUI 可列出、过滤、删除、pin/unpin、编辑 context items。
@@ -1042,19 +1042,21 @@ models:
   - 内部 API 和 WebUI 已提供 context items JSONL 导入/导出；导入导出不包含 embedding，向量由当前 profile 重建。
   - 批量删除接口要求至少一个过滤条件，避免误删全量 context items。
   - 已提供 `.remember <内容>` 和 `.forget <memoryId>` 聊天命令，分别写入和删除当前用户 fact。
+  - 已移除普通聊天完成后的自动 ingestion 写入链路；当前阶段不再把聊天原文、episode 或 chunk 自动沉淀到 context store，只保留抽取后的 fact/session fact 与显式写入记忆。
 - 阶段 4 已完成基础项：
   - 已固化召回评测样例和通过标准，见 `docs/development/user-context-retrieval-evaluation.md`。
   - 已记录当前 Orama 合成容量曲线和迁移阈值。
 
 尚未完成：
 
-- 暂无第一阶段阻断项。后续可按真实数据继续补充召回评测集和容量曲线。
+- 未来实现“记忆来源审计 / 批量重抽取 / 多轮摘要生成”时，再重新引入 raw/episode 证据层，并确保它默认不参与长期召回。
+- 后续可按真实数据继续补充召回评测集和容量曲线。
 
 ### 阶段 0：POC 验证
 
 已完成 Orama POC：
 
-- `poc/user-context-hybrid-retrieval-orama`
+- 历史 `poc/user-context-hybrid-retrieval-orama` 已移除，保留正式 `src/context` 实现。
 - 验证 Orama hybrid search。
 - 验证中文 bigram tokenizer。
 - 验证用户过滤、recency、summary bonus、近重复抑制。

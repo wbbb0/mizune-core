@@ -1,5 +1,5 @@
 export type ContextScope = "session" | "user" | "global" | "toolset" | "mode";
-export type ContextSourceType = "chunk" | "summary" | "fact" | "rule";
+export type ContextSourceType = "episode" | "chunk" | "summary" | "fact" | "rule";
 export type ContextRetrievalPolicy = "always" | "search" | "never";
 export type ContextItemStatus = "active" | "archived" | "deleted" | "superseded";
 export type ContextSensitivity = "normal" | "private" | "secret";
@@ -15,6 +15,7 @@ export interface ContextItem {
   toolsetId?: string;
   modeId?: string;
   title?: string;
+  slotKey?: string;
   text: string;
   kind?: string;
   source?: string;
@@ -30,6 +31,19 @@ export interface ContextItem {
   lastConfirmedAt?: number;
   retrievedCount: number;
   lastRetrievedAt?: number;
+}
+
+export interface ContextMemoryFactEntry {
+  id: string;
+  title: string;
+  content: string;
+  kind: "preference" | "fact" | "boundary" | "habit" | "relationship" | "other";
+  source: "user_explicit" | "owner_explicit" | "inferred";
+  createdAt: number;
+  updatedAt: number;
+  importance?: number;
+  lastUsedAt?: number;
+  slotKey?: string;
 }
 
 export interface ContextRawMessage {
@@ -55,7 +69,9 @@ export interface ContextSearchDocument {
   userId?: string;
   sessionId?: string;
   title?: string;
+  slotKey?: string;
   text: string;
+  embeddingTextHash: string;
   updatedAt: number;
   lastRetrievedAt?: number;
 }
@@ -78,6 +94,7 @@ export interface ContextRetrievedItem {
   userId?: string;
   sessionId?: string;
   title?: string;
+  slotKey?: string;
   text: string;
   score: number;
   updatedAt: number;
@@ -95,6 +112,52 @@ export interface ContextRetrievalDebugReport {
   createdAt: number;
 }
 
+export type ContextPromptMemoryEntrySource = "semantic_retrieval";
+export type ContextPromptMemoryRetrievalSkipReason =
+  | "scenario_host_mode"
+  | "assistant_mode"
+  | "missing_user"
+  | "service_unavailable";
+
+export interface ContextPromptMemoryItem {
+  itemId: string;
+  entrySource: ContextPromptMemoryEntrySource;
+  scope: ContextScope;
+  sourceType: ContextSourceType;
+  title?: string;
+  slotKey?: string;
+  kind?: ContextMemoryFactEntry["kind"];
+  memorySource?: ContextMemoryFactEntry["source"];
+  text: string;
+  score?: number;
+  importance?: number;
+  updatedAt: number;
+}
+
+export interface ContextPromptMemoryReport {
+  sessionId: string;
+  modeId?: string;
+  userId?: string;
+  queryText: string;
+  currentUserFactCount: number;
+  availableUserFactCount: number;
+  userFactLimit: number;
+  userFactTruncated: boolean;
+  currentSessionFactCount: number;
+  availableSessionFactCount: number;
+  sessionFactLimit: number;
+  sessionFactTruncated: boolean;
+  retrievedUserContextCount: number;
+  selectedCount: number;
+  semanticRetrieval: {
+    attempted: boolean;
+    skippedReason?: ContextPromptMemoryRetrievalSkipReason;
+    debugReport?: ContextRetrievalDebugReport;
+  };
+  retrievedUserContext: ContextPromptMemoryItem[];
+  createdAt: number;
+}
+
 export interface ContextManagementItem {
   itemId: string;
   scope: ContextScope;
@@ -106,6 +169,7 @@ export interface ContextManagementItem {
   toolsetId?: string;
   modeId?: string;
   title?: string;
+  slotKey?: string;
   text: string;
   kind?: string;
   source?: string;
@@ -122,6 +186,7 @@ export interface ContextManagementItem {
 export interface ContextItemPatch {
   itemId: string;
   title?: string | null;
+  slotKey?: string | null;
   text?: string;
   retrievalPolicy?: ContextRetrievalPolicy;
   status?: ContextItemStatus;

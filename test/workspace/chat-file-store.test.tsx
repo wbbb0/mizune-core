@@ -76,7 +76,7 @@ test("asset store removes document cache when deleting files", async () => {
         rootDir,
         resolvePath(path: string) {
           return {
-            sourcePath: path,
+            relativePath: path,
             absolutePath: join(rootDir, path)
           };
         }
@@ -220,6 +220,45 @@ test("asset store document cache directory cannot collapse to store root", async
     assert.equal(await store.deleteFile(".."), true);
     await stat(join(rootDir, "chat-files"));
     await stat(join(rootDir, "chat-files", "files.json"));
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("chat file store enforces maxUploadBytes for direct buffer imports", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-"));
+  try {
+    const store = new ChatFileStore(
+      createTestAppConfig({
+        chatFiles: {
+          enabled: true,
+          root: "chat-files",
+          maxUploadBytes: 4
+        }
+      }),
+      createSilentLogger(),
+      {
+        rootDir,
+        resolvePath(path: string) {
+          return {
+            relativePath: path,
+            absolutePath: join(rootDir, path)
+          };
+        }
+      } as any
+    );
+    await store.init();
+
+    await assert.rejects(
+      store.importBuffer({
+        buffer: Buffer.from("12345"),
+        sourceName: "too-large.txt",
+        mimeType: "text/plain",
+        kind: "file",
+        origin: "user_upload"
+      }),
+      /chat file import exceeds maxUploadBytes/
+    );
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }

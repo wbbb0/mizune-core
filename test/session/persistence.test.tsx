@@ -79,6 +79,59 @@ test("session persistence stores operationMode drafts", async () => {
   });
 });
 
+test("session persistence does not resurrect a session when remove follows save", async () => {
+  await withDataDir("llm-bot-session-persist-remove-after-save-test", async (dataDir: string) => {
+    const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
+    await persistence.init();
+    const session = toPersistedSessionState(createSessionState({
+      id: "web:remove-after-save",
+      type: "private",
+      source: "web",
+      participantRef: { kind: "user", id: "owner" },
+      title: "Remove After Save",
+      titleSource: "manual"
+    }));
+
+    await Promise.all([
+      persistence.save(session),
+      persistence.remove(session.id)
+    ]);
+
+    assert.deepEqual(await persistence.loadAll(), []);
+  });
+});
+
+test("session persistence keeps a session when save follows remove", async () => {
+  await withDataDir("llm-bot-session-persist-save-after-remove-test", async (dataDir: string) => {
+    const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
+    await persistence.init();
+    const first = toPersistedSessionState(createSessionState({
+      id: "web:save-after-remove",
+      type: "private",
+      source: "web",
+      participantRef: { kind: "user", id: "owner" },
+      title: "Old",
+      titleSource: "manual"
+    }));
+    const next = {
+      ...first,
+      title: "New",
+      lastActiveAt: first.lastActiveAt + 1
+    };
+    await persistence.save(first);
+
+    await Promise.all([
+      persistence.remove(first.id),
+      persistence.save(next)
+    ]);
+
+    const loaded = await persistence.loadAll();
+    assert.equal(loaded.length, 1);
+    assert.equal(loaded[0]?.id, next.id);
+    assert.equal(loaded[0]?.title, "New");
+  });
+});
+
 test("clearSessionState resets operationMode to normal", () => {
   const session = createSessionState({
     id: "web:clear-operation-mode",

@@ -131,6 +131,66 @@ export interface ContentSafetyAuditView {
   expiresAtMs?: number;
 }
 
+export type MemoryContextScope = "session" | "user" | "global" | "toolset" | "mode";
+export type MemoryContextSourceType = "episode" | "chunk" | "summary" | "fact" | "rule";
+export type MemoryContextEntrySource = "semantic_retrieval";
+export type MemoryContextRetrievalSkipReason =
+  | "scenario_host_mode"
+  | "assistant_mode"
+  | "missing_user"
+  | "service_unavailable";
+
+export interface MemoryContextRetrievalDebugReport {
+  userId: string;
+  queryText: string;
+  embeddingProfileId?: string;
+  candidateCount: number;
+  indexedCount: number;
+  selectedCount: number;
+  droppedCount: number;
+  error?: string;
+  createdAt: number;
+}
+
+export interface MemoryContextItem {
+  itemId: string;
+  entrySource: MemoryContextEntrySource;
+  scope: MemoryContextScope;
+  sourceType: MemoryContextSourceType;
+  title?: string;
+  slotKey?: string;
+  kind?: "preference" | "fact" | "boundary" | "habit" | "relationship" | "other";
+  memorySource?: "user_explicit" | "owner_explicit" | "inferred";
+  text: string;
+  score?: number;
+  importance?: number;
+  updatedAt: number;
+}
+
+export interface MemoryContextReport {
+  sessionId: string;
+  modeId?: string;
+  userId?: string;
+  queryText: string;
+  currentUserFactCount: number;
+  availableUserFactCount: number;
+  userFactLimit: number;
+  userFactTruncated: boolean;
+  currentSessionFactCount: number;
+  availableSessionFactCount: number;
+  sessionFactLimit: number;
+  sessionFactTruncated: boolean;
+  retrievedUserContextCount: number;
+  selectedCount: number;
+  semanticRetrieval: {
+    attempted: boolean;
+    skippedReason?: MemoryContextRetrievalSkipReason;
+    debugReport?: MemoryContextRetrievalDebugReport;
+  };
+  retrievedUserContext: MemoryContextItem[];
+  createdAt: number;
+}
+
 export type DerivedObservationSourceKind = "tool_result" | "chat_file" | "audio" | "session" | "history";
 export type DerivedObservationPurpose =
   | "tool_replay_compaction"
@@ -170,6 +230,7 @@ export interface SessionDetailSnapshot {
   lastLlmUsage: SessionUsageSnapshot | null;
   sentMessages: SessionSentMessage[];
   contentSafetyAudits: ContentSafetyAuditView[];
+  memoryContext: MemoryContextReport | null;
   lastActiveAt: number;
   isGenerating: boolean;
   historyRevision: number;

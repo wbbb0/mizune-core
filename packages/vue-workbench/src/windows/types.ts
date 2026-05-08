@@ -6,6 +6,9 @@ export type WorkbenchWindowSize = "auto" | "sm" | "md" | "lg" | "xl" | "full";
 /** 当前窗口系统支持的窗口类型。 */
 export type WorkbenchWindowKind = "dialog" | "child-dialog";
 
+/** Dialog footer 展示策略。auto 会在存在表单或动作时展示 footer。 */
+export type WorkbenchDialogFooterMode = "auto" | "close" | "hidden";
+
 /** 业务上下文标识，用于批量关闭同类窗口或避免重复打开。 */
 export type WorkbenchWindowContext = {
   kind: string;
@@ -137,6 +140,7 @@ export type WorkbenchWindowDefinition<
   showCloseButton?: boolean;
   closeOnBackdrop?: boolean;
   closeOnEscape?: boolean;
+  footer?: WorkbenchDialogFooterMode;
   context?: WorkbenchWindowContext;
 };
 

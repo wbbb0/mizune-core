@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from "vue";
 import { RefreshCw } from "lucide-vue-next";
 import { sessionsApi } from "@/api/sessions";
-import type { SessionDetailResult } from "@/api/types";
+import type { MemoryContextItem, SessionDetailResult } from "@/api/types";
 import type { ActiveSession } from "@/stores/sessions";
 import { ApiError } from "@/api/client";
 import ScenarioHostStateEditor from "./ScenarioHostStateEditor.vue";
@@ -16,8 +16,10 @@ const detail = ref<SessionDetailResult | null>(null);
 const loading = ref(false);
 const errorMessage = ref("");
 const disclosureStates = reactive<Record<string, boolean>>({});
+let detailRequestSeq = 0;
 
 watch(() => [props.session.id, props.session.modeId] as const, () => {
+  detail.value = null;
   void loadDetail();
 }, { immediate: true });
 
@@ -68,6 +70,65 @@ const lastLlmUsageRows = computed(() => {
   ];
 });
 
+const memoryContext = computed(() => detail.value?.session.memoryContext ?? null);
+const memoryContextSummary = computed(() => {
+  const report = memoryContext.value;
+  if (!report) {
+    return "暂无记录";
+  }
+  const userLabel = report.userFactTruncated
+    ? `用户 ${report.currentUserFactCount}/${report.availableUserFactCount}`
+    : `用户 ${report.currentUserFactCount}`;
+  const sessionLabel = report.sessionFactTruncated
+    ? `会话 ${report.currentSessionFactCount}/${report.availableSessionFactCount}`
+    : `会话 ${report.currentSessionFactCount}`;
+  return `${report.selectedCount} 项 · ${userLabel} · ${sessionLabel} · 召回 ${report.retrievedUserContextCount}`;
+});
+
+const memoryContextOverviewRows = computed(() => {
+  const report = memoryContext.value;
+  if (!report) {
+    return [];
+  }
+  return [
+    ["记录时间", formatTimestamp(report.createdAt)],
+    ["Session ID", report.sessionId],
+    ["User ID", report.userId || "暂无"],
+    ["模式", report.modeId || "暂无"],
+    ["进入 prompt 总数", formatMetric(report.selectedCount)],
+    ["用户固定记忆", formatFixedMemoryCount(report.currentUserFactCount, report.availableUserFactCount, report.userFactLimit, report.userFactTruncated)],
+    ["会话记忆", formatFixedMemoryCount(report.currentSessionFactCount, report.availableSessionFactCount, report.sessionFactLimit, report.sessionFactTruncated)],
+    ["语义召回", formatMetric(report.retrievedUserContextCount)]
+  ];
+});
+
+const memoryRetrievalRows = computed(() => {
+  const retrieval = memoryContext.value?.semanticRetrieval ?? null;
+  if (!retrieval) {
+    return [];
+  }
+  const rows: Array<[string, string]> = [
+    ["语义召回", retrieval.attempted ? "已执行" : "未执行"]
+  ];
+  if (retrieval.skippedReason) {
+    rows.push(["跳过原因", formatMemoryRetrievalSkipReason(retrieval.skippedReason)]);
+  }
+  if (retrieval.debugReport) {
+    rows.push(
+      ["候选数", formatMetric(retrieval.debugReport.candidateCount)],
+      ["已索引", formatMetric(retrieval.debugReport.indexedCount)],
+      ["选中数", formatMetric(retrieval.debugReport.selectedCount)],
+      ["丢弃数", formatMetric(retrieval.debugReport.droppedCount)],
+      ["Embedding Profile", retrieval.debugReport.embeddingProfileId || "暂无"],
+      ["Debug 时间", formatTimestamp(retrieval.debugReport.createdAt)]
+    );
+    if (retrieval.debugReport.error) {
+      rows.push(["错误", retrieval.debugReport.error]);
+    }
+  }
+  return rows;
+});
+
 function formatTimestamp(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) {
     return "暂无";
@@ -80,6 +141,18 @@ function formatMetric(value: number | null | undefined): string {
     return "暂无";
   }
   return value.toLocaleString();
+}
+
+function formatFixedMemoryCount(
+  selectedCount: number,
+  availableCount: number,
+  limit: number,
+  truncated: boolean
+): string {
+  if (!truncated) {
+    return formatMetric(selectedCount);
+  }
+  return `${formatMetric(selectedCount)} / ${formatMetric(availableCount)}，上限 ${formatMetric(limit)}，已截断`;
 }
 
 function isDisclosureExpanded(id: string): boolean {
@@ -120,17 +193,60 @@ function formatSafetyLabels(labels: Array<{ label: string; riskLevel?: string; c
   ].filter(Boolean).join(" ")).join("，");
 }
 
+function formatMemoryEntrySource(source: MemoryContextItem["entrySource"]): string {
+  if (source === "semantic_retrieval") return "语义召回";
+  return source;
+}
+
+function formatMemoryRetrievalSkipReason(reason: string): string {
+  if (reason === "scenario_host_mode") return "场景主持模式";
+  if (reason === "assistant_mode") return "助手模式";
+  if (reason === "missing_user") return "缺少当前用户";
+  if (reason === "service_unavailable") return "召回服务不可用";
+  return reason;
+}
+
+function formatMemoryItemMeta(item: MemoryContextItem): string {
+  return [
+    formatMemoryEntrySource(item.entrySource),
+    item.scope,
+    item.sourceType,
+    item.kind,
+    item.memorySource,
+    item.score != null ? `score=${formatScore(item.score)}` : null,
+    item.importance != null ? `importance=${item.importance}` : null,
+    item.slotKey ? `slot=${item.slotKey}` : null,
+    `updated=${formatTimestamp(item.updatedAt)}`
+  ].filter(Boolean).join(" · ");
+}
+
+function formatScore(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "暂无";
+  }
+  return value.toFixed(3);
+}
+
 async function loadDetail() {
+  const requestSeq = ++detailRequestSeq;
+  const sessionId = props.session.id;
   loading.value = true;
   errorMessage.value = "";
   try {
-    detail.value = await sessionsApi.fetchDetail(props.session.id);
+    const loaded = await sessionsApi.fetchDetail(sessionId);
+    if (requestSeq === detailRequestSeq && props.session.id === sessionId) {
+      detail.value = loaded;
+    }
   } catch (error: unknown) {
-    errorMessage.value = error instanceof ApiError || error instanceof Error
-      ? error.message
-      : "载入会话状态失败";
+    if (requestSeq === detailRequestSeq && props.session.id === sessionId) {
+      errorMessage.value = error instanceof ApiError || error instanceof Error
+        ? error.message
+        : "载入会话状态失败";
+    }
   } finally {
-    loading.value = false;
+    if (requestSeq === detailRequestSeq && props.session.id === sessionId) {
+      loading.value = false;
+    }
   }
 }
 
@@ -202,6 +318,52 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
         >
           <div v-if="loading && !detail" class="text-small text-text-subtle">加载中…</div>
           <pre v-else class="overflow-auto rounded-lg border border-border-default bg-surface-sidebar p-3 text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ detail?.session.historySummary || "暂无摘要" }}</pre>
+        </WorkbenchDisclosure>
+
+        <WorkbenchDisclosure
+          :expanded="isDisclosureExpanded('memory-context')"
+          collapsed-title="最近记忆上下文"
+          expanded-title="最近记忆上下文"
+          :summary="memoryContextSummary"
+          @toggle="toggleDisclosure('memory-context')"
+        >
+          <WorkbenchEmptyState v-if="!memoryContext" :centered="false" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle" message="暂无记忆上下文记录。下一次生成回复后会显示实际进入 prompt 的记忆。" />
+          <div v-else class="flex min-w-0 flex-col gap-3">
+            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <WorkbenchCard v-for="[label, value] in memoryContextOverviewRows" :key="label" class="min-w-0 overflow-hidden" surface="sidebar">
+                <div class="text-small text-text-subtle">{{ label }}</div>
+                <div class="mt-1 break-all text-small text-text-secondary">{{ value }}</div>
+              </WorkbenchCard>
+            </div>
+
+            <WorkbenchCard surface="sidebar">
+              <div class="text-small text-text-subtle">召回查询文本</div>
+              <pre class="mt-2 max-h-48 overflow-auto rounded border border-border-default bg-surface-input p-2 text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ memoryContext.queryText || "空查询" }}</pre>
+            </WorkbenchCard>
+
+            <WorkbenchCard surface="sidebar">
+              <div class="text-small text-text-subtle">语义召回统计</div>
+              <div class="mt-2 grid gap-1.5 md:grid-cols-2">
+                <div v-for="[label, value] in memoryRetrievalRows" :key="label" class="flex min-w-0 items-start justify-between gap-3 rounded border border-border-subtle bg-surface-input px-2 py-1.5">
+                  <span class="text-small text-text-subtle">{{ label }}</span>
+                  <span class="break-all text-right font-mono text-small text-text-secondary">{{ value }}</span>
+                </div>
+              </div>
+            </WorkbenchCard>
+
+            <div class="min-w-0">
+              <div class="mb-2 text-small text-text-subtle">语义召回记忆</div>
+              <WorkbenchEmptyState v-if="memoryContext.retrievedUserContext.length === 0" :centered="false" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle" message="无语义召回记忆进入 prompt" />
+              <div v-else class="grid min-w-0 gap-3 lg:grid-cols-2">
+                <WorkbenchCard v-for="item in memoryContext.retrievedUserContext" :key="item.itemId" class="min-w-0 overflow-hidden" surface="sidebar">
+                  <div class="break-all text-small text-text-secondary">{{ item.title || item.itemId }}</div>
+                  <div class="mt-1 break-all font-mono text-small text-text-muted">{{ item.itemId }}</div>
+                  <div class="mt-1 text-small text-text-subtle">{{ formatMemoryItemMeta(item) }}</div>
+                  <div class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap wrap-break-word text-small leading-6 text-text-muted">{{ item.text }}</div>
+                </WorkbenchCard>
+              </div>
+            </div>
+          </div>
         </WorkbenchDisclosure>
 
         <WorkbenchDisclosure

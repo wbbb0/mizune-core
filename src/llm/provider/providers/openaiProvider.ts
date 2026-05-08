@@ -1,5 +1,6 @@
 import { fetchWithProxy } from "#services/proxy/index.ts";
 import { dumpProviderRequest, dumpProviderResponse } from "../providerDebugDump.ts";
+import { buildOpenAiCompatibleModelApiParameters } from "../modelApiParameters.ts";
 import { getNativeSearchEnableKey } from "../nativeSearch.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
 import { setPropertyByPath } from "../requestShaping.ts";
@@ -112,6 +113,7 @@ export class OpenAiProvider implements LlmProvider {
       stream_options: {
         include_usage: true
       },
+      ...buildOpenAiCompatibleModelApiParameters(context),
       ...(requestTools.length > 0 ? { tools: requestTools } : {})
     };
 

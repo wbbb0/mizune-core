@@ -69,6 +69,78 @@ test("ContextRetrievalService retrieves indexed user context through Orama", asy
   assert.ok(results.length >= 1);
 });
 
+test("ContextRetrievalService records prompt memory reports per session", () => {
+  const service = new ContextRetrievalService(
+    createTestAppConfig(),
+    {} as any,
+    { isConfigured: () => false } as any,
+    pino({ level: "silent" })
+  );
+
+  service.recordPromptMemoryReport({
+    sessionId: "session_a",
+    modeId: "normal",
+    userId: "user_1",
+    queryText: "此会话专门用于测试 Orama 记忆",
+    currentUserMemories: [{
+      id: "mem_user_1",
+      title: "测试偏好",
+      content: "用户喜欢用 Orama 检索记忆",
+      kind: "preference",
+      source: "user_explicit",
+      createdAt: 1,
+      updatedAt: 2,
+      importance: 4,
+      slotKey: "preference:retrieval"
+    }],
+    availableUserFactCount: 2,
+    userFactLimit: 1,
+    currentSessionContext: [{
+      id: "mem_session_1",
+      title: "会话用途",
+      content: "此会话专门用于记忆系统测试",
+      kind: "fact",
+      source: "inferred",
+      createdAt: 1,
+      updatedAt: 3
+    }],
+    availableSessionFactCount: 1,
+    sessionFactLimit: 20,
+    retrievedUserContext: [{
+      itemId: "ctx_1",
+      scope: "user",
+      sourceType: "chunk",
+      text: "用户之前在调试 SQLite 迁移",
+      score: 0.83,
+      updatedAt: 4
+    }],
+    semanticRetrievalAttempted: true
+  });
+  service.recordPromptMemoryReport({
+    sessionId: "session_b",
+    queryText: "",
+    currentUserMemories: [],
+    availableUserFactCount: 0,
+    userFactLimit: 1,
+    currentSessionContext: [],
+    availableSessionFactCount: 0,
+    sessionFactLimit: 20,
+    retrievedUserContext: [],
+    semanticRetrievalAttempted: false,
+    semanticRetrievalSkippedReason: "missing_user"
+  });
+
+  const firstReport = service.getLastPromptMemoryReport({ sessionId: "session_a" });
+  assert.equal(firstReport?.selectedCount, 3);
+  assert.equal(firstReport?.currentUserFactCount, 1);
+  assert.equal(firstReport?.availableUserFactCount, 2);
+  assert.equal(firstReport?.userFactTruncated, true);
+  assert.equal(firstReport?.currentSessionFactCount, 1);
+  assert.equal(firstReport?.sessionFactTruncated, false);
+  assert.equal(firstReport?.retrievedUserContext[0]?.entrySource, "semantic_retrieval");
+  assert.equal(service.getLastPromptMemoryReport({ sessionId: "session_b" })?.semanticRetrieval.skippedReason, "missing_user");
+});
+
 test("ContextRetrievalService returns always user context without embedding", async () => {
   const service = new ContextRetrievalService(
     createTestAppConfig(),
@@ -278,6 +350,7 @@ function createDocument(
     retrievalPolicy,
     userId: "user_1",
     text,
+    embeddingTextHash: `hash:${text}`,
     updatedAt: 1
   };
 }

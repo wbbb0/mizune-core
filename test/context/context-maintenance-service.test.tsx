@@ -12,6 +12,7 @@ test("ContextMaintenanceService compacts chunks and sweeps deleted items fail-op
         retention: {
           maxUserSearchChunks: 2,
           maxSearchChunkAgeDays: 90,
+          sessionFactRetentionDays: 14,
           summaryAfterDays: 30,
           deletedRetentionDays: 14,
           maintenanceIntervalMs: 1000
@@ -34,6 +35,10 @@ test("ContextMaintenanceService compacts chunks and sweeps deleted items fail-op
       sweepDeletedItems() {
         calls.push("sweep-deleted");
         return { deletedCount: 2 };
+      },
+      sweepExpiredSessionFacts() {
+        calls.push("sweep-session-facts");
+        return { deletedCount: 7 };
       }
     } as any,
     {
@@ -53,10 +58,11 @@ test("ContextMaintenanceService compacts chunks and sweeps deleted items fail-op
 
   const result = await service.runOnce();
 
-  assert.deepEqual(calls, ["list-users", "compact:user_1", "sweep-chunks:user_1", "sweep-deleted", "rebuild-indexes"]);
+  assert.deepEqual(calls, ["list-users", "compact:user_1", "sweep-chunks:user_1", "sweep-deleted", "sweep-session-facts", "rebuild-indexes"]);
   assert.deepEqual(result, {
     compactedCount: 3,
     sweptChunkCount: 1,
+    sweptSessionFactCount: 7,
     sweptDeletedCount: 2,
     embeddedCount: 4,
     indexedCount: 5,

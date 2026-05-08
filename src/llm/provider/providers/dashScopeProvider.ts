@@ -1,6 +1,7 @@
 import { fetchWithProxy } from "#services/proxy/index.ts";
 import { getNativeSearchEnableKey } from "../nativeSearch.ts";
 import { dumpProviderRequest, dumpProviderResponse } from "../providerDebugDump.ts";
+import { buildDashScopeModelApiParameters } from "../modelApiParameters.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
 import { requestOpenAiCompatibleEmbeddings } from "../openAiCompatEmbedding.ts";
 import { setPropertyByPath } from "../requestShaping.ts";
@@ -289,7 +290,8 @@ function buildDashScopeRequestBody(
 ): Record<string, unknown> {
   const parameters: Record<string, unknown> = {
     incremental_output: true,
-    result_format: "message"
+    result_format: "message",
+    ...buildDashScopeModelApiParameters(context)
   };
 
   const thinkingFeature = getProviderFeatureFromContext(context, "thinking");

@@ -35,64 +35,133 @@ function createPrivateMessageEvent(text: string) {
   };
 }
 
-  test("whitelist store initializes users and groups from data defaults instead of config", async () => {
-    const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-whitelist-"));
-    try {
-      const store = new WhitelistStore(dataDir, pino({ level: "silent" }));
+function createGroupMessageEvent(text: string, overrides?: { groupId?: number; userId?: number }) {
+  return {
+    post_type: "message",
+    message_type: "group",
+    sub_type: "normal",
+    message_id: 1,
+    group_id: overrides?.groupId ?? 20001,
+    user_id: overrides?.userId ?? 10001,
+    message: [
+      {
+        type: "text",
+        data: {
+          text
+        }
+      }
+    ],
+    raw_message: text,
+    sender: {
+      user_id: overrides?.userId ?? 10001,
+      nickname: "Tester"
+    },
+    self_id: 20002,
+    time: Math.floor(Date.now() / 1000)
+  };
+}
 
-      await store.init();
+test("whitelist store initializes users and groups from data defaults instead of config", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-whitelist-"));
+  try {
+    const store = new WhitelistStore(dataDir, pino({ level: "silent" }));
 
-      assert.deepEqual(store.getSnapshot(), { users: [], groups: [] });
-      assert.deepEqual(
-        JSON.parse(await readFile(join(dataDir, "whitelist.json"), "utf8")),
-        { version: 2, users: [], groups: [] }
-      );
-    } finally {
-      await rm(dataDir, { recursive: true, force: true });
+    await store.init();
+
+    assert.deepEqual(store.getSnapshot(), { users: [], groups: [] });
+    assert.deepEqual(
+      JSON.parse(await readFile(join(dataDir, "whitelist.json"), "utf8")),
+      { version: 2, users: [], groups: [] }
+    );
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("event router allows private .own before owner is bound even when whitelist is enabled", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-identity-router-bootstrap-"));
+  const config = createTestAppConfig({
+    whitelist: {
+      enabled: true
     }
   });
+  try {
+    const identityStore = new UserIdentityStore(dataDir, pino({ level: "silent" }));
+    await identityStore.init();
+    const router = new EventRouter(config, config.configRuntime.instanceName, {
+      hasUser: () => false
+    } as any, identityStore, undefined, isOwnerBootstrapCommandText);
 
-  test("event router allows private .own before owner is bound even when whitelist is enabled", async () => {
-    const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-identity-router-bootstrap-"));
+    assert.equal(router.toIncomingMessage(createPrivateMessageEvent(".own") as any)?.text, ".own");
+    assert.equal(router.toIncomingMessage(createPrivateMessageEvent("hello") as any), null);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("event router allows owner private messages when external identity points to owner", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-identity-router-owner-"));
+  try {
     const config = createTestAppConfig({
       whitelist: {
         enabled: true
       }
     });
-    try {
-      const identityStore = new UserIdentityStore(dataDir, pino({ level: "silent" }));
-      await identityStore.init();
-      const router = new EventRouter(config, config.configRuntime.instanceName, {
-        hasUser: () => false
-      } as any, identityStore, undefined, isOwnerBootstrapCommandText);
+    const identityStore = new UserIdentityStore(dataDir, pino({ level: "silent" }));
+    await identityStore.init();
+    await identityStore.bindOwnerIdentity({
+      channelId: config.configRuntime.instanceName,
+      externalId: "10001"
+    });
+    const router = new EventRouter(config, config.configRuntime.instanceName, {
+      hasUser: () => false
+    } as any, identityStore, undefined, isOwnerBootstrapCommandText);
 
-      assert.equal(router.toIncomingMessage(createPrivateMessageEvent(".own") as any)?.text, ".own");
-      assert.equal(router.toIncomingMessage(createPrivateMessageEvent("hello") as any), null);
-    } finally {
-      await rm(dataDir, { recursive: true, force: true });
+    assert.equal(router.toIncomingMessage(createPrivateMessageEvent("hello") as any)?.text, "hello");
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("event router filters non-whitelisted group messages before parsing", async () => {
+  const config = createTestAppConfig({
+    whitelist: {
+      enabled: true
     }
   });
+  const router = new EventRouter(config, config.configRuntime.instanceName, {
+    hasUser: () => false,
+    hasGroup: (groupId: string) => groupId === "20001"
+  } as any, undefined, undefined, isOwnerBootstrapCommandText);
 
-  test("event router allows owner private messages when external identity points to owner", async () => {
-    const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-identity-router-owner-"));
-    try {
-      const config = createTestAppConfig({
-        whitelist: {
-          enabled: true
-        }
-      });
-      const identityStore = new UserIdentityStore(dataDir, pino({ level: "silent" }));
-      await identityStore.init();
-      await identityStore.bindOwnerIdentity({
-        channelId: config.configRuntime.instanceName,
-        externalId: "10001"
-      });
-      const router = new EventRouter(config, config.configRuntime.instanceName, {
-        hasUser: () => false
-      } as any, identityStore, undefined, isOwnerBootstrapCommandText);
+  assert.equal(router.toIncomingMessage(createGroupMessageEvent("hello", { groupId: 20002 }) as any), null);
+  assert.equal(
+    router.toIncomingMessage(createGroupMessageEvent("hello", { groupId: 20001 }) as any)?.groupId,
+    "20001"
+  );
+});
 
-      assert.equal(router.toIncomingMessage(createPrivateMessageEvent("hello") as any)?.text, "hello");
-    } finally {
-      await rm(dataDir, { recursive: true, force: true });
-    }
-  });
+test("event router allows owner group messages even when group is not whitelisted", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-identity-router-owner-group-"));
+  try {
+    const config = createTestAppConfig({
+      whitelist: {
+        enabled: true
+      }
+    });
+    const identityStore = new UserIdentityStore(dataDir, pino({ level: "silent" }));
+    await identityStore.init();
+    await identityStore.bindOwnerIdentity({
+      channelId: config.configRuntime.instanceName,
+      externalId: "10001"
+    });
+    const router = new EventRouter(config, config.configRuntime.instanceName, {
+      hasUser: () => false,
+      hasGroup: () => false
+    } as any, identityStore, undefined, isOwnerBootstrapCommandText);
+
+    assert.equal(router.toIncomingMessage(createGroupMessageEvent("hello") as any)?.groupId, "20001");
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});

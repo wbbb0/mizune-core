@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, normalize } from "node:path";
-import { fetch as undiciFetch } from "undici";
+import { fetch as undiciFetch, type Response as UndiciResponse } from "undici";
 import type { Logger } from "pino";
 import sharp from "sharp";
 import type { AppConfig } from "#config/config.ts";
@@ -80,6 +80,9 @@ export class ChatFileStore {
     origin: ChatFileOrigin;
     sourceContext?: Record<string, string | number | boolean | null>;
   }): Promise<ChatFileRecord> {
+    if (input.buffer.byteLength > this.config.chatFiles.maxUploadBytes) {
+      throw new Error("chat file import exceeds maxUploadBytes");
+    }
     const kind = await normalizeStoredFileKind(input.kind, input.buffer, input.sourceName, input.mimeType);
     await validateStoredFileBuffer(kind, input.buffer);
     const sourceName = normalizeSourceName(input.sourceName, kind);
@@ -203,11 +206,7 @@ export class ChatFileStore {
       if (!response.ok) {
         throw new Error(`failed to download asset: ${response.status} ${response.statusText}`);
       }
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      if (buffer.byteLength > this.config.chatFiles.maxUploadBytes) {
-        throw new Error("asset import exceeds maxUploadBytes");
-      }
+      const buffer = await readResponseBufferWithLimit(response, this.config.chatFiles.maxUploadBytes);
       const mimeType = input.mimeType ?? response.headers.get("content-type") ?? undefined;
       const sourceName = input.sourceName ?? inferFilenameFromUrl(source, mimeType, input.kind);
       return this.importBuffer({
@@ -588,6 +587,42 @@ async function validateStoredFileBuffer(kind: ChatFileKind, buffer: Buffer): Pro
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(`Workspace image validation failed: image is invalid or corrupted (${detail})`);
   }
+}
+
+async function readResponseBufferWithLimit(response: UndiciResponse, maxBytes: number): Promise<Buffer> {
+  const contentLength = Number(response.headers.get("content-length") ?? NaN);
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw new Error("chat file import exceeds maxUploadBytes");
+  }
+  if (!response.body) {
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.byteLength > maxBytes) {
+      throw new Error("chat file import exceeds maxUploadBytes");
+    }
+    return buffer;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      const chunk = Buffer.from(value);
+      totalBytes += chunk.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error("chat file import exceeds maxUploadBytes");
+      }
+      chunks.push(chunk);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, totalBytes);
 }
 
 function isChatFileRecord(value: unknown): value is ChatFileRecord {

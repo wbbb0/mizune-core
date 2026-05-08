@@ -40,6 +40,7 @@ import { preparePromptMemoryContext } from "#llm/prompts/chat-system.prompt.ts";
 import type { PromptInput } from "#llm/prompt/promptTypes.ts";
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import { buildChatFileHandleResult } from "#llm/tools/core/fileHandle.ts";
+import type { ContextMemoryFactEntry, ContextPromptMemoryRetrievalSkipReason } from "#context/contextTypes.ts";
 
 type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
@@ -775,6 +776,47 @@ async function enrichScheduledPromptTrigger(
   return trigger;
 }
 
+function selectFixedPromptFacts(
+  facts: ContextMemoryFactEntry[],
+  limit: number
+): {
+  items: ContextMemoryFactEntry[];
+  totalCount: number;
+  limit: number;
+  truncated: boolean;
+} {
+  const normalizedLimit = Math.max(0, Math.trunc(limit));
+  return {
+    items: normalizedLimit === 0 ? [] : facts.slice(0, normalizedLimit),
+    totalCount: facts.length,
+    limit: normalizedLimit,
+    truncated: facts.length > normalizedLimit
+  };
+}
+
+function resolvePromptMemoryRetrievalSkippedReason(input: {
+  scenarioHostMode: boolean;
+  assistantMode: boolean;
+  userId: string | undefined;
+  serviceAvailable: boolean;
+}): ContextPromptMemoryRetrievalSkipReason | undefined {
+  if (input.scenarioHostMode) {
+    return "scenario_host_mode";
+  }
+  if (input.assistantMode) {
+    // TODO: Revisit assistant-mode memory policy. It should likely allow task/work
+    // memories while still excluding persona/RP relationship context.
+    return "assistant_mode";
+  }
+  if (!input.userId) {
+    return "missing_user";
+  }
+  if (!input.serviceAvailable) {
+    return "service_unavailable";
+  }
+  return undefined;
+}
+
 function extractSystemMessages(promptMessages: LlmMessage[]): string[] {
   return promptMessages
     .filter((message) => message.role === "system")
@@ -955,17 +997,46 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
           input.currentUser,
           safetyProjected.batchMessages[safetyProjected.batchMessages.length - 1]?.senderName
         );
-    const currentUserMemories = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
+    const allCurrentUserMemories = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
       ? []
       : deps.contextStore?.listUserFacts(input.currentUser.userId) ?? [];
-    const retrievedUserContext = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
+    const userFactSelection = selectFixedPromptFacts(allCurrentUserMemories, deps.config.context.retrieval.maxFixedUserFacts);
+    const currentUserMemories = userFactSelection.items;
+    const allCurrentSessionContext = scenarioHostMode
+      ? []
+      : deps.contextStore?.listSessionFacts?.(input.sessionId) ?? [];
+    const sessionFactSelection = selectFixedPromptFacts(allCurrentSessionContext, deps.config.context.retrieval.maxFixedSessionFacts);
+    const currentSessionContext = sessionFactSelection.items;
+    const memoryQueryText = buildBatchQueryText(input.batchMessages);
+    const semanticRetrievalSkippedReason = resolvePromptMemoryRetrievalSkippedReason({
+      scenarioHostMode,
+      assistantMode,
+      userId: input.currentUser?.userId,
+      serviceAvailable: Boolean(deps.contextRetrievalService?.retrieveUserContext)
+    });
+    const retrievedUserContext = semanticRetrievalSkippedReason
       ? []
       : await deps.contextRetrievalService?.retrieveUserContext({
-          userId: input.currentUser.userId,
-          queryText: buildBatchQueryText(input.batchMessages),
-          excludeItemIds: currentUserMemories.map((item) => item.id),
+          userId: input.currentUser!.userId,
+          queryText: memoryQueryText,
+          excludeItemIds: allCurrentUserMemories.map((item) => item.id),
           ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
         }) ?? [];
+    deps.contextRetrievalService?.recordPromptMemoryReport?.({
+      sessionId: input.sessionId,
+      ...(input.modeId ? { modeId: input.modeId } : {}),
+      ...(input.currentUser?.userId ? { userId: input.currentUser.userId } : {}),
+      queryText: memoryQueryText,
+      currentUserMemories,
+      availableUserFactCount: userFactSelection.totalCount,
+      userFactLimit: userFactSelection.limit,
+      currentSessionContext,
+      availableSessionFactCount: sessionFactSelection.totalCount,
+      sessionFactLimit: sessionFactSelection.limit,
+      retrievedUserContext,
+      semanticRetrievalAttempted: !semanticRetrievalSkippedReason,
+      ...(semanticRetrievalSkippedReason ? { semanticRetrievalSkippedReason } : {})
+    });
     logPromptMemorySuppressions(deps, {
       sessionId: input.sessionId,
       ...(input.modeId ? { modeId: input.modeId } : {}),
@@ -994,6 +1065,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
             safetyProjected.batchMessages[safetyProjected.batchMessages.length - 1]?.senderName
           )
         : userProfilePromptState,
+      currentSessionContext,
       currentUserMemories,
       retrievedUserContext,
       globalRules,
@@ -1101,17 +1173,46 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
           input.currentUser,
           input.targetContext.chatType === "private" ? input.targetContext.senderName : undefined
         );
-    const currentUserMemories = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
+    const allCurrentUserMemories = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
       ? []
       : deps.contextStore?.listUserFacts(input.currentUser.userId) ?? [];
-    const retrievedUserContext = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
+    const userFactSelection = selectFixedPromptFacts(allCurrentUserMemories, deps.config.context.retrieval.maxFixedUserFacts);
+    const currentUserMemories = userFactSelection.items;
+    const allCurrentSessionContext = scenarioHostMode
+      ? []
+      : deps.contextStore?.listSessionFacts?.(input.sessionId) ?? [];
+    const sessionFactSelection = selectFixedPromptFacts(allCurrentSessionContext, deps.config.context.retrieval.maxFixedSessionFacts);
+    const currentSessionContext = sessionFactSelection.items;
+    const memoryQueryText = buildScheduledQueryText(scheduledTrigger);
+    const semanticRetrievalSkippedReason = resolvePromptMemoryRetrievalSkippedReason({
+      scenarioHostMode,
+      assistantMode,
+      userId: input.currentUser?.userId,
+      serviceAvailable: Boolean(deps.contextRetrievalService?.retrieveUserContext)
+    });
+    const retrievedUserContext = semanticRetrievalSkippedReason
       ? []
       : await deps.contextRetrievalService?.retrieveUserContext({
-          userId: input.currentUser.userId,
-          queryText: buildScheduledQueryText(scheduledTrigger),
-          excludeItemIds: currentUserMemories.map((item) => item.id),
+          userId: input.currentUser!.userId,
+          queryText: memoryQueryText,
+          excludeItemIds: allCurrentUserMemories.map((item) => item.id),
           ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
         }) ?? [];
+    deps.contextRetrievalService?.recordPromptMemoryReport?.({
+      sessionId: input.sessionId,
+      ...(input.modeId ? { modeId: input.modeId } : {}),
+      ...(input.currentUser?.userId ? { userId: input.currentUser.userId } : {}),
+      queryText: memoryQueryText,
+      currentUserMemories,
+      availableUserFactCount: userFactSelection.totalCount,
+      userFactLimit: userFactSelection.limit,
+      currentSessionContext,
+      availableSessionFactCount: sessionFactSelection.totalCount,
+      sessionFactLimit: sessionFactSelection.limit,
+      retrievedUserContext,
+      semanticRetrievalAttempted: !semanticRetrievalSkippedReason,
+      ...(semanticRetrievalSkippedReason ? { semanticRetrievalSkippedReason } : {})
+    });
     logPromptMemorySuppressions(deps, {
       sessionId: input.sessionId,
       ...(input.modeId ? { modeId: input.modeId } : {}),
@@ -1147,6 +1248,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
             input.targetContext.chatType === "private" ? input.targetContext.senderName : undefined
           )
         : userProfilePromptState,
+      currentSessionContext,
       currentUserMemories,
       retrievedUserContext,
       globalRules,

@@ -112,7 +112,7 @@ const editorOptionsParamsSchema = z.object({
 });
 
 const browserProfileParamsSchema = z.object({
-  profileId: z.string().trim().min(1, "profileId is required")
+  profileId: z.string().trim().regex(/^browser_profile_[a-f0-9]{16}$/, "invalid browser profile id")
 });
 
 const chatFilePathQuerySchema = z.object({

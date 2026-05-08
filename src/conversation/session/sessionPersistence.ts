@@ -204,44 +204,34 @@ export class SessionPersistence {
   }
 
   async save(session: PersistedSessionState): Promise<void> {
-    const key = session.id;
-    const previous = this.writes.get(key) ?? Promise.resolve();
-    const next = previous
-      .catch(() => undefined)
-      .then(async () => {
-        const filePath = this.getFilePath(session.id);
-        const tempPath = `${filePath}.tmp`;
-        try {
+    await this.enqueueWrite(session.id, async () => {
+      const filePath = this.getFilePath(session.id);
+      const tempPath = `${filePath}.tmp`;
+      try {
+        await writeFile(tempPath, `${JSON.stringify(session, null, 2)}\n`, "utf8");
+      } catch (error: unknown) {
+        if (isMissingFileError(error)) {
+          await mkdir(this.sessionDir, { recursive: true });
           await writeFile(tempPath, `${JSON.stringify(session, null, 2)}\n`, "utf8");
-        } catch (error: unknown) {
-          if (isMissingFileError(error)) {
-            await mkdir(this.sessionDir, { recursive: true });
-            await writeFile(tempPath, `${JSON.stringify(session, null, 2)}\n`, "utf8");
-          } else {
-            throw error;
-          }
+        } else {
+          throw error;
         }
-        await rename(tempPath, filePath);
-      })
-      .finally(() => {
-        if (this.writes.get(key) === next) {
-          this.writes.delete(key);
-        }
-      });
-
-    this.writes.set(key, next);
-    await next;
+      }
+      await rename(tempPath, filePath);
+    });
   }
 
   async remove(sessionId: string): Promise<void> {
-    const filePath = this.getFilePath(sessionId);
-    try {
-      await unlink(filePath);
-    } catch (error: unknown) {
-      if (!isMissingFileError(error)) {
-        this.logger.warn({ error, filePath }, "session_persist_remove_failed");
+    await this.enqueueWrite(sessionId, async () => {
+      const filePath = this.getFilePath(sessionId);
+      try {
+        await unlink(filePath);
+      } catch (error: unknown) {
+        if (!isMissingFileError(error)) {
+          this.logger.warn({ error, filePath }, "session_persist_remove_failed");
+        }
       }
-    }
+    });
   }
 
   async getPersistedSessionMtimeMs(sessionId: string): Promise<number | null> {
@@ -259,6 +249,20 @@ export class SessionPersistence {
 
   private getFilePath(sessionId: string): string {
     return join(this.sessionDir, `${encodeURIComponent(sessionId)}.json`);
+  }
+
+  private async enqueueWrite(sessionId: string, operation: () => Promise<void>): Promise<void> {
+    const previous = this.writes.get(sessionId) ?? Promise.resolve();
+    const next = previous
+      .catch(() => undefined)
+      .then(operation)
+      .finally(() => {
+        if (this.writes.get(sessionId) === next) {
+          this.writes.delete(sessionId);
+        }
+      });
+    this.writes.set(sessionId, next);
+    await next;
   }
 }
 

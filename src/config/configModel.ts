@@ -1,6 +1,17 @@
 import { createSchemaTemplate, parseConfig, s, type Infer } from "#data/schema/index.ts";
 
 const emptyObject = () => ({} as never);
+
+const modelApiParametersSchema = s.object({
+  temperature: s.number().title("temperature").optional(),
+  top_p: s.number().title("top_p").optional(),
+  top_k: s.number().title("top_k").optional(),
+  min_p: s.number().title("min_p").optional(),
+  presence_penalty: s.number().title("presence_penalty").optional(),
+  repetition_penalty: s.number().title("repetition_penalty").optional(),
+  extra: s.object({}).passthrough().title("额外 API 参数").describe("按 provider 目标位置原样透传；缺省不传。").optional()
+}).title("API 模型参数").describe("为该模型请求附加 provider API 参数；缺省字段不会发送。").default(emptyObject);
+
 const modelProfileSchema = s.object({
   provider: s.string().trim().nonempty().dynamicRef("llm_provider_names").title("Provider"),
   model: s.string().trim().nonempty().title("模型名"),
@@ -11,7 +22,8 @@ const modelProfileSchema = s.object({
   supportsAudioInput: s.boolean().title("支持音频输入").default(false),
   supportsSearch: s.boolean().title("支持搜索").default(false),
   supportsTools: s.boolean().title("支持工具").default(true),
-  preserveThinking: s.boolean().title("保留历史思考").default(false)
+  preserveThinking: s.boolean().title("保留历史思考").default(false),
+  apiParameters: modelApiParametersSchema
 }).title("模型配置").describe("定义一个模型别名对应的 provider 能力与特性。").default(emptyObject);
 
 const createModelRefListSchema = () => s.oneOrMany(s.string().trim().nonempty().dynamicRef("llm_model_names")).optional();
@@ -204,6 +216,8 @@ const contextConfigSchema = s.object({
   }).title("向量化").describe("控制上下文检索使用的 embedding 调用和版本隔离。").default(emptyObject),
   retrieval: s.object({
     maxResults: s.number().int().positive().title("最大结果数").default(4),
+    maxFixedUserFacts: s.number().int().min(0).title("固定插入用户事实上限").default(20),
+    maxFixedSessionFacts: s.number().int().min(0).title("固定插入会话事实上限").default(20),
     candidateMultiplier: s.number().int().positive().title("候选倍率").default(4),
     minScore: s.number().min(0).title("最低分数").default(0),
     maxSynchronousEmbeddingDocuments: s.number().int().min(0).title("同步向量化文档上限").default(16)
@@ -215,6 +229,7 @@ const contextConfigSchema = s.object({
   retention: s.object({
     maxUserSearchChunks: s.number().int().positive().title("每用户最大检索片段数").default(500),
     maxSearchChunkAgeDays: s.number().int().positive().title("检索片段保留天数").default(90),
+    sessionFactRetentionDays: s.number().int().positive().title("会话事实保留天数").default(14),
     summaryAfterDays: s.number().int().positive().title("摘要化天数").default(30),
     deletedRetentionDays: s.number().int().positive().title("已删除项保留天数").default(14),
     maintenanceIntervalMs: s.number().int().positive().title("维护间隔毫秒").default(60 * 60 * 1000)

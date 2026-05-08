@@ -10,6 +10,16 @@ qwen35_plus:
   supportsAudioInput: false
   supportsTools: true
   supportsSearch: true
+  # 可选：模型 API 参数。未配置的字段不会发送；extra 会按 provider 目标位置原样透传。
+  apiParameters:
+    temperature: 0.7
+    top_p: 0.9
+    # top_k: 50
+    # min_p: 0.05
+    # presence_penalty: 0
+    # repetition_penalty: 1.05
+    # extra:
+    #   max_tokens: 2048
 
 # 会话标题生成模型
 sessionCaptioner:

@@ -56,6 +56,10 @@ function handleClose(windowId: string) {
 }
 
 function handleFocus(windowId: string) {
+  const topWindow = renderedWindows.value[renderedWindows.value.length - 1];
+  if (topWindow?.id === windowId) {
+    return;
+  }
   focus(windowId);
 }
 
@@ -116,8 +120,8 @@ onBeforeUnmount(() => {
     <div
       v-if="activeModalWindow"
       data-test="window-backdrop"
-      class="pointer-events-auto fixed inset-0 bg-black/30 backdrop-blur-xs"
-      :style="{ zIndex: String(Math.max(0, activeModalWindow.order - 1)) }"
+      class="pointer-events-auto fixed inset-0"
+      :style="{ zIndex: '1' }"
       @click="handleBackdropClick"
     />
     <WindowSurface
@@ -131,22 +135,11 @@ onBeforeUnmount(() => {
       @close="handleClose(window.id)"
     >
       <DialogRenderer
-        v-if="window.definition.schema || window.definition.actions"
         :ref="(controller) => setDialogRendererRef(window.id, controller)"
         :window-id="window.id"
         :definition="window.definition"
         @resolve="handleResolve(window.id, $event)"
       />
-      <div v-else class="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-4 py-3 text-small leading-5 text-text-secondary">
-        <template v-if="window.definition.blocks && window.definition.blocks.length > 0">
-          <template v-for="(block, index) in window.definition.blocks" :key="index">
-            <p v-if="block.kind === 'text'" class="whitespace-pre-wrap">{{ block.content }}</p>
-            <hr v-else-if="block.kind === 'separator'" class="my-3 border-border-default" />
-            <component v-else :is="block.component" v-bind="block.props ?? {}" />
-          </template>
-        </template>
-        <p v-else class="text-text-muted">暂无窗口内容</p>
-      </div>
     </WindowSurface>
   </div>
 </template>

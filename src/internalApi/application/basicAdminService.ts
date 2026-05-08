@@ -252,6 +252,7 @@ export async function getSessionDetail(
         await deps.contentSafetyStore?.listBySessionId(sessionId) ?? [],
         deps.config?.contentSafety.audit.exposeOriginalInAdminApi ?? true
       ),
+      memoryContext: deps.contextRetrievalService?.getLastPromptMemoryReport({ sessionId }) ?? null,
       isGenerating: isSessionGenerating(existing),
       historyRevision: deps.sessionManager.getHistoryRevision(sessionId),
       mutationEpoch: deps.sessionManager.getMutationEpoch(sessionId)
@@ -470,6 +471,7 @@ export async function deleteSession(
   if (!deleted) {
     return { ok: false as const };
   }
+  deps.contextSessionCleanupService?.cleanupDeletedSession({ sessionId });
   await deps.sessionPersistence.remove(sessionId);
   await deps.chatMessageFileGcService.sweep({
     activeSessions: deps.sessionManager.listSessions(),

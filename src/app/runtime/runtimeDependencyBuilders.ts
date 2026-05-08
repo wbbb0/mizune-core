@@ -119,7 +119,12 @@ export function buildSessionWorkCoordinatorDeps(
     promptBuilder: buildGenerationPromptBuilderDeps(services),
     identity: buildGenerationIdentityDeps(services),
     toolRuntime: buildGenerationToolRuntimeDeps(services),
-    lifecycle: buildGenerationLifecycleDeps(services, persistSession, getScheduler, contextExtractionQueue),
+    lifecycle: buildGenerationLifecycleDeps(
+      services,
+      persistSession,
+      getScheduler,
+      contextExtractionQueue
+    ),
     sessionRuntime: buildGenerationSessionRuntimeDeps(services)
   };
 }

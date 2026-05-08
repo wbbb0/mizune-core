@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 
@@ -33,17 +33,18 @@ export interface BrowserProfileSummary {
 const META_FILE = "profile-meta.json";
 const STORAGE_STATE_FILE = "storage-state.json";
 const SESSION_STORAGE_FILE = "session-storage.json";
+const BROWSER_PROFILE_ID_PATTERN = /^browser_profile_[a-f0-9]{16}$/;
 
 export class BrowserProfileStore {
   private readonly rootDir: string;
-  private readonly writeChain = new Map<string, Promise<void>>();
+  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(
     dataDir: string,
     private readonly config: AppConfig,
     private readonly logger: Logger
   ) {
-    this.rootDir = join(dataDir, "browser-profiles");
+    this.rootDir = resolve(dataDir, "browser-profiles");
   }
 
   async ensureProfile(ownerSessionId: string): Promise<BrowserProfileMeta> {
@@ -52,26 +53,28 @@ export class BrowserProfileStore {
       throw new Error("ownerSessionId is required");
     }
 
-    await mkdir(this.rootDir, { recursive: true });
     const profileId = buildProfileId(this.config.configRuntime.instanceName, normalizedOwnerSessionId);
-    const now = Date.now();
-    const existing = await this.readMeta(profileId);
-    const meta: BrowserProfileMeta = existing ?? {
-      profileId,
-      ownerSessionId: normalizedOwnerSessionId,
-      createdAtMs: now,
-      lastUsedAtMs: now
-    };
-    if (existing) {
-      meta.lastUsedAtMs = now;
-    }
-    await this.writeMeta(meta);
-    await this.trimProfiles();
-    return meta;
+    return this.withWriteLock(async () => {
+      await mkdir(this.rootDir, { recursive: true });
+      const now = Date.now();
+      const existing = await this.readMeta(profileId);
+      const meta: BrowserProfileMeta = existing ?? {
+        profileId,
+        ownerSessionId: normalizedOwnerSessionId,
+        createdAtMs: now,
+        lastUsedAtMs: now
+      };
+      if (existing) {
+        meta.lastUsedAtMs = now;
+      }
+      await this.writeMeta(meta);
+      await this.trimProfiles();
+      return meta;
+    });
   }
 
   async loadProfile(profileId: string): Promise<BrowserProfileSnapshot | null> {
-    const normalizedProfileId = String(profileId ?? "").trim();
+    const normalizedProfileId = normalizeBrowserProfileIdOrNull(profileId);
     if (!normalizedProfileId) {
       return null;
     }
@@ -92,13 +95,13 @@ export class BrowserProfileStore {
     storageState: unknown | null;
     sessionStorageByOrigin: Record<string, Record<string, string>>;
   }): Promise<BrowserProfileSnapshot> {
-    const profileId = String(input.profileId ?? "").trim();
+    const profileId = normalizeBrowserProfileId(input.profileId);
     const ownerSessionId = String(input.ownerSessionId ?? "").trim();
-    if (!profileId || !ownerSessionId) {
-      throw new Error("profileId and ownerSessionId are required");
+    if (!ownerSessionId) {
+      throw new Error("ownerSessionId is required");
     }
 
-    return this.withWriteLock(profileId, async () => {
+    return this.withWriteLock(async () => {
       await mkdir(this.profileDir(profileId), { recursive: true });
       const previous = await this.readMeta(profileId);
       const now = Date.now();
@@ -121,16 +124,18 @@ export class BrowserProfileStore {
   }
 
   async markUsed(profileId: string): Promise<BrowserProfileMeta | null> {
-    const meta = await this.readMeta(profileId);
-    if (!meta) {
-      return null;
-    }
-    const next = {
-      ...meta,
-      lastUsedAtMs: Date.now()
-    };
-    await this.writeMeta(next);
-    return next;
+    return this.withWriteLock(async () => {
+      const meta = await this.readMeta(profileId);
+      if (!meta) {
+        return null;
+      }
+      const next = {
+        ...meta,
+        lastUsedAtMs: Date.now()
+      };
+      await this.writeMeta(next);
+      return next;
+    });
   }
 
   async listProfiles(): Promise<BrowserProfileSummary[]> {
@@ -141,7 +146,10 @@ export class BrowserProfileStore {
       if (!entry.isDirectory()) {
         continue;
       }
-      const profileId = entry.name;
+      const profileId = normalizeBrowserProfileIdOrNull(entry.name);
+      if (!profileId) {
+        continue;
+      }
       const meta = await this.readMeta(profileId);
       if (!meta) {
         continue;
@@ -162,13 +170,18 @@ export class BrowserProfileStore {
   }
 
   async clearProfile(profileId: string): Promise<boolean> {
-    const normalizedProfileId = String(profileId ?? "").trim();
+    const normalizedProfileId = normalizeBrowserProfileIdOrNull(profileId);
     if (!normalizedProfileId) {
       return false;
     }
+    return this.withWriteLock(() => this.clearProfileUnlocked(normalizedProfileId));
+  }
+
+  private async clearProfileUnlocked(profileId: string): Promise<boolean> {
+    const normalizedProfileId = normalizeBrowserProfileId(profileId);
     const dirPath = this.profileDir(normalizedProfileId);
     const existed = await fileExists(dirPath);
-    await rm(dirPath, { recursive: true, force: true }).catch(() => undefined);
+    await rm(dirPath, { recursive: true, force: true });
     return existed;
   }
 
@@ -196,7 +209,7 @@ export class BrowserProfileStore {
     const profiles = await this.listProfiles();
     const overflow = profiles.slice(limit);
     for (const item of overflow) {
-      await this.clearProfile(item.profile_id);
+      await this.clearProfileUnlocked(item.profile_id);
       this.logger.info({ profileId: item.profile_id }, "browser_profile_trimmed");
     }
   }
@@ -207,7 +220,7 @@ export class BrowserProfileStore {
       return null;
     }
     const value = raw as Record<string, unknown>;
-    const profileIdValue = String(value.profileId ?? "").trim();
+    const profileIdValue = normalizeBrowserProfileIdOrNull(String(value.profileId ?? ""));
     const ownerSessionId = String(value.ownerSessionId ?? "").trim();
     const createdAtMs = Number(value.createdAtMs ?? 0);
     const lastUsedAtMs = Number(value.lastUsedAtMs ?? 0);
@@ -247,7 +260,13 @@ export class BrowserProfileStore {
   }
 
   private profileDir(profileId: string): string {
-    return join(this.rootDir, profileId);
+    const normalizedProfileId = normalizeBrowserProfileId(profileId);
+    const dirPath = resolve(this.rootDir, normalizedProfileId);
+    const relativeFromRoot = relative(this.rootDir, dirPath);
+    if (relativeFromRoot === ".." || relativeFromRoot.startsWith("../") || isAbsolute(relativeFromRoot)) {
+      throw new Error("invalid browser profile id");
+    }
+    return dirPath;
   }
 
   private metaPath(profileId: string): string {
@@ -262,20 +281,21 @@ export class BrowserProfileStore {
     return join(this.profileDir(profileId), SESSION_STORAGE_FILE);
   }
 
-  private async withWriteLock<T>(profileId: string, operation: () => Promise<T>): Promise<T> {
-    const previous = this.writeChain.get(profileId) ?? Promise.resolve();
+  private async withWriteLock<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.writeChain;
     let resolveCurrent: (() => void) | undefined;
     const current = new Promise<void>((resolve) => {
       resolveCurrent = resolve;
     });
-    this.writeChain.set(profileId, previous.then(() => current));
+    const chain = previous.catch(() => undefined).then(() => current);
+    this.writeChain = chain;
     try {
-      await previous;
+      await previous.catch(() => undefined);
       return await operation();
     } finally {
       resolveCurrent?.();
-      if (this.writeChain.get(profileId) === current) {
-        this.writeChain.delete(profileId);
+      if (this.writeChain === chain) {
+        this.writeChain = Promise.resolve();
       }
     }
   }
@@ -287,6 +307,19 @@ function buildProfileId(instanceName: string, ownerSessionId: string): string {
     .digest("hex")
     .slice(0, 16);
   return `browser_profile_${hash}`;
+}
+
+function normalizeBrowserProfileId(profileId: string): string {
+  const normalizedProfileId = String(profileId ?? "").trim();
+  if (!BROWSER_PROFILE_ID_PATTERN.test(normalizedProfileId)) {
+    throw new Error("invalid browser profile id");
+  }
+  return normalizedProfileId;
+}
+
+function normalizeBrowserProfileIdOrNull(profileId: string): string | null {
+  const normalizedProfileId = String(profileId ?? "").trim();
+  return BROWSER_PROFILE_ID_PATTERN.test(normalizedProfileId) ? normalizedProfileId : null;
 }
 
 function normalizeSessionStorageByOrigin(

@@ -43,6 +43,7 @@ export interface InternalApiFixtureState {
   configCheckForUpdatesCount: number;
   whitelistReloadCount: number;
   schedulerReloadCount: number;
+  contextCleanupSessionIds: string[];
   browserProfiles: Array<{ profile_id: string; ownerSessionId: string }>;
   contextItems: ContextManagementItem[];
   workspaceRoot: string;
@@ -117,7 +118,8 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     configCheckForUpdatesCount: 0,
     whitelistReloadCount: 0,
     schedulerReloadCount: 0,
-    browserProfiles: [{ profile_id: "browser_profile_fixture", ownerSessionId: "qqbot:p:10001" }],
+    contextCleanupSessionIds: [],
+    browserProfiles: [{ profile_id: "browser_profile_0000000000000001", ownerSessionId: "qqbot:p:10001" }],
     contextItems: [{
       itemId: "ctx_fixture_chunk_1",
       scope: "user",
@@ -793,6 +795,17 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         });
         return { deletedCount };
       },
+      deleteSessionScopedItems(sessionId: string) {
+        let deletedCount = 0;
+        state.contextItems = state.contextItems.map((item) => {
+          if (item.scope === "session" && item.sessionId === sessionId && item.status !== "deleted") {
+            deletedCount += 1;
+            return { ...item, status: "deleted" as const, updatedAt: item.updatedAt + 1 };
+          }
+          return item;
+        });
+        return { deletedCount };
+      },
       exportContextItemsJsonl(input: { userId?: string } = {}) {
         const items = state.contextItems.filter((item) => !input.userId || item.userId === input.userId);
         return {
@@ -869,8 +882,22 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       },
       getLastDebugReport() {
         return null;
+      },
+      getLastPromptMemoryReport() {
+        return null;
       }
     } as unknown as InternalApiDeps["contextRetrievalService"],
+    contextSessionCleanupService: {
+      cleanupDeletedSession(input: { sessionId: string }) {
+        state.contextCleanupSessionIds.push(input.sessionId);
+        const deleted = deps.contextStore.deleteSessionScopedItems(input.sessionId);
+        return {
+          deletedContextItemCount: deleted.deletedCount,
+          cancelledExtractionBatchCount: 0,
+          cancelledExtractionTurnCount: 0
+        };
+      }
+    } as unknown as NonNullable<InternalApiDeps["contextSessionCleanupService"]>,
     userIdentityStore: {
       findIdentityByInternalUserIdSync(internalUserId: string) {
         return internalUserId === "owner"

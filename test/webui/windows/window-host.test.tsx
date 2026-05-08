@@ -38,7 +38,7 @@ Object.defineProperty(globalThis, "getComputedStyle", {
 Object.defineProperty(globalThis, "MutationObserver", { value: dom.window.MutationObserver });
 
 const { resolveWindowSizing } = await import("@workbench-kit/vue-workbench/runtime");
-const { nextTick, markRaw, computed, defineComponent } = await import(VUE_RUNTIME_URL);
+const { nextTick, markRaw, computed, defineComponent, h } = await import(VUE_RUNTIME_URL);
 const { useWorkbenchWindows } = await import(USE_WORKBENCH_WINDOWS_URL);
 const { createWorkbenchController, activateWorkbenchController } = await import(WORKBENCH_CONTROLLER_URL);
 const { defineWorkbenchView } = await import(WORKBENCH_TYPES_URL);
@@ -363,6 +363,81 @@ test("window host routes schema windows through dialog renderer and closes on re
   assert.equal(windowManager.snapshot().length, 0);
 });
 
+test("window host routes blocks-only windows through dialog renderer and honors footer mode", async () => {
+  uiState.isMobile = true;
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
+
+  windowManager.openSync({
+    id: "block-dialog",
+    kind: "dialog",
+    title: "块窗口",
+    size: "md",
+    blocks: [
+      {
+        kind: "text",
+        content: "块内容"
+      }
+    ],
+    footer: "close"
+  });
+  await nextTick();
+
+  assert.match(wrapper.text(), /块内容/);
+  assert.equal(wrapper.find('[data-action-kind="close"]').exists(), true);
+  assert.equal(wrapper.find(".scrollbar-thin").exists(), true);
+});
+
+test("window host injects standard block props for blocks-only windows", async () => {
+  uiState.isMobile = true;
+  const BlockProbe = markRaw(defineComponent({
+    name: "BlockProbe",
+    props: {
+      windowId: {
+        type: String,
+        required: true
+      },
+      busy: {
+        type: Boolean,
+        required: true
+      },
+      values: {
+        type: Object,
+        required: true
+      }
+    },
+    setup(props: { windowId: string; busy: boolean; values: Record<string, unknown> }) {
+      return () => h("button", {
+        type: "button",
+        "data-test": "block-probe",
+        "data-window-id": props.windowId,
+        "data-busy": String(props.busy),
+        "data-value-count": String(Object.keys(props.values).length)
+      }, "probe");
+    }
+  }));
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
+
+  windowManager.openSync({
+    id: "block-props",
+    kind: "dialog",
+    title: "块 props",
+    size: "md",
+    blocks: [
+      {
+        kind: "component",
+        component: BlockProbe
+      }
+    ]
+  });
+  await nextTick();
+
+  const probe = wrapper.get('[data-test="block-probe"]');
+  assert.equal(probe.attributes("data-window-id"), "block-props");
+  assert.equal(probe.attributes("data-busy"), "false");
+  assert.equal(probe.attributes("data-value-count"), "0");
+  assert.equal(wrapper.find('[data-action-kind="close"]').exists(), false);
+});
+
 test("window host renders only the top window on mobile", async () => {
   uiState.isMobile = true;
   const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
@@ -389,11 +464,59 @@ test("window host focuses a desktop window when it is pressed", async () => {
   const before = wrapper.findAll("section").map((section: ReturnType<typeof wrapper.find>) => section.text());
   assert.deepEqual(before.map((text: string) => text.includes("parent") ? "parent" : text.includes("sibling") ? "sibling" : "child"), ["parent", "sibling", "child"]);
 
+  await wrapper.findAll("section")[1]!.trigger("pointerdown");
+  await nextTick();
+
+  const after = wrapper.findAll("section").map((section: ReturnType<typeof wrapper.find>) => section.text());
+  assert.deepEqual(after.map((text: string) => text.includes("parent") ? "parent" : text.includes("sibling") ? "sibling" : "child"), ["parent", "child", "sibling"]);
+});
+
+test("window host does not focus an inactive parent while a child window exists", async () => {
+  uiState.isMobile = false;
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
+
+  windowManager.openSync(buildWindow("parent"));
+  windowManager.openSync(buildWindow("sibling"));
+  windowManager.openSync(buildWindow("child", "parent"));
+  await nextTick();
+
   await wrapper.findAll("section")[0]!.trigger("pointerdown");
   await nextTick();
 
   const after = wrapper.findAll("section").map((section: ReturnType<typeof wrapper.find>) => section.text());
-  assert.deepEqual(after.map((text: string) => text.includes("parent") ? "parent" : text.includes("sibling") ? "sibling" : "child"), ["sibling", "parent", "child"]);
+  assert.deepEqual(after.map((text: string) => text.includes("parent") ? "parent" : text.includes("sibling") ? "sibling" : "child"), ["parent", "sibling", "child"]);
+});
+
+test("window host does not refocus an already top window on internal focus", async () => {
+  uiState.isMobile = true;
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
+
+  windowManager.openSync({
+    id: "top-input",
+    kind: "dialog",
+    title: "top-input",
+    size: "md",
+    schema: {
+      fields: [
+        {
+          kind: "string",
+          key: "title",
+          label: "标题",
+          defaultValue: "初始值"
+        }
+      ]
+    }
+  });
+  await nextTick();
+  const before = windowManager.snapshot();
+
+  await wrapper.get('input[type="text"]').trigger("focusin");
+  await nextTick();
+
+  const after = windowManager.snapshot();
+  assert.equal(after.length, before.length);
+  assert.equal(after[0]?.id, before[0]?.id);
+  assert.equal(after[0]?.order, before[0]?.order);
 });
 
 test("window host focuses an inactive window when an input inside it receives focus", async () => {
@@ -531,6 +654,13 @@ test("window host renders a single modal backdrop and closes the top modal on ba
   await nextTick();
 
   assert.equal(wrapper.findAll('[data-test="window-backdrop"]').length, 1);
+  const backdropStyle = wrapper.get('[data-test="window-backdrop"]').attributes("style") ?? "";
+  const sectionStyles = wrapper.findAll("section").map((section: ReturnType<typeof wrapper.find>) => section.attributes("style") ?? "");
+  assert.equal(wrapper.get('[data-test="window-backdrop"]').classes().includes("bg-black/30"), false);
+  assert.equal(wrapper.get('[data-test="window-backdrop"]').classes().includes("backdrop-blur-xs"), false);
+  assert.match(sectionStyles[0] ?? "", /z-index: 2/);
+  assert.match(backdropStyle, /z-index: 1/);
+  assert.match(sectionStyles[1] ?? "", /z-index: 4/);
   await wrapper.get('[data-test="window-backdrop"]').trigger("click");
   await nextTick();
 
@@ -726,10 +856,14 @@ test("window surface keeps inactive styling and visible transform and size outpu
   await nextTick();
 
   assert.ok(wrapper.classes().includes("window-inactive"));
+  assert.equal(wrapper.classes().includes("opacity-75"), false);
   assert.ok(wrapper.classes().includes("w-auto"));
   assert.match(wrapper.element.getAttribute("style") ?? "", /translate3d\(calc\(-50% \+ 10px\), calc\(-50% \+ 20px\), 0\)/);
   assert.match(wrapper.element.getAttribute("style") ?? "", /max-height:/);
   assert.equal(wrapper.attributes("aria-disabled"), "true");
+  assert.equal((wrapper.get('button[title="关闭"]').element as HTMLButtonElement).disabled, true);
+  await wrapper.trigger("focusin");
+  assert.equal(wrapper.emitted("focus"), undefined);
   assert.match(wrapper.text(), /Surface/);
   assert.match(wrapper.text(), /Description/);
 });

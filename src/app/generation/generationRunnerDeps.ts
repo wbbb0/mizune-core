@@ -74,8 +74,8 @@ export interface GenerationPromptBuilderDeps {
   globalRuleStore: GlobalRuleStore;
   toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
-  contextStore?: Pick<ContextStore, "listUserFacts">;
-  contextRetrievalService?: Pick<ContextRetrievalService, "retrieveUserContext">;
+  contextStore?: Pick<ContextStore, "listUserFacts" | "listSessionFacts">;
+  contextRetrievalService?: Pick<ContextRetrievalService, "retrieveUserContext" | "recordPromptMemoryReport">;
 }
 
 export interface GenerationSessionRuntimeDeps {

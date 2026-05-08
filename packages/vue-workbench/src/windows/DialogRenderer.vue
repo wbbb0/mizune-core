@@ -29,6 +29,17 @@ const isBusy = computed(() => busyActionId.value !== null);
 const blocks = computed(() => props.definition.blocks ?? []);
 const fields = computed(() => props.definition.schema?.fields ?? []);
 const actions = computed(() => props.definition.actions ?? []);
+const footerMode = computed(() => props.definition.footer ?? "auto");
+const showEmptyContent = computed(() => blocks.value.length === 0 && fields.value.length === 0);
+const showFooter = computed(() => {
+  if (footerMode.value === "hidden") {
+    return false;
+  }
+  if (footerMode.value === "close") {
+    return true;
+  }
+  return fields.value.length > 0 || actions.value.length > 0;
+});
 
 function isPlainRecord(value: unknown): value is DialogValues {
   if (!value || typeof value !== "object") {
@@ -188,8 +199,8 @@ function handleClose() {
 </script>
 
 <template>
-  <div class="flex flex-1 flex-col gap-4 text-small leading-5 text-text-secondary">
-    <div class="flex flex-col gap-4 p-4 flex-1">
+  <div class="flex min-h-0 flex-1 flex-col text-small leading-5 text-text-secondary">
+    <div class="scrollbar-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
       <div v-if="blocks.length" class="flex flex-col gap-3">
         <template v-for="(block, index) in blocks" :key="index">
           <p v-if="block.kind === 'text'" class="whitespace-pre-wrap text-text-secondary">
@@ -212,9 +223,10 @@ function handleClose() {
           :set-value-at-path="setValueAtPath"
         />
       </form>
+      <p v-if="showEmptyContent" class="text-text-muted">暂无窗口内容</p>
     </div>
 
-    <div class="flex flex-wrap items-center justify-end gap-2 border-t border-border-default p-4">
+    <div v-if="showFooter" class="flex flex-wrap items-center justify-end gap-2 border-t border-border-default p-4">
       <button
         class="btn btn-secondary max-w-full whitespace-normal text-left"
         :disabled="isBusy"

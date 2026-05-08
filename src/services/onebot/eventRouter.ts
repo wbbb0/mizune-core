@@ -8,8 +8,9 @@ export class EventRouter {
   constructor(
     private readonly config: AppConfig,
     private readonly channelId: string,
-    private readonly whitelistStore: Pick<WhitelistStore, "hasUser"> = {
-      hasUser: () => false
+    private readonly whitelistStore: Pick<WhitelistStore, "hasUser" | "hasGroup"> = {
+      hasUser: () => false,
+      hasGroup: () => false
     },
     private readonly userIdentityStore: Pick<UserIdentityStore, "hasOwnerIdentitySync" | "findInternalUserIdSync"> = {
       hasOwnerIdentitySync: () => false,
@@ -31,12 +32,23 @@ export class EventRouter {
 
       const userId = String(event.user_id);
       const userMatched = this.whitelistStore.hasUser(userId)
-        || this.userIdentityStore.findInternalUserIdSync({ channelId: this.channelId, externalId: userId }) === "owner"
+        || this.isOwnerUser(userId)
         || this.isImplicitlyAllowedUser(userId);
       return userMatched;
     }
 
-    return true;
+    if (event.message_type === "group") {
+      if (!this.config.whitelist.enabled) {
+        return true;
+      }
+      const groupId = String(event.group_id ?? "").trim();
+      if (!groupId) {
+        return false;
+      }
+      return this.whitelistStore.hasGroup(groupId) || this.isOwnerUser(String(event.user_id));
+    }
+
+    return false;
   }
 
   toIncomingMessage(event: OneBotMessageEvent): ParsedIncomingMessage | null {
@@ -49,5 +61,9 @@ export class EventRouter {
     }
 
     return parseIncomingMessage(event, { channelId: this.channelId });
+  }
+
+  private isOwnerUser(userId: string): boolean {
+    return this.userIdentityStore.findInternalUserIdSync({ channelId: this.channelId, externalId: userId }) === "owner";
   }
 }

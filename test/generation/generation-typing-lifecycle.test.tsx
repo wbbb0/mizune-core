@@ -272,7 +272,7 @@ function createExecutorHarness(options?: {
       getScheduler() {
         return {} as never;
       },
-      ...(options?.contextExtractionQueue ? { contextExtractionQueue: options.contextExtractionQueue } : {})
+      ...(options?.contextExtractionQueue ? { contextExtractionQueue: options.contextExtractionQueue } : {}),
     }
   }, {
     processNextSessionWork() {}
@@ -409,7 +409,7 @@ function createExecutorHarness(options?: {
     assert.match(event?.errorMessage ?? "", /queue unavailable/);
   });
 
-  test("context extraction enqueue is visible in backend transcript", async () => {
+  test("context extraction enqueue does not add backend transcript noise", async () => {
     const enqueuedTurns: unknown[] = [];
     const harness = createExecutorHarness({
       currentUser: {
@@ -428,14 +428,11 @@ function createExecutorHarness(options?: {
     await harness.runPromise;
 
     assert.equal(enqueuedTurns.length, 1);
-    const event = harness.sessionManager
+    const events = harness.sessionManager
       .getSession(harness.sessionId)
       .internalTranscript
-      .find((item) => item.kind === "context_extraction_event");
-    assert.equal(event?.kind, "context_extraction_event");
-    assert.equal(event?.status, "queued");
-    assert.deepEqual(event?.targetUserIds, ["owner"]);
-    assert.equal(event?.messageCount, 1);
+      .filter((item) => item.kind === "context_extraction_event");
+    assert.deepEqual(events, []);
   });
 
   test("typing stop is skipped when a newer response epoch takes over", async () => {

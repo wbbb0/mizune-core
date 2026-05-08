@@ -401,7 +401,11 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
           debugSnapshot: {
             visibleToolNames: ["filesystem_media_view", "filesystem_media_inspect", "filesystem_send_to_chat"]
           },
-          localFileService: {} as any,
+          localFileService: {
+            resolvePath(path: string) {
+              return { relativePath: path, absolutePath: path };
+            }
+          } as any,
           mediaVisionService: {
             async prepareAbsolutePathForModel(absolutePath: string, sourceName: string) {
               assert.equal(absolutePath, filePath);
@@ -451,7 +455,11 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
           debugSnapshot: {
             visibleToolNames: ["filesystem_media_view"]
           },
-          localFileService: {} as any,
+          localFileService: {
+            resolvePath(path: string) {
+              return { relativePath: path, absolutePath: path };
+            }
+          } as any,
           mediaVisionService: {
             async prepareAbsolutePathForModel() {
               return {

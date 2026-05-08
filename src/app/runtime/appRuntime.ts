@@ -14,6 +14,7 @@ import { createInternalApiServices } from "#internalApi/types.ts";
 import { ContextMaintenanceService } from "#context/contextMaintenanceService.ts";
 import { ContextExtractionQueue } from "#context/contextExtractionQueue.ts";
 import { ContextExtractionService, type ContextExtractionTurn } from "#context/contextExtractionService.ts";
+import { ContextSessionCleanupService } from "#context/contextSessionCleanupService.ts";
 import { createContextExtractionEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import {
   shutdownRuntime,
@@ -125,7 +126,8 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
         messageCount: countExtractionMessages(event.turns),
         created: event.result.created,
         replaced: event.result.replaced,
-        ignored: event.result.ignored
+        ignored: event.result.ignored,
+        items: event.result.items
       }));
       persistSession(event.sessionId, "context_extraction_processed");
     },
@@ -139,8 +141,14 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
       persistSession(event.sessionId, "context_extraction_failed");
     }
   });
+  const contextSessionCleanupService = new ContextSessionCleanupService(contextStore, contextExtractionQueue, logger);
   sessionWorkCoordinator = createSessionWorkCoordinator(
-    buildSessionWorkCoordinatorDeps(services, persistSession, () => scheduler, contextExtractionQueue)
+    buildSessionWorkCoordinatorDeps(
+      services,
+      persistSession,
+      () => scheduler,
+      contextExtractionQueue
+    )
   );
   shellRuntime.setEventHandler((event) => sessionWorkCoordinator.dispatchTerminalEvent(event));
   services.downloadRuntime.setEventHandler((event) => sessionWorkCoordinator.dispatchDownloadEvent(event));
@@ -273,7 +281,8 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     chatFileStore,
     audioStore,
     contentSafetyStore,
-    chatMessageFileGcService
+    chatMessageFileGcService,
+    contextSessionCleanupService
   });
 
   try {

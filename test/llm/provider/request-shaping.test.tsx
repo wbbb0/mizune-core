@@ -75,6 +75,50 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
     });
   });
 
+  test("openai-compatible providers include configured model api parameters", async () => {
+    const config = createLlmTestConfig({
+      apiParameters: {
+        temperature: 0.7,
+        top_p: 0.9,
+        top_k: 40,
+        min_p: 0.05,
+        presence_penalty: 0.2,
+        repetition_penalty: 1.05,
+        extra: {
+          max_tokens: 256
+        }
+      }
+    });
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.temperature, 0.7);
+          assert.equal(body.top_p, 0.9);
+          assert.equal(body.top_k, 40);
+          assert.equal(body.min_p, 0.05);
+          assert.equal(body.presence_penalty, 0.2);
+          assert.equal(body.repetition_penalty, 1.05);
+          assert.equal(body.max_tokens, 256);
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "done"
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "hello" }]
+      });
+
+      assert.equal(result.text, "done");
+    });
+  });
+
   test("dashscope sends preserve_thinking when preserveThinking is enabled and assistant reasoning exists", async () => {
     const config = createLlmTestConfig({
       provider: "test",
@@ -173,6 +217,59 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
     });
   });
 
+  test("dashscope sends configured model api parameters under parameters", async () => {
+    const config = createLlmTestConfig({
+      provider: "test",
+      apiParameters: {
+        temperature: 0.6,
+        top_p: 0.85,
+        top_k: 20,
+        min_p: 0.03,
+        presence_penalty: 0.1,
+        repetition_penalty: 1.1,
+        extra: {
+          max_tokens: 128
+        }
+      }
+    });
+    config.llm.providers.test!.type = "dashscope";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.parameters.temperature, 0.6);
+          assert.equal(body.parameters.top_p, 0.85);
+          assert.equal(body.parameters.top_k, 20);
+          assert.equal(body.parameters.min_p, 0.03);
+          assert.equal(body.parameters.presence_penalty, 0.1);
+          assert.equal(body.parameters.repetition_penalty, 1.1);
+          assert.equal(body.parameters.max_tokens, 128);
+        },
+        payloads: [{
+          output: {
+            choices: [{
+              message: {
+                content: [{ text: "done" }]
+              }
+            }]
+          },
+          usage: {
+            input_tokens: 4,
+            output_tokens: 1,
+            total_tokens: 5
+          }
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "hello" }]
+      });
+
+      assert.equal(result.text, "done");
+    });
+  });
+
   test("dashscope sends content safety inspection header when fallback is enabled", async () => {
     const config = createLlmTestConfig({
       provider: "test"
@@ -259,7 +356,14 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
   test("lmstudio uses native chat endpoint when tools are absent and thinking is disabled", async () => {
     const config = createLlmTestConfig({
       provider: "test",
-      supportsVision: true
+      supportsVision: true,
+      apiParameters: {
+        temperature: 0.55,
+        top_p: 0.75,
+        extra: {
+          max_tokens: 96
+        }
+      }
     });
     config.llm.providers.test!.type = "lmstudio";
     config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
@@ -272,6 +376,9 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
           assert.equal(body.reasoning, "off");
           assert.equal(body.stream, false);
           assert.equal(body.store, false);
+          assert.equal(body.temperature, 0.55);
+          assert.equal(body.top_p, 0.75);
+          assert.equal(body.max_tokens, 96);
           assert.equal(body.system_prompt, "system prompt");
           assert.deepEqual(body.input, [
             { type: "message", content: "describe this image" },
@@ -680,6 +787,58 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
             { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
             { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }
           ]);
+        },
+        payloads: [{
+          candidates: [{
+            content: {
+              parts: [{ text: "done" }]
+            }
+          }],
+          usageMetadata: {
+            promptTokenCount: 5,
+            candidatesTokenCount: 1,
+            totalTokenCount: 6
+          }
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "hello" }]
+      });
+
+      assert.equal(result.text, "done");
+    });
+  });
+
+  test("google ai studio maps configured model api parameters to generation config", async () => {
+    const config = createLlmTestConfig({
+      apiParameters: {
+        temperature: 0.4,
+        top_p: 0.8,
+        top_k: 16,
+        min_p: 0.01,
+        presence_penalty: 0.25,
+        repetition_penalty: 1.2,
+        extra: {
+          maxOutputTokens: 64,
+          frequencyPenalty: 0.3
+        }
+      }
+    });
+    config.llm.providers.test!.type = "google";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.generationConfig.temperature, 0.4);
+          assert.equal(body.generationConfig.topP, 0.8);
+          assert.equal(body.generationConfig.topK, 16);
+          assert.equal(body.generationConfig.presencePenalty, 0.25);
+          assert.equal(body.generationConfig.maxOutputTokens, 64);
+          assert.equal(body.generationConfig.frequencyPenalty, 0.3);
+          assert.equal("min_p" in body.generationConfig, false);
+          assert.equal("repetition_penalty" in body.generationConfig, false);
         },
         payloads: [{
           candidates: [{

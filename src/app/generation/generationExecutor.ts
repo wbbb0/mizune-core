@@ -741,8 +741,8 @@ export function createGenerationExecutor(
           "history_assistant_appended"
         );
         persistSession(sessionId, "assistant_response_finalized");
+        const targetUserIds = collectExtractionUserIds(input.batchMessages);
         if (input.currentUser?.userId && lifecycle.contextExtractionQueue) {
-          const targetUserIds = collectExtractionUserIds(input.batchMessages);
           try {
             for (const userId of targetUserIds) {
               lifecycle.contextExtractionQueue.enqueueTurn({
@@ -760,15 +760,6 @@ export function createGenerationExecutor(
                 completedAt: Date.now()
               });
             }
-            appendContextExtractionTranscriptEvent({
-              sessionManager,
-              persistSession,
-              sessionId,
-              expectedEpoch,
-              status: "queued",
-              targetUserIds,
-              messageCount: input.batchMessages.length
-            });
           } catch (error) {
             logger.warn({
               sessionId,

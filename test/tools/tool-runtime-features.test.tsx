@@ -4132,6 +4132,11 @@ function policyShape(policy: any) {
         { path: filePath },
         {
           config: createTestAppConfig(),
+          localFileService: {
+            resolvePath(path: string) {
+              return { relativePath: path, absolutePath: path };
+            }
+          },
           lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
           oneBotClient: {
             async sendText(params: unknown) {

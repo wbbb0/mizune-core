@@ -513,6 +513,28 @@ test("dialog renderer mounts supported blocks and fields", async () => {
   assert.equal(wrapper.find('input[type="checkbox"]').exists(), true);
 });
 
+test("dialog renderer keeps the content area scrollable under constrained window height", async () => {
+  const wrapper = vueMount(DialogRenderer, {
+    props: {
+      windowId: "dialog-scroll",
+      definition: {
+        kind: "dialog",
+        title: "滚动内容",
+        size: "md",
+        blocks: [
+          { kind: "text", content: "长内容" }
+        ],
+        actions: []
+      }
+    }
+  });
+
+  assert.match(wrapper.classes().join(" "), /min-h-0/);
+  const scrollContainer = wrapper.get(".scrollbar-thin");
+  assert.match(scrollContainer.classes().join(" "), /overflow-y-auto/);
+  assert.match(scrollContainer.classes().join(" "), /min-h-0/);
+});
+
 test("dialog renderer keeps the window open when an action throws", async () => {
   const wrapper = vueMount(DialogRenderer, {
     props: {

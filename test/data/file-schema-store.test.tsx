@@ -20,44 +20,65 @@ const counterSchema = s.object({
   value: s.number().int()
 }).strict();
 
-  test("atomic writes tolerate concurrent writes to the same file", async () => {
-    await withTempDir(async (dir) => {
-      const store = new FileSchemaStore({
-        filePath: join(dir, "store.json"),
-        schema: counterSchema,
-        logger: pino({ level: "silent" }),
-        loadErrorEvent: "file_schema_store_load_failed",
-        atomicWrite: true
-      });
-
-      await Promise.all(
-        Array.from({ length: 25 }, (_, index) => store.write({ value: index }))
-      );
-
-      const written = JSON.parse(await readFile(join(dir, "store.json"), "utf8"));
-      assert.equal(typeof written.value, "number");
-      assert.ok(written.value >= 0);
-      assert.ok(written.value < 25);
+test("atomic writes tolerate concurrent writes to the same file", async () => {
+  await withTempDir(async (dir) => {
+    const store = new FileSchemaStore({
+      filePath: join(dir, "store.json"),
+      schema: counterSchema,
+      logger: pino({ level: "silent" }),
+      loadErrorEvent: "file_schema_store_load_failed",
+      atomicWrite: true
     });
+
+    await Promise.all(
+      Array.from({ length: 25 }, (_, index) => store.write({ value: index }))
+    );
+
+    const written = JSON.parse(await readFile(join(dir, "store.json"), "utf8"));
+    assert.equal(typeof written.value, "number");
+    assert.ok(written.value >= 0);
+    assert.ok(written.value < 25);
   });
+});
 
-  test("readOrDefault regenerates a corrupted file", async () => {
-    await withTempDir(async (dir) => {
-      const filePath = join(dir, "store.json");
-      const store = new FileSchemaStore({
-        filePath,
-        schema: counterSchema,
-        logger: pino({ level: "silent" }),
-        loadErrorEvent: "file_schema_store_load_failed",
-        atomicWrite: true
-      });
-
-      await writeFile(filePath, "{not valid json", "utf8");
-
-      const recovered = await store.readOrDefault({ value: 7 });
-      const rewritten = JSON.parse(await readFile(filePath, "utf8"));
-
-      assert.deepEqual(recovered, { value: 7 });
-      assert.deepEqual(rewritten, { value: 7 });
+test("readOrDefault regenerates a corrupted file", async () => {
+  await withTempDir(async (dir) => {
+    const filePath = join(dir, "store.json");
+    const store = new FileSchemaStore({
+      filePath,
+      schema: counterSchema,
+      logger: pino({ level: "silent" }),
+      loadErrorEvent: "file_schema_store_load_failed",
+      atomicWrite: true
     });
+
+    await writeFile(filePath, "{not valid json", "utf8");
+
+    const recovered = await store.readOrDefault({ value: 7 });
+    const rewritten = JSON.parse(await readFile(filePath, "utf8"));
+
+    assert.deepEqual(recovered, { value: 7 });
+    assert.deepEqual(rewritten, { value: 7 });
   });
+});
+
+test("concurrent updates are serialized against the latest value", async () => {
+  await withTempDir(async (dir) => {
+    const store = new FileSchemaStore({
+      filePath: join(dir, "store.json"),
+      schema: counterSchema,
+      logger: pino({ level: "silent" }),
+      loadErrorEvent: "file_schema_store_load_failed",
+      atomicWrite: true
+    });
+    await store.write({ value: 0 });
+
+    await Promise.all(
+      Array.from({ length: 25 }, () => store.update((current) => ({
+        value: (current?.value ?? 0) + 1
+      })))
+    );
+
+    assert.deepEqual(JSON.parse(await readFile(join(dir, "store.json"), "utf8")), { value: 25 });
+  });
+});
