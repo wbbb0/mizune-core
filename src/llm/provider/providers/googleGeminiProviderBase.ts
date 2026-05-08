@@ -1,5 +1,6 @@
 import { fetchWithProxy } from "#services/proxy/index.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
+import { buildGeminiGenerationConfigParameters } from "../modelApiParameters.ts";
 import {
   numberOrNull,
   type LlmContentPart,
@@ -300,7 +301,9 @@ function buildGenerationConfig(
   context: LlmProviderRequestContext,
   params: LlmProviderGenerateParams
 ): Record<string, unknown> {
-  const generationConfig: Record<string, unknown> = {};
+  const generationConfig: Record<string, unknown> = {
+    ...buildGeminiGenerationConfigParameters(context)
+  };
 
   if (context.modelProfile.supportsThinking) {
     generationConfig.thinkingConfig = {

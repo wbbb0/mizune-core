@@ -1,5 +1,6 @@
 import { fetchWithProxy } from "#services/proxy/index.ts";
 import { dumpProviderRequest, dumpProviderResponse } from "../providerDebugDump.ts";
+import { buildOpenAiCompatibleModelApiParameters } from "../modelApiParameters.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
 import {
   createProviderStreamAccumulator,
@@ -80,6 +81,7 @@ export class DeepSeekProvider implements LlmProvider {
       thinking: {
         type: resolvedEnableThinking ? "enabled" : "disabled"
       },
+      ...buildOpenAiCompatibleModelApiParameters(context),
       ...(resolvedEnableThinking ? { reasoning_effort: "high" } : {}),
       ...((params.tools?.length ?? 0) > 0 ? { tools: params.tools } : {})
     };

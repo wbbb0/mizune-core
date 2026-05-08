@@ -4,12 +4,13 @@ import pino from "pino";
 import { LlmClient } from "../../../src/llm/llmClient.ts";
 import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../../helpers/llm-test-support.tsx";
 
-function createDeepSeekConfig() {
+function createDeepSeekConfig(modelOverrides: Record<string, unknown> = {}) {
   const config = createLlmTestConfig({
     provider: "test",
     model: "deepseek-v4-pro",
     supportsThinking: true,
-    supportsTools: true
+    supportsTools: true,
+    ...modelOverrides
   });
   config.llm.providers.test!.type = "deepseek";
   delete config.llm.providers.test!.baseUrl;
@@ -63,6 +64,44 @@ test("deepseek provider sends native thinking switch and effort", async () => {
     assert.equal(result.reasoningContent, "先思考。");
     assert.equal(result.usage.cachedTokens, 4);
     assert.equal(result.usage.reasoningTokens, 3);
+  });
+});
+
+test("deepseek provider includes configured model api parameters", async () => {
+  const config = createDeepSeekConfig({
+    apiParameters: {
+      temperature: 0.65,
+      top_p: 0.88,
+      presence_penalty: 0.15,
+      extra: {
+        max_tokens: 512
+      }
+    }
+  });
+  const client = new LlmClient(config, pino({ level: "silent" }));
+
+  await withMockFetch([
+    {
+      assertRequest(body: any) {
+        assert.equal(body.temperature, 0.65);
+        assert.equal(body.top_p, 0.88);
+        assert.equal(body.presence_penalty, 0.15);
+        assert.equal(body.max_tokens, 512);
+      },
+      payloads: [{
+        choices: [{
+          delta: {
+            content: "回答"
+          }
+        }]
+      }]
+    }
+  ], async () => {
+    const result = await client.generate({
+      messages: [{ role: "user", content: "你好" }]
+    });
+
+    assert.equal(result.text, "回答");
   });
 });
 

@@ -1,4 +1,5 @@
 import { fetchWithProxy } from "#services/proxy/index.ts";
+import { buildOpenAiCompatibleModelApiParameters } from "../modelApiParameters.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
 import {
   createEmptyUsage,
@@ -143,9 +144,9 @@ export class LmStudioProvider implements LlmProvider {
     params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
 
     try {
-      const primaryRequestBody = buildNativeChatRequestBody(context.model, params.messages);
-      const textContentRequestBody = buildTextContentNativeChatRequestBody(context.model, params.messages);
-      const legacyRequestBody = buildLegacyNativeChatRequestBody(context.model, params.messages);
+      const primaryRequestBody = buildNativeChatRequestBody(context, params.messages);
+      const textContentRequestBody = buildTextContentNativeChatRequestBody(context, params.messages);
+      const legacyRequestBody = buildLegacyNativeChatRequestBody(context, params.messages);
 
       let payload: LmStudioChatResponsePayload;
       try {
@@ -273,7 +274,7 @@ function canMapMessagesToNativeChatInput(messages: LlmMessage[]): boolean {
   return true;
 }
 
-function buildNativeChatRequestBody(model: string, messages: LlmMessage[]): Record<string, unknown> {
+function buildNativeChatRequestBody(context: LlmProviderRequestContext, messages: LlmMessage[]): Record<string, unknown> {
   const systemPrompts: string[] = [];
   const input: NativeLmStudioInput[] = [];
 
@@ -315,16 +316,17 @@ function buildNativeChatRequestBody(model: string, messages: LlmMessage[]): Reco
   }
 
   return {
-    model,
+    model: context.model,
     input,
     reasoning: "off",
     stream: false,
     store: false,
+    ...buildOpenAiCompatibleModelApiParameters(context),
     ...(systemPrompts.length > 0 ? { system_prompt: systemPrompts.join("\n\n") } : {})
   };
 }
 
-function buildTextContentNativeChatRequestBody(model: string, messages: LlmMessage[]): Record<string, unknown> {
+function buildTextContentNativeChatRequestBody(context: LlmProviderRequestContext, messages: LlmMessage[]): Record<string, unknown> {
   const systemPrompts: string[] = [];
   const input: NativeLmStudioFallbackInput[] = [];
 
@@ -366,16 +368,17 @@ function buildTextContentNativeChatRequestBody(model: string, messages: LlmMessa
   }
 
   return {
-    model,
+    model: context.model,
     input,
     reasoning: "off",
     stream: false,
     store: false,
+    ...buildOpenAiCompatibleModelApiParameters(context),
     ...(systemPrompts.length > 0 ? { system_prompt: systemPrompts.join("\n\n") } : {})
   };
 }
 
-function buildLegacyNativeChatRequestBody(model: string, messages: LlmMessage[]): Record<string, unknown> {
+function buildLegacyNativeChatRequestBody(context: LlmProviderRequestContext, messages: LlmMessage[]): Record<string, unknown> {
   const systemPrompts: string[] = [];
   const input: NativeLmStudioLegacyInput[] = [];
 
@@ -417,11 +420,12 @@ function buildLegacyNativeChatRequestBody(model: string, messages: LlmMessage[])
   }
 
   return {
-    model,
+    model: context.model,
     input,
     reasoning: "off",
     stream: false,
     store: false,
+    ...buildOpenAiCompatibleModelApiParameters(context),
     ...(systemPrompts.length > 0 ? { system_prompt: systemPrompts.join("\n\n") } : {})
   };
 }
