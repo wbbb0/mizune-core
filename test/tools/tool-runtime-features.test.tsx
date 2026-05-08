@@ -1660,9 +1660,11 @@ function createMediaToolVisibilityConfig(options: {
       )));
       assert.equal(overview.ok, true);
       assert.equal(overview.asset_handle.asset_id, "file_doc_1");
-      assert.ok(overview.document.chunk_count >= 1);
+      assert.ok(overview.document.stats.chunk_count >= 1);
       assert.match(overview.document.excerpt, /Alpha/);
       assert.equal("summary" in overview.document, false);
+      assert.equal(overview.document.summary_scope.mode, "head_sample");
+      assert.equal(overview.document.summary_scope.fullDocument, true);
       assert.deepEqual(overview.document.headings.map((item: { text: string }) => item.text), ["Alpha", "Beta"]);
 
       const search = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
@@ -1795,7 +1797,11 @@ function createMediaToolVisibilityConfig(options: {
         context
       )));
       assert.equal(first.document.summary.brief, "模型摘要");
-      assert.equal(first.document.summary_cache_hit, false);
+      assert.equal(first.document.cache.summary, false);
+      assert.equal(first.document.summary_scope.mode, "head_sample");
+      assert.equal(first.document.summary_scope.sampledChunks, 1);
+      assert.equal(first.document.summary_scope.totalChunks, 1);
+      assert.equal(first.document.summary_scope.fullDocument, true);
       assert.equal(calls, 1);
       assert.equal(JSON.parse(await readFile(join(cacheDir, "summary.json"), "utf8")).summary.brief, "模型摘要");
 
@@ -1805,7 +1811,7 @@ function createMediaToolVisibilityConfig(options: {
         context
       )));
       assert.equal(second.document.summary.brief, "模型摘要");
-      assert.equal(second.document.summary_cache_hit, true);
+      assert.equal(second.document.cache.summary, true);
       assert.equal(calls, 1);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -1979,7 +1985,7 @@ function createMediaToolVisibilityConfig(options: {
       )));
       assert.equal(result.ok, true);
       assert.equal(result.document.parser, "plain_text_v1");
-      assert.match(result.document.preview, /付款期限,30天/);
+      assert.match(result.document.excerpt, /付款期限,30天/);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -2023,7 +2029,7 @@ function createMediaToolVisibilityConfig(options: {
         context
       )));
       assert.equal(overview.ok, true);
-      assert.equal(overview.document.cache_hit, false);
+      assert.equal(overview.document.cache.text, false);
 
       const cachedOverview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
         { id: "tool_asset_doc_cache_overview_2", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"cached.md\"}" } },
@@ -2031,7 +2037,7 @@ function createMediaToolVisibilityConfig(options: {
         context
       )));
       assert.equal(cachedOverview.ok, true);
-      assert.equal(cachedOverview.document.cache_hit, true);
+      assert.equal(cachedOverview.document.cache.text, true);
 
       await rm(filePath, { force: true });
       const missingAfterCache = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
@@ -2143,13 +2149,13 @@ function createMediaToolVisibilityConfig(options: {
         } as any
       )));
       assert.equal(overview.ok, true);
-      assert.equal(overview.document.cache_hit, false);
+      assert.equal(overview.document.cache.text, false);
       assert.match(await readFile(join(cacheDir, "text.txt"), "utf8"), /persisted needle/);
       const manifest = JSON.parse(await readFile(join(cacheDir, "manifest.json"), "utf8"));
       assert.equal(manifest.cacheSchemaVersion, "document_asset_cache_v2");
       assert.equal(manifest.parserVersion, "document_parser_v1");
       assert.equal(manifest.chunkerVersion, "document_chunk_v1");
-      assert.equal(manifest.summaryPromptVersion, "document_summary_prompt_v1");
+      assert.equal(manifest.summaryPromptVersion, "document_summary_prompt_v2");
       assert.equal(manifest.embeddingProfileId, "embedding_disabled");
       assert.equal(manifest.fileId, "file_persist_doc_1");
       assert.equal(manifest.sourceHash, createHash("sha256").update("# Persist\npersisted needle\n").digest("hex"));
@@ -2198,7 +2204,7 @@ function createMediaToolVisibilityConfig(options: {
       cacheSchemaVersion: "document_asset_cache_v2",
       parserVersion: "document_parser_v1",
       chunkerVersion: "document_chunk_v1",
-      summaryPromptVersion: "document_summary_prompt_v1",
+      summaryPromptVersion: "document_summary_prompt_v2",
       embeddingProfileId: "embedding_disabled",
       fileId: file.fileId,
       fileRef: file.fileRef,
@@ -2248,9 +2254,9 @@ function createMediaToolVisibilityConfig(options: {
         context
       )));
       assert.equal(overview.ok, true);
-      assert.equal(overview.document.cache_hit, true);
-      assert.equal(overview.document.chunk_cache_hit, true);
-      assert.equal(overview.document.chunk_count, 1);
+      assert.equal(overview.document.cache.text, true);
+      assert.equal(overview.document.cache.chunks, true);
+      assert.equal(overview.document.stats.chunk_count, 1);
 
       const search = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
         { id: "tool_asset_doc_persist_hit_search", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"cached.md\",\"query\":\"persisted_needle\"}" } },
@@ -2291,7 +2297,7 @@ function createMediaToolVisibilityConfig(options: {
       cacheSchemaVersion: "document_asset_cache_v2",
       parserVersion: "document_parser_v1",
       chunkerVersion: "document_chunk_v1",
-      summaryPromptVersion: "document_summary_prompt_v1",
+      summaryPromptVersion: "document_summary_prompt_v2",
       embeddingProfileId: "embedding_disabled",
       fileId: file.fileId,
       fileRef: file.fileRef,
@@ -2341,8 +2347,8 @@ function createMediaToolVisibilityConfig(options: {
         context
       )));
       assert.equal(overview.ok, true);
-      assert.equal(overview.document.cache_hit, true);
-      assert.equal(overview.document.chunk_cache_hit, false);
+      assert.equal(overview.document.cache.text, true);
+      assert.equal(overview.document.cache.chunks, false);
 
       const search = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
         { id: "tool_asset_doc_stale_chunks_search", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"stale.md\",\"query\":\"stale_needle\"}" } },
@@ -2400,7 +2406,7 @@ function createMediaToolVisibilityConfig(options: {
         context
       )));
       assert.equal(first.ok, true);
-      assert.equal(first.document.chunk_cache_hit, false);
+      assert.equal(first.document.cache.chunks, false);
 
       const second = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
         { id: "tool_asset_doc_crlf_search", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"crlf.md\",\"query\":\"needle\"}" } },
@@ -3157,8 +3163,8 @@ function createMediaToolVisibilityConfig(options: {
       )));
       assert.equal(overview.ok, true);
       assert.equal(overview.document.parser, "exceljs_xlsx_csv_v1");
-      assert.match(overview.document.preview, /# Sheet: Scores/);
-      assert.match(overview.document.preview, /needle,42/);
+      assert.match(overview.document.excerpt, /# Sheet: Scores/);
+      assert.match(overview.document.excerpt, /needle,42/);
 
       const search = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
         { id: "tool_asset_xlsx_search", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"scores.xlsx\",\"query\":\"needle\"}" } },

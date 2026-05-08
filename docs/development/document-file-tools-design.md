@@ -602,7 +602,8 @@ chat-files/
 第一版建议预算：
 
 - `asset_document_overview.excerpt`：最多 800 中文字符；这是开头摘录，不是模型摘要。
-- `asset_document_overview.outline`：最多 50 项。
+- `asset_document_overview.summary_scope`：说明 `summary` 的覆盖范围。当前第一版为 `head_sample`，默认只总结前 6 个 chunk；`fullDocument=false` 时模型不得把未覆盖内容描述成“文档缺失”。
+- `asset_document_overview.headings`：最多 50 项。
 - `asset_document_search.matches`：默认 6 项，最多 12 项；每项 snippet 最多 240 字符，并保留行号与行内字符范围。
 - `asset_document_read.content`：默认最多 4000 字符或 120 行；Excel/CSV 默认最多 80 行。
 - `asset_document_inspect.max_chunks`：默认 6，最多 10；每个 chunk 输入模型前最多 1200 字符；纯文本精读使用 `textInspector` 路由，视觉精读仍使用 `imageInspector`。
@@ -730,7 +731,7 @@ chat-files/
 
 ### P1：模块边界与语义收敛
 
-- 已新增 `DocumentSummaryService`，`overview.document.summary` 只表示模型摘要；低成本开头内容使用 `overview.document.excerpt`。
+- 已新增 `DocumentSummaryService`，`overview.document.summary` 只表示带 `summary_scope` 的模型摘要；低成本开头内容使用 `overview.document.excerpt`。
 - `summary.json` 随 source hash、summary prompt version 和内容 hash 失效，不再把前 800 字截断冒充 summary。
 - 已收紧 `chatFiles.root` 语义：运行时要求相对路径，并拒绝绝对路径或 `..` 逃逸出 `localFiles.root`。
 

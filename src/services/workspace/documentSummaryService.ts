@@ -19,6 +19,16 @@ export interface DocumentSummary {
   modelRef: string;
 }
 
+export interface DocumentSummaryScope {
+  mode: "head_sample";
+  fullDocument: boolean;
+  sampledChunks: number;
+  totalChunks: number;
+  sampledStartLine: number | null;
+  sampledEndLine: number | null;
+  sampledCharacters: number;
+}
+
 export interface DocumentSummaryResult {
   ok: boolean;
   summary: DocumentSummary;
@@ -47,6 +57,7 @@ export class DocumentSummaryService {
     lineCount: number;
     headings: Array<{ line_number: number; text: string }>;
     chunks: PreparedTextInspectionChunk[];
+    summaryScope: DocumentSummaryScope;
     excerpt: string;
     abortSignal?: AbortSignal;
   }): Promise<DocumentSummaryResult> {
@@ -93,6 +104,7 @@ function buildDocumentSummaryPrompt(input: {
   lineCount: number;
   headings: Array<{ line_number: number; text: string }>;
   chunks: PreparedTextInspectionChunk[];
+  summaryScope: DocumentSummaryScope;
   excerpt: string;
 }): LlmMessage[] {
   const chunks = input.chunks
@@ -107,7 +119,10 @@ function buildDocumentSummaryPrompt(input: {
       role: "system",
       content: [
         "你是文档总结器，只根据给定文档片段生成低成本结构化摘要。",
-        "不要补充文档外知识。若内容不足，要在 limitations 中说明。",
+        "你看到的可能只是文档抽样片段，不一定是全文。必须先读取 summary_scope 判断覆盖范围。",
+        "若 summary_scope.fullDocument=false，brief/outline/key_facts 只能描述已给片段，不能声称整份文档缺少内容、只提供了若干页，或把未覆盖部分当作文档本身缺陷。",
+        "limitations 只写本次摘要覆盖限制，例如“本次摘要仅覆盖开头片段，需用 search/read/inspect 查看后续内容”；不要写“文档未提供/缺少...”这类文档结论。",
+        "不要补充文档外知识。若给定片段信息不足，要在 limitations 中说明这是摘要覆盖限制。",
         "只输出 JSON，不输出 Markdown、解释或推理过程。",
         "JSON 字段：brief(string)、outline(string[])、key_facts(string[])、limitations(string[])。"
       ].join("\n")
@@ -119,6 +134,7 @@ function buildDocumentSummaryPrompt(input: {
         `parser: ${input.parser}`,
         `字符数: ${input.characterCount}`,
         `行数: ${input.lineCount}`,
+        `summary_scope: ${JSON.stringify(input.summaryScope)}`,
         input.headings.length > 0
           ? `标题:\n${input.headings.map((item) => `L${item.line_number}: ${item.text}`).join("\n")}`
           : null,
@@ -150,7 +166,7 @@ function createFallbackSummary(text: string, modelRef: string): DocumentSummary 
     brief: compactChars(text.trim(), MAX_SUMMARY_BRIEF_CHARS),
     outline: [],
     key_facts: [],
-    limitations: ["模型摘要不可用；返回的是文档摘录降级摘要。"],
+    limitations: ["模型摘要不可用；brief 仅为文档开头摘录降级结果，不代表全文。"],
     modelRef
   };
 }

@@ -7,7 +7,11 @@ import mammoth from "mammoth";
 import ExcelJS from "exceljs";
 import type { ContextEmbeddingService } from "#context/contextEmbeddingService.ts";
 import type { ChatFileRecord } from "#services/workspace/types.ts";
-import type { DocumentSummary, DocumentSummaryService } from "#services/workspace/documentSummaryService.ts";
+import type {
+  DocumentSummary,
+  DocumentSummaryScope,
+  DocumentSummaryService
+} from "#services/workspace/documentSummaryService.ts";
 import {
   getTextInspectorModelRefs,
   type PreparedTextInspectionChunk,
@@ -33,7 +37,6 @@ const MAX_SPREADSHEET_SHEETS = 20;
 const MAX_SPREADSHEET_ROWS_PER_SHEET = 2000;
 const MAX_SPREADSHEET_CELLS_PER_ROW = 100;
 const MAX_SPREADSHEET_CELL_CHARS = 500;
-const OVERVIEW_PREVIEW_CHARS = 1200;
 const OVERVIEW_EXCERPT_CHARS = 800;
 const MAX_HEADING_COUNT = 50;
 const DEFAULT_READ_LINES = 80;
@@ -49,7 +52,7 @@ const INSPECT_CHUNK_LINES = 40;
 const DOCUMENT_CACHE_SCHEMA_VERSION = "document_asset_cache_v2";
 const DOCUMENT_PARSER_VERSION = "document_parser_v1";
 const DOCUMENT_CHUNKER_VERSION = "document_chunk_v1";
-const DOCUMENT_SUMMARY_PROMPT_VERSION = "document_summary_prompt_v1";
+const DOCUMENT_SUMMARY_PROMPT_VERSION = "document_summary_prompt_v2";
 const DOCUMENT_EMBEDDING_INDEX_VERSION = "document_embedding_index_v1";
 const DOCUMENT_TEXT_MANIFEST_FILE = "manifest.json";
 const DOCUMENT_TEXT_FILE = "text.txt";
@@ -343,15 +346,19 @@ export const assetDocumentToolHandlers: Record<string, ToolHandler> = {
       asset_handle: resolved.fileHandle.asset_handle,
       document: {
         parser: text.parser,
-        cache_hit: text.cache_hit === true,
-        chunk_cache_hit: text.chunk_cache_hit === true,
-        summary_cache_hit: summary?.cache_hit === true,
-        character_count: text.content.length,
-        line_count: lines.length,
-        chunk_count: chunks.length,
-        preview: compactChars(text.content, OVERVIEW_PREVIEW_CHARS),
+        stats: {
+          character_count: text.content.length,
+          line_count: lines.length,
+          chunk_count: chunks.length
+        },
+        cache: {
+          text: text.cache_hit === true,
+          chunks: text.chunk_cache_hit === true,
+          summary: summary?.cache_hit === true
+        },
         excerpt: compactChars(text.content, OVERVIEW_EXCERPT_CHARS),
         headings,
+        summary_scope: summary?.scope ?? buildDocumentSummaryScope(chunks, selectSummaryChunks(chunks)),
         ...(summary?.summary ? { summary: summary.summary } : {}),
         ...(summary?.status ? { summary_status: summary.status } : {}),
         ...(summary?.error ? { summary_error: summary.error } : {})
@@ -531,6 +538,9 @@ function compactAssetDocumentResult(ctx: Parameters<ToolResultCompactor>[0]) {
   const assetHandle = compactAssetHandleForReplay(ctx.parsedContent?.asset_handle);
   const status = stringValue(ctx.parsedContent?.status) ?? "ready";
   const document = objectValue(ctx.parsedContent?.document);
+  const stats = objectValue(document?.stats);
+  const cache = objectValue(document?.cache);
+  const summaryScope = objectValue(document?.summary_scope ?? document?.summaryScope);
   const matches = (arrayValue(ctx.parsedContent?.matches) ?? [])
     .map(compactDocumentMatchForReplay)
     .slice(0, MAX_SEARCH_LIMIT);
@@ -544,6 +554,7 @@ function compactAssetDocumentResult(ctx: Parameters<ToolResultCompactor>[0]) {
     `status=${status}`,
     content ? `正文片段=${compactText(content, 220)}` : null,
     document?.excerpt ? `摘录=${compactText(String(document.excerpt), 220)}` : null,
+    summaryScope ? `摘要范围=${summaryScope.mode ?? "unknown"} ${summaryScope.sampledChunks ?? "?"}/${summaryScope.totalChunks ?? "?"} chunks` : null,
     matches.length > 0 ? `命中 ${matches.length} 条` : null,
     inspectionResults.length > 0 ? `精读片段 ${inspectionResults.length} 个` : null
   ].filter((item): item is string => Boolean(item)).join("；");
@@ -553,14 +564,20 @@ function compactAssetDocumentResult(ctx: Parameters<ToolResultCompactor>[0]) {
     document: document
       ? {
           parser: document.parser ?? null,
-          cacheHit: document.cache_hit ?? document.cacheHit ?? false,
-          characterCount: document.character_count ?? document.characterCount ?? null,
-          lineCount: document.line_count ?? document.lineCount ?? null,
-          chunkCount: document.chunk_count ?? document.chunkCount ?? null,
+          stats: {
+            characterCount: stats?.character_count ?? stats?.characterCount ?? document.character_count ?? document.characterCount ?? null,
+            lineCount: stats?.line_count ?? stats?.lineCount ?? document.line_count ?? document.lineCount ?? null,
+            chunkCount: stats?.chunk_count ?? stats?.chunkCount ?? document.chunk_count ?? document.chunkCount ?? null
+          },
+          cache: {
+            text: cache?.text ?? document.cache_hit ?? document.cacheHit ?? false,
+            chunks: cache?.chunks ?? document.chunk_cache_hit ?? document.chunkCacheHit ?? false,
+            summary: cache?.summary ?? document.summary_cache_hit ?? document.summaryCacheHit ?? false
+          },
+          summaryScope: summaryScope ? compactDocumentSummaryScopeForReplay(summaryScope) : null,
           summary: compactDocumentSummaryForReplay(document.summary),
           summaryStatus: document.summary_status ?? document.summaryStatus ?? null,
           excerpt: document.excerpt ? compactText(String(document.excerpt), OVERVIEW_EXCERPT_CHARS) : null,
-          preview: document.preview ? compactText(String(document.preview), OVERVIEW_PREVIEW_CHARS) : null,
           headings: arrayValue(document.headings)?.slice(0, MAX_HEADING_COUNT) ?? []
         }
       : null,
@@ -1106,17 +1123,19 @@ async function loadOrCreateDocumentSummary(input: {
   headings: Array<{ line_number: number; text: string }>;
   context: Parameters<ToolHandler>[2];
   assetRef: string;
-}): Promise<{ status: "ready" | "not_configured" | "failed"; summary?: DocumentSummary; cache_hit?: boolean; error?: string } | null> {
+}): Promise<{ status: "ready" | "not_configured" | "failed"; scope: DocumentSummaryScope; summary?: DocumentSummary; cache_hit?: boolean; error?: string } | null> {
   const fingerprint = input.text.fingerprint;
   if (!fingerprint) return null;
+  const summaryChunks = selectSummaryChunks(input.chunks);
+  const scope = buildDocumentSummaryScope(input.chunks, summaryChunks);
   const service = getDocumentSummaryService(input.context);
   if (!service?.isEnabled()) {
-    return { status: "not_configured" };
+    return { status: "not_configured", scope };
   }
   return withAssetDocumentLock(input.file.fileId, async () => {
     const persisted = await readPersistedDocumentSummary(input.file.fileId, fingerprint, input.context);
     if (persisted) {
-      return { status: "ready", summary: persisted.summary, cache_hit: true };
+      return { status: "ready", scope, summary: persisted.summary, cache_hit: true };
     }
     try {
       const summaryResult = await service.summarizePreparedDocument({
@@ -1125,23 +1144,42 @@ async function loadOrCreateDocumentSummary(input: {
         characterCount: input.text.content.length,
         lineCount: splitLines(input.text.content).length,
         headings: input.headings,
-        chunks: input.chunks.slice(0, DEFAULT_INSPECT_CHUNKS).map((chunk) => ({
+        chunks: summaryChunks.map((chunk) => ({
           chunkId: chunk.chunkId,
           startLine: chunk.startLine,
           endLine: chunk.endLine,
           text: chunk.text
         })),
+        summaryScope: scope,
         excerpt: compactChars(input.text.content, OVERVIEW_EXCERPT_CHARS)
       });
       if (!summaryResult.ok) {
-        return { status: "failed", error: summaryResult.error ?? "document_summary_failed" };
+        return { status: "failed", scope, error: summaryResult.error ?? "document_summary_failed" };
       }
       await writePersistedDocumentSummary(input.file.fileId, fingerprint, summaryResult.summary, input.context);
-      return { status: "ready", summary: summaryResult.summary, cache_hit: false };
+      return { status: "ready", scope, summary: summaryResult.summary, cache_hit: false };
     } catch (error: unknown) {
-      return { status: "failed", error: error instanceof Error ? error.message : String(error) };
+      return { status: "failed", scope, error: error instanceof Error ? error.message : String(error) };
     }
   });
+}
+
+function selectSummaryChunks(chunks: DocumentChunk[]): DocumentChunk[] {
+  return chunks.slice(0, DEFAULT_INSPECT_CHUNKS);
+}
+
+function buildDocumentSummaryScope(allChunks: DocumentChunk[], sampledChunks: DocumentChunk[]): DocumentSummaryScope {
+  const first = sampledChunks[0];
+  const last = sampledChunks[sampledChunks.length - 1];
+  return {
+    mode: "head_sample",
+    fullDocument: sampledChunks.length === allChunks.length,
+    sampledChunks: sampledChunks.length,
+    totalChunks: allChunks.length,
+    sampledStartLine: first?.startLine ?? null,
+    sampledEndLine: last?.endLine ?? null,
+    sampledCharacters: sampledChunks.reduce((sum, chunk) => sum + chunk.text.length, 0)
+  };
 }
 
 async function readPersistedDocumentSummary(
@@ -1894,6 +1932,18 @@ function compactDocumentSummaryForReplay(value: unknown): Record<string, unknown
     key_facts: (arrayValue(summary.key_facts ?? summary.keyFacts) ?? []).map((item) => compactText(String(item ?? ""), 220)).slice(0, 8),
     limitations: (arrayValue(summary.limitations) ?? []).map((item) => compactText(String(item ?? ""), 180)).slice(0, 6),
     modelRef: summary.modelRef ?? summary.model_ref ?? null
+  };
+}
+
+function compactDocumentSummaryScopeForReplay(value: Record<string, unknown>): Record<string, unknown> {
+  return {
+    mode: value.mode ?? null,
+    fullDocument: value.fullDocument ?? value.full_document ?? false,
+    sampledChunks: value.sampledChunks ?? value.sampled_chunks ?? null,
+    totalChunks: value.totalChunks ?? value.total_chunks ?? null,
+    sampledStartLine: value.sampledStartLine ?? value.sampled_start_line ?? null,
+    sampledEndLine: value.sampledEndLine ?? value.sampled_end_line ?? null,
+    sampledCharacters: value.sampledCharacters ?? value.sampled_characters ?? null
   };
 }
 

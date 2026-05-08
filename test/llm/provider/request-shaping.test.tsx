@@ -688,6 +688,46 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
     });
   });
 
+  test("lmstudio preserves structured prompt tags for openai-compatible chat completions", async () => {
+    const config = createLlmTestConfig({
+      thinkingControllable: false
+    });
+    config.llm.providers.test!.type = "lmstudio";
+    config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    const content = [
+      "能看到我发给你的文档吗",
+      "⟦file file_id=\"077a6286\" name=\"铅毒之果.pdf\" download_tool=\"download_message_file\"⟧"
+    ].join("\n");
+
+    await withMockFetch([
+      {
+        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
+          assert.equal(url, "http://localhost:1234/v1/chat/completions");
+          assert.deepEqual(body.messages, [{
+            role: "user",
+            content
+          }]);
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "done"
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content }],
+        enableThinkingOverride: false
+      });
+
+      assert.equal(result.text, "done");
+    });
+  });
+
   test("lmstudio retries without tools when template reports no user query", async () => {
     const config = createLlmTestConfig({
       thinkingControllable: false

@@ -443,10 +443,7 @@ function flattenMessageText(message: LlmMessage): string {
 function normalizeMessagesForLmStudioOpenAiEndpoint(messages: LlmMessage[]): LlmMessage[] {
   const normalized = messages.map((message) => {
     if (typeof message.content === "string") {
-      return {
-        ...message,
-        content: stripStructuredBracketOnlyLines(message.content)
-      };
+      return message;
     }
 
     if (!message.content.every((part) => part.type === "text")) {
@@ -455,15 +452,11 @@ function normalizeMessagesForLmStudioOpenAiEndpoint(messages: LlmMessage[]): Llm
 
     return {
       ...message,
-      content: stripStructuredBracketOnlyLines(message.content.map((part) => part.text).join("\n"))
+      content: message.content.map((part) => part.text).join("\n")
     };
   });
 
   return ensureFirstNonSystemMessageIsUser(normalized);
-}
-
-function stripStructuredBracketOnlyLines(text: string): string {
-  return text.replace(/^\s*⟦[^⟧]*⟧\s*(?:\r?\n)?/gm, "");
 }
 
 function ensureFirstNonSystemMessageIsUser(messages: LlmMessage[]): LlmMessage[] {

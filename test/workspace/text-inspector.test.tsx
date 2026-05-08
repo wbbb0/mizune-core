@@ -55,6 +55,7 @@ test("text inspector prefers dedicated route and falls back to summarizer", () =
 
 test("document summary service caps model output lengths", async () => {
   const longText = "甲".repeat(2000);
+  const calls: any[] = [];
   const service = new DocumentSummaryService(
     createTestAppConfig({
       llm: {
@@ -84,7 +85,8 @@ test("document summary service caps model output lengths", async () => {
       isConfigured() {
         return true;
       },
-      async generate() {
+      async generate(input: any) {
+        calls.push(input);
         return {
           text: JSON.stringify({
             brief: longText,
@@ -108,10 +110,23 @@ test("document summary service caps model output lengths", async () => {
     lineCount: 1,
     headings: [],
     chunks: [{ chunkId: "chunk_1", startLine: 1, endLine: 1, text: longText }],
+    summaryScope: {
+      mode: "head_sample",
+      fullDocument: false,
+      sampledChunks: 1,
+      totalChunks: 3,
+      sampledStartLine: 1,
+      sampledEndLine: 1,
+      sampledCharacters: longText.length
+    },
     excerpt: longText
   });
 
   assert.equal(result.ok, true);
+  assert.match(String(calls[0]?.messages?.[0]?.content ?? ""), /只看到了?文档抽样片段|你看到的可能只是文档抽样片段/);
+  assert.match(String(calls[0]?.messages?.[0]?.content ?? ""), /limitations 只写本次摘要覆盖限制/);
+  assert.match(String(calls[0]?.messages?.[1]?.content ?? ""), /"fullDocument":false/);
+  assert.match(String(calls[0]?.messages?.[1]?.content ?? ""), /"totalChunks":3/);
   assert.ok(result.summary.brief.length <= 703);
   assert.equal(result.summary.outline.length, 12);
   assert.ok(result.summary.outline.every((item) => item.length <= 183));
