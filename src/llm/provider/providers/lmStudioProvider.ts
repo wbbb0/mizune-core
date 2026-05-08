@@ -1,5 +1,5 @@
 import { fetchWithProxy } from "#services/proxy/index.ts";
-import { buildOpenAiCompatibleModelApiParameters } from "../modelApiParameters.ts";
+import { buildLmStudioNativeModelApiParameters } from "../modelApiParameters.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
 import {
   createEmptyUsage,
@@ -321,7 +321,7 @@ function buildNativeChatRequestBody(context: LlmProviderRequestContext, messages
     reasoning: "off",
     stream: false,
     store: false,
-    ...buildOpenAiCompatibleModelApiParameters(context),
+    ...buildLmStudioNativeModelApiParameters(context),
     ...(systemPrompts.length > 0 ? { system_prompt: systemPrompts.join("\n\n") } : {})
   };
 }
@@ -373,7 +373,7 @@ function buildTextContentNativeChatRequestBody(context: LlmProviderRequestContex
     reasoning: "off",
     stream: false,
     store: false,
-    ...buildOpenAiCompatibleModelApiParameters(context),
+    ...buildLmStudioNativeModelApiParameters(context),
     ...(systemPrompts.length > 0 ? { system_prompt: systemPrompts.join("\n\n") } : {})
   };
 }
@@ -425,7 +425,7 @@ function buildLegacyNativeChatRequestBody(context: LlmProviderRequestContext, me
     reasoning: "off",
     stream: false,
     store: false,
-    ...buildOpenAiCompatibleModelApiParameters(context),
+    ...buildLmStudioNativeModelApiParameters(context),
     ...(systemPrompts.length > 0 ? { system_prompt: systemPrompts.join("\n\n") } : {})
   };
 }

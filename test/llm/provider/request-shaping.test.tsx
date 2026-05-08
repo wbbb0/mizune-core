@@ -360,6 +360,10 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
       apiParameters: {
         temperature: 0.55,
         top_p: 0.75,
+        top_k: 20,
+        min_p: 0.01,
+        presence_penalty: 0.1,
+        repetition_penalty: 1.05,
         extra: {
           max_tokens: 96
         }
@@ -378,6 +382,11 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
           assert.equal(body.store, false);
           assert.equal(body.temperature, 0.55);
           assert.equal(body.top_p, 0.75);
+          assert.equal(body.top_k, 20);
+          assert.equal(body.min_p, 0.01);
+          assert.equal(body.presence_penalty, 0.1);
+          assert.equal(body.repeat_penalty, 1.05);
+          assert.equal("repetition_penalty" in body, false);
           assert.equal(body.max_tokens, 96);
           assert.equal(body.system_prompt, "system prompt");
           assert.deepEqual(body.input, [

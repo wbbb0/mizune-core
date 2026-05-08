@@ -46,6 +46,19 @@ export function buildGeminiGenerationConfigParameters(
   return buildMappedParameters(context, GEMINI_PARAMETER_MAP);
 }
 
+export function buildLmStudioNativeModelApiParameters(
+  context: LlmProviderRequestContext
+): Record<string, unknown> {
+  return buildMappedParameters(context, {
+    temperature: "temperature",
+    top_p: "top_p",
+    top_k: "top_k",
+    min_p: "min_p",
+    presence_penalty: "presence_penalty",
+    repetition_penalty: "repeat_penalty"
+  });
+}
+
 function buildMappedParameters(
   context: LlmProviderRequestContext,
   keyMap: Partial<Record<KnownModelApiParameter, string>>
