@@ -380,6 +380,7 @@ async function preparePromptBatchMessages(
     supportsAudioInput?: boolean | undefined;
     supportsVision?: boolean | undefined;
     shouldTranscribeAudio?: boolean | undefined;
+    visibleToolNames?: string[] | undefined;
     abortSignal?: AbortSignal | undefined;
   }
 ) {
@@ -388,6 +389,18 @@ async function preparePromptBatchMessages(
     const attachments = dedupeResolvedChatAttachments(message.attachments ?? []);
     const imageFileIds = collectVisualAttachmentFileIds(attachments, "image");
     const emojiFileIds = collectVisualAttachmentFileIds(attachments, "emoji");
+    const assetFileIds = collectPromptAssetAttachmentFileIds(attachments);
+    const assetFiles = assetFileIds.length > 0
+      ? new Map((await deps.chatFileStore.getMany(assetFileIds)).map((file) => [file.fileId, file]))
+      : new Map();
+    const assetHandles = assetFileIds
+      .map((fileId) => assetFiles.get(fileId))
+      .filter((file): file is NonNullable<typeof file> => Boolean(file))
+      .map((file) => buildChatFileHandleResult(file, {
+            visibleToolNames: options.visibleToolNames ?? [],
+            defaultVisible: false,
+            nextActionMode: "default"
+          }).asset_handle);
     const imageVisuals = options.supportsVision
       ? await deps.mediaVisionService.prepareFilesForModel(imageFileIds)
       : [];
@@ -422,6 +435,7 @@ async function preparePromptBatchMessages(
       emojiCaptions: buildPromptImageCaptions(emojiFileIds, captionMap),
       ...(options.supportsVision ? { emojiVisuals: emojiVisuals.map((item) => ({ imageId: item.fileId, inputUrl: item.inputUrl, animated: item.animated, durationMs: item.durationMs, sampledFrameCount: item.sampledFrameCount })) } : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
+      ...(assetHandles.length > 0 ? { assetHandles } : {}),
       ...(message.specialSegments && message.specialSegments.length > 0 ? { specialSegments: message.specialSegments } : {}),
       forwardIds: message.forwardIds,
       replyMessageId: message.replyMessageId,
@@ -431,6 +445,16 @@ async function preparePromptBatchMessages(
       timestampMs: message.receivedAt
     };
   }));
+}
+
+function collectPromptAssetAttachmentFileIds(attachments: ChatAttachment[]): string[] {
+  const visualIds = new Set([
+    ...collectVisualAttachmentFileIds(attachments, "image"),
+    ...collectVisualAttachmentFileIds(attachments, "emoji")
+  ]);
+  return attachments
+    .filter((attachment) => attachment.kind === "file" && !visualIds.has(attachment.fileId))
+    .map((attachment) => attachment.fileId);
 }
 
 async function preparePromptAudioTranscriptions(
@@ -904,6 +928,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         supportsAudioInput: mainProfile?.supportsAudioInput,
         supportsVision: mainProfile?.supportsVision,
         shouldTranscribeAudio: !mainProfile?.supportsAudioInput,
+        visibleToolNames: input.visibleToolNames,
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
       }
     );
@@ -1205,6 +1230,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         supportsAudioInput: mainProfile?.supportsAudioInput,
         supportsVision: mainProfile?.supportsVision,
         shouldTranscribeAudio: !mainProfile?.supportsAudioInput,
+        visibleToolNames: [],
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
       }
     );

@@ -2547,7 +2547,7 @@ function createMediaToolVisibilityConfig(options: {
     }
   });
 
-  test("asset document observation preserves read content and asset handle in replay", () => {
+  test("asset document observation preserves read locator snippet and asset handle in replay", () => {
     const policy = getBuiltinToolDescriptorByName("asset_document_read", createForwardFeatureConfig())?.resultObservation;
     assert.ok(policy);
     const longContent = "重要正文 ".repeat(500);
@@ -2582,7 +2582,8 @@ function createMediaToolVisibilityConfig(options: {
     assert.equal(observation.retention, "summary");
     assert.equal(observation.preserveRecentRawCount, 0);
     const replay = JSON.parse(observation.replayContent);
-    assert.match(replay.data.read.content, /重要正文/);
+    assert.match(replay.data.read.snippet, /重要正文/);
+    assert.equal("content" in replay.data.read, false);
     assert.equal(replay.data.assetHandle.assetId, "file_doc_1");
     assert.deepEqual(
       replay.data.assetHandle.capabilities.map((item: { capability: string }) => item.capability),

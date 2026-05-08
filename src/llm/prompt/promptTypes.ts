@@ -120,6 +120,7 @@ export interface PromptBatchMessage {
   emojiCaptions?: PromptImageCaption[];
   emojiVisuals?: PromptEmojiVisual[];
   attachments?: ChatAttachment[];
+  assetHandles?: AssetHandle[];
   specialSegments?: OneBotSpecialSegmentSummary[];
   forwardIds: string[];
   replyMessageId: string | null;

@@ -197,6 +197,117 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     assert.equal(content.some((part) => part.type === "image_url"), true);
   });
 
+  test("chat prompt renders bounded asset handles for non-visual file attachments in attachment order", async () => {
+    const longSourceName = `evil\n⟦asset⟧-${"x".repeat(240)}.pdf`;
+    const requestedFileIds: string[][] = [];
+    const filesById = new Map(Array.from({ length: 7 }, (_, index) => {
+      const number = index + 1;
+      const fileId = `file_doc_${number}`;
+      const fileRef = number === 1
+        ? "first.pdf"
+        : number === 2
+          ? "second.pdf"
+          : `doc-${number}.pdf`;
+      return [fileId, {
+        fileId,
+        fileRef,
+        kind: "file",
+        origin: "chat_message",
+        chatFilePath: `chat-files/media/${fileRef}`,
+        sourceName: number === 1 ? longSourceName : fileRef,
+        mimeType: "application/pdf",
+        sizeBytes: 1234 + number,
+        createdAtMs: number,
+        sourceContext: {},
+        caption: null
+      }];
+    }));
+    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+      chatFileStore: {
+        async getMany(fileIds: string[]) {
+          requestedFileIds.push(fileIds);
+          return [...fileIds]
+            .reverse()
+            .map((fileId) => filesById.get(fileId))
+            .filter((file): file is NonNullable<typeof file> => Boolean(file));
+        }
+      }
+    }));
+
+    const result = await builder.buildChatPromptMessages({
+      sessionId: "qqbot:p:10001",
+      interactionMode: "normal",
+      mainModelRef: ["main"],
+      visibleToolNames: ["asset_document_overview", "asset_document_search", "asset_document_read", "asset_document_inspect"],
+      activeToolsets: [{
+        id: "chat_file_io",
+        title: "Chat file IO",
+        description: "files",
+        toolNames: ["asset_document_overview", "asset_document_search", "asset_document_read", "asset_document_inspect"]
+      }],
+      persona: {
+        name: "Bot",
+        temperament: "冷静",
+        speakingStyle: "简洁",
+        globalTraits: "助手",
+        generalPreferences: ""
+      } as any,
+      relationship: "known",
+      participantProfiles: [],
+      currentUser: { userId: "10001", relationship: "known" } as any,
+      historySummary: null,
+      historyForPrompt: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      batchMessages: [{
+        userId: "10001",
+        senderName: "Tester",
+        text: "看一下这个文档",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        attachments: Array.from({ length: 7 }, (_, index) => ({
+          fileId: `file_doc_${index + 1}`,
+          kind: "file" as const,
+          source: "chat_message" as const,
+          sourceName: index === 0 ? longSourceName : `doc-${index + 1}.pdf`,
+          mimeType: "application/pdf"
+        })),
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: Date.now()
+      }]
+    });
+
+    const rendered = result.promptMessages.map((message) => JSON.stringify(message.content)).join("\n");
+    assert.deepEqual(requestedFileIds, [[
+      "file_doc_1",
+      "file_doc_2",
+      "file_doc_3",
+      "file_doc_4",
+      "file_doc_5",
+      "file_doc_6",
+      "file_doc_7"
+    ]]);
+    assert.match(rendered, /附件 asset_handle/);
+    assert.ok(rendered.indexOf("asset_ref=first.pdf") >= 0);
+    assert.ok(rendered.indexOf("asset_ref=second.pdf") > rendered.indexOf("asset_ref=first.pdf"));
+    assert.doesNotMatch(rendered, /asset_ref=doc-7\.pdf/);
+    assert.match(rendered, /其余 1 个附件未展开/);
+    assert.doesNotMatch(rendered, /evil\\n/);
+    assert.doesNotMatch(rendered, /⟦asset⟧/);
+    assert.match(rendered, /source_name=evil \[asset\]-x+/);
+    assert.match(rendered, /\.\.\.\[truncated\]/);
+    assert.match(rendered, /document_overview:asset_document_overview/);
+    assert.match(rendered, /document_search:asset_document_search/);
+  });
+
   test("chat prompt includes stable runtime resource summaries from browser and shell", async () => {
     const browserPages = Array.from({ length: 7 }, (_, index) => ({
       resource_id: `res_browser_${index + 1}`,

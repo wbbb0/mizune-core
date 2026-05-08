@@ -717,6 +717,36 @@ chat-files/
 - `asset_document_read/search/overview/inspect` 的 observation 不把全文写入长期 replay。
 - rename 迁移后 toolset、turn planner、tool hints、next actions、WebUI 展示不残留旧工具名。
 
+## 后续实施优先级
+
+当前实现状态应定义为“文档工具 MVP + asset_handle 过渡层”。文档解析、局部读取、关键词搜索、文本精读、解析文本缓存和 chunk metadata 缓存已经可用；但还不是完整的 `asset_* / filesystem_*` 命名收敛，也不是完整的 `DocumentAssetStore + summary/index 生命周期`。
+
+### P0：可用性与 token 风险
+
+优先处理会直接影响模型能否发现文档工具、以及长期上下文是否被原文污染的问题：
+
+- 普通非视觉文件附件进入 batch prompt 时必须渲染 `asset_handle`，让用户直接上传 PDF/DOCX/XLSX/MD/TXT 后，模型无需先猜测 `chat_file_list`，即可按 capability 调用 `asset_document_overview/search/read/inspect`。
+- `asset_document_read` 的 result observation replay 不应保留最多 4000 字原文；长期 replay 只保留 `asset_handle`、行号 locator、截断状态和短 snippet。需要原文时重新调用 `asset_document_read`。
+
+### P1：模块边界与语义收敛
+
+- 把 `documentTools.ts` 中的解析、持久缓存、chunk metadata 读写拆出到最小 `DocumentExtractionService` / `DocumentAssetStore`，工具层只负责参数、结果和 observation。
+- 明确 `overview.summary` 语义：若仍叫 summary，则实现 `DocumentSummaryService + summary.json`；如果暂不做模型摘要，应改成 `excerpt` / `preview`，避免把开头截断误称为摘要。
+- 收紧 `chatFiles.root` 语义。第一版建议要求相对路径，并补测试覆盖绝对路径拒绝或明确落盘策略。
+
+### P2：正式命名迁移
+
+- 将 `chat_file_*` 收敛为 `asset_*`，包括 `asset_list`、`asset_send_to_chat`、`asset_media_view`、`asset_media_inspect`。
+- 将 `local_file_*` 按当前权限语义收敛为 `filesystem_*`；只有先收紧绝对路径和 symlink 边界时，才考虑 `workspace_*`。
+- `asset_handle.capabilities` 中媒体和发送能力也应统一使用 `asset_ref` / `asset_id`，不继续暴露 `media_ids` / `file_ref` 作为模型首选参数。
+
+### P3：质量与检索增强
+
+- manifest 增加 `source_hash`、独立 parser/chunker version、summary prompt version、embedding profile。
+- 增加 orphan document cache maintenance、per-asset 锁、空文本/加密/扫描 PDF 等结构化状态。
+- 补有效 PDF/DOCX 成功测试、`TextInspectionService` 错误和非结构化输出测试。
+- 做 embedding/hybrid search，保留当前关键词搜索作为低成本 fallback。
+
 ## 推荐结论
 
 最终推荐：

@@ -17,6 +17,7 @@ import {
   formatDraftBatchMessageHeader
 } from "#llm/shared/messageHeaderFormat.ts";
 import type { PromptBatchMessage } from "#llm/prompt/promptTypes.ts";
+import type { AssetHandle } from "#llm/tools/core/fileHandle.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import {
   formatScenarioHostParsedUserInput,
@@ -24,6 +25,10 @@ import {
 } from "#modes/scenarioHost/promptInputProtocol.ts";
 import { formatPromptTimestamp } from "./history-message.prompt.ts";
 import { escapePromptBodyText } from "./prompt-escaping.ts";
+
+const MAX_BATCH_ASSET_HANDLES = 6;
+const MAX_ASSET_HANDLE_FIELD_CHARS = 160;
+const MAX_ASSET_HANDLE_ARGS_CHARS = 220;
 
 type PromptBatchRenderContext = {
   sessionId?: string;
@@ -242,6 +247,10 @@ function buildMessageBodyText(
       parts.push(`图片描述：${escapePromptBodyText(caption)}`);
     }
   }
+  const assetHandlesText = formatAssetHandlesForPrompt(message.assetHandles);
+  if (assetHandlesText) {
+    parts.push(`附件 asset_handle：\n${assetHandlesText}`);
+  }
   for (const segment of message.specialSegments ?? []) {
     parts.push(formatStructuredSpecialSegment(segment));
   }
@@ -249,4 +258,47 @@ function buildMessageBodyText(
     parts.push(formatStructuredForwardReference(forwardId));
   }
   return parts.join("\n") || "<empty>";
+}
+
+function formatAssetHandlesForPrompt(handles: AssetHandle[] | undefined): string {
+  if (!handles || handles.length === 0) {
+    return "";
+  }
+  const rendered = handles.slice(0, MAX_BATCH_ASSET_HANDLES).map((handle) => {
+    const availableTools = handle.capabilities
+      .filter((item) => item.available)
+      .map((item) => `${formatAssetHandleField(item.capability)}:${formatAssetHandleField(item.tool)} args=${formatAssetHandleArgs(item.args)}`)
+      .join("；") || "无";
+    const nextActions = handle.next_actions?.length
+      ? ` next_actions=${formatAssetHandleArgs(handle.next_actions)}`
+      : "";
+    return [
+      `- asset_ref=${formatAssetHandleField(handle.asset_ref)}`,
+      `asset_id=${formatAssetHandleField(handle.asset_id)}`,
+      `kind=${formatAssetHandleField(handle.kind)}`,
+      `source_name=${formatAssetHandleField(handle.source_name ?? "unknown")}`,
+      `可用：${availableTools}${nextActions}`
+    ].join(" ");
+  });
+  if (handles.length > MAX_BATCH_ASSET_HANDLES) {
+    rendered.push(`- 其余 ${handles.length - MAX_BATCH_ASSET_HANDLES} 个附件未展开；如需查看请先使用文件列表工具。`);
+  }
+  return rendered.join("\n");
+}
+
+function formatAssetHandleField(value: unknown): string {
+  return compactPromptInlineText(String(value ?? ""), MAX_ASSET_HANDLE_FIELD_CHARS);
+}
+
+function formatAssetHandleArgs(value: unknown): string {
+  return compactPromptInlineText(JSON.stringify(value ?? null), MAX_ASSET_HANDLE_ARGS_CHARS);
+}
+
+function compactPromptInlineText(value: string, maxChars: number): string {
+  const normalized = escapePromptBodyText(value)
+    .replace(/\s+/g, " ")
+    .trim();
+  return normalized.length <= maxChars
+    ? normalized
+    : `${normalized.slice(0, Math.max(0, maxChars - 12))}...[truncated]`;
 }

@@ -522,7 +522,7 @@ function compactAssetDocumentResult(ctx: Parameters<ToolResultCompactor>[0]) {
           totalLines: ctx.parsedContent?.total_lines ?? null,
           outOfRange: ctx.parsedContent?.out_of_range ?? false,
           truncated: ctx.parsedContent?.truncated ?? false,
-          content: compactText(content, MAX_READ_CHARS)
+          snippet: compactText(content, SEARCH_SNIPPET_CHARS)
         }
       : null,
     search: matches.length > 0 || ctx.toolName === "asset_document_search"
