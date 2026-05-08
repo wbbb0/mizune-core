@@ -677,7 +677,7 @@ export function buildScheduledTaskSystemLines(input: {
     return [
       renderPromptSection("comfy_task_completed", [
         "下面这次执行是图片生成完成后的内部回调，不是用户刚刚发来了一条新消息。",
-        "你之前发起的图片生成任务已经完成，结果已导入 workspace。",
+        "你之前发起的图片生成任务已经完成，结果已导入 asset。",
         "如果还没看图，不要假装已经看过；需要判断细节时先看图，再决定是发图、重试还是简短说明。"
       ])
     ].filter((item): item is string => Boolean(item));
@@ -706,7 +706,7 @@ export function buildScheduledTaskSystemLines(input: {
     return [
       renderPromptSection("download_completed", [
         "下面这次执行是后台下载完成后的内部回调，不是用户刚刚发来了一条新消息。",
-        "下载结果已导入 chat file；根据用户原始任务决定是否查看、发送或只做简短说明。",
+        "下载结果已导入 asset；根据用户原始任务决定是否查看、发送或只做简短说明。",
         "发送文件给用户时优先用 chat_file_send_to_chat(file_ref=...)。"
       ])
     ].filter((item): item is string => Boolean(item));

@@ -817,6 +817,7 @@ function compactBrowserMediaHandle(ctx: Parameters<ToolResultCompactor>[0]) {
   return replayJson(ctx, summary, {
     fileId,
     fileRef,
+    assetHandle: compactAssetHandleForReplay(ctx.parsedContent?.asset_handle),
     resourceId,
     targetId,
     mode: ctx.parsedContent?.mode ?? null,
@@ -852,6 +853,7 @@ function compactDownloadHandle(ctx: Parameters<ToolResultCompactor>[0]) {
     totalBytes: ctx.parsedContent?.total_bytes ?? ctx.parsedContent?.totalBytes ?? null,
     percent: ctx.parsedContent?.percent ?? null,
     error: ctx.parsedContent?.error ?? null,
+    assetHandle: compactAssetHandleForReplay(ctx.parsedContent?.asset_handle),
     nextActions: arrayValue(ctx.parsedContent?.next_actions)?.slice(0, 4) ?? [],
     handleCapabilities: arrayValue(ctx.parsedContent?.handle_capabilities)?.slice(0, 6) ?? []
   });
@@ -985,6 +987,28 @@ function compactFileHandleForReplay(item: unknown): Record<string, unknown> | nu
     capabilities: (arrayValue(record.capabilities) ?? [])
       .map(compactFileHandleCapabilityForReplay)
       .slice(0, 6),
+    nextActions: arrayValue(record.next_actions)?.slice(0, 4) ?? []
+  };
+}
+
+function compactAssetHandleForReplay(item: unknown): Record<string, unknown> | null {
+  const record = objectValue(item);
+  if (!record) {
+    return null;
+  }
+  return {
+    source: record.source ?? null,
+    id: record.id ?? record.asset_id ?? null,
+    assetId: record.asset_id ?? record.assetId ?? record.id ?? null,
+    assetRef: record.asset_ref ?? record.assetRef ?? null,
+    selector: record.selector ?? null,
+    kind: record.kind ?? null,
+    sourceName: record.source_name ?? record.sourceName ?? null,
+    mimeType: record.mime_type ?? record.mimeType ?? null,
+    sizeBytes: record.size_bytes ?? record.sizeBytes ?? null,
+    capabilities: (arrayValue(record.capabilities) ?? [])
+      .map(compactFileHandleCapabilityForReplay)
+      .slice(0, 10),
     nextActions: arrayValue(record.next_actions)?.slice(0, 4) ?? []
   };
 }

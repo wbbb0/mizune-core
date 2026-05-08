@@ -82,6 +82,7 @@ export function buildGenerationToolRuntimeDeps(services: AppServiceBootstrap): G
     chatFileStore: services.chatFileStore,
     downloadRuntime: services.downloadRuntime,
     mediaInspectionService: services.mediaInspectionService,
+    textInspectionService: services.textInspectionService,
     forwardResolver: services.forwardResolver,
     comfyClient: services.comfyClient,
     comfyTaskStore: services.comfyTaskStore,

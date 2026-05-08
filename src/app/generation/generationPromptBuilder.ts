@@ -703,25 +703,50 @@ async function enrichScheduledPromptTrigger(
   trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"],
   visibleToolNames: string[]
 ): Promise<Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"]> {
-  if (trigger.kind !== "comfy_task_completed" || trigger.workspaceFileIds.length === 0) {
-    return trigger;
+  if (trigger.kind === "comfy_task_completed" && trigger.workspaceFileIds.length > 0) {
+    try {
+      const files = await deps.chatFileStore.getMany(trigger.workspaceFileIds);
+      const fileHandleResults = files.map((file) =>
+        buildChatFileHandleResult(file, {
+          visibleToolNames,
+          defaultVisible: false,
+          nextActionMode: "default"
+        })
+      );
+      return fileHandleResults.length > 0
+        ? {
+            ...trigger,
+            resultAssetHandles: fileHandleResults.map((item) => item.asset_handle),
+            resultFileHandles: fileHandleResults.map((item) => item.handle)
+          }
+        : trigger;
+    } catch (error: unknown) {
+      deps.logger?.warn({ err: error }, "failed to enrich comfy scheduled prompt with result file handles");
+      return trigger;
+    }
   }
-  try {
-    const files = await deps.chatFileStore.getMany(trigger.workspaceFileIds);
-    const resultFileHandles = files.map((file) =>
-      buildChatFileHandleResult(file, {
+  if (trigger.kind === "download_completed" && trigger.fileId) {
+    try {
+      const file = await deps.chatFileStore.getFile(trigger.fileId);
+      if (!file) {
+        return trigger;
+      }
+      const result = buildChatFileHandleResult(file, {
         visibleToolNames,
         defaultVisible: false,
         nextActionMode: "default"
-      }).handle
-    );
-    return resultFileHandles.length > 0
-      ? { ...trigger, resultFileHandles }
-      : trigger;
-  } catch (error: unknown) {
-    deps.logger?.warn({ err: error }, "failed to enrich comfy scheduled prompt with result file handles");
-    return trigger;
+      });
+      return {
+        ...trigger,
+        resultAssetHandle: result.asset_handle,
+        resultFileHandle: result.handle
+      };
+    } catch (error: unknown) {
+      deps.logger?.warn({ err: error }, "failed to enrich download scheduled prompt with result file handle");
+      return trigger;
+    }
   }
+  return trigger;
 }
 
 function extractSystemMessages(promptMessages: LlmMessage[]): string[] {

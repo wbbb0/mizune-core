@@ -9,6 +9,13 @@ export type ChatFileHandleCapabilityName =
   | "inspect_media"
   | "send_to_chat";
 
+export type AssetHandleCapabilityName =
+  | ChatFileHandleCapabilityName
+  | "document_overview"
+  | "document_search"
+  | "document_read"
+  | "document_inspect";
+
 export type LocalFileHandleCapabilityName =
   | "read_text"
   | "view_media"
@@ -25,7 +32,34 @@ export interface FileHandleCapability<Name extends string = string> {
 }
 
 export type ChatFileHandleCapability = FileHandleCapability<ChatFileHandleCapabilityName>;
+export type AssetHandleCapability = FileHandleCapability<AssetHandleCapabilityName>;
 export type LocalFileHandleCapability = FileHandleCapability<LocalFileHandleCapabilityName>;
+
+export interface AssetHandle {
+  source: "asset";
+  id: string;
+  asset_id: string;
+  asset_ref: string;
+  selector: {
+    asset_id: string;
+    asset_ref: string;
+  };
+  kind: WorkspaceFileView["kind"];
+  origin: WorkspaceFileView["origin"];
+  source_name: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at_ms: number;
+  caption: string | null;
+  caption_status: WorkspaceFileView["caption_status"];
+  capabilities: AssetHandleCapability[];
+  next_actions?: ToolNextAction[];
+  legacy: {
+    file_id: string;
+    file_ref: string;
+    chat_file_path: string;
+  };
+}
 
 export interface ChatFileHandle {
   source: "chat_file";
@@ -64,6 +98,7 @@ export interface FileHandleOptions {
 }
 
 export type ChatFileHandleResult = WorkspaceFileView & {
+  asset_handle: AssetHandle;
   handle: ChatFileHandle;
   handle_capabilities: ChatFileHandleCapability[];
   next_actions?: ToolNextAction[];
@@ -78,7 +113,10 @@ export type LocalFileHandleResult = LocalFileItemStat & {
 const DEFAULT_VISIBLE_CHAT_FILE_TOOLS = new Set([
   "chat_file_view_media",
   "chat_file_inspect_media",
-  "chat_file_send_to_chat"
+  "chat_file_send_to_chat",
+  "asset_document_overview",
+  "asset_document_read",
+  "asset_document_search"
 ]);
 
 const DEFAULT_VISIBLE_LOCAL_FILE_TOOLS = new Set([
@@ -98,6 +136,37 @@ const MEDIA_INSPECT_KINDS = new Set<ChatFileKind>([
   "animated_image"
 ]);
 
+const DOCUMENT_MIME_PREFIXES = [
+  "text/",
+  "application/pdf"
+];
+
+const DOCUMENT_MIME_TYPES = new Set([
+  "application/json",
+  "application/xml",
+  "application/yaml",
+  "application/x-yaml",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+  "text/csv",
+  "text/markdown"
+]);
+
+const DOCUMENT_EXTENSIONS = new Set([
+  ".csv",
+  ".docx",
+  ".json",
+  ".md",
+  ".pdf",
+  ".txt",
+  ".xls",
+  ".xlsx",
+  ".xml",
+  ".yaml",
+  ".yml"
+]);
+
 export function buildChatFileHandleResult(
   file: ChatFileRecord,
   options: FileHandleOptions = {}
@@ -109,8 +178,10 @@ export function buildChatFileHandleResult(
     : buildChatFileHandleNextActions(file, capabilities);
   const view = mapWorkspaceFileToView(file);
   const handle = buildChatFileHandle(view, capabilities, nextActions);
+  const assetHandle = buildAssetHandle(view, capabilities, nextActions, visibleToolNames);
   return withNextActions({
     ...view,
+    asset_handle: assetHandle,
     handle,
     handle_capabilities: capabilities
   }, nextActions);
@@ -272,6 +343,96 @@ function buildChatFileHandle(
     },
     capabilities
   }, nextActions);
+}
+
+function buildAssetHandle(
+  file: WorkspaceFileView,
+  capabilities: ChatFileHandleCapability[],
+  nextActions: ToolNextAction[],
+  visibleToolNames: Set<string>
+): AssetHandle {
+  const assetCapabilities: AssetHandleCapability[] = [
+    ...capabilities.map((item) => ({ ...item }))
+  ];
+  if (isDocumentAsset(file)) {
+    assetCapabilities.push(...buildDocumentAssetCapabilities(file, visibleToolNames));
+  }
+  return withNextActions({
+    source: "asset" as const,
+    id: file.file_id,
+    asset_id: file.file_id,
+    asset_ref: file.file_ref,
+    selector: {
+      asset_id: file.file_id,
+      asset_ref: file.file_ref
+    },
+    kind: file.kind,
+    origin: file.origin,
+    source_name: file.source_name,
+    mime_type: file.mime_type,
+    size_bytes: file.size_bytes,
+    created_at_ms: file.created_at_ms,
+    caption: file.caption,
+    caption_status: file.caption_status,
+    capabilities: assetCapabilities,
+    legacy: {
+      file_id: file.file_id,
+      file_ref: file.file_ref,
+      chat_file_path: file.chat_file_path
+    }
+  }, nextActions);
+}
+
+function buildDocumentAssetCapabilities(
+  file: WorkspaceFileView,
+  visibleToolNames: Set<string>
+): AssetHandleCapability[] {
+  const selector = { asset_ref: file.file_ref };
+  return [
+    {
+      capability: "document_overview",
+      tool: "asset_document_overview",
+      reason: "查看该文档的摘要、目录和可读状态",
+      available: visibleToolNames.has("asset_document_overview"),
+      args: selector
+    },
+    {
+      capability: "document_read",
+      tool: "asset_document_read",
+      reason: "按行段读取该文档的正文",
+      available: visibleToolNames.has("asset_document_read"),
+      args: selector,
+      requires: ["start_line"]
+    },
+    {
+      capability: "document_search",
+      tool: "asset_document_search",
+      reason: "在该文档内搜索关键词",
+      available: visibleToolNames.has("asset_document_search"),
+      args: selector,
+      requires: ["query"]
+    },
+    {
+      capability: "document_inspect",
+      tool: "asset_document_inspect",
+      reason: "调用文本精读模型总结或回答文档问题",
+      available: visibleToolNames.has("asset_document_inspect"),
+      args: selector,
+      requires: ["question"]
+    }
+  ];
+}
+
+function isDocumentAsset(file: WorkspaceFileView): boolean {
+  if (file.kind !== "file") {
+    return false;
+  }
+  const mimeType = file.mime_type.toLowerCase();
+  if (DOCUMENT_MIME_PREFIXES.some((prefix) => mimeType.startsWith(prefix)) || DOCUMENT_MIME_TYPES.has(mimeType)) {
+    return true;
+  }
+  const names = [file.source_name, file.file_ref, file.chat_file_path].map((item) => item.toLowerCase());
+  return names.some((name) => Array.from(DOCUMENT_EXTENSIONS).some((ext) => name.endsWith(ext)));
 }
 
 function buildLocalFileHandle(

@@ -343,6 +343,7 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
             ...mapWorkspaceFileToView(item),
             caption: assetCaptionMap.get(item.fileId) ?? item.caption
           })),
+          asset_handles: handleResults.map((item) => item.asset_handle),
           handles: handleResults.map((item) => item.handle),
           audio: audioSummaries,
           unavailable: [],

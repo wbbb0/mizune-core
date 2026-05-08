@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 import { fetch as undiciFetch } from "undici";
@@ -284,6 +284,14 @@ export class ChatFileStore {
     return this.localFileService.resolvePath(file.chatFilePath).absolutePath;
   }
 
+  resolveDocumentCacheDirectory(fileId: string): string {
+    const normalizedFileId = String(fileId ?? "").trim();
+    if (!normalizedFileId) {
+      throw new Error("fileId is required");
+    }
+    return join(this.storeRootDir, "documents", stableDocumentCacheDirectoryName(normalizedFileId));
+  }
+
   async deleteFile(fileId: string): Promise<boolean> {
     const file = await this.getFile(fileId);
     if (!file) {
@@ -291,6 +299,9 @@ export class ChatFileStore {
     }
     const absolutePath = await this.resolveAbsolutePath(fileId);
     await rm(absolutePath, { force: true });
+    await rm(this.resolveDocumentCacheDirectory(fileId), { recursive: true, force: true }).catch((error: unknown) => {
+      this.logger.warn({ fileId, error }, "chat_file_document_cache_cleanup_failed");
+    });
     await this.withWriteLock(async () => {
       const files = await this.readFiles();
       await this.writeFiles(files.filter((item) => item.fileId !== fileId));
@@ -362,6 +373,10 @@ export class ChatFileStore {
 
 function buildStoredFileId(): string {
   return `file_${randomUUID().replaceAll("-", "")}`;
+}
+
+function stableDocumentCacheDirectoryName(value: string): string {
+  return `id-${createHash("sha256").update(value).digest("hex").slice(0, 32)}`;
 }
 
 function normalizeSourceName(sourceName: string | undefined, kind: ChatFileKind): string {

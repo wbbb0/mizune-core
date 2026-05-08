@@ -183,6 +183,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
             mainSmall: "main",
             mainLarge: "main",
             summarizer: "turnPlanner",
+            textInspector: "turnPlanner",
             sessionCaptioner: "turnPlanner",
             imageCaptioner: "main",
             imageInspector: "main",
@@ -271,6 +272,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
             mainSmall: "defaultMain",
             mainLarge: "defaultMain",
             summarizer: "defaultSummary",
+            textInspector: "defaultSummary",
             sessionCaptioner: "defaultSummary",
             imageCaptioner: "defaultSummary",
             imageInspector: "defaultSummary",
@@ -298,6 +300,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       assert.deepEqual(getModelRefsForRole(config, "main_small"), ["devMain"]);
       assert.deepEqual(getModelRefsForRole(config, "main_large"), []);
       assert.deepEqual(getModelRefsForRole(config, "summarizer"), ["defaultSummary"]);
+      assert.deepEqual(getModelRefsForRole(config, "text_inspector"), ["defaultSummary"]);
       assert.deepEqual(getModelRefsForRole(config, "session_captioner"), ["defaultSummary"]);
       assert.deepEqual(getModelRefsForRole(config, "image_inspector"), ["defaultSummary"]);
       assert.deepEqual(getModelRefsForRole(config, "audio_transcription"), []);
@@ -325,6 +328,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         mainSmall: [],
         mainLarge: [],
         summarizer: [],
+        textInspector: [],
         sessionCaptioner: [],
         imageCaptioner: [],
         imageInspector: [],
@@ -365,6 +369,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
             mainSmall: "catalogMain",
             mainLarge: "catalogMain",
             summarizer: "catalogMain",
+            textInspector: "catalogMain",
             sessionCaptioner: "catalogMain",
             imageCaptioner: "catalogMain",
             imageInspector: "catalogMain",

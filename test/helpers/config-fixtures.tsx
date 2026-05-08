@@ -41,6 +41,12 @@ const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
       timeoutMs: 1000,
       enableThinking: false
     },
+    textInspector: {
+      enabled: true,
+      timeoutMs: 1000,
+      enableThinking: false,
+      maxConcurrency: 2
+    },
     sessionCaptioner: {
       enabled: true,
       timeoutMs: 1000,
@@ -247,6 +253,7 @@ const baseTestCatalogOverrides: DeepPartial<LlmCatalogConfig> = {
       mainSmall: ["main"],
       mainLarge: ["main"],
       summarizer: ["main"],
+      textInspector: ["main"],
       sessionCaptioner: ["sessionCaptioner"],
       imageCaptioner: ["main"],
       imageInspector: ["main"],

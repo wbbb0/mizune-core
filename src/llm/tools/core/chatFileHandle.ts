@@ -5,6 +5,9 @@ export {
 } from "./fileHandle.ts";
 
 export type {
+  AssetHandle,
+  AssetHandleCapability,
+  AssetHandleCapabilityName,
   ChatFileHandle,
   ChatFileHandleCapability,
   ChatFileHandleCapabilityName,

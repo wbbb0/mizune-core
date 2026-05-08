@@ -224,6 +224,10 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "list_live_resources",
       "read_download_resource",
       "cancel_download_resource",
+      "asset_document_overview",
+      "asset_document_read",
+      "asset_document_search",
+      "asset_document_inspect",
       "chat_file_view_media",
       "chat_file_inspect_media",
       "chat_file_send_to_chat"

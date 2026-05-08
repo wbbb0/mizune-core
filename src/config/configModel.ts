@@ -20,6 +20,7 @@ const llmRoutingPresetSchema = s.object({
   mainSmall: createModelRefListSchema().title("主路由轻量模型"),
   mainLarge: createModelRefListSchema().title("主路由完整模型"),
   summarizer: createModelRefListSchema().title("总结器"),
+  textInspector: createModelRefListSchema().title("文本精读"),
   sessionCaptioner: createModelRefListSchema().title("会话标题生成"),
   imageCaptioner: createModelRefListSchema().title("图片描述"),
   imageInspector: createModelRefListSchema().title("图片精读"),
@@ -88,6 +89,13 @@ const llmImageInspectorConfigSchema = s.object({
   enableThinking: s.boolean().title("启用思考").default(false),
   maxConcurrency: s.number().int().positive().title("最大并发").default(2)
 }).title("图片精读").describe("按问题读取图片里的具体可见信息。").default(emptyObject);
+
+const llmTextInspectorConfigSchema = s.object({
+  enabled: s.boolean().title("启用").default(true),
+  timeoutMs: s.number().int().positive().title("超时毫秒").default(45000),
+  enableThinking: s.boolean().title("启用思考").default(false),
+  maxConcurrency: s.number().int().positive().title("最大并发").default(2)
+}).title("文本精读").describe("按问题读取文档或长文本里的具体信息；纯文本输入优先使用 textInspector，视觉输入仍使用 imageInspector。").default(emptyObject);
 
 const llmAudioTranscriptionConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(true),
@@ -511,6 +519,7 @@ const llmRuntimeConfigSchema = s.object({
     timeoutMs: s.number().int().positive().title("超时毫秒").default(45000),
     enableThinking: s.boolean().title("启用思考").default(false)
   }).title("总结器").describe("用于历史压缩和内容总结。").default(emptyObject),
+  textInspector: llmTextInspectorConfigSchema,
   sessionCaptioner: s.object({
     enabled: s.boolean().title("启用").default(true),
     timeoutMs: s.number().int().positive().title("超时毫秒").default(15000),

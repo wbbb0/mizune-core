@@ -318,7 +318,10 @@ const aboutLinkElement: BrowserElement = {
     if (typeof result === "string") {
       throw new Error("expected structured screenshot result");
     }
-    assert.match(String(result.content), /"file_id":"img_1"/);
+    const parsed = parseJsonToolResult<any>(result.content);
+    assert.equal(parsed.file_id, "img_1");
+    assert.equal(parsed.asset_handle.asset_id, "img_1");
+    assert.equal(parsed.asset_handle.asset_ref, "shot_img_1.png");
     assert.equal(result.supplementalMessages?.length, 1);
   });
 
@@ -378,6 +381,8 @@ const aboutLinkElement: BrowserElement = {
     const parsed = parseJsonToolResult<any>(result);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.file_id, "file_1");
+    assert.equal(parsed.asset_handle.asset_id, "file_1");
+    assert.equal(parsed.asset_handle.asset_ref, "shot_file_1.png");
     assert.ok(parsed.handle_capabilities.some((item: { capability: string }) => item.capability === "send_to_chat"));
   });
 
@@ -411,6 +416,8 @@ const aboutLinkElement: BrowserElement = {
     assert.equal(parsed.browser_resource_id, "res_browser_1");
     assert.equal(parsed.target_id, 2);
     assert.equal(parsed.file_id, "file_2");
+    assert.equal(parsed.asset_handle.asset_id, "file_2");
+    assert.equal(parsed.asset_handle.asset_ref, parsed.file_ref);
     assert.deepEqual(
       parsed.next_actions.map((item: { tool: string }) => item.tool),
       ["chat_file_view_media", "chat_file_send_to_chat"]

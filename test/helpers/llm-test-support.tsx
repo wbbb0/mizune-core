@@ -44,6 +44,7 @@ export function createLlmTestConfig(modelOverrides: any = {}) {
             : ["main"],
           mainLarge: ["main"],
           summarizer: ["main"],
+          textInspector: ["main"],
           sessionCaptioner: ["main"],
           imageCaptioner: ["main"],
           imageInspector: ["main"],

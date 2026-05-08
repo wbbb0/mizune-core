@@ -75,6 +75,9 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     assert.equal(contentPart.type, "image_url");
     assert.match(result.content, /"durationMs":2400/);
     const payload = JSON.parse(result.content);
+    assert.equal(payload.asset_handles[0].source, "asset");
+    assert.equal(payload.asset_handles[0].asset_id, "file_test_1");
+    assert.equal(payload.asset_handles[0].asset_ref, "chat_test0001.gif");
     assert.equal(payload.handles[0].source, "chat_file");
     assert.equal(payload.handles[0].selector.file_ref, "chat_test0001.gif");
     assert.deepEqual(
@@ -339,6 +342,7 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
       const payload = JSON.parse(result.content);
       assert.equal(payload.handle.source, "local_file");
       assert.equal(payload.handle.selector.path, filePath);
+      assert.equal("asset_handle" in payload, false);
       assert.deepEqual(
         payload.handle_capabilities.map((item: { capability: string }) => item.capability),
         ["read_text", "view_media", "inspect_media", "send_to_chat"]

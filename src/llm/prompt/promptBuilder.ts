@@ -14,7 +14,7 @@ import {
 } from "../prompts/history-message.prompt.ts";
 import { getSessionChatType } from "#conversation/session/sessionIdentity.ts";
 import type { PromptInput, ScheduledTaskPromptInput, SetupPromptInput } from "./promptTypes.ts";
-import type { ChatFileHandle } from "#llm/tools/core/fileHandle.ts";
+import type { AssetHandle, ChatFileHandle } from "#llm/tools/core/fileHandle.ts";
 
 export type {
   PromptBatchMessage,
@@ -152,7 +152,8 @@ function buildTriggerMessage(input: ScheduledTaskPromptInput): string {
   }
 
   if (input.trigger.kind === "comfy_task_completed") {
-    const handleLines = formatChatFileHandlesForPrompt(input.trigger.resultFileHandles);
+    const assetHandleLines = formatAssetHandlesForPrompt(input.trigger.resultAssetHandles);
+    const legacyHandleLines = assetHandleLines ? "" : formatChatFileHandlesForPrompt(input.trigger.resultFileHandles);
     return [
       `任务名称：${input.trigger.jobName}`,
       `任务说明：${input.trigger.taskInstruction}`,
@@ -162,7 +163,8 @@ function buildTriggerMessage(input: ScheduledTaskPromptInput): string {
       `Comfy prompt_id：${input.trigger.comfyPromptId}`,
       `workspace file_id：${input.trigger.workspaceFileIds.join("、") || "无"}`,
       `chat_file_path：${input.trigger.chatFilePaths.join("、") || "无"}`,
-      handleLines ? `结果文件 handle：\n${handleLines}` : null,
+      assetHandleLines ? `结果文件 asset_handle：\n${assetHandleLines}` : null,
+      legacyHandleLines ? `结果文件 handle：\n${legacyHandleLines}` : null,
       `自动迭代进度：${input.trigger.autoIterationIndex}/${input.trigger.maxAutoIterations}`
     ].filter((item): item is string => Boolean(item)).join("\n");
   }
@@ -195,6 +197,8 @@ function buildTriggerMessage(input: ScheduledTaskPromptInput): string {
   }
 
   if (input.trigger.kind === "download_completed") {
+    const assetHandleLine = formatAssetHandlesForPrompt(input.trigger.resultAssetHandle ? [input.trigger.resultAssetHandle] : undefined);
+    const legacyHandleLine = assetHandleLine ? "" : formatChatFileHandlesForPrompt(input.trigger.resultFileHandle ? [input.trigger.resultFileHandle] : undefined);
     return [
       `任务名称：${input.trigger.jobName}`,
       `任务说明：${input.trigger.taskInstruction}`,
@@ -206,8 +210,10 @@ function buildTriggerMessage(input: ScheduledTaskPromptInput): string {
       `文件名：${input.trigger.sourceName}`,
       `MIME：${input.trigger.mimeType}`,
       `大小：${input.trigger.sizeBytes}`,
-      `类型：${input.trigger.fileKind}`
-    ].join("\n");
+      `类型：${input.trigger.fileKind}`,
+      assetHandleLine ? `结果文件 asset_handle：\n${assetHandleLine}` : null,
+      legacyHandleLine ? `结果文件 handle：\n${legacyHandleLine}` : null
+    ].filter((item): item is string => Boolean(item)).join("\n");
   }
 
   if (input.trigger.kind === "download_failed") {
@@ -245,6 +251,23 @@ function formatChatFileHandlesForPrompt(handles: ChatFileHandle[] | undefined): 
       .map((item) => `${item.capability}:${item.tool}`)
       .join("、") || "无";
     return `- ${selector} (${handle.file.kind}, ${handle.file.source_name ?? "unknown"}) 可用：${availableTools}`;
+  }).join("\n");
+}
+
+function formatAssetHandlesForPrompt(handles: AssetHandle[] | undefined): string {
+  if (!handles || handles.length === 0) {
+    return "";
+  }
+  return handles.map((handle) => {
+    const selector = handle.asset_ref || handle.asset_id;
+    const availableTools = handle.capabilities
+      .filter((item) => item.available)
+      .map((item) => `${item.capability}:${item.tool} args=${JSON.stringify(item.args)}`)
+      .join("；") || "无";
+    const nextActions = handle.next_actions?.length
+      ? ` next_actions=${JSON.stringify(handle.next_actions)}`
+      : "";
+    return `- asset_ref=${selector} asset_id=${handle.asset_id} kind=${handle.kind} source_name=${handle.source_name ?? "unknown"} 可用：${availableTools}${nextActions}`;
   }).join("\n");
 }
 

@@ -43,6 +43,10 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       assert.equal(config.llm.imageInspector.timeoutMs, 45000);
       assert.equal(config.llm.imageInspector.enableThinking, false);
       assert.equal(config.llm.imageInspector.maxConcurrency, 2);
+      assert.equal(config.llm.textInspector.enabled, true);
+      assert.equal(config.llm.textInspector.timeoutMs, 45000);
+      assert.equal(config.llm.textInspector.enableThinking, false);
+      assert.equal(config.llm.textInspector.maxConcurrency, 2);
       assert.deepEqual(config.llm.providers, {});
       assert.deepEqual(config.llm.models, {});
       assert.deepEqual(config.llm.routingPresets, {
@@ -50,6 +54,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           mainSmall: [],
           mainLarge: [],
           summarizer: [],
+          textInspector: [],
           sessionCaptioner: [],
           imageCaptioner: [],
           imageInspector: [],
@@ -176,6 +181,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
             mainSmall: "main",
             mainLarge: "main",
             summarizer: "main",
+            textInspector: "main",
             sessionCaptioner: "main",
             imageCaptioner: "main",
             imageInspector: "main",
@@ -262,6 +268,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
             mainSmall: "main",
             mainLarge: "main",
             summarizer: "main",
+            textInspector: "main",
             sessionCaptioner: "main",
             imageCaptioner: "main",
             imageInspector: "main",

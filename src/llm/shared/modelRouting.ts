@@ -10,6 +10,7 @@ export type LlmRoutingRole =
   | "main_small"
   | "main_large"
   | "summarizer"
+  | "text_inspector"
   | "session_captioner"
   | "image_captioner"
   | "image_inspector"
@@ -51,6 +52,12 @@ const routingRoleDefinitions: Record<LlmRoutingRole, RoutingRoleDefinition & {
     requiredModelType: "chat",
     presetField: "summarizer",
     getModelRefs: (preset) => preset.summarizer
+  },
+  text_inspector: {
+    label: "文本精读",
+    requiredModelType: "chat",
+    presetField: "textInspector",
+    getModelRefs: (preset) => preset.textInspector
   },
   session_captioner: {
     label: "会话标题生成",
@@ -106,6 +113,7 @@ export function createEmptyRoutingPreset(): Required<LlmRoutingPreset> {
     mainSmall: [],
     mainLarge: [],
     summarizer: [],
+    textInspector: [],
     sessionCaptioner: [],
     imageCaptioner: [],
     imageInspector: [],

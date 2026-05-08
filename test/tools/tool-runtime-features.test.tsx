@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
+import ExcelJS from "exceljs";
 import { getBuiltinTools } from "../../src/llm/tools/index.ts";
 import { getBuiltinToolDescriptorByName } from "../../src/llm/tools/toolRegistry.ts";
 import { scenarioHostToolHandlers } from "../../src/llm/tools/conversation/scenarioHostTools.ts";
@@ -12,6 +14,7 @@ import { resourceToolHandlers } from "../../src/llm/tools/runtime/resourceTools.
 import { debugToolHandlers } from "../../src/llm/tools/runtime/debugTools.ts";
 import { shellToolHandlers } from "../../src/llm/tools/runtime/shellTools.ts";
 import { timeToolHandlers } from "../../src/llm/tools/runtime/timeTools.ts";
+import { assetDocumentToolHandlers } from "../../src/llm/tools/runtime/documentTools.ts";
 import { localFileToolHandlers, chatFileToolHandlers } from "../../src/llm/tools/runtime/workspaceTools.ts";
 import {
   browserDownloadPolicy,
@@ -31,12 +34,14 @@ import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { buildToolObservation } from "../../src/conversation/session/toolObservation.ts";
 
 function createMediaToolVisibilityConfig(options: {
   mainSupportsVision?: boolean;
   imageInspectorEnabled?: boolean;
   imageInspectorRefs?: string[];
   inspectorSupportsVision?: boolean;
+  textInspectorRefs?: string[];
 } = {}) {
   return createTestAppConfig({
     llm: {
@@ -75,6 +80,7 @@ function createMediaToolVisibilityConfig(options: {
           mainSmall: ["main"],
           mainLarge: ["main"],
           summarizer: ["main"],
+          textInspector: options.textInspectorRefs ?? ["main"],
           sessionCaptioner: ["sessionCaptioner"],
           imageCaptioner: ["main"],
           imageInspector: options.imageInspectorRefs ?? ["inspector"],
@@ -110,6 +116,10 @@ function createMediaToolVisibilityConfig(options: {
     assert.ok(names.includes("view_message"));
     assert.ok(names.includes("chat_file_list"));
     assert.ok(names.includes("chat_file_send_to_chat"));
+    assert.ok(names.includes("asset_document_overview"));
+    assert.ok(names.includes("asset_document_read"));
+    assert.ok(names.includes("asset_document_search"));
+    assert.ok(names.includes("asset_document_inspect"));
     assert.ok(names.includes("local_file_mkdir"));
     assert.ok(names.includes("local_file_delete"));
     assert.ok(names.includes("local_file_inspect_media"));
@@ -1360,6 +1370,18 @@ function createMediaToolVisibilityConfig(options: {
 
     const payload = JSON.parse(String(result));
     assert.equal(payload.ok, true);
+    assert.equal(payload.file.asset_handle.source, "asset");
+    assert.equal(payload.file.asset_handle.asset_id, "file_test_1");
+    assert.equal(payload.file.asset_handle.asset_ref, "chat_test0001.png");
+    assert.deepEqual(payload.file.asset_handle.selector, {
+      asset_id: "file_test_1",
+      asset_ref: "chat_test0001.png"
+    });
+    assert.deepEqual(payload.file.asset_handle.legacy, {
+      file_id: "file_test_1",
+      file_ref: "chat_test0001.png",
+      chat_file_path: "workspace/media/file_test_1.png"
+    });
     assert.deepEqual(
       payload.next_actions.map((item: { tool: string }) => item.tool),
       ["chat_file_view_media", "chat_file_send_to_chat"]
@@ -1407,6 +1429,10 @@ function createMediaToolVisibilityConfig(options: {
       [["view_media", false], ["inspect_media", false], ["send_to_chat", true]]
     );
     assert.deepEqual(
+      payload.file.asset_handle.capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
+      [["view_media", false], ["inspect_media", false], ["send_to_chat", true]]
+    );
+    assert.deepEqual(
       payload.next_actions.map((item: { tool: string }) => item.tool),
       ["chat_file_send_to_chat"]
     );
@@ -1443,6 +1469,10 @@ function createMediaToolVisibilityConfig(options: {
     const payload = JSON.parse(String(result));
     assert.deepEqual(
       payload.file.handle_capabilities.map((item: { capability: string }) => item.capability),
+      ["send_to_chat"]
+    );
+    assert.deepEqual(
+      payload.file.asset_handle.capabilities.map((item: { capability: string }) => item.capability),
       ["send_to_chat"]
     );
     assert.deepEqual(
@@ -1485,6 +1515,10 @@ function createMediaToolVisibilityConfig(options: {
     const payload = JSON.parse(String(result));
     assert.deepEqual(
       payload.file.handle_capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
+      [["view_media", false], ["inspect_media", false], ["send_to_chat", false]]
+    );
+    assert.deepEqual(
+      payload.file.asset_handle.capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
       [["view_media", false], ["inspect_media", false], ["send_to_chat", false]]
     );
     assert.deepEqual(payload.next_actions, []);
@@ -1550,6 +1584,1392 @@ function createMediaToolVisibilityConfig(options: {
     assert.equal(payload.truncated, true);
     assert.equal(payload.filters.defaultExcludedOrigin, "chat_message");
     assert.deepEqual(payload.files.map((item: { file_ref: string }) => item.file_ref), ["file_report_1.pdf"]);
+    assert.deepEqual(
+      payload.files[0].asset_handle.capabilities.map((item: { capability: string }) => item.capability),
+      ["send_to_chat", "document_overview", "document_read", "document_search", "document_inspect"]
+    );
+  });
+
+  test("asset document tools overview, search and read text assets by asset ref", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-doc-"));
+    const filePath = join(tempDir, "notes.md");
+    await writeFile(filePath, [
+      "# Alpha",
+      "第一段包含 needle 和说明。",
+      "## Beta",
+      "第二段继续描述。",
+      "第三段 needle 再次出现。"
+    ].join("\n"));
+    const file = {
+      fileId: "file_doc_1",
+      fileRef: "notes.md",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/notes.md",
+      sourceName: "notes.md",
+      mimeType: "text/markdown",
+      sizeBytes: 120,
+      createdAtMs: 1,
+      sourceContext: {},
+      caption: null
+    };
+    const context = {
+      debugSnapshot: {
+        visibleToolNames: ["asset_document_overview", "asset_document_read", "asset_document_search", "chat_file_send_to_chat"]
+      },
+      chatFileStore: {
+        async getFile(id: string) {
+          return id === "file_doc_1" ? file : null;
+        },
+        async listFiles() {
+          return [file];
+        },
+        async resolveAbsolutePath(id: string) {
+          assert.equal(id, "file_doc_1");
+          return filePath;
+        }
+      }
+    } as any;
+
+    try {
+      const overview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
+        { id: "tool_asset_doc_overview", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"notes.md\"}" } },
+        { asset_ref: "notes.md" },
+        context
+      )));
+      assert.equal(overview.ok, true);
+      assert.equal(overview.asset_handle.asset_id, "file_doc_1");
+      assert.ok(overview.document.chunk_count >= 1);
+      assert.deepEqual(overview.document.headings.map((item: { text: string }) => item.text), ["Alpha", "Beta"]);
+
+      const search = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
+        { id: "tool_asset_doc_search", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"notes.md\",\"query\":\"needle\"}" } },
+        { asset_ref: "notes.md", query: "needle" },
+        context
+      )));
+      assert.equal(search.returned, 2);
+      assert.equal(search.total_matches, 2);
+      assert.equal(search.truncated, false);
+      assert.deepEqual(search.matches.map((item: { line_number: number }) => item.line_number), [2, 5]);
+      assert.ok(search.matches.every((item: { chunk_id?: string }) => typeof item.chunk_id === "string" && item.chunk_id.startsWith("chunk_")));
+
+      const read = JSON.parse(String(await assetDocumentToolHandlers.asset_document_read!(
+        { id: "tool_asset_doc_read", type: "function", function: { name: "asset_document_read", arguments: "{\"asset_ref\":\"notes.md\",\"start_line\":2,\"line_count\":2}" } },
+        { asset_ref: "notes.md", start_line: 2, line_count: 2 },
+        context
+      )));
+      assert.equal(read.start_line, 2);
+      assert.equal(read.end_line, 3);
+      assert.match(read.content, /needle/);
+
+      const outOfRange = JSON.parse(String(await assetDocumentToolHandlers.asset_document_read!(
+        { id: "tool_asset_doc_read_oob", type: "function", function: { name: "asset_document_read", arguments: "{\"asset_ref\":\"notes.md\",\"start_line\":99}" } },
+        { asset_ref: "notes.md", start_line: 99 },
+        context
+      )));
+      assert.equal(outOfRange.out_of_range, true);
+      assert.equal(outOfRange.content, "");
+
+      let inspectedChunks: Array<{ startLine: number; endLine: number; text: string }> = [];
+      const inspectContext = {
+        ...context,
+        textInspectionService: {
+          async inspectPreparedText(input: any) {
+            inspectedChunks = input.chunks;
+            return {
+              ok: true,
+              requestedCount: input.chunks.length,
+              results: input.chunks.map((chunk: any) => ({
+                chunkId: chunk.chunkId,
+                startLine: chunk.startLine,
+                endLine: chunk.endLine,
+                status: "answered",
+                found: true,
+                answer: `找到 ${input.question}`,
+                evidence: ["needle detail"],
+                confidenceNotes: [],
+                rawAnswer: "{}",
+                parseStatus: "parsed",
+                schemaIssues: [],
+                modelRef: "text-inspector"
+              }))
+            };
+          }
+        }
+      } as any;
+      const inspected = JSON.parse(String(await assetDocumentToolHandlers.asset_document_inspect!(
+        { id: "tool_asset_doc_inspect", type: "function", function: { name: "asset_document_inspect", arguments: "{\"asset_ref\":\"notes.md\",\"question\":\"needle\"}" } },
+        { asset_ref: "notes.md", question: "needle" },
+        inspectContext
+      )));
+      assert.equal(inspected.ok, true);
+      assert.equal(inspected.asset_handle.asset_id, "file_doc_1");
+      assert.match(inspected.combined_answer, /找到 needle/);
+      assert.ok(inspectedChunks.length > 0);
+      assert.ok(inspectedChunks.some((chunk) => chunk.text.includes("needle")));
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document tools treat csv with Excel mime as text", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-csv-"));
+    const filePath = join(tempDir, "report.csv");
+    await writeFile(filePath, "name,value\n付款期限,30天\n", "utf8");
+    const file = {
+      fileId: "file_csv_1",
+      fileRef: "report.csv",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/report.csv",
+      sourceName: "report.csv",
+      mimeType: "application/vnd.ms-excel",
+      sizeBytes: 64,
+      createdAtMs: 1,
+      sourceContext: {},
+      caption: null
+    };
+    try {
+      const result = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
+        { id: "tool_asset_csv_overview", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"report.csv\"}" } },
+        { asset_ref: "report.csv" },
+        {
+          chatFileStore: {
+            async getFile() {
+              return file;
+            },
+            async listFiles() {
+              return [file];
+            },
+            async resolveAbsolutePath() {
+              return filePath;
+            }
+          }
+        } as any
+      )));
+      assert.equal(result.ok, true);
+      assert.equal(result.document.parser, "plain_text_v1");
+      assert.match(result.document.preview, /付款期限,30天/);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document tools reuse cached parsed text across calls", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-doc-cache-"));
+    const filePath = join(tempDir, "cached.md");
+    await writeFile(filePath, "# Cached\nneedle from first parse\n", "utf8");
+    const file = {
+      fileId: "file_cached_doc_1",
+      fileRef: "cached.md",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/cached.md",
+      sourceName: "cached.md",
+      mimeType: "text/markdown",
+      sizeBytes: 256,
+      createdAtMs: 123,
+      sourceContext: {},
+      caption: null
+    };
+    const context = {
+      chatFileStore: {
+        async getFile() {
+          return file;
+        },
+        async listFiles() {
+          return [file];
+        },
+        async resolveAbsolutePath() {
+          return filePath;
+        }
+      }
+    } as any;
+
+    try {
+      const overview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
+        { id: "tool_asset_doc_cache_overview", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"cached.md\"}" } },
+        { asset_ref: "cached.md" },
+        context
+      )));
+      assert.equal(overview.ok, true);
+      assert.equal(overview.document.cache_hit, false);
+
+      const cachedOverview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
+        { id: "tool_asset_doc_cache_overview_2", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"cached.md\"}" } },
+        { asset_ref: "cached.md" },
+        context
+      )));
+      assert.equal(cachedOverview.ok, true);
+      assert.equal(cachedOverview.document.cache_hit, true);
+
+      await rm(filePath, { force: true });
+      const missingAfterCache = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
+        { id: "tool_asset_doc_cache_missing", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"cached.md\"}" } },
+        { asset_ref: "cached.md" },
+        context
+      )));
+      assert.equal(missingAfterCache.ok, false);
+      assert.equal(missingAfterCache.status, "parse_failed");
+      assert.equal(missingAfterCache.error, "asset_file_unavailable");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document tools do not cache failed file resolution", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-doc-cache-fail-"));
+    const filePath = join(tempDir, "retry.md");
+    await writeFile(filePath, "retry needle\n", "utf8");
+    const file = {
+      fileId: "file_retry_doc_1",
+      fileRef: "retry.md",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/retry.md",
+      sourceName: "retry.md",
+      mimeType: "text/markdown",
+      sizeBytes: 128,
+      createdAtMs: 456,
+      sourceContext: {},
+      caption: null
+    };
+    let resolveCount = 0;
+    const context = {
+      chatFileStore: {
+        async getFile() {
+          return file;
+        },
+        async listFiles() {
+          return [file];
+        },
+        async resolveAbsolutePath() {
+          resolveCount += 1;
+          if (resolveCount === 1) {
+            throw new Error("temporarily unavailable");
+          }
+          return filePath;
+        }
+      }
+    } as any;
+    try {
+      const first = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
+        { id: "tool_asset_doc_cache_fail_1", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"retry.md\"}" } },
+        { asset_ref: "retry.md" },
+        context
+      )));
+      assert.equal(first.ok, false);
+      assert.equal(first.error, "asset_file_unavailable");
+
+      const second = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
+        { id: "tool_asset_doc_cache_fail_2", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"retry.md\",\"query\":\"needle\"}" } },
+        { asset_ref: "retry.md", query: "needle" },
+        context
+      )));
+      assert.equal(second.ok, true);
+      assert.equal(second.returned, 1);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document tools persist parsed text cache", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-doc-persist-"));
+    const filePath = join(tempDir, "persist.md");
+    const cacheDir = join(tempDir, "documents", "file_persist_doc_1");
+    await writeFile(filePath, "# Persist\npersisted needle\n", "utf8");
+    const file = {
+      fileId: "file_persist_doc_1",
+      fileRef: "persist.md",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/persist.md",
+      sourceName: "persist.md",
+      mimeType: "text/markdown",
+      sizeBytes: 256,
+      createdAtMs: 801,
+      sourceContext: {},
+      caption: null
+    };
+    try {
+      const overview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
+        { id: "tool_asset_doc_persist_overview", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"persist.md\"}" } },
+        { asset_ref: "persist.md" },
+        {
+          chatFileStore: {
+            async getFile() {
+              return file;
+            },
+            async listFiles() {
+              return [file];
+            },
+            async resolveAbsolutePath() {
+              return filePath;
+            },
+            resolveDocumentCacheDirectory() {
+              return cacheDir;
+            }
+          }
+        } as any
+      )));
+      assert.equal(overview.ok, true);
+      assert.equal(overview.document.cache_hit, false);
+      assert.match(await readFile(join(cacheDir, "text.txt"), "utf8"), /persisted needle/);
+      const manifest = JSON.parse(await readFile(join(cacheDir, "manifest.json"), "utf8"));
+      assert.equal(manifest.version, "document_text_v1");
+      assert.equal(manifest.fileId, "file_persist_doc_1");
+      assert.equal(manifest.parser, "plain_text_v1");
+      assert.equal(manifest.contentLength, "# Persist\npersisted needle\n".length);
+      assert.equal(manifest.contentHash, createHash("sha256").update("# Persist\npersisted needle\n").digest("hex"));
+      assert.equal(manifest.chunkVersion, "document_chunk_v1");
+      assert.equal(manifest.chunkCount, 1);
+      const chunks = (await readFile(join(cacheDir, "chunks.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+      assert.deepEqual(chunks, [{
+        chunkId: "chunk_1",
+        startLine: 1,
+        endLine: 3,
+        startOffset: 0,
+        endOffset: "# Persist\npersisted needle\n".length
+      }]);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document tools reuse persisted text cache when fingerprint matches", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-doc-persist-hit-"));
+    const filePath = join(tempDir, "cached.md");
+    const cacheDir = join(tempDir, "documents", "file_persist_hit_doc_1");
+    const sourceContent = "source text without the cached token\n";
+    const persistedContent = "persisted_needle from saved extraction\n";
+    await writeFile(filePath, sourceContent, "utf8");
+    const fileStat = await stat(filePath);
+    const file = {
+      fileId: "file_persist_hit_doc_1",
+      fileRef: "cached.md",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/cached.md",
+      sourceName: "cached.md",
+      mimeType: "text/markdown",
+      sizeBytes: Buffer.byteLength(sourceContent),
+      createdAtMs: 802,
+      sourceContext: {},
+      caption: null
+    };
+    await mkdir(cacheDir, { recursive: true });
+    await writeFile(join(cacheDir, "text.txt"), persistedContent, "utf8");
+    await writeFile(join(cacheDir, "manifest.json"), `${JSON.stringify({
+      version: "document_text_v1",
+      fileId: file.fileId,
+      fileRef: file.fileRef,
+      chatFilePath: file.chatFilePath,
+      sizeBytes: file.sizeBytes,
+      createdAtMs: file.createdAtMs,
+      mimeType: file.mimeType,
+      sourceName: file.sourceName,
+      absolutePath: filePath,
+      fileStatSize: fileStat.size,
+      fileStatMtimeMs: fileStat.mtimeMs,
+      parser: "plain_text_v1",
+      contentLength: persistedContent.length,
+      contentHash: createHash("sha256").update(persistedContent).digest("hex"),
+      chunkVersion: "document_chunk_v1",
+      chunkCount: 1,
+      updatedAtMs: 1
+    }, null, 2)}\n`, "utf8");
+    await writeFile(join(cacheDir, "chunks.jsonl"), `${JSON.stringify({
+      chunkId: "chunk_1",
+      startLine: 1,
+      endLine: 2,
+      startOffset: 0,
+      endOffset: persistedContent.length
+    })}\n`, "utf8");
+    const context = {
+      chatFileStore: {
+        async getFile() {
+          return file;
+        },
+        async listFiles() {
+          return [file];
+        },
+        async resolveAbsolutePath() {
+          return filePath;
+        },
+        resolveDocumentCacheDirectory() {
+          return cacheDir;
+        }
+      }
+    } as any;
+    try {
+      const overview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
+        { id: "tool_asset_doc_persist_hit_overview", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"cached.md\"}" } },
+        { asset_ref: "cached.md" },
+        context
+      )));
+      assert.equal(overview.ok, true);
+      assert.equal(overview.document.cache_hit, true);
+      assert.equal(overview.document.chunk_cache_hit, true);
+      assert.equal(overview.document.chunk_count, 1);
+
+      const search = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
+        { id: "tool_asset_doc_persist_hit_search", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"cached.md\",\"query\":\"persisted_needle\"}" } },
+        { asset_ref: "cached.md", query: "persisted_needle" },
+        context
+      )));
+      assert.equal(search.ok, true);
+      assert.equal(search.returned, 1);
+      assert.equal(search.matches[0].snippet, "persisted_needle from saved extraction");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document tools reject stale persisted chunk metadata", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-doc-stale-chunks-"));
+    const filePath = join(tempDir, "stale.md");
+    const cacheDir = join(tempDir, "documents", "file_stale_chunks_doc_1");
+    const persistedContent = "first line\nstale_needle line\n";
+    await writeFile(filePath, persistedContent, "utf8");
+    const fileStat = await stat(filePath);
+    const file = {
+      fileId: "file_stale_chunks_doc_1",
+      fileRef: "stale.md",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/stale.md",
+      sourceName: "stale.md",
+      mimeType: "text/markdown",
+      sizeBytes: Buffer.byteLength(persistedContent),
+      createdAtMs: 804,
+      sourceContext: {},
+      caption: null
+    };
+    await mkdir(cacheDir, { recursive: true });
+    await writeFile(join(cacheDir, "text.txt"), persistedContent, "utf8");
+    await writeFile(join(cacheDir, "manifest.json"), `${JSON.stringify({
+      version: "document_text_v1",
+      fileId: file.fileId,
+      fileRef: file.fileRef,
+      chatFilePath: file.chatFilePath,
+      sizeBytes: file.sizeBytes,
+      createdAtMs: file.createdAtMs,
+      mimeType: file.mimeType,
+      sourceName: file.sourceName,
+      absolutePath: filePath,
+      fileStatSize: fileStat.size,
+      fileStatMtimeMs: fileStat.mtimeMs,
+      parser: "plain_text_v1",
+      contentLength: persistedContent.length,
+      contentHash: createHash("sha256").update(persistedContent).digest("hex"),
+      chunkVersion: "document_chunk_v1",
+      chunkCount: 1,
+      updatedAtMs: 1
+    }, null, 2)}\n`, "utf8");
+    await writeFile(join(cacheDir, "chunks.jsonl"), `${JSON.stringify({
+      chunkId: "chunk_1",
+      startLine: 100,
+      endLine: 101,
+      startOffset: 0,
+      endOffset: persistedContent.length
+    })}\n`, "utf8");
+    try {
+      const context = {
+        chatFileStore: {
+          async getFile() {
+            return file;
+          },
+          async listFiles() {
+            return [file];
+          },
+          async resolveAbsolutePath() {
+            return filePath;
+          },
+          resolveDocumentCacheDirectory() {
+            return cacheDir;
+          }
+        }
+      } as any;
+      const overview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
+        { id: "tool_asset_doc_stale_chunks_overview", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"stale.md\"}" } },
+        { asset_ref: "stale.md" },
+        context
+      )));
+      assert.equal(overview.ok, true);
+      assert.equal(overview.document.cache_hit, true);
+      assert.equal(overview.document.chunk_cache_hit, false);
+
+      const search = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
+        { id: "tool_asset_doc_stale_chunks_search", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"stale.md\",\"query\":\"stale_needle\"}" } },
+        { asset_ref: "stale.md", query: "stale_needle" },
+        context
+      )));
+      assert.equal(search.returned, 1);
+      assert.equal(search.matches[0].line_number, 2);
+      assert.equal(search.matches[0].start_line, 1);
+      assert.equal(search.matches[0].end_line, 3);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document tools keep CRLF line locators stable with persisted chunks", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-doc-crlf-chunks-"));
+    const filePath = join(tempDir, "crlf.md");
+    const cacheDir = join(tempDir, "documents", "file_crlf_doc_1");
+    const sourceContent = "alpha\r\nbeta needle\r\ngamma";
+    await writeFile(filePath, sourceContent, "utf8");
+    const file = {
+      fileId: "file_crlf_doc_1",
+      fileRef: "crlf.md",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/crlf.md",
+      sourceName: "crlf.md",
+      mimeType: "text/markdown",
+      sizeBytes: Buffer.byteLength(sourceContent),
+      createdAtMs: 805,
+      sourceContext: {},
+      caption: null
+    };
+    const context = {
+      chatFileStore: {
+        async getFile() {
+          return file;
+        },
+        async listFiles() {
+          return [file];
+        },
+        async resolveAbsolutePath() {
+          return filePath;
+        },
+        resolveDocumentCacheDirectory() {
+          return cacheDir;
+        }
+      }
+    } as any;
+    try {
+      const first = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
+        { id: "tool_asset_doc_crlf_overview_1", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"crlf.md\"}" } },
+        { asset_ref: "crlf.md" },
+        context
+      )));
+      assert.equal(first.ok, true);
+      assert.equal(first.document.chunk_cache_hit, false);
+
+      const second = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
+        { id: "tool_asset_doc_crlf_search", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"crlf.md\",\"query\":\"needle\"}" } },
+        { asset_ref: "crlf.md", query: "needle" },
+        context
+      )));
+      assert.equal(second.returned, 1);
+      assert.equal(second.matches[0].line_number, 2);
+      assert.equal(second.matches[0].start_line, 1);
+      assert.equal(second.matches[0].end_line, 3);
+
+      const chunks = (await readFile(join(cacheDir, "chunks.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+      assert.deepEqual(chunks, [{
+        chunkId: "chunk_1",
+        startLine: 1,
+        endLine: 3,
+        startOffset: 0,
+        endOffset: "alpha\nbeta needle\ngamma".length
+      }]);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document tools enforce actual stat size when source file changes", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-doc-stat-size-"));
+    const filePath = join(tempDir, "oversized.md");
+    await writeFile(filePath, "x".repeat(2 * 1024 * 1024 + 1), "utf8");
+    const file = {
+      fileId: "file_oversized_doc_1",
+      fileRef: "oversized.md",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/oversized.md",
+      sourceName: "oversized.md",
+      mimeType: "text/markdown",
+      sizeBytes: 12,
+      createdAtMs: 803,
+      sourceContext: {},
+      caption: null
+    };
+    try {
+      const overview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
+        { id: "tool_asset_doc_stat_size_overview", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"oversized.md\"}" } },
+        { asset_ref: "oversized.md" },
+        {
+          chatFileStore: {
+            async getFile() {
+              return file;
+            },
+            async listFiles() {
+              return [file];
+            },
+            async resolveAbsolutePath() {
+              return filePath;
+            }
+          }
+        } as any
+      )));
+      assert.equal(overview.ok, false);
+      assert.equal(overview.status, "too_large");
+      assert.equal(overview.error, "document_too_large");
+      assert.match(overview.reason, /2097153 bytes/);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document search and inspect keep long-line matches beyond inspect chunk limit", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-long-line-"));
+    const filePath = join(tempDir, "long.json");
+    const longLine = `${"x".repeat(1800)} late_needle value`;
+    await writeFile(filePath, longLine, "utf8");
+    const file = {
+      fileId: "file_long_doc_1",
+      fileRef: "long.json",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/long.json",
+      sourceName: "long.json",
+      mimeType: "application/json",
+      sizeBytes: longLine.length,
+      createdAtMs: 789,
+      sourceContext: {},
+      caption: null
+    };
+    let inspectedText = "";
+    let inspectedChunkKeys: string[] = [];
+    const context = {
+      chatFileStore: {
+        async getFile() {
+          return file;
+        },
+        async listFiles() {
+          return [file];
+        },
+        async resolveAbsolutePath() {
+          return filePath;
+        }
+      },
+      textInspectionService: {
+        async inspectPreparedText(input: any) {
+          inspectedText = input.chunks[0]?.text ?? "";
+          inspectedChunkKeys = Object.keys(input.chunks[0] ?? {}).sort();
+          return {
+            ok: true,
+            requestedCount: input.chunks.length,
+            results: input.chunks.map((chunk: any) => ({
+              chunkId: chunk.chunkId,
+              startLine: chunk.startLine,
+              endLine: chunk.endLine,
+              status: "answered",
+              found: true,
+              answer: "late needle found",
+              evidence: ["late_needle"],
+              confidenceNotes: [],
+              rawAnswer: "{}",
+              parseStatus: "parsed",
+              schemaIssues: [],
+              modelRef: "text-inspector"
+            }))
+          };
+        }
+      }
+    } as any;
+
+    try {
+      const search = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
+        { id: "tool_asset_long_search", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"long.json\",\"query\":\"late_needle\"}" } },
+        { asset_ref: "long.json", query: "late_needle" },
+        context
+      )));
+      assert.equal(search.ok, true);
+      assert.equal(search.returned, 1);
+      assert.equal(search.total_matches, 1);
+      assert.match(search.matches[0].snippet, /late_needle/);
+      assert.equal(search.matches[0].line_number, 1);
+      assert.equal(search.matches[0].chunk_id, "chunk_1");
+      assert.equal(search.matches[0].char_start, 1801);
+      assert.equal(search.matches[0].char_end, 1812);
+
+      const inspected = JSON.parse(String(await assetDocumentToolHandlers.asset_document_inspect!(
+        { id: "tool_asset_long_inspect", type: "function", function: { name: "asset_document_inspect", arguments: "{\"asset_ref\":\"long.json\",\"question\":\"what is late_needle\"}" } },
+        { asset_ref: "long.json", question: "what is late_needle" },
+        context
+      )));
+      assert.equal(inspected.ok, true);
+      assert.match(inspectedText, /late_needle/);
+      assert.ok(inspectedText.length < longLine.length);
+      assert.ok(inspectedText.length <= 1200);
+      assert.deepEqual(inspectedChunkKeys, ["chunkId", "endLine", "startLine", "text"]);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document inspect keeps boundary windows within chunk limit", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-window-boundary-"));
+    const filePath = join(tempDir, "boundary.md");
+    const longLine = `${"x".repeat(590)} late_needle value ${"y".repeat(1000)}`;
+    await writeFile(filePath, longLine, "utf8");
+    const file = {
+      fileId: "file_boundary_doc_1",
+      fileRef: "boundary.md",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/boundary.md",
+      sourceName: "boundary.md",
+      mimeType: "text/markdown",
+      sizeBytes: longLine.length,
+      createdAtMs: 791,
+      sourceContext: {},
+      caption: null
+    };
+    let inspectedText = "";
+    try {
+      const inspected = JSON.parse(String(await assetDocumentToolHandlers.asset_document_inspect!(
+        { id: "tool_asset_boundary_inspect", type: "function", function: { name: "asset_document_inspect", arguments: "{\"asset_ref\":\"boundary.md\",\"question\":\"what is late_needle\"}" } },
+        { asset_ref: "boundary.md", question: "what is late_needle" },
+        {
+          chatFileStore: {
+            async getFile() {
+              return file;
+            },
+            async listFiles() {
+              return [file];
+            },
+            async resolveAbsolutePath() {
+              return filePath;
+            }
+          },
+          textInspectionService: {
+            async inspectPreparedText(input: any) {
+              inspectedText = input.chunks[0]?.text ?? "";
+              return {
+                ok: true,
+                requestedCount: input.chunks.length,
+                results: input.chunks.map((chunk: any) => ({
+                  chunkId: chunk.chunkId,
+                  startLine: chunk.startLine,
+                  endLine: chunk.endLine,
+                  status: "answered",
+                  found: true,
+                  answer: "late needle found",
+                  evidence: ["late_needle"],
+                  confidenceNotes: [],
+                  rawAnswer: "{}",
+                  parseStatus: "parsed",
+                  schemaIssues: [],
+                  modelRef: "text-inspector"
+                }))
+              };
+            }
+          }
+        } as any
+      )));
+      assert.equal(inspected.ok, true);
+      assert.match(inspectedText, /late_needle/);
+      assert.ok(inspectedText.length <= 1200);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document search reports total matches and truncation across chunk boundaries", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-search-limit-"));
+    const filePath = join(tempDir, "many.md");
+    const lines = Array.from({ length: 90 }, (_item, index) => [0, 44, 88].includes(index)
+      ? `line ${index + 1} boundary_needle`
+      : `line ${index + 1} ordinary text`);
+    await writeFile(filePath, lines.join("\n"), "utf8");
+    const file = {
+      fileId: "file_many_doc_1",
+      fileRef: "many.md",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/many.md",
+      sourceName: "many.md",
+      mimeType: "text/markdown",
+      sizeBytes: 4096,
+      createdAtMs: 790,
+      sourceContext: {},
+      caption: null
+    };
+    try {
+      const search = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
+        { id: "tool_asset_many_search", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"many.md\",\"query\":\"boundary_needle\",\"limit\":2}" } },
+        { asset_ref: "many.md", query: "boundary_needle", limit: 2 },
+        {
+          chatFileStore: {
+            async getFile() {
+              return file;
+            },
+            async listFiles() {
+              return [file];
+            },
+            async resolveAbsolutePath() {
+              return filePath;
+            }
+          }
+        } as any
+      )));
+      assert.equal(search.returned, 2);
+      assert.equal(search.total_matches, 3);
+      assert.equal(search.truncated, true);
+      assert.equal(search.matches[0].chunk_id, "chunk_1");
+      assert.ok(search.matches[0].start_line <= search.matches[0].line_number);
+      assert.ok(search.matches[0].end_line >= search.matches[0].line_number);
+      assert.equal(search.matches[1].line_number, 45);
+      assert.equal(search.matches[1].chunk_id, "chunk_2");
+      assert.equal(search.matches[1].start_line, 41);
+      assert.equal(search.matches[1].end_line, 80);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document tools keep legacy xls unsupported", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-xls-"));
+    const filePath = join(tempDir, "legacy.xls");
+    await writeFile(filePath, "not a real xls", "utf8");
+    try {
+      const result = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
+        { id: "tool_asset_xls_overview", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"legacy.xls\"}" } },
+        { asset_ref: "legacy.xls" },
+        {
+          chatFileStore: {
+            async getFile() {
+              return {
+                fileId: "file_xls_1",
+                fileRef: "legacy.xls",
+                kind: "file",
+                origin: "user_upload",
+                chatFilePath: "workspace/media/legacy.xls",
+                sourceName: "legacy.xls",
+                mimeType: "application/vnd.ms-excel",
+                sizeBytes: 64,
+                createdAtMs: 1,
+                sourceContext: {},
+                caption: null
+              };
+            },
+            async listFiles() {
+              return [];
+            },
+            async resolveAbsolutePath() {
+              return filePath;
+            }
+          }
+        } as any
+      )));
+      assert.equal(result.ok, false);
+      assert.equal(result.status, "unsupported");
+      assert.equal(result.error, "unsupported_document_parser");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document inspect selects later Chinese matching chunks", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-zh-inspect-"));
+    const filePath = join(tempDir, "contract.md");
+    const lines = Array.from({ length: 260 }, (_item, index) => `第 ${index + 1} 行普通背景内容`);
+    lines[230] = "付款期限为验收通过后三十日内完成。";
+    lines[232] = "违约责任包括每日按未付款金额的千分之一支付违约金。";
+    await writeFile(filePath, lines.join("\n"), "utf8");
+    const file = {
+      fileId: "file_contract_1",
+      fileRef: "contract.md",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/contract.md",
+      sourceName: "contract.md",
+      mimeType: "text/markdown",
+      sizeBytes: 4096,
+      createdAtMs: 1,
+      sourceContext: {},
+      caption: null
+    };
+    let inspectedChunks: Array<{ startLine: number; endLine: number; text: string }> = [];
+    try {
+      const result = JSON.parse(String(await assetDocumentToolHandlers.asset_document_inspect!(
+        { id: "tool_asset_zh_inspect", type: "function", function: { name: "asset_document_inspect", arguments: "{\"asset_ref\":\"contract.md\",\"question\":\"付款期限和违约责任是什么？\",\"max_chunks\":1}" } },
+        { asset_ref: "contract.md", question: "付款期限和违约责任是什么？", max_chunks: 1 },
+        {
+          chatFileStore: {
+            async getFile() {
+              return file;
+            },
+            async listFiles() {
+              return [file];
+            },
+            async resolveAbsolutePath() {
+              return filePath;
+            }
+          },
+          textInspectionService: {
+            async inspectPreparedText(input: any) {
+              inspectedChunks = input.chunks;
+              return {
+                ok: true,
+                requestedCount: input.chunks.length,
+                results: input.chunks.map((chunk: any) => ({
+                  chunkId: chunk.chunkId,
+                  startLine: chunk.startLine,
+                  endLine: chunk.endLine,
+                  status: "answered",
+                  found: true,
+                  answer: "付款期限和违约责任均已找到。",
+                  evidence: ["付款期限", "违约责任"],
+                  confidenceNotes: [],
+                  rawAnswer: "{}",
+                  parseStatus: "parsed",
+                  schemaIssues: [],
+                  modelRef: "text-inspector"
+                }))
+              };
+            }
+          }
+        } as any
+      )));
+      assert.equal(result.ok, true);
+      assert.equal(inspectedChunks.length, 1);
+      assert.match(inspectedChunks[0]?.text ?? "", /付款期限/);
+      assert.match(inspectedChunks[0]?.text ?? "", /违约责任/);
+      assert.ok((inspectedChunks[0]?.startLine ?? 0) > 200);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document observation preserves read content and asset handle in replay", () => {
+    const policy = getBuiltinToolDescriptorByName("asset_document_read", createForwardFeatureConfig())?.resultObservation;
+    assert.ok(policy);
+    const longContent = "重要正文 ".repeat(500);
+    const observation = buildToolObservation({
+      toolName: "asset_document_read",
+      toolCallId: "tool_asset_doc_obs",
+      args: { asset_ref: "notes.md", start_line: 1 },
+      content: JSON.stringify({
+        ok: true,
+        status: "ready",
+        asset_handle: {
+          source: "asset",
+          asset_id: "file_doc_1",
+          asset_ref: "notes.md",
+          selector: { asset_ref: "notes.md", asset_id: "file_doc_1" },
+          kind: "file",
+          capabilities: [{
+            capability: "document_read",
+            tool: "asset_document_read",
+            available: true,
+            args: { asset_ref: "notes.md" }
+          }]
+        },
+        start_line: 1,
+        end_line: 80,
+        total_lines: 100,
+        truncated: true,
+        content: longContent
+      }),
+      policy
+    });
+    assert.equal(observation.retention, "summary");
+    assert.equal(observation.preserveRecentRawCount, 0);
+    const replay = JSON.parse(observation.replayContent);
+    assert.match(replay.data.read.content, /重要正文/);
+    assert.equal(replay.data.assetHandle.assetId, "file_doc_1");
+    assert.deepEqual(
+      replay.data.assetHandle.capabilities.map((item: { capability: string }) => item.capability),
+      ["document_read"]
+    );
+  });
+
+  test("asset document observation preserves asset handle for unsupported parser results", () => {
+    const policy = getBuiltinToolDescriptorByName("asset_document_overview", createForwardFeatureConfig())?.resultObservation;
+    assert.ok(policy);
+    const observation = buildToolObservation({
+      toolName: "asset_document_overview",
+      toolCallId: "tool_asset_doc_unsupported_obs",
+      args: { asset_ref: "report.pdf" },
+      content: JSON.stringify({
+        ok: false,
+        status: "unsupported",
+        error: "unsupported_document_parser",
+        reason: ".pdf needs parser dependency",
+        asset_handle: {
+          source: "asset",
+          asset_id: "file_pdf_1",
+          asset_ref: "report.pdf",
+          selector: { asset_ref: "report.pdf", asset_id: "file_pdf_1" },
+          kind: "file",
+          capabilities: [{
+            capability: "document_overview",
+            tool: "asset_document_overview",
+            available: true,
+            args: { asset_ref: "report.pdf" }
+          }]
+        }
+      }),
+      policy
+    });
+    const replay = JSON.parse(observation.replayContent);
+    assert.equal(replay.ok, false);
+    assert.equal(replay.data.status, "unsupported");
+    assert.equal(replay.data.assetHandle.assetId, "file_pdf_1");
+    assert.deepEqual(
+      replay.data.assetHandle.capabilities.map((item: { capability: string }) => item.capability),
+      ["document_overview"]
+    );
+  });
+
+  test("asset document observation preserves search chunk locators", () => {
+    const policy = getBuiltinToolDescriptorByName("asset_document_search", createForwardFeatureConfig())?.resultObservation;
+    assert.ok(policy);
+    const observation = buildToolObservation({
+      toolName: "asset_document_search",
+      toolCallId: "tool_asset_doc_search_obs",
+      args: { asset_ref: "notes.md", query: "needle" },
+      content: JSON.stringify({
+        ok: true,
+        status: "ready",
+        asset_handle: {
+          source: "asset",
+          asset_id: "file_doc_1",
+          asset_ref: "notes.md",
+          selector: { asset_ref: "notes.md", asset_id: "file_doc_1" },
+          kind: "file",
+          capabilities: [{
+            capability: "document_search",
+            tool: "asset_document_search",
+            available: true,
+            args: { asset_ref: "notes.md" }
+          }]
+        },
+        query: "needle",
+        matches: [{
+          chunk_id: "chunk_2",
+          start_line: 41,
+          end_line: 80,
+          line_number: 55,
+          char_start: 8,
+          char_end: 14,
+          snippet: "needle detail"
+        }],
+        returned: 1,
+        total_matches: 1,
+        truncated: false
+      }),
+      policy
+    });
+    const replay = JSON.parse(observation.replayContent);
+    assert.equal(replay.data.search.matches[0].chunkId, "chunk_2");
+    assert.equal(replay.data.search.matches[0].startLine, 41);
+    assert.equal(replay.data.search.matches[0].endLine, 80);
+    assert.equal(replay.data.search.matches[0].lineNumber, 55);
+    assert.equal(replay.data.search.matches[0].charStart, 8);
+    assert.equal(replay.data.search.matches[0].charEnd, 14);
+  });
+
+  test("asset document observation compacts text inspection results", () => {
+    const policy = getBuiltinToolDescriptorByName("asset_document_inspect", createForwardFeatureConfig())?.resultObservation;
+    assert.ok(policy);
+    const observation = buildToolObservation({
+      toolName: "asset_document_inspect",
+      toolCallId: "tool_asset_doc_inspect_obs",
+      args: { asset_ref: "notes.md", question: "总结关键点" },
+      content: JSON.stringify({
+        ok: true,
+        status: "ready",
+        asset_handle: {
+          source: "asset",
+          asset_id: "file_doc_1",
+          asset_ref: "notes.md",
+          selector: { asset_ref: "notes.md", asset_id: "file_doc_1" },
+          kind: "file",
+          capabilities: [{
+            capability: "document_inspect",
+            tool: "asset_document_inspect",
+            available: true,
+            args: { asset_ref: "notes.md" }
+          }]
+        },
+        question: "总结关键点",
+        combined_answer: "L1-L3: 关键点 A",
+        selected_chunks: [{ chunk_id: "chunk_1", start_line: 1, end_line: 3, preview: "关键点 A" }],
+        inspection: {
+          ok: true,
+          requestedCount: 1,
+          results: [{
+            chunkId: "chunk_1",
+            startLine: 1,
+            endLine: 3,
+            status: "answered",
+            found: true,
+            answer: "关键点 A",
+            evidence: ["原文证据"],
+            confidenceNotes: [],
+            modelRef: "text-inspector",
+            schemaIssues: []
+          }]
+        }
+      }),
+      policy
+    });
+    const replay = JSON.parse(observation.replayContent);
+    assert.equal(replay.data.assetHandle.assetId, "file_doc_1");
+    assert.equal(replay.data.inspect.combinedAnswer, "L1-L3: 关键点 A");
+    assert.equal(replay.data.inspect.results[0].modelRef, "text-inspector");
+    assert.equal(replay.data.inspect.results[0].evidence[0], "原文证据");
+  });
+
+  test("asset document observation marks text inspection failures as replay errors", () => {
+    const policy = getBuiltinToolDescriptorByName("asset_document_inspect", createForwardFeatureConfig())?.resultObservation;
+    assert.ok(policy);
+    const observation = buildToolObservation({
+      toolName: "asset_document_inspect",
+      toolCallId: "tool_asset_doc_inspect_failed_obs",
+      args: { asset_ref: "notes.md", question: "总结关键点" },
+      content: JSON.stringify({
+        ok: false,
+        status: "inspection_failed",
+        error: "text_inspection_failed",
+        asset_handle: {
+          source: "asset",
+          asset_id: "file_doc_1",
+          asset_ref: "notes.md",
+          selector: { asset_ref: "notes.md", asset_id: "file_doc_1" },
+          kind: "file",
+          capabilities: [{
+            capability: "document_inspect",
+            tool: "asset_document_inspect",
+            available: true,
+            args: { asset_ref: "notes.md" }
+          }]
+        },
+        question: "总结关键点",
+        combined_answer: "L1-L3: 文本精读模型未启用或未配置。",
+        inspection: {
+          ok: false,
+          requestedCount: 1,
+          results: [{
+            chunkId: "chunk_1",
+            startLine: 1,
+            endLine: 3,
+            status: "error",
+            found: null,
+            answer: "文本精读模型未启用或未配置。",
+            evidence: [],
+            confidenceNotes: [],
+            modelRef: "unknown",
+            schemaIssues: ["not_configured"]
+          }]
+        }
+      }),
+      policy
+    });
+    const replay = JSON.parse(observation.replayContent);
+    assert.equal(replay.ok, false);
+    assert.equal(replay.data.error, "text_inspection_failed");
+    assert.equal(replay.data.inspect.results[0].status, "error");
+  });
+
+  test("download observation preserves asset handle document capabilities in replay", () => {
+    const policy = getBuiltinToolDescriptorByName("download_asset", createForwardFeatureConfig())?.resultObservation;
+    assert.ok(policy);
+    const observation = buildToolObservation({
+      toolName: "download_asset",
+      toolCallId: "tool_download_obs",
+      args: { url: "https://example.com/notes.md" },
+      content: JSON.stringify({
+        ok: true,
+        status: "completed",
+        file_id: "file_doc_1",
+        file_ref: "notes.md",
+        asset_handle: {
+          source: "asset",
+          asset_id: "file_doc_1",
+          asset_ref: "notes.md",
+          selector: { asset_ref: "notes.md", asset_id: "file_doc_1" },
+          kind: "file",
+          capabilities: [{
+            capability: "document_overview",
+            tool: "asset_document_overview",
+            available: true,
+            args: { asset_ref: "notes.md" }
+          }]
+        }
+      }),
+      policy
+    });
+    const replay = JSON.parse(observation.replayContent);
+    assert.equal(replay.data.assetHandle.assetId, "file_doc_1");
+    assert.deepEqual(
+      replay.data.assetHandle.capabilities.map((item: { capability: string }) => item.capability),
+      ["document_overview"]
+    );
+  });
+
+  test("asset document tools return parse_failed when registered file is unavailable", async () => {
+    const result = await assetDocumentToolHandlers.asset_document_read!(
+      { id: "tool_asset_doc_missing_file", type: "function", function: { name: "asset_document_read", arguments: "{\"asset_ref\":\"missing.md\"}" } },
+      { asset_ref: "missing.md" },
+      {
+        chatFileStore: {
+          async getFile() {
+            return {
+              fileId: "file_missing_1",
+              fileRef: "missing.md",
+              kind: "file",
+              origin: "user_upload",
+              chatFilePath: "workspace/media/missing.md",
+              sourceName: "missing.md",
+              mimeType: "text/markdown",
+              sizeBytes: 100,
+              createdAtMs: 1,
+              sourceContext: {},
+              caption: null
+            };
+          },
+          async listFiles() {
+            return [];
+          },
+          async resolveAbsolutePath() {
+            throw new Error("file is gone");
+          }
+        }
+      } as any
+    );
+    const payload = JSON.parse(String(result));
+    assert.equal(payload.ok, false);
+    assert.equal(payload.status, "parse_failed");
+    assert.equal(payload.error, "asset_file_unavailable");
+    assert.equal(payload.asset_handle.asset_ref, "missing.md");
+
+    const policy = getBuiltinToolDescriptorByName("asset_document_read", createForwardFeatureConfig())?.resultObservation;
+    assert.ok(policy);
+    const observation = buildToolObservation({
+      toolName: "asset_document_read",
+      toolCallId: "tool_asset_doc_missing_obs",
+      args: { asset_ref: "missing.md" },
+      content: String(result),
+      policy
+    });
+    const replay = JSON.parse(observation.replayContent);
+    assert.equal(replay.ok, false);
+    assert.equal(replay.data.assetHandle.assetRef, "missing.md");
+  });
+
+  test("asset document tools parse xlsx assets as sheet csv text", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-xlsx-"));
+    const filePath = join(tempDir, "scores.xlsx");
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Scores");
+    sheet.addRows([
+      ["name", "score"],
+      ["alpha", 10],
+      ["needle", 42]
+    ]);
+    await workbook.xlsx.writeFile(filePath);
+    const file = {
+      fileId: "file_xlsx_1",
+      fileRef: "scores.xlsx",
+      kind: "file",
+      origin: "user_upload",
+      chatFilePath: "workspace/media/scores.xlsx",
+      sourceName: "scores.xlsx",
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      sizeBytes: 4096,
+      createdAtMs: 1,
+      sourceContext: {},
+      caption: null
+    };
+    const context = {
+      chatFileStore: {
+        async getFile(id: string) {
+          return id === "file_xlsx_1" ? file : null;
+        },
+        async listFiles() {
+          return [file];
+        },
+        async resolveAbsolutePath() {
+          return filePath;
+        }
+      }
+    } as any;
+
+    try {
+      const overview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
+        { id: "tool_asset_xlsx_overview", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"scores.xlsx\"}" } },
+        { asset_ref: "scores.xlsx" },
+        context
+      )));
+      assert.equal(overview.ok, true);
+      assert.equal(overview.document.parser, "exceljs_xlsx_csv_v1");
+      assert.match(overview.document.preview, /# Sheet: Scores/);
+      assert.match(overview.document.preview, /needle,42/);
+
+      const search = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
+        { id: "tool_asset_xlsx_search", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"scores.xlsx\",\"query\":\"needle\"}" } },
+        { asset_ref: "scores.xlsx", query: "needle" },
+        context
+      )));
+      assert.equal(search.returned, 1);
+      assert.match(search.matches[0].snippet, /needle,42/);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset document tools report parse failure for invalid pdf assets", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-invalid-pdf-"));
+    const filePath = join(tempDir, "report.pdf");
+    await writeFile(filePath, Buffer.from("not a pdf"));
+    const result = await assetDocumentToolHandlers.asset_document_overview!(
+      { id: "tool_asset_doc_pdf", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_id\":\"file_pdf_1\"}" } },
+      { asset_id: "file_pdf_1" },
+      {
+        chatFileStore: {
+          async getFile(id: string) {
+            return id === "file_pdf_1"
+              ? {
+                  fileId: "file_pdf_1",
+                  fileRef: "report.pdf",
+                  kind: "file",
+                  origin: "browser_download",
+                  chatFilePath: "workspace/media/report.pdf",
+                  sourceName: "report.pdf",
+                  mimeType: "application/pdf",
+                  sizeBytes: 500,
+                  createdAtMs: 1,
+                  sourceContext: {},
+                  caption: null
+                }
+              : null;
+          },
+          async listFiles() {
+            return [];
+          },
+          async resolveAbsolutePath() {
+            return filePath;
+          }
+        }
+      } as any
+    );
+    try {
+      const payload = JSON.parse(String(result));
+      assert.equal(payload.ok, false);
+      assert.equal(payload.status, "parse_failed");
+      assert.equal(payload.error, "pdf_parse_failed");
+      assert.equal(payload.asset_handle.asset_ref, "report.pdf");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   test("chat_file_list clamps malformed limit values to schema bounds", async () => {

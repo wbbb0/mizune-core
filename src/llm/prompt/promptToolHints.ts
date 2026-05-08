@@ -19,7 +19,7 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   }
 
   if (visibleToolNames.has("generate_image_with_comfyui")) {
-    lines.push("generate_image_with_comfyui 是异步工具：调用后不会立刻拿到图片，系统会在完成后把对应的 workspace file_id、file_ref 和 chat_file_path 再交还给你。");
+    lines.push("generate_image_with_comfyui 是异步工具：调用后不会立刻拿到图片，系统会在完成后把对应的 asset_handle 再交还给你；旧的 file_id/file_ref 只作为兼容字段。");
     lines.push("收到 ComfyUI 完成通知后，你要自己判断下一步：先 chat_file_view_media 看图、直接 chat_file_send_to_chat 发图、继续改 prompt 再生成，或结束本轮。");
     lines.push("generate_image_with_comfyui 只接受 template、positive_prompt、aspect_ratio；不要自己编造宽高。");
   }
@@ -57,7 +57,7 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
         visibleToolNames.has("download_asset") ? "download_asset" : "",
         visibleToolNames.has("capture_screenshot") ? "capture_screenshot" : ""
       ].filter(Boolean).join("/");
-      lines.push(`${fileTools} 短下载会直接返回 workspace file_id/file_ref；长下载会返回 download resource_id，完成或失败后会自动触发，也可用 read_download_resource 主动查看状态。`);
+      lines.push(`${fileTools} 短下载会直接返回 asset_handle；长下载会返回 download resource_id，完成或失败后会自动触发，也可用 read_download_resource 主动查看状态。`);
     }
     lines.push("遇到短信码、邮箱码、TOTP 或二次验证时，在当前会话向用户索取；验证码只用于当前步骤，不写入长期资料。");
   }
@@ -82,6 +82,10 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
 
   if (hasAnyTool(visibleToolNames, ["chat_file_list", "chat_file_view_media", "chat_file_send_to_chat"])) {
     lines.push("查已登记图片、视频、音频或文件时先 chat_file_list；发送时优先用 chat_file_send_to_chat(file_ref=...)，file_id 只是主键。");
+  }
+
+  if (hasAnyTool(visibleToolNames, ["asset_document_overview", "asset_document_read", "asset_document_search", "asset_document_inspect"])) {
+    lines.push("处理已登记文档时用 asset_document_overview 看概览和可读状态，再用 asset_document_search 定位，最后用 asset_document_read 小范围读取；需要总结或跨片段回答时用 asset_document_inspect 调文本精读模型；不要把整份文档一次性塞进上下文。");
   }
 
   if (hasAnyTool(visibleToolNames, ["list_live_resources", "read_download_resource", "cancel_download_resource"])) {

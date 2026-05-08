@@ -6,6 +6,9 @@ balanced:
   summarizer:
     - qwen35_flash
     - gemini31_flash_lite_preview
+  textInspector:
+    - qwen35_flash
+    - gemini31_flash_lite_preview
   sessionCaptioner:
     - qwen35_flash
   imageCaptioner:

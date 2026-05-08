@@ -136,6 +136,15 @@ export function createBrowserToolContext(
         };
       }
     } as unknown as BuiltinToolContext["mediaInspectionService"],
+    textInspectionService: {
+      async inspectPreparedText() {
+        return {
+          ok: true,
+          requestedCount: 0,
+          results: []
+        };
+      }
+    } as unknown as BuiltinToolContext["textInspectionService"],
     chatFileStore: {
       async prepareImageFileForModel(fileId: string) {
         return {

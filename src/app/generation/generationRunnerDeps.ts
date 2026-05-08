@@ -30,6 +30,7 @@ import type { DownloadRuntime } from "#services/workspace/downloadRuntime.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import type { MediaInspectionService } from "#services/workspace/mediaInspectionService.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
+import type { TextInspectionService } from "#services/workspace/textInspectionService.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
@@ -114,6 +115,7 @@ export interface GenerationToolRuntimeDeps {
   chatFileStore: ChatFileStore;
   downloadRuntime: DownloadRuntime;
   mediaInspectionService: MediaInspectionService;
+  textInspectionService: TextInspectionService;
   forwardResolver: ForwardResolver;
   comfyClient: ComfyClient;
   comfyTaskStore: ComfyTaskStore;

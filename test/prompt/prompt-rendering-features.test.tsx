@@ -103,6 +103,10 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
           "chat_file_view_media",
           "chat_file_inspect_media",
           "chat_file_send_to_chat",
+          "asset_document_overview",
+          "asset_document_read",
+          "asset_document_search",
+          "asset_document_inspect",
           "local_file_read",
           "local_file_delete",
           "local_file_search",
@@ -143,6 +147,8 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       assert.match(system, /⟦section name="tool_hints"⟧/);
       assert.match(system, /网页交互前先 inspect_page/);
       assert.match(system, /查已登记图片、视频、音频或文件时先 chat_file_list/);
+      assert.match(system, /处理已登记文档时用 asset_document_overview/);
+      assert.match(system, /asset_document_inspect 调文本精读模型/);
       assert.match(system, /需要从图片、截图、表格或界面里精确读取细节时，用图片精读工具按问题查看/);
       assert.doesNotMatch(system, /inspect_media/);
       assert.doesNotMatch(system, /download_asset 返回 workspace file_id/);
@@ -185,7 +191,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       });
 
       const system = String(prompt[0]?.content ?? "");
-      assert.match(system, /download_asset\/capture_screenshot 短下载会直接返回 workspace file_id\/file_ref/);
+      assert.match(system, /download_asset\/capture_screenshot 短下载会直接返回 asset_handle/);
       assert.match(system, /长下载会返回 download resource_id/);
       assert.match(system, /只读最小必要范围；不要把其他会话信息混成当前会话事实/);
       assert.match(system, /场景状态工具用于 scenario_host 内部维护/);

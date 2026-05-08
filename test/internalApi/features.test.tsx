@@ -503,6 +503,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
           mainSmall: [],
           mainLarge: [],
           summarizer: [],
+          textInspector: [],
           sessionCaptioner: [],
           imageCaptioner: [],
           imageInspector: [],
@@ -516,6 +517,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         mainSmall: [],
         mainLarge: [],
         summarizer: [],
+        textInspector: [],
         sessionCaptioner: [],
         imageCaptioner: [],
         imageInspector: [],
@@ -530,6 +532,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         mainSmall: [],
         mainLarge: [],
         summarizer: [],
+        textInspector: [],
         sessionCaptioner: [],
         imageCaptioner: [],
         imageInspector: [],
@@ -541,6 +544,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         mainSmall: ["main"],
         mainLarge: [],
         summarizer: [],
+        textInspector: [],
         sessionCaptioner: [],
         imageCaptioner: [],
         imageInspector: [],
@@ -566,6 +570,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         mainSmall: [],
         mainLarge: [],
         summarizer: [],
+        textInspector: [],
         sessionCaptioner: [],
         imageCaptioner: [],
         imageInspector: [],
@@ -577,6 +582,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.match(saved, /default:/);
       assert.match(saved, /mainLarge: \[\]/);
       assert.match(saved, /summarizer: \[\]/);
+      assert.match(saved, /textInspector: \[\]/);
     } finally {
       await app.close();
     }
