@@ -742,7 +742,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     const result = await builder.buildScheduledPromptMessages({
       sessionId: "qqbot:p:10001",
       interactionMode: "normal",
-      visibleToolNames: ["chat_file_view_media", "chat_file_send_to_chat"],
+      visibleToolNames: ["asset_media_view", "asset_send_to_chat"],
       activeToolsets: [],
       trigger: {
         kind: "comfy_task_completed",
@@ -779,10 +779,10 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     assert.match(rendered, /结果文件 asset_handle/);
     assert.match(rendered, /asset_id=file_comfy_1/);
     assert.match(rendered, /chat_comfy0001\.png/);
-    assert.match(rendered, /view_media:chat_file_view_media/);
-    assert.match(rendered, /args=\{"media_ids":\["file_comfy_1"\]\}/);
-    assert.match(rendered, /send_to_chat:chat_file_send_to_chat/);
-    assert.doesNotMatch(rendered, /inspect_media:chat_file_inspect_media/);
+    assert.match(rendered, /view_media:asset_media_view/);
+    assert.match(rendered, /args=\{"asset_ref":"chat_comfy0001.png"\}/);
+    assert.match(rendered, /send_to_chat:asset_send_to_chat/);
+    assert.doesNotMatch(rendered, /inspect_media:asset_media_inspect/);
   });
 
   test("download completed scheduled prompt enriches result asset handle from chat file store", async () => {
@@ -810,7 +810,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     const result = await builder.buildScheduledPromptMessages({
       sessionId: "qqbot:p:10001",
       interactionMode: "normal",
-      visibleToolNames: ["chat_file_send_to_chat"],
+      visibleToolNames: ["asset_send_to_chat"],
       activeToolsets: [],
       trigger: {
         kind: "download_completed",
@@ -845,8 +845,8 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     assert.match(rendered, /结果文件 asset_handle/);
     assert.match(rendered, /asset_id=file_download_1/);
     assert.match(rendered, /asset_ref=report_downloaded\.pdf/);
-    assert.match(rendered, /send_to_chat:chat_file_send_to_chat/);
-    assert.match(rendered, /args=\{"file_ref":"report_downloaded.pdf"\}/);
+    assert.match(rendered, /send_to_chat:asset_send_to_chat/);
+    assert.match(rendered, /args=\{"asset_ref":"report_downloaded.pdf"\}/);
   });
 
   test("assistant chat prompt injects global persona but still avoids memory rule and scenario stores", async () => {

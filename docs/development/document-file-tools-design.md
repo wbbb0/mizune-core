@@ -352,7 +352,7 @@ export interface AssetHandleCapability {
     "page_count": 12,
     "sheet_count": 0,
     "chunk_count": 36,
-    "summary": "200-500 字中文摘要",
+    "excerpt": "文档开头摘录，非模型摘要",
     "outline": [
       { "label": "1. 摘要", "page": 1 },
       { "label": "2. 风险", "page": 4 }
@@ -593,7 +593,7 @@ chat-files/
 
 - `asset_id`
 - locator：`chunk_id/page_start/page_end/sheet/row_start/row_end/line_number/char_start/char_end`
-- 摘要
+- 摘录或摘要状态
 - 是否截断
 - next action
 
@@ -601,7 +601,7 @@ chat-files/
 
 第一版建议预算：
 
-- `asset_document_overview.summary`：最多 800 中文字符。
+- `asset_document_overview.excerpt`：最多 800 中文字符；这是开头摘录，不是模型摘要。
 - `asset_document_overview.outline`：最多 50 项。
 - `asset_document_search.matches`：默认 6 项，最多 12 项；每项 snippet 最多 240 字符，并保留行号与行内字符范围。
 - `asset_document_read.content`：默认最多 4000 字符或 120 行；Excel/CSV 默认最多 80 行。
@@ -731,14 +731,14 @@ chat-files/
 ### P1：模块边界与语义收敛
 
 - 把 `documentTools.ts` 中的解析、持久缓存、chunk metadata 读写拆出到最小 `DocumentExtractionService` / `DocumentAssetStore`，工具层只负责参数、结果和 observation。
-- 明确 `overview.summary` 语义：若仍叫 summary，则实现 `DocumentSummaryService + summary.json`；如果暂不做模型摘要，应改成 `excerpt` / `preview`，避免把开头截断误称为摘要。
-- 收紧 `chatFiles.root` 语义。第一版建议要求相对路径，并补测试覆盖绝对路径拒绝或明确落盘策略。
+- 已收敛 `overview.summary` 语义：当前工具输出 `overview.document.excerpt`，明确表示低成本开头摘录；真正模型摘要仍留给后续 `DocumentSummaryService + summary.json`。
+- 已收紧 `chatFiles.root` 语义：运行时要求相对路径，并拒绝绝对路径或 `..` 逃逸出 `localFiles.root`。
 
 ### P2：正式命名迁移
 
-- 将 `chat_file_*` 收敛为 `asset_*`，包括 `asset_list`、`asset_send_to_chat`、`asset_media_view`、`asset_media_inspect`。
+- 已新增第一批 `asset_*` 入口，包括 `asset_list`、`asset_send_to_chat`、`asset_media_view`、`asset_media_inspect`；旧 `chat_file_*` 暂作为 legacy 调用入口保留。
 - 将 `local_file_*` 按当前权限语义收敛为 `filesystem_*`；只有先收紧绝对路径和 symlink 边界时，才考虑 `workspace_*`。
-- `asset_handle.capabilities` 中媒体和发送能力也应统一使用 `asset_ref` / `asset_id`，不继续暴露 `media_ids` / `file_ref` 作为模型首选参数。
+- 已收敛 `asset_handle.capabilities` 中媒体和发送能力：模型首选参数统一为 `asset_ref` / `asset_id`，`media_ids` / `file_ref` 只保留在 legacy `chat_file` handle 和旧工具入口里。
 
 ### P3：质量与检索增强
 

@@ -114,6 +114,9 @@ const DEFAULT_VISIBLE_CHAT_FILE_TOOLS = new Set([
   "chat_file_view_media",
   "chat_file_inspect_media",
   "chat_file_send_to_chat",
+  "asset_media_view",
+  "asset_media_inspect",
+  "asset_send_to_chat",
   "asset_document_overview",
   "asset_document_read",
   "asset_document_search"
@@ -178,7 +181,7 @@ export function buildChatFileHandleResult(
     : buildChatFileHandleNextActions(file, capabilities);
   const view = mapWorkspaceFileToView(file);
   const handle = buildChatFileHandle(view, capabilities, nextActions);
-  const assetHandle = buildAssetHandle(view, capabilities, nextActions, visibleToolNames);
+  const assetHandle = buildAssetHandle(view, visibleToolNames);
   return withNextActions({
     ...view,
     asset_handle: assetHandle,
@@ -347,16 +350,13 @@ function buildChatFileHandle(
 
 function buildAssetHandle(
   file: WorkspaceFileView,
-  capabilities: ChatFileHandleCapability[],
-  nextActions: ToolNextAction[],
   visibleToolNames: Set<string>
 ): AssetHandle {
-  const assetCapabilities: AssetHandleCapability[] = [
-    ...capabilities.map((item) => ({ ...item }))
-  ];
+  const assetCapabilities = buildAssetFileCapabilities(file, visibleToolNames);
   if (isDocumentAsset(file)) {
     assetCapabilities.push(...buildDocumentAssetCapabilities(file, visibleToolNames));
   }
+  const nextActions = buildAssetHandleNextActions(assetCapabilities);
   return withNextActions({
     source: "asset" as const,
     id: file.file_id,
@@ -381,6 +381,43 @@ function buildAssetHandle(
       chat_file_path: file.chat_file_path
     }
   }, nextActions);
+}
+
+function buildAssetFileCapabilities(
+  file: WorkspaceFileView,
+  visibleToolNames: Set<string>
+): AssetHandleCapability[] {
+  const selector = { asset_ref: file.file_ref };
+  const capabilities: AssetHandleCapability[] = [];
+  if (MEDIA_VIEW_KINDS.has(file.kind)) {
+    capabilities.push({
+      capability: "view_media",
+      tool: "asset_media_view",
+      reason: "查看该媒体 asset 内容",
+      available: visibleToolNames.has("asset_media_view"),
+      args: selector
+    });
+  }
+
+  if (MEDIA_INSPECT_KINDS.has(file.kind)) {
+    capabilities.push({
+      capability: "inspect_media",
+      tool: "asset_media_inspect",
+      reason: "按具体问题精读该图片 asset 内容",
+      available: visibleToolNames.has("asset_media_inspect"),
+      args: selector,
+      requires: ["question"]
+    });
+  }
+
+  capabilities.push({
+    capability: "send_to_chat",
+    tool: "asset_send_to_chat",
+    reason: "把该 asset 发送到当前聊天",
+    available: visibleToolNames.has("asset_send_to_chat"),
+    args: selector
+  });
+  return capabilities;
 }
 
 function buildDocumentAssetCapabilities(
@@ -469,6 +506,21 @@ function buildChatFileHandleNextActions(
   const send = capabilities.find((item) => item.capability === "send_to_chat" && item.available);
   if (send) {
     actions.push(nextAction(send.tool, send.reason, { file_ref: selector }));
+  }
+  return actions;
+}
+
+function buildAssetHandleNextActions(
+  capabilities: AssetHandleCapability[]
+): ToolNextAction[] {
+  const actions: ToolNextAction[] = [];
+  const viewMedia = capabilities.find((item) => item.capability === "view_media" && item.available);
+  if (viewMedia) {
+    actions.push(nextAction(viewMedia.tool, viewMedia.reason, viewMedia.args));
+  }
+  const send = capabilities.find((item) => item.capability === "send_to_chat" && item.available);
+  if (send) {
+    actions.push(nextAction(send.tool, send.reason, send.args));
   }
   return actions;
 }

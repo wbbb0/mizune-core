@@ -31,6 +31,8 @@ const READ_ONLY_TOOL_RESOURCES: Record<string, readonly string[]> = {
   get_conversation_context: ["conversations:*"],
   view_message: ["messages:*"],
   view_forward_record: ["forwards:*"],
+  asset_list: ["chat_file:*"],
+  asset_media_view: ["chat_file:*"],
   chat_file_list: ["chat_file:*"],
   chat_file_view_media: ["chat_file:*"],
   local_file_view_media: ["local_file:*"],

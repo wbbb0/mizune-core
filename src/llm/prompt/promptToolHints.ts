@@ -10,7 +10,7 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
 
   const lines: string[] = [];
 
-  if (hasAnyTool(visibleToolNames, ["view_message", "view_forward_record", "chat_file_view_media", "local_file_view_media"])) {
+  if (hasAnyTool(visibleToolNames, ["view_message", "view_forward_record", "asset_media_view", "chat_file_view_media", "local_file_view_media"])) {
     lines.push("需要展开消息、转发或图片引用时再调用查看工具；message_id、forward_id、image_id 必须逐字复制。");
   }
 
@@ -20,7 +20,7 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
 
   if (visibleToolNames.has("generate_image_with_comfyui")) {
     lines.push("generate_image_with_comfyui 是异步工具：调用后不会立刻拿到图片，系统会在完成后把对应的 asset_handle 再交还给你；旧的 file_id/file_ref 只作为兼容字段。");
-    lines.push("收到 ComfyUI 完成通知后，你要自己判断下一步：先 chat_file_view_media 看图、直接 chat_file_send_to_chat 发图、继续改 prompt 再生成，或结束本轮。");
+    lines.push("收到 ComfyUI 完成通知后，你要自己判断下一步：先 asset_media_view 看图、直接 asset_send_to_chat 发图、继续改 prompt 再生成，或结束本轮。");
     lines.push("generate_image_with_comfyui 只接受 template、positive_prompt、aspect_ratio；不要自己编造宽高。");
   }
 
@@ -80,7 +80,9 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("当前工具按工具集分批暴露；若发现缺少完成任务所需能力，先 list_available_toolsets，再用 request_toolset 申请补充，避免盲猜工具名。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["chat_file_list", "chat_file_view_media", "chat_file_send_to_chat"])) {
+  if (hasAnyTool(visibleToolNames, ["asset_list", "asset_media_view", "asset_send_to_chat"])) {
+    lines.push("查已登记图片、视频、音频或文件时先 asset_list；发送时优先用 asset_send_to_chat(asset_ref=...)，asset_id 只是主键。");
+  } else if (hasAnyTool(visibleToolNames, ["chat_file_list", "chat_file_view_media", "chat_file_send_to_chat"])) {
     lines.push("查已登记图片、视频、音频或文件时先 chat_file_list；发送时优先用 chat_file_send_to_chat(file_ref=...)，file_id 只是主键。");
   }
 
@@ -89,10 +91,10 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   }
 
   if (hasAnyTool(visibleToolNames, ["list_live_resources", "read_download_resource", "cancel_download_resource"])) {
-    lines.push("后台下载资源用 list_live_resources(type=download) 查找，read_download_resource 查看单个状态；下载完成后结果会提示可用的 chat_file_* 后续工具。");
+    lines.push("后台下载资源用 list_live_resources(type=download) 查找，read_download_resource 查看单个状态；下载完成后结果会提示可用的 asset_* 后续工具。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["chat_file_inspect_media", "local_file_inspect_media"])) {
+  if (hasAnyTool(visibleToolNames, ["asset_media_inspect", "chat_file_inspect_media", "local_file_inspect_media"])) {
     lines.push("需要从图片、截图、表格或界面里精确读取细节时，用图片精读工具按问题查看。");
   }
 

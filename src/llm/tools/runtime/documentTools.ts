@@ -31,7 +31,7 @@ const MAX_SPREADSHEET_ROWS_PER_SHEET = 2000;
 const MAX_SPREADSHEET_CELLS_PER_ROW = 100;
 const MAX_SPREADSHEET_CELL_CHARS = 500;
 const OVERVIEW_PREVIEW_CHARS = 1200;
-const OVERVIEW_SUMMARY_CHARS = 800;
+const OVERVIEW_EXCERPT_CHARS = 800;
 const MAX_HEADING_COUNT = 50;
 const DEFAULT_READ_LINES = 80;
 const MAX_READ_LINES = 120;
@@ -292,7 +292,7 @@ export const assetDocumentToolHandlers: Record<string, ToolHandler> = {
         line_count: lines.length,
         chunk_count: chunks.length,
         preview: compactChars(text.content, OVERVIEW_PREVIEW_CHARS),
-        summary: compactChars(text.content, OVERVIEW_SUMMARY_CHARS),
+        excerpt: compactChars(text.content, OVERVIEW_EXCERPT_CHARS),
         headings: extractHeadings(lines).slice(0, MAX_HEADING_COUNT)
       }
     });
@@ -496,7 +496,7 @@ function compactAssetDocumentResult(ctx: Parameters<ToolResultCompactor>[0]) {
     `${ctx.toolName} 返回文档 ${ctx.resource?.id ?? assetHandle?.assetRef ?? assetHandle?.assetId ?? ""}`,
     `status=${status}`,
     content ? `正文片段=${compactText(content, 220)}` : null,
-    document?.summary ? `摘要=${compactText(String(document.summary), 220)}` : null,
+    document?.excerpt ? `摘录=${compactText(String(document.excerpt), 220)}` : null,
     matches.length > 0 ? `命中 ${matches.length} 条` : null,
     inspectionResults.length > 0 ? `精读片段 ${inspectionResults.length} 个` : null
   ].filter((item): item is string => Boolean(item)).join("；");
@@ -510,7 +510,7 @@ function compactAssetDocumentResult(ctx: Parameters<ToolResultCompactor>[0]) {
           characterCount: document.character_count ?? document.characterCount ?? null,
           lineCount: document.line_count ?? document.lineCount ?? null,
           chunkCount: document.chunk_count ?? document.chunkCount ?? null,
-          summary: document.summary ? compactText(String(document.summary), OVERVIEW_SUMMARY_CHARS) : null,
+          excerpt: document.excerpt ? compactText(String(document.excerpt), OVERVIEW_EXCERPT_CHARS) : null,
           preview: document.preview ? compactText(String(document.preview), OVERVIEW_PREVIEW_CHARS) : null,
           headings: arrayValue(document.headings)?.slice(0, MAX_HEADING_COUNT) ?? []
         }

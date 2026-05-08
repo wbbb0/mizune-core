@@ -32,6 +32,70 @@ export const imageToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
+        name: "asset_media_view",
+        description: "加载已登记媒体 asset，供支持视觉输入的当前模型直接查看。优先传 asset_ref；asset_id 也可用。",
+        parameters: {
+          type: "object",
+          properties: {
+            asset_ref: { type: "string" },
+            asset_id: { type: "string" },
+            asset_refs: {
+              type: "array",
+              items: { type: "string" },
+              minItems: 1,
+              maxItems: MAX_MEDIA_VIEW_PER_CALL
+            },
+            asset_ids: {
+              type: "array",
+              items: { type: "string" },
+              minItems: 1,
+              maxItems: MAX_MEDIA_VIEW_PER_CALL
+            }
+          },
+          additionalProperties: false
+        }
+      }
+    },
+    isEnabled: isDirectMediaViewEnabled,
+    resultObservation: directMediaViewPolicy()
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "asset_media_inspect",
+        description: "调用图片精读模型，按问题读取已登记媒体 asset 中的具体可见信息。优先传 asset_ref；asset_id 也可用。",
+        parameters: {
+          type: "object",
+          properties: {
+            asset_ref: { type: "string" },
+            asset_id: { type: "string" },
+            asset_refs: {
+              type: "array",
+              items: { type: "string" },
+              minItems: 1,
+              maxItems: MAX_MEDIA_VIEW_PER_CALL
+            },
+            asset_ids: {
+              type: "array",
+              items: { type: "string" },
+              minItems: 1,
+              maxItems: MAX_MEDIA_VIEW_PER_CALL
+            },
+            question: { type: "string" }
+          },
+          required: ["question"],
+          additionalProperties: false
+        }
+      }
+    },
+    isEnabled: isMediaInspectionEnabled,
+    resultObservation: mediaInspectionPolicy()
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
         name: "chat_file_view_media",
         description: "加载已登记媒体供支持视觉输入的当前模型直接查看。",
         parameters: {
@@ -129,6 +193,30 @@ function isMediaInspectionEnabled(config: AppConfig): boolean {
 }
 
 export const imageToolHandlers: Record<string, ToolHandler> = {
+  async asset_media_inspect(toolCall, args, context) {
+    const mediaIds = await resolveAssetMediaIds(args, context);
+    if ("error" in mediaIds) {
+      return JSON.stringify(mediaIds);
+    }
+    const passthroughArgs = typeof args === "object" && args ? args as Record<string, unknown> : {};
+    return imageToolHandlers.chat_file_inspect_media!(toolCall, {
+      ...passthroughArgs,
+      media_ids: mediaIds.mediaIds
+    }, context);
+  },
+
+  async asset_media_view(toolCall, args, context) {
+    const mediaIds = await resolveAssetMediaIds(args, context);
+    if ("error" in mediaIds) {
+      return JSON.stringify(mediaIds);
+    }
+    const passthroughArgs = typeof args === "object" && args ? args as Record<string, unknown> : {};
+    return imageToolHandlers.chat_file_view_media!(toolCall, {
+      ...passthroughArgs,
+      media_ids: mediaIds.mediaIds
+    }, context);
+  },
+
   async local_file_inspect_media(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     const question = getStringArg(args, "question");
@@ -477,6 +565,67 @@ function getMediaIdsArg(args: unknown): string[] {
     next.push(normalized);
   }
   return next;
+}
+
+async function resolveAssetMediaIds(
+  args: unknown,
+  context: Parameters<ToolHandler>[2]
+): Promise<{ mediaIds: string[] } | { error: string }> {
+  const selectors = getAssetSelectorsArg(args);
+  if (selectors.length === 0) {
+    return { error: "asset_ref or asset_id is required" };
+  }
+  if (selectors.length > MAX_MEDIA_VIEW_PER_CALL) {
+    return { error: `asset selectors can contain at most ${MAX_MEDIA_VIEW_PER_CALL} items` };
+  }
+  const files = await context.chatFileStore.listFiles();
+  const mediaIds: string[] = [];
+  const missing: string[] = [];
+  for (const selector of selectors) {
+    const file = files.find((item) => item.fileId === selector || item.fileRef === selector);
+    if (!file) {
+      missing.push(selector);
+      continue;
+    }
+    if (file.kind !== "image" && file.kind !== "animated_image") {
+      missing.push(selector);
+      continue;
+    }
+    mediaIds.push(file.fileId);
+  }
+  if (missing.length > 0) {
+    return { error: `unknown or unsupported media asset: ${missing.join(", ")}` };
+  }
+  return { mediaIds };
+}
+
+function getAssetSelectorsArg(args: unknown): string[] {
+  if (typeof args !== "object" || !args) {
+    return [];
+  }
+  const record = args as {
+    asset_ref?: unknown;
+    asset_id?: unknown;
+    asset_refs?: unknown;
+    asset_ids?: unknown;
+  };
+  const values = [
+    record.asset_ref,
+    record.asset_id,
+    ...(Array.isArray(record.asset_refs) ? record.asset_refs : []),
+    ...(Array.isArray(record.asset_ids) ? record.asset_ids : [])
+  ];
+  const seen = new Set<string>();
+  const selectors: string[] = [];
+  for (const value of values) {
+    const normalized = String(value ?? "").trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    selectors.push(normalized);
+  }
+  return selectors;
 }
 
 function buildImageMessage(images: Array<{

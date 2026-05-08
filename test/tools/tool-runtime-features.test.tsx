@@ -1390,15 +1390,30 @@ function createMediaToolVisibilityConfig(options: {
       payload.file.handle_capabilities.map((item: { capability: string }) => item.capability),
       ["view_media", "inspect_media", "send_to_chat"]
     );
+    assert.deepEqual(
+      payload.file.asset_handle.capabilities.map((item: { capability: string; tool: string; args: Record<string, unknown> }) => [item.capability, item.tool, item.args]),
+      [
+        ["view_media", "asset_media_view", { asset_ref: "chat_test0001.png" }],
+        ["inspect_media", "asset_media_inspect", { asset_ref: "chat_test0001.png" }],
+        ["send_to_chat", "asset_send_to_chat", { asset_ref: "chat_test0001.png" }]
+      ]
+    );
+    assert.deepEqual(
+      payload.file.asset_handle.next_actions.map((item: { tool: string; args: Record<string, unknown> }) => [item.tool, item.args]),
+      [
+        ["asset_media_view", { asset_ref: "chat_test0001.png" }],
+        ["asset_send_to_chat", { asset_ref: "chat_test0001.png" }]
+      ]
+    );
   });
 
-  test("chat file handle hints honor visible tool names", async () => {
+  test("file handle hints honor chat and asset visible tool names separately", async () => {
     const result = await chatFileToolHandlers.chat_file_list!(
       { id: "tool_chat_file_list_visible_tools", type: "function", function: { name: "chat_file_list", arguments: "{\"file_ref\":\"chat_test0001.png\"}" } },
       { file_ref: "chat_test0001.png" },
       {
         debugSnapshot: {
-          visibleToolNames: ["chat_file_send_to_chat"]
+          visibleToolNames: ["chat_file_send_to_chat", "asset_send_to_chat"]
         },
         chatFileStore: {
           async getFile() {
@@ -1432,6 +1447,7 @@ function createMediaToolVisibilityConfig(options: {
       payload.file.asset_handle.capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
       [["view_media", false], ["inspect_media", false], ["send_to_chat", true]]
     );
+    assert.equal(payload.file.asset_handle.capabilities.every((item: { args: Record<string, unknown> }) => "media_ids" in item.args || "file_ref" in item.args), false);
     assert.deepEqual(
       payload.next_actions.map((item: { tool: string }) => item.tool),
       ["chat_file_send_to_chat"]
@@ -1478,6 +1494,10 @@ function createMediaToolVisibilityConfig(options: {
     assert.deepEqual(
       payload.next_actions.map((item: { tool: string }) => item.tool),
       ["chat_file_send_to_chat"]
+    );
+    assert.deepEqual(
+      payload.file.asset_handle.next_actions.map((item: { tool: string }) => item.tool),
+      ["asset_send_to_chat"]
     );
   });
 
@@ -1640,6 +1660,8 @@ function createMediaToolVisibilityConfig(options: {
       assert.equal(overview.ok, true);
       assert.equal(overview.asset_handle.asset_id, "file_doc_1");
       assert.ok(overview.document.chunk_count >= 1);
+      assert.match(overview.document.excerpt, /Alpha/);
+      assert.equal("summary" in overview.document, false);
       assert.deepEqual(overview.document.headings.map((item: { text: string }) => item.text), ["Alpha", "Beta"]);
 
       const search = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(

@@ -37,6 +37,8 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "list_current_group_files",
       "download_current_group_file",
       "list_current_group_members",
+      "asset_media_view",
+      "asset_media_inspect",
       "chat_file_view_media",
       "chat_file_inspect_media",
       "end_turn_without_reply"
@@ -220,6 +222,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "发送已登记图片或附件"
     ],
     toolNames: [
+      "asset_list",
       "chat_file_list",
       "list_live_resources",
       "read_download_resource",
@@ -228,6 +231,9 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "asset_document_read",
       "asset_document_search",
       "asset_document_inspect",
+      "asset_media_view",
+      "asset_media_inspect",
+      "asset_send_to_chat",
       "chat_file_view_media",
       "chat_file_inspect_media",
       "chat_file_send_to_chat"

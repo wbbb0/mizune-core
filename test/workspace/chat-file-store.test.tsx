@@ -101,6 +101,35 @@ test("chat file store removes document cache when deleting files", async () => {
   }
 });
 
+test("chat file store rejects absolute or escaping chatFiles.root", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-root-"));
+  try {
+    for (const configuredRoot of ["/tmp/chat-files", "C:\\chat-files", "../outside", "safe/..", "safe/../../outside"]) {
+      assert.throws(() => new ChatFileStore(
+        createTestAppConfig({
+          chatFiles: {
+            enabled: true,
+            root: configuredRoot,
+            maxUploadBytes: 1024 * 1024
+          }
+        }),
+        createSilentLogger(),
+        {
+          rootDir,
+          resolvePath(path: string) {
+            return {
+              sourcePath: path,
+              absolutePath: join(rootDir, path)
+            };
+          }
+        } as any
+      ), /chatFiles\.root must be a relative path/);
+    }
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test("chat file store document cache directory cannot collapse to store root", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-safe-doc-cache-"));
   try {

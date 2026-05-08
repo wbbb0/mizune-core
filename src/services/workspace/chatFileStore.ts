@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, extname, join } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, normalize } from "node:path";
 import { fetch as undiciFetch } from "undici";
 import type { Logger } from "pino";
 import sharp from "sharp";
@@ -11,7 +11,18 @@ import type { ChatFileCaptionStatus, ChatFileKind, ChatFileOrigin, ChatFileRecor
 
 const FILE_INDEX_FILE = "files.json";
 
+function normalizeChatFilesRoot(root: string | undefined): string {
+  const configuredRoot = String(root ?? "").trim() || "chat-files";
+  const normalized = normalize(configuredRoot).replaceAll("\\", "/");
+  const hasParentSegment = configuredRoot.split(/[\\/]+/).some((part) => part === "..");
+  if (isAbsolute(configuredRoot) || /^[a-zA-Z]:[\\/]/.test(configuredRoot) || hasParentSegment) {
+    throw new Error("chatFiles.root must be a relative path inside localFiles.root");
+  }
+  return normalized === "." ? "chat-files" : normalized;
+}
+
 export class ChatFileStore {
+  private readonly storeRootPath: string;
   private readonly storeRootDir: string;
   private readonly fileIndexPath: string;
   private readonly mediaDir: string;
@@ -22,8 +33,8 @@ export class ChatFileStore {
     private readonly logger: Logger,
     private readonly localFileService: LocalFileService
   ) {
-    const configuredRoot = String(this.config.chatFiles.root ?? "").trim() || "chat-files";
-    this.storeRootDir = join(this.localFileService.rootDir, configuredRoot);
+    this.storeRootPath = normalizeChatFilesRoot(this.config.chatFiles.root);
+    this.storeRootDir = join(this.localFileService.rootDir, this.storeRootPath);
     this.fileIndexPath = join(this.storeRootDir, FILE_INDEX_FILE);
     this.mediaDir = join(this.storeRootDir, "media");
   }
@@ -75,7 +86,7 @@ export class ChatFileStore {
     const ext = extname(sourceName) || extensionFromMimeType(mimeType) || defaultExtension(kind);
     const fileId = buildStoredFileId();
     const fileRef = buildStoredFileRef(fileId, input.origin, kind, ext);
-    const relativePath = join(String(this.config.chatFiles.root ?? "").trim() || "chat-files", "media", fileRef);
+    const relativePath = join(this.storeRootPath, "media", fileRef);
     const absolutePath = this.localFileService.resolvePath(relativePath).absolutePath;
     await mkdir(dirname(absolutePath), { recursive: true });
     await writeFile(absolutePath, input.buffer);
@@ -146,7 +157,7 @@ export class ChatFileStore {
     const ext = extname(input.sourceName) || extensionFromMimeType(input.mimeType) || defaultExtension(input.kind);
     const fileId = buildStoredFileId();
     const fileRef = buildStoredFileRef(fileId, input.origin, input.kind, ext);
-    const relativePath = join(String(this.config.chatFiles.root ?? "").trim() || "chat-files", "media", fileRef);
+    const relativePath = join(this.storeRootPath, "media", fileRef);
     const absolutePath = this.localFileService.resolvePath(relativePath).absolutePath;
     const fileStat = await stat(input.sourcePath);
     await mkdir(dirname(absolutePath), { recursive: true });

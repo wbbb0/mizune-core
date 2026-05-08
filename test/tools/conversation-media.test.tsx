@@ -86,6 +86,89 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     );
   });
 
+  test("asset_media_view resolves asset_ref and exposes asset handle selectors", async () => {
+    const result = await imageToolHandlers.asset_media_view!(
+      createFunctionToolCall("asset_media_view", "tool_asset_media_view_1"),
+      { asset_ref: "chat_test0001.png" },
+      {
+        config: createForwardFeatureConfig(),
+        audioStore: {
+          async getTranscriptionMap() {
+            return new Map();
+          },
+          async getMany() {
+            return [];
+          }
+        } as any,
+        chatFileStore: {
+          async listFiles() {
+            return [{
+              fileId: "file_test_1",
+              fileRef: "chat_test0001.png",
+              kind: "image",
+              origin: "chat_message",
+              chatFilePath: "workspace/media/file_test_1.png",
+              sourceName: "a.png",
+              mimeType: "image/png",
+              sizeBytes: 1,
+              createdAtMs: Date.now(),
+              sourceContext: {},
+              caption: null
+            }];
+          },
+          async getMany(fileIds: string[]) {
+            assert.deepEqual(fileIds, ["file_test_1"]);
+            return [{
+              fileId: "file_test_1",
+              fileRef: "chat_test0001.png",
+              kind: "image",
+              origin: "chat_message",
+              chatFilePath: "workspace/media/file_test_1.png",
+              sourceName: "a.png",
+              mimeType: "image/png",
+              sizeBytes: 1,
+              createdAtMs: Date.now(),
+              sourceContext: {},
+              caption: null
+            }];
+          }
+        } as any,
+        mediaVisionService: {
+          async prepareFileForModel() {
+            return {
+              fileId: "file_test_1",
+              inputUrl: "https://example.com/a.png",
+              kind: "image",
+              transport: "data_url",
+              animated: false,
+              durationMs: null,
+              sampledFrameCount: null
+            };
+          }
+        } as any,
+        mediaCaptionService: {
+          async getCaptionMap() {
+            return new Map();
+          }
+        } as any
+      } as any
+    );
+
+    if (typeof result === "string") {
+      throw new Error("expected structured multimodal result");
+    }
+    const payload = JSON.parse(result.content);
+    assert.equal(payload.asset_handles[0].asset_ref, "chat_test0001.png");
+    assert.deepEqual(
+      payload.asset_handles[0].capabilities.map((item: { tool: string; args: Record<string, unknown> }) => [item.tool, item.args]),
+      [
+        ["asset_media_view", { asset_ref: "chat_test0001.png" }],
+        ["asset_media_inspect", { asset_ref: "chat_test0001.png" }],
+        ["asset_send_to_chat", { asset_ref: "chat_test0001.png" }]
+      ]
+    );
+  });
+
   test("chat_file_view_media rejects requests above the hard limit", async () => {
     const result = await imageToolHandlers.chat_file_view_media!(
       createFunctionToolCall("chat_file_view_media", "tool_2"),

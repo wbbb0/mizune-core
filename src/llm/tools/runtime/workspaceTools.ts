@@ -248,6 +248,49 @@ export const chatFileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
+        name: "asset_list",
+        description: "列出或查找已登记 asset。优先传 asset_ref 或 asset_id 精确查找；也可用 query 按引用、ID、来源文件名、路径或 caption 模糊过滤，再按 kind/origin 缩小范围。默认不列出原始 chat_message 附件，除非 origin=chat_message。",
+        parameters: {
+          type: "object",
+          properties: {
+            asset_ref: { type: "string" },
+            asset_id: { type: "string" },
+            query: { type: "string" },
+            kind: { type: "string", enum: ["image", "animated_image", "video", "audio", "file"] },
+            origin: { type: "string", enum: ["chat_message", "browser_download", "browser_screenshot", "comfy_generated", "group_file_download", "local_file_import", "user_upload"] },
+            limit: { type: "integer", minimum: 1, maximum: 100 }
+          },
+          additionalProperties: false
+        }
+      }
+    },
+    isEnabled: isChatFileToolEnabled,
+    resultObservation: chatFileListPolicy()
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "asset_send_to_chat",
+        description: "发送已登记 asset 到当前聊天。优先用 asset_ref；不知道准确引用时先 asset_list query=... 查找。图片/动图直接发送，不能附 text；其他文件以文本摘要发送，可附 text。",
+        parameters: {
+          type: "object",
+          properties: {
+            asset_ref: { type: "string" },
+            asset_id: { type: "string" },
+            text: { type: "string" }
+          },
+          additionalProperties: false
+        }
+      }
+    },
+    isEnabled: isChatFileToolEnabled,
+    resultObservation: fileSendPolicy()
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
         name: "chat_file_list",
         description: "列出或查找已登记的 chat file。优先传 file_ref 或 file_id 精确查找；也可用 query 按 file_ref、file_id、source_name、路径或 caption 模糊过滤，再按 kind/origin 缩小范围。默认不列出原始 chat_message 附件，除非 origin=chat_message。",
         parameters: {
@@ -395,6 +438,14 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
 };
 
 export const chatFileToolHandlers: Record<string, ToolHandler> = {
+  async asset_list(toolCall, args, context) {
+    return chatFileToolHandlers.chat_file_list!(toolCall, mapAssetArgsToChatFileArgs(args), context);
+  },
+
+  async asset_send_to_chat(toolCall, args, context) {
+    return chatFileToolHandlers.chat_file_send_to_chat!(toolCall, mapAssetArgsToChatFileArgs(args), context);
+  },
+
   async chat_file_list(_toolCall, args, context) {
     const selector = getStringArg(args, "file_ref") || getStringArg(args, "file_id");
     if (selector) {
@@ -446,6 +497,17 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
     return sendChatFileToChat(context, file, getStringArg(args, "text"));
   }
 };
+
+function mapAssetArgsToChatFileArgs(args: unknown): Record<string, unknown> {
+  const record = typeof args === "object" && args
+    ? args as Record<string, unknown>
+    : {};
+  return {
+    ...record,
+    ...(record.asset_ref !== undefined ? { file_ref: record.asset_ref } : {}),
+    ...(record.asset_id !== undefined ? { file_id: record.asset_id } : {})
+  };
+}
 
 function localFileReadNextActions(result: {
   path: string;
