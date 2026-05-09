@@ -617,8 +617,46 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     personaStore: {
       async get() {
         return { prompt: "persona" };
+      },
+      async write() {
       }
     } as unknown as InternalApiDeps["personaStore"],
+    rpProfileStore: {
+      async get() {
+        return {};
+      },
+      async write() {
+      }
+    } as unknown as InternalApiDeps["rpProfileStore"],
+    scenarioProfileStore: {
+      async get() {
+        return {};
+      },
+      async write() {
+      }
+    } as unknown as InternalApiDeps["scenarioProfileStore"],
+    globalProfileReadinessStore: {
+      async get() {
+        return {
+          persona: "uninitialized",
+          rp: "uninitialized",
+          scenario: "uninitialized",
+          updatedAt: 1
+        };
+      },
+      async write(value: unknown) {
+        return value;
+      }
+    } as unknown as InternalApiDeps["globalProfileReadinessStore"],
+    setupStore: {
+      async get() {
+        return {
+          state: "ready",
+          ownerPromptSentAt: null,
+          updatedAt: 1
+        };
+      }
+    } as unknown as InternalApiDeps["setupStore"],
     globalRuleStore: {
       async getAll() {
         return [];

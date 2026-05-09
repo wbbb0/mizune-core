@@ -19,13 +19,9 @@ import {
 import { deepMergeAllReplaceArrays } from "#data/schema/helpers.ts";
 import { buildUiTreeFromMeta } from "#data/schema/ui.ts";
 import type { BaseSchema, Infer } from "#data/schema/index.ts";
-import { rpProfileSchema } from "#modes/rpAssistant/profileSchema.ts";
-import { scenarioProfileSchema } from "#modes/scenarioHost/profileSchema.ts";
 import { globalRuleFileSchema } from "#memory/globalRuleEntry.ts";
 import { userStoreSchema } from "#identity/userSchema.ts";
 import { requestFileSchema } from "#requests/requestSchema.ts";
-import { setupStateSchema } from "#identity/setupStateSchema.ts";
-import { globalProfileReadinessSchema } from "#identity/globalProfileReadinessSchema.ts";
 import { membershipFileSchema } from "#identity/groupMembershipSchema.ts";
 import { runtimeResourceFileSchema } from "#runtime/resources/runtimeResourceSchema.ts";
 import { scheduledJobFileSchema } from "#runtime/scheduler/jobSchema.ts";
@@ -383,12 +379,8 @@ function buildEditorResourceMap(input: {
   ];
   const dataDir = input.config.dataDir;
   const dataResources: EditorResource<any>[] = [
-    single("rp_profile", "RP 全局资料", "data", rpProfileSchema, `${dataDir}/rp-profile.json`),
-    single("scenario_profile", "Scenario 全局资料", "data", scenarioProfileSchema, `${dataDir}/scenario-profile.json`),
-    single("global_profile_readiness", "全局资料就绪状态", "data", globalProfileReadinessSchema, `${dataDir}/global-profile-readiness.json`),
     single("users", "用户列表", "data", userStoreSchema, `${dataDir}/users.json`),
     single("requests", "待处理请求", "data", requestFileSchema, `${dataDir}/pending-requests.json`),
-    single("setup_state", "Owner 初始化状态", "data", setupStateSchema, `${dataDir}/setup-state.json`),
     single("group_membership", "群成员缓存", "data", membershipFileSchema, `${dataDir}/group-membership-cache.json`),
     single("live_resources", "运行时资源", "data", runtimeResourceFileSchema, `${dataDir}/live-resources.json`, {
       editable: false

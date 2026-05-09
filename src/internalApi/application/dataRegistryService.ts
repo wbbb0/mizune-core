@@ -2,11 +2,19 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { AppConfig } from "#config/config.ts";
 import { DataRegistry, type DataResourceDefinition } from "#data/registry/index.ts";
-import { s } from "#data/schema/index.ts";
+import { s, type BaseSchema } from "#data/schema/index.ts";
 import { exportSchemaMeta } from "#data/schema/composites.ts";
 import { readStructuredFileRaw } from "#data/schema/file.ts";
 import { buildUiTreeFromMeta } from "#data/schema/ui.ts";
+import { globalProfileReadinessSchema } from "#identity/globalProfileReadinessSchema.ts";
+import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
+import { setupStateSchema } from "#identity/setupStateSchema.ts";
+import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
+import { rpProfileSchema } from "#modes/rpAssistant/profileSchema.ts";
+import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
+import { scenarioProfileSchema } from "#modes/scenarioHost/profileSchema.ts";
+import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import { personaSchema } from "#persona/personaSchema.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
 
@@ -26,6 +34,10 @@ export interface DataRegistryService {
 export function createDataRegistryService(input: {
   config: Pick<AppConfig, "dataDir">;
   personaStore: Pick<PersonaStore, "get" | "write">;
+  rpProfileStore: Pick<RpProfileStore, "get" | "write">;
+  scenarioProfileStore: Pick<ScenarioProfileStore, "get" | "write">;
+  globalProfileReadinessStore: Pick<GlobalProfileReadinessStore, "get" | "write">;
+  setupStore: Pick<SetupStateStore, "get">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
 }): DataRegistryService {
   const registry = new DataRegistry();
@@ -38,11 +50,60 @@ export function createDataRegistryService(input: {
 function createInitialDataResourceDefinitions(input: {
   config: Pick<AppConfig, "dataDir">;
   personaStore: Pick<PersonaStore, "get" | "write">;
+  rpProfileStore: Pick<RpProfileStore, "get" | "write">;
+  scenarioProfileStore: Pick<ScenarioProfileStore, "get" | "write">;
+  globalProfileReadinessStore: Pick<GlobalProfileReadinessStore, "get" | "write">;
+  setupStore: Pick<SetupStateStore, "get">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
 }): DataResourceDefinition[] {
   const dataDir = input.config.dataDir;
   return [
+    singletonSqliteResource({
+      key: "global_profile_readiness",
+      title: "全局资料就绪状态",
+      tableGroup: "state.global_profile_readiness",
+      tables: ["global_profile_readiness"],
+      schema: globalProfileReadinessSchema,
+      editable: true,
+      get: () => input.globalProfileReadinessStore.get(),
+      write: (value) => input.globalProfileReadinessStore.write(value)
+    }),
     createPersonaResource(input.personaStore),
+    singletonSqliteResource({
+      key: "rp_profile",
+      title: "RP 全局资料",
+      tableGroup: "state.rp_profile",
+      tables: ["rp_profile"],
+      schema: rpProfileSchema,
+      editable: true,
+      get: () => input.rpProfileStore.get(),
+      write: async (value) => {
+        await input.rpProfileStore.write(value);
+        return input.rpProfileStore.get();
+      }
+    }),
+    singletonSqliteResource({
+      key: "scenario_profile",
+      title: "Scenario 全局资料",
+      tableGroup: "state.scenario_profile",
+      tables: ["scenario_profile"],
+      schema: scenarioProfileSchema,
+      editable: true,
+      get: () => input.scenarioProfileStore.get(),
+      write: async (value) => {
+        await input.scenarioProfileStore.write(value);
+        return input.scenarioProfileStore.get();
+      }
+    }),
+    singletonSqliteResource({
+      key: "setup_state",
+      title: "Owner 初始化状态",
+      tableGroup: "state.setup_state",
+      tables: ["setup_state"],
+      schema: setupStateSchema,
+      editable: false,
+      get: () => input.setupStore.get()
+    }),
     createWhitelistResource(input.whitelistStore),
     fileResource({
       key: "audio_files",
@@ -69,6 +130,44 @@ function createInitialDataResourceDefinitions(input: {
       durability: "derived"
     })
   ];
+}
+
+function singletonSqliteResource<TValue>(input: {
+  key: string;
+  title: string;
+  tableGroup: string;
+  tables: string[];
+  schema: BaseSchema<TValue>;
+  editable: boolean;
+  get: () => Promise<TValue>;
+  write?: (value: TValue) => Promise<unknown>;
+}): DataResourceDefinition {
+  const schemaMeta = exportSchemaMeta(input.schema);
+  return {
+    key: input.key,
+    title: input.title,
+    shape: "singleton",
+    editable: input.editable,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "state",
+      tableGroup: input.tableGroup,
+      tables: input.tables
+    },
+    schemaMeta,
+    uiTree: buildUiTreeFromMeta(schemaMeta),
+    adapter: {
+      get: async () => input.get(),
+      ...(input.editable && input.write ? {
+        patch: async (value: unknown) => {
+          const parsed = input.schema.parse(value);
+          await input.write!(parsed);
+          return input.get();
+        }
+      } : {})
+    }
+  };
 }
 
 function createPersonaResource(personaStore: Pick<PersonaStore, "get" | "write">): DataResourceDefinition {

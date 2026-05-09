@@ -1,9 +1,6 @@
-import { stat } from "node:fs/promises";
-import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
-import { FileSchemaStore } from "#data/fileSchemaStore.ts";
-import { rotateBackup } from "#utils/rotatingBackup.ts";
+import { StateDatabase } from "#data/state/stateDatabase.ts";
 import {
   createEmptyRpProfile,
   describeMissingRpProfileFields,
@@ -15,24 +12,16 @@ import {
 } from "./profileSchema.ts";
 
 export class RpProfileStore {
-  private readonly filePath: string;
-  private readonly store: FileSchemaStore<typeof rpProfileSchema>;
-
   constructor(
     dataDir: string,
-    private readonly config: Pick<AppConfig, "backup">,
-    private readonly logger: Logger
+    _config: Pick<AppConfig, "backup">,
+    private readonly logger: Logger,
+    private readonly stateDatabase = new StateDatabase(dataDir, logger)
   ) {
-    this.filePath = join(dataDir, "rp-profile.json");
-    this.store = new FileSchemaStore({
-      filePath: this.filePath,
-      schema: rpProfileSchema,
-      logger,
-      loadErrorEvent: "rp_profile_reset_to_empty"
-    });
   }
 
   async init(): Promise<void> {
+    await this.stateDatabase.init();
     await this.get();
   }
 
@@ -52,23 +41,79 @@ export class RpProfileStore {
   }
 
   async get(): Promise<RpProfile> {
-    try {
-      const current = await this.store.read();
-      if (current) {
-        return current;
-      }
-    } catch (error: unknown) {
-      this.logger.warn({ error }, "rp_profile_reset_to_empty");
+    await this.stateDatabase.init();
+    const row = this.stateDatabase.getDb().prepare(`
+      SELECT
+        self_positioning AS selfPositioning,
+        social_role AS socialRole,
+        life_context AS lifeContext,
+        physical_presence AS physicalPresence,
+        bond_to_user AS bondToUser,
+        closeness_pattern AS closenessPattern,
+        interaction_pattern AS interactionPattern,
+        reality_contract AS realityContract,
+        continuity_facts AS continuityFacts,
+        hard_limits AS hardLimits
+      FROM rp_profile
+      WHERE id = 'global'
+    `).get() as RpProfile | undefined;
+    if (row) {
+      return rpProfileSchema.parse(row);
     }
     const initial = createEmptyRpProfile();
     await this.write(initial);
+    this.logger.info("rp_profile_initialized_for_setup");
     return initial;
   }
 
   async write(profile: RpProfile): Promise<void> {
+    await this.stateDatabase.init();
     const validated = rpProfileSchema.parse(profile);
-    await this.createBackupIfNeeded();
-    await this.store.write(validated);
+    this.stateDatabase.getDb().prepare(`
+      INSERT INTO rp_profile (
+        id,
+        self_positioning,
+        social_role,
+        life_context,
+        physical_presence,
+        bond_to_user,
+        closeness_pattern,
+        interaction_pattern,
+        reality_contract,
+        continuity_facts,
+        hard_limits,
+        updated_at_ms
+      )
+      VALUES (
+        'global',
+        @selfPositioning,
+        @socialRole,
+        @lifeContext,
+        @physicalPresence,
+        @bondToUser,
+        @closenessPattern,
+        @interactionPattern,
+        @realityContract,
+        @continuityFacts,
+        @hardLimits,
+        @updatedAtMs
+      )
+      ON CONFLICT(id) DO UPDATE SET
+        self_positioning = excluded.self_positioning,
+        social_role = excluded.social_role,
+        life_context = excluded.life_context,
+        physical_presence = excluded.physical_presence,
+        bond_to_user = excluded.bond_to_user,
+        closeness_pattern = excluded.closeness_pattern,
+        interaction_pattern = excluded.interaction_pattern,
+        reality_contract = excluded.reality_contract,
+        continuity_facts = excluded.continuity_facts,
+        hard_limits = excluded.hard_limits,
+        updated_at_ms = excluded.updated_at_ms
+    `).run({
+      ...validated,
+      updatedAtMs: Date.now()
+    });
   }
 
   async patch(patch: Partial<RpProfile>): Promise<RpProfile> {
@@ -79,23 +124,5 @@ export class RpProfileStore {
     });
     await this.write(next);
     return next;
-  }
-
-  private async createBackupIfNeeded(): Promise<void> {
-    try {
-      await stat(this.filePath);
-    } catch (error: unknown) {
-      const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code === "ENOENT") {
-        return;
-      }
-      throw error;
-    }
-
-    await rotateBackup({
-      sourceFilePath: this.filePath,
-      limit: this.config.backup.profileRotateLimit,
-      logger: this.logger
-    });
   }
 }

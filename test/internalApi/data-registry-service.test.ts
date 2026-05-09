@@ -4,10 +4,16 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createDataRegistryService } from "../../src/internalApi/application/dataRegistryService.ts";
+import { createEmptyGlobalProfileReadiness } from "../../src/identity/globalProfileReadinessSchema.ts";
+import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
+import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 
 function createRegistryService(dataDir: string) {
   const persona = createEmptyPersona();
+  const rpProfile = createEmptyRpProfile();
+  const scenarioProfile = createEmptyScenarioProfile();
+  const globalProfileReadiness = createEmptyGlobalProfileReadiness();
   const whitelistRows: Array<{ targetType: "user" | "group"; targetId: string; createdAtMs: number }> = [];
   return createDataRegistryService({
     config: { dataDir },
@@ -17,6 +23,40 @@ function createRegistryService(dataDir: string) {
       },
       async write(nextPersona) {
         Object.assign(persona, nextPersona);
+      }
+    },
+    rpProfileStore: {
+      async get() {
+        return rpProfile;
+      },
+      async write(nextProfile) {
+        Object.assign(rpProfile, nextProfile);
+      }
+    },
+    scenarioProfileStore: {
+      async get() {
+        return scenarioProfile;
+      },
+      async write(nextProfile) {
+        Object.assign(scenarioProfile, nextProfile);
+      }
+    },
+    globalProfileReadinessStore: {
+      async get() {
+        return globalProfileReadiness;
+      },
+      async write(nextReadiness) {
+        Object.assign(globalProfileReadiness, nextReadiness);
+        return globalProfileReadiness;
+      }
+    },
+    setupStore: {
+      async get() {
+        return {
+          state: "ready" as const,
+          ownerPromptSentAt: null,
+          updatedAt: 1
+        };
       }
     },
     whitelistStore: {
@@ -51,9 +91,13 @@ test("DataRegistryService exposes initial file and directory resources", async (
     const listed = await service.listResources();
     assert.deepEqual(listed.resources.map((resource) => resource.key), [
       "audio_files",
+      "global_profile_readiness",
       "image_files",
       "persona",
+      "rp_profile",
+      "scenario_profile",
       "sessions",
+      "setup_state",
       "whitelist",
       "workspace_files"
     ]);
@@ -154,6 +198,68 @@ test("DataRegistryService exposes editable persona singleton and whitelist colle
 
     await service.deleteRow("whitelist", created.row.id);
     assert.equal((await service.listRows("whitelist")).total, 0);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("DataRegistryService exposes migrated profile and setup singleton resources", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-data-registry-test-"));
+  try {
+    const service = createRegistryService(dataDir);
+
+    const rpProfile = await service.getResource("rp_profile") as {
+      resource: {
+        shape: string;
+        editable: boolean;
+        uiTree?: unknown;
+      };
+    };
+    assert.equal(rpProfile.resource.shape, "singleton");
+    assert.equal(rpProfile.resource.editable, true);
+    assert.ok(rpProfile.resource.uiTree);
+
+    await service.patchSingleton("rp_profile", {
+      selfPositioning: "偏克制",
+      socialRole: "搭档",
+      lifeContext: "夜间工作",
+      physicalPresence: "安静",
+      bondToUser: "长期关系",
+      closenessPattern: "慢热",
+      interactionPattern: "直接",
+      realityContract: "现实自处",
+      continuityFacts: "",
+      hardLimits: "不跳出身份"
+    });
+    assert.equal((
+      await service.getResource("rp_profile") as { resource: { value: { hardLimits: string } } }
+    ).resource.value.hardLimits, "不跳出身份");
+
+    const scenario = await service.getResource("scenario_profile") as {
+      resource: {
+        editable: boolean;
+        value: { theme: string };
+      };
+    };
+    assert.equal(scenario.resource.editable, true);
+    assert.equal(scenario.resource.value.theme, "");
+
+    const readiness = await service.patchSingleton("global_profile_readiness", {
+      persona: "ready",
+      rp: "ready",
+      scenario: "uninitialized",
+      updatedAt: 2
+    }) as { value: { rp: string } };
+    assert.equal(readiness.value.rp, "ready");
+
+    const setupState = await service.getResource("setup_state") as {
+      resource: {
+        editable: boolean;
+        value: { state: string };
+      };
+    };
+    assert.equal(setupState.resource.editable, false);
+    assert.equal(setupState.resource.value.state, "ready");
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }

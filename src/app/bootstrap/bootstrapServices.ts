@@ -114,10 +114,10 @@ export function createBootstrapServices(
   const globalRuleStore = new GlobalRuleStore(dataDir, config, logger);
   const toolsetRuleStore = new ToolsetRuleStore(dataDir, config, logger);
   const scenarioHostStateStore = new ScenarioHostStateStore(dataDir, config, logger);
-  const rpProfileStore = new RpProfileStore(dataDir, config, logger);
-  const scenarioProfileStore = new ScenarioProfileStore(dataDir, config, logger);
-  const setupStore = new SetupStateStore(dataDir, config, userIdentityStore, logger);
-  const globalProfileReadinessStore = new GlobalProfileReadinessStore(dataDir, config, logger);
+  const rpProfileStore = new RpProfileStore(dataDir, config, logger, stateDatabase);
+  const scenarioProfileStore = new ScenarioProfileStore(dataDir, config, logger, stateDatabase);
+  const setupStore = new SetupStateStore(dataDir, config, userIdentityStore, logger, stateDatabase);
+  const globalProfileReadinessStore = new GlobalProfileReadinessStore(dataDir, config, logger, stateDatabase);
   const searchService = new SearchService(config, logger);
   const browserService = new BrowserService(createBrowserServiceDeps({
     config,

@@ -69,8 +69,11 @@
   - 存放 `toolset_rules`。
 - `state/state.sqlite`
   - `persona` 表存放结构化 `persona` 字段。
-- `rp-profile.json`
-  - 存放结构化 `rpProfile` 字段。
+  - `rp_profile` 表存放结构化 `rpProfile` 字段。
+  - `scenario_profile` 表存放结构化 `scenarioProfile` 字段。
+  - `global_profile_readiness` 表存放 persona / RP / Scenario 全局资料准备度。
+  - `setup_state` 表存放首次配置流程状态。
+  - `whitelist_entries` 表存放白名单条目。
 
 显式迁移入口：
 
