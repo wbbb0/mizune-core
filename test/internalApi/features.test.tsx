@@ -397,12 +397,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
     const app = await createInternalApiApp(deps);
     try {
       await mkdir(deps.config.dataDir, { recursive: true });
-      const whitelistPath = `${deps.config.dataDir}/whitelist.json`;
       const groupMembershipPath = `${deps.config.dataDir}/group-membership-cache.json`;
-      await writeFile(whitelistPath, JSON.stringify({
-        users: ["10001"],
-        groups: ["20001"]
-      }, null, 2), "utf8");
       await writeFile(groupMembershipPath, JSON.stringify({
         version: 1,
         groups: {
@@ -415,10 +410,6 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         }
       }, null, 2), "utf8");
 
-      const whitelistResponse = await app.inject({
-        method: "GET",
-        url: "/api/editors/whitelist"
-      });
       const usersResponse = await app.inject({
         method: "GET",
         url: "/api/editors/users"
@@ -435,15 +426,6 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         method: "GET",
         url: "/api/editors/toolset_rules"
       });
-
-      assert.equal(whitelistResponse.statusCode, 200);
-      assert.equal(whitelistResponse.json().editor.kind, "single");
-      assert.equal(whitelistResponse.json().editor.file.path, whitelistPath);
-      assert.deepEqual(whitelistResponse.json().editor.currentValue.users, ["10001"]);
-      assert.equal(whitelistResponse.json().editor.referenceValue, undefined);
-      assert.deepEqual(whitelistResponse.json().editor.effectiveValue.users, ["10001"]);
-      assert.equal(whitelistResponse.json().editor.schemaMeta.title, "白名单");
-      assert.equal(whitelistResponse.json().editor.schemaMeta.options?.[0]?.title, "当前白名单");
 
       assert.equal(usersResponse.statusCode, 200);
       assert.equal(usersResponse.json().editor.kind, "single");

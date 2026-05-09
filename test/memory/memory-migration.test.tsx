@@ -47,7 +47,6 @@ async function readJson(filePath: string) {
       const report = await migrateMemoryDataDir({ dataDir });
 
       const users = await readJson(join(dataDir, "users.json")) as Array<Record<string, unknown>>;
-      const persona = await readJson(join(dataDir, "persona.json")) as Record<string, unknown>;
       const globalRules = await readJson(join(dataDir, "global-rules.json")) as Array<Record<string, unknown>>;
       const toolsetRules = await readJson(join(dataDir, "toolset-rules.json")) as Array<Record<string, unknown>>;
       const reportFile = await readJson(join(dataDir, "memory-migration-report.json")) as Record<string, unknown>;
@@ -58,11 +57,8 @@ async function readJson(filePath: string) {
       assert.match(String(users[0]?.profileSummary ?? ""), /做事很快；经常先给结论/);
       assert.equal((users[0]?.memories as Array<unknown>).length, 2);
 
-      assert.equal(persona.temperament, "可靠搭档");
-      assert.equal(persona.speakingStyle, "直接一点");
-      assert.equal(persona.globalTraits, "");
-
       assert.ok(globalRules.length >= 2);
+      assert.ok(!report.filesWritten.some((filePath) => filePath.endsWith("persona.json")));
       assert.equal(toolsetRules.length, 1);
       assert.ok(report.duplicates.length >= 2);
       assert.ok(report.scopeFindings.length >= 1);

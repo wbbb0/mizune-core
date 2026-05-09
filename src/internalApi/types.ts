@@ -45,6 +45,10 @@ import {
   type DataBrowserService
 } from "./application/dataBrowserService.ts";
 import {
+  createDataRegistryService,
+  type DataRegistryService
+} from "./application/dataRegistryService.ts";
+import {
   createLocalFileAdminService,
   type LocalFileAdminService
 } from "./application/localFileAdminService.ts";
@@ -228,6 +232,7 @@ export interface InternalApiServices {
     };
     editor: EditorService;
     dataBrowser: DataBrowserService;
+    dataRegistry: DataRegistryService;
     localFileAdmin: LocalFileAdminService;
     operations: InternalApiOperationsDeps;
     workspace: InternalApiWorkspaceDeps;
@@ -275,6 +280,11 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       }),
       dataBrowser: createDataBrowserService({
         config: deps.config
+      }),
+      dataRegistry: createDataRegistryService({
+        config: deps.config,
+        personaStore: deps.personaStore,
+        whitelistStore: deps.whitelistStore
       }),
       localFileAdmin: createLocalFileAdminService({
         localFileService: deps.localFileService,

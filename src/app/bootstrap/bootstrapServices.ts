@@ -2,6 +2,7 @@ import { ConversationAccessService } from "#identity/conversationAccessService.t
 import { ContextEmbeddingService } from "#context/contextEmbeddingService.ts";
 import { ContextRetrievalService } from "#context/contextRetrievalService.ts";
 import { ContextStore } from "#context/contextStore.ts";
+import { StateDatabase } from "#data/state/stateDatabase.ts";
 import { GroupMembershipStore } from "#identity/groupMembershipStore.ts";
 import { NpcDirectory } from "#identity/npcDirectory.ts";
 import { WhitelistStore } from "#identity/whitelistStore.ts";
@@ -61,7 +62,8 @@ export function createBootstrapServices(
   } = {}
 ): AppBootstrapServices {
   const { config, logger, dataDir } = context;
-  const whitelistStore = new WhitelistStore(dataDir, logger);
+  const stateDatabase = new StateDatabase(dataDir, logger);
+  const whitelistStore = new WhitelistStore(dataDir, logger, stateDatabase);
   const userIdentityStore = new UserIdentityStore(dataDir, logger);
   const npcDirectory = new NpcDirectory();
   const router = new EventRouter(
@@ -108,7 +110,7 @@ export function createBootstrapServices(
   const contextStore = new ContextStore(dataDir, config, logger);
   const contextEmbeddingService = new ContextEmbeddingService(config, llmClient, logger);
   const contextRetrievalService = new ContextRetrievalService(config, contextStore, contextEmbeddingService, logger);
-  const personaStore = new PersonaStore(dataDir, config, logger);
+  const personaStore = new PersonaStore(dataDir, config, logger, stateDatabase);
   const globalRuleStore = new GlobalRuleStore(dataDir, config, logger);
   const toolsetRuleStore = new ToolsetRuleStore(dataDir, config, logger);
   const scenarioHostStateStore = new ScenarioHostStateStore(dataDir, config, logger);

@@ -12,6 +12,11 @@ const {
   resource,
   model,
   itemDetail,
+  resourceRows,
+  resourceDirectoryItems,
+  registryDraftValue,
+  registryStoredValue,
+  registryRowDraftValue,
   contextItems,
   contextTotal,
   contextFilters,
@@ -28,11 +33,15 @@ const {
   storedDraftValue,
   effectiveValue,
   canSubmit,
+  registryCanSubmit,
   formattedJson,
   formattedItemJson,
+  formattedRowsJson,
   refreshContextItems,
   openContextFiltersDialog,
   deleteContextItem,
+  createRegistryRow,
+  deleteRegistryRow,
   editContextItem,
   toggleContextItemPinned,
   selectDirectoryItem,
@@ -40,7 +49,10 @@ const {
   reloadFromServer,
   validate,
   save,
+  saveRegistrySingleton,
   updateDraft,
+  updateRegistryDraft,
+  updateRegistryRowDraft,
   formatSize,
   formatTime,
   formatContextMeta
@@ -201,24 +213,83 @@ const {
       </div>
     </template>
 
-    <template v-else-if="selectedResource?.source === 'browser' && resource">
+    <template v-else-if="selectedResource?.source === 'registry' && resource">
       <WorkbenchAreaHeader class="gap-2.5 overflow-hidden px-4" :uppercase="false">
-        <span class="truncate font-mono text-small text-text-subtle">{{ resource.path }}</span>
+        <span class="rounded-full bg-surface-muted px-1.5 text-small text-text-subtle">{{ resource.shape }}</span>
+        <span class="truncate font-mono text-small text-text-subtle">{{ resource.storage.path || resource.storage.tables?.join(", ") || resource.storage.tableGroup || resource.storage.database }}</span>
         <template #actions>
         <button class="btn-ghost ml-auto" :disabled="loading" @click="refreshSelected">
           <RefreshCw :size="13" :stroke-width="2" :class="{ spin: loading }" />
         </button>
+        <button
+          v-if="resource.shape === 'singleton' && resource.editable"
+          class="btn btn-primary"
+          :disabled="!registryCanSubmit"
+          @click="saveRegistrySingleton"
+        >
+          <Save :size="13" :stroke-width="1.5" />
+          {{ saving ? "保存中…" : "保存" }}
+        </button>
         </template>
       </WorkbenchAreaHeader>
 
-      <div v-if="resource.kind === 'single_json'" class="scrollbar-thin flex-1 overflow-auto px-4 py-3">
+      <div v-if="resource.shape === 'singleton' && resource.editable && resource.uiTree" class="scrollbar-thin flex-1 overflow-y-auto px-4 py-3">
+        <SchemaNode
+          :node="resource.uiTree"
+          :model-value="registryDraftValue"
+          :stored-value="registryStoredValue"
+          :effective-value="registryDraftValue"
+          :depth="0"
+          @update:model-value="updateRegistryDraft"
+        />
+      </div>
+
+      <div v-else-if="resource.shape === 'file' || resource.shape === 'singleton'" class="scrollbar-thin flex-1 overflow-auto px-4 py-3">
         <pre class="m-0 overflow-auto p-0 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap wrap-break-word">{{ formattedJson }}</pre>
+      </div>
+
+      <div v-else-if="resource.shape === 'collection' || resource.shape === 'log'" class="scrollbar-thin flex-1 overflow-auto px-4 py-3">
+        <div v-if="resource.shape === 'collection' && resource.editable && resource.rowUiTree" class="mb-4 border-b border-border-subtle pb-4">
+          <SchemaNode
+            :node="resource.rowUiTree"
+            :model-value="registryRowDraftValue"
+            :stored-value="{}"
+            :effective-value="registryRowDraftValue"
+            :depth="0"
+            @update:model-value="updateRegistryRowDraft"
+          />
+          <div class="mt-3 flex justify-end">
+            <button class="btn btn-primary" :disabled="saving" @click="createRegistryRow">
+              <Save :size="13" :stroke-width="1.5" />
+              新增
+            </button>
+          </div>
+        </div>
+        <div class="mb-2 flex items-center gap-2 text-small text-text-subtle">
+          <span>{{ resourceRows?.total ?? resourceRows?.rows.length ?? 0 }} 行</span>
+          <span v-if="resourceRows">offset {{ resourceRows.offset }} · limit {{ resourceRows.limit }}</span>
+        </div>
+        <div v-if="resource.shape === 'collection' && resource.editable && resourceRows?.rows.length" class="space-y-2">
+          <div
+            v-for="(row, index) in resourceRows.rows"
+            :key="`${index}`"
+            class="border-b border-border-subtle pb-2"
+          >
+            <div class="mb-1 flex justify-end">
+              <button class="btn-ghost" :disabled="saving" title="删除" @click="deleteRegistryRow(row)">
+                <Trash2 :size="13" :stroke-width="2" />
+              </button>
+            </div>
+            <pre class="m-0 overflow-auto p-0 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap wrap-break-word">{{ JSON.stringify(row, null, 2) }}</pre>
+          </div>
+        </div>
+        <pre v-else class="m-0 overflow-auto p-0 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap wrap-break-word">{{ formattedRowsJson }}</pre>
       </div>
 
       <div v-else class="flex min-h-0 flex-1 overflow-hidden">
         <div class="scrollbar-thin w-55 shrink-0 overflow-y-auto border-r border-border-default">
           <WorkbenchListItem
-            v-for="item in resource.items"
+            v-for="item in resourceDirectoryItems"
             :key="item.key"
             :selected="selectedItemKey === item.key"
             multiline
@@ -238,7 +309,7 @@ const {
               <span class="tree-meta">{{ formatTime(item.updatedAt) }}</span>
             </div>
           </WorkbenchListItem>
-          <WorkbenchEmptyState v-if="resource.items.length === 0" :centered="false" class="justify-center px-3 py-6 text-center text-small text-text-subtle" message="目录为空" />
+          <WorkbenchEmptyState v-if="resourceDirectoryItems.length === 0" :centered="false" class="justify-center px-3 py-6 text-center text-small text-text-subtle" message="目录为空" />
         </div>
 
         <div class="scrollbar-thin flex flex-1 flex-col overflow-auto">

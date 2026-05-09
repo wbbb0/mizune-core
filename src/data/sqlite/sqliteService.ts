@@ -5,12 +5,15 @@ import type { Logger } from "pino";
 
 export type SqliteDatabase = BetterSqlite3.Database;
 
+export type SqliteTableGroupResetPolicy = "reset_allowed" | "block_reset";
+
 export interface SqliteTableGroupDefinition {
   groupId: string;
   schemaVersion: number;
   ownedTables: string[];
   ownedIndexes?: string[];
   dependsOn?: string[];
+  resetPolicy?: SqliteTableGroupResetPolicy;
   createSchema: (db: SqliteDatabase) => void;
   adoptExistingSchema?: (db: SqliteDatabase) => void;
   validateSchema: (db: SqliteDatabase) => void;
@@ -35,6 +38,7 @@ export interface SqliteDatabaseDefinition {
 export interface SqliteTableGroupStatus {
   groupId: string;
   schemaVersion: number;
+  resetPolicy: SqliteTableGroupResetPolicy;
   actualSchemaVersion?: number;
   lastResetAt?: number;
   lastResetReason?: string;
@@ -256,6 +260,7 @@ function initializeTableGroups(
       affectedGroup.groupId,
       affectedGroup.groupId === group.groupId ? resetReason : `dependency_reset:${group.groupId}`
     ]));
+    assertTableGroupResetAllowed(db, affectedGroups, resetReasons);
     resetTableGroups(db, definition, affectedGroups, resetReasons, logger);
     for (const affectedGroup of affectedGroups) {
       resetGroups.add(affectedGroup.groupId);
@@ -292,6 +297,48 @@ function getTableGroupResetReason(
     writeTableGroupMeta(db, group);
   }
   return null;
+}
+
+function assertTableGroupResetAllowed(
+  db: SqliteDatabase,
+  groups: SqliteTableGroupDefinition[],
+  resetReasons: Map<string, string>
+): void {
+  const blockedGroups = groups.filter((group) =>
+    getResetPolicy(group) === "block_reset" && !isFreshTableGroup(db, group)
+  );
+  if (blockedGroups.length === 0) {
+    return;
+  }
+
+  const details = blockedGroups
+    .map((group) => `${group.groupId}(${resetReasons.get(group.groupId) ?? "unknown"})`)
+    .join(", ");
+  throw new Error(`SQLite table group reset blocked by resetPolicy=block_reset: ${details}`);
+}
+
+function getResetPolicy(group: SqliteTableGroupDefinition): SqliteTableGroupResetPolicy {
+  return group.resetPolicy ?? "reset_allowed";
+}
+
+function isFreshTableGroup(db: SqliteDatabase, group: SqliteTableGroupDefinition): boolean {
+  if (readTableGroupMeta(db, group.groupId)) {
+    return false;
+  }
+  return [
+    ...group.ownedTables.map((name) => ({ type: "table", name })),
+    ...(group.ownedIndexes ?? []).map((name) => ({ type: "index", name }))
+  ].every((item) => !sqliteObjectExists(db, item.type, item.name));
+}
+
+function sqliteObjectExists(db: SqliteDatabase, type: string, name: string): boolean {
+  const row = db.prepare(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = ?
+      AND name = ?
+  `).get(type, name) as { name: string } | undefined;
+  return Boolean(row);
 }
 
 function resetTableGroups(
@@ -393,6 +440,7 @@ function listTableGroupStatuses(
     return {
       groupId: group.groupId,
       schemaVersion: group.schemaVersion,
+      resetPolicy: getResetPolicy(group),
       ...(meta ? { actualSchemaVersion: meta.schema_version } : {}),
       ...(meta?.last_reset_at !== null && meta?.last_reset_at !== undefined ? { lastResetAt: meta.last_reset_at } : {}),
       ...(meta?.last_reset_reason ? { lastResetReason: meta.last_reset_reason } : {})

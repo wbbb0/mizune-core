@@ -67,8 +67,8 @@
   - 存放 `global_rules`。
 - `toolset-rules.json`
   - 存放 `toolset_rules`。
-- `persona.json`
-  - 存放结构化 `persona` 字段。
+- `state/state.sqlite`
+  - `persona` 表存放结构化 `persona` 字段。
 - `rp-profile.json`
   - 存放结构化 `rpProfile` 字段。
 

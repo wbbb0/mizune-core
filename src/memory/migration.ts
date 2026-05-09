@@ -620,8 +620,6 @@ export async function migrateMemoryDataDir(input: {
 
   await writeConfigFile(usersPath, migratedUsers.users);
   report.filesWritten.push(usersPath);
-  await writeConfigFile(personaPath, migratedPersona.persona);
-  report.filesWritten.push(personaPath);
   await writeConfigFile(globalRulesPath, migratedGlobalRules.rules);
   report.filesWritten.push(globalRulesPath);
   await writeConfigFile(toolsetRulesPath, migratedToolsetRules.rules);

@@ -1,33 +1,29 @@
-import { join } from "node:path";
 import type { Logger } from "pino";
-import { FileSchemaStore } from "#data/fileSchemaStore.ts";
-import {
-  whitelistFileSchema,
-  type WhitelistFile
-} from "./whitelistSchema.ts";
+import { StateDatabase } from "#data/state/stateDatabase.ts";
 
 export interface WhitelistSnapshot {
   users: string[];
   groups: string[];
 }
 
+export interface WhitelistEntryRow {
+  targetType: "user" | "group";
+  targetId: string;
+  createdAtMs: number;
+}
+
 export class WhitelistStore {
-  private readonly store: FileSchemaStore<typeof whitelistFileSchema>;
   private current: WhitelistSnapshot = emptyWhitelist();
 
   constructor(
     dataDir: string,
-    private readonly logger: Logger
+    private readonly logger: Logger,
+    private readonly stateDatabase = new StateDatabase(dataDir, logger)
   ) {
-    this.store = new FileSchemaStore({
-      filePath: join(dataDir, "whitelist.json"),
-      schema: whitelistFileSchema,
-      logger,
-      loadErrorEvent: "whitelist_data_load_failed"
-    });
   }
 
   async init(): Promise<void> {
+    await this.stateDatabase.init();
     await this.reloadFromDisk();
   }
 
@@ -44,37 +40,29 @@ export class WhitelistStore {
   }
 
   async addUser(userId: string): Promise<string[]> {
-    const next = await this.writeAll({
-      ...this.current,
-      users: uniqueSorted([...this.current.users, userId])
-    });
+    await this.upsertEntry("user", userId);
+    const next = this.getSnapshot();
     this.logger.info({ userCount: next.users.length, groupCount: next.groups.length }, "whitelist_persisted");
     return [...next.users];
   }
 
   async removeUser(userId: string): Promise<string[]> {
-    const next = await this.writeAll({
-      ...this.current,
-      users: this.current.users.filter((item) => item !== userId)
-    });
+    await this.deleteEntry("user", userId);
+    const next = this.getSnapshot();
     this.logger.info({ userCount: next.users.length, groupCount: next.groups.length }, "whitelist_persisted");
     return [...next.users];
   }
 
   async addGroup(groupId: string): Promise<string[]> {
-    const next = await this.writeAll({
-      ...this.current,
-      groups: uniqueSorted([...this.current.groups, groupId])
-    });
+    await this.upsertEntry("group", groupId);
+    const next = this.getSnapshot();
     this.logger.info({ userCount: next.users.length, groupCount: next.groups.length }, "whitelist_persisted");
     return [...next.groups];
   }
 
   async removeGroup(groupId: string): Promise<string[]> {
-    const next = await this.writeAll({
-      ...this.current,
-      groups: this.current.groups.filter((item) => item !== groupId)
-    });
+    await this.deleteEntry("group", groupId);
+    const next = this.getSnapshot();
     this.logger.info({ userCount: next.users.length, groupCount: next.groups.length }, "whitelist_persisted");
     return [...next.groups];
   }
@@ -86,37 +74,67 @@ export class WhitelistStore {
   async reloadFromDisk(): Promise<WhitelistSnapshot> {
     const next = await this.readAll();
     this.current = next;
-    await this.writeAll(next);
     return cloneSnapshot(next);
   }
 
   private async readAll(): Promise<WhitelistSnapshot> {
-    try {
-      const parsed = await this.store.readOrDefault({
-        version: 2,
-        users: [],
-        groups: []
-      });
-      return normalizeSnapshot(parsed);
-    } catch (error: unknown) {
-      this.logger.warn({ error }, "whitelist_data_load_failed");
-      throw error;
-    }
+    const rows = await this.listEntries();
+    return normalizeSnapshot({
+      users: rows.filter((row) => row.targetType === "user").map((row) => row.targetId),
+      groups: rows.filter((row) => row.targetType === "group").map((row) => row.targetId)
+    });
   }
 
-  private async writeAll(snapshot: WhitelistSnapshot): Promise<WhitelistSnapshot> {
-    const normalized = normalizeSnapshot(snapshot);
-    await this.store.write({
-      version: 2,
-      users: normalized.users,
-      groups: normalized.groups
+  async listEntries(): Promise<WhitelistEntryRow[]> {
+    const rows = this.stateDatabase.getDb().prepare(`
+      SELECT
+        target_type AS targetType,
+        target_id AS targetId,
+        created_at_ms AS createdAtMs
+      FROM whitelist_entries
+      ORDER BY target_type ASC, target_id ASC
+    `).all() as WhitelistEntryRow[];
+    return rows.map((row) => ({
+      targetType: row.targetType,
+      targetId: row.targetId,
+      createdAtMs: row.createdAtMs
+    }));
+  }
+
+  async upsertEntry(targetType: "user" | "group", targetId: string): Promise<WhitelistEntryRow> {
+    const normalizedTargetId = targetId.trim();
+    if (!normalizedTargetId) {
+      throw new Error("whitelist target id is required");
+    }
+    const now = Date.now();
+    this.stateDatabase.getDb().prepare(`
+      INSERT INTO whitelist_entries (target_type, target_id, created_at_ms)
+      VALUES (@targetType, @targetId, @createdAtMs)
+      ON CONFLICT(target_type, target_id) DO NOTHING
+    `).run({
+      targetType,
+      targetId: normalizedTargetId,
+      createdAtMs: now
     });
-    this.current = normalized;
-    return this.getSnapshot();
+    this.current = await this.readAll();
+    return {
+      targetType,
+      targetId: normalizedTargetId,
+      createdAtMs: now
+    };
+  }
+
+  async deleteEntry(targetType: "user" | "group", targetId: string): Promise<void> {
+    this.stateDatabase.getDb().prepare(`
+      DELETE FROM whitelist_entries
+      WHERE target_type = ?
+        AND target_id = ?
+    `).run(targetType, targetId.trim());
+    this.current = await this.readAll();
   }
 }
 
-function normalizeSnapshot(snapshot: WhitelistSnapshot | WhitelistFile): WhitelistSnapshot {
+function normalizeSnapshot(snapshot: WhitelistSnapshot): WhitelistSnapshot {
   return {
     users: uniqueSorted(snapshot.users.map((item) => item.trim()).filter(Boolean)),
     groups: uniqueSorted(snapshot.groups.map((item) => item.trim()).filter(Boolean))
