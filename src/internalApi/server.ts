@@ -131,11 +131,9 @@ export async function startInternalApi(deps: InternalApiRuntimeDeps) {
 
   registerInternalApiRoutes(app, services);
 
-  // Only expose the built-in WebUI on LAN when its auth middleware is enabled.
-  // Otherwise keep the unauthenticated API local-only.
   const listenHost = externalWebuiMode
     ? "127.0.0.1"
-    : webuiEnabled && webuiAuthEnabled
+    : webuiEnabled
       ? "0.0.0.0"
       : "127.0.0.1";
 
