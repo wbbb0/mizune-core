@@ -79,10 +79,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         editors.json().resources.find((resource: { key: string }) => resource.key === "group_membership")?.title,
         "群成员缓存"
       );
-      assert.equal(
-        editors.json().resources.find((resource: { key: string }) => resource.key === "requests")?.title,
-        "待处理请求"
-      );
+      assert.equal(editors.json().resources.some((resource: { key: string }) => resource.key === "requests"), false);
       assert.equal(
         editors.json().resources.find((resource: { key: string }) => resource.key === "global_rules")?.title,
         "全局规则列表"

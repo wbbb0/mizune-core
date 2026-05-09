@@ -90,7 +90,7 @@ function createWhitelistSchema(db: SqliteDatabase): void {
     CREATE TABLE IF NOT EXISTS whitelist_entries (
       target_type TEXT NOT NULL CHECK (target_type IN ('user', 'group')),
       target_id TEXT NOT NULL,
-      created_at_ms INTEGER NOT NULL,
+      created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
       PRIMARY KEY (target_type, target_id)
     );
   `);
@@ -231,7 +231,7 @@ function createUsersSchema(db: SqliteDatabase): void {
       kind TEXT NOT NULL CHECK (kind IN ('preference', 'fact', 'boundary', 'habit', 'relationship', 'other')),
       source TEXT NOT NULL CHECK (source IN ('user_explicit', 'owner_explicit', 'inferred')),
       importance INTEGER CHECK (importance IS NULL OR (importance >= 1 AND importance <= 5)),
-      created_at_ms INTEGER NOT NULL,
+      created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
       updated_at_ms INTEGER NOT NULL,
       last_used_at_ms INTEGER,
       PRIMARY KEY (user_id, id)
@@ -263,6 +263,39 @@ function validateUsersSchema(db: SqliteDatabase): void {
     created_at_ms: "INTEGER",
     updated_at_ms: "INTEGER",
     last_used_at_ms: "INTEGER"
+  });
+}
+
+function createRequestsSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS pending_requests (
+      flag TEXT PRIMARY KEY NOT NULL CHECK (flag = trim(flag) AND length(flag) > 0),
+      kind TEXT NOT NULL CHECK (kind IN ('friend', 'group')),
+      user_id TEXT NOT NULL CHECK (user_id = trim(user_id) AND length(user_id) > 0),
+      group_id TEXT CHECK (group_id IS NULL OR (group_id = trim(group_id) AND length(group_id) > 0)),
+      sub_type TEXT CHECK (sub_type IS NULL OR sub_type IN ('add', 'invite')),
+      comment TEXT NOT NULL DEFAULT '',
+      created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+      sort_order INTEGER NOT NULL CHECK (sort_order >= 0),
+      CHECK (
+        (kind = 'friend' AND group_id IS NULL AND sub_type IS NULL)
+        OR
+        (kind = 'group' AND group_id IS NOT NULL AND sub_type IS NOT NULL)
+      )
+    );
+  `);
+}
+
+function validateRequestsSchema(db: SqliteDatabase): void {
+  assertTableColumns(db, "pending_requests", {
+    flag: "TEXT",
+    kind: "TEXT",
+    user_id: "TEXT",
+    group_id: "TEXT",
+    sub_type: "TEXT",
+    comment: "TEXT",
+    created_at_ms: "INTEGER",
+    sort_order: "INTEGER"
   });
 }
 
@@ -322,5 +355,13 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
     ownedTables: ["users", "user_memories"],
     createSchema: createUsersSchema,
     validateSchema: validateUsersSchema
+  },
+  {
+    groupId: "state.requests",
+    schemaVersion: 1,
+    resetPolicy: "block_reset",
+    ownedTables: ["pending_requests"],
+    createSchema: createRequestsSchema,
+    validateSchema: validateRequestsSchema
   }
 ];

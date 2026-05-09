@@ -328,7 +328,7 @@ config/instances/acc1.yml
 默认每个实例的数据目录下会有这些内容：
 
 - `sessions/`
-- `state/state.sqlite`，其中包含 `persona`、`rp_profile`、`scenario_profile`、`global_profile_readiness`、`setup_state`、`users`、`user_memories` 与 `whitelist_entries`
+- `state/state.sqlite`，其中包含 `persona`、`rp_profile`、`scenario_profile`、`global_profile_readiness`、`setup_state`、`users`、`user_memories`、`pending_requests` 与 `whitelist_entries`
 - `global-rules.json`
 - `toolset-rules.json`
 - `scheduled-jobs.json`
@@ -341,7 +341,7 @@ config/instances/acc1.yml
 npm run migrate:memory -- data/<instance>
 ```
 
-迁移会归并旧版 memory / rules 数据，并生成 `memory-migration-report.json` 审计报告。`persona`、RP/Scenario 全局资料、全局资料就绪状态、初始化状态、用户资料和白名单已由 `state/state.sqlite` 承载，旧 JSON 文件不再作为运行时数据源。
+迁移会归并旧版 memory / rules 数据，并生成 `memory-migration-report.json` 审计报告。`persona`、RP/Scenario 全局资料、全局资料就绪状态、初始化状态、用户资料、待处理请求和白名单已由 `state/state.sqlite` 承载，旧 JSON 文件不再作为运行时数据源。
 
 ## 反向代理注意事项
 

@@ -19,6 +19,8 @@ import { scenarioProfileSchema } from "#modes/scenarioHost/profileSchema.ts";
 import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import { personaSchema } from "#persona/personaSchema.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
+import { pendingRequestSchema } from "#requests/requestSchema.ts";
+import type { RequestStore } from "#requests/requestStore.ts";
 
 export interface DataRegistryService {
   listResources: DataRegistry["listResources"];
@@ -41,6 +43,7 @@ export function createDataRegistryService(input: {
   globalProfileReadinessStore: Pick<GlobalProfileReadinessStore, "get" | "write">;
   setupStore: Pick<SetupStateStore, "get">;
   userStore: Pick<UserStore, "listRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
+  requestStore: Pick<RequestStore, "listRows" | "get" | "createRow" | "patchRow" | "deleteRow">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
 }): DataRegistryService {
   const registry = new DataRegistry();
@@ -58,6 +61,7 @@ function createInitialDataResourceDefinitions(input: {
   globalProfileReadinessStore: Pick<GlobalProfileReadinessStore, "get" | "write">;
   setupStore: Pick<SetupStateStore, "get">;
   userStore: Pick<UserStore, "listRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
+  requestStore: Pick<RequestStore, "listRows" | "get" | "createRow" | "patchRow" | "deleteRow">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
 }): DataResourceDefinition[] {
   const dataDir = input.config.dataDir;
@@ -108,6 +112,7 @@ function createInitialDataResourceDefinitions(input: {
       editable: false,
       get: () => input.setupStore.get()
     }),
+    createRequestsResource(input.requestStore),
     createUsersResource(input.userStore),
     createWhitelistResource(input.whitelistStore),
     fileResource({
@@ -173,6 +178,75 @@ function singletonSqliteResource<TValue>(input: {
       } : {})
     }
   };
+}
+
+function createRequestsResource(
+  requestStore: Pick<RequestStore, "listRows" | "get" | "createRow" | "patchRow" | "deleteRow">
+): DataResourceDefinition {
+  const rowSchemaMeta = exportSchemaMeta(pendingRequestSchema);
+  return {
+    key: "requests",
+    title: "待处理请求",
+    shape: "collection",
+    editable: true,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "state",
+      tableGroup: "state.requests",
+      tables: ["pending_requests"]
+    },
+    rowSchemaMeta,
+    rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
+    rowIdentity: {
+      fields: ["flag"],
+      encode: "json_base64url"
+    },
+    adapter: {
+      listRows: async (query) => {
+        const result = await requestStore.listRows({
+          ...(query.offset !== undefined ? { offset: query.offset } : {}),
+          ...(query.limit !== undefined ? { limit: query.limit } : {})
+        });
+        return {
+          ...result,
+          rows: result.rows.map((row) => ({
+            id: encodeRequestRowId(row.flag),
+            ...row
+          }))
+        };
+      },
+      getRow: async (rowId) => {
+        const flag = decodeRequestRowId(rowId);
+        const row = await requestStore.get(flag);
+        return row ? { id: encodeRequestRowId(row.flag), ...row } : null;
+      },
+      createRow: async (value) => {
+        const row = await requestStore.createRow(value);
+        return { id: encodeRequestRowId(row.flag), ...row };
+      },
+      patchRow: async (rowId, input) => {
+        const row = await requestStore.patchRow(decodeRequestRowId(rowId), input.patch);
+        return { id: encodeRequestRowId(row.flag), ...row };
+      },
+      deleteRow: async (rowId) => {
+        await requestStore.deleteRow(decodeRequestRowId(rowId));
+      }
+    }
+  };
+}
+
+function encodeRequestRowId(flag: string): string {
+  return Buffer.from(JSON.stringify({ flag }), "utf8").toString("base64url");
+}
+
+function decodeRequestRowId(rowId: string): string {
+  const parsed = JSON.parse(Buffer.from(rowId, "base64url").toString("utf8")) as unknown;
+  const flag = (parsed && typeof parsed === "object" ? (parsed as { flag?: unknown }).flag : null);
+  if (typeof flag !== "string" || !flag.trim()) {
+    throw new Error("Invalid request row id");
+  }
+  return flag;
 }
 
 function createUsersResource(

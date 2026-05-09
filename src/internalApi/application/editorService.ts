@@ -20,7 +20,6 @@ import { deepMergeAllReplaceArrays } from "#data/schema/helpers.ts";
 import { buildUiTreeFromMeta } from "#data/schema/ui.ts";
 import type { BaseSchema, Infer } from "#data/schema/index.ts";
 import { globalRuleFileSchema } from "#memory/globalRuleEntry.ts";
-import { requestFileSchema } from "#requests/requestSchema.ts";
 import { membershipFileSchema } from "#identity/groupMembershipSchema.ts";
 import { runtimeResourceFileSchema } from "#runtime/resources/runtimeResourceSchema.ts";
 import { scheduledJobFileSchema } from "#runtime/scheduler/jobSchema.ts";
@@ -378,7 +377,6 @@ function buildEditorResourceMap(input: {
   ];
   const dataDir = input.config.dataDir;
   const dataResources: EditorResource<any>[] = [
-    single("requests", "待处理请求", "data", requestFileSchema, `${dataDir}/pending-requests.json`),
     single("group_membership", "群成员缓存", "data", membershipFileSchema, `${dataDir}/group-membership-cache.json`),
     single("live_resources", "运行时资源", "data", runtimeResourceFileSchema, `${dataDir}/live-resources.json`, {
       editable: false

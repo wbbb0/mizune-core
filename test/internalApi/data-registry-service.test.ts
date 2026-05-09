@@ -9,6 +9,7 @@ import { persistedUserSchema, type PersistedUser } from "../../src/identity/user
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
+import { pendingRequestSchema, type PendingRequest } from "../../src/requests/requestSchema.ts";
 
 function createRegistryService(dataDir: string) {
   const persona = createEmptyPersona();
@@ -16,6 +17,7 @@ function createRegistryService(dataDir: string) {
   const scenarioProfile = createEmptyScenarioProfile();
   const globalProfileReadiness = createEmptyGlobalProfileReadiness();
   const users: PersistedUser[] = [];
+  const requests: PendingRequest[] = [];
   const whitelistRows: Array<{ targetType: "user" | "group"; targetId: string; createdAtMs: number }> = [];
   return createDataRegistryService({
     config: { dataDir },
@@ -108,6 +110,47 @@ function createRegistryService(dataDir: string) {
         }
       }
     },
+    requestStore: {
+      async listRows(input = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return {
+          rows: requests.slice(offset, offset + limit),
+          total: requests.length,
+          offset,
+          limit
+        };
+      },
+      async get(flag) {
+        return requests.find((request) => request.flag === flag) ?? null;
+      },
+      async createRow(value) {
+        const row = pendingRequestSchema.parse(value);
+        if (requests.some((request) => request.flag === row.flag)) {
+          throw new Error(`Request ${row.flag} already exists`);
+        }
+        requests.push(row);
+        return row;
+      },
+      async patchRow(flag, patch) {
+        const index = requests.findIndex((request) => request.flag === flag);
+        if (index < 0) {
+          throw new Error(`Request ${flag} not found`);
+        }
+        requests[index] = pendingRequestSchema.parse({
+          ...requests[index]!,
+          ...patch,
+          flag
+        });
+        return requests[index]!;
+      },
+      async deleteRow(flag) {
+        const index = requests.findIndex((request) => request.flag === flag);
+        if (index >= 0) {
+          requests.splice(index, 1);
+        }
+      }
+    },
     whitelistStore: {
       async listEntries() {
         return [...whitelistRows];
@@ -143,6 +186,7 @@ test("DataRegistryService exposes initial file and directory resources", async (
       "global_profile_readiness",
       "image_files",
       "persona",
+      "requests",
       "rp_profile",
       "scenario_profile",
       "sessions",
@@ -358,6 +402,61 @@ test("DataRegistryService exposes editable users collection", async () => {
 
     await service.deleteRow("users", "10001");
     assert.equal((await service.listRows("users")).total, 0);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("DataRegistryService exposes editable requests collection", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-data-registry-test-"));
+  try {
+    const service = createRegistryService(dataDir);
+
+    const listed = await service.getResource("requests") as {
+      resource: {
+        shape: string;
+        editable: boolean;
+        rowUiTree?: unknown;
+      };
+    };
+    assert.equal(listed.resource.shape, "collection");
+    assert.equal(listed.resource.editable, true);
+    assert.ok(listed.resource.rowUiTree);
+
+    const created = await service.createRow("requests", {
+      kind: "friend",
+      flag: "flag-1",
+      userId: "10001",
+      comment: "hello",
+      createdAt: 1
+    }) as { row: { id: string; flag: string; comment: string } };
+    assert.ok(created.row.id);
+    assert.notEqual(created.row.id, "flag-1");
+    assert.equal(created.row.comment, "hello");
+    await assert.rejects(
+      service.createRow("requests", {
+        kind: "friend",
+        flag: "flag-1",
+        userId: "10001",
+        createdAt: 2
+      }),
+      /already exists/u
+    );
+
+    const patched = await service.patchRow("requests", created.row.id, {
+      patch: {
+        comment: "updated"
+      }
+    }) as { row: { flag: string; comment: string } };
+    assert.equal(patched.row.flag, "flag-1");
+    assert.equal(patched.row.comment, "updated");
+
+    const rows = await service.listRows("requests", { limit: 10 });
+    assert.equal(rows.total, 1);
+    assert.deepEqual(rows.rows.map((row) => (row as { flag: string }).flag), ["flag-1"]);
+
+    await service.deleteRow("requests", created.row.id);
+    assert.equal((await service.listRows("requests")).total, 0);
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }

@@ -297,6 +297,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         globalProfileReadinessStore: deps.globalProfileReadinessStore,
         setupStore: deps.setupStore,
         userStore: deps.userStore,
+        requestStore: deps.requestStore,
         whitelistStore: deps.whitelistStore
       }),
       localFileAdmin: createLocalFileAdminService({

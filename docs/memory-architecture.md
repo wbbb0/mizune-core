@@ -73,6 +73,7 @@
   - `setup_state` 表存放首次配置流程状态。
   - `users` 表存放用户资料字段。
   - `user_memories` 表存放旧版用户长期记忆条目；运行时不再从旧 `users.json` 导入或自动迁移这些数据。
+  - `pending_requests` 表存放待处理好友请求与群请求。
   - `whitelist_entries` 表存放白名单条目。
 
 显式迁移入口：

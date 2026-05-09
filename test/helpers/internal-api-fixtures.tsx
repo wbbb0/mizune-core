@@ -1015,6 +1015,48 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       },
       async listGroupRequests() {
         return [{ groupId: "20002", userId: "10003" }];
+      },
+      async listRows(input: { offset?: number; limit?: number } = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        const rows = [{
+          kind: "friend" as const,
+          flag: "flag-1",
+          userId: "10002",
+          comment: "",
+          createdAt: 1
+        }];
+        return {
+          rows: rows.slice(offset, offset + limit),
+          total: rows.length,
+          offset,
+          limit
+        };
+      },
+      async get(flag: string) {
+        return flag === "flag-1"
+          ? {
+              kind: "friend" as const,
+              flag: "flag-1",
+              userId: "10002",
+              comment: "",
+              createdAt: 1
+            }
+          : null;
+      },
+      async createRow(value: unknown) {
+        return value;
+      },
+      async patchRow(flag: string, patch: Record<string, unknown>) {
+        return {
+          kind: "friend" as const,
+          flag,
+          userId: "10002",
+          comment: typeof patch.comment === "string" ? patch.comment : "",
+          createdAt: 1
+        };
+      },
+      async deleteRow() {
       }
     } as unknown as InternalApiDeps["requestStore"],
     scheduledJobStore: {

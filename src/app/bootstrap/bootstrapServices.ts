@@ -104,7 +104,7 @@ export function createBootstrapServices(
   const messageQueue = new MessageQueue(logger, config);
   const sessionPersistence = new SessionPersistence(dataDir, logger);
   const scheduledJobStore = new ScheduledJobStore(dataDir, logger);
-  const requestStore = new RequestStore(dataDir, logger);
+  const requestStore = new RequestStore(dataDir, logger, stateDatabase);
   const groupMembershipStore = new GroupMembershipStore(dataDir, logger);
   const userStore = new UserStore(dataDir, config, logger, stateDatabase);
   const contextStore = new ContextStore(dataDir, config, logger);
