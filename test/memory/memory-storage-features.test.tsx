@@ -304,6 +304,66 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
     }
   });
 
+  test("user store persists in state sqlite without legacy json output", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const updated = await harness.userStore.patchUserProfile({
+        userId: "10001",
+        preferredAddress: "小王",
+        occupation: "产品经理"
+      });
+      assert.equal(updated.preferredAddress, "小王");
+      assert.equal((await harness.userStore.getByUserId("10001"))?.occupation, "产品经理");
+      await assert.rejects(access(join(harness.dataDir, "users.json")), /ENOENT/u);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("user store ignores existing legacy users json", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      await writeFile(join(harness.dataDir, "users.json"), JSON.stringify([{
+        userId: "legacy-user",
+        preferredAddress: "旧用户",
+        memories: [],
+        createdAt: 1
+      }]), "utf8");
+      assert.equal(await harness.userStore.getByUserId("legacy-user"), null);
+      assert.deepEqual(await harness.userStore.list(), []);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("user row creation rejects duplicates without replacing memories", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      await harness.userStore.createPersistedRow({
+        userId: "10001",
+        preferredAddress: "小王"
+      });
+      await harness.userStore.upsertMemory({
+        userId: "10001",
+        title: "饮食",
+        content: "喜欢拉面"
+      });
+      await assert.rejects(
+        () => harness.userStore.createPersistedRow({
+          userId: "10001",
+          preferredAddress: "覆盖"
+        }),
+        /already exists/u
+      );
+      const stored = await harness.userStore.getByUserId("10001");
+      assert.equal(stored?.preferredAddress, "小王");
+      assert.equal(stored?.memories.length, 1);
+      assert.equal(stored?.memories[0]?.content, "喜欢拉面");
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   test("user memory upsert updates a near-duplicate existing row", async () => {
     const harness = await createMemoryHarness();
     try {

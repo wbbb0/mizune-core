@@ -722,6 +722,51 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     userStore: {
       async list() {
         return [{ userId: "10001", nickname: "Alice" }];
+      },
+      async listRows(input: { offset?: number; limit?: number } = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        const rows = [{
+          userId: "10001",
+          preferredAddress: "Alice",
+          memories: [],
+          createdAt: 1
+        }];
+        return {
+          rows: rows.slice(offset, offset + limit),
+          total: rows.length,
+          offset,
+          limit
+        };
+      },
+      async getPersistedRow(userId: string) {
+        return userId === "10001"
+          ? {
+              userId: "10001",
+              preferredAddress: "Alice",
+              memories: [],
+              createdAt: 1
+            }
+          : null;
+      },
+      async createPersistedRow(value: unknown) {
+        const raw = value as { userId: string; preferredAddress?: string; createdAt?: number };
+        return {
+          userId: raw.userId,
+          ...(raw.preferredAddress !== undefined ? { preferredAddress: raw.preferredAddress } : {}),
+          memories: [],
+          createdAt: raw.createdAt ?? 1
+        };
+      },
+      async patchPersistedRow(userId: string, patch: Record<string, unknown>) {
+        return {
+          userId,
+          preferredAddress: typeof patch.preferredAddress === "string" ? patch.preferredAddress : "Alice",
+          memories: [],
+          createdAt: 1
+        };
+      },
+      async deletePersistedRow() {
       }
     } as unknown as InternalApiDeps["userStore"],
     contextStore: {

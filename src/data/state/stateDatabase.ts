@@ -208,6 +208,64 @@ function validateSetupStateSchema(db: SqliteDatabase): void {
   });
 }
 
+function createUsersSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      user_id TEXT PRIMARY KEY NOT NULL CHECK (user_id = trim(user_id) AND length(user_id) > 0),
+      preferred_address TEXT,
+      gender TEXT,
+      residence TEXT,
+      timezone TEXT,
+      occupation TEXT,
+      profile_summary TEXT,
+      relationship_note TEXT,
+      special_role TEXT CHECK (special_role IS NULL OR special_role IN ('npc')),
+      created_at_ms INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS user_memories (
+      user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('preference', 'fact', 'boundary', 'habit', 'relationship', 'other')),
+      source TEXT NOT NULL CHECK (source IN ('user_explicit', 'owner_explicit', 'inferred')),
+      importance INTEGER CHECK (importance IS NULL OR (importance >= 1 AND importance <= 5)),
+      created_at_ms INTEGER NOT NULL,
+      updated_at_ms INTEGER NOT NULL,
+      last_used_at_ms INTEGER,
+      PRIMARY KEY (user_id, id)
+    );
+  `);
+}
+
+function validateUsersSchema(db: SqliteDatabase): void {
+  assertTableColumns(db, "users", {
+    user_id: "TEXT",
+    preferred_address: "TEXT",
+    gender: "TEXT",
+    residence: "TEXT",
+    timezone: "TEXT",
+    occupation: "TEXT",
+    profile_summary: "TEXT",
+    relationship_note: "TEXT",
+    special_role: "TEXT",
+    created_at_ms: "INTEGER"
+  });
+  assertTableColumns(db, "user_memories", {
+    user_id: "TEXT",
+    id: "TEXT",
+    title: "TEXT",
+    content: "TEXT",
+    kind: "TEXT",
+    source: "TEXT",
+    importance: "INTEGER",
+    created_at_ms: "INTEGER",
+    updated_at_ms: "INTEGER",
+    last_used_at_ms: "INTEGER"
+  });
+}
+
 const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   {
     groupId: "state.persona",
@@ -256,5 +314,13 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
     ownedTables: ["setup_state"],
     createSchema: createSetupStateSchema,
     validateSchema: validateSetupStateSchema
+  },
+  {
+    groupId: "state.users",
+    schemaVersion: 1,
+    resetPolicy: "block_reset",
+    ownedTables: ["users", "user_memories"],
+    createSchema: createUsersSchema,
+    validateSchema: validateUsersSchema
   }
 ];

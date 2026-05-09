@@ -10,6 +10,8 @@ import { globalProfileReadinessSchema } from "#identity/globalProfileReadinessSc
 import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import { setupStateSchema } from "#identity/setupStateSchema.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
+import { persistedUserSchema } from "#identity/userSchema.ts";
+import type { UserStore } from "#identity/userStore.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import { rpProfileSchema } from "#modes/rpAssistant/profileSchema.ts";
 import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
@@ -38,6 +40,7 @@ export function createDataRegistryService(input: {
   scenarioProfileStore: Pick<ScenarioProfileStore, "get" | "write">;
   globalProfileReadinessStore: Pick<GlobalProfileReadinessStore, "get" | "write">;
   setupStore: Pick<SetupStateStore, "get">;
+  userStore: Pick<UserStore, "listRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
 }): DataRegistryService {
   const registry = new DataRegistry();
@@ -54,6 +57,7 @@ function createInitialDataResourceDefinitions(input: {
   scenarioProfileStore: Pick<ScenarioProfileStore, "get" | "write">;
   globalProfileReadinessStore: Pick<GlobalProfileReadinessStore, "get" | "write">;
   setupStore: Pick<SetupStateStore, "get">;
+  userStore: Pick<UserStore, "listRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
 }): DataResourceDefinition[] {
   const dataDir = input.config.dataDir;
@@ -104,6 +108,7 @@ function createInitialDataResourceDefinitions(input: {
       editable: false,
       get: () => input.setupStore.get()
     }),
+    createUsersResource(input.userStore),
     createWhitelistResource(input.whitelistStore),
     fileResource({
       key: "audio_files",
@@ -166,6 +171,61 @@ function singletonSqliteResource<TValue>(input: {
           return input.get();
         }
       } : {})
+    }
+  };
+}
+
+function createUsersResource(
+  userStore: Pick<UserStore, "listRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">
+): DataResourceDefinition {
+  const rowSchemaMeta = exportSchemaMeta(persistedUserSchema);
+  return {
+    key: "users",
+    title: "用户列表",
+    shape: "collection",
+    editable: true,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "state",
+      tableGroup: "state.users",
+      tables: ["users", "user_memories"]
+    },
+    rowSchemaMeta,
+    rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
+    rowIdentity: {
+      fields: ["userId"],
+      encode: "single"
+    },
+    adapter: {
+      listRows: async (query) => {
+        const result = await userStore.listRows({
+          ...(query.offset !== undefined ? { offset: query.offset } : {}),
+          ...(query.limit !== undefined ? { limit: query.limit } : {})
+        });
+        return {
+          ...result,
+          rows: result.rows.map((row) => ({
+            id: row.userId,
+            ...row
+          }))
+        };
+      },
+      getRow: async (rowId) => {
+        const row = await userStore.getPersistedRow(rowId);
+        return row ? { id: row.userId, ...row } : null;
+      },
+      createRow: async (value) => {
+        const row = await userStore.createPersistedRow(value);
+        return { id: row.userId, ...row };
+      },
+      patchRow: async (rowId, input) => {
+        const row = await userStore.patchPersistedRow(rowId, input.patch);
+        return { id: row.userId, ...row };
+      },
+      deleteRow: async (rowId) => {
+        await userStore.deletePersistedRow(rowId);
+      }
     }
   };
 }

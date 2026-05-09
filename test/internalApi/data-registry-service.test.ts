@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createDataRegistryService } from "../../src/internalApi/application/dataRegistryService.ts";
 import { createEmptyGlobalProfileReadiness } from "../../src/identity/globalProfileReadinessSchema.ts";
+import { persistedUserSchema, type PersistedUser } from "../../src/identity/userSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
@@ -14,6 +15,7 @@ function createRegistryService(dataDir: string) {
   const rpProfile = createEmptyRpProfile();
   const scenarioProfile = createEmptyScenarioProfile();
   const globalProfileReadiness = createEmptyGlobalProfileReadiness();
+  const users: PersistedUser[] = [];
   const whitelistRows: Array<{ targetType: "user" | "group"; targetId: string; createdAtMs: number }> = [];
   return createDataRegistryService({
     config: { dataDir },
@@ -59,6 +61,53 @@ function createRegistryService(dataDir: string) {
         };
       }
     },
+    userStore: {
+      async listRows(input = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return {
+          rows: users.slice(offset, offset + limit),
+          total: users.length,
+          offset,
+          limit
+        };
+      },
+      async getPersistedRow(userId) {
+        return users.find((user) => user.userId === userId) ?? null;
+      },
+      async createPersistedRow(value) {
+        const raw = value as { userId: string; preferredAddress?: string; memories?: unknown[]; createdAt?: number };
+        if (users.some((user) => user.userId === raw.userId)) {
+          throw new Error(`User ${raw.userId} already exists`);
+        }
+        const row = persistedUserSchema.parse({
+          userId: raw.userId,
+          ...(raw.preferredAddress !== undefined ? { preferredAddress: raw.preferredAddress } : {}),
+          memories: raw.memories ?? [],
+          createdAt: raw.createdAt ?? Date.now()
+        });
+        users.push(row);
+        return row;
+      },
+      async patchPersistedRow(userId, patch) {
+        const index = users.findIndex((user) => user.userId === userId);
+        if (index < 0) {
+          throw new Error(`User ${userId} not found`);
+        }
+        users[index] = {
+          ...users[index]!,
+          ...patch,
+          userId
+        };
+        return users[index]!;
+      },
+      async deletePersistedRow(userId) {
+        const index = users.findIndex((user) => user.userId === userId);
+        if (index >= 0) {
+          users.splice(index, 1);
+        }
+      }
+    },
     whitelistStore: {
       async listEntries() {
         return [...whitelistRows];
@@ -98,6 +147,7 @@ test("DataRegistryService exposes initial file and directory resources", async (
       "scenario_profile",
       "sessions",
       "setup_state",
+      "users",
       "whitelist",
       "workspace_files"
     ]);
@@ -260,6 +310,54 @@ test("DataRegistryService exposes migrated profile and setup singleton resources
     };
     assert.equal(setupState.resource.editable, false);
     assert.equal(setupState.resource.value.state, "ready");
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("DataRegistryService exposes editable users collection", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-data-registry-test-"));
+  try {
+    const service = createRegistryService(dataDir);
+
+    const listed = await service.getResource("users") as {
+      resource: {
+        shape: string;
+        editable: boolean;
+        rowUiTree?: unknown;
+      };
+    };
+    assert.equal(listed.resource.shape, "collection");
+    assert.equal(listed.resource.editable, true);
+    assert.ok(listed.resource.rowUiTree);
+
+    const created = await service.createRow("users", {
+      userId: "10001",
+      preferredAddress: "小王"
+    }) as { row: { id: string; userId: string; preferredAddress?: string } };
+    assert.equal(created.row.id, "10001");
+    assert.equal(created.row.preferredAddress, "小王");
+    await assert.rejects(
+      service.createRow("users", {
+        userId: "10001"
+      }),
+      /already exists/u
+    );
+
+    const patched = await service.patchRow("users", "10001", {
+      patch: {
+        preferredAddress: "老王"
+      }
+    }) as { row: { userId: string; preferredAddress?: string } };
+    assert.equal(patched.row.userId, "10001");
+    assert.equal(patched.row.preferredAddress, "老王");
+
+    const rows = await service.listRows("users", { limit: 10 });
+    assert.equal(rows.total, 1);
+    assert.deepEqual(rows.rows.map((row) => (row as { userId: string }).userId), ["10001"]);
+
+    await service.deleteRow("users", "10001");
+    assert.equal((await service.listRows("users")).total, 0);
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }

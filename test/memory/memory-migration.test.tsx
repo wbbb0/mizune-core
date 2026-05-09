@@ -46,19 +46,17 @@ async function readJson(filePath: string) {
 
       const report = await migrateMemoryDataDir({ dataDir });
 
-      const users = await readJson(join(dataDir, "users.json")) as Array<Record<string, unknown>>;
+      const legacyUsers = await readJson(join(dataDir, "users.json")) as Array<Record<string, unknown>>;
       const globalRules = await readJson(join(dataDir, "global-rules.json")) as Array<Record<string, unknown>>;
       const toolsetRules = await readJson(join(dataDir, "toolset-rules.json")) as Array<Record<string, unknown>>;
       const reportFile = await readJson(join(dataDir, "memory-migration-report.json")) as Record<string, unknown>;
 
-      assert.equal(users.length, 1);
-      assert.equal(users[0]?.preferredAddress, "老王");
-      assert.equal(users[0]?.relationshipNote, "现实朋友");
-      assert.match(String(users[0]?.profileSummary ?? ""), /做事很快；经常先给结论/);
-      assert.equal((users[0]?.memories as Array<unknown>).length, 2);
+      assert.equal(legacyUsers.length, 1);
+      assert.equal(legacyUsers[0]?.nickname, "老王");
 
       assert.ok(globalRules.length >= 2);
       assert.ok(!report.filesWritten.some((filePath) => filePath.endsWith("persona.json")));
+      assert.ok(!report.filesWritten.some((filePath) => filePath.endsWith("users.json")));
       assert.equal(toolsetRules.length, 1);
       assert.ok(report.duplicates.length >= 2);
       assert.ok(report.scopeFindings.length >= 1);

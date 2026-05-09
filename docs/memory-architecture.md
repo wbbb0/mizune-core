@@ -61,8 +61,6 @@
 
 ## Storage
 
-- `users.json`
-  - 存放 `user_profile` 字段与 `user_memories`。
 - `global-rules.json`
   - 存放 `global_rules`。
 - `toolset-rules.json`
@@ -73,6 +71,8 @@
   - `scenario_profile` 表存放结构化 `scenarioProfile` 字段。
   - `global_profile_readiness` 表存放 persona / RP / Scenario 全局资料准备度。
   - `setup_state` 表存放首次配置流程状态。
+  - `users` 表存放用户资料字段。
+  - `user_memories` 表存放旧版用户长期记忆条目；运行时不再从旧 `users.json` 导入或自动迁移这些数据。
   - `whitelist_entries` 表存放白名单条目。
 
 显式迁移入口：

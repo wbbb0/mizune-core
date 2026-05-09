@@ -106,7 +106,7 @@ export function createBootstrapServices(
   const scheduledJobStore = new ScheduledJobStore(dataDir, logger);
   const requestStore = new RequestStore(dataDir, logger);
   const groupMembershipStore = new GroupMembershipStore(dataDir, logger);
-  const userStore = new UserStore(dataDir, config, logger);
+  const userStore = new UserStore(dataDir, config, logger, stateDatabase);
   const contextStore = new ContextStore(dataDir, config, logger);
   const contextEmbeddingService = new ContextEmbeddingService(config, llmClient, logger);
   const contextRetrievalService = new ContextRetrievalService(config, contextStore, contextEmbeddingService, logger);
@@ -278,10 +278,6 @@ export async function initializeBootstrapState(
   await userIdentityStore.init();
   await userStore.init();
   await contextStore.init();
-  const migratedUserMemoryCount = contextStore.migrateUserMemories(await userStore.list());
-  if (migratedUserMemoryCount > 0) {
-    await userStore.clearLegacyMemories();
-  }
   await npcDirectory.refresh(userStore);
   await personaStore.init();
   await globalRuleStore.init();

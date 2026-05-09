@@ -74,10 +74,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.deepEqual(configSummary.json().access.whitelist.users, ["10001"]);
       assert.equal(configSummary.json().onebot.enabled, true);
       assert.ok(editors.json().resources.some((resource: { key: string }) => resource.key === "config"));
-      assert.equal(
-        editors.json().resources.find((resource: { key: string }) => resource.key === "users")?.title,
-        "用户列表"
-      );
+      assert.equal(editors.json().resources.some((resource: { key: string }) => resource.key === "users"), false);
       assert.equal(
         editors.json().resources.find((resource: { key: string }) => resource.key === "group_membership")?.title,
         "群成员缓存"
@@ -410,10 +407,6 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         }
       }, null, 2), "utf8");
 
-      const usersResponse = await app.inject({
-        method: "GET",
-        url: "/api/editors/users"
-      });
       const groupMembershipResponse = await app.inject({
         method: "GET",
         url: "/api/editors/group_membership"
@@ -426,12 +419,6 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         method: "GET",
         url: "/api/editors/toolset_rules"
       });
-
-      assert.equal(usersResponse.statusCode, 200);
-      assert.equal(usersResponse.json().editor.kind, "single");
-      assert.equal(usersResponse.json().editor.schemaMeta.item.title, "用户");
-      assert.ok(!("memories" in usersResponse.json().editor.schemaMeta.item.fields));
-      assert.equal(usersResponse.json().editor.schemaMeta.description, "按列表保存所有用户的基础资料。长期记忆由上下文记忆存储管理。");
 
       assert.equal(groupMembershipResponse.statusCode, 200);
       assert.equal(groupMembershipResponse.json().editor.kind, "single");
