@@ -44,6 +44,16 @@ import { readFile } from "node:fs/promises";
     assert.match(source, /getFileTypeLabel\(part\)/);
   });
 
+  test("message bubble renders streaming drafts without visual effects", async () => {
+    const source = await readFile(new URL("../../../webui/src/components/sessions/MessageBubble.vue", import.meta.url), "utf8");
+    const styleSource = await readFile(new URL("../../../webui/src/style/main.css", import.meta.url), "utf8");
+
+    assert.doesNotMatch(source, /blink-cursor/);
+    assert.doesNotMatch(source, /streaming \? 'opacity-90'/);
+    assert.doesNotMatch(styleSource, /\.blink-cursor/);
+    assert.doesNotMatch(styleSource, /@keyframes blink/);
+  });
+
   test("transcript items support explicit action button and context menu while keeping disclosures interactive when runtimeExcluded", async () => {
     const source = await readFile(new URL("../../../webui/src/components/sessions/TranscriptItem.vue", import.meta.url), "utf8");
 

@@ -34,7 +34,6 @@ const props = defineProps<{
   imageUrl?: string;
   toolName?: string;
   timestampMs?: number;
-  streaming?: boolean;
   actionsEnabled?: boolean;
 }>();
 
@@ -155,7 +154,6 @@ function getFileTypeLabel(part: Extract<ChatTimelineContentPart, { kind: "file" 
         :class="[
           kind === 'image' ? 'flex min-w-50 flex-col gap-1 !bg-transparent !p-0' : '',
           kind === 'content_parts' ? 'flex min-w-50 flex-col gap-1.5' : '',
-          streaming ? 'opacity-90' : '',
           kind === 'image'
             ? ''
             : side === 'right'
@@ -218,7 +216,6 @@ function getFileTypeLabel(part: Extract<ChatTimelineContentPart, { kind: "file" 
         <template v-else>
           <span v-if="label" class="mb-1 block text-small opacity-80">{{ label }}</span>
           <span class="block">{{ content }}</span>
-          <span v-if="streaming" class="blink-cursor" />
         </template>
       </div>
       <MessageMetaLine

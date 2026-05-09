@@ -108,17 +108,3 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
-
-.blink-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 14px;
-  background: currentColor;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  animation: blink 1s step-end infinite;
-}
-
-@keyframes blink {
-  50% { opacity: 0; }
-}

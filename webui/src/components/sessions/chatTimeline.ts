@@ -41,7 +41,6 @@ export type ChatTimelineItem =
       metaChips?: string[];
       timestampMs: number;
       label?: string;
-      streaming?: boolean;
       actionsEnabled?: boolean;
     }
   | {
@@ -293,8 +292,6 @@ function buildDraftAssistantItem(input: {
     side: "left",
     content: input.content,
     timestampMs: latestTimestampMs,
-    label: "生成中",
-    streaming: true,
     actionsEnabled: false
   };
 }

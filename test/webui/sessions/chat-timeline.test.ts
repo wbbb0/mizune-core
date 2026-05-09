@@ -327,7 +327,7 @@ function createUserMessageEntry(): ChatTimelineTranscriptEntry {
     assert.equal(items[0]?.kind, "text");
     assert.equal(items[0]?.role, "assistant");
     assert.equal(items[0]?.content, "正在流式补充");
-    assert.equal(items[0]?.streaming, true);
+    assert.equal(items[0]?.label, undefined);
     assert.equal(items[0]?.actionsEnabled, false);
 
     assert.equal(items[1]?.kind, "text");

@@ -362,7 +362,6 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
               :image-url="msg.kind === 'image' ? msg.imageUrl : undefined"
               :tool-name="msg.kind === 'image' ? msg.toolName : undefined"
               :timestamp-ms="msg.timestampMs"
-              :streaming="msg.kind === 'text' ? msg.streaming : undefined"
               :actions-enabled="msg.actionsEnabled"
               @preview-image="(url?: string, title?: string) => msg.kind === 'image' ? previewImage(msg.imageUrl, msg.sourceName || msg.fileRef || msg.fileId || '已发送图片') : url ? previewImage(url, title || '图片消息') : undefined"
               @open-actions="openChatItemActions(msg)"
