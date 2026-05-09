@@ -44,7 +44,15 @@ export interface ContextStatus {
   store: {
     available: boolean;
     dbPath: string;
+    lastDatabaseResetReason?: string;
     disabledReason?: string;
+    tableGroups?: Array<{
+      groupId: string;
+      schemaVersion: number;
+      actualSchemaVersion?: number;
+      lastResetAt?: number;
+      lastResetReason?: string;
+    }>;
   };
   embedding: {
     configured: boolean;

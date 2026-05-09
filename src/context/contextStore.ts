@@ -1,9 +1,15 @@
-import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { createHash } from "node:crypto";
-import type BetterSqlite3 from "better-sqlite3";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
+import {
+  assertIndexExists,
+  assertTableColumns,
+  SqliteService,
+  type SqliteDatabase,
+  type SqliteDatabaseHandle,
+  type SqliteTableGroupDefinition
+} from "#data/sqlite/sqliteService.ts";
 import type { PersistedUser, User } from "#identity/userSchema.ts";
 import { detectScopeConflict, type ScopeConflictWarning } from "#memory/memoryCategory.ts";
 import { bigramJaccardSimilarity, findBestDuplicateMatch, normalizeTitleForDedup } from "#memory/similarity.ts";
@@ -24,8 +30,6 @@ import type {
   ContextRawMessage,
   ContextSearchDocument
 } from "./contextTypes.ts";
-
-type SqliteDatabase = BetterSqlite3.Database;
 
 interface ContextItemRow {
   item_id: string;
@@ -67,31 +71,45 @@ interface ContextItemFilterInput {
 
 export class ContextStore {
   private readonly dbPath: string;
+  private sqlite: SqliteDatabaseHandle | null = null;
   private db: SqliteDatabase | null = null;
   private disabledReason: string | null = null;
 
   constructor(
     dataDir: string,
     private readonly config: Pick<AppConfig, "configRuntime">,
-    private readonly logger: Logger
+    private readonly logger: Logger,
+    private readonly sqliteService = new SqliteService(logger)
   ) {
     this.dbPath = join(dataDir, "context", "context.sqlite");
   }
 
   async init(): Promise<void> {
     try {
-      await mkdir(dirname(this.dbPath), { recursive: true });
-      const { default: Database } = await import("better-sqlite3");
-      this.db = new Database(this.dbPath);
-      this.db.pragma("journal_mode = WAL");
-      this.db.pragma("foreign_keys = ON");
-      this.migrateSchema();
+      this.sqlite = await this.sqliteService.openDatabase({
+        databaseId: "context",
+        dbPath: this.dbPath,
+        tableGroups: CONTEXT_TABLE_GROUPS,
+        pragmas: {
+          wal: true,
+          foreignKeys: true,
+          busyTimeoutMs: 5000
+        },
+        selfHealing: {
+          resetDatabaseOnOpenFailure: true,
+          resetDatabaseOnIntegrityFailure: true,
+          backupInvalidDatabase: true
+        }
+      });
+      this.db = this.sqlite.db;
+      this.disabledReason = null;
       this.logger.info({
         instanceName: this.config.configRuntime.instanceName,
         dbPath: this.dbPath
       }, "context_store_initialized");
     } catch (error) {
-      this.db?.close();
+      this.sqlite?.close();
+      this.sqlite = null;
       this.db = null;
       this.disabledReason = error instanceof Error ? error.message : String(error);
       this.logger.error({
@@ -103,18 +121,24 @@ export class ContextStore {
   }
 
   close(): void {
-    this.db?.close();
+    this.sqlite?.close();
+    this.sqlite = null;
     this.db = null;
   }
 
   getStatus(): {
     available: boolean;
     dbPath: string;
+    tableGroups?: ReturnType<SqliteDatabaseHandle["getStatus"]>["tableGroups"];
+    lastDatabaseResetReason?: string;
     disabledReason?: string;
   } {
+    const sqliteStatus = this.sqlite?.getStatus();
     return {
       available: this.db != null,
       dbPath: this.dbPath,
+      ...(sqliteStatus?.tableGroups ? { tableGroups: sqliteStatus.tableGroups } : {}),
+      ...(sqliteStatus?.lastDatabaseResetReason ? { lastDatabaseResetReason: sqliteStatus.lastDatabaseResetReason } : {}),
       ...(this.disabledReason ? { disabledReason: this.disabledReason } : {})
     };
   }
@@ -1403,128 +1427,6 @@ export class ContextStore {
     });
   }
 
-  private migrateSchema(): void {
-    const db = this.requireDb();
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS raw_messages (
-        message_id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        session_id TEXT NOT NULL,
-        chat_type TEXT NOT NULL,
-        role TEXT NOT NULL,
-        speaker_id TEXT,
-        timestamp_ms INTEGER NOT NULL,
-        text TEXT NOT NULL,
-        segments_json TEXT,
-        attachment_refs_json TEXT,
-        sensitivity TEXT NOT NULL DEFAULT 'normal',
-        ingested_at INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS context_items (
-        item_id TEXT PRIMARY KEY,
-        scope TEXT NOT NULL,
-        source_type TEXT NOT NULL,
-        retrieval_policy TEXT NOT NULL,
-        status TEXT NOT NULL,
-        user_id TEXT,
-        session_id TEXT,
-        toolset_id TEXT,
-        mode_id TEXT,
-        title TEXT,
-        slot_key TEXT,
-        text TEXT NOT NULL,
-        embedding_text_hash TEXT,
-        kind TEXT,
-        source TEXT,
-        confidence REAL,
-        importance INTEGER,
-        pinned INTEGER NOT NULL DEFAULT 0,
-        sensitivity TEXT NOT NULL DEFAULT 'normal',
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        valid_from INTEGER,
-        valid_to INTEGER,
-        superseded_by TEXT,
-        last_confirmed_at INTEGER,
-        retrieved_count INTEGER NOT NULL DEFAULT 0,
-        last_retrieved_at INTEGER
-      );
-
-      CREATE TABLE IF NOT EXISTS context_item_sources (
-        item_id TEXT NOT NULL,
-        source_kind TEXT NOT NULL,
-        source_id TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        PRIMARY KEY (item_id, source_kind, source_id),
-        FOREIGN KEY (item_id) REFERENCES context_items(item_id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS context_item_embeddings (
-        item_id TEXT NOT NULL,
-        embedding_profile_id TEXT NOT NULL,
-        text_hash TEXT NOT NULL DEFAULT '',
-        dimension INTEGER NOT NULL,
-        vector BLOB NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        PRIMARY KEY (item_id, embedding_profile_id),
-        FOREIGN KEY (item_id) REFERENCES context_items(item_id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS embedding_profiles (
-        profile_id TEXT PRIMARY KEY,
-        instance_name TEXT NOT NULL,
-        provider TEXT NOT NULL,
-        model TEXT NOT NULL,
-        dimension INTEGER NOT NULL,
-        distance TEXT NOT NULL,
-        text_preprocess_version TEXT NOT NULL,
-        chunker_version TEXT NOT NULL,
-        active INTEGER NOT NULL DEFAULT 0,
-        created_at INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS maintenance_jobs (
-        job_id TEXT PRIMARY KEY,
-        job_type TEXT NOT NULL,
-        status TEXT NOT NULL,
-        payload_json TEXT NOT NULL,
-        scheduled_at INTEGER NOT NULL,
-        started_at INTEGER,
-        finished_at INTEGER,
-        error TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS manual_audit_events (
-        event_id TEXT PRIMARY KEY,
-        event_type TEXT NOT NULL,
-        actor_id TEXT,
-        item_id TEXT,
-        payload_json TEXT NOT NULL,
-        created_at INTEGER NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_raw_messages_user_session_time
-        ON raw_messages(user_id, session_id, timestamp_ms);
-      CREATE INDEX IF NOT EXISTS idx_context_items_user_lookup
-        ON context_items(scope, user_id, source_type, status, retrieval_policy);
-      CREATE INDEX IF NOT EXISTS idx_context_items_session_lookup
-        ON context_items(scope, session_id, source_type, status);
-      CREATE INDEX IF NOT EXISTS idx_context_items_toolset_lookup
-        ON context_items(scope, toolset_id, source_type, status);
-      CREATE INDEX IF NOT EXISTS idx_context_items_mode_lookup
-        ON context_items(scope, mode_id, source_type, status);
-      CREATE INDEX IF NOT EXISTS idx_context_embeddings_profile
-        ON context_item_embeddings(embedding_profile_id, item_id);
-      CREATE INDEX IF NOT EXISTS idx_maintenance_jobs_status_time
-        ON maintenance_jobs(status, scheduled_at);
-    `);
-    ensureColumn(db, "context_items", "embedding_text_hash", "TEXT");
-    ensureColumn(db, "context_items", "slot_key", "TEXT");
-    ensureColumn(db, "context_item_embeddings", "text_hash", "TEXT NOT NULL DEFAULT ''");
-  }
-
   private upsertContextItem(item: ContextItem): void {
     this.requireDb().prepare(`
       INSERT INTO context_items (
@@ -1590,6 +1492,317 @@ export class ContextStore {
     }
     return this.db;
   }
+}
+
+const CONTEXT_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
+  {
+    groupId: "context.raw_messages",
+    schemaVersion: 1,
+    ownedTables: ["raw_messages"],
+    ownedIndexes: ["idx_raw_messages_user_session_time"],
+    createSchema: createRawMessagesSchema,
+    validateSchema: validateRawMessagesSchema
+  },
+  {
+    groupId: "context.items",
+    schemaVersion: 1,
+    ownedTables: ["context_items", "context_item_sources"],
+    ownedIndexes: [
+      "idx_context_items_user_lookup",
+      "idx_context_items_session_lookup",
+      "idx_context_items_toolset_lookup",
+      "idx_context_items_mode_lookup"
+    ],
+    createSchema: createContextItemsSchema,
+    adoptExistingSchema: adoptExistingContextItemsSchema,
+    validateSchema: validateContextItemsSchema
+  },
+  {
+    groupId: "context.embeddings",
+    schemaVersion: 1,
+    ownedTables: ["context_item_embeddings", "embedding_profiles"],
+    ownedIndexes: ["idx_context_embeddings_profile"],
+    dependsOn: ["context.items"],
+    createSchema: createContextEmbeddingsSchema,
+    adoptExistingSchema: adoptExistingContextEmbeddingsSchema,
+    validateSchema: validateContextEmbeddingsSchema
+  },
+  {
+    groupId: "context.maintenance",
+    schemaVersion: 1,
+    ownedTables: ["maintenance_jobs", "manual_audit_events"],
+    ownedIndexes: ["idx_maintenance_jobs_status_time"],
+    createSchema: createContextMaintenanceSchema,
+    validateSchema: validateContextMaintenanceSchema
+  }
+];
+
+function createRawMessagesSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS raw_messages (
+      message_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      chat_type TEXT NOT NULL,
+      role TEXT NOT NULL,
+      speaker_id TEXT,
+      timestamp_ms INTEGER NOT NULL,
+      text TEXT NOT NULL,
+      segments_json TEXT,
+      attachment_refs_json TEXT,
+      sensitivity TEXT NOT NULL DEFAULT 'normal',
+      ingested_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_raw_messages_user_session_time
+      ON raw_messages(user_id, session_id, timestamp_ms);
+  `);
+}
+
+function validateRawMessagesSchema(db: SqliteDatabase): void {
+  assertTableColumns(db, "raw_messages", {
+    message_id: "TEXT",
+    user_id: "TEXT",
+    session_id: "TEXT",
+    chat_type: "TEXT",
+    role: "TEXT",
+    speaker_id: "TEXT",
+    timestamp_ms: "INTEGER",
+    text: "TEXT",
+    segments_json: "TEXT",
+    attachment_refs_json: "TEXT",
+    sensitivity: "TEXT",
+    ingested_at: "INTEGER"
+  });
+  assertIndexExists(db, "idx_raw_messages_user_session_time");
+}
+
+function createContextItemsSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS context_items (
+      item_id TEXT PRIMARY KEY,
+      scope TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      retrieval_policy TEXT NOT NULL,
+      status TEXT NOT NULL,
+      user_id TEXT,
+      session_id TEXT,
+      toolset_id TEXT,
+      mode_id TEXT,
+      title TEXT,
+      slot_key TEXT,
+      text TEXT NOT NULL,
+      embedding_text_hash TEXT,
+      kind TEXT,
+      source TEXT,
+      confidence REAL,
+      importance INTEGER,
+      pinned INTEGER NOT NULL DEFAULT 0,
+      sensitivity TEXT NOT NULL DEFAULT 'normal',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      valid_from INTEGER,
+      valid_to INTEGER,
+      superseded_by TEXT,
+      last_confirmed_at INTEGER,
+      retrieved_count INTEGER NOT NULL DEFAULT 0,
+      last_retrieved_at INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS context_item_sources (
+      item_id TEXT NOT NULL,
+      source_kind TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (item_id, source_kind, source_id),
+      FOREIGN KEY (item_id) REFERENCES context_items(item_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_context_items_user_lookup
+      ON context_items(scope, user_id, source_type, status, retrieval_policy);
+    CREATE INDEX IF NOT EXISTS idx_context_items_session_lookup
+      ON context_items(scope, session_id, source_type, status);
+    CREATE INDEX IF NOT EXISTS idx_context_items_toolset_lookup
+      ON context_items(scope, toolset_id, source_type, status);
+    CREATE INDEX IF NOT EXISTS idx_context_items_mode_lookup
+      ON context_items(scope, mode_id, source_type, status);
+  `);
+}
+
+function validateContextItemsSchema(db: SqliteDatabase): void {
+  assertTableColumns(db, "context_items", {
+    item_id: "TEXT",
+    scope: "TEXT",
+    source_type: "TEXT",
+    retrieval_policy: "TEXT",
+    status: "TEXT",
+    user_id: "TEXT",
+    session_id: "TEXT",
+    toolset_id: "TEXT",
+    mode_id: "TEXT",
+    title: "TEXT",
+    slot_key: "TEXT",
+    text: "TEXT",
+    embedding_text_hash: "TEXT",
+    kind: "TEXT",
+    source: "TEXT",
+    confidence: "REAL",
+    importance: "INTEGER",
+    pinned: "INTEGER",
+    sensitivity: "TEXT",
+    created_at: "INTEGER",
+    updated_at: "INTEGER",
+    valid_from: "INTEGER",
+    valid_to: "INTEGER",
+    superseded_by: "TEXT",
+    last_confirmed_at: "INTEGER",
+    retrieved_count: "INTEGER",
+    last_retrieved_at: "INTEGER"
+  });
+  assertTableColumns(db, "context_item_sources", {
+    item_id: "TEXT",
+    source_kind: "TEXT",
+    source_id: "TEXT",
+    created_at: "INTEGER"
+  });
+  assertIndexExists(db, "idx_context_items_user_lookup");
+  assertIndexExists(db, "idx_context_items_session_lookup");
+  assertIndexExists(db, "idx_context_items_toolset_lookup");
+  assertIndexExists(db, "idx_context_items_mode_lookup");
+}
+
+function adoptExistingContextItemsSchema(db: SqliteDatabase): void {
+  createContextItemsSchema(db);
+  addColumnIfMissing(db, "context_items", "embedding_text_hash", "TEXT");
+  addColumnIfMissing(db, "context_items", "slot_key", "TEXT");
+}
+
+function createContextEmbeddingsSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS context_item_embeddings (
+      item_id TEXT NOT NULL,
+      embedding_profile_id TEXT NOT NULL,
+      text_hash TEXT NOT NULL DEFAULT '',
+      dimension INTEGER NOT NULL,
+      vector BLOB NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (item_id, embedding_profile_id),
+      FOREIGN KEY (item_id) REFERENCES context_items(item_id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS embedding_profiles (
+      profile_id TEXT PRIMARY KEY,
+      instance_name TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      model TEXT NOT NULL,
+      dimension INTEGER NOT NULL,
+      distance TEXT NOT NULL,
+      text_preprocess_version TEXT NOT NULL,
+      chunker_version TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_context_embeddings_profile
+      ON context_item_embeddings(embedding_profile_id, item_id);
+  `);
+}
+
+function validateContextEmbeddingsSchema(db: SqliteDatabase): void {
+  assertTableColumns(db, "context_item_embeddings", {
+    item_id: "TEXT",
+    embedding_profile_id: "TEXT",
+    text_hash: "TEXT",
+    dimension: "INTEGER",
+    vector: "BLOB",
+    created_at: "INTEGER",
+    updated_at: "INTEGER"
+  });
+  assertTableColumns(db, "embedding_profiles", {
+    profile_id: "TEXT",
+    instance_name: "TEXT",
+    provider: "TEXT",
+    model: "TEXT",
+    dimension: "INTEGER",
+    distance: "TEXT",
+    text_preprocess_version: "TEXT",
+    chunker_version: "TEXT",
+    active: "INTEGER",
+    created_at: "INTEGER"
+  });
+  assertIndexExists(db, "idx_context_embeddings_profile");
+}
+
+function adoptExistingContextEmbeddingsSchema(db: SqliteDatabase): void {
+  createContextEmbeddingsSchema(db);
+  addColumnIfMissing(db, "context_item_embeddings", "text_hash", "TEXT NOT NULL DEFAULT ''");
+}
+
+function createContextMaintenanceSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS maintenance_jobs (
+      job_id TEXT PRIMARY KEY,
+      job_type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      scheduled_at INTEGER NOT NULL,
+      started_at INTEGER,
+      finished_at INTEGER,
+      error TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS manual_audit_events (
+      event_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      actor_id TEXT,
+      item_id TEXT,
+      payload_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_maintenance_jobs_status_time
+      ON maintenance_jobs(status, scheduled_at);
+  `);
+}
+
+function validateContextMaintenanceSchema(db: SqliteDatabase): void {
+  assertTableColumns(db, "maintenance_jobs", {
+    job_id: "TEXT",
+    job_type: "TEXT",
+    status: "TEXT",
+    payload_json: "TEXT",
+    scheduled_at: "INTEGER",
+    started_at: "INTEGER",
+    finished_at: "INTEGER",
+    error: "TEXT"
+  });
+  assertTableColumns(db, "manual_audit_events", {
+    event_id: "TEXT",
+    event_type: "TEXT",
+    actor_id: "TEXT",
+    item_id: "TEXT",
+    payload_json: "TEXT",
+    created_at: "INTEGER"
+  });
+  assertIndexExists(db, "idx_maintenance_jobs_status_time");
+}
+
+function addColumnIfMissing(db: SqliteDatabase, tableName: string, columnName: string, definition: string): void {
+  const table = db.prepare(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'table'
+      AND name = ?
+  `).get(tableName) as { name: string } | undefined;
+  if (!table) {
+    return;
+  }
+  const rows = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  if (rows.some((row) => row.name === columnName)) {
+    return;
+  }
+  db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
 }
 
 function rowToContextMemoryFactEntry(row: ContextItemRow): ContextMemoryFactEntry {
@@ -1936,14 +2149,6 @@ function decodeVector(buffer: Buffer): number[] {
 
 function buildContextEmbeddingTextHash(text: string): string {
   return createHash("sha256").update(text).digest("base64url");
-}
-
-function ensureColumn(db: SqliteDatabase, tableName: string, columnName: string, definition: string): void {
-  const rows = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
-  if (rows.some((row) => row.name === columnName)) {
-    return;
-  }
-  db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
 }
 
 function toSqlParams(item: ContextItem): Record<string, string | number | null> {

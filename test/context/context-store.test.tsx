@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
@@ -53,6 +53,91 @@ test("ContextStore migrates legacy user memories into user facts", async () => {
     assert.equal(facts[0]?.lastUsedAt, 300);
   } finally {
     await harness.cleanup();
+  }
+});
+
+test("ContextStore adopts pre-meta SQLite files without dropping historically migrated columns", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-context-store-test-"));
+  const dbPath = join(dataDir, "context", "context.sqlite");
+  await mkdir(join(dataDir, "context"), { recursive: true });
+  const { default: Database } = await import("better-sqlite3");
+  const db = new Database(dbPath);
+  db.exec(`
+    CREATE TABLE context_items (
+      item_id TEXT PRIMARY KEY,
+      scope TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      retrieval_policy TEXT NOT NULL,
+      status TEXT NOT NULL,
+      user_id TEXT,
+      session_id TEXT,
+      toolset_id TEXT,
+      mode_id TEXT,
+      title TEXT,
+      text TEXT NOT NULL,
+      kind TEXT,
+      source TEXT,
+      confidence REAL,
+      importance INTEGER,
+      pinned INTEGER NOT NULL DEFAULT 0,
+      sensitivity TEXT NOT NULL DEFAULT 'normal',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      valid_from INTEGER,
+      valid_to INTEGER,
+      superseded_by TEXT,
+      last_confirmed_at INTEGER,
+      retrieved_count INTEGER NOT NULL DEFAULT 0,
+      last_retrieved_at INTEGER
+    );
+
+    CREATE TABLE context_item_embeddings (
+      item_id TEXT NOT NULL,
+      embedding_profile_id TEXT NOT NULL,
+      dimension INTEGER NOT NULL,
+      vector BLOB NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (item_id, embedding_profile_id)
+    );
+
+    INSERT INTO context_items (
+      item_id, scope, source_type, retrieval_policy, status,
+      user_id, title, text, kind, sensitivity,
+      created_at, updated_at, retrieved_count
+    )
+    VALUES (
+      'mem_legacy_sqlite_1', 'user', 'fact', 'always', 'active',
+      'user_1', '称呼', '用户希望被称为小王', 'preference', 'normal',
+      100, 200, 0
+    );
+
+    INSERT INTO context_item_embeddings (
+      item_id, embedding_profile_id, dimension, vector, created_at, updated_at
+    )
+    VALUES (
+      'mem_legacy_sqlite_1', 'profile_1', 1, X'00000000', 100, 100
+    );
+  `);
+  db.close();
+
+  const store = new ContextStore(dataDir, createTestAppConfig(), pino({ level: "silent" }));
+  await store.init();
+  try {
+    const facts = store.listUserFacts("user_1");
+    assert.equal(facts.length, 1);
+    assert.equal(facts[0]?.id, "mem_legacy_sqlite_1");
+    assert.equal(facts[0]?.content, "用户希望被称为小王");
+    assert.equal(store.getContextStats().embeddings, 1);
+    const itemGroup = store.getStatus().tableGroups?.find((group) => group.groupId === "context.items");
+    const embeddingGroup = store.getStatus().tableGroups?.find((group) => group.groupId === "context.embeddings");
+    assert.equal(itemGroup?.actualSchemaVersion, 1);
+    assert.equal(itemGroup?.lastResetReason, undefined);
+    assert.equal(embeddingGroup?.actualSchemaVersion, 1);
+    assert.equal(embeddingGroup?.lastResetReason, undefined);
+  } finally {
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
   }
 });
 

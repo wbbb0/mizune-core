@@ -120,9 +120,15 @@ const {
             v-if="contextStatus"
             class="shrink-0 rounded bg-surface-muted px-1.5 py-0.5 text-small"
             :class="contextStatus.store.available ? 'text-success' : 'text-danger'"
-            :title="contextStatus.store.disabledReason || contextStatus.store.dbPath"
+            :title="[
+              contextStatus.store.disabledReason || contextStatus.store.dbPath,
+              ...(contextStatus.store.tableGroups ?? []).map((group) => `${group.groupId} v${group.actualSchemaVersion ?? '?'} / ${group.schemaVersion}${group.lastResetReason ? ` · ${group.lastResetReason}` : ''}`)
+            ].join('\n')"
           >
             store {{ contextStatus.store.available ? "ok" : "down" }}
+          </span>
+          <span v-if="contextStatus?.store.tableGroups?.length" class="shrink-0 rounded bg-surface-muted px-1.5 py-0.5 text-small text-text-subtle">
+            schema {{ contextStatus.store.tableGroups.length }}
           </span>
           <span
             v-if="contextStatus"
