@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
@@ -25,18 +25,14 @@ import { UserIdentityStore } from "../../src/identity/userIdentityStore.ts";
         }),
         "owner"
       );
-      assert.deepEqual(
-        JSON.parse(await readFile(join(dataDir, "user-identities.json"), "utf8")),
-        [
-          {
-            channelId: "qqbot",
-            scope: "private_user",
-            externalId: "10001",
-            internalUserId: "owner",
-            createdAt: bound.createdAt
-          }
-        ]
-      );
+      assert.deepEqual(await store.list(), [{
+        channelId: "qqbot",
+        scope: "private_user",
+        externalId: "10001",
+        internalUserId: "owner",
+        createdAt: bound.createdAt
+      }]);
+      await assert.rejects(access(join(dataDir, "user-identities.json")), /ENOENT/u);
     } finally {
       await rm(dataDir, { recursive: true, force: true });
     }

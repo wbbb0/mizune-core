@@ -660,8 +660,37 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     globalRuleStore: {
       async getAll() {
         return [];
+      },
+      async getRow() {
+        return null;
+      },
+      async createRow(value: unknown) {
+        return value;
+      },
+      async patchRow(_ruleId: string, patch: Record<string, unknown>) {
+        return patch;
+      },
+      async remove() {
+        return [];
       }
     } as unknown as InternalApiDeps["globalRuleStore"],
+    toolsetRuleStore: {
+      async getAll() {
+        return [];
+      },
+      async getRow() {
+        return null;
+      },
+      async createRow(value: unknown) {
+        return value;
+      },
+      async patchRow(_ruleId: string, patch: Record<string, unknown>) {
+        return patch;
+      },
+      async remove() {
+        return [];
+      }
+    } as unknown as InternalApiDeps["toolsetRuleStore"],
     scenarioHostStateStore: {
       async get(sessionId: string) {
         return state.scenarioHostStates[sessionId] ?? null;
@@ -992,8 +1021,38 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
               createdAt: 1
             }
           : undefined;
+      },
+      async listRows() {
+        return { rows: [], total: 0, offset: 0, limit: 100 };
+      },
+      async getRow() {
+        return null;
+      },
+      async createRow(value: unknown) {
+        return value;
+      },
+      async patchRow(_identity: unknown, patch: Record<string, unknown>) {
+        return patch;
+      },
+      async deleteRow() {
       }
     } as unknown as InternalApiDeps["userIdentityStore"],
+    groupMembershipStore: {
+      async listRows() {
+        return { rows: [], total: 0, offset: 0, limit: 100 };
+      },
+      async getRow() {
+        return null;
+      },
+      async createRow(value: unknown) {
+        return value;
+      },
+      async patchRow(_groupId: string, _userId: string, patch: Record<string, unknown>) {
+        return patch;
+      },
+      async deleteRow() {
+      }
+    } as unknown as InternalApiDeps["groupMembershipStore"],
     whitelistStore: {
       getSnapshot() {
         return {

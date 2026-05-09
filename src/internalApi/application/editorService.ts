@@ -19,10 +19,7 @@ import {
 import { deepMergeAllReplaceArrays } from "#data/schema/helpers.ts";
 import { buildUiTreeFromMeta } from "#data/schema/ui.ts";
 import type { BaseSchema, Infer } from "#data/schema/index.ts";
-import { globalRuleFileSchema } from "#memory/globalRuleEntry.ts";
-import { membershipFileSchema } from "#identity/groupMembershipSchema.ts";
 import { runtimeResourceFileSchema } from "#runtime/resources/runtimeResourceSchema.ts";
-import { toolsetRuleFileSchema } from "#llm/prompt/toolsetRuleStore.ts";
 import type { ConfigManager } from "#config/configManager.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
@@ -376,12 +373,9 @@ function buildEditorResourceMap(input: {
   ];
   const dataDir = input.config.dataDir;
   const dataResources: EditorResource<any>[] = [
-    single("group_membership", "群成员缓存", "data", membershipFileSchema, `${dataDir}/group-membership-cache.json`),
     single("live_resources", "运行时资源", "data", runtimeResourceFileSchema, `${dataDir}/live-resources.json`, {
       editable: false
-    }),
-    single("global_rules", "全局规则列表", "data", globalRuleFileSchema, `${dataDir}/global-rules.json`),
-    single("toolset_rules", "工具集规则列表", "data", toolsetRuleFileSchema, `${dataDir}/toolset-rules.json`)
+    })
   ];
 
   return new Map(

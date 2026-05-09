@@ -3,8 +3,10 @@ import type { AppConfig } from "#config/config.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import type { UserIdentityStore } from "#identity/userIdentityStore.ts";
 import type { UserStore } from "#identity/userStore.ts";
+import type { GroupMembershipStore } from "#identity/groupMembershipStore.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
 import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
+import type { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
@@ -203,12 +205,14 @@ export interface InternalApiDeps {
   globalProfileReadinessStore: GlobalProfileReadinessStore;
   setupStore: SetupStateStore;
   globalRuleStore: GlobalRuleStore;
+  toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
   userStore: UserStore;
   contextStore: ContextStore;
   contextEmbeddingService: ContextEmbeddingService;
   contextRetrievalService: ContextRetrievalService;
   whitelistStore: WhitelistStore;
+  groupMembershipStore: GroupMembershipStore;
   userIdentityStore: UserIdentityStore;
   requestStore: RequestStore;
   scheduledJobStore: ScheduledJobStore;
@@ -296,6 +300,10 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         scenarioProfileStore: deps.scenarioProfileStore,
         globalProfileReadinessStore: deps.globalProfileReadinessStore,
         setupStore: deps.setupStore,
+        globalRuleStore: deps.globalRuleStore,
+        toolsetRuleStore: deps.toolsetRuleStore,
+        userIdentityStore: deps.userIdentityStore,
+        groupMembershipStore: deps.groupMembershipStore,
         userStore: deps.userStore,
         requestStore: deps.requestStore,
         scheduledJobStore: deps.scheduledJobStore,

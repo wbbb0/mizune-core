@@ -1,3 +1,6 @@
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { dumpConfigString } from "#data/schema/file.ts";
 import type {
   CollectionDataResourceAdapter,
   DataResourceDefinition,
@@ -10,8 +13,15 @@ import type {
   SingletonDataResourceAdapter
 } from "./types.ts";
 
+export interface DataRegistryOptions {
+  dumpDir?: string;
+}
+
 export class DataRegistry {
   private readonly resources = new Map<string, DataResourceDefinition>();
+
+  constructor(private readonly options: DataRegistryOptions = {}) {
+  }
 
   register(definition: DataResourceDefinition): void {
     if (this.resources.has(definition.key)) {
@@ -141,7 +151,20 @@ export class DataRegistry {
     if (definition.durability === "ephemeral" || definition.export?.enabled !== true) {
       throw new Error(`Data resource does not support export: ${resourceKey}`);
     }
-    throw new Error(`Data resource export is not implemented: ${resourceKey}`);
+    if (!this.options.dumpDir) {
+      throw new Error("Data resource export dump directory is not configured");
+    }
+    const fileName = validateExportFileName(definition.export.fileName);
+    const filePath = join(this.options.dumpDir, fileName);
+    const value = await buildExportValue(definition);
+    const content = dumpExportContent(value, definition.export.format);
+    await writeAtomicTextFile(filePath, content);
+    return {
+      resource: toSummary(definition),
+      filePath,
+      format: definition.export.format,
+      bytes: Buffer.byteLength(content, "utf8")
+    };
   }
 
   async getDirectoryItem(resourceKey: string, itemKey: string): Promise<unknown> {
@@ -169,6 +192,66 @@ export class DataRegistry {
       throw new Error(`Data resource is not editable: ${resourceKey}`);
     }
     return definition;
+  }
+}
+
+async function buildExportValue(definition: DataResourceDefinition): Promise<unknown> {
+  if (definition.shape === "singleton") {
+    return await asSingletonAdapter(definition).get();
+  }
+  if (definition.shape === "collection" || definition.shape === "log") {
+    const adapter = asCollectionAdapter(definition);
+    const rows: unknown[] = [];
+    const limit = 500;
+    for (let offset = 0; ; offset += limit) {
+      const page = adapter.exportRows
+        ? await adapter.exportRows({ offset, limit })
+        : await adapter.listRows({ offset, limit });
+      rows.push(...page.rows);
+      if (page.total !== undefined && rows.length >= page.total) {
+        break;
+      }
+      if (page.rows.length < limit) {
+        break;
+      }
+    }
+    return rows;
+  }
+  if (definition.shape === "file") {
+    return await asFileAdapter(definition).get();
+  }
+  if (definition.shape === "directory") {
+    return await asDirectoryAdapter(definition).listItems();
+  }
+  throw new Error(`Unsupported data resource shape: ${definition.shape}`);
+}
+
+function dumpExportContent(value: unknown, format: string): string {
+  if (format !== "json" && format !== "yaml") {
+    throw new Error(`Data resource export format is not implemented: ${format}`);
+  }
+  return dumpConfigString(value, {
+    format,
+    prettyJsonSpaces: 2
+  });
+}
+
+function validateExportFileName(fileName: string): string {
+  if (!fileName.trim() || fileName.includes("/") || fileName.includes("\\") || fileName === "." || fileName === "..") {
+    throw new Error(`Invalid data resource export file name: ${fileName}`);
+  }
+  return fileName;
+}
+
+async function writeAtomicTextFile(filePath: string, content: string): Promise<void> {
+  await mkdir(dirname(filePath), { recursive: true });
+  const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    await writeFile(tmpPath, content, "utf8");
+    await rename(tmpPath, filePath);
+  } catch (error) {
+    await rm(tmpPath, { force: true });
+    throw error;
   }
 }
 

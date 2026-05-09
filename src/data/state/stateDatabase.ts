@@ -331,6 +331,112 @@ function validateScheduledJobsSchema(db: SqliteDatabase): void {
   });
 }
 
+function createRulesSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS global_rules (
+      id TEXT PRIMARY KEY NOT NULL CHECK (id = trim(id) AND length(id) > 0),
+      title TEXT NOT NULL CHECK (title = trim(title) AND length(title) > 0),
+      content TEXT NOT NULL CHECK (content = trim(content) AND length(content) > 0),
+      kind TEXT NOT NULL CHECK (kind IN ('workflow', 'constraint', 'preference', 'other')),
+      source TEXT NOT NULL CHECK (source IN ('owner_explicit', 'inferred')),
+      created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+      updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+      sort_order INTEGER NOT NULL CHECK (sort_order >= 0)
+    );
+
+    CREATE TABLE IF NOT EXISTS toolset_rules (
+      id TEXT PRIMARY KEY NOT NULL CHECK (id = trim(id) AND length(id) > 0),
+      title TEXT NOT NULL CHECK (title = trim(title) AND length(title) > 0),
+      content TEXT NOT NULL CHECK (content = trim(content) AND length(content) > 0),
+      fingerprint TEXT NOT NULL CHECK (fingerprint = trim(fingerprint) AND length(fingerprint) > 0),
+      source TEXT NOT NULL CHECK (source IN ('owner_explicit', 'inferred')),
+      created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+      updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+      sort_order INTEGER NOT NULL CHECK (sort_order >= 0)
+    );
+
+    CREATE TABLE IF NOT EXISTS toolset_rule_toolsets (
+      rule_id TEXT NOT NULL REFERENCES toolset_rules(id) ON DELETE CASCADE,
+      toolset_id TEXT NOT NULL CHECK (toolset_id = trim(toolset_id) AND length(toolset_id) > 0),
+      sort_order INTEGER NOT NULL CHECK (sort_order >= 0),
+      PRIMARY KEY (rule_id, toolset_id)
+    );
+  `);
+}
+
+function validateRulesSchema(db: SqliteDatabase): void {
+  assertTableColumns(db, "global_rules", {
+    id: "TEXT",
+    title: "TEXT",
+    content: "TEXT",
+    kind: "TEXT",
+    source: "TEXT",
+    created_at_ms: "INTEGER",
+    updated_at_ms: "INTEGER",
+    sort_order: "INTEGER"
+  });
+  assertTableColumns(db, "toolset_rules", {
+    id: "TEXT",
+    title: "TEXT",
+    content: "TEXT",
+    fingerprint: "TEXT",
+    source: "TEXT",
+    created_at_ms: "INTEGER",
+    updated_at_ms: "INTEGER",
+    sort_order: "INTEGER"
+  });
+  assertTableColumns(db, "toolset_rule_toolsets", {
+    rule_id: "TEXT",
+    toolset_id: "TEXT",
+    sort_order: "INTEGER"
+  });
+}
+
+function createUserIdentitiesSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_identities (
+      channel_id TEXT NOT NULL CHECK (channel_id = trim(channel_id) AND length(channel_id) > 0),
+      scope TEXT NOT NULL CHECK (scope IN ('private_user')),
+      external_id TEXT NOT NULL CHECK (external_id = trim(external_id) AND length(external_id) > 0),
+      internal_user_id TEXT NOT NULL CHECK (internal_user_id = trim(internal_user_id) AND length(internal_user_id) > 0),
+      created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+      PRIMARY KEY (channel_id, scope, external_id),
+      UNIQUE (internal_user_id)
+    );
+  `);
+}
+
+function validateUserIdentitiesSchema(db: SqliteDatabase): void {
+  assertTableColumns(db, "user_identities", {
+    channel_id: "TEXT",
+    scope: "TEXT",
+    external_id: "TEXT",
+    internal_user_id: "TEXT",
+    created_at_ms: "INTEGER"
+  });
+}
+
+function createGroupMembershipSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS group_membership_entries (
+      group_id TEXT NOT NULL CHECK (group_id = trim(group_id) AND length(group_id) > 0),
+      user_id TEXT NOT NULL CHECK (user_id = trim(user_id) AND length(user_id) > 0),
+      is_member INTEGER NOT NULL CHECK (is_member IN (0, 1)),
+      verified_at_ms INTEGER NOT NULL CHECK (verified_at_ms >= 0),
+      PRIMARY KEY (group_id, user_id)
+    );
+  `);
+}
+
+function validateGroupMembershipSchema(db: SqliteDatabase): void {
+  assertTableColumns(db, "group_membership_entries", {
+    group_id: "TEXT",
+    user_id: "TEXT",
+    is_member: "INTEGER",
+    verified_at_ms: "INTEGER"
+  });
+}
+
 const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   {
     groupId: "state.persona",
@@ -403,5 +509,29 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
     ownedTables: ["scheduled_jobs"],
     createSchema: createScheduledJobsSchema,
     validateSchema: validateScheduledJobsSchema
+  },
+  {
+    groupId: "state.rules",
+    schemaVersion: 1,
+    resetPolicy: "block_reset",
+    ownedTables: ["global_rules", "toolset_rules", "toolset_rule_toolsets"],
+    createSchema: createRulesSchema,
+    validateSchema: validateRulesSchema
+  },
+  {
+    groupId: "state.user_identities",
+    schemaVersion: 1,
+    resetPolicy: "block_reset",
+    ownedTables: ["user_identities"],
+    createSchema: createUserIdentitiesSchema,
+    validateSchema: validateUserIdentitiesSchema
+  },
+  {
+    groupId: "state.group_membership",
+    schemaVersion: 1,
+    resetPolicy: "block_reset",
+    ownedTables: ["group_membership_entries"],
+    createSchema: createGroupMembershipSchema,
+    validateSchema: validateGroupMembershipSchema
   }
 ];

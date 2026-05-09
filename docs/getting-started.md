@@ -328,9 +328,8 @@ config/instances/acc1.yml
 默认每个实例的数据目录下会有这些内容：
 
 - `sessions/`
-- `state/state.sqlite`，其中包含 `persona`、`rp_profile`、`scenario_profile`、`global_profile_readiness`、`setup_state`、`users`、`user_memories`、`pending_requests`、`scheduled_jobs` 与 `whitelist_entries`
-- `global-rules.json`
-- `toolset-rules.json`
+- `state/state.sqlite`，其中包含 `persona`、`rp_profile`、`scenario_profile`、`global_profile_readiness`、`setup_state`、`users`、`user_memories`、`pending_requests`、`scheduled_jobs`、`global_rules`、`toolset_rules`、`toolset_rule_toolsets`、`user_identities`、`group_membership_entries` 与 `whitelist_entries`
+- `dumps/`，WebUI Data Registry 导出的可读文件会使用稳定文件名覆盖写入这里，避免按时间戳生成大量 dump
 - `workspace/`
 - `webui-auth.json`
 
@@ -340,7 +339,7 @@ config/instances/acc1.yml
 npm run migrate:memory -- data/<instance>
 ```
 
-迁移会归并旧版 memory / rules 数据，并生成 `memory-migration-report.json` 审计报告。`persona`、RP/Scenario 全局资料、全局资料就绪状态、初始化状态、用户资料、待处理请求、定时任务和白名单已由 `state/state.sqlite` 承载，旧 JSON 文件不再作为运行时数据源。
+迁移会归并旧版 memory / rules 数据，并生成 `memory-migration-report.json` 审计报告。`persona`、RP/Scenario 全局资料、全局资料就绪状态、初始化状态、用户资料、规则、身份映射、群成员缓存、待处理请求、定时任务和白名单已由 `state/state.sqlite` 承载，旧 JSON 文件不再作为运行时数据源。
 
 ## 反向代理注意事项
 

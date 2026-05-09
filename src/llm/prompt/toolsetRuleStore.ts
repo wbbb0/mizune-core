@@ -1,11 +1,9 @@
-import { stat } from "node:fs/promises";
-import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
-import { FileSchemaStore } from "#data/fileSchemaStore.ts";
+import type { SqliteDatabase } from "#data/sqlite/sqliteService.ts";
+import { StateDatabase } from "#data/state/stateDatabase.ts";
 import type { Infer } from "#data/schema/types.ts";
 import { s } from "#data/schema/index.ts";
-import { rotateBackup } from "#utils/rotatingBackup.ts";
 import { detectScopeConflict, type ScopeConflictWarning } from "#memory/memoryCategory.ts";
 import { findBestDuplicateMatch, normalizeTextForSimilarity, normalizeTitleForDedup } from "#memory/similarity.ts";
 import {
@@ -24,7 +22,8 @@ export const toolsetRuleSchema = s.object({
     .min(1),
   fingerprint: s.string().trim().nonempty()
     .title("指纹")
-    .describe("用于去重匹配的内部标识。"),
+    .describe("用于去重匹配的内部标识。编辑时可留空，由系统重新计算。")
+    .default("__computed__"),
   source: s.enum(["owner_explicit", "inferred"] as const).title("来源").default("owner_explicit"),
   createdAt: s.number().int().min(0).title("创建时间").default(() => Date.now()),
   updatedAt: s.number().int().min(0).title("更新时间").default(() => Date.now())
@@ -92,39 +91,76 @@ function haveOverlappingToolsets(left: string[], right: string[]): boolean {
 }
 
 export class ToolsetRuleStore {
-  private readonly filePath: string;
-  private readonly store: FileSchemaStore<typeof toolsetRuleFileSchema>;
-
   constructor(
     dataDir: string,
-    private readonly config: Pick<AppConfig, "backup">,
-    private readonly logger: Logger
+    _config: Pick<AppConfig, "backup">,
+    private readonly logger: Logger,
+    private readonly stateDatabase = new StateDatabase(dataDir, logger)
   ) {
-    this.filePath = join(dataDir, "toolset-rules.json");
-    this.store = new FileSchemaStore({
-      filePath: this.filePath,
-      schema: toolsetRuleFileSchema,
-      logger,
-      loadErrorEvent: "toolset_rule_store_load_failed"
-    });
+    void _config;
   }
 
   async init(): Promise<void> {
-    await this.getAll();
+    await this.stateDatabase.init();
   }
 
   async getAll(): Promise<ToolsetRuleEntry[]> {
     try {
-      const parsed = await this.store.read();
-      if (parsed) {
-        return [...parsed];
+      await this.stateDatabase.init();
+      const rows = this.stateDatabase.getDb().prepare(`
+        SELECT
+          id,
+          title,
+          content,
+          fingerprint,
+          source,
+          created_at_ms AS createdAt,
+          updated_at_ms AS updatedAt
+        FROM toolset_rules
+        ORDER BY sort_order ASC, id ASC
+      `).all() as ToolsetRuleRow[];
+      const toolsetRows = this.stateDatabase.getDb().prepare(`
+        SELECT rule_id AS ruleId, toolset_id AS toolsetId
+        FROM toolset_rule_toolsets
+        ORDER BY rule_id ASC, sort_order ASC, toolset_id ASC
+      `).all() as ToolsetRuleToolsetRow[];
+      const toolsetsByRuleId = new Map<string, string[]>();
+      for (const row of toolsetRows) {
+        const current = toolsetsByRuleId.get(row.ruleId) ?? [];
+        current.push(row.toolsetId);
+        toolsetsByRuleId.set(row.ruleId, current);
       }
+      return toolsetRuleFileSchema.parse(rows.map((row) => createToolsetRuleEntry({
+        ...row,
+        toolsetIds: toolsetsByRuleId.get(row.id) ?? []
+      })));
     } catch (error) {
       this.logger.warn({ error }, "toolset_rule_store_load_failed");
       throw error;
     }
-    await this.writeAll([]);
-    return [];
+  }
+
+  async getRow(ruleId: string): Promise<ToolsetRuleEntry | null> {
+    return (await this.getAll()).find((rule) => rule.id === ruleId) ?? null;
+  }
+
+  async createRow(value: unknown): Promise<ToolsetRuleEntry> {
+    const parsed = createToolsetRuleEntry(toolsetRuleSchema.parse(value));
+    if (await this.getRow(parsed.id)) {
+      throw new Error(`Toolset rule ${parsed.id} already exists`);
+    }
+    await this.insertRule(parsed);
+    return parsed;
+  }
+
+  async patchRow(ruleId: string, patch: Record<string, unknown>): Promise<ToolsetRuleEntry> {
+    const current = await this.getRow(ruleId);
+    if (!current) {
+      throw new Error(`Toolset rule ${ruleId} not found`);
+    }
+    const parsed = createToolsetRuleEntry(toolsetRuleSchema.parse({ ...current, ...patch, id: ruleId }));
+    await this.updateRule(parsed);
+    return parsed;
   }
 
   async upsert(input: {
@@ -159,10 +195,13 @@ export class ToolsetRuleStore {
       ...(duplicate ? { createdAt: duplicate.item.createdAt } : {})
     });
     const targetIndex = rules.findIndex((item) => item.id === nextRule.id);
+    const item = targetIndex >= 0
+      ? { ...nextRule, createdAt: rules[targetIndex]!.createdAt }
+      : nextRule;
     if (targetIndex >= 0) {
-      rules[targetIndex] = { ...nextRule, createdAt: rules[targetIndex]!.createdAt };
+      await this.updateRule(item);
     } else {
-      rules.push(nextRule);
+      await this.insertRule(item);
     }
     const dedup = buildMemoryDedupDetails({
       explicitId: input.ruleId ?? null,
@@ -181,10 +220,9 @@ export class ToolsetRuleStore {
       dedup,
       warning
     });
-    await this.writeAll(rules);
     this.logger.info({
       targetCategory: diagnostics.targetCategory,
-      ruleId: nextRule.id,
+      ruleId: item.id,
       action: diagnostics.action,
       finalAction: diagnostics.finalAction,
       dedupMatchedBy: diagnostics.dedup.matchedBy,
@@ -193,13 +231,13 @@ export class ToolsetRuleStore {
       rerouteResult: diagnostics.reroute.result,
       rerouteSuggestedScope: diagnostics.reroute.suggestedScope,
       rerouteReason: diagnostics.reroute.reason,
-      toolsetIds: nextRule.toolsetIds
+      toolsetIds: item.toolsetIds
     }, "toolset_rule_upserted");
     if (warning) {
       this.logger.warn({
         targetCategory: "toolset_rules",
-        ruleId: nextRule.id,
-        toolsetIds: nextRule.toolsetIds,
+        ruleId: item.id,
+        toolsetIds: item.toolsetIds,
         suggestedScope: warning.suggestedScope,
         reason: warning.reason
       }, "memory_scope_conflict_detected");
@@ -209,20 +247,24 @@ export class ToolsetRuleStore {
       finalAction: diagnostics.finalAction,
       dedup,
       warning,
-      item: nextRule,
-      rules
+      item,
+      rules: await this.getAll()
     };
   }
 
   async remove(ruleId: string): Promise<ToolsetRuleEntry[]> {
     const rules = await this.getAll();
-    const nextRules = rules.filter((item) => item.id !== ruleId);
-    if (nextRules.length === rules.length) {
+    const exists = rules.some((item) => item.id === ruleId);
+    if (!exists) {
       return rules;
     }
-    await this.writeAll(nextRules);
+    await this.stateDatabase.init();
+    this.stateDatabase.getDb().prepare(`
+      DELETE FROM toolset_rules
+      WHERE id = ?
+    `).run(ruleId);
     this.logger.info({ ruleId }, "toolset_rule_removed");
-    return nextRules;
+    return this.getAll();
   }
 
   async overwrite(rules: Array<{
@@ -242,25 +284,99 @@ export class ToolsetRuleStore {
 
   private async writeAll(rules: ToolsetRuleEntry[]): Promise<void> {
     const validated = toolsetRuleFileSchema.parse(rules);
-    await this.createBackupIfNeeded();
-    await this.store.write(validated);
+    await this.stateDatabase.init();
+    this.stateDatabase.getDb().transaction((nextRules: ToolsetRuleEntry[]) => {
+      const db = this.stateDatabase.getDb();
+      db.prepare("DELETE FROM toolset_rule_toolsets").run();
+      db.prepare("DELETE FROM toolset_rules").run();
+      nextRules.forEach((rule, index) => insertToolsetRuleRow(db, rule, index + 1));
+    })(validated);
   }
 
-  private async createBackupIfNeeded(): Promise<void> {
-    try {
-      await stat(this.filePath);
-    } catch (error: unknown) {
-      const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code === "ENOENT") {
-        return;
-      }
-      throw error;
-    }
-
-    await rotateBackup({
-      sourceFilePath: this.filePath,
-      limit: this.config.backup.profileRotateLimit,
-      logger: this.logger
-    });
+  private async insertRule(rule: ToolsetRuleEntry): Promise<void> {
+    await this.stateDatabase.init();
+    insertToolsetRuleRow(this.stateDatabase.getDb(), rule, nextToolsetRuleSortOrder(this.stateDatabase.getDb()));
   }
+
+  private async updateRule(rule: ToolsetRuleEntry): Promise<void> {
+    await this.stateDatabase.init();
+    this.stateDatabase.getDb().transaction((next: ToolsetRuleEntry) => {
+      const db = this.stateDatabase.getDb();
+      db.prepare(`
+        UPDATE toolset_rules
+        SET
+          title = @title,
+          content = @content,
+          fingerprint = @fingerprint,
+          source = @source,
+          created_at_ms = @createdAt,
+          updated_at_ms = @updatedAt
+        WHERE id = @id
+      `).run(next);
+      db.prepare("DELETE FROM toolset_rule_toolsets WHERE rule_id = ?").run(next.id);
+      insertToolsetRuleToolsetRows(db, next);
+    })(rule);
+  }
+}
+
+type ToolsetRuleRow = {
+  id: string;
+  title: string;
+  content: string;
+  fingerprint: string;
+  source: ToolsetRuleEntry["source"];
+  createdAt: number;
+  updatedAt: number;
+};
+
+type ToolsetRuleToolsetRow = {
+  ruleId: string;
+  toolsetId: string;
+};
+
+function nextToolsetRuleSortOrder(db: SqliteDatabase): number {
+  return (db.prepare(`
+    SELECT COALESCE(MAX(sort_order), 0) + 1 AS nextSortOrder
+    FROM toolset_rules
+  `).get() as { nextSortOrder: number }).nextSortOrder;
+}
+
+function insertToolsetRuleRow(db: SqliteDatabase, rule: ToolsetRuleEntry, sortOrder: number): void {
+  db.prepare(`
+    INSERT INTO toolset_rules (
+      id,
+      title,
+      content,
+      fingerprint,
+      source,
+      created_at_ms,
+      updated_at_ms,
+      sort_order
+    )
+    VALUES (
+      @id,
+      @title,
+      @content,
+      @fingerprint,
+      @source,
+      @createdAt,
+      @updatedAt,
+      @sortOrder
+    )
+  `).run({ ...rule, sortOrder });
+  insertToolsetRuleToolsetRows(db, rule);
+}
+
+function insertToolsetRuleToolsetRows(db: SqliteDatabase, rule: ToolsetRuleEntry): void {
+  const insert = db.prepare(`
+    INSERT INTO toolset_rule_toolsets (
+      rule_id,
+      toolset_id,
+      sort_order
+    )
+    VALUES (?, ?, ?)
+  `);
+  rule.toolsetIds.forEach((toolsetId, index) => {
+    insert.run(rule.id, toolsetId, index + 1);
+  });
 }

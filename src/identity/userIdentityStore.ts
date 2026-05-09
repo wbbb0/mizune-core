@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { join } from "node:path";
 import type { Logger } from "pino";
-import { FileSchemaStore } from "#data/fileSchemaStore.ts";
+import { StateDatabase } from "#data/state/stateDatabase.ts";
 import {
+  userIdentityRecordSchema,
   userIdentityStoreSchema,
   type UserIdentityRecord,
   type UserIdentityScope
@@ -11,28 +11,89 @@ import {
 const CROCKFORD_BASE32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 export class UserIdentityStore {
-  private readonly store: FileSchemaStore<typeof userIdentityStoreSchema>;
   private current: UserIdentityRecord[] = [];
 
   constructor(
     dataDir: string,
-    private readonly logger: Logger
+    private readonly logger: Logger,
+    private readonly stateDatabase = new StateDatabase(dataDir, logger)
   ) {
-    this.store = new FileSchemaStore({
-      filePath: join(dataDir, "user-identities.json"),
-      schema: userIdentityStoreSchema,
-      logger,
-      loadErrorEvent: "user_identity_store_load_failed",
-      atomicWrite: true
-    });
   }
 
   async init(): Promise<void> {
-    this.current = sortRecords(await this.store.readOrDefault([]));
+    await this.stateDatabase.init();
+    this.current = await this.readAllFromDb();
   }
 
   async list(): Promise<UserIdentityRecord[]> {
     return [...await this.readAll()];
+  }
+
+  async listRows(input: { offset?: number; limit?: number } = {}): Promise<{
+    rows: UserIdentityRecord[];
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const offset = input.offset ?? 0;
+    const limit = input.limit ?? 100;
+    const rows = await this.readAll();
+    return {
+      rows: rows.slice(offset, offset + limit),
+      total: rows.length,
+      offset,
+      limit
+    };
+  }
+
+  async getRow(identity: Pick<UserIdentityRecord, "channelId" | "scope" | "externalId">): Promise<UserIdentityRecord | null> {
+    return (await this.readAll()).find((record) => matchesExternal(record, identity)) ?? null;
+  }
+
+  async createRow(value: unknown): Promise<UserIdentityRecord> {
+    const parsed = userIdentityRecordSchema.parse(value);
+    await this.assertIdentityCanBeInserted(parsed);
+    const row = normalizeRecord(parsed);
+    await this.insertIdentity(row);
+    this.current = await this.readAllFromDb();
+    return row;
+  }
+
+  async patchRow(
+    identity: Pick<UserIdentityRecord, "channelId" | "scope" | "externalId">,
+    patch: Record<string, unknown>
+  ): Promise<UserIdentityRecord> {
+    const current = await this.getRow(identity);
+    if (!current) {
+      throw new Error("User identity not found");
+    }
+    const parsed = userIdentityRecordSchema.parse({ ...current, ...patch });
+    if (!matchesExternal(parsed, identity)) {
+      throw new Error("User identity row id cannot be changed");
+    }
+    await this.stateDatabase.init();
+    this.stateDatabase.getDb().prepare(`
+      UPDATE user_identities
+      SET
+        internal_user_id = @internalUserId,
+        created_at_ms = @createdAt
+      WHERE channel_id = @channelId
+        AND scope = @scope
+        AND external_id = @externalId
+    `).run(parsed);
+    this.current = await this.readAllFromDb();
+    return parsed;
+  }
+
+  async deleteRow(identity: Pick<UserIdentityRecord, "channelId" | "scope" | "externalId">): Promise<void> {
+    await this.stateDatabase.init();
+    this.stateDatabase.getDb().prepare(`
+      DELETE FROM user_identities
+      WHERE channel_id = @channelId
+        AND scope = @scope
+        AND external_id = @externalId
+    `).run(identity);
+    this.current = await this.readAllFromDb();
   }
 
   async findInternalUserId(input: {
@@ -126,9 +187,8 @@ export class UserIdentityStore {
     if (sameInternal) {
       throw new Error(`Internal user ${next.internalUserId} already has an external identity`);
     }
-    const updated = sortRecords([...records, next]);
-    await this.store.write(updated);
-    this.current = updated;
+    await this.insertIdentity(next);
+    this.current = await this.readAllFromDb();
     this.logger.info({
       channelId: next.channelId,
       scope: next.scope,
@@ -147,9 +207,56 @@ export class UserIdentityStore {
     return (await this.readAll()).find((record) => matchesExternal(record, normalized));
   }
 
+  private async assertIdentityCanBeInserted(next: UserIdentityRecord): Promise<void> {
+    const records = await this.readAll();
+    const sameExternal = records.find((record) => matchesExternal(record, next));
+    if (sameExternal) {
+      throw new Error(`External identity ${next.channelId}:${next.externalId} is already bound`);
+    }
+    const sameInternal = records.find((record) => record.internalUserId === next.internalUserId);
+    if (sameInternal) {
+      throw new Error(`Internal user ${next.internalUserId} already has an external identity`);
+    }
+  }
+
+  private async insertIdentity(record: UserIdentityRecord): Promise<void> {
+    await this.stateDatabase.init();
+    this.stateDatabase.getDb().prepare(`
+      INSERT INTO user_identities (
+        channel_id,
+        scope,
+        external_id,
+        internal_user_id,
+        created_at_ms
+      )
+      VALUES (
+        @channelId,
+        @scope,
+        @externalId,
+        @internalUserId,
+        @createdAt
+      )
+    `).run(record);
+  }
+
   private async readAll(): Promise<UserIdentityRecord[]> {
-    this.current = sortRecords(await this.store.readOrDefault([]));
+    this.current = await this.readAllFromDb();
     return [...this.current];
+  }
+
+  private async readAllFromDb(): Promise<UserIdentityRecord[]> {
+    await this.stateDatabase.init();
+    const rows = this.stateDatabase.getDb().prepare(`
+      SELECT
+        channel_id AS channelId,
+        scope,
+        external_id AS externalId,
+        internal_user_id AS internalUserId,
+        created_at_ms AS createdAt
+      FROM user_identities
+      ORDER BY channel_id ASC, scope ASC, external_id ASC
+    `).all() as UserIdentityRecord[];
+    return sortRecords(userIdentityStoreSchema.parse(rows));
   }
 }
 

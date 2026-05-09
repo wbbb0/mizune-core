@@ -64,7 +64,7 @@ export function createBootstrapServices(
   const { config, logger, dataDir } = context;
   const stateDatabase = new StateDatabase(dataDir, logger);
   const whitelistStore = new WhitelistStore(dataDir, logger, stateDatabase);
-  const userIdentityStore = new UserIdentityStore(dataDir, logger);
+  const userIdentityStore = new UserIdentityStore(dataDir, logger, stateDatabase);
   const npcDirectory = new NpcDirectory();
   const router = new EventRouter(
     config,
@@ -105,14 +105,14 @@ export function createBootstrapServices(
   const sessionPersistence = new SessionPersistence(dataDir, logger);
   const scheduledJobStore = new ScheduledJobStore(dataDir, logger, stateDatabase);
   const requestStore = new RequestStore(dataDir, logger, stateDatabase);
-  const groupMembershipStore = new GroupMembershipStore(dataDir, logger);
+  const groupMembershipStore = new GroupMembershipStore(dataDir, logger, stateDatabase);
   const userStore = new UserStore(dataDir, config, logger, stateDatabase);
   const contextStore = new ContextStore(dataDir, config, logger);
   const contextEmbeddingService = new ContextEmbeddingService(config, llmClient, logger);
   const contextRetrievalService = new ContextRetrievalService(config, contextStore, contextEmbeddingService, logger);
   const personaStore = new PersonaStore(dataDir, config, logger, stateDatabase);
-  const globalRuleStore = new GlobalRuleStore(dataDir, config, logger);
-  const toolsetRuleStore = new ToolsetRuleStore(dataDir, config, logger);
+  const globalRuleStore = new GlobalRuleStore(dataDir, config, logger, stateDatabase);
+  const toolsetRuleStore = new ToolsetRuleStore(dataDir, config, logger, stateDatabase);
   const scenarioHostStateStore = new ScenarioHostStateStore(dataDir, config, logger);
   const rpProfileStore = new RpProfileStore(dataDir, config, logger, stateDatabase);
   const scenarioProfileStore = new ScenarioProfileStore(dataDir, config, logger, stateDatabase);

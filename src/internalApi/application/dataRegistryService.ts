@@ -10,9 +10,15 @@ import { globalProfileReadinessSchema } from "#identity/globalProfileReadinessSc
 import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import { setupStateSchema } from "#identity/setupStateSchema.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
+import { userIdentityRecordSchema, type UserIdentityRecord } from "#identity/userIdentitySchema.ts";
+import type { UserIdentityStore } from "#identity/userIdentityStore.ts";
 import { persistedUserSchema } from "#identity/userSchema.ts";
 import type { UserStore } from "#identity/userStore.ts";
+import type { GroupMembershipRow, GroupMembershipStore } from "#identity/groupMembershipStore.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
+import { toolsetRuleSchema, type ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
+import { globalRuleEntrySchema, type GlobalRuleEntry } from "#memory/globalRuleEntry.ts";
+import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
 import { rpProfileSchema } from "#modes/rpAssistant/profileSchema.ts";
 import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
 import { scenarioProfileSchema } from "#modes/scenarioHost/profileSchema.ts";
@@ -45,13 +51,19 @@ export function createDataRegistryService(input: {
   scenarioProfileStore: Pick<ScenarioProfileStore, "get" | "write">;
   globalProfileReadinessStore: Pick<GlobalProfileReadinessStore, "get" | "write">;
   setupStore: Pick<SetupStateStore, "get">;
+  globalRuleStore: Pick<GlobalRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove">;
+  toolsetRuleStore: Pick<ToolsetRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove">;
+  userIdentityStore: Pick<UserIdentityStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
+  groupMembershipStore: Pick<GroupMembershipStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
   userStore: Pick<UserStore, "listRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
   requestStore: Pick<RequestStore, "listRows" | "get" | "createRow" | "patchRow" | "deleteRow">;
   scheduledJobStore: Pick<ScheduledJobStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
   scheduler: Pick<Scheduler, "reloadFromStore">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
 }): DataRegistryService {
-  const registry = new DataRegistry();
+  const registry = new DataRegistry({
+    dumpDir: join(input.config.dataDir, "dumps")
+  });
   for (const definition of createInitialDataResourceDefinitions(input)) {
     registry.register(definition);
   }
@@ -65,6 +77,10 @@ function createInitialDataResourceDefinitions(input: {
   scenarioProfileStore: Pick<ScenarioProfileStore, "get" | "write">;
   globalProfileReadinessStore: Pick<GlobalProfileReadinessStore, "get" | "write">;
   setupStore: Pick<SetupStateStore, "get">;
+  globalRuleStore: Pick<GlobalRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove">;
+  toolsetRuleStore: Pick<ToolsetRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove">;
+  userIdentityStore: Pick<UserIdentityStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
+  groupMembershipStore: Pick<GroupMembershipStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
   userStore: Pick<UserStore, "listRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
   requestStore: Pick<RequestStore, "listRows" | "get" | "createRow" | "patchRow" | "deleteRow">;
   scheduledJobStore: Pick<ScheduledJobStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
@@ -121,6 +137,10 @@ function createInitialDataResourceDefinitions(input: {
     }),
     createRequestsResource(input.requestStore),
     createScheduledJobsResource(input.scheduledJobStore, input.scheduler, () => input.config.scheduler.enabled),
+    createGlobalRulesResource(input.globalRuleStore),
+    createToolsetRulesResource(input.toolsetRuleStore),
+    createUserIdentitiesResource(input.userIdentityStore),
+    createGroupMembershipResource(input.groupMembershipStore),
     createUsersResource(input.userStore),
     createWhitelistResource(input.whitelistStore),
     fileResource({
@@ -175,6 +195,11 @@ function singletonSqliteResource<TValue>(input: {
     },
     schemaMeta,
     uiTree: buildUiTreeFromMeta(schemaMeta),
+    export: {
+      enabled: true,
+      fileName: `${input.key}.json`,
+      format: "json"
+    },
     adapter: {
       get: async () => input.get(),
       ...(input.editable && input.write ? {
@@ -206,6 +231,7 @@ function createRequestsResource(
     },
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
+    export: { enabled: true, fileName: "requests.json", format: "json" },
     rowIdentity: {
       fields: ["flag"],
       encode: "json_base64url"
@@ -224,6 +250,10 @@ function createRequestsResource(
           }))
         };
       },
+      exportRows: async (query) => requestStore.listRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      }),
       getRow: async (rowId) => {
         const flag = decodeRequestRowId(rowId);
         const row = await requestStore.get(flag);
@@ -277,6 +307,7 @@ function createScheduledJobsResource(
     },
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
+    export: { enabled: true, fileName: "scheduled_jobs.json", format: "json" },
     rowIdentity: {
       fields: ["id"],
       encode: "single"
@@ -292,6 +323,10 @@ function createScheduledJobsResource(
           rows: result.rows
         };
       },
+      exportRows: async (query) => scheduledJobStore.listRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      }),
       getRow: async (rowId) => {
         const row = await scheduledJobStore.getRow(rowId);
         return row;
@@ -324,6 +359,267 @@ async function reloadSchedulerIfEnabled(
   await scheduler.reloadFromStore();
 }
 
+function createGlobalRulesResource(
+  globalRuleStore: Pick<GlobalRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove">
+): DataResourceDefinition {
+  const rowSchemaMeta = exportSchemaMeta(globalRuleEntrySchema);
+  return {
+    key: "global_rules",
+    title: "全局规则列表",
+    shape: "collection",
+    editable: true,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "state",
+      tableGroup: "state.rules",
+      tables: ["global_rules"]
+    },
+    rowSchemaMeta,
+    rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
+    export: { enabled: true, fileName: "global_rules.json", format: "json" },
+    rowIdentity: { fields: ["id"], encode: "single" },
+    adapter: {
+      listRows: async (query) => {
+        const offset = query.offset ?? 0;
+        const limit = query.limit ?? 100;
+        const rows = await globalRuleStore.getAll();
+        return { rows: rows.slice(offset, offset + limit), total: rows.length, offset, limit };
+      },
+      exportRows: async (query) => {
+        const offset = query.offset ?? 0;
+        const limit = query.limit ?? 100;
+        const rows = await globalRuleStore.getAll();
+        return { rows: rows.slice(offset, offset + limit), total: rows.length, offset, limit };
+      },
+      getRow: async (rowId) => globalRuleStore.getRow(rowId),
+      createRow: async (value) => {
+        const parsed = globalRuleEntrySchema.parse(value) as GlobalRuleEntry;
+        return globalRuleStore.createRow(parsed);
+      },
+      patchRow: async (rowId, input) => {
+        return globalRuleStore.patchRow(rowId, input.patch);
+      },
+      deleteRow: async (rowId) => {
+        await globalRuleStore.remove(rowId);
+      }
+    }
+  };
+}
+
+function createToolsetRulesResource(
+  toolsetRuleStore: Pick<ToolsetRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove">
+): DataResourceDefinition {
+  const rowSchemaMeta = exportSchemaMeta(toolsetRuleSchema);
+  return {
+    key: "toolset_rules",
+    title: "工具集规则列表",
+    shape: "collection",
+    editable: true,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "state",
+      tableGroup: "state.rules",
+      tables: ["toolset_rules", "toolset_rule_toolsets"]
+    },
+    rowSchemaMeta,
+    rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
+    export: { enabled: true, fileName: "toolset_rules.json", format: "json" },
+    rowIdentity: { fields: ["id"], encode: "single" },
+    adapter: {
+      listRows: async (query) => {
+        const offset = query.offset ?? 0;
+        const limit = query.limit ?? 100;
+        const rows = await toolsetRuleStore.getAll();
+        return { rows: rows.slice(offset, offset + limit), total: rows.length, offset, limit };
+      },
+      exportRows: async (query) => {
+        const offset = query.offset ?? 0;
+        const limit = query.limit ?? 100;
+        const rows = await toolsetRuleStore.getAll();
+        return { rows: rows.slice(offset, offset + limit), total: rows.length, offset, limit };
+      },
+      getRow: async (rowId) => toolsetRuleStore.getRow(rowId),
+      createRow: async (value) => {
+        const parsed = toolsetRuleSchema.parse(value);
+        return toolsetRuleStore.createRow(parsed);
+      },
+      patchRow: async (rowId, input) => {
+        return toolsetRuleStore.patchRow(rowId, input.patch);
+      },
+      deleteRow: async (rowId) => {
+        await toolsetRuleStore.remove(rowId);
+      }
+    }
+  };
+}
+
+function createUserIdentitiesResource(
+  userIdentityStore: Pick<UserIdentityStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">
+): DataResourceDefinition {
+  const rowSchemaMeta = exportSchemaMeta(userIdentityRecordSchema);
+  return {
+    key: "user_identities",
+    title: "用户身份映射",
+    shape: "collection",
+    editable: true,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "state",
+      tableGroup: "state.user_identities",
+      tables: ["user_identities"]
+    },
+    rowSchemaMeta,
+    rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
+    export: { enabled: true, fileName: "user_identities.json", format: "json" },
+    rowIdentity: { fields: ["channelId", "scope", "externalId"], encode: "json_base64url" },
+    adapter: {
+      listRows: async (query) => {
+        const result = await userIdentityStore.listRows({
+          ...(query.offset !== undefined ? { offset: query.offset } : {}),
+          ...(query.limit !== undefined ? { limit: query.limit } : {})
+        });
+        return { ...result, rows: result.rows.map((row) => ({ id: encodeUserIdentityRowId(row), ...row })) };
+      },
+      exportRows: async (query) => userIdentityStore.listRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      }),
+      getRow: async (rowId) => {
+        const identity = decodeUserIdentityRowId(rowId);
+        const row = await userIdentityStore.getRow(identity);
+        return row ? { id: encodeUserIdentityRowId(row), ...row } : null;
+      },
+      createRow: async (value) => {
+        const row = await userIdentityStore.createRow(value);
+        return { id: encodeUserIdentityRowId(row), ...row };
+      },
+      patchRow: async (rowId, input) => {
+        const row = await userIdentityStore.patchRow(decodeUserIdentityRowId(rowId), input.patch);
+        return { id: encodeUserIdentityRowId(row), ...row };
+      },
+      deleteRow: async (rowId) => {
+        await userIdentityStore.deleteRow(decodeUserIdentityRowId(rowId));
+      }
+    }
+  };
+}
+
+function encodeUserIdentityRowId(row: Pick<UserIdentityRecord, "channelId" | "scope" | "externalId">): string {
+  return Buffer.from(JSON.stringify({
+    channelId: row.channelId,
+    scope: row.scope,
+    externalId: row.externalId
+  }), "utf8").toString("base64url");
+}
+
+function decodeUserIdentityRowId(rowId: string): Pick<UserIdentityRecord, "channelId" | "scope" | "externalId"> {
+  const parsed = JSON.parse(Buffer.from(rowId, "base64url").toString("utf8")) as unknown;
+  const row = userIdentityRecordSchema.parse({
+    ...(parsed && typeof parsed === "object" ? parsed : {}),
+    internalUserId: "placeholder",
+    createdAt: 0
+  });
+  return {
+    channelId: row.channelId,
+    scope: row.scope,
+    externalId: row.externalId
+  };
+}
+
+const groupMembershipRowSchema = s.object({
+  groupId: s.string().trim().nonempty().title("群 ID"),
+  userId: s.string().trim().nonempty().title("用户 ID"),
+  isMember: s.boolean().title("是否在群内"),
+  verifiedAt: s.number().int().min(0).title("验证时间").default(() => Date.now())
+}).title("群成员缓存条目")
+  .strict();
+
+function createGroupMembershipResource(
+  groupMembershipStore: Pick<GroupMembershipStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">
+): DataResourceDefinition {
+  const rowSchemaMeta = exportSchemaMeta(groupMembershipRowSchema);
+  return {
+    key: "group_membership",
+    title: "群成员缓存",
+    shape: "collection",
+    editable: true,
+    durability: "cache",
+    storage: {
+      kind: "sqlite",
+      database: "state",
+      tableGroup: "state.group_membership",
+      tables: ["group_membership_entries"]
+    },
+    rowSchemaMeta,
+    rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
+    export: { enabled: true, fileName: "group_membership.json", format: "json" },
+    rowIdentity: { fields: ["groupId", "userId"], encode: "json_base64url" },
+    adapter: {
+      listRows: async (query) => {
+        const result = await groupMembershipStore.listRows({
+          ...(query.offset !== undefined ? { offset: query.offset } : {}),
+          ...(query.limit !== undefined ? { limit: query.limit } : {})
+        });
+        return { ...result, rows: result.rows.map((row) => ({ id: encodeGroupMembershipRowId(row), ...row })) };
+      },
+      exportRows: async (query) => groupMembershipStore.listRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      }),
+      getRow: async (rowId) => {
+        const identity = decodeGroupMembershipRowId(rowId);
+        const row = await groupMembershipStore.getRow(identity.groupId, identity.userId);
+        return row ? { id: encodeGroupMembershipRowId(row), ...row } : null;
+      },
+      createRow: async (value) => {
+        const parsed = groupMembershipRowSchema.parse(value) as GroupMembershipRow;
+        const row = await groupMembershipStore.createRow(parsed);
+        return { id: encodeGroupMembershipRowId(row), ...row };
+      },
+      patchRow: async (rowId, input) => {
+        const identity = decodeGroupMembershipRowId(rowId);
+        const current = await groupMembershipStore.getRow(identity.groupId, identity.userId);
+        if (!current) {
+          throw new Error(`Group membership ${identity.groupId}:${identity.userId} not found`);
+        }
+        const parsed = groupMembershipRowSchema.parse({ ...current, ...input.patch, ...identity }) as GroupMembershipRow;
+        if (parsed.groupId !== identity.groupId || parsed.userId !== identity.userId) {
+          throw new Error("Group membership row id cannot be changed");
+        }
+        const row = await groupMembershipStore.patchRow(parsed.groupId, parsed.userId, {
+          isMember: parsed.isMember,
+          verifiedAt: parsed.verifiedAt
+        });
+        return { id: encodeGroupMembershipRowId(row), ...row };
+      },
+      deleteRow: async (rowId) => {
+        const identity = decodeGroupMembershipRowId(rowId);
+        await groupMembershipStore.deleteRow(identity.groupId, identity.userId);
+      }
+    }
+  };
+}
+
+function encodeGroupMembershipRowId(row: Pick<GroupMembershipRow, "groupId" | "userId">): string {
+  return Buffer.from(JSON.stringify({
+    groupId: row.groupId,
+    userId: row.userId
+  }), "utf8").toString("base64url");
+}
+
+function decodeGroupMembershipRowId(rowId: string): Pick<GroupMembershipRow, "groupId" | "userId"> {
+  const parsed = JSON.parse(Buffer.from(rowId, "base64url").toString("utf8")) as unknown;
+  const row = groupMembershipRowSchema.parse({
+    ...(parsed && typeof parsed === "object" ? parsed : {}),
+    isMember: false,
+    verifiedAt: 0
+  }) as GroupMembershipRow;
+  return { groupId: row.groupId, userId: row.userId };
+}
+
 function createUsersResource(
   userStore: Pick<UserStore, "listRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">
 ): DataResourceDefinition {
@@ -342,6 +638,7 @@ function createUsersResource(
     },
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
+    export: { enabled: true, fileName: "users.json", format: "json" },
     rowIdentity: {
       fields: ["userId"],
       encode: "single"
@@ -360,6 +657,10 @@ function createUsersResource(
           }))
         };
       },
+      exportRows: async (query) => userStore.listRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      }),
       getRow: async (rowId) => {
         const row = await userStore.getPersistedRow(rowId);
         return row ? { id: row.userId, ...row } : null;
@@ -395,6 +696,11 @@ function createPersonaResource(personaStore: Pick<PersonaStore, "get" | "write">
     },
     schemaMeta,
     uiTree: buildUiTreeFromMeta(schemaMeta),
+    export: {
+      enabled: true,
+      fileName: "persona.json",
+      format: "json"
+    },
     adapter: {
       get: async () => personaStore.get(),
       patch: async (value) => {
@@ -437,6 +743,7 @@ function createWhitelistResource(
     },
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
+    export: { enabled: true, fileName: "whitelist.json", format: "json" },
     rowIdentity: {
       fields: ["targetType", "targetId"],
       encode: "json_base64url"
@@ -451,6 +758,17 @@ function createWhitelistResource(
             id: encodeWhitelistRowId(row),
             ...row
           })),
+          total: allRows.length,
+          offset,
+          limit
+        };
+      },
+      exportRows: async (query) => {
+        const offset = query.offset ?? 0;
+        const limit = query.limit ?? 100;
+        const allRows = await whitelistStore.listEntries();
+        return {
+          rows: allRows.slice(offset, offset + limit),
           total: allRows.length,
           offset,
           limit

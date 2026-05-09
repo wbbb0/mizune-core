@@ -80,6 +80,7 @@ export interface SingletonDataResourceAdapter {
 
 export interface CollectionDataResourceAdapter {
   listRows: (input: DataResourceListRowsInput) => Promise<DataResourceRowsResult>;
+  exportRows?: (input: DataResourceListRowsInput) => Promise<DataResourceRowsResult>;
   getRow?: (rowId: string) => Promise<unknown | null>;
   createRow?: (value: unknown) => Promise<unknown>;
   patchRow?: (rowId: string, input: DataResourceRowPatchInput) => Promise<unknown>;
