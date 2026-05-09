@@ -4,6 +4,27 @@ import pino from "pino";
 import { LlmClient } from "../../../src/llm/llmClient.ts";
 import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDefinition, withMockFetch } from "../../helpers/llm-test-support.tsx";
 
+function createNativeLmStudioSseResponse(payloads: any[]) {
+  const encoder = new TextEncoder();
+  const raw = payloads
+    .map((payload) => `event: ${payload.type ?? "message"}\ndata: ${JSON.stringify(payload)}\n\n`)
+    .join("");
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(raw));
+        controller.close();
+      }
+    }),
+    {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream"
+      }
+    }
+  );
+}
+
   test("native search injects provider flag into request body", async () => {
     const config = createLlmTestConfig({ supportsSearch: true });
     config.llm.providers.test!.features.search = {
@@ -365,7 +386,9 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
         presence_penalty: 0.1,
         repetition_penalty: 1.05,
         extra: {
-          max_tokens: 96
+          max_output_tokens: 96,
+          store: true,
+          previous_response_id: "resp_previous"
         }
       }
     });
@@ -378,8 +401,8 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
         assertRequest(body: any, _callIndex: number, init: RequestInit, url: string) {
           assert.equal(url, "http://localhost:1234/api/v1/chat");
           assert.equal(body.reasoning, "off");
-          assert.equal(body.stream, false);
-          assert.equal(body.store, false);
+          assert.equal(body.stream, true);
+          assert.equal(body.store, true);
           assert.equal(body.temperature, 0.55);
           assert.equal(body.top_p, 0.75);
           assert.equal(body.top_k, 20);
@@ -387,32 +410,39 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
           assert.equal(body.presence_penalty, 0.1);
           assert.equal(body.repeat_penalty, 1.05);
           assert.equal("repetition_penalty" in body, false);
-          assert.equal(body.max_tokens, 96);
+          assert.equal(body.max_output_tokens, 96);
+          assert.equal(body.previous_response_id, "resp_previous");
           assert.equal(body.system_prompt, "system prompt");
           assert.deepEqual(body.input, [
-            { type: "message", content: "describe this image" },
+            { type: "text", content: "describe this image" },
             { type: "image", data_url: "data:image/png;base64,AAAA" }
           ]);
           assert.equal((init.headers as Record<string, string>).Authorization, "Bearer test-key");
         },
-        response: new Response(JSON.stringify({
-          output: [{
-            type: "message",
-            content: "一只猫"
-          }],
-          stats: {
-            input_tokens: 8,
-            total_output_tokens: 3,
-            reasoning_output_tokens: 0
+        response: createNativeLmStudioSseResponse([
+          { type: "message.start" },
+          { type: "message.delta", content: "一只" },
+          { type: "message.delta", content: "猫" },
+          { type: "message.end" },
+          {
+            type: "chat.end",
+            result: {
+              output: [{
+                type: "message",
+                content: "一只猫"
+              }],
+              stats: {
+                input_tokens: 8,
+                total_output_tokens: 3,
+                reasoning_output_tokens: 0
+              },
+              response_id: "resp_next"
+            }
           }
-        }), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json"
-          }
-        })
+        ])
       }
     ], async () => {
+      const deltas: string[] = [];
       const result = await client.generate({
         messages: [
           { role: "system", content: "system prompt" },
@@ -425,10 +455,17 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
           }
         ],
         enableThinkingOverride: false,
-        preferNativeNoThinkingChatEndpoint: true
+        preferNativeNoThinkingChatEndpoint: true,
+        onTextDelta: (delta) => {
+          deltas.push(delta);
+        }
       });
 
       assert.equal(result.text, "一只猫");
+      assert.equal(result.usage.inputTokens, 8);
+      assert.equal(result.usage.outputTokens, 3);
+      assert.equal(result.usage.reasoningTokens, 0);
+      assert.deepEqual(deltas, ["一只", "猫"]);
     });
   });
 
@@ -443,19 +480,13 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
         assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
           assert.equal(url, "http://localhost:1234/api/v1/chat");
           assert.equal(body.reasoning, "off");
-          assert.deepEqual(body.input, [{ type: "message", content: "hello" }]);
+          assert.equal(body.stream, true);
+          assert.deepEqual(body.input, [{ type: "text", content: "hello" }]);
         },
-        response: new Response(JSON.stringify({
-          output: [{
-            type: "message",
-            content: "done"
-          }]
-        }), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json"
-          }
-        })
+        response: createNativeLmStudioSseResponse([
+          { type: "message.delta", content: "done" },
+          { type: "chat.end", result: { output: [{ type: "message", content: "done" }] } }
+        ])
       }
     ], async () => {
       const result = await client.generate({
@@ -467,7 +498,7 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
     });
   });
 
-  test("lmstudio retries with text+content native shape when server requires text discriminator", async () => {
+  test("lmstudio native stream surfaces SSE error events", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "lmstudio";
     config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
@@ -475,136 +506,20 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
 
     await withMockFetch([
       {
-        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
+        assertRequest(_body: any, _callIndex: number, _init: RequestInit, url: string) {
           assert.equal(url, "http://localhost:1234/api/v1/chat");
-          assert.deepEqual(body.input, [{ type: "message", content: "hello" }]);
         },
-        response: new Response(JSON.stringify({
-          error: {
-            message: "Invalid discriminator value. Expected 'text' | 'image'"
+        response: createNativeLmStudioSseResponse([
+          {
+            type: "error",
+            error: {
+              message: "model failed",
+              type: "invalid_request",
+              code: "bad_request",
+              param: "input"
+            }
           }
-        }), {
-          status: 400,
-          headers: {
-            "Content-Type": "application/json"
-          }
-        })
-      },
-      {
-        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
-          assert.equal(url, "http://localhost:1234/api/v1/chat");
-          assert.deepEqual(body.input, [{ type: "text", content: "hello" }]);
-        },
-        response: new Response(JSON.stringify({
-          output: [{
-            type: "message",
-            content: "fallback ok"
-          }]
-        }), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json"
-          }
-        })
-      }
-    ], async () => {
-      const result = await client.generate({
-        messages: [{ role: "user", content: "hello" }],
-        enableThinkingOverride: false
-      });
-
-      assert.equal(result.text, "fallback ok");
-    });
-  });
-
-  test("lmstudio retries with legacy text+text shape after text+content fallback fails", async () => {
-    const config = createLlmTestConfig();
-    config.llm.providers.test!.type = "lmstudio";
-    config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
-    const client = new LlmClient(config, pino({ level: "silent" }));
-
-    await withMockFetch([
-      {
-        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
-          assert.equal(url, "http://localhost:1234/api/v1/chat");
-          assert.deepEqual(body.input, [{ type: "message", content: "hello" }]);
-        },
-        response: new Response(JSON.stringify({
-          error: {
-            message: "Invalid discriminator value. Expected 'text' | 'image'"
-          }
-        }), {
-          status: 400,
-          headers: {
-            "Content-Type": "application/json"
-          }
-        })
-      },
-      {
-        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
-          assert.equal(url, "http://localhost:1234/api/v1/chat");
-          assert.deepEqual(body.input, [{ type: "text", content: "hello" }]);
-        },
-        response: new Response(JSON.stringify({
-          error: {
-            message: "'input.0.text' is required, Unrecognized key(s) in object: 'content'"
-          }
-        }), {
-          status: 400,
-          headers: {
-            "Content-Type": "application/json"
-          }
-        })
-      },
-      {
-        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
-          assert.equal(url, "http://localhost:1234/api/v1/chat");
-          assert.deepEqual(body.input, [{ type: "text", text: "hello" }]);
-        },
-        response: new Response(JSON.stringify({
-          output: [{
-            type: "message",
-            content: "legacy ok"
-          }]
-        }), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json"
-          }
-        })
-      }
-    ], async () => {
-      const result = await client.generate({
-        messages: [{ role: "user", content: "hello" }],
-        enableThinkingOverride: false
-      });
-
-      assert.equal(result.text, "legacy ok");
-    });
-  });
-
-  test("lmstudio does not retry with legacy shape when server requires content field", async () => {
-    const config = createLlmTestConfig();
-    config.llm.providers.test!.type = "lmstudio";
-    config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
-    const client = new LlmClient(config, pino({ level: "silent" }));
-
-    await withMockFetch([
-      {
-        assertRequest(body: any, _callIndex: number, _init: RequestInit, url: string) {
-          assert.equal(url, "http://localhost:1234/api/v1/chat");
-          assert.deepEqual(body.input, [{ type: "message", content: "hello" }]);
-        },
-        response: new Response(JSON.stringify({
-          error: {
-            message: "'input.0.content' is required, Unrecognized key(s) in object: 'text'"
-          }
-        }), {
-          status: 400,
-          headers: {
-            "Content-Type": "application/json"
-          }
-        })
+        ])
       }
     ], async () => {
       await assert.rejects(
@@ -612,8 +527,39 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDe
           messages: [{ role: "user", content: "hello" }],
           enableThinkingOverride: false
         }),
-        /input\.0\.content/
+        /LM Studio native stream error: model failed; type=invalid_request; code=bad_request; param=input/
       );
+    });
+  });
+
+  test("lmstudio native stream accepts final-only responses as first response", async () => {
+    const config = createLlmTestConfig();
+    config.llm.firstTokenTimeoutMs = 10;
+    config.llm.providers.test!.type = "lmstudio";
+    config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(_body: any, _callIndex: number, _init: RequestInit, url: string) {
+          assert.equal(url, "http://localhost:1234/api/v1/chat");
+        },
+        response: createNativeLmStudioSseResponse([
+          { type: "chat.end", result: { output: [{ type: "message", content: "final text" }] } }
+        ])
+      }
+    ], async () => {
+      const deltas: string[] = [];
+      const result = await client.generate({
+        messages: [{ role: "user", content: "hello" }],
+        enableThinkingOverride: false,
+        onTextDelta: (delta) => {
+          deltas.push(delta);
+        }
+      });
+
+      assert.equal(result.text, "final text");
+      assert.deepEqual(deltas, ["final text"]);
     });
   });
 
