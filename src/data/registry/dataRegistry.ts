@@ -173,6 +173,9 @@ export class DataRegistry {
 }
 
 function toSummary(definition: DataResourceDefinition): DataResourceSummary {
+  const collectionAdapter = definition.shape === "collection" || definition.shape === "log"
+    ? asCollectionAdapter(definition)
+    : null;
   return {
     key: definition.key,
     title: definition.title,
@@ -186,6 +189,14 @@ function toSummary(definition: DataResourceDefinition): DataResourceSummary {
     ...(definition.uiTree !== undefined ? { uiTree: definition.uiTree } : {}),
     ...(definition.rowUiTree !== undefined ? { rowUiTree: definition.rowUiTree } : {}),
     ...(definition.rowIdentity !== undefined ? { rowIdentity: definition.rowIdentity } : {}),
+    ...(collectionAdapter !== null ? {
+      rowOperations: {
+        get: collectionAdapter.getRow !== undefined,
+        create: collectionAdapter.createRow !== undefined,
+        patch: collectionAdapter.patchRow !== undefined,
+        delete: collectionAdapter.deleteRow !== undefined
+      }
+    } : {}),
     ...(definition.export !== undefined ? { export: definition.export } : {})
   };
 }

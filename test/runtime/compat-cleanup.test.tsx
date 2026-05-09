@@ -9,7 +9,7 @@ import { OneBotClient } from "../../src/services/onebot/onebotClient.ts";
 import { ScheduledJobStore } from "../../src/runtime/scheduler/jobStore.ts";
 import { parseToolArguments } from "../../src/llm/shared/toolArgs.ts";
 
-  test("scheduled job store clears legacy prompt-only records", async () => {
+  test("scheduled job store ignores legacy json records", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-scheduled-job-compat-test-"));
     const logger = pino({ level: "silent" });
     const filePath = join(dataDir, "scheduled-jobs.json");
@@ -50,10 +50,7 @@ import { parseToolArguments } from "../../src/llm/shared/toolArgs.ts";
       assert.deepEqual(await store.list(), []);
 
       const persisted = JSON.parse(await readFile(filePath, "utf8"));
-      assert.deepEqual(persisted, {
-        version: 1,
-        jobs: []
-      });
+      assert.equal(persisted.jobs[0]?.prompt, "legacy prompt field");
     } finally {
       await rm(dataDir, { recursive: true, force: true });
     }

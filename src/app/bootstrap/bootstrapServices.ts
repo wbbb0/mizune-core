@@ -103,7 +103,7 @@ export function createBootstrapServices(
   const turnPlanner = new TurnPlanner(config, llmClient, chatFileStore, mediaVisionService, logger, mediaCaptionService);
   const messageQueue = new MessageQueue(logger, config);
   const sessionPersistence = new SessionPersistence(dataDir, logger);
-  const scheduledJobStore = new ScheduledJobStore(dataDir, logger);
+  const scheduledJobStore = new ScheduledJobStore(dataDir, logger, stateDatabase);
   const requestStore = new RequestStore(dataDir, logger, stateDatabase);
   const groupMembershipStore = new GroupMembershipStore(dataDir, logger);
   const userStore = new UserStore(dataDir, config, logger, stateDatabase);

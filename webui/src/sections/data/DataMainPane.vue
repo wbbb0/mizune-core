@@ -41,6 +41,7 @@ const {
   openContextFiltersDialog,
   deleteContextItem,
   createRegistryRow,
+  saveRegistryRow,
   deleteRegistryRow,
   editContextItem,
   toggleContextItemPinned,
@@ -53,6 +54,9 @@ const {
   updateDraft,
   updateRegistryDraft,
   updateRegistryRowDraft,
+  updateRegistryExistingRowDraft,
+  getRegistryExistingRowDraft,
+  canSaveRegistryRow,
   formatSize,
   formatTime,
   formatContextMeta
@@ -249,7 +253,7 @@ const {
       </div>
 
       <div v-else-if="resource.shape === 'collection' || resource.shape === 'log'" class="scrollbar-thin flex-1 overflow-auto px-4 py-3">
-        <div v-if="resource.shape === 'collection' && resource.editable && resource.rowUiTree" class="mb-4 border-b border-border-subtle pb-4">
+        <div v-if="resource.shape === 'collection' && resource.editable && resource.rowOperations?.create && resource.rowUiTree" class="mb-4 border-b border-border-subtle pb-4">
           <SchemaNode
             :node="resource.rowUiTree"
             :model-value="registryRowDraftValue"
@@ -269,18 +273,28 @@ const {
           <span>{{ resourceRows?.total ?? resourceRows?.rows.length ?? 0 }} 行</span>
           <span v-if="resourceRows">offset {{ resourceRows.offset }} · limit {{ resourceRows.limit }}</span>
         </div>
-        <div v-if="resource.shape === 'collection' && resource.editable && resourceRows?.rows.length" class="space-y-2">
+        <div v-if="resource.shape === 'collection' && resource.editable && resource.rowOperations?.patch && resource.rowUiTree && resourceRows?.rows.length" class="space-y-3">
           <div
             v-for="(row, index) in resourceRows.rows"
             :key="`${index}`"
-            class="border-b border-border-subtle pb-2"
+            class="border-b border-border-subtle pb-3"
           >
-            <div class="mb-1 flex justify-end">
-              <button class="btn-ghost" :disabled="saving" title="删除" @click="deleteRegistryRow(row)">
+            <div class="mb-2 flex justify-end gap-1.5">
+              <button class="btn-ghost" :disabled="!canSaveRegistryRow(row)" title="保存" @click="saveRegistryRow(row)">
+                <Save :size="13" :stroke-width="1.5" />
+              </button>
+              <button v-if="resource.rowOperations?.delete" class="btn-ghost" :disabled="saving" title="删除" @click="deleteRegistryRow(row)">
                 <Trash2 :size="13" :stroke-width="2" />
               </button>
             </div>
-            <pre class="m-0 overflow-auto p-0 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap wrap-break-word">{{ JSON.stringify(row, null, 2) }}</pre>
+            <SchemaNode
+              :node="resource.rowUiTree"
+              :model-value="getRegistryExistingRowDraft(row)"
+              :stored-value="row"
+              :effective-value="getRegistryExistingRowDraft(row)"
+              :depth="0"
+              @update:model-value="updateRegistryExistingRowDraft(row, $event)"
+            />
           </div>
         </div>
         <pre v-else class="m-0 overflow-auto p-0 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap wrap-break-word">{{ formattedRowsJson }}</pre>

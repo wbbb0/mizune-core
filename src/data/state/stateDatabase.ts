@@ -299,6 +299,38 @@ function validateRequestsSchema(db: SqliteDatabase): void {
   });
 }
 
+function createScheduledJobsSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS scheduled_jobs (
+      id TEXT PRIMARY KEY NOT NULL CHECK (id = trim(id) AND length(id) > 0),
+      name TEXT NOT NULL CHECK (name = trim(name) AND length(name) > 0),
+      enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+      created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+      updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+      schedule_json TEXT NOT NULL CHECK (json_valid(schedule_json)),
+      instruction TEXT NOT NULL CHECK (instruction = trim(instruction) AND length(instruction) > 0),
+      targets_json TEXT NOT NULL CHECK (json_valid(targets_json)),
+      state_json TEXT NOT NULL CHECK (json_valid(state_json)),
+      sort_order INTEGER NOT NULL CHECK (sort_order >= 0)
+    );
+  `);
+}
+
+function validateScheduledJobsSchema(db: SqliteDatabase): void {
+  assertTableColumns(db, "scheduled_jobs", {
+    id: "TEXT",
+    name: "TEXT",
+    enabled: "INTEGER",
+    created_at_ms: "INTEGER",
+    updated_at_ms: "INTEGER",
+    schedule_json: "TEXT",
+    instruction: "TEXT",
+    targets_json: "TEXT",
+    state_json: "TEXT",
+    sort_order: "INTEGER"
+  });
+}
+
 const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   {
     groupId: "state.persona",
@@ -363,5 +395,13 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
     ownedTables: ["pending_requests"],
     createSchema: createRequestsSchema,
     validateSchema: validateRequestsSchema
+  },
+  {
+    groupId: "state.scheduled_jobs",
+    schemaVersion: 1,
+    resetPolicy: "block_reset",
+    ownedTables: ["scheduled_jobs"],
+    createSchema: createScheduledJobsSchema,
+    validateSchema: validateScheduledJobsSchema
   }
 ];

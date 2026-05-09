@@ -21,6 +21,9 @@ import { personaSchema } from "#persona/personaSchema.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
 import { pendingRequestSchema } from "#requests/requestSchema.ts";
 import type { RequestStore } from "#requests/requestStore.ts";
+import { scheduledJobRecordSchema } from "#runtime/scheduler/jobSchema.ts";
+import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
+import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
 
 export interface DataRegistryService {
   listResources: DataRegistry["listResources"];
@@ -36,7 +39,7 @@ export interface DataRegistryService {
 }
 
 export function createDataRegistryService(input: {
-  config: Pick<AppConfig, "dataDir">;
+  config: Pick<AppConfig, "dataDir"> & { scheduler: Pick<AppConfig["scheduler"], "enabled"> };
   personaStore: Pick<PersonaStore, "get" | "write">;
   rpProfileStore: Pick<RpProfileStore, "get" | "write">;
   scenarioProfileStore: Pick<ScenarioProfileStore, "get" | "write">;
@@ -44,6 +47,8 @@ export function createDataRegistryService(input: {
   setupStore: Pick<SetupStateStore, "get">;
   userStore: Pick<UserStore, "listRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
   requestStore: Pick<RequestStore, "listRows" | "get" | "createRow" | "patchRow" | "deleteRow">;
+  scheduledJobStore: Pick<ScheduledJobStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
+  scheduler: Pick<Scheduler, "reloadFromStore">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
 }): DataRegistryService {
   const registry = new DataRegistry();
@@ -54,7 +59,7 @@ export function createDataRegistryService(input: {
 }
 
 function createInitialDataResourceDefinitions(input: {
-  config: Pick<AppConfig, "dataDir">;
+  config: Pick<AppConfig, "dataDir"> & { scheduler: Pick<AppConfig["scheduler"], "enabled"> };
   personaStore: Pick<PersonaStore, "get" | "write">;
   rpProfileStore: Pick<RpProfileStore, "get" | "write">;
   scenarioProfileStore: Pick<ScenarioProfileStore, "get" | "write">;
@@ -62,6 +67,8 @@ function createInitialDataResourceDefinitions(input: {
   setupStore: Pick<SetupStateStore, "get">;
   userStore: Pick<UserStore, "listRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
   requestStore: Pick<RequestStore, "listRows" | "get" | "createRow" | "patchRow" | "deleteRow">;
+  scheduledJobStore: Pick<ScheduledJobStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
+  scheduler: Pick<Scheduler, "reloadFromStore">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
 }): DataResourceDefinition[] {
   const dataDir = input.config.dataDir;
@@ -113,6 +120,7 @@ function createInitialDataResourceDefinitions(input: {
       get: () => input.setupStore.get()
     }),
     createRequestsResource(input.requestStore),
+    createScheduledJobsResource(input.scheduledJobStore, input.scheduler, () => input.config.scheduler.enabled),
     createUsersResource(input.userStore),
     createWhitelistResource(input.whitelistStore),
     fileResource({
@@ -247,6 +255,73 @@ function decodeRequestRowId(rowId: string): string {
     throw new Error("Invalid request row id");
   }
   return flag;
+}
+
+function createScheduledJobsResource(
+  scheduledJobStore: Pick<ScheduledJobStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">,
+  scheduler: Pick<Scheduler, "reloadFromStore">,
+  isSchedulerEnabled: () => boolean
+): DataResourceDefinition {
+  const rowSchemaMeta = exportSchemaMeta(scheduledJobRecordSchema);
+  return {
+    key: "scheduled_jobs",
+    title: "定时任务",
+    shape: "collection",
+    editable: true,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "state",
+      tableGroup: "state.scheduled_jobs",
+      tables: ["scheduled_jobs"]
+    },
+    rowSchemaMeta,
+    rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
+    rowIdentity: {
+      fields: ["id"],
+      encode: "single"
+    },
+    adapter: {
+      listRows: async (query) => {
+        const result = await scheduledJobStore.listRows({
+          ...(query.offset !== undefined ? { offset: query.offset } : {}),
+          ...(query.limit !== undefined ? { limit: query.limit } : {})
+        });
+        return {
+          ...result,
+          rows: result.rows
+        };
+      },
+      getRow: async (rowId) => {
+        const row = await scheduledJobStore.getRow(rowId);
+        return row;
+      },
+      createRow: async (value) => {
+        const row = await scheduledJobStore.createRow(value);
+        await reloadSchedulerIfEnabled(scheduler, isSchedulerEnabled);
+        return row;
+      },
+      patchRow: async (rowId, input) => {
+        const row = await scheduledJobStore.patchRow(rowId, input.patch);
+        await reloadSchedulerIfEnabled(scheduler, isSchedulerEnabled);
+        return row;
+      },
+      deleteRow: async (rowId) => {
+        await scheduledJobStore.deleteRow(rowId);
+        await reloadSchedulerIfEnabled(scheduler, isSchedulerEnabled);
+      }
+    }
+  };
+}
+
+async function reloadSchedulerIfEnabled(
+  scheduler: Pick<Scheduler, "reloadFromStore">,
+  isSchedulerEnabled: () => boolean
+): Promise<void> {
+  if (!isSchedulerEnabled()) {
+    return;
+  }
+  await scheduler.reloadFromStore();
 }
 
 function createUsersResource(

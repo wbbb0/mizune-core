@@ -32,6 +32,7 @@ test("DataRegistry lists resources in stable key order without exposing adapters
   assert.equal("adapter" in result.resources[0]!, false);
   assert.equal(result.resources[0]?.shape, "singleton");
   assert.equal(result.resources[0]?.editable, false);
+  assert.equal(result.resources[0]?.rowOperations, undefined);
 });
 
 test("DataRegistry rejects duplicate resource keys", () => {
@@ -92,6 +93,17 @@ test("DataRegistry routes collection row operations through row adapters", async
     offset: 0,
     limit: 10,
     total: 1
+  });
+  const resource = await registry.getResource("items") as {
+    resource: {
+      rowOperations: unknown;
+    };
+  };
+  assert.deepEqual(resource.resource.rowOperations, {
+    get: true,
+    create: false,
+    patch: true,
+    delete: false
   });
   assert.deepEqual(await registry.getRow("items", "item-1"), {
     row: { id: "item-1" }

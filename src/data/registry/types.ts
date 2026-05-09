@@ -15,6 +15,13 @@ export interface DataResourceIdentity {
   encode: "single" | "json_base64url";
 }
 
+export interface DataResourceRowOperations {
+  get: boolean;
+  create: boolean;
+  patch: boolean;
+  delete: boolean;
+}
+
 export interface DataResourceExportDefinition {
   enabled: boolean;
   fileName: string;
@@ -34,6 +41,7 @@ export interface DataResourceSummary {
   uiTree?: unknown;
   rowUiTree?: unknown;
   rowIdentity?: DataResourceIdentity;
+  rowOperations?: DataResourceRowOperations;
   export?: DataResourceExportDefinition;
 }
 

@@ -1062,6 +1062,81 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     scheduledJobStore: {
       async list() {
         return [{ id: "job-1", name: "daily" }];
+      },
+      async listRows(input: { offset?: number; limit?: number } = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        const rows = [{
+          id: "job-1",
+          name: "daily",
+          enabled: true,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+          schedule: { kind: "delay" as const, delayMs: 1000 },
+          instruction: "ping",
+          targets: [{ sessionId: "qqbot:p:owner" }],
+          state: {
+            nextRunAtMs: null,
+            lastRunAtMs: null,
+            lastRunStatus: null,
+            lastDurationMs: null,
+            lastError: null,
+            consecutiveErrors: 0
+          }
+        }];
+        return {
+          rows: rows.slice(offset, offset + limit),
+          total: rows.length,
+          offset,
+          limit
+        };
+      },
+      async getRow(jobId: string) {
+        return jobId === "job-1"
+          ? {
+              id: "job-1",
+              name: "daily",
+              enabled: true,
+              createdAtMs: 1,
+              updatedAtMs: 1,
+              schedule: { kind: "delay" as const, delayMs: 1000 },
+              instruction: "ping",
+              targets: [{ sessionId: "qqbot:p:owner" }],
+              state: {
+                nextRunAtMs: null,
+                lastRunAtMs: null,
+                lastRunStatus: null,
+                lastDurationMs: null,
+                lastError: null,
+                consecutiveErrors: 0
+              }
+            }
+          : null;
+      },
+      async createRow(value: unknown) {
+        return value;
+      },
+      async patchRow(jobId: string, patch: Record<string, unknown>) {
+        return {
+          id: jobId,
+          name: typeof patch.name === "string" ? patch.name : "daily",
+          enabled: true,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+          schedule: { kind: "delay" as const, delayMs: 1000 },
+          instruction: "ping",
+          targets: [{ sessionId: "qqbot:p:owner" }],
+          state: {
+            nextRunAtMs: null,
+            lastRunAtMs: null,
+            lastRunStatus: null,
+            lastDurationMs: null,
+            lastError: null,
+            consecutiveErrors: 0
+          }
+        };
+      },
+      async deleteRow() {
       }
     } as unknown as InternalApiDeps["scheduledJobStore"],
     scheduler: {

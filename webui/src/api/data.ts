@@ -26,6 +26,12 @@ export interface DataResourceSummary {
     fields: string[];
     encode: "single" | "json_base64url";
   };
+  rowOperations?: {
+    get: boolean;
+    create: boolean;
+    patch: boolean;
+    delete: boolean;
+  };
   export?: {
     enabled: boolean;
     fileName: string;
@@ -95,6 +101,9 @@ export const dataApi = {
   },
   createRow(resourceKey: string, value: unknown): Promise<{ row: unknown }> {
     return api.post(`/api/data/registry/resources/${encodeURIComponent(resourceKey)}/rows`, { value });
+  },
+  patchRow(resourceKey: string, rowId: string, patch: Record<string, unknown>): Promise<{ row: unknown }> {
+    return api.patch(`/api/data/registry/resources/${encodeURIComponent(resourceKey)}/rows/${encodeURIComponent(rowId)}`, { patch });
   },
   deleteRow(resourceKey: string, rowId: string): Promise<{ ok: true }> {
     return api.delete(`/api/data/registry/resources/${encodeURIComponent(resourceKey)}/rows/${encodeURIComponent(rowId)}`);

@@ -10,17 +10,25 @@ import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { pendingRequestSchema, type PendingRequest } from "../../src/requests/requestSchema.ts";
+import { scheduledJobRecordSchema, type ScheduledJobRecord } from "../../src/runtime/scheduler/jobSchema.ts";
 
-function createRegistryService(dataDir: string) {
+function createRegistryService(dataDir: string, options: { schedulerEnabled?: boolean } = {}) {
   const persona = createEmptyPersona();
   const rpProfile = createEmptyRpProfile();
   const scenarioProfile = createEmptyScenarioProfile();
   const globalProfileReadiness = createEmptyGlobalProfileReadiness();
   const users: PersistedUser[] = [];
   const requests: PendingRequest[] = [];
+  const scheduledJobs: ScheduledJobRecord[] = [];
+  let schedulerReloadCount = 0;
   const whitelistRows: Array<{ targetType: "user" | "group"; targetId: string; createdAtMs: number }> = [];
-  return createDataRegistryService({
-    config: { dataDir },
+  const service = createDataRegistryService({
+    config: {
+      dataDir,
+      scheduler: {
+        enabled: options.schedulerEnabled ?? true
+      }
+    },
     personaStore: {
       async get() {
         return persona;
@@ -151,6 +159,52 @@ function createRegistryService(dataDir: string) {
         }
       }
     },
+    scheduledJobStore: {
+      async listRows(input = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return {
+          rows: scheduledJobs.slice(offset, offset + limit),
+          total: scheduledJobs.length,
+          offset,
+          limit
+        };
+      },
+      async getRow(jobId) {
+        return scheduledJobs.find((job) => job.id === jobId) ?? null;
+      },
+      async createRow(value) {
+        const row = scheduledJobRecordSchema.parse(value);
+        if (scheduledJobs.some((job) => job.id === row.id)) {
+          throw new Error(`Scheduled job ${row.id} already exists`);
+        }
+        scheduledJobs.push(row);
+        return row;
+      },
+      async patchRow(jobId, patch) {
+        const index = scheduledJobs.findIndex((job) => job.id === jobId);
+        if (index < 0) {
+          throw new Error(`Scheduled job ${jobId} not found`);
+        }
+        scheduledJobs[index] = scheduledJobRecordSchema.parse({
+          ...scheduledJobs[index]!,
+          ...patch,
+          id: jobId
+        });
+        return scheduledJobs[index]!;
+      },
+      async deleteRow(jobId) {
+        const index = scheduledJobs.findIndex((job) => job.id === jobId);
+        if (index >= 0) {
+          scheduledJobs.splice(index, 1);
+        }
+      }
+    },
+    scheduler: {
+      async reloadFromStore() {
+        schedulerReloadCount += 1;
+      }
+    },
     whitelistStore: {
       async listEntries() {
         return [...whitelistRows];
@@ -167,6 +221,9 @@ function createRegistryService(dataDir: string) {
         }
       }
     }
+  });
+  return Object.assign(service, {
+    getSchedulerReloadCount: () => schedulerReloadCount
   });
 }
 
@@ -189,6 +246,7 @@ test("DataRegistryService exposes initial file and directory resources", async (
       "requests",
       "rp_profile",
       "scenario_profile",
+      "scheduled_jobs",
       "sessions",
       "setup_state",
       "users",
@@ -457,6 +515,110 @@ test("DataRegistryService exposes editable requests collection", async () => {
 
     await service.deleteRow("requests", created.row.id);
     assert.equal((await service.listRows("requests")).total, 0);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("DataRegistryService exposes editable scheduled jobs collection and reloads scheduler on writes", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-data-registry-test-"));
+  try {
+    const service = createRegistryService(dataDir);
+
+    const listed = await service.getResource("scheduled_jobs") as {
+      resource: {
+        shape: string;
+        editable: boolean;
+        rowUiTree?: unknown;
+      };
+    };
+    assert.equal(listed.resource.shape, "collection");
+    assert.equal(listed.resource.editable, true);
+    assert.ok(listed.resource.rowUiTree);
+
+    const job = {
+      id: "job-1",
+      name: "daily",
+      enabled: true,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      schedule: {
+        kind: "delay" as const,
+        delayMs: 1000
+      },
+      instruction: "ping",
+      targets: [{ sessionId: "qqbot:p:owner" }],
+      state: {
+        nextRunAtMs: null,
+        lastRunAtMs: null,
+        lastRunStatus: null,
+        lastDurationMs: null,
+        lastError: null,
+        consecutiveErrors: 0
+      }
+    };
+    const created = await service.createRow("scheduled_jobs", job) as {
+      row: {
+        id: string;
+        name: string;
+      };
+    };
+    assert.equal(created.row.id, "job-1");
+    assert.equal(service.getSchedulerReloadCount(), 1);
+
+    const patched = await service.patchRow("scheduled_jobs", "job-1", {
+      patch: {
+        name: "daily updated"
+      }
+    }) as { row: { id: string; name: string } };
+    assert.equal(patched.row.name, "daily updated");
+    assert.equal(service.getSchedulerReloadCount(), 2);
+
+    const rows = await service.listRows("scheduled_jobs", { limit: 10 });
+    assert.equal(rows.total, 1);
+    assert.deepEqual(rows.rows.map((row) => (row as { id: string }).id), ["job-1"]);
+
+    await service.deleteRow("scheduled_jobs", "job-1");
+    assert.equal(service.getSchedulerReloadCount(), 3);
+    assert.equal((await service.listRows("scheduled_jobs")).total, 0);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("DataRegistryService does not start disabled scheduler after scheduled job writes", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-data-registry-test-"));
+  try {
+    const service = createRegistryService(dataDir, { schedulerEnabled: false });
+    const job = {
+      id: "job-1",
+      name: "daily",
+      enabled: true,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      schedule: {
+        kind: "delay" as const,
+        delayMs: 1000
+      },
+      instruction: "ping",
+      targets: [{ sessionId: "qqbot:p:owner" }],
+      state: {
+        nextRunAtMs: null,
+        lastRunAtMs: null,
+        lastRunStatus: null,
+        lastDurationMs: null,
+        lastError: null,
+        consecutiveErrors: 0
+      }
+    };
+    await service.createRow("scheduled_jobs", job);
+    await service.patchRow("scheduled_jobs", "job-1", {
+      patch: {
+        name: "daily updated"
+      }
+    });
+    await service.deleteRow("scheduled_jobs", "job-1");
+    assert.equal(service.getSchedulerReloadCount(), 0);
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }

@@ -49,12 +49,4 @@ export const scheduledJobRecordSchema = s.object({
   .describe("定义一个可持久化的定时任务。")
   .strict();
 
-export const scheduledJobFileSchema = s.object({
-  version: s.literal(1).title("版本"),
-  jobs: s.array(scheduledJobRecordSchema).title("任务列表").default([])
-}).title("定时任务")
-  .describe("保存全部已配置的定时任务。")
-  .strict();
-
 export type ScheduledJobRecord = Infer<typeof scheduledJobRecordSchema>;
-export type ScheduledJobFile = Infer<typeof scheduledJobFileSchema>;

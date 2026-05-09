@@ -298,6 +298,8 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         setupStore: deps.setupStore,
         userStore: deps.userStore,
         requestStore: deps.requestStore,
+        scheduledJobStore: deps.scheduledJobStore,
+        scheduler: deps.scheduler,
         whitelistStore: deps.whitelistStore
       }),
       localFileAdmin: createLocalFileAdminService({
