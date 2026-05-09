@@ -14,6 +14,7 @@ import {
 } from "#services/workspace/chatAttachments.ts";
 import { extractStructuredMediaReferences } from "#images/imageReferences.ts";
 import type { LlmContentPart, LlmMessage } from "#llm/llmClient.ts";
+import type { MessageContentPart } from "#messages/contentParts.ts";
 import { contentSafetyHashText } from "./contentSafetyHash.ts";
 import { buildContentSafetyMarker } from "./contentSafetyMarker.ts";
 import type {
@@ -51,6 +52,7 @@ type PromptSafetyHistoryMessage = {
 
 type PromptSafetyBatchMessage = {
   text: string;
+  contentParts?: MessageContentPart[] | undefined;
   userId?: string | undefined;
   audioIds?: string[] | undefined;
   audioSources?: string[] | undefined;
@@ -103,7 +105,10 @@ export class ContentSafetyService {
     }
 
     const recentMessages = input.recentMessages.map((message) => ({ ...message }));
-    const batchMessages = input.batchMessages.map((message) => ({ ...message }));
+    const batchMessages = input.batchMessages.map((message) => ({
+      ...message,
+      ...(message.contentParts ? { contentParts: cloneMessageContentParts(message.contentParts) } : {})
+    }));
     const items: PromptTextItem[] = [];
     const events: ContentSafetyEvent[] = [];
 
@@ -133,7 +138,41 @@ export class ContentSafetyService {
     }
 
     for (const [index, message] of batchMessages.entries()) {
-      if (!message.text.trim()) {
+      const hasContentParts = (message.contentParts?.length ?? 0) > 0;
+      if (hasContentParts) {
+        for (const [partIndex, part] of (message.contentParts ?? []).entries()) {
+          const text = getPromptContentPartModerationText(part);
+          if (!text.trim()) {
+            continue;
+          }
+          items.push({
+            input: {
+              subjectKind: "text",
+              text,
+              context: {
+                sessionId: input.sessionId,
+                ...(message.userId ? { userId: message.userId } : {}),
+                source: `${input.source}_content_part`
+              },
+              ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+            },
+            rule: profile.text,
+            apply: (projection) => {
+              const current = batchMessages[index]!;
+              const contentParts = (current.contentParts ?? []).map((item, itemIndex) => (
+                itemIndex === partIndex
+                  ? applyPromptContentPartTextProjection(item, projection.projectedText)
+                  : item
+              ));
+              batchMessages[index] = {
+                ...current,
+                contentParts
+              };
+              events.push(...projection.events);
+            }
+          });
+        }
+      } else if (!message.text.trim()) {
         // Special segments below can still carry prompt-visible text.
       } else {
         items.push({
@@ -156,6 +195,9 @@ export class ContentSafetyService {
             events.push(...projection.events);
           }
         });
+      }
+      if (hasContentParts) {
+        continue;
       }
       for (const [segmentIndex, segment] of (message.specialSegments ?? []).entries()) {
         if (!segment.summary.trim()) {
@@ -439,6 +481,10 @@ export class ContentSafetyService {
       const blockedFileIds = new Set<string>();
       const blockedAudioIds = new Set<string>();
       const blockedAudioSources = new Set<string>();
+      const hiddenFileIds = new Set<string>();
+      const hiddenAudioIds = new Set<string>();
+      const markerByFileId = new Map<string, string>();
+      const markerByAudioId = new Map<string, string>();
       let text = message.text;
       for (const media of mediaRefs) {
         const rule = media.kind === "emoji"
@@ -467,21 +513,37 @@ export class ContentSafetyService {
           continue;
         }
         input.events.push(event);
+        if (media.kind === "audio") {
+          markerByAudioId.set(media.fileId, event.marker);
+        } else {
+          markerByFileId.set(media.fileId, event.marker);
+        }
         if (ruleHidesMediaFromProjection(rule)) {
           blockedFileIds.add(media.fileId);
           if (media.kind === "audio") {
             blockedAudioIds.add(media.fileId);
+            hiddenAudioIds.add(media.fileId);
             if (media.sourceName) {
               blockedAudioSources.add(media.sourceName);
             }
+          } else {
+            hiddenFileIds.add(media.fileId);
           }
         }
         text = appendMarker(text, event.marker);
       }
-      if (blockedFileIds.size > 0 || text !== message.text) {
+      const contentParts = projectPromptContentPartsAfterMediaSafety(
+        message.contentParts,
+        markerByFileId,
+        hiddenFileIds,
+        markerByAudioId,
+        hiddenAudioIds
+      );
+      if (blockedFileIds.size > 0 || text !== message.text || contentParts !== message.contentParts) {
         input.batchMessages[index] = {
           ...message,
           text,
+          ...(contentParts ? { contentParts } : {}),
           ...(message.audioIds ? { audioIds: message.audioIds.filter((audioId) => !blockedAudioIds.has(audioId)) } : {}),
           ...(message.audioSources ? { audioSources: message.audioSources.filter((source) => !blockedAudioSources.has(source)) } : {}),
           ...(message.imageIds ? { imageIds: message.imageIds.filter((fileId) => !blockedFileIds.has(fileId)) } : {}),
@@ -1178,6 +1240,93 @@ function projectBlockedText(text: string, rule: RuleConfig, marker: string, even
   };
 }
 
+function cloneMessageContentParts(contentParts: readonly MessageContentPart[]): MessageContentPart[] {
+  return contentParts.map((part) => (
+    part.kind === "file"
+      ? { ...part, file: { ...part.file } }
+      : { ...part }
+  ));
+}
+
+function getPromptContentPartModerationText(part: MessageContentPart): string {
+  if (part.kind === "text") {
+    return part.text;
+  }
+  if (part.kind === "special") {
+    return part.summary;
+  }
+  return "";
+}
+
+function applyPromptContentPartTextProjection(
+  part: MessageContentPart,
+  projectedText: string
+): MessageContentPart {
+  if (part.kind === "text") {
+    return { ...part, text: projectedText };
+  }
+  if (part.kind === "special") {
+    return { ...part, summary: projectedText };
+  }
+  return part;
+}
+
+function projectPromptContentPartsAfterMediaSafety(
+  contentParts: readonly MessageContentPart[] | undefined,
+  markerByFileId: ReadonlyMap<string, string>,
+  hiddenFileIds: ReadonlySet<string>,
+  markerByAudioId: ReadonlyMap<string, string>,
+  hiddenAudioIds: ReadonlySet<string>
+): MessageContentPart[] | undefined {
+  if (!contentParts || (markerByFileId.size === 0 && markerByAudioId.size === 0)) {
+    return contentParts as MessageContentPart[] | undefined;
+  }
+  const next: MessageContentPart[] = [];
+  let changed = false;
+  const consumedFileMarkers = new Set<string>();
+  const consumedAudioMarkers = new Set<string>();
+  for (const part of contentParts) {
+    if ((part.kind === "image" || part.kind === "emoji") && part.fileId) {
+      const marker = markerByFileId.get(part.fileId);
+      if (marker) {
+        changed = true;
+        consumedFileMarkers.add(part.fileId);
+        if (!hiddenFileIds.has(part.fileId)) {
+          next.push(part);
+        }
+        next.push({ kind: "text", text: marker });
+        continue;
+      }
+    }
+    if (part.kind === "audio" && part.audioId) {
+      const marker = markerByAudioId.get(part.audioId);
+      if (marker) {
+        changed = true;
+        consumedAudioMarkers.add(part.audioId);
+        if (!hiddenAudioIds.has(part.audioId)) {
+          next.push(part);
+        }
+        next.push({ kind: "text", text: marker });
+        continue;
+      }
+    }
+    next.push(part);
+  }
+  for (const [fileId, marker] of markerByFileId.entries()) {
+    if (!consumedFileMarkers.has(fileId)) {
+      changed = true;
+      next.push({ kind: "text", text: marker });
+    }
+  }
+  for (const [audioId, marker] of markerByAudioId.entries()) {
+    if (!consumedAudioMarkers.has(audioId)) {
+      changed = true;
+      next.push({ kind: "text", text: marker });
+    }
+  }
+  return changed ? next : contentParts as MessageContentPart[];
+}
+
 function buildBatchModerationText(texts: string[]): string {
   const parts = texts.map((text, index) => [
     `⟦message index="${index}"⟧`,
@@ -1245,6 +1394,15 @@ function collectPromptMessageMediaRefs(
     const kind = getVisualAttachmentSemanticKind(attachment);
     if (kind) {
       add(attachment.fileId, kind);
+    }
+  }
+  for (const part of message.contentParts ?? []) {
+    if ((part.kind === "image" || part.kind === "emoji") && part.fileId) {
+      add(part.fileId, part.kind, part.sourceName ?? undefined);
+      continue;
+    }
+    if (part.kind === "audio" && part.audioId) {
+      add(part.audioId, "audio", part.source);
     }
   }
   return refs;

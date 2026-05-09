@@ -5,6 +5,8 @@ import type {
   PersistedSessionMessage,
   SessionMessage,
   SessionState,
+  TranscriptMessageContentPart,
+  TranscriptUserMediaMessageItem,
   TranscriptUserMessageItem
 } from "#conversation/session/sessionTypes.ts";
 import type { ChatFileStore } from "./chatFileStore.ts";
@@ -76,11 +78,16 @@ function collectFromMessage(fileIds: Set<string>, message: PersistedSessionMessa
       fileIds.add(attachment.fileId);
     }
   }
+  collectFromContentParts(fileIds, message.contentParts);
 }
 
 function collectFromTranscriptItem(fileIds: Set<string>, item: InternalTranscriptItem): void {
   if (item.kind === "user_message") {
     collectFromTranscriptUserMessage(fileIds, item);
+    return;
+  }
+  if (item.kind === "user_media_message") {
+    collectFromTranscriptUserMediaMessage(fileIds, item);
     return;
   }
   if (item.kind === "outbound_media_message" && item.fileId) {
@@ -97,6 +104,36 @@ function collectFromTranscriptUserMessage(fileIds: Set<string>, item: Transcript
   for (const attachment of item.attachments ?? []) {
     if (attachment.fileId && !isPendingChatAttachmentId(attachment.fileId)) {
       fileIds.add(attachment.fileId);
+    }
+  }
+  collectFromContentParts(fileIds, item.contentParts);
+}
+
+function collectFromTranscriptUserMediaMessage(fileIds: Set<string>, item: TranscriptUserMediaMessageItem): void {
+  for (const fileId of [...item.imageIds, ...item.emojiIds]) {
+    if (fileId && !isPendingChatAttachmentId(fileId)) {
+      fileIds.add(fileId);
+    }
+  }
+  for (const attachment of item.attachments ?? []) {
+    if (attachment.fileId && !isPendingChatAttachmentId(attachment.fileId)) {
+      fileIds.add(attachment.fileId);
+    }
+  }
+  collectFromContentParts(fileIds, item.contentParts);
+}
+
+function collectFromContentParts(
+  fileIds: Set<string>,
+  contentParts: readonly TranscriptMessageContentPart[] | undefined
+): void {
+  for (const part of contentParts ?? []) {
+    if ((part.kind === "image" || part.kind === "emoji" || part.kind === "asset_file") && part.fileId && !isPendingChatAttachmentId(part.fileId)) {
+      fileIds.add(part.fileId);
+      continue;
+    }
+    if (part.kind === "file" && part.file.fileId && !isPendingChatAttachmentId(part.file.fileId)) {
+      fileIds.add(part.file.fileId);
     }
   }
 }

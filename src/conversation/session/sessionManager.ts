@@ -484,6 +484,7 @@ export class SessionManager {
     userId: string;
     senderName: string;
     text: string;
+    contentParts?: SessionMessage["contentParts"];
     imageIds?: string[];
     emojiIds?: string[];
     attachments?: SessionMessage["attachments"];
@@ -519,6 +520,7 @@ export class SessionManager {
     userId: string;
     senderName: string;
     text: string;
+    contentParts?: SessionMessage["contentParts"];
     imageIds?: string[];
     emojiIds?: string[];
     attachments?: SessionMessage["attachments"];

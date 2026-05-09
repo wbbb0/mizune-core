@@ -5,6 +5,7 @@ import {
   formatStructuredMentionAllReference,
   formatStructuredMentionReference,
   formatStructuredMentionSelfReference,
+  formatStructuredAssetFile,
   formatStructuredMessageFile,
   formatStructuredReplyReference,
   formatStructuredSpecialSegment,
@@ -18,6 +19,7 @@ import {
   formatDraftBatchMessageHeader
 } from "#llm/shared/messageHeaderFormat.ts";
 import type { PromptBatchMessage } from "#llm/prompt/promptTypes.ts";
+import type { MessageContentPart } from "#messages/contentParts.ts";
 import type { AssetHandle } from "#llm/tools/core/fileHandle.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import {
@@ -162,11 +164,32 @@ function formatProfileDraftBatchHeader(input: PromptBatchMessage[], context?: Pr
 function buildBatchContentParts(headerText: string, input: PromptBatchMessage[]): LlmContentPart[] {
   const parts: LlmContentPart[] = [{ type: "text", text: headerText }];
   for (const message of input) {
-    for (const image of message.imageVisuals ?? []) {
+    const imageVisuals = new Map((message.imageVisuals ?? []).map((image) => [image.imageId, image]));
+    const emojiVisuals = new Map((message.emojiVisuals ?? []).map((emoji) => [emoji.imageId, emoji]));
+    const audioInputsBySource = new Map((message.audioInputs ?? []).map((audio) => [audio.source, audio]));
+    const audioInputsById = new Map((message.audioIds ?? []).map((audioId, index) => {
+      const source = message.audioSources[index];
+      const audio = source ? audioInputsBySource.get(source) : undefined;
+      return audio ? [audioId, audio] as const : null;
+    }).filter((item): item is readonly [string, NonNullable<PromptBatchMessage["audioInputs"]>[number]] => item != null));
+    const consumedVisualKeys = new Set<string>();
+    const consumedAudioSources = new Set<string>();
+
+    const appendImage = (fileId: string): void => {
+      const image = imageVisuals.get(fileId);
+      if (!image) {
+        return;
+      }
+      consumedVisualKeys.add(`image:${fileId}`);
       parts.push({ type: "text", text: `Image ${image.imageId} attached.` });
       parts.push({ type: "image_url", image_url: { url: image.inputUrl } });
-    }
-    for (const emoji of message.emojiVisuals ?? []) {
+    };
+    const appendEmoji = (fileId: string): void => {
+      const emoji = emojiVisuals.get(fileId);
+      if (!emoji) {
+        return;
+      }
+      consumedVisualKeys.add(`emoji:${fileId}`);
       parts.push({
         type: "text",
         text: emoji.animated
@@ -174,8 +197,12 @@ function buildBatchContentParts(headerText: string, input: PromptBatchMessage[])
           : `Emoji ${emoji.imageId} attached.`
       });
       parts.push({ type: "image_url", image_url: { url: emoji.inputUrl } });
-    }
-    for (const audio of message.audioInputs ?? []) {
+    };
+    const appendAudio = (audio: NonNullable<PromptBatchMessage["audioInputs"]>[number]): void => {
+      if (consumedAudioSources.has(audio.source)) {
+        return;
+      }
+      consumedAudioSources.add(audio.source);
       parts.push({ type: "text", text: `Audio attached. format=${audio.format} mime_type=${audio.mimeType}` });
       parts.push({
         type: "input_audio",
@@ -185,6 +212,42 @@ function buildBatchContentParts(headerText: string, input: PromptBatchMessage[])
           mimeType: audio.mimeType
         }
       });
+    };
+
+    if ((message.contentParts?.length ?? 0) > 0) {
+      for (const part of message.contentParts ?? []) {
+        if (part.kind === "image" && part.fileId) {
+          appendImage(part.fileId);
+          continue;
+        }
+        if (part.kind === "emoji" && part.fileId) {
+          appendEmoji(part.fileId);
+          continue;
+        }
+        if (part.kind === "audio") {
+          const audio = part.audioId
+            ? audioInputsById.get(part.audioId)
+            : part.source
+              ? audioInputsBySource.get(part.source)
+              : undefined;
+          if (audio) {
+            appendAudio(audio);
+          }
+        }
+      }
+    }
+    for (const image of message.imageVisuals ?? []) {
+      if (!consumedVisualKeys.has(`image:${image.imageId}`)) {
+        appendImage(image.imageId);
+      }
+    }
+    for (const emoji of message.emojiVisuals ?? []) {
+      if (!consumedVisualKeys.has(`emoji:${emoji.imageId}`)) {
+        appendEmoji(emoji.imageId);
+      }
+    }
+    for (const audio of message.audioInputs ?? []) {
+      appendAudio(audio);
     }
   }
   return parts;
@@ -201,6 +264,22 @@ function buildMessageBodyText(
   const parts: string[] = [];
   const imageCaptionById = new Map((message.imageCaptions ?? []).map((item) => [item.imageId, item.caption]));
   const emojiCaptionById = new Map((message.emojiCaptions ?? []).map((item) => [item.imageId, item.caption]));
+  const audioTranscriptionById = new Map((message.audioTranscriptions ?? []).map((item) => [item.audioId, item]));
+  if ((message.contentParts?.length ?? 0) > 0) {
+    const content = formatMessageContentPartsForPrompt({
+      contentParts: message.contentParts ?? [],
+      imageCaptionById,
+      emojiCaptionById,
+      audioTranscriptionById,
+      includeMediaCaptions,
+      context,
+      disableScenarioHostParsing: options?.disableScenarioHostParsing === true
+    });
+    const assetHandlesText = formatAssetHandlesForPrompt(message.assetHandles);
+    return assetHandlesText
+      ? `${content}\n附件 asset_handle：\n${assetHandlesText}`
+      : content;
+  }
   if (message.replyMessageId) {
     parts.push(formatStructuredReplyReference(message.replyMessageId));
   }
@@ -228,11 +307,7 @@ function buildMessageBodyText(
     parts.push(formatStructuredCount("audio", message.audioSources.length));
   }
   for (const transcription of message.audioTranscriptions ?? []) {
-    if (transcription.status === "ready" && transcription.text) {
-      parts.push(`音频 ${transcription.audioId} 听写：${escapePromptBodyText(transcription.text)}`);
-      continue;
-    }
-    parts.push(`音频 ${transcription.audioId} 听写失败：${escapePromptBodyText(transcription.error ?? "未配置可用听写模型或内容无法识别")}`);
+    parts.push(formatAudioTranscriptionForPrompt(transcription));
   }
   for (const emojiId of message.emojiIds ?? []) {
     parts.push(formatStructuredEmojiReference(emojiId));
@@ -262,6 +337,98 @@ function buildMessageBodyText(
     parts.push(formatStructuredForwardReference(forwardId));
   }
   return parts.join("\n") || "<empty>";
+}
+
+function formatMessageContentPartsForPrompt(input: {
+  contentParts: MessageContentPart[];
+  imageCaptionById: Map<string, string>;
+  emojiCaptionById: Map<string, string>;
+  audioTranscriptionById: Map<string, NonNullable<PromptBatchMessage["audioTranscriptions"]>[number]>;
+  includeMediaCaptions: boolean;
+  context: PromptBatchRenderContext | undefined;
+  disableScenarioHostParsing: boolean;
+}): string {
+  const parts: string[] = [];
+  for (const part of input.contentParts) {
+    switch (part.kind) {
+      case "text":
+        if (!part.text.trim()) {
+          break;
+        }
+        if (!input.disableScenarioHostParsing && input.context?.modeId === "scenario_host") {
+          const parsed = parseScenarioHostUserInput(part.text);
+          parts.push(formatScenarioHostParsedUserInput({
+            ...parsed,
+            content: escapePromptBodyText(parsed.content)
+          }));
+        } else {
+          parts.push(escapePromptBodyText(part.text.trim()));
+        }
+        break;
+      case "image":
+      case "emoji": {
+        if (!part.fileId) {
+          break;
+        }
+        parts.push(part.kind === "emoji"
+          ? formatStructuredEmojiReference(part.fileId)
+          : formatStructuredImageReference(part.fileId));
+        const caption = part.kind === "emoji"
+          ? input.emojiCaptionById.get(part.fileId)
+          : input.imageCaptionById.get(part.fileId);
+        if (input.includeMediaCaptions && caption) {
+          parts.push(`${part.kind === "emoji" ? "表情" : "图片"}描述：${escapePromptBodyText(caption)}`);
+        }
+        break;
+      }
+      case "file":
+        parts.push(formatStructuredMessageFile(part.file));
+        break;
+      case "asset_file":
+        parts.push(formatStructuredAssetFile(part));
+        break;
+      case "mention":
+        if (part.target === "self") {
+          parts.push(formatStructuredMentionSelfReference());
+        } else if (part.target === "all") {
+          parts.push(formatStructuredMentionAllReference());
+        } else if (part.userId) {
+          parts.push(formatStructuredMentionReference(part.userId));
+        }
+        break;
+      case "reply":
+        parts.push(formatStructuredReplyReference(part.messageId));
+        break;
+      case "forward":
+        parts.push(formatStructuredForwardReference(part.forwardId));
+        break;
+      case "audio":
+        parts.push(formatStructuredCount("audio", 1));
+        if (part.audioId) {
+          const transcription = input.audioTranscriptionById.get(part.audioId);
+          if (transcription) {
+            parts.push(formatAudioTranscriptionForPrompt(transcription));
+          }
+        }
+        break;
+      case "special":
+        parts.push(formatStructuredSpecialSegment({
+          type: part.segmentType,
+          summary: part.summary
+        }));
+        break;
+    }
+  }
+  return parts.join("\n") || "<empty>";
+}
+
+function formatAudioTranscriptionForPrompt(
+  transcription: NonNullable<PromptBatchMessage["audioTranscriptions"]>[number]
+): string {
+  if (transcription.status === "ready" && transcription.text) {
+    return `音频 ${transcription.audioId} 听写：${escapePromptBodyText(transcription.text)}`;
+  }
+  return `音频 ${transcription.audioId} 听写失败：${escapePromptBodyText(transcription.error ?? "未配置可用听写模型或内容无法识别")}`;
 }
 
 function formatAssetHandlesForPrompt(handles: AssetHandle[] | undefined): string {

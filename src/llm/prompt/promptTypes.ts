@@ -9,6 +9,7 @@ import type { Relationship } from "#identity/relationship.ts";
 import type { SessionDebugMarker } from "#conversation/session/sessionTypes.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
 import type { AssetHandle, ChatFileHandle } from "#llm/tools/core/fileHandle.ts";
+import type { MessageContentPart } from "#messages/contentParts.ts";
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { LlmMessage } from "../llmClient.ts";
@@ -107,6 +108,7 @@ export interface PromptBatchMessage {
   userId: string;
   senderName: string;
   text: string;
+  contentParts?: MessageContentPart[];
   images: string[];
   audioSources: string[];
   audioIds: string[];

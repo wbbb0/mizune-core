@@ -68,7 +68,7 @@ function createOpenAiStyleProjector(providerName: string): ProviderTranscriptPro
         }
         if (
           input.preserveThinking
-          && (item.kind === "user_message" || item.kind === "assistant_message" || item.kind === "session_mode_switch")
+          && (item.kind === "user_message" || item.kind === "user_media_message" || item.kind === "assistant_message" || item.kind === "session_mode_switch")
           && isTranscriptLlmVisible(item)
         ) {
           const historyMessage = projectTranscriptMessageItemToHistoryMessage(item);
@@ -211,7 +211,7 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
         if (!isTranscriptRuntimeIncluded(item)) {
           continue;
         }
-        if ((item.kind === "user_message" || item.kind === "assistant_message") && isTranscriptLlmVisible(item)) {
+        if ((item.kind === "user_message" || item.kind === "user_media_message" || item.kind === "assistant_message") && isTranscriptLlmVisible(item)) {
           clearActiveReplayableToolCalls();
           const historyMessage = projectTranscriptMessageItemToHistoryMessage(item);
           replayMessages.push({

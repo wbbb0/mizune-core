@@ -345,6 +345,7 @@ function toPromptBatchMessages(messages: GenerationRuntimeBatchMessage[]) {
     userId: message.userId,
     senderName: message.senderName,
     text: message.text,
+    ...(message.contentParts && message.contentParts.length > 0 ? { contentParts: message.contentParts } : {}),
     images: message.images,
     audioSources: message.audioSources,
     audioIds: message.audioIds,
@@ -377,6 +378,7 @@ function applyPromptBatchProjectionToRuntimeMessages(
     const projectedMessage = {
       ...message,
       text: projection.text,
+      ...(projection.contentParts ? { contentParts: projection.contentParts } : {}),
       audioIds: projection.audioIds,
       audioSources: projection.audioSources,
       imageIds: projection.imageIds,

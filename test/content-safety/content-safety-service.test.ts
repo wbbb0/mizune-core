@@ -436,6 +436,82 @@ test("prompt projection hides blocked media before prompt rendering", async () =
   }
 });
 
+test("prompt projection moderates structured content parts", async () => {
+  const harness = await createHarness();
+  try {
+    const result = await harness.service.projectPromptMessages({
+      sessionId: "qqbot:g:100",
+      source: "chat_prompt",
+      recentMessages: [],
+      batchMessages: [{
+        text: "原始字段不应作为结构化 prompt 主体",
+        userId: "u1",
+        imageIds: ["blocked_image"],
+        attachments: [{
+          fileId: "blocked_image",
+          kind: "image",
+          source: "chat_message",
+          sourceName: "blocked-image.png",
+          mimeType: "image/png",
+          semanticKind: "image"
+        }],
+        contentParts: [
+          { kind: "text", text: "这里有违规词" },
+          { kind: "image", fileId: "blocked_image", sourceName: "blocked-image.png", mimeType: "image/png" },
+          { kind: "special", segmentType: "json", summary: "卡片违规词" }
+        ]
+      }]
+    });
+
+    const parts = result.batchMessages[0]?.contentParts ?? [];
+    assert.match(parts.find((part) => part.kind === "text")?.text ?? "", /⟦内容安全/);
+    assert.equal(parts.some((part) => part.kind === "image"), false);
+    assert.equal(parts.filter((part) => part.kind === "text").length, 2);
+    assert.match(parts.find((part) => part.kind === "special")?.summary ?? "", /⟦内容安全/);
+    assert.deepEqual(result.batchMessages[0]?.imageIds, []);
+    assert.deepEqual(result.batchMessages[0]?.attachments, []);
+    assert.equal(result.events.length, 3);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("prompt projection appends media markers to text-only content parts", async () => {
+  const harness = await createHarness();
+  try {
+    const result = await harness.service.projectPromptMessages({
+      sessionId: "qqbot:g:100",
+      source: "chat_prompt",
+      recentMessages: [],
+      batchMessages: [{
+        text: "看图",
+        userId: "u1",
+        imageIds: ["blocked_image"],
+        attachments: [{
+          fileId: "blocked_image",
+          kind: "image",
+          source: "chat_message",
+          sourceName: "blocked-image.png",
+          mimeType: "image/png",
+          semanticKind: "image"
+        }],
+        contentParts: [
+          { kind: "text", text: "看图" }
+        ]
+      }]
+    });
+
+    const parts = result.batchMessages[0]?.contentParts ?? [];
+    assert.deepEqual(parts[0], { kind: "text", text: "看图" });
+    assert.match(parts[1]?.kind === "text" ? parts[1].text : "", /⟦内容安全/);
+    assert.deepEqual(result.batchMessages[0]?.imageIds, []);
+    assert.deepEqual(result.batchMessages[0]?.attachments, []);
+    assert.equal(result.events.length, 1);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
 test("action allow bypasses risky provider result", async () => {
   const config = createTestAppConfig({
     contentSafety: {

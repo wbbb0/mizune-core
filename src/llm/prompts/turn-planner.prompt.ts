@@ -1,7 +1,10 @@
 import type { LlmMessage } from "#llm/llmClient.ts";
 import {
+  formatStructuredAssetFile,
   formatStructuredCount,
   formatStructuredEmojiReference,
+  formatStructuredForwardReference,
+  formatStructuredImageReference,
   formatStructuredMentionAllReference,
   formatStructuredMentionReference,
   formatStructuredMentionSelfReference,
@@ -10,6 +13,7 @@ import {
   formatStructuredSpecialSegment
 } from "#conversation/session/historyContext.ts";
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
+import type { MessageContentPart } from "#messages/contentParts.ts";
 import { renderPromptSection, renderPromptSectionRaw } from "./prompt-section.ts";
 
 export function buildTurnPlannerPrompt(input: {
@@ -21,6 +25,7 @@ export function buildTurnPlannerPrompt(input: {
   batchMessages: Array<{
     senderName: string;
     text: string;
+    contentParts?: MessageContentPart[];
     images: string[];
     audioSources: string[];
     imageIds: string[];
@@ -192,6 +197,7 @@ function formatMessages(messages: Array<{ role: "user" | "assistant"; content: s
 function formatBatch(input: Array<{
   senderName: string;
   text: string;
+  contentParts?: MessageContentPart[];
   images: string[];
   audioSources: string[];
   imageIds: string[];
@@ -212,7 +218,38 @@ function formatBatch(input: Array<{
 }>): string {
   return input
     .map((message, index) => {
-      const parts: string[] = [];
+      const parts = (message.contentParts?.length ?? 0) > 0
+        ? formatContentPartsForPlanner(message.contentParts ?? [])
+        : formatLegacyBatchMessageForPlanner(message);
+      return [
+        `⟦planner_batch_message index="${index + 1}" sender_name="${sanitizeAttr(message.senderName)}" time="${formatTimestamp(message.timestampMs)}"⟧`,
+        parts.join("\n") || "<empty>",
+        "⟦/planner_batch_message⟧"
+      ].join("\n");
+    })
+    .join("\n\n");
+}
+
+function formatLegacyBatchMessageForPlanner(message: {
+  text: string;
+  images: string[];
+  audioSources: string[];
+  imageIds: string[];
+  emojiIds: string[];
+  attachments?: Array<{
+    fileId: string;
+    kind: string;
+    semanticKind?: "image" | "emoji" | undefined;
+  }>;
+  messageFiles?: OneBotMessageFileSummary[];
+  specialSegments?: OneBotSpecialSegmentSummary[];
+  forwardIds: string[];
+  replyMessageId: string | null;
+  mentionUserIds: string[];
+  mentionedAll: boolean;
+  mentionedSelf: boolean;
+}): string[] {
+  const parts: string[] = [];
       if (message.replyMessageId) {
         parts.push(formatStructuredReplyReference(message.replyMessageId));
       }
@@ -260,13 +297,57 @@ function formatBatch(input: Array<{
       if ((message.forwardIds ?? []).length > 0) {
         parts.push(formatStructuredCount("forward", (message.forwardIds ?? []).length));
       }
-      return [
-        `⟦planner_batch_message index="${index + 1}" sender_name="${sanitizeAttr(message.senderName)}" time="${formatTimestamp(message.timestampMs)}"⟧`,
-        parts.join("\n") || "<empty>",
-        "⟦/planner_batch_message⟧"
-      ].join("\n");
-    })
-    .join("\n\n");
+  return parts;
+}
+
+function formatContentPartsForPlanner(contentParts: readonly MessageContentPart[]): string[] {
+  const parts: string[] = [];
+  for (const part of contentParts) {
+    switch (part.kind) {
+      case "text":
+        if (part.text.trim()) {
+          parts.push(part.text.trim());
+        }
+        break;
+      case "image":
+        parts.push(part.fileId ? formatStructuredImageReference(part.fileId) : formatStructuredCount("image_source", 1));
+        break;
+      case "emoji":
+        parts.push(part.fileId ? formatStructuredEmojiReference(part.fileId) : formatStructuredCount("emoji_source", 1));
+        break;
+      case "file":
+        parts.push(formatStructuredMessageFile(part.file));
+        break;
+      case "asset_file":
+        parts.push(formatStructuredAssetFile(part));
+        break;
+      case "mention":
+        if (part.target === "self") {
+          parts.push(formatStructuredMentionSelfReference());
+        } else if (part.target === "all") {
+          parts.push(formatStructuredMentionAllReference());
+        } else if (part.userId) {
+          parts.push(formatStructuredMentionReference(part.userId));
+        }
+        break;
+      case "reply":
+        parts.push(formatStructuredReplyReference(part.messageId));
+        break;
+      case "forward":
+        parts.push(formatStructuredForwardReference(part.forwardId));
+        break;
+      case "audio":
+        parts.push(formatStructuredCount("audio", 1));
+        break;
+      case "special":
+        parts.push(formatStructuredSpecialSegment({
+          type: part.segmentType,
+          summary: part.summary
+        }));
+        break;
+    }
+  }
+  return parts;
 }
 
 function sanitizeAttr(value: string): string {

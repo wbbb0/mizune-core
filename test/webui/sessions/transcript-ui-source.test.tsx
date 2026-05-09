@@ -31,6 +31,19 @@ import { readFile } from "node:fs/promises";
     assert.doesNotMatch(metaSource, /longPressTimer/);
   });
 
+  test("message bubble renders ordered content parts with previews and asset links", async () => {
+    const source = await readFile(new URL("../../../webui/src/components/sessions/MessageBubble.vue", import.meta.url), "utf8");
+
+    assert.match(source, /kind === 'content_parts'/);
+    assert.match(source, /part\.kind === 'image' \|\| part\.kind === 'emoji'/);
+    assert.match(source, /emit\('previewImage', part\.imageUrl/);
+    assert.match(source, /border-0 bg-transparent p-0/);
+    assert.match(source, /part\.kind === 'file' && !part\.contentUrl/);
+    assert.match(source, /:href="part\.contentUrl \?\? undefined"/);
+    assert.match(source, /getFileIcon\(part\)/);
+    assert.match(source, /getFileTypeLabel\(part\)/);
+  });
+
   test("transcript items support explicit action button and context menu while keeping disclosures interactive when runtimeExcluded", async () => {
     const source = await readFile(new URL("../../../webui/src/components/sessions/TranscriptItem.vue", import.meta.url), "utf8");
 
@@ -46,4 +59,18 @@ import { readFile } from "node:fs/promises";
     assert.doesNotMatch(source, /function togglePlannerExpanded\(\)\s*{\s*if \(runtimeExcluded\.value\) \{/);
     assert.doesNotMatch(source, /TranscriptTextBlock v-if="runtimeExcluded && item\.reasoningContent"/);
     assert.doesNotMatch(source, /WorkbenchCard v-if="runtimeExcluded" title="规划输出"/);
+  });
+
+  test("transcript item renders user media content parts without hiding unresolved media", async () => {
+    const source = await readFile(new URL("../../../webui/src/components/sessions/TranscriptItem.vue", import.meta.url), "utf8");
+
+    assert.match(source, /item\.kind === 'user_message' \|\| item\.kind === 'user_media_message'/);
+    assert.match(source, /contentPartImages\.length > 0/);
+    assert.match(source, /contentPartEmojis\.length > 0/);
+    assert.match(source, /contentPartFiles\.length > 0/);
+    assert.match(source, /collapsed-title="展开图片元数据"/);
+    assert.match(source, /collapsed-title="展开表情元数据"/);
+    assert.match(source, /collapsed-title="展开文件元数据"/);
+    assert.doesNotMatch(source, /<img :src="getChatFileContentUrl/);
+    assert.match(source, /text="语音消息"/);
   });

@@ -345,3 +345,167 @@ import type { ParsedIncomingMessage } from "../../src/services/onebot/types.ts";
       semanticKind: "image"
     }]);
   });
+
+  test("onebot message context resolves content part media in place", async () => {
+    const incomingMessage: ParsedIncomingMessage = {
+      chatType: "private",
+      userId: "2254600711",
+      senderName: "Alice",
+      text: "前后",
+      contentParts: [
+        { kind: "text", text: "前" },
+        { kind: "image", source: "https://example.com/pic.png" },
+        { kind: "text", text: "后" }
+      ],
+      images: ["https://example.com/pic.png"],
+      audioSources: [],
+      audioIds: [],
+      emojiSources: [],
+      imageIds: [],
+      emojiIds: [],
+      attachments: [],
+      forwardIds: [],
+      replyMessageId: null,
+      mentionUserIds: [],
+      mentionedAll: false,
+      isAtMentioned: false
+    };
+
+    const context = await createMessageProcessingContext({
+      setupStore: {
+        async get() {
+          return { phase: "ready" };
+        }
+      } as never,
+      userIdentityStore: {
+        async ensureUserIdentity() {
+          return {
+            channelId: "qqbot",
+            scope: "private_user",
+            externalId: "2254600711",
+            internalUserId: "u_01TESTUSER000000000000003",
+            createdAt: 1
+          };
+        }
+      } as never,
+      userStore: {
+        async touchSeenUser() {
+          return { relationship: "known" };
+        }
+      } as never,
+      audioStore: {
+        async registerSources() {
+          return [];
+        }
+      } as never,
+      chatFileStore: {
+        async importRemoteSource(input: { source: string; sourceContext: { mediaKind: "image" | "emoji" } }) {
+          assert.equal(input.source, "https://example.com/pic.png");
+          assert.equal(input.sourceContext.mediaKind, "image");
+          return {
+            fileId: "file_image_1",
+            kind: "image",
+            sourceName: "pic.png",
+            mimeType: "image/png",
+            sourceContext: input.sourceContext
+          };
+        }
+      } as never,
+      sessionManager: {
+        getOrCreateSession() {
+          return { id: "qqbot:p:2254600711", type: "private" } as never;
+        }
+      } as never
+    }, incomingMessage, {
+      delivery: "onebot"
+    });
+
+    assert.deepEqual(context.enrichedMessage.contentParts, [
+      { kind: "text", text: "前" },
+      { kind: "image", fileId: "file_image_1", sourceName: "pic.png", mimeType: "image/png" },
+      { kind: "text", text: "后" }
+    ]);
+  });
+
+  test("onebot message context maps duplicate audio content parts to the same registered audio id", async () => {
+    const incomingMessage: ParsedIncomingMessage = {
+      chatType: "private",
+      userId: "2254600711",
+      senderName: "Alice",
+      text: "",
+      contentParts: [
+        { kind: "audio", source: "voice.amr" },
+        { kind: "text", text: "再发一次" },
+        { kind: "audio", source: "voice.amr" }
+      ],
+      images: [],
+      audioSources: ["voice.amr"],
+      audioIds: [],
+      emojiSources: [],
+      imageIds: [],
+      emojiIds: [],
+      attachments: [],
+      forwardIds: [],
+      replyMessageId: null,
+      mentionUserIds: [],
+      mentionedAll: false,
+      isAtMentioned: false
+    };
+
+    const context = await createMessageProcessingContext({
+      setupStore: {
+        async get() {
+          return { phase: "ready" };
+        }
+      } as never,
+      userIdentityStore: {
+        async ensureUserIdentity() {
+          return {
+            channelId: "qqbot",
+            scope: "private_user",
+            externalId: "2254600711",
+            internalUserId: "u_01TESTUSER000000000000004",
+            createdAt: 1
+          };
+        }
+      } as never,
+      userStore: {
+        async touchSeenUser() {
+          return { relationship: "known" };
+        }
+      } as never,
+      audioStore: {
+        async registerSources(sources: string[]) {
+          assert.deepEqual(sources, ["voice.amr"]);
+          return [{
+            id: "aud-1",
+            source: "voice.amr",
+            createdAt: 1,
+            transcription: null,
+            transcriptionStatus: "missing",
+            transcriptionModelRef: null,
+            transcriptionError: null
+          }];
+        }
+      } as never,
+      chatFileStore: {
+        async importRemoteSource() {
+          throw new Error("should not import remote assets for audio-only messages");
+        }
+      } as never,
+      sessionManager: {
+        getOrCreateSession() {
+          return { id: "qqbot:p:2254600711", type: "private" } as never;
+        }
+      } as never
+    }, incomingMessage, {
+      delivery: "onebot"
+    });
+
+    assert.deepEqual(context.enrichedMessage.audioIds, ["aud-1"]);
+    assert.deepEqual(context.enrichedMessage.contentParts, [
+      { kind: "audio", source: "voice.amr", audioId: "aud-1" },
+      { kind: "text", text: "再发一次" },
+      { kind: "audio", source: "voice.amr", audioId: "aud-1" }
+    ]);
+  });

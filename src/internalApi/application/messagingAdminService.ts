@@ -7,6 +7,8 @@ import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
+import type { ChatFileRecord } from "#services/workspace/types.ts";
+import type { MessageContentPart } from "#messages/contentParts.ts";
 import type {
   GenerationCommittedTextSink,
   GenerationDraftOverlaySink
@@ -287,8 +289,15 @@ async function runWebTurnInBackground(input: {
   };
 }): Promise<void> {
   try {
-    const attachments = input.message.attachmentIds.length > 0
-      ? (await input.chatFileStore.getMany(input.message.attachmentIds)).map((file) => ({
+    const uploadedFiles = input.message.attachmentIds.length > 0
+      ? await input.chatFileStore.getMany(input.message.attachmentIds)
+      : [];
+    const uploadedFileById = new Map(uploadedFiles.map((file) => [file.fileId, file]));
+    const orderedUploadedFiles = input.message.attachmentIds
+      .map((fileId) => uploadedFileById.get(fileId))
+      .filter((file): file is ChatFileRecord => Boolean(file));
+    const attachments = orderedUploadedFiles.length > 0
+      ? orderedUploadedFiles.map((file) => ({
           fileId: file.fileId,
           kind: file.kind,
           source: "web_upload" as const,
@@ -296,12 +305,14 @@ async function runWebTurnInBackground(input: {
           mimeType: file.mimeType
         }))
       : [];
+    const contentParts = buildWebTurnContentParts(input.message.text, orderedUploadedFiles);
     await input.handleWebIncomingMessage({
       chatType: input.message.chatType,
       userId: input.message.userId,
       ...(input.message.groupId ? { groupId: input.message.groupId } : {}),
       senderName: input.message.senderName,
       text: input.message.text,
+      ...(contentParts.length > 0 ? { contentParts } : {}),
       images: [],
       audioSources: [],
       audioIds: [],
@@ -370,6 +381,33 @@ async function runWebTurnInBackground(input: {
     });
     input.broker.fail(input.turnState);
   }
+}
+
+function buildWebTurnContentParts(text: string, uploadedFiles: ChatFileRecord[]): MessageContentPart[] {
+  const parts: MessageContentPart[] = [];
+  if (text.trim()) {
+    parts.push({ kind: "text", text: text.trim() });
+  }
+  for (const file of uploadedFiles) {
+    if (file.kind === "image" || file.kind === "animated_image") {
+      parts.push({
+        kind: "image",
+        fileId: file.fileId,
+        sourceName: file.sourceName,
+        mimeType: file.mimeType
+      });
+      continue;
+    }
+    parts.push({
+      kind: "asset_file",
+      fileId: file.fileId,
+      fileKind: file.kind,
+      sourceName: file.sourceName,
+      mimeType: file.mimeType,
+      sizeBytes: file.sizeBytes
+    });
+  }
+  return parts;
 }
 
 async function waitForSessionTurnCompletion(

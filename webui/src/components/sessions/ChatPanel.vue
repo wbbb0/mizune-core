@@ -31,6 +31,9 @@ export interface TranscriptExpandState {
   expanded: boolean;
   reasoningExpanded: boolean;
   plannerExpanded: boolean;
+  contentImagesExpanded: boolean;
+  contentEmojisExpanded: boolean;
+  contentFilesExpanded: boolean;
 }
 const transcriptExpandStates = reactive(new Map<string, TranscriptExpandState>());
 provide("transcriptExpandStates", transcriptExpandStates);
@@ -201,9 +204,23 @@ function buildChatActionTarget(item: ChatTimelineItem): TranscriptActionTarget |
     title: item.actionTitle,
     detail: item.kind === "text"
       ? (item.label || item.content.slice(0, 32) || "消息")
-      : (item.sourceName || item.fileRef || item.fileId || "图片"),
+      : item.kind === "image"
+        ? (item.sourceName || item.fileRef || item.fileId || "图片")
+        : formatContentPartsActionDetail(item.parts),
     alreadyInvalidated: false
   };
+}
+
+function formatContentPartsActionDetail(parts: Extract<ChatTimelineItem, { kind: "content_parts" }>["parts"]): string {
+  const firstText = parts.find((part) => part.kind === "text");
+  if (firstText?.kind === "text" && firstText.text.trim()) {
+    return firstText.text.slice(0, 32);
+  }
+  const firstMedia = parts.find((part) => part.kind === "image" || part.kind === "emoji");
+  if (firstMedia && (firstMedia.kind === "image" || firstMedia.kind === "emoji")) {
+    return firstMedia.sourceName || firstMedia.fileId;
+  }
+  return "消息";
 }
 
 function openChatItemActions(item: ChatTimelineItem): void {
@@ -231,6 +248,8 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
         return "环境消息";
       }
       return "用户消息";
+    case "user_media_message":
+      return item.mediaKind === "emoji" ? "表情消息" : item.mediaKind === "image" ? "图片消息" : "媒体消息";
     case "assistant_message":
       return "模型回复";
     case "outbound_media_message":
@@ -333,6 +352,7 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
               :role="msg.role"
               :kind="msg.kind"
               :content="msg.kind === 'text' ? msg.content : undefined"
+              :parts="msg.kind === 'content_parts' ? msg.parts : undefined"
               :label="msg.kind === 'text' ? msg.label : undefined"
               :sender-label="msg.senderLabel"
               :meta-chips="msg.metaChips"
@@ -344,7 +364,7 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
               :timestamp-ms="msg.timestampMs"
               :streaming="msg.kind === 'text' ? msg.streaming : undefined"
               :actions-enabled="msg.actionsEnabled"
-              @preview-image="msg.kind === 'image' ? previewImage(msg.imageUrl, msg.sourceName || msg.fileRef || msg.fileId || '已发送图片') : undefined"
+              @preview-image="(url?: string, title?: string) => msg.kind === 'image' ? previewImage(msg.imageUrl, msg.sourceName || msg.fileRef || msg.fileId || '已发送图片') : url ? previewImage(url, title || '图片消息') : undefined"
               @open-actions="openChatItemActions(msg)"
             />
           </template>

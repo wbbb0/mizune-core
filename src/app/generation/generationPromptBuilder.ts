@@ -3,6 +3,9 @@ import {
   buildPromptImageCaptions,
   collectReferencedImageIds
 } from "#images/imagePromptContext.ts";
+import {
+  annotateStructuredMediaReferences
+} from "#images/imageReferences.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { prepareAudioInputsForModel } from "#messages/audioSources.ts";
@@ -38,6 +41,7 @@ import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { createEmptyScenarioProfile, getMissingScenarioProfileFields } from "#modes/scenarioHost/profileSchema.ts";
 import { preparePromptMemoryContext } from "#llm/prompts/chat-system.prompt.ts";
 import type { PromptInput } from "#llm/prompt/promptTypes.ts";
+import type { MessageContentPart } from "#messages/contentParts.ts";
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import { buildChatFileHandleResult } from "#llm/tools/core/fileHandle.ts";
 import type { ContextMemoryFactEntry, ContextPromptMemoryRetrievalSkipReason } from "#context/contextTypes.ts";
@@ -61,6 +65,7 @@ const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "terminal_signal",
   "terminal_stop"
 ]);
+const STRUCTURED_AUDIO_REF_REGEX = /⟦audio\s+audio_id="([^"]+)"\s*⟧/gi;
 
 export interface GenerationPromptHistoryMessage {
   role: "user" | "assistant";
@@ -85,6 +90,7 @@ export interface GenerationPromptBatchMessage {
   userId: string;
   senderName: string;
   text: string;
+  contentParts?: MessageContentPart[];
   images: string[];
   audioSources: string[];
   audioIds: string[];
@@ -246,6 +252,7 @@ async function preparePromptMediaContext(
     batchMessages?: Array<{
       attachments?: ChatAttachment[];
     }>;
+    replayMessages?: LlmMessage[];
     reason: string;
     abortSignal?: AbortSignal;
   }
@@ -257,7 +264,9 @@ async function preparePromptMediaContext(
     ]
   ))));
   const historyImageIds = collectReferencedImageIds(input.historyForPrompt);
-  const imageIds = Array.from(new Set([...historyImageIds, ...batchImageIds]));
+  const replayStringMessages = collectReplayStringMessages(input.replayMessages);
+  const replayImageIds = collectReferencedImageIds(replayStringMessages);
+  const imageIds = Array.from(new Set([...historyImageIds, ...replayImageIds, ...batchImageIds]));
   const fallbackCaptionMap = await deps.mediaCaptionService.ensureReady(
     imageIds,
     {
@@ -266,11 +275,110 @@ async function preparePromptMediaContext(
     }
   );
   const captionMap = await readImageCaptionMapFromDerivedObservations(deps, imageIds, fallbackCaptionMap);
+  const audioTranscriptionMap = await preparePromptAudioTranscriptionMap(deps, [
+    ...collectReferencedAudioIds(input.historyForPrompt),
+    ...collectReferencedAudioIds(replayStringMessages)
+  ], {
+    reason: input.reason,
+    ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+  });
 
   return {
-    historyForPrompt: annotateHistoryMessagesWithCaptions(input.historyForPrompt, captionMap, { includeIds: true }),
-    captionMap
+    historyForPrompt: annotateHistoryMessagesWithAudioTranscriptions(
+      annotateHistoryMessagesWithCaptions(input.historyForPrompt, captionMap, { includeIds: true }),
+      audioTranscriptionMap
+    ),
+    captionMap,
+    audioTranscriptionMap
   };
+}
+
+function collectReplayStringMessages(replayMessages: LlmMessage[] | undefined): Array<{ content: string }> {
+  return (replayMessages ?? [])
+    .map((message) => typeof message.content === "string" ? { content: message.content } : null)
+    .filter((message): message is { content: string } => message != null);
+}
+
+function collectReferencedAudioIds(messages: Array<{ content: string }>): string[] {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    let match: RegExpExecArray | null;
+    STRUCTURED_AUDIO_REF_REGEX.lastIndex = 0;
+    while ((match = STRUCTURED_AUDIO_REF_REGEX.exec(message.content)) != null) {
+      const audioId = String(match[1] ?? "").trim();
+      if (audioId) {
+        ids.add(audioId);
+      }
+    }
+  }
+  return Array.from(ids);
+}
+
+async function preparePromptAudioTranscriptionMap(
+  deps: GenerationPromptBuilderDeps,
+  audioIds: string[],
+  options: {
+    reason: string;
+    abortSignal?: AbortSignal | undefined;
+  }
+): Promise<Map<string, PromptAudioTranscription>> {
+  const uniqueAudioIds = Array.from(new Set(audioIds.map((item) => String(item ?? "").trim()).filter(Boolean)));
+  if (uniqueAudioIds.length === 0) {
+    return new Map();
+  }
+  const transcriptions = await preparePromptAudioTranscriptions(deps, uniqueAudioIds, options);
+  return new Map(transcriptions.map((item) => [item.audioId, item]));
+}
+
+function annotateHistoryMessagesWithAudioTranscriptions<T extends { content: string }>(
+  messages: T[],
+  transcriptions: ReadonlyMap<string, PromptAudioTranscription>
+): T[] {
+  if (transcriptions.size === 0) {
+    return messages;
+  }
+  return messages.map((message) => ({
+    ...message,
+    content: annotateAudioReferences(message.content, transcriptions)
+  }));
+}
+
+function annotateReplayMessagesWithDerivedContext(
+  replayMessages: LlmMessage[] | undefined,
+  captions: ReadonlyMap<string, string>,
+  transcriptions: ReadonlyMap<string, PromptAudioTranscription>
+): LlmMessage[] | undefined {
+  if (!replayMessages || (captions.size === 0 && transcriptions.size === 0)) {
+    return replayMessages;
+  }
+  return replayMessages.map((message) => {
+    if (typeof message.content !== "string") {
+      return message;
+    }
+    const withCaptions = annotateStructuredMediaReferences(message.content, captions, { includeIds: true });
+    const withAudio = annotateAudioReferences(withCaptions, transcriptions);
+    return {
+      ...message,
+      content: withAudio
+    };
+  });
+}
+
+function annotateAudioReferences(
+  content: string,
+  transcriptions: ReadonlyMap<string, PromptAudioTranscription>
+): string {
+  return content.replace(STRUCTURED_AUDIO_REF_REGEX, (full, rawAudioId) => {
+    const audioId = String(rawAudioId ?? "").trim();
+    const transcription = transcriptions.get(audioId);
+    if (!transcription) {
+      return full;
+    }
+    if (transcription.status === "ready" && transcription.text) {
+      return `${full}\n音频 ${audioId} 听写：${transcription.text}`;
+    }
+    return `${full}\n音频 ${audioId} 听写失败：${transcription.error ?? "未配置可用听写模型或内容无法识别"}`;
+  });
 }
 
 async function projectPromptContentSafety<
@@ -414,6 +522,7 @@ async function preparePromptBatchMessages(
       userId: message.userId,
       senderName: message.senderName,
       text: message.text,
+      ...(message.contentParts && message.contentParts.length > 0 ? { contentParts: message.contentParts } : {}),
       images: message.images,
       audioSources: message.audioSources,
       audioIds,
@@ -935,6 +1044,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const mediaContext = await preparePromptMediaContext(deps, {
       historyForPrompt: safetyProjected.historyForPrompt,
       batchMessages: safetyProjected.batchMessages,
+      ...(input.replayMessages ? { replayMessages: input.replayMessages } : {}),
       reason: "chat_prompt",
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     });
@@ -985,7 +1095,11 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const replayMessages = await projectReplayMessages(deps, {
       sessionId: input.sessionId,
       source: "chat_prompt_replay",
-      replayMessages: input.replayMessages,
+      replayMessages: annotateReplayMessagesWithDerivedContext(
+        input.replayMessages,
+        mediaContext.captionMap,
+        mediaContext.audioTranscriptionMap
+      ),
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     });
     const userProfilePromptState = assistantMode
@@ -1138,6 +1252,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const [mediaContext, liveResources, globalRules, toolsetRuleEntries, scheduledTrigger] = await Promise.all([
       preparePromptMediaContext(deps, {
         historyForPrompt: safetyProjected.historyForPrompt,
+        ...(input.replayMessages ? { replayMessages: input.replayMessages } : {}),
         reason: "scheduled_prompt",
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
       }),
@@ -1226,7 +1341,11 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const replayMessages = await projectReplayMessages(deps, {
       sessionId: input.sessionId,
       source: "scheduled_prompt_replay",
-      replayMessages: input.replayMessages,
+      replayMessages: annotateReplayMessagesWithDerivedContext(
+        input.replayMessages,
+        mediaContext.captionMap,
+        mediaContext.audioTranscriptionMap
+      ),
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     });
     const rawPromptMessages = buildScheduledTaskPrompt({
@@ -1322,6 +1441,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const mediaContext = await preparePromptMediaContext(deps, {
       historyForPrompt: safetyProjected.historyForPrompt,
       batchMessages: safetyProjected.batchMessages,
+      ...(input.replayMessages ? { replayMessages: input.replayMessages } : {}),
       reason: "setup_prompt",
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     });
@@ -1347,7 +1467,11 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const replayMessages = await projectReplayMessages(deps, {
       sessionId: input.sessionId,
       source: "setup_prompt_replay",
-      replayMessages: input.replayMessages,
+      replayMessages: annotateReplayMessagesWithDerivedContext(
+        input.replayMessages,
+        mediaContext.captionMap,
+        mediaContext.audioTranscriptionMap
+      ),
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     });
 

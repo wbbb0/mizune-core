@@ -1,4 +1,5 @@
 import type { OneBotMessageFileSummary, OneBotMessageSegment, OneBotSpecialSegmentSummary } from "./types.ts";
+import type { MessageContentPart } from "#messages/contentParts.ts";
 
 export type MediaSemanticKind = "image" | "emoji";
 
@@ -207,6 +208,76 @@ export function extractMediaSources(segments: OneBotMessageSegment[]): Extracted
   }
 
   return media;
+}
+
+export function extractContentParts(
+  segments: OneBotMessageSegment[],
+  options?: {
+    selfId?: string | number | null;
+  }
+): MessageContentPart[] {
+  const normalizedSelfId = String(options?.selfId ?? "").trim();
+  const parts: MessageContentPart[] = [];
+
+  for (const segment of segments) {
+    if (segment.type === "text") {
+      const text = String(segment.data.text ?? "");
+      if (text) {
+        parts.push({ kind: "text", text });
+      }
+      continue;
+    }
+
+    const imageSource = getImageSource(segment);
+    if (imageSource) {
+      parts.push({
+        kind: getSegmentMediaKind(segment),
+        source: imageSource
+      });
+      continue;
+    }
+
+    const audioSource = getAudioSource(segment);
+    if (audioSource) {
+      parts.push({ kind: "audio", source: audioSource });
+      continue;
+    }
+
+    const file = extractMessageFiles([segment])[0];
+    if (file) {
+      parts.push({ kind: "file", file });
+      continue;
+    }
+
+    const forwardId = getForwardId(segment);
+    if (forwardId) {
+      parts.push({ kind: "forward", forwardId });
+      continue;
+    }
+
+    const replyMessageId = getReplyMessageId(segment);
+    if (replyMessageId) {
+      parts.push({ kind: "reply", messageId: replyMessageId });
+      continue;
+    }
+
+    const mention = getMentionTarget(segment, normalizedSelfId);
+    if (mention) {
+      parts.push(mention);
+      continue;
+    }
+
+    const summary = summarizeSpecialSegment(segment);
+    if (summary) {
+      parts.push({
+        kind: "special",
+        segmentType: segment.type,
+        summary
+      });
+    }
+  }
+
+  return parts;
 }
 
 export function extractForwardIds(segments: OneBotMessageSegment[]): string[] {

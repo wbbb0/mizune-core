@@ -1,5 +1,7 @@
 import type { MediaSemanticKind } from "#services/onebot/messageSegments.ts";
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
+import type { MessageContentPart } from "#messages/contentParts.ts";
+import { resolveUserMessageMediaKind } from "#messages/contentParts.ts";
 import type { UserStore } from "#identity/userStore.ts";
 import {
   dedupeResolvedChatAttachments,
@@ -12,6 +14,7 @@ import type {
   SessionHistoryMessage,
   TranscriptSessionModeSwitchItem,
   TranscriptAssistantMessageItem,
+  TranscriptUserMediaMessageItem,
   TranscriptUserMessageItem,
   TranscriptItemDeliveryRef,
   TranscriptContentSafetyEvent,
@@ -69,6 +72,12 @@ export function formatStructuredSpecialSegment(segment: OneBotSpecialSegmentSumm
   });
 }
 
+export function formatStructuredAudioReference(audioId: string): string {
+  return formatStructuredTag("audio", {
+    audio_id: audioId
+  });
+}
+
 export function formatStructuredMessageFile(file: OneBotMessageFileSummary): string {
   return formatStructuredTag("file", {
     file_id: file.fileId,
@@ -77,6 +86,22 @@ export function formatStructuredMessageFile(file: OneBotMessageFileSummary): str
     ...(file.sizeBytes != null ? { size_bytes: String(file.sizeBytes) } : {}),
     ...(file.mimeType ? { mime_type: file.mimeType } : {}),
     download_tool: file.downloadTool
+  });
+}
+
+export function formatStructuredAssetFile(file: {
+  fileId: string;
+  fileKind?: string | null;
+  sourceName?: string | null;
+  sizeBytes?: number | null;
+  mimeType?: string | null;
+}): string {
+  return formatStructuredTag("asset_file", {
+    file_id: file.fileId,
+    ...(file.fileKind ? { file_kind: file.fileKind } : {}),
+    ...(file.sourceName ? { name: file.sourceName } : {}),
+    ...(file.sizeBytes != null ? { size_bytes: String(file.sizeBytes) } : {}),
+    ...(file.mimeType ? { mime_type: file.mimeType } : {})
   });
 }
 
@@ -98,6 +123,7 @@ export function formatSessionModeSwitchContent(input: {
 
 export function formatHistoryContent(input: {
   text: string;
+  contentParts?: MessageContentPart[];
   imageIds?: string[];
   emojiIds?: string[];
   attachments?: ChatAttachment[];
@@ -110,6 +136,10 @@ export function formatHistoryContent(input: {
   mentionedAll?: boolean;
   mentionedSelf?: boolean;
 }): string {
+  if ((input.contentParts?.length ?? 0) > 0) {
+    return formatMessageContentParts(input.contentParts ?? []);
+  }
+
   const parts: string[] = [];
   if (input.replyMessageId) {
     parts.push(formatStructuredReplyReference(input.replyMessageId));
@@ -181,6 +211,7 @@ export function formatUserHistoryEntry(input: {
   userId: string;
   senderName: string;
   text: string;
+  contentParts?: MessageContentPart[];
   imageIds?: string[];
   emojiIds?: string[];
   attachments?: ChatAttachment[];
@@ -196,6 +227,9 @@ export function formatUserHistoryEntry(input: {
   const contentInput: Parameters<typeof formatHistoryContent>[0] = {
     text: input.text
   };
+  if (input.contentParts) {
+    contentInput.contentParts = input.contentParts;
+  }
   if (input.imageIds) {
     contentInput.imageIds = input.imageIds;
   }
@@ -253,6 +287,7 @@ export function createUserTranscriptMessageItem(input: {
   userId: string;
   senderName: string;
   text: string;
+  contentParts?: MessageContentPart[];
   imageIds?: string[];
   emojiIds?: string[];
   attachments?: ChatAttachment[];
@@ -268,7 +303,16 @@ export function createUserTranscriptMessageItem(input: {
   contentSafetyEvents?: TranscriptContentSafetyEvent[];
   runtimeVisibility?: TranscriptUserMessageItem["runtimeVisibility"];
   timestampMs: number;
-}): TranscriptUserMessageItem {
+}): TranscriptUserMessageItem | TranscriptUserMediaMessageItem {
+  const mediaKind = resolveUserMessageMediaKind(input.contentParts);
+  if (mediaKind) {
+    return createUserMediaTranscriptMessageItem({
+      ...input,
+      contentParts: input.contentParts ?? [],
+      mediaKind
+    });
+  }
+
   return {
     kind: "user_message",
     role: "user",
@@ -277,6 +321,7 @@ export function createUserTranscriptMessageItem(input: {
     userId: input.userId,
     senderName: input.senderName,
     text: input.text,
+    contentParts: [...(input.contentParts ?? [])],
     imageIds: [...(input.imageIds ?? [])],
     emojiIds: [...(input.emojiIds ?? [])],
     attachments: [...(input.attachments ?? [])],
@@ -284,6 +329,47 @@ export function createUserTranscriptMessageItem(input: {
     ...(input.specialSegments && input.specialSegments.length > 0 ? { specialSegments: [...input.specialSegments] } : {}),
     audioCount: input.audioCount ?? 0,
     forwardIds: [...(input.forwardIds ?? [])],
+    replyMessageId: input.replyMessageId ?? null,
+    mentionUserIds: [...(input.mentionUserIds ?? [])],
+    mentionedAll: input.mentionedAll === true,
+    mentionedSelf: input.mentionedSelf === true,
+    ...(input.sourceRef ? { sourceRef: input.sourceRef } : {}),
+    ...(input.runtimeVisibility ? { runtimeVisibility: input.runtimeVisibility } : {}),
+    ...(input.contentSafetyEvents && input.contentSafetyEvents.length > 0 ? { contentSafetyEvents: input.contentSafetyEvents } : {}),
+    timestampMs: input.timestampMs
+  };
+}
+
+function createUserMediaTranscriptMessageItem(input: {
+  chatType: "private" | "group";
+  userId: string;
+  senderName: string;
+  mediaKind: "image" | "emoji" | "mixed";
+  contentParts: MessageContentPart[];
+  imageIds?: string[];
+  emojiIds?: string[];
+  attachments?: ChatAttachment[];
+  replyMessageId?: string | null;
+  mentionUserIds?: string[];
+  mentionedAll?: boolean;
+  mentionedSelf?: boolean;
+  sourceRef?: TranscriptItemSourceRef;
+  contentSafetyEvents?: TranscriptContentSafetyEvent[];
+  runtimeVisibility?: TranscriptUserMessageItem["runtimeVisibility"];
+  timestampMs: number;
+}): TranscriptUserMediaMessageItem {
+  return {
+    kind: "user_media_message",
+    role: "user",
+    llmVisible: true,
+    chatType: input.chatType,
+    userId: input.userId,
+    senderName: input.senderName,
+    mediaKind: input.mediaKind,
+    contentParts: [...input.contentParts],
+    imageIds: [...(input.imageIds ?? [])],
+    emojiIds: [...(input.emojiIds ?? [])],
+    attachments: [...(input.attachments ?? [])],
     replyMessageId: input.replyMessageId ?? null,
     mentionUserIds: [...(input.mentionUserIds ?? [])],
     mentionedAll: input.mentionedAll === true,
@@ -335,35 +421,47 @@ export function createSessionModeSwitchTranscriptItem(input: {
 }
 
 export function projectTranscriptMessageItemToHistoryMessage(
-  item: TranscriptUserMessageItem | TranscriptAssistantMessageItem | TranscriptSessionModeSwitchItem
+  item: TranscriptUserMessageItem | TranscriptUserMediaMessageItem | TranscriptAssistantMessageItem | TranscriptSessionModeSwitchItem
 ): SessionHistoryMessage {
+  if (item.kind === "session_mode_switch") {
+    return {
+      role: item.role,
+      content: item.content,
+      timestampMs: item.timestampMs
+    };
+  }
+  if (item.kind === "assistant_message") {
+    return {
+      role: item.role,
+      content: formatAssistantHistoryEntry({
+        chatType: item.chatType,
+        userId: item.userId,
+        senderName: item.senderName,
+        text: item.text
+      }),
+      timestampMs: item.timestampMs
+    };
+  }
+  const contentParts = item.contentParts ?? [];
   return {
     role: item.role,
-    content: item.kind === "session_mode_switch"
-      ? item.content
-      : item.kind === "user_message"
-      ? formatUserHistoryEntry({
+    content: formatUserHistoryEntry({
           chatType: item.chatType,
           userId: item.userId,
           senderName: item.senderName,
-          text: item.text,
+          text: item.kind === "user_message" ? item.text : "",
+          ...(contentParts.length > 0 ? { contentParts } : {}),
           ...(item.imageIds.length > 0 ? { imageIds: item.imageIds } : {}),
           ...(item.emojiIds.length > 0 ? { emojiIds: item.emojiIds } : {}),
           ...(item.attachments && item.attachments.length > 0 ? { attachments: item.attachments } : {}),
-          ...(item.messageFiles && item.messageFiles.length > 0 ? { messageFiles: item.messageFiles } : {}),
-          ...(item.specialSegments && item.specialSegments.length > 0 ? { specialSegments: item.specialSegments } : {}),
-          ...(item.audioCount > 0 ? { audioCount: item.audioCount } : {}),
-          ...(item.forwardIds.length > 0 ? { forwardIds: item.forwardIds } : {}),
+          ...(item.kind === "user_message" && item.messageFiles && item.messageFiles.length > 0 ? { messageFiles: item.messageFiles } : {}),
+          ...(item.kind === "user_message" && item.specialSegments && item.specialSegments.length > 0 ? { specialSegments: item.specialSegments } : {}),
+          ...(item.kind === "user_message" && item.audioCount > 0 ? { audioCount: item.audioCount } : {}),
+          ...(item.kind === "user_message" && item.forwardIds.length > 0 ? { forwardIds: item.forwardIds } : {}),
           ...(item.replyMessageId ? { replyMessageId: item.replyMessageId } : {}),
           ...(item.mentionUserIds.length > 0 ? { mentionUserIds: item.mentionUserIds } : {}),
           ...(item.mentionedAll ? { mentionedAll: true } : {}),
           ...(item.mentionedSelf ? { mentionedSelf: true } : {})
-        })
-      : formatAssistantHistoryEntry({
-          chatType: item.chatType,
-          userId: item.userId,
-          senderName: item.senderName,
-          text: item.text
         }),
     timestampMs: item.timestampMs
   };
@@ -394,7 +492,7 @@ export async function extractWindowUsers(
     if (message.runtimeExcluded === true) {
       continue;
     }
-    if (message.kind === "user_message" || message.kind === "assistant_message") {
+    if (message.kind === "user_message" || message.kind === "user_media_message" || message.kind === "assistant_message") {
       participants.set(message.userId, message.senderName || message.userId);
     }
   }
@@ -434,6 +532,56 @@ function formatStructuredSpeakerReference(
     user_id: userId,
     name: senderName
   })}\n${content}`;
+}
+
+function formatMessageContentParts(contentParts: readonly MessageContentPart[]): string {
+  const parts: string[] = [];
+  for (const part of contentParts) {
+    switch (part.kind) {
+      case "text":
+        if (part.text.trim()) {
+          parts.push(escapeStructuredText(part.text.trim()));
+        }
+        break;
+      case "image":
+      case "emoji":
+        if (part.fileId) {
+          parts.push(formatStructuredMediaReference(part.kind, part.fileId));
+        }
+        break;
+      case "file":
+        parts.push(formatStructuredMessageFile(part.file));
+        break;
+      case "asset_file":
+        parts.push(formatStructuredAssetFile(part));
+        break;
+      case "mention":
+        if (part.target === "self") {
+          parts.push(formatStructuredMentionSelfReference());
+        } else if (part.target === "all") {
+          parts.push(formatStructuredMentionAllReference());
+        } else if (part.userId) {
+          parts.push(formatStructuredMentionReference(part.userId));
+        }
+        break;
+      case "reply":
+        parts.push(formatStructuredReplyReference(part.messageId));
+        break;
+      case "forward":
+        parts.push(formatStructuredForwardReference(part.forwardId));
+        break;
+      case "audio":
+        parts.push(part.audioId ? formatStructuredAudioReference(part.audioId) : formatStructuredCount("audio", 1));
+        break;
+      case "special":
+        parts.push(formatStructuredSpecialSegment({
+          type: part.segmentType,
+          summary: part.summary
+        }));
+        break;
+    }
+  }
+  return parts.join("\n") || "<empty>";
 }
 
 function formatStructuredTag(name: string, attrs: Record<string, string>): string {

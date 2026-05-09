@@ -1,4 +1,5 @@
 import type { ChatAttachment } from "#services/workspace/types.ts";
+import type { MessageContentPart } from "#messages/contentParts.ts";
 
 export interface OneBotMessageSegment {
   type: string;
@@ -239,6 +240,7 @@ export interface ParsedIncomingMessage {
   groupId?: string;
   senderName: string;
   text: string;
+  contentParts?: MessageContentPart[];
   images: string[];
   audioSources: string[];
   audioIds: string[];

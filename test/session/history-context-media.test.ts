@@ -44,6 +44,48 @@ test("history projection skips pending media ids and dedupes attachment refs", (
   assert.equal(countOccurrences(projected.content, "file_emoji_1"), 1);
 });
 
+test("pure visual content parts create user media transcript items", () => {
+  const item = createUserTranscriptMessageItem({
+    chatType: "private",
+    userId: "10001",
+    senderName: "Alice",
+    text: "",
+    contentParts: [
+      { kind: "image", fileId: "file_image_1" },
+      { kind: "emoji", fileId: "file_emoji_1" }
+    ],
+    imageIds: ["file_image_1"],
+    emojiIds: ["file_emoji_1"],
+    timestampMs: 1710000000000
+  });
+
+  assert.equal(item.kind, "user_media_message");
+  if (item.kind !== "user_media_message") {
+    throw new Error("expected user media message");
+  }
+  assert.equal(item.mediaKind, "mixed");
+
+  const projected = projectTranscriptMessageItemToHistoryMessage(item);
+  assert.match(projected.content, /kind="image" image_id="file_image_1"/);
+  assert.match(projected.content, /kind="emoji" image_id="file_emoji_1"/);
+});
+
+test("history projection preserves audio content part ids for later transcription context", () => {
+  const item = createUserTranscriptMessageItem({
+    chatType: "private",
+    userId: "10001",
+    senderName: "Alice",
+    text: "",
+    contentParts: [
+      { kind: "audio", source: "voice.amr", audioId: "aud-1" }
+    ],
+    timestampMs: 1710000000000
+  });
+
+  const projected = projectTranscriptMessageItemToHistoryMessage(item);
+  assert.match(projected.content, /⟦audio audio_id="aud-1"⟧/);
+});
+
 function countOccurrences(text: string, needle: string): number {
   return text.split(needle).length - 1;
 }

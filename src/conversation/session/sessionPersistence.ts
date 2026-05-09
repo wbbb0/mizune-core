@@ -6,7 +6,7 @@ import type { PersistedSessionState } from "./sessionManager.ts";
 import { getDefaultSessionModeId } from "#modes/registry.ts";
 import { createNormalSessionOperationMode } from "./sessionOperationMode.ts";
 import { chatAttachmentSchema } from "#types/chatContracts.ts";
-import { internalTranscriptItemSchema } from "./transcriptContract.ts";
+import { internalTranscriptItemSchema, transcriptMessageContentPartSchema } from "./transcriptContract.ts";
 
 const personaDraftSchema = z.object({
   name: z.string(),
@@ -90,6 +90,7 @@ const persistedSessionSchema = z.object({
     senderName: z.string().min(1),
     chatType: z.enum(["private", "group"]),
     text: z.string(),
+    contentParts: z.array(transcriptMessageContentPartSchema).optional(),
     images: z.array(z.string()),
     audioSources: z.array(z.string()).default([]),
     audioIds: z.array(z.string()).default([]),

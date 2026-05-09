@@ -163,6 +163,38 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     assert.equal(googleProjection.replayMessages.some((message) => String(message.content).includes("@bot 当前问题")), true);
   });
 
+  test("provider projectors replay user media transcript items as visible history", () => {
+    const transcript: InternalTranscriptItem[] = [{
+      kind: "user_media_message",
+      role: "user",
+      llmVisible: true,
+      chatType: "private",
+      userId: "10001",
+      senderName: "Alice",
+      mediaKind: "image",
+      contentParts: [{ kind: "image", fileId: "img-1", sourceName: "a.png", mimeType: "image/png" }],
+      imageIds: ["img-1"],
+      emojiIds: [],
+      attachments: [],
+      replyMessageId: null,
+      mentionUserIds: [],
+      mentionedAll: false,
+      mentionedSelf: false,
+      timestampMs: 1
+    }];
+
+    const openaiProjection = getProviderTranscriptProjector("openai").project({
+      transcript,
+      preserveThinking: true
+    });
+    const googleProjection = getProviderTranscriptProjector("google").project({ transcript });
+
+    assert.equal(openaiProjection.replayCoversVisibleHistory, true);
+    assert.equal(googleProjection.replayCoversVisibleHistory, true);
+    assert.match(String(openaiProjection.replayMessages[0]?.content ?? ""), /image_id="img-1"/);
+    assert.match(String(googleProjection.replayMessages[0]?.content ?? ""), /image_id="img-1"/);
+  });
+
   test("openai-style projector keeps pinned old tool results raw", () => {
     const pinnedTranscript: InternalTranscriptItem[] = [];
     for (let index = 1; index <= 7; index += 1) {

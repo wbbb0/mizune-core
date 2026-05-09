@@ -15,6 +15,7 @@ import type { ToolsetView } from "#llm/tools/toolsets.ts";
 import { annotateHistoryMessagesWithCaptions, collectReferencedImageIds } from "#images/imagePromptContext.ts";
 import { collectVisualAttachmentFileIds, isPendingChatAttachmentId } from "#services/workspace/chatAttachments.ts";
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
+import type { MessageContentPart } from "#messages/contentParts.ts";
 
 export type TurnPlannerRequiredCapability =
   | "external_info_lookup"
@@ -49,6 +50,7 @@ export interface TurnPlannerInput {
   batchMessages: Array<{
     senderName: string;
     text: string;
+    contentParts?: MessageContentPart[];
     images: string[];
     audioSources: string[];
     imageIds: string[];
@@ -473,6 +475,11 @@ function collectBatchMediaRefs(messages: TurnPlannerInput["batchMessages"]): Arr
     }
     for (const emojiId of collectVisualAttachmentFileIds(message.attachments, "emoji")) {
       add(emojiId, "emoji");
+    }
+    for (const part of message.contentParts ?? []) {
+      if ((part.kind === "image" || part.kind === "emoji") && part.fileId) {
+        add(part.fileId, part.kind);
+      }
     }
   }
 

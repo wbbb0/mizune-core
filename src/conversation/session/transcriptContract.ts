@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { chatAttachmentSchema } from "../../types/chatContracts.ts";
+import { chatAttachmentSchema, chatFileKindValues } from "../../types/chatContracts.ts";
 
 export const transcriptItemRuntimeExclusionReasonValues = ["manual_single", "manual_group", "manual_truncate_after", "interrupt_cleanup", "system"] as const;
 export const transcriptItemRuntimeVisibilityValues = ["default", "ambient"] as const;
@@ -59,6 +59,62 @@ export const transcriptMessageFileSchema = z.object({
   downloadTool: z.literal("download_message_file")
 });
 
+export const transcriptMessageContentPartSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("text"),
+    text: z.string()
+  }),
+  z.object({
+    kind: z.literal("image"),
+    source: z.string().min(1).optional(),
+    fileId: z.string().min(1).optional(),
+    sourceName: z.string().nullable().optional(),
+    mimeType: z.string().nullable().optional()
+  }),
+  z.object({
+    kind: z.literal("emoji"),
+    source: z.string().min(1).optional(),
+    fileId: z.string().min(1).optional(),
+    sourceName: z.string().nullable().optional(),
+    mimeType: z.string().nullable().optional()
+  }),
+  z.object({
+    kind: z.literal("file"),
+    file: transcriptMessageFileSchema
+  }),
+  z.object({
+    kind: z.literal("asset_file"),
+    fileId: z.string().min(1),
+    fileKind: z.enum(chatFileKindValues),
+    sourceName: z.string().nullable(),
+    mimeType: z.string().nullable(),
+    sizeBytes: z.number().int().nonnegative().nullable()
+  }),
+  z.object({
+    kind: z.literal("mention"),
+    target: z.enum(["self", "all", "user"]),
+    userId: z.string().min(1).optional()
+  }),
+  z.object({
+    kind: z.literal("reply"),
+    messageId: z.string().min(1)
+  }),
+  z.object({
+    kind: z.literal("forward"),
+    forwardId: z.string().min(1)
+  }),
+  z.object({
+    kind: z.literal("audio"),
+    source: z.string().min(1).optional(),
+    audioId: z.string().min(1).optional()
+  }),
+  z.object({
+    kind: z.literal("special"),
+    segmentType: z.string().min(1),
+    summary: z.string()
+  })
+]);
+
 export const transcriptTokenStatSourceValues = ["api_direct", "api_attributed", "estimated"] as const;
 
 export const transcriptTokenStatSchema = z.object({
@@ -110,6 +166,7 @@ export const transcriptUserMessageItemSchema = z.object({
   userId: z.string().min(1),
   senderName: z.string().min(1),
   text: z.string(),
+  contentParts: z.array(transcriptMessageContentPartSchema).optional(),
   imageIds: z.array(z.string()).default([]),
   emojiIds: z.array(z.string()).default([]),
   attachments: z.array(chatAttachmentSchema).default([]),
@@ -117,6 +174,26 @@ export const transcriptUserMessageItemSchema = z.object({
   specialSegments: z.array(transcriptSpecialSegmentSchema).optional(),
   audioCount: z.number().int().nonnegative(),
   forwardIds: z.array(z.string()).default([]),
+  replyMessageId: z.string().nullable(),
+  mentionUserIds: z.array(z.string()).default([]),
+  mentionedAll: z.boolean(),
+  mentionedSelf: z.boolean(),
+  timestampMs: z.number().int().nonnegative()
+});
+
+export const transcriptUserMediaMessageItemSchema = z.object({
+  ...transcriptItemMetaSchema.shape,
+  kind: z.literal("user_media_message"),
+  role: z.literal("user"),
+  llmVisible: z.literal(true),
+  chatType: z.enum(["private", "group"]),
+  userId: z.string().min(1),
+  senderName: z.string().min(1),
+  mediaKind: z.enum(["image", "emoji", "mixed"]),
+  contentParts: z.array(transcriptMessageContentPartSchema).default([]),
+  imageIds: z.array(z.string()).default([]),
+  emojiIds: z.array(z.string()).default([]),
+  attachments: z.array(chatAttachmentSchema).default([]),
   replyMessageId: z.string().nullable(),
   mentionUserIds: z.array(z.string()).default([]),
   mentionedAll: z.boolean(),
@@ -362,6 +439,7 @@ export const transcriptContextExtractionEventItemSchema = z.object({
 
 export const internalTranscriptItemSchema = z.discriminatedUnion("kind", [
   transcriptUserMessageItemSchema,
+  transcriptUserMediaMessageItemSchema,
   transcriptAssistantMessageItemSchema,
   transcriptSessionModeSwitchItemSchema,
   transcriptAssistantToolCallItemSchema,
@@ -396,6 +474,7 @@ export type TranscriptItemRuntimeExclusionReason = (typeof transcriptItemRuntime
 export type TranscriptItemRuntimeVisibility = (typeof transcriptItemRuntimeVisibilityValues)[number];
 export type TranscriptItemSourceRef = z.infer<typeof transcriptItemSourceRefSchema>;
 export type TranscriptItemDeliveryRef = z.infer<typeof transcriptItemDeliveryRefSchema>;
+export type TranscriptMessageContentPart = z.infer<typeof transcriptMessageContentPartSchema>;
 export type TranscriptContentSafetyEvent = z.infer<typeof transcriptContentSafetyEventSchema>;
 export type TranscriptItemMeta = z.infer<typeof transcriptItemMetaSchema>;
 export type InternalTranscriptItem = z.infer<typeof internalTranscriptItemSchema>;

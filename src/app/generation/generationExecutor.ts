@@ -15,6 +15,7 @@ import {
 } from "#conversation/session/internalTranscriptEvents.ts";
 import { buildBuiltinToolContext, type PromptDebugSnapshot } from "#llm/tools/core/shared.ts";
 import type { PromptInteractionMode } from "#llm/prompt/promptTypes.ts";
+import type { MessageContentPart } from "#messages/contentParts.ts";
 import { createGenerationOutbound } from "./generationOutbound.ts";
 import { createGenerationSegmentCoordinator } from "./generationSegmentCoordinator.ts";
 import { createGenerationTypingWindow } from "./generationTypingWindow.ts";
@@ -53,6 +54,7 @@ export interface GenerationRuntimeBatchMessage {
   userId: string;
   senderName: string;
   text: string;
+  contentParts?: MessageContentPart[];
   images: string[];
   audioSources: string[];
   audioIds: string[];
@@ -208,6 +210,7 @@ export function createGenerationExecutor(
           userId: message.userId,
           senderName: message.senderName,
           text: message.text,
+          ...(message.contentParts && message.contentParts.length > 0 ? { contentParts: message.contentParts } : {}),
           ...(message.imageIds.length > 0 ? { imageIds: message.imageIds } : {}),
           ...(message.emojiIds.length > 0 ? { emojiIds: message.emojiIds } : {}),
           ...(message.attachments && message.attachments.length > 0 ? { attachments: message.attachments } : {}),

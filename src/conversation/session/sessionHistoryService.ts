@@ -66,6 +66,7 @@ export class SessionHistoryService {
       userId: string;
       senderName: string;
       text: string;
+      contentParts?: SessionMessage["contentParts"];
       imageIds?: string[];
       emojiIds?: string[];
       attachments?: SessionMessage["attachments"];
@@ -88,6 +89,7 @@ export class SessionHistoryService {
       userId: message.userId,
       senderName: message.senderName,
       text: message.text,
+      ...(message.contentParts ? { contentParts: message.contentParts } : {}),
       ...(message.imageIds ? { imageIds: message.imageIds } : {}),
       ...(message.emojiIds ? { emojiIds: message.emojiIds } : {}),
       ...(message.attachments ? { attachments: message.attachments } : {}),
@@ -146,6 +148,7 @@ export class SessionHistoryService {
       userId: string;
       senderName: string;
       text: string;
+      contentParts?: SessionMessage["contentParts"];
       imageIds?: string[];
       emojiIds?: string[];
       attachments?: SessionMessage["attachments"];

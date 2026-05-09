@@ -164,6 +164,143 @@ function createUserMessageEntry(): ChatTimelineTranscriptEntry {
     assert.deepEqual(items[0]?.metaChips, ["文件 1"]);
   });
 
+  test("chat timeline renders mixed content parts in one ordered user bubble", () => {
+    const entry = createUserMessageEntry();
+    if (entry.item.kind !== "user_message") {
+      throw new Error("expected user message");
+    }
+    entry.item.contentParts = [
+      { kind: "text", text: "前" },
+      { kind: "image", fileId: "img-1", sourceName: "a.png", mimeType: "image/png" },
+      { kind: "asset_file", fileId: "file-1", fileKind: "file", sourceName: "note.txt", mimeType: "text/plain", sizeBytes: 32 },
+      { kind: "text", text: "后" }
+    ];
+    entry.item.imageIds = ["img-1"];
+    entry.item.attachments = [];
+
+    const items = buildChatTimelineItems([entry], {
+      activeComposerUserId: "10001"
+    });
+
+    assert.equal(items.length, 1);
+    assert.equal(items[0]?.kind, "content_parts");
+    if (items[0]?.kind !== "content_parts") {
+      throw new Error("expected content parts item");
+    }
+    assert.deepEqual(items[0].parts, [
+      { kind: "text", text: "前" },
+      { kind: "image", fileId: "img-1", imageUrl: "/api/chat-files/img-1/content", sourceName: "a.png" },
+      { kind: "file", fileId: "file-1", name: "note.txt", sizeBytes: 32, mimeType: "text/plain", fileKind: "file", contentUrl: "/api/chat-files/file-1/content" },
+      { kind: "text", text: "后" }
+    ]);
+  });
+
+  test("chat timeline keeps unresolved media content parts visible", () => {
+    const entry = createUserMessageEntry();
+    if (entry.item.kind !== "user_message") {
+      throw new Error("expected user message");
+    }
+    entry.item.contentParts = [
+      { kind: "text", text: "前" },
+      { kind: "image", source: "https://example.com/a.png" },
+      { kind: "emoji", fileId: "pending:emoji:0:https://example.com/e.gif", sourceName: "e.gif" }
+    ];
+    entry.item.imageIds = [];
+    entry.item.attachments = [];
+
+    const items = buildChatTimelineItems([entry], {
+      activeComposerUserId: "10001"
+    });
+
+    assert.equal(items.length, 1);
+    assert.equal(items[0]?.kind, "content_parts");
+    if (items[0]?.kind !== "content_parts") {
+      throw new Error("expected content parts item");
+    }
+    assert.deepEqual(items[0].parts, [
+      { kind: "text", text: "前" },
+      { kind: "meta", text: "图片待解析：https://example.com/a.png" },
+      { kind: "meta", text: "表情待解析：e.gif" }
+    ]);
+  });
+
+  test("chat timeline preserves audio order inside mixed content parts", () => {
+    const entry = createUserMessageEntry();
+    if (entry.item.kind !== "user_message") {
+      throw new Error("expected user message");
+    }
+    entry.item.contentParts = [
+      { kind: "text", text: "前" },
+      { kind: "audio", source: "voice.amr", audioId: "aud-1" },
+      { kind: "image", fileId: "img-1", sourceName: "a.png", mimeType: "image/png" },
+      { kind: "asset_file", fileId: "file-1", fileKind: "file", sourceName: "note.txt", mimeType: "text/plain", sizeBytes: 32 },
+      { kind: "text", text: "后" }
+    ];
+    entry.item.imageIds = ["img-1"];
+    entry.item.attachments = [];
+
+    const items = buildChatTimelineItems([entry], {
+      activeComposerUserId: "10001"
+    });
+
+    assert.equal(items.length, 1);
+    assert.equal(items[0]?.kind, "content_parts");
+    if (items[0]?.kind !== "content_parts") {
+      throw new Error("expected content parts item");
+    }
+    assert.deepEqual(items[0].parts, [
+      { kind: "text", text: "前" },
+      { kind: "meta", text: "语音消息" },
+      { kind: "image", fileId: "img-1", imageUrl: "/api/chat-files/img-1/content", sourceName: "a.png" },
+      { kind: "file", fileId: "file-1", name: "note.txt", sizeBytes: 32, mimeType: "text/plain", fileKind: "file", contentUrl: "/api/chat-files/file-1/content" },
+      { kind: "text", text: "后" }
+    ]);
+  });
+
+  test("chat timeline renders user media transcript items as content part bubbles", () => {
+    const items = buildChatTimelineItems([{
+      id: "entry-media-user-1",
+      eventId: "event-media-user-1",
+      index: 0,
+      item: {
+        id: "item-media-user-1",
+        groupId: "group-media-user-1",
+        runtimeExcluded: false,
+        kind: "user_media_message",
+        role: "user",
+        llmVisible: true,
+        chatType: "private",
+        userId: "10001",
+        senderName: "Alice",
+        mediaKind: "emoji",
+        contentParts: [{ kind: "emoji", fileId: "emoji-1", sourceName: "e.gif", mimeType: "image/gif" }],
+        imageIds: [],
+        emojiIds: ["emoji-1"],
+        attachments: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        mentionedSelf: false,
+        timestampMs: 1710000000000
+      }
+    }], {
+      activeComposerUserId: "10001"
+    });
+
+    assert.equal(items.length, 1);
+    assert.equal(items[0]?.kind, "content_parts");
+    if (items[0]?.kind !== "content_parts") {
+      throw new Error("expected content parts item");
+    }
+    assert.equal(items[0].actionTitle, "表情消息");
+    assert.deepEqual(items[0].parts, [{
+      kind: "emoji",
+      fileId: "emoji-1",
+      imageUrl: "/api/chat-files/emoji-1/content",
+      sourceName: "e.gif"
+    }]);
+  });
+
   test("chat timeline keeps newest items first and prepends draft assistant text to the head", () => {
     const items = buildChatTimelineItems([createUserMessageEntry(), {
       id: "entry-assistant-1",

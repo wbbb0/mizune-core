@@ -37,6 +37,7 @@ function createSessionMessage(
     groupId?: string;
     senderName: string;
     text: string;
+    contentParts?: SessionMessage["contentParts"];
     images: string[];
     audioSources: string[];
     audioIds: string[];
@@ -61,6 +62,7 @@ function createSessionMessage(
     senderName: message.senderName,
     chatType: message.chatType,
     text: message.text,
+    ...(message.contentParts && message.contentParts.length > 0 ? { contentParts: [...message.contentParts] } : {}),
     images: [...message.images],
     audioSources: [...(message.audioSources ?? [])],
     audioIds: [...(message.audioIds ?? [])],
@@ -98,6 +100,7 @@ export function appendSessionMessage(
     groupId?: string;
     senderName: string;
     text: string;
+    contentParts?: SessionMessage["contentParts"];
     images: string[];
     audioSources: string[];
     audioIds: string[];
@@ -130,6 +133,7 @@ export function appendSteerMessageState(
     groupId?: string;
     senderName: string;
     text: string;
+    contentParts?: SessionMessage["contentParts"];
     images: string[];
     audioSources: string[];
     audioIds: string[];

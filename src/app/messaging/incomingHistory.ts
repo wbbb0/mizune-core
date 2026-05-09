@@ -38,6 +38,7 @@ export function createIncomingHistoryMessage(
     userId: context.enrichedMessage.userId,
     senderName: context.enrichedMessage.senderName,
     text: context.enrichedMessage.text,
+    ...(context.enrichedMessage.contentParts && context.enrichedMessage.contentParts.length > 0 ? { contentParts: context.enrichedMessage.contentParts } : {}),
     ...(context.enrichedMessage.imageIds.length > 0 ? { imageIds: context.enrichedMessage.imageIds } : {}),
     ...(context.enrichedMessage.emojiIds.length > 0 ? { emojiIds: context.enrichedMessage.emojiIds } : {}),
     ...(context.enrichedMessage.attachments ? { attachments: context.enrichedMessage.attachments } : {}),

@@ -300,6 +300,7 @@ export interface SessionDirectCommandAccess {
       userId: string;
       senderName: string;
       text: string;
+      contentParts?: SessionMessage["contentParts"];
       imageIds?: string[];
       emojiIds?: string[];
       attachments?: SessionMessage["attachments"];
@@ -332,6 +333,7 @@ export interface SessionDirectCommandAccess {
       userId: string;
       senderName: string;
       text: string;
+      contentParts?: SessionMessage["contentParts"];
       imageIds?: string[];
       emojiIds?: string[];
       attachments?: SessionMessage["attachments"];
@@ -376,6 +378,7 @@ export interface SessionMessagingAccess {
       userId: string;
       senderName: string;
       text: string;
+      contentParts?: SessionMessage["contentParts"];
       imageIds?: string[];
       emojiIds?: string[];
       attachments?: SessionMessage["attachments"];

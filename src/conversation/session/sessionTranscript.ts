@@ -10,6 +10,7 @@ import type {
   InternalTranscriptItem,
   TranscriptSessionModeSwitchItem,
   TranscriptAssistantMessageItem,
+  TranscriptUserMediaMessageItem,
   TranscriptUserMessageItem,
   SessionHistoryMessage,
   SessionState
@@ -28,13 +29,13 @@ export function isTranscriptLlmVisible(item: InternalTranscriptItem): boolean {
 }
 
 export function isTranscriptVisibleChatMessage(item: InternalTranscriptItem): boolean {
-  return isTranscriptRuntimeIncluded(item) && (item.kind === "user_message" || item.kind === "assistant_message");
+  return isTranscriptRuntimeIncluded(item) && (item.kind === "user_message" || item.kind === "user_media_message" || item.kind === "assistant_message");
 }
 
 function isTranscriptHistoryMessage(
   item: InternalTranscriptItem
-): item is TranscriptUserMessageItem | TranscriptAssistantMessageItem | TranscriptSessionModeSwitchItem {
-  return item.kind === "user_message" || item.kind === "assistant_message" || item.kind === "session_mode_switch";
+): item is TranscriptUserMessageItem | TranscriptUserMediaMessageItem | TranscriptAssistantMessageItem | TranscriptSessionModeSwitchItem {
+  return item.kind === "user_message" || item.kind === "user_media_message" || item.kind === "assistant_message" || item.kind === "session_mode_switch";
 }
 
 export function projectLlmVisibleHistoryFromTranscript(
@@ -114,8 +115,8 @@ function collectAmbientRecallIds(
   }
   return new Set(
     transcript
-      .filter((item): item is TranscriptUserMessageItem => (
-        item.kind === "user_message"
+      .filter((item): item is TranscriptUserMessageItem | TranscriptUserMediaMessageItem => (
+        (item.kind === "user_message" || item.kind === "user_media_message")
         && item.chatType === "group"
         && isTranscriptRuntimeIncluded(item)
         && isTranscriptAmbient(item)
@@ -129,7 +130,7 @@ function collectAmbientRecallIds(
 }
 
 function projectPromptHistoryMessageWithAmbientMarker(
-  item: TranscriptUserMessageItem | TranscriptAssistantMessageItem | TranscriptSessionModeSwitchItem
+  item: TranscriptUserMessageItem | TranscriptUserMediaMessageItem | TranscriptAssistantMessageItem | TranscriptSessionModeSwitchItem
 ): SessionHistoryMessage {
   const message = projectTranscriptMessageItemToHistoryMessage(item);
   if (isTranscriptAmbient(item)) {
@@ -176,14 +177,14 @@ export type ProjectedChatTimelineItem =
 export function projectChatTimelineFromTranscript(transcript: InternalTranscriptItem[]): ProjectedChatTimelineItem[] {
   const projected: ProjectedChatTimelineItem[] = [];
   for (const item of transcript) {
-    if (item.kind === "user_message" || item.kind === "assistant_message") {
+    if (item.kind === "user_message" || item.kind === "user_media_message" || item.kind === "assistant_message") {
       if (item.runtimeExcluded === true) {
         continue;
       }
       projected.push({
         kind: "text" as const,
         role: item.role,
-        content: item.text,
+        content: item.kind === "assistant_message" ? item.text : projectTranscriptMessageItemToHistoryMessage(item).content,
         timestampMs: item.timestampMs
       });
       continue;

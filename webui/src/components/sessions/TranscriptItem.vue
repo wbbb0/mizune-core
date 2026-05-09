@@ -24,10 +24,10 @@ const runtimeAmbient = computed(() => props.item.runtimeVisibility === "ambient"
 
 function getState(): TranscriptExpandState {
   if (!expandStates) {
-    return { expanded: false, reasoningExpanded: false, plannerExpanded: false };
+    return { expanded: false, reasoningExpanded: false, plannerExpanded: false, contentImagesExpanded: false, contentEmojisExpanded: false, contentFilesExpanded: false };
   }
   if (!expandStates.has(props.item.id)) {
-    expandStates.set(props.item.id, { expanded: false, reasoningExpanded: false, plannerExpanded: false });
+    expandStates.set(props.item.id, { expanded: false, reasoningExpanded: false, plannerExpanded: false, contentImagesExpanded: false, contentEmojisExpanded: false, contentFilesExpanded: false });
   }
   return expandStates.get(props.item.id)!;
 }
@@ -35,6 +35,9 @@ function getState(): TranscriptExpandState {
 const expanded = computed(() => getState().expanded);
 const reasoningExpanded = computed(() => getState().reasoningExpanded);
 const plannerExpanded = computed(() => getState().plannerExpanded);
+const contentImagesExpanded = computed(() => getState().contentImagesExpanded);
+const contentEmojisExpanded = computed(() => getState().contentEmojisExpanded);
+const contentFilesExpanded = computed(() => getState().contentFilesExpanded);
 
 function toggleExpanded() {
   const s = getState();
@@ -47,6 +50,18 @@ function toggleReasoningExpanded() {
 function togglePlannerExpanded() {
   const s = getState();
   s.plannerExpanded = !s.plannerExpanded;
+}
+function toggleContentImagesExpanded() {
+  const s = getState();
+  s.contentImagesExpanded = !s.contentImagesExpanded;
+}
+function toggleContentEmojisExpanded() {
+  const s = getState();
+  s.contentEmojisExpanded = !s.contentEmojisExpanded;
+}
+function toggleContentFilesExpanded() {
+  const s = getState();
+  s.contentFilesExpanded = !s.contentFilesExpanded;
 }
 
 const timeStr = computed(() => {
@@ -68,6 +83,9 @@ const itemTitle = computed(() => {
   switch (props.item.kind) {
     case "user_message":
       title = `用户消息`;
+      break;
+    case "user_media_message":
+      title = props.item.mediaKind === "emoji" ? "表情消息" : props.item.mediaKind === "image" ? "图片消息" : "媒体消息";
       break;
     case "assistant_message":
       title = `模型回复`;
@@ -127,6 +145,7 @@ const itemTone = computed(() => {
   }
   switch (props.item.kind) {
     case "user_message":
+    case "user_media_message":
       return "user";
     case "assistant_message":
     case "session_mode_switch":
@@ -161,6 +180,7 @@ const itemTone = computed(() => {
 const itemGlyph = computed<SessionGlyphModel>(() => {
   switch (props.item.kind) {
     case "user_message":
+    case "user_media_message":
       return { kind: "icon", component: User, size: 13, strokeWidth: 2.1 };
     case "assistant_message":
     case "session_mode_switch":
@@ -223,6 +243,7 @@ const metaChips = computed(() => {
   let chips: string[];
   switch (props.item.kind) {
     case "user_message":
+    case "user_media_message":
       chips = [
         `${props.item.senderName} (${props.item.userId})`,
         ...(runtimeAmbient.value ? ["ambient"] : []),
@@ -231,10 +252,10 @@ const metaChips = computed(() => {
         ...(props.item.mentionedAll ? ["@all"] : []),
         ...(props.item.imageIds.length > 0 ? [`image=${props.item.imageIds.length}`] : []),
         ...(props.item.emojiIds.length > 0 ? [`emoji=${props.item.emojiIds.length}`] : []),
-        ...((props.item.messageFiles?.length ?? 0) > 0 ? [`file=${props.item.messageFiles?.length ?? 0}`] : []),
-        ...((props.item.specialSegments?.length ?? 0) > 0 ? [`segment=${props.item.specialSegments?.length ?? 0}`] : []),
-        ...(props.item.audioCount > 0 ? [`audio=${props.item.audioCount}`] : []),
-        ...(props.item.forwardIds.length > 0 ? [`forward=${props.item.forwardIds.length}`] : [])
+        ...(props.item.kind === "user_message" && (props.item.messageFiles?.length ?? 0) > 0 ? [`file=${props.item.messageFiles?.length ?? 0}`] : []),
+        ...(props.item.kind === "user_message" && (props.item.specialSegments?.length ?? 0) > 0 ? [`segment=${props.item.specialSegments?.length ?? 0}`] : []),
+        ...(props.item.kind === "user_message" && props.item.audioCount > 0 ? [`audio=${props.item.audioCount}`] : []),
+        ...(props.item.kind === "user_message" && props.item.forwardIds.length > 0 ? [`forward=${props.item.forwardIds.length}`] : [])
       ];
       break;
     case "assistant_message":
@@ -377,6 +398,88 @@ const contextExtractionItems = computed(() => {
   }
   return props.item.items ?? [];
 });
+
+type TranscriptContentPart = NonNullable<Extract<TranscriptItem, { kind: "user_message" }>["contentParts"]>[number];
+
+interface ContentPartMediaMetadata {
+  key: string;
+  label: string;
+  fileId: string | null;
+  source: string | null;
+  sourceName: string | null;
+  mimeType: string | null;
+}
+
+interface ContentPartFileMetadata {
+  key: string;
+  label: string;
+  fileId: string;
+  name: string | null;
+  fileKind: string | null;
+  sizeBytes: number | null;
+  mimeType: string | null;
+  busid: number | string | null;
+  downloadTool: string | null;
+}
+
+const contentPartImages = computed(() => collectContentPartMediaMetadata("image"));
+const contentPartEmojis = computed(() => collectContentPartMediaMetadata("emoji"));
+const contentPartFiles = computed(() => collectContentPartFileMetadata());
+
+function getMessageContentParts(): TranscriptContentPart[] {
+  if (props.item.kind !== "user_message" && props.item.kind !== "user_media_message") {
+    return [];
+  }
+  return props.item.contentParts ?? [];
+}
+
+function collectContentPartMediaMetadata(kind: "image" | "emoji"): ContentPartMediaMetadata[] {
+  return getMessageContentParts()
+    .map((part, index) => ({ part, index }))
+    .filter((entry): entry is { part: Extract<TranscriptContentPart, { kind: "image" | "emoji" }>; index: number } => entry.part.kind === kind)
+    .map(({ part, index }) => ({
+      key: `${kind}:${part.fileId ?? part.source ?? part.sourceName ?? index}:${index}`,
+      label: kind === "emoji" ? "表情" : "图片",
+      fileId: part.fileId ?? null,
+      source: part.source ?? null,
+      sourceName: part.sourceName ?? null,
+      mimeType: part.mimeType ?? null
+    }));
+}
+
+function collectContentPartFileMetadata(): ContentPartFileMetadata[] {
+  return getMessageContentParts()
+    .map((part, index): ContentPartFileMetadata | null => {
+      if (part.kind === "file") {
+        return {
+          key: `file:${part.file.fileId}:${index}`,
+          label: "聊天文件",
+          fileId: part.file.fileId,
+          name: part.file.name,
+          fileKind: null,
+          sizeBytes: part.file.sizeBytes,
+          mimeType: part.file.mimeType,
+          busid: part.file.busid,
+          downloadTool: part.file.downloadTool
+        };
+      }
+      if (part.kind === "asset_file") {
+        return {
+          key: `asset_file:${part.fileId}:${index}`,
+          label: "已落地文件",
+          fileId: part.fileId,
+          name: part.sourceName,
+          fileKind: part.fileKind,
+          sizeBytes: part.sizeBytes,
+          mimeType: part.mimeType,
+          busid: null,
+          downloadTool: null
+        };
+      }
+      return null;
+    })
+    .filter((item): item is ContentPartFileMetadata => item != null);
+}
 
 function formatContextExtractionItemTitle(item: NonNullable<Extract<TranscriptItem, { kind: "context_extraction_event" }>["items"]>[number]): string {
   const result = item.result === "created" ? "创建" : item.result === "replaced" ? "更新" : "忽略";
@@ -603,9 +706,77 @@ function openActions(): void {
         </div>
       </header>
 
-      <div v-if="item.kind === 'user_message'" class="flex flex-col gap-2">
-        <TranscriptTextBlock v-if="item.text" :text="item.text" />
-        <div v-if="(item.messageFiles?.length ?? 0) > 0" class="grid grid-cols-1 gap-2 min-[860px]:grid-cols-2">
+      <div v-if="item.kind === 'user_message' || item.kind === 'user_media_message'" class="flex flex-col gap-2">
+        <div v-if="(item.contentParts?.length ?? 0) > 0" class="flex flex-col gap-2">
+          <template v-for="(part, partIndex) in item.contentParts" :key="`${part.kind}:${partIndex}`">
+            <TranscriptTextBlock v-if="part.kind === 'text' && part.text.trim()" :text="part.text" />
+            <TranscriptTextBlock v-else-if="part.kind === 'special'" :text="part.summary" tone="muted" />
+            <TranscriptTextBlock v-else-if="part.kind === 'reply'" :text="`回复：${part.messageId}`" tone="muted" />
+            <TranscriptTextBlock v-else-if="part.kind === 'mention'" :text="part.target === 'all' ? '@全体' : part.target === 'self' ? '@我' : `@${part.userId ?? 'unknown'}`" tone="muted" />
+            <TranscriptTextBlock v-else-if="part.kind === 'forward'" :text="`转发：${part.forwardId}`" tone="muted" />
+            <TranscriptTextBlock v-else-if="part.kind === 'audio'" text="语音消息" tone="muted" />
+          </template>
+          <WorkbenchDisclosure
+            v-if="contentPartImages.length > 0"
+            :expanded="contentImagesExpanded"
+            collapsed-title="展开图片元数据"
+            expanded-title="收起图片元数据"
+            :summary="`${contentPartImages.length} 张`"
+            @toggle="toggleContentImagesExpanded"
+          >
+            <WorkbenchCard v-for="media in contentPartImages" :key="media.key" surface="sidebar">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="text-small font-semibold text-text-secondary">{{ media.label }}</span>
+                <span class="font-mono text-small text-text-subtle">{{ media.mimeType || 'unknown mime' }}</span>
+              </div>
+              <div v-if="media.fileId" class="mt-1 break-all font-mono text-small text-text-muted">file_id={{ media.fileId }}</div>
+              <div v-if="media.sourceName" class="mt-1 break-all text-small text-text-muted">source_name={{ media.sourceName }}</div>
+              <div v-if="media.source" class="mt-1 break-all text-small text-text-muted">source={{ media.source }}</div>
+            </WorkbenchCard>
+          </WorkbenchDisclosure>
+          <WorkbenchDisclosure
+            v-if="contentPartEmojis.length > 0"
+            :expanded="contentEmojisExpanded"
+            collapsed-title="展开表情元数据"
+            expanded-title="收起表情元数据"
+            :summary="`${contentPartEmojis.length} 个`"
+            @toggle="toggleContentEmojisExpanded"
+          >
+            <WorkbenchCard v-for="media in contentPartEmojis" :key="media.key" surface="sidebar">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="text-small font-semibold text-text-secondary">{{ media.label }}</span>
+                <span class="font-mono text-small text-text-subtle">{{ media.mimeType || 'unknown mime' }}</span>
+              </div>
+              <div v-if="media.fileId" class="mt-1 break-all font-mono text-small text-text-muted">file_id={{ media.fileId }}</div>
+              <div v-if="media.sourceName" class="mt-1 break-all text-small text-text-muted">source_name={{ media.sourceName }}</div>
+              <div v-if="media.source" class="mt-1 break-all text-small text-text-muted">source={{ media.source }}</div>
+            </WorkbenchCard>
+          </WorkbenchDisclosure>
+          <WorkbenchDisclosure
+            v-if="contentPartFiles.length > 0"
+            :expanded="contentFilesExpanded"
+            collapsed-title="展开文件元数据"
+            expanded-title="收起文件元数据"
+            :summary="`${contentPartFiles.length} 个`"
+            @toggle="toggleContentFilesExpanded"
+          >
+            <WorkbenchCard v-for="file in contentPartFiles" :key="file.key" surface="sidebar">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="text-small font-semibold text-text-secondary">{{ file.name || file.label }}</span>
+                <span class="font-mono text-small text-text-subtle">{{ file.fileKind || 'onebot_file' }}</span>
+              </div>
+              <div class="mt-1 break-all font-mono text-small text-text-muted">file_id={{ file.fileId }}</div>
+              <div class="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-small text-text-muted">
+                <span>{{ formatFileSize(file.sizeBytes) }}</span>
+                <span v-if="file.mimeType">{{ file.mimeType }}</span>
+                <span v-if="file.busid != null">busid={{ file.busid }}</span>
+                <span v-if="file.downloadTool">download_tool={{ file.downloadTool }}</span>
+              </div>
+            </WorkbenchCard>
+          </WorkbenchDisclosure>
+        </div>
+        <TranscriptTextBlock v-else-if="item.kind === 'user_message' && item.text" :text="item.text" />
+        <div v-if="item.kind === 'user_message' && (item.messageFiles?.length ?? 0) > 0 && (item.contentParts?.length ?? 0) === 0" class="grid grid-cols-1 gap-2 min-[860px]:grid-cols-2">
           <div
             v-for="file in item.messageFiles ?? []"
             :key="`${file.fileId}:${file.busid ?? ''}`"
@@ -626,7 +797,7 @@ function openActions(): void {
           </div>
         </div>
         <TranscriptTextBlock
-          v-if="(item.specialSegments?.length ?? 0) > 0"
+          v-if="item.kind === 'user_message' && (item.specialSegments?.length ?? 0) > 0 && (item.contentParts?.length ?? 0) === 0"
           :text="item.specialSegments?.map((segment) => segment.summary).join('\n') ?? ''"
           tone="muted"
         />

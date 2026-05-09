@@ -7,7 +7,27 @@ export interface ChatTimelineTranscriptEntry {
   item: SessionTranscriptItem;
 }
 
+export type ChatTimelineContentPart =
+  | { kind: "text"; text: string }
+  | { kind: "image" | "emoji"; fileId: string; imageUrl: string; sourceName: string | null }
+  | { kind: "file"; fileId: string; name: string | null; sizeBytes: number | null; mimeType: string | null; fileKind: string | null; contentUrl: string | null }
+  | { kind: "meta"; text: string };
+
 export type ChatTimelineItem =
+  | {
+      id: string;
+      itemId: string;
+      groupId: string;
+      actionTitle: string;
+      kind: "content_parts";
+      role: "user";
+      side: "left" | "right";
+      parts: ChatTimelineContentPart[];
+      senderLabel?: string;
+      metaChips?: string[];
+      actionsEnabled?: boolean;
+      timestampMs: number;
+    }
   | {
       id: string;
       itemId: string;
@@ -73,8 +93,14 @@ function toChatTimelineItems(
     return [];
   }
 
-  if (entry.item.kind === "user_message" || entry.item.kind === "assistant_message") {
+  if (entry.item.kind === "user_message" || entry.item.kind === "user_media_message" || entry.item.kind === "assistant_message") {
     const side = resolveMessageSide(entry.item, activeComposerUserId);
+    if (entry.item.kind === "user_media_message") {
+      return [buildUserContentPartsItem(entry, side, entry.item.mediaKind === "emoji" ? "表情消息" : entry.item.mediaKind === "image" ? "图片消息" : "媒体消息")];
+    }
+    if (entry.item.kind === "user_message" && (entry.item.contentParts?.length ?? 0) > 0) {
+      return [buildUserContentPartsItem(entry, side, "消息")];
+    }
     const imageItems = entry.item.kind === "user_message"
       ? buildUserImageItems(entry, side)
       : [];
@@ -143,7 +169,106 @@ function toChatTimelineItems(
   return [];
 }
 
-function buildUserMessageContent(item: Extract<SessionTranscriptItem, { kind: "user_message" }>): string {
+function buildUserContentPartsItem(
+  entry: ChatTimelineTranscriptEntry,
+  side: "left" | "right",
+  actionTitle: string
+): ChatTimelineItem {
+  if (entry.item.kind !== "user_message" && entry.item.kind !== "user_media_message") {
+    throw new Error("content parts timeline item requires a user transcript item");
+  }
+  const senderLabel = formatSenderLabel(entry.item);
+  const parts = buildTimelineContentParts(entry.item);
+  const metaChips = buildMetaChips(entry.item, parts.filter((part) => part.kind === "image" || part.kind === "emoji").length);
+  return {
+    id: entry.id,
+    itemId: entry.item.id,
+    groupId: entry.item.groupId,
+    actionTitle,
+    kind: "content_parts",
+    role: "user",
+    side,
+    parts,
+    ...(senderLabel ? { senderLabel } : {}),
+    ...(metaChips.length > 0 ? { metaChips } : {}),
+    timestampMs: entry.item.timestampMs
+  };
+}
+
+function buildTimelineContentParts(
+  item: Extract<SessionTranscriptItem, { kind: "user_message" | "user_media_message" }>
+): ChatTimelineContentPart[] {
+  const parts: ChatTimelineContentPart[] = [];
+  for (const part of item.contentParts ?? []) {
+    switch (part.kind) {
+      case "text":
+        if (part.text.trim()) {
+          parts.push({ kind: "text", text: part.text.trim() });
+        }
+        break;
+      case "image":
+      case "emoji":
+        if (part.fileId && isResolvedChatFileId(part.fileId)) {
+          parts.push({
+            kind: part.kind,
+            fileId: part.fileId,
+            imageUrl: getChatFileContentUrlById(part.fileId),
+            sourceName: part.sourceName ?? null
+          });
+        } else {
+          parts.push({ kind: "meta", text: formatUnresolvedMediaPart(part.kind, part.sourceName ?? part.source ?? part.fileId ?? null) });
+        }
+        break;
+      case "file":
+        parts.push({
+          kind: "file",
+          fileId: part.file.fileId,
+          name: part.file.name,
+          sizeBytes: part.file.sizeBytes,
+          mimeType: part.file.mimeType,
+          fileKind: null,
+          contentUrl: null
+        });
+        break;
+      case "asset_file":
+        parts.push({
+          kind: "file",
+          fileId: part.fileId,
+          name: part.sourceName,
+          sizeBytes: part.sizeBytes,
+          mimeType: part.mimeType,
+          fileKind: part.fileKind,
+          contentUrl: isResolvedChatFileId(part.fileId) ? getChatFileContentUrlById(part.fileId) : null
+        });
+        break;
+      case "reply":
+        parts.push({ kind: "meta", text: `回复：${part.messageId}` });
+        break;
+      case "mention":
+        parts.push({ kind: "meta", text: part.target === "all" ? "@全体" : part.target === "self" ? "@我" : `@${part.userId ?? "unknown"}` });
+        break;
+      case "forward":
+        parts.push({ kind: "meta", text: `转发：${part.forwardId}` });
+        break;
+      case "audio":
+        parts.push({ kind: "meta", text: "语音消息" });
+        break;
+      case "special":
+        parts.push({ kind: "meta", text: part.summary });
+        break;
+    }
+  }
+  return parts.length > 0 ? parts : [{ kind: "text", text: buildUserMessageContent(item) || "<empty>" }];
+}
+
+function formatUnresolvedMediaPart(kind: "image" | "emoji", label: string | null): string {
+  return `${kind === "emoji" ? "表情" : "图片"}待解析${label ? `：${label}` : ""}`;
+}
+
+function buildUserMessageContent(item: Extract<SessionTranscriptItem, { kind: "user_message" | "user_media_message" }>): string {
+  if (item.kind === "user_media_message") {
+    return "";
+  }
   return [
     item.text.trim(),
     ...(item.messageFiles ?? []).map((file) => `文件：${file.name || file.fileId}`),
@@ -252,7 +377,7 @@ function getLocalSendFileContentUrl(path: string): string {
   return `/api/local-files/send-content?path=${encodeURIComponent(path)}`;
 }
 
-function formatSenderLabel(item: Extract<SessionTranscriptItem, { kind: "user_message" | "assistant_message" }>): string | undefined {
+function formatSenderLabel(item: Extract<SessionTranscriptItem, { kind: "user_message" | "user_media_message" | "assistant_message" }>): string | undefined {
   if (item.chatType === "private" && item.kind === "assistant_message") {
     return undefined;
   }
@@ -268,10 +393,10 @@ function formatSenderLabel(item: Extract<SessionTranscriptItem, { kind: "user_me
 }
 
 function buildMetaChips(
-  item: Extract<SessionTranscriptItem, { kind: "user_message" | "assistant_message" }>,
+  item: Extract<SessionTranscriptItem, { kind: "user_message" | "user_media_message" | "assistant_message" }>,
   renderedImageCount: number
 ): string[] {
-  if (item.kind !== "user_message") {
+  if (item.kind !== "user_message" && item.kind !== "user_media_message") {
     return [];
   }
   const chips: string[] = [];
@@ -282,10 +407,12 @@ function buildMetaChips(
   const resolvedEmojiIdCount = item.emojiIds.filter(isResolvedChatFileId).length;
   if (resolvedImageIdCount > 0 && renderedImageCount === 0) chips.push(`图片 ${resolvedImageIdCount}`);
   if (resolvedEmojiIdCount > 0) chips.push(`表情 ${resolvedEmojiIdCount}`);
-  if ((item.messageFiles?.length ?? 0) > 0) chips.push(`文件 ${item.messageFiles?.length ?? 0}`);
-  if ((item.specialSegments?.length ?? 0) > 0) chips.push(`消息段 ${item.specialSegments?.length ?? 0}`);
-  if (item.audioCount > 0) chips.push(`语音 ${item.audioCount}`);
-  if (item.forwardIds.length > 0) chips.push(`转发 ${item.forwardIds.length}`);
+  if (item.kind === "user_message") {
+    if ((item.messageFiles?.length ?? 0) > 0) chips.push(`文件 ${item.messageFiles?.length ?? 0}`);
+    if ((item.specialSegments?.length ?? 0) > 0) chips.push(`消息段 ${item.specialSegments?.length ?? 0}`);
+    if (item.audioCount > 0) chips.push(`语音 ${item.audioCount}`);
+    if (item.forwardIds.length > 0) chips.push(`转发 ${item.forwardIds.length}`);
+  }
   return chips;
 }
 
@@ -295,7 +422,7 @@ function isResolvedChatFileId(fileId: string | null | undefined): boolean {
 }
 
 function resolveMessageSide(
-  item: Extract<SessionTranscriptItem, { kind: "user_message" | "assistant_message" }>,
+  item: Extract<SessionTranscriptItem, { kind: "user_message" | "user_media_message" | "assistant_message" }>,
   activeComposerUserId: string | null
 ): "left" | "right" {
   if (item.chatType === "private") {

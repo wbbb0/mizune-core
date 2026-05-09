@@ -8,6 +8,7 @@ import type {
   TranscriptItemDeliveryRef as TranscriptItemDeliveryRefContract,
   TranscriptContentSafetyEvent as TranscriptContentSafetyEventContract,
   TranscriptItemMeta as TranscriptItemMetaContract,
+  TranscriptMessageContentPart as TranscriptMessageContentPartContract,
   TranscriptItemRuntimeExclusionReason as TranscriptItemRuntimeExclusionReasonContract,
   TranscriptItemRuntimeVisibility as TranscriptItemRuntimeVisibilityContract,
   TranscriptItemSourceRef as TranscriptItemSourceRefContract,
@@ -31,6 +32,7 @@ export interface SessionMessage {
   groupId?: string | undefined;
   senderName: string;
   text: string;
+  contentParts?: TranscriptMessageContentPart[];
   images: string[];
   audioSources: string[];
   audioIds: string[];
@@ -55,6 +57,7 @@ export interface PersistedSessionMessage {
   senderName: string;
   chatType: "private" | "group";
   text: string;
+  contentParts?: TranscriptMessageContentPart[];
   images: string[];
   audioSources: string[];
   audioIds: string[];
@@ -110,9 +113,11 @@ export type TranscriptContentSafetyEvent = TranscriptContentSafetyEventContract;
 export type TranscriptItemMeta = TranscriptItemMetaContract;
 export type TranscriptTokenStat = TranscriptTokenStatContract;
 export type TranscriptTokenStats = TranscriptTokenStatsContract;
+export type TranscriptMessageContentPart = TranscriptMessageContentPartContract;
 export type InternalTranscriptItem = InternalTranscriptItemContract;
 export type { NormalizedInternalTranscriptItem };
 export type TranscriptUserMessageItem = Extract<InternalTranscriptItem, { kind: "user_message" }>;
+export type TranscriptUserMediaMessageItem = Extract<InternalTranscriptItem, { kind: "user_media_message" }>;
 export type TranscriptAssistantMessageItem = Extract<InternalTranscriptItem, { kind: "assistant_message" }>;
 export type TranscriptSessionModeSwitchItem = Extract<InternalTranscriptItem, { kind: "session_mode_switch" }>;
 export type InternalAssistantToolCallItem = Extract<InternalTranscriptItem, { kind: "assistant_tool_call" }>;

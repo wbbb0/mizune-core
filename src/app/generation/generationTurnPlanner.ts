@@ -86,6 +86,7 @@ export async function handleGenerationTurnPlanner(
     return {
       senderName: message.senderName,
       text: message.text,
+      ...(message.contentParts && message.contentParts.length > 0 ? { contentParts: message.contentParts } : {}),
       images: message.images,
       audioSources: message.audioSources,
       imageIds: message.imageIds.filter((fileId) => !isPendingChatAttachmentId(fileId)),
@@ -245,6 +246,7 @@ function shouldCoerceNoReplyToReply(input: GenerationTurnPlannerInput): boolean 
     message.isAtMentioned
     || message.replyMessageId != null
     || message.images.length > 0
+    || (message.contentParts?.some((part) => part.kind !== "text" || part.text.trim().length > 0) ?? false)
     || message.imageIds.length > 0
     || message.audioSources.length > 0
     || message.audioIds.length > 0

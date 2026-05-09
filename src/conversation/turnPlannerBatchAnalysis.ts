@@ -4,9 +4,11 @@ import {
   isPendingChatAttachmentId
 } from "#services/workspace/chatAttachments.ts";
 import type { OneBotMessageFileSummary } from "#services/onebot/types.ts";
+import type { MessageContentPart } from "#messages/contentParts.ts";
 
 export interface TurnPlannerBatchAnalysisMessage {
   text?: string;
+  contentParts?: MessageContentPart[];
   audioSources?: string[];
   imageIds?: string[];
   emojiIds?: string[];
@@ -81,17 +83,27 @@ export function analyzeTurnPlannerBatch(messages: TurnPlannerBatchAnalysisMessag
 
   for (const message of messages) {
     const attachments = dedupeResolvedChatAttachments(message.attachments ?? []);
-    const hasText = Boolean(message.text?.trim());
-    const hasAudio = (message.audioSources?.length ?? 0) > 0;
+    const contentParts = message.contentParts ?? [];
+    const hasText = Boolean(message.text?.trim())
+      || contentParts.some((part) => part.kind === "text" && part.text.trim().length > 0);
+    const hasAudio = (message.audioSources?.length ?? 0) > 0
+      || contentParts.some((part) => part.kind === "audio");
     const hasImages = collectVisualAttachmentFileIds(attachments, "image").length > 0
-      || (message.imageIds?.some((fileId) => !isPendingChatAttachmentId(fileId)) ?? false);
+      || (message.imageIds?.some((fileId) => !isPendingChatAttachmentId(fileId)) ?? false)
+      || contentParts.some((part) => part.kind === "image" && (!part.fileId || !isPendingChatAttachmentId(part.fileId)));
     const hasEmoji = collectVisualAttachmentFileIds(attachments, "emoji").length > 0
-      || (message.emojiIds?.some((fileId) => !isPendingChatAttachmentId(fileId)) ?? false);
-    const hasForward = (message.forwardIds?.length ?? 0) > 0;
-    const hasMessageFiles = (message.messageFiles?.length ?? 0) > 0;
-    const hasSpecialSegments = (message.specialSegments?.length ?? 0) > 0;
-    const hasReplyReference = Boolean(message.replyMessageId);
-    const hasMention = hasMentionSignal(message);
+      || (message.emojiIds?.some((fileId) => !isPendingChatAttachmentId(fileId)) ?? false)
+      || contentParts.some((part) => part.kind === "emoji" && (!part.fileId || !isPendingChatAttachmentId(part.fileId)));
+    const hasForward = (message.forwardIds?.length ?? 0) > 0
+      || contentParts.some((part) => part.kind === "forward");
+    const hasMessageFiles = (message.messageFiles?.length ?? 0) > 0
+      || contentParts.some((part) => part.kind === "file" || part.kind === "asset_file");
+    const hasSpecialSegments = (message.specialSegments?.length ?? 0) > 0
+      || contentParts.some((part) => part.kind === "special");
+    const hasReplyReference = Boolean(message.replyMessageId)
+      || contentParts.some((part) => part.kind === "reply");
+    const hasMention = hasMentionSignal(message)
+      || contentParts.some((part) => part.kind === "mention");
 
     if (hasText) {
       analysis.textMessageCount += 1;

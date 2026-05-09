@@ -86,6 +86,37 @@ test("event router exposes file messages as structured message files", () => {
   }]);
 });
 
+test("event router preserves mixed text and media segment order as content parts", () => {
+  const config = createTestAppConfig();
+  const router = new EventRouter(config, config.configRuntime.instanceName);
+  const parsed = router.toIncomingMessage({
+    post_type: "message",
+    message_type: "private",
+    sub_type: "friend",
+    message_id: 4,
+    user_id: 10001,
+    message: [
+      { type: "text", data: { text: "前" } },
+      { type: "image", data: { url: "https://example.com/a.png" } },
+      { type: "text", data: { text: "中" } },
+      { type: "mface", data: { url: "https://example.com/e.gif" } },
+      { type: "text", data: { text: "后" } }
+    ],
+    raw_message: "前[CQ:image]中[CQ:mface]后",
+    sender: { user_id: 10001, nickname: "Tester" },
+    self_id: 20002,
+    time: Math.floor(Date.now() / 1000)
+  });
+
+  assert.deepEqual(parsed?.contentParts, [
+    { kind: "text", text: "前" },
+    { kind: "image", source: "https://example.com/a.png" },
+    { kind: "text", text: "中" },
+    { kind: "emoji", source: "https://example.com/e.gif" },
+    { kind: "text", text: "后" }
+  ]);
+});
+
 test("prompt formatting renders file messages as dedicated structured file tags", () => {
   const content = buildUserBatchContent([{
     userId: "10001",
@@ -142,4 +173,134 @@ test("prompt formatting includes special segment summaries outside raw text", ()
   const text = content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
   assert.match(text, /segment type="rps"/);
   assert.match(text, /猜拳：石头/);
+});
+
+test("prompt formatting preserves content part order", () => {
+  const content = buildUserBatchContent([{
+    userId: "10001",
+    senderName: "Tester",
+    text: "前中后",
+    contentParts: [
+      { kind: "text", text: "前" },
+      { kind: "image", fileId: "img-1" },
+      { kind: "text", text: "中" },
+      { kind: "emoji", fileId: "emoji-1" },
+      { kind: "text", text: "后" }
+    ],
+    images: [],
+    audioSources: [],
+    audioIds: [],
+    emojiSources: [],
+    imageIds: ["img-1"],
+    emojiIds: ["emoji-1"],
+    forwardIds: [],
+    replyMessageId: null,
+    mentionUserIds: [],
+    mentionedAll: false,
+    mentionedSelf: false,
+    timestampMs: Date.now()
+  }]);
+
+  const text = content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
+  assert.match(text, /前\n⟦ref kind="image" image_id="img-1"⟧\n中\n⟦ref kind="emoji" image_id="emoji-1"⟧\n后/);
+});
+
+test("prompt formatting renders landed web files as asset file tags", () => {
+  const content = buildUserBatchContent([{
+    userId: "10001",
+    senderName: "Tester",
+    text: "看附件",
+    contentParts: [
+      { kind: "text", text: "看附件" },
+      { kind: "asset_file", fileId: "file-1", fileKind: "file", sourceName: "note.txt", mimeType: "text/plain", sizeBytes: 32 }
+    ],
+    images: [],
+    audioSources: [],
+    audioIds: [],
+    emojiSources: [],
+    imageIds: [],
+    emojiIds: [],
+    forwardIds: [],
+    replyMessageId: null,
+    mentionUserIds: [],
+    mentionedAll: false,
+    mentionedSelf: false,
+    timestampMs: Date.now()
+  }]);
+
+  const text = content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
+  assert.match(text, /⟦asset_file /);
+  assert.match(text, /file_id="file-1"/);
+  assert.match(text, /file_kind="file"/);
+  assert.doesNotMatch(text, /download_tool/);
+});
+
+test("prompt formatting keeps audio transcription next to audio content part", () => {
+  const content = buildUserBatchContent([{
+    userId: "10001",
+    senderName: "Tester",
+    text: "",
+    contentParts: [
+      { kind: "text", text: "听这个" },
+      { kind: "audio", audioId: "aud-1", source: "voice.amr" }
+    ],
+    images: [],
+    audioSources: ["voice.amr"],
+    audioIds: ["aud-1"],
+    audioTranscriptions: [{ audioId: "aud-1", status: "ready", text: "这是语音内容" }],
+    emojiSources: [],
+    imageIds: [],
+    emojiIds: [],
+    forwardIds: [],
+    replyMessageId: null,
+    mentionUserIds: [],
+    mentionedAll: false,
+    mentionedSelf: false,
+    timestampMs: Date.now()
+  }]);
+
+  const text = content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
+  assert.match(text, /⟦count kind="audio" value="1"⟧\n音频 aud-1 听写：这是语音内容/);
+});
+
+test("prompt native multimodal inputs follow content part media order", () => {
+  const content = buildUserBatchContent([{
+    userId: "10001",
+    senderName: "Tester",
+    text: "",
+    contentParts: [
+      { kind: "audio", source: "voice.amr", audioId: "aud-1" },
+      { kind: "image", fileId: "img-1" }
+    ],
+    images: [],
+    audioSources: ["voice.amr"],
+    audioIds: ["aud-1"],
+    audioInputs: [{
+      source: "voice.amr",
+      mimeType: "audio/amr",
+      format: "amr",
+      data: "AAAA"
+    }],
+    emojiSources: [],
+    imageIds: ["img-1"],
+    imageVisuals: [{ imageId: "img-1", inputUrl: "data:image/png;base64,AAAA" }],
+    emojiIds: [],
+    forwardIds: [],
+    replyMessageId: null,
+    mentionUserIds: [],
+    mentionedAll: false,
+    mentionedSelf: false,
+    timestampMs: Date.now()
+  }]);
+
+  const audioLabel = content.at(-4);
+  const audioPart = content.at(-3);
+  const imageLabel = content.at(-2);
+  const imagePart = content.at(-1);
+  assert.equal(audioLabel?.type, "text");
+  assert.match(audioLabel?.type === "text" ? audioLabel.text : "", /Audio attached/);
+  assert.equal(audioPart?.type, "input_audio");
+  assert.equal(imageLabel?.type, "text");
+  assert.match(imageLabel?.type === "text" ? imageLabel.text : "", /Image img-1 attached/);
+  assert.equal(imagePart?.type, "image_url");
 });

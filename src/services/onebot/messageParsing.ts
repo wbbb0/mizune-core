@@ -1,5 +1,6 @@
 import {
   extractAudioSources,
+  extractContentParts,
   extractFileSources,
   extractForwardIds,
   extractMessageFiles,
@@ -49,6 +50,7 @@ export function parseIncomingMessage(
   const replyMessageId = extractReplyMessageId(event.message);
   const mentions = extractMentions(event.message, event.self_id);
   const specialSegments = extractSpecialSegments(event.message);
+  const contentParts = extractContentParts(event.message, { selfId: event.self_id });
 
   if (
     !text
@@ -73,6 +75,7 @@ export function parseIncomingMessage(
     ...(event.group_id != null ? { groupId: String(event.group_id) } : {}),
     senderName: event.sender.card || event.sender.nickname || String(event.user_id),
     text,
+    contentParts,
     images,
     audioSources,
     audioIds: [],

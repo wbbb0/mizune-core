@@ -585,3 +585,110 @@ function nextTick(): Promise<void> {
       groupId: "20001"
     });
   });
+
+  test("web turn projects uploaded images and files into ordered content parts", async () => {
+    const sessionId = "web:web-attachments";
+    const sessionManager = new SessionManager(createTestAppConfig());
+    sessionManager.ensureSession({
+      id: sessionId,
+      type: "private",
+      source: "web",
+      participantRef: { kind: "user", id: "10001" },
+      title: "Alice"
+    });
+
+    let resolveIncoming: ((value: unknown) => void) | null = null;
+    const incomingMessagePromise = new Promise((resolve) => {
+      resolveIncoming = resolve;
+    });
+
+    const service = createAdminMessagingService({
+      config: {
+        onebot: {
+          enabled: true
+        }
+      },
+      oneBotClient: {
+        async sendText() {
+          return {};
+        }
+      } as any,
+      chatFileStore: {
+        async getMany(fileIds: string[]) {
+          assert.deepEqual(fileIds, ["img-1", "file-1"]);
+          return [{
+            fileId: "file-1",
+            fileRef: "note.txt",
+            kind: "file",
+            origin: "user_upload",
+            chatFilePath: "chat-files/media/note.txt",
+            sourceName: "note.txt",
+            mimeType: "text/plain",
+            sizeBytes: 32,
+            createdAtMs: 1,
+            sourceContext: {},
+            caption: null,
+            captionStatus: "missing",
+            captionModelRef: null,
+            captionError: null
+          }, {
+            fileId: "img-1",
+            fileRef: "img-1.png",
+            kind: "image",
+            origin: "user_upload",
+            chatFilePath: "chat-files/media/img-1.png",
+            sourceName: "img.png",
+            mimeType: "image/png",
+            sizeBytes: 128,
+            createdAtMs: 1,
+            sourceContext: {},
+            caption: null,
+            captionStatus: "missing",
+            captionModelRef: null,
+            captionError: null
+          }];
+        }
+      } as any,
+      sessionManager,
+      async handleWebIncomingMessage(incomingMessage) {
+        resolveIncoming?.({
+          contentParts: incomingMessage.contentParts,
+          imageIds: incomingMessage.imageIds,
+          attachments: incomingMessage.attachments
+        });
+      }
+    });
+
+    await service.startWebSessionTurn(
+      { sessionId },
+      {
+        userId: "10001",
+        senderName: "Alice",
+        text: "看附件",
+        imageIds: ["img-1"],
+        attachmentIds: ["img-1", "file-1"]
+      }
+    );
+
+    assert.deepEqual(await incomingMessagePromise, {
+      contentParts: [
+        { kind: "text", text: "看附件" },
+        { kind: "image", fileId: "img-1", sourceName: "img.png", mimeType: "image/png" },
+        { kind: "asset_file", fileId: "file-1", fileKind: "file", sourceName: "note.txt", mimeType: "text/plain", sizeBytes: 32 }
+      ],
+      imageIds: ["img-1"],
+      attachments: [{
+        fileId: "img-1",
+        kind: "image",
+        source: "web_upload",
+        sourceName: "img.png",
+        mimeType: "image/png"
+      }, {
+        fileId: "file-1",
+        kind: "file",
+        source: "web_upload",
+        sourceName: "note.txt",
+        mimeType: "text/plain"
+      }]
+    });
+  });

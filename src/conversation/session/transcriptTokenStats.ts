@@ -9,6 +9,7 @@ import type {
   TranscriptSessionModeSwitchItem,
   TranscriptTokenStat,
   TranscriptTokenStats,
+  TranscriptUserMediaMessageItem,
   TranscriptUserMessageItem
 } from "./sessionTypes.ts";
 
@@ -31,6 +32,7 @@ interface OutputTokenStatsInput {
 
 type HistoryTranscriptItem =
   | TranscriptUserMessageItem
+  | TranscriptUserMediaMessageItem
   | TranscriptAssistantMessageItem
   | TranscriptSessionModeSwitchItem;
 
@@ -59,6 +61,7 @@ export function estimateTranscriptItemInputTokens(item: InternalTranscriptItem, 
   const weights = config.conversation.historyCompression.tokenEstimation;
   switch (item.kind) {
     case "user_message":
+    case "user_media_message":
     case "assistant_message":
     case "session_mode_switch":
       return estimateTokens(projectTranscriptMessageItemToHistoryMessage(item as HistoryTranscriptItem).content, weights);
