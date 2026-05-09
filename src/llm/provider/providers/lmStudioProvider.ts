@@ -1,8 +1,7 @@
-import { fetchWithProxy } from "#services/proxy/index.ts";
 import { buildLmStudioNativeModelApiParameters } from "../modelApiParameters.ts";
-import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
+import { createReportedUsage } from "../providerStreamAdapter.ts";
+import { runProviderSseStream, type ProviderSseSemanticEvent } from "../providerStreamRunner.ts";
 import {
-  createEmptyUsage,
   numberOrNull,
   type LlmEmbeddingParams,
   type LlmEmbeddingResult,
@@ -11,7 +10,8 @@ import {
   type LlmProvider,
   type LlmProviderGenerateParams,
   type LlmProviderGenerateResult,
-  type LlmProviderRequestContext
+  type LlmProviderRequestContext,
+  type LlmUsage
 } from "../providerTypes.ts";
 import { OpenAiProvider } from "./openaiProvider.ts";
 
@@ -20,6 +20,7 @@ const DEFAULT_API_KEY = "lm-studio";
 const DEFAULT_THINKING_FEATURE = { type: "flag" as const, path: "enable_thinking" };
 
 interface LmStudioChatResponsePayload {
+  model_instance_id?: string;
   output?: Array<{
     type?: string;
     content?: string;
@@ -29,18 +30,23 @@ interface LmStudioChatResponsePayload {
     total_output_tokens?: number;
     reasoning_output_tokens?: number;
   };
+  response_id?: string;
+}
+
+interface LmStudioChatStreamPayload {
+  type?: string;
+  content?: string;
+  result?: LmStudioChatResponsePayload;
+  error?: {
+    message?: string;
+    type?: string;
+    code?: string;
+    param?: string;
+  };
 }
 
 type NativeLmStudioInput =
-  | { type: "message"; content: string }
-  | { type: "image"; data_url: string };
-
-type NativeLmStudioFallbackInput =
   | { type: "text"; content: string }
-  | { type: "image"; data_url: string };
-
-type NativeLmStudioLegacyInput =
-  | { type: "text"; text: string }
   | { type: "image"; data_url: string };
 
 /**
@@ -136,98 +142,32 @@ export class LmStudioProvider implements LlmProvider {
   ): Promise<LlmProviderGenerateResult> {
     const endpoint = `${context.baseUrl.replace(/\/v1\/?$/, "").replace(/\/$/, "")}/api/v1/chat`;
     const resolvedTimeoutMs = params.timeoutMsOverride ?? context.config.llm.timeoutMs;
-    const timeoutController = createProviderTimeoutController({
-      totalTimeoutMs: resolvedTimeoutMs,
-      firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs
-    });
-    const forwardAbort = () => timeoutController.controller.abort();
-    params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
-
     try {
-      const primaryRequestBody = buildNativeChatRequestBody(context, params.messages);
-      const textContentRequestBody = buildTextContentNativeChatRequestBody(context, params.messages);
-      const legacyRequestBody = buildLegacyNativeChatRequestBody(context, params.messages);
+      const result = await requestNativeChatStream(
+        context,
+        params,
+        endpoint,
+        buildNativeChatRequestBody(context, params.messages),
+        resolvedTimeoutMs
+      );
 
-      let payload: LmStudioChatResponsePayload;
-      try {
-        payload = await requestNativeChatPayload(
-          context,
-          endpoint,
-          timeoutController.controller.signal,
-          primaryRequestBody
-        );
-      } catch (error) {
-        if (!shouldRetryWithTextContentNativeChatShape(error)) {
-          throw error;
-        }
-        try {
-          payload = await requestNativeChatPayload(
-            context,
-            endpoint,
-            timeoutController.controller.signal,
-            textContentRequestBody
-          );
-        } catch (fallbackError) {
-          if (!shouldRetryWithLegacyNativeChatShape(fallbackError)) {
-            throw fallbackError;
-          }
-          payload = await requestNativeChatPayload(
-            context,
-            endpoint,
-            timeoutController.controller.signal,
-            legacyRequestBody
-          );
-        }
-      }
-      const text = extractNativeChatText(payload);
-      const reasoningContent = extractNativeReasoningContent(payload);
-      const usage = payload.stats
-        ? {
-            inputTokens: numberOrNull(payload.stats.input_tokens),
-            outputTokens: numberOrNull(payload.stats.total_output_tokens),
-            totalTokens: sumNullable(
-              numberOrNull(payload.stats.input_tokens),
-              numberOrNull(payload.stats.total_output_tokens)
-            ),
-            cachedTokens: null,
-            reasoningTokens: numberOrNull(payload.stats.reasoning_output_tokens),
-            requestCount: 1,
-            providerReported: true,
-            modelRef: context.modelRef,
-            model: context.model
-          }
-        : (() => {
-            const fallbackUsage = createEmptyUsage(context.modelRef, context.model);
-            fallbackUsage.requestCount = 1;
-            return fallbackUsage;
-          })();
-
-      if (params.onTextDelta && text.length > 0) {
-        await params.onTextDelta(text);
-      }
-
-      if (!text.trim()) {
+      if (!result.text.trim()) {
         throw new Error("LLM returned empty content");
       }
 
       return {
-        text: text.trim(),
-        reasoningContent,
+        text: result.text.trim(),
+        reasoningContent: result.reasoningContent,
         toolCalls: [],
-        usage
+        usage: result.usage,
+        ...(result.responseId ? { assistantMetadata: { lmStudio: { responseId: result.responseId } } } : {})
       };
     } catch (error) {
-      if (timeoutController.controller.signal.aborted) {
-        rethrowProviderAbortReason(timeoutController.controller.signal, error);
-      }
       const details = error instanceof Error
         ? { name: error.name, message: error.message, stack: error.stack }
         : { message: String(error) };
       context.logger.error({ error: details }, "llm_request_failed");
       throw error;
-    } finally {
-      timeoutController.cleanup();
-      params.abortSignal?.removeEventListener("abort", forwardAbort);
     }
   }
 }
@@ -289,58 +229,6 @@ function buildNativeChatRequestBody(context: LlmProviderRequestContext, messages
 
     if (typeof message.content === "string") {
       input.push({
-        type: "message",
-        content: message.content
-      });
-      continue;
-    }
-
-    for (const part of message.content) {
-      if (part.type === "text") {
-        if (part.text.length > 0) {
-          input.push({
-            type: "message",
-            content: part.text
-          });
-        }
-        continue;
-      }
-
-      if (part.type === "image_url") {
-        input.push({
-          type: "image",
-          data_url: part.image_url.url
-        });
-      }
-    }
-  }
-
-  return {
-    model: context.model,
-    input,
-    reasoning: "off",
-    stream: false,
-    store: false,
-    ...buildLmStudioNativeModelApiParameters(context),
-    ...(systemPrompts.length > 0 ? { system_prompt: systemPrompts.join("\n\n") } : {})
-  };
-}
-
-function buildTextContentNativeChatRequestBody(context: LlmProviderRequestContext, messages: LlmMessage[]): Record<string, unknown> {
-  const systemPrompts: string[] = [];
-  const input: NativeLmStudioFallbackInput[] = [];
-
-  for (const message of messages) {
-    if (message.role === "system") {
-      const systemText = flattenMessageText(message);
-      if (systemText) {
-        systemPrompts.push(systemText);
-      }
-      continue;
-    }
-
-    if (typeof message.content === "string") {
-      input.push({
         type: "text",
         content: message.content
       });
@@ -367,65 +255,14 @@ function buildTextContentNativeChatRequestBody(context: LlmProviderRequestContex
     }
   }
 
+  const modelApiParameters = buildLmStudioNativeModelApiParameters(context);
   return {
     model: context.model,
     input,
+    ...modelApiParameters,
     reasoning: "off",
-    stream: false,
-    store: false,
-    ...buildLmStudioNativeModelApiParameters(context),
-    ...(systemPrompts.length > 0 ? { system_prompt: systemPrompts.join("\n\n") } : {})
-  };
-}
-
-function buildLegacyNativeChatRequestBody(context: LlmProviderRequestContext, messages: LlmMessage[]): Record<string, unknown> {
-  const systemPrompts: string[] = [];
-  const input: NativeLmStudioLegacyInput[] = [];
-
-  for (const message of messages) {
-    if (message.role === "system") {
-      const systemText = flattenMessageText(message);
-      if (systemText) {
-        systemPrompts.push(systemText);
-      }
-      continue;
-    }
-
-    if (typeof message.content === "string") {
-      input.push({
-        type: "text",
-        text: message.content
-      });
-      continue;
-    }
-
-    for (const part of message.content) {
-      if (part.type === "text") {
-        if (part.text.length > 0) {
-          input.push({
-            type: "text",
-            text: part.text
-          });
-        }
-        continue;
-      }
-
-      if (part.type === "image_url") {
-        input.push({
-          type: "image",
-          data_url: part.image_url.url
-        });
-      }
-    }
-  }
-
-  return {
-    model: context.model,
-    input,
-    reasoning: "off",
-    stream: false,
-    store: false,
-    ...buildLmStudioNativeModelApiParameters(context),
+    stream: true,
+    store: typeof modelApiParameters.store === "boolean" ? modelApiParameters.store : false,
     ...(systemPrompts.length > 0 ? { system_prompt: systemPrompts.join("\n\n") } : {})
   };
 }
@@ -507,52 +344,99 @@ function extractNativeReasoningContent(payload: LmStudioChatResponsePayload): st
     .join("");
 }
 
+async function requestNativeChatStream(
+  context: LlmProviderRequestContext,
+  params: LlmProviderGenerateParams,
+  endpoint: string,
+  requestBody: Record<string, unknown>,
+  resolvedTimeoutMs: number
+): Promise<{
+  text: string;
+  reasoningContent: string;
+  usage: LlmUsage;
+  responseId?: string;
+}> {
+  const stream = await runProviderSseStream({
+    context,
+    params,
+    endpoint,
+    requestBody,
+    resolvedTimeoutMs,
+    errorPrefix: "LLM API error",
+    parseData: (data) => parseNativeChatStreamData(context, data)
+  });
+
+  const finalPayload = stream.finalPayload;
+  const finalText = stream.accumulator.text || (finalPayload ? extractNativeChatText(finalPayload) : "");
+  const finalReasoningContent = stream.accumulator.reasoningContent
+    || (finalPayload ? extractNativeReasoningContent(finalPayload) : "");
+  if (stream.accumulator.text.length === 0 && finalText.length > 0) {
+    await params.onTextDelta?.(finalText);
+  }
+
+  return {
+    text: finalText,
+    reasoningContent: finalReasoningContent,
+    usage: finalPayload?.stats ? buildNativeChatUsage(context, finalPayload) : stream.accumulator.usage,
+    ...(finalPayload?.response_id ? { responseId: finalPayload.response_id } : {})
+  };
+}
+
+function parseNativeChatStreamData(
+  context: LlmProviderRequestContext,
+  data: string
+): ProviderSseSemanticEvent<LmStudioChatResponsePayload>[] {
+  const payload = JSON.parse(data) as LmStudioChatStreamPayload;
+  if (payload.type === "error" || payload.error) {
+    throw createNativeChatStreamError(payload);
+  }
+  if (payload.type === "reasoning.delta" && typeof payload.content === "string" && payload.content.length > 0) {
+    return [{ kind: "reasoning_delta", text: payload.content }];
+  }
+  if (payload.type === "message.delta" && typeof payload.content === "string" && payload.content.length > 0) {
+    return [{ kind: "text_delta", text: payload.content }];
+  }
+  if (payload.type === "chat.end" && payload.result) {
+    return [
+      { kind: "final", payload: payload.result },
+      ...(payload.result.stats ? [{ kind: "usage" as const, usage: buildNativeChatUsage(context, payload.result) }] : [])
+    ];
+  }
+  return [];
+}
+
+function createNativeChatStreamError(payload: LmStudioChatStreamPayload): Error {
+  const error = payload.error;
+  const details = [
+    error?.message,
+    error?.type ? `type=${error.type}` : "",
+    error?.code ? `code=${error.code}` : "",
+    error?.param ? `param=${error.param}` : ""
+  ].filter((item) => item && item.length > 0).join("; ");
+  return new Error(`LM Studio native stream error${details ? `: ${details}` : ""}`);
+}
+
+function buildNativeChatUsage(
+  context: LlmProviderRequestContext,
+  payload: LmStudioChatResponsePayload
+): LlmUsage {
+  return createReportedUsage({
+    modelRef: context.modelRef,
+    model: context.model,
+    inputTokens: numberOrNull(payload.stats?.input_tokens),
+    outputTokens: numberOrNull(payload.stats?.total_output_tokens),
+    totalTokens: sumNullable(
+      numberOrNull(payload.stats?.input_tokens),
+      numberOrNull(payload.stats?.total_output_tokens)
+    ),
+    cachedTokens: null,
+    reasoningTokens: numberOrNull(payload.stats?.reasoning_output_tokens)
+  });
+}
+
 function sumNullable(left: number | null, right: number | null): number | null {
   if (left == null && right == null) {
     return null;
   }
   return (left ?? 0) + (right ?? 0);
-}
-
-async function requestNativeChatPayload(
-  context: LlmProviderRequestContext,
-  endpoint: string,
-  signal: AbortSignal,
-  requestBody: Record<string, unknown>
-): Promise<LmStudioChatResponsePayload> {
-  const response = await fetchWithProxy(context.config, "llm", endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${context.providerConfig.apiKey ?? ""}`
-    },
-    body: JSON.stringify(requestBody),
-    signal
-  }, {
-    modelRef: context.modelRef
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`LLM API error: ${response.status} ${response.statusText}${errorText ? ` ${errorText}` : ""}`);
-  }
-
-  return response.json() as Promise<LmStudioChatResponsePayload>;
-}
-
-function shouldRetryWithTextContentNativeChatShape(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  const message = error.message;
-  return message.includes("Invalid discriminator value. Expected 'text' | 'image'");
-}
-
-function shouldRetryWithLegacyNativeChatShape(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  const message = error.message;
-  return message.includes("'input.0.text' is required")
-    || message.includes("Unrecognized key(s) in object: 'content'");
 }
