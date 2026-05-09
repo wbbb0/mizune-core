@@ -140,6 +140,251 @@ function createNativeLmStudioSseResponse(payloads: any[]) {
     });
   });
 
+  test("anthropic provider maps messages, tools, vision, and thinking internally", async () => {
+    const config = createLlmTestConfig({
+      provider: "test",
+      model: "claude-test",
+      supportsThinking: true,
+      supportsVision: true,
+      supportsTools: true,
+      apiParameters: {
+        temperature: 0.5,
+        top_p: 0.8,
+        top_k: 40,
+        presence_penalty: 0.3,
+        extra: {
+          max_tokens: 2048,
+          ignored_vendor_flag: true
+        }
+      }
+    });
+    config.llm.providers.test!.type = "anthropic";
+    config.llm.providers.test!.baseUrl = "https://anthropic.example";
+    config.llm.providers.test!.apiKey = "anthropic-key";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any, _index: number, init: RequestInit, url: string) {
+          assert.equal(url, "https://anthropic.example/v1/messages");
+          assert.equal((init.headers as Record<string, string>)["x-api-key"], "anthropic-key");
+          assert.equal((init.headers as Record<string, string>)["anthropic-version"], "2023-06-01");
+          assert.equal(body.model, "claude-test");
+          assert.equal(body.stream, true);
+          assert.equal(body.system, "system prompt");
+          assert.equal(body.max_tokens, 2048);
+          assert.deepEqual(body.thinking, {
+            type: "enabled",
+            budget_tokens: 1024
+          });
+          assert.equal(body.temperature, 0.5);
+          assert.equal(body.top_p, 0.8);
+          assert.equal(body.top_k, 40);
+          assert.equal("presence_penalty" in body, false);
+          assert.equal(body.ignored_vendor_flag, true);
+          assert.deepEqual(body.tools, [{
+            name: "lookup",
+            description: "lookup tool",
+            input_schema: {
+              type: "object",
+              properties: {}
+            }
+          }]);
+          assert.deepEqual(body.messages, [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "see this" },
+                {
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: "image/png",
+                    data: "AAAA"
+                  }
+                }
+              ]
+            }
+          ]);
+        },
+        payloads: [
+          {
+            type: "message_start",
+            message: {
+              usage: {
+                input_tokens: 10,
+                output_tokens: 1
+              }
+            }
+          },
+          {
+            type: "content_block_start",
+            index: 0,
+            content_block: {
+              type: "thinking",
+              thinking: ""
+            }
+          },
+          {
+            type: "content_block_delta",
+            index: 0,
+            delta: {
+              type: "thinking_delta",
+              thinking: "reason"
+            }
+          },
+          {
+            type: "content_block_start",
+            index: 1,
+            content_block: {
+              type: "text",
+              text: ""
+            }
+          },
+          {
+            type: "content_block_delta",
+            index: 1,
+            delta: {
+              type: "text_delta",
+              text: "done"
+            }
+          },
+          {
+            type: "message_delta",
+            usage: {
+              output_tokens: 4
+            }
+          }
+        ]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [
+          { role: "system", content: "system prompt" },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "see this" },
+              { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }
+            ]
+          }
+        ],
+        tools: [createToolDefinition("lookup")],
+        enableThinkingOverride: true
+      });
+
+      assert.equal(result.text, "done");
+      assert.equal(result.reasoningContent, "reason");
+      assert.equal(result.usage.inputTokens, 10);
+      assert.equal(result.usage.outputTokens, 4);
+    });
+  });
+
+  test("anthropic provider maps assistant tool use and tool results", async () => {
+    const config = createLlmTestConfig({
+      provider: "test",
+      supportsThinking: false,
+      supportsTools: true
+    });
+    config.llm.providers.test!.type = "anthropic";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.thinking, undefined);
+          assert.deepEqual(body.messages, [
+            { role: "user", content: "continue the task" },
+            {
+              role: "assistant",
+              content: [{
+                type: "tool_use",
+                id: "tool-call-1",
+                name: "lookup",
+                input: { query: "test" }
+              }]
+            },
+            {
+              role: "user",
+              content: [{
+                type: "tool_result",
+                tool_use_id: "tool-call-1",
+                content: "{\"ok\":true}"
+              }]
+            }
+          ]);
+        },
+        payloads: [
+          {
+            type: "content_block_start",
+            index: 0,
+            content_block: {
+              type: "tool_use",
+              id: "tool-call-2",
+              name: "lookup",
+              input: {}
+            }
+          },
+          {
+            type: "content_block_delta",
+            index: 0,
+            delta: {
+              type: "input_json_delta",
+              partial_json: "{\"query\":\"next\"}"
+            }
+          }
+        ]
+      },
+      {
+        assertRequest(body: any) {
+          assert.deepEqual(body.messages.at(-2), {
+            role: "assistant",
+            content: [{
+              type: "tool_use",
+              id: "tool-call-2",
+              name: "lookup",
+              input: { query: "next" }
+            }]
+          });
+          assert.deepEqual(body.messages.at(-1), {
+            role: "user",
+            content: [{
+              type: "tool_result",
+              tool_use_id: "tool-call-2",
+              content: "{\"ok\":true}"
+            }]
+          });
+        },
+        payloads: [
+          {
+            type: "content_block_start",
+            index: 0,
+            content_block: {
+              type: "text",
+              text: ""
+            }
+          },
+          {
+            type: "content_block_delta",
+            index: 0,
+            delta: {
+              type: "text_delta",
+              text: "final"
+            }
+          }
+        ]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: createAssistantToolRoundtripMessages(),
+        tools: [createToolDefinition("lookup")],
+        toolExecutor: async () => "{\"ok\":true}"
+      });
+
+      assert.equal(result.text, "final");
+    });
+  });
+
   test("dashscope sends preserve_thinking when preserveThinking is enabled and assistant reasoning exists", async () => {
     const config = createLlmTestConfig({
       provider: "test",

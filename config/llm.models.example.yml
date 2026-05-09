@@ -60,7 +60,25 @@ deepseek_v4_pro:
   supportsTools: true
   supportsSearch: false
 
-# 示例 4：语音转写模型（transcription）
+# 示例 4：Anthropic Claude 聊天模型（支持思考、视觉和工具；server tools 暂未接入）
+claude_sonnet:
+  provider: anthropic
+  model: claude-sonnet-4-5-20250929
+  modelType: chat
+  supportsThinking: true
+  thinkingControllable: true
+  preserveThinking: true
+  supportsVision: true
+  supportsAudioInput: false
+  supportsTools: true
+  supportsSearch: false
+  apiParameters:
+    temperature: 0.7
+    top_p: 0.9
+    extra:
+      max_tokens: 4096
+
+# 示例 5：语音转写模型（transcription）
 qwen3_asr_flash:
   provider: dashscope
   model: qwen3-asr-flash
@@ -73,7 +91,7 @@ qwen3_asr_flash:
   supportsTools: false
   supportsSearch: false
 
-# 示例 5：向量检索用 embedding 模型
+# 示例 6：向量检索用 embedding 模型
 text_embedding_v4:
   provider: dashscope
   model: text-embedding-v4
