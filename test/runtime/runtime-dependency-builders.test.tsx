@@ -89,18 +89,13 @@ function createTaskFixture(overrides: Record<string, unknown> = {}) {
   });
 
   test("createComfyTaskNotifications builds completion trigger payloads", async () => {
-    const dispatched: Array<{ sessionId: string; trigger: any }> = [];
+    const dispatched: Array<{ sessionId: string; event: any }> = [];
     const notifications = createComfyTaskNotifications({
-      async dispatchInternalTrigger(sessionId, triggerFactory) {
-        const trigger = triggerFactory({
-          type: "group",
-          userId: "owner",
-          groupId: "114514",
-          senderName: "Alice"
-        });
-        dispatched.push({ sessionId, trigger });
+      async dispatchInternalTrigger() {},
+      async dispatchComfyEvent(event) {
+        dispatched.push({ sessionId: event.owner.sessionId, event });
       }
-    });
+    } as any);
 
     await notifications.notifyCompletedTask(createTaskFixture(), [
       { fileId: "file-1", path: "workspace/image.png" },
@@ -109,31 +104,27 @@ function createTaskFixture(overrides: Record<string, unknown> = {}) {
 
     assert.equal(dispatched.length, 1);
     assert.equal(dispatched[0]?.sessionId, "qqbot:p:owner");
-    assert.equal(dispatched[0]?.trigger.kind, "comfy_task_completed");
-    assert.equal(dispatched[0]?.trigger.targetType, "group");
-    assert.equal(dispatched[0]?.trigger.targetGroupId, "114514");
-    assert.equal(dispatched[0]?.trigger.targetSenderName, "Alice");
-    assert.deepEqual(dispatched[0]?.trigger.workspaceFileIds, ["file-1", "file-2"]);
-    assert.deepEqual(dispatched[0]?.trigger.chatFilePaths, ["workspace/image.png", "workspace/image-2.png"]);
+    assert.equal(dispatched[0]?.event.kind, "comfy_task_completed");
+    assert.equal(dispatched[0]?.event.owner.userId, "owner");
+    assert.deepEqual(dispatched[0]?.event.workspaceFileIds, ["file-1", "file-2"]);
+    assert.deepEqual(dispatched[0]?.event.chatFilePaths, ["workspace/image.png", "workspace/image-2.png"]);
+    assert.equal(dispatched[0]?.event.templateId, "portrait");
   });
 
   test("createComfyTaskNotifications builds failed trigger payloads with default error", async () => {
     const dispatched: Array<any> = [];
     const notifications = createComfyTaskNotifications({
-      async dispatchInternalTrigger(_sessionId, triggerFactory) {
-        dispatched.push(triggerFactory({
-          type: "private",
-          userId: "owner",
-          senderName: "Alice"
-        }));
+      async dispatchInternalTrigger() {},
+      async dispatchComfyEvent(event) {
+        dispatched.push(event);
       }
-    });
+    } as any);
 
     await notifications.notifyFailedTask(createTaskFixture({ lastError: null }));
 
     assert.equal(dispatched.length, 1);
     assert.equal(dispatched[0]?.kind, "comfy_task_failed");
-    assert.equal(dispatched[0]?.targetType, "private");
-    assert.equal(dispatched[0]?.targetUserId, "owner");
+    assert.equal(dispatched[0]?.owner.userId, "owner");
     assert.equal(dispatched[0]?.lastError, "Comfy task failed");
+    assert.equal(dispatched[0]?.templateId, "portrait");
   });

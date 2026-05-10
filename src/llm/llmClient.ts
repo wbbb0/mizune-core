@@ -162,6 +162,15 @@ export class LlmClient {
           )
         : [];
     };
+    const consumeClonedInlineTriggers = async (): Promise<LlmMessage[]> => {
+      const inlineMessages = await params.consumeInlineTriggers?.() ?? [];
+      return inlineMessages.length > 0
+        ? cloneMessagesForRequest(
+            inlineMessages,
+            preserveThinking
+          )
+        : [];
+    };
     const projectMessagesBeforeProvider = async (messages: LlmMessage[]): Promise<LlmMessage[]> => {
       if (!params.projectMessagesBeforeProvider) {
         return messages;
@@ -174,6 +183,10 @@ export class LlmClient {
       const steerMessages = await consumeClonedSteerMessages();
       if (steerMessages.length > 0) {
         workingMessages.push(...steerMessages);
+      }
+      const inlineTriggerMessages = await consumeClonedInlineTriggers();
+      if (inlineTriggerMessages.length > 0) {
+        workingMessages.push(...inlineTriggerMessages);
       }
       workingMessages.splice(0, workingMessages.length, ...await projectMessagesBeforeProvider(workingMessages));
 

@@ -1,6 +1,7 @@
 import type { OneBotMessageEvent } from "#services/onebot/types.ts";
 import type {
   ActiveAssistantResponse,
+  InlineSessionTriggerExecution,
   InternalSessionTriggerExecution,
   InternalTranscriptItem,
   SessionDebugMarker,
@@ -247,6 +248,7 @@ export function clearSessionState(session: SessionState): void {
   session.pendingTranscriptGroupId = null;
   session.activeTranscriptGroupId = null;
   session.pendingInternalTriggers = [];
+  session.pendingInlineTriggers = [];
   session.interruptibleGroupTriggerUserId = null;
   session.historySummary = null;
   session.historyBackfillBoundaryMs = Date.now();
@@ -447,6 +449,24 @@ export function enqueueInternalTriggerState(session: SessionState, trigger: Inte
 // Removes the next internal trigger from the session queue.
 export function shiftInternalTriggerState(session: SessionState): InternalSessionTriggerExecution | null {
   return session.pendingInternalTriggers.shift() ?? null;
+}
+
+// Appends an inline trigger (background event) to the session queue.
+export function enqueueInlineTriggerState(session: SessionState, trigger: InlineSessionTriggerExecution): number {
+  session.pendingInlineTriggers.push(trigger);
+  session.lastActiveAt = Date.now();
+  return session.pendingInlineTriggers.length;
+}
+
+// Atomically drains all pending inline triggers.
+export function drainInlineTriggersState(session: SessionState): InlineSessionTriggerExecution[] {
+  if (session.pendingInlineTriggers.length === 0) {
+    return [];
+  }
+  const drained = session.pendingInlineTriggers;
+  session.pendingInlineTriggers = [];
+  session.lastActiveAt = Date.now();
+  return drained;
 }
 
 // Updates which group user can currently interrupt the session response.

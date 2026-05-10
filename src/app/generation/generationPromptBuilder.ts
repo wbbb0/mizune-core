@@ -150,6 +150,7 @@ export interface GenerationPromptBuilder {
     lateSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"];
+    inlineBatchMessage?: string | undefined;
     persona: PersonaState;
     relationship: Relationship;
     participantProfiles: GenerationPromptParticipantProfile[];
@@ -1227,6 +1228,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     lateSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"];
+    inlineBatchMessage?: string | undefined;
     persona: PersonaState;
     relationship: Relationship;
     participantProfiles: GenerationPromptParticipantProfile[];
@@ -1357,6 +1359,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       lateSystemMessages: input.lateSystemMessages,
       replayMessages,
       trigger: scheduledTrigger,
+      ...(input.inlineBatchMessage ? { inlineBatchMessage: input.inlineBatchMessage } : {}),
       persona: input.persona,
       relationship: input.relationship,
       npcProfiles: assistantMode ? [] : buildNpcPromptProfiles(deps, relevantUserIds),

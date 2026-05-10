@@ -216,8 +216,12 @@ function formatTriggerStage(stage: InternalTriggerStage): string {
       return "已接收";
     case "queued":
       return "已入队";
+    case "queued_inline":
+      return "已进入内联注入队列";
     case "dequeued":
       return "已出队";
+    case "inlined":
+      return "已内联注入";
     case "started":
       return "开始执行";
   }

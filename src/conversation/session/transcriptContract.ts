@@ -20,7 +20,7 @@ export const transcriptInternalTriggerKindValues = [
   "terminal_session_closed",
   "terminal_input_required"
 ] as const;
-export const transcriptInternalTriggerStageValues = ["received", "queued", "dequeued", "started"] as const;
+export const transcriptInternalTriggerStageValues = ["received", "queued", "queued_inline", "dequeued", "inlined", "started"] as const;
 export const transcriptContextExtractionStatusValues = ["queued", "enqueue_failed", "processed", "process_failed"] as const;
 export const transcriptContextExtractionOperationValues = ["noop", "create", "update_existing", "invalidate_and_create", "merge", "ignore_wrong_scope"] as const;
 export const transcriptContextExtractionItemResultValues = ["created", "replaced", "ignored"] as const;

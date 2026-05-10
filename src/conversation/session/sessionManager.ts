@@ -26,6 +26,7 @@ import {
 import { resolveSessionParticipantRef } from "./sessionIdentity.ts";
 import { SessionLifecycleController } from "./sessionLifecycleController.ts";
 import { SessionInternalTriggerQueue } from "./sessionInternalTriggerQueue.ts";
+import { SessionInlineTriggerQueue } from "./sessionInlineTriggerQueue.ts";
 import { SessionDebugController } from "./sessionDebugController.ts";
 import { SessionSentMessageLog } from "./sessionSentMessageLog.ts";
 import { SessionHistoryService } from "./sessionHistoryService.ts";
@@ -34,6 +35,7 @@ import type {
   SessionPhase,
   ActiveAssistantResponse,
   DebugLiteral,
+  InlineSessionTriggerExecution,
   InternalSessionTriggerExecution,
   InternalTranscriptItem,
   PersistedSessionState,
@@ -55,6 +57,7 @@ import type { ToolObservationSummary } from "./toolObservation.ts";
 export type {
   ActiveAssistantResponse,
   DebugLiteral,
+  InlineSessionTriggerExecution,
   InternalSessionTriggerExecution,
   InternalTranscriptItem,
   PersistedSessionMessage,
@@ -74,6 +77,7 @@ export class SessionManager {
   private readonly sessionStore = new SessionStore();
   private readonly lifecycleController = new SessionLifecycleController();
   private readonly internalTriggerQueue = new SessionInternalTriggerQueue();
+  private readonly inlineTriggerQueue = new SessionInlineTriggerQueue();
   private readonly debugController = new SessionDebugController();
   private readonly sentMessageLog = new SessionSentMessageLog();
   private readonly historyService: SessionHistoryService;
@@ -896,6 +900,27 @@ export class SessionManager {
       this.notifySessionChanged(sessionId);
     }
     return trigger;
+  }
+
+  enqueueInlineTrigger(sessionId: string, trigger: InlineSessionTriggerExecution): number {
+    const session = this.requireSession(sessionId);
+    const size = this.inlineTriggerQueue.enqueue(session, trigger);
+    this.notifySessionChanged(sessionId);
+    return size;
+  }
+
+  hasPendingInlineTriggers(sessionId: string): boolean {
+    const session = this.requireSession(sessionId);
+    return this.inlineTriggerQueue.hasPending(session);
+  }
+
+  drainInlineTriggers(sessionId: string): InlineSessionTriggerExecution[] {
+    const session = this.requireSession(sessionId);
+    const drained = this.inlineTriggerQueue.drainAll(session);
+    if (drained.length > 0) {
+      this.notifySessionChanged(sessionId);
+    }
+    return drained;
   }
 
   subscribeSession(sessionId: string, listener: () => void): () => void {

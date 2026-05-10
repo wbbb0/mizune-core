@@ -323,6 +323,22 @@ export type InternalSessionTriggerExecution =
   | DownloadCompletedTriggerExecution
   | DownloadFailedTriggerExecution;
 
+// Inline triggers are background-event triggers that can be injected into the
+// next LLM request within an in-flight tool-call loop, instead of waiting for
+// the current response to fully wind down. Scheduled instructions are a
+// stand-alone topic and stay on the classic "queue + open a new session" path.
+//
+// resolveCompletion / rejectCompletion are stripped so the type system
+// guarantees inline trigger code paths never accidentally treat them like
+// blocking session triggers.
+export type InlineSessionTriggerExecution =
+  | Omit<ComfyTaskCompletedTriggerExecution, "resolveCompletion" | "rejectCompletion">
+  | Omit<ComfyTaskFailedTriggerExecution, "resolveCompletion" | "rejectCompletion">
+  | Omit<TerminalSessionClosedTriggerExecution, "resolveCompletion" | "rejectCompletion">
+  | Omit<TerminalInputRequiredTriggerExecution, "resolveCompletion" | "rejectCompletion">
+  | Omit<DownloadCompletedTriggerExecution, "resolveCompletion" | "rejectCompletion">
+  | Omit<DownloadFailedTriggerExecution, "resolveCompletion" | "rejectCompletion">;
+
 export type SessionPhase =
   | { kind: "idle" }
   | { kind: "debouncing" }
@@ -352,6 +368,7 @@ export interface SessionState {
   pendingTranscriptGroupId: string | null;
   activeTranscriptGroupId: string | null;
   pendingInternalTriggers: InternalSessionTriggerExecution[];
+  pendingInlineTriggers: InlineSessionTriggerExecution[];
   interruptibleGroupTriggerUserId: string | null;
   historySummary: string | null;
   historyBackfillBoundaryMs: number;
