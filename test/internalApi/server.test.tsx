@@ -98,7 +98,7 @@ test("internal api server logs uncaught request errors", async () => {
   }
 });
 
-test("internal api keeps unauthenticated built-in webui local-only", async () => {
+test("internal api binds unauthenticated built-in webui on all interfaces", async () => {
   const deps = createInternalApiDeps();
   const capturedLogs: Array<{ message: string; payload: unknown }> = [];
   const port = await getFreePort();
@@ -128,7 +128,7 @@ test("internal api keeps unauthenticated built-in webui local-only", async () =>
   assert.deepEqual(capturedLogs, [
     {
       message: "internal_api_started",
-      payload: { port, host: "127.0.0.1" }
+      payload: { port, host: "0.0.0.0" }
     },
     {
       message: "internal_api_stopped",
