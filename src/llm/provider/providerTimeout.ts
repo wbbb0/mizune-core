@@ -1,9 +1,12 @@
 export function createProviderTimeoutController(input: {
   totalTimeoutMs: number;
   firstTokenTimeoutMs: number;
+  thinkingTimeoutMs?: number;
 }) {
   const controller = new AbortController();
   let firstTokenPending = true;
+  let thinkingTimer: ReturnType<typeof setTimeout> | null = null;
+  let textReceived = false;
 
   const abortWith = (message: string) => {
     if (!controller.signal.aborted) {
@@ -30,9 +33,28 @@ export function createProviderTimeoutController(input: {
       firstTokenPending = false;
       clearTimeout(firstTokenTimer);
     },
+    markReasoningStarted() {
+      if (textReceived || thinkingTimer !== null || input.thinkingTimeoutMs == null || input.thinkingTimeoutMs <= 0) {
+        return;
+      }
+      thinkingTimer = setTimeout(() => {
+        abortWith(`LLM thinking timeout after ${input.thinkingTimeoutMs}ms`);
+      }, input.thinkingTimeoutMs);
+    },
+    markFirstTextReceived() {
+      textReceived = true;
+      if (thinkingTimer !== null) {
+        clearTimeout(thinkingTimer);
+        thinkingTimer = null;
+      }
+    },
     cleanup() {
       clearTimeout(totalTimer);
       clearTimeout(firstTokenTimer);
+      if (thinkingTimer !== null) {
+        clearTimeout(thinkingTimer);
+        thinkingTimer = null;
+      }
     }
   };
 }

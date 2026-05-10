@@ -30,6 +30,7 @@ llm:
   routingPreset: balanced
   timeoutMs: 300000
   firstTokenTimeoutMs: 30000
+  thinkingTimeoutMs: 30000
   toolCallMaxIterations: 8
   mainRouting:
     enabled: true

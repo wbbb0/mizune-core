@@ -96,7 +96,8 @@ export class DashScopeProvider implements LlmProvider {
 
     const timeoutController = createProviderTimeoutController({
       totalTimeoutMs: resolvedTimeoutMs,
-      firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs
+      firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs,
+      thinkingTimeoutMs: context.config.llm.thinkingTimeoutMs
     });
     const forwardAbort = () => timeoutController.controller.abort();
     params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
@@ -193,15 +194,18 @@ export class DashScopeProvider implements LlmProvider {
 
             if (typeof message.reasoning_content === "string" && message.reasoning_content.length > 0) {
               timeoutController.markFirstResponseReceived();
+              timeoutController.markReasoningStarted();
               accumulator.appendReasoningDelta(message.reasoning_content, params.onReasoningDelta);
             }
             const contentDelta = extractDashScopeText(message.content);
             if (contentDelta.length > 0) {
               timeoutController.markFirstResponseReceived();
+              timeoutController.markFirstTextReceived();
               await accumulator.appendTextDelta(contentDelta, params.onTextDelta);
             }
             if ((message.tool_calls?.length ?? 0) > 0) {
               timeoutController.markFirstResponseReceived();
+              timeoutController.markFirstTextReceived();
             }
 
             mergeIndexedToolCallDeltas(toolCalls, message.tool_calls ?? []);

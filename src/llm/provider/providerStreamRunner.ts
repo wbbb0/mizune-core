@@ -35,7 +35,8 @@ export async function runProviderSseStream<TFinalPayload>(input: {
 }): Promise<ProviderSseStreamResult<TFinalPayload>> {
   const timeoutController = createProviderTimeoutController({
     totalTimeoutMs: input.resolvedTimeoutMs,
-    firstTokenTimeoutMs: input.context.config.llm.firstTokenTimeoutMs
+    firstTokenTimeoutMs: input.context.config.llm.firstTokenTimeoutMs,
+    thinkingTimeoutMs: input.context.config.llm.thinkingTimeoutMs
   });
   const forwardAbort = () => timeoutController.controller.abort();
   input.params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
@@ -68,6 +69,8 @@ export async function runProviderSseStream<TFinalPayload>(input: {
       response,
       parseData: input.parseData,
       markFirstResponseReceived: () => timeoutController.markFirstResponseReceived(),
+      markReasoningStarted: () => timeoutController.markReasoningStarted(),
+      markFirstTextReceived: () => timeoutController.markFirstTextReceived(),
       accumulator: createProviderStreamAccumulator({
         modelRef: input.context.modelRef,
         model: input.context.model
@@ -89,6 +92,8 @@ async function consumeSseStream<TFinalPayload>(input: {
   response: Awaited<ReturnType<typeof fetchWithProxy>>;
   parseData: (data: string) => ProviderSseSemanticEvent<TFinalPayload>[] | Promise<ProviderSseSemanticEvent<TFinalPayload>[]>;
   markFirstResponseReceived: () => void;
+  markReasoningStarted: () => void;
+  markFirstTextReceived: () => void;
   accumulator: ProviderStreamAccumulator;
 }): Promise<ProviderSseStreamResult<TFinalPayload>> {
   const reader = input.response.body!.getReader();
@@ -139,6 +144,8 @@ async function processSseEvent<TFinalPayload>(input: {
   event: string;
   parseData: (data: string) => ProviderSseSemanticEvent<TFinalPayload>[] | Promise<ProviderSseSemanticEvent<TFinalPayload>[]>;
   markFirstResponseReceived: () => void;
+  markReasoningStarted: () => void;
+  markFirstTextReceived: () => void;
   accumulator: ProviderStreamAccumulator;
   setFinalPayload: (payload: TFinalPayload) => void;
 }): Promise<void> {
@@ -154,6 +161,8 @@ async function applySemanticStreamEvent<TFinalPayload>(
   input: {
     params: LlmProviderGenerateParams;
     markFirstResponseReceived: () => void;
+    markReasoningStarted: () => void;
+    markFirstTextReceived: () => void;
     accumulator: ProviderStreamAccumulator;
     setFinalPayload: (payload: TFinalPayload) => void;
   },
@@ -161,11 +170,13 @@ async function applySemanticStreamEvent<TFinalPayload>(
 ): Promise<void> {
   if (event.kind === "reasoning_delta") {
     input.markFirstResponseReceived();
+    input.markReasoningStarted();
     input.accumulator.appendReasoningDelta(event.text, input.params.onReasoningDelta);
     return;
   }
   if (event.kind === "text_delta") {
     input.markFirstResponseReceived();
+    input.markFirstTextReceived();
     await input.accumulator.appendTextDelta(event.text, input.params.onTextDelta);
     return;
   }
@@ -175,6 +186,7 @@ async function applySemanticStreamEvent<TFinalPayload>(
   }
   if (event.kind === "final") {
     input.markFirstResponseReceived();
+    input.markFirstTextReceived();
     input.setFinalPayload(event.payload);
     return;
   }

@@ -142,7 +142,8 @@ export class AnthropicProvider implements LlmProvider {
 
     const timeoutController = createProviderTimeoutController({
       totalTimeoutMs: resolvedTimeoutMs,
-      firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs
+      firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs,
+      thinkingTimeoutMs: context.config.llm.thinkingTimeoutMs
     });
     const forwardAbort = () => timeoutController.controller.abort();
     params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
@@ -218,14 +219,17 @@ export class AnthropicProvider implements LlmProvider {
             if (payload.type === "content_block_delta" && block) {
               if (payload.delta?.type === "text_delta" && payload.delta.text) {
                 timeoutController.markFirstResponseReceived();
+                timeoutController.markFirstTextReceived();
                 await accumulator.appendTextDelta(payload.delta.text, params.onTextDelta);
               }
               if (payload.delta?.type === "thinking_delta" && payload.delta.thinking) {
                 timeoutController.markFirstResponseReceived();
+                timeoutController.markReasoningStarted();
                 accumulator.appendReasoningDelta(payload.delta.thinking, params.onReasoningDelta);
               }
               if (payload.delta?.type === "input_json_delta" && payload.delta.partial_json) {
                 timeoutController.markFirstResponseReceived();
+                timeoutController.markFirstTextReceived();
               }
             }
           }
