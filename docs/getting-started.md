@@ -115,6 +115,16 @@ data/<实例名>/webui-auth.json
 
 控制台也会打印对应提示。
 
+运行一段时间后，实例数据目录下还会逐步出现多个 SQLite 文件作为持久化主存储，例如：
+
+```text
+data/<实例名>/state/state.sqlite
+data/<实例名>/sessions/sessions.sqlite
+data/<实例名>/assets/assets.sqlite
+```
+
+其中 `assets/assets.sqlite` 当前已经承载音频索引、转写状态、聊天文件索引、Comfy 任务索引和内容安全审计记录，不再写回旧的 `audio-files.json`、`chat-files/files.json`、`comfy/tasks.json` 或 `content-safety/results.json`。
+
 ## 接入 OneBot
 
 WebUI-only 跑通后，可以再打开 OneBot：

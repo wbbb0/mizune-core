@@ -68,3 +68,20 @@
 - `sessions.scenario_host_state`：`scenario_host_session_states`，承载 `scenario_host` 每会话状态
 
 这两个表组都使用 `block_reset`，不接受版本不匹配时的自动重建。修改这类表结构时，应先实现显式迁移，或由维护者确认清空新库后再启动。
+
+## Assets Store 表组
+
+当前 `assets/assets.sqlite` 已注册以下 source-of-truth 表组：
+
+- `assets.audio_files`：`audio_files`，承载音频源索引与转写状态
+- `assets.chat_files`：`chat_files`，承载聊天文件索引与 caption 状态
+- `assets.comfy_tasks`：`comfy_tasks`，承载 Comfy 任务索引与结果文件引用
+- `assets.content_safety_audits`：`content_safety_audits`，承载内容安全审计记录
+
+该表组同样使用 `block_reset`，不会在版本不匹配或结构校验失败时自动 drop/recreate。音频元数据已经以 SQLite 为准，内部 API 的 `audio_files` registry 资源也直接读取该表组，而不是旧的 `audio-files.json`。
+
+聊天文件真实内容仍保留在文件系统下的 `chat-files/media/` 与 `chat-files/documents/`，但索引与 caption 元数据已经以 `chat_files` 表为准；内部 API 的 `workspace_files` registry 资源也直接读取该表组，而不是旧的 `chat-files/files.json`。
+
+Comfy 任务记录和结果文件引用也已经以 `comfy_tasks` 表为准；真实生成出的媒体文件仍通过聊天文件存储链路落到文件系统。
+
+内容安全审计记录也已经以 `content_safety_audits` 表为准；投影、后台会话视图和文件安全状态查询都直接读取该表，而不是旧的 `content-safety/results.json`。
