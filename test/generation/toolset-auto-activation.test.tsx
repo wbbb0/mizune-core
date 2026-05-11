@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { resolveAutoActivatedToolsets } from "../../src/app/generation/toolsetAutoActivation.ts";
 import type { ToolsetView } from "../../src/llm/tools/toolsetCatalog.ts";
+import { buildTag } from "../../src/utils/structuredEnvelope.ts";
 
 const AVAILABLE_TOOLSETS: ToolsetView[] = [
   { id: "chat_context", title: "会话上下文", description: "", toolNames: ["view_message", "asset_media_view"] },
@@ -67,7 +68,7 @@ test("auto activation adds chat_context for prior image refs only when the plann
     batchMessages: [createBatchMessage({ text: "读表函数有哪些" })],
     recentMessages: [{
       role: "user",
-      content: "测试，能不能看到图\n⟦ref kind=\"image\" image_id=\"file_1\"⟧\n图片描述：表格截图",
+      content: ["测试，能不能看到图", buildTag("ref", { kind: "image", image_id: "file_1" }), "图片描述：表格截图"].join("\n"),
       timestampMs: 1
     }],
     modeId: "assistant",
@@ -85,7 +86,7 @@ test("auto activation does not add chat_context for unrelated turns after old im
     batchMessages: [createBatchMessage({ text: "今天星期几" })],
     recentMessages: [{
       role: "user",
-      content: "之前的图\n⟦ref kind=\"image\" image_id=\"file_1\"⟧\n图片描述：表格截图",
+      content: ["之前的图", buildTag("ref", { kind: "image", image_id: "file_1" }), "图片描述：表格截图"].join("\n"),
       timestampMs: 1
     }],
     modeId: "assistant",
@@ -103,7 +104,7 @@ test("auto activation adds chat_context for planner structured context metadata"
     batchMessages: [createBatchMessage({ text: "继续看上面那张" })],
     recentMessages: [{
       role: "user",
-      content: "⟦ref kind=\"image\" image_id=\"file_1\"⟧",
+      content: buildTag("ref", { kind: "image", image_id: "file_1" }),
       timestampMs: 1
     }],
     modeId: "assistant",
@@ -152,7 +153,7 @@ test("auto activation respects available toolsets", () => {
     batchMessages: [createBatchMessage({ replyMessageId: "msg-1" })],
     recentMessages: [{
       role: "user",
-      content: "⟦ref kind=\"image\" image_id=\"file_1\"⟧",
+      content: buildTag("ref", { kind: "image", image_id: "file_1" }),
       timestampMs: 1
     }],
     modeId: "assistant",

@@ -1,7 +1,5 @@
 import type { BuiltinToolContext } from "./shared.ts";
-
-const FORWARD_REF_REGEX = /⟦ref\b[^⟧]*\bkind="forward"[^⟧]*\bforward_id="([^"]+)"/g;
-const REPLY_REF_REGEX = /⟦ref\b[^⟧]*\bkind="reply"[^⟧]*\bmessage_id="([^"]+)"/g;
+import { parseProtocolLine } from "#utils/structuredEnvelope.ts";
 
 export function resolveForwardIdArg(
   requestedId: string,
@@ -72,7 +70,7 @@ function collectKnownForwardIds(context: BuiltinToolContext): string[] {
   try {
     const sessionView = context.sessionManager.getSessionView(sessionId);
     for (const message of context.sessionManager.getLlmVisibleHistory(sessionId)) {
-      for (const forwardId of extractRefIds(message.content, FORWARD_REF_REGEX)) {
+      for (const forwardId of extractRefIds(message.content, "forward", "forward_id")) {
         ids.add(forwardId);
       }
     }
@@ -107,7 +105,7 @@ function collectKnownMessageIds(context: BuiltinToolContext): string[] {
   try {
     const sessionView = context.sessionManager.getSessionView(sessionId);
     for (const message of context.sessionManager.getLlmVisibleHistory(sessionId)) {
-      for (const messageId of extractRefIds(message.content, REPLY_REF_REGEX)) {
+      for (const messageId of extractRefIds(message.content, "reply", "message_id")) {
         ids.add(messageId);
       }
     }
@@ -121,10 +119,14 @@ function collectKnownMessageIds(context: BuiltinToolContext): string[] {
   return [...ids];
 }
 
-function extractRefIds(content: string, pattern: RegExp): string[] {
+function extractRefIds(content: string, kind: string, attrName: string): string[] {
   const matches: string[] = [];
-  for (const match of content.matchAll(pattern)) {
-    const id = String(match[1] ?? "").trim();
+  for (const line of content.replace(/\r\n/g, "\n").split("\n")) {
+    const parsed = parseProtocolLine(line);
+    if (!parsed || parsed.tag !== "ref" || parsed.attrs.kind !== kind) {
+      continue;
+    }
+    const id = String(parsed.attrs[attrName] ?? "").trim();
     if (id) {
       matches.push(id);
     }

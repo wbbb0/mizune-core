@@ -1,5 +1,1 @@
-export function escapePromptBodyText(text: string): string {
-  return text
-    .replace(/⟦/g, "[")
-    .replace(/⟧/g, "]");
-}
+export { escapeUserText as escapePromptBodyText } from "#utils/structuredEnvelope.ts";

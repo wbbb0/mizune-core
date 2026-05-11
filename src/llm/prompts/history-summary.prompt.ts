@@ -1,3 +1,4 @@
+import { buildOpenTag, buildCloseTag } from "#utils/structuredEnvelope.ts";
 import type { SessionHistoryMessage } from "#conversation/session/sessionTypes.ts";
 import { formatToolObservationForSummary, type ToolObservationSummary } from "#conversation/session/toolObservation.ts";
 import type { LlmMessage } from "#llm/llmClient.ts";
@@ -61,9 +62,9 @@ export function buildHistorySummaryPrompt(input: {
 function formatToolObservations(items: ToolObservationSummary[]): string {
   return items
     .map((item, index) => [
-      `⟦summary_source_tool_observation index="${index + 1}" time="${formatTimestamp(item.timestampMs)}"⟧`,
+      buildOpenTag("summary_source_tool_observation", { index: String(index + 1), time: formatTimestamp(item.timestampMs) }),
       formatToolObservationForSummary(item),
-      "⟦/summary_source_tool_observation⟧"
+      buildCloseTag("summary_source_tool_observation")
     ].join("\n"))
     .join("\n\n");
 }
@@ -71,9 +72,9 @@ function formatToolObservations(items: ToolObservationSummary[]): string {
 function formatMessages(messages: SessionHistoryMessage[]): string {
   return messages
     .map((message, index) => [
-      `⟦summary_source_message index="${index + 1}" role="${message.role}" time="${formatTimestamp(message.timestampMs)}"⟧`,
+      buildOpenTag("summary_source_message", { index: String(index + 1), role: message.role, time: formatTimestamp(message.timestampMs) }),
       message.content,
-      "⟦/summary_source_message⟧"
+      buildCloseTag("summary_source_message")
     ].join("\n"))
     .join("\n\n");
 }

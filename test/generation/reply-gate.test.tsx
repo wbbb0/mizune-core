@@ -10,6 +10,7 @@ import {
   createReplyGate,
   createReplyGateBatchMessage
 } from "../helpers/reply-gate-fixtures.tsx";
+import { findPromptProtocolLine, hasPromptSection } from "../helpers/prompt-fixtures.tsx";
 
 function createConfig() {
   return createTestAppConfig({
@@ -75,17 +76,17 @@ function createConfig() {
     const userParts: Array<{ type: string; text?: string }> =
       secondMessage && Array.isArray(secondMessage.content) ? secondMessage.content : [];
     const user = userParts.find((part: { type: string; text?: string }) => part.type === "text")?.text ?? "";
-    assert.match(system, /⟦section name="planner_identity"⟧/);
-    assert.match(system, /⟦section name="planner_rules"⟧/);
+    assert.equal(hasPromptSection(system, "planner_identity"), true);
+    assert.equal(hasPromptSection(system, "planner_rules"), true);
     assert.match(system, /reply_decision: <reply_small\|reply_large\|wait\|no_reply>/);
     assert.match(system, /私聊默认 reply_small/);
     assert.match(system, /群聊中当前批次明显不需要机器人回应时可判 no_reply/);
     assert.doesNotMatch(system, /包括但不限于/);
     assert.doesNotMatch(system, /像“取消这个吧”/);
-    assert.match(user, /⟦section name="planner_batch_features"⟧/);
+    assert.equal(hasPromptSection(user, "planner_batch_features"), true);
     assert.match(user, /signals=需要未来触发、延时提醒或周期执行/);
     assert.match(user, /tags=mention, text/);
-    assert.match(user, /⟦planner_batch_message index="1"/);
+    assert.equal(findPromptProtocolLine(user, "planner_batch_message")?.attrs.index, "1");
   });
 
   test("reply gate parses structured planner semantics while keeping reason first", async () => {

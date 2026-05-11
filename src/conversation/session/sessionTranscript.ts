@@ -1,4 +1,5 @@
 import type { AppConfig } from "#config/config.ts";
+import { parseProtocolLine } from "#utils/structuredEnvelope.ts";
 import { formatStructuredMediaReference, projectTranscriptMessageItemToHistoryMessage } from "./historyContext.ts";
 import type { ToolObservationSummary } from "./toolObservation.ts";
 import { getCachedOrEstimatedInputTokens } from "./transcriptTokenStats.ts";
@@ -456,14 +457,18 @@ function normalizeProjectedHistoryMessages(
 
 function replaceImagesKeepingLatest(content: string, keepCount: number): { content: string; consumed: number } {
   let seen = 0;
-  const next = content.replace(/⟦ref\s+kind="(image|emoji)"\s+image_id="([^"]+)"\s*⟧/gi, (_full, kind, captured) => {
-    const value = String(captured ?? "").trim();
+  const next = content.replace(/\r\n/g, "\n").split("\n").map((line) => {
+    const parsed = parseProtocolLine(line);
+    if (!parsed || parsed.tag !== "ref" || (parsed.attrs.kind !== "image" && parsed.attrs.kind !== "emoji")) {
+      return line;
+    }
+    const value = String(parsed.attrs.image_id ?? "").trim();
     if (seen < keepCount) {
       seen += 1;
-      return formatStructuredMediaReference(kind === "emoji" ? "emoji" : "image", value);
+      return formatStructuredMediaReference(parsed.attrs.kind === "emoji" ? "emoji" : "image", value);
     }
-    return formatStructuredMediaReference(kind === "emoji" ? "emoji" : "image", "omitted");
-  });
+    return formatStructuredMediaReference(parsed.attrs.kind === "emoji" ? "emoji" : "image", "omitted");
+  }).join("\n");
   return {
     content: next,
     consumed: seen
@@ -474,8 +479,11 @@ function replaceExcessImages(content: string, replaceAll: boolean): string {
   if (!replaceAll) {
     return content;
   }
-  return content.replace(
-    /⟦ref\s+kind="(image|emoji)"\s+image_id="[^"]+"\s*⟧/gi,
-    (_full, kind) => formatStructuredMediaReference(kind === "emoji" ? "emoji" : "image", "omitted")
-  );
+  return content.replace(/\r\n/g, "\n").split("\n").map((line) => {
+    const parsed = parseProtocolLine(line);
+    if (!parsed || parsed.tag !== "ref" || (parsed.attrs.kind !== "image" && parsed.attrs.kind !== "emoji")) {
+      return line;
+    }
+    return formatStructuredMediaReference(parsed.attrs.kind === "emoji" ? "emoji" : "image", "omitted");
+  }).join("\n");
 }

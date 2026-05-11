@@ -11,6 +11,7 @@ import {
   DerivedObservationReader,
   imageCaptionMapFromDerivedObservations
 } from "#llm/derivations/derivedObservationReader.ts";
+import { parseProtocolLine } from "#utils/structuredEnvelope.ts";
 
 const DEBUG_LITERALS: DebugLiteral[] = [
   "full_system_prompt",
@@ -197,8 +198,11 @@ async function renderDebugLiteral(literal: DebugLiteral, context: Parameters<Non
         }
       }
       for (const message of snapshot?.recentHistory ?? []) {
-        for (const match of String(message.content).matchAll(/image_id="([^"]+)"/g)) {
-          imageIds.add(String(match[1] ?? ""));
+        for (const line of String(message.content).replace(/\r\n/g, "\n").split("\n")) {
+          const parsed = parseProtocolLine(line);
+          if (parsed?.tag === "ref" && (parsed.attrs.kind === "image" || parsed.attrs.kind === "emoji") && parsed.attrs.image_id) {
+            imageIds.add(parsed.attrs.image_id);
+          }
         }
       }
       const captionMap = imageIds.size > 0

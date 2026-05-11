@@ -1,3 +1,4 @@
+import { buildCloseTag, escapeUserText } from "#utils/structuredEnvelope.ts";
 import {
   formatStructuredEmojiReference,
   formatStructuredForwardReference,
@@ -74,11 +75,11 @@ function formatUserBatchText(
         timestampLabel: formatPromptTimestamp(message.timestampMs)
       }),
       buildMessageBodyText(message, context, includeMediaCaptions),
-      "⟦/trigger_message⟧"
+      buildCloseTag("trigger_message")
     ].join("\n");
   }).join("\n\n");
 
-  return [header, "当前会话模式说明：先按每条消息头区分发言者，再决定是否主要回应当前触发用户，或顺带处理其他人的相关信息。", "", renderedMessages, "⟦/trigger_batch⟧"].join("\n");
+  return [header, "当前会话模式说明：先按每条消息头区分发言者，再决定是否主要回应当前触发用户，或顺带处理其他人的相关信息。", "", renderedMessages, buildCloseTag("trigger_batch")].join("\n");
 }
 
 function formatProfileDraftBatchText(
@@ -95,7 +96,7 @@ function formatProfileDraftBatchText(
         timestampLabel: formatPromptTimestamp(message.timestampMs)
       }),
       buildMessageBodyText(message, context, includeMediaCaptions, { disableScenarioHostParsing: true }),
-      "⟦/draft_message⟧"
+      buildCloseTag("draft_message")
     ].join("\n");
   }).join("\n\n");
 
@@ -105,7 +106,7 @@ function formatProfileDraftBatchText(
     "只有当 owner 明确要求修改用户资料、用户记忆或其他长期信息时，才把内容切换到那些目标；否则继续围绕当前草稿工作。",
     "",
     renderedMessages,
-    "⟦/draft_batch⟧"
+    buildCloseTag("draft_batch")
   ].join("\n");
 }
 
@@ -466,7 +467,7 @@ function formatAssetHandleArgs(value: unknown): string {
 }
 
 function compactPromptInlineText(value: string, maxChars: number): string {
-  const normalized = escapePromptBodyText(value)
+  const normalized = escapeUserText(value)
     .replace(/\s+/g, " ")
     .trim();
   return normalized.length <= maxChars

@@ -11,6 +11,7 @@ import type { GenerationSessionOrchestratorDeps } from "../../src/app/generation
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
+import { findPromptBlock, hasPromptSection, parsePromptBlocks } from "../helpers/prompt-fixtures.tsx";
 
 async function flushMicrotasks(rounds = 4): Promise<void> {
   for (let index = 0; index < rounds; index += 1) {
@@ -921,12 +922,12 @@ function createOrchestratorDeps(input: {
     }
 
     const message = renderInlineTriggerBatchMessage(drained);
-    assert.ok(message.includes("⟦section name=\"background_event_batch\"⟧"));
-    assert.ok(message.includes("⟦event kind=\"terminal_session_closed\""));
+    assert.equal(hasPromptSection(message, "background_event_batch"), true);
+    assert.equal(parsePromptBlocks(message).some((block) => block.tag === "event" && block.attrs.kind === "terminal_session_closed"), true);
     assert.ok(message.includes("8 tests passed"));
-    assert.ok(message.includes("⟦event kind=\"download_completed\""));
+    assert.equal(parsePromptBlocks(message).some((block) => block.tag === "event" && block.attrs.kind === "download_completed"), true);
     assert.ok(message.includes("data.zip"));
-    assert.ok(message.includes("⟦/section⟧"));
+    assert.ok(findPromptBlock(message, "event"));
     assert.ok(message.includes("后台任务已就绪"));
 
     const session = sessionManager.getSession(sessionId);

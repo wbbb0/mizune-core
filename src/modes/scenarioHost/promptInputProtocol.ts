@@ -1,3 +1,5 @@
+import { startsWithTag } from "#utils/structuredEnvelope.ts";
+
 export type ScenarioHostUserInputKind = "player_action" | "ooc_instruction" | "player_speech";
 
 export interface ScenarioHostParsedUserInput {
@@ -47,13 +49,13 @@ export function formatScenarioHostParsedUserInput(input: ScenarioHostParsedUserI
 
 export function formatScenarioHostStructuredUserContent(content: string): string {
   const lines = String(content).replace(/\r\n/g, "\n").split("\n");
-  const start = lines.findIndex((line) => line.trim() && !line.startsWith("⟦"));
+  const start = lines.findIndex((line) => line.trim() && !startsWithTag(line));
   if (start < 0) {
     return content;
   }
 
   let end = start + 1;
-  while (end < lines.length && lines[end] && !lines[end]!.startsWith("⟦")) {
+  while (end < lines.length && lines[end] && !startsWithTag(lines[end]!)) {
     end += 1;
   }
 

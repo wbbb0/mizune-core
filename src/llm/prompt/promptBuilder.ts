@@ -1,3 +1,4 @@
+import { buildOpenTag, buildCloseTag } from "#utils/structuredEnvelope.ts";
 import type { LlmMessage } from "../llmClient.ts";
 import {
   buildUserBatchContent,
@@ -346,9 +347,9 @@ export function renderInlineTriggerBatchMessage(triggers: InlineSessionTriggerEx
       : "taskId" in trigger
         ? (trigger as { taskId: string }).taskId
         : "unknown";
-    const header = `⟦event kind="${trigger.kind}" resource_id="${resourceId}"⟧`;
+    const header = buildOpenTag("event", { kind: trigger.kind, resource_id: resourceId });
     const body = renderTriggerEventBody(trigger);
-    eventLines.push(header, ...body.split("\n"), "⟦/event⟧");
+    eventLines.push(header, ...body.split("\n"), buildCloseTag("event"));
   }
   const section = renderPromptSectionRaw("background_event_batch", eventLines) ?? "";
   const guidance = "后台任务已就绪。请阅读上述事件并继续完成当前任务；如果当前计划需要调整，请据此调整后续工具调用。";

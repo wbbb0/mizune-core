@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import pino from "pino";
 import { LlmClient } from "../../../src/llm/llmClient.ts";
 import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolDefinition, withMockFetch } from "../../helpers/llm-test-support.tsx";
+import { buildTag } from "../../../src/utils/structuredEnvelope.ts";
 
 function createNativeLmStudioSseResponse(payloads: any[]) {
   const encoder = new TextEncoder();
@@ -889,7 +890,7 @@ function createNativeLmStudioSseResponse(payloads: any[]) {
 
     const content = [
       "能看到我发给你的文档吗",
-      "⟦file file_id=\"077a6286\" name=\"铅毒之果.pdf\" download_tool=\"download_message_file\"⟧"
+      buildTag("file", { file_id: "077a6286", name: "铅毒之果.pdf", download_tool: "download_message_file" })
     ].join("\n");
 
     await withMockFetch([
@@ -983,7 +984,7 @@ function createNativeLmStudioSseResponse(payloads: any[]) {
           assert.equal(url, "http://localhost:1234/v1/chat/completions");
           assert.deepEqual(body.messages, [
             { role: "system", content: "sys" },
-            { role: "user", content: "⟦placeholder kind=\"bootstrap_user\" note=\"ignore_this_placeholder\"⟧" },
+            { role: "user", content: buildTag("placeholder", { kind: "bootstrap_user", note: "ignore_this_placeholder" }) },
             { role: "assistant", content: "历史助手首条" },
             { role: "user", content: "真正用户输入" }
           ]);

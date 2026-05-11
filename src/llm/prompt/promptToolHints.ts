@@ -1,3 +1,5 @@
+import { buildTag as buildTagHint } from "#utils/structuredEnvelope.ts";
+
 function hasAnyTool(visibleToolNames: Set<string>, toolNames: string[]): boolean {
   return toolNames.some((name) => visibleToolNames.has(name));
 }
@@ -11,7 +13,7 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   const lines: string[] = [];
 
   if (hasAnyTool(visibleToolNames, ["view_message", "download_message_file", "view_forward_record", "asset_media_view", "filesystem_media_view"])) {
-    lines.push("看到 ⟦file ...⟧ 表示用户发来了文件；不要说没看到文件。需要展开消息、转发、图片或消息文件引用时再调用查看/下载工具；message_id、forward_id、image_id、file_id 必须逐字复制。消息文件只在确实需要读取、查看或发送内容时调用 download_message_file 下载。");
+    lines.push(`看到 ${buildTagHint("file", { file_id: "...", name: "..." })} 表示用户发来了文件；不要说没看到文件。需要展开消息、转发、图片或消息文件引用时再调用查看/下载工具；message_id、forward_id、image_id、file_id 必须逐字复制。消息文件只在确实需要读取、查看或发送内容时调用 download_message_file 下载。`);
   }
 
   if (hasAnyTool(visibleToolNames, ["view_current_group_info", "list_current_group_announcements", "view_current_group_announcement", "list_current_group_files", "download_current_group_file", "list_current_group_members"])) {

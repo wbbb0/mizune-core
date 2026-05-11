@@ -7,6 +7,7 @@ import {
   shouldAutoCaptionSessionTitle
 } from "../../src/app/generation/sessionCaptioner.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { buildTag } from "../../src/utils/structuredEnvelope.ts";
 
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -100,7 +101,7 @@ function createDeferred<T>() {
       historySummary: null,
       history: [{
         role: "user",
-        content: "帮我看这个页面\n⟦ref kind=\"image\" image_id=\"file_screen_1\"⟧",
+        content: ["帮我看这个页面", buildTag("ref", { kind: "image", image_id: "file_screen_1" })].join("\n"),
         timestampMs: 1
       }]
     });

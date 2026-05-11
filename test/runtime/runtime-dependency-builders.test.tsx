@@ -92,7 +92,7 @@ function createTaskFixture(overrides: Record<string, unknown> = {}) {
     const dispatched: Array<{ sessionId: string; event: any }> = [];
     const notifications = createComfyTaskNotifications({
       async dispatchInternalTrigger() {},
-      async dispatchComfyEvent(event) {
+      async dispatchComfyEvent(event: any) {
         dispatched.push({ sessionId: event.owner.sessionId, event });
       }
     } as any);
@@ -115,7 +115,7 @@ function createTaskFixture(overrides: Record<string, unknown> = {}) {
     const dispatched: Array<any> = [];
     const notifications = createComfyTaskNotifications({
       async dispatchInternalTrigger() {},
-      async dispatchComfyEvent(event) {
+      async dispatchComfyEvent(event: any) {
         dispatched.push(event);
       }
     } as any);

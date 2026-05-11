@@ -8,7 +8,14 @@ import { OneBotClient } from "../../src/services/onebot/onebotClient.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { buildPrompt } from "../../src/llm/prompt/promptBuilder.ts";
 import { createMemoryHarness, createMemoryTestConfig } from "../helpers/memory-test-support.tsx";
-import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageText } from "../helpers/prompt-fixtures.tsx";
+import {
+  createPromptBatchMessage,
+  createPromptUserProfile,
+  findPromptBlock,
+  hasPromptSection,
+  parsePromptBlocks,
+  readPromptMessageText
+} from "../helpers/prompt-fixtures.tsx";
 
   test("prompt builder adds explicit batch metadata and trigger markers for multi-user group batches", async () => {
     const harness = await createMemoryHarness();
@@ -36,14 +43,21 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
 
       const system = String(prompt[0]?.content ?? "");
       const batchText = readPromptMessageText(prompt[1]);
-      assert.match(system, /⟦section name="global_persona"⟧/);
-      assert.match(system, /⟦section name="current_user_profile"⟧/);
-      assert.match(system, /⟦section name="participant_context"⟧/);
+      assert.equal(hasPromptSection(system, "global_persona"), true);
+      assert.equal(hasPromptSection(system, "current_user_profile"), true);
+      assert.equal(hasPromptSection(system, "participant_context"), true);
       assert.match(system, /批次头和每条消息头只用于帮助你分清会话模式/);
-      assert.match(batchText, /⟦trigger_batch session="群聊 123456" trigger_user="Bob \(10002\)" message_count="2" speaker_count="2"⟧/);
+      const batch = findPromptBlock(batchText, "trigger_batch");
+      assert.equal(batch?.attrs.session, "群聊 123456");
+      assert.equal(batch?.attrs.trigger_user, "Bob (10002)");
+      assert.equal(batch?.attrs.message_count, "2");
+      assert.equal(batch?.attrs.speaker_count, "2");
       assert.match(batchText, /当前会话模式：群聊。/);
-      assert.match(batchText, /⟦trigger_message index="1" speaker="Alice \(10001\)" trigger_user="no" time="2026\/03\/16 17:13:00"⟧/);
-      assert.match(batchText, /⟦trigger_message index="2" speaker="Bob \(10002\)" trigger_user="yes" time="2026\/03\/16 17:13:10"⟧/);
+      const messages = parsePromptBlocks(batchText).filter((block) => block.tag === "trigger_message");
+      assert.deepEqual(messages.map((message) => message.attrs), [
+        { index: "1", speaker: "Alice (10001)", trigger_user: "no", time: "2026/03/16 17:13:00" },
+        { index: "2", speaker: "Bob (10002)", trigger_user: "yes", time: "2026/03/16 17:13:10" }
+      ]);
     } finally {
       await harness.cleanup();
     }
@@ -77,7 +91,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       });
 
       const system = String(prompt[0]?.content ?? "");
-      assert.match(system, /⟦section name="toolset_guidance"⟧/);
+      assert.equal(hasPromptSection(system, "toolset_guidance"), true);
       assert.match(system, /当前激活工具集：网页检索与浏览/);
       assert.match(system, /若当前激活工具集不够完成任务，可先查看可申请的工具集，再申请补充。/);
       assert.doesNotMatch(system, /delegate_message_to_chat/);
@@ -144,7 +158,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       });
 
       const system = String(prompt[0]?.content ?? "");
-      assert.match(system, /⟦section name="tool_hints"⟧/);
+      assert.equal(hasPromptSection(system, "tool_hints"), true);
       assert.match(system, /网页交互前先 inspect_page/);
       assert.match(system, /查已登记图片、视频、音频或文件时先 asset_list/);
       assert.match(system, /处理已登记文档时用 asset_document_overview/);
@@ -247,12 +261,12 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       });
 
       const system = String(prompt[0]?.content ?? "");
-      assert.doesNotMatch(system, /⟦section name="participant_context"⟧/);
+      assert.equal(hasPromptSection(system, "participant_context"), false);
       assert.match(system, /当前长期全局行为规则（最多 4 条）：/);
       assert.match(system, /- 输出规则：先给结论再展开。/);
       assert.doesNotMatch(system, /重复的人设规则/);
-      assert.match(system, /⟦section name="current_user_profile"⟧/);
-      assert.match(system, /⟦section name="current_user_memories"⟧/);
+      assert.equal(hasPromptSection(system, "current_user_profile"), true);
+      assert.equal(hasPromptSection(system, "current_user_memories"), true);
       assert.match(system, /时区=Asia\/Shanghai/);
       assert.match(system, /职业=产品经理/);
       assert.match(system, /用户画像=经常先给结论/);
@@ -397,9 +411,9 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "你好", timestampMs: Date.now() })]
       });
       const system = String(prompt[0]?.content ?? "");
-      assert.doesNotMatch(system, /⟦section name="history_summary"⟧\s*⟦\/section⟧/);
-      assert.doesNotMatch(system, /⟦section name="participant_context"⟧\s*⟦\/section⟧/);
-      assert.doesNotMatch(system, /⟦section name="toolset_guidance"⟧\s*⟦\/section⟧/);
+      assert.equal(hasPromptSection(system, "history_summary"), false);
+      assert.equal(hasPromptSection(system, "participant_context"), false);
+      assert.equal(hasPromptSection(system, "toolset_guidance"), false);
       assert.doesNotMatch(system, /当前触发用户补充资料：/);
     } finally {
       await harness.cleanup();
@@ -454,15 +468,25 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
 
       const system = String(prompt[0]?.content ?? "");
       const batchText = readPromptMessageText(prompt[1]);
-      assert.match(system, /⟦section name="global_persona"⟧/);
-      assert.doesNotMatch(system, /⟦section name="memory_write_decision"⟧/);
-      assert.doesNotMatch(system, /⟦section name="global_rules"⟧/);
-      assert.doesNotMatch(system, /⟦section name="current_user_profile"⟧/);
-      assert.doesNotMatch(system, /⟦section name="current_user_memories"⟧/);
-      assert.doesNotMatch(system, /⟦section name="participant_context"⟧/);
+      assert.equal(hasPromptSection(system, "global_persona"), true);
+      assert.equal(hasPromptSection(system, "memory_write_decision"), false);
+      assert.equal(hasPromptSection(system, "global_rules"), false);
+      assert.equal(hasPromptSection(system, "current_user_profile"), false);
+      assert.equal(hasPromptSection(system, "current_user_memories"), false);
+      assert.equal(hasPromptSection(system, "participant_context"), false);
       assert.match(system, /AI assistant 模式工作/);
-      assert.match(batchText, /⟦trigger_batch session="群聊 123456" trigger_user="Bob \(10002\)" message_count="1" speaker_count="1"⟧/);
-      assert.match(batchText, /⟦trigger_message index="1" speaker="Bob \(10002\)" trigger_user="yes" time="2026\/03\/16 17:13:10"⟧/);
+      assert.deepEqual(findPromptBlock(batchText, "trigger_batch")?.attrs, {
+        session: "群聊 123456",
+        trigger_user: "Bob (10002)",
+        message_count: "1",
+        speaker_count: "1"
+      });
+      assert.deepEqual(parsePromptBlocks(batchText).find((block) => block.tag === "trigger_message")?.attrs, {
+        index: "1",
+        speaker: "Bob (10002)",
+        trigger_user: "yes",
+        time: "2026/03/16 17:13:10"
+      });
     } finally {
       await harness.cleanup();
     }
@@ -497,7 +521,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       });
 
       const system = String(prompt[0]?.content ?? "");
-      assert.match(system, /⟦section name="current_session_context"⟧/);
+      assert.equal(hasPromptSection(system, "current_session_context"), true);
       assert.match(system, /当前会话专属上下文/);
       assert.match(system, /会话用途：此会话专门用于记忆系统二阶段测试/);
     } finally {
@@ -562,10 +586,18 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       const system = String(prompt[0]?.content ?? "");
       const batchText = readPromptMessageText(prompt[1]);
       assert.match(system, /当前配置流程处理的是 bot 自身的设定草稿/);
-      assert.match(batchText, /^⟦draft_batch session="私聊 owner" message_count="1" speaker_count="1"⟧/);
+      assert.deepEqual(findPromptBlock(batchText, "draft_batch")?.attrs, {
+        session: "私聊 owner",
+        message_count: "1",
+        speaker_count: "1"
+      });
       assert.match(batchText, /默认把 owner 的表述理解为对 bot 当前草稿的描述、修改或补充/);
-      assert.match(batchText, /⟦draft_message index="1" speaker="Owner \(owner\)" time="2026\/03\/16 17:13:10"⟧/);
-      assert.doesNotMatch(batchText, /⟦trigger_batch/);
+      assert.deepEqual(findPromptBlock(batchText, "draft_message")?.attrs, {
+        index: "1",
+        speaker: "Owner (owner)",
+        time: "2026/03/16 17:13:10"
+      });
+      assert.equal(findPromptBlock(batchText, "trigger_batch"), undefined);
       assert.doesNotMatch(batchText, /trigger_user=/);
       assert.doesNotMatch(batchText, /当前触发用户/);
     } finally {

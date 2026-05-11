@@ -5,6 +5,7 @@ import {
   sanitizeOneBotOutboundText,
   sanitizeStoredOutboundText
 } from "../../src/llm/shared/outboundTextSanitizer.ts";
+import { buildOpenTag } from "../../src/utils/structuredEnvelope.ts";
 
   test("converts unordered list markers to middle dots for onebot", () => {
     const input = [
@@ -82,7 +83,7 @@ import {
 
   test("storage sanitizer keeps markdown formatting while stripping internal lines", () => {
     const input = [
-      "⟦section name=\"debug\"⟧",
+      buildOpenTag("section", { name: "debug" }),
       "**重点**",
       "- 第一项",
       "```ts",
@@ -98,8 +99,8 @@ import {
 
   test("strips leading prompt-style message headers when requested", () => {
     const input = [
-      "⟦trigger_batch session=\"群聊 123456\" trigger_user=\"Bob (10002)\" message_count=\"2\" speaker_count=\"2\"⟧",
-      "⟦trigger_message index=\"1\" speaker=\"Alice (10001)\" trigger_user=\"no\" time=\"2026/03/16 17:13:00\"⟧",
+      buildOpenTag("trigger_batch", { session: "群聊 123456", trigger_user: "Bob (10002)", message_count: "2", speaker_count: "2" }),
+      buildOpenTag("trigger_message", { index: "1", speaker: "Alice (10001)", trigger_user: "no", time: "2026/03/16 17:13:00" }),
       "",
       "那我先回 Bob 这句。"
     ].join("\n");
@@ -112,8 +113,8 @@ import {
 
   test("strips leading draft-style message headers when requested", () => {
     const input = [
-      "⟦draft_batch session=\"私聊 owner\" message_count=\"1\" speaker_count=\"1\"⟧",
-      "⟦draft_message index=\"1\" speaker=\"Owner (owner)\" time=\"2026/03/16 17:13:00\"⟧",
+      buildOpenTag("draft_batch", { session: "私聊 owner", message_count: "1", speaker_count: "1" }),
+      buildOpenTag("draft_message", { index: "1", speaker: "Owner (owner)", time: "2026/03/16 17:13:00" }),
       "",
       "这份草稿可以确认。"
     ].join("\n");
@@ -125,7 +126,7 @@ import {
   });
 
   test("keeps prompt-style message headers when stripping is not requested", () => {
-    const input = "⟦trigger_message index=\"1\" speaker=\"Alice (10001)\" trigger_user=\"yes\" time=\"2026/03/16 17:13:00\"⟧\n收到啦";
+    const input = `${buildOpenTag("trigger_message", { index: "1", speaker: "Alice (10001)", trigger_user: "yes", time: "2026/03/16 17:13:00" })}\n收到啦`;
 
     assert.equal(
       sanitizeOutboundText(input),
@@ -136,7 +137,7 @@ import {
   test("strips standalone structured bracket lines in the middle of output", () => {
     const input = [
       "先说结论",
-      "⟦section name=\"debug\"⟧",
+      buildOpenTag("section", { name: "debug" }),
       "再补一句"
     ].join("\n");
 
@@ -147,6 +148,18 @@ import {
   });
 
   test("keeps bracket tokens when they are part of a normal sentence", () => {
-    const input = "这个符号⟦不是整行标签⟧要保留";
+    const input = "这个符号<不是整行标签>要保留";
+    assert.equal(sanitizeOutboundText(input), input);
+  });
+
+  test("keeps standalone angle-bracket and HTML/XML lines as normal text", () => {
+    const input = [
+      "<保留这行>",
+      "<div>",
+      "  <span>HTML 示例</span>",
+      "</div>",
+      "正文里的 <tag> 和 <3 都保留"
+    ].join("\n");
+
     assert.equal(sanitizeOutboundText(input), input);
   });
