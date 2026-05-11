@@ -59,3 +59,12 @@
 
 旧版没有 `__sqlite_schema_groups` 元数据的数据库会先按当前 schema 校验；校验通过则接管并写入表组元数据，校验失败则只重置失败的表组。
 其中 `context.items` 和 `context.embeddings` 会在无元数据接管时补齐旧实现已经支持的 `slot_key`、`embedding_text_hash`、`text_hash` 列，避免把升级到表组机制本身误判为业务结构失效。
+
+## Sessions Store 表组
+
+当前 `sessions/sessions.sqlite` 注册了两个 source-of-truth 表组：
+
+- `sessions.persisted_sessions`：`sessions`，承载会话快照持久化数据
+- `sessions.scenario_host_state`：`scenario_host_session_states`，承载 `scenario_host` 每会话状态
+
+这两个表组都使用 `block_reset`，不接受版本不匹配时的自动重建。修改这类表结构时，应先实现显式迁移，或由维护者确认清空新库后再启动。

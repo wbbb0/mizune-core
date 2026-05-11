@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
@@ -47,6 +47,24 @@ import { createInitialScenarioHostSessionState, isScenarioStateInitialized } fro
         playerDisplayName: "Alice"
       });
       assert.equal(initial.initialized, false);
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("scenario_host state store persists in sqlite without legacy json output", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "scenario-host-store-"));
+    try {
+      const store = new ScenarioHostStateStore(dataDir, createTestAppConfig(), pino({ level: "silent" }));
+      await store.init();
+      await store.ensure("qqbot:p:sqlite", {
+        playerUserId: "10001",
+        playerDisplayName: "Alice"
+      });
+
+      const sessionFiles = await readdir(join(dataDir, "sessions"), { withFileTypes: true });
+      assert.equal(sessionFiles.some((entry) => entry.isFile() && entry.name.endsWith(".json")), false);
+      assert.equal(sessionFiles.some((entry) => entry.isFile() && entry.name === "sessions.sqlite"), true);
     } finally {
       await rm(dataDir, { recursive: true, force: true });
     }
