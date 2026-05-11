@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type { Logger } from "pino";
 import { z } from "zod";
@@ -210,7 +211,15 @@ export class SessionPersistence {
         active_transcript_group_id,
         history_summary,
         history_backfill_boundary_ms,
-        internal_transcript_json,
+        COALESCE((
+          SELECT json_group_array(json(ordered_items.item_json))
+          FROM (
+            SELECT item_json
+            FROM session_transcript_items
+            WHERE session_transcript_items.session_id = sessions.session_id
+            ORDER BY item_index ASC
+          ) AS ordered_items
+        ), '[]') AS internal_transcript_json,
         debug_markers_json,
         last_llm_usage_json,
         sent_messages_json,
@@ -238,96 +247,101 @@ export class SessionPersistence {
     const validated = persistedSessionSchema.parse(session) as PersistedSessionState;
     await this.enqueueWrite(session.id, async () => {
       const db = await this.getReadyDb();
-      db.prepare(`
-        INSERT INTO sessions (
-          session_id,
-          type,
-          source,
-          mode_id,
-          operation_mode_json,
-          participant_kind,
-          participant_id,
-          title,
-          title_source,
-          reply_delivery,
-          pending_messages_json,
-          pending_transcript_group_id_is_set,
-          pending_transcript_group_id,
-          active_transcript_group_id_is_set,
-          active_transcript_group_id,
-          history_summary,
-          history_backfill_boundary_ms,
-          internal_transcript_json,
-          debug_markers_json,
-          last_llm_usage_json,
-          sent_messages_json,
-          last_active_at_ms,
-          last_message_at_ms,
-          latest_gap_ms,
-          smoothed_gap_ms,
-          updated_at_ms
-        ) VALUES (
-          @sessionId,
-          @type,
-          @source,
-          @modeId,
-          @operationModeJson,
-          @participantKind,
-          @participantId,
-          @title,
-          @titleSource,
-          @replyDelivery,
-          @pendingMessagesJson,
-          @pendingTranscriptGroupIdIsSet,
-          @pendingTranscriptGroupId,
-          @activeTranscriptGroupIdIsSet,
-          @activeTranscriptGroupId,
-          @historySummary,
-          @historyBackfillBoundaryMs,
-          @internalTranscriptJson,
-          @debugMarkersJson,
-          @lastLlmUsageJson,
-          @sentMessagesJson,
-          @lastActiveAtMs,
-          @lastMessageAtMs,
-          @latestGapMs,
-          @smoothedGapMs,
-          @updatedAtMs
-        )
-        ON CONFLICT(session_id) DO UPDATE SET
-          type = excluded.type,
-          source = excluded.source,
-          mode_id = excluded.mode_id,
-          operation_mode_json = excluded.operation_mode_json,
-          participant_kind = excluded.participant_kind,
-          participant_id = excluded.participant_id,
-          title = excluded.title,
-          title_source = excluded.title_source,
-          reply_delivery = excluded.reply_delivery,
-          pending_messages_json = excluded.pending_messages_json,
-          pending_transcript_group_id_is_set = excluded.pending_transcript_group_id_is_set,
-          pending_transcript_group_id = excluded.pending_transcript_group_id,
-          active_transcript_group_id_is_set = excluded.active_transcript_group_id_is_set,
-          active_transcript_group_id = excluded.active_transcript_group_id,
-          history_summary = excluded.history_summary,
-          history_backfill_boundary_ms = excluded.history_backfill_boundary_ms,
-          internal_transcript_json = excluded.internal_transcript_json,
-          debug_markers_json = excluded.debug_markers_json,
-          last_llm_usage_json = excluded.last_llm_usage_json,
-          sent_messages_json = excluded.sent_messages_json,
-          last_active_at_ms = excluded.last_active_at_ms,
-          last_message_at_ms = excluded.last_message_at_ms,
-          latest_gap_ms = excluded.latest_gap_ms,
-          smoothed_gap_ms = excluded.smoothed_gap_ms,
-          updated_at_ms = excluded.updated_at_ms
-      `).run(toPersistedSessionParams(validated));
+      const write = db.transaction(() => {
+        db.prepare(`
+          INSERT INTO sessions (
+            session_id,
+            type,
+            source,
+            mode_id,
+            operation_mode_json,
+            participant_kind,
+            participant_id,
+            title,
+            title_source,
+            reply_delivery,
+            pending_messages_json,
+            pending_transcript_group_id_is_set,
+            pending_transcript_group_id,
+            active_transcript_group_id_is_set,
+            active_transcript_group_id,
+            history_summary,
+            history_backfill_boundary_ms,
+            debug_markers_json,
+            last_llm_usage_json,
+            sent_messages_json,
+            last_active_at_ms,
+            last_message_at_ms,
+            latest_gap_ms,
+            smoothed_gap_ms,
+            updated_at_ms
+          ) VALUES (
+            @sessionId,
+            @type,
+            @source,
+            @modeId,
+            @operationModeJson,
+            @participantKind,
+            @participantId,
+            @title,
+            @titleSource,
+            @replyDelivery,
+            @pendingMessagesJson,
+            @pendingTranscriptGroupIdIsSet,
+            @pendingTranscriptGroupId,
+            @activeTranscriptGroupIdIsSet,
+            @activeTranscriptGroupId,
+            @historySummary,
+            @historyBackfillBoundaryMs,
+            @debugMarkersJson,
+            @lastLlmUsageJson,
+            @sentMessagesJson,
+            @lastActiveAtMs,
+            @lastMessageAtMs,
+            @latestGapMs,
+            @smoothedGapMs,
+            @updatedAtMs
+          )
+          ON CONFLICT(session_id) DO UPDATE SET
+            type = excluded.type,
+            source = excluded.source,
+            mode_id = excluded.mode_id,
+            operation_mode_json = excluded.operation_mode_json,
+            participant_kind = excluded.participant_kind,
+            participant_id = excluded.participant_id,
+            title = excluded.title,
+            title_source = excluded.title_source,
+            reply_delivery = excluded.reply_delivery,
+            pending_messages_json = excluded.pending_messages_json,
+            pending_transcript_group_id_is_set = excluded.pending_transcript_group_id_is_set,
+            pending_transcript_group_id = excluded.pending_transcript_group_id,
+            active_transcript_group_id_is_set = excluded.active_transcript_group_id_is_set,
+            active_transcript_group_id = excluded.active_transcript_group_id,
+            history_summary = excluded.history_summary,
+            history_backfill_boundary_ms = excluded.history_backfill_boundary_ms,
+            debug_markers_json = excluded.debug_markers_json,
+            last_llm_usage_json = excluded.last_llm_usage_json,
+            sent_messages_json = excluded.sent_messages_json,
+            last_active_at_ms = excluded.last_active_at_ms,
+            last_message_at_ms = excluded.last_message_at_ms,
+            latest_gap_ms = excluded.latest_gap_ms,
+            smoothed_gap_ms = excluded.smoothed_gap_ms,
+            updated_at_ms = excluded.updated_at_ms
+        `).run(toPersistedSessionParams(validated));
+        syncSessionTranscriptItems(db, validated);
+      });
+      write();
     });
   }
 
   async remove(sessionId: string): Promise<void> {
     await this.enqueueWrite(sessionId, async () => {
       const db = await this.getReadyDb();
-      db.prepare(`DELETE FROM sessions WHERE session_id = ?`).run(sessionId);
+      const remove = db.transaction(() => {
+        db.prepare(`DELETE FROM session_transcript_items WHERE session_id = ?`).run(sessionId);
+        db.prepare(`DELETE FROM sessions WHERE session_id = ?`).run(sessionId);
+      });
+      remove();
     });
   }
 
@@ -375,6 +389,77 @@ export class SessionPersistence {
     }
     return this.sqlite.db;
   }
+
+  async listSessionRows(input: { offset?: number; limit?: number } = {}): Promise<{
+    rows: SessionRegistryRow[];
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const db = await this.getReadyDb();
+    const offset = Math.max(0, Math.trunc(input.offset ?? 0));
+    const limit = Math.min(500, Math.max(1, Math.trunc(input.limit ?? 50)));
+    const total = (db.prepare(`SELECT COUNT(*) AS count FROM sessions`).get() as { count: number }).count;
+    const rows = db.prepare(`
+      SELECT
+        session_id AS sessionId,
+        type,
+        source,
+        mode_id AS modeId,
+        participant_kind AS participantKind,
+        participant_id AS participantId,
+        title,
+        title_source AS titleSource,
+        reply_delivery AS replyDelivery,
+        last_active_at_ms AS lastActiveAtMs,
+        last_message_at_ms AS lastMessageAtMs,
+        updated_at_ms AS updatedAtMs,
+        (
+          SELECT COUNT(*)
+          FROM session_transcript_items
+          WHERE session_transcript_items.session_id = sessions.session_id
+        ) AS transcriptCount
+      FROM sessions
+      ORDER BY last_active_at_ms DESC, session_id ASC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset) as SessionRegistryRow[];
+    return { rows, total, offset, limit };
+  }
+
+  async listTranscriptRows(input: { offset?: number; limit?: number } = {}): Promise<{
+    rows: SessionTranscriptRegistryRow[];
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const db = await this.getReadyDb();
+    const offset = Math.max(0, Math.trunc(input.offset ?? 0));
+    const limit = Math.min(500, Math.max(1, Math.trunc(input.limit ?? 50)));
+    const total = (db.prepare(`SELECT COUNT(*) AS count FROM session_transcript_items`).get() as { count: number }).count;
+    const rows = db.prepare(`
+      SELECT
+        session_id AS sessionId,
+        item_index AS itemIndex,
+        item_id AS itemId,
+        group_id AS groupId,
+        kind,
+        role,
+        llm_visible AS llmVisible,
+        runtime_excluded AS runtimeExcluded,
+        timestamp_ms AS timestampMs,
+        item_hash AS itemHash,
+        item_json AS item
+      FROM session_transcript_items
+      ORDER BY session_id ASC, item_index ASC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset) as Array<Omit<SessionTranscriptRegistryRow, "item"> & { item: string }>;
+    return {
+      rows: rows.map((row) => ({ ...row, item: JSON.parse(row.item) })),
+      total,
+      offset,
+      limit
+    };
+  }
 }
 
 type PersistedSessionRow = {
@@ -405,6 +490,36 @@ type PersistedSessionRow = {
   smoothed_gap_ms: number | null;
 };
 
+export interface SessionRegistryRow {
+  sessionId: string;
+  type: "private" | "group";
+  source: "onebot" | "web" | null;
+  modeId: string | null;
+  participantKind: "user" | "group";
+  participantId: string;
+  title: string | null;
+  titleSource: "default" | "auto" | "manual" | null;
+  replyDelivery: "onebot" | "web" | null;
+  transcriptCount: number;
+  lastActiveAtMs: number;
+  lastMessageAtMs: number | null;
+  updatedAtMs: number;
+}
+
+export interface SessionTranscriptRegistryRow {
+  sessionId: string;
+  itemIndex: number;
+  itemId: string;
+  groupId: string;
+  kind: string;
+  role: string | null;
+  llmVisible: 0 | 1;
+  runtimeExcluded: 0 | 1;
+  timestampMs: number;
+  itemHash: string;
+  item: unknown;
+}
+
 function toPersistedSessionParams(session: PersistedSessionState): Record<string, unknown> {
   return {
     sessionId: session.id,
@@ -424,7 +539,6 @@ function toPersistedSessionParams(session: PersistedSessionState): Record<string
     activeTranscriptGroupId: session.activeTranscriptGroupId ?? null,
     historySummary: session.historySummary,
     historyBackfillBoundaryMs: session.historyBackfillBoundaryMs ?? null,
-    internalTranscriptJson: JSON.stringify(session.internalTranscript),
     debugMarkersJson: JSON.stringify(session.debugMarkers),
     lastLlmUsageJson: session.lastLlmUsage == null ? null : JSON.stringify(session.lastLlmUsage),
     sentMessagesJson: JSON.stringify(session.sentMessages),
@@ -434,6 +548,96 @@ function toPersistedSessionParams(session: PersistedSessionState): Record<string
     smoothedGapMs: session.smoothedGapMs,
     updatedAtMs: Date.now()
   };
+}
+
+function syncSessionTranscriptItems(db: SqliteDatabase, session: PersistedSessionState): void {
+  const existingRows = db.prepare(`
+    SELECT item_id, item_index, item_hash
+    FROM session_transcript_items
+    WHERE session_id = ?
+  `).all(session.id) as Array<{ item_id: string; item_index: number; item_hash: string }>;
+  const existingById = new Map(existingRows.map((row) => [row.item_id, row]));
+  const nextIds = new Set<string>();
+  const upsert = db.prepare(`
+    INSERT INTO session_transcript_items (
+      session_id,
+      item_index,
+      item_id,
+      group_id,
+      kind,
+      role,
+      llm_visible,
+      runtime_excluded,
+      timestamp_ms,
+      item_hash,
+      item_json,
+      updated_at_ms
+    ) VALUES (
+      @sessionId,
+      @itemIndex,
+      @itemId,
+      @groupId,
+      @kind,
+      @role,
+      @llmVisible,
+      @runtimeExcluded,
+      @timestampMs,
+      @itemHash,
+      @itemJson,
+      @updatedAtMs
+    )
+    ON CONFLICT(session_id, item_id) DO UPDATE SET
+      item_index = excluded.item_index,
+      group_id = excluded.group_id,
+      kind = excluded.kind,
+      role = excluded.role,
+      llm_visible = excluded.llm_visible,
+      runtime_excluded = excluded.runtime_excluded,
+      timestamp_ms = excluded.timestamp_ms,
+      item_hash = excluded.item_hash,
+      item_json = excluded.item_json,
+      updated_at_ms = excluded.updated_at_ms
+  `);
+  const now = Date.now();
+  for (const [itemIndex, item] of session.internalTranscript.entries()) {
+    const itemJson = JSON.stringify(item);
+    const itemHash = hashTranscriptItem(itemJson);
+    const itemId = item.id ?? `transcript:${itemIndex}:${itemHash.slice(0, 24)}`;
+    const groupId = item.groupId ?? itemId;
+    nextIds.add(itemId);
+    const existing = existingById.get(itemId);
+    if (existing && existing.item_index === itemIndex && existing.item_hash === itemHash) {
+      continue;
+    }
+    upsert.run({
+      sessionId: session.id,
+      itemIndex,
+      itemId,
+      groupId,
+      kind: item.kind,
+      role: "role" in item ? item.role : null,
+      llmVisible: item.llmVisible === false ? 0 : 1,
+      runtimeExcluded: item.runtimeExcluded === true ? 1 : 0,
+      timestampMs: item.timestampMs,
+      itemHash,
+      itemJson,
+      updatedAtMs: now
+    });
+  }
+  const remove = db.prepare(`
+    DELETE FROM session_transcript_items
+    WHERE session_id = ?
+      AND item_id = ?
+  `);
+  for (const row of existingRows) {
+    if (!nextIds.has(row.item_id)) {
+      remove.run(session.id, row.item_id);
+    }
+  }
+}
+
+function hashTranscriptItem(itemJson: string): string {
+  return createHash("sha256").update(itemJson).digest("hex");
 }
 
 function rowToPersistedSessionState(row: PersistedSessionRow): PersistedSessionState {
@@ -490,7 +694,6 @@ function createSessionsSchema(db: SqliteDatabase): void {
       active_transcript_group_id TEXT,
       history_summary TEXT,
       history_backfill_boundary_ms INTEGER,
-      internal_transcript_json TEXT NOT NULL,
       debug_markers_json TEXT NOT NULL,
       last_llm_usage_json TEXT,
       sent_messages_json TEXT NOT NULL,
@@ -500,6 +703,29 @@ function createSessionsSchema(db: SqliteDatabase): void {
       smoothed_gap_ms REAL,
       updated_at_ms INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS session_transcript_items (
+      session_id TEXT NOT NULL,
+      item_index INTEGER NOT NULL CHECK (item_index >= 0),
+      item_id TEXT NOT NULL CHECK (item_id = trim(item_id) AND length(item_id) > 0),
+      group_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      role TEXT,
+      llm_visible INTEGER NOT NULL CHECK (llm_visible IN (0, 1)),
+      runtime_excluded INTEGER NOT NULL CHECK (runtime_excluded IN (0, 1)),
+      timestamp_ms INTEGER NOT NULL,
+      item_hash TEXT NOT NULL,
+      item_json TEXT NOT NULL,
+      updated_at_ms INTEGER NOT NULL,
+      PRIMARY KEY (session_id, item_id),
+      UNIQUE (session_id, item_index),
+      FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_session_transcript_items_session_index
+      ON session_transcript_items(session_id, item_index);
+    CREATE INDEX IF NOT EXISTS idx_session_transcript_items_kind_time
+      ON session_transcript_items(kind, timestamp_ms);
   `);
 }
 
@@ -522,7 +748,6 @@ function validateSessionsSchema(db: SqliteDatabase): void {
     active_transcript_group_id: "TEXT",
     history_summary: "TEXT",
     history_backfill_boundary_ms: "INTEGER",
-    internal_transcript_json: "TEXT",
     debug_markers_json: "TEXT",
     last_llm_usage_json: "TEXT",
     sent_messages_json: "TEXT",
@@ -532,14 +757,31 @@ function validateSessionsSchema(db: SqliteDatabase): void {
     smoothed_gap_ms: "REAL",
     updated_at_ms: "INTEGER"
   });
+  assertTableColumns(db, "session_transcript_items", {
+    session_id: "TEXT",
+    item_index: "INTEGER",
+    item_id: "TEXT",
+    group_id: "TEXT",
+    kind: "TEXT",
+    role: "TEXT",
+    llm_visible: "INTEGER",
+    runtime_excluded: "INTEGER",
+    timestamp_ms: "INTEGER",
+    item_hash: "TEXT",
+    item_json: "TEXT",
+    updated_at_ms: "INTEGER"
+  });
 }
 
 const SESSION_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   {
     groupId: "sessions.persisted_sessions",
-    schemaVersion: 2,
-    resetPolicy: "block_reset",
-    ownedTables: ["sessions"],
+    schemaVersion: 3,
+    ownedTables: ["sessions", "session_transcript_items"],
+    ownedIndexes: [
+      "idx_session_transcript_items_session_index",
+      "idx_session_transcript_items_kind_time"
+    ],
     createSchema: createSessionsSchema,
     validateSchema: validateSessionsSchema
   }

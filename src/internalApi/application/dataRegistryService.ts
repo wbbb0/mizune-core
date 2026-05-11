@@ -34,6 +34,7 @@ import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
 import type { RuntimeResourceStore } from "#runtime/resources/runtimeResourceStore.ts";
 import { chatFileRecordRegistrySchema, type ChatFileStore } from "#services/workspace/chatFileStore.ts";
+import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
 
 export interface DataRegistryService {
   listResources: DataRegistry["listResources"];
@@ -67,6 +68,7 @@ export function createDataRegistryService(input: {
   contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs">;
   audioStore: Pick<AudioStore, "listRows" | "getRow">;
   chatFileStore: Pick<ChatFileStore, "listRows" | "getRow">;
+  sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
   runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list">;
 }): DataRegistryService {
   const registry = new DataRegistry({
@@ -97,9 +99,9 @@ function createInitialDataResourceDefinitions(input: {
   contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs">;
   audioStore: Pick<AudioStore, "listRows" | "getRow">;
   chatFileStore: Pick<ChatFileStore, "listRows" | "getRow">;
+  sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
   runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list">;
 }): DataResourceDefinition[] {
-  const dataDir = input.config.dataDir;
   return [
     singletonSqliteResource({
       key: "global_profile_readiness",
@@ -160,14 +162,86 @@ function createInitialDataResourceDefinitions(input: {
     createContextMaintenanceJobsResource(input.contextStore),
     createLiveResourcesResource(input.runtimeResourceStore),
     createAudioFilesResource(input.audioStore),
-    directoryResource({
-      key: "sessions",
-      title: "Sessions",
-      path: join(dataDir, "sessions"),
-      durability: "source_of_truth"
-    }),
+    createSessionsResource(input.sessionPersistence),
+    createSessionTranscriptItemsResource(input.sessionPersistence),
     createWorkspaceFilesResource(input.chatFileStore)
   ];
+}
+
+function createSessionsResource(
+  sessionPersistence: Pick<SessionPersistence, "listSessionRows">
+): DataResourceDefinition {
+  return {
+    key: "sessions",
+    title: "Sessions",
+    description: "会话元数据。完整消息不再内嵌在本表，见 session_transcript_items。",
+    shape: "collection",
+    editable: false,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "sessions",
+      tableGroup: "sessions.persisted_sessions",
+      tables: ["sessions"]
+    },
+    export: {
+      enabled: true,
+      fileName: "sessions.json",
+      format: "json"
+    },
+    rowIdentity: {
+      fields: ["sessionId"],
+      encode: "single"
+    },
+    adapter: {
+      listRows: async (query) => sessionPersistence.listSessionRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      }),
+      exportRows: async (query) => sessionPersistence.listSessionRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      })
+    }
+  };
+}
+
+function createSessionTranscriptItemsResource(
+  sessionPersistence: Pick<SessionPersistence, "listTranscriptRows">
+): DataResourceDefinition {
+  return {
+    key: "session_transcript_items",
+    title: "Session Transcript Items",
+    description: "会话后台记录竖表，一行对应一条 internalTranscript item。",
+    shape: "log",
+    editable: false,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "sessions",
+      tableGroup: "sessions.persisted_sessions",
+      tables: ["session_transcript_items"]
+    },
+    export: {
+      enabled: true,
+      fileName: "session_transcript_items.json",
+      format: "json"
+    },
+    rowIdentity: {
+      fields: ["sessionId", "itemId"],
+      encode: "json_base64url"
+    },
+    adapter: {
+      listRows: async (query) => sessionPersistence.listTranscriptRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      }),
+      exportRows: async (query) => sessionPersistence.listTranscriptRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      })
+    }
+  };
 }
 
 function createAudioFilesResource(

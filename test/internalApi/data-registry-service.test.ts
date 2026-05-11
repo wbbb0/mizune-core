@@ -370,6 +370,54 @@ function createRegistryService(dataDir: string, options: { schedulerEnabled?: bo
         return workspaceRows.find((row) => row.fileId === fileId) ?? null;
       }
     },
+    sessionPersistence: {
+      async listSessionRows(input = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return {
+          rows: [{
+            sessionId: "private:u1",
+            type: "private" as const,
+            source: "web" as const,
+            modeId: "assistant",
+            participantKind: "user" as const,
+            participantId: "u1",
+            title: "u1",
+            titleSource: "manual" as const,
+            replyDelivery: "web" as const,
+            transcriptCount: 1,
+            lastActiveAtMs: 1,
+            lastMessageAtMs: 1,
+            updatedAtMs: 2
+          }].slice(offset, offset + limit),
+          total: 1,
+          offset,
+          limit
+        };
+      },
+      async listTranscriptRows(input = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return {
+          rows: [{
+            sessionId: "private:u1",
+            itemIndex: 0,
+            itemId: "ti_1",
+            groupId: "tg_1",
+            kind: "user_message",
+            role: "user",
+            llmVisible: 1 as const,
+            runtimeExcluded: 0 as const,
+            timestampMs: 1,
+            itemHash: "hash",
+            item: { id: "ti_1", kind: "user_message", text: "hello" }
+          }].slice(offset, offset + limit),
+          total: 1,
+          offset,
+          limit
+        };
+      }
+    },
     runtimeResourceStore: {
       async listRows() {
         return { rows: [], total: 0, offset: 0, limit: 100 };
@@ -385,9 +433,6 @@ function createRegistryService(dataDir: string, options: { schedulerEnabled?: bo
 test("DataRegistryService exposes initial file and directory resources", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-data-registry-test-"));
   try {
-    await mkdir(join(dataDir, "sessions"), { recursive: true });
-    await writeFile(join(dataDir, "sessions", "private%3Au1.json"), JSON.stringify({ id: "private:u1" }), "utf8");
-
     const service = createRegistryService(dataDir);
 
     const listed = await service.listResources();
@@ -405,6 +450,7 @@ test("DataRegistryService exposes initial file and directory resources", async (
       "rp_profile",
       "scenario_profile",
       "scheduled_jobs",
+      "session_transcript_items",
       "sessions",
       "setup_state",
       "toolset_rules",
@@ -415,7 +461,8 @@ test("DataRegistryService exposes initial file and directory resources", async (
     ]);
     assert.equal(listed.resources.find((resource) => resource.key === "audio_files")?.shape, "collection");
     assert.equal(listed.resources.find((resource) => resource.key === "workspace_files")?.shape, "collection");
-    assert.equal(listed.resources.find((resource) => resource.key === "sessions")?.shape, "directory");
+    assert.equal(listed.resources.find((resource) => resource.key === "sessions")?.shape, "collection");
+    assert.equal(listed.resources.find((resource) => resource.key === "session_transcript_items")?.shape, "log");
 
     const audioFiles = await service.getResource("audio_files") as {
       resource: {
@@ -479,15 +526,24 @@ test("DataRegistryService exposes initial file and directory resources", async (
 
     const sessions = await service.getResource("sessions") as {
       resource: {
-        items: Array<{ key: string; title: string }>;
+        shape: string;
+        storage: { kind: string; database: string; tableGroup: string; tables: string[] };
       };
     };
-    assert.equal(sessions.resource.items.length, 1);
-    assert.equal(sessions.resource.items[0]?.key, "private%3Au1.json");
-    assert.equal(sessions.resource.items[0]?.title, "private:u1");
+    assert.equal(sessions.resource.shape, "collection");
+    assert.deepEqual(sessions.resource.storage, {
+      kind: "sqlite",
+      database: "sessions",
+      tableGroup: "sessions.persisted_sessions",
+      tables: ["sessions"]
+    });
+    const sessionRows = await service.listRows("sessions");
+    assert.equal(sessionRows.rows.length, 1);
+    assert.equal((sessionRows.rows[0] as { sessionId: string }).sessionId, "private:u1");
 
-    const item = await service.getDirectoryItem("sessions", "private%3Au1.json");
-    assert.deepEqual((item as { item: { value: unknown } }).item.value, { id: "private:u1" });
+    const transcriptRows = await service.listRows("session_transcript_items");
+    assert.equal(transcriptRows.rows.length, 1);
+    assert.equal((transcriptRows.rows[0] as { itemId: string }).itemId, "ti_1");
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }
@@ -503,8 +559,8 @@ test("DataRegistryService rejects row and export operations for removed or file-
       /Unknown data resource: image_files/u
     );
     await assert.rejects(
-      service.listRows("sessions"),
-      /Data resource does not contain rows: sessions/u
+      service.listRows("sessions_nope"),
+      /Unknown data resource: sessions_nope/u
     );
   } finally {
     await rm(dataDir, { recursive: true, force: true });

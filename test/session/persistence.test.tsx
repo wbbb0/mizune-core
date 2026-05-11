@@ -572,15 +572,15 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
         INSERT INTO sessions (
           session_id, type, source, mode_id, operation_mode_json,
           participant_kind, participant_id, title, title_source, reply_delivery,
-          pending_messages_json, pending_transcript_group_id, active_transcript_group_id,
-          history_summary, history_backfill_boundary_ms, internal_transcript_json,
+          pending_messages_json,
+          history_summary, history_backfill_boundary_ms,
           debug_markers_json, last_llm_usage_json, sent_messages_json,
           last_active_at_ms, last_message_at_ms, latest_gap_ms, smoothed_gap_ms, updated_at_ms
         ) VALUES (
           'qqbot:p:legacy', 'private', NULL, NULL, NULL,
           'user', '', NULL, NULL, NULL,
-          '[{"userId":"owner"}]', NULL, NULL,
-          NULL, NULL, '[]',
+          '[{"userId":"owner"}]',
+          NULL, NULL,
           '[]', '{"inputTokens":10}', '[]',
           1, 1, NULL, NULL, 1
         )
@@ -600,15 +600,15 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
         INSERT INTO sessions (
           session_id, type, source, mode_id, operation_mode_json,
           participant_kind, participant_id, title, title_source, reply_delivery,
-          pending_messages_json, pending_transcript_group_id, active_transcript_group_id,
-          history_summary, history_backfill_boundary_ms, internal_transcript_json,
+          pending_messages_json,
+          history_summary, history_backfill_boundary_ms,
           debug_markers_json, last_llm_usage_json, sent_messages_json,
           last_active_at_ms, last_message_at_ms, latest_gap_ms, smoothed_gap_ms, updated_at_ms
         ) VALUES (
           @sessionId, @type, NULL, NULL, NULL,
           @participantKind, @participantId, @title, @titleSource, NULL,
-          @pendingMessagesJson, NULL, NULL,
-          NULL, NULL, @internalTranscriptJson,
+          @pendingMessagesJson,
+          NULL, NULL,
           @debugMarkersJson, @lastLlmUsageJson, @sentMessagesJson,
           @lastActiveAtMs, @lastMessageAtMs, NULL, NULL, @updatedAtMs
         )
@@ -620,7 +620,6 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
         title: "Compat",
         titleSource: "default",
         pendingMessagesJson: "[]",
-        internalTranscriptJson: "[]",
         debugMarkersJson: "[]",
         lastLlmUsageJson: JSON.stringify({
           inputTokens: 10,

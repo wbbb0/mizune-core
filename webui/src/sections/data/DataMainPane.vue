@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { RefreshCw, ChevronRight, ChevronDown, Save, Trash2, Pin, Pencil, SlidersHorizontal } from "lucide-vue-next";
 import { SchemaNode } from "@workbench-kit/vue-resource-editor";
 import { useDataSection } from "@/composables/sections/useDataSection";
@@ -61,6 +62,56 @@ const {
   formatTime,
   formatContextMeta
 } = useDataSection();
+
+type SessionDataRow = {
+  sessionId: string;
+  type: "private" | "group";
+  source: "onebot" | "web" | null;
+  modeId: string | null;
+  participantKind: "user" | "group";
+  participantId: string;
+  title: string | null;
+  titleSource: "default" | "auto" | "manual" | null;
+  replyDelivery: "onebot" | "web" | null;
+  transcriptCount: number;
+  lastActiveAtMs: number;
+  lastMessageAtMs: number | null;
+  updatedAtMs: number;
+};
+
+type SessionTranscriptDataRow = {
+  sessionId: string;
+  itemIndex: number;
+  itemId: string;
+  groupId: string;
+  kind: string;
+  role: string | null;
+  llmVisible: 0 | 1;
+  runtimeExcluded: 0 | 1;
+  timestampMs: number;
+  itemHash: string;
+  item: unknown;
+};
+
+const sessionRows = computed(() => resourceRows.value?.rows as SessionDataRow[] | undefined);
+const transcriptRows = computed(() => resourceRows.value?.rows as SessionTranscriptDataRow[] | undefined);
+
+function rowText(value: unknown): string {
+  return value == null || value === "" ? "—" : String(value);
+}
+
+function summarizeTranscriptItem(row: SessionTranscriptDataRow): string {
+  const item = row.item as Record<string, unknown> | null;
+  if (!item) return "";
+  const text = typeof item.text === "string"
+    ? item.text
+    : typeof item.content === "string"
+      ? item.content
+      : typeof item.summary === "string"
+        ? item.summary
+        : "";
+  return text.length > 96 ? `${text.slice(0, 96)}…` : text;
+}
 </script>
 
 <template>
@@ -296,6 +347,67 @@ const {
               @update:model-value="updateRegistryExistingRowDraft(row, $event)"
             />
           </div>
+        </div>
+        <div v-else-if="resource.key === 'sessions'" class="overflow-hidden rounded border border-border-default">
+          <div class="grid grid-cols-[minmax(16rem,1.5fr)_6rem_8rem_8rem_5rem_8rem_8rem] border-b border-border-default bg-surface-muted px-3 py-2 font-mono text-small text-text-subtle">
+            <span>session</span>
+            <span>type</span>
+            <span>source</span>
+            <span>mode</span>
+            <span>items</span>
+            <span>active</span>
+            <span>updated</span>
+          </div>
+          <div
+            v-for="row in sessionRows"
+            :key="row.sessionId"
+            class="grid grid-cols-[minmax(16rem,1.5fr)_6rem_8rem_8rem_5rem_8rem_8rem] border-b border-border-subtle px-3 py-2 text-small last:border-b-0"
+          >
+            <div class="min-w-0">
+              <div class="truncate font-medium text-text-secondary" :title="row.title || row.sessionId">{{ row.title || row.sessionId }}</div>
+              <div class="truncate font-mono text-text-subtle" :title="row.sessionId">{{ row.sessionId }}</div>
+              <div class="truncate font-mono text-text-subtle">{{ row.participantKind }} {{ row.participantId }}</div>
+            </div>
+            <span class="font-mono text-text-muted">{{ row.type }}</span>
+            <span class="font-mono text-text-muted">{{ rowText(row.source) }}</span>
+            <span class="truncate font-mono text-text-muted" :title="row.modeId ?? undefined">{{ rowText(row.modeId) }}</span>
+            <span class="font-mono text-text-muted">{{ row.transcriptCount }}</span>
+            <span class="font-mono text-text-muted">{{ formatTime(row.lastActiveAtMs) }}</span>
+            <span class="font-mono text-text-muted">{{ formatTime(row.updatedAtMs) }}</span>
+          </div>
+        </div>
+        <div v-else-if="resource.key === 'session_transcript_items'" class="overflow-hidden rounded border border-border-default">
+          <div class="grid grid-cols-[8rem_minmax(14rem,1.2fr)_6rem_8rem_minmax(18rem,2fr)] border-b border-border-default bg-surface-muted px-3 py-2 font-mono text-small text-text-subtle">
+            <span>time</span>
+            <span>session</span>
+            <span>index</span>
+            <span>kind</span>
+            <span>content</span>
+          </div>
+          <details
+            v-for="row in transcriptRows"
+            :key="`${row.sessionId}:${row.itemId}`"
+            class="border-b border-border-subtle last:border-b-0"
+          >
+            <summary class="grid cursor-pointer grid-cols-[8rem_minmax(14rem,1.2fr)_6rem_8rem_minmax(18rem,2fr)] px-3 py-2 text-small hover:bg-surface-hover">
+              <span class="font-mono text-text-muted">{{ formatTime(row.timestampMs) }}</span>
+              <span class="min-w-0 truncate font-mono text-text-subtle" :title="row.sessionId">{{ row.sessionId }}</span>
+              <span class="font-mono text-text-muted">#{{ row.itemIndex }}</span>
+              <span class="truncate font-mono text-text-muted" :title="row.kind">{{ row.kind }}</span>
+              <span class="min-w-0 truncate text-text-secondary" :title="summarizeTranscriptItem(row)">{{ summarizeTranscriptItem(row) || row.itemId }}</span>
+            </summary>
+            <div class="border-t border-border-subtle bg-surface-input px-3 py-2">
+              <div class="mb-2 flex flex-wrap gap-2 font-mono text-small text-text-subtle">
+                <span>{{ row.itemId }}</span>
+                <span>{{ row.groupId }}</span>
+                <span>{{ row.role ?? "no-role" }}</span>
+                <span>{{ row.llmVisible ? "llm" : "hidden" }}</span>
+                <span v-if="row.runtimeExcluded">excluded</span>
+                <span>{{ row.itemHash.slice(0, 12) }}</span>
+              </div>
+              <pre class="m-0 overflow-auto p-0 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap wrap-break-word">{{ JSON.stringify(row.item, null, 2) }}</pre>
+            </div>
+          </details>
         </div>
         <pre v-else class="m-0 overflow-auto p-0 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap wrap-break-word">{{ formattedRowsJson }}</pre>
       </div>
