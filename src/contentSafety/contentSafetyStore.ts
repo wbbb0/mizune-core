@@ -1,5 +1,5 @@
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import type { SqliteDatabase } from "#data/sqlite/sqliteService.ts";
+import { AssetsDatabase } from "#data/assets/assetsDatabase.ts";
 import { z } from "zod";
 import type { Logger } from "pino";
 import type { ContentSafetyAuditRecord, ContentSafetyAuditView, ModerationDecision, ModerationSubjectKind } from "./contentSafetyTypes.ts";
@@ -47,51 +47,150 @@ const contentSafetyFileSchema = z.object({
 type ContentSafetyFile = z.infer<typeof contentSafetyFileSchema>;
 
 export class ContentSafetyStore {
-  private readonly filePath: string;
-  private cached: ContentSafetyFile | null = null;
-  private cachedMtimeMs: number | null = null;
   private writeChain: Promise<void> = Promise.resolve();
 
-  constructor(dataDir: string, private readonly logger: Logger) {
-    this.filePath = join(dataDir, "content-safety", "results.json");
-  }
+  constructor(
+    dataDir: string,
+    private readonly logger: Logger,
+    private readonly assetsDatabase = new AssetsDatabase(dataDir, logger)
+  ) {}
 
   async init(): Promise<void> {
-    await mkdir(dirname(this.filePath), { recursive: true });
-    await this.readFile();
+    await this.assetsDatabase.init();
   }
 
   async upsert(record: ContentSafetyAuditRecord): Promise<void> {
     await this.withWriteLock(async () => {
-      const current = await this.readFile();
-      const records = current.records.filter((item) => item.key !== record.key);
-      records.push(record);
-      await this.writeFile({ version: 1, records });
+      const db = await this.getReadyDb();
+      db.prepare(`
+        INSERT INTO content_safety_audits (
+          key,
+          subject_kind,
+          decision,
+          marker,
+          result_json,
+          original_text,
+          file_id,
+          audio_id,
+          content_hash,
+          source_name,
+          session_id,
+          checked_at_ms,
+          expires_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+          subject_kind = excluded.subject_kind,
+          decision = excluded.decision,
+          marker = excluded.marker,
+          result_json = excluded.result_json,
+          original_text = excluded.original_text,
+          file_id = excluded.file_id,
+          audio_id = excluded.audio_id,
+          content_hash = excluded.content_hash,
+          source_name = excluded.source_name,
+          session_id = excluded.session_id,
+          checked_at_ms = excluded.checked_at_ms,
+          expires_at_ms = excluded.expires_at_ms
+      `).run(...recordToParams(record));
     });
   }
 
   async getByKey(key: string): Promise<ContentSafetyAuditRecord | null> {
-    const current = await this.readFile();
-    return current.records.find((item) => item.key === key) ?? null;
+    const db = await this.getReadyDb();
+    const row = db.prepare(`
+      SELECT
+        key,
+        subject_kind AS subjectKind,
+        decision,
+        marker,
+        result_json AS resultJson,
+        original_text AS originalText,
+        file_id AS fileId,
+        audio_id AS audioId,
+        content_hash AS contentHash,
+        source_name AS sourceName,
+        session_id AS sessionId,
+        checked_at_ms AS checkedAtMs,
+        expires_at_ms AS expiresAtMs
+      FROM content_safety_audits
+      WHERE key = ?
+    `).get(key) as ContentSafetyAuditRow | undefined;
+    return row ? rowToAuditRecord(row) : null;
   }
 
   async getByFileId(fileId: string): Promise<ContentSafetyAuditRecord | null> {
-    const current = await this.readFile();
-    return [...current.records].reverse().find((item) => item.fileId === fileId) ?? null;
+    const db = await this.getReadyDb();
+    const row = db.prepare(`
+      SELECT
+        key,
+        subject_kind AS subjectKind,
+        decision,
+        marker,
+        result_json AS resultJson,
+        original_text AS originalText,
+        file_id AS fileId,
+        audio_id AS audioId,
+        content_hash AS contentHash,
+        source_name AS sourceName,
+        session_id AS sessionId,
+        checked_at_ms AS checkedAtMs,
+        expires_at_ms AS expiresAtMs
+      FROM content_safety_audits
+      WHERE file_id = ?
+      ORDER BY checked_at_ms DESC, key ASC
+      LIMIT 1
+    `).get(fileId) as ContentSafetyAuditRow | undefined;
+    return row ? rowToAuditRecord(row) : null;
   }
 
   async getByAudioId(audioId: string): Promise<ContentSafetyAuditRecord | null> {
-    const current = await this.readFile();
-    return [...current.records].reverse().find((item) => item.audioId === audioId) ?? null;
+    const db = await this.getReadyDb();
+    const row = db.prepare(`
+      SELECT
+        key,
+        subject_kind AS subjectKind,
+        decision,
+        marker,
+        result_json AS resultJson,
+        original_text AS originalText,
+        file_id AS fileId,
+        audio_id AS audioId,
+        content_hash AS contentHash,
+        source_name AS sourceName,
+        session_id AS sessionId,
+        checked_at_ms AS checkedAtMs,
+        expires_at_ms AS expiresAtMs
+      FROM content_safety_audits
+      WHERE audio_id = ?
+      ORDER BY checked_at_ms DESC, key ASC
+      LIMIT 1
+    `).get(audioId) as ContentSafetyAuditRow | undefined;
+    return row ? rowToAuditRecord(row) : null;
   }
 
   async listBySessionId(sessionId: string): Promise<ContentSafetyAuditView[]> {
-    const current = await this.readFile();
-    return current.records
-      .filter((item) => item.sessionId === sessionId)
-      .filter((item) => isBlockingDecision(item.decision))
-      .map(toAuditView)
-      .sort((left, right) => right.checkedAtMs - left.checkedAtMs);
+    const db = await this.getReadyDb();
+    const rows = db.prepare(`
+      SELECT
+        key,
+        subject_kind AS subjectKind,
+        decision,
+        marker,
+        result_json AS resultJson,
+        original_text AS originalText,
+        file_id AS fileId,
+        audio_id AS audioId,
+        content_hash AS contentHash,
+        source_name AS sourceName,
+        session_id AS sessionId,
+        checked_at_ms AS checkedAtMs,
+        expires_at_ms AS expiresAtMs
+      FROM content_safety_audits
+      WHERE session_id = ?
+        AND decision IN ('block', 'review')
+      ORDER BY checked_at_ms DESC, key ASC
+    `).all(sessionId) as ContentSafetyAuditRow[];
+    return rows.map(rowToAuditRecord).map(toAuditView);
   }
 
   async getViewByFileId(fileId: string): Promise<ContentSafetyAuditView | null> {
@@ -111,43 +210,6 @@ export class ContentSafetyStore {
     };
   }
 
-  private async readFile(): Promise<ContentSafetyFile> {
-    try {
-      const fileStat = await stat(this.filePath);
-      if (this.cached && this.cachedMtimeMs === fileStat.mtimeMs) {
-        return this.cached;
-      }
-      const raw = await readFile(this.filePath, "utf8");
-      const parsed = contentSafetyFileSchema.parse(JSON.parse(raw));
-      this.cached = parsed;
-      this.cachedMtimeMs = fileStat.mtimeMs;
-      return parsed;
-    } catch (error: unknown) {
-      const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code !== "ENOENT") {
-        this.logger.warn({ error }, "content_safety_store_load_failed");
-      }
-      const empty: ContentSafetyFile = { version: 1, records: [] };
-      this.cached = empty;
-      this.cachedMtimeMs = null;
-      return empty;
-    }
-  }
-
-  private async writeFile(value: ContentSafetyFile): Promise<void> {
-    const validated = contentSafetyFileSchema.parse(value);
-    await mkdir(dirname(this.filePath), { recursive: true });
-    const tempPath = `${this.filePath}.${process.pid}.tmp`;
-    await writeFile(tempPath, `${JSON.stringify(validated, null, 2)}\n`, "utf8");
-    await rename(tempPath, this.filePath);
-    this.cached = validated;
-    try {
-      this.cachedMtimeMs = (await stat(this.filePath)).mtimeMs;
-    } catch {
-      this.cachedMtimeMs = null;
-    }
-  }
-
   private async withWriteLock<T>(callback: () => Promise<T>): Promise<T> {
     const previous = this.writeChain;
     let release!: () => void;
@@ -160,6 +222,86 @@ export class ContentSafetyStore {
     } finally {
       release();
     }
+  }
+
+  private async getReadyDb(): Promise<SqliteDatabase> {
+    await this.assetsDatabase.init();
+    return this.assetsDatabase.getDb();
+  }
+}
+
+type ContentSafetyAuditRow = {
+  key: string;
+  subjectKind: ModerationSubjectKind;
+  decision: ModerationDecision;
+  marker: string;
+  resultJson: string;
+  originalText: string | null;
+  fileId: string | null;
+  audioId: string | null;
+  contentHash: string | null;
+  sourceName: string | null;
+  sessionId: string | null;
+  checkedAtMs: number;
+  expiresAtMs: number | null;
+};
+
+function rowToAuditRecord(row: ContentSafetyAuditRow): ContentSafetyAuditRecord {
+  const parsed = parseStoredAuditResult(row.resultJson);
+  return {
+    key: row.key,
+    subjectKind: row.subjectKind,
+    decision: row.decision,
+    marker: row.marker,
+    result: parsed,
+    ...(row.originalText !== null ? { originalText: row.originalText } : {}),
+    ...(row.fileId !== null ? { fileId: row.fileId } : {}),
+    ...(row.audioId !== null ? { audioId: row.audioId } : {}),
+    ...(row.contentHash !== null ? { contentHash: row.contentHash } : {}),
+    ...(row.sourceName !== null ? { sourceName: row.sourceName } : {}),
+    ...(row.sessionId !== null ? { sessionId: row.sessionId } : {}),
+    checkedAtMs: row.checkedAtMs,
+    ...(row.expiresAtMs !== null ? { expiresAtMs: row.expiresAtMs } : {})
+  };
+}
+
+function recordToParams(record: ContentSafetyAuditRecord): [
+  string,
+  ModerationSubjectKind,
+  ModerationDecision,
+  string,
+  string,
+  string | null,
+  string | null,
+  string | null,
+  string | null,
+  string | null,
+  string | null,
+  number,
+  number | null
+] {
+  return [
+    record.key,
+    record.subjectKind,
+    record.decision,
+    record.marker,
+    JSON.stringify(record.result),
+    record.originalText ?? null,
+    record.fileId ?? null,
+    record.audioId ?? null,
+    record.contentHash ?? null,
+    record.sourceName ?? null,
+    record.sessionId ?? null,
+    record.checkedAtMs,
+    record.expiresAtMs ?? null
+  ];
+}
+
+function parseStoredAuditResult(value: string) {
+  try {
+    return moderationResultSchema.parse(JSON.parse(value));
+  } catch (error: unknown) {
+    throw new Error(`Invalid content safety audit row: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

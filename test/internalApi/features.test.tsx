@@ -74,26 +74,11 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.deepEqual(configSummary.json().access.whitelist.users, ["10001"]);
       assert.equal(configSummary.json().onebot.enabled, true);
       assert.ok(editors.json().resources.some((resource: { key: string }) => resource.key === "config"));
-      assert.equal(
-        editors.json().resources.find((resource: { key: string }) => resource.key === "users")?.title,
-        "用户列表"
-      );
-      assert.equal(
-        editors.json().resources.find((resource: { key: string }) => resource.key === "group_membership")?.title,
-        "群成员缓存"
-      );
-      assert.equal(
-        editors.json().resources.find((resource: { key: string }) => resource.key === "requests")?.title,
-        "待处理请求"
-      );
-      assert.equal(
-        editors.json().resources.find((resource: { key: string }) => resource.key === "global_rules")?.title,
-        "全局规则列表"
-      );
-      assert.equal(
-        editors.json().resources.find((resource: { key: string }) => resource.key === "toolset_rules")?.title,
-        "工具集规则列表"
-      );
+      assert.equal(editors.json().resources.some((resource: { key: string }) => resource.key === "users"), false);
+      assert.equal(editors.json().resources.some((resource: { key: string }) => resource.key === "requests"), false);
+      assert.equal(editors.json().resources.some((resource: { key: string }) => resource.key === "group_membership"), false);
+      assert.equal(editors.json().resources.some((resource: { key: string }) => resource.key === "global_rules"), false);
+      assert.equal(editors.json().resources.some((resource: { key: string }) => resource.key === "toolset_rules"), false);
       assert.deepEqual(whitelist.json().whitelist.users, ["10001"]);
       assert.deepEqual(requests.json().requests.groups, [{ groupId: "20002", userId: "10003" }]);
       assert.deepEqual(jobs.json().jobs, [{ id: "job-1", name: "daily" }]);
@@ -392,90 +377,24 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
     }
   });
 
-  test("internal api exposes single-file editor resources", async () => {
+  test("internal api exposes live_resources through data registry", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
       await mkdir(deps.config.dataDir, { recursive: true });
-      const whitelistPath = `${deps.config.dataDir}/whitelist.json`;
-      const groupMembershipPath = `${deps.config.dataDir}/group-membership-cache.json`;
-      await writeFile(whitelistPath, JSON.stringify({
-        users: ["10001"],
-        groups: ["20001"]
-      }, null, 2), "utf8");
-      await writeFile(groupMembershipPath, JSON.stringify({
-        version: 1,
-        groups: {
-          "20001": {
-            "10001": {
-              isMember: true,
-              verifiedAt: 1710000000000
-            }
-          }
-        }
-      }, null, 2), "utf8");
-
-      const whitelistResponse = await app.inject({
+      const resourcesResponse = await app.inject({
         method: "GET",
-        url: "/api/editors/whitelist"
+        url: "/api/data/registry/resources"
       });
-      const usersResponse = await app.inject({
+      const liveResourcesRowsResponse = await app.inject({
         method: "GET",
-        url: "/api/editors/users"
-      });
-      const groupMembershipResponse = await app.inject({
-        method: "GET",
-        url: "/api/editors/group_membership"
-      });
-      const globalRulesResponse = await app.inject({
-        method: "GET",
-        url: "/api/editors/global_rules"
-      });
-      const toolsetRulesResponse = await app.inject({
-        method: "GET",
-        url: "/api/editors/toolset_rules"
+        url: "/api/data/registry/resources/live_resources/rows"
       });
 
-      assert.equal(whitelistResponse.statusCode, 200);
-      assert.equal(whitelistResponse.json().editor.kind, "single");
-      assert.equal(whitelistResponse.json().editor.file.path, whitelistPath);
-      assert.deepEqual(whitelistResponse.json().editor.currentValue.users, ["10001"]);
-      assert.equal(whitelistResponse.json().editor.referenceValue, undefined);
-      assert.deepEqual(whitelistResponse.json().editor.effectiveValue.users, ["10001"]);
-      assert.equal(whitelistResponse.json().editor.schemaMeta.title, "白名单");
-      assert.equal(whitelistResponse.json().editor.schemaMeta.options?.[0]?.title, "当前白名单");
-
-      assert.equal(usersResponse.statusCode, 200);
-      assert.equal(usersResponse.json().editor.kind, "single");
-      assert.equal(usersResponse.json().editor.schemaMeta.item.title, "用户");
-      assert.ok(!("memories" in usersResponse.json().editor.schemaMeta.item.fields));
-      assert.equal(usersResponse.json().editor.schemaMeta.description, "按列表保存所有用户的基础资料。长期记忆由上下文记忆存储管理。");
-
-      assert.equal(groupMembershipResponse.statusCode, 200);
-      assert.equal(groupMembershipResponse.json().editor.kind, "single");
-      assert.equal(groupMembershipResponse.json().editor.file.path, groupMembershipPath);
-      assert.equal(groupMembershipResponse.json().editor.schemaMeta.title, "群成员缓存");
-      assert.equal(groupMembershipResponse.json().editor.schemaMeta.fields.groups.title, "群列表");
-      assert.equal(
-        groupMembershipResponse.json().editor.schemaMeta.fields.groups.description,
-        "按群 ID 缓存成员校验结果。"
-      );
-      assert.equal(groupMembershipResponse.json().editor.schemaMeta.fields.groups.schema.value.title, "成员列表");
-      assert.equal(
-        groupMembershipResponse.json().editor.schemaMeta.fields.groups.schema.value.description,
-        "按用户 ID 缓存成员校验结果。"
-      );
-      assert.equal(groupMembershipResponse.json().editor.schemaMeta.fields.groups.schema.value.value.title, "成员记录");
-
-      assert.equal(globalRulesResponse.statusCode, 200);
-      assert.equal(globalRulesResponse.json().editor.kind, "single");
-      assert.equal(globalRulesResponse.json().editor.schemaMeta.title, "全局规则列表");
-      assert.equal(globalRulesResponse.json().editor.schemaMeta.description, "按列表保存可编辑的全局规则。");
-
-      assert.equal(toolsetRulesResponse.statusCode, 200);
-      assert.equal(toolsetRulesResponse.json().editor.kind, "single");
-      assert.equal(toolsetRulesResponse.json().editor.schemaMeta.title, "工具集规则列表");
-      assert.equal(toolsetRulesResponse.json().editor.schemaMeta.description, "按列表保存仅对指定工具集生效的规则。");
+      assert.equal(resourcesResponse.statusCode, 200);
+      assert.equal(resourcesResponse.json().resources.some((resource: { key: string }) => resource.key === "live_resources"), true);
+      assert.equal(liveResourcesRowsResponse.statusCode, 200);
+      assert.deepEqual(liveResourcesRowsResponse.json().rows, []);
     } finally {
       await app.close();
     }

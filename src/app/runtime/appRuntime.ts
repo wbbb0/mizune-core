@@ -53,6 +53,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     sessionPersistence,
     scheduledJobStore,
     requestStore,
+    groupMembershipStore,
     userIdentityStore,
     userStore,
     personaStore,
@@ -261,16 +262,23 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     sessionManager,
     sessionCaptioner,
     personaStore,
+    rpProfileStore,
+    scenarioProfileStore,
+    globalProfileReadinessStore,
+    setupStore,
     globalRuleStore,
+    toolsetRuleStore,
     scenarioHostStateStore,
     userStore,
     contextStore,
     contextEmbeddingService,
     contextRetrievalService,
     whitelistStore,
+    groupMembershipStore,
     userIdentityStore,
     requestStore,
     scheduledJobStore,
+    comfyTaskStore,
     scheduler,
     shellRuntime,
     configManager,
@@ -282,7 +290,8 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     audioStore,
     contentSafetyStore,
     chatMessageFileGcService,
-    contextSessionCleanupService
+    contextSessionCleanupService,
+    runtimeResourceStore: services.runtimeResourceStore
   });
 
   try {

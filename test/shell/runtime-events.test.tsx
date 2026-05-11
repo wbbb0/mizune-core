@@ -7,12 +7,23 @@ import { ShellRuntime } from "../../src/services/shell/runtime.ts";
 import type { ShellRuntimeEvent } from "../../src/services/shell/types.ts";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
+import { createRuntimeResourceHarness } from "../helpers/runtime-resource-test-support.ts";
 
 const owner = {
   sessionId: "private:test:user",
   userId: "user",
   senderName: "User"
 };
+
+function createShellRuntimeForDir(
+  config: ReturnType<typeof createForwardFeatureConfig>,
+  dataDir: string,
+  options?: { onEvent?: (event: ShellRuntimeEvent) => void }
+): ShellRuntime {
+  const logger = createSilentLogger();
+  const { runtimeResourceRegistry } = createRuntimeResourceHarness(dataDir, logger);
+  return new ShellRuntime(config, logger, runtimeResourceRegistry, options);
+}
 
 describe("shell runtime terminal events", () => {
   test("emits close event only after terminal_run has returned a background resource", async () => {
@@ -22,7 +33,7 @@ describe("shell runtime terminal events", () => {
     config.shell.terminalEvents.inputDetectionDebounceMs = 5;
     config.shell.terminalEvents.inputConfirmationMs = 5;
     const events: ShellRuntimeEvent[] = [];
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir, {
+    const runtime = createShellRuntimeForDir(config, dataDir, {
       onEvent: (event) => {
         events.push(event);
       }
@@ -54,7 +65,7 @@ describe("shell runtime terminal events", () => {
     const config = createForwardFeatureConfig();
     config.shell.enabled = true;
     const events: ShellRuntimeEvent[] = [];
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir, {
+    const runtime = createShellRuntimeForDir(config, dataDir, {
       onEvent: (event) => {
         events.push(event);
       }
@@ -86,7 +97,7 @@ describe("shell runtime terminal events", () => {
     config.shell.terminalEvents.inputConfirmationMs = 10;
     config.shell.terminalEvents.inputPromptCooldownMs = 5000;
     const events: ShellRuntimeEvent[] = [];
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir, {
+    const runtime = createShellRuntimeForDir(config, dataDir, {
       onEvent: (event) => {
         events.push(event);
       }
@@ -124,7 +135,7 @@ describe("shell runtime terminal events", () => {
     config.shell.terminalEvents.inputConfirmationMs = 10;
     config.shell.terminalEvents.inputSuppressionAfterWriteMs = 80;
     const events: ShellRuntimeEvent[] = [];
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir, {
+    const runtime = createShellRuntimeForDir(config, dataDir, {
       onEvent: (event) => {
         events.push(event);
       }
@@ -160,7 +171,7 @@ describe("shell runtime terminal events", () => {
     config.shell.terminalEvents.inputConfirmationMs = 10;
     config.shell.terminalEvents.inputSuppressionAfterWriteMs = 80;
     const events: ShellRuntimeEvent[] = [];
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir, {
+    const runtime = createShellRuntimeForDir(config, dataDir, {
       onEvent: (event) => {
         events.push(event);
       }
@@ -194,7 +205,7 @@ describe("shell runtime terminal events", () => {
     config.shell.enabled = true;
     config.shell.sessionTtlMs = 20;
     const events: ShellRuntimeEvent[] = [];
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir, {
+    const runtime = createShellRuntimeForDir(config, dataDir, {
       onEvent: (event) => {
         events.push(event);
       }
@@ -228,7 +239,7 @@ describe("shell runtime terminal events", () => {
     config.shell.terminalEvents.inputDetectionDebounceMs = 5;
     config.shell.terminalEvents.inputConfirmationMs = 10;
     const events: ShellRuntimeEvent[] = [];
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir, {
+    const runtime = createShellRuntimeForDir(config, dataDir, {
       onEvent: (event) => {
         events.push(event);
       }

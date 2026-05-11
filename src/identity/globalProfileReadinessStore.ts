@@ -1,7 +1,6 @@
-import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
-import { FileSchemaStore } from "#data/fileSchemaStore.ts";
+import { StateDatabase } from "#data/state/stateDatabase.ts";
 import {
   createEmptyGlobalProfileReadiness,
   globalProfileReadinessSchema,
@@ -10,22 +9,16 @@ import {
 } from "./globalProfileReadinessSchema.ts";
 
 export class GlobalProfileReadinessStore {
-  private readonly store: FileSchemaStore<typeof globalProfileReadinessSchema>;
-
   constructor(
     dataDir: string,
-    private readonly _config: Pick<AppConfig, "backup">,
-    private readonly logger: Logger
+    _config: Pick<AppConfig, "backup">,
+    private readonly logger: Logger,
+    private readonly stateDatabase = new StateDatabase(dataDir, logger)
   ) {
-    this.store = new FileSchemaStore({
-      filePath: join(dataDir, "global-profile-readiness.json"),
-      schema: globalProfileReadinessSchema,
-      logger,
-      loadErrorEvent: "global_profile_readiness_reset_to_empty"
-    });
   }
 
   async init(): Promise<void> {
+    await this.stateDatabase.init();
     await this.get();
   }
 
@@ -34,22 +27,50 @@ export class GlobalProfileReadinessStore {
   }
 
   async get(): Promise<GlobalProfileReadiness> {
-    try {
-      const current = await this.store.read();
-      if (current) {
-        return current;
-      }
-    } catch (error: unknown) {
-      this.logger.warn({ error }, "global_profile_readiness_reset_to_empty");
+    await this.stateDatabase.init();
+    const row = this.stateDatabase.getDb().prepare(`
+      SELECT
+        persona,
+        rp,
+        scenario,
+        updated_at_ms AS updatedAt
+      FROM global_profile_readiness
+      WHERE id = 'global'
+    `).get() as GlobalProfileReadiness | undefined;
+    if (row) {
+      return globalProfileReadinessSchema.parse(row);
     }
     const initial = this.createEmpty();
     await this.write(initial);
+    this.logger.info("global_profile_readiness_initialized_for_setup");
     return initial;
   }
 
   async write(value: GlobalProfileReadiness): Promise<GlobalProfileReadiness> {
+    await this.stateDatabase.init();
     const next = globalProfileReadinessSchema.parse(value);
-    return this.store.write(next);
+    this.stateDatabase.getDb().prepare(`
+      INSERT INTO global_profile_readiness (
+        id,
+        persona,
+        rp,
+        scenario,
+        updated_at_ms
+      )
+      VALUES (
+        'global',
+        @persona,
+        @rp,
+        @scenario,
+        @updatedAt
+      )
+      ON CONFLICT(id) DO UPDATE SET
+        persona = excluded.persona,
+        rp = excluded.rp,
+        scenario = excluded.scenario,
+        updated_at_ms = excluded.updated_at_ms
+    `).run(next);
+    return next;
   }
 
   async patch(patch: Partial<Omit<GlobalProfileReadiness, "updatedAt">>): Promise<GlobalProfileReadiness> {

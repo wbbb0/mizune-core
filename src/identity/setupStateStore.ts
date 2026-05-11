@@ -1,8 +1,7 @@
-import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import type { UserIdentityStore } from "./userIdentityStore.ts";
-import { FileSchemaStore } from "#data/fileSchemaStore.ts";
+import { StateDatabase } from "#data/state/stateDatabase.ts";
 import {
   getMissingPersonaFields,
   personaFieldLabels,
@@ -13,27 +12,22 @@ import { isPersonaInitializationRequired } from "#persona/personaSetupPolicy.ts"
 import { setupStateSchema, type SetupStateRecord } from "./setupStateSchema.ts";
 
 export class SetupStateStore {
-  private readonly store: FileSchemaStore<typeof setupStateSchema>;
-
   constructor(
     dataDir: string,
     private readonly config: Pick<AppConfig, "conversation">,
     private readonly userIdentityStore: Pick<UserIdentityStore, "hasOwnerIdentity">,
-    private readonly logger: Logger
+    private readonly logger: Logger,
+    private readonly stateDatabase = new StateDatabase(dataDir, logger)
   ) {
-    this.store = new FileSchemaStore({
-      filePath: join(dataDir, "setup-state.json"),
-      schema: setupStateSchema,
-      logger,
-      loadErrorEvent: "setup_state_reset_to_initial"
-    });
   }
 
   async init(persona: Persona): Promise<SetupStateRecord> {
+    await this.stateDatabase.init();
     return this.readOrInitialize(persona);
   }
 
   async get(): Promise<SetupStateRecord> {
+    await this.stateDatabase.init();
     return this.readOrInitialize();
   }
 
@@ -89,16 +83,20 @@ export class SetupStateStore {
   }
 
   private async readOrInitialize(persona?: Persona): Promise<SetupStateRecord> {
-    try {
-      const current = await this.store.read();
-      if (current) {
-        return current;
-      }
-    } catch (error: unknown) {
-      this.logger.warn({ error }, "setup_state_reset_to_initial");
+    const current = this.stateDatabase.getDb().prepare(`
+      SELECT
+        state,
+        owner_prompt_sent_at_ms AS ownerPromptSentAt,
+        updated_at_ms AS updatedAt
+      FROM setup_state
+      WHERE id = 'global'
+    `).get() as SetupStateRecord | undefined;
+    if (current) {
+      return setupStateSchema.parse(current);
     }
     const initial = await this.deriveInitialState(persona);
     await this.write(initial);
+    this.logger.info("setup_state_initialized");
     return initial;
   }
 
@@ -119,6 +117,25 @@ export class SetupStateStore {
   }
 
   private async write(next: SetupStateRecord): Promise<SetupStateRecord> {
-    return this.store.write(next);
+    const validated = setupStateSchema.parse(next);
+    this.stateDatabase.getDb().prepare(`
+      INSERT INTO setup_state (
+        id,
+        state,
+        owner_prompt_sent_at_ms,
+        updated_at_ms
+      )
+      VALUES (
+        'global',
+        @state,
+        @ownerPromptSentAt,
+        @updatedAt
+      )
+      ON CONFLICT(id) DO UPDATE SET
+        state = excluded.state,
+        owner_prompt_sent_at_ms = excluded.owner_prompt_sent_at_ms,
+        updated_at_ms = excluded.updated_at_ms
+    `).run(validated);
+    return validated;
   }
 }

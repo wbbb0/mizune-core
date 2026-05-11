@@ -36,8 +36,11 @@ import {
   parseCreateSessionBody,
   parseConfigSaveBody,
   parseConfigValidateBody,
+  parseDataResourceRowPatchBody,
+  parseDataResourceRowsQuery,
   parseEditorOptionsParams,
   parseEditorResourceParams,
+  parseResourceRowParams,
   parseResourceItemParams,
   parseWorkspaceStoredFileParams,
   parseWorkspaceFileQuery,
@@ -82,6 +85,141 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
 
     try {
       return await services.dataBrowser.getResourceItem(params.resource, params.item);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.get("/api/data/registry/resources", async () => services.dataRegistry.listResources());
+
+  app.get("/api/data/registry/resources/:resource", async (request, reply) => {
+    const params = parseEditorResourceParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+
+    try {
+      return await services.dataRegistry.getResource(params.resource);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.patch("/api/data/registry/resources/:resource", async (request, reply) => {
+    const params = parseEditorResourceParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    const body = parseConfigSaveBody(request.body);
+    if (!parseOrReply(reply, body)) {
+      return reply;
+    }
+
+    try {
+      return await services.dataRegistry.patchSingleton(params.resource, body.value);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.get("/api/data/registry/resources/:resource/items/:item", async (request, reply) => {
+    const params = parseResourceItemParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+
+    try {
+      return await services.dataRegistry.getDirectoryItem(params.resource, params.item);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.get("/api/data/registry/resources/:resource/rows", async (request, reply) => {
+    const params = parseEditorResourceParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    const query = parseDataResourceRowsQuery(request.query);
+    if (!parseOrReply(reply, query)) {
+      return reply;
+    }
+
+    try {
+      return await services.dataRegistry.listRows(params.resource, query);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.get("/api/data/registry/resources/:resource/rows/:rowId", async (request, reply) => {
+    const params = parseResourceRowParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+
+    try {
+      return await services.dataRegistry.getRow(params.resource, params.rowId);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.post("/api/data/registry/resources/:resource/rows", async (request, reply) => {
+    const params = parseEditorResourceParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    const body = parseConfigSaveBody(request.body);
+    if (!parseOrReply(reply, body)) {
+      return reply;
+    }
+
+    try {
+      return await services.dataRegistry.createRow(params.resource, body.value);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.patch("/api/data/registry/resources/:resource/rows/:rowId", async (request, reply) => {
+    const params = parseResourceRowParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    const body = parseDataResourceRowPatchBody(request.body);
+    if (!parseOrReply(reply, body)) {
+      return reply;
+    }
+
+    try {
+      return await services.dataRegistry.patchRow(params.resource, params.rowId, body);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.delete("/api/data/registry/resources/:resource/rows/:rowId", async (request, reply) => {
+    const params = parseResourceRowParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+
+    try {
+      return await services.dataRegistry.deleteRow(params.resource, params.rowId);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.post("/api/data/registry/resources/:resource/export", async (request, reply) => {
+    const params = parseEditorResourceParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+
+    try {
+      return await services.dataRegistry.exportResource(params.resource);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
     }

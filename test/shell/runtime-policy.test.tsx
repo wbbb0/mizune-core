@@ -6,13 +6,20 @@ import { join } from "node:path";
 import { ShellRuntime } from "../../src/services/shell/runtime.ts";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
+import { createRuntimeResourceHarness } from "../helpers/runtime-resource-test-support.ts";
+
+function createShellRuntimeForDir(config: ReturnType<typeof createForwardFeatureConfig>, dataDir: string): ShellRuntime {
+  const logger = createSilentLogger();
+  const { runtimeResourceRegistry } = createRuntimeResourceHarness(dataDir, logger);
+  return new ShellRuntime(config, logger, runtimeResourceRegistry);
+}
 
 describe("shell runtime policy", () => {
   test("clamps foreground timeout to shell.maxTimeoutMs", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-shell-policy-"));
     const config = createForwardFeatureConfig();
     config.shell.maxTimeoutMs = 20;
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir);
+    const runtime = createShellRuntimeForDir(config, dataDir);
     try {
       const result = await runtime.run({
         command: "node -e \"setTimeout(() => {}, 1000)\"",
@@ -36,7 +43,7 @@ describe("shell runtime policy", () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-shell-policy-"));
     const config = createForwardFeatureConfig();
     config.shell.cwd.allowedRoots = ["/tmp"];
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir);
+    const runtime = createShellRuntimeForDir(config, dataDir);
     try {
       await assert.rejects(
         () => runtime.run({
@@ -55,7 +62,7 @@ describe("shell runtime policy", () => {
   test("returns structured rejection for denied commands", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-shell-policy-"));
     const config = createForwardFeatureConfig();
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir);
+    const runtime = createShellRuntimeForDir(config, dataDir);
     try {
       const result = await runtime.run({
         command: "vim README.md",
@@ -75,7 +82,7 @@ describe("shell runtime policy", () => {
   test("rejects denied commands after shell separators", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-shell-policy-"));
     const config = createForwardFeatureConfig();
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir);
+    const runtime = createShellRuntimeForDir(config, dataDir);
     try {
       const result = await runtime.run({
         command: "echo ok && vim README.md",
@@ -113,7 +120,7 @@ describe("shell runtime policy", () => {
   test("does not treat separators inside quoted arguments as command separators", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-shell-policy-"));
     const config = createForwardFeatureConfig();
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir);
+    const runtime = createShellRuntimeForDir(config, dataDir);
     try {
       const result = await runtime.run({
         command: "printf 'vim README.md && ok'",
@@ -132,7 +139,7 @@ describe("shell runtime policy", () => {
   test("rejects denied prefixes after shell separators", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-shell-policy-"));
     const config = createForwardFeatureConfig();
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir);
+    const runtime = createShellRuntimeForDir(config, dataDir);
     try {
       const result = await runtime.run({
         command: "cd /tmp; rm -rf /",
@@ -152,7 +159,7 @@ describe("shell runtime policy", () => {
   test("rejects denied commands behind common shell wrappers", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-shell-policy-"));
     const config = createForwardFeatureConfig();
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir);
+    const runtime = createShellRuntimeForDir(config, dataDir);
     try {
       const sudoResult = await runtime.run({
         command: "sudo -E vim README.md",
@@ -189,7 +196,7 @@ describe("shell runtime policy", () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-shell-policy-"));
     const config = createForwardFeatureConfig();
     config.shell.idleTimeoutMs = 30;
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir);
+    const runtime = createShellRuntimeForDir(config, dataDir);
     try {
       const startedAt = Date.now();
       const result = await runtime.run({
@@ -213,7 +220,7 @@ describe("shell runtime policy", () => {
   test("normalizes invalid foreground timeout to a positive wait", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-shell-policy-"));
     const config = createForwardFeatureConfig();
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir);
+    const runtime = createShellRuntimeForDir(config, dataDir);
     try {
       const result = await runtime.run({
         command: "node -e \"setTimeout(() => {}, 1000)\"",
@@ -236,7 +243,7 @@ describe("shell runtime policy", () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-shell-policy-"));
     const config = createForwardFeatureConfig();
     config.shell.maxOutputChars = 32;
-    const runtime = new ShellRuntime(config, createSilentLogger(), dataDir);
+    const runtime = createShellRuntimeForDir(config, dataDir);
     try {
       const result = await runtime.run({
         command: "node -e \"console.log('x'.repeat(200))\"",

@@ -1,11 +1,9 @@
-import { stat } from "node:fs/promises";
-import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
-import { FileSchemaStore } from "#data/fileSchemaStore.ts";
-import { rotateBackup } from "#utils/rotatingBackup.ts";
+import type { SqliteDatabase } from "#data/sqlite/sqliteService.ts";
+import { StateDatabase } from "#data/state/stateDatabase.ts";
 import { detectScopeConflict, type ScopeConflictWarning } from "./memoryCategory.ts";
-import { createGlobalRuleEntry, globalRuleFileSchema, type GlobalRuleEntry } from "./globalRuleEntry.ts";
+import { createGlobalRuleEntry, globalRuleEntrySchema, globalRuleFileSchema, type GlobalRuleEntry } from "./globalRuleEntry.ts";
 import { findBestDuplicateMatch, normalizeTitleForDedup } from "./similarity.ts";
 import {
   buildMemoryDedupDetails,
@@ -24,25 +22,17 @@ export interface GlobalRuleUpsertResult {
 }
 
 export class GlobalRuleStore {
-  private readonly filePath: string;
-  private readonly store: FileSchemaStore<typeof globalRuleFileSchema>;
-
   constructor(
     dataDir: string,
-    private readonly config: Pick<AppConfig, "backup">,
-    private readonly logger: Logger
+    _config: Pick<AppConfig, "backup">,
+    private readonly logger: Logger,
+    private readonly stateDatabase = new StateDatabase(dataDir, logger)
   ) {
-    this.filePath = join(dataDir, "global-rules.json");
-    this.store = new FileSchemaStore({
-      filePath: this.filePath,
-      schema: globalRuleFileSchema,
-      logger,
-      loadErrorEvent: "global_rule_store_load_failed"
-    });
+    void _config;
   }
 
   async init(): Promise<void> {
-    await this.readAll();
+    await this.stateDatabase.init();
   }
 
   async list(): Promise<GlobalRuleEntry[]> {
@@ -51,6 +41,29 @@ export class GlobalRuleStore {
 
   async getAll(): Promise<GlobalRuleEntry[]> {
     return this.readAll();
+  }
+
+  async getRow(ruleId: string): Promise<GlobalRuleEntry | null> {
+    return (await this.readAll()).find((rule) => rule.id === ruleId) ?? null;
+  }
+
+  async createRow(value: unknown): Promise<GlobalRuleEntry> {
+    const parsed = createGlobalRuleEntry(globalRuleEntryInput(value));
+    if (await this.getRow(parsed.id)) {
+      throw new Error(`Global rule ${parsed.id} already exists`);
+    }
+    await this.insertRule(parsed);
+    return parsed;
+  }
+
+  async patchRow(ruleId: string, patch: Record<string, unknown>): Promise<GlobalRuleEntry> {
+    const current = await this.getRow(ruleId);
+    if (!current) {
+      throw new Error(`Global rule ${ruleId} not found`);
+    }
+    const parsed = createGlobalRuleEntry(globalRuleEntryInput({ ...current, ...patch, id: ruleId }));
+    await this.updateRule(parsed);
+    return parsed;
   }
 
   async upsert(input: {
@@ -82,10 +95,13 @@ export class GlobalRuleStore {
       ...(duplicate ? { createdAt: duplicate.item.createdAt } : {})
     });
     const targetIndex = rules.findIndex((item) => item.id === nextRule.id);
+    const item = targetIndex >= 0
+      ? { ...nextRule, createdAt: rules[targetIndex]!.createdAt }
+      : nextRule;
     if (targetIndex >= 0) {
-      rules[targetIndex] = { ...nextRule, createdAt: rules[targetIndex]!.createdAt };
+      await this.updateRule(item);
     } else {
-      rules.push(nextRule);
+      await this.insertRule(item);
     }
     const dedup = buildMemoryDedupDetails({
       explicitId: input.ruleId ?? null,
@@ -104,10 +120,9 @@ export class GlobalRuleStore {
       dedup,
       warning
     });
-    await this.writeAll(rules);
     this.logger.info({
       targetCategory: diagnostics.targetCategory,
-      ruleId: nextRule.id,
+      ruleId: item.id,
       action: diagnostics.action,
       finalAction: diagnostics.finalAction,
       dedupMatchedBy: diagnostics.dedup.matchedBy,
@@ -120,7 +135,7 @@ export class GlobalRuleStore {
     if (warning) {
       this.logger.warn({
         targetCategory: "global_rules",
-        ruleId: nextRule.id,
+        ruleId: item.id,
         suggestedScope: warning.suggestedScope,
         reason: warning.reason
       }, "memory_scope_conflict_detected");
@@ -130,20 +145,24 @@ export class GlobalRuleStore {
       finalAction: diagnostics.finalAction,
       dedup,
       warning,
-      item: nextRule,
-      rules
+      item,
+      rules: await this.readAll()
     };
   }
 
   async remove(ruleId: string): Promise<GlobalRuleEntry[]> {
     const rules = await this.readAll();
-    const nextRules = rules.filter((item) => item.id !== ruleId);
-    if (nextRules.length === rules.length) {
+    const exists = rules.some((item) => item.id === ruleId);
+    if (!exists) {
       return rules;
     }
-    await this.writeAll(nextRules);
+    await this.stateDatabase.init();
+    this.stateDatabase.getDb().prepare(`
+      DELETE FROM global_rules
+      WHERE id = ?
+    `).run(ruleId);
     this.logger.info({ ruleId }, "global_rule_removed");
-    return nextRules;
+    return this.readAll();
   }
 
   async overwrite(rules: Array<{
@@ -163,39 +182,99 @@ export class GlobalRuleStore {
 
   private async readAll(): Promise<GlobalRuleEntry[]> {
     try {
-      const parsed = await this.store.read();
-      if (parsed) {
-        return [...parsed];
-      }
+      await this.stateDatabase.init();
+      const rows = this.stateDatabase.getDb().prepare(`
+        SELECT
+          id,
+          title,
+          content,
+          kind,
+          source,
+          created_at_ms AS createdAt,
+          updated_at_ms AS updatedAt
+        FROM global_rules
+        ORDER BY sort_order ASC, id ASC
+      `).all() as GlobalRuleRow[];
+      return globalRuleFileSchema.parse(rows.map((row) => createGlobalRuleEntry(row)));
     } catch (error) {
       this.logger.warn({ error }, "global_rule_store_load_failed");
       throw error;
     }
-    await this.writeAll([]);
-    return [];
   }
 
   private async writeAll(rules: GlobalRuleEntry[]): Promise<void> {
     const validated = globalRuleFileSchema.parse(rules);
-    await this.createBackupIfNeeded();
-    await this.store.write(validated);
+    await this.stateDatabase.init();
+    this.stateDatabase.getDb().transaction((nextRules: GlobalRuleEntry[]) => {
+      const db = this.stateDatabase.getDb();
+      db.prepare("DELETE FROM global_rules").run();
+      nextRules.forEach((rule, index) => insertGlobalRuleRow(db, rule, index + 1));
+    })(validated);
   }
 
-  private async createBackupIfNeeded(): Promise<void> {
-    try {
-      await stat(this.filePath);
-    } catch (error: unknown) {
-      const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code === "ENOENT") {
-        return;
-      }
-      throw error;
-    }
-
-    await rotateBackup({
-      sourceFilePath: this.filePath,
-      limit: this.config.backup.profileRotateLimit,
-      logger: this.logger
-    });
+  private async insertRule(rule: GlobalRuleEntry): Promise<void> {
+    await this.stateDatabase.init();
+    insertGlobalRuleRow(this.stateDatabase.getDb(), rule, nextGlobalRuleSortOrder(this.stateDatabase.getDb()));
   }
+
+  private async updateRule(rule: GlobalRuleEntry): Promise<void> {
+    await this.stateDatabase.init();
+    this.stateDatabase.getDb().prepare(`
+      UPDATE global_rules
+      SET
+        title = @title,
+        content = @content,
+        kind = @kind,
+        source = @source,
+        created_at_ms = @createdAt,
+        updated_at_ms = @updatedAt
+      WHERE id = @id
+    `).run(rule);
+  }
+}
+
+type GlobalRuleRow = {
+  id: string;
+  title: string;
+  content: string;
+  kind: GlobalRuleEntry["kind"];
+  source: GlobalRuleEntry["source"];
+  createdAt: number;
+  updatedAt: number;
+};
+
+function nextGlobalRuleSortOrder(db: SqliteDatabase): number {
+  return (db.prepare(`
+    SELECT COALESCE(MAX(sort_order), 0) + 1 AS nextSortOrder
+    FROM global_rules
+  `).get() as { nextSortOrder: number }).nextSortOrder;
+}
+
+function insertGlobalRuleRow(db: SqliteDatabase, rule: GlobalRuleEntry, sortOrder: number): void {
+  db.prepare(`
+    INSERT INTO global_rules (
+      id,
+      title,
+      content,
+      kind,
+      source,
+      created_at_ms,
+      updated_at_ms,
+      sort_order
+    )
+    VALUES (
+      @id,
+      @title,
+      @content,
+      @kind,
+      @source,
+      @createdAt,
+      @updatedAt,
+      @sortOrder
+    )
+  `).run({ ...rule, sortOrder });
+}
+
+function globalRuleEntryInput(value: unknown): GlobalRuleEntry {
+  return globalRuleEntrySchema.parse(value);
 }

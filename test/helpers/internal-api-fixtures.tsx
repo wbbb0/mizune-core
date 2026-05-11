@@ -617,13 +617,80 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     personaStore: {
       async get() {
         return { prompt: "persona" };
+      },
+      async write() {
       }
     } as unknown as InternalApiDeps["personaStore"],
+    rpProfileStore: {
+      async get() {
+        return {};
+      },
+      async write() {
+      }
+    } as unknown as InternalApiDeps["rpProfileStore"],
+    scenarioProfileStore: {
+      async get() {
+        return {};
+      },
+      async write() {
+      }
+    } as unknown as InternalApiDeps["scenarioProfileStore"],
+    globalProfileReadinessStore: {
+      async get() {
+        return {
+          persona: "uninitialized",
+          rp: "uninitialized",
+          scenario: "uninitialized",
+          updatedAt: 1
+        };
+      },
+      async write(value: unknown) {
+        return value;
+      }
+    } as unknown as InternalApiDeps["globalProfileReadinessStore"],
+    setupStore: {
+      async get() {
+        return {
+          state: "ready",
+          ownerPromptSentAt: null,
+          updatedAt: 1
+        };
+      }
+    } as unknown as InternalApiDeps["setupStore"],
     globalRuleStore: {
       async getAll() {
         return [];
+      },
+      async getRow() {
+        return null;
+      },
+      async createRow(value: unknown) {
+        return value;
+      },
+      async patchRow(_ruleId: string, patch: Record<string, unknown>) {
+        return patch;
+      },
+      async remove() {
+        return [];
       }
     } as unknown as InternalApiDeps["globalRuleStore"],
+    toolsetRuleStore: {
+      async getAll() {
+        return [];
+      },
+      async getRow() {
+        return null;
+      },
+      async createRow(value: unknown) {
+        return value;
+      },
+      async patchRow(_ruleId: string, patch: Record<string, unknown>) {
+        return patch;
+      },
+      async remove() {
+        return [];
+      }
+    } as unknown as InternalApiDeps["toolsetRuleStore"],
     scenarioHostStateStore: {
       async get(sessionId: string) {
         return state.scenarioHostStates[sessionId] ?? null;
@@ -684,6 +751,51 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     userStore: {
       async list() {
         return [{ userId: "10001", nickname: "Alice" }];
+      },
+      async listRows(input: { offset?: number; limit?: number } = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        const rows = [{
+          userId: "10001",
+          preferredAddress: "Alice",
+          memories: [],
+          createdAt: 1
+        }];
+        return {
+          rows: rows.slice(offset, offset + limit),
+          total: rows.length,
+          offset,
+          limit
+        };
+      },
+      async getPersistedRow(userId: string) {
+        return userId === "10001"
+          ? {
+              userId: "10001",
+              preferredAddress: "Alice",
+              memories: [],
+              createdAt: 1
+            }
+          : null;
+      },
+      async createPersistedRow(value: unknown) {
+        const raw = value as { userId: string; preferredAddress?: string; createdAt?: number };
+        return {
+          userId: raw.userId,
+          ...(raw.preferredAddress !== undefined ? { preferredAddress: raw.preferredAddress } : {}),
+          memories: [],
+          createdAt: raw.createdAt ?? 1
+        };
+      },
+      async patchPersistedRow(userId: string, patch: Record<string, unknown>) {
+        return {
+          userId,
+          preferredAddress: typeof patch.preferredAddress === "string" ? patch.preferredAddress : "Alice",
+          memories: [],
+          createdAt: 1
+        };
+      },
+      async deletePersistedRow() {
       }
     } as unknown as InternalApiDeps["userStore"],
     contextStore: {
@@ -909,8 +1021,38 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
               createdAt: 1
             }
           : undefined;
+      },
+      async listRows() {
+        return { rows: [], total: 0, offset: 0, limit: 100 };
+      },
+      async getRow() {
+        return null;
+      },
+      async createRow(value: unknown) {
+        return value;
+      },
+      async patchRow(_identity: unknown, patch: Record<string, unknown>) {
+        return patch;
+      },
+      async deleteRow() {
       }
     } as unknown as InternalApiDeps["userIdentityStore"],
+    groupMembershipStore: {
+      async listRows() {
+        return { rows: [], total: 0, offset: 0, limit: 100 };
+      },
+      async getRow() {
+        return null;
+      },
+      async createRow(value: unknown) {
+        return value;
+      },
+      async patchRow(_groupId: string, _userId: string, patch: Record<string, unknown>) {
+        return patch;
+      },
+      async deleteRow() {
+      }
+    } as unknown as InternalApiDeps["groupMembershipStore"],
     whitelistStore: {
       getSnapshot() {
         return {
@@ -932,11 +1074,128 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       },
       async listGroupRequests() {
         return [{ groupId: "20002", userId: "10003" }];
+      },
+      async listRows(input: { offset?: number; limit?: number } = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        const rows = [{
+          kind: "friend" as const,
+          flag: "flag-1",
+          userId: "10002",
+          comment: "",
+          createdAt: 1
+        }];
+        return {
+          rows: rows.slice(offset, offset + limit),
+          total: rows.length,
+          offset,
+          limit
+        };
+      },
+      async get(flag: string) {
+        return flag === "flag-1"
+          ? {
+              kind: "friend" as const,
+              flag: "flag-1",
+              userId: "10002",
+              comment: "",
+              createdAt: 1
+            }
+          : null;
+      },
+      async createRow(value: unknown) {
+        return value;
+      },
+      async patchRow(flag: string, patch: Record<string, unknown>) {
+        return {
+          kind: "friend" as const,
+          flag,
+          userId: "10002",
+          comment: typeof patch.comment === "string" ? patch.comment : "",
+          createdAt: 1
+        };
+      },
+      async deleteRow() {
       }
     } as unknown as InternalApiDeps["requestStore"],
     scheduledJobStore: {
       async list() {
         return [{ id: "job-1", name: "daily" }];
+      },
+      async listRows(input: { offset?: number; limit?: number } = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        const rows = [{
+          id: "job-1",
+          name: "daily",
+          enabled: true,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+          schedule: { kind: "delay" as const, delayMs: 1000 },
+          instruction: "ping",
+          targets: [{ sessionId: "qqbot:p:owner" }],
+          state: {
+            nextRunAtMs: null,
+            lastRunAtMs: null,
+            lastRunStatus: null,
+            lastDurationMs: null,
+            lastError: null,
+            consecutiveErrors: 0
+          }
+        }];
+        return {
+          rows: rows.slice(offset, offset + limit),
+          total: rows.length,
+          offset,
+          limit
+        };
+      },
+      async getRow(jobId: string) {
+        return jobId === "job-1"
+          ? {
+              id: "job-1",
+              name: "daily",
+              enabled: true,
+              createdAtMs: 1,
+              updatedAtMs: 1,
+              schedule: { kind: "delay" as const, delayMs: 1000 },
+              instruction: "ping",
+              targets: [{ sessionId: "qqbot:p:owner" }],
+              state: {
+                nextRunAtMs: null,
+                lastRunAtMs: null,
+                lastRunStatus: null,
+                lastDurationMs: null,
+                lastError: null,
+                consecutiveErrors: 0
+              }
+            }
+          : null;
+      },
+      async createRow(value: unknown) {
+        return value;
+      },
+      async patchRow(jobId: string, patch: Record<string, unknown>) {
+        return {
+          id: jobId,
+          name: typeof patch.name === "string" ? patch.name : "daily",
+          enabled: true,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+          schedule: { kind: "delay" as const, delayMs: 1000 },
+          instruction: "ping",
+          targets: [{ sessionId: "qqbot:p:owner" }],
+          state: {
+            nextRunAtMs: null,
+            lastRunAtMs: null,
+            lastRunStatus: null,
+            lastDurationMs: null,
+            lastError: null,
+            consecutiveErrors: 0
+          }
+        };
+      },
+      async deleteRow() {
       }
     } as unknown as InternalApiDeps["scheduledJobStore"],
     scheduler: {
@@ -944,6 +1203,33 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         state.schedulerReloadCount += 1;
       }
     } as unknown as InternalApiDeps["scheduler"],
+    comfyTaskStore: {
+      async listRows(input: { offset?: number; limit?: number } = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return { rows: [], total: 0, offset, limit };
+      },
+      async listResultRows(input: { offset?: number; limit?: number } = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return { rows: [], total: 0, offset, limit };
+      }
+    } as unknown as InternalApiDeps["comfyTaskStore"],
+    runtimeResourceStore: {
+      async listRows(input: { offset?: number; limit?: number } = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return {
+          rows: [],
+          total: 0,
+          offset,
+          limit
+        };
+      },
+      async list() {
+        return [];
+      }
+    } as unknown as InternalApiDeps["runtimeResourceStore"],
     shellRuntime: {
       listSessions() {
         return state.shellSessions;

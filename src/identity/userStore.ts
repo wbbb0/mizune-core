@@ -1,9 +1,7 @@
-import { stat } from "node:fs/promises";
-import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
-import { FileSchemaStore } from "#data/fileSchemaStore.ts";
-import { readStructuredFileRaw } from "#data/schema/file.ts";
+import type { SqliteDatabase } from "#data/sqlite/sqliteService.ts";
+import { StateDatabase } from "#data/state/stateDatabase.ts";
 import { detectScopeConflict, type ScopeConflictWarning } from "#memory/memoryCategory.ts";
 import { createUserMemoryEntry, type UserMemoryEntry } from "#memory/userMemoryEntry.ts";
 import { findBestDuplicateMatch, normalizeTitleForDedup } from "#memory/similarity.ts";
@@ -13,11 +11,10 @@ import {
   type MemoryDedupDetails,
   type MemoryWriteAction
 } from "#memory/writeResult.ts";
-import { rotateBackup } from "#utils/rotatingBackup.ts";
 import type { Relationship } from "./relationship.ts";
 import type { SpecialRole } from "./specialRole.ts";
 import { normalizeUserProfilePatch } from "./userProfile.ts";
-import { userStoreSchema, type PersistedUser, type User } from "./userSchema.ts";
+import { persistedUserSchema, userStoreSchema, type PersistedUser, type User } from "./userSchema.ts";
 
 function resolveStoredRelationship(userId: string): Relationship {
   if (userId === "owner") {
@@ -27,25 +24,16 @@ function resolveStoredRelationship(userId: string): Relationship {
 }
 
 export class UserStore {
-  private readonly filePath: string;
-  private readonly store: FileSchemaStore<typeof userStoreSchema>;
-
   constructor(
     dataDir: string,
-    private readonly config: Pick<AppConfig, "backup">,
-    private readonly logger: Logger
+    _config: Pick<AppConfig, "backup">,
+    private readonly logger: Logger,
+    private readonly stateDatabase = new StateDatabase(dataDir, logger)
   ) {
-    this.filePath = join(dataDir, "users.json");
-    this.store = new FileSchemaStore({
-      filePath: this.filePath,
-      schema: userStoreSchema,
-      logger,
-      loadErrorEvent: "user_store_load_failed"
-    });
   }
 
   async init(): Promise<void> {
-    await this.readRawAll();
+    await this.stateDatabase.init();
   }
 
   async list(): Promise<User[]> {
@@ -67,8 +55,7 @@ export class UserStore {
     profileSummary?: string;
     relationshipNote?: string;
   }): Promise<User> {
-    const users = await this.readRawAll();
-    const existing = users.find((user) => user.userId === input.userId);
+    const existing = await this.getPersistedByUserId(input.userId);
     const normalizedPatch = normalizeUserProfilePatch(input);
 
     const next: PersistedUser = {
@@ -85,20 +72,14 @@ export class UserStore {
       createdAt: existing?.createdAt ?? Date.now()
     };
 
-    if (existing) {
-      await this.replaceUser(users, next);
-    } else {
-      users.push(next);
-      await this.writeAll(users);
-    }
+    await this.upsertUserCore(next);
     const runtimeUser = toRuntimeUser(next);
     this.logger.info({ userId: input.userId, relationship: runtimeUser.relationship }, "known_user_registered");
     return runtimeUser;
   }
 
   async ensureInternalUser(userId: string): Promise<User> {
-    const users = await this.readRawAll();
-    const existing = users.find((user) => user.userId === userId);
+    const existing = await this.getPersistedByUserId(userId);
 
     if (!existing) {
       const created: PersistedUser = {
@@ -106,8 +87,7 @@ export class UserStore {
         memories: [],
         createdAt: Date.now()
       };
-      users.push(created);
-      await this.writeAll(users);
+      await this.upsertUserCore(created);
       this.logger.info({ userId }, "user_created");
       return toRuntimeUser(created);
     }
@@ -125,8 +105,7 @@ export class UserStore {
     profileSummary?: string;
     relationshipNote?: string;
   }): Promise<User> {
-    const users = await this.readRawAll();
-    const existing = users.find((user) => user.userId === input.userId);
+    const existing = await this.getPersistedByUserId(input.userId);
     const normalizedPatch = normalizeUserProfilePatch(input);
 
     if (!existing) {
@@ -142,8 +121,7 @@ export class UserStore {
         memories: [],
         createdAt: Date.now()
       };
-      users.push(created);
-      await this.writeAll(users);
+      await this.upsertUserCore(created);
       this.logger.info({ userId: input.userId }, "user_profile_updated");
       return toRuntimeUser(created);
     }
@@ -158,14 +136,13 @@ export class UserStore {
       ...(normalizedPatch.profileSummary ? { profileSummary: normalizedPatch.profileSummary } : {}),
       ...(normalizedPatch.relationshipNote ? { relationshipNote: normalizedPatch.relationshipNote } : {})
     };
-    await this.replaceUser(users, updated);
+    await this.upsertUserCore(updated);
     this.logger.info({ userId: input.userId }, "user_profile_updated");
     return toRuntimeUser(updated);
   }
 
   async touchSeenUser(input: { userId: string }): Promise<User> {
-    const users = await this.readRawAll();
-    const existing = users.find((user) => user.userId === input.userId);
+    const existing = await this.getPersistedByUserId(input.userId);
 
     if (existing) {
       return toRuntimeUser(existing);
@@ -175,15 +152,15 @@ export class UserStore {
   }
 
   async clearLegacyMemories(): Promise<number> {
-    const users = await this.readRawAll();
-    const memoryCount = users.reduce((sum, user) => sum + (user.memories?.length ?? 0), 0);
+    await this.stateDatabase.init();
+    const memoryCount = (this.stateDatabase.getDb().prepare(`
+      SELECT COUNT(*) AS count
+      FROM user_memories
+    `).get() as { count: number }).count;
     if (memoryCount === 0) {
       return 0;
     }
-    await this.writeAll(users.map((user) => ({
-      ...user,
-      memories: []
-    })));
+    this.stateDatabase.getDb().prepare("DELETE FROM user_memories").run();
     this.logger.info({ memoryCount }, "legacy_user_memories_cleared");
     return memoryCount;
   }
@@ -204,8 +181,7 @@ export class UserStore {
     dedup: MemoryDedupDetails;
     warning: ScopeConflictWarning | null;
   }> {
-    const users = await this.readRawAll();
-    const existing = users.find((user) => user.userId === input.userId);
+    const existing = await this.getPersistedByUserId(input.userId);
     const base: PersistedUser = existing ? toPersistedUser(existing) : {
       userId: input.userId,
       createdAt: Date.now(),
@@ -236,21 +212,19 @@ export class UserStore {
       ...(input.importance !== undefined ? { importance: input.importance } : {})
     });
     const targetIndex = memories.findIndex((item) => item.id === nextMemory.id);
+    const storedMemory = targetIndex >= 0
+      ? { ...nextMemory, createdAt: memories[targetIndex]!.createdAt }
+      : nextMemory;
     if (targetIndex >= 0) {
-      memories[targetIndex] = { ...nextMemory, createdAt: memories[targetIndex]!.createdAt };
+      memories[targetIndex] = storedMemory;
     } else {
-      memories.push(nextMemory);
+      memories.push(storedMemory);
     }
     const updated: PersistedUser = {
       ...base,
       memories
     };
-    if (existing) {
-      await this.replaceUser(users, updated);
-    } else {
-      users.push(updated);
-      await this.writeAll(users);
-    }
+    await this.upsertMemoryRow(updated.userId, storedMemory);
     const dedup = buildMemoryDedupDetails({
       explicitId: input.memoryId ?? null,
       duplicateId: duplicate?.item.id ?? null,
@@ -292,7 +266,7 @@ export class UserStore {
     }
     return {
       user: toRuntimeUser(updated),
-      item: nextMemory,
+      item: storedMemory,
       action,
       finalAction: diagnostics.finalAction,
       dedup,
@@ -301,8 +275,7 @@ export class UserStore {
   }
 
   async removeMemory(userId: string, memoryId: string): Promise<User | null> {
-    const users = await this.readRawAll();
-    const existing = users.find((user) => user.userId === userId);
+    const existing = await this.getPersistedByUserId(userId);
     if (!existing) {
       return null;
     }
@@ -314,7 +287,7 @@ export class UserStore {
       ...existing,
       memories: nextMemories
     };
-    await this.replaceUser(users, updated);
+    await this.deleteMemoryRow(userId, memoryId);
     this.logger.info({ userId, memoryId }, "user_memory_removed");
     return toRuntimeUser(updated);
   }
@@ -330,8 +303,7 @@ export class UserStore {
     updatedAt?: number;
     lastUsedAt?: number;
   }>): Promise<User> {
-    const users = await this.readRawAll();
-    const existing = users.find((user) => user.userId === userId);
+    const existing = await this.getPersistedByUserId(userId);
     const base: PersistedUser = existing ? toPersistedUser(existing) : {
       userId,
       createdAt: Date.now(),
@@ -341,19 +313,13 @@ export class UserStore {
       ...base,
       memories: memories.map((item) => createUserMemoryEntry(item))
     };
-    if (existing) {
-      await this.replaceUser(users, updated);
-    } else {
-      users.push(updated);
-      await this.writeAll(users);
-    }
+    await this.upsertPersistedUser(updated);
     this.logger.info({ userId, memoryCount: updated.memories.length }, "user_memories_overwritten");
     return toRuntimeUser(updated);
   }
 
   async setSpecialRole(userId: string, specialRole: SpecialRole | "none"): Promise<User> {
-    const users = await this.readRawAll();
-    const existing = users.find((user) => user.userId === userId);
+    const existing = await this.getPersistedByUserId(userId);
     const base: PersistedUser = existing ? toPersistedUser(existing) : {
       userId,
       memories: [],
@@ -362,72 +328,494 @@ export class UserStore {
     const updated: PersistedUser = specialRole === "none"
       ? (({ specialRole: _sr, ...rest }) => rest)(base as PersistedUser & { specialRole?: SpecialRole })
       : { ...base, specialRole };
-    if (existing) {
-      await this.replaceUser(users, updated);
-    } else {
-      users.push(updated);
-      await this.writeAll(users);
-    }
+    await this.upsertUserCore(updated);
     this.logger.info({ userId, specialRole }, "user_special_role_changed");
     return toRuntimeUser(updated);
   }
 
-  private async readRawAll(): Promise<PersistedUser[]> {
-    try {
-      const raw = await readStructuredFileRaw(this.filePath);
-      if (raw != null) {
-        return normalizePersistedUsers(raw);
-      }
-    } catch (error) {
-      const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code === "ENOENT") {
-        await this.writeAll([]);
-        return [];
-      }
-      this.logger.warn({ error }, "user_store_load_failed");
-      throw error;
+  async listRows(input: { offset?: number; limit?: number } = {}): Promise<{
+    rows: PersistedUser[];
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const offset = input.offset ?? 0;
+    const limit = input.limit ?? 100;
+    await this.stateDatabase.init();
+    const total = (this.stateDatabase.getDb().prepare(`
+      SELECT COUNT(*) AS count
+      FROM users
+    `).get() as { count: number }).count;
+    const userRows = this.stateDatabase.getDb().prepare(`
+      SELECT
+        user_id AS userId,
+        preferred_address AS preferredAddress,
+        gender,
+        residence,
+        timezone,
+        occupation,
+        profile_summary AS profileSummary,
+        relationship_note AS relationshipNote,
+        special_role AS specialRole,
+        created_at_ms AS createdAt
+      FROM users
+      ORDER BY user_id ASC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset) as UserRow[];
+    return {
+      rows: await this.attachMemories(userRows),
+      total,
+      offset,
+      limit
+    };
+  }
+
+  async getPersistedRow(userId: string): Promise<PersistedUser | null> {
+    return this.getPersistedByUserId(userId);
+  }
+
+  async createPersistedRow(value: unknown): Promise<PersistedUser> {
+    const parsed = persistedUserSchema.parse({
+      ...(value && typeof value === "object" ? value : {}),
+      memories: (value as { memories?: unknown } | null)?.memories ?? [],
+      createdAt: (value as { createdAt?: unknown } | null)?.createdAt ?? Date.now()
+    });
+    await this.insertPersistedUser(parsed);
+    return parsed;
+  }
+
+  async patchPersistedRow(userId: string, patch: Record<string, unknown>): Promise<PersistedUser> {
+    const current = await this.getPersistedByUserId(userId);
+    if (!current) {
+      throw new Error(`User ${userId} not found`);
     }
-    await this.writeAll([]);
-    return [];
+    const nextUserId = typeof patch.userId === "string" ? patch.userId : userId;
+    if (nextUserId !== userId) {
+      throw new Error("User id cannot be changed");
+    }
+    const parsed = persistedUserSchema.parse({
+      ...current,
+      ...patch,
+      userId
+    });
+    if ("memories" in patch) {
+      await this.upsertPersistedUser(parsed);
+    } else {
+      await this.upsertUserCore(parsed);
+    }
+    return parsed;
+  }
+
+  async deletePersistedRow(userId: string): Promise<void> {
+    await this.stateDatabase.init();
+    this.stateDatabase.getDb().prepare(`
+      DELETE FROM users
+      WHERE user_id = ?
+    `).run(userId);
+  }
+
+  private async readRawAll(): Promise<PersistedUser[]> {
+    await this.stateDatabase.init();
+    const userRows = this.stateDatabase.getDb().prepare(`
+      SELECT
+        user_id AS userId,
+        preferred_address AS preferredAddress,
+        gender,
+        residence,
+        timezone,
+        occupation,
+        profile_summary AS profileSummary,
+        relationship_note AS relationshipNote,
+        special_role AS specialRole,
+        created_at_ms AS createdAt
+      FROM users
+      ORDER BY user_id ASC
+    `).all() as UserRow[];
+    return this.attachMemories(userRows);
+  }
+
+  private async attachMemories(userRows: UserRow[]): Promise<PersistedUser[]> {
+    if (userRows.length === 0) {
+      return [];
+    }
+    const memoryRows: UserMemoryRow[] = [];
+    const userIds = userRows.map((row) => row.userId);
+    for (let index = 0; index < userIds.length; index += 500) {
+      const chunk = userIds.slice(index, index + 500);
+      const placeholders = chunk.map(() => "?").join(", ");
+      memoryRows.push(...this.stateDatabase.getDb().prepare(`
+        SELECT
+          user_id AS userId,
+          id,
+          title,
+          content,
+          kind,
+          source,
+          importance,
+          created_at_ms AS createdAt,
+          updated_at_ms AS updatedAt,
+          last_used_at_ms AS lastUsedAt
+        FROM user_memories
+        WHERE user_id IN (${placeholders})
+        ORDER BY user_id ASC, created_at_ms ASC, id ASC
+      `).all(...chunk) as UserMemoryRow[]);
+    }
+    const memoriesByUserId = new Map<string, UserMemoryEntry[]>();
+    for (const row of memoryRows) {
+      const memories = memoriesByUserId.get(row.userId) ?? [];
+      memories.push(toMemoryEntry(row));
+      memoriesByUserId.set(row.userId, memories);
+    }
+    return userStoreSchema.parse(userRows.map((row) => ({
+      ...toPersistedUserFromRow(row),
+      memories: memoriesByUserId.get(row.userId) ?? []
+    })));
   }
 
   private async readAll(): Promise<User[]> {
     return (await this.readRawAll()).map((user) => toRuntimeUser(user));
   }
 
-  private async replaceUser(users: Array<User | PersistedUser>, updated: User | PersistedUser): Promise<void> {
-    const normalizedUpdated = toPersistedUser(updated);
-    const next = users.map((user) => user.userId === updated.userId ? normalizedUpdated : toPersistedUser(user));
-    await this.writeAll(next);
+  private async getPersistedByUserId(userId: string): Promise<PersistedUser | null> {
+    await this.stateDatabase.init();
+    const row = this.stateDatabase.getDb().prepare(`
+      SELECT
+        user_id AS userId,
+        preferred_address AS preferredAddress,
+        gender,
+        residence,
+        timezone,
+        occupation,
+        profile_summary AS profileSummary,
+        relationship_note AS relationshipNote,
+        special_role AS specialRole,
+        created_at_ms AS createdAt
+      FROM users
+      WHERE user_id = ?
+    `).get(userId) as UserRow | undefined;
+    if (!row) {
+      return null;
+    }
+    const memories = this.stateDatabase.getDb().prepare(`
+      SELECT
+        user_id AS userId,
+        id,
+        title,
+        content,
+        kind,
+        source,
+        importance,
+        created_at_ms AS createdAt,
+        updated_at_ms AS updatedAt,
+        last_used_at_ms AS lastUsedAt
+      FROM user_memories
+      WHERE user_id = ?
+      ORDER BY created_at_ms ASC, id ASC
+    `).all(userId) as UserMemoryRow[];
+    return persistedUserSchema.parse({
+      ...toPersistedUserFromRow(row),
+      memories: memories.map(toMemoryEntry)
+    });
   }
 
-  private async writeAll(users: Array<User | PersistedUser>): Promise<void> {
-    const validated = userStoreSchema.parse(users.map((user) => toPersistedUser(user)));
-    await this.createBackupIfNeeded();
-    await this.store.write(validated);
+  private async upsertUserCore(user: PersistedUser): Promise<void> {
+    const validated = persistedUserSchema.parse(user);
+    await this.stateDatabase.init();
+    putUserCore(this.stateDatabase.getDb(), validated);
   }
 
-  private async createBackupIfNeeded(): Promise<void> {
+  private async upsertMemoryRow(userId: string, memory: UserMemoryEntry): Promise<void> {
+    await this.stateDatabase.init();
+    this.stateDatabase.getDb().transaction(() => {
+      const user = this.stateDatabase.getDb().prepare(`
+        SELECT
+          user_id AS userId,
+          preferred_address AS preferredAddress,
+          gender,
+          residence,
+          timezone,
+          occupation,
+          profile_summary AS profileSummary,
+          relationship_note AS relationshipNote,
+          special_role AS specialRole,
+          created_at_ms AS createdAt
+        FROM users
+        WHERE user_id = ?
+      `).get(userId) as UserRow | undefined;
+      putUserCore(this.stateDatabase.getDb(), user
+        ? { ...toPersistedUserFromRow(user), memories: [] }
+        : { userId, memories: [], createdAt: Date.now() });
+      upsertMemory(this.stateDatabase.getDb(), userId, memory);
+    })();
+  }
+
+  private async deleteMemoryRow(userId: string, memoryId: string): Promise<void> {
+    await this.stateDatabase.init();
+    this.stateDatabase.getDb().prepare(`
+      DELETE FROM user_memories
+      WHERE user_id = ? AND id = ?
+    `).run(userId, memoryId);
+  }
+
+  private async insertPersistedUser(user: PersistedUser): Promise<void> {
+    const validated = persistedUserSchema.parse(user);
+    await this.stateDatabase.init();
     try {
-      await stat(this.filePath);
+      this.stateDatabase.getDb().transaction((next: PersistedUser) => {
+        insertUserCore(this.stateDatabase.getDb(), next);
+        for (const memory of next.memories) {
+          insertMemory(this.stateDatabase.getDb(), next.userId, memory);
+        }
+      })(validated);
     } catch (error: unknown) {
-      const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code === "ENOENT") {
-        return;
+      if (isSqliteConstraintError(error)) {
+        throw new Error(`User ${validated.userId} already exists`);
       }
       throw error;
     }
+  }
 
-    await rotateBackup({
-      sourceFilePath: this.filePath,
-      limit: this.config.backup.profileRotateLimit,
-      logger: this.logger
-    });
+  private async upsertPersistedUser(user: PersistedUser): Promise<void> {
+    const validated = persistedUserSchema.parse(user);
+    await this.stateDatabase.init();
+    this.stateDatabase.getDb().transaction((next: PersistedUser) => {
+      putUserCore(this.stateDatabase.getDb(), next);
+      this.stateDatabase.getDb().prepare(`
+        DELETE FROM user_memories
+        WHERE user_id = ?
+      `).run(next.userId);
+      for (const memory of next.memories) {
+        insertMemory(this.stateDatabase.getDb(), next.userId, memory);
+      }
+    })(validated);
   }
 }
 
-function normalizePersistedUsers(value: unknown): PersistedUser[] {
-  return userStoreSchema.parse(value);
+type UserRow = {
+  userId: string;
+  preferredAddress: string | null;
+  gender: string | null;
+  residence: string | null;
+  timezone: string | null;
+  occupation: string | null;
+  profileSummary: string | null;
+  relationshipNote: string | null;
+  specialRole: SpecialRole | null;
+  createdAt: number;
+};
+
+type UserMemoryRow = {
+  userId: string;
+  id: string;
+  title: string;
+  content: string;
+  kind: UserMemoryEntry["kind"];
+  source: UserMemoryEntry["source"];
+  importance: number | null;
+  createdAt: number;
+  updatedAt: number;
+  lastUsedAt: number | null;
+};
+
+function toPersistedUserFromRow(row: UserRow): Omit<PersistedUser, "memories"> {
+  return {
+    userId: row.userId,
+    ...(row.preferredAddress != null ? { preferredAddress: row.preferredAddress } : {}),
+    ...(row.gender != null ? { gender: row.gender } : {}),
+    ...(row.residence != null ? { residence: row.residence } : {}),
+    ...(row.timezone != null ? { timezone: row.timezone } : {}),
+    ...(row.occupation != null ? { occupation: row.occupation } : {}),
+    ...(row.profileSummary != null ? { profileSummary: row.profileSummary } : {}),
+    ...(row.relationshipNote != null ? { relationshipNote: row.relationshipNote } : {}),
+    ...(row.specialRole != null ? { specialRole: row.specialRole } : {}),
+    createdAt: row.createdAt
+  };
+}
+
+function toMemoryEntry(row: UserMemoryRow): UserMemoryEntry {
+  return createUserMemoryEntry({
+    id: row.id,
+    title: row.title,
+    content: row.content,
+    kind: row.kind,
+    source: row.source,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    ...(row.importance != null ? { importance: row.importance } : {}),
+    ...(row.lastUsedAt != null ? { lastUsedAt: row.lastUsedAt } : {})
+  });
+}
+
+function toUserParams(user: PersistedUser): Record<string, unknown> {
+  return {
+    userId: user.userId,
+    preferredAddress: user.preferredAddress ?? null,
+    gender: user.gender ?? null,
+    residence: user.residence ?? null,
+    timezone: user.timezone ?? null,
+    occupation: user.occupation ?? null,
+    profileSummary: user.profileSummary ?? null,
+    relationshipNote: user.relationshipNote ?? null,
+    specialRole: user.specialRole ?? null,
+    createdAt: user.createdAt
+  };
+}
+
+function putUserCore(db: SqliteDatabase, user: PersistedUser): void {
+  db.prepare(`
+    INSERT INTO users (
+      user_id,
+      preferred_address,
+      gender,
+      residence,
+      timezone,
+      occupation,
+      profile_summary,
+      relationship_note,
+      special_role,
+      created_at_ms
+    )
+    VALUES (
+      @userId,
+      @preferredAddress,
+      @gender,
+      @residence,
+      @timezone,
+      @occupation,
+      @profileSummary,
+      @relationshipNote,
+      @specialRole,
+      @createdAt
+    )
+    ON CONFLICT(user_id) DO UPDATE SET
+      preferred_address = excluded.preferred_address,
+      gender = excluded.gender,
+      residence = excluded.residence,
+      timezone = excluded.timezone,
+      occupation = excluded.occupation,
+      profile_summary = excluded.profile_summary,
+      relationship_note = excluded.relationship_note,
+      special_role = excluded.special_role,
+      created_at_ms = excluded.created_at_ms
+  `).run(toUserParams(user));
+}
+
+function insertUserCore(db: SqliteDatabase, user: PersistedUser): void {
+  db.prepare(`
+    INSERT INTO users (
+      user_id,
+      preferred_address,
+      gender,
+      residence,
+      timezone,
+      occupation,
+      profile_summary,
+      relationship_note,
+      special_role,
+      created_at_ms
+    )
+    VALUES (
+      @userId,
+      @preferredAddress,
+      @gender,
+      @residence,
+      @timezone,
+      @occupation,
+      @profileSummary,
+      @relationshipNote,
+      @specialRole,
+      @createdAt
+    )
+  `).run(toUserParams(user));
+}
+
+function isSqliteConstraintError(error: unknown): boolean {
+  return typeof error === "object"
+    && error !== null
+    && "code" in error
+    && String((error as { code?: unknown }).code).startsWith("SQLITE_CONSTRAINT");
+}
+
+function insertMemory(db: SqliteDatabase, userId: string, memory: UserMemoryEntry): void {
+  db.prepare(`
+    INSERT INTO user_memories (
+      user_id,
+      id,
+      title,
+      content,
+      kind,
+      source,
+      importance,
+      created_at_ms,
+      updated_at_ms,
+      last_used_at_ms
+    )
+    VALUES (
+      @userId,
+      @id,
+      @title,
+      @content,
+      @kind,
+      @source,
+      @importance,
+      @createdAt,
+      @updatedAt,
+      @lastUsedAt
+    )
+  `).run(toMemoryParams(userId, memory));
+}
+
+function upsertMemory(db: SqliteDatabase, userId: string, memory: UserMemoryEntry): void {
+  db.prepare(`
+    INSERT INTO user_memories (
+      user_id,
+      id,
+      title,
+      content,
+      kind,
+      source,
+      importance,
+      created_at_ms,
+      updated_at_ms,
+      last_used_at_ms
+    )
+    VALUES (
+      @userId,
+      @id,
+      @title,
+      @content,
+      @kind,
+      @source,
+      @importance,
+      @createdAt,
+      @updatedAt,
+      @lastUsedAt
+    )
+    ON CONFLICT(user_id, id) DO UPDATE SET
+      title = excluded.title,
+      content = excluded.content,
+      kind = excluded.kind,
+      source = excluded.source,
+      importance = excluded.importance,
+      created_at_ms = excluded.created_at_ms,
+      updated_at_ms = excluded.updated_at_ms,
+      last_used_at_ms = excluded.last_used_at_ms
+  `).run(toMemoryParams(userId, memory));
+}
+
+function toMemoryParams(userId: string, memory: UserMemoryEntry): Record<string, unknown> {
+  return {
+    userId,
+    id: memory.id,
+    title: memory.title,
+    content: memory.content,
+    kind: memory.kind,
+    source: memory.source,
+    importance: memory.importance ?? null,
+    createdAt: memory.createdAt,
+    updatedAt: memory.updatedAt,
+    lastUsedAt: memory.lastUsedAt ?? null
+  };
 }
 
 function toRuntimeUser(

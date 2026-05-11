@@ -2,6 +2,7 @@ import { ConversationAccessService } from "#identity/conversationAccessService.t
 import { ContextEmbeddingService } from "#context/contextEmbeddingService.ts";
 import { ContextRetrievalService } from "#context/contextRetrievalService.ts";
 import { ContextStore } from "#context/contextStore.ts";
+import { StateDatabase } from "#data/state/stateDatabase.ts";
 import { GroupMembershipStore } from "#identity/groupMembershipStore.ts";
 import { NpcDirectory } from "#identity/npcDirectory.ts";
 import { WhitelistStore } from "#identity/whitelistStore.ts";
@@ -44,6 +45,7 @@ import { ComfyClient } from "#comfy/comfyClient.ts";
 import { ComfyTaskStore } from "#comfy/taskStore.ts";
 import { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import { RuntimeResourceRegistry } from "#runtime/resources/runtimeResourceRegistry.ts";
+import { RuntimeResourceStore } from "#runtime/resources/runtimeResourceStore.ts";
 import { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
@@ -61,8 +63,9 @@ export function createBootstrapServices(
   } = {}
 ): AppBootstrapServices {
   const { config, logger, dataDir } = context;
-  const whitelistStore = new WhitelistStore(dataDir, logger);
-  const userIdentityStore = new UserIdentityStore(dataDir, logger);
+  const stateDatabase = new StateDatabase(dataDir, logger);
+  const whitelistStore = new WhitelistStore(dataDir, logger, stateDatabase);
+  const userIdentityStore = new UserIdentityStore(dataDir, logger, stateDatabase);
   const npcDirectory = new NpcDirectory();
   const router = new EventRouter(
     config,
@@ -76,10 +79,10 @@ export function createBootstrapServices(
   const sessionManager = new SessionManager(config);
   const debounceManager = new DebounceManager(logger, sessionManager, config);
   const llmClient = new LlmClient(config, logger);
-  const audioStore = new AudioStore(dataDir);
+  const audioStore = new AudioStore(dataDir, logger);
   const audioTranscriber = new AudioTranscriber(config, llmClient, audioStore, oneBotClient, logger);
   const localFileService = new LocalFileService(config, dataDir);
-  const chatFileStore = new ChatFileStore(config, logger, localFileService);
+  const chatFileStore = new ChatFileStore(config, logger, localFileService, dataDir);
   const downloadRuntime = new DownloadRuntime(config, logger, dataDir, chatFileStore);
   const chatMessageFileGcService = new ChatMessageFileGcService(
     chatFileStore,
@@ -101,28 +104,31 @@ export function createBootstrapServices(
   const turnPlanner = new TurnPlanner(config, llmClient, chatFileStore, mediaVisionService, logger, mediaCaptionService);
   const messageQueue = new MessageQueue(logger, config);
   const sessionPersistence = new SessionPersistence(dataDir, logger);
-  const scheduledJobStore = new ScheduledJobStore(dataDir, logger);
-  const requestStore = new RequestStore(dataDir, logger);
-  const groupMembershipStore = new GroupMembershipStore(dataDir, logger);
-  const userStore = new UserStore(dataDir, config, logger);
+  const scheduledJobStore = new ScheduledJobStore(dataDir, logger, stateDatabase);
+  const requestStore = new RequestStore(dataDir, logger, stateDatabase);
+  const groupMembershipStore = new GroupMembershipStore(dataDir, logger, stateDatabase);
+  const userStore = new UserStore(dataDir, config, logger, stateDatabase);
   const contextStore = new ContextStore(dataDir, config, logger);
   const contextEmbeddingService = new ContextEmbeddingService(config, llmClient, logger);
   const contextRetrievalService = new ContextRetrievalService(config, contextStore, contextEmbeddingService, logger);
-  const personaStore = new PersonaStore(dataDir, config, logger);
-  const globalRuleStore = new GlobalRuleStore(dataDir, config, logger);
-  const toolsetRuleStore = new ToolsetRuleStore(dataDir, config, logger);
+  const personaStore = new PersonaStore(dataDir, config, logger, stateDatabase);
+  const globalRuleStore = new GlobalRuleStore(dataDir, config, logger, stateDatabase);
+  const toolsetRuleStore = new ToolsetRuleStore(dataDir, config, logger, stateDatabase);
   const scenarioHostStateStore = new ScenarioHostStateStore(dataDir, config, logger);
-  const rpProfileStore = new RpProfileStore(dataDir, config, logger);
-  const scenarioProfileStore = new ScenarioProfileStore(dataDir, config, logger);
-  const setupStore = new SetupStateStore(dataDir, config, userIdentityStore, logger);
-  const globalProfileReadinessStore = new GlobalProfileReadinessStore(dataDir, config, logger);
+  const rpProfileStore = new RpProfileStore(dataDir, config, logger, stateDatabase);
+  const scenarioProfileStore = new ScenarioProfileStore(dataDir, config, logger, stateDatabase);
+  const setupStore = new SetupStateStore(dataDir, config, userIdentityStore, logger, stateDatabase);
+  const globalProfileReadinessStore = new GlobalProfileReadinessStore(dataDir, config, logger, stateDatabase);
   const searchService = new SearchService(config, logger);
+  const runtimeResourceStore = new RuntimeResourceStore(stateDatabase);
+  const sharedResourceRegistry = new RuntimeResourceRegistry(runtimeResourceStore);
   const browserService = new BrowserService(createBrowserServiceDeps({
     config,
     logger,
     resolveSearchRef: (refId) => searchService.resolveReference(refId),
     dataDir,
-    chatFileStore
+    chatFileStore,
+    resourceRegistry: sharedResourceRegistry
   }));
   const forwardResolver = new ForwardResolver(oneBotClient, logger);
   const conversationAccess = new ConversationAccessService(
@@ -133,7 +139,7 @@ export function createBootstrapServices(
     userIdentityStore,
     logger
   );
-  const shellRuntime = new ShellRuntime(config, logger, dataDir);
+  const shellRuntime = new ShellRuntime(config, logger, sharedResourceRegistry);
 
   return {
     whitelistStore,
@@ -184,7 +190,9 @@ export function createBootstrapServices(
     comfyTemplateCatalog,
     forwardResolver,
     conversationAccess,
-    shellRuntime
+    shellRuntime,
+    runtimeResourceRegistry: sharedResourceRegistry,
+    runtimeResourceStore
   };
 }
 
@@ -221,6 +229,7 @@ export async function initializeBootstrapState(
       | "setupStore"
       | "globalProfileReadinessStore"
       | "sessionManager"
+      | "runtimeResourceRegistry"
     >,
     "sessionManager"
   > & {
@@ -258,10 +267,11 @@ export async function initializeBootstrapState(
     scenarioProfileStore,
     setupStore,
     globalProfileReadinessStore,
-    sessionManager
+    sessionManager,
+    runtimeResourceRegistry
   } = services;
 
-  await new RuntimeResourceRegistry(dataDir, logger).reset();
+  await runtimeResourceRegistry.reset();
   await whitelistStore.init();
   await sessionPersistence.init();
   await localFileService.init();
@@ -276,10 +286,6 @@ export async function initializeBootstrapState(
   await userIdentityStore.init();
   await userStore.init();
   await contextStore.init();
-  const migratedUserMemoryCount = contextStore.migrateUserMemories(await userStore.list());
-  if (migratedUserMemoryCount > 0) {
-    await userStore.clearLegacyMemories();
-  }
   await npcDirectory.refresh(userStore);
   await personaStore.init();
   await globalRuleStore.init();

@@ -14,7 +14,6 @@ import {
 import { createUserMemoryEntry, type UserMemoryEntry, type UserMemoryKind } from "#memory/userMemoryEntry.ts";
 import { createEmptyPersona, personaSchema, type Persona } from "#persona/personaSchema.ts";
 
-const USERS_FILE = "users.json";
 const PERSONA_FILE = "persona.json";
 const GLOBAL_RULES_FILE = "global-rules.json";
 const TOOLSET_RULES_FILE = "toolset-rules.json";
@@ -559,7 +558,6 @@ export async function migrateMemoryDataDir(input: {
   dataDir: string;
   removeLegacyFiles?: boolean;
 }): Promise<MemoryMigrationReport> {
-  const usersPath = join(input.dataDir, USERS_FILE);
   const personaPath = join(input.dataDir, PERSONA_FILE);
   const globalRulesPath = join(input.dataDir, GLOBAL_RULES_FILE);
   const toolsetRulesPath = join(input.dataDir, TOOLSET_RULES_FILE);
@@ -568,14 +566,12 @@ export async function migrateMemoryDataDir(input: {
   const reportPath = join(input.dataDir, REPORT_FILE);
 
   const [
-    usersRaw,
     personaRaw,
     globalRulesRaw,
     toolsetRulesRaw,
     legacyGlobalRulesRaw,
     legacyToolsetRulesRaw
   ] = await Promise.all([
-    readOptionalStructuredFile(usersPath),
     readOptionalStructuredFile(personaPath),
     readOptionalStructuredFile(globalRulesPath),
     readOptionalStructuredFile(toolsetRulesPath),
@@ -584,7 +580,11 @@ export async function migrateMemoryDataDir(input: {
   ]);
 
   const migratedPersona = migratePersona(personaRaw);
-  const migratedUsers = migrateUsers(usersRaw ?? []);
+  const migratedUsers: ReturnType<typeof migrateUsers> = {
+    users: [],
+    duplicates: [],
+    findings: []
+  };
   const migratedGlobalRules = migrateGlobalRules(
     globalRulesRaw ?? [],
     legacyGlobalRulesRaw ?? [],
@@ -618,10 +618,6 @@ export async function migrateMemoryDataDir(input: {
     filesRemoved: []
   };
 
-  await writeConfigFile(usersPath, migratedUsers.users);
-  report.filesWritten.push(usersPath);
-  await writeConfigFile(personaPath, migratedPersona.persona);
-  report.filesWritten.push(personaPath);
   await writeConfigFile(globalRulesPath, migratedGlobalRules.rules);
   report.filesWritten.push(globalRulesPath);
   await writeConfigFile(toolsetRulesPath, migratedToolsetRules.rules);

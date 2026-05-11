@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
@@ -129,6 +129,28 @@ test("session persistence keeps a session when save follows remove", async () =>
     assert.equal(loaded.length, 1);
     assert.equal(loaded[0]?.id, next.id);
     assert.equal(loaded[0]?.title, "New");
+  });
+});
+
+test("session persistence writes sqlite storage without legacy json output", async () => {
+  await withDataDir("llm-bot-session-persist-sqlite-only-test", async (dataDir: string) => {
+    const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
+    await persistence.init();
+
+    const session = toPersistedSessionState(createSessionState({
+      id: "web:sqlite-only",
+      type: "private",
+      source: "web",
+      participantRef: { kind: "user", id: "owner" },
+      title: "SQLite Only",
+      titleSource: "manual"
+    }));
+
+    await persistence.save(session);
+
+    const sessionFiles = await readdir(join(dataDir, "sessions"), { withFileTypes: true });
+    assert.equal(sessionFiles.some((entry) => entry.isFile() && entry.name.endsWith(".json")), false);
+    assert.equal(sessionFiles.some((entry) => entry.isFile() && entry.name === "sessions.sqlite"), true);
   });
 });
 
@@ -540,66 +562,66 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
     });
   });
 
-  test("session persistence skips legacy session files missing current fields", async () => {
+  test("session persistence skips malformed sqlite rows missing current fields", async () => {
     await withDataDir("llm-bot-session-persist-legacy-test", async (dataDir: string) => {
       const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
       await persistence.init();
 
-      const filePath = join(dataDir, "sessions", `${encodeURIComponent("qqbot:p:legacy")}.json`);
-      await writeFile(filePath, JSON.stringify({
-        id: "qqbot:p:legacy",
-        type: "private",
-        pendingMessages: [
-          {
-            userId: "owner",
-            senderName: "Owner",
-            chatType: "private",
-            text: "legacy",
-            images: [],
-            receivedAt: 1
-          }
-        ],
-        historySummary: null,
-        lastLlmUsage: {
-          inputTokens: 10,
-          outputTokens: 20,
-          totalTokens: 30,
-          requestCount: 1,
-          providerReported: true,
-          modelRef: "legacy",
-          model: "legacy-model",
-          capturedAt: 2
-        },
-        lastActiveAt: 1,
-        lastMessageAt: 1,
-        latestGapMs: null,
-        smoothedGapMs: null
-      }, null, 2));
+      const db = await (persistence as any).getReadyDb();
+      db.prepare(`
+        INSERT INTO sessions (
+          session_id, type, source, mode_id, operation_mode_json,
+          participant_kind, participant_id, title, title_source, reply_delivery,
+          pending_messages_json,
+          history_summary, history_backfill_boundary_ms,
+          debug_markers_json, last_llm_usage_json, sent_messages_json,
+          last_active_at_ms, last_message_at_ms, latest_gap_ms, smoothed_gap_ms, updated_at_ms
+        ) VALUES (
+          'qqbot:p:legacy', 'private', NULL, NULL, NULL,
+          'user', '', NULL, NULL, NULL,
+          '[{"userId":"owner"}]',
+          NULL, NULL,
+          '[]', '{"inputTokens":10}', '[]',
+          1, 1, NULL, NULL, 1
+        )
+      `).run();
 
       assert.deepEqual(await persistence.loadAll(), []);
     });
   });
 
-  test("session persistence loads usage snapshots without cached tokens as null", async () => {
+  test("session persistence loads sqlite usage snapshots without cached tokens as null", async () => {
     await withDataDir("llm-bot-session-persist-cached-tokens-compat-test", async (dataDir: string) => {
       const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
       await persistence.init();
 
-      const filePath = join(dataDir, "sessions", `${encodeURIComponent("qqbot:p:compat")}.json`);
-      await writeFile(filePath, JSON.stringify({
-        id: "qqbot:p:compat",
+      const db = await (persistence as any).getReadyDb();
+      db.prepare(`
+        INSERT INTO sessions (
+          session_id, type, source, mode_id, operation_mode_json,
+          participant_kind, participant_id, title, title_source, reply_delivery,
+          pending_messages_json,
+          history_summary, history_backfill_boundary_ms,
+          debug_markers_json, last_llm_usage_json, sent_messages_json,
+          last_active_at_ms, last_message_at_ms, latest_gap_ms, smoothed_gap_ms, updated_at_ms
+        ) VALUES (
+          @sessionId, @type, NULL, NULL, NULL,
+          @participantKind, @participantId, @title, @titleSource, NULL,
+          @pendingMessagesJson,
+          NULL, NULL,
+          @debugMarkersJson, @lastLlmUsageJson, @sentMessagesJson,
+          @lastActiveAtMs, @lastMessageAtMs, NULL, NULL, @updatedAtMs
+        )
+      `).run({
+        sessionId: "qqbot:p:compat",
         type: "private",
-        participantRef: {
-          kind: "user",
-          id: "compat"
-        },
+        participantKind: "user",
+        participantId: "compat",
         title: "Compat",
         titleSource: "default",
-        pendingMessages: [],
-        historySummary: null,
-        internalTranscript: [],
-        debugMarkers: [],
-        lastLlmUsage: {
+        pendingMessagesJson: "[]",
+        debugMarkersJson: "[]",
+        lastLlmUsageJson: JSON.stringify({
           inputTokens: 10,
           outputTokens: 20,
           totalTokens: 30,
@@ -608,13 +630,12 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
           modelRef: "compat",
           model: "compat-model",
           capturedAt: 2
-        },
-        sentMessages: [],
-        lastActiveAt: 1,
-        lastMessageAt: 1,
-        latestGapMs: null,
-        smoothedGapMs: null
-      }, null, 2));
+        }),
+        sentMessagesJson: "[]",
+        lastActiveAtMs: 1,
+        lastMessageAtMs: 1,
+        updatedAtMs: 1
+      });
 
       assert.deepEqual(await persistence.loadAll(), [{
         id: "qqbot:p:compat",

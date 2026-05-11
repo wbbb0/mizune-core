@@ -98,6 +98,12 @@ const configSaveBodySchema = z.object({
   value: z.unknown()
 });
 
+const dataResourceRowPatchBodySchema = z.object({
+  patch: z.record(z.string(), z.unknown()),
+  revision: z.union([z.string().trim().min(1), z.number().finite()]).optional(),
+  updatedAt: z.union([z.string().trim().min(1), z.number().finite()]).optional()
+});
+
 const editorResourceParamsSchema = z.object({
   resource: z.string().trim().min(1, "resource is required")
 });
@@ -105,6 +111,11 @@ const editorResourceParamsSchema = z.object({
 const resourceItemParamsSchema = z.object({
   resource: z.string().trim().min(1, "resource is required"),
   item: z.string().trim().min(1, "item is required")
+});
+
+const resourceRowParamsSchema = z.object({
+  resource: z.string().trim().min(1, "resource is required"),
+  rowId: z.string().trim().min(1, "rowId is required")
 });
 
 const editorOptionsParamsSchema = z.object({
@@ -123,6 +134,40 @@ const workspaceFileQuerySchema = z.object({
   path: z.string().trim().min(1, "path is required"),
   startLine: z.coerce.number().int().positive().optional(),
   endLine: z.coerce.number().int().positive().optional()
+});
+
+const dataResourceRowsQuerySchema = z.object({
+  offset: z.coerce.number().int().nonnegative().optional(),
+  limit: z.coerce.number().int().positive().max(500).optional(),
+  sort: z.string().trim().min(1).optional(),
+  filters: z.string().trim().optional()
+}).transform((value, context) => {
+  let filters: Record<string, unknown> | undefined;
+  if (value.filters) {
+    try {
+      const parsed = JSON.parse(value.filters) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        context.addIssue({
+          code: "custom",
+          message: "filters must be a JSON object"
+        });
+        return z.NEVER;
+      }
+      filters = parsed as Record<string, unknown>;
+    } catch {
+      context.addIssue({
+        code: "custom",
+        message: "filters must be valid JSON"
+      });
+      return z.NEVER;
+    }
+  }
+  return {
+    ...(value.offset !== undefined ? { offset: value.offset } : {}),
+    ...(value.limit !== undefined ? { limit: value.limit } : {}),
+    ...(value.sort !== undefined ? { sort: value.sort } : {}),
+    ...(filters !== undefined ? { filters } : {})
+  };
 });
 
 const workspaceStoredFileParamsSchema = z.object({
@@ -146,12 +191,15 @@ export type ParsedUpdateSessionModeStateBody = z.infer<typeof updateSessionModeS
 export type ParsedUploadAssetsBody = z.infer<typeof uploadWorkspaceFilesBodySchema>;
 export type ParsedConfigValidateBody = z.infer<typeof configValidateBodySchema>;
 export type ParsedConfigSaveBody = z.infer<typeof configSaveBodySchema>;
+export type ParsedDataResourceRowPatchBody = z.infer<typeof dataResourceRowPatchBodySchema>;
 export type ParsedEditorResourceParams = z.infer<typeof editorResourceParamsSchema>;
 export type ParsedResourceItemParams = z.infer<typeof resourceItemParamsSchema>;
+export type ParsedResourceRowParams = z.infer<typeof resourceRowParamsSchema>;
 export type ParsedEditorOptionsParams = z.infer<typeof editorOptionsParamsSchema>;
 export type ParsedBrowserProfileParams = z.infer<typeof browserProfileParamsSchema>;
 export type ParsedWorkspacePathQuery = z.infer<typeof chatFilePathQuerySchema>;
 export type ParsedWorkspaceFileQuery = z.infer<typeof workspaceFileQuerySchema>;
+export type ParsedDataResourceRowsQuery = z.infer<typeof dataResourceRowsQuerySchema>;
 export type ParsedWorkspaceStoredFileParams = z.infer<typeof workspaceStoredFileParamsSchema>;
 
 export function respondBadRequest(reply: FastifyReply, error: string) {
@@ -261,6 +309,10 @@ export function parseConfigSaveBody(body: unknown): ParsedConfigSaveBody | { err
   return parseWithSchema(configSaveBodySchema, body);
 }
 
+export function parseDataResourceRowPatchBody(body: unknown): ParsedDataResourceRowPatchBody | { error: string } {
+  return parseWithSchema(dataResourceRowPatchBodySchema, body);
+}
+
 export function parseEditorResourceParams(params: unknown): ParsedEditorResourceParams | { error: string } {
   return parseWithSchema(editorResourceParamsSchema, params);
 }
@@ -273,6 +325,10 @@ export function parseResourceItemParams(params: unknown): ParsedResourceItemPara
   return parseWithSchema(resourceItemParamsSchema, params);
 }
 
+export function parseResourceRowParams(params: unknown): ParsedResourceRowParams | { error: string } {
+  return parseWithSchema(resourceRowParamsSchema, params);
+}
+
 export function parseBrowserProfileParams(params: unknown): ParsedBrowserProfileParams | { error: string } {
   return parseWithSchema(browserProfileParamsSchema, params);
 }
@@ -283,6 +339,10 @@ export function parseWorkspacePathQuery(query: unknown): ParsedWorkspacePathQuer
 
 export function parseWorkspaceFileQuery(query: unknown): ParsedWorkspaceFileQuery | { error: string } {
   return parseWithSchema(workspaceFileQuerySchema, query);
+}
+
+export function parseDataResourceRowsQuery(query: unknown): ParsedDataResourceRowsQuery | { error: string } {
+  return parseWithSchema(dataResourceRowsQuerySchema, query);
 }
 
 export function parseWorkspaceStoredFileParams(params: unknown): ParsedWorkspaceStoredFileParams | { error: string } {

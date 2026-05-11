@@ -18,11 +18,11 @@ onMounted(() => {
     <div class="min-h-0 flex-1 overflow-y-auto">
       <WorkbenchListItem
         v-for="entry in resources"
-        :key="entry.key"
-        :selected="selectedKey === entry.key"
+        :key="entry.id"
+        :selected="selectedKey === entry.id"
         :title="entry.title"
         :meta="resourceBadge(entry)"
-        @select="selectResource(entry.key)"
+        @select="selectResource(entry.id)"
       >
       </WorkbenchListItem>
       <WorkbenchEmptyState v-if="resources.length === 0" :centered="false" class="justify-center px-3 py-6 text-center text-small text-text-subtle" message="暂无数据资源" />

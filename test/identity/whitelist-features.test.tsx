@@ -69,9 +69,9 @@ test("whitelist store initializes users and groups from data defaults instead of
     await store.init();
 
     assert.deepEqual(store.getSnapshot(), { users: [], groups: [] });
-    assert.deepEqual(
-      JSON.parse(await readFile(join(dataDir, "whitelist.json"), "utf8")),
-      { version: 2, users: [], groups: [] }
+    await assert.rejects(
+      readFile(join(dataDir, "whitelist.json"), "utf8"),
+      { code: "ENOENT" }
     );
   } finally {
     await rm(dataDir, { recursive: true, force: true });

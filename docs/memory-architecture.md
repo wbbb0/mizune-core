@@ -61,16 +61,22 @@
 
 ## Storage
 
-- `users.json`
-  - 存放 `user_profile` 字段与 `user_memories`。
-- `global-rules.json`
-  - 存放 `global_rules`。
-- `toolset-rules.json`
-  - 存放 `toolset_rules`。
-- `persona.json`
-  - 存放结构化 `persona` 字段。
-- `rp-profile.json`
-  - 存放结构化 `rpProfile` 字段。
+- `state/state.sqlite`
+  - `persona` 表存放结构化 `persona` 字段。
+  - `rp_profile` 表存放结构化 `rpProfile` 字段。
+  - `scenario_profile` 表存放结构化 `scenarioProfile` 字段。
+  - `global_profile_readiness` 表存放 persona / RP / Scenario 全局资料准备度。
+  - `setup_state` 表存放首次配置流程状态。
+  - `users` 表存放用户资料字段。
+  - `user_memories` 表存放旧版用户长期记忆条目；运行时不再从旧 `users.json` 导入或自动迁移这些数据。
+  - `pending_requests` 表存放待处理好友请求与群请求。
+  - `scheduled_jobs` 表存放定时任务定义与运行状态列，`scheduled_job_targets` 表存放任务目标会话。
+  - `global_rules` 表存放全局规则。
+  - `toolset_rules` 表存放工具集规则主体。
+  - `toolset_rule_toolsets` 表存放工具集规则与工具集 ID 的一对多关系。
+  - `user_identities` 表存放外部用户 ID 到内部用户 ID 的映射。
+  - `group_membership_entries` 表存放群成员关系缓存。
+  - `whitelist_entries` 表存放白名单条目。
 
 显式迁移入口：
 
@@ -89,8 +95,8 @@ npm run migrate:memory -- data/data/<instance>
 
 迁移覆盖的旧结构：
 
-- `global-memories.json` -> `global-rules.json`
-- `operation-notes.json` -> `toolset-rules.json`
+- `global-memories.json` 中的旧规则会进入迁移报告；当前运行时不再读取 `global-rules.json` 作为数据源。
+- `operation-notes.json` 中的旧工具集规则会进入迁移报告；当前运行时不再读取 `toolset-rules.json` 作为数据源。
 - 旧用户字段 `sharedContext` -> `relationshipNote`
 - 旧用户字段 `nickname` -> `preferredAddress`
 - 旧 persona 字段会在迁移脚本里归并到新的结构化字段

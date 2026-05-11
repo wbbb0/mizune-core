@@ -104,30 +104,6 @@ export function createDataBrowserService(input: {
 
 function buildDataBrowserResourceMap(dataDir: string): Map<string, DataBrowserResource> {
   const resources: DataBrowserResource[] = [
-    {
-      key: "audio_files",
-      title: "Audio Files",
-      kind: "single_json",
-      filePath: join(dataDir, "audio-files.json")
-    },
-    {
-      key: "image_files",
-      title: "Image Files",
-      kind: "single_json",
-      filePath: join(dataDir, "image-files.json")
-    },
-    {
-      key: "sessions",
-      title: "Sessions",
-      kind: "directory_json",
-      dirPath: join(dataDir, "sessions")
-    },
-    {
-      key: "workspace_files",
-      title: "Workspace Files",
-      kind: "single_json",
-      filePath: join(dataDir, "workspace", "files.json")
-    }
   ];
 
   return new Map(resources.map((resource) => [resource.key, resource]));

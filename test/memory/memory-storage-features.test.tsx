@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { access, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import pino from "pino";
 import { normalizeTitleForDedup } from "../../src/memory/similarity.ts";
 import { createEmptyPersona, type Persona } from "../../src/persona/personaSchema.ts";
@@ -93,6 +95,82 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
     }
   });
 
+  test("rpProfile store persists in state sqlite without legacy json output", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const rpStore = new RpProfileStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
+      const profile: RpProfile = {
+        ...createEmptyRpProfile(),
+        selfPositioning: "偏克制",
+        socialRole: "搭档",
+        lifeContext: "夜间工作",
+        physicalPresence: "安静",
+        bondToUser: "长期关系",
+        closenessPattern: "慢热",
+        interactionPattern: "直接",
+        realityContract: "现实自处",
+        continuityFacts: "",
+        hardLimits: "不跳出身份"
+      };
+      await rpStore.write(profile);
+      assert.deepEqual(await rpStore.get(), profile);
+      await assert.rejects(access(join(harness.dataDir, "rp-profile.json")), /ENOENT/u);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("profile stores ignore existing legacy json files", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      await writeFile(join(harness.dataDir, "rp-profile.json"), JSON.stringify({
+        selfPositioning: "legacy",
+        socialRole: "legacy",
+        lifeContext: "legacy",
+        physicalPresence: "legacy",
+        bondToUser: "legacy",
+        closenessPattern: "legacy",
+        interactionPattern: "legacy",
+        realityContract: "legacy",
+        continuityFacts: "legacy",
+        hardLimits: "legacy"
+      }), "utf8");
+      await writeFile(join(harness.dataDir, "scenario-profile.json"), JSON.stringify({
+        theme: "legacy",
+        hostStyle: "legacy",
+        worldBaseline: "legacy",
+        safetyOrTabooRules: "legacy",
+        openingPattern: "legacy"
+      }), "utf8");
+      await writeFile(join(harness.dataDir, "global-profile-readiness.json"), JSON.stringify({
+        persona: "ready",
+        rp: "ready",
+        scenario: "ready",
+        updatedAt: 1
+      }), "utf8");
+      await writeFile(join(harness.dataDir, "setup-state.json"), JSON.stringify({
+        state: "ready",
+        ownerPromptSentAt: null,
+        updatedAt: 1
+      }), "utf8");
+
+      const rpStore = new RpProfileStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
+      const scenarioStore = new ScenarioProfileStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
+      const readinessStore = new GlobalProfileReadinessStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
+      const setupStore = new SetupStateStore(harness.dataDir, createMemoryTestConfig(), harness.userIdentityStore, pino({ level: "silent" }));
+
+      assert.deepEqual(await rpStore.get(), createEmptyRpProfile());
+      assert.deepEqual(await scenarioStore.get(), createEmptyScenarioProfile());
+      const readiness = await readinessStore.get();
+      assert.equal(readiness.persona, "uninitialized");
+      assert.equal(readiness.rp, "uninitialized");
+      assert.equal(readiness.scenario, "uninitialized");
+      assert.equal((await setupStore.get()).state, "needs_persona");
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   test("scenarioProfile completeness depends on theme hostStyle and worldBaseline", async () => {
     const harness = await createMemoryHarness();
     try {
@@ -126,6 +204,26 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
     }
   });
 
+  test("scenarioProfile store persists in state sqlite without legacy json output", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const scenarioStore = new ScenarioProfileStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
+      const profile: ScenarioProfile = {
+        ...createEmptyScenarioProfile(),
+        theme: "赛博港口",
+        hostStyle: "旁白式主持",
+        worldBaseline: "默认世界有基础秩序与明确规则",
+        safetyOrTabooRules: "",
+        openingPattern: ""
+      };
+      await scenarioStore.write(profile);
+      assert.deepEqual(await scenarioStore.get(), profile);
+      await assert.rejects(access(join(harness.dataDir, "scenario-profile.json")), /ENOENT/u);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   test("global profile readiness store can read and write persona rp and scenario readiness", async () => {
     const harness = await createMemoryHarness();
     try {
@@ -147,6 +245,7 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
       assert.equal(await readinessStore.isPersonaReady(), true);
       assert.equal(await readinessStore.isRpReady(), true);
       assert.equal(await readinessStore.isScenarioReady(), true);
+      await assert.rejects(access(join(harness.dataDir, "global-profile-readiness.json")), /ENOENT/u);
     } finally {
       await harness.cleanup();
     }
@@ -160,6 +259,7 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
       const state = await setupStore.init(persona);
       assert.equal(state.state, "needs_persona");
       assert.ok(setupStore.describeMissingFields(persona).length > 0);
+      await assert.rejects(access(join(harness.dataDir, "setup-state.json")), /ENOENT/u);
     } finally {
       await harness.cleanup();
     }
@@ -199,6 +299,66 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
       const listed = await harness.userStore.getByUserId("10001");
       assert.equal(listed?.memories.length, 2);
       assert.match(JSON.stringify(listed?.memories), /喜欢拉面/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("user store persists in state sqlite without legacy json output", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const updated = await harness.userStore.patchUserProfile({
+        userId: "10001",
+        preferredAddress: "小王",
+        occupation: "产品经理"
+      });
+      assert.equal(updated.preferredAddress, "小王");
+      assert.equal((await harness.userStore.getByUserId("10001"))?.occupation, "产品经理");
+      await assert.rejects(access(join(harness.dataDir, "users.json")), /ENOENT/u);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("user store ignores existing legacy users json", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      await writeFile(join(harness.dataDir, "users.json"), JSON.stringify([{
+        userId: "legacy-user",
+        preferredAddress: "旧用户",
+        memories: [],
+        createdAt: 1
+      }]), "utf8");
+      assert.equal(await harness.userStore.getByUserId("legacy-user"), null);
+      assert.deepEqual(await harness.userStore.list(), []);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("user row creation rejects duplicates without replacing memories", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      await harness.userStore.createPersistedRow({
+        userId: "10001",
+        preferredAddress: "小王"
+      });
+      await harness.userStore.upsertMemory({
+        userId: "10001",
+        title: "饮食",
+        content: "喜欢拉面"
+      });
+      await assert.rejects(
+        () => harness.userStore.createPersistedRow({
+          userId: "10001",
+          preferredAddress: "覆盖"
+        }),
+        /already exists/u
+      );
+      const stored = await harness.userStore.getByUserId("10001");
+      assert.equal(stored?.preferredAddress, "小王");
+      assert.equal(stored?.memories.length, 1);
+      assert.equal(stored?.memories[0]?.content, "喜欢拉面");
     } finally {
       await harness.cleanup();
     }

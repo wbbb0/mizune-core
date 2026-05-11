@@ -20,6 +20,8 @@ import type { createLogger } from "../../logger.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
 import type { RequestStore } from "#requests/requestStore.ts";
 import type { SingleInstanceLock } from "#runtime/singleInstanceLock.ts";
+import type { RuntimeResourceRegistry } from "#runtime/resources/runtimeResourceRegistry.ts";
+import type { RuntimeResourceStore } from "#runtime/resources/runtimeResourceStore.ts";
 import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
@@ -105,6 +107,8 @@ export interface AppServiceBootstrap {
   forwardResolver: ForwardResolver;
   conversationAccess: ConversationAccessService;
   shellRuntime: ShellRuntime;
+  runtimeResourceRegistry: RuntimeResourceRegistry;
+  runtimeResourceStore: RuntimeResourceStore;
   configManager: ConfigManager;
   singleInstanceLock: SingleInstanceLock;
 }

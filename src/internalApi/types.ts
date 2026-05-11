@@ -3,8 +3,14 @@ import type { AppConfig } from "#config/config.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import type { UserIdentityStore } from "#identity/userIdentityStore.ts";
 import type { UserStore } from "#identity/userStore.ts";
+import type { GroupMembershipStore } from "#identity/groupMembershipStore.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
 import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
+import type { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
+import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
+import type { SetupStateStore } from "#identity/setupStateStore.ts";
+import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
+import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import type { RequestStore } from "#requests/requestStore.ts";
 import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
@@ -40,16 +46,22 @@ import {
   type EditorService
 } from "./application/editorService.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
+import type { RuntimeResourceStore } from "#runtime/resources/runtimeResourceStore.ts";
 import {
   createDataBrowserService,
   type DataBrowserService
 } from "./application/dataBrowserService.ts";
+import {
+  createDataRegistryService,
+  type DataRegistryService
+} from "./application/dataRegistryService.ts";
 import {
   createLocalFileAdminService,
   type LocalFileAdminService
 } from "./application/localFileAdminService.ts";
 import type { DerivedObservation } from "#llm/derivations/derivedObservation.ts";
 import type { ContentSafetyAuditView } from "#contentSafety/contentSafetyTypes.ts";
+import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 
 // Domain-shaped dependency slices keep route/application code from depending on
 // the full internal API service graph when a smaller contract is enough.
@@ -190,17 +202,25 @@ export interface InternalApiDeps {
   sessionManager: SessionAdminReadAccess & SessionAdminMutationAccess & SessionStreamAccess;
   sessionCaptioner: SessionCaptioner;
   personaStore: PersonaStore;
+  rpProfileStore: RpProfileStore;
+  scenarioProfileStore: ScenarioProfileStore;
+  globalProfileReadinessStore: GlobalProfileReadinessStore;
+  setupStore: SetupStateStore;
   globalRuleStore: GlobalRuleStore;
+  toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
   userStore: UserStore;
   contextStore: ContextStore;
   contextEmbeddingService: ContextEmbeddingService;
   contextRetrievalService: ContextRetrievalService;
   whitelistStore: WhitelistStore;
+  groupMembershipStore: GroupMembershipStore;
   userIdentityStore: UserIdentityStore;
   requestStore: RequestStore;
   scheduledJobStore: ScheduledJobStore;
+  comfyTaskStore: ComfyTaskStore;
   scheduler: Scheduler;
+  runtimeResourceStore: RuntimeResourceStore;
   shellRuntime: ShellRuntime;
   configManager: ConfigManager;
   sessionPersistence: SessionPersistence;
@@ -228,6 +248,7 @@ export interface InternalApiServices {
     };
     editor: EditorService;
     dataBrowser: DataBrowserService;
+    dataRegistry: DataRegistryService;
     localFileAdmin: LocalFileAdminService;
     operations: InternalApiOperationsDeps;
     workspace: InternalApiWorkspaceDeps;
@@ -275,6 +296,29 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       }),
       dataBrowser: createDataBrowserService({
         config: deps.config
+      }),
+      dataRegistry: createDataRegistryService({
+        config: deps.config,
+        personaStore: deps.personaStore,
+        rpProfileStore: deps.rpProfileStore,
+        scenarioProfileStore: deps.scenarioProfileStore,
+        globalProfileReadinessStore: deps.globalProfileReadinessStore,
+        setupStore: deps.setupStore,
+        globalRuleStore: deps.globalRuleStore,
+        toolsetRuleStore: deps.toolsetRuleStore,
+        userIdentityStore: deps.userIdentityStore,
+        groupMembershipStore: deps.groupMembershipStore,
+        userStore: deps.userStore,
+        requestStore: deps.requestStore,
+        scheduledJobStore: deps.scheduledJobStore,
+        scheduler: deps.scheduler,
+        comfyTaskStore: deps.comfyTaskStore,
+        whitelistStore: deps.whitelistStore,
+        contextStore: deps.contextStore,
+        audioStore: deps.audioStore,
+        chatFileStore: deps.chatFileStore,
+        sessionPersistence: deps.sessionPersistence,
+        runtimeResourceStore: deps.runtimeResourceStore
       }),
       localFileAdmin: createLocalFileAdminService({
         localFileService: deps.localFileService,

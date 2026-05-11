@@ -1,9 +1,6 @@
-import { stat } from "node:fs/promises";
-import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
-import { FileSchemaStore } from "#data/fileSchemaStore.ts";
-import { rotateBackup } from "#utils/rotatingBackup.ts";
+import { StateDatabase } from "#data/state/stateDatabase.ts";
 import {
   createEmptyPersona,
   describeMissingPersonaFields,
@@ -21,24 +18,16 @@ import {
 } from "#memory/writeResult.ts";
 
 export class PersonaStore {
-  private readonly filePath: string;
-  private readonly store: FileSchemaStore<typeof personaSchema>;
-
   constructor(
     dataDir: string,
-    private readonly config: AppConfig,
-    private readonly logger: Logger
+    _config: AppConfig,
+    private readonly logger: Logger,
+    private readonly stateDatabase = new StateDatabase(dataDir, logger)
   ) {
-    this.filePath = join(dataDir, "persona.json");
-    this.store = new FileSchemaStore({
-      filePath: this.filePath,
-      schema: personaSchema,
-      logger,
-      loadErrorEvent: "persona_reset_to_empty"
-    });
   }
 
   async init(): Promise<void> {
+    await this.stateDatabase.init();
     await this.get();
   }
 
@@ -58,34 +47,46 @@ export class PersonaStore {
   }
 
   async get(): Promise<Persona> {
-    try {
-      const normalized = normalizeStoredPersona(await this.store.read());
-      if (!normalized) {
-        const resetPersona = createEmptyPersona();
-        await this.write(resetPersona);
-        this.logger.warn("persona_reset_to_empty");
-        return resetPersona;
-      }
+    const row = this.stateDatabase.getDb().prepare(`
+      SELECT
+        name,
+        temperament,
+        speaking_style AS speakingStyle,
+        global_traits AS globalTraits,
+        general_preferences AS generalPreferences
+      FROM persona
+      WHERE id = 'global'
+    `).get() as Persona | undefined;
+    const normalized = normalizeStoredPersona(row);
+    if (normalized) {
       return normalized;
-    } catch (error) {
-      const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code === "ENOENT") {
-        const initialPersona = createEmptyPersona();
-        await this.write(initialPersona);
-        this.logger.info("persona_initialized_for_setup");
-        return initialPersona;
-      }
-      const resetPersona = createEmptyPersona();
-      await this.write(resetPersona);
-      this.logger.warn("persona_reset_to_empty");
-      return resetPersona;
     }
+    const initialPersona = createEmptyPersona();
+    await this.write(initialPersona);
+    this.logger.info("persona_initialized_for_setup");
+    return initialPersona;
   }
 
   async write(persona: Persona): Promise<void> {
     const validated = personaSchema.parse(persona);
-    await this.createBackupIfNeeded();
-    await this.store.write(validated);
+    this.stateDatabase.getDb().prepare(`
+      INSERT INTO persona (
+        id, name, temperament, speaking_style, global_traits, general_preferences, updated_at_ms
+      )
+      VALUES (
+        'global', @name, @temperament, @speakingStyle, @globalTraits, @generalPreferences, @updatedAtMs
+      )
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        temperament = excluded.temperament,
+        speaking_style = excluded.speaking_style,
+        global_traits = excluded.global_traits,
+        general_preferences = excluded.general_preferences,
+        updated_at_ms = excluded.updated_at_ms
+    `).run({
+      ...validated,
+      updatedAtMs: Date.now()
+    });
   }
 
   async patch(patch: Partial<Persona>): Promise<Persona> {
@@ -135,23 +136,6 @@ export class PersonaStore {
     };
   }
 
-  private async createBackupIfNeeded(): Promise<void> {
-    try {
-      await stat(this.filePath);
-    } catch (error: unknown) {
-      const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code === "ENOENT") {
-        return;
-      }
-      throw error;
-    }
-
-    await rotateBackup({
-      sourceFilePath: this.filePath,
-      limit: this.config.backup.profileRotateLimit,
-      logger: this.logger
-    });
-  }
 }
 
 function detectPersonaPatchConflict(patch: Partial<Persona>): ScopeConflictWarning | null {

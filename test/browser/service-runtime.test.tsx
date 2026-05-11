@@ -1,19 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { BrowserService, createBrowserServiceDeps } from "../../src/services/web/browser/browserService.ts";
 import { BrowserSessionRuntime } from "../../src/services/web/browser/browserSessionRuntime.ts";
 import { prioritizeBrowserCandidates } from "../../src/services/web/browser/playwrightBrowserBackend.ts";
 import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
+import { createRuntimeResourceHarness } from "../helpers/runtime-resource-test-support.ts";
 
 function createBrowserService() {
   const config = createForwardFeatureConfig();
   config.browser.playwright.enabled = true;
+  const logger = createSilentLogger();
+  const dataDir = join(tmpdir(), `llm-bot-browser-service-${randomUUID()}`);
+  const { runtimeResourceRegistry } = createRuntimeResourceHarness(dataDir, logger);
   return new BrowserService(createBrowserServiceDeps({
     config,
-    logger: createSilentLogger(),
+    logger,
     resolveSearchRef: () => null,
-    dataDir: "/tmp",
+    dataDir,
+    resourceRegistry: runtimeResourceRegistry,
     chatFileStore: {
       async importBuffer() {
         return { fileId: "img_uploaded_1" };

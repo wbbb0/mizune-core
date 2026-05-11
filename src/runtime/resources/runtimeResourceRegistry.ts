@@ -1,44 +1,26 @@
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
-import type { Logger } from "pino";
-import { FileSchemaStore } from "#data/fileSchemaStore.ts";
+import type { RuntimeResourceStore } from "./runtimeResourceStore.ts";
 import type {
   BrowserPageRecoveryState,
-  ShellSessionRecoveryState,
   RuntimeResourceKind,
   RuntimeResourceRecord,
-  RuntimeResourceStatus
+  RuntimeResourceStatus,
+  ShellSessionRecoveryState
 } from "./resourceTypes.ts";
-import { runtimeResourceFileSchema, type RuntimeResourceFile } from "./runtimeResourceSchema.ts";
 
 export class RuntimeResourceRegistry {
-  private readonly store: FileSchemaStore<typeof runtimeResourceFileSchema>;
-
-  constructor(dataDir: string, logger: Logger) {
-    this.store = new FileSchemaStore({
-      filePath: join(dataDir, "live-resources.json"),
-      schema: runtimeResourceFileSchema,
-      logger,
-      loadErrorEvent: "runtime_resource_registry_load_failed",
-      atomicWrite: true
-    });
-  }
+  constructor(private readonly store: RuntimeResourceStore) {}
 
   async list(kind?: RuntimeResourceKind): Promise<RuntimeResourceRecord[]> {
-    const current = await this.store.readOrDefault({ resources: [] });
-    const items = current.resources
-      .filter((item) => !kind || item.kind === kind)
-      .sort((left, right) => right.lastAccessedAtMs - left.lastAccessedAtMs);
-    return items.map((item) => ({ ...item }));
+    return this.store.list(kind);
   }
 
   async listActive(kind?: RuntimeResourceKind): Promise<RuntimeResourceRecord[]> {
-    const items = await this.list(kind);
-    return items.filter((item) => item.status === "active");
+    return this.store.listActive(kind);
   }
 
   async reset(): Promise<void> {
-    await this.store.write({ resources: [] });
+    await this.store.reset();
   }
 
   async createBrowserPage(input: {
@@ -64,9 +46,7 @@ export class RuntimeResourceRegistry {
       expiresAtMs: input.expiresAtMs,
       browserPage: input.browserPage
     };
-    await this.store.updateExisting((current) => ({
-      resources: upsertResource(current.resources, record)
-    }), () => ({ resources: [record] }));
+    await this.store.upsert(record);
     return record;
   }
 
@@ -92,9 +72,7 @@ export class RuntimeResourceRegistry {
       expiresAtMs: input.expiresAtMs,
       shellSession: input.shellSession
     };
-    await this.store.updateExisting((current) => ({
-      resources: upsertResource(current.resources, record)
-    }), () => ({ resources: [record] }));
+    await this.store.upsert(record);
     return record;
   }
 
@@ -106,25 +84,15 @@ export class RuntimeResourceRegistry {
     summary?: string;
     status?: RuntimeResourceStatus;
   }): Promise<RuntimeResourceRecord | null> {
-    let updated: RuntimeResourceRecord | null = null;
-    await this.store.updateExisting((current) => ({
-      resources: current.resources.map((item) => {
-        if (item.resourceId !== resourceId) {
-          return item;
-        }
-        updated = {
-          ...item,
-          lastAccessedAtMs: input.accessedAtMs,
-          expiresAtMs: input.expiresAtMs === undefined ? item.expiresAtMs : input.expiresAtMs,
-          title: input.title === undefined ? item.title : input.title,
-          description: input.description === undefined ? item.description : normalizeOptionalDescription(input.description),
-          summary: input.summary ?? item.summary,
-          status: input.status ?? item.status
-        };
-        return updated;
-      })
-    }), () => ({ resources: [] }));
-    return updated;
+    const patch: Parameters<RuntimeResourceStore["update"]>[1] = {
+      lastAccessedAtMs: input.accessedAtMs
+    };
+    if (input.expiresAtMs !== undefined) patch.expiresAtMs = input.expiresAtMs;
+    if (input.status !== undefined) patch.status = input.status;
+    if (input.title !== undefined) patch.title = input.title;
+    if (input.description !== undefined) patch.description = normalizeOptionalDescription(input.description);
+    if (input.summary !== undefined) patch.summary = input.summary;
+    return this.store.update(resourceId, patch);
   }
 
   async markStatus(resourceId: string, status: RuntimeResourceStatus, updatedAtMs: number): Promise<RuntimeResourceRecord | null> {
@@ -133,11 +101,6 @@ export class RuntimeResourceRegistry {
       status
     });
   }
-}
-
-function upsertResource(resources: RuntimeResourceRecord[], next: RuntimeResourceRecord): RuntimeResourceRecord[] {
-  const withoutCurrent = resources.filter((item) => item.resourceId !== next.resourceId);
-  return [...withoutCurrent, next];
 }
 
 function createRuntimeResourceId(prefix: "res_browser" | "res_shell"): string {

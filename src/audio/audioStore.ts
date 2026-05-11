@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import type { Logger } from "pino";
 import { z } from "zod";
+import { s } from "#data/schema/index.ts";
+import type { SqliteDatabase } from "#data/sqlite/sqliteService.ts";
+import { AssetsDatabase } from "#data/assets/assetsDatabase.ts";
 
 const transcriptionStatusSchema = z.enum(["missing", "queued", "ready", "failed"]);
 
@@ -11,37 +13,43 @@ const storedAudioFileSchema = z.object({
   createdAt: z.number().int().nonnegative(),
   transcription: z.string().min(1).nullable().optional(),
   transcriptionStatus: transcriptionStatusSchema.optional(),
-  transcriptionUpdatedAt: z.number().int().nonnegative().optional(),
+  transcriptionUpdatedAt: z.number().int().nonnegative().nullable().optional(),
   transcriptionModelRef: z.string().min(1).nullable().optional(),
   transcriptionError: z.string().min(1).nullable().optional()
 });
 
-const audioFileStoreSchema = z.object({
-  version: z.literal(1),
-  audios: z.array(storedAudioFileSchema)
-});
+export const storedAudioFileRegistrySchema = s.object({
+  id: s.string().trim().nonempty(),
+  source: s.string().trim().nonempty(),
+  createdAt: s.number().int().min(0),
+  transcription: s.union([s.string().trim().nonempty(), s.literal(null)]).default(null),
+  transcriptionStatus: s.enum(["missing", "queued", "ready", "failed"] as const).default("missing"),
+  transcriptionUpdatedAt: s.union([s.number().int().min(0), s.literal(null)]).default(null),
+  transcriptionModelRef: s.union([s.string().trim().nonempty(), s.literal(null)]).default(null),
+  transcriptionError: s.union([s.string().trim().nonempty(), s.literal(null)]).default(null)
+}).strict();
 
 export type AudioTranscriptionStatus = z.infer<typeof transcriptionStatusSchema>;
 export type StoredAudioFile = z.infer<typeof storedAudioFileSchema> & {
   transcription: string | null;
   transcriptionStatus: AudioTranscriptionStatus;
+  transcriptionUpdatedAt: number | null;
   transcriptionModelRef: string | null;
   transcriptionError: string | null;
 };
 
 export class AudioStore {
-  private readonly filePath: string;
-  private cachedAudios: StoredAudioFile[] | null = null;
-  private cachedMtimeMs: number | null = null;
   private writeChain: Promise<void> = Promise.resolve();
 
-  constructor(dataDir: string) {
-    this.filePath = join(dataDir, "audio-files.json");
+  constructor(
+    dataDir: string,
+    logger: Logger,
+    private readonly assetsDatabase = new AssetsDatabase(dataDir, logger)
+  ) {
   }
 
   async init(): Promise<void> {
-    await mkdir(dirname(this.filePath), { recursive: true });
-    await this.readAll();
+    await this.assetsDatabase.init();
   }
 
   async registerSources(sources: string[]): Promise<StoredAudioFile[]> {
@@ -53,8 +61,7 @@ export class AudioStore {
     }
 
     return this.withStoreLock(async () => {
-      const existing = await this.readAll();
-      const next = [...existing];
+      const db = await this.getReadyDb();
       const created: StoredAudioFile[] = [];
 
       for (const source of normalized) {
@@ -64,21 +71,34 @@ export class AudioStore {
           createdAt: Date.now(),
           transcription: null,
           transcriptionStatus: "missing",
+          transcriptionUpdatedAt: null,
           transcriptionModelRef: null,
           transcriptionError: null
         });
-        next.push(audioFile);
+        insertAudioRow(db, audioFile);
         created.push(audioFile);
       }
 
-      await this.writeAll(next);
       return created;
     });
   }
 
   async get(audioId: string): Promise<StoredAudioFile | null> {
-    const audios = await this.readAll();
-    return audios.find((item) => item.id === audioId) ?? null;
+    const db = await this.getReadyDb();
+    const row = db.prepare(`
+      SELECT
+        id,
+        source,
+        created_at_ms AS createdAt,
+        transcription,
+        transcription_status AS transcriptionStatus,
+        transcription_updated_at_ms AS transcriptionUpdatedAt,
+        transcription_model_ref AS transcriptionModelRef,
+        transcription_error AS transcriptionError
+      FROM audio_files
+      WHERE id = ?
+    `).get(audioId) as AudioRow | undefined;
+    return row ? normalizeStoredAudioFile(row) : null;
   }
 
   async getMany(audioIds: string[]): Promise<StoredAudioFile[]> {
@@ -86,7 +106,7 @@ export class AudioStore {
     if (ids.size === 0) {
       return [];
     }
-    const audios = await this.readAll();
+    const audios = await this.listAll();
     return audios.filter((item) => ids.has(item.id));
   }
 
@@ -106,21 +126,16 @@ export class AudioStore {
     }
 
     await this.withStoreLock(async () => {
-      const audios = await this.readAll();
-      let changed = false;
-      const next = audios.map((item) => {
-        if (!ids.includes(item.id) || item.transcriptionStatus === "ready" || item.transcriptionStatus === "queued") {
-          return item;
-        }
-        changed = true;
-        return {
-          ...item,
-          transcriptionStatus: "queued" as const,
-          transcriptionError: null
-        };
-      });
-      if (changed) {
-        await this.writeAll(next);
+      const db = await this.getReadyDb();
+      const update = db.prepare(`
+        UPDATE audio_files
+        SET transcription_status = 'queued',
+            transcription_error = NULL
+        WHERE id = ?
+          AND transcription_status NOT IN ('ready', 'queued')
+      `);
+      for (const id of ids) {
+        update.run(id);
       }
     });
   }
@@ -133,19 +148,16 @@ export class AudioStore {
     }
   ): Promise<void> {
     await this.withStoreLock(async () => {
-      const audios = await this.readAll();
-      await this.writeAll(audios.map((item) => (
-        item.id !== audioId
-          ? item
-          : {
-              ...item,
-              transcription: payload.transcription,
-              transcriptionStatus: "ready" as const,
-              transcriptionUpdatedAt: Date.now(),
-              transcriptionModelRef: payload.modelRef,
-              transcriptionError: null
-            }
-      )));
+      const db = await this.getReadyDb();
+      db.prepare(`
+        UPDATE audio_files
+        SET transcription = ?,
+            transcription_status = 'ready',
+            transcription_updated_at_ms = ?,
+            transcription_model_ref = ?,
+            transcription_error = NULL
+        WHERE id = ?
+      `).run(payload.transcription, Date.now(), payload.modelRef, audioId);
     });
   }
 
@@ -157,56 +169,47 @@ export class AudioStore {
     }
   ): Promise<void> {
     await this.withStoreLock(async () => {
-      const audios = await this.readAll();
-      await this.writeAll(audios.map((item) => (
-        item.id !== audioId
-          ? item
-          : {
-              ...item,
-              transcriptionStatus: "failed" as const,
-              transcriptionUpdatedAt: Date.now(),
-              transcriptionModelRef: payload.modelRef,
-              transcriptionError: payload.message.slice(0, 240),
-              transcription: item.transcription ?? null
-            }
-      )));
+      const db = await this.getReadyDb();
+      db.prepare(`
+        UPDATE audio_files
+        SET transcription_status = 'failed',
+            transcription_updated_at_ms = ?,
+            transcription_model_ref = ?,
+            transcription_error = ?
+        WHERE id = ?
+      `).run(Date.now(), payload.modelRef, payload.message.slice(0, 240), audioId);
     });
   }
 
-  private async readAll(): Promise<StoredAudioFile[]> {
-    try {
-      const stats = await stat(this.filePath);
-      if (this.cachedAudios && this.cachedMtimeMs === stats.mtimeMs) {
-        return this.cachedAudios;
-      }
-      const raw = await readFile(this.filePath, "utf8");
-      const parsed = audioFileStoreSchema.parse(JSON.parse(raw));
-      const audios = parsed.audios.map(normalizeStoredAudioFile);
-      this.cachedAudios = audios;
-      this.cachedMtimeMs = stats.mtimeMs;
-      return audios;
-    } catch {
-      const empty: StoredAudioFile[] = [];
-      this.cachedAudios = empty;
-      this.cachedMtimeMs = null;
-      return empty;
-    }
+  async listRows(input: { offset?: number; limit?: number } = {}): Promise<{
+    rows: StoredAudioFile[];
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const offset = input.offset ?? 0;
+    const limit = input.limit ?? 100;
+    const db = await this.getReadyDb();
+    const total = (db.prepare("SELECT COUNT(*) AS count FROM audio_files").get() as { count: number }).count;
+    const rows = db.prepare(`
+      SELECT
+        id,
+        source,
+        created_at_ms AS createdAt,
+        transcription,
+        transcription_status AS transcriptionStatus,
+        transcription_updated_at_ms AS transcriptionUpdatedAt,
+        transcription_model_ref AS transcriptionModelRef,
+        transcription_error AS transcriptionError
+      FROM audio_files
+      ORDER BY created_at_ms DESC, id ASC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset) as AudioRow[];
+    return { rows: rows.map(normalizeStoredAudioFile), total, offset, limit };
   }
 
-  private async writeAll(audios: StoredAudioFile[]): Promise<void> {
-    const payload = {
-      version: 1 as const,
-      audios
-    };
-    const tempPath = `${this.filePath}.tmp`;
-    await writeFile(tempPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-    await rename(tempPath, this.filePath);
-    this.cachedAudios = audios;
-    try {
-      this.cachedMtimeMs = (await stat(this.filePath)).mtimeMs;
-    } catch {
-      this.cachedMtimeMs = null;
-    }
+  async getRow(audioId: string): Promise<StoredAudioFile | null> {
+    return this.get(audioId);
   }
 
   private async withStoreLock<T>(callback: () => Promise<T>): Promise<T> {
@@ -222,16 +225,66 @@ export class AudioStore {
       release();
     }
   }
+
+  private async getReadyDb(): Promise<SqliteDatabase> {
+    await this.assetsDatabase.init();
+    return this.assetsDatabase.getDb();
+  }
+
+  private async listAll(): Promise<StoredAudioFile[]> {
+    const db = await this.getReadyDb();
+    const rows = db.prepare(`
+      SELECT
+        id,
+        source,
+        created_at_ms AS createdAt,
+        transcription,
+        transcription_status AS transcriptionStatus,
+        transcription_updated_at_ms AS transcriptionUpdatedAt,
+        transcription_model_ref AS transcriptionModelRef,
+        transcription_error AS transcriptionError
+      FROM audio_files
+      ORDER BY created_at_ms DESC, id ASC
+    `).all() as AudioRow[];
+    return rows.map(normalizeStoredAudioFile);
+  }
 }
 
-function normalizeStoredAudioFile(value: z.infer<typeof storedAudioFileSchema>): StoredAudioFile {
+type AudioRow = z.infer<typeof storedAudioFileSchema>;
+
+function normalizeStoredAudioFile(value: AudioRow): StoredAudioFile {
   return {
     ...value,
     transcription: value.transcription ?? null,
     transcriptionStatus: value.transcriptionStatus ?? "missing",
+    transcriptionUpdatedAt: value.transcriptionUpdatedAt ?? null,
     transcriptionModelRef: value.transcriptionModelRef ?? null,
     transcriptionError: value.transcriptionError ?? null
   };
+}
+
+function insertAudioRow(db: SqliteDatabase, audio: StoredAudioFile): void {
+  db.prepare(`
+    INSERT INTO audio_files (
+      id,
+      source,
+      created_at_ms,
+      transcription,
+      transcription_status,
+      transcription_updated_at_ms,
+      transcription_model_ref,
+      transcription_error
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    audio.id,
+    audio.source,
+    audio.createdAt,
+    audio.transcription,
+    audio.transcriptionStatus,
+    audio.transcriptionUpdatedAt,
+    audio.transcriptionModelRef,
+    audio.transcriptionError
+  );
 }
 
 function uniqueAudioIds(audioIds: string[]): string[] {
