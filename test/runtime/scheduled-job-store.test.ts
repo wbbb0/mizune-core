@@ -59,6 +59,14 @@ test("ScheduledJobStore persists jobs in state sqlite without legacy json output
     });
     assert.equal((await harness.store.list()).length, 1);
     assert.equal((await harness.store.getRow(created.id))?.name, "daily");
+    const db = (harness.store as any).stateDatabase.getDb();
+    const jobColumns = (db.prepare("PRAGMA table_info(scheduled_jobs)").all() as Array<{ name: string }>).map((column) => column.name);
+    assert.equal(jobColumns.includes("schedule_json"), false);
+    assert.equal(jobColumns.includes("targets_json"), false);
+    assert.equal(jobColumns.includes("state_json"), false);
+    assert.equal(jobColumns.includes("schedule_kind"), true);
+    assert.equal(jobColumns.includes("next_run_at_ms"), true);
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM scheduled_job_targets").get() as { count: number }).count, 1);
     await assert.rejects(access(join(harness.dataDir, "scheduled-jobs.json")), /ENOENT/u);
   } finally {
     await harness.cleanup();

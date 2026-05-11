@@ -123,7 +123,7 @@ data/<实例名>/sessions/sessions.sqlite
 data/<实例名>/assets/assets.sqlite
 ```
 
-其中 `assets/assets.sqlite` 当前已经承载音频索引、转写状态、聊天文件索引、Comfy 任务索引和内容安全审计记录，不再写回旧的 `audio-files.json`、`chat-files/files.json`、`comfy/tasks.json` 或 `content-safety/results.json`。
+其中 `assets/assets.sqlite` 当前已经承载音频索引、转写状态、聊天文件索引、Comfy 任务索引、Comfy 结果文件索引和内容安全审计记录，不再写回旧的 `audio-files.json`、`chat-files/files.json`、`comfy/tasks.json` 或 `content-safety/results.json`。
 
 ## 接入 OneBot
 
@@ -338,8 +338,9 @@ config/instances/acc1.yml
 默认每个实例的数据目录下会有这些内容：
 
 - `sessions/`
-- `sessions/sessions.sqlite`，其中包含会话快照与 `scenario_host` 每会话状态持久化数据
-- `state/state.sqlite`，其中包含 `persona`、`rp_profile`、`scenario_profile`、`global_profile_readiness`、`setup_state`、`users`、`user_memories`、`pending_requests`、`scheduled_jobs`、`global_rules`、`toolset_rules`、`toolset_rule_toolsets`、`user_identities`、`group_membership_entries` 与 `whitelist_entries`
+- `sessions/sessions.sqlite`，其中包含会话快照、会话 transcript 竖表与 `scenario_host` 每会话状态持久化数据
+- `state/state.sqlite`，其中包含 `persona`、`rp_profile`、`scenario_profile`、`global_profile_readiness`、`setup_state`、`users`、`user_memories`、`pending_requests`、`scheduled_jobs`、`scheduled_job_targets`、`global_rules`、`toolset_rules`、`toolset_rule_toolsets`、`user_identities`、`group_membership_entries` 与 `whitelist_entries`
+- `assets/assets.sqlite`，其中包含 `audio_files`、`chat_files`、`comfy_tasks`、`comfy_task_result_files` 与 `content_safety_audits`
 - `dumps/`，WebUI Data Registry 导出的可读文件会使用稳定文件名覆盖写入这里，避免按时间戳生成大量 dump
 - `workspace/`
 - `webui-auth.json`

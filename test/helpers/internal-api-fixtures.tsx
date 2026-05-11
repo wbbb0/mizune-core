@@ -1203,6 +1203,18 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         state.schedulerReloadCount += 1;
       }
     } as unknown as InternalApiDeps["scheduler"],
+    comfyTaskStore: {
+      async listRows(input: { offset?: number; limit?: number } = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return { rows: [], total: 0, offset, limit };
+      },
+      async listResultRows(input: { offset?: number; limit?: number } = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return { rows: [], total: 0, offset, limit };
+      }
+    } as unknown as InternalApiDeps["comfyTaskStore"],
     runtimeResourceStore: {
       async listRows(input: { offset?: number; limit?: number } = {}) {
         const offset = input.offset ?? 0;

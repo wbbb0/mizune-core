@@ -73,19 +73,25 @@
 
 内部 API 的 Data Registry 将这两个表分别暴露为 `sessions` 和 `session_transcript_items` 资源；WebUI `Data` 页对这两个资源使用专用只读查看器，便于直接检查会话元数据和单条 transcript 内容。
 
+## State Store 表组
+
+当前 `state/state.sqlite` 承载 persona、资料、用户、规则、身份、请求、白名单和定时任务等运行态数据。大多数表组使用 `block_reset`，不接受版本不匹配时的自动重建；`state.scheduled_jobs` 当前使用默认 reset 策略，结构破坏性调整会以当前代码结构为准重建该表组。
+
+定时任务拆为 `scheduled_jobs` 和 `scheduled_job_targets`：`scheduled_jobs` 保存任务定义、调度类型、下一次运行时间和最近运行状态等原生列；`scheduled_job_targets` 是目标会话竖表，一行对应一个任务目标。内部 API 的 `scheduled_jobs` registry 资源仍以完整任务对象读写，store 层负责在两张表之间组装和更新。
+
 ## Assets Store 表组
 
 当前 `assets/assets.sqlite` 已注册以下 source-of-truth 表组：
 
 - `assets.audio_files`：`audio_files`，承载音频源索引与转写状态
 - `assets.chat_files`：`chat_files`，承载聊天文件索引与 caption 状态
-- `assets.comfy_tasks`：`comfy_tasks`，承载 Comfy 任务索引与结果文件引用
+- `assets.comfy_tasks`：`comfy_tasks`、`comfy_task_result_files`，承载 Comfy 任务索引与结果文件引用
 - `assets.content_safety_audits`：`content_safety_audits`，承载内容安全审计记录
 
-该表组同样使用 `block_reset`，不会在版本不匹配或结构校验失败时自动 drop/recreate。音频元数据已经以 SQLite 为准，内部 API 的 `audio_files` registry 资源也直接读取该表组，而不是旧的 `audio-files.json`。
+音频、聊天文件和内容安全审计表组使用 `block_reset`，不会在版本不匹配或结构校验失败时自动 drop/recreate。`assets.comfy_tasks` 当前使用默认 reset 策略，结构破坏性调整会以当前代码结构为准重建该表组。音频元数据已经以 SQLite 为准，内部 API 的 `audio_files` registry 资源也直接读取该表组，而不是旧的 `audio-files.json`。
 
 聊天文件真实内容仍保留在文件系统下的 `chat-files/media/` 与 `chat-files/documents/`，但索引与 caption 元数据已经以 `chat_files` 表为准；内部 API 的 `workspace_files` registry 资源也直接读取该表组，而不是旧的 `chat-files/files.json`。
 
-Comfy 任务记录和结果文件引用也已经以 `comfy_tasks` 表为准；真实生成出的媒体文件仍通过聊天文件存储链路落到文件系统。
+Comfy 任务记录以 `comfy_tasks` 表为准；结果文件引用拆为 `comfy_task_result_files` 竖表，一行对应一个输出文件。任务状态轮询只更新运行态列和结果文件竖表，不再反复重写 `workflow_snapshot_json`。真实生成出的媒体文件仍通过聊天文件存储链路落到文件系统。
 
 内容安全审计记录也已经以 `content_safety_audits` 表为准；投影、后台会话视图和文件安全状态查询都直接读取该表，而不是旧的 `content-safety/results.json`。

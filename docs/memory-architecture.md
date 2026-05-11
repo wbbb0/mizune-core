@@ -70,7 +70,7 @@
   - `users` 表存放用户资料字段。
   - `user_memories` 表存放旧版用户长期记忆条目；运行时不再从旧 `users.json` 导入或自动迁移这些数据。
   - `pending_requests` 表存放待处理好友请求与群请求。
-  - `scheduled_jobs` 表存放定时任务定义与运行状态。
+  - `scheduled_jobs` 表存放定时任务定义与运行状态列，`scheduled_job_targets` 表存放任务目标会话。
   - `global_rules` 表存放全局规则。
   - `toolset_rules` 表存放工具集规则主体。
   - `toolset_rule_toolsets` 表存放工具集规则与工具集 ID 的一对多关系。

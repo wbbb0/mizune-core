@@ -278,6 +278,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     userIdentityStore,
     requestStore,
     scheduledJobStore,
+    comfyTaskStore,
     scheduler,
     shellRuntime,
     configManager,

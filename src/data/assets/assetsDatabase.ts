@@ -113,8 +113,6 @@ function createComfyTasksSchema(db: SqliteDatabase): void {
       resolved_height INTEGER NOT NULL,
       comfy_prompt_id TEXT NOT NULL,
       status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'notified')),
-      result_file_ids_json TEXT NOT NULL,
-      result_files_json TEXT NOT NULL,
       auto_iteration_index INTEGER NOT NULL,
       max_auto_iterations INTEGER NOT NULL,
       last_error TEXT,
@@ -123,8 +121,19 @@ function createComfyTasksSchema(db: SqliteDatabase): void {
       started_at_ms INTEGER,
       finished_at_ms INTEGER
     );
+
+    CREATE TABLE IF NOT EXISTS comfy_task_result_files (
+      task_id TEXT NOT NULL REFERENCES comfy_tasks(id) ON DELETE CASCADE,
+      result_index INTEGER NOT NULL CHECK (result_index >= 0),
+      file_id TEXT,
+      filename TEXT NOT NULL,
+      subfolder TEXT NOT NULL,
+      type TEXT NOT NULL,
+      PRIMARY KEY (task_id, result_index)
+    );
   `);
   db.exec("CREATE INDEX IF NOT EXISTS idx_comfy_tasks_status ON comfy_tasks(status, updated_at_ms DESC, id ASC);");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_comfy_task_result_files_task_order ON comfy_task_result_files(task_id, result_index);");
 }
 
 function createContentSafetyAuditsSchema(db: SqliteDatabase): void {
@@ -197,8 +206,6 @@ function validateComfyTasksSchema(db: SqliteDatabase): void {
     resolved_height: "INTEGER",
     comfy_prompt_id: "TEXT",
     status: "TEXT",
-    result_file_ids_json: "TEXT",
-    result_files_json: "TEXT",
     auto_iteration_index: "INTEGER",
     max_auto_iterations: "INTEGER",
     last_error: "TEXT",
@@ -206,6 +213,14 @@ function validateComfyTasksSchema(db: SqliteDatabase): void {
     updated_at_ms: "INTEGER",
     started_at_ms: "INTEGER",
     finished_at_ms: "INTEGER"
+  });
+  assertTableColumns(db, "comfy_task_result_files", {
+    task_id: "TEXT",
+    result_index: "INTEGER",
+    file_id: "TEXT",
+    filename: "TEXT",
+    subfolder: "TEXT",
+    type: "TEXT"
   });
 }
 
@@ -248,10 +263,9 @@ const ASSETS_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   },
   {
     groupId: "assets.comfy_tasks",
-    schemaVersion: 1,
-    resetPolicy: "block_reset",
-    ownedTables: ["comfy_tasks"],
-    ownedIndexes: ["idx_comfy_tasks_status"],
+    schemaVersion: 2,
+    ownedTables: ["comfy_tasks", "comfy_task_result_files"],
+    ownedIndexes: ["idx_comfy_tasks_status", "idx_comfy_task_result_files_task_order"],
     createSchema: createComfyTasksSchema,
     validateSchema: validateComfyTasksSchema
   },

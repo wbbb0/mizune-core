@@ -307,13 +307,29 @@ function createScheduledJobsSchema(db: SqliteDatabase): void {
       enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
       created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
       updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
-      schedule_json TEXT NOT NULL CHECK (json_valid(schedule_json)),
+      schedule_kind TEXT NOT NULL CHECK (schedule_kind IN ('delay', 'at', 'cron')),
+      schedule_delay_ms INTEGER,
+      schedule_run_at_ms INTEGER,
+      schedule_cron_expr TEXT,
+      schedule_timezone TEXT,
       instruction TEXT NOT NULL CHECK (instruction = trim(instruction) AND length(instruction) > 0),
-      targets_json TEXT NOT NULL CHECK (json_valid(targets_json)),
-      state_json TEXT NOT NULL CHECK (json_valid(state_json)),
+      next_run_at_ms INTEGER,
+      last_run_at_ms INTEGER,
+      last_run_status TEXT CHECK (last_run_status IN ('ok', 'error', 'running')),
+      last_duration_ms INTEGER,
+      last_error TEXT,
+      consecutive_errors INTEGER NOT NULL CHECK (consecutive_errors >= 0),
       sort_order INTEGER NOT NULL CHECK (sort_order >= 0)
     );
+
+    CREATE TABLE IF NOT EXISTS scheduled_job_targets (
+      job_id TEXT NOT NULL REFERENCES scheduled_jobs(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL CHECK (session_id = trim(session_id) AND length(session_id) > 0),
+      sort_order INTEGER NOT NULL CHECK (sort_order >= 0),
+      PRIMARY KEY (job_id, session_id)
+    );
   `);
+  db.exec("CREATE INDEX IF NOT EXISTS idx_scheduled_job_targets_job_order ON scheduled_job_targets(job_id, sort_order);");
 }
 
 function validateScheduledJobsSchema(db: SqliteDatabase): void {
@@ -323,10 +339,23 @@ function validateScheduledJobsSchema(db: SqliteDatabase): void {
     enabled: "INTEGER",
     created_at_ms: "INTEGER",
     updated_at_ms: "INTEGER",
-    schedule_json: "TEXT",
+    schedule_kind: "TEXT",
+    schedule_delay_ms: "INTEGER",
+    schedule_run_at_ms: "INTEGER",
+    schedule_cron_expr: "TEXT",
+    schedule_timezone: "TEXT",
     instruction: "TEXT",
-    targets_json: "TEXT",
-    state_json: "TEXT",
+    next_run_at_ms: "INTEGER",
+    last_run_at_ms: "INTEGER",
+    last_run_status: "TEXT",
+    last_duration_ms: "INTEGER",
+    last_error: "TEXT",
+    consecutive_errors: "INTEGER",
+    sort_order: "INTEGER"
+  });
+  assertTableColumns(db, "scheduled_job_targets", {
+    job_id: "TEXT",
+    session_id: "TEXT",
     sort_order: "INTEGER"
   });
 }
@@ -570,9 +599,9 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   },
   {
     groupId: "state.scheduled_jobs",
-    schemaVersion: 1,
-    resetPolicy: "block_reset",
-    ownedTables: ["scheduled_jobs"],
+    schemaVersion: 2,
+    ownedTables: ["scheduled_jobs", "scheduled_job_targets"],
+    ownedIndexes: ["idx_scheduled_job_targets_job_order"],
     createSchema: createScheduledJobsSchema,
     validateSchema: validateScheduledJobsSchema
   },

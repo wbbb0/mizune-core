@@ -42,6 +42,11 @@ test("comfy task store persists tasks in assets sqlite without legacy json outpu
     });
 
     assert.equal((await store.getById(created.id))?.templateId, "t1");
+    const db = (store as any).assetsDatabase.getDb();
+    const taskColumns = (db.prepare("PRAGMA table_info(comfy_tasks)").all() as Array<{ name: string }>).map((column) => column.name);
+    assert.equal(taskColumns.includes("result_file_ids_json"), false);
+    assert.equal(taskColumns.includes("result_files_json"), false);
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM comfy_task_result_files").get() as { count: number }).count, 0);
     const assetFiles = await readdir(join(dataDir, "assets"), { withFileTypes: true });
     assert.equal(assetFiles.some((entry) => entry.isFile() && entry.name === "assets.sqlite"), true);
     assert.equal(assetFiles.some((entry) => entry.isFile() && entry.name === "tasks.json"), false);
@@ -77,11 +82,31 @@ test("comfy task store updates active task state in sqlite", async () => {
     const updated = await store.updateById(created.id, (task) => ({
       ...task,
       status: "running",
-      startedAtMs: 123
+      startedAtMs: 123,
+      resultFileIds: ["file-1"],
+      resultFiles: [{
+        filename: "out.png",
+        subfolder: "",
+        type: "output"
+      }]
     }));
 
     assert.equal(updated?.status, "running");
     assert.equal((await store.listActive()).some((task) => task.id === created.id), true);
     assert.equal((await store.getById(created.id))?.startedAtMs, 123);
+    assert.deepEqual((await store.getById(created.id))?.resultFileIds, ["file-1"]);
+    assert.deepEqual((await store.getById(created.id))?.resultFiles, [{
+      filename: "out.png",
+      subfolder: "",
+      type: "output"
+    }]);
+    assert.deepEqual((await store.listResultRows()).rows, [{
+      taskId: created.id,
+      resultIndex: 0,
+      fileId: "file-1",
+      filename: "out.png",
+      subfolder: "",
+      type: "output"
+    }]);
   });
 });

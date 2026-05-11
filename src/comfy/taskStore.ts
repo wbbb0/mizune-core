@@ -20,94 +20,87 @@ export class ComfyTaskStore {
     const db = await this.getReadyDb();
     const rows = db.prepare(`
       SELECT
-        id,
-        session_id AS sessionId,
-        user_id AS userId,
-        template_id AS templateId,
-        workflow_file AS workflowFile,
-        workflow_snapshot_json AS workflowSnapshotJson,
-        positive_prompt AS positivePrompt,
-        aspect_ratio AS aspectRatio,
-        resolved_width AS resolvedWidth,
-        resolved_height AS resolvedHeight,
-        comfy_prompt_id AS comfyPromptId,
-        status,
-        result_file_ids_json AS resultFileIdsJson,
-        result_files_json AS resultFilesJson,
-        auto_iteration_index AS autoIterationIndex,
-        max_auto_iterations AS maxAutoIterations,
-        last_error AS lastError,
-        created_at_ms AS createdAtMs,
-        updated_at_ms AS updatedAtMs,
-        started_at_ms AS startedAtMs,
-        finished_at_ms AS finishedAtMs
+        ${COMFY_TASK_SELECT}
       FROM comfy_tasks
       ORDER BY created_at_ms DESC, id ASC
     `).all() as ComfyTaskRow[];
-    return rows.map(rowToComfyTaskRecord);
+    const results = listResultFilesForTasks(db, rows.map((row) => row.id));
+    return rows.map((row) => rowToComfyTaskRecord(row, results.get(row.id) ?? []));
+  }
+
+  async listRows(input: { offset?: number; limit?: number } = {}): Promise<{
+    rows: ComfyTaskRecord[];
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const db = await this.getReadyDb();
+    const offset = Math.max(0, Math.trunc(input.offset ?? 0));
+    const limit = Math.min(500, Math.max(1, Math.trunc(input.limit ?? 100)));
+    const total = (db.prepare(`SELECT COUNT(*) AS count FROM comfy_tasks`).get() as { count: number }).count;
+    const rows = db.prepare(`
+      SELECT
+        ${COMFY_TASK_SELECT}
+      FROM comfy_tasks
+      ORDER BY created_at_ms DESC, id ASC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset) as ComfyTaskRow[];
+    const results = listResultFilesForTasks(db, rows.map((row) => row.id));
+    return {
+      rows: rows.map((row) => rowToComfyTaskRecord(row, results.get(row.id) ?? [])),
+      total,
+      offset,
+      limit
+    };
+  }
+
+  async listResultRows(input: { offset?: number; limit?: number } = {}): Promise<{
+    rows: ComfyTaskResultFileRegistryRow[];
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const db = await this.getReadyDb();
+    const offset = Math.max(0, Math.trunc(input.offset ?? 0));
+    const limit = Math.min(500, Math.max(1, Math.trunc(input.limit ?? 100)));
+    const total = (db.prepare(`SELECT COUNT(*) AS count FROM comfy_task_result_files`).get() as { count: number }).count;
+    const rows = db.prepare(`
+      SELECT
+        task_id AS taskId,
+        result_index AS resultIndex,
+        file_id AS fileId,
+        filename,
+        subfolder,
+        type
+      FROM comfy_task_result_files
+      ORDER BY task_id ASC, result_index ASC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset) as ComfyTaskResultFileRegistryRow[];
+    return { rows, total, offset, limit };
   }
 
   async getById(taskId: string): Promise<ComfyTaskRecord | null> {
     const db = await this.getReadyDb();
     const row = db.prepare(`
       SELECT
-        id,
-        session_id AS sessionId,
-        user_id AS userId,
-        template_id AS templateId,
-        workflow_file AS workflowFile,
-        workflow_snapshot_json AS workflowSnapshotJson,
-        positive_prompt AS positivePrompt,
-        aspect_ratio AS aspectRatio,
-        resolved_width AS resolvedWidth,
-        resolved_height AS resolvedHeight,
-        comfy_prompt_id AS comfyPromptId,
-        status,
-        result_file_ids_json AS resultFileIdsJson,
-        result_files_json AS resultFilesJson,
-        auto_iteration_index AS autoIterationIndex,
-        max_auto_iterations AS maxAutoIterations,
-        last_error AS lastError,
-        created_at_ms AS createdAtMs,
-        updated_at_ms AS updatedAtMs,
-        started_at_ms AS startedAtMs,
-        finished_at_ms AS finishedAtMs
+        ${COMFY_TASK_SELECT}
       FROM comfy_tasks
       WHERE id = ?
     `).get(taskId) as ComfyTaskRow | undefined;
-    return row ? rowToComfyTaskRecord(row) : null;
+    return row ? rowToComfyTaskRecord(row, listResultFilesForTask(db, row.id)) : null;
   }
 
   async listActive(): Promise<ComfyTaskRecord[]> {
     const db = await this.getReadyDb();
     const rows = db.prepare(`
       SELECT
-        id,
-        session_id AS sessionId,
-        user_id AS userId,
-        template_id AS templateId,
-        workflow_file AS workflowFile,
-        workflow_snapshot_json AS workflowSnapshotJson,
-        positive_prompt AS positivePrompt,
-        aspect_ratio AS aspectRatio,
-        resolved_width AS resolvedWidth,
-        resolved_height AS resolvedHeight,
-        comfy_prompt_id AS comfyPromptId,
-        status,
-        result_file_ids_json AS resultFileIdsJson,
-        result_files_json AS resultFilesJson,
-        auto_iteration_index AS autoIterationIndex,
-        max_auto_iterations AS maxAutoIterations,
-        last_error AS lastError,
-        created_at_ms AS createdAtMs,
-        updated_at_ms AS updatedAtMs,
-        started_at_ms AS startedAtMs,
-        finished_at_ms AS finishedAtMs
+        ${COMFY_TASK_SELECT}
       FROM comfy_tasks
       WHERE status IN ('queued', 'running')
       ORDER BY updated_at_ms DESC, id ASC
     `).all() as ComfyTaskRow[];
-    return rows.map(rowToComfyTaskRecord);
+    const results = listResultFilesForTasks(db, rows.map((row) => row.id));
+    return rows.map((row) => rowToComfyTaskRecord(row, results.get(row.id) ?? []));
   }
 
   async create(input: Omit<ComfyTaskRecord, "id" | "createdAtMs" | "updatedAtMs">): Promise<ComfyTaskRecord> {
@@ -119,31 +112,32 @@ export class ComfyTaskStore {
       updatedAtMs: now
     };
     const db = await this.getReadyDb();
-    db.prepare(`
-      INSERT INTO comfy_tasks (
-        id,
-        session_id,
-        user_id,
-        template_id,
-        workflow_file,
-        workflow_snapshot_json,
-        positive_prompt,
-        aspect_ratio,
-        resolved_width,
-        resolved_height,
-        comfy_prompt_id,
-        status,
-        result_file_ids_json,
-        result_files_json,
-        auto_iteration_index,
-        max_auto_iterations,
-        last_error,
-        created_at_ms,
-        updated_at_ms,
-        started_at_ms,
-        finished_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(...comfyTaskRecordToParams(created));
+    db.transaction((task: ComfyTaskRecord) => {
+      db.prepare(`
+        INSERT INTO comfy_tasks (
+          id,
+          session_id,
+          user_id,
+          template_id,
+          workflow_file,
+          workflow_snapshot_json,
+          positive_prompt,
+          aspect_ratio,
+          resolved_width,
+          resolved_height,
+          comfy_prompt_id,
+          status,
+          auto_iteration_index,
+          max_auto_iterations,
+          last_error,
+          created_at_ms,
+          updated_at_ms,
+          started_at_ms,
+          finished_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(...comfyTaskRecordToParams(task));
+      replaceResultFiles(db, task);
+    })(created);
     return created;
   }
 
@@ -153,30 +147,31 @@ export class ComfyTaskStore {
       ...task,
       updatedAtMs: Date.now()
     };
-    db.prepare(`
-      UPDATE comfy_tasks
-      SET session_id = ?,
-          user_id = ?,
-          template_id = ?,
-          workflow_file = ?,
-          workflow_snapshot_json = ?,
-          positive_prompt = ?,
-          aspect_ratio = ?,
-          resolved_width = ?,
-          resolved_height = ?,
-          comfy_prompt_id = ?,
-          status = ?,
-          result_file_ids_json = ?,
-          result_files_json = ?,
-          auto_iteration_index = ?,
-          max_auto_iterations = ?,
-          last_error = ?,
-          created_at_ms = ?,
-          updated_at_ms = ?,
-          started_at_ms = ?,
-          finished_at_ms = ?
-      WHERE id = ?
-    `).run(...comfyTaskRecordToUpdateParams(next));
+    db.transaction((task: ComfyTaskRecord) => {
+      const result = db.prepare(`
+        UPDATE comfy_tasks
+        SET status = ?,
+            auto_iteration_index = ?,
+            max_auto_iterations = ?,
+            last_error = ?,
+            updated_at_ms = ?,
+            started_at_ms = ?,
+            finished_at_ms = ?
+        WHERE id = ?
+      `).run(
+        task.status,
+        task.autoIterationIndex,
+        task.maxAutoIterations,
+        task.lastError,
+        task.updatedAtMs,
+        task.startedAtMs,
+        task.finishedAtMs,
+        task.id
+      );
+      if (result.changes > 0) {
+        replaceResultFiles(db, task);
+      }
+    })(next);
   }
 
   async updateById(
@@ -214,8 +209,6 @@ type ComfyTaskRow = {
   resolvedHeight: number;
   comfyPromptId: string;
   status: ComfyTaskRecord["status"];
-  resultFileIdsJson: string;
-  resultFilesJson: string;
   autoIterationIndex: number;
   maxAutoIterations: number;
   lastError: string | null;
@@ -225,7 +218,47 @@ type ComfyTaskRow = {
   finishedAtMs: number | null;
 };
 
-function rowToComfyTaskRecord(row: ComfyTaskRow): ComfyTaskRecord {
+type ComfyTaskResultFileRow = {
+  task_id: string;
+  result_index: number;
+  file_id: string | null;
+  filename: string;
+  subfolder: string;
+  type: string;
+};
+
+export interface ComfyTaskResultFileRegistryRow {
+  taskId: string;
+  resultIndex: number;
+  fileId: string | null;
+  filename: string;
+  subfolder: string;
+  type: string;
+}
+
+const COMFY_TASK_SELECT = `
+        id,
+        session_id AS sessionId,
+        user_id AS userId,
+        template_id AS templateId,
+        workflow_file AS workflowFile,
+        workflow_snapshot_json AS workflowSnapshotJson,
+        positive_prompt AS positivePrompt,
+        aspect_ratio AS aspectRatio,
+        resolved_width AS resolvedWidth,
+        resolved_height AS resolvedHeight,
+        comfy_prompt_id AS comfyPromptId,
+        status,
+        auto_iteration_index AS autoIterationIndex,
+        max_auto_iterations AS maxAutoIterations,
+        last_error AS lastError,
+        created_at_ms AS createdAtMs,
+        updated_at_ms AS updatedAtMs,
+        started_at_ms AS startedAtMs,
+        finished_at_ms AS finishedAtMs
+`;
+
+function rowToComfyTaskRecord(row: ComfyTaskRow, resultRows: ComfyTaskResultFileRow[]): ComfyTaskRecord {
   return comfyTaskRecordSchema.parse({
     id: row.id,
     sessionId: row.sessionId,
@@ -239,8 +272,12 @@ function rowToComfyTaskRecord(row: ComfyTaskRow): ComfyTaskRecord {
     resolvedHeight: row.resolvedHeight,
     comfyPromptId: row.comfyPromptId,
     status: row.status,
-    resultFileIds: parseJsonArray(row.resultFileIdsJson),
-    resultFiles: parseJsonArray(row.resultFilesJson),
+    resultFileIds: resultRows.map((result) => result.file_id).filter((fileId): fileId is string => Boolean(fileId)),
+    resultFiles: resultRows.map((result) => ({
+      filename: result.filename,
+      subfolder: result.subfolder,
+      type: result.type
+    })),
     autoIterationIndex: row.autoIterationIndex,
     maxAutoIterations: row.maxAutoIterations,
     lastError: row.lastError,
@@ -264,8 +301,6 @@ function comfyTaskRecordToParams(task: ComfyTaskRecord): [
   number,
   string,
   ComfyTaskRecord["status"],
-  string,
-  string,
   number,
   number,
   string | null,
@@ -287,8 +322,6 @@ function comfyTaskRecordToParams(task: ComfyTaskRecord): [
     task.resolvedHeight,
     task.comfyPromptId,
     task.status,
-    JSON.stringify(task.resultFileIds),
-    JSON.stringify(task.resultFiles),
     task.autoIterationIndex,
     task.maxAutoIterations,
     task.lastError,
@@ -297,42 +330,6 @@ function comfyTaskRecordToParams(task: ComfyTaskRecord): [
     task.startedAtMs,
     task.finishedAtMs
   ];
-}
-
-function comfyTaskRecordToUpdateParams(task: ComfyTaskRecord): [
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  number,
-  number,
-  string,
-  ComfyTaskRecord["status"],
-  string,
-  string,
-  number,
-  number,
-  string | null,
-  number,
-  number,
-  number | null,
-  number | null,
-  string
-] {
-  const [id, ...rest] = comfyTaskRecordToParams(task);
-  return [...rest, id];
-}
-
-function parseJsonArray(value: string): unknown[] {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
 }
 
 function parseJsonObject(value: string): Record<string, unknown> {
@@ -344,4 +341,58 @@ function parseJsonObject(value: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function replaceResultFiles(db: SqliteDatabase, task: ComfyTaskRecord): void {
+  db.prepare(`DELETE FROM comfy_task_result_files WHERE task_id = ?`).run(task.id);
+  const insert = db.prepare(`
+    INSERT INTO comfy_task_result_files (
+      task_id,
+      result_index,
+      file_id,
+      filename,
+      subfolder,
+      type
+    )
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  for (const [index, result] of task.resultFiles.entries()) {
+    insert.run(
+      task.id,
+      index,
+      task.resultFileIds[index] ?? null,
+      result.filename,
+      result.subfolder,
+      result.type
+    );
+  }
+}
+
+function listResultFilesForTask(db: SqliteDatabase, taskId: string): ComfyTaskResultFileRow[] {
+  return db.prepare(`
+    SELECT task_id, result_index, file_id, filename, subfolder, type
+    FROM comfy_task_result_files
+    WHERE task_id = ?
+    ORDER BY result_index ASC
+  `).all(taskId) as ComfyTaskResultFileRow[];
+}
+
+function listResultFilesForTasks(db: SqliteDatabase, taskIds: string[]): Map<string, ComfyTaskResultFileRow[]> {
+  const results = new Map<string, ComfyTaskResultFileRow[]>();
+  if (taskIds.length === 0) {
+    return results;
+  }
+  const placeholders = taskIds.map(() => "?").join(", ");
+  const rows = db.prepare(`
+    SELECT task_id, result_index, file_id, filename, subfolder, type
+    FROM comfy_task_result_files
+    WHERE task_id IN (${placeholders})
+    ORDER BY task_id ASC, result_index ASC
+  `).all(...taskIds) as ComfyTaskResultFileRow[];
+  for (const row of rows) {
+    const current = results.get(row.task_id) ?? [];
+    current.push(row);
+    results.set(row.task_id, current);
+  }
+  return results;
 }

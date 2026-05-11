@@ -318,6 +318,28 @@ function createRegistryService(dataDir: string, options: { schedulerEnabled?: bo
         schedulerReloadCount += 1;
       }
     },
+    comfyTaskStore: {
+      async listRows(input = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return {
+          rows: [],
+          total: 0,
+          offset,
+          limit
+        };
+      },
+      async listResultRows(input = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return {
+          rows: [],
+          total: 0,
+          offset,
+          limit
+        };
+      }
+    },
     whitelistStore: {
       async listEntries() {
         return [...whitelistRows];
@@ -438,6 +460,8 @@ test("DataRegistryService exposes initial file and directory resources", async (
     const listed = await service.listResources();
     assert.deepEqual(listed.resources.map((resource) => resource.key), [
       "audio_files",
+      "comfy_task_result_files",
+      "comfy_tasks",
       "context_items",
       "context_maintenance_jobs",
       "context_raw_messages",
@@ -460,6 +484,8 @@ test("DataRegistryService exposes initial file and directory resources", async (
       "workspace_files"
     ]);
     assert.equal(listed.resources.find((resource) => resource.key === "audio_files")?.shape, "collection");
+    assert.equal(listed.resources.find((resource) => resource.key === "comfy_tasks")?.shape, "collection");
+    assert.equal(listed.resources.find((resource) => resource.key === "comfy_task_result_files")?.shape, "log");
     assert.equal(listed.resources.find((resource) => resource.key === "workspace_files")?.shape, "collection");
     assert.equal(listed.resources.find((resource) => resource.key === "sessions")?.shape, "collection");
     assert.equal(listed.resources.find((resource) => resource.key === "session_transcript_items")?.shape, "log");

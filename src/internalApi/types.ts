@@ -61,6 +61,7 @@ import {
 } from "./application/localFileAdminService.ts";
 import type { DerivedObservation } from "#llm/derivations/derivedObservation.ts";
 import type { ContentSafetyAuditView } from "#contentSafety/contentSafetyTypes.ts";
+import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 
 // Domain-shaped dependency slices keep route/application code from depending on
 // the full internal API service graph when a smaller contract is enough.
@@ -217,6 +218,7 @@ export interface InternalApiDeps {
   userIdentityStore: UserIdentityStore;
   requestStore: RequestStore;
   scheduledJobStore: ScheduledJobStore;
+  comfyTaskStore: ComfyTaskStore;
   scheduler: Scheduler;
   runtimeResourceStore: RuntimeResourceStore;
   shellRuntime: ShellRuntime;
@@ -310,6 +312,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         requestStore: deps.requestStore,
         scheduledJobStore: deps.scheduledJobStore,
         scheduler: deps.scheduler,
+        comfyTaskStore: deps.comfyTaskStore,
         whitelistStore: deps.whitelistStore,
         contextStore: deps.contextStore,
         audioStore: deps.audioStore,

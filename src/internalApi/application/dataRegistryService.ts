@@ -35,6 +35,8 @@ import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
 import type { RuntimeResourceStore } from "#runtime/resources/runtimeResourceStore.ts";
 import { chatFileRecordRegistrySchema, type ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
+import type { ComfyTaskStore } from "#comfy/taskStore.ts";
+import { comfyTaskRecordSchema } from "#comfy/taskSchema.ts";
 
 export interface DataRegistryService {
   listResources: DataRegistry["listResources"];
@@ -64,6 +66,7 @@ export function createDataRegistryService(input: {
   requestStore: Pick<RequestStore, "listRows" | "get" | "createRow" | "patchRow" | "deleteRow">;
   scheduledJobStore: Pick<ScheduledJobStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
   scheduler: Pick<Scheduler, "reloadFromStore">;
+  comfyTaskStore: Pick<ComfyTaskStore, "listRows" | "listResultRows">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
   contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs">;
   audioStore: Pick<AudioStore, "listRows" | "getRow">;
@@ -95,6 +98,7 @@ function createInitialDataResourceDefinitions(input: {
   requestStore: Pick<RequestStore, "listRows" | "get" | "createRow" | "patchRow" | "deleteRow">;
   scheduledJobStore: Pick<ScheduledJobStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
   scheduler: Pick<Scheduler, "reloadFromStore">;
+  comfyTaskStore: Pick<ComfyTaskStore, "listRows" | "listResultRows">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
   contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs">;
   audioStore: Pick<AudioStore, "listRows" | "getRow">;
@@ -162,6 +166,8 @@ function createInitialDataResourceDefinitions(input: {
     createContextMaintenanceJobsResource(input.contextStore),
     createLiveResourcesResource(input.runtimeResourceStore),
     createAudioFilesResource(input.audioStore),
+    createComfyTasksResource(input.comfyTaskStore),
+    createComfyTaskResultFilesResource(input.comfyTaskStore),
     createSessionsResource(input.sessionPersistence),
     createSessionTranscriptItemsResource(input.sessionPersistence),
     createWorkspaceFilesResource(input.chatFileStore)
@@ -326,6 +332,84 @@ function createWorkspaceFilesResource(
   };
 }
 
+function createComfyTasksResource(
+  comfyTaskStore: Pick<ComfyTaskStore, "listRows">
+): DataResourceDefinition {
+  const rowSchemaMeta = exportSchemaMeta(comfyTaskRecordSchema);
+  return {
+    key: "comfy_tasks",
+    title: "Comfy Tasks",
+    shape: "collection",
+    editable: false,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "assets",
+      tableGroup: "assets.comfy_tasks",
+      tables: ["comfy_tasks", "comfy_task_result_files"]
+    },
+    rowSchemaMeta,
+    rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
+    export: {
+      enabled: true,
+      fileName: "comfy_tasks.json",
+      format: "json"
+    },
+    rowIdentity: {
+      fields: ["id"],
+      encode: "single"
+    },
+    adapter: {
+      listRows: async (query) => comfyTaskStore.listRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      }),
+      exportRows: async (query) => comfyTaskStore.listRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      })
+    }
+  };
+}
+
+function createComfyTaskResultFilesResource(
+  comfyTaskStore: Pick<ComfyTaskStore, "listResultRows">
+): DataResourceDefinition {
+  return {
+    key: "comfy_task_result_files",
+    title: "Comfy Task Result Files",
+    description: "Comfy 任务结果文件竖表，一行对应一个输出文件。",
+    shape: "log",
+    editable: false,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "assets",
+      tableGroup: "assets.comfy_tasks",
+      tables: ["comfy_task_result_files"]
+    },
+    export: {
+      enabled: true,
+      fileName: "comfy_task_result_files.json",
+      format: "json"
+    },
+    rowIdentity: {
+      fields: ["taskId", "resultIndex"],
+      encode: "json_base64url"
+    },
+    adapter: {
+      listRows: async (query) => comfyTaskStore.listResultRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      }),
+      exportRows: async (query) => comfyTaskStore.listResultRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      })
+    }
+  };
+}
+
 function singletonSqliteResource<TValue>(input: {
   key: string;
   title: string;
@@ -459,7 +543,7 @@ function createScheduledJobsResource(
       kind: "sqlite",
       database: "state",
       tableGroup: "state.scheduled_jobs",
-      tables: ["scheduled_jobs"]
+      tables: ["scheduled_jobs", "scheduled_job_targets"]
     },
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
