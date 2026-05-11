@@ -79,10 +79,10 @@ export function createBootstrapServices(
   const sessionManager = new SessionManager(config);
   const debounceManager = new DebounceManager(logger, sessionManager, config);
   const llmClient = new LlmClient(config, logger);
-  const audioStore = new AudioStore(dataDir);
+  const audioStore = new AudioStore(dataDir, logger);
   const audioTranscriber = new AudioTranscriber(config, llmClient, audioStore, oneBotClient, logger);
   const localFileService = new LocalFileService(config, dataDir);
-  const chatFileStore = new ChatFileStore(config, logger, localFileService);
+  const chatFileStore = new ChatFileStore(config, logger, localFileService, dataDir);
   const downloadRuntime = new DownloadRuntime(config, logger, dataDir, chatFileStore);
   const chatMessageFileGcService = new ChatMessageFileGcService(
     chatFileStore,

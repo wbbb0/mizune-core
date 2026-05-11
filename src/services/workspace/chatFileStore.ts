@@ -5,11 +5,38 @@ import { fetch as undiciFetch, type Response as UndiciResponse } from "undici";
 import type { Logger } from "pino";
 import sharp from "sharp";
 import type { AppConfig } from "#config/config.ts";
+import { s } from "#data/schema/index.ts";
+import type { SqliteDatabase } from "#data/sqlite/sqliteService.ts";
+import { AssetsDatabase } from "#data/assets/assetsDatabase.ts";
 import { fetchWithProxy, type ProxyConsumer } from "#services/proxy/index.ts";
 import type { LocalFileService } from "./localFileService.ts";
 import type { ChatFileCaptionStatus, ChatFileKind, ChatFileOrigin, ChatFileRecord } from "./types.ts";
 
-const FILE_INDEX_FILE = "files.json";
+export const chatFileRecordRegistrySchema = s.object({
+  fileId: s.string().trim().nonempty(),
+  fileRef: s.string().trim().nonempty(),
+  kind: s.enum(["file", "image", "animated_image", "video", "audio"] as const),
+  origin: s.enum([
+    "chat_message",
+    "browser_download",
+    "browser_screenshot",
+    "comfy_generated",
+    "group_file_download",
+    "local_file_import",
+    "user_upload"
+  ] as const),
+  chatFilePath: s.string().trim().nonempty(),
+  sourceName: s.string().trim().nonempty(),
+  mimeType: s.string().trim().nonempty(),
+  sizeBytes: s.number().int().min(0),
+  createdAtMs: s.number().int().min(0),
+  sourceContext: s.record(s.string(), s.union([s.string(), s.number(), s.boolean(), s.literal(null)])),
+  caption: s.union([s.string(), s.literal(null)]).default(null),
+  captionStatus: s.enum(["missing", "queued", "ready", "failed"] as const).default("missing"),
+  captionUpdatedAtMs: s.union([s.number().int().min(0), s.literal(null)]).default(null),
+  captionModelRef: s.union([s.string(), s.literal(null)]).default(null),
+  captionError: s.union([s.string(), s.literal(null)]).default(null)
+}).strict();
 
 function normalizeChatFilesRoot(root: string | undefined): string {
   const configuredRoot = String(root ?? "").trim() || "chat-files";
@@ -24,34 +51,32 @@ function normalizeChatFilesRoot(root: string | undefined): string {
 export class ChatFileStore {
   private readonly storeRootPath: string;
   private readonly storeRootDir: string;
-  private readonly fileIndexPath: string;
   private readonly mediaDir: string;
   private writeChain: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly config: AppConfig,
     private readonly logger: Logger,
-    private readonly localFileService: LocalFileService
+    private readonly localFileService: LocalFileService,
+    assetsDataDir = localFileService.rootDir,
+    private readonly assetsDatabase = new AssetsDatabase(assetsDataDir, logger)
   ) {
     this.storeRootPath = normalizeChatFilesRoot(this.config.chatFiles.root);
     this.storeRootDir = join(this.localFileService.rootDir, this.storeRootPath);
-    this.fileIndexPath = join(this.storeRootDir, FILE_INDEX_FILE);
     this.mediaDir = join(this.storeRootDir, "media");
   }
 
   async init(): Promise<void> {
+    await this.assetsDatabase.init();
     if (!this.config.chatFiles.enabled) {
       return;
     }
     await mkdir(this.mediaDir, { recursive: true });
-    if (!(await fileExists(this.fileIndexPath))) {
-      await this.writeFiles([]);
-    }
     await this.cleanupOrphanDocumentCaches();
   }
 
   async listFiles(): Promise<ChatFileRecord[]> {
-    return this.readFiles();
+    return this.listAll();
   }
 
   async getFile(fileId: string): Promise<ChatFileRecord | null> {
@@ -59,8 +84,28 @@ export class ChatFileStore {
     if (!normalizedFileId) {
       return null;
     }
-    const files = await this.readFiles();
-    return files.find((item) => item.fileId === normalizedFileId) ?? null;
+    const db = await this.getReadyDb();
+    const row = db.prepare(`
+      SELECT
+        file_id AS fileId,
+        file_ref AS fileRef,
+        kind,
+        origin,
+        chat_file_path AS chatFilePath,
+        source_name AS sourceName,
+        mime_type AS mimeType,
+        size_bytes AS sizeBytes,
+        created_at_ms AS createdAtMs,
+        source_context_json AS sourceContextJson,
+        caption,
+        caption_status AS captionStatus,
+        caption_updated_at_ms AS captionUpdatedAtMs,
+        caption_model_ref AS captionModelRef,
+        caption_error AS captionError
+      FROM chat_files
+      WHERE file_id = ?
+    `).get(normalizedFileId) as ChatFileRow | undefined;
+    return row ? rowToChatFileRecord(row) : null;
   }
 
   async getMany(fileIds: string[]): Promise<ChatFileRecord[]> {
@@ -68,7 +113,7 @@ export class ChatFileStore {
     if (wanted.size === 0) {
       return [];
     }
-    const files = await this.readFiles();
+    const files = await this.listAll();
     return files.filter((item) => wanted.has(item.fileId));
   }
 
@@ -240,21 +285,16 @@ export class ChatFileStore {
       return;
     }
     await this.withWriteLock(async () => {
-      const files = await this.readFiles();
-      let changed = false;
-      const next = files.map((file) => {
-        if (!wanted.has(file.fileId) || file.caption) {
-          return file;
-        }
-        changed = true;
-        return {
-          ...file,
-          captionStatus: "queued" as const,
-          captionError: null
-        };
-      });
-      if (changed) {
-        await this.writeFiles(next);
+      const db = await this.getReadyDb();
+      const update = db.prepare(`
+        UPDATE chat_files
+        SET caption_status = 'queued',
+            caption_error = NULL
+        WHERE file_id = ?
+          AND caption IS NULL
+      `);
+      for (const fileId of wanted) {
+        update.run(fileId);
       }
     });
   }
@@ -272,21 +312,27 @@ export class ChatFileStore {
     const normalizedCaption = caption ? String(caption) : null;
     const status = metadata?.status ?? (normalizedCaption ? "ready" : "missing");
     await this.withWriteLock(async () => {
-      const files = await this.readFiles();
-      const file = files.find((item) => item.fileId === fileId);
+      const file = await this.getFile(fileId);
       if (!file) {
         throw new Error(`unknown asset: ${fileId}`);
       }
-      await this.writeFiles(files.map((item) => item.fileId !== fileId
-        ? item
-        : {
-            ...item,
-            caption: normalizedCaption,
-            captionStatus: status,
-            captionUpdatedAtMs: metadata?.updatedAtMs ?? Date.now(),
-            captionModelRef: metadata?.modelRef === undefined ? file.captionModelRef ?? null : metadata.modelRef,
-            captionError: metadata?.error === undefined ? null : metadata.error
-          }));
+      const db = await this.getReadyDb();
+      db.prepare(`
+        UPDATE chat_files
+        SET caption = ?,
+            caption_status = ?,
+            caption_updated_at_ms = ?,
+            caption_model_ref = ?,
+            caption_error = ?
+        WHERE file_id = ?
+      `).run(
+        normalizedCaption,
+        status,
+        metadata?.updatedAtMs ?? Date.now(),
+        metadata?.modelRef === undefined ? file.captionModelRef ?? null : metadata.modelRef,
+        metadata?.error === undefined ? null : metadata.error,
+        fileId
+      );
     });
   }
 
@@ -338,8 +384,8 @@ export class ChatFileStore {
       this.logger.warn({ fileId, error }, "chat_file_document_cache_cleanup_failed");
     });
     await this.withWriteLock(async () => {
-      const files = await this.readFiles();
-      await this.writeFiles(files.filter((item) => item.fileId !== fileId));
+      const db = await this.getReadyDb();
+      db.prepare("DELETE FROM chat_files WHERE file_id = ?").run(fileId);
     });
     return true;
   }
@@ -354,41 +400,80 @@ export class ChatFileStore {
 
   private async upsertFile(record: ChatFileRecord): Promise<void> {
     await this.withWriteLock(async () => {
-      const files = await this.readFiles();
-      const next = files.filter((item) => item.fileId !== record.fileId);
-      next.push(record);
-      next.sort((left, right) => right.createdAtMs - left.createdAtMs);
-      await this.writeFiles(next);
+      const db = await this.getReadyDb();
+      db.prepare(`
+        INSERT INTO chat_files (
+          file_id,
+          file_ref,
+          kind,
+          origin,
+          chat_file_path,
+          source_name,
+          mime_type,
+          size_bytes,
+          created_at_ms,
+          source_context_json,
+          caption,
+          caption_status,
+          caption_updated_at_ms,
+          caption_model_ref,
+          caption_error
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(file_id) DO UPDATE SET
+          file_ref = excluded.file_ref,
+          kind = excluded.kind,
+          origin = excluded.origin,
+          chat_file_path = excluded.chat_file_path,
+          source_name = excluded.source_name,
+          mime_type = excluded.mime_type,
+          size_bytes = excluded.size_bytes,
+          created_at_ms = excluded.created_at_ms,
+          source_context_json = excluded.source_context_json,
+          caption = excluded.caption,
+          caption_status = excluded.caption_status,
+          caption_updated_at_ms = excluded.caption_updated_at_ms,
+          caption_model_ref = excluded.caption_model_ref,
+          caption_error = excluded.caption_error
+      `).run(...chatFileRecordToParams(record));
     });
   }
 
-  private async readFiles(): Promise<ChatFileRecord[]> {
-    try {
-      const raw = await readFile(this.fileIndexPath, "utf8");
-      const parsed = JSON.parse(raw) as unknown;
-      return Array.isArray(parsed)
-        ? parsed
-          .filter(isChatFileRecord)
-          .map((item) => item.fileRef
-            ? item
-            : {
-                ...item,
-                fileRef: item.chatFilePath.split("/").at(-1) ?? buildStoredFileRef(
-                  item.fileId,
-                  item.origin,
-                  item.kind,
-                  extname(item.sourceName) || extname(item.chatFilePath) || extensionFromMimeType(item.mimeType) || defaultExtension(item.kind)
-                )
-              })
-        : [];
-    } catch {
-      return [];
-    }
+  async listRows(input: { offset?: number; limit?: number } = {}): Promise<{
+    rows: ChatFileRecord[];
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const offset = input.offset ?? 0;
+    const limit = input.limit ?? 100;
+    const db = await this.getReadyDb();
+    const total = (db.prepare("SELECT COUNT(*) AS count FROM chat_files").get() as { count: number }).count;
+    const rows = db.prepare(`
+      SELECT
+        file_id AS fileId,
+        file_ref AS fileRef,
+        kind,
+        origin,
+        chat_file_path AS chatFilePath,
+        source_name AS sourceName,
+        mime_type AS mimeType,
+        size_bytes AS sizeBytes,
+        created_at_ms AS createdAtMs,
+        source_context_json AS sourceContextJson,
+        caption,
+        caption_status AS captionStatus,
+        caption_updated_at_ms AS captionUpdatedAtMs,
+        caption_model_ref AS captionModelRef,
+        caption_error AS captionError
+      FROM chat_files
+      ORDER BY created_at_ms DESC, file_id ASC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset) as ChatFileRow[];
+    return { rows: rows.map(rowToChatFileRecord), total, offset, limit };
   }
 
-  private async writeFiles(records: ChatFileRecord[]): Promise<void> {
-    await mkdir(dirname(this.fileIndexPath), { recursive: true });
-    await writeFile(this.fileIndexPath, `${JSON.stringify(records, null, 2)}\n`, "utf8");
+  async getRow(fileId: string): Promise<ChatFileRecord | null> {
+    return this.getFile(fileId);
   }
 
   private async withWriteLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -403,6 +488,129 @@ export class ChatFileStore {
     } finally {
       release?.();
     }
+  }
+
+  private async getReadyDb(): Promise<SqliteDatabase> {
+    await this.assetsDatabase.init();
+    return this.assetsDatabase.getDb();
+  }
+
+  private async listAll(): Promise<ChatFileRecord[]> {
+    const db = await this.getReadyDb();
+    const rows = db.prepare(`
+      SELECT
+        file_id AS fileId,
+        file_ref AS fileRef,
+        kind,
+        origin,
+        chat_file_path AS chatFilePath,
+        source_name AS sourceName,
+        mime_type AS mimeType,
+        size_bytes AS sizeBytes,
+        created_at_ms AS createdAtMs,
+        source_context_json AS sourceContextJson,
+        caption,
+        caption_status AS captionStatus,
+        caption_updated_at_ms AS captionUpdatedAtMs,
+        caption_model_ref AS captionModelRef,
+        caption_error AS captionError
+      FROM chat_files
+      ORDER BY created_at_ms DESC, file_id ASC
+    `).all() as ChatFileRow[];
+    return rows.map(rowToChatFileRecord);
+  }
+}
+
+type ChatFileRow = {
+  fileId: string;
+  fileRef: string;
+  kind: ChatFileKind;
+  origin: ChatFileOrigin;
+  chatFilePath: string;
+  sourceName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAtMs: number;
+  sourceContextJson: string;
+  caption: string | null;
+  captionStatus: ChatFileCaptionStatus;
+  captionUpdatedAtMs: number | null;
+  captionModelRef: string | null;
+  captionError: string | null;
+};
+
+function rowToChatFileRecord(row: ChatFileRow): ChatFileRecord {
+  return {
+    fileId: row.fileId,
+    fileRef: row.fileRef,
+    kind: row.kind,
+    origin: row.origin,
+    chatFilePath: row.chatFilePath,
+    sourceName: row.sourceName,
+    mimeType: row.mimeType,
+    sizeBytes: row.sizeBytes,
+    createdAtMs: row.createdAtMs,
+    sourceContext: parseSourceContext(row.sourceContextJson),
+    caption: row.caption,
+    captionStatus: row.captionStatus,
+    captionUpdatedAtMs: row.captionUpdatedAtMs,
+    captionModelRef: row.captionModelRef,
+    captionError: row.captionError
+  };
+}
+
+function chatFileRecordToParams(record: ChatFileRecord): [
+  string,
+  string,
+  ChatFileKind,
+  ChatFileOrigin,
+  string,
+  string,
+  string,
+  number,
+  number,
+  string,
+  string | null,
+  ChatFileCaptionStatus,
+  number | null,
+  string | null,
+  string | null
+] {
+  return [
+    record.fileId,
+    record.fileRef,
+    record.kind,
+    record.origin,
+    record.chatFilePath,
+    record.sourceName,
+    record.mimeType,
+    record.sizeBytes,
+    record.createdAtMs,
+    JSON.stringify(record.sourceContext ?? {}),
+    record.caption,
+    record.captionStatus ?? (record.caption ? "ready" : "missing"),
+    record.captionUpdatedAtMs ?? null,
+    record.captionModelRef ?? null,
+    record.captionError ?? null
+  ];
+}
+
+function parseSourceContext(value: string): Record<string, string | number | boolean | null> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter(([, entry]) => (
+        typeof entry === "string"
+        || typeof entry === "number"
+        || typeof entry === "boolean"
+        || entry === null
+      ))
+    ) as Record<string, string | number | boolean | null>;
+  } catch {
+    return {};
   }
 }
 
@@ -623,24 +831,4 @@ async function readResponseBufferWithLimit(response: UndiciResponse, maxBytes: n
     reader.releaseLock();
   }
   return Buffer.concat(chunks, totalBytes);
-}
-
-function isChatFileRecord(value: unknown): value is ChatFileRecord {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const candidate = value as Record<string, unknown>;
-  return typeof candidate.fileId === "string"
-    && (candidate.fileRef == null || typeof candidate.fileRef === "string")
-    && typeof candidate.kind === "string"
-    && typeof candidate.origin === "string"
-    && typeof candidate.chatFilePath === "string"
-    && typeof candidate.sourceName === "string"
-    && typeof candidate.mimeType === "string"
-    && typeof candidate.sizeBytes === "number"
-    && typeof candidate.createdAtMs === "number";
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  return stat(filePath).then(() => true).catch(() => false);
 }

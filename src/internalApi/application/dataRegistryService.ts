@@ -11,6 +11,7 @@ import { globalProfileReadinessSchema } from "#identity/globalProfileReadinessSc
 import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import { setupStateSchema } from "#identity/setupStateSchema.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
+import { storedAudioFileRegistrySchema, type AudioStore } from "#audio/audioStore.ts";
 import { userIdentityRecordSchema, type UserIdentityRecord } from "#identity/userIdentitySchema.ts";
 import type { UserIdentityStore } from "#identity/userIdentityStore.ts";
 import { persistedUserSchema } from "#identity/userSchema.ts";
@@ -32,6 +33,7 @@ import { scheduledJobRecordSchema } from "#runtime/scheduler/jobSchema.ts";
 import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
 import type { RuntimeResourceStore } from "#runtime/resources/runtimeResourceStore.ts";
+import { chatFileRecordRegistrySchema, type ChatFileStore } from "#services/workspace/chatFileStore.ts";
 
 export interface DataRegistryService {
   listResources: DataRegistry["listResources"];
@@ -63,6 +65,8 @@ export function createDataRegistryService(input: {
   scheduler: Pick<Scheduler, "reloadFromStore">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
   contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs">;
+  audioStore: Pick<AudioStore, "listRows" | "getRow">;
+  chatFileStore: Pick<ChatFileStore, "listRows" | "getRow">;
   runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list">;
 }): DataRegistryService {
   const registry = new DataRegistry({
@@ -91,6 +95,8 @@ function createInitialDataResourceDefinitions(input: {
   scheduler: Pick<Scheduler, "reloadFromStore">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
   contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs">;
+  audioStore: Pick<AudioStore, "listRows" | "getRow">;
+  chatFileStore: Pick<ChatFileStore, "listRows" | "getRow">;
   runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list">;
 }): DataResourceDefinition[] {
   const dataDir = input.config.dataDir;
@@ -153,31 +159,97 @@ function createInitialDataResourceDefinitions(input: {
     createContextRawMessagesResource(input.contextStore),
     createContextMaintenanceJobsResource(input.contextStore),
     createLiveResourcesResource(input.runtimeResourceStore),
-    fileResource({
-      key: "audio_files",
-      title: "Audio Files",
-      path: join(dataDir, "audio-files.json"),
-      durability: "derived"
-    }),
-    fileResource({
-      key: "image_files",
-      title: "Image Files",
-      path: join(dataDir, "image-files.json"),
-      durability: "derived"
-    }),
+    createAudioFilesResource(input.audioStore),
     directoryResource({
       key: "sessions",
       title: "Sessions",
       path: join(dataDir, "sessions"),
       durability: "source_of_truth"
     }),
-    fileResource({
-      key: "workspace_files",
-      title: "Workspace Files",
-      path: join(dataDir, "workspace", "files.json"),
-      durability: "derived"
-    })
+    createWorkspaceFilesResource(input.chatFileStore)
   ];
+}
+
+function createAudioFilesResource(
+  audioStore: Pick<AudioStore, "listRows" | "getRow">
+): DataResourceDefinition {
+  const rowSchemaMeta = exportSchemaMeta(storedAudioFileRegistrySchema);
+  return {
+    key: "audio_files",
+    title: "Audio Files",
+    shape: "collection",
+    editable: false,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "assets",
+      tableGroup: "assets.audio_files",
+      tables: ["audio_files"]
+    },
+    rowSchemaMeta,
+    rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
+    export: {
+      enabled: true,
+      fileName: "audio_files.json",
+      format: "json"
+    },
+    rowIdentity: {
+      fields: ["id"],
+      encode: "single"
+    },
+    adapter: {
+      listRows: async (query) => audioStore.listRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      }),
+      exportRows: async (query) => audioStore.listRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      }),
+      getRow: async (rowId) => audioStore.getRow(rowId)
+    }
+  };
+}
+
+function createWorkspaceFilesResource(
+  chatFileStore: Pick<ChatFileStore, "listRows" | "getRow">
+): DataResourceDefinition {
+  const rowSchemaMeta = exportSchemaMeta(chatFileRecordRegistrySchema);
+  return {
+    key: "workspace_files",
+    title: "Workspace Files",
+    shape: "collection",
+    editable: false,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "assets",
+      tableGroup: "assets.chat_files",
+      tables: ["chat_files"]
+    },
+    rowSchemaMeta,
+    rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
+    export: {
+      enabled: true,
+      fileName: "workspace_files.json",
+      format: "json"
+    },
+    rowIdentity: {
+      fields: ["fileId"],
+      encode: "single"
+    },
+    adapter: {
+      listRows: async (query) => chatFileStore.listRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      }),
+      exportRows: async (query) => chatFileStore.listRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {})
+      }),
+      getRow: async (rowId) => chatFileStore.getRow(rowId)
+    }
+  };
 }
 
 function singletonSqliteResource<TValue>(input: {

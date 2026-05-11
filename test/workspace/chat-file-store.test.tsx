@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ChatFileStore } from "../../src/services/workspace/chatFileStore.ts";
@@ -55,6 +55,51 @@ test("asset store serializes concurrent caption writes across files", async () =
     assert.equal(captions.get(second.fileId)?.caption, "第二个");
     assert.equal(captions.get(first.fileId)?.captionModelRef, "vision-a");
     assert.equal(captions.get(second.fileId)?.captionModelRef, "vision-b");
+
+    const assetFiles = await readdir(join(rootDir, "assets"), { withFileTypes: true });
+    assert.equal(assetFiles.some((entry) => entry.isFile() && entry.name === "assets.sqlite"), true);
+    assert.equal(assetFiles.some((entry) => entry.isFile() && entry.name === "files.json"), false);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("asset store preserves null captionUpdatedAtMs in registry rows", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-registry-null-"));
+  try {
+    const store = new ChatFileStore(
+      createTestAppConfig({
+        chatFiles: {
+          enabled: true,
+          root: "chat-files",
+          maxUploadBytes: 1024 * 1024
+        }
+      }),
+      createSilentLogger(),
+      {
+        rootDir,
+        resolvePath(path: string) {
+          return {
+            sourcePath: path,
+            absolutePath: join(rootDir, path)
+          };
+        }
+      } as any
+    );
+    await store.init();
+    const file = await store.importBuffer({
+      buffer: Buffer.from("one"),
+      sourceName: "one.txt",
+      mimeType: "text/plain",
+      kind: "file",
+      origin: "user_upload"
+    });
+
+    const listed = await store.listRows();
+    assert.equal(listed.rows[0]?.captionUpdatedAtMs, null);
+
+    const row = await store.getRow(file.fileId);
+    assert.equal(row?.captionUpdatedAtMs, null);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -198,28 +243,20 @@ test("asset store document cache directory cannot collapse to store root", async
       } as any
     );
     await store.init();
-    const mediaPath = join(rootDir, "chat-files", "media", "evil.txt");
     await mkdir(join(rootDir, "chat-files", "media"), { recursive: true });
-    await writeFile(mediaPath, "evil", "utf8");
-    await writeFile(join(rootDir, "chat-files", "files.json"), `${JSON.stringify([{
-      fileId: "..",
-      fileRef: "evil.txt",
-      kind: "file",
-      origin: "user_upload",
-      chatFilePath: "chat-files/media/evil.txt",
+    const file = await store.importBuffer({
+      buffer: Buffer.from("evil"),
       sourceName: "evil.txt",
       mimeType: "text/plain",
-      sizeBytes: 4,
-      createdAtMs: 1,
-      sourceContext: {},
-      caption: null
-    }], null, 2)}\n`, "utf8");
+      kind: "file",
+      origin: "user_upload"
+    });
 
     const unsafeDirectory = join(rootDir, "chat-files", "documents", "..");
     assert.notEqual(store.resolveDocumentCacheDirectory(".."), unsafeDirectory);
-    assert.equal(await store.deleteFile(".."), true);
+    assert.equal(await store.deleteFile(file.fileId), true);
     await stat(join(rootDir, "chat-files"));
-    await stat(join(rootDir, "chat-files", "files.json"));
+    await stat(join(rootDir, "assets", "assets.sqlite"));
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -261,5 +298,53 @@ test("chat file store enforces maxUploadBytes for direct buffer imports", async 
     );
   } finally {
     await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("chat file store keeps assets sqlite under dataDir even when localFiles.root is overridden", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-data-"));
+  const localFilesRoot = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-local-root-"));
+  try {
+    const store = new ChatFileStore(
+      createTestAppConfig({
+        localFiles: {
+          enabled: true,
+          root: localFilesRoot
+        },
+        chatFiles: {
+          enabled: true,
+          root: "chat-files",
+          maxUploadBytes: 1024 * 1024
+        }
+      }),
+      createSilentLogger(),
+      {
+        rootDir: localFilesRoot,
+        resolvePath(path: string) {
+          return {
+            relativePath: path,
+            absolutePath: join(localFilesRoot, path)
+          };
+        }
+      } as any,
+      dataDir
+    );
+    await store.init();
+    await store.importBuffer({
+      buffer: Buffer.from("hello"),
+      sourceName: "hello.txt",
+      mimeType: "text/plain",
+      kind: "file",
+      origin: "user_upload"
+    });
+
+    const dataDirAssets = await readdir(join(dataDir, "assets"), { withFileTypes: true });
+    assert.equal(dataDirAssets.some((entry) => entry.isFile() && entry.name === "assets.sqlite"), true);
+
+    const localRootAssets = await readdir(localFilesRoot, { withFileTypes: true });
+    assert.equal(localRootAssets.some((entry) => entry.isDirectory() && entry.name === "assets"), false);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+    await rm(localFilesRoot, { recursive: true, force: true });
   }
 });

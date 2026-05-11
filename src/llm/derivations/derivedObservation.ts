@@ -56,7 +56,7 @@ export function chatFileCaptionToDerivedObservation(file: ChatFileRecord): Deriv
       String(file.sizeBytes),
       String(file.createdAtMs)
     ].join("|")),
-    ...(file.captionUpdatedAtMs !== undefined ? { updatedAt: file.captionUpdatedAtMs } : {}),
+    ...(file.captionUpdatedAtMs != null ? { updatedAt: file.captionUpdatedAtMs } : {}),
     error: file.captionError ?? null
   };
 }
@@ -69,7 +69,7 @@ export function audioTranscriptionToDerivedObservation(audioFile: StoredAudioFil
     status: audioFile.transcriptionStatus,
     text: audioFile.transcriptionStatus === "ready" ? normalizeOptionalText(audioFile.transcription) : null,
     modelRef: audioFile.transcriptionModelRef,
-    updatedAt: audioFile.transcriptionUpdatedAt,
+    ...(audioFile.transcriptionUpdatedAt !== null ? { updatedAt: audioFile.transcriptionUpdatedAt } : {}),
     error: audioFile.transcriptionError
   };
 }

@@ -14,8 +14,10 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { pendingRequestSchema, type PendingRequest } from "../../src/requests/requestSchema.ts";
 import { scheduledJobRecordSchema, type ScheduledJobRecord } from "../../src/runtime/scheduler/jobSchema.ts";
+import type { StoredAudioFile } from "../../src/audio/audioStore.ts";
+import type { ChatFileRecord } from "../../src/services/workspace/types.ts";
 
-function createRegistryService(dataDir: string, options: { schedulerEnabled?: boolean } = {}) {
+function createRegistryService(dataDir: string, options: { schedulerEnabled?: boolean; audioRows?: StoredAudioFile[]; workspaceRows?: ChatFileRecord[] } = {}) {
   const persona = createEmptyPersona();
   const rpProfile = createEmptyRpProfile();
   const scenarioProfile = createEmptyScenarioProfile();
@@ -26,6 +28,8 @@ function createRegistryService(dataDir: string, options: { schedulerEnabled?: bo
   const globalRules: GlobalRuleEntry[] = [];
   const toolsetRules: ToolsetRuleEntry[] = [];
   const userIdentities: UserIdentityRecord[] = [];
+  const audioRows = [...(options.audioRows ?? [])];
+  const workspaceRows = [...(options.workspaceRows ?? [])];
   const groupMembershipRows: Array<{ groupId: string; userId: string; isMember: boolean; verifiedAt: number }> = [];
   let schedulerReloadCount = 0;
   const whitelistRows: Array<{ targetType: "user" | "group"; targetId: string; createdAtMs: number }> = [];
@@ -336,6 +340,36 @@ function createRegistryService(dataDir: string, options: { schedulerEnabled?: bo
       listRawMessages: () => ({ rows: [], total: 0, offset: 0, limit: 100 }),
       listMaintenanceJobs: () => ({ rows: [], total: 0, offset: 0, limit: 100 })
     },
+    audioStore: {
+      async listRows(input = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return {
+          rows: audioRows.slice(offset, offset + limit),
+          total: audioRows.length,
+          offset,
+          limit
+        };
+      },
+      async getRow(audioId) {
+        return audioRows.find((row) => row.id === audioId) ?? null;
+      }
+    },
+    chatFileStore: {
+      async listRows(input = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return {
+          rows: workspaceRows.slice(offset, offset + limit),
+          total: workspaceRows.length,
+          offset,
+          limit
+        };
+      },
+      async getRow(fileId) {
+        return workspaceRows.find((row) => row.fileId === fileId) ?? null;
+      }
+    },
     runtimeResourceStore: {
       async listRows() {
         return { rows: [], total: 0, offset: 0, limit: 100 };
@@ -352,8 +386,6 @@ test("DataRegistryService exposes initial file and directory resources", async (
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-data-registry-test-"));
   try {
     await mkdir(join(dataDir, "sessions"), { recursive: true });
-    await mkdir(join(dataDir, "workspace"), { recursive: true });
-    await writeFile(join(dataDir, "audio-files.json"), JSON.stringify({ files: ["a"] }), "utf8");
     await writeFile(join(dataDir, "sessions", "private%3Au1.json"), JSON.stringify({ id: "private:u1" }), "utf8");
 
     const service = createRegistryService(dataDir);
@@ -367,7 +399,6 @@ test("DataRegistryService exposes initial file and directory resources", async (
       "global_profile_readiness",
       "global_rules",
       "group_membership",
-      "image_files",
       "live_resources",
       "persona",
       "requests",
@@ -382,22 +413,68 @@ test("DataRegistryService exposes initial file and directory resources", async (
       "whitelist",
       "workspace_files"
     ]);
-    assert.equal(listed.resources.find((resource) => resource.key === "audio_files")?.shape, "file");
+    assert.equal(listed.resources.find((resource) => resource.key === "audio_files")?.shape, "collection");
+    assert.equal(listed.resources.find((resource) => resource.key === "workspace_files")?.shape, "collection");
     assert.equal(listed.resources.find((resource) => resource.key === "sessions")?.shape, "directory");
 
-    assert.deepEqual(await service.getResource("audio_files"), {
+    const audioFiles = await service.getResource("audio_files") as {
       resource: {
-        key: "audio_files",
-        title: "Audio Files",
-        shape: "file",
-        editable: false,
-        durability: "derived",
-        storage: {
-          kind: "file",
-          path: join(dataDir, "audio-files.json")
-        },
-        value: { files: ["a"] }
-      }
+        key: string;
+        title: string;
+        shape: string;
+        editable: boolean;
+        durability: string;
+        storage: { kind: string; database: string; tableGroup: string; tables: string[] };
+        rowIdentity?: { fields: string[]; encode: string };
+        rowSchemaMeta?: { kind: string; fields?: Record<string, unknown> };
+        export?: { enabled: boolean; fileName: string; format: string };
+      };
+    };
+    assert.equal(audioFiles.resource.key, "audio_files");
+    assert.equal(audioFiles.resource.shape, "collection");
+    assert.equal(audioFiles.resource.editable, false);
+    assert.equal(audioFiles.resource.durability, "source_of_truth");
+    assert.deepEqual(audioFiles.resource.storage, {
+      kind: "sqlite",
+      database: "assets",
+      tableGroup: "assets.audio_files",
+      tables: ["audio_files"]
+    });
+    assert.deepEqual(audioFiles.resource.rowIdentity, {
+      fields: ["id"],
+      encode: "single"
+    });
+    assert.equal(audioFiles.resource.rowSchemaMeta?.kind, "object");
+    assert.ok(audioFiles.resource.rowSchemaMeta?.fields?.id);
+    assert.deepEqual(audioFiles.resource.export, {
+      enabled: true,
+      fileName: "audio_files.json",
+      format: "json"
+    });
+
+    const workspaceFiles = await service.getResource("workspace_files") as {
+      resource: {
+        shape: string;
+        storage: { kind: string; database: string; tableGroup: string; tables: string[] };
+        rowIdentity?: { fields: string[]; encode: string };
+        export?: { enabled: boolean; fileName: string; format: string };
+      };
+    };
+    assert.equal(workspaceFiles.resource.shape, "collection");
+    assert.deepEqual(workspaceFiles.resource.storage, {
+      kind: "sqlite",
+      database: "assets",
+      tableGroup: "assets.chat_files",
+      tables: ["chat_files"]
+    });
+    assert.deepEqual(workspaceFiles.resource.rowIdentity, {
+      fields: ["fileId"],
+      encode: "single"
+    });
+    assert.deepEqual(workspaceFiles.resource.export, {
+      enabled: true,
+      fileName: "workspace_files.json",
+      format: "json"
     });
 
     const sessions = await service.getResource("sessions") as {
@@ -416,19 +493,89 @@ test("DataRegistryService exposes initial file and directory resources", async (
   }
 });
 
-test("DataRegistryService rejects row and export operations for initial file resources", async () => {
+test("DataRegistryService rejects row and export operations for removed or file-only resources", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-data-registry-test-"));
   try {
     const service = createRegistryService(dataDir);
 
     await assert.rejects(
-      service.listRows("audio_files"),
-      /Data resource does not contain rows: audio_files/u
+      service.getResource("image_files"),
+      /Unknown data resource: image_files/u
     );
     await assert.rejects(
-      service.exportResource("audio_files"),
-      /Data resource does not support export: audio_files/u
+      service.listRows("sessions"),
+      /Data resource does not contain rows: sessions/u
     );
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("DataRegistryService exposes and exports audio_files sqlite rows", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-data-registry-test-"));
+  try {
+    const service = createRegistryService(dataDir, {
+      audioRows: [{
+        id: "aud_1",
+        source: "https://example.com/audio.mp3",
+        createdAt: 123,
+        transcription: "hello",
+        transcriptionStatus: "ready",
+        transcriptionUpdatedAt: 456,
+        transcriptionModelRef: "main",
+        transcriptionError: null
+      }]
+    });
+
+    const listed = await service.listRows("audio_files");
+    assert.equal(listed.rows.length, 1);
+    assert.equal((listed.rows[0] as StoredAudioFile).id, "aud_1");
+
+    const row = await service.getRow("audio_files", "aud_1") as { row: StoredAudioFile };
+    assert.equal(row.row.transcriptionStatus, "ready");
+
+    const exported = await service.exportResource("audio_files") as { filePath: string };
+    const dump = JSON.parse(await readFile(exported.filePath, "utf8")) as StoredAudioFile[];
+    assert.equal(dump[0]?.id, "aud_1");
+    assert.equal(dump[0]?.transcription, "hello");
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("DataRegistryService exposes and exports workspace_files sqlite rows", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-data-registry-test-"));
+  try {
+    const service = createRegistryService(dataDir, {
+      workspaceRows: [{
+        fileId: "file_1",
+        fileRef: "upload_1.txt",
+        kind: "file",
+        origin: "user_upload",
+        chatFilePath: "chat-files/media/upload_1.txt",
+        sourceName: "upload.txt",
+        mimeType: "text/plain",
+        sizeBytes: 4,
+        createdAtMs: 123,
+        sourceContext: { source: "upload" },
+        caption: null,
+        captionStatus: "missing",
+        captionUpdatedAtMs: undefined,
+        captionModelRef: null,
+        captionError: null
+      }]
+    });
+
+    const listed = await service.listRows("workspace_files");
+    assert.equal(listed.rows.length, 1);
+    assert.equal((listed.rows[0] as ChatFileRecord).fileId, "file_1");
+
+    const row = await service.getRow("workspace_files", "file_1") as { row: ChatFileRecord };
+    assert.equal(row.row.sourceName, "upload.txt");
+
+    const exported = await service.exportResource("workspace_files") as { filePath: string };
+    const dump = JSON.parse(await readFile(exported.filePath, "utf8")) as ChatFileRecord[];
+    assert.equal(dump[0]?.fileId, "file_1");
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }

@@ -312,6 +312,8 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         scheduler: deps.scheduler,
         whitelistStore: deps.whitelistStore,
         contextStore: deps.contextStore,
+        audioStore: deps.audioStore,
+        chatFileStore: deps.chatFileStore,
         runtimeResourceStore: deps.runtimeResourceStore
       }),
       localFileAdmin: createLocalFileAdminService({

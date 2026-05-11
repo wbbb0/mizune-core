@@ -108,7 +108,7 @@ export interface ChatFileRecord {
   sourceContext: Record<string, string | number | boolean | null>;
   caption: string | null;
   captionStatus?: ChatFileCaptionStatus | undefined;
-  captionUpdatedAtMs?: number | undefined;
+  captionUpdatedAtMs?: number | null | undefined;
   captionModelRef?: string | null | undefined;
   captionError?: string | null | undefined;
 }
