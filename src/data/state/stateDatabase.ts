@@ -437,6 +437,72 @@ function validateGroupMembershipSchema(db: SqliteDatabase): void {
   });
 }
 
+function createRuntimeResourcesSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS runtime_resources (
+      resource_id TEXT PRIMARY KEY NOT NULL CHECK (resource_id = trim(resource_id) AND length(resource_id) > 0),
+      kind TEXT NOT NULL CHECK (kind IN ('browser_page', 'shell_session')),
+      status TEXT NOT NULL CHECK (status IN ('active', 'expired', 'closed', 'unrecoverable')),
+      owner_session_id TEXT,
+      title TEXT,
+      description TEXT,
+      summary TEXT NOT NULL DEFAULT '',
+      created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+      last_accessed_at_ms INTEGER NOT NULL CHECK (last_accessed_at_ms >= 0),
+      expires_at_ms INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS runtime_browser_pages (
+      resource_id TEXT PRIMARY KEY NOT NULL REFERENCES runtime_resources(resource_id) ON DELETE CASCADE,
+      requested_url TEXT NOT NULL,
+      resolved_url TEXT NOT NULL,
+      backend TEXT NOT NULL CHECK (backend = 'playwright'),
+      title TEXT,
+      profile_id TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS runtime_shell_sessions (
+      resource_id TEXT PRIMARY KEY NOT NULL REFERENCES runtime_resources(resource_id) ON DELETE CASCADE,
+      command TEXT NOT NULL,
+      cwd TEXT NOT NULL,
+      shell TEXT NOT NULL,
+      tty INTEGER NOT NULL CHECK (tty IN (0, 1)),
+      login INTEGER NOT NULL CHECK (login IN (0, 1))
+    );
+  `);
+}
+
+function validateRuntimeResourcesSchema(db: SqliteDatabase): void {
+  assertTableColumns(db, "runtime_resources", {
+    resource_id: "TEXT",
+    kind: "TEXT",
+    status: "TEXT",
+    owner_session_id: "TEXT",
+    title: "TEXT",
+    description: "TEXT",
+    summary: "TEXT",
+    created_at_ms: "INTEGER",
+    last_accessed_at_ms: "INTEGER",
+    expires_at_ms: "INTEGER"
+  });
+  assertTableColumns(db, "runtime_browser_pages", {
+    resource_id: "TEXT",
+    requested_url: "TEXT",
+    resolved_url: "TEXT",
+    backend: "TEXT",
+    title: "TEXT",
+    profile_id: "TEXT"
+  });
+  assertTableColumns(db, "runtime_shell_sessions", {
+    resource_id: "TEXT",
+    command: "TEXT",
+    cwd: "TEXT",
+    shell: "TEXT",
+    tty: "INTEGER",
+    login: "INTEGER"
+  });
+}
+
 const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   {
     groupId: "state.persona",
@@ -533,5 +599,13 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
     ownedTables: ["group_membership_entries"],
     createSchema: createGroupMembershipSchema,
     validateSchema: validateGroupMembershipSchema
+  },
+  {
+    groupId: "state.runtime_resources",
+    schemaVersion: 1,
+    resetPolicy: "block_reset",
+    ownedTables: ["runtime_resources", "runtime_browser_pages", "runtime_shell_sessions"],
+    createSchema: createRuntimeResourcesSchema,
+    validateSchema: validateRuntimeResourcesSchema
   }
 ];

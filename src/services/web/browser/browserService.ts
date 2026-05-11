@@ -142,8 +142,8 @@ export function createBrowserServiceDeps(input: {
   resolveSearchRef: (refId: string) => string | null;
   dataDir: string;
   chatFileStore: ScreenshotImageStore;
+  resourceRegistry: RuntimeResourceRegistry;
 }): BrowserServiceDeps {
-  const resourceRegistry = new RuntimeResourceRegistry(input.dataDir, input.logger);
   return {
     config: input.config,
     logger: input.logger,
@@ -151,7 +151,7 @@ export function createBrowserServiceDeps(input: {
     playwrightBackend: new PlaywrightBrowserBackend(input.config, input.logger),
     sessions: new BrowserSessionRuntime(MAX_BROWSER_SESSIONS),
     profileStore: new BrowserProfileStore(input.dataDir, input.config, input.logger),
-    resourceSync: new BrowserResourceSync(resourceRegistry, input.logger),
+    resourceSync: new BrowserResourceSync(input.resourceRegistry, input.logger),
     assetStore: new BrowserAssetStore(input.config, () => input.chatFileStore)
   };
 }

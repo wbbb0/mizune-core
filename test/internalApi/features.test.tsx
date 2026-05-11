@@ -377,19 +377,24 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
     }
   });
 
-  test("internal api exposes remaining single-file editor resources", async () => {
+  test("internal api exposes live_resources through data registry", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
       await mkdir(deps.config.dataDir, { recursive: true });
-      const liveResourcesResponse = await app.inject({
+      const resourcesResponse = await app.inject({
         method: "GET",
-        url: "/api/editors/live_resources"
+        url: "/api/data/registry/resources"
+      });
+      const liveResourcesRowsResponse = await app.inject({
+        method: "GET",
+        url: "/api/data/registry/resources/live_resources/rows"
       });
 
-      assert.equal(liveResourcesResponse.statusCode, 200);
-      assert.equal(liveResourcesResponse.json().editor.kind, "single");
-      assert.equal(liveResourcesResponse.json().editor.editable, false);
+      assert.equal(resourcesResponse.statusCode, 200);
+      assert.equal(resourcesResponse.json().resources.some((resource: { key: string }) => resource.key === "live_resources"), true);
+      assert.equal(liveResourcesRowsResponse.statusCode, 200);
+      assert.deepEqual(liveResourcesRowsResponse.json().rows, []);
     } finally {
       await app.close();
     }

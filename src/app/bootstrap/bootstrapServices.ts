@@ -45,6 +45,7 @@ import { ComfyClient } from "#comfy/comfyClient.ts";
 import { ComfyTaskStore } from "#comfy/taskStore.ts";
 import { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import { RuntimeResourceRegistry } from "#runtime/resources/runtimeResourceRegistry.ts";
+import { RuntimeResourceStore } from "#runtime/resources/runtimeResourceStore.ts";
 import { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
@@ -119,12 +120,15 @@ export function createBootstrapServices(
   const setupStore = new SetupStateStore(dataDir, config, userIdentityStore, logger, stateDatabase);
   const globalProfileReadinessStore = new GlobalProfileReadinessStore(dataDir, config, logger, stateDatabase);
   const searchService = new SearchService(config, logger);
+  const runtimeResourceStore = new RuntimeResourceStore(stateDatabase);
+  const sharedResourceRegistry = new RuntimeResourceRegistry(runtimeResourceStore);
   const browserService = new BrowserService(createBrowserServiceDeps({
     config,
     logger,
     resolveSearchRef: (refId) => searchService.resolveReference(refId),
     dataDir,
-    chatFileStore
+    chatFileStore,
+    resourceRegistry: sharedResourceRegistry
   }));
   const forwardResolver = new ForwardResolver(oneBotClient, logger);
   const conversationAccess = new ConversationAccessService(
@@ -135,7 +139,7 @@ export function createBootstrapServices(
     userIdentityStore,
     logger
   );
-  const shellRuntime = new ShellRuntime(config, logger, dataDir);
+  const shellRuntime = new ShellRuntime(config, logger, sharedResourceRegistry);
 
   return {
     whitelistStore,
@@ -186,7 +190,9 @@ export function createBootstrapServices(
     comfyTemplateCatalog,
     forwardResolver,
     conversationAccess,
-    shellRuntime
+    shellRuntime,
+    runtimeResourceRegistry: sharedResourceRegistry,
+    runtimeResourceStore
   };
 }
 
@@ -223,6 +229,7 @@ export async function initializeBootstrapState(
       | "setupStore"
       | "globalProfileReadinessStore"
       | "sessionManager"
+      | "runtimeResourceRegistry"
     >,
     "sessionManager"
   > & {
@@ -260,10 +267,11 @@ export async function initializeBootstrapState(
     scenarioProfileStore,
     setupStore,
     globalProfileReadinessStore,
-    sessionManager
+    sessionManager,
+    runtimeResourceRegistry
   } = services;
 
-  await new RuntimeResourceRegistry(dataDir, logger).reset();
+  await runtimeResourceRegistry.reset();
   await whitelistStore.init();
   await sessionPersistence.init();
   await localFileService.init();

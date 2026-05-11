@@ -329,6 +329,18 @@ function createRegistryService(dataDir: string, options: { schedulerEnabled?: bo
           whitelistRows.splice(index, 1);
         }
       }
+    },
+    contextStore: {
+      listContextItems: () => ({ items: [], total: 0 }),
+      getContextItem: () => null,
+      listRawMessages: () => ({ rows: [], total: 0, offset: 0, limit: 100 }),
+      listMaintenanceJobs: () => ({ rows: [], total: 0, offset: 0, limit: 100 })
+    },
+    runtimeResourceStore: {
+      async listRows() {
+        return { rows: [], total: 0, offset: 0, limit: 100 };
+      },
+      list: async () => []
     }
   });
   return Object.assign(service, {
@@ -349,10 +361,14 @@ test("DataRegistryService exposes initial file and directory resources", async (
     const listed = await service.listResources();
     assert.deepEqual(listed.resources.map((resource) => resource.key), [
       "audio_files",
+      "context_items",
+      "context_maintenance_jobs",
+      "context_raw_messages",
       "global_profile_readiness",
       "global_rules",
       "group_membership",
       "image_files",
+      "live_resources",
       "persona",
       "requests",
       "rp_profile",

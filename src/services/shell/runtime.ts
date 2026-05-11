@@ -51,16 +51,14 @@ function isClosedSession(session: ShellSession): boolean {
 
 export class ShellRuntime {
   private readonly sessions = new Map<string, InternalSessionState>();
-  private readonly resourceRegistry: RuntimeResourceRegistry;
   private eventHandler: ShellRuntimeEventHandler | null;
 
   constructor(
     private readonly config: AppConfig,
     private readonly logger: Logger,
-    dataDir: string,
+    private readonly resourceRegistry: RuntimeResourceRegistry,
     options?: { onEvent?: ShellRuntimeEventHandler }
   ) {
-    this.resourceRegistry = new RuntimeResourceRegistry(dataDir, logger);
     this.eventHandler = options?.onEvent ?? null;
   }
 

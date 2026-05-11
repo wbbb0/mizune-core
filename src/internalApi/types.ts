@@ -46,6 +46,7 @@ import {
   type EditorService
 } from "./application/editorService.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
+import type { RuntimeResourceStore } from "#runtime/resources/runtimeResourceStore.ts";
 import {
   createDataBrowserService,
   type DataBrowserService
@@ -217,6 +218,7 @@ export interface InternalApiDeps {
   requestStore: RequestStore;
   scheduledJobStore: ScheduledJobStore;
   scheduler: Scheduler;
+  runtimeResourceStore: RuntimeResourceStore;
   shellRuntime: ShellRuntime;
   configManager: ConfigManager;
   sessionPersistence: SessionPersistence;
@@ -308,7 +310,9 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         requestStore: deps.requestStore,
         scheduledJobStore: deps.scheduledJobStore,
         scheduler: deps.scheduler,
-        whitelistStore: deps.whitelistStore
+        whitelistStore: deps.whitelistStore,
+        contextStore: deps.contextStore,
+        runtimeResourceStore: deps.runtimeResourceStore
       }),
       localFileAdmin: createLocalFileAdminService({
         localFileService: deps.localFileService,

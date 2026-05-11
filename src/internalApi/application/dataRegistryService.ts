@@ -1,6 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { AppConfig } from "#config/config.ts";
+import type { ContextStore } from "#context/contextStore.ts";
 import { DataRegistry, type DataResourceDefinition } from "#data/registry/index.ts";
 import { s, type BaseSchema } from "#data/schema/index.ts";
 import { exportSchemaMeta } from "#data/schema/composites.ts";
@@ -30,6 +31,7 @@ import type { RequestStore } from "#requests/requestStore.ts";
 import { scheduledJobRecordSchema } from "#runtime/scheduler/jobSchema.ts";
 import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
+import type { RuntimeResourceStore } from "#runtime/resources/runtimeResourceStore.ts";
 
 export interface DataRegistryService {
   listResources: DataRegistry["listResources"];
@@ -60,6 +62,8 @@ export function createDataRegistryService(input: {
   scheduledJobStore: Pick<ScheduledJobStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
   scheduler: Pick<Scheduler, "reloadFromStore">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
+  contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs">;
+  runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list">;
 }): DataRegistryService {
   const registry = new DataRegistry({
     dumpDir: join(input.config.dataDir, "dumps")
@@ -86,6 +90,8 @@ function createInitialDataResourceDefinitions(input: {
   scheduledJobStore: Pick<ScheduledJobStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
   scheduler: Pick<Scheduler, "reloadFromStore">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
+  contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs">;
+  runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list">;
 }): DataResourceDefinition[] {
   const dataDir = input.config.dataDir;
   return [
@@ -143,6 +149,10 @@ function createInitialDataResourceDefinitions(input: {
     createGroupMembershipResource(input.groupMembershipStore),
     createUsersResource(input.userStore),
     createWhitelistResource(input.whitelistStore),
+    createContextItemsResource(input.contextStore),
+    createContextRawMessagesResource(input.contextStore),
+    createContextMaintenanceJobsResource(input.contextStore),
+    createLiveResourcesResource(input.runtimeResourceStore),
     fileResource({
       key: "audio_files",
       title: "Audio Files",
@@ -809,6 +819,160 @@ function decodeWhitelistRowId(rowId: string): Pick<WhitelistRow, "targetType" | 
   return {
     targetType: row.targetType,
     targetId: row.targetId
+  };
+}
+
+function createContextItemsResource(
+  contextStore: Pick<ContextStore, "listContextItems" | "getContextItem">
+): DataResourceDefinition {
+  return {
+    key: "context_items",
+    title: "上下文记忆条目",
+    shape: "collection",
+    editable: false,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "context",
+      tableGroup: "context.items",
+      tables: ["context_items", "context_item_sources"]
+    },
+    rowIdentity: { fields: ["itemId"], encode: "single" },
+    export: { enabled: true, fileName: "context_items.json", format: "json" },
+    adapter: {
+      listRows: async (query) => {
+        const offset = query.offset ?? 0;
+        const limit = query.limit ?? 100;
+        const result = contextStore.listContextItems({ offset, limit });
+        return {
+          rows: result.items.map((item) => rowWithId(item.itemId, item)),
+          total: result.total,
+          offset,
+          limit
+        };
+      },
+      exportRows: async (query) => {
+        const offset = query.offset ?? 0;
+        const limit = query.limit ?? 500;
+        const result = contextStore.listContextItems({ offset, limit });
+        return {
+          rows: result.items,
+          total: result.total,
+          offset,
+          limit
+        };
+      },
+      getRow: async (rowId) => {
+        const item = contextStore.getContextItem(rowId);
+        return item ? rowWithId(item.itemId, item) : null;
+      }
+    }
+  };
+}
+
+function createContextRawMessagesResource(
+  contextStore: Pick<ContextStore, "listRawMessages">
+): DataResourceDefinition {
+  return {
+    key: "context_raw_messages",
+    title: "上下文原始消息",
+    shape: "log",
+    editable: false,
+    durability: "derived",
+    storage: {
+      kind: "sqlite",
+      database: "context",
+      tableGroup: "context.raw_messages",
+      tables: ["raw_messages"]
+    },
+    export: { enabled: false, fileName: "context_raw_messages.json", format: "json" },
+    adapter: {
+      listRows: async (query) => {
+        const offset = query.offset ?? 0;
+        const limit = query.limit ?? 100;
+        const result = contextStore.listRawMessages({ offset, limit });
+        return {
+          rows: result.rows.map((row) => rowWithId((row as { message_id: string }).message_id, row)),
+          total: result.total,
+          offset,
+          limit
+        };
+      }
+    }
+  };
+}
+
+function createContextMaintenanceJobsResource(
+  contextStore: Pick<ContextStore, "listMaintenanceJobs">
+): DataResourceDefinition {
+  return {
+    key: "context_maintenance_jobs",
+    title: "上下文维护任务日志",
+    shape: "log",
+    editable: false,
+    durability: "derived",
+    storage: {
+      kind: "sqlite",
+      database: "context",
+      tableGroup: "context.maintenance",
+      tables: ["maintenance_jobs"]
+    },
+    export: { enabled: false, fileName: "context_maintenance_jobs.json", format: "json" },
+    adapter: {
+      listRows: async (query) => {
+        const offset = query.offset ?? 0;
+        const limit = query.limit ?? 100;
+        const result = contextStore.listMaintenanceJobs({ offset, limit });
+        return {
+          rows: result.rows.map((row) => rowWithId((row as { job_id: string }).job_id, row)),
+          total: result.total,
+          offset,
+          limit
+        };
+      }
+    }
+  };
+}
+
+function rowWithId(id: string, row: unknown): unknown {
+  return { id, ...(row as Record<string, unknown>) };
+}
+
+function createLiveResourcesResource(
+  runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list">
+): DataResourceDefinition {
+  return {
+    key: "live_resources",
+    title: "运行时资源",
+    shape: "collection",
+    editable: false,
+    durability: "cache",
+    storage: {
+      kind: "sqlite",
+      database: "state",
+      tableGroup: "state.runtime_resources",
+      tables: ["runtime_resources", "runtime_browser_pages", "runtime_shell_sessions"]
+    },
+    export: { enabled: true, fileName: "live_resources.json", format: "json" },
+    rowIdentity: { fields: ["resourceId"], encode: "single" },
+    adapter: {
+      listRows: async (query) => {
+        const offset = query.offset ?? 0;
+        const limit = query.limit ?? 100;
+        const all = await runtimeResourceStore.list();
+        return {
+          rows: all.slice(offset, offset + limit).map((row) => rowWithId(row.resourceId, row)),
+          total: all.length,
+          offset,
+          limit
+        };
+      },
+      getRow: async (rowId) => {
+        const all = await runtimeResourceStore.list();
+        const row = all.find((r) => r.resourceId === rowId);
+        return row ? rowWithId(row.resourceId, row) : null;
+      }
+    }
   };
 }
 

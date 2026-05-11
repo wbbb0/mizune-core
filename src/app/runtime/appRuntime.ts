@@ -289,7 +289,8 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     audioStore,
     contentSafetyStore,
     chatMessageFileGcService,
-    contextSessionCleanupService
+    contextSessionCleanupService,
+    runtimeResourceStore: services.runtimeResourceStore
   });
 
   try {

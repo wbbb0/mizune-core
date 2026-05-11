@@ -19,7 +19,7 @@ import {
 import { deepMergeAllReplaceArrays } from "#data/schema/helpers.ts";
 import { buildUiTreeFromMeta } from "#data/schema/ui.ts";
 import type { BaseSchema, Infer } from "#data/schema/index.ts";
-import { runtimeResourceFileSchema } from "#runtime/resources/runtimeResourceSchema.ts";
+
 import type { ConfigManager } from "#config/configManager.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
@@ -371,12 +371,7 @@ function buildEditorResourceMap(input: {
       }
     }
   ];
-  const dataDir = input.config.dataDir;
-  const dataResources: EditorResource<any>[] = [
-    single("live_resources", "运行时资源", "data", runtimeResourceFileSchema, `${dataDir}/live-resources.json`, {
-      editable: false
-    })
-  ];
+  const dataResources: EditorResource<any>[] = [];
 
   return new Map(
     [...configResources, ...dataResources].map((resource) => [resource.key, resource])

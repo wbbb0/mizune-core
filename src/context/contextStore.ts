@@ -690,6 +690,56 @@ export class ContextStore {
     };
   }
 
+  listRawMessages(input: {
+    offset?: number;
+    limit?: number;
+  } = {}): {
+    rows: unknown[];
+    total: number;
+    offset: number;
+    limit: number;
+  } {
+    const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
+    const offset = Math.max(input.offset ?? 0, 0);
+    if (!this.db) {
+      return { rows: [], total: 0, offset, limit };
+    }
+    const total = (this.db.prepare("SELECT COUNT(*) AS count FROM raw_messages").get() as { count: number }).count;
+    const rows = this.db.prepare(`
+      SELECT message_id, user_id, session_id, chat_type, role, speaker_id,
+             timestamp_ms, text, segments_json, attachment_refs_json,
+             sensitivity, ingested_at
+      FROM raw_messages
+      ORDER BY timestamp_ms DESC, ingested_at DESC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset) as unknown[];
+    return { rows, total, offset, limit };
+  }
+
+  listMaintenanceJobs(input: {
+    offset?: number;
+    limit?: number;
+  } = {}): {
+    rows: unknown[];
+    total: number;
+    offset: number;
+    limit: number;
+  } {
+    const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
+    const offset = Math.max(input.offset ?? 0, 0);
+    if (!this.db) {
+      return { rows: [], total: 0, offset, limit };
+    }
+    const total = (this.db.prepare("SELECT COUNT(*) AS count FROM maintenance_jobs").get() as { count: number }).count;
+    const rows = this.db.prepare(`
+      SELECT job_id, job_type, status, payload_json, scheduled_at, started_at, finished_at, error
+      FROM maintenance_jobs
+      ORDER BY scheduled_at DESC, job_id DESC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset) as unknown[];
+    return { rows, total, offset, limit };
+  }
+
   getContextStats(): {
     rawMessages: number;
     contextItems: number;
@@ -1472,7 +1522,7 @@ export class ContextStore {
     `).run(toSqlParams(item));
   }
 
-  private getContextItem(itemId: string): ContextManagementItem | null {
+  getContextItem(itemId: string): ContextManagementItem | null {
     if (!this.db) {
       return null;
     }
