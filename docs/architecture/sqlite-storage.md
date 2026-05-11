@@ -28,7 +28,7 @@
 
 `block_reset` 不提供自动迁移能力。需要修改 source-of-truth 表结构时，应先实现显式迁移或由维护者手动清空新库后再启动。
 
-包含 `block_reset` source-of-truth 表组的数据库不应开启文件级自动重建。文件级 open/integrity 自愈会隔离整个 SQLite 文件并创建空库，这会绕过表组级保护；因此 `state/state.sqlite` 这类真实数据源在数据库打不开或完整性校验失败时应直接启动失败，等待人工恢复。
+包含 `block_reset` source-of-truth 表组的数据库不应开启文件级自动重建。文件级 open/integrity 自愈会隔离整个 SQLite 文件并创建空库，这会绕过表组级保护；因此 `state/state.sqlite`、`sessions/sessions.sqlite` 这类真实数据源在数据库打不开或完整性校验失败时应直接启动失败，等待人工恢复。
 
 如果旧数据库还没有 `__sqlite_schema_groups` 元数据，表组可以提供 `adoptExistingSchema` 做一次性接管准备。这个钩子只用于把接入表组机制之前已经由当前代码支持的 SQLite 文件补齐到当前结构，例如补齐历史上已存在的非破坏列；它不是未来 schema 版本变更的迁移机制。已有元数据后，后续结构变化必须通过提升表组版本触发失效重建。
 

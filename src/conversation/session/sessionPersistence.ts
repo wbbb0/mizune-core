@@ -1,10 +1,16 @@
-import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Logger } from "pino";
 import { z } from "zod";
 import type { PersistedSessionState } from "./sessionManager.ts";
 import { getDefaultSessionModeId } from "#modes/registry.ts";
 import { createNormalSessionOperationMode } from "./sessionOperationMode.ts";
+import {
+  assertTableColumns,
+  SqliteService,
+  type SqliteDatabase,
+  type SqliteDatabaseHandle,
+  type SqliteTableGroupDefinition
+} from "#data/sqlite/sqliteService.ts";
 import { chatAttachmentSchema } from "#types/chatContracts.ts";
 import { internalTranscriptItemSchema, transcriptMessageContentPartSchema } from "./transcriptContract.ts";
 
@@ -167,89 +173,172 @@ const persistedSessionSchema = z.object({
 });
 
 export class SessionPersistence {
-  private readonly sessionDir: string;
+  private readonly dbPath: string;
+  private sqlite: SqliteDatabaseHandle | null = null;
   private readonly writes = new Map<string, Promise<void>>();
 
   constructor(
     dataDir: string,
-    private readonly logger: Logger
+    private readonly logger: Logger,
+    private readonly sqliteService = new SqliteService(logger)
   ) {
-    this.sessionDir = join(dataDir, "sessions");
+    this.dbPath = join(dataDir, "sessions", "sessions.sqlite");
   }
 
   async init(): Promise<void> {
-    await mkdir(this.sessionDir, { recursive: true });
+    await this.getReadyDb();
   }
 
   async loadAll(): Promise<PersistedSessionState[]> {
-    const fileNames = await readdir(this.sessionDir, { withFileTypes: true });
+    const db = await this.getReadyDb();
+    const rows = db.prepare(`
+      SELECT
+        session_id,
+        type,
+        source,
+        mode_id,
+        operation_mode_json,
+        participant_kind,
+        participant_id,
+        title,
+        title_source,
+        reply_delivery,
+        pending_messages_json,
+        pending_transcript_group_id_is_set,
+        pending_transcript_group_id,
+        active_transcript_group_id_is_set,
+        active_transcript_group_id,
+        history_summary,
+        history_backfill_boundary_ms,
+        internal_transcript_json,
+        debug_markers_json,
+        last_llm_usage_json,
+        sent_messages_json,
+        last_active_at_ms,
+        last_message_at_ms,
+        latest_gap_ms,
+        smoothed_gap_ms
+      FROM sessions
+      ORDER BY last_active_at_ms ASC, session_id ASC
+    `).all() as PersistedSessionRow[];
     const sessions: PersistedSessionState[] = [];
 
-    for (const entry of fileNames) {
-      if (!entry.isFile() || !entry.name.endsWith(".json")) {
-        continue;
-      }
-
-      const filePath = join(this.sessionDir, entry.name);
+    for (const row of rows) {
       try {
-        const raw = await readFile(filePath, "utf8");
-        const parsed = persistedSessionSchema.parse(JSON.parse(raw)) as PersistedSessionState;
-        sessions.push(parsed);
+        sessions.push(rowToPersistedSessionState(row));
       } catch (error: unknown) {
-        this.logger.warn({ error, filePath }, "session_persist_load_failed");
+        this.logger.warn({ error, sessionId: row.session_id }, "session_persist_load_failed");
       }
     }
 
-    sessions.sort((left, right) => left.lastActiveAt - right.lastActiveAt);
     return sessions;
   }
 
   async save(session: PersistedSessionState): Promise<void> {
+    const validated = persistedSessionSchema.parse(session) as PersistedSessionState;
     await this.enqueueWrite(session.id, async () => {
-      const filePath = this.getFilePath(session.id);
-      const tempPath = `${filePath}.tmp`;
-      try {
-        await writeFile(tempPath, `${JSON.stringify(session, null, 2)}\n`, "utf8");
-      } catch (error: unknown) {
-        if (isMissingFileError(error)) {
-          await mkdir(this.sessionDir, { recursive: true });
-          await writeFile(tempPath, `${JSON.stringify(session, null, 2)}\n`, "utf8");
-        } else {
-          throw error;
-        }
-      }
-      await rename(tempPath, filePath);
+      const db = await this.getReadyDb();
+      db.prepare(`
+        INSERT INTO sessions (
+          session_id,
+          type,
+          source,
+          mode_id,
+          operation_mode_json,
+          participant_kind,
+          participant_id,
+          title,
+          title_source,
+          reply_delivery,
+          pending_messages_json,
+          pending_transcript_group_id_is_set,
+          pending_transcript_group_id,
+          active_transcript_group_id_is_set,
+          active_transcript_group_id,
+          history_summary,
+          history_backfill_boundary_ms,
+          internal_transcript_json,
+          debug_markers_json,
+          last_llm_usage_json,
+          sent_messages_json,
+          last_active_at_ms,
+          last_message_at_ms,
+          latest_gap_ms,
+          smoothed_gap_ms,
+          updated_at_ms
+        ) VALUES (
+          @sessionId,
+          @type,
+          @source,
+          @modeId,
+          @operationModeJson,
+          @participantKind,
+          @participantId,
+          @title,
+          @titleSource,
+          @replyDelivery,
+          @pendingMessagesJson,
+          @pendingTranscriptGroupIdIsSet,
+          @pendingTranscriptGroupId,
+          @activeTranscriptGroupIdIsSet,
+          @activeTranscriptGroupId,
+          @historySummary,
+          @historyBackfillBoundaryMs,
+          @internalTranscriptJson,
+          @debugMarkersJson,
+          @lastLlmUsageJson,
+          @sentMessagesJson,
+          @lastActiveAtMs,
+          @lastMessageAtMs,
+          @latestGapMs,
+          @smoothedGapMs,
+          @updatedAtMs
+        )
+        ON CONFLICT(session_id) DO UPDATE SET
+          type = excluded.type,
+          source = excluded.source,
+          mode_id = excluded.mode_id,
+          operation_mode_json = excluded.operation_mode_json,
+          participant_kind = excluded.participant_kind,
+          participant_id = excluded.participant_id,
+          title = excluded.title,
+          title_source = excluded.title_source,
+          reply_delivery = excluded.reply_delivery,
+          pending_messages_json = excluded.pending_messages_json,
+          pending_transcript_group_id_is_set = excluded.pending_transcript_group_id_is_set,
+          pending_transcript_group_id = excluded.pending_transcript_group_id,
+          active_transcript_group_id_is_set = excluded.active_transcript_group_id_is_set,
+          active_transcript_group_id = excluded.active_transcript_group_id,
+          history_summary = excluded.history_summary,
+          history_backfill_boundary_ms = excluded.history_backfill_boundary_ms,
+          internal_transcript_json = excluded.internal_transcript_json,
+          debug_markers_json = excluded.debug_markers_json,
+          last_llm_usage_json = excluded.last_llm_usage_json,
+          sent_messages_json = excluded.sent_messages_json,
+          last_active_at_ms = excluded.last_active_at_ms,
+          last_message_at_ms = excluded.last_message_at_ms,
+          latest_gap_ms = excluded.latest_gap_ms,
+          smoothed_gap_ms = excluded.smoothed_gap_ms,
+          updated_at_ms = excluded.updated_at_ms
+      `).run(toPersistedSessionParams(validated));
     });
   }
 
   async remove(sessionId: string): Promise<void> {
     await this.enqueueWrite(sessionId, async () => {
-      const filePath = this.getFilePath(sessionId);
-      try {
-        await unlink(filePath);
-      } catch (error: unknown) {
-        if (!isMissingFileError(error)) {
-          this.logger.warn({ error, filePath }, "session_persist_remove_failed");
-        }
-      }
+      const db = await this.getReadyDb();
+      db.prepare(`DELETE FROM sessions WHERE session_id = ?`).run(sessionId);
     });
   }
 
   async getPersistedSessionMtimeMs(sessionId: string): Promise<number | null> {
-    try {
-      const filePath = this.getFilePath(sessionId);
-      return (await stat(filePath)).mtimeMs;
-    } catch (error: unknown) {
-      if (isMissingFileError(error)) {
-        return null;
-      }
-      this.logger.warn({ error, sessionId }, "session_persist_stat_failed");
-      throw error;
-    }
-  }
-
-  private getFilePath(sessionId: string): string {
-    return join(this.sessionDir, `${encodeURIComponent(sessionId)}.json`);
+    const db = await this.getReadyDb();
+    const row = db.prepare(`
+      SELECT updated_at_ms AS updatedAtMs
+      FROM sessions
+      WHERE session_id = ?
+    `).get(sessionId) as { updatedAtMs: number } | undefined;
+    return row?.updatedAtMs ?? null;
   }
 
   private async enqueueWrite(sessionId: string, operation: () => Promise<void>): Promise<void> {
@@ -265,8 +354,193 @@ export class SessionPersistence {
     this.writes.set(sessionId, next);
     await next;
   }
+
+  private async getReadyDb(): Promise<SqliteDatabase> {
+    if (!this.sqlite) {
+      this.sqlite = await this.sqliteService.openDatabase({
+        databaseId: "sessions",
+        dbPath: this.dbPath,
+        tableGroups: SESSION_TABLE_GROUPS,
+        pragmas: {
+          wal: true,
+          foreignKeys: true,
+          busyTimeoutMs: 5000
+        },
+        selfHealing: {
+          resetDatabaseOnOpenFailure: false,
+          resetDatabaseOnIntegrityFailure: false,
+          backupInvalidDatabase: false
+        }
+      });
+    }
+    return this.sqlite.db;
+  }
 }
 
-function isMissingFileError(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
+type PersistedSessionRow = {
+  session_id: string;
+  type: "private" | "group";
+  source: "onebot" | "web" | null;
+  mode_id: string | null;
+  operation_mode_json: string | null;
+  participant_kind: "user" | "group";
+  participant_id: string;
+  title: string | null;
+  title_source: "default" | "auto" | "manual" | null;
+  reply_delivery: "onebot" | "web" | null;
+  pending_messages_json: string;
+  pending_transcript_group_id_is_set: 0 | 1;
+  pending_transcript_group_id: string | null;
+  active_transcript_group_id_is_set: 0 | 1;
+  active_transcript_group_id: string | null;
+  history_summary: string | null;
+  history_backfill_boundary_ms: number | null;
+  internal_transcript_json: string;
+  debug_markers_json: string;
+  last_llm_usage_json: string | null;
+  sent_messages_json: string;
+  last_active_at_ms: number;
+  last_message_at_ms: number | null;
+  latest_gap_ms: number | null;
+  smoothed_gap_ms: number | null;
+};
+
+function toPersistedSessionParams(session: PersistedSessionState): Record<string, unknown> {
+  return {
+    sessionId: session.id,
+    type: session.type,
+    source: session.source,
+    modeId: session.modeId,
+    operationModeJson: JSON.stringify(session.operationMode),
+    participantKind: session.participantRef.kind,
+    participantId: session.participantRef.id,
+    title: session.title,
+    titleSource: session.titleSource,
+    replyDelivery: session.replyDelivery,
+    pendingMessagesJson: JSON.stringify(session.pendingMessages),
+    pendingTranscriptGroupIdIsSet: Number("pendingTranscriptGroupId" in session),
+    pendingTranscriptGroupId: session.pendingTranscriptGroupId ?? null,
+    activeTranscriptGroupIdIsSet: Number("activeTranscriptGroupId" in session),
+    activeTranscriptGroupId: session.activeTranscriptGroupId ?? null,
+    historySummary: session.historySummary,
+    historyBackfillBoundaryMs: session.historyBackfillBoundaryMs ?? null,
+    internalTranscriptJson: JSON.stringify(session.internalTranscript),
+    debugMarkersJson: JSON.stringify(session.debugMarkers),
+    lastLlmUsageJson: session.lastLlmUsage == null ? null : JSON.stringify(session.lastLlmUsage),
+    sentMessagesJson: JSON.stringify(session.sentMessages),
+    lastActiveAtMs: session.lastActiveAt,
+    lastMessageAtMs: session.lastMessageAt,
+    latestGapMs: session.latestGapMs,
+    smoothedGapMs: session.smoothedGapMs,
+    updatedAtMs: Date.now()
+  };
 }
+
+function rowToPersistedSessionState(row: PersistedSessionRow): PersistedSessionState {
+  return persistedSessionSchema.parse({
+    id: row.session_id,
+    type: row.type,
+    ...(row.source ? { source: row.source } : {}),
+    ...(row.mode_id ? { modeId: row.mode_id } : {}),
+    ...(row.operation_mode_json ? { operationMode: JSON.parse(row.operation_mode_json) } : {}),
+    participantRef: {
+      kind: row.participant_kind,
+      id: row.participant_id
+    },
+    title: row.title,
+    titleSource: row.title_source,
+    ...(row.reply_delivery ? { replyDelivery: row.reply_delivery } : {}),
+    pendingMessages: JSON.parse(row.pending_messages_json),
+    ...(row.pending_transcript_group_id_is_set === 1
+      ? { pendingTranscriptGroupId: row.pending_transcript_group_id }
+      : {}),
+    ...(row.active_transcript_group_id_is_set === 1
+      ? { activeTranscriptGroupId: row.active_transcript_group_id }
+      : {}),
+    historySummary: row.history_summary,
+    ...(row.history_backfill_boundary_ms != null ? { historyBackfillBoundaryMs: row.history_backfill_boundary_ms } : {}),
+    internalTranscript: JSON.parse(row.internal_transcript_json),
+    debugMarkers: JSON.parse(row.debug_markers_json),
+    lastLlmUsage: row.last_llm_usage_json == null ? null : JSON.parse(row.last_llm_usage_json),
+    sentMessages: JSON.parse(row.sent_messages_json),
+    lastActiveAt: row.last_active_at_ms,
+    lastMessageAt: row.last_message_at_ms,
+    latestGapMs: row.latest_gap_ms,
+    smoothedGapMs: row.smoothed_gap_ms
+  }) as PersistedSessionState;
+}
+
+function createSessionsSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      session_id TEXT PRIMARY KEY NOT NULL CHECK (session_id = trim(session_id) AND length(session_id) > 0),
+      type TEXT NOT NULL CHECK (type IN ('private', 'group')),
+      source TEXT,
+      mode_id TEXT,
+      operation_mode_json TEXT,
+      participant_kind TEXT NOT NULL CHECK (participant_kind IN ('user', 'group')),
+      participant_id TEXT NOT NULL,
+      title TEXT,
+      title_source TEXT,
+      reply_delivery TEXT,
+      pending_messages_json TEXT NOT NULL,
+      pending_transcript_group_id_is_set INTEGER NOT NULL DEFAULT 0,
+      pending_transcript_group_id TEXT,
+      active_transcript_group_id_is_set INTEGER NOT NULL DEFAULT 0,
+      active_transcript_group_id TEXT,
+      history_summary TEXT,
+      history_backfill_boundary_ms INTEGER,
+      internal_transcript_json TEXT NOT NULL,
+      debug_markers_json TEXT NOT NULL,
+      last_llm_usage_json TEXT,
+      sent_messages_json TEXT NOT NULL,
+      last_active_at_ms INTEGER NOT NULL,
+      last_message_at_ms INTEGER,
+      latest_gap_ms INTEGER,
+      smoothed_gap_ms REAL,
+      updated_at_ms INTEGER NOT NULL
+    );
+  `);
+}
+
+function validateSessionsSchema(db: SqliteDatabase): void {
+  assertTableColumns(db, "sessions", {
+    session_id: "TEXT",
+    type: "TEXT",
+    source: "TEXT",
+    mode_id: "TEXT",
+    operation_mode_json: "TEXT",
+    participant_kind: "TEXT",
+    participant_id: "TEXT",
+    title: "TEXT",
+    title_source: "TEXT",
+    reply_delivery: "TEXT",
+    pending_messages_json: "TEXT",
+    pending_transcript_group_id_is_set: "INTEGER",
+    pending_transcript_group_id: "TEXT",
+    active_transcript_group_id_is_set: "INTEGER",
+    active_transcript_group_id: "TEXT",
+    history_summary: "TEXT",
+    history_backfill_boundary_ms: "INTEGER",
+    internal_transcript_json: "TEXT",
+    debug_markers_json: "TEXT",
+    last_llm_usage_json: "TEXT",
+    sent_messages_json: "TEXT",
+    last_active_at_ms: "INTEGER",
+    last_message_at_ms: "INTEGER",
+    latest_gap_ms: "INTEGER",
+    smoothed_gap_ms: "REAL",
+    updated_at_ms: "INTEGER"
+  });
+}
+
+const SESSION_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
+  {
+    groupId: "sessions.persisted_sessions",
+    schemaVersion: 2,
+    resetPolicy: "block_reset",
+    ownedTables: ["sessions"],
+    createSchema: createSessionsSchema,
+    validateSchema: validateSessionsSchema
+  }
+];
