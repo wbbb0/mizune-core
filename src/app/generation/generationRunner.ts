@@ -1,4 +1,4 @@
-import type { InternalSessionTriggerExecution } from "#conversation/session/sessionTypes.ts";
+import type { InlineSessionTriggerExecution, InternalSessionTriggerExecution } from "#conversation/session/sessionTypes.ts";
 import { createInternalTriggerEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { createGenerationExecutor } from "./generationExecutor.ts";
 import { createGenerationPromptBuilder } from "./generationPromptBuilder.ts";
@@ -46,30 +46,53 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
       return;
     }
     const nextTrigger = sessionManager.shiftInternalTrigger(sessionId);
-    if (!nextTrigger) {
+    if (nextTrigger) {
+      // Internal triggers only run after visible chat work is drained, so background jobs do
+      // not leapfrog fresh user messages or resume while a response is still open.
+      logger.info(
+        {
+          sessionId,
+          jobName: nextTrigger.jobName,
+          queuedAt: nextTrigger.enqueuedAt,
+          triggerKind: nextTrigger.kind
+        },
+        "internal_trigger_dequeued"
+      );
+      sessionManager.appendInternalTranscript(sessionId, createInternalTriggerEvent({
+        trigger: nextTrigger,
+        stage: "dequeued"
+      }));
+      deps.lifecycle.persistSession(sessionId, "internal_trigger_dequeued");
+      void runInternalTriggerSession(sessionId, nextTrigger).then(() => {
+        nextTrigger.resolveCompletion?.();
+      }).catch((error: unknown) => {
+        nextTrigger.rejectCompletion?.(error);
+      });
       return;
     }
-    // Internal triggers only run after visible chat work is drained, so background jobs do
-    // not leapfrog fresh user messages or resume while a response is still open.
-    logger.info(
-      {
-        sessionId,
-        jobName: nextTrigger.jobName,
-        queuedAt: nextTrigger.enqueuedAt,
-        triggerKind: nextTrigger.kind
-      },
-      "internal_trigger_dequeued"
-    );
-    sessionManager.appendInternalTranscript(sessionId, createInternalTriggerEvent({
-      trigger: nextTrigger,
-      stage: "dequeued"
-    }));
-    deps.lifecycle.persistSession(sessionId, "internal_trigger_dequeued");
-    void runInternalTriggerSession(sessionId, nextTrigger).then(() => {
-      nextTrigger.resolveCompletion?.();
-    }).catch((error: unknown) => {
-      nextTrigger.rejectCompletion?.(error);
-    });
+
+    if (sessionManager.hasPendingInlineTriggers(sessionId)) {
+      const inlineTriggers = sessionManager.drainInlineTriggers(sessionId);
+      if (inlineTriggers.length > 0) {
+        logger.info(
+          {
+            sessionId,
+            count: inlineTriggers.length,
+            kinds: inlineTriggers.map((t) => t.kind)
+          },
+          "inline_trigger_batch_dequeued"
+        );
+        for (const trigger of inlineTriggers) {
+          sessionManager.appendInternalTranscript(sessionId, createInternalTriggerEvent({
+            trigger,
+            stage: "dequeued"
+          }));
+        }
+        deps.lifecycle.persistSession(sessionId, "inline_trigger_batch_dequeued");
+        void runInlineTriggerBatchSession(sessionId, inlineTriggers);
+        return;
+      }
+    }
   };
 
   const generationExecutor = createGenerationExecutor({
@@ -130,6 +153,9 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
   const runInternalTriggerSession = (sessionId: string, trigger: InternalSessionTriggerExecution) => (
     sessionOrchestrator.runInternalTriggerSession(sessionId, trigger)
   );
+  const runInlineTriggerBatchSession = (sessionId: string, triggers: InlineSessionTriggerExecution[]) => (
+    sessionOrchestrator.runInlineTriggerBatchSession(sessionId, triggers)
+  );
   // Flushes pending work for a session using the extracted session orchestrator.
   const flushSession = (
     sessionId: string,
@@ -146,6 +172,7 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
 
   return {
     flushSession,
-    runInternalTriggerSession
+    runInternalTriggerSession,
+    processNextSessionWork
   };
 }

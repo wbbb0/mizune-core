@@ -10,6 +10,7 @@ import { buildToolObservation } from "#conversation/session/toolObservation.ts";
 import {
   createContextExtractionEvent,
   createGenerationFailureFallbackEvent,
+  createInternalTriggerEvent,
   createModelFallbackEvent,
   formatErrorDetails
 } from "#conversation/session/internalTranscriptEvents.ts";
@@ -25,7 +26,7 @@ import type {
   GenerationExecutorDeps,
   GenerationPersona
 } from "./generationRunnerDeps.ts";
-import type { InternalSessionTriggerExecution, InternalTranscriptItem, SessionDebugMarker } from "#conversation/session/sessionTypes.ts";
+import type { InlineSessionTriggerExecution, InternalSessionTriggerExecution, InternalTranscriptItem, SessionDebugMarker } from "#conversation/session/sessionTypes.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
 import {
   buildGenerationFailureAssistantMessage
@@ -48,6 +49,7 @@ import { waitForGenerationAbortGraceWindow } from "#app/runtime/runtimeTimingPol
 import { maybeAutoCaptionSessionTitle, shouldAutoCaptionSessionTitle } from "./sessionCaptioner.ts";
 import { createProviderOutputTokenStats } from "#conversation/session/transcriptTokenStats.ts";
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
+import { renderInlineTriggerBatchMessage } from "#llm/prompt/promptBuilder.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -223,6 +225,21 @@ export function createGenerationExecutor(
           timestampMs: message.receivedAt
         })).content
       }));
+    };
+    const consumeInlineTriggers = async (): Promise<LlmMessage[]> => {
+      const triggers = sessionManager.drainInlineTriggers(sessionId);
+      if (triggers.length === 0) {
+        return [];
+      }
+      for (const trigger of triggers) {
+        sessionManager.appendInternalTranscript(sessionId, createInternalTriggerEvent({
+          trigger,
+          stage: "inlined"
+        }));
+      }
+      persistSession(sessionId, "inline_trigger_inlined");
+      const content = renderInlineTriggerBatchMessage(triggers);
+      return [{ role: "user" as const, content }];
     };
     const typingWindow = createGenerationTypingWindow(
       {
@@ -488,6 +505,7 @@ export function createGenerationExecutor(
             tools: resolveAllowedTools,
             abortSignal: abortController.signal,
             consumeSteerMessages,
+            consumeInlineTriggers,
             projectMessagesBeforeProvider: async (messages) => (
               (await promptBuilder.contentSafetyService?.projectLlmMessages({
                 sessionId,

@@ -1,13 +1,13 @@
-import { escapePromptBodyText } from "./prompt-escaping.ts";
+import { buildOpenTag, buildCloseTag, escapeText } from "#utils/structuredEnvelope.ts";
 
 export function renderPromptSection(name: string, lines: Array<string | null | undefined>): string | null {
   const visible = lines
     .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
-    .map((line) => escapePromptBodyText(line));
+    .map((line) => escapeText(line));
   if (visible.length === 0) {
     return null;
   }
-  return [`⟦section name="${name}"⟧`, ...visible, "⟦/section⟧"].join("\n");
+  return [buildOpenTag("section", { name }), ...visible, buildCloseTag("section")].join("\n");
 }
 
 export function renderPromptSectionRaw(name: string, lines: Array<string | null | undefined>): string | null {
@@ -15,5 +15,5 @@ export function renderPromptSectionRaw(name: string, lines: Array<string | null 
   if (visible.length === 0) {
     return null;
   }
-  return [`⟦section name="${name}"⟧`, ...visible, "⟦/section⟧"].join("\n");
+  return [buildOpenTag("section", { name }), ...visible, buildCloseTag("section")].join("\n");
 }

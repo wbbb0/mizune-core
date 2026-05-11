@@ -20,6 +20,7 @@ Mizune Core 是一个基于 Node.js / TypeScript 的长期运行 LLM 聊天代�
 - LLM provider / model / routing preset 分层配置
 - 历史压缩、自动会话标题、图片说明、音频转写、turn planner
 - shell、workspace 文件、网页搜索、浏览器、ComfyUI 等可选工具能力
+  - 后台 shell、下载、ComfyUI 任务完成后，事件会以 `⟦section name="background_event_batch"⟧` 批注入到当前工具调用循环的下一次 LLM 推理前，无需等待当前响应收尾；定时任务（scheduled instruction）仍在无活动响应时开独立 session。
 - Fastify 内部 API 与 Vue 3 + Tailwind WebUI
 
 ## 技术栈

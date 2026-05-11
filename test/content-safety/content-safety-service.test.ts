@@ -7,6 +7,7 @@ import { createTempDir } from "../helpers/temp-paths.ts";
 import { ContentSafetyService } from "../../src/contentSafety/contentSafetyService.ts";
 import { contentSafetyHashText } from "../../src/contentSafety/contentSafetyHash.ts";
 import { ContentSafetyStore } from "../../src/contentSafety/contentSafetyStore.ts";
+import { buildTag, parseProtocolLine } from "../../src/utils/structuredEnvelope.ts";
 
 function createConfig() {
   return createTestAppConfig({
@@ -49,6 +50,13 @@ function createConfig() {
   });
 }
 
+function hasContentSafetyEnvelope(text: string): boolean {
+  return String(text).replace(/\r\n/g, "\n").split("\n").some((line) => {
+    const parsed = parseProtocolLine(line);
+    return parsed?.tag === "envelope" && parsed.attrs.title === "内容安全";
+  });
+}
+
 async function createHarness(config = createConfig()) {
   const dataDir = createTempDir("content-safety-service");
   await mkdir(dataDir, { recursive: true });
@@ -85,7 +93,7 @@ test("prompt projection blocks unsafe batch text while preserving raw text in au
       batchMessages: [{ text: "这是一段违规词测试", userId: "user_internal" }]
     });
 
-    assert.match(result.batchMessages[0]?.text ?? "", /⟦内容安全/);
+    assert.equal(hasContentSafetyEnvelope(result.batchMessages[0]?.text ?? ""), true);
     assert.doesNotMatch(result.batchMessages[0]?.text ?? "", /违规词测试/);
     assert.equal(result.events.length, 1);
 
@@ -185,7 +193,7 @@ test("blocked prompt group falls back to per-message moderation to locate unsafe
     });
 
     assert.equal(result.batchMessages[0]?.text, "正常一");
-    assert.match(result.batchMessages[1]?.text ?? "", /⟦内容安全/);
+    assert.equal(hasContentSafetyEnvelope(result.batchMessages[1]?.text ?? ""), true);
     assert.equal(result.batchMessages[2]?.text, "正常二");
     assert.equal(result.events.length, 1);
 
@@ -214,8 +222,8 @@ test("cached blocked text is projected before provider grouping", async () => {
       batchMessages: [{ text: "重复违规词", userId: "u1" }]
     });
 
-    assert.match(first.batchMessages[0]?.text ?? "", /⟦内容安全/);
-    assert.match(second.batchMessages[0]?.text ?? "", /⟦内容安全/);
+    assert.equal(hasContentSafetyEnvelope(first.batchMessages[0]?.text ?? ""), true);
+    assert.equal(hasContentSafetyEnvelope(second.batchMessages[0]?.text ?? ""), true);
     assert.equal(second.events[0]?.auditKey, `text:v1:${contentSafetyHashText("重复违规词")}`);
   } finally {
     await harness.cleanup();
@@ -263,8 +271,8 @@ test("projectLlmMessages moderates replay-style user messages", async () => {
     });
 
     assert.equal(result.messages[0]?.content, "系统违规词不重审");
-    assert.match(String(result.messages[1]?.content ?? ""), /⟦内容安全/);
-    assert.match(String(result.messages[2]?.content ?? ""), /⟦内容安全/);
+    assert.equal(hasContentSafetyEnvelope(String(result.messages[1]?.content ?? "")), true);
+    assert.equal(hasContentSafetyEnvelope(String(result.messages[2]?.content ?? "")), true);
     assert.equal(result.messages[3]?.content, "助手违规词不重审");
     assert.equal(result.events.length, 2);
   } finally {
@@ -328,7 +336,7 @@ test("projectLlmMessages moderates multimodal content parts", async () => {
     const content = result.messages[0]?.content;
     assert.ok(Array.isArray(content));
     assert.equal(content.every((part) => part.type === "text"), true);
-    assert.match(content.map((part) => part.type === "text" ? part.text : "").join("\n"), /⟦内容安全/);
+    assert.equal(hasContentSafetyEnvelope(content.map((part) => part.type === "text" ? part.text : "").join("\n")), true);
     assert.equal(result.events.length, 3);
   } finally {
     await harness.cleanup();
@@ -349,7 +357,7 @@ test("prompt projection checks special segment summaries", async () => {
       }]
     });
 
-    assert.match(result.batchMessages[0]?.specialSegments?.[0]?.summary ?? "", /⟦内容安全/);
+    assert.equal(hasContentSafetyEnvelope(result.batchMessages[0]?.specialSegments?.[0]?.summary ?? ""), true);
     assert.equal(result.events.length, 1);
   } finally {
     await harness.cleanup();
@@ -373,7 +381,7 @@ test("prompt projection hides blocked audio before native audio prompt rendering
 
     assert.deepEqual(result.batchMessages[0]?.audioIds, []);
     assert.deepEqual(result.batchMessages[0]?.audioSources, []);
-    assert.match(result.batchMessages[0]?.text ?? "", /⟦内容安全/);
+    assert.equal(hasContentSafetyEnvelope(result.batchMessages[0]?.text ?? ""), true);
     assert.equal(result.events[0]?.subjectKind, "audio");
   } finally {
     await harness.cleanup();
@@ -394,7 +402,7 @@ test("prompt projection also checks user history messages", async () => {
     });
 
     assert.equal(result.recentMessages[0]?.content, "助手历史违规词不重审");
-    assert.match(result.recentMessages[1]?.content ?? "", /⟦内容安全/);
+    assert.equal(hasContentSafetyEnvelope(result.recentMessages[1]?.content ?? ""), true);
   } finally {
     await harness.cleanup();
   }
@@ -408,7 +416,7 @@ test("prompt projection hides blocked media before prompt rendering", async () =
       source: "chat_prompt",
       recentMessages: [{
         role: "user",
-        content: "历史图 ⟦ref kind=\"image\" image_id=\"blocked_history\"⟧",
+        content: ["历史图", buildTag("ref", { kind: "image", image_id: "blocked_history" })].join("\n"),
         timestampMs: 1
       }],
       batchMessages: [{
@@ -426,9 +434,9 @@ test("prompt projection hides blocked media before prompt rendering", async () =
       }]
     });
 
-    assert.match(result.recentMessages[0]?.content ?? "", /⟦内容安全/);
+    assert.equal(hasContentSafetyEnvelope(result.recentMessages[0]?.content ?? ""), true);
     assert.doesNotMatch(result.recentMessages[0]?.content ?? "", /image_id="blocked_history"/);
-    assert.match(result.batchMessages[0]?.text ?? "", /⟦内容安全/);
+    assert.equal(hasContentSafetyEnvelope(result.batchMessages[0]?.text ?? ""), true);
     assert.deepEqual(result.batchMessages[0]?.imageIds, []);
     assert.deepEqual(result.batchMessages[0]?.attachments, []);
   } finally {
@@ -464,10 +472,10 @@ test("prompt projection moderates structured content parts", async () => {
     });
 
     const parts = result.batchMessages[0]?.contentParts ?? [];
-    assert.match(parts.find((part) => part.kind === "text")?.text ?? "", /⟦内容安全/);
+    assert.equal(hasContentSafetyEnvelope(parts.find((part) => part.kind === "text")?.text ?? ""), true);
     assert.equal(parts.some((part) => part.kind === "image"), false);
     assert.equal(parts.filter((part) => part.kind === "text").length, 2);
-    assert.match(parts.find((part) => part.kind === "special")?.summary ?? "", /⟦内容安全/);
+    assert.equal(hasContentSafetyEnvelope(parts.find((part) => part.kind === "special")?.summary ?? ""), true);
     assert.deepEqual(result.batchMessages[0]?.imageIds, []);
     assert.deepEqual(result.batchMessages[0]?.attachments, []);
     assert.equal(result.events.length, 3);
@@ -503,7 +511,7 @@ test("prompt projection appends media markers to text-only content parts", async
 
     const parts = result.batchMessages[0]?.contentParts ?? [];
     assert.deepEqual(parts[0], { kind: "text", text: "看图" });
-    assert.match(parts[1]?.kind === "text" ? parts[1].text : "", /⟦内容安全/);
+    assert.equal(hasContentSafetyEnvelope(parts[1]?.kind === "text" ? parts[1].text : ""), true);
     assert.deepEqual(result.batchMessages[0]?.imageIds, []);
     assert.deepEqual(result.batchMessages[0]?.attachments, []);
     assert.equal(result.events.length, 1);
@@ -578,7 +586,7 @@ test("action mark keeps original text and appends audit marker", async () => {
       batchMessages: [{ text: "这是一段违规词测试", userId: "user_internal" }]
     });
     assert.match(result.batchMessages[0]?.text ?? "", /违规词测试/);
-    assert.match(result.batchMessages[0]?.text ?? "", /⟦内容安全/);
+    assert.equal(hasContentSafetyEnvelope(result.batchMessages[0]?.text ?? ""), true);
     assert.equal(result.events.length, 1);
   } finally {
     await harness.cleanup();

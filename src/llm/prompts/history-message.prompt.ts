@@ -1,3 +1,4 @@
+import { buildCloseTag } from "#utils/structuredEnvelope.ts";
 import {
   formatConversationMessageHeader,
   formatScheduledMessageHeader
@@ -32,7 +33,7 @@ export function formatConversationHistoryPromptMessage(
   return [
     formatConversationMessageHeader(formatPromptTimestamp(message.timestampMs)),
     content,
-    "⟦/history_message⟧"
+    buildCloseTag("history_message")
   ].join("\n");
 }
 
@@ -46,6 +47,6 @@ export function formatScheduledHistoryPromptMessage(
   return [
     formatScheduledMessageHeader(message.role, formatPromptTimestamp(message.timestampMs)),
     content,
-    "⟦/scheduled_history_message⟧"
+    buildCloseTag("scheduled_history_message")
   ].join("\n");
 }

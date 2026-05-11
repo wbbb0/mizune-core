@@ -429,7 +429,7 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
             llmVisible: true,
             fromModeId: "rp_assistant",
             toModeId: "rp_assistant",
-            content: "⟦session_mode_switch from_mode=\"rp_assistant\" to_mode=\"rp_assistant\" timestamp=\"2026-04-14T00:00:00.000Z\"⟧",
+            content: "<session_mode_switch from_mode=\"rp_assistant\" to_mode=\"rp_assistant\" timestamp=\"2026-04-14T00:00:00.000Z\"/>",
             timestampMs: 2
           },
           {

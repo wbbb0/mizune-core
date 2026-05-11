@@ -102,7 +102,8 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
     const resolvedTimeoutMs = params.timeoutMsOverride ?? context.config.llm.timeoutMs;
     const timeoutController = createProviderTimeoutController({
       totalTimeoutMs: resolvedTimeoutMs,
-      firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs
+      firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs,
+      thinkingTimeoutMs: context.config.llm.thinkingTimeoutMs
     });
     const forwardAbort = () => timeoutController.controller.abort();
     params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
@@ -166,14 +167,17 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
               if ("text" in part && typeof part.text === "string" && part.text.length > 0) {
                 timeoutController.markFirstResponseReceived();
                 if (part.thought) {
+                  timeoutController.markReasoningStarted();
                   accumulator.appendReasoningDelta(part.text, params.onReasoningDelta);
                 } else {
+                  timeoutController.markFirstTextReceived();
                   await accumulator.appendTextDelta(part.text, params.onTextDelta);
                 }
               }
 
               if ("functionCall" in part && part.functionCall?.name) {
                 timeoutController.markFirstResponseReceived();
+                timeoutController.markFirstTextReceived();
                 const toolCall = normalizeFunctionCallPart(part);
                 toolCalls.set(toolCall.id, toolCall);
               }

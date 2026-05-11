@@ -1,3 +1,4 @@
+import { buildTag } from "#utils/structuredEnvelope.ts";
 import { buildLmStudioNativeModelApiParameters } from "../modelApiParameters.ts";
 import { createReportedUsage } from "../providerStreamAdapter.ts";
 import { runProviderSseStream, type ProviderSseSemanticEvent } from "../providerStreamRunner.ts";
@@ -314,7 +315,7 @@ function ensureFirstNonSystemMessageIsUser(messages: LlmMessage[]): LlmMessage[]
     ...messages.slice(0, systemEnd),
     {
       role: "user",
-      content: "⟦placeholder kind=\"bootstrap_user\" note=\"ignore_this_placeholder\"⟧"
+      content: buildTag("placeholder", { kind: "bootstrap_user", note: "ignore_this_placeholder" })
     },
     ...suffix
   ];

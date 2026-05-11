@@ -5,10 +5,13 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { createInternalTriggerDispatcher } from "../../src/app/session-work/internalTriggerDispatcher.ts";
 import { createGenerationSessionOrchestrator } from "../../src/app/generation/generationSessionOrchestrator.ts";
+import { createInternalTriggerEvent } from "../../src/conversation/session/internalTranscriptEvents.ts";
+import { renderInlineTriggerBatchMessage } from "../../src/llm/prompt/promptBuilder.ts";
 import type { GenerationSessionOrchestratorDeps } from "../../src/app/generation/generationRunnerDeps.ts";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
+import { findPromptBlock, hasPromptSection, parsePromptBlocks } from "../helpers/prompt-fixtures.tsx";
 
 async function flushMicrotasks(rounds = 4): Promise<void> {
   for (let index = 0; index < rounds; index += 1) {
@@ -147,7 +150,8 @@ function createOrchestratorDeps(input: {
     }, {
       async runInternalTriggerSession() {
         throw new Error("should not run immediately while session is busy");
-      }
+      },
+      wakeInlineBatch: () => {}
     });
 
     const dispatchPromise = dispatcher.dispatchTrigger({
@@ -211,7 +215,8 @@ function createOrchestratorDeps(input: {
     }, {
       async runInternalTriggerSession(_targetSessionId, trigger) {
         capturedTrigger = { targetSenderName: trigger.targetSenderName };
-      }
+      },
+      wakeInlineBatch: () => {}
     });
 
     await dispatcher.dispatchTrigger({
@@ -672,4 +677,268 @@ function createOrchestratorDeps(input: {
     assert.equal(sessionManager.hasActiveResponse(sessionId), false);
     assert.equal(processNextCalled, 1);
     assert.equal(sessionManager.getSession(sessionId).internalTranscript.length, 0);
+  });
+
+  test("non-scheduled trigger goes to inline queue when session is busy", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "qqbot:p:owner";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    sessionManager.appendSyntheticPendingMessage(sessionId, {
+      chatType: "private",
+      userId: "owner",
+      senderName: "Owner",
+      text: "busy",
+      images: []
+    });
+    let wakeCalled = false;
+
+    const dispatcher = createInternalTriggerDispatcher({
+      logger: pino({ level: "silent" }),
+      sessionManager,
+      userStore: {
+        async getByUserId() {
+          return { nickname: "Owner" };
+        }
+      } as never,
+      userIdentityStore: {
+        async findInternalUserId() {
+          return "owner";
+        }
+      } as never,
+      persistSession() {}
+    }, {
+      async runInternalTriggerSession() {
+        throw new Error("should not run immediately while session is busy");
+      },
+      wakeInlineBatch() {
+        wakeCalled = true;
+      }
+    });
+
+    await dispatcher.dispatchTrigger({
+      sessionId,
+      queueLogEvent: "inline_trigger_queued",
+      createTrigger(target) {
+        return {
+          kind: "terminal_session_closed",
+          targetType: target.type,
+          targetUserId: target.userId,
+          targetSenderName: target.senderName,
+          jobName: "终端任务已结束",
+          instruction: "终端任务已结束",
+          enqueuedAt: Date.now(),
+          resourceId: "sh-1",
+          command: "npm test",
+          cwd: "/tmp",
+          exitCode: 0,
+          signal: null,
+          output: "tests passed",
+          outputTruncated: false
+        };
+      }
+    });
+
+    const session = sessionManager.getSession(sessionId);
+    assert.equal(session.pendingInlineTriggers.length, 1);
+    assert.equal(session.pendingInternalTriggers.length, 0);
+    assert.equal(wakeCalled, false);
+
+    const received = session.internalTranscript.find(
+      (item) => item.kind === "internal_trigger_event" && item.stage === "received"
+    );
+    const queuedInline = session.internalTranscript.find(
+      (item) => item.kind === "internal_trigger_event" && item.stage === "queued_inline"
+    );
+    assert.ok(received);
+    assert.ok(queuedInline);
+    if (queuedInline?.kind === "internal_trigger_event") {
+      assert.equal(queuedInline.triggerKind, "terminal_session_closed");
+    }
+  });
+
+  test("non-scheduled trigger calls wakeInlineBatch when session is idle", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "qqbot:p:owner";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    let wakeCalled = false;
+
+    const dispatcher = createInternalTriggerDispatcher({
+      logger: pino({ level: "silent" }),
+      sessionManager,
+      userStore: {
+        async getByUserId() {
+          return { nickname: "Owner" };
+        }
+      } as never,
+      userIdentityStore: {
+        async findInternalUserId() {
+          return "owner";
+        }
+      } as never,
+      persistSession() {}
+    }, {
+      async runInternalTriggerSession() {
+        throw new Error("should not run immediately for inline trigger");
+      },
+      wakeInlineBatch() {
+        wakeCalled = true;
+      }
+    });
+
+    await dispatcher.dispatchTrigger({
+      sessionId,
+      queueLogEvent: "inline_trigger_queued",
+      createTrigger(target) {
+        return {
+          kind: "download_completed",
+          targetType: target.type,
+          targetUserId: target.userId,
+          targetSenderName: target.senderName,
+          jobName: "下载已完成",
+          instruction: "下载已完成",
+          enqueuedAt: Date.now(),
+          resourceId: "dl-1",
+          sourceUrl: "https://example.com/file.zip",
+          fileId: "file-1",
+          fileRef: "ref-1",
+          chatFilePath: "workspace/media/file.zip",
+          sourceName: "file.zip",
+          mimeType: "application/zip",
+          sizeBytes: 1024,
+          fileKind: "document"
+        };
+      }
+    });
+
+    const session = sessionManager.getSession(sessionId);
+    assert.equal(session.pendingInlineTriggers.length, 1);
+    assert.equal(wakeCalled, true);
+  });
+
+  test("drainInlineTriggers atomically clears the queue", () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "qqbot:p:owner";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+
+    sessionManager.enqueueInlineTrigger(sessionId, {
+      kind: "terminal_session_closed",
+      targetType: "private",
+      targetUserId: "owner",
+      targetSenderName: "Owner",
+      jobName: "job1",
+      instruction: "task1",
+      enqueuedAt: Date.now(),
+      resourceId: "sh-1",
+      command: "cmd1",
+      cwd: "/tmp",
+      exitCode: 0,
+      signal: null,
+      output: "out1",
+      outputTruncated: false
+    });
+    sessionManager.enqueueInlineTrigger(sessionId, {
+      kind: "download_completed",
+      targetType: "private",
+      targetUserId: "owner",
+      targetSenderName: "Owner",
+      jobName: "job2",
+      instruction: "task2",
+      enqueuedAt: Date.now(),
+      resourceId: "dl-1",
+      sourceUrl: "https://example.com/a",
+      fileId: "f1",
+      fileRef: "r1",
+      chatFilePath: "p/f",
+      sourceName: "f",
+      mimeType: "text/plain",
+      sizeBytes: 100,
+      fileKind: "document"
+    });
+
+    assert.ok(sessionManager.hasPendingInlineTriggers(sessionId));
+    const drained = sessionManager.drainInlineTriggers(sessionId);
+    assert.equal(drained.length, 2);
+    assert.equal(sessionManager.hasPendingInlineTriggers(sessionId), false);
+
+    // second drain returns empty
+    const drained2 = sessionManager.drainInlineTriggers(sessionId);
+    assert.equal(drained2.length, 0);
+  });
+
+  test("consumeInlineTriggers flow: drain, transcript inlined, render batch message", () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "qqbot:p:owner";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+
+    sessionManager.enqueueInlineTrigger(sessionId, {
+      kind: "terminal_session_closed",
+      targetType: "private",
+      targetUserId: "owner",
+      targetSenderName: "Owner",
+      jobName: "终端任务已结束 (npm test)",
+      instruction: "后台终端任务已结束",
+      enqueuedAt: Date.now(),
+      resourceId: "sh-1",
+      command: "npm test",
+      cwd: "/tmp/project",
+      exitCode: 0,
+      signal: null,
+      output: "8 tests passed",
+      outputTruncated: false
+    });
+    sessionManager.enqueueInlineTrigger(sessionId, {
+      kind: "download_completed",
+      targetType: "private",
+      targetUserId: "owner",
+      targetSenderName: "Owner",
+      jobName: "下载已完成 (data.zip)",
+      instruction: "后台下载已完成",
+      enqueuedAt: Date.now(),
+      resourceId: "dl-1",
+      sourceUrl: "https://example.com/data.zip",
+      fileId: "file-1",
+      fileRef: "ref-1",
+      chatFilePath: "workspace/media/data.zip",
+      sourceName: "data.zip",
+      mimeType: "application/zip",
+      sizeBytes: 2048,
+      fileKind: "document"
+    });
+
+    const drained = sessionManager.drainInlineTriggers(sessionId);
+    assert.equal(drained.length, 2);
+
+    // Simulate what consumeInlineTriggers does in generationExecutor:
+    // drain → write transcript inlined → render batch message
+    for (const trigger of drained) {
+      sessionManager.appendInternalTranscript(sessionId, createInternalTriggerEvent({
+        trigger,
+        stage: "inlined"
+      }));
+    }
+
+    const message = renderInlineTriggerBatchMessage(drained);
+    assert.equal(hasPromptSection(message, "background_event_batch"), true);
+    assert.equal(parsePromptBlocks(message).some((block) => block.tag === "event" && block.attrs.kind === "terminal_session_closed"), true);
+    assert.ok(message.includes("8 tests passed"));
+    assert.equal(parsePromptBlocks(message).some((block) => block.tag === "event" && block.attrs.kind === "download_completed"), true);
+    assert.ok(message.includes("data.zip"));
+    assert.ok(findPromptBlock(message, "event"));
+    assert.ok(message.includes("后台任务已就绪"));
+
+    const session = sessionManager.getSession(sessionId);
+    const inlined = session.internalTranscript.filter(
+      (item) => item.kind === "internal_trigger_event" && item.stage === "inlined"
+    );
+    assert.equal(inlined.length, 2);
+    if (inlined[0]?.kind === "internal_trigger_event") {
+      assert.equal(inlined[0].triggerKind, "terminal_session_closed");
+    }
+    if (inlined[1]?.kind === "internal_trigger_event") {
+      assert.equal(inlined[1].triggerKind, "download_completed");
+    }
   });

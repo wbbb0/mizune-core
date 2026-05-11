@@ -33,6 +33,7 @@ import {
   collectVisualAttachmentFileIds,
   dedupeResolvedChatAttachments
 } from "#services/workspace/chatAttachments.ts";
+import { parseProtocolLine } from "#utils/structuredEnvelope.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { ToolsetRuleEntry } from "#llm/prompt/toolsetRuleStore.ts";
 import { isNearDuplicateText } from "#memory/similarity.ts";
@@ -65,8 +66,6 @@ const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "terminal_signal",
   "terminal_stop"
 ]);
-const STRUCTURED_AUDIO_REF_REGEX = /⟦audio\s+audio_id="([^"]+)"\s*⟧/gi;
-
 export interface GenerationPromptHistoryMessage {
   role: "user" | "assistant";
   content: string;
@@ -150,6 +149,7 @@ export interface GenerationPromptBuilder {
     lateSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"];
+    inlineBatchMessage?: string | undefined;
     persona: PersonaState;
     relationship: Relationship;
     participantProfiles: GenerationPromptParticipantProfile[];
@@ -302,10 +302,12 @@ function collectReplayStringMessages(replayMessages: LlmMessage[] | undefined): 
 function collectReferencedAudioIds(messages: Array<{ content: string }>): string[] {
   const ids = new Set<string>();
   for (const message of messages) {
-    let match: RegExpExecArray | null;
-    STRUCTURED_AUDIO_REF_REGEX.lastIndex = 0;
-    while ((match = STRUCTURED_AUDIO_REF_REGEX.exec(message.content)) != null) {
-      const audioId = String(match[1] ?? "").trim();
+    for (const line of message.content.replace(/\r\n/g, "\n").split("\n")) {
+      const parsed = parseProtocolLine(line);
+      if (parsed?.tag !== "audio") {
+        continue;
+      }
+      const audioId = String(parsed.attrs.audio_id ?? "").trim();
       if (audioId) {
         ids.add(audioId);
       }
@@ -368,17 +370,21 @@ function annotateAudioReferences(
   content: string,
   transcriptions: ReadonlyMap<string, PromptAudioTranscription>
 ): string {
-  return content.replace(STRUCTURED_AUDIO_REF_REGEX, (full, rawAudioId) => {
-    const audioId = String(rawAudioId ?? "").trim();
+  return content.replace(/\r\n/g, "\n").split("\n").map((line) => {
+    const parsed = parseProtocolLine(line);
+    if (parsed?.tag !== "audio") {
+      return line;
+    }
+    const audioId = String(parsed.attrs.audio_id ?? "").trim();
     const transcription = transcriptions.get(audioId);
     if (!transcription) {
-      return full;
+      return line;
     }
     if (transcription.status === "ready" && transcription.text) {
-      return `${full}\n音频 ${audioId} 听写：${transcription.text}`;
+      return `${line}\n音频 ${audioId} 听写：${transcription.text}`;
     }
-    return `${full}\n音频 ${audioId} 听写失败：${transcription.error ?? "未配置可用听写模型或内容无法识别"}`;
-  });
+    return `${line}\n音频 ${audioId} 听写失败：${transcription.error ?? "未配置可用听写模型或内容无法识别"}`;
+  }).join("\n");
 }
 
 async function projectPromptContentSafety<
@@ -1227,6 +1233,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     lateSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"];
+    inlineBatchMessage?: string | undefined;
     persona: PersonaState;
     relationship: Relationship;
     participantProfiles: GenerationPromptParticipantProfile[];
@@ -1357,6 +1364,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       lateSystemMessages: input.lateSystemMessages,
       replayMessages,
       trigger: scheduledTrigger,
+      ...(input.inlineBatchMessage ? { inlineBatchMessage: input.inlineBatchMessage } : {}),
       persona: input.persona,
       relationship: input.relationship,
       npcProfiles: assistantMode ? [] : buildNpcPromptProfiles(deps, relevantUserIds),

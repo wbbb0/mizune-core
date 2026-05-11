@@ -13,6 +13,11 @@ deepseek:
   type: deepseek
   apiKey: replace-me
   proxy: false
+anthropic:
+  type: anthropic
+  baseUrl: https://api.anthropic.com
+  apiKey: replace-me
+  proxy: false
 vertex_express:
   type: vertex_express
   apiKey: replace-me

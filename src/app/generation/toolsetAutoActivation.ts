@@ -5,6 +5,7 @@ import {
   dedupeResolvedChatAttachments,
   isPendingChatAttachmentId
 } from "#services/workspace/chatAttachments.ts";
+import { parseProtocolLine } from "#utils/structuredEnvelope.ts";
 import type { GenerationRuntimeBatchMessage } from "./generationExecutor.ts";
 
 export interface TurnToolsetActivationContext {
@@ -76,7 +77,14 @@ function hasRecentStructuredChatContent(
   messages: Array<{ role: "user" | "assistant"; content: string; timestampMs?: number | null }>
 ): boolean {
   return collectReferencedImageIds(messages).length > 0
-    || messages.some((message) => /⟦ref\s+kind="(?:reply|forward|emoji|file|special)"/u.test(message.content));
+    || messages.some((message) => hasStructuredChatRef(message.content));
+}
+
+function hasStructuredChatRef(content: string): boolean {
+  return content.replace(/\r\n/g, "\n").split("\n").some((line) => {
+    const parsed = parseProtocolLine(line);
+    return parsed?.tag === "ref" && ["reply", "forward", "emoji", "file", "special"].includes(parsed.attrs.kind ?? "");
+  });
 }
 
 function plannerIndicatesPriorChatContext(plannerDecision: TurnPlannerResult | null): boolean {

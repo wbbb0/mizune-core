@@ -1,4 +1,5 @@
 import type {
+  InlineSessionTriggerExecution,
   InternalSessionTriggerExecution,
   InternalTranscriptItem,
   PersistedSessionState,
@@ -255,8 +256,10 @@ export interface SessionInternalTriggerDispatchAccess {
   }): SessionState;
   hasActiveResponse(sessionId: string): boolean;
   hasPendingInternalTriggers(sessionId: string): boolean;
+  hasPendingInlineTriggers(sessionId: string): boolean;
   appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void;
   enqueueInternalTrigger(sessionId: string, trigger: InternalSessionTriggerExecution): number;
+  enqueueInlineTrigger(sessionId: string, trigger: InlineSessionTriggerExecution): number;
 }
 
 export interface SessionDirectCommandAccess {
@@ -437,6 +440,8 @@ export interface SessionGenerationQueueAccess {
   promoteSteerMessagesToPending(sessionId: string): number;
   clearDebounceTimer(sessionId: string): void;
   shiftInternalTrigger(sessionId: string): InternalSessionTriggerExecution | null;
+  hasPendingInlineTriggers(sessionId: string): boolean;
+  drainInlineTriggers(sessionId: string): InlineSessionTriggerExecution[];
   appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void;
 }
 
@@ -501,6 +506,8 @@ export interface SessionGenerationOrchestratorAccess extends SessionSetupAccess,
 
 export interface SessionGenerationExecutionAccess extends SessionSetupAccess {
   consumeSteerMessages(sessionId: string): SessionMessage[];
+  drainInlineTriggers(sessionId: string): InlineSessionTriggerExecution[];
+  hasPendingInlineTriggers(sessionId: string): boolean;
   setSessionPhaseIfEpochMatches(sessionId: string, expectedEpoch: number, phase: SessionPhase): boolean;
   appendInternalTranscriptIfEpochMatches(sessionId: string, expectedEpoch: number, item: InternalTranscriptItem): boolean;
   setLastLlmUsageIfEpochMatches(sessionId: string, expectedEpoch: number, usage: SessionUsageSnapshot): boolean;

@@ -5,7 +5,13 @@ import { SessionManager } from "../../src/conversation/session/sessionManager.ts
 import { buildPrompt, buildScheduledTaskPrompt, buildSetupPrompt } from "../../src/llm/prompt/promptBuilder.ts";
 import { profileToolDescriptors, profileToolHandlers } from "../../src/llm/tools/profile/profileTools.ts";
 import { createMemoryHarness, createMemoryTestConfig } from "../helpers/memory-test-support.tsx";
-import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageText } from "../helpers/prompt-fixtures.tsx";
+import {
+  createPromptBatchMessage,
+  createPromptUserProfile,
+  findPromptBlock,
+  hasPromptSection,
+  readPromptMessageText
+} from "../helpers/prompt-fixtures.tsx";
 
   test("prompt builder injects persona fields and current-user memories only", async () => {
     const harness = await createMemoryHarness();
@@ -32,7 +38,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       });
       const system = String(prompt[0]?.content ?? "");
       assert.match(system, /全局特征=默认会把角色边界放在前面。/);
-      assert.match(system, /⟦section name="current_user_memories"⟧/);
+      assert.equal(hasPromptSection(system, "current_user_memories"), true);
       assert.match(system, /当前触发用户长期记忆/);
       assert.match(system, /当前用户偏好：不喜欢被叫全名/);
       assert.doesNotMatch(system, /角色规则/);
@@ -320,7 +326,7 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       assert.doesNotMatch(system, /当前时间（/);
       assert.doesNotMatch(system, /当前会话 ID：/);
       assert.equal(prompt.length, 3);
-      assert.match(String(prompt[1]?.content ?? ""), /^⟦scheduled_history_message role="user" time="/);
+      assert.equal(findPromptBlock(String(prompt[1]?.content ?? ""), "scheduled_history_message")?.attrs.role, "user");
       assert.match(String(prompt[2]?.content ?? ""), /任务名称：五分钟提醒/);
       assert.match(String(prompt[2]?.content ?? ""), /任务指令：五分钟后提醒用户去拿外卖/);
     } finally {
@@ -448,9 +454,17 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
       const batchText = readPromptMessageText(prompt[1]);
       assert.match(system, /当前配置流程处理的是 bot 自身的设定草稿/);
       assert.match(system, /owner 在这里用第一人称提供的信息，默认是在描述 bot/);
-      assert.match(batchText, /^⟦draft_batch session="私聊 owner" message_count="1" speaker_count="1"⟧/);
+      assert.deepEqual(findPromptBlock(batchText, "draft_batch")?.attrs, {
+        session: "私聊 owner",
+        message_count: "1",
+        speaker_count: "1"
+      });
       assert.match(batchText, /以下消息属于当前 bot 设定草稿的配置输入/);
-      assert.match(batchText, /⟦draft_message index="1" speaker="Owner \(owner\)" time="2026\/03\/16 17:13:00"⟧/);
+      assert.deepEqual(findPromptBlock(batchText, "draft_message")?.attrs, {
+        index: "1",
+        speaker: "Owner (owner)",
+        time: "2026/03/16 17:13:00"
+      });
       assert.doesNotMatch(batchText, /trigger_user=/);
       assert.doesNotMatch(batchText, /当前触发用户/);
     } finally {
@@ -599,9 +613,21 @@ import { createPromptBatchMessage, createPromptUserProfile, readPromptMessageTex
         batchMessages: [createPromptBatchMessage({ userId: "10001", senderName: "Alice", text: "现在这句", timestampMs: Date.UTC(2026, 2, 16, 9, 13, 0) })]
       });
 
-      assert.match(String(prompt[1]?.content ?? ""), /^⟦history_message time="2026\/03\/16 17:12:34"⟧/);
-      assert.match(readPromptMessageText(prompt[2]), /^⟦trigger_batch session="私聊 10001" trigger_user="Alice \(10001\)" message_count="1" speaker_count="1"⟧/);
-      assert.match(readPromptMessageText(prompt[2]), /⟦trigger_message index="1" speaker="Alice \(10001\)" trigger_user="yes" time="2026\/03\/16 17:13:00"⟧/);
+      assert.deepEqual(findPromptBlock(String(prompt[1]?.content ?? ""), "history_message")?.attrs, {
+        time: "2026/03/16 17:12:34"
+      });
+      assert.deepEqual(findPromptBlock(readPromptMessageText(prompt[2]), "trigger_batch")?.attrs, {
+        session: "私聊 10001",
+        trigger_user: "Alice (10001)",
+        message_count: "1",
+        speaker_count: "1"
+      });
+      assert.deepEqual(findPromptBlock(readPromptMessageText(prompt[2]), "trigger_message")?.attrs, {
+        index: "1",
+        speaker: "Alice (10001)",
+        trigger_user: "yes",
+        time: "2026/03/16 17:13:00"
+      });
     } finally {
       await harness.cleanup();
     }

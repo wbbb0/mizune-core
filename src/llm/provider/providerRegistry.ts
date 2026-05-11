@@ -1,4 +1,5 @@
 import type { LlmProvider, LlmProviderRequestContext } from "./providerTypes.ts";
+import { AnthropicProvider } from "./providers/anthropicProvider.ts";
 import { DashScopeProvider } from "./providers/dashScopeProvider.ts";
 import { DeepSeekProvider } from "./providers/deepSeekProvider.ts";
 import { GoogleAiStudioProvider } from "./providers/googleAiStudioProvider.ts";
@@ -14,7 +15,8 @@ const providers = new Map<string, LlmProvider>([
   ["google", new GoogleAiStudioProvider()],
   ["vertex", new VertexAiProvider()],
   ["vertex_express", new VertexExpressProvider()],
-  ["lmstudio", new LmStudioProvider()]
+  ["lmstudio", new LmStudioProvider()],
+  ["anthropic", new AnthropicProvider()]
 ]);
 
 export function hasLlmProvider(type: string): boolean {

@@ -1,5 +1,5 @@
 import { extractWindowUsers } from "#conversation/session/historyContext.ts";
-import type { InternalSessionTriggerExecution, SessionDelivery } from "#conversation/session/sessionTypes.ts";
+import type { InlineSessionTriggerExecution, InternalSessionTriggerExecution, SessionDelivery } from "#conversation/session/sessionTypes.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { getBuiltinToolNames } from "#llm/builtinTools.ts";
@@ -25,6 +25,7 @@ import { resolveAutoActivatedToolsets } from "./toolsetAutoActivation.ts";
 import { supplementPlannedToolsets } from "./toolsetSupplement.ts";
 import { getProviderTranscriptProjector } from "./providerTranscriptProjector.ts";
 import { createInternalTriggerEvent } from "#conversation/session/internalTranscriptEvents.ts";
+import { renderInlineTriggerBatchMessage } from "#llm/prompt/promptBuilder.ts";
 import { createSessionTranscriptStore } from "#conversation/session/sessionTranscriptStore.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import { requireSessionModeDefinition } from "#modes/registry.ts";
@@ -1050,8 +1051,178 @@ export function createGenerationSessionOrchestrator(
     });
   };
 
+  // Runs a batch of background-event inline triggers as a single generation turn.
+  // Uses the first trigger for target resolution and toolset selection;
+  // the user-visible message renders all triggers via renderInlineTriggerBatchMessage.
+  const runInlineTriggerBatchSession = (sessionId: string, triggers: InlineSessionTriggerExecution[]): Promise<void> => {
+    const primaryTrigger = triggers[0];
+    if (!primaryTrigger) {
+      return Promise.resolve();
+    }
+
+    const { abortController, responseAbortController, responseEpoch } = sessionManager.beginSyntheticGeneration(sessionId);
+    const expectedEpoch = sessionManager.getMutationEpoch(sessionId);
+    for (const trigger of triggers) {
+      sessionManager.appendInternalTranscript(sessionId, createInternalTriggerEvent({
+        trigger,
+        stage: "started"
+      }));
+    }
+    persistSession(sessionId, "inline_trigger_batch_started");
+
+    return (async () => {
+      const interactionMode: PromptInteractionMode = sessionManager.getDebugControlState(sessionId).enabled ? "debug" : "normal";
+      const parsedSession = parseChatSessionIdentity(sessionId);
+      const resolvedTargetUserId = primaryTrigger.targetType === "private" && primaryTrigger.targetUserId
+        ? (
+            parsedSession?.kind === "private"
+              ? await resolveInternalUserIdForOneBotPrivateUser({
+                  channelId: parsedSession.channelId,
+                  externalUserId: primaryTrigger.targetUserId,
+                  userIdentityStore: lifecycle.userIdentityStore
+                })
+              : primaryTrigger.targetUserId
+          )
+        : null;
+      const currentUser = primaryTrigger.targetUserId
+        ? await userStore.getByUserId(resolvedTargetUserId ?? primaryTrigger.targetUserId)
+        : null;
+      const promptRelationship: Relationship = currentUser?.relationship ?? "known";
+      const scheduledModelRef = getModelRefsForRole(config, "main_small");
+      const session = sessionManager.getSession(sessionId);
+      const mode = requireSessionModeDefinition(session.modeId);
+      const assistantMode = isAssistantMode(session.modeId);
+      const persona = await personaStore.get();
+      const scheduledReplyDelivery = resolveSessionReplyDelivery(sessionId, { trigger: primaryTrigger });
+      const scheduledAvailableToolsets = listTurnToolsets({
+        config,
+        relationship: "owner",
+        currentUser,
+        modelRef: scheduledModelRef,
+        includeDebugTools: interactionMode === "debug",
+        visibilityContext: {
+          sessionId,
+          replyDelivery: scheduledReplyDelivery
+        },
+        modeId: session.modeId,
+        profileToolScope: resolveProfileToolScope({
+          operationMode: session.operationMode,
+          activeSetupOperationKind: null,
+          modeId: session.modeId
+        })
+      });
+      const activeScheduledToolsetIds = new Set(selectScheduledActiveToolsetIds(session.modeId, primaryTrigger.kind));
+      const activeScheduledToolsets = scheduledAvailableToolsets.filter((toolset) => activeScheduledToolsetIds.has(toolset.id));
+      const scheduledVisibleToolNames = resolveToolNamesFromToolsets(
+        scheduledAvailableToolsets,
+        activeScheduledToolsets.map((toolset) => toolset.id)
+      );
+      await historyCompressor.maybeCompress(sessionId, { triggerReason: "inline_batch_pre_generation" });
+      const providerName = getPrimaryModelProfile(config, scheduledModelRef)?.provider ?? "unknown";
+      const transcriptStore = createSessionTranscriptStore(session, config);
+      const projectedHistory = transcriptStore.projectRuntimeHistory();
+      const participantProfiles = assistantMode
+        ? []
+        : await extractWindowUsers(userStore, transcriptStore.runtimeItems(), []);
+      const projectedTranscript = getProviderTranscriptProjector(providerName).project({
+        transcript: transcriptStore.runtimeItems(),
+        preserveThinking: getPrimaryModelProfile(config, scheduledModelRef)?.preserveThinking === true
+      });
+      const historyForPromptMessages = projectedTranscript.replayCoversVisibleHistory ? [] : projectedHistory;
+      const lateSystemMessages = [
+        ...projectedTranscript.lateSystemMessages,
+        ...(interactionMode === "debug"
+          ? [buildDebugMarkerSystemMessage(session.debugMarkers)].filter((item): item is string => Boolean(item))
+          : [])
+      ];
+      const modeProfile = session.operationMode.kind === "normal"
+        ? await resolvePromptModeProfile({
+            mode,
+            activeDraftOperation: null,
+            rpProfileStore: identity.rpProfileStore,
+            scenarioProfileStore: identity.scenarioProfileStore
+          })
+        : undefined;
+      const inlineBatchMessage = renderInlineTriggerBatchMessage(triggers);
+      const promptBuildResult = await services.promptBuilder.buildScheduledPromptMessages({
+        sessionId,
+        modeId: session.modeId,
+        interactionMode,
+        visibleToolNames: scheduledVisibleToolNames,
+        activeToolsets: activeScheduledToolsets,
+        lateSystemMessages,
+        replayMessages: projectedTranscript.replayMessages,
+        trigger: toScheduledPromptTrigger(primaryTrigger),
+        inlineBatchMessage,
+        persona,
+        relationship: promptRelationship,
+        participantProfiles,
+        currentUser,
+        historySummary: session.historySummary,
+        historyForPrompt: historyForPromptMessages,
+        debugMarkers: session.debugMarkers,
+        internalTranscript: session.internalTranscript,
+        lastLlmUsage: session.lastLlmUsage,
+        abortSignal: abortController.signal,
+        ...(modeProfile ? { modeProfile } : {}),
+        targetContext: primaryTrigger.targetType === "private"
+          ? {
+              chatType: "private",
+              userId: primaryTrigger.targetUserId ?? sessionId,
+              senderName: primaryTrigger.targetSenderName
+            }
+          : {
+              chatType: "group",
+              groupId: primaryTrigger.targetGroupId ?? sessionId
+            }
+      });
+
+      await services.runGeneration({
+        sessionId,
+        expectedEpoch,
+        responseAbortController,
+        responseEpoch,
+        abortController,
+        relationship: promptRelationship,
+        interactionMode,
+        internalTranscript: session.internalTranscript,
+        debugMarkers: session.debugMarkers,
+        toolRelationship: "owner",
+        activeInternalTrigger: primaryTrigger,
+        currentUser,
+        persona,
+        batchMessages: [],
+        resolvedModelRef: scheduledModelRef,
+        sendTarget: {
+          delivery: scheduledReplyDelivery satisfies SessionDelivery,
+          chatType: primaryTrigger.targetType,
+          userId: primaryTrigger.targetUserId ?? primaryTrigger.targetGroupId ?? sessionId,
+          ...(primaryTrigger.targetGroupId ? { groupId: primaryTrigger.targetGroupId } : {}),
+          senderName: primaryTrigger.targetSenderName
+        },
+        participantProfiles,
+        promptMessages: promptBuildResult.promptMessages,
+        debugSnapshot: promptBuildResult.debugSnapshot,
+        plannedToolsetIds: activeScheduledToolsets.map((toolset) => toolset.id),
+        availableToolsets: scheduledAvailableToolsets,
+        streamResponse: false
+      });
+    })().catch((error: unknown) => {
+      if (sessionManager.isGenerating(sessionId)) {
+        logger.error({ err: error, sessionId, triggerKinds: triggers.map((t) => t.kind) }, "inline_batch_generation_prepare_failed");
+        if (sessionManager.finishGeneration(sessionId, abortController)) {
+          persistSession(sessionId, "generation_finished");
+          sessionManager.completeResponse(sessionId, responseEpoch);
+          services.processNextSessionWork(sessionId);
+        }
+      }
+      throw error;
+    });
+  };
+
   return {
     flushSession,
-    runInternalTriggerSession
+    runInternalTriggerSession,
+    runInlineTriggerBatchSession
   };
 }

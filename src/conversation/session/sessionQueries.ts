@@ -24,6 +24,7 @@ export function cloneSessionState(session: SessionState): SessionState {
     pendingMessages: [...session.pendingMessages],
     pendingSteerMessages: [...session.pendingSteerMessages],
     pendingInternalTriggers: [...session.pendingInternalTriggers],
+    pendingInlineTriggers: [...session.pendingInlineTriggers],
     internalTranscript: normalizeTranscriptItems(session.internalTranscript),
     debugMarkers: [...session.debugMarkers],
     sentMessages: [...session.sentMessages],

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { EventRouter } from "../../src/services/onebot/eventRouter.ts";
 import { buildUserBatchContent } from "../../src/llm/prompts/trigger-batch.prompt.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { buildTag } from "../../src/utils/structuredEnvelope.ts";
 
 test("event router keeps dice-only messages as special segments", () => {
   const config = createTestAppConfig();
@@ -145,7 +146,7 @@ test("prompt formatting renders file messages as dedicated structured file tags"
   }]);
 
   const text = content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
-  assert.match(text, /⟦file /);
+  assert.match(text, /%%llmbot:file /);
   assert.match(text, /file_id="onebot-file-1"/);
   assert.match(text, /download_tool="download_message_file"/);
 });
@@ -202,7 +203,7 @@ test("prompt formatting preserves content part order", () => {
   }]);
 
   const text = content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
-  assert.match(text, /前\n⟦ref kind="image" image_id="img-1"⟧\n中\n⟦ref kind="emoji" image_id="emoji-1"⟧\n后/);
+  assert.match(text, new RegExp(`前\\n${escapeRegExp(buildTag("ref", { kind: "image", image_id: "img-1" }))}\\n中\\n${escapeRegExp(buildTag("ref", { kind: "emoji", image_id: "emoji-1" }))}\\n后`));
 });
 
 test("prompt formatting renders landed web files as asset file tags", () => {
@@ -229,7 +230,7 @@ test("prompt formatting renders landed web files as asset file tags", () => {
   }]);
 
   const text = content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
-  assert.match(text, /⟦asset_file /);
+  assert.match(text, /%%llmbot:asset_file /);
   assert.match(text, /file_id="file-1"/);
   assert.match(text, /file_kind="file"/);
   assert.doesNotMatch(text, /download_tool/);
@@ -260,8 +261,12 @@ test("prompt formatting keeps audio transcription next to audio content part", (
   }]);
 
   const text = content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
-  assert.match(text, /⟦count kind="audio" value="1"⟧\n音频 aud-1 听写：这是语音内容/);
+  assert.match(text, new RegExp(`${escapeRegExp(buildTag("count", { kind: "audio", value: "1" }))}\\n音频 aud-1 听写：这是语音内容`));
 });
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 test("prompt native multimodal inputs follow content part media order", () => {
   const content = buildUserBatchContent([{

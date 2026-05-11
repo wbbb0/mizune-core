@@ -4,6 +4,7 @@ import pino from "pino";
 import { TurnPlanner } from "../../src/conversation/turnPlanner.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import type { LlmGenerateParams } from "../../src/llm/llmClient.ts";
+import { buildTag } from "../../src/utils/structuredEnvelope.ts";
 
 test("turn planner injects image captions for non-vision planner models", async () => {
   const config = createTestAppConfig({
@@ -75,7 +76,7 @@ test("turn planner injects image captions for non-vision planner models", async 
     relationship: "owner",
     recentMessages: [{
       role: "user",
-      content: "上轮这张图\n⟦ref kind=\"image\" image_id=\"file_history_1\"⟧",
+      content: ["上轮这张图", buildTag("ref", { kind: "image", image_id: "file_history_1" })].join("\n"),
       timestampMs: 1
     }],
     availableToolsets: [],

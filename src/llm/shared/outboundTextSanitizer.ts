@@ -1,8 +1,8 @@
+import { stripProtocolLines } from "#utils/structuredEnvelope.ts";
 import { stripLeadingMessageHeaders } from "./messageHeaderFormat.ts";
 
 const UNORDERED_LIST_MARKER_REGEX = /^(\s*)[-*+]\s+/gm;
 const ORDERED_LIST_MARKER_REGEX = /^\s*\d+[.)]\s+/gm;
-const STRUCTURED_BRACKET_LINE_REGEX = /^\s*⟦[^⟧]*⟧\s*(?:\r?\n)?/gm;
 const FENCED_CODE_LINE_REGEX = /^\s*(`{3,}|~{3,}).*(?:\r?\n)?/gm;
 const HEADING_MARKER_REGEX = /^\s{0,3}#{1,6}\s+/gm;
 const BLOCKQUOTE_MARKER_REGEX = /^\s{0,3}>\s?/gm;
@@ -32,7 +32,7 @@ function stripEmphasis(text: string): string {
 }
 
 function stripStructuredBracketOnlyLines(text: string): string {
-  return text.replace(STRUCTURED_BRACKET_LINE_REGEX, "");
+  return stripProtocolLines(text);
 }
 
 export function sanitizeStoredOutboundText(

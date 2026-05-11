@@ -1,13 +1,45 @@
 import type { InternalSessionTriggerExecution } from "#conversation/session/sessionTypes.ts";
-import type { ShellRuntimeEvent } from "#services/shell/types.ts";
+import type { ShellRunOwner, ShellRuntimeEvent } from "#services/shell/types.ts";
 import type { DownloadRuntimeEvent } from "#services/workspace/downloadRuntime.ts";
 import { createInternalTriggerDispatcher } from "./internalTriggerDispatcher.ts";
 import type { ScheduledTaskDispatcherDeps } from "./scheduledTaskDispatcherDeps.ts";
+
+export type ComfyRuntimeEvent =
+  | {
+      kind: "comfy_task_completed";
+      owner: ShellRunOwner;
+      taskId: string;
+      templateId: string;
+      positivePrompt: string;
+      aspectRatio: string;
+      resolvedWidth: number;
+      resolvedHeight: number;
+      workspaceFileIds: string[];
+      chatFilePaths: string[];
+      comfyPromptId: string;
+      autoIterationIndex: number;
+      maxAutoIterations: number;
+    }
+  | {
+      kind: "comfy_task_failed";
+      owner: ShellRunOwner;
+      taskId: string;
+      templateId: string;
+      positivePrompt: string;
+      aspectRatio: string;
+      resolvedWidth: number;
+      resolvedHeight: number;
+      comfyPromptId: string;
+      lastError: string;
+      autoIterationIndex: number;
+      maxAutoIterations: number;
+    };
 
 export function createScheduledTaskDispatcher(
   deps: ScheduledTaskDispatcherDeps,
   handlers: {
     runInternalTriggerSession: (sessionId: string, trigger: InternalSessionTriggerExecution) => Promise<void>;
+    wakeInlineBatch: (sessionId: string) => void;
   }
 ) {
   const dispatcher = createInternalTriggerDispatcher(deps, handlers);
@@ -139,6 +171,50 @@ export function createScheduledTaskDispatcher(
             kind: "download_failed",
             ...common,
             error: event.error
+          } as InternalSessionTriggerExecution;
+        }
+      });
+    },
+    async dispatchComfyEvent(event: ComfyRuntimeEvent): Promise<void> {
+      await dispatcher.dispatchTrigger({
+        sessionId: event.owner.sessionId,
+        queueLogEvent: "comfy_event_queued",
+        createTrigger: (target): InternalSessionTriggerExecution => {
+          const common = {
+            targetType: target.type,
+            ...(target.type === "private"
+              ? { targetUserId: target.userId }
+              : (target.groupId ? { targetGroupId: target.groupId } : {})),
+            targetSenderName: target.senderName,
+            jobName: event.kind === "comfy_task_completed"
+              ? `ComfyUI 图片已完成 (${event.templateId})`
+              : `ComfyUI 图片失败 (${event.templateId})`,
+            instruction: event.kind === "comfy_task_completed"
+              ? "你之前发起的图片生成任务已经完成。系统已把结果导入 workspace，请自行判断接下来要做什么。"
+              : "你之前发起的图片生成任务失败了。请自行判断接下来要做什么。",
+            enqueuedAt: Date.now(),
+            taskId: event.taskId,
+            templateId: event.templateId,
+            positivePrompt: event.positivePrompt,
+            aspectRatio: event.aspectRatio,
+            resolvedWidth: event.resolvedWidth,
+            resolvedHeight: event.resolvedHeight,
+            comfyPromptId: event.comfyPromptId,
+            autoIterationIndex: event.autoIterationIndex,
+            maxAutoIterations: event.maxAutoIterations
+          };
+          if (event.kind === "comfy_task_completed") {
+            return {
+              kind: "comfy_task_completed",
+              ...common,
+              workspaceFileIds: event.workspaceFileIds,
+              chatFilePaths: event.chatFilePaths
+            } as InternalSessionTriggerExecution;
+          }
+          return {
+            kind: "comfy_task_failed",
+            ...common,
+            lastError: event.lastError
           } as InternalSessionTriggerExecution;
         }
       });

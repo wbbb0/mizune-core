@@ -4,6 +4,7 @@ import {
   createUserTranscriptMessageItem,
   projectTranscriptMessageItemToHistoryMessage
 } from "../../src/conversation/session/historyContext.ts";
+import { buildTag } from "../../src/utils/structuredEnvelope.ts";
 
 test("history projection skips pending media ids and dedupes attachment refs", () => {
   const item = createUserTranscriptMessageItem({
@@ -83,8 +84,12 @@ test("history projection preserves audio content part ids for later transcriptio
   });
 
   const projected = projectTranscriptMessageItemToHistoryMessage(item);
-  assert.match(projected.content, /⟦audio audio_id="aud-1"⟧/);
+  assert.match(projected.content, new RegExp(escapeRegExp(buildTag("audio", { audio_id: "aud-1" }))));
 });
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 function countOccurrences(text: string, needle: string): number {
   return text.split(needle).length - 1;

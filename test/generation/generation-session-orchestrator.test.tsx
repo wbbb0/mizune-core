@@ -907,11 +907,11 @@ test("turn planner receives content-safety projected history and batch", async (
         }) {
           return {
             recentMessages: input.recentMessages.map((message) => (message.role === "user"
-              ? { ...message, content: "⟦内容安全: history⟧" } as H
+              ? { ...message, content: "<内容安全: history>" } as H
               : message)),
             batchMessages: input.batchMessages.map((message) => ({
               ...message,
-              text: "⟦内容安全: batch⟧"
+              text: "<内容安全: batch>"
             } as B)),
             events: []
           };
@@ -1045,7 +1045,7 @@ test("turn planner receives content-safety projected history and batch", async (
   orchestrator.flushSession(sessionId);
   await runGenerationDone;
 
-  assert.deepEqual(capturedPlannerHistory.map((message) => message.content), ["⟦内容安全: history⟧", "历史回答"]);
-  assert.deepEqual(capturedPlannerBatchMessages.map((message) => message.text), ["⟦内容安全: batch⟧"]);
-  assert.deepEqual(capturedRunGenerationBatchMessages.map((message) => message.text), ["⟦内容安全: batch⟧"]);
+  assert.deepEqual(capturedPlannerHistory.map((message) => message.content), ["<内容安全: history>", "历史回答"]);
+  assert.deepEqual(capturedPlannerBatchMessages.map((message) => message.text), ["<内容安全: batch>"]);
+  assert.deepEqual(capturedRunGenerationBatchMessages.map((message) => message.text), ["<内容安全: batch>"]);
 });

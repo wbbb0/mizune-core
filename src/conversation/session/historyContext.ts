@@ -1,3 +1,4 @@
+import { buildTag, escapeAttr, escapeUserText } from "#utils/structuredEnvelope.ts";
 import type { MediaSemanticKind } from "#services/onebot/messageSegments.ts";
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import type { MessageContentPart } from "#messages/contentParts.ts";
@@ -585,22 +586,13 @@ function formatMessageContentParts(contentParts: readonly MessageContentPart[]):
 }
 
 function formatStructuredTag(name: string, attrs: Record<string, string>): string {
-  const rendered = Object.entries(attrs)
-    .map(([key, value]) => `${key}="${escapeStructuredAttribute(value)}"`)
-    .join(" ");
-  return `⟦${name}${rendered ? ` ${rendered}` : ""}⟧`;
+  return buildTag(name, attrs);
 }
 
 function escapeStructuredAttribute(value: string): string {
-  return String(value)
-    .replace(/"/g, "＂")
-    .replace(/⟦/g, "［")
-    .replace(/⟧/g, "］")
-    .replace(/\r?\n/g, " ");
+  return escapeAttr(value);
 }
 
 function escapeStructuredText(value: string): string {
-  return String(value)
-    .replace(/⟦/g, "[")
-    .replace(/⟧/g, "]");
+  return escapeUserText(value);
 }

@@ -8,7 +8,10 @@ type SessionWorkCoordinatorDeps = GenerationRunnerDeps;
 export function createSessionWorkCoordinator(deps: SessionWorkCoordinatorDeps) {
   const generationRunner = createGenerationRunner(deps);
   const scheduledTaskDispatcher = createScheduledTaskDispatcher(deps.lifecycle, {
-    runInternalTriggerSession: generationRunner.runInternalTriggerSession
+    runInternalTriggerSession: generationRunner.runInternalTriggerSession,
+    wakeInlineBatch: (sessionId: string) => {
+      generationRunner.processNextSessionWork(sessionId);
+    }
   });
 
   return {
@@ -16,6 +19,7 @@ export function createSessionWorkCoordinator(deps: SessionWorkCoordinatorDeps) {
     dispatchInternalTrigger: scheduledTaskDispatcher.dispatchInternalTrigger,
     dispatchTerminalEvent: scheduledTaskDispatcher.dispatchTerminalEvent,
     dispatchDownloadEvent: scheduledTaskDispatcher.dispatchDownloadEvent,
+    dispatchComfyEvent: scheduledTaskDispatcher.dispatchComfyEvent,
     flushSession: generationRunner.flushSession
   };
 }

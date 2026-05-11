@@ -1,3 +1,4 @@
+import { buildOpenTag, buildCloseTag } from "#utils/structuredEnvelope.ts";
 import type { LlmMessage } from "../llmClient.ts";
 import {
   buildUserBatchContent,
@@ -15,6 +16,8 @@ import {
 import { getSessionChatType } from "#conversation/session/sessionIdentity.ts";
 import type { PromptInput, ScheduledTaskPromptInput, SetupPromptInput } from "./promptTypes.ts";
 import type { AssetHandle, ChatFileHandle } from "#llm/tools/core/fileHandle.ts";
+import type { InlineSessionTriggerExecution } from "#conversation/session/sessionTypes.ts";
+import { renderPromptSectionRaw } from "../prompts/prompt-section.ts";
 
 export type {
   PromptBatchMessage,
@@ -91,7 +94,9 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
   ];
 }
 
-export function buildScheduledTaskPrompt(input: ScheduledTaskPromptInput): LlmMessage[] {
+export function buildScheduledTaskPrompt(
+  input: ScheduledTaskPromptInput & { inlineBatchMessage?: string | undefined }
+): LlmMessage[] {
   const system = [
     ...buildBaseSystemLines({
         sessionMode: input.targetContext.chatType,
@@ -127,7 +132,7 @@ export function buildScheduledTaskPrompt(input: ScheduledTaskPromptInput): LlmMe
     )
   }));
 
-  const triggerMessage = buildTriggerMessage(input);
+  const triggerMessage = input.inlineBatchMessage ?? buildTriggerMessage(input);
 
   return [
     { role: "system", content: system },
@@ -139,107 +144,48 @@ export function buildScheduledTaskPrompt(input: ScheduledTaskPromptInput): LlmMe
 }
 
 function buildTriggerMessage(input: ScheduledTaskPromptInput): string {
-  if (input.trigger.kind === "scheduled_instruction") {
+  const trigger = input.trigger;
+
+  if (trigger.kind === "scheduled_instruction") {
     return input.targetContext.chatType === "private"
       ? [
           `目标用户：${input.targetContext.senderName} (${input.targetContext.userId})`,
-          `任务名称：${input.trigger.jobName}`,
-          `任务指令：${input.trigger.taskInstruction}`
+          `任务名称：${trigger.jobName}`,
+          `任务指令：${trigger.taskInstruction}`
         ].join("\n")
       : [
           `目标群聊：${input.targetContext.groupId}`,
-          `任务名称：${input.trigger.jobName}`,
-          `任务指令：${input.trigger.taskInstruction}`
+          `任务名称：${trigger.jobName}`,
+          `任务指令：${trigger.taskInstruction}`
         ].join("\n");
   }
 
-  if (input.trigger.kind === "comfy_task_completed") {
-    const assetHandleLines = formatAssetHandlesForPrompt(input.trigger.resultAssetHandles);
-    const legacyHandleLines = assetHandleLines ? "" : formatChatFileHandlesForPrompt(input.trigger.resultFileHandles);
-    return [
-      `任务名称：${input.trigger.jobName}`,
-      `任务说明：${input.trigger.taskInstruction}`,
-      `模板：${input.trigger.templateId}`,
-      `prompt：${input.trigger.positivePrompt}`,
-      `比例：${input.trigger.aspectRatio} -> ${input.trigger.resolvedWidth}x${input.trigger.resolvedHeight}`,
-      `Comfy prompt_id：${input.trigger.comfyPromptId}`,
-      `asset_id：${input.trigger.workspaceFileIds.join("、") || "无"}`,
-      `asset_path：${input.trigger.chatFilePaths.join("、") || "无"}`,
+  // Map prompt-type trigger fields to the shared runtime-type renderer.
+  // prompt types use `taskInstruction`; runtime types use `instruction`.
+  const asRuntime = { ...trigger, instruction: trigger.taskInstruction } as unknown as InlineSessionTriggerExecution;
+  const body = renderTriggerEventBody(asRuntime);
+
+  if (trigger.kind === "comfy_task_completed") {
+    const assetHandleLines = formatAssetHandlesForPrompt(trigger.resultAssetHandles);
+    const legacyHandleLines = assetHandleLines ? "" : formatChatFileHandlesForPrompt(trigger.resultFileHandles);
+    const extra = [
       assetHandleLines ? `结果文件 asset_handle：\n${assetHandleLines}` : null,
-      legacyHandleLines ? `结果文件 handle：\n${legacyHandleLines}` : null,
-      `自动迭代进度：${input.trigger.autoIterationIndex}/${input.trigger.maxAutoIterations}`
-    ].filter((item): item is string => Boolean(item)).join("\n");
+      legacyHandleLines ? `结果文件 handle：\n${legacyHandleLines}` : null
+    ].filter(Boolean);
+    return extra.length > 0 ? `${body}\n${extra.join("\n")}` : body;
   }
 
-  if (input.trigger.kind === "comfy_task_failed") {
-    return [
-      `任务名称：${input.trigger.jobName}`,
-      `任务说明：${input.trigger.taskInstruction}`,
-      `模板：${input.trigger.templateId}`,
-      `prompt：${input.trigger.positivePrompt}`,
-      `比例：${input.trigger.aspectRatio} -> ${input.trigger.resolvedWidth}x${input.trigger.resolvedHeight}`,
-      `Comfy prompt_id：${input.trigger.comfyPromptId}`,
-      `失败原因：${input.trigger.lastError}`,
-      `自动迭代进度：${input.trigger.autoIterationIndex}/${input.trigger.maxAutoIterations}`
-    ].join("\n");
-  }
-
-  if (input.trigger.kind === "terminal_session_closed") {
-    return [
-      `任务名称：${input.trigger.jobName}`,
-      `任务说明：${input.trigger.taskInstruction}`,
-      `resource_id：${input.trigger.resourceId}`,
-      `命令：${input.trigger.command}`,
-      `cwd：${input.trigger.cwd}`,
-      `退出码：${input.trigger.exitCode ?? "无"}`,
-      `信号：${input.trigger.signal ?? "无"}`,
-      `输出是否截断：${input.trigger.outputTruncated ? "是" : "否"}`,
-      `输出：\n${input.trigger.output || "(无输出)"}`
-    ].join("\n");
-  }
-
-  if (input.trigger.kind === "download_completed") {
-    const assetHandleLine = formatAssetHandlesForPrompt(input.trigger.resultAssetHandle ? [input.trigger.resultAssetHandle] : undefined);
-    const legacyHandleLine = assetHandleLine ? "" : formatChatFileHandlesForPrompt(input.trigger.resultFileHandle ? [input.trigger.resultFileHandle] : undefined);
-    return [
-      `任务名称：${input.trigger.jobName}`,
-      `任务说明：${input.trigger.taskInstruction}`,
-      `resource_id：${input.trigger.resourceId}`,
-      `来源 URL：${input.trigger.sourceUrl}`,
-      `asset_id：${input.trigger.fileId}`,
-      `asset_ref：${input.trigger.fileRef}`,
-      `asset_path：${input.trigger.chatFilePath}`,
-      `文件名：${input.trigger.sourceName}`,
-      `MIME：${input.trigger.mimeType}`,
-      `大小：${input.trigger.sizeBytes}`,
-      `类型：${input.trigger.fileKind}`,
+  if (trigger.kind === "download_completed") {
+    const assetHandleLine = formatAssetHandlesForPrompt(trigger.resultAssetHandle ? [trigger.resultAssetHandle] : undefined);
+    const legacyHandleLine = assetHandleLine ? "" : formatChatFileHandlesForPrompt(trigger.resultFileHandle ? [trigger.resultFileHandle] : undefined);
+    const extra = [
       assetHandleLine ? `结果文件 asset_handle：\n${assetHandleLine}` : null,
       legacyHandleLine ? `结果文件 handle：\n${legacyHandleLine}` : null
-    ].filter((item): item is string => Boolean(item)).join("\n");
+    ].filter(Boolean);
+    return extra.length > 0 ? `${body}\n${extra.join("\n")}` : body;
   }
 
-  if (input.trigger.kind === "download_failed") {
-    return [
-      `任务名称：${input.trigger.jobName}`,
-      `任务说明：${input.trigger.taskInstruction}`,
-      `resource_id：${input.trigger.resourceId}`,
-      `来源 URL：${input.trigger.sourceUrl}`,
-      `失败原因：${input.trigger.error}`
-    ].join("\n");
-  }
-
-  // TODO: Add sensitive-input handling for password/token/code prompts before
-  // storing or replaying user-provided secret values.
-  return [
-    `任务名称：${input.trigger.jobName}`,
-    `任务说明：${input.trigger.taskInstruction}`,
-    `resource_id：${input.trigger.resourceId}`,
-    `命令：${input.trigger.command}`,
-    `cwd：${input.trigger.cwd}`,
-    `输入类型：${input.trigger.promptKind}`,
-    `提示文本：${input.trigger.promptText}`,
-    `最近输出：\n${input.trigger.outputTail || "(无输出)"}`
-  ].join("\n");
+  return body;
 }
 
 function formatChatFileHandlesForPrompt(handles: ChatFileHandle[] | undefined): string {
@@ -305,4 +251,107 @@ export function buildSetupPrompt(input: SetupPromptInput): LlmMessage[] {
         }]
       : [])
   ];
+}
+
+// Renders the body lines for a single background-event trigger.
+// This is the shared rendering used by both inline injection and
+// the classic prompt build path.
+export function renderTriggerEventBody(trigger: InlineSessionTriggerExecution): string {
+  if (trigger.kind === "comfy_task_completed") {
+    return [
+      `任务名称：${trigger.jobName}`,
+      `任务说明：${trigger.instruction}`,
+      `模板：${trigger.templateId}`,
+      `prompt：${trigger.positivePrompt}`,
+      `比例：${trigger.aspectRatio} -> ${trigger.resolvedWidth}x${trigger.resolvedHeight}`,
+      `Comfy prompt_id：${trigger.comfyPromptId}`,
+      `asset_id：${trigger.workspaceFileIds.join("、") || "无"}`,
+      `asset_path：${trigger.chatFilePaths.join("、") || "无"}`,
+      `自动迭代进度：${trigger.autoIterationIndex}/${trigger.maxAutoIterations}`
+    ].join("\n");
+  }
+
+  if (trigger.kind === "comfy_task_failed") {
+    return [
+      `任务名称：${trigger.jobName}`,
+      `任务说明：${trigger.instruction}`,
+      `模板：${trigger.templateId}`,
+      `prompt：${trigger.positivePrompt}`,
+      `比例：${trigger.aspectRatio} -> ${trigger.resolvedWidth}x${trigger.resolvedHeight}`,
+      `Comfy prompt_id：${trigger.comfyPromptId}`,
+      `失败原因：${trigger.lastError}`,
+      `自动迭代进度：${trigger.autoIterationIndex}/${trigger.maxAutoIterations}`
+    ].join("\n");
+  }
+
+  if (trigger.kind === "terminal_session_closed") {
+    return [
+      `任务名称：${trigger.jobName}`,
+      `任务说明：${trigger.instruction}`,
+      `resource_id：${trigger.resourceId}`,
+      `命令：${trigger.command}`,
+      `cwd：${trigger.cwd}`,
+      `退出码：${trigger.exitCode ?? "无"}`,
+      `信号：${trigger.signal ?? "无"}`,
+      `输出是否截断：${trigger.outputTruncated ? "是" : "否"}`,
+      `输出：\n${trigger.output || "(无输出)"}`
+    ].join("\n");
+  }
+
+  if (trigger.kind === "terminal_input_required") {
+    return [
+      `任务名称：${trigger.jobName}`,
+      `任务说明：${trigger.instruction}`,
+      `resource_id：${trigger.resourceId}`,
+      `命令：${trigger.command}`,
+      `cwd：${trigger.cwd}`,
+      `输入类型：${trigger.promptKind}`,
+      `提示文本：${trigger.promptText}`,
+      `最近输出：\n${trigger.outputTail || "(无输出)"}`
+    ].join("\n");
+  }
+
+  if (trigger.kind === "download_completed") {
+    return [
+      `任务名称：${trigger.jobName}`,
+      `任务说明：${trigger.instruction}`,
+      `resource_id：${trigger.resourceId}`,
+      `来源 URL：${trigger.sourceUrl}`,
+      `asset_id：${trigger.fileId}`,
+      `asset_ref：${trigger.fileRef}`,
+      `asset_path：${trigger.chatFilePath}`,
+      `文件名：${trigger.sourceName}`,
+      `MIME：${trigger.mimeType}`,
+      `大小：${trigger.sizeBytes}`,
+      `类型：${trigger.fileKind}`
+    ].join("\n");
+  }
+
+  // download_failed
+  return [
+    `任务名称：${trigger.jobName}`,
+    `任务说明：${trigger.instruction}`,
+    `resource_id：${trigger.resourceId}`,
+    `来源 URL：${trigger.sourceUrl}`,
+    `失败原因：${trigger.error}`
+  ].join("\n");
+}
+
+// Renders a batch of background-event triggers as a single user message
+// wrapped in the project's structured section markers.
+export function renderInlineTriggerBatchMessage(triggers: InlineSessionTriggerExecution[]): string {
+  const eventLines: string[] = [];
+  for (const trigger of triggers) {
+    const resourceId = "resourceId" in trigger
+      ? trigger.resourceId
+      : "taskId" in trigger
+        ? (trigger as { taskId: string }).taskId
+        : "unknown";
+    const header = buildOpenTag("event", { kind: trigger.kind, resource_id: resourceId });
+    const body = renderTriggerEventBody(trigger);
+    eventLines.push(header, ...body.split("\n"), buildCloseTag("event"));
+  }
+  const section = renderPromptSectionRaw("background_event_batch", eventLines) ?? "";
+  const guidance = "后台任务已就绪。请阅读上述事件并继续完成当前任务；如果当前计划需要调整，请据此调整后续工具调用。";
+  return section ? `${section}\n\n${guidance}` : guidance;
 }

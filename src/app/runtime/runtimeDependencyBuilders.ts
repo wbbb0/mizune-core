@@ -1,5 +1,6 @@
 import type { AppServiceBootstrap } from "../bootstrap/bootstrapTypes.ts";
 import type { ComfyTaskRecord } from "#comfy/taskSchema.ts";
+import type { ComfyRuntimeEvent } from "#app/session-work/scheduledTaskDispatcher.ts";
 import type { InternalSessionTriggerExecution } from "#conversation/session/sessionTypes.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
 import type { ContextExtractionQueue } from "#context/contextExtractionQueue.ts";
@@ -141,6 +142,7 @@ type SessionWorkDispatcher = {
     sessionId: string,
     triggerFactory: (target: DispatchTarget) => InternalSessionTriggerExecution
   ) => Promise<void>;
+  dispatchComfyEvent: (event: ComfyRuntimeEvent) => Promise<void>;
 };
 
 type ComfyResultFile = {
@@ -154,82 +156,37 @@ export function createComfyTaskNotifications(dispatcher: SessionWorkDispatcher):
 } {
   return {
     notifyCompletedTask: async (task, files) => {
-      await dispatcher.dispatchInternalTrigger(task.sessionId, (target) => createComfyCompletedTrigger(target, task, files));
+      await dispatcher.dispatchComfyEvent({
+        kind: "comfy_task_completed",
+        owner: { sessionId: task.sessionId, userId: task.userId, senderName: "" },
+        taskId: task.id,
+        templateId: task.templateId,
+        positivePrompt: task.positivePrompt,
+        aspectRatio: task.aspectRatio,
+        resolvedWidth: task.resolvedWidth,
+        resolvedHeight: task.resolvedHeight,
+        workspaceFileIds: files.map((item) => item.fileId),
+        chatFilePaths: files.map((item) => item.path),
+        comfyPromptId: task.comfyPromptId,
+        autoIterationIndex: task.autoIterationIndex,
+        maxAutoIterations: task.maxAutoIterations
+      });
     },
     notifyFailedTask: async (task) => {
-      await dispatcher.dispatchInternalTrigger(task.sessionId, (target) => createComfyFailedTrigger(target, task));
+      await dispatcher.dispatchComfyEvent({
+        kind: "comfy_task_failed",
+        owner: { sessionId: task.sessionId, userId: task.userId, senderName: "" },
+        taskId: task.id,
+        templateId: task.templateId,
+        positivePrompt: task.positivePrompt,
+        aspectRatio: task.aspectRatio,
+        resolvedWidth: task.resolvedWidth,
+        resolvedHeight: task.resolvedHeight,
+        comfyPromptId: task.comfyPromptId,
+        lastError: task.lastError ?? "Comfy task failed",
+        autoIterationIndex: task.autoIterationIndex,
+        maxAutoIterations: task.maxAutoIterations
+      });
     }
   };
-}
-
-function createComfyCompletedTrigger(
-  target: DispatchTarget,
-  task: ComfyTaskRecord,
-  files: ComfyResultFile[]
-): InternalSessionTriggerExecution {
-  const base = {
-    kind: "comfy_task_completed" as const,
-    targetSenderName: target.senderName,
-    jobName: `ComfyUI 图片已完成 (${task.templateId})`,
-    instruction: "你之前发起的图片生成任务已经完成。系统已把结果导入 workspace，请自行判断接下来要做什么。",
-    enqueuedAt: Date.now(),
-    taskId: task.id,
-    templateId: task.templateId,
-    positivePrompt: task.positivePrompt,
-    aspectRatio: task.aspectRatio,
-    resolvedWidth: task.resolvedWidth,
-    resolvedHeight: task.resolvedHeight,
-    workspaceFileIds: files.map((item) => item.fileId),
-    chatFilePaths: files.map((item) => item.path),
-    comfyPromptId: task.comfyPromptId,
-    autoIterationIndex: task.autoIterationIndex,
-    maxAutoIterations: task.maxAutoIterations
-  };
-
-  return target.type === "group"
-    ? {
-        ...base,
-        targetType: "group",
-        ...(target.groupId ? { targetGroupId: target.groupId } : {})
-      }
-    : {
-        ...base,
-        targetType: "private",
-        targetUserId: target.userId
-      };
-}
-
-function createComfyFailedTrigger(
-  target: DispatchTarget,
-  task: ComfyTaskRecord
-): InternalSessionTriggerExecution {
-  const base = {
-    kind: "comfy_task_failed" as const,
-    targetSenderName: target.senderName,
-    jobName: `ComfyUI 图片失败 (${task.templateId})`,
-    instruction: "你之前发起的图片生成任务失败了。请自行判断接下来要做什么。",
-    enqueuedAt: Date.now(),
-    taskId: task.id,
-    templateId: task.templateId,
-    positivePrompt: task.positivePrompt,
-    aspectRatio: task.aspectRatio,
-    resolvedWidth: task.resolvedWidth,
-    resolvedHeight: task.resolvedHeight,
-    comfyPromptId: task.comfyPromptId,
-    lastError: task.lastError ?? "Comfy task failed",
-    autoIterationIndex: task.autoIterationIndex,
-    maxAutoIterations: task.maxAutoIterations
-  };
-
-  return target.type === "group"
-    ? {
-        ...base,
-        targetType: "group",
-        ...(target.groupId ? { targetGroupId: target.groupId } : {})
-      }
-    : {
-        ...base,
-        targetType: "private",
-        targetUserId: target.userId
-      };
 }

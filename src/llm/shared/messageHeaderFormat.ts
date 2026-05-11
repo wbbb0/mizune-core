@@ -1,3 +1,5 @@
+import { buildOpenTag, escapeAttr, parseProtocolLine } from "#utils/structuredEnvelope.ts";
+
 export interface MessageBatchHeaderInput {
   sessionLabel: string;
   triggerLabel: string;
@@ -13,32 +15,21 @@ export interface MessageItemHeaderInput {
 }
 
 const HEADER_VALUE_FALLBACK = "unknown";
-const RESERVED_HEADER_CHARS = /[\n\r="⟦⟧]/g;
 
 function sanitizeHeaderValue(value: string): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (!normalized) {
     return HEADER_VALUE_FALLBACK;
   }
-  return normalized.replace(RESERVED_HEADER_CHARS, (char) => {
-    switch (char) {
-      case "=":
-        return "＝";
-      case "\"":
-        return "＂";
-      case "⟦":
-        return "［";
-      case "⟧":
-        return "］";
-      default:
-        return " ";
-    }
-  });
+  return escapeAttr(normalized).replace(/=/g, "＝");
 }
 
 function buildHeaderTag(kind: string, fields: Array<[label: string, value: string | number]>): string {
-  const renderedFields = fields.map(([label, value]) => `${label}="${sanitizeHeaderValue(String(value))}"`);
-  return `⟦${kind}${renderedFields.length > 0 ? ` ${renderedFields.join(" ")}` : ""}⟧`;
+  const fieldMap: Record<string, string> = {};
+  for (const [label, val] of fields) {
+    fieldMap[label] = sanitizeHeaderValue(String(val));
+  }
+  return buildOpenTag(kind, fieldMap);
 }
 
 export function formatConversationMessageHeader(timestampLabel: string): string {
@@ -86,10 +77,26 @@ export function formatDraftBatchItemMessageHeader(input: Omit<MessageItemHeaderI
   ]);
 }
 
-const LEADING_MESSAGE_HEADER_REGEX = /^(?:[\t ]*⟦(?:history_message|scheduled_history_message|trigger_batch|trigger_message|draft_batch|draft_message)\b[^⟧\n]*⟧[\t ]*(?:\r?\n|$))+/;
+const MESSAGE_HEADER_TAGS = new Set([
+  "history_message",
+  "scheduled_history_message",
+  "trigger_batch",
+  "trigger_message",
+  "draft_batch",
+  "draft_message"
+]);
 const LEADING_BLANK_LINES_REGEX = /^[\t ]*(?:\r?\n[\t ]*)+/;
 
 export function stripLeadingMessageHeaders(text: string): string {
-  const strippedHeaders = text.replace(LEADING_MESSAGE_HEADER_REGEX, "");
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  let firstBodyLine = 0;
+  while (firstBodyLine < lines.length) {
+    const parsed = parseProtocolLine(lines[firstBodyLine]!);
+    if (!parsed || parsed.closing || !MESSAGE_HEADER_TAGS.has(parsed.tag)) {
+      break;
+    }
+    firstBodyLine += 1;
+  }
+  const strippedHeaders = lines.slice(firstBodyLine).join("\n");
   return strippedHeaders.replace(LEADING_BLANK_LINES_REGEX, "");
 }

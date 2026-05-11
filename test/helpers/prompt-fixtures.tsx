@@ -5,6 +5,7 @@ import type {
   ScheduledTaskPromptInput,
   SetupPromptInput
 } from "../../src/llm/prompt/promptBuilder.ts";
+import { parseProtocolLine } from "../../src/utils/structuredEnvelope.ts";
 
 export function createPromptBatchMessage(
   overrides: Partial<PromptBatchMessage> = {}
@@ -62,4 +63,71 @@ export function readPromptMessageText(message: LlmMessage | undefined): string {
     return message.content;
   }
   return message.content.map(readTextPart).filter(Boolean).join("\n");
+}
+
+export interface ParsedPromptBlock {
+  tag: string;
+  attrs: Record<string, string>;
+  body: string;
+}
+
+export function parsePromptBlocks(text: string): ParsedPromptBlock[] {
+  const blocks: ParsedPromptBlock[] = [];
+  const stack: Array<{
+    tag: string;
+    attrs: Record<string, string>;
+    lines: string[];
+  }> = [];
+
+  for (const line of String(text).replace(/\r\n/g, "\n").split("\n")) {
+    const parsed = parseProtocolLine(line);
+    if (!parsed) {
+      for (const frame of stack) {
+        frame.lines.push(line);
+      }
+      continue;
+    }
+
+    if (parsed.closing) {
+      const frame = stack.pop();
+      if (frame && frame.tag === parsed.tag) {
+        blocks.push({
+          tag: frame.tag,
+          attrs: frame.attrs,
+          body: frame.lines.join("\n").trim()
+        });
+      }
+      continue;
+    }
+
+    stack.push({
+      tag: parsed.tag,
+      attrs: parsed.attrs,
+      lines: []
+    });
+  }
+
+  return blocks;
+}
+
+export function findPromptSection(text: string, name: string): ParsedPromptBlock | undefined {
+  return parsePromptBlocks(text).find((block) => block.tag === "section" && block.attrs.name === name);
+}
+
+export function hasPromptSection(text: string, name: string): boolean {
+  return findPromptSection(text, name) !== undefined;
+}
+
+export function findPromptBlock(text: string, tag: string): ParsedPromptBlock | undefined {
+  return parsePromptBlocks(text).find((block) => block.tag === tag);
+}
+
+export function findPromptProtocolLine(text: string, tag: string): { attrs: Record<string, string> } | undefined {
+  for (const line of String(text).replace(/\r\n/g, "\n").split("\n")) {
+    const parsed = parseProtocolLine(line);
+    if (parsed && !parsed.closing && parsed.tag === tag) {
+      return { attrs: parsed.attrs };
+    }
+  }
+  return undefined;
 }

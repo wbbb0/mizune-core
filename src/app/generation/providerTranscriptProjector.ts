@@ -52,7 +52,12 @@ function createSummaryOnlyProjector(providerName: string): ProviderTranscriptPro
   };
 }
 
-function createOpenAiStyleProjector(providerName: string): ProviderTranscriptProjector {
+function createOpenAiStyleProjector(
+  providerName: string,
+  options: {
+    preserveVisibleReasoning?: boolean;
+  } = {}
+): ProviderTranscriptProjector {
   return {
     providerName,
     project(input) {
@@ -75,7 +80,7 @@ function createOpenAiStyleProjector(providerName: string): ProviderTranscriptPro
           replayMessages.push({
             role: historyMessage.role,
             content: historyMessage.content,
-            ...(item.kind === "assistant_message" && item.reasoningContent
+            ...(options.preserveVisibleReasoning !== false && item.kind === "assistant_message" && item.reasoningContent
               ? { reasoning_content: item.reasoningContent }
               : {})
           });
@@ -285,6 +290,7 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
 const projectors = new Map<string, ProviderTranscriptProjector>([
   ["openai", createOpenAiStyleProjector("openai")],
   ["dashscope", createOpenAiStyleProjector("dashscope")],
+  ["anthropic", createOpenAiStyleProjector("anthropic", { preserveVisibleReasoning: false })],
   ["google", createGoogleProjector("google")],
   ["vertex", createGoogleProjector("vertex")],
   ["vertex_express", createGoogleProjector("vertex_express")]

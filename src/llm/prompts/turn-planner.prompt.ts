@@ -1,3 +1,4 @@
+import { buildOpenTag, buildCloseTag, escapeAttr, escapeUserText } from "#utils/structuredEnvelope.ts";
 import type { LlmMessage } from "#llm/llmClient.ts";
 import {
   formatStructuredAssetFile,
@@ -187,9 +188,9 @@ function formatMediaCaptions(input: Array<{
 function formatMessages(messages: Array<{ role: "user" | "assistant"; content: string; timestampMs?: number | null }>): string {
   return messages
     .map((message, index) => [
-      `⟦planner_history_message index="${index + 1}" role="${message.role}" time="${formatTimestamp(message.timestampMs)}"⟧`,
+      buildOpenTag("planner_history_message", { index: String(index + 1), role: message.role, time: formatTimestamp(message.timestampMs) }),
       message.content,
-      "⟦/planner_history_message⟧"
+      buildCloseTag("planner_history_message")
     ].join("\n"))
     .join("\n\n");
 }
@@ -222,9 +223,9 @@ function formatBatch(input: Array<{
         ? formatContentPartsForPlanner(message.contentParts ?? [])
         : formatLegacyBatchMessageForPlanner(message);
       return [
-        `⟦planner_batch_message index="${index + 1}" sender_name="${sanitizeAttr(message.senderName)}" time="${formatTimestamp(message.timestampMs)}"⟧`,
+        buildOpenTag("planner_batch_message", { index: String(index + 1), sender_name: sanitizeAttr(message.senderName), time: formatTimestamp(message.timestampMs) }),
         parts.join("\n") || "<empty>",
-        "⟦/planner_batch_message⟧"
+        buildCloseTag("planner_batch_message")
       ].join("\n");
     })
     .join("\n\n");
@@ -351,19 +352,11 @@ function formatContentPartsForPlanner(contentParts: readonly MessageContentPart[
 }
 
 function sanitizeAttr(value: string): string {
-  return String(value)
-    .replace(/"/g, "＂")
-    .replace(/⟦/g, "［")
-    .replace(/⟧/g, "］")
-    .replace(/\r?\n/g, " ");
+  return escapeAttr(value);
 }
 
 function sanitizeCaptionLine(value: string): string {
-  return String(value ?? "")
-    .replace(/⟦/g, "［")
-    .replace(/⟧/g, "］")
-    .replace(/\s+/g, " ")
-    .trim();
+  return escapeUserText(String(value ?? "")).replace(/\s+/g, " ").trim();
 }
 
 function formatTimestamp(timestampMs?: number | null): string {

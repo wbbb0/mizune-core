@@ -1,3 +1,4 @@
+import { buildTag } from "#utils/structuredEnvelope.ts";
 import type { Logger } from "pino";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { OneBotMessageSegment } from "#services/onebot/types.ts";
@@ -323,11 +324,11 @@ function buildNodePreview(segments: ForwardNodeSegment[]): string {
       continue;
     }
     if (segment.kind === "image") {
-      parts.push(`\n⟦ref kind="${segment.mediaKind}" image_id="${segment.imageId}"⟧`);
+      parts.push(`\n${buildTag("ref", { kind: segment.mediaKind, image_id: segment.imageId })}`);
       continue;
     }
     if (segment.kind === "forward") {
-      parts.push(`\n⟦ref kind="forward" forward_id="${segment.forwardId}"⟧`);
+      parts.push(`\n${buildTag("ref", { kind: "forward", forward_id: segment.forwardId })}`);
       continue;
     }
     parts.push(`\n${segment.summary}`);
@@ -336,19 +337,7 @@ function buildNodePreview(segments: ForwardNodeSegment[]): string {
 }
 
 function summarizeOtherSegment(segment: OneBotMessageSegment): string {
-  if (segment.type === "face") {
-    return '⟦segment type="face"⟧';
-  }
-  if (segment.type === "reply") {
-    return '⟦segment type="reply"⟧';
-  }
-  if (segment.type === "json") {
-    return '⟦segment type="json"⟧';
-  }
-  if (segment.type === "xml") {
-    return '⟦segment type="xml"⟧';
-  }
-  return `⟦segment type="${segment.type}"⟧`;
+  return buildTag("segment", { type: segment.type });
 }
 
 function getFirstNonEmptyString(values: unknown[]): string {

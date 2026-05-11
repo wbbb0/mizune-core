@@ -96,7 +96,8 @@ export class DeepSeekProvider implements LlmProvider {
 
     const timeoutController = createProviderTimeoutController({
       totalTimeoutMs: resolvedTimeoutMs,
-      firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs
+      firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs,
+      thinkingTimeoutMs: context.config.llm.thinkingTimeoutMs
     });
     const forwardAbort = () => timeoutController.controller.abort();
     params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
@@ -177,14 +178,17 @@ export class DeepSeekProvider implements LlmProvider {
             const delta = payload.choices?.[0]?.delta;
             if (typeof delta?.reasoning_content === "string" && delta.reasoning_content.length > 0) {
               timeoutController.markFirstResponseReceived();
+              timeoutController.markReasoningStarted();
               accumulator.appendReasoningDelta(delta.reasoning_content, params.onReasoningDelta);
             }
             if (typeof delta?.content === "string" && delta.content.length > 0) {
               timeoutController.markFirstResponseReceived();
+              timeoutController.markFirstTextReceived();
               await accumulator.appendTextDelta(delta.content, params.onTextDelta);
             }
             if ((delta?.tool_calls?.length ?? 0) > 0) {
               timeoutController.markFirstResponseReceived();
+              timeoutController.markFirstTextReceived();
             }
 
             mergeIndexedToolCallDeltas(toolCalls, delta?.tool_calls ?? []);

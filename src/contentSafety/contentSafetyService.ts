@@ -12,6 +12,7 @@ import {
   dedupeResolvedChatAttachments,
   getVisualAttachmentSemanticKind
 } from "#services/workspace/chatAttachments.ts";
+import { buildOpenTag, buildCloseTag, parseProtocolLine } from "#utils/structuredEnvelope.ts";
 import { extractStructuredMediaReferences } from "#images/imageReferences.ts";
 import type { LlmContentPart, LlmMessage } from "#llm/llmClient.ts";
 import type { MessageContentPart } from "#messages/contentParts.ts";
@@ -1329,9 +1330,9 @@ function projectPromptContentPartsAfterMediaSafety(
 
 function buildBatchModerationText(texts: string[]): string {
   const parts = texts.map((text, index) => [
-    `⟦message index="${index}"⟧`,
+    buildOpenTag("message", { index: String(index) }),
     text,
-    "⟦/message⟧"
+    buildCloseTag("message")
   ].join("\n"));
   return [
     "以下是多条独立聊天消息。请只判断这批消息整体是否存在需要内容安全拦截或复核的内容，编号仅用于分隔，不属于原文。",
@@ -1356,10 +1357,14 @@ function replaceBlockedStructuredMediaReferences(
   content: string,
   eventsByFileId: ReadonlyMap<string, ContentSafetyEvent>
 ): string {
-  return content.replace(/⟦ref\s+kind="(image|emoji)"\s+image_id="([^"]+)"\s*⟧/gi, (full, _kind, rawImageId) => {
-    const imageId = String(rawImageId ?? "").trim();
-    return eventsByFileId.get(imageId)?.marker ?? full;
-  });
+  return content.replace(/\r\n/g, "\n").split("\n").map((line) => {
+    const parsed = parseProtocolLine(line);
+    if (!parsed || parsed.tag !== "ref" || (parsed.attrs.kind !== "image" && parsed.attrs.kind !== "emoji")) {
+      return line;
+    }
+    const imageId = String(parsed.attrs.image_id ?? "").trim();
+    return eventsByFileId.get(imageId)?.marker ?? line;
+  }).join("\n");
 }
 
 function collectPromptMessageMediaRefs(
