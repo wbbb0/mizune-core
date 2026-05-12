@@ -65,6 +65,18 @@ export function readPromptMessageText(message: LlmMessage | undefined): string {
   return message.content.map(readTextPart).filter(Boolean).join("\n");
 }
 
+export function readPromptSystemText(messages: LlmMessage[]): string {
+  return messages
+    .filter((message) => message.role === "system")
+    .map(readPromptMessageText)
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function readPromptLastMessageText(messages: LlmMessage[]): string {
+  return readPromptMessageText(messages[messages.length - 1]);
+}
+
 export interface ParsedPromptBlock {
   tag: string;
   attrs: Record<string, string>;

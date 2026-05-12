@@ -115,6 +115,18 @@ export interface RunGenerationInput {
   draftOverlaySink?: GenerationDraftOverlaySink | undefined;
 }
 
+export async function projectProviderPreflightMessages(input: {
+  messages: LlmMessage[];
+  project: (messages: LlmMessage[]) => Promise<LlmMessage[]>;
+}): Promise<LlmMessage[]> {
+  if (input.messages[0]?.role !== "system") {
+    return input.project(input.messages);
+  }
+  const stablePrefix = input.messages[0];
+  const projectedSuffix = await input.project(input.messages.slice(1));
+  return [stablePrefix, ...projectedSuffix];
+}
+
 // Executes a fully prepared generation request, including tools, streaming, and cleanup.
 export function createGenerationExecutor(
   deps: GenerationExecutorDeps,
@@ -333,17 +345,26 @@ export function createGenerationExecutor(
         ];
       };
 
-      const resolveAllowedTools = () => getBuiltinTools(toolRelationship ?? relationship, currentUser, config, {
-        modelRef: resolvedModelRef,
-        includeDebugTools: interactionMode === "debug",
-        visibilityContext: {
-          sessionId,
-          replyDelivery: sendTarget.delivery
-        },
-        ...(resolveDynamicAllowedToolNames().length > 0
-          ? { availableToolNames: resolveDynamicAllowedToolNames() }
-          : {})
-      });
+      const buildToolSelectionOptions = () => {
+        const dynamicAllowedToolNames = resolveDynamicAllowedToolNames();
+        return {
+          modelRef: resolvedModelRef,
+          includeDebugTools: interactionMode === "debug",
+          visibilityContext: {
+            sessionId,
+            replyDelivery: sendTarget.delivery
+          },
+          ...(dynamicAllowedToolNames.length > 0
+            ? { availableToolNames: dynamicAllowedToolNames }
+            : {})
+        };
+      };
+      const resolveAllowedTools = () => getBuiltinTools(
+        toolRelationship ?? relationship,
+        currentUser,
+        config,
+        buildToolSelectionOptions()
+      );
 
       const toolsetAccess = isPlannerToolsetMode
         ? {
@@ -463,17 +484,7 @@ export function createGenerationExecutor(
           toolCallId: toolCall.id
         });
         try {
-          const rawToolExecutor = createBuiltinToolExecutor(builtinToolContext, {
-            modelRef: resolvedModelRef,
-            includeDebugTools: interactionMode === "debug",
-            visibilityContext: {
-              sessionId,
-              replyDelivery: sendTarget.delivery
-            },
-            ...(resolveDynamicAllowedToolNames().length > 0
-              ? { availableToolNames: resolveDynamicAllowedToolNames() }
-              : {})
-          });
+          const rawToolExecutor = createBuiltinToolExecutor(builtinToolContext, buildToolSelectionOptions());
           return await rawToolExecutor(toolCall, args);
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
@@ -507,12 +518,17 @@ export function createGenerationExecutor(
             consumeSteerMessages,
             consumeInlineTriggers,
             projectMessagesBeforeProvider: async (messages) => (
-              (await promptBuilder.contentSafetyService?.projectLlmMessages({
-                sessionId,
-                source: "provider_call_preflight",
+              projectProviderPreflightMessages({
                 messages,
-                abortSignal: abortController.signal
-              }))?.messages ?? messages
+                project: async (projectableMessages) => (
+                  (await promptBuilder.contentSafetyService?.projectLlmMessages({
+                    sessionId,
+                    source: "provider_call_preflight",
+                    messages: projectableMessages,
+                    abortSignal: abortController.signal
+                  }))?.messages ?? projectableMessages
+                )
+              })
             ),
             toolConcurrency: {
               analyze: analyzeBuiltinToolConcurrency,

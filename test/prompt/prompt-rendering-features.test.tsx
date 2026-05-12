@@ -6,7 +6,7 @@ import { GroupMembershipStore } from "../../src/identity/groupMembershipStore.ts
 import { NpcDirectory } from "../../src/identity/npcDirectory.ts";
 import { OneBotClient } from "../../src/services/onebot/onebotClient.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
-import { buildPrompt } from "../../src/llm/prompt/promptBuilder.ts";
+import { buildPrompt, buildScheduledTaskPrompt } from "../../src/llm/prompt/promptBuilder.ts";
 import { createMemoryHarness, createMemoryTestConfig } from "../helpers/memory-test-support.tsx";
 import {
   createPromptBatchMessage,
@@ -14,7 +14,8 @@ import {
   findPromptBlock,
   hasPromptSection,
   parsePromptBlocks,
-  readPromptMessageText
+  readPromptLastMessageText,
+  readPromptSystemText
 } from "../helpers/prompt-fixtures.tsx";
 
   test("prompt builder adds explicit batch metadata and trigger markers for multi-user group batches", async () => {
@@ -41,8 +42,8 @@ import {
         ]
       });
 
-      const system = String(prompt[0]?.content ?? "");
-      const batchText = readPromptMessageText(prompt[1]);
+      const system = readPromptSystemText(prompt);
+      const batchText = readPromptLastMessageText(prompt);
       assert.equal(hasPromptSection(system, "global_persona"), true);
       assert.equal(hasPromptSection(system, "current_user_profile"), true);
       assert.equal(hasPromptSection(system, "participant_context"), true);
@@ -90,7 +91,7 @@ import {
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "帮我查最新消息", timestampMs: Date.now() })]
       });
 
-      const system = String(prompt[0]?.content ?? "");
+      const system = readPromptSystemText(prompt);
       assert.equal(hasPromptSection(system, "toolset_guidance"), true);
       assert.match(system, /当前激活工具集：网页检索与浏览/);
       assert.match(system, /若当前激活工具集不够完成任务，可先查看可申请的工具集，再申请补充。/);
@@ -157,7 +158,7 @@ import {
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "整理一下这些资料", timestampMs: Date.now() })]
       });
 
-      const system = String(prompt[0]?.content ?? "");
+      const system = readPromptSystemText(prompt);
       assert.equal(hasPromptSection(system, "tool_hints"), true);
       assert.match(system, /网页交互前先 inspect_page/);
       assert.match(system, /查已登记图片、视频、音频或文件时先 asset_list/);
@@ -171,6 +172,130 @@ import {
       assert.match(system, /filesystem_delete；它支持删除文件或递归删除整个目录/);
       assert.doesNotMatch(system, /需要继续操作浏览器或 shell 时/);
       assert.doesNotMatch(system, /shell_run/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("prompt builder can split stable and dynamic system messages for cache experiments", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.patch({
+        speakingStyle: "直接、简洁，优先把任务做完。"
+      });
+      const baseInput = {
+        sessionId: "qqbot:p:owner",
+        persona,
+        relationship: "owner" as const,
+        npcProfiles: [],
+        participantProfiles: [],
+        userProfile: createPromptUserProfile({ userId: "owner", senderName: "Owner" }),
+        currentSessionContext: [{
+          id: "s1",
+          title: "会话事实",
+          content: "这个会话正在做缓存测试",
+          kind: "fact" as const,
+          source: "inferred" as const,
+          createdAt: 1,
+          updatedAt: 1
+        }],
+        currentUserMemories: [{
+          id: "m1",
+          title: "偏好",
+          content: "喜欢短答",
+          kind: "preference" as const,
+          source: "user_explicit" as const,
+          createdAt: 1,
+          updatedAt: 1
+        }],
+        historySummary: "用户之前要求关注缓存命中。",
+        recentMessages: [],
+        batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "整理一下这些资料", timestampMs: Date.now() })]
+      };
+      const prompt = buildPrompt({
+        ...baseInput,
+        visibleToolNames: ["list_available_toolsets", "request_toolset", "asset_list", "asset_send_to_chat"],
+        activeToolsets: [{
+          id: "asset_io",
+          title: "聊天文件",
+          description: "查看和发送已登记聊天文件。",
+          toolNames: ["asset_list", "asset_send_to_chat"]
+        }]
+      });
+      const changedToolPrompt = buildPrompt({
+        ...baseInput,
+        visibleToolNames: ["open_page", "inspect_page", "filesystem_read"],
+        activeToolsets: [{
+          id: "web_research",
+          title: "网页检索与浏览",
+          description: "搜索网页、打开页面、交互与截图。",
+          toolNames: ["open_page", "inspect_page"]
+        }]
+      });
+
+      const stableSystem = String(prompt[0]?.content ?? "");
+      const dynamicSystem = String(prompt[1]?.content ?? "");
+      assert.equal(prompt[0]?.role, "system");
+      assert.equal(prompt[1]?.role, "system");
+      assert.equal(prompt[2]?.role, "user");
+      assert.equal(stableSystem, String(changedToolPrompt[0]?.content ?? ""));
+      assert.equal(hasPromptSection(stableSystem, "global_persona"), true);
+      assert.equal(hasPromptSection(stableSystem, "reply_rules"), false);
+      assert.equal(hasPromptSection(stableSystem, "memory_write_decision"), false);
+      assert.equal(hasPromptSection(stableSystem, "tool_hints"), false);
+      assert.equal(hasPromptSection(stableSystem, "current_user_memories"), false);
+      assert.equal(hasPromptSection(dynamicSystem, "reply_rules"), true);
+      assert.equal(hasPromptSection(dynamicSystem, "memory_write_decision"), true);
+      assert.equal(hasPromptSection(dynamicSystem, "context_rules"), true);
+      assert.equal(hasPromptSection(dynamicSystem, "history_summary"), true);
+      assert.equal(hasPromptSection(dynamicSystem, "current_session_context"), true);
+      assert.equal(hasPromptSection(dynamicSystem, "current_user_memories"), true);
+      assert.equal(hasPromptSection(dynamicSystem, "tool_hints"), true);
+      assert.equal(hasPromptSection(dynamicSystem, "toolset_guidance"), true);
+      assert.ok(dynamicSystem.indexOf("%%llmbot:section name=\"tool_hints\"") > dynamicSystem.indexOf("%%llmbot:section name=\"current_user_memories\""));
+      assert.ok(dynamicSystem.indexOf("%%llmbot:section name=\"toolset_guidance\"") > dynamicSystem.indexOf("%%llmbot:section name=\"tool_hints\""));
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("scheduled prompts keep trigger context out of the stable cache prefix", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.get();
+      const prompt = buildScheduledTaskPrompt({
+        sessionId: "qqbot:p:owner",
+        visibleToolNames: ["list_live_resources", "read_download_resource"],
+        activeToolsets: [{
+          id: "web_research",
+          title: "网页检索与浏览",
+          description: "搜索网页、打开页面、交互与截图。",
+          toolNames: ["list_live_resources", "read_download_resource"]
+        }],
+        trigger: {
+          kind: "scheduled_instruction",
+          jobName: "五分钟提醒",
+          taskInstruction: "五分钟后提醒用户去拿外卖。"
+        },
+        persona,
+        relationship: "owner",
+        npcProfiles: [],
+        participantProfiles: [],
+        userProfile: createPromptUserProfile({ userId: "owner", senderName: "Owner" }),
+        historySummary: null,
+        recentMessages: [],
+        targetContext: { chatType: "private", userId: "owner", senderName: "Owner" }
+      });
+
+      const stableSystem = String(prompt[0]?.content ?? "");
+      const dynamicSystem = String(prompt[1]?.content ?? "");
+      assert.equal(prompt[0]?.role, "system");
+      assert.equal(prompt[1]?.role, "system");
+      assert.equal(hasPromptSection(stableSystem, "global_persona"), true);
+      assert.doesNotMatch(stableSystem, /下面这次执行是内部计划任务/);
+      assert.match(dynamicSystem, /下面这次执行是内部计划任务/);
+      assert.equal(hasPromptSection(dynamicSystem, "tool_hints"), true);
+      assert.ok(dynamicSystem.indexOf("下面这次执行是内部计划任务") < dynamicSystem.indexOf("%%llmbot:section name=\"tool_hints\""));
     } finally {
       await harness.cleanup();
     }
@@ -204,7 +329,7 @@ import {
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "继续处理", timestampMs: Date.now() })]
       });
 
-      const system = String(prompt[0]?.content ?? "");
+      const system = readPromptSystemText(prompt);
       assert.match(system, /download_asset\/capture_screenshot 短下载会直接返回 asset_handle/);
       assert.match(system, /长下载会返回 download resource_id/);
       assert.match(system, /只读最小必要范围；不要把其他会话信息混成当前会话事实/);
@@ -260,7 +385,7 @@ import {
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "以后先说结论", timestampMs: Date.now() })]
       });
 
-      const system = String(prompt[0]?.content ?? "");
+      const system = readPromptSystemText(prompt);
       assert.equal(hasPromptSection(system, "participant_context"), false);
       assert.match(system, /当前长期全局行为规则（最多 4 条）：/);
       assert.match(system, /- 输出规则：先给结论再展开。/);
@@ -334,7 +459,7 @@ import {
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "记住这些", timestampMs: Date.now() })]
       });
 
-      const system = String(prompt[0]?.content ?? "");
+      const system = readPromptSystemText(prompt);
       assert.match(system, /- 输出顺序：先给结论再展开。/);
       assert.doesNotMatch(system, /当前触发用户长期记忆（最多 4 条）：\n- 输出顺序：先给结论再展开。/);
       const boundaryIndex = system.indexOf("交流边界：不要替我做决定。");
@@ -384,8 +509,8 @@ import {
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "告诉我你刚才怎么查的", timestampMs: Date.now() })]
       });
 
-      const normalSystem = String(normalPrompt[0]?.content ?? "");
-      const debugSystem = String(debugPrompt[0]?.content ?? "");
+      const normalSystem = readPromptSystemText(normalPrompt);
+      const debugSystem = readPromptSystemText(debugPrompt);
       assert.match(normalSystem, /不要承认任何工具存在/);
       assert.match(debugSystem, /当前会话已进入 owner 调试模式/);
       assert.match(debugSystem, /包括工具名、调用原因、调用结果、失败原因、系统约束、后端编排和能力边界/);
@@ -410,7 +535,7 @@ import {
         recentMessages: [],
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "你好", timestampMs: Date.now() })]
       });
-      const system = String(prompt[0]?.content ?? "");
+      const system = readPromptSystemText(prompt);
       assert.equal(hasPromptSection(system, "history_summary"), false);
       assert.equal(hasPromptSection(system, "participant_context"), false);
       assert.equal(hasPromptSection(system, "toolset_guidance"), false);
@@ -466,8 +591,8 @@ import {
         ]
       });
 
-      const system = String(prompt[0]?.content ?? "");
-      const batchText = readPromptMessageText(prompt[1]);
+      const system = readPromptSystemText(prompt);
+      const batchText = readPromptLastMessageText(prompt);
       assert.equal(hasPromptSection(system, "global_persona"), true);
       assert.equal(hasPromptSection(system, "memory_write_decision"), false);
       assert.equal(hasPromptSection(system, "global_rules"), false);
@@ -520,7 +645,7 @@ import {
         ]
       });
 
-      const system = String(prompt[0]?.content ?? "");
+      const system = readPromptSystemText(prompt);
       assert.equal(hasPromptSection(system, "current_session_context"), true);
       assert.match(system, /当前会话专属上下文/);
       assert.match(system, /会话用途：此会话专门用于记忆系统二阶段测试/);
@@ -583,8 +708,8 @@ import {
         ]
       });
 
-      const system = String(prompt[0]?.content ?? "");
-      const batchText = readPromptMessageText(prompt[1]);
+      const system = readPromptSystemText(prompt);
+      const batchText = readPromptLastMessageText(prompt);
       assert.match(system, /当前配置流程处理的是 bot 自身的设定草稿/);
       assert.deepEqual(findPromptBlock(batchText, "draft_batch")?.attrs, {
         session: "私聊 owner",
@@ -645,11 +770,11 @@ import {
         ]
       });
 
-      assert.match(String(scenarioPrompt[1]?.content ?? ""), /玩家动作：推开钟楼木门/);
-      assert.match(String(scenarioPrompt[2]?.content ?? ""), /场外指令：别推进太快/);
-      assert.match(String(scenarioPrompt[3]?.content ?? ""), /玩家对白：里面有人吗/);
+      assert.match(String(scenarioPrompt[2]?.content ?? ""), /玩家动作：推开钟楼木门/);
+      assert.match(String(scenarioPrompt[3]?.content ?? ""), /场外指令：别推进太快/);
+      assert.match(String(scenarioPrompt[4]?.content ?? ""), /玩家对白：里面有人吗/);
 
-      const scenarioBatchText = readPromptMessageText(scenarioPrompt[4]);
+      const scenarioBatchText = readPromptLastMessageText(scenarioPrompt);
       assert.match(scenarioBatchText, /玩家动作：我先把提灯举高/);
       assert.match(scenarioBatchText, /场外指令：先不要替我做决定/);
       assert.match(scenarioBatchText, /玩家对白：你是谁/);
@@ -675,9 +800,9 @@ import {
         ]
       });
 
-      assert.match(String(normalPrompt[1]?.content ?? ""), /\*推开钟楼木门/);
-      assert.doesNotMatch(String(normalPrompt[1]?.content ?? ""), /玩家动作：/);
-      const normalBatchText = readPromptMessageText(normalPrompt[2]);
+      assert.match(String(normalPrompt[2]?.content ?? ""), /\*推开钟楼木门/);
+      assert.doesNotMatch(String(normalPrompt[2]?.content ?? ""), /玩家动作：/);
+      const normalBatchText = readPromptLastMessageText(normalPrompt);
       assert.match(normalBatchText, /#先不要替我做决定/);
       assert.doesNotMatch(normalBatchText, /场外指令：/);
     } finally {

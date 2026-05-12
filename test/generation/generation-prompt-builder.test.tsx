@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createGenerationPromptBuilder } from "../../src/app/generation/generationPromptBuilder.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
-import { hasPromptSection } from "../helpers/prompt-fixtures.tsx";
+import { hasPromptSection, readPromptSystemText } from "../helpers/prompt-fixtures.tsx";
 import { buildTag } from "../../src/utils/structuredEnvelope.ts";
 
 type TestPromptHistoryMessage = {
@@ -526,7 +526,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       }]
     });
 
-    const system = String(result.promptMessages[0]?.content ?? "");
+    const system = readPromptSystemText(result.promptMessages);
     assert.match(system, /当前可复用 live_resource/);
     assert.match(system, /res_browser_7 \| browser \| active \| Docs 7 \| 浏览第 7 个页面/);
     assert.match(system, /res_browser_1 \| browser \| active \| Docs 1/);
@@ -1021,7 +1021,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       }]
     });
 
-    const system = String(result.promptMessages[0]?.content ?? "");
+    const system = readPromptSystemText(result.promptMessages);
     assert.equal(hasPromptSection(system, "global_persona"), true);
     assert.match(system, /全局 persona：名字=Ignored Persona；性格底色=；说话方式=/);
     assert.match(system, /全局补充设定：全局特征=助手/);
@@ -1444,7 +1444,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       }
     });
 
-    const system = String(result.promptMessages[0]?.content ?? "");
+    const system = readPromptSystemText(result.promptMessages);
     assert.equal(hasPromptSection(system, "global_persona"), true);
     assert.match(system, /全局 persona：名字=Bot；性格底色=；说话方式=/);
     assert.match(system, /全局补充设定：全局特征=助手/);
@@ -1581,7 +1581,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       }
     });
 
-    const system = String(result.promptMessages[0]?.content ?? "");
+    const system = readPromptSystemText(result.promptMessages);
     assert.equal(hasPromptSection(system, "global_persona"), true);
     assert.match(system, /全局 persona：名字=小满；性格底色=冷静细致；说话方式=短句克制/);
     assert.match(system, /全局补充设定：全局特征=图书管理员；通用偏好=旧书、黑咖啡/);
@@ -2080,10 +2080,10 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     assert.equal(promptReports[0]?.availableSessionFactCount, 0);
     assert.equal(promptReports[0]?.retrievedUserContext.length, 1);
     assert.equal(promptReports[0]?.semanticRetrievalAttempted, true);
-    assert.match(String(result.promptMessages[0]?.content ?? ""), /retrieved_user_context/);
-    assert.match(String(result.promptMessages[0]?.content ?? ""), /用户之前在处理 SQLite 迁移/);
-    assert.match(String(result.promptMessages[0]?.content ?? ""), /用户喜欢 Orama 版上下文检索/);
-    assert.doesNotMatch(String(result.promptMessages[0]?.content ?? ""), /长尾用户记忆不应该固定进入 prompt/);
+    assert.match(readPromptSystemText(result.promptMessages), /retrieved_user_context/);
+    assert.match(readPromptSystemText(result.promptMessages), /用户之前在处理 SQLite 迁移/);
+    assert.match(readPromptSystemText(result.promptMessages), /用户喜欢 Orama 版上下文检索/);
+    assert.doesNotMatch(readPromptSystemText(result.promptMessages), /长尾用户记忆不应该固定进入 prompt/);
   });
 
   test("chat prompt does not depend on context deposition methods", async () => {
@@ -2261,7 +2261,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       }]
     });
 
-    const system = String(result.promptMessages[0]?.content ?? "");
+    const system = readPromptSystemText(result.promptMessages);
     assert.match(system, /current_session_context/);
     assert.match(system, /会话用途：此会话专门用于记忆系统测试/);
   });

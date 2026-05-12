@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getProviderTranscriptProjector } from "../../src/app/generation/providerTranscriptProjector.ts";
+import {
+  getProviderTranscriptProjector,
+  getProviderTranscriptProjectorForRequest
+} from "../../src/app/generation/providerTranscriptProjector.ts";
 import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
 
   const transcript: InternalTranscriptItem[] = [
@@ -34,6 +37,26 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     assert.equal(projection.replayMessages[0]?.role, "assistant");
     assert.equal(projection.replayMessages[1]?.role, "tool");
     assert.deepEqual(projection.lateSystemMessages, []);
+  });
+
+  test("deepseek and lmstudio projectors use OpenAI-compatible tool replay", () => {
+    for (const provider of ["deepseek", "lmstudio"]) {
+      const projection = getProviderTranscriptProjector(provider).project({ transcript });
+      assert.equal(projection.replayMessages.length, 2);
+      assert.equal(projection.replayMessages[0]?.role, "assistant");
+      assert.equal(projection.replayMessages[1]?.role, "tool");
+      assert.deepEqual(projection.lateSystemMessages, []);
+    }
+  });
+
+  test("lmstudio native-compatible request summarizes tool transcript instead of replaying it", () => {
+    const projection = getProviderTranscriptProjectorForRequest("lmstudio", { summaryOnly: true }).project({ transcript });
+    assert.equal(projection.replayMessages.length, 0);
+    assert.equal(projection.replayCoversVisibleHistory, false);
+    assert.equal(projection.lateSystemMessages.length, 1);
+    assert.match(projection.lateSystemMessages[0] ?? "", /最近工具结果摘要/);
+    assert.match(projection.lateSystemMessages[0] ?? "", /调用工具：terminal_run/);
+    assert.match(projection.lateSystemMessages[0] ?? "", /terminal_run/);
   });
 
   test("dashscope projector replays visible history with assistant reasoning when preserveThinking is enabled", () => {
@@ -285,11 +308,14 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     assert.doesNotMatch(String(toolMessage?.content ?? ""), /RAW_UNSAFE_LITERAL/);
   });
 
-  test("gemini projector silently skips tool calls without google replay metadata", () => {
+  test("gemini projector summarizes tool calls without google replay metadata", () => {
     const projection = getProviderTranscriptProjector("google").project({ transcript });
     assert.equal(projection.replayMessages.length, 0);
     assert.equal(projection.replayCoversVisibleHistory, false);
-    assert.deepEqual(projection.lateSystemMessages, []);
+    assert.equal(projection.lateSystemMessages.length, 1);
+    assert.match(projection.lateSystemMessages[0] ?? "", /最近工具结果摘要/);
+    assert.match(projection.lateSystemMessages[0] ?? "", /调用工具：terminal_run/);
+    assert.match(projection.lateSystemMessages[0] ?? "", /terminal_run/);
   });
 
   test("gemini projector drops leading replayable tool chains without a preceding user turn", () => {
@@ -539,7 +565,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     assert.equal(toolMessages[6]?.content, JSON.stringify({ stdout: "RAW-7" }));
   });
 
-  test("gemini projector silently skips assistant googleParts without thought signatures", () => {
+  test("gemini projector summarizes assistant googleParts without thought signatures", () => {
     const projection = getProviderTranscriptProjector("google").project({
       transcript: [{
         kind: "assistant_tool_call",
@@ -567,7 +593,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     });
 
     assert.equal(projection.replayMessages.length, 0);
-    assert.deepEqual(projection.lateSystemMessages, []);
+    assert.match(projection.lateSystemMessages[0] ?? "", /调用工具：get_persona/);
   });
 
   test("gemini projector preserves visible-message chronology for replayable transcript", () => {
@@ -646,7 +672,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     assert.deepEqual(projection.lateSystemMessages, []);
   });
 
-  test("gemini projector silently skips foreign-provider tool calls while preserving visible messages", () => {
+  test("gemini projector summarizes foreign-provider tool calls while preserving visible messages", () => {
     const projection = getProviderTranscriptProjector("google").project({
       transcript: [
         {
@@ -709,7 +735,8 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
       ["user", "assistant"]
     );
     assert.equal(projection.replayCoversVisibleHistory, true);
-    assert.deepEqual(projection.lateSystemMessages, []);
+    assert.match(projection.lateSystemMessages[0] ?? "", /调用工具：lookup_weather/);
+    assert.match(projection.lateSystemMessages[0] ?? "", /lookup_weather/);
   });
 
   test("gemini projector skips tool calls that appear right after an assistant visible message", () => {
