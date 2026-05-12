@@ -322,9 +322,18 @@ const localFilesConfigSchema = s.object({
 const chatFilesConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(true),
   root: s.string().trim().nonempty().title("根目录").default("chat-files"),
-  maxUploadBytes: s.number().int().positive().title("最大上传字节数").default(32 * 1024 * 1024),
-  gcGracePeriodMs: s.number().int().min(0).title("回收宽限毫秒").default(7 * 24 * 60 * 60 * 1000)
+  maxUploadBytes: s.number().int().positive().title("最大上传字节数").default(32 * 1024 * 1024)
 }).title("聊天文件").describe("管理聊天上传文件的存储与清理。").default(emptyObject);
+
+const assetsConfigSchema = s.object({
+  gc: s.object({
+    enabled: s.boolean().title("启用").default(true),
+    ttlMs: s.number().int().positive().title("无引用资产 TTL 毫秒").default(30 * 24 * 60 * 60 * 1000),
+    orphanFileTtlMs: s.number().int().min(0).title("孤儿文件 TTL 毫秒").default(7 * 24 * 60 * 60 * 1000),
+    maxTotalBytes: s.union([s.number().int().positive(), s.literal(null)]).title("最大总字节数").default(null),
+    targetTotalBytes: s.union([s.number().int().positive(), s.literal(null)]).title("目标总字节数").default(null)
+  }).title("回收").default(emptyObject)
+}).title("资产").describe("管理聊天文件、音频、生成任务等资产的生命周期。").default(emptyObject);
 
 const comfyTemplateParameterBindingsSchema = s.object({
   positivePromptPath: s.string().trim().nonempty().title("正向提示词路径"),
@@ -587,6 +596,7 @@ export const fileConfigSchema = s.object({
   shell: shellConfigSchema,
   localFiles: localFilesConfigSchema,
   chatFiles: chatFilesConfigSchema,
+  assets: assetsConfigSchema,
   comfy: comfyConfigSchema,
   contentSafety: contentSafetyConfigSchema,
   search: searchConfigSchema,
@@ -630,6 +640,7 @@ export type SchedulerConfig = Infer<typeof schedulerConfigSchema>;
 export type ShellConfig = Infer<typeof shellConfigSchema>;
 export type LocalFilesConfig = Infer<typeof localFilesConfigSchema>;
 export type ChatFilesConfig = Infer<typeof chatFilesConfigSchema>;
+export type AssetsConfig = Infer<typeof assetsConfigSchema>;
 export type ComfyConfig = Infer<typeof comfyConfigSchema>;
 export type ComfyTemplateConfig = Infer<typeof comfyTemplateConfigSchema>;
 export type SearchConfig = Infer<typeof searchConfigSchema>;

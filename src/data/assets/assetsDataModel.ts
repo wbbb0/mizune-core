@@ -145,11 +145,41 @@ export const contentSafetyAuditsDataDomain = defineDataDomain({
   }
 });
 
+export const assetLifecycleDataDomain = defineDataDomain({
+  database: "assets",
+  tableGroup: "assets.lifecycle",
+  schemaVersion: 1,
+  resetPolicy: "block_reset",
+  tables: {
+    asset_session_refs: defineTable({
+      table: "asset_session_refs",
+      primaryKey: ["assetKind", "assetId", "sessionId", "refKind"],
+      columns: [
+        textColumn("assetKind", { title: "资产类型", role: "badge", primary: true, storageName: "asset_kind", notNull: true, listWidth: "sm" }),
+        textColumn("assetId", { title: "资产 ID", role: "id", primary: true, storageName: "asset_id", notNull: true, listWidth: "minmax(12rem, 1fr)" }),
+        textColumn("sessionId", { title: "会话", role: "subtitle", primary: true, storageName: "session_id", notNull: true, listWidth: "minmax(12rem, 1fr)" }),
+        textColumn("refKind", { title: "引用类型", role: "badge", primary: true, storageName: "ref_kind", notNull: true, listWidth: "sm" }),
+        integerColumn("createdAtMs", { title: "创建时间", role: "time", storageName: "created_at_ms", notNull: true }),
+        integerColumn("lastSeenAtMs", { title: "最近发现", role: "time", primary: true, storageName: "last_seen_at_ms", notNull: true }),
+        integerColumn("expiresAtMs", { title: "过期时间", role: "time", storageName: "expires_at_ms", nullable: true })
+      ],
+      indexes: [
+        { name: "idx_asset_session_refs_session", columns: ["sessionId", "assetKind", "assetId"] },
+        { name: "idx_asset_session_refs_asset", columns: ["assetKind", "assetId", "sessionId"] },
+        { name: "idx_asset_session_refs_expires", columns: ["expiresAtMs", "assetKind", "assetId"] },
+        { name: "idx_asset_session_refs_last_seen", columns: ["lastSeenAtMs", "sessionId", "assetKind", "assetId", "refKind"] }
+      ],
+      defaultSort: [{ column: "lastSeenAtMs", direction: "desc" }]
+    })
+  }
+});
+
 export const audioFilesTableModel = requireDomainTable(audioFilesDataDomain, "audio_files");
 export const chatFilesTableModel = requireDomainTable(chatFilesDataDomain, "chat_files");
 export const comfyTasksTableModel = requireDomainTable(comfyTasksDataDomain, "comfy_tasks");
 export const comfyTaskResultFilesTableModel = requireDomainTable(comfyTasksDataDomain, "comfy_task_result_files");
 export const contentSafetyAuditsTableModel = requireDomainTable(contentSafetyAuditsDataDomain, "content_safety_audits");
+export const assetSessionRefsTableModel = requireDomainTable(assetLifecycleDataDomain, "asset_session_refs");
 
 function requireDomainTable(domain: DataDomainModel, key: string): DataTableModel {
   const table = domain.tables[key];

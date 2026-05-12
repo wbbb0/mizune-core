@@ -45,7 +45,7 @@ test("initializeBootstrapState initializes state database before resetting runti
       audioStore: { async init() {} } as any,
       localFileService: { async init() {} } as any,
       chatFileStore: { async init() {} } as any,
-      chatMessageFileGcService: { async sweep() { return { deletedFileIds: [] }; } } as any,
+      assetLifecycleService: { async init() {}, async sweep() {}, async onSessionDeleted() {} } as any,
       mediaVisionService: {} as any,
       mediaCaptionService: {} as any,
       comfyTaskStore: { async init() {} } as any,

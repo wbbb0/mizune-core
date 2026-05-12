@@ -373,6 +373,36 @@ export class ChatFileStore {
     return { removed, kept };
   }
 
+  async cleanupOrphanMediaFiles(input: { orphanTtlMs: number; now?: number }): Promise<{ removed: number; kept: number }> {
+    const now = input.now ?? Date.now();
+    const expected = new Set((await this.listFiles()).map((file) => file.fileRef));
+    let entries: string[];
+    try {
+      entries = await readdir(this.mediaDir);
+    } catch {
+      return { removed: 0, kept: 0 };
+    }
+    let removed = 0;
+    let kept = 0;
+    for (const entry of entries) {
+      if (expected.has(entry)) {
+        kept += 1;
+        continue;
+      }
+      const filePath = join(this.mediaDir, entry);
+      const fileStat = await stat(filePath).catch(() => null);
+      if (!fileStat || now - fileStat.mtimeMs < input.orphanTtlMs) {
+        kept += 1;
+        continue;
+      }
+      await rm(filePath, { force: true }).catch((error: unknown) => {
+        this.logger.warn({ entry, error }, "chat_file_orphan_media_cleanup_failed");
+      });
+      removed += 1;
+    }
+    return { removed, kept };
+  }
+
   async deleteFile(fileId: string): Promise<boolean> {
     const file = await this.getFile(fileId);
     if (!file) {
