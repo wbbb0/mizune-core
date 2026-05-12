@@ -1,21 +1,21 @@
-import { readFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
+import { dirname } from "node:path";
 import type { ChatFileOrigin, ChatFileRecord } from "#services/workspace/types.ts";
 import type { OneBotMessageSegment } from "#services/onebot/types.ts";
-import {
-  getSessionChatType,
-  parseChatSessionIdentity
-} from "#conversation/session/sessionIdentity.ts";
+import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 import { inferSendableFileKind, resolveSendablePath } from "#services/workspace/sendablePath.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
 import {
+  assetInternalPathUsageHints,
   buildChatFileHandleResultFromContext,
   buildLocalFileHandleResultFromContext
 } from "../core/fileHandle.ts";
 import { nextAction, withNextActions, type ToolNextAction } from "../core/toolNextActions.ts";
 import {
   chatFileListPolicy,
+  assetLocalPathPolicy,
   fileSendPolicy,
   localFileListPolicy,
   localFileMutationPolicy,
@@ -47,20 +47,6 @@ function enqueueToolSend(
     pacing: "humanized",
     send
   });
-}
-
-function buildAssistantHistoryTarget(
-  context: Parameters<NonNullable<typeof localFileToolHandlers.filesystem_send_to_chat>>[2]
-): {
-  chatType: "private" | "group";
-  userId: string;
-  senderName: string;
-} {
-  return {
-    chatType: getSessionChatType(context.lastMessage.sessionId) === "group" ? "group" : "private",
-    userId: context.lastMessage.userId,
-    senderName: context.lastMessage.senderName
-  };
 }
 
 export const localFileToolDescriptors: ToolDescriptor[] = [
@@ -169,6 +155,26 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
     definition: {
       type: "function",
       function: {
+        name: "filesystem_copy",
+        description: "复制本地文件。当前只支持文件，不支持目录；目录发送/复制后续需要先定义打包或递归语义。",
+        parameters: {
+          type: "object",
+          properties: {
+            from_path: { type: "string" },
+            to_path: { type: "string" }
+          },
+          required: ["from_path", "to_path"],
+          additionalProperties: false
+        }
+      }
+    },
+    isEnabled: isLocalFileToolEnabled,
+    resultObservation: localFileMutationPolicy()
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
         name: "filesystem_delete",
         description: "删除本地文件或整个目录；目录会递归删除。path 相对本地文件工作区根目录，也可传允许范围内的绝对路径。",
         parameters: {
@@ -226,12 +232,11 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "filesystem_send_to_chat",
-        description: "发送本地文件到当前聊天。图片（jpg/png/gif/webp 等）直接以图片形式发送，此时不能附 text；其他格式以文本摘要形式发送，可用 text 附加说明。",
+        description: "发送本地文件到当前聊天。图片按图片发送；其他文件需要文件消息能力。不能附带 text。",
         parameters: {
           type: "object",
           properties: {
-            path: { type: "string" },
-            text: { type: "string" }
+            path: { type: "string" }
           },
           required: ["path"],
           additionalProperties: false
@@ -272,13 +277,12 @@ export const chatFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "asset_send_to_chat",
-        description: "发送已登记 asset 到当前聊天。优先用 asset_ref；不知道准确引用时先 asset_list query=... 查找。图片/动图直接发送，不能附 text；其他文件以文本摘要发送，可附 text。",
+        description: "发送已登记 asset 到当前聊天。优先用 asset_ref；其他文件需要文件消息能力。不能附带 text。",
         parameters: {
           type: "object",
           properties: {
             asset_ref: { type: "string" },
-            asset_id: { type: "string" },
-            text: { type: "string" }
+            asset_id: { type: "string" }
           },
           additionalProperties: false
         }
@@ -286,6 +290,47 @@ export const chatFileToolDescriptors: ToolDescriptor[] = [
     },
     isEnabled: isChatFileToolEnabled,
     resultObservation: fileSendPolicy()
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "asset_local_path",
+        description: "获取已登记 asset 的本机存储路径。需要复制到本地目录时用 asset_export_to_filesystem。",
+        parameters: {
+          type: "object",
+          properties: {
+            asset_ref: { type: "string" },
+            asset_id: { type: "string" },
+            absolute: { type: "boolean" }
+          },
+          additionalProperties: false
+        }
+      }
+    },
+    isEnabled: (config) => config.chatFiles.enabled && config.localFiles.enabled,
+    resultObservation: assetLocalPathPolicy()
+  },
+  {
+    definition: {
+      type: "function",
+      function: {
+        name: "asset_export_to_filesystem",
+        description: "复制已登记 asset 到本地文件路径或目录，不改原 asset。",
+        parameters: {
+          type: "object",
+          properties: {
+            asset_ref: { type: "string" },
+            asset_id: { type: "string" },
+            to_path: { type: "string" }
+          },
+          required: ["to_path"],
+          additionalProperties: false
+        }
+      }
+    },
+    isEnabled: (config) => config.chatFiles.enabled && config.localFiles.enabled,
+    resultObservation: localFileMutationPolicy()
   }
 ];
 
@@ -345,6 +390,15 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ error: "from_path and to_path are required" });
     }
     return JSON.stringify(await context.localFileService.moveItem(fromPath, toPath));
+  },
+
+  async filesystem_copy(_toolCall, args, context) {
+    const fromPath = getStringArg(args, "from_path");
+    const toPath = getStringArg(args, "to_path");
+    if (!fromPath || !toPath) {
+      return JSON.stringify({ error: "from_path and to_path are required" });
+    }
+    return JSON.stringify(await context.localFileService.copyItem(fromPath, toPath));
   },
 
   async filesystem_delete(_toolCall, args, context) {
@@ -444,6 +498,66 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ error: await buildUnknownAssetError(context, selector) });
     }
     return sendChatFileToChat(context, file, getStringArg(args, "text"));
+  },
+
+  async asset_local_path(_toolCall, args, context) {
+    const selector = getStringArg(args, "asset_ref") || getStringArg(args, "asset_id");
+    if (!selector) {
+      return JSON.stringify({ error: "asset_ref or asset_id is required" });
+    }
+    const file = await resolveChatFile(context, selector);
+    if (!file) {
+      return JSON.stringify({ error: await buildUnknownAssetError(context, selector) });
+    }
+    const absolutePath = await context.chatFileStore.resolveAbsolutePath(file.fileId);
+    const absolute = Boolean(typeof args === "object" && args && (args as Record<string, unknown>).absolute);
+    return JSON.stringify({
+      ok: true,
+      asset_ref: file.fileRef,
+      file_id: file.fileId,
+      path: absolute ? absolutePath : file.chatFilePath,
+      path_mode: absolute ? "absolute" : "asset_store_relative",
+      path_role: "asset_store_internal_path",
+      source_name: file.sourceName,
+      mime_type: file.mimeType,
+      size_bytes: file.sizeBytes,
+      usage_hints: assetInternalPathUsageHints()
+    });
+  },
+
+  async asset_export_to_filesystem(_toolCall, args, context) {
+    const selector = getStringArg(args, "asset_ref") || getStringArg(args, "asset_id");
+    const toPath = getStringArg(args, "to_path");
+    if (!selector || !toPath) {
+      return JSON.stringify({ error: "asset_ref or asset_id and to_path are required" });
+    }
+    const file = await resolveChatFile(context, selector);
+    if (!file) {
+      return JSON.stringify({ error: await buildUnknownAssetError(context, selector) });
+    }
+    const sourceAbsolutePath = await context.chatFileStore.resolveAbsolutePath(file.fileId);
+    const preliminaryDestination = context.localFileService.resolvePath(toPath);
+    const targetIsExistingDirectory = await stat(preliminaryDestination.absolutePath)
+      .then((item) => item.isDirectory())
+      .catch(() => false);
+    const destinationInput = targetIsExistingDirectory || toPath.endsWith("/") || toPath.endsWith("\\")
+      ? `${toPath.replace(/[\\/]+$/, "")}/${sanitizeExportFileName(file)}`
+      : toPath;
+    const destination = context.localFileService.resolvePath(destinationInput);
+    await mkdir(dirname(destination.absolutePath), { recursive: true });
+    await copyFile(sourceAbsolutePath, destination.absolutePath);
+    const copiedStat = await stat(destination.absolutePath);
+    return JSON.stringify({
+      ok: true,
+      asset_ref: file.fileRef,
+      file_id: file.fileId,
+      from_path: file.chatFilePath,
+      from_path_role: "asset_store_internal_path",
+      to_path: destination.relativePath,
+      to_path_role: "local_filesystem_path",
+      usage_hints: assetInternalPathUsageHints(),
+      size_bytes: copiedStat.size
+    });
   }
 };
 
@@ -478,6 +592,18 @@ function chatFileMatchesQuery(file: ChatFileRecord, normalizedQuery: string): bo
   return haystack.includes(normalizedQuery);
 }
 
+function sanitizeExportFileName(file: ChatFileRecord): string {
+  const candidates = [file.sourceName, file.fileRef, file.fileId];
+  for (const candidate of candidates) {
+    const normalized = String(candidate ?? "").trim().replaceAll("\\", "/");
+    const name = normalized.split("/").filter(Boolean).at(-1)?.trim();
+    if (name && name !== "." && name !== "..") {
+      return name;
+    }
+  }
+  return "asset-file";
+}
+
 function getRawNumberArg(args: unknown, key: string): number | undefined {
   if (typeof args !== "object" || !args || !(key in args)) {
     return undefined;
@@ -499,54 +625,34 @@ async function sendResolvedPathToChat(
   resolvedPath: ReturnType<typeof resolveSendablePath>,
   text: string | null
 ) {
+  const itemStat = await stat(resolvedPath.absolutePath);
+  if (itemStat.isDirectory()) {
+    // TODO: Define directory packaging before allowing filesystem_send_to_chat to send directories.
+    return JSON.stringify({ error: "filesystem_send_to_chat does not support directories yet" });
+  }
   const kind = inferSendableFileKind(resolvedPath.sourcePath);
+  if (text) {
+    return JSON.stringify({ error: "filesystem_send_to_chat 发送文件时不能附带 text；如需说明请另外发送文本" });
+  }
   if (kind !== "image" && kind !== "animated_image") {
-    const summary = text || (resolvedPath.pathMode === "absolute"
-      ? `文件已发送：${resolvedPath.sourcePath}`
-      : `本地文件已发送：${resolvedPath.sourcePath}`);
-    const target = context.replyDelivery === "web" ? null : parseSessionTarget(context.lastMessage.sessionId);
-    if (context.replyDelivery !== "web" && !target) {
-      return JSON.stringify({ error: `unsupported session target: ${context.lastMessage.sessionId}` });
-    }
-    enqueueToolSend(context, summary, async () => {
-      if (context.replyDelivery === "web") {
-        await context.committedTextSink?.commitText(summary);
-        context.sessionManager.appendAssistantHistory(context.lastMessage.sessionId, {
-          ...buildAssistantHistoryTarget(context),
-          text: summary
-        });
-        return;
-      }
-      if (!target) {
-        throw new Error(`unsupported session target: ${context.lastMessage.sessionId}`);
-      }
-      const payload = await context.oneBotClient.sendText({ ...target, text: summary });
-      const messageId = recordDeliveredMessage(context, summary, payload.data?.message_id);
-      context.sessionManager.appendAssistantHistory(context.lastMessage.sessionId, {
-        ...buildAssistantHistoryTarget(context),
-        text: summary,
-        ...(messageId != null ? {
-          deliveryRef: {
-            platform: "onebot" as const,
-            messageId
-          }
-        } : {})
-      });
-    });
-    return {
-      content: JSON.stringify({
-        ok: true,
+    return sendGenericFileToChat(context, {
+      absolutePath: resolvedPath.absolutePath,
+      previewText: resolvedPath.sourcePath,
+      sourceName: resolvedPath.sourceName,
+      fileId: null,
+      fileRef: null,
+      chatFilePath: resolvedPath.chatFilePath,
+      sourcePath: resolvedPath.sourcePath,
+      mimeType: null,
+      sizeBytes: itemStat.size,
+      toolName: "filesystem_send_to_chat",
+      outputExtras: {
         path: resolvedPath.sourcePath,
-        path_mode: resolvedPath.pathMode,
-        deliveredAs: "text_fallback",
-        queued: true
-      })
-    };
+        path_mode: resolvedPath.pathMode
+      }
+    });
   }
 
-  if (text) {
-    return JSON.stringify({ error: "filesystem_send_to_chat 发送图片时不能附带 text" });
-  }
   return sendImageBytesToChat(context, {
     absolutePath: resolvedPath.absolutePath,
     previewText: resolvedPath.sourcePath,
@@ -567,51 +673,28 @@ async function sendChatFileToChat(
   file: ChatFileRecord,
   text: string | null
 ) {
+  if (text) {
+    return JSON.stringify({ error: "asset_send_to_chat 发送文件时不能附带 text；如需说明请另外发送文本" });
+  }
   if (file.kind !== "image" && file.kind !== "animated_image") {
-    const summary = text || `asset 已发送：${file.fileRef}；asset_id=${file.fileId}`;
-    const target = context.replyDelivery === "web" ? null : parseSessionTarget(context.lastMessage.sessionId);
-    if (context.replyDelivery !== "web" && !target) {
-      return JSON.stringify({ error: `unsupported session target: ${context.lastMessage.sessionId}` });
-    }
-    enqueueToolSend(context, summary, async () => {
-      if (context.replyDelivery === "web") {
-        await context.committedTextSink?.commitText(summary);
-        context.sessionManager.appendAssistantHistory(context.lastMessage.sessionId, {
-          ...buildAssistantHistoryTarget(context),
-          text: summary
-        });
-        return;
-      }
-      if (!target) {
-        throw new Error(`unsupported session target: ${context.lastMessage.sessionId}`);
-      }
-      const payload = await context.oneBotClient.sendText({ ...target, text: summary });
-      const messageId = recordDeliveredMessage(context, summary, payload.data?.message_id);
-      context.sessionManager.appendAssistantHistory(context.lastMessage.sessionId, {
-        ...buildAssistantHistoryTarget(context),
-        text: summary,
-        ...(messageId != null ? {
-          deliveryRef: {
-            platform: "onebot" as const,
-            messageId
-          }
-        } : {})
-      });
-    });
-    return {
-      content: JSON.stringify({
-        ok: true,
+    return sendGenericFileToChat(context, {
+      absolutePath: await context.chatFileStore.resolveAbsolutePath(file.fileId),
+      previewText: file.fileRef,
+      sourceName: file.sourceName,
+      fileId: file.fileId,
+      fileRef: file.fileRef,
+      chatFilePath: file.chatFilePath,
+      sourcePath: null,
+      mimeType: file.mimeType,
+      sizeBytes: file.sizeBytes,
+      toolName: "asset_send_to_chat",
+      outputExtras: {
         asset_ref: file.fileRef,
-        file_id: file.fileId,
-        deliveredAs: "text_fallback",
-        queued: true
-      })
-    };
+        file_id: file.fileId
+      }
+    });
   }
 
-  if (text) {
-    return JSON.stringify({ error: "asset_send_to_chat 发送图片时不能附带 text" });
-  }
   return sendImageBytesToChat(context, {
     absolutePath: await context.chatFileStore.resolveAbsolutePath(file.fileId),
     previewText: file.fileRef,
@@ -623,6 +706,95 @@ async function sendChatFileToChat(
     toolName: "asset_send_to_chat",
     outputExtras: {}
   });
+}
+
+async function sendGenericFileToChat(
+  context: Parameters<NonNullable<typeof localFileToolHandlers.filesystem_send_to_chat>>[2],
+  input: {
+    absolutePath: string;
+    previewText: string;
+    sourceName: string | null;
+    fileId: string | null;
+    fileRef: string | null;
+    chatFilePath: string | null;
+    sourcePath: string | null;
+    mimeType: string | null;
+    sizeBytes: number | null;
+    toolName: "filesystem_send_to_chat" | "asset_send_to_chat";
+    outputExtras: Record<string, string | number>;
+  }
+) {
+  const target = context.replyDelivery === "web" ? null : parseSessionTarget(context.lastMessage.sessionId);
+  if (context.replyDelivery !== "web" && !target) {
+    return JSON.stringify({ error: `unsupported session target: ${context.lastMessage.sessionId}` });
+  }
+  if (context.replyDelivery !== "web" && context.config.onebot.provider !== "napcat") {
+    return JSON.stringify({
+      error: "filesystem/asset file sending requires onebot.provider=napcat for non-image files",
+      deliveredAs: "unsupported"
+    });
+  }
+
+  enqueueToolSend(context, input.previewText, async () => {
+    if (context.replyDelivery === "web") {
+      context.sessionManager.appendInternalTranscript(context.lastMessage.sessionId, {
+        kind: "outbound_media_message",
+        llmVisible: false,
+        role: "assistant",
+        delivery: "web",
+        mediaKind: "file",
+        fileId: input.fileId,
+        fileRef: input.fileRef,
+        sourceName: input.sourceName,
+        chatFilePath: input.chatFilePath,
+        sourcePath: input.sourcePath,
+        mimeType: input.mimeType,
+        sizeBytes: input.sizeBytes,
+        messageId: null,
+        toolName: input.toolName,
+        captionText: null,
+        timestampMs: Date.now()
+      });
+      return;
+    }
+
+    if (!target) {
+      throw new Error(`unsupported session target: ${context.lastMessage.sessionId}`);
+    }
+    const payload = await context.oneBotClient.sendFile({
+      ...target,
+      filePath: input.absolutePath,
+      name: input.sourceName
+    });
+    const messageId = recordDeliveredMessage(context, input.previewText, payload.data?.message_id);
+    context.sessionManager.appendInternalTranscript(context.lastMessage.sessionId, {
+      kind: "outbound_media_message",
+      llmVisible: false,
+      role: "assistant",
+      delivery: "onebot",
+      mediaKind: "file",
+      fileId: input.fileId,
+      fileRef: input.fileRef,
+      sourceName: input.sourceName,
+      chatFilePath: input.chatFilePath,
+      sourcePath: input.sourcePath,
+      mimeType: input.mimeType,
+      sizeBytes: input.sizeBytes,
+      messageId,
+      toolName: input.toolName,
+      captionText: null,
+      timestampMs: Date.now()
+    });
+  });
+
+  return {
+    content: JSON.stringify({
+      ok: true,
+      ...input.outputExtras,
+      deliveredAs: "file",
+      queued: true
+    })
+  };
 }
 
 async function sendImageBytesToChat(

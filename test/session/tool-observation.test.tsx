@@ -13,6 +13,7 @@ import {
   browserDownloadPolicy,
   browserPagePolicy,
   browserScreenshotPolicy,
+  assetLocalPathPolicy,
   chatFileListPolicy,
   directMediaViewPolicy,
   debugDumpPolicy,
@@ -178,6 +179,31 @@ test("local file search and mutations replay compact operational summaries", () 
   assert.match(mkdir.summary, /创建目录 tmp\/new-dir/);
   assert.doesNotMatch(mkdir.summary, /创建目录本地文件/);
   assert.match(mkdir.replayContent, /filesystem_list path=tmp\/new-dir/);
+
+  const exportedAsset = buildToolObservation({
+    toolName: "asset_export_to_filesystem",
+    toolCallId: "call_asset_export_1",
+    content: JSON.stringify({
+      ok: true,
+      asset_ref: "report.pdf",
+      file_id: "file_report_1",
+      from_path: "chat-files/media/report.pdf",
+      from_path_role: "asset_store_internal_path",
+      to_path: "exports/report.pdf",
+      to_path_role: "local_filesystem_path",
+      usage_hints: [{
+        code: "asset_internal_path",
+        message: "chat_file_path 是 asset store 内部路径；需要副本时用 asset_export_to_filesystem。"
+      }],
+      size_bytes: 10
+    }),
+    args: { asset_ref: "report.pdf", to_path: "exports/report.pdf" },
+    policy: localFileMutationPolicy()
+  });
+  const exportedReplay = JSON.parse(exportedAsset.replayContent);
+  assert.equal(exportedReplay.data.fromPathRole, "asset_store_internal_path");
+  assert.equal(exportedReplay.data.toPathRole, "local_filesystem_path");
+  assert.equal(exportedReplay.data.usageHints[0].code, "asset_internal_path");
 });
 
 test("asset list and send policies keep stable handles without raw records", () => {
@@ -269,6 +295,39 @@ test("asset list and send policies keep stable handles without raw records", () 
   assert.equal(send.resource?.kind, "asset");
   assert.equal(send.resource?.id, "img_0.png");
   assert.match(send.replayContent, /asset_send_to_chat asset_ref/);
+});
+
+test("asset local path observation preserves internal path hints", () => {
+  const observation = buildToolObservation({
+    toolName: "asset_local_path",
+    toolCallId: "call_asset_local_path",
+    content: JSON.stringify({
+      ok: true,
+      asset_ref: "report.pdf",
+      file_id: "file_report_1",
+      path: "chat-files/media/report.pdf",
+      path_mode: "asset_store_relative",
+      path_role: "asset_store_internal_path",
+      source_name: "report.pdf",
+      mime_type: "application/pdf",
+      size_bytes: 10,
+      usage_hints: [{
+        code: "asset_internal_path",
+        message: "chat_file_path 是 asset store 内部路径；需要副本时用 asset_export_to_filesystem。"
+      }]
+    }),
+    args: { asset_ref: "report.pdf" },
+    policy: assetLocalPathPolicy()
+  });
+
+  const replay = JSON.parse(observation.replayContent);
+  assert.equal(observation.retention, "summary");
+  assert.equal(observation.resource?.kind, "asset");
+  assert.equal(observation.resource?.id, "report.pdf");
+  assert.equal(replay.data.pathMode, "asset_store_relative");
+  assert.equal(replay.data.pathRole, "asset_store_internal_path");
+  assert.equal(replay.data.usageHints[0].code, "asset_internal_path");
+  assert.doesNotMatch(observation.summary, /目录 .* 返回 0 项/);
 });
 
 test("media view observation keeps compact handles and next actions", () => {
