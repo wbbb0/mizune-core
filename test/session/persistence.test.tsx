@@ -323,6 +323,56 @@ test("session persistence round-trips asset attachments in pending messages and 
   });
 });
 
+test("session persistence handles transcript item index shifts", async () => {
+  await withDataDir("llm-bot-session-persist-transcript-index-shift-test", async (dataDir: string) => {
+    const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
+    await persistence.init();
+
+    const baseSession: PersistedSessionState = {
+      id: "web:transcript-index-shift",
+      type: "private",
+      source: "web",
+      modeId: "assistant",
+      operationMode: { kind: "normal" },
+      participantRef: { kind: "user", id: "owner" },
+      title: "Transcript Index Shift",
+      titleSource: "manual",
+      replyDelivery: "web",
+      pendingMessages: [],
+      pendingTranscriptGroupId: null,
+      activeTranscriptGroupId: null,
+      historySummary: null,
+      internalTranscript: [
+        testUserTranscriptItem("item-a", "first", 1),
+        testUserTranscriptItem("item-b", "second", 2)
+      ],
+      debugMarkers: [],
+      lastLlmUsage: null,
+      sentMessages: [],
+      lastActiveAt: 2,
+      lastMessageAt: 2,
+      latestGapMs: null,
+      smoothedGapMs: null
+    };
+    await persistence.save(baseSession);
+
+    const shiftedSession: PersistedSessionState = {
+      ...baseSession,
+      internalTranscript: [
+        testUserTranscriptItem("item-new", "new first", 3),
+        testUserTranscriptItem("item-a", "first", 1),
+        testUserTranscriptItem("item-b", "second", 2)
+      ],
+      lastActiveAt: 3,
+      lastMessageAt: 3
+    };
+
+    await persistence.save(shiftedSession);
+
+    assert.deepEqual(await persistence.loadAll(), [shiftedSession]);
+  });
+});
+
 test("restoreSessionState normalizes transcript metadata for loaded sessions", () => {
   const restored = restoreSessionState({
     id: "web:normalize-transcript",
@@ -363,6 +413,31 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
   assert.ok(item.groupId);
   assert.equal(item.runtimeExcluded, false);
 });
+
+function testUserTranscriptItem(id: string, text: string, timestampMs: number): PersistedSessionState["internalTranscript"][number] {
+  return {
+    id,
+    groupId: id,
+    kind: "user_message",
+    role: "user",
+    llmVisible: true,
+    chatType: "private",
+    userId: "owner",
+    senderName: "Owner",
+    text,
+    imageIds: [],
+    emojiIds: [],
+    attachments: [],
+    messageFiles: [],
+    audioCount: 0,
+    forwardIds: [],
+    replyMessageId: null,
+    mentionUserIds: [],
+    mentionedAll: false,
+    mentionedSelf: false,
+    timestampMs
+  };
+}
 
   test("session persistence round-trips current session shape", async () => {
     await withDataDir("llm-bot-session-persist-current-test", async (dataDir: string) => {
