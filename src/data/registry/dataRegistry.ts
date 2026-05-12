@@ -271,7 +271,9 @@ function toSummary(definition: DataResourceDefinition): DataResourceSummary {
     ...(definition.rowSchemaMeta !== undefined ? { rowSchemaMeta: definition.rowSchemaMeta } : {}),
     ...(definition.uiTree !== undefined ? { uiTree: definition.uiTree } : {}),
     ...(definition.rowUiTree !== undefined ? { rowUiTree: definition.rowUiTree } : {}),
+    ...(definition.model !== undefined ? { model: definition.model } : {}),
     ...(definition.rowIdentity !== undefined ? { rowIdentity: definition.rowIdentity } : {}),
+    ...(definition.navigation !== undefined ? { navigation: definition.navigation } : {}),
     ...(collectionAdapter !== null ? {
       rowOperations: {
         get: collectionAdapter.getRow !== undefined,

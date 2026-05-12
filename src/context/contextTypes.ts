@@ -173,13 +173,17 @@ export interface ContextManagementItem {
   text: string;
   kind?: string;
   source?: string;
+  confidence?: number;
   importance?: number;
   pinned: boolean;
   sensitivity: ContextSensitivity;
   createdAt: number;
   updatedAt: number;
+  validFrom?: number;
   validTo?: number;
   supersededBy?: string;
+  lastConfirmedAt?: number;
+  retrievedCount?: number;
   lastRetrievedAt?: number;
 }
 

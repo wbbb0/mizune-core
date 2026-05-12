@@ -370,6 +370,45 @@ export class UserStore {
     };
   }
 
+  async listMemoryRows(input: { offset?: number; limit?: number; filters?: Record<string, unknown> } = {}): Promise<{
+    rows: Array<Omit<UserMemoryRow, "userId"> & { userId: string }>;
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const offset = Math.max(0, Math.trunc(input.offset ?? 0));
+    const limit = Math.min(500, Math.max(1, Math.trunc(input.limit ?? 100)));
+    const userId = typeof input.filters?.userId === "string" && input.filters.userId.trim()
+      ? input.filters.userId.trim()
+      : null;
+    const whereSql = userId ? "WHERE user_id = ?" : "";
+    const params = userId ? [userId] : [];
+    await this.stateDatabase.init();
+    const total = (this.stateDatabase.getDb().prepare(`
+      SELECT COUNT(*) AS count
+      FROM user_memories
+      ${whereSql}
+    `).get(...params) as { count: number }).count;
+    const rows = this.stateDatabase.getDb().prepare(`
+      SELECT
+        user_id AS userId,
+        id,
+        title,
+        content,
+        kind,
+        source,
+        importance,
+        created_at_ms AS createdAt,
+        updated_at_ms AS updatedAt,
+        last_used_at_ms AS lastUsedAt
+      FROM user_memories
+      ${whereSql}
+      ORDER BY user_id ASC, created_at_ms ASC, id ASC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset) as Array<Omit<UserMemoryRow, "userId"> & { userId: string }>;
+    return { rows, total, offset, limit };
+  }
+
   async getPersistedRow(userId: string): Promise<PersistedUser | null> {
     return this.getPersistedByUserId(userId);
   }

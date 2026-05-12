@@ -185,6 +185,21 @@ export function createWorkbenchRuntime(view: ComputedRef<WorkbenchView>): Workbe
       mobileAreaStack.value = [createMobileAreaEntry(targetAreaId, detailKey)];
       return;
     }
+    if (targetAreaId === "mainArea") {
+      mobileAreaStack.value = [
+        createMobileAreaEntry(mobileRootAreaId.value),
+        createMobileAreaEntry(targetAreaId, detailKey)
+      ];
+      return;
+    }
+    if (mobileTopArea.value.areaId === "mainArea") {
+      mobileAreaStack.value = [
+        createMobileAreaEntry(mobileRootAreaId.value),
+        createMobileAreaEntry("mainArea"),
+        createMobileAreaEntry(targetAreaId, detailKey)
+      ];
+      return;
+    }
     mobileAreaStack.value = [
       createMobileAreaEntry(mobileRootAreaId.value),
       createMobileAreaEntry(targetAreaId, detailKey)

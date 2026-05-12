@@ -54,7 +54,7 @@ export class ComfyTaskStore {
     };
   }
 
-  async listResultRows(input: { offset?: number; limit?: number } = {}): Promise<{
+  async listResultRows(input: { offset?: number; limit?: number; filters?: Record<string, unknown> } = {}): Promise<{
     rows: ComfyTaskResultFileRegistryRow[];
     total: number;
     offset: number;
@@ -63,7 +63,12 @@ export class ComfyTaskStore {
     const db = await this.getReadyDb();
     const offset = Math.max(0, Math.trunc(input.offset ?? 0));
     const limit = Math.min(500, Math.max(1, Math.trunc(input.limit ?? 100)));
-    const total = (db.prepare(`SELECT COUNT(*) AS count FROM comfy_task_result_files`).get() as { count: number }).count;
+    const taskId = typeof input.filters?.taskId === "string" && input.filters.taskId.trim()
+      ? input.filters.taskId.trim()
+      : null;
+    const whereSql = taskId ? "WHERE task_id = ?" : "";
+    const params = taskId ? [taskId] : [];
+    const total = (db.prepare(`SELECT COUNT(*) AS count FROM comfy_task_result_files ${whereSql}`).get(...params) as { count: number }).count;
     const rows = db.prepare(`
       SELECT
         task_id AS taskId,
@@ -73,9 +78,10 @@ export class ComfyTaskStore {
         subfolder,
         type
       FROM comfy_task_result_files
+      ${whereSql}
       ORDER BY task_id ASC, result_index ASC
       LIMIT ? OFFSET ?
-    `).all(limit, offset) as ComfyTaskResultFileRegistryRow[];
+    `).all(...params, limit, offset) as ComfyTaskResultFileRegistryRow[];
     return { rows, total, offset, limit };
   }
 

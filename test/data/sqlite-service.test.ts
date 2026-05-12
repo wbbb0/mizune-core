@@ -176,6 +176,167 @@ test("SqliteService resets only the changed table group", async () => {
   }
 });
 
+test("SqliteService applies successful reset_allowed migrations without resetting data", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-sqlite-service-test-"));
+  const dbPath = join(dataDir, "test.sqlite");
+  const service = new SqliteService(pino({ level: "silent" }));
+  try {
+    const first = await service.openDatabase({
+      databaseId: "test",
+      dbPath,
+      tableGroups: [{
+        groupId: "users",
+        schemaVersion: 1,
+        ownedTables: ["users"],
+        createSchema: createUserSchema,
+        validateSchema: validateUserSchema
+      }]
+    });
+    first.write((db) => {
+      db.prepare("INSERT INTO users (user_id, name) VALUES ('u1', '用户一')").run();
+      db.prepare("UPDATE __sqlite_schema_groups SET last_reset_at = 123, last_reset_reason = 'previous_reset' WHERE group_id = 'users'").run();
+    });
+    first.close();
+
+    const second = await service.openDatabase({
+      databaseId: "test",
+      dbPath,
+      tableGroups: [{
+        groupId: "users",
+        schemaVersion: 2,
+        ownedTables: ["users"],
+        createSchema: (db) => {
+          createUserSchema(db);
+          db.exec("ALTER TABLE users ADD COLUMN note TEXT");
+        },
+        migrateSchema: (db) => {
+          db.exec("ALTER TABLE users ADD COLUMN note TEXT");
+          return true;
+        },
+        validateSchema: (db) => {
+          assertTableColumns(db, "users", {
+            user_id: "TEXT",
+            name: "TEXT",
+            note: "TEXT"
+          });
+        }
+      }]
+    });
+    try {
+      assert.equal(countRows(second.db, "users"), 1);
+      const row = second.db.prepare("SELECT user_id, name, note FROM users").get();
+      assert.deepEqual(row, { user_id: "u1", name: "用户一", note: null });
+      const status = second.getStatus().tableGroups.find((group) => group.groupId === "users");
+      assert.equal(status?.actualSchemaVersion, 2);
+      assert.equal(status?.lastResetAt, 123);
+      assert.equal(status?.lastResetReason, "previous_reset");
+    } finally {
+      second.close();
+    }
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("SqliteService does not run migrations for block_reset table groups", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-sqlite-service-test-"));
+  const dbPath = join(dataDir, "test.sqlite");
+  const service = new SqliteService(pino({ level: "silent" }));
+  try {
+    const first = await service.openDatabase({
+      databaseId: "test",
+      dbPath,
+      tableGroups: [{
+        groupId: "users",
+        schemaVersion: 1,
+        resetPolicy: "block_reset",
+        ownedTables: ["users"],
+        createSchema: createUserSchema,
+        validateSchema: validateUserSchema
+      }]
+    });
+    first.close();
+
+    await assert.rejects(
+      service.openDatabase({
+        databaseId: "test",
+        dbPath,
+        tableGroups: [{
+          groupId: "users",
+          schemaVersion: 2,
+          resetPolicy: "block_reset",
+          ownedTables: ["users"],
+          createSchema: createUserSchema,
+          migrateSchema: (db) => {
+            db.exec("ALTER TABLE users ADD COLUMN should_not_exist TEXT");
+            return true;
+          },
+          validateSchema: validateUserSchema
+        }]
+      }),
+      /reset blocked by resetPolicy=block_reset: users\(schema_version_mismatch\)/u
+    );
+
+    withRawDatabase(dbPath, (db) => {
+      const columns = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+      assert.deepEqual(columns.map((column) => column.name), ["user_id", "name"]);
+    });
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("SqliteService rolls failed migrations back before reset fallback", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-sqlite-service-test-"));
+  const dbPath = join(dataDir, "test.sqlite");
+  const service = new SqliteService(pino({ level: "silent" }));
+  try {
+    const first = await service.openDatabase({
+      databaseId: "test",
+      dbPath,
+      tableGroups: [{
+        groupId: "users",
+        schemaVersion: 1,
+        resetPolicy: "block_reset",
+        ownedTables: ["users"],
+        createSchema: createUserSchema,
+        validateSchema: validateUserSchema
+      }]
+    });
+    first.close();
+
+    await assert.rejects(
+      service.openDatabase({
+        databaseId: "test",
+        dbPath,
+        tableGroups: [{
+          groupId: "users",
+          schemaVersion: 1,
+          resetPolicy: "block_reset",
+          ownedTables: ["users"],
+          createSchema: createUserSchema,
+          migrateSchema: (db) => {
+            db.exec("ALTER TABLE users ADD COLUMN rolled_back TEXT");
+            throw new Error("migration failed");
+          },
+          validateSchema: (db) => {
+            validateUserSchema(db);
+            assertTableColumns(db, "users", { rolled_back: "TEXT" });
+          }
+        }]
+      }),
+      /reset blocked by resetPolicy=block_reset: users\(schema_validation_failed\)/u
+    );
+
+    withRawDatabase(dbPath, (db) => {
+      const columns = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+      assert.deepEqual(columns.map((column) => column.name), ["user_id", "name"]);
+    });
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("SqliteService preserves the configured foreign key mode after table group reset", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-sqlite-service-test-"));
   const dbPath = join(dataDir, "test.sqlite");

@@ -130,6 +130,16 @@ function createRegistryService(dataDir: string, options: { schedulerEnabled?: bo
         const index = toolsetRules.findIndex((item) => item.id === ruleId);
         if (index >= 0) toolsetRules.splice(index, 1);
         return [...toolsetRules];
+      },
+      async listToolsetRows(input = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        const rows = toolsetRules.flatMap((rule) => rule.toolsetIds.map((toolsetId, index) => ({
+          ruleId: rule.id,
+          toolsetId,
+          sortOrder: index + 1
+        })));
+        return { rows: rows.slice(offset, offset + limit), total: rows.length, offset, limit };
       }
     },
     userIdentityStore: {
@@ -194,6 +204,20 @@ function createRegistryService(dataDir: string, options: { schedulerEnabled?: bo
           offset,
           limit
         };
+      },
+      async listMemoryRows(input = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        const userId = typeof input.filters?.userId === "string" ? input.filters.userId : null;
+        const rows = users
+          .filter((user) => !userId || user.userId === userId)
+          .flatMap((user) => user.memories.map((memory) => ({
+            userId: user.userId,
+            ...memory,
+            importance: memory.importance ?? null,
+            lastUsedAt: memory.lastUsedAt ?? null
+          })));
+        return { rows: rows.slice(offset, offset + limit), total: rows.length, offset, limit };
       },
       async getPersistedRow(userId) {
         return users.find((user) => user.userId === userId) ?? null;
@@ -283,6 +307,19 @@ function createRegistryService(dataDir: string, options: { schedulerEnabled?: bo
           limit
         };
       },
+      async listTargetRows(input = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        const jobId = typeof input.filters?.jobId === "string" ? input.filters.jobId : null;
+        const rows = scheduledJobs
+          .filter((job) => !jobId || job.id === jobId)
+          .flatMap((job) => job.targets.map((target, index) => ({
+            jobId: job.id,
+            sessionId: target.sessionId,
+            sortOrder: index + 1
+          })));
+        return { rows: rows.slice(offset, offset + limit), total: rows.length, offset, limit };
+      },
       async getRow(jobId) {
         return scheduledJobs.find((job) => job.id === jobId) ?? null;
       },
@@ -349,6 +386,21 @@ function createRegistryService(dataDir: string, options: { schedulerEnabled?: bo
         whitelistRows.push(row);
         return row;
       },
+      async patchEntry(currentTargetType, currentTargetId, next) {
+        const index = whitelistRows.findIndex((row) => row.targetType === currentTargetType && row.targetId === currentTargetId);
+        if (index < 0) throw new Error(`Whitelist entry ${currentTargetType}:${currentTargetId} not found`);
+        const normalizedNext = { ...next, targetId: next.targetId.trim() };
+        const existingIndex = whitelistRows.findIndex((row, rowIndex) =>
+          rowIndex !== index
+          && row.targetType === normalizedNext.targetType
+          && row.targetId === normalizedNext.targetId
+        );
+        whitelistRows[index] = normalizedNext;
+        if (existingIndex >= 0) {
+          whitelistRows.splice(existingIndex, 1);
+        }
+        return normalizedNext;
+      },
       async deleteEntry(targetType, targetId) {
         const index = whitelistRows.findIndex((row) => row.targetType === targetType && row.targetId === targetId);
         if (index >= 0) {
@@ -360,7 +412,11 @@ function createRegistryService(dataDir: string, options: { schedulerEnabled?: bo
       listContextItems: () => ({ items: [], total: 0 }),
       getContextItem: () => null,
       listRawMessages: () => ({ rows: [], total: 0, offset: 0, limit: 100 }),
-      listMaintenanceJobs: () => ({ rows: [], total: 0, offset: 0, limit: 100 })
+      listMaintenanceJobs: () => ({ rows: [], total: 0, offset: 0, limit: 100 }),
+      listContextItemSources: () => ({ rows: [], total: 0, offset: 0, limit: 100 }),
+      listContextItemEmbeddings: () => ({ rows: [], total: 0, offset: 0, limit: 100 }),
+      listEmbeddingProfiles: () => ({ rows: [], total: 0, offset: 0, limit: 100 }),
+      listManualAuditEvents: () => ({ rows: [], total: 0, offset: 0, limit: 100 })
     },
     audioStore: {
       async listRows(input = {}) {
@@ -420,21 +476,23 @@ function createRegistryService(dataDir: string, options: { schedulerEnabled?: bo
       async listTranscriptRows(input = {}) {
         const offset = input.offset ?? 0;
         const limit = input.limit ?? 100;
+        const sessionId = typeof input.filters?.sessionId === "string" ? input.filters.sessionId : null;
+        const rows = [{
+          sessionId: "private:u1",
+          itemIndex: 0,
+          itemId: "ti_1",
+          groupId: "tg_1",
+          kind: "user_message",
+          role: "user",
+          llmVisible: 1 as const,
+          runtimeExcluded: 0 as const,
+          timestampMs: 1,
+          itemHash: "hash",
+          item: { id: "ti_1", kind: "user_message", text: "hello" }
+        }].filter((row) => !sessionId || row.sessionId === sessionId);
         return {
-          rows: [{
-            sessionId: "private:u1",
-            itemIndex: 0,
-            itemId: "ti_1",
-            groupId: "tg_1",
-            kind: "user_message",
-            role: "user",
-            llmVisible: 1 as const,
-            runtimeExcluded: 0 as const,
-            timestampMs: 1,
-            itemHash: "hash",
-            item: { id: "ti_1", kind: "user_message", text: "hello" }
-          }].slice(offset, offset + limit),
-          total: 1,
+          rows: rows.slice(offset, offset + limit),
+          total: rows.length,
           offset,
           limit
         };
@@ -444,7 +502,23 @@ function createRegistryService(dataDir: string, options: { schedulerEnabled?: bo
       async listRows() {
         return { rows: [], total: 0, offset: 0, limit: 100 };
       },
-      list: async () => []
+      list: async () => [],
+      async listBrowserPageRows() {
+        return { rows: [], total: 0, offset: 0, limit: 100 };
+      },
+      async listShellSessionRows() {
+        return { rows: [], total: 0, offset: 0, limit: 100 };
+      }
+    },
+    contentSafetyStore: {
+      async listRows(input = {}) {
+        return { rows: [], total: 0, offset: input.offset ?? 0, limit: input.limit ?? 100 };
+      }
+    },
+    scenarioHostStateStore: {
+      async listRows(input = {}) {
+        return { rows: [], total: 0, offset: input.offset ?? 0, limit: input.limit ?? 100 };
+      }
     }
   });
   return Object.assign(service, {
@@ -462,9 +536,14 @@ test("DataRegistryService exposes initial file and directory resources", async (
       "audio_files",
       "comfy_task_result_files",
       "comfy_tasks",
+      "content_safety_audits",
+      "context_item_embeddings",
+      "context_item_sources",
       "context_items",
       "context_maintenance_jobs",
+      "context_manual_audit_events",
       "context_raw_messages",
+      "embedding_profiles",
       "global_profile_readiness",
       "global_rules",
       "group_membership",
@@ -472,13 +551,19 @@ test("DataRegistryService exposes initial file and directory resources", async (
       "persona",
       "requests",
       "rp_profile",
+      "runtime_browser_pages",
+      "runtime_shell_sessions",
+      "scenario_host_session_states",
       "scenario_profile",
+      "scheduled_job_targets",
       "scheduled_jobs",
       "session_transcript_items",
       "sessions",
       "setup_state",
+      "toolset_rule_toolsets",
       "toolset_rules",
       "user_identities",
+      "user_memories",
       "users",
       "whitelist",
       "workspace_files"
@@ -489,6 +574,19 @@ test("DataRegistryService exposes initial file and directory resources", async (
     assert.equal(listed.resources.find((resource) => resource.key === "workspace_files")?.shape, "collection");
     assert.equal(listed.resources.find((resource) => resource.key === "sessions")?.shape, "collection");
     assert.equal(listed.resources.find((resource) => resource.key === "session_transcript_items")?.shape, "log");
+    for (const resource of listed.resources) {
+      if (resource.shape !== "collection") continue;
+      if (resource.editable) {
+        assert.equal(resource.rowOperations?.create, true, `${resource.key} should expose row creation`);
+        assert.equal(resource.rowOperations?.patch, true, `${resource.key} should expose row patch`);
+        assert.equal(resource.rowOperations?.delete, true, `${resource.key} should expose row deletion`);
+        assert.ok(resource.rowUiTree, `${resource.key} should expose row editor schema`);
+      } else {
+        assert.equal(resource.rowOperations?.create, false, `${resource.key} should not expose row creation`);
+        assert.equal(resource.rowOperations?.patch, false, `${resource.key} should not expose row patch`);
+        assert.equal(resource.rowOperations?.delete, false, `${resource.key} should not expose row deletion`);
+      }
+    }
 
     const audioFiles = await service.getResource("audio_files") as {
       resource: {
@@ -553,10 +651,18 @@ test("DataRegistryService exposes initial file and directory resources", async (
     const sessions = await service.getResource("sessions") as {
       resource: {
         shape: string;
+        model?: { table: string; children?: Array<{ resourceKey: string; parentField: string; childField: string }> };
         storage: { kind: string; database: string; tableGroup: string; tables: string[] };
       };
     };
     assert.equal(sessions.resource.shape, "collection");
+    assert.equal(sessions.resource.model?.table, "sessions");
+    assert.deepEqual(sessions.resource.model?.children, [{
+      resourceKey: "session_transcript_items",
+      title: "Transcript",
+      parentField: "sessionId",
+      childField: "sessionId"
+    }]);
     assert.deepEqual(sessions.resource.storage, {
       kind: "sqlite",
       database: "sessions",
@@ -570,6 +676,10 @@ test("DataRegistryService exposes initial file and directory resources", async (
     const transcriptRows = await service.listRows("session_transcript_items");
     assert.equal(transcriptRows.rows.length, 1);
     assert.equal((transcriptRows.rows[0] as { itemId: string }).itemId, "ti_1");
+    const filteredTranscriptRows = await service.listRows("session_transcript_items", {
+      filters: { sessionId: "missing" }
+    });
+    assert.equal(filteredTranscriptRows.rows.length, 0);
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }
@@ -768,7 +878,14 @@ test("DataRegistryService exposes editable persona singleton and whitelist colle
     assert.equal(rows.total, 1);
     assert.deepEqual(rows.rows.map((row) => (row as { targetId: string }).targetId), ["10001"]);
 
-    await service.deleteRow("whitelist", created.row.id);
+    const patched = await service.patchRow("whitelist", created.row.id, {
+      patch: { targetId: "10002" }
+    }) as { row: { id: string; targetType: string; targetId: string } };
+    assert.equal(patched.row.targetType, "user");
+    assert.equal(patched.row.targetId, "10002");
+    assert.notEqual(patched.row.id, created.row.id);
+
+    await service.deleteRow("whitelist", patched.row.id);
     assert.equal((await service.listRows("whitelist")).total, 0);
   } finally {
     await rm(dataDir, { recursive: true, force: true });

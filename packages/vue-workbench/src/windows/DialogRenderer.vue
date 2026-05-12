@@ -201,13 +201,13 @@ function handleClose() {
 <template>
   <div class="flex min-h-0 flex-1 flex-col text-small leading-5 text-text-secondary">
     <div class="scrollbar-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-      <div v-if="blocks.length" class="flex flex-col gap-3">
+      <div v-if="blocks.length" class="flex min-h-0 flex-1 flex-col gap-3">
         <template v-for="(block, index) in blocks" :key="index">
           <p v-if="block.kind === 'text'" class="whitespace-pre-wrap text-text-secondary">
             {{ block.content }}
           </p>
           <hr v-else-if="block.kind === 'separator'" class="border-border-default" />
-          <component v-else :is="resolveComponentReference(block.component)" v-bind="resolveBlockProps(block)" />
+          <component v-else :is="resolveComponentReference(block.component)" class="min-h-0 flex-1" v-bind="resolveBlockProps(block)" />
         </template>
       </div>
 

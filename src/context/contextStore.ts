@@ -740,6 +740,155 @@ export class ContextStore {
     return { rows, total, offset, limit };
   }
 
+  listContextItemSources(input: {
+    offset?: number;
+    limit?: number;
+    filters?: Record<string, unknown>;
+  } = {}): {
+    rows: unknown[];
+    total: number;
+    offset: number;
+    limit: number;
+  } {
+    const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
+    const offset = Math.max(input.offset ?? 0, 0);
+    if (!this.db) {
+      return { rows: [], total: 0, offset, limit };
+    }
+    const itemId = typeof input.filters?.itemId === "string" && input.filters.itemId.trim()
+      ? input.filters.itemId.trim()
+      : null;
+    const whereSql = itemId ? "WHERE item_id = ?" : "";
+    const params = itemId ? [itemId] : [];
+    const total = (this.db.prepare(`SELECT COUNT(*) AS count FROM context_item_sources ${whereSql}`).get(...params) as { count: number }).count;
+    const rows = this.db.prepare(`
+      SELECT
+        item_id AS itemId,
+        source_kind AS sourceKind,
+        source_id AS sourceId,
+        created_at AS createdAt
+      FROM context_item_sources
+      ${whereSql}
+      ORDER BY item_id ASC, created_at ASC, source_kind ASC, source_id ASC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset) as unknown[];
+    return { rows, total, offset, limit };
+  }
+
+  listContextItemEmbeddings(input: {
+    offset?: number;
+    limit?: number;
+    filters?: Record<string, unknown>;
+  } = {}): {
+    rows: unknown[];
+    total: number;
+    offset: number;
+    limit: number;
+  } {
+    const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
+    const offset = Math.max(input.offset ?? 0, 0);
+    if (!this.db) {
+      return { rows: [], total: 0, offset, limit };
+    }
+    const itemId = typeof input.filters?.itemId === "string" && input.filters.itemId.trim()
+      ? input.filters.itemId.trim()
+      : null;
+    const whereSql = itemId ? "WHERE item_id = ?" : "";
+    const params = itemId ? [itemId] : [];
+    const total = (this.db.prepare(`SELECT COUNT(*) AS count FROM context_item_embeddings ${whereSql}`).get(...params) as { count: number }).count;
+    const rows = this.db.prepare(`
+      SELECT
+        item_id AS itemId,
+        embedding_profile_id AS embeddingProfileId,
+        text_hash AS textHash,
+        dimension,
+        length(vector) AS vectorBytes,
+        created_at AS createdAt,
+        updated_at AS updatedAt
+      FROM context_item_embeddings
+      ${whereSql}
+      ORDER BY item_id ASC, embedding_profile_id ASC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset) as unknown[];
+    return { rows, total, offset, limit };
+  }
+
+  listEmbeddingProfiles(input: {
+    offset?: number;
+    limit?: number;
+  } = {}): {
+    rows: unknown[];
+    total: number;
+    offset: number;
+    limit: number;
+  } {
+    const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
+    const offset = Math.max(input.offset ?? 0, 0);
+    if (!this.db) {
+      return { rows: [], total: 0, offset, limit };
+    }
+    const total = (this.db.prepare("SELECT COUNT(*) AS count FROM embedding_profiles").get() as { count: number }).count;
+    const rows = this.db.prepare(`
+      SELECT
+        profile_id AS profileId,
+        instance_name AS instanceName,
+        provider,
+        model,
+        dimension,
+        distance,
+        text_preprocess_version AS textPreprocessVersion,
+        chunker_version AS chunkerVersion,
+        active,
+        created_at AS createdAt
+      FROM embedding_profiles
+      ORDER BY active DESC, created_at DESC, profile_id ASC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset) as Array<Record<string, unknown> & { active: 0 | 1 }>;
+    return {
+      rows: rows.map((row) => ({ ...row, active: row.active === 1 })),
+      total,
+      offset,
+      limit
+    };
+  }
+
+  listManualAuditEvents(input: {
+    offset?: number;
+    limit?: number;
+    filters?: Record<string, unknown>;
+  } = {}): {
+    rows: unknown[];
+    total: number;
+    offset: number;
+    limit: number;
+  } {
+    const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
+    const offset = Math.max(input.offset ?? 0, 0);
+    if (!this.db) {
+      return { rows: [], total: 0, offset, limit };
+    }
+    const itemId = typeof input.filters?.itemId === "string" && input.filters.itemId.trim()
+      ? input.filters.itemId.trim()
+      : null;
+    const whereSql = itemId ? "WHERE item_id = ?" : "";
+    const params = itemId ? [itemId] : [];
+    const total = (this.db.prepare(`SELECT COUNT(*) AS count FROM manual_audit_events ${whereSql}`).get(...params) as { count: number }).count;
+    const rows = this.db.prepare(`
+      SELECT
+        event_id AS eventId,
+        event_type AS eventType,
+        actor_id AS actorId,
+        item_id AS itemId,
+        payload_json AS payloadJson,
+        created_at AS createdAt
+      FROM manual_audit_events
+      ${whereSql}
+      ORDER BY created_at DESC, event_id DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset) as unknown[];
+    return { rows, total, offset, limit };
+  }
+
   getContextStats(): {
     rawMessages: number;
     contextItems: number;
@@ -1906,13 +2055,17 @@ function rowToContextManagementItem(row: ContextItemRow): ContextManagementItem 
     text: row.text,
     ...(row.kind ? { kind: row.kind } : {}),
     ...(row.source ? { source: row.source } : {}),
+    ...(row.confidence !== null ? { confidence: row.confidence } : {}),
     ...(row.importance !== null ? { importance: row.importance } : {}),
     pinned: row.pinned === 1,
     sensitivity: row.sensitivity as ContextManagementItem["sensitivity"],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ...(row.valid_from !== null ? { validFrom: row.valid_from } : {}),
     ...(row.valid_to !== null ? { validTo: row.valid_to } : {}),
     ...(row.superseded_by ? { supersededBy: row.superseded_by } : {}),
+    ...(row.last_confirmed_at !== null ? { lastConfirmedAt: row.last_confirmed_at } : {}),
+    retrievedCount: row.retrieved_count,
     ...(row.last_retrieved_at !== null ? { lastRetrievedAt: row.last_retrieved_at } : {})
   };
 }

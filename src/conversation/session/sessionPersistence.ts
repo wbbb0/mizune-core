@@ -6,14 +6,14 @@ import type { PersistedSessionState } from "./sessionManager.ts";
 import { getDefaultSessionModeId } from "#modes/registry.ts";
 import { createNormalSessionOperationMode } from "./sessionOperationMode.ts";
 import {
-  assertTableColumns,
   SqliteService,
   type SqliteDatabase,
-  type SqliteDatabaseHandle,
-  type SqliteTableGroupDefinition
+  type SqliteDatabaseHandle
 } from "#data/sqlite/sqliteService.ts";
+import { createTableGroupsFromDataDomain, listDataModelRows } from "#data/model/index.ts";
 import { chatAttachmentSchema } from "#types/chatContracts.ts";
 import { internalTranscriptItemSchema, transcriptMessageContentPartSchema } from "./transcriptContract.ts";
+import { sessionDataDomain, sessionsTableModel, sessionTranscriptItemsTableModel } from "./sessionDataModel.ts";
 
 const personaDraftSchema = z.object({
   name: z.string(),
@@ -397,67 +397,33 @@ export class SessionPersistence {
     limit: number;
   }> {
     const db = await this.getReadyDb();
-    const offset = Math.max(0, Math.trunc(input.offset ?? 0));
-    const limit = Math.min(500, Math.max(1, Math.trunc(input.limit ?? 50)));
-    const total = (db.prepare(`SELECT COUNT(*) AS count FROM sessions`).get() as { count: number }).count;
-    const rows = db.prepare(`
-      SELECT
-        session_id AS sessionId,
-        type,
-        source,
-        mode_id AS modeId,
-        participant_kind AS participantKind,
-        participant_id AS participantId,
-        title,
-        title_source AS titleSource,
-        reply_delivery AS replyDelivery,
-        last_active_at_ms AS lastActiveAtMs,
-        last_message_at_ms AS lastMessageAtMs,
-        updated_at_ms AS updatedAtMs,
-        (
-          SELECT COUNT(*)
-          FROM session_transcript_items
-          WHERE session_transcript_items.session_id = sessions.session_id
-        ) AS transcriptCount
-      FROM sessions
-      ORDER BY last_active_at_ms DESC, session_id ASC
-      LIMIT ? OFFSET ?
-    `).all(limit, offset) as SessionRegistryRow[];
-    return { rows, total, offset, limit };
+    return listDataModelRows(db, sessionsTableModel, {
+      ...(input.offset !== undefined ? { offset: input.offset } : {}),
+      limit: input.limit ?? 50
+    }) as unknown as {
+      rows: SessionRegistryRow[];
+      total: number;
+      offset: number;
+      limit: number;
+    };
   }
 
-  async listTranscriptRows(input: { offset?: number; limit?: number } = {}): Promise<{
+  async listTranscriptRows(input: { offset?: number; limit?: number; filters?: Record<string, unknown> } = {}): Promise<{
     rows: SessionTranscriptRegistryRow[];
     total: number;
     offset: number;
     limit: number;
   }> {
     const db = await this.getReadyDb();
-    const offset = Math.max(0, Math.trunc(input.offset ?? 0));
-    const limit = Math.min(500, Math.max(1, Math.trunc(input.limit ?? 50)));
-    const total = (db.prepare(`SELECT COUNT(*) AS count FROM session_transcript_items`).get() as { count: number }).count;
-    const rows = db.prepare(`
-      SELECT
-        session_id AS sessionId,
-        item_index AS itemIndex,
-        item_id AS itemId,
-        group_id AS groupId,
-        kind,
-        role,
-        llm_visible AS llmVisible,
-        runtime_excluded AS runtimeExcluded,
-        timestamp_ms AS timestampMs,
-        item_hash AS itemHash,
-        item_json AS item
-      FROM session_transcript_items
-      ORDER BY session_id ASC, item_index ASC
-      LIMIT ? OFFSET ?
-    `).all(limit, offset) as Array<Omit<SessionTranscriptRegistryRow, "item"> & { item: string }>;
-    return {
-      rows: rows.map((row) => ({ ...row, item: JSON.parse(row.item) })),
-      total,
-      offset,
-      limit
+    return listDataModelRows(db, sessionTranscriptItemsTableModel, {
+      ...(input.offset !== undefined ? { offset: input.offset } : {}),
+      limit: input.limit ?? 50,
+      ...(input.filters !== undefined ? { filters: input.filters } : {})
+    }) as unknown as {
+      rows: SessionTranscriptRegistryRow[];
+      total: number;
+      offset: number;
+      limit: number;
     };
   }
 }
@@ -674,115 +640,4 @@ function rowToPersistedSessionState(row: PersistedSessionRow): PersistedSessionS
   }) as PersistedSessionState;
 }
 
-function createSessionsSchema(db: SqliteDatabase): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS sessions (
-      session_id TEXT PRIMARY KEY NOT NULL CHECK (session_id = trim(session_id) AND length(session_id) > 0),
-      type TEXT NOT NULL CHECK (type IN ('private', 'group')),
-      source TEXT,
-      mode_id TEXT,
-      operation_mode_json TEXT,
-      participant_kind TEXT NOT NULL CHECK (participant_kind IN ('user', 'group')),
-      participant_id TEXT NOT NULL,
-      title TEXT,
-      title_source TEXT,
-      reply_delivery TEXT,
-      pending_messages_json TEXT NOT NULL,
-      pending_transcript_group_id_is_set INTEGER NOT NULL DEFAULT 0,
-      pending_transcript_group_id TEXT,
-      active_transcript_group_id_is_set INTEGER NOT NULL DEFAULT 0,
-      active_transcript_group_id TEXT,
-      history_summary TEXT,
-      history_backfill_boundary_ms INTEGER,
-      debug_markers_json TEXT NOT NULL,
-      last_llm_usage_json TEXT,
-      sent_messages_json TEXT NOT NULL,
-      last_active_at_ms INTEGER NOT NULL,
-      last_message_at_ms INTEGER,
-      latest_gap_ms INTEGER,
-      smoothed_gap_ms REAL,
-      updated_at_ms INTEGER NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS session_transcript_items (
-      session_id TEXT NOT NULL,
-      item_index INTEGER NOT NULL CHECK (item_index >= 0),
-      item_id TEXT NOT NULL CHECK (item_id = trim(item_id) AND length(item_id) > 0),
-      group_id TEXT NOT NULL,
-      kind TEXT NOT NULL,
-      role TEXT,
-      llm_visible INTEGER NOT NULL CHECK (llm_visible IN (0, 1)),
-      runtime_excluded INTEGER NOT NULL CHECK (runtime_excluded IN (0, 1)),
-      timestamp_ms INTEGER NOT NULL,
-      item_hash TEXT NOT NULL,
-      item_json TEXT NOT NULL,
-      updated_at_ms INTEGER NOT NULL,
-      PRIMARY KEY (session_id, item_id),
-      UNIQUE (session_id, item_index),
-      FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_session_transcript_items_session_index
-      ON session_transcript_items(session_id, item_index);
-    CREATE INDEX IF NOT EXISTS idx_session_transcript_items_kind_time
-      ON session_transcript_items(kind, timestamp_ms);
-  `);
-}
-
-function validateSessionsSchema(db: SqliteDatabase): void {
-  assertTableColumns(db, "sessions", {
-    session_id: "TEXT",
-    type: "TEXT",
-    source: "TEXT",
-    mode_id: "TEXT",
-    operation_mode_json: "TEXT",
-    participant_kind: "TEXT",
-    participant_id: "TEXT",
-    title: "TEXT",
-    title_source: "TEXT",
-    reply_delivery: "TEXT",
-    pending_messages_json: "TEXT",
-    pending_transcript_group_id_is_set: "INTEGER",
-    pending_transcript_group_id: "TEXT",
-    active_transcript_group_id_is_set: "INTEGER",
-    active_transcript_group_id: "TEXT",
-    history_summary: "TEXT",
-    history_backfill_boundary_ms: "INTEGER",
-    debug_markers_json: "TEXT",
-    last_llm_usage_json: "TEXT",
-    sent_messages_json: "TEXT",
-    last_active_at_ms: "INTEGER",
-    last_message_at_ms: "INTEGER",
-    latest_gap_ms: "INTEGER",
-    smoothed_gap_ms: "REAL",
-    updated_at_ms: "INTEGER"
-  });
-  assertTableColumns(db, "session_transcript_items", {
-    session_id: "TEXT",
-    item_index: "INTEGER",
-    item_id: "TEXT",
-    group_id: "TEXT",
-    kind: "TEXT",
-    role: "TEXT",
-    llm_visible: "INTEGER",
-    runtime_excluded: "INTEGER",
-    timestamp_ms: "INTEGER",
-    item_hash: "TEXT",
-    item_json: "TEXT",
-    updated_at_ms: "INTEGER"
-  });
-}
-
-const SESSION_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
-  {
-    groupId: "sessions.persisted_sessions",
-    schemaVersion: 3,
-    ownedTables: ["sessions", "session_transcript_items"],
-    ownedIndexes: [
-      "idx_session_transcript_items_session_index",
-      "idx_session_transcript_items_kind_time"
-    ],
-    createSchema: createSessionsSchema,
-    validateSchema: validateSessionsSchema
-  }
-];
+const SESSION_TABLE_GROUPS = createTableGroupsFromDataDomain(sessionDataDomain);

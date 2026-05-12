@@ -197,6 +197,73 @@ export class RuntimeResourceStore {
       limit
     };
   }
+
+  async listBrowserPageRows(input: { offset?: number; limit?: number; filters?: Record<string, unknown> } = {}): Promise<{
+    rows: Array<{ resourceId: string; requestedUrl: string; resolvedUrl: string; backend: string; title: string | null; profileId: string | null }>;
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const db = await this.getReadyDb();
+    const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
+    const offset = Math.max(input.offset ?? 0, 0);
+    const resourceId = typeof input.filters?.resourceId === "string" && input.filters.resourceId.trim()
+      ? input.filters.resourceId.trim()
+      : null;
+    const whereSql = resourceId ? "WHERE resource_id = ?" : "";
+    const params = resourceId ? [resourceId] : [];
+    const total = (db.prepare(`SELECT COUNT(*) AS count FROM runtime_browser_pages ${whereSql}`).get(...params) as { count: number }).count;
+    const rows = db.prepare(`
+      SELECT
+        resource_id AS resourceId,
+        requested_url AS requestedUrl,
+        resolved_url AS resolvedUrl,
+        backend,
+        title,
+        profile_id AS profileId
+      FROM runtime_browser_pages
+      ${whereSql}
+      ORDER BY resource_id ASC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset) as Array<{ resourceId: string; requestedUrl: string; resolvedUrl: string; backend: string; title: string | null; profileId: string | null }>;
+    return { rows, total, offset, limit };
+  }
+
+  async listShellSessionRows(input: { offset?: number; limit?: number; filters?: Record<string, unknown> } = {}): Promise<{
+    rows: Array<{ resourceId: string; command: string; cwd: string; shell: string; tty: boolean; login: boolean }>;
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const db = await this.getReadyDb();
+    const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
+    const offset = Math.max(input.offset ?? 0, 0);
+    const resourceId = typeof input.filters?.resourceId === "string" && input.filters.resourceId.trim()
+      ? input.filters.resourceId.trim()
+      : null;
+    const whereSql = resourceId ? "WHERE resource_id = ?" : "";
+    const params = resourceId ? [resourceId] : [];
+    const total = (db.prepare(`SELECT COUNT(*) AS count FROM runtime_shell_sessions ${whereSql}`).get(...params) as { count: number }).count;
+    const rows = db.prepare(`
+      SELECT
+        resource_id AS resourceId,
+        command,
+        cwd,
+        shell,
+        tty,
+        login
+      FROM runtime_shell_sessions
+      ${whereSql}
+      ORDER BY resource_id ASC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset) as Array<{ resourceId: string; command: string; cwd: string; shell: string; tty: 0 | 1; login: 0 | 1 }>;
+    return {
+      rows: rows.map((row) => ({ ...row, tty: row.tty === 1, login: row.login === 1 })),
+      total,
+      offset,
+      limit
+    };
+  }
 }
 
 interface RuntimeResourceRow {

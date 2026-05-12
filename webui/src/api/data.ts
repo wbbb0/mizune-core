@@ -4,6 +4,43 @@ import type { SchemaMeta, UiNode } from "@workbench-kit/vue-resource-editor";
 export type DataResourceShape = "singleton" | "collection" | "log" | "file" | "directory";
 export type DataResourceDurability = "source_of_truth" | "cache" | "derived" | "ephemeral";
 
+export interface DataResourceModelColumn {
+  key: string;
+  title?: string;
+  type: "text" | "integer" | "real" | "boolean" | "json";
+  nullable?: boolean;
+  role?: "id" | "title" | "subtitle" | "badge" | "time" | "payload" | "status";
+  primary?: boolean;
+  listWidth?: "xs" | "sm" | "md" | "lg" | "xl" | (string & {});
+  hidden?: boolean;
+}
+
+export interface DataResourceModel {
+  kind: "table";
+  table: string;
+  primaryKey: string[];
+  columns: DataResourceModelColumn[];
+  defaultSort?: Array<{ column: string; direction: "asc" | "desc" }>;
+  list?: {
+    titleColumn?: string;
+    fallbackTitleColumn?: string;
+    subtitleColumns?: string[];
+    badgeColumns?: string[];
+    timeColumn?: string;
+    columns?: string[];
+  };
+  detail?: {
+    columns?: string[];
+    payloadColumns?: string[];
+  };
+  children?: Array<{
+    resourceKey: string;
+    title: string;
+    parentField: string;
+    childField: string;
+  }>;
+}
+
 export interface DataResourceSummary {
   key: string;
   title: string;
@@ -22,6 +59,7 @@ export interface DataResourceSummary {
   rowSchemaMeta?: SchemaMeta;
   uiTree?: UiNode;
   rowUiTree?: UiNode;
+  model?: DataResourceModel;
   rowIdentity?: {
     fields: string[];
     encode: "single" | "json_base64url";
@@ -31,6 +69,10 @@ export interface DataResourceSummary {
     create: boolean;
     patch: boolean;
     delete: boolean;
+  };
+  navigation?: {
+    hiddenFromList?: boolean;
+    parentResourceKey?: string;
   };
   export?: {
     enabled: boolean;

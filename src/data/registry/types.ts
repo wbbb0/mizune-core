@@ -28,6 +28,54 @@ export interface DataResourceExportDefinition {
   format: "json" | "jsonl" | "yaml" | "csv" | "markdown";
 }
 
+export interface DataResourceNavigation {
+  hiddenFromList?: boolean;
+  parentResourceKey?: string;
+}
+
+export interface DataResourceModelColumn {
+  key: string;
+  title?: string;
+  type: "text" | "integer" | "real" | "boolean" | "json";
+  nullable?: boolean;
+  role?: "id" | "title" | "subtitle" | "badge" | "time" | "payload" | "status";
+  primary?: boolean;
+  listWidth?: "xs" | "sm" | "md" | "lg" | "xl" | (string & {});
+  hidden?: boolean;
+}
+
+export interface DataResourceModelChild {
+  resourceKey: string;
+  title: string;
+  parentField: string;
+  childField: string;
+}
+
+export interface DataResourceModelList {
+  titleColumn?: string;
+  fallbackTitleColumn?: string;
+  subtitleColumns?: string[];
+  badgeColumns?: string[];
+  timeColumn?: string;
+  columns?: string[];
+}
+
+export interface DataResourceModelDetail {
+  columns?: string[];
+  payloadColumns?: string[];
+}
+
+export interface DataResourceModel {
+  kind: "table";
+  table: string;
+  primaryKey: string[];
+  columns: DataResourceModelColumn[];
+  defaultSort?: Array<{ column: string; direction: "asc" | "desc" }>;
+  list?: DataResourceModelList;
+  detail?: DataResourceModelDetail;
+  children?: DataResourceModelChild[];
+}
+
 export interface DataResourceSummary {
   key: string;
   title: string;
@@ -40,8 +88,10 @@ export interface DataResourceSummary {
   rowSchemaMeta?: unknown;
   uiTree?: unknown;
   rowUiTree?: unknown;
+  model?: DataResourceModel;
   rowIdentity?: DataResourceIdentity;
   rowOperations?: DataResourceRowOperations;
+  navigation?: DataResourceNavigation;
   export?: DataResourceExportDefinition;
 }
 
@@ -114,7 +164,9 @@ export interface DataResourceDefinition {
   rowSchemaMeta?: unknown;
   uiTree?: unknown;
   rowUiTree?: unknown;
+  model?: DataResourceModel;
   rowIdentity?: DataResourceIdentity;
+  navigation?: DataResourceNavigation;
   export?: DataResourceExportDefinition;
   adapter: DataResourceAdapter;
 }

@@ -318,7 +318,9 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         audioStore: deps.audioStore,
         chatFileStore: deps.chatFileStore,
         sessionPersistence: deps.sessionPersistence,
-        runtimeResourceStore: deps.runtimeResourceStore
+        runtimeResourceStore: deps.runtimeResourceStore,
+        ...(deps.contentSafetyStore ? { contentSafetyStore: deps.contentSafetyStore } : {}),
+        scenarioHostStateStore: deps.scenarioHostStateStore
       }),
       localFileAdmin: createLocalFileAdminService({
         localFileService: deps.localFileService,

@@ -110,6 +110,38 @@ export class ScheduledJobStore {
     };
   }
 
+  async listTargetRows(input: { offset?: number; limit?: number; filters?: Record<string, unknown> } = {}): Promise<{
+    rows: Array<{ jobId: string; sessionId: string; sortOrder: number }>;
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const offset = Math.max(0, Math.trunc(input.offset ?? 0));
+    const limit = Math.min(500, Math.max(1, Math.trunc(input.limit ?? 100)));
+    const jobId = typeof input.filters?.jobId === "string" && input.filters.jobId.trim()
+      ? input.filters.jobId.trim()
+      : null;
+    const whereSql = jobId ? "WHERE job_id = ?" : "";
+    const params = jobId ? [jobId] : [];
+    await this.stateDatabase.init();
+    const total = (this.stateDatabase.getDb().prepare(`
+      SELECT COUNT(*) AS count
+      FROM scheduled_job_targets
+      ${whereSql}
+    `).get(...params) as { count: number }).count;
+    const rows = this.stateDatabase.getDb().prepare(`
+      SELECT
+        job_id AS jobId,
+        session_id AS sessionId,
+        sort_order AS sortOrder
+      FROM scheduled_job_targets
+      ${whereSql}
+      ORDER BY job_id ASC, sort_order ASC, session_id ASC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset) as Array<{ jobId: string; sessionId: string; sortOrder: number }>;
+    return { rows, total, offset, limit };
+  }
+
   async getRow(jobId: string): Promise<ScheduledJob | null> {
     await this.stateDatabase.init();
     const row = this.stateDatabase.getDb().prepare(`

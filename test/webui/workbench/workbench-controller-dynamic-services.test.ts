@@ -104,3 +104,33 @@ test("workbench services fail loudly when no root controller is active", () => {
     /Workbench controller is not active/
   );
 });
+
+test("mobile area navigation preserves main area before detail overlays", () => {
+  const controller = createWorkbenchController(computed(() => defineWorkbenchView({
+    id: "data",
+    title: "data",
+    areas: {
+      primarySidebar: EmptyArea,
+      mainArea: EmptyArea,
+      secondarySidebar: EmptyArea
+    }
+  })));
+
+  controller.runtime.showArea("mainArea");
+  assert.deepEqual(
+    controller.runtime.mobileAreaStack.value.map((entry) => entry.areaId),
+    ["primarySidebar", "mainArea"]
+  );
+
+  controller.runtime.showArea("secondarySidebar");
+  assert.deepEqual(
+    controller.runtime.mobileAreaStack.value.map((entry) => entry.areaId),
+    ["primarySidebar", "mainArea", "secondarySidebar"]
+  );
+
+  assert.equal(controller.runtime.popMobileArea(), true);
+  assert.deepEqual(
+    controller.runtime.mobileAreaStack.value.map((entry) => entry.areaId),
+    ["primarySidebar", "mainArea"]
+  );
+});

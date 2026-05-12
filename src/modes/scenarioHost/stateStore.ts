@@ -39,6 +39,40 @@ export class ScenarioHostStateStore {
     return getScenarioHostStateRow(db, sessionId);
   }
 
+  async listRows(input: { offset?: number; limit?: number; filters?: Record<string, unknown> } = {}): Promise<{
+    rows: Array<{ sessionId: string; state: ScenarioHostSessionState; updatedAtMs: number }>;
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const db = await this.getReadyDb();
+    const offset = Math.max(0, Math.trunc(input.offset ?? 0));
+    const limit = Math.min(500, Math.max(1, Math.trunc(input.limit ?? 100)));
+    const sessionId = typeof input.filters?.sessionId === "string" && input.filters.sessionId.trim()
+      ? input.filters.sessionId.trim()
+      : null;
+    const whereSql = sessionId ? "WHERE session_id = ?" : "";
+    const params = sessionId ? [sessionId] : [];
+    const total = (db.prepare(`SELECT COUNT(*) AS count FROM scenario_host_session_states ${whereSql}`).get(...params) as { count: number }).count;
+    const rows = db.prepare(`
+      SELECT session_id, state_json, updated_at_ms
+      FROM scenario_host_session_states
+      ${whereSql}
+      ORDER BY updated_at_ms DESC, session_id ASC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset) as ScenarioHostStateRow[];
+    return {
+      rows: rows.map((row) => ({
+        sessionId: row.session_id,
+        state: scenarioHostSessionStateSchema.parse(JSON.parse(row.state_json)),
+        updatedAtMs: row.updated_at_ms
+      })),
+      total,
+      offset,
+      limit
+    };
+  }
+
   async ensure(
     sessionId: string,
     defaults: {

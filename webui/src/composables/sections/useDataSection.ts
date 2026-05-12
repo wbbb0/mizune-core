@@ -3,10 +3,11 @@ import { useEditorDraftState } from "@workbench-kit/vue-resource-editor";
 import { useWorkbenchNavigation, useWorkbenchWindows } from "@workbench-kit/vue-workbench";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { contextApi, type ContextItemFilters, type ContextManagementItem, type ContextStatus } from "@/api/context";
-import { dataApi, type DataResourceSummary, type DataResource, type DataResourceItem, type DirectoryItem, type DataResourceRowsResult } from "@/api/data";
+import { dataApi, type DataResourceSummary, type DataResource, type DataResourceItem, type DirectoryItem, type DataResourceRowsResult, type DataResourceModel } from "@/api/data";
 import { editorApi, type EditorModel, type EditorResourceSummary } from "@/api/editor";
 import { useWorkbenchToasts } from "@workbench-kit/vue-workbench";
 import ContextItemsControlPanel from "@/sections/data/ContextItemsControlPanel.vue";
+import DataRegistryRowCreateBlock from "@/sections/data/DataRegistryRowCreateBlock.vue";
 
 type DataListResource =
   | {
@@ -43,6 +44,8 @@ type DataSectionState = {
   model: Ref<EditorModel | null>;
   itemDetail: Ref<DataResourceItem | null>;
   resourceRows: Ref<DataResourceRowsResult | null>;
+  selectedRegistryRowId: Ref<string | null>;
+  selectedRegistryRow: Ref<Record<string, unknown> | null>;
   resourceDirectoryItems: ComputedRef<DirectoryItem[]>;
   registryDraftValue: Ref<unknown>;
   registryStoredValue: Ref<unknown>;
@@ -57,6 +60,7 @@ type DataSectionState = {
   contextMaintenanceBusy: Ref<boolean>;
   loading: Ref<boolean>;
   loadingItem: Ref<boolean>;
+  loadingMoreRows: Ref<boolean>;
   saving: Ref<boolean>;
   validating: Ref<boolean>;
   draftValue: Ref<unknown>;
@@ -73,6 +77,7 @@ type DataSectionState = {
   resetState: () => void;
   refreshResources: () => Promise<void>;
   selectResource: (id: string) => void;
+  selectRegistryRow: (row: unknown, options?: { showDetailPane?: boolean }) => Promise<void>;
   selectDirectoryItem: (key: string) => void;
   refreshSelected: () => Promise<void>;
   refreshContextItems: () => Promise<void>;
@@ -81,6 +86,8 @@ type DataSectionState = {
   createRegistryRow: () => Promise<void>;
   saveRegistryRow: (row: unknown) => Promise<void>;
   deleteRegistryRow: (row: unknown) => Promise<void>;
+  openCreateRegistryRowDialog: () => Promise<void>;
+  loadRegistryRowsPage: (page: number, pageSize: number, options?: { preferredRowId?: string | null }) => Promise<void>;
   editContextItem: (item: ContextManagementItem) => Promise<void>;
   toggleContextItemPinned: (item: ContextManagementItem) => Promise<void>;
   bulkDeleteContextItems: () => Promise<void>;
@@ -116,6 +123,8 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
     const model = ref<EditorModel | null>(null);
     const itemDetail = ref<DataResourceItem | null>(null);
     const resourceRows = ref<DataResourceRowsResult | null>(null);
+    const selectedRegistryRowId = ref<string | null>(null);
+    const selectedRegistryRow = ref<Record<string, unknown> | null>(null);
     const registryDraftValue = ref<unknown>(null);
     const registryStoredValue = ref<unknown>(null);
     const registryRowDraftValue = ref<unknown>({});
@@ -132,6 +141,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
     const contextMaintenanceBusy = ref(false);
     const loading = ref(false);
     const loadingItem = ref(false);
+    const loadingMoreRows = ref(false);
     const saving = ref(false);
     const validating = ref(false);
     const toast = useWorkbenchToasts();
@@ -178,6 +188,13 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
         if (resource.value.shape === "directory" && itemDetail.value) {
           return itemDetail.value.title || itemDetail.value.key;
         }
+        if (resource.value.model && selectedRegistryRow.value) {
+          const titleColumn = resource.value.model.list?.titleColumn;
+          const fallbackColumn = resource.value.model.list?.fallbackTitleColumn ?? resource.value.model.primaryKey[0];
+          const title = titleColumn ? selectedRegistryRow.value[titleColumn] : null;
+          const fallback = fallbackColumn ? selectedRegistryRow.value[fallbackColumn] : null;
+          return String(title || fallback || resource.value.title);
+        }
         return resource.value.title;
       }
       if (selectedResource.value?.source === "context") {
@@ -211,6 +228,8 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       model.value = null;
       itemDetail.value = null;
       resourceRows.value = null;
+      selectedRegistryRowId.value = null;
+      selectedRegistryRow.value = null;
       registryDraftValue.value = null;
       registryStoredValue.value = null;
       registryRowDraftValue.value = {};
@@ -220,6 +239,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       contextStatus.value = null;
       loading.value = false;
       loadingItem.value = false;
+      loadingMoreRows.value = false;
       saving.value = false;
       validating.value = false;
       editorState.resetDraft(null);
@@ -242,14 +262,16 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
             kind: entry.kind,
             editable: entry.editable
           })),
-        ...dataRes.resources.map((entry) => ({
-          key: entry.key,
-          id: `registry:${entry.key}`,
-          title: entry.title,
-          source: "registry" as const,
-          kind: entry.shape,
-          editable: entry.editable
-        })),
+        ...dataRes.resources
+          .filter((entry) => entry.navigation?.hiddenFromList !== true)
+          .map((entry) => ({
+            key: entry.key,
+            id: `registry:${entry.key}`,
+            title: entry.title,
+            source: "registry" as const,
+            kind: entry.shape,
+            editable: entry.editable
+          })),
         {
           key: "context_items",
           id: "context:context_items",
@@ -269,6 +291,8 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
         model.value = null;
         itemDetail.value = null;
         resourceRows.value = null;
+        selectedRegistryRowId.value = null;
+        selectedRegistryRow.value = null;
         registryDraftValue.value = null;
         registryStoredValue.value = null;
         registryRowDraftValue.value = {};
@@ -295,11 +319,12 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
               registryDraftValue.value = structuredClone(res.resource.value);
             }
             if (res.resource.shape === "collection" || res.resource.shape === "log") {
-              const rows = await dataApi.listRows(target.key, { limit: 100 });
+              const rows = await dataApi.listRows(target.key, { limit: 50 });
               if (isStale(requestVersion) || selectedKey.value !== requestKey) {
                 return;
               }
               setRegistryRows(rows);
+              await selectFirstModelRow(requestVersion, requestKey, res.resource, rows);
             }
             return;
           }
@@ -352,6 +377,52 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       workbenchNavigation.showArea("mainArea");
     }
 
+    async function selectRegistryRow(row: unknown, options: { showDetailPane?: boolean } = {}) {
+      const requestVersion = stateVersion;
+      const requestResourceId = selectedKey.value;
+      if (!requestResourceId || !resource.value || !isRecord(row)) {
+        return;
+      }
+      selectedRegistryRow.value = row;
+      selectedRegistryRowId.value = getDataModelRowId(row, resource.value);
+      if (options.showDetailPane === true) {
+        workbenchNavigation.showArea("secondarySidebar");
+      }
+    }
+
+    async function selectFirstModelRow(
+      requestVersion: number,
+      requestResourceId: string | null,
+      nextResource: DataResource,
+      rows: DataResourceRowsResult
+    ) {
+      selectedRegistryRowId.value = null;
+      selectedRegistryRow.value = null;
+      if (!nextResource.model || rows.rows.length === 0 || !isRecord(rows.rows[0])) {
+        return;
+      }
+      selectedRegistryRow.value = rows.rows[0];
+      selectedRegistryRowId.value = getDataModelRowId(rows.rows[0], nextResource);
+    }
+
+    async function selectPreferredModelRow(
+      requestVersion: number,
+      requestResourceId: string | null,
+      nextResource: DataResource,
+      rows: DataResourceRowsResult,
+      preferredRowId: string | null | undefined
+    ) {
+      if (preferredRowId && nextResource.model) {
+        const matched = rows.rows.find((row) => getDataModelRowId(row, nextResource) === preferredRowId);
+        if (isRecord(matched)) {
+          selectedRegistryRow.value = matched;
+          selectedRegistryRowId.value = preferredRowId;
+          return;
+        }
+      }
+      await selectFirstModelRow(requestVersion, requestResourceId, nextResource, rows);
+    }
+
     function selectDirectoryItem(key: string) {
       selectedItemKey.value = key;
       workbenchNavigation.showArea("mainArea");
@@ -375,13 +446,19 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
             registryDraftValue.value = structuredClone(res.resource.value);
           }
           if (res.resource.shape === "collection" || res.resource.shape === "log") {
-            const rows = await dataApi.listRows(requestResource.key, { limit: 100 });
+            const rows = await dataApi.listRows(requestResource.key, {
+              offset: resourceRows.value?.offset ?? 0,
+              limit: resourceRows.value?.limit ?? 50
+            });
             if (isStale(requestVersion) || selectedKey.value !== requestResourceId) {
               return;
             }
             setRegistryRows(rows);
+            await selectFirstModelRow(requestVersion, requestResourceId, res.resource, rows);
           } else {
             resourceRows.value = null;
+            selectedRegistryRowId.value = null;
+            selectedRegistryRow.value = null;
             registryExistingRowDrafts.value = {};
           }
           return;
@@ -902,7 +979,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       return draft !== undefined && JSON.stringify(draft) !== JSON.stringify(row);
     }
 
-    async function createRegistryRow() {
+    async function createRegistryRow(options: { rethrow?: boolean } = {}) {
       const requestVersion = stateVersion;
       const requestResourceId = selectedKey.value;
       const requestResource = selectedResource.value;
@@ -919,7 +996,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
         if (isStale(requestVersion) || selectedKey.value !== requestResourceId) {
           return;
         }
-        setRegistryRows(await dataApi.listRows(requestResource.key, { limit: 100 }));
+        await loadRegistryRowsPage(1, resourceRows.value?.limit ?? 50);
         registryRowDraftValue.value = {};
         toast.push({ type: "success", message: "已新增" });
       } catch (error: unknown) {
@@ -927,10 +1004,57 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
           return;
         }
         toast.push({ type: "error", message: error instanceof Error ? error.message : "新增失败" });
+        if (options.rethrow) {
+          throw error;
+        }
       } finally {
         if (!isStale(requestVersion) && selectedKey.value === requestResourceId) {
           saving.value = false;
         }
+      }
+    }
+
+    async function openCreateRegistryRowDialog() {
+      const requestResourceId = selectedKey.value;
+      const requestResource = selectedResource.value;
+      if (
+        !requestResourceId
+        || requestResource?.source !== "registry"
+        || resource.value?.shape !== "collection"
+        || !resource.value.editable
+        || resource.value.rowOperations?.create !== true
+        || !resource.value.rowUiTree
+      ) return;
+      registryRowDraftValue.value = {};
+      const result = await windows.openDialog({
+        kind: "dialog",
+        title: `新增${resource.value.title}`,
+        description: resource.value.storage.tables?.join(", ") || resource.value.storage.tableGroup || resource.value.storage.database,
+        size: "xl",
+        modal: true,
+        closeOnBackdrop: false,
+        closeOnEscape: true,
+        blocks: [{
+          kind: "component",
+          component: DataRegistryRowCreateBlock,
+          props: {
+            node: resource.value.rowUiTree,
+            modelValue: registryRowDraftValue.value,
+            updateModelValue: updateRegistryRowDraft
+          }
+        }],
+        actions: [{
+          id: "create",
+          label: "新增",
+          variant: "primary",
+          run: async () => {
+            await createRegistryRow({ rethrow: true });
+            return {};
+          }
+        }]
+      });
+      if (result.reason !== "action") {
+        registryRowDraftValue.value = {};
       }
     }
 
@@ -955,7 +1079,9 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
         if (isStale(requestVersion) || selectedKey.value !== requestResourceId) {
           return;
         }
-        setRegistryRows(await dataApi.listRows(requestResource.key, { limit: 100 }));
+        await loadRegistryRowsPage(currentRegistryPage(), resourceRows.value?.limit ?? 50, {
+          preferredRowId: selectedRegistryRowId.value
+        });
         toast.push({ type: "success", message: "已保存" });
       } catch (error: unknown) {
         if (isStale(requestVersion)) {
@@ -994,7 +1120,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
         if (isStale(requestVersion) || selectedKey.value !== requestResourceId) {
           return;
         }
-        setRegistryRows(await dataApi.listRows(requestResource.key, { limit: 100 }));
+        await loadRegistryRowsPage(currentRegistryPage(), resourceRows.value?.limit ?? 50);
         toast.push({ type: "success", message: "已删除" });
       } catch (error: unknown) {
         if (isStale(requestVersion)) {
@@ -1004,6 +1130,57 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       } finally {
         if (!isStale(requestVersion) && selectedKey.value === requestResourceId) {
           saving.value = false;
+        }
+      }
+    }
+
+    function currentRegistryPage(): number {
+      if (!resourceRows.value) return 1;
+      return Math.floor(resourceRows.value.offset / resourceRows.value.limit) + 1;
+    }
+
+    async function loadRegistryRowsPage(
+      page: number,
+      pageSize: number,
+      options: { preferredRowId?: string | null } = {}
+    ) {
+      const requestVersion = stateVersion;
+      const requestResourceId = selectedKey.value;
+      const requestResource = selectedResource.value;
+      if (
+        !requestResourceId
+        || requestResource?.source !== "registry"
+        || !resource.value
+        || (resource.value.shape !== "collection" && resource.value.shape !== "log")
+        || loadingMoreRows.value
+      ) return;
+      let nextPage = Math.max(1, Math.trunc(page));
+      const nextPageSize = Math.min(500, Math.max(1, Math.trunc(pageSize)));
+      loadingMoreRows.value = true;
+      try {
+        let next = await dataApi.listRows(requestResource.key, {
+          offset: (nextPage - 1) * nextPageSize,
+          limit: nextPageSize
+        });
+        if (next.total !== undefined && next.offset > 0 && next.rows.length === 0) {
+          nextPage = next.total > 0 ? Math.ceil(next.total / nextPageSize) : 1;
+          next = await dataApi.listRows(requestResource.key, {
+            offset: (nextPage - 1) * nextPageSize,
+            limit: nextPageSize
+          });
+        }
+        if (isStale(requestVersion) || selectedKey.value !== requestResourceId) {
+          return;
+        }
+        setRegistryRows(next);
+        await selectPreferredModelRow(requestVersion, requestResourceId, resource.value, next, options.preferredRowId);
+      } catch (error: unknown) {
+        if (!isStale(requestVersion)) {
+          toast.push({ type: "error", message: error instanceof Error ? error.message : "读取分页失败" });
+        }
+      } finally {
+        if (!isStale(requestVersion) && selectedKey.value === requestResourceId) {
+          loadingMoreRows.value = false;
         }
       }
     }
@@ -1092,6 +1269,8 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       model,
       itemDetail,
       resourceRows,
+      selectedRegistryRowId,
+      selectedRegistryRow,
       resourceDirectoryItems,
       registryDraftValue,
       registryStoredValue,
@@ -1106,6 +1285,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       contextMaintenanceBusy,
       loading,
       loadingItem,
+      loadingMoreRows,
       saving,
       validating,
       draftValue: editorState.draftValue,
@@ -1122,6 +1302,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       resetState,
       refreshResources,
       selectResource,
+      selectRegistryRow,
       selectDirectoryItem,
       refreshSelected,
       refreshContextItems,
@@ -1130,6 +1311,8 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       createRegistryRow,
       saveRegistryRow,
       deleteRegistryRow,
+      openCreateRegistryRowDialog,
+      loadRegistryRowsPage,
       editContextItem,
       toggleContextItemPinned,
       bulkDeleteContextItems,
@@ -1164,6 +1347,25 @@ function getRegistryRowId(row: unknown): string | null {
   }
   const id = (row as { id?: unknown }).id;
   return typeof id === "string" && id ? id : null;
+}
+
+function getModelRowId(row: unknown, model: DataResourceModel | undefined): string | null {
+  if (!isRecord(row) || !model?.primaryKey.length) {
+    return null;
+  }
+  const values = model.primaryKey.map((field) => row[field]);
+  if (values.some((value) => value == null || value === "")) {
+    return null;
+  }
+  return values.map((value) => String(value)).join(":");
+}
+
+function getDataModelRowId(row: unknown, resource: DataResource): string | null {
+  return getModelRowId(row, resource.model) ?? getRegistryRowId(row);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function buildRegistryRowPatch(draft: unknown, resource: DataResource): Record<string, unknown> {

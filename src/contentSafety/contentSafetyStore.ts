@@ -198,6 +198,53 @@ export class ContentSafetyStore {
     return record ? toAuditView(record) : null;
   }
 
+  async listRows(input: { offset?: number; limit?: number; filters?: Record<string, unknown> } = {}): Promise<{
+    rows: ContentSafetyAuditRecord[];
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const db = await this.getReadyDb();
+    const offset = Math.max(0, Math.trunc(input.offset ?? 0));
+    const limit = Math.min(500, Math.max(1, Math.trunc(input.limit ?? 100)));
+    const filters: string[] = [];
+    const params: unknown[] = [];
+    for (const [key, column] of [
+      ["fileId", "file_id"],
+      ["audioId", "audio_id"],
+      ["sessionId", "session_id"]
+    ] as const) {
+      const value = input.filters?.[key];
+      if (typeof value === "string" && value.trim()) {
+        filters.push(`${column} = ?`);
+        params.push(value.trim());
+      }
+    }
+    const whereSql = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+    const total = (db.prepare(`SELECT COUNT(*) AS count FROM content_safety_audits ${whereSql}`).get(...params) as { count: number }).count;
+    const rows = db.prepare(`
+      SELECT
+        key,
+        subject_kind AS subjectKind,
+        decision,
+        marker,
+        result_json AS resultJson,
+        original_text AS originalText,
+        file_id AS fileId,
+        audio_id AS audioId,
+        content_hash AS contentHash,
+        source_name AS sourceName,
+        session_id AS sessionId,
+        checked_at_ms AS checkedAtMs,
+        expires_at_ms AS expiresAtMs
+      FROM content_safety_audits
+      ${whereSql}
+      ORDER BY checked_at_ms DESC, key ASC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset) as ContentSafetyAuditRow[];
+    return { rows: rows.map(rowToAuditRecord), total, offset, limit };
+  }
+
   async isBlockedFileId(fileId: string): Promise<{ blocked: true; marker: string; reason: string } | null> {
     const record = await this.getByFileId(fileId);
     if (!record || !isBlockingDecision(record.decision)) {

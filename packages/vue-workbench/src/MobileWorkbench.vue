@@ -32,7 +32,7 @@ const isActiveMobileAreaVisible = computed(() =>
 );
 const isMobileOverlayVisible = computed(() => props.runtime.activeMobileAreaId.value !== mobileRootAreaId.value);
 const canPopMobileArea = computed(() => props.runtime.canPopMobileArea.value);
-const mobileHistoryArmed = ref(false);
+const mobileHistoryDepth = ref(0);
 const mobileHistoryStateKey = "__workbenchMobileArea";
 
 const mobileWorkbenchTrigger = useMenuTrigger({
@@ -58,13 +58,13 @@ watch(
   () => [props.view.id, props.view.layout.mobile.rootArea] as const,
   () => {
     props.runtime.resetMobileAreaStack();
-    mobileHistoryArmed.value = false;
+    mobileHistoryDepth.value = 0;
   },
   { immediate: true }
 );
 
 function pushMobileHistoryEntry() {
-  if (typeof window === "undefined" || mobileHistoryArmed.value) {
+  if (typeof window === "undefined") {
     return;
   }
 
@@ -78,26 +78,30 @@ function pushMobileHistoryEntry() {
       areaId: props.runtime.activeMobileAreaId.value
     }
   }, "", window.location.href);
-  mobileHistoryArmed.value = true;
+  mobileHistoryDepth.value += 1;
 }
 
 function handlePopState() {
   if (!props.runtime.canPopMobileArea.value) {
     return;
   }
-  mobileHistoryArmed.value = false;
+  mobileHistoryDepth.value = Math.max(0, mobileHistoryDepth.value - 1);
   props.runtime.popMobileArea();
 }
 
-watch(isMobileOverlayVisible, (visible) => {
-  if (!visible) {
+watch(() => props.runtime.mobileAreaStack.value.length, (stackLength) => {
+  const desiredDepth = Math.max(0, stackLength - 1);
+  if (!isMobileOverlayVisible.value) {
+    mobileHistoryDepth.value = 0;
     return;
   }
-  pushMobileHistoryEntry();
+  while (mobileHistoryDepth.value < desiredDepth) {
+    pushMobileHistoryEntry();
+  }
 });
 
 function goBack() {
-  if (mobileHistoryArmed.value && typeof window !== "undefined") {
+  if (mobileHistoryDepth.value > 0 && typeof window !== "undefined") {
     window.history.back();
     return;
   }

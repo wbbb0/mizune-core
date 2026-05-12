@@ -16,6 +16,7 @@ export interface SqliteTableGroupDefinition {
   resetPolicy?: SqliteTableGroupResetPolicy;
   createSchema: (db: SqliteDatabase) => void;
   adoptExistingSchema?: (db: SqliteDatabase) => void;
+  migrateSchema?: (db: SqliteDatabase) => boolean;
   validateSchema: (db: SqliteDatabase) => void;
 }
 
@@ -280,6 +281,9 @@ function getTableGroupResetReason(
   }
   const meta = readTableGroupMeta(db, group.groupId);
   if (meta && meta.schema_version !== group.schemaVersion) {
+    if (getResetPolicy(group) === "reset_allowed" && tryMigrateTableGroup(db, group, meta)) {
+      return null;
+    }
     return "schema_version_mismatch";
   }
   if (!meta) {
@@ -288,6 +292,9 @@ function getTableGroupResetReason(
   try {
     group.validateSchema(db);
   } catch (error) {
+    if (meta && getResetPolicy(group) === "reset_allowed" && tryMigrateTableGroup(db, group, meta)) {
+      return null;
+    }
     if (meta) {
       return "schema_validation_failed";
     }
@@ -297,6 +304,33 @@ function getTableGroupResetReason(
     writeTableGroupMeta(db, group);
   }
   return null;
+}
+
+function tryMigrateTableGroup(
+  db: SqliteDatabase,
+  group: SqliteTableGroupDefinition,
+  meta: SchemaGroupRow
+): boolean {
+  if (!group.migrateSchema) {
+    return false;
+  }
+  try {
+    const migrate = db.transaction(() => {
+      const changed = group.migrateSchema?.(db) ?? false;
+      if (!changed) {
+        return false;
+      }
+      group.validateSchema(db);
+      writeTableGroupMeta(db, group, {
+        ...(meta.last_reset_at !== null ? { lastResetAt: meta.last_reset_at } : {}),
+        ...(meta.last_reset_reason !== null ? { lastResetReason: meta.last_reset_reason } : {})
+      });
+      return true;
+    });
+    return migrate() as boolean;
+  } catch {
+    return false;
+  }
 }
 
 function assertTableGroupResetAllowed(

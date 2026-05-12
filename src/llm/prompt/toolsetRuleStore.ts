@@ -144,6 +144,38 @@ export class ToolsetRuleStore {
     return (await this.getAll()).find((rule) => rule.id === ruleId) ?? null;
   }
 
+  async listToolsetRows(input: { offset?: number; limit?: number; filters?: Record<string, unknown> } = {}): Promise<{
+    rows: Array<{ ruleId: string; toolsetId: string; sortOrder: number }>;
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const offset = Math.max(0, Math.trunc(input.offset ?? 0));
+    const limit = Math.min(500, Math.max(1, Math.trunc(input.limit ?? 100)));
+    const ruleId = typeof input.filters?.ruleId === "string" && input.filters.ruleId.trim()
+      ? input.filters.ruleId.trim()
+      : null;
+    const whereSql = ruleId ? "WHERE rule_id = ?" : "";
+    const params = ruleId ? [ruleId] : [];
+    await this.stateDatabase.init();
+    const total = (this.stateDatabase.getDb().prepare(`
+      SELECT COUNT(*) AS count
+      FROM toolset_rule_toolsets
+      ${whereSql}
+    `).get(...params) as { count: number }).count;
+    const rows = this.stateDatabase.getDb().prepare(`
+      SELECT
+        rule_id AS ruleId,
+        toolset_id AS toolsetId,
+        sort_order AS sortOrder
+      FROM toolset_rule_toolsets
+      ${whereSql}
+      ORDER BY rule_id ASC, sort_order ASC, toolset_id ASC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset) as Array<{ ruleId: string; toolsetId: string; sortOrder: number }>;
+    return { rows, total, offset, limit };
+  }
+
   async createRow(value: unknown): Promise<ToolsetRuleEntry> {
     const parsed = createToolsetRuleEntry(toolsetRuleSchema.parse(value));
     if (await this.getRow(parsed.id)) {

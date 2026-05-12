@@ -10,5 +10,11 @@ export const dataView = defineWorkbenchView({
     primarySidebar: DataListPane,
     mainArea: DataMainPane,
     mobileHeader: DataMobileHeader
+  },
+  layout: {
+    desktop: {
+      primarySidebar: { defaultSizePx: 260, minSizePx: 220, maxSizePx: 420 },
+      secondarySidebar: { defaultSizePx: 460, minSizePx: 320, maxSizePx: 720 }
+    }
   }
 });

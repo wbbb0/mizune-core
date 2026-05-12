@@ -124,6 +124,46 @@ export class WhitelistStore {
     };
   }
 
+  async patchEntry(
+    currentTargetType: "user" | "group",
+    currentTargetId: string,
+    next: WhitelistEntryRow
+  ): Promise<WhitelistEntryRow> {
+    const normalizedCurrentTargetId = currentTargetId.trim();
+    const normalizedNextTargetId = next.targetId.trim();
+    if (!normalizedCurrentTargetId || !normalizedNextTargetId) {
+      throw new Error("whitelist target id is required");
+    }
+    const db = this.stateDatabase.getDb();
+    const update = db.transaction(() => {
+      const deleted = db.prepare(`
+        DELETE FROM whitelist_entries
+        WHERE target_type = ?
+          AND target_id = ?
+      `).run(currentTargetType, normalizedCurrentTargetId);
+      if (deleted.changes === 0) {
+        throw new Error(`whitelist entry not found: ${currentTargetType}:${normalizedCurrentTargetId}`);
+      }
+      db.prepare(`
+        INSERT INTO whitelist_entries (target_type, target_id, created_at_ms)
+        VALUES (@targetType, @targetId, @createdAtMs)
+        ON CONFLICT(target_type, target_id) DO UPDATE SET
+          created_at_ms = excluded.created_at_ms
+      `).run({
+        targetType: next.targetType,
+        targetId: normalizedNextTargetId,
+        createdAtMs: next.createdAtMs
+      });
+    });
+    update();
+    this.current = await this.readAll();
+    return {
+      targetType: next.targetType,
+      targetId: normalizedNextTargetId,
+      createdAtMs: next.createdAtMs
+    };
+  }
+
   async deleteEntry(targetType: "user" | "group", targetId: string): Promise<void> {
     this.stateDatabase.getDb().prepare(`
       DELETE FROM whitelist_entries

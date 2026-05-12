@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { RefreshCw, ChevronRight, ChevronDown, Save, Trash2, Pin, Pencil, SlidersHorizontal } from "lucide-vue-next";
+import { computed, ref } from "vue";
+import { RefreshCw, ChevronRight, ChevronDown, Save, Trash2, Pin, Pencil, SlidersHorizontal, Plus } from "lucide-vue-next";
 import { SchemaNode } from "@workbench-kit/vue-resource-editor";
 import { useDataSection } from "@/composables/sections/useDataSection";
-import type { DirectoryItem } from "@/api/data";
+import { useElementWidth } from "@/composables/useElementWidth";
+import DataModelExplorerPane from "./DataModelExplorerPane.vue";
 import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@workbench-kit/vue-workbench";
 
 const {
@@ -14,10 +15,10 @@ const {
   model,
   itemDetail,
   resourceRows,
+  selectedRegistryRow,
   resourceDirectoryItems,
   registryDraftValue,
   registryStoredValue,
-  registryRowDraftValue,
   contextItems,
   contextTotal,
   contextFilters,
@@ -27,6 +28,7 @@ const {
   contextMaintenanceBusy,
   loading,
   loadingItem,
+  loadingMoreRows,
   saving,
   validating,
   draftValue,
@@ -41,11 +43,13 @@ const {
   refreshContextItems,
   openContextFiltersDialog,
   deleteContextItem,
-  createRegistryRow,
+  openCreateRegistryRowDialog,
   saveRegistryRow,
   deleteRegistryRow,
+  loadRegistryRowsPage,
   editContextItem,
   toggleContextItemPinned,
+  selectRegistryRow,
   selectDirectoryItem,
   refreshSelected,
   reloadFromServer,
@@ -54,7 +58,6 @@ const {
   saveRegistrySingleton,
   updateDraft,
   updateRegistryDraft,
-  updateRegistryRowDraft,
   updateRegistryExistingRowDraft,
   getRegistryExistingRowDraft,
   canSaveRegistryRow,
@@ -63,59 +66,31 @@ const {
   formatContextMeta
 } = useDataSection();
 
-type SessionDataRow = {
-  sessionId: string;
-  type: "private" | "group";
-  source: "onebot" | "web" | null;
-  modeId: string | null;
-  participantKind: "user" | "group";
-  participantId: string;
-  title: string | null;
-  titleSource: "default" | "auto" | "manual" | null;
-  replyDelivery: "onebot" | "web" | null;
-  transcriptCount: number;
-  lastActiveAtMs: number;
-  lastMessageAtMs: number | null;
-  updatedAtMs: number;
-};
+const paneRef = ref<HTMLElement | null>(null);
+const paneWidth = useElementWidth(paneRef);
+const compactPane = computed(() => paneWidth.value > 0 && paneWidth.value < 720);
+const registryRowsPage = computed(() => resourceRows.value ? Math.floor(resourceRows.value.offset / resourceRows.value.limit) + 1 : 1);
+const registryRowsPageSize = computed(() => resourceRows.value?.limit ?? 50);
 
-type SessionTranscriptDataRow = {
-  sessionId: string;
-  itemIndex: number;
-  itemId: string;
-  groupId: string;
-  kind: string;
-  role: string | null;
-  llmVisible: 0 | 1;
-  runtimeExcluded: 0 | 1;
-  timestampMs: number;
-  itemHash: string;
-  item: unknown;
-};
-
-const sessionRows = computed(() => resourceRows.value?.rows as SessionDataRow[] | undefined);
-const transcriptRows = computed(() => resourceRows.value?.rows as SessionTranscriptDataRow[] | undefined);
-
-function rowText(value: unknown): string {
-  return value == null || value === "" ? "—" : String(value);
+async function selectModelRow(row: unknown) {
+  await selectRegistryRow(row, { showDetailPane: false });
 }
 
-function summarizeTranscriptItem(row: SessionTranscriptDataRow): string {
-  const item = row.item as Record<string, unknown> | null;
-  if (!item) return "";
-  const text = typeof item.text === "string"
-    ? item.text
-    : typeof item.content === "string"
-      ? item.content
-      : typeof item.summary === "string"
-        ? item.summary
-        : "";
-  return text.length > 96 ? `${text.slice(0, 96)}…` : text;
+async function updateRegistryRowsPage(page: number) {
+  await loadRegistryRowsPage(page, registryRowsPageSize.value);
+}
+
+async function updateRegistryRowsPageSize(pageSize: number) {
+  await loadRegistryRowsPage(1, pageSize);
+}
+
+function dataModelStorageKey(resourceKey: string, name: string): string {
+  return `data.model.${encodeURIComponent(resourceKey)}.${name}`;
 }
 </script>
 
 <template>
-  <div class="flex h-full flex-col overflow-hidden">
+  <div ref="paneRef" class="flex h-full flex-col overflow-hidden">
     <WorkbenchEmptyState v-if="!selectedKey" message="← 选择一个数据资源" />
 
     <WorkbenchEmptyState v-else-if="loading">
@@ -126,18 +101,18 @@ function summarizeTranscriptItem(row: SessionTranscriptDataRow): string {
     </WorkbenchEmptyState>
 
     <template v-else-if="selectedResource?.source === 'editor' && model">
-      <WorkbenchAreaHeader class="flex-wrap gap-2.5 px-4" :uppercase="false">
-        <span class="rounded-full bg-surface-muted px-1.5 text-small text-text-subtle">{{ model.kind }}</span>
+      <WorkbenchAreaHeader class="flex-wrap gap-2.5 px-4" :class="compactPane ? 'items-start' : ''" :uppercase="false">
+        <span class="shrink-0 rounded-full bg-surface-muted px-1.5 text-small text-text-subtle">{{ model.kind }}</span>
         <template v-if="model.kind === 'layered'">
-          <span class="text-small text-text-muted">层次：</span>
+          <span class="shrink-0 text-small text-text-muted">层次：</span>
           <span
             v-for="layer in model.layers"
             :key="layer.key"
-            class="rounded-full bg-surface-muted px-2 py-0.5 text-small text-text-muted"
+            class="shrink-0 rounded-full bg-surface-muted px-2 py-0.5 text-small text-text-muted"
             :class="{ 'bg-accent text-text-on-accent': layer.key === model.writableLayerKey }"
           >{{ layer.key }}</span>
         </template>
-        <div class="ml-auto flex gap-1.5">
+        <div class="flex gap-1.5" :class="compactPane ? 'w-full flex-wrap justify-end' : 'ml-auto'">
           <button class="btn btn-secondary" :disabled="loading || saving || validating || !model" @click="reloadFromServer">
             <RefreshCw :size="13" :stroke-width="2" />
             重新读取
@@ -277,6 +252,15 @@ function summarizeTranscriptItem(row: SessionTranscriptDataRow): string {
           <RefreshCw :size="13" :stroke-width="2" :class="{ spin: loading }" />
         </button>
         <button
+          v-if="resource.shape === 'collection' && resource.editable && resource.rowOperations?.create && resource.rowUiTree"
+          class="btn btn-primary"
+          :disabled="saving"
+          @click="openCreateRegistryRowDialog"
+        >
+          <Plus :size="13" :stroke-width="1.5" />
+          新增
+        </button>
+        <button
           v-if="resource.shape === 'singleton' && resource.editable"
           class="btn btn-primary"
           :disabled="!registryCanSubmit"
@@ -303,28 +287,16 @@ function summarizeTranscriptItem(row: SessionTranscriptDataRow): string {
         <pre class="m-0 overflow-auto p-0 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap wrap-break-word">{{ formattedJson }}</pre>
       </div>
 
-      <div v-else-if="resource.shape === 'collection' || resource.shape === 'log'" class="scrollbar-thin flex-1 overflow-auto px-4 py-3">
-        <div v-if="resource.shape === 'collection' && resource.editable && resource.rowOperations?.create && resource.rowUiTree" class="mb-4 border-b border-border-subtle pb-4">
-          <SchemaNode
-            :node="resource.rowUiTree"
-            :model-value="registryRowDraftValue"
-            :stored-value="{}"
-            :effective-value="registryRowDraftValue"
-            :depth="0"
-            @update:model-value="updateRegistryRowDraft"
-          />
-          <div class="mt-3 flex justify-end">
-            <button class="btn btn-primary" :disabled="saving" @click="createRegistryRow">
-              <Save :size="13" :stroke-width="1.5" />
-              新增
-            </button>
-          </div>
-        </div>
-        <div class="mb-2 flex items-center gap-2 text-small text-text-subtle">
+      <div
+        v-else-if="resource.shape === 'collection' || resource.shape === 'log'"
+        class="scrollbar-thin flex-1"
+        :class="resource.model?.kind === 'table' ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-auto px-4 py-3'"
+      >
+        <div v-if="resource.model?.kind !== 'table'" class="mb-2 flex items-center gap-2 text-small text-text-subtle">
           <span>{{ resourceRows?.total ?? resourceRows?.rows.length ?? 0 }} 行</span>
           <span v-if="resourceRows">offset {{ resourceRows.offset }} · limit {{ resourceRows.limit }}</span>
         </div>
-        <div v-if="resource.shape === 'collection' && resource.editable && resource.rowOperations?.patch && resource.rowUiTree && resourceRows?.rows.length" class="space-y-3">
+        <div v-if="resource.model?.kind !== 'table' && resource.shape === 'collection' && resource.editable && resource.rowOperations?.patch && resource.rowUiTree && resourceRows?.rows.length" class="space-y-3">
           <div
             v-for="(row, index) in resourceRows.rows"
             :key="`${index}`"
@@ -348,67 +320,23 @@ function summarizeTranscriptItem(row: SessionTranscriptDataRow): string {
             />
           </div>
         </div>
-        <div v-else-if="resource.key === 'sessions'" class="overflow-hidden rounded border border-border-default">
-          <div class="grid grid-cols-[minmax(16rem,1.5fr)_6rem_8rem_8rem_5rem_8rem_8rem] border-b border-border-default bg-surface-muted px-3 py-2 font-mono text-small text-text-subtle">
-            <span>session</span>
-            <span>type</span>
-            <span>source</span>
-            <span>mode</span>
-            <span>items</span>
-            <span>active</span>
-            <span>updated</span>
-          </div>
-          <div
-            v-for="row in sessionRows"
-            :key="row.sessionId"
-            class="grid grid-cols-[minmax(16rem,1.5fr)_6rem_8rem_8rem_5rem_8rem_8rem] border-b border-border-subtle px-3 py-2 text-small last:border-b-0"
-          >
-            <div class="min-w-0">
-              <div class="truncate font-medium text-text-secondary" :title="row.title || row.sessionId">{{ row.title || row.sessionId }}</div>
-              <div class="truncate font-mono text-text-subtle" :title="row.sessionId">{{ row.sessionId }}</div>
-              <div class="truncate font-mono text-text-subtle">{{ row.participantKind }} {{ row.participantId }}</div>
-            </div>
-            <span class="font-mono text-text-muted">{{ row.type }}</span>
-            <span class="font-mono text-text-muted">{{ rowText(row.source) }}</span>
-            <span class="truncate font-mono text-text-muted" :title="row.modeId ?? undefined">{{ rowText(row.modeId) }}</span>
-            <span class="font-mono text-text-muted">{{ row.transcriptCount }}</span>
-            <span class="font-mono text-text-muted">{{ formatTime(row.lastActiveAtMs) }}</span>
-            <span class="font-mono text-text-muted">{{ formatTime(row.updatedAtMs) }}</span>
-          </div>
-        </div>
-        <div v-else-if="resource.key === 'session_transcript_items'" class="overflow-hidden rounded border border-border-default">
-          <div class="grid grid-cols-[8rem_minmax(14rem,1.2fr)_6rem_8rem_minmax(18rem,2fr)] border-b border-border-default bg-surface-muted px-3 py-2 font-mono text-small text-text-subtle">
-            <span>time</span>
-            <span>session</span>
-            <span>index</span>
-            <span>kind</span>
-            <span>content</span>
-          </div>
-          <details
-            v-for="row in transcriptRows"
-            :key="`${row.sessionId}:${row.itemId}`"
-            class="border-b border-border-subtle last:border-b-0"
-          >
-            <summary class="grid cursor-pointer grid-cols-[8rem_minmax(14rem,1.2fr)_6rem_8rem_minmax(18rem,2fr)] px-3 py-2 text-small hover:bg-surface-hover">
-              <span class="font-mono text-text-muted">{{ formatTime(row.timestampMs) }}</span>
-              <span class="min-w-0 truncate font-mono text-text-subtle" :title="row.sessionId">{{ row.sessionId }}</span>
-              <span class="font-mono text-text-muted">#{{ row.itemIndex }}</span>
-              <span class="truncate font-mono text-text-muted" :title="row.kind">{{ row.kind }}</span>
-              <span class="min-w-0 truncate text-text-secondary" :title="summarizeTranscriptItem(row)">{{ summarizeTranscriptItem(row) || row.itemId }}</span>
-            </summary>
-            <div class="border-t border-border-subtle bg-surface-input px-3 py-2">
-              <div class="mb-2 flex flex-wrap gap-2 font-mono text-small text-text-subtle">
-                <span>{{ row.itemId }}</span>
-                <span>{{ row.groupId }}</span>
-                <span>{{ row.role ?? "no-role" }}</span>
-                <span>{{ row.llmVisible ? "llm" : "hidden" }}</span>
-                <span v-if="row.runtimeExcluded">excluded</span>
-                <span>{{ row.itemHash.slice(0, 12) }}</span>
-              </div>
-              <pre class="m-0 overflow-auto p-0 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap wrap-break-word">{{ JSON.stringify(row.item, null, 2) }}</pre>
-            </div>
-          </details>
-        </div>
+        <DataModelExplorerPane
+          v-else-if="resource.model?.kind === 'table'"
+          class="min-h-0 flex-1"
+          :resource="resource"
+          :rows="resourceRows?.rows ?? []"
+          :page="registryRowsPage"
+          :page-size="registryRowsPageSize"
+          :total="resourceRows?.total"
+          :loading="loadingMoreRows"
+          :selected-row="selectedRegistryRow"
+          :split-storage-key="dataModelStorageKey(resource.key, 'split')"
+          :page-size-storage-key="dataModelStorageKey(resource.key, 'pageSize')"
+          empty-message="暂无数据"
+          @select-row="selectModelRow"
+          @update:page="updateRegistryRowsPage"
+          @update:page-size="updateRegistryRowsPageSize"
+        />
         <pre v-else class="m-0 overflow-auto p-0 font-mono text-mono leading-6 text-text-primary whitespace-pre-wrap wrap-break-word">{{ formattedRowsJson }}</pre>
       </div>
 

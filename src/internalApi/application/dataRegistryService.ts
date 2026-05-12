@@ -35,8 +35,37 @@ import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
 import type { RuntimeResourceStore } from "#runtime/resources/runtimeResourceStore.ts";
 import { chatFileRecordRegistrySchema, type ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
+import { scenarioHostStateDataDomain, scenarioHostSessionStatesTableModel, sessionDataDomain, sessionsTableModel, sessionTranscriptItemsTableModel } from "#conversation/session/sessionDataModel.ts";
 import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import { comfyTaskRecordSchema } from "#comfy/taskSchema.ts";
+import { audioFilesTableModel, chatFilesTableModel, comfyTaskResultFilesTableModel, comfyTasksTableModel, contentSafetyAuditsTableModel } from "#data/assets/assetsDataModel.ts";
+import {
+  contextItemEmbeddingsTableModel,
+  contextItemsTableModel,
+  contextItemSourcesTableModel,
+  contextMaintenanceJobsTableModel,
+  contextManualAuditEventsTableModel,
+  contextRawMessagesTableModel,
+  embeddingProfilesTableModel
+} from "#context/contextDataModels.ts";
+import type { ContentSafetyStore } from "#contentSafety/contentSafetyStore.ts";
+import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import {
+  globalRulesTableModel,
+  groupMembershipTableModel,
+  requestsTableModel,
+  scheduledJobTargetsTableModel,
+  runtimeBrowserPagesTableModel,
+  runtimeResourcesTableModel,
+  runtimeShellSessionsTableModel,
+  scheduledJobsTableModel,
+  toolsetRuleToolsetsTableModel,
+  toolsetRulesTableModel,
+  userIdentitiesTableModel,
+  userMemoriesTableModel,
+  usersTableModel,
+  whitelistTableModel
+} from "#data/state/stateDataModels.ts";
 
 export interface DataRegistryService {
   listResources: DataRegistry["listResources"];
@@ -59,20 +88,22 @@ export function createDataRegistryService(input: {
   globalProfileReadinessStore: Pick<GlobalProfileReadinessStore, "get" | "write">;
   setupStore: Pick<SetupStateStore, "get">;
   globalRuleStore: Pick<GlobalRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove">;
-  toolsetRuleStore: Pick<ToolsetRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove">;
+  toolsetRuleStore: Pick<ToolsetRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove" | "listToolsetRows">;
   userIdentityStore: Pick<UserIdentityStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
   groupMembershipStore: Pick<GroupMembershipStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
-  userStore: Pick<UserStore, "listRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
+  userStore: Pick<UserStore, "listRows" | "listMemoryRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
   requestStore: Pick<RequestStore, "listRows" | "get" | "createRow" | "patchRow" | "deleteRow">;
-  scheduledJobStore: Pick<ScheduledJobStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
+  scheduledJobStore: Pick<ScheduledJobStore, "listRows" | "listTargetRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
   scheduler: Pick<Scheduler, "reloadFromStore">;
   comfyTaskStore: Pick<ComfyTaskStore, "listRows" | "listResultRows">;
-  whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
-  contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs">;
+  whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "patchEntry" | "deleteEntry">;
+  contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs" | "listContextItemSources" | "listContextItemEmbeddings" | "listEmbeddingProfiles" | "listManualAuditEvents">;
   audioStore: Pick<AudioStore, "listRows" | "getRow">;
   chatFileStore: Pick<ChatFileStore, "listRows" | "getRow">;
   sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
-  runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list">;
+  runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows">;
+  contentSafetyStore?: Pick<ContentSafetyStore, "listRows">;
+  scenarioHostStateStore?: Pick<ScenarioHostStateStore, "listRows">;
 }): DataRegistryService {
   const registry = new DataRegistry({
     dumpDir: join(input.config.dataDir, "dumps")
@@ -91,22 +122,24 @@ function createInitialDataResourceDefinitions(input: {
   globalProfileReadinessStore: Pick<GlobalProfileReadinessStore, "get" | "write">;
   setupStore: Pick<SetupStateStore, "get">;
   globalRuleStore: Pick<GlobalRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove">;
-  toolsetRuleStore: Pick<ToolsetRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove">;
+  toolsetRuleStore: Pick<ToolsetRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove" | "listToolsetRows">;
   userIdentityStore: Pick<UserIdentityStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
   groupMembershipStore: Pick<GroupMembershipStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
-  userStore: Pick<UserStore, "listRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
+  userStore: Pick<UserStore, "listRows" | "listMemoryRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
   requestStore: Pick<RequestStore, "listRows" | "get" | "createRow" | "patchRow" | "deleteRow">;
-  scheduledJobStore: Pick<ScheduledJobStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
+  scheduledJobStore: Pick<ScheduledJobStore, "listRows" | "listTargetRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
   scheduler: Pick<Scheduler, "reloadFromStore">;
   comfyTaskStore: Pick<ComfyTaskStore, "listRows" | "listResultRows">;
-  whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">;
-  contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs">;
+  whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "patchEntry" | "deleteEntry">;
+  contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs" | "listContextItemSources" | "listContextItemEmbeddings" | "listEmbeddingProfiles" | "listManualAuditEvents">;
   audioStore: Pick<AudioStore, "listRows" | "getRow">;
   chatFileStore: Pick<ChatFileStore, "listRows" | "getRow">;
   sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
-  runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list">;
+  runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows">;
+  contentSafetyStore?: Pick<ContentSafetyStore, "listRows">;
+  scenarioHostStateStore?: Pick<ScenarioHostStateStore, "listRows">;
 }): DataResourceDefinition[] {
-  return [
+  const definitions: DataResourceDefinition[] = [
     singletonSqliteResource({
       key: "global_profile_readiness",
       title: "全局资料就绪状态",
@@ -120,7 +153,7 @@ function createInitialDataResourceDefinitions(input: {
     createPersonaResource(input.personaStore),
     singletonSqliteResource({
       key: "rp_profile",
-      title: "RP 全局资料",
+      title: "角色扮演全局资料",
       tableGroup: "state.rp_profile",
       tables: ["rp_profile"],
       schema: rpProfileSchema,
@@ -133,7 +166,7 @@ function createInitialDataResourceDefinitions(input: {
     }),
     singletonSqliteResource({
       key: "scenario_profile",
-      title: "Scenario 全局资料",
+      title: "场景主持全局资料",
       tableGroup: "state.scenario_profile",
       tables: ["scenario_profile"],
       schema: scenarioProfileSchema,
@@ -146,7 +179,7 @@ function createInitialDataResourceDefinitions(input: {
     }),
     singletonSqliteResource({
       key: "setup_state",
-      title: "Owner 初始化状态",
+      title: "初始化状态",
       tableGroup: "state.setup_state",
       tables: ["setup_state"],
       schema: setupStateSchema,
@@ -155,16 +188,25 @@ function createInitialDataResourceDefinitions(input: {
     }),
     createRequestsResource(input.requestStore),
     createScheduledJobsResource(input.scheduledJobStore, input.scheduler, () => input.config.scheduler.enabled),
+    createScheduledJobTargetsResource(input.scheduledJobStore),
     createGlobalRulesResource(input.globalRuleStore),
     createToolsetRulesResource(input.toolsetRuleStore),
+    createToolsetRuleToolsetsResource(input.toolsetRuleStore),
     createUserIdentitiesResource(input.userIdentityStore),
     createGroupMembershipResource(input.groupMembershipStore),
     createUsersResource(input.userStore),
+    createUserMemoriesResource(input.userStore),
     createWhitelistResource(input.whitelistStore),
     createContextItemsResource(input.contextStore),
+    createContextItemSourcesResource(input.contextStore),
+    createContextItemEmbeddingsResource(input.contextStore),
+    createEmbeddingProfilesResource(input.contextStore),
     createContextRawMessagesResource(input.contextStore),
     createContextMaintenanceJobsResource(input.contextStore),
+    createContextManualAuditEventsResource(input.contextStore),
     createLiveResourcesResource(input.runtimeResourceStore),
+    createRuntimeBrowserPagesResource(input.runtimeResourceStore),
+    createRuntimeShellSessionsResource(input.runtimeResourceStore),
     createAudioFilesResource(input.audioStore),
     createComfyTasksResource(input.comfyTaskStore),
     createComfyTaskResultFilesResource(input.comfyTaskStore),
@@ -172,6 +214,13 @@ function createInitialDataResourceDefinitions(input: {
     createSessionTranscriptItemsResource(input.sessionPersistence),
     createWorkspaceFilesResource(input.chatFileStore)
   ];
+  if (input.contentSafetyStore) {
+    definitions.push(createContentSafetyAuditsResource(input.contentSafetyStore));
+  }
+  if (input.scenarioHostStateStore) {
+    definitions.push(createScenarioHostSessionStatesResource(input.scenarioHostStateStore));
+  }
+  return definitions;
 }
 
 function createSessionsResource(
@@ -179,17 +228,18 @@ function createSessionsResource(
 ): DataResourceDefinition {
   return {
     key: "sessions",
-    title: "Sessions",
+    title: "会话",
     description: "会话元数据。完整消息不再内嵌在本表，见 session_transcript_items。",
     shape: "collection",
     editable: false,
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
-      database: "sessions",
-      tableGroup: "sessions.persisted_sessions",
+      database: sessionDataDomain.database,
+      tableGroup: sessionDataDomain.tableGroup,
       tables: ["sessions"]
     },
+    model: sessionsTableModel,
     export: {
       enabled: true,
       fileName: "sessions.json",
@@ -217,17 +267,19 @@ function createSessionTranscriptItemsResource(
 ): DataResourceDefinition {
   return {
     key: "session_transcript_items",
-    title: "Session Transcript Items",
+    title: "会话消息",
     description: "会话后台记录竖表，一行对应一条 internalTranscript item。",
     shape: "log",
     editable: false,
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
-      database: "sessions",
-      tableGroup: "sessions.persisted_sessions",
+      database: sessionDataDomain.database,
+      tableGroup: sessionDataDomain.tableGroup,
       tables: ["session_transcript_items"]
     },
+    model: sessionTranscriptItemsTableModel,
+    navigation: { hiddenFromList: true, parentResourceKey: "sessions" },
     export: {
       enabled: true,
       fileName: "session_transcript_items.json",
@@ -240,11 +292,13 @@ function createSessionTranscriptItemsResource(
     adapter: {
       listRows: async (query) => sessionPersistence.listTranscriptRows({
         ...(query.offset !== undefined ? { offset: query.offset } : {}),
-        ...(query.limit !== undefined ? { limit: query.limit } : {})
+        ...(query.limit !== undefined ? { limit: query.limit } : {}),
+        ...(query.filters !== undefined ? { filters: query.filters } : {})
       }),
       exportRows: async (query) => sessionPersistence.listTranscriptRows({
         ...(query.offset !== undefined ? { offset: query.offset } : {}),
-        ...(query.limit !== undefined ? { limit: query.limit } : {})
+        ...(query.limit !== undefined ? { limit: query.limit } : {}),
+        ...(query.filters !== undefined ? { filters: query.filters } : {})
       })
     }
   };
@@ -256,7 +310,7 @@ function createAudioFilesResource(
   const rowSchemaMeta = exportSchemaMeta(storedAudioFileRegistrySchema);
   return {
     key: "audio_files",
-    title: "Audio Files",
+    title: "音频文件",
     shape: "collection",
     editable: false,
     durability: "source_of_truth",
@@ -266,6 +320,7 @@ function createAudioFilesResource(
       tableGroup: "assets.audio_files",
       tables: ["audio_files"]
     },
+    model: audioFilesTableModel,
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
     export: {
@@ -297,7 +352,7 @@ function createWorkspaceFilesResource(
   const rowSchemaMeta = exportSchemaMeta(chatFileRecordRegistrySchema);
   return {
     key: "workspace_files",
-    title: "Workspace Files",
+    title: "工作区文件",
     shape: "collection",
     editable: false,
     durability: "source_of_truth",
@@ -307,6 +362,7 @@ function createWorkspaceFilesResource(
       tableGroup: "assets.chat_files",
       tables: ["chat_files"]
     },
+    model: chatFilesTableModel,
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
     export: {
@@ -338,7 +394,7 @@ function createComfyTasksResource(
   const rowSchemaMeta = exportSchemaMeta(comfyTaskRecordSchema);
   return {
     key: "comfy_tasks",
-    title: "Comfy Tasks",
+    title: "图像生成任务",
     shape: "collection",
     editable: false,
     durability: "source_of_truth",
@@ -348,6 +404,7 @@ function createComfyTasksResource(
       tableGroup: "assets.comfy_tasks",
       tables: ["comfy_tasks", "comfy_task_result_files"]
     },
+    model: comfyTasksTableModel,
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
     export: {
@@ -377,7 +434,7 @@ function createComfyTaskResultFilesResource(
 ): DataResourceDefinition {
   return {
     key: "comfy_task_result_files",
-    title: "Comfy Task Result Files",
+    title: "图像生成结果文件",
     description: "Comfy 任务结果文件竖表，一行对应一个输出文件。",
     shape: "log",
     editable: false,
@@ -388,6 +445,8 @@ function createComfyTaskResultFilesResource(
       tableGroup: "assets.comfy_tasks",
       tables: ["comfy_task_result_files"]
     },
+    model: comfyTaskResultFilesTableModel,
+    navigation: { hiddenFromList: true, parentResourceKey: "comfy_tasks" },
     export: {
       enabled: true,
       fileName: "comfy_task_result_files.json",
@@ -400,11 +459,95 @@ function createComfyTaskResultFilesResource(
     adapter: {
       listRows: async (query) => comfyTaskStore.listResultRows({
         ...(query.offset !== undefined ? { offset: query.offset } : {}),
-        ...(query.limit !== undefined ? { limit: query.limit } : {})
+        ...(query.limit !== undefined ? { limit: query.limit } : {}),
+        ...(query.filters !== undefined ? { filters: query.filters } : {})
       }),
       exportRows: async (query) => comfyTaskStore.listResultRows({
         ...(query.offset !== undefined ? { offset: query.offset } : {}),
-        ...(query.limit !== undefined ? { limit: query.limit } : {})
+        ...(query.limit !== undefined ? { limit: query.limit } : {}),
+        ...(query.filters !== undefined ? { filters: query.filters } : {})
+      })
+    }
+  };
+}
+
+function createContentSafetyAuditsResource(
+  contentSafetyStore: Pick<ContentSafetyStore, "listRows">
+): DataResourceDefinition {
+  return readOnlySqliteRowsResource({
+    key: "content_safety_audits",
+    title: "内容安全审计",
+    description: "内容安全审计日志。",
+    shape: "log",
+    database: "assets",
+    tableGroup: "assets.content_safety_audits",
+    tables: ["content_safety_audits"],
+    model: contentSafetyAuditsTableModel,
+    rowIdentity: { fields: ["key"], encode: "single" },
+    fileName: "content_safety_audits.json",
+    listRows: (query) => contentSafetyStore.listRows(query)
+  });
+}
+
+function createScenarioHostSessionStatesResource(
+  scenarioHostStateStore: Pick<ScenarioHostStateStore, "listRows">
+): DataResourceDefinition {
+  return readOnlySqliteRowsResource({
+    key: "scenario_host_session_states",
+    title: "场景主持会话状态",
+    shape: "collection",
+    database: scenarioHostStateDataDomain.database,
+    tableGroup: scenarioHostStateDataDomain.tableGroup,
+    tables: ["scenario_host_session_states"],
+    model: scenarioHostSessionStatesTableModel,
+    rowIdentity: { fields: ["sessionId"], encode: "single" },
+    fileName: "scenario_host_session_states.json",
+    listRows: (query) => scenarioHostStateStore.listRows(query)
+  });
+}
+
+function readOnlySqliteRowsResource(input: {
+  key: string;
+  title: string;
+  description?: string;
+  shape: "collection" | "log";
+  database: NonNullable<DataResourceDefinition["storage"]["database"]>;
+  tableGroup: string;
+  tables: string[];
+  model: NonNullable<DataResourceDefinition["model"]>;
+  rowIdentity: NonNullable<DataResourceDefinition["rowIdentity"]>;
+  navigation?: DataResourceDefinition["navigation"];
+  fileName: string;
+  listRows: (query: { offset?: number; limit?: number; filters?: Record<string, unknown> }) =>
+    { rows: unknown[]; total?: number; offset: number; limit: number } | Promise<{ rows: unknown[]; total?: number; offset: number; limit: number }>;
+}): DataResourceDefinition {
+  return {
+    key: input.key,
+    title: input.title,
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    shape: input.shape,
+    editable: false,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: input.database,
+      tableGroup: input.tableGroup,
+      tables: input.tables
+    },
+    model: input.model,
+    ...(input.navigation !== undefined ? { navigation: input.navigation } : {}),
+    export: { enabled: true, fileName: input.fileName, format: "json" },
+    rowIdentity: input.rowIdentity,
+    adapter: {
+      listRows: async (query) => input.listRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {}),
+        ...(query.filters !== undefined ? { filters: query.filters } : {})
+      }),
+      exportRows: async (query) => input.listRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {}),
+        ...(query.filters !== undefined ? { filters: query.filters } : {})
       })
     }
   };
@@ -469,6 +612,7 @@ function createRequestsResource(
       tableGroup: "state.requests",
       tables: ["pending_requests"]
     },
+    model: requestsTableModel,
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
     export: { enabled: true, fileName: "requests.json", format: "json" },
@@ -545,6 +689,7 @@ function createScheduledJobsResource(
       tableGroup: "state.scheduled_jobs",
       tables: ["scheduled_jobs", "scheduled_job_targets"]
     },
+    model: scheduledJobsTableModel,
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
     export: { enabled: true, fileName: "scheduled_jobs.json", format: "json" },
@@ -599,6 +744,41 @@ async function reloadSchedulerIfEnabled(
   await scheduler.reloadFromStore();
 }
 
+function createScheduledJobTargetsResource(
+  scheduledJobStore: Pick<ScheduledJobStore, "listTargetRows">
+): DataResourceDefinition {
+  return {
+    key: "scheduled_job_targets",
+    title: "定时任务目标",
+    description: "定时任务目标竖表，一行对应一个 session target。",
+    shape: "collection",
+    editable: false,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "state",
+      tableGroup: "state.scheduled_jobs",
+      tables: ["scheduled_job_targets"]
+    },
+    model: scheduledJobTargetsTableModel,
+    navigation: { hiddenFromList: true, parentResourceKey: "scheduled_jobs" },
+    export: { enabled: true, fileName: "scheduled_job_targets.json", format: "json" },
+    rowIdentity: { fields: ["jobId", "sessionId"], encode: "json_base64url" },
+    adapter: {
+      listRows: async (query) => scheduledJobStore.listTargetRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {}),
+        ...(query.filters !== undefined ? { filters: query.filters } : {})
+      }),
+      exportRows: async (query) => scheduledJobStore.listTargetRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {}),
+        ...(query.filters !== undefined ? { filters: query.filters } : {})
+      })
+    }
+  };
+}
+
 function createGlobalRulesResource(
   globalRuleStore: Pick<GlobalRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove">
 ): DataResourceDefinition {
@@ -615,6 +795,7 @@ function createGlobalRulesResource(
       tableGroup: "state.rules",
       tables: ["global_rules"]
     },
+    model: globalRulesTableModel,
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
     export: { enabled: true, fileName: "global_rules.json", format: "json" },
@@ -663,6 +844,7 @@ function createToolsetRulesResource(
       tableGroup: "state.rules",
       tables: ["toolset_rules", "toolset_rule_toolsets"]
     },
+    model: toolsetRulesTableModel,
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
     export: { enabled: true, fileName: "toolset_rules.json", format: "json" },
@@ -695,6 +877,41 @@ function createToolsetRulesResource(
   };
 }
 
+function createToolsetRuleToolsetsResource(
+  toolsetRuleStore: Pick<ToolsetRuleStore, "listToolsetRows">
+): DataResourceDefinition {
+  return {
+    key: "toolset_rule_toolsets",
+    title: "工具集规则关联",
+    description: "工具集规则和工具集 ID 的关联竖表。",
+    shape: "collection",
+    editable: false,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "state",
+      tableGroup: "state.rules",
+      tables: ["toolset_rule_toolsets"]
+    },
+    model: toolsetRuleToolsetsTableModel,
+    navigation: { hiddenFromList: true, parentResourceKey: "toolset_rules" },
+    export: { enabled: true, fileName: "toolset_rule_toolsets.json", format: "json" },
+    rowIdentity: { fields: ["ruleId", "toolsetId"], encode: "json_base64url" },
+    adapter: {
+      listRows: async (query) => toolsetRuleStore.listToolsetRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {}),
+        ...(query.filters !== undefined ? { filters: query.filters } : {})
+      }),
+      exportRows: async (query) => toolsetRuleStore.listToolsetRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {}),
+        ...(query.filters !== undefined ? { filters: query.filters } : {})
+      })
+    }
+  };
+}
+
 function createUserIdentitiesResource(
   userIdentityStore: Pick<UserIdentityStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">
 ): DataResourceDefinition {
@@ -711,6 +928,7 @@ function createUserIdentitiesResource(
       tableGroup: "state.user_identities",
       tables: ["user_identities"]
     },
+    model: userIdentitiesTableModel,
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
     export: { enabled: true, fileName: "user_identities.json", format: "json" },
@@ -793,6 +1011,7 @@ function createGroupMembershipResource(
       tableGroup: "state.group_membership",
       tables: ["group_membership_entries"]
     },
+    model: groupMembershipTableModel,
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
     export: { enabled: true, fileName: "group_membership.json", format: "json" },
@@ -876,6 +1095,7 @@ function createUsersResource(
       tableGroup: "state.users",
       tables: ["users", "user_memories"]
     },
+    model: usersTableModel,
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
     export: { enabled: true, fileName: "users.json", format: "json" },
@@ -916,6 +1136,41 @@ function createUsersResource(
       deleteRow: async (rowId) => {
         await userStore.deletePersistedRow(rowId);
       }
+    }
+  };
+}
+
+function createUserMemoriesResource(
+  userStore: Pick<UserStore, "listMemoryRows">
+): DataResourceDefinition {
+  return {
+    key: "user_memories",
+    title: "用户记忆",
+    description: "用户记忆竖表，一行对应一个用户记忆条目。",
+    shape: "collection",
+    editable: false,
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "state",
+      tableGroup: "state.users",
+      tables: ["user_memories"]
+    },
+    model: userMemoriesTableModel,
+    navigation: { hiddenFromList: true, parentResourceKey: "users" },
+    export: { enabled: true, fileName: "user_memories.json", format: "json" },
+    rowIdentity: { fields: ["userId", "id"], encode: "json_base64url" },
+    adapter: {
+      listRows: async (query) => userStore.listMemoryRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {}),
+        ...(query.filters !== undefined ? { filters: query.filters } : {})
+      }),
+      exportRows: async (query) => userStore.listMemoryRows({
+        ...(query.offset !== undefined ? { offset: query.offset } : {}),
+        ...(query.limit !== undefined ? { limit: query.limit } : {}),
+        ...(query.filters !== undefined ? { filters: query.filters } : {})
+      })
     }
   };
 }
@@ -966,7 +1221,7 @@ type WhitelistRow = {
 };
 
 function createWhitelistResource(
-  whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "deleteEntry">
+  whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "patchEntry" | "deleteEntry">
 ): DataResourceDefinition {
   const rowSchemaMeta = exportSchemaMeta(whitelistRowSchema);
   return {
@@ -981,6 +1236,7 @@ function createWhitelistResource(
       tableGroup: "state.whitelist",
       tables: ["whitelist_entries"]
     },
+    model: whitelistTableModel,
     rowSchemaMeta,
     rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
     export: { enabled: true, fileName: "whitelist.json", format: "json" },
@@ -1025,6 +1281,17 @@ function createWhitelistResource(
         const row = await whitelistStore.upsertEntry(parsed.targetType, parsed.targetId);
         return { id: encodeWhitelistRowId(row), ...row };
       },
+      patchRow: async (rowId, input) => {
+        const identity = decodeWhitelistRowId(rowId);
+        const current = (await whitelistStore.listEntries())
+          .find((entry) => entry.targetType === identity.targetType && entry.targetId === identity.targetId);
+        if (!current) {
+          throw new Error(`whitelist entry not found: ${identity.targetType}:${identity.targetId}`);
+        }
+        const parsed = whitelistRowSchema.parse({ ...current, ...input.patch }) as WhitelistRow;
+        const row = await whitelistStore.patchEntry(identity.targetType, identity.targetId, parsed);
+        return { id: encodeWhitelistRowId(row), ...row };
+      },
       deleteRow: async (rowId) => {
         const identity = decodeWhitelistRowId(rowId);
         await whitelistStore.deleteEntry(identity.targetType, identity.targetId);
@@ -1067,6 +1334,7 @@ function createContextItemsResource(
       tableGroup: "context.items",
       tables: ["context_items", "context_item_sources"]
     },
+    model: contextItemsTableModel,
     rowIdentity: { fields: ["itemId"], encode: "single" },
     export: { enabled: true, fileName: "context_items.json", format: "json" },
     adapter: {
@@ -1100,6 +1368,59 @@ function createContextItemsResource(
   };
 }
 
+function createContextItemSourcesResource(
+  contextStore: Pick<ContextStore, "listContextItemSources">
+): DataResourceDefinition {
+  return readOnlySqliteRowsResource({
+    key: "context_item_sources",
+    title: "上下文条目来源",
+    shape: "collection",
+    database: "context",
+    tableGroup: "context.items",
+    tables: ["context_item_sources"],
+    model: contextItemSourcesTableModel,
+    rowIdentity: { fields: ["itemId", "sourceKind", "sourceId"], encode: "json_base64url" },
+    navigation: { hiddenFromList: true, parentResourceKey: "context_items" },
+    fileName: "context_item_sources.json",
+    listRows: (query) => contextStore.listContextItemSources(query)
+  });
+}
+
+function createContextItemEmbeddingsResource(
+  contextStore: Pick<ContextStore, "listContextItemEmbeddings">
+): DataResourceDefinition {
+  return readOnlySqliteRowsResource({
+    key: "context_item_embeddings",
+    title: "上下文向量索引",
+    shape: "collection",
+    database: "context",
+    tableGroup: "context.embeddings",
+    tables: ["context_item_embeddings"],
+    model: contextItemEmbeddingsTableModel,
+    rowIdentity: { fields: ["itemId", "embeddingProfileId"], encode: "json_base64url" },
+    navigation: { hiddenFromList: true, parentResourceKey: "context_items" },
+    fileName: "context_item_embeddings.json",
+    listRows: (query) => contextStore.listContextItemEmbeddings(query)
+  });
+}
+
+function createEmbeddingProfilesResource(
+  contextStore: Pick<ContextStore, "listEmbeddingProfiles">
+): DataResourceDefinition {
+  return readOnlySqliteRowsResource({
+    key: "embedding_profiles",
+    title: "向量配置",
+    shape: "collection",
+    database: "context",
+    tableGroup: "context.embeddings",
+    tables: ["embedding_profiles"],
+    model: embeddingProfilesTableModel,
+    rowIdentity: { fields: ["profileId"], encode: "single" },
+    fileName: "embedding_profiles.json",
+    listRows: (query) => contextStore.listEmbeddingProfiles(query)
+  });
+}
+
 function createContextRawMessagesResource(
   contextStore: Pick<ContextStore, "listRawMessages">
 ): DataResourceDefinition {
@@ -1115,6 +1436,7 @@ function createContextRawMessagesResource(
       tableGroup: "context.raw_messages",
       tables: ["raw_messages"]
     },
+    model: contextRawMessagesTableModel,
     export: { enabled: false, fileName: "context_raw_messages.json", format: "json" },
     adapter: {
       listRows: async (query) => {
@@ -1147,6 +1469,7 @@ function createContextMaintenanceJobsResource(
       tableGroup: "context.maintenance",
       tables: ["maintenance_jobs"]
     },
+    model: contextMaintenanceJobsTableModel,
     export: { enabled: false, fileName: "context_maintenance_jobs.json", format: "json" },
     adapter: {
       listRows: async (query) => {
@@ -1162,6 +1485,24 @@ function createContextMaintenanceJobsResource(
       }
     }
   };
+}
+
+function createContextManualAuditEventsResource(
+  contextStore: Pick<ContextStore, "listManualAuditEvents">
+): DataResourceDefinition {
+  return readOnlySqliteRowsResource({
+    key: "context_manual_audit_events",
+    title: "上下文人工审计事件",
+    shape: "log",
+    database: "context",
+    tableGroup: "context.maintenance",
+    tables: ["manual_audit_events"],
+    model: contextManualAuditEventsTableModel,
+    rowIdentity: { fields: ["eventId"], encode: "single" },
+    navigation: { hiddenFromList: true, parentResourceKey: "context_items" },
+    fileName: "context_manual_audit_events.json",
+    listRows: (query) => contextStore.listManualAuditEvents(query)
+  });
 }
 
 function rowWithId(id: string, row: unknown): unknown {
@@ -1183,6 +1524,7 @@ function createLiveResourcesResource(
       tableGroup: "state.runtime_resources",
       tables: ["runtime_resources", "runtime_browser_pages", "runtime_shell_sessions"]
     },
+    model: runtimeResourcesTableModel,
     export: { enabled: true, fileName: "live_resources.json", format: "json" },
     rowIdentity: { fields: ["resourceId"], encode: "single" },
     adapter: {
@@ -1204,6 +1546,42 @@ function createLiveResourcesResource(
       }
     }
   };
+}
+
+function createRuntimeBrowserPagesResource(
+  runtimeResourceStore: Pick<RuntimeResourceStore, "listBrowserPageRows">
+): DataResourceDefinition {
+  return readOnlySqliteRowsResource({
+    key: "runtime_browser_pages",
+    title: "运行时浏览器页面",
+    shape: "collection",
+    database: "state",
+    tableGroup: "state.runtime_resources",
+    tables: ["runtime_browser_pages"],
+    model: runtimeBrowserPagesTableModel,
+    rowIdentity: { fields: ["resourceId"], encode: "single" },
+    navigation: { hiddenFromList: true, parentResourceKey: "live_resources" },
+    fileName: "runtime_browser_pages.json",
+    listRows: (query) => runtimeResourceStore.listBrowserPageRows(query)
+  });
+}
+
+function createRuntimeShellSessionsResource(
+  runtimeResourceStore: Pick<RuntimeResourceStore, "listShellSessionRows">
+): DataResourceDefinition {
+  return readOnlySqliteRowsResource({
+    key: "runtime_shell_sessions",
+    title: "运行时 Shell 会话",
+    shape: "collection",
+    database: "state",
+    tableGroup: "state.runtime_resources",
+    tables: ["runtime_shell_sessions"],
+    model: runtimeShellSessionsTableModel,
+    rowIdentity: { fields: ["resourceId"], encode: "single" },
+    navigation: { hiddenFromList: true, parentResourceKey: "live_resources" },
+    fileName: "runtime_shell_sessions.json",
+    listRows: (query) => runtimeResourceStore.listShellSessionRows(query)
+  });
 }
 
 function fileResource(input: {
