@@ -61,8 +61,7 @@ function createChatFileStore(rootDir: string): ChatFileStore {
     chatFiles: {
       enabled: true,
       root: "chat-files",
-      maxUploadBytes: 1024 * 1024,
-      gcGracePeriodMs: 0
+      maxUploadBytes: 1024 * 1024
     }
   });
   const localFileService = new LocalFileService(config, rootDir);

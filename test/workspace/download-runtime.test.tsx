@@ -30,8 +30,7 @@ function createRuntime(rootDir: string, overrides: Parameters<typeof createTestA
     chatFiles: {
       enabled: true,
       root: "chat-files",
-      maxUploadBytes: 64,
-      gcGracePeriodMs: 0
+      maxUploadBytes: 64
     },
     ...overrides
   });

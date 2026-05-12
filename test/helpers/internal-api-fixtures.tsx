@@ -188,11 +188,19 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         return {};
       }
     } as unknown as InternalApiDeps["oneBotClient"],
-    chatMessageFileGcService: {
+    assetLifecycleService: {
       async sweep() {
-        return { deletedFileIds: [] };
+        return { deletedChatFileIds: [], deletedAudioIds: [], deletedComfyTaskIds: [], orphanFilesRemoved: 0 };
+      },
+      async onSessionDeleted() {
+        return { deletedChatFileIds: [], deletedAudioIds: [], deletedComfyTaskIds: [], orphanFilesRemoved: 0 };
       }
-    } as unknown as InternalApiDeps["chatMessageFileGcService"],
+    } as unknown as InternalApiDeps["assetLifecycleService"],
+    assetLifecycleStore: {
+      async listRows() {
+        return { rows: [], total: 0, offset: 0, limit: 100 };
+      }
+    } as unknown as InternalApiDeps["assetLifecycleStore"],
     chatFileStore: {
       async importBuffer(input: { kind: "image" | "animated_image" | "video" | "file" | "audio"; sourceName?: string; mimeType?: string; buffer: Buffer }) {
         return {

@@ -30,7 +30,8 @@ import { OneBotClient } from "#services/onebot/onebotClient.ts";
 import { ShellRuntime } from "#services/shell/runtime.ts";
 import { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import { DownloadRuntime } from "#services/workspace/downloadRuntime.ts";
-import { ChatMessageFileGcService } from "#services/workspace/chatMessageFileGcService.ts";
+import { AssetLifecycleService } from "#data/assets/assetLifecycleService.ts";
+import { AssetLifecycleStore } from "#data/assets/assetLifecycleStore.ts";
 import { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import { MediaInspectionService } from "#services/workspace/mediaInspectionService.ts";
 import { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
@@ -84,11 +85,6 @@ export function createBootstrapServices(
   const localFileService = new LocalFileService(config, dataDir);
   const chatFileStore = new ChatFileStore(config, logger, localFileService, dataDir);
   const downloadRuntime = new DownloadRuntime(config, logger, dataDir, chatFileStore);
-  const chatMessageFileGcService = new ChatMessageFileGcService(
-    chatFileStore,
-    logger,
-    config.chatFiles.gcGracePeriodMs
-  );
   const contentSafetyStore = new ContentSafetyStore(dataDir, logger);
   const contentSafetyService = new ContentSafetyService(config, logger, contentSafetyStore, chatFileStore, audioStore);
   const mediaVisionService = new MediaVisionService(config, logger, chatFileStore, contentSafetyService);
@@ -99,6 +95,17 @@ export function createBootstrapServices(
   const sessionCaptioner = new SessionCaptioner(config, llmClient, logger, mediaCaptionService);
   const comfyClient = new ComfyClient(config, logger);
   const comfyTaskStore = new ComfyTaskStore(dataDir, logger);
+  const assetLifecycleStore = new AssetLifecycleStore(dataDir, logger);
+  const assetLifecycleService = new AssetLifecycleService(
+    assetLifecycleStore,
+    {
+      chatFileStore,
+      audioStore,
+      comfyTaskStore
+    },
+    logger,
+    config.assets.gc
+  );
   const comfyTemplateCatalog = new ComfyTemplateCatalogService(config, logger);
   const historyCompressor = new HistoryCompressor(config, llmClient, sessionManager, mediaCaptionService, logger, chatFileStore);
   const turnPlanner = new TurnPlanner(config, llmClient, chatFileStore, mediaVisionService, logger, mediaCaptionService);
@@ -177,7 +184,8 @@ export function createBootstrapServices(
     localFileService,
     chatFileStore,
     downloadRuntime,
-    chatMessageFileGcService,
+    assetLifecycleStore,
+    assetLifecycleService,
     contentSafetyStore,
     contentSafetyService,
     mediaVisionService,
@@ -208,7 +216,7 @@ export async function initializeBootstrapState(
       | "audioStore"
       | "localFileService"
       | "chatFileStore"
-      | "chatMessageFileGcService"
+      | "assetLifecycleService"
       | "mediaVisionService"
       | "mediaCaptionService"
       | "comfyTaskStore"
@@ -246,7 +254,7 @@ export async function initializeBootstrapState(
     audioStore,
     localFileService,
     chatFileStore,
-    chatMessageFileGcService,
+    assetLifecycleService,
     contentSafetyStore,
     mediaVisionService,
     mediaCaptionService,
@@ -276,6 +284,7 @@ export async function initializeBootstrapState(
   await sessionPersistence.init();
   await localFileService.init();
   await chatFileStore.init();
+  await assetLifecycleService.init();
   await contentSafetyStore?.init();
   await audioStore.init();
   await comfyTaskStore.init();
@@ -309,7 +318,7 @@ export async function initializeBootstrapState(
   );
   const persistedSessions = await sessionPersistence.loadAll();
   sessionManager.restoreSessions(persistedSessions);
-  await chatMessageFileGcService.sweep({
+  await assetLifecycleService.sweep({
     activeSessions: sessionManager.listSessions(),
     persistedSessions
   });

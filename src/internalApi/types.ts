@@ -25,7 +25,8 @@ import type {
 import type { BrowserService } from "#services/web/browser/browserService.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { ContentSafetyStore } from "#contentSafety/contentSafetyStore.ts";
-import type { ChatMessageFileGcService } from "#services/workspace/chatMessageFileGcService.ts";
+import type { AssetLifecycleService } from "#data/assets/assetLifecycleService.ts";
+import type { AssetLifecycleStore } from "#data/assets/assetLifecycleStore.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { AudioStore } from "#audio/audioStore.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
@@ -144,7 +145,7 @@ export interface InternalApiSessionWriteDeps extends InternalApiSessionReadDeps 
 export interface InternalApiSessionDeleteDeps extends InternalApiSessionReadDeps {
   sessionManager: SessionAdminReadAccess & Pick<SessionAdminMutationAccess, "deleteSession">;
   sessionPersistence: SessionPersistence;
-  chatMessageFileGcService: ChatMessageFileGcService;
+  assetLifecycleService: AssetLifecycleService;
   contextSessionCleanupService?: Pick<ContextSessionCleanupService, "cleanupDeletedSession">;
 }
 
@@ -237,7 +238,8 @@ export interface InternalApiDeps {
   chatFileStore: ChatFileStore;
   audioStore: AudioStore;
   contentSafetyStore?: ContentSafetyStore;
-  chatMessageFileGcService: ChatMessageFileGcService;
+  assetLifecycleStore: AssetLifecycleStore;
+  assetLifecycleService: AssetLifecycleService;
   contextSessionCleanupService?: ContextSessionCleanupService;
 }
 
@@ -285,7 +287,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         contextStore: deps.contextStore,
         contextEmbeddingService: deps.contextEmbeddingService,
         contextRetrievalService: deps.contextRetrievalService,
-        chatMessageFileGcService: deps.chatMessageFileGcService,
+        assetLifecycleService: deps.assetLifecycleService,
         ...(deps.contextSessionCleanupService ? { contextSessionCleanupService: deps.contextSessionCleanupService } : {})
       },
       editor: createEditorService({
@@ -317,6 +319,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         contextStore: deps.contextStore,
         audioStore: deps.audioStore,
         chatFileStore: deps.chatFileStore,
+        assetLifecycleStore: deps.assetLifecycleStore,
         sessionPersistence: deps.sessionPersistence,
         runtimeResourceStore: deps.runtimeResourceStore,
         ...(deps.contentSafetyStore ? { contentSafetyStore: deps.contentSafetyStore } : {}),

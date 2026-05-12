@@ -212,6 +212,18 @@ export class AudioStore {
     return this.get(audioId);
   }
 
+  async deleteAudio(audioId: string): Promise<boolean> {
+    const normalizedAudioId = String(audioId ?? "").trim();
+    if (!normalizedAudioId) {
+      return false;
+    }
+    return this.withStoreLock(async () => {
+      const db = await this.getReadyDb();
+      const result = db.prepare("DELETE FROM audio_files WHERE id = ?").run(normalizedAudioId);
+      return result.changes > 0;
+    });
+  }
+
   private async withStoreLock<T>(callback: () => Promise<T>): Promise<T> {
     const previous = this.writeChain;
     let release!: () => void;

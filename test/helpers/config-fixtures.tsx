@@ -142,8 +142,16 @@ const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
   chatFiles: {
     enabled: true,
     root: "chat-files",
-    maxUploadBytes: 32 * 1024 * 1024,
-    gcGracePeriodMs: 7 * 24 * 60 * 60 * 1000
+    maxUploadBytes: 32 * 1024 * 1024
+  },
+  assets: {
+    gc: {
+      enabled: true,
+      ttlMs: 30 * 24 * 60 * 60 * 1000,
+      orphanFileTtlMs: 7 * 24 * 60 * 60 * 1000,
+      maxTotalBytes: null,
+      targetTotalBytes: null
+    }
   },
   search: {
     googleGrounding: {

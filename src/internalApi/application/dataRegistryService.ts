@@ -38,7 +38,8 @@ import type { SessionPersistence } from "#conversation/session/sessionPersistenc
 import { scenarioHostStateDataDomain, scenarioHostSessionStatesTableModel, sessionDataDomain, sessionsTableModel, sessionTranscriptItemsTableModel } from "#conversation/session/sessionDataModel.ts";
 import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import { comfyTaskRecordSchema } from "#comfy/taskSchema.ts";
-import { audioFilesTableModel, chatFilesTableModel, comfyTaskResultFilesTableModel, comfyTasksTableModel, contentSafetyAuditsTableModel } from "#data/assets/assetsDataModel.ts";
+import { assetSessionRefsTableModel, audioFilesTableModel, chatFilesTableModel, comfyTaskResultFilesTableModel, comfyTasksTableModel, contentSafetyAuditsTableModel } from "#data/assets/assetsDataModel.ts";
+import type { AssetLifecycleStore } from "#data/assets/assetLifecycleStore.ts";
 import {
   contextItemEmbeddingsTableModel,
   contextItemsTableModel,
@@ -100,6 +101,7 @@ export function createDataRegistryService(input: {
   contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs" | "listContextItemSources" | "listContextItemEmbeddings" | "listEmbeddingProfiles" | "listManualAuditEvents">;
   audioStore: Pick<AudioStore, "listRows" | "getRow">;
   chatFileStore: Pick<ChatFileStore, "listRows" | "getRow">;
+  assetLifecycleStore: Pick<AssetLifecycleStore, "listRows">;
   sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
   runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows">;
   contentSafetyStore?: Pick<ContentSafetyStore, "listRows">;
@@ -134,6 +136,7 @@ function createInitialDataResourceDefinitions(input: {
   contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs" | "listContextItemSources" | "listContextItemEmbeddings" | "listEmbeddingProfiles" | "listManualAuditEvents">;
   audioStore: Pick<AudioStore, "listRows" | "getRow">;
   chatFileStore: Pick<ChatFileStore, "listRows" | "getRow">;
+  assetLifecycleStore: Pick<AssetLifecycleStore, "listRows">;
   sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
   runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows">;
   contentSafetyStore?: Pick<ContentSafetyStore, "listRows">;
@@ -212,7 +215,8 @@ function createInitialDataResourceDefinitions(input: {
     createComfyTaskResultFilesResource(input.comfyTaskStore),
     createSessionsResource(input.sessionPersistence),
     createSessionTranscriptItemsResource(input.sessionPersistence),
-    createWorkspaceFilesResource(input.chatFileStore)
+    createWorkspaceFilesResource(input.chatFileStore),
+    createAssetSessionRefsResource(input.assetLifecycleStore)
   ];
   if (input.contentSafetyStore) {
     definitions.push(createContentSafetyAuditsResource(input.contentSafetyStore));
@@ -386,6 +390,28 @@ function createWorkspaceFilesResource(
       getRow: async (rowId) => chatFileStore.getRow(rowId)
     }
   };
+}
+
+function createAssetSessionRefsResource(
+  assetLifecycleStore: Pick<AssetLifecycleStore, "listRows">
+): DataResourceDefinition {
+  return readOnlySqliteRowsResource({
+    key: "asset_session_refs",
+    title: "资产会话引用",
+    description: "资产生命周期服务维护的会话引用索引。",
+    shape: "log",
+    database: "assets",
+    tableGroup: "assets.lifecycle",
+    tables: ["asset_session_refs"],
+    model: assetSessionRefsTableModel,
+    navigation: { hiddenFromList: true },
+    rowIdentity: {
+      fields: ["assetKind", "assetId", "sessionId", "refKind"],
+      encode: "json_base64url"
+    },
+    fileName: "asset_session_refs.json",
+    listRows: (query) => assetLifecycleStore.listRows(query)
+  });
 }
 
 function createComfyTasksResource(

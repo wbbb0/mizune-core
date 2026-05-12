@@ -71,7 +71,8 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     browserService,
     localFileService,
     chatFileStore,
-    chatMessageFileGcService,
+    assetLifecycleStore,
+    assetLifecycleService,
     contentSafetyStore,
     contentSafetyService,
     mediaCaptionService,
@@ -289,7 +290,8 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     chatFileStore,
     audioStore,
     contentSafetyStore,
-    chatMessageFileGcService,
+    assetLifecycleStore,
+    assetLifecycleService,
     contextSessionCleanupService,
     runtimeResourceStore: services.runtimeResourceStore
   });
@@ -343,7 +345,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
         browserService,
         localFileService,
         chatFileStore,
-        chatMessageFileGcService,
+        assetLifecycleService,
         searchService,
         scheduler,
         comfyTemplateCatalog,

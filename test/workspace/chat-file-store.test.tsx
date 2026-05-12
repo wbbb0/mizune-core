@@ -191,6 +191,48 @@ test("asset store cleans orphan document cache directories", async () => {
   }
 });
 
+test("asset store cleans media files missing database records", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-orphan-media-"));
+  try {
+    const store = new ChatFileStore(
+      createTestAppConfig({
+        chatFiles: {
+          enabled: true,
+          root: "chat-files",
+          maxUploadBytes: 1024 * 1024
+        }
+      }),
+      createSilentLogger(),
+      {
+        rootDir,
+        resolvePath(path: string) {
+          return {
+            sourcePath: path,
+            absolutePath: join(rootDir, path)
+          };
+        }
+      } as any
+    );
+    await store.init();
+    const file = await store.importBuffer({
+      buffer: Buffer.from("document"),
+      sourceName: "document.txt",
+      mimeType: "text/plain",
+      kind: "file",
+      origin: "user_upload"
+    });
+    const mediaDir = join(rootDir, "chat-files", "media");
+    const orphanPath = join(mediaDir, "orphan.bin");
+    await writeFile(orphanPath, "orphan", "utf8");
+
+    assert.deepEqual(await store.cleanupOrphanMediaFiles({ orphanTtlMs: 1, now: Date.now() + 10_000 }), { removed: 1, kept: 1 });
+    await store.resolveAbsolutePath(file.fileId);
+    await assert.rejects(stat(orphanPath), /ENOENT/);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test("asset store rejects absolute or escaping chatFiles.root", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-root-"));
   try {

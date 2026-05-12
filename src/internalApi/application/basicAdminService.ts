@@ -473,7 +473,8 @@ export async function deleteSession(
   }
   deps.contextSessionCleanupService?.cleanupDeletedSession({ sessionId });
   await deps.sessionPersistence.remove(sessionId);
-  await deps.chatMessageFileGcService.sweep({
+  await deps.assetLifecycleService.onSessionDeleted({
+    sessionId,
     activeSessions: deps.sessionManager.listSessions(),
     persistedSessions: await deps.sessionPersistence.loadAll()
   });

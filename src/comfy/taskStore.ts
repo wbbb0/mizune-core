@@ -196,6 +196,12 @@ export class ComfyTaskStore {
     return updated;
   }
 
+  async deleteById(taskId: string): Promise<boolean> {
+    const db = await this.getReadyDb();
+    const result = db.prepare("DELETE FROM comfy_tasks WHERE id = ?").run(taskId);
+    return result.changes > 0;
+  }
+
   private async getReadyDb(): Promise<SqliteDatabase> {
     await this.assetsDatabase.init();
     return this.assetsDatabase.getDb();

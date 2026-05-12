@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { Logger } from "pino";
 import {
+  assertIndexExists,
   assertTableColumns,
   SqliteService,
   type SqliteDatabase,
@@ -159,6 +160,25 @@ function createContentSafetyAuditsSchema(db: SqliteDatabase): void {
   db.exec("CREATE INDEX IF NOT EXISTS idx_content_safety_audits_session ON content_safety_audits(session_id, checked_at_ms DESC, key ASC);");
 }
 
+function createAssetSessionRefsSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS asset_session_refs (
+      asset_kind TEXT NOT NULL CHECK (asset_kind IN ('chat_file', 'audio', 'comfy_task', 'content_safety_audit')),
+      asset_id TEXT NOT NULL CHECK (asset_id = trim(asset_id) AND length(asset_id) > 0),
+      session_id TEXT NOT NULL CHECK (session_id = trim(session_id) AND length(session_id) > 0),
+      ref_kind TEXT NOT NULL CHECK (ref_kind = trim(ref_kind) AND length(ref_kind) > 0),
+      created_at_ms INTEGER NOT NULL,
+      last_seen_at_ms INTEGER NOT NULL,
+      expires_at_ms INTEGER,
+      PRIMARY KEY (asset_kind, asset_id, session_id, ref_kind)
+    );
+  `);
+  db.exec("CREATE INDEX IF NOT EXISTS idx_asset_session_refs_session ON asset_session_refs(session_id, asset_kind, asset_id);");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_asset_session_refs_asset ON asset_session_refs(asset_kind, asset_id, session_id);");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_asset_session_refs_expires ON asset_session_refs(expires_at_ms, asset_kind, asset_id);");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_asset_session_refs_last_seen ON asset_session_refs(last_seen_at_ms, session_id, asset_kind, asset_id, ref_kind);");
+}
+
 function validateAudioFilesSchema(db: SqliteDatabase): void {
   assertTableColumns(db, "audio_files", {
     id: "TEXT",
@@ -242,6 +262,22 @@ function validateContentSafetyAuditsSchema(db: SqliteDatabase): void {
   });
 }
 
+function validateAssetSessionRefsSchema(db: SqliteDatabase): void {
+  assertTableColumns(db, "asset_session_refs", {
+    asset_kind: "TEXT",
+    asset_id: "TEXT",
+    session_id: "TEXT",
+    ref_kind: "TEXT",
+    created_at_ms: "INTEGER",
+    last_seen_at_ms: "INTEGER",
+    expires_at_ms: "INTEGER"
+  });
+  assertIndexExists(db, "idx_asset_session_refs_session");
+  assertIndexExists(db, "idx_asset_session_refs_asset");
+  assertIndexExists(db, "idx_asset_session_refs_expires");
+  assertIndexExists(db, "idx_asset_session_refs_last_seen");
+}
+
 const ASSETS_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   {
     groupId: "assets.audio_files",
@@ -281,5 +317,19 @@ const ASSETS_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
     ],
     createSchema: createContentSafetyAuditsSchema,
     validateSchema: validateContentSafetyAuditsSchema
+  },
+  {
+    groupId: "assets.lifecycle",
+    schemaVersion: 1,
+    resetPolicy: "block_reset",
+    ownedTables: ["asset_session_refs"],
+    ownedIndexes: [
+      "idx_asset_session_refs_session",
+      "idx_asset_session_refs_asset",
+      "idx_asset_session_refs_expires",
+      "idx_asset_session_refs_last_seen"
+    ],
+    createSchema: createAssetSessionRefsSchema,
+    validateSchema: validateAssetSessionRefsSchema
   }
 ];

@@ -202,7 +202,13 @@ chatFiles:
   enabled: true
   root: chat-files
   maxUploadBytes: 33554432
-  gcGracePeriodMs: 604800000
+assets:
+  gc:
+    enabled: true
+    ttlMs: 2592000000
+    orphanFileTtlMs: 604800000
+    maxTotalBytes: null
+    targetTotalBytes: null
 comfy:
   enabled: false
   apiBaseUrl: http://192.168.0.223:8188

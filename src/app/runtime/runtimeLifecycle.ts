@@ -49,7 +49,7 @@ export function subscribeRuntimeReload(input: {
   browserService: BrowserService;
   localFileService: LocalFileService;
   chatFileStore: ChatFileStore;
-  chatMessageFileGcService: import("#services/workspace/chatMessageFileGcService.ts").ChatMessageFileGcService;
+  assetLifecycleService: import("#data/assets/assetLifecycleService.ts").AssetLifecycleService;
   searchService: { reloadConfig: () => void };
   scheduler: Scheduler;
   comfyTemplateCatalog: ComfyTemplateCatalogService;
