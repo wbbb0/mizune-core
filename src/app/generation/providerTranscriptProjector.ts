@@ -1,8 +1,10 @@
 import type { LlmMessage } from "#llm/llmClient.ts";
+import type { AppConfig } from "#config/config.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { InternalAssistantToolCallItem, InternalToolResultItem } from "#conversation/session/sessionTypes.ts";
 import { projectTranscriptMessageItemToHistoryMessage } from "#conversation/session/historyContext.ts";
 import { isTranscriptLlmVisible, isTranscriptRuntimeIncluded } from "#conversation/session/sessionTranscript.ts";
+import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 
 const RECENT_RAW_TOOL_RESULT_COUNT = 5;
 
@@ -320,6 +322,14 @@ const projectors = new Map<string, ProviderTranscriptProjector>([
 
 export function getProviderTranscriptProjector(providerName: string | null | undefined): ProviderTranscriptProjector {
   return getProviderTranscriptProjectorForRequest(providerName);
+}
+
+export function resolveProviderTranscriptProjectorName(config: AppConfig, modelRef: string | string[]): string {
+  const modelProfile = getPrimaryModelProfile(config, modelRef);
+  if (!modelProfile) {
+    return "unknown";
+  }
+  return config.llm.providers[modelProfile.provider]?.type ?? modelProfile.provider;
 }
 
 export function getProviderTranscriptProjectorForRequest(

@@ -23,7 +23,10 @@ import type {
 import { handleGenerationTurnPlanner } from "./generationTurnPlanner.ts";
 import { resolveAutoActivatedToolsets } from "./toolsetAutoActivation.ts";
 import { supplementPlannedToolsets } from "./toolsetSupplement.ts";
-import { getProviderTranscriptProjectorForRequest } from "./providerTranscriptProjector.ts";
+import {
+  getProviderTranscriptProjectorForRequest,
+  resolveProviderTranscriptProjectorName
+} from "./providerTranscriptProjector.ts";
 import { createInternalTriggerEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { renderInlineTriggerBatchMessage } from "#llm/prompt/promptBuilder.ts";
 import { createSessionTranscriptStore } from "#conversation/session/sessionTranscriptStore.ts";
@@ -744,7 +747,7 @@ export function createGenerationSessionOrchestrator(
             userId: message.userId,
             senderName: message.senderName
           })));
-      const providerName = getPrimaryModelProfile(config, resolvedModelRef)?.provider ?? "unknown";
+      const providerName = resolveProviderTranscriptProjectorName(config, resolvedModelRef);
       const toolNamesFromPlanner = resolveToolNamesFromToolsets(plannerToolsets, plannedToolsetIds);
       const activeChatToolsets = plannerToolsets.filter((toolset) => plannedToolsetIds.includes(toolset.id));
       const chatVisibleToolNames = getBuiltinToolNames(relationship, user, config, {
@@ -975,7 +978,7 @@ export function createGenerationSessionOrchestrator(
         )
       });
       await historyCompressor.maybeCompress(sessionId, { triggerReason: "scheduled_pre_generation" });
-      const providerName = getPrimaryModelProfile(config, scheduledModelRef)?.provider ?? "unknown";
+      const providerName = resolveProviderTranscriptProjectorName(config, scheduledModelRef);
       const transcriptStore = createSessionTranscriptStore(session, config);
       const projectedHistory = transcriptStore.projectRuntimeHistory();
       const participantProfiles = assistantMode
@@ -1156,7 +1159,7 @@ export function createGenerationSessionOrchestrator(
         )
       });
       await historyCompressor.maybeCompress(sessionId, { triggerReason: "inline_batch_pre_generation" });
-      const providerName = getPrimaryModelProfile(config, scheduledModelRef)?.provider ?? "unknown";
+      const providerName = resolveProviderTranscriptProjectorName(config, scheduledModelRef);
       const transcriptStore = createSessionTranscriptStore(session, config);
       const projectedHistory = transcriptStore.projectRuntimeHistory();
       const participantProfiles = assistantMode

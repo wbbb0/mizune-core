@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   getProviderTranscriptProjector,
-  getProviderTranscriptProjectorForRequest
+  getProviderTranscriptProjectorForRequest,
+  resolveProviderTranscriptProjectorName
 } from "../../src/app/generation/providerTranscriptProjector.ts";
 import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
 
@@ -57,6 +58,32 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     assert.match(projection.lateSystemMessages[0] ?? "", /最近工具结果摘要/);
     assert.match(projection.lateSystemMessages[0] ?? "", /调用工具：terminal_run/);
     assert.match(projection.lateSystemMessages[0] ?? "", /terminal_run/);
+  });
+
+  test("provider projector name resolves provider aliases through provider type", () => {
+    const config = {
+      llm: {
+        providers: {
+          google_1: {
+            type: "google"
+          },
+          anthropic_1: {
+            type: "anthropic"
+          }
+        },
+        models: {
+          g1_gemini3_flash_preview: {
+            provider: "google_1"
+          },
+          anth_claude_sonnet: {
+            provider: "anthropic_1"
+          }
+        }
+      }
+    } as any;
+
+    assert.equal(resolveProviderTranscriptProjectorName(config, "g1_gemini3_flash_preview"), "google");
+    assert.equal(resolveProviderTranscriptProjectorName(config, "anth_claude_sonnet"), "anthropic");
   });
 
   test("dashscope projector replays visible history with assistant reasoning when preserveThinking is enabled", () => {
