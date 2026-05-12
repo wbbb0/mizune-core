@@ -164,7 +164,9 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
       [
         ["asset_media_view", { asset_ref: "chat_test0001.png" }],
         ["asset_media_inspect", { asset_ref: "chat_test0001.png" }],
-        ["asset_send_to_chat", { asset_ref: "chat_test0001.png" }]
+        ["asset_send_to_chat", { asset_ref: "chat_test0001.png" }],
+        ["asset_local_path", { asset_ref: "chat_test0001.png" }],
+        ["asset_export_to_filesystem", { asset_ref: "chat_test0001.png" }]
       ]
     );
   });

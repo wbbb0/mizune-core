@@ -20,7 +20,7 @@ export type ChatTimelineItem =
       groupId: string;
       actionTitle: string;
       kind: "content_parts";
-      role: "user";
+      role: "user" | "assistant";
       side: "left" | "right";
       parts: ChatTimelineContentPart[];
       senderLabel?: string;
@@ -142,6 +142,32 @@ function toChatTimelineItems(
   }
 
   if (entry.item.kind === "outbound_media_message") {
+    if (entry.item.mediaKind === "file") {
+      const contentUrl = entry.item.fileId
+        ? getChatFileContentUrlById(entry.item.fileId)
+        : (entry.item.sourcePath ? getLocalSendFileContentUrl(entry.item.sourcePath) : null);
+      return [{
+        id: entry.id,
+        itemId: entry.item.id,
+        groupId: entry.item.groupId,
+        actionTitle: "文件消息",
+        kind: "content_parts",
+        role: "assistant",
+        side: "left",
+        parts: [{
+          kind: "file",
+          fileId: entry.item.fileId ?? entry.item.sourcePath ?? entry.item.id,
+          name: entry.item.sourceName,
+          sizeBytes: entry.item.sizeBytes ?? null,
+          mimeType: entry.item.mimeType ?? null,
+          fileKind: "file",
+          contentUrl
+        }],
+        metaChips: [entry.item.toolName],
+        timestampMs: entry.item.timestampMs
+      }];
+    }
+
     const imageUrl = entry.item.fileId
       ? getChatFileContentUrlById(entry.item.fileId)
       : (entry.item.sourcePath ? getLocalSendFileContentUrl(entry.item.sourcePath) : "");

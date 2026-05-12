@@ -117,6 +117,51 @@ function createUserMessageEntry(): ChatTimelineTranscriptEntry {
     assert.equal(firstItem.imageUrl, "/api/chat-files/assistant-image-1/content");
   });
 
+  test("chat timeline renders outbound file messages as downloadable file parts", () => {
+    const items = buildChatTimelineItems([{
+      id: "entry-file-1",
+      eventId: "event-file-1",
+      index: 0,
+      item: {
+        id: "item-file-1",
+        groupId: "group-file-1",
+        runtimeExcluded: false,
+        kind: "outbound_media_message",
+        llmVisible: false,
+        role: "assistant",
+        delivery: "web",
+        mediaKind: "file",
+        fileId: "assistant-file-1",
+        fileRef: "report.pdf",
+        sourceName: "report.pdf",
+        chatFilePath: "workspace/media/report.pdf",
+        sourcePath: null,
+        mimeType: "application/pdf",
+        sizeBytes: 42,
+        messageId: null,
+        toolName: "asset_send_to_chat",
+        timestampMs: 1710000001000
+      }
+    }]);
+
+    const firstItem = items[0];
+    assert.equal(firstItem?.kind, "content_parts");
+    assert.equal(firstItem?.role, "assistant");
+    if (firstItem?.kind !== "content_parts") {
+      throw new Error("expected content parts item");
+    }
+    assert.deepEqual(firstItem.parts, [{
+      kind: "file",
+      fileId: "assistant-file-1",
+      name: "report.pdf",
+      sizeBytes: 42,
+      mimeType: "application/pdf",
+      fileKind: "file",
+      contentUrl: "/api/chat-files/assistant-file-1/content"
+    }]);
+    assert.deepEqual(firstItem.metaChips, ["asset_send_to_chat"]);
+  });
+
   test("chat timeline renders special-only user message segments as text", () => {
     const entry = createUserMessageEntry();
     if (entry.item.kind !== "user_message") {

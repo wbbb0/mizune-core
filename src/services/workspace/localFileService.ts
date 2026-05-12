@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, posix, resolve } from "node:path";
 import type { AppConfig } from "#config/config.ts";
 import type {
@@ -203,6 +203,22 @@ export class LocalFileService {
     const to = this.resolvePath(toPath);
     await mkdir(dirname(to.absolutePath), { recursive: true });
     await rename(from.absolutePath, to.absolutePath);
+    return {
+      fromPath: from.relativePath,
+      toPath: to.relativePath
+    };
+  }
+
+  async copyItem(fromPath: string, toPath: string): Promise<LocalFileMoveResult> {
+    const from = this.resolvePath(fromPath);
+    const to = this.resolvePath(toPath);
+    const fromStat = await stat(from.absolutePath);
+    if (fromStat.isDirectory()) {
+      // TODO: Define archive-or-recursive-copy semantics before exposing directory copy/send flows.
+      throw new Error("filesystem_copy does not support directories yet");
+    }
+    await mkdir(dirname(to.absolutePath), { recursive: true });
+    await copyFile(from.absolutePath, to.absolutePath);
     return {
       fromPath: from.relativePath,
       toPath: to.relativePath

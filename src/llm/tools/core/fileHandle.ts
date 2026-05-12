@@ -11,6 +11,8 @@ export type ChatFileHandleCapabilityName =
 
 export type AssetHandleCapabilityName =
   | ChatFileHandleCapabilityName
+  | "local_path"
+  | "export_to_filesystem"
   | "document_overview"
   | "document_search"
   | "document_read"
@@ -29,6 +31,11 @@ export interface FileHandleCapability<Name extends string = string> {
   available: boolean;
   args: Record<string, string | number | boolean | string[]>;
   requires?: string[];
+}
+
+export interface FileHandleUsageHint {
+  code: string;
+  message: string;
 }
 
 export type ChatFileHandleCapability = FileHandleCapability<ChatFileHandleCapabilityName>;
@@ -53,6 +60,7 @@ export interface AssetHandle {
   caption: string | null;
   caption_status: WorkspaceFileView["caption_status"];
   capabilities: AssetHandleCapability[];
+  usage_hints: FileHandleUsageHint[];
   next_actions?: ToolNextAction[];
   legacy: {
     file_id: string;
@@ -70,6 +78,7 @@ export interface ChatFileHandle {
   };
   file: Pick<WorkspaceFileView, "file_id" | "file_ref" | "kind" | "chat_file_path" | "source_name" | "mime_type" | "size_bytes" | "origin">;
   capabilities: ChatFileHandleCapability[];
+  usage_hints: FileHandleUsageHint[];
   next_actions?: ToolNextAction[];
 }
 
@@ -101,6 +110,7 @@ export type ChatFileHandleResult = WorkspaceFileView & {
   asset_handle: AssetHandle;
   handle: ChatFileHandle;
   handle_capabilities: ChatFileHandleCapability[];
+  usage_hints: FileHandleUsageHint[];
   next_actions?: ToolNextAction[];
 };
 
@@ -114,6 +124,8 @@ const DEFAULT_VISIBLE_CHAT_FILE_TOOLS = new Set([
   "asset_media_view",
   "asset_media_inspect",
   "asset_send_to_chat",
+  "asset_local_path",
+  "asset_export_to_filesystem",
   "asset_document_overview",
   "asset_document_read",
   "asset_document_search"
@@ -167,6 +179,15 @@ const DOCUMENT_EXTENSIONS = new Set([
   ".yml"
 ]);
 
+const ASSET_INTERNAL_PATH_HINT: FileHandleUsageHint = {
+  code: "asset_internal_path",
+  message: "chat_file_path 是 asset store 内部路径；需要副本时用 asset_export_to_filesystem。"
+};
+
+export function assetInternalPathUsageHints(): FileHandleUsageHint[] {
+  return [ASSET_INTERNAL_PATH_HINT];
+}
+
 export function buildChatFileHandleResult(
   file: ChatFileRecord,
   options: FileHandleOptions = {}
@@ -183,7 +204,8 @@ export function buildChatFileHandleResult(
     ...view,
     asset_handle: assetHandle,
     handle,
-    handle_capabilities: capabilities
+    handle_capabilities: capabilities,
+    usage_hints: assetInternalPathUsageHints()
   }, nextActions);
 }
 
@@ -234,7 +256,8 @@ export function buildChatFileHandleCapabilities(
     tool: "asset_send_to_chat",
     reason: "把该文件发送到当前聊天",
     available: visibleToolNames.has("asset_send_to_chat"),
-    args: { asset_ref: selector }
+    args: { asset_ref: selector },
+    ...(MEDIA_VIEW_KINDS.has(file.kind) ? {} : { requires: ["webui_or_napcat_file_upload"] })
   });
 
   return capabilities;
@@ -312,7 +335,8 @@ export function buildLocalFileHandleCapabilities(
       tool: "filesystem_send_to_chat",
       reason: "把该本地文件发送到当前聊天",
       available: visibleToolNames.has("filesystem_send_to_chat"),
-      args: { path: file.path }
+      args: { path: file.path },
+      ...(mediaKind === "image" || mediaKind === "animated_image" ? {} : { requires: ["webui_or_napcat_file_upload"] })
     });
   }
 
@@ -341,7 +365,8 @@ function buildChatFileHandle(
       size_bytes: file.size_bytes,
       origin: file.origin
     },
-    capabilities
+    capabilities,
+    usage_hints: assetInternalPathUsageHints()
   }, nextActions);
 }
 
@@ -372,6 +397,7 @@ function buildAssetHandle(
     caption: file.caption,
     caption_status: file.caption_status,
     capabilities: assetCapabilities,
+    usage_hints: assetInternalPathUsageHints(),
     legacy: {
       file_id: file.file_id,
       file_ref: file.file_ref,
@@ -412,7 +438,23 @@ function buildAssetFileCapabilities(
     tool: "asset_send_to_chat",
     reason: "把该 asset 发送到当前聊天",
     available: visibleToolNames.has("asset_send_to_chat"),
+    args: selector,
+    ...(MEDIA_VIEW_KINDS.has(file.kind) ? {} : { requires: ["webui_or_napcat_file_upload"] })
+  });
+  capabilities.push({
+    capability: "local_path",
+    tool: "asset_local_path",
+    reason: "获取该 asset 对应的本地路径",
+    available: visibleToolNames.has("asset_local_path"),
     args: selector
+  });
+  capabilities.push({
+    capability: "export_to_filesystem",
+    tool: "asset_export_to_filesystem",
+    reason: "复制该 asset 到指定本地路径",
+    available: visibleToolNames.has("asset_export_to_filesystem"),
+    args: selector,
+    requires: ["to_path"]
   });
   return capabilities;
 }

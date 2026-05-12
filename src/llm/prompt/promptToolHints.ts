@@ -83,7 +83,10 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   }
 
   if (hasAnyTool(visibleToolNames, ["asset_list", "asset_media_view", "asset_send_to_chat"])) {
-    lines.push("查已登记图片、视频、音频或文件时先 asset_list；发送时优先用 asset_send_to_chat(asset_ref=...)，asset_id 只是主键。");
+    lines.push("查已登记图片、视频、音频或文件时先 asset_list；发送用 asset_send_to_chat(asset_ref=...)。");
+    if (hasAnyTool(visibleToolNames, ["asset_local_path", "asset_export_to_filesystem"])) {
+      lines.push("需要把 asset 复制到本地目录时用 asset_export_to_filesystem。");
+    }
   }
 
   if (hasAnyTool(visibleToolNames, ["asset_document_overview", "asset_document_read", "asset_document_search", "asset_document_inspect"])) {
@@ -99,8 +102,10 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   }
 
   if (hasAnyTool(visibleToolNames, ["filesystem_media_view", "filesystem_send_to_chat", "filesystem_read", "filesystem_search", "filesystem_delete"])) {
-    lines.push("filesystem_* 处理模型可访问的本地文件系统；path 传相对路径时，相对的是配置里的 local files 工作区根目录，绝对路径按进程权限访问，不是 shell 当前目录、不是仓库根目录、也不是 asset store 内部路径。");
-    lines.push("本地图片查看用 filesystem_media_view，本地路径发送用 filesystem_send_to_chat。");
+    lines.push("filesystem_* 处理本地文件；本地图片查看用 filesystem_media_view，本地文件发送用 filesystem_send_to_chat。");
+    if (visibleToolNames.has("filesystem_copy")) {
+      lines.push("复制本地文件用 filesystem_copy；目录发送/复制暂未开放。");
+    }
     if (visibleToolNames.has("filesystem_delete")) {
       lines.push("需要删除本地文件或整个目录时用 filesystem_delete；它支持删除文件或递归删除整个目录。");
     }

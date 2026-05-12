@@ -166,8 +166,8 @@ import {
       assert.match(system, /需要从图片、截图、表格或界面里精确读取细节时，用图片精读工具按问题查看/);
       assert.doesNotMatch(system, /inspect_media/);
       assert.doesNotMatch(system, /download_asset 返回 workspace file_id/);
-      assert.match(system, /filesystem_\* 处理模型可访问的本地文件系统/);
-      assert.match(system, /相对的是配置里的 local files 工作区根目录，绝对路径按进程权限访问/);
+      assert.match(system, /filesystem_\* 处理本地文件/);
+      assert.doesNotMatch(system, /相对的是配置里的 local files 工作区根目录，绝对路径按进程权限访问/);
       assert.match(system, /filesystem_delete；它支持删除文件或递归删除整个目录/);
       assert.doesNotMatch(system, /需要继续操作浏览器或 shell 时/);
       assert.doesNotMatch(system, /shell_run/);

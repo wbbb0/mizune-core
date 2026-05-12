@@ -25,6 +25,7 @@ import type {
 } from "./types.ts";
 import { createOneBotTypingAdapter } from "./typingAdapter.ts";
 import { normalizeOneBotMessageId } from "./messageId.ts";
+import { sendNapCatFile } from "./napcatFileAdapter.ts";
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000, 30000];
 
@@ -158,6 +159,67 @@ export class OneBotClient extends EventEmitter {
           error: details
         },
         "onebot_send_failed"
+      );
+      throw error;
+    }
+  }
+
+  async sendFile(target: {
+    userId?: string;
+    groupId?: string;
+    filePath: string;
+    name?: string | null;
+  }): Promise<OneBotSendResult> {
+    if (this.config.onebot.provider !== "napcat") {
+      throw new Error("OneBot file sending is only supported when onebot.provider=napcat");
+    }
+    const endpoint = target.groupId != null ? "upload_group_file" : "upload_private_file";
+
+    this.logger.info(
+      {
+        endpoint,
+        userId: target.userId,
+        groupId: target.groupId,
+        fileName: target.name ?? null
+      },
+      "onebot_file_send_started"
+    );
+
+    try {
+      const payload = await sendNapCatFile(
+        <T extends OneBotApiResponse>(apiEndpoint: string, body: Record<string, unknown>) => this.postApi<T>(apiEndpoint, body),
+        target
+      );
+      if (payload.retcode !== 0) {
+        throw new Error(
+          `OneBot API returned error: ${payload.retcode} ${payload.message ?? payload.wording ?? ""}`.trim()
+        );
+      }
+
+      this.logger.info(
+        {
+          endpoint,
+          userId: target.userId,
+          groupId: target.groupId,
+          retcode: payload.retcode
+        },
+        "onebot_file_send_succeeded"
+      );
+
+      return payload;
+    } catch (error) {
+      const details = error instanceof Error
+        ? { name: error.name, message: error.message, stack: error.stack }
+        : { message: String(error) };
+      this.logger.error(
+        {
+          endpoint,
+          userId: target.userId,
+          groupId: target.groupId,
+          fileName: target.name ?? null,
+          error: details
+        },
+        "onebot_file_send_failed"
       );
       throw error;
     }

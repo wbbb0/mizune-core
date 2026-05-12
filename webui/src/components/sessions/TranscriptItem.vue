@@ -106,7 +106,7 @@ const itemTitle = computed(() => {
       title = `工具结果 · ${props.item.toolName || "未知工具结果"}`;
       break;
     case "outbound_media_message":
-      title = `发送图片 · ${props.item.toolName}`;
+      title = `${props.item.mediaKind === "file" ? "发送文件" : "发送图片"} · ${props.item.toolName}`;
       break;
     case "gate_decision":
       title = `Turn Planner 判定 · ${formatPlannerAction(props.item.action)}`;
@@ -547,9 +547,12 @@ const outboundMediaRows = computed(() => {
   }
   return [
     { label: "发送到", value: props.item.delivery },
+    { label: "类型", value: props.item.mediaKind },
     { label: "文件 ID", value: props.item.fileId || "无" },
     { label: "文件引用", value: props.item.fileRef || "无" },
-    { label: "原始文件名", value: props.item.sourceName || "未命名图片" },
+    { label: "原始文件名", value: props.item.sourceName || (props.item.mediaKind === "file" ? "未命名文件" : "未命名图片") },
+    { label: "MIME", value: props.item.mimeType || "未知" },
+    { label: "大小", value: props.item.sizeBytes != null ? String(props.item.sizeBytes) : "未知" },
     { label: "工作区路径", value: props.item.chatFilePath || "无" },
     { label: "发送路径", value: props.item.sourcePath || "无" },
     { label: "消息 ID", value: props.item.messageId != null ? String(props.item.messageId) : "无" }

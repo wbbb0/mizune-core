@@ -205,6 +205,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "filesystem_write",
       "filesystem_patch",
       "filesystem_move",
+      "filesystem_copy",
       "filesystem_delete",
       "filesystem_search",
       "filesystem_media_view",
@@ -231,6 +232,8 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "asset_document_inspect",
       "asset_media_view",
       "asset_media_inspect",
+      "asset_local_path",
+      "asset_export_to_filesystem",
       "asset_send_to_chat"
     ]
   },

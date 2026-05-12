@@ -164,11 +164,30 @@ export type ProjectedChatTimelineItem =
   | {
       kind: "image";
       role: "assistant";
+      mediaKind: "image";
       fileId: string | null;
       fileRef: string | null;
       sourceName: string | null;
       chatFilePath: string | null;
       sourcePath: string | null;
+      mimeType: string | null;
+      sizeBytes: number | null;
+      messageId: number | null;
+      toolName: "asset_send_to_chat" | "filesystem_send_to_chat";
+      captionText: string | null;
+      timestampMs: number;
+    }
+  | {
+      kind: "file";
+      role: "assistant";
+      mediaKind: "file";
+      fileId: string | null;
+      fileRef: string | null;
+      sourceName: string | null;
+      chatFilePath: string | null;
+      sourcePath: string | null;
+      mimeType: string | null;
+      sizeBytes: number | null;
       messageId: number | null;
       toolName: "asset_send_to_chat" | "filesystem_send_to_chat";
       captionText: string | null;
@@ -195,19 +214,23 @@ export function projectChatTimelineFromTranscript(transcript: InternalTranscript
       if (item.runtimeExcluded === true) {
         continue;
       }
-      projected.push({
-        kind: "image" as const,
+      const base = {
         role: "assistant" as const,
         fileId: item.fileId,
         fileRef: item.fileRef,
         sourceName: item.sourceName,
         chatFilePath: item.chatFilePath,
         sourcePath: item.sourcePath,
+        mimeType: item.mimeType ?? null,
+        sizeBytes: item.sizeBytes ?? null,
         messageId: item.messageId,
         toolName: item.toolName,
         captionText: item.captionText ?? null,
         timestampMs: item.timestampMs
-      });
+      };
+      projected.push(item.mediaKind === "file"
+        ? { ...base, kind: "file" as const, mediaKind: "file" as const }
+        : { ...base, kind: "image" as const, mediaKind: "image" as const });
     }
   }
   return projected;

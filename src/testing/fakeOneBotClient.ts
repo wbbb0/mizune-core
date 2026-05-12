@@ -224,6 +224,32 @@ export class FakeOneBotClient extends EventEmitter {
     };
   }
 
+  async sendFile(target: {
+    userId?: string;
+    groupId?: string;
+    filePath: string;
+    name?: string | null;
+  }): Promise<OneBotSendResult> {
+    const messageId = this.nextMessageId++;
+    const sent: FakeOneBotSentMessage = {
+      messageId,
+      ...(target.userId ? { userId: target.userId } : {}),
+      ...(target.groupId ? { groupId: target.groupId } : {}),
+      text: target.name || target.filePath,
+      segments: [{ type: "file", data: { file: target.filePath, name: target.name ?? undefined } }],
+      createdAt: Date.now()
+    };
+    this.sentMessages.push(sent);
+    this.emit("sent", sent);
+    return {
+      status: "ok",
+      retcode: 0,
+      data: {
+        message_id: messageId
+      }
+    };
+  }
+
   async deleteMessage(messageId: number): Promise<OneBotApiResponse> {
     this.emit("deleted", messageId);
     return { status: "ok", retcode: 0, data: null };

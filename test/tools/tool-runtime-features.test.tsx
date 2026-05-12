@@ -21,6 +21,7 @@ import {
   browserPagePolicy,
   browserProfilePolicy,
   browserScreenshotPolicy,
+  assetLocalPathPolicy,
   chatFileListPolicy,
   fileSendPolicy,
   localFileListPolicy,
@@ -35,6 +36,18 @@ import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.
 import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { buildToolObservation } from "../../src/conversation/session/toolObservation.ts";
+import { sendNapCatFile } from "../../src/services/onebot/napcatFileAdapter.ts";
+
+function createNapcatTestConfig() {
+  const config = createTestAppConfig();
+  return {
+    ...config,
+    onebot: {
+      ...config.onebot,
+      provider: "napcat" as const
+    }
+  };
+}
 
 function createMediaToolVisibilityConfig(options: {
   mainSupportsVision?: boolean;
@@ -91,6 +104,46 @@ function createMediaToolVisibilityConfig(options: {
     }
   });
 }
+
+test("sendNapCatFile builds private and group upload payloads", async () => {
+  const calls: Array<{ endpoint: string; body: Record<string, unknown> }> = [];
+  const postApi = async <T,>(endpoint: string, body: Record<string, unknown>): Promise<T> => {
+    calls.push({ endpoint, body });
+    return { status: "ok", retcode: 0, data: { message_id: calls.length } } as T;
+  };
+
+  await sendNapCatFile(postApi, {
+    userId: "10001",
+    filePath: "/tmp/a.txt",
+    name: "a.txt"
+  });
+  await sendNapCatFile(postApi, {
+    groupId: "20002",
+    filePath: "/tmp/b.txt",
+    name: "b.txt"
+  });
+
+  assert.deepEqual(calls, [
+    { endpoint: "upload_private_file", body: { user_id: 10001, file: "/tmp/a.txt", name: "a.txt" } },
+    { endpoint: "upload_group_file", body: { group_id: 20002, file: "/tmp/b.txt", name: "b.txt" } }
+  ]);
+});
+
+test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
+  await assert.rejects(
+    () => sendNapCatFile(async <T,>() => ({ status: "ok", retcode: 0, data: null }) as T, {
+      filePath: "/tmp/a.txt"
+    }),
+    /requires userId/
+  );
+  await assert.rejects(
+    () => sendNapCatFile(async <T,>() => ({ status: "ok", retcode: 0, data: null }) as T, {
+      groupId: "not-a-number",
+      filePath: "/tmp/a.txt"
+    }),
+    /numeric groupId/
+  );
+});
 
   test("builtin tool list exposes forward, media, and message tools", async () => {
     const config = createForwardFeatureConfig();
@@ -318,6 +371,7 @@ function createMediaToolVisibilityConfig(options: {
     assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("filesystem_send_to_chat", config)?.resultObservation), policyShape(fileSendPolicy()));
     assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("asset_list", config)?.resultObservation), policyShape(chatFileListPolicy()));
     assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("asset_send_to_chat", config)?.resultObservation), policyShape(fileSendPolicy()));
+    assert.deepEqual(policyShape(getBuiltinToolDescriptorByName("asset_local_path", config)?.resultObservation), policyShape(assetLocalPathPolicy()));
   });
 
   test("builtin tool list hides external search tools when provider native search is enabled", async () => {
@@ -1383,6 +1437,11 @@ function createMediaToolVisibilityConfig(options: {
       file_ref: "chat_test0001.png",
       chat_file_path: "workspace/media/file_test_1.png"
     });
+    assert.deepEqual(payload.file.asset_handle.usage_hints, [{
+      code: "asset_internal_path",
+      message: "chat_file_path 是 asset store 内部路径；需要副本时用 asset_export_to_filesystem。"
+    }]);
+    assert.deepEqual(payload.file.usage_hints, payload.file.asset_handle.usage_hints);
     assert.deepEqual(
       payload.next_actions.map((item: { tool: string }) => item.tool),
       ["asset_media_view", "asset_send_to_chat"]
@@ -1396,7 +1455,9 @@ function createMediaToolVisibilityConfig(options: {
       [
         ["view_media", "asset_media_view", { asset_ref: "chat_test0001.png" }],
         ["inspect_media", "asset_media_inspect", { asset_ref: "chat_test0001.png" }],
-        ["send_to_chat", "asset_send_to_chat", { asset_ref: "chat_test0001.png" }]
+        ["send_to_chat", "asset_send_to_chat", { asset_ref: "chat_test0001.png" }],
+        ["local_path", "asset_local_path", { asset_ref: "chat_test0001.png" }],
+        ["export_to_filesystem", "asset_export_to_filesystem", { asset_ref: "chat_test0001.png" }]
       ]
     );
     assert.deepEqual(
@@ -1446,7 +1507,7 @@ function createMediaToolVisibilityConfig(options: {
     );
     assert.deepEqual(
       payload.file.asset_handle.capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
-      [["view_media", false], ["inspect_media", false], ["send_to_chat", true]]
+      [["view_media", false], ["inspect_media", false], ["send_to_chat", true], ["local_path", false], ["export_to_filesystem", false]]
     );
     assert.equal(payload.file.asset_handle.capabilities.every((item: { args: Record<string, unknown> }) => !("asset_ids" in item.args) && !("file_ref" in item.args) && "asset_ref" in item.args), true);
     assert.deepEqual(
@@ -1490,7 +1551,7 @@ function createMediaToolVisibilityConfig(options: {
     );
     assert.deepEqual(
       payload.file.asset_handle.capabilities.map((item: { capability: string }) => item.capability),
-      ["send_to_chat"]
+      ["send_to_chat", "local_path", "export_to_filesystem"]
     );
     assert.deepEqual(
       payload.next_actions.map((item: { tool: string }) => item.tool),
@@ -1540,7 +1601,7 @@ function createMediaToolVisibilityConfig(options: {
     );
     assert.deepEqual(
       payload.file.asset_handle.capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
-      [["view_media", false], ["inspect_media", false], ["send_to_chat", false]]
+      [["view_media", false], ["inspect_media", false], ["send_to_chat", false], ["local_path", false], ["export_to_filesystem", false]]
     );
     assert.deepEqual(payload.next_actions, []);
   });
@@ -1607,8 +1668,181 @@ function createMediaToolVisibilityConfig(options: {
     assert.deepEqual(payload.files.map((item: { file_ref: string }) => item.file_ref), ["file_report_1.pdf"]);
     assert.deepEqual(
       payload.files[0].asset_handle.capabilities.map((item: { capability: string }) => item.capability),
-      ["send_to_chat", "document_overview", "document_read", "document_search", "document_inspect"]
+      ["send_to_chat", "local_path", "export_to_filesystem", "document_overview", "document_read", "document_search", "document_inspect"]
     );
+  });
+
+  test("asset_local_path returns relative and absolute paths", async () => {
+    const result = await chatFileToolHandlers.asset_local_path!(
+      { id: "tool_asset_local_path", type: "function", function: { name: "asset_local_path", arguments: "{\"asset_ref\":\"report.pdf\",\"absolute\":true}" } },
+      { asset_ref: "report.pdf", absolute: true },
+      {
+        chatFileStore: {
+          async getFile() {
+            return null;
+          },
+          async listFiles() {
+            return [{
+              fileId: "file_report_1",
+              fileRef: "report.pdf",
+              kind: "file",
+              origin: "browser_download",
+              chatFilePath: "chat-files/media/report.pdf",
+              sourceName: "report.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: 10,
+              createdAtMs: 1,
+              sourceContext: {},
+              caption: null
+            }];
+          },
+          async resolveAbsolutePath(fileId: string) {
+            assert.equal(fileId, "file_report_1");
+            return "/data/chat-files/media/report.pdf";
+          }
+        }
+      } as any
+    );
+
+    assert.deepEqual(JSON.parse(String(result)), {
+      ok: true,
+      asset_ref: "report.pdf",
+      file_id: "file_report_1",
+      path: "/data/chat-files/media/report.pdf",
+      path_mode: "absolute",
+      path_role: "asset_store_internal_path",
+      source_name: "report.pdf",
+      mime_type: "application/pdf",
+      size_bytes: 10,
+      usage_hints: [{
+        code: "asset_internal_path",
+        message: "chat_file_path 是 asset store 内部路径；需要副本时用 asset_export_to_filesystem。"
+      }]
+    });
+  });
+
+  test("asset_export_to_filesystem copies assets without moving the asset record", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-export-"));
+    const sourcePath = join(tempDir, "source.pdf");
+    const exportDir = join(tempDir, "exports");
+    const exportedPath = join(exportDir, "report.pdf");
+    await mkdir(exportDir, { recursive: true });
+    await writeFile(sourcePath, "pdf bytes", "utf8");
+
+    try {
+      const result = await chatFileToolHandlers.asset_export_to_filesystem!(
+        { id: "tool_asset_export", type: "function", function: { name: "asset_export_to_filesystem", arguments: "{\"asset_ref\":\"report.pdf\",\"to_path\":\"exports/\"}" } },
+        { asset_ref: "report.pdf", to_path: "exports/" },
+        {
+          chatFileStore: {
+            async getFile() {
+              return null;
+            },
+            async listFiles() {
+              return [{
+                fileId: "file_report_1",
+                fileRef: "report.pdf",
+                kind: "file",
+                origin: "browser_download",
+                chatFilePath: "chat-files/media/report.pdf",
+                sourceName: "report.pdf",
+                mimeType: "application/pdf",
+                sizeBytes: 9,
+                createdAtMs: 1,
+                sourceContext: {},
+                caption: null
+              }];
+            },
+            async resolveAbsolutePath() {
+              return sourcePath;
+            }
+          },
+          localFileService: {
+            resolvePath(path: string) {
+              return {
+                relativePath: path,
+                absolutePath: join(tempDir, path)
+              };
+            }
+          }
+        } as any
+      );
+
+      assert.equal(await readFile(exportedPath, "utf8"), "pdf bytes");
+      assert.deepEqual(JSON.parse(String(result)), {
+        ok: true,
+        asset_ref: "report.pdf",
+        file_id: "file_report_1",
+        from_path: "chat-files/media/report.pdf",
+        from_path_role: "asset_store_internal_path",
+        to_path: "exports/report.pdf",
+        to_path_role: "local_filesystem_path",
+        usage_hints: [{
+          code: "asset_internal_path",
+          message: "chat_file_path 是 asset store 内部路径；需要副本时用 asset_export_to_filesystem。"
+        }],
+        size_bytes: 9
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset_export_to_filesystem sanitizes asset filenames when exporting into a directory", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-export-sanitize-"));
+    const sourcePath = join(tempDir, "source.txt");
+    const exportDir = join(tempDir, "exports");
+    await mkdir(exportDir, { recursive: true });
+    await writeFile(sourcePath, "safe", "utf8");
+
+    try {
+      const result = await chatFileToolHandlers.asset_export_to_filesystem!(
+        { id: "tool_asset_export_sanitize", type: "function", function: { name: "asset_export_to_filesystem", arguments: "{\"asset_ref\":\"evil.txt\",\"to_path\":\"exports/\"}" } },
+        { asset_ref: "evil.txt", to_path: "exports/" },
+        {
+          chatFileStore: {
+            async getFile() {
+              return null;
+            },
+            async listFiles() {
+              return [{
+                fileId: "file_evil_1",
+                fileRef: "evil.txt",
+                kind: "file",
+                origin: "user_upload",
+                chatFilePath: "chat-files/media/evil.txt",
+                sourceName: "../evil.txt",
+                mimeType: "text/plain",
+                sizeBytes: 4,
+                createdAtMs: 1,
+                sourceContext: {},
+                caption: null
+              }];
+            },
+            async resolveAbsolutePath() {
+              return sourcePath;
+            }
+          },
+          localFileService: {
+            resolvePath(path: string) {
+              if (path.includes("..")) {
+                throw new Error(`unsafe path should not be resolved: ${path}`);
+              }
+              return {
+                relativePath: path,
+                absolutePath: join(tempDir, path)
+              };
+            }
+          }
+        } as any
+      );
+
+      assert.equal(await readFile(join(exportDir, "evil.txt"), "utf8"), "safe");
+      assert.equal(await stat(join(tempDir, "evil.txt")).then(() => true).catch(() => false), false);
+      assert.equal(JSON.parse(String(result)).to_path, "exports/evil.txt");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   test("asset document tools overview, search and read text assets by asset ref", async () => {
@@ -3297,6 +3531,27 @@ function createMediaToolVisibilityConfig(options: {
   });
 });
 
+  test("filesystem_copy delegates file copies through local file service", async () => {
+    const result = await localFileToolHandlers.filesystem_copy!(
+      { id: "tool_filesystem_copy_1", type: "function", function: { name: "filesystem_copy", arguments: "{\"from_path\":\"a.txt\",\"to_path\":\"b.txt\"}" } },
+      { from_path: "a.txt", to_path: "b.txt" },
+      {
+        localFileService: {
+          async copyItem(fromPath: string, toPath: string) {
+            assert.equal(fromPath, "a.txt");
+            assert.equal(toPath, "b.txt");
+            return { fromPath, toPath };
+          }
+        }
+      } as any
+    );
+
+    assert.deepEqual(JSON.parse(String(result)), {
+      fromPath: "a.txt",
+      toPath: "b.txt"
+    });
+  });
+
   test("filesystem_list single-file result includes a local file handle", async () => {
     const result = await localFileToolHandlers.filesystem_list!(
       { id: "tool_filesystem_list_handle", type: "function", function: { name: "filesystem_list", arguments: "{\"path\":\"docs/readme.md\"}" } },
@@ -3630,7 +3885,7 @@ function policyShape(policy: any) {
     );
 
     assert.deepEqual(JSON.parse(String(result)), {
-      error: "asset_send_to_chat 发送图片时不能附带 text"
+      error: "asset_send_to_chat 发送文件时不能附带 text；如需说明请另外发送文本"
     });
   });
 
@@ -3741,15 +3996,21 @@ function policyShape(policy: any) {
     }
   });
 
-  test("asset_send_to_chat keeps the turn open for non-image fallback sends", async () => {
-    const sentTexts: any[] = [];
+  test("asset_send_to_chat keeps the turn open for non-image file sends", async () => {
+    const sentFiles: any[] = [];
     const sentMetaCalls: any[] = [];
-    const assistantHistoryCalls: any[] = [];
+    const transcriptCalls: any[] = [];
     const queuedTasks: Array<() => Promise<void>> = [];
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-asset-file-send-"));
+    const filePath = join(tempDir, "note.txt");
+    await writeFile(filePath, "hello", "utf8");
+
+    try {
     const result = await chatFileToolHandlers.asset_send_to_chat!(
       { id: "tool_workspace_send_2", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"file_bead1234.txt\"}" } },
       { asset_ref: "file_bead1234.txt" },
       {
+        config: createNapcatTestConfig(),
         lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         chatFileStore: {
           async getFile(id: string) {
@@ -3761,16 +4022,21 @@ function policyShape(policy: any) {
               fileRef: "file_bead1234.txt",
               kind: "file",
               sourceName: "note.txt",
-              chatFilePath: "workspace/media/file_file_1.txt"
+              chatFilePath: "workspace/media/file_file_1.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5
             };
           },
           async listFiles() {
             return [];
+          },
+          async resolveAbsolutePath() {
+            return filePath;
           }
         },
         oneBotClient: {
-          async sendText(params: unknown) {
-            sentTexts.push(params);
+          async sendFile(params: unknown) {
+            sentFiles.push(params);
             return { status: "ok", retcode: 0, data: { message_id: 43 } };
           }
         },
@@ -3783,65 +4049,76 @@ function policyShape(policy: any) {
           recordSentMessage(_sessionId: string, message: unknown) {
             sentMetaCalls.push(message);
           },
-          appendAssistantHistory(_sessionId: string, message: unknown) {
-            assistantHistoryCalls.push(message);
+          appendInternalTranscript(_sessionId: string, item: unknown) {
+            transcriptCalls.push(item);
           }
         }
       } as any
     );
 
     assert.equal(queuedTasks.length, 1);
-    assert.equal(sentTexts.length, 0);
+    assert.equal(sentFiles.length, 0);
     assert.equal(sentMetaCalls.length, 0);
     assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
       ok: true,
       asset_ref: "file_bead1234.txt",
       file_id: "file_file_1",
-      deliveredAs: "text_fallback",
+      deliveredAs: "file",
       queued: true
     });
 
     await queuedTasks[0]!();
 
-    assert.equal(sentTexts.length, 1);
-    assert.deepEqual(sentTexts[0], {
+    assert.equal(sentFiles.length, 1);
+    assert.deepEqual(sentFiles[0], {
       userId: "owner",
-      text: "asset 已发送：file_bead1234.txt；asset_id=file_file_1"
+      filePath,
+      name: "note.txt"
     });
     assert.deepEqual(sentMetaCalls[0], {
       messageId: 43,
-      text: "asset 已发送：file_bead1234.txt；asset_id=file_file_1",
+      text: "file_bead1234.txt",
       sentAt: sentMetaCalls[0].sentAt
     });
-    assert.deepEqual(assistantHistoryCalls[0], {
-      chatType: "private",
-      userId: "owner",
-      senderName: "Owner",
-      text: "asset 已发送：file_bead1234.txt；asset_id=file_file_1",
-      deliveryRef: {
-        platform: "onebot",
-        messageId: 43
-      }
+    assert.deepEqual(transcriptCalls[0], {
+      kind: "outbound_media_message",
+      llmVisible: false,
+      role: "assistant",
+      delivery: "onebot",
+      mediaKind: "file",
+      fileId: "file_file_1",
+      fileRef: "file_bead1234.txt",
+      sourceName: "note.txt",
+      chatFilePath: "workspace/media/file_file_1.txt",
+      sourcePath: null,
+      mimeType: "text/plain",
+      sizeBytes: 5,
+      messageId: 43,
+      toolName: "asset_send_to_chat",
+      captionText: null,
+      timestampMs: transcriptCalls[0].timestampMs
     });
     assert.equal(typeof sentMetaCalls[0].sentAt, "number");
     assert.equal((result as any).terminalResponse, undefined);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 
-  test("asset_send_to_chat mirrors non-image fallback text into web delivery", async () => {
-    const webChunks: string[] = [];
+  test("asset_send_to_chat records non-image file sends for web delivery", async () => {
     const queuedTasks: Array<() => Promise<void>> = [];
-    const assistantHistoryCalls: any[] = [];
+    const transcriptCalls: any[] = [];
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-asset-file-send-web-"));
+    const filePath = join(tempDir, "note.txt");
+    await writeFile(filePath, "hello", "utf8");
 
+    try {
     const result = await chatFileToolHandlers.asset_send_to_chat!(
       { id: "tool_workspace_send_2_web", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"file_bead1234.txt\"}" } },
       { asset_ref: "file_bead1234.txt" },
       {
         replyDelivery: "web",
-        committedTextSink: {
-          commitText(chunk: string) {
-            webChunks.push(chunk);
-          }
-        },
+        config: createNapcatTestConfig(),
         lastMessage: { sessionId: "web:owner", userId: "owner", senderName: "Owner" },
         chatFileStore: {
           async getFile(id: string) {
@@ -3853,11 +4130,16 @@ function policyShape(policy: any) {
               fileRef: "file_bead1234.txt",
               kind: "file",
               sourceName: "note.txt",
-              chatFilePath: "workspace/media/file_file_1.txt"
+              chatFilePath: "workspace/media/file_file_1.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5
             };
           },
           async listFiles() {
             return [];
+          },
+          async resolveAbsolutePath() {
+            return filePath;
           }
         },
         messageQueue: {
@@ -3866,8 +4148,8 @@ function policyShape(policy: any) {
           }
         },
         sessionManager: {
-          appendAssistantHistory(_sessionId: string, message: unknown) {
-            assistantHistoryCalls.push(message);
+          appendInternalTranscript(_sessionId: string, item: unknown) {
+            transcriptCalls.push(item);
           }
         }
       } as any
@@ -3877,20 +4159,88 @@ function policyShape(policy: any) {
       ok: true,
       asset_ref: "file_bead1234.txt",
       file_id: "file_file_1",
-      deliveredAs: "text_fallback",
+      deliveredAs: "file",
       queued: true
     });
     assert.equal(queuedTasks.length, 1);
 
     await queuedTasks[0]!();
 
-    assert.deepEqual(webChunks, ["asset 已发送：file_bead1234.txt；asset_id=file_file_1"]);
-    assert.deepEqual(assistantHistoryCalls, [{
-      chatType: "private",
-      userId: "owner",
-      senderName: "Owner",
-      text: "asset 已发送：file_bead1234.txt；asset_id=file_file_1"
-    }]);
+    assert.deepEqual(transcriptCalls[0], {
+      kind: "outbound_media_message",
+      llmVisible: false,
+      role: "assistant",
+      delivery: "web",
+      mediaKind: "file",
+      fileId: "file_file_1",
+      fileRef: "file_bead1234.txt",
+      sourceName: "note.txt",
+      chatFilePath: "workspace/media/file_file_1.txt",
+      sourcePath: null,
+      mimeType: "text/plain",
+      sizeBytes: 5,
+      messageId: null,
+      toolName: "asset_send_to_chat",
+      captionText: null,
+      timestampMs: transcriptCalls[0].timestampMs
+    });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("asset_send_to_chat rejects generic OneBot non-image sends without enqueueing", async () => {
+    const queuedTasks: Array<() => Promise<void>> = [];
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-asset-file-send-generic-"));
+    const filePath = join(tempDir, "note.txt");
+    await writeFile(filePath, "hello", "utf8");
+
+    try {
+      const result = await chatFileToolHandlers.asset_send_to_chat!(
+        { id: "tool_workspace_send_generic_file", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"file_bead1234.txt\"}" } },
+        { asset_ref: "file_bead1234.txt" },
+        {
+          config: createTestAppConfig(),
+          lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
+          chatFileStore: {
+            async getFile() {
+              return null;
+            },
+            async listFiles() {
+              return [{
+                fileId: "file_file_1",
+                fileRef: "file_bead1234.txt",
+                kind: "file",
+                origin: "user_upload",
+                chatFilePath: "workspace/media/file_file_1.txt",
+                sourceName: "note.txt",
+                mimeType: "text/plain",
+                sizeBytes: 5,
+                createdAtMs: 1,
+                sourceContext: {},
+                caption: null
+              }];
+            },
+            async resolveAbsolutePath() {
+              return filePath;
+            }
+          },
+          messageQueue: {
+            enqueueTextDetached(params: { send: () => Promise<void> }) {
+              queuedTasks.push(params.send);
+            }
+          }
+        } as any
+      );
+
+      assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
+        error: "filesystem/asset file sending requires onebot.provider=napcat for non-image files",
+        deliveredAs: "unsupported"
+      });
+      assert.equal(queuedTasks.length, 0);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   test("asset_send_to_chat records image sends for web delivery", async () => {
@@ -4068,7 +4418,7 @@ function policyShape(policy: any) {
         { id: "tool_workspace_send_path_rel", type: "function", function: { name: "filesystem_send_to_chat", arguments: "{\"path\":\"outputs/diagram.png\"}" } },
         { path: "outputs/diagram.png" },
         {
-          config: createTestAppConfig(),
+          config: createNapcatTestConfig(),
           lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
           localFileService: {
             resolvePath(relativePath: string) {
@@ -4126,8 +4476,8 @@ function policyShape(policy: any) {
 
   test("filesystem_send_to_chat sends file via absolute path", async () => {
     const queuedTasks: Array<() => Promise<void>> = [];
-    const sentTexts: any[] = [];
-    const assistantHistoryCalls: any[] = [];
+    const sentFiles: any[] = [];
+    const transcriptCalls: any[] = [];
     const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-path-abs-"));
     const filePath = join(tempDir, "report.txt");
     await writeFile(filePath, "hello", "utf8");
@@ -4137,7 +4487,7 @@ function policyShape(policy: any) {
         { id: "tool_workspace_send_path_abs", type: "function", function: { name: "filesystem_send_to_chat", arguments: `{\"path\":\"${filePath}\"}` } },
         { path: filePath },
         {
-          config: createTestAppConfig(),
+          config: createNapcatTestConfig(),
           localFileService: {
             resolvePath(path: string) {
               return { relativePath: path, absolutePath: path };
@@ -4145,8 +4495,8 @@ function policyShape(policy: any) {
           },
           lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
           oneBotClient: {
-            async sendText(params: unknown) {
-              sentTexts.push(params);
+            async sendFile(params: unknown) {
+              sentFiles.push(params);
               return { status: "ok", retcode: 0, data: { message_id: 77 } };
             }
           },
@@ -4157,8 +4507,8 @@ function policyShape(policy: any) {
           },
           sessionManager: {
             recordSentMessage() {},
-            appendAssistantHistory(_sessionId: string, message: unknown) {
-              assistantHistoryCalls.push(message);
+            appendInternalTranscript(_sessionId: string, item: unknown) {
+              transcriptCalls.push(item);
             }
           }
         } as any
@@ -4168,26 +4518,35 @@ function policyShape(policy: any) {
         ok: true,
         path: filePath,
         path_mode: "absolute",
-        deliveredAs: "text_fallback",
+        deliveredAs: "file",
         queued: true
       });
       assert.equal(queuedTasks.length, 1);
 
       await queuedTasks[0]!();
 
-      assert.deepEqual(sentTexts[0], {
+      assert.deepEqual(sentFiles[0], {
         userId: "owner",
-        text: `文件已发送：${filePath}`
+        filePath,
+        name: "report.txt"
       });
-      assert.deepEqual(assistantHistoryCalls[0], {
-        chatType: "private",
-        userId: "owner",
-        senderName: "Owner",
-        text: `文件已发送：${filePath}`,
-        deliveryRef: {
-          platform: "onebot",
-          messageId: 77
-        }
+      assert.deepEqual(transcriptCalls[0], {
+        kind: "outbound_media_message",
+        llmVisible: false,
+        role: "assistant",
+        delivery: "onebot",
+        mediaKind: "file",
+        fileId: null,
+        fileRef: null,
+        sourceName: "report.txt",
+        chatFilePath: null,
+        sourcePath: filePath,
+        mimeType: null,
+        sizeBytes: 5,
+        messageId: 77,
+        toolName: "filesystem_send_to_chat",
+        captionText: null,
+        timestampMs: transcriptCalls[0].timestampMs
       });
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -4195,18 +4554,22 @@ function policyShape(policy: any) {
   });
 
   test("filesystem_send_to_chat resolves relative path through localFileService", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-tool-path-rel-resolve-"));
+    const filePath = join(tempDir, "demo.txt");
+    await writeFile(filePath, "hello", "utf8");
+    try {
     const result = await localFileToolHandlers.filesystem_send_to_chat!(
       { id: "tool_workspace_send_path_rel_resolve", type: "function", function: { name: "filesystem_send_to_chat", arguments: "{\"path\":\"outputs/demo.txt\"}" } },
       { path: "outputs/demo.txt" },
       {
-        config: createTestAppConfig(),
+        config: createNapcatTestConfig(),
         lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         localFileService: {
           resolvePath(relativePath: string) {
             assert.equal(relativePath, "outputs/demo.txt");
             return {
               relativePath,
-              absolutePath: "/project/data/outputs/demo.txt"
+              absolutePath: filePath
             };
           }
         },
@@ -4217,6 +4580,9 @@ function policyShape(policy: any) {
     );
 
     assert.equal(JSON.parse(String((result as any).content ?? result)).path, "outputs/demo.txt");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   test("list_live_resources returns browser resources only", async () => {

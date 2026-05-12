@@ -136,6 +136,24 @@ export function chatFileListPolicy(): ToolResultObservationPolicy {
   };
 }
 
+export function assetLocalPathPolicy(): ToolResultObservationPolicy {
+  return {
+    method(ctx) {
+      if (hasError(ctx)) return "error_summary";
+      return "asset_local_path_summary";
+    },
+    resource: chatFileResource,
+    refetchHint(ctx) {
+      const selector = stringValue(ctx.args.asset_ref ?? ctx.args.asset_id ?? ctx.parsedContent?.asset_ref ?? ctx.parsedContent?.file_id);
+      return selector ? `如需刷新该 asset 路径，请再次调用 asset_local_path asset_ref=${JSON.stringify(selector)}` : null;
+    },
+    preserveRecentRawCount: 1,
+    compactors: {
+      asset_local_path_summary: compactAssetLocalPath
+    }
+  };
+}
+
 export function fileSendPolicy(): ToolResultObservationPolicy {
   return {
     method(ctx) {
@@ -669,11 +687,35 @@ function compactLocalFileMutation(ctx: Parameters<ToolResultCompactor>[0]) {
     action: ctx.toolName,
     path,
     fromPath: ctx.parsedContent?.fromPath ?? ctx.parsedContent?.from_path ?? ctx.args.from_path ?? null,
+    fromPathRole: ctx.parsedContent?.fromPathRole ?? ctx.parsedContent?.from_path_role ?? null,
     toPath: ctx.parsedContent?.toPath ?? ctx.parsedContent?.to_path ?? ctx.args.to_path ?? null,
+    toPathRole: ctx.parsedContent?.toPathRole ?? ctx.parsedContent?.to_path_role ?? null,
+    usageHints: arrayValue(ctx.parsedContent?.usage_hints)?.slice(0, 3) ?? [],
     bytesWritten: ctx.parsedContent?.bytesWritten ?? ctx.parsedContent?.bytes_written ?? null,
     hunksApplied: ctx.parsedContent?.hunksApplied ?? ctx.parsedContent?.hunks_applied ?? null,
     deleted: ctx.parsedContent?.deleted ?? null,
     updatedAtMs: ctx.parsedContent?.updatedAtMs ?? ctx.parsedContent?.updated_at_ms ?? null
+  });
+}
+
+function compactAssetLocalPath(ctx: Parameters<ToolResultCompactor>[0]) {
+  const assetRef = stringValue(ctx.parsedContent?.asset_ref ?? ctx.args.asset_ref);
+  const fileId = stringValue(ctx.parsedContent?.file_id ?? ctx.args.asset_id);
+  const path = stringValue(ctx.parsedContent?.path);
+  const pathMode = stringValue(ctx.parsedContent?.path_mode ?? ctx.parsedContent?.pathMode);
+  const pathRole = stringValue(ctx.parsedContent?.path_role ?? ctx.parsedContent?.pathRole);
+  const target = assetRef ?? fileId ?? ctx.resource?.id ?? "";
+  const summary = `asset ${target} 的本机路径已返回${path ? `：${path}` : ""}`;
+  return replayJson(ctx, summary, {
+    assetRef,
+    fileId,
+    path,
+    pathMode,
+    pathRole,
+    sourceName: ctx.parsedContent?.source_name ?? ctx.parsedContent?.sourceName ?? null,
+    mimeType: ctx.parsedContent?.mime_type ?? ctx.parsedContent?.mimeType ?? null,
+    sizeBytes: ctx.parsedContent?.size_bytes ?? ctx.parsedContent?.sizeBytes ?? null,
+    usageHints: arrayValue(ctx.parsedContent?.usage_hints)?.slice(0, 3) ?? []
   });
 }
 
@@ -933,6 +975,7 @@ function compactChatFileForReplay(item: unknown): Record<string, unknown> {
     captionStatus: record.caption_status ?? record.captionStatus ?? null,
     caption: stringValue(record.caption) ? compactText(String(record.caption), 80) : null,
     createdAtMs: record.created_at_ms ?? record.createdAtMs ?? null,
+    usageHints: arrayValue(record.usage_hints)?.slice(0, 3) ?? [],
     handle: compactFileHandleForReplay(record.handle)
   };
 }
@@ -989,6 +1032,7 @@ function compactFileHandleForReplay(item: unknown): Record<string, unknown> | nu
     capabilities: (arrayValue(record.capabilities) ?? [])
       .map(compactFileHandleCapabilityForReplay)
       .slice(0, 6),
+    usageHints: arrayValue(record.usage_hints)?.slice(0, 3) ?? [],
     nextActions: arrayValue(record.next_actions)?.slice(0, 4) ?? []
   };
 }
@@ -1011,6 +1055,7 @@ function compactAssetHandleForReplay(item: unknown): Record<string, unknown> | n
     capabilities: (arrayValue(record.capabilities) ?? [])
       .map(compactFileHandleCapabilityForReplay)
       .slice(0, 10),
+    usageHints: arrayValue(record.usage_hints)?.slice(0, 3) ?? [],
     nextActions: arrayValue(record.next_actions)?.slice(0, 4) ?? []
   };
 }
