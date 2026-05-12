@@ -23,7 +23,7 @@ import type {
 import { handleGenerationTurnPlanner } from "./generationTurnPlanner.ts";
 import { resolveAutoActivatedToolsets } from "./toolsetAutoActivation.ts";
 import { supplementPlannedToolsets } from "./toolsetSupplement.ts";
-import { getProviderTranscriptProjector } from "./providerTranscriptProjector.ts";
+import { getProviderTranscriptProjectorForRequest } from "./providerTranscriptProjector.ts";
 import { createInternalTriggerEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { renderInlineTriggerBatchMessage } from "#llm/prompt/promptBuilder.ts";
 import { createSessionTranscriptStore } from "#conversation/session/sessionTranscriptStore.ts";
@@ -242,6 +242,16 @@ function selectScheduledActiveToolsetIds(modeId: string, triggerKind: InternalSe
     return withScenarioHostState(["chat_context", "web_research", "asset_io", "time_utils"]);
   }
   return withScenarioHostState(["chat_context", "shell_runtime", "filesystem_io", "asset_io", "time_utils"]);
+}
+
+function shouldUseSummaryOnlyTranscriptProjector(input: {
+  providerName: string;
+  enableThinking: boolean;
+  visibleToolNames: string[];
+}): boolean {
+  return input.providerName === "lmstudio"
+    && !input.enableThinking
+    && input.visibleToolNames.length === 0;
 }
 
 function toScheduledPromptTrigger(trigger: InternalSessionTriggerExecution) {
@@ -747,7 +757,13 @@ export function createGenerationSessionOrchestrator(
       const replayTranscriptItems = refreshedSession.activeTranscriptGroupId == null
         ? transcriptStore.runtimeItems()
         : transcriptStore.runtimeItems().filter((item) => item.groupId !== refreshedSession.activeTranscriptGroupId);
-      const projectedTranscript = getProviderTranscriptProjector(providerName).project({
+      const projectedTranscript = getProviderTranscriptProjectorForRequest(providerName, {
+        summaryOnly: shouldUseSummaryOnlyTranscriptProjector({
+          providerName,
+          enableThinking: config.llm.mainRouting.enableThinking,
+          visibleToolNames: chatVisibleToolNames
+        })
+      }).project({
         transcript: replayTranscriptItems,
         preserveThinking: getPrimaryModelProfile(config, resolvedModelRef)?.preserveThinking === true
       });
@@ -946,10 +962,18 @@ export function createGenerationSessionOrchestrator(
       });
       const activeScheduledToolsetIds = new Set(selectScheduledActiveToolsetIds(session.modeId, trigger.kind));
       const activeScheduledToolsets = scheduledAvailableToolsets.filter((toolset) => activeScheduledToolsetIds.has(toolset.id));
-      const scheduledVisibleToolNames = resolveToolNamesFromToolsets(
-        scheduledAvailableToolsets,
-        activeScheduledToolsets.map((toolset) => toolset.id)
-      );
+      const scheduledVisibleToolNames = getBuiltinToolNames("owner", currentUser, config, {
+        modelRef: scheduledModelRef,
+        includeDebugTools: interactionMode === "debug",
+        visibilityContext: {
+          sessionId,
+          replyDelivery: scheduledReplyDelivery
+        },
+        availableToolNames: resolveToolNamesFromToolsets(
+          scheduledAvailableToolsets,
+          activeScheduledToolsets.map((toolset) => toolset.id)
+        )
+      });
       await historyCompressor.maybeCompress(sessionId, { triggerReason: "scheduled_pre_generation" });
       const providerName = getPrimaryModelProfile(config, scheduledModelRef)?.provider ?? "unknown";
       const transcriptStore = createSessionTranscriptStore(session, config);
@@ -957,7 +981,13 @@ export function createGenerationSessionOrchestrator(
       const participantProfiles = assistantMode
         ? []
         : await extractWindowUsers(userStore, transcriptStore.runtimeItems(), []);
-      const projectedTranscript = getProviderTranscriptProjector(providerName).project({
+      const projectedTranscript = getProviderTranscriptProjectorForRequest(providerName, {
+        summaryOnly: shouldUseSummaryOnlyTranscriptProjector({
+          providerName,
+          enableThinking: config.llm.mainRouting.enableThinking,
+          visibleToolNames: scheduledVisibleToolNames
+        })
+      }).project({
         transcript: transcriptStore.runtimeItems(),
         preserveThinking: getPrimaryModelProfile(config, scheduledModelRef)?.preserveThinking === true
       });
@@ -1113,10 +1143,18 @@ export function createGenerationSessionOrchestrator(
       });
       const activeScheduledToolsetIds = new Set(selectScheduledActiveToolsetIds(session.modeId, primaryTrigger.kind));
       const activeScheduledToolsets = scheduledAvailableToolsets.filter((toolset) => activeScheduledToolsetIds.has(toolset.id));
-      const scheduledVisibleToolNames = resolveToolNamesFromToolsets(
-        scheduledAvailableToolsets,
-        activeScheduledToolsets.map((toolset) => toolset.id)
-      );
+      const scheduledVisibleToolNames = getBuiltinToolNames("owner", currentUser, config, {
+        modelRef: scheduledModelRef,
+        includeDebugTools: interactionMode === "debug",
+        visibilityContext: {
+          sessionId,
+          replyDelivery: scheduledReplyDelivery
+        },
+        availableToolNames: resolveToolNamesFromToolsets(
+          scheduledAvailableToolsets,
+          activeScheduledToolsets.map((toolset) => toolset.id)
+        )
+      });
       await historyCompressor.maybeCompress(sessionId, { triggerReason: "inline_batch_pre_generation" });
       const providerName = getPrimaryModelProfile(config, scheduledModelRef)?.provider ?? "unknown";
       const transcriptStore = createSessionTranscriptStore(session, config);
@@ -1124,7 +1162,13 @@ export function createGenerationSessionOrchestrator(
       const participantProfiles = assistantMode
         ? []
         : await extractWindowUsers(userStore, transcriptStore.runtimeItems(), []);
-      const projectedTranscript = getProviderTranscriptProjector(providerName).project({
+      const projectedTranscript = getProviderTranscriptProjectorForRequest(providerName, {
+        summaryOnly: shouldUseSummaryOnlyTranscriptProjector({
+          providerName,
+          enableThinking: config.llm.mainRouting.enableThinking,
+          visibleToolNames: scheduledVisibleToolNames
+        })
+      }).project({
         transcript: transcriptStore.runtimeItems(),
         preserveThinking: getPrimaryModelProfile(config, scheduledModelRef)?.preserveThinking === true
       });

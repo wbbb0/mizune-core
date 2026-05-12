@@ -10,7 +10,8 @@ import {
   createPromptUserProfile,
   findPromptBlock,
   hasPromptSection,
-  readPromptMessageText
+  readPromptLastMessageText,
+  readPromptSystemText
 } from "../helpers/prompt-fixtures.tsx";
 
   test("prompt builder injects persona fields and current-user memories only", async () => {
@@ -36,7 +37,7 @@ import {
         recentMessages: [],
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "你好", timestampMs: Date.now() })]
       });
-      const system = String(prompt[0]?.content ?? "");
+      const system = readPromptSystemText(prompt);
       assert.match(system, /全局特征=默认会把角色边界放在前面。/);
       assert.equal(hasPromptSection(system, "current_user_memories"), true);
       assert.match(system, /当前触发用户长期记忆/);
@@ -287,7 +288,7 @@ import {
         recentMessages: [],
         batchMessages: [createPromptBatchMessage({ userId: "1259430720", senderName: "阿杰", text: "我是你堂弟", timestampMs: Date.now() })]
       });
-      const system = String(prompt[0]?.content ?? "");
+      const system = readPromptSystemText(prompt);
       assert.match(system, /当前触发用户：阿杰 \(1259430720\)/);
       assert.match(system, /当前触发用户关系：熟人$/m);
       assert.match(system, /当前触发用户补充资料：/);
@@ -319,16 +320,16 @@ import {
         recentMessages: [{ role: "user", content: "别忘了之前说过的那件事", timestampMs: Date.now() }],
         targetContext: { chatType: "private", userId: "owner", senderName: "Owner" }
       });
-      const system = String(prompt[0]?.content ?? "");
+      const system = readPromptSystemText(prompt);
       assert.match(system, /下面这次执行是内部计划任务，不是用户刚刚发来了一条新消息/);
       assert.doesNotMatch(system, /不一定是最终发给用户的原文/);
       assert.doesNotMatch(system, /产出最终要发送给目标会话的文本/);
       assert.doesNotMatch(system, /当前时间（/);
       assert.doesNotMatch(system, /当前会话 ID：/);
-      assert.equal(prompt.length, 3);
-      assert.equal(findPromptBlock(String(prompt[1]?.content ?? ""), "scheduled_history_message")?.attrs.role, "user");
-      assert.match(String(prompt[2]?.content ?? ""), /任务名称：五分钟提醒/);
-      assert.match(String(prompt[2]?.content ?? ""), /任务指令：五分钟后提醒用户去拿外卖/);
+      assert.equal(prompt.length, 4);
+      assert.equal(findPromptBlock(String(prompt[2]?.content ?? ""), "scheduled_history_message")?.attrs.role, "user");
+      assert.match(readPromptLastMessageText(prompt), /任务名称：五分钟提醒/);
+      assert.match(readPromptLastMessageText(prompt), /任务指令：五分钟后提醒用户去拿外卖/);
     } finally {
       await harness.cleanup();
     }
@@ -360,8 +361,8 @@ import {
         recentMessages: [],
         targetContext: { chatType: "private", userId: "owner", senderName: "Owner" }
       });
-      const system = String(prompt[0]?.content ?? "");
-      const triggerMessage = String(prompt[1]?.content ?? "");
+      const system = readPromptSystemText(prompt);
+      const triggerMessage = readPromptLastMessageText(prompt);
       assert.match(system, /后台终端可能等待输入的内部回调/);
       assert.match(system, /这个检测是启发式结果，不是绝对事实/);
       assert.match(triggerMessage, /resource_id：res_shell_1/);
@@ -384,7 +385,7 @@ import {
         recentMessages: [],
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "我叫小满，是个图书管理员", timestampMs: Date.now() })]
       });
-      const system = String(prompt[0]?.content ?? "");
+      const system = readPromptSystemText(prompt);
       assert.match(system, /当前处于初始化阶段/);
       assert.match(system, /你当前只在persona的临时草稿上工作/);
       assert.match(system, /保持主动、友好、helpful 的引导感/);
@@ -417,7 +418,7 @@ import {
         recentMessages: [],
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "把说话方式改柔和一点", timestampMs: Date.now() })]
       });
-      const system = String(prompt[0]?.content ?? "");
+      const system = readPromptSystemText(prompt);
       assert.match(system, /persona_config_mode/);
       assert.match(system, /当前处于 persona 配置阶段/);
       assert.match(system, /你当前只在persona的临时草稿上工作/);
@@ -450,8 +451,8 @@ import {
         })]
       });
 
-      const system = String(prompt[0]?.content ?? "");
-      const batchText = readPromptMessageText(prompt[1]);
+      const system = readPromptSystemText(prompt);
+      const batchText = readPromptLastMessageText(prompt);
       assert.match(system, /当前配置流程处理的是 bot 自身的设定草稿/);
       assert.match(system, /owner 在这里用第一人称提供的信息，默认是在描述 bot/);
       assert.deepEqual(findPromptBlock(batchText, "draft_batch")?.attrs, {
@@ -492,7 +493,7 @@ import {
         recentMessages: [],
         targetContext: { chatType: "group", groupId: "123456" }
       });
-      const system = String(prompt[0]?.content ?? "");
+      const system = readPromptSystemText(prompt);
       assert.doesNotMatch(system, /目标会话：群聊 123456/);
       assert.doesNotMatch(system, /目标会话用户：/);
     } finally {
@@ -564,7 +565,7 @@ import {
         recentMessages: [],
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "你认识谁", timestampMs: Date.now() })]
       });
-      const system = String(prompt[0]?.content ?? "");
+      const system = readPromptSystemText(prompt);
       assert.match(system, /当前相关 NPC：/);
       assert.match(system, /NPC甲/);
       assert.match(system, /会一起跑剧情/);
@@ -588,7 +589,7 @@ import {
         recentMessages: [],
         batchMessages: [createPromptBatchMessage({ userId: "30003", senderName: "NPC甲", text: "嗯嗯", timestampMs: Date.now() })]
       });
-      const system = String(prompt[0]?.content ?? "");
+      const system = readPromptSystemText(prompt);
       assert.match(system, /当前触发用户关系：.*；特殊角色=npc/);
       assert.match(system, /没有明确问题、请求、任务/);
       assert.match(system, /当前触发用户是 NPC\/bot；把这轮优先当成协作或任务沟通/);
@@ -613,16 +614,16 @@ import {
         batchMessages: [createPromptBatchMessage({ userId: "10001", senderName: "Alice", text: "现在这句", timestampMs: Date.UTC(2026, 2, 16, 9, 13, 0) })]
       });
 
-      assert.deepEqual(findPromptBlock(String(prompt[1]?.content ?? ""), "history_message")?.attrs, {
+      assert.deepEqual(findPromptBlock(String(prompt[2]?.content ?? ""), "history_message")?.attrs, {
         time: "2026/03/16 17:12:34"
       });
-      assert.deepEqual(findPromptBlock(readPromptMessageText(prompt[2]), "trigger_batch")?.attrs, {
+      assert.deepEqual(findPromptBlock(readPromptLastMessageText(prompt), "trigger_batch")?.attrs, {
         session: "私聊 10001",
         trigger_user: "Alice (10001)",
         message_count: "1",
         speaker_count: "1"
       });
-      assert.deepEqual(findPromptBlock(readPromptMessageText(prompt[2]), "trigger_message")?.attrs, {
+      assert.deepEqual(findPromptBlock(readPromptLastMessageText(prompt), "trigger_message")?.attrs, {
         index: "1",
         speaker: "Alice (10001)",
         trigger_user: "yes",

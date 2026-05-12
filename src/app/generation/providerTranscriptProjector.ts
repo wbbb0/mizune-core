@@ -23,13 +23,29 @@ export interface ProviderTranscriptProjector {
 function summarizeTranscriptItem(item: InternalTranscriptItem): string | null {
   if (item.kind === "assistant_tool_call") {
     const names = item.toolCalls.map((toolCall) => toolCall.function.name).join(", ");
-    return `- assistant tool_calls: ${names || "<none>"}`;
+    return `- 调用工具：${names || "<none>"}`;
   }
   if (item.kind === "tool_result") {
-    const normalized = item.content.replace(/\s+/g, " ").trim();
-    return `- tool ${item.toolName}: ${normalized.length <= 180 ? normalized : `${normalized.slice(0, 180)}...`}`;
+    return summarizeToolResultItem(item);
   }
   return null;
+}
+
+function summarizeToolResultItem(item: InternalToolResultItem): string {
+  const resource = item.observation?.resource
+    ? ` resource=${item.observation.resource.kind}:${item.observation.resource.id}`
+    : "";
+  if (item.observation?.summary) {
+    return `- ${item.toolName}${resource}: ${item.observation.summary}`;
+  }
+  const normalized = item.content.replace(/\s+/g, " ").trim();
+  return `- ${item.toolName}${resource}: ${normalized.length <= 180 ? normalized : `${normalized.slice(0, 180)}...`}`;
+}
+
+function buildToolSummarySystemMessage(providerName: string, lines: string[]): string | null {
+  return lines.length > 0
+    ? `最近工具结果摘要（provider=${providerName}；跨轮仅提供摘要，不要对用户直说）：\n${lines.join("\n")}`
+    : null;
 }
 
 function createSummaryOnlyProjector(providerName: string): ProviderTranscriptProjector {
@@ -44,9 +60,7 @@ function createSummaryOnlyProjector(providerName: string): ProviderTranscriptPro
       return {
         replayMessages: [],
         replayCoversVisibleHistory: false,
-        lateSystemMessages: lines.length > 0
-          ? [`最近内部工具转录摘要（provider=${providerName}；跨轮仅提供摘要，不要对用户直说）：\n${lines.join("\n")}`]
-          : []
+        lateSystemMessages: [buildToolSummarySystemMessage(providerName, lines)].filter((item): item is string => Boolean(item))
       };
     }
   };
@@ -204,6 +218,8 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
       const replayMessages: LlmMessage[] = [];
       const replayableToolCallIds = new Set<string>();
       const activeReplayableToolCallIds = new Set<string>();
+      const skippedToolCallIds = new Set<string>();
+      const skippedLines: string[] = [];
       const toolResultReplayContent = buildToolResultReplayContentMap(input.transcript);
       let replayCoversVisibleHistory = false;
       let lastReplayRole: LlmMessage["role"] | null = null;
@@ -254,10 +270,12 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
               ...(item.providerMetadata ? { providerMetadata: item.providerMetadata } : {})
             });
             lastReplayRole = "assistant";
+          } else {
+            skippedLines.push(summarizeTranscriptItem(item)!);
+            for (const toolCall of item.toolCalls) {
+              skippedToolCallIds.add(toolCall.id);
+            }
           }
-          // NOTE: 无法 replay 的工具调用（缺失 thoughtSignature）在此静默省略。
-          // 如果模型在跨轮场景中频繁丢失工具调用上下文，可在 assistant visible response 的
-          // prompt 中要求模型显式复述重要工具结果，使其通过 visible history 保留关键信息。
           continue;
         }
 
@@ -273,6 +291,8 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
               content: toolResultReplayContent.get(item.toolCallId) ?? item.content
             });
             lastReplayRole = "tool";
+          } else if (skippedToolCallIds.has(item.toolCallId)) {
+            skippedLines.push(summarizeToolResultItem(item));
           }
           continue;
         }
@@ -280,7 +300,7 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
 
       return {
         replayMessages,
-        lateSystemMessages: [],
+        lateSystemMessages: [buildToolSummarySystemMessage(providerName, skippedLines)].filter((item): item is string => Boolean(item)),
         replayCoversVisibleHistory
       };
     }
@@ -290,6 +310,8 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
 const projectors = new Map<string, ProviderTranscriptProjector>([
   ["openai", createOpenAiStyleProjector("openai")],
   ["dashscope", createOpenAiStyleProjector("dashscope")],
+  ["deepseek", createOpenAiStyleProjector("deepseek")],
+  ["lmstudio", createOpenAiStyleProjector("lmstudio")],
   ["anthropic", createOpenAiStyleProjector("anthropic", { preserveVisibleReasoning: false })],
   ["google", createGoogleProjector("google")],
   ["vertex", createGoogleProjector("vertex")],
@@ -297,5 +319,17 @@ const projectors = new Map<string, ProviderTranscriptProjector>([
 ]);
 
 export function getProviderTranscriptProjector(providerName: string | null | undefined): ProviderTranscriptProjector {
+  return getProviderTranscriptProjectorForRequest(providerName);
+}
+
+export function getProviderTranscriptProjectorForRequest(
+  providerName: string | null | undefined,
+  options: {
+    summaryOnly?: boolean;
+  } = {}
+): ProviderTranscriptProjector {
+  if (options.summaryOnly === true) {
+    return createSummaryOnlyProjector(providerName ?? "unknown");
+  }
   return projectors.get(providerName ?? "") ?? createSummaryOnlyProjector(providerName ?? "unknown");
 }
