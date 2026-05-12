@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from "vue";
 import { useWorkbenchWindows } from "./useWorkbenchWindows";
-import type { WorkbenchWindowDialogController, WorkbenchWindowResult } from "./types";
+import type {
+  WorkbenchWindowBounds,
+  WorkbenchWindowDialogController,
+  WorkbenchWindowMaximizePayload,
+  WorkbenchWindowResult
+} from "./types";
 import DialogRenderer from "./DialogRenderer.vue";
 import WindowSurface from "./WindowSurface.vue";
 
@@ -9,7 +14,7 @@ const props = defineProps<{
   isMobile: boolean;
 }>();
 
-const { desktopWindows, mobileWindows, close, focus, move, get } = useWorkbenchWindows();
+const { desktopWindows, mobileWindows, close, focus, move, setBounds, setMaximized, get } = useWorkbenchWindows();
 
 const renderedWindows = computed(() => (props.isMobile ? mobileWindows.value : desktopWindows.value));
 const activeModalWindow = computed(() => (
@@ -65,6 +70,14 @@ function handleFocus(windowId: string) {
 
 function handleMove(windowId: string, position: { x: number; y: number }) {
   move(windowId, position);
+}
+
+function handleBounds(windowId: string, bounds: WorkbenchWindowBounds) {
+  setBounds(windowId, bounds);
+}
+
+function handleMaximize(windowId: string, payload: WorkbenchWindowMaximizePayload) {
+  setMaximized(windowId, payload);
 }
 
 function handleResolve(windowId: string, result: WorkbenchWindowResult<unknown, Record<string, unknown>>) {
@@ -132,6 +145,8 @@ onBeforeUnmount(() => {
       :inactive="inactiveWindowIds.has(window.id)"
       @focus="handleFocus(window.id)"
       @move="handleMove(window.id, $event)"
+      @bounds="handleBounds(window.id, $event)"
+      @maximize="handleMaximize(window.id, $event)"
       @close="handleClose(window.id)"
     >
       <DialogRenderer

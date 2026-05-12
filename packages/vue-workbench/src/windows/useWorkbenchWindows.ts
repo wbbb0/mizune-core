@@ -24,6 +24,12 @@ const dynamicWorkbenchWindows: WorkbenchWindowManager = {
   move(windowId, position) {
     return useWorkbenchController().windows.move(windowId, position);
   },
+  setBounds(windowId, bounds) {
+    return useWorkbenchController().windows.setBounds(windowId, bounds);
+  },
+  setMaximized(windowId, payload) {
+    return useWorkbenchController().windows.setMaximized(windowId, payload);
+  },
   close(windowId, result) {
     useWorkbenchController().windows.close(windowId, result);
   },

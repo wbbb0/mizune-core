@@ -267,6 +267,36 @@ function buildWindow(id: string, parentId?: string) {
   };
 }
 
+function mockElementRect(element: HTMLElement, width: number, height: number) {
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: () => ({
+      width,
+      height,
+      top: 0,
+      left: 0,
+      right: width,
+      bottom: height,
+      x: 0,
+      y: 0,
+      toJSON() {
+        return {};
+      }
+    })
+  });
+}
+
+function setViewportSize(width: number, height: number) {
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: width
+  });
+  Object.defineProperty(window, "innerHeight", {
+    configurable: true,
+    value: height
+  });
+}
+
 async function mountComponent(componentUrl: string, props: Record<string, unknown>, stubs?: Record<string, unknown>) {
   const component = (await import(componentUrl)).default;
   return vueMount(component, {
@@ -288,6 +318,7 @@ test.beforeEach(() => {
 test.afterEach(() => {
   uiState.isMobile = false;
   routeState.name = "sessions";
+  setViewportSize(1024, 768);
   resetWindows();
 });
 
@@ -580,6 +611,193 @@ test("window host moves a desktop window when dragging its title bar", async () 
   assert.deepEqual(windowManager.get("draggable")?.position, { x: 45, y: 50 });
 });
 
+test("window host resizes a desktop window from an edge handle", async () => {
+  uiState.isMobile = false;
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
+
+  windowManager.openSync(buildWindow("resizable"));
+  await nextTick();
+
+  mockElementRect(wrapper.get("section").element as HTMLElement, 400, 280);
+  const handle = wrapper.get('[data-window-resize-handle="e"]');
+  handle.element.dispatchEvent(new window.PointerEvent("pointerdown", {
+    bubbles: true,
+    clientX: 500,
+    clientY: 200
+  }));
+  window.dispatchEvent(new window.PointerEvent("pointermove", {
+    bubbles: true,
+    clientX: 560,
+    clientY: 200
+  }));
+  window.dispatchEvent(new window.PointerEvent("pointerup", {
+    bubbles: true,
+    clientX: 560,
+    clientY: 200
+  }));
+  await nextTick();
+
+  assert.deepEqual(windowManager.get("resizable")?.sizePx, { width: 460, height: 280 });
+  assert.deepEqual(windowManager.get("resizable")?.position, { x: 30, y: 0 });
+});
+
+test("window host resizes from a corner while keeping the opposite corner fixed", async () => {
+  uiState.isMobile = false;
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
+
+  windowManager.openSync(buildWindow("corner-resizable"));
+  await nextTick();
+
+  mockElementRect(wrapper.get("section").element as HTMLElement, 400, 280);
+  const handle = wrapper.get('[data-window-resize-handle="nw"]');
+  handle.element.dispatchEvent(new window.PointerEvent("pointerdown", {
+    bubbles: true,
+    clientX: 300,
+    clientY: 200
+  }));
+  window.dispatchEvent(new window.PointerEvent("pointermove", {
+    bubbles: true,
+    clientX: 260,
+    clientY: 170
+  }));
+  window.dispatchEvent(new window.PointerEvent("pointerup", {
+    bubbles: true,
+    clientX: 260,
+    clientY: 170
+  }));
+  await nextTick();
+
+  assert.deepEqual(windowManager.get("corner-resizable")?.sizePx, { width: 440, height: 310 });
+  assert.deepEqual(windowManager.get("corner-resizable")?.position, { x: -20, y: -15 });
+});
+
+test("window host does not render resize handles on mobile or when resize is disabled", async () => {
+  uiState.isMobile = true;
+  const mobileWrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
+
+  windowManager.openSync(buildWindow("mobile-window"));
+  await nextTick();
+
+  assert.equal(mobileWrapper.find("[data-window-resize-handle]").exists(), false);
+  resetWindows();
+
+  uiState.isMobile = false;
+  const desktopWrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
+  windowManager.openSync({
+    ...buildWindow("fixed-window"),
+    resizable: false
+  });
+  await nextTick();
+
+  assert.equal(desktopWrapper.find("[data-window-resize-handle]").exists(), false);
+});
+
+test("window host maximizes and restores a desktop window on title double click", async () => {
+  uiState.isMobile = false;
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
+
+  windowManager.openSync(buildWindow("maximizable"));
+  await nextTick();
+
+  mockElementRect(wrapper.get("section").element as HTMLElement, 400, 280);
+  await wrapper.get("header").trigger("dblclick");
+  await nextTick();
+
+  assert.equal(windowManager.get("maximizable")?.maximized, true);
+  assert.deepEqual(windowManager.get("maximizable")?.sizePx, { width: 992, height: 736 });
+  assert.deepEqual(windowManager.get("maximizable")?.position, { x: 0, y: 0 });
+  assert.deepEqual(windowManager.get("maximizable")?.restoreBounds, {
+    position: { x: 0, y: 0 },
+    sizePx: { width: 400, height: 280 }
+  });
+
+  await wrapper.get("header").trigger("dblclick");
+  await nextTick();
+
+  assert.equal(windowManager.get("maximizable")?.maximized, false);
+  assert.deepEqual(windowManager.get("maximizable")?.sizePx, { width: 400, height: 280 });
+});
+
+test("window host restores a maximized window before dragging its title bar", async () => {
+  uiState.isMobile = false;
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
+
+  windowManager.openSync(buildWindow("drag-restores"));
+  await nextTick();
+
+  mockElementRect(wrapper.get("section").element as HTMLElement, 400, 280);
+  await wrapper.get("header").trigger("dblclick");
+  await nextTick();
+
+  const header = wrapper.get("header");
+  header.element.dispatchEvent(new window.PointerEvent("pointerdown", {
+    bubbles: true,
+    clientX: 100,
+    clientY: 100
+  }));
+  window.dispatchEvent(new window.PointerEvent("pointermove", {
+    bubbles: true,
+    clientX: 120,
+    clientY: 130
+  }));
+  window.dispatchEvent(new window.PointerEvent("pointerup", {
+    bubbles: true,
+    clientX: 120,
+    clientY: 130
+  }));
+  await nextTick();
+
+  assert.equal(windowManager.get("drag-restores")?.maximized, false);
+  assert.deepEqual(windowManager.get("drag-restores")?.sizePx, { width: 400, height: 280 });
+  assert.deepEqual(windowManager.get("drag-restores")?.position, { x: 20, y: 30 });
+});
+
+test("window host clamps a resized desktop window when the viewport changes", async () => {
+  uiState.isMobile = false;
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
+
+  windowManager.openSync(buildWindow("viewport-clamp"));
+  windowManager.setBounds("viewport-clamp", {
+    position: { x: 0, y: 0 },
+    sizePx: { width: 900, height: 700 }
+  });
+  await nextTick();
+
+  setViewportSize(640, 480);
+  window.dispatchEvent(new window.Event("resize"));
+  await nextTick();
+
+  assert.deepEqual(windowManager.get("viewport-clamp")?.sizePx, { width: 608, height: 448 });
+  assert.deepEqual(windowManager.get("viewport-clamp")?.position, { x: 0, y: 0 });
+  assert.equal(wrapper.find("section").exists(), true);
+});
+
+test("window host keeps a maximized desktop window at the maximum size when the viewport changes", async () => {
+  uiState.isMobile = false;
+  setViewportSize(800, 600);
+  const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
+
+  windowManager.openSync(buildWindow("maximized-viewport"));
+  await nextTick();
+
+  mockElementRect(wrapper.get("section").element as HTMLElement, 400, 280);
+  await wrapper.get("header").trigger("dblclick");
+  await nextTick();
+
+  assert.deepEqual(windowManager.get("maximized-viewport")?.sizePx, { width: 768, height: 568 });
+
+  setViewportSize(1024, 768);
+  window.dispatchEvent(new window.Event("resize"));
+  await nextTick();
+
+  assert.equal(windowManager.get("maximized-viewport")?.maximized, true);
+  assert.deepEqual(windowManager.get("maximized-viewport")?.sizePx, { width: 992, height: 736 });
+  assert.deepEqual(windowManager.get("maximized-viewport")?.restoreBounds, {
+    position: { x: 0, y: 0 },
+    sizePx: { width: 400, height: 280 }
+  });
+});
+
 test("window host clamps dragging so a window always keeps a visible grab area", async () => {
   uiState.isMobile = false;
   const wrapper = await mountComponent(windowHostUrl, { isMobile: uiState.isMobile });
@@ -589,22 +807,7 @@ test("window host clamps dragging so a window always keeps a visible grab area",
 
   const section = wrapper.get("section").element as HTMLElement;
   const header = wrapper.get("header").element as HTMLElement;
-  Object.defineProperty(section, "getBoundingClientRect", {
-    configurable: true,
-    value: () => ({
-      width: 400,
-      height: 280,
-      top: 0,
-      left: 0,
-      right: 400,
-      bottom: 280,
-      x: 0,
-      y: 0,
-      toJSON() {
-        return {};
-      }
-    })
-  });
+  mockElementRect(section, 400, 280);
   Object.defineProperty(header, "offsetHeight", {
     configurable: true,
     value: 48

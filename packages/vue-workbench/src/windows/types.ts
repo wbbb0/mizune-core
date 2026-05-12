@@ -15,6 +15,37 @@ export type WorkbenchWindowContext = {
   id: string;
 };
 
+export type WorkbenchWindowPosition = {
+  x: number;
+  y: number;
+};
+
+export type WorkbenchWindowSizePx = {
+  width: number;
+  height: number;
+};
+
+export type WorkbenchWindowBounds = {
+  position: WorkbenchWindowPosition;
+  sizePx?: WorkbenchWindowSizePx;
+};
+
+export type WorkbenchWindowSizedBounds = {
+  position: WorkbenchWindowPosition;
+  sizePx: WorkbenchWindowSizePx;
+};
+
+export type WorkbenchWindowMaximizePayload =
+  | {
+      maximized: true;
+      bounds: WorkbenchWindowSizedBounds;
+      restoreBounds: WorkbenchWindowSizedBounds;
+    }
+  | {
+      maximized: false;
+      bounds: WorkbenchWindowSizedBounds;
+    };
+
 type WorkbenchDialogGroupValues<TValue> = unknown extends TValue
   ? Record<string, unknown>
   : NonNullable<TValue> extends Record<string, unknown>
@@ -137,6 +168,7 @@ export type WorkbenchWindowDefinition<
   parentId?: string;
   modal?: boolean;
   movable?: boolean;
+  resizable?: boolean;
   showCloseButton?: boolean;
   closeOnBackdrop?: boolean;
   closeOnEscape?: boolean;

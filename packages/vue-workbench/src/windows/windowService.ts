@@ -1,8 +1,12 @@
 import { computed, ref } from "vue";
 import type {
+  WorkbenchWindowBounds,
   WorkbenchDialogDefinition,
   WorkbenchWindowContext,
   WorkbenchWindowDefinition,
+  WorkbenchWindowMaximizePayload,
+  WorkbenchWindowSizedBounds,
+  WorkbenchWindowSizePx,
   WorkbenchWindowResult
 } from "./types.js";
 import { createWindowManager } from "./windowManager.js";
@@ -18,6 +22,9 @@ export type WorkbenchRuntimeWindow = {
     x: number;
     y: number;
   };
+  sizePx?: WorkbenchWindowSizePx;
+  maximized: boolean;
+  restoreBounds?: WorkbenchWindowSizedBounds;
   definition: WorkbenchWindowDefinition;
 };
 
@@ -43,6 +50,8 @@ export type WorkbenchWindowManager = {
   ): Promise<WorkbenchWindowResult<TResult, TValues>>;
   focus(windowId: string): WorkbenchRuntimeWindow | undefined;
   move(windowId: string, position: { x: number; y: number }): WorkbenchRuntimeWindow | undefined;
+  setBounds(windowId: string, bounds: WorkbenchWindowBounds): WorkbenchRuntimeWindow | undefined;
+  setMaximized(windowId: string, payload: WorkbenchWindowMaximizePayload): WorkbenchRuntimeWindow | undefined;
   close<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
     windowId: string,
     result: WorkbenchWindowResult<TResult, TValues>
@@ -111,6 +120,16 @@ export function createWorkbenchWindowService(): WorkbenchWindowManager {
     },
     move(windowId, position) {
       const window = manager.move(windowId, position) as WorkbenchRuntimeWindow | undefined;
+      touch();
+      return window;
+    },
+    setBounds(windowId, bounds) {
+      const window = manager.setBounds(windowId, bounds) as WorkbenchRuntimeWindow | undefined;
+      touch();
+      return window;
+    },
+    setMaximized(windowId, payload) {
+      const window = manager.setMaximized(windowId, payload) as WorkbenchRuntimeWindow | undefined;
       touch();
       return window;
     },

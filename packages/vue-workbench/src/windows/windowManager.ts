@@ -1,9 +1,13 @@
-import type { WorkbenchWindowContext, WorkbenchWindowDefinition, WorkbenchWindowResult } from "./types.js";
-
-type WorkbenchWindowPosition = {
-  x: number;
-  y: number;
-};
+import type {
+  WorkbenchWindowBounds,
+  WorkbenchWindowContext,
+  WorkbenchWindowDefinition,
+  WorkbenchWindowMaximizePayload,
+  WorkbenchWindowPosition,
+  WorkbenchWindowResult,
+  WorkbenchWindowSizedBounds,
+  WorkbenchWindowSizePx
+} from "./types.js";
 
 type ManagedWorkbenchWindow<
   TValues extends Record<string, unknown> = Record<string, unknown>,
@@ -13,6 +17,9 @@ type ManagedWorkbenchWindow<
   order: number;
   parentId?: string;
   position: WorkbenchWindowPosition;
+  sizePx?: WorkbenchWindowSizePx;
+  maximized: boolean;
+  restoreBounds?: WorkbenchWindowSizedBounds;
   definition: WorkbenchWindowDefinition<TValues, TResult>;
 };
 
@@ -27,6 +34,11 @@ type WorkbenchWindowStore = {
   ): Promise<WorkbenchWindowResult<TResult, TValues>>;
   focus(windowId: string): ManagedWorkbenchWindow | undefined;
   move(windowId: string, position: WorkbenchWindowPosition): ManagedWorkbenchWindow | undefined;
+  setBounds(windowId: string, bounds: WorkbenchWindowBounds): ManagedWorkbenchWindow | undefined;
+  setMaximized(
+    windowId: string,
+    payload: WorkbenchWindowMaximizePayload
+  ): ManagedWorkbenchWindow | undefined;
   close<TValues extends Record<string, unknown> = Record<string, unknown>, TResult = unknown>(
     windowId: string,
     result: WorkbenchWindowResult<TResult, TValues>
@@ -73,8 +85,25 @@ function cloneWindow<
     id: window.id,
     order: window.order,
     position: { ...window.position },
+    ...(window.sizePx ? { sizePx: { ...window.sizePx } } : {}),
+    maximized: window.maximized,
+    ...(window.restoreBounds ? { restoreBounds: cloneSizedBounds(window.restoreBounds) } : {}),
     definition: cloneDefinition(window.definition),
     ...(window.parentId ? { parentId: window.parentId } : {})
+  };
+}
+
+function cloneBounds(bounds: WorkbenchWindowBounds): WorkbenchWindowBounds {
+  return {
+    position: { ...bounds.position },
+    ...(bounds.sizePx ? { sizePx: { ...bounds.sizePx } } : {})
+  };
+}
+
+function cloneSizedBounds(bounds: WorkbenchWindowSizedBounds): WorkbenchWindowSizedBounds {
+  return {
+    position: { ...bounds.position },
+    sizePx: { ...bounds.sizePx }
   };
 }
 
@@ -173,6 +202,7 @@ export function createWindowManager(): WorkbenchWindowStore {
       id,
       order: windows.length + 1,
       position: { x: 0, y: 0 },
+      maximized: false,
       definition: storedDefinition as WorkbenchWindowDefinition,
       ...(storedDefinition.parentId ? { parentId: storedDefinition.parentId } : {})
     });
@@ -206,6 +236,42 @@ export function createWindowManager(): WorkbenchWindowStore {
     }
 
     window.position = { ...position };
+    window.maximized = false;
+    delete window.restoreBounds;
+    return cloneWindow(window);
+  }
+
+  function setBounds(windowId: string, bounds: WorkbenchWindowBounds) {
+    const window = getWindow(windowId);
+    if (!window) {
+      throw new Error(`Unknown window: ${windowId}`);
+    }
+
+    window.position = { ...bounds.position };
+    if (bounds.sizePx) {
+      window.sizePx = { ...bounds.sizePx };
+    } else {
+      delete window.sizePx;
+    }
+    window.maximized = false;
+    delete window.restoreBounds;
+    return cloneWindow(window);
+  }
+
+  function setMaximized(windowId: string, payload: WorkbenchWindowMaximizePayload) {
+    const window = getWindow(windowId);
+    if (!window) {
+      throw new Error(`Unknown window: ${windowId}`);
+    }
+
+    window.position = { ...payload.bounds.position };
+    window.sizePx = { ...payload.bounds.sizePx };
+    window.maximized = payload.maximized;
+    if (payload.maximized) {
+      window.restoreBounds = cloneSizedBounds(payload.restoreBounds);
+    } else {
+      delete window.restoreBounds;
+    }
     return cloneWindow(window);
   }
 
@@ -279,6 +345,8 @@ export function createWindowManager(): WorkbenchWindowStore {
     open,
     focus,
     move,
+    setBounds,
+    setMaximized,
     close,
     closeByContext,
     get,

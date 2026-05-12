@@ -35,6 +35,29 @@ test("window manager keeps child windows above ancestors after moving the parent
   assert.deepEqual(manager.get("parent")?.position, { x: 120, y: 240 });
 });
 
+test("window manager stores resize bounds and clears maximized restore state on move", () => {
+  const manager = createWindowManager();
+
+  manager.openSync(buildWindow("window"));
+  manager.setMaximized("window", {
+    maximized: true,
+    bounds: { position: { x: 0, y: 0 }, sizePx: { width: 900, height: 700 } },
+    restoreBounds: { position: { x: 12, y: 24 }, sizePx: { width: 400, height: 280 } }
+  });
+
+  assert.equal(manager.get("window")?.maximized, true);
+  assert.deepEqual(manager.get("window")?.restoreBounds, {
+    position: { x: 12, y: 24 },
+    sizePx: { width: 400, height: 280 }
+  });
+
+  manager.move("window", { x: 120, y: 240 });
+
+  assert.equal(manager.get("window")?.maximized, false);
+  assert.equal(manager.get("window")?.restoreBounds, undefined);
+  assert.deepEqual(manager.get("window")?.sizePx, { width: 900, height: 700 });
+});
+
 test("window manager exposes only the top window on mobile", () => {
   const manager = createWindowManager();
 
