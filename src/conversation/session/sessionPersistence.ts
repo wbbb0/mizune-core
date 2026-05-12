@@ -524,6 +524,56 @@ function syncSessionTranscriptItems(db: SqliteDatabase, session: PersistedSessio
   `).all(session.id) as Array<{ item_id: string; item_index: number; item_hash: string }>;
   const existingById = new Map(existingRows.map((row) => [row.item_id, row]));
   const nextIds = new Set<string>();
+  const updatedAtMs = Date.now();
+  const nextRows = session.internalTranscript.map((item, itemIndex) => {
+    const itemJson = JSON.stringify(item);
+    const itemHash = hashTranscriptItem(itemJson);
+    const itemId = item.id ?? `transcript:${itemIndex}:${itemHash.slice(0, 24)}`;
+    const groupId = item.groupId ?? itemId;
+    nextIds.add(itemId);
+    return {
+      sessionId: session.id,
+      itemIndex,
+      itemId,
+      groupId,
+      kind: item.kind,
+      role: "role" in item ? item.role : null,
+      llmVisible: item.llmVisible === false ? 0 : 1,
+      runtimeExcluded: item.runtimeExcluded === true ? 1 : 0,
+      timestampMs: item.timestampMs,
+      itemHash,
+      itemJson,
+      updatedAtMs
+    };
+  });
+  const remove = db.prepare(`
+    DELETE FROM session_transcript_items
+    WHERE session_id = ?
+      AND item_id = ?
+  `);
+  for (const row of existingRows) {
+    if (!nextIds.has(row.item_id)) {
+      remove.run(session.id, row.item_id);
+    }
+  }
+  const tempIndexBase = Math.max(
+    session.internalTranscript.length,
+    ...existingRows.map((row) => row.item_index)
+  ) + 1;
+  const moveAside = db.prepare(`
+    UPDATE session_transcript_items
+    SET item_index = ?
+    WHERE session_id = ?
+      AND item_id = ?
+  `);
+  let tempOffset = 0;
+  for (const row of nextRows) {
+    const existing = existingById.get(row.itemId);
+    if (existing && existing.item_index !== row.itemIndex) {
+      moveAside.run(tempIndexBase + tempOffset, session.id, row.itemId);
+      tempOffset += 1;
+    }
+  }
   const upsert = db.prepare(`
     INSERT INTO session_transcript_items (
       session_id,
@@ -564,41 +614,12 @@ function syncSessionTranscriptItems(db: SqliteDatabase, session: PersistedSessio
       item_json = excluded.item_json,
       updated_at_ms = excluded.updated_at_ms
   `);
-  const now = Date.now();
-  for (const [itemIndex, item] of session.internalTranscript.entries()) {
-    const itemJson = JSON.stringify(item);
-    const itemHash = hashTranscriptItem(itemJson);
-    const itemId = item.id ?? `transcript:${itemIndex}:${itemHash.slice(0, 24)}`;
-    const groupId = item.groupId ?? itemId;
-    nextIds.add(itemId);
-    const existing = existingById.get(itemId);
-    if (existing && existing.item_index === itemIndex && existing.item_hash === itemHash) {
+  for (const row of nextRows) {
+    const existing = existingById.get(row.itemId);
+    if (existing && existing.item_index === row.itemIndex && existing.item_hash === row.itemHash) {
       continue;
     }
-    upsert.run({
-      sessionId: session.id,
-      itemIndex,
-      itemId,
-      groupId,
-      kind: item.kind,
-      role: "role" in item ? item.role : null,
-      llmVisible: item.llmVisible === false ? 0 : 1,
-      runtimeExcluded: item.runtimeExcluded === true ? 1 : 0,
-      timestampMs: item.timestampMs,
-      itemHash,
-      itemJson,
-      updatedAtMs: now
-    });
-  }
-  const remove = db.prepare(`
-    DELETE FROM session_transcript_items
-    WHERE session_id = ?
-      AND item_id = ?
-  `);
-  for (const row of existingRows) {
-    if (!nextIds.has(row.item_id)) {
-      remove.run(session.id, row.item_id);
-    }
+    upsert.run(row);
   }
 }
 
