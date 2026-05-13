@@ -75,10 +75,6 @@ const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
     }
   },
   conversation: {
-    historyWindow: {
-      maxRecentMessages: 10,
-      maxImageReferences: 2
-    },
     debounce: {
       defaultBaseSeconds: 1,
       minBaseSeconds: 1,
@@ -90,8 +86,6 @@ const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
     },
     historyCompression: {
       enabled: false,
-      triggerTokens: 2000,
-      retainTokens: 500,
       retainMessageCount: 3,
       tokenEstimation: { cjkTokens: 2, nonAsciiTokens: 1, asciiTokens: 0.25 }
     }
@@ -257,6 +251,16 @@ const baseTestCatalogOverrides: DeepPartial<LlmCatalogConfig> = {
     }
   },
   routingPresets: {
+    default: {
+      historyWindow: {
+        maxRecentMessages: 10,
+        maxImageReferences: 2
+      },
+      tokenLimits: {
+        triggerTokens: 2000,
+        retainTokens: 500
+      }
+    },
     test: {
       mainSmall: ["main"],
       mainLarge: ["main"],

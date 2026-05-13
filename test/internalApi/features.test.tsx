@@ -428,7 +428,15 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
           imageInspector: [],
           audioTranscription: [],
           turnPlanner: [],
-          embedding: []
+          embedding: [],
+          historyWindow: {
+            maxRecentMessages: 50,
+            maxImageReferences: 5
+          },
+          tokenLimits: {
+            triggerTokens: 150000,
+            retainTokens: 4000
+          }
         }
       });
       assert.equal(editorResponse.json().editor.editorFeatures.unsetActionLabel, "回退到 default");
@@ -442,7 +450,15 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         imageInspector: [],
         audioTranscription: [],
         turnPlanner: [],
-        embedding: []
+        embedding: [],
+        historyWindow: {
+          maxRecentMessages: 50,
+          maxImageReferences: 5
+        },
+        tokenLimits: {
+          triggerTokens: 150000,
+          retainTokens: 4000
+        }
       });
       assert.deepEqual(editorResponse.json().editor.currentValue.dev, {
         mainSmall: ["main"]
@@ -457,7 +473,15 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         imageInspector: [],
         audioTranscription: [],
         turnPlanner: [],
-        embedding: []
+        embedding: [],
+        historyWindow: {
+          maxRecentMessages: 50,
+          maxImageReferences: 5
+        },
+        tokenLimits: {
+          triggerTokens: 150000,
+          retainTokens: 4000
+        }
       });
       assert.deepEqual(editorResponse.json().editor.effectiveValue.dev, {
         mainSmall: ["main"],
@@ -469,7 +493,15 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         imageInspector: [],
         audioTranscription: [],
         turnPlanner: [],
-        embedding: []
+        embedding: [],
+        historyWindow: {
+          maxRecentMessages: 50,
+          maxImageReferences: 5
+        },
+        tokenLimits: {
+          triggerTokens: 150000,
+          retainTokens: 4000
+        }
       });
 
       const saveResponse = await app.inject({
@@ -495,10 +527,20 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         imageInspector: [],
         audioTranscription: [],
         turnPlanner: [],
-        embedding: []
+        embedding: [],
+        historyWindow: {
+          maxRecentMessages: 50,
+          maxImageReferences: 5
+        },
+        tokenLimits: {
+          triggerTokens: 150000,
+          retainTokens: 4000
+        }
       });
       const saved = await readFile(catalogPath, "utf8");
       assert.match(saved, /default:/);
+      assert.match(saved, /historyWindow:/);
+      assert.match(saved, /tokenLimits:/);
       assert.match(saved, /mainLarge: \[\]/);
       assert.match(saved, /summarizer: \[\]/);
       assert.match(saved, /textInspector: \[\]/);

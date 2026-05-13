@@ -3,7 +3,7 @@ import type { AppConfig } from "#config/config.ts";
 import { annotateStructuredMediaReferences, extractStructuredMediaIds } from "#images/imageReferences.ts";
 import type { LlmClient } from "#llm/llmClient.ts";
 import { buildHistorySummaryPrompt } from "#llm/prompts/history-summary.prompt.ts";
-import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
+import { getModelRefsForRole, getRoutingPresetTokenLimits } from "#llm/shared/modelRouting.ts";
 import type { SessionCompressionAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import type { ToolObservationSummary } from "#conversation/session/toolObservation.ts";
@@ -43,9 +43,10 @@ export class HistoryCompressor {
   ) {}
 
   async maybeCompress(sessionId: string, options?: HistoryCompressionOptions): Promise<boolean> {
+    const tokenLimits = getRoutingPresetTokenLimits(this.config);
     return this.compressByTokens(sessionId, {
-      triggerTokens: this.config.conversation.historyCompression.triggerTokens,
-      retainTokens: this.config.conversation.historyCompression.retainTokens,
+      triggerTokens: tokenLimits.triggerTokens,
+      retainTokens: tokenLimits.retainTokens,
       expectedHistoryRevision: this.sessionManager.getHistoryRevision(sessionId),
       triggerReason: options?.triggerReason ?? "maybe_compress"
     });

@@ -26,14 +26,39 @@ interface RoutingRoleDefinition {
 
 export interface RoutingPresetValidationResult {
   presetName: string;
-  preset: LlmRoutingPreset | null;
+  preset: EffectiveLlmRoutingPreset | null;
   warnings: string[];
 }
 
-type RoutingPresetField = keyof LlmRoutingPreset;
+export interface RoutingPresetHistoryWindow {
+  maxRecentMessages: number;
+  maxImageReferences: number;
+}
+
+export interface RoutingPresetTokenLimits {
+  triggerTokens: number;
+  retainTokens: number;
+}
+
+export type EffectiveLlmRoutingPreset = Required<Omit<LlmRoutingPreset, "historyWindow" | "tokenLimits">> & {
+  historyWindow: RoutingPresetHistoryWindow;
+  tokenLimits: RoutingPresetTokenLimits;
+};
+
+type RoutingPresetRoleField = Exclude<keyof LlmRoutingPreset, "historyWindow" | "tokenLimits">;
+
+const DEFAULT_ROUTING_PRESET_HISTORY_WINDOW: RoutingPresetHistoryWindow = {
+  maxRecentMessages: 50,
+  maxImageReferences: 5
+};
+
+const DEFAULT_ROUTING_PRESET_TOKEN_LIMITS: RoutingPresetTokenLimits = {
+  triggerTokens: 150000,
+  retainTokens: 4000
+};
 
 const routingRoleDefinitions: Record<LlmRoutingRole, RoutingRoleDefinition & {
-  presetField: RoutingPresetField;
+  presetField: RoutingPresetRoleField;
 }> = {
   main_small: {
     label: "主路由轻量模型",
@@ -100,15 +125,35 @@ const routingRoleDefinitions: Record<LlmRoutingRole, RoutingRoleDefinition & {
 const ROUTING_PRESET_FIELDS = Object.values(routingRoleDefinitions)
   .map((definition) => definition.presetField);
 
-function hasPresetField(preset: LlmRoutingPreset, field: RoutingPresetField): boolean {
+function hasPresetField(preset: LlmRoutingPreset, field: keyof LlmRoutingPreset): boolean {
   return Object.prototype.hasOwnProperty.call(preset, field);
 }
 
-function getPresetFieldValue(preset: LlmRoutingPreset, field: RoutingPresetField): string[] | undefined {
+function getPresetFieldValue(preset: LlmRoutingPreset, field: RoutingPresetRoleField): string[] | undefined {
   return preset[field];
 }
 
-export function createEmptyRoutingPreset(): Required<LlmRoutingPreset> {
+function normalizeHistoryWindow(
+  historyWindow: LlmRoutingPreset["historyWindow"] | undefined,
+  base: RoutingPresetHistoryWindow = DEFAULT_ROUTING_PRESET_HISTORY_WINDOW
+): RoutingPresetHistoryWindow {
+  return {
+    ...base,
+    ...historyWindow
+  };
+}
+
+function normalizeTokenLimits(
+  tokenLimits: LlmRoutingPreset["tokenLimits"] | undefined,
+  base: RoutingPresetTokenLimits = DEFAULT_ROUTING_PRESET_TOKEN_LIMITS
+): RoutingPresetTokenLimits {
+  return {
+    ...base,
+    ...tokenLimits
+  };
+}
+
+export function createEmptyRoutingPreset(): EffectiveLlmRoutingPreset {
   return {
     mainSmall: [],
     mainLarge: [],
@@ -119,7 +164,9 @@ export function createEmptyRoutingPreset(): Required<LlmRoutingPreset> {
     imageInspector: [],
     audioTranscription: [],
     turnPlanner: [],
-    embedding: []
+    embedding: [],
+    historyWindow: { ...DEFAULT_ROUTING_PRESET_HISTORY_WINDOW },
+    tokenLimits: { ...DEFAULT_ROUTING_PRESET_TOKEN_LIMITS }
   };
 }
 
@@ -140,14 +187,20 @@ export function normalizeRoutingPresetCatalog(
       completedDefaultPreset[field] = getPresetFieldValue(defaultPreset, field) ?? [];
     }
   }
+  if (hasPresetField(defaultPreset, "historyWindow")) {
+    completedDefaultPreset.historyWindow = normalizeHistoryWindow(defaultPreset.historyWindow);
+  }
+  if (hasPresetField(defaultPreset, "tokenLimits")) {
+    completedDefaultPreset.tokenLimits = normalizeTokenLimits(defaultPreset.tokenLimits);
+  }
   normalized.default = completedDefaultPreset;
   return normalized;
 }
 
 function createEffectiveRoutingPreset(
   preset: LlmRoutingPreset,
-  defaultPreset: Required<LlmRoutingPreset>
-): Required<LlmRoutingPreset> {
+  defaultPreset: EffectiveLlmRoutingPreset
+): EffectiveLlmRoutingPreset {
   const effectivePreset = createEmptyRoutingPreset();
   for (const field of ROUTING_PRESET_FIELDS) {
     if (hasPresetField(preset, field)) {
@@ -156,6 +209,12 @@ function createEffectiveRoutingPreset(
     }
     effectivePreset[field] = defaultPreset[field];
   }
+  effectivePreset.historyWindow = hasPresetField(preset, "historyWindow")
+    ? normalizeHistoryWindow(preset.historyWindow, defaultPreset.historyWindow)
+    : defaultPreset.historyWindow;
+  effectivePreset.tokenLimits = hasPresetField(preset, "tokenLimits")
+    ? normalizeTokenLimits(preset.tokenLimits, defaultPreset.tokenLimits)
+    : defaultPreset.tokenLimits;
   return effectivePreset;
 }
 
@@ -163,7 +222,7 @@ export function buildRoutingPresetReferenceCatalog(
   catalog: Record<string, LlmRoutingPreset>
 ): Record<string, LlmRoutingPreset> {
   const normalizedCatalog = normalizeRoutingPresetCatalog(catalog);
-  const defaultPreset = normalizedCatalog.default as Required<LlmRoutingPreset>;
+  const defaultPreset = normalizedCatalog.default as EffectiveLlmRoutingPreset;
   const referenceCatalog: Record<string, LlmRoutingPreset> = {
     default: createEmptyRoutingPreset()
   };
@@ -180,10 +239,10 @@ export function buildRoutingPresetReferenceCatalog(
 
 export function buildEffectiveRoutingPresetCatalog(
   catalog: Record<string, LlmRoutingPreset>
-): Record<string, Required<LlmRoutingPreset>> {
+): Record<string, EffectiveLlmRoutingPreset> {
   const normalizedCatalog = normalizeRoutingPresetCatalog(catalog);
-  const defaultPreset = normalizedCatalog.default as Required<LlmRoutingPreset>;
-  const effectiveCatalog: Record<string, Required<LlmRoutingPreset>> = {
+  const defaultPreset = normalizedCatalog.default as EffectiveLlmRoutingPreset;
+  const effectiveCatalog: Record<string, EffectiveLlmRoutingPreset> = {
     default: defaultPreset
   };
 
@@ -197,11 +256,16 @@ export function buildEffectiveRoutingPresetCatalog(
   return effectiveCatalog;
 }
 
-function getDefaultRoutingPreset(config: AppConfig): Required<LlmRoutingPreset> {
+function getDefaultRoutingPreset(config: AppConfig): EffectiveLlmRoutingPreset {
   const defaultPreset = normalizeRoutingPresetCatalog(config.llm.routingPresets).default;
-  return {
+  const mergedPreset = {
     ...createEmptyRoutingPreset(),
     ...defaultPreset
+  };
+  return {
+    ...mergedPreset,
+    historyWindow: normalizeHistoryWindow(defaultPreset?.historyWindow),
+    tokenLimits: normalizeTokenLimits(defaultPreset?.tokenLimits)
   };
 }
 
@@ -217,7 +281,7 @@ export function getRoutingPreset(config: AppConfig): LlmRoutingPreset | null {
   return config.llm.routingPresets[presetName] ?? null;
 }
 
-export function getEffectiveRoutingPreset(config: AppConfig): Required<LlmRoutingPreset> | null {
+export function getEffectiveRoutingPreset(config: AppConfig): EffectiveLlmRoutingPreset | null {
   const presetName = getRoutingPresetName(config);
   if (!presetName) {
     return null;
@@ -230,6 +294,22 @@ export function getEffectiveRoutingPreset(config: AppConfig): Required<LlmRoutin
 
   const defaultPreset = getDefaultRoutingPreset(config);
   return createEffectiveRoutingPreset(preset, defaultPreset);
+}
+
+export function getRoutingPresetHistoryWindow(config: AppConfig): RoutingPresetHistoryWindow {
+  const activePreset = getEffectiveRoutingPreset(config);
+  if (activePreset) {
+    return activePreset.historyWindow;
+  }
+  return getDefaultRoutingPreset(config).historyWindow;
+}
+
+export function getRoutingPresetTokenLimits(config: AppConfig): RoutingPresetTokenLimits {
+  const activePreset = getEffectiveRoutingPreset(config);
+  if (activePreset) {
+    return activePreset.tokenLimits;
+  }
+  return getDefaultRoutingPreset(config).tokenLimits;
 }
 
 export function getModelRefsForRole(config: AppConfig, role: LlmRoutingRole): string[] {
