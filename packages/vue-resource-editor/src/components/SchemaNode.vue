@@ -41,6 +41,8 @@ const props = defineProps<{
   depth?: number;
   /** true 时禁用本节点及子节点编辑。 */
   disabled?: boolean;
+  /** true 时按浏览视图展示本节点及子节点，不渲染可编辑控件。 */
+  readOnly?: boolean;
   headerLabel?: string;
   headerDescription?: string;
   headerMeta?: string | number;
@@ -57,6 +59,7 @@ const emit = defineEmits<{ "update:modelValue": [value: unknown] }>();
 const depth = computed(() => props.depth ?? 0);
 const path = computed(() => props.path ?? []);
 const open = ref(depth.value <= 0); // 若要默认展开n层，改为 depth.value <= n
+const interactionsDisabled = computed(() => props.disabled || props.readOnly);
 
 function asObj(value: unknown): Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value)
@@ -177,8 +180,8 @@ function childEffectiveValue(key: string): unknown {
   return asObj(props.effectiveValue)[key];
 }
 
-const currentPathDirty = computed(() => !deepEqual(props.modelValue, props.storedValue));
-const showReferenceTone = computed(() => !!props.editorFeatures?.showReferenceBackdrop);
+const currentPathDirty = computed(() => !props.readOnly && !deepEqual(props.modelValue, props.storedValue));
+const showReferenceTone = computed(() => !props.readOnly && !!props.editorFeatures?.showReferenceBackdrop);
 const canUnsetCurrentValue = computed(() =>
   canUnsetNodeValue({
     unsetMode: props.editorFeatures?.unsetMode ?? "disabled",
@@ -221,7 +224,7 @@ const labelClasses = computed(() => [
 
 const mergedHeaderActions = computed<HeaderAction[]>(() => {
   const next = [...headerActions.value];
-  if (canUnsetCurrentValue.value && !props.disabled) {
+  if (canUnsetCurrentValue.value && !interactionsDisabled.value) {
     next.unshift({
       key: `unset-${path.value.join(".") || "root"}`,
       icon: "restore",
@@ -445,6 +448,37 @@ function recordHeaderActions(key: string, idx: number): HeaderAction[] {
 
 const unionOptions = computed(() => (props.node.kind === "union" ? props.node.options : []));
 const selectedUnionIdx = ref(0);
+const displayedUnionValue = computed(() =>
+  props.modelValue !== undefined
+    ? props.modelValue
+    : props.effectiveValue !== undefined
+      ? props.effectiveValue
+      : props.defaultValue
+);
+const matchedUnionIdx = computed(() => unionOptions.value.findIndex((option) => nodeMatchesValue(option, displayedUnionValue.value)));
+const activeUnionIdx = computed(() => {
+  if (props.readOnly) {
+    return matchedUnionIdx.value >= 0 ? matchedUnionIdx.value : 0;
+  }
+  return selectedUnionIdx.value;
+});
+
+watch(
+  () => [unionOptions.value.length, matchedUnionIdx.value] as const,
+  ([optionCount, matchedIdx]) => {
+    if (optionCount === 0) {
+      selectedUnionIdx.value = 0;
+      return;
+    }
+    if (selectedUnionIdx.value >= optionCount) {
+      selectedUnionIdx.value = 0;
+    }
+    if (selectedUnionIdx.value === 0 && matchedIdx > 0) {
+      selectedUnionIdx.value = matchedIdx;
+    }
+  },
+  { immediate: true }
+);
 
 function getLeafLiteralLabel(node: UiNode): string | null {
   if (node.kind !== "field") return null;
@@ -479,6 +513,50 @@ function getUnionOptionLabel(node: UiNode, index: number): string {
   return `选项 ${index + 1}`;
 }
 
+function nodeMatchesValue(node: UiNode, value: unknown): boolean {
+  switch (node.kind) {
+    case "field":
+      return fieldSchemaMatchesValue(node, value);
+    case "group":
+      return groupNodeMatchesValue(node, value);
+    case "array":
+      return Array.isArray(value);
+    case "record":
+      return isPlainObject(value);
+    case "union":
+      return node.options.some((option) => nodeMatchesValue(option, value));
+  }
+}
+
+function fieldSchemaMatchesValue(node: Extract<UiNode, { kind: "field" }>, value: unknown): boolean {
+  switch (node.schema.kind) {
+    case "literal":
+      return value === node.schema.value;
+    case "enum":
+      return node.schema.values?.includes(value as never) ?? false;
+    case "string":
+      return typeof value === "string";
+    case "number":
+      return typeof value === "number";
+    case "boolean":
+      return typeof value === "boolean";
+    default:
+      return true;
+  }
+}
+
+function groupNodeMatchesValue(node: Extract<UiNode, { kind: "group" }>, value: unknown): boolean {
+  if (!isPlainObject(value)) return false;
+  const discriminantChildren = Object.entries(node.children)
+    .filter(([, child]) => getLeafLiteralLabel(child.node) !== null);
+  if (discriminantChildren.length === 0) return true;
+  return discriminantChildren.every(([key, child]) => nodeMatchesValue(child.node, value[key]));
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
 function onUnionSelect(event: Event) {
   selectedUnionIdx.value = parseInt((event.target as HTMLSelectElement).value, 10);
   emit("update:modelValue", null);
@@ -494,7 +572,7 @@ function onUnionSelect(event: Event) {
             class="input-base h-7 min-w-0 flex-1 rounded-md px-2 font-mono text-small"
             v-model="headerEditDraft"
             :placeholder="headerEditPlaceholder ?? '输入名称'"
-            :disabled="disabled"
+            :disabled="interactionsDisabled"
             autofocus
             @blur="onHeaderEditBlur"
             @keydown.enter.prevent="onHeaderEditEnter"
@@ -519,7 +597,7 @@ function onUnionSelect(event: Event) {
           class="flex items-center rounded-sm bg-transparent p-1 text-text-subtle hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
           :class="action.danger ? 'hover:text-danger' : ''"
           :title="action.title"
-          :disabled="disabled || action.disabled"
+          :disabled="interactionsDisabled || action.disabled"
           @click.stop="onHeaderActionClick(action)"
         >
           <component :is="actionIcon(action.icon)" :size="12" :stroke-width="2" />
@@ -532,6 +610,7 @@ function onUnionSelect(event: Event) {
       :inherited="inherited"
       :default-value="defaultValue"
       :disabled="disabled"
+      :read-only="readOnly"
       @update:model-value="emit('update:modelValue', $event)"
     />
   </div>
@@ -544,7 +623,7 @@ function onUnionSelect(event: Event) {
             v-model="headerEditDraft"
             class="input-base h-7 min-w-0 flex-1 rounded-md px-2 font-mono text-small"
             :placeholder="headerEditPlaceholder ?? '输入名称'"
-            :disabled="disabled"
+            :disabled="interactionsDisabled"
             autofocus
             @blur="onHeaderEditBlur"
             @keydown.enter.prevent="onHeaderEditEnter"
@@ -563,7 +642,7 @@ function onUnionSelect(event: Event) {
           class="flex items-center rounded-sm bg-transparent p-1 text-text-subtle hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
           :class="action.danger ? 'hover:text-danger' : ''"
           :title="action.title"
-          :disabled="disabled || action.disabled"
+          :disabled="interactionsDisabled || action.disabled"
           @click.stop="onHeaderActionClick(action)"
         >
           <component :is="actionIcon(action.icon)" :size="12" :stroke-width="2" />
@@ -587,6 +666,7 @@ function onUnionSelect(event: Event) {
           :editor-features="editorFeatures"
           :depth="depth + 1"
           :disabled="disabled"
+          :read-only="readOnly"
           @update:model-value="onGroupChildUpdate(key, $event)"
         />
       </div>
@@ -609,6 +689,7 @@ function onUnionSelect(event: Event) {
         :editor-features="editorFeatures"
         :depth="depth + 1"
         :disabled="disabled"
+        :read-only="readOnly"
         @update:model-value="onGroupChildUpdate(key, $event)"
       />
     </div>
@@ -622,7 +703,7 @@ function onUnionSelect(event: Event) {
             v-model="headerEditDraft"
             class="input-base h-7 min-w-0 flex-1 rounded-md px-2 font-mono text-small"
             :placeholder="headerEditPlaceholder ?? '输入名称'"
-            :disabled="disabled"
+            :disabled="interactionsDisabled"
             autofocus
             @blur="onHeaderEditBlur"
             @keydown.enter.prevent="onHeaderEditEnter"
@@ -641,7 +722,7 @@ function onUnionSelect(event: Event) {
           class="flex items-center rounded-sm bg-transparent p-1 text-text-subtle hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
           :class="action.danger ? 'hover:text-danger' : ''"
           :title="action.title"
-          :disabled="disabled || action.disabled"
+          :disabled="interactionsDisabled || action.disabled"
           @click.stop="onHeaderActionClick(action)"
         >
           <component :is="actionIcon(action.icon)" :size="12" :stroke-width="2" />
@@ -654,7 +735,7 @@ function onUnionSelect(event: Event) {
             :node="node.item"
             :field-key="isComplexNode(node.item) ? undefined : `项目 ${idx + 1}`"
             :header-meta="`#${idx + 1}`"
-            :header-actions="disabled ? [] : [
+            :header-actions="interactionsDisabled ? [] : [
               { key: `array-up-${idx}`, icon: 'up', title: '上移', disabled: idx === 0, onClick: () => moveArrayItem(idx, -1) },
               { key: `array-down-${idx}`, icon: 'down', title: '下移', disabled: idx === displayedItems.length - 1, onClick: () => moveArrayItem(idx, 1) },
               { key: `array-copy-${idx}`, icon: 'copy', title: '复制', onClick: () => duplicateArrayItem(idx) },
@@ -670,13 +751,14 @@ function onUnionSelect(event: Event) {
             :editor-features="editorFeatures"
             :depth="depth + 1"
             :disabled="disabled"
+            :read-only="readOnly"
             :force-header="!isComplexNode(node.item)"
             class="min-w-0 flex-1"
             @update:model-value="onArrayItemUpdate(idx, $event)"
           />
         </div>
         <button
-          v-if="!disabled"
+          v-if="!interactionsDisabled"
           class="mt-1 flex cursor-pointer items-center gap-1 rounded-sm border border-dashed border-border-default bg-transparent px-2 py-0.75 text-small text-text-muted hover:border-text-muted hover:text-text-primary"
           @click="addArrayItem"
         >
@@ -694,7 +776,7 @@ function onUnionSelect(event: Event) {
             v-model="headerEditDraft"
             class="input-base h-7 min-w-0 flex-1 rounded-md px-2 font-mono text-small"
             :placeholder="headerEditPlaceholder ?? '输入名称'"
-            :disabled="disabled"
+            :disabled="interactionsDisabled"
             autofocus
             @blur="onHeaderEditBlur"
             @keydown.enter.prevent="onHeaderEditEnter"
@@ -713,7 +795,7 @@ function onUnionSelect(event: Event) {
           class="flex items-center rounded-sm bg-transparent p-1 text-text-subtle hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
           :class="action.danger ? 'hover:text-danger' : ''"
           :title="action.title"
-          :disabled="disabled || action.disabled"
+          :disabled="interactionsDisabled || action.disabled"
           @click.stop="onHeaderActionClick(action)"
         >
           <component :is="actionIcon(action.icon)" :size="12" :stroke-width="2" />
@@ -729,7 +811,7 @@ function onUnionSelect(event: Event) {
             :header-editing="editingRecordKey === key"
             :header-edit-value="key"
             :header-edit-placeholder="'输入 key'"
-            :header-actions="disabled ? [] : recordHeaderActions(key, idx)"
+            :header-actions="interactionsDisabled ? [] : recordHeaderActions(key, idx)"
             :model-value="asObj(modelValue)[key]"
             :inherited="inheritedRecordValue(key)"
             :default-value="defaultRecordValue(key)"
@@ -739,6 +821,7 @@ function onUnionSelect(event: Event) {
             :editor-features="editorFeatures"
             :depth="depth + 1"
             :disabled="disabled"
+            :read-only="readOnly"
             :force-header="true"
             :on-header-edit-submit="(rawKey: string) => { renameRecordKey(key, rawKey); editingRecordKey = null; }"
             class="min-w-0 flex-1"
@@ -746,7 +829,7 @@ function onUnionSelect(event: Event) {
           />
         </div>
         <button
-          v-if="!disabled"
+          v-if="!interactionsDisabled"
           class="mt-1 flex cursor-pointer items-center gap-1 rounded-sm border border-dashed border-border-default bg-transparent px-2 py-0.75 text-small text-text-muted hover:border-text-muted hover:text-text-primary"
           @click="addRecordEntry"
         >
@@ -759,15 +842,15 @@ function onUnionSelect(event: Event) {
   <div v-else-if="node.kind === 'union'" :class="nodeClasses">
     <div class="flex flex-col items-stretch gap-1 py-1">
       <span class="text-small leading-[1.3] text-text-muted">{{ label }}</span>
-      <select class="input-base min-h-6 max-w-60 px-1.5 py-0.5 text-small" :value="selectedUnionIdx" :disabled="disabled" @change="onUnionSelect">
+      <select class="input-base min-h-6 max-w-60 px-1.5 py-0.5 text-small" :value="activeUnionIdx" :disabled="interactionsDisabled" @change="onUnionSelect">
         <option v-for="(opt, idx) in unionOptions" :key="idx" :value="idx">
           {{ getUnionOptionLabel(opt, idx) }}
         </option>
       </select>
     </div>
     <SchemaNode
-      v-if="unionOptions[selectedUnionIdx]"
-      :node="unionOptions[selectedUnionIdx]!"
+      v-if="unionOptions[activeUnionIdx]"
+      :node="unionOptions[activeUnionIdx]!"
       :model-value="modelValue"
       :inherited="inherited"
       :default-value="defaultValue"
@@ -777,6 +860,7 @@ function onUnionSelect(event: Event) {
       :editor-features="editorFeatures"
       :depth="depth + 1"
       :disabled="disabled"
+      :read-only="readOnly"
       @update:model-value="emit('update:modelValue', $event)"
     />
   </div>

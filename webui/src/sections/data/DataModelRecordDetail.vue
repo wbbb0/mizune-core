@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, ref } from "vue";
 import { Save, Table2, Trash2 } from "lucide-vue-next";
-import { SchemaNode } from "@workbench-kit/vue-resource-editor";
+import { SchemaNode, type UiNode } from "@workbench-kit/vue-resource-editor";
 import { dataApi, type DataResource } from "@/api/data";
 import { useElementWidth } from "@/composables/useElementWidth";
 import { useDataSection } from "@/composables/sections/useDataSection";
 import { useWorkbenchToasts, useWorkbenchWindows } from "@workbench-kit/vue-workbench";
 import { formatModelCell, getModelDetailEntries, modelRowId, rowText } from "./dataModelView";
+import DataJsonValueViewer from "./DataJsonValueViewer.vue";
 
 const DataModelDrilldownPane = defineAsyncComponent(() => import("./DataModelDrilldownPane.vue"));
 type DataModelChild = NonNullable<NonNullable<DataResource["model"]>["children"]>[number];
@@ -50,10 +51,13 @@ function formatTime(ms: number | undefined): string {
 }
 
 function formatDetailValue(value: unknown, type: string | undefined): string {
-  if (type === "json") {
-    return JSON.stringify(value, null, 2);
-  }
   return formatModelCell(value, type, formatTime);
+}
+
+function getRowFieldNode(key: string): UiNode | undefined {
+  const tree = props.resource.rowUiTree;
+  if (tree?.kind !== "group") return undefined;
+  return tree.children[key]?.node;
 }
 
 function childButtonLabel(child: DataModelChild): string {
@@ -144,7 +148,7 @@ async function openChild(child: DataModelChild) {
         <template v-for="entry in detailEntries" :key="entry.column.key">
           <dt class="font-mono text-text-subtle">{{ entry.column.title || entry.column.key }}</dt>
           <dd v-if="entry.column.type === 'json'" class="min-w-0">
-            <pre class="scrollbar-thin m-0 max-h-80 overflow-auto rounded border border-border-subtle bg-surface-muted p-2 font-mono text-mono leading-5 text-text-primary whitespace-pre-wrap wrap-break-word">{{ formatDetailValue(entry.value, entry.column.type) }}</pre>
+            <DataJsonValueViewer :value="entry.value" :node="getRowFieldNode(entry.column.key)" />
           </dd>
           <dd v-else class="min-w-0 truncate font-mono text-text-primary" :title="formatDetailValue(entry.value, entry.column.type)">
             {{ formatDetailValue(entry.value, entry.column.type) }}

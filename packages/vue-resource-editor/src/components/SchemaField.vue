@@ -13,6 +13,7 @@ const props = defineProps<{
   inherited?: unknown; // read-only value from parent layers
   defaultValue?: unknown;
   disabled?: boolean;
+  readOnly?: boolean;
 }>();
 
 const emit = defineEmits<{ "update:modelValue": [value: unknown] }>();
@@ -78,12 +79,40 @@ function onJsonInput(event: Event) {
   }
 }
 
+const readOnlyText = computed(() => {
+  const value = displayedValue.value;
+  if (value === undefined) return "-";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean" || value === null) return String(value);
+  return JSON.stringify(value, null, 2);
+});
+
+const readOnlyMultiline = computed(() => {
+  const value = displayedValue.value;
+  return (
+    value != null
+    && typeof value === "object"
+  ) || readOnlyText.value.includes("\n") || readOnlyText.value.length > 120;
+});
+
 </script>
 
 <template>
+  <template v-if="readOnly">
+    <pre
+      v-if="readOnlyMultiline"
+      class="scrollbar-thin m-0 max-h-80 overflow-auto rounded border border-border-subtle bg-surface-muted px-2 py-1.5 font-mono text-mono leading-5 text-text-primary whitespace-pre-wrap wrap-break-word"
+    >{{ readOnlyText }}</pre>
+    <span
+      v-else
+      class="font-mono text-mono leading-5 wrap-break-word"
+      :class="displayedValue === undefined ? 'text-text-subtle' : 'text-text-primary'"
+    >{{ readOnlyText }}</span>
+  </template>
+
   <!-- boolean -->
   <label
-    v-if="schema.kind === 'boolean'"
+    v-else-if="schema.kind === 'boolean'"
     class="flex cursor-pointer items-center gap-1.5 rounded-md"
   >
     <input
