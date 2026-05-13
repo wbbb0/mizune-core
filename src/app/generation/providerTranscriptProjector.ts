@@ -19,6 +19,7 @@ export interface ProviderTranscriptProjector {
   project(input: {
     transcript: InternalTranscriptItem[];
     preserveThinking?: boolean;
+    requireThoughtSignatures?: boolean;
   }): ProviderTranscriptProjection;
 }
 
@@ -194,7 +195,11 @@ function compactToolResultForReplay(item: InternalToolResultItem): string {
   });
 }
 
-function canReplayGoogleToolCallItem(item: InternalAssistantToolCallItem): boolean {
+function canReplayGoogleToolCallItem(item: InternalAssistantToolCallItem, requireThoughtSignatures: boolean): boolean {
+  if (!requireThoughtSignatures) {
+    return item.toolCalls.length > 0;
+  }
+
   const rawParts = Array.isArray(item.providerMetadata?.googleParts)
     ? item.providerMetadata.googleParts as unknown[]
     : null;
@@ -225,6 +230,7 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
       const toolResultReplayContent = buildToolResultReplayContentMap(input.transcript);
       let replayCoversVisibleHistory = false;
       let lastReplayRole: LlmMessage["role"] | null = null;
+      const requireThoughtSignatures = input.requireThoughtSignatures ?? true;
 
       const clearActiveReplayableToolCalls = (): void => {
         activeReplayableToolCallIds.clear();
@@ -249,7 +255,7 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
         if (item.kind === "assistant_tool_call") {
           clearActiveReplayableToolCalls();
           if (
-            canReplayGoogleToolCallItem(item)
+            canReplayGoogleToolCallItem(item, requireThoughtSignatures)
             && (lastReplayRole === "user" || lastReplayRole === "tool")
           ) {
             for (const toolCall of item.toolCalls) {

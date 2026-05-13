@@ -345,6 +345,118 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     assert.match(projection.lateSystemMessages[0] ?? "", /terminal_run/);
   });
 
+  test("gemini projector replays tool calls without thought signatures when signatures are not required", () => {
+    const projection = getProviderTranscriptProjector("google").project({
+      transcript: [
+        {
+          kind: "user_message",
+          role: "user",
+          llmVisible: true,
+          chatType: "private",
+          userId: "10001",
+          senderName: "Alice",
+          text: "查一下",
+          imageIds: [],
+          emojiIds: [],
+          attachments: [],
+          messageFiles: [],
+          audioCount: 0,
+          forwardIds: [],
+          replyMessageId: null,
+          mentionUserIds: [],
+          mentionedAll: false,
+          mentionedSelf: false,
+          timestampMs: 1
+        },
+        {
+          kind: "assistant_tool_call",
+          llmVisible: true,
+          timestampMs: 2,
+          content: "",
+          toolCalls: [{
+            id: "call_google_no_sig_1",
+            type: "function",
+            function: {
+              name: "lookup",
+              arguments: "{\"query\":\"test\"}"
+            }
+          }]
+        },
+        {
+          kind: "tool_result",
+          llmVisible: true,
+          timestampMs: 3,
+          toolCallId: "call_google_no_sig_1",
+          toolName: "lookup",
+          content: "{\"ok\":true}"
+        }
+      ],
+      requireThoughtSignatures: false
+    });
+
+    assert.deepEqual(
+      projection.replayMessages.map((message) => message.role),
+      ["user", "assistant", "tool"]
+    );
+    assert.deepEqual(projection.lateSystemMessages, []);
+  });
+
+  test("gemini projector summarizes tool calls without thought signatures when signatures are required", () => {
+    const projection = getProviderTranscriptProjector("google").project({
+      transcript: [
+        {
+          kind: "user_message",
+          role: "user",
+          llmVisible: true,
+          chatType: "private",
+          userId: "10001",
+          senderName: "Alice",
+          text: "查一下",
+          imageIds: [],
+          emojiIds: [],
+          attachments: [],
+          messageFiles: [],
+          audioCount: 0,
+          forwardIds: [],
+          replyMessageId: null,
+          mentionUserIds: [],
+          mentionedAll: false,
+          mentionedSelf: false,
+          timestampMs: 1
+        },
+        {
+          kind: "assistant_tool_call",
+          llmVisible: true,
+          timestampMs: 2,
+          content: "",
+          toolCalls: [{
+            id: "call_google_no_sig_2",
+            type: "function",
+            function: {
+              name: "lookup",
+              arguments: "{\"query\":\"test\"}"
+            }
+          }]
+        },
+        {
+          kind: "tool_result",
+          llmVisible: true,
+          timestampMs: 3,
+          toolCallId: "call_google_no_sig_2",
+          toolName: "lookup",
+          content: "{\"ok\":true}"
+        }
+      ],
+      requireThoughtSignatures: true
+    });
+
+    assert.deepEqual(
+      projection.replayMessages.map((message) => message.role),
+      ["user"]
+    );
+    assert.match(projection.lateSystemMessages[0] ?? "", /调用工具：lookup/);
+  });
+
   test("gemini projector drops leading replayable tool chains without a preceding user turn", () => {
     const projection = getProviderTranscriptProjector("google").project({
       transcript: [
