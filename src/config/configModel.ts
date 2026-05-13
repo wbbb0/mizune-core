@@ -28,6 +28,16 @@ const modelProfileSchema = s.object({
 
 const createModelRefListSchema = () => s.oneOrMany(s.string().trim().nonempty().dynamicRef("llm_model_names")).optional();
 
+const routingPresetHistoryWindowSchema = s.object({
+  maxRecentMessages: s.number().int().positive().title("最大近期消息数").optional(),
+  maxImageReferences: s.number().int().min(0).title("最大图片引用数").optional()
+}).title("历史窗口").describe("控制该模型路由预设参与本轮生成的近期消息与图片引用范围。");
+
+const routingPresetTokenLimitsSchema = s.object({
+  triggerTokens: s.number().int().positive().title("触发 Token").optional(),
+  retainTokens: s.number().int().positive().title("保留 Token").optional()
+}).title("Token 上下限").describe("控制该模型路由预设触发历史压缩的 Token 上限，以及压缩后保留的 Token 预算。");
+
 const llmRoutingPresetSchema = s.object({
   mainSmall: createModelRefListSchema().title("主路由轻量模型"),
   mainLarge: createModelRefListSchema().title("主路由完整模型"),
@@ -38,7 +48,9 @@ const llmRoutingPresetSchema = s.object({
   imageInspector: createModelRefListSchema().title("图片精读"),
   audioTranscription: createModelRefListSchema().title("音频转写"),
   turnPlanner: createModelRefListSchema().title("轮次规划"),
-  embedding: createModelRefListSchema().title("向量模型")
+  embedding: createModelRefListSchema().title("向量模型"),
+  historyWindow: routingPresetHistoryWindowSchema.optional(),
+  tokenLimits: routingPresetTokenLimitsSchema.optional()
 }).title("模型路由预设").describe("为各个模型角色提供统一的模型引用列表。");
 
 const onebotTypingConfigSchema = s.object({
@@ -165,10 +177,6 @@ const conversationConfigSchema = s.object({
   setup: s.object({
     skipPersonaInitialization: s.boolean().title("跳过 Persona 初始化").default(false)
   }).title("初始化").describe("控制是否跳过全局 persona 初始化门槛；用于联调时快速进入其他功能。").default(emptyObject),
-  historyWindow: s.object({
-    maxRecentMessages: s.number().int().positive().title("最大近期消息数").default(50),
-    maxImageReferences: s.number().int().positive().title("最大图片引用数").default(5)
-  }).title("历史窗口").describe("控制参与本轮生成的近期消息与图片引用范围。").default(emptyObject),
   images: s.object({
     maxSerializedPixels: s.number().int().positive().title("最大序列化像素").default(1024 ** 2),
     maxCachedFiles: s.number().int().positive().title("最大缓存文件数").default(100)
@@ -193,8 +201,6 @@ const conversationConfigSchema = s.object({
   }).title("发送").describe("控制回复分段与需要拟人化节奏的投递目标延迟。").default(emptyObject),
   historyCompression: s.object({
     enabled: s.boolean().title("启用").default(true),
-    triggerTokens: s.number().int().positive().title("触发 Token").default(150000),
-    retainTokens: s.number().int().positive().title("保留 Token").default(4000),
     retainMessageCount: s.number().int().min(0).title("保留消息数").default(8),
     tokenEstimation: s.object({
       cjkTokens: s.number().positive().title("CJK Token 系数").default(2),

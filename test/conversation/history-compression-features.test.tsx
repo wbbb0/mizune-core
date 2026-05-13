@@ -8,9 +8,6 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 function createConfig() {
   return createTestAppConfig({
     conversation: {
-      historyWindow: {
-        maxRecentMessages: 20
-      },
       historyCompression: {
         enabled: true
       }
@@ -19,6 +16,13 @@ function createConfig() {
       enabled: true,
       providers: {},
       toolCallMaxIterations: 4,
+      routingPresets: {
+        test: {
+          historyWindow: {
+            maxRecentMessages: 20
+          }
+        }
+      },
       summarizer: {
         enabled: true
       }

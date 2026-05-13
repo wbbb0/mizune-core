@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadConfig } from "../../src/config/config.ts";
-import { getModelRefsForRole } from "../../src/llm/shared/modelRouting.ts";
+import {
+  getModelRefsForRole,
+  getRoutingPresetHistoryWindow,
+  getRoutingPresetTokenLimits
+} from "../../src/llm/shared/modelRouting.ts";
 import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } from "../helpers/config-test-support.tsx";
 
   test("loadConfig applies shell terminal event overrides", async () => {
@@ -277,7 +281,15 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
             imageCaptioner: "defaultSummary",
             imageInspector: "defaultSummary",
             audioTranscription: "transcription",
-            turnPlanner: "defaultPlan"
+            turnPlanner: "defaultPlan",
+            historyWindow: {
+              maxRecentMessages: 24,
+              maxImageReferences: 3
+            },
+            tokenLimits: {
+              triggerTokens: 120000,
+              retainTokens: 6000
+            }
           },
           dev: {
             mainSmall: "devMain",
@@ -305,6 +317,14 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       assert.deepEqual(getModelRefsForRole(config, "image_inspector"), ["defaultSummary"]);
       assert.deepEqual(getModelRefsForRole(config, "audio_transcription"), []);
       assert.deepEqual(getModelRefsForRole(config, "turn_planner"), ["defaultPlan"]);
+      assert.deepEqual(getRoutingPresetHistoryWindow(config), {
+        maxRecentMessages: 24,
+        maxImageReferences: 3
+      });
+      assert.deepEqual(getRoutingPresetTokenLimits(config), {
+        triggerTokens: 120000,
+        retainTokens: 6000
+      });
     });
   });
 
@@ -334,11 +354,65 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         imageInspector: [],
         audioTranscription: [],
         turnPlanner: [],
-        embedding: []
+        embedding: [],
+        historyWindow: {
+          maxRecentMessages: 50,
+          maxImageReferences: 5
+        },
+        tokenLimits: {
+          triggerTokens: 150000,
+          retainTokens: 4000
+        }
       });
       assert.deepEqual(config.llm.routingPresets.custom, {
         mainSmall: [],
         mainLarge: []
+      });
+    });
+  });
+
+  test("loadConfig lets preset history window inherit missing fields from default", async () => {
+    await withConfigDir("llm-bot-config-routing-preset-history-window-fallback-test", async (configDir) => {
+      await writeDefaultInstanceYaml(configDir);
+      await writeLlmCatalog(configDir, {
+        routingPresets: {
+          default: {
+            historyWindow: {
+              maxRecentMessages: 24,
+              maxImageReferences: 3
+            },
+            tokenLimits: {
+              triggerTokens: 120000,
+              retainTokens: 6000
+            }
+          },
+          dev: {
+            historyWindow: {
+              maxRecentMessages: 12
+            },
+            tokenLimits: {
+              retainTokens: 3000
+            }
+          }
+        }
+      });
+      await writeYaml(join(configDir, "global.yml"), {
+        llm: {
+          routingPreset: "dev"
+        }
+      });
+
+      const config = loadConfig({
+        CONFIG_DIR: configDir
+      });
+
+      assert.deepEqual(getRoutingPresetHistoryWindow(config), {
+        maxRecentMessages: 12,
+        maxImageReferences: 3
+      });
+      assert.deepEqual(getRoutingPresetTokenLimits(config), {
+        triggerTokens: 120000,
+        retainTokens: 3000
       });
     });
   });

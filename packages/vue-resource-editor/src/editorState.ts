@@ -154,23 +154,60 @@ function completeRoutingPresetField(
   field: string
 ): unknown {
   if (Object.prototype.hasOwnProperty.call(draftPreset, field)) {
-    return draftPreset[field];
+    return computeEffectiveValue(referencePreset[field], draftPreset[field]);
   }
   return referencePreset[field] ?? [];
+}
+
+const ROUTING_PRESET_FIELDS: Array<{ key: string; defaultValue: unknown }> = [
+  { key: "mainSmall", defaultValue: [] },
+  { key: "mainLarge", defaultValue: [] },
+  { key: "summarizer", defaultValue: [] },
+  { key: "textInspector", defaultValue: [] },
+  { key: "sessionCaptioner", defaultValue: [] },
+  { key: "imageCaptioner", defaultValue: [] },
+  { key: "imageInspector", defaultValue: [] },
+  { key: "audioTranscription", defaultValue: [] },
+  { key: "turnPlanner", defaultValue: [] },
+  { key: "embedding", defaultValue: [] },
+  {
+    key: "historyWindow",
+    defaultValue: {
+      maxRecentMessages: 50,
+      maxImageReferences: 5
+    }
+  },
+  {
+    key: "tokenLimits",
+    defaultValue: {
+      triggerTokens: 150000,
+      retainTokens: 4000
+    }
+  }
+];
+
+function createCompletedRoutingPreset(
+  draftPreset: Record<string, unknown>,
+  referencePreset: Record<string, unknown> = {}
+): Record<string, unknown> {
+  const completedPreset: Record<string, unknown> = {};
+  for (const field of ROUTING_PRESET_FIELDS) {
+    completedPreset[field.key] = completeRoutingPresetField(
+      draftPreset,
+      {
+        [field.key]: field.defaultValue,
+        ...referencePreset
+      },
+      field.key
+    );
+  }
+  return completedPreset;
 }
 
 function computeRoutingPresetCatalogReferenceValue(draftValue: unknown): unknown {
   const draftCatalog = asObject(draftValue);
   const defaultPreset = asObject(draftCatalog.default);
-  const completedDefaultPreset = {
-    mainSmall: completeRoutingPresetField(defaultPreset, {}, "mainSmall"),
-    mainLarge: completeRoutingPresetField(defaultPreset, {}, "mainLarge"),
-    summarizer: completeRoutingPresetField(defaultPreset, {}, "summarizer"),
-    sessionCaptioner: completeRoutingPresetField(defaultPreset, {}, "sessionCaptioner"),
-    imageCaptioner: completeRoutingPresetField(defaultPreset, {}, "imageCaptioner"),
-    audioTranscription: completeRoutingPresetField(defaultPreset, {}, "audioTranscription"),
-    turnPlanner: completeRoutingPresetField(defaultPreset, {}, "turnPlanner")
-  };
+  const completedDefaultPreset = createCompletedRoutingPreset(defaultPreset);
   const referenceCatalog: Record<string, unknown> = {
     default: {}
   };
@@ -189,15 +226,7 @@ function computeRoutingPresetCatalogEffectiveValue(referenceValue: unknown, draf
   const draftCatalog = asObject(draftValue);
   const referenceCatalog = asObject(referenceValue);
   const draftDefaultPreset = asObject(draftCatalog.default);
-  const defaultReferencePreset = {
-    mainSmall: completeRoutingPresetField(draftDefaultPreset, {}, "mainSmall"),
-    mainLarge: completeRoutingPresetField(draftDefaultPreset, {}, "mainLarge"),
-    summarizer: completeRoutingPresetField(draftDefaultPreset, {}, "summarizer"),
-    sessionCaptioner: completeRoutingPresetField(draftDefaultPreset, {}, "sessionCaptioner"),
-    imageCaptioner: completeRoutingPresetField(draftDefaultPreset, {}, "imageCaptioner"),
-    audioTranscription: completeRoutingPresetField(draftDefaultPreset, {}, "audioTranscription"),
-    turnPlanner: completeRoutingPresetField(draftDefaultPreset, {}, "turnPlanner")
-  };
+  const defaultReferencePreset = createCompletedRoutingPreset(draftDefaultPreset);
   const effectiveCatalog: Record<string, unknown> = {};
 
   for (const presetName of Object.keys(draftCatalog)) {
@@ -206,27 +235,11 @@ function computeRoutingPresetCatalogEffectiveValue(referenceValue: unknown, draf
       ? {}
       : asObject(referenceCatalog[presetName] ?? defaultReferencePreset);
 
-    effectiveCatalog[presetName] = {
-      mainSmall: completeRoutingPresetField(draftPreset, referencePreset, "mainSmall"),
-      mainLarge: completeRoutingPresetField(draftPreset, referencePreset, "mainLarge"),
-      summarizer: completeRoutingPresetField(draftPreset, referencePreset, "summarizer"),
-      sessionCaptioner: completeRoutingPresetField(draftPreset, referencePreset, "sessionCaptioner"),
-      imageCaptioner: completeRoutingPresetField(draftPreset, referencePreset, "imageCaptioner"),
-      audioTranscription: completeRoutingPresetField(draftPreset, referencePreset, "audioTranscription"),
-      turnPlanner: completeRoutingPresetField(draftPreset, referencePreset, "turnPlanner")
-    };
+    effectiveCatalog[presetName] = createCompletedRoutingPreset(draftPreset, referencePreset);
   }
 
   if (!Object.prototype.hasOwnProperty.call(effectiveCatalog, "default")) {
-    effectiveCatalog.default = {
-      mainSmall: [],
-      mainLarge: [],
-      summarizer: [],
-      sessionCaptioner: [],
-      imageCaptioner: [],
-      audioTranscription: [],
-      turnPlanner: []
-    };
+    effectiveCatalog.default = createCompletedRoutingPreset({});
   }
 
   return effectiveCatalog;

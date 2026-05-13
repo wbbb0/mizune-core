@@ -1,3 +1,11 @@
+default:
+  historyWindow:
+    maxRecentMessages: 80
+    maxImageReferences: 5
+  tokenLimits:
+    triggerTokens: 150000
+    retainTokens: 7000
+
 balanced:
   mainSmall:
     - qwen35_flash

@@ -5,7 +5,11 @@ import { join } from "node:path";
 import pino from "pino";
 import { loadConfig } from "../../src/config/config.ts";
 import { ConfigManager } from "../../src/config/configManager.ts";
-import { getModelRefsForRole } from "../../src/llm/shared/modelRouting.ts";
+import {
+  getModelRefsForRole,
+  getRoutingPresetHistoryWindow,
+  getRoutingPresetTokenLimits
+} from "../../src/llm/shared/modelRouting.ts";
 import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/config-test-support.tsx";
 
   test("config manager reloads changed config files", async () => {
@@ -118,6 +122,17 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
         audioTranscription: ["transcription"],
         turnPlanner: [modelRef]
       });
+      const createPresetWithLimits = (modelRef: string, maxRecentMessages: number, retainTokens: number) => ({
+        ...createPreset(modelRef),
+        historyWindow: {
+          maxRecentMessages,
+          maxImageReferences: 5
+        },
+        tokenLimits: {
+          triggerTokens: 150000,
+          retainTokens
+        }
+      });
       await writeLlmCatalog(configDir, {
         providers: {
           test: {
@@ -143,7 +158,7 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
           }
         },
         routingPresets: {
-          reload: createPreset("main")
+          reload: createPresetWithLimits("main", 80, 7000)
         }
       });
       await writeYaml(join(configDir, "global.yml"), {
@@ -165,10 +180,18 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
       await manager.start();
 
       assert.deepEqual(getModelRefsForRole(config, "main_small"), ["main"]);
+      assert.deepEqual(getRoutingPresetHistoryWindow(config), {
+        maxRecentMessages: 80,
+        maxImageReferences: 5
+      });
+      assert.deepEqual(getRoutingPresetTokenLimits(config), {
+        triggerTokens: 150000,
+        retainTokens: 7000
+      });
 
       await sleep(20);
       await writeYaml(join(configDir, "llm.routing-presets.yml"), {
-        reload: createPreset("alternate")
+        reload: createPresetWithLimits("alternate", 32, 3000)
       });
 
       const changed = await manager.checkForUpdates();
@@ -176,6 +199,14 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
 
       assert.equal(changed, true);
       assert.deepEqual(getModelRefsForRole(config, "main_small"), ["alternate"]);
+      assert.deepEqual(getRoutingPresetHistoryWindow(config), {
+        maxRecentMessages: 32,
+        maxImageReferences: 5
+      });
+      assert.deepEqual(getRoutingPresetTokenLimits(config), {
+        triggerTokens: 150000,
+        retainTokens: 3000
+      });
     });
   });
 

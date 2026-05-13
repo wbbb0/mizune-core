@@ -76,9 +76,6 @@ llm:
 conversation:
   setup:
     skipPersonaInitialization: false
-  historyWindow:
-    maxRecentMessages: 80
-    maxImageReferences: 5
   images:
     maxSerializedPixels: 1048576
     maxCachedFiles: 100
@@ -98,8 +95,6 @@ conversation:
     randomFactorMax: 1.25
   historyCompression:
     enabled: true
-    triggerTokens: 150000
-    retainTokens: 7000
     retainMessageCount: 8
     tokenEstimation:
       cjkTokens: 1.5

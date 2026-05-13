@@ -1,4 +1,5 @@
 import type { AppConfig } from "#config/config.ts";
+import { getRoutingPresetHistoryWindow } from "#llm/shared/modelRouting.ts";
 import { parseProtocolLine } from "#utils/structuredEnvelope.ts";
 import { formatStructuredMediaReference, projectTranscriptMessageItemToHistoryMessage } from "./historyContext.ts";
 import type { ToolObservationSummary } from "./toolObservation.ts";
@@ -448,12 +449,13 @@ function normalizeProjectedHistoryMessages(
   config: AppConfig
 ): SessionHistoryMessage[] {
   let normalized = recentMessages;
-  const maxRecentMessages = config.conversation.historyWindow.maxRecentMessages;
+  const historyWindow = getRoutingPresetHistoryWindow(config);
+  const maxRecentMessages = historyWindow.maxRecentMessages;
   if (normalized.length > maxRecentMessages) {
     normalized = normalized.slice(-maxRecentMessages);
   }
 
-  const maxImageReferences = config.conversation.historyWindow.maxImageReferences;
+  const maxImageReferences = historyWindow.maxImageReferences;
   if (maxImageReferences <= 0) {
     return normalized.map((message) => ({
       ...message,

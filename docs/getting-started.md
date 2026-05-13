@@ -53,7 +53,7 @@ config/instances/default.yml
 
 - `config/llm.providers.yml`：provider 连接信息，例如 `type`、`apiKey`、`baseUrl`、provider feature 开关
 - `config/llm.models.yml`：模型目录，定义每个 `modelRef` 对应哪个 provider、模型名和能力
-- `config/llm.routing-presets.yml`：模型路由预设，定义不同运行角色优先使用哪些 `modelRef`
+- `config/llm.routing-presets.yml`：模型路由预设，定义不同运行角色优先使用哪些 `modelRef`，以及该预设对应的历史窗口和 token 上下限
 - `config/global.yml`：共享运行策略，例如 LLM 开关、会话策略、工具开关、默认超时
 - `config/instances/<name>.yml`：实例覆盖项，例如数据目录、OneBot 地址、端口、是否开启 WebUI
 

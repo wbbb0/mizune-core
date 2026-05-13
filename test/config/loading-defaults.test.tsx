@@ -2,7 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { loadConfig } from "../../src/config/config.ts";
-import { getModelRefsForRole } from "../../src/llm/shared/modelRouting.ts";
+import {
+  getModelRefsForRole,
+  getRoutingPresetHistoryWindow,
+  getRoutingPresetTokenLimits
+} from "../../src/llm/shared/modelRouting.ts";
 import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } from "../helpers/config-test-support.tsx";
 
   test("loadConfig keeps default refs without implicit model profiles", async () => {
@@ -60,8 +64,24 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           imageInspector: [],
           audioTranscription: [],
           turnPlanner: [],
-          embedding: []
+          embedding: [],
+          historyWindow: {
+            maxRecentMessages: 50,
+            maxImageReferences: 5
+          },
+          tokenLimits: {
+            triggerTokens: 150000,
+            retainTokens: 4000
+          }
         }
+      });
+      assert.deepEqual(getRoutingPresetHistoryWindow(config), {
+        maxRecentMessages: 50,
+        maxImageReferences: 5
+      });
+      assert.deepEqual(getRoutingPresetTokenLimits(config), {
+        triggerTokens: 150000,
+        retainTokens: 4000
       });
       assert.equal(config.dataDir, "data/default");
     });

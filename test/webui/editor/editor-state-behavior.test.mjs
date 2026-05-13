@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { computeDraftEffectiveValue } from "../../../packages/vue-resource-editor/src/editorState.ts";
+import {
+  computeDraftEffectiveValue,
+  computeDraftReferenceValue
+} from "../../../packages/vue-resource-editor/src/editorState.ts";
 
 function createLayeredModel(overrides = {}) {
   return {
@@ -135,4 +138,71 @@ test("merge_reference effective values allow null to replace an object", () => {
       }
     }
   );
+});
+
+function createRoutingPresetModel() {
+  return createLayeredModel({
+    key: "llm_routing_preset_catalog",
+    kind: "single",
+    file: { path: "config/llm.routing-presets.yml" },
+    editorFeatures: {
+      showReferenceBackdrop: false,
+      unsetMode: "reference",
+      unsetActionLabel: "回退到 default",
+      draftEffectiveMode: "routing_preset_catalog"
+    }
+  });
+}
+
+test("routing preset editor effective values update all preset fields without reload", () => {
+  const model = createRoutingPresetModel();
+  const draft = {
+    default: {
+      mainSmall: ["base-main"],
+      textInspector: ["base-text"],
+      embedding: ["base-embedding"],
+      historyWindow: {
+        maxRecentMessages: 80,
+        maxImageReferences: 5
+      },
+      tokenLimits: {
+        triggerTokens: 150000,
+        retainTokens: 7000
+      }
+    },
+    balanced: {
+      mainSmall: ["balanced-main"],
+      historyWindow: {
+        maxRecentMessages: 32
+      },
+      tokenLimits: {
+        retainTokens: 3000
+      }
+    }
+  };
+
+  assert.deepEqual(computeDraftReferenceValue(model, draft).balanced.historyWindow, {
+    maxRecentMessages: 80,
+    maxImageReferences: 5
+  });
+  assert.deepEqual(computeDraftEffectiveValue(model, draft).balanced, {
+    mainSmall: ["balanced-main"],
+    mainLarge: [],
+    summarizer: [],
+    textInspector: ["base-text"],
+    sessionCaptioner: [],
+    imageCaptioner: [],
+    imageInspector: [],
+    audioTranscription: [],
+    turnPlanner: [],
+    embedding: ["base-embedding"],
+    historyWindow: {
+      maxRecentMessages: 32,
+      maxImageReferences: 5
+    },
+    tokenLimits: {
+      triggerTokens: 150000,
+      retainTokens: 3000
+    }
+  });
 });
