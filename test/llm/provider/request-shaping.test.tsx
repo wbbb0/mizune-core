@@ -26,6 +26,24 @@ function createNativeLmStudioSseResponse(payloads: any[]) {
   );
 }
 
+function createUnterminatedSseResponse(payload: any) {
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}`));
+        controller.close();
+      }
+    }),
+    {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream"
+      }
+    }
+  );
+}
+
   test("native search injects provider flag into request body", async () => {
     const config = createLlmTestConfig({ supportsSearch: true });
     config.llm.providers.test!.features.search = {
@@ -1048,6 +1066,37 @@ function createNativeLmStudioSseResponse(payloads: any[]) {
       });
 
       assert.equal(result.text, "done");
+    });
+  });
+
+  test("google ai studio consumes text from unterminated trailing SSE events", async () => {
+    const config = createLlmTestConfig();
+    config.llm.providers.test!.type = "google";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest() {},
+        response: createUnterminatedSseResponse({
+          candidates: [{
+            content: {
+              parts: [{ text: "trailing reply" }]
+            },
+            finishReason: "STOP"
+          }],
+          usageMetadata: {
+            promptTokenCount: 5,
+            candidatesTokenCount: 2,
+            totalTokenCount: 7
+          }
+        })
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "hello" }]
+      });
+
+      assert.equal(result.text, "trailing reply");
     });
   });
 

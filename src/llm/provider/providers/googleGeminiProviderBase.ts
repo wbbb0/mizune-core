@@ -140,6 +140,32 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      const processChunk = async (chunk: GoogleStreamChunk) => {
+        accumulator.replaceUsage(mergeGoogleUsage(context, chunk));
+        const chunkParts = chunk.candidates?.[0]?.content?.parts ?? [];
+        const newParts = collectNewParts(chunkParts, assistantPartCount);
+        for (const part of newParts) {
+          assistantParts.push(part);
+
+          if ("text" in part && typeof part.text === "string" && part.text.length > 0) {
+            timeoutController.markFirstResponseReceived();
+            if (part.thought) {
+              timeoutController.markReasoningStarted();
+              accumulator.appendReasoningDelta(part.text, params.onReasoningDelta);
+            } else {
+              timeoutController.markFirstTextReceived();
+              await accumulator.appendTextDelta(part.text, params.onTextDelta);
+            }
+          }
+
+          if ("functionCall" in part && part.functionCall?.name) {
+            timeoutController.markFirstResponseReceived();
+            timeoutController.markFirstTextReceived();
+            const toolCall = normalizeFunctionCallPart(part);
+            toolCalls.set(toolCall.id, toolCall);
+          }
+        }
+      };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -158,30 +184,7 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
               continue;
             }
 
-            accumulator.replaceUsage(mergeGoogleUsage(context, chunk));
-            const chunkParts = chunk.candidates?.[0]?.content?.parts ?? [];
-            const newParts = collectNewParts(chunkParts, assistantPartCount);
-            for (const part of newParts) {
-              assistantParts.push(part);
-
-              if ("text" in part && typeof part.text === "string" && part.text.length > 0) {
-                timeoutController.markFirstResponseReceived();
-                if (part.thought) {
-                  timeoutController.markReasoningStarted();
-                  accumulator.appendReasoningDelta(part.text, params.onReasoningDelta);
-                } else {
-                  timeoutController.markFirstTextReceived();
-                  await accumulator.appendTextDelta(part.text, params.onTextDelta);
-                }
-              }
-
-              if ("functionCall" in part && part.functionCall?.name) {
-                timeoutController.markFirstResponseReceived();
-                timeoutController.markFirstTextReceived();
-                const toolCall = normalizeFunctionCallPart(part);
-                toolCalls.set(toolCall.id, toolCall);
-              }
-            }
+            await processChunk(chunk);
           }
         }
       }
@@ -197,7 +200,7 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
           if (!chunk) {
             continue;
           }
-          accumulator.replaceUsage(mergeGoogleUsage(context, chunk));
+          await processChunk(chunk);
         }
       }
 
