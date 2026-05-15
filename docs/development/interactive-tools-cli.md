@@ -1,0 +1,101 @@
+# 交互式工具测试 CLI
+
+`npm run test:interactive-tools` 用于启动一个隔离的本地运行时，并绕过 LLM 直接调用项目内置工具。它适合验证工具 schema、参数解析、权限、上下文依赖与真实 handler 行为。
+
+这个工具只面向开发和测试，不作为正式使用入口。
+
+## 启动
+
+使用某个实例的真实配置：
+
+```bash
+CONFIG_INSTANCE=acc1 npm run test:interactive-tools
+```
+
+也可以通过参数指定实例：
+
+```bash
+npm run test:interactive-tools -- --instance acc1
+```
+
+默认使用隔离数据目录 `data/interactive-<instance>`。需要指定数据目录时：
+
+```bash
+CONFIG_INSTANCE=acc1 npm run test:interactive-tools -- --data-dir data/interactive-tools-acc1
+```
+
+需要临时复用实例正式数据时可以加 `--use-instance-data`，但这会直接读写该实例的数据文件。
+
+## 默认关闭的能力
+
+为了降低测试副作用，CLI 默认关闭 shell、browser、ComfyUI 和搜索 provider。需要测试这些工具时显式打开：
+
+```bash
+CONFIG_INSTANCE=acc1 npm run test:interactive-tools -- --enable-shell
+CONFIG_INSTANCE=acc1 npm run test:interactive-tools -- --enable-browser
+CONFIG_INSTANCE=acc1 npm run test:interactive-tools -- --enable-search
+CONFIG_INSTANCE=acc1 npm run test:interactive-tools -- --enable-comfy
+```
+
+debug 工具默认不暴露。需要测试时使用 `--include-debug-tools`，或进入 CLI 后执行 `/debug on`。
+
+## 可用命令
+
+- `/tools [filter]`：列出当前上下文可调用的工具。
+- `/all-tools [filter]`：列出所有注册工具及当前配置可用性。
+- `/schema <toolName>`：查看工具 schema。
+- `/call <toolName> <jsonArgs>`：直接调用工具。
+- `/session`：查看当前调用上下文。
+- `/user <id>`：切换外部用户 ID。
+- `/name <name>`：切换发送昵称。
+- `/private`：切换到私聊上下文。
+- `/group <id>`：切换到群聊上下文。
+- `/debug on|off`：切换 debug 工具可见性。
+- `/quit`：退出。
+
+示例：
+
+```text
+/tools filesystem
+/schema filesystem_list
+/call list_session_modes {}
+/call get_persona {}
+```
+
+也可以直接输入一行 JSON：
+
+```json
+{"tool":"roll_dice","args":{"expression":"2d6+1"}}
+```
+
+## 单次调用
+
+脚本支持非交互式单次调用，便于自动化或 agent 直接验证：
+
+```bash
+CONFIG_INSTANCE=acc1 npm run test:interactive-tools -- \
+  --tool get_persona \
+  --args '{}'
+```
+
+测试 shell 工具：
+
+```bash
+CONFIG_INSTANCE=acc1 npm run test:interactive-tools -- \
+  --enable-shell \
+  --tool terminal_run \
+  --args '{"command":"pwd","timeout_ms":5000,"notify_policy":"none"}'
+```
+
+参数较大时可用 `--args-file <json-file>`。
+
+## 脚本化烟测
+
+CLI 支持管道输入：
+
+```bash
+printf '/tools dice\n/call roll_dice {\"expression\":\"1d6\"}\n/quit\n' \
+  | CONFIG_INSTANCE=acc1 npm run test:interactive-tools -- --data-dir data/interactive-tools-smoke
+```
+
+隔离数据目录首次启动时，CLI 会自动准备 owner 绑定和 setup-ready 状态，避免工具调用被初始化流程拦截。

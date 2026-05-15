@@ -4,6 +4,11 @@ import type { AppConfig } from "#config/config.ts";
 import { createAppRuntime } from "#app/runtime/appRuntime.ts";
 import type { AppServiceBootstrap } from "#app/bootstrap/appServiceBootstrap.ts";
 import { FakeOneBotClient, type FakeOneBotSentMessage } from "#testing/fakeOneBotClient.ts";
+import {
+  createInteractiveConfig,
+  prepareInteractiveRuntime,
+  resolveActiveInternalUserId
+} from "./interactive-runtime-support.ts";
 
 interface CliArgs {
   instance?: string;
@@ -132,90 +137,6 @@ async function questionOrNull(
   }
 }
 
-function createInteractiveConfig(config: AppConfig, args: CliArgs): AppConfig {
-  const dataDir = args.useInstanceData
-    ? config.dataDir
-    : args.dataDir ?? `data/interactive-${config.configRuntime.instanceName}`;
-  return {
-    ...config,
-    dataDir,
-    llm: {
-      ...config.llm,
-      ...(args.routingPreset ? { routingPreset: args.routingPreset } : {})
-    },
-    whitelist: {
-      enabled: false
-    },
-    onebot: {
-      ...config.onebot,
-      enabled: true,
-      wsUrl: "ws://127.0.0.1/interactive-fake-onebot",
-      httpUrl: "http://127.0.0.1/interactive-fake-onebot"
-    },
-    internalApi: {
-      ...config.internalApi,
-      enabled: false,
-      webui: {
-        ...config.internalApi.webui,
-        enabled: false
-      }
-    },
-    scheduler: {
-      ...config.scheduler,
-      enabled: false
-    },
-    shell: {
-      ...config.shell,
-      enabled: false
-    },
-    browser: {
-      ...config.browser,
-      enabled: false
-    },
-    comfy: {
-      ...config.comfy,
-      enabled: false
-    },
-    search: {
-      ...config.search,
-      googleGrounding: {
-        ...config.search.googleGrounding,
-        enabled: false
-      },
-      aliyunIqs: {
-        ...config.search.aliyunIqs,
-        enabled: false
-      }
-    },
-    conversation: {
-      ...config.conversation,
-      setup: {
-        ...config.conversation.setup,
-        skipPersonaInitialization: true
-      },
-      debounce: {
-        ...config.conversation.debounce,
-        defaultBaseSeconds: 0.1,
-        minBaseSeconds: 0.1,
-        maxBaseSeconds: 0.2,
-        finalMultiplier: 1,
-        plannerWaitMultiplier: 1,
-        randomRatioMin: 1,
-        randomRatioMax: 1
-      },
-      outbound: {
-        ...config.conversation.outbound,
-        disableStreamingSplit: true,
-        baseDelayMs: 0,
-        charDelayMs: 0,
-        maxDelayMs: 0,
-        randomFactorMin: 1,
-        randomFactorMax: 1
-      }
-    }
-  };
-}
-
 async function handleCliCommand(
   commandLine: string,
   state: CliState,
@@ -322,41 +243,6 @@ function printHelp(): void {
     "/wait [ms]              等待会话处理完成，默认 30000ms",
     "/quit                   退出"
   ].join("\n") + "\n");
-}
-
-async function prepareInteractiveRuntime(services: AppServiceBootstrap, state: CliState): Promise<void> {
-  const channelId = services.config.configRuntime.instanceName;
-  const currentUserInternalId = await services.userIdentityStore.findInternalUserId({
-    channelId,
-    externalId: state.userId
-  });
-  if (!await services.userIdentityStore.hasOwnerIdentity()) {
-    if (!currentUserInternalId) {
-      await services.userIdentityStore.bindOwnerIdentity({
-        channelId,
-        externalId: state.userId
-      });
-    } else if (currentUserInternalId !== "owner") {
-      await services.userIdentityStore.bindOwnerIdentity({
-        channelId,
-        externalId: `${state.userId}:interactive-owner`
-      });
-    }
-  }
-  await services.setupStore.advanceAfterOwnerBound(await services.personaStore.get());
-  await services.globalProfileReadinessStore.setPersonaReadiness("ready");
-  await services.globalProfileReadinessStore.setRpReadiness("ready");
-  await services.globalProfileReadinessStore.setScenarioReadiness("ready");
-}
-
-async function resolveActiveInternalUserId(
-  state: CliState,
-  services: AppServiceBootstrap
-): Promise<string> {
-  return await services.userIdentityStore.findInternalUserId({
-    channelId: services.config.configRuntime.instanceName,
-    externalId: state.userId
-  }) ?? state.userId;
 }
 
 async function printStatus(state: CliState, services: AppServiceBootstrap): Promise<void> {
