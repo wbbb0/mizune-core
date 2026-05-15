@@ -109,3 +109,49 @@ import { createLlmTestConfig, createSseResponse, createToolDefinition } from "..
       await rm(dumpDir, { recursive: true, force: true });
     }
   });
+
+  test("google streamed provider errors write request and response dumps", async () => {
+    const dumpDir = await mkdtemp(join(tmpdir(), "llm-bot-google-dump-"));
+    const config = createLlmTestConfig();
+    config.dataDir = join(dumpDir, "acc-test");
+    config.llm.debugDump = {
+      enabled: true
+    };
+    config.llm.providers.test!.type = "google";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    setFetchImplementationForTests(async () => createSseResponse([
+      {
+        error: {
+          message: "Resource has been exhausted",
+          type: "new_api_error",
+          code: "invalid_request"
+        }
+      }
+    ]));
+
+    try {
+      await assert.rejects(
+        client.generate({
+          messages: [{ role: "user", content: "ping" }]
+        }),
+        /Google AI Studio API stream error: Resource has been exhausted/
+      );
+
+      const requestDump = JSON.parse(await readFile(join(config.dataDir, "dump", "last-request.json"), "utf8"));
+      const responseDump = JSON.parse(await readFile(join(config.dataDir, "dump", "last-response.json"), "utf8"));
+
+      assert.equal(requestDump.endpoint, "https://example.com/v1/models/fake-model:streamGenerateContent?alt=sse");
+      assert.equal(requestDump.requestBody.contents[0].role, "user");
+      assert.equal(requestDump.requestBody.contents[0].parts[0].text, "ping");
+      assert.equal(requestDump.messages[0].role, "user");
+
+      assert.equal(responseDump.model, "fake-model");
+      assert.equal(responseDump.finalText, "");
+      assert.equal(responseDump.error.message, "Resource has been exhausted");
+      assert.equal(responseDump.chunks[0].error.code, "invalid_request");
+    } finally {
+      setFetchImplementationForTests(null);
+      await rm(dumpDir, { recursive: true, force: true });
+    }
+  });

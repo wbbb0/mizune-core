@@ -1,4 +1,5 @@
 import { fetchWithProxy } from "#services/proxy/index.ts";
+import { dumpProviderRequest, dumpProviderResponse } from "../providerDebugDump.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
 import { buildGeminiGenerationConfigParameters } from "../modelApiParameters.ts";
 import {
@@ -57,6 +58,13 @@ interface GoogleContent {
 }
 
 interface GoogleStreamChunk {
+  error?: {
+    code?: number | string;
+    message?: string;
+    status?: string;
+    type?: string;
+    param?: string;
+  };
   candidates?: Array<{
     content?: {
       role?: string;
@@ -99,6 +107,15 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
     params: LlmProviderGenerateParams
   ): Promise<LlmProviderGenerateResult> {
     const endpoint = this.buildStreamEndpoint(context);
+    const requestBody = buildRequestBody(context, params);
+    if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
+      await dumpProviderRequest(context, {
+        endpoint,
+        requestBody,
+        messages: params.messages
+      });
+    }
+
     const resolvedTimeoutMs = params.timeoutMsOverride ?? context.config.llm.timeoutMs;
     const timeoutController = createProviderTimeoutController({
       totalTimeoutMs: resolvedTimeoutMs,
@@ -116,7 +133,7 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
         {
           method: "POST",
           headers: this.buildHeaders(context),
-          body: JSON.stringify(buildRequestBody(context, params)),
+          body: JSON.stringify(requestBody),
           signal: timeoutController.controller.signal
         },
         { modelRef: context.modelRef }
@@ -134,6 +151,7 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
         modelRef: context.modelRef,
         model: context.model
       });
+      const responseChunks: GoogleStreamChunk[] = [];
       const toolCalls = new Map<string, LlmToolCall>();
       const assistantParts: GooglePart[] = [];
       const assistantPartCount = new Map<string, number>();
@@ -141,6 +159,21 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
       const decoder = new TextDecoder();
       let buffer = "";
       const processChunk = async (chunk: GoogleStreamChunk) => {
+        if (chunk.error) {
+          if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
+            await dumpProviderResponse(context, {
+              model: context.model,
+              chunks: responseChunks,
+              finalText: accumulator.text,
+              reasoningContent: accumulator.reasoningContent,
+              toolCalls: Array.from(toolCalls.values()),
+              googleParts: assistantParts,
+              error: chunk.error
+            });
+          }
+          throw createGoogleStreamError(this.providerLabel, chunk.error);
+        }
+
         accumulator.replaceUsage(mergeGoogleUsage(context, chunk));
         const chunkParts = chunk.candidates?.[0]?.content?.parts ?? [];
         const newParts = collectNewParts(chunkParts, assistantPartCount);
@@ -184,6 +217,7 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
               continue;
             }
 
+            responseChunks.push(chunk);
             await processChunk(chunk);
           }
         }
@@ -200,8 +234,20 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
           if (!chunk) {
             continue;
           }
+          responseChunks.push(chunk);
           await processChunk(chunk);
         }
+      }
+
+      if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
+        await dumpProviderResponse(context, {
+          model: context.model,
+          chunks: responseChunks,
+          finalText: accumulator.text,
+          reasoningContent: accumulator.reasoningContent,
+          toolCalls: Array.from(toolCalls.values()),
+          googleParts: assistantParts
+        });
       }
 
       if (!accumulator.text.trim() && toolCalls.size === 0) {
@@ -689,6 +735,20 @@ function parseChunk(payload: string): GoogleStreamChunk | null {
   } catch {
     return null;
   }
+}
+
+function createGoogleStreamError(
+  providerLabel: string,
+  error: NonNullable<GoogleStreamChunk["error"]>
+): Error {
+  const details = [
+    error.message,
+    error.status ? `status=${error.status}` : "",
+    error.code != null ? `code=${error.code}` : "",
+    error.type ? `type=${error.type}` : "",
+    error.param ? `param=${error.param}` : ""
+  ].filter(Boolean).join("; ");
+  return new Error(`${providerLabel} API stream error${details ? `: ${details}` : ""}`);
 }
 
 function messageContentToPlainText(content: string | LlmContentPart[]): string {

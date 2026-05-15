@@ -1100,6 +1100,32 @@ function createUnterminatedSseResponse(payload: any) {
     });
   });
 
+  test("google ai studio surfaces streamed provider errors", async () => {
+    const config = createLlmTestConfig();
+    config.llm.providers.test!.type = "google";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await assert.rejects(
+      withMockFetch([
+        {
+          assertRequest() {},
+          payloads: [{
+            error: {
+              message: "Resource has been exhausted",
+              type: "new_api_error",
+              code: "invalid_request"
+            }
+          }]
+        }
+      ], async () => {
+        await client.generate({
+          messages: [{ role: "user", content: "hello" }]
+        });
+      }),
+      /Google AI Studio API stream error: Resource has been exhausted/
+    );
+  });
+
   test("google ai studio maps configured model api parameters to generation config", async () => {
     const config = createLlmTestConfig({
       apiParameters: {
