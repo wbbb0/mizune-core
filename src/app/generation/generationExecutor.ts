@@ -1,5 +1,7 @@
 import { createBuiltinToolExecutor, getBuiltinTools } from "#llm/builtinTools.ts";
 import type { LlmMessage, LlmProviderCallUsage, LlmToolCall, LlmToolExecutionResult } from "#llm/llmClient.ts";
+import { createEmptyUsage, mergeUsage } from "#llm/provider/providerTypes.ts";
+import { getRoutingPresetTokenLimits } from "#llm/shared/modelRouting.ts";
 import { parseToolArguments } from "#llm/shared/toolArgs.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import {
@@ -50,6 +52,7 @@ import { maybeAutoCaptionSessionTitle, shouldAutoCaptionSessionTitle } from "./s
 import { createProviderOutputTokenStats } from "#conversation/session/transcriptTokenStats.ts";
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import { renderInlineTriggerBatchMessage } from "#llm/prompt/promptBuilder.ts";
+import { projectProviderWorkingMessagesForBudget } from "./providerWorkingMessageBudget.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -209,6 +212,19 @@ export function createGenerationExecutor(
     let outboundDrainPromise: Promise<void> | null = null;
     let lastResultReasoningContent = "";
     let finalProviderCallUsage: LlmProviderCallUsage | null = null;
+    const runningProviderUsage = createEmptyUsage(resolvedModelRef[0] ?? null, null);
+    const recordProviderCallUsage = (event: LlmProviderCallUsage): void => {
+      mergeUsage(runningProviderUsage, event.usage);
+      const usageApplied = sessionManager.setLastLlmUsageIfEpochMatches(sessionId, expectedEpoch, {
+        ...runningProviderUsage,
+        capturedAt: Date.now()
+      });
+      if (usageApplied) {
+        persistSession(sessionId, "llm_usage_updated");
+      } else {
+        logger.info({ sessionId, expectedEpoch, phase: event.phase }, "llm_usage_update_skipped_epoch_mismatch");
+      }
+    };
     // 消费 steer 消息，注入到当前 tool iteration 的 prompt 上下文中。
     // 如果仅注入用户消息效果不够明显（模型没有及时收尾），
     // 可以在这里额外附加一条 system 提示，告知模型"用户发了新消息，请尽快结束当前工具链"。
@@ -359,12 +375,15 @@ export function createGenerationExecutor(
             : {})
         };
       };
-      const resolveAllowedTools = () => getBuiltinTools(
-        toolRelationship ?? relationship,
-        currentUser,
-        config,
-        buildToolSelectionOptions()
-      );
+      let toolBudgetToolsDisabled = false;
+      const resolveAllowedTools = () => toolBudgetToolsDisabled
+        ? []
+        : getBuiltinTools(
+            toolRelationship ?? relationship,
+            currentUser,
+            config,
+            buildToolSelectionOptions()
+          );
 
       const toolsetAccess = isPlannerToolsetMode
         ? {
@@ -517,8 +536,8 @@ export function createGenerationExecutor(
             abortSignal: abortController.signal,
             consumeSteerMessages,
             consumeInlineTriggers,
-            projectMessagesBeforeProvider: async (messages) => (
-              projectProviderPreflightMessages({
+            projectMessagesBeforeProvider: async (messages) => {
+              const projectedMessages = await projectProviderPreflightMessages({
                 messages,
                 project: async (projectableMessages) => (
                   (await promptBuilder.contentSafetyService?.projectLlmMessages({
@@ -528,8 +547,31 @@ export function createGenerationExecutor(
                     abortSignal: abortController.signal
                   }))?.messages ?? projectableMessages
                 )
-              })
-            ),
+              });
+              const projection = projectProviderWorkingMessagesForBudget({
+                messages: projectedMessages,
+                transcript: sessionManager.getSession(sessionId).internalTranscript,
+                config,
+                triggerTokens: getRoutingPresetTokenLimits(config).triggerTokens
+              });
+              toolBudgetToolsDisabled = projection.toolsDisabled;
+              if (projection.compactedToolResults > 0 || projection.toolsDisabled) {
+                logger.info(
+                  {
+                    sessionId,
+                    beforeTokens: projection.beforeTokens,
+                    afterTokens: projection.afterTokens,
+                    compactedToolResults: projection.compactedToolResults,
+                    toolsDisabled: projection.toolsDisabled
+                  },
+                  "provider_working_messages_budget_projected"
+                );
+              }
+              return projection.messages;
+            },
+            onProviderCallUsage: async (event) => {
+              recordProviderCallUsage(event);
+            },
             toolConcurrency: {
               analyze: analyzeBuiltinToolConcurrency,
               maxConcurrency: 4

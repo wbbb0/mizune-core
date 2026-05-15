@@ -61,6 +61,8 @@ export interface SessionCompressionAccess {
     toolObservationsToCompress: ToolObservationSummary[];
     transcriptStartIndexToKeep: number;
     estimatedTotalTokens: number;
+    totalTokens: number;
+    tokenBudget: import("./promptTokenBudget.ts").PromptTokenBudgetEstimate;
   } | null;
   applyCompressedHistoryIfHistoryRevisionMatches(
     sessionId: string,

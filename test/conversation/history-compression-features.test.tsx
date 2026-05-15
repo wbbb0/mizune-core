@@ -116,7 +116,7 @@ function appendSimpleHistory(
     const userPrompt = String(captured[1]?.content ?? "");
     assert.match(systemPrompt, /必须保留：稳定/);
     assert.match(systemPrompt, /拒绝流水账式的复述/);
-    assert.match(systemPrompt, /适度放长篇幅/);
+    assert.match(systemPrompt, /优先控制在 8~12 句/);
     assert.match(userPrompt, /summary_context/);
   });
 
@@ -209,6 +209,139 @@ function appendSimpleHistory(
     assert.equal(await compressor.maybeCompress("qqbot:p:test"), false);
     assert.equal(await compressor.maybeCompress("qqbot:p:test"), false);
     assert.equal(snapshotChecks, 1);
+  });
+
+  test("token compression still triggers when reported usage is stale below threshold", () => {
+    const sessionManager = new SessionManager(createConfig());
+    const sessionId = "qqbot:p:test";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    appendSimpleHistory(sessionManager, sessionId, "user", "x".repeat(1200), 1);
+    appendSimpleHistory(sessionManager, sessionId, "assistant", "y".repeat(1200), 2);
+
+    const snapshot = sessionManager.getHistoryForCompressionByTokens(sessionId, 500, 50, 1);
+
+    assert.ok(snapshot);
+    assert.equal(snapshot.tokenBudget.source, "estimated_with_provider_floor");
+    assert.ok(snapshot.totalTokens > 500);
+    assert.ok(snapshot.estimatedTotalTokens > 500);
+  });
+
+  test("token compression uses provider usage as a floor when estimate is lower", () => {
+    const sessionManager = new SessionManager(createConfig());
+    const sessionId = "qqbot:p:test";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    for (let index = 0; index < 8; index += 1) {
+      appendSimpleHistory(sessionManager, sessionId, index % 2 === 0 ? "user" : "assistant", "z".repeat(350), index + 1);
+    }
+
+    const snapshot = sessionManager.getHistoryForCompressionByTokens(sessionId, 5000, 100, 6000);
+
+    assert.ok(snapshot);
+    assert.equal(snapshot.totalTokens, 6000);
+    assert.ok(snapshot.estimatedTotalTokens < 5000);
+  });
+
+  test("token compression ignores cumulative provider usage as prompt floor", () => {
+    const sessionManager = new SessionManager(createConfig());
+    const sessionId = "qqbot:p:test";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    appendSimpleHistory(sessionManager, sessionId, "user", "short", 1);
+    const epoch = sessionManager.getMutationEpoch(sessionId);
+    sessionManager.setLastLlmUsageIfEpochMatches(sessionId, epoch, {
+      inputTokens: 6000,
+      outputTokens: 20,
+      totalTokens: 6020,
+      reasoningTokens: null,
+      cachedTokens: null,
+      requestCount: 3,
+      providerReported: true,
+      modelRef: "main",
+      model: "fake",
+      capturedAt: 2
+    });
+
+    const snapshot = sessionManager.getHistoryForCompressionByTokens(
+      sessionId,
+      5000,
+      100,
+      sessionManager.getLastLlmUsage(sessionId)?.requestCount === 1
+        ? sessionManager.getLastLlmUsage(sessionId)?.inputTokens ?? undefined
+        : undefined
+    );
+
+    assert.equal(snapshot, null);
+  });
+
+  test("token compression skips when only fixed prompt overhead exceeds the trigger", () => {
+    const sessionManager = new SessionManager(createConfig());
+    const sessionId = "qqbot:p:test";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    appendSimpleHistory(sessionManager, sessionId, "user", "short", 1);
+
+    const snapshot = sessionManager.getHistoryForCompressionByTokens(sessionId, 100, 1000);
+
+    assert.equal(snapshot, null);
+  });
+
+  test("token compression keeps the newest oversized message raw", () => {
+    const sessionManager = new SessionManager(createConfig());
+    const sessionId = "qqbot:p:test";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    appendSimpleHistory(sessionManager, sessionId, "user", "old".repeat(300), 1);
+    appendSimpleHistory(sessionManager, sessionId, "assistant", "middle".repeat(300), 2);
+    appendSimpleHistory(sessionManager, sessionId, "user", "latest".repeat(1000), 3);
+
+    const snapshot = sessionManager.getHistoryForCompressionByTokens(sessionId, 500, 10);
+
+    assert.ok(snapshot);
+    assert.deepEqual(snapshot.retainedMessages.map((message) => message.content), ["latest".repeat(1000)]);
+  });
+
+  test("token compression counts old tool observations as reclaimable context", () => {
+    const sessionManager = new SessionManager(createConfig());
+    const sessionId = "qqbot:p:test";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    appendSimpleHistory(sessionManager, sessionId, "user", "old question", 1);
+    sessionManager.appendInternalTranscript(sessionId, {
+      kind: "assistant_tool_call",
+      llmVisible: true,
+      timestampMs: 2,
+      content: "",
+      toolCalls: [{
+        id: "tool-1",
+        type: "function",
+        function: {
+          name: "filesystem_read",
+          arguments: "{\"path\":\"large.txt\"}"
+        }
+      }]
+    });
+    sessionManager.appendInternalTranscript(sessionId, {
+      kind: "tool_result",
+      llmVisible: true,
+      timestampMs: 3,
+      toolCallId: "tool-1",
+      toolName: "filesystem_read",
+      content: "raw".repeat(1000),
+      observation: {
+        contentHash: "hash-1",
+        inputTokensEstimate: 1200,
+        summary: "读取 large.txt 得到大量内容",
+        retention: "summary",
+        replayContent: "{\"compacted\":true}",
+        replaySafe: true,
+        refetchable: true,
+        pinned: false
+      }
+    });
+    appendSimpleHistory(sessionManager, sessionId, "assistant", "new answer", 4);
+
+    const snapshot = sessionManager.getHistoryForCompressionByTokens(sessionId, 500, 20);
+
+    assert.ok(snapshot);
+    assert.ok(snapshot.tokenBudget.toolReplayTokens >= 1200);
+    assert.equal(snapshot.toolObservationsToCompress.length, 1);
+    assert.equal(snapshot.toolObservationsToCompress[0]?.toolCallId, "tool-1");
   });
 
   test("forceCompact accepts explicit zero retained history items", async () => {

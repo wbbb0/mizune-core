@@ -698,6 +698,8 @@ export class SessionManager {
     toolObservationsToCompress: ToolObservationSummary[];
     transcriptStartIndexToKeep: number;
     estimatedTotalTokens: number;
+    totalTokens: number;
+    tokenBudget: import("./promptTokenBudget.ts").PromptTokenBudgetEstimate;
   } | null {
     const session = this.requireSession(sessionId);
     return this.historyService.getHistoryForCompressionByTokens(

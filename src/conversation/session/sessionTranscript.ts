@@ -4,10 +4,9 @@ import { parseProtocolLine } from "#utils/structuredEnvelope.ts";
 import { formatStructuredMediaReference, projectTranscriptMessageItemToHistoryMessage } from "./historyContext.ts";
 import type { ToolObservationSummary } from "./toolObservation.ts";
 import { getCachedOrEstimatedInputTokens } from "./transcriptTokenStats.ts";
-import { estimateTokens } from "./tokenEstimator.ts";
+import { estimatePromptTokenBudget, type PromptTokenBudgetEstimate } from "./promptTokenBudget.ts";
 export { estimateTokens } from "./tokenEstimator.ts";
 import type {
-  InternalAssistantToolCallItem,
   InternalToolResultItem,
   InternalTranscriptItem,
   TranscriptSessionModeSwitchItem,
@@ -277,34 +276,28 @@ export function projectCompressionHistorySnapshotByTokens(
   toolObservationsToCompress: ToolObservationSummary[];
   transcriptStartIndexToKeep: number;
   estimatedTotalTokens: number;
+  totalTokens: number;
+  tokenBudget: PromptTokenBudgetEstimate;
 } | null {
   const llmVisibleItems = session.internalTranscript.filter(isTranscriptLlmVisible);
-  const recentMessages = llmVisibleItems
-    .filter(isTranscriptHistoryMessage)
-    .map((item) => projectTranscriptMessageItemToHistoryMessage(item));
+  const historyItems = llmVisibleItems.filter(isTranscriptHistoryMessage);
+  const recentMessages = historyItems.map((item) => projectTranscriptMessageItemToHistoryMessage(item));
 
   if (recentMessages.length === 0) {
     return null;
   }
 
-  const weights = config.conversation.historyCompression.tokenEstimation;
-  // Include history summary tokens in the heuristic (it's part of every LLM request
-  // but was previously excluded, causing underestimation when summaries grow large).
-  const summaryTokens = session.historySummary ? estimateTokens(session.historySummary, weights) : 0;
-  const messageTokens = llmVisibleItems
-    .filter(isTranscriptHistoryMessage)
-    .reduce((sum, item) => sum + getCachedOrEstimatedInputTokens(item, config), 0);
-  // Include tool call and result tokens — these can be significant in tool-heavy sessions
-  // (shell output, file contents, browser snapshots, etc.) and were previously unaccounted.
-  // This only affects the trigger-side heuristic; the retain split still operates on messages.
-  const toolCallTokens = llmVisibleItems
-    .filter((item): item is InternalAssistantToolCallItem => item.kind === "assistant_tool_call")
-    .reduce((sum, item) => sum + getCachedOrEstimatedInputTokens(item, config), 0);
-  const toolResultTokens = llmVisibleItems
-    .filter((item): item is InternalToolResultItem => item.kind === "tool_result")
-    .reduce((sum, item) => sum + getCachedOrEstimatedInputTokens(item, config), 0);
-  const estimatedTotalTokens = reportedInputTokens ?? (summaryTokens + messageTokens + toolCallTokens + toolResultTokens);
-  if (estimatedTotalTokens <= triggerTokens) {
+  const tokenBudget = estimatePromptTokenBudget({
+    session,
+    config,
+    reportedInputTokens,
+    retainTokens
+  });
+  if (tokenBudget.totalTokens <= triggerTokens) {
+    return null;
+  }
+  const minReclaimableTokens = Math.min(2000, Math.floor(triggerTokens * 0.02));
+  if (tokenBudget.reclaimableTranscriptTokens < minReclaimableTokens) {
     return null;
   }
 
@@ -313,9 +306,8 @@ export function projectCompressionHistorySnapshotByTokens(
   let retainedTokens = 0;
   let retainedMessageCount = 0;
   for (let i = recentMessages.length - 1; i >= 1; i -= 1) {
-    const msg = recentMessages[i]!;
-    const msgTokens = estimateTokens(msg.content, weights);
-    if (retainedTokens + msgTokens > retainTokens) {
+    const msgTokens = getCachedOrEstimatedInputTokens(historyItems[i]!, config);
+    if (retainedMessageCount > 0 && retainedTokens + msgTokens > retainTokens) {
       break;
     }
     retainedTokens += msgTokens;
@@ -327,7 +319,12 @@ export function projectCompressionHistorySnapshotByTokens(
   if (!snapshot) {
     return null;
   }
-  return { ...snapshot, estimatedTotalTokens };
+  return {
+    ...snapshot,
+    estimatedTotalTokens: tokenBudget.estimatedTotalTokens,
+    totalTokens: tokenBudget.totalTokens,
+    tokenBudget
+  };
 }
 
 function buildCompressionSnapshot(

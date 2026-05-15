@@ -5,6 +5,7 @@ import type { LlmClient } from "#llm/llmClient.ts";
 import { buildHistorySummaryPrompt } from "#llm/prompts/history-summary.prompt.ts";
 import { getModelRefsForRole, getRoutingPresetTokenLimits } from "#llm/shared/modelRouting.ts";
 import type { SessionCompressionAccess } from "#conversation/session/sessionCapabilities.ts";
+import { resolvePromptBudgetReportedInputTokens } from "#conversation/session/promptTokenBudget.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import type { ToolObservationSummary } from "#conversation/session/toolObservation.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
@@ -25,6 +26,14 @@ interface CompressionLogContext {
   retainTokens?: number | undefined;
   reportedInputTokens?: number | undefined;
   estimatedTotalTokens?: number | undefined;
+  totalTokens?: number | undefined;
+  tokenBudgetSource?: string | undefined;
+  summaryTokens?: number | undefined;
+  historyMessageTokens?: number | undefined;
+  toolReplayTokens?: number | undefined;
+  fixedOverheadTokens?: number | undefined;
+  historyContextTokens?: number | undefined;
+  reclaimableTranscriptTokens?: number | undefined;
   triggerMessageCount?: number | undefined;
   retainMessageCount?: number | undefined;
 }
@@ -103,7 +112,10 @@ export class HistoryCompressor {
       // Use provider-reported input tokens from the last request as a more accurate
       // trigger signal when available, falling back to the heuristic estimate otherwise.
       const lastUsage = this.sessionManager.getLastLlmUsage(sessionId);
-      const reportedInputTokens = lastUsage?.inputTokens ?? undefined;
+      const reportedInputTokens = resolvePromptBudgetReportedInputTokens({
+        inputTokens: lastUsage?.inputTokens,
+        requestCount: lastUsage?.requestCount
+      });
       const skipKey = [
         options.expectedHistoryRevision,
         lastUsage?.capturedAt ?? "no_usage",
@@ -136,7 +148,15 @@ export class HistoryCompressor {
       this.skippedTokenChecks.delete(sessionId);
       return await this.runCompression(sessionId, snapshot, options.expectedHistoryRevision, false, {
         ...logContext,
-        estimatedTotalTokens: snapshot.estimatedTotalTokens
+        estimatedTotalTokens: snapshot.estimatedTotalTokens,
+        totalTokens: snapshot.totalTokens,
+        tokenBudgetSource: snapshot.tokenBudget.source,
+        summaryTokens: snapshot.tokenBudget.summaryTokens,
+        historyMessageTokens: snapshot.tokenBudget.historyMessageTokens,
+        toolReplayTokens: snapshot.tokenBudget.toolReplayTokens,
+        fixedOverheadTokens: snapshot.tokenBudget.fixedOverheadTokens,
+        historyContextTokens: snapshot.tokenBudget.historyContextTokens,
+        reclaimableTranscriptTokens: snapshot.tokenBudget.reclaimableTranscriptTokens
       });
     } finally {
       this.inFlightSessions.delete(sessionId);

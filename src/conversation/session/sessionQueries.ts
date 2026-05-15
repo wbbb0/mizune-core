@@ -67,10 +67,12 @@ export function getHistoryForCompressionSnapshotByTokens(
 ): {
   historySummary: string | null;
   messagesToCompress: ReturnType<typeof projectLlmVisibleHistoryFromTranscript>;
-  retainedMessages: ReturnType<typeof projectLlmVisibleHistoryFromTranscript>;
-  transcriptStartIndexToKeep: number;
-  estimatedTotalTokens: number;
-} | null {
+    retainedMessages: ReturnType<typeof projectLlmVisibleHistoryFromTranscript>;
+    transcriptStartIndexToKeep: number;
+    estimatedTotalTokens: number;
+    totalTokens: number;
+    tokenBudget: import("./promptTokenBudget.ts").PromptTokenBudgetEstimate;
+  } | null {
   return projectCompressionHistorySnapshotByTokens(session, config, triggerTokens, retainTokens, reportedInputTokens);
 }
 

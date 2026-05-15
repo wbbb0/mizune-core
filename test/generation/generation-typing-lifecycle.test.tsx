@@ -19,6 +19,24 @@ function createUsage() {
   };
 }
 
+type ProviderCallUsageEvent = {
+  iteration: number;
+  phase: "tool_call" | "final_response" | "terminal_response" | "fallback_response";
+  usage: {
+    inputTokens: number | null;
+    outputTokens: number | null;
+    totalTokens: number | null;
+    cachedTokens: number | null;
+    reasoningTokens: number | null;
+    requestCount: number;
+    providerReported: boolean;
+    modelRef: string | null;
+    model: string | null;
+  };
+  text: string;
+  reasoningContent: string;
+};
+
 function createBatchMessage() {
   return {
     chatType: "private" as const,
@@ -89,6 +107,7 @@ function createExecutorHarness(options?: {
         };
       }>;
     }) => Promise<void>;
+    onProviderCallUsage?: (event: ProviderCallUsageEvent) => Promise<void> | void;
     abortSignal?: AbortSignal;
     onAssistantToolCalls?: (message: {
       role: "assistant";
@@ -155,7 +174,8 @@ function createExecutorHarness(options?: {
         abortSignal?: AbortSignal;
         onReasoningDelta?: (delta: string) => void;
         onTextDelta?: (delta: string) => Promise<void>;
-        onProviderResponseComplete?: (event: {
+        onProviderCallUsage?: (event: ProviderCallUsageEvent) => Promise<void> | void;
+	        onProviderResponseComplete?: (event: {
           phase: "tool_call" | "final_response" | "fallback_response";
           text: string;
           toolCalls: Array<{
@@ -818,6 +838,56 @@ function createExecutorHarness(options?: {
     await waitForEvents(harness.events, 2);
     assert.deepEqual(harness.events, ["send:稍等", "send:查完了。"]);
 
+    harness.resolveDrain();
+    await harness.runPromise;
+  });
+
+  test("provider call usage updates session state during tool-loop generation", async () => {
+    let usageRecorded!: () => void;
+    const usageRecordedPromise = new Promise<void>((resolve) => {
+      usageRecorded = resolve;
+    });
+    let continueGeneration!: () => void;
+    const continueGenerationPromise = new Promise<void>((resolve) => {
+      continueGeneration = resolve;
+    });
+
+    const harness = createExecutorHarness({
+      sessionSource: "web",
+      customGenerate: async (input) => {
+        await input.onProviderCallUsage?.({
+          iteration: 0,
+          phase: "tool_call",
+          usage: {
+            inputTokens: 120,
+            outputTokens: 10,
+            totalTokens: 130,
+            cachedTokens: 0,
+            reasoningTokens: 2,
+            requestCount: 1,
+            providerReported: true,
+            modelRef: "main",
+            model: "fake"
+          },
+          text: "我先查一下",
+          reasoningContent: ""
+        });
+        usageRecorded();
+        await continueGenerationPromise;
+        await input.onTextDelta?.("查完了。");
+        return {
+          text: "查完了。",
+          reasoningContent: "",
+          usage: createUsage()
+        };
+      }
+    });
+
+    await usageRecordedPromise;
+    assert.equal(harness.sessionManager.getSession(harness.sessionId).lastLlmUsage?.inputTokens, 120);
+    assert.equal(harness.sessionManager.getSession(harness.sessionId).lastLlmUsage?.outputTokens, 10);
+
+    continueGeneration();
     harness.resolveDrain();
     await harness.runPromise;
   });
