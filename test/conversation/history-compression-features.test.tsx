@@ -115,6 +115,10 @@ function appendSimpleHistory(
     const systemPrompt = String(captured[0]?.content ?? "");
     const userPrompt = String(captured[1]?.content ?? "");
     assert.match(systemPrompt, /必须保留：稳定/);
+    assert.match(systemPrompt, /未完成\/等待触发事项必须继续保留/);
+    assert.match(systemPrompt, /条件触发承诺/);
+    assert.match(systemPrompt, /第一人称工作状态与记忆/);
+    assert.match(systemPrompt, /工具\/资源线索/);
     assert.match(systemPrompt, /拒绝流水账式的复述/);
     assert.match(systemPrompt, /优先控制在 8~12 句/);
     assert.match(userPrompt, /summary_context/);
