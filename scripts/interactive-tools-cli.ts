@@ -688,18 +688,17 @@ function extractErrorField(value: unknown): string | null {
   if (typeof value !== "object" || value == null) {
     return null;
   }
-  if ((value as { ok?: unknown }).ok === false) {
-    const message = (value as { message?: unknown }).message;
-    return typeof message === "string" && message.trim() ? message : "tool result returned ok=false";
+  if ("error" in value) {
+    const error = (value as { error?: unknown }).error;
+    if (error != null && error !== false && error !== "") {
+      return typeof error === "string" ? error : JSON.stringify(error);
+    }
   }
-  if (!("error" in value)) {
+  if ((value as { ok?: unknown }).ok !== false) {
     return null;
   }
-  const error = (value as { error?: unknown }).error;
-  if (error == null || error === false || error === "") {
-    return null;
-  }
-  return typeof error === "string" ? error : JSON.stringify(error);
+  const message = (value as { message?: unknown }).message;
+  return typeof message === "string" && message.trim() ? message : "tool result returned ok=false";
 }
 
 function printBanner(services: AppServiceBootstrap, state: CliState, args: CliArgs): void {
