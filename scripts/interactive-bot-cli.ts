@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { readFile } from "node:fs/promises";
 import type { AppConfig } from "#config/config.ts";
 import { createAppRuntime } from "#app/runtime/appRuntime.ts";
 import type { AppServiceBootstrap } from "#app/bootstrap/appServiceBootstrap.ts";
@@ -7,7 +8,8 @@ import { FakeOneBotClient, type FakeOneBotSentMessage } from "#testing/fakeOneBo
 import {
   createInteractiveConfig,
   prepareInteractiveRuntime,
-  resolveActiveInternalUserId
+  resolveActiveInternalUserId,
+  suppressProcessWarnings
 } from "./interactive-runtime-support.ts";
 
 interface CliArgs {
@@ -20,6 +22,8 @@ interface CliArgs {
   senderName: string;
   selfId: string;
   atSelf: boolean;
+  quiet: boolean;
+  inputFile?: string;
 }
 
 interface CliState {
@@ -36,6 +40,9 @@ type RuntimeWithServices = Awaited<ReturnType<typeof createAppRuntime>> & {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  if (args.quiet) {
+    suppressProcessWarnings();
+  }
   if (args.instance && !process.env.CONFIG_INSTANCE) {
     process.env.CONFIG_INSTANCE = args.instance;
   }
@@ -47,9 +54,11 @@ async function main(): Promise<void> {
     selfId: args.selfId,
     selfName: "CLI Bot"
   });
-  fakeOneBot.on("sent", (message: FakeOneBotSentMessage) => {
-    output.write(`\n[bot -> ${message.groupId ? `group:${message.groupId}` : `user:${message.userId ?? ""}`}] ${message.text}\n> `);
-  });
+  if (!args.quiet) {
+    fakeOneBot.on("sent", (message: FakeOneBotSentMessage) => {
+      output.write(`\n[bot -> ${message.groupId ? `group:${message.groupId}` : `user:${message.userId ?? ""}`}] ${message.text}\n> `);
+    });
+  }
 
   const runtime = await createAppRuntime({
     oneBotClient: fakeOneBot.asOneBotClient(),
@@ -67,7 +76,9 @@ async function main(): Promise<void> {
   };
   await prepareInteractiveRuntime(runtime.services, state);
 
-  printBanner(runtime.services.config, state);
+  if (!args.quiet) {
+    printBanner(runtime.services.config, state);
+  }
   const rl = createInterface({ input, output });
   const processLine = async (line: string): Promise<boolean> => {
     const trimmed = line.trim();
@@ -95,7 +106,15 @@ async function main(): Promise<void> {
     return true;
   };
   try {
-    if (input.isTTY) {
+    if (args.inputFile) {
+      const lines = (await readFile(args.inputFile, "utf8")).split(/\r?\n/u);
+      for (const line of lines) {
+        const shouldContinue = await processLine(line);
+        if (!shouldContinue) {
+          break;
+        }
+      }
+    } else if (input.isTTY) {
       while (true) {
         const line = await questionOrNull(rl);
         if (line == null) {
@@ -241,7 +260,8 @@ function printHelp(): void {
     "/retrieve <query>       以当前用户身份执行 context 召回",
     "/rebuild-context        补齐当前用户 embedding 并重建索引",
     "/wait [ms]              等待会话处理完成，默认 30000ms",
-    "/quit                   退出"
+    "/quit                   退出",
+    "启动参数：--quiet 减少日志和提示；--input-file <file> 按行执行输入"
   ].join("\n") + "\n");
 }
 
@@ -339,7 +359,8 @@ function parseArgs(argv: string[]): CliArgs {
     userId: "10001",
     senderName: "CLI User",
     selfId: "10000",
-    atSelf: true
+    atSelf: true,
+    quiet: false
   };
   for (let index = 0; index < argv.length; index += 1) {
     const current = argv[index];
@@ -392,6 +413,15 @@ function parseArgs(argv: string[]): CliArgs {
         break;
       case "--no-at":
         args.atSelf = false;
+        break;
+      case "--quiet":
+        args.quiet = true;
+        break;
+      case "--input-file":
+        if (next) {
+          args.inputFile = next;
+          index += 1;
+        }
         break;
       default:
         break;

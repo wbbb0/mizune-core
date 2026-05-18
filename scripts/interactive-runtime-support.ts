@@ -10,10 +10,15 @@ export interface InteractiveRuntimeConfigArgs {
   enableComfy?: boolean;
   enableSearch?: boolean;
   enableInternalApi?: boolean;
+  quiet?: boolean;
 }
 
 export interface InteractiveRuntimeActor {
   userId: string;
+}
+
+export function suppressProcessWarnings(): void {
+  process.emitWarning = (() => undefined) as typeof process.emitWarning;
 }
 
 export function createInteractiveConfig(config: AppConfig, args: InteractiveRuntimeConfigArgs): AppConfig {
@@ -24,6 +29,7 @@ export function createInteractiveConfig(config: AppConfig, args: InteractiveRunt
   return {
     ...config,
     dataDir,
+    ...(args.quiet === true ? { logLevel: "silent" } : {}),
     llm: {
       ...config.llm,
       ...(args.routingPreset ? { routingPreset: args.routingPreset } : {})

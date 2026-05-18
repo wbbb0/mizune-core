@@ -14,7 +14,8 @@ import { buildBuiltinToolContext, type BuiltinToolContext } from "#llm/tools/cor
 import {
   createInteractiveConfig,
   prepareInteractiveRuntime,
-  resolveActiveInternalUserId
+  resolveActiveInternalUserId,
+  suppressProcessWarnings
 } from "./interactive-runtime-support.ts";
 
 interface CliArgs {
@@ -34,6 +35,10 @@ interface CliArgs {
   tool?: string;
   argsJson?: string;
   argsFile?: string;
+  batchFile?: string;
+  parallel: number;
+  quiet: boolean;
+  json: boolean;
 }
 
 interface CliState {
@@ -44,12 +49,33 @@ interface CliState {
   includeDebugTools: boolean;
 }
 
+interface ToolInvocation {
+  id?: string;
+  tool: string;
+  args?: unknown;
+}
+
+interface ToolCallOutput {
+  ok: boolean;
+  tool: string;
+  id?: string;
+  durationMs: number;
+  result?: unknown;
+  error?: string;
+}
+
 type RuntimeWithServices = Awaited<ReturnType<typeof createAppRuntime>> & {
   services: AppServiceBootstrap;
 };
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  if (args.json) {
+    args.quiet = true;
+  }
+  if (args.quiet) {
+    suppressProcessWarnings();
+  }
   let singleInvocationArgs: unknown = null;
   if (args.tool) {
     try {
@@ -59,6 +85,24 @@ async function main(): Promise<void> {
       process.exitCode = 1;
       return;
     }
+  }
+  let batchInvocations: ToolInvocation[] = [];
+  let batchParallel = args.parallel;
+  if (args.batchFile) {
+    try {
+      const batch = await resolveBatchInvocations(args.batchFile);
+      batchInvocations = batch.calls;
+      batchParallel = args.parallel > 1 ? args.parallel : batch.parallel;
+    } catch (error: unknown) {
+      console.error(`批量调用解析失败：${error instanceof Error ? error.message : String(error)}`);
+      process.exitCode = 1;
+      return;
+    }
+  }
+  if (args.tool && args.batchFile) {
+    console.error("--tool 与 --batch 不能同时使用");
+    process.exitCode = 1;
+    return;
   }
   if (args.instance && !process.env.CONFIG_INSTANCE) {
     process.env.CONFIG_INSTANCE = args.instance;
@@ -71,9 +115,11 @@ async function main(): Promise<void> {
     selfId: args.selfId,
     selfName: "Tool CLI Bot"
   });
-  fakeOneBot.on("sent", (message: FakeOneBotSentMessage) => {
-    output.write(`\n[bot -> ${message.groupId ? `group:${message.groupId}` : `user:${message.userId ?? ""}`}] ${message.text}\n> `);
-  });
+  if (!args.quiet) {
+    fakeOneBot.on("sent", (message: FakeOneBotSentMessage) => {
+      output.write(`\n[bot -> ${message.groupId ? `group:${message.groupId}` : `user:${message.userId ?? ""}`}] ${message.text}\n> `);
+    });
+  }
 
   const runtime = await createAppRuntime({
     oneBotClient: fakeOneBot.asOneBotClient(),
@@ -86,7 +132,8 @@ async function main(): Promise<void> {
       enableShell: args.enableShell,
       enableBrowser: args.enableBrowser,
       enableComfy: args.enableComfy,
-      enableSearch: args.enableSearch
+      enableSearch: args.enableSearch,
+      quiet: args.quiet
     })
   }) as RuntimeWithServices;
 
@@ -94,7 +141,9 @@ async function main(): Promise<void> {
     runtime.services.scheduledJobStore,
     runtime.services.logger,
     async (job) => {
-      output.write(`\n[scheduled job fired] ${job.name}: ${job.instruction}\n> `);
+      if (!args.quiet) {
+        output.write(`\n[scheduled job fired] ${job.name}: ${job.instruction}\n> `);
+      }
     }
   );
 
@@ -111,11 +160,29 @@ async function main(): Promise<void> {
     ensureActiveSession(runtime.services, state);
 
     if (args.tool) {
-      await callTool(runtime.services, scheduler, state, args.tool, singleInvocationArgs);
+      const result = await callTool(runtime.services, scheduler, state, {
+        tool: args.tool,
+        args: singleInvocationArgs
+      });
+      writeToolOutput(result, args);
+      if (!result.ok) {
+        process.exitCode = 1;
+      }
       return;
     }
 
-    printBanner(runtime.services, state, args);
+    if (args.batchFile) {
+      const results = await runBatch(runtime.services, scheduler, state, batchInvocations, batchParallel);
+      writeBatchOutput(results, args);
+      if (results.some((result) => !result.ok)) {
+        process.exitCode = 1;
+      }
+      return;
+    }
+
+    if (!args.quiet) {
+      printBanner(runtime.services, state, args);
+    }
     await runRepl(runtime.services, scheduler, state);
   } finally {
     await scheduler.stop();
@@ -142,7 +209,7 @@ async function runRepl(
       output.write("无法解析输入。请输入 /call <tool> <json>，或一行 {\"tool\":\"...\",\"args\":{...}}。\n");
       return true;
     }
-    await callTool(services, scheduler, state, invocation.tool, invocation.args);
+    writeToolOutput(await callTool(services, scheduler, state, invocation), { json: false });
     return true;
   };
 
@@ -257,7 +324,7 @@ async function handleCliCommand(
         output.write(`${invocation.error}\n`);
         return true;
       }
-      await callTool(services, scheduler, state, invocation.tool, invocation.args);
+      writeToolOutput(await callTool(services, scheduler, state, invocation), { json: false });
       return true;
     }
     default:
@@ -271,29 +338,70 @@ async function callTool(
   services: AppServiceBootstrap,
   scheduler: Scheduler,
   state: CliState,
-  toolName: string,
-  args: unknown
-): Promise<void> {
-  const context = await buildToolContext(services, scheduler, state);
-  const executor = createBuiltinToolExecutor(context, {
-    includeDebugTools: state.includeDebugTools,
-    profileToolScope: null
-  });
-  const toolCall: LlmToolCall = {
-    id: `interactive_${Date.now()}`,
-    type: "function",
-    function: {
-      name: toolName,
-      arguments: JSON.stringify(args ?? {})
+  invocation: ToolInvocation
+): Promise<ToolCallOutput> {
+  const startedAt = Date.now();
+  try {
+    const context = await buildToolContext(services, scheduler, state);
+    const executor = createBuiltinToolExecutor(context, {
+      includeDebugTools: state.includeDebugTools,
+      profileToolScope: null
+    });
+    const toolCall: LlmToolCall = {
+      id: invocation.id ?? `interactive_${Date.now()}`,
+      type: "function",
+      function: {
+        name: invocation.tool,
+        arguments: JSON.stringify(invocation.args ?? {})
+      }
+    };
+    const result = await executor(toolCall, invocation.args ?? {});
+    return {
+      ok: true,
+      tool: invocation.tool,
+      ...(invocation.id ? { id: invocation.id } : {}),
+      durationMs: Date.now() - startedAt,
+      result: normalizeToolResult(result)
+    };
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      tool: invocation.tool,
+      ...(invocation.id ? { id: invocation.id } : {}),
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+async function runBatch(
+  services: AppServiceBootstrap,
+  scheduler: Scheduler,
+  state: CliState,
+  invocations: ToolInvocation[],
+  parallel: number
+): Promise<ToolCallOutput[]> {
+  const maxConcurrency = Math.max(1, Math.min(16, Math.floor(parallel)));
+  const results = new Array<ToolCallOutput>(invocations.length);
+  let nextIndex = 0;
+
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const invocation = invocations[index];
+      if (!invocation) {
+        return;
+      }
+      results[index] = await callTool(services, scheduler, state, invocation);
     }
   };
-  const startedAt = Date.now();
-  const result = await executor(toolCall, args ?? {});
-  output.write(JSON.stringify({
-    tool: toolName,
-    durationMs: Date.now() - startedAt,
-    result: normalizeToolResult(result)
-  }, null, 2) + "\n");
+
+  await Promise.all(Array.from(
+    { length: Math.min(maxConcurrency, invocations.length) },
+    () => worker()
+  ));
+  return results;
 }
 
 async function buildToolContext(
@@ -439,7 +547,7 @@ async function printSession(services: AppServiceBootstrap, state: CliState): Pro
   }, null, 2) + "\n");
 }
 
-function parseCallCommand(value: string): { ok: true; tool: string; args: unknown } | { ok: false; error: string } {
+function parseCallCommand(value: string): ({ ok: true } & ToolInvocation) | { ok: false; error: string } {
   const [tool, rest] = splitFirstWord(value);
   if (!tool) {
     return { ok: false, error: "用法：/call <toolName> <jsonArgs>" };
@@ -455,7 +563,7 @@ function parseCallCommand(value: string): { ok: true; tool: string; args: unknow
   }
 }
 
-function parseJsonInvocation(line: string): { tool: string; args: unknown } | null {
+function parseJsonInvocation(line: string): ToolInvocation | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(line) as unknown;
@@ -471,6 +579,7 @@ function parseJsonInvocation(line: string): { tool: string; args: unknown } | nu
     return null;
   }
   return {
+    ...(record.id != null ? { id: String(record.id) } : {}),
     tool,
     args: record.args ?? record.arguments ?? {}
   };
@@ -487,6 +596,57 @@ async function resolveInvocationArgs(args: CliArgs): Promise<unknown> {
     return JSON.parse(await readFile(args.argsFile, "utf8"));
   }
   return args.argsJson ? JSON.parse(args.argsJson) : {};
+}
+
+async function resolveBatchInvocations(path: string): Promise<{ calls: ToolInvocation[]; parallel: number }> {
+  const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+  const callsInput = Array.isArray(parsed)
+    ? parsed
+    : (typeof parsed === "object" && parsed != null && Array.isArray((parsed as { calls?: unknown }).calls)
+      ? (parsed as { calls: unknown[] }).calls
+      : null);
+  if (!callsInput) {
+    throw new Error("batch 文件必须是调用数组，或形如 {\"calls\":[...],\"parallel\":2}");
+  }
+  const calls = callsInput.map((item, index) => normalizeBatchInvocation(item, index));
+  const configuredParallel = typeof parsed === "object" && parsed != null && "parallel" in parsed
+    ? Number((parsed as { parallel: unknown }).parallel)
+    : 1;
+  return {
+    calls,
+    parallel: Number.isFinite(configuredParallel) && configuredParallel > 0 ? Math.floor(configuredParallel) : 1
+  };
+}
+
+function normalizeBatchInvocation(item: unknown, index: number): ToolInvocation {
+  if (typeof item !== "object" || item == null) {
+    throw new Error(`batch 调用 #${index + 1} 必须是对象`);
+  }
+  const record = item as { id?: unknown; tool?: unknown; name?: unknown; args?: unknown; arguments?: unknown };
+  const tool = String(record.tool ?? record.name ?? "").trim();
+  if (!tool) {
+    throw new Error(`batch 调用 #${index + 1} 缺少 tool`);
+  }
+  return {
+    ...(record.id != null ? { id: String(record.id) } : {}),
+    tool,
+    args: record.args ?? record.arguments ?? {}
+  };
+}
+
+function writeToolOutput(result: ToolCallOutput, options: Pick<CliArgs, "json"> | { json: boolean }): void {
+  output.write(JSON.stringify(result, null, options.json ? 0 : 2) + "\n");
+}
+
+function writeBatchOutput(results: ToolCallOutput[], options: Pick<CliArgs, "json"> | { json: boolean }): void {
+  const payload = {
+    ok: results.every((result) => result.ok),
+    total: results.length,
+    passed: results.filter((result) => result.ok).length,
+    failed: results.filter((result) => !result.ok).length,
+    results
+  };
+  output.write(JSON.stringify(payload, null, options.json ? 0 : 2) + "\n");
 }
 
 function normalizeToolResult(result: string | LlmToolExecutionResult): unknown {
@@ -535,7 +695,8 @@ function printHelp(): void {
     "/group <id>                     切换群聊会话",
     "/debug on|off                   是否暴露 debug 工具",
     "/quit                           退出",
-    "也可以输入一行 JSON：{\"tool\":\"get_persona\",\"args\":{}}"
+    "也可以输入一行 JSON：{\"tool\":\"get_persona\",\"args\":{}}",
+    "单次/批量：--tool <name> --args <json>，或 --batch <json-file> --parallel <n>"
   ].join("\n") + "\n");
 }
 
@@ -549,7 +710,10 @@ function parseArgs(argv: string[]): CliArgs {
     enableShell: false,
     enableBrowser: false,
     enableComfy: false,
-    enableSearch: false
+    enableSearch: false,
+    parallel: 1,
+    quiet: false,
+    json: false
   };
   for (let index = 0; index < argv.length; index += 1) {
     const current = argv[index];
@@ -632,6 +796,25 @@ function parseArgs(argv: string[]): CliArgs {
           args.argsFile = next;
           index += 1;
         }
+        break;
+      case "--batch":
+        if (next) {
+          args.batchFile = next;
+          index += 1;
+        }
+        break;
+      case "--parallel":
+        if (next) {
+          const parsed = Number.parseInt(next, 10);
+          args.parallel = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+          index += 1;
+        }
+        break;
+      case "--quiet":
+        args.quiet = true;
+        break;
+      case "--json":
+        args.json = true;
         break;
       default:
         break;

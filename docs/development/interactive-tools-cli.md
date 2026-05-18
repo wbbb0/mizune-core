@@ -39,6 +39,10 @@ CONFIG_INSTANCE=acc1 npm run test:interactive-tools -- --enable-comfy
 
 debug 工具默认不暴露。需要测试时使用 `--include-debug-tools`，或进入 CLI 后执行 `/debug on`。
 
+需要让输出更适合脚本解析时使用 `--quiet --json`。`--quiet` 会把测试运行时日志降到 silent，并隐藏 banner 与 fake OneBot 发送提示；`--json` 会隐含 `--quiet`，并把工具调用结果压成单行 JSON。
+
+通过 npm 脚本做机器解析时，建议使用 `npm --silent run test:interactive-tools -- ... --json`，避免 npm 自己的脚本提示混入 stdout。
+
 ## 可用命令
 
 - `/tools [filter]`：列出当前上下文可调用的工具。
@@ -88,6 +92,43 @@ CONFIG_INSTANCE=acc1 npm run test:interactive-tools -- \
 ```
 
 参数较大时可用 `--args-file <json-file>`。
+
+如果工具 handler 抛出异常，CLI 会返回结构化错误而不是退出 REPL。例如越界 `cwd`、不存在文件等错误会以 `{ "ok": false, "error": "..." }` 形式返回。单次调用遇到工具错误时进程退出码为 1。
+
+## 批量调用与并行
+
+`--batch <json-file>` 可以一次运行多条工具调用。文件可以是调用数组：
+
+```json
+[
+  { "id": "dice", "tool": "roll_dice", "args": { "expression": "1d6" } },
+  { "id": "modes", "tool": "list_session_modes", "args": {} }
+]
+```
+
+也可以写成带默认并发数的对象：
+
+```json
+{
+  "parallel": 2,
+  "calls": [
+    { "tool": "roll_dice", "args": { "expression": "1d6" } },
+    { "tool": "get_persona", "args": {} }
+  ]
+}
+```
+
+运行：
+
+```bash
+CONFIG_INSTANCE=acc1 npm --silent run test:interactive-tools -- \
+  --data-dir data/interactive-tools-batch \
+  --batch /tmp/tool-batch.json \
+  --parallel 2 \
+  --json
+```
+
+并行批量调用共享同一个测试运行时和同一个 session 上下文，只适合互相独立的读取或轻量验证。会修改共享状态的工具建议顺序执行，或为不同测试进程指定不同 `--data-dir`。
 
 ## 脚本化烟测
 
