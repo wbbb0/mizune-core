@@ -64,13 +64,13 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("遇到短信码、邮箱码、TOTP 或二次验证时，在当前会话向用户索取；验证码只用于当前步骤，不写入长期资料。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["terminal_list", "terminal_run", "terminal_start", "terminal_read", "terminal_write", "terminal_key", "terminal_signal", "terminal_stop"])) {
+  if (hasAnyTool(visibleToolNames, ["terminal_list", "terminal_run", "terminal_start", "terminal_read", "terminal_write", "terminal_send_lines", "terminal_key", "terminal_signal", "terminal_stop"])) {
     lines.push("需要继续终端任务时，先 terminal_list 看现有 terminal resource，再复用已有 resource_id；只有不存在合适资源时才新开。");
     if (visibleToolNames.has("terminal_run")) {
       lines.push("短命令用 terminal_run；若 timeout_ms 超时，命令会自动转入后台并返回 resource_id，系统会在完成或可能等待输入时再触发你继续处理。");
     }
     if (visibleToolNames.has("terminal_start")) {
-      lines.push("长任务、watch/dev server 或交互程序用 terminal_start；发送文本用 terminal_write，发送 Enter/Tab/Ctrl-C/Ctrl-D/方向键等用 terminal_key，需要 SIGINT/SIGTERM/SIGKILL 时用 terminal_signal。");
+      lines.push("长任务、watch/dev server 或交互程序用 terminal_start；发送单段文本用 terminal_write，多条控制台命令用 terminal_send_lines，发送 Enter/Tab/Ctrl-C/Ctrl-D/方向键等用 terminal_key，需要 SIGINT/SIGTERM/SIGKILL 时用 terminal_signal。");
       lines.push("后台 terminal 完成触发时，先根据触发里携带的输出判断结果；等待输入触发只是“可能需要输入”，不确定时先问用户。");
     }
     if (visibleToolNames.has("terminal_key")) {

@@ -62,6 +62,7 @@ interface ToolCallOutput {
   durationMs: number;
   result?: unknown;
   error?: string;
+  errorKind?: "exception" | "tool_result";
 }
 
 type RuntimeWithServices = Awaited<ReturnType<typeof createAppRuntime>> & {
@@ -356,12 +357,15 @@ async function callTool(
       }
     };
     const result = await executor(toolCall, invocation.args ?? {});
+    const normalizedResult = normalizeToolResult(result);
+    const toolResultError = extractToolResultError(normalizedResult);
     return {
-      ok: true,
+      ok: toolResultError == null,
       tool: invocation.tool,
       ...(invocation.id ? { id: invocation.id } : {}),
       durationMs: Date.now() - startedAt,
-      result: normalizeToolResult(result)
+      result: normalizedResult,
+      ...(toolResultError ? { error: toolResultError, errorKind: "tool_result" as const } : {})
     };
   } catch (error: unknown) {
     return {
@@ -369,7 +373,8 @@ async function callTool(
       tool: invocation.tool,
       ...(invocation.id ? { id: invocation.id } : {}),
       durationMs: Date.now() - startedAt,
-      error: error instanceof Error ? error.message : String(error)
+      error: error instanceof Error ? error.message : String(error),
+      errorKind: "exception"
     };
   }
 }
@@ -666,6 +671,35 @@ function parseJsonIfPossible(value: string): unknown {
   } catch {
     return value;
   }
+}
+
+function extractToolResultError(result: unknown): string | null {
+  const direct = extractErrorField(result);
+  if (direct) {
+    return direct;
+  }
+  if (typeof result === "object" && result != null && "content" in result) {
+    return extractErrorField((result as { content?: unknown }).content);
+  }
+  return null;
+}
+
+function extractErrorField(value: unknown): string | null {
+  if (typeof value !== "object" || value == null) {
+    return null;
+  }
+  if ((value as { ok?: unknown }).ok === false) {
+    const message = (value as { message?: unknown }).message;
+    return typeof message === "string" && message.trim() ? message : "tool result returned ok=false";
+  }
+  if (!("error" in value)) {
+    return null;
+  }
+  const error = (value as { error?: unknown }).error;
+  if (error == null || error === false || error === "") {
+    return null;
+  }
+  return typeof error === "string" ? error : JSON.stringify(error);
 }
 
 function printBanner(services: AppServiceBootstrap, state: CliState, args: CliArgs): void {

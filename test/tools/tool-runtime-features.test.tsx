@@ -190,6 +190,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     assert.ok(names.includes("terminal_start"));
     assert.ok(names.includes("terminal_read"));
     assert.ok(names.includes("terminal_write"));
+    assert.ok(names.includes("terminal_send_lines"));
     assert.ok(names.includes("terminal_key"));
     assert.ok(names.includes("terminal_signal"));
     assert.ok(names.includes("terminal_stop"));
@@ -320,6 +321,18 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       { required: ["resource_id", "key"] },
       { required: ["resource_id", "keys"] }
     ]);
+  });
+
+  test("terminal_send_lines schema is available for interactive consoles", async () => {
+    const config = createForwardFeatureConfig();
+    config.shell.enabled = true;
+    const descriptor = getBuiltinTools("owner", config)
+      .find((tool) => tool.function.name === "terminal_send_lines");
+    assert.ok(descriptor);
+    assert.match(descriptor.function.description, /Minecraft/);
+    const properties = descriptor.function.parameters?.properties as any;
+    assert.equal(properties.lines.maxItems, 50);
+    assert.deepEqual(descriptor.function.parameters?.required, ["resource_id", "lines"]);
   });
 
   test("terminal_run schema rejects non-positive timeout values", async () => {
@@ -3552,6 +3565,48 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     });
   });
 
+  test("filesystem_patch supports exact old_text replacement", async () => {
+    const result = await localFileToolHandlers.filesystem_patch!(
+      { id: "tool_filesystem_patch_replace", type: "function", function: { name: "filesystem_patch", arguments: "{}" } },
+      { path: "notes.txt", old_text: "old line", new_text: "new line" },
+      {
+        localFileService: {
+          async replaceFileText(path: string, oldText: string, newText: string) {
+            assert.equal(path, "notes.txt");
+            assert.equal(oldText, "old line");
+            assert.equal(newText, "new line");
+            return { path, updatedAtMs: 123, hunksApplied: 1 };
+          }
+        }
+      } as any
+    );
+
+    assert.deepEqual(JSON.parse(String(result)), {
+      path: "notes.txt",
+      updatedAtMs: 123,
+      hunksApplied: 1
+    });
+  });
+
+  test("filesystem_patch exact replacement accepts empty new_text", async () => {
+    const result = await localFileToolHandlers.filesystem_patch!(
+      { id: "tool_filesystem_patch_delete_text", type: "function", function: { name: "filesystem_patch", arguments: "{}" } },
+      { path: "notes.txt", old_text: "remove me", new_text: "" },
+      {
+        localFileService: {
+          async replaceFileText(path: string, oldText: string, newText: string) {
+            assert.equal(path, "notes.txt");
+            assert.equal(oldText, "remove me");
+            assert.equal(newText, "");
+            return { path, updatedAtMs: 124, hunksApplied: 1 };
+          }
+        }
+      } as any
+    );
+
+    assert.equal(JSON.parse(String(result)).hunksApplied, 1);
+  });
+
   test("filesystem_list single-file result includes a local file handle", async () => {
     const result = await localFileToolHandlers.filesystem_list!(
       { id: "tool_filesystem_list_handle", type: "function", function: { name: "filesystem_list", arguments: "{\"path\":\"docs/readme.md\"}" } },
@@ -3712,6 +3767,87 @@ function policyShape(policy: any) {
 
     assert.deepEqual(interactCalls[0], { resourceId: "res_shell_1", input: "\u0003" });
     assert.deepEqual(signalCalls[0], { resourceId: "res_shell_1", signal: "SIGKILL" });
+  });
+
+  test("terminal_send_lines sends console commands one line at a time", async () => {
+    const interactCalls: any[] = [];
+    const result = await shellToolHandlers.terminal_send_lines!(
+      { id: "tool_terminal_send_lines_1", type: "function", function: { name: "terminal_send_lines", arguments: "{}" } },
+      { resource_id: "res_shell_1", lines: ["say first", "say second"] },
+      {
+        relationship: "owner",
+        config: { shell: { maxOutputChars: 4000 } },
+        shellRuntime: {
+          async interact(resourceId: string, input: string) {
+            interactCalls.push({ resourceId, input });
+            return {
+              output: `ok:${input}`,
+              outputTruncated: false,
+              session: { id: resourceId, status: "running", outputTail: "" }
+            };
+          }
+        }
+      } as any
+    );
+
+    const payload = JSON.parse(String(result));
+    assert.equal(payload.ok, true);
+    assert.equal(payload.lineCount, 2);
+    assert.equal(payload.output, "ok:say first\nok:say second\n");
+    assert.deepEqual(interactCalls, [
+      { resourceId: "res_shell_1", input: "say first\n" },
+      { resourceId: "res_shell_1", input: "say second\n" }
+    ]);
+  });
+
+  test("terminal_send_lines caps aggregated output and stops after closed sessions", async () => {
+    const interactCalls: any[] = [];
+    const result = await shellToolHandlers.terminal_send_lines!(
+      { id: "tool_terminal_send_lines_2", type: "function", function: { name: "terminal_send_lines", arguments: "{}" } },
+      { resource_id: "res_shell_1", lines: ["first", "second"] },
+      {
+        relationship: "owner",
+        config: { shell: { maxOutputChars: 6 } },
+        shellRuntime: {
+          async interact(resourceId: string, input: string) {
+            interactCalls.push({ resourceId, input });
+            return {
+              output: input === "first\n" ? "12345" : "67890",
+              outputTruncated: false,
+              session: { id: resourceId, status: input === "first\n" ? "closed" : "running", outputTail: "" }
+            };
+          }
+        }
+      } as any
+    );
+
+    const payload = JSON.parse(String(result));
+    assert.equal(payload.lineCount, 1);
+    assert.equal(payload.requestedLineCount, 2);
+    assert.equal(payload.output, "12345");
+    assert.equal(payload.outputTruncated, false);
+    assert.deepEqual(interactCalls, [{ resourceId: "res_shell_1", input: "first\n" }]);
+
+    const longResult = await shellToolHandlers.terminal_send_lines!(
+      { id: "tool_terminal_send_lines_3", type: "function", function: { name: "terminal_send_lines", arguments: "{}" } },
+      { resource_id: "res_shell_1", lines: ["first", "second"] },
+      {
+        relationship: "owner",
+        config: { shell: { maxOutputChars: 6 } },
+        shellRuntime: {
+          async interact(resourceId: string, input: string) {
+            return {
+              output: input === "first\n" ? "12345" : "67890",
+              outputTruncated: false,
+              session: { id: resourceId, status: "running", outputTail: "" }
+            };
+          }
+        }
+      } as any
+    );
+    const longPayload = JSON.parse(String(longResult));
+    assert.equal(longPayload.output, "567890");
+    assert.equal(longPayload.outputTruncated, true);
   });
 
   test("terminal_key sends semantic tmux key queues in order", async () => {

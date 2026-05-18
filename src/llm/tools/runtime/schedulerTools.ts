@@ -136,7 +136,17 @@ export const schedulerToolHandlers: Record<string, ToolHandler> = {
       await context.scheduledJobStore.remove(created.id);
       throw error;
     }
-    return JSON.stringify(created);
+    const scheduled = (await context.scheduledJobStore.list()).find((job) => job.id === created.id) ?? created;
+    return JSON.stringify({
+      ok: true,
+      id: scheduled.id,
+      name: scheduled.name,
+      enabled: scheduled.enabled,
+      schedule: scheduled.schedule,
+      targetSessionIds: scheduled.targets.map((target) => target.sessionId),
+      nextRunAtMs: scheduled.state.nextRunAtMs,
+      nextRunAtIso: scheduled.state.nextRunAtMs ? new Date(scheduled.state.nextRunAtMs).toISOString() : null
+    });
   },
   async manage_scheduled_job(_toolCall, args, context) {
     const denied = requireOwner(context.relationship, "Only owner can manage scheduled jobs");

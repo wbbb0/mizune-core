@@ -376,6 +376,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
           onMessage,
           onRequest,
           internalApi,
+          browserService,
           schedulerStarted,
           scheduler,
           contextMaintenanceService,

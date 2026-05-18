@@ -62,6 +62,7 @@ const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "terminal_start",
   "terminal_read",
   "terminal_write",
+  "terminal_send_lines",
   "terminal_key",
   "terminal_signal",
   "terminal_stop"

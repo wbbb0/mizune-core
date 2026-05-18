@@ -25,6 +25,10 @@ export function createBrowserRenderResult(
     elements: [],
     lineStart: 1,
     lineEnd: 1,
+    totalLines: 1,
+    totalLinks: 0,
+    totalElements: 0,
+    nextLine: null,
     truncated: false,
     ...overrides
   };

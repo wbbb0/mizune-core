@@ -93,7 +93,7 @@ CONFIG_INSTANCE=acc1 npm run test:interactive-tools -- \
 
 参数较大时可用 `--args-file <json-file>`。
 
-如果工具 handler 抛出异常，CLI 会返回结构化错误而不是退出 REPL。例如越界 `cwd`、不存在文件等错误会以 `{ "ok": false, "error": "..." }` 形式返回。单次调用遇到工具错误时进程退出码为 1。
+如果工具 handler 抛出异常，CLI 会返回结构化错误而不是退出 REPL。例如越界 `cwd`、不存在文件等错误会以 `{ "ok": false, "error": "...", "errorKind": "exception" }` 形式返回。工具正常返回但结果内包含业务错误 `{ "error": "..." }`，或返回 `{ "ok": false, "message": "..." }` 时，CLI 也会把本次调用标记为失败，并设置 `errorKind: "tool_result"`。单次调用遇到任一工具错误时进程退出码为 1。
 
 ## 批量调用与并行
 
@@ -128,7 +128,7 @@ CONFIG_INSTANCE=acc1 npm --silent run test:interactive-tools -- \
   --json
 ```
 
-并行批量调用共享同一个测试运行时和同一个 session 上下文，只适合互相独立的读取或轻量验证。会修改共享状态的工具建议顺序执行，或为不同测试进程指定不同 `--data-dir`。
+批量输出的 `ok/passed/failed` 会同时统计异常和工具业务错误，适合 CI 或 agent 过程测试直接判断失败项。并行批量调用共享同一个测试运行时和同一个 session 上下文，只适合互相独立的读取或轻量验证。会修改共享状态的工具建议顺序执行，或为不同测试进程指定不同 `--data-dir`。
 
 ## 脚本化烟测
 

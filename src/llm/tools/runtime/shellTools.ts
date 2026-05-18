@@ -1,4 +1,4 @@
-import type { ShellRunParams, ShellRunResult } from "#services/shell/types.ts";
+import type { ShellInteractionResult, ShellRunParams, ShellRunResult, ShellSession } from "#services/shell/types.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
 import { getBooleanArg, getNumberArg, getStringArg, getStringArrayArg } from "../core/toolArgHelpers.ts";
@@ -130,7 +130,7 @@ export const shellToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "terminal_write",
-        description: "向运行中的 terminal resource 发送原始文本输入。命令行输入通常需要自己在 input 末尾包含换行。",
+        description: "向运行中的 terminal resource 发送原始文本输入。命令行输入通常需要自己在 input 末尾包含换行。对 Minecraft 服务器后台等交互式控制台一次发送多条命令时，优先用 terminal_send_lines，避免多行文本被目标程序当成一行粘连。",
         parameters: {
           type: "object",
           properties: {
@@ -138,6 +138,33 @@ export const shellToolDescriptors: ToolDescriptor[] = [
             input: { type: "string", description: "要发送的文本，如命令后接 \\n" }
           },
           required: ["resource_id", "input"],
+          additionalProperties: false
+        }
+      }
+    },
+    isEnabled: isShellToolEnabled,
+    resultObservation: terminalPolicy()
+  },
+  {
+    ownerOnly: true,
+    definition: {
+      type: "function",
+      function: {
+        name: "terminal_send_lines",
+        description: "向运行中的 terminal resource 逐行发送命令，每一行会分别追加换行并等待终端处理。适合 Minecraft 服务器后台等需要多条控制台命令顺序执行的场景；空行会被跳过。",
+        parameters: {
+          type: "object",
+          properties: {
+            resource_id: { type: "string" },
+            lines: {
+              type: "array",
+              items: { type: "string" },
+              minItems: 1,
+              maxItems: 50,
+              description: "要逐条发送的命令行，不需要包含末尾换行。"
+            }
+          },
+          required: ["resource_id", "lines"],
           additionalProperties: false
         }
       }
@@ -242,7 +269,7 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
     const runParams = buildShellRunParams(args);
     bindShellRunOwner(runParams, args, context);
     const result = await context.shellRuntime.run(runParams);
-    return JSON.stringify(annotateShellRunResult(result, runParams.notifyPolicy));
+    return JSON.stringify(compactShellRunResult(annotateShellRunResult(result, runParams.notifyPolicy)));
   },
 
   async terminal_start(_toolCall, args, context) {
@@ -253,7 +280,7 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
     bindShellRunOwner(runParams, args, context);
     runParams.background = true;
     const result = await context.shellRuntime.run(runParams);
-    return JSON.stringify(annotateShellRunResult(result, runParams.notifyPolicy));
+    return JSON.stringify(compactShellRunResult(annotateShellRunResult(result, runParams.notifyPolicy)));
   },
 
   async terminal_write(_toolCall, args, context) {
@@ -264,12 +291,42 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
     const input = getStringArg(args, "input")!;
 
     const result = await context.shellRuntime.interact(resourceId, input);
-    const { outputTail: _tail, ...session } = result.session;
+    return JSON.stringify(compactShellInteractionResult(result));
+  },
+
+  async terminal_send_lines(_toolCall, args, context) {
+    const denied = requireOwner(context.relationship, "Only owner can interact with shell");
+    if (denied) return denied;
+
+    const resourceId = getStringArg(args, "resource_id")!;
+    const lines = getStringArrayArg(args, "lines")
+      ?.map((line) => line.trimEnd())
+      .filter((line) => line.length > 0)
+      .slice(0, 50) ?? [];
+    if (lines.length === 0) {
+      return JSON.stringify({ error: "lines must include at least one non-empty command" });
+    }
+
+    const outputs: string[] = [];
+    let outputTruncated = false;
+    let latestSession: ShellSession | null = null;
+    let sentLineCount = 0;
+    for (const line of lines) {
+      const result = await context.shellRuntime.interact(resourceId, `${line}\n`);
+      sentLineCount += 1;
+      outputs.push(result.output);
+      outputTruncated = outputTruncated || result.outputTruncated === true || result.output_truncated === true;
+      latestSession = result.session;
+      if (result.session.status !== "running") {
+        break;
+      }
+    }
     return JSON.stringify({
-      output: result.output,
-      outputTruncated: result.outputTruncated,
-      output_truncated: result.output_truncated,
-      session
+      ok: true,
+      lineCount: sentLineCount,
+      requestedLineCount: lines.length,
+      ...compactTerminalOutput(outputs.join(""), outputTruncated, context.config.shell.maxOutputChars),
+      ...(latestSession ? { session: compactShellSession(latestSession) } : {})
     });
   },
 
@@ -279,13 +336,7 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
 
     const resourceId = getStringArg(args, "resource_id")!;
     const result = await context.shellRuntime.read(resourceId);
-    const { outputTail: _tail, ...session } = result.session;
-    return JSON.stringify({
-      output: result.output,
-      outputTruncated: result.outputTruncated,
-      output_truncated: result.output_truncated,
-      session
-    });
+    return JSON.stringify(compactShellInteractionResult(result));
   },
 
   async terminal_key(_toolCall, args, context) {
@@ -307,13 +358,7 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ error: "key or keys is required" });
     }
     const result = await context.shellRuntime.interact(resourceId, input);
-    const { outputTail: _tail, ...session } = result.session;
-    return JSON.stringify({
-      output: result.output,
-      outputTruncated: result.outputTruncated,
-      output_truncated: result.output_truncated,
-      session
-    });
+    return JSON.stringify(compactShellInteractionResult(result));
   },
 
   async terminal_signal(_toolCall, args, context) {
@@ -409,6 +454,44 @@ function annotateShellRunResult(result: ShellRunResult, notifyPolicy: ShellRunPa
         ? "这个 terminal 已在后台运行；系统会在它完成或可能等待输入时自动作为内部回调再次触发你继续处理。"
         : "这个 terminal 已在后台运行；系统会在它完成时自动作为内部回调再次触发你继续处理。"
     }
+  };
+}
+
+function compactShellRunResult(result: ShellRunResult): ShellRunResult {
+  const {
+    resource_id: _resourceIdAlias,
+    exit_code: _exitCodeAlias,
+    effective_timeout_ms: _effectiveTimeoutAlias,
+    output_truncated: _outputTruncatedAlias,
+    ...compact
+  } = result;
+  return compact;
+}
+
+function compactShellInteractionResult(result: ShellInteractionResult) {
+  return {
+    output: result.output,
+    outputTruncated: result.outputTruncated || result.output_truncated,
+    session: compactShellSession(result.session)
+  };
+}
+
+function compactShellSession(session: ShellSession) {
+  const { outputTail: _tail, ...compact } = session;
+  return compact;
+}
+
+function compactTerminalOutput(output: string, alreadyTruncated: boolean, maxOutputChars: number) {
+  const limit = Number.isFinite(maxOutputChars) && maxOutputChars > 0 ? Math.floor(maxOutputChars) : 12000;
+  if (output.length <= limit) {
+    return {
+      output,
+      outputTruncated: alreadyTruncated
+    };
+  }
+  return {
+    output: output.slice(-limit),
+    outputTruncated: true
   };
 }
 

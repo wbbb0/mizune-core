@@ -250,6 +250,31 @@ export class LocalFileService {
     };
   }
 
+  async replaceFileText(relativePath: string, oldText: string, newText: string): Promise<LocalFilePatchResult> {
+    const target = this.resolvePath(relativePath);
+    const originalBuffer = await readFile(target.absolutePath);
+    assertTextFile(originalBuffer, target.relativePath, this.config.localFiles.maxPatchFileBytes);
+    const original = originalBuffer.toString("utf8");
+    if (!oldText) {
+      throw new Error("old_text is required");
+    }
+    const firstIndex = original.indexOf(oldText);
+    if (firstIndex < 0) {
+      throw new Error("old_text was not found in the file");
+    }
+    if (original.indexOf(oldText, firstIndex + oldText.length) >= 0) {
+      throw new Error("old_text matches multiple locations; use filesystem_patch with a unified diff hunk");
+    }
+    const patched = `${original.slice(0, firstIndex)}${newText}${original.slice(firstIndex + oldText.length)}`;
+    await writeFile(target.absolutePath, patched, "utf8");
+    const updated = await stat(target.absolutePath);
+    return {
+      path: target.relativePath,
+      updatedAtMs: updated.mtimeMs,
+      hunksApplied: 1
+    };
+  }
+
   async searchItems(query: string, relativePath = ".", limit = 50): Promise<LocalFileSearchResult> {
     const normalizedQuery = String(query ?? "").trim().toLowerCase();
     if (!normalizedQuery) {

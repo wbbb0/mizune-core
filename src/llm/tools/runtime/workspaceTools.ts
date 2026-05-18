@@ -116,14 +116,20 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "filesystem_patch",
-        description: "用 unified diff patch 修改已存在的本地文本文件。适合局部修改；patch 必须包含 @@ hunk 头和足够上下文行，失败时按错误重新读取相关行段后再补 patch。",
+        description: "修改已存在的本地文本文件。优先用 old_text/new_text 做精确替换；需要多处 hunk 时用 unified diff patch，patch 头必须类似 @@ -2,3 +2,3 @@ 并带足够上下文行。若同时传 patch 与 old_text/new_text，会优先使用 patch。失败时按错误重新读取相关行段后再补 patch。",
         parameters: {
           type: "object",
           properties: {
             path: { type: "string" },
-            patch: { type: "string" }
+            patch: { type: "string", description: "unified diff 内容，例如 @@ -1,3 +1,3 @@\\n old\\n-line\\n+new\\n tail" },
+            old_text: { type: "string", description: "要精确替换的原文片段。" },
+            new_text: { type: "string", description: "替换后的文本。" }
           },
-          required: ["path", "patch"],
+          required: ["path"],
+          anyOf: [
+            { required: ["path", "patch"] },
+            { required: ["path", "old_text", "new_text"] }
+          ],
           additionalProperties: false
         }
       }
@@ -378,7 +384,15 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
       ? String((args as Record<string, unknown>).patch ?? "")
       : "";
     if (!path || !patch) {
-      return JSON.stringify({ error: "path and patch are required" });
+      const oldText = typeof args === "object" && args && "old_text" in args
+        ? String((args as Record<string, unknown>).old_text ?? "")
+        : "";
+      const hasNewText = typeof args === "object" && args && "new_text" in args;
+      const newText = hasNewText ? String((args as Record<string, unknown>).new_text ?? "") : "";
+      if (path && oldText && hasNewText) {
+        return JSON.stringify(await context.localFileService.replaceFileText(path, oldText, newText));
+      }
+      return JSON.stringify({ error: "path and either patch or old_text/new_text are required" });
     }
     return JSON.stringify(await context.localFileService.patchFile(path, patch));
   },

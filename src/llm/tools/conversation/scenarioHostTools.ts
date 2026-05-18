@@ -86,7 +86,7 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "manage_objective",
-        description: "新增、更新或删除场景目标。",
+        description: "新增、更新或删除场景目标。新增/更新用 action=upsert，并提供稳定 id 与 title；删除用 action=remove 和 id。",
         parameters: {
           type: "object",
           properties: {
@@ -108,7 +108,7 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "manage_inventory",
-        description: "新增、更新或删除场景背包条目。",
+        description: "新增、更新或删除场景背包条目。新增/更新用 action=upsert，并提供 ownerId、item、quantity；删除用 action=remove、ownerId、item。",
         parameters: {
           type: "object",
           properties: {
