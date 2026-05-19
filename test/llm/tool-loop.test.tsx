@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { LlmClient } from "../../src/llm/llmClient.ts";
+import { projectFields, projectToolResult } from "../../src/llm/tools/core/toolResultProjection.ts";
 import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../helpers/llm-test-support.tsx";
 
   test("independent same-round tool calls run concurrently and replay results in tool-call order", async () => {
@@ -87,6 +88,71 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
 
       const result = await generatePromise;
       assert.equal(result.text, "done");
+    });
+  });
+
+  test("projected tool results send initial content while exposing canonical content to observers", async () => {
+    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+    const observedCanonical: string[] = [];
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 1);
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              tool_calls: [{
+                index: 0,
+                id: "tool-call-projected",
+                type: "function",
+                function: {
+                  name: "projected_tool",
+                  arguments: "{}"
+                }
+              }]
+            }
+          }]
+        }]
+      },
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages[2].role, "tool");
+          assert.equal(body.messages[2].content, "{\"ok\":true,\"summary\":\"short\"}");
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "done"
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "run projected tool" }],
+        tools: [createToolDefinition("projected_tool")],
+        toolExecutor: async () => projectToolResult({
+          toolName: "projected_tool",
+          canonical: {
+            ok: true,
+            summary: "short",
+            full: "long canonical detail"
+          },
+          projection: {
+            initial: projectFields(["ok", "summary"])
+          }
+        }),
+        onToolResultMessage(_message, _toolCall, metadata) {
+          if (metadata?.canonicalContent) {
+            observedCanonical.push(metadata.canonicalContent);
+          }
+        }
+      });
+
+      assert.equal(result.text, "done");
+      assert.deepEqual(observedCanonical, ["{\"ok\":true,\"summary\":\"short\",\"full\":\"long canonical detail\"}"]);
     });
   });
 

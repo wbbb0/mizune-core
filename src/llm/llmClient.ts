@@ -38,6 +38,7 @@ export type {
 interface ExecutedToolCall {
   toolCall: LlmToolCall;
   toolResult: string;
+  canonicalToolResult?: string;
   supplementalMessages: LlmMessage[];
   terminalResponse?: {
     text: string;
@@ -269,6 +270,7 @@ export class LlmClient {
         );
 
         let toolResult: string;
+        let canonicalToolResult: string | undefined;
         let supplementalMessages: LlmMessage[] = [];
         let terminalResponse: { text: string } | undefined;
         try {
@@ -277,6 +279,7 @@ export class LlmClient {
             : await this.executeToolCall(toolCall);
           const normalizedToolResult = normalizeToolExecutionResult(rawToolResult);
           toolResult = normalizedToolResult.content;
+          canonicalToolResult = normalizedToolResult.canonicalContent;
           supplementalMessages = normalizedToolResult.supplementalMessages ?? [];
           terminalResponse = normalizedToolResult.terminalResponse;
         } catch (error: unknown) {
@@ -323,6 +326,7 @@ export class LlmClient {
         return {
           toolCall,
           toolResult,
+          ...(canonicalToolResult ? { canonicalToolResult } : {}),
           supplementalMessages,
           ...(terminalResponse ? { terminalResponse } : {})
         };
@@ -349,7 +353,11 @@ export class LlmClient {
           content: executed.toolResult
         };
         workingMessages.push(toolMessage);
-        await params.onToolResultMessage?.(toolMessage, executed.toolCall);
+        await params.onToolResultMessage?.(
+          toolMessage,
+          executed.toolCall,
+          executed.canonicalToolResult ? { canonicalContent: executed.canonicalToolResult } : undefined
+        );
         for (const message of cloneMessagesForRequest(
           executed.supplementalMessages,
           true
@@ -711,6 +719,7 @@ function normalizeToolExecutionResult(input: string | LlmToolExecutionResult): L
   }
   return {
     content: input.content,
+    ...(input.canonicalContent ? { canonicalContent: input.canonicalContent } : {}),
     supplementalMessages: input.supplementalMessages ?? [],
     ...(input.terminalResponse ? { terminalResponse: input.terminalResponse } : {})
   };

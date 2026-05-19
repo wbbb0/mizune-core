@@ -634,10 +634,11 @@ export function createGenerationExecutor(
                 persistSession(sessionId, "internal_transcript_updated");
               }
             },
-            onToolResultMessage: async (message, toolCall) => {
+            onToolResultMessage: async (message, toolCall, resultMetadata) => {
               const content = typeof message.content === "string"
                 ? message.content
                 : JSON.stringify(message.content);
+              const observationContent = resultMetadata?.canonicalContent ?? content;
               // Some tests and legacy custom generators still pass the tool name string here.
               const toolName = typeof toolCall === "string" ? toolCall : toolCall.function.name;
               const toolArguments = typeof toolCall === "string" ? "{}" : toolCall.function.arguments;
@@ -657,7 +658,7 @@ export function createGenerationExecutor(
                 observation: buildToolObservation({
                   toolName,
                   toolCallId: message.tool_call_id ?? "",
-                  content,
+                  content: observationContent,
                   args: typeof toolArgs === "object" && toolArgs !== null && !Array.isArray(toolArgs)
                     ? toolArgs as Record<string, unknown>
                     : {},
