@@ -123,6 +123,7 @@ context:
     maxSearchChunkAgeDays: 90
     sessionFactRetentionDays: 14
     summaryAfterDays: 30
+    unreachableAuditAfterDays: 60
     deletedRetentionDays: 14
     maintenanceIntervalMs: 3600000
   extraction:

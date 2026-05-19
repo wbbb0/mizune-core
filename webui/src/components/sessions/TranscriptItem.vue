@@ -482,13 +482,17 @@ function collectContentPartFileMetadata(): ContentPartFileMetadata[] {
 }
 
 function formatContextExtractionItemTitle(item: NonNullable<Extract<TranscriptItem, { kind: "context_extraction_event" }>["items"]>[number]): string {
-  const result = item.result === "created" ? "创建" : item.result === "replaced" ? "更新" : "忽略";
+  const result = item.result === "created" ? "创建"
+    : item.result === "replaced" ? "更新"
+      : item.result === "proposed" ? "待审"
+        : "忽略";
   return `${result}${item.scope ? ` · ${item.scope}` : ""}${item.slotKey ? ` · ${item.slotKey}` : ""}`;
 }
 
 function formatContextExtractionItemMeta(item: NonNullable<Extract<TranscriptItem, { kind: "context_extraction_event" }>["items"]>[number]): string {
   return [
     item.operation ? `operation=${item.operation}` : null,
+    item.scope ? `scope=${item.scope}` : null,
     item.memoryId ? `memory=${item.memoryId}` : null,
     item.targetMemoryIds && item.targetMemoryIds.length > 0 ? `target=${item.targetMemoryIds.join(", ")}` : null,
     item.kind ? `kind=${item.kind}` : null,

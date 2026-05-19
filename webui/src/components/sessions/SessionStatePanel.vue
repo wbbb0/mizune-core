@@ -210,6 +210,8 @@ function formatMemoryItemMeta(item: MemoryContextItem): string {
   return [
     formatMemoryEntrySource(item.entrySource),
     item.scope,
+    item.layer,
+    item.subjectId ? `${item.subjectKind}:${item.subjectId}` : item.subjectKind,
     item.sourceType,
     item.kind,
     item.memorySource,

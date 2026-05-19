@@ -23,7 +23,7 @@ export const transcriptInternalTriggerKindValues = [
 export const transcriptInternalTriggerStageValues = ["received", "queued", "queued_inline", "dequeued", "inlined", "started"] as const;
 export const transcriptContextExtractionStatusValues = ["queued", "enqueue_failed", "processed", "process_failed"] as const;
 export const transcriptContextExtractionOperationValues = ["noop", "create", "update_existing", "invalidate_and_create", "merge", "ignore_wrong_scope"] as const;
-export const transcriptContextExtractionItemResultValues = ["created", "replaced", "ignored"] as const;
+export const transcriptContextExtractionItemResultValues = ["created", "replaced", "ignored", "proposed"] as const;
 
 export const storedToolCallSchema = z.object({
   id: z.string().min(1),
@@ -425,7 +425,7 @@ export const transcriptContextExtractionEventItemSchema = z.object({
   ignored: z.number().int().nonnegative().optional(),
   items: z.array(z.object({
     result: z.enum(transcriptContextExtractionItemResultValues),
-    scope: z.enum(["user", "session"]).optional(),
+    scope: z.enum(["session", "user", "global", "toolset", "mode"]).optional(),
     operation: z.enum(transcriptContextExtractionOperationValues).optional(),
     memoryId: z.string().min(1).optional(),
     targetMemoryIds: z.array(z.string().min(1)).optional(),

@@ -694,8 +694,8 @@ function parseContextItemsQuery(query: unknown): {
   return {
     ...optionalStringField(object, "userId"),
     ...optionalEnumField(object, "scope", ["session", "user", "global", "toolset", "mode"]),
-    ...optionalEnumField(object, "sourceType", ["chunk", "summary", "fact", "rule"]),
-    ...optionalEnumField(object, "status", ["active", "archived", "deleted", "superseded"]),
+    ...optionalEnumField(object, "sourceType", ["episode", "chunk", "summary", "fact", "rule"]),
+    ...optionalEnumField(object, "status", ["active", "archived", "deleted", "superseded", "pending"]),
     ...optionalIntegerField(object, "limit", 100, 1, 500),
     ...optionalIntegerField(object, "offset", 0, 0, Number.MAX_SAFE_INTEGER)
   };
@@ -721,7 +721,7 @@ function parseContextItemPatchBody(body: unknown): {
   slotKey?: string | null;
   text?: string;
   retrievalPolicy?: "always" | "search" | "never";
-  status?: "active" | "archived" | "deleted" | "superseded";
+  status?: "active" | "archived" | "deleted" | "superseded" | "pending";
   sensitivity?: "normal" | "private" | "secret";
   importance?: number | null;
   pinned?: boolean;
@@ -736,7 +736,7 @@ function parseContextItemPatchBody(body: unknown): {
     slotKey?: string | null;
     text?: string;
     retrievalPolicy?: "always" | "search" | "never";
-    status?: "active" | "archived" | "deleted" | "superseded";
+    status?: "active" | "archived" | "deleted" | "superseded" | "pending";
     sensitivity?: "normal" | "private" | "secret";
     importance?: number | null;
     pinned?: boolean;
@@ -756,7 +756,7 @@ function parseContextItemPatchBody(body: unknown): {
     patch.retrievalPolicy = requireBodyEnum(body.retrievalPolicy, "retrievalPolicy", ["always", "search", "never"]);
   }
   if ("status" in body) {
-    patch.status = requireBodyEnum(body.status, "status", ["active", "archived", "deleted", "superseded"]);
+    patch.status = requireBodyEnum(body.status, "status", ["active", "archived", "deleted", "superseded", "pending"]);
   }
   if ("sensitivity" in body) {
     patch.sensitivity = requireBodyEnum(body.sensitivity, "sensitivity", ["normal", "private", "secret"]);
@@ -789,8 +789,8 @@ function parseContextFilterBody(body: unknown): {
   return {
     ...optionalStringField(object, "userId"),
     ...optionalEnumField(object, "scope", ["session", "user", "global", "toolset", "mode"]),
-    ...optionalEnumField(object, "sourceType", ["chunk", "summary", "fact", "rule"]),
-    ...optionalEnumField(object, "status", ["active", "archived", "deleted", "superseded"])
+    ...optionalEnumField(object, "sourceType", ["episode", "chunk", "summary", "fact", "rule"]),
+    ...optionalEnumField(object, "status", ["active", "archived", "deleted", "superseded", "pending"])
   };
 }
 

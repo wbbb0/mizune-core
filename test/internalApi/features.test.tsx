@@ -1054,6 +1054,9 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       deps.__state.contextItems.push({
         itemId: "ctx_session_delete_target",
         scope: "session",
+        layer: "core_fact",
+        subjectKind: "session",
+        subjectId: sessionId,
         sourceType: "fact",
         retrievalPolicy: "always",
         status: "active",
@@ -1067,6 +1070,9 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       }, {
         itemId: "ctx_session_delete_other",
         scope: "session",
+        layer: "core_fact",
+        subjectKind: "session",
+        subjectId: "web:other",
         sourceType: "fact",
         retrievalPolicy: "always",
         status: "active",

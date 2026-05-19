@@ -628,7 +628,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       if (text == null) return;
       const retrievalPolicy = window.prompt("retrievalPolicy: always / search / never", item.retrievalPolicy);
       if (retrievalPolicy == null) return;
-      const status = window.prompt("status: active / archived / deleted / superseded", item.status);
+      const status = window.prompt("status: active / archived / deleted / superseded / pending", item.status);
       if (status == null) return;
       const sensitivity = window.prompt("sensitivity: normal / private / secret", item.sensitivity);
       if (sensitivity == null) return;
@@ -1232,9 +1232,12 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
     function formatContextMeta(item: ContextManagementItem): string {
       return [
         item.scope,
+        item.layer,
         item.sourceType,
         item.retrievalPolicy,
         item.status,
+        item.auditState ? `audit:${item.auditState}` : null,
+        item.subjectId ? `${item.subjectKind}:${item.subjectId}` : item.subjectKind,
         item.slotKey ? `slot:${item.slotKey}` : null,
         item.userId ? `user:${item.userId}` : null,
         item.sessionId ? `session:${item.sessionId}` : null,

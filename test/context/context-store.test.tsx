@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
 import { ContextStore } from "../../src/context/contextStore.ts";
-import { createUserMemoryEntry } from "../../src/memory/userMemoryEntry.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
 async function createContextStoreHarness() {
@@ -21,40 +20,6 @@ async function createContextStoreHarness() {
     }
   };
 }
-
-test("ContextStore migrates legacy user memories into user facts", async () => {
-  const harness = await createContextStoreHarness();
-  try {
-    const legacyMemory = createUserMemoryEntry({
-      id: "mem_legacy_1",
-      title: "称呼",
-      content: "用户希望被称为小王",
-      kind: "preference",
-      source: "user_explicit",
-      createdAt: 100,
-      updatedAt: 200,
-      importance: 5,
-      lastUsedAt: 300
-    });
-
-    harness.store.migrateUserMemories([{
-      userId: "user_1",
-      memories: [legacyMemory]
-    } as any]);
-
-    const facts = harness.store.listUserFacts("user_1");
-    assert.equal(facts.length, 1);
-    assert.equal(facts[0]?.id, "mem_legacy_1");
-    assert.equal(facts[0]?.title, "称呼");
-    assert.equal(facts[0]?.content, "用户希望被称为小王");
-    assert.equal(facts[0]?.kind, "preference");
-    assert.equal(facts[0]?.source, "user_explicit");
-    assert.equal(facts[0]?.importance, 5);
-    assert.equal(facts[0]?.lastUsedAt, 300);
-  } finally {
-    await harness.cleanup();
-  }
-});
 
 test("ContextStore adopts pre-meta SQLite files without dropping historically migrated columns", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-context-store-test-"));
@@ -131,7 +96,7 @@ test("ContextStore adopts pre-meta SQLite files without dropping historically mi
     assert.equal(store.getContextStats().embeddings, 1);
     const itemGroup = store.getStatus().tableGroups?.find((group) => group.groupId === "context.items");
     const embeddingGroup = store.getStatus().tableGroups?.find((group) => group.groupId === "context.embeddings");
-    assert.equal(itemGroup?.actualSchemaVersion, 1);
+    assert.equal(itemGroup?.actualSchemaVersion, 2);
     assert.equal(itemGroup?.lastResetReason, undefined);
     assert.equal(embeddingGroup?.actualSchemaVersion, 1);
     assert.equal(embeddingGroup?.lastResetReason, undefined);
@@ -175,6 +140,168 @@ test("ContextStore upserts and soft-deletes user facts", async () => {
     assert.equal(removed.removed, true);
     assert.deepEqual(removed.remaining, []);
     assert.deepEqual(harness.store.listUserFacts("user_1"), []);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextStore keeps derived layer and retrieval policy in sync after management edits", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    const created = harness.store.upsertUserFact({
+      userId: "user_1",
+      title: "普通偏好",
+      content: "用户喜欢检索式记忆",
+      kind: "preference",
+      importance: 1
+    });
+    assert.equal(harness.store.getContextItem(created.item.id)?.layer, "searchable_fact");
+    assert.equal(harness.store.getContextItem(created.item.id)?.retrievalPolicy, "search");
+
+    harness.store.updateContextItem({
+      itemId: created.item.id,
+      importance: 4
+    });
+    assert.equal(harness.store.getContextItem(created.item.id)?.layer, "core_fact");
+    assert.equal(harness.store.getContextItem(created.item.id)?.retrievalPolicy, "always");
+
+    harness.store.updateContextItem({
+      itemId: created.item.id,
+      importance: 1
+    });
+    assert.equal(harness.store.getContextItem(created.item.id)?.layer, "searchable_fact");
+    assert.equal(harness.store.getContextItem(created.item.id)?.retrievalPolicy, "search");
+
+    harness.store.setContextItemPinned(created.item.id, true);
+    assert.equal(harness.store.getContextItem(created.item.id)?.layer, "core_fact");
+    assert.equal(harness.store.getContextItem(created.item.id)?.retrievalPolicy, "always");
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextStore stores memory proposals with evidence and stable audit events", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    const proposal = harness.store.upsertMemoryProposal({
+      scope: "user",
+      userId: "user_1",
+      title: "交流偏好",
+      content: "用户可能喜欢短回答",
+      kind: "preference",
+      source: "inferred",
+      confidence: 0.5,
+      importance: 3,
+      reason: "low_confidence",
+      sourceRefs: [{ sourceKind: "session", sourceId: "qqbot:p:user_1" }],
+      createdAt: 100
+    });
+    assert.equal(proposal.layer, "proposal");
+    assert.equal(proposal.status, "pending");
+    assert.equal(proposal.retrievalPolicy, "never");
+    assert.equal(proposal.subjectKind, "user");
+    assert.equal(proposal.subjectId, "user_1");
+    assert.equal(harness.store.listContextItemSources({ filters: { itemId: proposal.itemId } }).total, 1);
+    assert.equal(harness.store.listManualAuditEvents({ filters: { itemId: proposal.itemId } }).total, 1);
+
+    harness.store.upsertMemoryProposal({
+      scope: "user",
+      userId: "user_1",
+      title: "交流偏好",
+      content: "用户可能喜欢短回答",
+      kind: "preference",
+      source: "inferred",
+      confidence: 0.5,
+      importance: 3,
+      reason: "low_confidence",
+      sourceRefs: [{ sourceKind: "session", sourceId: "qqbot:p:user_1" }],
+      createdAt: 200
+    });
+    assert.equal(harness.store.listManualAuditEvents({ filters: { itemId: proposal.itemId } }).total, 1);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextStore rejects scoped memory proposals without concrete subject id", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    assert.throws(() => harness.store.upsertMemoryProposal({
+      scope: "user",
+      title: "缺少用户",
+      content: "这条 proposal 没有用户 ID",
+      reason: "test"
+    }), /requires a concrete subject id/);
+    assert.throws(() => harness.store.upsertMemoryProposal({
+      scope: "session",
+      title: "缺少会话",
+      content: "这条 proposal 没有会话 ID",
+      reason: "test"
+    }), /requires a concrete subject id/);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextStore records prompt/retrieval usage and audits unreachable memories", async () => {
+  const harness = await createContextStoreHarness();
+  try {
+    const created = harness.store.upsertUserFact({
+      userId: "user_1",
+      title: "检索偏好",
+      content: "用户喜欢只在相关时召回的记忆",
+      kind: "preference",
+      importance: 1
+    });
+    assert.equal(harness.store.recordRetrievedContextItems({ itemIds: [created.item.id], now: 1000 }), 1);
+    assert.equal(harness.store.recordPromptedContextItems({ itemIds: [created.item.id], now: 2000 }), 1);
+    const usedItem = harness.store.getContextItem(created.item.id);
+    assert.equal(usedItem?.retrievedCount, 1);
+    assert.equal(usedItem?.lastRetrievedAt, 1000);
+    assert.equal(usedItem?.promptedCount, 1);
+    assert.equal(usedItem?.lastPromptedAt, 2000);
+
+    const oldItem = {
+      itemId: "mem_old_unreachable",
+      scope: "user",
+      layer: "searchable_fact",
+      subjectKind: "user",
+      subjectId: "user_1",
+      sourceType: "fact",
+      retrievalPolicy: "search",
+      status: "active",
+      userId: "user_1",
+      title: "旧长尾偏好",
+      text: "用户曾经提到一个长尾偏好",
+      kind: "preference",
+      importance: 1,
+      pinned: false,
+      sensitivity: "normal",
+      createdAt: 1,
+      updatedAt: 1,
+      retrievedCount: 0
+    };
+    harness.store.importContextItemsJsonl(JSON.stringify(oldItem));
+    const audit = harness.store.auditMemoryVisibility({ staleAfterMs: 100, now: 1000 });
+    assert.deepEqual(audit.itemIds, ["mem_old_unreachable"]);
+    assert.equal(harness.store.getContextItem("mem_old_unreachable")?.auditState, "unreachable");
+    assert.equal(harness.store.getContextItem("mem_old_unreachable")?.lastAuditedAt, 1000);
+    assert.deepEqual(harness.store.listUserSearchDocuments("user_1").map((item) => item.itemId), [created.item.id]);
+    assert.equal(harness.store.listManualAuditEvents({ filters: { itemId: "mem_old_unreachable" } }).total, 1);
+
+    harness.store.upsertUserFact({
+      userId: "user_1",
+      memoryId: "mem_old_unreachable",
+      title: "旧长尾偏好",
+      content: "用户更新了这个长尾偏好",
+      kind: "preference",
+      importance: 1
+    });
+    assert.equal(harness.store.getContextItem("mem_old_unreachable")?.auditState, undefined);
+    assert.deepEqual(
+      harness.store.listUserSearchDocuments("user_1").map((item) => item.itemId).sort(),
+      [created.item.id, "mem_old_unreachable"].sort()
+    );
   } finally {
     await harness.cleanup();
   }
@@ -526,7 +653,14 @@ test("ContextStore stores searchable user chunks separately from always-injected
     const fact = harness.store.upsertUserFact({
       userId: "user_1",
       title: "称呼",
-      content: "用户希望被叫小王"
+      content: "用户希望被叫小王",
+      importance: 4
+    });
+    const searchableFact = harness.store.upsertUserFact({
+      userId: "user_1",
+      title: "长尾偏好",
+      content: "用户喜欢只在相关时召回的长尾事实",
+      importance: 1
     });
     harness.store.upsertUserSearchChunk({
       itemId: "ctx_chunk_1",
@@ -539,12 +673,12 @@ test("ContextStore stores searchable user chunks separately from always-injected
       updatedAt: 200
     });
 
-    assert.deepEqual(harness.store.listUserFacts("user_1").map((item) => item.id), [fact.item.id]);
+    assert.deepEqual(harness.store.listUserFacts("user_1").map((item) => item.id).sort(), [fact.item.id, searchableFact.item.id].sort());
+    assert.deepEqual(harness.store.listUserPromptFacts("user_1").map((item) => item.id), [fact.item.id]);
     const documents = harness.store.listUserSearchDocuments("user_1");
-    assert.equal(documents.length, 1);
-    assert.equal(documents[0]?.itemId, "ctx_chunk_1");
-    assert.equal(documents[0]?.retrievalPolicy, "search");
-    assert.equal(documents[0]?.sourceType, "chunk");
+    assert.deepEqual(documents.map((item) => item.itemId).sort(), [searchableFact.item.id, "ctx_chunk_1"].sort());
+    assert.equal(documents.find((item) => item.itemId === "ctx_chunk_1")?.retrievalPolicy, "search");
+    assert.equal(documents.find((item) => item.itemId === "ctx_chunk_1")?.sourceType, "chunk");
   } finally {
     await harness.cleanup();
   }

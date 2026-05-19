@@ -132,6 +132,8 @@ export interface ContentSafetyAuditView {
 }
 
 export type MemoryContextScope = "session" | "user" | "global" | "toolset" | "mode";
+export type MemoryContextLayer = "profile_slot" | "core_fact" | "searchable_fact" | "episode" | "proposal";
+export type MemoryContextSubjectKind = "session" | "user" | "global" | "toolset" | "mode";
 export type MemoryContextSourceType = "episode" | "chunk" | "summary" | "fact" | "rule";
 export type MemoryContextEntrySource = "semantic_retrieval";
 export type MemoryContextRetrievalSkipReason =
@@ -156,6 +158,9 @@ export interface MemoryContextItem {
   itemId: string;
   entrySource: MemoryContextEntrySource;
   scope: MemoryContextScope;
+  layer: MemoryContextLayer;
+  subjectKind: MemoryContextSubjectKind;
+  subjectId?: string;
   sourceType: MemoryContextSourceType;
   title?: string;
   slotKey?: string;

@@ -195,6 +195,106 @@ test("ContextExtractionService lets extractor decide no-op conversations", async
   }
 });
 
+test("ContextExtractionService stores low-confidence candidates as pending proposals", async () => {
+  const harness = await createHarness(JSON.stringify({
+    items: [{
+      action: "create",
+      operation: "create",
+      scope: "user",
+      title: "交流偏好",
+      content: "用户可能喜欢非常简短的回答",
+      kind: "preference",
+      importance: 3,
+      confidence: 0.55
+    }]
+  }));
+  try {
+    const result = await harness.service.processTurns({
+      sessionId: "qqbot:p:user_1",
+      userId: "user_1",
+      turns: [turn("我大概喜欢短一点的回答")]
+    });
+
+    assertExtractionCounts(result, { created: 0, replaced: 0, ignored: 1 });
+    assert.equal(result.items[0]?.result, "proposed");
+    assert.equal(result.items[0]?.reason, "low_confidence");
+    const proposals = harness.store.listContextItems({ status: "pending" }).items;
+    assert.equal(proposals.length, 1);
+    assert.equal(proposals[0]?.layer, "proposal");
+    assert.equal(proposals[0]?.retrievalPolicy, "never");
+    assert.equal(proposals[0]?.subjectKind, "user");
+    assert.equal(proposals[0]?.subjectId, "user_1");
+    assert.equal(harness.store.listManualAuditEvents().total, 1);
+    assert.equal(harness.store.listContextItemSources({ filters: { itemId: proposals[0]?.itemId } }).total, 1);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextExtractionService stores wrong-scope ignored candidates as pending proposals", async () => {
+  const harness = await createHarness(JSON.stringify({
+    items: [{
+      action: "ignore",
+      operation: "ignore_wrong_scope",
+      scope: "global",
+      title: "全局流程",
+      content: "所有任务默认先给结论",
+      kind: "other",
+      importance: 4,
+      confidence: 0.92
+    }]
+  }));
+  try {
+    const result = await harness.service.processTurns({
+      sessionId: "qqbot:p:user_1",
+      userId: "user_1",
+      turns: [turn("以后所有任务默认先给结论")]
+    });
+
+    assertExtractionCounts(result, { created: 0, replaced: 0, ignored: 1 });
+    assert.equal(result.items[0]?.result, "proposed");
+    assert.equal(result.items[0]?.scope, "global");
+    assert.equal(result.items[0]?.reason, "wrong_scope");
+    const proposals = harness.store.listContextItems({ status: "pending" }).items;
+    assert.equal(proposals.length, 1);
+    assert.equal(proposals[0]?.scope, "global");
+    assert.equal(proposals[0]?.subjectKind, "global");
+    assert.equal(proposals[0]?.retrievalPolicy, "never");
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ContextExtractionService ignores toolset wrong-scope candidates without subject id", async () => {
+  const harness = await createHarness(JSON.stringify({
+    items: [{
+      action: "ignore",
+      operation: "ignore_wrong_scope",
+      scope: "toolset",
+      title: "Shell 默认行为",
+      content: "shell 工具默认先检查当前目录",
+      kind: "other",
+      importance: 3,
+      confidence: 0.9
+    }]
+  }));
+  try {
+    const result = await harness.service.processTurns({
+      sessionId: "qqbot:p:user_1",
+      userId: "user_1",
+      turns: [turn("shell 工具以后默认先检查当前目录")]
+    });
+
+    assertExtractionCounts(result, { created: 0, replaced: 0, ignored: 1 });
+    assert.equal(result.items[0]?.result, "ignored");
+    assert.equal(result.items[0]?.scope, "toolset");
+    assert.equal(result.items[0]?.reason, "wrong_scope");
+    assert.equal(harness.store.listContextItems({ status: "pending" }).total, 0);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
 test("ContextExtractionService captures explicit session purpose as session-scoped context, not user fact", async () => {
   const harness = await createHarness(JSON.stringify({
     items: [{

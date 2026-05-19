@@ -82,6 +82,9 @@ function item(
   return {
     itemId,
     scope: "user",
+    layer: "episode",
+    subjectKind: "user",
+    subjectId: "user_1",
     sourceType,
     userId: "user_1",
     text,

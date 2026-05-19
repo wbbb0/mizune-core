@@ -110,6 +110,7 @@ syncFiltersFromState();
           类型
           <select v-model="filters.sourceType" :disabled="controlsBusy" class="input-base text-ui">
             <option value="">全部</option>
+            <option value="episode">episode</option>
             <option value="chunk">chunk</option>
             <option value="summary">summary</option>
             <option value="fact">fact</option>
@@ -124,6 +125,7 @@ syncFiltersFromState();
             <option value="archived">archived</option>
             <option value="deleted">deleted</option>
             <option value="superseded">superseded</option>
+            <option value="pending">pending</option>
           </select>
         </label>
       </div>
