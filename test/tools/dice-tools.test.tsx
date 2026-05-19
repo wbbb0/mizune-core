@@ -71,6 +71,19 @@ test("roll_dice handler returns structured JSON", async () => {
   assert.equal(payload.shortText, undefined);
   assert.equal(payload.replyText, undefined);
   assert.equal(payload.text, undefined);
+  assert.equal(payload.terms, undefined);
+});
+
+test("roll_dice handler returns term details only when requested", async () => {
+  const result = await diceToolHandlers.roll_dice!(
+    { id: "tool_dice_details", type: "function", function: { name: "roll_dice", arguments: "{\"expression\":\"D6\",\"details\":true}" } },
+    { expression: "D6", details: true },
+    {} as any
+  );
+  const payload = JSON.parse(String(result));
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.expression, "1D6");
   assert.equal(payload.terms.length, 1);
   assert.equal(payload.terms[0].rolls.length, 1);
 });

@@ -115,6 +115,12 @@ function createBrowserService() {
     assert.equal(pageShot.fileId, "img_uploaded_1");
     assert.equal(elementShot.mode, "element");
     assert.deepEqual(screenshots, [{}, { targetId: 1 }]);
+
+    await assert.rejects(
+      service.captureElementScreenshot(page.resource_id, 999),
+      /未找到 target_id=999 对应的元素/u
+    );
+    assert.deepEqual(screenshots, [{}, { targetId: 1 }]);
   });
 
   test("browser service reload closes existing playwright sessions", async () => {

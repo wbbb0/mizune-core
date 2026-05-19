@@ -148,6 +148,9 @@ const aboutLinkElement: BrowserElement = {
     assert.equal(parsed.snapshot.resource_id, "res_browser_1");
     assert.equal(parsed.snapshot.title, "About");
     assert.equal(parsed.resolved_target.id, 1);
+    assert.equal(parsed.resolved_target.label, undefined);
+    assert.equal(parsed.snapshot.elements.length, 0);
+    assert.equal(parsed.candidates.length, 0);
   });
 
   test("interact_with_page rejects unsupported actions before calling browser service", async () => {

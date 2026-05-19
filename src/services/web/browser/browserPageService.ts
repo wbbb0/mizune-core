@@ -310,6 +310,9 @@ export class BrowserPageService {
   ): Promise<BrowserScreenshotResult> {
     await this.janitor.cleanupExpiredSessions();
     const session = await this.janitor.requireSession(resourceId, { touch: true });
+    if (targetId != null && !session.snapshot.elements.some((item) => item.id === targetId)) {
+      throw new Error(`未找到 target_id=${targetId} 对应的元素，请先重新 inspect_page。`);
+    }
     const buffer = await session.backend.captureScreenshot({
       state: session.state,
       ...(targetId == null ? {} : { targetId })

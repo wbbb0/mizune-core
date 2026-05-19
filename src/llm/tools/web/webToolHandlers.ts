@@ -3,7 +3,13 @@ import type { ToolHandler } from "../core/shared.ts";
 import { getBooleanArg, getNumberArg, getStringArg, getStringArrayArg } from "../core/toolArgHelpers.ts";
 import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
 import { nextAction, withNextActions, type ToolNextAction } from "../core/toolNextActions.ts";
-import type { BrowserActionTarget, BrowserCoordinate } from "#services/web/browser/types.ts";
+import type {
+  BrowserActionTarget,
+  BrowserCoordinate,
+  BrowserElement,
+  BrowserRenderResult,
+  InteractWithPageResult
+} from "#services/web/browser/types.ts";
 import { isBrowserInteractionAction } from "#services/web/browser/types.ts";
 import {
   DerivedObservationReader,
@@ -121,7 +127,7 @@ export const webToolHandlers: Record<string, ToolHandler> = {
 
     try {
       const filePaths = resolveWorkspaceFilePaths(context, getStringArrayArg(args, "file_paths"));
-      return JSON.stringify(await context.browserService.interactWithPage({
+      const result = await context.browserService.interactWithPage({
         resourceId,
         action,
         ...(targetId === undefined ? {} : { targetId: Number(targetId) }),
@@ -133,7 +139,8 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         ...(filePaths ? { filePaths } : {}),
         ...(waitMs === undefined ? {} : { waitMs: Number(waitMs) }),
         ...(line === undefined ? {} : { line })
-      }));
+      });
+      return JSON.stringify(compactBrowserInteractionResult(result));
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -381,6 +388,78 @@ function normalizeOptionalString(value: unknown): string | undefined {
 function normalizeOptionalIndex(value: unknown): number | undefined {
   const normalized = Number(value);
   return Number.isInteger(normalized) && normalized > 0 ? normalized : undefined;
+}
+
+function compactBrowserInteractionResult(result: InteractWithPageResult): Record<string, unknown> {
+  return {
+    ok: result.ok,
+    resource_id: result.resource_id,
+    action: result.action,
+    message: result.message,
+    resolved_target: compactBrowserElement(result.resolved_target),
+    candidate_count: result.candidate_count,
+    disambiguation_required: result.disambiguation_required,
+    candidates: result.candidates.map(compactBrowserElement).slice(0, 8),
+    snapshot: compactBrowserRenderResult(result.snapshot)
+  };
+}
+
+function compactBrowserRenderResult(result: BrowserRenderResult): Record<string, unknown> {
+  const pattern = "pattern" in result ? result.pattern : undefined;
+  const matches = "matches" in result && Array.isArray(result.matches) ? result.matches.slice(0, 8) : undefined;
+  return {
+    ok: "ok" in result ? result.ok : true,
+    resource_id: result.resource_id,
+    backend: result.backend,
+    profile_id: result.profile_id,
+    requestedUrl: result.requestedUrl,
+    resolvedUrl: result.resolvedUrl,
+    title: result.title,
+    contentType: result.contentType,
+    lineStart: result.lineStart,
+    lineEnd: result.lineEnd,
+    totalLines: result.totalLines,
+    totalLinks: result.totalLinks,
+    totalElements: result.totalElements,
+    nextLine: result.nextLine,
+    truncated: result.truncated || result.lines.length > 24 || result.links.length > 12 || result.elements.length > 12,
+    lines: result.lines.slice(0, 24),
+    links: result.links.slice(0, 12),
+    elements: result.elements.map(compactBrowserElement).slice(0, 12),
+    ...(pattern === undefined ? {} : { pattern }),
+    ...(matches === undefined ? {} : { matches })
+  };
+}
+
+function compactBrowserElement(element: BrowserElement | null): Record<string, unknown> | null {
+  if (!element) {
+    return null;
+  }
+  return {
+    id: element.id,
+    kind: element.kind,
+    role: element.role,
+    name: trimBrowserText(element.name, 120),
+    tag: element.tag,
+    text: trimBrowserText(element.text, 160),
+    action: element.action,
+    disabled: element.disabled,
+    href: trimBrowserText(element.href, 180),
+    placeholder: trimBrowserText(element.placeholder, 120),
+    value_preview: trimBrowserText(element.value_preview, 120),
+    checked: element.checked,
+    selected: element.selected,
+    visibility: element.visibility,
+    media_url: trimBrowserText(element.media_url, 180),
+    source_urls: element.source_urls.map((item) => trimBrowserText(item, 180)).slice(0, 4)
+  };
+}
+
+function trimBrowserText(value: string | null, limit: number): string | null {
+  if (!value) {
+    return value;
+  }
+  return value.length > limit ? `${value.slice(0, limit)}...` : value;
 }
 
 async function buildScreenshotToolResult(
