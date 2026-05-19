@@ -1571,9 +1571,6 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
           socialRole: "图书管理员",
           lifeContext: "雨夜同居",
           physicalPresence: "黑色风衣，短发",
-          bondToUser: "恋人",
-          closenessPattern: "靠近时会压低声音",
-          interactionPattern: "动作克制",
           realityContract: "始终按真人自处",
           continuityFacts: "",
           hardLimits: "绝不跳出角色"
@@ -1586,7 +1583,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     assert.match(system, /全局 persona：名字=小满；性格底色=冷静细致；说话方式=短句克制/);
     assert.match(system, /全局补充设定：全局特征=图书管理员；通用偏好=旧书、黑咖啡/);
     assert.equal(hasPromptSection(system, "rp_profile"), true);
-    assert.match(system, /RP 全局资料：自我定位=冷静克制，不轻易示弱；社会角色=图书管理员；生活状态=雨夜同居；外在存在感=黑色风衣，短发；与用户关系=恋人；亲密模式=靠近时会压低声音；互动模式=动作克制；现实契约=始终按真人自处；硬边界=绝不跳出角色/);
+    assert.match(system, /RP 全局资料：自我定位=冷静克制，不轻易示弱；社会角色=图书管理员；生活状态=雨夜同居；外在存在感=黑色风衣，短发；现实契约=始终按真人自处；硬边界=绝不跳出角色/);
     assert.match(system, /RP assistant 模式/);
     assert.doesNotMatch(system, /scenario_state/);
   });
@@ -1839,14 +1836,11 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
           socialRole: "图书管理员",
           lifeContext: "雨夜同居",
           physicalPresence: "",
-          bondToUser: "",
-          closenessPattern: "",
-          interactionPattern: "",
           realityContract: "始终按真人自处",
           continuityFacts: "",
           hardLimits: "绝不跳出角色"
         },
-        missingFields: ["physicalPresence", "bondToUser", "closenessPattern", "interactionPattern", "continuityFacts"]
+        missingFields: ["physicalPresence", "continuityFacts"]
       }
     });
 
@@ -1864,7 +1858,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     assert.match(systemContent, /当前 RP 资料只是建立在这层基础上的模式补充/);
     assert.match(systemContent, /不要把已属于 persona 的内容重复搬进 RP 资料/);
     assert.match(systemContent, /当前草稿已明确：自我定位、社会角色、生活状态、现实契约、硬边界/);
-    assert.match(systemContent, /核心字段仍缺：外在存在感、与用户关系、亲密模式、互动模式/);
+    assert.match(systemContent, /核心字段仍缺：外在存在感/);
     assert.match(systemContent, /可在需要时继续补充：连续性事实/);
     assert.match(systemContent, /已设定：自我定位=冷静克制，不轻易示弱；社会角色=图书管理员；生活状态=雨夜同居；现实契约=始终按真人自处；硬边界=绝不跳出角色/);
   });
@@ -1937,6 +1931,15 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       contextStore: {
         listUserFacts() {
           return [{
+            id: "mem_pref_2",
+            title: "长尾偏好",
+            content: "这条长尾用户记忆不应该固定进入 prompt",
+            kind: "preference",
+            source: "user_explicit",
+            createdAt: 1,
+            updatedAt: 999,
+            importance: 1
+          }, {
             id: "mem_pref_1",
             title: "检索偏好",
             content: "用户喜欢 Orama 版上下文检索",
@@ -1945,15 +1948,6 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
             createdAt: 1,
             updatedAt: 1,
             importance: 4
-          }, {
-            id: "mem_pref_2",
-            title: "长尾偏好",
-            content: "这条长尾用户记忆不应该固定进入 prompt",
-            kind: "preference",
-            source: "user_explicit",
-            createdAt: 1,
-            updatedAt: 1,
-            importance: 1
           }];
         },
         upsertUserFact(input: { title: string; content: string }) {
@@ -2069,7 +2063,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     assert.equal(upsertedChunks.length, 0);
     assert.equal(retrievalCalls.length, 1);
     assert.equal(retrievalCalls[0]?.queryText, "Tester：记住我喜欢 Orama 版上下文检索");
-    assert.deepEqual(retrievalCalls[0]?.excludeItemIds, ["mem_pref_1", "mem_pref_2"]);
+    assert.deepEqual(retrievalCalls[0]?.excludeItemIds, ["mem_pref_2", "mem_pref_1"]);
     assert.equal(promptReports.length, 1);
     assert.equal(promptReports[0]?.sessionId, "qqbot:p:10001");
     assert.equal(promptReports[0]?.queryText, "Tester：记住我喜欢 Orama 版上下文检索");

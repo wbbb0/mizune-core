@@ -680,9 +680,6 @@ import {
             socialRole: "",
             lifeContext: "",
             physicalPresence: "",
-            bondToUser: "",
-            closenessPattern: "",
-            interactionPattern: "",
             realityContract: "",
             continuityFacts: "",
             hardLimits: ""
@@ -691,9 +688,6 @@ import {
             "socialRole",
             "lifeContext",
             "physicalPresence",
-            "bondToUser",
-            "closenessPattern",
-            "interactionPattern",
             "realityContract",
             "hardLimits"
           ]
@@ -702,7 +696,7 @@ import {
           createPromptBatchMessage({
             userId: "owner",
             senderName: "Owner",
-            text: "把关系基线改成更克制一点",
+            text: "把现实契约改得更克制一点",
             timestampMs: Date.UTC(2026, 2, 16, 9, 13, 10)
           })
         ]

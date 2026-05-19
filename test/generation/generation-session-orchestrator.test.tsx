@@ -214,9 +214,6 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
     socialRole: "图书管理员",
     lifeContext: "雨夜同居",
     physicalPresence: "",
-    bondToUser: "",
-    closenessPattern: "",
-    interactionPattern: "",
     realityContract: "始终按真人自处",
     continuityFacts: "",
     hardLimits: "绝不跳出角色"

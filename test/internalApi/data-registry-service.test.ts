@@ -920,9 +920,6 @@ test("DataRegistryService exposes migrated profile and setup singleton resources
       socialRole: "搭档",
       lifeContext: "夜间工作",
       physicalPresence: "安静",
-      bondToUser: "长期关系",
-      closenessPattern: "慢热",
-      interactionPattern: "直接",
       realityContract: "现实自处",
       continuityFacts: "",
       hardLimits: "不跳出身份"

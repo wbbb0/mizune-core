@@ -79,9 +79,6 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
                 socialRole: { type: "string" },
                 lifeContext: { type: "string" },
                 physicalPresence: { type: "string" },
-                bondToUser: { type: "string" },
-                closenessPattern: { type: "string" },
-                interactionPattern: { type: "string" },
                 realityContract: { type: "string" },
                 continuityFacts: { type: "string" },
                 hardLimits: { type: "string" }
