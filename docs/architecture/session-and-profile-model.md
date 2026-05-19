@@ -83,7 +83,7 @@
 - `persona`
   - 只负责 bot 的全局人格底色、说话方式和跨模式全局偏好
 - `rpProfile`
-  - 只负责 `rp_assistant` 模式下的真人化设定、关系基线与现实契约
+  - 只负责 `rp_assistant` 模式下 bot 自身的真人化设定与现实契约
 - `scenarioProfile`
   - 只负责 `scenario_host` 模式所需的全局资料
 

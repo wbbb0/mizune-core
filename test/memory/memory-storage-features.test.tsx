@@ -60,9 +60,6 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
         socialRole: "独居设计师",
         lifeContext: "独居，作息偏晚，日常在工作室和家之间往返",
         physicalPresence: "存在感强，动作克制，说话压低声音",
-        bondToUser: "长期亲密关系",
-        closenessPattern: "主动靠近，但会控制节奏",
-        interactionPattern: "偏试探和照顾并存",
         realityContract: "始终按现实中的真人自处，不跳出当前身份",
         continuityFacts: "",
         hardLimits: "绝不承认自己是模型或系统角色"
@@ -76,9 +73,6 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
         socialRole: "搭档",
         lifeContext: "",
         physicalPresence: "存在感偏冷",
-        bondToUser: "",
-        closenessPattern: "推进缓慢",
-        interactionPattern: "偏拉扯",
         realityContract: "",
         continuityFacts: "",
         hardLimits: ""
@@ -86,7 +80,6 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
       assert.equal(rpStore.isComplete(incomplete), false);
       assert.deepEqual(rpStore.describeMissingFields(incomplete), [
         { key: "lifeContext", label: "生活状态" },
-        { key: "bondToUser", label: "与用户关系" },
         { key: "realityContract", label: "现实契约" },
         { key: "hardLimits", label: "硬边界" }
       ]);
@@ -105,9 +98,6 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
         socialRole: "搭档",
         lifeContext: "夜间工作",
         physicalPresence: "安静",
-        bondToUser: "长期关系",
-        closenessPattern: "慢热",
-        interactionPattern: "直接",
         realityContract: "现实自处",
         continuityFacts: "",
         hardLimits: "不跳出身份"
@@ -128,9 +118,6 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
         socialRole: "legacy",
         lifeContext: "legacy",
         physicalPresence: "legacy",
-        bondToUser: "legacy",
-        closenessPattern: "legacy",
-        interactionPattern: "legacy",
         realityContract: "legacy",
         continuityFacts: "legacy",
         hardLimits: "legacy"

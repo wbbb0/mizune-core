@@ -11,15 +11,13 @@
     - `globalTraits`
     - `generalPreferences`
 - `rpProfile`
-  - 只描述 `rp_assistant` 模式下的真人化设定、关系基线与现实契约。
+  - 只描述 `rp_assistant` 模式下 bot 自身的真人化设定与现实契约。
+  - 不保存面向某个用户的关系基线、亲密推进方式或互动偏好；这些信息应进入 `user_profile`、`user_memories` 或 `session` 范围上下文。
   - 当前字段收敛为：
     - `selfPositioning`
     - `socialRole`
     - `lifeContext`
     - `physicalPresence`
-    - `bondToUser`
-    - `closenessPattern`
-    - `interactionPattern`
     - `realityContract`
     - `continuityFacts`
     - `hardLimits`
@@ -127,7 +125,7 @@ Prompt 段标签语义：
 - `persona`
   - bot 的名字、性格底色、说话方式和跨模式全局偏好
 - `rpProfile`
-  - RP 模式下的真人化设定、关系基线和现实契约
+  - RP 模式下 bot 自身的真人化设定和现实契约
 - `global_rules`
   - 默认工作流行为
 - `toolset_rules`

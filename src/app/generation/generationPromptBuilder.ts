@@ -46,6 +46,7 @@ import type { MessageContentPart } from "#messages/contentParts.ts";
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import { buildChatFileHandleResult } from "#llm/tools/core/fileHandle.ts";
 import type { ContextMemoryFactEntry, ContextPromptMemoryRetrievalSkipReason } from "#context/contextTypes.ts";
+import { contextTermOverlapScore } from "#context/contextTextTerms.ts";
 
 type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
@@ -892,7 +893,10 @@ async function enrichScheduledPromptTrigger(
 
 function selectFixedPromptFacts(
   facts: ContextMemoryFactEntry[],
-  limit: number
+  limit: number,
+  options: {
+    queryText?: string;
+  } = {}
 ): {
   items: ContextMemoryFactEntry[];
   totalCount: number;
@@ -900,12 +904,51 @@ function selectFixedPromptFacts(
   truncated: boolean;
 } {
   const normalizedLimit = Math.max(0, Math.trunc(limit));
+  const sortedFacts = sortPromptFacts(facts, options.queryText ?? "");
   return {
-    items: normalizedLimit === 0 ? [] : facts.slice(0, normalizedLimit),
+    items: normalizedLimit === 0 ? [] : sortedFacts.slice(0, normalizedLimit),
     totalCount: facts.length,
     limit: normalizedLimit,
     truncated: facts.length > normalizedLimit
   };
+}
+
+function sortPromptFacts(facts: ContextMemoryFactEntry[], queryText: string): ContextMemoryFactEntry[] {
+  const now = Date.now();
+  return facts
+    .map((fact) => ({
+      fact,
+      score: scorePromptFact(fact, queryText, now)
+    }))
+    .sort((left, right) => {
+      const scoreDelta = right.score - left.score;
+      if (scoreDelta !== 0) {
+        return scoreDelta;
+      }
+      return right.fact.updatedAt - left.fact.updatedAt;
+    })
+    .map((item) => item.fact);
+}
+
+function scorePromptFact(fact: ContextMemoryFactEntry, queryText: string, now: number): number {
+  const kindWeight = ({
+    boundary: 8,
+    preference: 6,
+    relationship: 5,
+    habit: 4,
+    fact: 3,
+    other: 1
+  } satisfies Record<ContextMemoryFactEntry["kind"], number>)[fact.kind];
+  const importanceWeight = (fact.importance ?? 0) * 2;
+  const relevanceText = [fact.title, fact.content, fact.slotKey].filter(Boolean).join("\n");
+  const relevanceWeight = queryText.trim()
+    ? contextTermOverlapScore(queryText, relevanceText) * 8
+    : 0;
+  const recencyWeight = Math.max(0, 2 - ((now - fact.updatedAt) / (45 * 24 * 60 * 60 * 1000)));
+  const lastUsedWeight = fact.lastUsedAt
+    ? Math.max(0.5, 2 - ((now - fact.lastUsedAt) / (30 * 24 * 60 * 60 * 1000)))
+    : 0;
+  return kindWeight + importanceWeight + relevanceWeight + recencyWeight + lastUsedWeight;
 }
 
 function resolvePromptMemoryRetrievalSkippedReason(input: {
@@ -1119,14 +1162,18 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const allCurrentUserMemories = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
       ? []
       : deps.contextStore?.listUserFacts(input.currentUser.userId) ?? [];
-    const userFactSelection = selectFixedPromptFacts(allCurrentUserMemories, deps.config.context.retrieval.maxFixedUserFacts);
+    const memoryQueryText = buildBatchQueryText(input.batchMessages);
+    const userFactSelection = selectFixedPromptFacts(allCurrentUserMemories, deps.config.context.retrieval.maxFixedUserFacts, {
+      queryText: memoryQueryText
+    });
     const currentUserMemories = userFactSelection.items;
     const allCurrentSessionContext = scenarioHostMode
       ? []
       : deps.contextStore?.listSessionFacts?.(input.sessionId) ?? [];
-    const sessionFactSelection = selectFixedPromptFacts(allCurrentSessionContext, deps.config.context.retrieval.maxFixedSessionFacts);
+    const sessionFactSelection = selectFixedPromptFacts(allCurrentSessionContext, deps.config.context.retrieval.maxFixedSessionFacts, {
+      queryText: memoryQueryText
+    });
     const currentSessionContext = sessionFactSelection.items;
-    const memoryQueryText = buildBatchQueryText(input.batchMessages);
     const semanticRetrievalSkippedReason = resolvePromptMemoryRetrievalSkippedReason({
       scenarioHostMode,
       assistantMode,
@@ -1297,14 +1344,18 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const allCurrentUserMemories = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
       ? []
       : deps.contextStore?.listUserFacts(input.currentUser.userId) ?? [];
-    const userFactSelection = selectFixedPromptFacts(allCurrentUserMemories, deps.config.context.retrieval.maxFixedUserFacts);
+    const memoryQueryText = buildScheduledQueryText(scheduledTrigger);
+    const userFactSelection = selectFixedPromptFacts(allCurrentUserMemories, deps.config.context.retrieval.maxFixedUserFacts, {
+      queryText: memoryQueryText
+    });
     const currentUserMemories = userFactSelection.items;
     const allCurrentSessionContext = scenarioHostMode
       ? []
       : deps.contextStore?.listSessionFacts?.(input.sessionId) ?? [];
-    const sessionFactSelection = selectFixedPromptFacts(allCurrentSessionContext, deps.config.context.retrieval.maxFixedSessionFacts);
+    const sessionFactSelection = selectFixedPromptFacts(allCurrentSessionContext, deps.config.context.retrieval.maxFixedSessionFacts, {
+      queryText: memoryQueryText
+    });
     const currentSessionContext = sessionFactSelection.items;
-    const memoryQueryText = buildScheduledQueryText(scheduledTrigger);
     const semanticRetrievalSkippedReason = resolvePromptMemoryRetrievalSkippedReason({
       scenarioHostMode,
       assistantMode,

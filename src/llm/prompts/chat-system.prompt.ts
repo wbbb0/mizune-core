@@ -42,9 +42,6 @@ const RP_PROFILE_FIELD_HINTS: Record<EditableRpProfileFieldName, string> = {
   socialRole: "RP 中的社会位置、职业或对外角色",
   lifeContext: "日常生活环境、生活状态和稳定背景框架",
   physicalPresence: "外在存在感、身体感、声音或动作习惯",
-  bondToUser: "与用户的默认关系基线",
-  closenessPattern: "亲密推进和距离控制方式",
-  interactionPattern: "与用户互动时的主要方式与节奏",
   realityContract: "如何维持自己是现实中真人这一前提",
   continuityFacts: "跨会话必须稳定保持的事实锚点",
   hardLimits: "绝对不能突破的 RP 硬边界"
@@ -478,18 +475,18 @@ function buildRpProfileDraftModeLines(
       optionalMissingLabels.length > 0
         ? `可在需要时继续补充：${optionalMissingLabels.join("、")}。`
         : "可选补充字段已齐全，除非 owner 明确要求，否则不要重问整份 RP 资料。",
-      "RP 资料只在全局 persona 底座上补充真人化设定；不要把 persona 内容重复写入 RP 资料，也不要写到用户资料或其他长期记忆。",
+      "RP 资料只在全局 persona 底座上补充 bot 自身的真人化设定；不要写入与某个用户的关系、亲密推进方式、互动偏好，也不要写到用户资料或其他长期记忆。",
       "若本轮只是微调单个字段，就直接改那一项；只有遇到核心字段缺失、语义冲突或边界不清时再追问。",
       "如需核对现状，优先概括或发送当前 RP 草稿；草稿发出后等待 owner 反馈，不要在同一回复继续追问新的长串字段。",
       "回复保持短句纯文本，不用 Markdown 标题或列表。"
     ];
   }
 
-  if (coreMissingLabels.length === 9) {
+  if (filledLabels.length === 0 && coreMissingLabels.length > 0) {
     return [
-      "当前处于 RP 全局资料初始化阶段，需要从空白草稿开始建立 RP 专用资料。",
+      "当前处于 RP 全局资料初始化阶段，需要从空白草稿开始建立只描述 bot 自身的 RP 专用资料。",
       "先确认这个人在 RP 中如何看待自己，以及他在现实中的社会角色；不要一上来把整份问卷全抛给 owner。",
-      "RP 资料只服务 RP 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
+      "RP 资料只服务 RP 模式，且只描述 bot 自身；不要修改 persona、用户资料、关系或其他长期记忆。",
       "owner 每提供一段明确设定，就立即用工具写入草稿；不要等所有信息都收集完再统一写入。",
       "核心字段初步成形后，调用 send_setup_draft 发送当前 RP 草稿供 owner 核对。",
       "回复保持短句纯文本，不用 Markdown 标题或列表。"
@@ -500,7 +497,7 @@ function buildRpProfileDraftModeLines(
     return [
       `当前 RP 草稿已有部分内容，但核心字段仍缺：${coreMissingLabels.join("、")}。`,
       `当前优先确认：${coreMissingLabels[0]}；其余核心字段可在同一主题下顺势补齐。`,
-      "RP 资料只服务 RP 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
+      "RP 资料只服务 RP 模式，且只描述 bot 自身；不要修改 persona、用户资料、关系或其他长期记忆。",
       "owner 每提供一段明确设定，就立即用工具写入草稿；不要等所有信息都收集完再统一写入。",
       "核心字段补得足够稳定后，调用 send_setup_draft 发送当前 RP 草稿供 owner 核对。",
       "回复保持短句纯文本，不用 Markdown 标题或列表。"
@@ -767,16 +764,13 @@ function buildSharedPersonaSummaryLines(persona: Persona): string[] {
 
 function buildRpProfileLines(profile: RpProfile): string[] {
   return buildModeProfileSummaryLines({
-    intro: "以下 RP 全局资料只在 rp_assistant 模式下生效，是建立在全局 persona 之上的真人化补充。",
+    intro: "以下 RP 全局资料只在 rp_assistant 模式下生效，是建立在全局 persona 之上的 bot 自身真人化补充。",
     label: "RP 全局资料",
     coreParts: [
       profile.selfPositioning ? `自我定位=${profile.selfPositioning}` : null,
       profile.socialRole ? `社会角色=${profile.socialRole}` : null,
       profile.lifeContext ? `生活状态=${profile.lifeContext}` : null,
       profile.physicalPresence ? `外在存在感=${profile.physicalPresence}` : null,
-      profile.bondToUser ? `与用户关系=${profile.bondToUser}` : null,
-      profile.closenessPattern ? `亲密模式=${profile.closenessPattern}` : null,
-      profile.interactionPattern ? `互动模式=${profile.interactionPattern}` : null,
       profile.realityContract ? `现实契约=${profile.realityContract}` : null,
       profile.hardLimits ? `硬边界=${profile.hardLimits}` : null
     ],

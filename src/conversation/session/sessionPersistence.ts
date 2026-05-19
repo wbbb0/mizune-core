@@ -28,9 +28,6 @@ const rpProfileDraftSchema = z.object({
   socialRole: z.string(),
   lifeContext: z.string(),
   physicalPresence: z.string(),
-  bondToUser: z.string(),
-  closenessPattern: z.string(),
-  interactionPattern: z.string(),
   realityContract: z.string(),
   continuityFacts: z.string(),
   hardLimits: z.string()
