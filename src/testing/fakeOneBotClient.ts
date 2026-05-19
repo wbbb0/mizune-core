@@ -2,6 +2,9 @@ import { EventEmitter } from "node:events";
 import type {
   OneBotApiResponse,
   OneBotFriendItem,
+  OneBotGroupAtAllRemain,
+  OneBotGroupFileUrlResult,
+  OneBotGroupFilesResult,
   OneBotGroupItem,
   OneBotGroupMemberInfo,
   OneBotGroupMemberItem,
@@ -270,7 +273,27 @@ export class FakeOneBotClient extends EventEmitter {
   async getGroupInfo(groupId: string): Promise<OneBotGroupItem | null> {
     return {
       group_id: Number(groupId),
-      group_name: `CLI 群 ${groupId}`
+      group_name: `CLI 群 ${groupId}`,
+      member_count: 1,
+      max_member_count: 500
+    };
+  }
+
+  async getGroupInfoEx(groupId: string): Promise<Record<string, unknown>> {
+    return {
+      group_id: Number(groupId),
+      group_name: `CLI 群 ${groupId}`,
+      member_count: 1,
+      max_member_count: 500,
+      description: "FakeOneBotClient group for interactive tool tests"
+    };
+  }
+
+  async getGroupAtAllRemain(): Promise<OneBotGroupAtAllRemain> {
+    return {
+      can_at_all: true,
+      remain_at_all_count_for_group: 10,
+      remain_at_all_count_for_uin: 5
     };
   }
 
@@ -293,6 +316,49 @@ export class FakeOneBotClient extends EventEmitter {
 
   async getGroupAnnouncements(): Promise<[]> {
     return [];
+  }
+
+  async getGroupRootFiles(groupId: string): Promise<OneBotGroupFilesResult> {
+    return {
+      folders: [{
+        folder_id: "fake-folder-docs",
+        folder_name: "测试目录",
+        create_time: Math.floor(Date.now() / 1000),
+        creator: Number(this.options.selfId),
+        creator_name: this.options.selfName ?? "CLI Bot",
+        total_file_count: 1
+      }],
+      files: [{
+        file_id: `fake-file-${groupId}-readme`,
+        file_name: "tool-eval-readme.txt",
+        file_size: 128,
+        busid: 1,
+        upload_time: Math.floor(Date.now() / 1000),
+        uploader: Number(this.options.selfId),
+        uploader_name: this.options.selfName ?? "CLI Bot"
+      }]
+    };
+  }
+
+  async getGroupFilesByFolder(groupId: string, folderId: string): Promise<OneBotGroupFilesResult> {
+    return {
+      folders: [],
+      files: [{
+        file_id: `fake-file-${groupId}-${folderId}`,
+        file_name: `${folderId}.txt`,
+        file_size: 64,
+        busid: 1,
+        upload_time: Math.floor(Date.now() / 1000),
+        uploader: Number(this.options.selfId),
+        uploader_name: this.options.selfName ?? "CLI Bot"
+      }]
+    };
+  }
+
+  async getGroupFileUrl(groupId: string, fileId: string, busid: string | number): Promise<OneBotGroupFileUrlResult> {
+    return {
+      url: `https://example.com/fake-onebot/groups/${encodeURIComponent(groupId)}/files/${encodeURIComponent(fileId)}?busid=${encodeURIComponent(String(busid))}`
+    };
   }
 
   async getLoginInfo(): Promise<OneBotLoginInfo> {

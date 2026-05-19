@@ -117,6 +117,10 @@ export interface BrowserRenderResult {
   elements: BrowserElement[];
   lineStart: number;
   lineEnd: number;
+  totalLines: number;
+  totalLinks: number;
+  totalElements: number;
+  nextLine: number | null;
   truncated: boolean;
 }
 

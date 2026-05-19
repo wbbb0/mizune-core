@@ -74,6 +74,7 @@ export function analyzeBuiltinToolConcurrency(toolCall: LlmToolCall): ToolExecut
     case "terminal_read":
       return parallel([terminalKey(getStringArg(args, "resource_id"))], []);
     case "terminal_write":
+    case "terminal_send_lines":
     case "terminal_key":
     case "terminal_signal":
     case "terminal_stop":

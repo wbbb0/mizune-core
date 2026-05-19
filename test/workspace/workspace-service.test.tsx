@@ -75,3 +75,46 @@ test("workspace service can read symlink targets allowed by filesystem permissio
     await rm(outsideDir, { recursive: true, force: true });
   }
 });
+
+test("workspace service replaces one exact text occurrence", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-service-"));
+  try {
+    const config = createTestAppConfig({
+      localFiles: {
+        enabled: true,
+        root: "data"
+      }
+    });
+    const service = new LocalFileService(config, rootDir);
+    await service.init();
+    await writeFile(join(rootDir, "note.txt"), "alpha\nbeta\ngamma\n", "utf8");
+
+    const result = await service.replaceFileText("note.txt", "beta", "delta");
+    assert.equal(result.hunksApplied, 1);
+    assert.equal((await service.readFile("note.txt")).content, "alpha\ndelta\ngamma\n");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("workspace service rejects ambiguous exact text replacement", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "llm-bot-workspace-service-"));
+  try {
+    const config = createTestAppConfig({
+      localFiles: {
+        enabled: true,
+        root: "data"
+      }
+    });
+    const service = new LocalFileService(config, rootDir);
+    await service.init();
+    await writeFile(join(rootDir, "note.txt"), "beta\nbeta\n", "utf8");
+
+    await assert.rejects(
+      service.replaceFileText("note.txt", "beta", "delta"),
+      /matches multiple locations/u
+    );
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});

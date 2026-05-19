@@ -1,12 +1,12 @@
 import type { BrowserElement, BrowserLineMatch, BrowserLink, BrowserRenderResult, BrowserSnapshot } from "./types.ts";
 
-const DEFAULT_WINDOW_LINES = 40;
+const DEFAULT_WINDOW_LINES = 24;
 const WINDOW_PADDING_LINES = 10;
 const LINE_TARGET_LENGTH = 160;
 const MAX_PAGE_LINKS = 40;
 const MAX_PAGE_ELEMENTS = 40;
-const MAX_RENDERED_LINKS = 20;
-const MAX_RENDERED_ELEMENTS = 24;
+const MAX_RENDERED_LINKS = 12;
+const MAX_RENDERED_ELEMENTS = 16;
 
 interface ExtractedPageContent {
   title: string | null;
@@ -53,7 +53,11 @@ export function renderSnapshot(
     elements: renderedElements,
     lineStart: renderedLines.length > 0 ? startLine : 0,
     lineEnd: renderedLines.length > 0 ? startLine + renderedLines.length - 1 : 0,
-    truncated: snapshot.truncated
+    totalLines: snapshot.lines.length,
+    totalLinks: snapshot.links.length,
+    totalElements: snapshot.elements.length,
+    nextLine: endLine < snapshot.lines.length ? endLine + 1 : null,
+    truncated: snapshot.truncated || endLine < snapshot.lines.length
   };
 }
 

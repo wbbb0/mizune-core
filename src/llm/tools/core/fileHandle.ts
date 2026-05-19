@@ -4,13 +4,10 @@ import type { BuiltinToolContext } from "./shared.ts";
 import { mapWorkspaceFileToView, type WorkspaceFileView } from "./workspaceFileView.ts";
 import { nextAction, withNextActions, type ToolNextAction } from "./toolNextActions.ts";
 
-export type ChatFileHandleCapabilityName =
+export type AssetHandleCapabilityName =
   | "view_media"
   | "inspect_media"
-  | "send_to_chat";
-
-export type AssetHandleCapabilityName =
-  | ChatFileHandleCapabilityName
+  | "send_to_chat"
   | "local_path"
   | "export_to_filesystem"
   | "document_overview"
@@ -38,7 +35,6 @@ export interface FileHandleUsageHint {
   message: string;
 }
 
-export type ChatFileHandleCapability = FileHandleCapability<ChatFileHandleCapabilityName>;
 export type AssetHandleCapability = FileHandleCapability<AssetHandleCapabilityName>;
 export type LocalFileHandleCapability = FileHandleCapability<LocalFileHandleCapabilityName>;
 
@@ -60,24 +56,6 @@ export interface AssetHandle {
   caption: string | null;
   caption_status: WorkspaceFileView["caption_status"];
   capabilities: AssetHandleCapability[];
-  usage_hints: FileHandleUsageHint[];
-  next_actions?: ToolNextAction[];
-  legacy: {
-    file_id: string;
-    file_ref: string;
-    chat_file_path: string;
-  };
-}
-
-export interface ChatFileHandle {
-  source: "asset";
-  id: string;
-  selector: {
-    file_id: string;
-    file_ref: string;
-  };
-  file: Pick<WorkspaceFileView, "file_id" | "file_ref" | "kind" | "chat_file_path" | "source_name" | "mime_type" | "size_bytes" | "origin">;
-  capabilities: ChatFileHandleCapability[];
   usage_hints: FileHandleUsageHint[];
   next_actions?: ToolNextAction[];
 }
@@ -108,9 +86,6 @@ export interface FileHandleOptions {
 
 export type ChatFileHandleResult = WorkspaceFileView & {
   asset_handle: AssetHandle;
-  handle: ChatFileHandle;
-  handle_capabilities: ChatFileHandleCapability[];
-  usage_hints: FileHandleUsageHint[];
   next_actions?: ToolNextAction[];
 };
 
@@ -193,19 +168,14 @@ export function buildChatFileHandleResult(
   options: FileHandleOptions = {}
 ): ChatFileHandleResult {
   const visibleToolNames = resolveVisibleToolNames(options.visibleToolNames, DEFAULT_VISIBLE_CHAT_FILE_TOOLS, options.defaultVisible ?? true);
-  const capabilities = buildChatFileHandleCapabilities(file, visibleToolNames);
+  const view = mapWorkspaceFileToView(file);
+  const assetHandle = buildAssetHandle(view, visibleToolNames);
   const nextActions = options.nextActionMode === "none"
     ? []
-    : buildChatFileHandleNextActions(file, capabilities);
-  const view = mapWorkspaceFileToView(file);
-  const handle = buildChatFileHandle(view, capabilities, nextActions);
-  const assetHandle = buildAssetHandle(view, visibleToolNames);
+    : assetHandle.next_actions ?? [];
   return withNextActions({
     ...view,
-    asset_handle: assetHandle,
-    handle,
-    handle_capabilities: capabilities,
-    usage_hints: assetInternalPathUsageHints()
+    asset_handle: assetHandle
   }, nextActions);
 }
 
@@ -218,49 +188,6 @@ export function buildChatFileHandleResultFromContext(
     ...options,
     visibleToolNames: context.debugSnapshot?.visibleToolNames
   });
-}
-
-export function buildChatFileHandleCapabilities(
-  file: ChatFileRecord,
-  visibleToolNamesInput?: Iterable<string> | undefined
-): ChatFileHandleCapability[] {
-  const visibleToolNames = visibleToolNamesInput instanceof Set
-    ? visibleToolNamesInput
-    : resolveVisibleToolNames(visibleToolNamesInput, DEFAULT_VISIBLE_CHAT_FILE_TOOLS, true);
-  const selector = file.fileRef || file.fileId;
-  const capabilities: ChatFileHandleCapability[] = [];
-
-  if (MEDIA_VIEW_KINDS.has(file.kind)) {
-    capabilities.push({
-      capability: "view_media",
-      tool: "asset_media_view",
-      reason: "查看该媒体文件内容",
-      available: visibleToolNames.has("asset_media_view"),
-      args: { asset_ref: selector }
-    });
-  }
-
-  if (MEDIA_INSPECT_KINDS.has(file.kind)) {
-    capabilities.push({
-      capability: "inspect_media",
-      tool: "asset_media_inspect",
-      reason: "按具体问题精读该图片内容",
-      available: visibleToolNames.has("asset_media_inspect"),
-      args: { asset_ref: selector },
-      requires: ["question"]
-    });
-  }
-
-  capabilities.push({
-    capability: "send_to_chat",
-    tool: "asset_send_to_chat",
-    reason: "把该文件发送到当前聊天",
-    available: visibleToolNames.has("asset_send_to_chat"),
-    args: { asset_ref: selector },
-    ...(MEDIA_VIEW_KINDS.has(file.kind) ? {} : { requires: ["webui_or_napcat_file_upload"] })
-  });
-
-  return capabilities;
 }
 
 export function buildLocalFileHandleResult(
@@ -343,33 +270,6 @@ export function buildLocalFileHandleCapabilities(
   return capabilities;
 }
 
-function buildChatFileHandle(
-  file: WorkspaceFileView,
-  capabilities: ChatFileHandleCapability[],
-  nextActions: ToolNextAction[]
-): ChatFileHandle {
-  return withNextActions({
-    source: "asset" as const,
-    id: file.file_id,
-    selector: {
-      file_id: file.file_id,
-      file_ref: file.file_ref
-    },
-    file: {
-      file_id: file.file_id,
-      file_ref: file.file_ref,
-      kind: file.kind,
-      chat_file_path: file.chat_file_path,
-      source_name: file.source_name,
-      mime_type: file.mime_type,
-      size_bytes: file.size_bytes,
-      origin: file.origin
-    },
-    capabilities,
-    usage_hints: assetInternalPathUsageHints()
-  }, nextActions);
-}
-
 function buildAssetHandle(
   file: WorkspaceFileView,
   visibleToolNames: Set<string>
@@ -397,12 +297,7 @@ function buildAssetHandle(
     caption: file.caption,
     caption_status: file.caption_status,
     capabilities: assetCapabilities,
-    usage_hints: assetInternalPathUsageHints(),
-    legacy: {
-      file_id: file.file_id,
-      file_ref: file.file_ref,
-      chat_file_path: file.chat_file_path
-    }
+    usage_hints: assetInternalPathUsageHints()
   }, nextActions);
 }
 
@@ -530,23 +425,6 @@ function buildLocalFileHandle(
     },
     capabilities
   }, nextActions);
-}
-
-function buildChatFileHandleNextActions(
-  file: ChatFileRecord,
-  capabilities: ChatFileHandleCapability[]
-): ToolNextAction[] {
-  const selector = file.fileRef || file.fileId;
-  const actions: ToolNextAction[] = [];
-  const viewMedia = capabilities.find((item) => item.capability === "view_media" && item.available);
-  if (viewMedia) {
-    actions.push(nextAction(viewMedia.tool, viewMedia.reason, viewMedia.args));
-  }
-  const send = capabilities.find((item) => item.capability === "send_to_chat" && item.available);
-  if (send) {
-    actions.push(nextAction(send.tool, send.reason, { file_ref: selector }));
-  }
-  return actions;
 }
 
 function buildAssetHandleNextActions(

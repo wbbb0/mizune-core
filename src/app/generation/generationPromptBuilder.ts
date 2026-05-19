@@ -62,6 +62,7 @@ const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "terminal_start",
   "terminal_read",
   "terminal_write",
+  "terminal_send_lines",
   "terminal_key",
   "terminal_signal",
   "terminal_stop"
@@ -858,8 +859,7 @@ async function enrichScheduledPromptTrigger(
       return fileHandleResults.length > 0
         ? {
             ...trigger,
-            resultAssetHandles: fileHandleResults.map((item) => item.asset_handle),
-            resultFileHandles: fileHandleResults.map((item) => item.handle)
+            resultAssetHandles: fileHandleResults.map((item) => item.asset_handle)
           }
         : trigger;
     } catch (error: unknown) {
@@ -880,8 +880,7 @@ async function enrichScheduledPromptTrigger(
       });
       return {
         ...trigger,
-        resultAssetHandle: result.asset_handle,
-        resultFileHandle: result.handle
+        resultAssetHandle: result.asset_handle
       };
     } catch (error: unknown) {
       deps.logger?.warn({ err: error }, "failed to enrich download scheduled prompt with result file handle");

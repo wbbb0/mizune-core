@@ -39,6 +39,8 @@ CONFIG_INSTANCE=acc1 npm run test:interactive-bot -- --data-dir data/interactive
 
 需要临时复用实例原数据时可以加 `--use-instance-data`，但这会直接读写该实例的数据文件。
 
+需要减少日志和提示输出时使用 `--quiet`。需要从文件按行执行输入时使用 `--input-file <file>`，这与管道输入等价，但更适合保存可重复的 bot 交互脚本。
+
 ## 默认关闭的能力
 
 为了降低成本和避免测试副作用，CLI 会在运行时覆盖配置，关闭以下能力：
@@ -84,4 +86,14 @@ CLI 支持非 TTY 管道输入，便于未来功能复用：
 ```bash
 printf '.remember 我喜欢 Orama 测试\n/context\n/quit\n' \
   | CONFIG_INSTANCE=acc1 npm run test:interactive-bot -- --routing-preset prod_deepseek --data-dir data/interactive-smoke
+```
+
+也可以使用输入文件：
+
+```bash
+CONFIG_INSTANCE=acc1 npm run test:interactive-bot -- \
+  --routing-preset prod_deepseek \
+  --data-dir data/interactive-smoke \
+  --input-file /tmp/interactive-bot-script.txt \
+  --quiet
 ```

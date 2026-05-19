@@ -8,7 +8,7 @@ import type { SpecialRole } from "#identity/specialRole.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { SessionDebugMarker } from "#conversation/session/sessionTypes.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
-import type { AssetHandle, ChatFileHandle } from "#llm/tools/core/fileHandle.ts";
+import type { AssetHandle } from "#llm/tools/core/fileHandle.ts";
 import type { MessageContentPart } from "#messages/contentParts.ts";
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
@@ -212,7 +212,6 @@ export interface InternalSessionTriggerPromptInput {
         workspaceFileIds: string[];
         chatFilePaths: string[];
         resultAssetHandles?: AssetHandle[];
-        resultFileHandles?: ChatFileHandle[];
         comfyPromptId: string;
         autoIterationIndex: number;
         maxAutoIterations: number;
@@ -269,7 +268,6 @@ export interface InternalSessionTriggerPromptInput {
         sizeBytes: number;
         fileKind: string;
         resultAssetHandle?: AssetHandle;
-        resultFileHandle?: ChatFileHandle;
       }
     | {
         kind: "download_failed";

@@ -72,6 +72,10 @@ export class BrowserService {
     await this.janitor.closeAllSessions("browser_sessions_closed_after_config_reload");
   }
 
+  async shutdown(): Promise<void> {
+    await this.janitor.closeAllSessions("browser_sessions_closed_on_runtime_shutdown");
+  }
+
   async openPage(input: OpenPageInput): Promise<OpenPageResult> {
     return this.pageService.openPage(input);
   }

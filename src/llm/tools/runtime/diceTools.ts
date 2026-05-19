@@ -1,7 +1,7 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
 import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
-import { rollDiceExpression } from "./diceExpression.ts";
+import { rollDiceExpression, type DiceRollResult } from "./diceExpression.ts";
 
 export const diceToolDescriptors: ToolDescriptor[] = [
   {
@@ -30,6 +30,33 @@ export const diceToolDescriptors: ToolDescriptor[] = [
 export const diceToolHandlers: Record<string, ToolHandler> = {
   async roll_dice(_toolCall, args) {
     const expression = getStringArg(args, "expression");
-    return JSON.stringify(rollDiceExpression(expression));
+    const result = rollDiceExpression(expression);
+    return JSON.stringify(result.ok ? compactDiceRollResult(result) : result);
   }
 };
+
+function compactDiceRollResult(result: DiceRollResult) {
+  return {
+    ok: true,
+    expression: result.expression,
+    total: result.total,
+    formula: result.detailFormula,
+    terms: result.terms.map((term) => {
+      if (term.kind === "number") {
+        return {
+          kind: "number",
+          sign: term.sign,
+          value: term.value,
+          subtotal: term.subtotal
+        };
+      }
+      return {
+        kind: "dice",
+        sign: term.sign,
+        notation: term.notation,
+        rolls: term.rolls,
+        subtotal: term.subtotal
+      };
+    })
+  };
+}

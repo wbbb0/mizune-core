@@ -67,6 +67,10 @@ test("roll_dice handler returns structured JSON", async () => {
 
   assert.equal(payload.ok, true);
   assert.equal(payload.expression, "1D6");
+  assert.equal(typeof payload.formula, "string");
+  assert.equal(payload.shortText, undefined);
+  assert.equal(payload.replyText, undefined);
+  assert.equal(payload.text, undefined);
   assert.equal(payload.terms.length, 1);
   assert.equal(payload.terms[0].rolls.length, 1);
 });

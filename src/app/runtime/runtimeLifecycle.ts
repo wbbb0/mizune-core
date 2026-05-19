@@ -110,6 +110,7 @@ export async function shutdownRuntime(input: {
   onMessage: (event: OneBotMessageEvent) => void;
   onRequest: (event: OneBotRequestEvent) => void;
   internalApi: InternalApiController | null;
+  browserService: BrowserService;
   schedulerStarted: boolean;
   scheduler: Scheduler;
   contextMaintenanceService: ContextMaintenanceService;
@@ -129,6 +130,7 @@ export async function shutdownRuntime(input: {
     if (input.schedulerStarted) {
       await input.scheduler.stop();
     }
+    await input.browserService.shutdown();
     input.contextMaintenanceService.stop();
     input.contextExtractionQueue.stop();
     await input.comfyTaskRunner.stop();

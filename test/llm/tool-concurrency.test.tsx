@@ -21,6 +21,11 @@ test("builtin tool concurrency distinguishes terminal resources by resource id",
     reads: [],
     writes: ["terminal:a"]
   });
+  assert.deepEqual(analyzeBuiltinToolConcurrency(toolCall("terminal_send_lines", { resource_id: "a", lines: ["x"] })), {
+    kind: "parallel",
+    reads: [],
+    writes: ["terminal:a"]
+  });
 });
 
 test("resource wildcard keys conflict with specific keys", async () => {

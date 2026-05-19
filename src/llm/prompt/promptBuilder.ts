@@ -15,7 +15,7 @@ import {
 } from "../prompts/history-message.prompt.ts";
 import { getSessionChatType } from "#conversation/session/sessionIdentity.ts";
 import type { PromptInput, ScheduledTaskPromptInput, SetupPromptInput } from "./promptTypes.ts";
-import type { AssetHandle, ChatFileHandle } from "#llm/tools/core/fileHandle.ts";
+import type { AssetHandle } from "#llm/tools/core/fileHandle.ts";
 import type { InlineSessionTriggerExecution } from "#conversation/session/sessionTypes.ts";
 import { renderPromptSectionRaw } from "../prompts/prompt-section.ts";
 
@@ -223,39 +223,21 @@ function buildTriggerMessage(input: ScheduledTaskPromptInput): string {
 
   if (trigger.kind === "comfy_task_completed") {
     const assetHandleLines = formatAssetHandlesForPrompt(trigger.resultAssetHandles);
-    const legacyHandleLines = assetHandleLines ? "" : formatChatFileHandlesForPrompt(trigger.resultFileHandles);
     const extra = [
-      assetHandleLines ? `结果文件 asset_handle：\n${assetHandleLines}` : null,
-      legacyHandleLines ? `结果文件 handle：\n${legacyHandleLines}` : null
+      assetHandleLines ? `结果文件 asset_handle：\n${assetHandleLines}` : null
     ].filter(Boolean);
     return extra.length > 0 ? `${body}\n${extra.join("\n")}` : body;
   }
 
   if (trigger.kind === "download_completed") {
     const assetHandleLine = formatAssetHandlesForPrompt(trigger.resultAssetHandle ? [trigger.resultAssetHandle] : undefined);
-    const legacyHandleLine = assetHandleLine ? "" : formatChatFileHandlesForPrompt(trigger.resultFileHandle ? [trigger.resultFileHandle] : undefined);
     const extra = [
-      assetHandleLine ? `结果文件 asset_handle：\n${assetHandleLine}` : null,
-      legacyHandleLine ? `结果文件 handle：\n${legacyHandleLine}` : null
+      assetHandleLine ? `结果文件 asset_handle：\n${assetHandleLine}` : null
     ].filter(Boolean);
     return extra.length > 0 ? `${body}\n${extra.join("\n")}` : body;
   }
 
   return body;
-}
-
-function formatChatFileHandlesForPrompt(handles: ChatFileHandle[] | undefined): string {
-  if (!handles || handles.length === 0) {
-    return "";
-  }
-  return handles.map((handle) => {
-    const selector = handle.selector.file_ref || handle.selector.file_id;
-    const availableTools = handle.capabilities
-      .filter((item) => item.available)
-      .map((item) => `${item.capability}:${item.tool}`)
-      .join("、") || "无";
-    return `- ${selector} (${handle.file.kind}, ${handle.file.source_name ?? "unknown"}) 可用：${availableTools}`;
-  }).join("\n");
 }
 
 function formatAssetHandlesForPrompt(handles: AssetHandle[] | undefined): string {
