@@ -78,11 +78,10 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     assert.equal(payload.asset_handles[0].source, "asset");
     assert.equal(payload.asset_handles[0].asset_id, "file_test_1");
     assert.equal(payload.asset_handles[0].asset_ref, "chat_test0001.gif");
-    assert.equal(payload.handles[0].source, "asset");
-    assert.equal(payload.handles[0].selector.file_ref, "chat_test0001.gif");
+    assert.equal("handles" in payload, false);
     assert.deepEqual(
-      payload.handles[0].capabilities.map((item: { capability: string }) => item.capability),
-      ["view_media", "inspect_media", "send_to_chat"]
+      payload.asset_handles[0].capabilities.map((item: { capability: string }) => item.capability),
+      ["view_media", "inspect_media", "send_to_chat", "local_path", "export_to_filesystem"]
     );
   });
 
@@ -241,8 +240,8 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     const payload = JSON.parse(result.content);
     assert.deepEqual(payload.next_actions, []);
     assert.deepEqual(
-      payload.handles[0].capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
-      [["view_media", true], ["inspect_media", false], ["send_to_chat", false]]
+      payload.asset_handles[0].capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
+      [["view_media", true], ["inspect_media", false], ["send_to_chat", false], ["local_path", false], ["export_to_filesystem", false]]
     );
   });
 

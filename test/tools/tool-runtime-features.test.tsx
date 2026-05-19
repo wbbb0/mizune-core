@@ -1445,23 +1445,17 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       asset_id: "file_test_1",
       asset_ref: "chat_test0001.png"
     });
-    assert.deepEqual(payload.file.asset_handle.legacy, {
-      file_id: "file_test_1",
-      file_ref: "chat_test0001.png",
-      chat_file_path: "workspace/media/file_test_1.png"
-    });
+    assert.equal("legacy" in payload.file.asset_handle, false);
+    assert.equal("handle" in payload.file, false);
+    assert.equal("handle_capabilities" in payload.file, false);
+    assert.equal("usage_hints" in payload.file, false);
     assert.deepEqual(payload.file.asset_handle.usage_hints, [{
       code: "asset_internal_path",
       message: "chat_file_path 是 asset store 内部路径；需要副本时用 asset_export_to_filesystem。"
     }]);
-    assert.deepEqual(payload.file.usage_hints, payload.file.asset_handle.usage_hints);
     assert.deepEqual(
       payload.next_actions.map((item: { tool: string }) => item.tool),
       ["asset_media_view", "asset_send_to_chat"]
-    );
-    assert.deepEqual(
-      payload.file.handle_capabilities.map((item: { capability: string }) => item.capability),
-      ["view_media", "inspect_media", "send_to_chat"]
     );
     assert.deepEqual(
       payload.file.asset_handle.capabilities.map((item: { capability: string; tool: string; args: Record<string, unknown> }) => [item.capability, item.tool, item.args]),
@@ -1514,10 +1508,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     );
 
     const payload = JSON.parse(String(result));
-    assert.deepEqual(
-      payload.file.handle_capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
-      [["view_media", false], ["inspect_media", false], ["send_to_chat", true]]
-    );
+    assert.equal("handle_capabilities" in payload.file, false);
     assert.deepEqual(
       payload.file.asset_handle.capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
       [["view_media", false], ["inspect_media", false], ["send_to_chat", true], ["local_path", false], ["export_to_filesystem", false]]
@@ -1558,10 +1549,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     );
 
     const payload = JSON.parse(String(result));
-    assert.deepEqual(
-      payload.file.handle_capabilities.map((item: { capability: string }) => item.capability),
-      ["send_to_chat"]
-    );
+    assert.equal("handle_capabilities" in payload.file, false);
     assert.deepEqual(
       payload.file.asset_handle.capabilities.map((item: { capability: string }) => item.capability),
       ["send_to_chat", "local_path", "export_to_filesystem"]
@@ -1608,10 +1596,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     );
 
     const payload = JSON.parse(String(result));
-    assert.deepEqual(
-      payload.file.handle_capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
-      [["view_media", false], ["inspect_media", false], ["send_to_chat", false]]
-    );
+    assert.equal("handle_capabilities" in payload.file, false);
     assert.deepEqual(
       payload.file.asset_handle.capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
       [["view_media", false], ["inspect_media", false], ["send_to_chat", false], ["local_path", false], ["export_to_filesystem", false]]

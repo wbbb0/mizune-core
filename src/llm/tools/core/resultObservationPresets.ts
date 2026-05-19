@@ -494,16 +494,22 @@ function chatFileResource(ctx: ToolResultObservationContext): ToolObservationRes
   if ("file" in (ctx.parsedContent ?? {}) && !file) {
     return null;
   }
+  const assetHandle = objectValue(ctx.parsedContent?.asset_handle);
+  const fileAssetHandle = objectValue(file?.asset_handle);
   const id = stringValue(
     ctx.parsedContent?.asset_ref
     ?? ctx.parsedContent?.file_ref
     ?? ctx.parsedContent?.fileRef
     ?? ctx.parsedContent?.file_id
     ?? ctx.parsedContent?.fileId
+    ?? assetHandle?.asset_ref
+    ?? assetHandle?.asset_id
     ?? file?.file_ref
     ?? file?.fileRef
     ?? file?.file_id
     ?? file?.fileId
+    ?? fileAssetHandle?.asset_ref
+    ?? fileAssetHandle?.asset_id
     ?? ctx.args.asset_ref
     ?? ctx.args.file_ref
     ?? ctx.args.file_id
@@ -558,7 +564,25 @@ function browserResource(ctx: ToolResultObservationContext): ToolObservationReso
 }
 
 function mediaResource(ctx: ToolResultObservationContext): ToolObservationResource | null {
-  const fileId = stringValue(ctx.parsedContent?.file_id ?? ctx.parsedContent?.fileId);
+  const assetHandle = objectValue(ctx.parsedContent?.asset_handle);
+  const assetHandles = arrayValue(ctx.parsedContent?.asset_handles);
+  const singleAssetHandle = assetHandles?.length === 1 ? objectValue(assetHandles[0]) : null;
+  const workspace = arrayValue(ctx.parsedContent?.workspace);
+  const singleWorkspaceFile = workspace?.length === 1 ? objectValue(workspace[0]) : null;
+  const fileId = stringValue(
+    ctx.parsedContent?.file_id
+    ?? ctx.parsedContent?.fileId
+    ?? assetHandle?.asset_id
+    ?? singleAssetHandle?.asset_id
+    ?? singleWorkspaceFile?.file_id
+    ?? singleWorkspaceFile?.fileId
+    ?? ctx.parsedContent?.asset_ref
+    ?? assetHandle?.asset_ref
+    ?? singleAssetHandle?.asset_ref
+    ?? singleWorkspaceFile?.asset_ref
+    ?? singleWorkspaceFile?.file_ref
+    ?? singleWorkspaceFile?.fileRef
+  );
   if (fileId) return { kind: "asset", id: fileId };
   const path = stringValue(ctx.parsedContent?.path ?? ctx.args.path);
   if (path) return { kind: "filesystem", id: path };
@@ -898,8 +922,7 @@ function compactDownloadHandle(ctx: Parameters<ToolResultCompactor>[0]) {
     percent: ctx.parsedContent?.percent ?? null,
     error: ctx.parsedContent?.error ?? null,
     assetHandle: compactAssetHandleForReplay(ctx.parsedContent?.asset_handle),
-    nextActions: arrayValue(ctx.parsedContent?.next_actions)?.slice(0, 4) ?? [],
-    handleCapabilities: arrayValue(ctx.parsedContent?.handle_capabilities)?.slice(0, 6) ?? []
+    nextActions: arrayValue(ctx.parsedContent?.next_actions)?.slice(0, 4) ?? []
   });
 }
 
@@ -964,9 +987,10 @@ function compactChatFileForReplay(item: unknown): Record<string, unknown> {
   if (!record) {
     return { fileRef: compactText(String(item ?? ""), 160) };
   }
+  const assetHandle = compactAssetHandleForReplay(record.asset_handle);
   return {
-    fileRef: record.asset_ref ?? record.file_ref ?? record.fileRef ?? null,
-    fileId: record.file_id ?? record.fileId ?? null,
+    fileRef: record.asset_ref ?? record.file_ref ?? record.fileRef ?? assetHandle?.assetRef ?? null,
+    fileId: record.file_id ?? record.fileId ?? assetHandle?.assetId ?? null,
     kind: record.kind ?? null,
     origin: record.origin ?? null,
     sourceName: record.source_name ?? record.sourceName ?? null,
@@ -975,8 +999,7 @@ function compactChatFileForReplay(item: unknown): Record<string, unknown> {
     captionStatus: record.caption_status ?? record.captionStatus ?? null,
     caption: stringValue(record.caption) ? compactText(String(record.caption), 80) : null,
     createdAtMs: record.created_at_ms ?? record.createdAtMs ?? null,
-    usageHints: arrayValue(record.usage_hints)?.slice(0, 3) ?? [],
-    handle: compactFileHandleForReplay(record.handle)
+    assetHandle
   };
 }
 
@@ -1160,6 +1183,10 @@ function compactMediaHandle(ctx: Parameters<ToolResultCompactor>[0]) {
     caption: ctx.parsedContent?.caption ?? null,
     workspace: (arrayValue(ctx.parsedContent?.workspace) ?? [])
       .map(compactMediaWorkspaceForReplay)
+      .slice(0, 8),
+    assetHandles: (arrayValue(ctx.parsedContent?.asset_handles) ?? [])
+      .map(compactAssetHandleForReplay)
+      .filter((item): item is Record<string, unknown> => Boolean(item))
       .slice(0, 8),
     handles: (arrayValue(ctx.parsedContent?.handles) ?? [])
       .map(compactFileHandleForReplay)

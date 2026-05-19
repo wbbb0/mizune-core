@@ -367,7 +367,6 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
             caption: assetCaptionMap.get(item.fileId) ?? item.caption
           })),
           asset_handles: handleResults.map((item) => item.asset_handle),
-          handles: handleResults.map((item) => item.handle),
           audio: audioSummaries,
           unavailable: [],
           next_actions: viewedMediaNextActions(handleResults)
@@ -426,7 +425,7 @@ function localViewedMediaNextActions(capabilities: LocalFileHandleCapability[]):
 function viewedMediaNextActions(files: ChatFileHandleResult[]): ToolNextAction[] {
   return files
     .slice(0, MAX_MEDIA_VIEW_PER_CALL)
-    .map((file) => file.handle_capabilities.find((item) => item.capability === "send_to_chat" && item.available))
+    .map((file) => file.asset_handle.capabilities.find((item) => item.capability === "send_to_chat" && item.available))
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
     .map((item) => nextAction(item.tool, item.reason, item.args));
 }

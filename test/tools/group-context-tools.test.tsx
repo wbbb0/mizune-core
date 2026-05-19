@@ -329,7 +329,7 @@ test("download_current_group_file resolves url and registers download handle", a
   assert.equal(parsed.asset_ref, "grp_saved.pdf");
   assert.equal(parsed.asset_handle.asset_id, "file_saved_1");
   assert.equal(parsed.asset_handle.asset_ref, "grp_saved.pdf");
-  assert.equal(parsed.handle_capabilities.some((item: { capability: string }) => item.capability === "send_to_chat"), true);
+  assert.equal(parsed.asset_handle.capabilities.some((item: { capability: string }) => item.capability === "send_to_chat"), true);
 });
 
 function toolCall(name: string): LlmToolCall {

@@ -330,7 +330,7 @@ test("asset local path observation preserves internal path hints", () => {
   assert.doesNotMatch(observation.summary, /目录 .* 返回 0 项/);
 });
 
-test("media view observation keeps compact handles and next actions", () => {
+test("media view observation keeps compact asset handles and next actions", () => {
   const observation = buildToolObservation({
     toolName: "asset_media_view",
     toolCallId: "call_view_media",
@@ -346,18 +346,15 @@ test("media view observation keeps compact handles and next actions", () => {
         size_bytes: 123,
         caption: `${"长图说明".repeat(80)}TAIL`
       }],
-      handles: [{
+      asset_handles: [{
         source: "asset",
-        id: "file_1",
-        selector: { file_id: "file_1", asset_ref: "chat_0001.png" },
-        file: {
-          file_id: "file_1",
-          asset_ref: "chat_0001.png",
-          kind: "image",
-          source_name: "cover.png",
-          mime_type: "image/png",
-          size_bytes: 123
-        },
+        asset_id: "file_1",
+        asset_ref: "chat_0001.png",
+        selector: { asset_id: "file_1", asset_ref: "chat_0001.png" },
+        kind: "image",
+        source_name: "cover.png",
+        mime_type: "image/png",
+        size_bytes: 123,
         capabilities: [{
           capability: "send_to_chat",
           tool: "asset_send_to_chat",
@@ -384,8 +381,10 @@ test("media view observation keeps compact handles and next actions", () => {
 
   const replay = JSON.parse(observation.replayContent);
   assert.equal(observation.retention, "summary");
+  assert.equal(observation.resource?.kind, "asset");
+  assert.equal(observation.resource?.id, "file_1");
   assert.equal(replay.data.nextActions[0].tool, "asset_send_to_chat");
-  assert.equal(replay.data.handles[0].selector.asset_ref ?? replay.data.handles[0].selector.file_ref, "chat_0001.png");
+  assert.equal(replay.data.assetHandles[0].assetRef, "chat_0001.png");
   assert.equal(replay.data.workspace[0].fileRef, "chat_0001.png");
   assert.equal(replay.data.audio[0].mediaId, "aud_1");
   assert.doesNotMatch(observation.replayContent, /TAIL/);

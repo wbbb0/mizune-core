@@ -383,7 +383,7 @@ const aboutLinkElement: BrowserElement = {
     assert.equal(parsed.file_id, "file_1");
     assert.equal(parsed.asset_handle.asset_id, "file_1");
     assert.equal(parsed.asset_handle.asset_ref, "shot_file_1.png");
-    assert.ok(parsed.handle_capabilities.some((item: { capability: string }) => item.capability === "send_to_chat"));
+    assert.ok(parsed.asset_handle.capabilities.some((item: { capability: string }) => item.capability === "send_to_chat"));
   });
 
   test("download_asset supports browser resource targets", async () => {
@@ -422,5 +422,5 @@ const aboutLinkElement: BrowserElement = {
       parsed.next_actions.map((item: { tool: string }) => item.tool),
       ["asset_media_view", "asset_send_to_chat"]
     );
-    assert.ok(parsed.handle_capabilities.some((item: { capability: string }) => item.capability === "inspect_media"));
+    assert.ok(parsed.asset_handle.capabilities.some((item: { capability: string }) => item.capability === "inspect_media"));
   });
