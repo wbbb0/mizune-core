@@ -171,7 +171,7 @@ export const shellToolDescriptors: ToolDescriptor[] = [
       }
     },
     isEnabled: isShellToolEnabled,
-    resultObservation: terminalPolicy()
+    resultObservation: terminalPolicy({ preserveRecentRawCount: 0 })
   },
   {
     ownerOnly: true,
@@ -309,7 +309,7 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
     if (denied) return denied;
 
     const resourceId = getStringArg(args, "resource_id")!;
-    const input = getStringArg(args, "input")!;
+    const input = getRawStringArg(args, "input") ?? "";
 
     const result = await context.shellRuntime.interact(resourceId, input);
     return projectToolResult({
@@ -580,6 +580,17 @@ function shellMaxOutputChars(context: Parameters<ToolHandler>[2]): number {
 
 function projectionArgs(args: unknown): { args?: Record<string, unknown> } {
   return args && typeof args === "object" ? { args: args as Record<string, unknown> } : {};
+}
+
+function getRawStringArg(args: unknown, key: string): string | undefined {
+  if (typeof args !== "object" || !args || !(key in args)) {
+    return undefined;
+  }
+  const value = (args as Record<string, unknown>)[key];
+  if (value == null) {
+    return "";
+  }
+  return typeof value === "string" ? value : String(value);
 }
 
 function terminalKeysArg(args: unknown): string[] {

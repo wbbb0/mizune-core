@@ -1,6 +1,6 @@
 import type { LlmToolExecutionResult, LlmMessage } from "#llm/llmClient.ts";
 
-export type ToolResultProjectionMode = "initial" | "replay" | "debug";
+export type ToolResultProjectionMode = "initial";
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
@@ -14,18 +14,16 @@ export interface ToolResultProjectionContext {
   args?: Record<string, unknown>;
 }
 
-export type ToolResultProjector<TCanonical extends JsonObject = JsonObject> = (
+export type ToolResultProjector<TCanonical extends JsonValue = JsonValue> = (
   canonical: TCanonical,
   context: ToolResultProjectionContext
-) => JsonObject;
+) => JsonValue;
 
-export interface ToolResultProjection<TCanonical extends JsonObject = JsonObject> {
+export interface ToolResultProjection<TCanonical extends JsonValue = JsonValue> {
   initial: ToolResultProjector<TCanonical>;
-  replay?: ToolResultProjector<TCanonical>;
-  debug?: ToolResultProjector<TCanonical>;
 }
 
-export interface ProjectedToolResultOptions<TCanonical extends JsonObject = JsonObject> {
+export interface ProjectedToolResultOptions<TCanonical extends JsonValue = JsonValue> {
   toolName: string;
   canonical: TCanonical;
   projection: ToolResultProjection<TCanonical>;
@@ -34,7 +32,7 @@ export interface ProjectedToolResultOptions<TCanonical extends JsonObject = Json
   terminalResponse?: LlmToolExecutionResult["terminalResponse"];
 }
 
-export function projectToolResult<TCanonical extends JsonObject>(
+export function projectToolResult<TCanonical extends JsonValue>(
   options: ProjectedToolResultOptions<TCanonical>
 ): LlmToolExecutionResult {
   const canonicalContent = stringifyToolResult(options.canonical);
@@ -47,12 +45,46 @@ export function projectToolResult<TCanonical extends JsonObject>(
     content: stringifyToolResult(initial),
     canonicalContent,
     ...(options.supplementalMessages ? { supplementalMessages: options.supplementalMessages } : {}),
-    ...(options.terminalResponse ? { terminalResponse: options.terminalResponse } : {})
+    ...(options.terminalResponse ? { terminalResponse: options.terminalResponse } : {}),
+    toString() {
+      return this.content;
+    }
   };
 }
 
-export function stringifyToolResult(value: JsonObject): string {
-  return JSON.stringify(value);
+export function projectIdentityToolResult<TCanonical extends JsonValue>(
+  toolName: string,
+  canonical: TCanonical,
+  options?: {
+    args?: Record<string, unknown>;
+    supplementalMessages?: LlmMessage[];
+    terminalResponse?: LlmToolExecutionResult["terminalResponse"];
+  }
+): LlmToolExecutionResult {
+  return projectToolResult({
+    toolName,
+    canonical,
+    projection: {
+      initial: (value) => value
+    },
+    ...(options?.args ? { args: options.args } : {}),
+    ...(options?.supplementalMessages ? { supplementalMessages: options.supplementalMessages } : {}),
+    ...(options?.terminalResponse ? { terminalResponse: options.terminalResponse } : {})
+  });
+}
+
+export function projectRawToolContent(_toolName: string, content: string): LlmToolExecutionResult {
+  return {
+    content,
+    canonicalContent: content,
+    toString() {
+      return this.content;
+    }
+  };
+}
+
+export function stringifyToolResult(value: JsonValue): string {
+  return JSON.stringify(value) ?? "null";
 }
 
 export function projectFields<TCanonical extends JsonObject>(

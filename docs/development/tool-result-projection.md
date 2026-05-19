@@ -21,8 +21,10 @@ return projectToolResult({
 约定：
 
 - handler 不要为了首次返回而丢掉 canonical 信息。
+- 内置工具结果必须进入 canonical 通道；尚未提供自定义投影的小结果工具会在统一执行入口按 identity projection 处理。
 - `initial` 不重复 stable handle，优先返回 `asset_handle`、`resource_id`、`next_actions`、状态和短摘要。
 - `replay` 不由 handler 手写，继续放在 `resultObservationPresets`，避免当前轮和历史轮逻辑混在一起。
+- transcript 中 `content` 保存当前轮首次返回，`canonicalContent` 保存完整结果；跨轮 provider replay 保留 raw 时应优先使用 `canonicalContent`。
 - 多模态工具可继续返回 `supplementalMessages`，但 `content` 仍应走 `initial` 投影，`canonicalContent` 用于 observation。
 - 调试/CLI 如需完整数据，应读取 canonical/debug 输出，而不是依赖模型首次可见内容。
 

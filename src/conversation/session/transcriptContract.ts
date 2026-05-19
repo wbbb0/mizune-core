@@ -264,6 +264,7 @@ export const transcriptToolResultItemSchema = z.object({
   toolCallId: z.string().min(1),
   toolName: z.string().min(1),
   content: z.string(),
+  canonicalContent: z.string().optional(),
   observation: transcriptToolObservationSchema.optional()
 });
 

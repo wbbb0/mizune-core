@@ -41,7 +41,7 @@ function summarizeToolResultItem(item: InternalToolResultItem): string {
   if (item.observation?.summary) {
     return `- ${item.toolName}${resource}: ${item.observation.summary}`;
   }
-  const normalized = item.content.replace(/\s+/g, " ").trim();
+  const normalized = rawToolResultContent(item).replace(/\s+/g, " ").trim();
   return `- ${item.toolName}${resource}: ${normalized.length <= 180 ? normalized : `${normalized.slice(0, 180)}...`}`;
 }
 
@@ -126,7 +126,7 @@ function createOpenAiStyleProjector(
           replayMessages.push({
             role: "tool",
             tool_call_id: item.toolCallId,
-            content: toolResultReplayContent.get(item.toolCallId) ?? item.content
+            content: toolResultReplayContent.get(item.toolCallId) ?? rawToolResultContent(item)
           });
           continue;
         }
@@ -151,7 +151,7 @@ function buildToolResultReplayContentMap(transcript: InternalTranscriptItem[]): 
 
   includedToolResults.forEach((item, index) => {
     if (shouldReplayRawToolResult(item, index, includedToolResults.length)) {
-      replayContent.set(item.toolCallId, item.content);
+      replayContent.set(item.toolCallId, rawToolResultContent(item));
       return;
     }
     replayContent.set(item.toolCallId, compactToolResultForReplay(item));
@@ -181,7 +181,7 @@ function compactToolResultForReplay(item: InternalToolResultItem): string {
     });
   }
   if (item.observation?.retention === "full") {
-    return item.content;
+    return rawToolResultContent(item);
   }
   if (typeof item.observation?.replayContent === "string" && item.observation.replayContent.length > 0) {
     return item.observation.replayContent;
@@ -193,6 +193,10 @@ function compactToolResultForReplay(item: InternalToolResultItem): string {
     tool: item.toolName,
     summary: normalized.length <= 300 ? normalized : `${normalized.slice(0, 300)}...`
   });
+}
+
+function rawToolResultContent(item: InternalToolResultItem): string {
+  return item.canonicalContent ?? item.content;
 }
 
 function canReplayGoogleToolCallItem(item: InternalAssistantToolCallItem, requireThoughtSignatures: boolean): boolean {
@@ -296,7 +300,7 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
             replayMessages.push({
               role: "tool",
               tool_call_id: item.toolCallId,
-              content: toolResultReplayContent.get(item.toolCallId) ?? item.content
+              content: toolResultReplayContent.get(item.toolCallId) ?? rawToolResultContent(item)
             });
             lastReplayRole = "tool";
           } else if (skippedToolCallIds.has(item.toolCallId)) {

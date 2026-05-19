@@ -143,6 +143,7 @@ export interface LlmToolExecutionResult {
   terminalResponse?: {
     text: string;
   };
+  toString?: () => string;
 }
 
 export interface LlmToolResultMessageMetadata {

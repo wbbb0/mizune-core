@@ -652,12 +652,13 @@ export function createGenerationExecutor(
                 kind: "tool_result",
                 llmVisible: true,
                 timestampMs: Date.now(),
-                toolCallId: message.tool_call_id ?? "",
+                toolCallId,
                 toolName,
                 content,
+                ...(resultMetadata?.canonicalContent !== undefined ? { canonicalContent: resultMetadata.canonicalContent } : {}),
                 observation: buildToolObservation({
                   toolName,
-                  toolCallId: message.tool_call_id ?? "",
+                  toolCallId,
                   content: observationContent,
                   args: typeof toolArgs === "object" && toolArgs !== null && !Array.isArray(toolArgs)
                     ? toolArgs as Record<string, unknown>

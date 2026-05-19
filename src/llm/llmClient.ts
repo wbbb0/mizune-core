@@ -326,7 +326,7 @@ export class LlmClient {
         return {
           toolCall,
           toolResult,
-          ...(canonicalToolResult ? { canonicalToolResult } : {}),
+          ...(canonicalToolResult !== undefined ? { canonicalToolResult } : {}),
           supplementalMessages,
           ...(terminalResponse ? { terminalResponse } : {})
         };
@@ -356,7 +356,7 @@ export class LlmClient {
         await params.onToolResultMessage?.(
           toolMessage,
           executed.toolCall,
-          executed.canonicalToolResult ? { canonicalContent: executed.canonicalToolResult } : undefined
+          executed.canonicalToolResult !== undefined ? { canonicalContent: executed.canonicalToolResult } : undefined
         );
         for (const message of cloneMessagesForRequest(
           executed.supplementalMessages,
@@ -714,14 +714,21 @@ function normalizeToolExecutionResult(input: string | LlmToolExecutionResult): L
   if (typeof input === "string") {
     return {
       content: input,
-      supplementalMessages: []
+      canonicalContent: input,
+      supplementalMessages: [],
+      toString() {
+        return this.content;
+      }
     };
   }
   return {
     content: input.content,
-    ...(input.canonicalContent ? { canonicalContent: input.canonicalContent } : {}),
+    canonicalContent: input.canonicalContent ?? input.content,
     supplementalMessages: input.supplementalMessages ?? [],
-    ...(input.terminalResponse ? { terminalResponse: input.terminalResponse } : {})
+    ...(input.terminalResponse ? { terminalResponse: input.terminalResponse } : {}),
+    toString() {
+      return this.content;
+    }
   };
 }
 

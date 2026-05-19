@@ -3773,6 +3773,11 @@ function parseCanonicalToolContent(result: string | LlmToolExecutionResult): any
       { resource_id: "res_shell_1", key: "ctrl_c" },
       context
     );
+    await shellToolHandlers.terminal_write!(
+      { id: "tool_terminal_write_1", type: "function", function: { name: "terminal_write", arguments: "{}" } },
+      { resource_id: "res_shell_1", input: "say hi\n" },
+      context
+    );
     await shellToolHandlers.terminal_signal!(
       { id: "tool_terminal_signal_1", type: "function", function: { name: "terminal_signal", arguments: "{}" } },
       { resource_id: "res_shell_1", signal: "SIGKILL" },
@@ -3780,6 +3785,7 @@ function parseCanonicalToolContent(result: string | LlmToolExecutionResult): any
     );
 
     assert.deepEqual(interactCalls[0], { resourceId: "res_shell_1", input: "\u0003" });
+    assert.deepEqual(interactCalls[1], { resourceId: "res_shell_1", input: "say hi\n" });
     assert.deepEqual(signalCalls[0], { resourceId: "res_shell_1", signal: "SIGKILL" });
   });
 
@@ -3811,6 +3817,14 @@ function parseCanonicalToolContent(result: string | LlmToolExecutionResult): any
     assert.equal(payload.output, "ok:say first\nok:say second\n");
     assert.equal(canonical.results.length, 2);
     assert.equal(canonical.results[0].session.outputTail, "");
+    const descriptor = getBuiltinToolDescriptorByName("terminal_send_lines", createTestAppConfig());
+    const observation = buildToolObservation({
+      toolName: "terminal_send_lines",
+      toolCallId: "tool_terminal_send_lines_1",
+      content: String((result as LlmToolExecutionResult).canonicalContent ?? (result as LlmToolExecutionResult).content),
+      ...(descriptor?.resultObservation ? { policy: descriptor.resultObservation } : {})
+    });
+    assert.equal(observation.preserveRecentRawCount, 0);
     assert.deepEqual(interactCalls, [
       { resourceId: "res_shell_1", input: "say first\n" },
       { resourceId: "res_shell_1", input: "say second\n" }

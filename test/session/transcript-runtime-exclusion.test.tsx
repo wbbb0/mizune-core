@@ -185,6 +185,7 @@ function createRuntimeUserMessage(id: string, timestampMs: number, text = id): I
         toolCallId: `call_openai_${index}`,
         toolName: "terminal_run",
         content: JSON.stringify({ stdout: `RAW-RESULT-${index}` }),
+        canonicalContent: JSON.stringify({ stdout: `CANONICAL-RESULT-${index}`, full: true }),
         observation: {
           contentHash: `hash-${index}`,
           inputTokensEstimate: 100,
@@ -203,8 +204,8 @@ function createRuntimeUserMessage(id: string, timestampMs: number, text = id): I
 
     assert.equal(toolMessages.length, 6);
     assert.equal(toolMessages[0]?.content, JSON.stringify({ compacted: true, summary: "COMPACT-RESULT-1" }));
-    assert.equal(toolMessages[1]?.content, JSON.stringify({ stdout: "RAW-RESULT-2" }));
-    assert.equal(toolMessages[5]?.content, JSON.stringify({ stdout: "RAW-RESULT-6" }));
+    assert.equal(toolMessages[1]?.content, JSON.stringify({ stdout: "CANONICAL-RESULT-2", full: true }));
+    assert.equal(toolMessages[5]?.content, JSON.stringify({ stdout: "CANONICAL-RESULT-6", full: true }));
   });
 
   test("openai-style replay keeps old tool results raw when observation retention is full", () => {
@@ -231,6 +232,7 @@ function createRuntimeUserMessage(id: string, timestampMs: number, text = id): I
         toolCallId: `call_full_${index}`,
         toolName: "filesystem_write",
         content: JSON.stringify({ ok: true, path: `tmp-${index}.txt` }),
+        canonicalContent: JSON.stringify({ ok: true, path: `tmp-${index}.txt`, full: true }),
         observation: {
           contentHash: `hash-full-${index}`,
           inputTokensEstimate: 10,
@@ -247,5 +249,5 @@ function createRuntimeUserMessage(id: string, timestampMs: number, text = id): I
     const projection = getProviderTranscriptProjector("openai").project({ transcript });
     const toolMessages = projection.replayMessages.filter((message) => message.role === "tool");
 
-    assert.equal(toolMessages[0]?.content, JSON.stringify({ ok: true, path: "tmp-1.txt" }));
+    assert.equal(toolMessages[0]?.content, JSON.stringify({ ok: true, path: "tmp-1.txt", full: true }));
   });

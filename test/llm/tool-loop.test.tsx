@@ -156,6 +156,59 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
     });
   });
 
+  test("plain string tool results are treated as identity canonical results", async () => {
+    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+    const observedCanonical: string[] = [];
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 1);
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              tool_calls: [{
+                index: 0,
+                id: "tool-call-plain",
+                type: "function",
+                function: {
+                  name: "plain_tool",
+                  arguments: "{}"
+                }
+              }]
+            }
+          }]
+        }]
+      },
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages[2].content, "{\"ok\":true,\"value\":\"plain\"}");
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "done"
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      await client.generate({
+        messages: [{ role: "user", content: "run plain tool" }],
+        tools: [createToolDefinition("plain_tool")],
+        toolExecutor: async () => "{\"ok\":true,\"value\":\"plain\"}",
+        onToolResultMessage(_message, _toolCall, metadata) {
+          if (metadata?.canonicalContent) {
+            observedCanonical.push(metadata.canonicalContent);
+          }
+        }
+      });
+
+      assert.deepEqual(observedCanonical, ["{\"ok\":true,\"value\":\"plain\"}"]);
+    });
+  });
+
   test("terminal tool responses stop the tool loop without a follow-up model call", async () => {
     const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
 

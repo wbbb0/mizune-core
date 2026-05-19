@@ -26,7 +26,7 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
                 snippet: null,
                 summary: null,
                 publishedTime: null,
-                mainText: null,
+                mainText: "FULL_MAIN_TEXT",
                 markdownText: null,
                 siteName: null,
                 score: null,
@@ -53,6 +53,9 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     assert.equal(parsed.ok, true);
     assert.equal(parsed.results[0].url, "https://openai.com");
     assert.equal(parsed.results[0].ref_id, "search_1");
+    assert.equal(parsed.results[0].mainText, undefined);
+    assert.equal(parsed.results[0].mainText_preview, "FULL_MAIN_TEXT");
+    assert.equal(parseCanonicalToolResult<any>(result).results[0].mainText, "FULL_MAIN_TEXT");
   });
 
   test("search_with_iqs_lite_advanced returns provider result", async () => {
@@ -79,8 +82,8 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
                 snippet: "OpenAI homepage",
                 summary: null,
                 publishedTime: "2026-03-24T00:00:00+08:00",
-                mainText: null,
-                markdownText: null,
+                mainText: "A".repeat(800),
+                markdownText: "# OpenAI\n".repeat(100),
                 siteName: "OpenAI",
                 score: 0.99,
                 images: []
@@ -110,4 +113,18 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     assert.equal(parsed.provider, "aliyun_iqs_lite_advanced");
     assert.equal(parsed.results[0].siteName, "OpenAI");
     assert.equal(parsed.results[0].ref_id, "search_2");
+    assert.equal(parsed.results[0].mainText, undefined);
+    assert.equal(parsed.results[0].markdownText, undefined);
+    assert.ok(parsed.results[0].mainText_preview.length < 520);
+    assert.equal(parseCanonicalToolResult<any>(result).results[0].mainText.length, 800);
   });
+
+function parseCanonicalToolResult<T>(result: unknown): T {
+  assert.equal(typeof result, "object");
+  assert.notEqual(result, null);
+  const canonicalContent = (result as { canonicalContent?: unknown }).canonicalContent;
+  if (typeof canonicalContent !== "string") {
+    throw new Error("expected canonicalContent string");
+  }
+  return JSON.parse(canonicalContent) as T;
+}

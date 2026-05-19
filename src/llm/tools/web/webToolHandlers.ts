@@ -25,7 +25,15 @@ export const webToolHandlers: Record<string, ToolHandler> = {
     }
 
     try {
-      return JSON.stringify(await context.searchService.searchGoogleGrounding(query));
+      const result = await context.searchService.searchGoogleGrounding(query);
+      return projectToolResult({
+        toolName: "ground_with_google_search",
+        canonical: toJsonObject(result),
+        projection: {
+          initial: compactSearchResult
+        },
+        args: toJsonObject(args)
+      });
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -40,7 +48,7 @@ export const webToolHandlers: Record<string, ToolHandler> = {
     }
 
     try {
-      return JSON.stringify(await context.searchService.searchAliyunIqsLiteAdvanced(query, {
+      const result = await context.searchService.searchAliyunIqsLiteAdvanced(query, {
         numResults: getNumberArg(args, "num_results"),
         includeSites: getStringArrayArg(args, "include_sites"),
         excludeSites: getStringArrayArg(args, "exclude_sites"),
@@ -49,7 +57,15 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         timeRange: getStringArg(args, "time_range") || undefined,
         includeMainText: getBooleanArg(args, "include_main_text"),
         includeMarkdownText: getBooleanArg(args, "include_markdown_text")
-      }));
+      });
+      return projectToolResult({
+        toolName: "search_with_iqs_lite_advanced",
+        canonical: toJsonObject(result),
+        projection: {
+          initial: compactSearchResult
+        },
+        args: toJsonObject(args)
+      });
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -75,7 +91,18 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         ...(line === undefined ? {} : { line }),
         ...(context.lastMessage.sessionId ? { ownerSessionId: context.lastMessage.sessionId } : {})
       });
-      return JSON.stringify(withNextActions(result as unknown as Record<string, unknown>, browserPageNextActions(String((result as { resource_id?: string }).resource_id ?? ""))));
+      const canonical = toJsonObject(withNextActions(
+        result as unknown as Record<string, unknown>,
+        browserPageNextActions(String((result as { resource_id?: string }).resource_id ?? ""))
+      ));
+      return projectToolResult({
+        toolName: "open_page",
+        canonical,
+        projection: {
+          initial: compactBrowserPageResult
+        },
+        args: toJsonObject(args)
+      });
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -97,7 +124,18 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         ...(line === undefined ? {} : { line }),
         ...(pattern ? { pattern } : {})
       });
-      return JSON.stringify(withNextActions(result as unknown as Record<string, unknown>, browserInspectNextActions(resourceId)));
+      const canonical = toJsonObject(withNextActions(
+        result as unknown as Record<string, unknown>,
+        browserInspectNextActions(resourceId)
+      ));
+      return projectToolResult({
+        toolName: "inspect_page",
+        canonical,
+        projection: {
+          initial: compactBrowserPageResult
+        },
+        args: toJsonObject(args)
+      });
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -471,6 +509,13 @@ function compactBrowserRenderResult(result: BrowserRenderResult): JsonObject {
   } as unknown as JsonObject;
 }
 
+function compactBrowserPageResult(result: JsonObject): JsonObject {
+  return {
+    ...compactBrowserRenderResult(result as unknown as BrowserRenderResult),
+    next_actions: result.next_actions
+  };
+}
+
 function compactBrowserElement(element: BrowserElement | null): JsonObject | null {
   if (!element) {
     return null;
@@ -500,6 +545,39 @@ function trimBrowserText(value: string | null, limit: number): string | null {
     return value;
   }
   return value.length > limit ? `${value.slice(0, limit)}...` : value;
+}
+
+function compactSearchResult(result: JsonObject): JsonObject {
+  return {
+    ok: result.ok,
+    provider: result.provider,
+    query: result.query,
+    answer: typeof result.answer === "string" ? trimBrowserText(result.answer, 1200) : result.answer,
+    webSearchQueries: result.webSearchQueries,
+    results: Array.isArray(result.results) ? result.results.slice(0, 10).map(compactSearchEntry) : [],
+    responseId: result.responseId,
+    modelVersion: result.modelVersion,
+    usage: result.usage
+  };
+}
+
+function compactSearchEntry(value: unknown): JsonObject {
+  const item = toJsonObject(value);
+  return {
+    ref_id: item.ref_id,
+    title: typeof item.title === "string" ? trimBrowserText(item.title, 180) : item.title,
+    url: item.url,
+    redirectUrl: item.redirectUrl,
+    host: item.host,
+    snippet: typeof item.snippet === "string" ? trimBrowserText(item.snippet, 300) : item.snippet,
+    summary: typeof item.summary === "string" ? trimBrowserText(item.summary, 500) : item.summary,
+    publishedTime: item.publishedTime,
+    siteName: item.siteName,
+    score: item.score,
+    images: Array.isArray(item.images) ? item.images.slice(0, 4) : [],
+    mainText_preview: typeof item.mainText === "string" ? trimBrowserText(item.mainText, 500) : undefined,
+    markdownText_preview: typeof item.markdownText === "string" ? trimBrowserText(item.markdownText, 500) : undefined
+  };
 }
 
 async function buildScreenshotToolResult(

@@ -49,17 +49,38 @@ const aboutLinkElement: BrowserElement = {
           return createBrowserOpenResult({
             requestedUrl: String(url),
             resolvedUrl: "https://openai.com",
-            links: [{ id: 1, text: "About", url: "https://openai.com/about", host: "openai.com" }],
-            elements: [aboutLinkElement]
+            lines: Array.from({ length: 40 }, (_, index) => `L${index + 1} OpenAI page line`),
+            links: Array.from({ length: 20 }, (_, index) => ({
+              id: index + 1,
+              text: `Link ${index + 1}`,
+              url: index === 0 ? "https://openai.com/about" : `https://openai.com/${index + 1}`,
+              host: "openai.com"
+            })),
+            elements: Array.from({ length: 20 }, (_, index) => ({
+              ...aboutLinkElement,
+              id: index + 1,
+              text: `About ${index + 1}`
+            })),
+            totalLines: 40,
+            totalLinks: 20,
+            totalElements: 20
           });
         }
       })
     );
 
     const parsed = parseJsonToolResult<any>(result);
+    const canonical = parseCanonicalToolResult<any>(result);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.resource_id, "res_browser_1");
     assert.equal(parsed.resolvedUrl, "https://openai.com");
+    assert.equal(canonical.links[0].url, "https://openai.com/about");
+    assert.equal(parsed.lines.length, 24);
+    assert.equal(parsed.links.length, 12);
+    assert.equal(parsed.elements.length, 12);
+    assert.equal(canonical.lines.length, 40);
+    assert.equal(canonical.links.length, 20);
+    assert.equal(canonical.elements.length, 20);
     assert.deepEqual(
       parsed.next_actions.map((item: { tool: string }) => item.tool),
       ["inspect_page", "interact_with_page", "capture_screenshot", "download_asset"]
@@ -107,8 +128,10 @@ const aboutLinkElement: BrowserElement = {
     );
 
     const parsed = parseJsonToolResult<any>(result);
+    const canonical = parseCanonicalToolResult<any>(result);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.matches[0].lineNumber, 2);
+    assert.equal(canonical.matches[0].text, "L2 About OpenAI");
     assert.deepEqual(
       parsed.next_actions.map((item: { tool: string }) => item.tool),
       ["interact_with_page", "capture_screenshot", "download_asset"]

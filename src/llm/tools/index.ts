@@ -10,6 +10,7 @@ import type { AppConfig } from "#config/config.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { hasNativeSearchFeature } from "../provider/providerFeatures.ts";
 import { builtinToolHandlers, getBuiltinToolDescriptors } from "./toolRegistry.ts";
+import { projectRawToolContent } from "./core/toolResultProjection.ts";
 import type { SessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
 import {
   filterProfileToolNamesForScope,
@@ -165,16 +166,19 @@ export function createBuiltinToolExecutor(
 
   return async (toolCall, args) => {
     if (!allowedToolNames.has(toolCall.function.name)) {
-      return JSON.stringify({
+      return projectRawToolContent(toolCall.function.name, JSON.stringify({
         error: `Tool is not available in the current model toolset: ${toolCall.function.name}`
-      });
+      }));
     }
     const handler = builtinToolHandlers[toolCall.function.name];
     if (!handler) {
-      return JSON.stringify({
+      return projectRawToolContent(toolCall.function.name, JSON.stringify({
         error: `Unsupported contextual tool: ${toolCall.function.name}`
-      });
+      }));
     }
-    return handler(toolCall, args, context);
+    const result = await handler(toolCall, args, context);
+    return typeof result === "string"
+      ? projectRawToolContent(toolCall.function.name, result)
+      : result;
   };
 }
