@@ -9,6 +9,7 @@ import type { BuiltinToolContext, ToolDescriptor, ToolHandler, ToolVisibilityCon
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
 import { currentGroupContextPolicy } from "../core/resultObservationPresets.ts";
 import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
+import { projectToolResult, type JsonObject } from "../core/toolResultProjection.ts";
 
 const DEFAULT_ANNOUNCEMENT_LIMIT = 10;
 const MAX_ANNOUNCEMENT_LIMIT = 30;
@@ -173,7 +174,7 @@ export const groupContextToolHandlers: Record<string, ToolHandler> = {
     const napcatDetails = context.config.onebot.provider === "napcat"
       ? await loadNapCatGroupDetails(context, groupId)
       : { extended: null, atAllRemain: null, warnings: [] };
-    return JSON.stringify({
+    const canonical = {
       ok: true,
       groupId,
       groupName,
@@ -193,6 +194,24 @@ export const groupContextToolHandlers: Record<string, ToolHandler> = {
         napcatDetails.extended ? "包含 NapCat 扩展资料" : null
       ].filter((item): item is string => Boolean(item)).join("，"),
       raw: compactRecord(info, ["group_id", "group_name", "member_count", "max_member_count"])
+    };
+    return projectToolResult({
+      toolName: "view_current_group_info",
+      canonical: canonical as unknown as JsonObject,
+      projection: {
+        initial: (item) => ({
+          ok: item.ok,
+          groupId: item.groupId,
+          groupName: item.groupName,
+          memberCount: item.memberCount,
+          maxMemberCount: item.maxMemberCount,
+          provider: item.provider,
+          extended: item.extended,
+          atAllRemain: item.atAllRemain,
+          warnings: item.warnings,
+          summary: item.summary
+        })
+      }
     });
   },
 
@@ -211,7 +230,7 @@ export const groupContextToolHandlers: Record<string, ToolHandler> = {
       announcementIndex: index + 1,
       ...stripSearchText(item)
     }));
-    return JSON.stringify({
+    const canonical = {
       ok: true,
       groupId,
       query: query || null,
@@ -221,6 +240,12 @@ export const groupContextToolHandlers: Record<string, ToolHandler> = {
       totalAnnouncements: announcements.length,
       summary: `当前群 ${groupId} 公告查询返回 ${items.length}/${filtered.length} 条，limit=${limit}${query ? `，query="${query}"` : ""}`,
       items
+    };
+    return projectToolResult({
+      toolName: "list_current_group_announcements",
+      canonical: canonical as unknown as JsonObject,
+      args: args as Record<string, unknown>,
+      projection: { initial: compactGroupListProjection }
     });
   },
 
@@ -263,7 +288,7 @@ export const groupContextToolHandlers: Record<string, ToolHandler> = {
     }
 
     const contentView = sliceTextByLines(selected.content, startLine, startChar, lineCount, MAX_ANNOUNCEMENT_DETAIL_CHARS);
-    return JSON.stringify({
+    const canonical = {
       ok: true,
       groupId,
       announcementId: selected.id,
@@ -292,6 +317,37 @@ export const groupContextToolHandlers: Record<string, ToolHandler> = {
         `行 ${contentView.startLine}-${contentView.endLine}/${contentView.totalLines}`,
         contentView.nextStartLine ? `可从 startLine=${contentView.nextStartLine} 继续` : null
       ].filter((item): item is string => Boolean(item)).join("，")
+    };
+    return projectToolResult({
+      toolName: "view_current_group_announcement",
+      canonical: canonical as unknown as JsonObject,
+      args: args as Record<string, unknown>,
+      projection: {
+        initial: (item) => ({
+          ok: item.ok,
+          groupId: item.groupId,
+          announcementId: item.announcementId,
+          announcementIndex: item.announcementIndex,
+          query: item.query,
+          title: item.title,
+          senderId: item.senderId,
+          senderName: item.senderName,
+          publishTimeText: item.publishTimeText,
+          pinned: item.pinned,
+          contentLength: item.contentLength,
+          totalLines: item.totalLines,
+          startLine: item.startLine,
+          startChar: item.startChar,
+          requestedLineCount: item.requestedLineCount,
+          endLine: item.endLine,
+          nextStartLine: item.nextStartLine,
+          nextStartChar: item.nextStartChar,
+          lineTruncated: item.lineTruncated,
+          charTruncated: item.charTruncated,
+          content: item.content,
+          summary: item.summary
+        })
+      }
     });
   },
 
@@ -307,7 +363,7 @@ export const groupContextToolHandlers: Record<string, ToolHandler> = {
       .map(normalizeMember);
     const filtered = filterByQuery(members, query);
     const items = filtered.slice(0, limit).map(stripSearchText);
-    return JSON.stringify({
+    const canonical = {
       ok: true,
       groupId,
       query: query || null,
@@ -317,6 +373,12 @@ export const groupContextToolHandlers: Record<string, ToolHandler> = {
       totalMembers: members.length,
       summary: `当前群 ${groupId} 成员查询返回 ${items.length}/${filtered.length} 人，limit=${limit}${query ? `，query="${query}"` : ""}`,
       items
+    };
+    return projectToolResult({
+      toolName: "list_current_group_members",
+      canonical: canonical as unknown as JsonObject,
+      args: args as Record<string, unknown>,
+      projection: { initial: compactGroupListProjection }
     });
   },
 
@@ -341,7 +403,7 @@ export const groupContextToolHandlers: Record<string, ToolHandler> = {
       ...filteredFiles.map((item) => ({ type: "file" as const, item }))
     ].slice(0, limit);
 
-    return JSON.stringify({
+    const canonical = {
       ok: true,
       groupId,
       folderId: folderId || null,
@@ -354,6 +416,27 @@ export const groupContextToolHandlers: Record<string, ToolHandler> = {
       totalMatchedFolders: filteredFolders.length,
       totalMatchedFiles: filteredFiles.length,
       summary: `当前群 ${groupId} 文件目录返回 ${combined.length}/${filteredFolders.length + filteredFiles.length} 项，folderId=${folderId || "root"}${query ? `，query="${query}"` : ""}`
+    };
+    return projectToolResult({
+      toolName: "list_current_group_files",
+      canonical: canonical as unknown as JsonObject,
+      args: args as Record<string, unknown>,
+      projection: {
+        initial: (item) => ({
+          ok: item.ok,
+          groupId: item.groupId,
+          folderId: item.folderId,
+          query: item.query,
+          limit: item.limit,
+          folders: Array.isArray(item.folders) ? item.folders.slice(0, 12) : [],
+          files: Array.isArray(item.files) ? item.files.slice(0, 20) : [],
+          totalFolders: item.totalFolders,
+          totalFiles: item.totalFiles,
+          totalMatchedFolders: item.totalMatchedFolders,
+          totalMatchedFiles: item.totalMatchedFiles,
+          summary: item.summary
+        })
+      }
     });
   },
 
@@ -393,7 +476,7 @@ export const groupContextToolHandlers: Record<string, ToolHandler> = {
     });
     const file = result.file_id ? await context.chatFileStore.getFile(result.file_id) : null;
     const fileHandle = file ? buildChatFileHandleResultFromContext(file, context) : null;
-    return JSON.stringify({
+    const canonical = {
       ok: true,
       groupId,
       groupFileId: fileId,
@@ -409,6 +492,31 @@ export const groupContextToolHandlers: Record<string, ToolHandler> = {
       percent: result.percent,
       error: result.error,
       ...(result.background_followup ? { background_followup: result.background_followup } : {})
+    };
+    return projectToolResult({
+      toolName: "download_current_group_file",
+      canonical: canonical as unknown as JsonObject,
+      args: args as Record<string, unknown>,
+      projection: {
+        initial: (item) => ({
+          ok: item.ok,
+          groupId: item.groupId,
+          groupFileId: item.groupFileId,
+          group_file_id: item.group_file_id,
+          busid: item.busid,
+          status: item.status,
+          resource_id: item.resource_id,
+          asset_ref: item.asset_ref,
+          asset_handle: item.asset_handle,
+          next_actions: item.next_actions,
+          downloaded_bytes: item.downloaded_bytes,
+          total_bytes: item.total_bytes,
+          percent: item.percent,
+          error: item.error,
+          background_followup: item.background_followup,
+          summary: `当前群文件 ${String(item.groupFileId)} 下载 ${String(item.status ?? "已返回")}${item.asset_ref ? `，asset=${String(item.asset_ref)}` : ""}。`
+        })
+      }
     });
   }
 };
@@ -416,6 +524,21 @@ export const groupContextToolHandlers: Record<string, ToolHandler> = {
 function resolveCurrentGroupId(context: BuiltinToolContext): string | null {
   const parsed = parseChatSessionIdentity(context.lastMessage.sessionId);
   return parsed?.kind === "group" ? parsed.groupId : null;
+}
+
+function compactGroupListProjection(item: JsonObject): JsonObject {
+  return {
+    ok: item.ok,
+    groupId: item.groupId,
+    query: item.query,
+    limit: item.limit,
+    count: item.count,
+    totalMatched: item.totalMatched,
+    totalAnnouncements: item.totalAnnouncements,
+    totalMembers: item.totalMembers,
+    items: Array.isArray(item.items) ? item.items.slice(0, 20) : [],
+    summary: item.summary
+  };
 }
 
 function getLimitArg(args: unknown, defaultLimit: number, maxLimit: number): number {

@@ -14,6 +14,7 @@ import { getStringArg } from "../core/toolArgHelpers.ts";
 import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
+import { projectToolResult, type JsonObject } from "../core/toolResultProjection.ts";
 
 export const messageToolDescriptors: ToolDescriptor[] = [
   {
@@ -94,7 +95,7 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
         message.user_id
       ]) || "unknown";
 
-      return JSON.stringify({
+      const canonical = {
         ok: true,
         messageId,
         resolvedMessageId: message.message_id != null ? String(message.message_id) : null,
@@ -175,6 +176,31 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
             summary: segment.summary
           };
         })
+      };
+      return projectToolResult({
+        toolName: "view_message",
+        canonical: canonical as unknown as JsonObject,
+        args: args as Record<string, unknown>,
+        projection: {
+          initial: (item) => ({
+            ok: item.ok,
+            messageId: item.messageId,
+            resolvedMessageId: item.resolvedMessageId,
+            chatType: item.chatType,
+            senderName: item.senderName,
+            userId: item.userId,
+            groupId: item.groupId,
+            timeText: item.timeText,
+            text: item.text,
+            replyMessageId: item.replyMessageId,
+            mentions: item.mentions,
+            forwardIds: item.forwardIds,
+            attachments: item.attachments,
+            files: item.files,
+            segments: item.segments,
+            summary: `消息 ${String(item.messageId)} 已展开，图片 asset 与消息文件下载入口已列出。`
+          })
+        }
       });
     } catch (error: unknown) {
       return JSON.stringify({
@@ -217,7 +243,7 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
       });
     }
     const fileHandle = buildChatFileHandleResultFromContext(file, context);
-    return JSON.stringify({
+    const canonical = {
       ok: true,
       ...fileHandle,
       asset_id: file.fileId,
@@ -225,6 +251,24 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
       ...(groupId ? { group_id: groupId } : {}),
       onebot_file_id: fileId,
       ...(busid ? { busid } : {})
+    };
+    return projectToolResult({
+      toolName: "download_message_file",
+      canonical: canonical as unknown as JsonObject,
+      args: args as Record<string, unknown>,
+      projection: {
+        initial: (item) => ({
+          ok: item.ok,
+          asset_id: item.asset_id,
+          asset_ref: item.asset_ref,
+          asset_handle: item.asset_handle,
+          onebot_file_id: item.onebot_file_id,
+          group_id: item.group_id,
+          busid: item.busid,
+          next_actions: item.next_actions,
+          summary: `消息文件 ${String(item.onebot_file_id)} 已登记为 asset ${String(item.asset_ref ?? item.asset_id)}。`
+        })
+      }
     });
   }
 };

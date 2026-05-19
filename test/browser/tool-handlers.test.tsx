@@ -10,7 +10,7 @@ import {
   createBrowserToolContext
 } from "../helpers/browser-fixtures.tsx";
 
-import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-test-support.tsx";
+import { createFunctionToolCall } from "../helpers/tool-test-support.tsx";
 
 const aboutLinkElement: BrowserElement = {
   id: 1,
@@ -151,6 +151,8 @@ const aboutLinkElement: BrowserElement = {
     assert.equal(parsed.resolved_target.label, undefined);
     assert.equal(parsed.snapshot.elements.length, 0);
     assert.equal(parsed.candidates.length, 0);
+    assert.equal(parseCanonicalToolResult<any>(result).resolved_target.label, "链接: About");
+    assert.equal(parseCanonicalToolResult<any>(result).snapshot.resolvedUrl, "https://openai.com/about");
   });
 
   test("interact_with_page rejects unsupported actions before calling browser service", async () => {
@@ -325,6 +327,7 @@ const aboutLinkElement: BrowserElement = {
     assert.equal(parsed.file_id, "img_1");
     assert.equal(parsed.asset_handle.asset_id, "img_1");
     assert.equal(parsed.asset_handle.asset_ref, "shot_img_1.png");
+    assert.equal(parseCanonicalToolResult<any>(result).screenshot.fileId, "img_1");
     assert.equal(result.supplementalMessages?.length, 1);
   });
 
@@ -387,6 +390,7 @@ const aboutLinkElement: BrowserElement = {
     assert.equal(parsed.asset_handle.asset_id, "file_1");
     assert.equal(parsed.asset_handle.asset_ref, "shot_file_1.png");
     assert.ok(parsed.asset_handle.capabilities.some((item: { capability: string }) => item.capability === "send_to_chat"));
+    assert.equal(parseCanonicalToolResult<any>(result).download.file_id, "file_1");
   });
 
   test("download_asset supports browser resource targets", async () => {
@@ -426,4 +430,22 @@ const aboutLinkElement: BrowserElement = {
       ["asset_media_view", "asset_send_to_chat"]
     );
     assert.ok(parsed.asset_handle.capabilities.some((item: { capability: string }) => item.capability === "inspect_media"));
+    assert.equal(parseCanonicalToolResult<any>(result).source.resource_id, "res_browser_1");
   });
+
+function parseJsonToolResult<T>(result: unknown): T {
+  const content = typeof result === "object" && result !== null && "content" in result
+    ? (result as { content: unknown }).content
+    : result;
+  return JSON.parse(String(content)) as T;
+}
+
+function parseCanonicalToolResult<T>(result: unknown): T {
+  assert.equal(typeof result, "object");
+  assert.notEqual(result, null);
+  const canonicalContent = (result as { canonicalContent?: unknown }).canonicalContent;
+  if (typeof canonicalContent !== "string") {
+    throw new Error("expected canonicalContent string");
+  }
+  return JSON.parse(canonicalContent) as T;
+}

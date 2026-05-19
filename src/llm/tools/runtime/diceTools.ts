@@ -1,6 +1,7 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getBooleanArg, getStringArg } from "../core/toolArgHelpers.ts";
 import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
+import { projectToolResult, type JsonObject } from "../core/toolResultProjection.ts";
 import { rollDiceExpression, type DiceRollResult } from "./diceExpression.ts";
 
 export const diceToolDescriptors: ToolDescriptor[] = [
@@ -36,11 +37,20 @@ export const diceToolHandlers: Record<string, ToolHandler> = {
     const expression = getStringArg(args, "expression");
     const details = getBooleanArg(args, "details") === true;
     const result = rollDiceExpression(expression);
-    return JSON.stringify(result.ok ? compactDiceRollResult(result, { details }) : result);
+    return projectToolResult({
+      toolName: "roll_dice",
+      canonical: result as unknown as JsonObject,
+      ...projectionArgs(args),
+      projection: {
+        initial: (canonical) => canonical.ok === true
+          ? compactDiceRollResult(canonical as unknown as DiceRollResult, { details })
+          : canonical
+      }
+    });
   }
 };
 
-function compactDiceRollResult(result: DiceRollResult, options: { details: boolean }) {
+function compactDiceRollResult(result: DiceRollResult, options: { details: boolean }): JsonObject {
   const compact = {
     ok: true,
     expression: result.expression,
@@ -52,22 +62,28 @@ function compactDiceRollResult(result: DiceRollResult, options: { details: boole
   }
   return {
     ...compact,
-    terms: result.terms.map((term) => {
-      if (term.kind === "number") {
-        return {
-          kind: "number",
-          sign: term.sign,
-          value: term.value,
-          subtotal: term.subtotal
-        };
-      }
-      return {
-        kind: "dice",
-        sign: term.sign,
-        notation: term.notation,
-        rolls: term.rolls,
-        subtotal: term.subtotal
-      };
-    })
+    terms: result.terms.map(compactDiceRollTerm)
   };
+}
+
+function compactDiceRollTerm(term: DiceRollResult["terms"][number]) {
+  if (term.kind === "number") {
+    return {
+      kind: "number" as const,
+      sign: term.sign,
+      value: term.value,
+      subtotal: term.subtotal
+    };
+  }
+  return {
+    kind: "dice" as const,
+    sign: term.sign,
+    notation: term.notation,
+    rolls: term.rolls,
+    subtotal: term.subtotal
+  };
+}
+
+function projectionArgs(args: unknown): { args?: Record<string, unknown> } {
+  return args && typeof args === "object" ? { args: args as Record<string, unknown> } : {};
 }

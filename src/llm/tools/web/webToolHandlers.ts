@@ -3,6 +3,7 @@ import type { ToolHandler } from "../core/shared.ts";
 import { getBooleanArg, getNumberArg, getStringArg, getStringArrayArg } from "../core/toolArgHelpers.ts";
 import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
 import { nextAction, withNextActions, type ToolNextAction } from "../core/toolNextActions.ts";
+import { projectFields, projectToolResult, type JsonObject } from "../core/toolResultProjection.ts";
 import type {
   BrowserActionTarget,
   BrowserCoordinate,
@@ -140,7 +141,14 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         ...(waitMs === undefined ? {} : { waitMs: Number(waitMs) }),
         ...(line === undefined ? {} : { line })
       });
-      return JSON.stringify(compactBrowserInteractionResult(result));
+      return projectToolResult({
+        toolName: "interact_with_page",
+        canonical: toJsonObject(result),
+        projection: {
+          initial: (canonical) => compactBrowserInteractionResult(canonical as unknown as InteractWithPageResult)
+        },
+        args: toJsonObject(args)
+      });
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -220,7 +228,7 @@ export const webToolHandlers: Record<string, ToolHandler> = {
       });
       const file = result.file_id ? await context.chatFileStore.getFile(result.file_id) : null;
       const fileHandle = file ? buildChatFileHandleResultFromContext(file, context) : null;
-      return JSON.stringify({
+      const initialPayload = {
         ok: true,
         status: result.status,
         resource_id: result.resource_id,
@@ -237,6 +245,38 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         percent: result.percent,
         error: result.error,
         ...(result.background_followup ? { background_followup: result.background_followup } : {})
+      };
+      return projectToolResult({
+        toolName: "download_asset",
+        canonical: toJsonObject({
+          ...toJsonObject(initialPayload),
+          source: toJsonObject(source),
+          download: toJsonObject(result)
+        }),
+        projection: {
+          initial: projectFields([
+            "ok",
+            "status",
+            "resource_id",
+            "file_id",
+            "file_ref",
+            "asset_ref",
+            "asset_handle",
+            "kind",
+            "mime_type",
+            "size_bytes",
+            "source_url",
+            "browser_resource_id",
+            "target_id",
+            "downloaded_bytes",
+            "total_bytes",
+            "percent",
+            "error",
+            "background_followup",
+            "next_actions"
+          ])
+        },
+        args: toJsonObject(args)
       });
     } catch (error: unknown) {
       return JSON.stringify({
@@ -390,7 +430,7 @@ function normalizeOptionalIndex(value: unknown): number | undefined {
   return Number.isInteger(normalized) && normalized > 0 ? normalized : undefined;
 }
 
-function compactBrowserInteractionResult(result: InteractWithPageResult): Record<string, unknown> {
+function compactBrowserInteractionResult(result: InteractWithPageResult): JsonObject {
   return {
     ok: result.ok,
     resource_id: result.resource_id,
@@ -401,10 +441,10 @@ function compactBrowserInteractionResult(result: InteractWithPageResult): Record
     disambiguation_required: result.disambiguation_required,
     candidates: result.candidates.map(compactBrowserElement).slice(0, 8),
     snapshot: compactBrowserRenderResult(result.snapshot)
-  };
+  } as unknown as JsonObject;
 }
 
-function compactBrowserRenderResult(result: BrowserRenderResult): Record<string, unknown> {
+function compactBrowserRenderResult(result: BrowserRenderResult): JsonObject {
   const pattern = "pattern" in result ? result.pattern : undefined;
   const matches = "matches" in result && Array.isArray(result.matches) ? result.matches.slice(0, 8) : undefined;
   return {
@@ -428,10 +468,10 @@ function compactBrowserRenderResult(result: BrowserRenderResult): Record<string,
     elements: result.elements.map(compactBrowserElement).slice(0, 12),
     ...(pattern === undefined ? {} : { pattern }),
     ...(matches === undefined ? {} : { matches })
-  };
+  } as unknown as JsonObject;
 }
 
-function compactBrowserElement(element: BrowserElement | null): Record<string, unknown> | null {
+function compactBrowserElement(element: BrowserElement | null): JsonObject | null {
   if (!element) {
     return null;
   }
@@ -452,7 +492,7 @@ function compactBrowserElement(element: BrowserElement | null): Record<string, u
     visibility: element.visibility,
     media_url: trimBrowserText(element.media_url, 180),
     source_urls: element.source_urls.map((item) => trimBrowserText(item, 180)).slice(0, 4)
-  };
+  } as JsonObject;
 }
 
 function trimBrowserText(value: string | null, limit: number): string | null {
@@ -469,7 +509,7 @@ async function buildScreenshotToolResult(
 ): Promise<LlmToolExecutionResult | string> {
   const prepared = await context.mediaVisionService.prepareFileForModel(imageId).catch(() => null);
   const file = await context.chatFileStore.getFile(imageId).catch(() => null);
-  const contentPayload = file
+  const initialPayload = file
     ? {
         ok: true,
         ...buildChatFileHandleResultFromContext(file, context),
@@ -479,14 +519,54 @@ async function buildScreenshotToolResult(
         target_id: typeof result === "object" && result && "target_id" in result ? (result as { target_id?: unknown }).target_id : null
       }
     : result;
+  const canonical = toJsonObject({
+    ...toJsonObject(initialPayload),
+    screenshot: toJsonObject(result)
+  });
   if (!prepared) {
-    return JSON.stringify(contentPayload);
+    return projectToolResult({
+      toolName: "capture_screenshot",
+      canonical,
+      projection: {
+        initial: projectFields([
+          "ok",
+          "file_id",
+          "file_ref",
+          "asset_ref",
+          "asset_handle",
+          "mode",
+          "resource_id",
+          "profile_id",
+          "target_id",
+          "mime_type",
+          "size_bytes",
+          "next_actions"
+        ])
+      }
+    });
   }
   const caption = imageCaptionMapFromDerivedObservations(await new DerivedObservationReader({
     chatFileStore: context.chatFileStore
   }).read({ chatFileIds: [imageId] }).catch(() => [])).get(imageId);
-  return {
-    content: JSON.stringify(contentPayload),
+  return projectToolResult({
+    toolName: "capture_screenshot",
+    canonical,
+    projection: {
+      initial: projectFields([
+        "ok",
+        "file_id",
+        "file_ref",
+        "asset_ref",
+        "asset_handle",
+        "mode",
+        "resource_id",
+        "profile_id",
+        "target_id",
+        "mime_type",
+        "size_bytes",
+        "next_actions"
+      ])
+    },
     supplementalMessages: [{
       role: "user",
       content: [
@@ -502,5 +582,9 @@ async function buildScreenshotToolResult(
         }
       ]
     }]
-  };
+  });
+}
+
+function toJsonObject(value: unknown): JsonObject {
+  return (typeof value === "object" && value !== null && !Array.isArray(value) ? value : {}) as JsonObject;
 }

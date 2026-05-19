@@ -22,6 +22,7 @@ import {
   localFileReadPolicy,
   localFileSearchPolicy
 } from "../core/resultObservationPresets.ts";
+import { pickFields, projectToolResult, type JsonObject } from "../core/toolResultProjection.ts";
 
 const isLocalFileToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.localFiles.enabled;
 const isChatFileToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.chatFiles.enabled;
@@ -347,15 +348,15 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     if (s.kind === "directory") {
       const limit = getNumberArg(args, "limit") ?? 200;
       const { root: _root, ...result } = await context.localFileService.listItems(path, limit);
-      return JSON.stringify(result);
+      return projectWorkspaceToolResult("filesystem_list", result);
     }
-    return JSON.stringify(buildLocalFileHandleResultFromContext(s, context));
+    return projectWorkspaceToolResult("filesystem_list", buildLocalFileHandleResultFromContext(s, context));
   },
 
   async filesystem_read(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     if (!path) {
-      return JSON.stringify({ error: "path is required" });
+      return projectWorkspaceToolResult("filesystem_read", { error: "path is required" });
     }
     const startLine = getNumberArg(args, "start_line");
     const endLine = getNumberArg(args, "end_line");
@@ -363,19 +364,19 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
       ...(startLine ? { startLine } : {}),
       ...(endLine ? { endLine } : {})
     });
-    return JSON.stringify(withNextActions(result as unknown as Record<string, unknown>, localFileReadNextActions(result)));
+    return projectWorkspaceToolResult("filesystem_read", withNextActions(result as unknown as Record<string, unknown>, localFileReadNextActions(result)));
   },
 
   async filesystem_write(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     if (!path) {
-      return JSON.stringify({ error: "path is required" });
+      return projectWorkspaceToolResult("filesystem_write", { error: "path is required" });
     }
     const content = typeof args === "object" && args && "content" in args
       ? String((args as Record<string, unknown>).content ?? "")
       : "";
     const mode = getStringArg(args, "mode") || "overwrite";
-    return JSON.stringify(await context.localFileService.writeFile(path, content, mode as "overwrite" | "append" | "create"));
+    return projectWorkspaceToolResult("filesystem_write", await context.localFileService.writeFile(path, content, mode as "overwrite" | "append" | "create"));
   },
 
   async filesystem_patch(_toolCall, args, context) {
@@ -390,73 +391,73 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
       const hasNewText = typeof args === "object" && args && "new_text" in args;
       const newText = hasNewText ? String((args as Record<string, unknown>).new_text ?? "") : "";
       if (path && oldText && hasNewText) {
-        return JSON.stringify(await context.localFileService.replaceFileText(path, oldText, newText));
+        return projectWorkspaceToolResult("filesystem_patch", await context.localFileService.replaceFileText(path, oldText, newText));
       }
-      return JSON.stringify({ error: "path and either patch or old_text/new_text are required" });
+      return projectWorkspaceToolResult("filesystem_patch", { error: "path and either patch or old_text/new_text are required" });
     }
-    return JSON.stringify(await context.localFileService.patchFile(path, patch));
+    return projectWorkspaceToolResult("filesystem_patch", await context.localFileService.patchFile(path, patch));
   },
 
   async filesystem_move(_toolCall, args, context) {
     const fromPath = getStringArg(args, "from_path");
     const toPath = getStringArg(args, "to_path");
     if (!fromPath || !toPath) {
-      return JSON.stringify({ error: "from_path and to_path are required" });
+      return projectWorkspaceToolResult("filesystem_move", { error: "from_path and to_path are required" });
     }
-    return JSON.stringify(await context.localFileService.moveItem(fromPath, toPath));
+    return projectWorkspaceToolResult("filesystem_move", await context.localFileService.moveItem(fromPath, toPath));
   },
 
   async filesystem_copy(_toolCall, args, context) {
     const fromPath = getStringArg(args, "from_path");
     const toPath = getStringArg(args, "to_path");
     if (!fromPath || !toPath) {
-      return JSON.stringify({ error: "from_path and to_path are required" });
+      return projectWorkspaceToolResult("filesystem_copy", { error: "from_path and to_path are required" });
     }
-    return JSON.stringify(await context.localFileService.copyItem(fromPath, toPath));
+    return projectWorkspaceToolResult("filesystem_copy", await context.localFileService.copyItem(fromPath, toPath));
   },
 
   async filesystem_delete(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     if (!path) {
-      return JSON.stringify({ error: "path is required" });
+      return projectWorkspaceToolResult("filesystem_delete", { error: "path is required" });
     }
-    return JSON.stringify(await context.localFileService.deleteItem(path));
+    return projectWorkspaceToolResult("filesystem_delete", await context.localFileService.deleteItem(path));
   },
 
   async filesystem_search(_toolCall, args, context) {
     const query = getStringArg(args, "query");
     if (!query) {
-      return JSON.stringify({ error: "query is required" });
+      return projectWorkspaceToolResult("filesystem_search", { error: "query is required" });
     }
     const path = getStringArg(args, "path") || ".";
     const limit = clampInteger(getRawNumberArg(args, "limit"), 50, 1, 100);
     const mode = getStringArg(args, "mode") || "name";
     if (mode === "content") {
       const { root: _root, ...result } = await context.localFileService.findText(query, path, limit);
-      return JSON.stringify(result);
+      return projectWorkspaceToolResult("filesystem_search", result);
     }
     const { root: _root, ...result } = await context.localFileService.searchItems(query, path, limit);
-    return JSON.stringify(result);
+    return projectWorkspaceToolResult("filesystem_search", result);
   },
 
   async filesystem_mkdir(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     if (!path) {
-      return JSON.stringify({ error: "path is required" });
+      return projectWorkspaceToolResult("filesystem_mkdir", { error: "path is required" });
     }
-    return JSON.stringify(await context.localFileService.mkdir(path));
+    return projectWorkspaceToolResult("filesystem_mkdir", await context.localFileService.mkdir(path));
   },
 
   async filesystem_send_to_chat(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     if (!path) {
-      return JSON.stringify({ error: "path is required" });
+      return projectWorkspaceToolResult("filesystem_send_to_chat", { error: "path is required" });
     }
     let resolvedPath;
     try {
       resolvedPath = resolveSendablePath(context.localFileService, path);
     } catch (error) {
-      return JSON.stringify({ error: error instanceof Error ? error.message : String(error) });
+      return projectWorkspaceToolResult("filesystem_send_to_chat", { error: error instanceof Error ? error.message : String(error) });
     }
     return sendResolvedPathToChat(context, resolvedPath, getStringArg(args, "text"));
   }
@@ -468,7 +469,7 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
     if (selector) {
       const file = await resolveChatFile(context, selector);
       const fileHandle = file ? buildChatFileHandleResultFromContext(file, context) : null;
-      return JSON.stringify({
+      return projectWorkspaceToolResult("asset_list", {
         ok: Boolean(file),
         file: fileHandle,
         ...(fileHandle ? { next_actions: fileHandle.next_actions ?? [] } : {})
@@ -486,7 +487,7 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
     const files = matchedFiles
       .slice(0, limit)
       .map((item) => buildChatFileHandleResultFromContext(item, context));
-    return JSON.stringify({
+    return projectWorkspaceToolResult("asset_list", {
       ok: true,
       files,
       totalMatched: matchedFiles.length,
@@ -505,11 +506,11 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
   async asset_send_to_chat(_toolCall, args, context) {
     const selector = getStringArg(args, "asset_ref") || getStringArg(args, "asset_id");
     if (!selector) {
-      return JSON.stringify({ error: "asset_ref or asset_id is required" });
+      return projectWorkspaceToolResult("asset_send_to_chat", { error: "asset_ref or asset_id is required" });
     }
     const file = await resolveChatFile(context, selector);
     if (!file) {
-      return JSON.stringify({ error: await buildUnknownAssetError(context, selector) });
+      return projectWorkspaceToolResult("asset_send_to_chat", { error: await buildUnknownAssetError(context, selector) });
     }
     return sendChatFileToChat(context, file, getStringArg(args, "text"));
   },
@@ -517,15 +518,15 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
   async asset_local_path(_toolCall, args, context) {
     const selector = getStringArg(args, "asset_ref") || getStringArg(args, "asset_id");
     if (!selector) {
-      return JSON.stringify({ error: "asset_ref or asset_id is required" });
+      return projectWorkspaceToolResult("asset_local_path", { error: "asset_ref or asset_id is required" });
     }
     const file = await resolveChatFile(context, selector);
     if (!file) {
-      return JSON.stringify({ error: await buildUnknownAssetError(context, selector) });
+      return projectWorkspaceToolResult("asset_local_path", { error: await buildUnknownAssetError(context, selector) });
     }
     const absolutePath = await context.chatFileStore.resolveAbsolutePath(file.fileId);
     const absolute = Boolean(typeof args === "object" && args && (args as Record<string, unknown>).absolute);
-    return JSON.stringify({
+    return projectWorkspaceToolResult("asset_local_path", {
       ok: true,
       asset_ref: file.fileRef,
       file_id: file.fileId,
@@ -543,11 +544,11 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
     const selector = getStringArg(args, "asset_ref") || getStringArg(args, "asset_id");
     const toPath = getStringArg(args, "to_path");
     if (!selector || !toPath) {
-      return JSON.stringify({ error: "asset_ref or asset_id and to_path are required" });
+      return projectWorkspaceToolResult("asset_export_to_filesystem", { error: "asset_ref or asset_id and to_path are required" });
     }
     const file = await resolveChatFile(context, selector);
     if (!file) {
-      return JSON.stringify({ error: await buildUnknownAssetError(context, selector) });
+      return projectWorkspaceToolResult("asset_export_to_filesystem", { error: await buildUnknownAssetError(context, selector) });
     }
     const sourceAbsolutePath = await context.chatFileStore.resolveAbsolutePath(file.fileId);
     const preliminaryDestination = context.localFileService.resolvePath(toPath);
@@ -561,7 +562,7 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
     await mkdir(dirname(destination.absolutePath), { recursive: true });
     await copyFile(sourceAbsolutePath, destination.absolutePath);
     const copiedStat = await stat(destination.absolutePath);
-    return JSON.stringify({
+    return projectWorkspaceToolResult("asset_export_to_filesystem", {
       ok: true,
       asset_ref: file.fileRef,
       file_id: file.fileId,
@@ -574,6 +575,118 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
     });
   }
 };
+
+function projectWorkspaceToolResult(toolName: string, canonical: unknown) {
+  const result = projectToolResult({
+    toolName,
+    canonical: canonical as unknown as JsonObject,
+    projection: {
+      initial: (payload) => projectWorkspaceInitial(toolName, payload)
+    }
+  });
+  return {
+    ...result,
+    toString() {
+      return result.content;
+    }
+  };
+}
+
+function projectWorkspaceInitial(toolName: string, payload: JsonObject): JsonObject {
+  if (toolName === "filesystem_read") {
+    return {
+      ...pickStableToolFields(payload),
+      path: payload.path,
+      startLine: payload.startLine,
+      endLine: payload.endLine,
+      totalLines: payload.totalLines,
+      truncated: payload.truncated,
+      content_preview: typeof payload.content === "string" ? compactProjectionText(payload.content, 1200) : undefined,
+      next_actions: payload.next_actions
+    };
+  }
+  if (toolName === "filesystem_search") {
+    return {
+      ...pickStableToolFields(payload),
+      path: payload.path,
+      query: payload.query,
+      items: Array.isArray(payload.items) ? payload.items.slice(0, 24) : undefined,
+      matches: Array.isArray(payload.matches) ? payload.matches.slice(0, 24) : undefined,
+      results: Array.isArray(payload.results) ? payload.results.slice(0, 24) : undefined,
+      returned: payload.returned,
+      totalMatched: payload.totalMatched,
+      total_matches: payload.total_matches,
+      truncated: payload.truncated
+    };
+  }
+  if (toolName === "filesystem_list") {
+    return {
+      ...pickStableToolFields(payload),
+      path: payload.path,
+      name: payload.name,
+      kind: payload.kind,
+      sizeBytes: payload.sizeBytes,
+      updatedAtMs: payload.updatedAtMs,
+      handle: payload.handle,
+      handle_capabilities: payload.handle_capabilities,
+      next_actions: payload.next_actions,
+      items: Array.isArray(payload.items) ? payload.items.slice(0, 100) : undefined,
+      returned: payload.returned,
+      totalMatched: payload.totalMatched,
+      truncated: payload.truncated
+    };
+  }
+  if (toolName === "asset_list") {
+    return {
+      ...pickStableToolFields(payload),
+      file: payload.file,
+      files: Array.isArray(payload.files) ? payload.files.slice(0, 24) : undefined,
+      totalMatched: payload.totalMatched,
+      returned: payload.returned,
+      truncated: payload.truncated,
+      filters: payload.filters,
+      next_actions: payload.next_actions
+    };
+  }
+  if (toolName === "asset_local_path") {
+    return pickFields(payload, [
+      "ok", "error", "asset_ref", "file_id", "path", "path_mode", "path_role",
+      "source_name", "mime_type", "size_bytes", "usage_hints"
+    ]);
+  }
+  if (toolName === "asset_export_to_filesystem") {
+    return pickFields(payload, [
+      "ok", "error", "asset_ref", "file_id", "from_path", "from_path_role",
+      "to_path", "to_path_role", "usage_hints", "size_bytes"
+    ]);
+  }
+  if (toolName.startsWith("filesystem_")) {
+    return {
+      ...pickStableToolFields(payload),
+      path: payload.path,
+      fromPath: payload.fromPath,
+      from_path: payload.from_path,
+      toPath: payload.toPath,
+      to_path: payload.to_path,
+      bytesWritten: payload.bytesWritten,
+      hunksApplied: payload.hunksApplied,
+      deleted: payload.deleted,
+      updatedAtMs: payload.updatedAtMs,
+      next_actions: payload.next_actions
+    };
+  }
+  return pickStableToolFields(payload);
+}
+
+function pickStableToolFields(payload: JsonObject): JsonObject {
+  return pickFields(payload, [
+    "ok", "error", "status", "reason", "message", "resource", "asset_handle", "next_actions"
+  ]);
+}
+
+function compactProjectionText(value: string, maxLength: number): string {
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength)}...`;
+}
 
 function localFileReadNextActions(result: {
   path: string;

@@ -3,6 +3,7 @@ import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
 import { getBooleanArg, getNumberArg, getStringArg, getStringArrayArg } from "../core/toolArgHelpers.ts";
 import { keepRawUnlessLargePolicy, terminalPolicy } from "../core/resultObservationPresets.ts";
+import { projectToolResult, type JsonObject } from "../core/toolResultProjection.ts";
 
 const isShellToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.shell.enabled;
 const TERMINAL_KEY_NAMES = [
@@ -259,7 +260,13 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
     if (denied) return denied;
 
     const resources = await context.shellRuntime.listSessionResources();
-    return JSON.stringify({ ok: true, terminals: resources });
+    return projectToolResult({
+      toolName: "terminal_list",
+      canonical: { ok: true, terminals: resources } as unknown as JsonObject,
+      projection: {
+        initial: (canonical) => canonical
+      }
+    });
   },
 
   async terminal_run(_toolCall, args, context) {
@@ -268,8 +275,15 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
 
     const runParams = buildShellRunParams(args);
     bindShellRunOwner(runParams, args, context);
-    const result = await context.shellRuntime.run(runParams);
-    return JSON.stringify(compactShellRunResult(annotateShellRunResult(result, runParams.notifyPolicy)));
+    const result = annotateShellRunResult(await context.shellRuntime.run(runParams), runParams.notifyPolicy);
+    return projectToolResult({
+      toolName: "terminal_run",
+      canonical: result as unknown as JsonObject,
+      ...projectionArgs(args),
+      projection: {
+        initial: (canonical) => compactShellRunResult(canonical as unknown as ShellRunResult, shellMaxOutputChars(context))
+      }
+    });
   },
 
   async terminal_start(_toolCall, args, context) {
@@ -279,8 +293,15 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
     const runParams = buildShellRunParams(args);
     bindShellRunOwner(runParams, args, context);
     runParams.background = true;
-    const result = await context.shellRuntime.run(runParams);
-    return JSON.stringify(compactShellRunResult(annotateShellRunResult(result, runParams.notifyPolicy)));
+    const result = annotateShellRunResult(await context.shellRuntime.run(runParams), runParams.notifyPolicy);
+    return projectToolResult({
+      toolName: "terminal_start",
+      canonical: result as unknown as JsonObject,
+      ...projectionArgs(args),
+      projection: {
+        initial: (canonical) => compactShellRunResult(canonical as unknown as ShellRunResult, shellMaxOutputChars(context))
+      }
+    });
   },
 
   async terminal_write(_toolCall, args, context) {
@@ -291,7 +312,14 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
     const input = getStringArg(args, "input")!;
 
     const result = await context.shellRuntime.interact(resourceId, input);
-    return JSON.stringify(compactShellInteractionResult(result));
+    return projectToolResult({
+      toolName: "terminal_write",
+      canonical: result as unknown as JsonObject,
+      ...projectionArgs(args),
+      projection: {
+        initial: (canonical) => compactShellInteractionResult(canonical as unknown as ShellInteractionResult)
+      }
+    });
   },
 
   async terminal_send_lines(_toolCall, args, context) {
@@ -308,11 +336,13 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
     }
 
     const outputs: string[] = [];
+    const results: ShellInteractionResult[] = [];
     let outputTruncated = false;
     let latestSession: ShellSession | null = null;
     let sentLineCount = 0;
     for (const line of lines) {
       const result = await context.shellRuntime.interact(resourceId, `${line}\n`);
+      results.push(result);
       sentLineCount += 1;
       outputs.push(result.output);
       outputTruncated = outputTruncated || result.outputTruncated === true || result.output_truncated === true;
@@ -321,12 +351,28 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
         break;
       }
     }
-    return JSON.stringify({
+    const initial = {
       ok: true,
       lineCount: sentLineCount,
       requestedLineCount: lines.length,
-      ...compactTerminalOutput(outputs.join(""), outputTruncated, context.config.shell.maxOutputChars),
+      ...compactTerminalOutput(outputs.join(""), outputTruncated, shellMaxOutputChars(context)),
       ...(latestSession ? { session: compactShellSession(latestSession) } : {})
+    };
+    return projectToolResult({
+      toolName: "terminal_send_lines",
+      canonical: {
+        ok: true,
+        lineCount: sentLineCount,
+        requestedLineCount: lines.length,
+        output: outputs.join(""),
+        outputTruncated,
+        results: results as unknown as JsonObject[],
+        ...(latestSession ? { session: latestSession as unknown as JsonObject } : {})
+      },
+      ...projectionArgs(args),
+      projection: {
+        initial: () => initial
+      }
     });
   },
 
@@ -336,7 +382,14 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
 
     const resourceId = getStringArg(args, "resource_id")!;
     const result = await context.shellRuntime.read(resourceId);
-    return JSON.stringify(compactShellInteractionResult(result));
+    return projectToolResult({
+      toolName: "terminal_read",
+      canonical: result as unknown as JsonObject,
+      ...projectionArgs(args),
+      projection: {
+        initial: (canonical) => compactShellInteractionResult(canonical as unknown as ShellInteractionResult)
+      }
+    });
   },
 
   async terminal_key(_toolCall, args, context) {
@@ -358,7 +411,14 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ error: "key or keys is required" });
     }
     const result = await context.shellRuntime.interact(resourceId, input);
-    return JSON.stringify(compactShellInteractionResult(result));
+    return projectToolResult({
+      toolName: "terminal_key",
+      canonical: result as unknown as JsonObject,
+      ...projectionArgs(args),
+      projection: {
+        initial: (canonical) => compactShellInteractionResult(canonical as unknown as ShellInteractionResult)
+      }
+    });
   },
 
   async terminal_signal(_toolCall, args, context) {
@@ -369,7 +429,14 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
     const signal = getStringArg(args, "signal")!;
 
     const result = await context.shellRuntime.signal(resourceId, signal);
-    return JSON.stringify(result);
+    return projectToolResult({
+      toolName: "terminal_signal",
+      canonical: result as unknown as JsonObject,
+      ...projectionArgs(args),
+      projection: {
+        initial: (canonical) => canonical
+      }
+    });
   },
 
   async terminal_stop(_toolCall, args, context) {
@@ -378,7 +445,14 @@ export const shellToolHandlers: Record<string, ToolHandler> = {
 
     const resourceId = getStringArg(args, "resource_id")!;
     const result = await context.shellRuntime.signal(resourceId, "SIGTERM");
-    return JSON.stringify(result);
+    return projectToolResult({
+      toolName: "terminal_stop",
+      canonical: result as unknown as JsonObject,
+      ...projectionArgs(args),
+      projection: {
+        initial: (canonical) => canonical
+      }
+    });
   },
 };
 
@@ -457,18 +531,23 @@ function annotateShellRunResult(result: ShellRunResult, notifyPolicy: ShellRunPa
   };
 }
 
-function compactShellRunResult(result: ShellRunResult): ShellRunResult {
+function compactShellRunResult(result: ShellRunResult, maxOutputChars: number): JsonObject {
   const {
     resource_id: _resourceIdAlias,
     exit_code: _exitCodeAlias,
     effective_timeout_ms: _effectiveTimeoutAlias,
     output_truncated: _outputTruncatedAlias,
+    output,
+    outputTruncated,
     ...compact
   } = result;
-  return compact;
+  return {
+    ...compact,
+    ...compactTerminalOutput(output ?? "", outputTruncated === true, maxOutputChars)
+  } as JsonObject;
 }
 
-function compactShellInteractionResult(result: ShellInteractionResult) {
+function compactShellInteractionResult(result: ShellInteractionResult): JsonObject {
   return {
     output: result.output,
     outputTruncated: result.outputTruncated || result.output_truncated,
@@ -476,12 +555,12 @@ function compactShellInteractionResult(result: ShellInteractionResult) {
   };
 }
 
-function compactShellSession(session: ShellSession) {
+function compactShellSession(session: ShellSession): JsonObject {
   const { outputTail: _tail, ...compact } = session;
-  return compact;
+  return compact as unknown as JsonObject;
 }
 
-function compactTerminalOutput(output: string, alreadyTruncated: boolean, maxOutputChars: number) {
+function compactTerminalOutput(output: string, alreadyTruncated: boolean, maxOutputChars: number): JsonObject {
   const limit = Number.isFinite(maxOutputChars) && maxOutputChars > 0 ? Math.floor(maxOutputChars) : 12000;
   if (output.length <= limit) {
     return {
@@ -493,6 +572,14 @@ function compactTerminalOutput(output: string, alreadyTruncated: boolean, maxOut
     output: output.slice(-limit),
     outputTruncated: true
   };
+}
+
+function shellMaxOutputChars(context: Parameters<ToolHandler>[2]): number {
+  return context.config?.shell?.maxOutputChars ?? 12000;
+}
+
+function projectionArgs(args: unknown): { args?: Record<string, unknown> } {
+  return args && typeof args === "object" ? { args: args as Record<string, unknown> } : {};
 }
 
 function terminalKeysArg(args: unknown): string[] {
