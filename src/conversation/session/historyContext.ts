@@ -14,6 +14,7 @@ import type {
   InternalTranscriptItem,
   SessionHistoryMessage,
   TranscriptSessionModeSwitchItem,
+  TranscriptProfilePhaseTransitionItem,
   TranscriptAssistantMessageItem,
   TranscriptUserMediaMessageItem,
   TranscriptUserMessageItem,
@@ -118,6 +119,22 @@ export function formatSessionModeSwitchContent(input: {
   return formatStructuredTag("session_mode_switch", {
     from_mode: input.fromModeId,
     to_mode: input.toModeId,
+    timestamp: new Date(input.timestampMs).toISOString()
+  });
+}
+
+export function formatProfilePhaseTransitionContent(input: {
+  target: TranscriptProfilePhaseTransitionItem["target"];
+  phase: TranscriptProfilePhaseTransitionItem["phase"];
+  action: TranscriptProfilePhaseTransitionItem["action"];
+  source: TranscriptProfilePhaseTransitionItem["source"];
+  timestampMs: number;
+}): string {
+  return formatStructuredTag("profile_phase_transition", {
+    target: input.target,
+    phase: input.phase,
+    action: input.action,
+    source: input.source,
     timestamp: new Date(input.timestampMs).toISOString()
   });
 }
@@ -421,10 +438,35 @@ export function createSessionModeSwitchTranscriptItem(input: {
   };
 }
 
+export function createProfilePhaseTransitionTranscriptItem(input: {
+  target: TranscriptProfilePhaseTransitionItem["target"];
+  phase: TranscriptProfilePhaseTransitionItem["phase"];
+  action: TranscriptProfilePhaseTransitionItem["action"];
+  source: TranscriptProfilePhaseTransitionItem["source"];
+  timestampMs: number;
+}): TranscriptProfilePhaseTransitionItem {
+  return {
+    kind: "profile_phase_transition",
+    role: "assistant",
+    llmVisible: true,
+    target: input.target,
+    phase: input.phase,
+    action: input.action,
+    source: input.source,
+    content: formatProfilePhaseTransitionContent(input),
+    timestampMs: input.timestampMs
+  };
+}
+
 export function projectTranscriptMessageItemToHistoryMessage(
-  item: TranscriptUserMessageItem | TranscriptUserMediaMessageItem | TranscriptAssistantMessageItem | TranscriptSessionModeSwitchItem
+  item:
+    | TranscriptUserMessageItem
+    | TranscriptUserMediaMessageItem
+    | TranscriptAssistantMessageItem
+    | TranscriptSessionModeSwitchItem
+    | TranscriptProfilePhaseTransitionItem
 ): SessionHistoryMessage {
-  if (item.kind === "session_mode_switch") {
+  if (item.kind === "session_mode_switch" || item.kind === "profile_phase_transition") {
     return {
       role: item.role,
       content: item.content,

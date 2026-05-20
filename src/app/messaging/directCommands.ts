@@ -302,6 +302,12 @@ async function enterConfigurationMode(
         : await ctx.input.scenarioProfileStore.get()
     });
   }
+  ctx.input.sessionManager.appendProfilePhaseTransition(ctx.session.id, {
+    target,
+    phase: mode,
+    action: "enter",
+    source: "command"
+  });
   ctx.input.persistSession(
     ctx.session.id,
     mode === "setup" ? `${target}_setup_mode_entered_by_command` : `${target}_config_mode_entered_by_command`
@@ -868,11 +874,14 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         return;
       }
       ctx.input.sessionManager.markSetupConfirmed(ctx.session.id);
-      ctx.input.sessionManager.cancelGeneration(ctx.session.id);
-      ctx.input.sessionManager.clearSession(ctx.session.id);
+      ctx.input.sessionManager.interruptResponse(ctx.session.id);
+      ctx.input.sessionManager.finishProfileOperation(ctx.session.id, {
+        action: "exit_confirmed",
+        source: "command"
+      });
       ctx.input.persistSession(ctx.session.id, "configuration_confirmed_by_command");
       ctx.input.logger.info({ sessionId: ctx.session.id, operationKind: operationMode.kind }, "configuration_confirmed_by_command");
-      await ctx.send("配置已确认，当前会话历史已清空。");
+      await ctx.send("配置已确认，已回到正常对话。");
     }
   },
   {
@@ -897,15 +906,18 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         await ctx.send("当前没有正在进行的配置流程。");
         return;
       }
-      ctx.input.sessionManager.cancelGeneration(ctx.session.id);
-      ctx.input.sessionManager.clearSession(ctx.session.id);
+      ctx.input.sessionManager.interruptResponse(ctx.session.id);
+      ctx.input.sessionManager.finishProfileOperation(ctx.session.id, {
+        action: "exit_cancelled",
+        source: "command"
+      });
       ctx.input.persistSession(ctx.session.id, "configuration_cancelled_by_command");
       ctx.input.logger.info({
         sessionId: ctx.session.id,
         operationKind: operationMode.kind,
         target: getOperationTargetLabel(operationMode)
       }, "configuration_cancelled_by_command");
-      await ctx.send("已退出配置流程，当前会话历史已清空。");
+      await ctx.send("已退出配置流程，已回到正常对话。");
     }
   }
 ];

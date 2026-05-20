@@ -5,6 +5,7 @@ import type {
   InternalAssistantToolCallItem,
   InternalToolResultItem,
   InternalTranscriptItem,
+  TranscriptProfilePhaseTransitionItem,
   TranscriptAssistantMessageItem,
   TranscriptSessionModeSwitchItem,
   TranscriptTokenStat,
@@ -34,7 +35,8 @@ type HistoryTranscriptItem =
   | TranscriptUserMessageItem
   | TranscriptUserMediaMessageItem
   | TranscriptAssistantMessageItem
-  | TranscriptSessionModeSwitchItem;
+  | TranscriptSessionModeSwitchItem
+  | TranscriptProfilePhaseTransitionItem;
 
 export function withEstimatedInputTokenStats<TItem extends InternalTranscriptItem>(
   item: TItem,
@@ -64,6 +66,7 @@ export function estimateTranscriptItemInputTokens(item: InternalTranscriptItem, 
     case "user_media_message":
     case "assistant_message":
     case "session_mode_switch":
+    case "profile_phase_transition":
       return estimateTokens(projectTranscriptMessageItemToHistoryMessage(item as HistoryTranscriptItem).content, weights);
     case "assistant_tool_call":
       return estimateAssistantToolCallTokens(item, config);

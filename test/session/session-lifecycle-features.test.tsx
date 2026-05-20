@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 
   test("completeResponse only applies to the current response epoch", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
@@ -57,6 +58,44 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       }),
       false
     );
+  });
+
+  test("finishing a profile operation preserves transcript and appends a visible phase marker", async () => {
+    const sessionManager = new SessionManager(createTestAppConfig());
+    const sessionId = "qqbot:p:test";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    sessionManager.appendUserHistory(sessionId, {
+      chatType: "private",
+      userId: "owner",
+      senderName: "Owner",
+      text: "设定前的上下文"
+    }, 10);
+    sessionManager.setOperationMode(sessionId, {
+      kind: "persona_config",
+      draft: createEmptyPersona()
+    });
+    const oldEpoch = sessionManager.getMutationEpoch(sessionId);
+
+    assert.equal(sessionManager.finishProfileOperation(sessionId, {
+      action: "exit_confirmed",
+      source: "command"
+    }), true);
+
+    const session = sessionManager.getSession(sessionId);
+    assert.equal(session.operationMode.kind, "normal");
+    assert.ok(session.mutationEpoch > oldEpoch);
+    assert.equal(session.internalTranscript.length, 2);
+    assert.equal(session.internalTranscript[0]?.kind, "user_message");
+    const marker = session.internalTranscript[1];
+    assert.equal(marker?.kind, "profile_phase_transition");
+    if (marker?.kind === "profile_phase_transition") {
+      assert.equal(marker.llmVisible, true);
+      assert.equal(marker.target, "persona");
+      assert.equal(marker.phase, "config");
+      assert.equal(marker.action, "exit_confirmed");
+      assert.match(marker.content, /profile_phase_transition/);
+    }
+    assert.equal(sessionManager.getLlmVisibleHistory(sessionId).length, 2);
   });
 
   test("session history backfill boundary is initialized and advanced by clear and compression", async () => {

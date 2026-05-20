@@ -120,6 +120,7 @@ export type TranscriptUserMessageItem = Extract<InternalTranscriptItem, { kind: 
 export type TranscriptUserMediaMessageItem = Extract<InternalTranscriptItem, { kind: "user_media_message" }>;
 export type TranscriptAssistantMessageItem = Extract<InternalTranscriptItem, { kind: "assistant_message" }>;
 export type TranscriptSessionModeSwitchItem = Extract<InternalTranscriptItem, { kind: "session_mode_switch" }>;
+export type TranscriptProfilePhaseTransitionItem = Extract<InternalTranscriptItem, { kind: "profile_phase_transition" }>;
 export type InternalAssistantToolCallItem = Extract<InternalTranscriptItem, { kind: "assistant_tool_call" }>;
 export type InternalToolResultItem = Extract<InternalTranscriptItem, { kind: "tool_result" }>;
 export type TranscriptOutboundMediaMessageItem = Extract<InternalTranscriptItem, { kind: "outbound_media_message" }>;

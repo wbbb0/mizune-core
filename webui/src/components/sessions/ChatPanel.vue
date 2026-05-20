@@ -262,6 +262,8 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
       return "工具结果";
     case "session_mode_switch":
       return "模式切换";
+    case "profile_phase_transition":
+      return "资料阶段切换";
     case "status_message":
       return "状态消息";
     case "gate_decision":

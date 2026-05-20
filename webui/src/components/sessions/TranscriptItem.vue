@@ -93,6 +93,9 @@ const itemTitle = computed(() => {
     case "session_mode_switch":
       title = "会话模式切换";
       break;
+    case "profile_phase_transition":
+      title = "资料阶段切换";
+      break;
     case "direct_command":
       title = `${props.item.direction === "input" ? "指令输入" : "指令输出"} · ${props.item.commandName}`;
       break;
@@ -149,6 +152,7 @@ const itemTone = computed(() => {
       return "user";
     case "assistant_message":
     case "session_mode_switch":
+    case "profile_phase_transition":
       return "assistant";
     case "direct_command":
       return props.item.direction === "input" ? "command" : "command-output";
@@ -184,6 +188,7 @@ const itemGlyph = computed<SessionGlyphModel>(() => {
       return { kind: "icon", component: User, size: 13, strokeWidth: 2.1 };
     case "assistant_message":
     case "session_mode_switch":
+    case "profile_phase_transition":
       return { kind: "icon", component: Bot, size: 13, strokeWidth: 2 };
     case "direct_command":
       return { kind: "text", value: props.item.direction === "input" ? "." : ">" };
@@ -265,6 +270,14 @@ const metaChips = computed(() => {
       break;
     case "session_mode_switch":
       chips = [`${props.item.fromModeId} -> ${props.item.toModeId}`];
+      break;
+    case "profile_phase_transition":
+      chips = [
+        props.item.target,
+        props.item.phase,
+        props.item.action,
+        props.item.source
+      ];
       break;
     case "direct_command":
       chips = [props.item.direction === "input" ? "用户指令" : "指令返回"];
@@ -843,6 +856,10 @@ function openActions(): void {
       </div>
 
       <div v-else-if="item.kind === 'session_mode_switch'" class="flex flex-col gap-2">
+        <TranscriptTextBlock :text="item.content" />
+      </div>
+
+      <div v-else-if="item.kind === 'profile_phase_transition'" class="flex flex-col gap-2">
         <TranscriptTextBlock :text="item.content" />
       </div>
 

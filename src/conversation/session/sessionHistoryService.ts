@@ -12,6 +12,7 @@ import {
 import { projectLlmVisibleHistoryFromTranscript, projectVisibleMessagesFromTranscript } from "./sessionTranscript.ts";
 import {
   createAssistantTranscriptMessageItem,
+  createProfilePhaseTransitionTranscriptItem,
   createSessionModeSwitchTranscriptItem,
   createUserTranscriptMessageItem
 } from "./historyContext.ts";
@@ -35,7 +36,8 @@ import type {
   TranscriptAssistantMessageItem,
   TranscriptItemDeliveryRef,
   TranscriptItemRuntimeExclusionReason,
-  TranscriptItemSourceRef
+  TranscriptItemSourceRef,
+  TranscriptProfilePhaseTransitionItem
 } from "./sessionTypes.ts";
 import type { ToolObservationSummary } from "./toolObservation.ts";
 
@@ -245,6 +247,23 @@ export class SessionHistoryService {
     this.appendNormalizedTranscript(session, createSessionModeSwitchTranscriptItem({
       fromModeId,
       toModeId,
+      timestampMs
+    }), resolveTranscriptOutputGroupId(session));
+    session.historyRevision += 1;
+  }
+
+  appendProfilePhaseTransition(
+    session: SessionState,
+    input: {
+      target: TranscriptProfilePhaseTransitionItem["target"];
+      phase: TranscriptProfilePhaseTransitionItem["phase"];
+      action: TranscriptProfilePhaseTransitionItem["action"];
+      source: TranscriptProfilePhaseTransitionItem["source"];
+    },
+    timestampMs = Date.now()
+  ): void {
+    this.appendNormalizedTranscript(session, createProfilePhaseTransitionTranscriptItem({
+      ...input,
       timestampMs
     }), resolveTranscriptOutputGroupId(session));
     session.historyRevision += 1;

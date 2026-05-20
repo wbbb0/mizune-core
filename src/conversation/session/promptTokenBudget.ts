@@ -81,5 +81,6 @@ function isBudgetHistoryMessage(item: InternalTranscriptItem): boolean {
     || item.kind === "user_media_message"
     || item.kind === "assistant_message"
     || item.kind === "session_mode_switch"
+    || item.kind === "profile_phase_transition"
   );
 }

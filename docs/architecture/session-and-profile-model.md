@@ -130,12 +130,15 @@
 - `cancel` 应放弃当前草稿并退出对应配置流程
 - 自动进入 setup 由全局 readiness 决定
 - 显式配置和首次初始化是不同语义，不应继续混成一套 prompt / 工具入口
+- 进入或退出 `persona` / 模式 profile 的 setup/config 流程时，不应强制清空会话历史；系统会写入 `profile_phase_transition` transcript 标记作为模型可见的阶段边界
+- 退出配置流程时只重置草稿工作态和运行队列等临时状态，保留已有 transcript 与摘要；模型看到阶段边界后，应以当前系统注入的已保存 profile 为正式行为依据
 
 相关实现入口：
 
 - `src/conversation/session/sessionOperationMode.ts`
 - `src/conversation/session/sessionPersistence.ts`
 - `src/conversation/session/sessionMutations.ts`
+- `src/conversation/session/transcriptContract.ts`
 - `test/session/persistence.test.tsx`
 - `test/tools/tool-runtime-features.test.tsx`
 - `test/messaging/direct-command-features.test.tsx`

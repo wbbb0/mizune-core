@@ -268,6 +268,23 @@ export function clearSessionState(session: SessionState): void {
   session.activeAssistantDraftResponse = null;
 }
 
+export function resetProfileOperationState(session: SessionState): void {
+  session.mutationEpoch += 1;
+  session.operationMode = createNormalSessionOperationMode();
+  session.setupConfirmed = false;
+  session.pendingMessages = [];
+  session.pendingSteerMessages = [];
+  session.pendingReplyGateWaitPasses = 0;
+  session.pendingTranscriptGroupId = null;
+  session.activeTranscriptGroupId = null;
+  session.pendingInternalTriggers = [];
+  session.pendingInlineTriggers = [];
+  session.interruptibleGroupTriggerUserId = null;
+  session.lastLlmUsage = null;
+  session.phase = { kind: "idle" };
+  session.lastActiveAt = Date.now();
+}
+
 export function setSessionOperationModeState(session: SessionState, operationMode: SessionOperationMode): void {
   session.operationMode = cloneSessionOperationMode(operationMode);
   session.lastActiveAt = Date.now();

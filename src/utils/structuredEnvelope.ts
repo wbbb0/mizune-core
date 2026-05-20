@@ -15,6 +15,7 @@ export const PROTOCOL_TAGS = [
   "placeholder",
   "planner_batch_message",
   "planner_history_message",
+  "profile_phase_transition",
   "ref",
   "scheduled_history_message",
   "section",

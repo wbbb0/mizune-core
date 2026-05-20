@@ -33,7 +33,7 @@ export interface SessionModeSetupOperation {
   setupToolsetOverrides?: SessionModeSetupToolsetOverride[];
   promptMode: "persona_setup" | "chat_with_setup_injection";
   completionSignal: SetupCompletionSignal;
-  onComplete: "clear_session" | "none";
+  onComplete: "exit_profile_operation" | "none";
 }
 
 export interface SessionModeSetupPhase {

@@ -93,7 +93,7 @@ export function createOwnerPrivateGlobalProfileSetupPhase(
       setupToolsetOverrides: createPersonaSetupToolsetOverrides(),
       promptMode: "persona_setup",
       completionSignal: "user_command",
-      onComplete: "clear_session"
+      onComplete: "exit_profile_operation"
     });
   }
   if (access.modeProfile) {
@@ -102,7 +102,7 @@ export function createOwnerPrivateGlobalProfileSetupPhase(
       setupToolsetOverrides: createModeProfileSetupToolsetOverrides(access.modeProfile),
       promptMode: "chat_with_setup_injection",
       completionSignal: "user_command",
-      onComplete: "clear_session"
+      onComplete: "exit_profile_operation"
     });
   }
 

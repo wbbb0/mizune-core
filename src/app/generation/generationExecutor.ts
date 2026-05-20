@@ -111,7 +111,7 @@ export interface RunGenerationInput {
   availableToolsets?: ToolsetView[] | undefined;
   setupMode?: boolean | undefined;
   setupCompletionSignal?: SetupCompletionSignal | undefined;
-  setupOnComplete?: "clear_session" | "none" | undefined;
+  setupOnComplete?: "exit_profile_operation" | "none" | undefined;
   streamResponse?: boolean | undefined;
   forceRegenerateTitleAfterTurn?: boolean | undefined;
   committedTextSink?: GenerationCommittedTextSink | undefined;
@@ -761,9 +761,12 @@ export function createGenerationExecutor(
             sessionId,
             { setupStore, scenarioHostStateStore, sessionManager }
           );
-          if (isComplete && input.setupOnComplete === "clear_session") {
-            sessionManager.clearSession(sessionId);
-            persistSession(sessionId, "setup_completed_session_cleared");
+          if (isComplete && input.setupOnComplete === "exit_profile_operation") {
+            sessionManager.finishProfileOperation(sessionId, {
+              action: "exit_confirmed",
+              source: "automatic"
+            });
+            persistSession(sessionId, "setup_completed_profile_phase_exited");
           }
         }
       }

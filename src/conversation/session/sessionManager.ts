@@ -12,6 +12,7 @@ import {
   finalizeActiveAssistantResponseState,
   promoteSteerMessagesToPendingState,
   requeuePendingMessagesState,
+  resetProfileOperationState,
   setActiveAssistantDraftResponseState,
   setSessionOperationModeState,
   setInterruptibleGroupTriggerUserState
@@ -48,10 +49,15 @@ import type {
   SessionTitleSource,
   SessionUsageSnapshot,
   TranscriptItemDeliveryRef,
+  TranscriptProfilePhaseTransitionItem,
   TranscriptItemRuntimeExclusionReason,
   TranscriptItemSourceRef
 } from "./sessionTypes.ts";
-import { cloneSessionOperationMode, type SessionOperationMode } from "./sessionOperationMode.ts";
+import {
+  cloneSessionOperationMode,
+  getSessionOperationProfilePhase,
+  type SessionOperationMode
+} from "./sessionOperationMode.ts";
 import type { ToolObservationSummary } from "./toolObservation.ts";
 
 export type {
@@ -444,6 +450,42 @@ export class SessionManager {
     setSessionOperationModeState(session, operationMode);
     this.notifySessionChanged(sessionId);
     return cloneSessionOperationMode(session.operationMode);
+  }
+
+  appendProfilePhaseTransition(
+    sessionId: string,
+    input: {
+      target: TranscriptProfilePhaseTransitionItem["target"];
+      phase: TranscriptProfilePhaseTransitionItem["phase"];
+      action: TranscriptProfilePhaseTransitionItem["action"];
+      source: TranscriptProfilePhaseTransitionItem["source"];
+    }
+  ): void {
+    const session = this.requireSession(sessionId);
+    this.historyService.appendProfilePhaseTransition(session, input);
+    this.notifySessionChanged(sessionId);
+  }
+
+  finishProfileOperation(
+    sessionId: string,
+    input: {
+      action: Extract<TranscriptProfilePhaseTransitionItem["action"], "exit_confirmed" | "exit_cancelled">;
+      source: TranscriptProfilePhaseTransitionItem["source"];
+    }
+  ): boolean {
+    const session = this.requireSession(sessionId);
+    const profilePhase = getSessionOperationProfilePhase(session.operationMode);
+    if (!profilePhase) {
+      return false;
+    }
+    resetProfileOperationState(session);
+    this.historyService.appendProfilePhaseTransition(session, {
+      ...profilePhase,
+      action: input.action,
+      source: input.source
+    });
+    this.notifySessionChanged(sessionId);
+    return true;
   }
 
   setReplyDelivery(sessionId: string, delivery: SessionDelivery): void {

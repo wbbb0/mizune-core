@@ -15,7 +15,10 @@ type SentImmediateText = {
 interface DirectCommandFixtureOptions {
   session?: Record<string, unknown>;
   cancelGeneration?: () => boolean;
+  interruptResponse?: () => Record<string, unknown>;
   clearSession?: () => void;
+  appendProfilePhaseTransition?: (sessionId: string, input: Record<string, unknown>) => void;
+  finishProfileOperation?: (sessionId: string, input: Record<string, unknown>) => boolean;
   forceCompactSession?: (sessionId: string, retainMessageCount?: number) => Promise<boolean>;
   appendHistory?: (sessionId: string, role: "user" | "assistant", content: string, timestampMs?: number) => void;
   appendUserHistory?: (sessionId: string, message: Record<string, unknown>, timestampMs?: number) => void;
@@ -128,6 +131,14 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
       cancelGeneration() {
         return options.cancelGeneration?.() ?? false;
       },
+      interruptResponse() {
+        return options.interruptResponse?.() ?? {
+          cancelledGeneration: false,
+          cancelledOutbound: false,
+          finalizedAssistant: false,
+          finalizedDraftAssistant: false
+        };
+      },
       clearSession() {
         options.clearSession?.();
       },
@@ -174,6 +185,13 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
       },
       appendInternalTranscript(sessionId: string, item: Record<string, unknown>) {
         options.appendInternalTranscript?.(sessionId, item);
+      },
+      appendProfilePhaseTransition(sessionId: string, input: Record<string, unknown>) {
+        options.appendProfilePhaseTransition?.(sessionId, input);
+      },
+      finishProfileOperation(sessionId: string, input: Record<string, unknown>) {
+        session.operationMode = { kind: "normal" };
+        return options.finishProfileOperation?.(sessionId, input) ?? true;
       },
       markSetupConfirmed(sessionId: string) {
         options.markSetupConfirmed?.(sessionId);

@@ -66,6 +66,12 @@ export async function ensureAutomaticSetupOperationMode(
       kind: "persona_setup",
       draft: services.personaStore.createEmpty()
     });
+    services.sessionManager.appendProfilePhaseTransition(context.session.id, {
+      target: "persona",
+      phase: "setup",
+      action: "enter",
+      source: "automatic"
+    });
     persistSession(context.session.id, "persona_setup_mode_auto_entered");
     return;
   }
@@ -75,6 +81,12 @@ export async function ensureAutomaticSetupOperationMode(
       modeId: "rp_assistant",
       draft: services.rpProfileStore.createEmpty()
     });
+    services.sessionManager.appendProfilePhaseTransition(context.session.id, {
+      target: "rp",
+      phase: "setup",
+      action: "enter",
+      source: "automatic"
+    });
     persistSession(context.session.id, "rp_setup_mode_auto_entered");
     return;
   }
@@ -83,6 +95,12 @@ export async function ensureAutomaticSetupOperationMode(
       kind: "mode_setup",
       modeId: "scenario_host",
       draft: services.scenarioProfileStore.createEmpty()
+    });
+    services.sessionManager.appendProfilePhaseTransition(context.session.id, {
+      target: "scenario",
+      phase: "setup",
+      action: "enter",
+      source: "automatic"
     });
     persistSession(context.session.id, "scenario_setup_mode_auto_entered");
   }

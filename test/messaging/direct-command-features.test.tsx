@@ -544,10 +544,14 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
 
   test("setup command enters mode_setup with empty rp draft", async () => {
     let latestOperationMode: Record<string, unknown> | null = null;
+    const phaseTransitions: Array<Record<string, unknown>> = [];
     const { calls, handler } = createDirectCommandFixture({
       setOperationMode(_sessionId, operationMode) {
         latestOperationMode = operationMode as Record<string, unknown>;
         return operationMode;
+      },
+      appendProfilePhaseTransition(_sessionId, input) {
+        phaseTransitions.push(input);
       },
       rpProfileStore: {
         createEmpty() {
@@ -583,6 +587,12 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       modeId: "rp_assistant",
       draft: createEmptyRpProfile()
     });
+    assert.deepEqual(phaseTransitions, [{
+      target: "rp",
+      phase: "setup",
+      action: "enter",
+      source: "command"
+    }]);
     assert.match(String(calls.at(-1)?.text ?? ""), /已进入 RP 资料 初始化流程/);
   });
 
@@ -692,6 +702,7 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
 
   test("config command clones saved persona into draft", async () => {
     let latestOperationMode: Record<string, unknown> | null = null;
+    const phaseTransitions: Array<Record<string, unknown>> = [];
     const savedPersona = {
       ...createEmptyPersona(),
       name: "Mina",
@@ -703,6 +714,9 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       setOperationMode(_sessionId, operationMode) {
         latestOperationMode = operationMode as Record<string, unknown>;
         return operationMode;
+      },
+      appendProfilePhaseTransition(_sessionId, input) {
+        phaseTransitions.push(input);
       },
       personaStore: {
         async get() {
@@ -740,6 +754,12 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       kind: "persona_config",
       draft: savedPersona
     });
+    assert.deepEqual(phaseTransitions, [{
+      target: "persona",
+      phase: "config",
+      action: "enter",
+      source: "command"
+    }]);
     assert.match(String(calls.at(-1)?.text ?? ""), /已进入 persona 配置流程/);
   });
 
@@ -769,9 +789,9 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
     assert.equal(calls.at(-1)?.text, "Scenario 资料尚未初始化，请先使用 `.setup scenario`。");
   });
 
-  test("confirm command persists persona draft and clears session", async () => {
-    let clearCalled = 0;
-    let cancelCalled = 0;
+  test("confirm command persists persona draft and exits configuration flow without clearing history", async () => {
+    let interruptCalled = 0;
+    const finishedOperations: Array<Record<string, unknown>> = [];
     const writtenPersonas: unknown[] = [];
     const setupAdvanceCalls: unknown[] = [];
     const personaReadinessUpdates: Array<"uninitialized" | "ready"> = [];
@@ -789,12 +809,13 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           }
         }
       },
-      cancelGeneration() {
-        cancelCalled += 1;
-        return true;
+      interruptResponse() {
+        interruptCalled += 1;
+        return {};
       },
-      clearSession() {
-        clearCalled += 1;
+      finishProfileOperation(_sessionId, input) {
+        finishedOperations.push(input);
+        return true;
       },
       personaStore: {
         async get() {
@@ -838,16 +859,16 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
     });
 
-    assert.equal(cancelCalled, 1);
-    assert.equal(clearCalled, 1);
+    assert.equal(interruptCalled, 1);
+    assert.deepEqual(finishedOperations, [{ action: "exit_confirmed", source: "command" }]);
     assert.equal(writtenPersonas.length, 1);
     assert.equal(setupAdvanceCalls.length, 1);
     assert.deepEqual(personaReadinessUpdates, ["ready"]);
-    assert.equal(calls.at(-1)?.text, "配置已确认，当前会话历史已清空。");
+    assert.equal(calls.at(-1)?.text, "配置已确认，已回到正常对话。");
   });
 
   test("confirm command persists mode draft and updates mode readiness", async () => {
-    let clearCalled = 0;
+    const finishedOperations: Array<Record<string, unknown>> = [];
     const writtenProfiles: unknown[] = [];
     const scenarioReadinessUpdates: Array<"uninitialized" | "ready"> = [];
 
@@ -865,8 +886,9 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           }
         }
       },
-      clearSession() {
-        clearCalled += 1;
+      finishProfileOperation(_sessionId, input) {
+        finishedOperations.push(input);
+        return true;
       },
       scenarioProfileStore: {
         async get() {
@@ -904,14 +926,14 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
     });
 
-    assert.equal(clearCalled, 1);
+    assert.deepEqual(finishedOperations, [{ action: "exit_confirmed", source: "command" }]);
     assert.equal(writtenProfiles.length, 1);
     assert.deepEqual(scenarioReadinessUpdates, ["ready"]);
-    assert.equal(calls.at(-1)?.text, "配置已确认，当前会话历史已清空。");
+    assert.equal(calls.at(-1)?.text, "配置已确认，已回到正常对话。");
   });
 
-  test("cancel command exits configuration flow and clears session", async () => {
-    let clearCalled = 0;
+  test("cancel command exits configuration flow without clearing history", async () => {
+    const finishedOperations: Array<Record<string, unknown>> = [];
     const { calls, handler } = createDirectCommandFixture({
       session: {
         operationMode: {
@@ -923,8 +945,9 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           }
         }
       },
-      clearSession() {
-        clearCalled += 1;
+      finishProfileOperation(_sessionId, input) {
+        finishedOperations.push(input);
+        return true;
       }
     });
 
@@ -934,8 +957,8 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
     });
 
-    assert.equal(clearCalled, 1);
-    assert.equal(calls.at(-1)?.text, "已退出配置流程，当前会话历史已清空。");
+    assert.deepEqual(finishedOperations, [{ action: "exit_cancelled", source: "command" }]);
+    assert.equal(calls.at(-1)?.text, "已退出配置流程，已回到正常对话。");
   });
 
   test("configuration commands reject non-owner", async () => {

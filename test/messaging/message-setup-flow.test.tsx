@@ -33,6 +33,7 @@ function createContext(input: {
 test("automatic setup enters persona_setup before mode setup", async () => {
   let latestOperationMode: unknown = { kind: "normal" };
   const persistedReasons: string[] = [];
+  const phaseTransitions: Array<Record<string, unknown>> = [];
 
   await ensureAutomaticSetupOperationMode(
     {
@@ -43,6 +44,9 @@ test("automatic setup enters persona_setup before mode setup", async () => {
         setOperationMode(_sessionId: string, operationMode: unknown) {
           latestOperationMode = operationMode;
           return operationMode;
+        },
+        appendProfilePhaseTransition(_sessionId: string, input: Record<string, unknown>) {
+          phaseTransitions.push(input);
         }
       } as any,
       globalProfileReadinessStore: {
@@ -80,12 +84,19 @@ test("automatic setup enters persona_setup before mode setup", async () => {
     kind: "persona_setup",
     draft: createEmptyPersona()
   });
+  assert.deepEqual(phaseTransitions, [{
+    target: "persona",
+    phase: "setup",
+    action: "enter",
+    source: "automatic"
+  }]);
   assert.deepEqual(persistedReasons, ["persona_setup_mode_auto_entered"]);
 });
 
 test("assistant mode also enters persona_setup when global persona is not ready", async () => {
   let latestOperationMode: unknown = { kind: "normal" };
   const persistedReasons: string[] = [];
+  const phaseTransitions: Array<Record<string, unknown>> = [];
 
   await ensureAutomaticSetupOperationMode(
     {
@@ -96,6 +107,9 @@ test("assistant mode also enters persona_setup when global persona is not ready"
         setOperationMode(_sessionId: string, operationMode: unknown) {
           latestOperationMode = operationMode;
           return operationMode;
+        },
+        appendProfilePhaseTransition(_sessionId: string, input: Record<string, unknown>) {
+          phaseTransitions.push(input);
         }
       } as any,
       globalProfileReadinessStore: {
@@ -133,12 +147,19 @@ test("assistant mode also enters persona_setup when global persona is not ready"
     kind: "persona_setup",
     draft: createEmptyPersona()
   });
+  assert.deepEqual(phaseTransitions, [{
+    target: "persona",
+    phase: "setup",
+    action: "enter",
+    source: "automatic"
+  }]);
   assert.deepEqual(persistedReasons, ["persona_setup_mode_auto_entered"]);
 });
 
 test("automatic setup enters rp mode draft after persona is ready", async () => {
   let latestOperationMode: unknown = { kind: "normal" };
   const persistedReasons: string[] = [];
+  const phaseTransitions: Array<Record<string, unknown>> = [];
 
   await ensureAutomaticSetupOperationMode(
     {
@@ -149,6 +170,9 @@ test("automatic setup enters rp mode draft after persona is ready", async () => 
         setOperationMode(_sessionId: string, operationMode: unknown) {
           latestOperationMode = operationMode;
           return operationMode;
+        },
+        appendProfilePhaseTransition(_sessionId: string, input: Record<string, unknown>) {
+          phaseTransitions.push(input);
         }
       } as any,
       globalProfileReadinessStore: {
@@ -187,12 +211,19 @@ test("automatic setup enters rp mode draft after persona is ready", async () => 
     modeId: "rp_assistant",
     draft: createEmptyRpProfile()
   });
+  assert.deepEqual(phaseTransitions, [{
+    target: "rp",
+    phase: "setup",
+    action: "enter",
+    source: "automatic"
+  }]);
   assert.deepEqual(persistedReasons, ["rp_setup_mode_auto_entered"]);
 });
 
 test("automatic setup enters scenario mode draft after persona is ready", async () => {
   let latestOperationMode: unknown = { kind: "normal" };
   const persistedReasons: string[] = [];
+  const phaseTransitions: Array<Record<string, unknown>> = [];
 
   await ensureAutomaticSetupOperationMode(
     {
@@ -203,6 +234,9 @@ test("automatic setup enters scenario mode draft after persona is ready", async 
         setOperationMode(_sessionId: string, operationMode: unknown) {
           latestOperationMode = operationMode;
           return operationMode;
+        },
+        appendProfilePhaseTransition(_sessionId: string, input: Record<string, unknown>) {
+          phaseTransitions.push(input);
         }
       } as any,
       globalProfileReadinessStore: {
@@ -241,6 +275,12 @@ test("automatic setup enters scenario mode draft after persona is ready", async 
     modeId: "scenario_host",
     draft: createEmptyScenarioProfile()
   });
+  assert.deepEqual(phaseTransitions, [{
+    target: "scenario",
+    phase: "setup",
+    action: "enter",
+    source: "automatic"
+  }]);
   assert.deepEqual(persistedReasons, ["scenario_setup_mode_auto_entered"]);
 });
 

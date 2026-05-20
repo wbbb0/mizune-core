@@ -905,7 +905,8 @@ function buildMemoryRuleLines(): string[] {
 function buildContextRuleLines(input: { visibleToolNames?: string[] | undefined }): string[] {
   const lines = [
     "批次头和每条消息头只用于帮助你分清会话模式、当前触发用户和具体发言者；不要在最终回复里复述这些头。",
-    "遇到结构化引用时先按引用理解上下文，不要脑补隐藏内容。"
+    "遇到结构化引用时先按引用理解上下文，不要脑补隐藏内容。",
+    "遇到 profile_phase_transition 结构化标记时，把它视为 persona/RP/Scenario 资料配置阶段的边界；配置阶段里的对话只用于理解刚刚发生的设定流程，正式行为以当前系统注入的已保存 persona 和模式资料为准。"
   ];
   if ((input.visibleToolNames ?? []).includes("request_toolset")) {
     lines.push("当前工具按工具集分批暴露；若发现缺少完成任务所需能力，先查看可申请的工具集，再申请补充。");

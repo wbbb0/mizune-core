@@ -90,7 +90,13 @@ function createOpenAiStyleProjector(
         }
         if (
           input.preserveThinking
-          && (item.kind === "user_message" || item.kind === "user_media_message" || item.kind === "assistant_message" || item.kind === "session_mode_switch")
+          && (
+            item.kind === "user_message"
+            || item.kind === "user_media_message"
+            || item.kind === "assistant_message"
+            || item.kind === "session_mode_switch"
+            || item.kind === "profile_phase_transition"
+          )
           && isTranscriptLlmVisible(item)
         ) {
           const historyMessage = projectTranscriptMessageItemToHistoryMessage(item);

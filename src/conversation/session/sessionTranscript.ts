@@ -9,6 +9,7 @@ export { estimateTokens } from "./tokenEstimator.ts";
 import type {
   InternalToolResultItem,
   InternalTranscriptItem,
+  TranscriptProfilePhaseTransitionItem,
   TranscriptSessionModeSwitchItem,
   TranscriptAssistantMessageItem,
   TranscriptUserMediaMessageItem,
@@ -35,8 +36,17 @@ export function isTranscriptVisibleChatMessage(item: InternalTranscriptItem): bo
 
 function isTranscriptHistoryMessage(
   item: InternalTranscriptItem
-): item is TranscriptUserMessageItem | TranscriptUserMediaMessageItem | TranscriptAssistantMessageItem | TranscriptSessionModeSwitchItem {
-  return item.kind === "user_message" || item.kind === "user_media_message" || item.kind === "assistant_message" || item.kind === "session_mode_switch";
+): item is
+  | TranscriptUserMessageItem
+  | TranscriptUserMediaMessageItem
+  | TranscriptAssistantMessageItem
+  | TranscriptSessionModeSwitchItem
+  | TranscriptProfilePhaseTransitionItem {
+  return item.kind === "user_message"
+    || item.kind === "user_media_message"
+    || item.kind === "assistant_message"
+    || item.kind === "session_mode_switch"
+    || item.kind === "profile_phase_transition";
 }
 
 export function projectLlmVisibleHistoryFromTranscript(
@@ -131,7 +141,12 @@ function collectAmbientRecallIds(
 }
 
 function projectPromptHistoryMessageWithAmbientMarker(
-  item: TranscriptUserMessageItem | TranscriptUserMediaMessageItem | TranscriptAssistantMessageItem | TranscriptSessionModeSwitchItem
+  item:
+    | TranscriptUserMessageItem
+    | TranscriptUserMediaMessageItem
+    | TranscriptAssistantMessageItem
+    | TranscriptSessionModeSwitchItem
+    | TranscriptProfilePhaseTransitionItem
 ): SessionHistoryMessage {
   const message = projectTranscriptMessageItemToHistoryMessage(item);
   if (isTranscriptAmbient(item)) {

@@ -14,6 +14,7 @@ import type {
   SessionParticipantRef,
   TranscriptContentSafetyEvent,
   TranscriptItemDeliveryRef,
+  TranscriptProfilePhaseTransitionItem,
   TranscriptItemRuntimeExclusionReason,
   TranscriptItemRuntimeVisibility,
   TranscriptItemSourceRef
@@ -128,6 +129,15 @@ export interface SessionToolRuntimeAccess extends SessionOperationModeAccess {
     timestampMs?: number
   ): void;
   appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void;
+  appendProfilePhaseTransition(
+    sessionId: string,
+    input: {
+      target: TranscriptProfilePhaseTransitionItem["target"];
+      phase: TranscriptProfilePhaseTransitionItem["phase"];
+      action: TranscriptProfilePhaseTransitionItem["action"];
+      source: TranscriptProfilePhaseTransitionItem["source"];
+    }
+  ): void;
   appendDebugMarker(sessionId: string, marker: SessionDebugMarker): void;
   getDebugMarkers(sessionId: string): SessionDebugMarker[];
   recordSentMessage(sessionId: string, message: SessionSentMessage): void;
@@ -141,6 +151,22 @@ export interface SessionBootstrapPersistenceAccess {
 export interface SessionOperationModeAccess {
   getOperationMode(sessionId: string): SessionOperationMode;
   setOperationMode(sessionId: string, operationMode: SessionOperationMode): SessionOperationMode;
+  appendProfilePhaseTransition(
+    sessionId: string,
+    input: {
+      target: TranscriptProfilePhaseTransitionItem["target"];
+      phase: TranscriptProfilePhaseTransitionItem["phase"];
+      action: TranscriptProfilePhaseTransitionItem["action"];
+      source: TranscriptProfilePhaseTransitionItem["source"];
+    }
+  ): void;
+  finishProfileOperation(
+    sessionId: string,
+    input: {
+      action: Extract<TranscriptProfilePhaseTransitionItem["action"], "exit_confirmed" | "exit_cancelled">;
+      source: TranscriptProfilePhaseTransitionItem["source"];
+    }
+  ): boolean;
 }
 
 export type SessionAppRuntimeAccess =
@@ -359,11 +385,33 @@ export interface SessionDirectCommandAccess {
   getDebugControlState(sessionId: string): SessionDebugControlState;
   getOperationMode(sessionId: string): SessionOperationMode;
   setOperationMode(sessionId: string, operationMode: SessionOperationMode): SessionOperationMode;
+  appendProfilePhaseTransition(
+    sessionId: string,
+    input: {
+      target: TranscriptProfilePhaseTransitionItem["target"];
+      phase: TranscriptProfilePhaseTransitionItem["phase"];
+      action: TranscriptProfilePhaseTransitionItem["action"];
+      source: TranscriptProfilePhaseTransitionItem["source"];
+    }
+  ): void;
+  finishProfileOperation(
+    sessionId: string,
+    input: {
+      action: Extract<TranscriptProfilePhaseTransitionItem["action"], "exit_confirmed" | "exit_cancelled">;
+      source: TranscriptProfilePhaseTransitionItem["source"];
+    }
+  ): boolean;
   getLlmVisibleHistory(sessionId: string): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
   setTitle(sessionId: string, title: string, titleSource: "default" | "auto" | "manual"): SessionState;
   appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void;
   isGenerating(sessionId: string): boolean;
   cancelGeneration(sessionId: string): boolean;
+  interruptResponse(sessionId: string): {
+    cancelledGeneration: boolean;
+    cancelledOutbound: boolean;
+    finalizedAssistant: boolean;
+    finalizedDraftAssistant: boolean;
+  };
   clearSession(sessionId: string): void;
   popRetractableSentMessages(sessionId: string, count: number, maxAgeMs: number, now?: number): SessionSentMessage[];
   setDebugEnabled(sessionId: string, enabled: boolean): SessionDebugControlState;
@@ -516,6 +564,13 @@ export interface SessionGenerationExecutionAccess extends SessionSetupAccess {
   finishGeneration(sessionId: string, abortController: AbortController): boolean;
   getModeId(sessionId: string): string;
   clearSession(sessionId: string): void;
+  finishProfileOperation(
+    sessionId: string,
+    input: {
+      action: Extract<TranscriptProfilePhaseTransitionItem["action"], "exit_confirmed" | "exit_cancelled">;
+      source: TranscriptProfilePhaseTransitionItem["source"];
+    }
+  ): boolean;
   isResponseOpen(sessionId: string, expectedResponseEpoch: number): boolean;
   setLastAssistantReasoningIfResponseEpochMatches(
     sessionId: string,

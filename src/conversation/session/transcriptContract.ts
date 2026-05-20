@@ -10,6 +10,10 @@ export const transcriptSystemMarkerKindValues = [
   "debug_once_consumed",
   "debug_dump_sent"
 ] as const;
+export const transcriptProfilePhaseTransitionTargetValues = ["persona", "rp", "scenario"] as const;
+export const transcriptProfilePhaseTransitionPhaseValues = ["setup", "config"] as const;
+export const transcriptProfilePhaseTransitionActionValues = ["enter", "exit_confirmed", "exit_cancelled"] as const;
+export const transcriptProfilePhaseTransitionSourceValues = ["command", "automatic"] as const;
 export const transcriptOutboundMediaToolNameValues = ["asset_send_to_chat", "filesystem_send_to_chat"] as const;
 export const transcriptInternalTriggerKindValues = [
   "scheduled_instruction",
@@ -221,6 +225,19 @@ export const transcriptSessionModeSwitchItemSchema = z.object({
   llmVisible: z.literal(true),
   fromModeId: z.string().min(1),
   toModeId: z.string().min(1),
+  content: z.string(),
+  timestampMs: z.number().int().nonnegative()
+});
+
+export const transcriptProfilePhaseTransitionItemSchema = z.object({
+  ...transcriptItemMetaSchema.shape,
+  kind: z.literal("profile_phase_transition"),
+  role: z.literal("assistant"),
+  llmVisible: z.literal(true),
+  target: z.enum(transcriptProfilePhaseTransitionTargetValues),
+  phase: z.enum(transcriptProfilePhaseTransitionPhaseValues),
+  action: z.enum(transcriptProfilePhaseTransitionActionValues),
+  source: z.enum(transcriptProfilePhaseTransitionSourceValues),
   content: z.string(),
   timestampMs: z.number().int().nonnegative()
 });
@@ -445,6 +462,7 @@ export const internalTranscriptItemSchema = z.discriminatedUnion("kind", [
   transcriptUserMediaMessageItemSchema,
   transcriptAssistantMessageItemSchema,
   transcriptSessionModeSwitchItemSchema,
+  transcriptProfilePhaseTransitionItemSchema,
   transcriptAssistantToolCallItemSchema,
   transcriptToolResultItemSchema,
   transcriptOutboundMediaMessageItemSchema,
