@@ -389,6 +389,20 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
   });
 
+  app.post("/api/editors/:resource/normalize", async (request, reply) => {
+    const params = parseEditorResourceParams(request.params);
+    const body = parseConfigSaveBody(request.body);
+    if (!parseOrReply(reply, params) || !parseOrReply(reply, body)) {
+      return reply;
+    }
+
+    try {
+      return await services.editor.normalizeDraft(params.resource, body.value);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
   app.get("/api/editor-options/:key", async (request, reply) => {
     const params = parseEditorOptionsParams(request.params);
     if (!parseOrReply(reply, params)) {

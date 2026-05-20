@@ -37,6 +37,7 @@ interface BaseEditorResource<TSchema extends BaseSchema<any>> {
   domain: "config" | "data";
   schema: TSchema;
   editable: boolean;
+  normalizable?: boolean;
   editorFeatures?: Partial<EditorFeatures>;
 }
 
@@ -83,6 +84,11 @@ export interface EditorService {
     effective: unknown;
   }>;
   saveDraft(resourceKey: string, value: unknown): Promise<{
+    ok: true;
+    path: string;
+    parsed: unknown;
+  }>;
+  normalizeDraft(resourceKey: string, value: unknown): Promise<{
     ok: true;
     path: string;
     parsed: unknown;
@@ -275,6 +281,32 @@ export function createEditorService(input: {
       };
     },
 
+    async normalizeDraft(resourceKey, value) {
+      const resources = buildEditorResourceMap(input);
+      const resource = getRequiredResource(resources, resourceKey);
+      if (!resource.editable) {
+        throw new Error(`Editor resource is read-only: ${resourceKey}`);
+      }
+      if (!resource.normalizable) {
+        throw new Error(`Editor resource cannot be normalized: ${resourceKey}`);
+      }
+      if (resource.kind !== "single") {
+        throw new Error(`Editor resource cannot be normalized directly: ${resourceKey}`);
+      }
+
+      const valueState = resolveEditorValueState(
+        resource,
+        parseConfig(resource.schema, value, { cloneInput: true })
+      );
+      await writeConfigFile(resource.filePath, valueState.currentValue);
+      await resource.afterSave?.();
+      return {
+        ok: true as const,
+        path: resource.filePath,
+        parsed: valueState.currentValue
+      };
+    },
+
     async getOptions(optionKey) {
       const catalogPath = resolveDynamicRefCatalogPath(input.config.configRuntime, optionKey);
       if (!catalogPath) {
@@ -296,6 +328,23 @@ function buildEditorResourceMap(input: {
   scheduler: Pick<Scheduler, "reloadFromStore">;
 }): Map<string, EditorResource<any>> {
   const configResources: EditorResource<any>[] = [
+    {
+      key: "global_config",
+      title: "全局运行时配置",
+      domain: "config",
+      kind: "single",
+      editable: true,
+      normalizable: true,
+      schema: fileConfigSchema,
+      filePath: input.config.configRuntime.globalConfigPath,
+      editorFeatures: createEditorFeatures({
+        unsetMode: "optional",
+        draftEffectiveMode: "draft_only"
+      }),
+      afterSave: async () => {
+        await input.configManager.checkForUpdates();
+      }
+    },
     {
       key: "config",
       title: "运行时配置",

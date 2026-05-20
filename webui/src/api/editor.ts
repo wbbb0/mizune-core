@@ -40,3 +40,10 @@ export const editorApi: ResourceEditorClient = {
     return api.get(`/api/editor-options/${encodeURIComponent(key)}`);
   }
 };
+
+export function normalizeEditorResource(
+  key: string,
+  value: unknown
+): Promise<ResourceEditorSaveResult> {
+  return api.post(`/api/editors/${encodeURIComponent(key)}/normalize`, { value });
+}

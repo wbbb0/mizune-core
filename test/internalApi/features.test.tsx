@@ -74,6 +74,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.deepEqual(configSummary.json().access.whitelist.users, ["10001"]);
       assert.equal(configSummary.json().onebot.enabled, true);
       assert.ok(editors.json().resources.some((resource: { key: string }) => resource.key === "config"));
+      assert.ok(editors.json().resources.some((resource: { key: string }) => resource.key === "global_config"));
       assert.equal(editors.json().resources.some((resource: { key: string }) => resource.key === "users"), false);
       assert.equal(editors.json().resources.some((resource: { key: string }) => resource.key === "requests"), false);
       assert.equal(editors.json().resources.some((resource: { key: string }) => resource.key === "group_membership"), false);
@@ -372,6 +373,83 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.match(saved, /appName: saved-from-webui/);
       assert.doesNotMatch(saved, /onebot:/);
       assert.doesNotMatch(saved, /nodeEnv: production/);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("internal api normalizes global config with defaults and strips unknown keys", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const { configDir, globalConfigPath, instanceConfigPath } = deps.config.configRuntime;
+      await mkdir(`${configDir}/instances`, { recursive: true });
+      await writeFile(instanceConfigPath, [
+        "appName: instance-app",
+        "logLevel: debug"
+      ].join("\n"), "utf8");
+      await writeFile(globalConfigPath, [
+        "appName: global-app",
+        "obsoleteKey: remove-me",
+        "onebot:",
+        "  wsUrl: ws://global.example/ws"
+      ].join("\n"), "utf8");
+
+      const editorResponse = await app.inject({
+        method: "GET",
+        url: "/api/editors/global_config"
+      });
+      assert.equal(editorResponse.statusCode, 200);
+      const editor = editorResponse.json().editor;
+      assert.equal(editor.kind, "single");
+      assert.equal(editor.file.path, globalConfigPath);
+      assert.equal(editor.currentValue.appName, "global-app");
+      assert.equal(editor.currentValue.obsoleteKey, undefined);
+      assert.equal(editor.currentValue.scheduler.defaultTimezone, "Asia/Shanghai");
+      assert.equal(editor.currentValue.onebot.wsUrl, "ws://global.example/ws");
+      assert.equal(editor.currentValue.comfy.enabled, false);
+
+      const normalizeResponse = await app.inject({
+        method: "POST",
+        url: "/api/editors/global_config/normalize",
+        payload: {
+          value: editor.currentValue
+        }
+      });
+      assert.equal(normalizeResponse.statusCode, 200);
+      assert.equal(normalizeResponse.json().path, globalConfigPath);
+      assert.equal(normalizeResponse.json().parsed.appName, "global-app");
+      assert.equal(normalizeResponse.json().parsed.scheduler.defaultTimezone, "Asia/Shanghai");
+      assert.equal(deps.__state.configCheckForUpdatesCount, 1);
+
+      const savedGlobal = await readFile(globalConfigPath, "utf8");
+      const savedInstance = await readFile(instanceConfigPath, "utf8");
+      assert.match(savedGlobal, /appName: global-app/);
+      assert.match(savedGlobal, /scheduler:/);
+      assert.match(savedGlobal, /defaultTimezone: Asia\/Shanghai/);
+      assert.match(savedGlobal, /comfy:/);
+      assert.doesNotMatch(savedGlobal, /obsoleteKey/);
+      assert.match(savedInstance, /appName: instance-app/);
+      assert.doesNotMatch(savedGlobal, /instance-app/);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("internal api only allows normalization for global config editor", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/editors/llm_provider_catalog/normalize",
+        payload: {
+          value: {}
+        }
+      });
+
+      assert.equal(response.statusCode, 400);
+      assert.equal(response.json().error, "Editor resource cannot be normalized: llm_provider_catalog");
     } finally {
       await app.close();
     }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { RefreshCw, Save } from "lucide-vue-next";
+import { RefreshCw, RotateCcw, Save, Wand2 } from "lucide-vue-next";
 import { SchemaNode } from "@workbench-kit/vue-resource-editor";
 import { useElementWidth } from "@/composables/useElementWidth";
 import { useConfigSection } from "@/composables/sections/useConfigSection";
@@ -11,16 +11,22 @@ const {
   model,
   loading,
   saving,
+  standardizing,
   validating,
   draftValue,
   referenceValue,
   storedDraftValue,
   effectiveValue,
+  isGlobalConfigSelected,
   canSave,
   canValidate,
+  canUseDefaultValue,
+  canStandardize,
   reloadFromServer,
   validate,
   save,
+  useDefaultValue,
+  standardize,
   updateDraft
 } = useConfigSection();
 
@@ -45,15 +51,24 @@ const compactPane = computed(() => paneWidth.value > 0 && paneWidth.value < 640)
         <span class="shrink-0 rounded-full bg-surface-muted px-1.5 text-small text-text-subtle">{{ model.kind }}</span>
         <template #actions>
         <div class="flex gap-1.5" :class="compactPane ? 'w-full flex-wrap justify-end' : 'ml-auto'">
-          <button class="btn btn-secondary" :disabled="loading || saving || validating || !model" @click="reloadFromServer">
+          <button class="btn btn-secondary" :disabled="loading || saving || validating || standardizing || !model" @click="reloadFromServer">
             <RefreshCw :size="13" :stroke-width="2" />
             重新读取
           </button>
-          <button class="btn btn-secondary" :disabled="!canValidate" @click="validate">
+          <button class="btn btn-secondary" :disabled="standardizing || !canValidate" @click="validate">
             <RefreshCw v-if="validating" :size="13" class="spin" :stroke-width="2" />
             验证
           </button>
-          <button class="btn btn-primary" :disabled="!canSave" @click="save">
+          <button v-if="isGlobalConfigSelected" class="btn btn-secondary" :disabled="!canUseDefaultValue" @click="useDefaultValue">
+            <RotateCcw :size="13" :stroke-width="2" />
+            使用默认值
+          </button>
+          <button v-if="isGlobalConfigSelected" class="btn btn-secondary" :disabled="!canStandardize" @click="standardize">
+            <RefreshCw v-if="standardizing" :size="13" class="spin" :stroke-width="2" />
+            <Wand2 v-else :size="13" :stroke-width="1.8" />
+            {{ standardizing ? "标准化中…" : "标准化" }}
+          </button>
+          <button class="btn btn-primary" :disabled="standardizing || !canSave" @click="save">
             <Save :size="13" :stroke-width="1.5" />
             {{ saving ? "保存中…" : "保存" }}
           </button>
