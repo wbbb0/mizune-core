@@ -238,20 +238,25 @@ export class LlmClient {
       const toolCallUsage = buildProviderCallUsage(iteration, "tool_call", streamed);
       providerCallUsages.push(toolCallUsage);
       await params.onProviderCallUsage?.(toolCallUsage);
-      await params.onProviderResponseComplete?.({
+      const responseCompleteEvent = {
         iteration,
         phase: "tool_call",
         text: streamed.text,
         toolCalls: streamed.toolCalls,
         usage: streamed.usage,
         reasoningContent: streamed.reasoningContent
-      });
+      } as const;
+      await params.onProviderResponseComplete?.(responseCompleteEvent);
+      const assistantContent = params.resolveAssistantToolCallContent?.(responseCompleteEvent) ?? streamed.text;
+      const assistantMetadata = assistantContent === streamed.text
+        ? streamed.assistantMetadata
+        : normalizeAssistantReplayMetadata(streamed.assistantMetadata, assistantContent);
 
       const assistantMessage: LlmMessage = {
         role: "assistant",
-        content: streamed.text,
+        content: assistantContent,
         tool_calls: streamed.toolCalls,
-        ...(streamed.assistantMetadata ? { providerMetadata: streamed.assistantMetadata } : {})
+        ...(assistantMetadata ? { providerMetadata: assistantMetadata } : {})
       };
       if (typeof streamed.reasoningContent === "string" && streamed.reasoningContent.length > 0) {
         assistantMessage.reasoning_content = streamed.reasoningContent;
@@ -749,6 +754,88 @@ function cloneMessageForRequest(message: LlmMessage, preserveAssistantReasoning:
       : {}),
     ...(message.providerMetadata ? { providerMetadata: structuredClone(message.providerMetadata) } : {})
   };
+}
+
+function normalizeAssistantReplayMetadata(
+  metadata: Record<string, unknown> | undefined,
+  content: string
+): Record<string, unknown> | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+  const normalized = structuredClone(metadata) as Record<string, unknown>;
+  if (Array.isArray(normalized.anthropicContentBlocks)) {
+    normalized.anthropicContentBlocks = replaceAnthropicReplayTextBlocks(
+      normalized.anthropicContentBlocks,
+      content
+    );
+  }
+  if (Array.isArray(normalized.googleParts)) {
+    normalized.googleParts = replaceGoogleReplayTextParts(normalized.googleParts, content);
+  }
+  return normalized;
+}
+
+function replaceAnthropicReplayTextBlocks(blocks: unknown[], content: string): unknown[] {
+  const replaced: unknown[] = [];
+  let insertedVisibleText = false;
+
+  for (const block of blocks) {
+    if (isRecord(block) && block.type === "text") {
+      if (!insertedVisibleText && content.length > 0) {
+        replaced.push({ ...block, text: content });
+      }
+      insertedVisibleText = true;
+      continue;
+    }
+
+    if (!insertedVisibleText && content.length > 0 && isRecord(block) && block.type === "tool_use") {
+      replaced.push({ type: "text", text: content });
+      insertedVisibleText = true;
+    }
+    replaced.push(block);
+  }
+
+  if (!insertedVisibleText && content.length > 0) {
+    replaced.push({ type: "text", text: content });
+  }
+  return replaced;
+}
+
+function replaceGoogleReplayTextParts(parts: unknown[], content: string): unknown[] {
+  const replaced: unknown[] = [];
+  let insertedVisibleText = false;
+
+  for (const part of parts) {
+    if (isVisibleGoogleTextPart(part)) {
+      if (!insertedVisibleText && content.length > 0) {
+        replaced.push({ ...part, text: content });
+      }
+      insertedVisibleText = true;
+      continue;
+    }
+
+    if (!insertedVisibleText && content.length > 0 && isRecord(part) && "functionCall" in part) {
+      replaced.push({ text: content });
+      insertedVisibleText = true;
+    }
+    replaced.push(part);
+  }
+
+  if (!insertedVisibleText && content.length > 0) {
+    replaced.push({ text: content });
+  }
+  return replaced;
+}
+
+function isVisibleGoogleTextPart(value: unknown): value is Record<string, unknown> {
+  return isRecord(value)
+    && typeof value.text === "string"
+    && value.thought !== true;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function cloneToolCall(toolCall: LlmToolCall): LlmToolCall {

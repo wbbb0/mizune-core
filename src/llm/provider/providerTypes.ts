@@ -70,6 +70,7 @@ export interface LlmGenerateParams {
   toolExecutor?: (toolCall: LlmToolCall) => Promise<string | LlmToolExecutionResult>;
   onAssistantToolCalls?: (message: LlmMessage, usage?: LlmProviderCallUsage) => Promise<void> | void;
   onProviderResponseComplete?: (event: LlmProviderResponseCompleteEvent) => Promise<void> | void;
+  resolveAssistantToolCallContent?: (event: LlmProviderResponseCompleteEvent) => string;
   onToolResultMessage?: (
     message: LlmMessage,
     toolCall: LlmToolCall | string,

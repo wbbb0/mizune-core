@@ -555,6 +555,8 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
       {
         assertRequest(body: any) {
           assert.equal(body.messages.length, 3);
+          assert.equal(body.messages[1].role, "assistant");
+          assert.equal(body.messages[1].content, "规范化工具前文");
         },
         payloads: [{
           choices: [{
@@ -571,8 +573,12 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
         onProviderResponseComplete(event) {
           events.push(`provider:${event.phase}:${event.text}`);
         },
-        onAssistantToolCalls() {
-          events.push("assistant-tool-calls");
+        resolveAssistantToolCallContent(event) {
+          events.push(`resolve:${event.text}`);
+          return "规范化工具前文";
+        },
+        onAssistantToolCalls(message) {
+          events.push(`assistant-tool-calls:${message.content}`);
         },
         toolExecutor: async () => {
           events.push("tool-executor");
@@ -583,7 +589,8 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
       assert.equal(result.text, "查完了");
       assert.deepEqual(events, [
         "provider:tool_call:我先查一下",
-        "assistant-tool-calls",
+        "resolve:我先查一下",
+        "assistant-tool-calls:规范化工具前文",
         "tool-executor",
         "provider:final_response:查完了"
       ]);

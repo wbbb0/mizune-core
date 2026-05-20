@@ -404,6 +404,95 @@ function createUnterminatedSseResponse(payload: any) {
     });
   });
 
+  test("anthropic provider replays normalized assistant tool-call content metadata", async () => {
+    const config = createLlmTestConfig({
+      provider: "test",
+      supportsThinking: false,
+      supportsTools: true
+    });
+    config.llm.providers.test!.type = "anthropic";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 1);
+        },
+        payloads: [
+          {
+            type: "content_block_start",
+            index: 0,
+            content_block: {
+              type: "text",
+              text: ""
+            }
+          },
+          {
+            type: "content_block_delta",
+            index: 0,
+            delta: {
+              type: "text_delta",
+              text: "看看便知。\n\n看看便知。"
+            }
+          },
+          {
+            type: "content_block_start",
+            index: 1,
+            content_block: {
+              type: "tool_use",
+              id: "tool-call-1",
+              name: "lookup",
+              input: { query: "test" }
+            }
+          }
+        ]
+      },
+      {
+        assertRequest(body: any) {
+          assert.deepEqual(body.messages.at(-2), {
+            role: "assistant",
+            content: [
+              { type: "text", text: "看看便知。" },
+              {
+                type: "tool_use",
+                id: "tool-call-1",
+                name: "lookup",
+                input: { query: "test" }
+              }
+            ]
+          });
+        },
+        payloads: [
+          {
+            type: "content_block_start",
+            index: 0,
+            content_block: {
+              type: "text",
+              text: ""
+            }
+          },
+          {
+            type: "content_block_delta",
+            index: 0,
+            delta: {
+              type: "text_delta",
+              text: "final"
+            }
+          }
+        ]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "查一下" }],
+        tools: [createToolDefinition("lookup")],
+        resolveAssistantToolCallContent: () => "看看便知。",
+        toolExecutor: async () => "{\"ok\":true}"
+      });
+
+      assert.equal(result.text, "final");
+    });
+  });
+
   test("dashscope sends preserve_thinking when preserveThinking is enabled and assistant reasoning exists", async () => {
     const config = createLlmTestConfig({
       provider: "test",
@@ -1229,6 +1318,62 @@ function createUnterminatedSseResponse(payload: any) {
       });
 
       assert.equal(result.text, "done");
+    });
+  });
+
+  test("google ai studio replays normalized assistant tool-call content metadata", async () => {
+    const config = createLlmTestConfig();
+    config.llm.providers.test!.type = "google";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.contents.length, 1);
+        },
+        payloads: [{
+          candidates: [{
+            content: {
+              parts: [
+                { text: "看看便知。\n\n看看便知。" },
+                {
+                  thoughtSignature: "sig-1",
+                  functionCall: {
+                    id: "tool-call-1",
+                    name: "lookup",
+                    args: { query: "test" }
+                  }
+                }
+              ]
+            }
+          }]
+        }]
+      },
+      {
+        assertRequest(body: any) {
+          const assistantParts = body.contents[1].parts;
+          assert.equal(assistantParts[0].text, "看看便知。");
+          assert.equal(assistantParts[1].thoughtSignature, "sig-1");
+          assert.equal(assistantParts[1].functionCall.id, "tool-call-1");
+          assert.equal(assistantParts[1].functionCall.name, "lookup");
+        },
+        payloads: [{
+          candidates: [{
+            content: {
+              parts: [{ text: "final" }]
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "查一下" }],
+        tools: [createToolDefinition("lookup")],
+        resolveAssistantToolCallContent: () => "看看便知。",
+        toolExecutor: async () => "{\"ok\":true}"
+      });
+
+      assert.equal(result.text, "final");
     });
   });
 

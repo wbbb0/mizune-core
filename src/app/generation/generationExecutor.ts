@@ -581,6 +581,7 @@ export function createGenerationExecutor(
                 await segmentCoordinator.flushBufferedChunk();
               }
             },
+            resolveAssistantToolCallContent: (event) => segmentCoordinator.resolveProviderAssistantText(event.text),
             toolExecutor: async (toolCall) => {
               activeToolCounts.set(toolCall.function.name, (activeToolCounts.get(toolCall.function.name) ?? 0) + 1);
               sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, {
