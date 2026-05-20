@@ -1,5 +1,6 @@
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
+import { projectToolResult } from "../core/toolResultProjection.ts";
 
 function buildCurrentTimePayload(timezone: string): {
   nowMs: number;
@@ -53,7 +54,18 @@ export const timeToolDescriptors: ToolDescriptor[] = [
 
 export const timeToolHandlers: Record<string, ToolHandler> = {
   async get_current_time(_toolCall, _args, context) {
-    return JSON.stringify(buildCurrentTimePayload(context.config.scheduler.defaultTimezone));
+    return projectToolResult({
+      toolName: "get_current_time",
+      canonical: buildCurrentTimePayload(context.config.scheduler.defaultTimezone),
+      projection: {
+        initial: (canonical) => ({
+          isoUtc: canonical.isoUtc,
+          timezone: canonical.timezone,
+          localTime: canonical.localTime,
+          weekday: canonical.weekday
+        })
+      }
+    });
   }
 };
 

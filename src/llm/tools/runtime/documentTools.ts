@@ -29,6 +29,7 @@ import {
   type ToolResultObservationContext,
   type ToolResultObservationPolicy
 } from "../core/resultObservation.ts";
+import { pickFields, projectToolResult, type JsonObject } from "../core/toolResultProjection.ts";
 
 const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 const MAX_BINARY_DOCUMENT_BYTES = 20 * 1024 * 1024;
@@ -316,10 +317,10 @@ export const assetDocumentToolDescriptors: ToolDescriptor[] = [
 export const assetDocumentToolHandlers: Record<string, ToolHandler> = {
   async asset_document_overview(_toolCall, args, context) {
     const resolved = await resolveDocumentAsset(args, context);
-    if ("error" in resolved) return JSON.stringify(resolved);
+    if ("error" in resolved) return projectAssetDocumentToolResult("asset_document_overview", resolved);
     const text = await loadDocumentText(resolved.file, context);
     if ("error" in text) {
-      return JSON.stringify({
+      return projectAssetDocumentToolResult("asset_document_overview", {
         ok: false,
         status: text.status,
         error: text.error,
@@ -340,7 +341,7 @@ export const assetDocumentToolHandlers: Record<string, ToolHandler> = {
           assetRef: resolved.fileHandle.asset_handle.asset_ref
         })
       : null;
-    return JSON.stringify({
+    return projectAssetDocumentToolResult("asset_document_overview", {
       ok: true,
       status: "ready",
       asset_handle: resolved.fileHandle.asset_handle,
@@ -368,16 +369,16 @@ export const assetDocumentToolHandlers: Record<string, ToolHandler> = {
 
   async asset_document_read(_toolCall, args, context) {
     const resolved = await resolveDocumentAsset(args, context);
-    if ("error" in resolved) return JSON.stringify(resolved);
+    if ("error" in resolved) return projectAssetDocumentToolResult("asset_document_read", resolved);
     const text = await loadDocumentText(resolved.file, context);
     if ("error" in text) {
-      return JSON.stringify({ ok: false, status: text.status, error: text.error, reason: text.reason, asset_handle: resolved.fileHandle.asset_handle });
+      return projectAssetDocumentToolResult("asset_document_read", { ok: false, status: text.status, error: text.error, reason: text.reason, asset_handle: resolved.fileHandle.asset_handle });
     }
     const lines = splitLines(text.content);
     const requestedStartLine = Math.max(1, Math.floor(getNumberArg(args, "start_line") ?? 1));
     const lineCount = clampInteger(getNumberArg(args, "line_count") ?? DEFAULT_READ_LINES, 1, MAX_READ_LINES);
     if (requestedStartLine > lines.length) {
-      return JSON.stringify({
+      return projectAssetDocumentToolResult("asset_document_read", {
         ok: true,
         status: "ready",
         asset_handle: resolved.fileHandle.asset_handle,
@@ -394,7 +395,7 @@ export const assetDocumentToolHandlers: Record<string, ToolHandler> = {
     const joined = selected.join("\n");
     const content = compactChars(joined, MAX_READ_CHARS);
     const endLine = selected.length > 0 ? requestedStartLine + selected.length - 1 : requestedStartLine;
-    return JSON.stringify({
+    return projectAssetDocumentToolResult("asset_document_read", {
       ok: true,
       status: "ready",
       asset_handle: resolved.fileHandle.asset_handle,
@@ -408,12 +409,12 @@ export const assetDocumentToolHandlers: Record<string, ToolHandler> = {
 
   async asset_document_search(_toolCall, args, context) {
     const query = getStringArg(args, "query");
-    if (!query) return JSON.stringify({ ok: false, error: "query is required" });
+    if (!query) return projectAssetDocumentToolResult("asset_document_search", { ok: false, error: "query is required" });
     const resolved = await resolveDocumentAsset(args, context);
-    if ("error" in resolved) return JSON.stringify(resolved);
+    if ("error" in resolved) return projectAssetDocumentToolResult("asset_document_search", resolved);
     const text = await loadDocumentText(resolved.file, context);
     if ("error" in text) {
-      return JSON.stringify({ ok: false, status: text.status, error: text.error, reason: text.reason, asset_handle: resolved.fileHandle.asset_handle });
+      return projectAssetDocumentToolResult("asset_document_search", { ok: false, status: text.status, error: text.error, reason: text.reason, asset_handle: resolved.fileHandle.asset_handle });
     }
     const limit = clampInteger(getNumberArg(args, "limit") ?? DEFAULT_SEARCH_LIMIT, 1, MAX_SEARCH_LIMIT);
     const requestedMode = getStringArg(args, "mode") === "keyword" ? "keyword" : "hybrid";
@@ -424,7 +425,7 @@ export const assetDocumentToolHandlers: Record<string, ToolHandler> = {
       text,
       context
     });
-    return JSON.stringify({
+    return projectAssetDocumentToolResult("asset_document_search", {
       ok: true,
       status: "ready",
       asset_handle: resolved.fileHandle.asset_handle,
@@ -442,12 +443,12 @@ export const assetDocumentToolHandlers: Record<string, ToolHandler> = {
 
   async asset_document_inspect(_toolCall, args, context) {
     const question = getStringArg(args, "question");
-    if (!question) return JSON.stringify({ ok: false, error: "question is required" });
+    if (!question) return projectAssetDocumentToolResult("asset_document_inspect", { ok: false, error: "question is required" });
     const resolved = await resolveDocumentAsset(args, context);
-    if ("error" in resolved) return JSON.stringify(resolved);
+    if ("error" in resolved) return projectAssetDocumentToolResult("asset_document_inspect", resolved);
     const text = await loadDocumentText(resolved.file, context);
     if ("error" in text) {
-      return JSON.stringify({ ok: false, status: text.status, error: text.error, reason: text.reason, asset_handle: resolved.fileHandle.asset_handle });
+      return projectAssetDocumentToolResult("asset_document_inspect", { ok: false, status: text.status, error: text.error, reason: text.reason, asset_handle: resolved.fileHandle.asset_handle });
     }
     const maxChunks = clampInteger(getNumberArg(args, "max_chunks") ?? DEFAULT_INSPECT_CHUNKS, 1, MAX_INSPECT_CHUNKS);
     const chunks = selectInspectionChunks(getDocumentChunks(text), question, maxChunks);
@@ -456,7 +457,7 @@ export const assetDocumentToolHandlers: Record<string, ToolHandler> = {
       assetRef: resolved.fileHandle.asset_handle.asset_ref,
       chunks
     });
-    return JSON.stringify({
+    return projectAssetDocumentToolResult("asset_document_inspect", {
       ok: inspection.ok,
       status: inspection.ok ? "ready" : "inspection_failed",
       ...(inspection.ok ? {} : { error: "text_inspection_failed" }),
@@ -475,6 +476,82 @@ export const assetDocumentToolHandlers: Record<string, ToolHandler> = {
     });
   }
 };
+
+function projectAssetDocumentToolResult(toolName: string, canonical: unknown) {
+  const result = projectToolResult({
+    toolName,
+    canonical: canonical as unknown as JsonObject,
+    projection: {
+      initial: (payload) => projectAssetDocumentInitial(toolName, payload)
+    }
+  });
+  return {
+    ...result,
+    toString() {
+      return result.content;
+    }
+  };
+}
+
+function projectAssetDocumentInitial(toolName: string, payload: JsonObject): JsonObject {
+  const base = pickFields(payload, [
+    "ok", "status", "error", "reason", "asset_handle", "requested_start_line",
+    "start_line", "end_line", "total_lines", "out_of_range", "truncated",
+    "query", "search_mode", "embedding_profile_id", "embedding_cache_hit", "returned", "total_matches", "fallback_reason",
+    "question", "parser", "cache_hit", "combined_answer"
+  ]);
+  if (toolName === "asset_document_overview") {
+    const document = objectValue(payload.document);
+    return {
+      ...base,
+      document: document
+        ? {
+            parser: document.parser,
+            stats: document.stats,
+            cache: document.cache,
+            excerpt: typeof document.excerpt === "string" ? compactProjectionText(document.excerpt, 1200) : document.excerpt,
+            headings: Array.isArray(document.headings) ? document.headings.slice(0, MAX_HEADING_COUNT) : document.headings,
+            summary_scope: document.summary_scope,
+            summary: document.summary,
+            summary_status: document.summary_status,
+            summary_error: document.summary_error
+          } as JsonObject
+        : undefined
+    };
+  }
+  if (toolName === "asset_document_read") {
+    return {
+      ...base,
+      content_preview: typeof payload.content === "string" ? compactProjectionText(payload.content, 1200) : undefined
+    };
+  }
+  if (toolName === "asset_document_search") {
+    return {
+      ...base,
+      matches: Array.isArray(payload.matches) ? payload.matches.slice(0, MAX_SEARCH_LIMIT) : undefined
+    };
+  }
+  if (toolName === "asset_document_inspect") {
+    const inspection = objectValue(payload.inspection);
+    return {
+      ...base,
+      selected_chunks: Array.isArray(payload.selected_chunks) ? payload.selected_chunks.slice(0, MAX_INSPECT_CHUNKS) : undefined,
+      inspection: inspection
+        ? {
+            ok: inspection.ok,
+            requestedCount: inspection.requestedCount,
+            requested_count: inspection.requested_count,
+            results: Array.isArray(inspection.results) ? inspection.results.slice(0, MAX_INSPECT_CHUNKS) : undefined
+          } as JsonObject
+        : undefined
+    };
+  }
+  return base;
+}
+
+function compactProjectionText(value: string, maxLength: number): string {
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength)}...`;
+}
 
 function assetDocumentPolicy(): ToolResultObservationPolicy {
   return {

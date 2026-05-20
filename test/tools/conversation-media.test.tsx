@@ -6,7 +6,18 @@ import { join } from "node:path";
 import { imageToolHandlers } from "../../src/llm/tools/conversation/imageTools.ts";
 import { messageToolHandlers } from "../../src/llm/tools/conversation/messageTools.ts";
 import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
-import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-test-support.tsx";
+import { createFunctionToolCall } from "../helpers/tool-test-support.tsx";
+
+function parseToolJson<T>(result: unknown): T {
+  return JSON.parse(typeof result === "string" ? result : (result as { content: string }).content) as T;
+}
+
+function parseCanonicalToolJson<T>(result: unknown): T {
+  if (typeof result === "string" || !(result as { canonicalContent?: string }).canonicalContent) {
+    throw new Error("expected projected tool result with canonicalContent");
+  }
+  return JSON.parse((result as { canonicalContent: string }).canonicalContent) as T;
+}
 
   test("asset_media_view injects multimodal follow-up content for images", async () => {
     const result = await imageToolHandlers.asset_media_view!(
@@ -73,8 +84,11 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     const contentPart = message.content[1];
     assert.ok(contentPart && typeof contentPart !== "string");
     assert.equal(contentPart.type, "image_url");
-    assert.match(result.content, /"durationMs":2400/);
     const payload = JSON.parse(result.content);
+    const canonical = parseCanonicalToolJson<any>(result);
+    assert.equal(payload.attached[0].durationMs, 2400);
+    assert.equal(canonical.workspace[0].chat_file_path, "workspace/media/file_test_1.gif");
+    assert.equal(canonical.attached[0].transport, "data_url");
     assert.equal(payload.asset_handles[0].source, "asset");
     assert.equal(payload.asset_handles[0].asset_id, "file_test_1");
     assert.equal(payload.asset_handles[0].asset_ref, "chat_test0001.gif");
@@ -314,7 +328,7 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
       } as any
     );
 
-    const parsed = parseJsonToolResult<any>(result);
+    const parsed = parseToolJson<any>(result);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.requested_count, 1);
     assert.equal(parsed.inspected_count, 1);
@@ -383,7 +397,7 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
       } as any
     );
 
-    const parsed = parseJsonToolResult<any>(result);
+    const parsed = parseToolJson<any>(result);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.path, "screens/table.png");
     assert.equal(parsed.source_name, "table.png");
@@ -501,7 +515,7 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
       } as any
     );
 
-    const parsed = parseJsonToolResult<any>(result);
+    const parsed = parseToolJson<any>(result);
     assert.match(parsed.error, /unknown or unsupported media asset/);
   });
 
@@ -549,7 +563,8 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
       } as any
     );
 
-    const parsed = parseJsonToolResult<any>(result);
+    const parsed = parseToolJson<any>(result);
+    const canonical = parseCanonicalToolJson<any>(result);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.replyMessageId, "444");
     assert.deepEqual(parsed.mentions.userIds, ["30003"]);
@@ -560,6 +575,7 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
     assert.equal(parsed.segments[4].kind, "image");
     assert.equal(parsed.segments[4].fileId, "file_test_1");
     assert.equal(parsed.segments[4].mediaKind, "image");
+    assert.equal(canonical.time, 1710000000);
   });
 
   test("view_message exposes file ids without downloading message files", async () => {
@@ -594,7 +610,7 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
       } as any
     );
 
-    const parsed = parseJsonToolResult<any>(result);
+    const parsed = parseToolJson<any>(result);
     assert.equal(parsed.ok, true);
     assert.deepEqual(parsed.attachments, []);
     assert.equal(parsed.files[0].fileId, "onebot-file-1");
@@ -650,9 +666,11 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
       } as any
     );
 
-    const parsed = parseJsonToolResult<any>(result);
+    const parsed = parseToolJson<any>(result);
+    const canonical = parseCanonicalToolJson<any>(result);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.asset_id, "file_saved_1");
     assert.equal(parsed.asset_handle.asset_ref, "chat_saved.pdf");
     assert.equal(parsed.onebot_file_id, "onebot-file-1");
+    assert.equal(canonical.chat_file_path, "chat-files/media/chat_saved.pdf");
   });

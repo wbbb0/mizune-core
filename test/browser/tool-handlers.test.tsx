@@ -10,7 +10,7 @@ import {
   createBrowserToolContext
 } from "../helpers/browser-fixtures.tsx";
 
-import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-test-support.tsx";
+import { createFunctionToolCall } from "../helpers/tool-test-support.tsx";
 
 const aboutLinkElement: BrowserElement = {
   id: 1,
@@ -49,17 +49,38 @@ const aboutLinkElement: BrowserElement = {
           return createBrowserOpenResult({
             requestedUrl: String(url),
             resolvedUrl: "https://openai.com",
-            links: [{ id: 1, text: "About", url: "https://openai.com/about", host: "openai.com" }],
-            elements: [aboutLinkElement]
+            lines: Array.from({ length: 40 }, (_, index) => `L${index + 1} OpenAI page line`),
+            links: Array.from({ length: 20 }, (_, index) => ({
+              id: index + 1,
+              text: `Link ${index + 1}`,
+              url: index === 0 ? "https://openai.com/about" : `https://openai.com/${index + 1}`,
+              host: "openai.com"
+            })),
+            elements: Array.from({ length: 20 }, (_, index) => ({
+              ...aboutLinkElement,
+              id: index + 1,
+              text: `About ${index + 1}`
+            })),
+            totalLines: 40,
+            totalLinks: 20,
+            totalElements: 20
           });
         }
       })
     );
 
     const parsed = parseJsonToolResult<any>(result);
+    const canonical = parseCanonicalToolResult<any>(result);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.resource_id, "res_browser_1");
     assert.equal(parsed.resolvedUrl, "https://openai.com");
+    assert.equal(canonical.links[0].url, "https://openai.com/about");
+    assert.equal(parsed.lines.length, 24);
+    assert.equal(parsed.links.length, 12);
+    assert.equal(parsed.elements.length, 12);
+    assert.equal(canonical.lines.length, 40);
+    assert.equal(canonical.links.length, 20);
+    assert.equal(canonical.elements.length, 20);
     assert.deepEqual(
       parsed.next_actions.map((item: { tool: string }) => item.tool),
       ["inspect_page", "interact_with_page", "capture_screenshot", "download_asset"]
@@ -107,8 +128,10 @@ const aboutLinkElement: BrowserElement = {
     );
 
     const parsed = parseJsonToolResult<any>(result);
+    const canonical = parseCanonicalToolResult<any>(result);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.matches[0].lineNumber, 2);
+    assert.equal(canonical.matches[0].text, "L2 About OpenAI");
     assert.deepEqual(
       parsed.next_actions.map((item: { tool: string }) => item.tool),
       ["interact_with_page", "capture_screenshot", "download_asset"]
@@ -148,6 +171,11 @@ const aboutLinkElement: BrowserElement = {
     assert.equal(parsed.snapshot.resource_id, "res_browser_1");
     assert.equal(parsed.snapshot.title, "About");
     assert.equal(parsed.resolved_target.id, 1);
+    assert.equal(parsed.resolved_target.label, undefined);
+    assert.equal(parsed.snapshot.elements.length, 0);
+    assert.equal(parsed.candidates.length, 0);
+    assert.equal(parseCanonicalToolResult<any>(result).resolved_target.label, "链接: About");
+    assert.equal(parseCanonicalToolResult<any>(result).snapshot.resolvedUrl, "https://openai.com/about");
   });
 
   test("interact_with_page rejects unsupported actions before calling browser service", async () => {
@@ -322,6 +350,7 @@ const aboutLinkElement: BrowserElement = {
     assert.equal(parsed.file_id, "img_1");
     assert.equal(parsed.asset_handle.asset_id, "img_1");
     assert.equal(parsed.asset_handle.asset_ref, "shot_img_1.png");
+    assert.equal(parseCanonicalToolResult<any>(result).screenshot.fileId, "img_1");
     assert.equal(result.supplementalMessages?.length, 1);
   });
 
@@ -384,6 +413,7 @@ const aboutLinkElement: BrowserElement = {
     assert.equal(parsed.asset_handle.asset_id, "file_1");
     assert.equal(parsed.asset_handle.asset_ref, "shot_file_1.png");
     assert.ok(parsed.asset_handle.capabilities.some((item: { capability: string }) => item.capability === "send_to_chat"));
+    assert.equal(parseCanonicalToolResult<any>(result).download.file_id, "file_1");
   });
 
   test("download_asset supports browser resource targets", async () => {
@@ -423,4 +453,22 @@ const aboutLinkElement: BrowserElement = {
       ["asset_media_view", "asset_send_to_chat"]
     );
     assert.ok(parsed.asset_handle.capabilities.some((item: { capability: string }) => item.capability === "inspect_media"));
+    assert.equal(parseCanonicalToolResult<any>(result).source.resource_id, "res_browser_1");
   });
+
+function parseJsonToolResult<T>(result: unknown): T {
+  const content = typeof result === "object" && result !== null && "content" in result
+    ? (result as { content: unknown }).content
+    : result;
+  return JSON.parse(String(content)) as T;
+}
+
+function parseCanonicalToolResult<T>(result: unknown): T {
+  assert.equal(typeof result, "object");
+  assert.notEqual(result, null);
+  const canonicalContent = (result as { canonicalContent?: unknown }).canonicalContent;
+  if (typeof canonicalContent !== "string") {
+    throw new Error("expected canonicalContent string");
+  }
+  return JSON.parse(canonicalContent) as T;
+}

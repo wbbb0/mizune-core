@@ -3,6 +3,17 @@ import assert from "node:assert/strict";
 import { groupContextToolDescriptors, groupContextToolHandlers } from "../../src/llm/tools/conversation/groupContextTools.ts";
 import type { LlmToolCall } from "../../src/llm/llmClient.ts";
 
+function parseToolJson<T>(result: unknown): T {
+  return JSON.parse(typeof result === "string" ? result : (result as { content: string }).content) as T;
+}
+
+function parseCanonicalToolJson<T>(result: unknown): T {
+  if (typeof result === "string" || !(result as { canonicalContent?: string }).canonicalContent) {
+    throw new Error("expected projected tool result with canonicalContent");
+  }
+  return JSON.parse((result as { canonicalContent: string }).canonicalContent) as T;
+}
+
 test("current group tools do not accept explicit group ids", () => {
   for (const descriptor of groupContextToolDescriptors) {
     const properties = descriptor.definition.function.parameters?.properties ?? {};
@@ -33,7 +44,7 @@ test("view_current_group_info reads the current group from session id", async ()
     } as any
   );
 
-  const parsed = JSON.parse(String(result));
+  const parsed = parseToolJson<any>(result);
   assert.equal(capturedGroupId, "123456");
   assert.equal(parsed.ok, true);
   assert.equal(parsed.groupId, "123456");
@@ -51,7 +62,7 @@ test("current group tools reject private sessions", async () => {
     } as any
   );
 
-  assert.equal(JSON.parse(String(result)).error, "current session is not a group chat");
+  assert.equal(parseToolJson<any>(result).error, "current session is not a group chat");
 });
 
 test("list_current_group_members supports query and clamps limit", async () => {
@@ -72,7 +83,7 @@ test("list_current_group_members supports query and clamps limit", async () => {
     } as any
   );
 
-  const parsed = JSON.parse(String(result));
+  const parsed = parseToolJson<any>(result);
   assert.equal(parsed.limit, 50);
   assert.equal(parsed.count, 1);
   assert.equal(parsed.totalMatched, 1);
@@ -98,7 +109,7 @@ test("list_current_group_announcements supports query and clamps limit", async (
     } as any
   );
 
-  const parsed = JSON.parse(String(result));
+  const parsed = parseToolJson<any>(result);
   assert.equal(parsed.limit, 30);
   assert.equal(parsed.count, 1);
   assert.equal(parsed.totalMatched, 1);
@@ -145,7 +156,7 @@ test("view_current_group_info includes NapCat group details when available", asy
     } as any
   );
 
-  const parsed = JSON.parse(String(result));
+  const parsed = parseToolJson<any>(result);
   assert.equal(parsed.provider, "napcat");
   assert.equal(parsed.extended.group_memo, "群介绍");
   assert.equal(parsed.atAllRemain.remain_at_all_count_for_group, 3);
@@ -169,7 +180,7 @@ test("view_current_group_announcement reads full announcement by line range", as
     } as any
   );
 
-  const parsed = JSON.parse(String(result));
+  const parsed = parseToolJson<any>(result);
   assert.equal(parsed.ok, true);
   assert.equal(parsed.announcementId, "n1");
   assert.equal(parsed.startLine, 2);
@@ -197,7 +208,7 @@ test("view_current_group_announcement supports filtered list index", async () =>
     } as any
   );
 
-  const parsed = JSON.parse(String(result));
+  const parsed = parseToolJson<any>(result);
   assert.equal(parsed.announcementId, "n3");
   assert.equal(parsed.announcementIndex, 2);
   assert.equal(parsed.content, "C");
@@ -219,7 +230,7 @@ test("view_current_group_announcement reports char continuation inside a long li
     } as any
   );
 
-  const parsed = JSON.parse(String(result));
+  const parsed = parseToolJson<any>(result);
   assert.equal(parsed.startLine, 1);
   assert.equal(parsed.endLine, 1);
   assert.equal(parsed.content.length, 8000);
@@ -249,7 +260,7 @@ test("list_current_group_files lists folders and files from current group", asyn
     } as any
   );
 
-  const parsed = JSON.parse(String(result));
+  const parsed = parseToolJson<any>(result);
   assert.equal(parsed.ok, true);
   assert.equal(parsed.folders[0].folderId, "folder-1");
   assert.equal(parsed.files[0].fileId, "file-1");
@@ -321,15 +332,18 @@ test("download_current_group_file resolves url and registers download handle", a
     } as any
   );
 
-  const parsed = JSON.parse(String(result));
+  const parsed = parseToolJson<any>(result);
+  const canonical = parseCanonicalToolJson<any>(result);
   assert.equal(parsed.ok, true);
   assert.equal(parsed.status, "completed");
   assert.equal(parsed.group_file_id, "file-1");
-  assert.equal(parsed.file_id, "file_saved_1");
   assert.equal(parsed.asset_ref, "grp_saved.pdf");
   assert.equal(parsed.asset_handle.asset_id, "file_saved_1");
   assert.equal(parsed.asset_handle.asset_ref, "grp_saved.pdf");
   assert.equal(parsed.asset_handle.capabilities.some((item: { capability: string }) => item.capability === "send_to_chat"), true);
+  assert.equal(canonical.file_id, "file_saved_1");
+  assert.equal(canonical.source_url, "https://example.com/report.pdf");
+  assert.equal(canonical.chat_file_path, "chat-files/media/grp_saved.pdf");
 });
 
 function toolCall(name: string): LlmToolCall {

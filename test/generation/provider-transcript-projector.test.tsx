@@ -388,7 +388,8 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
           timestampMs: 3,
           toolCallId: "call_google_no_sig_1",
           toolName: "lookup",
-          content: "{\"ok\":true}"
+          content: "{\"ok\":true,\"view\":\"initial\"}",
+          canonicalContent: "{\"ok\":true,\"view\":\"canonical\",\"full\":true}"
         }
       ],
       requireThoughtSignatures: false
@@ -398,6 +399,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
       projection.replayMessages.map((message) => message.role),
       ["user", "assistant", "tool"]
     );
+    assert.equal(projection.replayMessages[2]?.content, "{\"ok\":true,\"view\":\"canonical\",\"full\":true}");
     assert.deepEqual(projection.lateSystemMessages, []);
   });
 

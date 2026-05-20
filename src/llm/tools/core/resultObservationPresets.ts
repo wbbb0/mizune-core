@@ -174,7 +174,7 @@ export function fileSendPolicy(): ToolResultObservationPolicy {
   };
 }
 
-export function terminalPolicy(): ToolResultObservationPolicy {
+export function terminalPolicy(options?: { preserveRecentRawCount?: number }): ToolResultObservationPolicy {
   return {
     method(ctx) {
       if (hasError(ctx)) return "error_summary";
@@ -203,7 +203,7 @@ export function terminalPolicy(): ToolResultObservationPolicy {
     pinned(ctx) {
       return hasError(ctx) || hasNonZeroExitCode(ctx) || stringValue(ctx.parsedContent?.status) === "rejected";
     },
-    preserveRecentRawCount: 1,
+    preserveRecentRawCount: options?.preserveRecentRawCount ?? 1,
     compactors: {
       terminal_summary: compactTerminal
     }

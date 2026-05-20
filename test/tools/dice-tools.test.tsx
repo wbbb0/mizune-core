@@ -6,6 +6,7 @@ import {
   rollDiceExpression
 } from "../../src/llm/tools/runtime/diceExpression.ts";
 import { diceToolHandlers } from "../../src/llm/tools/runtime/diceTools.ts";
+import type { LlmToolExecutionResult } from "../../src/llm/llmClient.ts";
 
 test("dice parser accepts multi-term expressions and normalizes shorthand", () => {
   const parsed = parseDiceExpression(" 3d6 + 5 + D20 + d% ");
@@ -63,7 +64,8 @@ test("roll_dice handler returns structured JSON", async () => {
     { expression: "D6" },
     {} as any
   );
-  const payload = JSON.parse(String(result));
+  const payload = parseToolContent(result);
+  const canonical = parseCanonicalToolContent(result);
 
   assert.equal(payload.ok, true);
   assert.equal(payload.expression, "1D6");
@@ -71,6 +73,36 @@ test("roll_dice handler returns structured JSON", async () => {
   assert.equal(payload.shortText, undefined);
   assert.equal(payload.replyText, undefined);
   assert.equal(payload.text, undefined);
+  assert.equal(payload.terms, undefined);
+  assert.equal(canonical.ok, true);
+  assert.equal(canonical.expression, "1D6");
+  assert.equal(canonical.terms.length, 1);
+  assert.equal(canonical.terms[0].rolls.length, 1);
+  assert.equal(canonical.terms[0].count, 1);
+  assert.equal(typeof canonical.terms[0].display, "string");
+});
+
+test("roll_dice handler returns term details only when requested", async () => {
+  const result = await diceToolHandlers.roll_dice!(
+    { id: "tool_dice_details", type: "function", function: { name: "roll_dice", arguments: "{\"expression\":\"D6\",\"details\":true}" } },
+    { expression: "D6", details: true },
+    {} as any
+  );
+  const payload = parseToolContent(result);
+  const canonical = parseCanonicalToolContent(result);
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.expression, "1D6");
   assert.equal(payload.terms.length, 1);
   assert.equal(payload.terms[0].rolls.length, 1);
+  assert.equal(canonical.terms.length, 1);
+  assert.equal(canonical.terms[0].rolls.length, 1);
 });
+
+function parseToolContent(result: string | LlmToolExecutionResult): any {
+  return JSON.parse(typeof result === "string" ? result : result.content);
+}
+
+function parseCanonicalToolContent(result: string | LlmToolExecutionResult): any {
+  return JSON.parse(typeof result === "string" ? result : result.canonicalContent ?? result.content);
+}

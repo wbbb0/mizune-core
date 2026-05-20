@@ -18,6 +18,7 @@ import type {
 } from "../core/fileHandle.ts";
 import { nextAction, type ToolNextAction } from "../core/toolNextActions.ts";
 import { directMediaViewPolicy, mediaInspectionPolicy } from "../core/resultObservationPresets.ts";
+import { projectToolResult, type JsonObject } from "../core/toolResultProjection.ts";
 import {
   audioTranscriptionsFromDerivedObservations,
   DerivedObservationReader,
@@ -188,8 +189,7 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
       const fileStat = await localFileStatFromResolvedPath(resolved);
       const handleResult = buildLocalFileHandleResultFromContext(fileStat, context, { nextActionMode: "none" });
       const nextActions = localViewedMediaNextActions(handleResult.handle_capabilities);
-      const result: LlmToolExecutionResult = {
-        content: JSON.stringify({
+      const canonical = {
           ok: true,
           path: resolved.sourcePath,
           sourceName: resolved.sourceName,
@@ -201,7 +201,24 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
           handle: handleResult.handle,
           handle_capabilities: handleResult.handle_capabilities,
           next_actions: nextActions
-        }),
+      };
+      const result: LlmToolExecutionResult = projectToolResult({
+        toolName: "filesystem_media_view",
+        canonical: canonical as unknown as JsonObject,
+        args: args as Record<string, unknown>,
+        projection: {
+          initial: (item) => ({
+            ok: item.ok,
+            path: item.path,
+            sourceName: item.sourceName,
+            kind: item.kind,
+            resource: { kind: "filesystem", id: item.path as string },
+            handle: item.handle,
+            handle_capabilities: item.handle_capabilities,
+            next_actions: item.next_actions,
+            summary: `已加载本地媒体 ${String(item.path)}，视觉内容已附加到本轮上下文。`
+          })
+        },
         supplementalMessages: [{
           role: "user",
           content: buildImageMessage(
@@ -209,7 +226,7 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
             new Map()
           )
         }]
-      };
+      });
       return result;
     } catch (error: unknown) {
       return JSON.stringify({ error: error instanceof Error ? error.message : String(error) });
@@ -346,8 +363,7 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
         buildChatFileHandleResultFromContext(item, context, { nextActionMode: "none" })
       );
 
-      const result: LlmToolExecutionResult = {
-        content: JSON.stringify({
+      const canonical = {
           ok: true,
           requestedCount: mediaIds.length,
           attachedCount: attachedWorkspaceImages.filter(Boolean).length,
@@ -370,7 +386,25 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
           audio: audioSummaries,
           unavailable: [],
           next_actions: viewedMediaNextActions(handleResults)
-        }),
+      };
+      const result: LlmToolExecutionResult = projectToolResult({
+        toolName: "asset_media_view",
+        canonical: canonical as unknown as JsonObject,
+        args: args as Record<string, unknown>,
+        projection: {
+          initial: (item) => ({
+            ok: item.ok,
+            requestedCount: item.requestedCount,
+            attachedCount: item.attachedCount,
+            resource: mediaProjectionResource(item),
+            attached: compactAttachedMediaForProjection(item.attached),
+            asset_handles: item.asset_handles,
+            audio: compactAudioForProjection(item.audio),
+            unavailable: item.unavailable,
+            next_actions: item.next_actions,
+            summary: `已加载 ${String(item.attachedCount ?? 0)} 个视觉媒体，完整 asset/workspace/audio 记录保留在 canonical 结果中。`
+          })
+        },
         supplementalMessages: attachedWorkspaceImages.some(Boolean)
           ? [{
               role: "user",
@@ -396,7 +430,7 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
               )
             }]
           : []
-      };
+      });
       return result;
     } catch (error: unknown) {
       return JSON.stringify({
@@ -428,6 +462,56 @@ function viewedMediaNextActions(files: ChatFileHandleResult[]): ToolNextAction[]
     .map((file) => file.asset_handle.capabilities.find((item) => item.capability === "send_to_chat" && item.available))
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
     .map((item) => nextAction(item.tool, item.reason, item.args));
+}
+
+function mediaProjectionResource(attached: JsonObject): JsonObject | null {
+  const assetHandles = Array.isArray(attached.asset_handles) ? attached.asset_handles : [];
+  if (assetHandles.length === 1 && typeof assetHandles[0] === "object" && assetHandles[0]) {
+    const handle = assetHandles[0] as JsonObject;
+    return {
+      kind: "asset",
+      id: handle.asset_id ?? handle.asset_ref ?? null
+    };
+  }
+  return null;
+}
+
+function compactAttachedMediaForProjection(value: unknown): JsonObject[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item): item is JsonObject => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    .map((item) => ({
+      mediaId: item.mediaId,
+      kind: item.kind,
+      caption: item.caption,
+      animated: item.animated,
+      durationMs: item.durationMs,
+      sampledFrameCount: item.sampledFrameCount
+    }));
+}
+
+function compactAudioForProjection(value: unknown): JsonObject[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item): item is JsonObject => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    .map((item) => ({
+      mediaId: item.mediaId,
+      kind: item.kind,
+      transcriptionStatus: item.transcriptionStatus,
+      transcriptionError: item.transcriptionError,
+      transcription: typeof item.transcription === "string"
+        ? compactProjectionText(item.transcription, 500)
+        : item.transcription
+    }));
+}
+
+function compactProjectionText(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength)}...`;
 }
 
 interface CompactInspectionToolResult {

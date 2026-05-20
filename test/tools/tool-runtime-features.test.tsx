@@ -7,6 +7,7 @@ import { join } from "node:path";
 import pino from "pino";
 import ExcelJS from "exceljs";
 import { getBuiltinTools } from "../../src/llm/tools/index.ts";
+import type { LlmToolExecutionResult } from "../../src/llm/llmClient.ts";
 import { getBuiltinToolDescriptorByName } from "../../src/llm/tools/toolRegistry.ts";
 import { scenarioHostToolHandlers } from "../../src/llm/tools/conversation/scenarioHostTools.ts";
 import { sessionToolHandlers } from "../../src/llm/tools/conversation/sessionTools.ts";
@@ -1400,11 +1401,13 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         npcDirectory: {}
       } as any
     );
-    const payload = JSON.parse(String(result));
+    const payload = parseToolContent(result);
+    const canonical = parseCanonicalToolContent(result);
     assert.equal(payload.timezone, "Asia/Shanghai");
     assert.match(payload.isoUtc, /^\d{4}-\d{2}-\d{2}T/);
     assert.match(payload.localTime, /^\d{4}\/\d{2}\/\d{2}/);
-    assert.equal(typeof payload.nowMs, "number");
+    assert.equal(payload.nowMs, undefined);
+    assert.equal(typeof canonical.nowMs, "number");
     assert.equal(typeof payload.weekday, "string");
   });
 
@@ -1910,22 +1913,29 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       assert.deepEqual(search.matches.map((item: { line_number: number }) => item.line_number), [2, 5]);
       assert.ok(search.matches.every((item: { chunk_id?: string }) => typeof item.chunk_id === "string" && item.chunk_id.startsWith("chunk_")));
 
-      const read = JSON.parse(String(await assetDocumentToolHandlers.asset_document_read!(
+      const readResult = await assetDocumentToolHandlers.asset_document_read!(
         { id: "tool_asset_doc_read", type: "function", function: { name: "asset_document_read", arguments: "{\"asset_ref\":\"notes.md\",\"start_line\":2,\"line_count\":2}" } },
         { asset_ref: "notes.md", start_line: 2, line_count: 2 },
         context
-      )));
+      );
+      const read = parseToolContent(readResult);
+      const readCanonical = parseCanonicalToolContent(readResult);
       assert.equal(read.start_line, 2);
       assert.equal(read.end_line, 3);
-      assert.match(read.content, /needle/);
+      assert.equal("content" in read, false);
+      assert.match(read.content_preview, /needle/);
+      assert.match(readCanonical.content, /needle/);
 
-      const outOfRange = JSON.parse(String(await assetDocumentToolHandlers.asset_document_read!(
+      const outOfRangeResult = await assetDocumentToolHandlers.asset_document_read!(
         { id: "tool_asset_doc_read_oob", type: "function", function: { name: "asset_document_read", arguments: "{\"asset_ref\":\"notes.md\",\"start_line\":99}" } },
         { asset_ref: "notes.md", start_line: 99 },
         context
-      )));
+      );
+      const outOfRange = parseToolContent(outOfRangeResult);
+      const outOfRangeCanonical = parseCanonicalToolContent(outOfRangeResult);
       assert.equal(outOfRange.out_of_range, true);
-      assert.equal(outOfRange.content, "");
+      assert.equal("content" in outOfRange, false);
+      assert.equal(outOfRangeCanonical.content, "");
 
       let inspectedChunks: Array<{ startLine: number; endLine: number; text: string }> = [];
       const inspectContext = {
@@ -3493,9 +3503,12 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       { limit: 1000 },
       context
     );
-    const hugePayload = JSON.parse(String(huge));
+    const hugePayload = parseToolContent(huge);
+    const hugeCanonical = parseCanonicalToolContent(huge);
     assert.equal(hugePayload.filters.limit, 100);
     assert.equal(hugePayload.returned, 100);
+    assert.equal(hugePayload.files.length, 24);
+    assert.equal(hugeCanonical.files.length, 100);
     assert.equal(hugePayload.truncated, true);
   });
 
@@ -3520,8 +3533,12 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       } as any
     );
 
-    const payload = JSON.parse(String(result));
+    const payload = parseToolContent(result);
+    const canonical = parseCanonicalToolContent(result);
     assert.equal(payload.truncated, true);
+    assert.equal("content" in payload, false);
+    assert.match(payload.content_preview, /line 1/);
+    assert.equal(canonical.content, "line 1\nline 2");
     assert.deepEqual(payload.next_actions[0], {
       tool: "filesystem_read",
       reason: "继续读取剩余内容",
@@ -3667,6 +3684,14 @@ function policyShape(policy: any) {
   };
 }
 
+function parseToolContent(result: string | LlmToolExecutionResult): any {
+  return JSON.parse(typeof result === "string" ? result : result.content);
+}
+
+function parseCanonicalToolContent(result: string | LlmToolExecutionResult): any {
+  return JSON.parse(typeof result === "string" ? result : result.canonicalContent ?? result.content);
+}
+
   test("terminal_run forwards resource description", async () => {
     const result = await shellToolHandlers.terminal_run!(
       { id: "tool_terminal_run_1", type: "function", function: { name: "terminal_run", arguments: "{\"command\":\"pwd\",\"description\":\"确认当前目录\"}" } },
@@ -3688,8 +3713,10 @@ function policyShape(policy: any) {
       } as any
     );
 
-    const payload = JSON.parse(String(result));
+    const payload = parseToolContent(result);
+    const canonical = parseCanonicalToolContent(result);
     assert.equal(payload.status, "completed");
+    assert.equal(canonical.output, "/tmp\n");
   });
 
   test("terminal_start returns background follow-up guidance", async () => {
@@ -3711,7 +3738,8 @@ function policyShape(policy: any) {
       context
     );
 
-    const startPayload = JSON.parse(String(startResult));
+    const startPayload = parseToolContent(startResult);
+    const startCanonical = parseCanonicalToolContent(startResult);
     assert.equal(startPayload.status, "running");
     assert.equal(startPayload.notify_policy, "notify_on_input_and_close");
     assert.equal(startPayload.background_followup.will_trigger_on_close, true);
@@ -3720,6 +3748,7 @@ function policyShape(policy: any) {
     assert.equal(runCalls[0].background, true);
     assert.equal(runCalls[0].description, "开发服务器");
     assert.equal(runCalls[0].notifyPolicy, "notify_on_input_and_close");
+    assert.equal(startCanonical.resourceId, "res_shell_1");
   });
 
   test("terminal_key and terminal_signal cover background controls", async () => {
@@ -3744,6 +3773,11 @@ function policyShape(policy: any) {
       { resource_id: "res_shell_1", key: "ctrl_c" },
       context
     );
+    await shellToolHandlers.terminal_write!(
+      { id: "tool_terminal_write_1", type: "function", function: { name: "terminal_write", arguments: "{}" } },
+      { resource_id: "res_shell_1", input: "say hi\n" },
+      context
+    );
     await shellToolHandlers.terminal_signal!(
       { id: "tool_terminal_signal_1", type: "function", function: { name: "terminal_signal", arguments: "{}" } },
       { resource_id: "res_shell_1", signal: "SIGKILL" },
@@ -3751,6 +3785,7 @@ function policyShape(policy: any) {
     );
 
     assert.deepEqual(interactCalls[0], { resourceId: "res_shell_1", input: "\u0003" });
+    assert.deepEqual(interactCalls[1], { resourceId: "res_shell_1", input: "say hi\n" });
     assert.deepEqual(signalCalls[0], { resourceId: "res_shell_1", signal: "SIGKILL" });
   });
 
@@ -3775,10 +3810,21 @@ function policyShape(policy: any) {
       } as any
     );
 
-    const payload = JSON.parse(String(result));
+    const payload = parseToolContent(result);
+    const canonical = parseCanonicalToolContent(result);
     assert.equal(payload.ok, true);
     assert.equal(payload.lineCount, 2);
     assert.equal(payload.output, "ok:say first\nok:say second\n");
+    assert.equal(canonical.results.length, 2);
+    assert.equal(canonical.results[0].session.outputTail, "");
+    const descriptor = getBuiltinToolDescriptorByName("terminal_send_lines", createTestAppConfig());
+    const observation = buildToolObservation({
+      toolName: "terminal_send_lines",
+      toolCallId: "tool_terminal_send_lines_1",
+      content: String((result as LlmToolExecutionResult).canonicalContent ?? (result as LlmToolExecutionResult).content),
+      ...(descriptor?.resultObservation ? { policy: descriptor.resultObservation } : {})
+    });
+    assert.equal(observation.preserveRecentRawCount, 0);
     assert.deepEqual(interactCalls, [
       { resourceId: "res_shell_1", input: "say first\n" },
       { resourceId: "res_shell_1", input: "say second\n" }
@@ -3806,11 +3852,13 @@ function policyShape(policy: any) {
       } as any
     );
 
-    const payload = JSON.parse(String(result));
+    const payload = parseToolContent(result);
+    const canonical = parseCanonicalToolContent(result);
     assert.equal(payload.lineCount, 1);
     assert.equal(payload.requestedLineCount, 2);
     assert.equal(payload.output, "12345");
     assert.equal(payload.outputTruncated, false);
+    assert.equal(canonical.results.length, 1);
     assert.deepEqual(interactCalls, [{ resourceId: "res_shell_1", input: "first\n" }]);
 
     const longResult = await shellToolHandlers.terminal_send_lines!(
@@ -3830,9 +3878,11 @@ function policyShape(policy: any) {
         }
       } as any
     );
-    const longPayload = JSON.parse(String(longResult));
+    const longPayload = parseToolContent(longResult);
+    const longCanonical = parseCanonicalToolContent(longResult);
     assert.equal(longPayload.output, "567890");
     assert.equal(longPayload.outputTruncated, true);
+    assert.equal(longCanonical.output, "1234567890");
   });
 
   test("terminal_key sends semantic tmux key queues in order", async () => {
@@ -3854,8 +3904,10 @@ function policyShape(policy: any) {
       } as any
     );
 
-    const payload = JSON.parse(String(result));
+    const payload = parseToolContent(result);
+    const canonical = parseCanonicalToolContent(result);
     assert.equal(payload.output, "ok");
+    assert.equal(canonical.session.outputTail, "");
     assert.deepEqual(interactCalls, [{
       resourceId: "res_shell_1",
       input: "\u0003\u0002%\u0002z\u0002d"
@@ -3909,7 +3961,7 @@ function policyShape(policy: any) {
       } as any
     );
 
-    const payload = JSON.parse(String(result));
+    const payload = parseToolContent(result);
     assert.equal(payload.ok, true);
     assert.equal(payload.terminals[0].resource_id, "res_shell_1");
   });
@@ -4741,10 +4793,12 @@ function policyShape(policy: any) {
       } as any
     );
 
-    const payload = JSON.parse(String(result));
+    const payload = parseToolContent(result);
+    const canonical = parseCanonicalToolContent(result);
     assert.equal(payload.ok, true);
     assert.deepEqual(payload.live_resources.map((item: any) => item.resource_id), ["res_browser_1"]);
     assert.equal(payload.live_resources[0].description, "查看首页文案");
+    assert.deepEqual(canonical.live_resources.map((item: any) => item.resource_id), ["res_browser_1"]);
   });
 
   test("list_live_resources only returns valid active resources", async () => {
@@ -4782,8 +4836,10 @@ function policyShape(policy: any) {
       } as any
     );
 
-    const payload = JSON.parse(String(result));
+    const payload = parseToolContent(result);
+    const canonical = parseCanonicalToolContent(result);
     assert.deepEqual(payload.live_resources.map((item: any) => item.resource_id), ["res_browser_live"]);
     assert.equal(payload.live_resources.every((item: any) => item.status === "active"), true);
     assert.equal(payload.live_resources[0].description, "继续支付流程");
+    assert.deepEqual(canonical.live_resources.map((item: any) => item.resource_id), ["res_browser_live"]);
   });

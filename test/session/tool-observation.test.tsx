@@ -15,9 +15,11 @@ import {
   browserScreenshotPolicy,
   assetLocalPathPolicy,
   chatFileListPolicy,
+  currentGroupContextPolicy,
   directMediaViewPolicy,
   debugDumpPolicy,
   fileSendPolicy,
+  keepRawUnlessLargePolicy,
   localFileListPolicy,
   localFileMutationPolicy,
   localFileSearchPolicy,
@@ -388,6 +390,109 @@ test("media view observation keeps compact asset handles and next actions", () =
   assert.equal(replay.data.workspace[0].fileRef, "chat_0001.png");
   assert.equal(replay.data.audio[0].mediaId, "aud_1");
   assert.doesNotMatch(observation.replayContent, /TAIL/);
+});
+
+test("download message file observation can replay from canonical asset details", () => {
+  const initialContent = JSON.stringify({
+    ok: true,
+    asset_ref: "chat_saved.pdf",
+    asset_handle: {
+      source: "asset",
+      asset_id: "file_saved_1",
+      asset_ref: "chat_saved.pdf"
+    },
+    onebot_file_id: "onebot-file-1",
+    summary: "消息文件 onebot-file-1 已登记为 asset chat_saved.pdf。"
+  });
+  const canonicalContent = JSON.stringify({
+    ok: true,
+    file_id: "file_saved_1",
+    file_ref: "chat_saved.pdf",
+    asset_id: "file_saved_1",
+    asset_ref: "chat_saved.pdf",
+    kind: "file",
+    chat_file_path: "chat-files/media/chat_saved.pdf",
+    source_name: "report.pdf",
+    mime_type: "application/pdf",
+    size_bytes: 1234,
+    asset_handle: {
+      source: "asset",
+      asset_id: "file_saved_1",
+      asset_ref: "chat_saved.pdf",
+      capabilities: []
+    },
+    onebot_file_id: "onebot-file-1"
+  });
+
+  const observation = buildToolObservation({
+    toolName: "download_message_file",
+    toolCallId: "call_message_file_download",
+    content: canonicalContent,
+    args: { file_id: "onebot-file-1" },
+    policy: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
+  });
+
+  assert.equal(initialContent.includes("chat_file_path"), false);
+  assert.equal(observation.retention, "full");
+  assert.match(observation.replayContent, /chat-files\/media\/chat_saved\.pdf/);
+  assert.match(observation.replayContent, /onebot-file-1/);
+});
+
+test("current group file download observation compacts replay from canonical download details", () => {
+  const initialContent = JSON.stringify({
+    ok: true,
+    groupId: "123456",
+    group_file_id: "file-1",
+    status: "completed",
+    asset_ref: "grp_saved.pdf",
+    asset_handle: {
+      source: "asset",
+      asset_id: "file_saved_1",
+      asset_ref: "grp_saved.pdf"
+    },
+    summary: "当前群文件 file-1 下载 completed，asset=grp_saved.pdf。"
+  });
+  const canonicalContent = JSON.stringify({
+    ok: true,
+    groupId: "123456",
+    groupFileId: "file-1",
+    group_file_id: "file-1",
+    busid: 1,
+    status: "completed",
+    resource_id: "res_download_1",
+    file_id: "file_saved_1",
+    file_ref: "grp_saved.pdf",
+    asset_ref: "grp_saved.pdf",
+    kind: "file",
+    chat_file_path: "chat-files/media/grp_saved.pdf",
+    source_url: "https://example.com/report.pdf",
+    downloaded_bytes: 1024,
+    total_bytes: 1024,
+    percent: 100,
+    asset_handle: {
+      source: "asset",
+      asset_id: "file_saved_1",
+      asset_ref: "grp_saved.pdf",
+      capabilities: []
+    }
+  });
+
+  const observation = buildToolObservation({
+    toolName: "download_current_group_file",
+    toolCallId: "call_group_file_download",
+    content: canonicalContent,
+    args: { fileId: "file-1", busid: 1 },
+    policy: currentGroupContextPolicy()
+  });
+
+  const replay = JSON.parse(observation.replayContent);
+  assert.equal(initialContent.includes("source_url"), false);
+  assert.equal(observation.retention, "summary");
+  assert.equal(observation.resource?.id, "onebot:group:123456");
+  assert.equal(replay.data.fileId, "file_saved_1");
+  assert.equal(replay.data.groupFileId, "file-1");
+  assert.equal(replay.data.assetHandle.assetRef, "grp_saved.pdf");
+  assert.match(observation.replayContent, /read_download_resource/);
 });
 
 test("debug dump observation hides literal bodies from replay and history summary", () => {

@@ -3,6 +3,7 @@ import type { BuiltinToolContext } from "../core/shared.ts";
 import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
 import { downloadResourcePolicy, keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
+import { projectToolResult, type JsonObject } from "../core/toolResultProjection.ts";
 import type { DownloadRuntimeSnapshot } from "#services/workspace/downloadRuntime.ts";
 
 export const resourceToolDescriptors: ToolDescriptor[] = [
@@ -116,10 +117,17 @@ export const resourceToolHandlers: Record<string, ToolHandler> = {
       }))
     ].sort((left, right) => right.lastAccessedAtMs - left.lastAccessedAtMs);
 
-    return JSON.stringify({
-      ok: true,
-      type,
-      live_resources: resources
+    return projectToolResult({
+      toolName: "list_live_resources",
+      canonical: {
+        ok: true,
+        type,
+        live_resources: resources
+      },
+      ...projectionArgs(args),
+      projection: {
+        initial: (canonical) => canonical
+      }
     });
   },
 
@@ -132,7 +140,14 @@ export const resourceToolHandlers: Record<string, ToolHandler> = {
     if (!snapshot) {
       return JSON.stringify({ error: "download resource not found", resource_id: resourceId });
     }
-    return JSON.stringify(await buildDownloadToolResult(snapshot, context));
+    return projectToolResult({
+      toolName: "read_download_resource",
+      canonical: await buildDownloadToolResult(snapshot, context),
+      ...projectionArgs(args),
+      projection: {
+        initial: compactDownloadToolResult
+      }
+    });
   },
 
   async cancel_download_resource(_toolCall, args, context) {
@@ -144,15 +159,41 @@ export const resourceToolHandlers: Record<string, ToolHandler> = {
     if (!snapshot) {
       return JSON.stringify({ error: "download resource not found", resource_id: resourceId });
     }
-    return JSON.stringify(await buildDownloadToolResult(snapshot, context));
+    return projectToolResult({
+      toolName: "cancel_download_resource",
+      canonical: await buildDownloadToolResult(snapshot, context),
+      ...projectionArgs(args),
+      projection: {
+        initial: compactDownloadToolResult
+      }
+    });
   }
 };
 
-async function buildDownloadToolResult(snapshot: DownloadRuntimeSnapshot, context: BuiltinToolContext) {
+async function buildDownloadToolResult(snapshot: DownloadRuntimeSnapshot, context: BuiltinToolContext): Promise<JsonObject> {
   const file = snapshot.file_id ? await context.chatFileStore.getFile(snapshot.file_id) : null;
   const fileHandle = file ? buildChatFileHandleResultFromContext(file, context) : null;
   return {
     ...snapshot,
     ...(fileHandle ?? {})
+  } as unknown as JsonObject;
+}
+
+function compactDownloadToolResult(canonical: JsonObject): JsonObject {
+  return {
+    resource_id: canonical.resource_id,
+    status: canonical.status,
+    percent: canonical.percent,
+    downloaded_bytes: canonical.downloaded_bytes,
+    total_bytes: canonical.total_bytes,
+    file_ref: canonical.file_ref,
+    asset_handle: canonical.asset_handle,
+    mime_type: canonical.mime_type,
+    error: canonical.error,
+    next_actions: canonical.next_actions
   };
+}
+
+function projectionArgs(args: unknown): { args?: Record<string, unknown> } {
+  return args && typeof args === "object" ? { args: args as Record<string, unknown> } : {};
 }

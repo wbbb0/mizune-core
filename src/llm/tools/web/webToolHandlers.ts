@@ -3,7 +3,14 @@ import type { ToolHandler } from "../core/shared.ts";
 import { getBooleanArg, getNumberArg, getStringArg, getStringArrayArg } from "../core/toolArgHelpers.ts";
 import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
 import { nextAction, withNextActions, type ToolNextAction } from "../core/toolNextActions.ts";
-import type { BrowserActionTarget, BrowserCoordinate } from "#services/web/browser/types.ts";
+import { projectFields, projectToolResult, type JsonObject } from "../core/toolResultProjection.ts";
+import type {
+  BrowserActionTarget,
+  BrowserCoordinate,
+  BrowserElement,
+  BrowserRenderResult,
+  InteractWithPageResult
+} from "#services/web/browser/types.ts";
 import { isBrowserInteractionAction } from "#services/web/browser/types.ts";
 import {
   DerivedObservationReader,
@@ -18,7 +25,15 @@ export const webToolHandlers: Record<string, ToolHandler> = {
     }
 
     try {
-      return JSON.stringify(await context.searchService.searchGoogleGrounding(query));
+      const result = await context.searchService.searchGoogleGrounding(query);
+      return projectToolResult({
+        toolName: "ground_with_google_search",
+        canonical: toJsonObject(result),
+        projection: {
+          initial: compactSearchResult
+        },
+        args: toJsonObject(args)
+      });
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -33,7 +48,7 @@ export const webToolHandlers: Record<string, ToolHandler> = {
     }
 
     try {
-      return JSON.stringify(await context.searchService.searchAliyunIqsLiteAdvanced(query, {
+      const result = await context.searchService.searchAliyunIqsLiteAdvanced(query, {
         numResults: getNumberArg(args, "num_results"),
         includeSites: getStringArrayArg(args, "include_sites"),
         excludeSites: getStringArrayArg(args, "exclude_sites"),
@@ -42,7 +57,15 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         timeRange: getStringArg(args, "time_range") || undefined,
         includeMainText: getBooleanArg(args, "include_main_text"),
         includeMarkdownText: getBooleanArg(args, "include_markdown_text")
-      }));
+      });
+      return projectToolResult({
+        toolName: "search_with_iqs_lite_advanced",
+        canonical: toJsonObject(result),
+        projection: {
+          initial: compactSearchResult
+        },
+        args: toJsonObject(args)
+      });
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -68,7 +91,18 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         ...(line === undefined ? {} : { line }),
         ...(context.lastMessage.sessionId ? { ownerSessionId: context.lastMessage.sessionId } : {})
       });
-      return JSON.stringify(withNextActions(result as unknown as Record<string, unknown>, browserPageNextActions(String((result as { resource_id?: string }).resource_id ?? ""))));
+      const canonical = toJsonObject(withNextActions(
+        result as unknown as Record<string, unknown>,
+        browserPageNextActions(String((result as { resource_id?: string }).resource_id ?? ""))
+      ));
+      return projectToolResult({
+        toolName: "open_page",
+        canonical,
+        projection: {
+          initial: compactBrowserPageResult
+        },
+        args: toJsonObject(args)
+      });
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -90,7 +124,18 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         ...(line === undefined ? {} : { line }),
         ...(pattern ? { pattern } : {})
       });
-      return JSON.stringify(withNextActions(result as unknown as Record<string, unknown>, browserInspectNextActions(resourceId)));
+      const canonical = toJsonObject(withNextActions(
+        result as unknown as Record<string, unknown>,
+        browserInspectNextActions(resourceId)
+      ));
+      return projectToolResult({
+        toolName: "inspect_page",
+        canonical,
+        projection: {
+          initial: compactBrowserPageResult
+        },
+        args: toJsonObject(args)
+      });
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -121,7 +166,7 @@ export const webToolHandlers: Record<string, ToolHandler> = {
 
     try {
       const filePaths = resolveWorkspaceFilePaths(context, getStringArrayArg(args, "file_paths"));
-      return JSON.stringify(await context.browserService.interactWithPage({
+      const result = await context.browserService.interactWithPage({
         resourceId,
         action,
         ...(targetId === undefined ? {} : { targetId: Number(targetId) }),
@@ -133,7 +178,15 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         ...(filePaths ? { filePaths } : {}),
         ...(waitMs === undefined ? {} : { waitMs: Number(waitMs) }),
         ...(line === undefined ? {} : { line })
-      }));
+      });
+      return projectToolResult({
+        toolName: "interact_with_page",
+        canonical: toJsonObject(result),
+        projection: {
+          initial: (canonical) => compactBrowserInteractionResult(canonical as unknown as InteractWithPageResult)
+        },
+        args: toJsonObject(args)
+      });
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -213,7 +266,7 @@ export const webToolHandlers: Record<string, ToolHandler> = {
       });
       const file = result.file_id ? await context.chatFileStore.getFile(result.file_id) : null;
       const fileHandle = file ? buildChatFileHandleResultFromContext(file, context) : null;
-      return JSON.stringify({
+      const initialPayload = {
         ok: true,
         status: result.status,
         resource_id: result.resource_id,
@@ -230,6 +283,38 @@ export const webToolHandlers: Record<string, ToolHandler> = {
         percent: result.percent,
         error: result.error,
         ...(result.background_followup ? { background_followup: result.background_followup } : {})
+      };
+      return projectToolResult({
+        toolName: "download_asset",
+        canonical: toJsonObject({
+          ...toJsonObject(initialPayload),
+          source: toJsonObject(source),
+          download: toJsonObject(result)
+        }),
+        projection: {
+          initial: projectFields([
+            "ok",
+            "status",
+            "resource_id",
+            "file_id",
+            "file_ref",
+            "asset_ref",
+            "asset_handle",
+            "kind",
+            "mime_type",
+            "size_bytes",
+            "source_url",
+            "browser_resource_id",
+            "target_id",
+            "downloaded_bytes",
+            "total_bytes",
+            "percent",
+            "error",
+            "background_followup",
+            "next_actions"
+          ])
+        },
+        args: toJsonObject(args)
       });
     } catch (error: unknown) {
       return JSON.stringify({
@@ -383,6 +468,118 @@ function normalizeOptionalIndex(value: unknown): number | undefined {
   return Number.isInteger(normalized) && normalized > 0 ? normalized : undefined;
 }
 
+function compactBrowserInteractionResult(result: InteractWithPageResult): JsonObject {
+  return {
+    ok: result.ok,
+    resource_id: result.resource_id,
+    action: result.action,
+    message: result.message,
+    resolved_target: compactBrowserElement(result.resolved_target),
+    candidate_count: result.candidate_count,
+    disambiguation_required: result.disambiguation_required,
+    candidates: result.candidates.map(compactBrowserElement).slice(0, 8),
+    snapshot: compactBrowserRenderResult(result.snapshot)
+  } as unknown as JsonObject;
+}
+
+function compactBrowserRenderResult(result: BrowserRenderResult): JsonObject {
+  const pattern = "pattern" in result ? result.pattern : undefined;
+  const matches = "matches" in result && Array.isArray(result.matches) ? result.matches.slice(0, 8) : undefined;
+  return {
+    ok: "ok" in result ? result.ok : true,
+    resource_id: result.resource_id,
+    backend: result.backend,
+    profile_id: result.profile_id,
+    requestedUrl: result.requestedUrl,
+    resolvedUrl: result.resolvedUrl,
+    title: result.title,
+    contentType: result.contentType,
+    lineStart: result.lineStart,
+    lineEnd: result.lineEnd,
+    totalLines: result.totalLines,
+    totalLinks: result.totalLinks,
+    totalElements: result.totalElements,
+    nextLine: result.nextLine,
+    truncated: result.truncated || result.lines.length > 24 || result.links.length > 12 || result.elements.length > 12,
+    lines: result.lines.slice(0, 24),
+    links: result.links.slice(0, 12),
+    elements: result.elements.map(compactBrowserElement).slice(0, 12),
+    ...(pattern === undefined ? {} : { pattern }),
+    ...(matches === undefined ? {} : { matches })
+  } as unknown as JsonObject;
+}
+
+function compactBrowserPageResult(result: JsonObject): JsonObject {
+  return {
+    ...compactBrowserRenderResult(result as unknown as BrowserRenderResult),
+    next_actions: result.next_actions
+  };
+}
+
+function compactBrowserElement(element: BrowserElement | null): JsonObject | null {
+  if (!element) {
+    return null;
+  }
+  return {
+    id: element.id,
+    kind: element.kind,
+    role: element.role,
+    name: trimBrowserText(element.name, 120),
+    tag: element.tag,
+    text: trimBrowserText(element.text, 160),
+    action: element.action,
+    disabled: element.disabled,
+    href: trimBrowserText(element.href, 180),
+    placeholder: trimBrowserText(element.placeholder, 120),
+    value_preview: trimBrowserText(element.value_preview, 120),
+    checked: element.checked,
+    selected: element.selected,
+    visibility: element.visibility,
+    media_url: trimBrowserText(element.media_url, 180),
+    source_urls: element.source_urls.map((item) => trimBrowserText(item, 180)).slice(0, 4)
+  } as JsonObject;
+}
+
+function trimBrowserText(value: string | null, limit: number): string | null {
+  if (!value) {
+    return value;
+  }
+  return value.length > limit ? `${value.slice(0, limit)}...` : value;
+}
+
+function compactSearchResult(result: JsonObject): JsonObject {
+  return {
+    ok: result.ok,
+    provider: result.provider,
+    query: result.query,
+    answer: typeof result.answer === "string" ? trimBrowserText(result.answer, 1200) : result.answer,
+    webSearchQueries: result.webSearchQueries,
+    results: Array.isArray(result.results) ? result.results.slice(0, 10).map(compactSearchEntry) : [],
+    responseId: result.responseId,
+    modelVersion: result.modelVersion,
+    usage: result.usage
+  };
+}
+
+function compactSearchEntry(value: unknown): JsonObject {
+  const item = toJsonObject(value);
+  return {
+    ref_id: item.ref_id,
+    title: typeof item.title === "string" ? trimBrowserText(item.title, 180) : item.title,
+    url: item.url,
+    redirectUrl: item.redirectUrl,
+    host: item.host,
+    snippet: typeof item.snippet === "string" ? trimBrowserText(item.snippet, 300) : item.snippet,
+    summary: typeof item.summary === "string" ? trimBrowserText(item.summary, 500) : item.summary,
+    publishedTime: item.publishedTime,
+    siteName: item.siteName,
+    score: item.score,
+    images: Array.isArray(item.images) ? item.images.slice(0, 4) : [],
+    mainText_preview: typeof item.mainText === "string" ? trimBrowserText(item.mainText, 500) : undefined,
+    markdownText_preview: typeof item.markdownText === "string" ? trimBrowserText(item.markdownText, 500) : undefined
+  };
+}
+
 async function buildScreenshotToolResult(
   imageId: string,
   result: unknown,
@@ -390,7 +587,7 @@ async function buildScreenshotToolResult(
 ): Promise<LlmToolExecutionResult | string> {
   const prepared = await context.mediaVisionService.prepareFileForModel(imageId).catch(() => null);
   const file = await context.chatFileStore.getFile(imageId).catch(() => null);
-  const contentPayload = file
+  const initialPayload = file
     ? {
         ok: true,
         ...buildChatFileHandleResultFromContext(file, context),
@@ -400,14 +597,54 @@ async function buildScreenshotToolResult(
         target_id: typeof result === "object" && result && "target_id" in result ? (result as { target_id?: unknown }).target_id : null
       }
     : result;
+  const canonical = toJsonObject({
+    ...toJsonObject(initialPayload),
+    screenshot: toJsonObject(result)
+  });
   if (!prepared) {
-    return JSON.stringify(contentPayload);
+    return projectToolResult({
+      toolName: "capture_screenshot",
+      canonical,
+      projection: {
+        initial: projectFields([
+          "ok",
+          "file_id",
+          "file_ref",
+          "asset_ref",
+          "asset_handle",
+          "mode",
+          "resource_id",
+          "profile_id",
+          "target_id",
+          "mime_type",
+          "size_bytes",
+          "next_actions"
+        ])
+      }
+    });
   }
   const caption = imageCaptionMapFromDerivedObservations(await new DerivedObservationReader({
     chatFileStore: context.chatFileStore
   }).read({ chatFileIds: [imageId] }).catch(() => [])).get(imageId);
-  return {
-    content: JSON.stringify(contentPayload),
+  return projectToolResult({
+    toolName: "capture_screenshot",
+    canonical,
+    projection: {
+      initial: projectFields([
+        "ok",
+        "file_id",
+        "file_ref",
+        "asset_ref",
+        "asset_handle",
+        "mode",
+        "resource_id",
+        "profile_id",
+        "target_id",
+        "mime_type",
+        "size_bytes",
+        "next_actions"
+      ])
+    },
     supplementalMessages: [{
       role: "user",
       content: [
@@ -423,5 +660,9 @@ async function buildScreenshotToolResult(
         }
       ]
     }]
-  };
+  });
+}
+
+function toJsonObject(value: unknown): JsonObject {
+  return (typeof value === "object" && value !== null && !Array.isArray(value) ? value : {}) as JsonObject;
 }
