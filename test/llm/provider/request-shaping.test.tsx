@@ -1178,6 +1178,60 @@ function createUnterminatedSseResponse(payload: any) {
     });
   });
 
+  test("google ai studio normalizes composition branches in function schemas", async () => {
+    const config = createLlmTestConfig();
+    config.llm.providers.test!.type = "google";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+    const tool = createToolDefinition("terminal_key");
+    tool.function.parameters = {
+      type: "object",
+      properties: {
+        resource_id: { type: "string" },
+        key: { type: "string" },
+        keys: {
+          type: "array",
+          items: { type: "string" },
+          minItems: 1
+        }
+      },
+      required: ["resource_id"],
+      anyOf: [
+        { required: ["resource_id", "key"] },
+        { required: ["resource_id", "keys", "missing_field"] }
+      ],
+      additionalProperties: false
+    };
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          const parameters = body.tools[0].functionDeclarations[0].parameters;
+          assert.equal(parameters.additionalProperties, undefined);
+          assert.deepEqual(parameters.required, ["resource_id"]);
+          assert.equal(parameters.anyOf[0].type, "object");
+          assert.equal(parameters.anyOf[1].type, "object");
+          assert.deepEqual(Object.keys(parameters.anyOf[0].properties).sort(), ["key", "keys", "resource_id"]);
+          assert.deepEqual(parameters.anyOf[0].required, ["resource_id", "key"]);
+          assert.deepEqual(parameters.anyOf[1].required, ["resource_id", "keys"]);
+        },
+        payloads: [{
+          candidates: [{
+            content: {
+              parts: [{ text: "done" }]
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "hello" }],
+        tools: [tool]
+      });
+
+      assert.equal(result.text, "done");
+    });
+  });
+
   test("vertex ai requests use bearer auth and vertex publisher endpoint", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "vertex";

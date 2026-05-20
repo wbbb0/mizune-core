@@ -693,23 +693,69 @@ function sanitizeGeminiSchema(schema: Record<string, unknown>): Record<string, u
   return sanitizeGeminiSchemaNode(schema) as Record<string, unknown>;
 }
 
-function sanitizeGeminiSchemaNode(value: unknown): unknown {
+function sanitizeGeminiSchemaNode(value: unknown, inheritedObjectProperties?: Record<string, unknown>): unknown {
   if (Array.isArray(value)) {
-    return value.map((item) => sanitizeGeminiSchemaNode(item));
+    return value.map((item) => sanitizeGeminiSchemaNode(item, inheritedObjectProperties));
   }
 
   if (!value || typeof value !== "object") {
     return value;
   }
 
+  const rawRecord = value as Record<string, unknown>;
+  const currentProperties = isObjectRecord(rawRecord.properties)
+    ? sanitizeGeminiSchemaNode(rawRecord.properties) as Record<string, unknown>
+    : undefined;
   const result: Record<string, unknown> = {};
-  for (const [key, rawChild] of Object.entries(value)) {
+  for (const [key, rawChild] of Object.entries(rawRecord)) {
     if (key === "additionalProperties") {
+      continue;
+    }
+    if (key === "properties" && currentProperties) {
+      result[key] = currentProperties;
+      continue;
+    }
+    if (isCompositionSchemaKey(key) && Array.isArray(rawChild)) {
+      result[key] = rawChild.map((item) => sanitizeGeminiSchemaNode(item, currentProperties));
       continue;
     }
     result[key] = sanitizeGeminiSchemaNode(rawChild);
   }
+
+  if (
+    Array.isArray(result.required)
+    && inheritedObjectProperties
+    && !isObjectRecord(result.properties)
+    && (result.type == null || result.type === "object")
+  ) {
+    result.type = "object";
+    result.properties = inheritedObjectProperties;
+  }
+
+  if (Array.isArray(result.required)) {
+    const properties = isObjectRecord(result.properties) ? result.properties : undefined;
+    const required = result.required.filter((item): item is string => (
+      typeof item === "string"
+      && (!properties || Object.prototype.hasOwnProperty.call(properties, item))
+    ));
+    if (properties && result.type == null) {
+      result.type = "object";
+    }
+    if (result.type === "object" && required.length > 0) {
+      result.required = required;
+    } else {
+      delete result.required;
+    }
+  }
   return result;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isCompositionSchemaKey(key: string): boolean {
+  return key === "anyOf" || key === "oneOf" || key === "allOf";
 }
 
 function mergeGoogleUsage(
