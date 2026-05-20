@@ -70,9 +70,15 @@ test("ContextRetrievalService retrieves indexed user context through Orama", asy
 });
 
 test("ContextRetrievalService records prompt memory reports per session", () => {
+  const promptedBatches: string[][] = [];
   const service = new ContextRetrievalService(
     createTestAppConfig(),
-    {} as any,
+    {
+      recordPromptedContextItems(input: { itemIds: Iterable<string> }) {
+        promptedBatches.push(Array.from(input.itemIds));
+        return 0;
+      }
+    } as any,
     { isConfigured: () => false } as any,
     pino({ level: "silent" })
   );
@@ -109,6 +115,9 @@ test("ContextRetrievalService records prompt memory reports per session", () => 
     retrievedUserContext: [{
       itemId: "ctx_1",
       scope: "user",
+      layer: "episode",
+      subjectKind: "user",
+      subjectId: "user_1",
       sourceType: "chunk",
       text: "用户之前在调试 SQLite 迁移",
       score: 0.83,
@@ -138,18 +147,34 @@ test("ContextRetrievalService records prompt memory reports per session", () => 
   assert.equal(firstReport?.currentSessionFactCount, 1);
   assert.equal(firstReport?.sessionFactTruncated, false);
   assert.equal(firstReport?.retrievedUserContext[0]?.entrySource, "semantic_retrieval");
+  assert.deepEqual(promptedBatches[0], ["mem_user_1", "mem_session_1", "ctx_1"]);
+  assert.deepEqual(promptedBatches[1], []);
   assert.equal(service.getLastPromptMemoryReport({ sessionId: "session_b" })?.semanticRetrieval.skippedReason, "missing_user");
 });
 
 test("ContextRetrievalService returns always user context without embedding", async () => {
+  const retrievedBatches: string[][] = [];
   const service = new ContextRetrievalService(
-    createTestAppConfig(),
+    createTestAppConfig({
+      context: {
+        retrieval: {
+          maxResults: 1
+        }
+      }
+    }),
     {
       listUserAlwaysDocuments() {
-        return [createDocument("fact_1", "我的测试暗号是蓝色火花", "always")];
+        return [
+          createDocument("fact_1", "普通低相关事实", "always"),
+          createDocument("fact_2", "我的测试暗号是蓝色火花", "always")
+        ];
       },
       listUserSearchDocuments() {
         return [createDocument("ctx_1", "猫咪喜欢吃鱼")];
+      },
+      recordRetrievedContextItems(input: { itemIds: Iterable<string> }) {
+        retrievedBatches.push(Array.from(input.itemIds));
+        return 0;
       }
     } as any,
     {
@@ -165,8 +190,10 @@ test("ContextRetrievalService returns always user context without embedding", as
     queryText: "我的测试暗号是什么"
   });
 
-  assert.deepEqual(results.map((item) => item.itemId), ["fact_1"]);
+  assert.deepEqual(results.map((item) => item.itemId), ["fact_2"]);
+  assert.deepEqual(retrievedBatches, [["fact_2"]]);
   assert.equal(service.getLastDebugReport()?.error, "embedding is not configured; returned always context only");
+  assert.equal(service.getLastDebugReport()?.droppedCount, 1);
 });
 
 test("ContextRetrievalService fails open when embedding is unavailable", async () => {
@@ -346,6 +373,9 @@ function createDocument(
   return {
     itemId,
     scope: "user",
+    layer: retrievalPolicy === "always" ? "core_fact" : "episode",
+    subjectKind: "user",
+    subjectId: "user_1",
     sourceType: "chunk",
     retrievalPolicy,
     userId: "user_1",

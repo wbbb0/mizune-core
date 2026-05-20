@@ -5,10 +5,16 @@ interface IndexedContextDocument extends ContextSearchDocument {
   id: string;
   item_id: string;
   scope_value: string;
+  layer_value: string;
+  subject_kind: string;
+  subject_id: string;
   source_type: string;
   retrieval_policy: string;
   user_id: string;
   session_id: string;
+  slot_key: string;
+  kind_value: string;
+  importance_value: number;
   updated_at: number;
   embedding: number[];
 }
@@ -37,11 +43,17 @@ export class OramaContextIndex {
         id: "string",
         item_id: "string",
         scope_value: "string",
+        layer_value: "string",
+        subject_kind: "string",
+        subject_id: "string",
         source_type: "string",
         retrieval_policy: "string",
         user_id: "string",
         session_id: "string",
         title: "string",
+        slot_key: "string",
+        kind_value: "string",
+        importance_value: "number",
         text: "string",
         updated_at: "number",
         embedding: `vector[${firstVectorSize}]`
@@ -94,10 +106,16 @@ export class OramaContextIndex {
       .map((hit) => ({
         itemId: hit.document.itemId,
         scope: hit.document.scope,
+        layer: hit.document.layer,
+        subjectKind: hit.document.subjectKind,
+        ...(hit.document.subjectId ? { subjectId: hit.document.subjectId } : {}),
         sourceType: hit.document.sourceType,
         ...(hit.document.userId ? { userId: hit.document.userId } : {}),
         ...(hit.document.sessionId ? { sessionId: hit.document.sessionId } : {}),
         ...(hit.document.title ? { title: hit.document.title } : {}),
+        ...(hit.document.slotKey ? { slotKey: hit.document.slotKey } : {}),
+        ...(hit.document.kind ? { kind: hit.document.kind } : {}),
+        ...(hit.document.importance !== undefined ? { importance: hit.document.importance } : {}),
         text: hit.document.text,
         score: hit.score,
         updatedAt: hit.document.updatedAt
@@ -118,11 +136,17 @@ function toIndexedDocument(document: ContextSearchDocument & { embedding: number
     id: document.itemId,
     item_id: document.itemId,
     scope_value: document.scope,
+    layer_value: document.layer,
+    subject_kind: document.subjectKind,
+    subject_id: document.subjectId ?? "",
     source_type: document.sourceType,
     retrieval_policy: document.retrievalPolicy,
     user_id: document.userId ?? "",
     session_id: document.sessionId ?? "",
     title: document.title ?? "",
+    slot_key: document.slotKey ?? "",
+    kind_value: document.kind ?? "",
+    importance_value: document.importance ?? 0,
     updated_at: document.updatedAt
   };
 }

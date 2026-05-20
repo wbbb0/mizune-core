@@ -123,6 +123,9 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     contextItems: [{
       itemId: "ctx_fixture_chunk_1",
       scope: "user",
+      layer: "episode",
+      subjectKind: "user",
+      subjectId: "10001",
       sourceType: "chunk",
       retrievalPolicy: "search",
       status: "active",
@@ -140,6 +143,9 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     }, {
       itemId: "ctx_fixture_fact_1",
       scope: "user",
+      layer: "core_fact",
+      subjectKind: "user",
+      subjectId: "10002",
       sourceType: "fact",
       retrievalPolicy: "always",
       status: "active",

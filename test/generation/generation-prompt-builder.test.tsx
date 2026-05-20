@@ -431,7 +431,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
         }
       } as any,
       contextStore: {
-        listUserFacts() {
+        listUserPromptFacts() {
           return [{
             id: "mem_1",
             title: "输出顺序",
@@ -441,6 +441,9 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
             createdAt: 1,
             updatedAt: 1
           }];
+        },
+        listUserFacts() {
+          return [];
         }
       } as any,
       scenarioHostStateStore: {
@@ -1081,7 +1084,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
         }
       } as any,
       contextStore: {
-        listUserFacts() {
+        listUserPromptFacts() {
           return [{
             id: "mem_1",
             title: "输出顺序",
@@ -1091,6 +1094,9 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
             createdAt: 1,
             updatedAt: 1
           }];
+        },
+        listUserFacts() {
+          return [];
         }
       } as any,
       scenarioHostStateStore: {
@@ -1950,6 +1956,18 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
             importance: 4
           }];
         },
+        listUserPromptFacts() {
+          return [{
+            id: "mem_pref_1",
+            title: "检索偏好",
+            content: "用户喜欢 Orama 版上下文检索",
+            kind: "preference",
+            source: "user_explicit",
+            createdAt: 1,
+            updatedAt: 1,
+            importance: 4
+          }];
+        },
         upsertUserFact(input: { title: string; content: string }) {
           upsertedFacts.push({ title: input.title, content: input.content });
           return {};
@@ -1973,6 +1991,9 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
           return [{
             itemId: "ctx_old_1",
             scope: "user",
+            layer: "episode",
+            subjectKind: "user",
+            subjectId: "10001",
             sourceType: "chunk",
             userId: "10001",
             title: "旧上下文",
@@ -2063,12 +2084,12 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     assert.equal(upsertedChunks.length, 0);
     assert.equal(retrievalCalls.length, 1);
     assert.equal(retrievalCalls[0]?.queryText, "Tester：记住我喜欢 Orama 版上下文检索");
-    assert.deepEqual(retrievalCalls[0]?.excludeItemIds, ["mem_pref_2", "mem_pref_1"]);
+    assert.deepEqual(retrievalCalls[0]?.excludeItemIds, ["mem_pref_1"]);
     assert.equal(promptReports.length, 1);
     assert.equal(promptReports[0]?.sessionId, "qqbot:p:10001");
     assert.equal(promptReports[0]?.queryText, "Tester：记住我喜欢 Orama 版上下文检索");
     assert.equal(promptReports[0]?.currentUserMemories.length, 1);
-    assert.equal(promptReports[0]?.availableUserFactCount, 2);
+    assert.equal(promptReports[0]?.availableUserFactCount, 1);
     assert.equal(promptReports[0]?.userFactLimit, 1);
     assert.equal(promptReports[0]?.currentSessionContext.length, 0);
     assert.equal(promptReports[0]?.availableSessionFactCount, 0);
@@ -2124,6 +2145,9 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
         }
       } as any,
       contextStore: {
+        listUserPromptFacts() {
+          return [];
+        },
         listUserFacts() {
           return [];
         },
@@ -2198,6 +2222,9 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
   test("chat prompt exposes session-scoped context from store without requiring semantic retrieval", async () => {
     const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
       contextStore: {
+        listUserPromptFacts() {
+          return [];
+        },
         listUserFacts() {
           return [];
         },

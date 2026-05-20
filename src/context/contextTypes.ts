@@ -1,12 +1,17 @@
 export type ContextScope = "session" | "user" | "global" | "toolset" | "mode";
 export type ContextSourceType = "episode" | "chunk" | "summary" | "fact" | "rule";
 export type ContextRetrievalPolicy = "always" | "search" | "never";
-export type ContextItemStatus = "active" | "archived" | "deleted" | "superseded";
+export type ContextItemStatus = "active" | "archived" | "deleted" | "superseded" | "pending";
 export type ContextSensitivity = "normal" | "private" | "secret";
+export type ContextMemoryLayer = "profile_slot" | "core_fact" | "searchable_fact" | "episode" | "proposal";
+export type ContextSubjectKind = "session" | "user" | "global" | "toolset" | "mode";
 
 export interface ContextItem {
   itemId: string;
   scope: ContextScope;
+  layer?: ContextMemoryLayer;
+  subjectKind?: ContextSubjectKind;
+  subjectId?: string;
   sourceType: ContextSourceType;
   retrievalPolicy: ContextRetrievalPolicy;
   status: ContextItemStatus;
@@ -31,6 +36,10 @@ export interface ContextItem {
   lastConfirmedAt?: number;
   retrievedCount: number;
   lastRetrievedAt?: number;
+  promptedCount?: number;
+  lastPromptedAt?: number;
+  lastAuditedAt?: number;
+  auditState?: string;
 }
 
 export interface ContextMemoryFactEntry {
@@ -64,12 +73,17 @@ export interface ContextRawMessage {
 export interface ContextSearchDocument {
   itemId: string;
   scope: ContextScope;
+  layer: ContextMemoryLayer;
+  subjectKind: ContextSubjectKind;
+  subjectId?: string;
   sourceType: ContextSourceType;
   retrievalPolicy: ContextRetrievalPolicy;
   userId?: string;
   sessionId?: string;
   title?: string;
   slotKey?: string;
+  kind?: string;
+  importance?: number;
   text: string;
   embeddingTextHash: string;
   updatedAt: number;
@@ -90,11 +104,16 @@ export interface ContextEmbeddingProfile {
 export interface ContextRetrievedItem {
   itemId: string;
   scope: ContextScope;
+  layer: ContextMemoryLayer;
+  subjectKind: ContextSubjectKind;
+  subjectId?: string;
   sourceType: ContextSourceType;
   userId?: string;
   sessionId?: string;
   title?: string;
   slotKey?: string;
+  kind?: string;
+  importance?: number;
   text: string;
   score: number;
   updatedAt: number;
@@ -123,6 +142,9 @@ export interface ContextPromptMemoryItem {
   itemId: string;
   entrySource: ContextPromptMemoryEntrySource;
   scope: ContextScope;
+  layer: ContextMemoryLayer;
+  subjectKind: ContextSubjectKind;
+  subjectId?: string;
   sourceType: ContextSourceType;
   title?: string;
   slotKey?: string;
@@ -161,6 +183,9 @@ export interface ContextPromptMemoryReport {
 export interface ContextManagementItem {
   itemId: string;
   scope: ContextScope;
+  layer: ContextMemoryLayer;
+  subjectKind: ContextSubjectKind;
+  subjectId?: string;
   sourceType: ContextSourceType;
   retrievalPolicy: ContextRetrievalPolicy;
   status: ContextItemStatus;
@@ -185,6 +210,30 @@ export interface ContextManagementItem {
   lastConfirmedAt?: number;
   retrievedCount?: number;
   lastRetrievedAt?: number;
+  promptedCount?: number;
+  lastPromptedAt?: number;
+  lastAuditedAt?: number;
+  auditState?: string;
+}
+
+export interface ContextMemoryProposalInput {
+  scope: ContextScope;
+  userId?: string;
+  sessionId?: string;
+  toolsetId?: string;
+  modeId?: string;
+  title: string;
+  content: string;
+  kind?: string;
+  source?: string;
+  confidence?: number;
+  importance?: number;
+  reason: string;
+  sourceRefs?: Array<{
+    sourceKind: string;
+    sourceId: string;
+  }>;
+  createdAt?: number;
 }
 
 export interface ContextItemPatch {

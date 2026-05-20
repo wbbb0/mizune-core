@@ -11,7 +11,7 @@ export class ContextMaintenanceService {
     private readonly config: AppConfig,
     private readonly contextStore: Pick<
       ContextStore,
-      "listUserIdsWithSearchChunks" | "compactUserSearchChunks" | "sweepUserSearchChunks" | "sweepDeletedItems" | "sweepExpiredSessionFacts"
+      "listUserIdsWithSearchChunks" | "compactUserSearchChunks" | "sweepUserSearchChunks" | "sweepDeletedItems" | "sweepExpiredSessionFacts" | "auditMemoryVisibility"
     >,
     private readonly contextRetrievalService: Pick<ContextRetrievalService, "rebuildUserIndexes">,
     private readonly logger: Logger
@@ -47,6 +47,7 @@ export class ContextMaintenanceService {
     embeddedCount: number;
     indexedCount: number;
     skippedEmbeddingCount: number;
+    auditedMemoryCount: number;
   }> {
     if (this.running) {
       return {
@@ -56,7 +57,8 @@ export class ContextMaintenanceService {
         sweptDeletedCount: 0,
         embeddedCount: 0,
         indexedCount: 0,
-        skippedEmbeddingCount: 0
+        skippedEmbeddingCount: 0,
+        auditedMemoryCount: 0
       };
     }
     this.running = true;
@@ -86,6 +88,10 @@ export class ContextMaintenanceService {
         now
       });
       const sweptSessionFacts = this.contextStore.sweepExpiredSessionFacts({ now });
+      const auditedMemory = this.auditMemoryVisibilityFailOpen({
+        staleAfterMs: retention.unreachableAuditAfterDays * 24 * 60 * 60 * 1000,
+        now
+      });
       const rebuild = this.config.context.indexing.rebuildOnMaintenance
         ? await this.contextRetrievalService.rebuildUserIndexes({
             embeddingBatchSize: this.config.context.indexing.maintenanceEmbeddingBatchSize
@@ -103,9 +109,10 @@ export class ContextMaintenanceService {
         sweptDeletedCount: sweptDeleted.deletedCount,
         embeddedCount: rebuild.embeddedCount,
         indexedCount: rebuild.indexedCount,
-        skippedEmbeddingCount: rebuild.skippedCount
+        skippedEmbeddingCount: rebuild.skippedCount,
+        auditedMemoryCount: auditedMemory.auditedCount
       };
-      if (compactedCount > 0 || sweptChunkCount > 0 || sweptSessionFacts.deletedCount > 0 || sweptDeleted.deletedCount > 0 || rebuild.embeddedCount > 0 || rebuild.indexedCount > 0 || rebuild.errors.length > 0) {
+      if (compactedCount > 0 || sweptChunkCount > 0 || sweptSessionFacts.deletedCount > 0 || sweptDeleted.deletedCount > 0 || auditedMemory.auditedCount > 0 || rebuild.embeddedCount > 0 || rebuild.indexedCount > 0 || rebuild.errors.length > 0) {
         this.logger.info({ reason, ...result, errors: rebuild.errors }, "context_maintenance_completed");
       }
       return result;
@@ -121,10 +128,27 @@ export class ContextMaintenanceService {
         sweptDeletedCount: 0,
         embeddedCount: 0,
         indexedCount: 0,
-        skippedEmbeddingCount: 0
+        skippedEmbeddingCount: 0,
+        auditedMemoryCount: 0
       };
     } finally {
       this.running = false;
+    }
+  }
+
+  private auditMemoryVisibilityFailOpen(input: {
+    staleAfterMs: number;
+    now: number;
+  }): {
+    auditedCount: number;
+  } {
+    try {
+      return this.contextStore.auditMemoryVisibility(input);
+    } catch (error) {
+      this.logger.warn({
+        error: error instanceof Error ? error.message : String(error)
+      }, "context_memory_visibility_audit_failed_open");
+      return { auditedCount: 0 };
     }
   }
 }

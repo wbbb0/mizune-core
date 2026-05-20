@@ -1,14 +1,19 @@
 import { api } from "./client";
 
 export type ContextScope = "session" | "user" | "global" | "toolset" | "mode";
-export type ContextSourceType = "chunk" | "summary" | "fact" | "rule";
+export type ContextSourceType = "episode" | "chunk" | "summary" | "fact" | "rule";
 export type ContextRetrievalPolicy = "always" | "search" | "never";
-export type ContextItemStatus = "active" | "archived" | "deleted" | "superseded";
+export type ContextItemStatus = "active" | "archived" | "deleted" | "superseded" | "pending";
 export type ContextSensitivity = "normal" | "private" | "secret";
+export type ContextMemoryLayer = "profile_slot" | "core_fact" | "searchable_fact" | "episode" | "proposal";
+export type ContextSubjectKind = "session" | "user" | "global" | "toolset" | "mode";
 
 export interface ContextManagementItem {
   itemId: string;
   scope: ContextScope;
+  layer: ContextMemoryLayer;
+  subjectKind: ContextSubjectKind;
+  subjectId?: string;
   sourceType: ContextSourceType;
   retrievalPolicy: ContextRetrievalPolicy;
   status: ContextItemStatus;
@@ -29,6 +34,10 @@ export interface ContextManagementItem {
   validTo?: number;
   supersededBy?: string;
   lastRetrievedAt?: number;
+  promptedCount?: number;
+  lastPromptedAt?: number;
+  lastAuditedAt?: number;
+  auditState?: string;
 }
 
 export interface ContextItemFilters {

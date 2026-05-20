@@ -40,46 +40,67 @@ export class ContextRetrievalService {
       .filter((item) => !excludeItemIds.has(item.itemId));
     const alwaysItems = alwaysDocuments.map(toAlwaysRetrievedItem);
     if (!queryText) {
+      const results = selectRetrievedUserContext({
+        queryText,
+        alwaysItems,
+        searchItems: [],
+        maxResults: this.config.context.retrieval.maxResults
+      });
       this.lastDebugReport = {
         userId: input.userId,
         queryText,
         candidateCount: alwaysDocuments.length,
         indexedCount: 0,
-        selectedCount: alwaysItems.length,
-        droppedCount: 0,
+        selectedCount: results.length,
+        droppedCount: Math.max(0, alwaysItems.length - results.length),
         error: "empty query",
         createdAt: Date.now()
       };
-      return alwaysItems;
+      this.recordRetrievedItems(results);
+      return results;
     }
     if (!this.embeddingService.isConfigured()) {
+      const results = selectRetrievedUserContext({
+        queryText,
+        alwaysItems,
+        searchItems: [],
+        maxResults: this.config.context.retrieval.maxResults
+      });
       this.lastDebugReport = {
         userId: input.userId,
         queryText,
         candidateCount: alwaysDocuments.length,
         indexedCount: 0,
-        selectedCount: alwaysItems.length,
-        droppedCount: 0,
+        selectedCount: results.length,
+        droppedCount: Math.max(0, alwaysItems.length - results.length),
         error: alwaysItems.length > 0 ? "embedding is not configured; returned always context only" : "embedding is not configured",
         createdAt: Date.now()
       };
-      return alwaysItems;
+      this.recordRetrievedItems(results);
+      return results;
     }
     try {
       const documents = this.contextStore
         .listUserSearchDocuments(input.userId)
         .filter((item) => !excludeItemIds.has(item.itemId));
       if (documents.length === 0) {
+        const results = selectRetrievedUserContext({
+          queryText,
+          alwaysItems,
+          searchItems: [],
+          maxResults: this.config.context.retrieval.maxResults
+        });
         this.lastDebugReport = {
           userId: input.userId,
           queryText,
           candidateCount: alwaysDocuments.length,
           indexedCount: 0,
-          selectedCount: alwaysItems.length,
-          droppedCount: 0,
+          selectedCount: results.length,
+          droppedCount: Math.max(0, alwaysItems.length - results.length),
           createdAt: Date.now()
         };
-        return alwaysItems;
+        this.recordRetrievedItems(results);
+        return results;
       }
       const queryEmbedding = await this.embeddingService.embedTexts([queryText], {
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
@@ -127,17 +148,24 @@ export class ContextRetrievalService {
         })
         .filter((item): item is ContextSearchDocument & { embedding: number[] } => item != null);
       if (indexedDocuments.length === 0) {
+        const results = selectRetrievedUserContext({
+          queryText,
+          alwaysItems,
+          searchItems: [],
+          maxResults: this.config.context.retrieval.maxResults
+        });
         this.lastDebugReport = {
           userId: input.userId,
           queryText,
           embeddingProfileId: profile.profileId,
-          candidateCount: documents.length,
+          candidateCount: alwaysDocuments.length + documents.length,
           indexedCount: 0,
-          selectedCount: 0,
-          droppedCount: documents.length,
+          selectedCount: results.length,
+          droppedCount: documents.length + Math.max(0, alwaysItems.length - results.length),
           createdAt: Date.now()
         };
-        return [];
+        this.recordRetrievedItems(results);
+        return results;
       }
       const index = this.getUserIndex(input.userId);
       await index.rebuild({
@@ -168,15 +196,22 @@ export class ContextRetrievalService {
         droppedCount: Math.max(0, indexedDocuments.length - (results.length - alwaysItems.length)),
         createdAt: Date.now()
       };
+      this.recordRetrievedItems(results);
       return results;
     } catch (error) {
+      const results = selectRetrievedUserContext({
+        queryText,
+        alwaysItems,
+        searchItems: [],
+        maxResults: this.config.context.retrieval.maxResults
+      });
       this.lastDebugReport = {
         userId: input.userId,
         queryText,
         candidateCount: alwaysDocuments.length,
         indexedCount: 0,
-        selectedCount: alwaysItems.length,
-        droppedCount: 0,
+        selectedCount: results.length,
+        droppedCount: Math.max(0, alwaysItems.length - results.length),
         error: error instanceof Error ? error.message : String(error),
         createdAt: Date.now()
       };
@@ -184,7 +219,8 @@ export class ContextRetrievalService {
         userId: input.userId,
         error: error instanceof Error ? error.message : String(error)
       }, "context_retrieval_failed_open");
-      return alwaysItems;
+      this.recordRetrievedItems(results);
+      return results;
     }
   }
 
@@ -196,6 +232,12 @@ export class ContextRetrievalService {
     const index = new OramaContextIndex();
     this.userIndexes.set(userId, index);
     return index;
+  }
+
+  private recordRetrievedItems(items: readonly ContextRetrievedItem[]): void {
+    this.contextStore.recordRetrievedContextItems?.({
+      itemIds: items.map((item) => item.itemId)
+    });
   }
 
   resetIndexes(input?: { userId?: string }): {
@@ -271,6 +313,13 @@ export class ContextRetrievalService {
       retrievedUserContext: input.retrievedUserContext.map(toPromptMemoryRetrievedItem),
       createdAt: Date.now()
     };
+    this.contextStore.recordPromptedContextItems?.({
+      itemIds: [
+        ...input.currentUserMemories.map((item) => item.id),
+        ...input.currentSessionContext.map((item) => item.id),
+        ...input.retrievedUserContext.map((item) => item.itemId)
+      ]
+    });
     this.lastPromptMemoryReports.delete(input.sessionId);
     this.lastPromptMemoryReports.set(input.sessionId, report);
     while (this.lastPromptMemoryReports.size > this.maxPromptMemoryReports) {
@@ -517,10 +566,16 @@ function toAlwaysRetrievedItem(document: ContextSearchDocument): ContextRetrieve
   return {
     itemId: document.itemId,
     scope: document.scope,
+    layer: document.layer,
+    subjectKind: document.subjectKind,
+    ...(document.subjectId ? { subjectId: document.subjectId } : {}),
     sourceType: document.sourceType,
     ...(document.userId ? { userId: document.userId } : {}),
     ...(document.sessionId ? { sessionId: document.sessionId } : {}),
     ...(document.title ? { title: document.title } : {}),
+    ...(document.slotKey ? { slotKey: document.slotKey } : {}),
+    ...(document.kind ? { kind: document.kind } : {}),
+    ...(document.importance !== undefined ? { importance: document.importance } : {}),
     text: document.text,
     score: 1,
     updatedAt: document.updatedAt
@@ -532,13 +587,27 @@ function toPromptMemoryRetrievedItem(item: ContextRetrievedItem): ContextPromptM
     itemId: item.itemId,
     entrySource: "semantic_retrieval",
     scope: item.scope,
+    layer: item.layer,
+    subjectKind: item.subjectKind,
+    ...(item.subjectId ? { subjectId: item.subjectId } : {}),
     sourceType: item.sourceType,
     ...(item.title ? { title: item.title } : {}),
     ...(item.slotKey ? { slotKey: item.slotKey } : {}),
+    ...(isPromptMemoryKind(item.kind) ? { kind: item.kind } : {}),
+    ...(item.importance !== undefined ? { importance: item.importance } : {}),
     text: item.text,
     score: item.score,
     updatedAt: item.updatedAt
   };
+}
+
+function isPromptMemoryKind(value: unknown): value is ContextPromptMemoryItem["kind"] {
+  return value === "preference"
+    || value === "fact"
+    || value === "boundary"
+    || value === "habit"
+    || value === "relationship"
+    || value === "other";
 }
 
 function getMatchingDebugReport(

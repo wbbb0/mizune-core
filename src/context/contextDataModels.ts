@@ -13,7 +13,7 @@ import {
 export const contextItemsDataDomain = defineDataDomain({
   database: "context",
   tableGroup: "context.items",
-  schemaVersion: 1,
+  schemaVersion: 2,
   tables: {
     context_items: defineTable({
       table: "context_items",
@@ -21,6 +21,9 @@ export const contextItemsDataDomain = defineDataDomain({
       columns: [
         textColumn("itemId", { title: "Item ID", role: "id", primary: true, storageName: "item_id", notNull: true }),
         textColumn("scope", { title: "Scope", role: "badge", primary: true, notNull: true, listWidth: "xs" }),
+        textColumn("layer", { title: "Layer", role: "badge", primary: true, notNull: true, listWidth: "sm" }),
+        textColumn("subjectKind", { title: "Subject", role: "badge", primary: true, storageName: "subject_kind", notNull: true, listWidth: "sm" }),
+        textColumn("subjectId", { title: "Subject ID", role: "subtitle", primary: true, storageName: "subject_id", nullable: true }),
         textColumn("sourceType", { title: "Source Type", role: "badge", primary: true, storageName: "source_type", notNull: true, listWidth: "sm" }),
         textColumn("retrievalPolicy", { title: "Retrieval", role: "badge", storageName: "retrieval_policy", notNull: true, listWidth: "sm" }),
         textColumn("status", { title: "Status", role: "status", primary: true, notNull: true, listWidth: "sm" }),
@@ -45,7 +48,11 @@ export const contextItemsDataDomain = defineDataDomain({
         textColumn("supersededBy", { title: "Superseded By", storageName: "superseded_by", nullable: true }),
         integerColumn("lastConfirmedAt", { title: "Last Confirmed", role: "time", storageName: "last_confirmed_at", nullable: true }),
         integerColumn("retrievedCount", { title: "Retrieved", storageName: "retrieved_count", notNull: true }),
-        integerColumn("lastRetrievedAt", { title: "Last Retrieved", role: "time", storageName: "last_retrieved_at", nullable: true })
+        integerColumn("lastRetrievedAt", { title: "Last Retrieved", role: "time", storageName: "last_retrieved_at", nullable: true }),
+        integerColumn("promptedCount", { title: "Prompted", storageName: "prompted_count", notNull: true }),
+        integerColumn("lastPromptedAt", { title: "Last Prompted", role: "time", storageName: "last_prompted_at", nullable: true }),
+        integerColumn("lastAuditedAt", { title: "Last Audited", role: "time", storageName: "last_audited_at", nullable: true }),
+        textColumn("auditState", { title: "Audit State", role: "badge", storageName: "audit_state", nullable: true, listWidth: "sm" })
       ],
       defaultSort: [{ column: "updatedAt", direction: "desc" }, { column: "createdAt", direction: "desc" }, { column: "itemId", direction: "desc" }],
       detail: { payloadColumns: ["text"] },

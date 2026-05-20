@@ -7,8 +7,32 @@ export function selectRetrievedUserContext(input: {
   searchItems: ContextRetrievedItem[];
   maxResults: number;
 }): ContextRetrievedItem[] {
-  const selectedSearchItems = suppressStaleSearchItems(input.queryText, input.alwaysItems, input.searchItems);
-  return [...input.alwaysItems, ...selectedSearchItems].slice(0, input.maxResults);
+  const rankedAlwaysItems = rankAlwaysItems(input.queryText, input.alwaysItems);
+  const selectedSearchItems = suppressStaleSearchItems(input.queryText, rankedAlwaysItems, input.searchItems);
+  return [...rankedAlwaysItems, ...selectedSearchItems].slice(0, input.maxResults);
+}
+
+function rankAlwaysItems(queryText: string, items: ContextRetrievedItem[]): ContextRetrievedItem[] {
+  const now = Date.now();
+  return items
+    .map((item) => ({
+      item,
+      rank: scoreAlwaysItem(item, queryText, now)
+    }))
+    .sort((left, right) => right.rank - left.rank || right.item.updatedAt - left.item.updatedAt)
+    .map((entry) => entry.item);
+}
+
+function scoreAlwaysItem(item: ContextRetrievedItem, queryText: string, now: number): number {
+  const searchableText = [item.title, item.slotKey, item.kind, item.text].filter(Boolean).join(" ");
+  const relevance = contextTermOverlapScore(queryText, searchableText);
+  const layerScore = item.layer === "profile_slot" ? 5
+    : item.layer === "core_fact" ? 4
+      : item.layer === "searchable_fact" ? 2
+        : 0;
+  const importanceScore = Math.min(5, Math.max(0, item.importance ?? 0)) * 0.8;
+  const recencyScore = Math.max(0, 1 - Math.min(now - item.updatedAt, 90 * 24 * 60 * 60 * 1000) / (90 * 24 * 60 * 60 * 1000));
+  return layerScore + importanceScore + relevance * 8 + recencyScore;
 }
 
 function suppressStaleSearchItems(

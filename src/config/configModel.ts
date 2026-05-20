@@ -237,6 +237,7 @@ const contextConfigSchema = s.object({
     maxSearchChunkAgeDays: s.number().int().positive().title("检索片段保留天数").default(90),
     sessionFactRetentionDays: s.number().int().positive().title("会话事实保留天数").default(14),
     summaryAfterDays: s.number().int().positive().title("摘要化天数").default(30),
+    unreachableAuditAfterDays: s.number().int().positive().title("不可达记忆审计天数").default(60),
     deletedRetentionDays: s.number().int().positive().title("已删除项保留天数").default(14),
     maintenanceIntervalMs: s.number().int().positive().title("维护间隔毫秒").default(60 * 60 * 1000)
   }).title("保留策略").describe("控制自动沉淀的可检索片段容量。长期事实不受此限制。").default(emptyObject),

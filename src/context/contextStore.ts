@@ -10,7 +10,6 @@ import {
   type SqliteDatabaseHandle,
   type SqliteTableGroupDefinition
 } from "#data/sqlite/sqliteService.ts";
-import type { PersistedUser, User } from "#identity/userSchema.ts";
 import { detectScopeConflict, type ScopeConflictWarning } from "#memory/memoryCategory.ts";
 import { bigramJaccardSimilarity, findBestDuplicateMatch, normalizeTitleForDedup } from "#memory/similarity.ts";
 import { createUserMemoryEntry, type UserMemoryEntry } from "#memory/userMemoryEntry.ts";
@@ -27,13 +26,19 @@ import type {
   ContextItemPatch,
   ContextManagementItem,
   ContextMemoryFactEntry,
+  ContextMemoryLayer,
+  ContextMemoryProposalInput,
   ContextRawMessage,
-  ContextSearchDocument
+  ContextSearchDocument,
+  ContextSubjectKind
 } from "./contextTypes.ts";
 
 interface ContextItemRow {
   item_id: string;
   scope: string;
+  layer: string;
+  subject_kind: string;
+  subject_id: string | null;
   source_type: string;
   retrieval_policy: string;
   status: string;
@@ -59,6 +64,10 @@ interface ContextItemRow {
   last_confirmed_at: number | null;
   retrieved_count: number;
   last_retrieved_at: number | null;
+  prompted_count: number;
+  last_prompted_at: number | null;
+  last_audited_at: number | null;
+  audit_state: string | null;
 }
 
 interface ContextItemFilterInput {
@@ -143,66 +152,6 @@ export class ContextStore {
     };
   }
 
-  migrateUserMemories(users: Array<User | PersistedUser>): number {
-    const db = this.db;
-    if (!db) {
-      return 0;
-    }
-    const upsert = db.prepare(`
-      INSERT INTO context_items (
-        item_id, scope, source_type, retrieval_policy, status,
-        user_id, title, text, kind, source, importance,
-        sensitivity, created_at, updated_at, retrieved_count, last_retrieved_at
-      )
-      VALUES (
-        @itemId, 'user', 'fact', 'always', 'active',
-        @userId, @title, @text, @kind, @source, @importance,
-        'normal', @createdAt, @updatedAt, 0, @lastRetrievedAt
-      )
-      ON CONFLICT(item_id) DO UPDATE SET
-        scope = excluded.scope,
-        source_type = excluded.source_type,
-        retrieval_policy = excluded.retrieval_policy,
-        user_id = excluded.user_id,
-        title = excluded.title,
-        text = excluded.text,
-        kind = excluded.kind,
-        source = excluded.source,
-        importance = excluded.importance,
-        updated_at = excluded.updated_at,
-        last_retrieved_at = excluded.last_retrieved_at
-    `);
-    const migrate = db.transaction(() => {
-      let migratedCount = 0;
-      for (const user of users) {
-        for (const memory of user.memories ?? []) {
-          upsert.run({
-            itemId: memory.id,
-            userId: user.userId,
-            title: memory.title,
-            text: memory.content,
-            kind: memory.kind,
-            source: memory.source,
-            importance: memory.importance ?? null,
-            createdAt: memory.createdAt,
-            updatedAt: memory.updatedAt,
-            lastRetrievedAt: memory.lastUsedAt ?? null
-          });
-          migratedCount += 1;
-        }
-      }
-      return migratedCount;
-    });
-    const migratedCount = migrate() as number;
-    if (migratedCount > 0) {
-      this.logger.info({
-        instanceName: this.config.configRuntime.instanceName,
-        migratedCount
-      }, "context_user_memories_migrated");
-    }
-    return migratedCount;
-  }
-
   listUserFacts(userId: string): ContextMemoryFactEntry[] {
     if (!this.db) {
       return [];
@@ -215,6 +164,27 @@ export class ContextStore {
         AND source_type = 'fact'
         AND status = 'active'
         AND user_id = ?
+        AND sensitivity != 'secret'
+        AND (valid_to IS NULL OR valid_to > ?)
+      ORDER BY updated_at DESC
+    `).all(userId, now) as ContextItemRow[];
+    return rows.map(rowToContextMemoryFactEntry);
+  }
+
+  listUserPromptFacts(userId: string): ContextMemoryFactEntry[] {
+    if (!this.db) {
+      return [];
+    }
+    const now = Date.now();
+    const rows = this.db.prepare(`
+      SELECT *
+      FROM context_items
+      WHERE scope = 'user'
+        AND source_type = 'fact'
+        AND status = 'active'
+        AND user_id = ?
+        AND retrieval_policy = 'always'
+        AND layer IN ('profile_slot', 'core_fact')
         AND sensitivity != 'secret'
         AND (valid_to IS NULL OR valid_to > ?)
       ORDER BY updated_at DESC
@@ -288,11 +258,19 @@ export class ContextStore {
       ...(input.source !== undefined ? { source: input.source } : {}),
       ...(input.importance !== undefined ? { importance: input.importance } : {})
     });
+    const layer = resolveUserFactLayer({
+      slotKey,
+      kind: nextMemory.kind,
+      importance: nextMemory.importance,
+      pinned: false,
+      sourceType: "fact"
+    });
     this.upsertContextItem({
       itemId: nextMemory.id,
       scope: "user",
       sourceType: "fact",
-      retrievalPolicy: "always",
+      layer,
+      retrievalPolicy: retrievalPolicyForLayer(layer),
       status: "active",
       userId: input.userId,
       title: nextMemory.title,
@@ -364,6 +342,90 @@ export class ContextStore {
       dedup,
       warning
     };
+  }
+
+  upsertMemoryProposal(input: ContextMemoryProposalInput): ContextManagementItem {
+    const now = input.createdAt ?? Date.now();
+    const scope = normalizeContextScope(input.scope);
+    const subject = resolveContextSubject({
+      scope,
+      userId: input.userId,
+      sessionId: input.sessionId,
+      toolsetId: input.toolsetId,
+      modeId: input.modeId
+    });
+    assertConcreteSubject(scope, subject);
+    const title = input.title.trim().slice(0, 80);
+    const content = input.content.trim().slice(0, 800);
+    if (!title || !content) {
+      throw new Error("memory proposal title and content cannot be empty");
+    }
+    const itemId = buildMemoryProposalId({
+      scope,
+      subjectKind: subject.subjectKind,
+      ...(subject.subjectId ? { subjectId: subject.subjectId } : {}),
+      title,
+      content
+    });
+    const existing = this.getContextItem(itemId);
+    this.upsertContextItem({
+      itemId,
+      scope,
+      layer: "proposal",
+      subjectKind: subject.subjectKind,
+      ...(subject.subjectId ? { subjectId: subject.subjectId } : {}),
+      sourceType: "fact",
+      retrievalPolicy: "never",
+      status: "pending",
+      ...(input.userId ? { userId: input.userId } : {}),
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+      ...(input.toolsetId ? { toolsetId: input.toolsetId } : {}),
+      ...(input.modeId ? { modeId: input.modeId } : {}),
+      title,
+      text: content,
+      ...(input.kind ? { kind: input.kind } : {}),
+      ...(input.source ? { source: input.source } : {}),
+      ...(input.confidence !== undefined ? { confidence: input.confidence } : {}),
+      ...(input.importance !== undefined ? { importance: input.importance } : {}),
+      sensitivity: "normal",
+      createdAt: now,
+      updatedAt: now,
+      retrievedCount: 0
+    });
+    for (const sourceRef of input.sourceRefs ?? []) {
+      this.addContextItemSource({
+        itemId,
+        sourceKind: sourceRef.sourceKind,
+        sourceId: sourceRef.sourceId,
+        createdAt: now
+      });
+    }
+    if (!existing) {
+      this.addManualAuditEvent({
+        eventType: "memory_proposal_created",
+        itemId,
+        payload: {
+          reason: input.reason,
+          scope,
+          subjectKind: subject.subjectKind,
+          subjectId: subject.subjectId ?? null,
+          confidence: input.confidence ?? null
+        },
+        createdAt: now
+      });
+    }
+    const item = this.getContextItem(itemId);
+    if (!item) {
+      throw new Error(`Memory proposal ${itemId} was not stored`);
+    }
+    this.logger.info({
+      itemId,
+      scope,
+      subjectKind: subject.subjectKind,
+      subjectId: subject.subjectId,
+      reason: input.reason
+    }, "context_memory_proposal_upserted");
+    return item;
   }
 
   listSessionFacts(sessionId: string): ContextMemoryFactEntry[] {
@@ -441,10 +503,18 @@ export class ContextStore {
       ...(input.source !== undefined ? { source: input.source } : {}),
       ...(input.importance !== undefined ? { importance: input.importance } : {})
     });
+    const layer = resolveSessionFactLayer({
+      slotKey,
+      kind: nextMemory.kind,
+      importance: nextMemory.importance,
+      pinned: false,
+      sourceType: "fact"
+    });
     this.upsertContextItem({
       itemId: nextMemory.id,
       scope: "session",
       sourceType: "fact",
+      layer,
       retrievalPolicy: "always",
       status: "active",
       sessionId: input.sessionId,
@@ -1012,6 +1082,7 @@ export class ContextStore {
       WHERE item_id = ?
     `).run(pinned ? 1 : 0, Date.now(), itemId);
     if (result.changes > 0) {
+      this.recalculateDerivedContextItemFields(itemId);
       this.logger.info({ itemId, pinned }, "context_item_pin_updated");
     }
     return { updated: result.changes > 0 };
@@ -1095,6 +1166,7 @@ export class ContextStore {
       WHERE item_id = @itemId
     `).run(params);
     if (result.changes > 0) {
+      this.recalculateDerivedContextItemFields(input.itemId);
       if ("title" in input || input.text !== undefined) {
         this.clearEmbeddings({ itemId: input.itemId });
       }
@@ -1525,6 +1597,106 @@ export class ContextStore {
     return this.listUserDocumentsByRetrievalPolicy(userId, "always");
   }
 
+  recordRetrievedContextItems(input: {
+    itemIds: Iterable<string>;
+    now?: number;
+  }): number {
+    const ids = Array.from(new Set(Array.from(input.itemIds).map((item) => item.trim()).filter(Boolean)));
+    if (!this.db || ids.length === 0) {
+      return 0;
+    }
+    const now = input.now ?? Date.now();
+    const result = this.db.prepare(`
+      UPDATE context_items
+      SET retrieved_count = retrieved_count + 1,
+          last_retrieved_at = ?,
+          audit_state = NULL
+      WHERE item_id IN (${ids.map(() => "?").join(",")})
+        AND status = 'active'
+    `).run(now, ...ids);
+    return result.changes;
+  }
+
+  recordPromptedContextItems(input: {
+    itemIds: Iterable<string>;
+    now?: number;
+  }): number {
+    const ids = Array.from(new Set(Array.from(input.itemIds).map((item) => item.trim()).filter(Boolean)));
+    if (!this.db || ids.length === 0) {
+      return 0;
+    }
+    const now = input.now ?? Date.now();
+    const result = this.db.prepare(`
+      UPDATE context_items
+      SET prompted_count = prompted_count + 1,
+          last_prompted_at = ?,
+          audit_state = NULL
+      WHERE item_id IN (${ids.map(() => "?").join(",")})
+        AND status = 'active'
+    `).run(now, ...ids);
+    return result.changes;
+  }
+
+  auditMemoryVisibility(input: {
+    staleAfterMs: number;
+    now?: number;
+    limit?: number;
+  }): {
+    auditedCount: number;
+    itemIds: string[];
+  } {
+    if (!this.db) {
+      return { auditedCount: 0, itemIds: [] };
+    }
+    const now = input.now ?? Date.now();
+    const cutoff = now - Math.max(0, input.staleAfterMs);
+    const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
+    const rows = this.db.prepare(`
+      SELECT *
+      FROM context_items
+      WHERE status = 'active'
+        AND layer = 'searchable_fact'
+        AND retrieval_policy = 'search'
+        AND pinned = 0
+        AND updated_at < @cutoff
+        AND (last_prompted_at IS NULL OR last_prompted_at < @cutoff)
+        AND (last_retrieved_at IS NULL OR last_retrieved_at < @cutoff)
+        AND (last_audited_at IS NULL OR last_audited_at < @cutoff)
+      ORDER BY updated_at ASC, item_id ASC
+      LIMIT @limit
+    `).all({ cutoff, limit }) as ContextItemRow[];
+    if (rows.length === 0) {
+      return { auditedCount: 0, itemIds: [] };
+    }
+    const update = this.db.prepare(`
+      UPDATE context_items
+      SET audit_state = 'unreachable',
+          last_audited_at = @now
+      WHERE item_id = @itemId
+    `);
+    const audit = this.db.transaction(() => {
+      for (const row of rows) {
+        update.run({ itemId: row.item_id, now });
+        this.addManualAuditEvent({
+          eventType: "memory_unreachable",
+          itemId: row.item_id,
+          payload: {
+            reason: "not_prompted_or_retrieved_within_window",
+            staleAfterMs: input.staleAfterMs,
+            lastPromptedAt: row.last_prompted_at,
+            lastRetrievedAt: row.last_retrieved_at,
+            updatedAt: row.updated_at
+          },
+          createdAt: now
+        });
+      }
+    });
+    audit();
+    const itemIds = rows.map((row) => row.item_id);
+    this.logger.info({ auditedCount: itemIds.length }, "context_memory_visibility_audited");
+    return { auditedCount: itemIds.length, itemIds };
+  }
+
   private listUserDocumentsByRetrievalPolicy(
     userId: string,
     retrievalPolicy: ContextSearchDocument["retrievalPolicy"]
@@ -1541,6 +1713,7 @@ export class ContextStore {
         AND user_id = ?
         AND retrieval_policy = ?
         AND sensitivity != 'secret'
+        AND (audit_state IS NULL OR audit_state != 'unreachable')
         AND (valid_to IS NULL OR valid_to > ?)
       ORDER BY updated_at DESC
     `).all(userId, retrievalPolicy, now) as ContextItemRow[];
@@ -1629,21 +1802,26 @@ export class ContextStore {
   private upsertContextItem(item: ContextItem): void {
     this.requireDb().prepare(`
       INSERT INTO context_items (
-        item_id, scope, source_type, retrieval_policy, status,
+        item_id, scope, layer, subject_kind, subject_id, source_type, retrieval_policy, status,
         user_id, session_id, toolset_id, mode_id,
         title, slot_key, text, embedding_text_hash, kind, source, confidence, importance, pinned, sensitivity,
         created_at, updated_at, valid_from, valid_to, superseded_by,
-        last_confirmed_at, retrieved_count, last_retrieved_at
+        last_confirmed_at, retrieved_count, last_retrieved_at,
+        prompted_count, last_prompted_at, last_audited_at, audit_state
       )
       VALUES (
-        @itemId, @scope, @sourceType, @retrievalPolicy, @status,
+        @itemId, @scope, @layer, @subjectKind, @subjectId, @sourceType, @retrievalPolicy, @status,
         @userId, @sessionId, @toolsetId, @modeId,
         @title, @slotKey, @text, @embeddingTextHash, @kind, @source, @confidence, @importance, @pinned, @sensitivity,
         @createdAt, @updatedAt, @validFrom, @validTo, @supersededBy,
-        @lastConfirmedAt, @retrievedCount, @lastRetrievedAt
+        @lastConfirmedAt, @retrievedCount, @lastRetrievedAt,
+        @promptedCount, @lastPromptedAt, @lastAuditedAt, @auditState
       )
       ON CONFLICT(item_id) DO UPDATE SET
         scope = excluded.scope,
+        layer = excluded.layer,
+        subject_kind = excluded.subject_kind,
+        subject_id = excluded.subject_id,
         source_type = excluded.source_type,
         retrieval_policy = excluded.retrieval_policy,
         status = excluded.status,
@@ -1667,7 +1845,11 @@ export class ContextStore {
         superseded_by = excluded.superseded_by,
         last_confirmed_at = excluded.last_confirmed_at,
         retrieved_count = excluded.retrieved_count,
-        last_retrieved_at = excluded.last_retrieved_at
+        last_retrieved_at = excluded.last_retrieved_at,
+        prompted_count = context_items.prompted_count,
+        last_prompted_at = context_items.last_prompted_at,
+        last_audited_at = NULL,
+        audit_state = NULL
     `).run(toSqlParams(item));
   }
 
@@ -1681,6 +1863,100 @@ export class ContextStore {
       WHERE item_id = ?
     `).get(itemId) as ContextItemRow | undefined;
     return row ? rowToContextManagementItem(row) : null;
+  }
+
+  private recalculateDerivedContextItemFields(itemId: string): void {
+    const db = this.db;
+    if (!db) {
+      return;
+    }
+    const row = db.prepare(`
+      SELECT *
+      FROM context_items
+      WHERE item_id = ?
+    `).get(itemId) as ContextItemRow | undefined;
+    if (!row) {
+      return;
+    }
+    const scope = normalizeContextScope(row.scope);
+    const sourceType = normalizeContextSourceType(row.source_type);
+    const status = normalizeContextItemStatus(row.status);
+    const layer = resolveStoredContextLayer({
+      status,
+      sourceType,
+      retrievalPolicy: normalizeContextRetrievalPolicy(row.retrieval_policy),
+      scope,
+      slotKey: normalizeContextSlotKey(row.slot_key),
+      kind: row.kind ?? undefined,
+      importance: row.importance ?? undefined,
+      pinned: row.pinned === 1
+    });
+    const subject = resolveContextSubject({
+      scope,
+      userId: row.user_id ?? undefined,
+      sessionId: row.session_id ?? undefined,
+      toolsetId: row.toolset_id ?? undefined,
+      modeId: row.mode_id ?? undefined
+    });
+    db.prepare(`
+      UPDATE context_items
+      SET layer = @layer,
+          subject_kind = @subjectKind,
+          subject_id = @subjectId,
+          retrieval_policy = @retrievalPolicy,
+          last_audited_at = NULL,
+          audit_state = NULL
+      WHERE item_id = @itemId
+    `).run({
+      itemId,
+      layer,
+      subjectKind: subject.subjectKind,
+      subjectId: subject.subjectId ?? null,
+      retrievalPolicy: resolveStoredRetrievalPolicy({
+        layer,
+        sourceType,
+        currentPolicy: normalizeContextRetrievalPolicy(row.retrieval_policy)
+      })
+    });
+  }
+
+  private addContextItemSource(input: {
+    itemId: string;
+    sourceKind: string;
+    sourceId: string;
+    createdAt: number;
+  }): void {
+    this.requireDb().prepare(`
+      INSERT OR IGNORE INTO context_item_sources (
+        item_id, source_kind, source_id, created_at
+      )
+      VALUES (@itemId, @sourceKind, @sourceId, @createdAt)
+    `).run(input);
+  }
+
+  private addManualAuditEvent(input: {
+    eventType: string;
+    itemId?: string;
+    actorId?: string;
+    payload: unknown;
+    createdAt: number;
+  }): void {
+    const eventId = buildAuditEventId(input.eventType, input.itemId ?? "", input.createdAt, input.payload);
+    this.requireDb().prepare(`
+      INSERT OR IGNORE INTO manual_audit_events (
+        event_id, event_type, actor_id, item_id, payload_json, created_at
+      )
+      VALUES (
+        @eventId, @eventType, @actorId, @itemId, @payloadJson, @createdAt
+      )
+    `).run({
+      eventId,
+      eventType: input.eventType,
+      actorId: input.actorId ?? null,
+      itemId: input.itemId ?? null,
+      payloadJson: JSON.stringify(input.payload),
+      createdAt: input.createdAt
+    });
   }
 
   private requireDb(): SqliteDatabase {
@@ -1704,13 +1980,14 @@ const CONTEXT_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   },
   {
     groupId: "context.items",
-    schemaVersion: 1,
+    schemaVersion: 2,
     ownedTables: ["context_items", "context_item_sources"],
     ownedIndexes: [
       "idx_context_items_user_lookup",
       "idx_context_items_session_lookup",
       "idx_context_items_toolset_lookup",
-      "idx_context_items_mode_lookup"
+      "idx_context_items_mode_lookup",
+      "idx_context_items_subject_lookup"
     ],
     createSchema: createContextItemsSchema,
     adoptExistingSchema: adoptExistingContextItemsSchema,
@@ -1781,6 +2058,9 @@ function createContextItemsSchema(db: SqliteDatabase): void {
     CREATE TABLE IF NOT EXISTS context_items (
       item_id TEXT PRIMARY KEY,
       scope TEXT NOT NULL,
+      layer TEXT NOT NULL DEFAULT 'searchable_fact',
+      subject_kind TEXT NOT NULL DEFAULT 'global',
+      subject_id TEXT,
       source_type TEXT NOT NULL,
       retrieval_policy TEXT NOT NULL,
       status TEXT NOT NULL,
@@ -1805,7 +2085,11 @@ function createContextItemsSchema(db: SqliteDatabase): void {
       superseded_by TEXT,
       last_confirmed_at INTEGER,
       retrieved_count INTEGER NOT NULL DEFAULT 0,
-      last_retrieved_at INTEGER
+      last_retrieved_at INTEGER,
+      prompted_count INTEGER NOT NULL DEFAULT 0,
+      last_prompted_at INTEGER,
+      last_audited_at INTEGER,
+      audit_state TEXT
     );
 
     CREATE TABLE IF NOT EXISTS context_item_sources (
@@ -1826,12 +2110,16 @@ function createContextItemsSchema(db: SqliteDatabase): void {
     CREATE INDEX IF NOT EXISTS idx_context_items_mode_lookup
       ON context_items(scope, mode_id, source_type, status);
   `);
+  ensureContextItemsV2Columns(db);
 }
 
 function validateContextItemsSchema(db: SqliteDatabase): void {
   assertTableColumns(db, "context_items", {
     item_id: "TEXT",
     scope: "TEXT",
+    layer: "TEXT",
+    subject_kind: "TEXT",
+    subject_id: "TEXT",
     source_type: "TEXT",
     retrieval_policy: "TEXT",
     status: "TEXT",
@@ -1856,7 +2144,11 @@ function validateContextItemsSchema(db: SqliteDatabase): void {
     superseded_by: "TEXT",
     last_confirmed_at: "INTEGER",
     retrieved_count: "INTEGER",
-    last_retrieved_at: "INTEGER"
+    last_retrieved_at: "INTEGER",
+    prompted_count: "INTEGER",
+    last_prompted_at: "INTEGER",
+    last_audited_at: "INTEGER",
+    audit_state: "TEXT"
   });
   assertTableColumns(db, "context_item_sources", {
     item_id: "TEXT",
@@ -1868,12 +2160,78 @@ function validateContextItemsSchema(db: SqliteDatabase): void {
   assertIndexExists(db, "idx_context_items_session_lookup");
   assertIndexExists(db, "idx_context_items_toolset_lookup");
   assertIndexExists(db, "idx_context_items_mode_lookup");
+  assertIndexExists(db, "idx_context_items_subject_lookup");
 }
 
 function adoptExistingContextItemsSchema(db: SqliteDatabase): void {
   createContextItemsSchema(db);
+  ensureContextItemsV2Columns(db);
   addColumnIfMissing(db, "context_items", "embedding_text_hash", "TEXT");
   addColumnIfMissing(db, "context_items", "slot_key", "TEXT");
+  backfillContextItemsV2Columns(db);
+}
+
+function ensureContextItemsV2Columns(db: SqliteDatabase): void {
+  addColumnIfMissing(db, "context_items", "layer", "TEXT NOT NULL DEFAULT 'searchable_fact'");
+  addColumnIfMissing(db, "context_items", "subject_kind", "TEXT NOT NULL DEFAULT 'global'");
+  addColumnIfMissing(db, "context_items", "subject_id", "TEXT");
+  addColumnIfMissing(db, "context_items", "prompted_count", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing(db, "context_items", "last_prompted_at", "INTEGER");
+  addColumnIfMissing(db, "context_items", "last_audited_at", "INTEGER");
+  addColumnIfMissing(db, "context_items", "audit_state", "TEXT");
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_context_items_subject_lookup
+      ON context_items(subject_kind, subject_id, layer, status, retrieval_policy);
+  `);
+}
+
+function backfillContextItemsV2Columns(db: SqliteDatabase): void {
+  const rows = db.prepare("SELECT * FROM context_items").all() as Partial<ContextItemRow>[];
+  const update = db.prepare(`
+    UPDATE context_items
+    SET layer = @layer,
+        subject_kind = @subjectKind,
+        subject_id = @subjectId,
+        retrieval_policy = @retrievalPolicy
+    WHERE item_id = @itemId
+  `);
+  for (const row of rows) {
+    if (!row.item_id) {
+      continue;
+    }
+    const scope = normalizeContextScope(row.scope);
+    const sourceType = normalizeContextSourceType(row.source_type);
+    const status = normalizeContextItemStatus(row.status);
+    const layer = resolveStoredContextLayer({
+      layer: normalizeContextMemoryLayer(row.layer),
+      status,
+      sourceType,
+      retrievalPolicy: normalizeContextRetrievalPolicy(row.retrieval_policy),
+      scope,
+      slotKey: normalizeContextSlotKey(row.slot_key),
+      kind: typeof row.kind === "string" ? row.kind : undefined,
+      importance: typeof row.importance === "number" ? row.importance : undefined,
+      pinned: row.pinned === 1
+    });
+    const subject = resolveContextSubject({
+      scope,
+      userId: typeof row.user_id === "string" ? row.user_id : undefined,
+      sessionId: typeof row.session_id === "string" ? row.session_id : undefined,
+      toolsetId: typeof row.toolset_id === "string" ? row.toolset_id : undefined,
+      modeId: typeof row.mode_id === "string" ? row.mode_id : undefined
+    });
+    update.run({
+      itemId: row.item_id,
+      layer,
+      subjectKind: subject.subjectKind,
+      subjectId: subject.subjectId ?? null,
+      retrievalPolicy: resolveStoredRetrievalPolicy({
+        layer,
+        sourceType,
+        currentPolicy: normalizeContextRetrievalPolicy(row.retrieval_policy)
+      })
+    });
+  }
 }
 
 function createContextEmbeddingsSchema(db: SqliteDatabase): void {
@@ -2026,12 +2384,17 @@ function rowToContextSearchDocument(row: ContextItemRow): ContextSearchDocument 
   return {
     itemId: row.item_id,
     scope: row.scope as ContextSearchDocument["scope"],
+    layer: normalizeContextMemoryLayer(row.layer) ?? "searchable_fact",
+    subjectKind: normalizeContextSubjectKind(row.subject_kind),
+    ...(row.subject_id ? { subjectId: row.subject_id } : {}),
     sourceType: row.source_type as ContextSearchDocument["sourceType"],
     retrievalPolicy: row.retrieval_policy as ContextSearchDocument["retrievalPolicy"],
     ...(row.user_id ? { userId: row.user_id } : {}),
     ...(row.session_id ? { sessionId: row.session_id } : {}),
     ...(row.title ? { title: row.title } : {}),
     ...(normalizeContextSlotKey(row.slot_key) ? { slotKey: normalizeContextSlotKey(row.slot_key)! } : {}),
+    ...(row.kind ? { kind: row.kind } : {}),
+    ...(row.importance !== null ? { importance: row.importance } : {}),
     text: row.text,
     embeddingTextHash: row.embedding_text_hash ?? buildContextEmbeddingTextHash(row.text),
     updatedAt: row.updated_at,
@@ -2043,6 +2406,9 @@ function rowToContextManagementItem(row: ContextItemRow): ContextManagementItem 
   return {
     itemId: row.item_id,
     scope: row.scope as ContextManagementItem["scope"],
+    layer: normalizeContextMemoryLayer(row.layer) ?? "searchable_fact",
+    subjectKind: normalizeContextSubjectKind(row.subject_kind),
+    ...(row.subject_id ? { subjectId: row.subject_id } : {}),
     sourceType: row.source_type as ContextManagementItem["sourceType"],
     retrievalPolicy: row.retrieval_policy as ContextManagementItem["retrievalPolicy"],
     status: row.status as ContextManagementItem["status"],
@@ -2066,7 +2432,11 @@ function rowToContextManagementItem(row: ContextItemRow): ContextManagementItem 
     ...(row.superseded_by ? { supersededBy: row.superseded_by } : {}),
     ...(row.last_confirmed_at !== null ? { lastConfirmedAt: row.last_confirmed_at } : {}),
     retrievedCount: row.retrieved_count,
-    ...(row.last_retrieved_at !== null ? { lastRetrievedAt: row.last_retrieved_at } : {})
+    ...(row.last_retrieved_at !== null ? { lastRetrievedAt: row.last_retrieved_at } : {}),
+    promptedCount: row.prompted_count,
+    ...(row.last_prompted_at !== null ? { lastPromptedAt: row.last_prompted_at } : {}),
+    ...(row.last_audited_at !== null ? { lastAuditedAt: row.last_audited_at } : {}),
+    ...(row.audit_state ? { auditState: row.audit_state } : {})
   };
 }
 
@@ -2074,6 +2444,9 @@ function rowToContextItem(row: ContextItemRow): ContextItem {
   return {
     itemId: row.item_id,
     scope: row.scope as ContextItem["scope"],
+    layer: normalizeContextMemoryLayer(row.layer) ?? "searchable_fact",
+    subjectKind: normalizeContextSubjectKind(row.subject_kind),
+    ...(row.subject_id ? { subjectId: row.subject_id } : {}),
     sourceType: row.source_type as ContextItem["sourceType"],
     retrievalPolicy: row.retrieval_policy as ContextItem["retrievalPolicy"],
     status: row.status as ContextItem["status"],
@@ -2097,7 +2470,11 @@ function rowToContextItem(row: ContextItemRow): ContextItem {
     ...(row.superseded_by ? { supersededBy: row.superseded_by } : {}),
     ...(row.last_confirmed_at !== null ? { lastConfirmedAt: row.last_confirmed_at } : {}),
     retrievedCount: row.retrieved_count,
-    ...(row.last_retrieved_at !== null ? { lastRetrievedAt: row.last_retrieved_at } : {})
+    ...(row.last_retrieved_at !== null ? { lastRetrievedAt: row.last_retrieved_at } : {}),
+    promptedCount: row.prompted_count,
+    ...(row.last_prompted_at !== null ? { lastPromptedAt: row.last_prompted_at } : {}),
+    ...(row.last_audited_at !== null ? { lastAuditedAt: row.last_audited_at } : {}),
+    ...(row.audit_state ? { auditState: row.audit_state } : {})
   };
 }
 
@@ -2111,6 +2488,9 @@ function parseContextItemImportLine(line: string): ContextItem | null {
     return {
       itemId: parsed.itemId,
       scope: parsed.scope,
+      ...(parsed.layer ? { layer: parsed.layer } : {}),
+      ...(parsed.subjectKind ? { subjectKind: parsed.subjectKind } : {}),
+      ...(parsed.subjectId ? { subjectId: parsed.subjectId } : {}),
       sourceType: parsed.sourceType,
       retrievalPolicy: parsed.retrievalPolicy,
       status: parsed.status,
@@ -2134,7 +2514,11 @@ function parseContextItemImportLine(line: string): ContextItem | null {
       ...(parsed.supersededBy ? { supersededBy: parsed.supersededBy } : {}),
       ...(typeof parsed.lastConfirmedAt === "number" ? { lastConfirmedAt: parsed.lastConfirmedAt } : {}),
       retrievedCount: typeof parsed.retrievedCount === "number" ? parsed.retrievedCount : 0,
-      ...(typeof parsed.lastRetrievedAt === "number" ? { lastRetrievedAt: parsed.lastRetrievedAt } : {})
+      ...(typeof parsed.lastRetrievedAt === "number" ? { lastRetrievedAt: parsed.lastRetrievedAt } : {}),
+      ...(typeof parsed.promptedCount === "number" ? { promptedCount: parsed.promptedCount } : {}),
+      ...(typeof parsed.lastPromptedAt === "number" ? { lastPromptedAt: parsed.lastPromptedAt } : {}),
+      ...(typeof parsed.lastAuditedAt === "number" ? { lastAuditedAt: parsed.lastAuditedAt } : {}),
+      ...(parsed.auditState ? { auditState: parsed.auditState } : {})
     };
   } catch {
     return null;
@@ -2208,6 +2592,195 @@ function normalizeContextSlotKeyOrThrow(value: unknown): string | undefined {
   return normalized;
 }
 
+function normalizeContextScope(value: unknown): ContextItem["scope"] {
+  return value === "session"
+    || value === "user"
+    || value === "global"
+    || value === "toolset"
+    || value === "mode"
+    ? value
+    : "global";
+}
+
+function normalizeContextSourceType(value: unknown): ContextItem["sourceType"] {
+  return value === "episode"
+    || value === "chunk"
+    || value === "summary"
+    || value === "fact"
+    || value === "rule"
+    ? value
+    : "fact";
+}
+
+function normalizeContextRetrievalPolicy(value: unknown): ContextItem["retrievalPolicy"] {
+  return value === "always" || value === "search" || value === "never" ? value : "search";
+}
+
+function normalizeContextItemStatus(value: unknown): ContextItem["status"] {
+  return value === "active"
+    || value === "archived"
+    || value === "deleted"
+    || value === "superseded"
+    || value === "pending"
+    ? value
+    : "active";
+}
+
+function normalizeContextMemoryLayer(value: unknown): ContextMemoryLayer | undefined {
+  return value === "profile_slot"
+    || value === "core_fact"
+    || value === "searchable_fact"
+    || value === "episode"
+    || value === "proposal"
+    ? value
+    : undefined;
+}
+
+function normalizeContextSubjectKind(value: unknown): ContextSubjectKind {
+  return value === "session"
+    || value === "user"
+    || value === "global"
+    || value === "toolset"
+    || value === "mode"
+    ? value
+    : "global";
+}
+
+function resolveContextSubject(input: {
+  scope: ContextItem["scope"];
+  userId?: string | undefined;
+  sessionId?: string | undefined;
+  toolsetId?: string | undefined;
+  modeId?: string | undefined;
+  subjectKind?: ContextSubjectKind | undefined;
+  subjectId?: string | undefined;
+}): {
+  subjectKind: ContextSubjectKind;
+  subjectId?: string;
+} {
+  if (input.subjectKind) {
+    return {
+      subjectKind: input.subjectKind,
+      ...(input.subjectId ? { subjectId: input.subjectId } : {})
+    };
+  }
+  switch (input.scope) {
+    case "user":
+      return { subjectKind: "user", ...(input.userId ? { subjectId: input.userId } : {}) };
+    case "session":
+      return { subjectKind: "session", ...(input.sessionId ? { subjectId: input.sessionId } : {}) };
+    case "toolset":
+      return { subjectKind: "toolset", ...(input.toolsetId ? { subjectId: input.toolsetId } : {}) };
+    case "mode":
+      return { subjectKind: "mode", ...(input.modeId ? { subjectId: input.modeId } : {}) };
+    case "global":
+    default:
+      return { subjectKind: "global" };
+  }
+}
+
+function assertConcreteSubject(scope: ContextItem["scope"], subject: {
+  subjectKind: ContextSubjectKind;
+  subjectId?: string;
+}): void {
+  if (scope === "global") {
+    return;
+  }
+  if (!subject.subjectId) {
+    throw new Error(`context ${scope} proposal requires a concrete subject id`);
+  }
+}
+
+function resolveStoredContextLayer(input: {
+  layer?: ContextMemoryLayer | undefined;
+  status?: ContextItem["status"] | undefined;
+  sourceType: ContextItem["sourceType"];
+  retrievalPolicy?: ContextItem["retrievalPolicy"] | undefined;
+  scope: ContextItem["scope"];
+  slotKey?: string | null | undefined;
+  kind?: string | undefined;
+  importance?: number | undefined;
+  pinned?: boolean | undefined;
+}): ContextMemoryLayer {
+  if (input.status === "pending" || input.layer === "proposal") {
+    return "proposal";
+  }
+  if (input.layer) {
+    return input.layer;
+  }
+  if (input.sourceType === "episode" || input.sourceType === "chunk" || input.sourceType === "summary") {
+    return "episode";
+  }
+  if (input.sourceType === "rule") {
+    return "core_fact";
+  }
+  if (input.scope === "session") {
+    return "core_fact";
+  }
+  return resolveUserFactLayer({
+    slotKey: input.slotKey ?? undefined,
+    kind: input.kind,
+    importance: input.importance,
+    pinned: input.pinned === true,
+    sourceType: input.sourceType
+  });
+}
+
+function resolveUserFactLayer(input: {
+  slotKey?: string | null | undefined;
+  kind?: string | undefined;
+  importance?: number | undefined;
+  pinned?: boolean | undefined;
+  sourceType: ContextItem["sourceType"];
+}): ContextMemoryLayer {
+  if (input.sourceType !== "fact") {
+    return input.sourceType === "rule" ? "core_fact" : "episode";
+  }
+  if (input.slotKey && PROFILE_SLOT_KEYS.has(input.slotKey)) {
+    return "profile_slot";
+  }
+  if (input.pinned || input.kind === "boundary" || (input.importance ?? 0) >= 4) {
+    return "core_fact";
+  }
+  return "searchable_fact";
+}
+
+function resolveSessionFactLayer(input: {
+  slotKey?: string | null | undefined;
+  kind?: string | undefined;
+  importance?: number | undefined;
+  pinned?: boolean | undefined;
+  sourceType: ContextItem["sourceType"];
+}): ContextMemoryLayer {
+  if (input.slotKey && SESSION_SLOT_KEYS.has(input.slotKey)) {
+    return "profile_slot";
+  }
+  return input.pinned || input.kind === "boundary" || (input.importance ?? 0) >= 4
+    ? "core_fact"
+    : "searchable_fact";
+}
+
+function retrievalPolicyForLayer(layer: ContextMemoryLayer): ContextItem["retrievalPolicy"] {
+  return layer === "searchable_fact" || layer === "episode" ? "search" : "always";
+}
+
+function resolveStoredRetrievalPolicy(input: {
+  layer: ContextMemoryLayer;
+  sourceType: ContextItem["sourceType"];
+  currentPolicy?: ContextItem["retrievalPolicy"] | undefined;
+}): ContextItem["retrievalPolicy"] {
+  if (input.layer === "proposal") {
+    return "never";
+  }
+  if (input.sourceType === "episode") {
+    return "never";
+  }
+  if (input.sourceType === "chunk" || input.sourceType === "summary") {
+    return "search";
+  }
+  return retrievalPolicyForLayer(input.layer);
+}
+
 function isRelatedToRemovedFact(row: ContextItemRow, fact: ContextItemRow): boolean {
   const rowText = [row.title, row.text].filter(Boolean).join(" ");
   const factTitle = fact.title ?? "";
@@ -2240,6 +2813,20 @@ const GENERIC_USER_FACT_TITLES = new Set([
   "用户偏好",
   "用户习惯",
   "长期记忆"
+]);
+
+const PROFILE_SLOT_KEYS = new Set([
+  "preferred_name",
+  "residence",
+  "timezone",
+  "occupation",
+  "communication_preference",
+  "relationship_note"
+]);
+
+const SESSION_SLOT_KEYS = new Set([
+  "session_purpose",
+  "project_focus"
 ]);
 
 function scoreUserFactTextMatch(query: string, item: UserMemoryEntry): number {
@@ -2334,6 +2921,30 @@ function getCount(db: SqliteDatabase, tableName: string): number {
   return (db.prepare(`SELECT COUNT(*) AS count FROM ${tableName}`).get() as { count: number }).count;
 }
 
+function buildMemoryProposalId(input: {
+  scope: ContextItem["scope"];
+  subjectKind: ContextSubjectKind;
+  subjectId?: string;
+  title: string;
+  content: string;
+}): string {
+  return `ctx_proposal_${hashStableId([
+    input.scope,
+    input.subjectKind,
+    input.subjectId ?? "",
+    input.title,
+    input.content
+  ].join("\n")).slice(0, 24)}`;
+}
+
+function buildAuditEventId(eventType: string, itemId: string, createdAt: number, payload: unknown): string {
+  return `ctx_audit_${hashStableId(`${eventType}\n${itemId}\n${createdAt}\n${JSON.stringify(payload)}`).slice(0, 24)}`;
+}
+
+function hashStableId(text: string): string {
+  return createHash("sha256").update(text).digest("base64url");
+}
+
 function encodeVector(vector: number[]): Buffer {
   const buffer = Buffer.allocUnsafe(vector.length * Float32Array.BYTES_PER_ELEMENT);
   for (let index = 0; index < vector.length; index += 1) {
@@ -2355,11 +2966,40 @@ function buildContextEmbeddingTextHash(text: string): string {
 }
 
 function toSqlParams(item: ContextItem): Record<string, string | number | null> {
+  const scope = normalizeContextScope(item.scope);
+  const subject = resolveContextSubject({
+    scope,
+    userId: item.userId,
+    sessionId: item.sessionId,
+    toolsetId: item.toolsetId,
+    modeId: item.modeId,
+    subjectKind: item.subjectKind,
+    subjectId: item.subjectId
+  });
+  const sourceType = normalizeContextSourceType(item.sourceType);
+  const layer = resolveStoredContextLayer({
+    layer: item.layer,
+    status: item.status,
+    sourceType,
+    retrievalPolicy: item.retrievalPolicy,
+    scope,
+    slotKey: normalizeContextSlotKey(item.slotKey),
+    kind: item.kind,
+    importance: item.importance,
+    pinned: item.pinned === true
+  });
   return {
     itemId: item.itemId,
-    scope: item.scope,
-    sourceType: item.sourceType,
-    retrievalPolicy: item.retrievalPolicy,
+    scope,
+    layer,
+    subjectKind: subject.subjectKind,
+    subjectId: subject.subjectId ?? null,
+    sourceType,
+    retrievalPolicy: resolveStoredRetrievalPolicy({
+      layer,
+      sourceType,
+      currentPolicy: item.retrievalPolicy
+    }),
     status: item.status,
     userId: item.userId ?? null,
     sessionId: item.sessionId ?? null,
@@ -2382,6 +3022,10 @@ function toSqlParams(item: ContextItem): Record<string, string | number | null> 
     supersededBy: item.supersededBy ?? null,
     lastConfirmedAt: item.lastConfirmedAt ?? null,
     retrievedCount: item.retrievedCount,
-    lastRetrievedAt: item.lastRetrievedAt ?? null
+    lastRetrievedAt: item.lastRetrievedAt ?? null,
+    promptedCount: item.promptedCount ?? 0,
+    lastPromptedAt: item.lastPromptedAt ?? null,
+    lastAuditedAt: item.lastAuditedAt ?? null,
+    auditState: item.auditState ?? null
   };
 }

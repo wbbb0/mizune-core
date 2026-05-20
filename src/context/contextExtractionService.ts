@@ -51,8 +51,8 @@ export interface ContextExtractionResult {
 }
 
 export interface ContextExtractionResultItem {
-  result: "created" | "replaced" | "ignored";
-  scope?: Extract<ContextScope, "user" | "session">;
+  result: "created" | "replaced" | "ignored" | "proposed";
+  scope?: ContextScope;
   operation?: ExtractionOperation;
   memoryId?: string;
   targetMemoryIds?: string[];
@@ -63,7 +63,7 @@ export interface ContextExtractionResultItem {
   reason?: string;
 }
 
-type ContextExtractionStore = Pick<ContextStore, "listUserFacts" | "upsertUserFact" | "listSessionFacts" | "upsertSessionFact">;
+type ContextExtractionStore = Pick<ContextStore, "listUserFacts" | "upsertUserFact" | "listSessionFacts" | "upsertSessionFact" | "upsertMemoryProposal">;
 export type ExtractionOperation = NonNullable<ExtractionCandidate["operation"]>;
 type NormalizedExtractionCandidate = Required<Omit<
   ExtractionCandidate,
@@ -186,19 +186,53 @@ export class ContextExtractionService {
 
     for (const candidate of input.candidates) {
       const normalized = normalizeCandidate(candidate);
-      if (!normalized || normalized.confidence < input.minConfidence || normalized.action === "ignore" || normalized.operation === "noop") {
+      if (!normalized) {
         ignored += 1;
-        items.push(buildIgnoredExtractionItem(candidate, normalized, normalized ? "ignored_by_model_or_confidence" : "invalid_candidate"));
-        continue;
-      }
-      if (normalized.scope !== "user" && normalized.scope !== "session") {
-        ignored += 1;
-        items.push(buildIgnoredExtractionItem(candidate, normalized, "unsupported_scope"));
+        items.push(buildIgnoredExtractionItem(candidate, normalized, "invalid_candidate"));
         continue;
       }
       if (normalized.operation === "ignore_wrong_scope") {
+        const proposal = this.createProposalForCandidate({
+          userId: input.userId,
+          sessionId: input.sessionId,
+          candidate: normalized,
+          reason: "wrong_scope"
+        });
         ignored += 1;
-        items.push(buildIgnoredExtractionItem(candidate, normalized, "wrong_scope"));
+        items.push(proposal
+          ? buildProposedExtractionItem(normalized, proposal.itemId, "wrong_scope")
+          : buildIgnoredExtractionItem(candidate, normalized, "wrong_scope"));
+        continue;
+      }
+      if (normalized.action === "ignore" || normalized.operation === "noop") {
+        ignored += 1;
+        items.push(buildIgnoredExtractionItem(candidate, normalized, "ignored_by_model_or_confidence"));
+        continue;
+      }
+      if (normalized.confidence < input.minConfidence) {
+        const proposal = this.createProposalForCandidate({
+          userId: input.userId,
+          sessionId: input.sessionId,
+          candidate: normalized,
+          reason: "low_confidence"
+        });
+        ignored += 1;
+        items.push(proposal
+          ? buildProposedExtractionItem(normalized, proposal.itemId, "low_confidence")
+          : buildIgnoredExtractionItem(candidate, normalized, "low_confidence"));
+        continue;
+      }
+      if (normalized.scope !== "user" && normalized.scope !== "session") {
+        const proposal = this.createProposalForCandidate({
+          userId: input.userId,
+          sessionId: input.sessionId,
+          candidate: normalized,
+          reason: "unsupported_scope"
+        });
+        ignored += 1;
+        items.push(proposal
+          ? buildProposedExtractionItem(normalized, proposal.itemId, "unsupported_scope")
+          : buildIgnoredExtractionItem(candidate, normalized, "unsupported_scope"));
         continue;
       }
       const memoryText = `${normalized.title}\n${normalized.content}`;
@@ -301,6 +335,45 @@ export class ContextExtractionService {
     }, "context_extraction_applied");
     return { created, replaced, ignored, items };
   }
+
+  private createProposalForCandidate(input: {
+    userId: string;
+    sessionId: string;
+    candidate: NormalizedExtractionCandidate;
+    reason: string;
+  }): { itemId: string } | null {
+    if (!input.candidate.title || !input.candidate.content) {
+      return null;
+    }
+    if (input.candidate.scope === "toolset" || input.candidate.scope === "mode") {
+      return null;
+    }
+    try {
+      const item = this.contextStore.upsertMemoryProposal({
+        scope: input.candidate.scope,
+        ...(input.candidate.scope === "user" ? { userId: input.userId } : {}),
+        ...(input.candidate.scope === "session" ? { sessionId: input.sessionId } : {}),
+        title: input.candidate.title,
+        content: input.candidate.content,
+        kind: input.candidate.kind,
+        source: "inferred",
+        confidence: input.candidate.confidence,
+        importance: input.candidate.importance,
+        reason: input.reason,
+        sourceRefs: [{ sourceKind: "session", sourceId: input.sessionId }]
+      });
+      return { itemId: item.itemId };
+    } catch (error) {
+      this.logger.warn({
+        sessionId: input.sessionId,
+        userId: input.userId,
+        title: input.candidate.title,
+        reason: input.reason,
+        error: error instanceof Error ? error.message : String(error)
+      }, "context_extraction_proposal_apply_failed_open");
+      return null;
+    }
+  }
 }
 
 function selectRelatedMemories(
@@ -388,9 +461,9 @@ function buildExtractionPrompt(input: {
         "当前实现可以写入 scope=user 的长期用户事实，也可以写入 scope=session 的当前会话事实；其他 scope 必须识别出来但不要写入。",
         "scope=user：只记录稳定、长期可复用、绑定 target_user_id 本人的事实，例如称呼、身份、职业、所在地、时区、长期偏好、长期习惯、明确边界、关系备注。",
         "scope=session：只在当前 sessionId 内生效的信息，例如“此会话专门用于某项目/某测试/某主题”“本群这轮讨论只追踪某事项”“本会话接下来都围绕某目标”。这类内容应输出 create/replace 且 scope=session。",
-        "scope=global：所有用户和会话都适用的长期规则或运行偏好，例如全局回答原则、所有任务默认流程。当前 schema 尚不能写 global 记忆，必须输出 ignore。",
-        "scope=toolset：只和某类工具集/工具能力有关的长期规则，例如 shell、浏览器、workspace、ComfyUI 的默认使用规则。当前 schema 尚不能写 toolset 记忆，必须输出 ignore。",
-        "scope=mode：只和特定运行模式/角色模式有关的规则，例如 scenario_host 或 assistant mode 的行为边界。当前 schema 尚不能写 mode 记忆，必须输出 ignore。",
+        "scope=global：所有用户和会话都适用的长期规则或运行偏好，例如全局回答原则、所有任务默认流程。当前抽取器不能直接写入 active global 记忆；如内容明确且重要，输出 ignore_wrong_scope，交由人工 proposal 审核。",
+        "scope=toolset：只和某类工具集/工具能力有关的长期规则，例如 shell、浏览器、workspace、ComfyUI 的默认使用规则。当前抽取器没有具体 toolsetId，必须输出普通 ignore 或空 items，不要生成 proposal。",
+        "scope=mode：只和特定运行模式/角色模式有关的规则，例如 scenario_host 或 assistant mode 的行为边界。当前抽取器没有具体 modeId，必须输出普通 ignore 或空 items，不要生成 proposal。",
         "输入会包含当前 debounce batch 的完整对话；为 scope=user 写入时只能为 target_user_id 对应用户抽取记忆。",
         "群聊中其他人的话只作为上下文，不要把其他群成员的信息写到 target_user_id 身上。",
         "不要把 session/global/toolset/mode 范围的信息降级写成 user 记忆；session 范围必须显式写 scope=session。",
@@ -404,8 +477,9 @@ function buildExtractionPrompt(input: {
         "如果旧信息需要保留审计但不应继续作为当前值，应输出 operation=invalidate_and_create，并填写 targetMemoryId、slotKey 和 conflictsWithMemoryIds。",
         "如果新信息只是补充同一事实并能合并进旧条目，应输出 operation=merge，并填写 targetMemoryId；content 应给出合并后的完整当前事实。",
         "如果确实是新槽位或 related_memories 中没有同类事实，才输出 operation=create。",
-        "如果信息属于 global/toolset/mode 或不该写入当前 schema，输出 action=ignore、operation=ignore_wrong_scope，并保留正确 scope。",
-        "判定示例：用户说“以后所有任务默认先列三步计划。”，应输出 {\"items\":[{\"action\":\"ignore\",\"scope\":\"global\",\"confidence\":1}]}，绝不能写成 user 偏好。",
+        "如果信息属于 global 且不该写入当前 user/session schema，输出 action=ignore、operation=ignore_wrong_scope，并填写 scope、title、content、kind、importance、confidence，供系统创建 pending proposal。",
+        "如果信息属于 toolset/mode，但当前输入没有具体 toolsetId/modeId，输出普通 ignore 或空 items，不要输出 ignore_wrong_scope。",
+        "判定示例：用户说“以后所有任务默认先列三步计划。”，应输出 {\"items\":[{\"action\":\"ignore\",\"operation\":\"ignore_wrong_scope\",\"scope\":\"global\",\"title\":\"默认任务流程\",\"content\":\"所有任务默认先列三步计划。\",\"kind\":\"preference\",\"importance\":4,\"confidence\":1}]}，绝不能写成 user 偏好。",
         "判定示例：用户说“以后请叫我阿明。”，应输出 scope=user、operation=create、slotKey=preferred_name。",
         "判定示例：related_memories 里已有 preferred_name=阿明，用户说“以后叫我小王。”，应输出 scope=user、operation=update_existing、targetMemoryId=对应 id、slotKey=preferred_name。",
         "判定示例：related_memories 里已有 residence=上海，用户说“我现在搬到杭州了。”，应输出 scope=user、operation=invalidate_and_create、targetMemoryId=对应 id、conflictsWithMemoryIds=[对应 id]、slotKey=residence。",
@@ -538,13 +612,32 @@ function buildIgnoredExtractionItem(
 ): ContextExtractionResultItem {
   return {
     result: "ignored",
-    ...(normalized?.scope === "user" || normalized?.scope === "session" ? { scope: normalized.scope } : {}),
+    ...(normalized?.scope ? { scope: normalized.scope } : {}),
     ...(normalized?.operation ? { operation: normalized.operation } : {}),
     ...(normalized?.targetMemoryId ? { targetMemoryIds: [normalized.targetMemoryId] } : {}),
     ...(normalized?.slotKey ? { slotKey: normalized.slotKey } : {}),
     ...(normalized?.title ? { title: normalized.title } : typeof candidate.title === "string" && candidate.title.trim() ? { title: candidate.title.trim().slice(0, 80) } : {}),
     ...(normalized?.content ? { content: normalized.content } : typeof candidate.content === "string" && candidate.content.trim() ? { content: candidate.content.trim().slice(0, 800) } : {}),
     ...(normalized?.kind ? { kind: normalized.kind } : {}),
+    reason
+  };
+}
+
+function buildProposedExtractionItem(
+  normalized: NormalizedExtractionCandidate,
+  proposalId: string,
+  reason: string
+): ContextExtractionResultItem {
+  return {
+    result: "proposed",
+    scope: normalized.scope,
+    operation: normalized.operation,
+    memoryId: proposalId,
+    ...(normalized.targetMemoryId ? { targetMemoryIds: [normalized.targetMemoryId] } : {}),
+    ...(normalized.slotKey ? { slotKey: normalized.slotKey } : {}),
+    title: normalized.title,
+    content: normalized.content,
+    kind: normalized.kind,
     reason
   };
 }
@@ -634,7 +727,11 @@ function normalizeCandidate(candidate: ExtractionCandidate): NormalizedExtractio
         .filter((id): id is string => id != null)
     : [];
   const slotKey = normalizeSlotKey(candidate.slotKey);
-  if (action === "ignore") {
+  const title = typeof candidate.title === "string" ? candidate.title.trim().slice(0, 80) : "";
+  const content = typeof candidate.content === "string" ? candidate.content.trim().slice(0, 800) : "";
+  const importance = clampInteger(candidate.importance, 1, 5, 3);
+  const confidence = clampNumber(candidate.confidence, 0, 1, 0);
+  if (action === "ignore" && operation !== "ignore_wrong_scope") {
     return {
       action,
       operation,
@@ -642,23 +739,19 @@ function normalizeCandidate(candidate: ExtractionCandidate): NormalizedExtractio
       conflictsWithMemoryIds,
       ...(targetMemoryId ? { targetMemoryId } : {}),
       ...(slotKey ? { slotKey } : {}),
-      title: "",
-      content: "",
-      kind: "other",
-      importance: 1,
-      confidence: 0
+      title,
+      content,
+      kind: normalizeKind(candidate.kind),
+      importance,
+      confidence
     };
   }
-  const title = typeof candidate.title === "string" ? candidate.title.trim().slice(0, 80) : "";
-  const content = typeof candidate.content === "string" ? candidate.content.trim().slice(0, 800) : "";
   if (!title || !content) {
     return null;
   }
   if (!scope) {
     return null;
   }
-  const importance = clampInteger(candidate.importance, 1, 5, 3);
-  const confidence = clampNumber(candidate.confidence, 0, 1, 0);
   return {
     action,
     operation,

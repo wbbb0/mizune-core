@@ -55,7 +55,7 @@ test("initializeBootstrapState initializes state database before resetting runti
       groupMembershipStore: { async init() {} } as any,
       userIdentityStore: { async init() {} } as any,
       userStore: { async init() {}, async list() { return []; } } as any,
-      contextStore: { async init() {}, migrateUserMemories() { return 0; } } as any,
+      contextStore: { async init() {} } as any,
       npcDirectory: { async refresh() {} } as any,
       personaStore: { async init() {}, async get() { return createEmptyPersona(); }, isComplete() { return false; } } as any,
       globalRuleStore: { async init() {} } as any,

@@ -58,7 +58,8 @@
 - `context.maintenance`：`maintenance_jobs`、`manual_audit_events`
 
 旧版没有 `__sqlite_schema_groups` 元数据的数据库会先按当前 schema 校验；校验通过则接管并写入表组元数据，校验失败则只重置失败的表组。
-其中 `context.items` 和 `context.embeddings` 会在无元数据接管时补齐旧实现已经支持的 `slot_key`、`embedding_text_hash`、`text_hash` 列，避免把升级到表组机制本身误判为业务结构失效。
+`context.items` 当前 schema 以 layer、subject 和 prompt/retrieval/audit 计数字段为准；旧业务结构不再做无损迁移。
+`context.embeddings` 会在无元数据接管时补齐旧实现已经支持的 `text_hash` 列，避免把升级到表组机制本身误判为业务结构失效。
 
 ## Sessions Store 表组
 

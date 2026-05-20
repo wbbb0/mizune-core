@@ -930,6 +930,13 @@ function sortPromptFacts(facts: ContextMemoryFactEntry[], queryText: string): Co
     .map((item) => item.fact);
 }
 
+function listUserPromptFactsForPrompt(
+  deps: GenerationPromptBuilderDeps,
+  userId: string
+): ContextMemoryFactEntry[] {
+  return deps.contextStore?.listUserPromptFacts(userId) ?? [];
+}
+
 function scorePromptFact(fact: ContextMemoryFactEntry, queryText: string, now: number): number {
   const kindWeight = ({
     boundary: 8,
@@ -1161,7 +1168,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         );
     const allCurrentUserMemories = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
       ? []
-      : deps.contextStore?.listUserFacts(input.currentUser.userId) ?? [];
+      : listUserPromptFactsForPrompt(deps, input.currentUser.userId);
     const memoryQueryText = buildBatchQueryText(input.batchMessages);
     const userFactSelection = selectFixedPromptFacts(allCurrentUserMemories, deps.config.context.retrieval.maxFixedUserFacts, {
       queryText: memoryQueryText
@@ -1185,7 +1192,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       : await deps.contextRetrievalService?.retrieveUserContext({
           userId: input.currentUser!.userId,
           queryText: memoryQueryText,
-          excludeItemIds: allCurrentUserMemories.map((item) => item.id),
+          excludeItemIds: currentUserMemories.map((item) => item.id),
           ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
         }) ?? [];
     deps.contextRetrievalService?.recordPromptMemoryReport?.({
@@ -1343,7 +1350,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         );
     const allCurrentUserMemories = (scenarioHostMode || assistantMode || !input.currentUser?.userId)
       ? []
-      : deps.contextStore?.listUserFacts(input.currentUser.userId) ?? [];
+      : listUserPromptFactsForPrompt(deps, input.currentUser.userId);
     const memoryQueryText = buildScheduledQueryText(scheduledTrigger);
     const userFactSelection = selectFixedPromptFacts(allCurrentUserMemories, deps.config.context.retrieval.maxFixedUserFacts, {
       queryText: memoryQueryText
@@ -1367,7 +1374,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       : await deps.contextRetrievalService?.retrieveUserContext({
           userId: input.currentUser!.userId,
           queryText: memoryQueryText,
-          excludeItemIds: allCurrentUserMemories.map((item) => item.id),
+          excludeItemIds: currentUserMemories.map((item) => item.id),
           ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
         }) ?? [];
     deps.contextRetrievalService?.recordPromptMemoryReport?.({
