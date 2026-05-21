@@ -1,6 +1,7 @@
 import type { OneBotMessageEvent, OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
 import type { SessionOperationMode } from "./sessionOperationMode.ts";
+import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
 import type {
   InternalTranscriptItem as InternalTranscriptItemContract,
   NormalizedInternalTranscriptItem,
@@ -373,6 +374,7 @@ export interface SessionState {
   interruptibleGroupTriggerUserId: string | null;
   historySummary: string | null;
   historyBackfillBoundaryMs: number;
+  taskTracker: SessionTaskTracker;
   internalTranscript: InternalTranscriptItem[];
   debugMarkers: SessionDebugMarker[];
   lastLlmUsage: SessionUsageSnapshot | null;
@@ -411,6 +413,7 @@ export interface PersistedSessionState {
   activeTranscriptGroupId?: string | null;
   historySummary: string | null;
   historyBackfillBoundaryMs?: number;
+  taskTracker?: SessionTaskTracker;
   internalTranscript: InternalTranscriptItem[];
   debugMarkers: SessionDebugMarker[];
   lastLlmUsage: SessionUsageSnapshot | null;

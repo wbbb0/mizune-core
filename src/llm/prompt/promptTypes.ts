@@ -15,6 +15,7 @@ import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { LlmMessage } from "../llmClient.ts";
 import type { ToolsetRuleEntry } from "./toolsetRuleStore.ts";
 import type { ContextRetrievedItem } from "#context/contextTypes.ts";
+import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
 
 export type PromptInteractionMode = "normal" | "debug";
 
@@ -152,6 +153,7 @@ export interface PromptInput {
   retrievedUserContext?: ContextRetrievedItem[];
   globalRules?: GlobalRuleEntry[];
   historySummary?: string | null | undefined;
+  taskTracker?: SessionTaskTracker | undefined;
   recentMessages: PromptHistoryMessage[];
   debugMarkers?: SessionDebugMarker[] | undefined;
   liveResources?: PromptLiveResource[] | undefined;
@@ -287,6 +289,7 @@ export interface InternalSessionTriggerPromptInput {
   retrievedUserContext?: PromptInput["retrievedUserContext"];
   globalRules?: PromptInput["globalRules"];
   historySummary?: string | null | undefined;
+  taskTracker?: PromptInput["taskTracker"];
   recentMessages: PromptInput["recentMessages"];
   debugMarkers?: PromptInput["debugMarkers"];
   liveResources?: PromptInput["liveResources"];

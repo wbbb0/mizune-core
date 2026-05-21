@@ -131,6 +131,7 @@ export interface GenerationPromptBuilder {
     participantProfiles: GenerationPromptParticipantProfile[];
     currentUser: StoredUser;
     historySummary: string | null;
+    taskTracker?: PromptInput["taskTracker"];
     historyForPrompt: GenerationPromptHistoryMessage[];
     debugMarkers?: SessionDebugMarker[];
     internalTranscript: InternalTranscriptItem[];
@@ -157,6 +158,7 @@ export interface GenerationPromptBuilder {
     participantProfiles: GenerationPromptParticipantProfile[];
     currentUser: StoredUser;
     historySummary: string | null;
+    taskTracker?: PromptInput["taskTracker"];
     historyForPrompt: GenerationPromptHistoryMessage[];
     debugMarkers?: SessionDebugMarker[];
     internalTranscript: InternalTranscriptItem[];
@@ -1063,6 +1065,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     participantProfiles: GenerationPromptParticipantProfile[];
     currentUser: StoredUser;
     historySummary: string | null;
+    taskTracker?: PromptInput["taskTracker"];
     historyForPrompt: GenerationPromptHistoryMessage[];
     debugMarkers?: SessionDebugMarker[];
     internalTranscript: InternalTranscriptItem[];
@@ -1243,6 +1246,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       retrievedUserContext,
       globalRules,
       historySummary: input.historySummary,
+      ...(input.taskTracker ? { taskTracker: input.taskTracker } : {}),
       debugMarkers: input.debugMarkers,
       liveResources,
       toolsetRules,
@@ -1292,6 +1296,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     participantProfiles: GenerationPromptParticipantProfile[];
     currentUser: StoredUser;
     historySummary: string | null;
+    taskTracker?: PromptInput["taskTracker"];
     historyForPrompt: GenerationPromptHistoryMessage[];
     debugMarkers?: SessionDebugMarker[];
     internalTranscript: InternalTranscriptItem[];
@@ -1437,6 +1442,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       retrievedUserContext,
       globalRules,
       historySummary: input.historySummary,
+      ...(input.taskTracker ? { taskTracker: input.taskTracker } : {}),
       debugMarkers: input.debugMarkers,
       liveResources,
       toolsetRules,

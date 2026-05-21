@@ -109,6 +109,7 @@ export interface InternalApiSessionDetail {
       oncePending: boolean;
     };
     historySummary: string | null;
+    taskTracker: unknown;
     derivedObservations: DerivedObservation[];
     internalTranscript: unknown[];
     debugMarkers: unknown[];

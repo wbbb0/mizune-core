@@ -40,6 +40,8 @@ import { resolveInternalUserIdForOneBotPrivateUser } from "#identity/userIdentit
 import type { ProfileToolScope } from "#llm/tools/profileToolScope.ts";
 import type { SessionModeDefinition, SessionModeSetupOperation } from "#modes/types.ts";
 import type { PromptInput } from "#llm/prompt/promptTypes.ts";
+import { sessionTaskTrackerService } from "#conversation/taskTracker/sessionTaskTrackerService.ts";
+import { buildTurnPlannerTaskContext } from "#conversation/taskTracker/taskTrackerPlannerContext.ts";
 
 type ActiveDraftOperation = {
   kind: "persona_setup" | "mode_setup";
@@ -537,6 +539,17 @@ export function createGenerationSessionOrchestrator(
       const relationship: Relationship = user?.relationship ?? "known";
       await historyCompressor.maybeCompress(sessionId, { triggerReason: "pre_generation" });
       let refreshedSession = sessionManager.getSession(sessionId);
+      const hasRunningResources = await hasRunningResourcesForTaskTracker(toolRuntime);
+      const trackerAfterUserBatch = sessionTaskTrackerService.observeUserBatch({
+        tracker: refreshedSession.taskTracker,
+        messages,
+        hasRunningResources
+      });
+      if (JSON.stringify(trackerAfterUserBatch) !== JSON.stringify(refreshedSession.taskTracker)) {
+        sessionManager.setTaskTracker(sessionId, trackerAfterUserBatch);
+        persistSession(sessionId, "task_tracker_user_batch_observed");
+        refreshedSession = sessionManager.getSession(sessionId);
+      }
       const sessionModeId = refreshedSession.modeId;
       const assistantMode = isAssistantMode(sessionModeId);
       const persona = await personaStore.get();
@@ -618,7 +631,6 @@ export function createGenerationSessionOrchestrator(
             sessionCaptioner,
             turnPlanner: sessionRuntime.turnPlanner,
             debounceManager: sessionRuntime.debounceManager,
-            historyCompressor,
             sessionManager,
             persistSession
           },
@@ -633,6 +645,7 @@ export function createGenerationSessionOrchestrator(
             currentUser: user,
             batchMessages: promptSafety.runtimeBatchMessages,
             availableToolsets: plannerToolsets,
+            taskContext: buildTurnPlannerTaskContext(refreshedSession.taskTracker),
             sendTarget: {
               delivery: resolvedDelivery,
               chatType: last.chatType,
@@ -645,6 +658,18 @@ export function createGenerationSessionOrchestrator(
             abortSignal: abortController.signal
           }
         );
+        if (gateResult.plannerDecision?.taskIntent) {
+          const latestSession = sessionManager.getSession(sessionId);
+          const trackerAfterPlannerIntent = sessionTaskTrackerService.observePlannerTaskIntent({
+            tracker: latestSession.taskTracker,
+            intent: gateResult.plannerDecision.taskIntent,
+            hasRunningResources
+          });
+          if (JSON.stringify(trackerAfterPlannerIntent) !== JSON.stringify(latestSession.taskTracker)) {
+            sessionManager.setTaskTracker(sessionId, trackerAfterPlannerIntent);
+            persistSession(sessionId, "task_tracker_planner_intent_observed");
+          }
+        }
         if (gateResult.action === "skip") {
           if (sessionManager.finishGeneration(sessionId, abortController)) {
             persistSession(sessionId, "generation_finished");
@@ -652,6 +677,22 @@ export function createGenerationSessionOrchestrator(
             services.processNextSessionWork(sessionId);
           }
           return;
+        }
+        if (gateResult.topicSwitchCompression) {
+          const compressed = await historyCompressor.compactOldHistoryKeepingRecent(
+            sessionId,
+            gateResult.topicSwitchCompression.preservedMessageCount,
+            { triggerReason: "turn_planner_topic_switch" }
+          );
+          logger.info({
+            sessionId,
+            preservedMessageCount: gateResult.topicSwitchCompression.preservedMessageCount,
+            compressed,
+            ...(gateResult.plannerDecision?.reason ? { reason: gateResult.plannerDecision.reason } : {})
+          }, "turn_planner_topic_switch_compacted");
+          if (compressed) {
+            persistSession(sessionId, "turn_planner_topic_switch_compacted");
+          }
         }
         resolvedModelRef = gateResult.resolvedModelRef;
         plannerToolsets = listTurnToolsets({
@@ -829,6 +870,7 @@ export function createGenerationSessionOrchestrator(
             participantProfiles,
             currentUser: user,
             historySummary: refreshedSession.historySummary,
+            taskTracker: refreshedSession.taskTracker,
             historyForPrompt: historyForPromptMessages,
             debugMarkers,
             internalTranscript: refreshedSession.internalTranscript,
@@ -1025,6 +1067,7 @@ export function createGenerationSessionOrchestrator(
         participantProfiles,
         currentUser,
         historySummary: session.historySummary,
+        taskTracker: session.taskTracker,
         historyForPrompt: historyForPromptMessages,
         debugMarkers: session.debugMarkers,
         internalTranscript: session.internalTranscript,
@@ -1209,6 +1252,7 @@ export function createGenerationSessionOrchestrator(
         participantProfiles,
         currentUser,
         historySummary: session.historySummary,
+        taskTracker: session.taskTracker,
         historyForPrompt: historyForPromptMessages,
         debugMarkers: session.debugMarkers,
         internalTranscript: session.internalTranscript,
@@ -1275,4 +1319,27 @@ export function createGenerationSessionOrchestrator(
     runInternalTriggerSession,
     runInlineTriggerBatchSession
   };
+}
+
+async function hasRunningResourcesForTaskTracker(
+  toolRuntime: Pick<GenerationSessionOrchestratorDeps["toolRuntime"], "shellRuntime" | "browserService" | "downloadRuntime">
+): Promise<boolean> {
+  const [browserResult, shellResult] = await Promise.allSettled([
+    toolRuntime.browserService?.listPages?.() ?? Promise.resolve({ pages: [] }),
+    toolRuntime.shellRuntime?.listSessionResources?.() ?? Promise.resolve([])
+  ]);
+  if (browserResult.status === "rejected" || shellResult.status === "rejected") {
+    return true;
+  }
+  if (browserResult.value.pages.some((page) => page.status === "active")) {
+    return true;
+  }
+  if (shellResult.value.some((session) => session.status === "active")) {
+    return true;
+  }
+  try {
+    return toolRuntime.downloadRuntime?.list?.().some((download) => download.status === "running") ?? false;
+  } catch {
+    return true;
+  }
 }

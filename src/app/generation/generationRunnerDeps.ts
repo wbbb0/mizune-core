@@ -145,7 +145,7 @@ export type GenerationPersona = Awaited<ReturnType<GenerationIdentityDeps["perso
 
 export type GenerationTurnPlannerDeps =
   Pick<GenerationPromptBuilderDeps, "config">
-  & Pick<GenerationSessionRuntimeDeps, "logger" | "llmClient" | "sessionCaptioner" | "turnPlanner" | "debounceManager" | "historyCompressor">
+  & Pick<GenerationSessionRuntimeDeps, "logger" | "llmClient" | "sessionCaptioner" | "turnPlanner" | "debounceManager">
   & Pick<GenerationLifecycleDeps, "persistSession">
   & {
     sessionManager: SessionTurnPlannerAccess;
@@ -173,5 +173,5 @@ export type GenerationSessionOrchestratorDeps =
       sessionManager: SessionGenerationOrchestratorAccess;
     };
     identity: Pick<GenerationIdentityDeps, "userStore" | "personaStore" | "rpProfileStore" | "scenarioProfileStore" | "setupStore" | "scenarioHostStateStore" | "globalProfileReadinessStore">;
-    toolRuntime: Pick<GenerationToolRuntimeDeps, "shellRuntime">;
+    toolRuntime: Pick<GenerationToolRuntimeDeps, "shellRuntime" | "browserService" | "downloadRuntime">;
   };

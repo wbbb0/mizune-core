@@ -10,6 +10,7 @@ import { createSessionState, restoreSessionState, toPersistedSessionState } from
 import { clearSessionState } from "../../src/conversation/session/sessionMutations.ts";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
+import { createEmptySessionTaskTracker } from "../../src/conversation/taskTracker/taskTrackerTypes.ts";
 
 async function withDataDir(name: string, fn: (dataDir: string) => Promise<void>) {
   const dataDir = await mkdtemp(join(tmpdir(), `${name}-`));
@@ -211,6 +212,7 @@ test("session persistence loads legacy title_generation_event transcript items",
       pendingTranscriptGroupId: null,
       activeTranscriptGroupId: null,
       historySummary: null,
+      taskTracker: createEmptySessionTaskTracker(),
       internalTranscript: [
         {
           kind: "title_generation_event",
@@ -282,6 +284,7 @@ test("session persistence round-trips asset attachments in pending messages and 
       pendingTranscriptGroupId: null,
       activeTranscriptGroupId: null,
       historySummary: null,
+      taskTracker: createEmptySessionTaskTracker(),
       internalTranscript: [{
         kind: "user_message",
         role: "user",
@@ -342,6 +345,7 @@ test("session persistence handles transcript item index shifts", async () => {
       pendingTranscriptGroupId: null,
       activeTranscriptGroupId: null,
       historySummary: null,
+      taskTracker: createEmptySessionTaskTracker(),
       internalTranscript: [
         testUserTranscriptItem("item-a", "first", 1),
         testUserTranscriptItem("item-b", "second", 2)
@@ -477,6 +481,7 @@ function testUserTranscriptItem(id: string, text: string, timestampMs: number): 
           }
         ],
         historySummary: null,
+        taskTracker: createEmptySessionTaskTracker(),
         internalTranscript: [
           {
             kind: "user_message",
@@ -592,6 +597,7 @@ function testUserTranscriptItem(id: string, text: string, timestampMs: number): 
         replyDelivery: "onebot",
         pendingMessages: [],
         historySummary: null,
+        taskTracker: createEmptySessionTaskTracker(),
         internalTranscript: [{
           kind: "assistant_tool_call",
           llmVisible: true,
@@ -727,6 +733,7 @@ function testUserTranscriptItem(id: string, text: string, timestampMs: number): 
         replyDelivery: "onebot",
         pendingMessages: [],
         historySummary: null,
+        taskTracker: createEmptySessionTaskTracker(),
         internalTranscript: [],
         debugMarkers: [],
         lastLlmUsage: {

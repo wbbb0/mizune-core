@@ -59,6 +59,8 @@ import {
   type SessionOperationMode
 } from "./sessionOperationMode.ts";
 import type { ToolObservationSummary } from "./toolObservation.ts";
+import { normalizeTaskTracker } from "#conversation/taskTracker/taskTrackerNormalize.ts";
+import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
 
 export type {
   ActiveAssistantResponse,
@@ -510,6 +512,29 @@ export class SessionManager {
     return this.requireSession(sessionId).lastLlmUsage;
   }
 
+  getTaskTracker(sessionId: string): SessionTaskTracker {
+    return structuredClone(this.requireSession(sessionId).taskTracker);
+  }
+
+  updateTaskTracker(
+    sessionId: string,
+    updater: (current: SessionTaskTracker) => SessionTaskTracker
+  ): SessionTaskTracker {
+    const session = this.requireSession(sessionId);
+    session.taskTracker = normalizeTaskTracker(updater(structuredClone(session.taskTracker)));
+    session.lastActiveAt = Date.now();
+    this.notifySessionChanged(sessionId);
+    return structuredClone(session.taskTracker);
+  }
+
+  setTaskTracker(sessionId: string, tracker: SessionTaskTracker): SessionTaskTracker {
+    const session = this.requireSession(sessionId);
+    session.taskTracker = normalizeTaskTracker(tracker);
+    session.lastActiveAt = Date.now();
+    this.notifySessionChanged(sessionId);
+    return structuredClone(session.taskTracker);
+  }
+
   isGenerating(sessionId: string): boolean {
     const session = this.requireSession(sessionId);
     return isSessionGenerating(session);
@@ -811,6 +836,7 @@ export class SessionManager {
     participantLabel: string | null;
     debugControl: SessionDebugControlState;
     historySummary: string | null;
+    taskTracker: SessionTaskTracker;
     internalTranscript: InternalTranscriptItem[];
     debugMarkers: SessionDebugMarker[];
     lastLlmUsage: SessionUsageSnapshot | null;

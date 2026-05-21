@@ -13,6 +13,7 @@ import { projectCompressionHistorySnapshot, projectCompressionHistorySnapshotByT
 import type { AppConfig } from "#config/config.ts";
 import { normalizeTranscriptItems } from "./transcriptMetadata.ts";
 import { resolveSessionParticipantLabel } from "./sessionIdentity.ts";
+import { projectTaskTrackerForSessionView } from "#conversation/taskTracker/taskTrackerView.ts";
 
 // Provides read-only projections and snapshots derived from session state.
 export function cloneSessionState(session: SessionState): SessionState {
@@ -86,6 +87,7 @@ export function getSessionViewSnapshot(session: SessionState): {
   participantLabel: string | null;
   debugControl: SessionDebugControlState;
   historySummary: string | null;
+  taskTracker: SessionState["taskTracker"];
   internalTranscript: NormalizedInternalTranscriptItem[];
   debugMarkers: SessionDebugMarker[];
   lastLlmUsage: SessionUsageSnapshot | null;
@@ -106,6 +108,7 @@ export function getSessionViewSnapshot(session: SessionState): {
     participantLabel,
     debugControl: { ...session.debugControl },
     historySummary: session.historySummary,
+    taskTracker: projectTaskTrackerForSessionView(session.taskTracker),
     internalTranscript: normalizeTranscriptItems(session.internalTranscript),
     debugMarkers: [...session.debugMarkers],
     lastLlmUsage: session.lastLlmUsage,

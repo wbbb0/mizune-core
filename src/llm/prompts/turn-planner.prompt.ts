@@ -16,6 +16,7 @@ import {
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import type { MessageContentPart } from "#messages/contentParts.ts";
 import { renderPromptSection, renderPromptSectionRaw } from "./prompt-section.ts";
+import type { TurnPlannerTaskContext } from "#conversation/taskTracker/taskTrackerPlannerContext.ts";
 
 export function buildTurnPlannerPrompt(input: {
   sessionId: string;
@@ -75,16 +76,19 @@ export function buildTurnPlannerPrompt(input: {
     kind: "image" | "emoji";
     caption: string;
   }>;
+  taskContext?: TurnPlannerTaskContext | null | undefined;
 }): LlmMessage[] {
+  const hasTaskContext = input.taskContext != null;
   const system = [
     renderPromptSection("planner_identity", [
       "你是 turn_planner，负责判断当前批次消息是否应立即回复、选择大小模型、识别话题连贯性，并规划需要语义判断的初始工具集。你不直接回答用户问题。"
     ]),
     renderPromptSection("planner_rules", [
-      "输出格式严格为以下 8 行，不得多写解释、空行或代码块：",
+      `输出格式严格为以下 ${hasTaskContext ? "9" : "8"} 行，不得多写解释、空行或代码块：`,
       "reason: <中文简短理由，少于20字>",
       "reply_decision: <reply_small|reply_large|wait|no_reply>",
       "topic_decision: <continue_topic|new_topic>",
+      ...(hasTaskContext ? ["task_intent: <none|continue_current|modify_current|pause_current|cancel_current|confirm_completed|switch_topic|start_unrelated_task|restore_parked|unknown>|<target_task_id_or_none>|<low|medium|high>"] : []),
       "required_capabilities: <逗号分隔能力标签；无则填 none>",
       "context_dependencies: <逗号分隔依赖标签；无则填 none>",
       "recent_domain_reuse: <逗号分隔最近域/toolset id；无则填 none>",
@@ -106,7 +110,12 @@ export function buildTurnPlannerPrompt(input: {
       "3. 私聊默认 reply_small，不要输出 no_reply；私聊里即使只是寒暄、确认或收尾，也交给主模型处理。",
       "4. 群聊中当前批次明显不需要机器人回应时可判 no_reply，例如他人闲聊、对其他人的回应、单纯反馈或无关收尾；no_reply 不选择任何工具集。",
       "5. 含语音/图片/转发/引用通常应 reply，不可仅因文本短判 wait。",
-      "6. 仅在明显半句话未完时判 wait。"
+      "6. 仅在明显半句话未完时判 wait。",
+      ...(hasTaskContext ? [
+        "task_intent 只判断用户新消息与 task_context 的关系；不要输出自然语言句子。",
+        "语义不确定填 unknown|none|low；不要为了猜测而取消、完成或恢复任务。",
+        "restore_parked 必须填写 task_context 中已有 task_id；没有明确目标就填 unknown|none|low。"
+      ] : [])
     ])
   ].filter((item): item is string => Boolean(item)).join("\n");
 
@@ -117,6 +126,7 @@ export function buildTurnPlannerPrompt(input: {
       `relationship=${input.relationship}`,
       `current_user_special_role=${input.currentUserSpecialRole ?? "none"}`
     ]),
+    renderPromptSection("planner_task_context", input.taskContext ? formatTaskContext(input.taskContext) : []),
     renderPromptSection("available_toolsets", input.availableToolsets.length > 0
       ? input.availableToolsets.map((toolset) => (
           `${toolset.id} | ${toolset.title} | ${toolset.description} | tools=${toolset.toolNames.join(",")}${toolset.plannerSignals && toolset.plannerSignals.length > 0 ? ` | signals=${toolset.plannerSignals.join("/")}` : ""}`
@@ -182,6 +192,22 @@ function formatMediaCaptions(input: Array<{
     ...input.map((item) => (
       `- ${sanitizeCaptionLine(item.imageId)} ${item.kind} ${item.kind === "emoji" ? "表情" : "图片"}描述：${sanitizeCaptionLine(item.caption)}`
     ))
+  ];
+}
+
+function formatTaskContext(input: TurnPlannerTaskContext): string[] {
+  return [
+    ...(input.primary
+      ? [
+          `primary=${input.primary.taskId} status=${input.primary.status}`,
+          `objective=${input.primary.objective}`,
+          ...(input.primary.next ? [`next=${input.primary.next}`] : []),
+          ...(input.primary.blocker ? [`blocker=${input.primary.blocker}`] : [])
+        ]
+      : ["primary=none"]),
+    input.parked.length > 0
+      ? `parked=${input.parked.map((task) => `${task.taskId}:${task.status}:${task.objective}${task.summary ? `:${task.summary}` : ""}`).join(" | ")}`
+      : "parked=none"
   ];
 }
 

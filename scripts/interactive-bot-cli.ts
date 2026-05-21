@@ -5,6 +5,8 @@ import type { AppConfig } from "#config/config.ts";
 import { createAppRuntime } from "#app/runtime/appRuntime.ts";
 import type { AppServiceBootstrap } from "#app/bootstrap/appServiceBootstrap.ts";
 import { FakeOneBotClient, type FakeOneBotSentMessage } from "#testing/fakeOneBotClient.ts";
+import { projectTaskTrackerForSessionView } from "#conversation/taskTracker/taskTrackerView.ts";
+import { buildGroupSessionId, buildPrivateSessionId } from "#conversation/session/sessionIdentity.ts";
 import {
   createInteractiveConfig,
   prepareInteractiveRuntime,
@@ -23,6 +25,10 @@ interface CliArgs {
   selfId: string;
   atSelf: boolean;
   quiet: boolean;
+  enableShell: boolean;
+  enableBrowser: boolean;
+  enableSearch: boolean;
+  messageIdBase?: number;
   inputFile?: string;
 }
 
@@ -52,7 +58,8 @@ async function main(): Promise<void> {
 
   const fakeOneBot = new FakeOneBotClient({
     selfId: args.selfId,
-    selfName: "CLI Bot"
+    selfName: "CLI Bot",
+    initialMessageId: args.messageIdBase ?? createDefaultMessageIdBase()
   });
   if (!args.quiet) {
     fakeOneBot.on("sent", (message: FakeOneBotSentMessage) => {
@@ -207,6 +214,10 @@ async function handleCliCommand(
     case "status":
       await printStatus(state, services);
       return true;
+    case "task":
+    case "tasks":
+      printTaskTrackers(state, services, value === "all" || value === "--all");
+      return true;
     case "context":
       await printContextItems(state, services);
       return true;
@@ -256,12 +267,13 @@ function printHelp(): void {
     "/group <id>             切换群聊",
     "/at on|off              群聊时是否 @ bot",
     "/status                 查看运行状态",
+    "/task [all]             查看当前 session taskTracker 投影；all 查看全部",
     "/context                查看当前用户 context items",
     "/retrieve <query>       以当前用户身份执行 context 召回",
     "/rebuild-context        补齐当前用户 embedding 并重建索引",
     "/wait [ms]              等待会话处理完成，默认 30000ms",
     "/quit                   退出",
-    "启动参数：--quiet 减少日志和提示；--input-file <file> 按行执行输入"
+    "启动参数：--enable-shell/--enable-browser/--enable-search 打开对应工具；--quiet 减少日志和提示；--input-file <file> 按行执行输入"
   ].join("\n") + "\n");
 }
 
@@ -281,7 +293,13 @@ async function printStatus(state: CliState, services: AppServiceBootstrap): Prom
       modeId: session.modeId,
       transcriptCount: session.internalTranscript.length,
       pendingCount: session.pendingMessages.length,
-      phase: session.phase
+      phase: session.phase,
+      taskTracker: {
+        primaryStatus: session.taskTracker.primary?.status ?? null,
+        parkedCount: session.taskTracker.parked.length,
+        evidenceCount: session.taskTracker.evidence.length,
+        importantToolRefCount: session.taskTracker.primary?.importantToolRefs.length ?? 0
+      }
     })),
     context: {
       store: services.contextStore.getStatus(),
@@ -290,6 +308,27 @@ async function printStatus(state: CliState, services: AppServiceBootstrap): Prom
       lastRetrieval: services.contextRetrievalService.getLastDebugReport()
     }
   }, null, 2) + "\n");
+}
+
+function printTaskTrackers(state: CliState, services: AppServiceBootstrap, includeAll: boolean): void {
+  const activeSessionId = getActiveSessionId(services, state);
+  const sessions = includeAll
+    ? services.sessionManager.listSessions()
+    : services.sessionManager.listSessions().filter((session) => session.id === activeSessionId);
+  output.write(JSON.stringify({
+    activeSessionId,
+    sessions: sessions.map((session) => ({
+      id: session.id,
+      taskTracker: projectTaskTrackerForSessionView(session.taskTracker)
+    }))
+  }, null, 2) + "\n");
+}
+
+function getActiveSessionId(services: AppServiceBootstrap, state: CliState): string {
+  const channelId = services.config.configRuntime.instanceName;
+  return state.chatType === "group"
+    ? buildGroupSessionId(channelId, state.groupId ?? "10000")
+    : buildPrivateSessionId(channelId, state.userId);
 }
 
 async function printContextItems(state: CliState, services: AppServiceBootstrap): Promise<void> {
@@ -360,7 +399,10 @@ function parseArgs(argv: string[]): CliArgs {
     senderName: "CLI User",
     selfId: "10000",
     atSelf: true,
-    quiet: false
+    quiet: false,
+    enableShell: false,
+    enableBrowser: false,
+    enableSearch: false
   };
   for (let index = 0; index < argv.length; index += 1) {
     const current = argv[index];
@@ -414,6 +456,24 @@ function parseArgs(argv: string[]): CliArgs {
       case "--no-at":
         args.atSelf = false;
         break;
+      case "--enable-shell":
+        args.enableShell = true;
+        break;
+      case "--enable-browser":
+        args.enableBrowser = true;
+        break;
+      case "--enable-search":
+        args.enableSearch = true;
+        break;
+      case "--message-id-base":
+        if (next) {
+          const parsed = parsePositiveInteger(next);
+          if (parsed != null) {
+            args.messageIdBase = parsed;
+          }
+          index += 1;
+        }
+        break;
       case "--quiet":
         args.quiet = true;
         break;
@@ -428,6 +488,10 @@ function parseArgs(argv: string[]): CliArgs {
     }
   }
   return args;
+}
+
+function createDefaultMessageIdBase(): number {
+  return Math.max(1, Date.now() % 1_000_000_000);
 }
 
 main().catch((error: unknown) => {

@@ -14,6 +14,8 @@ import { createTableGroupsFromDataDomain, listDataModelRows } from "#data/model/
 import { chatAttachmentSchema } from "#types/chatContracts.ts";
 import { internalTranscriptItemSchema, transcriptMessageContentPartSchema } from "./transcriptContract.ts";
 import { sessionDataDomain, sessionsTableModel, sessionTranscriptItemsTableModel } from "./sessionDataModel.ts";
+import { createEmptySessionTaskTracker, sessionTaskTrackerSchema } from "#conversation/taskTracker/taskTrackerTypes.ts";
+import { normalizeTaskTracker } from "#conversation/taskTracker/taskTrackerNormalize.ts";
 
 const personaDraftSchema = z.object({
   name: z.string(),
@@ -126,6 +128,7 @@ const persistedSessionSchema = z.object({
   activeTranscriptGroupId: z.string().min(1).nullable().optional(),
   historySummary: z.string().nullable(),
   historyBackfillBoundaryMs: z.number().int().nonnegative().optional(),
+  taskTracker: sessionTaskTrackerSchema.default(createEmptySessionTaskTracker()),
   internalTranscript: z.array(internalTranscriptItemSchema),
   debugMarkers: z.array(z.object({
     kind: z.enum(["debug_enabled", "debug_disabled", "debug_once_armed", "debug_once_consumed", "debug_dump_sent"]),
@@ -208,6 +211,7 @@ export class SessionPersistence {
         active_transcript_group_id,
         history_summary,
         history_backfill_boundary_ms,
+        task_tracker_json,
         COALESCE((
           SELECT json_group_array(json(ordered_items.item_json))
           FROM (
@@ -264,6 +268,7 @@ export class SessionPersistence {
             active_transcript_group_id,
             history_summary,
             history_backfill_boundary_ms,
+            task_tracker_json,
             debug_markers_json,
             last_llm_usage_json,
             sent_messages_json,
@@ -290,6 +295,7 @@ export class SessionPersistence {
             @activeTranscriptGroupId,
             @historySummary,
             @historyBackfillBoundaryMs,
+            @taskTrackerJson,
             @debugMarkersJson,
             @lastLlmUsageJson,
             @sentMessagesJson,
@@ -316,6 +322,7 @@ export class SessionPersistence {
             active_transcript_group_id = excluded.active_transcript_group_id,
             history_summary = excluded.history_summary,
             history_backfill_boundary_ms = excluded.history_backfill_boundary_ms,
+            task_tracker_json = excluded.task_tracker_json,
             debug_markers_json = excluded.debug_markers_json,
             last_llm_usage_json = excluded.last_llm_usage_json,
             sent_messages_json = excluded.sent_messages_json,
@@ -443,6 +450,7 @@ type PersistedSessionRow = {
   active_transcript_group_id: string | null;
   history_summary: string | null;
   history_backfill_boundary_ms: number | null;
+  task_tracker_json: string;
   internal_transcript_json: string;
   debug_markers_json: string;
   last_llm_usage_json: string | null;
@@ -502,6 +510,7 @@ function toPersistedSessionParams(session: PersistedSessionState): Record<string
     activeTranscriptGroupId: session.activeTranscriptGroupId ?? null,
     historySummary: session.historySummary,
     historyBackfillBoundaryMs: session.historyBackfillBoundaryMs ?? null,
+    taskTrackerJson: JSON.stringify(normalizeTaskTracker(session.taskTracker)),
     debugMarkersJson: JSON.stringify(session.debugMarkers),
     lastLlmUsageJson: session.lastLlmUsage == null ? null : JSON.stringify(session.lastLlmUsage),
     sentMessagesJson: JSON.stringify(session.sentMessages),
@@ -647,6 +656,7 @@ function rowToPersistedSessionState(row: PersistedSessionRow): PersistedSessionS
       : {}),
     historySummary: row.history_summary,
     ...(row.history_backfill_boundary_ms != null ? { historyBackfillBoundaryMs: row.history_backfill_boundary_ms } : {}),
+    taskTracker: normalizeTaskTracker(JSON.parse(row.task_tracker_json)),
     internalTranscript: JSON.parse(row.internal_transcript_json),
     debugMarkers: JSON.parse(row.debug_markers_json),
     lastLlmUsage: row.last_llm_usage_json == null ? null : JSON.parse(row.last_llm_usage_json),

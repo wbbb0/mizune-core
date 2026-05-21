@@ -132,6 +132,61 @@ function createConfig() {
     assert.deepEqual(result.toolsetIds, ["web_research"]);
   });
 
+  test("reply gate adds task intent only when task context is present", async () => {
+    let capturedMessages: LlmMessage[] = [];
+    const gate = createReplyGate(createConfig(), {
+      resultText: [
+        "reason: 用户想暂停任务",
+        "reply_decision: reply_small",
+        "topic_decision: continue_topic",
+        "task_intent: pause_current|none|high",
+        "required_capabilities: none",
+        "context_dependencies: none",
+        "recent_domain_reuse: none",
+        "followup_mode: none",
+        "toolset_ids: none"
+      ].join("\n"),
+      onGenerate(input) {
+        capturedMessages = input.messages;
+      }
+    });
+
+    const result = await gate.decide({
+      sessionId: "qqbot:p:owner",
+      chatType: "private",
+      relationship: "owner",
+      recentMessages: [],
+      availableToolsets: [],
+      taskContext: {
+        primary: {
+          taskId: "task-1",
+          status: "active",
+          objective: "修测试"
+        },
+        parked: []
+      },
+      batchMessages: [
+        createReplyGateBatchMessage({
+          senderName: "Owner",
+          text: "这个先放一下",
+          timestampMs: Date.now()
+        })
+      ]
+    });
+
+    const system = String(capturedMessages[0]?.content ?? "");
+    const secondMessage = capturedMessages[1];
+    const userParts: Array<{ type: string; text?: string }> =
+      secondMessage && Array.isArray(secondMessage.content) ? secondMessage.content : [];
+    const user = userParts.find((part: { type: string; text?: string }) => part.type === "text")?.text ?? "";
+
+    assert.equal(result.taskIntent?.kind, "pause_current");
+    assert.equal(result.taskIntent?.confidence, "high");
+    assert.match(system, /task_intent: <none\|continue_current/);
+    assert.equal(hasPromptSection(user, "planner_task_context"), true);
+    assert.match(user, /primary=task-1 status=active/);
+  });
+
   test("group reply gate keeps no_reply and clears toolsets", async () => {
     const gate = createReplyGate(createConfig(), {
       resultText: "群里闲聊无需回应|no_reply|continue_topic|web_research"
@@ -220,10 +275,6 @@ function createConfig() {
             throw new Error("should not reschedule audio-only batch");
           }
         } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["debounceManager"],
-        historyCompressor: {
-          async maybeCompress() {},
-          async compactOldHistoryKeepingRecent() {}
-        } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["historyCompressor"],
         sessionManager: {
           requeuePendingMessages() {
             throw new Error("should not requeue audio-only batch");
@@ -265,8 +316,7 @@ function createConfig() {
     assert.equal(result.replyDecision, "reply_small");
   });
 
-  test("generation reply gate compacts old history on topic switch", async () => {
-    const compactCalls: Array<{ sessionId: string; keep: number }> = [];
+  test("generation reply gate requests old history compaction on topic switch", async () => {
     const persistReasons: string[] = [];
     const result = await handleGenerationTurnPlanner(
       createGenerationReplyGateDeps({
@@ -279,13 +329,6 @@ function createConfig() {
             return { replyDecision: "reply_large", topicDecision: "new_topic", reason: "明显换题", toolsetIds: [] };
           }
         } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["turnPlanner"],
-        historyCompressor: {
-          async maybeCompress() {},
-          async compactOldHistoryKeepingRecent(sessionId: string, keep: number) {
-            compactCalls.push({ sessionId, keep });
-            return true;
-          }
-        } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["historyCompressor"],
         persistSession(_sessionId, reason) {
           persistReasons.push(reason);
         }
@@ -307,9 +350,9 @@ function createConfig() {
     if (result.action === "continue") {
       assert.deepEqual(result.resolvedModelRef, ["main"]);
       assert.deepEqual(result.toolsetIds, []);
+      assert.deepEqual(result.topicSwitchCompression, { preservedMessageCount: 1 });
     }
-    assert.deepEqual(compactCalls, [{ sessionId: "qqbot:p:audio", keep: 1 }]);
-    assert.deepEqual(persistReasons, ["turn_planner_topic_switch_compacted"]);
+    assert.deepEqual(persistReasons, []);
   });
 
   test("generation reply gate records group no_reply and skips main model", async () => {
@@ -331,7 +374,8 @@ function createConfig() {
               contextDependencies: [],
               recentDomainReuse: [],
               followupMode: "none",
-              toolsetIds: []
+              toolsetIds: [],
+              taskIntent: { kind: "pause_current", confidence: "high" }
             };
           }
         } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["turnPlanner"],
@@ -381,6 +425,7 @@ function createConfig() {
     assert.equal(transcriptItems[0]?.replyDecision, "no_reply");
     assert.equal(transcriptItems[0]?.reason, "群聊无需回应");
     assert.equal(transcriptItems[0]?.toolsetIds, undefined);
+    assert.equal(result.plannerDecision?.taskIntent?.kind, "pause_current");
     assert.deepEqual(persistReasons, ["turn_planner_skip_recorded"]);
   });
 

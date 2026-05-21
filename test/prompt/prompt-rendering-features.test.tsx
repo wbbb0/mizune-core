@@ -12,11 +12,13 @@ import {
   createPromptBatchMessage,
   createPromptUserProfile,
   findPromptBlock,
+  findPromptSection,
   hasPromptSection,
   parsePromptBlocks,
   readPromptLastMessageText,
   readPromptSystemText
 } from "../helpers/prompt-fixtures.tsx";
+import type { SessionTaskTracker } from "../../src/conversation/taskTracker/taskTrackerTypes.ts";
 
   test("prompt builder adds explicit batch metadata and trigger markers for multi-user group batches", async () => {
     const harness = await createMemoryHarness();
@@ -62,6 +64,100 @@ import {
     } finally {
       await harness.cleanup();
     }
+  });
+
+  test("prompt builder does not render task sections without a primary task", async () => {
+    const system = await renderTaskPromptSystem({
+      version: 1,
+      primary: null,
+      parked: [],
+      evidence: []
+    });
+
+    assert.equal(hasPromptSection(system, "task_focus"), false);
+    assert.equal(hasPromptSection(system, "active_task_state"), false);
+    assert.equal(hasPromptSection(system, "agent_execution_guidance"), false);
+  });
+
+  test("prompt builder renders active task state and tool-specific guidance", async () => {
+    const system = await renderTaskPromptSystem(createTaskTracker("active"), [
+      "terminal_run",
+      "open_page",
+      "inspect_page",
+      "web_search"
+    ]);
+
+    assert.equal(hasPromptSection(system, "task_focus"), true);
+    assert.equal(hasPromptSection(system, "active_task_state"), true);
+    assert.equal(hasPromptSection(system, "agent_execution_guidance"), true);
+    assert.match(system, /Shell：避免海量输出命令/);
+    assert.match(system, /Browser：open_page 后先 inspect_page/);
+    assert.match(system, /Search：涉及时效性、版本、价格、政策、新闻、API 状态时搜索/);
+  });
+
+  test("prompt builder renders suspended task as a short inactive hint", async () => {
+    const system = await renderTaskPromptSystem(createTaskTracker("suspended"), ["terminal_run"]);
+    const state = findPromptSection(system, "active_task_state");
+
+    assert.equal(hasPromptSection(system, "task_focus"), false);
+    assert.equal(hasPromptSection(system, "agent_execution_guidance"), false);
+    assert.ok(state);
+    assert.match(state.body, /任务已暂停/);
+    assert.doesNotMatch(state.body, /已完成=/);
+  });
+
+  test("prompt builder does not render completed or canceled task state", async () => {
+    const completedSystem = await renderTaskPromptSystem(createTaskTracker("completed"), ["terminal_run"]);
+    const canceledSystem = await renderTaskPromptSystem(createTaskTracker("canceled"), ["terminal_run"]);
+
+    assert.equal(hasPromptSection(completedSystem, "task_focus"), false);
+    assert.equal(hasPromptSection(completedSystem, "active_task_state"), false);
+    assert.equal(hasPromptSection(completedSystem, "agent_execution_guidance"), false);
+    assert.equal(hasPromptSection(canceledSystem, "task_focus"), false);
+    assert.equal(hasPromptSection(canceledSystem, "active_task_state"), false);
+    assert.equal(hasPromptSection(canceledSystem, "agent_execution_guidance"), false);
+  });
+
+  test("prompt builder keeps ready_to_close task state short", async () => {
+    const system = await renderTaskPromptSystem(createTaskTracker("ready_to_close"), ["terminal_run"]);
+    const state = findPromptSection(system, "active_task_state");
+
+    assert.equal(hasPromptSection(system, "task_focus"), false);
+    assert.equal(hasPromptSection(system, "agent_execution_guidance"), false);
+    assert.ok(state);
+    assert.match(state.body, /ready_to_close/);
+    assert.doesNotMatch(state.body, /关键工具引用=/);
+    assert.doesNotMatch(state.body, /已完成=/);
+  });
+
+  test("prompt builder renders parked tasks as one-line summary only", async () => {
+    const tracker: SessionTaskTracker = {
+      version: 1,
+      primary: null,
+      parked: [{
+        taskId: "parked-1",
+        status: "waiting_tool",
+        objective: "后台测试",
+        summary: "等待终端完成",
+        importantToolRefs: [{
+          toolCallId: "call-1",
+          toolName: "terminal_start",
+          summary: "不应展开的工具摘要",
+          resource: { kind: "shell_session", id: "term-1" }
+        }],
+        updatedAtMs: 1
+      }],
+      evidence: []
+    };
+    const system = await renderTaskPromptSystem(tracker, ["terminal_run"]);
+    const state = findPromptSection(system, "active_task_state");
+
+    assert.equal(hasPromptSection(system, "task_focus"), false);
+    assert.equal(hasPromptSection(system, "agent_execution_guidance"), false);
+    assert.ok(state);
+    assert.match(state.body, /暂停\/后台任务=waiting_tool:后台测试 等待终端完成/);
+    assert.doesNotMatch(state.body, /关键工具引用=/);
+    assert.doesNotMatch(state.body, /不应展开的工具摘要/);
   });
 
   test("prompt builder renders active toolset summary only", async () => {
@@ -854,3 +950,56 @@ import {
       await harness.cleanup();
     }
   });
+
+async function renderTaskPromptSystem(taskTracker: SessionTaskTracker, visibleToolNames: string[] = []): Promise<string> {
+  const harness = await createMemoryHarness();
+  try {
+    const persona = await harness.personaStore.patch({
+      speakingStyle: "直接、简洁，优先把任务做完。"
+    });
+    return readPromptSystemText(buildPrompt({
+      sessionId: "qqbot:p:owner",
+      visibleToolNames,
+      taskTracker,
+      persona,
+      relationship: "owner",
+      npcProfiles: [],
+      participantProfiles: [],
+      userProfile: createPromptUserProfile({ userId: "owner", senderName: "Owner" }),
+      historySummary: null,
+      recentMessages: [],
+      batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "继续", timestampMs: 1 })]
+    }));
+  } finally {
+    await harness.cleanup();
+  }
+}
+
+function createTaskTracker(status: NonNullable<SessionTaskTracker["primary"]>["status"]): SessionTaskTracker {
+  return {
+    version: 1,
+    primary: {
+      taskId: "task-1",
+      status,
+      objective: "实现 TaskTracker prompt 注入",
+      originalRequest: "请实现 TaskTracker",
+      done: Array.from({ length: 12 }, (_, index) => `done-${index}`),
+      next: Array.from({ length: 8 }, (_, index) => `next-${index}`),
+      blockers: status === "waiting_user" ? ["等待用户确认"] : [],
+      importantToolRefs: [{
+        toolCallId: "call-1",
+        toolName: "terminal_run",
+        summary: "运行测试",
+        resource: {
+          kind: "shell_session",
+          id: "term-1"
+        }
+      }],
+      createdAtMs: 1,
+      updatedAtMs: 2,
+      ...(status === "ready_to_close" ? { readyToCloseAtMs: 3 } : {})
+    },
+    parked: [],
+    evidence: []
+  };
+}
