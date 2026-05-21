@@ -75,6 +75,7 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
     ...(input.retrievedUserContext ? { retrievedUserContext: input.retrievedUserContext } : {}),
     ...(input.globalRules ? { globalRules: input.globalRules } : {}),
     historySummary: input.historySummary,
+    ...(input.taskTracker ? { taskTracker: input.taskTracker } : {}),
     liveResources: input.liveResources,
     ...(input.toolsetRules ? { toolsetRules: input.toolsetRules } : {}),
     ...(input.scenarioStateLines ? { scenarioStateLines: input.scenarioStateLines } : {}),
@@ -113,6 +114,9 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
 export function buildScheduledTaskPrompt(
   input: ScheduledTaskPromptInput & { inlineBatchMessage?: string | undefined }
 ): LlmMessage[] {
+  const taskTracker = shouldIncludeTaskTrackerForScheduledTrigger(input.trigger)
+    ? input.taskTracker
+    : undefined;
   const baseSystemLines = buildBaseSystemLines({
     sessionMode: input.targetContext.chatType,
     ...(input.modeId ? { modeId: input.modeId } : {}),
@@ -128,6 +132,7 @@ export function buildScheduledTaskPrompt(
     ...(input.retrievedUserContext ? { retrievedUserContext: input.retrievedUserContext } : {}),
     ...(input.globalRules ? { globalRules: input.globalRules } : {}),
     historySummary: input.historySummary,
+    ...(taskTracker ? { taskTracker } : {}),
     liveResources: input.liveResources,
     ...(input.toolsetRules ? { toolsetRules: input.toolsetRules } : {}),
     ...(input.scenarioStateLines ? { scenarioStateLines: input.scenarioStateLines } : {}),
@@ -197,6 +202,10 @@ function getPromptSectionName(section: string): string | null {
   return parsed && !parsed.closing && parsed.tag === "section"
     ? parsed.attrs.name ?? null
     : null;
+}
+
+function shouldIncludeTaskTrackerForScheduledTrigger(trigger: ScheduledTaskPromptInput["trigger"]): boolean {
+  return trigger.kind !== "scheduled_instruction";
 }
 
 function buildTriggerMessage(input: ScheduledTaskPromptInput): string {

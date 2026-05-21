@@ -53,6 +53,8 @@ import { createProviderOutputTokenStats } from "#conversation/session/transcript
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import { renderInlineTriggerBatchMessage } from "#llm/prompt/promptBuilder.ts";
 import { projectProviderWorkingMessagesForBudget } from "./providerWorkingMessageBudget.ts";
+import { sessionTaskTrackerService } from "#conversation/taskTracker/sessionTaskTrackerService.ts";
+import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -182,8 +184,8 @@ export function createGenerationExecutor(
   const { persistSession, getScheduler } = lifecycle;
 
   const runGeneration = async (input: RunGenerationInput): Promise<void> => {
-      const {
-        sessionId,
+    const {
+      sessionId,
       expectedEpoch,
       responseAbortController,
       responseEpoch,
@@ -198,17 +200,17 @@ export function createGenerationExecutor(
       batchMessages,
       sendTarget,
       promptMessages,
-        resolvedModelRef,
-        debugSnapshot,
-        availableToolNames,
-        plannedToolsetIds,
-        availableToolsets,
-        setupMode,
-        streamResponse,
-        forceRegenerateTitleAfterTurn,
-        committedTextSink,
-        draftOverlaySink
-      } = input;
+      resolvedModelRef,
+      debugSnapshot,
+      availableToolNames,
+      plannedToolsetIds,
+      availableToolsets,
+      setupMode,
+      streamResponse,
+      forceRegenerateTitleAfterTurn,
+      committedTextSink,
+      draftOverlaySink
+    } = input;
     let outboundDrainPromise: Promise<void> | null = null;
     let lastResultReasoningContent = "";
     let finalProviderCallUsage: LlmProviderCallUsage | null = null;
@@ -224,6 +226,18 @@ export function createGenerationExecutor(
       } else {
         logger.info({ sessionId, expectedEpoch, phase: event.phase }, "llm_usage_update_skipped_epoch_mismatch");
       }
+    };
+    const updateTaskTracker = (
+      updater: (current: SessionTaskTracker) => SessionTaskTracker,
+      persistReason: string
+    ): void => {
+      const current = sessionManager.getTaskTracker(sessionId);
+      const next = updater(current);
+      if (JSON.stringify(next) === JSON.stringify(current)) {
+        return;
+      }
+      sessionManager.setTaskTracker(sessionId, next);
+      persistSession(sessionId, persistReason);
     };
     // 消费 steer 消息，注入到当前 tool iteration 的 prompt 上下文中。
     // 如果仅注入用户消息效果不够明显（模型没有及时收尾），
@@ -290,7 +304,6 @@ export function createGenerationExecutor(
       if (abortController.signal.aborted) {
         return;
       }
-
       let summary = "";
       const disableStreamingSplit = config.conversation.outbound.disableStreamingSplit === true;
       const outbound = createGenerationOutbound(
@@ -649,6 +662,15 @@ export function createGenerationExecutor(
                 toolCallId
               });
               const toolDescriptor = getBuiltinToolDescriptorByName(toolName, config);
+              const observation = buildToolObservation({
+                toolName,
+                toolCallId,
+                content: observationContent,
+                args: typeof toolArgs === "object" && toolArgs !== null && !Array.isArray(toolArgs)
+                  ? toolArgs as Record<string, unknown>
+                  : {},
+                ...(toolDescriptor?.resultObservation ? { policy: toolDescriptor.resultObservation } : {})
+              });
               const applied = sessionManager.appendInternalTranscriptIfEpochMatches(sessionId, expectedEpoch, {
                 kind: "tool_result",
                 llmVisible: true,
@@ -657,17 +679,23 @@ export function createGenerationExecutor(
                 toolName,
                 content,
                 ...(resultMetadata?.canonicalContent !== undefined ? { canonicalContent: resultMetadata.canonicalContent } : {}),
-                observation: buildToolObservation({
+                observation
+              });
+              if (applied) {
+                updateTaskTracker((tracker) => sessionTaskTrackerService.observeToolResult({
+                  sessionId,
+                  tracker,
                   toolName,
                   toolCallId,
-                  content: observationContent,
+                  content,
+                  ...(resultMetadata?.canonicalContent !== undefined ? { canonicalContent: resultMetadata.canonicalContent } : {}),
+                  observation,
                   args: typeof toolArgs === "object" && toolArgs !== null && !Array.isArray(toolArgs)
                     ? toolArgs as Record<string, unknown>
                     : {},
-                  ...(toolDescriptor?.resultObservation ? { policy: toolDescriptor.resultObservation } : {})
-                })
-              });
-              if (applied) {
+                  originalRequest: renderBatchOriginalRequest(batchMessages),
+                  nowMs: Date.now()
+                }), "task_tracker_tool_result_observed");
                 persistSession(sessionId, "internal_transcript_updated");
               }
             },
@@ -823,6 +851,11 @@ export function createGenerationExecutor(
           "history_assistant_appended"
         );
         persistSession(sessionId, "assistant_response_finalized");
+        updateTaskTracker((tracker) => sessionTaskTrackerService.observeAssistantFinalResponse({
+          tracker,
+          text: finalizedAssistant.text,
+          nowMs: Date.now()
+        }), "task_tracker_assistant_response_observed");
         const targetUserIds = collectExtractionUserIds(input.batchMessages);
         if (input.currentUser?.userId && lifecycle.contextExtractionQueue) {
           try {
@@ -928,6 +961,14 @@ function collectExtractionUserIds(messages: GenerationRuntimeBatchMessage[]): st
     userIds.push(message.userId);
   }
   return userIds;
+}
+
+function renderBatchOriginalRequest(messages: GenerationRuntimeBatchMessage[]): string {
+  return messages
+    .map((message) => message.text.trim())
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 1200);
 }
 
 function appendContextExtractionTranscriptEvent(input: {

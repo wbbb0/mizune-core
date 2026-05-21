@@ -547,6 +547,209 @@ function appendSimpleHistory(
     );
   });
 
+  test("compression materializes pinned and failed tool evidence before transcript trimming", async () => {
+    const config = createConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "qqbot:p:test";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    sessionManager.setTaskTracker(sessionId, {
+      version: 1,
+      primary: {
+        taskId: "task-1",
+        status: "active",
+        objective: "保留压缩前证据",
+        done: [],
+        next: [],
+        blockers: [],
+        importantToolRefs: [{
+          toolCallId: "tool-pinned",
+          toolName: "terminal_run",
+          summary: "关键终端输出",
+          createdAtMs: 1
+        }],
+        createdAtMs: 1,
+        updatedAtMs: 1
+      },
+      parked: [],
+      evidence: []
+    });
+    appendSimpleHistory(sessionManager, sessionId, "user", "old request", 1);
+    sessionManager.appendInternalTranscript(sessionId, {
+      kind: "assistant_tool_call",
+      llmVisible: true,
+      timestampMs: 2,
+      content: "tool call",
+      toolCalls: [{
+        id: "tool-pinned",
+        type: "function",
+        function: {
+          name: "terminal_run",
+          arguments: "{\"cmd\":\"npm test\"}"
+        }
+      }]
+    });
+    sessionManager.appendInternalTranscript(sessionId, {
+      kind: "tool_result",
+      llmVisible: true,
+      timestampMs: 3,
+      toolCallId: "tool-pinned",
+      toolName: "terminal_run",
+      content: "{\"output\":\"fail\",\"exitCode\":2}",
+      canonicalContent: JSON.stringify({ output: "fail", exitCode: 2, stderr: "failed assertion" }),
+      observation: {
+        contentHash: "hash-pinned",
+        inputTokensEstimate: 12,
+        summary: "npm test 失败，退出码 2",
+        retention: "summary",
+        replayContent: "{\"exitCode\":2,\"summary\":\"npm test failed\"}",
+        replaySafe: true,
+        refetchable: false,
+        pinned: true
+      }
+    });
+    appendSimpleHistory(sessionManager, sessionId, "assistant", "old answer", 4);
+
+    const compressor = new HistoryCompressor(
+      config,
+      {
+        isConfigured() {
+          return true;
+        },
+        async generate() {
+          return {
+            text: "compressed summary",
+            usage: {
+              inputTokens: 1,
+              outputTokens: 1,
+              totalTokens: 2,
+              reasoningTokens: null,
+              cachedTokens: null,
+              requestCount: 1,
+              providerReported: true,
+              modelRef: "main",
+              model: "fake"
+            }
+          };
+        }
+      } as any,
+      sessionManager,
+      {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      pino({ level: "silent" })
+    );
+
+    assert.equal(await compressor.forceCompact(sessionId, 0), true);
+    const session = sessionManager.getSession(sessionId);
+    assert.deepEqual(session.internalTranscript, []);
+    assert.equal(session.taskTracker.evidence.length, 1);
+    assert.equal(session.taskTracker.evidence[0]?.toolCallId, "tool-pinned");
+    assert.equal(session.taskTracker.evidence[0]?.pinned, true);
+    assert.match(session.taskTracker.evidence[0]?.canonicalContent ?? "", /failed assertion/);
+    assert.match(session.taskTracker.evidence[0]?.replayContent ?? "", /npm test failed/);
+  });
+
+  test("compression evidence avoids canonical copy for ordinary refetchable large results", async () => {
+    const config = createConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "qqbot:p:test";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    sessionManager.setTaskTracker(sessionId, {
+      version: 1,
+      primary: {
+        taskId: "task-1",
+        status: "active",
+        objective: "搜索资料",
+        done: [],
+        next: [],
+        blockers: [],
+        importantToolRefs: [{
+          toolCallId: "tool-search",
+          toolName: "web_search",
+          resource: { kind: "search_result", id: "search-1" },
+          createdAtMs: 1
+        }],
+        createdAtMs: 1,
+        updatedAtMs: 1
+      },
+      parked: [],
+      evidence: []
+    });
+    appendSimpleHistory(sessionManager, sessionId, "user", "old request", 1);
+    const largeCanonical = JSON.stringify({
+      results: Array.from({ length: 20 }, (_, index) => ({
+        title: `Result ${index}`,
+        snippet: "LARGE_CANONICAL_SHOULD_NOT_BE_COPIED".repeat(100)
+      }))
+    });
+    sessionManager.appendInternalTranscript(sessionId, {
+      kind: "tool_result",
+      llmVisible: true,
+      timestampMs: 2,
+      toolCallId: "tool-search",
+      toolName: "web_search",
+      content: "{\"results\":20}",
+      canonicalContent: largeCanonical,
+      observation: {
+        contentHash: "hash-search",
+        inputTokensEstimate: 4000,
+        summary: "搜索返回 20 条结果",
+        retention: "summary",
+        replayContent: "{\"tool\":\"web_search\",\"summary\":\"20 results\",\"resource\":{\"kind\":\"search_result\",\"id\":\"search-1\"}}",
+        resource: { kind: "search_result", id: "search-1" },
+        replaySafe: true,
+        refetchable: true,
+        pinned: false
+      }
+    });
+    appendSimpleHistory(sessionManager, sessionId, "assistant", "old answer", 3);
+
+    let capturedMessages: Array<{ content?: unknown }> = [];
+    const compressor = new HistoryCompressor(
+      config,
+      {
+        isConfigured() {
+          return true;
+        },
+        async generate(input: { messages: Array<{ content?: unknown }> }) {
+          capturedMessages = input.messages;
+          return {
+            text: "compressed summary",
+            usage: {
+              inputTokens: 1,
+              outputTokens: 1,
+              totalTokens: 2,
+              reasoningTokens: null,
+              cachedTokens: null,
+              requestCount: 1,
+              providerReported: true,
+              modelRef: "main",
+              model: "fake"
+            }
+          };
+        }
+      } as any,
+      sessionManager,
+      {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      pino({ level: "silent" })
+    );
+
+    assert.equal(await compressor.forceCompact(sessionId, 0), true);
+    const evidence = sessionManager.getSession(sessionId).taskTracker.evidence[0];
+    assert.equal(evidence?.toolCallId, "tool-search");
+    assert.equal(evidence?.canonicalContent, undefined);
+    assert.deepEqual(evidence?.resource, { kind: "search_result", id: "search-1" });
+    assert.match(evidence?.replayContent ?? "", /20 results/);
+    assert.doesNotMatch(JSON.stringify(evidence), /LARGE_CANONICAL_SHOULD_NOT_BE_COPIED/);
+    assert.doesNotMatch(JSON.stringify(capturedMessages), /LARGE_CANONICAL_SHOULD_NOT_BE_COPIED/);
+  });
+
   test("compression keeps retained window unchanged when it already starts with a normal message", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });

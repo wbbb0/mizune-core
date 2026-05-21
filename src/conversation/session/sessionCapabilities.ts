@@ -21,6 +21,7 @@ import type {
 import type { SessionOperationMode } from "./sessionOperationMode.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { ToolObservationSummary } from "./toolObservation.ts";
+import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
 
 // These capability slices let downstream modules depend on the session surface
 // they actually use instead of importing the whole SessionManager facade.
@@ -154,6 +155,7 @@ export type SessionAppRuntimeAccess =
   & SessionOutboundHistoryAccess
   & SessionPersistenceAccess
   & SessionSetupAccess
+  & SessionTaskTrackerAccess
   & SessionAdminReadAccess
   & SessionAdminMutationAccess
   & SessionOperationModeAccess
@@ -162,6 +164,15 @@ export type SessionAppRuntimeAccess =
 
 export interface SessionSetupAccess {
   isSetupConfirmed(sessionId: string): boolean;
+}
+
+export interface SessionTaskTrackerAccess {
+  getTaskTracker(sessionId: string): SessionTaskTracker;
+  updateTaskTracker(
+    sessionId: string,
+    updater: (current: SessionTaskTracker) => SessionTaskTracker
+  ): SessionTaskTracker;
+  setTaskTracker(sessionId: string, tracker: SessionTaskTracker): SessionTaskTracker;
 }
 
 // Minimal admin-facing session snapshot used by the internal API.
@@ -174,6 +185,7 @@ export interface SessionViewSnapshot {
   participantLabel: string | null;
   debugControl: SessionDebugControlState;
   historySummary: string | null;
+  taskTracker: SessionTaskTracker;
   internalTranscript: InternalTranscriptItem[];
   debugMarkers: SessionDebugMarker[];
   lastLlmUsage: SessionUsageSnapshot | null;
@@ -477,7 +489,7 @@ export interface SessionGenerationOutboundAccess {
   recordSentMessage(sessionId: string, message: SessionSentMessage): void;
 }
 
-export interface SessionGenerationOrchestratorAccess extends SessionSetupAccess, SessionOperationModeAccess {
+export interface SessionGenerationOrchestratorAccess extends SessionSetupAccess, SessionOperationModeAccess, SessionTaskTrackerAccess {
   getSession(sessionId: string): SessionState;
   getReplyDelivery(sessionId: string): SessionDelivery;
   setReplyDelivery(sessionId: string, delivery: SessionDelivery): void;
@@ -555,6 +567,12 @@ export interface SessionGenerationExecutionAccess extends SessionSetupAccess {
   completeResponse(sessionId: string, expectedResponseEpoch: number): boolean;
   getSession(sessionId: string): SessionState;
   hasActiveResponse(sessionId: string): boolean;
+  getTaskTracker(sessionId: string): SessionTaskTracker;
+  updateTaskTracker(
+    sessionId: string,
+    updater: (current: SessionTaskTracker) => SessionTaskTracker
+  ): SessionTaskTracker;
+  setTaskTracker(sessionId: string, tracker: SessionTaskTracker): SessionTaskTracker;
 }
 
 export type SessionGenerationRuntimeAccess =

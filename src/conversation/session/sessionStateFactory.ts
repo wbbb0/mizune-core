@@ -12,6 +12,8 @@ import {
 } from "./sessionIdentity.ts";
 import { resolveSessionDefaultTitle } from "./sessionTitle.ts";
 import { normalizeTranscriptItems } from "./transcriptMetadata.ts";
+import { createEmptySessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
+import { normalizeTaskTracker } from "#conversation/taskTracker/taskTrackerNormalize.ts";
 
 // Creates and converts runtime session state snapshots.
 
@@ -63,6 +65,7 @@ export function createSessionState(target: {
     interruptibleGroupTriggerUserId: null,
     historySummary: null,
     historyBackfillBoundaryMs: now,
+    taskTracker: createEmptySessionTaskTracker(),
     internalTranscript: [],
     debugMarkers: [],
     lastLlmUsage: null,
@@ -177,6 +180,7 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
     interruptibleGroupTriggerUserId: null,
     historySummary: item.historySummary,
     historyBackfillBoundaryMs: resolveHistoryBackfillBoundaryMs(item),
+    taskTracker: normalizeTaskTracker(item.taskTracker),
     internalTranscript: normalizeTranscriptItems(item.internalTranscript),
     debugMarkers: [...item.debugMarkers],
     lastLlmUsage: item.lastLlmUsage,
@@ -218,6 +222,7 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     activeTranscriptGroupId: session.activeTranscriptGroupId,
     historySummary: session.historySummary,
     historyBackfillBoundaryMs: session.historyBackfillBoundaryMs,
+    taskTracker: normalizeTaskTracker(session.taskTracker),
     internalTranscript: session.internalTranscript.map((item) => ({ ...item })),
     debugMarkers: [...session.debugMarkers],
     lastLlmUsage: session.lastLlmUsage,

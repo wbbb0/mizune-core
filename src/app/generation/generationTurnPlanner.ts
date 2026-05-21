@@ -6,6 +6,7 @@ import type { GenerationCurrentUser, GenerationTurnPlannerDeps } from "./generat
 import type { GenerationRuntimeBatchMessage, GenerationSendTarget } from "./generationExecutor.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { TurnPlannerResult } from "#conversation/turnPlanner.ts";
+import type { TurnPlannerTaskContext } from "#conversation/taskTracker/taskTrackerPlannerContext.ts";
 import {
   collectVisualAttachmentFileIds,
   dedupeResolvedChatAttachments,
@@ -18,6 +19,7 @@ export interface GenerationTurnPlannerInput {
   currentUser: GenerationCurrentUser;
   batchMessages: GenerationRuntimeBatchMessage[];
   availableToolsets: ToolsetView[];
+  taskContext?: TurnPlannerTaskContext | null | undefined;
   sendTarget: GenerationSendTarget;
   historyForPrompt: GenerationPromptHistoryMessage[];
   pendingReplyGateWaitPasses: number;
@@ -29,8 +31,14 @@ export interface GenerationTurnPlannerHandlers {
 }
 
 export type GenerationTurnPlannerResult =
-  | { action: "continue"; resolvedModelRef: string[]; toolsetIds: string[]; plannerDecision?: TurnPlannerResult | undefined }
-  | { action: "skip" };
+  | {
+      action: "continue";
+      resolvedModelRef: string[];
+      toolsetIds: string[];
+      plannerDecision?: TurnPlannerResult | undefined;
+      topicSwitchCompression?: { preservedMessageCount: number } | undefined;
+    }
+  | { action: "skip"; plannerDecision?: TurnPlannerResult | undefined };
 
 // Evaluates turn-planner policy and applies reschedule side effects when needed.
 export async function handleGenerationTurnPlanner(
@@ -45,7 +53,6 @@ export async function handleGenerationTurnPlanner(
     sessionCaptioner,
     turnPlanner,
     debounceManager,
-    historyCompressor,
     sessionManager,
     persistSession
   } = deps;
@@ -110,6 +117,7 @@ export async function handleGenerationTurnPlanner(
     currentUserSpecialRole: input.currentUser?.specialRole ?? null,
     recentMessages: input.historyForPrompt,
     availableToolsets: input.availableToolsets,
+    taskContext: input.taskContext,
     abortSignal: input.abortSignal,
     batchMessages: plannerBatchMessages
   });
@@ -120,6 +128,7 @@ export async function handleGenerationTurnPlanner(
 
   let finalAction: "continue" | "wait" | "skip" | "topic_switch" = "continue";
   let finalWaitPassCount: number | undefined;
+  let topicSwitchCompression: { preservedMessageCount: number } | undefined;
 
   if (planner.replyDecision === "no_reply" && shouldCoerceNoReplyToReply(input)) {
     logger.info(
@@ -150,22 +159,16 @@ export async function handleGenerationTurnPlanner(
 
   if (finalAction === "continue" && planner.topicDecision === "new_topic" && planner.replyDecision !== "wait") {
     const preservedMessageCount = input.batchMessages.length;
-    const compressed = await historyCompressor.compactOldHistoryKeepingRecent(input.sessionId, preservedMessageCount, {
-      triggerReason: "turn_planner_topic_switch"
-    });
     logger.info(
       {
         sessionId: input.sessionId,
         preservedMessageCount,
-        compressed,
         ...(planner.reason ? { reason: planner.reason } : {})
       },
-      "turn_planner_topic_switch_compacted"
+      "turn_planner_topic_switch_requested"
     );
-    if (compressed) {
-      persistSession(input.sessionId, "turn_planner_topic_switch_compacted");
-    }
     finalAction = "topic_switch";
+    topicSwitchCompression = { preservedMessageCount };
   }
 
   if (planner.replyDecision === "wait") {
@@ -224,7 +227,7 @@ export async function handleGenerationTurnPlanner(
   }
 
   if (finalAction === "wait" || finalAction === "skip") {
-    return { action: "skip" };
+    return { action: "skip", plannerDecision: planner };
   }
 
   return {
@@ -234,7 +237,8 @@ export async function handleGenerationTurnPlanner(
       planner.replyDecision === "reply_large" ? "main_large" : "main_small"
     ),
     toolsetIds: planner.toolsetIds,
-    plannerDecision: planner
+    plannerDecision: planner,
+    ...(topicSwitchCompression ? { topicSwitchCompression } : {})
   };
 }
 

@@ -7,6 +7,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
+import type { SessionTaskTracker } from "../../src/conversation/taskTracker/taskTrackerTypes.ts";
 
 type TestPromptHistoryMessage = {
   role: "user" | "assistant";
@@ -835,6 +836,365 @@ test("normal prompt history excludes active transcript group instead of subtract
   assert.equal(capturedHistoryForPrompt.some((message) => message.content.includes("@bot 当前问题")), false);
   assert.equal(capturedHistoryForPrompt.some((message) => message.content.includes("中间插入的非当前批次消息")), true);
   assert.deepEqual(capturedBatchMessages.map((message) => message.text), ["@bot 当前问题"]);
+});
+
+test("normal prompt receives task tracker changes from the current user batch", async () => {
+  const config = createTestAppConfig({
+    llm: {
+      enabled: true
+    }
+  });
+  const logger = pino({ level: "silent" });
+  const sessionManager = new SessionManager(config);
+  const sessionId = "qqbot:p:2254600711";
+  sessionManager.ensureSession({
+    id: sessionId,
+    type: "private",
+    source: "onebot"
+  });
+  sessionManager.setTaskTracker(sessionId, {
+    version: 1,
+    primary: {
+      taskId: "task-1",
+      status: "active",
+      objective: "排查失败的测试",
+      done: ["已运行初始测试"],
+      next: ["继续定位失败原因"],
+      blockers: [],
+      importantToolRefs: [],
+      createdAtMs: 1,
+      updatedAtMs: 1
+    },
+    parked: [],
+    evidence: []
+  });
+  sessionManager.appendPendingMessage(sessionId, {
+    channelId: "qqbot",
+    externalUserId: "2254600711",
+    chatType: "private",
+    userId: "owner",
+    senderName: "Owner",
+    text: "算了，先这样",
+    images: [],
+    audioSources: [],
+    audioIds: [],
+    emojiSources: [],
+    imageIds: [],
+    emojiIds: [],
+    forwardIds: [],
+    replyMessageId: null,
+    mentionUserIds: [],
+    mentionedAll: false,
+    isAtMentioned: false
+  });
+
+  let capturedTaskTracker: SessionTaskTracker | undefined;
+  let resolveRunGeneration!: () => void;
+  const runGenerationDone = new Promise<void>((resolve) => {
+    resolveRunGeneration = resolve;
+  });
+
+  const orchestrator = createGenerationSessionOrchestrator({
+    promptBuilder: { config } as any,
+    sessionRuntime: {
+      logger,
+      historyCompressor: {
+        async maybeCompress() {
+          return false;
+        }
+      },
+      llmClient: {} as never,
+      sessionCaptioner: {} as never,
+      turnPlanner: {} as never,
+      debounceManager: {} as never,
+      sessionManager
+    } as any,
+    identity: {
+      userStore: {
+        async getByUserId(userId: string) {
+          return {
+            userId,
+            relationship: "owner"
+          };
+        }
+      },
+      personaStore: {
+        async get() {
+          return createEmptyPersona();
+        }
+      },
+      rpProfileStore: {
+        async get() {
+          return createEmptyRpProfile();
+        }
+      },
+      scenarioProfileStore: {
+        async get() {
+          return createEmptyScenarioProfile();
+        }
+      },
+      setupStore: {} as never,
+      scenarioHostStateStore: {} as never,
+      globalProfileReadinessStore: {
+        async get() {
+          return {
+            persona: "ready",
+            rp: "ready",
+            scenario: "ready",
+            updatedAt: 1
+          };
+        }
+      }
+    } as any,
+    toolRuntime: {
+      shellRuntime: createFakeShellRuntime()
+    } as any,
+    lifecycle: {
+      persistSession() {},
+      getScheduler() {
+        return {} as never;
+      }
+    } as any
+  }, {
+    promptBuilder: {
+      async buildChatPromptMessages(input: { taskTracker?: SessionTaskTracker }) {
+        capturedTaskTracker = input.taskTracker;
+        return {
+          promptMessages: [{ role: "system" as const, content: "chat" }],
+          debugSnapshot: {
+            sessionId,
+            systemMessages: ["chat"],
+            visibleToolNames: [],
+            activeToolsets: [],
+            historySummary: null,
+            recentHistory: [],
+            currentBatch: [],
+            liveResources: [],
+            debugMarkers: [],
+            toolTranscript: [],
+            persona: createEmptyPersona(),
+            globalRules: [],
+            toolsetRules: [],
+            currentUser: null,
+            participantProfiles: [],
+            imageCaptions: [],
+            lastLlmUsage: null
+          }
+        };
+      }
+    } as any,
+    async runGeneration() {
+      resolveRunGeneration();
+    },
+    processNextSessionWork() {}
+  });
+
+  orchestrator.flushSession(sessionId, { skipReplyGate: true });
+  await runGenerationDone;
+
+  assert.equal(capturedTaskTracker?.primary?.status, "cancel_confirming");
+  assert.deepEqual(capturedTaskTracker?.primary?.next, ["确认用户是要暂停、取消，还是稍后继续。"]);
+});
+
+test("normal prompt receives task tracker changes from turn planner intent", async () => {
+  const config = createTestAppConfig({
+    llm: {
+      enabled: true,
+      turnPlanner: {
+        enabled: true
+      }
+    }
+  });
+  const logger = pino({ level: "silent" });
+  const sessionManager = new SessionManager(config);
+  const sessionId = "qqbot:p:2254600711";
+  sessionManager.ensureSession({
+    id: sessionId,
+    type: "private",
+    source: "onebot"
+  });
+  sessionManager.setTaskTracker(sessionId, {
+    version: 1,
+    primary: {
+      taskId: "task-1",
+      status: "active",
+      objective: "排查失败的测试",
+      done: [],
+      next: ["继续定位失败原因"],
+      blockers: [],
+      importantToolRefs: [],
+      createdAtMs: 1,
+      updatedAtMs: 1
+    },
+    parked: [],
+    evidence: []
+  });
+  sessionManager.appendPendingMessage(sessionId, {
+    channelId: "qqbot",
+    externalUserId: "2254600711",
+    chatType: "private",
+    userId: "owner",
+    senderName: "Owner",
+    text: "这个先放一边，我问个别的",
+    images: [],
+    audioSources: [],
+    audioIds: [],
+    emojiSources: [],
+    imageIds: [],
+    emojiIds: [],
+    forwardIds: [],
+    replyMessageId: null,
+    mentionUserIds: [],
+    mentionedAll: false,
+    isAtMentioned: false
+  });
+
+  let capturedTaskTracker: SessionTaskTracker | undefined;
+  let capturedPlannerTaskContext: unknown = null;
+  let statusDuringTopicCompaction: string | null = null;
+  let resolveRunGeneration!: () => void;
+  const runGenerationDone = new Promise<void>((resolve) => {
+    resolveRunGeneration = resolve;
+  });
+
+  const orchestrator = createGenerationSessionOrchestrator({
+    promptBuilder: { config } as any,
+      sessionRuntime: {
+        logger,
+        historyCompressor: {
+          async maybeCompress() {
+            return false;
+          },
+          async compactOldHistoryKeepingRecent() {
+            statusDuringTopicCompaction = sessionManager.getSession(sessionId).taskTracker.primary?.status ?? null;
+            return false;
+          }
+        },
+      llmClient: {
+        isConfigured() {
+          return true;
+        }
+      } as any,
+      sessionCaptioner: {} as never,
+      turnPlanner: {
+        isEnabled() {
+          return true;
+        },
+          async decide(input: { taskContext?: unknown }) {
+            capturedPlannerTaskContext = input.taskContext;
+            return {
+              replyDecision: "reply_small",
+              topicDecision: "new_topic",
+              reason: "用户想先放下任务",
+            requiredCapabilities: [],
+            contextDependencies: [],
+            recentDomainReuse: [],
+            followupMode: "none",
+            toolsetIds: [],
+            taskIntent: {
+              kind: "pause_current",
+              confidence: "high"
+            }
+          };
+        }
+      } as any,
+      debounceManager: {} as never,
+      sessionManager
+    } as any,
+    identity: {
+      userStore: {
+        async getByUserId(userId: string) {
+          return {
+            userId,
+            relationship: "owner"
+          };
+        }
+      },
+      personaStore: {
+        async get() {
+          return createEmptyPersona();
+        }
+      },
+      rpProfileStore: {
+        async get() {
+          return createEmptyRpProfile();
+        }
+      },
+      scenarioProfileStore: {
+        async get() {
+          return createEmptyScenarioProfile();
+        }
+      },
+      setupStore: {} as never,
+      scenarioHostStateStore: {} as never,
+      globalProfileReadinessStore: {
+        async get() {
+          return {
+            persona: "ready",
+            rp: "ready",
+            scenario: "ready",
+            updatedAt: 1
+          };
+        }
+      }
+    } as any,
+    toolRuntime: {
+      shellRuntime: createFakeShellRuntime()
+    } as any,
+    lifecycle: {
+      persistSession() {},
+      getScheduler() {
+        return {} as never;
+      }
+    } as any
+  }, {
+    promptBuilder: {
+      async buildChatPromptMessages(input: { taskTracker?: SessionTaskTracker }) {
+        capturedTaskTracker = input.taskTracker;
+        return {
+          promptMessages: [{ role: "system" as const, content: "chat" }],
+          debugSnapshot: {
+            sessionId,
+            systemMessages: ["chat"],
+            visibleToolNames: [],
+            activeToolsets: [],
+            historySummary: null,
+            recentHistory: [],
+            currentBatch: [],
+            liveResources: [],
+            debugMarkers: [],
+            toolTranscript: [],
+            persona: createEmptyPersona(),
+            globalRules: [],
+            toolsetRules: [],
+            currentUser: null,
+            participantProfiles: [],
+            imageCaptions: [],
+            lastLlmUsage: null
+          }
+        };
+      }
+    } as any,
+    async runGeneration() {
+      resolveRunGeneration();
+    },
+    processNextSessionWork() {}
+  });
+
+  orchestrator.flushSession(sessionId);
+  await runGenerationDone;
+
+  assert.deepEqual(capturedPlannerTaskContext, {
+    primary: {
+      taskId: "task-1",
+      status: "active",
+      objective: "排查失败的测试",
+      next: "继续定位失败原因"
+    },
+    parked: []
+  });
+  assert.equal(capturedTaskTracker?.primary?.status, "suspended");
+  assert.equal(statusDuringTopicCompaction, "suspended");
 });
 
 test("turn planner receives content-safety projected history and batch", async () => {

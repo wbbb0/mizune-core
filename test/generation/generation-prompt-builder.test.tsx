@@ -80,6 +80,25 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
   } as any;
 }
 
+function createActiveTaskTracker() {
+  return {
+    version: 1 as const,
+    primary: {
+      taskId: "task-1",
+      status: "active" as const,
+      objective: "处理后台任务",
+      done: [],
+      next: ["继续处理"],
+      blockers: [],
+      importantToolRefs: [],
+      createdAtMs: 1,
+      updatedAtMs: 2
+    },
+    parked: [],
+    evidence: []
+  };
+}
+
   test("setup prompt prepares image visuals when vision is enabled", async () => {
     const capturedImageIdCalls: string[][] = [];
     const builder = createGenerationPromptBuilder({
@@ -729,6 +748,108 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     assert.doesNotMatch(rendered, /replay-unsafe 原始 replay/);
   });
 
+  test("chat prompt builder renders task tracker sections from generation input", async () => {
+    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps());
+
+    const result = await builder.buildChatPromptMessages({
+      sessionId: "qqbot:p:10001",
+      interactionMode: "normal",
+      mainModelRef: ["main"],
+      visibleToolNames: ["terminal_run"],
+      activeToolsets: [],
+      persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
+      relationship: "known",
+      participantProfiles: [],
+      currentUser: { userId: "10001", relationship: "known" } as any,
+      historySummary: null,
+      taskTracker: {
+        version: 1,
+        primary: {
+          taskId: "task-1",
+          status: "active",
+          objective: "验证真实 prompt builder 链路",
+          done: [],
+          next: ["继续跑测试"],
+          blockers: [],
+          importantToolRefs: [],
+          createdAtMs: 1,
+          updatedAtMs: 2
+        },
+        parked: [],
+        evidence: []
+      },
+      historyForPrompt: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      batchMessages: [{
+        userId: "10001",
+        senderName: "Tester",
+        text: "继续",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: Date.now()
+      }]
+    });
+
+    const system = readPromptSystemText(result.promptMessages);
+    assert.equal(hasPromptSection(system, "task_focus"), true);
+    assert.equal(hasPromptSection(system, "active_task_state"), true);
+    assert.equal(hasPromptSection(system, "agent_execution_guidance"), true);
+    assert.match(system, /目标=验证真实 prompt builder 链路/);
+  });
+
+  test("chat prompt builder omits task tracker sections when generation input has no primary", async () => {
+    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps());
+
+    const result = await builder.buildChatPromptMessages({
+      sessionId: "qqbot:p:10001",
+      interactionMode: "normal",
+      mainModelRef: ["main"],
+      visibleToolNames: ["terminal_run"],
+      activeToolsets: [],
+      persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
+      relationship: "known",
+      participantProfiles: [],
+      currentUser: { userId: "10001", relationship: "known" } as any,
+      historySummary: null,
+      taskTracker: { version: 1, primary: null, parked: [], evidence: [] },
+      historyForPrompt: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      batchMessages: [{
+        userId: "10001",
+        senderName: "Tester",
+        text: "闲聊",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: Date.now()
+      }]
+    });
+
+    const system = readPromptSystemText(result.promptMessages);
+    assert.equal(hasPromptSection(system, "task_focus"), false);
+    assert.equal(hasPromptSection(system, "active_task_state"), false);
+    assert.equal(hasPromptSection(system, "agent_execution_guidance"), false);
+  });
+
   test("scheduled prompt applies content safety projection to trigger text", async () => {
     const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
       contentSafetyService: {
@@ -782,6 +903,82 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
     const rendered = result.promptMessages.map((message) => String(message.content ?? "")).join("\n");
     assert.match(rendered, /<内容安全/);
     assert.doesNotMatch(rendered, /scheduled-unsafe 原始任务/);
+  });
+
+  test("scheduled instruction prompt does not inherit active task guidance", async () => {
+    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps());
+
+    const result = await builder.buildScheduledPromptMessages({
+      sessionId: "qqbot:p:10001",
+      interactionMode: "normal",
+      visibleToolNames: ["terminal_run"],
+      activeToolsets: [],
+      trigger: {
+        kind: "scheduled_instruction",
+        jobName: "提醒",
+        taskInstruction: "到点提醒用户喝水"
+      },
+      persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
+      relationship: "known",
+      participantProfiles: [],
+      currentUser: { userId: "10001", relationship: "known" } as any,
+      historySummary: null,
+      taskTracker: createActiveTaskTracker(),
+      historyForPrompt: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      targetContext: {
+        chatType: "private",
+        userId: "10001",
+        senderName: "Tester"
+      }
+    });
+
+    const system = readPromptSystemText(result.promptMessages);
+    assert.equal(hasPromptSection(system, "task_focus"), false);
+    assert.equal(hasPromptSection(system, "active_task_state"), false);
+    assert.equal(hasPromptSection(system, "agent_execution_guidance"), false);
+  });
+
+  test("background trigger prompt may include active task guidance", async () => {
+    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps());
+
+    const result = await builder.buildScheduledPromptMessages({
+      sessionId: "qqbot:p:10001",
+      interactionMode: "normal",
+      visibleToolNames: ["terminal_read"],
+      activeToolsets: [],
+      trigger: {
+        kind: "terminal_session_closed",
+        jobName: "后台终端",
+        taskInstruction: "查看后台终端结果",
+        resourceId: "res_shell_1",
+        command: "npm test",
+        cwd: "/tmp",
+        exitCode: 0,
+        signal: null,
+        output: "ok",
+        outputTruncated: false
+      },
+      persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
+      relationship: "known",
+      participantProfiles: [],
+      currentUser: { userId: "10001", relationship: "known" } as any,
+      historySummary: null,
+      taskTracker: createActiveTaskTracker(),
+      historyForPrompt: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      targetContext: {
+        chatType: "private",
+        userId: "10001",
+        senderName: "Tester"
+      }
+    });
+
+    const system = readPromptSystemText(result.promptMessages);
+    assert.equal(hasPromptSection(system, "task_focus"), true);
+    assert.equal(hasPromptSection(system, "active_task_state"), true);
   });
 
   test("comfy completed scheduled prompt enriches result file handles from asset store", async () => {

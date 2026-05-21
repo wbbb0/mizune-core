@@ -364,6 +364,7 @@ export class SessionHistoryService {
     participantLabel: string | null;
     debugControl: SessionState["debugControl"];
     historySummary: string | null;
+    taskTracker: SessionState["taskTracker"];
     internalTranscript: InternalTranscriptItem[];
     debugMarkers: SessionState["debugMarkers"];
     lastLlmUsage: SessionUsageSnapshot | null;

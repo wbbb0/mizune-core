@@ -19,6 +19,8 @@ import {
   createNormalSessionOperationMode,
   type SessionOperationMode
 } from "./sessionOperationMode.ts";
+import { createEmptySessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
+import { sessionTaskTrackerService } from "#conversation/taskTracker/sessionTaskTrackerService.ts";
 
 const MAX_DEBUG_MARKERS = 24;
 
@@ -199,6 +201,12 @@ export function applyCompressedHistoryState(
 ): void {
   session.historySummary = payload.historySummary;
   const startIndex = Math.max(0, Math.min(payload.transcriptStartIndexToKeep, session.internalTranscript.length));
+  const transcriptItemsToCompress = session.internalTranscript.slice(0, startIndex);
+  session.taskTracker = sessionTaskTrackerService.materializeEvidenceBeforeCompression({
+    sessionId: session.id,
+    tracker: session.taskTracker,
+    transcriptItemsToCompress
+  });
   session.internalTranscript = session.internalTranscript.slice(startIndex);
   session.historyBackfillBoundaryMs = session.internalTranscript[0]?.timestampMs ?? Date.now();
   // Provider usage describes the prompt before compression; discard it so the
@@ -252,6 +260,7 @@ export function clearSessionState(session: SessionState): void {
   session.interruptibleGroupTriggerUserId = null;
   session.historySummary = null;
   session.historyBackfillBoundaryMs = Date.now();
+  session.taskTracker = createEmptySessionTaskTracker();
   session.internalTranscript = [];
   session.debugMarkers = [];
   session.lastLlmUsage = null;

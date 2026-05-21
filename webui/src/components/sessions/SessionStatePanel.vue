@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from "vue";
 import { RefreshCw } from "lucide-vue-next";
 import { sessionsApi } from "@/api/sessions";
-import type { MemoryContextItem, SessionDetailResult } from "@/api/types";
+import type { MemoryContextItem, SessionDetailResult, SessionTaskTracker } from "@/api/types";
 import type { ActiveSession } from "@/stores/sessions";
 import { ApiError } from "@/api/client";
 import ScenarioHostStateEditor from "./ScenarioHostStateEditor.vue";
@@ -67,6 +67,34 @@ const lastLlmUsageRows = computed(() => {
     ["请求数", formatMetric(usage.requestCount)],
     ["Provider 上报", usage.providerReported ? "是" : "否"],
     ["采集时间", formatTimestamp(usage.capturedAt)]
+  ];
+});
+
+const taskTracker = computed<SessionTaskTracker | null>(() => detail.value?.session.taskTracker ?? null);
+const recentTaskEvidence = computed(() => taskTracker.value?.evidence.slice(-5).reverse() ?? []);
+const taskTrackerSummary = computed(() => {
+  const tracker = taskTracker.value;
+  if (!tracker) {
+    return "暂无记录";
+  }
+  const primaryStatus = tracker.primary ? tracker.primary.status : "无当前任务";
+  return `${primaryStatus} · parked ${tracker.parked.length} · evidence ${tracker.evidence.length}`;
+});
+const taskTrackerRows = computed(() => {
+  const tracker = taskTracker.value;
+  if (!tracker) {
+    return [];
+  }
+  return [
+    ["当前任务", tracker.primary ? tracker.primary.taskId : "暂无"],
+    ["状态", tracker.primary ? tracker.primary.status : "暂无"],
+    ["目标", tracker.primary?.objective || "暂无"],
+    ["已完成数", formatMetric(tracker.primary?.done.length ?? 0)],
+    ["下一步数", formatMetric(tracker.primary?.next.length ?? 0)],
+    ["阻碍数", formatMetric(tracker.primary?.blockers.length ?? 0)],
+    ["关键工具引用", formatMetric(tracker.primary?.importantToolRefs.length ?? 0)],
+    ["Parked", formatMetric(tracker.parked.length)],
+    ["Evidence", formatMetric(tracker.evidence.length)]
   ];
 });
 
@@ -222,6 +250,10 @@ function formatMemoryItemMeta(item: MemoryContextItem): string {
   ].filter(Boolean).join(" · ");
 }
 
+function formatTaskResource(resource: { kind: string; id: string } | undefined): string {
+  return resource ? `${resource.kind}:${resource.id}` : "无资源";
+}
+
 function formatScore(value: number): string {
   if (!Number.isFinite(value)) {
     return "暂无";
@@ -320,6 +352,54 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
         >
           <div v-if="loading && !detail" class="text-small text-text-subtle">加载中…</div>
           <pre v-else class="overflow-auto rounded-lg border border-border-default bg-surface-sidebar p-3 text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ detail?.session.historySummary || "暂无摘要" }}</pre>
+        </WorkbenchDisclosure>
+
+        <WorkbenchDisclosure
+          :expanded="isDisclosureExpanded('task-tracker')"
+          collapsed-title="任务跟踪"
+          expanded-title="任务跟踪"
+          :summary="taskTrackerSummary"
+          @toggle="toggleDisclosure('task-tracker')"
+        >
+          <WorkbenchEmptyState v-if="!taskTracker" :centered="false" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle" message="暂无任务跟踪状态" />
+          <div v-else class="flex min-w-0 flex-col gap-3">
+            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <WorkbenchCard v-for="[label, value] in taskTrackerRows" :key="label" class="min-w-0 overflow-hidden" surface="sidebar">
+                <div class="text-small text-text-subtle">{{ label }}</div>
+                <div class="mt-1 break-all text-small text-text-secondary">{{ value }}</div>
+              </WorkbenchCard>
+            </div>
+
+            <WorkbenchCard v-if="taskTracker.parked.length > 0" surface="sidebar">
+              <div class="text-small text-text-subtle">Parked Tasks</div>
+              <div class="mt-2 grid gap-1.5">
+                <div v-for="task in taskTracker.parked" :key="task.taskId" class="rounded border border-border-subtle bg-surface-input px-2 py-1.5">
+                  <div class="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                    <span class="break-all font-mono text-small text-text-secondary">{{ task.taskId }}</span>
+                    <span class="text-small text-text-subtle">{{ task.status }}</span>
+                  </div>
+                  <div class="mt-1 break-all text-small text-text-muted">{{ task.objective }}</div>
+                  <div class="mt-1 break-all text-small text-text-subtle">{{ task.summary }}</div>
+                </div>
+              </div>
+            </WorkbenchCard>
+
+            <WorkbenchCard surface="sidebar">
+              <div class="text-small text-text-subtle">最近 Evidence</div>
+              <WorkbenchEmptyState v-if="recentTaskEvidence.length === 0" :centered="false" class="mt-2 rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle" message="暂无 evidence checkpoint" />
+              <div v-else class="mt-2 grid gap-1.5">
+                <div v-for="item in recentTaskEvidence" :key="item.evidenceId" class="rounded border border-border-subtle bg-surface-input px-2 py-1.5">
+                  <div class="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                    <span class="break-all font-mono text-small text-text-secondary">{{ item.toolName }}#{{ item.toolCallId }}</span>
+                    <span class="text-small" :class="item.pinned ? 'text-warning' : 'text-text-subtle'">{{ item.pinned ? 'pinned' : 'checkpoint' }}</span>
+                  </div>
+                  <div class="mt-1 break-all text-small text-text-subtle">task {{ item.taskId }} · {{ formatTaskResource(item.resource) }} · {{ formatTimestamp(item.createdAtMs) }}</div>
+                  <div class="mt-1 line-clamp-3 whitespace-pre-wrap wrap-break-word text-small text-text-muted">{{ item.summary }}</div>
+                  <div class="mt-1 break-all font-mono text-small text-text-subtle">hash {{ item.contentHash }}{{ item.canonicalTruncated ? ' · canonical truncated' : '' }}</div>
+                </div>
+              </div>
+            </WorkbenchCard>
+          </div>
         </WorkbenchDisclosure>
 
         <WorkbenchDisclosure

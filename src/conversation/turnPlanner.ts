@@ -16,6 +16,12 @@ import { annotateHistoryMessagesWithCaptions, collectReferencedImageIds } from "
 import { collectVisualAttachmentFileIds, isPendingChatAttachmentId } from "#services/workspace/chatAttachments.ts";
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import type { MessageContentPart } from "#messages/contentParts.ts";
+import {
+  normalizeTaskPlannerIntent,
+  parseTaskPlannerIntent,
+  type TaskPlannerIntent,
+  type TurnPlannerTaskContext
+} from "#conversation/taskTracker/taskTrackerPlannerContext.ts";
 
 export type TurnPlannerRequiredCapability =
   | "external_info_lookup"
@@ -47,6 +53,7 @@ export interface TurnPlannerInput {
   recentMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs?: number | null }>;
   abortSignal?: AbortSignal;
   availableToolsets?: ToolsetView[];
+  taskContext?: TurnPlannerTaskContext | null | undefined;
   batchMessages: Array<{
     senderName: string;
     text: string;
@@ -76,6 +83,7 @@ export interface TurnPlannerResult {
   recentDomainReuse: string[];
   followupMode: TurnPlannerFollowupMode;
   toolsetIds: string[];
+  taskIntent?: TaskPlannerIntent | undefined;
   reasoningContent?: string;
 }
 
@@ -242,6 +250,7 @@ export class TurnPlanner {
         sessionId: input.sessionId,
         replyDecision: parsed.replyDecision,
         topicDecision: parsed.topicDecision,
+        ...(parsed.taskIntent ? { taskIntent: parsed.taskIntent.kind, taskIntentConfidence: parsed.taskIntent.confidence } : {}),
         toolsetIds: parsed.toolsetIds,
         ...(logReason ? { reason: logReason } : {}),
         durationMs
@@ -306,7 +315,13 @@ export class TurnPlanner {
         reason?: unknown;
         toolsetIds?: unknown;
         toolsets?: unknown;
+        taskIntent?: unknown;
+        task_intent?: unknown;
       };
+      const rawTaskIntent = parsed.taskIntent ?? parsed.task_intent;
+      const taskIntent = typeof rawTaskIntent === "string"
+        ? parseTaskPlannerIntent(rawTaskIntent)
+        : normalizeTaskPlannerIntent(rawTaskIntent);
       return {
         ...normalizeParsedDecisions(parsed.replyDecision ?? parsed.decision, parsed.topicDecision),
         reason: summarizeReasonForLog(typeof parsed.reason === "string" ? parsed.reason : "", 160),
@@ -314,7 +329,8 @@ export class TurnPlanner {
         contextDependencies: parseContextDependencies(parsed.contextDependencies),
         recentDomainReuse: parseStringList(parsed.recentDomainReuse),
         followupMode: normalizeFollowupMode(parsed.followupMode),
-        toolsetIds: parseUnknownToolsetIds(parsed.toolsetIds ?? parsed.toolsets)
+        toolsetIds: parseUnknownToolsetIds(parsed.toolsetIds ?? parsed.toolsets),
+        ...(taskIntent ? { taskIntent } : {})
       };
     } catch {
       // ignore
@@ -392,6 +408,9 @@ export class TurnPlanner {
       ? []
       : Array.from(new Set(parsed.toolsetIds.filter((id) => allowedToolsetIds.has(id))));
     const normalized = { ...parsed, toolsetIds: filteredToolsetIds };
+    if (!input.taskContext) {
+      delete normalized.taskIntent;
+    }
 
     if (normalized.replyDecision === "no_reply") {
       if (input.chatType === "private") {
@@ -436,7 +455,8 @@ export class TurnPlanner {
         contextDependencies: normalized.contextDependencies,
         recentDomainReuse: normalized.recentDomainReuse,
         followupMode: normalized.followupMode,
-        toolsetIds: []
+        toolsetIds: [],
+        ...(normalized.taskIntent ? { taskIntent: normalized.taskIntent } : {})
       };
     }
 
@@ -524,6 +544,7 @@ function parseStructuredPlannerResult(raw: string): TurnPlannerResult | null {
   if (!fieldMap.has("reason") || !fieldMap.has("reply_decision") || !fieldMap.has("topic_decision")) {
     return null;
   }
+  const taskIntent = parseTaskPlannerIntent(fieldMap.get("task_intent"));
   return {
     ...normalizeParsedDecisions(fieldMap.get("reply_decision"), fieldMap.get("topic_decision")),
     reason: summarizeReasonForLog(fieldMap.get("reason") ?? "", 160),
@@ -531,7 +552,8 @@ function parseStructuredPlannerResult(raw: string): TurnPlannerResult | null {
     contextDependencies: parseContextDependencies(fieldMap.get("context_dependencies")),
     recentDomainReuse: parseStringList(fieldMap.get("recent_domain_reuse")),
     followupMode: normalizeFollowupMode(fieldMap.get("followup_mode")),
-    toolsetIds: parseToolsetIds(fieldMap.get("toolset_ids") ?? "")
+    toolsetIds: parseToolsetIds(fieldMap.get("toolset_ids") ?? ""),
+    ...(taskIntent ? { taskIntent } : {})
   };
 }
 

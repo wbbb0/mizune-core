@@ -98,6 +98,80 @@ export interface SessionUsageSnapshot {
   capturedAt: number;
 }
 
+export type SessionTaskStatus =
+  | "active"
+  | "waiting_tool"
+  | "waiting_user"
+  | "ready_to_close"
+  | "suspended"
+  | "cancel_confirming"
+  | "completed"
+  | "canceled"
+  | "failed";
+
+export interface TaskResourceRef {
+  kind: "filesystem" | "shell_session" | "browser_page" | "asset" | "search_result" | "external";
+  id: string;
+  locator?: string;
+  version?: string;
+}
+
+export interface TaskToolRef {
+  toolCallId: string;
+  toolName: string;
+  summary?: string;
+  resource?: TaskResourceRef;
+  refetchHint?: string;
+  pinned?: boolean;
+  createdAtMs?: number;
+}
+
+export interface SessionTaskState {
+  taskId: string;
+  status: SessionTaskStatus;
+  objective: string;
+  originalRequest?: string;
+  done: string[];
+  next: string[];
+  blockers: string[];
+  importantToolRefs: TaskToolRef[];
+  createdAtMs: number;
+  updatedAtMs: number;
+  readyToCloseAtMs?: number;
+}
+
+export interface ParkedTaskState {
+  taskId: string;
+  status: SessionTaskStatus;
+  objective: string;
+  summary: string;
+  importantToolRefs: TaskToolRef[];
+  updatedAtMs: number;
+}
+
+export interface TaskEvidenceCheckpoint {
+  evidenceId: string;
+  sessionId: string;
+  taskId: string;
+  toolCallId: string;
+  toolName: string;
+  summary: string;
+  resource?: TaskResourceRef;
+  replayContent?: string;
+  canonicalContent?: string;
+  canonicalTruncated?: boolean;
+  contentHash: string;
+  pinned: boolean;
+  createdAtMs: number;
+}
+
+export interface SessionTaskTracker {
+  version: 1;
+  primary: SessionTaskState | null;
+  parked: ParkedTaskState[];
+  evidence: TaskEvidenceCheckpoint[];
+}
+
 export interface SessionSentMessage {
   messageId: number;
   text: string;
@@ -229,6 +303,7 @@ export interface SessionDetailSnapshot {
   titleGenerationAvailable: boolean;
   debugControl: SessionDebugControlState;
   historySummary: string | null;
+  taskTracker: SessionTaskTracker;
   derivedObservations: DerivedObservation[];
   internalTranscript: TranscriptItem[];
   debugMarkers: SessionDebugMarker[];

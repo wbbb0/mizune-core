@@ -30,6 +30,7 @@ export interface FakeOneBotSentMessage {
 export interface FakeOneBotClientOptions {
   selfId: string;
   selfName?: string;
+  initialMessageId?: number;
 }
 
 export class FakeOneBotClient extends EventEmitter {
@@ -39,6 +40,9 @@ export class FakeOneBotClient extends EventEmitter {
 
   constructor(private readonly options: FakeOneBotClientOptions) {
     super();
+    if (options.initialMessageId != null && Number.isInteger(options.initialMessageId) && options.initialMessageId > 0) {
+      this.nextMessageId = options.initialMessageId;
+    }
   }
 
   asOneBotClient(): OneBotClient {

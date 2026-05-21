@@ -134,7 +134,9 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
       globalProfileReadinessStore: deps.identity.globalProfileReadinessStore
     },
     toolRuntime: {
-      shellRuntime: deps.toolRuntime.shellRuntime
+      shellRuntime: deps.toolRuntime.shellRuntime,
+      browserService: deps.toolRuntime.browserService,
+      downloadRuntime: deps.toolRuntime.downloadRuntime
     },
     lifecycle: {
       persistSession: deps.lifecycle.persistSession,

@@ -87,11 +87,7 @@ export function createGenerationReplyGateDeps(
         throw new Error("unexpected debounce schedule");
       }
     } as unknown as GenerationTurnPlannerDeps["debounceManager"]),
-    historyCompressor: overrides.historyCompressor ?? ({
-      async maybeCompress() {},
-      async compactOldHistoryKeepingRecent() {}
-    } as unknown as GenerationTurnPlannerDeps["historyCompressor"]),
-    sessionManager: overrides.sessionManager ?? ({
+      sessionManager: overrides.sessionManager ?? ({
       requeuePendingMessages() {
         throw new Error("unexpected message requeue");
       }
