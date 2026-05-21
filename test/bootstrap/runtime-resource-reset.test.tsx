@@ -7,6 +7,7 @@ import { initializeBootstrapState } from "../../src/app/bootstrap/bootstrapServi
 import { StateDatabase } from "../../src/data/state/stateDatabase.ts";
 import { RuntimeResourceStore } from "../../src/runtime/resources/runtimeResourceStore.ts";
 import { RuntimeResourceRegistry } from "../../src/runtime/resources/runtimeResourceRegistry.ts";
+import { RecentErrorStore } from "../../src/runtime/recentErrorStore.ts";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
@@ -18,6 +19,7 @@ test("initializeBootstrapState initializes state database before resetting runti
   const stateDatabase = new StateDatabase(dataDir, logger);
   const runtimeResourceStore = new RuntimeResourceStore(stateDatabase);
   const runtimeResourceRegistry = new RuntimeResourceRegistry(runtimeResourceStore);
+  const recentErrorStore = new RecentErrorStore(dataDir, logger, stateDatabase);
 
   try {
     await runtimeResourceRegistry.createShellSession({
@@ -71,7 +73,8 @@ test("initializeBootstrapState initializes state database before resetting runti
         async setScenarioReadiness() {}
       } as any,
       sessionManager: { restoreSessions() {}, listSessions() { return []; } } as any,
-      runtimeResourceRegistry
+      runtimeResourceRegistry,
+      recentErrorStore
     });
 
     assert.ok(stateDatabase.getStatus());

@@ -1,6 +1,11 @@
 import pino from "pino";
 import pretty from "pino-pretty";
 import type { AppConfig } from "./config/config.ts";
+import type { RecentErrorLogInput } from "#runtime/recentErrorStore.ts";
+
+export interface LoggerOptions {
+  recentErrorSink?: (input: RecentErrorLogInput) => void;
+}
 
 function formatLogTimestamp(value: unknown, timeZone: string): string {
   const date = new Date(typeof value === "number" || typeof value === "string" ? value : Number.NaN);
@@ -30,7 +35,7 @@ function formatLogTimestamp(value: unknown, timeZone: string): string {
   return `[${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}.${milliseconds}]`;
 }
 
-export function createLogger(config: AppConfig) {
+export function createLogger(config: AppConfig, options: LoggerOptions = {}) {
   const logTimeZone = config.scheduler.defaultTimezone;
   const stream = pretty({
     colorize: true,
@@ -58,6 +63,14 @@ export function createLogger(config: AppConfig) {
   return pino({
     name: config.appName,
     level: config.logLevel,
+    hooks: {
+      logMethod(args, method, level) {
+        method.apply(this, args);
+        if (level >= 50) {
+          captureRecentErrorLog(args, level, options.recentErrorSink);
+        }
+      }
+    },
     serializers: {
       error: pino.stdSerializers.err,
       err: pino.stdSerializers.err
@@ -67,6 +80,102 @@ export function createLogger(config: AppConfig) {
       app: config.appName
     }
   }, stream);
+}
+
+function captureRecentErrorLog(
+  args: Parameters<pino.LogFn>,
+  level: number,
+  sink: LoggerOptions["recentErrorSink"]
+): void {
+  if (!sink) {
+    return;
+  }
+  try {
+    const first = args[0];
+    const second = args[1];
+    const fields = isPlainObject(first) ? first : {};
+    const event = typeof second === "string"
+      ? second
+      : typeof first === "string"
+        ? first
+        : "";
+    const errorDetails = normalizeErrorDetails(fields.err ?? fields.error ?? (first instanceof Error ? first : null));
+    const context = pickRecentErrorContext(fields);
+    sink({
+      level: level >= 60 ? "fatal" : "error",
+      capturedAtMs: Date.now(),
+      event,
+      message: errorDetails.message || event,
+      ...(errorDetails.name ? { errorName: errorDetails.name } : {}),
+      ...(errorDetails.stack ? { stack: errorDetails.stack } : {}),
+      context
+    });
+  } catch {
+    // Logging must never fail because recent-error capture failed.
+  }
+}
+
+function normalizeErrorDetails(error: unknown): { name?: string; message: string; stack?: string } {
+  if (error instanceof Error) {
+    return {
+      ...(error.name ? { name: error.name } : {}),
+      message: error.message,
+      ...(error.stack ? { stack: error.stack } : {})
+    };
+  }
+  if (isPlainObject(error)) {
+    const name = typeof error.name === "string" ? error.name : undefined;
+    const message = typeof error.message === "string"
+      ? error.message
+      : stringifyUnknown(error);
+    const stack = typeof error.stack === "string" ? error.stack : undefined;
+    return {
+      ...(name ? { name } : {}),
+      message,
+      ...(stack ? { stack } : {})
+    };
+  }
+  if (error == null) {
+    return { message: "" };
+  }
+  return { message: String(error) };
+}
+
+function pickRecentErrorContext(fields: Record<string, unknown>): Record<string, unknown> {
+  const allowedKeys = [
+    "sessionId",
+    "userId",
+    "groupId",
+    "jobId",
+    "toolName",
+    "toolCallId",
+    "resourceId",
+    "endpoint",
+    "method",
+    "url",
+    "statusCode",
+    "providerId",
+    "requestType",
+    "flag",
+    "command"
+  ];
+  return Object.fromEntries(
+    allowedKeys
+      .filter((key) => fields[key] !== undefined)
+      .map((key) => [key, fields[key]])
+  );
+}
+
+function stringifyUnknown(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export { formatLogTimestamp };

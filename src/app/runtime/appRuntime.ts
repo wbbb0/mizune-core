@@ -83,6 +83,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     conversationAccess,
     shellRuntime,
     configManager,
+    recentErrorStore,
     singleInstanceLock
   } = services;
 
@@ -217,6 +218,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
       globalProfileReadinessStore,
       contextStore,
       userIdentityStore,
+      recentErrorStore,
       scenarioHostStateStore,
       persistSession,
       flushSession: (sessionId, options) => sessionWorkCoordinator.flushSession(sessionId, options),

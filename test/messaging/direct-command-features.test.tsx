@@ -17,6 +17,9 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
   test("direct command parser supports owner bootstrap command", async () => {
     assert.deepEqual(parseDirectCommand(".own"), { name: "own" });
     assert.deepEqual(parseDirectCommand("。own 123456"), { name: "own", userId: "123456" });
+    assert.deepEqual(parseDirectCommand(".error"), { name: "error" });
+    assert.deepEqual(parseDirectCommand(".error 3"), { name: "error", count: 3 });
+    assert.deepEqual(parseDirectCommand(".error 999"), { name: "error", count: 50 });
     assert.deepEqual(parseDirectCommand(".debug"), { name: "debug", mode: "status" });
     assert.deepEqual(parseDirectCommand(".debug once"), { name: "debug", mode: "once" });
     assert.deepEqual(parseDirectCommand(".debug once 发我看下现在的完整系统消息"), { name: "debug", mode: "once", inlineText: "发我看下现在的完整系统消息" });
@@ -75,6 +78,24 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       relationship: "owner",
       text: ".debug on"
     }), { name: "debug", mode: "on" });
+  });
+
+  test("error command only dispatches in private chat", async () => {
+    assert.deepEqual(resolveDispatchableDirectCommand({
+      phase: "chat",
+      setupState: "ready",
+      chatType: "private",
+      relationship: "owner",
+      text: ".error 2"
+    }), { name: "error", count: 2 });
+    assert.equal(resolveDispatchableDirectCommand({
+      phase: "chat",
+      setupState: "ready",
+      chatType: "group",
+      relationship: "owner",
+      isAtMentioned: true,
+      text: ".error 2"
+    }), null);
   });
 
   test("direct command dispatch helper treats any prefixed text as a command attempt", async () => {
@@ -196,7 +217,42 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
     assert.equal(firstCall.recordInHistory, false);
     assert.equal(firstCall.recordForRetract, false);
     assert.match(firstCall.text, /\.debug \[on\|off\|once \[文本\]\|status\]/);
+    assert.match(firstCall.text, /\.error \[数量\]/);
     assert.match(firstCall.text, /\.own \[userId\]/);
+  });
+
+  test("error command sends recent owner-only diagnostics from private chat", async () => {
+    const formatCalls: Array<{ count: number; timeZone: string }> = [];
+    const { calls, handler } = createDirectCommandFixture({
+      recentErrorStore: {
+        async formatRecent(count: number, timeZone: string) {
+          formatCalls.push({ count, timeZone });
+          return "最近 2 条报错：\n#error";
+        }
+      }
+    });
+
+    await handler({
+      command: { name: "error", count: 2 },
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+
+    assert.deepEqual(formatCalls, [{ count: 2, timeZone: "Asia/Shanghai" }]);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.text, "最近 2 条报错：\n#error");
+  });
+
+  test("error command refuses non-owner", async () => {
+    const { calls, handler } = createDirectCommandFixture();
+
+    await handler({
+      command: { name: "error" },
+      sessionId: "qqbot:p:user",
+      incomingMessage: { chatType: "private", userId: "user", relationship: "known" }
+    });
+
+    assert.equal(calls[0]?.text, "只有 owner 可以查看最近报错。");
   });
 
   test("stop command cancels generation without clearing session", async () => {

@@ -526,6 +526,35 @@ function validateRuntimeResourcesSchema(db: SqliteDatabase): void {
   });
 }
 
+function createRecentErrorsSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS recent_errors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      captured_at_ms INTEGER NOT NULL CHECK (captured_at_ms >= 0),
+      level TEXT NOT NULL CHECK (level IN ('error', 'fatal')),
+      event TEXT NOT NULL DEFAULT '',
+      message TEXT NOT NULL DEFAULT '',
+      error_name TEXT,
+      stack TEXT,
+      context_json TEXT NOT NULL DEFAULT '{}'
+    );
+  `);
+  db.exec("CREATE INDEX IF NOT EXISTS idx_recent_errors_time ON recent_errors(captured_at_ms DESC, id DESC);");
+}
+
+function validateRecentErrorsSchema(db: SqliteDatabase): void {
+  assertTableColumns(db, "recent_errors", {
+    id: "INTEGER",
+    captured_at_ms: "INTEGER",
+    level: "TEXT",
+    event: "TEXT",
+    message: "TEXT",
+    error_name: "TEXT",
+    stack: "TEXT",
+    context_json: "TEXT"
+  });
+}
+
 const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   {
     groupId: "state.persona",
@@ -630,5 +659,14 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
     ownedTables: ["runtime_resources", "runtime_browser_pages", "runtime_shell_sessions"],
     createSchema: createRuntimeResourcesSchema,
     validateSchema: validateRuntimeResourcesSchema
+  },
+  {
+    groupId: "state.recent_errors",
+    schemaVersion: 1,
+    resetPolicy: "block_reset",
+    ownedTables: ["recent_errors"],
+    ownedIndexes: ["idx_recent_errors_time"],
+    createSchema: createRecentErrorsSchema,
+    validateSchema: validateRecentErrorsSchema
   }
 ];

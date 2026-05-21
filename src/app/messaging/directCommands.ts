@@ -18,6 +18,7 @@ import { createInitialScenarioHostSessionState } from "#modes/scenarioHost/types
 import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
 import { parseOwnerBootstrapCommand } from "#app/bootstrap/ownerBootstrapPolicy.ts";
 import { resolvePersonaReadinessStatus } from "#persona/personaSetupPolicy.ts";
+import type { RecentErrorStore } from "#runtime/recentErrorStore.ts";
 
 type DebugModeArg = "on" | "off" | "once" | "status";
 type ConfigTarget = "persona" | "rp" | "scenario";
@@ -25,6 +26,7 @@ type ConfigTarget = "persona" | "rp" | "scenario";
 type DirectCommandArgsMap = {
   clear: {};
   help: {};
+  error: { count?: number };
   status: {};
   context: {};
   retract: { count?: number };
@@ -79,6 +81,7 @@ interface DirectCommandHandlerInput {
   globalProfileReadinessStore: GlobalProfileReadinessStore;
   setupStore: SetupStateStore;
   contextStore: Pick<ContextStore, "upsertUserFact" | "removeUserFact" | "removeUserFactByText" | "replaceUserFactByText">;
+  recentErrorStore?: Pick<RecentErrorStore, "formatRecent">;
   forceCompactSession?: (sessionId: string, retainMessageCount?: number) => Promise<boolean>;
   flushSession?: (sessionId: string, options?: { skipReplyGate?: boolean }) => void;
   persistSession: (sessionId: string, reason: string) => void;
@@ -139,6 +142,7 @@ interface DirectCommandDescriptor {
     allowBeforeOwnerBound?: boolean;
     allowInPrivate?: boolean;
     allowInOwnerMentionedGroup?: boolean;
+    silentWhenNotExecutable?: boolean;
   };
   parse: (text: string) => ParsedDirectCommand | null;
   access?: (ctx: DirectCommandExecutionContext) => string | null;
@@ -160,6 +164,13 @@ function requireOwner(ctx: DirectCommandExecutionContext): string | null {
   return ctx.incomingMessage.relationship === "owner"
     ? null
     : "只有 owner 可以切换调试模式。";
+}
+
+function requireOwnerForErrorInspection(ctx: DirectCommandExecutionContext): string | null {
+  if (ctx.incomingMessage.relationship !== "owner") {
+    return "只有 owner 可以查看最近报错。";
+  }
+  return null;
 }
 
 function requireOwnerForConfiguration(ctx: DirectCommandExecutionContext): string | null {
@@ -354,7 +365,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
     },
     routing: {
       allowInPrivate: true,
-      allowInOwnerMentionedGroup: true
+      allowInOwnerMentionedGroup: false
     },
     parse(text: string): ParsedDirectCommand | null {
       return /^[。.]\s*help\s*$/i.test(text)
@@ -367,6 +378,40 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         ...directCommandDescriptors.map((descriptor) => descriptor.help)
       ];
       await ctx.send(lines.join("\n"));
+    }
+  },
+  {
+    name: "error",
+    help: ".error [数量] 查看最近报错（最多 50 条）",
+    dispatch: {
+      requireTextOnly: true
+    },
+    routing: {
+      allowInPrivate: true,
+      allowInOwnerMentionedGroup: false,
+      silentWhenNotExecutable: true
+    },
+    parse(text: string): ParsedDirectCommand | null {
+      const match = text.match(/^[。.]\s*error(?:\s+(\d+))?\s*$/i);
+      if (!match) {
+        return null;
+      }
+      const rawCount = match[1];
+      return rawCount == null
+        ? { name: "error" }
+        : { name: "error", count: Math.max(1, Math.min(50, Number(rawCount))) };
+    },
+    access: requireOwnerForErrorInspection,
+    async execute(ctx: DirectCommandExecutionContext, command: ParsedDirectCommand) {
+      if (!ctx.input.recentErrorStore) {
+        await ctx.send("当前实例未启用最近报错存储。");
+        return;
+      }
+      const errorCommand = command as Extract<ParsedDirectCommand, { name: "error" }>;
+      await ctx.send(await ctx.input.recentErrorStore.formatRecent(
+        errorCommand.count ?? 1,
+        ctx.input.config.scheduler.defaultTimezone
+      ));
     }
   },
   {
@@ -1055,6 +1100,9 @@ export function resolveDispatchableDirectCommand(context: DirectCommandDispatchC
     }
     if (canExecuteDirectCommand(parsed, context)) {
       return parsed;
+    }
+    if (descriptor.routing?.silentWhenNotExecutable === true) {
+      return null;
     }
   }
 

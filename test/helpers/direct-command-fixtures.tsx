@@ -95,6 +95,9 @@ interface DirectCommandFixtureOptions {
     isAvailable: () => boolean;
     generateTitle: (input: Record<string, unknown>) => Promise<string | null>;
   };
+  recentErrorStore?: {
+    formatRecent: (count: number, timeZone: string) => Promise<string>;
+  };
 }
 
 export function createDirectCommandFixture(options: DirectCommandFixtureOptions = {}) {
@@ -292,6 +295,11 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
       },
       replaceUserFactByText() {
         return { replaced: false, reason: "not_found" as const, candidates: [], remaining: [] };
+      }
+    },
+    recentErrorStore: options.recentErrorStore as any ?? {
+      async formatRecent() {
+        return "最近没有记录到 error/fatal 日志。";
       }
     },
     ...(options.forceCompactSession ? { forceCompactSession: options.forceCompactSession } : {}),

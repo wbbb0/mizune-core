@@ -54,6 +54,7 @@ import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import type { ContentSafetyService } from "#contentSafety/contentSafetyService.ts";
 import type { ContentSafetyStore } from "#contentSafety/contentSafetyStore.ts";
+import type { RecentErrorCapture, RecentErrorStore } from "#runtime/recentErrorStore.ts";
 
 export interface AppServiceBootstrap {
   config: ReturnType<typeof loadConfig>;
@@ -111,6 +112,7 @@ export interface AppServiceBootstrap {
   shellRuntime: ShellRuntime;
   runtimeResourceRegistry: RuntimeResourceRegistry;
   runtimeResourceStore: RuntimeResourceStore;
+  recentErrorStore: RecentErrorStore;
   configManager: ConfigManager;
   singleInstanceLock: SingleInstanceLock;
 }
@@ -119,6 +121,7 @@ export interface BootstrapRuntimeContext {
   config: AppServiceBootstrap["config"];
   logger: AppServiceBootstrap["logger"];
   dataDir: string;
+  recentErrorCapture: RecentErrorCapture;
   singleInstanceLock: SingleInstanceLock;
 }
 
