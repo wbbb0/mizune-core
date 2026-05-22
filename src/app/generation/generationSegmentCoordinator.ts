@@ -64,11 +64,37 @@ export function createGenerationSegmentCoordinator(input: {
     if (!streamBuffer.trim()) {
       return;
     }
-    const committed = await commitChunk(streamBuffer);
+    const currentResponseCommittedText = committedText.slice(providerReplayCursor);
+    const chunk = resolveUncommittedTextTail(streamBuffer, currentResponseCommittedText)
+      .replace(/^(?:[ \t]*\r?\n){2,}/, "");
+    if (!chunk.trim()) {
+      streamBuffer = "";
+      await input.draftStateSink?.clearDraftText();
+      return;
+    }
+    const committed = await commitChunk(chunk);
     if (committed !== false) {
       streamBuffer = "";
       await input.draftStateSink?.clearDraftText();
     }
+  };
+
+  const resolveUncommittedTextTail = (text: string, committedPrefix: string): string => {
+    if (!text.trim() || !committedPrefix.trim()) {
+      return text;
+    }
+    if (text.startsWith(committedPrefix)) {
+      return text.slice(committedPrefix.length);
+    }
+    const trimmedText = text.trim();
+    const trimmedCommitted = committedPrefix.trim();
+    if (trimmedText === trimmedCommitted) {
+      return "";
+    }
+    if (trimmedText.startsWith(trimmedCommitted)) {
+      return trimmedText.slice(trimmedCommitted.length);
+    }
+    return text;
   };
 
   const resolveUncommittedSummaryTail = (summary: string): string => {
@@ -79,18 +105,7 @@ export function createGenerationSegmentCoordinator(input: {
     if (!summary.trim()) {
       return "";
     }
-    if (summary.startsWith(currentResponseCommittedText)) {
-      return summary.slice(currentResponseCommittedText.length);
-    }
-    const trimmedCommitted = currentResponseCommittedText.trim();
-    const trimmedSummary = summary.trim();
-    if (trimmedSummary === trimmedCommitted) {
-      return "";
-    }
-    if (trimmedSummary.startsWith(trimmedCommitted)) {
-      return trimmedSummary.slice(trimmedCommitted.length);
-    }
-    return streamBuffer;
+    return resolveUncommittedTextTail(summary, currentResponseCommittedText) || streamBuffer;
   };
 
   const flushSummaryTail = async (summary: string): Promise<void> => {
