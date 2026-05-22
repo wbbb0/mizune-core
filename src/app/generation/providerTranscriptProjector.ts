@@ -81,11 +81,13 @@ function createOpenAiStyleProjector(
       const replayMessages: LlmMessage[] = [];
       const lateSystemMessages: string[] = [];
       const degradedLines: string[] = [];
+      const runtimeTranscript = input.transcript.filter(isTranscriptRuntimeIncluded);
       const toolResultReplayContent = buildToolResultReplayContentMap(input.transcript);
       let replayCoversVisibleHistory = false;
 
-      for (const item of input.transcript) {
-        if (!isTranscriptRuntimeIncluded(item)) {
+      for (let index = 0; index < runtimeTranscript.length; index += 1) {
+        const item = runtimeTranscript[index];
+        if (!item) {
           continue;
         }
         if (
@@ -111,6 +113,35 @@ function createOpenAiStyleProjector(
           continue;
         }
         if (item.kind === "assistant_tool_call") {
+          const expectedToolCallIds = new Set(item.toolCalls.map((toolCall) => toolCall.id));
+          const followingToolResults: InternalToolResultItem[] = [];
+          let nextIndex = index + 1;
+          while (nextIndex < runtimeTranscript.length) {
+            const nextItem = runtimeTranscript[nextIndex];
+            if (!nextItem || isOpenAiStyleToolReplayBoundary(nextItem)) {
+              break;
+            }
+            if (nextItem.kind === "tool_result") {
+              followingToolResults.push(nextItem);
+            }
+            nextIndex += 1;
+          }
+          const resultToolCallIds = new Set(followingToolResults.map((result) => result.toolCallId));
+          const duplicateToolCallIds = findDuplicateToolResultIds(followingToolResults);
+          const unknownToolCallIds = [...resultToolCallIds].filter((toolCallId) => !expectedToolCallIds.has(toolCallId));
+          const missingToolCallIds = [...expectedToolCallIds].filter((toolCallId) => !resultToolCallIds.has(toolCallId));
+          if (
+            expectedToolCallIds.size === 0
+            || missingToolCallIds.length > 0
+            || unknownToolCallIds.length > 0
+            || duplicateToolCallIds.length > 0
+          ) {
+            const names = item.toolCalls.map((toolCall) => toolCall.function.name).join(", ") || "<none>";
+            degradedLines.push(`- 工具调用历史不完整，已从 provider replay 省略：${names}`);
+            index = nextIndex - 1;
+            continue;
+          }
+
           replayMessages.push({
             role: "assistant",
             content: item.content,
@@ -126,14 +157,22 @@ function createOpenAiStyleProjector(
             ...(item.reasoningContent ? { reasoning_content: item.reasoningContent } : {}),
             ...(item.providerMetadata ? { providerMetadata: item.providerMetadata } : {})
           });
+          for (const toolResult of followingToolResults) {
+            if (!expectedToolCallIds.has(toolResult.toolCallId)) {
+              degradedLines.push(`- 孤立工具结果已从 provider replay 省略：${toolResult.toolName}`);
+              continue;
+            }
+            replayMessages.push({
+              role: "tool",
+              tool_call_id: toolResult.toolCallId,
+              content: toolResultReplayContent.get(toolResult.toolCallId) ?? rawToolResultContent(toolResult)
+            });
+          }
+          index = nextIndex - 1;
           continue;
         }
         if (item.kind === "tool_result") {
-          replayMessages.push({
-            role: "tool",
-            tool_call_id: item.toolCallId,
-            content: toolResultReplayContent.get(item.toolCallId) ?? rawToolResultContent(item)
-          });
+          degradedLines.push(`- 孤立工具结果已从 provider replay 省略：${item.toolName}`);
           continue;
         }
         if (item.kind === "system_marker") {
@@ -147,6 +186,30 @@ function createOpenAiStyleProjector(
       return { replayMessages, lateSystemMessages, replayCoversVisibleHistory };
     }
   };
+}
+
+function isOpenAiStyleToolReplayBoundary(item: InternalTranscriptItem): boolean {
+  return (
+    item.kind === "user_message"
+    || item.kind === "user_media_message"
+    || item.kind === "assistant_message"
+    || item.kind === "assistant_tool_call"
+    || item.kind === "session_mode_switch"
+    || item.kind === "profile_phase_transition"
+  );
+}
+
+function findDuplicateToolResultIds(items: InternalToolResultItem[]): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const item of items) {
+    if (seen.has(item.toolCallId)) {
+      duplicates.add(item.toolCallId);
+      continue;
+    }
+    seen.add(item.toolCallId);
+  }
+  return [...duplicates];
 }
 
 function buildToolResultReplayContentMap(transcript: InternalTranscriptItem[]): Map<string, string> {

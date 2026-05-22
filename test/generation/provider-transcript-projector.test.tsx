@@ -50,6 +50,234 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     }
   });
 
+  test("openai-style projector skips incomplete assistant tool call exchanges", () => {
+    const projection = getProviderTranscriptProjector("deepseek").project({
+      transcript: [
+        {
+          kind: "assistant_tool_call",
+          llmVisible: true,
+          timestampMs: 1,
+          content: "",
+          toolCalls: [
+            {
+              id: "call_completed_1",
+              type: "function",
+              function: {
+                name: "terminal_run",
+                arguments: "{\"cmd\":\"pwd\"}"
+              }
+            },
+            {
+              id: "call_interrupted_1",
+              type: "function",
+              function: {
+                name: "terminal_run",
+                arguments: "{\"cmd\":\"sleep 10\"}"
+              }
+            }
+          ]
+        },
+        {
+          kind: "tool_result",
+          llmVisible: true,
+          timestampMs: 2,
+          toolCallId: "call_completed_1",
+          toolName: "terminal_run",
+          content: "{\"stdout\":\"/repo\"}"
+        },
+        {
+          kind: "user_message",
+          role: "user",
+          llmVisible: true,
+          chatType: "private",
+          userId: "10001",
+          senderName: "Alice",
+          text: "打断一下",
+          imageIds: [],
+          emojiIds: [],
+          attachments: [],
+          messageFiles: [],
+          audioCount: 0,
+          forwardIds: [],
+          replyMessageId: null,
+          mentionUserIds: [],
+          mentionedAll: false,
+          mentionedSelf: false,
+          timestampMs: 3
+        }
+      ]
+    });
+
+    assert.deepEqual(projection.replayMessages.map((message) => message.role), []);
+    assert.match(projection.lateSystemMessages[0] ?? "", /工具调用历史不完整/);
+    assert.match(projection.lateSystemMessages[0] ?? "", /terminal_run/);
+  });
+
+  test("openai-style projector preserves complete multi-tool exchanges", () => {
+    const projection = getProviderTranscriptProjector("deepseek").project({
+      transcript: [
+        {
+          kind: "assistant_tool_call",
+          llmVisible: true,
+          timestampMs: 1,
+          content: "",
+          toolCalls: [
+            {
+              id: "call_first",
+              type: "function",
+              function: {
+                name: "terminal_run",
+                arguments: "{\"cmd\":\"pwd\"}"
+              }
+            },
+            {
+              id: "call_second",
+              type: "function",
+              function: {
+                name: "read_file",
+                arguments: "{\"path\":\"package.json\"}"
+              }
+            }
+          ]
+        },
+        {
+          kind: "tool_result",
+          llmVisible: true,
+          timestampMs: 2,
+          toolCallId: "call_first",
+          toolName: "terminal_run",
+          content: "{\"stdout\":\"/repo\"}"
+        },
+        {
+          kind: "tool_result",
+          llmVisible: true,
+          timestampMs: 3,
+          toolCallId: "call_second",
+          toolName: "read_file",
+          content: "{\"name\":\"llm-onebot\"}"
+        }
+      ]
+    });
+
+    assert.deepEqual(projection.replayMessages.map((message) => message.role), ["assistant", "tool", "tool"]);
+    assert.equal(projection.replayMessages[1]?.tool_call_id, "call_first");
+    assert.equal(projection.replayMessages[2]?.tool_call_id, "call_second");
+    assert.deepEqual(projection.lateSystemMessages, []);
+  });
+
+  test("openai-style projector skips internal metadata while matching tool results", () => {
+    const projection = getProviderTranscriptProjector("deepseek").project({
+      transcript: [
+        {
+          kind: "assistant_tool_call",
+          llmVisible: true,
+          timestampMs: 1,
+          content: "",
+          toolCalls: [{
+            id: "call_with_marker",
+            type: "function",
+            function: {
+              name: "terminal_run",
+              arguments: "{\"cmd\":\"pwd\"}"
+            }
+          }]
+        },
+        {
+          kind: "system_marker",
+          llmVisible: false,
+          markerType: "debug_enabled",
+          content: "internal marker",
+          timestampMs: 2
+        },
+        {
+          kind: "tool_result",
+          llmVisible: true,
+          timestampMs: 3,
+          toolCallId: "call_with_marker",
+          toolName: "terminal_run",
+          content: "{\"stdout\":\"/repo\"}"
+        }
+      ]
+    });
+
+    assert.deepEqual(projection.replayMessages.map((message) => message.role), ["assistant", "tool"]);
+    assert.equal(projection.replayMessages[1]?.tool_call_id, "call_with_marker");
+    assert.deepEqual(projection.lateSystemMessages, []);
+  });
+
+  test("openai-style projector skips tool exchanges with duplicate or unknown tool results", () => {
+    for (const transcript of [
+      [
+        {
+          kind: "assistant_tool_call",
+          llmVisible: true,
+          timestampMs: 1,
+          content: "",
+          toolCalls: [{
+            id: "call_duplicate",
+            type: "function",
+            function: {
+              name: "terminal_run",
+              arguments: "{\"cmd\":\"pwd\"}"
+            }
+          }]
+        },
+        {
+          kind: "tool_result",
+          llmVisible: true,
+          timestampMs: 2,
+          toolCallId: "call_duplicate",
+          toolName: "terminal_run",
+          content: "{\"stdout\":\"/repo\"}"
+        },
+        {
+          kind: "tool_result",
+          llmVisible: true,
+          timestampMs: 3,
+          toolCallId: "call_duplicate",
+          toolName: "terminal_run",
+          content: "{\"stdout\":\"again\"}"
+        }
+      ],
+      [
+        {
+          kind: "assistant_tool_call",
+          llmVisible: true,
+          timestampMs: 1,
+          content: "",
+          toolCalls: [{
+            id: "call_known",
+            type: "function",
+            function: {
+              name: "terminal_run",
+              arguments: "{\"cmd\":\"pwd\"}"
+            }
+          }]
+        },
+        {
+          kind: "tool_result",
+          llmVisible: true,
+          timestampMs: 2,
+          toolCallId: "call_known",
+          toolName: "terminal_run",
+          content: "{\"stdout\":\"/repo\"}"
+        },
+        {
+          kind: "tool_result",
+          llmVisible: true,
+          timestampMs: 3,
+          toolCallId: "call_unknown",
+          toolName: "terminal_run",
+          content: "{\"stdout\":\"unknown\"}"
+        }
+      ]
+    ] as InternalTranscriptItem[][]) {
+      const projection = getProviderTranscriptProjector("deepseek").project({ transcript });
+      assert.deepEqual(projection.replayMessages, []);
+      assert.match(projection.lateSystemMessages[0] ?? "", /工具调用历史不完整/);
+    }
+  });
+
   test("lmstudio native-compatible request summarizes tool transcript instead of replaying it", () => {
     const projection = getProviderTranscriptProjectorForRequest("lmstudio", { summaryOnly: true }).project({ transcript });
     assert.equal(projection.replayMessages.length, 0);
