@@ -311,6 +311,7 @@ export class SessionManager {
     finalizedDraftAssistant: boolean;
   } {
     const session = this.requireSession(sessionId);
+    const activeTranscriptGroupId = session.activeTranscriptGroupId;
     const finalizedDraftAssistant = finalizeActiveAssistantDraftResponseState(session);
     if (finalizedDraftAssistant != null) {
       this.historyService.appendAssistantHistory(
@@ -325,11 +326,15 @@ export class SessionManager {
       );
     }
     const interrupted = this.lifecycleController.interruptResponse(session);
+    const closedInterruptedToolCalls = activeTranscriptGroupId && interrupted.cancelledGeneration
+      ? this.historyService.closeInterruptedToolCalls(session, activeTranscriptGroupId)
+      : 0;
     if (
       interrupted.cancelledGeneration
       || interrupted.cancelledOutbound
       || interrupted.finalizedAssistant
       || finalizedDraftAssistant != null
+      || closedInterruptedToolCalls > 0
     ) {
       this.notifySessionChanged(sessionId);
     }

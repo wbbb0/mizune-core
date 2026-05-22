@@ -276,6 +276,49 @@ export class SessionHistoryService {
     }
   }
 
+  closeInterruptedToolCalls(session: SessionState, groupId: string, timestampMs = Date.now()): number {
+    const completedToolCallIds = new Set<string>();
+    for (const item of session.internalTranscript) {
+      if (item.groupId !== groupId || item.kind !== "tool_result" || item.runtimeExcluded === true) {
+        continue;
+      }
+      completedToolCallIds.add(item.toolCallId);
+    }
+
+    let closedCount = 0;
+    for (const item of session.internalTranscript) {
+      if (item.groupId !== groupId || item.kind !== "assistant_tool_call" || item.runtimeExcluded === true) {
+        continue;
+      }
+      for (const toolCall of item.toolCalls) {
+        if (completedToolCallIds.has(toolCall.id)) {
+          continue;
+        }
+        const content = JSON.stringify({
+          error: "工具调用被用户新消息打断，本轮工具结果已作废，后续不要依赖该调用结果。",
+          interrupted: true,
+          tool: toolCall.function.name
+        });
+        this.appendNormalizedTranscript(session, {
+          kind: "tool_result",
+          groupId,
+          llmVisible: true,
+          timestampMs,
+          toolCallId: toolCall.id,
+          toolName: toolCall.function.name,
+          content
+        }, groupId);
+        completedToolCallIds.add(toolCall.id);
+        closedCount += 1;
+      }
+    }
+
+    if (closedCount > 0) {
+      session.historyRevision += 1;
+    }
+    return closedCount;
+  }
+
   setLastLlmUsage(session: SessionState, usage: SessionUsageSnapshot): void {
     setLastLlmUsageState(session, usage);
   }

@@ -60,6 +60,72 @@ import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
     );
   });
 
+  test("interruptResponse closes unfinished assistant tool calls with synthetic tool results", async () => {
+    const sessionManager = new SessionManager(createTestAppConfig());
+    const sessionId = "qqbot:p:test";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    const generation = sessionManager.beginSyntheticGeneration(sessionId);
+    const expectedEpoch = sessionManager.getMutationEpoch(sessionId);
+
+    assert.equal(sessionManager.appendInternalTranscriptIfEpochMatches(sessionId, expectedEpoch, {
+      kind: "assistant_tool_call",
+      llmVisible: true,
+      timestampMs: 10,
+      content: "",
+      toolCalls: [
+        {
+          id: "call_done",
+          type: "function",
+          function: {
+            name: "terminal_run",
+            arguments: "{\"cmd\":\"pwd\"}"
+          }
+        },
+        {
+          id: "call_interrupted",
+          type: "function",
+          function: {
+            name: "terminal_run",
+            arguments: "{\"cmd\":\"sleep 10\"}"
+          }
+        }
+      ]
+    }), true);
+    assert.equal(sessionManager.appendInternalTranscriptIfEpochMatches(sessionId, expectedEpoch, {
+      kind: "tool_result",
+      llmVisible: true,
+      timestampMs: 11,
+      toolCallId: "call_done",
+      toolName: "terminal_run",
+      content: "{\"stdout\":\"/repo\"}"
+    }), true);
+
+    const groupId = sessionManager.getSession(sessionId).activeTranscriptGroupId;
+    assert.ok(groupId);
+    const interrupted = sessionManager.interruptResponse(sessionId);
+
+    assert.equal(interrupted.cancelledGeneration, true);
+    assert.equal(generation.abortController.signal.aborted, true);
+    const toolResults = sessionManager.getSession(sessionId).internalTranscript
+      .filter((item) => item.kind === "tool_result" && item.groupId === groupId);
+    assert.equal(toolResults.length, 2);
+    const synthetic = toolResults.find((item) => item.kind === "tool_result" && item.toolCallId === "call_interrupted");
+    assert.equal(synthetic?.kind, "tool_result");
+    assert.equal(synthetic?.toolName, "terminal_run");
+    assert.match(synthetic?.content ?? "", /工具调用被用户新消息打断/);
+    assert.equal(
+      sessionManager.appendInternalTranscriptIfEpochMatches(sessionId, expectedEpoch, {
+        kind: "tool_result",
+        llmVisible: true,
+        timestampMs: 12,
+        toolCallId: "call_late",
+        toolName: "terminal_run",
+        content: "{\"stdout\":\"late\"}"
+      }),
+      false
+    );
+  });
+
   test("finishing a profile operation preserves transcript and appends a visible phase marker", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const sessionId = "qqbot:p:test";
