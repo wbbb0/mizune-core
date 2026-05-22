@@ -92,6 +92,10 @@ export function createScheduledTaskDispatcher(
     async dispatchTerminalEvent(event: ShellRuntimeEvent): Promise<void> {
       await dispatcher.dispatchTrigger({
         sessionId: event.owner.sessionId,
+        targetHint: {
+          userId: event.owner.userId,
+          senderName: event.owner.senderName
+        },
         queueLogEvent: "terminal_event_queued",
         createTrigger: (target): InternalSessionTriggerExecution => {
           const common = {
@@ -136,6 +140,10 @@ export function createScheduledTaskDispatcher(
     async dispatchDownloadEvent(event: DownloadRuntimeEvent): Promise<void> {
       await dispatcher.dispatchTrigger({
         sessionId: event.owner.sessionId,
+        targetHint: {
+          userId: event.owner.userId,
+          senderName: event.owner.senderName
+        },
         queueLogEvent: "download_event_queued",
         createTrigger: (target): InternalSessionTriggerExecution => {
           const common = {
@@ -178,6 +186,10 @@ export function createScheduledTaskDispatcher(
     async dispatchComfyEvent(event: ComfyRuntimeEvent): Promise<void> {
       await dispatcher.dispatchTrigger({
         sessionId: event.owner.sessionId,
+        targetHint: {
+          userId: event.owner.userId,
+          senderName: event.owner.senderName
+        },
         queueLogEvent: "comfy_event_queued",
         createTrigger: (target): InternalSessionTriggerExecution => {
           const common = {

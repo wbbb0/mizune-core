@@ -7,6 +7,7 @@ import { createInternalTriggerDispatcher } from "../../src/app/session-work/inte
 import { createGenerationSessionOrchestrator } from "../../src/app/generation/generationSessionOrchestrator.ts";
 import { createInternalTriggerEvent } from "../../src/conversation/session/internalTranscriptEvents.ts";
 import { renderInlineTriggerBatchMessage } from "../../src/llm/prompt/promptBuilder.ts";
+import { createScheduledTaskDispatcher } from "../../src/app/session-work/scheduledTaskDispatcher.ts";
 import type { GenerationSessionOrchestratorDeps } from "../../src/app/generation/generationRunnerDeps.ts";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
@@ -815,6 +816,72 @@ function createOrchestratorDeps(input: {
     const session = sessionManager.getSession(sessionId);
     assert.equal(session.pendingInlineTriggers.length, 1);
     assert.equal(wakeCalled, true);
+  });
+
+  test("terminal close trigger supports web sessions", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "web:test-terminal";
+    sessionManager.ensureSession({
+      id: sessionId,
+      type: "private",
+      source: "web",
+      participantRef: { kind: "user", id: "owner" },
+      title: "Web 测试"
+    });
+    let wakeSessionId: string | null = null;
+
+    const dispatcher = createScheduledTaskDispatcher({
+      logger: pino({ level: "silent" }),
+      sessionManager,
+      userStore: {
+        async getByUserId() {
+          return { nickname: "Owner" };
+        }
+      } as never,
+      userIdentityStore: {
+        async findInternalUserId() {
+          return "owner";
+        }
+      } as never,
+      persistSession() {}
+    }, {
+      async runInternalTriggerSession() {
+        throw new Error("terminal close should be queued inline");
+      },
+      wakeInlineBatch(targetSessionId) {
+        wakeSessionId = targetSessionId;
+      }
+    });
+
+    await dispatcher.dispatchTerminalEvent({
+      kind: "session_closed",
+      owner: {
+        sessionId,
+        userId: "owner",
+        senderName: "Owner"
+      },
+      resourceId: "res_shell_web",
+      command: "echo ok",
+      cwd: "/tmp",
+      exitCode: 0,
+      signal: null,
+      output: "ok\n",
+      outputTruncated: false
+    });
+
+    const session = sessionManager.getSession(sessionId);
+    assert.equal(session.source, "web");
+    assert.equal(session.pendingInlineTriggers.length, 1);
+    assert.equal(wakeSessionId, sessionId);
+    const trigger = session.pendingInlineTriggers[0];
+    assert.equal(trigger?.kind, "terminal_session_closed");
+    if (trigger?.kind === "terminal_session_closed") {
+      assert.equal(trigger.targetType, "private");
+      assert.equal(trigger.targetUserId, "owner");
+      assert.equal(trigger.targetSenderName, "Owner");
+      assert.equal(trigger.output, "ok\n");
+    }
   });
 
   test("drainInlineTriggers atomically clears the queue", () => {

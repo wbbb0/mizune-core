@@ -181,15 +181,19 @@ export class LlmClient {
     };
 
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+      throwIfAbortSignalAborted(params.abortSignal);
       const steerMessages = await consumeClonedSteerMessages();
+      throwIfAbortSignalAborted(params.abortSignal);
       if (steerMessages.length > 0) {
         workingMessages.push(...steerMessages);
       }
       const inlineTriggerMessages = await consumeClonedInlineTriggers();
+      throwIfAbortSignalAborted(params.abortSignal);
       if (inlineTriggerMessages.length > 0) {
         workingMessages.push(...inlineTriggerMessages);
       }
       workingMessages.splice(0, workingMessages.length, ...await projectMessagesBeforeProvider(workingMessages));
+      throwIfAbortSignalAborted(params.abortSignal);
 
       const tools = typeof params.tools === "function"
         ? params.tools()
@@ -211,6 +215,7 @@ export class LlmClient {
           : {}),
         ...(params.skipDebugDump ? { skipDebugDump: params.skipDebugDump } : {})
       });
+      throwIfAbortSignalAborted(params.abortSignal);
       activeModelRefs = narrowActiveModelRefs(activeModelRefs, streamed.modelRef);
       mergeUsage(aggregatedUsage, streamed.usage);
       lastReasoningContent = streamed.reasoningContent;
@@ -279,9 +284,11 @@ export class LlmClient {
         let supplementalMessages: LlmMessage[] = [];
         let terminalResponse: { text: string } | undefined;
         try {
+          throwIfAbortSignalAborted(params.abortSignal);
           const rawToolResult = params.toolExecutor
             ? await params.toolExecutor(toolCall)
             : await this.executeToolCall(toolCall);
+          throwIfAbortSignalAborted(params.abortSignal);
           const normalizedToolResult = normalizeToolExecutionResult(rawToolResult);
           toolResult = normalizedToolResult.content;
           canonicalToolResult = normalizedToolResult.canonicalContent;
@@ -337,12 +344,15 @@ export class LlmClient {
         };
       };
 
+      throwIfAbortSignalAborted(params.abortSignal);
       const executedToolCalls = await executeToolCallBatch({
         toolCalls: streamed.toolCalls,
         execute: executeOneToolCall,
         ...(params.toolConcurrency ? { toolConcurrency: params.toolConcurrency } : {})
       });
+      throwIfAbortSignalAborted(params.abortSignal);
 
+      const supplementalMessagesToAppend: LlmMessage[] = [];
       for (const executed of executedToolCalls) {
         if (executed.terminalResponse) {
           return {
@@ -363,12 +373,13 @@ export class LlmClient {
           executed.toolCall,
           executed.canonicalToolResult !== undefined ? { canonicalContent: executed.canonicalToolResult } : undefined
         );
-        for (const message of cloneMessagesForRequest(
-          executed.supplementalMessages,
-          true
-        )) {
-          workingMessages.push(message);
-        }
+        supplementalMessagesToAppend.push(...executed.supplementalMessages);
+      }
+      for (const message of cloneMessagesForRequest(
+        supplementalMessagesToAppend,
+        true
+      )) {
+        workingMessages.push(message);
       }
     }
 
@@ -387,6 +398,7 @@ export class LlmClient {
           content: `你已达到工具调用轮次上限（${maxIterations}）。不要再调用任何工具。请基于现有工具结果直接回复用户；如果任务仍未完成，请简要说明已完成内容、未完成部分和下一步建议。`
         }
       ]);
+    throwIfAbortSignalAborted(params.abortSignal);
     const fallback = await this.streamChatCompletion({
       messages: fallbackMessages,
       ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
@@ -442,6 +454,16 @@ export class LlmClient {
 
     const resolvedEnableThinking = params.enableThinkingOverride ?? false;
     let lastError: unknown = null;
+    const messageProjection = repairToolCallMessageSequence(params.messages);
+    if (messageProjection.repairedCount > 0) {
+      this.logger.warn(
+        {
+          repairedCount: messageProjection.repairedCount,
+          omittedToolCallIds: messageProjection.omittedToolCallIds.slice(0, 20)
+        },
+        "llm_provider_messages_tool_history_repaired"
+      );
+    }
 
     for (let index = 0; index < providerContexts.length; index += 1) {
       const providerContext = providerContexts[index];
@@ -456,7 +478,7 @@ export class LlmClient {
 
       try {
         const result = await provider.generate(providerContext, {
-          messages: params.messages,
+          messages: messageProjection.messages,
           ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
           ...(resolvedTools ? { tools: resolvedTools } : {}),
           ...(params.onTextDelta ? { onTextDelta: params.onTextDelta } : {}),
@@ -735,6 +757,127 @@ function normalizeToolExecutionResult(input: string | LlmToolExecutionResult): L
       return this.content;
     }
   };
+}
+
+function throwIfAbortSignalAborted(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) {
+    return;
+  }
+  if (signal.reason instanceof Error) {
+    throw signal.reason;
+  }
+  throw new Error(typeof signal.reason === "string" ? signal.reason : "LLM generation aborted");
+}
+
+function repairToolCallMessageSequence(messages: LlmMessage[]): {
+  messages: LlmMessage[];
+  repairedCount: number;
+  omittedToolCallIds: string[];
+} {
+  const repaired: LlmMessage[] = [];
+  const omittedToolCallIds: string[] = [];
+  let changed = false;
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (!message) {
+      continue;
+    }
+
+    if (message.role === "assistant" && (message.tool_calls?.length ?? 0) > 0) {
+      const expectedIds = new Set(message.tool_calls?.map((toolCall) => toolCall.id) ?? []);
+      const followingTools: LlmMessage[] = [];
+      let nextIndex = index + 1;
+      while (nextIndex < messages.length) {
+        const nextMessage = messages[nextIndex];
+        if (!nextMessage || nextMessage.role !== "tool") {
+          break;
+        }
+        followingTools.push(nextMessage);
+        nextIndex += 1;
+      }
+
+      const resultIds = new Set(followingTools.map((toolResult) => toolResult.tool_call_id ?? ""));
+      const missingIds = [...expectedIds].filter((id) => !resultIds.has(id));
+      const unknownIds = [...resultIds].filter((id) => id.length === 0 || !expectedIds.has(id));
+      const duplicateIds = findDuplicateToolMessageIds(followingTools);
+      if (expectedIds.size > 0 && missingIds.length === 0 && unknownIds.length === 0 && duplicateIds.length === 0) {
+        repaired.push(message, ...followingTools);
+        index = nextIndex - 1;
+        continue;
+      }
+
+      changed = true;
+      omittedToolCallIds.push(...expectedIds);
+      const plainAssistant = stripToolCallsFromAssistantMessage(message);
+      if (plainAssistant) {
+        repaired.push(plainAssistant);
+      }
+      repaired.push({
+        role: "system",
+        content: buildOmittedToolCallHistoryMessage(message)
+      });
+      index = nextIndex - 1;
+      continue;
+    }
+
+    if (message.role === "tool") {
+      changed = true;
+      if (message.tool_call_id) {
+        omittedToolCallIds.push(message.tool_call_id);
+      }
+      repaired.push({
+        role: "system",
+        content: `省略了一条孤立工具结果历史，tool_call_id=${message.tool_call_id ?? "<missing>"}。`
+      });
+      continue;
+    }
+
+    repaired.push(message);
+  }
+
+  return {
+    messages: changed ? repaired : messages,
+    repairedCount: changed ? omittedToolCallIds.length : 0,
+    omittedToolCallIds
+  };
+}
+
+function findDuplicateToolMessageIds(messages: LlmMessage[]): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const message of messages) {
+    const id = message.tool_call_id ?? "";
+    if (seen.has(id)) {
+      duplicates.add(id);
+      continue;
+    }
+    seen.add(id);
+  }
+  return [...duplicates];
+}
+
+function stripToolCallsFromAssistantMessage(message: LlmMessage): LlmMessage | null {
+  if (!hasVisibleMessageContent(message.content) && !message.reasoning_content) {
+    return null;
+  }
+  return {
+    role: "assistant",
+    content: message.content,
+    ...(message.reasoning_content ? { reasoning_content: message.reasoning_content } : {})
+  };
+}
+
+function hasVisibleMessageContent(content: LlmMessage["content"]): boolean {
+  return Array.isArray(content) ? content.length > 0 : content.trim().length > 0;
+}
+
+function buildOmittedToolCallHistoryMessage(message: LlmMessage): string {
+  const toolNames = (message.tool_calls ?? [])
+    .map((toolCall) => toolCall.function.name)
+    .filter((name) => name.length > 0)
+    .join(", ") || "<none>";
+  return `最近一组工具调用历史不完整，已在 provider 请求前省略其结构化 tool_calls：${toolNames}。`;
 }
 
 function cloneMessagesForRequest(messages: LlmMessage[], preserveAssistantReasoning: boolean): LlmMessage[] {

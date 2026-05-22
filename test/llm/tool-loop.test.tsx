@@ -91,6 +91,83 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
     });
   });
 
+  test("same-round tool calls append supplemental messages after all tool results", async () => {
+    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 1);
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "tool-call-first",
+                  type: "function",
+                  function: {
+                    name: "read_a",
+                    arguments: "{}"
+                  }
+                },
+                {
+                  index: 1,
+                  id: "tool-call-second",
+                  type: "function",
+                  function: {
+                    name: "read_b",
+                    arguments: "{}"
+                  }
+                }
+              ]
+            }
+          }]
+        }]
+      },
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 5);
+          assert.equal(body.messages[1].role, "assistant");
+          assert.equal(body.messages[2].role, "tool");
+          assert.equal(body.messages[2].tool_call_id, "tool-call-first");
+          assert.equal(body.messages[3].role, "tool");
+          assert.equal(body.messages[3].tool_call_id, "tool-call-second");
+          assert.equal(body.messages[4].role, "system");
+          assert.equal(body.messages[4].content, "补充上下文");
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "done"
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "read both" }],
+        tools: [createToolDefinition("read_a"), createToolDefinition("read_b")],
+        toolConcurrency: {
+          maxConcurrency: 2,
+          analyze: () => ({ kind: "parallel", reads: ["readonly"], writes: [] })
+        },
+        toolExecutor: async toolCall => {
+          if (toolCall.function.name === "read_a") {
+            return {
+              content: "first-result",
+              supplementalMessages: [{ role: "system", content: "补充上下文" }]
+            };
+          }
+          return "second-result";
+        }
+      });
+
+      assert.equal(result.text, "done");
+    });
+  });
+
   test("projected tool results send initial content while exposing canonical content to observers", async () => {
     const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
     const observedCanonical: string[] = [];
@@ -594,6 +671,94 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
         "tool-executor",
         "provider:final_response:查完了"
       ]);
+    });
+  });
+
+  test("provider requests repair incomplete tool-call history before sending", async () => {
+    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 4);
+          assert.equal(body.messages[0].role, "user");
+          assert.equal(body.messages[1].role, "assistant");
+          assert.equal(body.messages[1].content, "我先查一下");
+          assert.equal(body.messages[1].tool_calls, undefined);
+          assert.equal(body.messages[2].role, "system");
+          assert.match(body.messages[2].content, /工具调用历史不完整/);
+          assert.equal(body.messages[3].role, "user");
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "可以继续"
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [
+          { role: "user", content: "查一下" },
+          {
+            role: "assistant",
+            content: "我先查一下",
+            tool_calls: [{
+              id: "tool-call-missing",
+              type: "function",
+              function: {
+                name: "lookup",
+                arguments: "{}"
+              }
+            }]
+          },
+          { role: "user", content: "继续" }
+        ]
+      });
+
+      assert.equal(result.text, "可以继续");
+    });
+  });
+
+  test("aborted tool loops stop before issuing the next provider request", async () => {
+    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+    const abortController = new AbortController();
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 1);
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              tool_calls: [{
+                index: 0,
+                id: "tool-call-aborted",
+                type: "function",
+                function: {
+                  name: "lookup",
+                  arguments: "{}"
+                }
+              }]
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      await assert.rejects(
+        client.generate({
+          messages: [{ role: "user", content: "查一下" }],
+          tools: [createToolDefinition("lookup")],
+          abortSignal: abortController.signal,
+          toolExecutor: async () => {
+            abortController.abort();
+            return "{\"ok\":true}";
+          }
+        }),
+        /aborted/i
+      );
     });
   });
 

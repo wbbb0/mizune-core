@@ -511,15 +511,30 @@ export function createGenerationExecutor(
         ...(activeInternalTrigger !== undefined ? { activeInternalTrigger } : {})
       });
 
+      const assertGenerationCurrent = (): void => {
+        if (abortController.signal.aborted || responseAbortController.signal.aborted) {
+          throw new Error("当前生成已被取消。");
+        }
+        if (sessionManager.getMutationEpoch(sessionId) === expectedEpoch) {
+          return;
+        }
+        abortController.abort();
+        responseAbortController.abort();
+        throw new Error("当前生成已被更新的会话 epoch 取代。");
+      };
+
       const toolExecutor = async (toolCall: LlmToolCall): Promise<string | LlmToolExecutionResult> => {
+        assertGenerationCurrent();
         const args = parseToolArguments(toolCall.function.arguments || "{}", logger, {
           toolName: toolCall.function.name,
           toolCallId: toolCall.id
         });
+        let toolResult: string | LlmToolExecutionResult;
         try {
           const rawToolExecutor = createBuiltinToolExecutor(builtinToolContext, buildToolSelectionOptions());
-          return await rawToolExecutor(toolCall, args);
+          toolResult = await rawToolExecutor(toolCall, args);
         } catch (error: unknown) {
+          assertGenerationCurrent();
           const message = error instanceof Error ? error.message : String(error);
           logger.warn(
             {
@@ -533,6 +548,8 @@ export function createGenerationExecutor(
             error: message
           });
         }
+        assertGenerationCurrent();
+        return toolResult;
       };
 
       if (llmClient.isConfigured(resolvedModelRef)) {
@@ -551,6 +568,7 @@ export function createGenerationExecutor(
             consumeSteerMessages,
             consumeInlineTriggers,
             projectMessagesBeforeProvider: async (messages) => {
+              assertGenerationCurrent();
               const projectedMessages = await projectProviderPreflightMessages({
                 messages,
                 project: async (projectableMessages) => (
@@ -562,6 +580,7 @@ export function createGenerationExecutor(
                   }))?.messages ?? projectableMessages
                 )
               });
+              assertGenerationCurrent();
               const projection = projectProviderWorkingMessagesForBudget({
                 messages: projectedMessages,
                 transcript: sessionManager.getSession(sessionId).internalTranscript,
