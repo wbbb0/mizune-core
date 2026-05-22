@@ -3,6 +3,7 @@ import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { AppConfig } from "#config/config.ts";
 import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
+import type { Persona } from "#persona/personaSchema.ts";
 import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
 import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
@@ -336,6 +337,7 @@ async function persistCurrentDraft(ctx: DirectCommandExecutionContext): Promise<
   }
   if (operationMode.kind === "persona_setup" || operationMode.kind === "persona_config") {
     await ctx.input.personaStore.write(operationMode.draft);
+    await syncSelfAccountNicknameFromPersona(ctx, operationMode.draft);
     await ctx.input.setupStore.advanceAfterPersonaUpdate(operationMode.draft);
     await ctx.input.globalProfileReadinessStore.setPersonaReadiness(
       resolvePersonaReadinessStatus(ctx.input.config, operationMode.draft)
@@ -354,6 +356,28 @@ async function persistCurrentDraft(ctx: DirectCommandExecutionContext): Promise<
     ctx.input.scenarioProfileStore.isComplete(operationMode.draft) ? "ready" : "uninitialized"
   );
   return true;
+}
+
+async function syncSelfAccountNicknameFromPersona(
+  ctx: DirectCommandExecutionContext,
+  persona: Persona
+): Promise<void> {
+  const nickname = persona.name.trim();
+  if (!nickname || ctx.input.config.onebot.provider !== "napcat") {
+    return;
+  }
+  try {
+    await ctx.input.oneBotClient.setQQProfile({ nickname });
+  } catch (error) {
+    ctx.input.logger.warn(
+      {
+        err: error,
+        sessionId: ctx.session.id,
+        nickname
+      },
+      "self_account_nickname_sync_failed"
+    );
+  }
 }
 
 const directCommandDescriptors: DirectCommandDescriptor[] = [

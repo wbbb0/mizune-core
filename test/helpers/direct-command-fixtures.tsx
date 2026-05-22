@@ -13,6 +13,7 @@ type SentImmediateText = {
 };
 
 interface DirectCommandFixtureOptions {
+  config?: Parameters<typeof createTestAppConfig>[0];
   session?: Record<string, unknown>;
   cancelGeneration?: () => boolean;
   interruptResponse?: () => Record<string, unknown>;
@@ -98,6 +99,7 @@ interface DirectCommandFixtureOptions {
   recentErrorStore?: {
     formatRecent: (count: number, timeZone: string) => Promise<string>;
   };
+  oneBotClient?: Record<string, unknown>;
 }
 
 export function createDirectCommandFixture(options: DirectCommandFixtureOptions = {}) {
@@ -125,7 +127,8 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
     config: createTestAppConfig({
       shell: {
         enabled: true
-      }
+      },
+      ...options.config
     }),
     sessionManager: {
       ensureSession() {
@@ -205,7 +208,8 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
     oneBotClient: {
       async deleteMessage() {
         return { status: "ok", retcode: 0, data: null };
-      }
+      },
+      ...options.oneBotClient
     } as unknown as Parameters<typeof createDirectCommandHandler>[0]["oneBotClient"],
     logger: {
       info() {},

@@ -63,6 +63,13 @@ export interface OneBotLoginInfo {
   nickname?: string;
 }
 
+export interface OneBotSelfAccountInfo {
+  user_id: number;
+  nickname: string | null;
+  avatar_url: string;
+  profile: Record<string, unknown> | null;
+}
+
 export interface OneBotHistoryMessage extends Omit<OneBotRetrievedMessage, "message_id"> {
   message_id: number | string | null;
   message_type?: "private" | "group" | string | null;

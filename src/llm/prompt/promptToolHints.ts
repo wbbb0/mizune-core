@@ -87,6 +87,9 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     if (hasAnyTool(visibleToolNames, ["asset_local_path", "asset_export_to_filesystem"])) {
       lines.push("需要把 asset 复制到本地目录时用 asset_export_to_filesystem。");
     }
+    if (visibleToolNames.has("asset_image_transform")) {
+      lines.push("需要裁剪、旋转、翻转、拉伸、改分辨率或转换图片格式时用 asset_image_transform，输出仍是新的 asset。");
+    }
   }
 
   if (hasAnyTool(visibleToolNames, ["asset_document_overview", "asset_document_read", "asset_document_search", "asset_document_inspect"])) {

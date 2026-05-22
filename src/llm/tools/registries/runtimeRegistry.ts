@@ -3,6 +3,8 @@ import { diceToolDescriptors, diceToolHandlers } from "../runtime/diceTools.ts";
 import { debugToolDescriptors, debugToolHandlers } from "../runtime/debugTools.ts";
 import { assetDocumentToolDescriptors, assetDocumentToolHandlers } from "../runtime/documentTools.ts";
 import { getComfyToolDescriptors, comfyToolHandlers } from "../runtime/comfyTools.ts";
+import { imageTransformToolDescriptors, imageTransformToolHandlers } from "../runtime/imageTransformTools.ts";
+import { selfAccountToolDescriptors, selfAccountToolHandlers } from "../runtime/accountTools.ts";
 import { resourceToolDescriptors, resourceToolHandlers } from "../runtime/resourceTools.ts";
 import { schedulerToolDescriptors, schedulerToolHandlers } from "../runtime/schedulerTools.ts";
 import { shellToolDescriptors, shellToolHandlers } from "../runtime/shellTools.ts";
@@ -23,7 +25,9 @@ const runtimeStaticToolDescriptorsRegistry = [
   ...shellToolDescriptors,
   ...localFileToolDescriptors,
   ...chatFileToolDescriptors,
+  ...imageTransformToolDescriptors,
   ...assetDocumentToolDescriptors,
+  ...selfAccountToolDescriptors,
   ...diceToolDescriptors,
   ...timeToolDescriptors
 ];
@@ -44,7 +48,9 @@ export const runtimeToolHandlersRegistry = {
   ...shellToolHandlers,
   ...localFileToolHandlers,
   ...chatFileToolHandlers,
+  ...imageTransformToolHandlers,
   ...assetDocumentToolHandlers,
+  ...selfAccountToolHandlers,
   ...diceToolHandlers,
   ...timeToolHandlers
 };

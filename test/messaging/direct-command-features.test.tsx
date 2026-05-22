@@ -851,8 +851,14 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
     const writtenPersonas: unknown[] = [];
     const setupAdvanceCalls: unknown[] = [];
     const personaReadinessUpdates: Array<"uninitialized" | "ready"> = [];
+    const nicknameUpdates: string[] = [];
 
     const { calls, handler } = createDirectCommandFixture({
+      config: {
+        onebot: {
+          provider: "napcat"
+        }
+      },
       session: {
         operationMode: {
           kind: "persona_setup",
@@ -906,7 +912,13 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           personaReadinessUpdates.push(status);
           return null;
         }
-      } as any
+      } as any,
+      oneBotClient: {
+        async setQQProfile(input: { nickname: string }) {
+          nicknameUpdates.push(input.nickname);
+          return { status: "ok", retcode: 0, data: null };
+        }
+      }
     });
 
     await handler({
@@ -920,6 +932,7 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
     assert.equal(writtenPersonas.length, 1);
     assert.equal(setupAdvanceCalls.length, 1);
     assert.deepEqual(personaReadinessUpdates, ["ready"]);
+    assert.deepEqual(nicknameUpdates, ["小满"]);
     assert.equal(calls.at(-1)?.text, "配置已确认，已回到正常对话。");
   });
 

@@ -21,6 +21,7 @@ import type {
   OneBotHistoryMessage,
   OneBotLoginInfo,
   OneBotRetrievedMessage,
+  OneBotSelfAccountInfo,
   OneBotSendResult
 } from "./types.ts";
 import { createOneBotTypingAdapter } from "./typingAdapter.ts";
@@ -389,6 +390,47 @@ export class OneBotClient extends EventEmitter {
       user_id: userId,
       ...(typeof data.nickname === "string" ? { nickname: data.nickname } : {})
     };
+  }
+
+  async getSelfAccountInfo(): Promise<OneBotSelfAccountInfo> {
+    const loginInfo = await this.getLoginInfo();
+    const profilePayload = await this.postApi<OneBotApiResponse>("get_stranger_info", {
+      user_id: loginInfo.user_id,
+      no_cache: false
+    }).catch(() => null);
+    const profile = profilePayload?.retcode === 0 && isRecord(profilePayload.data)
+      ? profilePayload.data
+      : null;
+    return {
+      user_id: loginInfo.user_id,
+      nickname: typeof profile?.nickname === "string" ? profile.nickname : loginInfo.nickname ?? null,
+      avatar_url: `https://q1.qlogo.cn/g?b=qq&nk=${loginInfo.user_id}&s=640`,
+      profile
+    };
+  }
+
+  async setQQProfile(input: { nickname: string }): Promise<OneBotApiResponse> {
+    const payload = await this.postApi<OneBotApiResponse>("set_qq_profile", {
+      nickname: input.nickname
+    });
+    this.assertApiSuccess("set_qq_profile", payload);
+    return payload;
+  }
+
+  async setSelfLongNick(longNick: string): Promise<OneBotApiResponse> {
+    const payload = await this.postApi<OneBotApiResponse>("set_self_longnick", {
+      longNick
+    });
+    this.assertApiSuccess("set_self_longnick", payload);
+    return payload;
+  }
+
+  async setQQAvatar(filePath: string): Promise<OneBotApiResponse> {
+    const payload = await this.postApi<OneBotApiResponse>("set_qq_avatar", {
+      file: filePath
+    });
+    this.assertApiSuccess("set_qq_avatar", payload);
+    return payload;
   }
 
   async getPrivateMessageHistory(input: {

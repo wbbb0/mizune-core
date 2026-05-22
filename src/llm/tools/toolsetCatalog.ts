@@ -220,7 +220,8 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     description: "查看和发送已登记 asset。",
     plannerSignals: [
       "查看聊天导入文件",
-      "发送已登记图片或附件"
+      "发送已登记图片或附件",
+      "裁剪、旋转、翻转、拉伸或转换图片格式"
     ],
     toolNames: [
       "asset_list",
@@ -233,6 +234,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "asset_document_inspect",
       "asset_media_view",
       "asset_media_inspect",
+      "asset_image_transform",
       "asset_local_path",
       "asset_export_to_filesystem",
       "asset_send_to_chat"
@@ -247,6 +249,9 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ],
     ownerOnly: true,
     toolNames: [
+      "self_account_view",
+      "self_account_avatar_set",
+      "self_account_signature_set",
       "search_friends",
       "search_joined_groups",
       "list_pending_friend_requests",

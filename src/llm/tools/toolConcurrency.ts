@@ -33,6 +33,7 @@ const READ_ONLY_TOOL_RESOURCES: Record<string, readonly string[]> = {
   view_forward_record: ["forwards:*"],
   asset_list: ["chat_file:*"],
   asset_media_view: ["chat_file:*"],
+  self_account_view: ["onebot_account:*"],
   filesystem_media_view: ["filesystem:*"],
   ground_with_google_search: ["web_search:*"],
   search_with_iqs_lite_advanced: ["web_search:*"],
@@ -85,6 +86,12 @@ export function analyzeBuiltinToolConcurrency(toolCall: LlmToolCall): ToolExecut
       return parallel(["onebot_group:*"], ["download:*", "chat_file:*"]);
     case "download_message_file":
       return parallel(["messages:*"], ["chat_file:*"]);
+    case "asset_image_transform":
+      return parallel(["chat_file:*", "filesystem:*"], ["chat_file:*"]);
+    case "self_account_signature_set":
+      return parallel([], ["onebot_account:*"]);
+    case "self_account_avatar_set":
+      return parallel(["chat_file:*"], ["onebot_account:*"]);
     case "inspect_page":
       return parallel([browserPageKey(getStringArg(args, "resource_id"))], []);
     case "capture_screenshot":
