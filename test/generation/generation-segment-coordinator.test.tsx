@@ -151,6 +151,39 @@ test("segment coordinator exposes committed text as the provider assistant repla
   assert.equal(coordinator.resolveProviderAssistantText("看看便知。\n\n继续查。"), "继续查。");
 });
 
+test("segment coordinator drops duplicate buffered tool-call text after streamed split", async () => {
+  const committedChunks: string[] = [];
+  const draftStates: string[] = [];
+  const coordinator = createGenerationSegmentCoordinator({
+    disableStreamingSplit: false,
+    committedSink: {
+      async enqueueChunk(chunk) {
+        committedChunks.push(chunk);
+        return true;
+      },
+      async flushBufferedOutput(_summary, streamBuffer) {
+        return streamBuffer;
+      }
+    },
+    draftStateSink: {
+      replaceDraftText(text) {
+        draftStates.push(text);
+      },
+      clearDraftText() {
+        draftStates.push("<clear>");
+      }
+    }
+  });
+
+  const text = "确实已经没了。起个跑30次的，跑完会自动触发通知。";
+  await coordinator.onTextDelta(`${text}\n\n${text}`);
+  await coordinator.flushBufferedChunk();
+
+  assert.deepEqual(committedChunks, [text]);
+  assert.equal(coordinator.resolveProviderAssistantText(`${text}\n\n${text}`), text);
+  assert.equal(draftStates[draftStates.length - 1], "<clear>");
+});
+
 test("segment coordinator does not trim final summary against previous tool-call text", async () => {
   const committedChunks: string[] = [];
   const coordinator = createGenerationSegmentCoordinator({
