@@ -1009,13 +1009,14 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
     try {
-      const [listResponse, getResponse, runResponse, interactResponse, readResponse, signalResponse, closeResponse] = await Promise.all([
+      const [listResponse, getResponse, runResponse, interactResponse, readResponse, signalResponse, resizeResponse, closeResponse] = await Promise.all([
         app.inject({ method: "GET", url: "/api/shell/sessions" }),
         app.inject({ method: "GET", url: "/api/shell/sessions/shell-1" }),
-        app.inject({ method: "POST", url: "/api/shell/run", payload: { command: "pwd", cwd: "/tmp", tty: true } }),
+        app.inject({ method: "POST", url: "/api/shell/run", payload: { command: "pwd", description: "test shell", cwd: "/tmp", tty: true, background: true } }),
         app.inject({ method: "POST", url: "/api/shell/sessions/shell-1/interact", payload: { input: "ls\n" } }),
         app.inject({ method: "POST", url: "/api/shell/sessions/shell-1/read" }),
         app.inject({ method: "POST", url: "/api/shell/sessions/shell-1/signal", payload: { signal: "SIGTERM" } }),
+        app.inject({ method: "POST", url: "/api/shell/sessions/shell-1/resize", payload: { cols: 100, rows: 24 } }),
         app.inject({ method: "POST", url: "/api/shell/sessions/shell-1/close" })
       ]);
 
@@ -1028,6 +1029,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(interactResponse.json().output, "ls\n");
       assert.equal(readResponse.json().output, "pwd\n");
       assert.equal(signalResponse.json().session.signal, "SIGTERM");
+      assert.equal(resizeResponse.json().session.command, "resize 100x24");
       assert.deepEqual(closeResponse.json(), { ok: true });
       assert.deepEqual(deps.__state.closedSessionIds, ["shell-1"]);
     } finally {

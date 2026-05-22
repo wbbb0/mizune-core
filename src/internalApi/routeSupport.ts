@@ -26,9 +26,11 @@ const webSessionStreamQuerySchema = z.object({
 
 const shellRunBodySchema = z.object({
   command: z.string().trim().min(1, "command is required"),
+  description: z.string().trim().min(1).optional(),
   cwd: z.string().trim().min(1).optional(),
   timeoutMs: z.number().finite().positive().optional(),
-  tty: z.boolean().optional()
+  tty: z.boolean().optional(),
+  background: z.boolean().optional()
 });
 
 const shellInteractBodySchema = z.object({
@@ -37,6 +39,11 @@ const shellInteractBodySchema = z.object({
 
 const shellSignalBodySchema = z.object({
   signal: z.string().trim().min(1, "signal is required")
+});
+
+const shellResizeBodySchema = z.object({
+  cols: z.number().int().positive().max(1000),
+  rows: z.number().int().positive().max(1000)
 });
 
 const sendTextBodySchema = z.object({
@@ -182,6 +189,7 @@ export type ParsedWebSessionStreamQuery = z.infer<typeof webSessionStreamQuerySc
 export type ParsedShellRunBody = z.infer<typeof shellRunBodySchema>;
 export type ParsedShellInteractBody = z.infer<typeof shellInteractBodySchema>;
 export type ParsedShellSignalBody = z.infer<typeof shellSignalBodySchema>;
+export type ParsedShellResizeBody = z.infer<typeof shellResizeBodySchema>;
 export type ParsedSendTextBody = z.infer<typeof sendTextBodySchema>;
 export type ParsedWebTurnBody = z.infer<typeof webTurnBodySchema>;
 export type ParsedCreateSessionBody = z.infer<typeof createSessionBodySchema>;
@@ -271,6 +279,10 @@ export function parseShellInteractBody(body: unknown): ParsedShellInteractBody |
 
 export function parseShellSignalBody(body: unknown): ParsedShellSignalBody | { error: string } {
   return parseWithSchema(shellSignalBodySchema, body);
+}
+
+export function parseShellResizeBody(body: unknown): ParsedShellResizeBody | { error: string } {
+  return parseWithSchema(shellResizeBodySchema, body);
 }
 
 export function parseSendTextBody(body: unknown): ParsedSendTextBody | { error: string } {

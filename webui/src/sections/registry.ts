@@ -5,6 +5,7 @@ import { configView } from "@/sections/config";
 import { dataView } from "@/sections/data";
 import { settingsView } from "@/sections/settings";
 import { workspaceView } from "@/sections/workspace";
+import { resourcesView } from "@/sections/resources";
 import { defineComponent, h } from "vue";
 
 const placeholderPrimarySidebar = defineComponent({
@@ -40,6 +41,7 @@ export const workbenchViews: readonly WorkbenchView[] = Object.freeze(
     if (id === "config") return configView;
     if (id === "data") return dataView;
     if (id === "files") return workspaceView;
+    if (id === "resources") return resourcesView;
     if (id === "settings") return settingsView;
     return createPlaceholderView(id, title);
   })

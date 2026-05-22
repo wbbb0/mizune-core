@@ -1,4 +1,7 @@
+import { createRequire } from "node:module";
 import type { Logger } from "pino";
+import type { ITerminalInitOnlyOptions, ITerminalOptions, Terminal as HeadlessTerminalInstance } from "@xterm/headless";
+import { SerializeAddon } from "@xterm/addon-serialize";
 import type { AppConfig } from "#config/config.ts";
 import { RuntimeResourceRegistry } from "#runtime/resources/runtimeResourceRegistry.ts";
 import type { ShellSessionResourceSummary } from "./types.ts";
@@ -16,6 +19,8 @@ import { ShellOutputBuffer } from "./outputBuffer.ts";
 import { resolveShellCwd } from "./pathPolicy.ts";
 import type {
   ShellNotifyPolicy,
+  ShellRealtimeEvent,
+  ShellRealtimeSubscription,
   ShellInteractionResult,
   ShellRunOwner,
   ShellRunParams,
@@ -25,12 +30,24 @@ import type {
   ShellSession
 } from "./types.ts";
 
+const require = createRequire(import.meta.url);
+const HeadlessTerminal = (require("@xterm/headless") as {
+  Terminal: new (options?: ITerminalOptions & ITerminalInitOnlyOptions) => HeadlessTerminalInstance;
+}).Terminal;
+
 interface InternalSessionState {
   view: ShellSession;
   pendingOutput: ShellOutputBuffer;
   outputTail: ShellOutputBuffer;
+  screenTerminal: HeadlessTerminalInstance;
+  screenSerializeAddon: SerializeAddon;
+  screenPendingWrites: number;
+  screenFlushResolvers: Set<() => void>;
+  screenDisposed: boolean;
   write: (data: string) => void;
+  resize: (cols: number, rows: number) => void;
   kill: (signal?: string) => void;
+  realtimeSubscribers: Set<(event: ShellRealtimeEvent) => void>;
   expiresAtMs: number | null;
   owner: ShellRunOwner | null;
   notifyPolicy: ShellNotifyPolicy;
@@ -160,8 +177,11 @@ export class ShellRuntime {
       view,
       pendingOutput: new ShellOutputBuffer(this.config.shell.maxOutputChars),
       outputTail: new ShellOutputBuffer(this.config.shell.maxOutputChars),
+      ...createScreenBuffer(),
       write: spawned.io.write,
+      resize: spawned.io.resize,
       kill: spawned.io.kill,
+      realtimeSubscribers: new Set(),
       expiresAtMs: this.computeNextExpiry(),
       owner: params.owner ?? null,
       notifyPolicy,
@@ -181,9 +201,11 @@ export class ShellRuntime {
     spawned.io.onOutput((chunk) => {
       state.pendingOutput.append(chunk);
       state.outputTail.append(chunk);
+      appendScreenOutput(state, chunk);
       state.view.outputTail = state.outputTail.tail();
       state.view.updatedAtMs = Date.now();
       state.view.lastOutputAtMs = state.view.updatedAtMs;
+      this.emitRealtimeOutput(state, chunk);
       this.scheduleInputDetection(resource.resourceId, state);
     });
 
@@ -207,6 +229,11 @@ export class ShellRuntime {
         });
       }
       this.emitClosedEventIfNeeded(resource.resourceId, state);
+      this.emitRealtimeStatus(state);
+      if (state.returnedToModel) {
+        this.sessions.delete(resource.resourceId);
+        disposeShellState(state);
+      }
     });
 
     if (!background) {
@@ -238,6 +265,7 @@ export class ShellRuntime {
         policy
       };
       this.sessions.delete(resource.resourceId);
+      disposeShellState(state);
       return result;
     }
 
@@ -277,6 +305,7 @@ export class ShellRuntime {
 
     if (isClosedSession(state.view)) {
       this.sessions.delete(resourceId);
+      disposeShellState(state);
     } else {
       await this.touchSession(resourceId, state);
     }
@@ -289,6 +318,23 @@ export class ShellRuntime {
     };
   }
 
+  async writeRaw(resourceId: string, input: string): Promise<ShellSession> {
+    await this.cleanupExpiredSessions();
+    const state = await this.requireState(resourceId);
+    if (state.view.status !== "running") {
+      throw new Error(`Session ${resourceId} is already closed`);
+    }
+
+    state.write(input);
+    state.view.lastInputAtMs = Date.now();
+    state.inputDetectionSuppressedUntilMs = state.view.lastInputAtMs + this.config.shell.terminalEvents.inputSuppressionAfterWriteMs;
+    state.lastInputPromptSignature = null;
+    state.lastInputPromptNotifiedAtMs = null;
+    await this.touchSession(resourceId, state);
+    this.emitRealtimeStatus(state);
+    return state.view;
+  }
+
   async read(resourceId: string): Promise<ShellInteractionResult> {
     await this.cleanupExpiredSessions();
     const state = await this.requireState(resourceId);
@@ -297,6 +343,7 @@ export class ShellRuntime {
 
     if (isClosedSession(state.view)) {
       this.sessions.delete(resourceId);
+      disposeShellState(state);
     } else {
       await this.touchSession(resourceId, state);
     }
@@ -316,11 +363,50 @@ export class ShellRuntime {
     state.kill(signal);
     await waitForShellYield(100);
     await this.touchSession(resourceId, state);
+    this.emitRealtimeStatus(state);
     return state.view;
   }
 
+  async resize(resourceId: string, cols: number, rows: number): Promise<ShellSession> {
+    await this.cleanupExpiredSessions();
+    const state = await this.requireState(resourceId);
+    if (state.view.status !== "running") {
+      throw new Error(`Session ${resourceId} is already closed`);
+    }
+    state.resize(
+      Math.max(2, Math.min(1000, Math.round(cols))),
+      Math.max(1, Math.min(1000, Math.round(rows)))
+    );
+    state.screenTerminal.resize(
+      Math.max(2, Math.min(1000, Math.round(cols))),
+      Math.max(1, Math.min(1000, Math.round(rows)))
+    );
+    await this.touchSession(resourceId, state);
+    this.emitRealtimeStatus(state);
+    return state.view;
+  }
+
+  async subscribe(resourceId: string, listener: (event: ShellRealtimeEvent) => void): Promise<ShellRealtimeSubscription> {
+    await this.cleanupExpiredSessions();
+    const state = await this.requireState(resourceId);
+    await waitForScreenFlush(state, 250);
+    await this.touchSession(resourceId, state);
+    await waitForScreenFlush(state, 250);
+    const replay = serializeScreenBuffer(state);
+    state.realtimeSubscribers.add(listener);
+    return {
+      session: state.view,
+      replay,
+      dispose: () => {
+        state.realtimeSubscribers.delete(listener);
+      }
+    };
+  }
+
   listSessions(): ShellSession[] {
-    return Array.from(this.sessions.values()).map((item) => item.view);
+    return Array.from(this.sessions.values())
+      .filter((item) => item.view.status === "running")
+      .map((item) => item.view);
   }
 
   async listSessionResources(): Promise<ShellSessionResourceSummary[]> {
@@ -367,7 +453,13 @@ export class ShellRuntime {
       this.cancelInputDetection(state);
       state.closeEventSuppressed = true;
       state.kill("SIGKILL");
+      state.view.status = "closed";
+      state.view.signal = "SIGKILL";
+      state.view.pid = null;
+      state.view.updatedAtMs = Date.now();
       this.sessions.delete(resourceId);
+      this.emitRealtimeStatus(state);
+      disposeShellState(state);
       void this.resourceRegistry.markStatus(resourceId, "closed", Date.now());
     }
   }
@@ -428,6 +520,7 @@ export class ShellRuntime {
       state.closeEventSuppressed = true;
       state.kill("SIGKILL");
       this.sessions.delete(resourceId);
+      disposeShellState(state);
       await this.resourceRegistry.markStatus(resourceId, "expired", now).catch(() => null);
     }
 
@@ -607,6 +700,112 @@ export class ShellRuntime {
     void Promise.resolve(this.eventHandler(event)).catch((error: unknown) => {
       this.logger.error({ error, resourceId }, "shell_runtime_event_dispatch_failed");
     });
+  }
+
+  private emitRealtimeOutput(state: InternalSessionState, data: string): void {
+    if (state.realtimeSubscribers.size === 0) {
+      return;
+    }
+    this.emitRealtimeEvent(state, { kind: "output", data });
+  }
+
+  private emitRealtimeStatus(state: InternalSessionState): void {
+    if (state.realtimeSubscribers.size === 0) {
+      return;
+    }
+    this.emitRealtimeEvent(state, { kind: "status", session: state.view });
+  }
+
+  private emitRealtimeEvent(state: InternalSessionState, event: ShellRealtimeEvent): void {
+    for (const subscriber of Array.from(state.realtimeSubscribers)) {
+      try {
+        subscriber(event);
+      } catch (error: unknown) {
+        this.logger.debug({ error }, "shell_realtime_subscriber_failed");
+      }
+    }
+  }
+}
+
+function createScreenBuffer(): Pick<
+  InternalSessionState,
+  "screenTerminal" | "screenSerializeAddon" | "screenPendingWrites" | "screenFlushResolvers" | "screenDisposed"
+> {
+  const screenTerminal = new HeadlessTerminal({
+    allowProposedApi: true,
+    cols: 120,
+    rows: 30,
+    scrollback: 8000,
+    windowsMode: true
+  });
+  const screenSerializeAddon = new SerializeAddon();
+  screenTerminal.loadAddon(screenSerializeAddon);
+  return {
+    screenTerminal,
+    screenSerializeAddon,
+    screenPendingWrites: 0,
+    screenFlushResolvers: new Set(),
+    screenDisposed: false
+  };
+}
+
+function appendScreenOutput(state: InternalSessionState, chunk: string): void {
+  if (state.screenDisposed) {
+    return;
+  }
+  state.screenPendingWrites += 1;
+  state.screenTerminal.write(chunk, () => {
+    state.screenPendingWrites = Math.max(0, state.screenPendingWrites - 1);
+    if (state.screenPendingWrites === 0) {
+      resolveScreenFlushWaiters(state);
+    }
+  });
+}
+
+async function waitForScreenFlush(state: InternalSessionState, timeoutMs: number): Promise<void> {
+  if (state.screenPendingWrites === 0 || state.screenDisposed) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    const resolveWaiter = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      state.screenFlushResolvers.delete(resolveWaiter);
+      resolve();
+    }, timeoutMs);
+    timer.unref?.();
+    state.screenFlushResolvers.add(resolveWaiter);
+  });
+}
+
+function resolveScreenFlushWaiters(state: InternalSessionState): void {
+  const resolvers = Array.from(state.screenFlushResolvers);
+  state.screenFlushResolvers.clear();
+  for (const resolve of resolvers) {
+    resolve();
+  }
+}
+
+function serializeScreenBuffer(state: InternalSessionState): string {
+  try {
+    if (state.screenPendingWrites > 0) {
+      return state.outputTail.tail();
+    }
+    return state.screenSerializeAddon.serialize({ scrollback: 8000 });
+  } catch {
+    return state.outputTail.tail();
+  }
+}
+
+function disposeShellState(state: InternalSessionState): void {
+  state.screenDisposed = true;
+  resolveScreenFlushWaiters(state);
+  try {
+    state.screenTerminal.dispose();
+  } catch {
+    // Disposal is best-effort; shell process cleanup has already happened.
   }
 }
 
