@@ -295,7 +295,8 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     assetLifecycleStore,
     assetLifecycleService,
     contextSessionCleanupService,
-    runtimeResourceStore: services.runtimeResourceStore
+    runtimeResourceStore: services.runtimeResourceStore,
+    recentErrorStore
   });
 
   try {

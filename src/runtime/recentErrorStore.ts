@@ -27,6 +27,11 @@ export interface RecentErrorRecord {
   context: Record<string, unknown>;
 }
 
+export interface RecentErrorRowsInput {
+  offset?: number;
+  limit?: number;
+}
+
 export class RecentErrorCapture {
   private store: Pick<RecentErrorStore, "record"> | null = null;
   private pending: RecentErrorLogInput[] = [];
@@ -116,6 +121,34 @@ export class RecentErrorStore {
       LIMIT ?
     `).all(limit) as RecentErrorRow[];
     return rows.map(toRecentErrorRecord);
+  }
+
+  async listRows(input: RecentErrorRowsInput = {}): Promise<{ rows: RecentErrorRecord[]; total: number; offset: number; limit: number }> {
+    await this.init();
+    this.flushWrites();
+    const offset = Math.max(0, Math.trunc(input.offset ?? 0));
+    const limit = Math.min(500, Math.max(1, Math.trunc(input.limit ?? 100)));
+    const total = (this.stateDatabase.getDb().prepare("SELECT COUNT(*) AS count FROM recent_errors").get() as { count: number }).count;
+    const rows = this.stateDatabase.getDb().prepare(`
+      SELECT
+        id,
+        captured_at_ms AS capturedAtMs,
+        level,
+        event,
+        message,
+        error_name AS errorName,
+        stack,
+        context_json AS contextJson
+      FROM recent_errors
+      ORDER BY captured_at_ms DESC, id DESC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset) as RecentErrorRow[];
+    return {
+      rows: rows.map(toRecentErrorRecord),
+      total,
+      offset,
+      limit
+    };
   }
 
   async formatRecent(count: number, timeZone: string): Promise<string> {

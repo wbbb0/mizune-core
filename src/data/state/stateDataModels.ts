@@ -317,6 +317,31 @@ export const runtimeResourcesDataDomain = defineDataDomain({
   }
 });
 
+export const recentErrorsDataDomain = defineDataDomain({
+  database: "state",
+  tableGroup: "state.recent_errors",
+  schemaVersion: 1,
+  resetPolicy: "block_reset",
+  tables: {
+    recent_errors: defineTable({
+      table: "recent_errors",
+      primaryKey: ["id"],
+      columns: [
+        integerColumn("id", { title: "ID", role: "id", primary: true, notNull: true }),
+        integerColumn("capturedAtMs", { title: "Captured", role: "time", primary: true, storageName: "captured_at_ms", notNull: true }),
+        textColumn("level", { title: "Level", role: "status", primary: true, notNull: true, listWidth: "xs" }),
+        textColumn("event", { title: "Event", role: "badge", primary: true, notNull: true, listWidth: "md" }),
+        textColumn("message", { title: "Message", role: "title", primary: true, notNull: true, listWidth: "minmax(18rem, 1fr)" }),
+        textColumn("errorName", { title: "Error", role: "badge", primary: true, storageName: "error_name", nullable: true, listWidth: "sm" }),
+        textColumn("stack", { title: "Stack", role: "payload", nullable: true }),
+        jsonColumn("context", { title: "Context", role: "payload", storageName: "context_json", notNull: true })
+      ],
+      defaultSort: [{ column: "capturedAtMs", direction: "desc" }, { column: "id", direction: "desc" }],
+      detail: { payloadColumns: ["stack", "context"] }
+    })
+  }
+});
+
 export const requestsTableModel = requireDomainTable(requestsDataDomain, "pending_requests");
 export const scheduledJobsTableModel = requireDomainTable(scheduledJobsDataDomain, "scheduled_jobs");
 export const scheduledJobTargetsTableModel = requireDomainTable(scheduledJobsDataDomain, "scheduled_job_targets");
@@ -331,6 +356,7 @@ export const whitelistTableModel = requireDomainTable(whitelistDataDomain, "whit
 export const runtimeResourcesTableModel = requireDomainTable(runtimeResourcesDataDomain, "runtime_resources");
 export const runtimeBrowserPagesTableModel = requireDomainTable(runtimeResourcesDataDomain, "runtime_browser_pages");
 export const runtimeShellSessionsTableModel = requireDomainTable(runtimeResourcesDataDomain, "runtime_shell_sessions");
+export const recentErrorsTableModel = requireDomainTable(recentErrorsDataDomain, "recent_errors");
 
 function requireDomainTable(domain: DataDomainModel, key: string): DataTableModel {
   const table = domain.tables[key];

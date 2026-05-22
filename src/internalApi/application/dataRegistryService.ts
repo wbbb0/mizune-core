@@ -33,6 +33,7 @@ import { scheduledJobRecordSchema } from "#runtime/scheduler/jobSchema.ts";
 import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
 import type { RuntimeResourceStore } from "#runtime/resources/runtimeResourceStore.ts";
+import type { RecentErrorStore } from "#runtime/recentErrorStore.ts";
 import { chatFileRecordRegistrySchema, type ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
 import { scenarioHostStateDataDomain, scenarioHostSessionStatesTableModel, sessionDataDomain, sessionsTableModel, sessionTranscriptItemsTableModel } from "#conversation/session/sessionDataModel.ts";
@@ -59,6 +60,7 @@ import {
   runtimeBrowserPagesTableModel,
   runtimeResourcesTableModel,
   runtimeShellSessionsTableModel,
+  recentErrorsTableModel,
   scheduledJobsTableModel,
   toolsetRuleToolsetsTableModel,
   toolsetRulesTableModel,
@@ -104,6 +106,7 @@ export function createDataRegistryService(input: {
   assetLifecycleStore: Pick<AssetLifecycleStore, "listRows">;
   sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
   runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows">;
+  recentErrorStore: Pick<RecentErrorStore, "listRows">;
   contentSafetyStore?: Pick<ContentSafetyStore, "listRows">;
   scenarioHostStateStore?: Pick<ScenarioHostStateStore, "listRows">;
 }): DataRegistryService {
@@ -139,6 +142,7 @@ function createInitialDataResourceDefinitions(input: {
   assetLifecycleStore: Pick<AssetLifecycleStore, "listRows">;
   sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
   runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows">;
+  recentErrorStore: Pick<RecentErrorStore, "listRows">;
   contentSafetyStore?: Pick<ContentSafetyStore, "listRows">;
   scenarioHostStateStore?: Pick<ScenarioHostStateStore, "listRows">;
 }): DataResourceDefinition[] {
@@ -216,7 +220,8 @@ function createInitialDataResourceDefinitions(input: {
     createSessionsResource(input.sessionPersistence),
     createSessionTranscriptItemsResource(input.sessionPersistence),
     createWorkspaceFilesResource(input.chatFileStore),
-    createAssetSessionRefsResource(input.assetLifecycleStore)
+    createAssetSessionRefsResource(input.assetLifecycleStore),
+    createRecentErrorsResource(input.recentErrorStore)
   ];
   if (input.contentSafetyStore) {
     definitions.push(createContentSafetyAuditsResource(input.contentSafetyStore));
@@ -225,6 +230,24 @@ function createInitialDataResourceDefinitions(input: {
     definitions.push(createScenarioHostSessionStatesResource(input.scenarioHostStateStore));
   }
   return definitions;
+}
+
+function createRecentErrorsResource(
+  recentErrorStore: Pick<RecentErrorStore, "listRows">
+): DataResourceDefinition {
+  return readOnlySqliteRowsResource({
+    key: "recent_errors",
+    title: "最近报错",
+    description: "运行时捕获的最近 error/fatal 日志，最多保留最近 50 条。",
+    shape: "log",
+    database: "state",
+    tableGroup: "state.recent_errors",
+    tables: ["recent_errors"],
+    model: recentErrorsTableModel,
+    rowIdentity: { fields: ["id"], encode: "single" },
+    fileName: "recent_errors.json",
+    listRows: (query) => recentErrorStore.listRows(query)
+  });
 }
 
 function createSessionsResource(

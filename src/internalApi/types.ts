@@ -48,6 +48,7 @@ import {
 } from "./application/editorService.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
 import type { RuntimeResourceStore } from "#runtime/resources/runtimeResourceStore.ts";
+import type { RecentErrorStore } from "#runtime/recentErrorStore.ts";
 import {
   createDataBrowserService,
   type DataBrowserService
@@ -222,6 +223,7 @@ export interface InternalApiDeps {
   scheduledJobStore: ScheduledJobStore;
   comfyTaskStore: ComfyTaskStore;
   scheduler: Scheduler;
+  recentErrorStore: RecentErrorStore;
   runtimeResourceStore: RuntimeResourceStore;
   shellRuntime: ShellRuntime;
   configManager: ConfigManager;
@@ -323,6 +325,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         assetLifecycleStore: deps.assetLifecycleStore,
         sessionPersistence: deps.sessionPersistence,
         runtimeResourceStore: deps.runtimeResourceStore,
+        recentErrorStore: deps.recentErrorStore,
         ...(deps.contentSafetyStore ? { contentSafetyStore: deps.contentSafetyStore } : {}),
         scenarioHostStateStore: deps.scenarioHostStateStore
       }),

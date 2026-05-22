@@ -1244,6 +1244,18 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         return [];
       }
     } as unknown as InternalApiDeps["runtimeResourceStore"],
+    recentErrorStore: {
+      async listRows(input: { offset?: number; limit?: number } = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return {
+          rows: [],
+          total: 0,
+          offset,
+          limit
+        };
+      }
+    } as unknown as InternalApiDeps["recentErrorStore"],
     shellRuntime: {
       listSessions() {
         return state.shellSessions;

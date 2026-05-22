@@ -17,7 +17,21 @@ import { scheduledJobRecordSchema, type ScheduledJobRecord } from "../../src/run
 import type { StoredAudioFile } from "../../src/audio/audioStore.ts";
 import type { ChatFileRecord } from "../../src/services/workspace/types.ts";
 
-function createRegistryService(dataDir: string, options: { schedulerEnabled?: boolean; audioRows?: StoredAudioFile[]; workspaceRows?: ChatFileRecord[] } = {}) {
+function createRegistryService(dataDir: string, options: {
+  schedulerEnabled?: boolean;
+  audioRows?: StoredAudioFile[];
+  workspaceRows?: ChatFileRecord[];
+  recentErrorRows?: Array<{
+    id: number;
+    capturedAtMs: number;
+    level: "error" | "fatal";
+    event: string;
+    message: string;
+    errorName: string | null;
+    stack: string | null;
+    context: Record<string, unknown>;
+  }>;
+} = {}) {
   const persona = createEmptyPersona();
   const rpProfile = createEmptyRpProfile();
   const scenarioProfile = createEmptyScenarioProfile();
@@ -30,6 +44,7 @@ function createRegistryService(dataDir: string, options: { schedulerEnabled?: bo
   const userIdentities: UserIdentityRecord[] = [];
   const audioRows = [...(options.audioRows ?? [])];
   const workspaceRows = [...(options.workspaceRows ?? [])];
+  const recentErrorRows = [...(options.recentErrorRows ?? [])];
   const groupMembershipRows: Array<{ groupId: string; userId: string; isMember: boolean; verifiedAt: number }> = [];
   let schedulerReloadCount = 0;
   const whitelistRows: Array<{ targetType: "user" | "group"; targetId: string; createdAtMs: number }> = [];
@@ -515,6 +530,18 @@ function createRegistryService(dataDir: string, options: { schedulerEnabled?: bo
         return { rows: [], total: 0, offset: 0, limit: 100 };
       }
     },
+    recentErrorStore: {
+      async listRows(input = {}) {
+        const offset = input.offset ?? 0;
+        const limit = input.limit ?? 100;
+        return {
+          rows: recentErrorRows.slice(offset, offset + limit),
+          total: recentErrorRows.length,
+          offset,
+          limit
+        };
+      }
+    },
     contentSafetyStore: {
       async listRows(input = {}) {
         return { rows: [], total: 0, offset: input.offset ?? 0, limit: input.limit ?? 100 };
@@ -555,6 +582,7 @@ test("DataRegistryService exposes initial file and directory resources", async (
       "group_membership",
       "live_resources",
       "persona",
+      "recent_errors",
       "requests",
       "rp_profile",
       "runtime_browser_pages",
@@ -581,6 +609,7 @@ test("DataRegistryService exposes initial file and directory resources", async (
     assert.equal(listed.resources.find((resource) => resource.key === "workspace_files")?.shape, "collection");
     assert.equal(listed.resources.find((resource) => resource.key === "sessions")?.shape, "collection");
     assert.equal(listed.resources.find((resource) => resource.key === "session_transcript_items")?.shape, "log");
+    assert.equal(listed.resources.find((resource) => resource.key === "recent_errors")?.shape, "log");
     for (const resource of listed.resources) {
       if (resource.shape !== "collection") continue;
       if (resource.editable) {
@@ -687,6 +716,67 @@ test("DataRegistryService exposes initial file and directory resources", async (
       filters: { sessionId: "missing" }
     });
     assert.equal(filteredTranscriptRows.rows.length, 0);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("DataRegistryService exposes recent error rows", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-data-registry-test-"));
+  try {
+    const service = createRegistryService(dataDir, {
+      recentErrorRows: [{
+        id: 7,
+        capturedAtMs: 1234,
+        level: "error",
+        event: "generation_failed",
+        message: "boom",
+        errorName: "Error",
+        stack: "Error: boom",
+        context: { sessionId: "qqbot:p:10001" }
+      }]
+    });
+
+    const listed = await service.getResource("recent_errors") as {
+      resource: {
+        key: string;
+        title: string;
+        shape: string;
+        editable: boolean;
+        storage: { kind: string; database: string; tableGroup: string; tables: string[] };
+        rowIdentity?: { fields: string[]; encode: string };
+        export?: { enabled: boolean; fileName: string; format: string };
+      };
+    };
+    assert.equal(listed.resource.key, "recent_errors");
+    assert.equal(listed.resource.title, "最近报错");
+    assert.equal(listed.resource.shape, "log");
+    assert.equal(listed.resource.editable, false);
+    assert.deepEqual(listed.resource.storage, {
+      kind: "sqlite",
+      database: "state",
+      tableGroup: "state.recent_errors",
+      tables: ["recent_errors"]
+    });
+    assert.deepEqual(listed.resource.rowIdentity, { fields: ["id"], encode: "single" });
+    assert.deepEqual(listed.resource.export, {
+      enabled: true,
+      fileName: "recent_errors.json",
+      format: "json"
+    });
+
+    const rows = await service.listRows("recent_errors", { limit: 10 });
+    assert.equal(rows.total, 1);
+    assert.deepEqual(rows.rows[0], {
+      id: 7,
+      capturedAtMs: 1234,
+      level: "error",
+      event: "generation_failed",
+      message: "boom",
+      errorName: "Error",
+      stack: "Error: boom",
+      context: { sessionId: "qqbot:p:10001" }
+    });
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }

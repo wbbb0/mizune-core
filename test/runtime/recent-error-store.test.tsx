@@ -48,6 +48,45 @@ test("RecentErrorStore keeps the latest fifty errors in sqlite", async () => {
   }
 });
 
+test("RecentErrorStore lists recent errors as paged data rows", async () => {
+  const harness = await createHarness();
+  try {
+    harness.store.record({
+      level: "error",
+      capturedAtMs: 1,
+      event: "older_error",
+      message: "older",
+      context: { sessionId: "older-session" }
+    });
+    harness.store.record({
+      level: "fatal",
+      capturedAtMs: 2,
+      event: "newer_error",
+      message: "newer",
+      errorName: "Error",
+      stack: "Error: newer",
+      context: { sessionId: "newer-session" }
+    });
+
+    const page = await harness.store.listRows({ offset: 0, limit: 1 });
+    assert.equal(page.total, 2);
+    assert.equal(page.offset, 0);
+    assert.equal(page.limit, 1);
+    assert.deepEqual(page.rows, [{
+      id: 2,
+      capturedAtMs: 2,
+      level: "fatal",
+      event: "newer_error",
+      message: "newer",
+      errorName: "Error",
+      stack: "Error: newer",
+      context: { sessionId: "newer-session" }
+    }]);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
 test("RecentErrorCapture buffers logger errors until store is bound", async () => {
   const harness = await createHarness();
   try {
