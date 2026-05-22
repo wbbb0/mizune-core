@@ -39,7 +39,7 @@ defineEmits<{
       </slot>
     </div>
     <slot name="trailing">
-      <span v-if="meta !== null && meta !== undefined" class="rounded-full bg-surface-muted px-1.5 text-small text-text-subtle">{{ meta }}</span>
+      <span v-if="meta !== null && meta !== undefined" class="px-1.5 text-small text-text-subtle">{{ meta }}</span>
     </slot>
   </button>
 </template>

@@ -49,6 +49,12 @@ const router = createRouter({
           meta: { workbenchViewId: "files" }
         },
         {
+          path: "resources",
+          name: "resources",
+          component: WorkbenchRouteView,
+          meta: { workbenchViewId: "resources" }
+        },
+        {
           path: "settings",
           name: "settings",
           component: WorkbenchRouteView,

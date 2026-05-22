@@ -89,6 +89,62 @@ describe("shell runtime terminal events", () => {
     }
   });
 
+  test("serializes terminal screen state for realtime replay", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-shell-events-"));
+    const config = createForwardFeatureConfig();
+    config.shell.enabled = true;
+    config.shell.idleTimeoutMs = 30;
+    const runtime = createShellRuntimeForDir(config, dataDir);
+
+    try {
+      const result = await runtime.run({
+        command: "node -e \"process.stdout.write('alpha\\r\\n\\x1b[1A\\rbravo\\r\\n'); setTimeout(() => {}, 1000)\"",
+        cwd: "/tmp",
+        tty: false,
+        login: false,
+        timeoutMs: 500
+      });
+      assert.equal(result.status, "running");
+
+      const subscription = await runtime.subscribe(String(result.resourceId), () => {});
+      try {
+        assert.match(subscription.replay, /bravo/);
+        assert.doesNotMatch(subscription.replay, /alpha/);
+      } finally {
+        subscription.dispose();
+      }
+      runtime.closeSession(String(result.resourceId));
+      await settleAsyncResourceWrites();
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("removes background sessions after the shell exits internally", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-shell-events-"));
+    const config = createForwardFeatureConfig();
+    config.shell.enabled = true;
+    const runtime = createShellRuntimeForDir(config, dataDir);
+
+    try {
+      const result = await runtime.run({
+        command: "node -e \"setTimeout(() => process.exit(0), 200)\"",
+        cwd: "/tmp",
+        tty: false,
+        login: false,
+        background: true,
+        timeoutMs: 1
+      });
+      assert.equal(result.status, "running");
+      assert.equal(runtime.listSessions().some((session) => session.id === result.resourceId), true);
+
+      await waitForCondition(() => !runtime.listSessions().some((session) => session.id === result.resourceId));
+      await settleAsyncResourceWrites();
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
   test("emits debounced input-required event once for stable prompts", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-shell-events-"));
     const config = createForwardFeatureConfig();
@@ -306,6 +362,17 @@ async function waitForEventCount<K extends ShellRuntimeEvent["kind"]>(
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   throw new Error(`Timed out waiting for ${count} shell events ${kind}`);
+}
+
+async function waitForCondition(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 1000;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("Timed out waiting for condition");
 }
 
 async function settleAsyncResourceWrites(): Promise<void> {

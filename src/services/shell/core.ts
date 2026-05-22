@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 export interface SpawnedShellIo {
   pid: number | null;
   write: (data: string) => void;
+  resize: (cols: number, rows: number) => void;
   kill: (signal?: string) => void;
   onOutput: (listener: (chunk: string) => void) => void;
   onError: (listener: (error: Error) => void) => void;
@@ -117,6 +118,7 @@ function createPipeIo(shell: string, args: string[], cwd: string): SpawnedShellI
     write: (data) => {
       child.stdin.write(data);
     },
+    resize: () => {},
     kill: (signal) => {
       child.kill(signal as NodeJS.Signals | undefined);
     },
@@ -151,6 +153,9 @@ function createPtyIo(shell: string, args: string[], cwd: string): SpawnedShellIo
     pid: pty.pid,
     write: (data) => {
       pty.write(data);
+    },
+    resize: (cols, rows) => {
+      pty.resize(cols, rows);
     },
     kill: (signal) => {
       pty.kill(signal);

@@ -41,6 +41,22 @@ export interface ShellSession {
   lastInputPromptAtMs: number | null;
 }
 
+export type ShellRealtimeEvent =
+  | {
+      kind: "output";
+      data: string;
+    }
+  | {
+      kind: "status";
+      session: ShellSession;
+    };
+
+export interface ShellRealtimeSubscription {
+  session: ShellSession;
+  replay: string;
+  dispose: () => void;
+}
+
 export interface ShellSessionResourceSummary {
   resource_id: string;
   status: "active" | "expired" | "closed" | "unrecoverable";

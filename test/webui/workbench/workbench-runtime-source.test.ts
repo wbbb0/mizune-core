@@ -179,6 +179,7 @@ test("app workbench root is mounted once for protected workbench routes", async 
   assert.match(router, /children:\s*\[/);
   assert.match(router, /meta:\s*\{\s*workbenchViewId:\s*"sessions"\s*\}/);
   assert.match(router, /meta:\s*\{\s*workbenchViewId:\s*"config"\s*\}/);
+  assert.match(router, /meta:\s*\{\s*workbenchViewId:\s*"resources"\s*\}/);
   assert.match(router, /component:\s*WorkbenchRouteView/);
   assert.doesNotMatch(router, /@\/pages\/SessionsPage\.vue/);
   assert.doesNotMatch(router, /@\/pages\/ConfigPage\.vue/);
@@ -189,7 +190,7 @@ test("app workbench root is mounted once for protected workbench routes", async 
 test("workbench views use a definition helper for default layout", async () => {
   const types = await readFile(new URL("../../../packages/vue-workbench/src/types.ts", import.meta.url), "utf8");
   const registry = await readFile(new URL("../../../webui/src/sections/registry.ts", import.meta.url), "utf8");
-  const viewSources = await Promise.all(["sessions", "config", "data", "settings", "workspace"].map((name) =>
+  const viewSources = await Promise.all(["sessions", "config", "data", "settings", "workspace", "resources"].map((name) =>
     readFile(new URL(`../../../webui/src/sections/${name}/index.ts`, import.meta.url), "utf8")
   ));
 
@@ -201,6 +202,24 @@ test("workbench views use a definition helper for default layout", async () => {
     assert.doesNotMatch(source, /satisfies WorkbenchView/);
     assert.doesNotMatch(source, /layout:\s*\{\s*mobile:\s*\{/s);
   }
+});
+
+test("resources terminal recreates xterm after its host is remounted", async () => {
+  const source = await readFile(new URL("../../../webui/src/sections/resources/ResourcesMainPane.vue", import.meta.url), "utf8");
+
+  assert.match(source, /function disposeTerminal/);
+  assert.match(source, /function shouldRecreateTerminal/);
+  assert.match(source, /termElement\.isConnected/);
+  assert.match(source, /terminalHost\.value\?\.contains\(termElement\)/);
+  assert.match(source, /if \(!sessionId\)\s*\{[\s\S]*disposeTerminal\(\);[\s\S]*return;/);
+});
+
+test("resources section opens the terminal area after mobile selection", async () => {
+  const source = await readFile(new URL("../../../webui/src/composables/sections/useResourcesSection.ts", import.meta.url), "utf8");
+
+  assert.match(source, /useWorkbenchNavigation/);
+  assert.match(source, /function selectShell\(sessionId: string\)\s*\{[\s\S]*workbenchNavigation\.showArea\("mainArea"\);[\s\S]*\}/);
+  assert.match(source, /if \(resourceId\)\s*\{[\s\S]*selectedShellId\.value = resourceId;[\s\S]*workbenchNavigation\.showArea\("mainArea"\);[\s\S]*\}/);
 });
 
 test("desktop workbench persists area sizes by global area id", async () => {

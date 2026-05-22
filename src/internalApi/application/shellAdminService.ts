@@ -2,6 +2,7 @@ import type { InternalApiShellDeps } from "../types.ts";
 import type {
   ParsedSessionParams,
   ParsedShellInteractBody,
+  ParsedShellResizeBody,
   ParsedShellRunBody,
   ParsedShellSignalBody
 } from "../routeSupport.ts";
@@ -25,9 +26,11 @@ export async function runShellCommand(
 ) {
   return deps.shellRuntime.run({
     command: body.command,
+    ...(body.description !== undefined ? { description: body.description } : {}),
     ...(body.cwd !== undefined ? { cwd: body.cwd } : {}),
     ...(body.timeoutMs !== undefined ? { timeoutMs: body.timeoutMs } : {}),
-    ...(body.tty !== undefined ? { tty: body.tty } : {})
+    ...(body.tty !== undefined ? { tty: body.tty } : {}),
+    ...(body.background !== undefined ? { background: body.background } : {})
   });
 }
 
@@ -52,6 +55,14 @@ export async function signalShellSession(
   body: ParsedShellSignalBody
 ) {
   return deps.shellRuntime.signal(params.sessionId, body.signal);
+}
+
+export async function resizeShellSession(
+  deps: InternalApiShellDeps,
+  params: ParsedSessionParams,
+  body: ParsedShellResizeBody
+) {
+  return deps.shellRuntime.resize(params.sessionId, body.cols, body.rows);
 }
 
 export function closeShellSession(

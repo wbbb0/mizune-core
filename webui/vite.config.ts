@@ -97,7 +97,8 @@ const webuiBase = "/webui/";
 const sharedProxy = {
   "/api": {
     target: apiTarget,
-    changeOrigin: true
+    changeOrigin: true,
+    ws: true
   }
 };
 

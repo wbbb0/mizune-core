@@ -8,6 +8,7 @@ import { registerBasicRoutes } from "./routes/basicRoutes.ts";
 import { registerBrowserRoutes } from "./routes/browserRoutes.ts";
 import { registerMessagingRoutes } from "./routes/messagingRoutes.ts";
 import { registerShellRoutes } from "./routes/shellRoutes.ts";
+import { registerShellWebSocketUpgrade } from "./routes/shellWebSocket.ts";
 import { registerUploadRoutes } from "./routes/uploadRoutes.ts";
 import { registerAuthRoutes } from "./routes/authRoutes.ts";
 import { loadOrCreateWebuiAuth } from "./auth/webuiAuthStore.ts";
@@ -130,6 +131,19 @@ export async function startInternalApi(deps: InternalApiRuntimeDeps) {
   });
 
   registerInternalApiRoutes(app, services);
+  const closeShellWebSockets = registerShellWebSocketUpgrade(app.server, services.shellRoutes, {
+    enabled: webuiAuthEnabled,
+    verifyCookie: (cookieHeader) => {
+      if (!authData) {
+        return false;
+      }
+      const cookie = parseCookieHeader(cookieHeader).get(cookieName);
+      return Boolean(cookie && verifySessionToken(authData.passwordHash, authData.sessionVersion, cookie));
+    }
+  });
+  app.addHook("onClose", async () => {
+    await closeShellWebSockets();
+  });
 
   const listenHost = externalWebuiMode
     ? "127.0.0.1"
@@ -147,6 +161,29 @@ export async function startInternalApi(deps: InternalApiRuntimeDeps) {
       deps.logger.info("internal_api_stopped");
     }
   };
+}
+
+function parseCookieHeader(header: string | undefined): Map<string, string> {
+  const cookies = new Map<string, string>();
+  if (!header) {
+    return cookies;
+  }
+  for (const part of header.split(";")) {
+    const separatorIndex = part.indexOf("=");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+    const name = part.slice(0, separatorIndex).trim();
+    const value = part.slice(separatorIndex + 1).trim();
+    if (name) {
+      try {
+        cookies.set(name, decodeURIComponent(value));
+      } catch {
+        cookies.set(name, value);
+      }
+    }
+  }
+  return cookies;
 }
 
 function normalizeFastifyError(error: unknown): { message: string; statusCode: number } {

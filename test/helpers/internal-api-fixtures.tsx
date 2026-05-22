@@ -1274,6 +1274,12 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       async signal(sessionId: string, signal: string) {
         return createShellSession({ id: sessionId, signal });
       },
+      async resize(sessionId: string, cols: number, rows: number) {
+        return createShellSession({
+          id: sessionId,
+          command: `resize ${cols}x${rows}`
+        });
+      },
       closeSession(sessionId: string) {
         state.closedSessionIds.push(sessionId);
       }

@@ -6,12 +6,14 @@ import {
   listShellSessions,
   readShellSession,
   runShellCommand,
+  resizeShellSession,
   signalShellSession
 } from "../application/shellAdminService.ts";
 import {
   handleBadRequest,
   parseShellInteractBody,
   parseOrReply,
+  parseShellResizeBody,
   parseSessionParams,
   parseShellRunBody,
   parseShellSignalBody,
@@ -92,6 +94,24 @@ export function registerShellRoutes(app: FastifyInstance, services: InternalApiS
 
     try {
       const session = await signalShellSession(services, params, body);
+      return { ok: true, session };
+    } catch (error: unknown) {
+      return handleBadRequest(reply, error);
+    }
+  });
+
+  app.post("/api/shell/sessions/:sessionId/resize", async (request, reply) => {
+    const params = parseSessionParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    const body = parseShellResizeBody(request.body);
+    if (!parseOrReply(reply, body)) {
+      return reply;
+    }
+
+    try {
+      const session = await resizeShellSession(services, params, body);
       return { ok: true, session };
     } catch (error: unknown) {
       return handleBadRequest(reply, error);
