@@ -142,7 +142,10 @@ export default defineConfig({
     createDevServiceWorkerCleanupPlugin(),
     createGzipPrecompressionPlugin(),
     VitePWA({
+      strategies: "injectManifest",
       base: webuiBase,
+      srcDir: "src",
+      filename: "sw.ts",
       registerType: "autoUpdate",
       injectRegister: false,
       includeAssets: ["icons/apple-touch-icon.png"],
@@ -179,21 +182,11 @@ export default defineConfig({
           }
         ]
       },
-      workbox: {
-        skipWaiting: true,
-        clientsClaim: true,
-        navigateFallback: "/webui/index.html",
-        navigateFallbackDenylist: [/^\/api\//],
+      injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
         // The HEIF converter is only needed on demand during upload, so avoid
         // precaching its large hashed chunk in the PWA manifest.
-        globIgnores: ["**/assets/heic-to-*.js"],
-        runtimeCaching: [
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
-            handler: "NetworkOnly"
-          }
-        ]
+        globIgnores: ["**/assets/heic-to-*.js"]
       },
       devOptions: {
         enabled: false,

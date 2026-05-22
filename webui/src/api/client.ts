@@ -8,11 +8,27 @@
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
-    message: string
+    message: string,
+    public readonly authChallenge = false
   ) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+async function readErrorResponse(res: Response): Promise<{ message: string; isJson: boolean }> {
+  let message = res.statusText || `HTTP ${res.status}`;
+  const contentType = res.headers.get("content-type") ?? "";
+  const isJson = contentType.toLowerCase().includes("application/json");
+
+  if (isJson) {
+    try {
+      const data = await res.json() as { error?: string; message?: string; detail?: string };
+      message = data.error?.trim() || data.message?.trim() || data.detail?.trim() || message;
+    } catch { /* ignore malformed error payload */ }
+  }
+
+  return { message, isJson };
 }
 
 async function request<T>(
@@ -34,17 +50,16 @@ async function request<T>(
   const res = await fetch(path, init);
 
   if (res.status === 401) {
-    window.dispatchEvent(new CustomEvent("api:unauthorized"));
-    throw new ApiError(401, "Unauthorized");
+    const error = await readErrorResponse(res);
+    if (error.isJson) {
+      window.dispatchEvent(new CustomEvent("api:unauthorized"));
+    }
+    throw new ApiError(401, error.message, error.isJson);
   }
 
   if (!res.ok) {
-    let message = res.statusText || `HTTP ${res.status}`;
-    try {
-      const data = await res.json() as { error?: string; message?: string; detail?: string };
-      message = data.error?.trim() || data.message?.trim() || data.detail?.trim() || message;
-    } catch { /* ignore */ }
-    throw new ApiError(res.status, message);
+    const error = await readErrorResponse(res);
+    throw new ApiError(res.status, error.message);
   }
 
   // 204 No Content

@@ -63,12 +63,17 @@ const router = createRouter({
   ]
 });
 
+async function ensureAuthChecked(): Promise<boolean> {
+  const auth = useAuthStore();
+  return auth.checked || await auth.check();
+}
+
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
 
   if (to.meta.public) {
-    if (!auth.checked) {
-      await auth.check();
+    if (!await ensureAuthChecked()) {
+      return true;
     }
 
     if (!auth.enabled) {
@@ -83,8 +88,8 @@ router.beforeEach(async (to) => {
   }
 
   // Protected route: ensure auth status is checked
-  if (!auth.checked) {
-    await auth.check();
+  if (!await ensureAuthChecked()) {
+    return true;
   }
 
   if (!auth.enabled) {

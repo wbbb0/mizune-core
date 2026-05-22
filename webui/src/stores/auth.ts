@@ -22,7 +22,7 @@ export const useAuthStore = defineStore("auth", () => {
     }
   }
 
-  async function check(): Promise<void> {
+  async function check(): Promise<boolean> {
     try {
       const res = await authApi.me();
       applyStatus(res);
@@ -31,12 +31,12 @@ export const useAuthStore = defineStore("auth", () => {
       } else {
         ownerId.value = null;
       }
-    } catch {
-      enabled.value = true;
-      authenticated.value = false;
-      ownerId.value = null;
-    } finally {
       checked.value = true;
+      return true;
+    } catch {
+      ownerId.value = null;
+      checked.value = false;
+      return false;
     }
   }
 
