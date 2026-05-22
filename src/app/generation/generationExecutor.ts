@@ -506,6 +506,7 @@ export function createGenerationExecutor(
         debugSnapshot,
         persistSession,
         listSessionModes,
+        abortSignal: abortController.signal,
         ...(committedTextSink ? { committedTextSink } : {}),
         ...(activeInternalTrigger !== undefined ? { activeInternalTrigger } : {})
       });

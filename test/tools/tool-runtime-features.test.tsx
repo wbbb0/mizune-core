@@ -15,6 +15,7 @@ import { resourceToolHandlers } from "../../src/llm/tools/runtime/resourceTools.
 import { debugToolHandlers } from "../../src/llm/tools/runtime/debugTools.ts";
 import { shellToolHandlers } from "../../src/llm/tools/runtime/shellTools.ts";
 import { timeToolHandlers } from "../../src/llm/tools/runtime/timeTools.ts";
+import { runtimeWaitToolHandlers } from "../../src/llm/tools/runtime/runtimeWaitTools.ts";
 import { assetDocumentToolHandlers } from "../../src/llm/tools/runtime/documentTools.ts";
 import { localFileToolHandlers, chatFileToolHandlers } from "../../src/llm/tools/runtime/workspaceTools.ts";
 import {
@@ -157,6 +158,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     assert.ok(names.includes("get_scenario_state"));
     assert.ok(names.includes("update_scenario_state"));
     assert.ok(names.includes("get_current_time"));
+    assert.ok(names.includes("runtime_wait"));
     assert.ok(names.includes("roll_dice"));
     assert.ok(names.includes("view_forward_record"));
     assert.ok(names.includes("view_current_group_info"));
@@ -1409,6 +1411,125 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     assert.equal(payload.nowMs, undefined);
     assert.equal(typeof canonical.nowMs, "number");
     assert.equal(typeof payload.weekday, "string");
+  });
+
+  test("runtime_wait is available to known users without wake_on", async () => {
+    const config = createForwardFeatureConfig();
+    const ownerTools = getBuiltinTools("owner", config);
+    const knownTools = getBuiltinTools("known", config);
+    assert.ok(ownerTools.some((tool) => tool.function.name === "runtime_wait"));
+    const waitTool = knownTools.find((tool) => tool.function.name === "runtime_wait");
+    assert.ok(waitTool);
+    assert.equal(
+      "wake_on" in ((waitTool.function.parameters as any)?.properties ?? {}),
+      false
+    );
+  });
+
+  test("runtime_wait returns after elapsed duration", async () => {
+    const { context } = createRuntimeWaitToolContext();
+    const result = await runtimeWaitToolHandlers.runtime_wait!(
+      { id: "tool_wait_1", type: "function", function: { name: "runtime_wait", arguments: "{\"duration_ms\":5}" } },
+      { duration_ms: 5 },
+      context
+    );
+    const payload = parseToolContent(result);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.status, "elapsed");
+    assert.equal(payload.requested_wait_ms, 5);
+    assert.equal(payload.session_id, "qqbot:p:known");
+  });
+
+  test("runtime_wait rejects waits over the short-wait limit", async () => {
+    const { context } = createRuntimeWaitToolContext();
+    const result = await runtimeWaitToolHandlers.runtime_wait!(
+      { id: "tool_wait_limit", type: "function", function: { name: "runtime_wait", arguments: "{\"duration_ms\":30001}" } },
+      { duration_ms: 30001 },
+      context
+    );
+    const payload = parseToolContent(result);
+    assert.equal(payload.error, "duration_ms exceeds max runtime wait");
+    assert.equal(payload.max_duration_ms, 30000);
+  });
+
+  test("runtime_wait wakes on current-session background work without consuming it", async () => {
+    const { context, session, notify } = createRuntimeWaitToolContext();
+    const waitPromise = runtimeWaitToolHandlers.runtime_wait!(
+      { id: "tool_wait_2", type: "function", function: { name: "runtime_wait", arguments: "{\"duration_ms\":1000,\"reason\":\"等后台任务\"}" } },
+      { duration_ms: 1000, reason: "等后台任务" },
+      context
+    );
+
+    session.pendingInlineTriggers.push({ kind: "terminal_session_closed" } as any);
+    notify();
+
+    const result = await waitPromise;
+    const payload = parseToolContent(result);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.status, "woken");
+    assert.equal(payload.wake_reason, "session_pending_work");
+    assert.equal(payload.pending_work.inline_triggers, 1);
+    assert.deepEqual(payload.pending_work.inline_trigger_kinds, ["terminal_session_closed"]);
+    assert.equal(session.pendingInlineTriggers.length, 1);
+  });
+
+  test("runtime_wait wakes on user and internal work without consuming queues", async () => {
+    const { context, session, notify } = createRuntimeWaitToolContext();
+    const waitPromise = runtimeWaitToolHandlers.runtime_wait!(
+      { id: "tool_wait_user_internal", type: "function", function: { name: "runtime_wait", arguments: "{\"duration_ms\":1000}" } },
+      { duration_ms: 1000 },
+      context
+    );
+
+    session.pendingMessages.push({ text: "新消息" });
+    session.pendingInternalTriggers.push({ kind: "scheduled_instruction" });
+    notify();
+
+    const payload = parseToolContent(await waitPromise);
+    assert.equal(payload.status, "woken");
+    assert.equal(payload.pending_work.user_messages, 1);
+    assert.equal(payload.pending_work.internal_triggers, 1);
+    assert.deepEqual(payload.pending_work.internal_trigger_kinds, ["scheduled_instruction"]);
+    assert.equal(session.pendingMessages.length, 1);
+    assert.equal(session.pendingInternalTriggers.length, 1);
+  });
+
+  test("runtime_wait rejects concurrent waits in the same session", async () => {
+    const { context } = createRuntimeWaitToolContext();
+    const firstWait = runtimeWaitToolHandlers.runtime_wait!(
+      { id: "tool_wait_first", type: "function", function: { name: "runtime_wait", arguments: "{\"duration_ms\":1000}" } },
+      { duration_ms: 1000 },
+      context
+    );
+    const second = await runtimeWaitToolHandlers.runtime_wait!(
+      { id: "tool_wait_second", type: "function", function: { name: "runtime_wait", arguments: "{\"duration_ms\":5}" } },
+      { duration_ms: 5 },
+      context
+    );
+
+    context.abortSignalController.abort();
+    await firstWait;
+
+    const payload = parseToolContent(second);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.status, "rejected");
+    assert.equal(payload.reason, "wait_already_active");
+  });
+
+  test("runtime_wait returns aborted when generation aborts", async () => {
+    const { context } = createRuntimeWaitToolContext();
+    const waitPromise = runtimeWaitToolHandlers.runtime_wait!(
+      { id: "tool_wait_abort", type: "function", function: { name: "runtime_wait", arguments: "{\"duration_ms\":1000}" } },
+      { duration_ms: 1000 },
+      context
+    );
+
+    context.abortSignalController.abort();
+
+    const payload = parseToolContent(await waitPromise);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.status, "aborted");
+    assert.equal(payload.wake_reason, "generation_aborted");
   });
 
   test("asset_list exact lookup suggests view and send follow-ups", async () => {
@@ -3690,6 +3811,47 @@ function parseToolContent(result: string | LlmToolExecutionResult): any {
 
 function parseCanonicalToolContent(result: string | LlmToolExecutionResult): any {
   return JSON.parse(typeof result === "string" ? result : result.canonicalContent ?? result.content);
+}
+
+function createRuntimeWaitToolContext() {
+  const listeners = new Set<() => void>();
+  const abortSignalController = new AbortController();
+  const session = {
+    pendingMessages: [] as any[],
+    pendingSteerMessages: [] as any[],
+    pendingInternalTriggers: [] as any[],
+    pendingInlineTriggers: [] as any[]
+  };
+  return {
+    session,
+    abortSignalController,
+    notify() {
+      for (const listener of Array.from(listeners)) {
+        listener();
+      }
+    },
+    context: {
+      config: createForwardFeatureConfig(),
+      relationship: "known",
+      lastMessage: { sessionId: "qqbot:p:known", userId: "known", senderName: "Known" },
+      currentUser: null,
+      abortSignal: abortSignalController.signal,
+      abortSignalController,
+      sessionManager: {
+        getSession(sessionId: string) {
+          assert.equal(sessionId, "qqbot:p:known");
+          return session;
+        },
+        subscribeSession(sessionId: string, listener: () => void) {
+          assert.equal(sessionId, "qqbot:p:known");
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        }
+      }
+    } as any
+  };
 }
 
   test("terminal_run forwards resource description", async () => {

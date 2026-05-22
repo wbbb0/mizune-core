@@ -6,6 +6,7 @@ import { getComfyToolDescriptors, comfyToolHandlers } from "../runtime/comfyTool
 import { imageTransformToolDescriptors, imageTransformToolHandlers } from "../runtime/imageTransformTools.ts";
 import { selfAccountToolDescriptors, selfAccountToolHandlers } from "../runtime/accountTools.ts";
 import { resourceToolDescriptors, resourceToolHandlers } from "../runtime/resourceTools.ts";
+import { runtimeWaitToolDescriptors, runtimeWaitToolHandlers } from "../runtime/runtimeWaitTools.ts";
 import { schedulerToolDescriptors, schedulerToolHandlers } from "../runtime/schedulerTools.ts";
 import { shellToolDescriptors, shellToolHandlers } from "../runtime/shellTools.ts";
 import { timeToolDescriptors, timeToolHandlers } from "../runtime/timeTools.ts";
@@ -29,7 +30,8 @@ const runtimeStaticToolDescriptorsRegistry = [
   ...assetDocumentToolDescriptors,
   ...selfAccountToolDescriptors,
   ...diceToolDescriptors,
-  ...timeToolDescriptors
+  ...timeToolDescriptors,
+  ...runtimeWaitToolDescriptors
 ];
 
 export function runtimeToolDescriptorsRegistry(config?: AppConfig) {
@@ -52,5 +54,6 @@ export const runtimeToolHandlersRegistry = {
   ...assetDocumentToolHandlers,
   ...selfAccountToolHandlers,
   ...diceToolHandlers,
-  ...timeToolHandlers
+  ...timeToolHandlers,
+  ...runtimeWaitToolHandlers
 };

@@ -47,6 +47,9 @@ export function analyzeBuiltinToolConcurrency(toolCall: LlmToolCall): ToolExecut
   if (toolName === "end_turn_without_reply") {
     return { kind: "terminal_barrier" };
   }
+  if (toolName === "runtime_wait") {
+    return { kind: "barrier" };
+  }
 
   const readOnlyResources = READ_ONLY_TOOL_RESOURCES[toolName];
   if (readOnlyResources) {

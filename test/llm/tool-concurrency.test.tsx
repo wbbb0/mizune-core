@@ -10,6 +10,12 @@ test("builtin tool concurrency marks terminal end-turn as terminal barrier", () 
   });
 });
 
+test("builtin tool concurrency keeps runtime_wait as a barrier", () => {
+  assert.deepEqual(analyzeBuiltinToolConcurrency(toolCall("runtime_wait")), {
+    kind: "barrier"
+  });
+});
+
 test("builtin tool concurrency distinguishes terminal resources by resource id", () => {
   assert.deepEqual(analyzeBuiltinToolConcurrency(toolCall("terminal_read", { resource_id: "a" })), {
     kind: "parallel",

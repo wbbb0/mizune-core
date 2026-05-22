@@ -113,6 +113,7 @@ export interface SessionToolRuntimeAccess extends SessionOperationModeAccess {
     titleSource?: "default" | "auto" | "manual" | null;
   }): SessionState;
   getSession(sessionId: string): SessionState;
+  subscribeSession(sessionId: string, listener: () => void): () => void;
   getSessionView(sessionId: string): SessionViewSnapshot;
   getLlmVisibleHistory(sessionId: string): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
   getModeId(sessionId: string): string;

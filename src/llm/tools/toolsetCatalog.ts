@@ -306,12 +306,14 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     modeUniversal: true,
     id: "time_utils",
     title: "时间工具",
-    description: "查询当前时间。",
+    description: "查询当前时间，或在当前会话内短暂等待。",
     plannerSignals: [
-      "当前精确时间或日期"
+      "当前精确时间或日期",
+      "等待几秒后继续检查当前会话任务状态"
     ],
     toolNames: [
-      "get_current_time"
+      "get_current_time",
+      "runtime_wait"
     ]
   },
   {

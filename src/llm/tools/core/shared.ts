@@ -182,6 +182,7 @@ export interface BuiltinToolContext extends
   committedTextSink?: GenerationCommittedTextSink;
   debugSnapshot?: PromptDebugSnapshot;
   activeInternalTrigger?: InternalSessionTriggerExecution | null;
+  abortSignal?: AbortSignal;
   persistSession?: (sessionId: string, reason: string) => void;
   listSessionModes?: () => SessionModeDefinition[];
 }
