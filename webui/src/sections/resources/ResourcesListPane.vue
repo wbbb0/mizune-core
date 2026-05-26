@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { Play, RefreshCw, SquareTerminal } from "lucide-vue-next";
+import { computed, ref, type Component } from "vue";
+import { ChevronDown, ChevronRight, Download, Globe, Play, RefreshCw, SquareTerminal } from "lucide-vue-next";
 import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@workbench-kit/vue-workbench";
+import ResizableDisclosureStack from "@/components/common/ResizableDisclosureStack.vue";
 import { useResourcesSection } from "@/composables/sections/useResourcesSection";
 
 const {
@@ -18,6 +19,39 @@ const {
 const command = ref("zsh");
 const cwd = ref("");
 const runningCount = computed(() => shellSessions.value.filter((item) => item.status === "running").length);
+
+type ResourceSectionId = "shell" | "browser" | "downloads";
+type ResourceSection = {
+  id: ResourceSectionId;
+  title: string;
+  meta: string;
+  icon: Component;
+  weight: number;
+};
+
+const resourceSections = computed<ResourceSection[]>(() => [
+  {
+    id: "shell",
+    title: "Shell",
+    meta: `${runningCount.value} 运行中`,
+    icon: SquareTerminal,
+    weight: 2.4
+  },
+  {
+    id: "browser",
+    title: "浏览器页面",
+    meta: "待接入",
+    icon: Globe,
+    weight: 1
+  },
+  {
+    id: "downloads",
+    title: "下载任务",
+    meta: "待接入",
+    icon: Download,
+    weight: 1
+  }
+]);
 
 async function startShell() {
   await createShell({
@@ -42,53 +76,70 @@ function shellMeta(session: { status: string; pid: number | null; cwd: string })
       </template>
     </WorkbenchAreaHeader>
 
-    <div class="border-b border-border-subtle px-3 py-3">
-      <div class="grid gap-2">
-        <input v-model="command" class="input-base h-8 font-mono text-small" placeholder="zsh" :disabled="busy" @keydown.enter.prevent="startShell">
-        <input v-model="cwd" class="input-base h-8 font-mono text-small" placeholder="cwd 默认" :disabled="busy" @keydown.enter.prevent="startShell">
-        <button class="btn btn-primary h-8 justify-center gap-1.5" :disabled="busy" @click="startShell">
-          <Play :size="13" :stroke-width="2" />
-          <span>新建终端</span>
-        </button>
-      </div>
-    </div>
+    <ResizableDisclosureStack :sections="resourceSections">
+      <template #header="{ section, expanded }">
+        <component :is="expanded ? ChevronDown : ChevronRight" :size="14" :stroke-width="2" class="shrink-0 text-text-muted" />
+        <component :is="section.icon" :size="14" :stroke-width="2" class="shrink-0 text-text-muted" />
+        <span class="min-w-0 flex-1 truncate">{{ section.title }}</span>
+        <span class="shrink-0 text-text-subtle">{{ section.meta }}</span>
+      </template>
 
-    <div class="scrollbar-thin min-h-0 flex-1 overflow-y-auto py-2">
-      <div class="px-3 pb-2 text-small text-text-subtle">Shell · {{ runningCount }} 运行中</div>
-      <div class="space-y-1 px-2">
-        <WorkbenchListItem
-          v-for="session in shellSessions"
-          :key="session.id"
-          :selected="selectedShellId === session.id"
-          :title="session.command"
-          :meta="shellMeta(session)"
-          @select="selectShell(session.id)"
-        >
-          <template #icon>
-            <SquareTerminal :size="15" :stroke-width="2" />
-          </template>
-        </WorkbenchListItem>
-      </div>
+      <template #default="{ section }">
+        <div v-if="section.id === 'shell'" class="flex h-full min-h-0 flex-col">
+          <div class="border-b border-border-subtle px-3 py-3">
+            <div class="grid gap-2">
+              <input v-model="command" class="input-base h-8 font-mono text-small" placeholder="zsh" :disabled="busy" @keydown.enter.prevent="startShell">
+              <input v-model="cwd" class="input-base h-8 font-mono text-small" placeholder="cwd 默认" :disabled="busy" @keydown.enter.prevent="startShell">
+              <button class="btn btn-primary h-8 justify-center gap-1.5" :disabled="busy" @click="startShell">
+                <Play :size="13" :stroke-width="2" />
+                <span>新建终端</span>
+              </button>
+            </div>
+          </div>
 
-      <WorkbenchEmptyState
-        v-if="shellSessions.length === 0 && !loading"
-        :centered="false"
-        class="justify-center px-3 py-6 text-center text-small text-text-subtle"
-        message="暂无 Shell 资源"
-      />
+          <div class="scrollbar-thin min-h-0 flex-1 overflow-y-auto py-2">
+            <div class="space-y-1 px-2">
+              <WorkbenchListItem
+                v-for="session in shellSessions"
+                :key="session.id"
+                :selected="selectedShellId === session.id"
+                :title="session.command"
+                :meta="shellMeta(session)"
+                @select="selectShell(session.id)"
+              >
+                <template #icon>
+                  <SquareTerminal :size="15" :stroke-width="2" />
+                </template>
+              </WorkbenchListItem>
+            </div>
 
-      <div class="mt-4 border-t border-border-subtle px-3 pt-3">
-        <div class="text-small font-medium text-text-secondary">浏览器页面</div>
-        <div class="mt-1 text-small text-text-subtle">待接入</div>
-      </div>
-      <div class="mt-3 border-t border-border-subtle px-3 pt-3">
-        <div class="text-small font-medium text-text-secondary">下载任务</div>
-        <div class="mt-1 text-small text-text-subtle">待接入</div>
-      </div>
+            <WorkbenchEmptyState
+              v-if="shellSessions.length === 0 && !loading"
+              :centered="false"
+              class="justify-center px-3 py-6 text-center text-small text-text-subtle"
+              message="暂无 Shell 资源"
+            />
+          </div>
+        </div>
 
-      <div v-if="error" class="mx-3 mt-3 rounded border border-danger/30 bg-danger/5 px-2 py-1.5 text-small text-danger">
-        {{ error }}
-      </div>
+        <WorkbenchEmptyState
+          v-else-if="section.id === 'browser'"
+          :centered="false"
+          class="h-full justify-center px-3 py-6 text-center text-small text-text-subtle"
+          message="浏览器页面待接入"
+        />
+
+        <WorkbenchEmptyState
+          v-else
+          :centered="false"
+          class="h-full justify-center px-3 py-6 text-center text-small text-text-subtle"
+          message="下载任务待接入"
+        />
+      </template>
+    </ResizableDisclosureStack>
+
+    <div v-if="error" class="mx-3 mt-3 rounded border border-danger/30 bg-danger/5 px-2 py-1.5 text-small text-danger">
+      {{ error }}
     </div>
   </div>
 </template>
