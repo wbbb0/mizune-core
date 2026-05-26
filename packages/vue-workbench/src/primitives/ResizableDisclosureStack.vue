@@ -1,20 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch, type Component } from "vue";
-
-export interface ResizableDisclosureSection {
-  id: string;
-  title?: string;
-  meta?: string;
-  icon?: Component;
-  expanded?: boolean;
-  weight?: number;
-  [key: string]: unknown;
-}
-
-export type ResizableDisclosureLayout = Record<string, {
-  expanded: boolean;
-  weight: number;
-}>;
+import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
+import type { ResizableDisclosureLayout, ResizableDisclosureSection } from "./disclosureStackTypes";
 
 const props = withDefaults(defineProps<{
   sections: readonly ResizableDisclosureSection[];
@@ -116,6 +102,10 @@ function setSectionContentElement(sectionId: string, element: unknown) {
   sectionContentElements.delete(sectionId);
 }
 
+function sectionContentRef(sectionId: string) {
+  return (element: Element | null) => setSectionContentElement(sectionId, element);
+}
+
 function onSectionHeaderClick(sectionId: string) {
   if (suppressHeaderClickSectionId.value === sectionId) {
     suppressHeaderClickSectionId.value = null;
@@ -125,6 +115,9 @@ function onSectionHeaderClick(sectionId: string) {
 }
 
 function startSectionResize(event: PointerEvent, sectionId: string) {
+  if (event.button !== 0) {
+    return;
+  }
   if (!isExpanded(sectionId)) {
     return;
   }
@@ -262,7 +255,7 @@ onBeforeUnmount(() => {
         v-if="isExpanded(section.id)"
         :id="`disclosure-stack-${section.id}-content`"
         :aria-labelledby="`disclosure-stack-${section.id}-header`"
-        :ref="(element) => setSectionContentElement(section.id, element)"
+        :ref="sectionContentRef(section.id)"
         class="min-h-0 overflow-hidden border-b border-border-subtle"
         role="region"
         :style="sectionContentStyle(section.id)"

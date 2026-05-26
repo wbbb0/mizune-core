@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { DataResource, DataResourceModelColumn } from "@/api/data";
-import { PagedListPane, ResponsiveSplitPane } from "@workbench-kit/vue-workbench";
+import { PagedListPane, ResponsiveSplitPane, WorkbenchDataTable, type WorkbenchDataTableColumn } from "@workbench-kit/vue-workbench";
 import DataModelRecordDetail from "./DataModelRecordDetail.vue";
-import { formatModelCell, getModelListColumns, modelRowId, modelRowKey } from "./dataModelView";
+import { formatModelCell, getModelListColumns, modelRowKey } from "./dataModelView";
 
 const props = defineProps<{
   resource: DataResource;
@@ -26,11 +26,14 @@ const emit = defineEmits<{
 }>();
 
 const columns = computed(() => getModelListColumns(props.resource));
-const gridStyle = computed(() => ({
-  gridTemplateColumns: columns.value.length
-    ? columns.value.map((column) => columnGridTrack(column)).join(" ")
-    : "minmax(7rem, 1fr)"
-}));
+const tableColumns = computed<WorkbenchDataTableColumn<unknown>[]>(() =>
+  columns.value.map((column) => ({
+    key: column.key,
+    title: column.title || column.key,
+    width: columnGridTrack(column),
+    cellClass: column.role === "title" ? "font-medium text-text-secondary" : "font-mono text-text-muted"
+  }))
+);
 
 function columnGridTrack(column: DataResourceModelColumn): string {
   if (column.listWidth) {
@@ -98,32 +101,22 @@ function formatTime(ms: number | undefined): string {
         @update:page="emit('update:page', $event)"
         @update:page-size="emit('update:pageSize', $event)"
       >
-        <template #header>
-          <div v-if="!stacked" class="grid min-w-full w-max border-b border-border-default bg-surface-muted px-4 py-2 font-mono text-small text-text-subtle" :style="gridStyle">
-            <span v-for="column in columns" :key="column.key" class="truncate">{{ column.title || column.key }}</span>
-          </div>
-        </template>
-        <template #item="{ item: row }">
-          <button
-            class="min-w-full w-max border-b border-border-subtle px-4 py-2 text-left text-small hover:bg-surface-hover"
-            :class="[
-              stacked ? 'flex min-h-16 flex-col gap-1' : 'grid min-h-12',
-              { 'bg-surface-selected': selectedRow && modelRowId(selectedRow, resource) === modelRowId(row, resource) }
-            ]"
-            :style="stacked ? undefined : gridStyle"
-            @click="emit('select-row', row)"
+        <template #content>
+          <WorkbenchDataTable
+            :rows="rows"
+            :columns="tableColumns"
+            :stacked="stacked"
+            :selected-row-key="selectedRow ? modelRowKey(selectedRow, resource) : null"
+            :get-row-key="(row) => modelRowKey(row, resource)"
+            :empty-message="emptyMessage ?? '暂无数据'"
+            @select-row="emit('select-row', $event)"
           >
-            <span
-              v-for="column in columns"
-              :key="column.key"
-              class="min-w-0 truncate"
-              :class="column.role === 'title' ? 'font-medium text-text-secondary' : 'font-mono text-text-muted'"
-              :title="formatModelCell((row as Record<string, unknown>)[column.key], column.type, formatTime)"
-            >
-              <span v-if="stacked" class="mr-1 font-sans text-text-subtle">{{ column.title || column.key }}</span>
-              <span>{{ formatModelCell((row as Record<string, unknown>)[column.key], column.type, formatTime) }}</span>
-            </span>
-          </button>
+            <template #cell="{ row, column }">
+              <span :title="formatModelCell((row as Record<string, unknown>)[column.key], columns.find((item) => item.key === column.key)?.type, formatTime)">
+                {{ formatModelCell((row as Record<string, unknown>)[column.key], columns.find((item) => item.key === column.key)?.type, formatTime) }}
+              </span>
+            </template>
+          </WorkbenchDataTable>
         </template>
       </PagedListPane>
     </template>

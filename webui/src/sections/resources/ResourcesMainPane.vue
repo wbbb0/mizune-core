@@ -8,7 +8,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { WorkbenchAreaHeader, WorkbenchEmptyState } from "@workbench-kit/vue-workbench";
+import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchIconButton } from "@workbench-kit/vue-workbench";
 import { openShellSocket, type ShellSession, type ShellSocketMessage } from "@/api/runtimeResources";
 import { useResourcesSection } from "@/composables/sections/useResourcesSection";
 
@@ -468,18 +468,10 @@ function isShellSession(value: unknown): value is ShellSession {
   <div class="flex h-full min-h-0 flex-col bg-surface">
     <WorkbenchAreaHeader :title="title">
       <template #actions>
-        <button class="btn-ghost" :disabled="!selectedShellId" title="重连" @click="reconnect">
-          <PlugZap :size="14" :stroke-width="2" />
-        </button>
-        <button class="btn-ghost" :disabled="!effectiveSession || effectiveSession.status !== 'running' || busy" title="SIGINT" @click="sendSignal('SIGINT')">
-          <Zap :size="14" :stroke-width="2" />
-        </button>
-        <button class="btn-ghost" :disabled="!effectiveSession || effectiveSession.status !== 'running' || busy" title="停止" @click="stopShell">
-          <Square :size="14" :stroke-width="2" />
-        </button>
-        <button class="btn-ghost" :disabled="busy" title="刷新" @click="refreshShells">
-          <RefreshCw :size="14" :stroke-width="2" />
-        </button>
+        <WorkbenchIconButton :icon="PlugZap" :disabled="!selectedShellId" title="重连" @click="reconnect" />
+        <WorkbenchIconButton :icon="Zap" :disabled="!effectiveSession || effectiveSession.status !== 'running' || busy" title="SIGINT" @click="sendSignal('SIGINT')" />
+        <WorkbenchIconButton :icon="Square" :disabled="!effectiveSession || effectiveSession.status !== 'running' || busy" title="停止" @click="stopShell" />
+        <WorkbenchIconButton :icon="RefreshCw" :disabled="busy" title="刷新" @click="refreshShells" />
       </template>
     </WorkbenchAreaHeader>
 
@@ -504,27 +496,15 @@ function isShellSession(value: unknown): value is ShellSession {
             @keydown.enter.prevent="findNext"
             @keydown.shift.enter.prevent="findPrevious"
           >
-          <button class="btn-ghost h-7 w-7" :disabled="!searchQuery" title="上一个" @click="findPrevious">
-            <ChevronUp :size="14" :stroke-width="2" />
-          </button>
-          <button class="btn-ghost h-7 w-7" :disabled="!searchQuery" title="下一个" @click="findNext">
-            <ChevronDown :size="14" :stroke-width="2" />
-          </button>
+          <WorkbenchIconButton size="sm" :icon="ChevronUp" :disabled="!searchQuery" title="上一个" @click="findPrevious" />
+          <WorkbenchIconButton size="sm" :icon="ChevronDown" :disabled="!searchQuery" title="下一个" @click="findNext" />
         </div>
 
         <div class="flex items-center gap-1">
-          <button class="btn-ghost h-7 w-7" :disabled="!hasSelection" title="复制选中内容" @click="copySelection">
-            <Copy :size="14" :stroke-width="2" />
-          </button>
-          <button class="btn-ghost h-7 w-7" :disabled="!terminal" title="复制屏幕内容" @click="copyScreen">
-            <Files :size="14" :stroke-width="2" />
-          </button>
-          <button class="btn-ghost h-7 w-7" :disabled="!terminal || effectiveSession.status !== 'running'" title="粘贴" @click="pasteFromClipboard">
-            <ClipboardPaste :size="14" :stroke-width="2" />
-          </button>
-          <button class="btn-ghost h-7 w-7" :disabled="!terminal" title="发送 Ctrl-L" @click="clearTerminal">
-            <Eraser :size="14" :stroke-width="2" />
-          </button>
+          <WorkbenchIconButton size="sm" :icon="Copy" :disabled="!hasSelection" title="复制选中内容" @click="copySelection" />
+          <WorkbenchIconButton size="sm" :icon="Files" :disabled="!terminal" title="复制屏幕内容" @click="copyScreen" />
+          <WorkbenchIconButton size="sm" :icon="ClipboardPaste" :disabled="!terminal || effectiveSession.status !== 'running'" title="粘贴" @click="pasteFromClipboard" />
+          <WorkbenchIconButton size="sm" :icon="Eraser" :disabled="!terminal" title="发送 Ctrl-L" @click="clearTerminal" />
         </div>
 
         <span v-if="terminalNotice" class="min-w-0 truncate text-small text-text-subtle">{{ terminalNotice }}</span>

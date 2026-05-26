@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, type Component } from "vue";
 import { ChevronDown, ChevronRight, Download, Globe, Play, RefreshCw, SquareTerminal } from "lucide-vue-next";
-import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@workbench-kit/vue-workbench";
-import ResizableDisclosureStack from "@/components/common/ResizableDisclosureStack.vue";
+import { ResizableDisclosureStack, WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchIconButton, WorkbenchListItem } from "@workbench-kit/vue-workbench";
 import { useResourcesSection } from "@/composables/sections/useResourcesSection";
 
 const {
@@ -70,9 +69,7 @@ function shellMeta(session: { status: string; pid: number | null; cwd: string })
   <div class="flex h-full min-h-0 flex-col bg-surface">
     <WorkbenchAreaHeader title="运行时资源">
       <template #actions>
-        <button class="btn-ghost" :disabled="loading" title="刷新" @click="refreshShells">
-          <RefreshCw :size="14" :stroke-width="2" />
-        </button>
+        <WorkbenchIconButton :icon="RefreshCw" :disabled="loading" title="刷新" @click="refreshShells" />
       </template>
     </WorkbenchAreaHeader>
 

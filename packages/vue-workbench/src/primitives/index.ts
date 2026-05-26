@@ -1,8 +1,15 @@
 export { default as WorkbenchAreaHeader } from "./WorkbenchAreaHeader.vue";
 export { default as WorkbenchCard } from "./WorkbenchCard.vue";
+export { default as WorkbenchDataTable } from "./WorkbenchDataTable.vue";
 export { default as WorkbenchDisclosure } from "./WorkbenchDisclosure.vue";
 export { default as WorkbenchEmptyState } from "./WorkbenchEmptyState.vue";
+export { default as WorkbenchIconButton } from "./WorkbenchIconButton.vue";
+export { default as WorkbenchKeyValueDetails } from "./WorkbenchKeyValueDetails.vue";
 export { default as WorkbenchListItem } from "./WorkbenchListItem.vue";
+export { default as WorkbenchSidebarListPane } from "./WorkbenchSidebarListPane.vue";
 export { default as TreeNodeShell } from "./TreeNodeShell.vue";
 export { default as ResponsiveSplitPane } from "./ResponsiveSplitPane.vue";
 export { default as PagedListPane } from "./PagedListPane.vue";
+export { default as ResizableDisclosureStack } from "./ResizableDisclosureStack.vue";
+export type { ResizableDisclosureLayout, ResizableDisclosureSection } from "./disclosureStackTypes.js";
+export type { WorkbenchDataTableColumn } from "./dataTableTypes.js";

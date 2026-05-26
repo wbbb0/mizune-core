@@ -133,15 +133,17 @@ onMounted(() => {
     </div>
 
     <div class="scrollbar-thin min-h-0 flex-1 overflow-auto">
-      <slot name="header" />
-      <template v-for="(item, index) in items" :key="getItemKey(item, index)">
-        <slot name="item" :item="item" :index="index" />
-      </template>
-      <WorkbenchEmptyState
-        v-if="items.length === 0"
-        class="justify-center px-3 py-6 text-center text-small text-text-subtle"
-        :message="emptyMessage"
-      />
+      <slot name="content">
+        <slot name="header" />
+        <template v-for="(item, index) in items" :key="getItemKey(item, index)">
+          <slot name="item" :item="item" :index="index" />
+        </template>
+        <WorkbenchEmptyState
+          v-if="items.length === 0"
+          class="justify-center px-3 py-6 text-center text-small text-text-subtle"
+          :message="emptyMessage"
+        />
+      </slot>
     </div>
 
     <div class="flex flex-wrap items-center justify-between gap-2 border-t border-border-default bg-surface-panel px-4 py-2">

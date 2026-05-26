@@ -2,7 +2,7 @@
 import { onMounted } from "vue";
 import { useUiStore } from "@/stores/ui";
 import { useDataSection } from "@/composables/sections/useDataSection";
-import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@workbench-kit/vue-workbench";
+import { WorkbenchListItem, WorkbenchSidebarListPane } from "@workbench-kit/vue-workbench";
 
 const ui = useUiStore();
 const { resources, selectedKey, selectResource, refreshResources, resourceBadge } = useDataSection();
@@ -13,19 +13,21 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-full flex-col overflow-hidden">
-    <WorkbenchAreaHeader v-if="!ui.isMobile" title="数据" />
-    <div class="min-h-0 flex-1 overflow-y-auto">
+  <WorkbenchSidebarListPane
+    title="数据"
+    :show-header="!ui.isMobile"
+    :items="resources"
+    empty-message="暂无数据资源"
+    :item-key="(entry) => entry.id"
+  >
+    <template #item="{ item: entry }">
       <WorkbenchListItem
-        v-for="entry in resources"
-        :key="entry.id"
         :selected="selectedKey === entry.id"
         :title="entry.title"
         :meta="resourceBadge(entry)"
         @select="selectResource(entry.id)"
       >
       </WorkbenchListItem>
-      <WorkbenchEmptyState v-if="resources.length === 0" :centered="false" class="justify-center px-3 py-6 text-center text-small text-text-subtle" message="暂无数据资源" />
-    </div>
-  </div>
+    </template>
+  </WorkbenchSidebarListPane>
 </template>

@@ -5,7 +5,7 @@ import { SchemaNode, type UiNode } from "@workbench-kit/vue-resource-editor";
 import { dataApi, type DataResource } from "@/api/data";
 import { useElementWidth } from "@/composables/useElementWidth";
 import { useDataSection } from "@/composables/sections/useDataSection";
-import { useWorkbenchToasts, useWorkbenchWindows } from "@workbench-kit/vue-workbench";
+import { useWorkbenchToasts, useWorkbenchWindows, WorkbenchIconButton, WorkbenchKeyValueDetails } from "@workbench-kit/vue-workbench";
 import { formatModelCell, getModelDetailEntries, modelRowId, rowText } from "./dataModelView";
 import DataJsonValueViewer from "./DataJsonValueViewer.vue";
 
@@ -116,24 +116,20 @@ async function openChild(child: DataModelChild) {
     <section class="border-b border-border-default px-4 py-3">
       <div class="mb-2 flex items-center gap-2">
         <div class="min-w-0 flex-1 text-small font-medium text-text-secondary">{{ patchable ? "编辑" : "详情" }}</div>
-        <button
+        <WorkbenchIconButton
           v-if="patchable"
-          class="btn-ghost"
+          :icon="Save"
           :disabled="!canSaveRegistryRow(row)"
           title="保存"
           @click="saveRegistryRow(row)"
-        >
-          <Save :size="13" :stroke-width="1.5" />
-        </button>
-        <button
+        />
+        <WorkbenchIconButton
           v-if="deletable"
-          class="btn-ghost"
+          :icon="Trash2"
           :disabled="saving"
           title="删除"
           @click="deleteRegistryRow(row)"
-        >
-          <Trash2 :size="13" :stroke-width="2" />
-        </button>
+        />
       </div>
       <SchemaNode
         v-if="patchable && resource.rowUiTree"
@@ -144,17 +140,22 @@ async function openChild(child: DataModelChild) {
         :depth="0"
         @update:model-value="updateRegistryExistingRowDraft(row, $event)"
       />
-      <dl v-else class="grid gap-x-3 gap-y-2 text-small" :class="compactPane ? 'grid-cols-1' : 'grid-cols-[8rem_minmax(0,1fr)]'">
-        <template v-for="entry in detailEntries" :key="entry.column.key">
-          <dt class="font-mono text-text-subtle">{{ entry.column.title || entry.column.key }}</dt>
-          <dd v-if="entry.column.type === 'json'" class="min-w-0">
+      <WorkbenchKeyValueDetails
+        v-else
+        :items="detailEntries"
+        :compact="compactPane"
+        :get-key="(entry) => entry.column.key"
+        :get-label="(entry) => entry.column.title || entry.column.key"
+      >
+        <template #value="{ item: entry }">
+          <template v-if="entry.column.type === 'json'">
             <DataJsonValueViewer :value="entry.value" :node="getRowFieldNode(entry.column.key)" />
-          </dd>
-          <dd v-else class="min-w-0 truncate font-mono text-text-primary" :title="formatDetailValue(entry.value, entry.column.type)">
+          </template>
+          <span v-else class="block min-w-0 truncate font-mono text-text-primary" :title="formatDetailValue(entry.value, entry.column.type)">
             {{ formatDetailValue(entry.value, entry.column.type) }}
-          </dd>
+          </span>
         </template>
-      </dl>
+      </WorkbenchKeyValueDetails>
     </section>
 
     <section v-if="resource.model?.children?.length" class="px-4 py-3">

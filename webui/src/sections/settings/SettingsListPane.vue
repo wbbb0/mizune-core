@@ -3,10 +3,14 @@ import { onMounted } from "vue";
 import { LockKeyhole, LogOut } from "lucide-vue-next";
 import { useUiStore } from "@/stores/ui";
 import { useSettingsSection } from "@/composables/sections/useSettingsSection";
-import { WorkbenchAreaHeader, WorkbenchListItem } from "@workbench-kit/vue-workbench";
+import { WorkbenchListItem, WorkbenchSidebarListPane } from "@workbench-kit/vue-workbench";
 
 const ui = useUiStore();
 const { auth, activeItem, selectItem, initializeSection } = useSettingsSection();
+const settingsItems = [
+  { id: "auth" as const, title: "认证", icon: LockKeyhole },
+  { id: "logout" as const, title: "退出登录", icon: LogOut, requiresAuth: true }
+];
 
 onMounted(() => {
   void initializeSection();
@@ -14,19 +18,18 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-full flex-col overflow-hidden">
-    <WorkbenchAreaHeader v-if="!ui.isMobile" title="设置" />
-    <div class="min-h-0 flex-1 overflow-y-auto">
-      <WorkbenchListItem :selected="activeItem === 'auth'" title="认证" @select="selectItem('auth')">
+  <WorkbenchSidebarListPane
+    title="设置"
+    :show-header="!ui.isMobile"
+    :items="settingsItems.filter((item) => !item.requiresAuth || auth.enabled)"
+    :item-key="(item) => item.id"
+  >
+    <template #item="{ item }">
+      <WorkbenchListItem :selected="activeItem === item.id" :title="item.title" @select="selectItem(item.id)">
         <template #trailing>
-        <LockKeyhole :size="14" :stroke-width="1.75" class="text-text-subtle" />
+          <component :is="item.icon" :size="14" :stroke-width="1.75" class="text-text-subtle" />
         </template>
       </WorkbenchListItem>
-      <WorkbenchListItem v-if="auth.enabled" :selected="activeItem === 'logout'" title="退出登录" @select="selectItem('logout')">
-        <template #trailing>
-        <LogOut :size="14" :stroke-width="1.75" class="text-text-subtle" />
-        </template>
-      </WorkbenchListItem>
-    </div>
-  </div>
+    </template>
+  </WorkbenchSidebarListPane>
 </template>

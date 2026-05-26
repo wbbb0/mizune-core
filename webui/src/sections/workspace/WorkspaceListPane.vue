@@ -4,7 +4,7 @@ import { RefreshCw } from "lucide-vue-next";
 import { FileTree as WorkspaceFileTree } from "@workbench-kit/vue-file-workspace";
 import { useWorkspaceSection } from "@/composables/sections/useWorkspaceSection";
 import type { ChatFileSummary } from "@/api/workspace";
-import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@workbench-kit/vue-workbench";
+import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchIconButton, WorkbenchListItem } from "@workbench-kit/vue-workbench";
 
 const {
   mode,
@@ -56,9 +56,7 @@ function captionStatusClass(file: ChatFileSummary): string {
         <button class="px-2 py-0.75 text-small" :class="mode === 'stored-files' ? 'rounded bg-surface-selected-muted text-text-secondary' : 'text-text-muted'" @click="mode = 'stored-files'">已保存</button>
       </div>
       <template #actions>
-      <button class="btn-ghost" :disabled="loadingFiles || loadingAssets" title="刷新" @click="refreshCurrentMode">
-        <RefreshCw :size="14" :stroke-width="2" :class="{ spin: loadingFiles || loadingAssets }" />
-      </button>
+      <WorkbenchIconButton :icon="RefreshCw" :disabled="loadingFiles || loadingAssets" title="刷新" @click="refreshCurrentMode" />
       </template>
     </WorkbenchAreaHeader>
 
