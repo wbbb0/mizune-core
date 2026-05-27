@@ -107,7 +107,8 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
           role: "user" as const,
           content: batchContentBuilder(input.batchMessages, batchRenderContext, input.includeBatchMediaCaptions)
         }]
-      : [])
+      : []),
+    ...(input.tailSystemMessages ?? []).map((content) => ({ role: "system" as const, content }))
   ];
 }
 
@@ -159,7 +160,8 @@ export function buildScheduledTaskPrompt(
     ...(input.lateSystemMessages ?? []).map((content) => ({ role: "system" as const, content })),
     ...((input.replayMessages ?? []) as LlmMessage[]),
     ...historyMessages,
-    { role: "user", content: triggerMessage }
+    { role: "user", content: triggerMessage },
+    ...(input.tailSystemMessages ?? []).map((content) => ({ role: "system" as const, content }))
   ];
 }
 
@@ -297,7 +299,8 @@ export function buildSetupPrompt(input: SetupPromptInput): LlmMessage[] {
           role: "user" as const,
           content: buildProfileDraftBatchContent(input.batchMessages, batchRenderContext, input.includeBatchMediaCaptions)
         }]
-      : [])
+      : []),
+    ...(input.tailSystemMessages ?? []).map((content) => ({ role: "system" as const, content }))
   ];
 }
 

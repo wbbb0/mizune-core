@@ -11,11 +11,12 @@ import {
   finalizeActiveAssistantDraftResponseState,
   finalizeActiveAssistantResponseState,
   promoteSteerMessagesToPendingState,
+  promoteNextQueuedGroupReplyTargetState,
   requeuePendingMessagesState,
   resetProfileOperationState,
   setActiveAssistantDraftResponseState,
   setSessionOperationModeState,
-  setInterruptibleGroupTriggerUserState
+  enqueueGroupReplyTargetState
 } from "./sessionMutations.ts";
 import { SessionStore } from "./sessionStore.ts";
 import {
@@ -40,6 +41,7 @@ import type {
   InternalSessionTriggerExecution,
   InternalTranscriptItem,
   PersistedSessionState,
+  QueuedGroupReplyTarget,
   SessionDelivery,
   SessionDebugMarker,
   SessionDebugControlState,
@@ -125,6 +127,27 @@ export class SessionManager {
     const updated = appendSessionMessage(session, message);
     this.notifySessionChanged(sessionId);
     return updated;
+  }
+
+  enqueueGroupReplyTarget(sessionId: string, message: ParsedIncomingMessage): QueuedGroupReplyTarget {
+    const session = this.requireSession(sessionId);
+    const target = enqueueGroupReplyTargetState(session, message);
+    this.notifySessionChanged(sessionId);
+    return target;
+  }
+
+  hasQueuedGroupReplyTargets(sessionId: string): boolean {
+    return this.requireSession(sessionId).queuedGroupReplyTargets.length > 0;
+  }
+
+  promoteNextQueuedGroupReplyTarget(sessionId: string): number {
+    const session = this.requireSession(sessionId);
+    const promoted = promoteNextQueuedGroupReplyTargetState(session);
+    if (promoted) {
+      this.notifySessionChanged(sessionId);
+      return promoted.messages.length;
+    }
+    return 0;
   }
 
   appendSteerMessage(sessionId: string, message: ParsedIncomingMessage): SessionState {
@@ -574,8 +597,7 @@ export class SessionManager {
     mentionedSelf?: boolean;
     sourceRef?: TranscriptItemSourceRef;
     contentSafetyEvents?: import("./sessionTypes.ts").TranscriptContentSafetyEvent[];
-    runtimeVisibility?: import("./sessionTypes.ts").TranscriptItemRuntimeVisibility;
-  }, timestampMs = Date.now(), options?: { transcriptGroup?: "pending" | "standalone" }): void {
+  }, timestampMs = Date.now(), options?: { transcriptGroup?: "pending" | "standalone"; transcriptGroupId?: string }): void {
     const session = this.requireSession(sessionId);
     this.historyService.appendUserHistory(session, message, timestampMs, options);
     this.notifySessionChanged(sessionId);
@@ -881,17 +903,6 @@ export class SessionManager {
 
   consumeDebugMode(sessionId: string): boolean {
     return this.debugController.consume(this.requireSession(sessionId));
-  }
-
-  setInterruptibleGroupTriggerUser(sessionId: string, userId: string | null): void {
-    const session = this.requireSession(sessionId);
-    setInterruptibleGroupTriggerUserState(session, userId);
-    this.notifySessionChanged(sessionId);
-  }
-
-  matchesInterruptibleGroupTriggerUser(sessionId: string, userId: string): boolean {
-    const session = this.requireSession(sessionId);
-    return session.interruptibleGroupTriggerUserId != null && session.interruptibleGroupTriggerUserId === userId;
   }
 
   hasPendingInternalTriggers(sessionId: string): boolean {

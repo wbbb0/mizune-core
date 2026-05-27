@@ -319,7 +319,6 @@ export function createUserTranscriptMessageItem(input: {
   mentionedSelf?: boolean;
   sourceRef?: TranscriptItemSourceRef;
   contentSafetyEvents?: TranscriptContentSafetyEvent[];
-  runtimeVisibility?: TranscriptUserMessageItem["runtimeVisibility"];
   timestampMs: number;
 }): TranscriptUserMessageItem | TranscriptUserMediaMessageItem {
   const mediaKind = resolveUserMessageMediaKind(input.contentParts);
@@ -352,7 +351,6 @@ export function createUserTranscriptMessageItem(input: {
     mentionedAll: input.mentionedAll === true,
     mentionedSelf: input.mentionedSelf === true,
     ...(input.sourceRef ? { sourceRef: input.sourceRef } : {}),
-    ...(input.runtimeVisibility ? { runtimeVisibility: input.runtimeVisibility } : {}),
     ...(input.contentSafetyEvents && input.contentSafetyEvents.length > 0 ? { contentSafetyEvents: input.contentSafetyEvents } : {}),
     timestampMs: input.timestampMs
   };
@@ -373,7 +371,6 @@ function createUserMediaTranscriptMessageItem(input: {
   mentionedSelf?: boolean;
   sourceRef?: TranscriptItemSourceRef;
   contentSafetyEvents?: TranscriptContentSafetyEvent[];
-  runtimeVisibility?: TranscriptUserMessageItem["runtimeVisibility"];
   timestampMs: number;
 }): TranscriptUserMediaMessageItem {
   return {
@@ -393,7 +390,6 @@ function createUserMediaTranscriptMessageItem(input: {
     mentionedAll: input.mentionedAll === true,
     mentionedSelf: input.mentionedSelf === true,
     ...(input.sourceRef ? { sourceRef: input.sourceRef } : {}),
-    ...(input.runtimeVisibility ? { runtimeVisibility: input.runtimeVisibility } : {}),
     ...(input.contentSafetyEvents && input.contentSafetyEvents.length > 0 ? { contentSafetyEvents: input.contentSafetyEvents } : {}),
     timestampMs: input.timestampMs
   };

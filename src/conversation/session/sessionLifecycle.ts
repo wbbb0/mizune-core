@@ -8,6 +8,7 @@ export function beginGenerationState(session: SessionState) {
   const pendingReplyGateWaitPasses = session.pendingReplyGateWaitPasses;
   session.pendingMessages = [];
   session.pendingReplyGateWaitPasses = 0;
+  session.currentReplyTarget = resolveReplyTarget(messages);
   beginActiveTranscriptGroup(session);
   session.phase = { kind: "turn_planner_evaluating" };
   session.responseEpoch += 1;
@@ -27,6 +28,7 @@ export function beginGenerationState(session: SessionState) {
 
 // Starts a synthetic generation cycle without consuming pending inbound messages.
 export function beginSyntheticGenerationState(session: SessionState) {
+  session.currentReplyTarget = null;
   beginActiveTranscriptGroup(session);
   session.phase = { kind: "requesting_llm" };
   session.responseEpoch += 1;
@@ -35,6 +37,20 @@ export function beginSyntheticGenerationState(session: SessionState) {
   session.generationAbortController = abortController;
   session.responseAbortController = responseAbortController;
   return { session, abortController, responseAbortController, responseEpoch: session.responseEpoch };
+}
+
+function resolveReplyTarget(messages: SessionState["pendingMessages"]): SessionState["currentReplyTarget"] {
+  const first = messages[0];
+  if (!first) {
+    return null;
+  }
+  return {
+    chatType: first.chatType,
+    userId: first.userId,
+    senderName: first.senderName,
+    ...(first.groupId ? { groupId: first.groupId } : {}),
+    firstMessageAt: first.receivedAt
+  };
 }
 
 // Marks generation as finished when the active abort controller still matches.
@@ -70,6 +86,7 @@ export function interruptResponseState(session: SessionState): { cancelledGenera
   }
   session.phase = { kind: "idle" };
   clearActiveTranscriptGroup(session);
+  session.currentReplyTarget = null;
   return { cancelledGeneration, cancelledOutbound };
 }
 
@@ -80,7 +97,7 @@ export function completeResponseState(session: SessionState, expectedResponseEpo
   }
   session.phase = { kind: "idle" };
   session.responseAbortController = null;
-  session.interruptibleGroupTriggerUserId = null;
+  session.currentReplyTarget = null;
   clearActiveTranscriptGroup(session);
   return true;
 }

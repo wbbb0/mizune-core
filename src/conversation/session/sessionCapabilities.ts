@@ -3,6 +3,7 @@ import type {
   InternalSessionTriggerExecution,
   InternalTranscriptItem,
   PersistedSessionState,
+  QueuedGroupReplyTarget,
   SessionDelivery,
   SessionDebugControlState,
   SessionDebugMarker,
@@ -16,7 +17,6 @@ import type {
   TranscriptItemDeliveryRef,
   TranscriptProfilePhaseTransitionItem,
   TranscriptItemRuntimeExclusionReason,
-  TranscriptItemRuntimeVisibility,
   TranscriptItemSourceRef
 } from "./sessionTypes.ts";
 import type { SessionOperationMode } from "./sessionOperationMode.ts";
@@ -296,6 +296,7 @@ export interface SessionInternalTriggerDispatchAccess {
     titleSource?: "default" | "auto" | "manual" | null;
   }): SessionState;
   hasActiveResponse(sessionId: string): boolean;
+  hasQueuedGroupReplyTargets(sessionId: string): boolean;
   hasPendingInternalTriggers(sessionId: string): boolean;
   hasPendingInlineTriggers(sessionId: string): boolean;
   appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void;
@@ -354,14 +355,13 @@ export interface SessionDirectCommandAccess {
       forwardIds?: string[];
       replyMessageId?: string | null;
       mentionUserIds?: string[];
-      mentionedAll?: boolean;
-      mentionedSelf?: boolean;
-      sourceRef?: TranscriptItemSourceRef;
-      contentSafetyEvents?: TranscriptContentSafetyEvent[];
-      runtimeVisibility?: TranscriptItemRuntimeVisibility;
-    },
+    mentionedAll?: boolean;
+    mentionedSelf?: boolean;
+    sourceRef?: TranscriptItemSourceRef;
+    contentSafetyEvents?: TranscriptContentSafetyEvent[];
+  },
     timestampMs?: number,
-    options?: { transcriptGroup?: "pending" | "standalone" }
+    options?: { transcriptGroup?: "pending" | "standalone"; transcriptGroupId?: string }
   ): void;
   canInsertUserHistoryByTimestamp(
     sessionId: string,
@@ -436,7 +436,6 @@ export interface SessionDirectCommandAccess {
 export interface SessionMessagingAccess {
   getOrCreateSession(message: ParsedIncomingMessage): SessionState;
   getSession(sessionId: string): SessionState;
-  matchesInterruptibleGroupTriggerUser(sessionId: string, userId: string): boolean;
   appendUserHistory(
     sessionId: string,
     message: {
@@ -458,10 +457,9 @@ export interface SessionMessagingAccess {
       mentionedSelf?: boolean;
       sourceRef?: TranscriptItemSourceRef;
       contentSafetyEvents?: TranscriptContentSafetyEvent[];
-      runtimeVisibility?: TranscriptItemRuntimeVisibility;
     },
     timestampMs?: number,
-    options?: { transcriptGroup?: "pending" | "standalone" }
+    options?: { transcriptGroup?: "pending" | "standalone"; transcriptGroupId?: string }
   ): void;
   hasHistorySource(sessionId: string, sourceRef: TranscriptItemSourceRef): boolean;
   appendAssistantHistory(
@@ -477,7 +475,6 @@ export interface SessionMessagingAccess {
   ): void;
   appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void;
   setReplyDelivery(sessionId: string, delivery: SessionDelivery): void;
-  setInterruptibleGroupTriggerUser(sessionId: string, userId: string | null): void;
   hasActiveResponse(sessionId: string): boolean;
   appendSteerMessage(sessionId: string, message: ParsedIncomingMessage): SessionState;
   interruptOutbound(sessionId: string): boolean;
@@ -488,6 +485,9 @@ export interface SessionMessagingAccess {
     finalizedDraftAssistant: boolean;
   };
   appendPendingMessage(sessionId: string, message: ParsedIncomingMessage): SessionState;
+  enqueueGroupReplyTarget(sessionId: string, message: ParsedIncomingMessage): QueuedGroupReplyTarget;
+  hasQueuedGroupReplyTargets(sessionId: string): boolean;
+  promoteNextQueuedGroupReplyTarget(sessionId: string): number;
   clearPendingTranscriptGroup(sessionId: string): void;
 }
 
@@ -501,6 +501,8 @@ export interface SessionGenerationQueueAccess {
   hasActiveResponse(sessionId: string): boolean;
   hasPendingSteerMessages(sessionId: string): boolean;
   promoteSteerMessagesToPending(sessionId: string): number;
+  hasQueuedGroupReplyTargets(sessionId: string): boolean;
+  promoteNextQueuedGroupReplyTarget(sessionId: string): number;
   clearDebounceTimer(sessionId: string): void;
   shiftInternalTrigger(sessionId: string): InternalSessionTriggerExecution | null;
   hasPendingInlineTriggers(sessionId: string): boolean;

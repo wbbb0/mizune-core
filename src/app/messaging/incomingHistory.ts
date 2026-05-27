@@ -28,10 +28,7 @@ export function resolveOneBotEventSourceRef(event: Pick<OneBotMessageEvent, "mes
 
 export function createIncomingHistoryMessage(
   context: MessageProcessingContext,
-  sourceRef?: TranscriptItemSourceRef,
-  options?: {
-    runtimeVisibility?: Parameters<SessionMessagingAccess["appendUserHistory"]>[1]["runtimeVisibility"];
-  }
+  sourceRef?: TranscriptItemSourceRef
 ): Parameters<SessionMessagingAccess["appendUserHistory"]>[1] {
   return {
     chatType: context.enrichedMessage.chatType,
@@ -51,7 +48,6 @@ export function createIncomingHistoryMessage(
     mentionedAll: context.enrichedMessage.mentionedAll,
     mentionedSelf: context.enrichedMessage.isAtMentioned,
     ...(sourceRef ? { sourceRef } : {}),
-    ...(options?.runtimeVisibility ? { runtimeVisibility: options.runtimeVisibility } : {}),
     ...(context.contentSafetyEvents && context.contentSafetyEvents.length > 0
       ? { contentSafetyEvents: context.contentSafetyEvents }
       : {})
@@ -64,16 +60,19 @@ export function appendIncomingHistoryTranscript(
   input: {
     timestampMs: number;
     sourceRef?: TranscriptItemSourceRef;
-    runtimeVisibility?: Parameters<SessionMessagingAccess["appendUserHistory"]>[1]["runtimeVisibility"];
     transcriptGroup?: "pending" | "standalone";
+    transcriptGroupId?: string;
   }
 ): void {
   sessionManager.appendUserHistory(
     context.session.id,
-    createIncomingHistoryMessage(context, input.sourceRef, {
-      ...(input.runtimeVisibility ? { runtimeVisibility: input.runtimeVisibility } : {})
-    }),
+    createIncomingHistoryMessage(context, input.sourceRef),
     input.timestampMs,
-    input.transcriptGroup ? { transcriptGroup: input.transcriptGroup } : undefined
+    input.transcriptGroup || input.transcriptGroupId
+      ? {
+          ...(input.transcriptGroup ? { transcriptGroup: input.transcriptGroup } : {}),
+          ...(input.transcriptGroupId ? { transcriptGroupId: input.transcriptGroupId } : {})
+        }
+      : undefined
   );
 }

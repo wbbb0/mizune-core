@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
+import type { SessionState } from "#conversation/session/sessionTypes.ts";
 import { collectVisualAttachmentFileIds } from "#services/workspace/chatAttachments.ts";
 import type {
   MessageEventHandlerDeps,
@@ -12,7 +13,6 @@ import {
   appendIncomingHistoryTranscript,
   resolveIncomingOneBotSourceRef
 } from "./incomingHistory.ts";
-import { resolveAdmissionDecision } from "./conversationAdmissionPolicy.ts";
 
 export async function resolveTriggerDecision(
   services: Pick<
@@ -29,22 +29,112 @@ export async function resolveTriggerDecision(
       context.enrichedMessage.userId
     );
   }
-  const matchedPendingGroupTrigger = context.enrichedMessage.chatType === "group"
-    && !context.enrichedMessage.isAtMentioned
-    && services.sessionManager.matchesInterruptibleGroupTriggerUser(
-      context.session.id,
-      context.enrichedMessage.userId
-    );
+  const userMatched = isWhitelistedUser(services.whitelistStore, context.enrichedMessage);
+  const replyToBot = isReplyToBot(context.session, context.enrichedMessage.replyMessageId);
 
-  return resolveAdmissionDecision({
-    config: services.config,
-    message: context.enrichedMessage,
-    relationship: context.user.relationship,
+  if (context.enrichedMessage.chatType === "private") {
+    const hasActiveResponse = services.sessionManager.hasActiveResponse(context.session.id);
+    return {
+      groupMatched: false,
+      userMatched,
+      directlyAddressed: true,
+      replyToBot: false,
+      shouldTriggerResponse: true,
+      threadAction: hasActiveResponse ? "soft_interrupt" : "reply_now",
+      replyDecision: "reply_small",
+      interruptPolicy: hasActiveResponse ? "soft_interrupt" : "none",
+      priority: context.user.relationship === "owner" ? "owner" : "normal",
+      reason: hasActiveResponse ? "私聊新消息软打断当前回复" : "私聊消息默认回复"
+    };
+  }
+
+  const directlyAddressed = context.enrichedMessage.isAtMentioned || replyToBot;
+  const accessAllowed = context.user.relationship === "owner" || userMatched || groupMatched;
+  if (!accessAllowed) {
+    return buildNoReplyDecision({
+      groupMatched,
+      userMatched,
+      directlyAddressed,
+      replyToBot,
+      reason: "群聊用户或群不在白名单，且不是 owner"
+    });
+  }
+  if (!directlyAddressed) {
+    return buildNoReplyDecision({
+      groupMatched,
+      userMatched,
+      directlyAddressed,
+      replyToBot,
+      reason: "群聊未直接 @ bot 或回复 bot 消息"
+    });
+  }
+
+  const currentTarget = resolveCurrentGroupReplyTarget(context.session);
+  const hasActiveResponse = services.sessionManager.hasActiveResponse(context.session.id);
+  if (!currentTarget && context.session.queuedGroupReplyTargets.length > 0) {
+    return {
+      groupMatched,
+      userMatched,
+      directlyAddressed,
+      replyToBot,
+      shouldTriggerResponse: true,
+      threadAction: "queue_next_thread",
+      replyDecision: "reply_small",
+      interruptPolicy: "queue",
+      priority: context.user.relationship === "owner" ? "owner" : "normal",
+      reason: "群聊已有待回复队列，新的直接触发进入去重队列"
+    };
+  }
+  if (currentTarget && currentTarget.userId !== context.enrichedMessage.userId) {
+    return {
+      groupMatched,
+      userMatched,
+      directlyAddressed,
+      replyToBot,
+      shouldTriggerResponse: true,
+      threadAction: "queue_next_thread",
+      replyDecision: "reply_small",
+      interruptPolicy: "queue",
+      priority: context.user.relationship === "owner" ? "owner" : "normal",
+      reason: "群聊已有当前回复目标，其他用户直接触发进入去重队列"
+    };
+  }
+
+  if (hasActiveResponse && currentTarget?.userId === context.enrichedMessage.userId) {
+    return {
+      groupMatched,
+      userMatched,
+      directlyAddressed,
+      replyToBot,
+      shouldTriggerResponse: true,
+      threadAction: "soft_interrupt",
+      replyDecision: "reply_small",
+      interruptPolicy: "soft_interrupt",
+      priority: context.user.relationship === "owner" ? "owner" : "normal",
+      reason: "当前回复目标再次直接触发，软打断当前回复"
+    };
+  }
+
+  return {
     groupMatched,
-    matchedPendingGroupTrigger,
-    replyToBot: isReplyToBot(context.session, context.enrichedMessage.replyMessageId),
-    hasActiveResponse: services.sessionManager.hasActiveResponse(context.session.id)
-  });
+    userMatched,
+    directlyAddressed,
+    replyToBot,
+    shouldTriggerResponse: true,
+    threadAction: "reply_now",
+    replyDecision: "reply_small",
+    interruptPolicy: "none",
+    priority: context.user.relationship === "owner" ? "owner" : "normal",
+    reason: "群聊直接 @ bot 或回复 bot 消息"
+  };
+}
+
+function isWhitelistedUser(
+  whitelistStore: Pick<MessageHandlerServices["whitelistStore"], "hasUser">,
+  message: Pick<MessageProcessingContext["enrichedMessage"], "userId" | "externalUserId">
+): boolean {
+  return whitelistStore.hasUser(message.userId)
+    || (message.externalUserId != null && whitelistStore.hasUser(message.externalUserId));
 }
 
 function isReplyToBot(
@@ -61,21 +151,59 @@ function isReplyToBot(
   return session.sentMessages.some((item) => item.messageId === numericId);
 }
 
+function resolveCurrentGroupReplyTarget(session: SessionState): { userId: string } | null {
+  if (session.currentReplyTarget?.chatType === "group") {
+    return { userId: session.currentReplyTarget.userId };
+  }
+  const pending = session.pendingMessages[0];
+  if (pending?.chatType === "group") {
+    return { userId: pending.userId };
+  }
+  if (session.activeAssistantDraftResponse?.chatType === "group") {
+    return { userId: session.activeAssistantDraftResponse.userId };
+  }
+  if (session.activeAssistantResponse?.chatType === "group") {
+    return { userId: session.activeAssistantResponse.userId };
+  }
+  return null;
+}
+
+function buildNoReplyDecision(input: {
+  groupMatched: boolean;
+  userMatched: boolean;
+  directlyAddressed: boolean;
+  replyToBot: boolean;
+  reason: string;
+}): TriggerDecision {
+  return {
+    groupMatched: input.groupMatched,
+    userMatched: input.userMatched,
+    directlyAddressed: input.directlyAddressed,
+    replyToBot: input.replyToBot,
+    shouldTriggerResponse: false,
+    threadAction: "record_only",
+    replyDecision: "no_reply",
+    interruptPolicy: "none",
+    priority: "low",
+    reason: input.reason
+  };
+}
+
 export function appendIncomingHistory(
   sessionManager: MessageHandlerServices["sessionManager"],
   logger: Logger,
   context: MessageProcessingContext,
   options?: {
-    runtimeVisibility?: Parameters<MessageHandlerServices["sessionManager"]["appendUserHistory"]>[1]["runtimeVisibility"];
     transcriptGroup?: "pending" | "standalone";
+    transcriptGroupId?: string;
   }
 ): void {
   const sourceRef = resolveIncomingOneBotSourceRef(context.enrichedMessage);
   appendIncomingHistoryTranscript(sessionManager, context, {
     timestampMs: Date.now(),
     ...(sourceRef ? { sourceRef } : {}),
-    ...(options?.runtimeVisibility ? { runtimeVisibility: options.runtimeVisibility } : {}),
-    ...(options?.transcriptGroup ? { transcriptGroup: options.transcriptGroup } : {})
+    ...(options?.transcriptGroup ? { transcriptGroup: options.transcriptGroup } : {}),
+    ...(options?.transcriptGroupId ? { transcriptGroupId: options.transcriptGroupId } : {})
   });
   logger.info(
     {
@@ -129,9 +257,9 @@ export function handleNonTriggeringMessage(
 
 function shouldUpdateSessionReplyDelivery(
   inboundDelivery: SessionDelivery,
-  message: Pick<ParsedIncomingMessage, "chatType" | "isAtMentioned">
+  message: Pick<ParsedIncomingMessage, "chatType" | "isAtMentioned" | "replyMessageId">
 ): boolean {
-  return inboundDelivery === "web" || message.chatType === "private" || message.isAtMentioned;
+  return inboundDelivery === "web" || message.chatType === "private" || message.isAtMentioned || message.replyMessageId != null;
 }
 
 export function enqueueTriggeredMessage(
@@ -153,10 +281,6 @@ export function enqueueTriggeredMessage(
     services.sessionManager.setReplyDelivery(context.session.id, inboundDelivery);
   }
 
-  if (context.enrichedMessage.chatType === "group") {
-    services.sessionManager.setInterruptibleGroupTriggerUser(context.session.id, context.enrichedMessage.userId);
-  }
-
   services.mediaCaptionService.schedule(
     [
       ...collectVisualAttachmentFileIds(context.enrichedMessage.attachments, "image"),
@@ -169,7 +293,7 @@ export function enqueueTriggeredMessage(
   const shouldInterruptActiveResponse = options?.activeResponseAlreadyInterrupted
     || (
       hasActiveResponse
-      && (options?.interruptPolicy === "soft_interrupt" || options?.interruptPolicy === "abort_generation")
+      && options?.interruptPolicy === "soft_interrupt"
     );
 
   if (shouldInterruptActiveResponse) {

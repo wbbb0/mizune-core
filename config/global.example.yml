@@ -100,9 +100,6 @@ conversation:
       cjkTokens: 1.5
       nonAsciiTokens: 1
       asciiTokens: 0.25
-  group:
-    requireAtMention: true
-    ambientRecallMessageCount: 8
 context:
   embedding:
     timeoutMs: 30000

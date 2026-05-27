@@ -66,6 +66,33 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
     }
   });
 
+  test("prompt builder appends tail system messages after the current user batch", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.get();
+      const prompt = buildPrompt({
+        sessionId: "qqbot:g:123456",
+        persona,
+        relationship: "known",
+        npcProfiles: [],
+        participantProfiles: [],
+        userProfile: createPromptUserProfile({ userId: "10002", senderName: "Bob", relationship: "known" }),
+        historySummary: null,
+        recentMessages: [],
+        batchMessages: [
+          createPromptBatchMessage({ userId: "10002", senderName: "Bob", text: "当前问题" })
+        ],
+        tailSystemMessages: ["本轮回复目标：\n- user_id: 10002"]
+      });
+
+      assert.equal(prompt.at(-2)?.role, "user");
+      assert.equal(prompt.at(-1)?.role, "system");
+      assert.match(String(prompt.at(-1)?.content ?? ""), /本轮回复目标/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   test("prompt builder does not render task sections without a primary task", async () => {
     const system = await renderTaskPromptSystem({
       version: 1,

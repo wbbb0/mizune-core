@@ -82,7 +82,12 @@ export function createInternalTriggerDispatcher(
     // Scheduled instructions are stand-alone topics. Queue them behind the
     // active response and open a fresh session once the current turn winds down.
     if (trigger.kind === "scheduled_instruction") {
-      if (sessionManager.hasActiveResponse(session.id) || session.pendingMessages.length > 0 || sessionManager.hasPendingInternalTriggers(session.id)) {
+      if (
+        sessionManager.hasActiveResponse(session.id)
+        || session.pendingMessages.length > 0
+        || sessionManager.hasQueuedGroupReplyTargets(session.id)
+        || sessionManager.hasPendingInternalTriggers(session.id)
+      ) {
         await new Promise<void>((resolve, reject) => {
           const queueSize = sessionManager.enqueueInternalTrigger(session.id, {
             ...trigger,

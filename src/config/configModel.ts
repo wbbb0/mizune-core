@@ -208,10 +208,7 @@ const conversationConfigSchema = s.object({
       asciiTokens: s.number().positive().title("ASCII Token 系数").default(0.25)
     }).title("Token 估算").default(emptyObject)
   }).title("历史压缩").describe("控制会话历史在过长时如何压缩。").default(emptyObject),
-  group: s.object({
-    requireAtMention: s.boolean().title("需要 @").default(true),
-    ambientRecallMessageCount: s.number().int().min(0).title("环境消息召回数").default(8)
-  }).title("群聊").default(emptyObject)
+  group: s.object({}).title("群聊").default(emptyObject)
 }).title("会话").describe("控制会话上下文、压缩和消息发送节奏。").default(emptyObject);
 
 const contextConfigSchema = s.object({

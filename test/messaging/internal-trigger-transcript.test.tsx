@@ -190,6 +190,77 @@ function createOrchestratorDeps(input: {
     await dispatchPromise;
   });
 
+  test("scheduled instruction queues behind pending group reply targets", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "qqbot:g:20001";
+    sessionManager.ensureSession({ id: sessionId, type: "group" });
+    sessionManager.enqueueGroupReplyTarget(sessionId, {
+      chatType: "group",
+      userId: "u_b",
+      groupId: "20001",
+      senderName: "Bob",
+      text: "@bot queued first",
+      images: [],
+      audioSources: [],
+      audioIds: [],
+      emojiSources: [],
+      imageIds: [],
+      emojiIds: [],
+      attachments: [],
+      forwardIds: [],
+      replyMessageId: null,
+      mentionUserIds: [],
+      mentionedAll: false,
+      isAtMentioned: true
+    });
+    let runImmediate = false;
+
+    const dispatcher = createInternalTriggerDispatcher({
+      logger: pino({ level: "silent" }),
+      sessionManager,
+      userStore: {
+        async getByUserId() {
+          return { nickname: "Owner" };
+        }
+      } as never,
+      userIdentityStore: {
+        async findInternalUserId() {
+          return "owner";
+        }
+      } as never,
+      persistSession() {}
+    }, {
+      async runInternalTriggerSession() {
+        runImmediate = true;
+      },
+      wakeInlineBatch: () => {}
+    });
+
+    const dispatchPromise = dispatcher.dispatchTrigger({
+      sessionId,
+      queueLogEvent: "internal_trigger_queued",
+      createTrigger(target) {
+        return {
+          kind: "scheduled_instruction",
+          targetType: target.type,
+          targetUserId: target.userId,
+          targetSenderName: target.senderName,
+          ...(target.type === "group" ? { targetGroupId: target.groupId } : {}),
+          jobName: "daily_reminder",
+          instruction: "提醒喝水",
+          enqueuedAt: 1
+        };
+      }
+    });
+
+    await waitForCondition(() => sessionManager.getSession(sessionId).pendingInternalTriggers.length === 1);
+    assert.equal(runImmediate, false);
+    const queuedTrigger = sessionManager.shiftInternalTrigger(sessionId);
+    queuedTrigger?.resolveCompletion?.();
+    await dispatchPromise;
+  });
+
   test("internal trigger dispatcher resolves sender name through identity mapping for private sessions", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);

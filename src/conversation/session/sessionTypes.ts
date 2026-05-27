@@ -11,7 +11,6 @@ import type {
   TranscriptItemMeta as TranscriptItemMetaContract,
   TranscriptMessageContentPart as TranscriptMessageContentPartContract,
   TranscriptItemRuntimeExclusionReason as TranscriptItemRuntimeExclusionReasonContract,
-  TranscriptItemRuntimeVisibility as TranscriptItemRuntimeVisibilityContract,
   TranscriptItemSourceRef as TranscriptItemSourceRefContract,
   TranscriptTokenStat as TranscriptTokenStatContract,
   TranscriptTokenStats as TranscriptTokenStatsContract
@@ -107,7 +106,6 @@ export interface SessionDebugMarker {
 
 export type StoredToolCall = StoredToolCallContract;
 export type TranscriptItemRuntimeExclusionReason = TranscriptItemRuntimeExclusionReasonContract;
-export type TranscriptItemRuntimeVisibility = TranscriptItemRuntimeVisibilityContract;
 export type TranscriptItemSourceRef = TranscriptItemSourceRefContract;
 export type TranscriptItemDeliveryRef = TranscriptItemDeliveryRefContract;
 export type TranscriptContentSafetyEvent = TranscriptContentSafetyEventContract;
@@ -128,7 +126,6 @@ export type TranscriptOutboundMediaMessageItem = Extract<InternalTranscriptItem,
 export type TranscriptDirectCommandItem = Extract<InternalTranscriptItem, { kind: "direct_command" }>;
 export type TranscriptStatusMessageItem = Extract<InternalTranscriptItem, { kind: "status_message" }>;
 export type TranscriptGateDecisionItem = Extract<InternalTranscriptItem, { kind: "gate_decision" }>;
-export type TranscriptAdmissionDecisionItem = Extract<InternalTranscriptItem, { kind: "admission_decision" }>;
 export type InternalSystemMarkerItem = Extract<InternalTranscriptItem, { kind: "system_marker" }>;
 export type InternalFallbackEventItem = Extract<InternalTranscriptItem, { kind: "fallback_event" }>;
 export type InternalTriggerEventItem = Extract<InternalTranscriptItem, { kind: "internal_trigger_event" }>;
@@ -157,6 +154,23 @@ export interface ActiveAssistantResponse {
   text: string;
   startedAt: number;
   lastUpdatedAt: number;
+}
+
+export interface SessionReplyTarget {
+  chatType: "private" | "group";
+  userId: string;
+  senderName: string;
+  groupId?: string | undefined;
+  firstMessageAt: number;
+}
+
+export interface QueuedGroupReplyTarget {
+  userId: string;
+  senderName: string;
+  groupId?: string | undefined;
+  transcriptGroupId: string;
+  firstAtMs: number;
+  messages: SessionMessage[];
 }
 
 export interface SessionSentMessage {
@@ -367,11 +381,12 @@ export interface SessionState {
   pendingMessages: SessionMessage[];
   pendingSteerMessages: SessionMessage[];
   pendingReplyGateWaitPasses: number;
+  queuedGroupReplyTargets: QueuedGroupReplyTarget[];
+  currentReplyTarget: SessionReplyTarget | null;
   pendingTranscriptGroupId: string | null;
   activeTranscriptGroupId: string | null;
   pendingInternalTriggers: InternalSessionTriggerExecution[];
   pendingInlineTriggers: InlineSessionTriggerExecution[];
-  interruptibleGroupTriggerUserId: string | null;
   historySummary: string | null;
   historyBackfillBoundaryMs: number;
   taskTracker: SessionTaskTracker;
@@ -409,6 +424,7 @@ export interface PersistedSessionState {
     enabled?: boolean;
   };
   pendingMessages: PersistedSessionMessage[];
+  queuedGroupReplyTargets?: QueuedGroupReplyTarget[];
   pendingTranscriptGroupId?: string | null;
   activeTranscriptGroupId?: string | null;
   historySummary: string | null;

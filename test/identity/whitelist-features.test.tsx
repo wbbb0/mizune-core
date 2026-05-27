@@ -141,6 +141,41 @@ test("event router filters non-whitelisted group messages before parsing", async
   );
 });
 
+test("event router allows whitelisted users in non-whitelisted groups", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-identity-router-whitelisted-user-group-"));
+  try {
+    const config = createTestAppConfig({
+      whitelist: {
+        enabled: true
+      }
+    });
+    const identityStore = new UserIdentityStore(dataDir, pino({ level: "silent" }));
+    await identityStore.init();
+    await identityStore.ensureUserIdentity({
+      channelId: config.configRuntime.instanceName,
+      externalId: "10001"
+    });
+    const internalUserId = identityStore.findInternalUserIdSync({
+      channelId: config.configRuntime.instanceName,
+      externalId: "10001"
+    });
+    assert.ok(internalUserId);
+
+    const router = new EventRouter(config, config.configRuntime.instanceName, {
+      hasUser(userId: string) {
+        return userId === internalUserId;
+      },
+      hasGroup() {
+        return false;
+      }
+    } as any, identityStore, undefined, isOwnerBootstrapCommandText);
+
+    assert.equal(router.toIncomingMessage(createGroupMessageEvent("hello", { groupId: 20002 }) as any)?.groupId, "20002");
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("event router allows owner group messages even when group is not whitelisted", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-identity-router-owner-group-"));
   try {

@@ -141,6 +141,7 @@ export interface PromptInput {
   visibleToolNames?: string[];
   activeToolsets?: ToolsetView[];
   lateSystemMessages?: string[] | undefined;
+  tailSystemMessages?: string[] | undefined;
   replayMessages?: LlmMessage[] | undefined;
   includeBatchMediaCaptions?: boolean | undefined;
   persona: Persona;
@@ -194,6 +195,7 @@ export interface InternalSessionTriggerPromptInput {
   visibleToolNames?: string[];
   activeToolsets?: ToolsetView[];
   lateSystemMessages?: string[] | undefined;
+  tailSystemMessages?: string[] | undefined;
   replayMessages?: PromptInput["replayMessages"];
   trigger:
     | {
@@ -315,6 +317,7 @@ export interface SetupPromptInput {
   interactionMode?: PromptInteractionMode;
   includeBatchMediaCaptions?: boolean | undefined;
   lateSystemMessages?: string[] | undefined;
+  tailSystemMessages?: string[] | undefined;
   replayMessages?: PromptInput["replayMessages"];
   persona: Persona;
   phase: "setup" | "config";
