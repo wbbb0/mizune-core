@@ -244,10 +244,16 @@ test("desktop workbench persists area sizes by global area id", async () => {
 });
 
 test("legacy app layout shell is removed after workbench runtime migration", async () => {
-  const theme = await readFile(new URL("../../../webui/src/style/theme.css", import.meta.url), "utf8");
+  const theme = await readFile(
+    new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/themes/midnight.css", import.meta.url),
+    "utf8"
+  );
+  const appStyle = await readFile(new URL("../../../webui/src/style/main.css", import.meta.url), "utf8");
 
   await assert.rejects(
     access(new URL("../../../webui/src/components/layout/AppLayout.vue", import.meta.url))
   );
   assert.doesNotMatch(theme, /--side-panel-width/);
+  assert.match(appStyle, /@workbench-kit\/vue-workbench\/theme\/midnight\.css/);
+  assert.match(appStyle, /\.\/theme-overrides\.css/);
 });

@@ -17,7 +17,7 @@
 
 当前 WebUI 通过 `webui/package.json` 的 `file:` 依赖声明共享包，并在 `vite.config.ts` / `tsconfig.json` 中把开发态解析固定到 submodule 源码。跨项目复用时，每个项目锁定自己的 `workbench-kit` submodule commit。
 
-详细接入方式、主题 token、Tailwind `@source` 配置和使用示例见 `workbench-kit` 文档与各包 README：
+详细接入方式、主题模板、Tailwind `@source` 配置和使用示例见 `workbench-kit` 文档与各包 README：
 
 - [`workbench-kit` 使用方式](../vendor/workbench-kit/docs/usage.md)
 - [`workbench-kit` 工作流](../vendor/workbench-kit/docs/workflow.md)

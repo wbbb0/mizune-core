@@ -1,4 +1,5 @@
-@import "./theme.css";
+@import "@workbench-kit/vue-workbench/theme/midnight.css";
+@import "./theme-overrides.css";
 @import "tailwindcss";
 @import "tailwindcss-safe-area";
 @import "@workbench-kit/vue-workbench/style.css";

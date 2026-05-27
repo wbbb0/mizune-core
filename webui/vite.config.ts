@@ -201,6 +201,7 @@ export default defineConfig({
       "@": resolve(configDir, "src"),
       "vue": resolve(configDir, "node_modules/vue"),
       "lucide-vue-next": resolve(configDir, "node_modules/lucide-vue-next"),
+      "@workbench-kit/vue-workbench/theme/midnight.css": resolve(configDir, "../vendor/workbench-kit/packages/vue-workbench/src/themes/midnight.css"),
       "@workbench-kit/vue-workbench/style.css": resolve(configDir, "../vendor/workbench-kit/packages/vue-workbench/src/style.css"),
       "@workbench-kit/vue-workbench/runtime": resolve(configDir, "../vendor/workbench-kit/packages/vue-workbench/src/runtime-api.ts"),
       "@workbench-kit/vue-workbench": resolve(configDir, "../vendor/workbench-kit/packages/vue-workbench/src/index.ts"),

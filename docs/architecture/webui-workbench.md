@@ -226,7 +226,7 @@ Workbench framework 依赖一组稳定主题 token，而不是具体业务页面
 - safe area：`pt-safe`、`pl-safe`、`pr-safe`、`pb-safe-offset-*`
 - workbench size：`--activity-bar-width`
 
-当前 token 值在 `webui/src/style/theme.css` 中定义；workbench 基础样式从 `@workbench-kit/vue-workbench/style.css` 引入。抽成独立模板项目时，应把这些 token 作为模板主题契约保留，业务项目只覆盖 token 值，不改 workbench 组件结构。
+当前默认 token 值由 `@workbench-kit/vue-workbench/theme/midnight.css` 提供；项目侧可在模板之后导入 `webui/src/style/theme-overrides.css` 覆盖少量变量，也可以完全不导入模板并自行提供完整 token。workbench 基础样式仍从 `@workbench-kit/vue-workbench/style.css` 引入。
 
 ## 后续扩展约束
 
