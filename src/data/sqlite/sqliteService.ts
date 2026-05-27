@@ -10,6 +10,7 @@ export type SqliteTableGroupResetPolicy = "reset_allowed" | "block_reset";
 export interface SqliteTableGroupDefinition {
   groupId: string;
   schemaVersion: number;
+  minReadableSchemaVersion?: number;
   ownedTables: string[];
   ownedIndexes?: string[];
   dependsOn?: string[];
@@ -39,6 +40,7 @@ export interface SqliteDatabaseDefinition {
 export interface SqliteTableGroupStatus {
   groupId: string;
   schemaVersion: number;
+  minReadableSchemaVersion: number;
   resetPolicy: SqliteTableGroupResetPolicy;
   actualSchemaVersion?: number;
   lastResetAt?: number;
@@ -281,7 +283,7 @@ function getTableGroupResetReason(
   }
   const meta = readTableGroupMeta(db, group.groupId);
   if (meta && meta.schema_version !== group.schemaVersion) {
-    if (getResetPolicy(group) === "reset_allowed" && tryMigrateTableGroup(db, group, meta)) {
+    if (isTableGroupSchemaReadable(group, meta) && getResetPolicy(group) === "reset_allowed" && tryMigrateTableGroup(db, group, meta)) {
       return null;
     }
     return "schema_version_mismatch";
@@ -353,6 +355,14 @@ function assertTableGroupResetAllowed(
 
 function getResetPolicy(group: SqliteTableGroupDefinition): SqliteTableGroupResetPolicy {
   return group.resetPolicy ?? "reset_allowed";
+}
+
+function isTableGroupSchemaReadable(group: SqliteTableGroupDefinition, meta: SchemaGroupRow): boolean {
+  return meta.schema_version >= getMinReadableSchemaVersion(group);
+}
+
+function getMinReadableSchemaVersion(group: SqliteTableGroupDefinition): number {
+  return group.minReadableSchemaVersion ?? group.schemaVersion;
 }
 
 function isFreshTableGroup(db: SqliteDatabase, group: SqliteTableGroupDefinition): boolean {
@@ -474,6 +484,7 @@ function listTableGroupStatuses(
     return {
       groupId: group.groupId,
       schemaVersion: group.schemaVersion,
+      minReadableSchemaVersion: getMinReadableSchemaVersion(group),
       resetPolicy: getResetPolicy(group),
       ...(meta ? { actualSchemaVersion: meta.schema_version } : {}),
       ...(meta?.last_reset_at !== null && meta?.last_reset_at !== undefined ? { lastResetAt: meta.last_reset_at } : {}),

@@ -58,6 +58,7 @@ export interface ContextStatus {
     tableGroups?: Array<{
       groupId: string;
       schemaVersion: number;
+      minReadableSchemaVersion: number;
       actualSchemaVersion?: number;
       lastResetAt?: number;
       lastResetReason?: string;

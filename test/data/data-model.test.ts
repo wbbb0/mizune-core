@@ -101,17 +101,18 @@ test("data model derives sqlite table group metadata", () => {
   assert.equal(groups.length, 1);
   assert.equal(groups[0]?.groupId, "demo.sessions");
   assert.equal(groups[0]?.schemaVersion, 3);
+  assert.equal(groups[0]?.minReadableSchemaVersion, 3);
   assert.deepEqual(groups[0]?.ownedTables, ["sessions"]);
   assert.deepEqual(groups[0]?.ownedIndexes, ["idx_sessions_id"]);
   assert.equal(typeof groups[0]?.migrateSchema, "function");
 });
 
-test("data model can disable additive migration for reset-only domains", () => {
+test("data model derives min-readable schema metadata", () => {
   const domain = defineDataDomain({
     database: "sessions",
-    tableGroup: "demo.reset_sessions",
+    tableGroup: "demo.readable_sessions",
     schemaVersion: 4,
-    schemaMigration: "reset",
+    minReadableSchemaVersion: 2,
     tables: {
       sessions: defineTable({
         table: "sessions",
@@ -123,9 +124,10 @@ test("data model can disable additive migration for reset-only domains", () => {
 
   const [group] = createTableGroupsFromDataDomain(domain);
   assert.ok(group);
-  assert.equal(group.groupId, "demo.reset_sessions");
+  assert.equal(group.groupId, "demo.readable_sessions");
   assert.equal(group.schemaVersion, 4);
-  assert.equal(group.migrateSchema, undefined);
+  assert.equal(group.minReadableSchemaVersion, 2);
+  assert.equal(typeof group.migrateSchema, "function");
 });
 
 test("data model applies additive sqlite schema migrations", () => {

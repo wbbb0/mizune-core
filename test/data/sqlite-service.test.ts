@@ -204,6 +204,7 @@ test("SqliteService applies successful reset_allowed migrations without resettin
       tableGroups: [{
         groupId: "users",
         schemaVersion: 2,
+        minReadableSchemaVersion: 1,
         ownedTables: ["users"],
         createSchema: (db) => {
           createUserSchema(db);
@@ -230,6 +231,64 @@ test("SqliteService applies successful reset_allowed migrations without resettin
       assert.equal(status?.actualSchemaVersion, 2);
       assert.equal(status?.lastResetAt, 123);
       assert.equal(status?.lastResetReason, "previous_reset");
+    } finally {
+      second.close();
+    }
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("SqliteService resets unreadable schema versions before migration", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-sqlite-service-test-"));
+  const dbPath = join(dataDir, "test.sqlite");
+  const service = new SqliteService(pino({ level: "silent" }));
+  try {
+    const first = await service.openDatabase({
+      databaseId: "test",
+      dbPath,
+      tableGroups: [{
+        groupId: "users",
+        schemaVersion: 1,
+        ownedTables: ["users"],
+        createSchema: createUserSchema,
+        validateSchema: validateUserSchema
+      }]
+    });
+    first.write((db) => {
+      db.prepare("INSERT INTO users (user_id, name) VALUES ('u1', '用户一')").run();
+    });
+    first.close();
+
+    const second = await service.openDatabase({
+      databaseId: "test",
+      dbPath,
+      tableGroups: [{
+        groupId: "users",
+        schemaVersion: 3,
+        minReadableSchemaVersion: 2,
+        ownedTables: ["users"],
+        createSchema: (db) => {
+          createUserSchema(db);
+          db.exec("ALTER TABLE users ADD COLUMN note TEXT");
+        },
+        migrateSchema: () => {
+          throw new Error("unreadable schemas must not be migrated");
+        },
+        validateSchema: (db) => {
+          assertTableColumns(db, "users", {
+            user_id: "TEXT",
+            name: "TEXT",
+            note: "TEXT"
+          });
+        }
+      }]
+    });
+    try {
+      assert.equal(countRows(second.db, "users"), 0);
+      const status = second.getStatus().tableGroups.find((group) => group.groupId === "users");
+      assert.equal(status?.actualSchemaVersion, 3);
+      assert.equal(status?.lastResetReason, "schema_version_mismatch");
     } finally {
       second.close();
     }

@@ -4,7 +4,7 @@ export const sessionDataDomain = defineDataDomain({
   database: "sessions",
   tableGroup: "sessions.persisted_sessions",
   schemaVersion: 6,
-  schemaMigration: "reset",
+  minReadableSchemaVersion: 6,
   tables: {
     sessions: defineTable({
       table: "sessions",
