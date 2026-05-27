@@ -65,8 +65,8 @@
 相关实现入口：
 
 - `src/internalApi/application/editorService.ts`
-- `packages/vue-resource-editor/src/components/SchemaNode.vue`
-- `packages/vue-resource-editor/src/components/SchemaField.vue`
+- `vendor/workbench-kit/packages/vue-resource-editor/src/components/SchemaNode.vue`
+- `vendor/workbench-kit/packages/vue-resource-editor/src/components/SchemaField.vue`
 - `webui/src/api/editor.ts`
 - `src/data/schema/`
 

@@ -1,19 +1,21 @@
 # WebUI Workbench 架构
 
-本文档整理当前 WebUI 工作台的长期结构约定。当前前端共享能力已经从 `webui/src` 业务源码中拆到 repo 内源码包：
+本文档整理当前 WebUI 工作台的长期结构约定。当前前端共享能力已经从 `webui/src` 业务源码中拆到独立 `workbench-kit` submodule：
 
-- `packages/vue-workbench`：工作台外壳、导航、pane、菜单、toast、窗口、基础 primitives 与主题基础样式。
-- `packages/vue-resource-editor`：schema 驱动资源编辑器的类型、字段渲染、草稿状态、资源编辑状态工厂与 editor client 契约。
-- `packages/vue-file-workspace`：通用本地文件树、文件预览 client 契约与文件类型。
+- `vendor/workbench-kit/packages/vue-workbench`：工作台外壳、导航、pane、菜单、toast、窗口、基础 primitives 与主题基础样式。
+- `vendor/workbench-kit/packages/vue-resource-editor`：schema 驱动资源编辑器的类型、字段渲染、草稿状态、资源编辑状态工厂与 editor client 契约。
+- `vendor/workbench-kit/packages/vue-file-workspace`：通用本地文件树、文件预览 client 契约与文件类型。
 - `webui/src`：llm-onebot 的业务 section、API adapter、路由、store、主题 token 值与具体资源接线。
 
-这些包当前作为源码包由 WebUI 通过 Vite / TypeScript alias 引用；后续需要跨仓库复用时，可以把 `packages/*` 发布为 npm 包。项目模板只应包含示例路由、section registry、theme token 和 API adapter 示例，不应被多个项目运行时引用。
+这些包当前作为 git 管理的源码包由 WebUI 通过 `file:` 依赖声明，并在 Vite / TypeScript 中解析到 submodule 源码。跨仓库复用时，每个项目通过 submodule 锁定具体 `workbench-kit` commit，不发布到 npm registry。
 
 三个包的接入方式、主题 token、Tailwind `@source` 配置和代码示例见各包 README：
 
-- [`@workbench-kit/vue-workbench`](../../packages/vue-workbench/README.md)
-- [`@workbench-kit/vue-resource-editor`](../../packages/vue-resource-editor/README.md)
-- [`@workbench-kit/vue-file-workspace`](../../packages/vue-file-workspace/README.md)
+- [`workbench-kit` 使用方式](../../vendor/workbench-kit/docs/usage.md)
+- [`workbench-kit` 工作流](../../vendor/workbench-kit/docs/workflow.md)
+- [`@workbench-kit/vue-workbench`](../../vendor/workbench-kit/packages/vue-workbench/README.md)
+- [`@workbench-kit/vue-resource-editor`](../../vendor/workbench-kit/packages/vue-resource-editor/README.md)
+- [`@workbench-kit/vue-file-workspace`](../../vendor/workbench-kit/packages/vue-file-workspace/README.md)
 
 ## Workbench 外壳与 Section Contract
 
@@ -51,10 +53,10 @@ WebUI 采用统一 workbench 外壳，而不是让每个页面各自拼整套布
 - `webui/src/sections/AppWorkbenchRoot.vue`
 - `webui/src/sections/registry.ts`
 - `webui/src/sections/useWorkbenchViewRegistry.ts`
-- `packages/vue-workbench/src/WorkbenchRoot.vue`
-- `packages/vue-workbench/src/WorkbenchShell.vue`
-- `packages/vue-workbench/src/runtime/workbenchRuntime.ts`
-- `packages/vue-workbench/src/types.ts`
+- `vendor/workbench-kit/packages/vue-workbench/src/WorkbenchRoot.vue`
+- `vendor/workbench-kit/packages/vue-workbench/src/WorkbenchShell.vue`
+- `vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts`
+- `vendor/workbench-kit/packages/vue-workbench/src/types.ts`
 
 ## 桌面端与移动端布局
 
@@ -80,9 +82,9 @@ WebUI 采用统一 workbench 外壳，而不是让每个页面各自拼整套布
 
 相关实现入口：
 
-- `packages/vue-workbench/src/DesktopWorkbench.vue`
-- `packages/vue-workbench/src/MobileWorkbench.vue`
-- `packages/vue-workbench/src/runtime/workbenchRuntime.ts`
+- `vendor/workbench-kit/packages/vue-workbench/src/DesktopWorkbench.vue`
+- `vendor/workbench-kit/packages/vue-workbench/src/MobileWorkbench.vue`
+- `vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts`
 
 ## 桌面 Pane 尺寸
 
@@ -120,12 +122,12 @@ WebUI 采用统一 workbench 外壳，而不是让每个页面各自拼整套布
 
 相关实现入口：
 
-- `packages/vue-workbench/src/chrome.ts`
-- `packages/vue-workbench/src/navigation.ts`
-- `packages/vue-workbench/src/TopBar.vue`
-- `packages/vue-workbench/src/StatusBar.vue`
-- `packages/vue-workbench/src/menu/MenuHost.vue`
-- `packages/vue-workbench/src/menu/types.ts`
+- `vendor/workbench-kit/packages/vue-workbench/src/chrome.ts`
+- `vendor/workbench-kit/packages/vue-workbench/src/navigation.ts`
+- `vendor/workbench-kit/packages/vue-workbench/src/TopBar.vue`
+- `vendor/workbench-kit/packages/vue-workbench/src/StatusBar.vue`
+- `vendor/workbench-kit/packages/vue-workbench/src/menu/MenuHost.vue`
+- `vendor/workbench-kit/packages/vue-workbench/src/menu/types.ts`
 - `webui/src/composables/useAppWorkbenchChrome.ts`
 
 ## Toast / Notification
@@ -140,8 +142,8 @@ Toast 属于 workbench overlay 能力，由 `WorkbenchRoot` 挂载，而不是�
 
 相关实现入口：
 
-- `packages/vue-workbench/src/toasts/useWorkbenchToasts.ts`
-- `packages/vue-workbench/src/toasts/ToastViewport.vue`
+- `vendor/workbench-kit/packages/vue-workbench/src/toasts/useWorkbenchToasts.ts`
+- `vendor/workbench-kit/packages/vue-workbench/src/toasts/ToastViewport.vue`
 
 ## 统一窗口系统
 
@@ -168,12 +170,12 @@ WebUI 的弹窗能力收敛到统一窗口系统，而不是让各组件直接 `
 
 相关实现入口：
 
-- `packages/vue-workbench/src/windows/useWorkbenchWindows.ts`
-- `packages/vue-workbench/src/windows/windowManager.ts`
-- `packages/vue-workbench/src/windows/WindowHost.vue`
-- `packages/vue-workbench/src/windows/WindowSurface.vue`
-- `packages/vue-workbench/src/windows/DialogRenderer.vue`
-- `packages/vue-workbench/src/windows/types.ts`
+- `vendor/workbench-kit/packages/vue-workbench/src/windows/useWorkbenchWindows.ts`
+- `vendor/workbench-kit/packages/vue-workbench/src/windows/windowManager.ts`
+- `vendor/workbench-kit/packages/vue-workbench/src/windows/WindowHost.vue`
+- `vendor/workbench-kit/packages/vue-workbench/src/windows/WindowSurface.vue`
+- `vendor/workbench-kit/packages/vue-workbench/src/windows/DialogRenderer.vue`
+- `vendor/workbench-kit/packages/vue-workbench/src/windows/types.ts`
 
 ## Resource Editor
 

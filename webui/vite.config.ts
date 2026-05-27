@@ -201,11 +201,11 @@ export default defineConfig({
       "@": resolve(configDir, "src"),
       "vue": resolve(configDir, "node_modules/vue"),
       "lucide-vue-next": resolve(configDir, "node_modules/lucide-vue-next"),
-      "@workbench-kit/vue-workbench/style.css": resolve(configDir, "../packages/vue-workbench/src/style.css"),
-      "@workbench-kit/vue-workbench/runtime": resolve(configDir, "../packages/vue-workbench/src/runtime-api.ts"),
-      "@workbench-kit/vue-workbench": resolve(configDir, "../packages/vue-workbench/src/index.ts"),
-      "@workbench-kit/vue-resource-editor": resolve(configDir, "../packages/vue-resource-editor/src/index.ts"),
-      "@workbench-kit/vue-file-workspace": resolve(configDir, "../packages/vue-file-workspace/src/index.ts")
+      "@workbench-kit/vue-workbench/style.css": resolve(configDir, "../vendor/workbench-kit/packages/vue-workbench/src/style.css"),
+      "@workbench-kit/vue-workbench/runtime": resolve(configDir, "../vendor/workbench-kit/packages/vue-workbench/src/runtime-api.ts"),
+      "@workbench-kit/vue-workbench": resolve(configDir, "../vendor/workbench-kit/packages/vue-workbench/src/index.ts"),
+      "@workbench-kit/vue-resource-editor": resolve(configDir, "../vendor/workbench-kit/packages/vue-resource-editor/src/index.ts"),
+      "@workbench-kit/vue-file-workspace": resolve(configDir, "../vendor/workbench-kit/packages/vue-file-workspace/src/index.ts")
     }
   },
   server: {

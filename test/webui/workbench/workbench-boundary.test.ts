@@ -21,9 +21,9 @@ async function listSourceFiles(directory: URL): Promise<URL[]> {
 
 test("shared WebUI packages do not import app stores or app adapters", async () => {
   const roots = [
-    new URL("../../../packages/vue-workbench/src/", import.meta.url),
-    new URL("../../../packages/vue-resource-editor/src/", import.meta.url),
-    new URL("../../../packages/vue-file-workspace/src/", import.meta.url)
+    new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/", import.meta.url),
+    new URL("../../../vendor/workbench-kit/packages/vue-resource-editor/src/", import.meta.url),
+    new URL("../../../vendor/workbench-kit/packages/vue-file-workspace/src/", import.meta.url)
   ];
   const files = (await Promise.all(roots.map(listSourceFiles))).flat();
 
@@ -39,15 +39,15 @@ test("shared WebUI packages do not import app stores or app adapters", async () 
 
 test("workbench exposes a single public API barrel", async () => {
   const source = await readFile(
-    new URL("../../../packages/vue-workbench/src/index.ts", import.meta.url),
+    new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/index.ts", import.meta.url),
     "utf8"
   );
   const runtimeSource = await readFile(
-    new URL("../../../packages/vue-workbench/src/runtime-api.ts", import.meta.url),
+    new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime-api.ts", import.meta.url),
     "utf8"
   );
   const primitiveSource = await readFile(
-    new URL("../../../packages/vue-workbench/src/primitives/index.ts", import.meta.url),
+    new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/primitives/index.ts", import.meta.url),
     "utf8"
   );
 

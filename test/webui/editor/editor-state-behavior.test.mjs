@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   computeDraftEffectiveValue,
   computeDraftReferenceValue
-} from "../../../packages/vue-resource-editor/src/editorState.ts";
+} from "../../../vendor/workbench-kit/packages/vue-resource-editor/src/editorState.ts";
 
 function createLayeredModel(overrides = {}) {
   return {

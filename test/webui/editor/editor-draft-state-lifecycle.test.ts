@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 test("editor draft state model watcher survives route component unmounts", async () => {
   const source = await readFile(
-    new URL("../../../packages/vue-resource-editor/src/useEditorDraftState.ts", import.meta.url),
+    new URL("../../../vendor/workbench-kit/packages/vue-resource-editor/src/useEditorDraftState.ts", import.meta.url),
     "utf8"
   );
 

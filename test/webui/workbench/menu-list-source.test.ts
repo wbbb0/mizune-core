@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 test("menu list schedules submenu opening instead of opening synchronously", async () => {
   const source = await readFile(
-    new URL("../../../packages/vue-workbench/src/menu/MenuList.vue", import.meta.url),
+    new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/menu/MenuList.vue", import.meta.url),
     "utf8"
   );
 

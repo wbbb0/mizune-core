@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 test("editorState source keeps reference and optional unset modes distinct", async () => {
   const source = await readFile(
-    new URL("../../../packages/vue-resource-editor/src/editorState.ts", import.meta.url),
+    new URL("../../../vendor/workbench-kit/packages/vue-resource-editor/src/editorState.ts", import.meta.url),
     "utf8"
   );
 
@@ -32,7 +32,7 @@ test("editorState source keeps reference and optional unset modes distinct", asy
 
 test("editorState source merges schema defaults below reference and draft values", async () => {
   const source = await readFile(
-    new URL("../../../packages/vue-resource-editor/src/editorState.ts", import.meta.url),
+    new URL("../../../vendor/workbench-kit/packages/vue-resource-editor/src/editorState.ts", import.meta.url),
     "utf8"
   );
 

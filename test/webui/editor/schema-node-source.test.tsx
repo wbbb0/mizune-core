@@ -12,7 +12,7 @@ function branchSlice(source: string, startMarker: string, endMarker: string): st
 
 test("SchemaNode source keeps label priority and hover metadata wiring", async () => {
   const source = await readFile(
-    new URL("../../../packages/vue-resource-editor/src/components/SchemaNode.vue", import.meta.url),
+    new URL("../../../vendor/workbench-kit/packages/vue-resource-editor/src/components/SchemaNode.vue", import.meta.url),
     "utf8"
   );
 
@@ -69,7 +69,7 @@ test("SchemaNode source keeps label priority and hover metadata wiring", async (
 
 test("SchemaNode source renders object children through field metadata wrappers", async () => {
   const source = await readFile(
-    new URL("../../../packages/vue-resource-editor/src/components/SchemaNode.vue", import.meta.url),
+    new URL("../../../vendor/workbench-kit/packages/vue-resource-editor/src/components/SchemaNode.vue", import.meta.url),
     "utf8"
   );
 
@@ -92,7 +92,7 @@ test("SchemaNode source renders object children through field metadata wrappers"
 
 test("SchemaNode source propagates schema default values through recursive branches", async () => {
   const source = await readFile(
-    new URL("../../../packages/vue-resource-editor/src/components/SchemaNode.vue", import.meta.url),
+    new URL("../../../vendor/workbench-kit/packages/vue-resource-editor/src/components/SchemaNode.vue", import.meta.url),
     "utf8"
   );
 

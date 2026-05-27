@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 
 test("workbench root creates, provides, and activates the shared runtime", async () => {
-  const root = await readFile(new URL("../../../packages/vue-workbench/src/WorkbenchRoot.vue", import.meta.url), "utf8");
-  const shell = await readFile(new URL("../../../packages/vue-workbench/src/WorkbenchShell.vue", import.meta.url), "utf8");
-  const runtime = await readFile(new URL("../../../packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
-  const controller = await readFile(new URL("../../../packages/vue-workbench/src/runtime/workbenchController.ts", import.meta.url), "utf8");
+  const root = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchRoot.vue", import.meta.url), "utf8");
+  const shell = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchShell.vue", import.meta.url), "utf8");
+  const runtime = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
+  const controller = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchController.ts", import.meta.url), "utf8");
 
   assert.match(runtime, /export function createWorkbenchRuntime/);
   assert.match(runtime, /export function provideWorkbenchRuntime/);
@@ -27,10 +27,10 @@ test("workbench root creates, provides, and activates the shared runtime", async
 });
 
 test("workbench core receives navigation from the app adapter", async () => {
-  const shell = await readFile(new URL("../../../packages/vue-workbench/src/WorkbenchShell.vue", import.meta.url), "utf8");
-  const mobile = await readFile(new URL("../../../packages/vue-workbench/src/MobileWorkbench.vue", import.meta.url), "utf8");
-  const desktop = await readFile(new URL("../../../packages/vue-workbench/src/DesktopWorkbench.vue", import.meta.url), "utf8");
-  const activityBar = await readFile(new URL("../../../packages/vue-workbench/src/WorkbenchActivityBar.vue", import.meta.url), "utf8");
+  const shell = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchShell.vue", import.meta.url), "utf8");
+  const mobile = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/MobileWorkbench.vue", import.meta.url), "utf8");
+  const desktop = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/DesktopWorkbench.vue", import.meta.url), "utf8");
+  const activityBar = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchActivityBar.vue", import.meta.url), "utf8");
   const appRoot = await readFile(new URL("../../../webui/src/sections/AppWorkbenchRoot.vue", import.meta.url), "utf8");
 
   assert.match(shell, /navItems/);
@@ -48,8 +48,8 @@ test("workbench core receives navigation from the app adapter", async () => {
 });
 
 test("mobile workbench keeps root sidebar mounted under the active area overlay", async () => {
-  const source = await readFile(new URL("../../../packages/vue-workbench/src/MobileWorkbench.vue", import.meta.url), "utf8");
-  const types = await readFile(new URL("../../../packages/vue-workbench/src/types.ts", import.meta.url), "utf8");
+  const source = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/MobileWorkbench.vue", import.meta.url), "utf8");
+  const types = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/types.ts", import.meta.url), "utf8");
   const sessionsView = await readFile(new URL("../../../webui/src/sections/sessions/index.ts", import.meta.url), "utf8");
 
   assert.match(source, /activeMobileAreaId/);
@@ -65,8 +65,8 @@ test("mobile workbench keeps root sidebar mounted under the active area overlay"
 });
 
 test("mobile root area resolves to the main area when the configured root is unavailable", async () => {
-  const source = await readFile(new URL("../../../packages/vue-workbench/src/MobileWorkbench.vue", import.meta.url), "utf8");
-  const runtime = await readFile(new URL("../../../packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
+  const source = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/MobileWorkbench.vue", import.meta.url), "utf8");
+  const runtime = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
 
   assert.match(runtime, /resolveMobileRootAreaId/);
   assert.match(runtime, /view\.value\.layout\.mobile\.rootArea/);
@@ -77,7 +77,7 @@ test("mobile root area resolves to the main area when the configured root is una
 });
 
 test("mobile workbench maps browser history back to overlay stack pop", async () => {
-  const source = await readFile(new URL("../../../packages/vue-workbench/src/MobileWorkbench.vue", import.meta.url), "utf8");
+  const source = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/MobileWorkbench.vue", import.meta.url), "utf8");
 
   assert.match(source, /window\.history\.pushState/);
   assert.match(source, /window\.history\.back\(\)/);
@@ -87,7 +87,7 @@ test("mobile workbench maps browser history back to overlay stack pop", async ()
 });
 
 test("workbench navigation commands live in the runtime module", async () => {
-  const runtime = await readFile(new URL("../../../packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
+  const runtime = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
   const configView = await readFile(new URL("../../../webui/src/composables/sections/useConfigSection.ts", import.meta.url), "utf8");
 
   assert.match(runtime, /export function useWorkbenchNavigation/);
@@ -104,9 +104,9 @@ test("workbench navigation commands live in the runtime module", async () => {
 });
 
 test("workbench runtime exposes an active shell command facade", async () => {
-  const runtime = await readFile(new URL("../../../packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
-  const root = await readFile(new URL("../../../packages/vue-workbench/src/WorkbenchRoot.vue", import.meta.url), "utf8");
-  const controller = await readFile(new URL("../../../packages/vue-workbench/src/runtime/workbenchController.ts", import.meta.url), "utf8");
+  const runtime = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
+  const root = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchRoot.vue", import.meta.url), "utf8");
+  const controller = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchController.ts", import.meta.url), "utf8");
 
   assert.match(runtime, /export function useActiveWorkbenchRuntime/);
   assert.match(runtime, /useWorkbenchNavigation/);
@@ -115,9 +115,9 @@ test("workbench runtime exposes an active shell command facade", async () => {
 });
 
 test("desktop workbench sizes desktop areas through runtime resize state", async () => {
-  const runtime = await readFile(new URL("../../../packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
-  const desktop = await readFile(new URL("../../../packages/vue-workbench/src/DesktopWorkbench.vue", import.meta.url), "utf8");
-  const types = await readFile(new URL("../../../packages/vue-workbench/src/types.ts", import.meta.url), "utf8");
+  const runtime = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
+  const desktop = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/DesktopWorkbench.vue", import.meta.url), "utf8");
+  const types = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/types.ts", import.meta.url), "utf8");
   const sessionsView = await readFile(new URL("../../../webui/src/sections/sessions/index.ts", import.meta.url), "utf8");
 
   assert.match(types, /desktop:\s*\{/);
@@ -157,9 +157,9 @@ test("desktop workbench sizes desktop areas through runtime resize state", async
 });
 
 test("detached window and toast services resolve the active controller at call time", async () => {
-  const windows = await readFile(new URL("../../../packages/vue-workbench/src/windows/useWorkbenchWindows.ts", import.meta.url), "utf8");
-  const toasts = await readFile(new URL("../../../packages/vue-workbench/src/toasts/useWorkbenchToasts.ts", import.meta.url), "utf8");
-  const controller = await readFile(new URL("../../../packages/vue-workbench/src/runtime/workbenchController.ts", import.meta.url), "utf8");
+  const windows = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/windows/useWorkbenchWindows.ts", import.meta.url), "utf8");
+  const toasts = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/toasts/useWorkbenchToasts.ts", import.meta.url), "utf8");
+  const controller = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchController.ts", import.meta.url), "utf8");
 
   assert.match(windows, /dynamicWorkbenchWindows/);
   assert.match(windows, /return dynamicWorkbenchWindows/);
@@ -188,7 +188,7 @@ test("app workbench root is mounted once for protected workbench routes", async 
 });
 
 test("workbench views use a definition helper for default layout", async () => {
-  const types = await readFile(new URL("../../../packages/vue-workbench/src/types.ts", import.meta.url), "utf8");
+  const types = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/types.ts", import.meta.url), "utf8");
   const registry = await readFile(new URL("../../../webui/src/sections/registry.ts", import.meta.url), "utf8");
   const viewSources = await Promise.all(["sessions", "config", "data", "settings", "workspace", "resources"].map((name) =>
     readFile(new URL(`../../../webui/src/sections/${name}/index.ts`, import.meta.url), "utf8")
@@ -223,7 +223,7 @@ test("resources section opens the terminal area after mobile selection", async (
 });
 
 test("desktop workbench persists area sizes by global area id", async () => {
-  const runtime = await readFile(new URL("../../../packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
+  const runtime = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
 
   assert.match(runtime, /readStoredDesktopAreaSize/);
   assert.match(runtime, /writeStoredDesktopAreaSize/);

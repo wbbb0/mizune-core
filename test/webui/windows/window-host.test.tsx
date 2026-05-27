@@ -11,17 +11,17 @@ const require = createRequire(import.meta.url);
 const compilerSfc = require(`${ROOT}/webui/node_modules/@vue/compiler-sfc/dist/compiler-sfc.cjs.js`);
 const typescript = require(`${ROOT}/webui/node_modules/typescript/lib/typescript.js`);
 const VUE_RUNTIME_URL = new URL("../../../webui/node_modules/vue/index.mjs", import.meta.url).href;
-const WINDOW_SIZING_URL = new URL("../../../packages/vue-workbench/src/windows/windowSizing.ts", import.meta.url).href;
-const USE_WORKBENCH_WINDOWS_URL = new URL("../../../packages/vue-workbench/src/windows/useWorkbenchWindows.ts", import.meta.url).href;
-const WORKBENCH_CONTROLLER_URL = new URL("../../../packages/vue-workbench/src/runtime/workbenchController.ts", import.meta.url).href;
-const WORKBENCH_RUNTIME_URL = new URL("../../../packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url).href;
-const WORKBENCH_TYPES_URL = new URL("../../../packages/vue-workbench/src/types.ts", import.meta.url).href;
-const WINDOW_SURFACE_PATH = `${ROOT}/packages/vue-workbench/src/windows/WindowSurface.vue`;
-const WINDOW_HOST_PATH = `${ROOT}/packages/vue-workbench/src/windows/WindowHost.vue`;
-const DIALOG_RENDERER_PATH = `${ROOT}/packages/vue-workbench/src/windows/DialogRenderer.vue`;
-const DIALOG_FIELD_RENDERER_PATH = `${ROOT}/packages/vue-workbench/src/windows/DialogFieldRenderer.vue`;
-const WORKBENCH_SHELL_PATH = `${ROOT}/packages/vue-workbench/src/WorkbenchShell.vue`;
-const WORKBENCH_ROOT_PATH = `${ROOT}/packages/vue-workbench/src/WorkbenchRoot.vue`;
+const WINDOW_SIZING_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/windows/windowSizing.ts", import.meta.url).href;
+const USE_WORKBENCH_WINDOWS_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/windows/useWorkbenchWindows.ts", import.meta.url).href;
+const WORKBENCH_CONTROLLER_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchController.ts", import.meta.url).href;
+const WORKBENCH_RUNTIME_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url).href;
+const WORKBENCH_TYPES_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/types.ts", import.meta.url).href;
+const WINDOW_SURFACE_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/windows/WindowSurface.vue`;
+const WINDOW_HOST_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/windows/WindowHost.vue`;
+const DIALOG_RENDERER_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/windows/DialogRenderer.vue`;
+const DIALOG_FIELD_RENDERER_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/windows/DialogFieldRenderer.vue`;
+const WORKBENCH_SHELL_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/WorkbenchShell.vue`;
+const WORKBENCH_ROOT_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/WorkbenchRoot.vue`;
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>");
 
@@ -204,7 +204,7 @@ const dialogFieldRendererUrl = compileVueModule(DIALOG_FIELD_RENDERER_PATH, {
 const dialogRendererUrl = compileVueModule(DIALOG_RENDERER_PATH, {
   vue: vueStubUrl,
   "./DialogFieldRenderer.vue": dialogFieldRendererUrl,
-  "./types.js": new URL("../../../packages/vue-workbench/src/windows/types.ts", import.meta.url).href
+  "./types.js": new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/windows/types.ts", import.meta.url).href
 });
 
 const windowHostUrl = compileVueModule(WINDOW_HOST_PATH, {

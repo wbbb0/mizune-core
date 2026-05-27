@@ -1,0 +1,3 @@
+[submodule "vendor/workbench-kit"]
+	path = vendor/workbench-kit
+	url = https://github.com/wbbb0/workbench-kit.git

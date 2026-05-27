@@ -15,9 +15,9 @@ const compilerSfc = require(`${ROOT}/webui/node_modules/@vue/compiler-sfc/dist/c
 const typescript = require(`${ROOT}/webui/node_modules/typescript/lib/typescript.js`);
 const VUE_RUNTIME_URL = new URL("../../../webui/node_modules/vue/index.mjs", import.meta.url).href;
 const VUE_TEST_UTILS_URL = new URL("../../../webui/node_modules/@vue/test-utils/dist/vue-test-utils.esm-bundler.mjs", import.meta.url).href;
-const DIALOG_RENDERER_PATH = `${ROOT}/packages/vue-workbench/src/windows/DialogRenderer.vue`;
-const DIALOG_FIELD_RENDERER_PATH = `${ROOT}/packages/vue-workbench/src/windows/DialogFieldRenderer.vue`;
-const TYPES_URL = new URL("../../../packages/vue-workbench/src/windows/types.ts", import.meta.url).href;
+const DIALOG_RENDERER_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/windows/DialogRenderer.vue`;
+const DIALOG_FIELD_RENDERER_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/windows/DialogFieldRenderer.vue`;
+const TYPES_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/windows/types.ts", import.meta.url).href;
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>");
 

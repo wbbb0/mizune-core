@@ -38,8 +38,8 @@ test.after(() => {
 });
 
 test("workbench root mounts the toast viewport", async () => {
-  const source = await readFile(new URL("../../../packages/vue-workbench/src/WorkbenchRoot.vue", import.meta.url), "utf8");
-  const shellSource = await readFile(new URL("../../../packages/vue-workbench/src/WorkbenchShell.vue", import.meta.url), "utf8");
+  const source = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchRoot.vue", import.meta.url), "utf8");
+  const shellSource = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchShell.vue", import.meta.url), "utf8");
   const appSource = await readFile(new URL("../../../webui/src/App.vue", import.meta.url), "utf8");
 
   assert.match(source, /ToastViewport/);
