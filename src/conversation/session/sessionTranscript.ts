@@ -22,12 +22,8 @@ export function isTranscriptRuntimeIncluded(item: InternalTranscriptItem): boole
   return item.runtimeExcluded !== true;
 }
 
-export function isTranscriptAmbient(item: InternalTranscriptItem): boolean {
-  return item.runtimeVisibility === "ambient";
-}
-
 export function isTranscriptLlmVisible(item: InternalTranscriptItem): boolean {
-  return item.llmVisible === true && isTranscriptRuntimeIncluded(item) && !isTranscriptAmbient(item);
+  return item.llmVisible === true && isTranscriptRuntimeIncluded(item);
 }
 
 export function isTranscriptVisibleChatMessage(item: InternalTranscriptItem): boolean {
@@ -58,104 +54,6 @@ export function projectLlmVisibleHistoryFromTranscript(
     .filter(isTranscriptHistoryMessage)
     .map((item) => projectTranscriptMessageItemToHistoryMessage(item));
   return normalizeProjectedHistoryMessages(projected, config);
-}
-
-export function projectLlmVisibleHistoryWithAmbientRecallFromTranscript(
-  transcript: InternalTranscriptItem[],
-  config: AppConfig,
-  options: {
-    excludeGroupId?: string | null;
-    ambientMessageCount: number;
-  }
-): SessionHistoryMessage[] {
-  const excludeGroupId = options.excludeGroupId ?? null;
-  const ambientRecallIds = collectAmbientRecallIds(transcript, excludeGroupId, options.ambientMessageCount);
-
-  const projected = projectPromptHistoryMessages(transcript, {
-    excludeGroupId,
-    includeLlmVisibleHistory: true,
-    ambientRecallIds
-  });
-  return normalizeProjectedHistoryMessages(projected, config);
-}
-
-export function projectAmbientRecallFromTranscript(
-  transcript: InternalTranscriptItem[],
-  config: AppConfig,
-  options: {
-    excludeGroupId?: string | null;
-    ambientMessageCount: number;
-  }
-): SessionHistoryMessage[] {
-  const excludeGroupId = options.excludeGroupId ?? null;
-  const ambientRecallIds = collectAmbientRecallIds(transcript, excludeGroupId, options.ambientMessageCount);
-
-  const projected = projectPromptHistoryMessages(transcript, {
-    excludeGroupId,
-    includeLlmVisibleHistory: false,
-    ambientRecallIds
-  });
-  return normalizeProjectedHistoryMessages(projected, config);
-}
-
-function projectPromptHistoryMessages(
-  transcript: InternalTranscriptItem[],
-  options: {
-    excludeGroupId: string | null;
-    includeLlmVisibleHistory: boolean;
-    ambientRecallIds: Set<string>;
-  }
-): SessionHistoryMessage[] {
-  return transcript
-    .filter((item) => !options.excludeGroupId || item.groupId !== options.excludeGroupId)
-    .filter((item) => (
-      (options.includeLlmVisibleHistory && isTranscriptLlmVisible(item))
-      || (isTranscriptAmbient(item) && options.ambientRecallIds.has(item.id ?? ""))
-    ))
-    .filter(isTranscriptHistoryMessage)
-    .map((item) => projectPromptHistoryMessageWithAmbientMarker(item));
-}
-
-function collectAmbientRecallIds(
-  transcript: InternalTranscriptItem[],
-  excludeGroupId: string | null,
-  ambientMessageCount: number
-): Set<string> {
-  if (ambientMessageCount <= 0) {
-    return new Set();
-  }
-  return new Set(
-    transcript
-      .filter((item): item is TranscriptUserMessageItem | TranscriptUserMediaMessageItem => (
-        (item.kind === "user_message" || item.kind === "user_media_message")
-        && item.chatType === "group"
-        && isTranscriptRuntimeIncluded(item)
-        && isTranscriptAmbient(item)
-        && item.llmVisible === true
-        && (!excludeGroupId || item.groupId !== excludeGroupId)
-      ))
-      .slice(-ambientMessageCount)
-      .map((item) => item.id)
-      .filter((id): id is string => typeof id === "string")
-  );
-}
-
-function projectPromptHistoryMessageWithAmbientMarker(
-  item:
-    | TranscriptUserMessageItem
-    | TranscriptUserMediaMessageItem
-    | TranscriptAssistantMessageItem
-    | TranscriptSessionModeSwitchItem
-    | TranscriptProfilePhaseTransitionItem
-): SessionHistoryMessage {
-  const message = projectTranscriptMessageItemToHistoryMessage(item);
-  if (isTranscriptAmbient(item)) {
-    return {
-      ...message,
-      content: `【群聊环境，仅供理解当前被召唤的问题】${message.content}`
-    };
-  }
-  return message;
 }
 
 export function projectVisibleMessagesFromTranscript(transcript: InternalTranscriptItem[]): Array<{

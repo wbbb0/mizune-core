@@ -1,5 +1,5 @@
 import { extractWindowUsers } from "#conversation/session/historyContext.ts";
-import type { InlineSessionTriggerExecution, InternalSessionTriggerExecution, SessionDelivery } from "#conversation/session/sessionTypes.ts";
+import type { InlineSessionTriggerExecution, InternalSessionTriggerExecution, SessionDelivery, SessionReplyTarget } from "#conversation/session/sessionTypes.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { getBuiltinToolNames } from "#llm/builtinTools.ts";
@@ -52,6 +52,29 @@ type ActiveDraftOperation = {
   completionSignal?: SessionModeSetupOperation["completionSignal"];
   onComplete?: SessionModeSetupOperation["onComplete"];
 };
+
+function buildReplyTargetSystemMessage(target: SessionReplyTarget | null): string | null {
+  if (!target) {
+    return null;
+  }
+  const lines = [
+    "本轮回复目标：",
+    `- chat_type: ${target.chatType}`,
+    `- user_id: ${target.userId}`,
+    `- sender_name: ${target.senderName}`,
+    ...(target.groupId ? [`- group_id: ${target.groupId}`] : []),
+    `- first_message_at: ${new Date(target.firstMessageAt).toISOString()}`
+  ];
+  if (target.chatType === "group") {
+    lines.push(
+      "请回复上述用户本轮在群聊中直接 @/回复 bot 的请求。",
+      "其他群成员消息只作为上下文，不要逐一回应，也不要切换本轮回复对象。"
+    );
+  } else {
+    lines.push("请回复上述私聊用户本轮消息。");
+  }
+  return lines.join("\n");
+}
 
 function toActiveDraftOperation(input: {
   operation: SessionModeSetupOperation;
@@ -526,6 +549,8 @@ export function createGenerationSessionOrchestrator(
     }
 
     void (async () => {
+      const replyTarget = sessionManager.getSession(sessionId).currentReplyTarget;
+      const tailSystemMessages = [buildReplyTargetSystemMessage(replyTarget)].filter((item): item is string => Boolean(item));
       const last = messages[messages.length - 1];
       if (!last) {
         if (sessionManager.finishGeneration(sessionId, abortController)) {
@@ -577,30 +602,15 @@ export function createGenerationSessionOrchestrator(
         ? { setupPhase: { setupToolsetOverrides: activeDraftOperation.setupToolsetOverrides } }
         : {};
       let transcriptStore = createSessionTranscriptStore(refreshedSession, config);
-      const includeAmbientRecall = last.chatType === "group";
       let historyForPrompt = transcriptStore.projectRuntimeHistoryForPrompt({
-        excludeGroupId: refreshedSession.activeTranscriptGroupId,
-        includeAmbientRecall
+        excludeGroupId: refreshedSession.activeTranscriptGroupId
       });
-      let ambientRecallForPrompt = includeAmbientRecall
-        ? transcriptStore.projectAmbientRecallForPrompt({
-            excludeGroupId: refreshedSession.activeTranscriptGroupId
-          })
-        : [];
       let promptSafety = await projectGenerationPromptSafety({
         contentSafetyService: promptBuilder.contentSafetyService,
         sessionId,
         source: "chat_prompt",
         historyForPrompt,
         batchMessages: messages,
-        abortSignal: abortController.signal
-      });
-      let ambientRecallSafety = await projectGenerationPromptSafety({
-        contentSafetyService: promptBuilder.contentSafetyService,
-        sessionId,
-        source: "chat_prompt_ambient_recall",
-        historyForPrompt: ambientRecallForPrompt,
-        batchMessages: [],
         abortSignal: abortController.signal
       });
       let resolvedModelRef = getModelRefsForRole(config, "main_small");
@@ -711,28 +721,14 @@ export function createGenerationSessionOrchestrator(
         refreshedSession = sessionManager.getSession(sessionId);
         transcriptStore = createSessionTranscriptStore(refreshedSession, config);
         historyForPrompt = transcriptStore.projectRuntimeHistoryForPrompt({
-          excludeGroupId: refreshedSession.activeTranscriptGroupId,
-          includeAmbientRecall
+          excludeGroupId: refreshedSession.activeTranscriptGroupId
         });
-        ambientRecallForPrompt = includeAmbientRecall
-          ? transcriptStore.projectAmbientRecallForPrompt({
-            excludeGroupId: refreshedSession.activeTranscriptGroupId
-          })
-          : [];
         promptSafety = await projectGenerationPromptSafety({
           contentSafetyService: promptBuilder.contentSafetyService,
           sessionId,
           source: "chat_prompt",
           historyForPrompt,
           batchMessages: messages,
-          abortSignal: abortController.signal
-        });
-        ambientRecallSafety = await projectGenerationPromptSafety({
-          contentSafetyService: promptBuilder.contentSafetyService,
-          sessionId,
-          source: "chat_prompt_ambient_recall",
-          historyForPrompt: ambientRecallForPrompt,
-          batchMessages: [],
           abortSignal: abortController.signal
         });
         if (plannerToolsets.length === 0) {
@@ -813,7 +809,7 @@ export function createGenerationSessionOrchestrator(
         requireThoughtSignatures: config.llm.mainRouting.enableThinking
       });
       const historyForPromptMessages = projectedTranscript.replayCoversVisibleHistory
-        ? ambientRecallSafety.historyForPrompt
+        ? []
         : promptSafety.historyForPrompt;
       const lateSystemMessages = [
         ...projectedTranscript.lateSystemMessages,
@@ -851,6 +847,7 @@ export function createGenerationSessionOrchestrator(
             participantProfiles,
             lastLlmUsage: refreshedSession.lastLlmUsage,
             lateSystemMessages,
+            tailSystemMessages,
             replayMessages: projectedTranscript.replayMessages,
             abortSignal: abortController.signal,
             batchMessages: promptSafety.promptBatchMessages,
@@ -864,6 +861,7 @@ export function createGenerationSessionOrchestrator(
             visibleToolNames: chatVisibleToolNames,
             activeToolsets: activeChatToolsets,
             lateSystemMessages,
+            tailSystemMessages,
             replayMessages: projectedTranscript.replayMessages,
             persona: promptPersona,
             relationship,

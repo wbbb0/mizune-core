@@ -535,8 +535,8 @@ function nextTick(): Promise<void> {
       title: "Test Group"
     });
 
-    let resolveIncoming: ((value: { userId: string; senderName: string; chatType: string; groupId?: string }) => void) | null = null;
-    const incomingMessagePromise = new Promise<{ userId: string; senderName: string; chatType: string; groupId?: string }>((resolve) => {
+    let resolveIncoming: ((value: { userId: string; senderName: string; chatType: string; groupId?: string; isAtMentioned: boolean }) => void) | null = null;
+    const incomingMessagePromise = new Promise<{ userId: string; senderName: string; chatType: string; groupId?: string; isAtMentioned: boolean }>((resolve) => {
       resolveIncoming = resolve;
     });
 
@@ -562,6 +562,7 @@ function nextTick(): Promise<void> {
           userId: incomingMessage.userId,
           senderName: incomingMessage.senderName,
           chatType: incomingMessage.chatType,
+          isAtMentioned: incomingMessage.isAtMentioned,
           ...(incomingMessage.groupId ? { groupId: incomingMessage.groupId } : {})
         });
       }
@@ -582,7 +583,66 @@ function nextTick(): Promise<void> {
       userId: "manual-user",
       senderName: "Manual Sender",
       chatType: "group",
+      isAtMentioned: false,
       groupId: "20001"
+    });
+  });
+
+  test("web turn marks group direct-command text as addressed to the bot", async () => {
+    const sessionId = "qqbot:g:20001";
+    const sessionManager = new SessionManager(createTestAppConfig());
+    sessionManager.ensureSession({
+      id: sessionId,
+      type: "group",
+      source: "onebot",
+      participantRef: { kind: "group", id: "room:20001" },
+      title: "Test Group"
+    });
+
+    let resolveIncoming: ((value: { text: string; isAtMentioned: boolean }) => void) | null = null;
+    const incomingMessagePromise = new Promise<{ text: string; isAtMentioned: boolean }>((resolve) => {
+      resolveIncoming = resolve;
+    });
+
+    const service = createAdminMessagingService({
+      config: {
+        onebot: {
+          enabled: true
+        }
+      },
+      oneBotClient: {
+        async sendText() {
+          return {};
+        }
+      } as any,
+      chatFileStore: {
+        async getMany() {
+          return [];
+        }
+      } as any,
+      sessionManager,
+      async handleWebIncomingMessage(incomingMessage) {
+        resolveIncoming?.({
+          text: incomingMessage.text,
+          isAtMentioned: incomingMessage.isAtMentioned
+        });
+      }
+    });
+
+    await service.startWebSessionTurn(
+      { sessionId },
+      {
+        userId: "owner",
+        senderName: "Owner",
+        text: ".debug status",
+        imageIds: [],
+        attachmentIds: []
+      }
+    );
+
+    assert.deepEqual(await incomingMessagePromise, {
+      text: ".debug status",
+      isAtMentioned: true
     });
   });
 

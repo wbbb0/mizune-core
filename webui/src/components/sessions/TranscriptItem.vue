@@ -20,7 +20,6 @@ const emit = defineEmits<{
 
 const expandStates = inject<Map<string, TranscriptExpandState>>("transcriptExpandStates");
 const runtimeExcluded = computed(() => props.item.runtimeExcluded === true);
-const runtimeAmbient = computed(() => props.item.runtimeVisibility === "ambient");
 
 function getState(): TranscriptExpandState {
   if (!expandStates) {
@@ -114,9 +113,6 @@ const itemTitle = computed(() => {
     case "gate_decision":
       title = `Turn Planner 判定 · ${formatPlannerAction(props.item.action)}`;
       break;
-    case "admission_decision":
-      title = `Admission 判定 · ${formatAdmissionThreadAction(props.item.threadAction)}`;
-      break;
     case "title_generation_event":
       title = props.item.title;
       break;
@@ -136,16 +132,10 @@ const itemTitle = computed(() => {
   if (!props.item.llmVisible) {
     title += " · 隐藏";
   }
-  if (runtimeAmbient.value) {
-    title += " · 环境";
-  }
   return title;
 });
 
 const itemTone = computed(() => {
-  if (runtimeAmbient.value) {
-    return "ambient";
-  }
   switch (props.item.kind) {
     case "user_message":
     case "user_media_message":
@@ -166,8 +156,6 @@ const itemTone = computed(() => {
       return "outbound-media";
     case "gate_decision":
       return props.item.action === "wait" ? "gate-wait" : props.item.action === "skip" ? "gate-skip" : "gate";
-    case "admission_decision":
-      return props.item.shouldTriggerResponse ? "gate" : "gate-skip";
     case "title_generation_event":
       return "status";
     case "system_marker":
@@ -202,8 +190,6 @@ const itemGlyph = computed<SessionGlyphModel>(() => {
       return { kind: "icon", component: ImageIcon, size: 13, strokeWidth: 2 };
     case "gate_decision":
       return { kind: "icon", component: GitBranch, size: 13, strokeWidth: 2 };
-    case "admission_decision":
-      return { kind: "icon", component: GitBranch, size: 13, strokeWidth: 2 };
     case "title_generation_event":
       return { kind: "icon", component: Info, size: 13, strokeWidth: 2.1 };
     case "system_marker":
@@ -219,8 +205,6 @@ const itemGlyph = computed<SessionGlyphModel>(() => {
 
 const toneGlyphClass = computed(() => {
   switch (itemTone.value) {
-    case "ambient":
-      return "bg-[color-mix(in_srgb,var(--surface-input)_78%,transparent)] text-text-muted";
     case "user":
       return "bg-[color-mix(in_srgb,var(--surface-selected)_70%,transparent)] text-text-accent";
     case "assistant":
@@ -251,7 +235,6 @@ const metaChips = computed(() => {
     case "user_media_message":
       chips = [
         `${props.item.senderName} (${props.item.userId})`,
-        ...(runtimeAmbient.value ? ["ambient"] : []),
         ...(props.item.replyMessageId ? ["reply"] : []),
         ...(props.item.mentionedSelf ? ["@self"] : []),
         ...(props.item.mentionedAll ? ["@all"] : []),
@@ -309,18 +292,6 @@ const metaChips = computed(() => {
         props.item.waitPassCount != null ? `wait#${props.item.waitPassCount}` : null,
         props.item.topicDecision ? `topic=${props.item.topicDecision}` : null,
         props.item.toolsetIds && props.item.toolsetIds.length > 0 ? `toolsets=${props.item.toolsetIds.length}` : null
-      ].filter(Boolean) as string[];
-      break;
-    case "admission_decision":
-      chips = [
-        `thread=${props.item.threadAction}`,
-        `reply=${props.item.replyDecision}`,
-        `interrupt=${props.item.interruptPolicy}`,
-        `context=${props.item.contextPolicy}`,
-        `priority=${props.item.priority}`,
-        props.item.shouldTriggerResponse ? "trigger" : "no-trigger",
-        props.item.textIntentCorrection ? "intent=correction" : null,
-        props.item.textIntentWaitMore ? "intent=wait_more" : null
       ].filter(Boolean) as string[];
       break;
     case "title_generation_event":
@@ -526,38 +497,6 @@ const plannerOutputRows = computed(() => {
   ];
 });
 
-const admissionReasonText = computed(() => {
-  if (props.item.kind !== "admission_decision") {
-    return null;
-  }
-  return normalizeText(props.item.reason);
-});
-
-const admissionOutputRows = computed(() => {
-  if (props.item.kind !== "admission_decision") {
-    return [];
-  }
-  return [
-    { key: "delivery", value: props.item.delivery },
-    { key: "chatType", value: props.item.chatType },
-    { key: "userId", value: props.item.userId },
-    { key: "groupId", value: props.item.groupId ?? null },
-    { key: "groupMatched", value: String(props.item.groupMatched) },
-    { key: "matchedPendingGroupTrigger", value: String(props.item.matchedPendingGroupTrigger) },
-    { key: "replyToBot", value: String(props.item.replyToBot) },
-    { key: "textIntentCorrection", value: String(props.item.textIntentCorrection) },
-    { key: "textIntentWaitMore", value: String(props.item.textIntentWaitMore) },
-    { key: "shouldTriggerResponse", value: String(props.item.shouldTriggerResponse) },
-    { key: "threadAction", value: props.item.threadAction },
-    { key: "replyDecision", value: props.item.replyDecision },
-    { key: "interruptPolicy", value: props.item.interruptPolicy },
-    { key: "contextPolicy", value: props.item.contextPolicy },
-    { key: "priority", value: props.item.priority },
-    { key: "isAtMentioned", value: String(props.item.isAtMentioned) },
-    { key: "hasActiveResponse", value: String(props.item.hasActiveResponse) }
-  ];
-});
-
 const outboundMediaRows = computed(() => {
   if (props.item.kind !== "outbound_media_message") {
     return [];
@@ -594,21 +533,6 @@ function formatPlannerAction(action: "continue" | "wait" | "skip" | "topic_switc
       return "跳过";
     case "topic_switch":
       return "切题压缩";
-  }
-}
-
-function formatAdmissionThreadAction(action: "ambient_only" | "wait_more" | "reply_now" | "soft_interrupt" | "queue_next_thread"): string {
-  switch (action) {
-    case "ambient_only":
-      return "环境记录";
-    case "wait_more":
-      return "等待补充";
-    case "reply_now":
-      return "进入回复";
-    case "soft_interrupt":
-      return "软打断";
-    case "queue_next_thread":
-      return "排队新话题";
   }
 }
 
@@ -950,31 +874,6 @@ function openActions(): void {
               <WorkbenchCard compact>
                 <div class="mb-1 font-mono text-small text-text-subtle">reason</div>
                 <pre class="m-0 overflow-x-auto font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ plannerReasonText ?? "null" }}</pre>
-              </WorkbenchCard>
-            </div>
-          </WorkbenchCard>
-        </WorkbenchDisclosure>
-      </div>
-
-      <div v-else-if="item.kind === 'admission_decision'" class="flex flex-col gap-2">
-        <WorkbenchDisclosure
-          :expanded="plannerExpanded"
-          collapsed-title="展开接入判定"
-          expanded-title="收起接入判定"
-          :summary="item.threadAction"
-          @toggle="togglePlannerExpanded"
-        >
-          <WorkbenchCard title="接入判定">
-            <div class="grid gap-1.5">
-              <WorkbenchCard v-for="row in admissionOutputRows" :key="row.key" compact>
-                <div class="flex items-start justify-between gap-3">
-                  <span class="font-mono text-small text-text-subtle">{{ row.key }}</span>
-                  <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ row.value ?? "null" }}</span>
-                </div>
-              </WorkbenchCard>
-              <WorkbenchCard compact>
-                <div class="mb-1 font-mono text-small text-text-subtle">reason</div>
-                <pre class="m-0 overflow-x-auto font-mono text-mono text-text-muted whitespace-pre-wrap wrap-break-word">{{ admissionReasonText ?? "null" }}</pre>
               </WorkbenchCard>
             </div>
           </WorkbenchCard>

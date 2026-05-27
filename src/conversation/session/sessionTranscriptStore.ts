@@ -1,10 +1,8 @@
 import type { AppConfig } from "#config/config.ts";
 import {
-  projectAmbientRecallFromTranscript,
   projectCompressionHistorySnapshot,
   projectCompressionHistorySnapshotByTokens,
   projectLlmVisibleHistoryFromTranscript,
-  projectLlmVisibleHistoryWithAmbientRecallFromTranscript,
   projectVisibleMessagesFromTranscript,
   isTranscriptRuntimeIncluded
 } from "./sessionTranscript.ts";
@@ -21,10 +19,6 @@ export interface SessionTranscriptStore {
   projectRuntimeHistory(): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
   projectRuntimeHistoryExcludingGroup(groupId: string | null): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
   projectRuntimeHistoryForPrompt(options: {
-    excludeGroupId?: string | null;
-    includeAmbientRecall?: boolean;
-  }): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
-  projectAmbientRecallForPrompt(options: {
     excludeGroupId?: string | null;
   }): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
   projectVisibleMessages(): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
@@ -75,22 +69,7 @@ export function createSessionTranscriptStore(session: SessionState, config: AppC
       );
     },
     projectRuntimeHistoryForPrompt(options) {
-      const ambientMessageCount = options.includeAmbientRecall
-        ? config.conversation.group.ambientRecallMessageCount
-        : 0;
-      if (ambientMessageCount <= 0) {
-        return this.projectRuntimeHistoryExcludingGroup(options.excludeGroupId ?? null);
-      }
-      return projectLlmVisibleHistoryWithAmbientRecallFromTranscript(session.internalTranscript, config, {
-        excludeGroupId: options.excludeGroupId ?? null,
-        ambientMessageCount
-      });
-    },
-    projectAmbientRecallForPrompt(options) {
-      return projectAmbientRecallFromTranscript(session.internalTranscript, config, {
-        excludeGroupId: options.excludeGroupId ?? null,
-        ambientMessageCount: config.conversation.group.ambientRecallMessageCount
-      });
+      return this.projectRuntimeHistoryExcludingGroup(options.excludeGroupId ?? null);
     },
     projectVisibleMessages() {
       return projectVisibleMessagesFromTranscript(session.internalTranscript);

@@ -12,13 +12,15 @@ import type {
   SessionPhase,
   TranscriptAssistantMessageItem,
   TranscriptUserMessageItem,
-  SessionUsageSnapshot
+  SessionUsageSnapshot,
+  QueuedGroupReplyTarget
 } from "./sessionTypes.ts";
 import {
   cloneSessionOperationMode,
   createNormalSessionOperationMode,
   type SessionOperationMode
 } from "./sessionOperationMode.ts";
+import { createTranscriptGroupId } from "./transcriptMetadata.ts";
 import { createEmptySessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
 import { sessionTaskTrackerService } from "#conversation/taskTracker/sessionTaskTrackerService.ts";
 
@@ -253,11 +255,12 @@ export function clearSessionState(session: SessionState): void {
   session.pendingMessages = [];
   session.pendingSteerMessages = [];
   session.pendingReplyGateWaitPasses = 0;
+  session.queuedGroupReplyTargets = [];
+  session.currentReplyTarget = null;
   session.pendingTranscriptGroupId = null;
   session.activeTranscriptGroupId = null;
   session.pendingInternalTriggers = [];
   session.pendingInlineTriggers = [];
-  session.interruptibleGroupTriggerUserId = null;
   session.historySummary = null;
   session.historyBackfillBoundaryMs = Date.now();
   session.taskTracker = createEmptySessionTaskTracker();
@@ -284,11 +287,12 @@ export function resetProfileOperationState(session: SessionState): void {
   session.pendingMessages = [];
   session.pendingSteerMessages = [];
   session.pendingReplyGateWaitPasses = 0;
+  session.queuedGroupReplyTargets = [];
+  session.currentReplyTarget = null;
   session.pendingTranscriptGroupId = null;
   session.activeTranscriptGroupId = null;
   session.pendingInternalTriggers = [];
   session.pendingInlineTriggers = [];
-  session.interruptibleGroupTriggerUserId = null;
   session.lastLlmUsage = null;
   session.phase = { kind: "idle" };
   session.lastActiveAt = Date.now();
@@ -495,7 +499,50 @@ export function drainInlineTriggersState(session: SessionState): InlineSessionTr
   return drained;
 }
 
-// Updates which group user can currently interrupt the session response.
-export function setInterruptibleGroupTriggerUserState(session: SessionState, userId: string | null): void {
-  session.interruptibleGroupTriggerUserId = userId;
+export function setCurrentReplyTargetState(
+  session: SessionState,
+  target: SessionState["currentReplyTarget"]
+): void {
+  session.currentReplyTarget = target;
+}
+
+export function enqueueGroupReplyTargetState(
+  session: SessionState,
+  message: Parameters<typeof appendSessionMessage>[1]
+): QueuedGroupReplyTarget {
+  if (message.chatType !== "group") {
+    throw new Error("Only group messages can be queued as group reply targets");
+  }
+  const now = Date.now();
+  const pendingMessage = createSessionMessage(message, now);
+  const existing = session.queuedGroupReplyTargets.find((target) => target.userId === pendingMessage.userId);
+  if (existing) {
+    existing.senderName = pendingMessage.senderName || existing.senderName;
+    existing.messages.push(pendingMessage);
+    session.lastActiveAt = now;
+    return existing;
+  }
+  const queued: QueuedGroupReplyTarget = {
+    userId: pendingMessage.userId,
+    senderName: pendingMessage.senderName,
+    ...(pendingMessage.groupId ? { groupId: pendingMessage.groupId } : {}),
+    transcriptGroupId: createTranscriptGroupId(),
+    firstAtMs: pendingMessage.receivedAt,
+    messages: [pendingMessage]
+  };
+  session.queuedGroupReplyTargets.push(queued);
+  session.lastActiveAt = now;
+  return queued;
+}
+
+export function promoteNextQueuedGroupReplyTargetState(session: SessionState): QueuedGroupReplyTarget | null {
+  const next = session.queuedGroupReplyTargets.shift() ?? null;
+  if (!next) {
+    return null;
+  }
+  session.pendingMessages = [...next.messages, ...session.pendingMessages];
+  session.pendingTranscriptGroupId = next.transcriptGroupId;
+  session.pendingReplyGateWaitPasses = 0;
+  session.lastActiveAt = Date.now();
+  return next;
 }

@@ -2,7 +2,6 @@ import { z } from "zod";
 import { chatAttachmentSchema, chatFileKindValues } from "../../types/chatContracts.ts";
 
 export const transcriptItemRuntimeExclusionReasonValues = ["manual_single", "manual_group", "manual_truncate_after", "interrupt_cleanup", "system"] as const;
-export const transcriptItemRuntimeVisibilityValues = ["default", "ambient"] as const;
 export const transcriptSystemMarkerKindValues = [
   "debug_enabled",
   "debug_disabled",
@@ -152,7 +151,6 @@ export const transcriptItemMetaSchema = z.object({
   id: z.string().min(1).optional(),
   groupId: z.string().min(1).optional(),
   runtimeExcluded: z.boolean().optional(),
-  runtimeVisibility: z.enum(transcriptItemRuntimeVisibilityValues).optional(),
   runtimeExcludedAt: z.number().int().nonnegative().optional(),
   runtimeExclusionReason: z.enum(transcriptItemRuntimeExclusionReasonValues).optional(),
   sourceRef: transcriptItemSourceRefSchema.optional(),
@@ -344,31 +342,6 @@ export const transcriptGateDecisionItemSchema = z.object({
   timestampMs: z.number().int().nonnegative()
 });
 
-export const transcriptAdmissionDecisionItemSchema = z.object({
-  ...transcriptItemMetaSchema.shape,
-  kind: z.literal("admission_decision"),
-  llmVisible: z.literal(false),
-  delivery: z.enum(["onebot", "web"]),
-  chatType: z.enum(["private", "group"]),
-  userId: z.string().min(1),
-  groupId: z.string().min(1).optional(),
-  groupMatched: z.boolean(),
-  matchedPendingGroupTrigger: z.boolean(),
-  replyToBot: z.boolean(),
-  textIntentCorrection: z.boolean(),
-  textIntentWaitMore: z.boolean(),
-  shouldTriggerResponse: z.boolean(),
-  threadAction: z.enum(["ambient_only", "wait_more", "reply_now", "soft_interrupt", "queue_next_thread"]),
-  replyDecision: z.enum(["no_reply", "reply_small", "wait"]),
-  interruptPolicy: z.enum(["none", "soft_interrupt", "abort_generation", "queue"]),
-  contextPolicy: z.enum(["ambient_buffer", "merge_batch", "new_thread"]),
-  priority: z.enum(["low", "normal", "high", "owner"]),
-  reason: z.string(),
-  isAtMentioned: z.boolean(),
-  hasActiveResponse: z.boolean(),
-  timestampMs: z.number().int().nonnegative()
-});
-
 export const transcriptSystemMarkerItemSchema = z.object({
   ...transcriptItemMetaSchema.shape,
   kind: z.literal("system_marker"),
@@ -469,7 +442,6 @@ export const internalTranscriptItemSchema = z.discriminatedUnion("kind", [
   transcriptDirectCommandItemSchema,
   transcriptStatusMessageItemSchema,
   transcriptGateDecisionItemSchema,
-  transcriptAdmissionDecisionItemSchema,
   transcriptSystemMarkerItemSchema,
   transcriptFallbackEventItemSchema,
   transcriptInternalTriggerEventItemSchema,
@@ -480,7 +452,6 @@ export const internalTranscriptItemSchema = z.discriminatedUnion("kind", [
 export const transcriptItemPatchSchema = z.object({
   reasoningContent: z.string().optional(),
   runtimeExcluded: z.boolean().optional(),
-  runtimeVisibility: z.enum(transcriptItemRuntimeVisibilityValues).optional(),
   runtimeExcludedAt: z.number().int().nonnegative().optional(),
   runtimeExclusionReason: z.enum(transcriptItemRuntimeExclusionReasonValues).optional(),
   tokenStats: transcriptTokenStatsSchema.optional()
@@ -492,7 +463,6 @@ export type TranscriptTokenStat = z.infer<typeof transcriptTokenStatSchema>;
 export type TranscriptTokenStats = z.infer<typeof transcriptTokenStatsSchema>;
 export type TranscriptToolObservation = z.infer<typeof transcriptToolObservationSchema>;
 export type TranscriptItemRuntimeExclusionReason = (typeof transcriptItemRuntimeExclusionReasonValues)[number];
-export type TranscriptItemRuntimeVisibility = (typeof transcriptItemRuntimeVisibilityValues)[number];
 export type TranscriptItemSourceRef = z.infer<typeof transcriptItemSourceRefSchema>;
 export type TranscriptItemDeliveryRef = z.infer<typeof transcriptItemDeliveryRefSchema>;
 export type TranscriptMessageContentPart = z.infer<typeof transcriptMessageContentPartSchema>;
@@ -503,6 +473,5 @@ export type NormalizedInternalTranscriptItem = InternalTranscriptItem & {
   id: string;
   groupId: string;
   runtimeExcluded: boolean;
-  runtimeVisibility?: TranscriptItemRuntimeVisibility;
 };
 export type TranscriptItemPatch = z.infer<typeof transcriptItemPatchSchema>;

@@ -31,7 +31,7 @@ export class EventRouter {
       }
 
       const userId = String(event.user_id);
-      const userMatched = this.whitelistStore.hasUser(userId)
+      const userMatched = this.isWhitelistedUser(userId)
         || this.isOwnerUser(userId)
         || this.isImplicitlyAllowedUser(userId);
       return userMatched;
@@ -45,7 +45,8 @@ export class EventRouter {
       if (!groupId) {
         return false;
       }
-      return this.whitelistStore.hasGroup(groupId) || this.isOwnerUser(String(event.user_id));
+      const userId = String(event.user_id);
+      return this.whitelistStore.hasGroup(groupId) || this.isWhitelistedUser(userId) || this.isOwnerUser(userId);
     }
 
     return false;
@@ -65,5 +66,16 @@ export class EventRouter {
 
   private isOwnerUser(userId: string): boolean {
     return this.userIdentityStore.findInternalUserIdSync({ channelId: this.channelId, externalId: userId }) === "owner";
+  }
+
+  private isWhitelistedUser(externalUserId: string): boolean {
+    if (this.whitelistStore.hasUser(externalUserId)) {
+      return true;
+    }
+    const internalUserId = this.userIdentityStore.findInternalUserIdSync({
+      channelId: this.channelId,
+      externalId: externalUserId
+    });
+    return Boolean(internalUserId && this.whitelistStore.hasUser(internalUserId));
   }
 }

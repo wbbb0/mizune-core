@@ -77,6 +77,41 @@ const sessionOperationModeSchema = z.union([
   })
 ]);
 
+const persistedSessionMessageSchema = z.object({
+  userId: z.string().min(1),
+  groupId: z.string().min(1).optional(),
+  senderName: z.string().min(1),
+  chatType: z.enum(["private", "group"]),
+  text: z.string(),
+  contentParts: z.array(transcriptMessageContentPartSchema).optional(),
+  images: z.array(z.string()),
+  audioSources: z.array(z.string()).default([]),
+  audioIds: z.array(z.string()).default([]),
+  emojiSources: z.array(z.string()),
+  imageIds: z.array(z.string()),
+  emojiIds: z.array(z.string()),
+  attachments: z.array(chatAttachmentSchema).default([]),
+  messageFiles: z.array(z.object({
+    fileId: z.string().min(1),
+    name: z.string().nullable(),
+    busid: z.union([z.string(), z.number()]).nullable(),
+    sizeBytes: z.number().int().nonnegative().nullable(),
+    mimeType: z.string().nullable(),
+    downloadTool: z.literal("download_message_file")
+  })).default([]),
+  specialSegments: z.array(z.object({
+    type: z.string().min(1),
+    summary: z.string()
+  })).optional(),
+  forwardIds: z.array(z.string()),
+  replyMessageId: z.string().nullable(),
+  mentionUserIds: z.array(z.string()),
+  mentionedAll: z.boolean(),
+  isAtMentioned: z.boolean(),
+  rawEvent: z.any().optional(),
+  receivedAt: z.number().int().nonnegative()
+});
+
 const persistedSessionSchema = z.object({
   id: z.string().min(1),
   type: z.enum(["private", "group"]),
@@ -90,40 +125,15 @@ const persistedSessionSchema = z.object({
   title: z.string().nullable(),
   titleSource: z.enum(["default", "auto", "manual"]).nullable(),
   replyDelivery: z.enum(["onebot", "web"]).default("onebot"),
-  pendingMessages: z.array(z.object({
+  pendingMessages: z.array(persistedSessionMessageSchema),
+  queuedGroupReplyTargets: z.array(z.object({
     userId: z.string().min(1),
     groupId: z.string().min(1).optional(),
     senderName: z.string().min(1),
-    chatType: z.enum(["private", "group"]),
-    text: z.string(),
-    contentParts: z.array(transcriptMessageContentPartSchema).optional(),
-    images: z.array(z.string()),
-    audioSources: z.array(z.string()).default([]),
-    audioIds: z.array(z.string()).default([]),
-    emojiSources: z.array(z.string()),
-    imageIds: z.array(z.string()),
-    emojiIds: z.array(z.string()),
-    attachments: z.array(chatAttachmentSchema).default([]),
-    messageFiles: z.array(z.object({
-      fileId: z.string().min(1),
-      name: z.string().nullable(),
-      busid: z.union([z.string(), z.number()]).nullable(),
-      sizeBytes: z.number().int().nonnegative().nullable(),
-      mimeType: z.string().nullable(),
-      downloadTool: z.literal("download_message_file")
-    })).default([]),
-    specialSegments: z.array(z.object({
-      type: z.string().min(1),
-      summary: z.string()
-    })).optional(),
-    forwardIds: z.array(z.string()),
-    replyMessageId: z.string().nullable(),
-    mentionUserIds: z.array(z.string()),
-    mentionedAll: z.boolean(),
-    isAtMentioned: z.boolean(),
-    rawEvent: z.any().optional(),
-    receivedAt: z.number().int().nonnegative()
-  })),
+    transcriptGroupId: z.string().min(1),
+    firstAtMs: z.number().int().nonnegative(),
+    messages: z.array(persistedSessionMessageSchema)
+  })).optional(),
   pendingTranscriptGroupId: z.string().min(1).nullable().optional(),
   activeTranscriptGroupId: z.string().min(1).nullable().optional(),
   historySummary: z.string().nullable(),
@@ -205,6 +215,7 @@ export class SessionPersistence {
         title_source,
         reply_delivery,
         pending_messages_json,
+        queued_group_reply_targets_json,
         pending_transcript_group_id_is_set,
         pending_transcript_group_id,
         active_transcript_group_id_is_set,
@@ -262,6 +273,7 @@ export class SessionPersistence {
             title_source,
             reply_delivery,
             pending_messages_json,
+            queued_group_reply_targets_json,
             pending_transcript_group_id_is_set,
             pending_transcript_group_id,
             active_transcript_group_id_is_set,
@@ -289,6 +301,7 @@ export class SessionPersistence {
             @titleSource,
             @replyDelivery,
             @pendingMessagesJson,
+            @queuedGroupReplyTargetsJson,
             @pendingTranscriptGroupIdIsSet,
             @pendingTranscriptGroupId,
             @activeTranscriptGroupIdIsSet,
@@ -316,6 +329,7 @@ export class SessionPersistence {
             title_source = excluded.title_source,
             reply_delivery = excluded.reply_delivery,
             pending_messages_json = excluded.pending_messages_json,
+            queued_group_reply_targets_json = excluded.queued_group_reply_targets_json,
             pending_transcript_group_id_is_set = excluded.pending_transcript_group_id_is_set,
             pending_transcript_group_id = excluded.pending_transcript_group_id,
             active_transcript_group_id_is_set = excluded.active_transcript_group_id_is_set,
@@ -444,6 +458,7 @@ type PersistedSessionRow = {
   title_source: "default" | "auto" | "manual" | null;
   reply_delivery: "onebot" | "web" | null;
   pending_messages_json: string;
+  queued_group_reply_targets_json: string;
   pending_transcript_group_id_is_set: 0 | 1;
   pending_transcript_group_id: string | null;
   active_transcript_group_id_is_set: 0 | 1;
@@ -504,6 +519,7 @@ function toPersistedSessionParams(session: PersistedSessionState): Record<string
     titleSource: session.titleSource,
     replyDelivery: session.replyDelivery,
     pendingMessagesJson: JSON.stringify(session.pendingMessages),
+    queuedGroupReplyTargetsJson: JSON.stringify(session.queuedGroupReplyTargets ?? []),
     pendingTranscriptGroupIdIsSet: Number("pendingTranscriptGroupId" in session),
     pendingTranscriptGroupId: session.pendingTranscriptGroupId ?? null,
     activeTranscriptGroupIdIsSet: Number("activeTranscriptGroupId" in session),
@@ -648,6 +664,7 @@ function rowToPersistedSessionState(row: PersistedSessionRow): PersistedSessionS
     titleSource: row.title_source,
     ...(row.reply_delivery ? { replyDelivery: row.reply_delivery } : {}),
     pendingMessages: JSON.parse(row.pending_messages_json),
+    ...parseQueuedGroupReplyTargets(row.queued_group_reply_targets_json),
     ...(row.pending_transcript_group_id_is_set === 1
       ? { pendingTranscriptGroupId: row.pending_transcript_group_id }
       : {}),
@@ -666,6 +683,13 @@ function rowToPersistedSessionState(row: PersistedSessionRow): PersistedSessionS
     latestGapMs: row.latest_gap_ms,
     smoothedGapMs: row.smoothed_gap_ms
   }) as PersistedSessionState;
+}
+
+function parseQueuedGroupReplyTargets(value: string): Pick<PersistedSessionState, "queuedGroupReplyTargets"> | Record<string, never> {
+  const queued = JSON.parse(value) as PersistedSessionState["queuedGroupReplyTargets"];
+  return queued && queued.length > 0
+    ? { queuedGroupReplyTargets: queued }
+    : {};
 }
 
 const SESSION_TABLE_GROUPS = createTableGroupsFromDataDomain(sessionDataDomain);

@@ -72,7 +72,7 @@ export function resolvePromptBudgetReportedInputTokens(input: {
 }
 
 function isBudgetVisible(item: InternalTranscriptItem): boolean {
-  return item.llmVisible === true && item.runtimeExcluded !== true && item.runtimeVisibility !== "ambient";
+  return item.llmVisible === true && item.runtimeExcluded !== true;
 }
 
 function isBudgetHistoryMessage(item: InternalTranscriptItem): boolean {

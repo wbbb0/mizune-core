@@ -125,6 +125,7 @@ export interface GenerationPromptBuilder {
     visibleToolNames: string[];
     activeToolsets: ToolsetView[];
     lateSystemMessages?: string[];
+    tailSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
     relationship: Relationship;
@@ -150,6 +151,7 @@ export interface GenerationPromptBuilder {
     visibleToolNames: string[];
     activeToolsets: ToolsetView[];
     lateSystemMessages?: string[];
+    tailSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"];
     inlineBatchMessage?: string | undefined;
@@ -171,6 +173,7 @@ export interface GenerationPromptBuilder {
     sessionId: string;
     interactionMode: PromptInteractionMode;
     lateSystemMessages?: string[];
+    tailSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
     phase: "setup" | "config";
@@ -1059,6 +1062,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     visibleToolNames: string[];
     activeToolsets: ToolsetView[];
     lateSystemMessages?: string[];
+    tailSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
     relationship: Relationship;
@@ -1230,6 +1234,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       visibleToolNames: input.visibleToolNames,
       activeToolsets: input.activeToolsets,
       lateSystemMessages: input.lateSystemMessages,
+      tailSystemMessages: input.tailSystemMessages,
       replayMessages,
       persona: input.persona,
       relationship: input.relationship,
@@ -1288,6 +1293,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     visibleToolNames: string[];
     activeToolsets: ToolsetView[];
     lateSystemMessages?: string[];
+    tailSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"];
     inlineBatchMessage?: string | undefined;
@@ -1424,6 +1430,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       visibleToolNames: input.visibleToolNames,
       activeToolsets: input.activeToolsets,
       lateSystemMessages: input.lateSystemMessages,
+      tailSystemMessages: input.tailSystemMessages,
       replayMessages,
       trigger: scheduledTrigger,
       ...(input.inlineBatchMessage ? { inlineBatchMessage: input.inlineBatchMessage } : {}),
@@ -1487,6 +1494,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     sessionId: string;
     interactionMode: PromptInteractionMode;
     lateSystemMessages?: string[];
+    tailSystemMessages?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
     phase: "setup" | "config";
@@ -1550,6 +1558,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       sessionId: input.sessionId,
       interactionMode: input.interactionMode,
       lateSystemMessages: input.lateSystemMessages,
+      tailSystemMessages: input.tailSystemMessages,
       replayMessages,
       includeBatchMediaCaptions: !mainProfile?.supportsVision,
       persona: input.persona,

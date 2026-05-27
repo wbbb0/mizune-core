@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { processIncomingMessage } from "../../src/app/messaging/messageEventHandler.ts";
+import { resolveTriggerDecision } from "../../src/app/messaging/messageTriggerFlow.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
@@ -36,6 +37,9 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
+          hasUser() {
+            return false;
+          },
           hasGroup() {
             return false;
           }
@@ -163,6 +167,9 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
+          hasUser() {
+            return false;
+          },
           hasGroup() {
             return true;
           }
@@ -235,18 +242,9 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
     assert.equal(sessionManager.getReplyDelivery(session.id), "web");
     const transcript = sessionManager.getSessionView(session.id).internalTranscript;
-    assert.equal(transcript.length, 2);
+    assert.equal(transcript.length, 1);
     assert.equal(transcript[0]?.kind, "user_message");
-    assert.equal(transcript[0]?.runtimeVisibility, "ambient");
-    assert.equal(transcript[1]?.kind, "admission_decision");
-    if (transcript[1]?.kind === "admission_decision") {
-      assert.equal(transcript[1].threadAction, "ambient_only");
-      assert.equal(transcript[1].shouldTriggerResponse, false);
-      assert.equal(transcript[1].textIntentCorrection, false);
-      assert.equal(transcript[1].textIntentWaitMore, false);
-      assert.equal(transcript[1].reason, "普通群聊环境");
-    }
-    assert.equal(sessionManager.getLlmVisibleHistory(session.id).length, 0);
+    assert.equal(sessionManager.getLlmVisibleHistory(session.id).length, 1);
   });
 
   test("group mention from another user is queued without interrupting an active response", async () => {
@@ -279,6 +277,9 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
+          hasUser() {
+            return false;
+          },
           hasGroup() {
             return true;
           }
@@ -357,14 +358,247 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.equal(started.abortController.signal.aborted, false);
     assert.equal(started.responseAbortController.signal.aborted, false);
     assert.equal(sessionManager.hasActiveResponse(session.id), true);
-    assert.equal(current.pendingMessages.length, 1);
-    assert.equal(current.pendingMessages[0]?.userId, "u_test_user_2");
-    assert.equal(current.pendingMessages[0]?.senderName, "Bob");
+    assert.equal(current.pendingMessages.length, 0);
+    assert.equal(current.queuedGroupReplyTargets.length, 1);
+    assert.equal(current.queuedGroupReplyTargets[0]?.userId, "u_test_user_2");
+    assert.equal(current.queuedGroupReplyTargets[0]?.senderName, "Bob");
+    assert.equal(current.queuedGroupReplyTargets[0]?.messages.length, 1);
     assert.equal(debounceScheduled, 0);
     assert.ok(persistedReasons.includes("group_message_queued_next_thread"));
   });
 
-  test("same trigger user wait_more during active response is queued without scheduling a parallel flush", async () => {
+  test("existing queued group targets keep priority over new group mentions", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const session = sessionManager.ensureSession({ id: "qqbot:g:20001", type: "group" });
+    sessionManager.enqueueGroupReplyTarget(session.id, {
+      chatType: "group",
+      userId: "u_b",
+      groupId: "20001",
+      senderName: "Bob",
+      text: "@bot B first",
+      images: [],
+      audioSources: [],
+      audioIds: [],
+      emojiSources: [],
+      imageIds: [],
+      emojiIds: [],
+      attachments: [],
+      forwardIds: [],
+      replyMessageId: null,
+      mentionUserIds: [],
+      mentionedAll: false,
+      isAtMentioned: true
+    });
+
+    const decision = await resolveTriggerDecision({
+      config,
+      whitelistStore: {
+        hasUser() {
+          return false;
+        },
+        hasGroup() {
+          return true;
+        }
+      } as any,
+      conversationAccess: {
+        recordSeenGroupMember: async () => {}
+      } as any,
+      sessionManager
+    }, {
+      session,
+      user: { relationship: "known" },
+      setupState: { state: "ready" },
+      enrichedMessage: {
+        chatType: "group",
+        userId: "u_a",
+        groupId: "20001",
+        senderName: "Alice",
+        text: "@bot A later",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        attachments: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: true
+      }
+    } as any);
+
+    assert.equal(decision.threadAction, "queue_next_thread");
+    assert.equal(decision.interruptPolicy, "queue");
+  });
+
+  test("new group mention wakes an idle restored group reply queue", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const session = sessionManager.ensureSession({ id: "qqbot:g:20001", type: "group" });
+    sessionManager.enqueueGroupReplyTarget(session.id, {
+      chatType: "group",
+      userId: "u_b",
+      groupId: "20001",
+      senderName: "Bob",
+      text: "@bot B first",
+      images: [],
+      audioSources: [],
+      audioIds: [],
+      emojiSources: [],
+      imageIds: [],
+      emojiIds: [],
+      attachments: [],
+      forwardIds: [],
+      replyMessageId: null,
+      mentionUserIds: [],
+      mentionedAll: false,
+      isAtMentioned: true
+    });
+    let debounceScheduled = 0;
+    const persistedReasons: string[] = [];
+
+    await processIncomingMessage({
+      inboundDelivery: "onebot",
+      services: {
+        config,
+        logger: pino({ level: "silent" }),
+        whitelistStore: {
+          hasUser() {
+            return false;
+          },
+          hasGroup() {
+            return true;
+          }
+        } as any,
+        userIdentityStore: {
+          async ensureUserIdentity() {
+            return { internalUserId: "u_a" };
+          },
+          async hasOwnerIdentity() {
+            return false;
+          }
+        } as any,
+        router: {} as any,
+        oneBotClient: {} as any,
+        sessionManager,
+        debounceManager: {
+          schedule() {
+            debounceScheduled += 1;
+          }
+        } as any,
+        audioStore: {
+          registerSources: async () => []
+        } as any,
+        chatFileStore: {
+          importRemoteSource: async () => null
+        } as any,
+        mediaCaptionService: {
+          schedule() {}
+        } as any,
+        requestStore: {} as any,
+        userStore: {
+          touchSeenUser: async () => ({ relationship: "known" })
+        } as any,
+        personaStore: {} as any,
+        setupStore: {
+          get: async () => ({ state: "ready" })
+        } as any,
+        globalProfileReadinessStore: {
+          get: async () => ({ persona: "ready", rp: "ready", scenario: "ready" })
+        } as any,
+        rpProfileStore: {} as any,
+        scenarioProfileStore: {} as any,
+        conversationAccess: {
+          recordSeenGroupMember: async () => {}
+        } as any
+      },
+      handleDirectCommand: async () => {},
+      persistSession: (_sessionId, reason) => {
+        persistedReasons.push(reason);
+      },
+      sendImmediateText: async () => {},
+      flushSession: () => {}
+    }, {
+      chatType: "group",
+      userId: "10001",
+      groupId: "20001",
+      senderName: "Alice",
+      text: "@bot A later",
+      images: [],
+      audioSources: [],
+      audioIds: [],
+      emojiSources: [],
+      imageIds: [],
+      emojiIds: [],
+      attachments: [],
+      forwardIds: [],
+      replyMessageId: null,
+      mentionUserIds: [],
+      mentionedAll: false,
+      isAtMentioned: true
+    });
+
+    const current = sessionManager.getSession(session.id);
+    assert.deepEqual(current.pendingMessages.map((message) => `${message.userId}:${message.text}`), ["u_b:@bot B first"]);
+    assert.deepEqual(current.queuedGroupReplyTargets.map((target) => target.userId), ["u_a"]);
+    assert.equal(debounceScheduled, 1);
+    assert.ok(persistedReasons.includes("group_reply_target_promoted"));
+  });
+
+  test("group mention from externally whitelisted user is allowed in non-whitelisted group", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const session = sessionManager.ensureSession({ id: "qqbot:g:20001", type: "group" });
+
+    const decision = await resolveTriggerDecision({
+      config,
+      whitelistStore: {
+        hasUser(userId: string) {
+          return userId === "10001";
+        },
+        hasGroup() {
+          return false;
+        }
+      } as any,
+      conversationAccess: {
+        recordSeenGroupMember: async () => {}
+      } as any,
+      sessionManager
+    }, {
+      session,
+      user: { relationship: "known" },
+      setupState: { state: "ready" },
+      enrichedMessage: {
+        chatType: "group",
+        userId: "internal-10001",
+        externalUserId: "10001",
+        groupId: "20001",
+        senderName: "Alice",
+        text: "@bot hi",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        attachments: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: true
+      }
+    } as any);
+
+    assert.equal(decision.userMatched, true);
+    assert.equal(decision.shouldTriggerResponse, true);
+    assert.equal(decision.threadAction, "reply_now");
+  });
+
+  test("same directly addressed user soft-interrupts an active group response", async () => {
     const config = createTestAppConfig({
       whitelist: {
         enabled: false
@@ -372,7 +606,6 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     });
     const sessionManager = new SessionManager(config);
     const session = sessionManager.ensureSession({ id: "qqbot:g:20001", type: "group" });
-    sessionManager.setInterruptibleGroupTriggerUser(session.id, "u_test_user_1");
     const started = sessionManager.beginSyntheticGeneration(session.id);
     assert.equal(sessionManager.setActiveAssistantDraftResponseIfResponseEpochMatches(
       session.id,
@@ -395,6 +628,9 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
+          hasUser() {
+            return false;
+          },
           hasGroup() {
             return true;
           }
@@ -454,7 +690,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       userId: "u1",
       groupId: "20001",
       senderName: "Alice",
-      text: "等下我还没说完",
+      text: "@bot 等下我还没说完",
       images: [],
       audioSources: [],
       audioIds: [],
@@ -466,16 +702,16 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       replyMessageId: null,
       mentionUserIds: [],
       mentionedAll: false,
-      isAtMentioned: false
+      isAtMentioned: true
     });
 
     const current = sessionManager.getSession(session.id);
-    assert.equal(started.abortController.signal.aborted, false);
-    assert.equal(started.responseAbortController.signal.aborted, false);
-    assert.equal(sessionManager.hasActiveResponse(session.id), true);
+    assert.equal(started.abortController.signal.aborted, true);
+    assert.equal(started.responseAbortController.signal.aborted, true);
+    assert.equal(sessionManager.hasActiveResponse(session.id), false);
     assert.equal(current.pendingMessages.length, 1);
-    assert.equal(debounceScheduled, 0);
-    assert.ok(persistedReasons.includes("group_message_wait_more"));
+    assert.equal(debounceScheduled, 1);
+    assert.ok(persistedReasons.includes("user_message_interrupted_active_response"));
   });
 
   test("group mention trigger updates the session reply delivery flag", async () => {
@@ -495,6 +731,9 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
+          hasUser() {
+            return false;
+          },
           hasGroup() {
             return true;
           }
@@ -585,6 +824,9 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
+          hasUser() {
+            return false;
+          },
           hasGroup() {
             return false;
           }

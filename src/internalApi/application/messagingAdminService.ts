@@ -13,6 +13,7 @@ import type {
   GenerationCommittedTextSink,
   GenerationDraftOverlaySink
 } from "#app/generation/generationOutputContracts.ts";
+import { hasDirectCommandPrefix } from "#app/messaging/directCommands.ts";
 import type {
   ParsedSendTextBody,
   ParsedWebSessionStreamQuery,
@@ -324,7 +325,7 @@ async function runWebTurnInBackground(input: {
       replyMessageId: null,
       mentionUserIds: [],
       mentionedAll: false,
-      isAtMentioned: false
+      isAtMentioned: input.message.chatType === "group" && hasDirectCommandPrefix(input.message.text)
     }, {
       sessionId: input.sessionId,
       committedTextSink: {

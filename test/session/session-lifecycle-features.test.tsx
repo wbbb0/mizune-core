@@ -11,7 +11,6 @@ import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 
     const first = sessionManager.beginSyntheticGeneration(sessionId);
     const second = sessionManager.beginSyntheticGeneration(sessionId);
-    sessionManager.setInterruptibleGroupTriggerUser(sessionId, "owner");
 
     assert.equal(sessionManager.completeResponse(sessionId, first.responseEpoch), false);
     assert.equal(sessionManager.getSession(sessionId).phase.kind, "requesting_llm");
@@ -20,7 +19,7 @@ import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
     const session = sessionManager.getSession(sessionId);
     assert.equal(session.phase.kind, "idle");
     assert.equal(session.responseAbortController, null);
-    assert.equal(session.interruptibleGroupTriggerUserId, null);
+    assert.equal(session.currentReplyTarget, null);
   });
 
   test("epoch-guarded session mutations reject stale epochs after clear", async () => {
@@ -59,6 +58,52 @@ import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
       false
     );
   });
+
+  test("queued group reply targets are deduped by internal user id and promoted in first-trigger order", async () => {
+    const sessionManager = new SessionManager(createTestAppConfig());
+    const sessionId = "qqbot:g:test";
+    sessionManager.ensureSession({ id: sessionId, type: "group" });
+
+    sessionManager.enqueueGroupReplyTarget(sessionId, createGroupMessage("u_a", "Alice", "A1"));
+    sessionManager.enqueueGroupReplyTarget(sessionId, createGroupMessage("u_b", "Bob", "B1"));
+    sessionManager.enqueueGroupReplyTarget(sessionId, createGroupMessage("u_a", "Alice", "A2"));
+    sessionManager.enqueueGroupReplyTarget(sessionId, createGroupMessage("u_b", "Bob", "B2"));
+
+    let session = sessionManager.getSession(sessionId);
+    assert.equal(session.queuedGroupReplyTargets.length, 2);
+    assert.deepEqual(session.queuedGroupReplyTargets.map((item) => item.userId), ["u_a", "u_b"]);
+    assert.deepEqual(session.queuedGroupReplyTargets.map((item) => item.messages.map((message) => message.text)), [["A1", "A2"], ["B1", "B2"]]);
+    assert.notEqual(session.queuedGroupReplyTargets[0]?.transcriptGroupId, session.queuedGroupReplyTargets[1]?.transcriptGroupId);
+    const firstTranscriptGroupId = session.queuedGroupReplyTargets[0]?.transcriptGroupId;
+
+    assert.equal(sessionManager.promoteNextQueuedGroupReplyTarget(sessionId), 2);
+    session = sessionManager.getSession(sessionId);
+    assert.deepEqual(session.pendingMessages.map((message) => `${message.userId}:${message.text}`), ["u_a:A1", "u_a:A2"]);
+    assert.equal(session.pendingTranscriptGroupId, firstTranscriptGroupId);
+    assert.deepEqual(session.queuedGroupReplyTargets.map((item) => item.userId), ["u_b"]);
+  });
+
+  function createGroupMessage(userId: string, senderName: string, text: string) {
+    return {
+      chatType: "group" as const,
+      userId,
+      groupId: "test",
+      senderName,
+      text,
+      images: [],
+      audioSources: [],
+      audioIds: [],
+      emojiSources: [],
+      imageIds: [],
+      emojiIds: [],
+      attachments: [],
+      forwardIds: [],
+      replyMessageId: null,
+      mentionUserIds: [],
+      mentionedAll: false,
+      isAtMentioned: true
+    };
+  }
 
   test("interruptResponse closes unfinished assistant tool calls with synthetic tool results", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());

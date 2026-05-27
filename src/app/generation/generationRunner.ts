@@ -35,6 +35,13 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
         logger.info({ sessionId, promotedCount: promoted }, "session_steer_messages_promoted");
       }
     }
+    if (session.pendingMessages.length === 0 && sessionManager.hasQueuedGroupReplyTargets(sessionId)) {
+      const promoted = sessionManager.promoteNextQueuedGroupReplyTarget(sessionId);
+      if (promoted > 0) {
+        deps.lifecycle.persistSession(sessionId, "group_reply_target_promoted");
+        logger.info({ sessionId, promotedCount: promoted }, "group_reply_target_promoted");
+      }
+    }
     if (session.pendingMessages.length > 0) {
       if (session.debounceTimer != null) {
         logger.debug({ sessionId }, "session_pending_messages_waiting_for_debounce");
