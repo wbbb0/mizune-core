@@ -1,21 +1,19 @@
 # WebUI Workbench 架构
 
-本文档整理当前 WebUI 工作台的长期结构约定。当前前端共享能力已经从 `webui/src` 业务源码中拆到独立 `workbench-kit` submodule：
+本文档整理当前 WebUI 工作台的长期结构约定。当前前端共享能力已经从 `webui/src` 业务源码中拆到独立 `workbench-kit` submodule，并通过 `@workbench-kit/vue` 聚合入口供业务项目使用：
 
+- `vendor/workbench-kit/packages/vue`：推荐给业务项目依赖的聚合入口，统一导出组件、runtime、主题模板和样式入口。
 - `vendor/workbench-kit/packages/vue-workbench`：工作台外壳、导航、pane、菜单、toast、窗口、基础 primitives 与主题基础样式。
 - `vendor/workbench-kit/packages/vue-resource-editor`：schema 驱动资源编辑器的类型、字段渲染、草稿状态、资源编辑状态工厂与 editor client 契约。
 - `vendor/workbench-kit/packages/vue-file-workspace`：通用本地文件树、文件预览 client 契约与文件类型。
 - `webui/src`：llm-onebot 的业务 section、API adapter、路由、store、主题 token 值与具体资源接线。
 
-这些包当前作为 git 管理的源码包由 WebUI 通过 `file:` 依赖声明，并在 Vite / TypeScript 中解析到 submodule 源码。跨仓库复用时，每个项目通过 submodule 锁定具体 `workbench-kit` commit，不发布到 npm registry。
+这些包当前作为 git 管理的源码包由 WebUI 通过 `file:` 依赖声明，并在 Vite / TypeScript 中解析到 submodule 源码。跨仓库复用时，每个项目通过 submodule 锁定具体 `workbench-kit` commit，不发布到 npm registry。常规业务项目只直接依赖 `@workbench-kit/vue`，底层包保留给内部拆分和高级直接引用。
 
-三个包的接入方式、主题 token、Tailwind `@source` 配置和代码示例见各包 README：
+接入方式、主题模板和工作流见：
 
 - [`workbench-kit` 使用方式](../../vendor/workbench-kit/docs/usage.md)
 - [`workbench-kit` 工作流](../../vendor/workbench-kit/docs/workflow.md)
-- [`@workbench-kit/vue-workbench`](../../vendor/workbench-kit/packages/vue-workbench/README.md)
-- [`@workbench-kit/vue-resource-editor`](../../vendor/workbench-kit/packages/vue-resource-editor/README.md)
-- [`@workbench-kit/vue-file-workspace`](../../vendor/workbench-kit/packages/vue-file-workspace/README.md)
 
 ## Workbench 外壳与 Section Contract
 
@@ -226,7 +224,7 @@ Workbench framework 依赖一组稳定主题 token，而不是具体业务页面
 - safe area：`pt-safe`、`pl-safe`、`pr-safe`、`pb-safe-offset-*`
 - workbench size：`--activity-bar-width`
 
-当前默认 token 值由 `@workbench-kit/vue-workbench/theme/midnight.css` 提供；项目侧可在模板之后导入 `webui/src/style/theme-overrides.css` 覆盖少量变量，也可以完全不导入模板并自行提供完整 token。workbench 基础样式仍从 `@workbench-kit/vue-workbench/style.css` 引入。
+当前默认 token 值由 `@workbench-kit/vue/theme/midnight.css` 提供；项目侧可在模板之后导入 `webui/src/style/theme-overrides.css` 覆盖少量变量，也可以完全不导入模板并自行提供完整 token。workbench 基础样式仍从 `@workbench-kit/vue/style.css` 引入。
 
 ## 后续扩展约束
 

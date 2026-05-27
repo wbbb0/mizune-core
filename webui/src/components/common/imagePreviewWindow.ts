@@ -1,4 +1,4 @@
-import type { WorkbenchDialogDefinition, WorkbenchWindowResult } from "@workbench-kit/vue-workbench";
+import type { WorkbenchDialogDefinition, WorkbenchWindowResult } from "@workbench-kit/vue";
 import ImagePreviewDialog from "./ImagePreviewDialog.vue";
 
 type WindowOpener = {

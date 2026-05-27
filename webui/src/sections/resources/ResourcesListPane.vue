@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, type Component } from "vue";
 import { ChevronDown, ChevronRight, Download, Globe, Play, RefreshCw, SquareTerminal } from "lucide-vue-next";
-import { ResizableDisclosureStack, WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchIconButton, WorkbenchListItem } from "@workbench-kit/vue-workbench";
+import { ResizableDisclosureStack, WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchIconButton, WorkbenchListItem } from "@workbench-kit/vue";
 import { useResourcesSection } from "@/composables/sections/useResourcesSection";
 
 const {

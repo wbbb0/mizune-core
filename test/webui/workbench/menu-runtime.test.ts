@@ -4,7 +4,7 @@ import {
   createMenuRuntime,
   SUBMENU_ACTIVATION_DELAY_MS,
   SUBMENU_HOVER_DELAY_MS
-} from "@workbench-kit/vue-workbench/runtime";
+} from "@workbench-kit/vue/runtime";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let runtime = createMenuRuntime();

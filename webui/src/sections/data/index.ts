@@ -1,4 +1,4 @@
-import { defineWorkbenchView } from "@workbench-kit/vue-workbench";
+import { defineWorkbenchView } from "@workbench-kit/vue";
 import DataListPane from "./DataListPane.vue";
 import DataMainPane from "./DataMainPane.vue";
 import DataMobileHeader from "./DataMobileHeader.vue";

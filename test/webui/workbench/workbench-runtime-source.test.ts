@@ -254,6 +254,6 @@ test("legacy app layout shell is removed after workbench runtime migration", asy
     access(new URL("../../../webui/src/components/layout/AppLayout.vue", import.meta.url))
   );
   assert.doesNotMatch(theme, /--side-panel-width/);
-  assert.match(appStyle, /@workbench-kit\/vue-workbench\/theme\/midnight\.css/);
+  assert.match(appStyle, /@workbench-kit\/vue\/theme\/midnight\.css/);
   assert.match(appStyle, /\.\/theme-overrides\.css/);
 });

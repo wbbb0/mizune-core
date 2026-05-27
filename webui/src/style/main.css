@@ -1,12 +1,8 @@
-@import "@workbench-kit/vue-workbench/theme/midnight.css";
+@import "@workbench-kit/vue/theme/midnight.css";
 @import "./theme-overrides.css";
 @import "tailwindcss";
 @import "tailwindcss-safe-area";
-@import "@workbench-kit/vue-workbench/style.css";
-
-@source "../../../vendor/workbench-kit/packages/vue-workbench/src";
-@source "../../../vendor/workbench-kit/packages/vue-resource-editor/src";
-@source "../../../vendor/workbench-kit/packages/vue-file-workspace/src";
+@import "@workbench-kit/vue/style.css";
 
 /* Tree/list item primitives */
 .tree-head {

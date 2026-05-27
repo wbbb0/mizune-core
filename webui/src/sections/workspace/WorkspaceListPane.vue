@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
 import { RefreshCw } from "lucide-vue-next";
-import { FileTree as WorkspaceFileTree } from "@workbench-kit/vue-file-workspace";
+import { FileTree as WorkspaceFileTree } from "@workbench-kit/vue";
 import { useWorkspaceSection } from "@/composables/sections/useWorkspaceSection";
 import type { ChatFileSummary } from "@/api/workspace";
-import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchIconButton, WorkbenchListItem } from "@workbench-kit/vue-workbench";
+import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchIconButton, WorkbenchListItem } from "@workbench-kit/vue";
 
 const {
   mode,

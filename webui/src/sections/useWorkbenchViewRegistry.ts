@@ -1,7 +1,7 @@
-import type { WorkbenchView } from "@workbench-kit/vue-workbench";
+import type { WorkbenchView } from "@workbench-kit/vue";
 import { workbenchViews } from "@/sections/registry";
 
-export type { WorkbenchView } from "@workbench-kit/vue-workbench";
+export type { WorkbenchView } from "@workbench-kit/vue";
 
 export type WorkbenchRegistry = {
   workbenchViews: readonly WorkbenchView[];

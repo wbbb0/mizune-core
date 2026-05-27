@@ -1,4 +1,4 @@
-import type { WorkbenchDialogDefinition, WorkbenchWindowResult } from "@workbench-kit/vue-workbench";
+import type { WorkbenchDialogDefinition, WorkbenchWindowResult } from "@workbench-kit/vue";
 import { buildCreateSessionPayload, type CreateSessionPayload } from "./createSessionPayload";
 import CreateSessionModeBlock from "./CreateSessionModeBlock.vue";
 import CreateSessionTitleField from "./CreateSessionTitleField.vue";

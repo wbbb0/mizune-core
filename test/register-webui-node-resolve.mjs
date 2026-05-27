@@ -6,6 +6,8 @@ const root = process.cwd();
 const aliases = new Map([
   ["vue", pathToFileURL(resolve(root, "webui/node_modules/vue/index.mjs")).href],
   ["lucide-vue-next", pathToFileURL(resolve(root, "webui/node_modules/lucide-vue-next/dist/esm/lucide-vue-next.js")).href],
+  ["@workbench-kit/vue/runtime", pathToFileURL(resolve(root, "vendor/workbench-kit/packages/vue/src/runtime.ts")).href],
+  ["@workbench-kit/vue", pathToFileURL(resolve(root, "vendor/workbench-kit/packages/vue/src/index.ts")).href],
   ["@workbench-kit/vue-workbench/runtime", pathToFileURL(resolve(root, "vendor/workbench-kit/packages/vue-workbench/src/runtime-api.ts")).href],
   ["@workbench-kit/vue-workbench", pathToFileURL(resolve(root, "vendor/workbench-kit/packages/vue-workbench/src/index.ts")).href],
   ["@workbench-kit/vue-resource-editor", pathToFileURL(resolve(root, "vendor/workbench-kit/packages/vue-resource-editor/src/index.ts")).href],

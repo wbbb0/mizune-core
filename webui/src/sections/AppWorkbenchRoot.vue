@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { WorkbenchRoot } from "@workbench-kit/vue-workbench";
+import { WorkbenchRoot } from "@workbench-kit/vue";
 import { useAppWorkbenchChrome } from "@/composables/useAppWorkbenchChrome";
 import { useUiStore } from "@/stores/ui";
 import { workbenchNavItems } from "@/sections/navigation";

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { RefreshCw, ChevronRight, ChevronDown, Save, Trash2, Pin, Pencil, SlidersHorizontal, Plus } from "lucide-vue-next";
-import { SchemaNode } from "@workbench-kit/vue-resource-editor";
+import { SchemaNode } from "@workbench-kit/vue";
 import { useDataSection } from "@/composables/sections/useDataSection";
 import { useElementWidth } from "@/composables/useElementWidth";
 import DataModelExplorerPane from "./DataModelExplorerPane.vue";
-import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@workbench-kit/vue-workbench";
+import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@workbench-kit/vue";
 
 const {
   selectedKey,

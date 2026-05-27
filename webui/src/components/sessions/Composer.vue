@@ -19,9 +19,9 @@ import {
 import { useVisualViewportInset } from "@/composables/useVisualViewportInset";
 import { uploadsApi, type UploadedFile } from "@/api/uploads";
 import { prepareFilesForUpload } from "@/api/uploadPreparation";
-import { useWorkbenchToasts } from "@workbench-kit/vue-workbench";
+import { useWorkbenchToasts } from "@workbench-kit/vue";
 import { useUiStore } from "@/stores/ui";
-import { useWorkbenchRuntimeContext } from "@workbench-kit/vue-workbench";
+import { useWorkbenchRuntimeContext } from "@workbench-kit/vue";
 import { buildComposerSendPayload, type ComposerSendPayload } from "./composerPayload";
 import { formatSendErrorMessage, formatUploadErrorMessage } from "./composerErrors";
 import { COMPOSER_FILE_ACCEPT, COMPOSER_IMAGE_ACCEPT, filterComposerFiles } from "./composerAcceptedFiles";

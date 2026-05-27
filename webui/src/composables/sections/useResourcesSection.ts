@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { runtimeResourcesApi, type ShellSession } from "@/api/runtimeResources";
-import { useWorkbenchNavigation } from "@workbench-kit/vue-workbench";
+import { useWorkbenchNavigation } from "@workbench-kit/vue";
 
 const shellSessions = ref<ShellSession[]>([]);
 const selectedShellId = ref<string | null>(null);

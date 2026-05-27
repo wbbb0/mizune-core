@@ -9,21 +9,18 @@
 - 从 config/instances/*.yml 自动发现可用 backend，并在页面切换
 - 通过通用 editor 接口查看和编辑 config 与运行数据资源
 
-前端共享能力通过 `vendor/workbench-kit` submodule 引入：
+前端共享能力通过 `vendor/workbench-kit` submodule 引入，业务侧默认只依赖聚合入口 `@workbench-kit/vue`：
 
-- `@workbench-kit/vue-workbench`：工作台外壳、导航、菜单、toast、窗口和基础 primitives
-- `@workbench-kit/vue-resource-editor`：schema 驱动资源编辑器
-- `@workbench-kit/vue-file-workspace`：通用文件树和文件预览契约
+- 工作台外壳、导航、菜单、toast、窗口和基础 primitives
+- schema 驱动资源编辑器
+- 通用文件树和文件预览契约
 
 当前 WebUI 通过 `webui/package.json` 的 `file:` 依赖声明共享包，并在 `vite.config.ts` / `tsconfig.json` 中把开发态解析固定到 submodule 源码。跨项目复用时，每个项目锁定自己的 `workbench-kit` submodule commit。
 
-详细接入方式、主题模板、Tailwind `@source` 配置和使用示例见 `workbench-kit` 文档与各包 README：
+详细接入方式、主题模板和使用示例见 `workbench-kit` 文档：
 
 - [`workbench-kit` 使用方式](../vendor/workbench-kit/docs/usage.md)
 - [`workbench-kit` 工作流](../vendor/workbench-kit/docs/workflow.md)
-- [`@workbench-kit/vue-workbench`](../vendor/workbench-kit/packages/vue-workbench/README.md)
-- [`@workbench-kit/vue-resource-editor`](../vendor/workbench-kit/packages/vue-resource-editor/README.md)
-- [`@workbench-kit/vue-file-workspace`](../vendor/workbench-kit/packages/vue-file-workspace/README.md)
 
 ## 安装
 

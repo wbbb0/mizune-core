@@ -1,6 +1,6 @@
-import { createResourceEditorState, type ResourceEditorState } from "@workbench-kit/vue-resource-editor";
+import { createResourceEditorState, type ResourceEditorState } from "@workbench-kit/vue";
 import { computed, ref, type ComputedRef, type Ref } from "vue";
-import { useWorkbenchNavigation, useWorkbenchToasts, useWorkbenchWindows } from "@workbench-kit/vue-workbench";
+import { useWorkbenchNavigation, useWorkbenchToasts, useWorkbenchWindows } from "@workbench-kit/vue";
 import {
   editorApi,
   normalizeEditorResource,

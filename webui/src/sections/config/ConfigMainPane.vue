@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { RefreshCw, RotateCcw, Save, Wand2 } from "lucide-vue-next";
-import { SchemaNode } from "@workbench-kit/vue-resource-editor";
+import { SchemaNode } from "@workbench-kit/vue";
 import { useElementWidth } from "@/composables/useElementWidth";
 import { useConfigSection } from "@/composables/sections/useConfigSection";
-import { WorkbenchAreaHeader, WorkbenchEmptyState } from "@workbench-kit/vue-workbench";
+import { WorkbenchAreaHeader, WorkbenchEmptyState } from "@workbench-kit/vue";
 
 const {
   selectedKey,

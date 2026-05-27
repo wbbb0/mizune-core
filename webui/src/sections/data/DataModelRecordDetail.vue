@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, ref } from "vue";
 import { Save, Table2, Trash2 } from "lucide-vue-next";
-import { SchemaNode, type UiNode } from "@workbench-kit/vue-resource-editor";
+import { SchemaNode, type UiNode } from "@workbench-kit/vue";
 import { dataApi, type DataResource } from "@/api/data";
 import { useElementWidth } from "@/composables/useElementWidth";
 import { useDataSection } from "@/composables/sections/useDataSection";
-import { useWorkbenchToasts, useWorkbenchWindows, WorkbenchIconButton, WorkbenchKeyValueDetails } from "@workbench-kit/vue-workbench";
+import { useWorkbenchToasts, useWorkbenchWindows, WorkbenchIconButton, WorkbenchKeyValueDetails } from "@workbench-kit/vue";
 import { formatModelCell, getModelDetailEntries, modelRowId, rowText } from "./dataModelView";
 import DataJsonValueViewer from "./DataJsonValueViewer.vue";
 

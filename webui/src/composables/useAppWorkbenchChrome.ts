@@ -1,6 +1,6 @@
 import { computed, type ComputedRef } from "vue";
-import type { WorkbenchStatusbarItem, WorkbenchTopbarMenu } from "@workbench-kit/vue-workbench";
-import type { WorkbenchNavItem } from "@workbench-kit/vue-workbench";
+import type { WorkbenchStatusbarItem, WorkbenchTopbarMenu } from "@workbench-kit/vue";
+import type { WorkbenchNavItem } from "@workbench-kit/vue";
 import AuthStatusChip from "@/components/app/AuthStatusChip.vue";
 import { useUiStore } from "@/stores/ui";
 

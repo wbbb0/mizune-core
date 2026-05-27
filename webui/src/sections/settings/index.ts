@@ -1,4 +1,4 @@
-import { defineWorkbenchView } from "@workbench-kit/vue-workbench";
+import { defineWorkbenchView } from "@workbench-kit/vue";
 import SettingsListPane from "./SettingsListPane.vue";
 import SettingsMainPane from "./SettingsMainPane.vue";
 import SettingsMobileHeader from "./SettingsMobileHeader.vue";

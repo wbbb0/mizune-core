@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { WorkbenchAreaHeader, WorkbenchEmptyState } from "@workbench-kit/vue-workbench";
+import { WorkbenchAreaHeader, WorkbenchEmptyState } from "@workbench-kit/vue";
 import { useDataSection } from "@/composables/sections/useDataSection";
 import DataModelRecordDetail from "./DataModelRecordDetail.vue";
 import { rowText } from "./dataModelView";

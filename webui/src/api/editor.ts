@@ -5,7 +5,7 @@ import type {
   ResourceEditorClient,
   ResourceEditorSaveResult,
   ResourceEditorValidateResult
-} from "@workbench-kit/vue-resource-editor";
+} from "@workbench-kit/vue";
 
 export type {
   EditorDraftEffectiveMode,
@@ -21,7 +21,7 @@ export type {
   SchemaMeta,
   SingleEditorModel,
   UiNode
-} from "@workbench-kit/vue-resource-editor";
+} from "@workbench-kit/vue";
 
 export const editorApi: ResourceEditorClient = {
   list(): Promise<{ resources: EditorResourceSummary[] }> {

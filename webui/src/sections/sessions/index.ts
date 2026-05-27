@@ -1,4 +1,4 @@
-import { defineWorkbenchView } from "@workbench-kit/vue-workbench";
+import { defineWorkbenchView } from "@workbench-kit/vue";
 import SessionsListPane from "./SessionsListPane.vue";
 import SessionsMainPane from "./SessionsMainPane.vue";
 import SessionsMobileHeader from "./SessionsMobileHeader.vue";

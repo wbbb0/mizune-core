@@ -10,9 +10,7 @@
   },
   "dependencies": {
     "@simplewebauthn/browser": "^13.3.0",
-    "@workbench-kit/vue-file-workspace": "file:../vendor/workbench-kit/packages/vue-file-workspace",
-    "@workbench-kit/vue-resource-editor": "file:../vendor/workbench-kit/packages/vue-resource-editor",
-    "@workbench-kit/vue-workbench": "file:../vendor/workbench-kit/packages/vue-workbench",
+    "@workbench-kit/vue": "file:../vendor/workbench-kit/packages/vue",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
     "@xterm/addon-web-links": "^0.12.0",

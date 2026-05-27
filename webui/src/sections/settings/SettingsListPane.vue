@@ -3,7 +3,7 @@ import { onMounted } from "vue";
 import { LockKeyhole, LogOut } from "lucide-vue-next";
 import { useUiStore } from "@/stores/ui";
 import { useSettingsSection } from "@/composables/sections/useSettingsSection";
-import { WorkbenchListItem, WorkbenchSidebarListPane } from "@workbench-kit/vue-workbench";
+import { WorkbenchListItem, WorkbenchSidebarListPane } from "@workbench-kit/vue";
 
 const ui = useUiStore();
 const { auth, activeItem, selectItem, initializeSection } = useSettingsSection();

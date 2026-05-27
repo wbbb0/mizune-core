@@ -2,7 +2,7 @@ import { computed, ref, type ComputedRef, type Ref } from "vue";
 import { RefreshCw, FolderOpen, Image as ImageIcon, FileText, File, Folder } from "lucide-vue-next";
 import { fileApi, type ChatFileSummary, type LocalFilePreview, type LocalFileItem } from "@/api/workspace";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
-import { useWorkbenchNavigation } from "@workbench-kit/vue-workbench";
+import { useWorkbenchNavigation } from "@workbench-kit/vue";
 
 type Mode = "files" | "stored-files";
 

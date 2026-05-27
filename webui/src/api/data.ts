@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { SchemaMeta, UiNode } from "@workbench-kit/vue-resource-editor";
+import type { SchemaMeta, UiNode } from "@workbench-kit/vue";
 
 export type DataResourceShape = "singleton" | "collection" | "log" | "file" | "directory";
 export type DataResourceDurability = "source_of_truth" | "cache" | "derived" | "ephemeral";

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { SchemaNode, type UiNode } from "@workbench-kit/vue-resource-editor";
+import { SchemaNode, type UiNode } from "@workbench-kit/vue";
 import { ref } from "vue";
 
 const props = defineProps<{

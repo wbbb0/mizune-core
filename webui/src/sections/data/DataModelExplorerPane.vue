@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { DataResource, DataResourceModelColumn } from "@/api/data";
-import { PagedListPane, ResponsiveSplitPane, WorkbenchDataTable, type WorkbenchDataTableColumn } from "@workbench-kit/vue-workbench";
+import { PagedListPane, ResponsiveSplitPane, WorkbenchDataTable, type WorkbenchDataTableColumn } from "@workbench-kit/vue";
 import DataModelRecordDetail from "./DataModelRecordDetail.vue";
 import { formatModelCell, getModelListColumns, modelRowKey } from "./dataModelView";
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { SchemaNode, type ObjectFieldMeta, type SchemaMeta, type UiNode } from "@workbench-kit/vue-resource-editor";
+import { SchemaNode, type ObjectFieldMeta, type SchemaMeta, type UiNode } from "@workbench-kit/vue";
 
 const props = defineProps<{
   value: unknown;

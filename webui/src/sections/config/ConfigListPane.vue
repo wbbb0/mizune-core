@@ -2,7 +2,7 @@
 import { onMounted } from "vue";
 import { useUiStore } from "@/stores/ui";
 import { useConfigSection } from "@/composables/sections/useConfigSection";
-import { WorkbenchListItem, WorkbenchSidebarListPane } from "@workbench-kit/vue-workbench";
+import { WorkbenchListItem, WorkbenchSidebarListPane } from "@workbench-kit/vue";
 
 const ui = useUiStore();
 const { resources, selectedKey, selectResource, refreshResources } = useConfigSection();

@@ -8,7 +8,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchIconButton } from "@workbench-kit/vue-workbench";
+import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchIconButton } from "@workbench-kit/vue";
 import { openShellSocket, type ShellSession, type ShellSocketMessage } from "@/api/runtimeResources";
 import { useResourcesSection } from "@/composables/sections/useResourcesSection";
 

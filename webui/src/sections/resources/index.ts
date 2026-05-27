@@ -1,4 +1,4 @@
-import { defineWorkbenchView } from "@workbench-kit/vue-workbench";
+import { defineWorkbenchView } from "@workbench-kit/vue";
 import ResourcesListPane from "./ResourcesListPane.vue";
 import ResourcesMainPane from "./ResourcesMainPane.vue";
 import ResourcesMobileHeader from "./ResourcesMobileHeader.vue";

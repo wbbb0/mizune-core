@@ -1,4 +1,4 @@
-import type { WorkbenchWindowContext } from "@workbench-kit/vue-workbench";
+import type { WorkbenchWindowContext } from "@workbench-kit/vue";
 
 export function createSessionWindowContext(sessionId: string): WorkbenchWindowContext {
   return {

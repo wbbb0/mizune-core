@@ -6,7 +6,7 @@ import type { MemoryContextItem, SessionDetailResult, SessionTaskTracker } from 
 import type { ActiveSession } from "@/stores/sessions";
 import { ApiError } from "@/api/client";
 import ScenarioHostStateEditor from "./ScenarioHostStateEditor.vue";
-import { WorkbenchAreaHeader, WorkbenchCard, WorkbenchDisclosure, WorkbenchEmptyState } from "@workbench-kit/vue-workbench";
+import { WorkbenchAreaHeader, WorkbenchCard, WorkbenchDisclosure, WorkbenchEmptyState } from "@workbench-kit/vue";
 
 const props = defineProps<{
   session: ActiveSession;

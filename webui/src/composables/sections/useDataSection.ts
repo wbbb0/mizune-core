@@ -1,11 +1,11 @@
 import { computed, defineComponent, h, ref, watch, type ComputedRef, type Ref } from "vue";
-import { useEditorDraftState } from "@workbench-kit/vue-resource-editor";
-import { useWorkbenchNavigation, useWorkbenchWindows } from "@workbench-kit/vue-workbench";
+import { useEditorDraftState } from "@workbench-kit/vue";
+import { useWorkbenchNavigation, useWorkbenchWindows } from "@workbench-kit/vue";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { contextApi, type ContextItemFilters, type ContextManagementItem, type ContextStatus } from "@/api/context";
 import { dataApi, type DataResourceSummary, type DataResource, type DataResourceItem, type DirectoryItem, type DataResourceRowsResult, type DataResourceModel } from "@/api/data";
 import { editorApi, type EditorModel, type EditorResourceSummary } from "@/api/editor";
-import { useWorkbenchToasts } from "@workbench-kit/vue-workbench";
+import { useWorkbenchToasts } from "@workbench-kit/vue";
 import ContextItemsControlPanel from "@/sections/data/ContextItemsControlPanel.vue";
 import DataRegistryRowCreateBlock from "@/sections/data/DataRegistryRowCreateBlock.vue";
 

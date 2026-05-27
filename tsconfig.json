@@ -11,6 +11,8 @@
     "paths": {
       "vue": ["./webui/node_modules/vue/dist/vue.d.ts"],
       "lucide-vue-next": ["./webui/node_modules/lucide-vue-next/dist/lucide-vue-next.d.ts"],
+      "@workbench-kit/vue": ["./vendor/workbench-kit/packages/vue/src/index.ts"],
+      "@workbench-kit/vue/runtime": ["./vendor/workbench-kit/packages/vue/src/runtime.ts"],
       "@workbench-kit/vue-workbench": ["./vendor/workbench-kit/packages/vue-workbench/src/index.ts"],
       "@workbench-kit/vue-workbench/runtime": ["./vendor/workbench-kit/packages/vue-workbench/src/runtime-api.ts"],
       "@workbench-kit/vue-resource-editor": ["./vendor/workbench-kit/packages/vue-resource-editor/src/index.ts"],

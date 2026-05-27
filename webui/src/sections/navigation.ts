@@ -1,5 +1,5 @@
 import { Database, Folder, MessageSquare, Settings, SlidersHorizontal, SquareTerminal } from "lucide-vue-next";
-import type { WorkbenchNavItem } from "@workbench-kit/vue-workbench";
+import type { WorkbenchNavItem } from "@workbench-kit/vue";
 
 export type AppWorkbenchNavItem = WorkbenchNavItem & {
   path: string;

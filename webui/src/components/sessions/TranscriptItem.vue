@@ -3,7 +3,7 @@ import { computed, inject } from "vue";
 import { Bot, FileText, GitBranch, Image as ImageIcon, Info, MoreHorizontal, User, Wrench } from "lucide-vue-next";
 import type { StoredToolCall, TranscriptItem } from "@/api/types";
 import SessionGlyph, { type SessionGlyphModel } from "./SessionGlyph.vue";
-import { WorkbenchCard, WorkbenchDisclosure } from "@workbench-kit/vue-workbench";
+import { WorkbenchCard, WorkbenchDisclosure } from "@workbench-kit/vue";
 import TranscriptTextBlock from "./TranscriptTextBlock.vue";
 import type { TranscriptExpandState } from "./ChatPanel.vue";
 

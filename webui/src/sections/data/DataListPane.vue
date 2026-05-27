@@ -2,7 +2,7 @@
 import { onMounted } from "vue";
 import { useUiStore } from "@/stores/ui";
 import { useDataSection } from "@/composables/sections/useDataSection";
-import { WorkbenchListItem, WorkbenchSidebarListPane } from "@workbench-kit/vue-workbench";
+import { WorkbenchListItem, WorkbenchSidebarListPane } from "@workbench-kit/vue";
 
 const ui = useUiStore();
 const { resources, selectedKey, selectResource, refreshResources, resourceBadge } = useDataSection();
