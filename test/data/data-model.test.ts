@@ -103,6 +103,29 @@ test("data model derives sqlite table group metadata", () => {
   assert.equal(groups[0]?.schemaVersion, 3);
   assert.deepEqual(groups[0]?.ownedTables, ["sessions"]);
   assert.deepEqual(groups[0]?.ownedIndexes, ["idx_sessions_id"]);
+  assert.equal(typeof groups[0]?.migrateSchema, "function");
+});
+
+test("data model can disable additive migration for reset-only domains", () => {
+  const domain = defineDataDomain({
+    database: "sessions",
+    tableGroup: "demo.reset_sessions",
+    schemaVersion: 4,
+    schemaMigration: "reset",
+    tables: {
+      sessions: defineTable({
+        table: "sessions",
+        primaryKey: ["sessionId"],
+        columns: [textColumn("sessionId", { storageName: "session_id" })]
+      })
+    }
+  });
+
+  const [group] = createTableGroupsFromDataDomain(domain);
+  assert.ok(group);
+  assert.equal(group.groupId, "demo.reset_sessions");
+  assert.equal(group.schemaVersion, 4);
+  assert.equal(group.migrateSchema, undefined);
 });
 
 test("data model applies additive sqlite schema migrations", () => {

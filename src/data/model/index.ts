@@ -87,6 +87,14 @@ export interface DataDomainModel {
   tableGroup: string;
   /** Schema version recorded by the SQLite table-group manager. Defaults to 1. */
   schemaVersion?: number;
+  /**
+   * How schema-version mismatches should be handled.
+   *
+   * `additive` creates missing modeled columns/indexes in place. Use `reset`
+   * for domains whose JSON payloads or runtime semantics are not safely
+   * migrated by SQL shape changes alone.
+   */
+  schemaMigration?: "additive" | "reset";
   /** Reset policy used when schema validation fails. */
   resetPolicy?: SqliteTableGroupDefinition["resetPolicy"];
   /** Tables keyed by data resource key or another stable domain-local name. */
@@ -369,7 +377,7 @@ export function createTableGroupsFromDataDomain(domain: DataDomainModel): Sqlite
     ownedTables: Object.values(domain.tables).map((table) => table.table),
     ownedIndexes: Object.values(domain.tables).flatMap((table) => (table.indexes ?? []).map((index) => index.name)),
     createSchema: (db) => createDataDomainSchema(db, domain),
-    migrateSchema: (db) => migrateDataDomainSchema(db, domain),
+    ...(domain.schemaMigration === "reset" ? {} : { migrateSchema: (db) => migrateDataDomainSchema(db, domain) }),
     validateSchema: (db) => validateDataDomainSchema(db, domain)
   }];
 }

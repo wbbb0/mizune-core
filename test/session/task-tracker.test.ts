@@ -247,75 +247,59 @@ test("legacy persisted sessions restore with default task tracker", () => {
   assert.deepEqual(restored.taskTracker, createEmptySessionTaskTracker());
 });
 
-test("sqlite v3 session schema migrates with default task tracker", async () => {
-  await withDataDir("llm-bot-session-task-tracker-sqlite-migration-test", async (dataDir: string) => {
-    const logger = pino({ level: "silent" });
-    const dbPath = join(dataDir, "sessions", "sessions.sqlite");
-    const oldSessionsTable = sessionDataDomain.tables.sessions;
-    assert.ok(oldSessionsTable);
-    const oldDomain = {
-      ...sessionDataDomain,
-      schemaVersion: 3,
-      tables: {
-        ...sessionDataDomain.tables,
-        sessions: {
-          ...oldSessionsTable,
-          columns: oldSessionsTable.columns.filter((column) => column.key !== "taskTrackerJson")
+test("sqlite old session schemas reset instead of migrating persisted rows", async () => {
+  await withDataDir("llm-bot-session-task-tracker-sqlite-reset-test", async (dataDir: string) => {
+    for (const oldVersion of [3, 5]) {
+      const logger = pino({ level: "silent" });
+      const oldDataDir = join(dataDir, `sessions-v${oldVersion}`);
+      const dbPath = join(oldDataDir, "sessions", "sessions.sqlite");
+      const oldSessionsTable = sessionDataDomain.tables.sessions;
+      assert.ok(oldSessionsTable);
+      const oldDomain = {
+        ...sessionDataDomain,
+        schemaVersion: oldVersion,
+        tables: {
+          ...sessionDataDomain.tables,
+          sessions: {
+            ...oldSessionsTable,
+            columns: oldVersion < 4
+              ? oldSessionsTable.columns.filter((column) => column.key !== "taskTrackerJson")
+              : oldSessionsTable.columns
+          }
         }
-      }
-    };
-    const oldHandle = await new SqliteService(logger).openDatabase({
-      databaseId: "sessions",
-      dbPath,
-      tableGroups: createTableGroupsFromDataDomain(oldDomain),
-      pragmas: {
-        wal: true,
-        foreignKeys: true,
-        busyTimeoutMs: 5000
-      }
-    });
-    oldHandle.db.prepare(`
-      INSERT INTO sessions (
-        session_id, type, participant_kind, participant_id, title, title_source,
-        pending_messages_json, history_summary, debug_markers_json, sent_messages_json,
-        last_active_at_ms, last_message_at_ms, latest_gap_ms, smoothed_gap_ms, updated_at_ms
-      ) VALUES (
-        @sessionId, 'private', 'user', @participantId, @title, 'manual',
-        '[]', NULL, '[]', '[]',
-        1, 1, NULL, NULL, 1
-      )
-    `).run({
-      sessionId: "web:v3-task-tracker-migration",
-      participantId: "owner",
-      title: "Migration"
-    });
-    oldHandle.close();
+      };
+      const oldHandle = await new SqliteService(logger).openDatabase({
+        databaseId: "sessions",
+        dbPath,
+        tableGroups: createTableGroupsFromDataDomain(oldDomain),
+        pragmas: {
+          wal: true,
+          foreignKeys: true,
+          busyTimeoutMs: 5000
+        }
+      });
+      oldHandle.db.prepare(`
+        INSERT INTO sessions (
+          session_id, type, participant_kind, participant_id, title, title_source,
+          pending_messages_json, history_summary, debug_markers_json, sent_messages_json,
+          last_active_at_ms, last_message_at_ms, latest_gap_ms, smoothed_gap_ms, updated_at_ms
+        ) VALUES (
+          @sessionId, 'private', 'user', @participantId, @title, 'manual',
+          '[]', NULL, '[]', '[]',
+          1, 1, NULL, NULL, 1
+        )
+      `).run({
+        sessionId: `web:v${oldVersion}-session-reset`,
+        participantId: "owner",
+        title: "Reset"
+      });
+      oldHandle.close();
 
-    const persistence = new SessionPersistence(dataDir, logger);
-    await persistence.init();
+      const persistence = new SessionPersistence(oldDataDir, logger);
+      await persistence.init();
 
-    assert.deepEqual(await persistence.loadAll(), [{
-      id: "web:v3-task-tracker-migration",
-      type: "private",
-      source: "onebot",
-      modeId: "rp_assistant",
-      operationMode: { kind: "normal" },
-      participantRef: { kind: "user", id: "owner" },
-      title: "Migration",
-      titleSource: "manual",
-      replyDelivery: "onebot",
-      pendingMessages: [],
-      historySummary: null,
-      taskTracker: createEmptySessionTaskTracker(),
-      internalTranscript: [],
-      debugMarkers: [],
-      lastLlmUsage: null,
-      sentMessages: [],
-      lastActiveAt: 1,
-      lastMessageAt: 1,
-      latestGapMs: null,
-      smoothedGapMs: null
-    }]);
+      assert.deepEqual(await persistence.loadAll(), []);
+    }
   });
 });
 
