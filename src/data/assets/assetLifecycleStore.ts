@@ -107,6 +107,16 @@ export class AssetLifecycleStore {
     return new Set(rows.map((row) => row.assetId));
   }
 
+  async removeRefsForAsset(assetKind: AssetKind, assetId: string): Promise<number> {
+    const normalizedAssetId = normalizeId(assetId);
+    const db = await this.getReadyDb();
+    const result = db.prepare(`
+      DELETE FROM asset_session_refs
+      WHERE asset_kind = ? AND asset_id = ?
+    `).run(assetKind, normalizedAssetId);
+    return result.changes;
+  }
+
   private insertRefs(db: SqliteDatabase, refs: AssetSessionRef[]): void {
     const insert = db.prepare(`
       INSERT INTO asset_session_refs (

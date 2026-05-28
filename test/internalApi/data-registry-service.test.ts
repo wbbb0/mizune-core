@@ -45,6 +45,7 @@ function createRegistryService(dataDir: string, options: {
   const audioRows = [...(options.audioRows ?? [])];
   const workspaceRows = [...(options.workspaceRows ?? [])];
   const recentErrorRows = [...(options.recentErrorRows ?? [])];
+  const removedAssetRefs: Array<{ assetKind: string; assetId: string }> = [];
   const sessionRows = [{
     sessionId: "private:u1",
     type: "private" as const,
@@ -503,6 +504,10 @@ function createRegistryService(dataDir: string, options: {
     assetLifecycleStore: {
       async listRows(input = {}) {
         return { rows: [], total: 0, offset: input.offset ?? 0, limit: input.limit ?? 100 };
+      },
+      async removeRefsForAsset(assetKind, assetId) {
+        removedAssetRefs.push({ assetKind, assetId });
+        return 1;
       }
     },
     sessionPersistence: {
@@ -539,12 +544,6 @@ function createRegistryService(dataDir: string, options: {
           offset,
           limit
         };
-      },
-      async remove(sessionId) {
-        const index = sessionRows.findIndex((row) => row.sessionId === sessionId);
-        if (index >= 0) {
-          sessionRows.splice(index, 1);
-        }
       }
     },
     runtimeResourceStore: {
@@ -583,7 +582,8 @@ function createRegistryService(dataDir: string, options: {
     }
   });
   return Object.assign(service, {
-    getSchedulerReloadCount: () => schedulerReloadCount
+    getSchedulerReloadCount: () => schedulerReloadCount,
+    getRemovedAssetRefs: () => [...removedAssetRefs]
   });
 }
 
@@ -900,6 +900,11 @@ test("DataRegistryService exposes delete-only persistent collections", async () 
     );
     await service.deleteRow("audio_files", "audio-1");
     assert.equal((await service.listRows("audio_files")).total, 0);
+    assert.deepEqual(service.getRemovedAssetRefs(), [{ assetKind: "audio", assetId: "audio-1" }]);
+    await assert.rejects(
+      service.deleteRow("audio_files", "missing-audio"),
+      /Unknown audio file: missing-audio/u
+    );
 
     const sessions = await service.getResource("sessions") as {
       resource: {
@@ -907,15 +912,17 @@ test("DataRegistryService exposes delete-only persistent collections", async () 
         rowOperations?: { get: boolean; create: boolean; patch: boolean; delete: boolean };
       };
     };
-    assert.equal(sessions.resource.accessMode, "deletable");
+    assert.equal(sessions.resource.accessMode, "readonly");
     assert.deepEqual(sessions.resource.rowOperations, {
       get: false,
       create: false,
       patch: false,
-      delete: true
+      delete: false
     });
-    await service.deleteRow("sessions", "private:u1");
-    assert.equal((await service.listRows("sessions")).total, 0);
+    await assert.rejects(
+      service.deleteRow("sessions", "private:u1"),
+      /Data resource does not allow deletion: sessions/u
+    );
 
     await service.createRow("users", {
       userId: "10001",
@@ -984,6 +991,14 @@ test("DataRegistryService exposes and exports workspace_files sqlite rows", asyn
     const exported = await service.exportResource("workspace_files") as { filePath: string };
     const dump = JSON.parse(await readFile(exported.filePath, "utf8")) as ChatFileRecord[];
     assert.equal(dump[0]?.fileId, "file_1");
+
+    await service.deleteRow("workspace_files", "file_1");
+    assert.equal((await service.listRows("workspace_files")).total, 0);
+    assert.deepEqual(service.getRemovedAssetRefs(), [{ assetKind: "chat_file", assetId: "file_1" }]);
+    await assert.rejects(
+      service.deleteRow("workspace_files", "missing-file"),
+      /Unknown workspace file: missing-file/u
+    );
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }

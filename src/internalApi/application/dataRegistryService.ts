@@ -103,8 +103,8 @@ export function createDataRegistryService(input: {
   contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "deleteContextItem" | "listRawMessages" | "listMaintenanceJobs" | "listContextItemSources" | "listContextItemEmbeddings" | "listEmbeddingProfiles" | "listManualAuditEvents">;
   audioStore: Pick<AudioStore, "listRows" | "getRow" | "deleteAudio">;
   chatFileStore: Pick<ChatFileStore, "listRows" | "getRow" | "deleteFile">;
-  assetLifecycleStore: Pick<AssetLifecycleStore, "listRows">;
-  sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows" | "remove">;
+  assetLifecycleStore: Pick<AssetLifecycleStore, "listRows" | "removeRefsForAsset">;
+  sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
   runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows">;
   recentErrorStore: Pick<RecentErrorStore, "listRows">;
   contentSafetyStore?: Pick<ContentSafetyStore, "listRows">;
@@ -139,8 +139,8 @@ function createInitialDataResourceDefinitions(input: {
   contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "deleteContextItem" | "listRawMessages" | "listMaintenanceJobs" | "listContextItemSources" | "listContextItemEmbeddings" | "listEmbeddingProfiles" | "listManualAuditEvents">;
   audioStore: Pick<AudioStore, "listRows" | "getRow" | "deleteAudio">;
   chatFileStore: Pick<ChatFileStore, "listRows" | "getRow" | "deleteFile">;
-  assetLifecycleStore: Pick<AssetLifecycleStore, "listRows">;
-  sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows" | "remove">;
+  assetLifecycleStore: Pick<AssetLifecycleStore, "listRows" | "removeRefsForAsset">;
+  sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
   runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows">;
   recentErrorStore: Pick<RecentErrorStore, "listRows">;
   contentSafetyStore?: Pick<ContentSafetyStore, "listRows">;
@@ -214,12 +214,12 @@ function createInitialDataResourceDefinitions(input: {
     createLiveResourcesResource(input.runtimeResourceStore),
     createRuntimeBrowserPagesResource(input.runtimeResourceStore),
     createRuntimeShellSessionsResource(input.runtimeResourceStore),
-    createAudioFilesResource(input.audioStore),
-    createComfyTasksResource(input.comfyTaskStore),
+    createAudioFilesResource(input.audioStore, input.assetLifecycleStore),
+    createComfyTasksResource(input.comfyTaskStore, input.assetLifecycleStore),
     createComfyTaskResultFilesResource(input.comfyTaskStore),
     createSessionsResource(input.sessionPersistence),
     createSessionTranscriptItemsResource(input.sessionPersistence),
-    createWorkspaceFilesResource(input.chatFileStore),
+    createWorkspaceFilesResource(input.chatFileStore, input.assetLifecycleStore),
     createAssetSessionRefsResource(input.assetLifecycleStore),
     createRecentErrorsResource(input.recentErrorStore)
   ];
@@ -251,14 +251,14 @@ function createRecentErrorsResource(
 }
 
 function createSessionsResource(
-  sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "remove">
+  sessionPersistence: Pick<SessionPersistence, "listSessionRows">
 ): DataResourceDefinition {
   return {
     key: "sessions",
     title: "会话",
     description: "会话元数据。完整消息不再内嵌在本表，见 session_transcript_items。",
     shape: "collection",
-    accessMode: "deletable",
+    accessMode: "readonly",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -284,10 +284,7 @@ function createSessionsResource(
       exportRows: async (query) => sessionPersistence.listSessionRows({
         ...(query.offset !== undefined ? { offset: query.offset } : {}),
         ...(query.limit !== undefined ? { limit: query.limit } : {})
-      }),
-      deleteRow: async (rowId) => {
-        await sessionPersistence.remove(rowId);
-      }
+      })
     }
   };
 }
@@ -335,7 +332,8 @@ function createSessionTranscriptItemsResource(
 }
 
 function createAudioFilesResource(
-  audioStore: Pick<AudioStore, "listRows" | "getRow" | "deleteAudio">
+  audioStore: Pick<AudioStore, "listRows" | "getRow" | "deleteAudio">,
+  assetLifecycleStore: Pick<AssetLifecycleStore, "removeRefsForAsset">
 ): DataResourceDefinition {
   const rowSchemaMeta = exportSchemaMeta(storedAudioFileRegistrySchema);
   return {
@@ -373,14 +371,19 @@ function createAudioFilesResource(
       }),
       getRow: async (rowId) => audioStore.getRow(rowId),
       deleteRow: async (rowId) => {
-        await audioStore.deleteAudio(rowId);
+        const deleted = await audioStore.deleteAudio(rowId);
+        if (!deleted) {
+          throw new Error(`Unknown audio file: ${rowId}`);
+        }
+        await assetLifecycleStore.removeRefsForAsset("audio", rowId);
       }
     }
   };
 }
 
 function createWorkspaceFilesResource(
-  chatFileStore: Pick<ChatFileStore, "listRows" | "getRow" | "deleteFile">
+  chatFileStore: Pick<ChatFileStore, "listRows" | "getRow" | "deleteFile">,
+  assetLifecycleStore: Pick<AssetLifecycleStore, "removeRefsForAsset">
 ): DataResourceDefinition {
   const rowSchemaMeta = exportSchemaMeta(chatFileRecordRegistrySchema);
   return {
@@ -418,7 +421,11 @@ function createWorkspaceFilesResource(
       }),
       getRow: async (rowId) => chatFileStore.getRow(rowId),
       deleteRow: async (rowId) => {
-        await chatFileStore.deleteFile(rowId);
+        const deleted = await chatFileStore.deleteFile(rowId);
+        if (!deleted) {
+          throw new Error(`Unknown workspace file: ${rowId}`);
+        }
+        await assetLifecycleStore.removeRefsForAsset("chat_file", rowId);
       }
     }
   };
@@ -447,7 +454,8 @@ function createAssetSessionRefsResource(
 }
 
 function createComfyTasksResource(
-  comfyTaskStore: Pick<ComfyTaskStore, "listRows" | "deleteById">
+  comfyTaskStore: Pick<ComfyTaskStore, "listRows" | "deleteById">,
+  assetLifecycleStore: Pick<AssetLifecycleStore, "removeRefsForAsset">
 ): DataResourceDefinition {
   const rowSchemaMeta = exportSchemaMeta(comfyTaskRecordSchema);
   return {
@@ -484,7 +492,11 @@ function createComfyTasksResource(
         ...(query.limit !== undefined ? { limit: query.limit } : {})
       }),
       deleteRow: async (rowId) => {
-        await comfyTaskStore.deleteById(rowId);
+        const deleted = await comfyTaskStore.deleteById(rowId);
+        if (!deleted) {
+          throw new Error(`Unknown Comfy task: ${rowId}`);
+        }
+        await assetLifecycleStore.removeRefsForAsset("comfy_task", rowId);
       }
     }
   };
@@ -1234,6 +1246,13 @@ function createUserMemoriesResource(
       }),
       deleteRow: async (rowId) => {
         const identity = decodeUserMemoryRowId(rowId);
+        const currentRows = await userStore.listMemoryRows({ filters: { userId: identity.userId } });
+        if (!currentRows.rows.some((row) => {
+          const record = row as { id?: unknown };
+          return record.id === identity.memoryId;
+        })) {
+          throw new Error(`Unknown user memory: ${identity.userId}/${identity.memoryId}`);
+        }
         await userStore.removeMemory(identity.userId, identity.memoryId);
       }
     }
@@ -1439,7 +1458,10 @@ function createContextItemsResource(
         return item ? rowWithId(item.itemId, item) : null;
       },
       deleteRow: async (rowId) => {
-        contextStore.deleteContextItem(rowId);
+        const result = contextStore.deleteContextItem(rowId);
+        if (!result.deleted) {
+          throw new Error(`Unknown context item: ${rowId}`);
+        }
       }
     }
   };

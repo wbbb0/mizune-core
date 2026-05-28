@@ -289,6 +289,38 @@ test("asset lifecycle self-heals refs whose sessions disappeared", async () => {
   }
 });
 
+test("asset lifecycle store removes refs for one asset", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-lifecycle-remove-asset-"));
+  try {
+    const store = new AssetLifecycleStore(dataDir, pino({ level: "silent" }));
+    await store.replaceSessionRefs("session-1", [
+      {
+        assetKind: "chat_file",
+        assetId: "file-1",
+        sessionId: "session-1",
+        refKind: "message",
+        createdAtMs: 0,
+        lastSeenAtMs: 0,
+        expiresAtMs: null
+      },
+      {
+        assetKind: "audio",
+        assetId: "audio-1",
+        sessionId: "session-1",
+        refKind: "message",
+        createdAtMs: 0,
+        lastSeenAtMs: 0,
+        expiresAtMs: null
+      }
+    ]);
+
+    assert.equal(await store.removeRefsForAsset("chat_file", "file-1"), 1);
+    assert.deepEqual((await store.listRefs()).map((ref) => `${ref.assetKind}:${ref.assetId}`), ["audio:audio-1"]);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 function chatFile(
   fileId: string,
   createdAtMs: number,
