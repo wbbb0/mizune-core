@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref, shallowRef } from "vue";
+import { ref, type Ref } from "vue";
 import type {
   SessionListItem,
   SessionListStreamEvent,
@@ -101,19 +101,16 @@ export interface ActiveSession {
   composerUserId: string | null;
 }
 
-function clearDraftOverlay(session: ActiveSession): ActiveSession {
-  return {
-    ...session,
-    draftTurnId: null,
-    draftAssistantText: null
-  };
+function clearDraftOverlay(session: ActiveSession): void {
+  session.draftTurnId = null;
+  session.draftAssistantText = null;
 }
 
 export const useSessionsStore = defineStore("sessions", () => {
   const list = ref<NormalizedSessionListItem[]>([]);
   const modes = ref<SessionModeOption[]>([]);
   const selectedId = ref<string | null>(null);
-  const active = shallowRef<ActiveSession | null>(null);
+  const active: Ref<ActiveSession | null> = ref(null);
   const composerDraftTextBySessionId = ref<Record<string, string>>(readStoredComposerDrafts());
 
   let _es: EventSource | null = null;
@@ -132,7 +129,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     if (selectedId.value && active.value) {
       const selected = list.value.find((item) => item.id === selectedId.value);
       if (selected) {
-        active.value = syncSessionDisplayFields(active.value, selected);
+        syncActiveSessionDisplayFields(selected);
       }
     }
     modes.value = modeRes.modes;
@@ -153,8 +150,22 @@ export const useSessionsStore = defineStore("sessions", () => {
     }
 
     if (active.value?.id === nextSession.id) {
-      active.value = syncSessionDisplayFields(active.value, nextSession);
+      syncActiveSessionDisplayFields(nextSession);
     }
+  }
+
+  function patchActiveSession(patch: Partial<ActiveSession>): void {
+    if (!active.value) {
+      return;
+    }
+    Object.assign(active.value, patch);
+  }
+
+  function syncActiveSessionDisplayFields(next: NormalizedSessionListItem): void {
+    if (!active.value || active.value.id !== next.id) {
+      return;
+    }
+    Object.assign(active.value, syncSessionDisplayFields(active.value, next));
   }
 
   function applySessionRemoved(sessionId: string): void {
@@ -164,26 +175,20 @@ export const useSessionsStore = defineStore("sessions", () => {
     }
   }
 
-  function applyTranscriptPatch(
+  function patchTranscriptEntry(
     transcript: TranscriptEntry[],
     itemId: string,
     patch: TranscriptItemPatch
-  ): TranscriptEntry[] {
-    let changed = false;
-    const next = transcript.map((entry) => {
-      if (entry.id !== itemId) {
-        return entry;
-      }
-      changed = true;
-      return {
-        ...entry,
-        item: {
-          ...entry.item,
-          ...patch
-        }
-      };
-    });
-    return changed ? next : transcript;
+  ): boolean {
+    const entry = transcript.find((item) => item.id === itemId);
+    if (!entry) {
+      return false;
+    }
+    entry.item = {
+      ...entry.item,
+      ...patch
+    };
+    return true;
   }
 
   function dedupeTranscriptEntries(entries: TranscriptEntry[]): TranscriptEntry[] {
@@ -214,22 +219,17 @@ export const useSessionsStore = defineStore("sessions", () => {
     }
     const touchedIds = new Set(itemIds);
     const runtimeExcludedAt = Date.now();
-    active.value = {
-      ...active.value,
-      transcript: active.value.transcript.map((entry) => (
-        touchedIds.has(entry.id)
-          ? {
-              ...entry,
-              item: {
-                ...entry.item,
-                runtimeExcluded: true,
-                runtimeExcludedAt: entry.item.runtimeExcludedAt ?? runtimeExcludedAt,
-                runtimeExclusionReason: entry.item.runtimeExclusionReason ?? reason
-              }
-            }
-          : entry
-      ))
-    };
+    for (const entry of active.value.transcript) {
+      if (!touchedIds.has(entry.id)) {
+        continue;
+      }
+      entry.item = {
+        ...entry.item,
+        runtimeExcluded: true,
+        runtimeExcludedAt: entry.item.runtimeExcludedAt ?? runtimeExcludedAt,
+        runtimeExclusionReason: entry.item.runtimeExclusionReason ?? reason
+      };
+    }
   }
 
   function _openStream(sessionId: string, epoch?: number, transcriptCount?: number): void {
@@ -262,7 +262,7 @@ export const useSessionsStore = defineStore("sessions", () => {
         composerUserId: null
       };
     } else {
-      active.value = { ...active.value, streamStatus: "connecting" };
+      patchActiveSession({ streamStatus: "connecting" });
     }
 
     const es = sessionsApi.openStream(sessionId, {
@@ -277,13 +277,13 @@ export const useSessionsStore = defineStore("sessions", () => {
       if (_es !== es) return;
       debugSession("open_stream:onopen", { sessionId, readyState: es.readyState });
       if (active.value?.id === sessionId) {
-        active.value = { ...active.value, streamStatus: "connected" };
+        patchActiveSession({ streamStatus: "connected" });
       }
     };
 
     es.addEventListener("message", () => { /* ignore generic messages */ });
 
-    for (const eventType of ["ready", "reset", "status", "transcript_item_added", "transcript_item_patched", "session_error"] as const) {
+    for (const eventType of ["ready", "reset", "status_patch", "transcript_item_added", "transcript_item_patched", "session_error"] as const) {
       es.addEventListener(eventType, (e: MessageEvent) => {
         if (_es !== es) return;
         try {
@@ -298,7 +298,7 @@ export const useSessionsStore = defineStore("sessions", () => {
       if (_es !== es) return;
       debugSession("open_stream:onerror", { sessionId, readyState: es.readyState, currentStatus: active.value?.streamStatus ?? null });
       if (active.value?.id === sessionId) {
-        active.value = { ...active.value, streamStatus: "connecting" };
+        patchActiveSession({ streamStatus: "connecting" });
       }
       _scheduleReconnect(sessionId);
     };
@@ -325,7 +325,7 @@ export const useSessionsStore = defineStore("sessions", () => {
             if (selectedId.value && active.value) {
               const selected = list.value.find((item) => item.id === selectedId.value);
               if (selected) {
-                active.value = syncSessionDisplayFields(active.value, selected);
+                syncActiveSessionDisplayFields(selected);
               }
             }
             return;
@@ -352,13 +352,12 @@ export const useSessionsStore = defineStore("sessions", () => {
       const snap = await sessionsApi.fetchTranscript(sessionId, { limit: 25 });
       const cur = active.value;
       if (!cur || cur.id !== sessionId) return; // 会话已切换，丢弃
-      active.value = {
-        ...cur,
+      Object.assign(cur, {
         transcript: snap.items.map((item) => toTranscriptEntry(item)),
         transcriptCount: snap.totalCount,
         transcriptHasMore: snap.hasMore,
         transcriptLoadingMore: false
-      };
+      });
       _openStream(sessionId, epoch, snap.totalCount);
     } catch {
       const cur = active.value;
@@ -375,28 +374,26 @@ export const useSessionsStore = defineStore("sessions", () => {
     if (event.type === "session_error") {
       debugSession("handle_event:session_error", { activeSessionId: cur.id, message: event.message });
       _closeStream();
-      active.value = { ...cur, streamStatus: "error" };
+      cur.streamStatus = "error";
       return;
     }
 
     if (cur.id !== event.sessionId) return;
 
     if (event.type === "ready") {
-      active.value = {
-        ...cur,
+      Object.assign(cur, {
         streamStatus: "connected",
         modeId: event.modeId,
         mutationEpoch: event.mutationEpoch,
         transcriptCount: event.transcriptCount,
         lastActiveAt: event.lastActiveAt,
         phase: event.phase
-      };
+      });
       return;
     }
 
     if (event.type === "reset") {
-      active.value = {
-        ...cur,
+      Object.assign(cur, {
         mutationEpoch: event.mutationEpoch,
         modeId: event.modeId,
         transcriptCount: 0,
@@ -409,19 +406,16 @@ export const useSessionsStore = defineStore("sessions", () => {
         draftTurnId: null,
         draftAssistantText: null,
         composerUserId: cur.composerUserId
-      };
+      });
       void _initTranscriptAndStream(cur.id, event.mutationEpoch);
       return;
     }
 
-    if (event.type === "status") {
-      active.value = {
-        ...cur,
+    if (event.type === "status_patch") {
+      Object.assign(cur, {
         mutationEpoch: event.mutationEpoch,
-        modeId: event.modeId,
-        lastActiveAt: event.lastActiveAt,
-        phase: event.phase
-      };
+        ...event.patch
+      });
       return;
     }
 
@@ -430,33 +424,22 @@ export const useSessionsStore = defineStore("sessions", () => {
       if (already) {
         return;
       }
-      const transcript = [
-        ...cur.transcript,
-        {
-          id: event.item.id,
-          eventId: event.item.id,
-          index: event.index,
-          item: event.item
-        }
-      ];
+      cur.transcript.push({
+        id: event.item.id,
+        eventId: event.item.id,
+        index: event.index,
+        item: event.item
+      });
       const isAssistantMessage = event.item.kind === "assistant_message";
-      active.value = {
-        ...cur,
-        transcript,
-        transcriptCount: event.totalCount,
-        ...(isAssistantMessage ? { draftAssistantText: null } : {})
-      };
+      cur.transcriptCount = event.totalCount;
+      if (isAssistantMessage) {
+        cur.draftAssistantText = null;
+      }
       return;
     }
 
     if (event.type === "transcript_item_patched") {
-      const transcript = applyTranscriptPatch(cur.transcript, event.itemId, event.patch);
-      if (transcript !== cur.transcript) {
-        active.value = {
-          ...cur,
-          transcript
-        };
-      }
+      patchTranscriptEntry(cur.transcript, event.itemId, event.patch);
     }
   }
 
@@ -540,7 +523,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     const cur = active.value;
     if (!cur) return;
 
-    active.value = { ...cur, composerUserId: opts.userId };
+    cur.composerUserId = opts.userId;
     const { turnId } = await sessionsApi.sendTurn(sessionId, {
       userId: opts.userId,
       senderName: opts.senderName,
@@ -569,7 +552,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     const nextSession = normalizeSessionListItem(result.session);
     list.value = list.value.map((item) => item.id === sessionId ? nextSession : item);
     if (active.value?.id === sessionId) {
-      active.value = syncSessionDisplayFields(active.value, nextSession);
+      syncActiveSessionDisplayFields(nextSession);
     }
   }
 
@@ -578,7 +561,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     const nextSession = normalizeSessionListItem(result.session);
     list.value = list.value.map((item) => item.id === sessionId ? nextSession : item);
     if (active.value?.id === sessionId) {
-      active.value = syncSessionDisplayFields(active.value, nextSession);
+      syncActiveSessionDisplayFields(nextSession);
     }
     return nextSession;
   }
@@ -588,7 +571,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     const nextSession = normalizeSessionListItem(result.session);
     list.value = list.value.map((item) => item.id === sessionId ? nextSession : item);
     if (active.value?.id === sessionId) {
-      active.value = syncSessionDisplayFields(active.value, nextSession);
+      syncActiveSessionDisplayFields(nextSession);
     }
     return nextSession;
   }
@@ -615,7 +598,7 @@ export const useSessionsStore = defineStore("sessions", () => {
       if (active.value?.id !== sessionId) {
         return;
       }
-      active.value = updater(active.value);
+      Object.assign(active.value, updater(active.value));
     };
 
     es.addEventListener("ready", () => {
@@ -657,7 +640,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     const cleanup = () => {
       es.close();
       if (active.value?.id === sessionId) {
-        active.value = clearDraftOverlay(active.value);
+        clearDraftOverlay(active.value);
       }
     };
 
@@ -674,13 +657,12 @@ export const useSessionsStore = defineStore("sessions", () => {
   function reloadTranscript(): void {
     const cur = active.value;
     if (!cur) return;
-    active.value = {
-      ...cur,
+    Object.assign(cur, {
       transcript: [],
       transcriptCount: 0,
       transcriptHasMore: false,
       transcriptLoadingMore: false
-    };
+    });
     void _initTranscriptAndStream(cur.id, cur.mutationEpoch);
   }
 
@@ -691,7 +673,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     const sessionId = cur.id;
     const oldestIndex = cur.transcript[0]?.index ?? cur.transcriptCount;
 
-    active.value = { ...cur, transcriptLoadingMore: true };
+    cur.transcriptLoadingMore = true;
 
     try {
       const snap = await sessionsApi.fetchTranscript(sessionId, {
@@ -700,19 +682,18 @@ export const useSessionsStore = defineStore("sessions", () => {
       });
       const current = active.value;
       if (!current || current.id !== sessionId) return;
-      active.value = {
-        ...current,
+      Object.assign(current, {
         transcript: dedupeTranscriptEntries([
           ...snap.items.map((item) => toTranscriptEntry(item)),
           ...current.transcript
         ]),
         transcriptHasMore: snap.hasMore,
         transcriptLoadingMore: false
-      };
+      });
     } catch {
       const current = active.value;
       if (current?.id === sessionId) {
-        active.value = { ...current, transcriptLoadingMore: false };
+        current.transcriptLoadingMore = false;
       }
     }
   }
@@ -720,7 +701,7 @@ export const useSessionsStore = defineStore("sessions", () => {
   function setComposerUserId(userId: string | null): void {
     const cur = active.value;
     if (!cur) return;
-    active.value = { ...cur, composerUserId: userId };
+    cur.composerUserId = userId;
   }
 
   function getComposerDraftText(sessionId: string | null | undefined): string {

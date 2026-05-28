@@ -300,10 +300,10 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-    <WorkbenchAreaHeader class="justify-between px-3 py-1" :uppercase="false">
-      <span class="text-small text-text-subtle">查看并管理当前会话的非消息状态</span>
+    <WorkbenchAreaHeader class="flex-wrap justify-between gap-2 px-3 py-1" :uppercase="false">
+      <span class="min-w-0 text-small text-text-subtle">查看并管理当前会话的非消息状态</span>
       <button
-        class="btn-ghost flex items-center gap-1 px-1.5 py-0.5 text-small text-text-muted hover:text-text-primary"
+        class="btn-ghost flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-small text-text-muted hover:text-text-primary"
         :disabled="loading"
         title="重新加载会话状态"
         @click="loadDetail"
@@ -329,18 +329,18 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
           :summary="sessionTitle"
           @toggle="toggleDisclosure('overview')"
         >
-          <WorkbenchCard surface="sidebar">
+          <div class="border-b border-border-subtle pb-3">
             <div class="text-small text-text-subtle">标题</div>
             <div class="mt-1 break-all text-ui text-text-secondary">{{ sessionTitle }}</div>
             <div class="mt-1 text-small text-text-subtle">
               {{ detail?.session.titleSource === 'manual' ? '手动设置' : detail?.session.titleSource === 'auto' ? '自动生成' : '默认标题' }}
             </div>
-          </WorkbenchCard>
-          <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <WorkbenchCard v-for="[label, value] in commonFields" :key="label" surface="sidebar">
+          </div>
+          <div class="mt-3 grid gap-x-5 gap-y-2 md:grid-cols-2">
+            <div v-for="[label, value] in commonFields" :key="label" class="grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border-subtle py-1.5">
               <div class="text-small text-text-subtle">{{ label }}</div>
-              <div class="mt-1 break-all text-ui text-text-secondary">{{ value }}</div>
-            </WorkbenchCard>
+              <div class="break-all text-small text-text-secondary">{{ value }}</div>
+            </div>
           </div>
         </WorkbenchDisclosure>
 
@@ -363,17 +363,17 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
         >
           <WorkbenchEmptyState v-if="!taskTracker" :centered="false" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle" message="暂无任务跟踪状态" />
           <div v-else class="flex min-w-0 flex-col gap-3">
-            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              <WorkbenchCard v-for="[label, value] in taskTrackerRows" :key="label" class="min-w-0 overflow-hidden" surface="sidebar">
+            <div class="grid gap-x-5 gap-y-2 md:grid-cols-2">
+              <div v-for="[label, value] in taskTrackerRows" :key="label" class="grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border-subtle py-1.5">
                 <div class="text-small text-text-subtle">{{ label }}</div>
-                <div class="mt-1 break-all text-small text-text-secondary">{{ value }}</div>
-              </WorkbenchCard>
+                <div class="break-all text-small text-text-secondary">{{ value }}</div>
+              </div>
             </div>
 
-            <WorkbenchCard v-if="taskTracker.parked.length > 0" surface="sidebar">
+            <section v-if="taskTracker.parked.length > 0" class="min-w-0">
               <div class="text-small text-text-subtle">Parked Tasks</div>
               <div class="mt-2 grid gap-1.5">
-                <div v-for="task in taskTracker.parked" :key="task.taskId" class="rounded border border-border-subtle bg-surface-input px-2 py-1.5">
+                <div v-for="task in taskTracker.parked" :key="task.taskId" class="border-l border-border-subtle pl-3 py-1">
                   <div class="flex min-w-0 flex-wrap items-center justify-between gap-2">
                     <span class="break-all font-mono text-small text-text-secondary">{{ task.taskId }}</span>
                     <span class="text-small text-text-subtle">{{ task.status }}</span>
@@ -382,13 +382,13 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
                   <div class="mt-1 break-all text-small text-text-subtle">{{ task.summary }}</div>
                 </div>
               </div>
-            </WorkbenchCard>
+            </section>
 
-            <WorkbenchCard surface="sidebar">
+            <section class="min-w-0">
               <div class="text-small text-text-subtle">最近 Evidence</div>
               <WorkbenchEmptyState v-if="recentTaskEvidence.length === 0" :centered="false" class="mt-2 rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle" message="暂无 evidence checkpoint" />
               <div v-else class="mt-2 grid gap-1.5">
-                <div v-for="item in recentTaskEvidence" :key="item.evidenceId" class="rounded border border-border-subtle bg-surface-input px-2 py-1.5">
+                <div v-for="item in recentTaskEvidence" :key="item.evidenceId" class="border-l border-border-subtle pl-3 py-1">
                   <div class="flex min-w-0 flex-wrap items-center justify-between gap-2">
                     <span class="break-all font-mono text-small text-text-secondary">{{ item.toolName }}#{{ item.toolCallId }}</span>
                     <span class="text-small" :class="item.pinned ? 'text-warning' : 'text-text-subtle'">{{ item.pinned ? 'pinned' : 'checkpoint' }}</span>
@@ -398,7 +398,7 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
                   <div class="mt-1 break-all font-mono text-small text-text-subtle">hash {{ item.contentHash }}{{ item.canonicalTruncated ? ' · canonical truncated' : '' }}</div>
                 </div>
               </div>
-            </WorkbenchCard>
+            </section>
           </div>
         </WorkbenchDisclosure>
 
@@ -411,27 +411,27 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
         >
           <WorkbenchEmptyState v-if="!memoryContext" :centered="false" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle" message="暂无记忆上下文记录。下一次生成回复后会显示实际进入 prompt 的记忆。" />
           <div v-else class="flex min-w-0 flex-col gap-3">
-            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <WorkbenchCard v-for="[label, value] in memoryContextOverviewRows" :key="label" class="min-w-0 overflow-hidden" surface="sidebar">
+            <div class="grid gap-x-5 gap-y-2 md:grid-cols-2">
+              <div v-for="[label, value] in memoryContextOverviewRows" :key="label" class="grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border-subtle py-1.5">
                 <div class="text-small text-text-subtle">{{ label }}</div>
-                <div class="mt-1 break-all text-small text-text-secondary">{{ value }}</div>
-              </WorkbenchCard>
+                <div class="break-all text-small text-text-secondary">{{ value }}</div>
+              </div>
             </div>
 
-            <WorkbenchCard surface="sidebar">
+            <section class="min-w-0">
               <div class="text-small text-text-subtle">召回查询文本</div>
-              <pre class="mt-2 max-h-48 overflow-auto rounded border border-border-default bg-surface-input p-2 text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ memoryContext.queryText || "空查询" }}</pre>
-            </WorkbenchCard>
+              <pre class="mt-2 max-h-48 overflow-auto border-l border-border-subtle pl-3 py-1 text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ memoryContext.queryText || "空查询" }}</pre>
+            </section>
 
-            <WorkbenchCard surface="sidebar">
+            <section class="min-w-0">
               <div class="text-small text-text-subtle">语义召回统计</div>
               <div class="mt-2 grid gap-1.5 md:grid-cols-2">
-                <div v-for="[label, value] in memoryRetrievalRows" :key="label" class="flex min-w-0 items-start justify-between gap-3 rounded border border-border-subtle bg-surface-input px-2 py-1.5">
+                <div v-for="[label, value] in memoryRetrievalRows" :key="label" class="flex min-w-0 items-start justify-between gap-3 border-b border-border-subtle py-1.5">
                   <span class="text-small text-text-subtle">{{ label }}</span>
                   <span class="break-all text-right font-mono text-small text-text-secondary">{{ value }}</span>
                 </div>
               </div>
-            </WorkbenchCard>
+            </section>
 
             <div class="min-w-0">
               <div class="mb-2 text-small text-text-subtle">语义召回记忆</div>
@@ -483,7 +483,7 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
           <div v-else class="grid min-w-0 gap-3 lg:grid-cols-2">
             <WorkbenchCard v-for="record in detail?.session.contentSafetyAudits ?? []" :key="record.key" class="min-w-0 overflow-hidden" surface="sidebar">
               <div class="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                <span class="font-mono text-small text-text-secondary">{{ record.key }}</span>
+                <span class="min-w-0 break-all font-mono text-small text-text-secondary">{{ record.key }}</span>
                 <span class="text-small" :class="record.decision === 'block' ? 'text-danger' : record.decision === 'review' ? 'text-warning' : 'text-text-subtle'">{{ record.decision }}</span>
               </div>
               <div class="mt-1 text-small text-text-subtle">{{ formatSafetySubject(record.subjectKind) }} · {{ formatTimestamp(record.checkedAtMs) }}</div>
@@ -511,16 +511,16 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
           @toggle="toggleDisclosure('runtime-debug')"
         >
           <div class="grid gap-4 lg:grid-cols-2">
-            <WorkbenchCard surface="sidebar">
+            <section class="min-w-0">
               <div class="text-small text-text-subtle">调试控制</div>
               <div class="mt-2 grid gap-1.5">
-                <div v-for="[label, value] in debugControlRows" :key="label" class="flex items-start justify-between gap-3 rounded border border-border-subtle bg-surface-input px-2 py-1.5">
+                <div v-for="[label, value] in debugControlRows" :key="label" class="flex items-start justify-between gap-3 border-b border-border-subtle py-1.5">
                   <span class="text-small text-text-subtle">{{ label }}</span>
                   <span class="text-right text-small text-text-secondary">{{ value }}</span>
                 </div>
               </div>
-            </WorkbenchCard>
-            <WorkbenchCard surface="sidebar">
+            </section>
+            <section class="min-w-0">
               <div class="text-small text-text-subtle">最近 LLM 用量</div>
               <WorkbenchEmptyState
                 v-if="lastLlmUsageRows.length === 0"
@@ -529,12 +529,12 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
                 message="暂无 LLM 用量记录"
               />
               <div v-else class="mt-2 grid gap-1.5">
-                <div v-for="[label, value] in lastLlmUsageRows" :key="label" class="flex items-start justify-between gap-3 rounded border border-border-subtle bg-surface-input px-2 py-1.5">
+                <div v-for="[label, value] in lastLlmUsageRows" :key="label" class="flex items-start justify-between gap-3 border-b border-border-subtle py-1.5">
                   <span class="text-small text-text-subtle">{{ label }}</span>
                   <span class="break-all text-right font-mono text-small text-text-secondary">{{ value }}</span>
                 </div>
               </div>
-            </WorkbenchCard>
+            </section>
           </div>
         </WorkbenchDisclosure>
 
@@ -549,7 +549,7 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
           <div v-else class="flex flex-col gap-2">
             <WorkbenchCard v-for="(marker, index) in detail?.session.debugMarkers ?? []" :key="`${marker.kind}-${marker.timestampMs}-${index}`" surface="sidebar">
               <div class="flex flex-wrap items-center justify-between gap-2">
-                <span class="font-mono text-small text-text-secondary">{{ marker.kind }}</span>
+                <span class="min-w-0 break-all font-mono text-small text-text-secondary">{{ marker.kind }}</span>
                 <span class="text-small text-text-subtle">{{ formatTimestamp(marker.timestampMs) }}</span>
               </div>
               <div v-if="marker.note" class="mt-1 whitespace-pre-wrap wrap-break-word text-small text-text-muted">{{ marker.note }}</div>
@@ -569,7 +569,7 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
           <div v-else class="flex flex-col gap-2">
             <WorkbenchCard v-for="message in detail?.session.sentMessages ?? []" :key="`${message.messageId}-${message.sentAt}`" surface="sidebar">
               <div class="flex flex-wrap items-center justify-between gap-2">
-                <span class="font-mono text-small text-text-secondary">messageId {{ message.messageId }}</span>
+                <span class="min-w-0 break-all font-mono text-small text-text-secondary">messageId {{ message.messageId }}</span>
                 <span class="text-small text-text-subtle">{{ formatTimestamp(message.sentAt) }}</span>
               </div>
               <div class="mt-1 whitespace-pre-wrap wrap-break-word text-small text-text-muted">{{ message.text || "空文本" }}</div>

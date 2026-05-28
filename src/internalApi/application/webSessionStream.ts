@@ -3,7 +3,14 @@ import type { ParsedWebSessionStreamQuery } from "../routeSupport.ts";
 import { buildTranscriptItemPatch, getTranscriptItemId } from "#conversation/session/transcriptMetadata.ts";
 import type { TranscriptItemPatch } from "#conversation/session/transcriptContract.ts";
 
-export type WebSessionPhase = SessionPhase & { label: string };
+export type WebSessionPhase =
+  | (Exclude<SessionPhase, { kind: "delivering" }> & { label: string })
+  | (Extract<SessionPhase, { kind: "delivering" }> & { label: string; previewText?: string | null });
+export type WebSessionStatusPatch = {
+  modeId?: string;
+  lastActiveAt?: number;
+  phase?: WebSessionPhase;
+};
 
 export type WebSessionStreamEvent =
   | {
@@ -28,12 +35,10 @@ export type WebSessionStreamEvent =
       timestampMs: number;
     }
   | {
-      type: "status";
+      type: "status_patch";
       sessionId: string;
-      modeId: string;
       mutationEpoch: number;
-      lastActiveAt: number;
-      phase: WebSessionPhase;
+      patch: WebSessionStatusPatch;
       timestampMs: number;
     }
   | {
@@ -186,16 +191,23 @@ export function diffSessionStreamEvents(
   if (
     current.lastActiveAt !== previous.lastActiveAt
     || current.modeId !== previous.modeId
-    || currentPhase.label !== previousPhase.label
-    || currentPhase.kind !== previousPhase.kind
+    || !isSameWebSessionPhase(previousPhase, currentPhase)
   ) {
+    const patch: WebSessionStatusPatch = {};
+    if (current.modeId !== previous.modeId) {
+      patch.modeId = current.modeId;
+    }
+    if (current.lastActiveAt !== previous.lastActiveAt) {
+      patch.lastActiveAt = current.lastActiveAt;
+    }
+    if (!isSameWebSessionPhase(previousPhase, currentPhase)) {
+      patch.phase = currentPhase;
+    }
     events.push({
-      type: "status",
+      type: "status_patch",
       sessionId: current.sessionId,
-      modeId: current.modeId,
       mutationEpoch: current.mutationEpoch,
-      lastActiveAt: current.lastActiveAt,
-      phase: currentPhase,
+      patch,
       timestampMs: Date.now()
     });
   }
@@ -282,6 +294,23 @@ function buildTranscriptPatchEvents(
   }
 
   return events;
+}
+
+function isSameWebSessionPhase(previous: WebSessionPhase, current: WebSessionPhase): boolean {
+  if (previous.kind !== current.kind || previous.label !== current.label) {
+    return false;
+  }
+  if (previous.kind === "tool_calling" && current.kind === "tool_calling") {
+    return (
+      previous.lastToolName === current.lastToolName
+      && previous.toolNames.length === current.toolNames.length
+      && previous.toolNames.every((toolName, index) => toolName === current.toolNames[index])
+    );
+  }
+  if (previous.kind === "delivering" && current.kind === "delivering") {
+    return previous.previewText === current.previewText;
+  }
+  return true;
 }
 
 function deriveWebSessionPhase(snapshot: WebSessionStreamSnapshot): WebSessionPhase {

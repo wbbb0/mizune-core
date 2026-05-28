@@ -33,15 +33,18 @@ function createUserMessage(id: string, timestampMs: number): InternalTranscriptI
   };
 }
 
-function createSnapshot(transcriptIds: string[]): WebSessionStreamSnapshot {
+function createSnapshot(
+  transcriptIds: string[],
+  overrides: Partial<Pick<WebSessionStreamSnapshot, "modeId" | "lastActiveAt" | "phase" | "activeAssistantResponseText">> = {}
+): WebSessionStreamSnapshot {
   return {
     sessionId: "web:1",
-    modeId: "rp_assistant",
+    modeId: overrides.modeId ?? "rp_assistant",
     mutationEpoch: 0,
     transcript: transcriptIds.map((id, index) => createUserMessage(id, index + 1)),
-    lastActiveAt: 1000,
-    phase: idlePhase,
-    activeAssistantResponseText: null
+    lastActiveAt: overrides.lastActiveAt ?? 1000,
+    phase: overrides.phase ?? idlePhase,
+    activeAssistantResponseText: overrides.activeAssistantResponseText ?? null
   };
 }
 
@@ -90,5 +93,37 @@ test("session stream diffs reset gaps, append aligned items, and patch aligned i
     runtimeExcluded: true,
     runtimeExcludedAt: 2000,
     runtimeExclusionReason: "manual_single"
+  });
+});
+
+test("session stream emits status patches with only changed fields", () => {
+  const previous = createSnapshot(["1"]);
+  const phaseCurrent = createSnapshot(["1"], {
+    phase: { kind: "generating" }
+  });
+
+  const phaseEvents = diffSessionStreamEvents(previous, phaseCurrent);
+
+  assert.deepEqual(phaseEvents.map((event) => event.type), ["status_patch"]);
+  const phasePatch = phaseEvents[0];
+  assert.equal(phasePatch?.type, "status_patch");
+  if (phasePatch?.type !== "status_patch") {
+    return;
+  }
+  assert.deepEqual(Object.keys(phasePatch.patch), ["phase"]);
+  assert.equal(phasePatch.patch.phase?.kind, "generating");
+  assert.equal(phasePatch.patch.phase?.label, "正在生成回复");
+
+  const activityCurrent = createSnapshot(["1"], {
+    lastActiveAt: 2000
+  });
+  const activityEvents = diffSessionStreamEvents(previous, activityCurrent);
+  const activityPatch = activityEvents[0];
+  assert.equal(activityPatch?.type, "status_patch");
+  if (activityPatch?.type !== "status_patch") {
+    return;
+  }
+  assert.deepEqual(activityPatch.patch, {
+    lastActiveAt: 2000
   });
 });
