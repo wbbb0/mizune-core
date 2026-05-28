@@ -2,6 +2,8 @@ export type DataResourceShape = "singleton" | "collection" | "log" | "file" | "d
 
 export type DataResourceDurability = "source_of_truth" | "cache" | "derived" | "ephemeral";
 
+export type DataResourceAccessMode = "readonly" | "deletable" | "editable";
+
 export interface DataResourceStorage {
   kind: "sqlite" | "file";
   database?: "state" | "sessions" | "assets" | "context";
@@ -81,7 +83,7 @@ export interface DataResourceSummary {
   title: string;
   description?: string;
   shape: DataResourceShape;
-  editable: boolean;
+  accessMode: DataResourceAccessMode;
   durability: DataResourceDurability;
   storage: DataResourceStorage;
   schemaMeta?: unknown;
@@ -157,7 +159,7 @@ export interface DataResourceDefinition {
   title: string;
   description?: string;
   shape: DataResourceShape;
-  editable: boolean;
+  accessMode: DataResourceAccessMode;
   durability: DataResourceDurability;
   storage: DataResourceStorage;
   schemaMeta?: unknown;

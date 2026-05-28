@@ -94,17 +94,17 @@ export function createDataRegistryService(input: {
   toolsetRuleStore: Pick<ToolsetRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove" | "listToolsetRows">;
   userIdentityStore: Pick<UserIdentityStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
   groupMembershipStore: Pick<GroupMembershipStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
-  userStore: Pick<UserStore, "listRows" | "listMemoryRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
+  userStore: Pick<UserStore, "listRows" | "listMemoryRows" | "removeMemory" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
   requestStore: Pick<RequestStore, "listRows" | "get" | "createRow" | "patchRow" | "deleteRow">;
   scheduledJobStore: Pick<ScheduledJobStore, "listRows" | "listTargetRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
   scheduler: Pick<Scheduler, "reloadFromStore">;
-  comfyTaskStore: Pick<ComfyTaskStore, "listRows" | "listResultRows">;
+  comfyTaskStore: Pick<ComfyTaskStore, "listRows" | "listResultRows" | "deleteById">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "patchEntry" | "deleteEntry">;
-  contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs" | "listContextItemSources" | "listContextItemEmbeddings" | "listEmbeddingProfiles" | "listManualAuditEvents">;
-  audioStore: Pick<AudioStore, "listRows" | "getRow">;
-  chatFileStore: Pick<ChatFileStore, "listRows" | "getRow">;
+  contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "deleteContextItem" | "listRawMessages" | "listMaintenanceJobs" | "listContextItemSources" | "listContextItemEmbeddings" | "listEmbeddingProfiles" | "listManualAuditEvents">;
+  audioStore: Pick<AudioStore, "listRows" | "getRow" | "deleteAudio">;
+  chatFileStore: Pick<ChatFileStore, "listRows" | "getRow" | "deleteFile">;
   assetLifecycleStore: Pick<AssetLifecycleStore, "listRows">;
-  sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
+  sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows" | "remove">;
   runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows">;
   recentErrorStore: Pick<RecentErrorStore, "listRows">;
   contentSafetyStore?: Pick<ContentSafetyStore, "listRows">;
@@ -130,17 +130,17 @@ function createInitialDataResourceDefinitions(input: {
   toolsetRuleStore: Pick<ToolsetRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove" | "listToolsetRows">;
   userIdentityStore: Pick<UserIdentityStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
   groupMembershipStore: Pick<GroupMembershipStore, "listRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
-  userStore: Pick<UserStore, "listRows" | "listMemoryRows" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
+  userStore: Pick<UserStore, "listRows" | "listMemoryRows" | "removeMemory" | "getPersistedRow" | "createPersistedRow" | "patchPersistedRow" | "deletePersistedRow">;
   requestStore: Pick<RequestStore, "listRows" | "get" | "createRow" | "patchRow" | "deleteRow">;
   scheduledJobStore: Pick<ScheduledJobStore, "listRows" | "listTargetRows" | "getRow" | "createRow" | "patchRow" | "deleteRow">;
   scheduler: Pick<Scheduler, "reloadFromStore">;
-  comfyTaskStore: Pick<ComfyTaskStore, "listRows" | "listResultRows">;
+  comfyTaskStore: Pick<ComfyTaskStore, "listRows" | "listResultRows" | "deleteById">;
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "patchEntry" | "deleteEntry">;
-  contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "listRawMessages" | "listMaintenanceJobs" | "listContextItemSources" | "listContextItemEmbeddings" | "listEmbeddingProfiles" | "listManualAuditEvents">;
-  audioStore: Pick<AudioStore, "listRows" | "getRow">;
-  chatFileStore: Pick<ChatFileStore, "listRows" | "getRow">;
+  contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "deleteContextItem" | "listRawMessages" | "listMaintenanceJobs" | "listContextItemSources" | "listContextItemEmbeddings" | "listEmbeddingProfiles" | "listManualAuditEvents">;
+  audioStore: Pick<AudioStore, "listRows" | "getRow" | "deleteAudio">;
+  chatFileStore: Pick<ChatFileStore, "listRows" | "getRow" | "deleteFile">;
   assetLifecycleStore: Pick<AssetLifecycleStore, "listRows">;
-  sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
+  sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows" | "remove">;
   runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows">;
   recentErrorStore: Pick<RecentErrorStore, "listRows">;
   contentSafetyStore?: Pick<ContentSafetyStore, "listRows">;
@@ -153,7 +153,7 @@ function createInitialDataResourceDefinitions(input: {
       tableGroup: "state.global_profile_readiness",
       tables: ["global_profile_readiness"],
       schema: globalProfileReadinessSchema,
-      editable: true,
+      accessMode: "editable",
       get: () => input.globalProfileReadinessStore.get(),
       write: (value) => input.globalProfileReadinessStore.write(value)
     }),
@@ -164,7 +164,7 @@ function createInitialDataResourceDefinitions(input: {
       tableGroup: "state.rp_profile",
       tables: ["rp_profile"],
       schema: rpProfileSchema,
-      editable: true,
+      accessMode: "editable",
       get: () => input.rpProfileStore.get(),
       write: async (value) => {
         await input.rpProfileStore.write(value);
@@ -177,7 +177,7 @@ function createInitialDataResourceDefinitions(input: {
       tableGroup: "state.scenario_profile",
       tables: ["scenario_profile"],
       schema: scenarioProfileSchema,
-      editable: true,
+      accessMode: "editable",
       get: () => input.scenarioProfileStore.get(),
       write: async (value) => {
         await input.scenarioProfileStore.write(value);
@@ -190,7 +190,7 @@ function createInitialDataResourceDefinitions(input: {
       tableGroup: "state.setup_state",
       tables: ["setup_state"],
       schema: setupStateSchema,
-      editable: false,
+      accessMode: "readonly",
       get: () => input.setupStore.get()
     }),
     createRequestsResource(input.requestStore),
@@ -251,14 +251,14 @@ function createRecentErrorsResource(
 }
 
 function createSessionsResource(
-  sessionPersistence: Pick<SessionPersistence, "listSessionRows">
+  sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "remove">
 ): DataResourceDefinition {
   return {
     key: "sessions",
     title: "会话",
     description: "会话元数据。完整消息不再内嵌在本表，见 session_transcript_items。",
     shape: "collection",
-    editable: false,
+    accessMode: "deletable",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -284,7 +284,10 @@ function createSessionsResource(
       exportRows: async (query) => sessionPersistence.listSessionRows({
         ...(query.offset !== undefined ? { offset: query.offset } : {}),
         ...(query.limit !== undefined ? { limit: query.limit } : {})
-      })
+      }),
+      deleteRow: async (rowId) => {
+        await sessionPersistence.remove(rowId);
+      }
     }
   };
 }
@@ -297,7 +300,7 @@ function createSessionTranscriptItemsResource(
     title: "会话消息",
     description: "会话后台记录竖表，一行对应一条 internalTranscript item。",
     shape: "log",
-    editable: false,
+    accessMode: "readonly",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -332,14 +335,14 @@ function createSessionTranscriptItemsResource(
 }
 
 function createAudioFilesResource(
-  audioStore: Pick<AudioStore, "listRows" | "getRow">
+  audioStore: Pick<AudioStore, "listRows" | "getRow" | "deleteAudio">
 ): DataResourceDefinition {
   const rowSchemaMeta = exportSchemaMeta(storedAudioFileRegistrySchema);
   return {
     key: "audio_files",
     title: "音频文件",
     shape: "collection",
-    editable: false,
+    accessMode: "deletable",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -368,20 +371,23 @@ function createAudioFilesResource(
         ...(query.offset !== undefined ? { offset: query.offset } : {}),
         ...(query.limit !== undefined ? { limit: query.limit } : {})
       }),
-      getRow: async (rowId) => audioStore.getRow(rowId)
+      getRow: async (rowId) => audioStore.getRow(rowId),
+      deleteRow: async (rowId) => {
+        await audioStore.deleteAudio(rowId);
+      }
     }
   };
 }
 
 function createWorkspaceFilesResource(
-  chatFileStore: Pick<ChatFileStore, "listRows" | "getRow">
+  chatFileStore: Pick<ChatFileStore, "listRows" | "getRow" | "deleteFile">
 ): DataResourceDefinition {
   const rowSchemaMeta = exportSchemaMeta(chatFileRecordRegistrySchema);
   return {
     key: "workspace_files",
     title: "工作区文件",
     shape: "collection",
-    editable: false,
+    accessMode: "deletable",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -410,7 +416,10 @@ function createWorkspaceFilesResource(
         ...(query.offset !== undefined ? { offset: query.offset } : {}),
         ...(query.limit !== undefined ? { limit: query.limit } : {})
       }),
-      getRow: async (rowId) => chatFileStore.getRow(rowId)
+      getRow: async (rowId) => chatFileStore.getRow(rowId),
+      deleteRow: async (rowId) => {
+        await chatFileStore.deleteFile(rowId);
+      }
     }
   };
 }
@@ -438,14 +447,14 @@ function createAssetSessionRefsResource(
 }
 
 function createComfyTasksResource(
-  comfyTaskStore: Pick<ComfyTaskStore, "listRows">
+  comfyTaskStore: Pick<ComfyTaskStore, "listRows" | "deleteById">
 ): DataResourceDefinition {
   const rowSchemaMeta = exportSchemaMeta(comfyTaskRecordSchema);
   return {
     key: "comfy_tasks",
     title: "图像生成任务",
     shape: "collection",
-    editable: false,
+    accessMode: "deletable",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -473,7 +482,10 @@ function createComfyTasksResource(
       exportRows: async (query) => comfyTaskStore.listRows({
         ...(query.offset !== undefined ? { offset: query.offset } : {}),
         ...(query.limit !== undefined ? { limit: query.limit } : {})
-      })
+      }),
+      deleteRow: async (rowId) => {
+        await comfyTaskStore.deleteById(rowId);
+      }
     }
   };
 }
@@ -486,7 +498,7 @@ function createComfyTaskResultFilesResource(
     title: "图像生成结果文件",
     description: "Comfy 任务结果文件竖表，一行对应一个输出文件。",
     shape: "log",
-    editable: false,
+    accessMode: "readonly",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -575,7 +587,7 @@ function readOnlySqliteRowsResource(input: {
     title: input.title,
     ...(input.description !== undefined ? { description: input.description } : {}),
     shape: input.shape,
-    editable: false,
+    accessMode: "readonly",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -608,7 +620,7 @@ function singletonSqliteResource<TValue>(input: {
   tableGroup: string;
   tables: string[];
   schema: BaseSchema<TValue>;
-  editable: boolean;
+  accessMode: "readonly" | "editable";
   get: () => Promise<TValue>;
   write?: (value: TValue) => Promise<unknown>;
 }): DataResourceDefinition {
@@ -617,7 +629,7 @@ function singletonSqliteResource<TValue>(input: {
     key: input.key,
     title: input.title,
     shape: "singleton",
-    editable: input.editable,
+    accessMode: input.accessMode,
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -634,7 +646,7 @@ function singletonSqliteResource<TValue>(input: {
     },
     adapter: {
       get: async () => input.get(),
-      ...(input.editable && input.write ? {
+      ...(input.accessMode === "editable" && input.write ? {
         patch: async (value: unknown) => {
           const parsed = input.schema.parse(value);
           await input.write!(parsed);
@@ -653,7 +665,7 @@ function createRequestsResource(
     key: "requests",
     title: "待处理请求",
     shape: "collection",
-    editable: true,
+    accessMode: "editable",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -730,7 +742,7 @@ function createScheduledJobsResource(
     key: "scheduled_jobs",
     title: "定时任务",
     shape: "collection",
-    editable: true,
+    accessMode: "editable",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -801,7 +813,7 @@ function createScheduledJobTargetsResource(
     title: "定时任务目标",
     description: "定时任务目标竖表，一行对应一个 session target。",
     shape: "collection",
-    editable: false,
+    accessMode: "readonly",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -836,7 +848,7 @@ function createGlobalRulesResource(
     key: "global_rules",
     title: "全局规则列表",
     shape: "collection",
-    editable: true,
+    accessMode: "editable",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -885,7 +897,7 @@ function createToolsetRulesResource(
     key: "toolset_rules",
     title: "工具集规则列表",
     shape: "collection",
-    editable: true,
+    accessMode: "editable",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -934,7 +946,7 @@ function createToolsetRuleToolsetsResource(
     title: "工具集规则关联",
     description: "工具集规则和工具集 ID 的关联竖表。",
     shape: "collection",
-    editable: false,
+    accessMode: "readonly",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -969,7 +981,7 @@ function createUserIdentitiesResource(
     key: "user_identities",
     title: "用户身份映射",
     shape: "collection",
-    editable: true,
+    accessMode: "editable",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -1052,7 +1064,7 @@ function createGroupMembershipResource(
     key: "group_membership",
     title: "群成员缓存",
     shape: "collection",
-    editable: true,
+    accessMode: "editable",
     durability: "cache",
     storage: {
       kind: "sqlite",
@@ -1136,7 +1148,7 @@ function createUsersResource(
     key: "users",
     title: "用户列表",
     shape: "collection",
-    editable: true,
+    accessMode: "editable",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -1190,14 +1202,14 @@ function createUsersResource(
 }
 
 function createUserMemoriesResource(
-  userStore: Pick<UserStore, "listMemoryRows">
+  userStore: Pick<UserStore, "listMemoryRows" | "removeMemory">
 ): DataResourceDefinition {
   return {
     key: "user_memories",
     title: "用户记忆",
     description: "用户记忆竖表，一行对应一个用户记忆条目。",
     shape: "collection",
-    editable: false,
+    accessMode: "deletable",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -1219,9 +1231,22 @@ function createUserMemoriesResource(
         ...(query.offset !== undefined ? { offset: query.offset } : {}),
         ...(query.limit !== undefined ? { limit: query.limit } : {}),
         ...(query.filters !== undefined ? { filters: query.filters } : {})
-      })
+      }),
+      deleteRow: async (rowId) => {
+        const identity = decodeUserMemoryRowId(rowId);
+        await userStore.removeMemory(identity.userId, identity.memoryId);
+      }
     }
   };
+}
+
+function decodeUserMemoryRowId(rowId: string): { userId: string; memoryId: string } {
+  const parsed = JSON.parse(Buffer.from(rowId, "base64url").toString("utf8")) as unknown;
+  const record = parsed && typeof parsed === "object" ? parsed as { userId?: unknown; id?: unknown } : {};
+  if (typeof record.userId !== "string" || !record.userId.trim() || typeof record.id !== "string" || !record.id.trim()) {
+    throw new Error("Invalid user memory row id");
+  }
+  return { userId: record.userId, memoryId: record.id };
 }
 
 function createPersonaResource(personaStore: Pick<PersonaStore, "get" | "write">): DataResourceDefinition {
@@ -1230,7 +1255,7 @@ function createPersonaResource(personaStore: Pick<PersonaStore, "get" | "write">
     key: "persona",
     title: "全局人格",
     shape: "singleton",
-    editable: true,
+    accessMode: "editable",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -1277,7 +1302,7 @@ function createWhitelistResource(
     key: "whitelist",
     title: "白名单",
     shape: "collection",
-    editable: true,
+    accessMode: "editable",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -1369,13 +1394,13 @@ function decodeWhitelistRowId(rowId: string): Pick<WhitelistRow, "targetType" | 
 }
 
 function createContextItemsResource(
-  contextStore: Pick<ContextStore, "listContextItems" | "getContextItem">
+  contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "deleteContextItem">
 ): DataResourceDefinition {
   return {
     key: "context_items",
     title: "上下文记忆条目",
     shape: "collection",
-    editable: false,
+    accessMode: "deletable",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -1412,6 +1437,9 @@ function createContextItemsResource(
       getRow: async (rowId) => {
         const item = contextStore.getContextItem(rowId);
         return item ? rowWithId(item.itemId, item) : null;
+      },
+      deleteRow: async (rowId) => {
+        contextStore.deleteContextItem(rowId);
       }
     }
   };
@@ -1477,7 +1505,7 @@ function createContextRawMessagesResource(
     key: "context_raw_messages",
     title: "上下文原始消息",
     shape: "log",
-    editable: false,
+    accessMode: "readonly",
     durability: "derived",
     storage: {
       kind: "sqlite",
@@ -1510,7 +1538,7 @@ function createContextMaintenanceJobsResource(
     key: "context_maintenance_jobs",
     title: "上下文维护任务日志",
     shape: "log",
-    editable: false,
+    accessMode: "readonly",
     durability: "derived",
     storage: {
       kind: "sqlite",
@@ -1565,7 +1593,7 @@ function createLiveResourcesResource(
     key: "live_resources",
     title: "运行时资源",
     shape: "collection",
-    editable: false,
+    accessMode: "readonly",
     durability: "cache",
     storage: {
       kind: "sqlite",
@@ -1643,7 +1671,7 @@ function fileResource(input: {
     key: input.key,
     title: input.title,
     shape: "file",
-    editable: false,
+    accessMode: "readonly",
     durability: input.durability,
     storage: {
       kind: "file",
@@ -1665,7 +1693,7 @@ function directoryResource(input: {
     key: input.key,
     title: input.title,
     shape: "directory",
-    editable: false,
+    accessMode: "readonly",
     durability: input.durability,
     storage: {
       kind: "file",
