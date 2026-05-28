@@ -35,13 +35,13 @@ const detailEntries = computed(() => getModelDetailEntries(props.resource, props
 const childLoadingKey = ref<string | null>(null);
 const patchable = computed(() =>
   props.resource.shape === "collection"
-  && props.resource.editable
+  && props.resource.accessMode === "editable"
   && props.resource.rowOperations?.patch === true
   && !!props.resource.rowUiTree
 );
 const deletable = computed(() =>
   props.resource.shape === "collection"
-  && props.resource.editable
+  && props.resource.accessMode !== "readonly"
   && props.resource.rowOperations?.delete === true
 );
 

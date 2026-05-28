@@ -252,7 +252,7 @@ function dataModelStorageKey(resourceKey: string, name: string): string {
           <RefreshCw :size="13" :stroke-width="2" :class="{ spin: loading }" />
         </button>
         <button
-          v-if="resource.shape === 'collection' && resource.editable && resource.rowOperations?.create && resource.rowUiTree"
+          v-if="resource.shape === 'collection' && resource.accessMode === 'editable' && resource.rowOperations?.create && resource.rowUiTree"
           class="btn btn-primary"
           :disabled="saving"
           @click="openCreateRegistryRowDialog"
@@ -261,7 +261,7 @@ function dataModelStorageKey(resourceKey: string, name: string): string {
           新增
         </button>
         <button
-          v-if="resource.shape === 'singleton' && resource.editable"
+          v-if="resource.shape === 'singleton' && resource.accessMode === 'editable'"
           class="btn btn-primary"
           :disabled="!registryCanSubmit"
           @click="saveRegistrySingleton"
@@ -272,7 +272,7 @@ function dataModelStorageKey(resourceKey: string, name: string): string {
         </template>
       </WorkbenchAreaHeader>
 
-      <div v-if="resource.shape === 'singleton' && resource.editable && resource.uiTree" class="scrollbar-thin flex-1 overflow-y-auto px-4 py-3">
+      <div v-if="resource.shape === 'singleton' && resource.accessMode === 'editable' && resource.uiTree" class="scrollbar-thin flex-1 overflow-y-auto px-4 py-3">
         <SchemaNode
           :node="resource.uiTree"
           :model-value="registryDraftValue"
@@ -296,7 +296,7 @@ function dataModelStorageKey(resourceKey: string, name: string): string {
           <span>{{ resourceRows?.total ?? resourceRows?.rows.length ?? 0 }} 行</span>
           <span v-if="resourceRows">offset {{ resourceRows.offset }} · limit {{ resourceRows.limit }}</span>
         </div>
-        <div v-if="resource.model?.kind !== 'table' && resource.shape === 'collection' && resource.editable && resource.rowOperations?.patch && resource.rowUiTree && resourceRows?.rows.length" class="space-y-3">
+        <div v-if="resource.model?.kind !== 'table' && resource.shape === 'collection' && resource.accessMode === 'editable' && resource.rowOperations?.patch && resource.rowUiTree && resourceRows?.rows.length" class="space-y-3">
           <div
             v-for="(row, index) in resourceRows.rows"
             :key="`${index}`"

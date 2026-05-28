@@ -81,7 +81,7 @@ export class DataRegistry {
     if (definition.shape !== "singleton") {
       throw new Error(`Data resource is not a singleton: ${resourceKey}`);
     }
-    if (!definition.editable) {
+    if (definition.accessMode !== "editable") {
       throw new Error(`Data resource is not editable: ${resourceKey}`);
     }
     const adapter = asSingletonAdapter(definition);
@@ -119,7 +119,7 @@ export class DataRegistry {
   }
 
   async createRow(resourceKey: string, value: unknown): Promise<unknown> {
-    const definition = this.getEditableCollection(resourceKey);
+    const definition = this.getCollectionWithAccess(resourceKey, "editable");
     const adapter = asCollectionAdapter(definition);
     if (!adapter.createRow) {
       throw new Error(`Data resource does not support row creation: ${resourceKey}`);
@@ -128,7 +128,7 @@ export class DataRegistry {
   }
 
   async patchRow(resourceKey: string, rowId: string, input: DataResourceRowPatchInput): Promise<unknown> {
-    const definition = this.getEditableCollection(resourceKey);
+    const definition = this.getCollectionWithAccess(resourceKey, "editable");
     const adapter = asCollectionAdapter(definition);
     if (!adapter.patchRow) {
       throw new Error(`Data resource does not support row patch: ${resourceKey}`);
@@ -137,7 +137,7 @@ export class DataRegistry {
   }
 
   async deleteRow(resourceKey: string, rowId: string): Promise<{ ok: true }> {
-    const definition = this.getEditableCollection(resourceKey);
+    const definition = this.getCollectionWithAccess(resourceKey, "deletable");
     const adapter = asCollectionAdapter(definition);
     if (!adapter.deleteRow) {
       throw new Error(`Data resource does not support row deletion: ${resourceKey}`);
@@ -183,16 +183,23 @@ export class DataRegistry {
     return { item };
   }
 
-  private getEditableCollection(resourceKey: string): DataResourceDefinition {
+  private getCollectionWithAccess(resourceKey: string, requiredAccess: "deletable" | "editable"): DataResourceDefinition {
     const definition = this.getResourceDefinition(resourceKey);
     if (definition.shape !== "collection") {
       throw new Error(`Data resource is not an editable collection: ${resourceKey}`);
     }
-    if (!definition.editable) {
-      throw new Error(`Data resource is not editable: ${resourceKey}`);
+    if (!hasAccess(definition.accessMode, requiredAccess)) {
+      throw new Error(`Data resource does not allow ${requiredAccess === "editable" ? "editing" : "deletion"}: ${resourceKey}`);
     }
     return definition;
   }
+}
+
+function hasAccess(actual: DataResourceDefinition["accessMode"], required: "deletable" | "editable"): boolean {
+  if (required === "editable") {
+    return actual === "editable";
+  }
+  return actual === "deletable" || actual === "editable";
 }
 
 async function buildExportValue(definition: DataResourceDefinition): Promise<unknown> {
@@ -264,7 +271,7 @@ function toSummary(definition: DataResourceDefinition): DataResourceSummary {
     title: definition.title,
     ...(definition.description ? { description: definition.description } : {}),
     shape: definition.shape,
-    editable: definition.editable,
+    accessMode: definition.accessMode,
     durability: definition.durability,
     storage: definition.storage,
     ...(definition.schemaMeta !== undefined ? { schemaMeta: definition.schemaMeta } : {}),
@@ -277,9 +284,9 @@ function toSummary(definition: DataResourceDefinition): DataResourceSummary {
     ...(collectionAdapter !== null ? {
       rowOperations: {
         get: collectionAdapter.getRow !== undefined,
-        create: collectionAdapter.createRow !== undefined,
-        patch: collectionAdapter.patchRow !== undefined,
-        delete: collectionAdapter.deleteRow !== undefined
+        create: definition.accessMode === "editable" && collectionAdapter.createRow !== undefined,
+        patch: definition.accessMode === "editable" && collectionAdapter.patchRow !== undefined,
+        delete: hasAccess(definition.accessMode, "deletable") && collectionAdapter.deleteRow !== undefined
       }
     } : {}),
     ...(definition.export !== undefined ? { export: definition.export } : {})

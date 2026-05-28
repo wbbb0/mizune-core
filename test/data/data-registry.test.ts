@@ -7,7 +7,7 @@ function createReadonlySingleton(input?: Partial<DataResourceDefinition>): DataR
     key: "settings",
     title: "Settings",
     shape: "singleton",
-    editable: false,
+    accessMode: "readonly",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -31,7 +31,7 @@ test("DataRegistry lists resources in stable key order without exposing adapters
   assert.deepEqual(result.resources.map((resource) => resource.key), ["alpha", "zeta"]);
   assert.equal("adapter" in result.resources[0]!, false);
   assert.equal(result.resources[0]?.shape, "singleton");
-  assert.equal(result.resources[0]?.editable, false);
+  assert.equal(result.resources[0]?.accessMode, "readonly");
   assert.equal(result.resources[0]?.rowOperations, undefined);
 });
 
@@ -61,7 +61,7 @@ test("DataRegistry routes collection row operations through row adapters", async
     key: "items",
     title: "Items",
     shape: "collection",
-    editable: true,
+    accessMode: "editable",
     durability: "source_of_truth",
     storage: {
       kind: "sqlite",
@@ -127,4 +127,52 @@ test("DataRegistry routes collection row operations through row adapters", async
       revision: 1
     }
   }]);
+});
+
+test("DataRegistry allows delete-only collection resources", async () => {
+  const registry = new DataRegistry();
+  const deleted: string[] = [];
+  registry.register({
+    key: "items",
+    title: "Items",
+    shape: "collection",
+    accessMode: "deletable",
+    durability: "source_of_truth",
+    storage: {
+      kind: "sqlite",
+      database: "state",
+      tableGroup: "items",
+      tables: ["items"]
+    },
+    rowIdentity: {
+      fields: ["id"],
+      encode: "single"
+    },
+    adapter: {
+      listRows: async () => ({ rows: [{ id: "item-1" }], offset: 0, limit: 100, total: 1 }),
+      deleteRow: async (rowId) => {
+        deleted.push(rowId);
+      }
+    }
+  });
+
+  const resource = await registry.getResource("items") as {
+    resource: {
+      accessMode: string;
+      rowOperations: unknown;
+    };
+  };
+  assert.equal(resource.resource.accessMode, "deletable");
+  assert.deepEqual(resource.resource.rowOperations, {
+    get: false,
+    create: false,
+    patch: false,
+    delete: true
+  });
+  await assert.rejects(
+    registry.patchRow("items", "item-1", { patch: { label: "next" } }),
+    /Data resource does not allow editing: items/u
+  );
+  assert.deepEqual(await registry.deleteRow("items", "item-1"), { ok: true });
+  assert.deepEqual(deleted, ["item-1"]);
 });

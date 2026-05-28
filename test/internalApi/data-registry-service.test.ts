@@ -45,6 +45,21 @@ function createRegistryService(dataDir: string, options: {
   const audioRows = [...(options.audioRows ?? [])];
   const workspaceRows = [...(options.workspaceRows ?? [])];
   const recentErrorRows = [...(options.recentErrorRows ?? [])];
+  const sessionRows = [{
+    sessionId: "private:u1",
+    type: "private" as const,
+    source: "web" as const,
+    modeId: "assistant",
+    participantKind: "user" as const,
+    participantId: "u1",
+    title: "u1",
+    titleSource: "manual" as const,
+    replyDelivery: "web" as const,
+    transcriptCount: 1,
+    lastActiveAtMs: 1,
+    lastMessageAtMs: 1,
+    updatedAtMs: 2
+  }];
   const groupMembershipRows: Array<{ groupId: string; userId: string; isMember: boolean; verifiedAt: number }> = [];
   let schedulerReloadCount = 0;
   const whitelistRows: Array<{ targetType: "user" | "group"; targetId: string; createdAtMs: number }> = [];
@@ -234,6 +249,12 @@ function createRegistryService(dataDir: string, options: {
           })));
         return { rows: rows.slice(offset, offset + limit), total: rows.length, offset, limit };
       },
+      async removeMemory(userId, memoryId) {
+        const user = users.find((item) => item.userId === userId);
+        if (!user) return null;
+        user.memories = user.memories.filter((memory) => memory.id !== memoryId);
+        return null;
+      },
       async getPersistedRow(userId) {
         return users.find((user) => user.userId === userId) ?? null;
       },
@@ -390,6 +411,9 @@ function createRegistryService(dataDir: string, options: {
           offset,
           limit
         };
+      },
+      async deleteById() {
+        return false;
       }
     },
     whitelistStore: {
@@ -426,6 +450,7 @@ function createRegistryService(dataDir: string, options: {
     contextStore: {
       listContextItems: () => ({ items: [], total: 0 }),
       getContextItem: () => null,
+      deleteContextItem: () => ({ deleted: false }),
       listRawMessages: () => ({ rows: [], total: 0, offset: 0, limit: 100 }),
       listMaintenanceJobs: () => ({ rows: [], total: 0, offset: 0, limit: 100 }),
       listContextItemSources: () => ({ rows: [], total: 0, offset: 0, limit: 100 }),
@@ -446,6 +471,12 @@ function createRegistryService(dataDir: string, options: {
       },
       async getRow(audioId) {
         return audioRows.find((row) => row.id === audioId) ?? null;
+      },
+      async deleteAudio(audioId) {
+        const index = audioRows.findIndex((row) => row.id === audioId);
+        if (index < 0) return false;
+        audioRows.splice(index, 1);
+        return true;
       }
     },
     chatFileStore: {
@@ -461,6 +492,12 @@ function createRegistryService(dataDir: string, options: {
       },
       async getRow(fileId) {
         return workspaceRows.find((row) => row.fileId === fileId) ?? null;
+      },
+      async deleteFile(fileId) {
+        const index = workspaceRows.findIndex((row) => row.fileId === fileId);
+        if (index < 0) return false;
+        workspaceRows.splice(index, 1);
+        return true;
       }
     },
     assetLifecycleStore: {
@@ -473,22 +510,8 @@ function createRegistryService(dataDir: string, options: {
         const offset = input.offset ?? 0;
         const limit = input.limit ?? 100;
         return {
-          rows: [{
-            sessionId: "private:u1",
-            type: "private" as const,
-            source: "web" as const,
-            modeId: "assistant",
-            participantKind: "user" as const,
-            participantId: "u1",
-            title: "u1",
-            titleSource: "manual" as const,
-            replyDelivery: "web" as const,
-            transcriptCount: 1,
-            lastActiveAtMs: 1,
-            lastMessageAtMs: 1,
-            updatedAtMs: 2
-          }].slice(offset, offset + limit),
-          total: 1,
+          rows: sessionRows.slice(offset, offset + limit),
+          total: sessionRows.length,
           offset,
           limit
         };
@@ -516,6 +539,12 @@ function createRegistryService(dataDir: string, options: {
           offset,
           limit
         };
+      },
+      async remove(sessionId) {
+        const index = sessionRows.findIndex((row) => row.sessionId === sessionId);
+        if (index >= 0) {
+          sessionRows.splice(index, 1);
+        }
       }
     },
     runtimeResourceStore: {
@@ -612,11 +641,15 @@ test("DataRegistryService exposes initial file and directory resources", async (
     assert.equal(listed.resources.find((resource) => resource.key === "recent_errors")?.shape, "log");
     for (const resource of listed.resources) {
       if (resource.shape !== "collection") continue;
-      if (resource.editable) {
+      if (resource.accessMode === "editable") {
         assert.equal(resource.rowOperations?.create, true, `${resource.key} should expose row creation`);
         assert.equal(resource.rowOperations?.patch, true, `${resource.key} should expose row patch`);
         assert.equal(resource.rowOperations?.delete, true, `${resource.key} should expose row deletion`);
         assert.ok(resource.rowUiTree, `${resource.key} should expose row editor schema`);
+      } else if (resource.accessMode === "deletable") {
+        assert.equal(resource.rowOperations?.create, false, `${resource.key} should not expose row creation`);
+        assert.equal(resource.rowOperations?.patch, false, `${resource.key} should not expose row patch`);
+        assert.equal(resource.rowOperations?.delete, true, `${resource.key} should expose row deletion`);
       } else {
         assert.equal(resource.rowOperations?.create, false, `${resource.key} should not expose row creation`);
         assert.equal(resource.rowOperations?.patch, false, `${resource.key} should not expose row patch`);
@@ -629,7 +662,7 @@ test("DataRegistryService exposes initial file and directory resources", async (
         key: string;
         title: string;
         shape: string;
-        editable: boolean;
+        accessMode: string;
         durability: string;
         storage: { kind: string; database: string; tableGroup: string; tables: string[] };
         rowIdentity?: { fields: string[]; encode: string };
@@ -639,7 +672,7 @@ test("DataRegistryService exposes initial file and directory resources", async (
     };
     assert.equal(audioFiles.resource.key, "audio_files");
     assert.equal(audioFiles.resource.shape, "collection");
-    assert.equal(audioFiles.resource.editable, false);
+    assert.equal(audioFiles.resource.accessMode, "deletable");
     assert.equal(audioFiles.resource.durability, "source_of_truth");
     assert.deepEqual(audioFiles.resource.storage, {
       kind: "sqlite",
@@ -742,7 +775,7 @@ test("DataRegistryService exposes recent error rows", async () => {
         key: string;
         title: string;
         shape: string;
-        editable: boolean;
+        accessMode: string;
         storage: { kind: string; database: string; tableGroup: string; tables: string[] };
         rowIdentity?: { fields: string[]; encode: string };
         export?: { enabled: boolean; fileName: string; format: string };
@@ -751,7 +784,7 @@ test("DataRegistryService exposes recent error rows", async () => {
     assert.equal(listed.resource.key, "recent_errors");
     assert.equal(listed.resource.title, "最近报错");
     assert.equal(listed.resource.shape, "log");
-    assert.equal(listed.resource.editable, false);
+    assert.equal(listed.resource.accessMode, "readonly");
     assert.deepEqual(listed.resource.storage, {
       kind: "sqlite",
       database: "state",
@@ -827,6 +860,92 @@ test("DataRegistryService exposes and exports audio_files sqlite rows", async ()
     const dump = JSON.parse(await readFile(exported.filePath, "utf8")) as StoredAudioFile[];
     assert.equal(dump[0]?.id, "aud_1");
     assert.equal(dump[0]?.transcription, "hello");
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("DataRegistryService exposes delete-only persistent collections", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-data-registry-test-"));
+  try {
+    const service = createRegistryService(dataDir, {
+      audioRows: [{
+        id: "audio-1",
+        source: "voice.ogg",
+        createdAt: 1,
+        transcription: null,
+        transcriptionStatus: "missing",
+        transcriptionUpdatedAt: null,
+        transcriptionModelRef: null,
+        transcriptionError: null
+      }]
+    });
+
+    const audioFiles = await service.getResource("audio_files") as {
+      resource: {
+        accessMode: string;
+        rowOperations?: { get: boolean; create: boolean; patch: boolean; delete: boolean };
+      };
+    };
+    assert.equal(audioFiles.resource.accessMode, "deletable");
+    assert.deepEqual(audioFiles.resource.rowOperations, {
+      get: true,
+      create: false,
+      patch: false,
+      delete: true
+    });
+    await assert.rejects(
+      service.patchRow("audio_files", "audio-1", { patch: { source: "next.ogg" } }),
+      /Data resource does not allow editing: audio_files/u
+    );
+    await service.deleteRow("audio_files", "audio-1");
+    assert.equal((await service.listRows("audio_files")).total, 0);
+
+    const sessions = await service.getResource("sessions") as {
+      resource: {
+        accessMode: string;
+        rowOperations?: { get: boolean; create: boolean; patch: boolean; delete: boolean };
+      };
+    };
+    assert.equal(sessions.resource.accessMode, "deletable");
+    assert.deepEqual(sessions.resource.rowOperations, {
+      get: false,
+      create: false,
+      patch: false,
+      delete: true
+    });
+    await service.deleteRow("sessions", "private:u1");
+    assert.equal((await service.listRows("sessions")).total, 0);
+
+    await service.createRow("users", {
+      userId: "10001",
+      memories: [{
+        id: "mem-1",
+        title: "偏好",
+        content: "喜欢简洁回答",
+        kind: "preference",
+        source: "user_explicit",
+        createdAt: 1,
+        updatedAt: 1
+      }],
+      createdAt: 1
+    });
+    const userMemories = await service.getResource("user_memories") as {
+      resource: {
+        accessMode: string;
+        rowOperations?: { get: boolean; create: boolean; patch: boolean; delete: boolean };
+      };
+    };
+    assert.equal(userMemories.resource.accessMode, "deletable");
+    assert.deepEqual(userMemories.resource.rowOperations, {
+      get: false,
+      create: false,
+      patch: false,
+      delete: true
+    });
+    const userMemoryRowId = Buffer.from(JSON.stringify({ userId: "10001", id: "mem-1" }), "utf8").toString("base64url");
+    await service.deleteRow("user_memories", userMemoryRowId);
+    assert.equal((await service.listRows("user_memories")).total, 0);
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }
@@ -940,13 +1059,13 @@ test("DataRegistryService exposes editable persona singleton and whitelist colle
     const persona = await service.getResource("persona") as {
       resource: {
         shape: string;
-        editable: boolean;
+        accessMode: string;
         value: unknown;
         uiTree?: unknown;
       };
     };
     assert.equal(persona.resource.shape, "singleton");
-    assert.equal(persona.resource.editable, true);
+    assert.equal(persona.resource.accessMode, "editable");
     assert.ok(persona.resource.uiTree);
 
     await service.patchSingleton("persona", {
@@ -997,12 +1116,12 @@ test("DataRegistryService exposes migrated profile and setup singleton resources
     const rpProfile = await service.getResource("rp_profile") as {
       resource: {
         shape: string;
-        editable: boolean;
+        accessMode: string;
         uiTree?: unknown;
       };
     };
     assert.equal(rpProfile.resource.shape, "singleton");
-    assert.equal(rpProfile.resource.editable, true);
+    assert.equal(rpProfile.resource.accessMode, "editable");
     assert.ok(rpProfile.resource.uiTree);
 
     await service.patchSingleton("rp_profile", {
@@ -1020,11 +1139,11 @@ test("DataRegistryService exposes migrated profile and setup singleton resources
 
     const scenario = await service.getResource("scenario_profile") as {
       resource: {
-        editable: boolean;
+        accessMode: string;
         value: { theme: string };
       };
     };
-    assert.equal(scenario.resource.editable, true);
+    assert.equal(scenario.resource.accessMode, "editable");
     assert.equal(scenario.resource.value.theme, "");
 
     const readiness = await service.patchSingleton("global_profile_readiness", {
@@ -1037,11 +1156,11 @@ test("DataRegistryService exposes migrated profile and setup singleton resources
 
     const setupState = await service.getResource("setup_state") as {
       resource: {
-        editable: boolean;
+        accessMode: string;
         value: { state: string };
       };
     };
-    assert.equal(setupState.resource.editable, false);
+    assert.equal(setupState.resource.accessMode, "readonly");
     assert.equal(setupState.resource.value.state, "ready");
   } finally {
     await rm(dataDir, { recursive: true, force: true });
@@ -1056,12 +1175,12 @@ test("DataRegistryService exposes editable users collection", async () => {
     const listed = await service.getResource("users") as {
       resource: {
         shape: string;
-        editable: boolean;
+        accessMode: string;
         rowUiTree?: unknown;
       };
     };
     assert.equal(listed.resource.shape, "collection");
-    assert.equal(listed.resource.editable, true);
+    assert.equal(listed.resource.accessMode, "editable");
     assert.ok(listed.resource.rowUiTree);
 
     const created = await service.createRow("users", {
@@ -1104,13 +1223,13 @@ test("DataRegistryService exposes editable rule collections", async () => {
     const globalRules = await service.getResource("global_rules") as {
       resource: {
         shape: string;
-        editable: boolean;
+        accessMode: string;
         rowUiTree?: unknown;
         storage: { kind: string; tableGroup?: string; tables?: string[] };
       };
     };
     assert.equal(globalRules.resource.shape, "collection");
-    assert.equal(globalRules.resource.editable, true);
+    assert.equal(globalRules.resource.accessMode, "editable");
     assert.equal(globalRules.resource.storage.kind, "sqlite");
     assert.equal(globalRules.resource.storage.tableGroup, "state.rules");
     assert.deepEqual(globalRules.resource.storage.tables, ["global_rules"]);
@@ -1273,12 +1392,12 @@ test("DataRegistryService exposes editable requests collection", async () => {
     const listed = await service.getResource("requests") as {
       resource: {
         shape: string;
-        editable: boolean;
+        accessMode: string;
         rowUiTree?: unknown;
       };
     };
     assert.equal(listed.resource.shape, "collection");
-    assert.equal(listed.resource.editable, true);
+    assert.equal(listed.resource.accessMode, "editable");
     assert.ok(listed.resource.rowUiTree);
 
     const created = await service.createRow("requests", {
@@ -1328,12 +1447,12 @@ test("DataRegistryService exposes editable scheduled jobs collection and reloads
     const listed = await service.getResource("scheduled_jobs") as {
       resource: {
         shape: string;
-        editable: boolean;
+        accessMode: string;
         rowUiTree?: unknown;
       };
     };
     assert.equal(listed.resource.shape, "collection");
-    assert.equal(listed.resource.editable, true);
+    assert.equal(listed.resource.accessMode, "editable");
     assert.ok(listed.resource.rowUiTree);
 
     const job = {

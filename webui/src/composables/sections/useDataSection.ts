@@ -3,7 +3,7 @@ import { useEditorDraftState } from "@workbench-kit/vue";
 import { useWorkbenchNavigation, useWorkbenchWindows } from "@workbench-kit/vue";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { contextApi, type ContextItemFilters, type ContextManagementItem, type ContextStatus } from "@/api/context";
-import { dataApi, type DataResourceSummary, type DataResource, type DataResourceItem, type DirectoryItem, type DataResourceRowsResult, type DataResourceModel } from "@/api/data";
+import { dataApi, type DataResourceSummary, type DataResource, type DataResourceItem, type DirectoryItem, type DataResourceRowsResult, type DataResourceModel, type DataResourceAccessMode } from "@/api/data";
 import { editorApi, type EditorModel, type EditorResourceSummary } from "@/api/editor";
 import { useWorkbenchToasts } from "@workbench-kit/vue";
 import ContextItemsControlPanel from "@/sections/data/ContextItemsControlPanel.vue";
@@ -16,7 +16,7 @@ type DataListResource =
       title: string;
       source: "registry";
       kind: DataResourceSummary["shape"];
-      editable: boolean;
+      accessMode: DataResourceAccessMode;
     }
   | {
       id: string;
@@ -153,11 +153,17 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
     const selectedResource = computed(() =>
       resources.value.find((entry) => entry.id === selectedKey.value) ?? null
     );
-    const canSubmit = computed(() => !!selectedResource.value?.editable && editorState.isDirty.value && !validating.value && !saving.value);
+    const canSubmit = computed(() =>
+      selectedResource.value?.source === "editor"
+      && selectedResource.value.editable
+      && editorState.isDirty.value
+      && !validating.value
+      && !saving.value
+    );
     const registryCanSubmit = computed(() =>
       selectedResource.value?.source === "registry"
       && resource.value?.shape === "singleton"
-      && resource.value.editable
+      && resource.value.accessMode === "editable"
       && JSON.stringify(registryDraftValue.value) !== JSON.stringify(registryStoredValue.value)
       && !saving.value
       && !loading.value
@@ -270,7 +276,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
             title: entry.title,
             source: "registry" as const,
             kind: entry.shape,
-            editable: entry.editable
+            accessMode: entry.accessMode
           })),
         {
           key: "context_items",
@@ -970,7 +976,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
         || saving.value
         || loading.value
         || resource.value?.shape !== "collection"
-        || !resource.value.editable
+        || resource.value.accessMode !== "editable"
         || resource.value.rowOperations?.patch !== true
       ) {
         return false;
@@ -987,7 +993,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
         !requestResourceId
         || requestResource?.source !== "registry"
         || resource.value?.shape !== "collection"
-        || !resource.value.editable
+        || resource.value.accessMode !== "editable"
         || resource.value.rowOperations?.create !== true
       ) return;
       saving.value = true;
@@ -1021,7 +1027,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
         !requestResourceId
         || requestResource?.source !== "registry"
         || resource.value?.shape !== "collection"
-        || !resource.value.editable
+        || resource.value.accessMode !== "editable"
         || resource.value.rowOperations?.create !== true
         || !resource.value.rowUiTree
       ) return;
@@ -1067,7 +1073,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
         !requestResourceId
         || requestResource?.source !== "registry"
         || resource.value?.shape !== "collection"
-        || !resource.value.editable
+        || resource.value.accessMode !== "editable"
         || resource.value.rowOperations?.patch !== true
         || !rowId
       ) return;
@@ -1104,7 +1110,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
         !requestResourceId
         || requestResource?.source !== "registry"
         || resource.value?.shape !== "collection"
-        || !resource.value.editable
+        || resource.value.accessMode === "readonly"
         || resource.value.rowOperations?.delete !== true
         || !rowId
       ) return;
@@ -1255,9 +1261,13 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       }
       if (resourceEntry.source === "registry") {
         if (resourceEntry.kind === "directory") return "目录";
-        if (resourceEntry.kind === "collection") return resourceEntry.editable ? "表" : "只读表";
+        if (resourceEntry.kind === "collection") {
+          if (resourceEntry.accessMode === "editable") return "表";
+          if (resourceEntry.accessMode === "deletable") return "可删表";
+          return "只读表";
+        }
         if (resourceEntry.kind === "log") return "日志";
-        if (resourceEntry.kind === "singleton") return resourceEntry.editable ? "单例" : "只读";
+        if (resourceEntry.kind === "singleton") return resourceEntry.accessMode === "editable" ? "单例" : "只读";
         return "文件";
       }
       return "";

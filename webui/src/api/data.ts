@@ -3,6 +3,7 @@ import type { SchemaMeta, UiNode } from "@workbench-kit/vue";
 
 export type DataResourceShape = "singleton" | "collection" | "log" | "file" | "directory";
 export type DataResourceDurability = "source_of_truth" | "cache" | "derived" | "ephemeral";
+export type DataResourceAccessMode = "readonly" | "deletable" | "editable";
 
 export interface DataResourceModelColumn {
   key: string;
@@ -46,7 +47,7 @@ export interface DataResourceSummary {
   title: string;
   description?: string;
   shape: DataResourceShape;
-  editable: boolean;
+  accessMode: DataResourceAccessMode;
   durability: DataResourceDurability;
   storage: {
     kind: "sqlite" | "file";

@@ -1,6 +1,7 @@
 export { DataRegistry } from "./dataRegistry.ts";
 export type {
   CollectionDataResourceAdapter,
+  DataResourceAccessMode,
   DataResourceAdapter,
   DataResourceDefinition,
   DataResourceDirectoryItem,
