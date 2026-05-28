@@ -44,9 +44,16 @@ export type SessionPhase =
   | { kind: "turn_planner_evaluating"; label: string }
   | { kind: "turn_planner_waiting"; label: string }
   | { kind: "requesting_llm"; label: string }
+  | { kind: "reasoning"; label: string }
   | { kind: "generating"; label: string }
   | { kind: "tool_calling"; label: string; toolNames: string[]; lastToolName: string | null }
   | { kind: "delivering"; label: string; previewText?: string | null };
+
+export interface SessionStatusPatch {
+  modeId?: string;
+  lastActiveAt?: number;
+  phase?: SessionPhase;
+}
 
 export type SessionStreamEvent =
   | { type: "ready";   sessionId: string; modeId: string; mutationEpoch: number; transcriptCount: number; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
@@ -61,7 +68,7 @@ export type SessionStreamEvent =
       reason: "mutation_epoch_changed" | "transcript_cursor_ahead" | "transcript_gap_detected";
       timestampMs: number;
     }
-  | { type: "status";  sessionId: string; modeId: string; mutationEpoch: number; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
+  | { type: "status_patch";  sessionId: string; mutationEpoch: number; patch: SessionStatusPatch; timestampMs: number }
   | { type: "transcript_item_added"; sessionId: string; mutationEpoch: number; index: number; totalCount: number; item: TranscriptItem; timestampMs: number }
   | { type: "transcript_item_patched"; sessionId: string; mutationEpoch: number; itemId: string; patch: TranscriptItemPatch; timestampMs: number }
   | { type: "session_error"; message: string };

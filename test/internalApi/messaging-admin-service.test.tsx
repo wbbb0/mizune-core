@@ -196,6 +196,18 @@ function nextTick(): Promise<void> {
       text: "AB",
       timestampMs: 30
     });
+
+    const statusPatchEvent = receivedEvents.find((event) => event.type === "status_patch");
+    assert.deepEqual(statusPatchEvent, {
+      type: "status_patch",
+      sessionId: "qqbot:p:10001",
+      mutationEpoch: 2,
+      patch: {
+        lastActiveAt: 130
+      },
+      timestampMs: statusPatchEvent?.timestampMs
+    });
+    assert.equal(typeof statusPatchEvent?.timestampMs, "number");
   });
 
   test("session stream emits transcript item patches for reasoning updates", async () => {
