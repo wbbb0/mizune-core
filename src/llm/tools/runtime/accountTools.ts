@@ -1,11 +1,15 @@
 import type { ChatFileRecord } from "#services/workspace/types.ts";
+import {
+  describeOneBotSelfAccountCapabilityUnavailable,
+  hasOneBotSelfAccountCapability
+} from "#services/onebot/selfAccountCapabilities.ts";
 import type { BuiltinToolContext, ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
 
-const isNapCatToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.onebot.provider === "napcat";
+const isSelfAccountToolEnabled: ToolDescriptor["isEnabled"] = (config) => hasOneBotSelfAccountCapability(config, "view");
 const isNapCatAvatarToolEnabled: ToolDescriptor["isEnabled"] = (config) => (
-  config.onebot.provider === "napcat" && config.chatFiles.enabled
+  hasOneBotSelfAccountCapability(config, "avatar_update")
 );
 
 export const selfAccountToolDescriptors: ToolDescriptor[] = [
@@ -23,7 +27,7 @@ export const selfAccountToolDescriptors: ToolDescriptor[] = [
       }
     },
     ownerOnly: true,
-    isEnabled: isNapCatToolEnabled
+    isEnabled: isSelfAccountToolEnabled
   },
   {
     definition: {
@@ -65,7 +69,7 @@ export const selfAccountToolDescriptors: ToolDescriptor[] = [
       }
     },
     ownerOnly: true,
-    isEnabled: isNapCatToolEnabled
+    isEnabled: (config) => hasOneBotSelfAccountCapability(config, "signature_update")
   }
 ];
 
@@ -73,6 +77,10 @@ export const selfAccountToolHandlers: Record<string, ToolHandler> = {
   async self_account_view(_toolCall, _args, context) {
     const denied = requireOwner(context.relationship, "Only owner can inspect the bot account");
     if (denied) return denied;
+    const unavailable = describeOneBotSelfAccountCapabilityUnavailable(context.config, "view");
+    if (unavailable) {
+      return JSON.stringify({ ok: false, error: unavailable });
+    }
     try {
       const account = await context.oneBotClient.getSelfAccountInfo();
       return JSON.stringify({ ok: true, account });
@@ -84,6 +92,10 @@ export const selfAccountToolHandlers: Record<string, ToolHandler> = {
   async self_account_avatar_set(_toolCall, args, context) {
     const denied = requireOwner(context.relationship, "Only owner can update the bot account avatar");
     if (denied) return denied;
+    const unavailable = describeOneBotSelfAccountCapabilityUnavailable(context.config, "avatar_update");
+    if (unavailable) {
+      return JSON.stringify({ ok: false, error: unavailable });
+    }
     const assetRef = getStringArg(args, "asset_ref");
     const assetId = getStringArg(args, "asset_id");
     if (assetRef && assetId) {
@@ -118,6 +130,10 @@ export const selfAccountToolHandlers: Record<string, ToolHandler> = {
   async self_account_signature_set(_toolCall, args, context) {
     const denied = requireOwner(context.relationship, "Only owner can update the bot account signature");
     if (denied) return denied;
+    const unavailable = describeOneBotSelfAccountCapabilityUnavailable(context.config, "signature_update");
+    if (unavailable) {
+      return JSON.stringify({ ok: false, error: unavailable });
+    }
     const signature = getStringArg(args, "signature");
     if (!signature) {
       return JSON.stringify({ ok: false, error: "signature is required" });

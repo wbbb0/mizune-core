@@ -936,6 +936,62 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
     assert.equal(calls.at(-1)?.text, "配置已确认，已回到正常对话。");
   });
 
+  test("confirm command does not sync persona nickname when OneBot is disabled", async () => {
+    const writtenPersonas: unknown[] = [];
+    const nicknameUpdates: string[] = [];
+
+    const { calls, handler } = createDirectCommandFixture({
+      config: {
+        onebot: {
+          enabled: false,
+          provider: "napcat"
+        }
+      },
+      session: {
+        operationMode: {
+          kind: "persona_config",
+          draft: {
+            ...createEmptyPersona(),
+            name: "小满",
+            temperament: "克制",
+            speakingStyle: "简洁",
+            globalTraits: "助手"
+          }
+        }
+      },
+      personaStore: {
+        async get() {
+          return createEmptyPersona();
+        },
+        async write(persona: unknown) {
+          writtenPersonas.push(persona);
+        },
+        createEmpty() {
+          return createEmptyPersona();
+        },
+        isComplete() {
+          return true;
+        }
+      },
+      oneBotClient: {
+        async setQQProfile(input: { nickname: string }) {
+          nicknameUpdates.push(input.nickname);
+          return { status: "ok", retcode: 0, data: null };
+        }
+      }
+    });
+
+    await handler({
+      command: { name: "confirm" },
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+
+    assert.equal(writtenPersonas.length, 1);
+    assert.deepEqual(nicknameUpdates, []);
+    assert.equal(calls.at(-1)?.text, "配置已确认，已回到正常对话。");
+  });
+
   test("confirm command persists mode draft and updates mode readiness", async () => {
     const finishedOperations: Array<Record<string, unknown>> = [];
     const writtenProfiles: unknown[] = [];

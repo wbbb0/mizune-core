@@ -239,9 +239,91 @@ test("NapCat owner tools expose account management while hiding it from known us
   assert.ok(noLocalNames.includes("asset_image_transform"));
 });
 
+test("self account tools require enabled NapCat OneBot capabilities", async () => {
+  const disabledConfig = createTestAppConfig({
+    onebot: {
+      enabled: false,
+      provider: "napcat"
+    },
+    chatFiles: {
+      enabled: true
+    }
+  });
+  const disabledNames = getBuiltinTools("owner", disabledConfig).map((tool) => tool.function.name);
+  assert.ok(!disabledNames.includes("self_account_view"));
+  assert.ok(!disabledNames.includes("self_account_avatar_set"));
+  assert.ok(!disabledNames.includes("self_account_signature_set"));
+
+  let signatureCalls = 0;
+  const result = parseJsonToolResult<{ ok: boolean; error: string }>(
+    await selfAccountToolHandlers.self_account_signature_set!(
+      createFunctionToolCall("self_account_signature_set"),
+      { signature: "签名" },
+      {
+        config: disabledConfig,
+        relationship: "owner",
+        oneBotClient: {
+          async setSelfLongNick() {
+            signatureCalls += 1;
+            return { status: "ok", retcode: 0, data: null };
+          }
+        }
+      } as any
+    )
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.error, /OneBot is disabled/u);
+  assert.equal(signatureCalls, 0);
+
+  let viewCalls = 0;
+  const viewResult = parseJsonToolResult<{ ok: boolean; error: string }>(
+    await selfAccountToolHandlers.self_account_view!(
+      createFunctionToolCall("self_account_view"),
+      {},
+      {
+        config: disabledConfig,
+        relationship: "owner",
+        oneBotClient: {
+          async getSelfAccountInfo() {
+            viewCalls += 1;
+            return {};
+          }
+        }
+      } as any
+    )
+  );
+  assert.equal(viewResult.ok, false);
+  assert.match(viewResult.error, /OneBot is disabled/u);
+  assert.equal(viewCalls, 0);
+
+  let avatarCalls = 0;
+  const avatarResult = parseJsonToolResult<{ ok: boolean; error: string }>(
+    await selfAccountToolHandlers.self_account_avatar_set!(
+      createFunctionToolCall("self_account_avatar_set"),
+      { asset_ref: "asset_1" },
+      {
+        config: disabledConfig,
+        relationship: "owner",
+        oneBotClient: {
+          async setQQAvatar() {
+            avatarCalls += 1;
+            return { status: "ok", retcode: 0, data: null };
+          }
+        }
+      } as any
+    )
+  );
+  assert.equal(avatarResult.ok, false);
+  assert.match(avatarResult.error, /OneBot is disabled/u);
+  assert.equal(avatarCalls, 0);
+});
+
 async function createImageToolHarness() {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-onebot-image-transform-"));
   const config = createTestAppConfig({
+    onebot: {
+      provider: "napcat"
+    },
     localFiles: {
       enabled: true,
       root: "data"

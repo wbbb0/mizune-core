@@ -20,6 +20,7 @@ import { resolveSessionParticipantLabel } from "#conversation/session/sessionIde
 import { parseOwnerBootstrapCommand } from "#app/bootstrap/ownerBootstrapPolicy.ts";
 import { resolvePersonaReadinessStatus } from "#persona/personaSetupPolicy.ts";
 import type { RecentErrorStore } from "#runtime/recentErrorStore.ts";
+import { hasOneBotSelfAccountCapability } from "#services/onebot/selfAccountCapabilities.ts";
 
 type DebugModeArg = "on" | "off" | "once" | "status";
 type ConfigTarget = "persona" | "rp" | "scenario";
@@ -363,7 +364,7 @@ async function syncSelfAccountNicknameFromPersona(
   persona: Persona
 ): Promise<void> {
   const nickname = persona.name.trim();
-  if (!nickname || ctx.input.config.onebot.provider !== "napcat") {
+  if (!nickname || !hasOneBotSelfAccountCapability(ctx.input.config, "nickname_update")) {
     return;
   }
   try {
