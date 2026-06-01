@@ -7,11 +7,9 @@ function createPersonaFieldSchema(title: string) {
 export const personaSchema = s.object({
   name: createPersonaFieldSchema("名字"),
   temperament: createPersonaFieldSchema("性格底色"),
-  speakingStyle: createPersonaFieldSchema("说话方式"),
-  globalTraits: createPersonaFieldSchema("全局特征"),
-  generalPreferences: createPersonaFieldSchema("通用偏好"),
+  voiceStyle: createPersonaFieldSchema("语气风格"),
 }).title("全局人格")
-  .describe("定义 bot 在所有模式下共享的人格底色、说话方式与全局偏好。")
+  .describe("定义 bot 在所有模式下共享的人格底色与语气风格。")
   .strict();
 
 export type Persona = Infer<typeof personaSchema>;
@@ -19,9 +17,7 @@ export type Persona = Infer<typeof personaSchema>;
 export const editablePersonaFieldNames = [
   "name",
   "temperament",
-  "speakingStyle",
-  "globalTraits",
-  "generalPreferences"
+  "voiceStyle"
 ] as const;
 
 export type EditablePersonaFieldName = typeof editablePersonaFieldNames[number];
@@ -29,25 +25,21 @@ export type EditablePersonaFieldName = typeof editablePersonaFieldNames[number];
 export const personaFieldLabels: Record<EditablePersonaFieldName, string> = {
   name: "名字",
   temperament: "性格底色",
-  speakingStyle: "说话方式",
-  globalTraits: "全局特征",
-  generalPreferences: "通用偏好"
+  voiceStyle: "语气风格"
 };
 
 export function createEmptyPersona(): Persona {
   return {
     name: "",
     temperament: "",
-    speakingStyle: "",
-    globalTraits: "",
-    generalPreferences: ""
+    voiceStyle: ""
   };
 }
 
 const requiredPersonaFieldNames = [
   "name",
   "temperament",
-  "speakingStyle"
+  "voiceStyle"
 ] as const satisfies readonly EditablePersonaFieldName[];
 
 export function describeMissingPersonaFields(persona: Persona): EditablePersonaFieldName[] {

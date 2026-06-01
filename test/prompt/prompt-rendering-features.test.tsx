@@ -24,7 +24,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        speakingStyle: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
+        voiceStyle: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
       });
       const prompt = buildPrompt({
         sessionId: "qqbot:g:123456",
@@ -102,7 +102,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
         interactionMode: "normal",
         persona,
         phase: "setup",
-        missingFields: ["name", "temperament", "speakingStyle"],
+        missingFields: ["name", "temperament", "voiceStyle"],
         recentMessages: [],
         batchMessages: [
           createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "继续设置" })
@@ -296,7 +296,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        speakingStyle: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
+        voiceStyle: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
       });
       const prompt = buildPrompt({
         sessionId: "qqbot:p:owner",
@@ -334,7 +334,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        speakingStyle: "直接、简洁，优先把任务做完。"
+        voiceStyle: "直接、简洁，优先把任务做完。"
       });
       const prompt = buildPrompt({
         sessionId: "qqbot:p:owner",
@@ -410,7 +410,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        speakingStyle: "直接、简洁，优先把任务做完。"
+        voiceStyle: "直接、简洁，优先把任务做完。"
       });
       const baseInput = {
         sessionId: "qqbot:p:owner",
@@ -539,7 +539,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        speakingStyle: "直接、简洁，优先把任务做完。"
+        voiceStyle: "直接、简洁，优先把任务做完。"
       });
       const prompt = buildPrompt({
         sessionId: "qqbot:p:owner",
@@ -578,7 +578,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        speakingStyle: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
+        voiceStyle: "对 owner 像好兄弟一样完全不客气，但会顾及对方的情绪，不再过度毒舌。平时保持直率、可爱且带点“野”的女兄弟风格。"
       });
       await harness.globalRuleStore.overwrite([
         {
@@ -642,7 +642,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        globalTraits: "嘴硬但靠谱的搭档"
+        temperament: "嘴硬但靠谱的搭档"
       });
       await harness.globalRuleStore.overwrite([
         {
@@ -785,8 +785,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
       const persona = await harness.personaStore.patch({
         name: "Bot",
         temperament: "冷静",
-        speakingStyle: "简洁",
-        globalTraits: "始终带角色口吻"
+        voiceStyle: "简洁"
       });
       const prompt = buildPrompt({
         sessionId: "qqbot:g:123456",
@@ -894,7 +893,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
       const persona = await harness.personaStore.patch({
         name: "Bot",
         temperament: "冷静",
-        speakingStyle: "简洁"
+        voiceStyle: "简洁"
       });
       const prompt = buildPrompt({
         sessionId: "qqbot:p:owner",
@@ -910,27 +909,22 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
           target: "rp",
           phase: "config",
           profile: {
-            selfPositioning: "克制",
-            socialRole: "",
-            lifeContext: "",
-            physicalPresence: "",
-            realityContract: "",
-            continuityFacts: "",
-            hardLimits: ""
+            identity: "克制",
+            background: "",
+            boundaries: "",
+            continuityFacts: ""
           },
           missingFields: [
-            "socialRole",
-            "lifeContext",
-            "physicalPresence",
-            "realityContract",
-            "hardLimits"
+            "identity",
+            "background",
+            "boundaries"
           ]
         },
         batchMessages: [
           createPromptBatchMessage({
             userId: "owner",
             senderName: "Owner",
-            text: "把现实契约改得更克制一点",
+            text: "把边界改得更克制一点",
             timestampMs: Date.UTC(2026, 2, 16, 9, 13, 10)
           })
         ]
@@ -1097,7 +1091,7 @@ async function renderTaskPromptSystem(
   const harness = await createMemoryHarness();
   try {
     const persona = await harness.personaStore.patch({
-      speakingStyle: "直接、简洁，优先把任务做完。"
+      voiceStyle: "直接、简洁，优先把任务做完。"
     });
     return readPromptSystemText(buildPrompt({
       sessionId: "qqbot:p:owner",

@@ -65,9 +65,7 @@ function createPersonaSchema(db: SqliteDatabase): void {
       id TEXT PRIMARY KEY CHECK (id = 'global'),
       name TEXT NOT NULL DEFAULT '',
       temperament TEXT NOT NULL DEFAULT '',
-      speaking_style TEXT NOT NULL DEFAULT '',
-      global_traits TEXT NOT NULL DEFAULT '',
-      general_preferences TEXT NOT NULL DEFAULT '',
+      voice_style TEXT NOT NULL DEFAULT '',
       updated_at_ms INTEGER NOT NULL
     );
   `);
@@ -78,11 +76,40 @@ function validatePersonaSchema(db: SqliteDatabase): void {
     id: "TEXT",
     name: "TEXT",
     temperament: "TEXT",
-    speaking_style: "TEXT",
-    global_traits: "TEXT",
-    general_preferences: "TEXT",
+    voice_style: "TEXT",
     updated_at_ms: "INTEGER"
   });
+}
+
+function migratePersonaSchema(db: SqliteDatabase): boolean {
+  const row = db.prepare(`
+    SELECT
+      name,
+      temperament,
+      speaking_style AS speakingStyle,
+      updated_at_ms AS updatedAtMs
+    FROM persona
+    WHERE id = 'global'
+  `).get() as {
+    name?: string;
+    temperament?: string;
+    speakingStyle?: string;
+    updatedAtMs?: number;
+  } | undefined;
+  db.exec("DROP TABLE IF EXISTS persona;");
+  createPersonaSchema(db);
+  if (row) {
+    db.prepare(`
+      INSERT INTO persona (id, name, temperament, voice_style, updated_at_ms)
+      VALUES ('global', @name, @temperament, @voiceStyle, @updatedAtMs)
+    `).run({
+      name: row.name ?? "",
+      temperament: row.temperament ?? "",
+      voiceStyle: row.speakingStyle ?? "",
+      updatedAtMs: row.updatedAtMs ?? Date.now()
+    });
+  }
+  return true;
 }
 
 function createWhitelistSchema(db: SqliteDatabase): void {
@@ -108,13 +135,10 @@ function createRpProfileSchema(db: SqliteDatabase): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS rp_profile (
       id TEXT PRIMARY KEY CHECK (id = 'global'),
-      self_positioning TEXT NOT NULL DEFAULT '',
-      social_role TEXT NOT NULL DEFAULT '',
-      life_context TEXT NOT NULL DEFAULT '',
-      physical_presence TEXT NOT NULL DEFAULT '',
-      reality_contract TEXT NOT NULL DEFAULT '',
+      identity TEXT NOT NULL DEFAULT '',
+      background TEXT NOT NULL DEFAULT '',
       continuity_facts TEXT NOT NULL DEFAULT '',
-      hard_limits TEXT NOT NULL DEFAULT '',
+      boundaries TEXT NOT NULL DEFAULT '',
       updated_at_ms INTEGER NOT NULL
     );
   `);
@@ -123,15 +147,52 @@ function createRpProfileSchema(db: SqliteDatabase): void {
 function validateRpProfileSchema(db: SqliteDatabase): void {
   assertTableColumns(db, "rp_profile", {
     id: "TEXT",
-    self_positioning: "TEXT",
-    social_role: "TEXT",
-    life_context: "TEXT",
-    physical_presence: "TEXT",
-    reality_contract: "TEXT",
+    identity: "TEXT",
+    background: "TEXT",
     continuity_facts: "TEXT",
-    hard_limits: "TEXT",
+    boundaries: "TEXT",
     updated_at_ms: "INTEGER"
   });
+}
+
+function migrateRpProfileSchema(db: SqliteDatabase): boolean {
+  const row = db.prepare(`
+    SELECT
+      self_positioning AS selfPositioning,
+      social_role AS socialRole,
+      life_context AS lifeContext,
+      physical_presence AS physicalPresence,
+      reality_contract AS realityContract,
+      continuity_facts AS continuityFacts,
+      hard_limits AS hardLimits,
+      updated_at_ms AS updatedAtMs
+    FROM rp_profile
+    WHERE id = 'global'
+  `).get() as {
+    selfPositioning?: string;
+    socialRole?: string;
+    lifeContext?: string;
+    physicalPresence?: string;
+    realityContract?: string;
+    continuityFacts?: string;
+    hardLimits?: string;
+    updatedAtMs?: number;
+  } | undefined;
+  db.exec("DROP TABLE IF EXISTS rp_profile;");
+  createRpProfileSchema(db);
+  if (row) {
+    db.prepare(`
+      INSERT INTO rp_profile (id, identity, background, continuity_facts, boundaries, updated_at_ms)
+      VALUES ('global', @identity, @background, @continuityFacts, @boundaries, @updatedAtMs)
+    `).run({
+      identity: joinNonEmpty([row.selfPositioning, row.socialRole]),
+      background: joinNonEmpty([row.lifeContext, row.physicalPresence]),
+      continuityFacts: row.continuityFacts ?? "",
+      boundaries: joinNonEmpty([row.hardLimits, row.realityContract]),
+      updatedAtMs: row.updatedAtMs ?? Date.now()
+    });
+  }
+  return true;
 }
 
 function createScenarioProfileSchema(db: SqliteDatabase): void {
@@ -139,10 +200,9 @@ function createScenarioProfileSchema(db: SqliteDatabase): void {
     CREATE TABLE IF NOT EXISTS scenario_profile (
       id TEXT PRIMARY KEY CHECK (id = 'global'),
       theme TEXT NOT NULL DEFAULT '',
-      host_style TEXT NOT NULL DEFAULT '',
       world_baseline TEXT NOT NULL DEFAULT '',
-      safety_or_taboo_rules TEXT NOT NULL DEFAULT '',
-      opening_pattern TEXT NOT NULL DEFAULT '',
+      narration_style TEXT NOT NULL DEFAULT '',
+      boundaries TEXT NOT NULL DEFAULT '',
       updated_at_ms INTEGER NOT NULL
     );
   `);
@@ -152,12 +212,54 @@ function validateScenarioProfileSchema(db: SqliteDatabase): void {
   assertTableColumns(db, "scenario_profile", {
     id: "TEXT",
     theme: "TEXT",
-    host_style: "TEXT",
     world_baseline: "TEXT",
-    safety_or_taboo_rules: "TEXT",
-    opening_pattern: "TEXT",
+    narration_style: "TEXT",
+    boundaries: "TEXT",
     updated_at_ms: "INTEGER"
   });
+}
+
+function migrateScenarioProfileSchema(db: SqliteDatabase): boolean {
+  const row = db.prepare(`
+    SELECT
+      theme,
+      host_style AS hostStyle,
+      world_baseline AS worldBaseline,
+      safety_or_taboo_rules AS safetyOrTabooRules,
+      opening_pattern AS openingPattern,
+      updated_at_ms AS updatedAtMs
+    FROM scenario_profile
+    WHERE id = 'global'
+  `).get() as {
+    theme?: string;
+    hostStyle?: string;
+    worldBaseline?: string;
+    safetyOrTabooRules?: string;
+    openingPattern?: string;
+    updatedAtMs?: number;
+  } | undefined;
+  db.exec("DROP TABLE IF EXISTS scenario_profile;");
+  createScenarioProfileSchema(db);
+  if (row) {
+    db.prepare(`
+      INSERT INTO scenario_profile (id, theme, world_baseline, narration_style, boundaries, updated_at_ms)
+      VALUES ('global', @theme, @worldBaseline, @narrationStyle, @boundaries, @updatedAtMs)
+    `).run({
+      theme: row.theme ?? "",
+      worldBaseline: row.worldBaseline ?? "",
+      narrationStyle: joinNonEmpty([row.hostStyle, row.openingPattern]),
+      boundaries: row.safetyOrTabooRules ?? "",
+      updatedAtMs: row.updatedAtMs ?? Date.now()
+    });
+  }
+  return true;
+}
+
+function joinNonEmpty(values: Array<string | undefined>): string {
+  return values
+    .map((value) => value?.trim() ?? "")
+    .filter(Boolean)
+    .join("；");
 }
 
 function createGlobalProfileReadinessSchema(db: SqliteDatabase): void {
@@ -558,10 +660,12 @@ function validateRecentErrorsSchema(db: SqliteDatabase): void {
 const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   {
     groupId: "state.persona",
-    schemaVersion: 1,
+    schemaVersion: 2,
+    minReadableSchemaVersion: 1,
     resetPolicy: "block_reset",
     ownedTables: ["persona"],
     createSchema: createPersonaSchema,
+    migrateSchema: migratePersonaSchema,
     validateSchema: validatePersonaSchema
   },
   {
@@ -574,18 +678,22 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   },
   {
     groupId: "state.rp_profile",
-    schemaVersion: 1,
+    schemaVersion: 2,
+    minReadableSchemaVersion: 1,
     resetPolicy: "block_reset",
     ownedTables: ["rp_profile"],
     createSchema: createRpProfileSchema,
+    migrateSchema: migrateRpProfileSchema,
     validateSchema: validateRpProfileSchema
   },
   {
     groupId: "state.scenario_profile",
-    schemaVersion: 1,
+    schemaVersion: 2,
+    minReadableSchemaVersion: 1,
     resetPolicy: "block_reset",
     ownedTables: ["scenario_profile"],
     createSchema: createScenarioProfileSchema,
+    migrateSchema: migrateScenarioProfileSchema,
     validateSchema: validateScenarioProfileSchema
   },
   {

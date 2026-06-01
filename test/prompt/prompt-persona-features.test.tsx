@@ -18,7 +18,7 @@ import {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.patch({
-        globalTraits: "默认会把角色边界放在前面。"
+        temperament: "默认会把角色边界放在前面。"
       });
       await harness.userStore.overwriteMemories("owner", [{ title: "当前用户偏好", content: "不喜欢被叫全名。" }]);
       const otherUser = await harness.userStore.overwriteMemories("20002", [{ title: "其他人记忆", content: "这个不该给当前用户用。" }]);
@@ -38,7 +38,7 @@ import {
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "你好", timestampMs: Date.now() })]
       });
       const system = readPromptSystemText(prompt);
-      assert.match(system, /全局特征=默认会把角色边界放在前面。/);
+      assert.match(system, /性格底色=默认会把角色边界放在前面。/);
       assert.equal(hasPromptSection(system, "current_user_memories"), true);
       assert.match(system, /当前触发用户长期记忆/);
       assert.match(system, /当前用户偏好：不喜欢被叫全名/);
@@ -59,24 +59,12 @@ import {
     const personaPatchProperties = Object.keys((patchDescriptor!.definition.function.parameters as {
       properties: { personaPatch: { properties: Record<string, unknown> } };
     }).properties.personaPatch.properties);
-    assert.deepEqual(personaPatchProperties.sort(), [
-      "generalPreferences",
-      "globalTraits",
-      "name",
-      "speakingStyle",
-      "temperament"
-    ]);
+    assert.deepEqual(personaPatchProperties.sort(), ["name", "temperament", "voiceStyle"]);
 
     const personaFieldEnum = ((clearDescriptor!.definition.function.parameters as {
       properties: { personaField: { enum: string[] } };
     }).properties.personaField.enum) ?? [];
-    assert.deepEqual([...personaFieldEnum].sort(), [
-      "generalPreferences",
-      "globalTraits",
-      "name",
-      "speakingStyle",
-      "temperament"
-    ]);
+    assert.deepEqual([...personaFieldEnum].sort(), ["name", "temperament", "voiceStyle"]);
 
     const capturedPatches: Record<string, string>[] = [];
     const result = await profileToolHandlers.patch_persona!(
@@ -87,9 +75,7 @@ import {
           role: "旧角色",
           appearance: "旧外貌",
           temperament: "克制",
-          speakingStyle: "简洁",
-          globalTraits: "全局对话代理",
-          generalPreferences: "阅读",
+          voiceStyle: "简洁",
           rules: "旧规则"
         }
       },
@@ -100,16 +86,14 @@ import {
             return Boolean(
               persona.name
               && persona.temperament
-              && persona.speakingStyle
+              && persona.voiceStyle
             );
           },
           async get() {
             return {
               name: "",
               temperament: "",
-              speakingStyle: "",
-              globalTraits: "",
-              generalPreferences: ""
+              voiceStyle: ""
             };
           },
           async patch(patch: Record<string, string>) {
@@ -117,9 +101,7 @@ import {
             return {
               name: patch.name ?? "",
               temperament: patch.temperament ?? "",
-              speakingStyle: patch.speakingStyle ?? "",
-              globalTraits: patch.globalTraits ?? "",
-              generalPreferences: patch.generalPreferences ?? ""
+              voiceStyle: patch.voiceStyle ?? ""
             };
           }
         } as never,
@@ -163,9 +145,7 @@ import {
     assert.deepEqual(capturedPatches[0], {
       name: "小满",
       temperament: "克制",
-      speakingStyle: "简洁",
-      globalTraits: "全局对话代理",
-      generalPreferences: "阅读"
+      voiceStyle: "简洁"
     });
     assert.match(String(result), /"persona":/);
     assert.doesNotMatch(String(result), /role|appearance|rules/);
@@ -180,8 +160,7 @@ import {
         personaPatch: {
           name: "小满",
           temperament: "克制",
-          speakingStyle: "简洁",
-          globalTraits: "全局对话代理"
+          voiceStyle: "简洁"
         }
       },
       {
@@ -191,16 +170,14 @@ import {
             return Boolean(
               persona.name
               && persona.temperament
-              && persona.speakingStyle
+              && persona.voiceStyle
             );
           },
           async patch(patch: Record<string, string>) {
             return {
               name: patch.name ?? "",
               temperament: patch.temperament ?? "",
-              speakingStyle: patch.speakingStyle ?? "",
-              globalTraits: patch.globalTraits ?? "",
-              generalPreferences: patch.generalPreferences ?? ""
+              voiceStyle: patch.voiceStyle ?? ""
             };
           }
         } as never,
@@ -227,7 +204,7 @@ import {
     await profileToolHandlers.clear_persona_field!(
       { id: "tool_persona_clear_ready_1", type: "function", function: { name: "clear_persona_field", arguments: "{}" } },
       {
-        personaField: "speakingStyle"
+        personaField: "voiceStyle"
       },
       {
         relationship: "owner",
@@ -236,16 +213,14 @@ import {
             return Boolean(
               persona.name
               && persona.temperament
-              && persona.speakingStyle
+              && persona.voiceStyle
             );
           },
           async patch(patch: Record<string, string>) {
             return {
               name: "小满",
               temperament: "克制",
-              speakingStyle: patch.speakingStyle ?? "简洁",
-              globalTraits: "全局对话代理",
-              generalPreferences: ""
+              voiceStyle: patch.voiceStyle ?? "简洁"
             };
           }
         } as never,
@@ -381,12 +356,12 @@ import {
         sessionId: "qqbot:p:owner",
         persona,
         phase: "setup",
-        missingFields: ["name", "temperament", "speakingStyle"],
+        missingFields: ["name", "temperament", "voiceStyle"],
         recentMessages: [],
         batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "我叫小满，是个图书管理员", timestampMs: Date.now() })]
       });
       const system = readPromptSystemText(prompt);
-      assert.match(system, /当前处于初始化阶段/);
+      assert.match(system, /当前实例处于初始化阶段/);
       assert.match(system, /你当前只在persona的临时草稿上工作/);
       assert.match(system, /保持主动、友好、helpful 的引导感/);
       assert.match(system, /最多同时追问 1-2 个强相关字段/);
@@ -407,8 +382,7 @@ import {
       const persona = await harness.personaStore.patch({
         name: "小满",
         temperament: "冷静细致",
-        speakingStyle: "简短直接",
-        globalTraits: "安静可靠"
+        voiceStyle: "简短直接"
       });
       const prompt = buildSetupPrompt({
         sessionId: "qqbot:p:owner",
@@ -416,7 +390,7 @@ import {
         phase: "config",
         missingFields: [],
         recentMessages: [],
-        batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "把说话方式改柔和一点", timestampMs: Date.now() })]
+        batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "把语气风格改柔和一点", timestampMs: Date.now() })]
       });
       const system = readPromptSystemText(prompt);
       assert.match(system, /persona_config_mode/);
@@ -441,7 +415,7 @@ import {
         sessionId: "qqbot:p:owner",
         persona,
         phase: "setup",
-        missingFields: ["name", "temperament", "speakingStyle"],
+        missingFields: ["name", "temperament", "voiceStyle"],
         recentMessages: [],
         batchMessages: [createPromptBatchMessage({
           userId: "owner",

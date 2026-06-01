@@ -283,7 +283,7 @@ function getTableGroupResetReason(
   }
   const meta = readTableGroupMeta(db, group.groupId);
   if (meta && meta.schema_version !== group.schemaVersion) {
-    if (isTableGroupSchemaReadable(group, meta) && getResetPolicy(group) === "reset_allowed" && tryMigrateTableGroup(db, group, meta)) {
+    if (isTableGroupSchemaReadable(group, meta) && tryMigrateTableGroup(db, group, meta)) {
       return null;
     }
     return "schema_version_mismatch";
@@ -294,7 +294,7 @@ function getTableGroupResetReason(
   try {
     group.validateSchema(db);
   } catch (error) {
-    if (meta && getResetPolicy(group) === "reset_allowed" && tryMigrateTableGroup(db, group, meta)) {
+    if (meta && isTableGroupSchemaReadable(group, meta) && tryMigrateTableGroup(db, group, meta)) {
       return null;
     }
     if (meta) {

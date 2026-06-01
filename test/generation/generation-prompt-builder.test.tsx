@@ -272,9 +272,7 @@ function createActiveTaskTracker() {
       persona: {
         name: "Bot",
         temperament: "冷静",
-        speakingStyle: "简洁",
-        globalTraits: "助手",
-        generalPreferences: ""
+        voiceStyle: "简洁"
       } as any,
       relationship: "known",
       participantProfiles: [],
@@ -353,9 +351,7 @@ function createActiveTaskTracker() {
       persona: {
         name: "Bot",
         temperament: "冷静",
-        speakingStyle: "简洁",
-        globalTraits: "助手",
-        generalPreferences: ""
+        voiceStyle: "简洁"
       } as any,
       relationship: "known",
       participantProfiles: [],
@@ -518,9 +514,7 @@ function createActiveTaskTracker() {
       persona: {
         name: "Bot",
         temperament: "冷静",
-        speakingStyle: "简洁",
-        globalTraits: "助手",
-        generalPreferences: ""
+        voiceStyle: "简洁"
       } as any,
       relationship: "known",
       participantProfiles: [],
@@ -647,9 +641,7 @@ function createActiveTaskTracker() {
       persona: {
         name: "Bot",
         temperament: "冷静",
-        speakingStyle: "简洁",
-        globalTraits: "助手",
-        generalPreferences: ""
+        voiceStyle: "简洁"
       } as any,
       relationship: "known",
       participantProfiles: [],
@@ -716,7 +708,7 @@ function createActiveTaskTracker() {
       visibleToolNames: [],
       activeToolsets: [],
       replayMessages: [{ role: "user", content: "replay-unsafe 原始 replay" }],
-      persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
+      persona: { name: "Bot", temperament: "", voiceStyle: "" } as any,
       relationship: "known",
       participantProfiles: [],
       currentUser: { userId: "10001", relationship: "known" } as any,
@@ -762,7 +754,7 @@ function createActiveTaskTracker() {
         description: "执行与交互 terminal 会话，并复用 terminal resource。",
         toolNames: ["terminal_run"]
       }],
-      persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
+      persona: { name: "Bot", temperament: "", voiceStyle: "" } as any,
       relationship: "known",
       participantProfiles: [],
       currentUser: { userId: "10001", relationship: "known" } as any,
@@ -821,7 +813,7 @@ function createActiveTaskTracker() {
       mainModelRef: ["main"],
       visibleToolNames: ["terminal_run"],
       activeToolsets: [],
-      persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
+      persona: { name: "Bot", temperament: "", voiceStyle: "" } as any,
       relationship: "known",
       participantProfiles: [],
       currentUser: { userId: "10001", relationship: "known" } as any,
@@ -890,7 +882,7 @@ function createActiveTaskTracker() {
         jobName: "测试任务",
         taskInstruction: "scheduled-unsafe 原始任务"
       },
-      persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
+      persona: { name: "Bot", temperament: "", voiceStyle: "" } as any,
       relationship: "known",
       participantProfiles: [],
       currentUser: { userId: "10001", relationship: "known" } as any,
@@ -923,7 +915,7 @@ function createActiveTaskTracker() {
         jobName: "提醒",
         taskInstruction: "到点提醒用户喝水"
       },
-      persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
+      persona: { name: "Bot", temperament: "", voiceStyle: "" } as any,
       relationship: "known",
       participantProfiles: [],
       currentUser: { userId: "10001", relationship: "known" } as any,
@@ -965,7 +957,7 @@ function createActiveTaskTracker() {
         output: "ok",
         outputTruncated: false
       },
-      persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
+      persona: { name: "Bot", temperament: "", voiceStyle: "" } as any,
       relationship: "known",
       participantProfiles: [],
       currentUser: { userId: "10001", relationship: "known" } as any,
@@ -1029,7 +1021,7 @@ function createActiveTaskTracker() {
         autoIterationIndex: 1,
         maxAutoIterations: 2
       },
-      persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
+      persona: { name: "Bot", temperament: "", voiceStyle: "" } as any,
       relationship: "known",
       participantProfiles: [],
       currentUser: { userId: "10001", relationship: "known" } as any,
@@ -1095,7 +1087,7 @@ function createActiveTaskTracker() {
         sizeBytes: 1234,
         fileKind: "file"
       },
-      persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
+      persona: { name: "Bot", temperament: "", voiceStyle: "" } as any,
       relationship: "known",
       participantProfiles: [],
       currentUser: { userId: "10001", relationship: "known" } as any,
@@ -1188,9 +1180,7 @@ function createActiveTaskTracker() {
       persona: {
         name: "Ignored Persona",
         temperament: "",
-        speakingStyle: "",
-        globalTraits: "助手",
-        generalPreferences: ""
+        voiceStyle: ""
       },
       relationship: "known",
       participantProfiles: [{
@@ -1228,8 +1218,7 @@ function createActiveTaskTracker() {
 
     const system = readPromptSystemText(result.promptMessages);
     assert.equal(hasPromptSection(system, "global_persona"), true);
-    assert.match(system, /全局 persona：名字=Ignored Persona；性格底色=；说话方式=/);
-    assert.match(system, /全局补充设定：全局特征=助手/);
+    assert.match(system, /全局 persona：名字=Ignored Persona；性格底色=；语气风格=/);
     assert.match(system, /AI assistant 模式工作/);
     assert.doesNotMatch(system, /current_user_memories/);
     assert.doesNotMatch(system, /current_user_profile/);
@@ -1327,9 +1316,7 @@ function createActiveTaskTracker() {
       persona: {
         name: "Mizune",
         temperament: "",
-        speakingStyle: "",
-        globalTraits: "搭档",
-        generalPreferences: ""
+        voiceStyle: ""
       },
       relationship: "known",
       participantProfiles: [],
@@ -1463,9 +1450,7 @@ function createActiveTaskTracker() {
       persona: {
         name: "主持者",
         temperament: "",
-        speakingStyle: "",
-        globalTraits: "",
-        generalPreferences: ""
+        voiceStyle: ""
       },
       relationship: "owner",
       participantProfiles: [],
@@ -1498,12 +1483,11 @@ function createActiveTaskTracker() {
         phase: "setup",
         profile: {
           theme: "",
-          hostStyle: "",
+          narrationStyle: "",
           worldBaseline: "",
-          safetyOrTabooRules: "",
-          openingPattern: ""
+          boundaries: ""
         },
-        missingFields: ["theme", "hostStyle", "worldBaseline"]
+        missingFields: ["theme", "narrationStyle", "worldBaseline"]
       }
     });
 
@@ -1517,7 +1501,7 @@ function createActiveTaskTracker() {
     assert.ok(systemContent.includes("draft_workflow"), `Expected draft_workflow section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("scenario_profile_snapshot"), `Expected scenario_profile_snapshot section, got: ${systemContent.slice(0, 400)}`);
     assert.match(systemContent, /以下全局 persona 是当前实例在所有模式下共享的底座/);
-    assert.match(systemContent, /全局 persona：名字=主持者；性格底色=；说话方式=/);
+    assert.match(systemContent, /全局 persona：名字=主持者；性格底色=；语气风格=/);
     assert.match(systemContent, /当前 Scenario 资料只是建立在这层基础上的模式补充/);
     assert.match(systemContent, /你当前只在Scenario 资料的临时草稿上工作/);
     assert.match(systemContent, /待补全：[\s\S]*- 主题：题材、氛围或想要长期主持的类型/);
@@ -1612,9 +1596,7 @@ function createActiveTaskTracker() {
       persona: {
         name: "Bot",
         temperament: "",
-        speakingStyle: "",
-        globalTraits: "助手",
-        generalPreferences: ""
+        voiceStyle: ""
       },
       relationship: "known",
       participantProfiles: [],
@@ -1644,22 +1626,20 @@ function createActiveTaskTracker() {
         target: "scenario",
         profile: {
           theme: "钟楼怪谈",
-          hostStyle: "冷静克制",
+          narrationStyle: "冷静克制",
           worldBaseline: "海边小城潜伏超自然异象",
-          safetyOrTabooRules: "避免过度血腥",
-          openingPattern: "从异响和环境异常切入"
+          boundaries: "从异响和环境异常切入"
         }
       }
     });
 
     const system = readPromptSystemText(result.promptMessages);
     assert.equal(hasPromptSection(system, "global_persona"), true);
-    assert.match(system, /全局 persona：名字=Bot；性格底色=；说话方式=/);
-    assert.match(system, /全局补充设定：全局特征=助手/);
+    assert.match(system, /全局 persona：名字=Bot；性格底色=；语气风格=/);
     assert.match(system, /剧情主持模式下的场景主持者/);
     assert.equal(hasPromptSection(system, "scenario_profile"), true);
-    assert.match(system, /Scenario 全局资料：主题=钟楼怪谈；主持风格=冷静克制；世界基线=海边小城潜伏超自然异象/);
-    assert.match(system, /模式补充：安全\/禁忌规则=避免过度血腥；开场模式=从异响和环境异常切入/);
+    assert.match(system, /Scenario 全局资料：主题=钟楼怪谈；世界基线=海边小城潜伏超自然异象；叙事风格=冷静克制/);
+    assert.match(system, /模式补充：边界=从异响和环境异常切入/);
     assert.doesNotMatch(system, /标题=/);
     assert.match(system, /当前位置=旧钟楼外/);
     assert.match(system, /`\*` 开头表示玩家动作声明/);
@@ -1744,9 +1724,7 @@ function createActiveTaskTracker() {
       persona: {
         name: "小满",
         temperament: "冷静细致",
-        speakingStyle: "短句克制",
-        globalTraits: "图书管理员",
-        generalPreferences: "旧书、黑咖啡"
+        voiceStyle: "短句克制"
       },
       relationship: "owner",
       participantProfiles: [],
@@ -1775,23 +1753,19 @@ function createActiveTaskTracker() {
       modeProfile: {
         target: "rp",
         profile: {
-          selfPositioning: "冷静克制，不轻易示弱",
-          socialRole: "图书管理员",
-          lifeContext: "雨夜同居",
-          physicalPresence: "黑色风衣，短发",
-          realityContract: "始终按真人自处",
+          identity: "图书管理员",
+          background: "黑色风衣，短发",
           continuityFacts: "",
-          hardLimits: "绝不跳出角色"
+          boundaries: "绝不跳出角色"
         }
       }
     });
 
     const system = readPromptSystemText(result.promptMessages);
     assert.equal(hasPromptSection(system, "global_persona"), true);
-    assert.match(system, /全局 persona：名字=小满；性格底色=冷静细致；说话方式=短句克制/);
-    assert.match(system, /全局补充设定：全局特征=图书管理员；通用偏好=旧书、黑咖啡/);
+    assert.match(system, /全局 persona：名字=小满；性格底色=冷静细致；语气风格=短句克制/);
     assert.equal(hasPromptSection(system, "rp_profile"), true);
-    assert.match(system, /RP 全局资料：自我定位=冷静克制，不轻易示弱；社会角色=图书管理员；生活状态=雨夜同居；外在存在感=黑色风衣，短发；现实契约=始终按真人自处；硬边界=绝不跳出角色/);
+    assert.match(system, /RP 全局资料：身份定位=图书管理员；稳定背景=黑色风衣，短发；边界=绝不跳出角色/);
     assert.match(system, /RP assistant 模式/);
     assert.doesNotMatch(system, /scenario_state/);
   });
@@ -1868,9 +1842,7 @@ function createActiveTaskTracker() {
       persona: {
         name: "主持者",
         temperament: "",
-        speakingStyle: "",
-        globalTraits: "",
-        generalPreferences: ""
+        voiceStyle: ""
       },
       relationship: "owner",
       participantProfiles: [],
@@ -1884,7 +1856,7 @@ function createActiveTaskTracker() {
       batchMessages: [{
         userId: "u1",
         senderName: "Alice",
-        text: "把主持风格改紧凑一点",
+        text: "把叙事风格改紧凑一点",
         images: [],
         audioSources: [],
         audioIds: [],
@@ -1903,12 +1875,11 @@ function createActiveTaskTracker() {
         phase: "config",
         profile: {
           theme: "都市怪谈",
-          hostStyle: "紧凑克制",
+          narrationStyle: "紧凑克制",
           worldBaseline: "现代都市里潜伏超自然现象",
-          safetyOrTabooRules: "",
-          openingPattern: ""
+          boundaries: ""
         },
-        missingFields: ["safetyOrTabooRules", "openingPattern"]
+        missingFields: ["boundaries"]
       }
     });
 
@@ -1924,9 +1895,9 @@ function createActiveTaskTracker() {
     assert.match(systemContent, /当前 Scenario 资料只是建立在这层基础上的模式补充/);
     assert.match(systemContent, /不要把已属于 persona 的内容重复搬进 Scenario 资料/);
     assert.match(systemContent, /当前处于 Scenario 全局资料配置阶段/);
-    assert.match(systemContent, /当前草稿已明确：主题、主持风格、世界基线/);
-    assert.match(systemContent, /可在需要时继续补充：安全\/禁忌规则、开场模式/);
-    assert.match(systemContent, /已设定：主题=都市怪谈；主持风格=紧凑克制；世界基线=现代都市里潜伏超自然现象/);
+    assert.match(systemContent, /当前草稿已明确：主题、世界基线、叙事风格/);
+    assert.match(systemContent, /可在需要时继续补充：边界/);
+    assert.match(systemContent, /已设定：主题=都市怪谈；世界基线=现代都市里潜伏超自然现象；叙事风格=紧凑克制/);
     assert.match(systemContent, /优先按 owner 本轮明确要求做局部调整/);
     assert.match(systemContent, /若本轮只是微调单个字段，就直接改那一项/);
     assert.match(systemContent, /\.cancel/);
@@ -2006,9 +1977,7 @@ function createActiveTaskTracker() {
       persona: {
         name: "小满",
         temperament: "冷静细致",
-        speakingStyle: "短句克制",
-        globalTraits: "图书管理员",
-        generalPreferences: "旧书、黑咖啡"
+        voiceStyle: "短句克制"
       },
       relationship: "owner",
       participantProfiles: [],
@@ -2040,15 +2009,12 @@ function createActiveTaskTracker() {
         target: "rp",
         phase: "config",
         profile: {
-          selfPositioning: "冷静克制，不轻易示弱",
-          socialRole: "图书管理员",
-          lifeContext: "雨夜同居",
-          physicalPresence: "",
-          realityContract: "始终按真人自处",
+          identity: "图书管理员",
+          background: "",
           continuityFacts: "",
-          hardLimits: "绝不跳出角色"
+          boundaries: "绝不跳出角色"
         },
-        missingFields: ["physicalPresence", "continuityFacts"]
+        missingFields: ["background", "continuityFacts"]
       }
     });
 
@@ -2061,14 +2027,13 @@ function createActiveTaskTracker() {
     assert.ok(systemContent.includes("global_persona_base"), `Expected global_persona_base section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("draft_workflow"), `Expected draft_workflow section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("rp_profile_snapshot"), `Expected rp_profile_snapshot section, got: ${systemContent.slice(0, 400)}`);
-    assert.match(systemContent, /全局 persona：名字=小满；性格底色=冷静细致；说话方式=短句克制/);
-    assert.match(systemContent, /全局补充设定：全局特征=图书管理员；通用偏好=旧书、黑咖啡/);
+    assert.match(systemContent, /全局 persona：名字=小满；性格底色=冷静细致；语气风格=短句克制/);
     assert.match(systemContent, /当前 RP 资料只是建立在这层基础上的模式补充/);
     assert.match(systemContent, /不要把已属于 persona 的内容重复搬进 RP 资料/);
-    assert.match(systemContent, /当前草稿已明确：自我定位、社会角色、生活状态、现实契约、硬边界/);
-    assert.match(systemContent, /核心字段仍缺：外在存在感/);
+    assert.match(systemContent, /当前草稿已明确：身份定位、边界/);
+    assert.match(systemContent, /核心字段仍缺：稳定背景/);
     assert.match(systemContent, /可在需要时继续补充：连续性事实/);
-    assert.match(systemContent, /已设定：自我定位=冷静克制，不轻易示弱；社会角色=图书管理员；生活状态=雨夜同居；现实契约=始终按真人自处；硬边界=绝不跳出角色/);
+    assert.match(systemContent, /已设定：身份定位=图书管理员；边界=绝不跳出角色/);
   });
 
   test("chat prompt retrieves context without depositing current turn into memory store", async () => {

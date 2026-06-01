@@ -1012,9 +1012,7 @@ test("DataRegistryService exports registry resources to stable dump files", asyn
     await service.patchSingleton("persona", {
       name: "Bot",
       temperament: "calm",
-      speakingStyle: "clear",
-      globalTraits: "",
-      generalPreferences: ""
+      voiceStyle: "clear"
     });
     const first = await service.exportResource("persona") as { filePath: string; bytes: number };
     assert.equal(first.filePath, join(dataDir, "dumps", "persona.json"));
@@ -1024,9 +1022,7 @@ test("DataRegistryService exports registry resources to stable dump files", asyn
     await service.patchSingleton("persona", {
       name: "Bot 2",
       temperament: "calm",
-      speakingStyle: "clear",
-      globalTraits: "",
-      generalPreferences: ""
+      voiceStyle: "clear"
     });
     const second = await service.exportResource("persona") as { filePath: string };
     assert.equal(second.filePath, first.filePath);
@@ -1086,16 +1082,12 @@ test("DataRegistryService exposes editable persona singleton and whitelist colle
     await service.patchSingleton("persona", {
       name: "Bot",
       temperament: "calm",
-      speakingStyle: "clear",
-      globalTraits: "",
-      generalPreferences: ""
+      voiceStyle: "clear"
     });
     assert.deepEqual((await service.getResource("persona") as { resource: { value: unknown } }).resource.value, {
       name: "Bot",
       temperament: "calm",
-      speakingStyle: "clear",
-      globalTraits: "",
-      generalPreferences: ""
+      voiceStyle: "clear"
     });
 
     const created = await service.createRow("whitelist", {
@@ -1140,17 +1132,14 @@ test("DataRegistryService exposes migrated profile and setup singleton resources
     assert.ok(rpProfile.resource.uiTree);
 
     await service.patchSingleton("rp_profile", {
-      selfPositioning: "偏克制",
-      socialRole: "搭档",
-      lifeContext: "夜间工作",
-      physicalPresence: "安静",
-      realityContract: "现实自处",
+      identity: "搭档",
+      background: "夜间工作",
       continuityFacts: "",
-      hardLimits: "不跳出身份"
+      boundaries: "不跳出身份"
     });
     assert.equal((
-      await service.getResource("rp_profile") as { resource: { value: { hardLimits: string } } }
-    ).resource.value.hardLimits, "不跳出身份");
+      await service.getResource("rp_profile") as { resource: { value: { boundaries: string } } }
+    ).resource.value.boundaries, "不跳出身份");
 
     const scenario = await service.getResource("scenario_profile") as {
       resource: {

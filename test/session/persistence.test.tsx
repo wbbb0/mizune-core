@@ -58,7 +58,7 @@ test("session persistence stores operationMode drafts", async () => {
       modeId: "rp_assistant",
       draft: {
         ...createEmptyRpProfile(),
-        selfPositioning: "Keeps a steady composure"
+        identity: "Keeps a steady composure"
       }
     };
 
@@ -69,7 +69,7 @@ test("session persistence stores operationMode drafts", async () => {
       modeId: "rp_assistant",
       draft: {
         ...createEmptyRpProfile(),
-        selfPositioning: "Keeps a steady composure"
+        identity: "Keeps a steady composure"
       }
     });
 

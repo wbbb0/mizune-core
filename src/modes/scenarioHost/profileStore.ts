@@ -45,10 +45,9 @@ export class ScenarioProfileStore {
     const row = this.stateDatabase.getDb().prepare(`
       SELECT
         theme,
-        host_style AS hostStyle,
         world_baseline AS worldBaseline,
-        safety_or_taboo_rules AS safetyOrTabooRules,
-        opening_pattern AS openingPattern
+        narration_style AS narrationStyle,
+        boundaries
       FROM scenario_profile
       WHERE id = 'global'
     `).get() as ScenarioProfile | undefined;
@@ -68,27 +67,24 @@ export class ScenarioProfileStore {
       INSERT INTO scenario_profile (
         id,
         theme,
-        host_style,
         world_baseline,
-        safety_or_taboo_rules,
-        opening_pattern,
+        narration_style,
+        boundaries,
         updated_at_ms
       )
       VALUES (
         'global',
         @theme,
-        @hostStyle,
         @worldBaseline,
-        @safetyOrTabooRules,
-        @openingPattern,
+        @narrationStyle,
+        @boundaries,
         @updatedAtMs
       )
       ON CONFLICT(id) DO UPDATE SET
         theme = excluded.theme,
-        host_style = excluded.host_style,
         world_baseline = excluded.world_baseline,
-        safety_or_taboo_rules = excluded.safety_or_taboo_rules,
-        opening_pattern = excluded.opening_pattern,
+        narration_style = excluded.narration_style,
+        boundaries = excluded.boundaries,
         updated_at_ms = excluded.updated_at_ms
     `).run({
       ...validated,

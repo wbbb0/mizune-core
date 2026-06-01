@@ -51,9 +51,7 @@ export class PersonaStore {
       SELECT
         name,
         temperament,
-        speaking_style AS speakingStyle,
-        global_traits AS globalTraits,
-        general_preferences AS generalPreferences
+        voice_style AS voiceStyle
       FROM persona
       WHERE id = 'global'
     `).get() as Persona | undefined;
@@ -71,17 +69,15 @@ export class PersonaStore {
     const validated = personaSchema.parse(persona);
     this.stateDatabase.getDb().prepare(`
       INSERT INTO persona (
-        id, name, temperament, speaking_style, global_traits, general_preferences, updated_at_ms
+        id, name, temperament, voice_style, updated_at_ms
       )
       VALUES (
-        'global', @name, @temperament, @speakingStyle, @globalTraits, @generalPreferences, @updatedAtMs
+        'global', @name, @temperament, @voiceStyle, @updatedAtMs
       )
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         temperament = excluded.temperament,
-        speaking_style = excluded.speaking_style,
-        global_traits = excluded.global_traits,
-        general_preferences = excluded.general_preferences,
+        voice_style = excluded.voice_style,
         updated_at_ms = excluded.updated_at_ms
     `).run({
       ...validated,
@@ -142,9 +138,7 @@ function detectPersonaPatchConflict(patch: Partial<Persona>): ScopeConflictWarni
   const candidateFields: Array<keyof Persona> = [
     "name",
     "temperament",
-    "speakingStyle",
-    "globalTraits",
-    "generalPreferences"
+    "voiceStyle"
   ];
   for (const field of candidateFields) {
     const value = patch[field];

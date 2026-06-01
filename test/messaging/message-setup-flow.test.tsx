@@ -290,7 +290,7 @@ test("automatic setup does not override an existing draft mode", async () => {
     modeId: "rp_assistant",
     draft: {
       ...createEmptyRpProfile(),
-      selfPositioning: "keep me"
+      identity: "keep me"
     }
   };
   const persistedReasons: string[] = [];
@@ -341,7 +341,7 @@ test("automatic setup does not override an existing draft mode", async () => {
     modeId: "rp_assistant",
     draft: {
       ...createEmptyRpProfile(),
-      selfPositioning: "keep me"
+      identity: "keep me"
     }
   });
   assert.deepEqual(persistedReasons, []);

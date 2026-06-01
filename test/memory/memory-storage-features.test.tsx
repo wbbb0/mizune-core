@@ -1,10 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { access, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import Database from "better-sqlite3";
 import pino from "pino";
 import { normalizeTitleForDedup } from "../../src/memory/similarity.ts";
 import { createEmptyPersona, type Persona } from "../../src/persona/personaSchema.ts";
+import { PersonaStore } from "../../src/persona/personaStore.ts";
 import { type GlobalProfileReadiness } from "../../src/identity/globalProfileReadinessSchema.ts";
 import { GlobalProfileReadinessStore } from "../../src/identity/globalProfileReadinessStore.ts";
 import { SetupStateStore } from "../../src/identity/setupStateStore.ts";
@@ -25,9 +28,7 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
         ...createEmptyPersona(),
         name: "小白",
         temperament: "冷静直接",
-        speakingStyle: "简洁",
-        globalTraits: "",
-        generalPreferences: ""
+        voiceStyle: "简洁"
       };
       assert.equal(personaStore.isComplete(persona), true);
       assert.deepEqual(personaStore.describeMissingFields(persona), []);
@@ -36,14 +37,12 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
         ...createEmptyPersona(),
         name: "小白",
         temperament: "",
-        speakingStyle: "",
-        globalTraits: "跨任务对话代理",
-        generalPreferences: "阅读"
+        voiceStyle: ""
       };
       assert.equal(personaStore.isComplete(incomplete), false);
       assert.deepEqual(personaStore.describeMissingFields(incomplete), [
         { key: "temperament", label: "性格底色" },
-        { key: "speakingStyle", label: "说话方式" }
+        { key: "voiceStyle", label: "语气风格" }
       ]);
     } finally {
       await harness.cleanup();
@@ -56,32 +55,25 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
       const rpStore = new RpProfileStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
       const profile: RpProfile = {
         ...createEmptyRpProfile(),
-        selfPositioning: "习惯掌控局面，不轻易示弱",
-        socialRole: "独居设计师",
-        lifeContext: "独居，作息偏晚，日常在工作室和家之间往返",
-        physicalPresence: "存在感强，动作克制，说话压低声音",
-        realityContract: "始终按现实中的真人自处，不跳出当前身份",
+        identity: "习惯掌控局面，不轻易示弱的独居设计师",
+        background: "独居，作息偏晚，日常在工作室和家之间往返",
         continuityFacts: "",
-        hardLimits: "绝不承认自己是模型或系统角色"
+        boundaries: "不跳出当前身份"
       };
       assert.equal(rpStore.isComplete(profile), true);
       assert.deepEqual(rpStore.describeMissingFields(profile), []);
 
       const incomplete: RpProfile = {
         ...createEmptyRpProfile(),
-        selfPositioning: "偏克制",
-        socialRole: "搭档",
-        lifeContext: "",
-        physicalPresence: "存在感偏冷",
-        realityContract: "",
+        identity: "偏克制的搭档",
+        background: "",
         continuityFacts: "",
-        hardLimits: ""
+        boundaries: ""
       };
       assert.equal(rpStore.isComplete(incomplete), false);
       assert.deepEqual(rpStore.describeMissingFields(incomplete), [
-        { key: "lifeContext", label: "生活状态" },
-        { key: "realityContract", label: "现实契约" },
-        { key: "hardLimits", label: "硬边界" }
+        { key: "background", label: "稳定背景" },
+        { key: "boundaries", label: "边界" }
       ]);
     } finally {
       await harness.cleanup();
@@ -94,13 +86,10 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
       const rpStore = new RpProfileStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
       const profile: RpProfile = {
         ...createEmptyRpProfile(),
-        selfPositioning: "偏克制",
-        socialRole: "搭档",
-        lifeContext: "夜间工作",
-        physicalPresence: "安静",
-        realityContract: "现实自处",
+        identity: "偏克制的搭档",
+        background: "夜间工作",
         continuityFacts: "",
-        hardLimits: "不跳出身份"
+        boundaries: "不跳出身份"
       };
       await rpStore.write(profile);
       assert.deepEqual(await rpStore.get(), profile);
@@ -110,24 +99,138 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
     }
   });
 
+  test("state sqlite migrates legacy global profile tables into the reduced field model", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-profile-schema-migration-test-"));
+    try {
+      const stateDir = join(dataDir, "state");
+      await mkdir(stateDir, { recursive: true });
+      const db = new Database(join(stateDir, "state.sqlite"));
+      try {
+        db.exec(`
+          CREATE TABLE __sqlite_schema_groups (
+            group_id TEXT PRIMARY KEY,
+            schema_version INTEGER NOT NULL,
+            owned_tables_json TEXT NOT NULL,
+            owned_indexes_json TEXT NOT NULL DEFAULT '[]',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            last_reset_at INTEGER,
+            last_reset_reason TEXT
+          );
+          CREATE TABLE persona (
+            id TEXT PRIMARY KEY CHECK (id = 'global'),
+            name TEXT NOT NULL DEFAULT '',
+            temperament TEXT NOT NULL DEFAULT '',
+            speaking_style TEXT NOT NULL DEFAULT '',
+            global_traits TEXT NOT NULL DEFAULT '',
+            general_preferences TEXT NOT NULL DEFAULT '',
+            updated_at_ms INTEGER NOT NULL
+          );
+          CREATE TABLE rp_profile (
+            id TEXT PRIMARY KEY CHECK (id = 'global'),
+            self_positioning TEXT NOT NULL DEFAULT '',
+            social_role TEXT NOT NULL DEFAULT '',
+            life_context TEXT NOT NULL DEFAULT '',
+            physical_presence TEXT NOT NULL DEFAULT '',
+            reality_contract TEXT NOT NULL DEFAULT '',
+            continuity_facts TEXT NOT NULL DEFAULT '',
+            hard_limits TEXT NOT NULL DEFAULT '',
+            updated_at_ms INTEGER NOT NULL
+          );
+          CREATE TABLE scenario_profile (
+            id TEXT PRIMARY KEY CHECK (id = 'global'),
+            theme TEXT NOT NULL DEFAULT '',
+            host_style TEXT NOT NULL DEFAULT '',
+            world_baseline TEXT NOT NULL DEFAULT '',
+            safety_or_taboo_rules TEXT NOT NULL DEFAULT '',
+            opening_pattern TEXT NOT NULL DEFAULT '',
+            updated_at_ms INTEGER NOT NULL
+          );
+        `);
+        db.prepare(`
+          INSERT INTO __sqlite_schema_groups (
+            group_id, schema_version, owned_tables_json, owned_indexes_json, created_at, updated_at
+          )
+          VALUES (?, 1, ?, '[]', 1, 1)
+        `).run("state.persona", JSON.stringify(["persona"]));
+        db.prepare(`
+          INSERT INTO __sqlite_schema_groups (
+            group_id, schema_version, owned_tables_json, owned_indexes_json, created_at, updated_at
+          )
+          VALUES (?, 1, ?, '[]', 1, 1)
+        `).run("state.rp_profile", JSON.stringify(["rp_profile"]));
+        db.prepare(`
+          INSERT INTO __sqlite_schema_groups (
+            group_id, schema_version, owned_tables_json, owned_indexes_json, created_at, updated_at
+          )
+          VALUES (?, 1, ?, '[]', 1, 1)
+        `).run("state.scenario_profile", JSON.stringify(["scenario_profile"]));
+        db.prepare(`
+          INSERT INTO persona (
+            id, name, temperament, speaking_style, global_traits, general_preferences, updated_at_ms
+          )
+          VALUES ('global', '小满', '冷静', '短句', '可靠', '少废话', 10)
+        `).run();
+        db.prepare(`
+          INSERT INTO rp_profile (
+            id, self_positioning, social_role, life_context, physical_presence,
+            reality_contract, continuity_facts, hard_limits, updated_at_ms
+          )
+          VALUES ('global', '克制', '图书管理员', '夜间工作', '短发', '真人自处', '记得旧约定', '不跳出角色', 11)
+        `).run();
+        db.prepare(`
+          INSERT INTO scenario_profile (
+            id, theme, host_style, world_baseline, safety_or_taboo_rules, opening_pattern, updated_at_ms
+          )
+          VALUES ('global', '都市怪谈', '冷静旁白', '现代都市', '避免过度血腥', '从异响开场', 12)
+        `).run();
+      } finally {
+        db.close();
+      }
+
+      const logger = pino({ level: "silent" });
+      const config = createMemoryTestConfig();
+      const personaStore = new PersonaStore(dataDir, config, logger);
+      await personaStore.init();
+      const persona = await personaStore.get();
+      const rpProfile = await new RpProfileStore(dataDir, config, logger).get();
+      const scenarioProfile = await new ScenarioProfileStore(dataDir, config, logger).get();
+
+      assert.deepEqual(persona, {
+        name: "小满",
+        temperament: "冷静",
+        voiceStyle: "短句"
+      });
+      assert.deepEqual(rpProfile, {
+        identity: "克制；图书管理员",
+        background: "夜间工作；短发",
+        continuityFacts: "记得旧约定",
+        boundaries: "不跳出角色；真人自处"
+      });
+      assert.deepEqual(scenarioProfile, {
+        theme: "都市怪谈",
+        worldBaseline: "现代都市",
+        narrationStyle: "冷静旁白；从异响开场",
+        boundaries: "避免过度血腥"
+      });
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
   test("profile stores ignore existing legacy json files", async () => {
     const harness = await createMemoryHarness();
     try {
       await writeFile(join(harness.dataDir, "rp-profile.json"), JSON.stringify({
-        selfPositioning: "legacy",
-        socialRole: "legacy",
-        lifeContext: "legacy",
-        physicalPresence: "legacy",
-        realityContract: "legacy",
+        background: "legacy",
         continuityFacts: "legacy",
-        hardLimits: "legacy"
+        boundaries: "legacy"
       }), "utf8");
       await writeFile(join(harness.dataDir, "scenario-profile.json"), JSON.stringify({
         theme: "legacy",
-        hostStyle: "legacy",
+        narrationStyle: "legacy",
         worldBaseline: "legacy",
-        safetyOrTabooRules: "legacy",
-        openingPattern: "legacy"
+        boundaries: "legacy"
       }), "utf8");
       await writeFile(join(harness.dataDir, "global-profile-readiness.json"), JSON.stringify({
         persona: "ready",
@@ -158,17 +261,16 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
     }
   });
 
-  test("scenarioProfile completeness depends on theme hostStyle and worldBaseline", async () => {
+  test("scenarioProfile completeness depends on theme narrationStyle and worldBaseline", async () => {
     const harness = await createMemoryHarness();
     try {
       const scenarioStore = new ScenarioProfileStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
       const profile: ScenarioProfile = {
         ...createEmptyScenarioProfile(),
         theme: "赛博港口",
-        hostStyle: "旁白式主持",
+        narrationStyle: "旁白式主持",
         worldBaseline: "默认世界有基础秩序与明确规则",
-        safetyOrTabooRules: "",
-        openingPattern: ""
+        boundaries: ""
       } as ScenarioProfile;
       assert.equal(scenarioStore.isComplete(profile), true);
       assert.deepEqual(scenarioStore.describeMissingFields(profile), []);
@@ -176,10 +278,9 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
       const incomplete: ScenarioProfile = {
         ...createEmptyScenarioProfile(),
         theme: "",
-        hostStyle: "沉浸式主持",
+        narrationStyle: "沉浸式主持",
         worldBaseline: "",
-        safetyOrTabooRules: "避免暴力描写",
-        openingPattern: "开场白"
+        boundaries: "避免暴力描写"
       };
       assert.equal(scenarioStore.isComplete(incomplete), false);
       assert.deepEqual(scenarioStore.describeMissingFields(incomplete), [
@@ -198,10 +299,9 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
       const profile: ScenarioProfile = {
         ...createEmptyScenarioProfile(),
         theme: "赛博港口",
-        hostStyle: "旁白式主持",
+        narrationStyle: "旁白式主持",
         worldBaseline: "默认世界有基础秩序与明确规则",
-        safetyOrTabooRules: "",
-        openingPattern: ""
+        boundaries: ""
       };
       await scenarioStore.write(profile);
       assert.deepEqual(await scenarioStore.get(), profile);
@@ -406,7 +506,7 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
   test("title normalization canonicalizes recurring memory concepts", async () => {
     assert.equal(normalizeTitleForDedup("称呼"), "称呼偏好");
     assert.equal(normalizeTitleForDedup("用户称呼偏好"), "称呼偏好");
-    assert.equal(normalizeTitleForDedup("说话方式"), "说话口吻");
+    assert.equal(normalizeTitleForDedup("语气风格"), "说话口吻");
   });
 
   test("user memory write logs expose dedup similarity and reroute diagnostics", async () => {

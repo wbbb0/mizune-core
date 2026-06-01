@@ -75,13 +75,10 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
             profilePatch: {
               type: "object",
               properties: {
-                selfPositioning: { type: "string" },
-                socialRole: { type: "string" },
-                lifeContext: { type: "string" },
-                physicalPresence: { type: "string" },
-                realityContract: { type: "string" },
+                identity: { type: "string" },
+                background: { type: "string" },
                 continuityFacts: { type: "string" },
-                hardLimits: { type: "string" }
+                boundaries: { type: "string" }
               },
               additionalProperties: false
             }
@@ -142,10 +139,9 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
               type: "object",
               properties: {
                 theme: { type: "string" },
-                hostStyle: { type: "string" },
                 worldBaseline: { type: "string" },
-                safetyOrTabooRules: { type: "string" },
-                openingPattern: { type: "string" }
+                narrationStyle: { type: "string" },
+                boundaries: { type: "string" }
               },
               additionalProperties: false
             }
@@ -183,7 +179,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
       type: "function",
       function: {
         name: "patch_persona",
-        description: "按字段 patch persona。只用于 bot 的名字、性格底色、说话方式和跨模式全局偏好。",
+        description: "按字段 patch persona。只用于 bot 的名字、性格底色和语气风格。",
         parameters: {
           type: "object",
           properties: {
@@ -192,9 +188,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
               properties: {
                 name: { type: "string" },
                 temperament: { type: "string" },
-                speakingStyle: { type: "string" },
-                globalTraits: { type: "string" },
-                generalPreferences: { type: "string" }
+                voiceStyle: { type: "string" }
               },
               additionalProperties: false
             }

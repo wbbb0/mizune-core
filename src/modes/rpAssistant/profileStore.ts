@@ -44,13 +44,10 @@ export class RpProfileStore {
     await this.stateDatabase.init();
     const row = this.stateDatabase.getDb().prepare(`
       SELECT
-        self_positioning AS selfPositioning,
-        social_role AS socialRole,
-        life_context AS lifeContext,
-        physical_presence AS physicalPresence,
-        reality_contract AS realityContract,
+        identity,
+        background,
         continuity_facts AS continuityFacts,
-        hard_limits AS hardLimits
+        boundaries
       FROM rp_profile
       WHERE id = 'global'
     `).get() as RpProfile | undefined;
@@ -69,34 +66,25 @@ export class RpProfileStore {
     this.stateDatabase.getDb().prepare(`
       INSERT INTO rp_profile (
         id,
-        self_positioning,
-        social_role,
-        life_context,
-        physical_presence,
-        reality_contract,
+        identity,
+        background,
         continuity_facts,
-        hard_limits,
+        boundaries,
         updated_at_ms
       )
       VALUES (
         'global',
-        @selfPositioning,
-        @socialRole,
-        @lifeContext,
-        @physicalPresence,
-        @realityContract,
+        @identity,
+        @background,
         @continuityFacts,
-        @hardLimits,
+        @boundaries,
         @updatedAtMs
       )
       ON CONFLICT(id) DO UPDATE SET
-        self_positioning = excluded.self_positioning,
-        social_role = excluded.social_role,
-        life_context = excluded.life_context,
-        physical_presence = excluded.physical_presence,
-        reality_contract = excluded.reality_contract,
+        identity = excluded.identity,
+        background = excluded.background,
         continuity_facts = excluded.continuity_facts,
-        hard_limits = excluded.hard_limits,
+        boundaries = excluded.boundaries,
         updated_at_ms = excluded.updated_at_ms
     `).run({
       ...validated,

@@ -297,7 +297,7 @@ test("SqliteService resets unreadable schema versions before migration", async (
   }
 });
 
-test("SqliteService does not run migrations for block_reset table groups", async () => {
+test("SqliteService runs explicit migrations for block_reset table groups without allowing reset fallback", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-sqlite-service-test-"));
   const dbPath = join(dataDir, "test.sqlite");
   const service = new SqliteService(pino({ level: "silent" }));
@@ -316,29 +316,31 @@ test("SqliteService does not run migrations for block_reset table groups", async
     });
     first.close();
 
-    await assert.rejects(
-      service.openDatabase({
-        databaseId: "test",
-        dbPath,
-        tableGroups: [{
-          groupId: "users",
-          schemaVersion: 2,
-          resetPolicy: "block_reset",
-          ownedTables: ["users"],
-          createSchema: createUserSchema,
-          migrateSchema: (db) => {
-            db.exec("ALTER TABLE users ADD COLUMN should_not_exist TEXT");
-            return true;
-          },
-          validateSchema: validateUserSchema
-        }]
-      }),
-      /reset blocked by resetPolicy=block_reset: users\(schema_version_mismatch\)/u
-    );
+    const migrated = await service.openDatabase({
+      databaseId: "test",
+      dbPath,
+      tableGroups: [{
+        groupId: "users",
+        schemaVersion: 2,
+        minReadableSchemaVersion: 1,
+        resetPolicy: "block_reset",
+        ownedTables: ["users"],
+        createSchema: createUserSchema,
+        migrateSchema: (db) => {
+          db.exec("ALTER TABLE users ADD COLUMN migrated TEXT");
+          return true;
+        },
+        validateSchema: (db) => {
+          validateUserSchema(db);
+          assertTableColumns(db, "users", { migrated: "TEXT" });
+        }
+      }]
+    });
+    migrated.close();
 
     withRawDatabase(dbPath, (db) => {
       const columns = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
-      assert.deepEqual(columns.map((column) => column.name), ["user_id", "name"]);
+      assert.deepEqual(columns.map((column) => column.name), ["user_id", "name", "migrated"]);
     });
   } finally {
     await rm(dataDir, { recursive: true, force: true });

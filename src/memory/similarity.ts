@@ -11,7 +11,7 @@ const TITLE_CANONICALIZATION_RULES: Array<{ pattern: RegExp; replacement: string
   { pattern: /^(用户)?称呼(偏好)?$/u, replacement: "称呼偏好" },
   { pattern: /^(用户)?叫法(偏好)?$/u, replacement: "称呼偏好" },
   { pattern: /^(输出顺序|回复顺序|回答顺序)$/u, replacement: "输出顺序" },
-  { pattern: /^(说话方式|口吻|语气)$/u, replacement: "说话口吻" }
+  { pattern: /^(说话方式|口吻|语气|语气风格)$/u, replacement: "说话口吻" }
 ] as const;
 
 export function normalizeTitleForDedup(value: string): string {

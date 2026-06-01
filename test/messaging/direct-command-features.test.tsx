@@ -665,8 +665,7 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
             ...createEmptyPersona(),
             name: "Mina",
             temperament: "冷静",
-            speakingStyle: "短句",
-            globalTraits: "创作者"
+            voiceStyle: "短句"
           };
         },
         createEmpty() {
@@ -716,7 +715,7 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           return {
             ...createEmptyScenarioProfile(),
             theme: "悬疑",
-            hostStyle: "冷静",
+            narrationStyle: "冷静",
             worldBaseline: "现代都市"
           };
         },
@@ -763,8 +762,7 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       ...createEmptyPersona(),
       name: "Mina",
       temperament: "冷静",
-      speakingStyle: "短句",
-      globalTraits: "创作者"
+      voiceStyle: "短句"
     };
     const { calls, handler } = createDirectCommandFixture({
       setOperationMode(_sessionId, operationMode) {
@@ -866,8 +864,7 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
             ...createEmptyPersona(),
             name: "小满",
             temperament: "克制",
-            speakingStyle: "简洁",
-            globalTraits: "助手"
+            voiceStyle: "简洁"
           }
         }
       },
@@ -954,8 +951,7 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
             ...createEmptyPersona(),
             name: "小满",
             temperament: "克制",
-            speakingStyle: "简洁",
-            globalTraits: "助手"
+            voiceStyle: "简洁"
           }
         }
       },
@@ -1006,7 +1002,7 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           draft: {
             ...createEmptyScenarioProfile(),
             theme: "悬疑",
-            hostStyle: "克制",
+            narrationStyle: "克制",
             worldBaseline: "现代都市"
           }
         }
@@ -1066,7 +1062,7 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           modeId: "rp_assistant",
           draft: {
             ...createEmptyRpProfile(),
-            selfPositioning: "雨夜里仍保持镇定"
+            identity: "雨夜里仍保持镇定"
           }
         }
       },

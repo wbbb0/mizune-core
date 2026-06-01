@@ -34,27 +34,21 @@ import { buildPromptSection, type PromptSection, type PromptSectionPlacement } f
 const PERSONA_FIELD_HINTS: Record<EditablePersonaFieldName, string> = {
   name: "角色的名字",
   temperament: "跨模式稳定成立的性格底色",
-  speakingStyle: "跨模式稳定成立的说话方式和语气习惯",
-  globalTraits: "跨模式都成立的全局特征、价值倾向或行事偏好",
-  generalPreferences: "跨模式都成立的通用偏好和长期习惯"
+  voiceStyle: "跨模式稳定成立的语气、措辞和节奏；不要写括号动作、星号动作、旁白格式或 Markdown 格式"
 };
 
 const RP_PROFILE_FIELD_HINTS: Record<EditableRpProfileFieldName, string> = {
-  selfPositioning: "RP 中如何理解自己、如何自处",
-  socialRole: "RP 中的社会位置、职业或对外角色",
-  lifeContext: "日常生活环境、生活状态和稳定背景框架",
-  physicalPresence: "外在存在感、身体感、声音或动作习惯",
-  realityContract: "如何维持自己是现实中真人这一前提",
+  identity: "RP 中的身份定位、社会角色和自我理解",
+  background: "RP 中稳定生活背景、职业背景或关系前提",
   continuityFacts: "跨会话必须稳定保持的事实锚点",
-  hardLimits: "绝对不能突破的 RP 硬边界"
+  boundaries: "RP 模式下必须遵守的边界"
 };
 
 const SCENARIO_PROFILE_FIELD_HINTS: Record<EditableScenarioProfileFieldName, string> = {
   theme: "题材、氛围或想要长期主持的类型",
-  hostStyle: "主持节奏、叙事口吻与推进方式",
   worldBaseline: "默认世界观、背景前提与常驻设定",
-  safetyOrTabooRules: "需要避开或特殊处理的禁区、边界",
-  openingPattern: "常用开场方式、默认起手结构"
+  narrationStyle: "场景主持时的叙事口吻、节奏与推进方式",
+  boundaries: "需要避开或特殊处理的禁区、边界"
 };
 
 const MAX_VISIBLE_MEMORIES = 4;
@@ -130,6 +124,7 @@ export function buildSetupSystemSections(input: {
       phase,
       allowSkipOptionalFields: true
     })),
+    systemSection("reply_rules", buildReplyRuleLines()),
     systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
     systemSection("persona_snapshot", buildSetupSnapshotLines(input.persona, input.missingFields))
   ].filter((item): item is PromptSection => Boolean(item));
@@ -148,7 +143,7 @@ function buildPersonaDraftModeLines(
 function buildPersonaSetupModeLines(persona: Persona, missingFields: EditablePersonaFieldName[]): string[] {
   const missingSet = new Set(missingFields);
   const totalMissing = missingFields.length;
-  const coreComplete = !missingSet.has("name") && !missingSet.has("temperament") && !missingSet.has("speakingStyle");
+  const coreComplete = !missingSet.has("name") && !missingSet.has("temperament") && !missingSet.has("voiceStyle");
 
   const identityRef = persona.name ? `"${persona.name}"` : "当前 persona";
 
@@ -158,15 +153,15 @@ function buildPersonaSetupModeLines(persona: Persona, missingFields: EditablePer
     phaseLines.push(`${identityRef} 的 persona 草稿已完整。`);
     phaseLines.push("调用 send_setup_draft 向 owner 发送完整设定草稿供最终确认。");
     phaseLines.push("发送草稿后，告知 owner 如果没有问题可以输入 .confirm 完成初始化，如有修改继续告诉你。");
-  } else if (!coreComplete && totalMissing === 5) {
+  } else if (!coreComplete && totalMissing === 3) {
     phaseLines.push("当前实例处于初始化阶段，需要帮 owner 完成角色 persona 设定。");
     phaseLines.push("简要告知 owner：正在设定全局人格底座，完成后即可正常聊天；然后先确认名字。");
   } else if (!coreComplete) {
     const nextCore = missingSet.has("name")
-      ? "名字"
+        ? "名字"
       : missingSet.has("temperament")
         ? "性格底色"
-        : "说话方式";
+        : "语气风格";
     phaseLines.push(`当前处于初始化阶段，核心 persona 尚未完成，当前优先询问：${nextCore}。`);
   } else {
     const remainingLabels = missingFields.map((f) => personaFieldLabels[f]).join("、");
@@ -180,7 +175,7 @@ function buildPersonaSetupModeLines(persona: Persona, missingFields: EditablePer
     "owner 提供信息后，先用工具写入能确认的字段，再视情况追问剩余字段；不要等所有字段都收集完才写入。",
     "收集到足够信息后，调用 send_setup_draft 发送当前草稿，不要在回复正文中逐条列出设定。",
     "草稿发出后告知 owner 满意则输入 .confirm 完成初始化，如有修改继续告诉你即可。",
-    "只写入 owner 明确提供的内容，不要编造设定；persona 只写全局人格底座，不写职业、住处、外貌、与用户关系等 RP 信息。",
+    "只写入 owner 明确提供的内容，不要编造设定；persona 只写名字、性格底色和语气风格，不写职业、住处、外貌、与用户关系、输出格式禁令等信息。",
     "回复保持短句纯文本，不用 Markdown 标题或列表。"
   ];
 }
@@ -202,7 +197,7 @@ function buildPersonaConfigModeLines(persona: Persona, missingFields: EditablePe
       : "当前字段已完整，优先按 owner 的修改要求做局部调整。",
     "先理解 owner 具体想改什么，只修改明确要求的字段；不要默认重问全部设定，也不要擅自重写未提及内容。",
     "若本轮只是微调单个字段，就直接修改那一项；只有遇到关键信息缺失、语义冲突或 owner 明确要求时再扩展询问。",
-    "persona 只写名字、性格底色、说话方式和跨模式全局属性；不要把 RP 身份、生活事实、外貌或与用户关系写进 persona。",
+    "persona 只写名字、性格底色和语气风格；不要把 RP 身份、生活事实、外貌、与用户关系、输出格式禁令或工作流偏好写进 persona。",
     "如需核对当前草稿，可先读取草稿并概括当前状态；完成本轮修改后调用 send_setup_draft 发送最新草稿。",
     "只写入 owner 明确提供的内容，不要编造设定；不要调用无关工具，不要修改用户资料或关系。",
     "回复保持短句纯文本，不用 Markdown 标题或列表。"
@@ -256,12 +251,11 @@ export function buildBaseSystemSections(input: {
           phase: "setup" as const,
           profile: {
             theme: "",
-            hostStyle: "",
             worldBaseline: "",
-            safetyOrTabooRules: "",
-            openingPattern: ""
+            narrationStyle: "",
+            boundaries: ""
           },
-          missingFields: ["theme", "hostStyle", "worldBaseline"] as EditableScenarioProfileFieldName[]
+          missingFields: ["theme", "worldBaseline", "narrationStyle"] as EditableScenarioProfileFieldName[]
         }
       : undefined
   );
@@ -282,6 +276,7 @@ export function buildBaseSystemSections(input: {
         targetLabel: "RP 资料",
         phase: draftMode.phase
       })),
+      systemSection("reply_rules", buildReplyRuleLines()),
       systemSection("rp_profile_snapshot", buildRpProfileSnapshotLines(draftMode.profile, draftMode.missingFields)),
       systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
       systemSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
@@ -309,6 +304,7 @@ export function buildBaseSystemSections(input: {
         targetLabel: "Scenario 资料",
         phase: draftMode.phase
       })),
+      systemSection("reply_rules", buildReplyRuleLines()),
       systemSection("scenario_profile_snapshot", buildScenarioProfileSnapshotLines(draftMode.profile, draftMode.missingFields)),
       systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
       systemSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
@@ -663,7 +659,7 @@ function buildRpProfileDraftModeLines(
   if (filledLabels.length === 0 && coreMissingLabels.length > 0) {
     return [
       "当前处于 RP 全局资料初始化阶段，需要从空白草稿开始建立只描述 bot 自身的 RP 专用资料。",
-      "先确认这个人在 RP 中如何看待自己，以及他在现实中的社会角色；不要一上来把整份问卷全抛给 owner。",
+      "先确认这个人在 RP 中的身份定位和稳定背景；不要一上来把整份问卷全抛给 owner。",
       "RP 资料只服务 RP 模式，且只描述 bot 自身；不要修改 persona、用户资料、关系或其他长期记忆。",
       "owner 每提供一段明确设定，就立即用工具写入草稿；不要等所有信息都收集完再统一写入。",
       "核心字段初步成形后，调用 send_setup_draft 发送当前 RP 草稿供 owner 核对。",
@@ -728,7 +724,7 @@ function buildScenarioProfileDraftModeLines(
   if (coreMissingLabels.length === 3) {
     return [
       "当前处于 Scenario 全局资料初始化阶段，需要从空白草稿开始建立主持所需的长期资料。",
-      "先用 1-2 个紧密相关的问题补齐主题和世界基线，再继续确认主持风格；不要一上来要求 owner 把整套设定一次说完。",
+      "先用 1-2 个紧密相关的问题补齐主题和世界基线，再继续确认叙事风格；不要一上来要求 owner 把整套设定一次说完。",
       "Scenario 资料只服务 scenario_host 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
       "owner 每提供一段明确设定，就立即用工具写入草稿；不要等所有信息都收集完再统一写入。",
       "核心字段初步成形后，调用 send_setup_draft 发送当前 Scenario 草稿供 owner 核对。",
@@ -748,7 +744,7 @@ function buildScenarioProfileDraftModeLines(
   }
 
   return [
-    "Scenario 核心字段已完成，可继续补充安全/禁忌规则、开场模式等辅助信息。",
+    "Scenario 核心字段已完成，可继续补充边界等辅助信息。",
     "只补 owner 明确提供或明确同意补充的内容；不要因为是 setup 就强行追问所有可选字段。",
     "补充信息稳定后，调用 send_setup_draft 发送当前 Scenario 草稿供 owner 核对。",
     "回复保持短句纯文本，不用 Markdown 标题或列表。"
@@ -927,16 +923,11 @@ function buildSharedPersonaSummaryLines(persona: Persona): string[] {
   const personaSummary = [
     `名字=${persona.name}`,
     `性格底色=${persona.temperament}`,
-    `说话方式=${persona.speakingStyle}`
+    `语气风格=${persona.voiceStyle}`
   ].join("；");
-  const extraFacts = [
-    persona.globalTraits ? `全局特征=${persona.globalTraits}` : null,
-    persona.generalPreferences ? `通用偏好=${persona.generalPreferences}` : null
-  ].filter((item): item is string => Boolean(item));
 
   return [
-    `全局 persona：${personaSummary}`,
-    ...(extraFacts.length > 0 ? [`全局补充设定：${extraFacts.join("；")}`] : [])
+    `全局 persona：${personaSummary}`
   ];
 }
 
@@ -945,12 +936,9 @@ function buildRpProfileLines(profile: RpProfile): string[] {
     intro: "以下 RP 全局资料只在 rp_assistant 模式下生效，是建立在全局 persona 之上的 bot 自身真人化补充。",
     label: "RP 全局资料",
     coreParts: [
-      profile.selfPositioning ? `自我定位=${profile.selfPositioning}` : null,
-      profile.socialRole ? `社会角色=${profile.socialRole}` : null,
-      profile.lifeContext ? `生活状态=${profile.lifeContext}` : null,
-      profile.physicalPresence ? `外在存在感=${profile.physicalPresence}` : null,
-      profile.realityContract ? `现实契约=${profile.realityContract}` : null,
-      profile.hardLimits ? `硬边界=${profile.hardLimits}` : null
+      profile.identity ? `身份定位=${profile.identity}` : null,
+      profile.background ? `稳定背景=${profile.background}` : null,
+      profile.boundaries ? `边界=${profile.boundaries}` : null
     ],
     extraParts: [
       profile.continuityFacts ? `连续性事实=${profile.continuityFacts}` : null
@@ -964,12 +952,11 @@ function buildScenarioProfileLines(profile: ScenarioProfile): string[] {
     label: "Scenario 全局资料",
     coreParts: [
       profile.theme ? `主题=${profile.theme}` : null,
-      profile.hostStyle ? `主持风格=${profile.hostStyle}` : null,
-      profile.worldBaseline ? `世界基线=${profile.worldBaseline}` : null
+      profile.worldBaseline ? `世界基线=${profile.worldBaseline}` : null,
+      profile.narrationStyle ? `叙事风格=${profile.narrationStyle}` : null
     ],
     extraParts: [
-      profile.safetyOrTabooRules ? `安全/禁忌规则=${profile.safetyOrTabooRules}` : null,
-      profile.openingPattern ? `开场模式=${profile.openingPattern}` : null
+      profile.boundaries ? `边界=${profile.boundaries}` : null
     ]
   });
 }
@@ -1060,6 +1047,7 @@ function buildProfileSnapshotLines<FieldName extends string>(input: {
 function buildReplyRuleLines(): string[] {
   return [
     "默认短答；能一句说清就一句。只有用户明确要求分析、对比、步骤或长说明，或不展开会遗漏必要信息时再多说。",
+    "最终回复应像真实聊天消息一样，只发送自己要说的话；不要用括号、星号、旁白或舞台动作描述自己的表情、姿势、动作、心理活动或正在做什么，除非用户明确要求这种格式。",
     "对方若没有明确问题、请求、任务或待确认事项，只需自然收住，不要机械续聊。",
     "若当前触发用户是 NPC/bot，只在确有协作、提问、转达或必要确认时继续回复。"
   ];
@@ -1068,7 +1056,7 @@ function buildReplyRuleLines(): string[] {
 function buildMemoryRuleLines(): string[] {
   return [
     "长期信息写入决策树：",
-    "1. bot 的名字、性格底色、说话方式、跨模式全局偏好 -> persona。",
+    "1. bot 的名字、性格底色、语气风格 -> persona。",
     "2. owner 级、跨任务长期工作流偏好 -> global_rules。",
     "3. 只在某个工具集或工作流里生效的长期规则 -> toolset_rules。",
     "4. 稳定且结构化的用户卡片信息 -> user_profile。",
@@ -1144,9 +1132,7 @@ function buildPersonaCandidateTexts(persona: Persona): string[] {
   return [
     persona.name,
     persona.temperament,
-    persona.speakingStyle,
-    persona.globalTraits,
-    persona.generalPreferences,
+    persona.voiceStyle,
   ].filter((item): item is string => Boolean(item));
 }
 

@@ -530,7 +530,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       modeId: "rp_assistant" as const,
       draft: {
         ...createEmptyRpProfile(),
-        selfPositioning: "雨夜里也保持镇定"
+        identity: "雨夜里也保持镇定"
       }
     };
 
@@ -570,28 +570,28 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     } as any;
 
     await profileToolHandlers.patch_persona!(
-      { id: "tool_persona_draft_patch_1", type: "function", function: { name: "patch_persona", arguments: "{\"personaPatch\":{\"speakingStyle\":\"短句\"}}" } },
-      { personaPatch: { speakingStyle: "短句" } },
+      { id: "tool_persona_draft_patch_1", type: "function", function: { name: "patch_persona", arguments: "{\"personaPatch\":{\"voiceStyle\":\"短句\"}}" } },
+      { personaPatch: { voiceStyle: "短句" } },
       personaContext
     );
     await profileToolHandlers.patch_rp_profile!(
-      { id: "tool_rp_draft_patch_1", type: "function", function: { name: "patch_rp_profile", arguments: "{\"profilePatch\":{\"hardLimits\":\"绝不跳出角色\"}}" } },
-      { profilePatch: { hardLimits: "绝不跳出角色" } },
+      { id: "tool_rp_draft_patch_1", type: "function", function: { name: "patch_rp_profile", arguments: "{\"profilePatch\":{\"boundaries\":\"绝不跳出角色\"}}" } },
+      { profilePatch: { boundaries: "绝不跳出角色" } },
       rpContext
     );
 
-    assert.equal(personaOperationMode.draft.speakingStyle, "短句");
-    assert.equal(rpOperationMode.draft.hardLimits, "绝不跳出角色");
+    assert.equal(personaOperationMode.draft.voiceStyle, "短句");
+    assert.equal(rpOperationMode.draft.boundaries, "绝不跳出角色");
     assert.equal(JSON.parse(String(await profileToolHandlers.get_persona!(
       { id: "tool_persona_draft_get_1", type: "function", function: { name: "get_persona", arguments: "{}" } },
       {},
       personaContext
-    ))).speakingStyle, "短句");
+    ))).voiceStyle, "短句");
     assert.equal(JSON.parse(String(await profileToolHandlers.get_rp_profile!(
       { id: "tool_rp_draft_get_1", type: "function", function: { name: "get_rp_profile", arguments: "{}" } },
       {},
       rpContext
-    ))).hardLimits, "绝不跳出角色");
+    ))).boundaries, "绝不跳出角色");
   });
 
   test("send_setup_draft uses committed text sink for web sessions", async () => {
@@ -756,8 +756,8 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
 
   test("memory handlers surface structured scope conflict warnings", async () => {
     const personaWarningResult = await profileToolHandlers.patch_persona!(
-      { id: "tool_persona_warn_1", type: "function", function: { name: "patch_persona", arguments: "{\"personaPatch\":{\"speakingStyle\":\"所有任务默认先给结论再展开\"}}" } },
-      { personaPatch: { speakingStyle: "所有任务默认先给结论再展开" } },
+      { id: "tool_persona_warn_1", type: "function", function: { name: "patch_persona", arguments: "{\"personaPatch\":{\"voiceStyle\":\"所有任务默认先给结论再展开\"}}" } },
+      { personaPatch: { voiceStyle: "所有任务默认先给结论再展开" } },
       {
         relationship: "owner",
         personaStore: {
@@ -769,15 +769,13 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
               persona: {
                 name: "",
                 temperament: "",
-                speakingStyle: "所有任务默认先给结论再展开",
-                globalTraits: "",
-                generalPreferences: ""
+                voiceStyle: "所有任务默认先给结论再展开"
               },
               warning: {
                 code: "warning_scope_conflict",
                 currentScope: "persona",
                 suggestedScope: "global_rules",
-                reason: "内容更像跨任务长期工作流规则，不像 bot 的名字、性格底色、说话方式或跨模式全局偏好。"
+                reason: "内容更像跨任务长期工作流规则，不像 bot 的名字、性格底色或语气风格。"
               }
             };
           }
@@ -813,7 +811,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
                 code: "warning_scope_conflict",
                 currentScope: "global_rules",
                 suggestedScope: "persona",
-                reason: "内容更像 bot 的名字、性格底色、说话方式或跨模式全局偏好，而不是 owner 级通用工作流规则。"
+                reason: "内容更像 bot 的名字、性格底色或语气风格，而不是 owner 级通用工作流规则。"
               },
               item: { id: "rule_warn_1", updatedAt: 1, createdAt: 1, kind: "workflow", source: "owner_explicit", ...input },
               rules: []

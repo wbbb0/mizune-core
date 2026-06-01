@@ -235,15 +235,12 @@ function dedupeToolsetRules(rules: ToolsetRuleEntry[]) {
 function mapLegacyPersonaMemoryToField(entry: { title: string; content: string }): keyof Persona {
   const text = `${entry.title}\n${entry.content}`;
   if (/(口吻|语气|说话方式|说话风格)/u.test(text)) {
-    return "speakingStyle";
+    return "voiceStyle";
   }
-  if (/(性格|气质|人设|定位)/u.test(text)) {
+  if (/(性格|气质|人设|定位|偏好|习惯|喜好|审美|倾向)/u.test(text)) {
     return "temperament";
   }
-  if (/(偏好|习惯|喜好|审美|倾向)/u.test(text)) {
-    return "generalPreferences";
-  }
-  return "globalTraits";
+  return "temperament";
 }
 
 function mergePersonaField(current: string, incoming: string): string {
@@ -287,26 +284,36 @@ function migratePersona(raw: unknown) {
         getString(obj.temperament),
         getString(obj.personality),
         getString(obj.coreIdentity),
-        getString(obj.role),
         getString(obj.identity)
       ].filter((item): item is string => Boolean(item)).join("；"),
-      globalTraits: [
-        getString(obj.globalTraits),
-        getString(obj.interests),
-        getString(obj.hobbies),
-        getString(obj.likesAndDislikes)
-      ].filter((item): item is string => Boolean(item)).join("；"),
-      generalPreferences: [
-        getString(obj.generalPreferences),
-        getString(obj.background),
-        getString(obj.appearance),
-        getString(obj.virtualAppearance),
-        getString(obj.familyBackground),
-        getString(obj.residence),
-        getString(obj.secrets)
-      ].filter((item): item is string => Boolean(item)).join("；"),
-      speakingStyle: getString(obj.speakingStyle) ?? getString(obj.speechStyle) ?? ""
+      voiceStyle: getString(obj.voiceStyle) ?? getString(obj.speakingStyle) ?? getString(obj.speechStyle) ?? ""
     });
+
+    const excludedObjectFields: Array<{ key: string; label: string; suggestedScope: string }> = [
+      { key: "role", label: "旧角色", suggestedScope: "rp_profile" },
+      { key: "globalTraits", label: "旧全局特征", suggestedScope: "user_memories 或 rp_profile" },
+      { key: "interests", label: "旧兴趣", suggestedScope: "user_memories 或 rp_profile" },
+      { key: "hobbies", label: "旧爱好", suggestedScope: "user_memories 或 rp_profile" },
+      { key: "likesAndDislikes", label: "旧喜恶", suggestedScope: "user_memories 或 rp_profile" },
+      { key: "generalPreferences", label: "旧通用偏好", suggestedScope: "global_rules 或 user_memories" },
+      { key: "background", label: "旧背景", suggestedScope: "rp_profile" },
+      { key: "appearance", label: "旧外貌", suggestedScope: "rp_profile" },
+      { key: "virtualAppearance", label: "旧虚拟外貌", suggestedScope: "rp_profile" },
+      { key: "familyBackground", label: "旧家庭背景", suggestedScope: "rp_profile" },
+      { key: "residence", label: "旧住处", suggestedScope: "rp_profile" },
+      { key: "secrets", label: "旧秘密", suggestedScope: "rp_profile" }
+    ];
+    for (const field of excludedObjectFields) {
+      if (getString(obj[field.key]) === undefined) {
+        continue;
+      }
+      reportFindings.push({
+        category: "persona",
+        title: field.label,
+        suggestedScope: field.suggestedScope,
+        reason: "旧 persona 对象字段已不再属于 persona 的名字、性格底色或语气风格，迁移时不写回 persona。"
+      });
+    }
 
     const outputFormatRequirements = getString(obj.outputFormatRequirements);
     if (outputFormatRequirements) {

@@ -28,7 +28,7 @@ async function readJson(filePath: string) {
       ], null, 2));
       await writeFile(join(dataDir, "persona.json"), JSON.stringify({
         identity: "可靠搭档",
-        speakingStyle: "直接一点",
+        voiceStyle: "直接一点",
         roleplayRequirements: "保持角色一致。",
         outputFormatRequirements: "默认先给结论再展开。",
         memories: [

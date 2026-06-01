@@ -15,7 +15,8 @@ export interface ScopeConflictWarning {
 const PERSONA_PATTERNS = [
   /persona/u,
   /人设/u,
-  /角色(设定|边界|身份|定位)/u,
+  /名字|性格/u,
+  /角色设定/u,
   /口吻|语气|说话方式|说话风格/u
 ] as const;
 
@@ -60,7 +61,7 @@ export function detectScopeConflict(input: {
       code: "warning_scope_conflict",
       currentScope: input.currentScope,
       suggestedScope: "global_rules",
-      reason: "内容更像跨任务长期工作流规则，不像 bot 身份、人设、口吻或角色边界。"
+      reason: "内容更像跨任务长期工作流规则，不像 bot 的名字、性格底色或语气风格。"
     };
   }
   if (input.currentScope === "global_rules" && matchesAny(text, PERSONA_PATTERNS)) {
@@ -68,7 +69,7 @@ export function detectScopeConflict(input: {
       code: "warning_scope_conflict",
       currentScope: input.currentScope,
       suggestedScope: "persona",
-      reason: "内容更像 bot 身份、人设、口吻或角色边界，而不是 owner 级通用工作流规则。"
+      reason: "内容更像 bot 的名字、性格底色或语气风格，而不是 owner 级通用工作流规则。"
     };
   }
   if (input.currentScope === "toolset_rules" && matchesAny(text, GLOBAL_WORKFLOW_PATTERNS) && !matchesAny(text, TOOLSET_LOCAL_PATTERNS)) {

@@ -20,27 +20,21 @@ import { normalizeTaskTracker } from "#conversation/taskTracker/taskTrackerNorma
 const personaDraftSchema = z.object({
   name: z.string(),
   temperament: z.string(),
-  speakingStyle: z.string(),
-  globalTraits: z.string(),
-  generalPreferences: z.string()
+  voiceStyle: z.string()
 });
 
 const rpProfileDraftSchema = z.object({
-  selfPositioning: z.string(),
-  socialRole: z.string(),
-  lifeContext: z.string(),
-  physicalPresence: z.string(),
-  realityContract: z.string(),
+  identity: z.string(),
+  background: z.string(),
   continuityFacts: z.string(),
-  hardLimits: z.string()
+  boundaries: z.string()
 });
 
 const scenarioProfileDraftSchema = z.object({
   theme: z.string(),
-  hostStyle: z.string(),
   worldBaseline: z.string(),
-  safetyOrTabooRules: z.string(),
-  openingPattern: z.string()
+  narrationStyle: z.string(),
+  boundaries: z.string()
 });
 
 const sessionOperationModeSchema = z.union([
