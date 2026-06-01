@@ -6,7 +6,7 @@ import { GroupMembershipStore } from "../../src/identity/groupMembershipStore.ts
 import { NpcDirectory } from "../../src/identity/npcDirectory.ts";
 import { OneBotClient } from "../../src/services/onebot/onebotClient.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
-import { buildPrompt, buildScheduledTaskPrompt } from "../../src/llm/prompt/promptBuilder.ts";
+import { buildPrompt, buildScheduledTaskPrompt, buildSetupPrompt } from "../../src/llm/prompt/promptBuilder.ts";
 import { createMemoryHarness, createMemoryTestConfig } from "../helpers/memory-test-support.tsx";
 import {
   createPromptBatchMessage,
@@ -66,7 +66,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
     }
   });
 
-  test("prompt builder appends tail system messages after the current user batch", async () => {
+  test("prompt builder appends current turn directives inside the current user batch", async () => {
     const harness = await createMemoryHarness();
     try {
       const persona = await harness.personaStore.get();
@@ -82,12 +82,106 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
         batchMessages: [
           createPromptBatchMessage({ userId: "10002", senderName: "Bob", text: "当前问题" })
         ],
-        tailSystemMessages: ["本轮回复目标：\n- user_id: 10002"]
+        currentTurnDirectives: ["本轮回复目标：\n- user_id: 10002"]
       });
 
-      assert.equal(prompt.at(-2)?.role, "user");
-      assert.equal(prompt.at(-1)?.role, "system");
-      assert.match(String(prompt.at(-1)?.content ?? ""), /本轮回复目标/);
+      assert.equal(prompt.at(-1)?.role, "user");
+      assert.match(readPromptLastMessageText(prompt), /%%llmbot:section name="current_turn_directives"/);
+      assert.match(readPromptLastMessageText(prompt), /本轮回复目标/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("setup prompt appends current turn directives inside the setup user batch", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.get();
+      const prompt = buildSetupPrompt({
+        sessionId: "qqbot:p:owner",
+        interactionMode: "normal",
+        persona,
+        phase: "setup",
+        missingFields: ["name", "temperament", "speakingStyle"],
+        recentMessages: [],
+        batchMessages: [
+          createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "继续设置" })
+        ],
+        currentTurnDirectives: ["本轮配置目标：继续 persona 初始化"]
+      });
+
+      assert.equal(prompt.at(-1)?.role, "user");
+      assert.match(readPromptLastMessageText(prompt), /%%llmbot:section name="current_turn_directives"/);
+      assert.match(readPromptLastMessageText(prompt), /本轮配置目标/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("scheduled prompt appends current turn directives inside the trigger user message", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.get();
+      const prompt = buildScheduledTaskPrompt({
+        sessionId: "qqbot:p:owner",
+        visibleToolNames: [],
+        activeToolsets: [],
+        trigger: {
+          kind: "scheduled_instruction",
+          jobName: "提醒",
+          taskInstruction: "提醒用户喝水。"
+        },
+        persona,
+        relationship: "owner",
+        npcProfiles: [],
+        participantProfiles: [],
+        userProfile: createPromptUserProfile({ userId: "owner", senderName: "Owner" }),
+        historySummary: null,
+        recentMessages: [],
+        targetContext: { chatType: "private", userId: "owner", senderName: "Owner" },
+        currentTurnDirectives: ["本轮计划任务目标：只发送提醒正文"]
+      });
+
+      assert.equal(prompt.at(-1)?.role, "user");
+      assert.match(readPromptLastMessageText(prompt), /%%llmbot:section name="current_turn_directives"/);
+      assert.match(readPromptLastMessageText(prompt), /本轮计划任务目标/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test("current turn directives append as a text part after multimodal batch content", async () => {
+    const harness = await createMemoryHarness();
+    try {
+      const persona = await harness.personaStore.get();
+      const prompt = buildPrompt({
+        sessionId: "qqbot:p:owner",
+        persona,
+        relationship: "owner",
+        npcProfiles: [],
+        participantProfiles: [],
+        userProfile: createPromptUserProfile({ userId: "owner", senderName: "Owner" }),
+        historySummary: null,
+        recentMessages: [],
+        includeBatchMediaCaptions: false,
+        batchMessages: [
+          createPromptBatchMessage({
+            userId: "owner",
+            senderName: "Owner",
+            text: "看这张图",
+            imageVisuals: [{ imageId: "img-1", inputUrl: "data:image/png;base64,AAAA" }]
+          })
+        ],
+        currentTurnDirectives: ["本轮回复目标：先看图再回答"]
+      });
+      const content = prompt.at(-1)?.content;
+
+      assert.equal(prompt.at(-1)?.role, "user");
+      assert.ok(Array.isArray(content));
+      assert.equal(content.some((part) => part.type === "image_url"), true);
+      const lastPart = content.at(-1);
+      assert.equal(lastPart?.type, "text");
+      assert.match(lastPart?.type === "text" ? lastPart.text : "", /current_turn_directives/);
     } finally {
       await harness.cleanup();
     }
@@ -103,23 +197,34 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
 
     assert.equal(hasPromptSection(system, "task_focus"), false);
     assert.equal(hasPromptSection(system, "active_task_state"), false);
-    assert.equal(hasPromptSection(system, "agent_execution_guidance"), false);
+    assert.equal(hasPromptSection(system, "tool_playbooks"), false);
   });
 
-  test("prompt builder renders active task state and tool-specific guidance", async () => {
+  test("prompt builder renders active task state and tool playbooks", async () => {
     const system = await renderTaskPromptSystem(createTaskTracker("active"), [
       "terminal_run",
+      "terminal_start",
       "open_page",
       "inspect_page",
-      "web_search"
-    ]);
+      "ground_with_google_search"
+    ], [{
+      id: "web_research",
+      title: "网页检索与浏览",
+      description: "搜索网页、打开页面、交互与截图。",
+      toolNames: ["open_page", "inspect_page", "ground_with_google_search"]
+    }, {
+      id: "shell_runtime",
+      title: "Shell 运行时",
+      description: "执行与交互 terminal 会话，并复用 terminal resource。",
+      toolNames: ["terminal_run", "terminal_start"]
+    }]);
 
     assert.equal(hasPromptSection(system, "task_focus"), true);
     assert.equal(hasPromptSection(system, "active_task_state"), true);
-    assert.equal(hasPromptSection(system, "agent_execution_guidance"), true);
-    assert.match(system, /Shell：避免海量输出命令/);
-    assert.match(system, /Browser：open_page 后先 inspect_page/);
-    assert.match(system, /Search：涉及时效性、版本、价格、政策、新闻、API 状态时搜索/);
+    assert.equal(hasPromptSection(system, "tool_playbooks"), true);
+    assert.match(system, /终端操作流程/);
+    assert.match(system, /网页检索与浏览流程/);
+    assert.match(system, /多步任务执行流程/);
   });
 
   test("prompt builder renders suspended task as a short inactive hint", async () => {
@@ -127,7 +232,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
     const state = findPromptSection(system, "active_task_state");
 
     assert.equal(hasPromptSection(system, "task_focus"), false);
-    assert.equal(hasPromptSection(system, "agent_execution_guidance"), false);
+    assert.equal(hasPromptSection(system, "tool_playbooks"), false);
     assert.ok(state);
     assert.match(state.body, /任务已暂停/);
     assert.doesNotMatch(state.body, /已完成=/);
@@ -139,10 +244,10 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
 
     assert.equal(hasPromptSection(completedSystem, "task_focus"), false);
     assert.equal(hasPromptSection(completedSystem, "active_task_state"), false);
-    assert.equal(hasPromptSection(completedSystem, "agent_execution_guidance"), false);
+    assert.equal(hasPromptSection(completedSystem, "tool_playbooks"), false);
     assert.equal(hasPromptSection(canceledSystem, "task_focus"), false);
     assert.equal(hasPromptSection(canceledSystem, "active_task_state"), false);
-    assert.equal(hasPromptSection(canceledSystem, "agent_execution_guidance"), false);
+    assert.equal(hasPromptSection(canceledSystem, "tool_playbooks"), false);
   });
 
   test("prompt builder keeps ready_to_close task state short", async () => {
@@ -150,7 +255,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
     const state = findPromptSection(system, "active_task_state");
 
     assert.equal(hasPromptSection(system, "task_focus"), false);
-    assert.equal(hasPromptSection(system, "agent_execution_guidance"), false);
+    assert.equal(hasPromptSection(system, "tool_playbooks"), false);
     assert.ok(state);
     assert.match(state.body, /ready_to_close/);
     assert.doesNotMatch(state.body, /关键工具引用=/);
@@ -180,7 +285,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
     const state = findPromptSection(system, "active_task_state");
 
     assert.equal(hasPromptSection(system, "task_focus"), false);
-    assert.equal(hasPromptSection(system, "agent_execution_guidance"), false);
+    assert.equal(hasPromptSection(system, "tool_playbooks"), false);
     assert.ok(state);
     assert.match(state.body, /暂停\/后台任务=waiting_tool:后台测试 等待终端完成/);
     assert.doesNotMatch(state.body, /关键工具引用=/);
@@ -283,7 +388,8 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
 
       const system = readPromptSystemText(prompt);
       assert.equal(hasPromptSection(system, "tool_hints"), true);
-      assert.match(system, /网页交互前先 inspect_page/);
+      assert.match(system, /页面结构和交互目标用 inspect_page 查看/);
+      assert.match(system, /网页检索与浏览流程/);
       assert.match(system, /查已登记图片、视频、音频或文件时先 asset_list/);
       assert.match(system, /处理已登记文档时用 asset_document_overview/);
       assert.match(system, /asset_document_inspect 调文本精读模型/);
@@ -357,26 +463,28 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
       });
 
       const stableSystem = String(prompt[0]?.content ?? "");
-      const dynamicSystem = String(prompt[1]?.content ?? "");
+      const volatileSystem = String(prompt[1]?.content ?? "");
+      const capabilitySystem = String(prompt[2]?.content ?? "");
       assert.equal(prompt[0]?.role, "system");
       assert.equal(prompt[1]?.role, "system");
-      assert.equal(prompt[2]?.role, "user");
+      assert.equal(prompt[2]?.role, "system");
+      assert.equal(prompt[3]?.role, "user");
       assert.equal(stableSystem, String(changedToolPrompt[0]?.content ?? ""));
       assert.equal(hasPromptSection(stableSystem, "global_persona"), true);
       assert.equal(hasPromptSection(stableSystem, "reply_rules"), false);
       assert.equal(hasPromptSection(stableSystem, "memory_write_decision"), false);
       assert.equal(hasPromptSection(stableSystem, "tool_hints"), false);
       assert.equal(hasPromptSection(stableSystem, "current_user_memories"), false);
-      assert.equal(hasPromptSection(dynamicSystem, "reply_rules"), true);
-      assert.equal(hasPromptSection(dynamicSystem, "memory_write_decision"), true);
-      assert.equal(hasPromptSection(dynamicSystem, "context_rules"), true);
-      assert.equal(hasPromptSection(dynamicSystem, "history_summary"), true);
-      assert.equal(hasPromptSection(dynamicSystem, "current_session_context"), true);
-      assert.equal(hasPromptSection(dynamicSystem, "current_user_memories"), true);
-      assert.equal(hasPromptSection(dynamicSystem, "tool_hints"), true);
-      assert.equal(hasPromptSection(dynamicSystem, "toolset_guidance"), true);
-      assert.ok(dynamicSystem.indexOf("%%llmbot:section name=\"tool_hints\"") > dynamicSystem.indexOf("%%llmbot:section name=\"current_user_memories\""));
-      assert.ok(dynamicSystem.indexOf("%%llmbot:section name=\"toolset_guidance\"") > dynamicSystem.indexOf("%%llmbot:section name=\"tool_hints\""));
+      assert.equal(hasPromptSection(volatileSystem, "reply_rules"), true);
+      assert.equal(hasPromptSection(volatileSystem, "memory_write_decision"), true);
+      assert.equal(hasPromptSection(volatileSystem, "context_rules"), true);
+      assert.equal(hasPromptSection(volatileSystem, "history_summary"), true);
+      assert.equal(hasPromptSection(volatileSystem, "current_session_context"), true);
+      assert.equal(hasPromptSection(volatileSystem, "current_user_memories"), true);
+      assert.equal(hasPromptSection(volatileSystem, "tool_hints"), false);
+      assert.equal(hasPromptSection(capabilitySystem, "tool_hints"), true);
+      assert.equal(hasPromptSection(capabilitySystem, "toolset_guidance"), true);
+      assert.ok(capabilitySystem.indexOf("%%llmbot:section name=\"toolset_guidance\"") > capabilitySystem.indexOf("%%llmbot:section name=\"tool_hints\""));
     } finally {
       await harness.cleanup();
     }
@@ -411,14 +519,17 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
       });
 
       const stableSystem = String(prompt[0]?.content ?? "");
-      const dynamicSystem = String(prompt[1]?.content ?? "");
+      const volatileSystem = String(prompt[1]?.content ?? "");
+      const capabilitySystem = String(prompt[2]?.content ?? "");
       assert.equal(prompt[0]?.role, "system");
       assert.equal(prompt[1]?.role, "system");
+      assert.equal(prompt[2]?.role, "system");
+      assert.equal(prompt[3]?.role, "user");
       assert.equal(hasPromptSection(stableSystem, "global_persona"), true);
       assert.doesNotMatch(stableSystem, /下面这次执行是内部计划任务/);
-      assert.match(dynamicSystem, /下面这次执行是内部计划任务/);
-      assert.equal(hasPromptSection(dynamicSystem, "tool_hints"), true);
-      assert.ok(dynamicSystem.indexOf("下面这次执行是内部计划任务") < dynamicSystem.indexOf("%%llmbot:section name=\"tool_hints\""));
+      assert.match(volatileSystem, /下面这次执行是内部计划任务/);
+      assert.equal(hasPromptSection(volatileSystem, "tool_hints"), false);
+      assert.equal(hasPromptSection(capabilitySystem, "tool_hints"), true);
     } finally {
       await harness.cleanup();
     }
@@ -978,7 +1089,11 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
     }
   });
 
-async function renderTaskPromptSystem(taskTracker: SessionTaskTracker, visibleToolNames: string[] = []): Promise<string> {
+async function renderTaskPromptSystem(
+  taskTracker: SessionTaskTracker,
+  visibleToolNames: string[] = [],
+  activeToolsets: Parameters<typeof buildPrompt>[0]["activeToolsets"] = []
+): Promise<string> {
   const harness = await createMemoryHarness();
   try {
     const persona = await harness.personaStore.patch({
@@ -987,6 +1102,7 @@ async function renderTaskPromptSystem(taskTracker: SessionTaskTracker, visibleTo
     return readPromptSystemText(buildPrompt({
       sessionId: "qqbot:p:owner",
       visibleToolNames,
+      activeToolsets,
       taskTracker,
       persona,
       relationship: "owner",

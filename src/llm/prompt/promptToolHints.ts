@@ -47,12 +47,14 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
       visibleToolNames.has("search_with_iqs_lite_advanced") ? "可控检索用 search_with_iqs_lite_advanced" : "",
       visibleToolNames.has("open_page") ? "拿到 ref_id 后再 open_page" : ""
     ].filter(Boolean);
-    lines.push(`只有问题依赖最新外部信息或网页状态时再查网页${searchHints.length > 0 ? `；${searchHints.join("；")}` : ""}。`);
+    if (searchHints.length > 0) {
+      lines.push(searchHints.join("；") + "。");
+    }
     if (hasAnyTool(visibleToolNames, ["inspect_page", "interact_with_page"])) {
-      lines.push("网页交互前先 inspect_page；页面跳转、刷新或弹层变化后重新 inspect；有稳定 target_id 时优先用 target_id。");
+      lines.push("页面结构和交互目标用 inspect_page 查看；页面交互用 interact_with_page，有 target_id 时优先传 target_id。");
     }
     if (visibleToolNames.has("capture_screenshot")) {
-      lines.push("需要看验证码、局部表单或登录结果时，用 capture_screenshot(target_id) 截局部，必要时再截整页。");
+      lines.push("capture_screenshot 可传 target_id 截局部；未传 target_id 时截整页。");
     }
     if (hasAnyTool(visibleToolNames, ["download_asset", "capture_screenshot"])) {
       const fileTools = [
@@ -61,17 +63,15 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
       ].filter(Boolean).join("/");
       lines.push(`${fileTools} 短下载会直接返回 asset_handle；长下载会返回 download resource_id，完成或失败后会自动触发，也可用 read_download_resource 主动查看状态。`);
     }
-    lines.push("遇到短信码、邮箱码、TOTP 或二次验证时，在当前会话向用户索取；验证码只用于当前步骤，不写入长期资料。");
   }
 
   if (hasAnyTool(visibleToolNames, ["terminal_list", "terminal_run", "terminal_start", "terminal_read", "terminal_write", "terminal_send_lines", "terminal_key", "terminal_signal", "terminal_stop"])) {
-    lines.push("需要继续终端任务时，先 terminal_list 看现有 terminal resource，再复用已有 resource_id；只有不存在合适资源时才新开。");
+    lines.push("terminal_list 可列出当前可复用的 terminal resource。");
     if (visibleToolNames.has("terminal_run")) {
-      lines.push("短命令用 terminal_run；若 timeout_ms 超时，命令会自动转入后台并返回 resource_id，系统会在完成或可能等待输入时再触发你继续处理。");
+      lines.push("terminal_run 运行命令并等待结果；若 timeout_ms 超时，命令会自动转入后台并返回 resource_id。");
     }
     if (visibleToolNames.has("terminal_start")) {
-      lines.push("长任务、watch/dev server 或交互程序用 terminal_start；发送单段文本用 terminal_write，多条控制台命令用 terminal_send_lines，发送 Enter/Tab/Ctrl-C/Ctrl-D/方向键等用 terminal_key，需要 SIGINT/SIGTERM/SIGKILL 时用 terminal_signal。");
-      lines.push("后台 terminal 完成触发时，先根据触发里携带的输出判断结果；等待输入触发只是“可能需要输入”，不确定时先问用户。");
+      lines.push("terminal_start 会直接启动后台 terminal；发送单段文本用 terminal_write，多条控制台命令用 terminal_send_lines，发送 Enter/Tab/Ctrl-C/Ctrl-D/方向键等用 terminal_key，需要 SIGINT/SIGTERM/SIGKILL 时用 terminal_signal。");
     }
     if (visibleToolNames.has("terminal_key")) {
       lines.push("tmux 快捷键用 terminal_key 的语义枚举，例如 tmux_split_right、tmux_split_down、tmux_new_window、tmux_detach；连续快捷键用 keys 数组。普通文本不要放进 keys，改用 terminal_write。");

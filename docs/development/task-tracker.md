@@ -67,7 +67,7 @@ parked task 不是 DAG。恢复只通过两类保守触发：
 
 无 primary 且无 parked 时，不注入 TaskTracker section。
 
-active、waiting_tool、waiting_user、cancel_confirming 会注入 `task_focus`、`active_task_state`，并在可调用工具存在时注入短 `agent_execution_guidance`。`ready_to_close` 只显示短状态；`suspended` 只显示暂停提示；completed/canceled 不显示 primary 状态。
+active、waiting_tool、waiting_user、cancel_confirming 会注入 `task_focus`、`active_task_state`。其中 active、waiting_tool、waiting_user 在激活工具集匹配时通过 `tool_playbooks` 注入多步任务操作规范；cancel_confirming 只保留取消确认焦点，不继续鼓励工具推进。`ready_to_close` 只显示短状态；`suspended` 只显示暂停提示；completed/canceled 不显示 primary 状态。
 
 parked tasks 只在 `active_task_state` 中显示一行摘要，不展开 done/next/blockers/refs/evidence，避免长期污染普通聊天 prompt。
 

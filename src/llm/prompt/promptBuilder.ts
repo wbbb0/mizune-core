@@ -1,13 +1,13 @@
-import { buildOpenTag, buildCloseTag, parseProtocolLine } from "#utils/structuredEnvelope.ts";
+import { buildOpenTag, buildCloseTag } from "#utils/structuredEnvelope.ts";
 import type { LlmMessage } from "../llmClient.ts";
 import {
   buildUserBatchContent,
   buildProfileDraftBatchContent,
 } from "../prompts/trigger-batch.prompt.ts";
 import {
-  buildBaseSystemLines,
-  buildScheduledTaskSystemLines,
-  buildSetupSystemLines
+  buildBaseSystemSections,
+  buildScheduledTaskSystemSections,
+  buildSetupSystemSections
 } from "../prompts/chat-system.prompt.ts";
 import {
   formatConversationHistoryPromptMessage,
@@ -17,7 +17,7 @@ import { getSessionChatType } from "#conversation/session/sessionIdentity.ts";
 import type { PromptInput, ScheduledTaskPromptInput, SetupPromptInput } from "./promptTypes.ts";
 import type { AssetHandle } from "#llm/tools/core/fileHandle.ts";
 import type { InlineSessionTriggerExecution } from "#conversation/session/sessionTypes.ts";
-import { renderPromptSectionRaw } from "../prompts/prompt-section.ts";
+import { renderPromptSection, renderPromptSectionRaw, type PromptSection, type PromptSectionPlacement } from "../prompts/prompt-section.ts";
 
 export type {
   PromptBatchMessage,
@@ -33,21 +33,6 @@ export type {
   SetupPromptInput
 } from "./promptTypes.ts";
 
-const STABLE_SYSTEM_SECTIONS = new Set([
-  "global_persona",
-  "global_persona_base",
-  "persona_snapshot",
-  "rp_profile",
-  "rp_profile_snapshot",
-  "scenario_profile",
-  "scenario_profile_snapshot"
-]);
-
-const DEFERRED_TOOL_SECTIONS = new Set([
-  "tool_hints",
-  "toolset_guidance"
-]);
-
 export function buildPrompt(input: PromptInput): LlmMessage[] {
   const lastBatchMessage = input.batchMessages[input.batchMessages.length - 1];
   const batchRenderContext = {
@@ -60,7 +45,7 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
       ? { currentTriggerSenderName: input.userProfile.senderName ?? lastBatchMessage?.senderName ?? "" }
       : {})
   };
-  const baseSystemLines = buildBaseSystemLines({
+  const baseSystemSections = buildBaseSystemSections({
     sessionMode: getSessionChatType(input.sessionId),
     ...(input.modeId ? { modeId: input.modeId } : {}),
     ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
@@ -83,7 +68,7 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
     ...(input.draftMode ? { draftMode: input.draftMode } : {}),
     ...(input.isInSetup ? { isInSetup: input.isInSetup } : {})
   });
-  const systemMessages = buildSystemMessages(baseSystemLines);
+  const systemMessages = buildSystemMessages(baseSystemSections);
 
   const historyMessages: LlmMessage[] = input.recentMessages.map((message) => ({
     role: message.role,
@@ -96,19 +81,24 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
   const batchContentBuilder = input.draftMode || input.isInSetup
     ? buildProfileDraftBatchContent
     : buildUserBatchContent;
+  const userBatchContent = input.batchMessages.length > 0
+    ? appendCurrentTurnDirectives(
+        batchContentBuilder(input.batchMessages, batchRenderContext, input.includeBatchMediaCaptions),
+        input.currentTurnDirectives
+      )
+    : renderCurrentTurnDirectives(input.currentTurnDirectives);
 
   return [
     ...systemMessages,
     ...(input.lateSystemMessages ?? []).map((content) => ({ role: "system" as const, content })),
     ...((input.replayMessages ?? []) as LlmMessage[]),
     ...historyMessages,
-    ...(input.batchMessages.length > 0
+    ...(userBatchContent
       ? [{
           role: "user" as const,
-          content: batchContentBuilder(input.batchMessages, batchRenderContext, input.includeBatchMediaCaptions)
+          content: userBatchContent
         }]
       : []),
-    ...(input.tailSystemMessages ?? []).map((content) => ({ role: "system" as const, content }))
   ];
 }
 
@@ -118,7 +108,7 @@ export function buildScheduledTaskPrompt(
   const taskTracker = shouldIncludeTaskTrackerForScheduledTrigger(input.trigger)
     ? input.taskTracker
     : undefined;
-  const baseSystemLines = buildBaseSystemLines({
+  const baseSystemSections = buildBaseSystemSections({
     sessionMode: input.targetContext.chatType,
     ...(input.modeId ? { modeId: input.modeId } : {}),
     ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
@@ -139,11 +129,11 @@ export function buildScheduledTaskPrompt(
     ...(input.scenarioStateLines ? { scenarioStateLines: input.scenarioStateLines } : {}),
     ...(input.modeProfile ? { modeProfile: input.modeProfile } : {})
   });
-  const scheduledSystemLines = buildScheduledTaskSystemLines({
+  const scheduledSystemSections = buildScheduledTaskSystemSections({
     trigger: input.trigger,
     targetContext: input.targetContext
   });
-  const systemMessages = buildSystemMessages(baseSystemLines, scheduledSystemLines);
+  const systemMessages = buildSystemMessages(baseSystemSections, scheduledSystemSections);
 
   const historyMessages: LlmMessage[] = input.recentMessages.map((message) => ({
     role: message.role,
@@ -153,57 +143,57 @@ export function buildScheduledTaskPrompt(
     )
   }));
 
-  const triggerMessage = input.inlineBatchMessage ?? buildTriggerMessage(input);
+  const triggerMessage = appendCurrentTurnDirectives(
+    input.inlineBatchMessage ?? buildTriggerMessage(input),
+    input.currentTurnDirectives
+  );
 
   return [
     ...systemMessages,
     ...(input.lateSystemMessages ?? []).map((content) => ({ role: "system" as const, content })),
     ...((input.replayMessages ?? []) as LlmMessage[]),
     ...historyMessages,
-    { role: "user", content: triggerMessage },
-    ...(input.tailSystemMessages ?? []).map((content) => ({ role: "system" as const, content }))
+    { role: "user", content: triggerMessage }
   ];
 }
 
 function buildSystemMessages(
-  baseLines: string[],
-  extraDynamicLines: string[] = []
+  baseSections: PromptSection[],
+  extraVolatileSections: PromptSection[] = []
 ): LlmMessage[] {
-  const stableLines: string[] = [];
-  const dynamicLines: string[] = [];
-  const deferredToolLines: string[] = [];
-
-  for (const line of baseLines) {
-    const sectionName = getPromptSectionName(line);
-    if (sectionName && DEFERRED_TOOL_SECTIONS.has(sectionName)) {
-      deferredToolLines.push(line);
-      continue;
-    }
-    if (sectionName && STABLE_SYSTEM_SECTIONS.has(sectionName)) {
-      stableLines.push(line);
-      continue;
-    }
-    dynamicLines.push(line);
-  }
-
-  dynamicLines.push(...extraDynamicLines, ...deferredToolLines);
-
   const messages: LlmMessage[] = [];
-  if (stableLines.length > 0) {
-    messages.push({ role: "system", content: stableLines.join("\n") });
-  }
-  if (dynamicLines.length > 0) {
-    messages.push({ role: "system", content: dynamicLines.join("\n") });
+  const allSections = [...baseSections, ...extraVolatileSections];
+  for (const placement of SYSTEM_MESSAGE_PLACEMENT_ORDER) {
+    const content = allSections
+      .filter((section) => section.placement === placement)
+      .map((section) => section.content)
+      .join("\n");
+    if (content.length > 0) {
+      messages.push({ role: "system", content });
+    }
   }
   return messages;
 }
 
-function getPromptSectionName(section: string): string | null {
-  const firstLine = section.split("\n", 1)[0] ?? "";
-  const parsed = parseProtocolLine(firstLine);
-  return parsed && !parsed.closing && parsed.tag === "section"
-    ? parsed.attrs.name ?? null
-    : null;
+const SYSTEM_MESSAGE_PLACEMENT_ORDER: PromptSectionPlacement[] = [
+  "stable_system",
+  "volatile_system",
+  "capability_system"
+];
+
+function appendCurrentTurnDirectives(content: LlmMessage["content"], directives: string[] | undefined): LlmMessage["content"] {
+  const directiveSection = renderCurrentTurnDirectives(directives);
+  if (!directiveSection) {
+    return content;
+  }
+  if (typeof content === "string") {
+    return `${content}\n${directiveSection}`;
+  }
+  return [...content, { type: "text", text: directiveSection }];
+}
+
+function renderCurrentTurnDirectives(directives: string[] | undefined): string | null {
+  return renderPromptSection("current_turn_directives", directives ?? []);
 }
 
 function shouldIncludeTaskTrackerForScheduledTrigger(trigger: ScheduledTaskPromptInput["trigger"]): boolean {
@@ -275,32 +265,37 @@ export function buildSetupPrompt(input: SetupPromptInput): LlmMessage[] {
     ...(lastBatchMessage?.userId ? { currentTriggerUserId: lastBatchMessage.userId } : {}),
     ...(lastBatchMessage?.senderName ? { currentTriggerSenderName: lastBatchMessage.senderName } : {})
   };
-  const setupSystemLines = buildSetupSystemLines({
+  const setupSystemSections = buildSetupSystemSections({
     sessionId: input.sessionId,
     ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
     persona: input.persona,
     phase: input.phase,
     missingFields: input.missingFields
   });
-  const systemMessages = buildSystemMessages(setupSystemLines);
+  const systemMessages = buildSystemMessages(setupSystemSections);
 
   const historyMessages: LlmMessage[] = input.recentMessages.map((message) => ({
     role: message.role,
     content: formatConversationHistoryPromptMessage(message)
   }));
+  const userBatchContent = input.batchMessages.length > 0
+    ? appendCurrentTurnDirectives(
+        buildProfileDraftBatchContent(input.batchMessages, batchRenderContext, input.includeBatchMediaCaptions),
+        input.currentTurnDirectives
+      )
+    : renderCurrentTurnDirectives(input.currentTurnDirectives);
 
   return [
     ...systemMessages,
     ...(input.lateSystemMessages ?? []).map((content) => ({ role: "system" as const, content })),
     ...((input.replayMessages ?? []) as LlmMessage[]),
     ...historyMessages,
-    ...(input.batchMessages.length > 0
+    ...(userBatchContent
       ? [{
           role: "user" as const,
-          content: buildProfileDraftBatchContent(input.batchMessages, batchRenderContext, input.includeBatchMediaCaptions)
+          content: userBatchContent
         }]
       : []),
-    ...(input.tailSystemMessages ?? []).map((content) => ({ role: "system" as const, content }))
   ];
 }
 

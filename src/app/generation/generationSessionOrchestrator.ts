@@ -53,7 +53,7 @@ type ActiveDraftOperation = {
   onComplete?: SessionModeSetupOperation["onComplete"];
 };
 
-function buildReplyTargetSystemMessage(target: SessionReplyTarget | null): string | null {
+function buildReplyTargetDirective(target: SessionReplyTarget | null): string | null {
   if (!target) {
     return null;
   }
@@ -550,7 +550,7 @@ export function createGenerationSessionOrchestrator(
 
     void (async () => {
       const replyTarget = sessionManager.getSession(sessionId).currentReplyTarget;
-      const tailSystemMessages = [buildReplyTargetSystemMessage(replyTarget)].filter((item): item is string => Boolean(item));
+      const currentTurnDirectives = [buildReplyTargetDirective(replyTarget)].filter((item): item is string => Boolean(item));
       const last = messages[messages.length - 1];
       if (!last) {
         if (sessionManager.finishGeneration(sessionId, abortController)) {
@@ -847,7 +847,7 @@ export function createGenerationSessionOrchestrator(
             participantProfiles,
             lastLlmUsage: refreshedSession.lastLlmUsage,
             lateSystemMessages,
-            tailSystemMessages,
+            currentTurnDirectives,
             replayMessages: projectedTranscript.replayMessages,
             abortSignal: abortController.signal,
             batchMessages: promptSafety.promptBatchMessages,
@@ -861,7 +861,7 @@ export function createGenerationSessionOrchestrator(
             visibleToolNames: chatVisibleToolNames,
             activeToolsets: activeChatToolsets,
             lateSystemMessages,
-            tailSystemMessages,
+            currentTurnDirectives,
             replayMessages: projectedTranscript.replayMessages,
             persona: promptPersona,
             relationship,

@@ -23,12 +23,13 @@ import type {
   PromptParticipantProfile
 } from "#llm/prompt/promptTypes.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
-import { renderPromptSection } from "./prompt-section.ts";
 import { isNearDuplicateText } from "#memory/similarity.ts";
 import type { ToolsetRuleEntry } from "#llm/prompt/toolsetRuleStore.ts";
 import { normalizeProfileSummary } from "#identity/userProfile.ts";
 import { buildToolHintLines } from "#llm/prompt/promptToolHints.ts";
+import { buildToolPlaybookLines } from "#llm/prompt/toolPlaybooks.ts";
 import type { ParkedTaskState, SessionTaskState, SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
+import { buildPromptSection, type PromptSection, type PromptSectionPlacement } from "./prompt-section.ts";
 
 const PERSONA_FIELD_HINTS: Record<EditablePersonaFieldName, string> = {
   name: "角色的名字",
@@ -61,6 +62,36 @@ const MAX_VISIBLE_PARTICIPANTS = 4;
 const MAX_VISIBLE_NPCS = 3;
 const MEMORY_SIMILARITY_THRESHOLD = 0.62;
 
+const STABLE_SYSTEM_SECTION_NAMES = new Set([
+  "global_persona",
+  "global_persona_base",
+  "persona_snapshot",
+  "rp_profile",
+  "rp_profile_snapshot",
+  "scenario_profile",
+  "scenario_profile_snapshot"
+]);
+
+const CAPABILITY_SYSTEM_SECTION_NAMES = new Set([
+  "tool_hints",
+  "tool_playbooks",
+  "toolset_guidance"
+]);
+
+function systemSection(name: string, lines: Array<string | null | undefined>): PromptSection | null {
+  return buildPromptSection(name, lines, inferSystemSectionPlacement(name));
+}
+
+function inferSystemSectionPlacement(name: string): PromptSectionPlacement {
+  if (STABLE_SYSTEM_SECTION_NAMES.has(name)) {
+    return "stable_system";
+  }
+  if (CAPABILITY_SYSTEM_SECTION_NAMES.has(name)) {
+    return "capability_system";
+  }
+  return "volatile_system";
+}
+
 type SuppressiblePromptMemoryItem = {
   id?: string;
   title: string;
@@ -81,27 +112,27 @@ export interface PreparedPromptMemoryContext {
   suppressions: PromptMemorySuppression[];
 }
 
-export function buildSetupSystemLines(input: {
+export function buildSetupSystemSections(input: {
   sessionId: string;
   interactionMode?: PromptInteractionMode;
   persona: Persona;
   phase?: "setup" | "config";
   missingFields: EditablePersonaFieldName[];
-}): string[] {
+}): PromptSection[] {
   const phase = input.phase ?? "setup";
   return [
-    renderPromptSection(
+    systemSection(
       phase === "config" ? "persona_config_mode" : "persona_setup_mode",
       buildPersonaDraftModeLines(input.persona, input.missingFields, phase)
     ),
-    renderPromptSection("draft_workflow", buildDraftWorkflowLines({
+    systemSection("draft_workflow", buildDraftWorkflowLines({
       targetLabel: "persona",
       phase,
       allowSkipOptionalFields: true
     })),
-    renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
-    renderPromptSection("persona_snapshot", buildSetupSnapshotLines(input.persona, input.missingFields))
-  ].filter((item): item is string => Boolean(item));
+    systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
+    systemSection("persona_snapshot", buildSetupSnapshotLines(input.persona, input.missingFields))
+  ].filter((item): item is PromptSection => Boolean(item));
 }
 
 function buildPersonaDraftModeLines(
@@ -195,7 +226,7 @@ function buildSetupSnapshotLines(persona: Persona, missingFields: EditablePerson
   ];
 }
 
-export function buildBaseSystemLines(input: {
+export function buildBaseSystemSections(input: {
   sessionMode: "private" | "group" | "unknown";
   modeId?: string;
   interactionMode?: PromptInteractionMode;
@@ -217,7 +248,7 @@ export function buildBaseSystemLines(input: {
   modeProfile?: PromptInput["modeProfile"] | undefined;
   draftMode?: PromptInput["draftMode"] | undefined;
   isInSetup?: boolean | undefined;
-}): string[] {
+}): PromptSection[] {
   const draftMode = input.draftMode ?? (
     input.isInSetup
       ? {
@@ -242,96 +273,116 @@ export function buildBaseSystemLines(input: {
 
   if (draftMode?.target === "rp") {
     return [
-      renderPromptSection("global_persona_base", buildModeProfilePersonaBaseLines(input.persona, "RP")),
-      renderPromptSection(
+      systemSection("global_persona_base", buildModeProfilePersonaBaseLines(input.persona, "RP")),
+      systemSection(
         draftMode.phase === "config" ? "rp_profile_config_mode" : "rp_profile_setup_mode",
         buildRpProfileDraftModeLines(draftMode.profile, draftMode.missingFields, draftMode.phase)
       ),
-      renderPromptSection("draft_workflow", buildDraftWorkflowLines({
+      systemSection("draft_workflow", buildDraftWorkflowLines({
         targetLabel: "RP 资料",
         phase: draftMode.phase
       })),
-      renderPromptSection("rp_profile_snapshot", buildRpProfileSnapshotLines(draftMode.profile, draftMode.missingFields)),
-      renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
-      renderPromptSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
-      renderPromptSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
-      renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
+      systemSection("rp_profile_snapshot", buildRpProfileSnapshotLines(draftMode.profile, draftMode.missingFields)),
+      systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
+      systemSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
+      systemSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
+      systemSection("tool_playbooks", buildToolPlaybookLines({
+        activeToolsets: input.activeToolsets,
+        visibleToolNames: input.visibleToolNames,
+        taskTracker: input.taskTracker
+      })),
+      systemSection("toolset_guidance", buildToolsetGuidanceLines({
         activeToolsets: input.activeToolsets,
         visibleToolNames: input.visibleToolNames
       }))
-    ].filter((item): item is string => Boolean(item));
+    ].filter((item): item is PromptSection => Boolean(item));
   }
 
   if (draftMode?.target === "scenario") {
     return [
-      renderPromptSection("global_persona_base", buildModeProfilePersonaBaseLines(input.persona, "Scenario")),
-      renderPromptSection(
+      systemSection("global_persona_base", buildModeProfilePersonaBaseLines(input.persona, "Scenario")),
+      systemSection(
         draftMode.phase === "config" ? "scenario_profile_config_mode" : "scenario_profile_setup_mode",
         buildScenarioProfileDraftModeLines(draftMode.profile, draftMode.missingFields, draftMode.phase)
       ),
-      renderPromptSection("draft_workflow", buildDraftWorkflowLines({
+      systemSection("draft_workflow", buildDraftWorkflowLines({
         targetLabel: "Scenario 资料",
         phase: draftMode.phase
       })),
-      renderPromptSection("scenario_profile_snapshot", buildScenarioProfileSnapshotLines(draftMode.profile, draftMode.missingFields)),
-      renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
-      renderPromptSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
-      renderPromptSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
-      renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
+      systemSection("scenario_profile_snapshot", buildScenarioProfileSnapshotLines(draftMode.profile, draftMode.missingFields)),
+      systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
+      systemSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
+      systemSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
+      systemSection("tool_playbooks", buildToolPlaybookLines({
+        activeToolsets: input.activeToolsets,
+        visibleToolNames: input.visibleToolNames,
+        taskTracker: input.taskTracker
+      })),
+      systemSection("toolset_guidance", buildToolsetGuidanceLines({
         activeToolsets: input.activeToolsets,
         visibleToolNames: input.visibleToolNames
       }))
-    ].filter((item): item is string => Boolean(item));
+    ].filter((item): item is PromptSection => Boolean(item));
   }
 
   if (input.modeId === "assistant") {
     return [
-      renderPromptSection("global_persona", buildSharedPersonaLines(input.persona)),
-      renderPromptSection("assistant_identity", buildAssistantIdentityLines()),
-      renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
-      renderPromptSection("reply_rules", buildReplyRuleLines()),
-      renderPromptSection("context_rules", buildContextRuleLines({
+      systemSection("global_persona", buildSharedPersonaLines(input.persona)),
+      systemSection("assistant_identity", buildAssistantIdentityLines()),
+      systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
+      systemSection("reply_rules", buildReplyRuleLines()),
+      systemSection("context_rules", buildContextRuleLines({
         visibleToolNames: input.visibleToolNames
       })),
-      renderPromptSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
-      renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
+      systemSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
+      systemSection("tool_playbooks", buildToolPlaybookLines({
+        activeToolsets: input.activeToolsets,
+        visibleToolNames: input.visibleToolNames,
+        taskTracker: input.taskTracker
+      })),
+      systemSection("toolset_guidance", buildToolsetGuidanceLines({
         activeToolsets: input.activeToolsets,
         visibleToolNames: input.visibleToolNames
       })),
-      renderPromptSection("live_resources", buildLiveResourceLines(input.liveResources)),
+      systemSection("live_resources", buildLiveResourceLines(input.liveResources)),
       ...taskSections,
-      renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary))
-    ].filter((item): item is string => Boolean(item));
+      systemSection("history_summary", buildHistorySummaryLines(input.historySummary))
+    ].filter((item): item is PromptSection => Boolean(item));
   }
 
   if (input.modeId === "scenario_host") {
     return [
-      renderPromptSection("global_persona", buildSharedPersonaLines(input.persona)),
-      renderPromptSection("host_identity", buildScenarioHostIdentityLines()),
-      renderPromptSection(
+      systemSection("global_persona", buildSharedPersonaLines(input.persona)),
+      systemSection("host_identity", buildScenarioHostIdentityLines()),
+      systemSection(
         "scenario_profile",
         input.modeProfile?.target === "scenario" ? buildScenarioProfileLines(input.modeProfile.profile) : []
       ),
-      renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
-      renderPromptSection("host_rules", buildScenarioHostRuleLines()),
-      renderPromptSection("context_rules", buildContextRuleLines({
+      systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
+      systemSection("host_rules", buildScenarioHostRuleLines()),
+      systemSection("context_rules", buildContextRuleLines({
         visibleToolNames: input.visibleToolNames
       })),
-      renderPromptSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
-      renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
+      systemSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
+      systemSection("tool_playbooks", buildToolPlaybookLines({
+        activeToolsets: input.activeToolsets,
+        visibleToolNames: input.visibleToolNames,
+        taskTracker: input.taskTracker
+      })),
+      systemSection("toolset_guidance", buildToolsetGuidanceLines({
         activeToolsets: input.activeToolsets,
         visibleToolNames: input.visibleToolNames
       })),
-      renderPromptSection("live_resources", buildLiveResourceLines(input.liveResources)),
+      systemSection("live_resources", buildLiveResourceLines(input.liveResources)),
       ...taskSections,
-      renderPromptSection("participant_context", buildParticipantContextLines(input.sessionMode, input.participantProfiles)),
-      renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
-      renderPromptSection("scenario_state", input.scenarioStateLines ?? []),
-      renderPromptSection("current_user_profile", buildCurrentUserProfileLines({
+      systemSection("participant_context", buildParticipantContextLines(input.sessionMode, input.participantProfiles)),
+      systemSection("history_summary", buildHistorySummaryLines(input.historySummary)),
+      systemSection("scenario_state", input.scenarioStateLines ?? []),
+      systemSection("current_user_profile", buildCurrentUserProfileLines({
         userProfile: input.userProfile,
         userMemories: []
       }))
-    ].filter((item): item is string => Boolean(item));
+    ].filter((item): item is PromptSection => Boolean(item));
   }
 
   if (input.modeId === "rp_assistant" || input.modeProfile?.target === "rp") {
@@ -344,40 +395,45 @@ export function buildBaseSystemLines(input: {
     });
 
     return [
-      renderPromptSection("global_persona", buildSharedPersonaLines(input.persona)),
-      renderPromptSection("rp_identity", buildRpAssistantIdentityLines()),
-      renderPromptSection(
+      systemSection("global_persona", buildSharedPersonaLines(input.persona)),
+      systemSection("rp_identity", buildRpAssistantIdentityLines()),
+      systemSection(
         "rp_profile",
         input.modeProfile?.target === "rp" ? buildRpProfileLines(input.modeProfile.profile) : []
       ),
-      renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
-      renderPromptSection("reply_rules", buildReplyRuleLines()),
-      renderPromptSection("memory_write_decision", buildMemoryRuleLines()),
-      renderPromptSection("context_rules", buildContextRuleLines({
+      systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
+      systemSection("reply_rules", buildReplyRuleLines()),
+      systemSection("memory_write_decision", buildMemoryRuleLines()),
+      systemSection("context_rules", buildContextRuleLines({
         visibleToolNames: input.visibleToolNames
       })),
-      renderPromptSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
-      renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
+      systemSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
+      systemSection("tool_playbooks", buildToolPlaybookLines({
+        activeToolsets: input.activeToolsets,
+        visibleToolNames: input.visibleToolNames,
+        taskTracker: input.taskTracker
+      })),
+      systemSection("toolset_guidance", buildToolsetGuidanceLines({
         activeToolsets: input.activeToolsets,
         visibleToolNames: input.visibleToolNames
       })),
-      renderPromptSection("live_resources", buildLiveResourceLines(input.liveResources)),
+      systemSection("live_resources", buildLiveResourceLines(input.liveResources)),
       ...taskSections,
-      renderPromptSection("participant_context", [
+      systemSection("participant_context", [
         ...buildParticipantContextLines(input.sessionMode, input.participantProfiles),
         ...buildNpcContextLines(input.sessionMode, input.npcProfiles, input.participantProfiles)
       ]),
-      renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
-      renderPromptSection("current_session_context", buildCurrentSessionContextLines(input.currentSessionContext)),
-      renderPromptSection("retrieved_user_context", buildRetrievedUserContextLines(input.retrievedUserContext)),
-      renderPromptSection("global_rules", buildGlobalRuleLines(preparedMemoryContext.globalRules)),
-      renderPromptSection("toolset_rules", buildToolsetRuleLines(preparedMemoryContext.toolsetRules)),
-      renderPromptSection("current_user_profile", buildCurrentUserProfileLines({
+      systemSection("history_summary", buildHistorySummaryLines(input.historySummary)),
+      systemSection("current_session_context", buildCurrentSessionContextLines(input.currentSessionContext)),
+      systemSection("retrieved_user_context", buildRetrievedUserContextLines(input.retrievedUserContext)),
+      systemSection("global_rules", buildGlobalRuleLines(preparedMemoryContext.globalRules)),
+      systemSection("toolset_rules", buildToolsetRuleLines(preparedMemoryContext.toolsetRules)),
+      systemSection("current_user_profile", buildCurrentUserProfileLines({
         userProfile: input.userProfile,
         userMemories: preparedMemoryContext.userMemories
       })),
-      renderPromptSection("current_user_memories", buildCurrentUserMemoryLines(preparedMemoryContext.userMemories))
-    ].filter((item): item is string => Boolean(item));
+      systemSection("current_user_memories", buildCurrentUserMemoryLines(preparedMemoryContext.userMemories))
+    ].filter((item): item is PromptSection => Boolean(item));
   }
 
   const preparedMemoryContext = preparePromptMemoryContext({
@@ -389,50 +445,53 @@ export function buildBaseSystemLines(input: {
   });
 
   return [
-    renderPromptSection("global_persona", buildSharedPersonaLines(input.persona)),
-    renderPromptSection("disclosure", buildDisclosureLines(input.interactionMode)),
-    renderPromptSection("reply_rules", buildReplyRuleLines()),
-    renderPromptSection("memory_write_decision", buildMemoryRuleLines()),
-    renderPromptSection("context_rules", buildContextRuleLines({
+    systemSection("global_persona", buildSharedPersonaLines(input.persona)),
+    systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
+    systemSection("reply_rules", buildReplyRuleLines()),
+    systemSection("memory_write_decision", buildMemoryRuleLines()),
+    systemSection("context_rules", buildContextRuleLines({
       visibleToolNames: input.visibleToolNames
     })),
-    renderPromptSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
-    renderPromptSection("toolset_guidance", buildToolsetGuidanceLines({
+    systemSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
+    systemSection("tool_playbooks", buildToolPlaybookLines({
+      activeToolsets: input.activeToolsets,
+      visibleToolNames: input.visibleToolNames,
+      taskTracker: input.taskTracker
+    })),
+    systemSection("toolset_guidance", buildToolsetGuidanceLines({
       activeToolsets: input.activeToolsets,
       visibleToolNames: input.visibleToolNames
     })),
-    renderPromptSection("live_resources", buildLiveResourceLines(input.liveResources)),
+    systemSection("live_resources", buildLiveResourceLines(input.liveResources)),
     ...taskSections,
-    renderPromptSection("participant_context", [
+    systemSection("participant_context", [
       ...buildParticipantContextLines(input.sessionMode, input.participantProfiles),
       ...buildNpcContextLines(input.sessionMode, input.npcProfiles, input.participantProfiles)
     ]),
-    renderPromptSection("history_summary", buildHistorySummaryLines(input.historySummary)),
-    renderPromptSection("current_session_context", buildCurrentSessionContextLines(input.currentSessionContext)),
-    renderPromptSection("retrieved_user_context", buildRetrievedUserContextLines(input.retrievedUserContext)),
-    renderPromptSection("global_rules", buildGlobalRuleLines(preparedMemoryContext.globalRules)),
-    renderPromptSection("toolset_rules", buildToolsetRuleLines(preparedMemoryContext.toolsetRules)),
-    renderPromptSection("current_user_profile", buildCurrentUserProfileLines({
+    systemSection("history_summary", buildHistorySummaryLines(input.historySummary)),
+    systemSection("current_session_context", buildCurrentSessionContextLines(input.currentSessionContext)),
+    systemSection("retrieved_user_context", buildRetrievedUserContextLines(input.retrievedUserContext)),
+    systemSection("global_rules", buildGlobalRuleLines(preparedMemoryContext.globalRules)),
+    systemSection("toolset_rules", buildToolsetRuleLines(preparedMemoryContext.toolsetRules)),
+    systemSection("current_user_profile", buildCurrentUserProfileLines({
       userProfile: input.userProfile,
       userMemories: preparedMemoryContext.userMemories
     })),
-    renderPromptSection("current_user_memories", buildCurrentUserMemoryLines(preparedMemoryContext.userMemories))
-  ].filter((item): item is string => Boolean(item));
+    systemSection("current_user_memories", buildCurrentUserMemoryLines(preparedMemoryContext.userMemories))
+  ].filter((item): item is PromptSection => Boolean(item));
 }
 
 function buildTaskPromptSections(input: {
   taskTracker?: SessionTaskTracker | undefined;
   visibleToolNames?: string[] | undefined;
   activeToolsets?: ToolsetView[] | undefined;
-}): string[] {
+}): PromptSection[] {
   const taskFocusLines = buildTaskFocusLines(input.taskTracker);
   const activeTaskStateLines = buildActiveTaskStateLines(input.taskTracker);
-  const guidanceLines = buildAgentExecutionGuidanceLines(input);
   return [
-    renderPromptSection("task_focus", taskFocusLines),
-    renderPromptSection("active_task_state", activeTaskStateLines),
-    renderPromptSection("agent_execution_guidance", guidanceLines)
-  ].filter((item): item is string => Boolean(item));
+    systemSection("task_focus", taskFocusLines),
+    systemSection("active_task_state", activeTaskStateLines)
+  ].filter((item): item is PromptSection => Boolean(item));
 }
 
 export function buildTaskFocusLines(taskTracker?: SessionTaskTracker | undefined): string[] {
@@ -493,54 +552,6 @@ export function buildActiveTaskStateLines(taskTracker?: SessionTaskTracker | und
     ...formatTaskRefs(primary, 3),
     ...parkedLines
   ];
-}
-
-export function buildAgentExecutionGuidanceLines(input: {
-  taskTracker?: SessionTaskTracker | undefined;
-  visibleToolNames?: string[] | undefined;
-  activeToolsets?: ToolsetView[] | undefined;
-}): string[] {
-  const primary = input.taskTracker?.primary;
-  if (!primary || !["active", "waiting_tool", "waiting_user"].includes(primary.status)) {
-    return [];
-  }
-  const visibleToolNames = resolveVisibleToolNames(input);
-  if (visibleToolNames.size === 0) {
-    return [];
-  }
-  const lines = [
-    "多步任务执行规则：",
-    "- 先确认目标、约束、当前状态，再决定下一步。",
-    "- 每次工具调用只推进一个清晰的小步骤。",
-    "- 优先复用已有 live_resource，不要重复打开相同页面或启动重复 shell。",
-    "- 工具失败时先根据错误调整参数、换路径或换工具；不要直接放弃。",
-    "- 如果已有信息足够完成用户请求，停止工具调用并交付结果。",
-    "- 如果达到工具轮次或上下文预算限制，基于现有结果总结已完成、未完成和下一步建议。"
-  ];
-  if (hasAnyTool(visibleToolNames, ["terminal_run", "terminal_start", "terminal_read", "terminal_write", "terminal_send_lines", "terminal_key", "terminal_signal", "terminal_stop", "terminal_list"])) {
-    lines.push("Shell：避免海量输出命令；长任务用 terminal_start 并提供 description；后台命令返回 resource_id 后复用 terminal_read/terminal_write；resource not found 只表示资源不可用，不要推断命令已完成或曾输出，除非工具结果明确给出。");
-  }
-  if (hasAnyTool(visibleToolNames, ["open_page", "inspect_page", "interact_with_page", "screenshot_page", "download_asset", "close_page"])) {
-    lines.push("Browser：open_page 后先 inspect_page；交互后再次 inspect_page 或截图确认；登录、支付、提交、删除等敏感动作需要用户明确确认。");
-  }
-  if (hasAnyTool(visibleToolNames, ["web_search", "search_web", "browser_search", "asset_document_search", "filesystem_search", "search_accessible_conversations"])) {
-    lines.push("Search：涉及时效性、版本、价格、政策、新闻、API 状态时搜索；重要结论不要只依赖单一来源。");
-  }
-  return lines;
-}
-
-function resolveVisibleToolNames(input: {
-  visibleToolNames?: string[] | undefined;
-  activeToolsets?: ToolsetView[] | undefined;
-}): Set<string> {
-  return new Set([
-    ...(input.visibleToolNames ?? []),
-    ...(input.activeToolsets ?? []).flatMap((toolset) => toolset.toolNames)
-  ]);
-}
-
-function hasAnyTool(visibleToolNames: Set<string>, names: string[]): boolean {
-  return names.some((name) => visibleToolNames.has(name));
 }
 
 function formatTaskObjective(primary: SessionTaskState): string {
@@ -761,7 +772,7 @@ function buildScenarioHostSetupModeLines(): string[] {
   ];
 }
 
-export function buildScheduledTaskSystemLines(input: {
+export function buildScheduledTaskSystemSections(input: {
   trigger:
     | {
         kind: "scheduled_instruction";
@@ -829,72 +840,72 @@ export function buildScheduledTaskSystemLines(input: {
         chatType: "group";
         groupId: string;
       };
-}): string[] {
+}): PromptSection[] {
   if (input.trigger.kind === "scheduled_instruction") {
     return [
-      renderPromptSection("scheduled_task", [
+      systemSection("scheduled_task", [
         "下面这次执行是内部计划任务，不是用户刚刚发来了一条新消息。",
         "先根据任务指令和已有上下文决定是否需要查资料、看图、调用工具或给目标会话发消息。",
         "如果最终需要发消息，只产出要发送给目标会话的一条自然消息，不要带系统播报腔。"
       ])
-    ].filter((item): item is string => Boolean(item));
+    ].filter((item): item is PromptSection => Boolean(item));
   }
 
   if (input.trigger.kind === "comfy_task_completed") {
     return [
-      renderPromptSection("comfy_task_completed", [
+      systemSection("comfy_task_completed", [
         "下面这次执行是图片生成完成后的内部回调，不是用户刚刚发来了一条新消息。",
         "你之前发起的图片生成任务已经完成，结果已导入 asset。",
         "如果还没看图，不要假装已经看过；需要判断细节时先看图，再决定是发图、重试还是简短说明。"
       ])
-    ].filter((item): item is string => Boolean(item));
+    ].filter((item): item is PromptSection => Boolean(item));
   }
 
   if (input.trigger.kind === "comfy_task_failed") {
     return [
-      renderPromptSection("comfy_task_failed", [
+      systemSection("comfy_task_failed", [
         "下面这次执行是图片生成失败后的内部回调，不是用户刚刚发来了一条新消息。",
         "你之前发起的图片生成任务失败了；先判断是直接重试还是向用户简短说明。"
       ])
-    ].filter((item): item is string => Boolean(item));
+    ].filter((item): item is PromptSection => Boolean(item));
   }
 
   if (input.trigger.kind === "terminal_session_closed") {
     return [
-      renderPromptSection("terminal_session_closed", [
+      systemSection("terminal_session_closed", [
         "下面这次执行是后台终端完成后的内部回调，不是用户刚刚发来了一条新消息。",
         "先根据终端输出判断任务是否成功；如果还需要继续处理，可以复用 resource_id 或相关工具。",
         "只有需要向用户同步结论、请求决策或交付结果时才发送自然消息。"
       ])
-    ].filter((item): item is string => Boolean(item));
+    ].filter((item): item is PromptSection => Boolean(item));
   }
 
   if (input.trigger.kind === "download_completed") {
     return [
-      renderPromptSection("download_completed", [
+      systemSection("download_completed", [
         "下面这次执行是后台下载完成后的内部回调，不是用户刚刚发来了一条新消息。",
         "下载结果已导入 asset；根据用户原始任务决定是否查看、发送或只做简短说明。",
         "发送文件给用户时优先用 asset_send_to_chat(asset_ref=...)。"
       ])
-    ].filter((item): item is string => Boolean(item));
+    ].filter((item): item is PromptSection => Boolean(item));
   }
 
   if (input.trigger.kind === "download_failed") {
     return [
-      renderPromptSection("download_failed", [
+      systemSection("download_failed", [
         "下面这次执行是后台下载失败后的内部回调，不是用户刚刚发来了一条新消息。",
         "先根据错误判断是否能换来源或重试；需要用户决策时再简短询问。"
       ])
-    ].filter((item): item is string => Boolean(item));
+    ].filter((item): item is PromptSection => Boolean(item));
   }
 
   return [
-    renderPromptSection("terminal_input_required", [
+    systemSection("terminal_input_required", [
       "下面这次执行是后台终端可能等待输入的内部回调，不是用户刚刚发来了一条新消息。",
       "这个检测是启发式结果，不是绝对事实；先根据提示文本和最近输出判断是否真的需要输入。",
       "能确定的低风险确认可以继续操作；不确定或需要用户决定时，向用户简短询问。"
     ])
-  ].filter((item): item is string => Boolean(item));
+  ].filter((item): item is PromptSection => Boolean(item));
 }
 
 function buildModeProfilePersonaBaseLines(persona: Persona, modeLabel: "RP" | "Scenario"): string[] {

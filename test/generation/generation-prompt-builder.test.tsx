@@ -756,7 +756,12 @@ function createActiveTaskTracker() {
       interactionMode: "normal",
       mainModelRef: ["main"],
       visibleToolNames: ["terminal_run"],
-      activeToolsets: [],
+      activeToolsets: [{
+        id: "shell_runtime",
+        title: "Shell 运行时",
+        description: "执行与交互 terminal 会话，并复用 terminal resource。",
+        toolNames: ["terminal_run"]
+      }],
       persona: { name: "Bot", temperament: "", speakingStyle: "", globalTraits: "", generalPreferences: "" } as any,
       relationship: "known",
       participantProfiles: [],
@@ -803,7 +808,7 @@ function createActiveTaskTracker() {
     const system = readPromptSystemText(result.promptMessages);
     assert.equal(hasPromptSection(system, "task_focus"), true);
     assert.equal(hasPromptSection(system, "active_task_state"), true);
-    assert.equal(hasPromptSection(system, "agent_execution_guidance"), true);
+    assert.equal(hasPromptSection(system, "tool_playbooks"), true);
     assert.match(system, /目标=验证真实 prompt builder 链路/);
   });
 
@@ -847,7 +852,7 @@ function createActiveTaskTracker() {
     const system = readPromptSystemText(result.promptMessages);
     assert.equal(hasPromptSection(system, "task_focus"), false);
     assert.equal(hasPromptSection(system, "active_task_state"), false);
-    assert.equal(hasPromptSection(system, "agent_execution_guidance"), false);
+    assert.equal(hasPromptSection(system, "tool_playbooks"), false);
   });
 
   test("scheduled prompt applies content safety projection to trigger text", async () => {
@@ -937,7 +942,7 @@ function createActiveTaskTracker() {
     const system = readPromptSystemText(result.promptMessages);
     assert.equal(hasPromptSection(system, "task_focus"), false);
     assert.equal(hasPromptSection(system, "active_task_state"), false);
-    assert.equal(hasPromptSection(system, "agent_execution_guidance"), false);
+    assert.equal(hasPromptSection(system, "tool_playbooks"), false);
   });
 
   test("background trigger prompt may include active task guidance", async () => {
