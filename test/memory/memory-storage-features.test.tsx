@@ -13,9 +13,11 @@ import { GlobalProfileReadinessStore } from "../../src/identity/globalProfileRea
 import { SetupStateStore } from "../../src/identity/setupStateStore.ts";
 import { RpProfileStore } from "../../src/modes/rpAssistant/profileStore.ts";
 import { createEmptyRpProfile, type RpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
-import { ScenarioProfileStore } from "../../src/modes/scenarioHost/profileStore.ts";
 import {
   createEmptyScenarioProfile,
+  describeMissingScenarioProfileFields,
+  isScenarioProfileComplete,
+  scenarioProfileFieldLabels,
   type ScenarioProfile
 } from "../../src/modes/scenarioHost/profileSchema.ts";
 import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from "../helpers/memory-test-support.tsx";
@@ -99,7 +101,7 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
     }
   });
 
-  test("state sqlite migrates legacy global profile tables into the reduced field model", async () => {
+  test("state sqlite migrates legacy global persona and rp profile tables into the reduced field model", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-profile-schema-migration-test-"));
     try {
       const stateDir = join(dataDir, "state");
@@ -137,15 +139,6 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
             hard_limits TEXT NOT NULL DEFAULT '',
             updated_at_ms INTEGER NOT NULL
           );
-          CREATE TABLE scenario_profile (
-            id TEXT PRIMARY KEY CHECK (id = 'global'),
-            theme TEXT NOT NULL DEFAULT '',
-            host_style TEXT NOT NULL DEFAULT '',
-            world_baseline TEXT NOT NULL DEFAULT '',
-            safety_or_taboo_rules TEXT NOT NULL DEFAULT '',
-            opening_pattern TEXT NOT NULL DEFAULT '',
-            updated_at_ms INTEGER NOT NULL
-          );
         `);
         db.prepare(`
           INSERT INTO __sqlite_schema_groups (
@@ -160,12 +153,6 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
           VALUES (?, 1, ?, '[]', 1, 1)
         `).run("state.rp_profile", JSON.stringify(["rp_profile"]));
         db.prepare(`
-          INSERT INTO __sqlite_schema_groups (
-            group_id, schema_version, owned_tables_json, owned_indexes_json, created_at, updated_at
-          )
-          VALUES (?, 1, ?, '[]', 1, 1)
-        `).run("state.scenario_profile", JSON.stringify(["scenario_profile"]));
-        db.prepare(`
           INSERT INTO persona (
             id, name, temperament, speaking_style, global_traits, general_preferences, updated_at_ms
           )
@@ -178,12 +165,6 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
           )
           VALUES ('global', '克制', '图书管理员', '夜间工作', '短发', '真人自处', '记得旧约定', '不跳出角色', 11)
         `).run();
-        db.prepare(`
-          INSERT INTO scenario_profile (
-            id, theme, host_style, world_baseline, safety_or_taboo_rules, opening_pattern, updated_at_ms
-          )
-          VALUES ('global', '都市怪谈', '冷静旁白', '现代都市', '避免过度血腥', '从异响开场', 12)
-        `).run();
       } finally {
         db.close();
       }
@@ -194,7 +175,6 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
       await personaStore.init();
       const persona = await personaStore.get();
       const rpProfile = await new RpProfileStore(dataDir, config, logger).get();
-      const scenarioProfile = await new ScenarioProfileStore(dataDir, config, logger).get();
 
       assert.deepEqual(persona, {
         name: "小满",
@@ -206,12 +186,6 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
         background: "夜间工作；短发",
         continuityFacts: "记得旧约定",
         boundaries: "不跳出角色；真人自处"
-      });
-      assert.deepEqual(scenarioProfile, {
-        theme: "都市怪谈",
-        worldBaseline: "现代都市",
-        narrationStyle: "冷静旁白；从异响开场",
-        boundaries: "避免过度血腥"
       });
     } finally {
       await rm(dataDir, { recursive: true, force: true });
@@ -226,16 +200,9 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
         continuityFacts: "legacy",
         boundaries: "legacy"
       }), "utf8");
-      await writeFile(join(harness.dataDir, "scenario-profile.json"), JSON.stringify({
-        theme: "legacy",
-        narrationStyle: "legacy",
-        worldBaseline: "legacy",
-        boundaries: "legacy"
-      }), "utf8");
       await writeFile(join(harness.dataDir, "global-profile-readiness.json"), JSON.stringify({
         persona: "ready",
         rp: "ready",
-        scenario: "ready",
         updatedAt: 1
       }), "utf8");
       await writeFile(join(harness.dataDir, "setup-state.json"), JSON.stringify({
@@ -245,16 +212,13 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
       }), "utf8");
 
       const rpStore = new RpProfileStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
-      const scenarioStore = new ScenarioProfileStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
       const readinessStore = new GlobalProfileReadinessStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
       const setupStore = new SetupStateStore(harness.dataDir, createMemoryTestConfig(), harness.userIdentityStore, pino({ level: "silent" }));
 
       assert.deepEqual(await rpStore.get(), createEmptyRpProfile());
-      assert.deepEqual(await scenarioStore.get(), createEmptyScenarioProfile());
       const readiness = await readinessStore.get();
       assert.equal(readiness.persona, "uninitialized");
       assert.equal(readiness.rp, "uninitialized");
-      assert.equal(readiness.scenario, "uninitialized");
       assert.equal((await setupStore.get()).state, "needs_persona");
     } finally {
       await harness.cleanup();
@@ -264,7 +228,6 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
   test("scenarioProfile completeness depends on theme narrationStyle and worldBaseline", async () => {
     const harness = await createMemoryHarness();
     try {
-      const scenarioStore = new ScenarioProfileStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
       const profile: ScenarioProfile = {
         ...createEmptyScenarioProfile(),
         theme: "赛博港口",
@@ -272,8 +235,8 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
         worldBaseline: "默认世界有基础秩序与明确规则",
         boundaries: ""
       } as ScenarioProfile;
-      assert.equal(scenarioStore.isComplete(profile), true);
-      assert.deepEqual(scenarioStore.describeMissingFields(profile), []);
+      assert.equal(isScenarioProfileComplete(profile), true);
+      assert.deepEqual(describeMissingScenarioProfileFields(profile), []);
 
       const incomplete: ScenarioProfile = {
         ...createEmptyScenarioProfile(),
@@ -282,8 +245,11 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
         worldBaseline: "",
         boundaries: "避免暴力描写"
       };
-      assert.equal(scenarioStore.isComplete(incomplete), false);
-      assert.deepEqual(scenarioStore.describeMissingFields(incomplete), [
+      assert.equal(isScenarioProfileComplete(incomplete), false);
+      assert.deepEqual(describeMissingScenarioProfileFields(incomplete).map((key) => ({
+        key,
+        label: scenarioProfileFieldLabels[key]
+      })), [
         { key: "theme", label: "主题" },
         { key: "worldBaseline", label: "世界基线" }
       ]);
@@ -292,46 +258,24 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
     }
   });
 
-  test("scenarioProfile store persists in state sqlite without legacy json output", async () => {
-    const harness = await createMemoryHarness();
-    try {
-      const scenarioStore = new ScenarioProfileStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
-      const profile: ScenarioProfile = {
-        ...createEmptyScenarioProfile(),
-        theme: "赛博港口",
-        narrationStyle: "旁白式主持",
-        worldBaseline: "默认世界有基础秩序与明确规则",
-        boundaries: ""
-      };
-      await scenarioStore.write(profile);
-      assert.deepEqual(await scenarioStore.get(), profile);
-      await assert.rejects(access(join(harness.dataDir, "scenario-profile.json")), /ENOENT/u);
-    } finally {
-      await harness.cleanup();
-    }
-  });
-
-  test("global profile readiness store can read and write persona rp and scenario readiness", async () => {
+  test("global profile readiness store can read and write persona and rp readiness", async () => {
     const harness = await createMemoryHarness();
     try {
       const readinessStore = new GlobalProfileReadinessStore(harness.dataDir, createMemoryTestConfig(), pino({ level: "silent" }));
       const initial = await readinessStore.get();
       assert.equal(initial.persona, "uninitialized");
       assert.equal(initial.rp, "uninitialized");
-      assert.equal(initial.scenario, "uninitialized");
       assert.equal(typeof initial.updatedAt, "number");
 
       const next: GlobalProfileReadiness = {
         persona: "ready",
         rp: "ready",
-        scenario: "ready",
         updatedAt: 1234567890
       };
       await readinessStore.write(next);
       assert.deepEqual(await readinessStore.get(), next);
       assert.equal(await readinessStore.isPersonaReady(), true);
       assert.equal(await readinessStore.isRpReady(), true);
-      assert.equal(await readinessStore.isScenarioReady(), true);
       await assert.rejects(access(join(harness.dataDir, "global-profile-readiness.json")), /ENOENT/u);
     } finally {
       await harness.cleanup();

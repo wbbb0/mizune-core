@@ -10,7 +10,6 @@ import { persistedUserSchema, type PersistedUser } from "../../src/identity/user
 import { toolsetRuleSchema, type ToolsetRuleEntry } from "../../src/llm/prompt/toolsetRuleStore.ts";
 import { globalRuleEntrySchema, type GlobalRuleEntry } from "../../src/memory/globalRuleEntry.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
-import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { pendingRequestSchema, type PendingRequest } from "../../src/requests/requestSchema.ts";
 import { scheduledJobRecordSchema, type ScheduledJobRecord } from "../../src/runtime/scheduler/jobSchema.ts";
@@ -34,7 +33,6 @@ function createRegistryService(dataDir: string, options: {
 } = {}) {
   const persona = createEmptyPersona();
   const rpProfile = createEmptyRpProfile();
-  const scenarioProfile = createEmptyScenarioProfile();
   const globalProfileReadiness = createEmptyGlobalProfileReadiness();
   const users: PersistedUser[] = [];
   const requests: PendingRequest[] = [];
@@ -85,14 +83,6 @@ function createRegistryService(dataDir: string, options: {
       },
       async write(nextProfile) {
         Object.assign(rpProfile, nextProfile);
-      }
-    },
-    scenarioProfileStore: {
-      async get() {
-        return scenarioProfile;
-      },
-      async write(nextProfile) {
-        Object.assign(scenarioProfile, nextProfile);
       }
     },
     globalProfileReadinessStore: {
@@ -617,7 +607,6 @@ test("DataRegistryService exposes initial file and directory resources", async (
       "runtime_browser_pages",
       "runtime_shell_sessions",
       "scenario_host_session_states",
-      "scenario_profile",
       "scheduled_job_targets",
       "scheduled_jobs",
       "session_transcript_items",
@@ -1141,19 +1130,9 @@ test("DataRegistryService exposes migrated profile and setup singleton resources
       await service.getResource("rp_profile") as { resource: { value: { boundaries: string } } }
     ).resource.value.boundaries, "不跳出身份");
 
-    const scenario = await service.getResource("scenario_profile") as {
-      resource: {
-        accessMode: string;
-        value: { theme: string };
-      };
-    };
-    assert.equal(scenario.resource.accessMode, "editable");
-    assert.equal(scenario.resource.value.theme, "");
-
     const readiness = await service.patchSingleton("global_profile_readiness", {
       persona: "ready",
       rp: "ready",
-      scenario: "uninitialized",
       updatedAt: 2
     }) as { value: { rp: string } };
     assert.equal(readiness.value.rp, "ready");

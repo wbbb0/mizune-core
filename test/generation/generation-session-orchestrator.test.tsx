@@ -109,13 +109,16 @@ test("persona setup prompt reads the current draft instead of the saved persona"
         }
       },
       setupStore: {} as never,
-      scenarioHostStateStore: {} as never,
+      scenarioHostStateStore: {
+        async ensureForSession() {
+          return { profile: { theme: "t", worldBaseline: "w", narrationStyle: "n", boundaries: "" } };
+        }
+      } as never,
       globalProfileReadinessStore: {
         async get() {
           return {
             persona: "uninitialized",
             rp: "uninitialized",
-            scenario: "uninitialized",
             updatedAt: 1
           };
         }
@@ -255,19 +258,17 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
           return savedRpProfile;
         }
       },
-      scenarioProfileStore: {
-        async get() {
-          throw new Error("rp_assistant should not load scenario profile");
-        }
-      },
       setupStore: {} as never,
-      scenarioHostStateStore: {} as never,
+      scenarioHostStateStore: {
+        async ensureForSession() {
+          return { profile: { theme: "t", worldBaseline: "w", narrationStyle: "n", boundaries: "" } };
+        }
+      } as never,
       globalProfileReadinessStore: {
         async get() {
           return {
             persona: "ready",
             rp: "ready",
-            scenario: "uninitialized",
             updatedAt: 1
           };
         }
@@ -409,19 +410,17 @@ test("scenario_host normal prompt receives the saved scenario profile", async ()
           throw new Error("scenario_host should not load rp profile");
         }
       },
-      scenarioProfileStore: {
-        async get() {
-          return savedScenarioProfile;
-        }
-      },
       setupStore: {} as never,
-      scenarioHostStateStore: {} as never,
+      scenarioHostStateStore: {
+        async ensureForSession() {
+          return { profile: savedScenarioProfile };
+        }
+      } as never,
       globalProfileReadinessStore: {
         async get() {
           return {
             persona: "ready",
             rp: "uninitialized",
-            scenario: "ready",
             updatedAt: 1
           };
         }
@@ -596,19 +595,13 @@ test("normal prompt provider replay excludes the active input batch", async () =
           return createEmptyRpProfile();
         }
       },
-      scenarioProfileStore: {
-        async get() {
-          return createEmptyScenarioProfile();
-        }
-      },
       setupStore: {} as never,
-      scenarioHostStateStore: {} as never,
+      scenarioHostStateStore: { async ensureForSession() { return { profile: { theme: "t", worldBaseline: "w", narrationStyle: "n", boundaries: "" } }; } } as never,
       globalProfileReadinessStore: {
         async get() {
           return {
             persona: "ready",
             rp: "ready",
-            scenario: "ready",
             updatedAt: 1
           };
         }
@@ -759,19 +752,13 @@ test("normal prompt history excludes active transcript group instead of subtract
           return createEmptyRpProfile();
         }
       },
-      scenarioProfileStore: {
-        async get() {
-          return createEmptyScenarioProfile();
-        }
-      },
       setupStore: {} as never,
-      scenarioHostStateStore: {} as never,
+      scenarioHostStateStore: { async ensureForSession() { return { profile: { theme: "t", worldBaseline: "w", narrationStyle: "n", boundaries: "" } }; } } as never,
       globalProfileReadinessStore: {
         async get() {
           return {
             persona: "ready",
             rp: "ready",
-            scenario: "ready",
             updatedAt: 1
           };
         }
@@ -922,19 +909,13 @@ test("normal prompt receives task tracker changes from the current user batch", 
           return createEmptyRpProfile();
         }
       },
-      scenarioProfileStore: {
-        async get() {
-          return createEmptyScenarioProfile();
-        }
-      },
       setupStore: {} as never,
-      scenarioHostStateStore: {} as never,
+      scenarioHostStateStore: { async ensureForSession() { return { profile: { theme: "t", worldBaseline: "w", narrationStyle: "n", boundaries: "" } }; } } as never,
       globalProfileReadinessStore: {
         async get() {
           return {
             persona: "ready",
             rp: "ready",
-            scenario: "ready",
             updatedAt: 1
           };
         }
@@ -1114,19 +1095,13 @@ test("normal prompt receives task tracker changes from turn planner intent", asy
           return createEmptyRpProfile();
         }
       },
-      scenarioProfileStore: {
-        async get() {
-          return createEmptyScenarioProfile();
-        }
-      },
       setupStore: {} as never,
-      scenarioHostStateStore: {} as never,
+      scenarioHostStateStore: { async ensureForSession() { return { profile: { theme: "t", worldBaseline: "w", narrationStyle: "n", boundaries: "" } }; } } as never,
       globalProfileReadinessStore: {
         async get() {
           return {
             persona: "ready",
             rp: "ready",
-            scenario: "ready",
             updatedAt: 1
           };
         }
@@ -1332,19 +1307,13 @@ test("turn planner receives content-safety projected history and batch", async (
           return createEmptyRpProfile();
         }
       },
-      scenarioProfileStore: {
-        async get() {
-          return createEmptyScenarioProfile();
-        }
-      },
       setupStore: {} as never,
-      scenarioHostStateStore: {} as never,
+      scenarioHostStateStore: { async ensureForSession() { return { profile: { theme: "t", worldBaseline: "w", narrationStyle: "n", boundaries: "" } }; } } as never,
       globalProfileReadinessStore: {
         async get() {
           return {
             persona: "ready",
             rp: "ready",
-            scenario: "ready",
             updatedAt: 1
           };
         }

@@ -704,7 +704,7 @@ function buildScenarioProfileDraftModeLines(
 
   if (phase === "config") {
     return [
-      "当前处于 Scenario 全局资料配置阶段，你正在编辑一份基于已保存 Scenario 资料复制出的临时草稿。",
+      "当前处于当前会话 Scenario 资料配置阶段，你正在编辑一份基于本会话已保存 Scenario 资料复制出的临时草稿。",
       filledLabels.length > 0
         ? `当前草稿已明确：${filledLabels.join("、")}。`
         : "当前 Scenario 草稿仍接近空白，可按 owner 的要求逐步补齐。",
@@ -714,7 +714,7 @@ function buildScenarioProfileDraftModeLines(
       optionalMissingLabels.length > 0
         ? `可在需要时继续补充：${optionalMissingLabels.join("、")}。`
         : "可选补充字段已齐全，除非 owner 明确要求，否则不要重问整份 Scenario 资料。",
-      "Scenario 资料只服务 scenario_host 模式；它是在全局 persona 底座上的主持补充，不要改写 persona 或用户资料。",
+      "Scenario 资料只服务当前会话的 scenario_host 模式；它是在全局 persona 底座上的主持补充，不要改写 persona 或用户资料。",
       "若本轮只是微调单个字段，就直接改那一项；只有遇到核心字段缺失、语义冲突或主持边界不清时再追问。",
       "如需核对现状，优先概括或发送当前 Scenario 草稿；草稿发出后等待 owner 反馈，不要在同一回复继续追问新的长串字段。",
       "回复保持短句纯文本，不用 Markdown 标题或列表。"
@@ -723,9 +723,9 @@ function buildScenarioProfileDraftModeLines(
 
   if (coreMissingLabels.length === 3) {
     return [
-      "当前处于 Scenario 全局资料初始化阶段，需要从空白草稿开始建立主持所需的长期资料。",
+      "当前处于当前会话 Scenario 资料初始化阶段，需要从空白草稿开始建立本会话主持所需的资料。",
       "先用 1-2 个紧密相关的问题补齐主题和世界基线，再继续确认叙事风格；不要一上来要求 owner 把整套设定一次说完。",
-      "Scenario 资料只服务 scenario_host 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
+      "Scenario 资料只服务当前会话的 scenario_host 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
       "owner 每提供一段明确设定，就立即用工具写入草稿；不要等所有信息都收集完再统一写入。",
       "核心字段初步成形后，调用 send_setup_draft 发送当前 Scenario 草稿供 owner 核对。",
       "回复保持短句纯文本，不用 Markdown 标题或列表。"
@@ -736,7 +736,7 @@ function buildScenarioProfileDraftModeLines(
     return [
       `当前 Scenario 草稿已有部分内容，但核心字段仍缺：${coreMissingLabels.join("、")}。`,
       `当前优先确认：${coreMissingLabels[0]}；其余核心字段可在同一主题下顺势补齐。`,
-      "Scenario 资料只服务 scenario_host 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
+      "Scenario 资料只服务当前会话的 scenario_host 模式；不要修改 persona、用户资料、关系或其他长期记忆。",
       "owner 每提供一段明确设定，就立即用工具写入草稿；不要等所有信息都收集完再统一写入。",
       "核心字段补得足够稳定后，调用 send_setup_draft 发送当前 Scenario 草稿供 owner 核对。",
       "回复保持短句纯文本，不用 Markdown 标题或列表。"
@@ -948,8 +948,8 @@ function buildRpProfileLines(profile: RpProfile): string[] {
 
 function buildScenarioProfileLines(profile: ScenarioProfile): string[] {
   return buildModeProfileSummaryLines({
-    intro: "以下 Scenario 全局资料只在 scenario_host 模式下生效，是建立在全局 persona 之上的主持补充。",
-    label: "Scenario 全局资料",
+    intro: "以下当前会话 Scenario 资料只在本会话的 scenario_host 模式下生效，是建立在全局 persona 之上的主持补充。",
+    label: "当前会话 Scenario 资料",
     coreParts: [
       profile.theme ? `主题=${profile.theme}` : null,
       profile.worldBaseline ? `世界基线=${profile.worldBaseline}` : null,

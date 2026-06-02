@@ -29,7 +29,7 @@ export interface MessageEventHandlerDeps {
     | "userStore"
     | "personaStore"
     | "rpProfileStore"
-    | "scenarioProfileStore"
+    | "scenarioHostStateStore"
     | "setupStore"
     | "globalProfileReadinessStore"
     | "conversationAccess"

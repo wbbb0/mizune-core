@@ -28,7 +28,6 @@ type DirectCommandDeps = Pick<
   | "setupStore"
   | "personaStore"
   | "rpProfileStore"
-  | "scenarioProfileStore"
   | "globalProfileReadinessStore"
   | "scenarioHostStateStore"
   | "sessionCaptioner"
@@ -132,7 +131,6 @@ function createDeliveryHandleDirectCommand(
     scenarioHostStateStore: deps.scenarioHostStateStore,
     personaStore: deps.personaStore,
     rpProfileStore: deps.rpProfileStore,
-    scenarioProfileStore: deps.scenarioProfileStore,
     globalProfileReadinessStore: deps.globalProfileReadinessStore,
     setupStore: deps.setupStore,
     contextStore: deps.contextStore,

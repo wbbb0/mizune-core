@@ -135,7 +135,6 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
       userStore: deps.identity.userStore,
       personaStore: deps.identity.personaStore,
       rpProfileStore: deps.identity.rpProfileStore,
-      scenarioProfileStore: deps.identity.scenarioProfileStore,
       setupStore: deps.identity.setupStore,
       scenarioHostStateStore: deps.identity.scenarioHostStateStore,
       globalProfileReadinessStore: deps.identity.globalProfileReadinessStore

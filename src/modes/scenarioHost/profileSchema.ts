@@ -9,8 +9,8 @@ export const scenarioProfileSchema = s.object({
   worldBaseline: createProfileFieldSchema("世界基线"),
   narrationStyle: createProfileFieldSchema("叙事风格"),
   boundaries: createProfileFieldSchema("边界")
-}).title("场景主持全局资料")
-  .describe("定义场景主持模式的全局资料。")
+}).title("场景主持会话资料")
+  .describe("定义当前 Scenario 会话的主题、世界基线与主持风格。")
   .strict();
 
 export type ScenarioProfile = Infer<typeof scenarioProfileSchema>;

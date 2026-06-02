@@ -124,6 +124,63 @@ function appendSimpleHistory(
     assert.match(userPrompt, /summary_context/);
   });
 
+  test("scenario_host compression uses scenario summary prompt variant", async () => {
+    const sessionManager = new SessionManager(createConfig());
+    sessionManager.ensureSession({ id: "qqbot:p:scenario", type: "private" });
+    sessionManager.setModeId("qqbot:p:scenario", "scenario_host", { appendSwitchMarker: false });
+    appendSimpleHistory(sessionManager, "qqbot:p:scenario", "user", "我检查钟楼暗门。", 1);
+    appendSimpleHistory(sessionManager, "qqbot:p:scenario", "assistant", "暗门后传来潮声，银钥匙微微发烫。", 2);
+    appendSimpleHistory(sessionManager, "qqbot:p:scenario", "user", "先不进去，记下这个线索。", 3);
+    let capturedMessages: Array<{ content?: unknown }> | null = null;
+
+    const compressor = new HistoryCompressor(
+      createConfig(),
+      {
+        isConfigured() {
+          return true;
+        },
+        async generate(input: { messages: Array<{ content?: unknown }> }) {
+          capturedMessages = input.messages;
+          return {
+            text: "scenario compressed summary",
+            usage: {
+              inputTokens: 1,
+              outputTokens: 1,
+              totalTokens: 2,
+              reasoningTokens: null,
+              cachedTokens: null,
+              requestCount: 1,
+              providerReported: true,
+              modelRef: "main",
+              model: "fake"
+            }
+          };
+        }
+      } as any,
+      sessionManager,
+      {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      pino({ level: "silent" })
+    );
+
+    const changed = await compressor.forceCompact("qqbot:p:scenario", 1);
+    const captured = (capturedMessages ?? []) as Array<{ content?: unknown }>;
+    const systemPrompt = String(captured[0]?.content ?? "");
+    const userPrompt = String(captured[1]?.content ?? "");
+
+    assert.equal(changed, true);
+    assert.match(systemPrompt, /Scenario 模式的会话历史压缩器/);
+    assert.match(systemPrompt, /当前可接续场景/);
+    assert.match(systemPrompt, /剧情进展与未解伏笔/);
+    assert.match(systemPrompt, /结构化 state 会另行保存/);
+    assert.doesNotMatch(systemPrompt, /待履行\/等待触发/);
+    assert.match(userPrompt, /mode_id=scenario_host/);
+    assert.equal(sessionManager.getSession("qqbot:p:scenario").historySummary, "scenario compressed summary");
+  });
+
   test("successful compression clears stale last LLM usage", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
@@ -933,4 +990,49 @@ function appendSimpleHistory(
       llmVisibleHistory.map((message) => message.content),
       ["hello", "hi", "more", "new info"]
     );
+  });
+
+  test("compression results are rejected when session mode changes during summarization", async () => {
+    const sessionManager = new SessionManager(createConfig());
+    sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
+    sessionManager.setModeId("qqbot:p:test", "scenario_host", { appendSwitchMarker: false });
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "我靠近旧钟楼。", 1);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "assistant", "钟楼门上的符号亮起。", 2);
+    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "先记下符号。", 3);
+
+    const compressor = new HistoryCompressor(
+      createConfig(),
+      {
+        isConfigured() {
+          return true;
+        },
+        async generate() {
+          sessionManager.setModeId("qqbot:p:test", "assistant", { appendSwitchMarker: false });
+          return {
+            text: "stale mode summary",
+            usage: {
+              inputTokens: 1,
+              outputTokens: 1,
+              totalTokens: 2,
+              reasoningTokens: null,
+              cachedTokens: null,
+              requestCount: 1,
+              providerReported: true,
+              modelRef: "summarizer",
+              model: "fake"
+            }
+          };
+        }
+      } as any,
+      sessionManager,
+      {
+        async ensureReady() {
+          return new Map();
+        }
+      } as any,
+      pino({ level: "silent" })
+    );
+
+    assert.equal(await compressor.forceCompact("qqbot:p:test", 1), false);
+    assert.equal(sessionManager.getSession("qqbot:p:test").historySummary, null);
   });

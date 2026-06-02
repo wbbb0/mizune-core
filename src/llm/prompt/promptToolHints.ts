@@ -135,7 +135,7 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   }
 
   if (hasAnyTool(visibleToolNames, ["get_scenario_profile", "patch_scenario_profile", "clear_scenario_profile_field"])) {
-    lines.push("当前处于 Scenario 全局资料草稿编辑态；先看 get_scenario_profile，再用 patch_scenario_profile 或 clear_scenario_profile_field 修改当前会话草稿。这里改的是草稿，不是正式持久化数据。");
+    lines.push("当前处于当前会话 Scenario 资料草稿编辑态；先看 get_scenario_profile，再用 patch_scenario_profile 或 clear_scenario_profile_field 修改当前会话草稿。这里改的是草稿，不是正式持久化数据。");
   }
 
   if (hasAnyTool(visibleToolNames, ["list_toolset_rules", "upsert_toolset_rule", "remove_toolset_rule"])) {
@@ -146,8 +146,8 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("只有当前会话上下文不够时才跨会话，且只读最小必要范围；不要把其他会话信息混成当前会话事实。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["get_scenario_state", "update_scenario_state", "set_current_location", "manage_objective", "manage_inventory", "append_world_fact"])) {
-    lines.push("场景状态工具用于 scenario_host 内部维护；先 get_scenario_state 再按需更新，不要把完整结构化状态原样念给玩家。");
+  if (hasAnyTool(visibleToolNames, ["get_scenario_state", "update_scenario_state", "set_current_location", "manage_objective", "manage_inventory", "manage_lore_entry", "manage_entity", "manage_relation", "append_journal_entry"])) {
+    lines.push("场景状态工具用于 scenario_host 内部维护；先 get_scenario_state 再按需更新 scene、轻规则、目标、背包、Lore、实体、关系或剧情日志，不要把完整结构化状态原样念给玩家。");
   }
 
   if (hasAnyTool(visibleToolNames, ["list_session_modes", "switch_session_mode"])) {

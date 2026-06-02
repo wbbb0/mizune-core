@@ -1260,15 +1260,26 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
 
   test("scenario_host tools read and update structured session state", async () => {
     let state = {
-      version: 1 as const,
+      version: 3 as const,
+      profile: {
+        theme: "",
+        worldBaseline: "",
+        narrationStyle: "",
+        boundaries: ""
+      },
       currentSituation: "旧局势",
       currentLocation: null as string | null,
       sceneSummary: "",
       player: { userId: "owner", displayName: "Owner" },
       inventory: [] as Array<{ ownerId: string; item: string; quantity: number }>,
       objectives: [] as Array<{ id: string; title: string; status: "active" | "completed" | "failed"; summary: string }>,
-      worldFacts: [] as string[],
+      loreEntries: [] as any[],
+      entities: [] as any[],
+      relations: [] as any[],
+      journal: [] as any[],
+      mechanics: { ruleStyle: "freeform" as const, dicePolicy: "", difficultyScale: "", successStates: [] as string[] },
       flags: {} as Record<string, string | number | boolean>,
+      initialized: false,
       turnIndex: 0
     };
     const context = {
@@ -1318,12 +1329,48 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     assert.equal(updatedState.currentSituation, "玩家来到门前");
     assert.ok(!("title" in updatedState));
 
+    const mechanics = await scenarioHostToolHandlers.update_scenario_state!(
+      { id: "tool_scenario_mechanics_1", type: "function", function: { name: "update_scenario_state", arguments: "{}" } },
+      { mechanics: { ruleStyle: "light_checks", dicePolicy: "需要有风险时检定", successStates: ["成功", "代价成功"] } },
+      context
+    );
+    assert.equal(JSON.parse(String(mechanics)).mechanics.ruleStyle, "light_checks");
+
     const worldFact = await scenarioHostToolHandlers.append_world_fact!(
       { id: "tool_scenario_fact_1", type: "function", function: { name: "append_world_fact", arguments: "{\"fact\":\"钟楼每隔一刻钟响一次\"}" } },
       { fact: "钟楼每隔一刻钟响一次" },
       context
     );
-    assert.equal(JSON.parse(String(worldFact)).worldFacts[0], "钟楼每隔一刻钟响一次");
+    assert.equal(JSON.parse(String(worldFact)).loreEntries[0].content, "钟楼每隔一刻钟响一次");
+
+    const lore = await scenarioHostToolHandlers.manage_lore_entry!(
+      { id: "tool_scenario_lore_1", type: "function", function: { name: "manage_lore_entry", arguments: "{}" } },
+      { action: "upsert", id: "bell-rule", title: "钟楼规则", content: "钟声会吸引守卫", activationKeys: ["钟声"], tags: ["rule"], priority: 120 },
+      context
+    );
+    const loreState = JSON.parse(String(lore));
+    assert.equal(loreState.loreEntries.find((entry: any) => entry.id === "bell-rule").priority, 120);
+
+    const entity = await scenarioHostToolHandlers.manage_entity!(
+      { id: "tool_scenario_entity_1", type: "function", function: { name: "manage_entity", arguments: "{}" } },
+      { action: "upsert", id: "npc-guard", kind: "npc", name: "守卫", aliases: ["看门人"], summary: "守在钟楼入口" },
+      context
+    );
+    assert.equal(JSON.parse(String(entity)).entities[0].name, "守卫");
+
+    const relation = await scenarioHostToolHandlers.manage_relation!(
+      { id: "tool_scenario_relation_1", type: "function", function: { name: "manage_relation", arguments: "{}" } },
+      { action: "upsert", sourceId: "npc-guard", targetId: "bell-rule", kind: "guards", summary: "守卫会响应钟声", strength: 35 },
+      context
+    );
+    assert.equal(JSON.parse(String(relation)).relations[0].strength, 35);
+
+    const journal = await scenarioHostToolHandlers.append_journal_entry!(
+      { id: "tool_scenario_journal_1", type: "function", function: { name: "append_journal_entry", arguments: "{}" } },
+      { title: "抵达钟楼", summary: "玩家来到钟楼门前并听到钟声。", entityIds: ["npc-guard"], tags: ["arrival"] },
+      context
+    );
+    assert.equal(JSON.parse(String(journal)).journal[0].title, "抵达钟楼");
   });
 
   test("update_scenario_state ignores initialized field (only .confirm can set it)", async () => {

@@ -337,8 +337,66 @@ export interface ScenarioHostInventoryItem {
   quantity: number;
 }
 
+export interface ScenarioHostLoreEntry {
+  id: string;
+  title: string;
+  content: string;
+  tags: string[];
+  activationKeys: string[];
+  enabled: boolean;
+  priority: number;
+  createdAtTurn: number;
+  updatedAtTurn: number;
+}
+
+export type ScenarioHostEntityKind = "npc" | "location" | "faction" | "item" | "organization" | "other";
+
+export interface ScenarioHostEntity {
+  id: string;
+  kind: ScenarioHostEntityKind;
+  name: string;
+  aliases: string[];
+  summary: string;
+  status: string;
+  locationId: string | null;
+  tags: string[];
+  notes: string;
+}
+
+export interface ScenarioHostRelation {
+  sourceId: string;
+  targetId: string;
+  kind: string;
+  summary: string;
+  strength: number;
+  updatedAtTurn: number;
+}
+
+export interface ScenarioHostJournalEntry {
+  id: string;
+  turnIndex: number;
+  title: string;
+  summary: string;
+  entityIds: string[];
+  tags: string[];
+  createdAtMs: number;
+}
+
+export interface ScenarioHostMechanics {
+  ruleStyle: "freeform" | "light_checks" | "dice";
+  dicePolicy: string;
+  difficultyScale: string;
+  successStates: string[];
+}
+
 export interface ScenarioHostSessionState {
-  version: 1;
+  version: 3;
+  profile: {
+    theme: string;
+    worldBaseline: string;
+    narrationStyle: string;
+    boundaries: string;
+  };
   currentSituation: string;
   currentLocation: string | null;
   sceneSummary: string;
@@ -348,7 +406,11 @@ export interface ScenarioHostSessionState {
   };
   inventory: ScenarioHostInventoryItem[];
   objectives: ScenarioHostObjective[];
-  worldFacts: string[];
+  loreEntries: ScenarioHostLoreEntry[];
+  entities: ScenarioHostEntity[];
+  relations: ScenarioHostRelation[];
+  journal: ScenarioHostJournalEntry[];
+  mechanics: ScenarioHostMechanics;
   flags: Record<string, string | number | boolean>;
   initialized: boolean;
   turnIndex: number;

@@ -1,5 +1,6 @@
 import { createDirectCommandHandler } from "../../src/app/messaging/directCommands.ts";
 import { createTestAppConfig } from "./config-fixtures.tsx";
+import { createInitialScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
 
 type SentImmediateText = {
   sessionId: string;
@@ -49,17 +50,10 @@ interface DirectCommandFixtureOptions {
     createEmpty?: () => unknown;
     write?: (profile: unknown) => Promise<void>;
   };
-  scenarioProfileStore?: {
-    get: () => Promise<unknown>;
-    isComplete?: (profile: unknown) => boolean;
-    createEmpty?: () => unknown;
-    write?: (profile: unknown) => Promise<void>;
-  };
   globalProfileReadinessStore?: {
     get: () => Promise<unknown>;
     setPersonaReadiness: (status: "uninitialized" | "ready") => Promise<unknown>;
     setRpReadiness?: (status: "uninitialized" | "ready") => Promise<unknown>;
-    setScenarioReadiness?: (status: "uninitialized" | "ready") => Promise<unknown>;
   };
   setupStore?: {
     get?: () => Promise<unknown>;
@@ -85,7 +79,9 @@ interface DirectCommandFixtureOptions {
     };
   };
   scenarioHostStateStore?: {
-    write: (sessionId: string, state: unknown) => Promise<unknown>;
+    ensure?: (sessionId: string, defaults: { playerUserId: string; playerDisplayName: string }) => Promise<any>;
+    ensureForSession?: (session: any) => Promise<any>;
+    write?: (sessionId: string, state: unknown) => Promise<unknown>;
     update?: (
       sessionId: string,
       updater: (current: any) => any | Promise<any>,
@@ -247,25 +243,11 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
         return false;
       }
     },
-    scenarioProfileStore: options.scenarioProfileStore as any ?? {
-      async get() {
-        return {};
-      },
-      createEmpty() {
-        return {};
-      },
-      async write() {
-      },
-      isComplete() {
-        return false;
-      }
-    },
     globalProfileReadinessStore: options.globalProfileReadinessStore as any ?? {
       async get() {
         return {
           persona: "uninitialized",
           rp: "uninitialized",
-          scenario: "uninitialized",
           updatedAt: 1
         };
       },
@@ -273,9 +255,6 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
         return null;
       },
       async setRpReadiness() {
-        return null;
-      },
-      async setScenarioReadiness() {
         return null;
       }
     },
@@ -306,8 +285,24 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
         return "最近没有记录到 error/fatal 日志。";
       }
     },
+    scenarioHostStateStore: options.scenarioHostStateStore as any ?? {
+      async ensure(_sessionId: string, defaults: { playerUserId: string; playerDisplayName: string }) {
+        return createInitialScenarioHostSessionState(defaults);
+      },
+      async ensureForSession(currentSession: any) {
+        return createInitialScenarioHostSessionState({
+          playerUserId: currentSession.participantRef.id,
+          playerDisplayName: currentSession.title ?? currentSession.participantRef.id
+        });
+      },
+      async write(_sessionId: string, state: unknown) {
+        return state;
+      },
+      async update(_sessionId: string, updater: (current: any) => any, defaults: { playerUserId: string; playerDisplayName: string }) {
+        return updater(createInitialScenarioHostSessionState(defaults));
+      }
+    },
     ...(options.forceCompactSession ? { forceCompactSession: options.forceCompactSession } : {}),
-    ...(options.scenarioHostStateStore ? { scenarioHostStateStore: options.scenarioHostStateStore as any } : {}),
     ...(options.sessionCaptioner ? { sessionCaptioner: options.sessionCaptioner as any } : {}),
     async sendImmediateText(params: SentImmediateText) {
       calls.push(params);

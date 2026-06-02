@@ -1,12 +1,12 @@
 import type { SessionModeDefinition } from "../types.ts";
-import { createOwnerPrivateGlobalProfileSetupPhase } from "../globalProfileSetup.ts";
+import { createOwnerPrivateProfileSetupPhase } from "../profileSetup.ts";
 
 export const scenarioHostModeDefinition: SessionModeDefinition = {
   id: "scenario_host",
   title: "Scenario Host",
   description: "轻规则单人剧情主持模式。当前仅支持私聊。",
   allowedChatTypes: ["private"],
-  globalProfileAccess: {
+  profileAccess: {
     persona: true,
     modeProfile: "scenario"
   },
@@ -15,7 +15,7 @@ export const scenarioHostModeDefinition: SessionModeDefinition = {
     "time_utils",
     "scenario_host_state"
   ],
-  setupPhase: createOwnerPrivateGlobalProfileSetupPhase({
+  setupPhase: createOwnerPrivateProfileSetupPhase({
     persona: true,
     modeProfile: "scenario"
   })

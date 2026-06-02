@@ -768,7 +768,13 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         url: "/api/sessions/qqbot:p:10001/mode-state",
         payload: {
           state: {
-            version: 1,
+            version: 3,
+            profile: {
+              theme: "旧港钟声",
+              worldBaseline: "旧港每晚零点都会响钟。",
+              narrationStyle: "冷静克制",
+              boundaries: ""
+            },
             currentSituation: "码头上空有钟声回荡。",
             currentLocation: "旧港码头",
             sceneSummary: "玩家刚抵达旧港。",
@@ -778,7 +784,21 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
             },
             inventory: [{ ownerId: "10001", item: "铜钥匙", quantity: 1 }],
             objectives: [{ id: "find-bell", title: "找到钟楼", status: "active", summary: "先去高处确认钟声来源" }],
-            worldFacts: ["旧港每晚零点都会响钟。"],
+            loreEntries: [{
+              id: "old-port-bell",
+              title: "旧港钟声",
+              content: "旧港每晚零点都会响钟。",
+              tags: [],
+              activationKeys: [],
+              enabled: true,
+              priority: 100,
+              createdAtTurn: 0,
+              updatedAtTurn: 3
+            }],
+            entities: [],
+            relations: [],
+            journal: [],
+            mechanics: { ruleStyle: "freeform", dicePolicy: "", difficultyScale: "", successStates: [] },
             flags: { alerted: true, suspicion: 2 },
             initialized: true,
             turnIndex: 3
@@ -790,7 +810,91 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(updateResponse.json().modeState.kind, "scenario_host");
       assert.ok(!("title" in updateResponse.json().modeState.state));
       assert.equal(updateResponse.json().modeState.state.initialized, true);
+      assert.equal(updateResponse.json().modeState.state.profile.theme, "旧港钟声");
       assert.deepEqual(updateResponse.json().modeState.state.inventory, [{ ownerId: "10001", item: "铜钥匙", quantity: 1 }]);
+
+      const stateWithoutProfile = { ...updateResponse.json().modeState.state };
+      delete stateWithoutProfile.profile;
+      const updateWithoutProfileResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/qqbot:p:10001/mode-state",
+        payload: {
+          state: {
+            ...stateWithoutProfile,
+            currentSituation: "钟声变得更近。"
+          }
+        }
+      });
+      assert.equal(updateWithoutProfileResponse.statusCode, 200);
+      assert.equal(updateWithoutProfileResponse.json().modeState.state.profile.theme, "旧港钟声");
+
+      const openedState = updateWithoutProfileResponse.json().modeState.state;
+      const backgroundUpdateResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/qqbot:p:10001/mode-state",
+        payload: {
+          state: {
+            ...openedState,
+            currentSituation: "后台工具已经推进到钟楼门前。",
+            inventory: [
+              ...openedState.inventory,
+              { ownerId: "10001", item: "银钥匙", quantity: 1 }
+            ],
+            objectives: [
+              ...openedState.objectives,
+              { id: "background-objective", title: "后台目标", status: "active", summary: "后台追加的目标不应丢失" }
+            ],
+            loreEntries: [
+              ...openedState.loreEntries,
+              {
+                id: "background-lore",
+                title: "后台新增",
+                content: "后台追加的 lore 不应丢失。",
+                tags: [],
+                activationKeys: [],
+                enabled: true,
+                priority: 100,
+                createdAtTurn: 3,
+                updatedAtTurn: 3
+              }
+            ]
+          }
+        }
+      });
+      assert.equal(backgroundUpdateResponse.statusCode, 200);
+
+      const mergeResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/qqbot:p:10001/mode-state",
+        payload: {
+          baseState: openedState,
+          state: {
+            ...openedState,
+            profile: {
+              ...openedState.profile,
+              boundaries: "不写血腥细节"
+            },
+            loreEntries: openedState.loreEntries.map((entry: any) => entry.id === "old-port-bell"
+              ? { ...entry, priority: 140 }
+              : entry),
+            inventory: openedState.inventory.map((entry: any) => entry.item === "铜钥匙"
+              ? { ...entry, quantity: 2 }
+              : entry),
+            objectives: openedState.objectives.map((entry: any) => entry.id === "find-bell"
+              ? { ...entry, summary: "前往高处确认钟声来源" }
+              : entry)
+          }
+        }
+      });
+      assert.equal(mergeResponse.statusCode, 200);
+      assert.equal(mergeResponse.json().modeState.state.currentSituation, "后台工具已经推进到钟楼门前。");
+      assert.equal(mergeResponse.json().modeState.state.profile.boundaries, "不写血腥细节");
+      assert.equal(mergeResponse.json().modeState.state.loreEntries.find((entry: any) => entry.id === "old-port-bell").priority, 140);
+      assert.equal(mergeResponse.json().modeState.state.loreEntries.find((entry: any) => entry.id === "background-lore").content, "后台追加的 lore 不应丢失。");
+      assert.equal(mergeResponse.json().modeState.state.inventory.find((entry: any) => entry.item === "铜钥匙").quantity, 2);
+      assert.equal(mergeResponse.json().modeState.state.inventory.find((entry: any) => entry.item === "银钥匙").quantity, 1);
+      assert.equal(mergeResponse.json().modeState.state.objectives.find((entry: any) => entry.id === "find-bell").summary, "前往高处确认钟声来源");
+      assert.equal(mergeResponse.json().modeState.state.objectives.find((entry: any) => entry.id === "background-objective").summary, "后台追加的目标不应丢失");
 
       const response = await app.inject({
         method: "GET",
@@ -842,14 +946,14 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         url: "/api/sessions/qqbot:p:10001/mode-state",
         payload: {
           state: {
-            version: 1,
+            version: 3,
             title: "坏数据"
           }
         }
       });
 
       assert.equal(response.statusCode, 400);
-      assert.match(response.json().error, /currentSituation|player|inventory|objectives|worldFacts|flags|initialized|turnIndex/i);
+      assert.match(response.json().error, /player|title|unknown key/i);
     } finally {
       await app.close();
     }

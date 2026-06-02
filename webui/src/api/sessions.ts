@@ -51,6 +51,7 @@ export const sessionsApi = {
 
   updateModeState(sessionId: string, body: {
     state: ScenarioHostSessionState;
+    baseState?: ScenarioHostSessionState;
   }): Promise<{ ok: boolean; modeState: { kind: "scenario_host"; state: ScenarioHostSessionState } }> {
     return api.patch(`/api/sessions/${encodeURIComponent(sessionId)}/mode-state`, body);
   },

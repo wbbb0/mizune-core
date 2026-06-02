@@ -16,6 +16,13 @@
     - `background`
     - `continuityFacts`
     - `boundaries`
+- `scenarioHostState.profile`
+  - 只描述当前 `scenario_host` 会话的主持资料，不跨会话共享。
+  - 当前字段收敛为：
+    - `theme`
+    - `worldBaseline`
+    - `narrationStyle`
+    - `boundaries`
 - `global_rules`
   - owner 级、跨任务长期生效的默认工作流规则。
 - `toolset_rules`
@@ -86,8 +93,7 @@
 - `state/state.sqlite`
   - `persona` 表存放结构化 `persona` 字段。
   - `rp_profile` 表存放结构化 `rpProfile` 字段。
-  - `scenario_profile` 表存放结构化 `scenarioProfile` 字段。
-  - `global_profile_readiness` 表存放 persona / RP / Scenario 全局资料准备度。
+  - `global_profile_readiness` 表存放 persona / RP 全局资料准备度。
   - `setup_state` 表存放首次配置流程状态。
   - `users` 表存放用户资料字段。
   - `user_memories` 表存放旧版用户长期记忆条目；运行时不再从旧 `users.json` 导入或自动迁移这些数据。
@@ -99,6 +105,8 @@
   - `user_identities` 表存放外部用户 ID 到内部用户 ID 的映射。
   - `group_membership_entries` 表存放群成员关系缓存。
   - `whitelist_entries` 表存放白名单条目。
+- `sessions/sessions.sqlite`
+  - `scenario_host_session_states` 表存放每会话 Scenario Host 状态，其中 `state_json.profile` 是当前会话的 Scenario 资料，`loreEntries`、`entities`、`relations` 与 `journal` 保存当前会话的世界信息和剧情连续性。
 
 ## Prompt Injection Priority
 
@@ -106,12 +114,13 @@
 
 1. `persona`
 2. `rpProfile`（仅 `rp_assistant`）
-3. `global_rules`
-4. `toolset_rules`
-5. `current_user_profile`
-6. 固定 user facts：`profile_slot` 和 `core_fact`
-7. 当前 session facts
-8. 检索召回的 `searchable_fact` / `episode`
+3. `scenarioHostState.profile`（仅当前 `scenario_host` 会话）
+4. `global_rules`
+5. `toolset_rules`
+6. `current_user_profile`
+7. 固定 user facts：`profile_slot` 和 `core_fact`
+8. 当前 session facts
+9. 检索召回的 `searchable_fact` / `episode`
 
 规则：
 
@@ -131,6 +140,8 @@ Prompt 段标签语义：
   - bot 的名字、性格底色和语气风格
 - `rpProfile`
   - RP 模式下 bot 自身的真人化设定和边界
+- `scenarioHostState.profile`
+  - 当前 Scenario 会话的主题、世界基线、叙事风格和边界
 - `global_rules`
   - 默认工作流行为
 - `toolset_rules`

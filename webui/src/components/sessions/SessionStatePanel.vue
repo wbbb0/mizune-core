@@ -5,7 +5,6 @@ import { sessionsApi } from "@/api/sessions";
 import type { MemoryContextItem, SessionDetailResult, SessionTaskTracker } from "@/api/types";
 import type { ActiveSession } from "@/stores/sessions";
 import { ApiError } from "@/api/client";
-import ScenarioHostStateEditor from "./ScenarioHostStateEditor.vue";
 import { WorkbenchAreaHeader, WorkbenchCard, WorkbenchDisclosure, WorkbenchEmptyState } from "@workbench-kit/vue";
 
 const props = defineProps<{
@@ -284,18 +283,6 @@ async function loadDetail() {
   }
 }
 
-function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]>["state"]) {
-  if (!detail.value) {
-    return;
-  }
-  detail.value = {
-    ...detail.value,
-    modeState: {
-      kind: "scenario_host",
-      state
-    }
-  };
-}
 </script>
 
 <template>
@@ -577,15 +564,7 @@ function onScenarioHostSaved(state: NonNullable<SessionDetailResult["modeState"]
           </div>
         </WorkbenchDisclosure>
 
-        <ScenarioHostStateEditor
-          v-if="detail?.modeState?.kind === 'scenario_host'"
-          :session-id="session.id"
-          :state="detail.modeState.state"
-          @saved="onScenarioHostSaved"
-        />
-
         <WorkbenchDisclosure
-          v-else
           :expanded="isDisclosureExpanded('mode-state')"
           collapsed-title="模式专属状态"
           expanded-title="模式专属状态"

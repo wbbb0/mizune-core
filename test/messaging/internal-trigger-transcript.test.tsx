@@ -11,7 +11,6 @@ import { createScheduledTaskDispatcher } from "../../src/app/session-work/schedu
 import type { GenerationSessionOrchestratorDeps } from "../../src/app/generation/generationRunnerDeps.ts";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
-import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
 import { findPromptBlock, hasPromptSection, parsePromptBlocks } from "../helpers/prompt-fixtures.tsx";
 
 async function flushMicrotasks(rounds = 4): Promise<void> {
@@ -36,7 +35,6 @@ function createOrchestratorDeps(input: {
   userStore?: unknown;
   personaStore?: unknown;
   rpProfileStore?: unknown;
-  scenarioProfileStore?: unknown;
   userIdentityStore?: unknown;
   setupStore?: unknown;
   scenarioHostStateStore?: unknown;
@@ -76,19 +74,17 @@ function createOrchestratorDeps(input: {
           return createEmptyRpProfile();
         }
       } as never),
-      scenarioProfileStore: input.scenarioProfileStore ?? ({
-        async get() {
-          return createEmptyScenarioProfile();
+      setupStore: input.setupStore ?? ({} as never),
+      scenarioHostStateStore: input.scenarioHostStateStore ?? ({
+        async ensureForSession() {
+          return { profile: { theme: "t", worldBaseline: "w", narrationStyle: "n", boundaries: "" } };
         }
       } as never),
-      setupStore: input.setupStore ?? ({} as never),
-      scenarioHostStateStore: input.scenarioHostStateStore ?? ({} as never),
       globalProfileReadinessStore: input.globalProfileReadinessStore ?? ({
         async get() {
           return {
             persona: "ready",
             rp: "ready",
-            scenario: "ready",
             updatedAt: 1
           };
         }

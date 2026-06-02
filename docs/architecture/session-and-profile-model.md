@@ -1,6 +1,6 @@
-# 会话、身份与全局资料模型
+# 会话、身份与资料模型
 
-本文档整理当前仓库已经采纳并在主干代码中落地的运行时模型，重点覆盖会话标识、用户身份、标题语义、全局 profile 与会话工作态之间的边界。
+本文档整理当前仓库已经采纳并在主干代码中落地的运行时模型，重点覆盖会话标识、用户身份、标题语义、全局 profile、会话级 profile 与会话工作态之间的边界。
 
 ## 身份、外部账号与会话入口的边界
 
@@ -76,26 +76,44 @@
 - `src/internalApi/application/basicAdminService.ts`
 - `test/generation/session-captioner.test.tsx`
 
-## 全局资料分层
+## 历史压缩器
 
-当前仓库已经把长期资料拆成三层全局 profile，而不是继续把所有信息塞进单层 `persona`：
+历史压缩器仍是所有会话模式共享的运行时服务，负责把较早聊天记录压缩到 `historySummary`。不同模式只通过 prompt 变体调整摘要目标，不拆出独立调度器或专用存储。
+
+当前约定：
+
+- 普通会话摘要偏向保留任务状态、用户偏好、工具线索和待履行承诺
+- `scenario_host` 会话摘要偏向保留可继续主持的剧情记忆、未结算行动、伏笔、实体关系变化和规则边界
+- Scenario 的结构化 state 仍由 `ScenarioHostStateStore` 保存；历史摘要不复制完整 state，只保留解释剧情连续性、玩家意图和待处理伏笔所需的信息
+
+相关实现入口：
+
+- `src/conversation/historyCompressor.ts`
+- `src/llm/prompts/history-summary.prompt.ts`
+- `test/conversation/history-compression-features.test.tsx`
+
+## 资料分层
+
+当前仓库已经把长期资料拆成全局资料与会话级资料，而不是继续把所有信息塞进单层 `persona`：
 
 - `persona`
   - 只负责 bot 的名字、全局人格底色和语气风格
+  - 实例级全局数据
 - `rpProfile`
   - 只负责 `rp_assistant` 模式下 bot 自身的真人化设定与边界
-- `scenarioProfile`
-  - 只负责 `scenario_host` 模式所需的全局资料
+  - 实例级全局数据
+- `scenarioHostState.profile`
+  - 只负责当前 `scenario_host` 会话所需的主题、世界基线、叙事风格与边界
+  - 每个会话独立保存，不跨聊天复用
 
-这些资料都是实例级全局数据，而不是单个会话状态。
+Scenario 运行态同样是会话级数据，保存在 `scenario_host_session_states` 中；`profile` 与当前局势、位置、背包、目标、lore、实体、关系、剧情日志和轻规则配置等状态一起组成当前会话的完整 Scenario Host 状态。
 
 同时，系统单独维护全局准备度：
 
 - `persona`
 - `rp`
-- `scenario`
 
-它们通过 `GlobalProfileReadinessStore` 持久化，和会话本身的运行工作态分离。
+它们通过 `GlobalProfileReadinessStore` 持久化，和会话本身的运行工作态分离。Scenario 是否完成初始化由当前会话的 `scenarioHostState.profile` 判定，不进入全局准备度。
 
 相关实现入口：
 
@@ -104,6 +122,7 @@
 - `src/persona/personaSchema.ts`
 - `src/modes/rpAssistant/profileSchema.ts`
 - `src/modes/scenarioHost/profileSchema.ts`
+- `src/modes/scenarioHost/stateStore.ts`
 
 ## 会话工作态与草稿语义
 
@@ -120,15 +139,15 @@
 其中：
 
 - `persona_setup` / `persona_config` 持有 `Persona` 草稿
-- `mode_setup` / `mode_config` 持有模式专属 profile 草稿
+- `mode_setup` / `mode_config` 持有模式专属 profile 草稿；RP 草稿确认后写入全局 `rpProfile`，Scenario 草稿确认后写入当前会话 `scenarioHostState.profile`
 - `normal` 表示正常运行态，不应暴露直接写 profile 的运行时入口
 
 关键边界：
 
-- 草稿先存在会话态中，而不是直接写入全局 store
-- `confirm` 才会把草稿提交为正式全局资料
+- 草稿先存在会话态中，而不是直接写入正式数据
+- `confirm` 才会把草稿提交为正式资料
 - `cancel` 应放弃当前草稿并退出对应配置流程
-- 自动进入 setup 由全局 readiness 决定
+- 自动进入 persona/RP setup 由全局 readiness 决定；Scenario setup 由当前会话 profile 完整度决定
 - 显式配置和首次初始化是不同语义，不应继续混成一套 prompt / 工具入口
 - 进入或退出 `persona` / 模式 profile 的 setup/config 流程时，不应强制清空会话历史；系统会写入 `profile_phase_transition` transcript 标记作为模型可见的阶段边界
 - 退出配置流程时只重置草稿工作态和运行队列等临时状态，保留已有 transcript 与摘要；模型看到阶段边界后，应以当前系统注入的已保存 profile 为正式行为依据
@@ -150,6 +169,6 @@
 - `normal` 态不直接暴露 profile 写入口
 - profile 草稿编辑和正常聊天要走不同 prompt / 工具边界
 - 会话标题、会话主体、场景状态、外部身份绑定不再互相串味
-- 全局 readiness 与单会话工作态分别建模，不再复用一个字段承担两种职责
+- 全局 readiness、会话级 profile 与单会话工作态分别建模，不再复用一个字段承担多种职责
 
 如果后续继续扩展模式、身份源或 WebUI 展示，应该沿用上述边界，而不是重新把这些职责混回同一个字段。

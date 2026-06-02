@@ -1,12 +1,12 @@
 import type { SessionModeDefinition } from "./types.ts";
-import { createOwnerPrivateGlobalProfileSetupPhase } from "./globalProfileSetup.ts";
+import { createOwnerPrivateProfileSetupPhase } from "./profileSetup.ts";
 
 export const rpAssistantModeDefinition: SessionModeDefinition = {
   id: "rp_assistant",
   title: "RP Assistant",
   description: "当前默认模式。保留现有角色扮演 + 助手能力。",
   allowedChatTypes: ["private", "group"],
-  globalProfileAccess: {
+  profileAccess: {
     persona: true,
     modeProfile: "rp"
   },
@@ -25,7 +25,7 @@ export const rpAssistantModeDefinition: SessionModeDefinition = {
     "time_utils",
     "debug_owner"
   ],
-  setupPhase: createOwnerPrivateGlobalProfileSetupPhase({
+  setupPhase: createOwnerPrivateProfileSetupPhase({
     persona: true,
     modeProfile: "rp"
   })

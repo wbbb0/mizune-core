@@ -2,7 +2,7 @@ import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadine
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { SessionSetupAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
-import { isScenarioStateInitialized } from "#modes/scenarioHost/types.ts";
+import { isScenarioSessionProfileComplete, isScenarioStateInitialized } from "#modes/scenarioHost/types.ts";
 import type { SetupCompletionSignal, SessionModeSetupContext } from "#modes/types.ts";
 import type { SessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
 import { requireSessionModeDefinition } from "#modes/registry.ts";
@@ -12,8 +12,10 @@ export async function resolveSessionModeSetupContext(
   sessionId: string,
   deps: {
     globalProfileReadinessStore: GlobalProfileReadinessStore;
+    scenarioHostStateStore: ScenarioHostStateStore;
     sessionManager: SessionSetupAccess & {
       getOperationMode(sessionId: string): SessionOperationMode;
+      getSession(sessionId: string): import("#conversation/session/sessionTypes.ts").SessionState;
     };
   },
   chatContext: {
@@ -23,10 +25,16 @@ export async function resolveSessionModeSetupContext(
 ): Promise<SessionModeSetupContext> {
   const readiness = await deps.globalProfileReadinessStore.get();
   const mode = requireSessionModeDefinition(modeId);
-  const modeProfileReady = mode.globalProfileAccess.modeProfile === "rp"
+  const session = mode.profileAccess.modeProfile === "scenario"
+    ? deps.sessionManager.getSession(sessionId)
+    : null;
+  const scenarioState = session
+    ? await deps.scenarioHostStateStore.ensureForSession(session)
+    : null;
+  const modeProfileReady = mode.profileAccess.modeProfile === "rp"
     ? readiness.rp === "ready"
-    : mode.globalProfileAccess.modeProfile === "scenario"
-      ? readiness.scenario === "ready"
+    : mode.profileAccess.modeProfile === "scenario"
+      ? scenarioState != null && isScenarioSessionProfileComplete(scenarioState)
       : true;
 
   return {

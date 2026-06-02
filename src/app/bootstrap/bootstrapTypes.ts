@@ -50,7 +50,6 @@ import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.
 import type { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
-import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import type { ContentSafetyService } from "#contentSafety/contentSafetyService.ts";
 import type { ContentSafetyStore } from "#contentSafety/contentSafetyStore.ts";
@@ -87,7 +86,6 @@ export interface AppServiceBootstrap {
   toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
   rpProfileStore: RpProfileStore;
-  scenarioProfileStore: ScenarioProfileStore;
   setupStore: SetupStateStore;
   globalProfileReadinessStore: GlobalProfileReadinessStore;
   searchService: SearchService;

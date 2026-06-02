@@ -145,7 +145,13 @@ function createDeferred<T>() {
         timestampMs: 1
       }],
       scenarioState: {
-        version: 1,
+        version: 3,
+        profile: {
+          theme: "旧港钟声",
+          worldBaseline: "旧港每晚零点都会响钟。",
+          narrationStyle: "克制悬疑",
+          boundaries: ""
+        },
         currentSituation: "玩家刚抵达旧港，正准备摸清午夜钟声的来源。",
         currentLocation: "旧港码头",
         sceneSummary: "玩家在夜色里踏上旧港，准备开始探查。",
@@ -160,7 +166,21 @@ function createDeferred<T>() {
           status: "active",
           summary: "先确认钟声来自哪里"
         }],
-        worldFacts: ["旧港每晚零点都会响钟。"],
+        loreEntries: [{
+          id: "old-bell",
+          title: "旧港钟声",
+          content: "旧港每晚零点都会响钟。",
+          tags: [],
+          activationKeys: [],
+          enabled: true,
+          priority: 100,
+          createdAtTurn: 0,
+          updatedAtTurn: 0
+        }],
+        entities: [],
+        relations: [],
+        journal: [],
+        mechanics: { ruleStyle: "freeform", dicePolicy: "", difficultyScale: "", successStates: [] },
         flags: {},
         initialized: true,
         turnIndex: 0

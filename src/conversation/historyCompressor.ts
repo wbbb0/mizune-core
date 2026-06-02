@@ -249,6 +249,7 @@ export class HistoryCompressor {
       "history_compression_started"
     );
 
+    const modeId = this.sessionManager.getModeId(sessionId);
     const summaryResult = await this.llmClient.generate({
       modelRefOverride: this.resolveModelRefs(),
       timeoutMsOverride: this.config.llm.summarizer.timeoutMs,
@@ -256,12 +257,22 @@ export class HistoryCompressor {
       skipDebugDump: true,
       messages: buildHistorySummaryPrompt({
         sessionId,
+        modeId,
         existingSummary: snapshot.historySummary,
         messagesToCompress,
         toolObservationsToCompress: snapshot.toolObservationsToCompress
       })
     });
     const summary = summaryResult.text;
+
+    const currentModeId = this.sessionManager.getModeId(sessionId);
+    if (currentModeId !== modeId) {
+      this.logger.info(
+        { sessionId, ...logContext, modeId, currentModeId },
+        "history_compression_skipped_mode_mismatch"
+      );
+      return false;
+    }
 
     const applied = this.sessionManager.applyCompressedHistoryIfHistoryRevisionMatches(
       sessionId,

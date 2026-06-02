@@ -38,6 +38,7 @@ export interface SessionDebounceAccess {
 }
 
 export interface SessionCompressionAccess {
+  getModeId(sessionId: string): string;
   getHistoryRevision(sessionId: string): number;
   getLastLlmUsage(sessionId: string): SessionUsageSnapshot | null;
   getHistoryForCompression(
