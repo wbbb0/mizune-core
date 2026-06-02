@@ -23,8 +23,6 @@ import { globalRuleEntrySchema, type GlobalRuleEntry } from "#memory/globalRuleE
 import type { GlobalRuleStore } from "#memory/globalRuleStore.ts";
 import { rpProfileSchema } from "#modes/rpAssistant/profileSchema.ts";
 import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
-import { scenarioProfileSchema } from "#modes/scenarioHost/profileSchema.ts";
-import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import { personaSchema } from "#persona/personaSchema.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
 import { pendingRequestSchema } from "#requests/requestSchema.ts";
@@ -87,7 +85,6 @@ export function createDataRegistryService(input: {
   config: Pick<AppConfig, "dataDir"> & { scheduler: Pick<AppConfig["scheduler"], "enabled"> };
   personaStore: Pick<PersonaStore, "get" | "write">;
   rpProfileStore: Pick<RpProfileStore, "get" | "write">;
-  scenarioProfileStore: Pick<ScenarioProfileStore, "get" | "write">;
   globalProfileReadinessStore: Pick<GlobalProfileReadinessStore, "get" | "write">;
   setupStore: Pick<SetupStateStore, "get">;
   globalRuleStore: Pick<GlobalRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove">;
@@ -123,7 +120,6 @@ function createInitialDataResourceDefinitions(input: {
   config: Pick<AppConfig, "dataDir"> & { scheduler: Pick<AppConfig["scheduler"], "enabled"> };
   personaStore: Pick<PersonaStore, "get" | "write">;
   rpProfileStore: Pick<RpProfileStore, "get" | "write">;
-  scenarioProfileStore: Pick<ScenarioProfileStore, "get" | "write">;
   globalProfileReadinessStore: Pick<GlobalProfileReadinessStore, "get" | "write">;
   setupStore: Pick<SetupStateStore, "get">;
   globalRuleStore: Pick<GlobalRuleStore, "getAll" | "getRow" | "createRow" | "patchRow" | "remove">;
@@ -169,19 +165,6 @@ function createInitialDataResourceDefinitions(input: {
       write: async (value) => {
         await input.rpProfileStore.write(value);
         return input.rpProfileStore.get();
-      }
-    }),
-    singletonSqliteResource({
-      key: "scenario_profile",
-      title: "场景主持全局资料",
-      tableGroup: "state.scenario_profile",
-      tables: ["scenario_profile"],
-      schema: scenarioProfileSchema,
-      accessMode: "editable",
-      get: () => input.scenarioProfileStore.get(),
-      write: async (value) => {
-        await input.scenarioProfileStore.write(value);
-        return input.scenarioProfileStore.get();
       }
     }),
     singletonSqliteResource({

@@ -10,7 +10,6 @@ import type { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
-import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import type { RequestStore } from "#requests/requestStore.ts";
 import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
@@ -206,7 +205,6 @@ export interface InternalApiDeps {
   sessionCaptioner: SessionCaptioner;
   personaStore: PersonaStore;
   rpProfileStore: RpProfileStore;
-  scenarioProfileStore: ScenarioProfileStore;
   globalProfileReadinessStore: GlobalProfileReadinessStore;
   setupStore: SetupStateStore;
   globalRuleStore: GlobalRuleStore;
@@ -306,7 +304,6 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         config: deps.config,
         personaStore: deps.personaStore,
         rpProfileStore: deps.rpProfileStore,
-        scenarioProfileStore: deps.scenarioProfileStore,
         globalProfileReadinessStore: deps.globalProfileReadinessStore,
         setupStore: deps.setupStore,
         globalRuleStore: deps.globalRuleStore,

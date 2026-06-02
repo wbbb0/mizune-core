@@ -39,6 +39,10 @@ function toScenarioHostSession(session: SessionState): Pick<SessionState, "id" |
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value != null && !Array.isArray(value);
+}
+
 function buildSessionSummary(session: SessionState): InternalApiSessionSummary {
   return {
     id: session.id,
@@ -389,9 +393,11 @@ export async function updateSessionModeState(
     throw new Error(`Session mode ${session.modeId} does not support editable mode state; only scenario_host is supported`);
   }
 
+  const current = await deps.scenarioHostStateStore.ensureForSession(toScenarioHostSession(session));
+  const stateInput = mergeScenarioModeStateInput(current, body.state, body.baseState);
   const state = await deps.scenarioHostStateStore.write(
     sessionId,
-    scenarioHostSessionStateSchema.parse(body.state)
+    scenarioHostSessionStateSchema.parse(stateInput)
   );
 
   return {
@@ -401,6 +407,136 @@ export async function updateSessionModeState(
       state
     }
   };
+}
+
+function mergeScenarioModeStateInput(
+  current: ScenarioHostSessionState,
+  state: unknown,
+  baseState: unknown
+): unknown {
+  if (!isRecord(state)) {
+    return state;
+  }
+  if (!isRecord(baseState)) {
+    return Object.prototype.hasOwnProperty.call(state, "profile")
+      ? state
+      : { ...state, profile: current.profile };
+  }
+  const patch: Record<string, unknown> = {};
+  for (const key of Object.keys(state)) {
+    if (key === "version") {
+      patch[key] = state[key];
+      continue;
+    }
+    if (JSON.stringify(state[key]) !== JSON.stringify(baseState[key])) {
+      patch[key] = state[key];
+    }
+  }
+  if ("loreEntries" in patch && Array.isArray(state.loreEntries) && Array.isArray(baseState.loreEntries)) {
+    patch.loreEntries = mergeCollectionByKey(
+      current.loreEntries,
+      baseState.loreEntries as unknown[],
+      state.loreEntries as unknown[],
+      (item) => isRecord(item) ? String(item.id ?? "") : ""
+    );
+  }
+  if ("entities" in patch && Array.isArray(state.entities) && Array.isArray(baseState.entities)) {
+    patch.entities = mergeCollectionByKey(
+      current.entities,
+      baseState.entities as unknown[],
+      state.entities as unknown[],
+      (item) => isRecord(item) ? String(item.id ?? "") : ""
+    );
+  }
+  if ("objectives" in patch && Array.isArray(state.objectives) && Array.isArray(baseState.objectives)) {
+    patch.objectives = mergeCollectionByKey(
+      current.objectives,
+      baseState.objectives as unknown[],
+      state.objectives as unknown[],
+      (item) => isRecord(item) ? String(item.id ?? "") : ""
+    );
+  }
+  if ("inventory" in patch && Array.isArray(state.inventory) && Array.isArray(baseState.inventory)) {
+    patch.inventory = mergeCollectionByKey(
+      current.inventory,
+      baseState.inventory as unknown[],
+      state.inventory as unknown[],
+      inventoryKey
+    );
+  }
+  if ("relations" in patch && Array.isArray(state.relations) && Array.isArray(baseState.relations)) {
+    patch.relations = mergeCollectionByKey(
+      current.relations,
+      baseState.relations as unknown[],
+      state.relations as unknown[],
+      relationKey
+    );
+  }
+  if ("journal" in patch && Array.isArray(state.journal) && Array.isArray(baseState.journal)) {
+    patch.journal = mergeCollectionByKey(
+      current.journal,
+      baseState.journal as unknown[],
+      state.journal as unknown[],
+      (item) => isRecord(item) ? String(item.id ?? "") : ""
+    );
+  }
+  return {
+    ...current,
+    ...patch,
+    version: state.version ?? current.version
+  };
+}
+
+function mergeCollectionByKey<T>(
+  currentItems: T[],
+  baseItems: unknown[],
+  nextItems: unknown[],
+  getKey: (item: unknown) => string
+): unknown[] {
+  const baseKeys = new Set(baseItems.map(getKey).filter(Boolean));
+  const nextKeys = new Set(nextItems.map(getKey).filter(Boolean));
+  const changedKeys = new Set<string>();
+  for (const item of nextItems) {
+    const key = getKey(item);
+    if (!key) {
+      continue;
+    }
+    const baseItem = baseItems.find((candidate) => getKey(candidate) === key);
+    if (!baseItem || JSON.stringify(baseItem) !== JSON.stringify(item)) {
+      changedKeys.add(key);
+    }
+  }
+  for (const key of baseKeys) {
+    if (!nextKeys.has(key)) {
+      changedKeys.add(key);
+    }
+  }
+  const merged = currentItems
+    .filter((item) => {
+      const key = getKey(item);
+      return !key || !changedKeys.has(key);
+    });
+  for (const item of nextItems) {
+    const key = getKey(item);
+    if (key && changedKeys.has(key)) {
+      merged.push(item as T);
+    }
+  }
+  return merged;
+}
+
+function relationKey(item: unknown): string {
+  if (!isRecord(item)) {
+    return "";
+  }
+  return [item.sourceId, item.targetId, item.kind].map((part) => String(part ?? "").trim()).filter(Boolean).join("\u0000");
+}
+
+function inventoryKey(item: unknown): string {
+  if (!isRecord(item)) {
+    return "";
+  }
+  return [item.ownerId, item.item].map((part) => String(part ?? "").trim()).filter(Boolean).join("\u0000");
 }
 
 export async function updateSessionTitle(

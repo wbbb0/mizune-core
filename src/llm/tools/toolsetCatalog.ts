@@ -106,7 +106,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   {
     id: "scenario_profile_draft",
     title: "Scenario 资料草稿",
-    description: "读取和修改当前会话中的 Scenario 全局资料草稿。",
+    description: "读取和修改当前会话中的 Scenario 资料草稿。",
     ownerOnly: true,
     plannerSignals: [
       "编辑 Scenario 草稿",
@@ -291,7 +291,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     description: "读取和维护 scenario_host 会话的场景状态。",
     plannerSignals: [
       "推进场景状态",
-      "维护地点、目标、背包或世界事实"
+      "维护地点、目标、背包、Lore、实体、关系或剧情日志"
     ],
     toolNames: [
       "get_scenario_state",
@@ -299,7 +299,10 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "set_current_location",
       "manage_objective",
       "manage_inventory",
-      "append_world_fact"
+      "manage_lore_entry",
+      "manage_entity",
+      "manage_relation",
+      "append_journal_entry"
     ]
   },
   {

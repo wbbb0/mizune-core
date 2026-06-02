@@ -255,9 +255,13 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
             return {
               persona: "ready",
               rp: "uninitialized",
-              scenario: "uninitialized",
               updatedAt: 1
             };
+          }
+        } as any,
+        scenarioHostStateStore: {
+          async ensureForSession() {
+            throw new Error("scenarioHostStateStore should not be used for rp_assistant");
           }
         } as any,
         sessionManager: {
@@ -266,6 +270,9 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
           },
           getOperationMode() {
             return { kind: "normal" };
+          },
+          getSession() {
+            throw new Error("getSession should not be used for rp_assistant");
           }
         } as any
       },

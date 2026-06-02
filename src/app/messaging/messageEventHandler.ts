@@ -96,7 +96,7 @@ export async function processIncomingMessage(
       globalProfileReadinessStore: services.globalProfileReadinessStore,
       personaStore: services.personaStore,
       rpProfileStore: services.rpProfileStore,
-      scenarioProfileStore: services.scenarioProfileStore
+      scenarioHostStateStore: services.scenarioHostStateStore
     },
     context,
     persistSession

@@ -6,6 +6,7 @@ import TranscriptItem from "./TranscriptItem.vue";
 import VirtualMessageList from "./VirtualMessageList.vue";
 import Composer from "./Composer.vue";
 import SessionStatePanel from "./SessionStatePanel.vue";
+import ScenarioHostPanel from "./ScenarioHostPanel.vue";
 import { openImagePreviewWindow } from "@/components/common/imagePreviewWindow";
 import { useSessionsStore } from "@/stores/sessions";
 import { useAuthStore } from "@/stores/auth";
@@ -14,7 +15,7 @@ import type { TranscriptEntry } from "@/stores/sessions";
 import type { TranscriptItem as SessionTranscriptItem } from "@/api/types";
 import { useWorkbenchToasts } from "@workbench-kit/vue";
 import { useWorkbenchWindows } from "@workbench-kit/vue";
-import { WorkbenchAreaHeader, WorkbenchEmptyState } from "@workbench-kit/vue";
+import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchTabStrip } from "@workbench-kit/vue";
 import { buildChatTimelineItems } from "./chatTimeline";
 import type { ChatTimelineItem } from "./chatTimeline";
 import { resolveComposerUserIdentity } from "./composerUserIdentity";
@@ -40,8 +41,28 @@ provide("transcriptExpandStates", transcriptExpandStates);
 watch(() => session.value?.id, () => { transcriptExpandStates.clear(); });
 
 // Tabs
-type Tab = "chat" | "transcript" | "state";
+type Tab = "chat" | "transcript" | "scenario" | "state";
 const tab = ref<Tab>("chat");
+const hasScenarioTab = computed(() => session.value?.modeId === "scenario_host");
+const tabs = computed<Array<{ id: Tab; label: string }>>(() => [
+  { id: "chat", label: "聊天" },
+  { id: "transcript", label: "后台" },
+  ...(hasScenarioTab.value ? [{ id: "scenario" as const, label: "Scenario" }] : []),
+  { id: "state", label: "状态" }
+]);
+const selectedTab = computed({
+  get: () => tab.value,
+  set: (value: string) => {
+    if (value === "chat" || value === "transcript" || value === "scenario" || value === "state") {
+      tab.value = value;
+    }
+  }
+});
+watch(hasScenarioTab, (enabled) => {
+  if (!enabled && tab.value === "scenario") {
+    tab.value = "chat";
+  }
+});
 
 interface TranscriptActionTarget {
   itemId: string;
@@ -307,14 +328,7 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
         >{{ session.phase.label }}</span>
       </div>
 
-      <!-- Tabs -->
-      <div class="flex shrink-0">
-        <button class="flex h-10 items-center gap-1 border-0 border-b-2 border-transparent bg-transparent px-3 text-small whitespace-nowrap text-text-muted transition-colors hover:text-text-primary" :class="{ 'border-b-accent text-text-secondary': tab === 'chat' }" @click="tab = 'chat'">聊天</button>
-        <button class="flex h-10 items-center gap-1 border-0 border-b-2 border-transparent bg-transparent px-3 text-small whitespace-nowrap text-text-muted transition-colors hover:text-text-primary" :class="{ 'border-b-accent text-text-secondary': tab === 'transcript' }" @click="tab = 'transcript'">后台</button>
-        <button class="flex h-10 items-center gap-1 border-0 border-b-2 border-transparent bg-transparent px-3 text-small whitespace-nowrap text-text-muted transition-colors hover:text-text-primary" :class="{ 'border-b-accent text-text-secondary': tab === 'state' }" @click="tab = 'state'">
-          状态
-        </button>
-      </div>
+      <WorkbenchTabStrip v-model="selectedTab" :items="tabs" />
     </WorkbenchAreaHeader>
 
     <!-- No session selected -->
@@ -399,11 +413,13 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
         </VirtualMessageList>
       </div>
 
+      <ScenarioHostPanel v-if="hasScenarioTab" v-show="tab === 'scenario'" :session="session" />
+
       <SessionStatePanel v-show="tab === 'state'" :session="session" />
 
       <!-- Composer -->
       <Composer
-        v-if="tab !== 'state'"
+        v-if="tab !== 'state' && tab !== 'scenario'"
         :session-type="isPrivate ? 'private' : 'group'"
         :locked-user-id="lockedUserId"
         :default-user-id="defaultUserId"

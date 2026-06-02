@@ -78,10 +78,12 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
           get: async () => ({ state: "ready" })
         } as any,
         globalProfileReadinessStore: {
-          get: async () => ({ persona: "ready", rp: "ready", scenario: "ready" })
+          get: async () => ({ persona: "ready", rp: "ready" })
         } as any,
         rpProfileStore: {} as any,
-        scenarioProfileStore: {} as any,
+        scenarioHostStateStore: {
+          ensureForSession: async () => ({ profile: { theme: "t", worldBaseline: "w", narrationStyle: "n", boundaries: "" } })
+        } as any,
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
@@ -208,10 +210,12 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
           get: async () => ({ state: "ready" })
         } as any,
         globalProfileReadinessStore: {
-          get: async () => ({ persona: "ready", rp: "ready", scenario: "ready" })
+          get: async () => ({ persona: "ready", rp: "ready" })
         } as any,
         rpProfileStore: {} as any,
-        scenarioProfileStore: {} as any,
+        scenarioHostStateStore: {
+          ensureForSession: async () => ({ profile: { theme: "t", worldBaseline: "w", narrationStyle: "n", boundaries: "" } })
+        } as any,
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
@@ -318,10 +322,12 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
           get: async () => ({ state: "ready" })
         } as any,
         globalProfileReadinessStore: {
-          get: async () => ({ persona: "ready", rp: "ready", scenario: "ready" })
+          get: async () => ({ persona: "ready", rp: "ready" })
         } as any,
         rpProfileStore: {} as any,
-        scenarioProfileStore: {} as any,
+        scenarioHostStateStore: {
+          ensureForSession: async () => ({ profile: { theme: "t", worldBaseline: "w", narrationStyle: "n", boundaries: "" } })
+        } as any,
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
@@ -507,10 +513,12 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
           get: async () => ({ state: "ready" })
         } as any,
         globalProfileReadinessStore: {
-          get: async () => ({ persona: "ready", rp: "ready", scenario: "ready" })
+          get: async () => ({ persona: "ready", rp: "ready" })
         } as any,
         rpProfileStore: {} as any,
-        scenarioProfileStore: {} as any,
+        scenarioHostStateStore: {
+          ensureForSession: async () => ({ profile: { theme: "t", worldBaseline: "w", narrationStyle: "n", boundaries: "" } })
+        } as any,
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
@@ -669,10 +677,12 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
           get: async () => ({ state: "ready" })
         } as any,
         globalProfileReadinessStore: {
-          get: async () => ({ persona: "ready", rp: "ready", scenario: "ready" })
+          get: async () => ({ persona: "ready", rp: "ready" })
         } as any,
         rpProfileStore: {} as any,
-        scenarioProfileStore: {} as any,
+        scenarioHostStateStore: {
+          ensureForSession: async () => ({ profile: { theme: "t", worldBaseline: "w", narrationStyle: "n", boundaries: "" } })
+        } as any,
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
@@ -772,10 +782,12 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
           get: async () => ({ state: "ready" })
         } as any,
         globalProfileReadinessStore: {
-          get: async () => ({ persona: "ready", rp: "ready", scenario: "ready" })
+          get: async () => ({ persona: "ready", rp: "ready" })
         } as any,
         rpProfileStore: {} as any,
-        scenarioProfileStore: {} as any,
+        scenarioHostStateStore: {
+          ensureForSession: async () => ({ profile: { theme: "t", worldBaseline: "w", narrationStyle: "n", boundaries: "" } })
+        } as any,
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
@@ -865,10 +877,12 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
           get: async () => ({ state: "ready" })
         } as any,
         globalProfileReadinessStore: {
-          get: async () => ({ persona: "ready", rp: "ready", scenario: "ready" })
+          get: async () => ({ persona: "ready", rp: "ready" })
         } as any,
         rpProfileStore: {} as any,
-        scenarioProfileStore: {} as any,
+        scenarioHostStateStore: {
+          ensureForSession: async () => ({ profile: { theme: "t", worldBaseline: "w", narrationStyle: "n", boundaries: "" } })
+        } as any,
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any

@@ -221,6 +221,11 @@ agent 在实现前后产生的 spec、plan、review、执行 checklist、临时�
 - 模型在完成上述复制和调整后，应明确告诉用户本次 worktree 联调实例名，并给出准确的启动命令；默认使用：
   - `CONFIG_INSTANCE=<wt-instance-name> npm run dev`
 - 如果测试、脚本或 dev 进程会写共享外部资源（固定端口、同一 data 目录、systemd 服务状态、仓库外固定文件等），必须主动检查是否会与主目录运行实例互相影响，不要假设 worktree 能隔离这类副作用。
+- 如果在开发 worktree 中修改 `vendor/workbench-kit` 这类 git submodule，必须先确认子模块自己的 git worktree 位置：
+  - 使用 `git -C vendor/workbench-kit rev-parse --show-toplevel --git-dir --is-inside-work-tree` 检查实际受 git 管理的位置
+  - 如果子模块 gitdir 指向主目录的真实 submodule worktree，不要只在开发 worktree 的 vendor 目录里改文件；这类文件可能让本地构建通过，但不会进入任何提交
+  - 正确流程是先在真实 submodule worktree 中修改、验证、提交并推送子模块，再回到顶层开发分支 stage `vendor/workbench-kit` 的 gitlink 指针
+  - 合并前应确认顶层 `git status` 能看到 `M vendor/workbench-kit`，且子模块 commit 已经 push 到它自己的远端，否则主仓库 push 后其他环境会取不到该组件
 - 如果模型需要使用 Superpowers 的浏览器演示/可视化展示能力，且当前存在可用的开发 worktree，默认优先在该 worktree 目录中启动演示服务，并监听 `0.0.0.0:23380`。
 - 这样做的原因是浏览器演示服务会产生 `.pid` 等本地运行痕迹；这类运行时垃圾文件应优先留在 worktree 中，而不是污染主目录稳定副本。
 - 多个 worktree 并行开发时，尽量按目录或职责切分改动范围；最终冲突合并应由了解主线结构的人统一处理，不要让多个并行分支各自随意解决同一组结构冲突。

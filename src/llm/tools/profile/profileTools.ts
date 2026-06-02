@@ -116,7 +116,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
       type: "function",
       function: {
         name: "get_scenario_profile",
-        description: "读取当前会话中的 Scenario 全局资料草稿。",
+        description: "读取当前会话中的 Scenario 资料草稿。",
         parameters: {
           type: "object",
           properties: {},
@@ -131,7 +131,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
       type: "function",
       function: {
         name: "patch_scenario_profile",
-        description: "按字段 patch 当前会话中的 Scenario 全局资料草稿，不直接写持久化存储。",
+        description: "按字段 patch 当前会话中的 Scenario 资料草稿，不直接写持久化存储。",
         parameters: {
           type: "object",
           properties: {
@@ -158,7 +158,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
       type: "function",
       function: {
         name: "clear_scenario_profile_field",
-        description: "清空当前会话中的一个 Scenario 全局资料草稿字段。",
+        description: "清空当前会话中的一个 Scenario 资料草稿字段。",
         parameters: {
           type: "object",
           properties: {

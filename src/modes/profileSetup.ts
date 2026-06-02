@@ -1,5 +1,5 @@
 import type {
-  SessionModeGlobalProfileAccess,
+  SessionModeProfileAccess,
   SessionModeSetupContext,
   SessionModeSetupOperation,
   SessionModeSetupOperationKind,
@@ -26,7 +26,7 @@ function createPersonaSetupToolsetOverrides(): SessionModeSetupToolsetOverride[]
   ];
 }
 
-function createModeProfileSetupToolsetOverrides(target: NonNullable<SessionModeGlobalProfileAccess["modeProfile"]>): SessionModeSetupToolsetOverride[] {
+function createModeProfileSetupToolsetOverrides(target: NonNullable<SessionModeProfileAccess["modeProfile"]>): SessionModeSetupToolsetOverride[] {
   if (target === "rp") {
     return [
       {
@@ -50,9 +50,9 @@ function createModeProfileSetupToolsetOverrides(target: NonNullable<SessionModeG
     {
       toolsetId: "scenario_profile_draft",
       title: "Scenario 资料草稿",
-      description: "初始化阶段用于填写 Scenario 全局资料草稿。",
+      description: "初始化阶段用于填写当前会话 Scenario 资料草稿。",
       toolNames: ["get_scenario_profile", "patch_scenario_profile", "clear_scenario_profile_field"],
-      plannerSignals: ["写入 Scenario 全局资料"]
+      plannerSignals: ["写入当前会话 Scenario 资料"]
     },
     {
       toolsetId: "setup_draft",
@@ -65,7 +65,7 @@ function createModeProfileSetupToolsetOverrides(target: NonNullable<SessionModeG
 }
 
 function resolveOwnerPrivateSetupOperationKind(
-  access: SessionModeGlobalProfileAccess,
+  access: SessionModeProfileAccess,
   ctx: SessionModeSetupContext
 ): SessionModeSetupOperationKind | null {
   if (ctx.operationMode.kind === "persona_setup" || ctx.operationMode.kind === "mode_setup") {
@@ -83,8 +83,8 @@ function resolveOwnerPrivateSetupOperationKind(
   return null;
 }
 
-export function createOwnerPrivateGlobalProfileSetupPhase(
-  access: SessionModeGlobalProfileAccess
+export function createOwnerPrivateProfileSetupPhase(
+  access: SessionModeProfileAccess
 ): SessionModeSetupPhase {
   const operations: SessionModeSetupOperation[] = [];
   if (access.persona) {

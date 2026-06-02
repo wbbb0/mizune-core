@@ -3,6 +3,7 @@ import { requireSessionModeDefinition } from "#modes/registry.ts";
 import type { MessageEventHandlerDeps, MessageHandlerServices, MessageProcessingContext } from "./messageHandlerTypes.ts";
 import { resolvePostRouterSetupDecision, resolvePreRouterSetupDecision } from "./messageAdmission.ts";
 import type { SessionModeSetupContext } from "#modes/types.ts";
+import { createEmptyScenarioProfile, isScenarioProfileComplete } from "#modes/scenarioHost/profileSchema.ts";
 
 export async function handlePreRouterDecision(
   services: Pick<MessageHandlerServices, "logger" | "oneBotClient">,
@@ -32,7 +33,7 @@ export async function handlePreRouterDecision(
 export async function ensureAutomaticSetupOperationMode(
   services: Pick<
     MessageHandlerServices,
-    "sessionManager" | "globalProfileReadinessStore" | "personaStore" | "rpProfileStore" | "scenarioProfileStore"
+    "sessionManager" | "globalProfileReadinessStore" | "personaStore" | "rpProfileStore" | "scenarioHostStateStore"
   >,
   context: MessageProcessingContext,
   persistSession: MessageEventHandlerDeps["persistSession"]
@@ -48,10 +49,13 @@ export async function ensureAutomaticSetupOperationMode(
   }
 
   const readiness = await services.globalProfileReadinessStore.get();
-  const modeProfileReady = modeDef.globalProfileAccess.modeProfile === "rp"
+  const scenarioState = modeDef.profileAccess.modeProfile === "scenario"
+    ? await services.scenarioHostStateStore.ensureForSession(context.session)
+    : null;
+  const modeProfileReady = modeDef.profileAccess.modeProfile === "rp"
     ? readiness.rp === "ready"
-    : modeDef.globalProfileAccess.modeProfile === "scenario"
-      ? readiness.scenario === "ready"
+    : modeDef.profileAccess.modeProfile === "scenario"
+      ? scenarioState != null && isScenarioProfileComplete(scenarioState.profile)
       : true;
   const setupContext: SessionModeSetupContext = {
     personaReady: readiness.persona === "ready",
@@ -75,7 +79,7 @@ export async function ensureAutomaticSetupOperationMode(
     persistSession(context.session.id, "persona_setup_mode_auto_entered");
     return;
   }
-  if (nextOperationKind === "mode_setup" && modeDef.globalProfileAccess.modeProfile === "rp") {
+  if (nextOperationKind === "mode_setup" && modeDef.profileAccess.modeProfile === "rp") {
     services.sessionManager.setOperationMode(context.session.id, {
       kind: "mode_setup",
       modeId: "rp_assistant",
@@ -90,11 +94,11 @@ export async function ensureAutomaticSetupOperationMode(
     persistSession(context.session.id, "rp_setup_mode_auto_entered");
     return;
   }
-  if (nextOperationKind === "mode_setup" && modeDef.globalProfileAccess.modeProfile === "scenario") {
+  if (nextOperationKind === "mode_setup" && modeDef.profileAccess.modeProfile === "scenario") {
     services.sessionManager.setOperationMode(context.session.id, {
       kind: "mode_setup",
       modeId: "scenario_host",
-      draft: services.scenarioProfileStore.createEmpty()
+      draft: scenarioState?.profile ?? createEmptyScenarioProfile()
     });
     services.sessionManager.appendProfilePhaseTransition(context.session.id, {
       target: "scenario",

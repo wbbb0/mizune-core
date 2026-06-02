@@ -205,7 +205,11 @@ function buildScenarioStateLines(state: ScenarioHostSessionState): string[] {
     `主玩家=${state.player.displayName} (${state.player.userId})`,
     `背包=${state.inventory.length > 0 ? state.inventory.map((item: ScenarioHostSessionState["inventory"][number]) => `${item.ownerId}:${item.item}x${item.quantity}`).join("；") : "空"}`,
     `目标=${state.objectives.length > 0 ? state.objectives.map((item: ScenarioHostSessionState["objectives"][number]) => `${item.id}:${item.title}[${item.status}] ${item.summary}`.trim()).join("；") : "无"}`,
-    `世界事实=${state.worldFacts.length > 0 ? state.worldFacts.join("；") : "无"}`,
+    `Lore=${state.loreEntries.length > 0 ? state.loreEntries.filter((item) => item.enabled).map((item) => `${item.title}:${item.content}`.trim()).join("；") : "无"}`,
+    `实体=${state.entities.length > 0 ? state.entities.map((item) => `${item.id}:${item.name}[${item.kind}] ${item.summary}`.trim()).join("；") : "无"}`,
+    `关系=${state.relations.length > 0 ? state.relations.map((item) => `${item.sourceId}->${item.targetId}[${item.kind}] ${item.summary}`.trim()).join("；") : "无"}`,
+    `日志=${state.journal.length > 0 ? state.journal.slice(-5).map((item) => `T${item.turnIndex} ${item.title}:${item.summary}`.trim()).join("；") : "无"}`,
+    `规则=${state.mechanics.ruleStyle}${state.mechanics.dicePolicy ? `；${state.mechanics.dicePolicy}` : ""}`,
     `标记=${Object.keys(state.flags).length > 0 ? Object.entries(state.flags).map(([key, value]) => `${key}=${String(value)}`).join("；") : "无"}`,
     `回合数=${state.turnIndex}`
   ];

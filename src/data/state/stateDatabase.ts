@@ -195,66 +195,6 @@ function migrateRpProfileSchema(db: SqliteDatabase): boolean {
   return true;
 }
 
-function createScenarioProfileSchema(db: SqliteDatabase): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS scenario_profile (
-      id TEXT PRIMARY KEY CHECK (id = 'global'),
-      theme TEXT NOT NULL DEFAULT '',
-      world_baseline TEXT NOT NULL DEFAULT '',
-      narration_style TEXT NOT NULL DEFAULT '',
-      boundaries TEXT NOT NULL DEFAULT '',
-      updated_at_ms INTEGER NOT NULL
-    );
-  `);
-}
-
-function validateScenarioProfileSchema(db: SqliteDatabase): void {
-  assertTableColumns(db, "scenario_profile", {
-    id: "TEXT",
-    theme: "TEXT",
-    world_baseline: "TEXT",
-    narration_style: "TEXT",
-    boundaries: "TEXT",
-    updated_at_ms: "INTEGER"
-  });
-}
-
-function migrateScenarioProfileSchema(db: SqliteDatabase): boolean {
-  const row = db.prepare(`
-    SELECT
-      theme,
-      host_style AS hostStyle,
-      world_baseline AS worldBaseline,
-      safety_or_taboo_rules AS safetyOrTabooRules,
-      opening_pattern AS openingPattern,
-      updated_at_ms AS updatedAtMs
-    FROM scenario_profile
-    WHERE id = 'global'
-  `).get() as {
-    theme?: string;
-    hostStyle?: string;
-    worldBaseline?: string;
-    safetyOrTabooRules?: string;
-    openingPattern?: string;
-    updatedAtMs?: number;
-  } | undefined;
-  db.exec("DROP TABLE IF EXISTS scenario_profile;");
-  createScenarioProfileSchema(db);
-  if (row) {
-    db.prepare(`
-      INSERT INTO scenario_profile (id, theme, world_baseline, narration_style, boundaries, updated_at_ms)
-      VALUES ('global', @theme, @worldBaseline, @narrationStyle, @boundaries, @updatedAtMs)
-    `).run({
-      theme: row.theme ?? "",
-      worldBaseline: row.worldBaseline ?? "",
-      narrationStyle: joinNonEmpty([row.hostStyle, row.openingPattern]),
-      boundaries: row.safetyOrTabooRules ?? "",
-      updatedAtMs: row.updatedAtMs ?? Date.now()
-    });
-  }
-  return true;
-}
-
 function joinNonEmpty(values: Array<string | undefined>): string {
   return values
     .map((value) => value?.trim() ?? "")
@@ -268,7 +208,6 @@ function createGlobalProfileReadinessSchema(db: SqliteDatabase): void {
       id TEXT PRIMARY KEY CHECK (id = 'global'),
       persona TEXT NOT NULL CHECK (persona IN ('uninitialized', 'ready')),
       rp TEXT NOT NULL CHECK (rp IN ('uninitialized', 'ready')),
-      scenario TEXT NOT NULL CHECK (scenario IN ('uninitialized', 'ready')),
       updated_at_ms INTEGER NOT NULL
     );
   `);
@@ -279,9 +218,36 @@ function validateGlobalProfileReadinessSchema(db: SqliteDatabase): void {
     id: "TEXT",
     persona: "TEXT",
     rp: "TEXT",
-    scenario: "TEXT",
     updated_at_ms: "INTEGER"
   });
+}
+
+function migrateGlobalProfileReadinessSchema(db: SqliteDatabase): boolean {
+  const row = db.prepare(`
+    SELECT
+      persona,
+      rp,
+      updated_at_ms AS updatedAtMs
+    FROM global_profile_readiness
+    WHERE id = 'global'
+  `).get() as {
+    persona?: string;
+    rp?: string;
+    updatedAtMs?: number;
+  } | undefined;
+  db.exec("DROP TABLE IF EXISTS global_profile_readiness;");
+  createGlobalProfileReadinessSchema(db);
+  if (row) {
+    db.prepare(`
+      INSERT INTO global_profile_readiness (id, persona, rp, updated_at_ms)
+      VALUES ('global', @persona, @rp, @updatedAtMs)
+    `).run({
+      persona: row.persona === "ready" ? "ready" : "uninitialized",
+      rp: row.rp === "ready" ? "ready" : "uninitialized",
+      updatedAtMs: row.updatedAtMs ?? Date.now()
+    });
+  }
+  return true;
 }
 
 function createSetupStateSchema(db: SqliteDatabase): void {
@@ -687,21 +653,13 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
     validateSchema: validateRpProfileSchema
   },
   {
-    groupId: "state.scenario_profile",
+    groupId: "state.global_profile_readiness",
     schemaVersion: 2,
     minReadableSchemaVersion: 1,
     resetPolicy: "block_reset",
-    ownedTables: ["scenario_profile"],
-    createSchema: createScenarioProfileSchema,
-    migrateSchema: migrateScenarioProfileSchema,
-    validateSchema: validateScenarioProfileSchema
-  },
-  {
-    groupId: "state.global_profile_readiness",
-    schemaVersion: 1,
-    resetPolicy: "block_reset",
     ownedTables: ["global_profile_readiness"],
     createSchema: createGlobalProfileReadinessSchema,
+    migrateSchema: migrateGlobalProfileReadinessSchema,
     validateSchema: validateGlobalProfileReadinessSchema
   },
   {

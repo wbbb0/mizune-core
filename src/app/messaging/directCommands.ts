@@ -5,7 +5,6 @@ import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
 import type { Persona } from "#persona/personaSchema.ts";
 import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
-import type { ScenarioProfileStore } from "#modes/scenarioHost/profileStore.ts";
 import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadinessStore.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { ContextStore } from "#context/contextStore.ts";
@@ -16,6 +15,7 @@ import type { Relationship } from "#identity/relationship.ts";
 import type { InternalTranscriptItem, SessionState } from "#conversation/session/sessionTypes.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import { createInitialScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
+import { createEmptyScenarioProfile, isScenarioProfileComplete } from "#modes/scenarioHost/profileSchema.ts";
 import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
 import { parseOwnerBootstrapCommand } from "#app/bootstrap/ownerBootstrapPolicy.ts";
 import { resolvePersonaReadinessStatus } from "#persona/personaSetupPolicy.ts";
@@ -76,10 +76,9 @@ interface DirectCommandHandlerInput {
   oneBotClient: OneBotClient;
   logger: Logger;
   sessionCaptioner?: SessionCaptioner;
-  scenarioHostStateStore?: ScenarioHostStateStore;
+  scenarioHostStateStore: ScenarioHostStateStore;
   personaStore: PersonaStore;
   rpProfileStore: RpProfileStore;
-  scenarioProfileStore: ScenarioProfileStore;
   globalProfileReadinessStore: GlobalProfileReadinessStore;
   setupStore: SetupStateStore;
   contextStore: Pick<ContextStore, "upsertUserFact" | "removeUserFact" | "removeUserFactByText" | "replaceUserFactByText">;
@@ -262,14 +261,36 @@ function getOperationTargetLabel(operationMode: SessionState["operationMode"]): 
   }
 }
 
-async function readGlobalReadiness(
-  ctx: DirectCommandExecutionContext
+function getScenarioStateDefaults(session: SessionState): {
+  playerUserId: string;
+  playerDisplayName: string;
+} {
+  return {
+    playerUserId: session.participantRef.id,
+    playerDisplayName: resolveSessionParticipantLabel({
+      sessionId: session.id,
+      participantRef: session.participantRef,
+      title: session.title,
+      type: session.type
+    })
+  };
+}
+
+async function readProfileReadiness(
+  ctx: DirectCommandExecutionContext,
+  target: ConfigTarget
 ): Promise<{ persona: boolean; rp: boolean; scenario: boolean }> {
   const readiness = await ctx.input.globalProfileReadinessStore.get();
+  const scenarioState = target === "scenario"
+    ? await ctx.input.scenarioHostStateStore.ensure(
+        ctx.session.id,
+        getScenarioStateDefaults(ctx.session)
+      )
+    : null;
   return {
     persona: readiness.persona === "ready",
     rp: readiness.rp === "ready",
-    scenario: readiness.scenario === "ready"
+    scenario: scenarioState != null && isScenarioProfileComplete(scenarioState.profile)
   };
 }
 
@@ -278,7 +299,10 @@ async function enterConfigurationMode(
   mode: "setup" | "config",
   target: ConfigTarget
 ): Promise<string> {
-  const readiness = await readGlobalReadiness(ctx);
+  if (target === "scenario" && ctx.session.type !== "private") {
+    return "Scenario 资料是当前私聊会话级配置，当前模式仅支持私聊。请在对应私聊会话中使用 `.setup scenario` 或 `.config scenario`。";
+  }
+  const readiness = await readProfileReadiness(ctx, target);
   if (mode === "config") {
     if (target === "persona" && !readiness.persona) {
       return "persona 尚未初始化，请先使用 `.setup persona`。";
@@ -287,7 +311,7 @@ async function enterConfigurationMode(
       return "RP 资料尚未初始化，请先使用 `.setup rp`。";
     }
     if (target === "scenario" && !readiness.scenario) {
-      return "Scenario 资料尚未初始化，请先使用 `.setup scenario`。";
+      return "当前会话 Scenario 资料尚未初始化，请先使用 `.setup scenario`。";
     }
   }
 
@@ -311,8 +335,11 @@ async function enterConfigurationMode(
       kind: mode === "setup" ? "mode_setup" : "mode_config",
       modeId: "scenario_host",
       draft: mode === "setup"
-        ? ctx.input.scenarioProfileStore.createEmpty()
-        : await ctx.input.scenarioProfileStore.get()
+        ? createEmptyScenarioProfile()
+        : (await ctx.input.scenarioHostStateStore.ensure(
+            ctx.session.id,
+            getScenarioStateDefaults(ctx.session)
+          )).profile
     });
   }
   ctx.input.sessionManager.appendProfilePhaseTransition(ctx.session.id, {
@@ -352,9 +379,13 @@ async function persistCurrentDraft(ctx: DirectCommandExecutionContext): Promise<
     );
     return true;
   }
-  await ctx.input.scenarioProfileStore.write(operationMode.draft);
-  await ctx.input.globalProfileReadinessStore.setScenarioReadiness(
-    ctx.input.scenarioProfileStore.isComplete(operationMode.draft) ? "ready" : "uninitialized"
+  await ctx.input.scenarioHostStateStore.update(
+    ctx.session.id,
+    (current) => ({
+      ...current,
+      profile: operationMode.draft
+    }),
+    getScenarioStateDefaults(ctx.session)
   );
   return true;
 }
@@ -896,22 +927,14 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         : null;
     },
     async execute(ctx: DirectCommandExecutionContext) {
-      if (!ctx.input.scenarioHostStateStore) {
-        await ctx.send("当前实例未启用场景状态存储。");
-        return;
-      }
-      const defaults = {
-        playerUserId: ctx.session.participantRef.id,
-        playerDisplayName: resolveSessionParticipantLabel({
-          sessionId: ctx.session.id,
-          participantRef: ctx.session.participantRef,
-          title: ctx.session.title,
-          type: ctx.session.type
-        })
-      };
+      const defaults = getScenarioStateDefaults(ctx.session);
+      const currentProfile = (await ctx.input.scenarioHostStateStore.ensure(ctx.session.id, defaults)).profile;
       ctx.input.sessionManager.cancelGeneration(ctx.session.id);
       ctx.input.sessionManager.clearSession(ctx.session.id);
-      await ctx.input.scenarioHostStateStore.write(ctx.session.id, createInitialScenarioHostSessionState(defaults));
+      await ctx.input.scenarioHostStateStore.write(ctx.session.id, {
+        ...createInitialScenarioHostSessionState(defaults),
+        profile: currentProfile
+      });
       ctx.input.persistSession(ctx.session.id, "scenario_reset_by_command");
       ctx.input.logger.info({ sessionId: ctx.session.id }, "scenario_reset_by_command");
       await ctx.send("场景已重置，会话上下文已清空。");

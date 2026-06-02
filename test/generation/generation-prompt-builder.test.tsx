@@ -1422,14 +1422,24 @@ function createActiveTaskTracker() {
       scenarioHostStateStore: {
         async ensure() {
           return {
-            version: 1 as const,
+            version: 3 as const,
+            profile: {
+              theme: "",
+              worldBaseline: "",
+              narrationStyle: "",
+              boundaries: ""
+            },
             currentSituation: "场景尚未开始，请根据玩家接下来的行动开始主持。",
             currentLocation: null,
             sceneSummary: "",
             player: { userId: "u1", displayName: "Alice" },
             inventory: [],
             objectives: [],
-            worldFacts: [],
+            loreEntries: [],
+            entities: [],
+            relations: [],
+            journal: [],
+            mechanics: { ruleStyle: "freeform" as const, dicePolicy: "", difficultyScale: "", successStates: [] },
             flags: {},
             initialized: false,
             turnIndex: 0
@@ -1556,14 +1566,34 @@ function createActiveTaskTracker() {
       scenarioHostStateStore: {
         async ensure() {
           return {
-            version: 1,
+            version: 3,
+            profile: {
+              theme: "",
+              worldBaseline: "",
+              narrationStyle: "",
+              boundaries: ""
+            },
             currentSituation: "玩家刚抵达废弃钟楼门口。",
             currentLocation: "旧钟楼外",
             sceneSummary: "夜色、迷雾、远处有钟声。",
             player: { userId: "10001", displayName: "Tester" },
             inventory: [{ ownerId: "10001", item: "提灯", quantity: 1 }],
             objectives: [{ id: "obj_1", title: "进入钟楼", status: "active", summary: "找到入口" }],
-            worldFacts: ["钟楼附近会周期性响起钟声"],
+            loreEntries: [{
+              id: "bell-lore",
+              title: "钟楼事实",
+              content: "钟楼附近会周期性响起钟声",
+              tags: [],
+              activationKeys: [],
+              enabled: true,
+              priority: 100,
+              createdAtTurn: 0,
+              updatedAtTurn: 3
+            }],
+            entities: [],
+            relations: [],
+            journal: [],
+            mechanics: { ruleStyle: "freeform" as const, dicePolicy: "", difficultyScale: "", successStates: [] },
             flags: { heard_bell: true },
             turnIndex: 3
           };
@@ -1638,7 +1668,7 @@ function createActiveTaskTracker() {
     assert.match(system, /全局 persona：名字=Bot；性格底色=；语气风格=/);
     assert.match(system, /剧情主持模式下的场景主持者/);
     assert.equal(hasPromptSection(system, "scenario_profile"), true);
-    assert.match(system, /Scenario 全局资料：主题=钟楼怪谈；世界基线=海边小城潜伏超自然异象；叙事风格=冷静克制/);
+    assert.match(system, /当前会话 Scenario 资料：主题=钟楼怪谈；世界基线=海边小城潜伏超自然异象；叙事风格=冷静克制/);
     assert.match(system, /模式补充：边界=从异响和环境异常切入/);
     assert.doesNotMatch(system, /标题=/);
     assert.match(system, /当前位置=旧钟楼外/);
@@ -1894,7 +1924,7 @@ function createActiveTaskTracker() {
     assert.ok(systemContent.includes("scenario_profile_snapshot"), `Expected scenario_profile_snapshot section, got: ${systemContent.slice(0, 400)}`);
     assert.match(systemContent, /当前 Scenario 资料只是建立在这层基础上的模式补充/);
     assert.match(systemContent, /不要把已属于 persona 的内容重复搬进 Scenario 资料/);
-    assert.match(systemContent, /当前处于 Scenario 全局资料配置阶段/);
+    assert.match(systemContent, /当前处于当前会话 Scenario 资料配置阶段/);
     assert.match(systemContent, /当前草稿已明确：主题、世界基线、叙事风格/);
     assert.match(systemContent, /可在需要时继续补充：边界/);
     assert.match(systemContent, /已设定：主题=都市怪谈；世界基线=现代都市里潜伏超自然现象；叙事风格=紧凑克制/);

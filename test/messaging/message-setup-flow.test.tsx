@@ -17,7 +17,9 @@ function createContext(input: {
   return {
     session: {
       id: `session:${input.modeId}`,
-      modeId: input.modeId
+      modeId: input.modeId,
+      participantRef: { kind: "user", id: "owner" },
+      title: null
     },
     enrichedMessage: {
       chatType: input.chatType ?? "private",
@@ -53,8 +55,7 @@ test("automatic setup enters persona_setup before mode setup", async () => {
         async get() {
           return {
             persona: "uninitialized",
-            rp: "uninitialized",
-            scenario: "uninitialized"
+            rp: "uninitialized"
           };
         }
       } as any,
@@ -68,9 +69,9 @@ test("automatic setup enters persona_setup before mode setup", async () => {
           return createEmptyRpProfile();
         }
       } as any,
-      scenarioProfileStore: {
-        createEmpty() {
-          return createEmptyScenarioProfile();
+      scenarioHostStateStore: {
+        async ensureForSession() {
+          return { profile: createEmptyScenarioProfile() };
         }
       } as any
     },
@@ -116,8 +117,7 @@ test("assistant mode also enters persona_setup when global persona is not ready"
         async get() {
           return {
             persona: "uninitialized",
-            rp: "ready",
-            scenario: "ready"
+            rp: "ready"
           };
         }
       } as any,
@@ -131,9 +131,9 @@ test("assistant mode also enters persona_setup when global persona is not ready"
           return createEmptyRpProfile();
         }
       } as any,
-      scenarioProfileStore: {
-        createEmpty() {
-          return createEmptyScenarioProfile();
+      scenarioHostStateStore: {
+        async ensureForSession() {
+          return { profile: createEmptyScenarioProfile() };
         }
       } as any
     },
@@ -179,8 +179,7 @@ test("automatic setup enters rp mode draft after persona is ready", async () => 
         async get() {
           return {
             persona: "ready",
-            rp: "uninitialized",
-            scenario: "uninitialized"
+            rp: "uninitialized"
           };
         }
       } as any,
@@ -194,9 +193,9 @@ test("automatic setup enters rp mode draft after persona is ready", async () => 
           return createEmptyRpProfile();
         }
       } as any,
-      scenarioProfileStore: {
-        createEmpty() {
-          return createEmptyScenarioProfile();
+      scenarioHostStateStore: {
+        async ensureForSession() {
+          return { profile: createEmptyScenarioProfile() };
         }
       } as any
     },
@@ -224,6 +223,11 @@ test("automatic setup enters scenario mode draft after persona is ready", async 
   let latestOperationMode: unknown = { kind: "normal" };
   const persistedReasons: string[] = [];
   const phaseTransitions: Array<Record<string, unknown>> = [];
+  const partialProfile = {
+    ...createEmptyScenarioProfile(),
+    theme: "悬疑",
+    worldBaseline: "旧城雨夜"
+  };
 
   await ensureAutomaticSetupOperationMode(
     {
@@ -243,8 +247,7 @@ test("automatic setup enters scenario mode draft after persona is ready", async 
         async get() {
           return {
             persona: "ready",
-            rp: "ready",
-            scenario: "uninitialized"
+            rp: "ready"
           };
         }
       } as any,
@@ -258,9 +261,9 @@ test("automatic setup enters scenario mode draft after persona is ready", async 
           return createEmptyRpProfile();
         }
       } as any,
-      scenarioProfileStore: {
-        createEmpty() {
-          return createEmptyScenarioProfile();
+      scenarioHostStateStore: {
+        async ensureForSession() {
+          return { profile: partialProfile };
         }
       } as any
     },
@@ -273,7 +276,7 @@ test("automatic setup enters scenario mode draft after persona is ready", async 
   assert.deepEqual(latestOperationMode, {
     kind: "mode_setup",
     modeId: "scenario_host",
-    draft: createEmptyScenarioProfile()
+    draft: partialProfile
   });
   assert.deepEqual(phaseTransitions, [{
     target: "scenario",
@@ -309,8 +312,7 @@ test("automatic setup does not override an existing draft mode", async () => {
         async get() {
           return {
             persona: "ready",
-            rp: "uninitialized",
-            scenario: "uninitialized"
+            rp: "uninitialized"
           };
         }
       } as any,
@@ -324,9 +326,9 @@ test("automatic setup does not override an existing draft mode", async () => {
           return createEmptyRpProfile();
         }
       } as any,
-      scenarioProfileStore: {
-        createEmpty() {
-          return createEmptyScenarioProfile();
+      scenarioHostStateStore: {
+        async ensureForSession() {
+          return { profile: createEmptyScenarioProfile() };
         }
       } as any
     },

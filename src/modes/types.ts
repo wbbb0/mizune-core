@@ -5,7 +5,7 @@ export type SessionModeOperationKind = Exclude<SessionOperationMode["kind"], "no
 export type SessionModeSetupOperationKind = Extract<SessionModeOperationKind, "persona_setup" | "mode_setup">;
 export type SessionModeProfileTarget = "rp" | "scenario";
 
-export interface SessionModeGlobalProfileAccess {
+export interface SessionModeProfileAccess {
   persona: boolean;
   modeProfile: SessionModeProfileTarget | null;
 }
@@ -63,6 +63,6 @@ export interface SessionModeDefinition {
   description: string;
   allowedChatTypes: SessionModeChatType[];
   defaultToolsetIds: string[];
-  globalProfileAccess: SessionModeGlobalProfileAccess;
+  profileAccess: SessionModeProfileAccess;
   setupPhase?: SessionModeSetupPhase;
 }

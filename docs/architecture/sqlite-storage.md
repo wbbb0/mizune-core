@@ -66,17 +66,19 @@
 当前 `sessions/sessions.sqlite` 注册了两个 source-of-truth 表组：
 
 - `sessions.persisted_sessions`：`sessions`、`session_transcript_items`，承载会话快照持久化数据
-- `sessions.scenario_host_state`：`scenario_host_session_states`，承载 `scenario_host` 每会话状态
+- `sessions.scenario_host_state`：`scenario_host_session_states`，承载 `scenario_host` 每会话状态与当前会话 Scenario 资料
 
 `sessions.scenario_host_state` 使用 `block_reset`，不接受版本不匹配时的自动重建。`sessions.persisted_sessions` 当前使用默认 reset 策略，结构破坏性调整会以当前代码结构为准重建该表组。
 
 `sessions` 表只保存会话元数据、pending 消息、摘要、用量和已发送消息等快照字段；`internalTranscript` 不再以内嵌大 JSON 字段保存，而是拆为 `session_transcript_items` 竖表，一行对应一条后台记录。保存会话时持久化层按 `item_id` 与内容 hash 增量 upsert/delete transcript 行，避免高频聊天时反复重写整个 transcript。启动恢复时通过 SQLite 子查询按 `item_index` 聚合 `item_json`，再还原为完整 `PersistedSessionState.internalTranscript`。
 
+`scenario_host_session_states.state_json` 当前 schema 版本为 3，其中 `profile` 保存当前会话的 Scenario 资料，`currentSituation`、`currentLocation`、`inventory`、`objectives`、`loreEntries`、`entities`、`relations`、`journal`、`mechanics` 等字段保存运行态。v1/v2 行会在打开数据库时显式迁移为 v3；旧 `worldFacts` 会归并为 `loreEntries`，旧全局 Scenario 资料会在迁移时一次性复制到已有会话状态。
+
 内部 API 的 Data Registry 将这两个表分别暴露为 `sessions` 和 `session_transcript_items` 资源；WebUI `Data` 页对这两个资源使用专用只读查看器，便于直接检查会话元数据和单条 transcript 内容。
 
 ## State Store 表组
 
-当前 `state/state.sqlite` 承载 persona、资料、用户、规则、身份、请求、白名单和定时任务等运行态数据。大多数表组使用 `block_reset`，不接受版本不匹配时的自动重建；`state.scheduled_jobs` 当前使用默认 reset 策略，结构破坏性调整会以当前代码结构为准重建该表组。
+当前 `state/state.sqlite` 承载 persona、RP 资料、用户、规则、身份、请求、白名单和定时任务等运行态数据。Scenario 资料不再存放在 state 库，而是随各会话的 `scenario_host_session_states` 保存。大多数表组使用 `block_reset`，不接受版本不匹配时的自动重建；`state.scheduled_jobs` 当前使用默认 reset 策略，结构破坏性调整会以当前代码结构为准重建该表组。
 
 定时任务拆为 `scheduled_jobs` 和 `scheduled_job_targets`：`scheduled_jobs` 保存任务定义、调度类型、下一次运行时间和最近运行状态等原生列；`scheduled_job_targets` 是目标会话竖表，一行对应一个任务目标。内部 API 的 `scheduled_jobs` registry 资源仍以完整任务对象读写，store 层负责在两张表之间组装和更新。
 

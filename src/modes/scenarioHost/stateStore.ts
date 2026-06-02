@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
@@ -12,12 +13,15 @@ import {
 import { resolveSessionParticipantLabel, resolveSessionParticipantRef } from "#conversation/session/sessionIdentity.ts";
 import {
   createInitialScenarioHostSessionState,
+  migrateScenarioHostSessionState,
   scenarioHostSessionStateSchema,
   type ScenarioHostSessionState
 } from "./types.ts";
+import { scenarioProfileSchema, type ScenarioProfile } from "./profileSchema.ts";
 
 export class ScenarioHostStateStore {
   private readonly dbPath: string;
+  private readonly legacyStateDbPath: string;
   private sqlite: SqliteDatabaseHandle | null = null;
   private readonly writes = new Map<string, Promise<ScenarioHostSessionState | null>>();
 
@@ -28,6 +32,7 @@ export class ScenarioHostStateStore {
     private readonly sqliteService = new SqliteService(logger)
   ) {
     this.dbPath = join(dataDir, "sessions", "sessions.sqlite");
+    this.legacyStateDbPath = join(dataDir, "state", "state.sqlite");
   }
 
   async init(): Promise<void> {
@@ -64,7 +69,7 @@ export class ScenarioHostStateStore {
     return {
       rows: rows.map((row) => ({
         sessionId: row.session_id,
-        state: scenarioHostSessionStateSchema.parse(JSON.parse(row.state_json)),
+        state: migrateScenarioHostSessionState(JSON.parse(row.state_json)),
         updatedAtMs: row.updated_at_ms
       })),
       total,
@@ -139,7 +144,7 @@ export class ScenarioHostStateStore {
       this.sqlite = await this.sqliteService.openDatabase({
         databaseId: "sessions",
         dbPath: this.dbPath,
-        tableGroups: SCENARIO_HOST_TABLE_GROUPS,
+        tableGroups: createScenarioHostTableGroups(this.legacyStateDbPath),
         pragmas: {
           wal: true,
           foreignKeys: true,
@@ -194,7 +199,7 @@ function getScenarioHostStateRow(db: SqliteDatabase, sessionId: string): Scenari
     return null;
   }
   try {
-    return scenarioHostSessionStateSchema.parse(JSON.parse(row.state_json));
+    return migrateScenarioHostSessionState(JSON.parse(row.state_json));
   } catch (error: unknown) {
     throw new Error(
       `scenario_host_state_store_load_failed: ${error instanceof Error ? error.message : String(error)}`
@@ -233,13 +238,120 @@ function validateScenarioHostStateSchema(db: SqliteDatabase): void {
   });
 }
 
-const SCENARIO_HOST_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
-  {
+function migrateScenarioHostStateSchema(db: SqliteDatabase, legacyStateDbPath: string): boolean {
+  const rows = db.prepare(`
+    SELECT session_id, state_json
+    FROM scenario_host_session_states
+  `).all() as Array<{ session_id: string; state_json: string }>;
+  const update = db.prepare(`
+    UPDATE scenario_host_session_states
+    SET state_json = ?, updated_at_ms = ?
+    WHERE session_id = ?
+  `);
+  const now = Date.now();
+  const legacyProfile = readLegacyScenarioProfile(db, legacyStateDbPath);
+  for (const row of rows) {
+    const migrated = migrateScenarioHostSessionState(JSON.parse(row.state_json));
+    const nextState = legacyProfile && !isProfileCompleteEnough(migrated.profile)
+      ? { ...migrated, profile: legacyProfile }
+      : migrated;
+    update.run(JSON.stringify(nextState), now, row.session_id);
+  }
+  return true;
+}
+
+function readLegacyScenarioProfile(db: SqliteDatabase, legacyStateDbPath: string): ScenarioProfile | null {
+  if (!existsSync(legacyStateDbPath)) {
+    return null;
+  }
+  const schemaName = "legacy_scenario_profile_state";
+  let attached = false;
+  try {
+    db.prepare(`ATTACH DATABASE ? AS ${schemaName}`).run(legacyStateDbPath);
+    attached = true;
+    const table = db.prepare(`
+      SELECT name
+      FROM ${schemaName}.sqlite_master
+      WHERE type = 'table'
+        AND name = 'scenario_profile'
+    `).get() as { name: string } | undefined;
+    if (!table) {
+      return null;
+    }
+    const columns = new Set((db.prepare(`PRAGMA ${schemaName}.table_info(scenario_profile)`).all() as Array<{ name: string }>)
+      .map((column) => column.name));
+    if (columns.has("narration_style")) {
+      const row = db.prepare(`
+        SELECT
+          theme,
+          world_baseline AS worldBaseline,
+          narration_style AS narrationStyle,
+          boundaries
+        FROM ${schemaName}.scenario_profile
+        WHERE id = 'global'
+      `).get() as ScenarioProfile | undefined;
+      return row ? scenarioProfileSchema.parse(row) : null;
+    }
+    if (columns.has("host_style")) {
+      const row = db.prepare(`
+        SELECT
+          theme,
+          host_style AS hostStyle,
+          world_baseline AS worldBaseline,
+          safety_or_taboo_rules AS safetyOrTabooRules,
+          opening_pattern AS openingPattern
+        FROM ${schemaName}.scenario_profile
+        WHERE id = 'global'
+      `).get() as {
+        theme?: string;
+        hostStyle?: string;
+        worldBaseline?: string;
+        safetyOrTabooRules?: string;
+        openingPattern?: string;
+      } | undefined;
+      return row
+        ? scenarioProfileSchema.parse({
+            theme: row.theme ?? "",
+            worldBaseline: row.worldBaseline ?? "",
+            narrationStyle: joinNonEmpty([row.hostStyle, row.openingPattern]),
+            boundaries: row.safetyOrTabooRules ?? ""
+          })
+        : null;
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    if (attached) {
+      try {
+        db.exec(`DETACH DATABASE ${schemaName}`);
+      } catch {
+        // Best-effort cleanup for a one-time legacy read.
+      }
+    }
+  }
+}
+
+function isProfileCompleteEnough(profile: ScenarioProfile): boolean {
+  return Boolean(profile.theme.trim() || profile.worldBaseline.trim() || profile.narrationStyle.trim() || profile.boundaries.trim());
+}
+
+function joinNonEmpty(values: Array<string | undefined>): string {
+  return values
+    .map((value) => value?.trim() ?? "")
+    .filter(Boolean)
+    .join("；");
+}
+
+function createScenarioHostTableGroups(legacyStateDbPath: string): SqliteTableGroupDefinition[] {
+  return [{
     groupId: "sessions.scenario_host_state",
-    schemaVersion: 1,
+    schemaVersion: 3,
+    minReadableSchemaVersion: 1,
     resetPolicy: "block_reset",
     ownedTables: ["scenario_host_session_states"],
     createSchema: createScenarioHostStateSchema,
+    migrateSchema: (db) => migrateScenarioHostStateSchema(db, legacyStateDbPath),
     validateSchema: validateScenarioHostStateSchema
-  }
-];
+  }];
+}

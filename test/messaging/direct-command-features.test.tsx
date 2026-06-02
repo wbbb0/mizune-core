@@ -452,6 +452,43 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
     assert.deepEqual(inRp, { name: "unknown", rawText: ".reset" }, "should report unknown command in rp_assistant");
   });
 
+  test("reset command preserves current scenario profile while clearing runtime state", async () => {
+    const savedProfile = {
+      ...createEmptyScenarioProfile(),
+      theme: "旧港钟声",
+      worldBaseline: "旧港每晚零点都会响钟。",
+      narrationStyle: "冷静克制"
+    };
+    let writtenState: any = null;
+    const { calls, handler } = createDirectCommandFixture({
+      session: {
+        modeId: "scenario_host"
+      },
+      scenarioHostStateStore: {
+        async ensure() {
+          return {
+            profile: savedProfile
+          };
+        },
+        async write(_sessionId: string, state: unknown) {
+          writtenState = state;
+          return state;
+        }
+      }
+    });
+
+    await handler({
+      command: { name: "reset" },
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+
+    assert.equal(writtenState.version, 3);
+    assert.deepEqual(writtenState.profile, savedProfile);
+    assert.equal(writtenState.initialized, false);
+    assert.equal(calls.at(-1)?.text, "场景已重置，会话上下文已清空。");
+  });
+
   test("unknown direct command returns explicit error message", async () => {
     const { calls, handler } = createDirectCommandFixture();
 
@@ -622,7 +659,6 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           return {
             persona: "ready",
             rp: "uninitialized",
-            scenario: "ready",
             updatedAt: 1
           };
         },
@@ -680,7 +716,6 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           return {
             persona: "ready",
             rp: "ready",
-            scenario: "ready",
             updatedAt: 1
           };
         },
@@ -710,20 +745,22 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
         latestOperationMode = operationMode as Record<string, unknown>;
         return operationMode;
       },
-      scenarioProfileStore: {
-        async get() {
+      scenarioHostStateStore: {
+        async ensure() {
           return {
-            ...createEmptyScenarioProfile(),
-            theme: "悬疑",
-            narrationStyle: "冷静",
-            worldBaseline: "现代都市"
+            profile: {
+              ...createEmptyScenarioProfile(),
+              theme: "悬疑",
+              narrationStyle: "冷静",
+              worldBaseline: "现代都市"
+            }
           };
         },
-        createEmpty() {
-          return createEmptyScenarioProfile();
+        async update() {
+          throw new Error("setup command should not update scenario state");
         },
-        isComplete() {
-          return true;
+        async write() {
+          throw new Error("setup command should not write scenario state");
         }
       },
       globalProfileReadinessStore: {
@@ -731,13 +768,9 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           return {
             persona: "ready",
             rp: "ready",
-            scenario: "ready",
             updatedAt: 1
           };
         },
-        async setScenarioReadiness() {
-          return null;
-        }
       } as any
     });
 
@@ -753,6 +786,35 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       draft: createEmptyScenarioProfile()
     });
     assert.match(String(calls.at(-1)?.text ?? ""), /已进入 Scenario 资料 初始化流程/);
+  });
+
+  test("setup scenario command rejects group sessions because scenario profile is per private session", async () => {
+    let latestOperationMode: Record<string, unknown> | null = null;
+    const { calls, handler } = createDirectCommandFixture({
+      session: {
+        id: "qqbot:g:1000",
+        type: "group",
+        participantRef: { kind: "group", id: "1000" }
+      },
+      setOperationMode(_sessionId, operationMode) {
+        latestOperationMode = operationMode as Record<string, unknown>;
+        return operationMode;
+      },
+      scenarioHostStateStore: {
+        async ensure() {
+          throw new Error("group scenario setup should not touch scenario state");
+        }
+      }
+    });
+
+    await handler({
+      command: { name: "setup", target: "scenario" },
+      sessionId: "qqbot:g:1000",
+      incomingMessage: { chatType: "group", userId: "owner", groupId: "1000", relationship: "owner" }
+    });
+
+    assert.equal(latestOperationMode, null);
+    assert.match(String(calls.at(-1)?.text ?? ""), /仅支持私聊/);
   });
 
   test("config command clones saved persona into draft", async () => {
@@ -788,7 +850,6 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           return {
             persona: "ready",
             rp: "uninitialized",
-            scenario: "uninitialized",
             updatedAt: 1
           };
         },
@@ -824,7 +885,6 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           return {
             persona: "ready",
             rp: "uninitialized",
-            scenario: "uninitialized",
             updatedAt: 1
           };
         },
@@ -840,7 +900,7 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
     });
 
-    assert.equal(calls.at(-1)?.text, "Scenario 资料尚未初始化，请先使用 `.setup scenario`。");
+    assert.equal(calls.at(-1)?.text, "当前会话 Scenario 资料尚未初始化，请先使用 `.setup scenario`。");
   });
 
   test("confirm command persists persona draft and exits configuration flow without clearing history", async () => {
@@ -901,7 +961,6 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           return {
             persona: "uninitialized",
             rp: "uninitialized",
-            scenario: "uninitialized",
             updatedAt: 1
           };
         },
@@ -991,7 +1050,6 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
   test("confirm command persists mode draft and updates mode readiness", async () => {
     const finishedOperations: Array<Record<string, unknown>> = [];
     const writtenProfiles: unknown[] = [];
-    const scenarioReadinessUpdates: Array<"uninitialized" | "ready"> = [];
 
     const { calls, handler } = createDirectCommandFixture({
       session: {
@@ -1011,18 +1069,19 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
         finishedOperations.push(input);
         return true;
       },
-      scenarioProfileStore: {
-        async get() {
-          return createEmptyScenarioProfile();
+      scenarioHostStateStore: {
+        async update(_sessionId: string, updater: (current: any) => any) {
+          const next = updater({
+            profile: createEmptyScenarioProfile()
+          });
+          writtenProfiles.push(next.profile);
+          return next;
         },
-        async write(profile: unknown) {
-          writtenProfiles.push(profile);
+        async ensure() {
+          return { profile: createEmptyScenarioProfile() };
         },
-        createEmpty() {
-          return createEmptyScenarioProfile();
-        },
-        isComplete() {
-          return true;
+        async write() {
+          throw new Error("confirm command should update scenario profile in state");
         }
       },
       globalProfileReadinessStore: {
@@ -1030,14 +1089,9 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           return {
             persona: "ready",
             rp: "uninitialized",
-            scenario: "ready",
             updatedAt: 1
           };
         },
-        async setScenarioReadiness(status: "uninitialized" | "ready") {
-          scenarioReadinessUpdates.push(status);
-          return null;
-        }
       } as any
     });
 
@@ -1049,7 +1103,6 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
 
     assert.deepEqual(finishedOperations, [{ action: "exit_confirmed", source: "command" }]);
     assert.equal(writtenProfiles.length, 1);
-    assert.deepEqual(scenarioReadinessUpdates, ["ready"]);
     assert.equal(calls.at(-1)?.text, "配置已确认，已回到正常对话。");
   });
 

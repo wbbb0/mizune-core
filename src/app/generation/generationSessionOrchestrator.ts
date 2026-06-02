@@ -103,7 +103,7 @@ function resolveActiveDraftOperation(input: {
 }): ActiveDraftOperation | null {
   const personaSetupOperation = resolveSessionModeSetupOperation(input.mode.setupPhase, "persona_setup");
   const modeSetupOperation = resolveSessionModeSetupOperation(input.mode.setupPhase, "mode_setup");
-  const modeTarget = input.mode.globalProfileAccess.modeProfile;
+  const modeTarget = input.mode.profileAccess.modeProfile;
 
   switch (input.operationMode.kind) {
     case "persona_setup":
@@ -204,25 +204,26 @@ function resolvePromptPersona(input: {
 
 async function resolvePromptModeProfile(input: {
   mode: SessionModeDefinition;
+  session: Parameters<GenerationSessionOrchestratorDeps["identity"]["scenarioHostStateStore"]["ensureForSession"]>[0];
   activeDraftOperation: ActiveDraftOperation | null;
   rpProfileStore: GenerationSessionOrchestratorDeps["identity"]["rpProfileStore"];
-  scenarioProfileStore: GenerationSessionOrchestratorDeps["identity"]["scenarioProfileStore"];
+  scenarioHostStateStore: GenerationSessionOrchestratorDeps["identity"]["scenarioHostStateStore"];
 }): Promise<PromptInput["modeProfile"] | undefined> {
   if (input.activeDraftOperation) {
     return undefined;
   }
 
-  if (input.mode.globalProfileAccess.modeProfile === "rp") {
+  if (input.mode.profileAccess.modeProfile === "rp") {
     return {
       target: "rp",
       profile: await input.rpProfileStore.get()
     };
   }
 
-  if (input.mode.globalProfileAccess.modeProfile === "scenario") {
+  if (input.mode.profileAccess.modeProfile === "scenario") {
     return {
       target: "scenario",
-      profile: await input.scenarioProfileStore.get()
+      profile: (await input.scenarioHostStateStore.ensureForSession(input.session)).profile
     };
   }
 
@@ -582,7 +583,7 @@ export function createGenerationSessionOrchestrator(
       const setupCtx = await resolveSessionModeSetupContext(
         sessionModeId,
         sessionId,
-        { globalProfileReadinessStore, sessionManager },
+        { globalProfileReadinessStore, sessionManager, scenarioHostStateStore: identity.scenarioHostStateStore },
         { chatType: last.chatType, relationship }
       );
       const setupOperationKind = mode.setupPhase?.resolveOperationModeKind(setupCtx) ?? null;
@@ -829,9 +830,10 @@ export function createGenerationSessionOrchestrator(
       });
       const modeProfile = await resolvePromptModeProfile({
         mode,
+        session: refreshedSession,
         activeDraftOperation,
         rpProfileStore: identity.rpProfileStore,
-        scenarioProfileStore: identity.scenarioProfileStore
+        scenarioHostStateStore: identity.scenarioHostStateStore
       });
 
       const promptBuildResult = isPersonaSetupMode
@@ -1046,9 +1048,10 @@ export function createGenerationSessionOrchestrator(
       const modeProfile = session.operationMode.kind === "normal"
         ? await resolvePromptModeProfile({
             mode,
+            session,
             activeDraftOperation: null,
             rpProfileStore: identity.rpProfileStore,
-            scenarioProfileStore: identity.scenarioProfileStore
+            scenarioHostStateStore: identity.scenarioHostStateStore
           })
         : undefined;
       const promptBuildResult = await services.promptBuilder.buildScheduledPromptMessages({
@@ -1229,9 +1232,10 @@ export function createGenerationSessionOrchestrator(
       const modeProfile = session.operationMode.kind === "normal"
         ? await resolvePromptModeProfile({
             mode,
+            session,
             activeDraftOperation: null,
             rpProfileStore: identity.rpProfileStore,
-            scenarioProfileStore: identity.scenarioProfileStore
+            scenarioHostStateStore: identity.scenarioHostStateStore
           })
         : undefined;
       const inlineBatchMessage = renderInlineTriggerBatchMessage(triggers);

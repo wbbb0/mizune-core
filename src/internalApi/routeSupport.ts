@@ -83,7 +83,8 @@ const switchSessionModeBodySchema = z.object({
 });
 
 const updateSessionModeStateBodySchema = z.object({
-  state: z.unknown()
+  state: z.unknown(),
+  baseState: z.unknown().optional()
 });
 
 const uploadWorkspaceFileSchema = z.object({

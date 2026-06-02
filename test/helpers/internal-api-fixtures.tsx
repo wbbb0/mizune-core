@@ -12,7 +12,7 @@ import { registerUploadRoutes } from "../../src/internalApi/routes/uploadRoutes.
 import { createInternalApiServices, type InternalApiDeps } from "../../src/internalApi/types.ts";
 import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
 import type { ContextManagementItem } from "../../src/context/contextTypes.ts";
-import type { ScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
+import { createInitialScenarioHostSessionState, type ScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
 import type { ShellRunParams, ShellRunResult, ShellSession } from "../../src/services/shell/types.ts";
 
 export interface InternalApiFixtureState {
@@ -642,19 +642,11 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       async write() {
       }
     } as unknown as InternalApiDeps["rpProfileStore"],
-    scenarioProfileStore: {
-      async get() {
-        return {};
-      },
-      async write() {
-      }
-    } as unknown as InternalApiDeps["scenarioProfileStore"],
     globalProfileReadinessStore: {
       async get() {
         return {
           persona: "uninitialized",
           rp: "uninitialized",
-          scenario: "uninitialized",
           updatedAt: 1
         };
       },
@@ -714,22 +706,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         if (existing) {
           return existing;
         }
-        const created = {
-          version: 1,
-          currentSituation: "场景尚未开始，请根据玩家接下来的行动开始主持。",
-          currentLocation: null,
-          sceneSummary: "",
-          player: {
-            userId: defaults.playerUserId,
-            displayName: defaults.playerDisplayName
-          },
-          inventory: [],
-          objectives: [],
-          worldFacts: [],
-          flags: {},
-          initialized: false,
-          turnIndex: 0
-        } satisfies ScenarioHostSessionState;
+        const created = createInitialScenarioHostSessionState(defaults);
         state.scenarioHostStates[sessionId] = created;
         return created;
       },
@@ -738,22 +715,10 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         if (existing) {
           return existing;
         }
-        const created = {
-          version: 1,
-          currentSituation: "场景尚未开始，请根据玩家接下来的行动开始主持。",
-          currentLocation: null,
-          sceneSummary: "",
-          player: {
-            userId: session.participantRef.id,
-            displayName: session.title ?? session.participantRef.id
-          },
-          inventory: [],
-          objectives: [],
-          worldFacts: [],
-          flags: {},
-          initialized: false,
-          turnIndex: 0
-        } satisfies ScenarioHostSessionState;
+        const created = createInitialScenarioHostSessionState({
+          playerUserId: session.participantRef.id,
+          playerDisplayName: session.title ?? session.participantRef.id
+        });
         state.scenarioHostStates[session.id] = created;
         return created;
       },

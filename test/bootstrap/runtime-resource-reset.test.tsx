@@ -64,13 +64,11 @@ test("initializeBootstrapState initializes state database before resetting runti
       toolsetRuleStore: { async init() {} } as any,
       scenarioHostStateStore: { async init() {} } as any,
       rpProfileStore: { async init() {}, async get() { return {}; }, isComplete() { return false; } } as any,
-      scenarioProfileStore: { async init() {}, async get() { return {}; }, isComplete() { return false; } } as any,
       setupStore: { async init() {} } as any,
       globalProfileReadinessStore: {
         async init() {},
         async setPersonaReadiness() {},
-        async setRpReadiness() {},
-        async setScenarioReadiness() {}
+        async setRpReadiness() {}
       } as any,
       sessionManager: { restoreSessions() {}, listSessions() { return []; } } as any,
       runtimeResourceRegistry,

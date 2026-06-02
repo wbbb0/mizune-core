@@ -280,7 +280,9 @@ function buildScenarioSetupCaptionPrompt(input: SessionCaptionerInput): { system
       `当前局势：${String(state?.currentSituation ?? "").trim() || "未提供"}`,
       `场景摘要：${String(state?.sceneSummary ?? "").trim() || "未提供"}`,
       `当前目标：${objectiveLine || "未提供"}`,
-      state?.worldFacts?.length ? `关键事实：${state.worldFacts.join("；")}` : "关键事实：未提供"
+      state?.loreEntries?.length
+        ? `关键设定：${state.loreEntries.filter((item) => item.enabled).map((item) => `${item.title}:${item.content}`).join("；")}`
+        : "关键设定：未提供"
     ].join("\n")
   };
 }

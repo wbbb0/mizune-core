@@ -32,7 +32,6 @@ export class GlobalProfileReadinessStore {
       SELECT
         persona,
         rp,
-        scenario,
         updated_at_ms AS updatedAt
       FROM global_profile_readiness
       WHERE id = 'global'
@@ -54,20 +53,17 @@ export class GlobalProfileReadinessStore {
         id,
         persona,
         rp,
-        scenario,
         updated_at_ms
       )
       VALUES (
         'global',
         @persona,
         @rp,
-        @scenario,
         @updatedAt
       )
       ON CONFLICT(id) DO UPDATE SET
         persona = excluded.persona,
         rp = excluded.rp,
-        scenario = excluded.scenario,
         updated_at_ms = excluded.updated_at_ms
     `).run(next);
     return next;
@@ -89,19 +85,11 @@ export class GlobalProfileReadinessStore {
     return this.patch({ rp });
   }
 
-  async setScenarioReadiness(scenario: GlobalProfileReadinessStatus): Promise<GlobalProfileReadiness> {
-    return this.patch({ scenario });
-  }
-
   async isPersonaReady(): Promise<boolean> {
     return (await this.get()).persona === "ready";
   }
 
   async isRpReady(): Promise<boolean> {
     return (await this.get()).rp === "ready";
-  }
-
-  async isScenarioReady(): Promise<boolean> {
-    return (await this.get()).scenario === "ready";
   }
 }
