@@ -13,6 +13,27 @@ import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.t
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
+import { createInitialScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
+
+function createScenarioState(input: {
+  profile?: ReturnType<typeof createEmptyScenarioProfile>;
+  completeRuntime?: boolean;
+} = {}) {
+  const state = createInitialScenarioHostSessionState({ playerUserId: "owner", playerDisplayName: "Owner" });
+  return {
+    ...state,
+    profile: input.profile ?? createEmptyScenarioProfile(),
+    player: {
+      ...state.player,
+      ...(input.completeRuntime ? {
+        basicInfo: "旧城调查员。",
+        characterDescription: "谨慎、善于观察，正在追查钟楼异象。",
+        wornItems: [{ name: "旅行外套", wearPosition: "外套", description: "耐磨的深色外套" }],
+        heldItems: [{ name: "旧提灯", description: "铜制护罩的提灯", quantity: 1 }]
+      } : {})
+    }
+  };
+}
 
   test("direct command parser supports owner bootstrap command", async () => {
     assert.deepEqual(parseDirectCommand(".own"), { name: "own" });
@@ -466,9 +487,7 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       },
       scenarioHostStateStore: {
         async ensure() {
-          return {
-            profile: savedProfile
-          };
+          return createScenarioState({ profile: savedProfile, completeRuntime: true });
         },
         async write(_sessionId: string, state: unknown) {
           writtenState = state;
@@ -483,7 +502,7 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
     });
 
-    assert.equal(writtenState.version, 3);
+    assert.equal(writtenState.version, 5);
     assert.deepEqual(writtenState.profile, savedProfile);
     assert.equal(writtenState.initialized, false);
     assert.equal(calls.at(-1)?.text, "场景已重置，会话上下文已清空。");
@@ -747,14 +766,15 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       },
       scenarioHostStateStore: {
         async ensure() {
-          return {
+          return createScenarioState({
             profile: {
               ...createEmptyScenarioProfile(),
               theme: "悬疑",
               narrationStyle: "冷静",
               worldBaseline: "现代都市"
-            }
-          };
+            },
+            completeRuntime: true
+          });
         },
         async update() {
           throw new Error("setup command should not update scenario state");
@@ -892,6 +912,25 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
           return null;
         }
       } as any
+    });
+
+    await handler({
+      command: { name: "config", target: "scenario" },
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+
+    assert.equal(calls.at(-1)?.text, "当前会话 Scenario 资料尚未初始化，请先使用 `.setup scenario`。");
+  });
+
+  test("config scenario rejects complete but unconfirmed scenario state", async () => {
+    const completeUnconfirmedState = createScenarioState({ completeRuntime: true });
+    const { calls, handler } = createDirectCommandFixture({
+      scenarioHostStateStore: {
+        async ensure() {
+          return completeUnconfirmedState;
+        }
+      }
     });
 
     await handler({
@@ -1049,7 +1088,18 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
 
   test("confirm command persists mode draft and updates mode readiness", async () => {
     const finishedOperations: Array<Record<string, unknown>> = [];
-    const writtenProfiles: unknown[] = [];
+    const writtenStates: any[] = [];
+    const baseScenarioState = createInitialScenarioHostSessionState({ playerUserId: "owner", playerDisplayName: "Owner" });
+    const currentScenarioState = {
+      ...baseScenarioState,
+      player: {
+        ...baseScenarioState.player,
+        basicInfo: "旧城调查员。",
+        characterDescription: "谨慎、善于观察，正在追查钟楼异象。",
+        wornItems: [{ name: "旅行外套", wearPosition: "上身", description: "耐磨的深色外套" }],
+        heldItems: [{ name: "旧提灯", description: "铜制护罩的提灯", quantity: 1 }]
+      }
+    };
 
     const { calls, handler } = createDirectCommandFixture({
       session: {
@@ -1071,14 +1121,12 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
       },
       scenarioHostStateStore: {
         async update(_sessionId: string, updater: (current: any) => any) {
-          const next = updater({
-            profile: createEmptyScenarioProfile()
-          });
-          writtenProfiles.push(next.profile);
+          const next = updater(currentScenarioState);
+          writtenStates.push(next);
           return next;
         },
         async ensure() {
-          return { profile: createEmptyScenarioProfile() };
+          return currentScenarioState;
         },
         async write() {
           throw new Error("confirm command should update scenario profile in state");
@@ -1102,8 +1150,62 @@ import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profile
     });
 
     assert.deepEqual(finishedOperations, [{ action: "exit_confirmed", source: "command" }]);
-    assert.equal(writtenProfiles.length, 1);
+    assert.equal(writtenStates.length, 1);
+    assert.equal(writtenStates[0].initialized, true);
+    assert.deepEqual(writtenStates[0].profile, {
+      ...createEmptyScenarioProfile(),
+      theme: "悬疑",
+      narrationStyle: "克制",
+      worldBaseline: "现代都市"
+    });
     assert.equal(calls.at(-1)?.text, "配置已确认，已回到正常对话。");
+  });
+
+  test("confirm command rejects scenario setup until player worn and held items are recorded", async () => {
+    const finishedOperations: Array<Record<string, unknown>> = [];
+    const writtenProfiles: unknown[] = [];
+    const currentScenarioState = createInitialScenarioHostSessionState({ playerUserId: "owner", playerDisplayName: "Owner" });
+
+    const { calls, handler } = createDirectCommandFixture({
+      session: {
+        operationMode: {
+          kind: "mode_setup",
+          modeId: "scenario_host",
+          draft: {
+            ...createEmptyScenarioProfile(),
+            theme: "悬疑",
+            narrationStyle: "克制",
+            worldBaseline: "现代都市"
+          }
+        }
+      },
+      finishProfileOperation(_sessionId, input) {
+        finishedOperations.push(input);
+        return true;
+      },
+      scenarioHostStateStore: {
+        async ensure() {
+          return currentScenarioState;
+        },
+        async update(_sessionId: string, updater: (current: any) => any) {
+          writtenProfiles.push(await updater(currentScenarioState));
+          return currentScenarioState;
+        },
+        async write() {
+          throw new Error("confirm command should not write scenario state when required fields are missing");
+        }
+      }
+    });
+
+    await handler({
+      command: { name: "confirm" },
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+
+    assert.deepEqual(finishedOperations, []);
+    assert.deepEqual(writtenProfiles, []);
+    assert.equal(calls.at(-1)?.text, "Scenario 初始化还缺：玩家基础信息、玩家角色描述、玩家穿着、玩家持有物。请先补齐后再确认。");
   });
 
   test("cancel command exits configuration flow without clearing history", async () => {

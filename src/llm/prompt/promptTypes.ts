@@ -160,6 +160,7 @@ export interface PromptInput {
   liveResources?: PromptLiveResource[] | undefined;
   toolsetRules?: ToolsetRuleEntry[] | undefined;
   scenarioStateLines?: string[] | undefined;
+  scenarioSetupRequirementLines?: string[] | undefined;
   modeProfile?:
     | {
         target: "rp";

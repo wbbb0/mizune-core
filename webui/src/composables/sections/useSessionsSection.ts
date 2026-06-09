@@ -171,7 +171,7 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
 
       await windows.openDialog({
         title: "会话操作",
-        description: "管理标题、切换当前会话模式，或删除该会话。",
+        description: "管理标题、切换模式、复制副本，或删除该会话。",
         size: "lg",
         modal: true,
         context: createSessionWindowContext(sessionId),
@@ -186,6 +186,13 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
                   placeholder: "输入会话标题"
                 }]
               : []),
+            {
+              kind: "string" as const,
+              key: "copyTitle",
+              label: "副本标题",
+              defaultValue: `${session.displayLabel || session.title || session.id} 副本`,
+              placeholder: "复制为 Web 会话时使用"
+            },
             {
               kind: "enum" as const,
               key: "modeId",
@@ -207,7 +214,7 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
             : []),
           {
             kind: "text" as const,
-            content: "切换模式会立即影响当前会话的后续行为。删除会话不可恢复。"
+            content: "复制会创建新的 Web 会话，并保留当前会话历史与模式状态。切换模式会立即影响当前会话的后续行为。删除会话不可恢复。"
           }
         ],
         actions: [
@@ -259,6 +266,23 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
                 return { sessionId, modeId };
               } catch (error: unknown) {
                 reportError(error, "切换模式失败");
+                throw error;
+              }
+            }
+          },
+          {
+            id: "copy-to-web",
+            label: "复制为 Web 会话",
+            variant: "secondary" as const,
+            run: async ({ values }: { values: Record<string, unknown> }) => {
+              try {
+                const copiedSessionId = await store.copySessionToWebSession(sessionId, {
+                  title: String(values.copyTitle ?? "")
+                });
+                workbenchNavigation.showArea("mainArea");
+                return { sessionId: copiedSessionId };
+              } catch (error: unknown) {
+                reportError(error, "复制会话失败");
                 throw error;
               }
             }

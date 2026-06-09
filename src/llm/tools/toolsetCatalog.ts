@@ -291,18 +291,21 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     description: "读取和维护 scenario_host 会话的场景状态。",
     plannerSignals: [
       "推进场景状态",
-      "维护地点、目标、背包、Lore、实体、关系或剧情日志"
+      "维护玩家角色、NPC、穿着、持有物、地点、目标、Lore、实体、关系或剧情日志",
+      "根据角色描述补全穿着或随身物品候选"
     ],
     toolNames: [
       "get_scenario_state",
       "update_scenario_state",
       "set_current_location",
+      "update_player_character",
       "manage_objective",
-      "manage_inventory",
+      "manage_npc",
       "manage_lore_entry",
       "manage_entity",
       "manage_relation",
-      "append_journal_entry"
+      "append_journal_entry",
+      "suggest_scenario_details"
     ]
   },
   {

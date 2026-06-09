@@ -63,16 +63,19 @@
 
 ## Sessions Store 表组
 
-当前 `sessions/sessions.sqlite` 注册了两个 source-of-truth 表组：
+当前 `sessions/sessions.sqlite` 注册了三个 source-of-truth 表组：
 
 - `sessions.persisted_sessions`：`sessions`、`session_transcript_items`，承载会话快照持久化数据
 - `sessions.scenario_host_state`：`scenario_host_session_states`，承载 `scenario_host` 每会话状态与当前会话 Scenario 资料
+- `sessions.snapshots`：`session_snapshots`，承载手动存档读档用的完整 session 快照
 
-`sessions.scenario_host_state` 使用 `block_reset`，不接受版本不匹配时的自动重建。`sessions.persisted_sessions` 当前使用默认 reset 策略，结构破坏性调整会以当前代码结构为准重建该表组。
+`sessions.scenario_host_state` 与 `sessions.snapshots` 使用 `block_reset`，不接受版本不匹配时的自动重建。`sessions.persisted_sessions` 当前使用默认 reset 策略，结构破坏性调整会以当前代码结构为准重建该表组。
 
 `sessions` 表只保存会话元数据、pending 消息、摘要、用量和已发送消息等快照字段；`internalTranscript` 不再以内嵌大 JSON 字段保存，而是拆为 `session_transcript_items` 竖表，一行对应一条后台记录。保存会话时持久化层按 `item_id` 与内容 hash 增量 upsert/delete transcript 行，避免高频聊天时反复重写整个 transcript。启动恢复时通过 SQLite 子查询按 `item_index` 聚合 `item_json`，再还原为完整 `PersistedSessionState.internalTranscript`。
 
-`scenario_host_session_states.state_json` 当前 schema 版本为 3，其中 `profile` 保存当前会话的 Scenario 资料，`currentSituation`、`currentLocation`、`inventory`、`objectives`、`loreEntries`、`entities`、`relations`、`journal`、`mechanics` 等字段保存运行态。v1/v2 行会在打开数据库时显式迁移为 v3；旧 `worldFacts` 会归并为 `loreEntries`，旧全局 Scenario 资料会在迁移时一次性复制到已有会话状态。
+`scenario_host_session_states.state_json` 当前 payload 版本为 5，其中 `profile` 保存当前会话的 Scenario 资料，`currentSituation`、`currentLocation`、`player`、`npcs`、`objectives`、`loreEntries`、`entities`、`relations`、`journal`、`mechanics` 等字段保存运行态。玩家与 NPC 的随身穿着和持有物分别保存在角色的 `wornItems` 与 `heldItems` 中；通用 `entities` 只描述地点、阵营、物品、组织等非角色对象。v1/v2/v3/v4 行会在打开数据库时显式迁移为 v5；旧 `inventory` 会按 owner 归并到玩家或 NPC 的 `heldItems`，无法归属到角色的旧物品会迁移为 `entities` 中的 `item`；旧 `worldFacts` 会归并为 `loreEntries`，旧全局 Scenario 资料会在迁移时一次性复制到已有会话状态。
+
+`session_snapshots.payload_json` 保存版本化快照 payload，当前包含 `PersistedSessionState` 与可选 mode state。读档会恢复完整 session 持久化状态，并在 `scenario_host` 快照中同步恢复 `scenario_host_session_states`；读档期间会拒绝正在生成或外发中的会话，避免旧回复在读档后继续发出。
 
 内部 API 的 Data Registry 将这两个表分别暴露为 `sessions` 和 `session_transcript_items` 资源；WebUI `Data` 页对这两个资源使用专用只读查看器，便于直接检查会话元数据和单条 transcript 内容。
 

@@ -1,6 +1,11 @@
 import { startsWithTag } from "#utils/structuredEnvelope.ts";
 
-export type ScenarioHostUserInputKind = "player_action" | "ooc_instruction" | "player_speech";
+export type ScenarioHostUserInputKind =
+  | "player_action"
+  | "auto_advance"
+  | "delegated_player_action"
+  | "ooc_instruction"
+  | "player_speech";
 
 export interface ScenarioHostParsedUserInput {
   kind: ScenarioHostUserInputKind;
@@ -9,6 +14,8 @@ export interface ScenarioHostParsedUserInput {
 
 const LABEL_BY_KIND: Record<ScenarioHostUserInputKind, string> = {
   player_action: "玩家动作",
+  auto_advance: "自动推进",
+  delegated_player_action: "代行玩家动作",
   ooc_instruction: "场外指令",
   player_speech: "玩家对白"
 };
@@ -19,6 +26,20 @@ export function parseScenarioHostUserInput(text: string): ScenarioHostParsedUser
     return {
       kind: "player_speech",
       content: ""
+    };
+  }
+
+  if (String(text).trim() === "*") {
+    return {
+      kind: "auto_advance",
+      content: "玩家没有声明新的具体动作，请基于当前局面自然推进下一步。"
+    };
+  }
+
+  if (String(text).trim() === "**") {
+    return {
+      kind: "delegated_player_action",
+      content: "玩家请求你代为选择并执行下一步玩家角色行动；请基于当前局面、角色资料和已知风险做出合理的一小步行动。"
     };
   }
 
@@ -49,22 +70,24 @@ export function formatScenarioHostParsedUserInput(input: ScenarioHostParsedUserI
 
 export function formatScenarioHostStructuredUserContent(content: string): string {
   const lines = String(content).replace(/\r\n/g, "\n").split("\n");
-  const start = lines.findIndex((line) => line.trim() && !startsWithTag(line));
-  if (start < 0) {
-    return content;
-  }
+  const rewrittenLines: string[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index] ?? "";
+    if (!line.trim() || startsWithTag(line)) {
+      rewrittenLines.push(line);
+      index += 1;
+      continue;
+    }
 
-  let end = start + 1;
-  while (end < lines.length && lines[end] && !startsWithTag(lines[end]!)) {
-    end += 1;
+    const start = index;
+    index += 1;
+    while (index < lines.length && lines[index]?.trim() && !startsWithTag(lines[index]!)) {
+      index += 1;
+    }
+    rewrittenLines.push(formatScenarioHostParsedUserInput(
+      parseScenarioHostUserInput(lines.slice(start, index).join("\n"))
+    ));
   }
-
-  const rewritten = formatScenarioHostParsedUserInput(
-    parseScenarioHostUserInput(lines.slice(start, end).join("\n"))
-  );
-  return [
-    ...lines.slice(0, start),
-    rewritten,
-    ...lines.slice(end)
-  ].join("\n");
+  return rewrittenLines.join("\n");
 }

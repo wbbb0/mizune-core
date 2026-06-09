@@ -10,7 +10,10 @@ import { registerMessagingRoutes } from "../../src/internalApi/routes/messagingR
 import { registerShellRoutes } from "../../src/internalApi/routes/shellRoutes.ts";
 import { registerUploadRoutes } from "../../src/internalApi/routes/uploadRoutes.ts";
 import { createInternalApiServices, type InternalApiDeps } from "../../src/internalApi/types.ts";
-import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
+import type { InternalTranscriptItem, PersistedSessionState } from "../../src/conversation/session/sessionTypes.ts";
+import type { SessionSnapshotPayload, SessionSnapshotSummary } from "../../src/conversation/session/sessionSnapshotStore.ts";
+import { createNormalSessionOperationMode } from "../../src/conversation/session/sessionOperationMode.ts";
+import { createEmptySessionTaskTracker } from "../../src/conversation/taskTracker/taskTrackerTypes.ts";
 import type { ContextManagementItem } from "../../src/context/contextTypes.ts";
 import { createInitialScenarioHostSessionState, type ScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
 import type { ShellRunParams, ShellRunResult, ShellSession } from "../../src/services/shell/types.ts";
@@ -23,6 +26,7 @@ export interface InternalApiFixtureState {
     type: "private" | "group";
     source: "onebot" | "web";
     modeId: string;
+    operationMode: NonNullable<PersistedSessionState["operationMode"]>;
     participantRef: {
       kind: "user" | "group";
       id: string;
@@ -33,11 +37,15 @@ export interface InternalApiFixtureState {
     titleSource: "default" | "auto" | "manual" | null;
     phase: { kind: string };
     pendingMessages: Array<{ id?: number }>;
+    taskTracker: NonNullable<PersistedSessionState["taskTracker"]>;
     internalTranscript: InternalTranscriptItem[];
+    debugMarkers: PersistedSessionState["debugMarkers"];
+    lastLlmUsage: PersistedSessionState["lastLlmUsage"];
     isGenerating: boolean;
     lastActiveAt: number;
   }>;
   scenarioHostStates: Record<string, ScenarioHostSessionState>;
+  sessionSnapshots: Array<{ summary: SessionSnapshotSummary; payload: SessionSnapshotPayload }>;
   shellSessions: ShellSession[];
   closedSessionIds: string[];
   configCheckForUpdatesCount: number;
@@ -101,6 +109,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       type: "private",
       source: "onebot",
       modeId: "rp_assistant",
+      operationMode: createNormalSessionOperationMode(),
       participantRef: { kind: "user", id: "10001" },
       participantUserId: "10001",
       participantLabel: "Alice",
@@ -108,11 +117,15 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       titleSource: "manual",
       phase: { kind: "idle" },
       pendingMessages: [{ id: 1 }],
+      taskTracker: createEmptySessionTaskTracker(),
       internalTranscript: [],
+      debugMarkers: [],
+      lastLlmUsage: null,
       isGenerating: false,
       lastActiveAt: 123456
     }],
     scenarioHostStates: {},
+    sessionSnapshots: [],
     shellSessions: [createShellSession()],
     closedSessionIds: [],
     configCheckForUpdatesCount: 0,
@@ -389,6 +402,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           type: session.type,
           source: session.source,
           modeId: session.modeId,
+          operationMode: session.operationMode,
           participantRef: session.participantRef,
           participantUserId: session.participantUserId,
           participantLabel: session.participantLabel,
@@ -401,8 +415,8 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           historySummary: null,
           recentMessages: [],
           internalTranscript: session.internalTranscript,
-          debugMarkers: [],
-          lastLlmUsage: null,
+          debugMarkers: session.debugMarkers,
+          lastLlmUsage: session.lastLlmUsage,
           sentMessages: [],
           lastActiveAt: session.lastActiveAt
         };
@@ -420,6 +434,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           type: existing?.type ?? (sessionId.startsWith("qqbot:g:") ? "group" : "private"),
           source: existing?.source ?? (sessionId.startsWith("web:") ? "web" : "onebot"),
           modeId: existing?.modeId ?? "rp_assistant",
+          operationMode: existing?.operationMode ?? createNormalSessionOperationMode(),
           participantRef: existing?.participantRef ?? {
             kind: (existing?.type ?? (sessionId.startsWith("qqbot:g:") ? "group" : "private")) === "group" ? "group" : "user",
             id: existing?.participantUserId ?? "10001"
@@ -430,12 +445,15 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           titleSource: existing?.titleSource ?? "manual",
           phase: existing?.phase ?? { kind: "idle" },
           pendingMessages: [],
+          taskTracker: existing?.taskTracker ?? createEmptySessionTaskTracker(),
           debounceTimer: null,
           isGenerating: false,
           historyRevision: 0,
           mutationEpoch: 0,
           lastActiveAt: 123456,
           internalTranscript: existing?.internalTranscript ?? [],
+          debugMarkers: existing?.debugMarkers ?? [],
+          lastLlmUsage: existing?.lastLlmUsage ?? null,
           activeAssistantResponse: null,
           activeAssistantDraftResponse: null
         };
@@ -486,6 +504,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           type: target.type,
           source: target.source ?? "onebot",
           modeId: "rp_assistant",
+          operationMode: createNormalSessionOperationMode(),
           participantRef,
           participantUserId: participantRef.id,
           participantLabel: title ?? participantRef.id,
@@ -493,7 +512,10 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           titleSource: target.titleSource ?? (title ? "manual" : "default"),
           phase: { kind: "idle" },
           pendingMessages: [],
+          taskTracker: createEmptySessionTaskTracker(),
           internalTranscript: [],
+          debugMarkers: [],
+          lastLlmUsage: null,
           isGenerating: false,
           lastActiveAt: Date.now()
         };
@@ -563,22 +585,57 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           type: session.type,
           source: session.source,
           modeId: session.modeId,
+          operationMode: session.operationMode,
           participantRef: session.participantRef,
           participantUserId: session.participantUserId,
           participantLabel: session.participantLabel,
           title: session.title,
           titleSource: session.titleSource,
+          replyDelivery: session.source === "web" ? "web" : "onebot",
           pendingMessages: [],
+          taskTracker: session.taskTracker,
           internalTranscript: session.internalTranscript,
           historySummary: null,
-          debugMarkers: [],
-          lastLlmUsage: null,
+          debugMarkers: session.debugMarkers,
+          lastLlmUsage: session.lastLlmUsage,
           sentMessages: [],
           lastActiveAt: session.lastActiveAt,
           lastMessageAt: null,
           latestGapMs: null,
           smoothedGapMs: null
         };
+      },
+      restorePersistedSession(item: PersistedSessionState) {
+        const index = state.sessions.findIndex((session) => session.id === item.id);
+        const restored = {
+          id: item.id,
+          type: item.type,
+          source: item.source ?? "onebot",
+          modeId: item.modeId ?? "rp_assistant",
+          operationMode: item.operationMode ?? createNormalSessionOperationMode(),
+          participantRef: item.participantRef,
+          participantUserId: item.participantRef.id,
+          participantLabel: item.title ?? item.participantRef.id,
+          title: item.title,
+          titleSource: item.titleSource,
+          phase: { kind: "idle" },
+          pendingMessages: [],
+          taskTracker: item.taskTracker ?? createEmptySessionTaskTracker(),
+          internalTranscript: item.internalTranscript,
+          debugMarkers: item.debugMarkers,
+          lastLlmUsage: item.lastLlmUsage,
+          isGenerating: false,
+          historyRevision: 1,
+          mutationEpoch: 1,
+          lastActiveAt: item.lastActiveAt
+        };
+        if (index === -1) {
+          state.sessions.push(restored);
+        } else {
+          state.sessions[index] = restored;
+        }
+        notifySessionChanged(item.id);
+        return restored as never;
       },
       getLlmVisibleHistory() {
         return [];
@@ -725,6 +782,11 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       async write(sessionId: string, nextState: ScenarioHostSessionState) {
         state.scenarioHostStates[sessionId] = nextState;
         return nextState;
+      },
+      async delete(sessionId: string) {
+        const existed = Object.prototype.hasOwnProperty.call(state.scenarioHostStates, sessionId);
+        delete state.scenarioHostStates[sessionId];
+        return existed;
       }
     } as unknown as InternalApiDeps["scenarioHostStateStore"],
     userStore: {
@@ -1276,16 +1338,19 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           type: session.type,
           source: session.source,
           modeId: session.modeId,
+          operationMode: session.operationMode,
           participantRef: session.participantRef,
           participantUserId: session.participantUserId,
           participantLabel: session.participantLabel,
           title: session.title,
           titleSource: session.titleSource,
+          replyDelivery: session.source === "web" ? "web" : "onebot",
           pendingMessages: [],
+          taskTracker: session.taskTracker,
           internalTranscript: session.internalTranscript,
           historySummary: null,
-          debugMarkers: [],
-          lastLlmUsage: null,
+          debugMarkers: session.debugMarkers,
+          lastLlmUsage: session.lastLlmUsage,
           sentMessages: [],
           lastActiveAt: session.lastActiveAt,
           lastMessageAt: null,
@@ -1297,11 +1362,64 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         return 987654321;
       }
     } as unknown as InternalApiDeps["sessionPersistence"],
+    sessionSnapshotStore: {
+      async list(sessionId: string) {
+        return state.sessionSnapshots
+          .filter((snapshot) => snapshot.summary.sessionId === sessionId)
+          .map((snapshot) => snapshot.summary);
+      },
+      async create(input: {
+        sessionId: string;
+        label?: string;
+        session: PersistedSessionState;
+        modeState: SessionSnapshotPayload["modeState"];
+      }) {
+        const createdAtMs = Date.now();
+        const payload: SessionSnapshotPayload = {
+          version: 1,
+          session: input.session,
+          modeState: input.modeState
+        };
+        const summary: SessionSnapshotSummary = {
+          id: `snapshot-${state.sessionSnapshots.length + 1}`,
+          sessionId: input.sessionId,
+          label: input.label?.trim() || `存档 ${createdAtMs}`,
+          createdAtMs,
+          modeId: input.session.modeId ?? "rp_assistant",
+          title: input.session.title,
+          transcriptCount: input.session.internalTranscript.length,
+          hasScenarioHostState: input.modeState?.kind === "scenario_host"
+        };
+        state.sessionSnapshots.push({ summary, payload });
+        return summary;
+      },
+      async get(sessionId: string, snapshotId: string) {
+        return state.sessionSnapshots.find((snapshot) => (
+          snapshot.summary.sessionId === sessionId && snapshot.summary.id === snapshotId
+        )) ?? null;
+      },
+      async delete(sessionId: string, snapshotId: string) {
+        const index = state.sessionSnapshots.findIndex((snapshot) => (
+          snapshot.summary.sessionId === sessionId && snapshot.summary.id === snapshotId
+        ));
+        if (index === -1) {
+          return false;
+        }
+        state.sessionSnapshots.splice(index, 1);
+        return true;
+      },
+      async deleteAllForSession(sessionId: string) {
+        const before = state.sessionSnapshots.length;
+        state.sessionSnapshots = state.sessionSnapshots.filter((snapshot) => snapshot.summary.sessionId !== sessionId);
+        return before - state.sessionSnapshots.length;
+      }
+    } as unknown as InternalApiDeps["sessionSnapshotStore"],
     async handleWebIncomingMessage(incomingMessage, options) {
       const text = `web handled: ${options.sessionId ?? "derived"}: ${incomingMessage.text}`;
       options.draftOverlaySink?.appendDelta(text);
       options.draftOverlaySink?.complete();
     },
+    flushSession() {},
     browserService: {
       async listProfiles() {
         return {

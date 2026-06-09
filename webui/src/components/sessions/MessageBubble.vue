@@ -138,7 +138,6 @@ function getFileTypeLabel(part: Extract<ChatTimelineContentPart, { kind: "file" 
   <div
     class="flex items-end gap-2 px-3 py-1"
     :class="{ 'flex-row-reverse': side === 'right' }"
-    @contextmenu.prevent="openActions"
   >
     <SessionGlyph
       class="shrink-0"

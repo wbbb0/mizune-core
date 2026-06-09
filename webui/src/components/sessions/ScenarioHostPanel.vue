@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
-import { RefreshCw } from "lucide-vue-next";
+import { computed, ref, watch } from "vue";
+import { RefreshCw, Save } from "lucide-vue-next";
 import { sessionsApi } from "@/api/sessions";
 import type { ScenarioHostSessionState, SessionDetailResult } from "@/api/types";
 import type { ActiveSession } from "@/stores/sessions";
 import { ApiError } from "@/api/client";
 import ScenarioHostStateEditor from "./ScenarioHostStateEditor.vue";
-import { WorkbenchAreaHeader, WorkbenchEmptyState } from "@workbench-kit/vue";
+import ScenarioHostSnapshotDialogContent from "./ScenarioHostSnapshotDialogContent.vue";
+import { WorkbenchAreaHeader, WorkbenchEmptyState, useWorkbenchWindows } from "@workbench-kit/vue";
+import { createSessionWindowContext } from "./sessionWindowContext";
 
 const props = defineProps<{
   session: ActiveSession;
@@ -15,6 +17,11 @@ const props = defineProps<{
 const detail = ref<SessionDetailResult | null>(null);
 const loading = ref(false);
 const errorMessage = ref("");
+const windows = useWorkbenchWindows();
+const sessionGenerating = computed(() => (
+  detail.value?.session.isGenerating === true
+  || ["requesting_llm", "reasoning", "generating", "tool_calling", "delivering"].includes(props.session.phase.kind)
+));
 let detailRequestSeq = 0;
 
 watch(() => [props.session.id, props.session.modeId] as const, () => {
@@ -57,21 +64,53 @@ function onScenarioHostSaved(state: ScenarioHostSessionState) {
     }
   };
 }
+
+function openSnapshotsDialog() {
+  void windows.openDialog({
+    title: "存档 / 读档",
+    description: "保存当前会话快照，或读取已有存档。",
+    size: "lg",
+    modal: true,
+    context: createSessionWindowContext(props.session.id),
+    footer: "close",
+    blocks: [
+      {
+        kind: "component",
+        component: ScenarioHostSnapshotDialogContent,
+        props: {
+          sessionId: props.session.id,
+          sessionGenerating,
+          onRestored: loadDetail
+        }
+      }
+    ]
+  });
+}
 </script>
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
     <WorkbenchAreaHeader class="flex-wrap justify-between gap-2 px-3 py-1" :uppercase="false">
       <span class="min-w-0 text-small text-text-subtle">当前会话 Scenario 数据</span>
-      <button
-        class="btn-ghost flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-small text-text-muted hover:text-text-primary"
-        :disabled="loading"
-        title="重新加载 Scenario 状态"
-        @click="loadDetail"
-      >
-        <RefreshCw :size="12" :stroke-width="2" :class="{ spin: loading }" />
-        重新加载
-      </button>
+      <div class="flex shrink-0 items-center gap-1">
+        <button
+          class="btn-ghost flex items-center gap-1 px-1.5 py-0.5 text-small text-text-muted hover:text-text-primary"
+          title="打开存档读档"
+          @click="openSnapshotsDialog"
+        >
+          <Save :size="12" :stroke-width="2" />
+          存档/读档
+        </button>
+        <button
+          class="btn-ghost flex items-center gap-1 px-1.5 py-0.5 text-small text-text-muted hover:text-text-primary"
+          :disabled="loading"
+          title="重新加载 Scenario 状态"
+          @click="loadDetail"
+        >
+          <RefreshCw :size="12" :stroke-width="2" :class="{ spin: loading }" />
+          重新加载
+        </button>
+      </div>
     </WorkbenchAreaHeader>
 
     <div

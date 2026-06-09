@@ -6,6 +6,7 @@ import type {
   SessionModeSetupPhase,
   SessionModeSetupToolsetOverride
 } from "./types.ts";
+import { createScenarioHostSetupToolsetOverrides } from "./scenarioHost/setupToolsets.ts";
 
 function createPersonaSetupToolsetOverrides(): SessionModeSetupToolsetOverride[] {
   return [
@@ -46,22 +47,7 @@ function createModeProfileSetupToolsetOverrides(target: NonNullable<SessionModeP
     ];
   }
 
-  return [
-    {
-      toolsetId: "scenario_profile_draft",
-      title: "Scenario 资料草稿",
-      description: "初始化阶段用于填写当前会话 Scenario 资料草稿。",
-      toolNames: ["get_scenario_profile", "patch_scenario_profile", "clear_scenario_profile_field"],
-      plannerSignals: ["写入当前会话 Scenario 资料"]
-    },
-    {
-      toolsetId: "setup_draft",
-      title: "设定草稿",
-      description: "以独立消息发送当前场景草稿供用户审阅。",
-      toolNames: ["send_setup_draft"],
-      plannerSignals: ["发送场景草稿"]
-    }
-  ];
+  return createScenarioHostSetupToolsetOverrides();
 }
 
 function resolveOwnerPrivateSetupOperationKind(

@@ -106,7 +106,7 @@
   - `group_membership_entries` 表存放群成员关系缓存。
   - `whitelist_entries` 表存放白名单条目。
 - `sessions/sessions.sqlite`
-  - `scenario_host_session_states` 表存放每会话 Scenario Host 状态，其中 `state_json.profile` 是当前会话的 Scenario 资料，`loreEntries`、`entities`、`relations` 与 `journal` 保存当前会话的世界信息和剧情连续性。
+  - `scenario_host_session_states` 表存放每会话 Scenario Host 状态，其中 `state_json.profile` 是当前会话的 Scenario 资料，`player`、`npcs`、`loreEntries`、`entities`、`relations` 与 `journal` 保存当前会话的角色、世界信息和剧情连续性。
 
 ## Prompt Injection Priority
 

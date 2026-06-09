@@ -5,6 +5,11 @@ const sessionParamsSchema = z.object({
   sessionId: z.string().trim().min(1, "sessionId is required")
 });
 
+const sessionSnapshotParamsSchema = z.object({
+  sessionId: z.string().trim().min(1, "sessionId is required"),
+  snapshotId: z.string().trim().min(1, "snapshotId is required")
+});
+
 const transcriptItemParamsSchema = z.object({
   sessionId: z.string().trim().min(1, "sessionId is required"),
   itemId: z.string().trim().min(1, "itemId is required")
@@ -86,6 +91,14 @@ const updateSessionModeStateBodySchema = z.object({
   state: z.unknown(),
   baseState: z.unknown().optional()
 });
+
+const createSessionSnapshotBodySchema = z.object({
+  label: z.string().trim().min(1).max(120).optional()
+}).default({});
+
+const copySessionBodySchema = z.object({
+  title: z.string().trim().min(1).max(120).optional()
+}).default({});
 
 const uploadWorkspaceFileSchema = z.object({
   sourceName: z.string().trim().min(1).optional(),
@@ -183,6 +196,7 @@ const workspaceStoredFileParamsSchema = z.object({
 });
 
 export type ParsedSessionParams = z.infer<typeof sessionParamsSchema>;
+export type ParsedSessionSnapshotParams = z.infer<typeof sessionSnapshotParamsSchema>;
 export type ParsedTranscriptItemParams = z.infer<typeof transcriptItemParamsSchema>;
 export type ParsedTranscriptGroupParams = z.infer<typeof transcriptGroupParamsSchema>;
 export type ParsedWebTurnStreamQuery = z.infer<typeof webTurnStreamQuerySchema>;
@@ -197,6 +211,8 @@ export type ParsedCreateSessionBody = z.infer<typeof createSessionBodySchema>;
 export type ParsedUpdateSessionTitleBody = z.infer<typeof updateSessionTitleBodySchema>;
 export type ParsedSwitchSessionModeBody = z.infer<typeof switchSessionModeBodySchema>;
 export type ParsedUpdateSessionModeStateBody = z.infer<typeof updateSessionModeStateBodySchema>;
+export type ParsedCreateSessionSnapshotBody = z.infer<typeof createSessionSnapshotBodySchema>;
+export type ParsedCopySessionBody = z.infer<typeof copySessionBodySchema>;
 export type ParsedUploadAssetsBody = z.infer<typeof uploadWorkspaceFilesBodySchema>;
 export type ParsedConfigValidateBody = z.infer<typeof configValidateBodySchema>;
 export type ParsedConfigSaveBody = z.infer<typeof configSaveBodySchema>;
@@ -254,6 +270,10 @@ export function parseSessionParams(params: unknown): ParsedSessionParams | { err
   return parseWithSchema(sessionParamsSchema, params);
 }
 
+export function parseSessionSnapshotParams(params: unknown): ParsedSessionSnapshotParams | { error: string } {
+  return parseWithSchema(sessionSnapshotParamsSchema, params);
+}
+
 export function parseTranscriptItemParams(params: unknown): ParsedTranscriptItemParams | { error: string } {
   return parseWithSchema(transcriptItemParamsSchema, params);
 }
@@ -308,6 +328,14 @@ export function parseSwitchSessionModeBody(body: unknown): ParsedSwitchSessionMo
 
 export function parseUpdateSessionModeStateBody(body: unknown): ParsedUpdateSessionModeStateBody | { error: string } {
   return parseWithSchema(updateSessionModeStateBodySchema, body);
+}
+
+export function parseCreateSessionSnapshotBody(body: unknown): ParsedCreateSessionSnapshotBody | { error: string } {
+  return parseWithSchema(createSessionSnapshotBodySchema, body);
+}
+
+export function parseCopySessionBody(body: unknown): ParsedCopySessionBody | { error: string } {
+  return parseWithSchema(copySessionBodySchema, body);
 }
 
 export function parseUploadAssetsBody(body: unknown): ParsedUploadAssetsBody | { error: string } {

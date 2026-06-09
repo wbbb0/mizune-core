@@ -46,6 +46,7 @@ import type { ComfyClient } from "#comfy/comfyClient.ts";
 import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.ts";
 import type { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
+import type { StructuredSuggestionService } from "#llm/structured/structuredSuggestionService.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
 import type { SessionCaptioner } from "./sessionCaptioner.ts";
@@ -118,6 +119,7 @@ export interface GenerationToolRuntimeDeps {
   textInspectionService: TextInspectionService;
   documentSummaryService?: DocumentSummaryService;
   contextEmbeddingService?: ContextEmbeddingService;
+  structuredSuggestionService?: StructuredSuggestionService;
   forwardResolver: ForwardResolver;
   comfyClient: ComfyClient;
   comfyTaskStore: ComfyTaskStore;

@@ -94,6 +94,7 @@ export interface RunGenerationInput {
   responseAbortController: AbortController;
   responseEpoch: number;
   abortController: AbortController;
+  modeId: string;
   relationship: Relationship;
   interactionMode: PromptInteractionMode;
   internalTranscript: InternalTranscriptItem[];
@@ -164,6 +165,7 @@ export function createGenerationExecutor(
     downloadRuntime,
     mediaInspectionService,
     textInspectionService,
+    structuredSuggestionService,
     comfyClient,
     comfyTaskStore,
     comfyTemplateCatalog,
@@ -497,6 +499,7 @@ export function createGenerationExecutor(
         globalRuleStore,
         toolsetRuleStore,
         scenarioHostStateStore,
+        ...(structuredSuggestionService ? { structuredSuggestionService } : {}),
         setupStore,
         globalProfileReadinessStore,
         conversationAccess,
@@ -880,7 +883,8 @@ export function createGenerationExecutor(
           nowMs: Date.now()
         }), "task_tracker_assistant_response_observed");
         const targetUserIds = collectExtractionUserIds(input.batchMessages);
-        if (input.currentUser?.userId && lifecycle.contextExtractionQueue) {
+        const scenarioHostMode = input.modeId === "scenario_host";
+        if (!scenarioHostMode && input.currentUser?.userId && lifecycle.contextExtractionQueue) {
           try {
             for (const userId of targetUserIds) {
               lifecycle.contextExtractionQueue.enqueueTurn({

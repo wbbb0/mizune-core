@@ -1422,7 +1422,7 @@ function createActiveTaskTracker() {
       scenarioHostStateStore: {
         async ensure() {
           return {
-            version: 3 as const,
+            version: 5 as const,
             profile: {
               theme: "",
               worldBaseline: "",
@@ -1432,15 +1432,26 @@ function createActiveTaskTracker() {
             currentSituation: "场景尚未开始，请根据玩家接下来的行动开始主持。",
             currentLocation: null,
             sceneSummary: "",
-            player: { userId: "u1", displayName: "Alice" },
-            inventory: [],
+            player: {
+              userId: "u1",
+              displayName: "Alice",
+              basicInfo: "",
+              characterDescription: "",
+              wornItems: [],
+              heldItems: [],
+              statusDescription: ""
+            },
             objectives: [],
             loreEntries: [],
+            npcs: [],
             entities: [],
             relations: [],
             journal: [],
             mechanics: { ruleStyle: "freeform" as const, dicePolicy: "", difficultyScale: "", successStates: [] },
             flags: {},
+            setupProgress: {
+              skippedOptionalItems: []
+            },
             initialized: false,
             turnIndex: 0
           };
@@ -1509,12 +1520,27 @@ function createActiveTaskTracker() {
     assert.ok(systemContent.includes("scenario_profile_setup_mode"), `Expected scenario_profile_setup_mode section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("global_persona_base"), `Expected global_persona_base section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("draft_workflow"), `Expected draft_workflow section, got: ${systemContent.slice(0, 400)}`);
+    assert.ok(systemContent.includes("scenario_setup_requirements"), `Expected scenario_setup_requirements section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("scenario_profile_snapshot"), `Expected scenario_profile_snapshot section, got: ${systemContent.slice(0, 400)}`);
     assert.match(systemContent, /以下全局 persona 是当前实例在所有模式下共享的底座/);
     assert.match(systemContent, /全局 persona：名字=主持者；性格底色=；语气风格=/);
     assert.match(systemContent, /当前 Scenario 资料只是建立在这层基础上的模式补充/);
     assert.match(systemContent, /你当前只在Scenario 资料的临时草稿上工作/);
+    assert.match(systemContent, /只有当 owner 明确说这是“我的角色 \/ 玩家角色 \/ 我扮演的角色 \/ PC”时，才把角色信息写入玩家角色/);
+    assert.match(systemContent, /只给出角色卡但没说归属时，先问这是玩家角色还是 NPC/);
+    assert.match(systemContent, /发送草稿或引导 \.confirm 前，如果玩家角色仍未设置完整/);
+    assert.match(systemContent, /不要写入 persona、用户资料或关系记忆/);
+    assert.doesNotMatch(systemContent, /默认是在描述 bot，而不是在填写 owner 自己的资料/);
+    assert.match(systemContent, /send_setup_draft 会基于当前临时草稿发送完整草稿/);
+    assert.match(systemContent, /Scenario profile 只保存主持层面的主题、世界基线、叙事风格和边界/);
+    assert.match(systemContent, /只有 owner 在本轮消息里明确说/);
+    assert.match(systemContent, /创建 NPC 时必须有 basicInfo、characterDescription、wornItems、heldItems/);
     assert.match(systemContent, /待补全：[\s\S]*- 主题：题材、氛围或想要长期主持的类型/);
+    assert.match(systemContent, /必填缺口：[\s\S]*玩家基础信息/);
+    assert.match(systemContent, /必填缺口：[\s\S]*玩家持有物/);
+    assert.match(systemContent, /可选但仍需逐项确认：[\s\S]*开局局势/);
+    assert.match(systemContent, /可选项不能主动省略/);
+    assert.match(systemContent, /调用 send_setup_draft 前，必填信息必须齐全/);
     assert.ok(!systemContent.includes("host_identity"), `Expected no host_identity section in setup mode, got: ${systemContent.slice(0, 400)}`);
     assert.ok(!systemContent.includes("玩家动作"), `Expected no runtime scenario input protocol in setup mode, got: ${systemContent.slice(0, 400)}`);
     assert.ok(!systemContent.includes("不要在段落结尾反问玩家下一步"), `Expected no runtime pacing rule in setup mode, got: ${systemContent.slice(0, 400)}`);
@@ -1566,7 +1592,7 @@ function createActiveTaskTracker() {
       scenarioHostStateStore: {
         async ensure() {
           return {
-            version: 3,
+            version: 5,
             profile: {
               theme: "",
               worldBaseline: "",
@@ -1576,8 +1602,15 @@ function createActiveTaskTracker() {
             currentSituation: "玩家刚抵达废弃钟楼门口。",
             currentLocation: "旧钟楼外",
             sceneSummary: "夜色、迷雾、远处有钟声。",
-            player: { userId: "10001", displayName: "Tester" },
-            inventory: [{ ownerId: "10001", item: "提灯", quantity: 1 }],
+            player: {
+              userId: "10001",
+              displayName: "Tester",
+              basicInfo: "旧钟楼调查员，追查海边小城的周期钟声。",
+              characterDescription: "谨慎、沉着，习惯先观察再触碰可疑物。",
+              wornItems: [{ name: "旅行外套", wearPosition: "外套", description: "被海雾打湿" }],
+              heldItems: [{ name: "提灯", description: "照亮钟楼门前的旧提灯", quantity: 1 }],
+              statusDescription: ""
+            },
             objectives: [{ id: "obj_1", title: "进入钟楼", status: "active", summary: "找到入口" }],
             loreEntries: [{
               id: "bell-lore",
@@ -1590,6 +1623,7 @@ function createActiveTaskTracker() {
               createdAtTurn: 0,
               updatedAtTurn: 3
             }],
+            npcs: [],
             entities: [],
             relations: [],
             journal: [],
@@ -1632,7 +1666,11 @@ function createActiveTaskTracker() {
       participantProfiles: [],
       currentUser: { userId: "10001", relationship: "known", memories: [{ id: "mem_1", title: "旧记忆", content: "不应出现", updatedAt: 1 }] } as any,
       historySummary: null,
-      historyForPrompt: [],
+      historyForPrompt: [{
+        role: "user",
+        content: "#慢一点\n\n*我推门",
+        timestampMs: 1
+      }],
       internalTranscript: [],
       lastLlmUsage: null,
       batchMessages: [{
@@ -1673,15 +1711,243 @@ function createActiveTaskTracker() {
     assert.doesNotMatch(system, /标题=/);
     assert.match(system, /当前位置=旧钟楼外/);
     assert.match(system, /`\*` 开头表示玩家动作声明/);
+    assert.match(system, /单独的 `\*`，表示自动推进/);
+    assert.match(system, /单独的 `\*\*`，表示请你代为执行玩家角色下一步行动/);
     assert.match(system, /`#` 开头表示场外指令或提问/);
     assert.match(system, /无前缀文本默认视为玩家角色对白/);
-    assert.match(system, /先用叙事语气落地玩家刚刚声明的动作或对白已经发生/);
-    assert.match(system, /不要代替玩家决定、行动、说话或描写其内心/);
+    assert.match(system, /回复开头先用与当前故事一致的画风把玩家刚刚发生的行为或话语写成场面描写/);
+    assert.match(system, /像跑团 KP 一样把简短意图融入上下文/);
+    assert.match(system, /只有玩家发送单独的 `\*\*` 时，才可以代玩家角色做一个保守合理的一小步外显行动/);
+    assert.match(system, /Scenario 资料和场景状态是创作约束与素材，不是回复清单/);
+    assert.match(system, /基于已知角色信息、目标、关系、穿着、持有物和当前处境推断非玩家角色会如何说话、行动/);
+    assert.match(system, /持续生成新内容，例如环境变化、NPC 反应、线索、阻碍、代价或小冲突/);
+    assert.match(system, /信息披露遵循玩家当前视角/);
+    assert.match(system, /非玩家角色要有自己的目标、顾虑和主动反应/);
+    assert.match(system, /每轮推进尽量带来一个具体变化/);
+    assert.match(system, /优先写可演出的场面、动作、对白和感官细节/);
     assert.match(system, /不要在段落结尾反问玩家下一步要做什么/);
     assert.match(system, /不要默认列出可选行动让玩家选择/);
     assert.match(system, /单轮只做小步推进/);
     assert.doesNotMatch(system, /RP 全局资料/);
     assert.doesNotMatch(system, /global_rules/);
+    assert.match(String(result.promptMessages.at(-2)?.content ?? ""), /场外指令：慢一点\n\n玩家动作：我推门/);
+  });
+
+  test("scenario_host prompt injects only active runtime context slices", async () => {
+    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+      scenarioHostStateStore: {
+        async ensure() {
+          return {
+            version: 5,
+            profile: {
+              theme: "钟楼怪谈",
+              worldBaseline: "海边小城潜伏超自然异象",
+              narrationStyle: "冷静克制",
+              boundaries: ""
+            },
+            currentSituation: "玩家站在旧钟楼外。",
+            currentLocation: "旧钟楼外",
+            sceneSummary: "暗门、银钥匙和周期钟声是当前核心线索。",
+            player: {
+              userId: "10001",
+              displayName: "Tester",
+              basicInfo: "旧钟楼调查员，带着银钥匙追查暗门。",
+              characterDescription: "观察细致，面对守钟人的试探时保持克制。",
+              wornItems: [{ name: "旧雨衣", wearPosition: "外套", description: "挡住海边雾气" }],
+              heldItems: [{ name: "银钥匙", description: "门缝银光呼应的钥匙", quantity: 1 }],
+              statusDescription: ""
+            },
+            objectives: [],
+            loreEntries: [
+              {
+                id: "lore-door",
+                title: "钟楼暗门",
+                content: "暗门只会在钟声第三次响起后短暂松动。",
+                tags: ["钟楼"],
+                activationKeys: ["暗门", "银钥匙"],
+                enabled: true,
+                priority: 100,
+                createdAtTurn: 1,
+                updatedAtTurn: 5
+              },
+              {
+                id: "lore-market",
+                title: "集市传闻",
+                content: "集市商人正在争论海盐价格。",
+                tags: ["集市"],
+                activationKeys: ["海盐"],
+                enabled: true,
+                priority: 500,
+                createdAtTurn: 1,
+                updatedAtTurn: 5
+              },
+              {
+                id: "lore-disabled",
+                title: "禁用银钥匙",
+                content: "这条被关闭的银钥匙设定不应进入 prompt。",
+                tags: ["银钥匙"],
+                activationKeys: ["银钥匙"],
+                enabled: false,
+                priority: 900,
+                createdAtTurn: 1,
+                updatedAtTurn: 5
+              }
+            ],
+            npcs: [
+              {
+                id: "keeper",
+                name: "守钟人",
+                aliases: ["老人"],
+                basicInfo: "旧钟楼的年迈看守。",
+                characterDescription: "知道银钥匙和暗门的关系，表面警惕，常用含糊语句试探来者。",
+                wornItems: [{ name: "旧呢外套", wearPosition: "外套", description: "袖口沾着潮湿盐霜" }],
+                heldItems: [{ name: "铜铃", description: "能让钟楼内部传来回声", quantity: 1 }],
+                statusDescription: "警惕",
+                locationId: "old-bell",
+                tags: ["钟楼"],
+                notes: ""
+              }
+            ],
+            entities: [
+              {
+                id: "old-bell",
+                kind: "location" as const,
+                name: "旧钟楼外",
+                aliases: ["钟楼门口"],
+                summary: "门廊潮湿，门缝里有银光。",
+                status: "",
+                locationId: null,
+                tags: ["钟楼"],
+                notes: ""
+              },
+              {
+                id: "secret-order",
+                kind: "organization" as const,
+                name: "夜钟会",
+                aliases: [],
+                summary: "旧钟楼背后的秘密组织。",
+                status: "",
+                locationId: null,
+                tags: ["组织"],
+                notes: ""
+              },
+              {
+                id: "market",
+                kind: "location" as const,
+                name: "鱼市",
+                aliases: [],
+                summary: "白天很热闹。",
+                status: "",
+                locationId: null,
+                tags: ["集市"],
+                notes: ""
+              }
+            ],
+            relations: [
+              {
+                sourceId: "keeper",
+                targetId: "old-bell",
+                kind: "看守",
+                summary: "守钟人负责看守旧钟楼外的暗门。",
+                strength: 60,
+                updatedAtTurn: 5
+              },
+              {
+                sourceId: "keeper",
+                targetId: "secret-order",
+                kind: "隶属",
+                summary: "守钟人听命于夜钟会。",
+                strength: 40,
+                updatedAtTurn: 4
+              },
+              {
+                sourceId: "market",
+                targetId: "salt-guild",
+                kind: "无关",
+                summary: "鱼市商会正在争论海盐价格。",
+                strength: 5,
+                updatedAtTurn: 1
+              }
+            ],
+            journal: [
+              { id: "j1", turnIndex: 1, title: "集市闲谈", summary: "玩家曾听见海盐价格传闻。", entityIds: ["market"], tags: ["集市"], createdAtMs: 1 },
+              { id: "j2", turnIndex: 2, title: "守钟人线索", summary: "守钟人提到银钥匙能打开暗门。", entityIds: ["keeper"], tags: ["银钥匙"], createdAtMs: 2 },
+              { id: "j3", turnIndex: 3, title: "海边绕路", summary: "玩家绕过海边小路。", entityIds: [], tags: ["海边"], createdAtMs: 3 },
+              { id: "j4", turnIndex: 4, title: "雾中停步", summary: "玩家在雾中听见钟声。", entityIds: ["old-bell"], tags: ["钟楼"], createdAtMs: 4 },
+              { id: "j5", turnIndex: 5, title: "门前检查", summary: "玩家检查旧钟楼门缝。", entityIds: ["old-bell"], tags: ["暗门"], createdAtMs: 5 },
+              { id: "j6", turnIndex: 6, title: "银光闪动", summary: "门缝里露出银光。", entityIds: ["old-bell"], tags: ["银钥匙"], createdAtMs: 6 },
+              { id: "j7", turnIndex: 7, title: "当前停顿", summary: "玩家准备询问守钟人。", entityIds: ["keeper"], tags: ["守钟人"], createdAtMs: 7 }
+            ],
+            mechanics: { ruleStyle: "freeform" as const, dicePolicy: "", difficultyScale: "", successStates: [] },
+            flags: {},
+            initialized: true,
+            turnIndex: 7
+          };
+        }
+      } as any
+    }));
+
+    const result = await builder.buildChatPromptMessages({
+      sessionId: "qqbot:p:10001",
+      modeId: "scenario_host",
+      interactionMode: "normal",
+      mainModelRef: ["main"],
+      visibleToolNames: ["get_scenario_state"],
+      activeToolsets: [],
+      persona: { name: "Bot", temperament: "", voiceStyle: "" },
+      relationship: "known",
+      participantProfiles: [],
+      currentUser: { userId: "10001", relationship: "known", memories: [] } as any,
+      historySummary: null,
+      historyForPrompt: [
+        { role: "assistant", content: "钟声第三次响起时，门缝里有银光。", timestampMs: 1 }
+      ],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      batchMessages: [{
+        userId: "10001",
+        senderName: "Tester",
+        text: "我环顾四周，检查银钥匙和钟楼暗门。",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: Date.now()
+      }],
+      modeProfile: {
+        target: "scenario",
+        profile: {
+          theme: "钟楼怪谈",
+          narrationStyle: "冷静克制",
+          worldBaseline: "海边小城潜伏超自然异象",
+          boundaries: ""
+        }
+      }
+    });
+
+    const system = readPromptSystemText(result.promptMessages);
+    assert.match(system, /上下文选择=当前回合仅注入激活Lore、相关NPC、相关实体\/关系与近期\/相关日志/);
+    assert.match(system, /激活Lore=钟楼暗门:暗门只会在钟声第三次响起后短暂松动/);
+    assert.doesNotMatch(system, /集市传闻:集市商人正在争论海盐价格/);
+    assert.doesNotMatch(system, /禁用银钥匙/);
+    assert.match(system, /相关实体=.*old-bell:旧钟楼外\[location\]/);
+    assert.match(system, /相关NPC=.*keeper:守钟人/);
+    assert.doesNotMatch(system, /相关实体=.*keeper:守钟人\[npc\]/);
+    assert.match(system, /相关实体=.*secret-order:夜钟会\[organization\]/);
+    assert.doesNotMatch(system, /market:鱼市\[location\]/);
+    assert.match(system, /相关关系=keeper->old-bell\[看守;60\]/);
+    assert.match(system, /keeper->secret-order\[隶属;40\]/);
+    assert.doesNotMatch(system, /market->salt-guild\[无关;5\]/);
+    assert.match(system, /T2 守钟人线索:守钟人提到银钥匙能打开暗门/);
+    assert.match(system, /T7 当前停顿:玩家准备询问守钟人/);
+    assert.doesNotMatch(system, /T1 集市闲谈/);
   });
 
   test("rp_assistant prompt injects global persona and rp profile together", async () => {
@@ -1845,7 +2111,40 @@ function createActiveTaskTracker() {
       } as any,
       scenarioHostStateStore: {
         async ensure() {
-          throw new Error("scenario config prompt should not load runtime scenario state");
+          return {
+            version: 5 as const,
+            profile: {
+              theme: "旧主题",
+              worldBaseline: "旧世界",
+              narrationStyle: "旧风格",
+              boundaries: ""
+            },
+            currentSituation: "雨夜里，玩家刚抵达旧城区。",
+            currentLocation: "旧城区",
+            sceneSummary: "",
+            player: {
+              userId: "u1",
+              displayName: "Alice",
+              basicInfo: "",
+              characterDescription: "",
+              wornItems: [],
+              heldItems: [],
+              statusDescription: ""
+            },
+            objectives: [],
+            loreEntries: [],
+            npcs: [],
+            entities: [],
+            relations: [],
+            journal: [],
+            mechanics: { ruleStyle: "freeform" as const, dicePolicy: "", difficultyScale: "", successStates: [] },
+            flags: {},
+            setupProgress: {
+              skippedOptionalItems: ["initialNpcs"]
+            },
+            initialized: false,
+            turnIndex: 0
+          };
         }
       } as any,
       shellRuntime: {
@@ -1921,15 +2220,28 @@ function createActiveTaskTracker() {
     assert.ok(systemContent.includes("scenario_profile_config_mode"), `Expected scenario_profile_config_mode section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("global_persona_base"), `Expected global_persona_base section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("draft_workflow"), `Expected draft_workflow section, got: ${systemContent.slice(0, 400)}`);
+    assert.ok(systemContent.includes("scenario_setup_requirements"), `Expected scenario_setup_requirements section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("scenario_profile_snapshot"), `Expected scenario_profile_snapshot section, got: ${systemContent.slice(0, 400)}`);
     assert.match(systemContent, /当前 Scenario 资料只是建立在这层基础上的模式补充/);
     assert.match(systemContent, /不要把已属于 persona 的内容重复搬进 Scenario 资料/);
     assert.match(systemContent, /当前处于当前会话 Scenario 资料配置阶段/);
     assert.match(systemContent, /当前草稿已明确：主题、世界基线、叙事风格/);
-    assert.match(systemContent, /可在需要时继续补充：边界/);
+    assert.match(systemContent, /仍未确认的可选字段：边界；若 owner 未明确跳过，继续引导确认/);
     assert.match(systemContent, /已设定：主题=都市怪谈；世界基线=现代都市里潜伏超自然现象；叙事风格=紧凑克制/);
+    assert.match(systemContent, /Scenario 配置动态清单/);
+    assert.match(systemContent, /必填缺口：[\s\S]*玩家基础信息/);
+    assert.match(systemContent, /必填已完成：主题、世界基线、叙事风格/);
+    assert.match(systemContent, /可选但仍需逐项确认：[\s\S]*边界/);
+    assert.match(systemContent, /可选已记录：开局局势、当前位置/);
+    assert.match(systemContent, /可选已明确跳过：初始 NPC/);
+    assert.match(systemContent, /只有 owner 明确说不填、暂无、跳过或同义表达/);
     assert.match(systemContent, /优先按 owner 本轮明确要求做局部调整/);
     assert.match(systemContent, /若本轮只是微调单个字段，就直接改那一项/);
+    assert.match(systemContent, /只有当 owner 明确说这是“我的角色 \/ 玩家角色 \/ 我扮演的角色 \/ PC”时，才把角色信息写入玩家角色/);
+    assert.match(systemContent, /只给出角色卡但没说归属时，先问这是玩家角色还是 NPC/);
+    assert.doesNotMatch(systemContent, /默认是在描述 bot，而不是在填写 owner 自己的资料/);
+    assert.match(systemContent, /Scenario profile 只保存主持层面的主题、世界基线、叙事风格和边界/);
+    assert.match(systemContent, /角色归属规则：只有 owner 在本轮消息里明确说/);
     assert.match(systemContent, /\.cancel/);
     assert.ok(!systemContent.includes("host_identity"), `Expected no runtime host identity section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(!systemContent.includes("scenario_state"), `Expected no runtime scenario state section, got: ${systemContent.slice(0, 400)}`);

@@ -86,6 +86,7 @@ function createExecutorHarness(options?: {
   sessionSource?: "onebot" | "web";
   sessionId?: string;
   titleSource?: "default" | "auto" | "manual" | null;
+  modeId?: string;
   historyCompressed?: boolean;
   forceRegenerateTitleAfterTurn?: boolean;
   captureDraftOverlay?: boolean;
@@ -149,6 +150,9 @@ function createExecutorHarness(options?: {
     title: options?.sessionSource === "web" ? "New Chat" : null,
     titleSource: options?.titleSource ?? null
   });
+  if (options?.modeId) {
+    sessionManager.setModeId(sessionId, options.modeId, { appendSwitchMarker: false });
+  }
   const started = sessionManager.beginSyntheticGeneration(sessionId);
   const events: string[] = [];
   const typingCalls: Array<{ enabled: boolean; userId: string; groupId?: string }> = [];
@@ -306,6 +310,7 @@ function createExecutorHarness(options?: {
     responseAbortController: started.responseAbortController,
     responseEpoch: started.responseEpoch,
     abortController: started.abortController,
+    modeId: sessionManager.getModeId(sessionId),
     relationship: "owner",
     interactionMode: "normal",
     internalTranscript: [],
@@ -453,6 +458,74 @@ function createExecutorHarness(options?: {
       .internalTranscript
       .filter((item) => item.kind === "context_extraction_event");
     assert.deepEqual(events, []);
+  });
+
+  test("context extraction is skipped in scenario_host mode", async () => {
+    const enqueuedTurns: unknown[] = [];
+    const harness = createExecutorHarness({
+      modeId: "scenario_host",
+      currentUser: {
+        userId: "owner",
+        relationship: "owner"
+      },
+      contextExtractionQueue: {
+        enqueueTurn(turn) {
+          enqueuedTurns.push(turn);
+        }
+      }
+    });
+
+    await waitForEvents(harness.events, 2);
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.equal(enqueuedTurns.length, 0);
+    const events = harness.sessionManager
+      .getSession(harness.sessionId)
+      .internalTranscript
+      .filter((item) => item.kind === "context_extraction_event");
+    assert.deepEqual(events, []);
+  });
+
+  test("context extraction routing uses generation-start mode when session mode changes before finalize", async () => {
+    const assistantModeEnqueuedTurns: unknown[] = [];
+    const assistantHarness = createExecutorHarness({
+      currentUser: {
+        userId: "owner",
+        relationship: "owner"
+      },
+      contextExtractionQueue: {
+        enqueueTurn(turn) {
+          assistantModeEnqueuedTurns.push(turn);
+        }
+      }
+    });
+
+    await waitForEvents(assistantHarness.events, 2);
+    assistantHarness.sessionManager.setModeId(assistantHarness.sessionId, "scenario_host", { appendSwitchMarker: false });
+    assistantHarness.resolveDrain();
+    await assistantHarness.runPromise;
+    assert.equal(assistantModeEnqueuedTurns.length, 1);
+
+    const scenarioModeEnqueuedTurns: unknown[] = [];
+    const scenarioHarness = createExecutorHarness({
+      modeId: "scenario_host",
+      currentUser: {
+        userId: "owner",
+        relationship: "owner"
+      },
+      contextExtractionQueue: {
+        enqueueTurn(turn) {
+          scenarioModeEnqueuedTurns.push(turn);
+        }
+      }
+    });
+
+    await waitForEvents(scenarioHarness.events, 2);
+    scenarioHarness.sessionManager.setModeId(scenarioHarness.sessionId, "assistant", { appendSwitchMarker: false });
+    scenarioHarness.resolveDrain();
+    await scenarioHarness.runPromise;
+    assert.equal(scenarioModeEnqueuedTurns.length, 0);
   });
 
   test("typing stop is skipped when a newer response epoch takes over", async () => {

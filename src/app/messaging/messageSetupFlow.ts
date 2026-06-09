@@ -3,7 +3,8 @@ import { requireSessionModeDefinition } from "#modes/registry.ts";
 import type { MessageEventHandlerDeps, MessageHandlerServices, MessageProcessingContext } from "./messageHandlerTypes.ts";
 import { resolvePostRouterSetupDecision, resolvePreRouterSetupDecision } from "./messageAdmission.ts";
 import type { SessionModeSetupContext } from "#modes/types.ts";
-import { createEmptyScenarioProfile, isScenarioProfileComplete } from "#modes/scenarioHost/profileSchema.ts";
+import { createEmptyScenarioProfile } from "#modes/scenarioHost/profileSchema.ts";
+import { isScenarioSetupComplete } from "#modes/scenarioHost/types.ts";
 
 export async function handlePreRouterDecision(
   services: Pick<MessageHandlerServices, "logger" | "oneBotClient">,
@@ -55,7 +56,7 @@ export async function ensureAutomaticSetupOperationMode(
   const modeProfileReady = modeDef.profileAccess.modeProfile === "rp"
     ? readiness.rp === "ready"
     : modeDef.profileAccess.modeProfile === "scenario"
-      ? scenarioState != null && isScenarioProfileComplete(scenarioState.profile)
+      ? scenarioState != null && isScenarioSetupComplete(scenarioState)
       : true;
   const setupContext: SessionModeSetupContext = {
     personaReady: readiness.persona === "ready",

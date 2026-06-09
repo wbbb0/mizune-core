@@ -40,6 +40,10 @@ llm:
     enabled: true
     timeoutMs: 45000
     enableThinking: false
+  structuredSuggestion:
+    enabled: true
+    timeoutMs: 15000
+    enableThinking: false
   textInspector:
     enabled: true
     timeoutMs: 45000

@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { sessionsApi } from "@/api/sessions";
 import type {
   ScenarioHostEntity,
   ScenarioHostEntityKind,
+  ScenarioHostHeldItem,
   ScenarioHostJournalEntry,
   ScenarioHostLoreEntry,
+  ScenarioHostNpc,
+  ScenarioSetupOptionalItemKey,
+  ScenarioHostWornItem,
   ScenarioHostSessionState
 } from "@/api/types";
 import { ApiError } from "@/api/client";
-import { WorkbenchTabStrip } from "@workbench-kit/vue";
+import { WorkbenchDisclosure, WorkbenchTabStrip } from "@workbench-kit/vue";
 
-type ScenarioEditorTab = "profile" | "scene" | "objectives" | "inventory" | "lore" | "entities" | "journal" | "flags";
+type ScenarioEditorTab = "profile" | "scene" | "characters" | "objectives" | "lore" | "entities" | "journal" | "flags";
 type FlagType = "string" | "number" | "boolean";
 
 interface FlagEntry {
@@ -23,8 +27,8 @@ interface FlagEntry {
 const tabs: Array<{ id: ScenarioEditorTab; label: string }> = [
   { id: "profile", label: "Profile" },
   { id: "scene", label: "Scene" },
+  { id: "characters", label: "Characters" },
   { id: "objectives", label: "Objectives" },
-  { id: "inventory", label: "Inventory" },
   { id: "lore", label: "Lore" },
   { id: "entities", label: "Entities" },
   { id: "journal", label: "Journal" },
@@ -32,7 +36,6 @@ const tabs: Array<{ id: ScenarioEditorTab; label: string }> = [
 ];
 
 const entityKinds: Array<{ id: ScenarioHostEntityKind; label: string }> = [
-  { id: "npc", label: "NPC" },
   { id: "location", label: "地点" },
   { id: "faction", label: "阵营" },
   { id: "item", label: "物品" },
@@ -56,8 +59,8 @@ const selectedTab = computed({
     if (
       value === "profile"
       || value === "scene"
+      || value === "characters"
       || value === "objectives"
-      || value === "inventory"
       || value === "lore"
       || value === "entities"
       || value === "journal"
@@ -69,6 +72,11 @@ const selectedTab = computed({
 });
 const draft = ref<ScenarioHostSessionState>(cloneState(props.state));
 const flagEntries = ref<FlagEntry[]>(createFlagEntries(props.state.flags));
+const disclosureStates = reactive<Record<string, boolean>>({
+  "character:player": true
+});
+const rowDisclosureIds = new WeakMap<object, string>();
+let rowDisclosureIdSequence = 0;
 const saving = ref(false);
 const errorMessage = ref("");
 
@@ -84,7 +92,13 @@ const dirty = computed(() => {
 });
 
 function cloneState(state: ScenarioHostSessionState): ScenarioHostSessionState {
-  return JSON.parse(JSON.stringify(state)) as ScenarioHostSessionState;
+  const cloned = JSON.parse(JSON.stringify(state)) as ScenarioHostSessionState;
+  return {
+    ...cloned,
+    setupProgress: {
+      skippedOptionalItems: normalizeSkippedOptionalItems(cloned.setupProgress?.skippedOptionalItems ?? [])
+    }
+  };
 }
 
 function splitList(value: string): string[] {
@@ -93,6 +107,94 @@ function splitList(value: string): string[] {
 
 function joinList(value: string[]): string {
   return value.join(", ");
+}
+
+function isDisclosureExpanded(id: string, defaultExpanded = false): boolean {
+  return disclosureStates[id] ?? defaultExpanded;
+}
+
+function toggleDisclosure(id: string, defaultExpanded = false): void {
+  disclosureStates[id] = !isDisclosureExpanded(id, defaultExpanded);
+}
+
+function rowDisclosureId(scope: string, row: object): string {
+  const existing = rowDisclosureIds.get(row);
+  if (existing) {
+    return existing;
+  }
+  const id = `${scope}:${rowDisclosureIdSequence++}`;
+  rowDisclosureIds.set(row, id);
+  return id;
+}
+
+function npcDisclosureId(npc: ScenarioHostNpc): string {
+  return rowDisclosureId("character:npc", npc);
+}
+
+function entityDisclosureId(entity: ScenarioHostEntity): string {
+  return rowDisclosureId("entity", entity);
+}
+
+function relationDisclosureId(relation: ScenarioHostSessionState["relations"][number]): string {
+  return rowDisclosureId("relation", relation);
+}
+
+function compactSummary(parts: Array<string | null | undefined>): string | null {
+  const normalized = parts.map((part) => part?.trim()).filter((part): part is string => Boolean(part));
+  return normalized.length > 0 ? normalized.join(" · ") : null;
+}
+
+function playerSummary(): string | null {
+  return compactSummary([
+    draft.value.player.statusDescription,
+    draft.value.player.wornItems.length > 0 ? `穿着 ${draft.value.player.wornItems.length}` : null,
+    draft.value.player.heldItems.length > 0 ? `持有物 ${draft.value.player.heldItems.length}` : null
+  ]);
+}
+
+function npcTitle(npc: ScenarioHostNpc, index: number): string {
+  const label = npc.name.trim() || npc.id.trim() || `NPC #${index + 1}`;
+  return `NPC · ${label}`;
+}
+
+function npcSummary(npc: ScenarioHostNpc): string | null {
+  return compactSummary([
+    npc.statusDescription,
+    npc.locationId ? `地点 ${npc.locationId}` : null,
+    npc.wornItems.length > 0 ? `穿着 ${npc.wornItems.length}` : null,
+    npc.heldItems.length > 0 ? `持有物 ${npc.heldItems.length}` : null
+  ]);
+}
+
+function entityKindLabel(kind: ScenarioHostEntityKind): string {
+  return entityKinds.find((item) => item.id === kind)?.label ?? kind;
+}
+
+function entityTitle(entity: ScenarioHostEntity, index: number): string {
+  const label = entity.name.trim() || entity.id.trim() || `实体 #${index + 1}`;
+  return `${entityKindLabel(entity.kind)} · ${label}`;
+}
+
+function entitySummary(entity: ScenarioHostEntity): string | null {
+  return compactSummary([
+    entity.status,
+    entity.locationId ? `地点 ${entity.locationId}` : null,
+    entity.tags.length > 0 ? entity.tags.join(", ") : null
+  ]);
+}
+
+function relationTitle(relation: ScenarioHostSessionState["relations"][number], index: number): string {
+  const source = relation.sourceId.trim() || "source";
+  const target = relation.targetId.trim() || "target";
+  const kind = relation.kind.trim() || `关系 #${index + 1}`;
+  return `${kind} · ${source} -> ${target}`;
+}
+
+function relationSummary(relation: ScenarioHostSessionState["relations"][number]): string | null {
+  return compactSummary([
+    `强度 ${relation.strength}`,
+    relation.updatedAtTurn > 0 ? `回合 ${relation.updatedAtTurn}` : null
+  ]);
 }
 
 function createFlagEntries(flags: ScenarioHostSessionState["flags"]): FlagEntry[] {
@@ -127,9 +229,28 @@ function buildFlags(): ScenarioHostSessionState["flags"] {
   return nextFlags;
 }
 
+const scenarioSetupOptionalItemKeys = new Set<string>([
+  "boundaries",
+  "openingSituation",
+  "currentLocation",
+  "sceneSummary",
+  "initialNpcs",
+  "initialObjectives",
+  "loreEntries",
+  "entities",
+  "relations",
+  "mechanics"
+]);
+
+function normalizeSkippedOptionalItems(items: string[]): ScenarioSetupOptionalItemKey[] {
+  return Array.from(new Set(
+    items.filter((item): item is ScenarioSetupOptionalItemKey => scenarioSetupOptionalItemKeys.has(item))
+  ));
+}
+
 function buildDraftState(): ScenarioHostSessionState {
-  return {
-    version: 3,
+  const nextState: ScenarioHostSessionState = {
+    version: 5,
     profile: {
       theme: draft.value.profile.theme,
       worldBaseline: draft.value.profile.worldBaseline,
@@ -141,13 +262,13 @@ function buildDraftState(): ScenarioHostSessionState {
     sceneSummary: draft.value.sceneSummary,
     player: {
       userId: draft.value.player.userId.trim(),
-      displayName: draft.value.player.displayName.trim()
+      displayName: draft.value.player.displayName.trim(),
+      basicInfo: draft.value.player.basicInfo,
+      characterDescription: draft.value.player.characterDescription,
+      wornItems: buildWornItems(draft.value.player.wornItems),
+      heldItems: buildHeldItems(draft.value.player.heldItems),
+      statusDescription: draft.value.player.statusDescription
     },
-    inventory: draft.value.inventory.map((item) => ({
-      ownerId: item.ownerId.trim(),
-      item: item.item.trim(),
-      quantity: Math.max(1, Math.trunc(item.quantity || 1))
-    })).filter((item) => item.ownerId && item.item),
     objectives: draft.value.objectives.map((objective) => ({
       id: objective.id.trim(),
       title: objective.title.trim(),
@@ -165,6 +286,7 @@ function buildDraftState(): ScenarioHostSessionState {
       createdAtTurn: Math.max(0, Math.trunc(entry.createdAtTurn || 0)),
       updatedAtTurn: Math.max(0, Math.trunc(entry.updatedAtTurn || 0))
     })).filter((entry) => entry.id && entry.title),
+    npcs: buildNpcs(draft.value.npcs),
     entities: draft.value.entities.map((entity) => ({
       id: entity.id.trim(),
       kind: entity.kind,
@@ -200,9 +322,89 @@ function buildDraftState(): ScenarioHostSessionState {
       successStates: draft.value.mechanics.successStates.map((item) => item.trim()).filter(Boolean)
     },
     flags: buildFlags(),
+    setupProgress: {
+      skippedOptionalItems: normalizeSkippedOptionalItems(draft.value.setupProgress?.skippedOptionalItems ?? [])
+    },
     initialized: draft.value.initialized,
     turnIndex: Math.max(0, Math.trunc(draft.value.turnIndex || 0))
   };
+  validateInitializedState(nextState);
+  return nextState;
+}
+
+function buildWornItems(items: ScenarioHostWornItem[]): ScenarioHostWornItem[] {
+  return items.map((item) => ({
+    name: item.name.trim(),
+    wearPosition: item.wearPosition.trim(),
+    description: item.description.trim()
+  })).filter((item) => item.name && item.wearPosition && item.description);
+}
+
+function buildHeldItems(items: ScenarioHostHeldItem[]): ScenarioHostHeldItem[] {
+  return items.map((item) => ({
+    name: item.name.trim(),
+    description: item.description.trim(),
+    quantity: Math.max(1, Math.trunc(item.quantity || 1))
+  })).filter((item) => item.name && item.description);
+}
+
+function buildNpcs(npcs: ScenarioHostNpc[]): ScenarioHostNpc[] {
+  return npcs.map((npc, index) => {
+    const nextNpc: ScenarioHostNpc = {
+      id: npc.id.trim(),
+      name: npc.name.trim(),
+      aliases: npc.aliases.map((alias) => alias.trim()).filter(Boolean),
+      basicInfo: npc.basicInfo.trim(),
+      characterDescription: npc.characterDescription.trim(),
+      wornItems: buildWornItems(npc.wornItems),
+      heldItems: buildHeldItems(npc.heldItems),
+      statusDescription: npc.statusDescription,
+      locationId: npc.locationId?.trim() ? npc.locationId.trim() : null,
+      tags: npc.tags.map((tag) => tag.trim()).filter(Boolean),
+      notes: npc.notes
+    };
+    const missing: string[] = [];
+    if (!nextNpc.id) missing.push("id");
+    if (!nextNpc.name) missing.push("name");
+    if (!nextNpc.basicInfo) missing.push("basicInfo");
+    if (!nextNpc.characterDescription) missing.push("characterDescription");
+    if (nextNpc.wornItems.length === 0) missing.push("wornItems");
+    if (nextNpc.heldItems.length === 0) missing.push("heldItems");
+    if (missing.length > 0) {
+      throw new Error(`NPC #${index + 1} 缺少必填字段：${missing.join("、")}`);
+    }
+    return nextNpc;
+  });
+}
+
+function getMissingSetupFields(state: ScenarioHostSessionState): string[] {
+  const missing: string[] = [];
+  if (!state.profile.theme.trim() || !state.profile.worldBaseline.trim() || !state.profile.narrationStyle.trim()) {
+    missing.push("Scenario 资料核心字段");
+  }
+  if (!state.player.basicInfo.trim()) {
+    missing.push("玩家基础信息");
+  }
+  if (!state.player.characterDescription.trim()) {
+    missing.push("玩家角色描述");
+  }
+  if (state.player.wornItems.length === 0) {
+    missing.push("玩家穿着");
+  }
+  if (state.player.heldItems.length === 0) {
+    missing.push("玩家持有物");
+  }
+  return missing;
+}
+
+function validateInitializedState(state: ScenarioHostSessionState) {
+  if (!state.initialized) {
+    return;
+  }
+  const missing = getMissingSetupFields(state);
+  if (missing.length > 0) {
+    throw new Error(`已初始化场景缺少：${missing.join("、")}`);
+  }
 }
 
 function tryBuildDraftState(): ScenarioHostSessionState | null {
@@ -248,12 +450,53 @@ function removeObjective(index: number) {
   draft.value.objectives.splice(index, 1);
 }
 
-function addInventoryItem() {
-  draft.value.inventory.push({ ownerId: draft.value.player.userId || "", item: "", quantity: 1 });
+function addWornItem(items: ScenarioHostWornItem[]) {
+  items.push({ name: "", wearPosition: "", description: "" });
 }
 
-function removeInventoryItem(index: number) {
-  draft.value.inventory.splice(index, 1);
+function removeWornItem(items: ScenarioHostWornItem[], index: number) {
+  items.splice(index, 1);
+}
+
+function addHeldItem(items: ScenarioHostHeldItem[]) {
+  items.push({ name: "", description: "", quantity: 1 });
+}
+
+function removeHeldItem(items: ScenarioHostHeldItem[], index: number) {
+  items.splice(index, 1);
+}
+
+function addNpc() {
+  const index = draft.value.npcs.length + 1;
+  draft.value.npcs.push({
+    id: `npc-${index}`,
+    name: "",
+    aliases: [],
+    basicInfo: "",
+    characterDescription: "",
+    wornItems: [{ name: "", wearPosition: "", description: "" }],
+    heldItems: [{ name: "", description: "", quantity: 1 }],
+    statusDescription: "",
+    locationId: null,
+    tags: [],
+    notes: ""
+  });
+  const npc = draft.value.npcs[index - 1];
+  if (npc) {
+    disclosureStates[npcDisclosureId(npc)] = true;
+  }
+}
+
+function removeNpc(index: number) {
+  draft.value.npcs.splice(index, 1);
+}
+
+function updateNpcAliases(npc: ScenarioHostNpc, value: string) {
+  npc.aliases = splitList(value);
+}
+
+function updateNpcTags(npc: ScenarioHostNpc, value: string) {
+  npc.tags = splitList(value);
 }
 
 function addLoreEntry() {
@@ -296,6 +539,10 @@ function addEntity() {
     tags: [],
     notes: ""
   });
+  const entity = draft.value.entities[index - 1];
+  if (entity) {
+    disclosureStates[entityDisclosureId(entity)] = true;
+  }
 }
 
 function removeEntity(index: number) {
@@ -319,6 +566,10 @@ function addRelation() {
     strength: 0,
     updatedAtTurn: draft.value.turnIndex
   });
+  const relation = draft.value.relations[draft.value.relations.length - 1];
+  if (relation) {
+    disclosureStates[relationDisclosureId(relation)] = true;
+  }
 }
 
 function removeRelation(index: number) {
@@ -431,16 +682,6 @@ function removeFlag(index: number) {
           </label>
           <div class="grid gap-4 md:grid-cols-2">
             <label class="flex flex-col gap-1.5 text-small text-text-muted">
-              玩家 ID
-              <input v-model="draft.player.userId" class="input-base font-mono text-ui" />
-            </label>
-            <label class="flex flex-col gap-1.5 text-small text-text-muted">
-              玩家显示名
-              <input v-model="draft.player.displayName" class="input-base text-ui" />
-            </label>
-          </div>
-          <div class="grid gap-4 md:grid-cols-2">
-            <label class="flex flex-col gap-1.5 text-small text-text-muted">
               规则风格
               <select v-model="draft.mechanics.ruleStyle" class="input-base text-ui">
                 <option value="freeform">freeform</option>
@@ -463,6 +704,126 @@ function removeFlag(index: number) {
           </label>
         </div>
 
+        <div v-else-if="activeTab === 'characters'" class="grid gap-4">
+          <WorkbenchDisclosure
+            :expanded="isDisclosureExpanded('character:player', true)"
+            collapsed-title="玩家角色"
+            expanded-title="玩家角色"
+            :summary="playerSummary()"
+            max-body-height-class="max-h-none"
+            body-class="gap-3"
+            @toggle="toggleDisclosure('character:player', true)"
+          >
+            <div class="grid gap-3 md:grid-cols-2">
+              <label class="flex flex-col gap-1.5 text-small text-text-muted">
+                玩家 ID
+                <input v-model="draft.player.userId" class="input-base font-mono text-ui" />
+              </label>
+              <label class="flex flex-col gap-1.5 text-small text-text-muted">
+                玩家显示名
+                <input v-model="draft.player.displayName" class="input-base text-ui" />
+              </label>
+            </div>
+            <label class="flex flex-col gap-1.5 text-small text-text-muted">
+              基础信息
+              <textarea v-model="draft.player.basicInfo" class="input-base min-h-20 resize-y text-ui leading-[1.4]" />
+            </label>
+            <label class="flex flex-col gap-1.5 text-small text-text-muted">
+              角色描述
+              <textarea v-model="draft.player.characterDescription" class="input-base min-h-24 resize-y text-ui leading-[1.4]" />
+            </label>
+            <label class="flex flex-col gap-1.5 text-small text-text-muted">
+              临时状态
+              <input v-model="draft.player.statusDescription" class="input-base text-ui" />
+            </label>
+
+            <div class="grid gap-2">
+              <div class="flex items-center justify-between gap-2">
+                <div class="text-small font-medium text-text-secondary">穿着</div>
+                <button class="btn btn-secondary" type="button" @click="addWornItem(draft.player.wornItems)">新增穿着</button>
+              </div>
+              <div v-if="draft.player.wornItems.length === 0" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">暂无穿着</div>
+              <div v-for="(item, index) in draft.player.wornItems" :key="`player-worn-${index}`" class="grid gap-2 md:grid-cols-[minmax(0,1fr)_10rem_minmax(0,2fr)_auto]">
+                <input v-model="item.name" class="input-base text-ui" placeholder="名称" />
+                <input v-model="item.wearPosition" class="input-base text-ui" placeholder="位置" />
+                <input v-model="item.description" class="input-base text-ui" placeholder="描述" />
+                <button class="btn btn-secondary" type="button" @click="removeWornItem(draft.player.wornItems, index)">删除</button>
+              </div>
+            </div>
+
+            <div class="grid gap-2">
+              <div class="flex items-center justify-between gap-2">
+                <div class="text-small font-medium text-text-secondary">持有物</div>
+                <button class="btn btn-secondary" type="button" @click="addHeldItem(draft.player.heldItems)">新增持有物</button>
+              </div>
+              <div v-if="draft.player.heldItems.length === 0" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">暂无持有物</div>
+              <div v-for="(item, index) in draft.player.heldItems" :key="`player-held-${index}`" class="grid gap-2 md:grid-cols-[minmax(0,1fr)_7rem_minmax(0,2fr)_auto]">
+                <input v-model="item.name" class="input-base text-ui" placeholder="名称" />
+                <input v-model.number="item.quantity" type="number" min="1" class="input-base text-ui" />
+                <input v-model="item.description" class="input-base text-ui" placeholder="描述" />
+                <button class="btn btn-secondary" type="button" @click="removeHeldItem(draft.player.heldItems, index)">删除</button>
+              </div>
+            </div>
+          </WorkbenchDisclosure>
+
+          <section class="grid gap-3">
+            <button class="btn btn-secondary justify-self-start" type="button" @click="addNpc">新增 NPC</button>
+            <div v-if="draft.npcs.length === 0" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">暂无 NPC</div>
+            <WorkbenchDisclosure
+              v-for="(npc, npcIndex) in draft.npcs"
+              :key="npcDisclosureId(npc)"
+              :expanded="isDisclosureExpanded(npcDisclosureId(npc))"
+              :collapsed-title="npcTitle(npc, npcIndex)"
+              :expanded-title="npcTitle(npc, npcIndex)"
+              :summary="npcSummary(npc)"
+              max-body-height-class="max-h-none"
+              body-class="gap-3"
+              @toggle="toggleDisclosure(npcDisclosureId(npc))"
+            >
+              <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <input v-model="npc.id" class="input-base font-mono text-ui" placeholder="id" />
+                <input v-model="npc.name" class="input-base text-ui" placeholder="name" />
+                <input v-model="npc.locationId" class="input-base font-mono text-ui" placeholder="locationId" />
+                <button class="btn btn-secondary" type="button" @click="removeNpc(npcIndex)">删除</button>
+              </div>
+              <div class="grid gap-3 md:grid-cols-3">
+                <input :value="joinList(npc.aliases)" class="input-base text-ui" placeholder="aliases" @input="updateNpcAliases(npc, ($event.target as HTMLInputElement).value)" />
+                <input v-model="npc.statusDescription" class="input-base text-ui" placeholder="statusDescription" />
+                <input :value="joinList(npc.tags)" class="input-base text-ui" placeholder="tags" @input="updateNpcTags(npc, ($event.target as HTMLInputElement).value)" />
+              </div>
+              <textarea v-model="npc.basicInfo" class="input-base min-h-20 resize-y text-ui leading-[1.4]" placeholder="basicInfo" />
+              <textarea v-model="npc.characterDescription" class="input-base min-h-24 resize-y text-ui leading-[1.4]" placeholder="characterDescription" />
+              <textarea v-model="npc.notes" class="input-base min-h-20 resize-y text-ui leading-[1.4]" placeholder="notes" />
+
+              <div class="grid gap-2">
+                <div class="flex items-center justify-between gap-2">
+                  <div class="text-small font-medium text-text-secondary">穿着</div>
+                  <button class="btn btn-secondary" type="button" @click="addWornItem(npc.wornItems)">新增穿着</button>
+                </div>
+                <div v-for="(item, itemIndex) in npc.wornItems" :key="`npc-worn-${npcIndex}-${itemIndex}`" class="grid gap-2 md:grid-cols-[minmax(0,1fr)_10rem_minmax(0,2fr)_auto]">
+                  <input v-model="item.name" class="input-base text-ui" placeholder="名称" />
+                  <input v-model="item.wearPosition" class="input-base text-ui" placeholder="位置" />
+                  <input v-model="item.description" class="input-base text-ui" placeholder="描述" />
+                  <button class="btn btn-secondary" type="button" @click="removeWornItem(npc.wornItems, itemIndex)">删除</button>
+                </div>
+              </div>
+
+              <div class="grid gap-2">
+                <div class="flex items-center justify-between gap-2">
+                  <div class="text-small font-medium text-text-secondary">持有物</div>
+                  <button class="btn btn-secondary" type="button" @click="addHeldItem(npc.heldItems)">新增持有物</button>
+                </div>
+                <div v-for="(item, itemIndex) in npc.heldItems" :key="`npc-held-${npcIndex}-${itemIndex}`" class="grid gap-2 md:grid-cols-[minmax(0,1fr)_7rem_minmax(0,2fr)_auto]">
+                  <input v-model="item.name" class="input-base text-ui" placeholder="名称" />
+                  <input v-model.number="item.quantity" type="number" min="1" class="input-base text-ui" />
+                  <input v-model="item.description" class="input-base text-ui" placeholder="描述" />
+                  <button class="btn btn-secondary" type="button" @click="removeHeldItem(npc.heldItems, itemIndex)">删除</button>
+                </div>
+              </div>
+            </WorkbenchDisclosure>
+          </section>
+        </div>
+
         <div v-else-if="activeTab === 'objectives'" class="grid gap-3">
           <button class="btn btn-secondary justify-self-start" type="button" @click="addObjective">新增目标</button>
           <div v-if="draft.objectives.length === 0" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">暂无目标</div>
@@ -478,17 +839,6 @@ function removeFlag(index: number) {
               <button class="btn btn-secondary" type="button" @click="removeObjective(index)">删除</button>
             </div>
             <textarea v-model="objective.summary" class="input-base min-h-20 resize-y text-ui leading-[1.4]" />
-          </div>
-        </div>
-
-        <div v-else-if="activeTab === 'inventory'" class="grid gap-3">
-          <button class="btn btn-secondary justify-self-start" type="button" @click="addInventoryItem">新增物品</button>
-          <div v-if="draft.inventory.length === 0" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">暂无物品</div>
-          <div v-for="(item, index) in draft.inventory" :key="`inventory-${index}`" class="grid gap-3 rounded border border-border-default bg-surface-sidebar p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem_auto]">
-            <input v-model="item.ownerId" class="input-base font-mono text-ui" placeholder="ownerId" />
-            <input v-model="item.item" class="input-base text-ui" placeholder="item" />
-            <input v-model.number="item.quantity" type="number" min="1" class="input-base text-ui" />
-            <button class="btn btn-secondary" type="button" @click="removeInventoryItem(index)">删除</button>
           </div>
         </div>
 
@@ -518,7 +868,17 @@ function removeFlag(index: number) {
           <section class="grid gap-3">
             <button class="btn btn-secondary justify-self-start" type="button" @click="addEntity">新增实体</button>
             <div v-if="draft.entities.length === 0" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">暂无实体</div>
-            <div v-for="(entity, index) in draft.entities" :key="`entity-${index}`" class="grid gap-3 rounded border border-border-default bg-surface-sidebar p-3">
+            <WorkbenchDisclosure
+              v-for="(entity, index) in draft.entities"
+              :key="entityDisclosureId(entity)"
+              :expanded="isDisclosureExpanded(entityDisclosureId(entity))"
+              :collapsed-title="entityTitle(entity, index)"
+              :expanded-title="entityTitle(entity, index)"
+              :summary="entitySummary(entity)"
+              max-body-height-class="max-h-none"
+              body-class="gap-3"
+              @toggle="toggleDisclosure(entityDisclosureId(entity))"
+            >
               <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_10rem_minmax(0,1fr)_auto]">
                 <input v-model="entity.id" class="input-base font-mono text-ui" placeholder="id" />
                 <select v-model="entity.kind" class="input-base text-ui">
@@ -535,13 +895,23 @@ function removeFlag(index: number) {
               <textarea v-model="entity.summary" class="input-base min-h-20 resize-y text-ui leading-[1.4]" placeholder="summary" />
               <textarea v-model="entity.notes" class="input-base min-h-20 resize-y text-ui leading-[1.4]" placeholder="notes" />
               <input :value="joinList(entity.tags)" class="input-base text-ui" placeholder="tags" @input="updateEntityTags(entity, ($event.target as HTMLInputElement).value)" />
-            </div>
+            </WorkbenchDisclosure>
           </section>
 
           <section class="grid gap-3">
             <button class="btn btn-secondary justify-self-start" type="button" @click="addRelation">新增关系</button>
             <div v-if="draft.relations.length === 0" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle">暂无关系</div>
-            <div v-for="(relation, index) in draft.relations" :key="`relation-${index}`" class="grid gap-3 rounded border border-border-default bg-surface-sidebar p-3">
+            <WorkbenchDisclosure
+              v-for="(relation, index) in draft.relations"
+              :key="relationDisclosureId(relation)"
+              :expanded="isDisclosureExpanded(relationDisclosureId(relation))"
+              :collapsed-title="relationTitle(relation, index)"
+              :expanded-title="relationTitle(relation, index)"
+              :summary="relationSummary(relation)"
+              max-body-height-class="max-h-none"
+              body-class="gap-3"
+              @toggle="toggleDisclosure(relationDisclosureId(relation))"
+            >
               <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_8rem_auto]">
                 <input v-model="relation.sourceId" class="input-base font-mono text-ui" placeholder="sourceId" />
                 <input v-model="relation.targetId" class="input-base font-mono text-ui" placeholder="targetId" />
@@ -550,7 +920,7 @@ function removeFlag(index: number) {
                 <button class="btn btn-secondary" type="button" @click="removeRelation(index)">删除</button>
               </div>
               <textarea v-model="relation.summary" class="input-base min-h-20 resize-y text-ui leading-[1.4]" />
-            </div>
+            </WorkbenchDisclosure>
           </section>
         </div>
 

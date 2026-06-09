@@ -64,6 +64,7 @@ export interface AdminMessagingService {
   excludeTranscriptItem(params: { sessionId: string; itemId: string }): Promise<{ ok: true; excludedItemIds: string[] }>;
   excludeTranscriptGroup(params: { sessionId: string; groupId: string }): Promise<{ ok: true; excludedItemIds: string[] }>;
   excludeTranscriptItemsAfter(params: { sessionId: string; itemId: string }): Promise<{ ok: true; excludedItemIds: string[] }>;
+  resendTranscriptUserBatch(params: { sessionId: string; itemId: string }): Promise<{ ok: true; turnId: string }>;
 }
 
 export function createAdminMessagingService(input: {
@@ -74,7 +75,7 @@ export function createAdminMessagingService(input: {
   };
   oneBotClient: Pick<OneBotClient, "sendText" | "deleteMessage">;
   chatFileStore: Pick<ChatFileStore, "getMany">;
-  sessionManager: SessionStreamAccess & Pick<SessionAdminMutationAccess, "excludeTranscriptItem" | "excludeTranscriptGroup" | "excludeTranscriptItemsAfter">;
+  sessionManager: SessionStreamAccess & Pick<SessionAdminMutationAccess, "excludeTranscriptItem" | "excludeTranscriptGroup" | "excludeTranscriptItemsAfter" | "reactivateTranscriptUserBatch">;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {
@@ -83,6 +84,12 @@ export function createAdminMessagingService(input: {
       sessionId?: string;
     }
   ) => Promise<void>;
+  flushSession?: (sessionId: string, options?: {
+    skipReplyGate?: boolean;
+    delivery?: "onebot" | "web";
+    committedTextSink?: GenerationCommittedTextSink;
+    draftOverlaySink?: GenerationDraftOverlaySink;
+  }) => void;
   webTurnBroker?: WebTurnBroker;
 }): AdminMessagingService {
   const broker = input.webTurnBroker ?? createWebTurnBroker();
@@ -181,6 +188,40 @@ export function createAdminMessagingService(input: {
       return {
         ok: true,
         excludedItemIds: affected.map((item) => item.id ?? "").filter((value) => value.length > 0)
+      };
+    },
+
+    async resendTranscriptUserBatch(params) {
+      if (!input.flushSession) {
+        throw new Error("Web session flush is unavailable");
+      }
+      const reactivated = input.sessionManager.reactivateTranscriptUserBatch(
+        params.sessionId,
+        params.itemId,
+        "manual_truncate_after",
+        Date.now()
+      );
+      const turnState = broker.create(params.sessionId);
+      broker.publish(turnState, {
+        type: "ready",
+        turnId: turnState.turnId,
+        sessionId: params.sessionId,
+        timestampMs: Date.now()
+      });
+
+      void runTranscriptResendInBackground({
+        sessionManager: input.sessionManager,
+        oneBotClient: input.oneBotClient,
+        flushSession: input.flushSession,
+        broker,
+        turnState,
+        sessionId: params.sessionId,
+        excludedItems: reactivated.excludedItems
+      });
+
+      return {
+        ok: true,
+        turnId: turnState.turnId
       };
     },
 
@@ -369,6 +410,80 @@ async function runWebTurnInBackground(input: {
       }
     });
 
+    await waitForSessionTurnCompletion(input.sessionManager, input.sessionId, input.turnState.createdAt);
+    input.broker.complete(input.turnState);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    input.broker.publish(input.turnState, {
+      type: "turn_error",
+      turnId: input.turnState.turnId,
+      sessionId: input.sessionId,
+      message,
+      timestampMs: Date.now()
+    });
+    input.broker.fail(input.turnState);
+  }
+}
+
+async function runTranscriptResendInBackground(input: {
+  sessionManager: SessionStreamAccess;
+  oneBotClient: Pick<OneBotClient, "deleteMessage">;
+  flushSession: (sessionId: string, options?: {
+    skipReplyGate?: boolean;
+    delivery?: "onebot" | "web";
+    committedTextSink?: GenerationCommittedTextSink;
+    draftOverlaySink?: GenerationDraftOverlaySink;
+  }) => void;
+  broker: WebTurnBroker;
+  turnState: ReturnType<WebTurnBroker["create"]>;
+  sessionId: string;
+  excludedItems: InternalTranscriptItem[];
+}): Promise<void> {
+  try {
+    await performTranscriptDeletionSideEffects(input.oneBotClient, input.excludedItems);
+    input.flushSession(input.sessionId, {
+      skipReplyGate: true,
+      delivery: "web",
+      committedTextSink: {
+        commitText() {}
+      },
+      draftOverlaySink: {
+        appendDelta(delta) {
+          input.broker.publish(input.turnState, {
+            type: "draft_delta",
+            turnId: input.turnState.turnId,
+            sessionId: input.sessionId,
+            delta,
+            timestampMs: Date.now()
+          });
+        },
+        markCommitted() {
+          input.broker.publish(input.turnState, {
+            type: "segment_committed",
+            turnId: input.turnState.turnId,
+            sessionId: input.sessionId,
+            timestampMs: Date.now()
+          });
+        },
+        complete() {
+          input.broker.publish(input.turnState, {
+            type: "complete",
+            turnId: input.turnState.turnId,
+            sessionId: input.sessionId,
+            timestampMs: Date.now()
+          });
+        },
+        fail(message) {
+          input.broker.publish(input.turnState, {
+            type: "turn_error",
+            turnId: input.turnState.turnId,
+            sessionId: input.sessionId,
+            message,
+            timestampMs: Date.now()
+          });
+        }
+      }
+    });
     await waitForSessionTurnCompletion(input.sessionManager, input.sessionId, input.turnState.createdAt);
     input.broker.complete(input.turnState);
   } catch (error: unknown) {

@@ -134,6 +134,7 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
     responseAbortController: started.responseAbortController,
     responseEpoch: started.responseEpoch,
     abortController: started.abortController,
+    modeId: "assistant",
     relationship: "owner",
     interactionMode: "normal",
     internalTranscript: [],

@@ -3,7 +3,7 @@ import { forwardToolDescriptors, forwardToolHandlers } from "../conversation/for
 import { groupContextToolDescriptors, groupContextToolHandlers } from "../conversation/groupContextTools.ts";
 import { imageToolDescriptors, imageToolHandlers } from "../conversation/imageTools.ts";
 import { messageToolDescriptors, messageToolHandlers } from "../conversation/messageTools.ts";
-import { scenarioHostToolDescriptors, scenarioHostToolHandlers } from "../conversation/scenarioHostTools.ts";
+import { scenarioHostToolDescriptors, scenarioHostToolHandlers } from "#modes/scenarioHost/tools.ts";
 import { sessionToolDescriptors, sessionToolHandlers } from "../conversation/sessionTools.ts";
 import { setupDraftToolDescriptors, setupDraftToolHandlers } from "../conversation/setupDraftTools.ts";
 

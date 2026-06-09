@@ -70,6 +70,7 @@ interface TranscriptActionTarget {
   title: string;
   detail: string;
   alreadyInvalidated: boolean;
+  canResend: boolean;
 }
 
 const reversedMessages = computed(() =>
@@ -150,6 +151,30 @@ function openTranscriptActions(target: TranscriptActionTarget) {
       }
     ],
     actions: [
+      ...(target.canResend
+        ? [{
+            id: "resend",
+            label: "重新发送",
+            variant: "primary" as const,
+            run: async () => {
+              if (target.alreadyInvalidated) {
+                const error = new Error("当前记录已失效，无法重新发送。");
+                toast.push({ type: "error", message: error.message });
+                throw error;
+              }
+              try {
+                await store.resendTranscriptUserBatch(target.itemId);
+                return { target: target.itemId };
+              } catch (error: unknown) {
+                const message = error instanceof ApiError || error instanceof Error
+                  ? error.message
+                  : "重新发送失败";
+                toast.push({ type: "error", message });
+                throw error;
+              }
+            }
+          }]
+        : []),
       {
         id: "invalidate-single",
         label: "删除单条",
@@ -228,7 +253,8 @@ function buildChatActionTarget(item: ChatTimelineItem): TranscriptActionTarget |
       : item.kind === "image"
         ? (item.sourceName || item.fileRef || item.fileId || "图片")
         : formatContentPartsActionDetail(item.parts),
-    alreadyInvalidated: false
+    alreadyInvalidated: false,
+    canResend: item.role === "user" && item.actionTitle !== "指令消息"
   };
 }
 
@@ -258,7 +284,8 @@ function buildTranscriptActionTarget(entry: TranscriptEntry): TranscriptActionTa
     groupId: entry.item.groupId,
     title: describeTranscriptItem(entry.item),
     detail: `#${entry.index}`,
-    alreadyInvalidated: entry.item.runtimeExcluded === true
+    alreadyInvalidated: entry.item.runtimeExcluded === true,
+    canResend: entry.item.runtimeExcluded !== true && (entry.item.kind === "user_message" || entry.item.kind === "user_media_message")
   };
 }
 

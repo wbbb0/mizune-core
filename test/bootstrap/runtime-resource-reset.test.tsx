@@ -44,6 +44,7 @@ test("initializeBootstrapState initializes state database before resetting runti
       dataDir,
       whitelistStore: { async init() {} } as any,
       sessionPersistence: { async init() {}, async loadAll() { return []; } } as any,
+      sessionSnapshotStore: { async init() {} } as any,
       audioStore: { async init() {} } as any,
       localFileService: { async init() {} } as any,
       chatFileStore: { async init() {} } as any,

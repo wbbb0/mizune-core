@@ -38,8 +38,9 @@ import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { ToolsetRuleEntry } from "#llm/prompt/toolsetRuleStore.ts";
 import { isNearDuplicateText } from "#memory/similarity.ts";
 import type { UserMemoryEntry } from "#memory/userMemoryEntry.ts";
-import type { ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { createEmptyScenarioProfile, getMissingScenarioProfileFields } from "#modes/scenarioHost/profileSchema.ts";
+import { buildScenarioRuntimeQueryText, buildScenarioStateLines } from "#modes/scenarioHost/promptContext.ts";
+import { buildScenarioSetupRequirementLines } from "#modes/scenarioHost/promptSections.ts";
 import { preparePromptMemoryContext } from "#llm/prompts/chat-system.prompt.ts";
 import type { PromptInput } from "#llm/prompt/promptTypes.ts";
 import type { MessageContentPart } from "#messages/contentParts.ts";
@@ -195,24 +196,6 @@ function isScenarioHostMode(modeId?: string): boolean {
 
 function isAssistantMode(modeId?: string): boolean {
   return modeId === "assistant";
-}
-
-function buildScenarioStateLines(state: ScenarioHostSessionState): string[] {
-  return [
-    `当前局势=${state.currentSituation}`,
-    `当前位置=${state.currentLocation ?? "未设定"}`,
-    `场景摘要=${state.sceneSummary || "无"}`,
-    `主玩家=${state.player.displayName} (${state.player.userId})`,
-    `背包=${state.inventory.length > 0 ? state.inventory.map((item: ScenarioHostSessionState["inventory"][number]) => `${item.ownerId}:${item.item}x${item.quantity}`).join("；") : "空"}`,
-    `目标=${state.objectives.length > 0 ? state.objectives.map((item: ScenarioHostSessionState["objectives"][number]) => `${item.id}:${item.title}[${item.status}] ${item.summary}`.trim()).join("；") : "无"}`,
-    `Lore=${state.loreEntries.length > 0 ? state.loreEntries.filter((item) => item.enabled).map((item) => `${item.title}:${item.content}`.trim()).join("；") : "无"}`,
-    `实体=${state.entities.length > 0 ? state.entities.map((item) => `${item.id}:${item.name}[${item.kind}] ${item.summary}`.trim()).join("；") : "无"}`,
-    `关系=${state.relations.length > 0 ? state.relations.map((item) => `${item.sourceId}->${item.targetId}[${item.kind}] ${item.summary}`.trim()).join("；") : "无"}`,
-    `日志=${state.journal.length > 0 ? state.journal.slice(-5).map((item) => `T${item.turnIndex} ${item.title}:${item.summary}`.trim()).join("；") : "无"}`,
-    `规则=${state.mechanics.ruleStyle}${state.mechanics.dicePolicy ? `；${state.mechanics.dicePolicy}` : ""}`,
-    `标记=${Object.keys(state.flags).length > 0 ? Object.entries(state.flags).map(([key, value]) => `${key}=${String(value)}`).join("；") : "无"}`,
-    `回合数=${state.turnIndex}`
-  ];
 }
 
 // Converts relevant NPC records into prompt-friendly profile payloads.
@@ -1098,6 +1081,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         : null
     );
     const draftScopedMode = draftMode != null;
+    const scenarioDraftMode = draftMode?.target === "scenario";
     const mainProfile = getPrimaryModelProfile(deps.config, input.mainModelRef);
     const safetyProjected = await projectPromptContentSafety(deps, {
       sessionId: input.sessionId,
@@ -1128,7 +1112,8 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       : resolveToolsetRules(await deps.toolsetRuleStore.getAll(), {
           activeToolsets: input.activeToolsets
         });
-    const scenarioState = (scenarioHostMode && !draftScopedMode)
+    const shouldLoadScenarioState = (scenarioHostMode && !draftScopedMode) || scenarioDraftMode;
+    const scenarioState = shouldLoadScenarioState
       ? await deps.scenarioHostStateStore.ensure(input.sessionId, {
           playerUserId: input.currentUser?.userId ?? safetyProjected.batchMessages[safetyProjected.batchMessages.length - 1]?.userId ?? "unknown_user",
           playerDisplayName: input.currentUser?.preferredAddress
@@ -1137,6 +1122,19 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
             ?? "玩家"
         })
       : null;
+    const runtimeScenarioState = scenarioHostMode && !draftScopedMode
+      ? scenarioState
+      : null;
+    const scenarioSetupRequirementLines = scenarioDraftMode && scenarioState
+      ? buildScenarioSetupRequirementLines({
+          profile: draftMode.profile,
+          state: {
+            ...scenarioState,
+            profile: draftMode.profile
+          },
+          phase: draftMode.phase
+        })
+      : undefined;
     const liveResources = shouldIncludeLiveResources(input.visibleToolNames)
       ? await collectPromptLiveResources(deps)
       : [];
@@ -1181,6 +1179,13 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       ? []
       : listUserPromptFactsForPrompt(deps, input.currentUser.userId);
     const memoryQueryText = buildBatchQueryText(input.batchMessages);
+    const scenarioRuntimeQueryText = runtimeScenarioState
+      ? buildScenarioRuntimeQueryText({
+          state: runtimeScenarioState,
+          queryText: memoryQueryText,
+          historyForPrompt: mediaContext.historyForPrompt
+        })
+      : "";
     const userFactSelection = selectFixedPromptFacts(allCurrentUserMemories, deps.config.context.retrieval.maxFixedUserFacts, {
       queryText: memoryQueryText
     });
@@ -1259,7 +1264,8 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       debugMarkers: input.debugMarkers,
       liveResources,
       toolsetRules,
-      ...(scenarioState ? { scenarioStateLines: buildScenarioStateLines(scenarioState) } : {}),
+      ...(runtimeScenarioState ? { scenarioStateLines: buildScenarioStateLines(runtimeScenarioState, { queryText: scenarioRuntimeQueryText }) } : {}),
+      ...(scenarioSetupRequirementLines ? { scenarioSetupRequirementLines } : {}),
       ...(input.modeProfile ? { modeProfile: input.modeProfile } : {}),
       ...(draftMode ? { draftMode } : {}),
       recentMessages: mediaContext.historyForPrompt,
@@ -1367,6 +1373,13 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       ? []
       : listUserPromptFactsForPrompt(deps, input.currentUser.userId);
     const memoryQueryText = buildScheduledQueryText(scheduledTrigger);
+    const scenarioRuntimeQueryText = scenarioState
+      ? buildScenarioRuntimeQueryText({
+          state: scenarioState,
+          queryText: memoryQueryText,
+          historyForPrompt: mediaContext.historyForPrompt
+        })
+      : "";
     const userFactSelection = selectFixedPromptFacts(allCurrentUserMemories, deps.config.context.retrieval.maxFixedUserFacts, {
       queryText: memoryQueryText
     });
@@ -1457,7 +1470,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       debugMarkers: input.debugMarkers,
       liveResources,
       toolsetRules,
-      ...(scenarioState ? { scenarioStateLines: buildScenarioStateLines(scenarioState) } : {}),
+      ...(scenarioState ? { scenarioStateLines: buildScenarioStateLines(scenarioState, { queryText: scenarioRuntimeQueryText }) } : {}),
       ...(input.modeProfile ? { modeProfile: input.modeProfile } : {}),
       recentMessages: mediaContext.historyForPrompt,
       targetContext: input.targetContext

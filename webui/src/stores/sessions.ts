@@ -547,6 +547,17 @@ export const useSessionsStore = defineStore("sessions", () => {
     return result.session.id;
   }
 
+  async function copySessionToWebSession(sessionId: string, input: {
+    title?: string;
+  } = {}): Promise<string> {
+    const result = await sessionsApi.copyToWebSession(sessionId, {
+      ...(input.title?.trim() ? { title: input.title.trim() } : {})
+    });
+    await refresh();
+    selectSession(result.session.id);
+    return result.session.id;
+  }
+
   async function switchSessionMode(sessionId: string, modeId: string): Promise<void> {
     const result = await sessionsApi.switchMode(sessionId, { modeId });
     const nextSession = normalizeSessionListItem(result.session);
@@ -753,6 +764,15 @@ export const useSessionsStore = defineStore("sessions", () => {
     applyLocalTranscriptInvalidation(result.excludedItemIds, "manual_truncate_after");
   }
 
+  async function resendTranscriptUserBatch(itemId: string): Promise<void> {
+    const cur = active.value;
+    if (!cur) {
+      return;
+    }
+    const { turnId } = await sessionsApi.resendTranscriptUserBatch(cur.id, itemId);
+    _subscribeTurnStream(cur.id, turnId);
+  }
+
   return {
     list,
     modes,
@@ -760,6 +780,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     active,
     refresh,
     createSession,
+    copySessionToWebSession,
     deleteSelectedSession,
     deleteSession,
     switchSessionMode,
@@ -775,6 +796,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     setComposerDraftText,
     excludeTranscriptItem,
     excludeTranscriptGroup,
-    excludeTranscriptItemsAfter
+    excludeTranscriptItemsAfter,
+    resendTranscriptUserBatch
   };
 });

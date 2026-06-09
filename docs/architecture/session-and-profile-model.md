@@ -106,7 +106,7 @@
   - 只负责当前 `scenario_host` 会话所需的主题、世界基线、叙事风格与边界
   - 每个会话独立保存，不跨聊天复用
 
-Scenario 运行态同样是会话级数据，保存在 `scenario_host_session_states` 中；`profile` 与当前局势、位置、背包、目标、lore、实体、关系、剧情日志和轻规则配置等状态一起组成当前会话的完整 Scenario Host 状态。
+Scenario 运行态同样是会话级数据，保存在 `scenario_host_session_states` 中；`profile` 与当前局势、位置、玩家角色、NPC、目标、lore、非角色实体、关系、剧情日志和轻规则配置等状态一起组成当前会话的完整 Scenario Host 状态。玩家和 NPC 的穿着与随身持有物保存在各自角色字段中，通用 `entities` 只描述地点、组织、物品等非角色对象。
 
 同时，系统单独维护全局准备度：
 

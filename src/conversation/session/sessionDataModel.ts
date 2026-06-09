@@ -124,7 +124,7 @@ export const sessionDataDomain = defineDataDomain({
 export const scenarioHostStateDataDomain = defineDataDomain({
   database: "sessions",
   tableGroup: "sessions.scenario_host_state",
-  schemaVersion: 3,
+  schemaVersion: 4,
   resetPolicy: "block_reset",
   tables: {
     scenario_host_session_states: defineTable({

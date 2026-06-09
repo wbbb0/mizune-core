@@ -23,7 +23,7 @@ export class ScenarioHostStateStore {
   private readonly dbPath: string;
   private readonly legacyStateDbPath: string;
   private sqlite: SqliteDatabaseHandle | null = null;
-  private readonly writes = new Map<string, Promise<ScenarioHostSessionState | null>>();
+  private readonly writes = new Map<string, Promise<unknown>>();
 
   constructor(
     dataDir: string,
@@ -106,6 +106,17 @@ export class ScenarioHostStateStore {
     }, { allowNullResult: false });
   }
 
+  async delete(sessionId: string): Promise<boolean> {
+    return this.enqueueWrite(sessionId, async () => {
+      const db = await this.getReadyDb();
+      const result = db.prepare(`
+        DELETE FROM scenario_host_session_states
+        WHERE session_id = ?
+      `).run(sessionId);
+      return result.changes > 0;
+    }, { allowNullResult: true });
+  }
+
   async update(
     sessionId: string,
     updater: (current: ScenarioHostSessionState) => ScenarioHostSessionState | Promise<ScenarioHostSessionState>,
@@ -160,7 +171,7 @@ export class ScenarioHostStateStore {
     return this.sqlite.db;
   }
 
-  private async enqueueWrite<T extends ScenarioHostSessionState | null>(
+  private async enqueueWrite<T>(
     sessionId: string,
     operation: () => Promise<T>,
     options: { allowNullResult: boolean }
@@ -179,7 +190,7 @@ export class ScenarioHostStateStore {
     if (!options.allowNullResult && result == null) {
       throw new Error(`Scenario host state write returned null for session ${sessionId}`);
     }
-    return result as T;
+    return result;
   }
 }
 
@@ -346,7 +357,7 @@ function joinNonEmpty(values: Array<string | undefined>): string {
 function createScenarioHostTableGroups(legacyStateDbPath: string): SqliteTableGroupDefinition[] {
   return [{
     groupId: "sessions.scenario_host_state",
-    schemaVersion: 3,
+    schemaVersion: 4,
     minReadableSchemaVersion: 1,
     resetPolicy: "block_reset",
     ownedTables: ["scenario_host_session_states"],

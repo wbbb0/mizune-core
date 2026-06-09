@@ -7,6 +7,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
+import { createInitialScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
 import type { SessionTaskTracker } from "../../src/conversation/taskTracker/taskTrackerTypes.ts";
 
 type TestPromptHistoryMessage = {
@@ -369,6 +370,18 @@ test("scenario_host normal prompt receives the saved scenario profile", async ()
     narrationStyle: "紧凑克制",
     worldBaseline: "现代都市潜伏超自然现象"
   };
+  const baseScenarioState = createInitialScenarioHostSessionState({ playerUserId: "owner", playerDisplayName: "Owner" });
+  const savedScenarioState = {
+    ...baseScenarioState,
+    profile: savedScenarioProfile,
+    player: {
+      ...baseScenarioState.player,
+      basicInfo: "都市怪谈调查员。",
+      characterDescription: "冷静、谨慎，习惯记录异常细节。",
+      wornItems: [{ name: "灰色风衣", wearPosition: "外套", description: "便于融入城市夜色" }],
+      heldItems: [{ name: "录音笔", description: "用于记录怪谈调查线索", quantity: 1 }]
+    }
+  };
 
   let capturedModeProfile: unknown = null;
   let resolveRunGeneration!: () => void;
@@ -413,7 +426,7 @@ test("scenario_host normal prompt receives the saved scenario profile", async ()
       setupStore: {} as never,
       scenarioHostStateStore: {
         async ensureForSession() {
-          return { profile: savedScenarioProfile };
+          return savedScenarioState;
         }
       } as never,
       globalProfileReadinessStore: {

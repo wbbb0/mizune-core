@@ -623,7 +623,6 @@ function openActions(): void {
   <article
     class="grid grid-cols-[56px_minmax(0,1fr)] gap-2.5 border-b border-border-subtle px-3 py-2.5 max-[720px]:grid-cols-[42px_minmax(0,1fr)] max-[720px]:gap-2"
     :class="runtimeExcluded ? 'opacity-45' : ''"
-    @contextmenu.prevent="openActions"
   >
     <div class="flex flex-col items-center gap-1.5 pt-0.5">
       <SessionGlyph :glyph="itemGlyph" :tone-class="toneGlyphClass" />

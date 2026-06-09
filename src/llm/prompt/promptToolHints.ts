@@ -1,4 +1,5 @@
 import { buildTag as buildTagHint } from "#utils/structuredEnvelope.ts";
+import { buildScenarioHostToolHintLines } from "#modes/scenarioHost/toolHints.ts";
 
 function hasAnyTool(visibleToolNames: Set<string>, toolNames: string[]): boolean {
   return toolNames.some((name) => visibleToolNames.has(name));
@@ -146,9 +147,7 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("只有当前会话上下文不够时才跨会话，且只读最小必要范围；不要把其他会话信息混成当前会话事实。");
   }
 
-  if (hasAnyTool(visibleToolNames, ["get_scenario_state", "update_scenario_state", "set_current_location", "manage_objective", "manage_inventory", "manage_lore_entry", "manage_entity", "manage_relation", "append_journal_entry"])) {
-    lines.push("场景状态工具用于 scenario_host 内部维护；先 get_scenario_state 再按需更新 scene、轻规则、目标、背包、Lore、实体、关系或剧情日志，不要把完整结构化状态原样念给玩家。");
-  }
+  lines.push(...buildScenarioHostToolHintLines(visibleToolNames));
 
   if (hasAnyTool(visibleToolNames, ["list_session_modes", "switch_session_mode"])) {
     lines.push("只有用户明确要求切换当前会话模式时才用模式工具；先 list_session_modes，再 switch_session_mode。");

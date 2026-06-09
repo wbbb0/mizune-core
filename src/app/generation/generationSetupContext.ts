@@ -2,7 +2,7 @@ import type { GlobalProfileReadinessStore } from "#identity/globalProfileReadine
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { SessionSetupAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
-import { isScenarioSessionProfileComplete, isScenarioStateInitialized } from "#modes/scenarioHost/types.ts";
+import { isScenarioSetupComplete, isScenarioStateInitialized } from "#modes/scenarioHost/types.ts";
 import type { SetupCompletionSignal, SessionModeSetupContext } from "#modes/types.ts";
 import type { SessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
 import { requireSessionModeDefinition } from "#modes/registry.ts";
@@ -34,7 +34,7 @@ export async function resolveSessionModeSetupContext(
   const modeProfileReady = mode.profileAccess.modeProfile === "rp"
     ? readiness.rp === "ready"
     : mode.profileAccess.modeProfile === "scenario"
-      ? scenarioState != null && isScenarioSessionProfileComplete(scenarioState)
+      ? scenarioState != null && isScenarioSetupComplete(scenarioState)
       : true;
 
   return {

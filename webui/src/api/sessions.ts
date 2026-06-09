@@ -4,6 +4,7 @@ import type {
   SessionDetailResult,
   SessionListItem,
   SessionModeOption,
+  SessionSnapshotSummary,
   TranscriptFetchResult
 } from "./types";
 
@@ -31,6 +32,12 @@ export const sessionsApi = {
     return api.post("/api/sessions", body);
   },
 
+  copyToWebSession(sessionId: string, body: {
+    title?: string;
+  } = {}): Promise<{ ok: boolean; session: SessionListItem; modeState: SessionDetailResult["modeState"] }> {
+    return api.post(`/api/sessions/${encodeURIComponent(sessionId)}/copy`, body);
+  },
+
   listModes(): Promise<{ modes: SessionModeOption[] }> {
     return api.get("/api/session-modes");
   },
@@ -54,6 +61,31 @@ export const sessionsApi = {
     baseState?: ScenarioHostSessionState;
   }): Promise<{ ok: boolean; modeState: { kind: "scenario_host"; state: ScenarioHostSessionState } }> {
     return api.patch(`/api/sessions/${encodeURIComponent(sessionId)}/mode-state`, body);
+  },
+
+  listSnapshots(sessionId: string): Promise<{ snapshots: SessionSnapshotSummary[] }> {
+    return api.get(`/api/sessions/${encodeURIComponent(sessionId)}/snapshots`);
+  },
+
+  createSnapshot(sessionId: string, body: {
+    label?: string;
+  } = {}): Promise<{ ok: boolean; snapshot: SessionSnapshotSummary }> {
+    return api.post(`/api/sessions/${encodeURIComponent(sessionId)}/snapshots`, body);
+  },
+
+  restoreSnapshot(sessionId: string, snapshotId: string): Promise<{
+    ok: boolean;
+    session: SessionListItem;
+    modeState: SessionDetailResult["modeState"];
+    snapshot: SessionSnapshotSummary;
+  }> {
+    return api.post(
+      `/api/sessions/${encodeURIComponent(sessionId)}/snapshots/${encodeURIComponent(snapshotId)}/restore`
+    );
+  },
+
+  deleteSnapshot(sessionId: string, snapshotId: string): Promise<{ ok: boolean }> {
+    return api.delete(`/api/sessions/${encodeURIComponent(sessionId)}/snapshots/${encodeURIComponent(snapshotId)}`);
   },
 
   updateTitle(sessionId: string, body: {
@@ -115,5 +147,9 @@ export const sessionsApi = {
 
   excludeTranscriptItemsAfter(sessionId: string, itemId: string): Promise<{ ok: boolean; excludedItemIds: string[] }> {
     return api.delete(`/api/sessions/${encodeURIComponent(sessionId)}/transcript/items/${encodeURIComponent(itemId)}/after`);
+  },
+
+  resendTranscriptUserBatch(sessionId: string, itemId: string): Promise<{ ok: boolean; turnId: string }> {
+    return api.post(`/api/sessions/${encodeURIComponent(sessionId)}/transcript/items/${encodeURIComponent(itemId)}/resend`);
   }
 };

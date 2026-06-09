@@ -15,12 +15,14 @@ import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { ShellRuntime } from "#services/shell/runtime.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
+import type { SessionSnapshotStore } from "#conversation/session/sessionSnapshotStore.ts";
 import type { ConfigManager } from "#config/configManager.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type {
   GenerationCommittedTextSink,
   GenerationDraftOverlaySink
 } from "#app/generation/generationOutputContracts.ts";
+import type { MessageFlushSession } from "#app/messaging/messageHandlerTypes.ts";
 import type { BrowserService } from "#services/web/browser/browserService.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { ContentSafetyStore } from "#contentSafety/contentSafetyStore.ts";
@@ -139,6 +141,7 @@ export interface InternalApiSessionReadDeps {
 export interface InternalApiSessionWriteDeps extends InternalApiSessionReadDeps {
   sessionManager: SessionAdminReadAccess & SessionAdminMutationAccess;
   sessionPersistence: SessionPersistence;
+  sessionSnapshotStore: SessionSnapshotStore;
   scenarioHostStateStore: ScenarioHostStateStore;
   sessionCaptioner: SessionCaptioner;
 }
@@ -146,6 +149,7 @@ export interface InternalApiSessionWriteDeps extends InternalApiSessionReadDeps 
 export interface InternalApiSessionDeleteDeps extends InternalApiSessionReadDeps {
   sessionManager: SessionAdminReadAccess & Pick<SessionAdminMutationAccess, "deleteSession">;
   sessionPersistence: SessionPersistence;
+  sessionSnapshotStore: SessionSnapshotStore;
   assetLifecycleService: AssetLifecycleService;
   contextSessionCleanupService?: Pick<ContextSessionCleanupService, "cleanupDeletedSession">;
 }
@@ -166,7 +170,7 @@ export interface InternalApiOperationsDeps {
 export interface InternalApiMessagingDeps {
   config: AppConfig;
   oneBotClient: OneBotClient;
-  sessionManager: SessionStreamAccess & Pick<SessionAdminMutationAccess, "excludeTranscriptItem" | "excludeTranscriptGroup" | "excludeTranscriptItemsAfter">;
+  sessionManager: SessionStreamAccess & Pick<SessionAdminMutationAccess, "excludeTranscriptItem" | "excludeTranscriptGroup" | "excludeTranscriptItemsAfter" | "reactivateTranscriptUserBatch">;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {
@@ -175,6 +179,7 @@ export interface InternalApiMessagingDeps {
       sessionId?: string;
     }
   ) => Promise<void>;
+  flushSession: MessageFlushSession;
   chatFileStore: ChatFileStore;
 }
 
@@ -226,6 +231,7 @@ export interface InternalApiDeps {
   shellRuntime: ShellRuntime;
   configManager: ConfigManager;
   sessionPersistence: SessionPersistence;
+  sessionSnapshotStore: SessionSnapshotStore;
   handleWebIncomingMessage: (
     incomingMessage: ParsedIncomingMessage,
     options: {
@@ -234,6 +240,7 @@ export interface InternalApiDeps {
       sessionId?: string;
     }
   ) => Promise<void>;
+  flushSession: MessageFlushSession;
   browserService: BrowserService;
   localFileService: LocalFileService;
   chatFileStore: ChatFileStore;
@@ -277,6 +284,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         userIdentityStore: deps.userIdentityStore,
         sessionManager: deps.sessionManager,
         sessionPersistence: deps.sessionPersistence,
+        sessionSnapshotStore: deps.sessionSnapshotStore,
         personaStore: deps.personaStore,
         globalRuleStore: deps.globalRuleStore,
         scenarioHostStateStore: deps.scenarioHostStateStore,
@@ -346,6 +354,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       oneBotClient: deps.oneBotClient,
       sessionManager: deps.sessionManager,
       handleWebIncomingMessage: deps.handleWebIncomingMessage,
+      flushSession: deps.flushSession,
       chatFileStore: deps.chatFileStore
     },
     uploadRoutes: {

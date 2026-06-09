@@ -13,6 +13,7 @@ import { MessageQueue } from "../../conversation/messageQueue.ts";
 import { TurnPlanner } from "../../conversation/turnPlanner.ts";
 import { SessionManager } from "#conversation/session/sessionManager.ts";
 import { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
+import { SessionSnapshotStore } from "#conversation/session/sessionSnapshotStore.ts";
 import { ForwardResolver } from "../../forwards/forwardResolver.ts";
 import { AudioStore } from "#audio/audioStore.ts";
 import { AudioTranscriber } from "#audio/audioTranscriber.ts";
@@ -49,6 +50,7 @@ import { RuntimeResourceRegistry } from "#runtime/resources/runtimeResourceRegis
 import { RuntimeResourceStore } from "#runtime/resources/runtimeResourceStore.ts";
 import { RecentErrorStore } from "#runtime/recentErrorStore.ts";
 import { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
+import { StructuredSuggestionService } from "#llm/structured/structuredSuggestionService.ts";
 import { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
 import type { SessionBootstrapPersistenceAccess } from "#conversation/session/sessionCapabilities.ts";
@@ -111,6 +113,7 @@ export function createBootstrapServices(
   const turnPlanner = new TurnPlanner(config, llmClient, chatFileStore, mediaVisionService, logger, mediaCaptionService);
   const messageQueue = new MessageQueue(logger, config);
   const sessionPersistence = new SessionPersistence(dataDir, logger);
+  const sessionSnapshotStore = new SessionSnapshotStore(dataDir, logger);
   const scheduledJobStore = new ScheduledJobStore(dataDir, logger, stateDatabase);
   const requestStore = new RequestStore(dataDir, logger, stateDatabase);
   const groupMembershipStore = new GroupMembershipStore(dataDir, logger, stateDatabase);
@@ -121,6 +124,7 @@ export function createBootstrapServices(
   const personaStore = new PersonaStore(dataDir, config, logger, stateDatabase);
   const globalRuleStore = new GlobalRuleStore(dataDir, config, logger, stateDatabase);
   const toolsetRuleStore = new ToolsetRuleStore(dataDir, config, logger, stateDatabase);
+  const structuredSuggestionService = new StructuredSuggestionService(config, llmClient, logger);
   const scenarioHostStateStore = new ScenarioHostStateStore(dataDir, config, logger);
   const rpProfileStore = new RpProfileStore(dataDir, config, logger, stateDatabase);
   const setupStore = new SetupStateStore(dataDir, config, userIdentityStore, logger, stateDatabase);
@@ -164,6 +168,7 @@ export function createBootstrapServices(
     turnPlanner,
     messageQueue,
     sessionPersistence,
+    sessionSnapshotStore,
     scheduledJobStore,
     requestStore,
     groupMembershipStore,
@@ -175,6 +180,7 @@ export function createBootstrapServices(
     personaStore,
     globalRuleStore,
     toolsetRuleStore,
+    structuredSuggestionService,
     scenarioHostStateStore,
     rpProfileStore,
     setupStore,
@@ -214,6 +220,7 @@ export async function initializeBootstrapState(
       | "dataDir"
       | "whitelistStore"
       | "sessionPersistence"
+      | "sessionSnapshotStore"
       | "audioStore"
       | "localFileService"
       | "chatFileStore"
@@ -252,6 +259,7 @@ export async function initializeBootstrapState(
     config,
     whitelistStore,
     sessionPersistence,
+    sessionSnapshotStore,
     audioStore,
     localFileService,
     chatFileStore,
@@ -284,6 +292,7 @@ export async function initializeBootstrapState(
   await recentErrorStore.init();
   await whitelistStore.init();
   await sessionPersistence.init();
+  await sessionSnapshotStore.init();
   await localFileService.init();
   await chatFileStore.init();
   await assetLifecycleService.init();

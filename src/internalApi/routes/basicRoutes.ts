@@ -4,9 +4,12 @@ import {
   bulkDeleteContextItems,
   clearContextEmbeddings,
   compactContextUser,
+  copySessionToWebSession,
+  createSessionSnapshot,
   createWebSession,
   deleteContextItem,
   deleteSession,
+  deleteSessionSnapshot,
   getConfigSummary,
   getContextStatus,
   getHealthStatus,
@@ -18,9 +21,11 @@ import {
   listAvailableSessionModes,
   listContextItems,
   listSessions,
+  listSessionSnapshots,
   listUsers,
   getWhitelist,
   regenerateSessionTitle,
+  restoreSessionSnapshot,
   resetContextIndex,
   rebuildContextIndex,
   setContextItemPinned,
@@ -34,6 +39,8 @@ import { listRequests, listScheduledJobs } from "../application/operationsAdminS
 import { replyWithSseStream } from "./sse.ts";
 import {
   parseCreateSessionBody,
+  parseCreateSessionSnapshotBody,
+  parseCopySessionBody,
   parseConfigSaveBody,
   parseConfigValidateBody,
   parseDataResourceRowPatchBody,
@@ -50,6 +57,7 @@ import {
   parseUpdateSessionTitleBody,
   parseUpdateSessionModeStateBody,
   parseSessionParams,
+  parseSessionSnapshotParams,
   respondBadRequest,
   respondNotFound
 } from "../routeSupport.ts";
@@ -581,6 +589,100 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
       return respondNotFound(reply, "Session not found");
     }
     return session;
+  });
+
+  app.get("/api/sessions/:sessionId/snapshots", async (request, reply) => {
+    const params = parseSessionParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    try {
+      const result = await listSessionSnapshots(services.config, params.sessionId);
+      if (!result) {
+        return respondNotFound(reply, "Session not found");
+      }
+      return result;
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.post("/api/sessions/:sessionId/snapshots", async (request, reply) => {
+    const params = parseSessionParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    const body = parseCreateSessionSnapshotBody(request.body);
+    if (!parseOrReply(reply, body)) {
+      return reply;
+    }
+    try {
+      const result = await createSessionSnapshot(services.config, params.sessionId, body);
+      if (!result) {
+        return respondNotFound(reply, "Session not found");
+      }
+      return result;
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.post("/api/sessions/:sessionId/copy", async (request, reply) => {
+    const params = parseSessionParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    const body = parseCopySessionBody(request.body);
+    if (!parseOrReply(reply, body)) {
+      return reply;
+    }
+    try {
+      const result = await copySessionToWebSession(services.config, params.sessionId, body);
+      if (!result) {
+        return respondNotFound(reply, "Session not found");
+      }
+      return result;
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.post("/api/sessions/:sessionId/snapshots/:snapshotId/restore", async (request, reply) => {
+    const params = parseSessionSnapshotParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    try {
+      const result = await restoreSessionSnapshot(services.config, params.sessionId, params.snapshotId);
+      if (!result) {
+        return respondNotFound(reply, "Session not found");
+      }
+      if (!result.ok) {
+        return respondNotFound(reply, "Session snapshot not found");
+      }
+      return result;
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.delete("/api/sessions/:sessionId/snapshots/:snapshotId", async (request, reply) => {
+    const params = parseSessionSnapshotParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    try {
+      const result = await deleteSessionSnapshot(services.config, params.sessionId, params.snapshotId);
+      if (!result) {
+        return respondNotFound(reply, "Session not found");
+      }
+      if (!result.ok) {
+        return respondNotFound(reply, "Session snapshot not found");
+      }
+      return result;
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
   });
 
   app.patch("/api/sessions/:sessionId/title", async (request, reply) => {

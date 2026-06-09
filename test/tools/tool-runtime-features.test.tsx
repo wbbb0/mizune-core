@@ -9,7 +9,7 @@ import ExcelJS from "exceljs";
 import { getBuiltinTools } from "../../src/llm/tools/index.ts";
 import type { LlmToolExecutionResult } from "../../src/llm/llmClient.ts";
 import { getBuiltinToolDescriptorByName } from "../../src/llm/tools/toolRegistry.ts";
-import { scenarioHostToolHandlers } from "../../src/llm/tools/conversation/scenarioHostTools.ts";
+import { scenarioHostToolHandlers } from "../../src/modes/scenarioHost/tools.ts";
 import { sessionToolHandlers } from "../../src/llm/tools/conversation/sessionTools.ts";
 import { resourceToolHandlers } from "../../src/llm/tools/runtime/resourceTools.ts";
 import { debugToolHandlers } from "../../src/llm/tools/runtime/debugTools.ts";
@@ -105,6 +105,51 @@ function createMediaToolVisibilityConfig(options: {
       }
     }
   });
+}
+
+async function sendWebSetupDraftForText(operationMode: unknown): Promise<string> {
+  const appended: string[] = [];
+  const result = await setupDraftToolHandlers.send_setup_draft!(
+    { id: "tool_setup_draft_format_1", type: "function", function: { name: "send_setup_draft", arguments: "{}" } },
+    {},
+    {
+      replyDelivery: "web",
+      lastMessage: {
+        sessionId: "web:setup-draft-format",
+        userId: "owner",
+        senderName: "Owner"
+      },
+      committedTextSink: {
+        commitText(chunk: string) {
+          appended.push(chunk);
+        }
+      },
+      oneBotClient: {
+        async sendText() {
+          throw new Error("web draft should not use onebot sendText");
+        }
+      },
+      messageQueue: {
+        enqueueTextDetached(params: { send: () => Promise<void> | void }) {
+          void params.send();
+        }
+      },
+      sessionManager: {
+        getSession() {
+          return { type: "private" };
+        },
+        getOperationMode() {
+          return operationMode;
+        },
+        appendAssistantHistory() {}
+      }
+    } as any
+  );
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(JSON.parse(String(result)), { ok: true, queued: true, sent: true });
+  assert.equal(appended.length, 1);
+  return appended[0] ?? "";
 }
 
 test("sendNapCatFile builds private and group upload payloads", async () => {
@@ -627,6 +672,9 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           getSession() {
             return { type: "private" };
           },
+          getOperationMode() {
+            return { kind: "normal" };
+          },
           appendAssistantHistory(sessionId: string, message: Record<string, unknown>) {
             historyCalls.push({ sessionId, message });
           }
@@ -647,6 +695,259 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         text: "当前草稿：名字=小满"
       }
     }]);
+  });
+
+  test("send_setup_draft sends the complete active scenario draft", async () => {
+    const appended: string[] = [];
+    const historyCalls: Array<{ sessionId: string; message: Record<string, unknown> }> = [];
+    const operationMode = {
+      kind: "mode_setup" as const,
+      modeId: "scenario_host" as const,
+      draft: {
+        theme: "钟楼怪谈",
+        worldBaseline: "海边小城；角色素材：玩家是实习记者，守钟人隐瞒银钥匙。",
+        narrationStyle: "冷静克制",
+        boundaries: "不替玩家行动"
+      }
+    };
+
+    const result = await setupDraftToolHandlers.send_setup_draft!(
+      { id: "tool_setup_draft_scenario_1", type: "function", function: { name: "send_setup_draft", arguments: "{}" } },
+      {},
+      {
+        replyDelivery: "web",
+        lastMessage: {
+          sessionId: "web:scenario-draft",
+          userId: "owner",
+          senderName: "Owner"
+        },
+        committedTextSink: {
+          commitText(chunk: string) {
+            appended.push(chunk);
+          }
+        },
+        oneBotClient: {
+          async sendText() {
+            throw new Error("web draft should not use onebot sendText");
+          }
+        },
+        messageQueue: {
+          enqueueTextDetached(params: { send: () => Promise<void> | void }) {
+            void params.send();
+          }
+        },
+        sessionManager: {
+          getSession() {
+            return { id: "web:scenario-draft", type: "private", participantRef: { kind: "user", id: "owner" } };
+          },
+          getOperationMode(sessionId: string) {
+            assert.equal(sessionId, "web:scenario-draft");
+            return operationMode;
+          },
+          appendAssistantHistory(sessionId: string, message: Record<string, unknown>) {
+            historyCalls.push({ sessionId, message });
+          }
+        },
+        scenarioHostStateStore: {
+          async ensureForSession() {
+            return {
+              version: 5,
+              profile: operationMode.draft,
+              currentSituation: "玩家在旧钟楼门外。",
+              currentLocation: "旧钟楼外",
+              sceneSummary: "",
+              player: {
+                userId: "owner",
+                displayName: "Owner",
+                basicInfo: "实习记者",
+                characterDescription: "追查海边小城怪谈的新人记者。",
+                wornItems: [{ name: "深色风衣", wearPosition: "外套", description: "被海雾打湿" }],
+                heldItems: [{ name: "采访本", description: "记录钟楼怪谈线索", quantity: 1 }],
+                statusDescription: ""
+              },
+              objectives: [],
+              loreEntries: [],
+              npcs: [],
+              entities: [],
+              relations: [],
+              journal: [],
+              mechanics: { ruleStyle: "freeform", dicePolicy: "", difficultyScale: "", successStates: [] },
+              flags: {},
+              initialized: false,
+              turnIndex: 0
+            };
+          }
+        }
+      } as any
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(JSON.parse(String(result)), { ok: true, queued: true, sent: true });
+    assert.equal(appended.length, 1);
+    assert.match(appended[0] ?? "", /^Scenario 资料初始化草稿/);
+    assert.match(appended[0] ?? "", /主题：钟楼怪谈/);
+    assert.match(appended[0] ?? "", /世界基线：海边小城；角色素材：玩家是实习记者，守钟人隐瞒银钥匙。/);
+    assert.match(appended[0] ?? "", /叙事风格：冷静克制/);
+    assert.match(appended[0] ?? "", /边界：不替玩家行动/);
+    assert.match(appended[0] ?? "", /运行态：/);
+    assert.match(appended[0] ?? "", /当前局势：玩家在旧钟楼门外。/);
+    assert.match(appended[0] ?? "", /玩家角色：Owner；基础=实习记者/);
+    assert.match(appended[0] ?? "", /确认无误后输入 \.confirm 保存/);
+    assert.doesNotMatch(appended[0] ?? "", /补充说明/);
+    assert.equal(historyCalls[0]?.message.text, appended[0]);
+  });
+
+  test("send_setup_draft rejects scenario drafts when the scenario state store is unavailable", async () => {
+    const result = await setupDraftToolHandlers.send_setup_draft!(
+      { id: "tool_setup_draft_scenario_missing_store_1", type: "function", function: { name: "send_setup_draft", arguments: "{}" } },
+      {},
+      {
+        replyDelivery: "web",
+        lastMessage: {
+          sessionId: "web:scenario-draft-missing-store",
+          userId: "owner",
+          senderName: "Owner"
+        },
+        sessionManager: {
+          getOperationMode() {
+            return {
+              kind: "mode_setup",
+              modeId: "scenario_host",
+              draft: {
+                theme: "钟楼怪谈",
+                worldBaseline: "海边小城",
+                narrationStyle: "冷静克制",
+                boundaries: ""
+              }
+            };
+          },
+          getSession() {
+            throw new Error("send_setup_draft should reject before reading the session");
+          }
+        }
+      } as any
+    );
+
+    assert.deepEqual(JSON.parse(String(result)), { error: "scenario_host_state_store_unavailable" });
+  });
+
+  test("send_setup_draft can append optional notes to an active scenario draft", async () => {
+    const appended: string[] = [];
+    const operationMode = {
+      kind: "mode_setup" as const,
+      modeId: "scenario_host" as const,
+      draft: {
+        theme: "钟楼怪谈",
+        worldBaseline: "海边小城；角色素材：玩家是实习记者。",
+        narrationStyle: "冷静克制",
+        boundaries: ""
+      }
+    };
+
+    const result = await setupDraftToolHandlers.send_setup_draft!(
+      { id: "tool_setup_draft_scenario_note_1", type: "function", function: { name: "send_setup_draft", arguments: "{\"content\":\"玩家从旧钟楼门外开始。\"}" } },
+      { content: "玩家从旧钟楼门外开始。" },
+      {
+        replyDelivery: "web",
+        lastMessage: {
+          sessionId: "web:scenario-draft-note",
+          userId: "owner",
+          senderName: "Owner"
+        },
+        committedTextSink: {
+          commitText(chunk: string) {
+            appended.push(chunk);
+          }
+        },
+        oneBotClient: {
+          async sendText() {
+            throw new Error("web draft should not use onebot sendText");
+          }
+        },
+        messageQueue: {
+          enqueueTextDetached(params: { send: () => Promise<void> | void }) {
+            void params.send();
+          }
+        },
+        sessionManager: {
+          getSession() {
+            return { id: "web:scenario-draft-note", type: "private", participantRef: { kind: "user", id: "owner" } };
+          },
+          getOperationMode() {
+            return operationMode;
+          },
+          appendAssistantHistory() {}
+        },
+        scenarioHostStateStore: {
+          async ensureForSession() {
+            return {
+              version: 5,
+              profile: operationMode.draft,
+              currentSituation: "玩家从旧钟楼门外开始。",
+              currentLocation: "旧钟楼外",
+              sceneSummary: "",
+              player: {
+                userId: "owner",
+                displayName: "Owner",
+                basicInfo: "",
+                characterDescription: "",
+                wornItems: [],
+                heldItems: [],
+                statusDescription: ""
+              },
+              objectives: [],
+              loreEntries: [],
+              npcs: [],
+              entities: [],
+              relations: [],
+              journal: [],
+              mechanics: { ruleStyle: "freeform", dicePolicy: "", difficultyScale: "", successStates: [] },
+              flags: {},
+              initialized: false,
+              turnIndex: 0
+            };
+          }
+        }
+      } as any
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(JSON.parse(String(result)), { ok: true, queued: true, sent: true });
+    assert.match(appended[0] ?? "", /Scenario 资料初始化草稿/);
+    assert.match(appended[0] ?? "", /补充说明：\n玩家从旧钟楼门外开始。/);
+  });
+
+  test("send_setup_draft formats active persona and RP drafts", async () => {
+    const personaText = await sendWebSetupDraftForText({
+      kind: "persona_setup" as const,
+      draft: {
+        name: "小满",
+        temperament: "温和",
+        voiceStyle: "短句"
+      }
+    });
+    const rpText = await sendWebSetupDraftForText({
+      kind: "mode_config" as const,
+      modeId: "rp_assistant" as const,
+      draft: {
+        identity: "旅店老板",
+        background: "长期经营港口旅店",
+        continuityFacts: "认识大部分水手",
+        boundaries: "不跳出角色"
+      }
+    });
+
+    assert.match(personaText, /^Persona 初始化草稿/);
+    assert.match(personaText, /名字：小满/);
+    assert.match(personaText, /性格底色：温和/);
+    assert.match(personaText, /语气风格：短句/);
+    assert.match(rpText, /^RP 资料配置草稿/);
+    assert.match(rpText, /身份定位：旅店老板/);
+    assert.match(rpText, /稳定背景：长期经营港口旅店/);
+    assert.match(rpText, /连续性事实：认识大部分水手/);
+    assert.match(rpText, /边界：不跳出角色/);
   });
 
   test("send_setup_draft keeps onebot delivery and records sent history for chat sessions", async () => {
@@ -682,6 +983,9 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         sessionManager: {
           getSession() {
             return { type: "private" };
+          },
+          getOperationMode() {
+            return { kind: "normal" };
           },
           recordSentMessage(sessionId: string, message: Record<string, unknown>) {
             sentMessages.push({ sessionId, message });
@@ -1260,7 +1564,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
 
   test("scenario_host tools read and update structured session state", async () => {
     let state = {
-      version: 3 as const,
+      version: 5 as const,
       profile: {
         theme: "",
         worldBaseline: "",
@@ -1270,10 +1574,18 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       currentSituation: "旧局势",
       currentLocation: null as string | null,
       sceneSummary: "",
-      player: { userId: "owner", displayName: "Owner" },
-      inventory: [] as Array<{ ownerId: string; item: string; quantity: number }>,
+      player: {
+        userId: "owner",
+        displayName: "Owner",
+        basicInfo: "",
+        characterDescription: "",
+        wornItems: [] as any[],
+        heldItems: [] as any[],
+        statusDescription: ""
+      },
       objectives: [] as Array<{ id: string; title: string; status: "active" | "completed" | "failed"; summary: string }>,
       loreEntries: [] as any[],
+      npcs: [] as any[],
       entities: [] as any[],
       relations: [] as any[],
       journal: [] as any[],
@@ -1309,6 +1621,22 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           return state;
         }
       },
+      structuredSuggestionService: {
+        isEnabled() {
+          return true;
+        },
+        async suggestObject() {
+          return {
+            ok: true,
+            value: {
+              wornItems: [{ name: "深色斗篷", wearPosition: "外套", description: "方便在雾中遮掩身形" }],
+              heldItems: [{ name: "旧提灯", description: "带有铜制护罩", quantity: 1 }]
+            },
+            rawAnswer: "",
+            modelRef: "main_small"
+          };
+        }
+      },
       persistSession() {}
     } as any;
 
@@ -1336,9 +1664,54 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     );
     assert.equal(JSON.parse(String(mechanics)).mechanics.ruleStyle, "light_checks");
 
-    const worldFact = await scenarioHostToolHandlers.append_world_fact!(
-      { id: "tool_scenario_fact_1", type: "function", function: { name: "append_world_fact", arguments: "{\"fact\":\"钟楼每隔一刻钟响一次\"}" } },
-      { fact: "钟楼每隔一刻钟响一次" },
+    const skippedNpc = await scenarioHostToolHandlers.set_scenario_setup_optional_item_status!(
+      { id: "tool_scenario_setup_skip_1", type: "function", function: { name: "set_scenario_setup_optional_item_status", arguments: "{}" } },
+      { item: "initialNpcs", skipped: true },
+      context
+    );
+    assert.deepEqual(JSON.parse(String(skippedNpc)).setupProgress.skippedOptionalItems, ["initialNpcs"]);
+
+    const unskippedNpc = await scenarioHostToolHandlers.set_scenario_setup_optional_item_status!(
+      { id: "tool_scenario_setup_skip_2", type: "function", function: { name: "set_scenario_setup_optional_item_status", arguments: "{}" } },
+      { item: "initialNpcs", skipped: false },
+      context
+    );
+    assert.deepEqual(JSON.parse(String(unskippedNpc)).setupProgress.skippedOptionalItems, []);
+
+    const invalidSetupItem = await scenarioHostToolHandlers.set_scenario_setup_optional_item_status!(
+      { id: "tool_scenario_setup_skip_invalid_1", type: "function", function: { name: "set_scenario_setup_optional_item_status", arguments: "{}" } },
+      { item: "playerBasicInfo", skipped: true },
+      context
+    );
+    assert.match(JSON.parse(String(invalidSetupItem)).error, /item must be one of/);
+
+    const player = await scenarioHostToolHandlers.update_player_character!(
+      { id: "tool_scenario_player_1", type: "function", function: { name: "update_player_character", arguments: "{}" } },
+      {
+        basicInfo: "旧钟楼调查员",
+        characterDescription: "谨慎、擅长观察异常细节。",
+        wornItems: [{ name: "深色风衣", wearPosition: "外套", description: "适合夜间调查" }],
+        heldItems: [{ name: "旧提灯", description: "铜制护罩的旧提灯", quantity: 1 }]
+      },
+      context
+    );
+    assert.equal(JSON.parse(String(player)).player.basicInfo, "旧钟楼调查员");
+
+    state = { ...state, initialized: true };
+    const runtimePlayerUpdate = await scenarioHostToolHandlers.update_player_character!(
+      { id: "tool_scenario_player_runtime_1", type: "function", function: { name: "update_player_character", arguments: "{}" } },
+      {
+        wornItems: [{ name: "灰色披肩", wearPosition: "肩部", description: "进入钟楼后临时披上的防尘披肩" }],
+        statusDescription: "被钟声惊醒后保持警惕"
+      },
+      context
+    );
+    assert.equal(JSON.parse(String(runtimePlayerUpdate)).player.statusDescription, "被钟声惊醒后保持警惕");
+    assert.equal(JSON.parse(String(runtimePlayerUpdate)).player.wornItems[0].name, "灰色披肩");
+
+    const worldFact = await scenarioHostToolHandlers.manage_lore_entry!(
+      { id: "tool_scenario_fact_1", type: "function", function: { name: "manage_lore_entry", arguments: "{}" } },
+      { action: "upsert", id: "bell-cycle", title: "钟楼周期", content: "钟楼每隔一刻钟响一次" },
       context
     );
     assert.equal(JSON.parse(String(worldFact)).loreEntries[0].content, "钟楼每隔一刻钟响一次");
@@ -1351,12 +1724,59 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     const loreState = JSON.parse(String(lore));
     assert.equal(loreState.loreEntries.find((entry: any) => entry.id === "bell-rule").priority, 120);
 
-    const entity = await scenarioHostToolHandlers.manage_entity!(
-      { id: "tool_scenario_entity_1", type: "function", function: { name: "manage_entity", arguments: "{}" } },
-      { action: "upsert", id: "npc-guard", kind: "npc", name: "守卫", aliases: ["看门人"], summary: "守在钟楼入口" },
+    const npc = await scenarioHostToolHandlers.manage_npc!(
+      { id: "tool_scenario_npc_1", type: "function", function: { name: "manage_npc", arguments: "{}" } },
+      {
+        action: "create",
+        id: "npc-guard",
+        name: "守卫",
+        aliases: ["看门人"],
+        basicInfo: "成年男性，旧钟楼守门人。",
+        characterDescription: "警惕、少言，会先观察来者意图。",
+        wornItems: [{ name: "旧制服", wearPosition: "上身", description: "褪色但仍整洁" }],
+        heldItems: [{ name: "铜钥匙", description: "挂在腰间的钥匙串", quantity: 1 }],
+        statusDescription: "警惕"
+      },
       context
     );
-    assert.equal(JSON.parse(String(entity)).entities[0].name, "守卫");
+    assert.equal(JSON.parse(String(npc)).npcs[0].name, "守卫");
+
+    const invalidNpcAction = await scenarioHostToolHandlers.manage_npc!(
+      { id: "tool_scenario_npc_invalid_action_1", type: "function", function: { name: "manage_npc", arguments: "{}" } },
+      { action: "upsert", id: "npc-guard" },
+      context
+    );
+    assert.deepEqual(JSON.parse(String(invalidNpcAction)), { error: "action must be create, update, or remove" });
+
+    const missingNpcUpdate = await scenarioHostToolHandlers.manage_npc!(
+      { id: "tool_scenario_npc_missing_update_1", type: "function", function: { name: "manage_npc", arguments: "{}" } },
+      { action: "update", id: "npc-missing", statusDescription: "离开" },
+      context
+    );
+    assert.deepEqual(JSON.parse(String(missingNpcUpdate)), { error: "npc_not_found: npc-missing" });
+
+    const invalidNpcUpdate = await scenarioHostToolHandlers.manage_npc!(
+      { id: "tool_scenario_npc_invalid_update_1", type: "function", function: { name: "manage_npc", arguments: "{}" } },
+      { action: "update", id: "npc-guard", wornItems: [] },
+      context
+    );
+    assert.deepEqual(JSON.parse(String(invalidNpcUpdate)), {
+      error: "invalid NPC update payload: name, basicInfo, characterDescription, wornItems, and heldItems are required"
+    });
+
+    const entity = await scenarioHostToolHandlers.manage_entity!(
+      { id: "tool_scenario_entity_1", type: "function", function: { name: "manage_entity", arguments: "{}" } },
+      { action: "upsert", id: "old-bell", kind: "location", name: "旧钟楼", aliases: ["钟楼"], summary: "雾中的旧建筑" },
+      context
+    );
+    assert.equal(JSON.parse(String(entity)).entities[0].name, "旧钟楼");
+
+    const suggestion = await scenarioHostToolHandlers.suggest_scenario_details!(
+      { id: "tool_scenario_suggest_1", type: "function", function: { name: "suggest_scenario_details", arguments: "{}" } },
+      { task: "character_equipment", subjectKind: "npc", name: "守卫", description: "警惕的旧钟楼守门人" },
+      context
+    );
+    assert.equal(JSON.parse(String(suggestion)).wornItems[0].wearPosition, "外套");
 
     const relation = await scenarioHostToolHandlers.manage_relation!(
       { id: "tool_scenario_relation_1", type: "function", function: { name: "manage_relation", arguments: "{}" } },

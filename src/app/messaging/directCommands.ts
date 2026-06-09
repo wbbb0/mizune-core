@@ -14,8 +14,8 @@ import type { SessionDirectCommandAccess } from "#conversation/session/sessionCa
 import type { Relationship } from "#identity/relationship.ts";
 import type { InternalTranscriptItem, SessionState } from "#conversation/session/sessionTypes.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
-import { createInitialScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
-import { createEmptyScenarioProfile, isScenarioProfileComplete } from "#modes/scenarioHost/profileSchema.ts";
+import { createInitialScenarioHostSessionState, getMissingScenarioSetupFields, isScenarioSetupComplete } from "#modes/scenarioHost/types.ts";
+import { createEmptyScenarioProfile } from "#modes/scenarioHost/profileSchema.ts";
 import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
 import { parseOwnerBootstrapCommand } from "#app/bootstrap/ownerBootstrapPolicy.ts";
 import { resolvePersonaReadinessStatus } from "#persona/personaSetupPolicy.ts";
@@ -290,7 +290,7 @@ async function readProfileReadiness(
   return {
     persona: readiness.persona === "ready",
     rp: readiness.rp === "ready",
-    scenario: scenarioState != null && isScenarioProfileComplete(scenarioState.profile)
+    scenario: scenarioState != null && scenarioState.initialized && isScenarioSetupComplete(scenarioState)
   };
 }
 
@@ -358,10 +358,10 @@ async function enterConfigurationMode(
   ].join("\n");
 }
 
-async function persistCurrentDraft(ctx: DirectCommandExecutionContext): Promise<boolean> {
+async function persistCurrentDraft(ctx: DirectCommandExecutionContext): Promise<{ ok: true } | { ok: false; message: string }> {
   const operationMode = ctx.input.sessionManager.getOperationMode(ctx.session.id);
   if (operationMode.kind === "normal") {
-    return false;
+    return { ok: false, message: "当前没有待确认的配置流程。" };
   }
   if (operationMode.kind === "persona_setup" || operationMode.kind === "persona_config") {
     await ctx.input.personaStore.write(operationMode.draft);
@@ -370,24 +370,40 @@ async function persistCurrentDraft(ctx: DirectCommandExecutionContext): Promise<
     await ctx.input.globalProfileReadinessStore.setPersonaReadiness(
       resolvePersonaReadinessStatus(ctx.input.config, operationMode.draft)
     );
-    return true;
+    return { ok: true };
   }
   if (operationMode.modeId === "rp_assistant") {
     await ctx.input.rpProfileStore.write(operationMode.draft);
     await ctx.input.globalProfileReadinessStore.setRpReadiness(
       ctx.input.rpProfileStore.isComplete(operationMode.draft) ? "ready" : "uninitialized"
     );
-    return true;
+    return { ok: true };
+  }
+  const currentScenarioState = await ctx.input.scenarioHostStateStore.ensure(
+    ctx.session.id,
+    getScenarioStateDefaults(ctx.session)
+  );
+  const nextScenarioState = {
+    ...currentScenarioState,
+    profile: operationMode.draft
+  };
+  const missingScenarioFields = getMissingScenarioSetupFields(nextScenarioState);
+  if (missingScenarioFields.length > 0) {
+    return {
+      ok: false,
+      message: `Scenario 初始化还缺：${missingScenarioFields.join("、")}。请先补齐后再确认。`
+    };
   }
   await ctx.input.scenarioHostStateStore.update(
     ctx.session.id,
     (current) => ({
       ...current,
-      profile: operationMode.draft
+      profile: operationMode.draft,
+      initialized: true
     }),
     getScenarioStateDefaults(ctx.session)
   );
-  return true;
+  return { ok: true };
 }
 
 async function syncSelfAccountNicknameFromPersona(
@@ -962,8 +978,9 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         await ctx.send("当前没有待确认的配置流程。");
         return;
       }
-      if (!(await persistCurrentDraft(ctx))) {
-        await ctx.send("当前没有待确认的配置流程。");
+      const persisted = await persistCurrentDraft(ctx);
+      if (!persisted.ok) {
+        await ctx.send(persisted.message);
         return;
       }
       ctx.input.sessionManager.markSetupConfirmed(ctx.session.id);

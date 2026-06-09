@@ -85,6 +85,7 @@ export function buildGenerationToolRuntimeDeps(services: AppServiceBootstrap): G
     textInspectionService: services.textInspectionService,
     documentSummaryService: services.documentSummaryService,
     contextEmbeddingService: services.contextEmbeddingService,
+    structuredSuggestionService: services.structuredSuggestionService,
     forwardResolver: services.forwardResolver,
     comfyClient: services.comfyClient,
     comfyTaskStore: services.comfyTaskStore,

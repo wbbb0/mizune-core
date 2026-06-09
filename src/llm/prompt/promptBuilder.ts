@@ -64,6 +64,7 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
     liveResources: input.liveResources,
     ...(input.toolsetRules ? { toolsetRules: input.toolsetRules } : {}),
     ...(input.scenarioStateLines ? { scenarioStateLines: input.scenarioStateLines } : {}),
+    ...(input.scenarioSetupRequirementLines ? { scenarioSetupRequirementLines: input.scenarioSetupRequirementLines } : {}),
     ...(input.modeProfile ? { modeProfile: input.modeProfile } : {}),
     ...(input.draftMode ? { draftMode: input.draftMode } : {}),
     ...(input.isInSetup ? { isInSetup: input.isInSetup } : {})

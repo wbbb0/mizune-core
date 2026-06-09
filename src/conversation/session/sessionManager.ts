@@ -32,7 +32,7 @@ import { SessionInlineTriggerQueue } from "./sessionInlineTriggerQueue.ts";
 import { SessionDebugController } from "./sessionDebugController.ts";
 import { SessionSentMessageLog } from "./sessionSentMessageLog.ts";
 import { SessionHistoryService } from "./sessionHistoryService.ts";
-import { clearPendingTranscriptGroup, getTranscriptDeleteMessageId } from "./transcriptMetadata.ts";
+import { clearPendingTranscriptGroup } from "./transcriptMetadata.ts";
 import type {
   SessionPhase,
   ActiveAssistantResponse,
@@ -53,7 +53,9 @@ import type {
   TranscriptItemDeliveryRef,
   TranscriptProfilePhaseTransitionItem,
   TranscriptItemRuntimeExclusionReason,
-  TranscriptItemSourceRef
+  TranscriptItemSourceRef,
+  TranscriptUserMediaMessageItem,
+  TranscriptUserMessageItem
 } from "./sessionTypes.ts";
 import {
   cloneSessionOperationMode,
@@ -207,6 +209,7 @@ export class SessionManager {
       groupId?: string;
       senderName: string;
       text: string;
+      contentParts?: SessionMessage["contentParts"];
       images: string[];
       audioSources?: string[];
       audioIds?: string[];
@@ -226,6 +229,7 @@ export class SessionManager {
     const session = this.requireSession(sessionId);
     const updated = appendSessionMessage(session, {
       ...message,
+      ...(message.contentParts && message.contentParts.length > 0 ? { contentParts: message.contentParts } : {}),
       audioSources: message.audioSources ?? [],
       audioIds: message.audioIds ?? [],
       emojiSources: message.emojiSources ?? [],
@@ -526,6 +530,22 @@ export class SessionManager {
   getPersistedSession(sessionId: string): PersistedSessionState {
     const session = this.requireSession(sessionId);
     return toPersistedSessionState(session);
+  }
+
+  restorePersistedSession(item: PersistedSessionState): SessionState {
+    const existing = this.sessionStore.get(item.id);
+    if (existing?.debounceTimer != null) {
+      clearTimeout(existing.debounceTimer);
+    }
+    existing?.generationAbortController?.abort();
+    existing?.responseAbortController?.abort();
+
+    const restored = restoreSessionState(item);
+    restored.historyRevision = (existing?.historyRevision ?? 0) + 1;
+    restored.mutationEpoch = (existing?.mutationEpoch ?? 0) + 1;
+    this.sessionStore.set(item.id, restored);
+    this.notifySessionChanged(item.id);
+    return restored;
   }
 
   getMutationEpoch(sessionId: string): number {
@@ -972,6 +992,66 @@ export class SessionManager {
     return affected;
   }
 
+  reactivateTranscriptUserBatch(
+    sessionId: string,
+    itemId: string,
+    reason: TranscriptItemRuntimeExclusionReason,
+    timestampMs = Date.now()
+  ): {
+    messages: SessionMessage[];
+    excludedItems: InternalTranscriptItem[];
+    activeGroupId: string;
+  } {
+    const session = this.requireSession(sessionId);
+    if (isSessionGenerating(session) || isSessionResponding(session) || session.pendingMessages.length > 0 || session.debounceTimer != null) {
+      throw new Error("Session is busy; cannot resend a transcript message now");
+    }
+
+    const targetIndex = session.internalTranscript.findIndex((item) => item.id === itemId);
+    if (targetIndex < 0) {
+      throw new Error(`Transcript item not found: ${itemId}`);
+    }
+    const target = session.internalTranscript[targetIndex];
+    if (!target || target.runtimeExcluded === true) {
+      throw new Error("Transcript item is already excluded");
+    }
+    if (target.kind !== "user_message" && target.kind !== "user_media_message") {
+      throw new Error("Only user transcript messages can be resent");
+    }
+    const activeGroupId = target.groupId;
+    if (!activeGroupId) {
+      throw new Error("Transcript item has no group id");
+    }
+
+    const userEntries = session.internalTranscript
+      .map((item, index) => ({ item, index }))
+      .filter((entry): entry is {
+        item: TranscriptUserMessageItem | TranscriptUserMediaMessageItem;
+        index: number;
+      } => (
+        entry.item.groupId === activeGroupId
+        && entry.item.runtimeExcluded !== true
+        && (entry.item.kind === "user_message" || entry.item.kind === "user_media_message")
+      ));
+    if (userEntries.length === 0) {
+      throw new Error("Transcript user batch is empty");
+    }
+
+    const boundaryItem = userEntries[userEntries.length - 1]?.item;
+    if (!boundaryItem?.id) {
+      throw new Error("Transcript user batch boundary has no item id");
+    }
+    const excludedItems = this.historyService.excludeTranscriptItemsAfter(session, boundaryItem.id, reason, timestampMs);
+    const messages = userEntries.map((entry, index) => createPendingMessageFromTranscriptUserItem(entry.item, timestampMs + index));
+    session.pendingMessages = messages;
+    session.pendingReplyGateWaitPasses = 0;
+    session.pendingTranscriptGroupId = activeGroupId;
+    session.currentReplyTarget = null;
+    session.lastActiveAt = timestampMs;
+    this.notifySessionChanged(sessionId);
+    return { messages, excludedItems, activeGroupId };
+  }
+
   enqueueInternalTrigger(sessionId: string, trigger: InternalSessionTriggerExecution): number {
     const session = this.requireSession(sessionId);
     const size = this.internalTriggerQueue.enqueue(session, trigger);
@@ -1110,4 +1190,34 @@ export class SessionManager {
     this.notifySessionChanged(sessionId);
     return result;
   }
+}
+
+function createPendingMessageFromTranscriptUserItem(
+  item: TranscriptUserMessageItem | TranscriptUserMediaMessageItem,
+  receivedAt: number
+): SessionMessage {
+  const contentParts = [...(item.contentParts ?? [])];
+  const audioParts = contentParts.filter((part) => part.kind === "audio");
+  return {
+    chatType: item.chatType,
+    userId: item.userId,
+    senderName: item.senderName,
+    text: item.kind === "user_message" ? item.text : "",
+    ...(contentParts.length > 0 ? { contentParts } : {}),
+    images: [],
+    audioSources: audioParts.map((part) => part.source).filter((value): value is string => Boolean(value)),
+    audioIds: audioParts.map((part) => part.audioId).filter((value): value is string => Boolean(value)),
+    emojiSources: [],
+    imageIds: [...item.imageIds],
+    emojiIds: [...item.emojiIds],
+    attachments: [...(item.attachments ?? [])],
+    messageFiles: item.kind === "user_message" ? [...item.messageFiles] : [],
+    specialSegments: item.kind === "user_message" && item.specialSegments ? [...item.specialSegments] : [],
+    forwardIds: item.kind === "user_message" ? [...item.forwardIds] : [],
+    replyMessageId: item.replyMessageId,
+    mentionUserIds: [...item.mentionUserIds],
+    mentionedAll: item.mentionedAll,
+    isAtMentioned: item.mentionedSelf,
+    receivedAt
+  };
 }

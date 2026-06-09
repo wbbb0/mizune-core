@@ -145,7 +145,7 @@ function createDeferred<T>() {
         timestampMs: 1
       }],
       scenarioState: {
-        version: 3,
+        version: 5,
         profile: {
           theme: "旧港钟声",
           worldBaseline: "旧港每晚零点都会响钟。",
@@ -157,9 +157,13 @@ function createDeferred<T>() {
         sceneSummary: "玩家在夜色里踏上旧港，准备开始探查。",
         player: {
           userId: "owner",
-          displayName: "Owner"
+          displayName: "Owner",
+          basicInfo: "旧港调查员，正在追查午夜钟声。",
+          characterDescription: "冷静克制，擅长从环境异常里找线索。",
+          wornItems: [{ name: "深色风衣", wearPosition: "外套", description: "适合夜间调查" }],
+          heldItems: [{ name: "旧提灯", description: "能照亮码头雾气里的近处路面", quantity: 1 }],
+          statusDescription: ""
         },
-        inventory: [],
         objectives: [{
           id: "find-bell",
           title: "调查钟声",
@@ -177,11 +181,13 @@ function createDeferred<T>() {
           createdAtTurn: 0,
           updatedAtTurn: 0
         }],
+        npcs: [],
         entities: [],
         relations: [],
         journal: [],
         mechanics: { ruleStyle: "freeform", dicePolicy: "", difficultyScale: "", successStates: [] },
         flags: {},
+        setupProgress: { skippedOptionalItems: [] },
         initialized: true,
         turnIndex: 0
       }

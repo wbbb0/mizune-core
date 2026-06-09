@@ -568,7 +568,25 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
       assert.match(system, /长下载会返回 download resource_id/);
       assert.match(system, /只读最小必要范围；不要把其他会话信息混成当前会话事实/);
       assert.match(system, /场景状态工具用于 scenario_host 内部维护/);
+      assert.match(system, /持久变化时，必须用对应场景状态工具同步状态/);
+      assert.match(system, /重大事件、线索确认或场景切换后用 append_journal_entry 留剧情日志/);
       assert.match(system, /先 list_session_modes，再 switch_session_mode/);
+
+      const readonlyPrompt = buildPrompt({
+        sessionId: "qqbot:p:owner",
+        visibleToolNames: ["get_scenario_state"],
+        persona,
+        relationship: "owner",
+        npcProfiles: [],
+        participantProfiles: [],
+        userProfile: createPromptUserProfile({ userId: "owner", senderName: "Owner" }),
+        historySummary: null,
+        recentMessages: [],
+        batchMessages: [createPromptBatchMessage({ userId: "owner", senderName: "Owner", text: "看看状态", timestampMs: Date.now() })]
+      });
+      const readonlySystem = readPromptSystemText(readonlyPrompt);
+      assert.match(readonlySystem, /场景状态工具用于 scenario_host 内部维护/);
+      assert.doesNotMatch(readonlySystem, /必须用对应场景状态工具同步状态/);
     } finally {
       await harness.cleanup();
     }
@@ -968,6 +986,8 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
         recentMessages: [
           { role: "user", content: "*推开钟楼木门", timestampMs: Date.UTC(2026, 2, 16, 9, 10, 0) },
           { role: "user", content: "#别推进太快", timestampMs: Date.UTC(2026, 2, 16, 9, 10, 10) },
+          { role: "user", content: "*", timestampMs: Date.UTC(2026, 2, 16, 9, 10, 15) },
+          { role: "user", content: "#慢一点\n\n*我推门", timestampMs: Date.UTC(2026, 2, 16, 9, 10, 18) },
           { role: "user", content: "里面有人吗", timestampMs: Date.UTC(2026, 2, 16, 9, 10, 20) }
         ],
         batchMessages: [
@@ -986,6 +1006,18 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
           createPromptBatchMessage({
             userId: "owner",
             senderName: "Owner",
+            text: "*",
+            timestampMs: Date.UTC(2026, 2, 16, 9, 13, 24)
+          }),
+          createPromptBatchMessage({
+            userId: "owner",
+            senderName: "Owner",
+            text: "**",
+            timestampMs: Date.UTC(2026, 2, 16, 9, 13, 25)
+          }),
+          createPromptBatchMessage({
+            userId: "owner",
+            senderName: "Owner",
             text: "你是谁",
             timestampMs: Date.UTC(2026, 2, 16, 9, 13, 30)
           })
@@ -994,11 +1026,15 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
 
       assert.match(String(scenarioPrompt[2]?.content ?? ""), /玩家动作：推开钟楼木门/);
       assert.match(String(scenarioPrompt[3]?.content ?? ""), /场外指令：别推进太快/);
-      assert.match(String(scenarioPrompt[4]?.content ?? ""), /玩家对白：里面有人吗/);
+      assert.match(String(scenarioPrompt[4]?.content ?? ""), /自动推进：玩家没有声明新的具体动作/);
+      assert.match(String(scenarioPrompt[5]?.content ?? ""), /场外指令：慢一点\n\n玩家动作：我推门/);
+      assert.match(String(scenarioPrompt[6]?.content ?? ""), /玩家对白：里面有人吗/);
 
       const scenarioBatchText = readPromptLastMessageText(scenarioPrompt);
       assert.match(scenarioBatchText, /玩家动作：我先把提灯举高/);
       assert.match(scenarioBatchText, /场外指令：先不要替我做决定/);
+      assert.match(scenarioBatchText, /自动推进：玩家没有声明新的具体动作/);
+      assert.match(scenarioBatchText, /代行玩家动作：玩家请求你代为选择并执行下一步玩家角色行动/);
       assert.match(scenarioBatchText, /玩家对白：你是谁/);
 
       const normalPrompt = buildPrompt({

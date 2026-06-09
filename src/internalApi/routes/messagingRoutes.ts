@@ -121,6 +121,16 @@ export function registerMessagingRoutes(app: FastifyInstance, services: Internal
     }
   });
 
+  app.post("/api/sessions/:sessionId/transcript/items/:itemId/resend", async (request, reply) => {
+    const params = parseTranscriptItemParams(request.params);
+    if (!parseOrReply(reply, params)) return reply;
+    try {
+      return await messaging.resendTranscriptUserBatch(params);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
   app.delete("/api/sessions/:sessionId/transcript/groups/:groupId", async (request, reply) => {
     const params = parseTranscriptGroupParams(request.params);
     if (!parseOrReply(reply, params)) return reply;

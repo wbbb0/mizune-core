@@ -7,6 +7,7 @@ import {
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
+import { createInitialScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
 
 function createContext(input: {
   modeId: "assistant" | "rp_assistant" | "scenario_host";
@@ -28,6 +29,26 @@ function createContext(input: {
     },
     user: {
       relationship: input.relationship ?? "owner"
+    }
+  };
+}
+
+function createScenarioState(input: {
+  profile?: ReturnType<typeof createEmptyScenarioProfile>;
+  completeRuntime?: boolean;
+} = {}) {
+  const state = createInitialScenarioHostSessionState({ playerUserId: "owner", playerDisplayName: "Owner" });
+  return {
+    ...state,
+    profile: input.profile ?? createEmptyScenarioProfile(),
+    player: {
+      ...state.player,
+      ...(input.completeRuntime ? {
+        basicInfo: "旧城调查员。",
+        characterDescription: "谨慎、善于观察，正在追查钟楼异象。",
+        wornItems: [{ name: "旅行外套", wearPosition: "外套", description: "适合夜间行动" }],
+        heldItems: [{ name: "旧提灯", description: "照亮雾中的道路", quantity: 1 }]
+      } : {})
     }
   };
 }
@@ -71,7 +92,7 @@ test("automatic setup enters persona_setup before mode setup", async () => {
       } as any,
       scenarioHostStateStore: {
         async ensureForSession() {
-          return { profile: createEmptyScenarioProfile() };
+          return createScenarioState();
         }
       } as any
     },
@@ -133,7 +154,7 @@ test("assistant mode also enters persona_setup when global persona is not ready"
       } as any,
       scenarioHostStateStore: {
         async ensureForSession() {
-          return { profile: createEmptyScenarioProfile() };
+          return createScenarioState();
         }
       } as any
     },
@@ -195,7 +216,7 @@ test("automatic setup enters rp mode draft after persona is ready", async () => 
       } as any,
       scenarioHostStateStore: {
         async ensureForSession() {
-          return { profile: createEmptyScenarioProfile() };
+          return createScenarioState();
         }
       } as any
     },
@@ -263,7 +284,7 @@ test("automatic setup enters scenario mode draft after persona is ready", async 
       } as any,
       scenarioHostStateStore: {
         async ensureForSession() {
-          return { profile: partialProfile };
+          return createScenarioState({ profile: partialProfile });
         }
       } as any
     },
@@ -285,6 +306,124 @@ test("automatic setup enters scenario mode draft after persona is ready", async 
     source: "automatic"
   }]);
   assert.deepEqual(persistedReasons, ["scenario_setup_mode_auto_entered"]);
+});
+
+test("automatic setup enters scenario draft when profile is complete but player runtime fields are missing", async () => {
+  let latestOperationMode: unknown = { kind: "normal" };
+  const persistedReasons: string[] = [];
+  const completeProfile = {
+    ...createEmptyScenarioProfile(),
+    theme: "悬疑",
+    worldBaseline: "旧城雨夜",
+    narrationStyle: "克制"
+  };
+
+  await ensureAutomaticSetupOperationMode(
+    {
+      sessionManager: {
+        getOperationMode() {
+          return latestOperationMode;
+        },
+        setOperationMode(_sessionId: string, operationMode: unknown) {
+          latestOperationMode = operationMode;
+          return operationMode;
+        },
+        appendProfilePhaseTransition() {}
+      } as any,
+      globalProfileReadinessStore: {
+        async get() {
+          return {
+            persona: "ready",
+            rp: "ready"
+          };
+        }
+      } as any,
+      personaStore: {
+        createEmpty() {
+          return createEmptyPersona();
+        }
+      } as any,
+      rpProfileStore: {
+        createEmpty() {
+          return createEmptyRpProfile();
+        }
+      } as any,
+      scenarioHostStateStore: {
+        async ensureForSession() {
+          return createScenarioState({ profile: completeProfile });
+        }
+      } as any
+    },
+    createContext({ modeId: "scenario_host" }) as any,
+    (_sessionId: string, reason: string) => {
+      persistedReasons.push(reason);
+    }
+  );
+
+  assert.deepEqual(latestOperationMode, {
+    kind: "mode_setup",
+    modeId: "scenario_host",
+    draft: completeProfile
+  });
+  assert.deepEqual(persistedReasons, ["scenario_setup_mode_auto_entered"]);
+});
+
+test("automatic setup does not enter scenario draft when profile and player runtime fields are complete", async () => {
+  let latestOperationMode: unknown = { kind: "normal" };
+  const persistedReasons: string[] = [];
+  const completeProfile = {
+    ...createEmptyScenarioProfile(),
+    theme: "悬疑",
+    worldBaseline: "旧城雨夜",
+    narrationStyle: "克制"
+  };
+
+  await ensureAutomaticSetupOperationMode(
+    {
+      sessionManager: {
+        getOperationMode() {
+          return latestOperationMode;
+        },
+        setOperationMode(_sessionId: string, operationMode: unknown) {
+          latestOperationMode = operationMode;
+          return operationMode;
+        },
+        appendProfilePhaseTransition() {
+          throw new Error("complete scenario setup should not enter setup mode");
+        }
+      } as any,
+      globalProfileReadinessStore: {
+        async get() {
+          return {
+            persona: "ready",
+            rp: "ready"
+          };
+        }
+      } as any,
+      personaStore: {
+        createEmpty() {
+          return createEmptyPersona();
+        }
+      } as any,
+      rpProfileStore: {
+        createEmpty() {
+          return createEmptyRpProfile();
+        }
+      } as any,
+      scenarioHostStateStore: {
+        async ensureForSession() {
+          return createScenarioState({ profile: completeProfile, completeRuntime: true });
+        }
+      } as any
+    },
+    createContext({ modeId: "scenario_host" }) as any,
+    (_sessionId: string, reason: string) => {
+      persistedReasons.push(reason);
+    }
+  );
+
+  assert.deepEqual(latestOperationMode, { kind: "normal" });
+  assert.deepEqual(persistedReasons, []);
 });
 
 test("automatic setup does not override an existing draft mode", async () => {
@@ -328,7 +467,7 @@ test("automatic setup does not override an existing draft mode", async () => {
       } as any,
       scenarioHostStateStore: {
         async ensureForSession() {
-          return { profile: createEmptyScenarioProfile() };
+          return createScenarioState();
         }
       } as any
     },

@@ -106,7 +106,7 @@ const persistedSessionMessageSchema = z.object({
   receivedAt: z.number().int().nonnegative()
 });
 
-const persistedSessionSchema = z.object({
+export const persistedSessionStateSchema = z.object({
   id: z.string().min(1),
   type: z.enum(["private", "group"]),
   source: z.enum(["onebot", "web"]).default("onebot"),
@@ -250,7 +250,7 @@ export class SessionPersistence {
   }
 
   async save(session: PersistedSessionState): Promise<void> {
-    const validated = persistedSessionSchema.parse(session) as PersistedSessionState;
+    const validated = persistedSessionStateSchema.parse(session) as PersistedSessionState;
     await this.enqueueWrite(session.id, async () => {
       const db = await this.getReadyDb();
       const write = db.transaction(() => {
@@ -644,7 +644,7 @@ function hashTranscriptItem(itemJson: string): string {
 }
 
 function rowToPersistedSessionState(row: PersistedSessionRow): PersistedSessionState {
-  return persistedSessionSchema.parse({
+  return persistedSessionStateSchema.parse({
     id: row.session_id,
     type: row.type,
     ...(row.source ? { source: row.source } : {}),

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileConfigSchema, llmProviderCatalogSchema } from "#config/configModel.ts";
 import { exportSchemaMeta } from "#data/schema/composites.ts";
+import { createInitialScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
 import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal-api-fixtures.tsx";
 
   test("internal api exposes config editor schema metadata", async () => {
@@ -750,6 +751,304 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
     }
   });
 
+  test("internal api snapshots and restores scenario_host sessions", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const switchResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/qqbot:p:10001/mode",
+        payload: {
+          modeId: "scenario_host"
+        }
+      });
+      assert.equal(switchResponse.statusCode, 200);
+
+      const initialDetailResponse = await app.inject({
+        method: "GET",
+        url: "/api/sessions/qqbot:p:10001"
+      });
+      assert.equal(initialDetailResponse.statusCode, 200);
+      const initialState = initialDetailResponse.json().modeState.state;
+      const saveStateResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/qqbot:p:10001/mode-state",
+        payload: {
+          state: {
+            ...initialState,
+            profile: {
+              ...initialState.profile,
+              theme: "快照前主题"
+            },
+            currentSituation: "快照前局面"
+          }
+        }
+      });
+      assert.equal(saveStateResponse.statusCode, 200);
+
+      const snapshotResponse = await app.inject({
+        method: "POST",
+        url: "/api/sessions/qqbot:p:10001/snapshots",
+        payload: {
+          label: "回到旧港"
+        }
+      });
+      assert.equal(snapshotResponse.statusCode, 200);
+      assert.equal(snapshotResponse.json().snapshot.label, "回到旧港");
+      assert.equal(snapshotResponse.json().snapshot.hasScenarioHostState, true);
+      const snapshotId = snapshotResponse.json().snapshot.id;
+
+      const mutateStateResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/qqbot:p:10001/mode-state",
+        payload: {
+          state: {
+            ...saveStateResponse.json().modeState.state,
+            profile: {
+              ...saveStateResponse.json().modeState.state.profile,
+              theme: "快照后主题"
+            },
+            currentSituation: "快照后局面"
+          }
+        }
+      });
+      assert.equal(mutateStateResponse.statusCode, 200);
+      assert.equal(mutateStateResponse.json().modeState.state.currentSituation, "快照后局面");
+
+      const restoreResponse = await app.inject({
+        method: "POST",
+        url: `/api/sessions/qqbot:p:10001/snapshots/${snapshotId}/restore`
+      });
+      assert.equal(restoreResponse.statusCode, 200);
+      assert.equal(restoreResponse.json().session.modeId, "scenario_host");
+      assert.equal(restoreResponse.json().modeState.state.profile.theme, "快照前主题");
+      assert.equal(restoreResponse.json().modeState.state.currentSituation, "快照前局面");
+
+      const listResponse = await app.inject({
+        method: "GET",
+        url: "/api/sessions/qqbot:p:10001/snapshots"
+      });
+      assert.equal(listResponse.statusCode, 200);
+      assert.equal(listResponse.json().snapshots.length, 1);
+
+      const deleteResponse = await app.inject({
+        method: "DELETE",
+        url: `/api/sessions/qqbot:p:10001/snapshots/${snapshotId}`
+      });
+      assert.equal(deleteResponse.statusCode, 200);
+      assert.equal(deleteResponse.json().ok, true);
+      assert.equal(deps.__state.sessionSnapshots.length, 0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("internal api rejects snapshot create and restore while session is delivering", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const snapshotResponse = await app.inject({
+        method: "POST",
+        url: "/api/sessions/qqbot:p:10001/snapshots",
+        payload: { label: "发送前" }
+      });
+      assert.equal(snapshotResponse.statusCode, 200);
+      const snapshotId = snapshotResponse.json().snapshot.id;
+      deps.__state.sessions[0]!.phase = { kind: "delivering" };
+
+      const createWhileDeliveringResponse = await app.inject({
+        method: "POST",
+        url: "/api/sessions/qqbot:p:10001/snapshots",
+        payload: { label: "发送中" }
+      });
+      assert.equal(createWhileDeliveringResponse.statusCode, 400);
+      assert.match(createWhileDeliveringResponse.json().error, /正在回复/);
+
+      const restoreWhileDeliveringResponse = await app.inject({
+        method: "POST",
+        url: `/api/sessions/qqbot:p:10001/snapshots/${snapshotId}/restore`
+      });
+      assert.equal(restoreWhileDeliveringResponse.statusCode, 400);
+      assert.match(restoreWhileDeliveringResponse.json().error, /正在回复/);
+
+      const copyWhileDeliveringResponse = await app.inject({
+        method: "POST",
+        url: "/api/sessions/qqbot:p:10001/copy"
+      });
+      assert.equal(copyWhileDeliveringResponse.statusCode, 400);
+      assert.match(copyWhileDeliveringResponse.json().error, /正在回复/);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("internal api copies any session to a new web session with scenario state", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const switchResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/qqbot:p:10001/mode",
+        payload: {
+          modeId: "scenario_host"
+        }
+      });
+      assert.equal(switchResponse.statusCode, 200);
+
+      const detailResponse = await app.inject({
+        method: "GET",
+        url: "/api/sessions/qqbot:p:10001"
+      });
+      assert.equal(detailResponse.statusCode, 200);
+      const state = detailResponse.json().modeState.state;
+      const updateResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/qqbot:p:10001/mode-state",
+        payload: {
+          state: {
+            ...state,
+            profile: {
+              ...state.profile,
+              theme: "复制前主题"
+            },
+            currentSituation: "复制前局面"
+          }
+        }
+      });
+      assert.equal(updateResponse.statusCode, 200);
+      deps.__state.sessions[0]!.operationMode = { kind: "persona_config", draft: {} } as never;
+      deps.__state.sessions[0]!.taskTracker = {
+        version: 1,
+        primary: {
+          taskId: "task-copy-source",
+          status: "active",
+          objective: "源会话任务",
+          done: [],
+          next: ["继续源会话"],
+          blockers: [],
+          importantToolRefs: [],
+          createdAtMs: 1,
+          updatedAtMs: 2
+        },
+        parked: [],
+        evidence: []
+      };
+      deps.__state.sessions[0]!.debugMarkers = [{ kind: "debug_enabled", timestampMs: 3 }];
+      deps.__state.sessions[0]!.lastLlmUsage = {
+        inputTokens: 1,
+        outputTokens: 2,
+        totalTokens: 3,
+        cachedTokens: 0,
+        reasoningTokens: 0,
+        requestCount: 1,
+        providerReported: true,
+        modelRef: "fixture",
+        model: "fixture",
+        capturedAt: 4
+      };
+
+      const copyResponse = await app.inject({
+        method: "POST",
+        url: "/api/sessions/qqbot:p:10001/copy",
+        payload: {
+          title: "Web 副本"
+        }
+      });
+      assert.equal(copyResponse.statusCode, 200);
+      assert.equal(copyResponse.json().session.source, "web");
+      assert.equal(copyResponse.json().session.type, "private");
+      assert.deepEqual(copyResponse.json().session.participantRef, { kind: "user", id: "10001" });
+      assert.equal(copyResponse.json().session.title, "Web 副本");
+      assert.equal(copyResponse.json().session.modeId, "scenario_host");
+      const copiedSessionId = copyResponse.json().session.id;
+      assert.match(copiedSessionId, /^web:/);
+      assert.equal(copyResponse.json().modeState.state.profile.theme, "复制前主题");
+      assert.equal(copyResponse.json().modeState.state.currentSituation, "复制前局面");
+      assert.equal(deps.__state.scenarioHostStates[copiedSessionId]?.profile.theme, "复制前主题");
+      const copiedRuntimeSession = deps.__state.sessions.find((session) => session.id === copiedSessionId);
+      assert.equal(copiedRuntimeSession?.operationMode.kind, "normal");
+      assert.equal(copiedRuntimeSession?.taskTracker.primary, null);
+      assert.deepEqual(copiedRuntimeSession?.debugMarkers, []);
+      assert.equal(copiedRuntimeSession?.lastLlmUsage, null);
+
+      const copiedDetailResponse = await app.inject({
+        method: "GET",
+        url: `/api/sessions/${encodeURIComponent(copiedSessionId)}`
+      });
+      assert.equal(copiedDetailResponse.statusCode, 200);
+      assert.equal(copiedDetailResponse.json().session.source, "web");
+      assert.deepEqual(copiedDetailResponse.json().session.participantRef, { kind: "user", id: "10001" });
+      assert.equal(copiedDetailResponse.json().modeState.state.profile.theme, "复制前主题");
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("internal api remaps copied group scenario state to the new web participant", async () => {
+    const deps = createInternalApiDeps();
+    deps.__state.sessions.push({
+      id: "qqbot:g:20001",
+      type: "group",
+      source: "onebot",
+      modeId: "scenario_host",
+      operationMode: { kind: "normal" },
+      participantRef: { kind: "group", id: "20001" },
+      participantUserId: "20001",
+      participantLabel: "Group 20001",
+      title: "Group 20001",
+      titleSource: "manual",
+      phase: { kind: "idle" },
+      pendingMessages: [],
+      taskTracker: { version: 1, primary: null, parked: [], evidence: [] },
+      internalTranscript: [],
+      debugMarkers: [],
+      lastLlmUsage: null,
+      isGenerating: false,
+      lastActiveAt: 123456
+    });
+    deps.__state.scenarioHostStates["qqbot:g:20001"] = createInitialScenarioHostSessionState({
+      playerUserId: "20001",
+      playerDisplayName: "20001"
+    });
+    deps.__state.scenarioHostStates["qqbot:g:20001"]!.player.heldItems = [
+      { name: "玩家旧钥匙", description: "旧群会话里玩家随身携带的钥匙", quantity: 1 }
+    ];
+    deps.__state.scenarioHostStates["qqbot:g:20001"]!.entities.push({
+      id: "keeper-ledger",
+      kind: "item",
+      name: "守门人账本",
+      aliases: [],
+      summary: "守门人随身记录出入账目的旧账本。",
+      status: "",
+      locationId: null,
+      tags: [],
+      notes: ""
+    });
+    const app = await createInternalApiApp(deps);
+    try {
+      const copyResponse = await app.inject({
+        method: "POST",
+        url: "/api/sessions/qqbot:g:20001/copy",
+        payload: {
+          title: "群副本"
+        }
+      });
+      assert.equal(copyResponse.statusCode, 200);
+      assert.deepEqual(copyResponse.json().session.participantRef, { kind: "user", id: "owner" });
+      assert.equal(copyResponse.json().modeState.state.player.userId, "owner");
+      assert.equal(copyResponse.json().modeState.state.player.displayName, "群副本");
+      assert.deepEqual(copyResponse.json().modeState.state.player.heldItems, [
+        { name: "玩家旧钥匙", description: "旧群会话里玩家随身携带的钥匙", quantity: 1 }
+      ]);
+      assert.equal(copyResponse.json().modeState.state.entities.find((item: any) => item.id === "keeper-ledger")?.name, "守门人账本");
+      const copiedSessionId = copyResponse.json().session.id;
+      assert.equal(deps.__state.scenarioHostStates[copiedSessionId]?.player.userId, "owner");
+      assert.equal(deps.__state.scenarioHostStates[copiedSessionId]?.player.heldItems[0]?.name, "玩家旧钥匙");
+    } finally {
+      await app.close();
+    }
+  });
+
   test("internal api updates scenario_host mode state", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
@@ -768,7 +1067,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         url: "/api/sessions/qqbot:p:10001/mode-state",
         payload: {
           state: {
-            version: 3,
+            version: 5,
             profile: {
               theme: "旧港钟声",
               worldBaseline: "旧港每晚零点都会响钟。",
@@ -780,9 +1079,13 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
             sceneSummary: "玩家刚抵达旧港。",
             player: {
               userId: "10001",
-              displayName: "Alice"
+              displayName: "Alice",
+              basicInfo: "旧港调查员，受托追查午夜钟声。",
+              characterDescription: "谨慎、善于观察，习惯先确认环境再行动。",
+              wornItems: [{ name: "油布外套", wearPosition: "外套", description: "能挡住码头夜风" }],
+              heldItems: [{ name: "铜钥匙", description: "刚从码头旧箱里找到", quantity: 1 }],
+              statusDescription: ""
             },
-            inventory: [{ ownerId: "10001", item: "铜钥匙", quantity: 1 }],
             objectives: [{ id: "find-bell", title: "找到钟楼", status: "active", summary: "先去高处确认钟声来源" }],
             loreEntries: [{
               id: "old-port-bell",
@@ -795,6 +1098,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
               createdAtTurn: 0,
               updatedAtTurn: 3
             }],
+            npcs: [],
             entities: [],
             relations: [],
             journal: [],
@@ -811,7 +1115,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.ok(!("title" in updateResponse.json().modeState.state));
       assert.equal(updateResponse.json().modeState.state.initialized, true);
       assert.equal(updateResponse.json().modeState.state.profile.theme, "旧港钟声");
-      assert.deepEqual(updateResponse.json().modeState.state.inventory, [{ ownerId: "10001", item: "铜钥匙", quantity: 1 }]);
+      assert.deepEqual(updateResponse.json().modeState.state.player.heldItems, [{ name: "铜钥匙", description: "刚从码头旧箱里找到", quantity: 1 }]);
 
       const stateWithoutProfile = { ...updateResponse.json().modeState.state };
       delete stateWithoutProfile.profile;
@@ -836,9 +1140,19 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
           state: {
             ...openedState,
             currentSituation: "后台工具已经推进到钟楼门前。",
-            inventory: [
-              ...openedState.inventory,
-              { ownerId: "10001", item: "银钥匙", quantity: 1 }
+            entities: [
+              ...openedState.entities,
+              {
+                id: "background-silver-key",
+                kind: "item",
+                name: "银钥匙",
+                aliases: [],
+                summary: "后台追加的场景道具不应丢失。",
+                status: "",
+                locationId: null,
+                tags: [],
+                notes: ""
+              }
             ],
             objectives: [
               ...openedState.objectives,
@@ -877,9 +1191,12 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
             loreEntries: openedState.loreEntries.map((entry: any) => entry.id === "old-port-bell"
               ? { ...entry, priority: 140 }
               : entry),
-            inventory: openedState.inventory.map((entry: any) => entry.item === "铜钥匙"
-              ? { ...entry, quantity: 2 }
-              : entry),
+            player: {
+              ...openedState.player,
+              heldItems: openedState.player.heldItems.map((entry: any) => entry.name === "铜钥匙"
+                ? { ...entry, quantity: 2 }
+                : entry)
+            },
             objectives: openedState.objectives.map((entry: any) => entry.id === "find-bell"
               ? { ...entry, summary: "前往高处确认钟声来源" }
               : entry)
@@ -891,8 +1208,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(mergeResponse.json().modeState.state.profile.boundaries, "不写血腥细节");
       assert.equal(mergeResponse.json().modeState.state.loreEntries.find((entry: any) => entry.id === "old-port-bell").priority, 140);
       assert.equal(mergeResponse.json().modeState.state.loreEntries.find((entry: any) => entry.id === "background-lore").content, "后台追加的 lore 不应丢失。");
-      assert.equal(mergeResponse.json().modeState.state.inventory.find((entry: any) => entry.item === "铜钥匙").quantity, 2);
-      assert.equal(mergeResponse.json().modeState.state.inventory.find((entry: any) => entry.item === "银钥匙").quantity, 1);
+      assert.equal(mergeResponse.json().modeState.state.player.heldItems.find((entry: any) => entry.name === "铜钥匙").quantity, 2);
+      assert.equal(mergeResponse.json().modeState.state.entities.find((entry: any) => entry.id === "background-silver-key").name, "银钥匙");
       assert.equal(mergeResponse.json().modeState.state.objectives.find((entry: any) => entry.id === "find-bell").summary, "前往高处确认钟声来源");
       assert.equal(mergeResponse.json().modeState.state.objectives.find((entry: any) => entry.id === "background-objective").summary, "后台追加的目标不应丢失");
 
@@ -946,7 +1263,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         url: "/api/sessions/qqbot:p:10001/mode-state",
         payload: {
           state: {
-            version: 3,
+            version: 5,
             title: "坏数据"
           }
         }
@@ -954,6 +1271,64 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
 
       assert.equal(response.statusCode, 400);
       assert.match(response.json().error, /player|title|unknown key/i);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("internal api rejects initialized scenario_host state with missing player runtime fields", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const switchResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/qqbot:p:10001/mode",
+        payload: {
+          modeId: "scenario_host"
+        }
+      });
+      assert.equal(switchResponse.statusCode, 200);
+
+      const response = await app.inject({
+        method: "PATCH",
+        url: "/api/sessions/qqbot:p:10001/mode-state",
+        payload: {
+          state: {
+            version: 5,
+            profile: {
+              theme: "旧港钟声",
+              worldBaseline: "旧港每晚零点都会响钟。",
+              narrationStyle: "冷静克制",
+              boundaries: ""
+            },
+            currentSituation: "码头上空有钟声回荡。",
+            currentLocation: "旧港码头",
+            sceneSummary: "",
+            player: {
+              userId: "10001",
+              displayName: "Alice",
+              basicInfo: "",
+              characterDescription: "",
+              wornItems: [],
+              heldItems: [],
+              statusDescription: ""
+            },
+            objectives: [],
+            loreEntries: [],
+            npcs: [],
+            entities: [],
+            relations: [],
+            journal: [],
+            mechanics: { ruleStyle: "freeform", dicePolicy: "", difficultyScale: "", successStates: [] },
+            flags: {},
+            initialized: true,
+            turnIndex: 0
+          }
+        }
+      });
+
+      assert.equal(response.statusCode, 400);
+      assert.match(response.json().error, /scenario_initialized_state_invalid|玩家基础信息|玩家角色描述|玩家穿着|玩家持有物/);
     } finally {
       await app.close();
     }
@@ -1011,9 +1386,13 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       participantLabel: "Group 20001",
       title: "Group 20001",
       titleSource: "manual",
+      operationMode: { kind: "normal" },
       phase: { kind: "idle" },
       pendingMessages: [],
+      taskTracker: { version: 1, primary: null, parked: [], evidence: [] },
       internalTranscript: [],
+      debugMarkers: [],
+      lastLlmUsage: null,
       isGenerating: false,
       lastActiveAt: 123456
     });
@@ -1221,6 +1600,14 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.ok(!("participantUserId" in createResponse.json().session));
 
       const sessionId = createResponse.json().session.id;
+      const snapshotResponse = await app.inject({
+        method: "POST",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/snapshots`,
+        payload: { label: "删除前存档" }
+      });
+      assert.equal(snapshotResponse.statusCode, 200);
+      assert.equal(deps.__state.sessionSnapshots.length, 1);
+
       const listResponse = await app.inject({
         method: "GET",
         url: "/api/sessions"
@@ -1275,6 +1662,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       });
       assert.equal(deleteResponse.statusCode, 200);
       assert.deepEqual(deps.__state.contextCleanupSessionIds, [sessionId]);
+      assert.equal(deps.__state.sessionSnapshots.length, 0);
       assert.equal(deps.__state.contextItems.find((item) => item.itemId === "ctx_session_delete_target")?.status, "deleted");
       assert.equal(deps.__state.contextItems.find((item) => item.itemId === "ctx_session_delete_other")?.status, "active");
 

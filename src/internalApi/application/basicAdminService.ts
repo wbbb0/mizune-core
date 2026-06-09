@@ -11,15 +11,24 @@ import type {
   InternalApiWhitelistDeps
 } from "../types.ts";
 import type {
+  ParsedCopySessionBody,
   ParsedCreateSessionBody,
+  ParsedCreateSessionSnapshotBody,
   ParsedSwitchSessionModeBody,
   ParsedUpdateSessionModeStateBody,
   ParsedUpdateSessionTitleBody
 } from "../routeSupport.ts";
-import type { SessionParticipantRef, SessionState } from "#conversation/session/sessionTypes.ts";
+import type { PersistedSessionState, SessionParticipantRef, SessionState } from "#conversation/session/sessionTypes.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
+import type { SessionSnapshotModeState } from "#conversation/session/sessionSnapshotStore.ts";
+import { createNormalSessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
+import { createEmptySessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
 import { getDefaultSessionModeId, listSessionModes, requireSessionModeDefinition, sessionModeSupportsChatType } from "#modes/registry.ts";
-import { scenarioHostSessionStateSchema, type ScenarioHostSessionState } from "#modes/scenarioHost/types.ts";
+import {
+  assertScenarioInitializedStateValid,
+  scenarioHostSessionStateSchema,
+  type ScenarioHostSessionState
+} from "#modes/scenarioHost/types.ts";
 import { createSessionTitleGenerationEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { DerivedObservationReader } from "#llm/derivations/derivedObservationReader.ts";
 import { isPendingChatAttachmentId } from "#services/workspace/chatAttachments.ts";
@@ -29,8 +38,9 @@ import {
   type SessionListStreamEvent
 } from "./sessionListStream.ts";
 
-import { isSessionGenerating } from "#conversation/session/sessionQueries.ts";
+import { isSessionGenerating, isSessionResponding } from "#conversation/session/sessionQueries.ts";
 import { resolveDefaultSessionTitle } from "#conversation/session/sessionTitle.ts";
+import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
 
 function toScenarioHostSession(session: SessionState): Pick<SessionState, "id" | "participantRef"> {
   return {
@@ -332,6 +342,144 @@ async function getSessionModeStateDetail(
   };
 }
 
+export async function listSessionSnapshots(
+  deps: InternalApiSessionWriteDeps,
+  sessionId: string
+) {
+  const session = findSession(deps, sessionId);
+  if (!session) {
+    return null;
+  }
+  return {
+    snapshots: await deps.sessionSnapshotStore.list(session.id)
+  };
+}
+
+export async function createSessionSnapshot(
+  deps: InternalApiSessionWriteDeps,
+  sessionId: string,
+  body: ParsedCreateSessionSnapshotBody
+) {
+  const session = findSession(deps, sessionId);
+  if (!session) {
+    return null;
+  }
+  assertSessionSnapshotMutationAllowed(session, "存档");
+  const modeState = await captureSessionSnapshotModeState(deps, session);
+  const snapshot = await deps.sessionSnapshotStore.create({
+    sessionId: session.id,
+    ...(body.label ? { label: body.label } : {}),
+    session: deps.sessionManager.getPersistedSession(session.id),
+    modeState
+  });
+  return {
+    ok: true as const,
+    snapshot
+  };
+}
+
+export async function restoreSessionSnapshot(
+  deps: InternalApiSessionWriteDeps,
+  sessionId: string,
+  snapshotId: string
+) {
+  const session = findSession(deps, sessionId);
+  if (!session) {
+    return null;
+  }
+  assertSessionSnapshotMutationAllowed(session, "读档");
+  const snapshot = await deps.sessionSnapshotStore.get(session.id, snapshotId);
+  if (!snapshot) {
+    return { ok: false as const };
+  }
+  if (snapshot.payload.session.id !== session.id) {
+    throw new Error(`Snapshot ${snapshotId} does not belong to session ${session.id}`);
+  }
+
+  const previousSession = deps.sessionManager.getPersistedSession(session.id);
+  const previousModeState = await deps.scenarioHostStateStore.get(session.id);
+  let restored: SessionState | null = null;
+  try {
+    await applySessionSnapshotModeState(deps, session.id, snapshot.payload.modeState);
+    restored = deps.sessionManager.restorePersistedSession(snapshot.payload.session);
+    await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(restored.id));
+  } catch (error: unknown) {
+    await restorePreviousSnapshotModeState(deps, session.id, previousModeState).catch(() => undefined);
+    if (restored) {
+      deps.sessionManager.restorePersistedSession(previousSession);
+    }
+    throw error;
+  }
+
+  return {
+    ok: true as const,
+    session: buildSessionSummary(restored),
+    modeState: await getSessionModeStateDetail(deps, restored),
+    snapshot: snapshot.summary
+  };
+}
+
+export async function deleteSessionSnapshot(
+  deps: InternalApiSessionWriteDeps,
+  sessionId: string,
+  snapshotId: string
+) {
+  const session = findSession(deps, sessionId);
+  if (!session) {
+    return null;
+  }
+  return {
+    ok: await deps.sessionSnapshotStore.delete(session.id, snapshotId)
+  };
+}
+
+function findSession(deps: InternalApiSessionReadDeps, sessionId: string): SessionState | null {
+  return deps.sessionManager.listSessions().find((session) => session.id === sessionId) ?? null;
+}
+
+function assertSessionSnapshotMutationAllowed(session: SessionState, action: string): void {
+  if (isSessionResponding(session)) {
+    throw new Error(`当前会话正在回复，完成后再${action}`);
+  }
+}
+
+async function captureSessionSnapshotModeState(
+  deps: InternalApiSessionWriteDeps,
+  session: SessionState
+): Promise<SessionSnapshotModeState> {
+  if (session.modeId !== "scenario_host") {
+    return null;
+  }
+  return {
+    kind: "scenario_host",
+    state: await deps.scenarioHostStateStore.ensureForSession(toScenarioHostSession(session))
+  };
+}
+
+async function applySessionSnapshotModeState(
+  deps: InternalApiSessionWriteDeps,
+  sessionId: string,
+  modeState: SessionSnapshotModeState
+): Promise<void> {
+  if (modeState?.kind === "scenario_host") {
+    await deps.scenarioHostStateStore.write(sessionId, modeState.state);
+    return;
+  }
+  await deps.scenarioHostStateStore.delete(sessionId);
+}
+
+async function restorePreviousSnapshotModeState(
+  deps: InternalApiSessionWriteDeps,
+  sessionId: string,
+  previousModeState: ScenarioHostSessionState | null
+): Promise<void> {
+  if (previousModeState) {
+    await deps.scenarioHostStateStore.write(sessionId, previousModeState);
+    return;
+  }
+  await deps.scenarioHostStateStore.delete(sessionId);
+}
+
 export async function createWebSession(
   deps: InternalApiSessionWriteDeps,
   body: ParsedCreateSessionBody
@@ -362,6 +510,63 @@ export async function createWebSession(
     ok: true,
     session: buildSessionSummary(session)
   };
+}
+
+export async function copySessionToWebSession(
+  deps: InternalApiSessionWriteDeps,
+  sessionId: string,
+  body: ParsedCopySessionBody
+) {
+  const sourceSession = findSession(deps, sessionId);
+  if (!sourceSession) {
+    return null;
+  }
+  assertSessionSnapshotMutationAllowed(sourceSession, "复制");
+
+  const now = Date.now();
+  const sourcePersisted = deps.sessionManager.getPersistedSession(sourceSession.id);
+  const targetSessionId = createWebSessionId();
+  const targetParticipantRef: SessionParticipantRef = sourcePersisted.participantRef.kind === "user"
+    ? sourcePersisted.participantRef
+    : { kind: "user", id: "owner" };
+  const targetTitle = body.title?.trim()
+    || buildCopiedSessionTitle(sourcePersisted.title ?? resolveDefaultSessionTitle(sourcePersisted.modeId ?? getDefaultSessionModeId()));
+  const targetPersisted = buildCopiedWebSessionState(sourcePersisted, {
+    id: targetSessionId,
+    participantRef: targetParticipantRef,
+    title: targetTitle,
+    now
+  });
+  const modeState = remapCopiedSessionModeState(
+    await captureSessionSnapshotModeState(deps, sourceSession),
+    {
+      sourceSessionId: sourcePersisted.id,
+      sourceParticipantRef: sourcePersisted.participantRef,
+      targetSessionId,
+      targetParticipantRef,
+      targetTitle
+    }
+  );
+
+  let restored = false;
+  try {
+    await applySessionSnapshotModeState(deps, targetSessionId, modeState);
+    const targetSession = deps.sessionManager.restorePersistedSession(targetPersisted);
+    restored = true;
+    await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(targetSession.id));
+    return {
+      ok: true as const,
+      session: buildSessionSummary(targetSession),
+      modeState: await getSessionModeStateDetail(deps, targetSession)
+    };
+  } catch (error: unknown) {
+    await deps.scenarioHostStateStore.delete(targetSessionId).catch(() => undefined);
+    if (restored) {
+      deps.sessionManager.deleteSession(targetSessionId);
+    }
+    await deps.sessionPersistence.remove(targetSessionId).catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function switchSessionMode(
@@ -395,9 +600,11 @@ export async function updateSessionModeState(
 
   const current = await deps.scenarioHostStateStore.ensureForSession(toScenarioHostSession(session));
   const stateInput = mergeScenarioModeStateInput(current, body.state, body.baseState);
+  const parsedState = scenarioHostSessionStateSchema.parse(stateInput);
+  assertScenarioInitializedStateValid(parsedState);
   const state = await deps.scenarioHostStateStore.write(
     sessionId,
-    scenarioHostSessionStateSchema.parse(stateInput)
+    parsedState
   );
 
   return {
@@ -448,20 +655,20 @@ function mergeScenarioModeStateInput(
       (item) => isRecord(item) ? String(item.id ?? "") : ""
     );
   }
+  if ("npcs" in patch && Array.isArray(state.npcs) && Array.isArray(baseState.npcs)) {
+    patch.npcs = mergeCollectionByKey(
+      current.npcs,
+      baseState.npcs as unknown[],
+      state.npcs as unknown[],
+      (item) => isRecord(item) ? String(item.id ?? "") : ""
+    );
+  }
   if ("objectives" in patch && Array.isArray(state.objectives) && Array.isArray(baseState.objectives)) {
     patch.objectives = mergeCollectionByKey(
       current.objectives,
       baseState.objectives as unknown[],
       state.objectives as unknown[],
       (item) => isRecord(item) ? String(item.id ?? "") : ""
-    );
-  }
-  if ("inventory" in patch && Array.isArray(state.inventory) && Array.isArray(baseState.inventory)) {
-    patch.inventory = mergeCollectionByKey(
-      current.inventory,
-      baseState.inventory as unknown[],
-      state.inventory as unknown[],
-      inventoryKey
     );
   }
   if ("relations" in patch && Array.isArray(state.relations) && Array.isArray(baseState.relations)) {
@@ -530,13 +737,6 @@ function relationKey(item: unknown): string {
     return "";
   }
   return [item.sourceId, item.targetId, item.kind].map((part) => String(part ?? "").trim()).filter(Boolean).join("\u0000");
-}
-
-function inventoryKey(item: unknown): string {
-  if (!isRecord(item)) {
-    return "";
-  }
-  return [item.ownerId, item.item].map((part) => String(part ?? "").trim()).filter(Boolean).join("\u0000");
 }
 
 export async function updateSessionTitle(
@@ -608,6 +808,8 @@ export async function deleteSession(
     return { ok: false as const };
   }
   deps.contextSessionCleanupService?.cleanupDeletedSession({ sessionId });
+  await deps.sessionSnapshotStore.deleteAllForSession(sessionId);
+  await deps.scenarioHostStateStore.delete(sessionId);
   await deps.sessionPersistence.remove(sessionId);
   await deps.assetLifecycleService.onSessionDeleted({
     sessionId,
@@ -631,4 +833,85 @@ export function getWhitelist(deps: InternalApiWhitelistDeps) {
 
 function createWebSessionId(): string {
   return `web:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function buildCopiedSessionTitle(sourceTitle: string): string {
+  const baseTitle = String(sourceTitle ?? "").trim() || "New Chat";
+  return `${baseTitle} 副本`;
+}
+
+function buildCopiedWebSessionState(
+  source: PersistedSessionState,
+  target: {
+    id: string;
+    participantRef: SessionParticipantRef;
+    title: string;
+    now: number;
+  }
+): PersistedSessionState {
+  return {
+    ...structuredClone(source),
+    id: target.id,
+    type: "private",
+    source: "web",
+    participantRef: target.participantRef,
+    title: target.title,
+    titleSource: "manual",
+    replyDelivery: "web",
+    operationMode: createNormalSessionOperationMode(),
+    debugControl: { enabled: false },
+    pendingMessages: [],
+    queuedGroupReplyTargets: [],
+    pendingTranscriptGroupId: null,
+    activeTranscriptGroupId: null,
+    taskTracker: createEmptySessionTaskTracker(),
+    debugMarkers: [],
+    lastLlmUsage: null,
+    sentMessages: [],
+    latestGapMs: null,
+    smoothedGapMs: null,
+    lastActiveAt: target.now
+  };
+}
+
+function remapCopiedSessionModeState(
+  modeState: SessionSnapshotModeState,
+  input: {
+    sourceSessionId: string;
+    sourceParticipantRef: SessionParticipantRef;
+    targetSessionId: string;
+    targetParticipantRef: SessionParticipantRef;
+    targetTitle: string;
+  }
+): SessionSnapshotModeState {
+  if (modeState?.kind !== "scenario_host") {
+    return modeState;
+  }
+  if (input.sourceParticipantRef.kind === "user") {
+    return modeState;
+  }
+
+  const sourceDefaultPlayerLabel = resolveSessionParticipantLabel({
+    sessionId: input.sourceSessionId,
+    participantRef: input.sourceParticipantRef,
+    title: null
+  });
+  const targetDefaultPlayerLabel = resolveSessionParticipantLabel({
+    sessionId: input.targetSessionId,
+    participantRef: input.targetParticipantRef,
+    title: input.targetTitle
+  });
+  return {
+    kind: "scenario_host",
+    state: {
+      ...modeState.state,
+      player: {
+        ...modeState.state.player,
+        userId: input.targetParticipantRef.id,
+        displayName: modeState.state.player.displayName === sourceDefaultPlayerLabel
+          ? targetDefaultPlayerLabel
+          : modeState.state.player.displayName
+      }
+    }
+  };
 }

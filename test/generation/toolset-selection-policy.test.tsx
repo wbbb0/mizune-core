@@ -6,6 +6,7 @@ import { decideToolsetSupplements } from "../../src/app/generation/toolsetSupple
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { requireSessionModeDefinition } from "../../src/modes/registry.ts";
 import { resolveSessionModeSetupContext } from "../../src/app/generation/generationSetupContext.ts";
+import { createScenarioHostSetupToolsetOverrides } from "../../src/modes/scenarioHost/setupToolsets.ts";
 
 function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
   return createTestAppConfig({
@@ -85,9 +86,33 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
     });
 
     assert.equal(toolsets.some((item) => item.id === "scenario_host_state"), true);
+    assert.equal(
+      toolsets.find((item) => item.id === "scenario_host_state")?.toolNames.includes("set_scenario_setup_optional_item_status"),
+      false
+    );
     assert.equal(toolsets.some((item) => item.id === "memory_profile"), false);
     assert.deepEqual(
       resolveToolNamesFromToolsets(toolsets, ["scenario_host_state", "time_utils"]).includes("get_current_time"),
+      true
+    );
+  });
+
+  test("scenario setup exposes optional item skip status only through setup override", async () => {
+    const config = createTestAppConfig();
+    const toolsets = listTurnToolsets({
+      config,
+      relationship: "owner",
+      currentUser: null,
+      modelRef: ["main"],
+      includeDebugTools: false,
+      modeId: "scenario_host",
+      setupPhase: {
+        setupToolsetOverrides: createScenarioHostSetupToolsetOverrides()
+      }
+    });
+
+    assert.equal(
+      toolsets.find((item) => item.id === "scenario_runtime_state_draft")?.toolNames.includes("set_scenario_setup_optional_item_status"),
       true
     );
   });

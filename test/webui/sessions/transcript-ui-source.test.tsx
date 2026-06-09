@@ -16,14 +16,14 @@ import { readFile } from "node:fs/promises";
     assert.doesNotMatch(source, /TOP_LOAD_THRESHOLD_PX/);
   });
 
-  test("message bubble supports explicit action button and context menu without long press", async () => {
+  test("message bubble supports only the explicit action button without long press", async () => {
     const source = await readFile(new URL("../../../webui/src/components/sessions/MessageBubble.vue", import.meta.url), "utf8");
     const metaSource = await readFile(new URL("../../../webui/src/components/sessions/MessageMetaLine.vue", import.meta.url), "utf8");
 
     assert.match(source, /MessageMetaLine/);
     assert.match(metaSource, /MoreHorizontal/);
     assert.match(metaSource, /@click="openActions"/);
-    assert.match(source, /@contextmenu\.prevent="openActions"/);
+    assert.doesNotMatch(source, /@contextmenu/);
     assert.doesNotMatch(metaSource, /@contextmenu=/);
     assert.doesNotMatch(source, /@touchstart/);
     assert.doesNotMatch(metaSource, /@touchstart/);
@@ -54,12 +54,12 @@ import { readFile } from "node:fs/promises";
     assert.doesNotMatch(styleSource, /@keyframes blink/);
   });
 
-  test("transcript items support explicit action button and context menu while keeping disclosures interactive when runtimeExcluded", async () => {
+  test("transcript items support only the explicit action button while keeping disclosures interactive when runtimeExcluded", async () => {
     const source = await readFile(new URL("../../../webui/src/components/sessions/TranscriptItem.vue", import.meta.url), "utf8");
 
     assert.match(source, /MoreHorizontal/);
     assert.match(source, /@click="openActions"/);
-    assert.match(source, /@contextmenu\.prevent="openActions"/);
+    assert.doesNotMatch(source, /@contextmenu/);
     assert.match(source, /title_generation_event/);
     assert.match(source, /item\.summary/);
     assert.match(source, /source === 'auto' \? '自动生成' : '重新生成'/);

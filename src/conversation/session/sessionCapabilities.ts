@@ -246,6 +246,7 @@ export interface SessionAdminMutationAccess {
   appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void;
   setModeId(sessionId: string, modeId: string, options?: { appendSwitchMarker?: boolean }): boolean;
   getPersistedSession(sessionId: string): PersistedSessionState;
+  restorePersistedSession(item: PersistedSessionState): SessionState;
   deleteSession(sessionId: string): boolean;
   excludeTranscriptItem(
     sessionId: string,
@@ -265,6 +266,16 @@ export interface SessionAdminMutationAccess {
     reason: TranscriptItemRuntimeExclusionReason,
     timestampMs?: number
   ): InternalTranscriptItem[];
+  reactivateTranscriptUserBatch(
+    sessionId: string,
+    itemId: string,
+    reason: TranscriptItemRuntimeExclusionReason,
+    timestampMs?: number
+  ): {
+    messages: SessionMessage[];
+    excludedItems: InternalTranscriptItem[];
+    activeGroupId: string;
+  };
 }
 
 export interface SessionPersistenceAccess {
@@ -323,6 +334,7 @@ export interface SessionDirectCommandAccess {
       groupId?: string;
       senderName: string;
       text: string;
+      contentParts?: SessionMessage["contentParts"];
       images: string[];
       audioSources?: string[];
       audioIds?: string[];

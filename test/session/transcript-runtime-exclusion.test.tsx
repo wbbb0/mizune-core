@@ -60,6 +60,22 @@ function createRuntimeUserMessage(id: string, timestampMs: number, text = id): I
   } as any as InternalTranscriptItem;
 }
 
+function createRuntimeAssistantMessage(id: string, groupId: string, timestampMs: number, text = id): InternalTranscriptItem {
+  return {
+    id,
+    groupId,
+    kind: "assistant_message",
+    role: "assistant",
+    llmVisible: true,
+    chatType: "private",
+    userId: "10001",
+    senderName: "Alice",
+    text,
+    timestampMs,
+    runtimeExcluded: false
+  } as any as InternalTranscriptItem;
+}
+
   test("runtimeExcluded transcript items are excluded from llm-visible history but remain in raw session view", () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const session = sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
@@ -114,6 +130,40 @@ function createRuntimeUserMessage(id: string, timestampMs: number, text = id): I
     );
     assert.deepEqual(missing, []);
     assert.equal(view[1]?.runtimeExcluded, false);
+  });
+
+  test("reactivating a transcript user batch truncates following items and prepares pending generation", () => {
+    const sessionManager = new SessionManager(createTestAppConfig());
+    const sessionId = "qqbot:p:test";
+    const session = sessionManager.ensureSession({ id: sessionId, type: "private" });
+    session.internalTranscript.push(
+      {
+        ...createRuntimeUserMessage("item-user", 1, "重新生成这条"),
+        groupId: "group-retry"
+      },
+      createRuntimeAssistantMessage("item-assistant", "group-retry", 2, "旧回复"),
+      createRuntimeUserMessage("item-later", 3, "后续消息")
+    );
+
+    const result = sessionManager.reactivateTranscriptUserBatch(
+      sessionId,
+      "item-user",
+      "manual_truncate_after",
+      100
+    );
+
+    assert.equal(result.activeGroupId, "group-retry");
+    assert.deepEqual(result.messages.map((message) => message.text), ["重新生成这条"]);
+    assert.deepEqual(result.excludedItems.map((item) => item.id), ["item-assistant", "item-later"]);
+    assert.equal(session.pendingTranscriptGroupId, "group-retry");
+    assert.deepEqual(session.pendingMessages.map((message) => message.text), ["重新生成这条"]);
+    assert.equal(session.internalTranscript[0]?.runtimeExcluded, false);
+    assert.equal(session.internalTranscript[1]?.runtimeExcluded, true);
+    assert.equal(session.internalTranscript[2]?.runtimeExcluded, true);
+
+    const generation = sessionManager.beginGeneration(sessionId);
+    assert.equal(generation.session.activeTranscriptGroupId, "group-retry");
+    assert.deepEqual(generation.messages.map((message) => message.text), ["重新生成这条"]);
   });
 
   test("runtimeExcluded assistant tool chains are excluded from openai-style replay", () => {

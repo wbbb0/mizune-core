@@ -548,6 +548,11 @@ const llmRuntimeConfigSchema = s.object({
     timeoutMs: s.number().int().positive().title("超时毫秒").default(45000),
     enableThinking: s.boolean().title("启用思考").default(false)
   }).title("总结器").describe("用于历史压缩和内容总结。").default(emptyObject),
+  structuredSuggestion: s.object({
+    enabled: s.boolean().title("启用").default(true),
+    timeoutMs: s.number().int().positive().title("超时毫秒").default(15000),
+    enableThinking: s.boolean().title("启用思考").default(false)
+  }).title("结构化建议器").describe("用于低成本生成可编辑的结构化候选，不承担历史总结职责。").default(emptyObject),
   textInspector: llmTextInspectorConfigSchema,
   sessionCaptioner: s.object({
     enabled: s.boolean().title("启用").default(true),

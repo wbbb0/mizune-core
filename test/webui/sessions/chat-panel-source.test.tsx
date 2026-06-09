@@ -16,4 +16,6 @@ import { readFile } from "node:fs/promises";
     assert.doesNotMatch(source, /:streaming=/);
     assert.match(source, /截断到此处/);
     assert.match(source, /excludeTranscriptItemsAfter/);
+    assert.match(source, /重新发送/);
+    assert.match(source, /resendTranscriptUserBatch/);
   });

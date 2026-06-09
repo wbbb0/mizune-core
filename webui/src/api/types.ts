@@ -27,6 +27,17 @@ export interface SessionListItem {
   lastActiveAt: number;
 }
 
+export interface SessionSnapshotSummary {
+  id: string;
+  sessionId: string;
+  label: string;
+  createdAtMs: number;
+  modeId: string;
+  title: string | null;
+  transcriptCount: number;
+  hasScenarioHostState: boolean;
+}
+
 export type SessionListStreamEvent =
   | { type: "ready"; sessions: SessionListItem[]; timestampMs: number }
   | { type: "session_upsert"; session: SessionListItem; timestampMs: number }
@@ -331,9 +342,15 @@ export interface ScenarioHostObjective {
   summary: string;
 }
 
-export interface ScenarioHostInventoryItem {
-  ownerId: string;
-  item: string;
+export interface ScenarioHostWornItem {
+  name: string;
+  wearPosition: string;
+  description: string;
+}
+
+export interface ScenarioHostHeldItem {
+  name: string;
+  description: string;
   quantity: number;
 }
 
@@ -349,7 +366,7 @@ export interface ScenarioHostLoreEntry {
   updatedAtTurn: number;
 }
 
-export type ScenarioHostEntityKind = "npc" | "location" | "faction" | "item" | "organization" | "other";
+export type ScenarioHostEntityKind = "location" | "faction" | "item" | "organization" | "other";
 
 export interface ScenarioHostEntity {
   id: string;
@@ -358,6 +375,20 @@ export interface ScenarioHostEntity {
   aliases: string[];
   summary: string;
   status: string;
+  locationId: string | null;
+  tags: string[];
+  notes: string;
+}
+
+export interface ScenarioHostNpc {
+  id: string;
+  name: string;
+  aliases: string[];
+  basicInfo: string;
+  characterDescription: string;
+  wornItems: ScenarioHostWornItem[];
+  heldItems: ScenarioHostHeldItem[];
+  statusDescription: string;
   locationId: string | null;
   tags: string[];
   notes: string;
@@ -389,8 +420,24 @@ export interface ScenarioHostMechanics {
   successStates: string[];
 }
 
+export type ScenarioSetupOptionalItemKey =
+  | "boundaries"
+  | "openingSituation"
+  | "currentLocation"
+  | "sceneSummary"
+  | "initialNpcs"
+  | "initialObjectives"
+  | "loreEntries"
+  | "entities"
+  | "relations"
+  | "mechanics";
+
+export interface ScenarioHostSetupProgress {
+  skippedOptionalItems: ScenarioSetupOptionalItemKey[];
+}
+
 export interface ScenarioHostSessionState {
-  version: 3;
+  version: 5;
   profile: {
     theme: string;
     worldBaseline: string;
@@ -403,15 +450,21 @@ export interface ScenarioHostSessionState {
   player: {
     userId: string;
     displayName: string;
+    basicInfo: string;
+    characterDescription: string;
+    wornItems: ScenarioHostWornItem[];
+    heldItems: ScenarioHostHeldItem[];
+    statusDescription: string;
   };
-  inventory: ScenarioHostInventoryItem[];
   objectives: ScenarioHostObjective[];
   loreEntries: ScenarioHostLoreEntry[];
+  npcs: ScenarioHostNpc[];
   entities: ScenarioHostEntity[];
   relations: ScenarioHostRelation[];
   journal: ScenarioHostJournalEntry[];
   mechanics: ScenarioHostMechanics;
   flags: Record<string, string | number | boolean>;
+  setupProgress: ScenarioHostSetupProgress;
   initialized: boolean;
   turnIndex: number;
 }
