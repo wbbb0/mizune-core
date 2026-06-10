@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { KeyRound, LockKeyhole, LogOut, Trash2 } from "lucide-vue-next";
 import { useSettingsSection } from "@/composables/sections/useSettingsSection";
-import { WorkbenchAreaHeader, WorkbenchCard, WorkbenchEmptyState } from "@workbench-kit/vue";
+import {
+  WorkbenchAreaHeader,
+  WorkbenchCard,
+  WorkbenchCardStack,
+  WorkbenchEmptyState,
+  WorkbenchFeatureCard
+} from "@workbench-kit/vue";
 
 const {
   auth,
@@ -38,25 +44,19 @@ const {
       </WorkbenchAreaHeader>
 
       <div v-if="activeItem === 'auth'" class="scrollbar-thin flex-1 overflow-y-auto p-4">
-        <div class="mx-auto flex w-full max-w-3xl flex-col gap-4">
-          <WorkbenchCard v-if="!auth.enabled" surface="panel" padding="lg">
-            <div class="mb-2 text-ui font-medium text-text-primary">认证已关闭</div>
+        <WorkbenchCardStack max-width="3xl">
+          <WorkbenchFeatureCard v-if="!auth.enabled" title="认证已关闭" :icon="LockKeyhole">
             <p class="m-0 text-small text-text-muted">当前实例在配置中关闭了 WebUI 认证，页面访问不再要求登录。若需恢复登录保护，请在配置中重新开启认证。</p>
-          </WorkbenchCard>
+          </WorkbenchFeatureCard>
 
           <div v-else-if="loadingSettings" class="text-small text-text-muted">加载中…</div>
 
-          <WorkbenchCard v-if="auth.enabled" surface="panel" padding="lg">
-            <div class="mb-4 flex items-start gap-3">
-              <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-text-secondary">
-                <LockKeyhole :size="18" :stroke-width="1.75" />
-              </div>
-              <div>
-                <h2 class="text-ui font-medium text-text-primary">修改密码</h2>
-                <p class="mt-1 text-small text-text-muted">修改后所有已登录会话都会失效，需要重新登录。</p>
-              </div>
-            </div>
-
+          <WorkbenchFeatureCard
+            v-if="auth.enabled"
+            title="修改密码"
+            subtitle="修改后所有已登录会话都会失效，需要重新登录。"
+            :icon="LockKeyhole"
+          >
             <form class="grid gap-3 md:grid-cols-2" @submit.prevent="submitPasswordChange">
               <label class="flex flex-col gap-1 text-small text-text-muted">
                 当前密码
@@ -79,19 +79,14 @@ const {
                 </button>
               </div>
             </form>
-          </WorkbenchCard>
+          </WorkbenchFeatureCard>
 
-          <WorkbenchCard v-if="auth.enabled" surface="panel" padding="lg">
-            <div class="mb-4 flex items-start gap-3">
-              <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-text-secondary">
-                <KeyRound :size="18" :stroke-width="1.75" />
-              </div>
-              <div>
-                <h2 class="text-ui font-medium text-text-primary">Passkey</h2>
-                <p class="mt-1 text-small text-text-muted">只保留一个 Passkey。重新注册会直接覆盖当前凭证。</p>
-              </div>
-            </div>
-
+          <WorkbenchFeatureCard
+            v-if="auth.enabled"
+            title="Passkey"
+            subtitle="只保留一个 Passkey。重新注册会直接覆盖当前凭证。"
+            :icon="KeyRound"
+          >
             <div v-if="!supportsPasskey" class="text-small text-text-muted">当前环境不支持 Passkey。</div>
             <template v-else>
               <WorkbenchCard class="mb-4 text-small text-text-muted" surface="muted">
@@ -119,27 +114,18 @@ const {
               <p v-if="passkeyError" class="m-0 mt-3 text-small text-danger">{{ passkeyError }}</p>
               <p v-if="passkeySuccess" class="m-0 mt-3 text-small text-success">{{ passkeySuccess }}</p>
             </template>
-          </WorkbenchCard>
-        </div>
+          </WorkbenchFeatureCard>
+        </WorkbenchCardStack>
       </div>
 
       <div v-else-if="auth.enabled" class="flex flex-1 items-center justify-center p-4">
-        <WorkbenchCard class="flex w-full max-w-md flex-col gap-4" surface="panel" padding="lg">
-          <div class="flex items-start gap-3">
-            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-text-secondary">
-              <LogOut :size="18" :stroke-width="1.75" />
-            </div>
-            <div class="min-w-0 flex-1">
-              <h2 class="text-ui font-medium text-text-primary">退出登录</h2>
-              <p class="mt-1 text-small text-text-muted">退出当前 WebUI 会话，返回登录页。</p>
-            </div>
-          </div>
+        <WorkbenchFeatureCard class="w-full max-w-md" title="退出登录" subtitle="退出当前 WebUI 会话，返回登录页。" :icon="LogOut">
           <div class="flex justify-end">
             <button class="btn btn-primary" :disabled="loggingOut" @click="logout">
               {{ loggingOut ? "退出中…" : "退出登录" }}
             </button>
           </div>
-        </WorkbenchCard>
+        </WorkbenchFeatureCard>
       </div>
 
       <WorkbenchEmptyState v-else message="当前实例未启用认证" />
