@@ -8,8 +8,10 @@ test("workbench disclosure renders a single expandable card with scrollable body
     "utf8"
   );
 
-  assert.match(source, /expanded\s*\?\s*'overflow-hidden rounded-lg border border-border-default bg-surface-input'/);
-  assert.match(source, /expanded\s*\?\s*'border-0 border-b border-border-default bg-transparent'/);
+  assert.match(source, /expanded && variant === 'card'\s*\?\s*'overflow-hidden rounded-lg border border-border-default bg-surface-input'/);
+  assert.match(source, /expanded && variant === 'card'\s*\?\s*'border-0 border-b border-border-default bg-transparent'/);
+  assert.match(source, /variant:\s*"card"/);
+  assert.match(source, /variant === 'plain'/);
   assert.match(source, /max-h-\[min\(32rem,60dvh\)\]/);
   assert.match(source, /maxBodyHeightClass/);
   assert.match(source, /overflow-auto/);

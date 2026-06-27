@@ -4,6 +4,7 @@ import { access, readFile } from "node:fs/promises";
 
 test("workbench root creates, provides, and activates the shared runtime", async () => {
   const root = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchRoot.vue", import.meta.url), "utf8");
+  const runtimeRoot = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchRuntimeRoot.vue", import.meta.url), "utf8");
   const shell = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchShell.vue", import.meta.url), "utf8");
   const runtime = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
   const controller = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchController.ts", import.meta.url), "utf8");
@@ -15,13 +16,14 @@ test("workbench root creates, provides, and activates the shared runtime", async
   assert.match(controller, /export function createWorkbenchController/);
   assert.match(controller, /provideWorkbenchRuntime/);
   assert.match(controller, /activateWorkbenchRuntime/);
-  assert.match(root, /createWorkbenchController/);
-  assert.match(root, /provideWorkbenchController/);
-  assert.match(root, /activateWorkbenchController/);
-  assert.match(root, /onUnmounted/);
-  assert.match(root, /<MenuHost/);
-  assert.match(root, /<ToastViewport/);
-  assert.match(root, /<WindowHost/);
+  assert.match(root, /WorkbenchRuntimeRoot/);
+  assert.match(runtimeRoot, /createWorkbenchController/);
+  assert.match(runtimeRoot, /provideWorkbenchController/);
+  assert.match(runtimeRoot, /activateWorkbenchController/);
+  assert.match(runtimeRoot, /onUnmounted/);
+  assert.match(runtimeRoot, /<MenuHost/);
+  assert.match(runtimeRoot, /<ToastViewport/);
+  assert.match(runtimeRoot, /<WindowHost/);
   assert.doesNotMatch(shell, /createWorkbenchController/);
   assert.doesNotMatch(shell, /activateWorkbenchController/);
 });
@@ -105,13 +107,13 @@ test("workbench navigation commands live in the runtime module", async () => {
 
 test("workbench runtime exposes an active shell command facade", async () => {
   const runtime = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
-  const root = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchRoot.vue", import.meta.url), "utf8");
+  const runtimeRoot = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchRuntimeRoot.vue", import.meta.url), "utf8");
   const controller = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchController.ts", import.meta.url), "utf8");
 
   assert.match(runtime, /export function useActiveWorkbenchRuntime/);
   assert.match(runtime, /useWorkbenchNavigation/);
   assert.match(controller, /export function useActiveWorkbenchController/);
-  assert.match(root, /const deactivateController = activateWorkbenchController\(controller\)/);
+  assert.match(runtimeRoot, /const deactivateController = activateWorkbenchController\(controller\)/);
 });
 
 test("desktop workbench sizes desktop areas through runtime resize state", async () => {

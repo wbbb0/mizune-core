@@ -20,6 +20,7 @@ const WINDOW_SURFACE_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench
 const WINDOW_HOST_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/windows/WindowHost.vue`;
 const DIALOG_RENDERER_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/windows/DialogRenderer.vue`;
 const DIALOG_FIELD_RENDERER_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/windows/DialogFieldRenderer.vue`;
+const WORKBENCH_RUNTIME_ROOT_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/WorkbenchRuntimeRoot.vue`;
 const WORKBENCH_SHELL_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/WorkbenchShell.vue`;
 const WORKBENCH_ROOT_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/WorkbenchRoot.vue`;
 
@@ -224,8 +225,17 @@ const workbenchShellUrl = compileVueModule(WORKBENCH_SHELL_PATH, {
   "./windows/WindowHost.vue": windowHostUrl
 });
 
+const workbenchRuntimeRootUrl = compileVueModule(WORKBENCH_RUNTIME_ROOT_PATH, {
+  vue: vueStubUrl,
+  "./menu/MenuHost.vue": menuHostStubUrl,
+  "./toasts/ToastViewport.vue": toastViewportStubUrl,
+  "./windows/WindowHost.vue": windowHostUrl,
+  "./runtime/workbenchController": WORKBENCH_CONTROLLER_URL
+});
+
 const workbenchRootUrl = compileVueModule(WORKBENCH_ROOT_PATH, {
   vue: vueStubUrl,
+  "./WorkbenchRuntimeRoot.vue": workbenchRuntimeRootUrl,
   "./WorkbenchShell.vue": workbenchShellUrl,
   "./menu/MenuHost.vue": menuHostStubUrl,
   "./toasts/ToastViewport.vue": toastViewportStubUrl,
@@ -862,7 +872,7 @@ test("window host renders a single modal backdrop and closes the top modal on ba
   assert.equal(wrapper.get('[data-test="window-backdrop"]').classes().includes("bg-black/30"), false);
   assert.equal(wrapper.get('[data-test="window-backdrop"]').classes().includes("backdrop-blur-xs"), false);
   assert.match(sectionStyles[0] ?? "", /z-index: 2/);
-  assert.match(backdropStyle, /z-index: 1/);
+  assert.match(backdropStyle, /z-index: 3/);
   assert.match(sectionStyles[1] ?? "", /z-index: 4/);
   await wrapper.get('[data-test="window-backdrop"]').trigger("click");
   await nextTick();
