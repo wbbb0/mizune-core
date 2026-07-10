@@ -6,10 +6,6 @@ const DARK_THEME_COLOR = "#0b1220";
 
 let teardownUiBrowserBindings: (() => void) | null = null;
 
-function syncViewportWidth(ui: ReturnType<typeof useUiStore>) {
-  ui.setWindowWidth(Math.round(window.visualViewport?.width ?? window.innerWidth));
-}
-
 function applyTheme(dark: boolean) {
   if (typeof document === "undefined") {
     return;
@@ -35,7 +31,6 @@ export function useUiBrowserBindings(ui: ReturnType<typeof useUiStore>) {
   }
 
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)");
-  const onResize = () => syncViewportWidth(ui);
   const onSystemThemeChange = () => {
     ui.setSystemDark(prefersDark.matches);
   };
@@ -46,16 +41,10 @@ export function useUiBrowserBindings(ui: ReturnType<typeof useUiStore>) {
   );
 
   onSystemThemeChange();
-  onResize();
-
-  window.addEventListener("resize", onResize, { passive: true });
-  window.visualViewport?.addEventListener("resize", onResize, { passive: true });
   prefersDark.addEventListener("change", onSystemThemeChange);
 
   teardownUiBrowserBindings = () => {
     stopThemeWatcher();
-    window.removeEventListener("resize", onResize);
-    window.visualViewport?.removeEventListener("resize", onResize);
     prefersDark.removeEventListener("change", onSystemThemeChange);
   };
 

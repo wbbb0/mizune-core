@@ -19,9 +19,7 @@ import {
 import { useVisualViewportInset } from "@/composables/useVisualViewportInset";
 import { uploadsApi, type UploadedFile } from "@/api/uploads";
 import { prepareFilesForUpload } from "@/api/uploadPreparation";
-import { useWorkbenchToasts } from "@workbench-kit/vue";
-import { useUiStore } from "@/stores/ui";
-import { useWorkbenchRuntimeContext } from "@workbench-kit/vue";
+import { useWorkbenchRuntimeContext, useWorkbenchToasts, useWorkbenchViewport } from "@workbench-kit/vue";
 import { buildComposerSendPayload, type ComposerSendPayload } from "./composerPayload";
 import { formatSendErrorMessage, formatUploadErrorMessage } from "./composerErrors";
 import { COMPOSER_FILE_ACCEPT, COMPOSER_IMAGE_ACCEPT, filterComposerFiles } from "./composerAcceptedFiles";
@@ -69,7 +67,7 @@ const attachmentMenuOpen = ref(false);
 const iosRootScrollGuardActive = ref(false);
 const composerRootRef = ref<HTMLElement | null>(null);
 const toast = useWorkbenchToasts();
-const ui = useUiStore();
+const { isMobile } = useWorkbenchViewport();
 const workbenchRuntime = useWorkbenchRuntimeContext();
 const keyboardAvoidanceTarget = computed(() =>
   workbenchRuntime?.keyboardAvoidanceBoundary.value ?? composerRootRef.value?.parentElement ?? null
@@ -79,7 +77,7 @@ let iosRootScrollGuardCleanup: (() => void) | null = null;
 
 const composerStyle = computed(() => ({
   marginBottom: keyboardInsetPx.value > 0 ? `${keyboardInsetPx.value}px` : "0px",
-  paddingBottom: ui.isMobile && keyboardInsetPx.value === 0 ? `calc(env(safe-area-inset-bottom, 0px) + 0.5rem)` : "0.5rem"
+  paddingBottom: isMobile.value && keyboardInsetPx.value === 0 ? `calc(env(safe-area-inset-bottom, 0px) + 0.5rem)` : "0.5rem"
 }));
 
 // Auto-resize textarea

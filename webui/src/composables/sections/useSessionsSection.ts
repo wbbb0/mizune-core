@@ -21,7 +21,6 @@ const CANCEL_WINDOW_ACTION = Symbol("cancel-window-action");
 type SessionsSectionState = {
   store: ReturnType<typeof useSessionsStore>;
   loading: Ref<boolean>;
-  mobileHeaderTitle: ComputedRef<string>;
   initializeSection: () => Promise<void>;
   resetState: () => void;
   selectSession: (sessionId: string) => void;
@@ -39,10 +38,6 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
     const initialized = ref(false);
     let stateVersion = 0;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
-    const mobileHeaderTitle = computed(() => (
-      store.active?.displayLabel || store.active?.id || ""
-    ));
-
     function isStale(requestVersion: number) {
       return requestVersion !== stateVersion;
     }
@@ -341,7 +336,6 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
     return {
       store,
       loading,
-      mobileHeaderTitle,
       initializeSection,
       resetState,
       selectSession,

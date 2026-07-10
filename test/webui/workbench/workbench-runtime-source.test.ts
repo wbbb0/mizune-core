@@ -6,6 +6,7 @@ test("workbench root creates, provides, and activates the shared runtime", async
   const root = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchRoot.vue", import.meta.url), "utf8");
   const runtimeRoot = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchRuntimeRoot.vue", import.meta.url), "utf8");
   const shell = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchShell.vue", import.meta.url), "utf8");
+  const viewport = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchViewport.ts", import.meta.url), "utf8");
   const runtime = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
   const controller = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchController.ts", import.meta.url), "utf8");
 
@@ -24,6 +25,10 @@ test("workbench root creates, provides, and activates the shared runtime", async
   assert.match(runtimeRoot, /<MenuHost/);
   assert.match(runtimeRoot, /<ToastViewport/);
   assert.match(runtimeRoot, /<WindowHost/);
+  assert.match(viewport, /configureWorkbenchViewportDetector/);
+  assert.match(viewport, /window\.matchMedia\(mobileMediaQuery\)/);
+  assert.match(shell, /useWorkbenchViewport/);
+  assert.doesNotMatch(root, /isMobile:/);
   assert.doesNotMatch(shell, /createWorkbenchController/);
   assert.doesNotMatch(shell, /activateWorkbenchController/);
 });
@@ -57,6 +62,8 @@ test("mobile workbench keeps root sidebar mounted under the active area overlay"
   assert.match(source, /activeMobileAreaId/);
   assert.match(source, /popMobileArea/);
   assert.match(source, /layout\.mobile\.rootArea/);
+  assert.match(source, /\{\{ routeLabel \}\}/);
+  assert.doesNotMatch(source, /mobileHeader/);
   assert.doesNotMatch(source, /mobileMainFlow/);
   assert.match(types, /mobile:\s*\{/);
   assert.match(types, /rootArea:/);
@@ -66,7 +73,7 @@ test("mobile workbench keeps root sidebar mounted under the active area overlay"
   assert.doesNotMatch(source, /v-show="mobileScreen === 'list'"/);
 });
 
-test("mobile root area resolves to the main area when the configured root is unavailable", async () => {
+test("a view without a sidebar uses the main area as its mobile root", async () => {
   const source = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/MobileWorkbench.vue", import.meta.url), "utf8");
   const runtime = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
 
@@ -75,6 +82,7 @@ test("mobile root area resolves to the main area when the configured root is una
   assert.match(runtime, /return "mainArea"/);
   assert.match(source, /const hasMobileRootArea/);
   assert.match(source, /v-if="hasMobileRootArea"/);
+  assert.match(source, /canPopMobileArea/);
   assert.doesNotMatch(runtime, new RegExp("hasMobile" + "ListFlow"));
 });
 

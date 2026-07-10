@@ -23,7 +23,7 @@ WebUI 采用统一 workbench 外壳，而不是让每个页面各自拼整套布
 
 - 项目侧 `AppWorkbenchRoot`
   - 根据 Vue Router meta 选择当前 view。
-  - 传入 view、导航项、chrome、状态栏项、移动端状态和导航回调。
+  - 传入 view、导航项、chrome、状态栏项和导航回调。
 - `WorkbenchRoot`
   - 创建并提供 workbench controller。
   - 挂载 `WorkbenchShell`、`MenuHost`、`ToastViewport` 与 `WindowHost`。
@@ -40,7 +40,6 @@ WebUI 采用统一 workbench 外壳，而不是让每个页面各自拼整套布
 - 可选 `areas.primarySidebar`
 - 可选 `areas.secondarySidebar`
 - 可选 `areas.bottomPanel`
-- 可选 `areas.mobileHeader`
 - 可选 `layout.mobile.rootArea`
 - 可选 `layout.desktop.primarySidebar / secondarySidebar / bottomPanel`
 
@@ -74,7 +73,9 @@ WebUI 采用统一 workbench 外壳，而不是让每个页面各自拼整套布
 
 - 区域切换由 `workbenchRuntime` 的移动端区域栈控制。
 - `layout.mobile.rootArea` 决定移动端根区域，默认回退到 `mainArea`。
+- `primarySidebar` 缺失时，`mainArea` 直接作为移动端一级页面。
 - 非根区域作为覆盖层显示。
+- 移动端标题由 workbench 根据当前 view 的 `title` 自动渲染；状态栏项通过移动端更多菜单访问。
 - 浏览器返回在移动端优先弹出覆盖层，再退回真实路由历史。
 - 导航项由项目侧传入，workbench 包不直接 import Vue Router、业务 store 或业务 section 列表。
 
@@ -83,6 +84,7 @@ WebUI 采用统一 workbench 外壳，而不是让每个页面各自拼整套布
 - `vendor/workbench-kit/packages/vue-workbench/src/DesktopWorkbench.vue`
 - `vendor/workbench-kit/packages/vue-workbench/src/MobileWorkbench.vue`
 - `vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts`
+- `vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchViewport.ts`
 
 ## 桌面 Pane 尺寸
 

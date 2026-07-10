@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
-import { useUiStore } from "@/stores/ui";
 import { useDataSection } from "@/composables/sections/useDataSection";
-import { WorkbenchListItem, WorkbenchSidebarListPane } from "@workbench-kit/vue";
+import { WorkbenchListItem, WorkbenchSidebarListPane, useWorkbenchViewport } from "@workbench-kit/vue";
 
-const ui = useUiStore();
+const { isMobile } = useWorkbenchViewport();
 const { resources, selectedKey, selectResource, refreshResources, resourceBadge } = useDataSection();
 
 onMounted(() => {
@@ -15,7 +14,7 @@ onMounted(() => {
 <template>
   <WorkbenchSidebarListPane
     title="数据"
-    :show-header="!ui.isMobile"
+    :show-header="!isMobile"
     :items="resources"
     empty-message="暂无数据资源"
     :item-key="(entry) => entry.id"

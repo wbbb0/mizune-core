@@ -3,13 +3,11 @@ import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { WorkbenchRoot } from "@workbench-kit/vue";
 import { useAppWorkbenchChrome } from "@/composables/useAppWorkbenchChrome";
-import { useUiStore } from "@/stores/ui";
 import { workbenchNavItems } from "@/sections/navigation";
 import { useWorkbenchViewRegistry } from "@/sections/useWorkbenchViewRegistry";
 
 const route = useRoute();
 const router = useRouter();
-const ui = useUiStore();
 const { getViewById } = useWorkbenchViewRegistry();
 
 const activeNavItemId = computed(() => {
@@ -40,7 +38,6 @@ function navigateWorkbench(itemId: string) {
     :active-nav-item-id="activeNavItemId"
     :topbar-menus="topbarMenus"
     :statusbar-items="statusbarItems"
-    :is-mobile="ui.isMobile"
     @navigate="navigateWorkbench"
   />
 </template>

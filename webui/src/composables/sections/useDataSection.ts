@@ -73,7 +73,6 @@ type DataSectionState = {
   formattedJson: ComputedRef<string>;
   formattedItemJson: ComputedRef<string>;
   formattedRowsJson: ComputedRef<string>;
-  mobileHeaderTitle: ComputedRef<string>;
   resetState: () => void;
   refreshResources: () => Promise<void>;
   selectResource: (id: string) => void;
@@ -185,29 +184,6 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
     const resourceDirectoryItems = computed<DirectoryItem[]>(() =>
       resource.value?.shape === "directory" ? resource.value.items : []
     );
-
-    const mobileHeaderTitle = computed(() => {
-      if (selectedResource.value?.source === "editor" && model.value) {
-        return model.value.title;
-      }
-      if (selectedResource.value?.source === "registry" && resource.value) {
-        if (resource.value.shape === "directory" && itemDetail.value) {
-          return itemDetail.value.title || itemDetail.value.key;
-        }
-        if (resource.value.model && selectedRegistryRow.value) {
-          const titleColumn = resource.value.model.list?.titleColumn;
-          const fallbackColumn = resource.value.model.list?.fallbackTitleColumn ?? resource.value.model.primaryKey[0];
-          const title = titleColumn ? selectedRegistryRow.value[titleColumn] : null;
-          const fallback = fallbackColumn ? selectedRegistryRow.value[fallbackColumn] : null;
-          return String(title || fallback || resource.value.title);
-        }
-        return resource.value.title;
-      }
-      if (selectedResource.value?.source === "context") {
-        return selectedResource.value.title;
-      }
-      return "";
-    });
 
     function isStale(requestVersion: number) {
       return requestVersion !== stateVersion;
@@ -1309,7 +1285,6 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       formattedJson,
       formattedItemJson,
       formattedRowsJson,
-      mobileHeaderTitle,
       resetState,
       refreshResources,
       selectResource,

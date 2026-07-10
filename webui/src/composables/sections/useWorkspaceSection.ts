@@ -19,7 +19,6 @@ type WorkspaceSectionState = {
   previewError: Ref<string | null>;
   fileImageSrc: Ref<string | null>;
   currentRootItems: ComputedRef<LocalFileItem[]>;
-  mobileHeaderTitle: ComputedRef<string>;
   selectedStoredFileImageUrl: ComputedRef<string | null>;
   initializeSection: () => Promise<void>;
   resetState: () => void;
@@ -49,9 +48,6 @@ export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionStat
     let stateVersion = 0;
 
     const currentRootItems = computed(() => itemsByPath.value["."] ?? []);
-    const mobileHeaderTitle = computed(() =>
-      selectedItem.value?.name ?? selectedStoredFile.value?.sourceName ?? selectedStoredFile.value?.fileId ?? "工作区"
-    );
     const selectedStoredFileImageUrl = computed(() =>
       selectedStoredFile.value ? fileApi.getChatFileContentUrlById(selectedStoredFile.value.fileId) : null
     );
@@ -233,7 +229,6 @@ export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionStat
       previewError,
       fileImageSrc,
       currentRootItems,
-      mobileHeaderTitle,
       selectedStoredFileImageUrl,
       initializeSection,
       resetState,

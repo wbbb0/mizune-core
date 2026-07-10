@@ -31,7 +31,8 @@ test("desktop layout keeps safe-area padding on the workbench shell, not the act
   assert.doesNotMatch(activityBarSource, /class="[^"]*\bpt-safe\b/);
   assert.doesNotMatch(activityBarSource, /class="[^"]*\bpb-safe\b/);
   assert.match(composerSource, /marginBottom:\s*keyboardInsetPx\.value > 0/);
-  assert.match(composerSource, /paddingBottom:\s*ui\.isMobile && keyboardInsetPx\.value === 0/);
+  assert.match(composerSource, /useWorkbenchViewport/);
+  assert.match(composerSource, /paddingBottom:\s*isMobile\.value && keyboardInsetPx\.value === 0/);
   assert.match(composerSource, /const composerRootRef\s*=\s*ref<HTMLElement \| null>\(null\)/);
   assert.match(composerSource, /useWorkbenchRuntimeContext/);
   assert.match(composerSource, /keyboardAvoidanceBoundary/);

@@ -14,7 +14,7 @@ import { readFile } from "node:fs/promises";
     assert.match(source, /key:\s*"copyTitle"/);
     assert.match(source, /store\.copySessionToWebSession/);
     assert.match(source, /label:\s*"复制为 Web 会话"/);
-    assert.match(source, /store\.active\?\.displayLabel \|\| store\.active\?\.id/);
+    assert.doesNotMatch(source, /mobileHeaderTitle/);
     assert.match(source, /await windows\.open/);
     assert.match(source, /modal:\s*true/);
     assert.match(source, /kind:\s*"child-dialog"/);

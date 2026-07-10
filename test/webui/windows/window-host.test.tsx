@@ -17,6 +17,7 @@ const WORKBENCH_CONTROLLER_URL = new URL("../../../vendor/workbench-kit/packages
 const WORKBENCH_RUNTIME_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url).href;
 const WORKBENCH_LAYERS_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/layers.ts", import.meta.url).href;
 const WORKBENCH_TYPES_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/types.ts", import.meta.url).href;
+const WORKBENCH_VIEWPORT_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchViewport.ts", import.meta.url).href;
 const WINDOW_SURFACE_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/windows/WindowSurface.vue`;
 const WINDOW_HOST_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/windows/WindowHost.vue`;
 const DIALOG_RENDERER_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/windows/DialogRenderer.vue`;
@@ -40,10 +41,11 @@ Object.defineProperty(globalThis, "getComputedStyle", {
 Object.defineProperty(globalThis, "MutationObserver", { value: dom.window.MutationObserver });
 
 const { resolveWindowSizing } = await import("@workbench-kit/vue/runtime");
-const { nextTick, markRaw, computed, defineComponent, h } = await import(VUE_RUNTIME_URL);
+const { nextTick, markRaw, computed, defineComponent, h, ref, watch } = await import(VUE_RUNTIME_URL);
 const { useWorkbenchWindows } = await import(USE_WORKBENCH_WINDOWS_URL);
 const { createWorkbenchController, activateWorkbenchController } = await import(WORKBENCH_CONTROLLER_URL);
 const { defineWorkbenchView } = await import(WORKBENCH_TYPES_URL);
+const { configureWorkbenchViewportDetector, useWorkbenchViewport } = await import(WORKBENCH_VIEWPORT_URL);
 
 function createDataModule(source: string) {
   return `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}`;
@@ -58,6 +60,14 @@ const uiStubUrl = createDataModule(`
   export const uiState = reactive({ isMobile: false });
   export function useUiStore() {
     return uiState;
+  }
+`);
+
+const workbenchViewportStubUrl = createDataModule(`
+  import { computed } from "${VUE_RUNTIME_URL}";
+  import { uiState } from "${uiStubUrl}";
+  export function useWorkbenchViewport() {
+    return { isMobile: computed(() => uiState.isMobile) };
   }
 `);
 
@@ -213,6 +223,7 @@ const windowHostUrl = compileVueModule(WINDOW_HOST_PATH, {
   vue: vueStubUrl,
   "./useWorkbenchWindows": USE_WORKBENCH_WINDOWS_URL,
   "../runtime/layers.js": WORKBENCH_LAYERS_URL,
+  "../runtime/workbenchViewport.js": workbenchViewportStubUrl,
   "./DialogRenderer.vue": dialogRendererUrl,
   "./WindowSurface.vue": windowSurfaceUrl
 });
@@ -224,7 +235,8 @@ const workbenchShellUrl = compileVueModule(WORKBENCH_SHELL_PATH, {
   "./menu/MenuHost.vue": menuHostStubUrl,
   "./toasts/ToastViewport.vue": toastViewportStubUrl,
   "./runtime/workbenchController": workbenchControllerStubUrl,
-  "./windows/WindowHost.vue": windowHostUrl
+  "./windows/WindowHost.vue": windowHostUrl,
+  "./runtime/workbenchViewport": workbenchViewportStubUrl
 });
 
 const workbenchRuntimeRootUrl = compileVueModule(WORKBENCH_RUNTIME_ROOT_PATH, {
@@ -232,7 +244,8 @@ const workbenchRuntimeRootUrl = compileVueModule(WORKBENCH_RUNTIME_ROOT_PATH, {
   "./menu/MenuHost.vue": menuHostStubUrl,
   "./toasts/ToastViewport.vue": toastViewportStubUrl,
   "./windows/WindowHost.vue": windowHostUrl,
-  "./runtime/workbenchController": WORKBENCH_CONTROLLER_URL
+  "./runtime/workbenchController": WORKBENCH_CONTROLLER_URL,
+  "./runtime/workbenchViewport": workbenchViewportStubUrl
 });
 
 const workbenchRootUrl = compileVueModule(WORKBENCH_ROOT_PATH, {
@@ -242,7 +255,8 @@ const workbenchRootUrl = compileVueModule(WORKBENCH_ROOT_PATH, {
   "./menu/MenuHost.vue": menuHostStubUrl,
   "./toasts/ToastViewport.vue": toastViewportStubUrl,
   "./windows/WindowHost.vue": windowHostUrl,
-  "./runtime/workbenchController": WORKBENCH_CONTROLLER_URL
+  "./runtime/workbenchController": WORKBENCH_CONTROLLER_URL,
+  "./runtime/workbenchViewport": workbenchViewportStubUrl
 });
 
 const EmptyArea = defineComponent({
@@ -328,10 +342,33 @@ test.beforeEach(() => {
 });
 
 test.afterEach(() => {
+  configureWorkbenchViewportDetector();
   uiState.isMobile = false;
   routeState.name = "sessions";
   setViewportSize(1024, 768);
   resetWindows();
+});
+
+test("workbench viewport detector can be replaced by an application adapter", async () => {
+  const compact = ref(false);
+  configureWorkbenchViewportDetector({
+    isMobile: () => compact.value,
+    subscribe: (listener: () => void) => watch(compact, listener)
+  });
+
+  const Probe = defineComponent({
+    setup() {
+      const { isMobile } = useWorkbenchViewport();
+      return () => h("span", String(isMobile.value));
+    }
+  });
+  const wrapper = vueMount(Probe);
+
+  assert.equal(wrapper.text(), "false");
+  compact.value = true;
+  await nextTick();
+  assert.equal(wrapper.text(), "true");
+  wrapper.unmount();
 });
 
 test("window sizing resolves desktop sizes and mobile safe-area dialog bounds", () => {
@@ -1113,20 +1150,13 @@ test("workbench root mounts the window host and delegates layout to the workbenc
               return null;
             }
           }),
-          mobileHeader: markRaw({
-            name: "MobileHeader",
-            render() {
-              return null;
-            }
-          })
         }
       }
       ,
       navItems: [],
       activeNavItemId: "sessions",
       topbarMenus: [],
-      statusbarItems: [],
-      isMobile: false
+      statusbarItems: []
     },
     global: {
       stubs: {

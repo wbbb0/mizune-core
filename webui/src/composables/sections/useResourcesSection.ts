@@ -10,7 +10,6 @@ const busy = ref(false);
 const error = ref<string | null>(null);
 
 const selectedShell = computed(() => shellSessions.value.find((item) => item.id === selectedShellId.value) ?? null);
-const mobileHeaderTitle = computed(() => selectedShell.value?.command || "运行时资源");
 
 type ResourcesSectionState = {
   shellSessions: typeof shellSessions;
@@ -19,7 +18,6 @@ type ResourcesSectionState = {
   loading: typeof loading;
   busy: typeof busy;
   error: typeof error;
-  mobileHeaderTitle: typeof mobileHeaderTitle;
   resetState: () => void;
   refreshShells: () => Promise<void>;
   selectShell: (sessionId: string) => void;
@@ -123,7 +121,6 @@ export const useResourcesSection = createSharedSectionState<ResourcesSectionStat
     loading,
     busy,
     error,
-    mobileHeaderTitle,
     resetState,
     refreshShells,
     selectShell,

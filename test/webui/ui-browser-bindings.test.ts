@@ -2,30 +2,33 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("ui browser bindings stay outside the store and are installed from the webui entrypoint", async () => {
-  const [uiStoreSource, browserBindingsSource, mainSource] = await Promise.all([
+test("theme bindings stay in the app while viewport detection lives in workbench-kit", async () => {
+  const [uiStoreSource, browserBindingsSource, mainSource, viewportSource] = await Promise.all([
     readFile(new URL("../../webui/src/stores/ui.ts", import.meta.url), "utf8"),
     readFile(new URL("../../webui/src/composables/useUiBrowserBindings.ts", import.meta.url), "utf8"),
-    readFile(new URL("../../webui/src/main.ts", import.meta.url), "utf8")
+    readFile(new URL("../../webui/src/main.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchViewport.ts", import.meta.url), "utf8")
   ]);
 
   assert.doesNotMatch(uiStoreSource, /\bwindow\./);
   assert.doesNotMatch(uiStoreSource, /\bdocument\./);
   assert.doesNotMatch(uiStoreSource, /addEventListener\(/);
   assert.match(uiStoreSource, /function setSystemDark\(/);
-  assert.match(uiStoreSource, /function setWindowWidth\(/);
+  assert.doesNotMatch(uiStoreSource, /windowWidth|setWindowWidth|isMobile/);
 
   assert.match(browserBindingsSource, /export function useUiBrowserBindings\(/);
   assert.match(browserBindingsSource, /watch\(\s*\(\) => ui\.dark/);
   assert.match(browserBindingsSource, /window\.matchMedia\("\(prefers-color-scheme: dark\)"\)/);
-  assert.match(browserBindingsSource, /window\.addEventListener\("resize"/);
-  assert.match(browserBindingsSource, /window\.visualViewport\?\.addEventListener\("resize"/);
+  assert.doesNotMatch(browserBindingsSource, /resize|visualViewport/);
   assert.match(browserBindingsSource, /document\.documentElement\.dataset\.theme/);
   assert.match(browserBindingsSource, /return \(\) => \{/);
 
   assert.match(mainSource, /useUiBrowserBindings/);
   assert.match(mainSource, /useUiStore\(pinia\)/);
   assert.match(mainSource, /cleanupUiBrowserBindings/);
+  assert.match(viewportSource, /configureWorkbenchViewportDetector/);
+  assert.match(viewportSource, /window\.matchMedia\(mobileMediaQuery\)/);
+  assert.match(viewportSource, /mediaQuery\.addEventListener\("change"/);
 });
 
 test("visual viewport keyboard inset uses a stable pre-keyboard viewport baseline", async () => {

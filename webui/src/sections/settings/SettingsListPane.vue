@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
 import { LockKeyhole, LogOut } from "lucide-vue-next";
-import { useUiStore } from "@/stores/ui";
 import { useSettingsSection } from "@/composables/sections/useSettingsSection";
-import { WorkbenchListItem, WorkbenchSidebarListPane } from "@workbench-kit/vue";
+import { WorkbenchListItem, WorkbenchSidebarListPane, useWorkbenchViewport } from "@workbench-kit/vue";
 
-const ui = useUiStore();
+const { isMobile } = useWorkbenchViewport();
 const { auth, activeItem, selectItem, initializeSection } = useSettingsSection();
 const settingsItems = [
   { id: "auth" as const, title: "认证", icon: LockKeyhole },
@@ -20,7 +19,7 @@ onMounted(() => {
 <template>
   <WorkbenchSidebarListPane
     title="设置"
-    :show-header="!ui.isMobile"
+    :show-header="!isMobile"
     :items="settingsItems.filter((item) => !item.requiresAuth || auth.enabled)"
     :item-key="(item) => item.id"
   >

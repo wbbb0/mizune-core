@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
-import { useUiStore } from "@/stores/ui";
 import { useConfigSection } from "@/composables/sections/useConfigSection";
-import { WorkbenchListItem, WorkbenchSidebarListPane } from "@workbench-kit/vue";
+import { WorkbenchListItem, WorkbenchSidebarListPane, useWorkbenchViewport } from "@workbench-kit/vue";
 
-const ui = useUiStore();
+const { isMobile } = useWorkbenchViewport();
 const { resources, selectedKey, selectResource, refreshResources } = useConfigSection();
 
 onMounted(() => {
@@ -15,7 +14,7 @@ onMounted(() => {
 <template>
   <WorkbenchSidebarListPane
     title="配置编辑器"
-    :show-header="!ui.isMobile"
+    :show-header="!isMobile"
     :items="resources"
     empty-message="暂无可编辑资源"
     :item-key="(resource) => resource.key"
