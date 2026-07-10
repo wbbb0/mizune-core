@@ -15,6 +15,7 @@ const WINDOW_SIZING_URL = new URL("../../../vendor/workbench-kit/packages/vue-wo
 const USE_WORKBENCH_WINDOWS_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/windows/useWorkbenchWindows.ts", import.meta.url).href;
 const WORKBENCH_CONTROLLER_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchController.ts", import.meta.url).href;
 const WORKBENCH_RUNTIME_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url).href;
+const WORKBENCH_LAYERS_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/layers.ts", import.meta.url).href;
 const WORKBENCH_TYPES_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/types.ts", import.meta.url).href;
 const WINDOW_SURFACE_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/windows/WindowSurface.vue`;
 const WINDOW_HOST_PATH = `${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/windows/WindowHost.vue`;
@@ -211,6 +212,7 @@ const dialogRendererUrl = compileVueModule(DIALOG_RENDERER_PATH, {
 const windowHostUrl = compileVueModule(WINDOW_HOST_PATH, {
   vue: vueStubUrl,
   "./useWorkbenchWindows": USE_WORKBENCH_WINDOWS_URL,
+  "../runtime/layers.js": WORKBENCH_LAYERS_URL,
   "./DialogRenderer.vue": dialogRendererUrl,
   "./WindowSurface.vue": windowSurfaceUrl
 });
@@ -1140,6 +1142,7 @@ test("workbench root mounts the window host and delegates layout to the workbenc
   assert.match(wrapper.text(), /shell-window/);
   assert.equal(wrapper.find('[data-test="desktop-workbench"]').exists(), true);
   assert.equal(wrapper.find('[data-test="menu-host"]').exists(), true);
-  assert.match(wrapper.html(), /fixed inset-0 z-60 overflow-hidden/);
+  assert.match(wrapper.findComponent(WindowHost).classes().join(" "), /fixed inset-0 overflow-hidden/);
+  assert.match(wrapper.findComponent(WindowHost).attributes("style") ?? "", /z-index:\s*1000/);
   wrapper.unmount();
 });

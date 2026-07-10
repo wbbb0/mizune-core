@@ -60,7 +60,6 @@ export const useResourcesSection = createSharedSectionState<ResourcesSectionStat
 
   function selectShell(sessionId: string) {
     selectedShellId.value = sessionId;
-    workbenchNavigation.showArea("mainArea");
   }
 
   async function createShell(input: { command?: string; cwd?: string } = {}) {

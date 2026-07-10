@@ -380,7 +380,6 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
 
     function selectResource(id: string) {
       selectedKey.value = id;
-      workbenchNavigation.showArea("mainArea");
     }
 
     async function selectRegistryRow(row: unknown, options: { showDetailPane?: boolean } = {}) {
@@ -431,7 +430,6 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
 
     function selectDirectoryItem(key: string) {
       selectedItemKey.value = key;
-      workbenchNavigation.showArea("mainArea");
     }
 
     async function refreshSelected() {

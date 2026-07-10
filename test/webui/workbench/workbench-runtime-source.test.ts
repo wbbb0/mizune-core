@@ -88,8 +88,14 @@ test("mobile workbench maps browser history back to overlay stack pop", async ()
   assert.match(source, /props\.runtime\.popMobileArea\(\)/);
 });
 
-test("workbench navigation commands live in the runtime module", async () => {
+test("default sidebar selection navigation lives in workbench-kit", async () => {
   const runtime = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
+  const areaContext = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchAreaContext.ts", import.meta.url), "utf8");
+  const areaScope = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/WorkbenchAreaScope.vue", import.meta.url), "utf8");
+  const desktop = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/DesktopWorkbench.vue", import.meta.url), "utf8");
+  const mobile = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/MobileWorkbench.vue", import.meta.url), "utf8");
+  const listItem = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/primitives/WorkbenchListItem.vue", import.meta.url), "utf8");
+  const treeNode = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/primitives/TreeNodeShell.vue", import.meta.url), "utf8");
   const configView = await readFile(new URL("../../../webui/src/composables/sections/useConfigSection.ts", import.meta.url), "utf8");
 
   assert.match(runtime, /export function useWorkbenchNavigation/);
@@ -98,8 +104,16 @@ test("workbench navigation commands live in the runtime module", async () => {
   assert.match(runtime, /runtime\.showRootArea\(\)/);
   assert.doesNotMatch(runtime, new RegExp("runtime\\.show" + "Main"));
   assert.doesNotMatch(runtime, new RegExp("runtime\\.show" + "List"));
-  assert.match(configView, /useWorkbenchNavigation/);
-  assert.match(configView, /showArea\("mainArea"\)/);
+  assert.match(areaContext, /areaId\?\.value !== "primarySidebar"/);
+  assert.match(areaContext, /mobileRootAreaId\.value !== "primarySidebar"/);
+  assert.match(areaContext, /runtime\.showArea\("mainArea"\)/);
+  assert.match(areaScope, /provideWorkbenchAreaId/);
+  assert.match(desktop, /WorkbenchAreaScope area-id="primarySidebar"/);
+  assert.match(mobile, /<WorkbenchAreaScope :area-id="mobileRootAreaId"/);
+  assert.match(listItem, /useDefaultWorkbenchSelectionNavigation/);
+  assert.match(treeNode, /useDefaultWorkbenchSelectionNavigation/);
+  assert.doesNotMatch(configView, /useWorkbenchNavigation/);
+  assert.doesNotMatch(configView, /showArea\("mainArea"\)/);
   await assert.rejects(
     access(new URL("../../../webui/src/composables/workbench/useWorkbenchRuntime.ts", import.meta.url))
   );
@@ -216,11 +230,11 @@ test("resources terminal recreates xterm after its host is remounted", async () 
   assert.match(source, /if \(!sessionId\)\s*\{[\s\S]*disposeTerminal\(\);[\s\S]*return;/);
 });
 
-test("resources section opens the terminal area after mobile selection", async () => {
+test("resources section relies on default selection navigation and keeps programmatic navigation", async () => {
   const source = await readFile(new URL("../../../webui/src/composables/sections/useResourcesSection.ts", import.meta.url), "utf8");
 
   assert.match(source, /useWorkbenchNavigation/);
-  assert.match(source, /function selectShell\(sessionId: string\)\s*\{[\s\S]*workbenchNavigation\.showArea\("mainArea"\);[\s\S]*\}/);
+  assert.match(source, /function selectShell\(sessionId: string\)\s*\{\s*selectedShellId\.value = sessionId;\s*\}/);
   assert.match(source, /if \(resourceId\)\s*\{[\s\S]*selectedShellId\.value = resourceId;[\s\S]*workbenchNavigation\.showArea\("mainArea"\);[\s\S]*\}/);
 });
 

@@ -122,7 +122,6 @@ export const useSessionsSection = createSharedSectionState<SessionsSectionState>
 
     function selectSession(sessionId: string) {
       store.selectSession(sessionId);
-      workbenchNavigation.showArea("mainArea");
     }
 
     async function openCreateDialog() {

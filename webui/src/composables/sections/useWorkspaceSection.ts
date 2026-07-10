@@ -2,7 +2,6 @@ import { computed, ref, type ComputedRef, type Ref } from "vue";
 import { RefreshCw, FolderOpen, Image as ImageIcon, FileText, File, Folder } from "lucide-vue-next";
 import { fileApi, type ChatFileSummary, type LocalFilePreview, type LocalFileItem } from "@/api/workspace";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
-import { useWorkbenchNavigation } from "@workbench-kit/vue";
 
 type Mode = "files" | "stored-files";
 
@@ -34,7 +33,6 @@ type WorkspaceSectionState = {
 };
 
 export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionState>(() => {
-    const workbenchNavigation = useWorkbenchNavigation();
     const mode = ref<Mode>("files");
     const loadingFiles = ref(false);
     const loadingAssets = ref(false);
@@ -163,17 +161,11 @@ export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionStat
         if (!expandedPaths.value.includes(item.path)) {
           await toggleDirectory(item.path);
         }
-        if (!isStale(requestVersion)) {
-          workbenchNavigation.showArea("mainArea");
-        }
         return;
       }
 
       if (isImageFile(item.name)) {
         fileImageSrc.value = fileApi.getLocalFileContentUrl(item.path);
-        if (!isStale(requestVersion)) {
-          workbenchNavigation.showArea("mainArea");
-        }
         return;
       }
 
@@ -190,9 +182,6 @@ export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionStat
         previewError.value = error instanceof Error ? error.message : "暂不支持预览该文件";
       }
 
-      if (!isStale(requestVersion)) {
-        workbenchNavigation.showArea("mainArea");
-      }
     }
 
     function selectStoredFile(file: ChatFileSummary) {
@@ -202,7 +191,6 @@ export const useWorkspaceSection = createSharedSectionState<WorkspaceSectionStat
       filePreview.value = null;
       previewError.value = null;
       fileImageSrc.value = null;
-      workbenchNavigation.showArea("mainArea");
     }
 
     function refreshCurrentMode() {

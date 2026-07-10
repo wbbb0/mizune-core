@@ -1,6 +1,6 @@
 import { createResourceEditorState, type ResourceEditorState } from "@workbench-kit/vue";
 import { computed, ref, type ComputedRef, type Ref } from "vue";
-import { useWorkbenchNavigation, useWorkbenchToasts, useWorkbenchWindows } from "@workbench-kit/vue";
+import { useWorkbenchToasts, useWorkbenchWindows } from "@workbench-kit/vue";
 import {
   editorApi,
   normalizeEditorResource,
@@ -28,14 +28,12 @@ function cloneValue<T>(value: T): T {
 
 export const useConfigSection = createSharedSectionState<ConfigSectionState>(() => {
   const toast = useWorkbenchToasts();
-  const workbenchNavigation = useWorkbenchNavigation();
   const windows = useWorkbenchWindows();
 
   const state = createResourceEditorState({
     client: editorApi,
     domain: "config",
     editableOnly: true,
-    onSelect: () => workbenchNavigation.showArea("mainArea"),
     notify: (notification) => toast.push(notification),
     saveSuccessMessage: (path) => `已保存 → ${path}`
   });
