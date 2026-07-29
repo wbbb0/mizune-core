@@ -213,6 +213,7 @@ export const transcriptAssistantMessageItemSchema = z.object({
   senderName: z.string().min(1),
   text: z.string(),
   reasoningContent: z.string().optional(),
+  providerMetadata: z.record(z.string(), z.unknown()).optional(),
   timestampMs: z.number().int().nonnegative()
 });
 

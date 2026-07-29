@@ -107,6 +107,9 @@ function createOpenAiStyleProjector(
             content: historyMessage.content,
             ...(options.preserveVisibleReasoning !== false && item.kind === "assistant_message" && item.reasoningContent
               ? { reasoning_content: item.reasoningContent }
+              : {}),
+            ...(item.kind === "assistant_message" && item.providerMetadata
+              ? { providerMetadata: item.providerMetadata }
               : {})
           });
           replayCoversVisibleHistory = true;
@@ -390,6 +393,7 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
 
 const projectors = new Map<string, ProviderTranscriptProjector>([
   ["openai", createOpenAiStyleProjector("openai")],
+  ["openai_responses", createOpenAiStyleProjector("openai_responses")],
   ["dashscope", createOpenAiStyleProjector("dashscope")],
   ["deepseek", createOpenAiStyleProjector("deepseek")],
   ["lmstudio", createOpenAiStyleProjector("lmstudio")],

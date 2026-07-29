@@ -131,6 +131,7 @@ function createExecutorHarness(options?: {
     text: string;
     reasoningContent?: string;
     usage: ReturnType<typeof createUsage>;
+    assistantMetadata?: Record<string, unknown>;
   }>;
 }) {
   const config = createTestAppConfig({
@@ -403,6 +404,47 @@ function createExecutorHarness(options?: {
     await harness.runPromise;
 
     assert.deepEqual(harness.events, ["typing:start", "send:你好", "typing:stop"]);
+  });
+
+  test("final assistant provider metadata is persisted after response completion", async () => {
+    const assistantMetadata = {
+      openAiResponses: {
+        outputItems: [{
+          id: "msg_final",
+          type: "message",
+          role: "assistant",
+          content: [{
+            type: "output_text",
+            text: "你好",
+            annotations: []
+          }]
+        }]
+      }
+    };
+    const harness = createExecutorHarness({
+      customGenerate: async (input) => {
+        await input.onTextDelta?.("你好");
+        return {
+          text: "你好",
+          reasoningContent: "",
+          usage: createUsage(),
+          assistantMetadata
+        };
+      }
+    });
+
+    await waitForEvents(harness.events, 1);
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    const assistant = harness.sessionManager
+      .getSession(harness.sessionId)
+      .internalTranscript
+      .find((item) => item.kind === "assistant_message");
+    assert.deepEqual(
+      assistant?.kind === "assistant_message" ? assistant.providerMetadata : undefined,
+      assistantMetadata
+    );
   });
 
   test("context extraction enqueue failure does not block generation completion", async () => {

@@ -78,7 +78,26 @@ claude_sonnet:
     extra:
       max_tokens: 4096
 
-# 示例 5：语音转写模型（transcription）
+# 示例 5：OpenAI Responses API 模型
+openai_gpt:
+  provider: openai_responses
+  model: gpt-5.6
+  modelType: chat
+  supportsThinking: true
+  thinkingControllable: true
+  preserveThinking: true
+  supportsVision: true
+  supportsAudioInput: false
+  supportsTools: true
+  supportsSearch: false
+  apiParameters:
+    extra:
+      reasoning:
+        effort: medium
+        summary: auto
+      max_output_tokens: 4096
+
+# 示例 6：语音转写模型（transcription）
 qwen3_asr_flash:
   provider: dashscope
   model: qwen3-asr-flash
@@ -91,7 +110,7 @@ qwen3_asr_flash:
   supportsTools: false
   supportsSearch: false
 
-# 示例 6：向量检索用 embedding 模型
+# 示例 7：向量检索用 embedding 模型
 text_embedding_v4:
   provider: dashscope
   model: text-embedding-v4

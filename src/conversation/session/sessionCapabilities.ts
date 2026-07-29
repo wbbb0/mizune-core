@@ -605,6 +605,11 @@ export interface SessionGenerationExecutionAccess extends SessionSetupAccess {
     expectedResponseEpoch: number,
     reasoningContent: string
   ): boolean;
+  setLastAssistantProviderMetadataIfResponseEpochMatches(
+    sessionId: string,
+    expectedResponseEpoch: number,
+    providerMetadata: Record<string, unknown>
+  ): boolean;
   applyActiveResponseTokenStatsIfResponseEpochMatches(
     sessionId: string,
     expectedResponseEpoch: number,

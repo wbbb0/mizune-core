@@ -401,6 +401,7 @@ export function createAssistantTranscriptMessageItem(input: {
   senderName: string;
   text: string;
   reasoningContent?: string;
+  providerMetadata?: Record<string, unknown>;
   deliveryRef?: TranscriptItemDeliveryRef;
   timestampMs: number;
 }): TranscriptAssistantMessageItem {
@@ -413,6 +414,7 @@ export function createAssistantTranscriptMessageItem(input: {
     senderName: input.senderName,
     text: input.text,
     ...(input.reasoningContent ? { reasoningContent: input.reasoningContent } : {}),
+    ...(input.providerMetadata ? { providerMetadata: input.providerMetadata } : {}),
     ...(input.deliveryRef ? { deliveryRef: input.deliveryRef } : {}),
     timestampMs: input.timestampMs
   };

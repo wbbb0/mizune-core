@@ -400,6 +400,11 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
       userId: "owner",
       senderName: "Owner",
       text: "hello",
+      providerMetadata: {
+        openAiResponses: {
+          outputItems: [{ type: "message", role: "assistant" }]
+        }
+      },
       timestampMs: 1
     }],
     debugMarkers: [],
@@ -416,6 +421,14 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
   assert.ok(item.id);
   assert.ok(item.groupId);
   assert.equal(item.runtimeExcluded, false);
+  assert.deepEqual(
+    item.kind === "assistant_message" ? item.providerMetadata : undefined,
+    {
+      openAiResponses: {
+        outputItems: [{ type: "message", role: "assistant" }]
+      }
+    }
+  );
 });
 
 function testUserTranscriptItem(id: string, text: string, timestampMs: number): PersistedSessionState["internalTranscript"][number] {

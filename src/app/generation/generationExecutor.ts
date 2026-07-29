@@ -215,6 +215,7 @@ export function createGenerationExecutor(
     } = input;
     let outboundDrainPromise: Promise<void> | null = null;
     let lastResultReasoningContent = "";
+    let lastResultAssistantMetadata: Record<string, unknown> | undefined;
     let finalProviderCallUsage: LlmProviderCallUsage | null = null;
     const runningProviderUsage = createEmptyUsage(resolvedModelRef[0] ?? null, null);
     const recordProviderCallUsage = (event: LlmProviderCallUsage): void => {
@@ -751,6 +752,7 @@ export function createGenerationExecutor(
           });
           summary = result.text;
           lastResultReasoningContent = result.reasoningContent ?? "";
+          lastResultAssistantMetadata = result.assistantMetadata;
           finalProviderCallUsage = [...(result.providerCallUsages ?? [])].reverse()
             .find((event) => event.phase === "final_response" || event.phase === "fallback_response" || event.phase === "terminal_response")
             ?? null;
@@ -844,6 +846,13 @@ export function createGenerationExecutor(
           sessionId,
           responseEpoch,
           lastResultReasoningContent
+        );
+      }
+      if (lastResultAssistantMetadata) {
+        sessionManager.setLastAssistantProviderMetadataIfResponseEpochMatches(
+          sessionId,
+          responseEpoch,
+          lastResultAssistantMetadata
         );
       }
 

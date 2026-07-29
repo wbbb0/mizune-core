@@ -743,6 +743,16 @@ export class SessionManager {
     });
   }
 
+  setLastAssistantProviderMetadataIfResponseEpochMatches(
+    sessionId: string,
+    expectedResponseEpoch: number,
+    providerMetadata: Record<string, unknown>
+  ): boolean {
+    return this.withResponseEpoch(sessionId, expectedResponseEpoch, true, (session) => {
+      this.historyService.setLastAssistantProviderMetadata(session, providerMetadata);
+    });
+  }
+
   applyActiveResponseTokenStatsIfResponseEpochMatches(
     sessionId: string,
     expectedResponseEpoch: number,

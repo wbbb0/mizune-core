@@ -48,6 +48,11 @@ cp config/instances/acc1.example.yml config/instances/default.yml
 
 - `config/llm.providers.yml`：填写 provider 的 `apiKey` / `baseUrl`
 - `config/llm.models.yml`：确认模型引用指向可用 provider
+
+OpenAI 接入有两种独立协议：`type: openai` 使用 `/v1/chat/completions`
+兼容接口，`type: openai_responses` 使用 `/v1/responses`。Responses provider
+由本地 transcript 管理上下文并固定发送 `store: false`，不会依赖服务端
+`previous_response_id` 会话链。
 - `config/llm.routing-presets.yml`：确认默认 preset 引用到存在的模型
 - `config/global.yml`：开启 `llm`、`internalApi.webui`，或关闭 `onebot`
 - `config/instances/default.yml`：设置当前实例的数据目录、端口和 OneBot 地址

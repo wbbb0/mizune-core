@@ -232,6 +232,20 @@ export function setLastAssistantMessageReasoningState(session: SessionState, rea
   return false;
 }
 
+export function setLastAssistantMessageProviderMetadataState(
+  session: SessionState,
+  providerMetadata: Record<string, unknown>
+): boolean {
+  for (let i = session.internalTranscript.length - 1; i >= 0; i--) {
+    const item = session.internalTranscript[i];
+    if (item?.kind === "assistant_message") {
+      item.providerMetadata = structuredClone(providerMetadata);
+      return true;
+    }
+  }
+  return false;
+}
+
 export function appendDebugMarkerState(session: SessionState, marker: SessionDebugMarker): void {
   session.debugMarkers.push(marker);
   if (session.debugMarkers.length > MAX_DEBUG_MARKERS) {

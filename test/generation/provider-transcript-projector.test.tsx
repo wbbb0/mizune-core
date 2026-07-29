@@ -297,6 +297,9 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
           },
           anthropic_1: {
             type: "anthropic"
+          },
+          openai_responses_1: {
+            type: "openai_responses"
           }
         },
         models: {
@@ -305,6 +308,9 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
           },
           anth_claude_sonnet: {
             provider: "anthropic_1"
+          },
+          openai_gpt_responses: {
+            provider: "openai_responses_1"
           }
         }
       }
@@ -312,6 +318,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
 
     assert.equal(resolveProviderTranscriptProjectorName(config, "g1_gemini3_flash_preview"), "google");
     assert.equal(resolveProviderTranscriptProjectorName(config, "anth_claude_sonnet"), "anthropic");
+    assert.equal(resolveProviderTranscriptProjectorName(config, "openai_gpt_responses"), "openai_responses");
   });
 
   test("dashscope projector replays visible history with assistant reasoning when preserveThinking is enabled", () => {
@@ -380,6 +387,53 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     assert.equal(projection.replayMessages[1]?.reasoning_content, "previous reasoning");
     assert.equal(projection.replayMessages[2]?.role, "assistant");
     assert.equal(projection.replayMessages[3]?.role, "tool");
+  });
+
+  test("openai responses projector preserves final assistant output items", () => {
+    const outputItems = [{
+      id: "rs_previous",
+      type: "reasoning",
+      encrypted_content: "encrypted-previous",
+      summary: []
+    }, {
+      id: "msg_previous",
+      type: "message",
+      role: "assistant",
+      status: "completed",
+      content: [{
+        type: "output_text",
+        text: "上一轮回答",
+        annotations: []
+      }]
+    }];
+    const projection = getProviderTranscriptProjector("openai_responses").project({
+      preserveThinking: true,
+      transcript: [{
+        kind: "assistant_message",
+        role: "assistant",
+        llmVisible: true,
+        chatType: "private",
+        userId: "10001",
+        senderName: "Alice",
+        text: "上一轮回答",
+        providerMetadata: {
+          openAiResponses: {
+            outputItems
+          }
+        },
+        timestampMs: 1
+      }]
+    });
+
+    assert.deepEqual(projection.replayMessages, [{
+      role: "assistant",
+      content: "上一轮回答",
+      providerMetadata: {
+        openAiResponses: {
+          outputItems
+        }
+      }
+    }]);
   });
 
   test("provider projectors replay user media transcript items as visible history", () => {
