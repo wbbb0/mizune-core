@@ -3,6 +3,7 @@ import {
   appendInternalTranscriptState,
   applyCompressedHistoryState,
   setLastAssistantMessageReasoningState,
+  setLastAssistantMessageProviderMetadataState,
   setLastLlmUsageState
 } from "./sessionMutations.ts";
 import {
@@ -324,6 +325,13 @@ export class SessionHistoryService {
 
   setLastAssistantReasoning(session: SessionState, reasoningContent: string): boolean {
     return setLastAssistantMessageReasoningState(session, reasoningContent);
+  }
+
+  setLastAssistantProviderMetadata(
+    session: SessionState,
+    providerMetadata: Record<string, unknown>
+  ): boolean {
+    return setLastAssistantMessageProviderMetadataState(session, providerMetadata);
   }
 
   applyActiveResponseTokenStats(

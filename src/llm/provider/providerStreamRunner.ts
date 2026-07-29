@@ -17,6 +17,7 @@ export type ProviderSseSemanticEvent<TFinalPayload> =
   | { kind: "text_delta"; text: string }
   | { kind: "usage"; usage: LlmUsage }
   | { kind: "final"; payload: TFinalPayload }
+  | { kind: "output_started" }
   | { kind: "first_response" };
 
 export interface ProviderSseStreamResult<TFinalPayload> {
@@ -188,6 +189,11 @@ async function applySemanticStreamEvent<TFinalPayload>(
     input.markFirstResponseReceived();
     input.markFirstTextReceived();
     input.setFinalPayload(event.payload);
+    return;
+  }
+  if (event.kind === "output_started") {
+    input.markFirstResponseReceived();
+    input.markFirstTextReceived();
     return;
   }
   input.markFirstResponseReceived();

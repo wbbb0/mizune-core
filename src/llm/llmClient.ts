@@ -236,7 +236,8 @@ export class LlmClient {
           text: streamed.text,
           reasoningContent: lastReasoningContent,
           usage: aggregatedUsage,
-          providerCallUsages
+          providerCallUsages,
+          ...(streamed.assistantMetadata ? { assistantMetadata: streamed.assistantMetadata } : {})
         };
       }
 
@@ -430,7 +431,8 @@ export class LlmClient {
       text: fallback.text || `工具调用轮次已达到上限（${maxIterations}），请基于现有结果继续处理或缩小任务范围。`,
       reasoningContent: fallback.reasoningContent,
       usage: aggregatedUsage,
-      providerCallUsages
+      providerCallUsages,
+      ...(fallback.assistantMetadata ? { assistantMetadata: fallback.assistantMetadata } : {})
     };
   }
 
@@ -916,6 +918,13 @@ function normalizeAssistantReplayMetadata(
   if (Array.isArray(normalized.googleParts)) {
     normalized.googleParts = replaceGoogleReplayTextParts(normalized.googleParts, content);
   }
+  const openAiResponses = normalized.openAiResponses;
+  if (isRecord(openAiResponses) && Array.isArray(openAiResponses.outputItems)) {
+    normalized.openAiResponses = {
+      ...openAiResponses,
+      outputItems: replaceOpenAiResponsesReplayTextItems(openAiResponses.outputItems, content)
+    };
+  }
   return normalized;
 }
 
@@ -975,6 +984,50 @@ function isVisibleGoogleTextPart(value: unknown): value is Record<string, unknow
   return isRecord(value)
     && typeof value.text === "string"
     && value.thought !== true;
+}
+
+function replaceOpenAiResponsesReplayTextItems(items: unknown[], content: string): unknown[] {
+  const replaced: unknown[] = [];
+  let insertedVisibleText = false;
+
+  for (const item of items) {
+    if (isRecord(item) && item.type === "message" && Array.isArray(item.content)) {
+      const nextContent: unknown[] = [];
+      for (const part of item.content) {
+        if (isRecord(part) && part.type === "output_text") {
+          if (!insertedVisibleText && content.length > 0) {
+            nextContent.push({ ...part, text: content });
+          }
+          insertedVisibleText = true;
+          continue;
+        }
+        nextContent.push(part);
+      }
+      replaced.push({ ...item, content: nextContent });
+      continue;
+    }
+
+    if (!insertedVisibleText && content.length > 0 && isRecord(item) && item.type === "function_call") {
+      replaced.push({
+        type: "message",
+        role: "assistant",
+        status: "completed",
+        content: [{ type: "output_text", text: content, annotations: [] }]
+      });
+      insertedVisibleText = true;
+    }
+    replaced.push(item);
+  }
+
+  if (!insertedVisibleText && content.length > 0) {
+    replaced.push({
+      type: "message",
+      role: "assistant",
+      status: "completed",
+      content: [{ type: "output_text", text: content, annotations: [] }]
+    });
+  }
+  return replaced;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

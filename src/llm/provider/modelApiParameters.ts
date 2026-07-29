@@ -32,6 +32,15 @@ export function buildOpenAiCompatibleModelApiParameters(
   ));
 }
 
+export function buildOpenAiResponsesModelApiParameters(
+  context: LlmProviderRequestContext
+): Record<string, unknown> {
+  return buildMappedParameters(context, {
+    temperature: "temperature",
+    top_p: "top_p"
+  });
+}
+
 export function buildDashScopeModelApiParameters(
   context: LlmProviderRequestContext
 ): Record<string, unknown> {

@@ -159,7 +159,17 @@ const llmProviderFeaturesSchema = s.object({
 }).title("能力映射").default(emptyObject);
 
 const llmProviderSchema = s.object({
-  type: s.enum(["openai", "deepseek", "google", "vertex", "vertex_express", "dashscope", "lmstudio", "anthropic"] as const).title("类型").default("openai"),
+  type: s.enum([
+    "openai",
+    "openai_responses",
+    "deepseek",
+    "google",
+    "vertex",
+    "vertex_express",
+    "dashscope",
+    "lmstudio",
+    "anthropic"
+  ] as const).title("类型").default("openai"),
   baseUrl: s.string().url().nonempty().title("Base URL").optional(),
   apiKey: s.string().trim().nonempty().title("API Key").optional(),
   proxy: s.boolean().title("使用代理").default(false),

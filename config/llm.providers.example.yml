@@ -13,6 +13,12 @@ deepseek:
   type: deepseek
   apiKey: replace-me
   proxy: false
+# OpenAI Responses API。与 type=openai 的 Chat Completions 兼容协议分开配置。
+openai_responses:
+  type: openai_responses
+  baseUrl: https://api.openai.com/v1
+  apiKey: replace-me
+  proxy: true
 anthropic:
   type: anthropic
   baseUrl: https://api.anthropic.com

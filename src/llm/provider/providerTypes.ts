@@ -107,6 +107,7 @@ export interface LlmGenerateResult {
   reasoningContent: string;
   usage: LlmUsage;
   providerCallUsages?: LlmProviderCallUsage[];
+  assistantMetadata?: Record<string, unknown>;
 }
 
 export interface LlmEmbeddingParams {

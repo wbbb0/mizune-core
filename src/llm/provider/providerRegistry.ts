@@ -5,11 +5,13 @@ import { DeepSeekProvider } from "./providers/deepSeekProvider.ts";
 import { GoogleAiStudioProvider } from "./providers/googleAiStudioProvider.ts";
 import { LmStudioProvider } from "./providers/lmStudioProvider.ts";
 import { OpenAiProvider } from "./providers/openaiProvider.ts";
+import { OpenAiResponsesProvider } from "./providers/openAiResponsesProvider.ts";
 import { VertexAiProvider } from "./providers/vertexAiProvider.ts";
 import { VertexExpressProvider } from "./providers/vertexExpressProvider.ts";
 
 const providers = new Map<string, LlmProvider>([
   ["openai", new OpenAiProvider()],
+  ["openai_responses", new OpenAiResponsesProvider()],
   ["deepseek", new DeepSeekProvider()],
   ["dashscope", new DashScopeProvider()],
   ["google", new GoogleAiStudioProvider()],
