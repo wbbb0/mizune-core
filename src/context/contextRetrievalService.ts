@@ -59,7 +59,7 @@ export class ContextRetrievalService {
       this.recordRetrievedItems(results);
       return results;
     }
-    if (!this.embeddingService.isConfigured()) {
+    if (!this.embeddingService.isAvailable()) {
       const results = selectRetrievedUserContext({
         queryText,
         alwaysItems,
@@ -422,7 +422,18 @@ export class ContextRetrievalService {
     indexedCount: number;
     skippedCount: number;
     errors: Array<{ userId: string; error: string }>;
+    unavailableReason?: "embedding_unavailable";
   }> {
+    if (!this.embeddingService.isAvailable()) {
+      return {
+        userCount: 0,
+        embeddedCount: 0,
+        indexedCount: 0,
+        skippedCount: 0,
+        errors: [],
+        unavailableReason: "embedding_unavailable"
+      };
+    }
     const userIds = input.userId
       ? [input.userId]
       : this.contextStore.listUserIdsWithSearchDocuments();
@@ -465,7 +476,7 @@ export class ContextRetrievalService {
     skippedCount: number;
     error?: string;
   }> {
-    if (!this.embeddingService.isConfigured()) {
+    if (!this.embeddingService.isAvailable()) {
       return {
         userId: input.userId,
         embeddedCount: 0,

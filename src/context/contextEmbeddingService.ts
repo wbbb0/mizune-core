@@ -2,12 +2,28 @@ import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import type { LlmClient } from "#llm/llmClient.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
+import { normalizeModelRefs, resolveModelRefsForType } from "#llm/shared/modelProfiles.ts";
 import type { ContextEmbeddingProfile } from "./contextTypes.ts";
 
 export interface ContextEmbeddingBatch {
   profile: ContextEmbeddingProfile;
   vectors: number[][];
 }
+
+export type ContextEmbeddingUnavailableReason =
+  | "llm_disabled"
+  | "model_not_configured"
+  | "model_configuration_invalid"
+  | "model_unavailable";
+
+export type ContextEmbeddingAvailability = {
+  available: true;
+  modelRefs: string[];
+} | {
+  available: false;
+  modelRefs: string[];
+  reason: ContextEmbeddingUnavailableReason;
+};
 
 export class ContextEmbeddingService {
   constructor(
@@ -16,20 +32,40 @@ export class ContextEmbeddingService {
     private readonly logger: Logger
   ) { }
 
-  isConfigured(): boolean {
-    return this.llmClient.isEmbeddingConfigured(getModelRefsForRole(this.config, "embedding"));
+  getAvailability(): ContextEmbeddingAvailability {
+    const modelRefs = normalizeModelRefs(getModelRefsForRole(this.config, "embedding"));
+    if (!this.config.llm.enabled) {
+      return { available: false, modelRefs, reason: "llm_disabled" };
+    }
+    if (modelRefs.length === 0) {
+      return { available: false, modelRefs, reason: "model_not_configured" };
+    }
+    if (resolveModelRefsForType(this.config, modelRefs, "embedding").acceptedModelRefs.length === 0) {
+      return { available: false, modelRefs, reason: "model_configuration_invalid" };
+    }
+    if (!this.llmClient.isEmbeddingConfigured(modelRefs)) {
+      return { available: false, modelRefs, reason: "model_unavailable" };
+    }
+    return { available: true, modelRefs };
+  }
+
+  isAvailable(): boolean {
+    return this.getAvailability().available;
   }
 
   getStatus(): {
-    configured: boolean;
+    available: boolean;
     modelRefs: string[];
+    unavailableReason?: ContextEmbeddingUnavailableReason;
     timeoutMs: number;
     textPreprocessVersion: string;
     chunkerVersion: string;
   } {
+    const availability = this.getAvailability();
     return {
-      configured: this.isConfigured(),
-      modelRefs: getModelRefsForRole(this.config, "embedding"),
+      available: availability.available,
+      modelRefs: availability.modelRefs,
+      ...(!availability.available ? { unavailableReason: availability.reason } : {}),
       timeoutMs: this.config.context.embedding.timeoutMs,
       textPreprocessVersion: this.config.context.embedding.textPreprocessVersion,
       chunkerVersion: this.config.context.embedding.chunkerVersion
@@ -42,9 +78,13 @@ export class ContextEmbeddingService {
     if (texts.length === 0) {
       throw new Error("embedTexts requires at least one text");
     }
+    const availability = this.getAvailability();
+    if (!availability.available) {
+      throw new Error(`Embedding 功能不可用: ${availability.reason}`);
+    }
     const result = await this.llmClient.embedTexts({
       texts,
-      modelRefOverride: getModelRefsForRole(this.config, "embedding"),
+      modelRefOverride: availability.modelRefs,
       timeoutMsOverride: this.config.context.embedding.timeoutMs,
       ...(options?.abortSignal ? { abortSignal: options.abortSignal } : {})
     });

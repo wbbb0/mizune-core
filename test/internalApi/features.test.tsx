@@ -70,7 +70,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(contextStatus.statusCode, 200);
       assert.equal(configSummary.json().runtimeMode, "onebot");
       assert.equal(contextStatus.json().store.available, true);
-      assert.equal(contextStatus.json().embedding.configured, true);
+      assert.equal(contextStatus.json().embedding.available, true);
       assert.equal(configSummary.json().access.ownerId, "10001");
       assert.deepEqual(configSummary.json().access.whitelist.users, ["10001"]);
       assert.equal(configSummary.json().onebot.enabled, true);

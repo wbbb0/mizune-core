@@ -35,6 +35,7 @@ const loading = computed(() => props.loading);
 const maintenanceBusy = computed(() => props.maintenanceBusy);
 const controlsBusy = computed(() => maintenanceBusy.value || applying.value);
 const actionBusy = computed(() => loading.value || controlsBusy.value);
+const embeddingAvailable = computed(() => status.value?.embedding.available === true);
 
 function syncFiltersFromState() {
   const current = props.currentFilters;
@@ -177,7 +178,13 @@ syncFiltersFromState();
           <RefreshCw :size="13" :stroke-width="2" :class="{ spin: maintenanceBusy }" />
           重置索引
         </button>
-        <button type="button" class="btn btn-secondary justify-start sm:col-span-2" :disabled="actionBusy" @click="runAction(rebuildContextIndex)">
+        <button
+          type="button"
+          class="btn btn-secondary justify-start sm:col-span-2"
+          :disabled="actionBusy || !embeddingAvailable"
+          :title="embeddingAvailable ? undefined : '未配置可用的 embedding 模型'"
+          @click="runAction(rebuildContextIndex)"
+        >
           <DatabaseZap :size="13" :stroke-width="2" />
           补齐 embedding 并重建索引
         </button>

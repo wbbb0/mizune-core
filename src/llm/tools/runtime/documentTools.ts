@@ -1086,14 +1086,14 @@ function getDocumentSummaryService(context: Parameters<ToolHandler>[2]): Documen
   return candidate ?? null;
 }
 
-function getContextEmbeddingService(context: Parameters<ToolHandler>[2]): Pick<ContextEmbeddingService, "isConfigured" | "getStatus" | "embedTexts"> | null {
-  const candidate = (context as typeof context & { contextEmbeddingService?: Pick<ContextEmbeddingService, "isConfigured" | "getStatus" | "embedTexts"> }).contextEmbeddingService;
+function getContextEmbeddingService(context: Parameters<ToolHandler>[2]): Pick<ContextEmbeddingService, "isAvailable" | "getStatus" | "embedTexts"> | null {
+  const candidate = (context as typeof context & { contextEmbeddingService?: Pick<ContextEmbeddingService, "isAvailable" | "getStatus" | "embedTexts"> }).contextEmbeddingService;
   return candidate ?? null;
 }
 
 function getDocumentEmbeddingProfileId(context: Parameters<ToolHandler>[2]): string {
   const embeddingService = getContextEmbeddingService(context);
-  if (!embeddingService?.isConfigured()) {
+  if (!embeddingService?.isAvailable()) {
     return "embedding_disabled";
   }
   const status = embeddingService.getStatus();
@@ -1333,7 +1333,7 @@ async function searchDocumentChunks(input: {
     return { mode: "keyword", ...keyword };
   }
   const embeddingService = getContextEmbeddingService(input.context);
-  if (!embeddingService?.isConfigured() || !input.text.fingerprint) {
+  if (!embeddingService?.isAvailable() || !input.text.fingerprint) {
     return {
       mode: "keyword_fallback",
       ...keyword,

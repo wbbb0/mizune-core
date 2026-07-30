@@ -2685,12 +2685,12 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         }
       },
       contextEmbeddingService: {
-        isConfigured() {
+        isAvailable() {
           return true;
         },
         getStatus() {
           return {
-            configured: true,
+            available: true,
             modelRefs: ["embedding-test"],
             timeoutMs: 1000,
             textPreprocessVersion: "tp-v1",
@@ -2736,7 +2736,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           ...context.contextEmbeddingService,
           getStatus() {
             return {
-              configured: true,
+              available: true,
               modelRefs: ["embedding-next"],
               timeoutMs: 1000,
               textPreprocessVersion: "tp-v2",

@@ -266,6 +266,11 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
             model: "default-transcription",
             modelType: "transcription"
           },
+          defaultEmbedding: {
+            provider: "test",
+            model: "default-embedding",
+            modelType: "embedding"
+          },
           devMain: {
             provider: "test",
             model: "dev-main"
@@ -282,6 +287,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
             imageInspector: "defaultSummary",
             audioTranscription: "transcription",
             turnPlanner: "defaultPlan",
+            embedding: "defaultEmbedding",
             historyWindow: {
               maxRecentMessages: 24,
               maxImageReferences: 3
@@ -294,7 +300,8 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           dev: {
             mainSmall: "devMain",
             mainLarge: [],
-            audioTranscription: []
+            audioTranscription: [],
+            embedding: []
           }
         }
       });
@@ -317,6 +324,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       assert.deepEqual(getModelRefsForRole(config, "image_inspector"), ["defaultSummary"]);
       assert.deepEqual(getModelRefsForRole(config, "audio_transcription"), []);
       assert.deepEqual(getModelRefsForRole(config, "turn_planner"), ["defaultPlan"]);
+      assert.deepEqual(getModelRefsForRole(config, "embedding"), []);
       assert.deepEqual(getRoutingPresetHistoryWindow(config), {
         maxRecentMessages: 24,
         maxImageReferences: 3

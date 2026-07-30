@@ -65,8 +65,9 @@ export interface ContextStatus {
     }>;
   };
   embedding: {
-    configured: boolean;
+    available: boolean;
     modelRefs: string[];
+    unavailableReason?: "llm_disabled" | "model_not_configured" | "model_configuration_invalid" | "model_unavailable";
     timeoutMs: number;
     textPreprocessVersion: string;
     chunkerVersion: string;
@@ -161,6 +162,7 @@ export const contextApi = {
     indexedCount: number;
     skippedCount: number;
     errors: Array<{ userId: string; error: string }>;
+    unavailableReason?: "embedding_unavailable";
   }> {
     return api.post("/api/context/maintenance/rebuild-index", input);
   }

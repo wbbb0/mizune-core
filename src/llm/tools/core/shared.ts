@@ -99,7 +99,7 @@ export interface BuiltinToolCommunicationDeps {
   mediaInspectionService: MediaInspectionService;
   textInspectionService: TextInspectionService;
   documentSummaryService?: DocumentSummaryService;
-  contextEmbeddingService?: Pick<ContextEmbeddingService, "isConfigured" | "getStatus" | "embedTexts">;
+  contextEmbeddingService?: Pick<ContextEmbeddingService, "isAvailable" | "getStatus" | "embedTexts">;
   forwardResolver: ForwardResolver;
 }
 

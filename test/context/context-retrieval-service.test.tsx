@@ -38,7 +38,7 @@ test("ContextRetrievalService retrieves indexed user context through Orama", asy
     }
   };
   const embeddingService = {
-    isConfigured() {
+    isAvailable() {
       return true;
     },
     async embedTexts(texts: string[]) {
@@ -79,7 +79,7 @@ test("ContextRetrievalService records prompt memory reports per session", () => 
         return 0;
       }
     } as any,
-    { isConfigured: () => false } as any,
+    { isAvailable: () => false } as any,
     pino({ level: "silent" })
   );
 
@@ -178,7 +178,7 @@ test("ContextRetrievalService returns always user context without embedding", as
       }
     } as any,
     {
-      isConfigured() {
+      isAvailable() {
         return false;
       }
     } as any,
@@ -208,7 +208,7 @@ test("ContextRetrievalService fails open when embedding is unavailable", async (
       }
     } as any,
     {
-      isConfigured() {
+      isAvailable() {
         return true;
       },
       async embedTexts() {
@@ -236,7 +236,7 @@ test("ContextRetrievalService keeps always facts when embedding search fails", a
       }
     } as any,
     {
-      isConfigured() {
+      isAvailable() {
         return true;
       },
       async embedTexts() {
@@ -287,7 +287,7 @@ test("ContextRetrievalService limits synchronous document embedding on prompt pa
       }
     } as any,
     {
-      isConfigured() {
+      isAvailable() {
         return true;
       },
       async embedTexts(texts: string[]) {
@@ -339,7 +339,7 @@ test("ContextRetrievalService rebuilds user indexes and batches background embed
       }
     } as any,
     {
-      isConfigured() {
+      isAvailable() {
         return true;
       },
       async embedTexts(texts: string[]) {
@@ -363,6 +363,35 @@ test("ContextRetrievalService rebuilds user indexes and batches background embed
   assert.equal(result.indexedCount, 2);
   assert.equal(result.skippedCount, 1);
   assert.deepEqual(Array.from(embeddings.keys()), ["ctx_1", "ctx_2"]);
+});
+
+test("ContextRetrievalService skips all rebuild work while embedding is unavailable", async () => {
+  let listedUsers = false;
+  const service = new ContextRetrievalService(
+    createTestAppConfig(),
+    {
+      listUserIdsWithSearchDocuments() {
+        listedUsers = true;
+        return ["user_1"];
+      }
+    } as any,
+    {
+      isAvailable() {
+        return false;
+      }
+    } as any,
+    pino({ level: "silent" })
+  );
+
+  assert.deepEqual(await service.rebuildUserIndexes(), {
+    userCount: 0,
+    embeddedCount: 0,
+    indexedCount: 0,
+    skippedCount: 0,
+    errors: [],
+    unavailableReason: "embedding_unavailable"
+  });
+  assert.equal(listedUsers, false);
 });
 
 function createDocument(

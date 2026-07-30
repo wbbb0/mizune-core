@@ -175,10 +175,10 @@ function dataModelStorageKey(resourceKey: string, name: string): string {
           <span
             v-if="contextStatus"
             class="shrink-0 rounded bg-surface-muted px-1.5 py-0.5 text-small"
-            :class="contextStatus.embedding.configured ? 'text-success' : 'text-warning'"
-            :title="contextStatus.embedding.modelRefs.join(', ') || '未配置 embedding 模型'"
+            :class="contextStatus.embedding.available ? 'text-success' : 'text-warning'"
+            :title="contextStatus.embedding.modelRefs.join(', ') || contextStatus.embedding.unavailableReason || '未配置 embedding 模型'"
           >
-            embedding {{ contextStatus.embedding.configured ? "ok" : "missing" }}
+            embedding {{ contextStatus.embedding.available ? "ok" : "disabled" }}
           </span>
         </div>
         <template #actions>

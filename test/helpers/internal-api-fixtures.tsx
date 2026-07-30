@@ -1012,7 +1012,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     contextEmbeddingService: {
       getStatus() {
         return {
-          configured: true,
+          available: true,
           modelRefs: ["embedding"],
           timeoutMs: 30000,
           textPreprocessVersion: "v1",
