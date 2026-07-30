@@ -117,3 +117,25 @@ test("SchemaNode source propagates schema default values through recursive branc
     "expected record entries to pass through matching schema default values"
   );
 });
+
+test("SchemaNode keeps an explicitly emptied array instead of restoring inherited items", async () => {
+  const source = await readFile(
+    new URL("../../../vendor/workbench-kit/packages/vue-resource-editor/src/components/SchemaNode.vue", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(source, /function removeArrayItem\(index: number\)[\s\S]*emit\("update:modelValue", next\);/);
+  assert.doesNotMatch(source, /next\.length > 0 \? next : undefined/);
+});
+
+test("SchemaField does not offer an invalid empty choice for required dynamic references", async () => {
+  const source = await readFile(
+    new URL("../../../vendor/workbench-kit/packages/vue-resource-editor/src/components/SchemaField.vue", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(source, /<option v-if="!schema\.optional && !currentStringValue\(\)" value="" disabled>请选择<\/option>/);
+  assert.match(source, /<option v-if="schema\.optional" value="">—<\/option>/);
+  assert.match(source, /function onDynamicRefChange[\s\S]*value \|\| undefined/);
+  assert.match(source, /@change="onDynamicRefChange"/);
+});

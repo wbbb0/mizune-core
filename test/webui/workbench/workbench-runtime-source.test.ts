@@ -71,6 +71,9 @@ test("mobile workbench keeps root sidebar mounted under the active area overlay"
   assert.match(sessionsView, /defineWorkbenchView/);
   assert.doesNotMatch(sessionsView, /rootArea:\s*"primarySidebar"/);
   assert.doesNotMatch(source, /v-show="mobileScreen === 'list'"/);
+  assert.match(source, /function setMainRegionRef\(element: unknown\)/);
+  assert.match(source, /:ref="hasMobileRootArea \? undefined : setMainRegionRef"/);
+  assert.doesNotMatch(source, /:ref="hasMobileRootArea \? undefined : runtime\.mainRegionRef"/);
 });
 
 test("a view without a sidebar uses the main area as its mobile root", async () => {
