@@ -65,7 +65,7 @@ export function createGenerationSegmentCoordinator(input: {
       return;
     }
     const currentResponseCommittedText = committedText.slice(providerReplayCursor);
-    const chunk = resolveUncommittedTextTail(streamBuffer, currentResponseCommittedText)
+    const chunk = (stripCommittedPrefix(streamBuffer, currentResponseCommittedText) ?? streamBuffer)
       .replace(/^(?:[ \t]*\r?\n){2,}/, "");
     if (!chunk.trim()) {
       streamBuffer = "";
@@ -79,9 +79,9 @@ export function createGenerationSegmentCoordinator(input: {
     }
   };
 
-  const resolveUncommittedTextTail = (text: string, committedPrefix: string): string => {
+  const stripCommittedPrefix = (text: string, committedPrefix: string): string | null => {
     if (!text.trim() || !committedPrefix.trim()) {
-      return text;
+      return null;
     }
     if (text.startsWith(committedPrefix)) {
       return text.slice(committedPrefix.length);
@@ -94,10 +94,10 @@ export function createGenerationSegmentCoordinator(input: {
     if (trimmedText.startsWith(trimmedCommitted)) {
       return trimmedText.slice(trimmedCommitted.length);
     }
-    return text;
+    return null;
   };
 
-  const resolveUncommittedSummaryTail = (summary: string): string => {
+  const resolveFinalStreamTail = (summary: string): string => {
     const currentResponseCommittedText = committedText.slice(providerReplayCursor);
     if (!currentResponseCommittedText.trim()) {
       return summary;
@@ -105,11 +105,16 @@ export function createGenerationSegmentCoordinator(input: {
     if (!summary.trim()) {
       return "";
     }
-    return resolveUncommittedTextTail(summary, currentResponseCommittedText) || streamBuffer;
+    // A final provider summary can supply an unsent tail only when its prefix
+    // proves that it extends the text already committed for this response.
+    // On mismatch, the live stream buffer is authoritative; treating the whole
+    // summary as a tail would deliver the complete response a second time.
+    const summaryTail = stripCommittedPrefix(summary, currentResponseCommittedText);
+    return summaryTail?.trim() ? summaryTail : streamBuffer;
   };
 
   const flushSummaryTail = async (summary: string): Promise<void> => {
-    const tail = resolveUncommittedSummaryTail(summary);
+    const tail = resolveFinalStreamTail(summary);
     const text = tail.replace(/^(?:[ \t]*\r?\n){2,}/, "");
     if (!text.trim()) {
       streamBuffer = "";

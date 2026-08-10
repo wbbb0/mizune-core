@@ -718,6 +718,33 @@ function createExecutorHarness(options?: {
     assert.deepEqual(harness.pacingCalls, ["immediate"]);
   });
 
+  test("immediate onebot pacing does not resend a mismatched final summary after streamed chunks", async () => {
+    const harness = createExecutorHarness({
+      pacingPreferences: {
+        inputDebounce: { mode: "adaptive" },
+        oneBotOutbound: "immediate"
+      },
+      customGenerate: async (input) => {
+        await input.onTextDelta?.("流式发送的第一段已经足够长。\n\n仍在缓冲的第二段");
+        return {
+          text: "Provider 归一化后的完整原文，与流式前缀并不完全相同。",
+          reasoningContent: "",
+          usage: createUsage()
+        };
+      }
+    });
+
+    await waitForEvents(harness.events, 2);
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.deepEqual(harness.pacingCalls, ["immediate", "immediate"]);
+    assert.deepEqual(harness.sendTextCalls, [
+      { userId: "owner", text: "流式发送的第一段已经足够长。" },
+      { userId: "owner", text: "仍在缓冲的第二段" }
+    ]);
+  });
+
   test("onebot delivery sends plain text while storing markdown response text", async () => {
     const harness = createExecutorHarness({
       customGenerate: async (input) => {

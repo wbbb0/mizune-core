@@ -123,6 +123,52 @@ test("segment coordinator flushes only the uncommitted summary tail after stream
   assert.equal(draftStates[draftStates.length - 1], "<clear>");
 });
 
+test("segment coordinator never treats a mismatched final summary as an unsent tail", async () => {
+  const committedChunks: string[] = [];
+  const coordinator = createGenerationSegmentCoordinator({
+    disableStreamingSplit: false,
+    committedSink: {
+      async enqueueChunk(chunk) {
+        committedChunks.push(chunk);
+        return true;
+      },
+      async flushBufferedOutput(_summary, streamBuffer) {
+        return streamBuffer;
+      }
+    }
+  });
+
+  await coordinator.onTextDelta("流式发送的第一段已经足够长。\n\n仍在缓冲的第二段");
+  await coordinator.flushSummary("Provider 归一化后的完整原文，与流式前缀并不完全相同。", true);
+
+  assert.deepEqual(committedChunks, [
+    "流式发送的第一段已经足够长。",
+    "仍在缓冲的第二段"
+  ]);
+});
+
+test("segment coordinator keeps a buffered tail when the final summary stops at the committed prefix", async () => {
+  const committedChunks: string[] = [];
+  const coordinator = createGenerationSegmentCoordinator({
+    disableStreamingSplit: false,
+    committedSink: {
+      async enqueueChunk(chunk) {
+        committedChunks.push(chunk);
+        return true;
+      },
+      async flushBufferedOutput(_summary, streamBuffer) {
+        return streamBuffer;
+      }
+    }
+  });
+
+  const committedPrefix = "流式发送的第一段已经足够长。";
+  await coordinator.onTextDelta(`${committedPrefix}\n\n晚到但仍需发送的尾部`);
+  await coordinator.flushSummary(committedPrefix, true);
+
+  assert.deepEqual(committedChunks, [committedPrefix, "晚到但仍需发送的尾部"]);
+});
+
 test("segment coordinator exposes committed text as the provider assistant replay content", async () => {
   const committedChunks: string[] = [];
   const coordinator = createGenerationSegmentCoordinator({
