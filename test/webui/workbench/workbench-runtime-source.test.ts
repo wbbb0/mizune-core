@@ -144,6 +144,7 @@ test("workbench runtime exposes an active shell command facade", async () => {
 test("desktop workbench sizes desktop areas through runtime resize state", async () => {
   const runtime = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url), "utf8");
   const desktop = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/DesktopWorkbench.vue", import.meta.url), "utf8");
+  const sash = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/primitives/WorkbenchSash.vue", import.meta.url), "utf8");
   const types = await readFile(new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/types.ts", import.meta.url), "utf8");
   const sessionsView = await readFile(new URL("../../../webui/src/sections/sessions/index.ts", import.meta.url), "utf8");
 
@@ -171,12 +172,13 @@ test("desktop workbench sizes desktop areas through runtime resize state", async
   assert.match(desktop, /hasBottomPanel/);
   assert.match(desktop, /startDesktopAreaResize/);
   assert.match(desktop, /resetDesktopAreaResize/);
-  assert.match(desktop, /role="separator"/);
-  assert.match(desktop, /aria-orientation="vertical"/);
-  assert.match(desktop, /aria-orientation="horizontal"/);
+  assert.match(desktop, /<WorkbenchSash/);
+  assert.match(desktop, /orientation="vertical"/);
+  assert.match(desktop, /orientation="horizontal"/);
+  assert.match(sash, /role="separator"/);
+  assert.match(sash, /:aria-orientation="orientation"/);
   assert.match(desktop, /v-if="hasPrimarySidebar"\s*\n\s*class="relative shrink-0/);
-  assert.match(desktop, /absolute inset-y-0 -right-0\.5/);
-  assert.match(desktop, /before:bg-border-default/);
+  assert.match(sash, /workbench-sash/);
   assert.doesNotMatch(desktop, /class="relative w-1 shrink-0/);
   assert.match(desktop, /@pointerdown="startDesktopAreaResize\('primarySidebar'/);
   assert.match(desktop, /@dblclick="resetDesktopAreaResize\('primarySidebar'\)"/);

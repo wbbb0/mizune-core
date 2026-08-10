@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import type { DataResource, DataResourceModelColumn } from "@/api/data";
 import { PagedListPane, ResponsiveSplitPane, WorkbenchDataTable, type WorkbenchDataTableColumn } from "@workbench-kit/vue";
 import DataModelRecordDetail from "./DataModelRecordDetail.vue";
@@ -34,6 +34,18 @@ const tableColumns = computed<WorkbenchDataTableColumn<unknown>[]>(() =>
     cellClass: column.role === "title" ? "font-medium text-text-secondary" : "font-mono text-text-muted"
   }))
 );
+const activePaneId = ref<"primary" | "secondary">("primary");
+
+watch(() => props.selectedRow, (selectedRow) => {
+  if (!selectedRow) {
+    activePaneId.value = "primary";
+  }
+});
+
+function selectRow(row: unknown) {
+  emit("select-row", row);
+  activePaneId.value = "secondary";
+}
 
 function columnGridTrack(column: DataResourceModelColumn): string {
   if (column.listWidth) {
@@ -84,7 +96,10 @@ function formatTime(ms: number | undefined): string {
     :default-stacked-primary-size="240"
     :min-primary-size="220"
     :min-secondary-size="220"
+    primary-title="列表"
+    secondary-title="详情"
     :storage-key="splitStorageKey"
+    v-model:active-pane-id="activePaneId"
   >
     <template #primary="{ stacked }">
       <PagedListPane
@@ -109,7 +124,7 @@ function formatTime(ms: number | undefined): string {
             :selected-row-key="selectedRow ? modelRowKey(selectedRow, resource) : null"
             :get-row-key="(row) => modelRowKey(row, resource)"
             :empty-message="emptyMessage ?? '暂无数据'"
-            @select-row="emit('select-row', $event)"
+            @select-row="selectRow"
           >
             <template #cell="{ row, column }">
               <span :title="formatModelCell((row as Record<string, unknown>)[column.key], columns.find((item) => item.key === column.key)?.type, formatTime)">

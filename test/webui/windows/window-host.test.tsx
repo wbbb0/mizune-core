@@ -12,6 +12,7 @@ const compilerSfc = require(`${ROOT}/webui/node_modules/@vue/compiler-sfc/dist/c
 const typescript = require(`${ROOT}/webui/node_modules/typescript/lib/typescript.js`);
 const VUE_RUNTIME_URL = new URL("../../../webui/node_modules/vue/index.mjs", import.meta.url).href;
 const WINDOW_SIZING_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/windows/windowSizing.ts", import.meta.url).href;
+const USE_POINTER_DRAG_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/composables/usePointerDrag.ts", import.meta.url).href;
 const USE_WORKBENCH_WINDOWS_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/windows/useWorkbenchWindows.ts", import.meta.url).href;
 const WORKBENCH_CONTROLLER_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchController.ts", import.meta.url).href;
 const WORKBENCH_RUNTIME_URL = new URL("../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchRuntime.ts", import.meta.url).href;
@@ -206,6 +207,7 @@ const windowSurfaceUrl = compileVueModule(WINDOW_SURFACE_PATH, {
     import { h } from "${VUE_RUNTIME_URL}";
     export const X = { name: "X", render() { return h("span", { "data-test": "icon-x" }); } };
   `),
+  "../composables/usePointerDrag": USE_POINTER_DRAG_URL,
   "./windowSizing": WINDOW_SIZING_URL
 });
 
@@ -642,6 +644,7 @@ test("window host moves a desktop window when dragging its title bar", async () 
   const header = wrapper.get("header");
   header.element.dispatchEvent(new window.PointerEvent("pointerdown", {
     bubbles: true,
+    isPrimary: true,
     clientX: 100,
     clientY: 120
   }));
@@ -671,6 +674,7 @@ test("window host resizes a desktop window from an edge handle", async () => {
   const handle = wrapper.get('[data-window-resize-handle="e"]');
   handle.element.dispatchEvent(new window.PointerEvent("pointerdown", {
     bubbles: true,
+    isPrimary: true,
     clientX: 500,
     clientY: 200
   }));
@@ -701,6 +705,7 @@ test("window host resizes from a corner while keeping the opposite corner fixed"
   const handle = wrapper.get('[data-window-resize-handle="nw"]');
   handle.element.dispatchEvent(new window.PointerEvent("pointerdown", {
     bubbles: true,
+    isPrimary: true,
     clientX: 300,
     clientY: 200
   }));
@@ -781,6 +786,7 @@ test("window host restores a maximized window before dragging its title bar", as
   const header = wrapper.get("header");
   header.element.dispatchEvent(new window.PointerEvent("pointerdown", {
     bubbles: true,
+    isPrimary: true,
     clientX: 100,
     clientY: 100
   }));
@@ -864,6 +870,7 @@ test("window host clamps dragging so a window always keeps a visible grab area",
 
   header.dispatchEvent(new window.PointerEvent("pointerdown", {
     bubbles: true,
+    isPrimary: true,
     clientX: 120,
     clientY: 120
   }));
