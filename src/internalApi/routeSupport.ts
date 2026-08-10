@@ -1,5 +1,6 @@
 import type { FastifyReply } from "fastify";
 import { z } from "zod";
+import { sessionPacingPreferencesSchema } from "#conversation/session/sessionPacing.ts";
 
 const sessionParamsSchema = z.object({
   sessionId: z.string().trim().min(1, "sessionId is required")
@@ -82,6 +83,8 @@ const createSessionBodySchema = z.object({
 const updateSessionTitleBodySchema = z.object({
   title: z.string().trim().min(1, "title is required")
 });
+
+const updateSessionPacingBodySchema = sessionPacingPreferencesSchema;
 
 const switchSessionModeBodySchema = z.object({
   modeId: z.string().trim().min(1, "modeId is required")
@@ -209,6 +212,7 @@ export type ParsedSendTextBody = z.infer<typeof sendTextBodySchema>;
 export type ParsedWebTurnBody = z.infer<typeof webTurnBodySchema>;
 export type ParsedCreateSessionBody = z.infer<typeof createSessionBodySchema>;
 export type ParsedUpdateSessionTitleBody = z.infer<typeof updateSessionTitleBodySchema>;
+export type ParsedUpdateSessionPacingBody = z.infer<typeof updateSessionPacingBodySchema>;
 export type ParsedSwitchSessionModeBody = z.infer<typeof switchSessionModeBodySchema>;
 export type ParsedUpdateSessionModeStateBody = z.infer<typeof updateSessionModeStateBodySchema>;
 export type ParsedCreateSessionSnapshotBody = z.infer<typeof createSessionSnapshotBodySchema>;
@@ -320,6 +324,10 @@ export function parseCreateSessionBody(body: unknown): ParsedCreateSessionBody |
 
 export function parseUpdateSessionTitleBody(body: unknown): ParsedUpdateSessionTitleBody | { error: string } {
   return parseWithSchema(updateSessionTitleBodySchema, body);
+}
+
+export function parseUpdateSessionPacingBody(body: unknown): ParsedUpdateSessionPacingBody | { error: string } {
+  return parseWithSchema(updateSessionPacingBodySchema, body);
 }
 
 export function parseSwitchSessionModeBody(body: unknown): ParsedSwitchSessionModeBody | { error: string } {

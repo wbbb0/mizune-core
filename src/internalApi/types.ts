@@ -43,6 +43,7 @@ import type {
   SessionStreamAccess,
 } from "#conversation/session/sessionCapabilities.ts";
 import type { SessionParticipantRef, SessionTitleSource } from "#conversation/session/sessionTypes.ts";
+import type { SessionPacingPreferences } from "#conversation/session/sessionPacing.ts";
 import {
   createEditorService,
   type EditorService
@@ -106,6 +107,7 @@ export interface InternalApiSessionDetail {
     title: string | null;
     titleSource: SessionTitleSource | null;
     titleGenerationAvailable: boolean;
+    pacingPreferences: SessionPacingPreferences;
     debugControl: {
       enabled: boolean;
       oncePending: boolean;

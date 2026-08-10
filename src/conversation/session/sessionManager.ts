@@ -16,6 +16,7 @@ import {
   resetProfileOperationState,
   setActiveAssistantDraftResponseState,
   setSessionOperationModeState,
+  setSessionPacingPreferencesState,
   enqueueGroupReplyTargetState
 } from "./sessionMutations.ts";
 import { SessionStore } from "./sessionStore.ts";
@@ -447,6 +448,14 @@ export class SessionManager {
     return this.requireSession(sessionId).replyDelivery;
   }
 
+  getPacingPreferences(sessionId: string): SessionState["pacingPreferences"] {
+    const preferences = this.requireSession(sessionId).pacingPreferences;
+    return {
+      inputDebounce: { ...preferences.inputDebounce },
+      oneBotOutbound: preferences.oneBotOutbound
+    };
+  }
+
   getModeId(sessionId: string): string {
     return this.requireSession(sessionId).modeId;
   }
@@ -525,6 +534,18 @@ export class SessionManager {
   setReplyDelivery(sessionId: string, delivery: SessionDelivery): void {
     this.requireSession(sessionId).replyDelivery = delivery;
     this.notifySessionChanged(sessionId);
+  }
+
+  setPacingPreferences(
+    sessionId: string,
+    preferences: SessionState["pacingPreferences"]
+  ): SessionState["pacingPreferences"] {
+    const state = setSessionPacingPreferencesState(this.requireSession(sessionId), preferences);
+    this.notifySessionChanged(sessionId);
+    return {
+      inputDebounce: { ...state.inputDebounce },
+      oneBotOutbound: state.oneBotOutbound
+    };
   }
 
   getPersistedSession(sessionId: string): PersistedSessionState {
@@ -891,6 +912,7 @@ export class SessionManager {
     modeId: string;
     participantUserId: string;
     participantLabel: string | null;
+    pacingPreferences: SessionState["pacingPreferences"];
     debugControl: SessionDebugControlState;
     historySummary: string | null;
     taskTracker: SessionTaskTracker;

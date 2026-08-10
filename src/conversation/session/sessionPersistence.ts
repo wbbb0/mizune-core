@@ -16,6 +16,7 @@ import { internalTranscriptItemSchema, transcriptMessageContentPartSchema } from
 import { sessionDataDomain, sessionsTableModel, sessionTranscriptItemsTableModel } from "./sessionDataModel.ts";
 import { createEmptySessionTaskTracker, sessionTaskTrackerSchema } from "#conversation/taskTracker/taskTrackerTypes.ts";
 import { normalizeTaskTracker } from "#conversation/taskTracker/taskTrackerNormalize.ts";
+import { sessionPacingPreferencesSchema } from "./sessionPacing.ts";
 
 const personaDraftSchema = z.object({
   name: z.string(),
@@ -119,6 +120,7 @@ export const persistedSessionStateSchema = z.object({
   title: z.string().nullable(),
   titleSource: z.enum(["default", "auto", "manual"]).nullable(),
   replyDelivery: z.enum(["onebot", "web"]).default("onebot"),
+  pacingPreferences: sessionPacingPreferencesSchema.optional(),
   pendingMessages: z.array(persistedSessionMessageSchema),
   queuedGroupReplyTargets: z.array(z.object({
     userId: z.string().min(1),
@@ -219,6 +221,7 @@ export class SessionPersistence {
         title,
         title_source,
         reply_delivery,
+        pacing_preferences_json,
         pending_messages_json,
         queued_group_reply_targets_json,
         pending_transcript_group_id_is_set,
@@ -277,6 +280,7 @@ export class SessionPersistence {
             title,
             title_source,
             reply_delivery,
+            pacing_preferences_json,
             pending_messages_json,
             queued_group_reply_targets_json,
             pending_transcript_group_id_is_set,
@@ -305,6 +309,7 @@ export class SessionPersistence {
             @title,
             @titleSource,
             @replyDelivery,
+            @pacingPreferencesJson,
             @pendingMessagesJson,
             @queuedGroupReplyTargetsJson,
             @pendingTranscriptGroupIdIsSet,
@@ -333,6 +338,7 @@ export class SessionPersistence {
             title = excluded.title,
             title_source = excluded.title_source,
             reply_delivery = excluded.reply_delivery,
+            pacing_preferences_json = excluded.pacing_preferences_json,
             pending_messages_json = excluded.pending_messages_json,
             queued_group_reply_targets_json = excluded.queued_group_reply_targets_json,
             pending_transcript_group_id_is_set = excluded.pending_transcript_group_id_is_set,
@@ -462,6 +468,7 @@ type PersistedSessionRow = {
   title: string | null;
   title_source: "default" | "auto" | "manual" | null;
   reply_delivery: "onebot" | "web" | null;
+  pacing_preferences_json: string | null;
   pending_messages_json: string;
   queued_group_reply_targets_json: string;
   pending_transcript_group_id_is_set: 0 | 1;
@@ -523,6 +530,9 @@ function toPersistedSessionParams(session: PersistedSessionState): Record<string
     title: session.title,
     titleSource: session.titleSource,
     replyDelivery: session.replyDelivery,
+    pacingPreferencesJson: session.pacingPreferences == null
+      ? null
+      : JSON.stringify(session.pacingPreferences),
     pendingMessagesJson: JSON.stringify(session.pendingMessages),
     queuedGroupReplyTargetsJson: JSON.stringify(session.queuedGroupReplyTargets ?? []),
     pendingTranscriptGroupIdIsSet: Number("pendingTranscriptGroupId" in session),
@@ -668,6 +678,9 @@ function rowToPersistedSessionState(row: PersistedSessionRow): PersistedSessionS
     title: row.title,
     titleSource: row.title_source,
     ...(row.reply_delivery ? { replyDelivery: row.reply_delivery } : {}),
+    ...(row.pacing_preferences_json
+      ? { pacingPreferences: JSON.parse(row.pacing_preferences_json) }
+      : {}),
     pendingMessages: JSON.parse(row.pending_messages_json),
     ...parseQueuedGroupReplyTargets(row.queued_group_reply_targets_json),
     ...(row.pending_transcript_group_id_is_set === 1

@@ -16,6 +16,7 @@ import type {
   ParsedCreateSessionSnapshotBody,
   ParsedSwitchSessionModeBody,
   ParsedUpdateSessionModeStateBody,
+  ParsedUpdateSessionPacingBody,
   ParsedUpdateSessionTitleBody
 } from "../routeSupport.ts";
 import type { PersistedSessionState, SessionParticipantRef, SessionState } from "#conversation/session/sessionTypes.ts";
@@ -753,6 +754,19 @@ export async function updateSessionTitle(
   return {
     ok: true as const,
     session: buildSessionSummary(deps.sessionManager.getSession(sessionId))
+  };
+}
+
+export async function updateSessionPacingPreferences(
+  deps: InternalApiSessionWriteDeps,
+  sessionId: string,
+  body: ParsedUpdateSessionPacingBody
+) {
+  const pacingPreferences = deps.sessionManager.setPacingPreferences(sessionId, body);
+  await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(sessionId));
+  return {
+    ok: true as const,
+    pacingPreferences
   };
 }
 

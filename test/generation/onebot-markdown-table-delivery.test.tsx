@@ -45,7 +45,7 @@ test("does not treat fenced or malformed markdown as a table", () => {
   assert.deepEqual(splitMarkdownTableBlocks(malformed), [{ kind: "text", text: malformed }]);
 });
 
-test("builds readable PNG image segments from markdown tables", async () => {
+test("builds readable JPEG image segments from markdown tables", async () => {
   const delivery = await buildOneBotMarkdownTableDelivery([
     "| 项目 | 数值 |",
     "| --- | ---: |",
@@ -60,9 +60,9 @@ test("builds readable PNG image segments from markdown tables", async () => {
   assert.equal(delivery.segments[0]?.type, "image");
   const file = delivery.segments[0]?.data.file;
   assert.equal(typeof file, "string");
-  const png = Buffer.from((file as string).slice("base64://".length), "base64");
-  const metadata = await sharp(png).metadata();
-  assert.equal(metadata.format, "png");
+  const jpeg = Buffer.from((file as string).slice("base64://".length), "base64");
+  const metadata = await sharp(jpeg).metadata();
+  assert.equal(metadata.format, "jpeg");
   assert.ok((metadata.width ?? 0) >= 220);
   assert.ok((metadata.height ?? 0) > 100);
 });
@@ -79,8 +79,8 @@ test("bounds image dimensions for very wide or multiline model output", async ()
 
   assert.ok(delivery);
   const file = delivery.segments[0]?.data.file;
-  const png = Buffer.from((file as string).slice("base64://".length), "base64");
-  const metadata = await sharp(png).metadata();
+  const jpeg = Buffer.from((file as string).slice("base64://".length), "base64");
+  const metadata = await sharp(jpeg).metadata();
   assert.ok((metadata.width ?? Infinity) <= 2_002);
   assert.ok((metadata.height ?? Infinity) <= 3_602);
 });

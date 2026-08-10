@@ -934,6 +934,10 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         evidence: []
       };
       deps.__state.sessions[0]!.debugMarkers = [{ kind: "debug_enabled", timestampMs: 3 }];
+      deps.__state.sessions[0]!.pacingPreferences = {
+        inputDebounce: { mode: "fixed", delayMs: 3_500 },
+        oneBotOutbound: "immediate"
+      };
       deps.__state.sessions[0]!.lastLlmUsage = {
         inputTokens: 1,
         outputTokens: 2,
@@ -970,6 +974,10 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(copiedRuntimeSession?.taskTracker.primary, null);
       assert.deepEqual(copiedRuntimeSession?.debugMarkers, []);
       assert.equal(copiedRuntimeSession?.lastLlmUsage, null);
+      assert.deepEqual(copiedRuntimeSession?.pacingPreferences, {
+        inputDebounce: { mode: "fixed", delayMs: 3_500 },
+        oneBotOutbound: "immediate"
+      });
 
       const copiedDetailResponse = await app.inject({
         method: "GET",
@@ -978,6 +986,10 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(copiedDetailResponse.statusCode, 200);
       assert.equal(copiedDetailResponse.json().session.source, "web");
       assert.deepEqual(copiedDetailResponse.json().session.participantRef, { kind: "user", id: "10001" });
+      assert.deepEqual(copiedDetailResponse.json().session.pacingPreferences, {
+        inputDebounce: { mode: "fixed", delayMs: 3_500 },
+        oneBotOutbound: "immediate"
+      });
       assert.equal(copiedDetailResponse.json().modeState.state.profile.theme, "复制前主题");
     } finally {
       await app.close();
@@ -1730,6 +1742,59 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       });
       assert.equal(detail.statusCode, 200);
       assert.equal(detail.json().session.title, "Updated title");
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("internal api reads and updates session pacing preferences", async () => {
+    const app = await createInternalApiApp(createInternalApiDeps());
+    try {
+      const createResponse = await app.inject({
+        method: "POST",
+        url: "/api/sessions",
+        payload: { title: "Pacing" }
+      });
+      const sessionId = createResponse.json().session.id;
+
+      const initialDetail = await app.inject({
+        method: "GET",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}`
+      });
+      assert.deepEqual(initialDetail.json().session.pacingPreferences, {
+        inputDebounce: { mode: "immediate" },
+        oneBotOutbound: "immediate"
+      });
+
+      const response = await app.inject({
+        method: "PATCH",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/pacing`,
+        payload: {
+          inputDebounce: { mode: "fixed", delayMs: 2_500 },
+          oneBotOutbound: "humanized"
+        }
+      });
+      assert.equal(response.statusCode, 200);
+      assert.deepEqual(response.json().pacingPreferences, {
+        inputDebounce: { mode: "fixed", delayMs: 2_500 },
+        oneBotOutbound: "humanized"
+      });
+
+      const updatedDetail = await app.inject({
+        method: "GET",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}`
+      });
+      assert.deepEqual(updatedDetail.json().session.pacingPreferences, response.json().pacingPreferences);
+
+      const invalid = await app.inject({
+        method: "PATCH",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/pacing`,
+        payload: {
+          inputDebounce: { mode: "fixed", delayMs: 120_001 },
+          oneBotOutbound: "immediate"
+        }
+      });
+      assert.equal(invalid.statusCode, 400);
     } finally {
       await app.close();
     }

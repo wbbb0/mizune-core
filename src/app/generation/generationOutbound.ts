@@ -35,9 +35,9 @@ export function createGenerationOutbound(
   } = deps;
 
   let hasSentAssistantChunk = false;
-  const pacing: GenerationDeliveryPacing = input.sendTarget.delivery === "web"
+  const resolvePacing = (): GenerationDeliveryPacing => input.sendTarget.delivery === "web"
     ? "immediate"
-    : "humanized";
+    : sessionManager.getPacingPreferences(input.sessionId).oneBotOutbound;
 
   const resolveOneBotSendTarget = (): { userId?: string; groupId?: string } => {
     const parsedSession = parseChatSessionIdentity(input.sessionId);
@@ -148,7 +148,7 @@ export function createGenerationOutbound(
     return await messageQueue.enqueueText({
       sessionId: input.sessionId,
       text: deliveryText,
-      pacing,
+      pacing: resolvePacing(),
       abortSignals: [input.abortController.signal, input.responseAbortController.signal],
       send: async () => {
         if (input.sendTarget.delivery === "web") {

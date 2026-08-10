@@ -281,7 +281,7 @@ conversation:
     disableStreamingSplit: true
 ```
 
-OneBot 等外部投递目标仍会按 `conversation.outbound` 中的延迟参数模拟发送间隔；WebUI 投递会在形成正式分段后立即显示。
+会话详情中的“会话回复节奏”可以覆盖用户消息聚合等待，并可单独开关 OneBot 模型回复的模拟输入延迟。OneBot 会话默认使用自适应输入聚合和 `conversation.outbound` 延迟参数；新建 Web 会话默认立即处理输入，回复形成正式分段后也会立即显示。复制会话到 Web 时会完整继承源会话的节奏设置。Turn Planner 主动等待更多输入的 `gate_wait` 不受会话级输入聚合设置影响。
 
 群聊中普通消息会进入会话历史作为上下文；只有明确 @ bot 或回复 bot 已发送消息才会触发回复。触发时会在当前轮输入中追加本轮回复目标，避免模型在多人群聊里切换回复对象。
 

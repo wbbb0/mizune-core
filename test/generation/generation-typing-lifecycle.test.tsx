@@ -4,6 +4,7 @@ import pino from "pino";
 import { createGenerationExecutor } from "../../src/app/generation/generationExecutor.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import type { OneBotMessageSegment } from "../../src/services/onebot/types.ts";
+import type { SessionPacingPreferences } from "../../src/conversation/session/sessionPacing.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
 function createUsage() {
@@ -94,6 +95,7 @@ function createExecutorHarness(options?: {
   onGenerateTitle?: () => Promise<string | null> | string | null;
   currentUser?: { userId: string; relationship: "owner" | "known" };
   contextExtractionQueue?: { enqueueTurn: (turn: unknown) => void };
+  pacingPreferences?: SessionPacingPreferences;
   customGenerate?: (input: {
     onReasoningDelta?: (delta: string) => void;
     onTextDelta?: (delta: string) => Promise<void>;
@@ -155,6 +157,9 @@ function createExecutorHarness(options?: {
   if (options?.modeId) {
     sessionManager.setModeId(sessionId, options.modeId, { appendSwitchMarker: false });
   }
+  if (options?.pacingPreferences) {
+    sessionManager.setPacingPreferences(sessionId, options.pacingPreferences);
+  }
   const started = sessionManager.beginSyntheticGeneration(sessionId);
   const events: string[] = [];
   const typingCalls: Array<{ enabled: boolean; userId: string; groupId?: string }> = [];
@@ -164,6 +169,7 @@ function createExecutorHarness(options?: {
     userId?: string;
     groupId?: string;
   }> = [];
+  const pacingCalls: Array<"humanized" | "immediate" | undefined> = [];
   let resolveDrain!: () => void;
   const drainPromise = new Promise<void>((resolve) => {
     resolveDrain = resolve;
@@ -240,6 +246,7 @@ function createExecutorHarness(options?: {
           pacing?: "humanized" | "immediate";
           send: () => Promise<void>;
         }) {
+          pacingCalls.push(params.pacing);
           await params.send();
         },
         getDrainPromise() {
@@ -411,6 +418,7 @@ function createExecutorHarness(options?: {
     typingCalls,
     sendTextCalls,
     sendMessageCalls,
+    pacingCalls,
     runPromise,
     resolveDrain
   };
@@ -695,6 +703,21 @@ function createExecutorHarness(options?: {
     }]);
   });
 
+  test("onebot delivery uses the session pacing preference", async () => {
+    const harness = createExecutorHarness({
+      pacingPreferences: {
+        inputDebounce: { mode: "adaptive" },
+        oneBotOutbound: "immediate"
+      }
+    });
+
+    await waitForEvents(harness.events, 2);
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.deepEqual(harness.pacingCalls, ["immediate"]);
+  });
+
   test("onebot delivery sends plain text while storing markdown response text", async () => {
     const harness = createExecutorHarness({
       customGenerate: async (input) => {
@@ -767,7 +790,7 @@ function createExecutorHarness(options?: {
     assert.deepEqual(call?.message.map((segment) => segment.type), ["text", "image", "text"]);
     const imageFile = call?.message[1]?.data.file;
     assert.equal(typeof imageFile, "string");
-    assert.match(imageFile as string, /^base64:\/\/iVBOR/);
+    assert.match(imageFile as string, /^base64:\/\/\/9j\//);
 
     const assistantHistoryText = harness.sessionManager
       .getSession(harness.sessionId)

@@ -7,12 +7,24 @@ import { readFile } from "node:fs/promises";
       new URL("../../../webui/src/components/sessions/SessionStatePanel.vue", import.meta.url),
       "utf8"
     );
+    const pacingControl = await readFile(
+      new URL("../../../webui/src/components/sessions/SessionPacingControl.vue", import.meta.url),
+      "utf8"
+    );
 
     assert.match(source, /标题/);
     assert.doesNotMatch(source, /保存标题/);
     assert.doesNotMatch(source, /重新生成标题/);
     assert.match(source, /主体类型/);
     assert.match(source, /主体 ID/);
+    assert.match(source, /<SessionPacingControl/);
+    assert.match(pacingControl, /collapsed-title="会话回复节奏"/);
+    assert.match(pacingControl, /用户消息聚合等待/);
+    assert.match(pacingControl, /全局自适应/);
+    assert.match(pacingControl, /立即处理/);
+    assert.match(pacingControl, /固定等待秒数/);
+    assert.match(pacingControl, /OneBot 回复模拟输入延迟/);
+    assert.match(pacingControl, /sessionsApi\.updatePacing/);
     assert.match(source, /<pre[^>]*overflow-auto[^>]*>{{ detail\?\.session\.historySummary \|\| "暂无摘要" }}/);
     assert.doesNotMatch(source, /function formatJson/);
     assert.doesNotMatch(source, /formatJson\(detail\?\.session\.debugControl/);

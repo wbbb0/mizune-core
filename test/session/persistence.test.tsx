@@ -11,6 +11,9 @@ import { clearSessionState } from "../../src/conversation/session/sessionMutatio
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createEmptySessionTaskTracker } from "../../src/conversation/taskTracker/taskTrackerTypes.ts";
+import { sessionDataDomain } from "../../src/conversation/session/sessionDataModel.ts";
+import { createTableGroupsFromDataDomain } from "../../src/data/model/index.ts";
+import { SqliteService } from "../../src/data/sqlite/sqliteService.ts";
 
 async function withDataDir(name: string, fn: (dataDir: string) => Promise<void>) {
   const dataDir = await mkdtemp(join(tmpdir(), `${name}-`));
@@ -38,6 +41,91 @@ test("session persistence round-trips title titleSource and participantRef", asy
     assert.equal(persisted.titleSource, "default");
     assert.ok(!("participantLabel" in persisted));
   assert.ok(!("participantUserId" in persisted));
+});
+
+test("session persistence round-trips pacing preferences", async () => {
+  await withDataDir("llm-bot-session-pacing-test", async (dataDir: string) => {
+    const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
+    await persistence.init();
+    const session = createSessionState({
+      id: "web:pacing",
+      type: "private",
+      source: "web"
+    });
+    session.pacingPreferences = {
+      inputDebounce: { mode: "fixed", delayMs: 2_500 },
+      oneBotOutbound: "humanized"
+    };
+
+    await persistence.save(toPersistedSessionState(session));
+    const [loaded] = await persistence.loadAll();
+    assert.ok(loaded);
+    assert.deepEqual(loaded.pacingPreferences, session.pacingPreferences);
+    assert.deepEqual(restoreSessionState(loaded).pacingPreferences, session.pacingPreferences);
+  });
+});
+
+test("sessions without pacing preferences derive defaults from their source", () => {
+  const web = toPersistedSessionState(createSessionState({
+    id: "web:legacy-pacing",
+    type: "private",
+    source: "web"
+  }));
+  const oneBot = toPersistedSessionState(createSessionState({
+    id: "qqbot:p:legacy-pacing",
+    type: "private",
+    source: "onebot"
+  }));
+  delete web.pacingPreferences;
+  delete oneBot.pacingPreferences;
+
+  assert.deepEqual(restoreSessionState(web).pacingPreferences, {
+    inputDebounce: { mode: "immediate" },
+    oneBotOutbound: "immediate"
+  });
+  assert.deepEqual(restoreSessionState(oneBot).pacingPreferences, {
+    inputDebounce: { mode: "adaptive" },
+    oneBotOutbound: "humanized"
+  });
+});
+
+test("session schema version 6 migrates to pacing preferences storage", async () => {
+  await withDataDir("llm-bot-session-pacing-migration-test", async (dataDir: string) => {
+    const logger = pino({ level: "silent" });
+    const sessionsTable = sessionDataDomain.tables.sessions;
+    assert.ok(sessionsTable);
+    const oldDomain = {
+      ...sessionDataDomain,
+      schemaVersion: 6,
+      minReadableSchemaVersion: 6,
+      tables: {
+        ...sessionDataDomain.tables,
+        sessions: {
+          ...sessionsTable,
+          columns: sessionsTable.columns.filter((column) => column.key !== "pacingPreferencesJson")
+        }
+      }
+    };
+    const dbPath = join(dataDir, "sessions", "sessions.sqlite");
+    const oldHandle = await new SqliteService(logger).openDatabase({
+      databaseId: "sessions",
+      dbPath,
+      tableGroups: createTableGroupsFromDataDomain(oldDomain)
+    });
+    oldHandle.close();
+
+    const persistence = new SessionPersistence(dataDir, logger);
+    await persistence.init();
+    const persisted = toPersistedSessionState(createSessionState({
+      id: "web:migrated-pacing",
+      type: "private",
+      source: "web"
+    }));
+    await persistence.save(persisted);
+
+    const [loaded] = await persistence.loadAll();
+    assert.deepEqual(loaded?.pacingPreferences, persisted.pacingPreferences);
+  });
 });
 
 test("session persistence stores operationMode drafts", async () => {

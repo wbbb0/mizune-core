@@ -33,6 +33,7 @@ import {
   switchSessionMode,
   updateContextItem,
   updateSessionModeState,
+  updateSessionPacingPreferences,
   updateSessionTitle
 } from "../application/basicAdminService.ts";
 import { listRequests, listScheduledJobs } from "../application/operationsAdminService.ts";
@@ -55,6 +56,7 @@ import {
   parseOrReply,
   parseSwitchSessionModeBody,
   parseUpdateSessionTitleBody,
+  parseUpdateSessionPacingBody,
   parseUpdateSessionModeStateBody,
   parseSessionParams,
   parseSessionSnapshotParams,
@@ -696,6 +698,22 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
     try {
       return await updateSessionTitle(services.config, params.sessionId, body);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.patch("/api/sessions/:sessionId/pacing", async (request, reply) => {
+    const params = parseSessionParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    const body = parseUpdateSessionPacingBody(request.body);
+    if (!parseOrReply(reply, body)) {
+      return reply;
+    }
+    try {
+      return await updateSessionPacingPreferences(services.config, params.sessionId, body);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
     }

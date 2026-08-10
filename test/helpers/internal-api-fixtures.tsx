@@ -14,6 +14,10 @@ import type { InternalTranscriptItem, PersistedSessionState } from "../../src/co
 import type { SessionSnapshotPayload, SessionSnapshotSummary } from "../../src/conversation/session/sessionSnapshotStore.ts";
 import { createNormalSessionOperationMode } from "../../src/conversation/session/sessionOperationMode.ts";
 import { createEmptySessionTaskTracker } from "../../src/conversation/taskTracker/taskTrackerTypes.ts";
+import {
+  createDefaultSessionPacingPreferences,
+  type SessionPacingPreferences
+} from "../../src/conversation/session/sessionPacing.ts";
 import type { ContextManagementItem } from "../../src/context/contextTypes.ts";
 import { createInitialScenarioHostSessionState, type ScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
 import type { ShellRunParams, ShellRunResult, ShellSession } from "../../src/services/shell/types.ts";
@@ -35,6 +39,7 @@ export interface InternalApiFixtureState {
     participantLabel: string | null;
     title: string | null;
     titleSource: "default" | "auto" | "manual" | null;
+    pacingPreferences?: SessionPacingPreferences;
     phase: { kind: string };
     pendingMessages: Array<{ id?: number }>;
     taskTracker: NonNullable<PersistedSessionState["taskTracker"]>;
@@ -115,6 +120,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       participantLabel: "Alice",
       title: "Alice",
       titleSource: "manual",
+      pacingPreferences: createDefaultSessionPacingPreferences("onebot"),
       phase: { kind: "idle" },
       pendingMessages: [{ id: 1 }],
       taskTracker: createEmptySessionTaskTracker(),
@@ -408,6 +414,8 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           participantLabel: session.participantLabel,
           title: session.title,
           titleSource: session.titleSource,
+          pacingPreferences: session.pacingPreferences
+            ?? createDefaultSessionPacingPreferences(session.source),
           debugControl: {
             enabled: false,
             oncePending: false
@@ -443,6 +451,8 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           participantLabel: existing?.participantLabel ?? "Alice",
           title: existing?.title ?? "Alice",
           titleSource: existing?.titleSource ?? "manual",
+          pacingPreferences: existing?.pacingPreferences
+            ?? createDefaultSessionPacingPreferences(existing?.source ?? (sessionId.startsWith("web:") ? "web" : "onebot")),
           phase: existing?.phase ?? { kind: "idle" },
           pendingMessages: [],
           taskTracker: existing?.taskTracker ?? createEmptySessionTaskTracker(),
@@ -510,6 +520,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           participantLabel: title ?? participantRef.id,
           title,
           titleSource: target.titleSource ?? (title ? "manual" : "default"),
+          pacingPreferences: createDefaultSessionPacingPreferences(target.source ?? "onebot"),
           phase: { kind: "idle" },
           pendingMessages: [],
           taskTracker: createEmptySessionTaskTracker(),
@@ -592,6 +603,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           title: session.title,
           titleSource: session.titleSource,
           replyDelivery: session.source === "web" ? "web" : "onebot",
+          pacingPreferences: session.pacingPreferences,
           pendingMessages: [],
           taskTracker: session.taskTracker,
           internalTranscript: session.internalTranscript,
@@ -618,6 +630,8 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           participantLabel: item.title ?? item.participantRef.id,
           title: item.title,
           titleSource: item.titleSource,
+          pacingPreferences: item.pacingPreferences
+            ?? createDefaultSessionPacingPreferences(item.source ?? "onebot"),
           phase: { kind: "idle" },
           pendingMessages: [],
           taskTracker: item.taskTracker ?? createEmptySessionTaskTracker(),
@@ -639,6 +653,15 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       },
       getLlmVisibleHistory() {
         return [];
+      },
+      setPacingPreferences(sessionId: string, preferences: SessionPacingPreferences) {
+        const session = state.sessions.find((entry) => entry.id === sessionId);
+        if (!session) {
+          throw new Error(`Unknown session: ${sessionId}`);
+        }
+        session.pacingPreferences = structuredClone(preferences);
+        notifySessionChanged(sessionId);
+        return structuredClone(preferences);
       },
       appendSyntheticPendingMessage() {},
       appendHistory() {},

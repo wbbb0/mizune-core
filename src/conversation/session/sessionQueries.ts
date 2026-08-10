@@ -14,6 +14,7 @@ import type { AppConfig } from "#config/config.ts";
 import { normalizeTranscriptItems } from "./transcriptMetadata.ts";
 import { resolveSessionParticipantLabel } from "./sessionIdentity.ts";
 import { projectTaskTrackerForSessionView } from "#conversation/taskTracker/taskTrackerView.ts";
+import { cloneSessionPacingPreferences } from "./sessionPacing.ts";
 
 // Provides read-only projections and snapshots derived from session state.
 export function cloneSessionState(session: SessionState): SessionState {
@@ -21,6 +22,7 @@ export function cloneSessionState(session: SessionState): SessionState {
     ...session,
     participantRef: { ...session.participantRef },
     operationMode: cloneSessionOperationMode(session.operationMode),
+    pacingPreferences: cloneSessionPacingPreferences(session.pacingPreferences),
     debugControl: { ...session.debugControl },
     pendingMessages: [...session.pendingMessages],
     pendingSteerMessages: [...session.pendingSteerMessages],
@@ -86,6 +88,7 @@ export function getSessionViewSnapshot(session: SessionState): {
   participantUserId: string;
   participantLabel: string | null;
   debugControl: SessionDebugControlState;
+  pacingPreferences: SessionState["pacingPreferences"];
   historySummary: string | null;
   taskTracker: SessionState["taskTracker"];
   internalTranscript: NormalizedInternalTranscriptItem[];
@@ -106,6 +109,7 @@ export function getSessionViewSnapshot(session: SessionState): {
     modeId: session.modeId,
     participantUserId: session.participantRef.id,
     participantLabel,
+    pacingPreferences: cloneSessionPacingPreferences(session.pacingPreferences),
     debugControl: { ...session.debugControl },
     historySummary: session.historySummary,
     taskTracker: projectTaskTrackerForSessionView(session.taskTracker),

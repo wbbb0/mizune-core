@@ -162,7 +162,7 @@ export async function buildOneBotMarkdownTableDelivery(
     }
 
     try {
-      const images = await renderMarkdownTablePng(block.table);
+      const images = await renderMarkdownTableJpeg(block.table);
       for (const image of images) {
         segments.push({
           type: "image",
@@ -190,7 +190,7 @@ export async function buildOneBotMarkdownTableDelivery(
   };
 }
 
-export async function renderMarkdownTablePng(table: MarkdownTable): Promise<Buffer[]> {
+export async function renderMarkdownTableJpeg(table: MarkdownTable): Promise<Buffer[]> {
   const normalized = limitTableSize(table);
   const columnWidths = calculateColumnWidths(normalized);
   const header = createRenderedRow(normalized.headers, columnWidths, true, false);
@@ -200,7 +200,12 @@ export async function renderMarkdownTablePng(table: MarkdownTable): Promise<Buff
   const pages = paginateRows(header, rows);
   return await Promise.all(pages.map(async (page) => {
     const svg = renderTableSvg(page, columnWidths, normalized.alignments);
-    return await sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toBuffer();
+    return await sharp(Buffer.from(svg)).jpeg({
+      quality: 82,
+      chromaSubsampling: "4:2:0",
+      progressive: true,
+      mozjpeg: true
+    }).toBuffer();
   }));
 }
 

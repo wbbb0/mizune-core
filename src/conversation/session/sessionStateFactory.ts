@@ -14,6 +14,10 @@ import { resolveSessionDefaultTitle } from "./sessionTitle.ts";
 import { normalizeTranscriptItems } from "./transcriptMetadata.ts";
 import { createEmptySessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
 import { normalizeTaskTracker } from "#conversation/taskTracker/taskTrackerNormalize.ts";
+import {
+  cloneSessionPacingPreferences,
+  createDefaultSessionPacingPreferences
+} from "./sessionPacing.ts";
 
 // Creates and converts runtime session state snapshots.
 
@@ -51,6 +55,7 @@ export function createSessionState(target: {
     }),
     titleSource: target.titleSource ?? (normalizedTitle ? "manual" : "default"),
     replyDelivery: source,
+    pacingPreferences: createDefaultSessionPacingPreferences(source),
     debugControl: {
       enabled: false,
       oncePending: false
@@ -118,6 +123,9 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
     title,
     titleSource: item.titleSource ?? (String(item.title ?? "").trim() ? "manual" : "default"),
     replyDelivery: item.replyDelivery ?? item.source ?? getSessionSource(item.id),
+    pacingPreferences: cloneSessionPacingPreferences(
+      item.pacingPreferences ?? createDefaultSessionPacingPreferences(source)
+    ),
     debugControl: {
       enabled: item.debugControl?.enabled === true,
       oncePending: false
@@ -223,6 +231,7 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     title: session.title,
     titleSource: session.titleSource,
     replyDelivery: session.replyDelivery,
+    pacingPreferences: cloneSessionPacingPreferences(session.pacingPreferences),
     debugControl: {
       enabled: session.debugControl.enabled
     },

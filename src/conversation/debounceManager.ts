@@ -19,6 +19,10 @@ export class DebounceManager {
   ): void {
     const session = this.sessionManager.getSession(sessionId);
     const cfg = this.config.conversation.debounce;
+    const reason = options?.reason ?? "default";
+    const preference = reason === "default"
+      ? session.pacingPreferences.inputDebounce
+      : { mode: "adaptive" as const };
     const defaultBaseMs = cfg.defaultBaseSeconds * 1000;
     const minBaseMs = cfg.minBaseSeconds * 1000;
     const maxBaseMs = cfg.maxBaseSeconds * 1000;
@@ -27,14 +31,26 @@ export class DebounceManager {
     const alpha = cfg.smoothingFactor;
     const extraMultiplier = options?.multiplierOverride ?? 1;
 
-    const previousSmoothed = session.smoothedGapMs ?? defaultBaseMs;
     const latestGapMs = session.latestGapMs ?? defaultBaseMs;
-    const smoothedBaseMs = previousSmoothed + alpha * (latestGapMs - previousSmoothed);
-    const clampedBaseMs = Math.min(maxBaseMs, Math.max(minBaseMs, smoothedBaseMs));
-    const randomRatio = cfg.randomRatioMin < cfg.randomRatioMax ? Math.random() * (randomRatioMax - randomRatioMin) + randomRatioMin : 1;
-    const actualDelayMs = Math.round(clampedBaseMs * cfg.finalMultiplier * extraMultiplier * randomRatio);
-
-    session.smoothedGapMs = clampedBaseMs;
+    let smoothedBaseMs: number | null = null;
+    let randomRatio = 1;
+    let actualDelayMs: number;
+    if (preference.mode === "immediate") {
+      actualDelayMs = 0;
+    } else if (preference.mode === "fixed") {
+      actualDelayMs = preference.delayMs;
+    } else {
+      const previousSmoothed = session.smoothedGapMs ?? defaultBaseMs;
+      smoothedBaseMs = Math.min(
+        maxBaseMs,
+        Math.max(minBaseMs, previousSmoothed + alpha * (latestGapMs - previousSmoothed))
+      );
+      randomRatio = cfg.randomRatioMin < cfg.randomRatioMax
+        ? Math.random() * (randomRatioMax - randomRatioMin) + randomRatioMin
+        : 1;
+      actualDelayMs = Math.round(smoothedBaseMs * cfg.finalMultiplier * extraMultiplier * randomRatio);
+      session.smoothedGapMs = smoothedBaseMs;
+    }
     this.sessionManager.clearDebounceTimer(sessionId);
     const timer = setTimeout(() => {
       this.sessionManager.clearDebounceTimer(sessionId);
@@ -45,8 +61,9 @@ export class DebounceManager {
       {
         sessionId,
         latestGapMs,
-        smoothedBaseMs: Math.round(clampedBaseMs),
-        reason: options?.reason ?? "default",
+        smoothedBaseMs: smoothedBaseMs == null ? null : Math.round(smoothedBaseMs),
+        reason,
+        pacingMode: preference.mode,
         extraMultiplier,
         randomRatio,
         actualDelayMs

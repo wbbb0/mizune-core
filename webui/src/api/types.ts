@@ -332,6 +332,7 @@ export interface SessionDetailSnapshot {
   title: string | null;
   titleSource: SessionTitleSource | null;
   titleGenerationAvailable: boolean;
+  pacingPreferences: SessionPacingPreferences;
   debugControl: SessionDebugControlState;
   historySummary: string | null;
   taskTracker: SessionTaskTracker;
@@ -346,6 +347,14 @@ export interface SessionDetailSnapshot {
   isGenerating: boolean;
   historyRevision: number;
   mutationEpoch: number;
+}
+
+export interface SessionPacingPreferences {
+  inputDebounce:
+    | { mode: "adaptive" }
+    | { mode: "immediate" }
+    | { mode: "fixed"; delayMs: number };
+  oneBotOutbound: "humanized" | "immediate";
 }
 
 export interface ScenarioHostObjective {

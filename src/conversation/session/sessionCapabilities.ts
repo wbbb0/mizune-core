@@ -211,6 +211,7 @@ export interface SessionViewSnapshot {
   modeId: string;
   participantUserId: string;
   participantLabel: string | null;
+  pacingPreferences: SessionState["pacingPreferences"];
   debugControl: SessionDebugControlState;
   historySummary: string | null;
   taskTracker: SessionTaskTracker;
@@ -243,6 +244,10 @@ export interface SessionAdminMutationAccess {
   }): SessionState;
   getSession(sessionId: string): SessionState;
   setTitle(sessionId: string, title: string, titleSource: "default" | "auto" | "manual"): SessionState;
+  setPacingPreferences(
+    sessionId: string,
+    preferences: SessionState["pacingPreferences"]
+  ): SessionState["pacingPreferences"];
   appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void;
   setModeId(sessionId: string, modeId: string, options?: { appendSwitchMarker?: boolean }): boolean;
   getPersistedSession(sessionId: string): PersistedSessionState;
@@ -524,6 +529,7 @@ export interface SessionGenerationQueueAccess {
 }
 
 export interface SessionGenerationOutboundAccess {
+  getPacingPreferences(sessionId: string): SessionState["pacingPreferences"];
   appendActiveAssistantResponseChunkIfResponseEpochMatches(
     sessionId: string,
     expectedResponseEpoch: number,

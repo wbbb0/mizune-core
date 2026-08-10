@@ -2,10 +2,11 @@
 import { computed, reactive, ref, watch } from "vue";
 import { RefreshCw } from "lucide-vue-next";
 import { sessionsApi } from "@/api/sessions";
-import type { MemoryContextItem, SessionDetailResult, SessionTaskTracker } from "@/api/types";
+import type { MemoryContextItem, SessionDetailResult, SessionPacingPreferences, SessionTaskTracker } from "@/api/types";
 import type { ActiveSession } from "@/stores/sessions";
 import { ApiError } from "@/api/client";
 import { WorkbenchAreaHeader, WorkbenchCard, WorkbenchDisclosure, WorkbenchEmptyState } from "@workbench-kit/vue";
+import SessionPacingControl from "./SessionPacingControl.vue";
 
 const props = defineProps<{
   session: ActiveSession;
@@ -301,6 +302,19 @@ async function loadDetail() {
   }
 }
 
+function updatePacingPreferences(preferences: SessionPacingPreferences) {
+  if (!detail.value || detail.value.session.id !== props.session.id) {
+    return;
+  }
+  detail.value = {
+    ...detail.value,
+    session: {
+      ...detail.value.session,
+      pacingPreferences: preferences
+    }
+  };
+}
+
 </script>
 
 <template>
@@ -348,6 +362,14 @@ async function loadDetail() {
             </div>
           </div>
         </WorkbenchDisclosure>
+
+        <SessionPacingControl
+          :session-id="props.session.id"
+          :source="props.session.source"
+          :preferences="detail?.session.pacingPreferences ?? null"
+          :disabled="loading"
+          @updated="updatePacingPreferences"
+        />
 
         <WorkbenchDisclosure
           :expanded="isDisclosureExpanded('history-summary')"
