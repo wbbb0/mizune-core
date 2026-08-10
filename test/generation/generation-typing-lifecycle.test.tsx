@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import pino from "pino";
 import { createGenerationExecutor } from "../../src/app/generation/generationExecutor.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
+import type { OneBotMessageSegment } from "../../src/services/onebot/types.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
 function createUsage() {
@@ -158,6 +159,11 @@ function createExecutorHarness(options?: {
   const events: string[] = [];
   const typingCalls: Array<{ enabled: boolean; userId: string; groupId?: string }> = [];
   const sendTextCalls: Array<{ text: string; userId?: string; groupId?: string }> = [];
+  const sendMessageCalls: Array<{
+    message: OneBotMessageSegment[];
+    userId?: string;
+    groupId?: string;
+  }> = [];
   let resolveDrain!: () => void;
   const drainPromise = new Promise<void>((resolve) => {
     resolveDrain = resolve;
@@ -257,6 +263,21 @@ function createExecutorHarness(options?: {
             retcode: 0,
             data: {
               message_id: 1
+            }
+          };
+        },
+        async sendMessage(params: {
+          message: OneBotMessageSegment[];
+          userId?: string;
+          groupId?: string;
+        }) {
+          sendMessageCalls.push(params);
+          events.push("send:[表格图片]");
+          return {
+            status: "ok",
+            retcode: 0,
+            data: {
+              message_id: 2
             }
           };
         }
@@ -389,6 +410,7 @@ function createExecutorHarness(options?: {
     events,
     typingCalls,
     sendTextCalls,
+    sendMessageCalls,
     runPromise,
     resolveDrain
   };
@@ -710,6 +732,50 @@ function createExecutorHarness(options?: {
       assistantHistoryText,
       "**重点**\n\n- 第一项\n- 第二项\n\n```ts\nconst value = 1;\n```"
     );
+  });
+
+  test("onebot delivery renders markdown tables as image segments while storing markdown", async () => {
+    const markdown = [
+      "下面是结果：",
+      "",
+      "| 项目 | 数值 |",
+      "| :--- | ---: |",
+      "| 苹果 | 12 |",
+      "| 香蕉 | 8 |",
+      "",
+      "以上。"
+    ].join("\n");
+    const harness = createExecutorHarness({
+      customGenerate: async () => ({
+        text: markdown,
+        reasoningContent: "",
+        usage: createUsage()
+      })
+    });
+
+    await waitForCondition(
+      () => harness.sendMessageCalls.length === 1,
+      "table message was not sent"
+    );
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.equal(harness.sendTextCalls.length, 0);
+    assert.equal(harness.sendMessageCalls.length, 1);
+    const call = harness.sendMessageCalls[0];
+    assert.equal(call?.userId, "owner");
+    assert.deepEqual(call?.message.map((segment) => segment.type), ["text", "image", "text"]);
+    const imageFile = call?.message[1]?.data.file;
+    assert.equal(typeof imageFile, "string");
+    assert.match(imageFile as string, /^base64:\/\/iVBOR/);
+
+    const assistantHistoryText = harness.sessionManager
+      .getSession(harness.sessionId)
+      .internalTranscript
+      .filter((item) => item.kind === "assistant_message")
+      .map((item) => item.text)
+      .join("\n\n");
+    assert.equal(assistantHistoryText, markdown);
   });
 
   test("typing tests can bypass abort grace delay via injected wait function", async () => {

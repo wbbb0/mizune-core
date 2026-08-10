@@ -10,6 +10,7 @@ import type {
   GenerationCommittedTextSink,
   GenerationDeliveryPacing
 } from "./generationOutputContracts.ts";
+import { buildOneBotMarkdownTableDelivery } from "./oneBotMarkdownTableDelivery.ts";
 
 export interface GenerationOutboundInput {
   sessionId: string;
@@ -60,11 +61,25 @@ export function createGenerationOutbound(
     const storedText = sanitizeStoredOutboundText(chunk, {
       stripLeadingMessageHeaders: !hasSentAssistantChunk
     }).trim();
-    const deliveryText = input.sendTarget.delivery === "onebot"
-      ? sanitizeOneBotOutboundText(storedText).trim()
-      : storedText;
+    const tableDelivery = input.sendTarget.delivery === "onebot" && storedText
+      ? await buildOneBotMarkdownTableDelivery(storedText)
+      : null;
+    const deliveryText = tableDelivery?.pacingText ?? (
+      input.sendTarget.delivery === "onebot"
+        ? sanitizeOneBotOutboundText(storedText).trim()
+        : storedText
+    );
     if (!storedText || !deliveryText) {
       return false;
+    }
+    if (tableDelivery?.renderErrors.length) {
+      logger.warn(
+        {
+          sessionId: input.sessionId,
+          errors: tableDelivery.renderErrors
+        },
+        "onebot_markdown_table_render_failed"
+      );
     }
     hasSentAssistantChunk = true;
     const appendBufferedChunk = async () => {
@@ -144,15 +159,15 @@ export function createGenerationOutbound(
           return;
         }
 
-        const payload = await oneBotClient.sendText({
-          text: deliveryText,
-          ...resolveOneBotSendTarget()
-        });
+        const target = resolveOneBotSendTarget();
+        const payload = tableDelivery == null
+          ? await oneBotClient.sendText({ text: deliveryText, ...target })
+          : await oneBotClient.sendMessage({ message: tableDelivery.segments, ...target });
         const messageId = normalizeOneBotMessageId(payload.data?.message_id);
         if (messageId != null) {
           sessionManager.recordSentMessage(input.sessionId, {
             messageId,
-            text: deliveryText,
+            text: tableDelivery?.sentLogText ?? deliveryText,
             sentAt: Date.now()
           });
         }
