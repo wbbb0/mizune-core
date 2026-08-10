@@ -118,7 +118,6 @@ export async function processIncomingMessage(
         groupMatched: false,
         userMatched: true,
         directlyAddressed: true,
-        replyToBot: false,
         shouldTriggerResponse: true,
         threadAction: "reply_now" as const,
         replyDecision: "reply_small" as const,

@@ -153,7 +153,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.equal(sessionManager.getReplyDelivery(session.id), "web");
   });
 
-  test("group non-mention messages do not change the session reply delivery flag", async () => {
+  test("group replies to bot without an explicit mention stay monitored", async () => {
     const config = createTestAppConfig({
       whitelist: {
         enabled: false
@@ -162,6 +162,23 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     const sessionManager = new SessionManager(config);
     const session = sessionManager.ensureSession({ id: "qqbot:g:20001", type: "group" });
     sessionManager.setReplyDelivery(session.id, "web");
+    const started = sessionManager.beginSyntheticGeneration(session.id);
+    assert.equal(sessionManager.setActiveAssistantDraftResponseIfResponseEpochMatches(
+      session.id,
+      started.responseEpoch,
+      {
+        chatType: "group",
+        userId: "u_test_user",
+        senderName: "tester"
+      },
+      "正在回复 tester",
+      20
+    ), true);
+    sessionManager.recordSentMessage(session.id, {
+      messageId: 2017477074,
+      text: "bot 之前发送的消息",
+      sentAt: 1
+    });
 
     await processIncomingMessage({
       inboundDelivery: "onebot",
@@ -223,13 +240,15 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       handleDirectCommand: async () => {},
       persistSession: () => {},
       sendImmediateText: async () => {},
-      flushSession: () => {}
+      flushSession: () => {
+        throw new Error("should not flush while active response is still running");
+      }
     }, {
       chatType: "group",
       userId: "10001",
       groupId: "20001",
       senderName: "tester",
-      text: "路过一下",
+      text: "你看看功能重叠评估",
       images: [],
       audioSources: [],
       audioIds: [],
@@ -238,17 +257,80 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       emojiIds: [],
       attachments: [],
       forwardIds: [],
-      replyMessageId: null,
+      replyMessageId: "2017477074",
       mentionUserIds: [],
       mentionedAll: false,
       isAtMentioned: false
     });
 
     assert.equal(sessionManager.getReplyDelivery(session.id), "web");
+    assert.equal(started.abortController.signal.aborted, false);
+    assert.equal(started.responseAbortController.signal.aborted, false);
+    assert.equal(sessionManager.hasActiveResponse(session.id), true);
+    const current = sessionManager.getSession(session.id);
+    assert.equal(current.pendingMessages.length, 0);
+    assert.equal(current.pendingSteerMessages.length, 0);
+    assert.equal(current.queuedGroupReplyTargets.length, 0);
     const transcript = sessionManager.getSessionView(session.id).internalTranscript;
     assert.equal(transcript.length, 1);
     assert.equal(transcript[0]?.kind, "user_message");
+    assert.equal(transcript[0]?.kind === "user_message" ? transcript[0].replyMessageId : null, "2017477074");
     assert.equal(sessionManager.getLlmVisibleHistory(session.id).length, 1);
+  });
+
+  test("group replies with an explicit bot mention still trigger", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const session = sessionManager.ensureSession({ id: "qqbot:g:20001", type: "group" });
+    sessionManager.recordSentMessage(session.id, {
+      messageId: 2017477074,
+      text: "bot 之前发送的消息",
+      sentAt: 1
+    });
+
+    const decision = await resolveTriggerDecision({
+      config,
+      whitelistStore: {
+        hasUser() {
+          return false;
+        },
+        hasGroup() {
+          return true;
+        }
+      } as any,
+      conversationAccess: {
+        recordSeenGroupMember: async () => {}
+      } as any,
+      sessionManager
+    }, {
+      session,
+      user: { relationship: "known" },
+      setupState: { state: "ready" },
+      enrichedMessage: {
+        chatType: "group",
+        userId: "u_test_user",
+        groupId: "20001",
+        senderName: "tester",
+        text: "@bot 你看看功能重叠评估",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        attachments: [],
+        forwardIds: [],
+        replyMessageId: "2017477074",
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: true
+      }
+    } as any);
+
+    assert.equal(decision.directlyAddressed, true);
+    assert.equal(decision.shouldTriggerResponse, true);
+    assert.equal(decision.threadAction, "reply_now");
+    assert.equal(decision.reason, "群聊明确 @ bot");
   });
 
   test("group mention from another user is queued without interrupting an active response", async () => {

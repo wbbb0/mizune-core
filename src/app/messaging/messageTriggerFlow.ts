@@ -30,7 +30,6 @@ export async function resolveTriggerDecision(
     );
   }
   const userMatched = isWhitelistedUser(services.whitelistStore, context.enrichedMessage);
-  const replyToBot = isReplyToBot(context.session, context.enrichedMessage.replyMessageId);
 
   if (context.enrichedMessage.chatType === "private") {
     const hasActiveResponse = services.sessionManager.hasActiveResponse(context.session.id);
@@ -38,7 +37,6 @@ export async function resolveTriggerDecision(
       groupMatched: false,
       userMatched,
       directlyAddressed: true,
-      replyToBot: false,
       shouldTriggerResponse: true,
       threadAction: hasActiveResponse ? "soft_interrupt" : "reply_now",
       replyDecision: "reply_small",
@@ -48,14 +46,13 @@ export async function resolveTriggerDecision(
     };
   }
 
-  const directlyAddressed = context.enrichedMessage.isAtMentioned || replyToBot;
+  const directlyAddressed = context.enrichedMessage.isAtMentioned;
   const accessAllowed = context.user.relationship === "owner" || userMatched || groupMatched;
   if (!accessAllowed) {
     return buildNoReplyDecision({
       groupMatched,
       userMatched,
       directlyAddressed,
-      replyToBot,
       reason: "群聊用户或群不在白名单，且不是 owner"
     });
   }
@@ -64,8 +61,7 @@ export async function resolveTriggerDecision(
       groupMatched,
       userMatched,
       directlyAddressed,
-      replyToBot,
-      reason: "群聊未直接 @ bot 或回复 bot 消息"
+      reason: "群聊未明确 @ bot"
     });
   }
 
@@ -76,7 +72,6 @@ export async function resolveTriggerDecision(
       groupMatched,
       userMatched,
       directlyAddressed,
-      replyToBot,
       shouldTriggerResponse: true,
       threadAction: "queue_next_thread",
       replyDecision: "reply_small",
@@ -90,7 +85,6 @@ export async function resolveTriggerDecision(
       groupMatched,
       userMatched,
       directlyAddressed,
-      replyToBot,
       shouldTriggerResponse: true,
       threadAction: "queue_next_thread",
       replyDecision: "reply_small",
@@ -105,7 +99,6 @@ export async function resolveTriggerDecision(
       groupMatched,
       userMatched,
       directlyAddressed,
-      replyToBot,
       shouldTriggerResponse: true,
       threadAction: "soft_interrupt",
       replyDecision: "reply_small",
@@ -119,13 +112,12 @@ export async function resolveTriggerDecision(
     groupMatched,
     userMatched,
     directlyAddressed,
-    replyToBot,
     shouldTriggerResponse: true,
     threadAction: "reply_now",
     replyDecision: "reply_small",
     interruptPolicy: "none",
     priority: context.user.relationship === "owner" ? "owner" : "normal",
-    reason: "群聊直接 @ bot 或回复 bot 消息"
+    reason: "群聊明确 @ bot"
   };
 }
 
@@ -135,20 +127,6 @@ function isWhitelistedUser(
 ): boolean {
   return whitelistStore.hasUser(message.userId)
     || (message.externalUserId != null && whitelistStore.hasUser(message.externalUserId));
-}
-
-function isReplyToBot(
-  session: { sentMessages: Array<{ messageId: number }> },
-  replyMessageId: string | null
-): boolean {
-  if (!replyMessageId) {
-    return false;
-  }
-  const numericId = Number(replyMessageId);
-  if (!Number.isSafeInteger(numericId)) {
-    return false;
-  }
-  return session.sentMessages.some((item) => item.messageId === numericId);
 }
 
 function resolveCurrentGroupReplyTarget(session: SessionState): { userId: string } | null {
@@ -172,14 +150,12 @@ function buildNoReplyDecision(input: {
   groupMatched: boolean;
   userMatched: boolean;
   directlyAddressed: boolean;
-  replyToBot: boolean;
   reason: string;
 }): TriggerDecision {
   return {
     groupMatched: input.groupMatched,
     userMatched: input.userMatched,
     directlyAddressed: input.directlyAddressed,
-    replyToBot: input.replyToBot,
     shouldTriggerResponse: false,
     threadAction: "record_only",
     replyDecision: "no_reply",
@@ -257,9 +233,9 @@ export function handleNonTriggeringMessage(
 
 function shouldUpdateSessionReplyDelivery(
   inboundDelivery: SessionDelivery,
-  message: Pick<ParsedIncomingMessage, "chatType" | "isAtMentioned" | "replyMessageId">
+  message: Pick<ParsedIncomingMessage, "chatType" | "isAtMentioned">
 ): boolean {
-  return inboundDelivery === "web" || message.chatType === "private" || message.isAtMentioned || message.replyMessageId != null;
+  return inboundDelivery === "web" || message.chatType === "private" || message.isAtMentioned;
 }
 
 export function enqueueTriggeredMessage(

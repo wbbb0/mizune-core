@@ -94,7 +94,6 @@ export interface TriggerDecision {
   groupMatched: boolean;
   userMatched: boolean;
   directlyAddressed: boolean;
-  replyToBot: boolean;
   shouldTriggerResponse: boolean;
   threadAction: "record_only" | "reply_now" | "soft_interrupt" | "queue_next_thread";
   replyDecision: "no_reply" | "reply_small";
