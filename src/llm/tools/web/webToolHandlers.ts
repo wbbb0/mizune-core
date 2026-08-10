@@ -520,6 +520,7 @@ function compactBrowserElement(element: BrowserElement | null): JsonObject | nul
   if (!element) {
     return null;
   }
+  const sourceUrls = Array.isArray(element.source_urls) ? element.source_urls : [];
   return {
     id: element.id,
     kind: element.kind,
@@ -536,7 +537,7 @@ function compactBrowserElement(element: BrowserElement | null): JsonObject | nul
     selected: element.selected,
     visibility: element.visibility,
     media_url: trimBrowserText(element.media_url, 180),
-    source_urls: element.source_urls.map((item) => trimBrowserText(item, 180)).slice(0, 4)
+    source_urls: sourceUrls.map((item) => trimBrowserText(item, 180)).slice(0, 4)
   } as JsonObject;
 }
 

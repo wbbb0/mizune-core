@@ -110,6 +110,26 @@ const aboutLinkElement: BrowserElement = {
     assert.equal(parsed.resource_id, "res_browser_2");
   });
 
+  test("open_page tolerates compact elements without source urls", async () => {
+    const { source_urls: _sourceUrls, ...elementWithoutSourceUrls } = aboutLinkElement;
+    const result = await webToolHandlers.open_page!(
+      createFunctionToolCall("open_page", "tool_6a"),
+      { url: "https://openai.com/about" },
+      createBrowserToolContext({
+        async openPage() {
+          return createBrowserOpenResult({
+            elements: [elementWithoutSourceUrls as BrowserElement],
+            totalElements: 1
+          });
+        }
+      })
+    );
+
+    const parsed = parseJsonToolResult<any>(result);
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.elements[0].source_urls, []);
+  });
+
   test("inspect_page returns matching lines", async () => {
     const result = await webToolHandlers.inspect_page!(
       createFunctionToolCall("inspect_page", "tool_7"),
