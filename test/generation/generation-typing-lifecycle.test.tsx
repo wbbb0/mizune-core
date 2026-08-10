@@ -987,6 +987,23 @@ function createExecutorHarness(options?: {
           text: "我先查一下",
           reasoningContent: ""
         });
+        await input.onProviderCallUsage?.({
+          iteration: 1,
+          phase: "final_response",
+          usage: {
+            inputTokens: 150,
+            outputTokens: 20,
+            totalTokens: 170,
+            cachedTokens: 10,
+            reasoningTokens: 3,
+            requestCount: 1,
+            providerReported: true,
+            modelRef: "main",
+            model: "fake"
+          },
+          text: "查完了。",
+          reasoningContent: ""
+        });
         usageRecorded();
         await continueGenerationPromise;
         await input.onTextDelta?.("查完了。");
@@ -999,12 +1016,34 @@ function createExecutorHarness(options?: {
     });
 
     await usageRecordedPromise;
-    assert.equal(harness.sessionManager.getSession(harness.sessionId).lastLlmUsage?.inputTokens, 120);
-    assert.equal(harness.sessionManager.getSession(harness.sessionId).lastLlmUsage?.outputTokens, 10);
+    assert.equal(harness.sessionManager.getSession(harness.sessionId).lastLlmUsage?.inputTokens, 270);
+    assert.equal(harness.sessionManager.getSession(harness.sessionId).lastLlmUsage?.outputTokens, 30);
+    assert.deepEqual(harness.sessionManager.getSession(harness.sessionId).lastLlmUsage?.lastRequestUsage, {
+      inputTokens: 150,
+      outputTokens: 20,
+      totalTokens: 170,
+      cachedTokens: 10,
+      reasoningTokens: 3,
+      requestCount: 1,
+      providerReported: true,
+      modelRef: "main",
+      model: "fake"
+    });
 
     continueGeneration();
     harness.resolveDrain();
     await harness.runPromise;
+    assert.deepEqual(harness.sessionManager.getSession(harness.sessionId).lastLlmUsage?.lastRequestUsage, {
+      inputTokens: 150,
+      outputTokens: 20,
+      totalTokens: 170,
+      cachedTokens: 10,
+      reasoningTokens: 3,
+      requestCount: 1,
+      providerReported: true,
+      modelRef: "main",
+      model: "fake"
+    });
   });
 
   test("default web titles are captioned only after outbound drain completes", async () => {

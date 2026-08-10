@@ -58,14 +58,32 @@ const lastLlmUsageRows = computed(() => {
   return [
     ["模型引用", usage.modelRef || "暂无"],
     ["模型", usage.model || "暂无"],
+    ["本轮累计输入 tokens", formatMetric(usage.inputTokens)],
+    ["本轮累计输出 tokens", formatMetric(usage.outputTokens)],
+    ["本轮累计总 tokens", formatMetric(usage.totalTokens)],
+    ["本轮累计缓存 tokens", formatMetric(usage.cachedTokens)],
+    ["本轮累计推理 tokens", formatMetric(usage.reasoningTokens)],
+    ["本轮请求数", formatMetric(usage.requestCount)],
+    ["Provider 上报", usage.providerReported ? "是" : "否"],
+    ["采集时间", formatTimestamp(usage.capturedAt)]
+  ];
+});
+
+const lastRequestUsageRows = computed(() => {
+  const usage = detail.value?.session.lastLlmUsage?.lastRequestUsage ?? null;
+  if (!usage) {
+    return [];
+  }
+  return [
+    ["模型引用", usage.modelRef || "暂无"],
+    ["模型", usage.model || "暂无"],
     ["输入 tokens", formatMetric(usage.inputTokens)],
     ["输出 tokens", formatMetric(usage.outputTokens)],
     ["总 tokens", formatMetric(usage.totalTokens)],
     ["缓存 tokens", formatMetric(usage.cachedTokens)],
     ["推理 tokens", formatMetric(usage.reasoningTokens)],
-    ["请求数", formatMetric(usage.requestCount)],
-    ["Provider 上报", usage.providerReported ? "是" : "否"],
-    ["采集时间", formatTimestamp(usage.capturedAt)]
+    ["接口请求数", formatMetric(usage.requestCount)],
+    ["Provider 上报", usage.providerReported ? "是" : "否"]
   ];
 });
 
@@ -509,16 +527,39 @@ async function loadDetail() {
             </section>
             <section class="min-w-0">
               <div class="text-small text-text-subtle">最近 LLM 用量</div>
+              <div v-if="lastLlmUsageRows.length > 0" class="mt-1 text-small text-text-muted">
+                Token 指标为本轮所有模型请求的累计值，不代表单次上下文长度。
+              </div>
               <WorkbenchEmptyState
                 v-if="lastLlmUsageRows.length === 0"
                 :centered="false"
                 class="mt-2 rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle"
                 message="暂无 LLM 用量记录"
               />
-              <div v-else class="mt-2 grid gap-1.5">
-                <div v-for="[label, value] in lastLlmUsageRows" :key="label" class="flex items-start justify-between gap-3 border-b border-border-subtle py-1.5">
-                  <span class="text-small text-text-subtle">{{ label }}</span>
-                  <span class="break-all text-right font-mono text-small text-text-secondary">{{ value }}</span>
+              <div v-else class="mt-3 grid gap-4">
+                <div>
+                  <div class="text-small font-medium text-text-secondary">本轮累计</div>
+                  <div class="mt-1 grid gap-1.5">
+                    <div v-for="[label, value] in lastLlmUsageRows" :key="label" class="flex items-start justify-between gap-3 border-b border-border-subtle py-1.5">
+                      <span class="text-small text-text-subtle">{{ label }}</span>
+                      <span class="break-all text-right font-mono text-small text-text-secondary">{{ value }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div class="text-small font-medium text-text-secondary">最近一次请求（Provider 返回）</div>
+                  <WorkbenchEmptyState
+                    v-if="lastRequestUsageRows.length === 0"
+                    :centered="false"
+                    class="mt-1 rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle"
+                    message="暂无单次请求用量记录"
+                  />
+                  <div v-else class="mt-1 grid gap-1.5">
+                    <div v-for="[label, value] in lastRequestUsageRows" :key="label" class="flex items-start justify-between gap-3 border-b border-border-subtle py-1.5">
+                      <span class="text-small text-text-subtle">{{ label }}</span>
+                      <span class="break-all text-right font-mono text-small text-text-secondary">{{ value }}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>

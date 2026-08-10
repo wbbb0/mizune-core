@@ -114,6 +114,19 @@ export interface SessionUsageSnapshot {
   modelRef: string | null;
   model: string | null;
   capturedAt: number;
+  lastRequestUsage?: SessionRequestUsageSnapshot | null;
+}
+
+export interface SessionRequestUsageSnapshot {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+  cachedTokens: number | null;
+  reasoningTokens: number | null;
+  requestCount: number;
+  providerReported: boolean;
+  modelRef: string | null;
+  model: string | null;
 }
 
 export type SessionTaskStatus =

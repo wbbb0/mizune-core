@@ -164,7 +164,18 @@ export const persistedSessionStateSchema = z.object({
     providerReported: z.boolean(),
     modelRef: z.string().min(1).nullable(),
     model: z.string().min(1).nullable(),
-    capturedAt: z.number().int().nonnegative()
+    capturedAt: z.number().int().nonnegative(),
+    lastRequestUsage: z.object({
+      inputTokens: z.number().int().nonnegative().nullable(),
+      outputTokens: z.number().int().nonnegative().nullable(),
+      totalTokens: z.number().int().nonnegative().nullable(),
+      cachedTokens: z.number().int().nonnegative().nullable(),
+      reasoningTokens: z.number().int().nonnegative().nullable(),
+      requestCount: z.number().int().nonnegative(),
+      providerReported: z.boolean(),
+      modelRef: z.string().min(1).nullable(),
+      model: z.string().min(1).nullable()
+    }).nullable().optional()
   }).nullable(),
   sentMessages: z.array(z.object({
     messageId: z.number().int().nonnegative(),

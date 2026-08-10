@@ -1,6 +1,6 @@
 import { createBuiltinToolExecutor, getBuiltinTools } from "#llm/builtinTools.ts";
 import type { LlmMessage, LlmProviderCallUsage, LlmToolCall, LlmToolExecutionResult } from "#llm/llmClient.ts";
-import { createEmptyUsage, mergeUsage } from "#llm/provider/providerTypes.ts";
+import { createEmptyUsage, mergeUsage, type LlmUsage } from "#llm/provider/providerTypes.ts";
 import { getRoutingPresetTokenLimits } from "#llm/shared/modelRouting.ts";
 import { parseToolArguments } from "#llm/shared/toolArgs.ts";
 import type { Relationship } from "#identity/relationship.ts";
@@ -217,12 +217,15 @@ export function createGenerationExecutor(
     let lastResultReasoningContent = "";
     let lastResultAssistantMetadata: Record<string, unknown> | undefined;
     let finalProviderCallUsage: LlmProviderCallUsage | null = null;
+    let lastProviderRequestUsage: LlmUsage | null = null;
     const runningProviderUsage = createEmptyUsage(resolvedModelRef[0] ?? null, null);
     const recordProviderCallUsage = (event: LlmProviderCallUsage): void => {
+      lastProviderRequestUsage = { ...event.usage };
       mergeUsage(runningProviderUsage, event.usage);
       const usageApplied = sessionManager.setLastLlmUsageIfEpochMatches(sessionId, expectedEpoch, {
         ...runningProviderUsage,
-        capturedAt: Date.now()
+        capturedAt: Date.now(),
+        lastRequestUsage: lastProviderRequestUsage
       });
       if (usageApplied) {
         persistSession(sessionId, "llm_usage_updated");
@@ -758,7 +761,8 @@ export function createGenerationExecutor(
             ?? null;
           const usageApplied = sessionManager.setLastLlmUsageIfEpochMatches(sessionId, expectedEpoch, {
             ...result.usage,
-            capturedAt: Date.now()
+            capturedAt: Date.now(),
+            lastRequestUsage: lastProviderRequestUsage
           });
           if (usageApplied) {
             persistSession(sessionId, "llm_usage_updated");
