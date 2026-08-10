@@ -1,9 +1,9 @@
 import { createApp } from "vue";
 import { createPinia } from "pinia";
-import { registerSW } from "virtual:pwa-register";
 import App from "./App.vue";
 import router from "./router";
 import { useUiBrowserBindings } from "@/composables/useUiBrowserBindings";
+import { registerPwaUpdate } from "@/composables/usePwaUpdate";
 import { useUiStore } from "@/stores/ui";
 import { editorApi } from "@/api/editor";
 import { configureResourceEditorClient } from "@workbench-kit/vue";
@@ -33,7 +33,7 @@ async function cleanupDevelopmentServiceWorkers() {
 }
 
 if (import.meta.env.PROD) {
-  registerSW({ immediate: true });
+  registerPwaUpdate();
 } else {
   void cleanupDevelopmentServiceWorkers();
 }

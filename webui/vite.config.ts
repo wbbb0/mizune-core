@@ -147,7 +147,7 @@ export default defineConfig({
       base: webuiBase,
       srcDir: "src",
       filename: "sw.ts",
-      registerType: "autoUpdate",
+      registerType: "prompt",
       injectRegister: false,
       includeAssets: ["icons/apple-touch-icon.png"],
       manifest: {
