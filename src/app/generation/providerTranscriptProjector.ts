@@ -5,6 +5,8 @@ import type { InternalAssistantToolCallItem, InternalToolResultItem } from "#con
 import { projectTranscriptMessageItemToHistoryMessage } from "#conversation/session/historyContext.ts";
 import { isTranscriptLlmVisible, isTranscriptRuntimeIncluded } from "#conversation/session/sessionTranscript.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
+import type { TokenEstimationWeights } from "#conversation/session/tokenEstimator.ts";
+import { shouldUseToolResultReplayContent } from "./toolResultReplayPolicy.ts";
 
 const RECENT_RAW_TOOL_RESULT_COUNT = 5;
 
@@ -20,6 +22,7 @@ export interface ProviderTranscriptProjector {
     transcript: InternalTranscriptItem[];
     preserveThinking?: boolean;
     requireThoughtSignatures?: boolean;
+    tokenEstimationWeights?: TokenEstimationWeights;
   }): ProviderTranscriptProjection;
 }
 
@@ -82,7 +85,10 @@ function createOpenAiStyleProjector(
       const lateSystemMessages: string[] = [];
       const degradedLines: string[] = [];
       const runtimeTranscript = input.transcript.filter(isTranscriptRuntimeIncluded);
-      const toolResultReplayContent = buildToolResultReplayContentMap(input.transcript);
+      const toolResultReplayContent = buildToolResultReplayContentMap(
+        input.transcript,
+        input.tokenEstimationWeights
+      );
       let replayCoversVisibleHistory = false;
 
       for (let index = 0; index < runtimeTranscript.length; index += 1) {
@@ -215,7 +221,10 @@ function findDuplicateToolResultIds(items: InternalToolResultItem[]): string[] {
   return [...duplicates];
 }
 
-function buildToolResultReplayContentMap(transcript: InternalTranscriptItem[]): Map<string, string> {
+function buildToolResultReplayContentMap(
+  transcript: InternalTranscriptItem[],
+  tokenEstimationWeights?: TokenEstimationWeights
+): Map<string, string> {
   const includedToolResults = transcript
     .filter(isTranscriptRuntimeIncluded)
     .filter((item): item is InternalToolResultItem => item.kind === "tool_result");
@@ -226,7 +235,7 @@ function buildToolResultReplayContentMap(transcript: InternalTranscriptItem[]): 
       replayContent.set(item.toolCallId, rawToolResultContent(item));
       return;
     }
-    replayContent.set(item.toolCallId, compactToolResultForReplay(item));
+    replayContent.set(item.toolCallId, compactToolResultForReplay(item, tokenEstimationWeights));
   });
 
   return replayContent;
@@ -240,7 +249,10 @@ function shouldReplayRawToolResult(item: InternalToolResultItem, index: number, 
   return index >= Math.max(0, totalCount - preserveCount) || item.observation?.pinned === true;
 }
 
-function compactToolResultForReplay(item: InternalToolResultItem): string {
+function compactToolResultForReplay(
+  item: InternalToolResultItem,
+  tokenEstimationWeights?: TokenEstimationWeights
+): string {
   if (item.observation?.replaySafe === false) {
     if (typeof item.observation.replayContent === "string" && item.observation.replayContent.length > 0) {
       return item.observation.replayContent;
@@ -256,7 +268,15 @@ function compactToolResultForReplay(item: InternalToolResultItem): string {
     return rawToolResultContent(item);
   }
   if (typeof item.observation?.replayContent === "string" && item.observation.replayContent.length > 0) {
-    return item.observation.replayContent;
+    const rawContent = rawToolResultContent(item);
+    return shouldUseToolResultReplayContent({
+      rawContent,
+      replayContent: item.observation.replayContent,
+      replaySafe: item.observation.replaySafe,
+      ...(tokenEstimationWeights ? { tokenEstimationWeights } : {})
+    })
+      ? item.observation.replayContent
+      : rawContent;
   }
   const normalized = item.content.replace(/\s+/g, " ").trim();
   return JSON.stringify({
@@ -303,7 +323,10 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
       const activeReplayableToolCallIds = new Set<string>();
       const skippedToolCallIds = new Set<string>();
       const skippedLines: string[] = [];
-      const toolResultReplayContent = buildToolResultReplayContentMap(input.transcript);
+      const toolResultReplayContent = buildToolResultReplayContentMap(
+        input.transcript,
+        input.tokenEstimationWeights
+      );
       let replayCoversVisibleHistory = false;
       let lastReplayRole: LlmMessage["role"] | null = null;
       const requireThoughtSignatures = input.requireThoughtSignatures ?? true;

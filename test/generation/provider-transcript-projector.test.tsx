@@ -497,7 +497,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
           inputTokensEstimate: 100,
           summary: `summary ${index}`,
           retention: "summary",
-          replayContent: JSON.stringify({ compacted: true, summary: `COMPACT-${index}` }),
+          replayContent: `C-${index}`,
           replaySafe: true,
           refetchable: true,
           pinned: index === 1
@@ -509,9 +509,52 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     const toolMessages = projection.replayMessages.filter((message) => message.role === "tool");
 
     assert.equal(toolMessages[0]?.content, JSON.stringify({ stdout: "RAW-1", exitCode: 1 }));
-    assert.equal(toolMessages[1]?.content, JSON.stringify({ compacted: true, summary: "COMPACT-2" }));
+    assert.equal(toolMessages[1]?.content, "C-2");
     assert.equal(toolMessages[2]?.content, JSON.stringify({ stdout: "RAW-3", exitCode: 0 }));
     assert.equal(toolMessages[6]?.content, JSON.stringify({ stdout: "RAW-7", exitCode: 0 }));
+  });
+
+  test("openai-style projector keeps raw replay-safe content when it costs fewer tokens", () => {
+    const projection = getProviderTranscriptProjector("openai").project({
+      transcript: Array.from({ length: 7 }, (_, index) => {
+        const sequence = index + 1;
+        return [
+          {
+            kind: "assistant_tool_call",
+            llmVisible: true,
+            timestampMs: sequence * 2 - 1,
+            content: "",
+            toolCalls: [{
+              id: `call_${sequence}`,
+              type: "function",
+              function: { name: "terminal_run", arguments: "{}" }
+            }]
+          },
+          {
+            kind: "tool_result",
+            llmVisible: true,
+            timestampMs: sequence * 2,
+            toolCallId: `call_${sequence}`,
+            toolName: "terminal_run",
+            content: `RAW-${sequence}`,
+            observation: {
+              contentHash: `hash-${sequence}`,
+              inputTokensEstimate: 10,
+              summary: `summary ${sequence}`,
+              retention: "summary",
+              replayContent: `EXPANDED-${sequence}-`.repeat(20),
+              replaySafe: true,
+              refetchable: true,
+              pinned: false
+            }
+          }
+        ];
+      }).flat() as InternalTranscriptItem[]
+    });
+    const toolMessages = projection.replayMessages.filter((message) => message.role === "tool");
+
+    assert.equal(toolMessages[0]?.content, "RAW-1");
+    assert.equal(toolMessages[1]?.content, "RAW-2");
   });
 
   test("openai-style projector never replays raw unsafe tool results", () => {
@@ -912,7 +955,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
           inputTokensEstimate: 100,
           summary: `summary ${index + 1}`,
           retention: "summary" as const,
-          replayContent: JSON.stringify({ compacted: true, summary: `COMPACT-${index + 1}` }),
+          replayContent: `C-${index + 1}`,
           replaySafe: true,
           refetchable: false,
           pinned: false
@@ -923,8 +966,8 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     const projection = getProviderTranscriptProjector("google").project({ transcript });
     const toolMessages = projection.replayMessages.filter((message) => message.role === "tool");
 
-    assert.equal(toolMessages[0]?.content, JSON.stringify({ compacted: true, summary: "COMPACT-1" }));
-    assert.equal(toolMessages[1]?.content, JSON.stringify({ compacted: true, summary: "COMPACT-2" }));
+    assert.equal(toolMessages[0]?.content, "C-1");
+    assert.equal(toolMessages[1]?.content, "C-2");
     assert.equal(toolMessages[2]?.content, JSON.stringify({ stdout: "RAW-3" }));
     assert.equal(toolMessages[6]?.content, JSON.stringify({ stdout: "RAW-7" }));
   });

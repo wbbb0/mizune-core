@@ -216,7 +216,7 @@ function createActiveTaskTracker() {
     });
 
     assert.deepEqual(capturedImageIdCalls, [["file_1"], []]);
-    const content = result.promptMessages[1]?.content;
+    const content = result.promptMessages.find((message) => message.role === "user")?.content;
     assert.ok(Array.isArray(content));
     assert.equal(content.some((part) => part.type === "image_url"), true);
   });

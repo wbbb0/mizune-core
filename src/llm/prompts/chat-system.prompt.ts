@@ -54,11 +54,19 @@ const MEMORY_SIMILARITY_THRESHOLD = 0.62;
 const STABLE_SYSTEM_SECTION_NAMES = new Set([
   "global_persona",
   "global_persona_base",
+  "assistant_identity",
+  "rp_identity",
+  "host_identity",
+  "host_rules",
   "persona_snapshot",
   "rp_profile",
   "rp_profile_snapshot",
   "scenario_profile",
-  "scenario_profile_snapshot"
+  "scenario_profile_snapshot",
+  "disclosure",
+  "reply_rules",
+  "memory_write_decision",
+  "context_rules"
 ]);
 
 const CAPABILITY_SYSTEM_SECTION_NAMES = new Set([
@@ -277,7 +285,7 @@ export function buildBaseSystemSections(input: {
       systemSection("reply_rules", buildReplyRuleLines()),
       systemSection("rp_profile_snapshot", buildRpProfileSnapshotLines(draftMode.profile, draftMode.missingFields)),
       systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
-      systemSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
+      systemSection("context_rules", buildContextRuleLines()),
       systemSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
       systemSection("tool_playbooks", buildToolPlaybookLines({
         activeToolsets: input.activeToolsets,
@@ -285,8 +293,7 @@ export function buildBaseSystemSections(input: {
         taskTracker: input.taskTracker
       })),
       systemSection("toolset_guidance", buildToolsetGuidanceLines({
-        activeToolsets: input.activeToolsets,
-        visibleToolNames: input.visibleToolNames
+        activeToolsets: input.activeToolsets
       }))
     ].filter((item): item is PromptSection => Boolean(item));
   }
@@ -307,7 +314,7 @@ export function buildBaseSystemSections(input: {
       systemSection("scenario_setup_requirements", input.scenarioSetupRequirementLines ?? []),
       systemSection("scenario_profile_snapshot", buildScenarioProfileSnapshotLines(draftMode.profile, draftMode.missingFields)),
       systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
-      systemSection("context_rules", buildContextRuleLines({ visibleToolNames: input.visibleToolNames })),
+      systemSection("context_rules", buildContextRuleLines()),
       systemSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
       systemSection("tool_playbooks", buildToolPlaybookLines({
         activeToolsets: input.activeToolsets,
@@ -315,8 +322,7 @@ export function buildBaseSystemSections(input: {
         taskTracker: input.taskTracker
       })),
       systemSection("toolset_guidance", buildToolsetGuidanceLines({
-        activeToolsets: input.activeToolsets,
-        visibleToolNames: input.visibleToolNames
+        activeToolsets: input.activeToolsets
       }))
     ].filter((item): item is PromptSection => Boolean(item));
   }
@@ -327,9 +333,7 @@ export function buildBaseSystemSections(input: {
       systemSection("assistant_identity", buildAssistantIdentityLines()),
       systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
       systemSection("reply_rules", buildReplyRuleLines()),
-      systemSection("context_rules", buildContextRuleLines({
-        visibleToolNames: input.visibleToolNames
-      })),
+      systemSection("context_rules", buildContextRuleLines()),
       systemSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
       systemSection("tool_playbooks", buildToolPlaybookLines({
         activeToolsets: input.activeToolsets,
@@ -337,8 +341,7 @@ export function buildBaseSystemSections(input: {
         taskTracker: input.taskTracker
       })),
       systemSection("toolset_guidance", buildToolsetGuidanceLines({
-        activeToolsets: input.activeToolsets,
-        visibleToolNames: input.visibleToolNames
+        activeToolsets: input.activeToolsets
       })),
       systemSection("live_resources", buildLiveResourceLines(input.liveResources)),
       ...taskSections,
@@ -356,9 +359,7 @@ export function buildBaseSystemSections(input: {
       ),
       systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
       systemSection("host_rules", buildScenarioHostRuleLines()),
-      systemSection("context_rules", buildContextRuleLines({
-        visibleToolNames: input.visibleToolNames
-      })),
+      systemSection("context_rules", buildContextRuleLines()),
       systemSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
       systemSection("tool_playbooks", buildToolPlaybookLines({
         activeToolsets: input.activeToolsets,
@@ -366,8 +367,7 @@ export function buildBaseSystemSections(input: {
         taskTracker: input.taskTracker
       })),
       systemSection("toolset_guidance", buildToolsetGuidanceLines({
-        activeToolsets: input.activeToolsets,
-        visibleToolNames: input.visibleToolNames
+        activeToolsets: input.activeToolsets
       })),
       systemSection("live_resources", buildLiveResourceLines(input.liveResources)),
       ...taskSections,
@@ -400,9 +400,7 @@ export function buildBaseSystemSections(input: {
       systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
       systemSection("reply_rules", buildReplyRuleLines()),
       systemSection("memory_write_decision", buildMemoryRuleLines()),
-      systemSection("context_rules", buildContextRuleLines({
-        visibleToolNames: input.visibleToolNames
-      })),
+      systemSection("context_rules", buildContextRuleLines()),
       systemSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
       systemSection("tool_playbooks", buildToolPlaybookLines({
         activeToolsets: input.activeToolsets,
@@ -410,8 +408,7 @@ export function buildBaseSystemSections(input: {
         taskTracker: input.taskTracker
       })),
       systemSection("toolset_guidance", buildToolsetGuidanceLines({
-        activeToolsets: input.activeToolsets,
-        visibleToolNames: input.visibleToolNames
+        activeToolsets: input.activeToolsets
       })),
       systemSection("live_resources", buildLiveResourceLines(input.liveResources)),
       ...taskSections,
@@ -445,9 +442,7 @@ export function buildBaseSystemSections(input: {
     systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
     systemSection("reply_rules", buildReplyRuleLines()),
     systemSection("memory_write_decision", buildMemoryRuleLines()),
-    systemSection("context_rules", buildContextRuleLines({
-      visibleToolNames: input.visibleToolNames
-    })),
+    systemSection("context_rules", buildContextRuleLines()),
     systemSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
     systemSection("tool_playbooks", buildToolPlaybookLines({
       activeToolsets: input.activeToolsets,
@@ -455,8 +450,7 @@ export function buildBaseSystemSections(input: {
       taskTracker: input.taskTracker
     })),
     systemSection("toolset_guidance", buildToolsetGuidanceLines({
-      activeToolsets: input.activeToolsets,
-      visibleToolNames: input.visibleToolNames
+      activeToolsets: input.activeToolsets
     })),
     systemSection("live_resources", buildLiveResourceLines(input.liveResources)),
     ...taskSections,
@@ -946,17 +940,13 @@ function buildMemoryRuleLines(): string[] {
   ];
 }
 
-function buildContextRuleLines(input: { visibleToolNames?: string[] | undefined }): string[] {
-  const lines = [
+function buildContextRuleLines(): string[] {
+  return [
     "批次头和每条消息头只用于帮助你分清会话模式、当前触发用户和具体发言者；不要在最终回复里复述这些头。",
     "遇到结构化引用时先按引用理解上下文，不要脑补隐藏内容。",
-    "遇到 profile_phase_transition 结构化标记时，把它视为 persona/RP/Scenario 资料配置阶段的边界；配置阶段里的对话只用于理解刚刚发生的设定流程，正式行为以当前系统注入的已保存 persona 和模式资料为准。"
+    "遇到 profile_phase_transition 结构化标记时，把它视为 persona/RP/Scenario 资料配置阶段的边界；配置阶段里的对话只用于理解刚刚发生的设定流程，正式行为以当前系统注入的已保存 persona 和模式资料为准。",
+    "工具报错时先调整参数、改走正确路径或换用更合适的能力；只有确实无法完成时再简短说明。"
   ];
-  if ((input.visibleToolNames ?? []).includes("request_toolset")) {
-    lines.push("当前工具按工具集分批暴露；若发现缺少完成任务所需能力，先查看可申请的工具集，再申请补充。");
-  }
-  lines.push("工具报错时先调整参数、改走正确路径或换用更合适的能力；只有确实无法完成时再简短说明。");
-  return lines;
 }
 
 function buildDisclosureLines(interactionMode: PromptInteractionMode | undefined): string[] {
@@ -1265,15 +1255,9 @@ function buildCurrentUserMemoryLines(memories: UserMemoryEntry[] | undefined): s
 
 function buildToolsetGuidanceLines(input: {
   activeToolsets?: ToolsetView[] | undefined;
-  visibleToolNames?: string[] | undefined;
 }): string[] {
-  const lines: string[] = [];
   const activeToolsets = input.activeToolsets ?? [];
-  if (activeToolsets.length > 0) {
-    lines.push(`当前激活工具集：${activeToolsets.map((item) => item.title).join("、")}`);
-  }
-  if ((input.visibleToolNames ?? []).includes("request_toolset")) {
-    lines.push("若当前激活工具集不够完成任务，可先查看可申请的工具集，再申请补充。");
-  }
-  return lines;
+  return activeToolsets.length > 0
+    ? [`当前激活工具集：${activeToolsets.map((item) => item.title).join("、")}`]
+    : [];
 }

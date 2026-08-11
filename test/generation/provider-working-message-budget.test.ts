@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { projectProviderWorkingMessagesForBudget } from "../../src/app/generation/providerWorkingMessageBudget.ts";
+import {
+  estimateLlmMessagesTokens,
+  projectProviderWorkingMessagesForBudget
+} from "../../src/app/generation/providerWorkingMessageBudget.ts";
 import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
@@ -61,6 +64,40 @@ test("provider working messages preserve recent raw tool results according to ob
   assert.equal(projection.messages[2]?.content, "y".repeat(1000));
 });
 
+test("provider working messages keep replay-safe raw content when its replay projection costs more tokens", () => {
+  const config = createTestAppConfig();
+  const rawContent = "short result";
+  const projection = projectProviderWorkingMessagesForBudget({
+    messages: [
+      { role: "user" as const, content: "x".repeat(1000) },
+      { role: "tool" as const, tool_call_id: "tool-1", content: rawContent }
+    ],
+    transcript: [createObservedToolResult("tool-1", "expanded replay result ".repeat(100), 0)],
+    config,
+    triggerTokens: 50
+  });
+
+  assert.equal(projection.compactedToolResults, 0);
+  assert.equal(projection.messages[1]?.content, rawContent);
+});
+
+test("provider working messages preserve old tool results with full retention", () => {
+  const config = createTestAppConfig();
+  const rawContent = "x".repeat(1000);
+  const projection = projectProviderWorkingMessagesForBudget({
+    messages: [
+      { role: "user" as const, content: "hello" },
+      { role: "tool" as const, tool_call_id: "tool-1", content: rawContent }
+    ],
+    transcript: [createObservedToolResult("tool-1", "compact", 0, { retention: "full" })],
+    config,
+    triggerTokens: 50
+  });
+
+  assert.equal(projection.compactedToolResults, 0);
+  assert.equal(projection.messages[1]?.content, rawContent);
+});
+
 test("provider working messages do not preserve raw tool results marked replay unsafe", () => {
   const config = createTestAppConfig();
   const projection = projectProviderWorkingMessagesForBudget({
@@ -113,6 +150,60 @@ test("provider working messages disable more tools when over budget cannot be co
   assert.match(String(projection.messages.at(-1)?.content), /不要继续调用工具/);
 });
 
+test("provider working message budget includes tool schemas and removes their cost after disabling tools", () => {
+  const config = createTestAppConfig();
+  const projection = projectProviderWorkingMessagesForBudget({
+    messages: [{ role: "user" as const, content: "hello" }],
+    transcript: [],
+    tools: [{
+      type: "function",
+      function: {
+        name: "large_tool",
+        description: "x".repeat(1000),
+        parameters: {
+          type: "object",
+          properties: {}
+        }
+      }
+    }],
+    config,
+    triggerTokens: 50
+  });
+
+  assert.equal(projection.toolsDisabled, true);
+  assert.ok(projection.beforeTokens > projection.afterTokens);
+  assert.match(String(projection.messages.at(-1)?.content), /不要继续调用工具/);
+});
+
+test("provider working message budget keeps afterTokens aligned after tools were already disabled", () => {
+  const config = createTestAppConfig();
+  const tools = [{
+    type: "function" as const,
+    function: {
+      name: "large_tool",
+      description: "x".repeat(1000),
+      parameters: { type: "object", properties: {} }
+    }
+  }];
+  const first = projectProviderWorkingMessagesForBudget({
+    messages: [{ role: "user" as const, content: "hello" }],
+    transcript: [],
+    tools,
+    config,
+    triggerTokens: 50
+  });
+  const second = projectProviderWorkingMessagesForBudget({
+    messages: first.messages,
+    transcript: [],
+    tools,
+    config,
+    triggerTokens: 50
+  });
+
+  assert.equal(second.toolsDisabled, true);
+  assert.equal(second.afterTokens, estimateLlmMessagesTokens(second.messages, config));
+});
+
 function createObservedToolResult(
   toolCallId: string,
   replayContent: string,
@@ -120,6 +211,7 @@ function createObservedToolResult(
   options?: {
     replaySafe?: boolean;
     pinned?: boolean;
+    retention?: "full" | "summary";
   }
 ): InternalTranscriptItem {
   return {
@@ -133,7 +225,7 @@ function createObservedToolResult(
       contentHash: `hash-${toolCallId}`,
       inputTokensEstimate: 100,
       summary: `summary ${toolCallId}`,
-      retention: "summary",
+      retention: options?.retention ?? "summary",
       replayContent,
       replaySafe: options?.replaySafe ?? true,
       refetchable: true,

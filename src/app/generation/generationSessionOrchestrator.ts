@@ -809,7 +809,8 @@ export function createGenerationSessionOrchestrator(
       }).project({
         transcript: replayTranscriptItems,
         preserveThinking: getPrimaryModelProfile(config, resolvedModelRef)?.preserveThinking === true,
-        requireThoughtSignatures: config.llm.mainRouting.enableThinking
+        requireThoughtSignatures: config.llm.mainRouting.enableThinking,
+        tokenEstimationWeights: config.conversation.historyCompression.tokenEstimation
       });
       const historyForPromptMessages = projectedTranscript.replayCoversVisibleHistory
         ? []
@@ -1040,7 +1041,8 @@ export function createGenerationSessionOrchestrator(
       }).project({
         transcript: transcriptStore.runtimeItems(),
         preserveThinking: getPrimaryModelProfile(config, scheduledModelRef)?.preserveThinking === true,
-        requireThoughtSignatures: config.llm.mainRouting.enableThinking
+        requireThoughtSignatures: config.llm.mainRouting.enableThinking,
+        tokenEstimationWeights: config.conversation.historyCompression.tokenEstimation
       });
       const historyForPromptMessages = projectedTranscript.replayCoversVisibleHistory ? [] : projectedHistory;
       const lateSystemMessages = [
@@ -1226,7 +1228,8 @@ export function createGenerationSessionOrchestrator(
       }).project({
         transcript: transcriptStore.runtimeItems(),
         preserveThinking: getPrimaryModelProfile(config, scheduledModelRef)?.preserveThinking === true,
-        requireThoughtSignatures: config.llm.mainRouting.enableThinking
+        requireThoughtSignatures: config.llm.mainRouting.enableThinking,
+        tokenEstimationWeights: config.conversation.historyCompression.tokenEstimation
       });
       const historyForPromptMessages = projectedTranscript.replayCoversVisibleHistory ? [] : projectedHistory;
       const lateSystemMessages = [

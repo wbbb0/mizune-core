@@ -322,7 +322,8 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
       const system = readPromptSystemText(prompt);
       assert.equal(hasPromptSection(system, "toolset_guidance"), true);
       assert.match(system, /当前激活工具集：网页检索与浏览/);
-      assert.match(system, /若当前激活工具集不够完成任务，可先查看可申请的工具集，再申请补充。/);
+      assert.match(system, /若发现缺少完成任务所需能力，先 list_available_toolsets，再用 request_toolset 申请补充/);
+      assert.equal((system.match(/若发现缺少完成任务所需能力/g) ?? []).length, 1);
       assert.doesNotMatch(system, /delegate_message_to_chat/);
       assert.doesNotMatch(system, /shell_run/);
     } finally {
@@ -471,13 +472,14 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
       assert.equal(prompt[3]?.role, "user");
       assert.equal(stableSystem, String(changedToolPrompt[0]?.content ?? ""));
       assert.equal(hasPromptSection(stableSystem, "global_persona"), true);
-      assert.equal(hasPromptSection(stableSystem, "reply_rules"), false);
-      assert.equal(hasPromptSection(stableSystem, "memory_write_decision"), false);
+      assert.equal(hasPromptSection(stableSystem, "reply_rules"), true);
+      assert.equal(hasPromptSection(stableSystem, "memory_write_decision"), true);
+      assert.equal(hasPromptSection(stableSystem, "context_rules"), true);
       assert.equal(hasPromptSection(stableSystem, "tool_hints"), false);
       assert.equal(hasPromptSection(stableSystem, "current_user_memories"), false);
-      assert.equal(hasPromptSection(volatileSystem, "reply_rules"), true);
-      assert.equal(hasPromptSection(volatileSystem, "memory_write_decision"), true);
-      assert.equal(hasPromptSection(volatileSystem, "context_rules"), true);
+      assert.equal(hasPromptSection(volatileSystem, "reply_rules"), false);
+      assert.equal(hasPromptSection(volatileSystem, "memory_write_decision"), false);
+      assert.equal(hasPromptSection(volatileSystem, "context_rules"), false);
       assert.equal(hasPromptSection(volatileSystem, "history_summary"), true);
       assert.equal(hasPromptSection(volatileSystem, "current_session_context"), true);
       assert.equal(hasPromptSection(volatileSystem, "current_user_memories"), true);
@@ -485,6 +487,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
       assert.equal(hasPromptSection(capabilitySystem, "tool_hints"), true);
       assert.equal(hasPromptSection(capabilitySystem, "toolset_guidance"), true);
       assert.ok(capabilitySystem.indexOf("%%llmbot:section name=\"toolset_guidance\"") > capabilitySystem.indexOf("%%llmbot:section name=\"tool_hints\""));
+      assert.equal((capabilitySystem.match(/若发现缺少完成任务所需能力/g) ?? []).length, 1);
     } finally {
       await harness.cleanup();
     }

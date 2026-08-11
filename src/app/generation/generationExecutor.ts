@@ -395,14 +395,15 @@ export function createGenerationExecutor(
         };
       };
       let toolBudgetToolsDisabled = false;
+      const resolveCandidateTools = () => getBuiltinTools(
+        toolRelationship ?? relationship,
+        currentUser,
+        config,
+        buildToolSelectionOptions()
+      );
       const resolveAllowedTools = () => toolBudgetToolsDisabled
         ? []
-        : getBuiltinTools(
-            toolRelationship ?? relationship,
-            currentUser,
-            config,
-            buildToolSelectionOptions()
-          );
+        : resolveCandidateTools();
 
       const toolsetAccess = isPlannerToolsetMode
         ? {
@@ -591,6 +592,7 @@ export function createGenerationExecutor(
               const projection = projectProviderWorkingMessagesForBudget({
                 messages: projectedMessages,
                 transcript: sessionManager.getSession(sessionId).internalTranscript,
+                tools: resolveCandidateTools(),
                 config,
                 triggerTokens: getRoutingPresetTokenLimits(config).triggerTokens
               });

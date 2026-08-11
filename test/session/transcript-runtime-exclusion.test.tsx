@@ -241,7 +241,7 @@ function createRuntimeAssistantMessage(id: string, groupId: string, timestampMs:
           inputTokensEstimate: 100,
           summary: `compact summary ${index}`,
           retention: "summary",
-          replayContent: JSON.stringify({ compacted: true, summary: `COMPACT-RESULT-${index}` }),
+          replayContent: `C-${index}`,
           replaySafe: true,
           refetchable: true,
           pinned: false
@@ -253,7 +253,7 @@ function createRuntimeAssistantMessage(id: string, groupId: string, timestampMs:
     const toolMessages = projection.replayMessages.filter((message) => message.role === "tool");
 
     assert.equal(toolMessages.length, 6);
-    assert.equal(toolMessages[0]?.content, JSON.stringify({ compacted: true, summary: "COMPACT-RESULT-1" }));
+    assert.equal(toolMessages[0]?.content, "C-1");
     assert.equal(toolMessages[1]?.content, JSON.stringify({ stdout: "CANONICAL-RESULT-2", full: true }));
     assert.equal(toolMessages[5]?.content, JSON.stringify({ stdout: "CANONICAL-RESULT-6", full: true }));
   });
