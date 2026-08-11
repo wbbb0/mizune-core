@@ -16,7 +16,7 @@ import {
   resetProfileOperationState,
   setActiveAssistantDraftResponseState,
   setSessionOperationModeState,
-  setSessionPacingPreferencesState,
+  setSessionSettingsState,
   enqueueGroupReplyTargetState
 } from "./sessionMutations.ts";
 import { SessionStore } from "./sessionStore.ts";
@@ -456,6 +456,12 @@ export class SessionManager {
     };
   }
 
+  getToolsetPreferences(sessionId: string): SessionState["toolsetPreferences"] {
+    return {
+      overrides: { ...this.requireSession(sessionId).toolsetPreferences.overrides }
+    };
+  }
+
   getModeId(sessionId: string): string {
     return this.requireSession(sessionId).modeId;
   }
@@ -536,15 +542,20 @@ export class SessionManager {
     this.notifySessionChanged(sessionId);
   }
 
-  setPacingPreferences(
+  setSettings(
     sessionId: string,
-    preferences: SessionState["pacingPreferences"]
-  ): SessionState["pacingPreferences"] {
-    const state = setSessionPacingPreferencesState(this.requireSession(sessionId), preferences);
+    settings: Pick<SessionState, "pacingPreferences" | "toolsetPreferences">
+  ): Pick<SessionState, "pacingPreferences" | "toolsetPreferences"> {
+    const state = setSessionSettingsState(this.requireSession(sessionId), settings);
     this.notifySessionChanged(sessionId);
     return {
-      inputDebounce: { ...state.inputDebounce },
-      oneBotOutbound: state.oneBotOutbound
+      pacingPreferences: {
+        inputDebounce: { ...state.pacingPreferences.inputDebounce },
+        oneBotOutbound: state.pacingPreferences.oneBotOutbound
+      },
+      toolsetPreferences: {
+        overrides: { ...state.toolsetPreferences.overrides }
+      }
     };
   }
 

@@ -6,7 +6,7 @@ export interface ToolsetDefinition {
   plannerSignals?: string[];
   ownerOnly?: boolean;
   debugOnly?: boolean;
-  modeUniversal?: boolean;
+  modeUniversal?: { defaultEnabled: boolean };
 }
 
 export interface ToolsetView {
@@ -19,7 +19,7 @@ export interface ToolsetView {
 
 export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   {
-    modeUniversal: true,
+    modeUniversal: { defaultEnabled: true },
     id: "chat_context",
     title: "会话上下文",
     description: "查看消息、转发、媒体和当前群聊上下文，必要时结束本轮回复。",
@@ -309,7 +309,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
-    modeUniversal: true,
+    modeUniversal: { defaultEnabled: true },
     id: "time_utils",
     title: "时间工具",
     description: "查询当前时间，或在当前会话内短暂等待。",
@@ -323,7 +323,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
-    modeUniversal: true,
+    modeUniversal: { defaultEnabled: true },
     id: "dice_roller",
     title: "骰子",
     description: "随机投骰并计算骰子表达式。",
@@ -342,7 +342,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     plannerSignals: [
       "切换当前会话模式"
     ],
-    modeUniversal: true,
+    modeUniversal: { defaultEnabled: true },
     toolNames: [
       "list_session_modes",
       "switch_session_mode"

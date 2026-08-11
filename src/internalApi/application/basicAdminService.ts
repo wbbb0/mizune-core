@@ -16,7 +16,7 @@ import type {
   ParsedCreateSessionSnapshotBody,
   ParsedSwitchSessionModeBody,
   ParsedUpdateSessionModeStateBody,
-  ParsedUpdateSessionPacingBody,
+  ParsedUpdateSessionSettingsBody,
   ParsedUpdateSessionTitleBody
 } from "../routeSupport.ts";
 import type { PersistedSessionState, SessionParticipantRef, SessionState } from "#conversation/session/sessionTypes.ts";
@@ -42,6 +42,13 @@ import {
 import { isSessionGenerating, isSessionResponding } from "#conversation/session/sessionQueries.ts";
 import { resolveDefaultSessionTitle } from "#conversation/session/sessionTitle.ts";
 import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
+import {
+  findUnknownSessionToolsetOverride,
+  listConfigurableSessionToolsets,
+  normalizeSessionToolsetPreferences
+} from "#llm/tools/toolsets.ts";
+import { cloneSessionPacingPreferences } from "#conversation/session/sessionPacing.ts";
+import { cloneSessionToolsetPreferences } from "#conversation/session/sessionToolsetPreferences.ts";
 
 function toScenarioHostSession(session: SessionState): Pick<SessionState, "id" | "participantRef"> {
   return {
@@ -757,16 +764,45 @@ export async function updateSessionTitle(
   };
 }
 
-export async function updateSessionPacingPreferences(
+export function getSessionSettings(
+  deps: InternalApiSessionReadDeps,
+  sessionId: string
+) {
+  const session = deps.sessionManager.listSessions().find((item) => item.id === sessionId);
+  if (!session) {
+    return null;
+  }
+  const pacingPreferences = cloneSessionPacingPreferences(session.pacingPreferences);
+  const toolsetPreferences = normalizeSessionToolsetPreferences(
+    cloneSessionToolsetPreferences(session.toolsetPreferences)
+  );
+  return {
+    settings: {
+      pacingPreferences,
+      toolsetPreferences
+    },
+    toolsetOptions: listConfigurableSessionToolsets(session.modeId, toolsetPreferences)
+  };
+}
+
+export async function updateSessionSettings(
   deps: InternalApiSessionWriteDeps,
   sessionId: string,
-  body: ParsedUpdateSessionPacingBody
+  body: ParsedUpdateSessionSettingsBody
 ) {
-  const pacingPreferences = deps.sessionManager.setPacingPreferences(sessionId, body);
+  const unknownToolsetId = findUnknownSessionToolsetOverride(body.toolsetPreferences);
+  if (unknownToolsetId) {
+    throw new Error(`Unknown toolset: ${unknownToolsetId}`);
+  }
+  const settings = deps.sessionManager.setSettings(sessionId, body);
   await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(sessionId));
   return {
     ok: true as const,
-    pacingPreferences
+    settings,
+    toolsetOptions: listConfigurableSessionToolsets(
+      deps.sessionManager.getSession(sessionId).modeId,
+      settings.toolsetPreferences
+    )
   };
 }
 

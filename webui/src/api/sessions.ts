@@ -4,7 +4,8 @@ import type {
   SessionDetailResult,
   SessionListItem,
   SessionModeOption,
-  SessionPacingPreferences,
+  SessionSettings,
+  SessionSettingsResult,
   SessionSnapshotSummary,
   TranscriptFetchResult
 } from "./types";
@@ -95,11 +96,15 @@ export const sessionsApi = {
     return api.patch(`/api/sessions/${encodeURIComponent(sessionId)}/title`, body);
   },
 
-  updatePacing(
+  fetchSettings(sessionId: string): Promise<SessionSettingsResult> {
+    return api.get(`/api/sessions/${encodeURIComponent(sessionId)}/settings`);
+  },
+
+  updateSettings(
     sessionId: string,
-    body: SessionPacingPreferences
-  ): Promise<{ ok: boolean; pacingPreferences: SessionPacingPreferences }> {
-    return api.patch(`/api/sessions/${encodeURIComponent(sessionId)}/pacing`, body);
+    body: SessionSettings
+  ): Promise<{ ok: boolean } & SessionSettingsResult> {
+    return api.patch(`/api/sessions/${encodeURIComponent(sessionId)}/settings`, body);
   },
 
   regenerateTitle(sessionId: string): Promise<{ ok: boolean; session: SessionListItem }> {

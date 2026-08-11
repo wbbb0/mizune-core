@@ -1,83 +1,20 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { sessionsApi } from "@/api/sessions";
+import { computed } from "vue";
 import type { SessionPacingPreferences } from "@/api/types";
-import { ApiError } from "@/api/client";
-import { WorkbenchDisclosure } from "@workbench-kit/vue";
 
 const props = defineProps<{
-  sessionId: string;
   source: "onebot" | "web";
-  preferences: SessionPacingPreferences | null;
+  modelValue: SessionPacingPreferences;
   disabled?: boolean;
 }>();
 
 const emit = defineEmits<{
-  updated: [preferences: SessionPacingPreferences];
+  "update:modelValue": [preferences: SessionPacingPreferences];
 }>();
 
-const expanded = ref(false);
-const saving = ref(false);
-const errorMessage = ref("");
-let saveRequestSeq = 0;
-
-watch(() => props.sessionId, () => {
-  saveRequestSeq += 1;
-  saving.value = false;
-  errorMessage.value = "";
-});
-const effectivePreferences = computed<SessionPacingPreferences>(() => props.preferences ?? (
-  props.source === "web"
-    ? { inputDebounce: { mode: "immediate" }, oneBotOutbound: "immediate" }
-    : { inputDebounce: { mode: "adaptive" }, oneBotOutbound: "humanized" }
-));
-const fixedDebounceSeconds = computed(() => effectivePreferences.value.inputDebounce.mode === "fixed"
-  ? effectivePreferences.value.inputDebounce.delayMs / 1000
+const fixedDebounceSeconds = computed(() => props.modelValue.inputDebounce.mode === "fixed"
+  ? props.modelValue.inputDebounce.delayMs / 1000
   : 5);
-const summary = computed(() => {
-  if (saving.value) {
-    return "保存中…";
-  }
-  if (
-    effectivePreferences.value.inputDebounce.mode === "immediate"
-    && effectivePreferences.value.oneBotOutbound === "immediate"
-  ) {
-    return "即时";
-  }
-  if (
-    effectivePreferences.value.inputDebounce.mode === "adaptive"
-    && effectivePreferences.value.oneBotOutbound === "humanized"
-  ) {
-    return "默认";
-  }
-  return "自定义";
-});
-
-async function save(preferences: SessionPacingPreferences) {
-  if (saving.value || props.disabled || props.preferences == null) {
-    return;
-  }
-  const sessionId = props.sessionId;
-  const requestSeq = ++saveRequestSeq;
-  saving.value = true;
-  errorMessage.value = "";
-  try {
-    const result = await sessionsApi.updatePacing(sessionId, preferences);
-    if (requestSeq === saveRequestSeq && props.sessionId === sessionId) {
-      emit("updated", result.pacingPreferences);
-    }
-  } catch (error: unknown) {
-    if (requestSeq === saveRequestSeq && props.sessionId === sessionId) {
-      errorMessage.value = error instanceof ApiError || error instanceof Error
-        ? error.message
-        : "保存会话回复节奏失败";
-    }
-  } finally {
-    if (requestSeq === saveRequestSeq) {
-      saving.value = false;
-    }
-  }
-}
 
 function updateInputDebounceMode(event: Event) {
   const mode = (event.target as HTMLSelectElement).value;
@@ -86,48 +23,40 @@ function updateInputDebounceMode(event: Event) {
     : mode === "immediate"
       ? { mode: "immediate" }
       : { mode: "adaptive" };
-  void save({ ...effectivePreferences.value, inputDebounce });
+  emit("update:modelValue", { ...props.modelValue, inputDebounce });
 }
 
 function updateFixedDebounceSeconds(event: Event) {
   const raw = Number((event.target as HTMLInputElement).value);
   const seconds = Number.isFinite(raw) ? Math.min(120, Math.max(0, raw)) : 5;
-  void save({
-    ...effectivePreferences.value,
+  emit("update:modelValue", {
+    ...props.modelValue,
     inputDebounce: { mode: "fixed", delayMs: Math.round(seconds * 1000) }
   });
 }
 
 function updateOneBotOutboundPacing(event: Event) {
   const enabled = (event.target as HTMLInputElement).checked;
-  void save({
-    ...effectivePreferences.value,
+  emit("update:modelValue", {
+    ...props.modelValue,
     oneBotOutbound: enabled ? "humanized" : "immediate"
   });
 }
 </script>
 
 <template>
-  <WorkbenchDisclosure
-    :expanded="expanded"
-    collapsed-title="会话回复节奏"
-    expanded-title="会话回复节奏"
-    :summary="summary"
-    @toggle="expanded = !expanded"
-  >
+  <section class="rounded-lg border border-border-default bg-surface-panel p-4">
+    <div class="mb-4">
+      <h3 class="text-ui font-medium text-text-primary">会话回复节奏</h3>
+      <p class="mt-1 text-small leading-5 text-text-subtle">控制用户消息进入调度前的聚合等待，以及 OneBot 回复的模拟输入节奏。</p>
+    </div>
     <div class="flex flex-col gap-4">
-      <div
-        v-if="errorMessage"
-        class="rounded border border-[color-mix(in_srgb,var(--danger)_55%,transparent)] bg-surface-danger px-3 py-2 text-small text-danger"
-      >
-        {{ errorMessage }}
-      </div>
       <label class="grid gap-1.5 text-small text-text-secondary">
         <span>用户消息聚合等待</span>
         <select
           class="input-base"
-          :value="effectivePreferences.inputDebounce.mode"
-          :disabled="disabled || saving || preferences == null"
+          :value="modelValue.inputDebounce.mode"
+          :disabled="disabled"
           @change="updateInputDebounceMode"
         >
           <option value="adaptive">全局自适应</option>
@@ -136,7 +65,7 @@ function updateOneBotOutboundPacing(event: Event) {
         </select>
       </label>
       <label
-        v-if="effectivePreferences.inputDebounce.mode === 'fixed'"
+        v-if="modelValue.inputDebounce.mode === 'fixed'"
         class="grid gap-1.5 text-small text-text-secondary"
       >
         <span>固定等待秒数</span>
@@ -147,7 +76,7 @@ function updateOneBotOutboundPacing(event: Event) {
           max="120"
           step="0.5"
           :value="fixedDebounceSeconds"
-          :disabled="disabled || saving || preferences == null"
+          :disabled="disabled"
           @change="updateFixedDebounceSeconds"
         />
       </label>
@@ -159,8 +88,8 @@ function updateOneBotOutboundPacing(event: Event) {
         <input
           class="mt-0.5 size-4 shrink-0 accent-[var(--accent)]"
           type="checkbox"
-          :checked="effectivePreferences.oneBotOutbound === 'humanized'"
-          :disabled="disabled || saving || preferences == null || source === 'web'"
+          :checked="modelValue.oneBotOutbound === 'humanized'"
+          :disabled="disabled || source === 'web'"
           @change="updateOneBotOutboundPacing"
         />
       </label>
@@ -168,5 +97,5 @@ function updateOneBotOutboundPacing(event: Event) {
         修改对下一次调度生效；已经开始等待的消息不会被重新计时。Web 会话默认立即处理并关闭 OneBot 延迟。
       </div>
     </div>
-  </WorkbenchDisclosure>
+  </section>
 </template>

@@ -10,11 +10,14 @@ export const scenarioHostModeDefinition: SessionModeDefinition = {
     persona: true,
     modeProfile: "scenario"
   },
-  defaultToolsetIds: [
+  toolsets: [
     "chat_context",
     "time_utils",
     "scenario_host_state"
-  ],
+  ].map((toolsetId) => ({
+    toolsetId,
+    defaultEnabled: true
+  })),
   setupPhase: createOwnerPrivateProfileSetupPhase({
     persona: true,
     modeProfile: "scenario"

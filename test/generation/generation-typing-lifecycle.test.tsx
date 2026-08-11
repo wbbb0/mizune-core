@@ -5,6 +5,7 @@ import { createGenerationExecutor } from "../../src/app/generation/generationExe
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import type { OneBotMessageSegment } from "../../src/services/onebot/types.ts";
 import type { SessionPacingPreferences } from "../../src/conversation/session/sessionPacing.ts";
+import type { ToolsetView } from "../../src/llm/tools/toolsetCatalog.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
 function createUsage() {
@@ -96,6 +97,7 @@ function createExecutorHarness(options?: {
   currentUser?: { userId: string; relationship: "owner" | "known" };
   contextExtractionQueue?: { enqueueTurn: (turn: unknown) => void };
   pacingPreferences?: SessionPacingPreferences;
+  availableToolsets?: ToolsetView[];
   customGenerate?: (input: {
     onReasoningDelta?: (delta: string) => void;
     onTextDelta?: (delta: string) => Promise<void>;
@@ -112,6 +114,7 @@ function createExecutorHarness(options?: {
       }>;
     }) => Promise<void>;
     onProviderCallUsage?: (event: ProviderCallUsageEvent) => Promise<void> | void;
+    tools?: Array<{ function: { name: string } }> | (() => Array<{ function: { name: string } }>);
     abortSignal?: AbortSignal;
     onAssistantToolCalls?: (message: {
       role: "assistant";
@@ -158,7 +161,10 @@ function createExecutorHarness(options?: {
     sessionManager.setModeId(sessionId, options.modeId, { appendSwitchMarker: false });
   }
   if (options?.pacingPreferences) {
-    sessionManager.setPacingPreferences(sessionId, options.pacingPreferences);
+    sessionManager.setSettings(sessionId, {
+      pacingPreferences: options.pacingPreferences,
+      toolsetPreferences: sessionManager.getToolsetPreferences(sessionId)
+    });
   }
   const started = sessionManager.beginSyntheticGeneration(sessionId);
   const events: string[] = [];
@@ -192,7 +198,8 @@ function createExecutorHarness(options?: {
         onReasoningDelta?: (delta: string) => void;
         onTextDelta?: (delta: string) => Promise<void>;
         onProviderCallUsage?: (event: ProviderCallUsageEvent) => Promise<void> | void;
-	        onProviderResponseComplete?: (event: {
+        tools?: Array<{ function: { name: string } }> | (() => Array<{ function: { name: string } }>);
+        onProviderResponseComplete?: (event: {
           phase: "tool_call" | "final_response" | "fallback_response";
           text: string;
           toolCalls: Array<{
@@ -379,6 +386,12 @@ function createExecutorHarness(options?: {
       lastLlmUsage: null
     },
     availableToolNames: [],
+    ...(options?.availableToolsets !== undefined
+      ? {
+          availableToolsets: options.availableToolsets,
+          plannedToolsetIds: []
+        }
+      : {}),
     streamResponse: true,
     forceRegenerateTitleAfterTurn: options?.forceRegenerateTitleAfterTurn,
     ...(delivery === "web"
@@ -435,6 +448,51 @@ function createExecutorHarness(options?: {
 
     assert.deepEqual(harness.events, ["typing:start", "send:你好", "typing:stop"]);
   });
+
+test("an explicitly empty toolset boundary never falls back to all builtin tools", async () => {
+  let visibleToolNames: string[] | null = null;
+  const harness = createExecutorHarness({
+    availableToolsets: [],
+    customGenerate: async (input) => {
+      const tools = typeof input.tools === "function" ? input.tools() : input.tools;
+      visibleToolNames = (tools ?? []).map((tool) => tool.function.name).sort();
+      await input.onTextDelta?.("无工具回复");
+      return {
+        text: "无工具回复",
+        reasoningContent: "",
+        usage: createUsage()
+      };
+    }
+  });
+
+  await waitForCondition(() => visibleToolNames != null, "tool visibility was not captured");
+  harness.resolveDrain();
+  await harness.runPromise;
+
+  assert.deepEqual(visibleToolNames, ["list_available_toolsets", "request_toolset"]);
+});
+
+test("an explicitly empty direct tool boundary exposes no builtin tools", async () => {
+  let visibleToolNames: string[] | null = null;
+  const harness = createExecutorHarness({
+    customGenerate: async (input) => {
+      const tools = typeof input.tools === "function" ? input.tools() : input.tools;
+      visibleToolNames = (tools ?? []).map((tool) => tool.function.name).sort();
+      await input.onTextDelta?.("无工具回复");
+      return {
+        text: "无工具回复",
+        reasoningContent: "",
+        usage: createUsage()
+      };
+    }
+  });
+
+  await waitForCondition(() => visibleToolNames != null, "direct tool visibility was not captured");
+  harness.resolveDrain();
+  await harness.runPromise;
+
+  assert.deepEqual(visibleToolNames, []);
+});
 
   test("final assistant provider metadata is persisted after response completion", async () => {
     const assistantMetadata = {

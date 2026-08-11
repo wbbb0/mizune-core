@@ -6,6 +6,7 @@ import TranscriptItem from "./TranscriptItem.vue";
 import VirtualMessageList from "./VirtualMessageList.vue";
 import Composer from "./Composer.vue";
 import SessionStatePanel from "./SessionStatePanel.vue";
+import SessionSettingsPanel from "./SessionSettingsPanel.vue";
 import ScenarioHostPanel from "./ScenarioHostPanel.vue";
 import { openImagePreviewWindow } from "@/components/common/imagePreviewWindow";
 import { useSessionsStore } from "@/stores/sessions";
@@ -41,19 +42,20 @@ provide("transcriptExpandStates", transcriptExpandStates);
 watch(() => session.value?.id, () => { transcriptExpandStates.clear(); });
 
 // Tabs
-type Tab = "chat" | "transcript" | "scenario" | "state";
+type Tab = "chat" | "transcript" | "scenario" | "state" | "settings";
 const tab = ref<Tab>("chat");
 const hasScenarioTab = computed(() => session.value?.modeId === "scenario_host");
 const tabs = computed<Array<{ id: Tab; label: string }>>(() => [
   { id: "chat", label: "聊天" },
   { id: "transcript", label: "后台" },
   ...(hasScenarioTab.value ? [{ id: "scenario" as const, label: "Scenario" }] : []),
-  { id: "state", label: "状态" }
+  { id: "state", label: "状态" },
+  { id: "settings", label: "设置" }
 ]);
 const selectedTab = computed({
   get: () => tab.value,
   set: (value: string) => {
-    if (value === "chat" || value === "transcript" || value === "scenario" || value === "state") {
+    if (value === "chat" || value === "transcript" || value === "scenario" || value === "state" || value === "settings") {
       tab.value = value;
     }
   }
@@ -444,9 +446,11 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
 
       <SessionStatePanel v-show="tab === 'state'" :session="session" />
 
+      <SessionSettingsPanel v-show="tab === 'settings'" :session="session" />
+
       <!-- Composer -->
       <Composer
-        v-if="tab !== 'state' && tab !== 'scenario'"
+        v-if="tab !== 'state' && tab !== 'scenario' && tab !== 'settings'"
         :session-type="isPrivate ? 'private' : 'group'"
         :locked-user-id="lockedUserId"
         :default-user-id="defaultUserId"

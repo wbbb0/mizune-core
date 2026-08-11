@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { listTurnToolsets, resolveToolNamesFromToolsets } from "../../src/llm/tools/toolsetSelectionPolicy.ts";
+import {
+  listConfigurableSessionToolsets,
+  listTurnToolsets,
+  resolveToolNamesFromToolsets
+} from "../../src/llm/tools/toolsetSelectionPolicy.ts";
+import { resolveSessionToolsetEnabled } from "../../src/conversation/session/sessionToolsetPreferences.ts";
 import { TOOLSET_DEFINITIONS } from "../../src/llm/tools/toolsetCatalog.ts";
 import { decideToolsetSupplements } from "../../src/app/generation/toolsetSupplementPolicy.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
@@ -97,6 +102,70 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
     );
   });
 
+  test("session boundary removes disabled toolsets from planner candidates and model tools", () => {
+    const config = createTestAppConfig({
+      browser: { enabled: true, playwright: { enabled: true } }
+    });
+    const toolsets = listTurnToolsets({
+      config,
+      relationship: "owner",
+      currentUser: null,
+      modelRef: ["main"],
+      includeDebugTools: false,
+      modeId: "assistant",
+      toolsetPreferences: {
+        overrides: { web_research: "disabled" }
+      }
+    });
+
+    assert.equal(toolsets.some((item) => item.id === "web_research"), false);
+    assert.equal(resolveToolNamesFromToolsets(toolsets, ["web_research"]).length, 0);
+    assert.equal(
+      listConfigurableSessionToolsets("assistant", {
+        overrides: { web_research: "disabled" }
+      }).find((item) => item.id === "web_research")?.effectiveEnabled,
+      false
+    );
+  });
+
+  test("sparse session overrides preserve catalog defaults, including future opt-in toolsets", () => {
+    const emptyPreferences = { overrides: {} };
+    assert.equal(resolveSessionToolsetEnabled(emptyPreferences, "future_opt_in", false), false);
+    assert.equal(resolveSessionToolsetEnabled(emptyPreferences, "future_default", true), true);
+    assert.equal(resolveSessionToolsetEnabled({
+      overrides: { future_opt_in: "enabled", future_default: "disabled" }
+    }, "future_opt_in", false), true);
+    assert.equal(resolveSessionToolsetEnabled({
+      overrides: { future_opt_in: "enabled", future_default: "disabled" }
+    }, "future_default", true), false);
+  });
+
+  test("setup-required toolsets bypass the normal session boundary", () => {
+    const toolsets = listTurnToolsets({
+      config: createTestAppConfig(),
+      relationship: "owner",
+      currentUser: null,
+      modelRef: ["main"],
+      includeDebugTools: false,
+      modeId: "rp_assistant",
+      toolsetPreferences: {
+        overrides: { memory_profile: "disabled" }
+      },
+      setupPhase: {
+        setupToolsetOverrides: [{
+          toolsetId: "memory_profile",
+          title: "初始化资料",
+          toolNames: ["get_persona", "patch_persona"]
+        }]
+      }
+    });
+
+    assert.deepEqual(
+      toolsets.find((item) => item.id === "memory_profile")?.toolNames,
+      ["get_persona", "patch_persona"]
+    );
+  });
+
   test("scenario setup exposes optional item skip status only through setup override", async () => {
     const config = createTestAppConfig();
     const toolsets = listTurnToolsets({
@@ -157,7 +226,10 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
       modeId: "assistant"
     });
 
-    assert.equal(requireSessionModeDefinition("assistant").defaultToolsetIds.includes("comfy_image"), true);
+    assert.equal(
+      requireSessionModeDefinition("assistant").toolsets.some((item) => item.toolsetId === "comfy_image"),
+      true
+    );
     assert.deepEqual(toolsets.map((item) => item.id), [
       "chat_context",
       "web_research",

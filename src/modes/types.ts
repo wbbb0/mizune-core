@@ -10,6 +10,11 @@ export interface SessionModeProfileAccess {
   modeProfile: SessionModeProfileTarget | null;
 }
 
+export interface SessionModeToolsetPolicy {
+  toolsetId: string;
+  defaultEnabled: boolean;
+}
+
 export interface SessionModeSetupContext {
   personaReady: boolean;
   modeProfileReady: boolean;
@@ -62,7 +67,7 @@ export interface SessionModeDefinition {
   title: string;
   description: string;
   allowedChatTypes: SessionModeChatType[];
-  defaultToolsetIds: string[];
+  toolsets: SessionModeToolsetPolicy[];
   profileAccess: SessionModeProfileAccess;
   setupPhase?: SessionModeSetupPhase;
 }

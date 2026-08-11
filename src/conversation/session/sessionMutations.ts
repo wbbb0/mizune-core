@@ -333,16 +333,22 @@ export function setSessionDebugControlState(
   return session.debugControl;
 }
 
-export function setSessionPacingPreferencesState(
+export function setSessionSettingsState(
   session: SessionState,
-  preferences: SessionState["pacingPreferences"]
-): SessionState["pacingPreferences"] {
+  settings: Pick<SessionState, "pacingPreferences" | "toolsetPreferences">
+): Pick<SessionState, "pacingPreferences" | "toolsetPreferences"> {
   session.pacingPreferences = {
-    inputDebounce: { ...preferences.inputDebounce },
-    oneBotOutbound: preferences.oneBotOutbound
+    inputDebounce: { ...settings.pacingPreferences.inputDebounce },
+    oneBotOutbound: settings.pacingPreferences.oneBotOutbound
+  };
+  session.toolsetPreferences = {
+    overrides: { ...settings.toolsetPreferences.overrides }
   };
   session.lastActiveAt = Date.now();
-  return session.pacingPreferences;
+  return {
+    pacingPreferences: session.pacingPreferences,
+    toolsetPreferences: session.toolsetPreferences
+  };
 }
 
 export function appendActiveAssistantResponseChunkState(

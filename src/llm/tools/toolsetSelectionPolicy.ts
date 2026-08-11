@@ -6,6 +6,12 @@ import type { SessionModeSetupToolsetOverride } from "#modes/types.ts";
 import { TOOLSET_DEFINITIONS, toToolsetView } from "./toolsetCatalog.ts";
 import type { ToolsetView } from "./toolsetCatalog.ts";
 import type { ProfileToolScope } from "./profileToolScope.ts";
+import {
+  createDefaultSessionToolsetPreferences,
+  resolveSessionToolsetEnabled,
+  type SessionToolsetOverride,
+  type SessionToolsetPreferences
+} from "#conversation/session/sessionToolsetPreferences.ts";
 
 export const TURN_PLANNER_ALWAYS_TOOL_NAMES = [
   "list_available_toolsets",
@@ -24,6 +30,37 @@ export interface TurnToolsetSelectionInput {
   modeId?: string;
   profileToolScope?: ProfileToolScope | null;
   visibilityContext?: ToolVisibilityContext;
+  toolsetPreferences?: SessionToolsetPreferences;
+}
+
+export interface ConfigurableSessionToolset {
+  id: string;
+  title: string;
+  description: string;
+  toolNames: string[];
+  defaultEnabled: boolean;
+  effectiveEnabled: boolean;
+  override: SessionToolsetOverride | null;
+  ownerOnly: boolean;
+  debugOnly: boolean;
+}
+
+const KNOWN_TOOLSET_IDS = new Set(TOOLSET_DEFINITIONS.map((toolset) => toolset.id));
+
+export function normalizeSessionToolsetPreferences(
+  preferences: SessionToolsetPreferences
+): SessionToolsetPreferences {
+  return {
+    overrides: Object.fromEntries(
+      Object.entries(preferences.overrides).filter(([toolsetId]) => KNOWN_TOOLSET_IDS.has(toolsetId))
+    )
+  };
+}
+
+export function findUnknownSessionToolsetOverride(
+  preferences: SessionToolsetPreferences
+): string | null {
+  return Object.keys(preferences.overrides).find((toolsetId) => !KNOWN_TOOLSET_IDS.has(toolsetId)) ?? null;
 }
 
 // Centralizes runtime toolset visibility and setup override policy so the catalog
@@ -60,12 +97,57 @@ export function listTurnToolsets(input: TurnToolsetSelectionInput): ToolsetView[
     );
   }
 
-  const mode = requireSessionModeDefinition(input.modeId ?? getDefaultSessionModeId());
+  const modeId = input.modeId ?? getDefaultSessionModeId();
+  const modeDefaults = resolveModeToolsetDefaults(modeId);
+  const preferences = input.toolsetPreferences ?? createDefaultSessionToolsetPreferences();
   return TOOLSET_DEFINITIONS
-    .filter((toolset) => toolset.modeUniversal === true || mode.defaultToolsetIds.includes(toolset.id))
+    .filter((toolset) => {
+      const defaultEnabled = modeDefaults.get(toolset.id);
+      return defaultEnabled != null
+        && resolveSessionToolsetEnabled(preferences, toolset.id, defaultEnabled);
+    })
     .filter((toolset) => isToolsetVisible(toolset, input.relationship, input.includeDebugTools))
     .map((toolset) => toToolsetView(toolset, visibleToolNames))
     .filter((toolset): toolset is ToolsetView => toolset != null);
+}
+
+export function listConfigurableSessionToolsets(
+  modeId: string,
+  preferences: SessionToolsetPreferences
+): ConfigurableSessionToolset[] {
+  const modeDefaults = resolveModeToolsetDefaults(modeId);
+  return TOOLSET_DEFINITIONS.flatMap((toolset) => {
+    const defaultEnabled = modeDefaults.get(toolset.id);
+    if (defaultEnabled == null) {
+      return [];
+    }
+    const override = preferences.overrides[toolset.id] ?? null;
+    return [{
+      id: toolset.id,
+      title: toolset.title,
+      description: toolset.description,
+      toolNames: [...toolset.toolNames],
+      defaultEnabled,
+      effectiveEnabled: resolveSessionToolsetEnabled(preferences, toolset.id, defaultEnabled),
+      override,
+      ownerOnly: toolset.ownerOnly === true,
+      debugOnly: toolset.debugOnly === true
+    }];
+  });
+}
+
+function resolveModeToolsetDefaults(modeId: string): Map<string, boolean> {
+  const mode = requireSessionModeDefinition(modeId);
+  const defaults = new Map<string, boolean>();
+  for (const toolset of TOOLSET_DEFINITIONS) {
+    if (toolset.modeUniversal) {
+      defaults.set(toolset.id, toolset.modeUniversal.defaultEnabled);
+    }
+  }
+  for (const policy of mode.toolsets) {
+    defaults.set(policy.toolsetId, policy.defaultEnabled);
+  }
+  return defaults;
 }
 
 export function resolveToolNamesFromToolsets(
@@ -86,7 +168,7 @@ function listVisibleSharedToolsets(
   includeDebugTools: boolean
 ): ToolsetView[] {
   return TOOLSET_DEFINITIONS
-    .filter((toolset) => toolset.modeUniversal === true)
+    .filter((toolset) => toolset.modeUniversal?.defaultEnabled === true)
     .filter((toolset) => isToolsetVisible(toolset, relationship, includeDebugTools))
     .map((toolset) => toToolsetView(toolset, visibleToolNames))
     .filter((toolset): toolset is ToolsetView => toolset != null);

@@ -244,10 +244,10 @@ export interface SessionAdminMutationAccess {
   }): SessionState;
   getSession(sessionId: string): SessionState;
   setTitle(sessionId: string, title: string, titleSource: "default" | "auto" | "manual"): SessionState;
-  setPacingPreferences(
+  setSettings(
     sessionId: string,
-    preferences: SessionState["pacingPreferences"]
-  ): SessionState["pacingPreferences"];
+    settings: Pick<SessionState, "pacingPreferences" | "toolsetPreferences">
+  ): Pick<SessionState, "pacingPreferences" | "toolsetPreferences">;
   appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void;
   setModeId(sessionId: string, modeId: string, options?: { appendSwitchMarker?: boolean }): boolean;
   getPersistedSession(sessionId: string): PersistedSessionState;

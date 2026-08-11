@@ -18,6 +18,10 @@ import {
   createDefaultSessionPacingPreferences,
   type SessionPacingPreferences
 } from "../../src/conversation/session/sessionPacing.ts";
+import {
+  createDefaultSessionToolsetPreferences,
+  type SessionToolsetPreferences
+} from "../../src/conversation/session/sessionToolsetPreferences.ts";
 import type { ContextManagementItem } from "../../src/context/contextTypes.ts";
 import { createInitialScenarioHostSessionState, type ScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
 import type { ShellRunParams, ShellRunResult, ShellSession } from "../../src/services/shell/types.ts";
@@ -40,6 +44,7 @@ export interface InternalApiFixtureState {
     title: string | null;
     titleSource: "default" | "auto" | "manual" | null;
     pacingPreferences?: SessionPacingPreferences;
+    toolsetPreferences?: SessionToolsetPreferences;
     phase: { kind: string };
     pendingMessages: Array<{ id?: number }>;
     taskTracker: NonNullable<PersistedSessionState["taskTracker"]>;
@@ -121,6 +126,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       title: "Alice",
       titleSource: "manual",
       pacingPreferences: createDefaultSessionPacingPreferences("onebot"),
+      toolsetPreferences: createDefaultSessionToolsetPreferences(),
       phase: { kind: "idle" },
       pendingMessages: [{ id: 1 }],
       taskTracker: createEmptySessionTaskTracker(),
@@ -453,6 +459,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           titleSource: existing?.titleSource ?? "manual",
           pacingPreferences: existing?.pacingPreferences
             ?? createDefaultSessionPacingPreferences(existing?.source ?? (sessionId.startsWith("web:") ? "web" : "onebot")),
+          toolsetPreferences: existing?.toolsetPreferences ?? createDefaultSessionToolsetPreferences(),
           phase: existing?.phase ?? { kind: "idle" },
           pendingMessages: [],
           taskTracker: existing?.taskTracker ?? createEmptySessionTaskTracker(),
@@ -521,6 +528,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           title,
           titleSource: target.titleSource ?? (title ? "manual" : "default"),
           pacingPreferences: createDefaultSessionPacingPreferences(target.source ?? "onebot"),
+          toolsetPreferences: createDefaultSessionToolsetPreferences(),
           phase: { kind: "idle" },
           pendingMessages: [],
           taskTracker: createEmptySessionTaskTracker(),
@@ -604,6 +612,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           titleSource: session.titleSource,
           replyDelivery: session.source === "web" ? "web" : "onebot",
           pacingPreferences: session.pacingPreferences,
+          toolsetPreferences: session.toolsetPreferences,
           pendingMessages: [],
           taskTracker: session.taskTracker,
           internalTranscript: session.internalTranscript,
@@ -632,6 +641,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           titleSource: item.titleSource,
           pacingPreferences: item.pacingPreferences
             ?? createDefaultSessionPacingPreferences(item.source ?? "onebot"),
+          toolsetPreferences: item.toolsetPreferences ?? createDefaultSessionToolsetPreferences(),
           phase: { kind: "idle" },
           pendingMessages: [],
           taskTracker: item.taskTracker ?? createEmptySessionTaskTracker(),
@@ -654,14 +664,32 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       getLlmVisibleHistory() {
         return [];
       },
-      setPacingPreferences(sessionId: string, preferences: SessionPacingPreferences) {
+      getPacingPreferences(sessionId: string) {
         const session = state.sessions.find((entry) => entry.id === sessionId);
         if (!session) {
           throw new Error(`Unknown session: ${sessionId}`);
         }
-        session.pacingPreferences = structuredClone(preferences);
+        return structuredClone(session.pacingPreferences ?? createDefaultSessionPacingPreferences(session.source));
+      },
+      getToolsetPreferences(sessionId: string) {
+        const session = state.sessions.find((entry) => entry.id === sessionId);
+        if (!session) {
+          throw new Error(`Unknown session: ${sessionId}`);
+        }
+        return structuredClone(session.toolsetPreferences ?? createDefaultSessionToolsetPreferences());
+      },
+      setSettings(sessionId: string, settings: {
+        pacingPreferences: SessionPacingPreferences;
+        toolsetPreferences: SessionToolsetPreferences;
+      }) {
+        const session = state.sessions.find((entry) => entry.id === sessionId);
+        if (!session) {
+          throw new Error(`Unknown session: ${sessionId}`);
+        }
+        session.pacingPreferences = structuredClone(settings.pacingPreferences);
+        session.toolsetPreferences = structuredClone(settings.toolsetPreferences);
         notifySessionChanged(sessionId);
-        return structuredClone(preferences);
+        return structuredClone(settings);
       },
       appendSyntheticPendingMessage() {},
       appendHistory() {},

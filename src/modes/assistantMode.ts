@@ -10,7 +10,7 @@ export const assistantModeDefinition: SessionModeDefinition = {
     persona: true,
     modeProfile: null
   },
-  defaultToolsetIds: [
+  toolsets: [
     "chat_context",
     "web_research",
     "shell_runtime",
@@ -19,7 +19,10 @@ export const assistantModeDefinition: SessionModeDefinition = {
     "scheduler_admin",
     "comfy_image",
     "time_utils"
-  ],
+  ].map((toolsetId) => ({
+    toolsetId,
+    defaultEnabled: true
+  })),
   setupPhase: createOwnerPrivateProfileSetupPhase({
     persona: true,
     modeProfile: null

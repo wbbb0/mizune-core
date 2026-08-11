@@ -18,6 +18,10 @@ import {
   cloneSessionPacingPreferences,
   createDefaultSessionPacingPreferences
 } from "./sessionPacing.ts";
+import {
+  cloneSessionToolsetPreferences,
+  createDefaultSessionToolsetPreferences
+} from "./sessionToolsetPreferences.ts";
 
 // Creates and converts runtime session state snapshots.
 
@@ -56,6 +60,7 @@ export function createSessionState(target: {
     titleSource: target.titleSource ?? (normalizedTitle ? "manual" : "default"),
     replyDelivery: source,
     pacingPreferences: createDefaultSessionPacingPreferences(source),
+    toolsetPreferences: createDefaultSessionToolsetPreferences(),
     debugControl: {
       enabled: false,
       oncePending: false
@@ -125,6 +130,9 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
     replyDelivery: item.replyDelivery ?? item.source ?? getSessionSource(item.id),
     pacingPreferences: cloneSessionPacingPreferences(
       item.pacingPreferences ?? createDefaultSessionPacingPreferences(source)
+    ),
+    toolsetPreferences: cloneSessionToolsetPreferences(
+      item.toolsetPreferences ?? createDefaultSessionToolsetPreferences()
     ),
     debugControl: {
       enabled: item.debugControl?.enabled === true,
@@ -232,6 +240,7 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     titleSource: session.titleSource,
     replyDelivery: session.replyDelivery,
     pacingPreferences: cloneSessionPacingPreferences(session.pacingPreferences),
+    toolsetPreferences: cloneSessionToolsetPreferences(session.toolsetPreferences),
     debugControl: {
       enabled: session.debugControl.enabled
     },

@@ -627,6 +627,7 @@ export function createGenerationSessionOrchestrator(
         includeDebugTools: interactionMode === "debug",
         visibilityContext: toolVisibilityContext,
         modeId: sessionModeId,
+        toolsetPreferences: refreshedSession.toolsetPreferences,
         profileToolScope,
         ...setupPhaseSelection
       });
@@ -714,6 +715,7 @@ export function createGenerationSessionOrchestrator(
           includeDebugTools: interactionMode === "debug",
           visibilityContext: toolVisibilityContext,
           modeId: sessionModeId,
+          toolsetPreferences: refreshedSession.toolsetPreferences,
           profileToolScope,
           ...setupPhaseSelection
         });
@@ -1001,6 +1003,7 @@ export function createGenerationSessionOrchestrator(
           replyDelivery: scheduledReplyDelivery
         },
         modeId: session.modeId,
+        toolsetPreferences: session.toolsetPreferences,
         profileToolScope: resolveProfileToolScope({
           operationMode: session.operationMode,
           activeSetupOperationKind: null,
@@ -1186,6 +1189,7 @@ export function createGenerationSessionOrchestrator(
           replyDelivery: scheduledReplyDelivery
         },
         modeId: session.modeId,
+        toolsetPreferences: session.toolsetPreferences,
         profileToolScope: resolveProfileToolScope({
           operationMode: session.operationMode,
           activeSetupOperationKind: null,

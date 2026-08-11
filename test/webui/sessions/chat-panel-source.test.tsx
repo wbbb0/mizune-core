@@ -7,6 +7,8 @@ import { readFile } from "node:fs/promises";
 
     assert.match(source, /WorkbenchTabStrip/);
     assert.match(source, /label: "后台"/);
+    assert.match(source, /label: "设置"/);
+    assert.match(source, /<SessionSettingsPanel/);
     assert.doesNotMatch(source, /后台记录/);
     assert.doesNotMatch(source, /session\?\.transcriptCount/);
     assert.doesNotMatch(source, /Trash2/);

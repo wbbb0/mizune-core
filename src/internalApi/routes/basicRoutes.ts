@@ -18,6 +18,7 @@ import {
   getPersona,
   getSessionListStream,
   getSessionDetail,
+  getSessionSettings,
   listAvailableSessionModes,
   listContextItems,
   listSessions,
@@ -33,7 +34,7 @@ import {
   switchSessionMode,
   updateContextItem,
   updateSessionModeState,
-  updateSessionPacingPreferences,
+  updateSessionSettings,
   updateSessionTitle
 } from "../application/basicAdminService.ts";
 import { listRequests, listScheduledJobs } from "../application/operationsAdminService.ts";
@@ -56,7 +57,7 @@ import {
   parseOrReply,
   parseSwitchSessionModeBody,
   parseUpdateSessionTitleBody,
-  parseUpdateSessionPacingBody,
+  parseUpdateSessionSettingsBody,
   parseUpdateSessionModeStateBody,
   parseSessionParams,
   parseSessionSnapshotParams,
@@ -703,17 +704,26 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
   });
 
-  app.patch("/api/sessions/:sessionId/pacing", async (request, reply) => {
+  app.get("/api/sessions/:sessionId/settings", async (request, reply) => {
     const params = parseSessionParams(request.params);
     if (!parseOrReply(reply, params)) {
       return reply;
     }
-    const body = parseUpdateSessionPacingBody(request.body);
+    const settings = getSessionSettings(services.config, params.sessionId);
+    return settings ?? respondNotFound(reply, "Session not found");
+  });
+
+  app.patch("/api/sessions/:sessionId/settings", async (request, reply) => {
+    const params = parseSessionParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    const body = parseUpdateSessionSettingsBody(request.body);
     if (!parseOrReply(reply, body)) {
       return reply;
     }
     try {
-      return await updateSessionPacingPreferences(services.config, params.sessionId, body);
+      return await updateSessionSettings(services.config, params.sessionId, body);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
     }

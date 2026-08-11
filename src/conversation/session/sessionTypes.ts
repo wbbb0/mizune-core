@@ -2,6 +2,7 @@ import type { OneBotMessageEvent, OneBotMessageFileSummary, OneBotSpecialSegment
 import type { ChatAttachment } from "#services/workspace/types.ts";
 import type { SessionOperationMode } from "./sessionOperationMode.ts";
 import type { SessionPacingPreferences } from "./sessionPacing.ts";
+import type { SessionToolsetPreferences } from "./sessionToolsetPreferences.ts";
 import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
 import type {
   InternalTranscriptItem as InternalTranscriptItemContract,
@@ -392,6 +393,7 @@ export interface SessionState {
   titleSource: SessionTitleSource | null;
   replyDelivery: SessionDelivery;
   pacingPreferences: SessionPacingPreferences;
+  toolsetPreferences: SessionToolsetPreferences;
   debugControl: SessionDebugControlState;
   pendingMessages: SessionMessage[];
   pendingSteerMessages: SessionMessage[];
@@ -436,6 +438,7 @@ export interface PersistedSessionState {
   titleSource: SessionTitleSource | null;
   replyDelivery?: SessionDelivery;
   pacingPreferences?: SessionPacingPreferences;
+  toolsetPreferences?: SessionToolsetPreferences;
   debugControl?: {
     enabled?: boolean;
   };

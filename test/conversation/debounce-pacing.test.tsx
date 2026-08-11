@@ -61,9 +61,12 @@ test("web input debounce fires immediately by default", async () => {
 
 test("fixed session debounce overrides normal input scheduling", async () => {
   const harness = createHarness("web");
-  harness.sessionManager.setPacingPreferences(harness.sessionId, {
-    inputDebounce: { mode: "fixed", delayMs: 25 },
-    oneBotOutbound: "immediate"
+  harness.sessionManager.setSettings(harness.sessionId, {
+    pacingPreferences: {
+      inputDebounce: { mode: "fixed", delayMs: 25 },
+      oneBotOutbound: "immediate"
+    },
+    toolsetPreferences: harness.sessionManager.getToolsetPreferences(harness.sessionId)
   });
   let fired = false;
   harness.debounceManager.schedule(harness.sessionId, () => {

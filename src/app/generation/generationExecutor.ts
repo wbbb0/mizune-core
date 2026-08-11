@@ -364,15 +364,15 @@ export function createGenerationExecutor(
           }
         } : {})
       });
-      const isPlannerToolsetMode = !setupMode && Array.isArray(availableToolsets) && availableToolsets.length > 0;
+      const isPlannerToolsetMode = !setupMode && Array.isArray(availableToolsets);
       const activeToolsetIds = new Set((plannedToolsetIds ?? []).filter((id) => (
         availableToolsets?.some((item) => item.id === id) ?? false
       )));
       let toolsetUpgradeUsed = false;
 
-      const resolveDynamicAllowedToolNames = (): string[] => {
+      const resolveDynamicAllowedToolNames = (): string[] | undefined => {
         if (!isPlannerToolsetMode) {
-          return availableToolNames ?? [];
+          return availableToolNames;
         }
         return [
           ...resolveToolNamesFromToolsets(availableToolsets!, Array.from(activeToolsetIds)),
@@ -389,7 +389,7 @@ export function createGenerationExecutor(
             sessionId,
             replyDelivery: sendTarget.delivery
           },
-          ...(dynamicAllowedToolNames.length > 0
+          ...(dynamicAllowedToolNames !== undefined
             ? { availableToolNames: dynamicAllowedToolNames }
             : {})
         };

@@ -7,24 +7,12 @@ import { readFile } from "node:fs/promises";
       new URL("../../../webui/src/components/sessions/SessionStatePanel.vue", import.meta.url),
       "utf8"
     );
-    const pacingControl = await readFile(
-      new URL("../../../webui/src/components/sessions/SessionPacingControl.vue", import.meta.url),
-      "utf8"
-    );
-
     assert.match(source, /标题/);
     assert.doesNotMatch(source, /保存标题/);
     assert.doesNotMatch(source, /重新生成标题/);
     assert.match(source, /主体类型/);
     assert.match(source, /主体 ID/);
-    assert.match(source, /<SessionPacingControl/);
-    assert.match(pacingControl, /collapsed-title="会话回复节奏"/);
-    assert.match(pacingControl, /用户消息聚合等待/);
-    assert.match(pacingControl, /全局自适应/);
-    assert.match(pacingControl, /立即处理/);
-    assert.match(pacingControl, /固定等待秒数/);
-    assert.match(pacingControl, /OneBot 回复模拟输入延迟/);
-    assert.match(pacingControl, /sessionsApi\.updatePacing/);
+    assert.doesNotMatch(source, /SessionPacingControl/);
     assert.match(source, /<pre[^>]*overflow-auto[^>]*>{{ detail\?\.session\.historySummary \|\| "暂无摘要" }}/);
     assert.doesNotMatch(source, /function formatJson/);
     assert.doesNotMatch(source, /formatJson\(detail\?\.session\.debugControl/);
@@ -53,3 +41,36 @@ import { readFile } from "node:fs/promises";
     assert.match(source, /class="min-w-0 break-all font-mono text-small text-text-secondary"/);
     assert.match(source, /class="mt-1 break-all font-mono text-small text-text-muted"/);
   });
+
+test("session settings panel edits toolset boundary and pacing as one atomic draft", async () => {
+  const panel = await readFile(
+    new URL("../../../webui/src/components/sessions/SessionSettingsPanel.vue", import.meta.url),
+    "utf8"
+  );
+  const pacingControl = await readFile(
+    new URL("../../../webui/src/components/sessions/SessionPacingControl.vue", import.meta.url),
+    "utf8"
+  );
+  const toolsetControl = await readFile(
+    new URL("../../../webui/src/components/sessions/SessionToolsetBoundaryControl.vue", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(panel, /sessionsApi\.fetchSettings/);
+  assert.match(panel, /sessionsApi\.updateSettings/);
+  assert.match(panel, /cloneSessionSettings\(draft\.value\)/);
+  assert.doesNotMatch(panel, /structuredClone/);
+  assert.match(panel, /<SessionToolsetBoundaryControl/);
+  assert.match(panel, /<SessionPacingControl/);
+  assert.match(panel, /保存设置/);
+  assert.match(pacingControl, /用户消息聚合等待/);
+  assert.match(pacingControl, /全局自适应/);
+  assert.match(pacingControl, /立即处理/);
+  assert.match(pacingControl, /固定等待秒数/);
+  assert.match(pacingControl, /OneBot 回复模拟输入延迟/);
+  assert.doesNotMatch(pacingControl, /sessionsApi/);
+  assert.match(toolsetControl, /模型可用工具边界/);
+  assert.match(toolsetControl, /限制 Planner 的候选工具集/);
+  assert.match(toolsetControl, /恢复模式默认/);
+  assert.match(toolsetControl, /delete overrides\[option\.id\]/);
+});

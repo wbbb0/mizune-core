@@ -10,7 +10,7 @@ export const rpAssistantModeDefinition: SessionModeDefinition = {
     persona: true,
     modeProfile: "rp"
   },
-  defaultToolsetIds: [
+  toolsets: [
     "chat_context",
     "memory_profile",
     "conversation_navigation",
@@ -24,7 +24,10 @@ export const rpAssistantModeDefinition: SessionModeDefinition = {
     "comfy_image",
     "time_utils",
     "debug_owner"
-  ],
+  ].map((toolsetId) => ({
+    toolsetId,
+    defaultEnabled: true
+  })),
   setupPhase: createOwnerPrivateProfileSetupPhase({
     persona: true,
     modeProfile: "rp"

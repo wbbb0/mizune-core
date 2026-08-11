@@ -43,7 +43,7 @@ test("session persistence round-trips title titleSource and participantRef", asy
   assert.ok(!("participantUserId" in persisted));
 });
 
-test("session persistence round-trips pacing preferences", async () => {
+test("session persistence round-trips session settings", async () => {
   await withDataDir("llm-bot-session-pacing-test", async (dataDir: string) => {
     const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
     await persistence.init();
@@ -56,16 +56,24 @@ test("session persistence round-trips pacing preferences", async () => {
       inputDebounce: { mode: "fixed", delayMs: 2_500 },
       oneBotOutbound: "humanized"
     };
+    session.toolsetPreferences = {
+      overrides: {
+        web_research: "disabled",
+        dice_roller: "enabled"
+      }
+    };
 
     await persistence.save(toPersistedSessionState(session));
     const [loaded] = await persistence.loadAll();
     assert.ok(loaded);
     assert.deepEqual(loaded.pacingPreferences, session.pacingPreferences);
+    assert.deepEqual(loaded.toolsetPreferences, session.toolsetPreferences);
     assert.deepEqual(restoreSessionState(loaded).pacingPreferences, session.pacingPreferences);
+    assert.deepEqual(restoreSessionState(loaded).toolsetPreferences, session.toolsetPreferences);
   });
 });
 
-test("sessions without pacing preferences derive defaults from their source", () => {
+test("sessions without settings derive defaults", () => {
   const web = toPersistedSessionState(createSessionState({
     id: "web:legacy-pacing",
     type: "private",
@@ -78,6 +86,8 @@ test("sessions without pacing preferences derive defaults from their source", ()
   }));
   delete web.pacingPreferences;
   delete oneBot.pacingPreferences;
+  delete web.toolsetPreferences;
+  delete oneBot.toolsetPreferences;
 
   assert.deepEqual(restoreSessionState(web).pacingPreferences, {
     inputDebounce: { mode: "immediate" },
@@ -87,9 +97,11 @@ test("sessions without pacing preferences derive defaults from their source", ()
     inputDebounce: { mode: "adaptive" },
     oneBotOutbound: "humanized"
   });
+  assert.deepEqual(restoreSessionState(web).toolsetPreferences, { overrides: {} });
+  assert.deepEqual(restoreSessionState(oneBot).toolsetPreferences, { overrides: {} });
 });
 
-test("session schema version 6 migrates to pacing preferences storage", async () => {
+test("session schema version 6 migrates to session settings storage", async () => {
   await withDataDir("llm-bot-session-pacing-migration-test", async (dataDir: string) => {
     const logger = pino({ level: "silent" });
     const sessionsTable = sessionDataDomain.tables.sessions;
@@ -102,7 +114,9 @@ test("session schema version 6 migrates to pacing preferences storage", async ()
         ...sessionDataDomain.tables,
         sessions: {
           ...sessionsTable,
-          columns: sessionsTable.columns.filter((column) => column.key !== "pacingPreferencesJson")
+          columns: sessionsTable.columns.filter((column) => (
+            column.key !== "pacingPreferencesJson" && column.key !== "toolsetPreferencesJson"
+          ))
         }
       }
     };
@@ -121,10 +135,12 @@ test("session schema version 6 migrates to pacing preferences storage", async ()
       type: "private",
       source: "web"
     }));
+    persisted.toolsetPreferences = { overrides: { web_research: "disabled" } };
     await persistence.save(persisted);
 
     const [loaded] = await persistence.loadAll();
     assert.deepEqual(loaded?.pacingPreferences, persisted.pacingPreferences);
+    assert.deepEqual(loaded?.toolsetPreferences, persisted.toolsetPreferences);
   });
 });
 

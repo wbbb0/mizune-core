@@ -332,7 +332,6 @@ export interface SessionDetailSnapshot {
   title: string | null;
   titleSource: SessionTitleSource | null;
   titleGenerationAvailable: boolean;
-  pacingPreferences: SessionPacingPreferences;
   debugControl: SessionDebugControlState;
   historySummary: string | null;
   taskTracker: SessionTaskTracker;
@@ -355,6 +354,32 @@ export interface SessionPacingPreferences {
     | { mode: "immediate" }
     | { mode: "fixed"; delayMs: number };
   oneBotOutbound: "humanized" | "immediate";
+}
+
+export interface SessionToolsetPreferences {
+  overrides: Record<string, "enabled" | "disabled">;
+}
+
+export interface SessionToolsetOption {
+  id: string;
+  title: string;
+  description: string;
+  toolNames: string[];
+  defaultEnabled: boolean;
+  effectiveEnabled: boolean;
+  override: "enabled" | "disabled" | null;
+  ownerOnly: boolean;
+  debugOnly: boolean;
+}
+
+export interface SessionSettings {
+  pacingPreferences: SessionPacingPreferences;
+  toolsetPreferences: SessionToolsetPreferences;
+}
+
+export interface SessionSettingsResult {
+  settings: SessionSettings;
+  toolsetOptions: SessionToolsetOption[];
 }
 
 export interface ScenarioHostObjective {

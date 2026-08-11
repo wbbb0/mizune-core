@@ -785,6 +785,9 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         }
       });
       assert.equal(saveStateResponse.statusCode, 200);
+      deps.__state.sessions[0]!.toolsetPreferences = {
+        overrides: { web_research: "disabled" }
+      };
 
       const snapshotResponse = await app.inject({
         method: "POST",
@@ -814,6 +817,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       });
       assert.equal(mutateStateResponse.statusCode, 200);
       assert.equal(mutateStateResponse.json().modeState.state.currentSituation, "快照后局面");
+      deps.__state.sessions[0]!.toolsetPreferences = { overrides: {} };
 
       const restoreResponse = await app.inject({
         method: "POST",
@@ -823,6 +827,9 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(restoreResponse.json().session.modeId, "scenario_host");
       assert.equal(restoreResponse.json().modeState.state.profile.theme, "快照前主题");
       assert.equal(restoreResponse.json().modeState.state.currentSituation, "快照前局面");
+      assert.deepEqual(deps.__state.sessions[0]!.toolsetPreferences, {
+        overrides: { web_research: "disabled" }
+      });
 
       const listResponse = await app.inject({
         method: "GET",
@@ -938,6 +945,9 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         inputDebounce: { mode: "fixed", delayMs: 3_500 },
         oneBotOutbound: "immediate"
       };
+      deps.__state.sessions[0]!.toolsetPreferences = {
+        overrides: { web_research: "disabled" }
+      };
       deps.__state.sessions[0]!.lastLlmUsage = {
         inputTokens: 1,
         outputTokens: 2,
@@ -978,6 +988,9 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         inputDebounce: { mode: "fixed", delayMs: 3_500 },
         oneBotOutbound: "immediate"
       });
+      assert.deepEqual(copiedRuntimeSession?.toolsetPreferences, {
+        overrides: { web_research: "disabled" }
+      });
 
       const copiedDetailResponse = await app.inject({
         method: "GET",
@@ -989,6 +1002,14 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.deepEqual(copiedDetailResponse.json().session.pacingPreferences, {
         inputDebounce: { mode: "fixed", delayMs: 3_500 },
         oneBotOutbound: "immediate"
+      });
+      const copiedSettingsResponse = await app.inject({
+        method: "GET",
+        url: `/api/sessions/${encodeURIComponent(copiedSessionId)}/settings`
+      });
+      assert.equal(copiedSettingsResponse.statusCode, 200);
+      assert.deepEqual(copiedSettingsResponse.json().settings.toolsetPreferences, {
+        overrides: { web_research: "disabled" }
       });
       assert.equal(copiedDetailResponse.json().modeState.state.profile.theme, "复制前主题");
     } finally {
@@ -1747,8 +1768,9 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
     }
   });
 
-  test("internal api reads and updates session pacing preferences", async () => {
-    const app = await createInternalApiApp(createInternalApiDeps());
+  test("internal api reads and updates all session settings in one request", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
     try {
       const createResponse = await app.inject({
         method: "POST",
@@ -1756,45 +1778,87 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         payload: { title: "Pacing" }
       });
       const sessionId = createResponse.json().session.id;
+      const runtimeSession = deps.__state.sessions.find((item) => item.id === sessionId);
+      assert.ok(runtimeSession);
+      runtimeSession.toolsetPreferences = {
+        overrides: { removed_toolset: "disabled" }
+      };
 
-      const initialDetail = await app.inject({
+      const initialSettings = await app.inject({
         method: "GET",
-        url: `/api/sessions/${encodeURIComponent(sessionId)}`
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/settings`
       });
-      assert.deepEqual(initialDetail.json().session.pacingPreferences, {
+      assert.equal(initialSettings.statusCode, 200);
+      assert.deepEqual(initialSettings.json().settings.pacingPreferences, {
         inputDebounce: { mode: "immediate" },
         oneBotOutbound: "immediate"
       });
+      assert.deepEqual(initialSettings.json().settings.toolsetPreferences, { overrides: {} });
+      assert.equal(
+        initialSettings.json().toolsetOptions.find((item: { id: string }) => item.id === "web_research")?.effectiveEnabled,
+        true
+      );
 
       const response = await app.inject({
         method: "PATCH",
-        url: `/api/sessions/${encodeURIComponent(sessionId)}/pacing`,
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/settings`,
         payload: {
-          inputDebounce: { mode: "fixed", delayMs: 2_500 },
-          oneBotOutbound: "humanized"
+          pacingPreferences: {
+            inputDebounce: { mode: "fixed", delayMs: 2_500 },
+            oneBotOutbound: "humanized"
+          },
+          toolsetPreferences: {
+            overrides: { web_research: "disabled" }
+          }
         }
       });
       assert.equal(response.statusCode, 200);
-      assert.deepEqual(response.json().pacingPreferences, {
+      assert.deepEqual(response.json().settings.pacingPreferences, {
         inputDebounce: { mode: "fixed", delayMs: 2_500 },
         oneBotOutbound: "humanized"
       });
-
-      const updatedDetail = await app.inject({
-        method: "GET",
-        url: `/api/sessions/${encodeURIComponent(sessionId)}`
+      assert.deepEqual(response.json().settings.toolsetPreferences, {
+        overrides: { web_research: "disabled" }
       });
-      assert.deepEqual(updatedDetail.json().session.pacingPreferences, response.json().pacingPreferences);
+      assert.deepEqual(runtimeSession.toolsetPreferences, {
+        overrides: { web_research: "disabled" }
+      });
+      assert.equal(
+        response.json().toolsetOptions.find((item: { id: string }) => item.id === "web_research")?.effectiveEnabled,
+        false
+      );
+
+      const updatedSettings = await app.inject({
+        method: "GET",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/settings`
+      });
+      assert.deepEqual(updatedSettings.json().settings, response.json().settings);
 
       const invalid = await app.inject({
         method: "PATCH",
-        url: `/api/sessions/${encodeURIComponent(sessionId)}/pacing`,
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/settings`,
         payload: {
-          inputDebounce: { mode: "fixed", delayMs: 120_001 },
-          oneBotOutbound: "immediate"
+          pacingPreferences: {
+            inputDebounce: { mode: "fixed", delayMs: 120_001 },
+            oneBotOutbound: "immediate"
+          },
+          toolsetPreferences: { overrides: {} }
         }
       });
       assert.equal(invalid.statusCode, 400);
+
+      const unknownToolset = await app.inject({
+        method: "PATCH",
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/settings`,
+        payload: {
+          pacingPreferences: {
+            inputDebounce: { mode: "immediate" },
+            oneBotOutbound: "immediate"
+          },
+          toolsetPreferences: { overrides: { missing_toolset: "disabled" } }
+        }
+      });
+      assert.equal(unknownToolset.statusCode, 400);
     } finally {
       await app.close();
     }
