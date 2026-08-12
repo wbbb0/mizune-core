@@ -20,12 +20,15 @@ test("webui prompts before activating production updates and cleans production c
   assert.match(updateSource, /registerSW\(\{/);
   assert.match(updateSource, /onNeedRefresh\(\)/);
   assert.match(updateSource, /updateAvailable\.value = true/);
-  assert.match(updateSource, /await updateServiceWorker\(\)/);
+  assert.match(updateSource, /await activateWaitingServiceWorker\(registration, navigator\.serviceWorker\)/);
+  assert.match(updateSource, /onRegisteredSW\(_serviceWorkerUrl, registration\)/);
   assert.match(updateSource, /dismissUpdate/);
   assert.match(promptSource, /WebUI 新版本已就绪/);
   assert.match(promptSource, /当前页面不会自动中断/);
-  assert.match(promptSource, /@click="applyUpdate"/);
-  assert.match(promptSource, /@click="dismissUpdate"/);
+  assert.match(promptSource, /WorkbenchDialog/);
+  assert.match(promptSource, /@confirm="applyUpdate"/);
+  assert.match(promptSource, /@cancel="dismissUpdate"/);
+  assert.match(promptSource, /:disabled="updating"/);
   assert.match(appSource, /<PwaUpdatePrompt \/>/);
 
   assert.doesNotMatch(serviceWorkerSource, /^self\.skipWaiting\(\);$/m);
