@@ -30,7 +30,7 @@ export const sessionDataDomain = defineDataDomain({
         textColumn("activeTranscriptGroupId", { storageName: "active_transcript_group_id", hidden: true, nullable: true }),
         textColumn("historySummary", { storageName: "history_summary", hidden: true, nullable: true }),
         integerColumn("historyBackfillBoundaryMs", { storageName: "history_backfill_boundary_ms", hidden: true, nullable: true }),
-        jsonColumn("taskTrackerJson", { storageName: "task_tracker_json", hidden: true, notNull: true, defaultSql: `'{"version":1,"primary":null,"parked":[],"evidence":[]}'` }),
+        jsonColumn("taskTrackerJson", { storageName: "task_tracker_json", hidden: true, notNull: true, defaultSql: `'{"version":1,"primary":null,"parked":[]}'` }),
         jsonColumn("debugMarkersJson", { storageName: "debug_markers_json", hidden: true, notNull: true }),
         jsonColumn("lastLlmUsageJson", { storageName: "last_llm_usage_json", hidden: true, nullable: true }),
         jsonColumn("sentMessagesJson", { storageName: "sent_messages_json", hidden: true, notNull: true }),

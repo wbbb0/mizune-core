@@ -937,13 +937,13 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
           createdAtMs: 1,
           updatedAtMs: 2
         },
-        parked: [],
-        evidence: []
+        parked: []
       };
       deps.__state.sessions[0]!.debugMarkers = [{ kind: "debug_enabled", timestampMs: 3 }];
       deps.__state.sessions[0]!.pacingPreferences = {
         inputDebounce: { mode: "fixed", delayMs: 3_500 },
-        oneBotOutbound: "immediate"
+        oneBotOutbound: "immediate",
+        toolLoopOutput: "final_only"
       };
       deps.__state.sessions[0]!.toolsetPreferences = {
         overrides: { web_research: "disabled" }
@@ -986,7 +986,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(copiedRuntimeSession?.lastLlmUsage, null);
       assert.deepEqual(copiedRuntimeSession?.pacingPreferences, {
         inputDebounce: { mode: "fixed", delayMs: 3_500 },
-        oneBotOutbound: "immediate"
+        oneBotOutbound: "immediate",
+        toolLoopOutput: "final_only"
       });
       assert.deepEqual(copiedRuntimeSession?.toolsetPreferences, {
         overrides: { web_research: "disabled" }
@@ -1001,7 +1002,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.deepEqual(copiedDetailResponse.json().session.participantRef, { kind: "user", id: "10001" });
       assert.deepEqual(copiedDetailResponse.json().session.pacingPreferences, {
         inputDebounce: { mode: "fixed", delayMs: 3_500 },
-        oneBotOutbound: "immediate"
+        oneBotOutbound: "immediate",
+        toolLoopOutput: "final_only"
       });
       const copiedSettingsResponse = await app.inject({
         method: "GET",
@@ -1032,7 +1034,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       titleSource: "manual",
       phase: { kind: "idle" },
       pendingMessages: [],
-      taskTracker: { version: 1, primary: null, parked: [], evidence: [] },
+      taskTracker: { version: 1, primary: null, parked: [] },
       internalTranscript: [],
       debugMarkers: [],
       lastLlmUsage: null,
@@ -1422,7 +1424,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       operationMode: { kind: "normal" },
       phase: { kind: "idle" },
       pendingMessages: [],
-      taskTracker: { version: 1, primary: null, parked: [], evidence: [] },
+      taskTracker: { version: 1, primary: null, parked: [] },
       internalTranscript: [],
       debugMarkers: [],
       lastLlmUsage: null,
@@ -1791,7 +1793,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(initialSettings.statusCode, 200);
       assert.deepEqual(initialSettings.json().settings.pacingPreferences, {
         inputDebounce: { mode: "immediate" },
-        oneBotOutbound: "immediate"
+        oneBotOutbound: "immediate",
+        toolLoopOutput: "progressive"
       });
       assert.deepEqual(initialSettings.json().settings.toolsetPreferences, { overrides: {} });
       assert.equal(
@@ -1805,7 +1808,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         payload: {
           pacingPreferences: {
             inputDebounce: { mode: "fixed", delayMs: 2_500 },
-            oneBotOutbound: "humanized"
+            oneBotOutbound: "humanized",
+            toolLoopOutput: "final_only"
           },
           toolsetPreferences: {
             overrides: { web_research: "disabled" }
@@ -1815,7 +1819,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(response.statusCode, 200);
       assert.deepEqual(response.json().settings.pacingPreferences, {
         inputDebounce: { mode: "fixed", delayMs: 2_500 },
-        oneBotOutbound: "humanized"
+        oneBotOutbound: "humanized",
+        toolLoopOutput: "final_only"
       });
       assert.deepEqual(response.json().settings.toolsetPreferences, {
         overrides: { web_research: "disabled" }

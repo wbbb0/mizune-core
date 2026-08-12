@@ -4,26 +4,22 @@ import {
   type ParkedTaskState,
   type SessionTaskState,
   type SessionTaskTracker,
-  type TaskEvidenceCheckpoint,
   type TaskToolRef
 } from "./taskTrackerTypes.ts";
 
 type TaskResourceRef = NonNullable<TaskToolRef["resource"]>;
 
 const MAX_PARKED_TASKS = 2;
-const MAX_EVIDENCE = 64;
 const MAX_DONE = 12;
 const MAX_NEXT = 8;
 const MAX_BLOCKERS = 8;
 const MAX_IMPORTANT_TOOL_REFS = 12;
 const MAX_PARKED_TOOL_REFS = 3;
 const MAX_ID_TEXT = 160;
-const MAX_HASH_TEXT = 160;
 const MAX_TOOL_NAME_TEXT = 120;
 const MAX_RESOURCE_LOCATOR_TEXT = 512;
 const MAX_SHORT_TEXT = 320;
 const MAX_OBJECTIVE_TEXT = 800;
-const MAX_EVIDENCE_TEXT = 12_000;
 
 export function normalizeTaskTracker(input: unknown): SessionTaskTracker {
   const parsed = sessionTaskTrackerSchema.safeParse(input);
@@ -31,8 +27,7 @@ export function normalizeTaskTracker(input: unknown): SessionTaskTracker {
   return {
     version: 1,
     primary: tracker.primary ? normalizePrimaryTask(tracker.primary) : null,
-    parked: tracker.parked.slice(-MAX_PARKED_TASKS).map(normalizeParkedTask),
-    evidence: tracker.evidence.slice(-MAX_EVIDENCE).map(normalizeEvidence)
+    parked: tracker.parked.slice(-MAX_PARKED_TASKS).map(normalizeParkedTask)
   };
 }
 
@@ -78,24 +73,6 @@ function normalizeToolRefs(refs: TaskToolRef[], limit: number): TaskToolRef[] {
     });
   }
   return Array.from(deduped.values()).slice(-limit);
-}
-
-function normalizeEvidence(item: TaskEvidenceCheckpoint): TaskEvidenceCheckpoint {
-  return {
-    evidenceId: truncateText(item.evidenceId, MAX_ID_TEXT),
-    sessionId: truncateText(item.sessionId, MAX_ID_TEXT),
-    taskId: truncateText(item.taskId, MAX_ID_TEXT),
-    toolCallId: truncateText(item.toolCallId, MAX_ID_TEXT),
-    toolName: truncateText(item.toolName, MAX_TOOL_NAME_TEXT),
-    summary: truncateText(item.summary, MAX_SHORT_TEXT),
-    ...(item.resource !== undefined ? { resource: normalizeResource(item.resource) } : {}),
-    ...(item.replayContent !== undefined ? { replayContent: truncateText(item.replayContent, MAX_EVIDENCE_TEXT) } : {}),
-    ...(item.canonicalContent !== undefined ? { canonicalContent: truncateText(item.canonicalContent, MAX_EVIDENCE_TEXT) } : {}),
-    ...(item.canonicalTruncated !== undefined ? { canonicalTruncated: item.canonicalTruncated } : {}),
-    contentHash: truncateText(item.contentHash, MAX_HASH_TEXT),
-    pinned: item.pinned,
-    createdAtMs: item.createdAtMs
-  };
 }
 
 function normalizeResource(resource: TaskResourceRef): TaskResourceRef {

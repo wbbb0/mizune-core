@@ -40,11 +40,13 @@ test("session pacing defaults follow the session source", () => {
 
   assert.deepEqual(web.sessionManager.getPacingPreferences(web.sessionId), {
     inputDebounce: { mode: "immediate" },
-    oneBotOutbound: "immediate"
+    oneBotOutbound: "immediate",
+    toolLoopOutput: "progressive"
   });
   assert.deepEqual(oneBot.sessionManager.getPacingPreferences(oneBot.sessionId), {
     inputDebounce: { mode: "adaptive" },
-    oneBotOutbound: "humanized"
+    oneBotOutbound: "humanized",
+    toolLoopOutput: "progressive"
   });
 });
 
@@ -64,7 +66,8 @@ test("fixed session debounce overrides normal input scheduling", async () => {
   harness.sessionManager.setSettings(harness.sessionId, {
     pacingPreferences: {
       inputDebounce: { mode: "fixed", delayMs: 25 },
-      oneBotOutbound: "immediate"
+      oneBotOutbound: "immediate",
+      toolLoopOutput: "final_only"
     },
     toolsetPreferences: harness.sessionManager.getToolsetPreferences(harness.sessionId)
   });

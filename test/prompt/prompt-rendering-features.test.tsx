@@ -191,8 +191,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
     const system = await renderTaskPromptSystem({
       version: 1,
       primary: null,
-      parked: [],
-      evidence: []
+      parked: []
     });
 
     assert.equal(hasPromptSection(system, "task_focus"), false);
@@ -278,8 +277,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
           resource: { kind: "shell_session", id: "term-1" }
         }],
         updatedAtMs: 1
-      }],
-      evidence: []
+      }]
     };
     const system = await renderTaskPromptSystem(tracker, ["terminal_run"]);
     const state = findPromptSection(system, "active_task_state");
@@ -1175,7 +1173,6 @@ function createTaskTracker(status: NonNullable<SessionTaskTracker["primary"]>["s
       updatedAtMs: 2,
       ...(status === "ready_to_close" ? { readyToCloseAtMs: 3 } : {})
     },
-    parked: [],
-    evidence: []
+    parked: []
   };
 }

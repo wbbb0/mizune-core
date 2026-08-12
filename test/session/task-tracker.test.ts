@@ -48,29 +48,30 @@ test("session manager task tracker updates normalize bounded arrays", () => {
   const updated = manager.updateTaskTracker("web:task-tracker-normalize", () => buildOversizedTracker());
 
   assert.equal(updated.parked.length, 2);
-  assert.equal(updated.evidence.length, 64);
   assert.equal(updated.primary?.done.length, 12);
   assert.equal(updated.primary?.next.length, 8);
   assert.equal(updated.primary?.blockers.length, 8);
   assert.equal(updated.primary?.importantToolRefs.length, 12);
 });
 
-test("session view task tracker evidence omits large replay and canonical payloads", () => {
-  const manager = new SessionManager(createTestAppConfig());
-  const sessionId = "web:task-tracker-view";
-  manager.ensureSession({
-    id: sessionId,
-    type: "private",
-    source: "web",
-    participantRef: { kind: "user", id: "owner" }
-  });
-  manager.setTaskTracker(sessionId, {
+test("legacy evidence is stripped without losing task state", () => {
+  const tracker = normalizeTaskTracker({
     version: 1,
-    primary: null,
+    primary: {
+      taskId: "task-1",
+      status: "active",
+      objective: "继续当前任务",
+      done: [],
+      next: [],
+      blockers: [],
+      importantToolRefs: [],
+      createdAtMs: 1,
+      updatedAtMs: 2
+    },
     parked: [],
     evidence: [{
       evidenceId: "e1",
-      sessionId,
+      sessionId: "web:legacy-evidence",
       taskId: "task-1",
       toolCallId: "call-1",
       toolName: "terminal_run",
@@ -83,11 +84,8 @@ test("session view task tracker evidence omits large replay and canonical payloa
     }]
   });
 
-  const evidence = manager.getSessionView(sessionId).taskTracker.evidence[0];
-  assert.equal(evidence?.summary, "终端输出");
-  assert.equal(evidence?.replayContent, undefined);
-  assert.equal(evidence?.canonicalContent, undefined);
-  assert.equal(manager.getSession(sessionId).taskTracker.evidence[0]?.canonicalContent, "large canonical");
+  assert.equal(tracker.primary?.taskId, "task-1");
+  assert.equal("evidence" in tracker, false);
 });
 
 test("turn planner task context hides completed primary task", () => {
@@ -104,8 +102,7 @@ test("turn planner task context hides completed primary task", () => {
       createdAtMs: 1,
       updatedAtMs: 2
     },
-    parked: [],
-    evidence: []
+    parked: []
   });
 
   assert.equal(context, null);
@@ -167,11 +164,10 @@ test("task tracker normalization bounds nested strings and strips undefined opti
   assert.equal(tracker.primary?.taskId.length, 160);
   assert.equal(tracker.primary?.importantToolRefs[0]?.toolName.length, 120);
   assert.equal(tracker.primary?.importantToolRefs[0]?.resource?.locator?.length, 512);
-  assert.equal(tracker.evidence[0]?.contentHash.length, 160);
   assert.equal("originalRequest" in tracker.primary!, false);
   assert.equal("summary" in tracker.primary!.importantToolRefs[0]!, false);
   assert.equal("version" in tracker.primary!.importantToolRefs[0]!.resource!, false);
-  assert.equal("canonicalContent" in tracker.evidence[0]!, false);
+  assert.equal("evidence" in tracker, false);
 });
 
 test("session task tracker persists and restores", async () => {
@@ -206,8 +202,7 @@ test("session task tracker persists and restores", async () => {
         createdAtMs: 1,
         updatedAtMs: 10
       },
-      parked: [],
-      evidence: []
+      parked: []
     };
 
     await persistence.save(toPersistedSessionState(session));
@@ -332,18 +327,6 @@ function buildOversizedTracker(): SessionTaskTracker {
       summary: `parked summary ${index}`,
       importantToolRefs: [],
       updatedAtMs: index
-    })),
-    evidence: Array.from({ length: 80 }, (_, index) => ({
-      evidenceId: `evidence-${index}`,
-      sessionId: "web:task-tracker-normalize",
-      taskId: "task-oversized",
-      toolCallId: `call-${index}`,
-      toolName: "terminal_run",
-      summary: `evidence summary ${index}`,
-      replayContent: `replay ${index}`,
-      contentHash: `hash-${index}`,
-      pinned: false,
-      createdAtMs: index
     }))
   };
 }

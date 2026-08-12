@@ -1,15 +1,12 @@
-import { createHash } from "node:crypto";
 import { normalizeTaskTracker } from "./taskTrackerNormalize.ts";
 import {
   createEmptySessionTaskTracker,
   type SessionTaskState,
   type SessionTaskStatus,
   type SessionTaskTracker,
-  type TaskEvidenceCheckpoint,
   type TaskToolRef
 } from "./taskTrackerTypes.ts";
 import type { TaskPlannerIntent } from "./taskTrackerPlannerContext.ts";
-import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { ToolObservation } from "#conversation/session/toolObservation.ts";
 
 export interface TaskTrackerUserMessage {
@@ -39,13 +36,6 @@ export interface ObserveToolResultInput {
 export interface ObserveAssistantFinalResponseInput {
   tracker: SessionTaskTracker;
   text: string;
-  nowMs?: number | undefined;
-}
-
-export interface MaterializeEvidenceBeforeCompressionInput {
-  sessionId: string;
-  tracker: SessionTaskTracker;
-  transcriptItemsToCompress: InternalTranscriptItem[];
   nowMs?: number | undefined;
 }
 
@@ -378,51 +368,6 @@ export class SessionTaskTrackerService {
       });
     }
     return tracker;
-  }
-
-  materializeEvidenceBeforeCompression(input: MaterializeEvidenceBeforeCompressionInput): SessionTaskTracker {
-    const tracker = normalizeTaskTracker(input.tracker);
-    const evidenceContexts = buildEvidenceTaskContexts(tracker);
-    if (evidenceContexts.length === 0) {
-      return tracker;
-    }
-    const nowMs = input.nowMs ?? Date.now();
-    let evidence = tracker.evidence;
-    for (const item of input.transcriptItemsToCompress) {
-      if (item.kind !== "tool_result") {
-        continue;
-      }
-      const parsed = parseJsonObject(item.canonicalContent ?? item.content);
-      const context = resolveEvidenceContext({
-        contexts: evidenceContexts,
-        primaryTaskId: tracker.primary?.taskId ?? null,
-        hasParked: tracker.parked.length > 0,
-        item,
-        parsed
-      });
-      if (!context) {
-        continue;
-      }
-      const checkpoint = buildEvidenceCheckpoint({
-        sessionId: input.sessionId,
-        taskId: context.taskId,
-        primaryRefs: context.importantToolRefs,
-        item,
-        parsed,
-        nowMs
-      });
-      if (!checkpoint) {
-        continue;
-      }
-      evidence = [
-        ...evidence.filter((existing) => existing.evidenceId !== checkpoint.evidenceId),
-        checkpoint
-      ];
-    }
-    return normalizeTaskTracker({
-      ...tracker,
-      evidence
-    });
   }
 }
 
@@ -775,140 +720,6 @@ function addParkedTask(existing: SessionTaskTracker["parked"], task: ReturnType<
   return next.filter((_, itemIndex) => itemIndex !== index);
 }
 
-function buildEvidenceTaskContexts(tracker: SessionTaskTracker): Array<{ taskId: string; importantToolRefs: TaskToolRef[] }> {
-  return [
-    ...(tracker.primary ? [{
-      taskId: tracker.primary.taskId,
-      importantToolRefs: tracker.primary.importantToolRefs
-    }] : []),
-    ...tracker.parked.map((task) => ({
-      taskId: task.taskId,
-      importantToolRefs: task.importantToolRefs
-    }))
-  ];
-}
-
-function resolveEvidenceContext(input: {
-  contexts: Array<{ taskId: string; importantToolRefs: TaskToolRef[] }>;
-  primaryTaskId: string | null;
-  hasParked: boolean;
-  item: Extract<InternalTranscriptItem, { kind: "tool_result" }>;
-  parsed: Record<string, unknown> | null;
-}): { taskId: string; importantToolRefs: TaskToolRef[] } | null {
-  const resourceIds = collectResourceIdCandidates({
-    observationResourceId: input.item.observation?.resource?.id,
-    parsed: input.parsed
-  });
-  const matched = input.contexts.find((context) => (
-    context.importantToolRefs.some((ref) => ref.toolCallId === input.item.toolCallId)
-    || resourceIds.some((resourceId) => context.importantToolRefs.some((ref) => ref.resource?.id === resourceId))
-  ));
-  if (matched) {
-    return matched;
-  }
-  if (input.hasParked || !input.primaryTaskId) {
-    return null;
-  }
-  return input.contexts.find((context) => context.taskId === input.primaryTaskId) ?? null;
-}
-
-function buildEvidenceCheckpoint(input: {
-  sessionId: string;
-  taskId: string;
-  primaryRefs: TaskToolRef[];
-  item: Extract<InternalTranscriptItem, { kind: "tool_result" }>;
-  parsed: Record<string, unknown> | null;
-  nowMs: number;
-}): TaskEvidenceCheckpoint | null {
-  const { item } = input;
-  const ref = input.primaryRefs.find((candidate) => candidate.toolCallId === item.toolCallId);
-  const hasReferencedResource = item.observation?.resource !== undefined && ref !== undefined;
-  const failure = hasToolFailure(input.parsed);
-  const pinned = item.observation?.pinned === true;
-  const replayContent = usefulReplayContent(item.observation?.replayContent);
-  if (
-    !pinned
-    && !hasReferencedResource
-    && !failure
-    && !isEvidenceTool(item.toolName)
-    && replayContent == null
-  ) {
-    return null;
-  }
-
-  const contentForHash = item.canonicalContent ?? item.observation?.replayContent ?? item.content;
-  const evidenceId = [
-    input.sessionId,
-    input.taskId,
-    item.toolCallId,
-    hashContent(contentForHash).slice(0, 16)
-  ].join(":");
-  const canonical = shouldStoreCanonicalContent(item, input.parsed)
-    ? truncateCanonical(item.canonicalContent)
-    : null;
-  return {
-    evidenceId,
-    sessionId: input.sessionId,
-    taskId: input.taskId,
-    toolCallId: item.toolCallId,
-    toolName: item.toolName,
-    summary: item.observation?.summary ? `${item.toolName}: ${item.observation.summary}` : `${item.toolName}: 工具结果已在压缩前固化`,
-    ...(item.observation?.resource ? { resource: item.observation.resource } : {}),
-    ...(replayContent != null ? { replayContent } : {}),
-    ...(canonical ? { canonicalContent: canonical.content } : {}),
-    ...(canonical?.truncated ? { canonicalTruncated: true } : {}),
-    contentHash: item.observation?.contentHash || hashContent(contentForHash),
-    pinned,
-    createdAtMs: input.nowMs
-  };
-}
-
-function usefulReplayContent(content: string | undefined): string | null {
-  const value = String(content ?? "").trim();
-  if (!value || value === "{}" || value === "null") {
-    return null;
-  }
-  return value;
-}
-
-function isEvidenceTool(toolName: string): boolean {
-  return toolName.startsWith("terminal_")
-    || BROWSER_TOOL_NAMES.has(toolName)
-    || SEARCH_TOOL_NAMES.has(toolName)
-    || MUTATION_TOOL_NAMES.has(toolName)
-    || toolName.startsWith("filesystem_")
-    || toolName.startsWith("download_")
-    || toolName.startsWith("send_")
-    || toolName.endsWith("_send_to_chat");
-}
-
-function shouldStoreCanonicalContent(
-  item: Extract<InternalTranscriptItem, { kind: "tool_result" }>,
-  parsed: Record<string, unknown> | null
-): boolean {
-  if (item.canonicalContent === undefined) {
-    return false;
-  }
-  if (item.observation?.pinned === true || hasToolFailure(parsed) || item.observation?.refetchable === false) {
-    return true;
-  }
-  if (MUTATION_TOOL_NAMES.has(item.toolName) || item.toolName.startsWith("download_") || item.toolName.endsWith("_send_to_chat")) {
-    return true;
-  }
-  return item.toolName.startsWith("terminal_") && !isRunningResult(parsed);
-}
-
-function truncateCanonical(content: string | undefined): { content: string; truncated: boolean } | null {
-  if (content === undefined) {
-    return null;
-  }
-  const limit = 12_000;
-  return {
-    content: content.length > limit ? content.slice(0, limit) : content,
-    truncated: content.length > limit
-  };
-}
-
 function isRunningResult(parsed: Record<string, unknown> | null): boolean {
   const nestedSession = parsed?.session;
   const nestedStatus = nestedSession && typeof nestedSession === "object" && !Array.isArray(nestedSession)
@@ -918,10 +729,6 @@ function isRunningResult(parsed: Record<string, unknown> | null): boolean {
     || nestedStatus === "running"
     || nestedStatus === "active"
     || parsed?.running === true;
-}
-
-function hashContent(content: string): string {
-  return createHash("sha256").update(content).digest("hex");
 }
 
 function hasToolFailure(parsed: Record<string, unknown> | null): boolean {

@@ -42,13 +42,20 @@ function updateOneBotOutboundPacing(event: Event) {
     oneBotOutbound: enabled ? "humanized" : "immediate"
   });
 }
+
+function updateToolLoopOutput(event: Event) {
+  emit("update:modelValue", {
+    ...props.modelValue,
+    toolLoopOutput: (event.target as HTMLSelectElement).value as SessionPacingPreferences["toolLoopOutput"]
+  });
+}
 </script>
 
 <template>
   <section class="rounded-lg border border-border-default bg-surface-panel p-4">
     <div class="mb-4">
-      <h3 class="text-ui font-medium text-text-primary">会话回复节奏</h3>
-      <p class="mt-1 text-small leading-5 text-text-subtle">控制用户消息进入调度前的聚合等待，以及 OneBot 回复的模拟输入节奏。</p>
+      <h3 class="text-ui font-medium text-text-primary">会话调度与回复输出</h3>
+      <p class="mt-1 text-small leading-5 text-text-subtle">控制用户消息的聚合等待、OneBot 投递节奏以及模型回复的输出方式。</p>
     </div>
     <div class="flex flex-col gap-4">
       <label class="grid gap-1.5 text-small text-text-secondary">
@@ -93,8 +100,23 @@ function updateOneBotOutboundPacing(event: Event) {
           @change="updateOneBotOutboundPacing"
         />
       </label>
+      <label class="grid gap-1.5 text-small text-text-secondary">
+        <span>模型回复输出方式</span>
+        <select
+          class="input-base"
+          :value="modelValue.toolLoopOutput"
+          :disabled="disabled"
+          @change="updateToolLoopOutput"
+        >
+          <option value="progressive">逐步输出</option>
+          <option value="final_only">仅输出最终回复</option>
+        </select>
+        <span class="text-small leading-5 text-text-subtle">
+          仅输出最终回复时，所有回复都会等待整轮生成完成后一次投递；工具调用期间的模型文本仍保留供内部回放，但不会显示在聊天页或发送到 OneBot。
+        </span>
+      </label>
       <div class="text-small leading-5 text-text-subtle">
-        修改对下一次调度生效；已经开始等待的消息不会被重新计时。Web 会话默认立即处理并关闭 OneBot 延迟。
+        修改对下一次调度生效；进行中的生成不会切换输出方式。Web 会话默认立即处理并关闭 OneBot 延迟。
       </div>
     </div>
   </section>

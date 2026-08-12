@@ -94,8 +94,7 @@ function createActiveTaskTracker() {
       createdAtMs: 1,
       updatedAtMs: 2
     },
-    parked: [],
-    evidence: []
+    parked: []
   };
 }
 
@@ -772,8 +771,7 @@ function createActiveTaskTracker() {
           createdAtMs: 1,
           updatedAtMs: 2
         },
-        parked: [],
-        evidence: []
+        parked: []
       },
       historyForPrompt: [],
       internalTranscript: [],
@@ -818,7 +816,7 @@ function createActiveTaskTracker() {
       participantProfiles: [],
       currentUser: { userId: "10001", relationship: "known" } as any,
       historySummary: null,
-      taskTracker: { version: 1, primary: null, parked: [], evidence: [] },
+      taskTracker: { version: 1, primary: null, parked: [] },
       historyForPrompt: [],
       internalTranscript: [],
       lastLlmUsage: null,

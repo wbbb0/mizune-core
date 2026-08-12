@@ -9,7 +9,8 @@ export const sessionPacingPreferencesSchema = z.object({
       delayMs: z.number().int().min(0).max(120_000)
     })
   ]),
-  oneBotOutbound: z.enum(["humanized", "immediate"])
+  oneBotOutbound: z.enum(["humanized", "immediate"]),
+  toolLoopOutput: z.enum(["progressive", "final_only"]).default("progressive")
 });
 
 export type SessionPacingPreferences = z.infer<typeof sessionPacingPreferencesSchema>;
@@ -21,11 +22,13 @@ export function createDefaultSessionPacingPreferences(
   return source === "web"
     ? {
         inputDebounce: { mode: "immediate" },
-        oneBotOutbound: "immediate"
+        oneBotOutbound: "immediate",
+        toolLoopOutput: "progressive"
       }
     : {
         inputDebounce: { mode: "adaptive" },
-        oneBotOutbound: "humanized"
+        oneBotOutbound: "humanized",
+        toolLoopOutput: "progressive"
       };
 }
 
@@ -34,6 +37,7 @@ export function cloneSessionPacingPreferences(
 ): SessionPacingPreferences {
   return {
     inputDebounce: { ...preferences.inputDebounce },
-    oneBotOutbound: preferences.oneBotOutbound
+    oneBotOutbound: preferences.oneBotOutbound,
+    toolLoopOutput: preferences.toolLoopOutput
   };
 }

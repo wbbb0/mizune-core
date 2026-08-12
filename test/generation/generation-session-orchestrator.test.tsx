@@ -27,7 +27,7 @@ function createFakeShellRuntime() {
   };
 }
 
-test("persona setup prompt reads the current draft instead of the saved persona", async () => {
+test("persona setup uses the current draft and snapshots output mode before async preparation", async () => {
   const config = createTestAppConfig({
     llm: {
       enabled: true
@@ -73,6 +73,7 @@ test("persona setup prompt reads the current draft instead of the saved persona"
   };
 
   let capturedPersona: unknown = null;
+  let capturedStreamResponse: boolean | undefined;
   let resolveRunGeneration!: () => void;
   const runGenerationDone = new Promise<void>((resolve) => {
     resolveRunGeneration = resolve;
@@ -86,6 +87,13 @@ test("persona setup prompt reads the current draft instead of the saved persona"
       logger,
       historyCompressor: {
         async maybeCompress() {
+          sessionManager.setSettings(sessionId, {
+            pacingPreferences: {
+              ...sessionManager.getPacingPreferences(sessionId),
+              toolLoopOutput: "final_only"
+            },
+            toolsetPreferences: sessionManager.getToolsetPreferences(sessionId)
+          });
           return false;
         }
       },
@@ -162,7 +170,8 @@ test("persona setup prompt reads the current draft instead of the saved persona"
         };
       }
     } as any,
-    async runGeneration() {
+    async runGeneration(input: { streamResponse?: boolean | undefined }) {
+      capturedStreamResponse = input.streamResponse;
       resolveRunGeneration();
     },
     processNextSessionWork() {}
@@ -172,6 +181,8 @@ test("persona setup prompt reads the current draft instead of the saved persona"
   await runGenerationDone;
 
   assert.deepEqual(capturedPersona, createEmptyPersona());
+  assert.equal(sessionManager.getPacingPreferences(sessionId).toolLoopOutput, "final_only");
+  assert.equal(capturedStreamResponse, true);
 });
 
 test("rp_assistant normal prompt receives the saved rp profile", async () => {
@@ -185,6 +196,13 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
     source: "onebot"
   });
   sessionManager.setModeId(sessionId, "rp_assistant");
+  sessionManager.setSettings(sessionId, {
+    pacingPreferences: {
+      ...sessionManager.getPacingPreferences(sessionId),
+      toolLoopOutput: "final_only"
+    },
+    toolsetPreferences: sessionManager.getToolsetPreferences(sessionId)
+  });
   sessionManager.appendPendingMessage(sessionId, {
     channelId: "qqbot",
     externalUserId: "2254600711",
@@ -220,6 +238,7 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
   };
 
   let capturedModeProfile: unknown = null;
+  let capturedStreamResponse: boolean | undefined;
   let resolveRunGeneration!: () => void;
   const runGenerationDone = new Promise<void>((resolve) => {
     resolveRunGeneration = resolve;
@@ -312,7 +331,8 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
         };
       }
     } as any,
-    async runGeneration() {
+    async runGeneration(input: { streamResponse?: boolean | undefined }) {
+      capturedStreamResponse = input.streamResponse;
       resolveRunGeneration();
     },
     processNextSessionWork() {}
@@ -325,6 +345,7 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
     target: "rp",
     profile: savedRpProfile
   });
+  assert.equal(capturedStreamResponse, false);
 });
 
 test("scenario_host normal prompt receives the saved scenario profile", async () => {
@@ -859,8 +880,7 @@ test("normal prompt receives task tracker changes from the current user batch", 
       createdAtMs: 1,
       updatedAtMs: 1
     },
-    parked: [],
-    evidence: []
+    parked: []
   });
   sessionManager.appendPendingMessage(sessionId, {
     channelId: "qqbot",
@@ -1014,8 +1034,7 @@ test("normal prompt receives task tracker changes from turn planner intent", asy
       createdAtMs: 1,
       updatedAtMs: 1
     },
-    parked: [],
-    evidence: []
+    parked: []
   });
   sessionManager.appendPendingMessage(sessionId, {
     channelId: "qqbot",

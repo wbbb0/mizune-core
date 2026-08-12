@@ -92,6 +92,24 @@
 - `src/llm/prompts/history-summary.prompt.ts`
 - `test/conversation/history-compression-features.test.tsx`
 
+## 会话输出偏好
+
+会话通过 `pacingPreferences.toolLoopOutput` 控制工具循环文本的对外输出方式：
+
+- `progressive`：按现有流式/分段链路逐步发送模型文本。
+- `final_only`：整轮生成不注册文本增量输出，即使没有工具调用也会等待生成完成后一次发送最终回复；工具调用期间的模型文本不对外发送。
+
+该偏好在每轮生成开始时读取，进行中的生成不会因设置变化而切换行为。两种模式共用同一套 transcript：工具轮的 `assistant_tool_call` 和 `tool_result` 仍完整持久化，供 provider 回放和后台检查；聊天时间线与 OneBot 只接收实际投递形成的 `assistant_message`。因此切换模式不需要迁移历史消息，也不会改变工具协议边界。
+
+相关实现入口：
+
+- `src/conversation/session/sessionPacing.ts`
+- `src/app/generation/generationSessionOrchestrator.ts`
+- `src/app/generation/generationExecutor.ts`
+- `webui/src/components/sessions/SessionPacingControl.vue`
+- `test/generation/generation-session-orchestrator.test.tsx`
+- `test/generation/generation-typing-lifecycle.test.tsx`
+
 ## 资料分层
 
 当前仓库已经把长期资料拆成全局资料与会话级资料，而不是继续把所有信息塞进单层 `persona`：

@@ -88,14 +88,13 @@ const lastRequestUsageRows = computed(() => {
 });
 
 const taskTracker = computed<SessionTaskTracker | null>(() => detail.value?.session.taskTracker ?? null);
-const recentTaskEvidence = computed(() => taskTracker.value?.evidence.slice(-5).reverse() ?? []);
 const taskTrackerSummary = computed(() => {
   const tracker = taskTracker.value;
   if (!tracker) {
     return "暂无记录";
   }
   const primaryStatus = tracker.primary ? tracker.primary.status : "无当前任务";
-  return `${primaryStatus} · parked ${tracker.parked.length} · evidence ${tracker.evidence.length}`;
+  return `${primaryStatus} · parked ${tracker.parked.length}`;
 });
 const taskTrackerRows = computed(() => {
   const tracker = taskTracker.value;
@@ -110,8 +109,7 @@ const taskTrackerRows = computed(() => {
     ["下一步数", formatMetric(tracker.primary?.next.length ?? 0)],
     ["阻碍数", formatMetric(tracker.primary?.blockers.length ?? 0)],
     ["关键工具引用", formatMetric(tracker.primary?.importantToolRefs.length ?? 0)],
-    ["Parked", formatMetric(tracker.parked.length)],
-    ["Evidence", formatMetric(tracker.evidence.length)]
+    ["Parked", formatMetric(tracker.parked.length)]
   ];
 });
 
@@ -267,10 +265,6 @@ function formatMemoryItemMeta(item: MemoryContextItem): string {
   ].filter(Boolean).join(" · ");
 }
 
-function formatTaskResource(resource: { kind: string; id: string } | undefined): string {
-  return resource ? `${resource.kind}:${resource.id}` : "无资源";
-}
-
 function formatScore(value: number): string {
   if (!Number.isFinite(value)) {
     return "暂无";
@@ -385,22 +379,6 @@ async function loadDetail() {
                   </div>
                   <div class="mt-1 break-all text-small text-text-muted">{{ task.objective }}</div>
                   <div class="mt-1 break-all text-small text-text-subtle">{{ task.summary }}</div>
-                </div>
-              </div>
-            </section>
-
-            <section class="min-w-0">
-              <div class="text-small text-text-subtle">最近 Evidence</div>
-              <WorkbenchEmptyState v-if="recentTaskEvidence.length === 0" :centered="false" class="mt-2 rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle" message="暂无 evidence checkpoint" />
-              <div v-else class="mt-2 grid gap-1.5">
-                <div v-for="item in recentTaskEvidence" :key="item.evidenceId" class="border-l border-border-subtle pl-3 py-1">
-                  <div class="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                    <span class="break-all font-mono text-small text-text-secondary">{{ item.toolName }}#{{ item.toolCallId }}</span>
-                    <span class="text-small" :class="item.pinned ? 'text-warning' : 'text-text-subtle'">{{ item.pinned ? 'pinned' : 'checkpoint' }}</span>
-                  </div>
-                  <div class="mt-1 break-all text-small text-text-subtle">task {{ item.taskId }} · {{ formatTaskResource(item.resource) }} · {{ formatTimestamp(item.createdAtMs) }}</div>
-                  <div class="mt-1 line-clamp-3 whitespace-pre-wrap wrap-break-word text-small text-text-muted">{{ item.summary }}</div>
-                  <div class="mt-1 break-all font-mono text-small text-text-subtle">hash {{ item.contentHash }}{{ item.canonicalTruncated ? ' · canonical truncated' : '' }}</div>
                 </div>
               </div>
             </section>

@@ -4,7 +4,10 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
-import { SessionPersistence } from "../../src/conversation/session/sessionPersistence.ts";
+import {
+  persistedSessionStateSchema,
+  SessionPersistence
+} from "../../src/conversation/session/sessionPersistence.ts";
 import type { PersistedSessionState } from "../../src/conversation/session/sessionManager.ts";
 import { createSessionState, restoreSessionState, toPersistedSessionState } from "../../src/conversation/session/sessionStateFactory.ts";
 import { clearSessionState } from "../../src/conversation/session/sessionMutations.ts";
@@ -54,7 +57,8 @@ test("session persistence round-trips session settings", async () => {
     });
     session.pacingPreferences = {
       inputDebounce: { mode: "fixed", delayMs: 2_500 },
-      oneBotOutbound: "humanized"
+      oneBotOutbound: "humanized",
+      toolLoopOutput: "final_only"
     };
     session.toolsetPreferences = {
       overrides: {
@@ -91,14 +95,38 @@ test("sessions without settings derive defaults", () => {
 
   assert.deepEqual(restoreSessionState(web).pacingPreferences, {
     inputDebounce: { mode: "immediate" },
-    oneBotOutbound: "immediate"
+    oneBotOutbound: "immediate",
+    toolLoopOutput: "progressive"
   });
   assert.deepEqual(restoreSessionState(oneBot).pacingPreferences, {
     inputDebounce: { mode: "adaptive" },
-    oneBotOutbound: "humanized"
+    oneBotOutbound: "humanized",
+    toolLoopOutput: "progressive"
   });
   assert.deepEqual(restoreSessionState(web).toolsetPreferences, { overrides: {} });
   assert.deepEqual(restoreSessionState(oneBot).toolsetPreferences, { overrides: {} });
+});
+
+test("persisted sessions accept the previous pacing shape and strip legacy evidence", () => {
+  const persisted = toPersistedSessionState(createSessionState({
+    id: "web:legacy-session-shape",
+    type: "private",
+    source: "web"
+  }));
+  const parsed = persistedSessionStateSchema.parse({
+    ...persisted,
+    pacingPreferences: {
+      inputDebounce: { mode: "immediate" },
+      oneBotOutbound: "immediate"
+    },
+    taskTracker: {
+      ...persisted.taskTracker,
+      evidence: [{ legacy: true }]
+    }
+  });
+
+  assert.equal(parsed.pacingPreferences?.toolLoopOutput, "progressive");
+  assert.equal("evidence" in parsed.taskTracker, false);
 });
 
 test("session schema version 6 migrates to session settings storage", async () => {

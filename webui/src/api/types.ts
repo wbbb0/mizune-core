@@ -180,27 +180,10 @@ export interface ParkedTaskState {
   updatedAtMs: number;
 }
 
-export interface TaskEvidenceCheckpoint {
-  evidenceId: string;
-  sessionId: string;
-  taskId: string;
-  toolCallId: string;
-  toolName: string;
-  summary: string;
-  resource?: TaskResourceRef;
-  replayContent?: string;
-  canonicalContent?: string;
-  canonicalTruncated?: boolean;
-  contentHash: string;
-  pinned: boolean;
-  createdAtMs: number;
-}
-
 export interface SessionTaskTracker {
   version: 1;
   primary: SessionTaskState | null;
   parked: ParkedTaskState[];
-  evidence: TaskEvidenceCheckpoint[];
 }
 
 export interface SessionSentMessage {
@@ -354,6 +337,7 @@ export interface SessionPacingPreferences {
     | { mode: "immediate" }
     | { mode: "fixed"; delayMs: number };
   oneBotOutbound: "humanized" | "immediate";
+  toolLoopOutput: "progressive" | "final_only";
 }
 
 export interface SessionToolsetPreferences {

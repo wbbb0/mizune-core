@@ -13,7 +13,6 @@ import { projectCompressionHistorySnapshot, projectCompressionHistorySnapshotByT
 import type { AppConfig } from "#config/config.ts";
 import { normalizeTranscriptItems } from "./transcriptMetadata.ts";
 import { resolveSessionParticipantLabel } from "./sessionIdentity.ts";
-import { projectTaskTrackerForSessionView } from "#conversation/taskTracker/taskTrackerView.ts";
 import { cloneSessionPacingPreferences } from "./sessionPacing.ts";
 import { cloneSessionToolsetPreferences } from "./sessionToolsetPreferences.ts";
 
@@ -114,7 +113,7 @@ export function getSessionViewSnapshot(session: SessionState): {
     pacingPreferences: cloneSessionPacingPreferences(session.pacingPreferences),
     debugControl: { ...session.debugControl },
     historySummary: session.historySummary,
-    taskTracker: projectTaskTrackerForSessionView(session.taskTracker),
+    taskTracker: structuredClone(session.taskTracker),
     internalTranscript: normalizeTranscriptItems(session.internalTranscript),
     debugMarkers: [...session.debugMarkers],
     lastLlmUsage: session.lastLlmUsage,

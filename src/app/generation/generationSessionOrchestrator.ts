@@ -539,7 +539,15 @@ export function createGenerationSessionOrchestrator(
     }
   ) => {
     const resolvedDelivery = resolveSessionReplyDelivery(sessionId, options);
-    const { messages, pendingReplyGateWaitPasses, abortController, responseAbortController, responseEpoch } = sessionManager.beginGeneration(sessionId);
+    const {
+      session: generationSession,
+      messages,
+      pendingReplyGateWaitPasses,
+      abortController,
+      responseAbortController,
+      responseEpoch
+    } = sessionManager.beginGeneration(sessionId);
+    const streamResponse = generationSession.pacingPreferences.toolLoopOutput !== "final_only";
     const expectedEpoch = sessionManager.getMutationEpoch(sessionId);
     if (messages.length === 0) {
       if (sessionManager.finishGeneration(sessionId, abortController)) {
@@ -926,7 +934,7 @@ export function createGenerationSessionOrchestrator(
               availableToolsets: plannerToolsets,
               forceRegenerateTitleAfterTurn: plannerDecision?.topicDecision === "new_topic"
             }),
-        streamResponse: true,
+        streamResponse,
         ...(options?.committedTextSink ? { committedTextSink: options.committedTextSink } : {}),
         ...(options?.draftOverlaySink ? { draftOverlaySink: options.draftOverlaySink } : {})
       });

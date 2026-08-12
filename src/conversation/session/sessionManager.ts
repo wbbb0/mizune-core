@@ -452,7 +452,8 @@ export class SessionManager {
     const preferences = this.requireSession(sessionId).pacingPreferences;
     return {
       inputDebounce: { ...preferences.inputDebounce },
-      oneBotOutbound: preferences.oneBotOutbound
+      oneBotOutbound: preferences.oneBotOutbound,
+      toolLoopOutput: preferences.toolLoopOutput
     };
   }
 
@@ -551,7 +552,8 @@ export class SessionManager {
     return {
       pacingPreferences: {
         inputDebounce: { ...state.pacingPreferences.inputDebounce },
-        oneBotOutbound: state.pacingPreferences.oneBotOutbound
+        oneBotOutbound: state.pacingPreferences.oneBotOutbound,
+        toolLoopOutput: state.pacingPreferences.toolLoopOutput
       },
       toolsetPreferences: {
         overrides: { ...state.toolsetPreferences.overrides }

@@ -5,9 +5,9 @@ TaskTracker 是 session 级的轻量任务状态记录，用来让多轮工具�
 ## 设计边界
 
 - 工具结果的 canonical / initial / replay 投影仍由 `toolResultProjection`、`ToolObservation`、provider replay 和 `providerWorkingMessageBudget` 负责。
-- TaskTracker 只保存当前任务状态、少量 parked task 摘要和压缩前必要 evidence checkpoint。
+- TaskTracker 只保存当前任务状态和少量 parked task 摘要。
 - 不对每个工具结果调用 LLM 总结；状态更新只用保守规则。
-- prompt 只在存在相关任务状态时条件注入，且只展示短状态，不展示完整 evidence/canonical 内容。
+- prompt 只在存在相关任务状态时条件注入，且只展示短状态。
 
 ## 数据结构
 
@@ -17,12 +17,11 @@ session 持久化字段为 `taskTrackerJson`，内存结构为：
 {
   "version": 1,
   "primary": null,
-  "parked": [],
-  "evidence": []
+  "parked": []
 }
 ```
 
-`primary` 保存当前任务的目标、状态、短 done/next/blockers 和最多 12 个关键工具引用。`parked` 最多 2 个，只保存 taskId、status、objective、summary、最多 3 个关键工具引用和更新时间。`evidence` 最多 64 条，每条 checkpoint 的 replay/canonical 文本都有限长。
+`primary` 保存当前任务的目标、状态、短 done/next/blockers 和最多 12 个关键工具引用。`parked` 最多 2 个，只保存 taskId、status、objective、summary、最多 3 个关键工具引用和更新时间。
 
 ## 生命周期
 
@@ -41,7 +40,7 @@ session 持久化字段为 `taskTrackerJson`，内存结构为：
 task_intent: <kind>|<target_task_id_or_none>|<low|medium|high>
 ```
 
-`task_context` 只包含 primary 的 taskId/status/objective/最后一条 next 或 blocker，以及最多 2 个 parked 摘要；不会包含 evidence、canonicalContent、replayContent 或完整 refs。planner 只负责语义判别，代码仍负责状态转移和安全边界。低置信度、unknown 或 none 不改变任务状态。
+`task_context` 只包含 primary 的 taskId/status/objective/最后一条 next 或 blocker，以及最多 2 个 parked 摘要；不会包含完整工具 refs。planner 只负责语义判别，代码仍负责状态转移和安全边界。低置信度、unknown 或 none 不改变任务状态。
 
 工具结果会在 transcript append 成功后观察：
 
@@ -69,26 +68,8 @@ parked task 不是 DAG。恢复只通过两类保守触发：
 
 active、waiting_tool、waiting_user、cancel_confirming 会注入 `task_focus`、`active_task_state`。其中 active、waiting_tool、waiting_user 在激活工具集匹配时通过 `tool_playbooks` 注入多步任务操作规范；cancel_confirming 只保留取消确认焦点，不继续鼓励工具推进。`ready_to_close` 只显示短状态；`suspended` 只显示暂停提示；completed/canceled 不显示 primary 状态。
 
-parked tasks 只在 `active_task_state` 中显示一行摘要，不展开 done/next/blockers/refs/evidence，避免长期污染普通聊天 prompt。
-
-## Evidence Checkpoint
-
-HistoryCompressor 在 revision match 成功后调用 session mutation；mutation 会在裁剪 `internalTranscript` 前 materialize evidence，因此 evidence、summary 写入和 transcript 裁剪处于同一个成功边界。
-
-checkpoint 来源是即将被裁剪的 `tool_result`。会优先按 toolCallId/resource 在 `primary + parked` 中选择任务归属；匹配不到且存在 parked 时跳过，避免把旧后台任务证据误归属到当前任务。
-
-必须保留 checkpoint 的典型情况：
-
-- observation pinned。
-- resource 被当前任务关键工具引用命中。
-- error、failed 或非零 exitCode。
-- terminal、search、browser、filesystem、download、send 等任务工具。
-- observation.replayContent 有继续任务所需信息。
-
-canonicalContent 只在 pinned、失败、不可 refetch、副作用结果或关键 terminal 终局结果中保存；普通 refetchable 大结果只保留 replayContent/resource。canonicalContent 最多保留 12000 字符，并标记 `canonicalTruncated`。
+parked tasks 只在 `active_task_state` 中显示一行摘要，不展开 done/next/blockers/refs，避免长期污染普通聊天 prompt。
 
 ## 已知限制
 
 - turnPlanner 关闭或低置信度时，用户恢复 parked task 仍依赖精确 taskId 或完整 objective 匹配。
-- Evidence 不进入 prompt，只用于 debug 和压缩后恢复线索。
-- 成功 terminal 终局结果会保留截断 canonical，可能占用 evidence 容量；如未来将 evidence 注入 prompt，需要重新审查筛选和 token 上限。

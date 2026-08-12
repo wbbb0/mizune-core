@@ -93,6 +93,7 @@ function createExecutorHarness(options?: {
   historyCompressed?: boolean;
   forceRegenerateTitleAfterTurn?: boolean;
   captureDraftOverlay?: boolean;
+  streamResponse?: boolean;
   onGenerateTitle?: () => Promise<string | null> | string | null;
   currentUser?: { userId: string; relationship: "owner" | "known" };
   contextExtractionQueue?: { enqueueTurn: (turn: unknown) => void };
@@ -392,7 +393,7 @@ function createExecutorHarness(options?: {
           plannedToolsetIds: []
         }
       : {}),
-    streamResponse: true,
+    streamResponse: options?.streamResponse ?? true,
     forceRegenerateTitleAfterTurn: options?.forceRegenerateTitleAfterTurn,
     ...(delivery === "web"
       ? {
@@ -728,6 +729,115 @@ test("an explicitly empty direct tool boundary exposes no builtin tools", async 
     ]);
   });
 
+  test("final-only keeps tool-loop text internal and sends only the final reply", async () => {
+    let textDeltaRegistered = true;
+    const harness = createExecutorHarness({
+      sessionSource: "web",
+      captureDraftOverlay: true,
+      streamResponse: false,
+      customGenerate: async (input) => {
+        textDeltaRegistered = input.onTextDelta !== undefined;
+        await input.onAssistantToolCalls?.({
+          role: "assistant",
+          content: "我先查一下内部信息。",
+          tool_calls: [{
+            id: "call_final_only_1",
+            type: "function",
+            function: {
+              name: "filesystem_read",
+              arguments: "{\"path\":\"README.md\"}"
+            }
+          }]
+        });
+        await input.onToolResultMessage?.({
+          role: "tool",
+          tool_call_id: "call_final_only_1",
+          content: "{\"ok\":true}"
+        }, "filesystem_read");
+        return {
+          text: "已完成检查。",
+          reasoningContent: "",
+          usage: createUsage()
+        };
+      }
+    });
+
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.equal(textDeltaRegistered, false);
+    assert.deepEqual(harness.events, ["send:已完成检查。", "draft:complete"]);
+    const transcript = harness.sessionManager.getSession(harness.sessionId).internalTranscript;
+    assert.equal(
+      transcript.find((item) => item.kind === "assistant_tool_call")?.content,
+      "我先查一下内部信息。"
+    );
+    assert.ok(transcript.some((item) => item.kind === "tool_result"));
+    assert.equal(
+      transcript.find((item) => item.kind === "assistant_message")?.text,
+      "已完成检查。"
+    );
+  });
+
+  test("final-only sends only the final reply through OneBot", async () => {
+    const harness = createExecutorHarness({
+      streamResponse: false,
+      customGenerate: async (input) => {
+        await input.onAssistantToolCalls?.({
+          role: "assistant",
+          content: "这段 OneBot 中间说明不应发送。",
+          tool_calls: [{
+            id: "call_final_only_onebot",
+            type: "function",
+            function: {
+              name: "filesystem_read",
+              arguments: "{\"path\":\"README.md\"}"
+            }
+          }]
+        });
+        await input.onToolResultMessage?.({
+          role: "tool",
+          tool_call_id: "call_final_only_onebot",
+          content: "{\"ok\":true}"
+        }, "filesystem_read");
+        return {
+          text: "OneBot 最终回复。",
+          reasoningContent: "",
+          usage: createUsage()
+        };
+      }
+    });
+
+    await waitForEvents(harness.events, 1);
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.deepEqual(harness.sendTextCalls, [{
+      userId: "owner",
+      text: "OneBot 最终回复。"
+    }]);
+    const transcript = harness.sessionManager.getSession(harness.sessionId).internalTranscript;
+    assert.equal(
+      transcript.find((item) => item.kind === "assistant_tool_call")?.content,
+      "这段 OneBot 中间说明不应发送。"
+    );
+  });
+
+  test("final-only sends one ordinary failure message without streaming state", async () => {
+    const harness = createExecutorHarness({
+      failAfterReasoning: true,
+      streamResponse: false
+    });
+
+    await waitForEvents(harness.events, 1);
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.deepEqual(harness.events, [
+      "send:刚刚这次回复失败了，我暂时没拿到可用结果。你可以稍后重试；如果连续出现，请检查模型配置、上游接口状态或服务日志。"
+    ]);
+  });
+
   test("typing also stops after fallback delivery on generation failure", async () => {
     const harness = createExecutorHarness({ failAfterReasoning: true });
 
@@ -765,7 +875,8 @@ test("an explicitly empty direct tool boundary exposes no builtin tools", async 
     const harness = createExecutorHarness({
       pacingPreferences: {
         inputDebounce: { mode: "adaptive" },
-        oneBotOutbound: "immediate"
+        oneBotOutbound: "immediate",
+        toolLoopOutput: "progressive"
       }
     });
 
@@ -780,7 +891,8 @@ test("an explicitly empty direct tool boundary exposes no builtin tools", async 
     const harness = createExecutorHarness({
       pacingPreferences: {
         inputDebounce: { mode: "adaptive" },
-        oneBotOutbound: "immediate"
+        oneBotOutbound: "immediate",
+        toolLoopOutput: "progressive"
       },
       customGenerate: async (input) => {
         await input.onTextDelta?.("流式发送的第一段已经足够长。\n\n仍在缓冲的第二段");

@@ -32,7 +32,7 @@ import { readFile } from "node:fs/promises";
     assert.match(source, /暂无 LLM 用量记录/);
     assert.match(source, /collapsed-title="任务跟踪"/);
     assert.match(source, /taskTrackerSummary/);
-    assert.match(source, /最近 Evidence/);
+    assert.doesNotMatch(source, /最近 Evidence/);
     assert.match(source, /WorkbenchDisclosure/);
     assert.match(source, /collapsed-title="派生观察"/);
     assert.doesNotMatch(source, /collapsed-title="最近工具事件"/);
@@ -68,6 +68,9 @@ test("session settings panel edits toolset boundary and pacing as one atomic dra
   assert.match(pacingControl, /立即处理/);
   assert.match(pacingControl, /固定等待秒数/);
   assert.match(pacingControl, /OneBot 回复模拟输入延迟/);
+  assert.match(pacingControl, /模型回复输出方式/);
+  assert.match(pacingControl, /仅输出最终回复/);
+  assert.match(pacingControl, /所有回复都会等待整轮生成完成后一次投递/);
   assert.doesNotMatch(pacingControl, /sessionsApi/);
   assert.match(toolsetControl, /模型可用工具边界/);
   assert.match(toolsetControl, /限制 Planner 的候选工具集/);
