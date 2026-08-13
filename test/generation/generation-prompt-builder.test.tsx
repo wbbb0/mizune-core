@@ -802,6 +802,67 @@ function createActiveTaskTracker() {
     assert.match(system, /目标=验证真实 prompt builder 链路/);
   });
 
+  test("chat prompt 只注入当前 principal 的 Actor 并指向高层 status 工具", async () => {
+    const principals: string[] = [];
+    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+      minecraftActorManager: {
+        async listOwned(ownerPrincipalId: string) {
+          principals.push(ownerPrincipalId);
+          return [{
+            resourceId: "res_mc_owned",
+            kind: "minecraft_actor",
+            status: "active",
+            lastAccessedAtMs: 1
+          }];
+        }
+      }
+    }));
+
+    const result = await builder.buildChatPromptMessages({
+      sessionId: "qqbot:p:owner-a",
+      interactionMode: "normal",
+      mainModelRef: ["main"],
+      visibleToolNames: ["minecraft_actor_status"],
+      activeToolsets: [{
+        id: "minecraft_actor",
+        title: "Minecraft Actor",
+        description: "独立游戏 Actor",
+        toolNames: ["minecraft_actor_status"]
+      }],
+      persona: { name: "Bot", temperament: "", voiceStyle: "" } as any,
+      relationship: "owner",
+      participantProfiles: [],
+      currentUser: { userId: "owner-a", relationship: "owner" } as any,
+      historySummary: null,
+      historyForPrompt: [],
+      internalTranscript: [],
+      lastLlmUsage: null,
+      batchMessages: [{
+        userId: "owner-a",
+        senderName: "Owner A",
+        text: "它现在怎么样",
+        images: [],
+        audioSources: [],
+        audioIds: [],
+        emojiSources: [],
+        imageIds: [],
+        emojiIds: [],
+        forwardIds: [],
+        replyMessageId: null,
+        mentionUserIds: [],
+        mentionedAll: false,
+        isAtMentioned: false,
+        receivedAt: Date.now()
+      }]
+    });
+
+    const system = readPromptSystemText(result.promptMessages);
+    assert.deepEqual(principals, ["owner-a"]);
+    assert.match(system, /res_mc_owned/u);
+    assert.match(system, /minecraft_actor_status/u);
+    assert.doesNotMatch(system, /probe\/observe 工具/u);
+  });
+
   test("chat prompt builder omits task tracker sections when generation input has no primary", async () => {
     const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps());
 

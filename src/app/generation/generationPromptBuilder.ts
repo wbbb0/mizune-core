@@ -69,8 +69,7 @@ const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "terminal_signal",
   "terminal_stop",
   "minecraft_actor_list",
-  "minecraft_actor_probe",
-  "minecraft_actor_observe"
+  "minecraft_actor_status"
 ]);
 export interface GenerationPromptHistoryMessage {
   role: "user" | "assistant";
@@ -684,11 +683,16 @@ async function projectPreparedBatchDerivedText(
   return messages;
 }
 
-async function collectPromptLiveResources(deps: GenerationPromptBuilderDeps): Promise<PromptLiveResource[]> {
+async function collectPromptLiveResources(
+  deps: GenerationPromptBuilderDeps,
+  ownerPrincipalId: string | null
+): Promise<PromptLiveResource[]> {
   const [browserPages, shellSessions, minecraftActors] = await Promise.all([
     deps.browserService.listPages(),
     deps.shellRuntime.listSessionResources(),
-    deps.minecraftActorManager?.list() ?? []
+    ownerPrincipalId
+      ? deps.minecraftActorManager?.listOwned(ownerPrincipalId) ?? []
+      : []
   ]);
   const downloads = deps.downloadRuntime.list();
 
@@ -726,7 +730,7 @@ async function collectPromptLiveResources(deps: GenerationPromptBuilderDeps): Pr
       status: item.status,
       title: null,
       description: null,
-      summary: "持久 Minecraft Actor；需要详情时使用 probe/observe 工具读取",
+      summary: "持久 Minecraft Actor；需要详情或委派进度时使用 minecraft_actor_status",
       lastAccessedAtMs: item.lastAccessedAtMs
     }))
   ]
@@ -1159,7 +1163,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         })
       : undefined;
     const liveResources = shouldIncludeLiveResources(input.visibleToolNames)
-      ? await collectPromptLiveResources(deps)
+      ? await collectPromptLiveResources(deps, input.currentUser?.userId ?? null)
       : [];
     const rawPreparedBatchMessages = await preparePromptBatchMessages(
       deps,
@@ -1361,7 +1365,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
       }),
       shouldIncludeLiveResources(input.visibleToolNames)
-        ? collectPromptLiveResources(deps)
+        ? collectPromptLiveResources(deps, input.currentUser?.userId ?? null)
         : Promise.resolve([]),
       (scenarioHostMode || assistantMode) ? Promise.resolve([]) : deps.globalRuleStore.getAll(),
       (scenarioHostMode || assistantMode) ? Promise.resolve([]) : deps.toolsetRuleStore.getAll(),

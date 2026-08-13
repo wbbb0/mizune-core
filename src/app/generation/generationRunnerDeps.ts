@@ -78,7 +78,7 @@ export interface GenerationPromptBuilderDeps {
   scenarioHostStateStore: ScenarioHostStateStore;
   contextStore?: Pick<ContextStore, "listUserFacts" | "listUserPromptFacts" | "listSessionFacts">;
   contextRetrievalService?: Pick<ContextRetrievalService, "retrieveUserContext" | "recordPromptMemoryReport">;
-  minecraftActorManager?: Pick<MinecraftActorResourceManager, "list">;
+  minecraftActorManager?: Pick<MinecraftActorResourceManager, "listOwned">;
 }
 
 export interface GenerationSessionRuntimeDeps {

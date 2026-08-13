@@ -243,12 +243,13 @@ test("resources terminal recreates xterm after its host is remounted", async () 
   assert.match(source, /if \(!sessionId\)\s*\{[\s\S]*disposeTerminal\(\);[\s\S]*return;/);
 });
 
-test("resources section relies on default selection navigation and keeps programmatic navigation", async () => {
+test("resources section projects shell selection into the shared resource workspace", async () => {
   const source = await readFile(new URL("../../../webui/src/composables/sections/useResourcesSection.ts", import.meta.url), "utf8");
 
   assert.match(source, /useWorkbenchNavigation/);
-  assert.match(source, /function selectShell\(sessionId: string\)\s*\{\s*selectedShellId\.value = sessionId;\s*\}/);
-  assert.match(source, /if \(resourceId\)\s*\{[\s\S]*selectedShellId\.value = resourceId;[\s\S]*workbenchNavigation\.showArea\("mainArea"\);[\s\S]*\}/);
+  assert.match(source, /useResourceSelection/);
+  assert.match(source, /function selectShell\(sessionId: string\)\s*\{[\s\S]*selectedShellId\.value = sessionId;[\s\S]*selectResource\(\{ kind: "shell_session", id: sessionId \}\);[\s\S]*showArea\("mainArea"\);[\s\S]*\}/);
+  assert.match(source, /if \(resourceId\)\s*\{[\s\S]*selectedShellId\.value = resourceId;[\s\S]*selectResource\(\{ kind: "shell_session", id: resourceId \}\);[\s\S]*showArea\("mainArea"\);[\s\S]*\}/);
 });
 
 test("desktop workbench persists area sizes by global area id", async () => {

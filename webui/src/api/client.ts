@@ -34,12 +34,13 @@ async function readErrorResponse(res: Response): Promise<{ message: string; isJs
 async function request<T>(
   method: string,
   path: string,
-  body?: unknown
+  body?: unknown,
+  headers: Record<string, string> = {}
 ): Promise<T> {
   const init: RequestInit = {
     method,
     credentials: "same-origin",
-    headers: {}
+    headers: { ...headers }
   };
 
   if (body !== undefined) {
@@ -73,6 +74,8 @@ async function request<T>(
 export const api = {
   get:    <T>(path: string)                => request<T>("GET",    path),
   post:   <T>(path: string, body?: unknown) => request<T>("POST",   path, body),
+  postWithHeaders: <T>(path: string, body: unknown, headers: Record<string, string>) =>
+    request<T>("POST", path, body, headers),
   put:    <T>(path: string, body?: unknown) => request<T>("PUT",    path, body),
   patch:  <T>(path: string, body?: unknown) => request<T>("PATCH",  path, body),
   delete: <T>(path: string)                => request<T>("DELETE", path),

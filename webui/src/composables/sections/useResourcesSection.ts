@@ -2,6 +2,7 @@ import { computed, ref } from "vue";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import { runtimeResourcesApi, type ShellSession } from "@/api/runtimeResources";
 import { useWorkbenchNavigation } from "@workbench-kit/vue";
+import { useResourceSelection } from "./resourceSelection";
 
 const shellSessions = ref<ShellSession[]>([]);
 const selectedShellId = ref<string | null>(null);
@@ -28,6 +29,7 @@ type ResourcesSectionState = {
 
 export const useResourcesSection = createSharedSectionState<ResourcesSectionState>(() => {
   const workbenchNavigation = useWorkbenchNavigation();
+  const resourceSelection = useResourceSelection();
 
   function resetState() {
     shellSessions.value = [];
@@ -58,6 +60,8 @@ export const useResourcesSection = createSharedSectionState<ResourcesSectionStat
 
   function selectShell(sessionId: string) {
     selectedShellId.value = sessionId;
+    resourceSelection.selectResource({ kind: "shell_session", id: sessionId });
+    workbenchNavigation.showArea("mainArea");
   }
 
   async function createShell(input: { command?: string; cwd?: string } = {}) {
@@ -77,6 +81,7 @@ export const useResourcesSection = createSharedSectionState<ResourcesSectionStat
       await refreshShells();
       if (resourceId) {
         selectedShellId.value = resourceId;
+        resourceSelection.selectResource({ kind: "shell_session", id: resourceId });
         workbenchNavigation.showArea("mainArea");
       }
     } catch (createError) {

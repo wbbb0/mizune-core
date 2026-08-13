@@ -44,20 +44,22 @@ Runtime 的 Unix socket 位于 `/tmp/mizune-mc-dev/runtime.sock`，SQLite 位于
 
 Minecraft endpoint、模型和权限配置属于 restart-required 配置。开发时修改后必须重启父项目；热重载会继续保留启动时策略，避免旧连接沿用已撤销权限或持久资源进入半迁移状态。
 
-## 模型可见接口
+## 主 Bot 可见接口
 
 启用 `minecraft_actor` 工具集后，owner 会话可以：
 
-- 列出、创建、探测和关闭服务端预配置的 Actor resource；
-- 查询自身、环境、背包、实体、玩家、聊天和任务状态；
-- 启动移动、跟随、交互、拾取、聊天和战斗行为；
-- 提交或取消持久任务，修改已授权的空闲自治策略；
-- 获取、验证并原子激活版本化 Python Program；
-- 手动唤起上层决策，或立即推进一次事件 outbox。
+- `minecraft_actor_list`：列出 Actor 和可用 endpoint；
+- `minecraft_actor_create`：创建或复用服务端预配置的 Actor；
+- `minecraft_actor_request`：向持久 FIFO mailbox 委派目标并立即取得 request ID；
+- `minecraft_actor_status`：读取独立循环、最近委派和身体状态的安全摘要；
+- `minecraft_actor_interrupt`：打断当前一次模型决策；
+- `minecraft_actor_close`：永久关闭资源并取消未完成委派。
 
-socket 路径、Actor ID、决策模型和部署权限只能由服务端配置给出。模型不能提供 transport 地址、revision 或幂等键；父项目在执行前读取当前快照，并从 session ID、tool call ID、resource ID 和动作类型派生稳定幂等键。
+结构化观察、实时行为、任务、自治和 Python Program 工具只存在于 Actor 自己的私有 Decision Runner 中，主 Bot 不可见。socket 路径、Actor ID、决策模型和部署权限只能由服务端配置给出；模型不能提供 transport 地址、revision 或幂等键。
 
-同一个 endpoint/Actor 在父项目中只保留一个 active resource。最初创建它的 owner session 是关注事件的持有会话；其他 owner 会话可以控制该全局资源，但不会隐式转移通知路由。owner notification 使用 at-least-once 投递，极端崩溃窗口可能按同一 notification ID 重放，消费侧应把该 ID 作为去重依据。
+同一个 endpoint/Actor 在父项目中只保留一个 active resource。owner principal 负责授权，最初创建它的 session 是关注事件的通知路由；不会因为另一个会话查看资源而隐式转移。owner notification 使用 at-least-once 投递，极端崩溃窗口可能按同一 notification ID 重放。
+
+WebUI 的「运行时资源 → Minecraft Actor」提供概览、SSE 动态、委派任务、基础感知和程序/设置页。当前程序执行与紧急停手按钮明确禁用，不应把 AST 校验或普通 interrupt 当成对应安全能力。
 
 ## 验证边界
 

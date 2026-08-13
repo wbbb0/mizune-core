@@ -194,27 +194,19 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   {
     id: "minecraft_actor",
     title: "Minecraft Actor",
-    description: "创建和控制持久 Minecraft Actor，读取结构化游戏状态、提交确定性行为与任务、管理自治和 Python 行为程序。",
+    description: "创建持久 Minecraft Actor，并通过独立模型循环委派目标、查看状态、打断决策或关闭资源。",
     plannerSignals: [
-      "Minecraft 游戏状态、移动、交互、战斗或聊天",
-      "管理 Minecraft Actor 任务、自治或行为程序",
+      "委派 Minecraft 游戏目标、移动、交互、战斗或聊天",
+      "查看或管理 Minecraft Actor 独立循环",
       "处理游戏内显著事件"
     ],
     ownerOnly: true,
     toolNames: [
       "minecraft_actor_list",
       "minecraft_actor_create",
-      "minecraft_actor_probe",
-      "minecraft_actor_observe",
-      "minecraft_actor_start_behavior",
-      "minecraft_actor_submit_task",
-      "minecraft_actor_cancel",
-      "minecraft_actor_set_autonomy",
-      "minecraft_actor_get_program",
-      "minecraft_actor_validate_program",
-      "minecraft_actor_activate_program",
-      "minecraft_actor_wake",
-      "minecraft_actor_ingest_events",
+      "minecraft_actor_request",
+      "minecraft_actor_status",
+      "minecraft_actor_interrupt",
       "minecraft_actor_close"
     ]
   },

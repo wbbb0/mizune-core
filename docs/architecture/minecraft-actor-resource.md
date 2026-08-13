@@ -1,88 +1,88 @@
-# Minecraft Actor 资源与决策循环
+# Minecraft Actor 资源与独立决策循环
 
-状态：已实现父项目接口与模拟运行时契约；真实 NeoForge transport 和隔离 Script Worker 尚未接入。
+状态：父项目的持久 Actor 控制面、独立模型循环、模拟 Runtime 契约与 WebUI 工作台已实现；真实 NeoForge Bridge 和隔离 Python Worker 尚未接入。
 
-## 边界
+## 系统边界
 
-Minecraft Actor 是跨会话可见的系统资源，不是聊天 session，也不把游戏 tick、内部计划或脚本日志写进普通聊天历史。
+Minecraft Actor 是跨会话可见的持久系统资源，不是聊天 session。游戏 tick、内部计划、结构化感知和脚本日志不进入普通聊天历史。
 
-- `mizune-mc-runtime` 负责结构化感知、动作租约、确定性行为、任务队列、战斗、聊天、自治策略及 Python 程序生命周期。
-- `MinecraftActorClient` 是父项目使用的版本化协议边界，所有响应均做严格运行时校验。
-- `MinecraftDecisionRunner` 负责一次有界模型唤起，只做读取、一次控制提交和持久认知更新。
-- `MinecraftActorResourceManager` 负责持久资源、client 生命周期、串行/打断循环、显著事件游标与所属会话通知。
-- OneBot/Web 会话只通过资源工具或内部事件与 Actor 交互，不直接拥有 Minecraft transport。
+- 主 Bot 只拥有 `create/list/request/status/interrupt/close` 六个高层工具。
+- `MinecraftActorControlStore` 保存 owner principal、revision、FIFO mailbox、请求、决策与事件日志。
+- `MinecraftDecisionRunner` 在私有工具上下文中使用只读观察、确定性行为、任务、自治和程序校验接口。主 Bot 无法直接调用这些接口。
+- `MinecraftActorResourceManager` 负责 mailbox 调度、模型打断、Runtime client、显著事件摄取和 owner 通知。
+- `MinecraftActorClient` 是父项目与模拟 Runtime、未来 NeoForge Bridge 共用的版本化 RPC 边界。
+- WebUI 只消费 Actor read model 和持久 SSE 事件，不读取 socket、模型引用或 daemon 内部对象。
 
-## 决策输入与输出
+一次 owner 委派先以幂等键写入持久 FIFO mailbox，立即返回 request ID；独立循环随后领取并执行。应用正常停机导致的模型中断会把 wake 重新入队，手动 interrupt 和永久 close 才会形成终态。
 
-一次决策固定只发送三条消息：
+## 决策调用契约
+
+每次模型唤起固定包含三条消息：
 
 1. 一个稳定的中文 system prompt。
 2. 一个包含 Actor ID、当前目标和持久状态文本的结构化 user message。
-3. 一个包含本次唤起原因、时间和必要详情的结构化 user message。
+3. 一个描述本次唤起原因和必要详情的结构化 user message。
 
-Decision Runner 固定关闭思考覆盖，并优先使用 provider 的原生无思考端点。模型可以并行调用只读工具；控制、结束和程序部署工具必须独占工具轮次。整个唤起跨多个工具轮次最多接受一次成功控制提交，随后只能读取结果或调用 `minecraft_finish_decision`。控制幂等键不再由模型输出，而是由 resource/outbox decision ID 派生；同一持久事件重放会复用同一键，由 Runtime 返回既有结果或拒绝参数冲突，避免模型在 finish 前失败后重复产生第二个控制副作用。
+Decision Runner 默认关闭思考覆盖，并优先使用 endpoint 的无思考模式。一次唤起可以多轮调用只读工具，但最多接受一次成功控制提交。控制调用、程序部署和结束工具必须独占一个工具轮次；普通 assistant 文本没有控制效果，也不能代替 `minecraft_finish_decision`。
 
-`minecraft_finish_decision` 返回：
+结束工具提交决策摘要、完整更新后的持久状态、当前目标和可选的下次唤起提示。决策 ID、控制幂等键和 Runtime snapshot 共同用于崩溃后的对账，避免模型重试重复产生远端副作用。
 
-- 本次决策摘要；
-- 完整的更新后持久状态文本；
-- 更新后的当前目标；
-- 可选的下次唤起提示。
+## 持久状态与恢复
 
-普通 assistant 文本没有控制效果，也不能替代结束工具。
+SQLite schema v4 的 canonical 状态包括：
 
-## 可编程行为部署
+- 通用 `runtime_resources` 与 Minecraft recovery state；
+- `minecraft_actor_control_state`：owner principal、revision、loop phase 与当前决策；
+- `minecraft_actor_requests`：owner 委派及其终态；
+- `minecraft_actor_wake_mailbox`：按插入顺序领取的持久 wake；
+- `minecraft_actor_decisions`：每次模型尝试、重试和结果；
+- `minecraft_actor_events`：全局单调 event ID 的资源事件日志。
 
-程序修改采用两阶段接口：
+Actor 创建时资源行和 control state 在同一事务内提交。启动会修复历史半状态，并把 active Actor 的未完成决策恢复为可重试 wake；closed Actor 不参与恢复。revision 冲突返回明确的 409，request 的幂等键重放必须保持参数指纹一致。
 
-1. `program.validate` 对完整 Python 源码、API 版本、capability、source hash、Actor revision 和 AST 约束做预检，并生成短期 draft。
-2. `program.activate` 以 draft ID、Actor revision 和幂等键原子激活版本。
+Runtime 的命令结果、checkpoint 和事件游标由子模块 daemon 使用独立 SQLite 持久化。父项目与 Runtime 同时重启时仍复用命令幂等键，并以 snapshot 为最终状态依据。
 
-SHA-256 由父项目根据完整源码计算，不要求模型生成。静态 AST 校验只负责快速反馈，不是安全沙箱。当前模拟运行时只验证和激活程序版本，不执行模型源码；接真实客户端前必须补独立 CPython worker、OS 级网络/文件/进程隔离和带预算的 host API。
+## 唤起、打断与安全
 
-## 持久资源
+普通 owner 请求进入 FIFO；高优先级游戏事件可以打断正在运行的模型决策。高频 telemetry 在进入模型前聚合，只有聊天呼叫、危险、连接变化、行为/任务完成、持续失败等显著事件产生 wake。
 
-`minecraft_actor` 资源持久化以下恢复状态：
+三个动作必须保持不同语义：
 
-- Actor ID、transport 类型、无密钥端点和 protocol version；
-- 所属会话 ID；
-- 持久状态、当前目标和决策模型列表；
-- 自治策略修改和程序部署权限；
-- 最后消费的 runtime event sequence。
+- `interrupt`：只打断当前模型决策，不等价于让游戏身体立即停手。
+- `emergency stop`：未来独立的运维安全 RPC；在实现前 UI 明确禁用。
+- `close`：永久关闭父项目 Actor 和未完成 mailbox；transport close 只释放本地连接。
 
-启动清理只删除浏览器页面与 Shell session 等临时句柄，保留 Minecraft Actor。资源 schema v2 会原位迁移 v1 的浏览器和 Shell 数据。认证 token、账号凭据和 Microsoft 登录信息不得写入该表，应由独立 credential reference/transport 配置提供。
+父连接消失后，Runtime 控制租约到期会取消活动行为和排队任务、关闭自治并进入安全态。持久 close 成功是管理 API 的成功边界；本地 transport 清理失败只记录并后台重试，不能把已经提交的永久关闭翻转成 HTTP 失败。
 
-## 唤起、打断与通知
+## SSE 与 WebUI read model
 
-每个资源只有一个运行中的模型决策和一个有界 pending 槽位：
+Internal API 提供 Actor 列表、详情、owner request、interrupt、close 和 SSE stream。mutation 要求 Same-Origin、expected revision；request 还必须携带 `Idempotency-Key`。
 
-- 普通事件在当前决策后串行处理；
-- 更高优先级或显式 `interruptCurrent` 的事件会取消当前模型请求；
-- pending 槽位只保留优先级更高或同级更新的事件，被替代的调用方会收到 `superseded`；
-- Actor 状态写入经过逐资源串行化，事件游标与决策完成不会互相覆盖。
+SSE 使用 SQLite event ID：
 
-高优先级/critical 游戏事件会通过 `MinecraftActorOwnerNotificationSink` 转成 `minecraft_actor_attention` 独立内部触发器，排在所属 OneBot/Web 会话的可见消息之后执行。Minecraft 服务因此不直接依赖 OneBot；实际装配只需要把现有 session-work dispatcher 包装成通知 sink。
+- 首次连接发送 snapshot；有效 cursor 发送 resume 与精确 replay；过旧或越界 cursor 发送 reset。
+- 建立 snapshot 期间先缓冲 live event，保证初始帧先于增量事件。
+- replay 上限按该 Actor 的实际事件数计算，不使用全局 event ID 差值。
+- 客户端断线会取消慢 probe 并释放 journal listener；应用关闭会主动终止已登记连接。
+- 慢消费者和初始缓冲都有事件数/字节上限，溢出时要求客户端以 cursor 重连。
+- terminal 事件携带真实资源状态，并在已提交的缓冲事件之后发送。
 
-## 当前验证
+公开 read model 不包含 endpoint、model refs、owner ID、幂等键、原始 transport 错误、凭据或程序源码。Resources 工作台提供概览、动态、委派任务、基础感知以及程序/设置页；程序页会明确显示执行暂未开放。
 
-- 子模块模拟运行时覆盖移动、跟随、拾取、实体交互、任务、统一聊天、战斗、显式空闲自治、revision/幂等/ref 和程序生命周期。
-- 父项目覆盖严格协议解析、决策工具循环、单次控制提交、程序两阶段部署、资源 SQLite 迁移/恢复、打断调度、显著事件消费及 owner 内部通知。
-- 默认回归不调用真实模型；真实 DeepSeek 行为继续放在 opt-in smoke 中验证，避免模型服务状态影响普通测试。
+## 可编程行为
 
-真实模型验证命令与已测延迟见 `docs/development/minecraft-decision-smoke.md`。
+程序采用两阶段契约：
 
-资源状态更新、关闭和事件 cursor 按 resource 串行；SQLite schema v3 使用持久 outbox 将已拉取事件与 owner 通知/决策唤起分开。两类 outbox 独立推进，owner 会话繁忙或失败不会延迟 critical Actor 决策。通知带稳定 `notificationId`，owner 回调作为独立 generation 执行并只在模型正常完成后确认；决策唤起也只在成功完成后确认，失败、打断或进程退出会保留为待重试。会话清空、删除或恢复会显式拒绝仍在等待的内部回调，使 outbox 可以重试。语义是 at-least-once，进程在外部效果完成与确认之间退出时允许重复。client 创建使用 single-flight，并在关闭竞态中释放 transport。
+1. `program.validate` 校验完整 Python 源码、API 版本、capability、source hash、Actor revision 和 AST 约束，生成短期 draft。
+2. `program.activate` 以 draft ID、revision 和幂等键原子选择版本。
 
-游戏事件在进入 outbox 前会做确定性的深度、节点、数组、键和字符串裁剪；event type 使用协议枚举，摘要有固定长度上限。owner 与 Actor 两类 prompt 都把摘要和详情整体编码成不可执行的第三方 JSON 数据，不依赖可由游戏文本闭合的展示标签。所有 Actor 读取/控制结果进入模型前还有独立的 64k 字符投影预算。原始事件仍留在 Runtime 自己的结构化日志中，不能未经投影直接进入主会话。
+当前 Runtime 只验证和保存程序，不执行模型源码。AST 校验不是安全沙箱；开放执行前必须补独立 CPython worker、CPU/内存/墙钟预算、文件/网络/进程隔离、host API 白名单和租约取消。
 
-决策 runner 自己实施硬截止，不依赖 provider 是否遵守 AbortSignal；截止后的迟到工具调用不会更新决策状态。已经发往远端、但 transport 忽略取消的控制仍可能产生“结果未知”，因此正式 Unix socket / loopback transport 必须同时实现 request deadline、持久化命令幂等结果和重连后的 snapshot 对账。当前模拟 Runtime 的幂等表仍在内存，只覆盖父进程单独崩溃；父项目与 Runtime 同时重启的重放安全是正式 transport 前的明确前置条件。
+## 接下来
 
-`MinecraftActorClient.close()` 的协议含义只允许是释放当前父进程持有的本地 transport，不得隐式承担“让远端退出服务器、停止自治”等需要跨进程持久重试的业务动作。正式 Runtime/Bridge 必须使用带期限的控制租约或心跳：父连接消失且租约到期后自动停手并进入安全状态。显式关闭远端 Actor 应使用带持久幂等键和可恢复 outbox 的独立控制命令。这样父进程退出天然释放本地连接，不依赖易丢失的内存 cleanup intent 承担远端安全语义。
+1. 先让 NeoForge Bridge 提供真实只读 self、玩家、实体、背包、聊天与附近环境；保持现有 RPC 不变。
+2. 将模拟行为逐项替换为真实移动、交互、物品处理、战斗和统一聊天，并用离线镜像服做 canary。
+3. 增加独立 emergency-stop RPC 和 WebUI 按钮。
+4. 最后实现隔离 Python Worker；在此之前继续使用经过测试的确定性内建行为完成基础游玩。
 
-## 下一落地点
-
-1. 实现带 request ID、取消和重连的 Unix socket / loopback transport，并让 Python runtime daemon 提供同一 v1 RPC。
-2. 提供 app config 与 owner-only 创建/关闭接口，装配 `MinecraftActorResourceManager` 和内部通知 sink。
-3. 增加 Actor 工具集，使所有会话可读取资源，只有 owner/operator 能修改连接、权限和程序；控制操作仍受资源策略约束。
-4. 接独立 Script Worker 后再把 active program 变为可执行逻辑；在此之前继续以确定性内建行为作为可玩能力。
-5. 最后接 NeoForge Bridge/Baritone，并用离线镜像服做 canary；真实服测试不进入默认单元回归。
+真实模型 smoke 与延迟结论见 `docs/development/minecraft-decision-smoke.md`，本地 daemon 和父项目启动方式见 `docs/development/minecraft-actor-runtime.md`。
