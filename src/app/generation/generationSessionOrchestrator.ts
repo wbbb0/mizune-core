@@ -992,6 +992,10 @@ export function createGenerationSessionOrchestrator(
     }
 
     const { abortController, responseAbortController, responseEpoch } = sessionManager.beginSyntheticGeneration(sessionId);
+    const unlinkExternalAbort = linkExternalAbortSignal(
+      trigger.kind === "minecraft_actor_attention" ? trigger.abortSignal : undefined,
+      abortController
+    );
     const expectedEpoch = sessionManager.getMutationEpoch(sessionId);
     sessionManager.appendInternalTranscript(sessionId, createInternalTriggerEvent({
       trigger,
@@ -1175,7 +1179,7 @@ export function createGenerationSessionOrchestrator(
         }
       }
       throw error;
-    });
+    }).finally(unlinkExternalAbort);
   };
 
   // Runs a batch of background-event inline triggers as a single generation turn.
@@ -1372,6 +1376,20 @@ export function createGenerationSessionOrchestrator(
     runInternalTriggerSession,
     runInlineTriggerBatchSession
   };
+}
+
+function linkExternalAbortSignal(
+  signal: AbortSignal | undefined,
+  controller: AbortController
+): () => void {
+  if (!signal) return () => {};
+  const abort = (): void => controller.abort(signal.reason);
+  if (signal.aborted) {
+    abort();
+    return () => {};
+  }
+  signal.addEventListener("abort", abort, { once: true });
+  return () => signal.removeEventListener("abort", abort);
 }
 
 async function hasRunningResourcesForTaskTracker(

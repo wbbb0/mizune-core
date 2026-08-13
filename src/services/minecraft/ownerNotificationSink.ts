@@ -12,7 +12,8 @@ interface InternalTriggerDispatcher {
       userId: string;
       groupId?: string;
       senderName: string;
-    }) => InternalSessionTriggerExecution
+    }) => InternalSessionTriggerExecution,
+    abortSignal?: AbortSignal
   ): Promise<void>;
 }
 
@@ -23,9 +24,9 @@ export class MinecraftActorOwnerNotificationRouter implements MinecraftActorOwne
     this.delegate = delegate;
   }
 
-  async notify(notification: MinecraftActorOwnerNotification): Promise<void> {
+  async notify(notification: MinecraftActorOwnerNotification, signal?: AbortSignal): Promise<void> {
     if (!this.delegate) throw new Error("Minecraft Actor owner notification router 尚未绑定");
-    await this.delegate.notify(notification);
+    await this.delegate.notify(notification, signal);
   }
 }
 
@@ -34,7 +35,7 @@ export function createMinecraftActorOwnerNotificationSink(
   now: () => number = Date.now
 ): MinecraftActorOwnerNotificationSink {
   return {
-    async notify(notification): Promise<void> {
+    async notify(notification, signal): Promise<void> {
       await dispatcher.dispatchInternalTrigger(notification.ownerSessionId, target => ({
         kind: "minecraft_actor_attention",
         targetType: target.type,
@@ -50,7 +51,7 @@ export function createMinecraftActorOwnerNotificationSink(
         attentionType: notification.type,
         summary: notification.summary,
         details: notification.details === undefined ? null : JSON.stringify(notification.details)
-      }));
+      }), signal);
     }
   };
 }

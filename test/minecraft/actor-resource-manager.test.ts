@@ -14,6 +14,7 @@ import { StateDatabase } from "../../src/data/state/stateDatabase.ts";
 import { RuntimeResourceRegistry } from "../../src/runtime/resources/runtimeResourceRegistry.ts";
 import { RuntimeResourceStore } from "../../src/runtime/resources/runtimeResourceStore.ts";
 import type { MinecraftActorClient } from "../../src/services/minecraft/actorClient.ts";
+import { ConfiguredMinecraftActorClientFactory } from "../../src/services/minecraft/actorClientFactory.ts";
 import {
   MinecraftActorResourceManager,
   type MinecraftActorOwnerNotification,
@@ -36,6 +37,7 @@ import type {
   MinecraftTaskCommand
 } from "../../src/services/minecraft/actorTypes.ts";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
+import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
 type Generate = LlmClient["generate"];
 
@@ -549,6 +551,39 @@ test("shutdown 等待已启动的 owner outbox 投递收敛后再关闭 transpor
   }
 });
 
+test("shutdown grace 到期后中止 owner 投递并保留 pending outbox", async () => {
+  const ownerStarted = deferred<void>();
+  let deliverySignal: AbortSignal | undefined;
+  const harness = await createManagerHarness(
+    new FinishOnlyLlm("处理完成", "已处理", null),
+    [],
+    {
+      async notify(_notification, signal) {
+        deliverySignal = signal;
+        ownerStarted.resolve(undefined);
+        await new Promise<void>(() => {});
+      }
+    },
+    10
+  );
+  try {
+    const resource = await harness.manager.create(resourceInput());
+    harness.client.events = [runtimeEvent({ sequence: 8, priority: "critical" })];
+    const ingestion = await harness.manager.ingestEvents(resource.resourceId);
+    await ownerStarted.promise;
+    await ingestion.wake;
+
+    await harness.manager.shutdown();
+
+    assert.equal(deliverySignal?.aborted, true);
+    assert.equal(harness.client.closeCalls, 1);
+    const pending = await harness.registry.listPendingMinecraftActorOutbox(resource.resourceId);
+    assert.equal(pending.filter(entry => entry.kind === "owner_notification").length, 1);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("shutdown 等待被打断的 manual wake 真正退出", async () => {
   const wakeStarted = deferred<void>();
   const releaseWake = deferred<void>();
@@ -757,6 +792,50 @@ test("恢复端点被移除时先标记资源不可恢复，再拒绝控制命�
   }
 });
 
+test("真实配置工厂通过 manager 恢复时保留实例方法绑定", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-minecraft-actor-bound-factory-"));
+  const database = new StateDatabase(dataDir, createSilentLogger());
+  const registry = new RuntimeResourceRegistry(new RuntimeResourceStore(database));
+  const config = createTestAppConfig({
+    minecraft: {
+      enabled: true,
+      endpoints: {
+        dev: {
+          actorId: "bound-actor",
+          socketPath: "/run/mizune/bound-runtime.sock",
+          modelRefs: ["bound-model"],
+          allowAutonomyPolicyChange: false,
+          allowProgramDeployment: false
+        }
+      }
+    }
+  });
+  const factory = new ConfiguredMinecraftActorClientFactory(config);
+  const manager = new MinecraftActorResourceManager(
+    registry,
+    factory,
+    new FinishOnlyLlm("完成", "完成", null),
+    createSilentLogger()
+  );
+  try {
+    const resource = await manager.create({
+      ownerSessionId: "onebot:private:owner",
+      actor: factory.resolveEndpoint("dev").actor
+    });
+    await assert.rejects(manager.setAutonomy(resource.resourceId, {
+      policy: actorSnapshot().autonomyPolicy,
+      expectedActorRevision: 3,
+      idempotencyKey: "bound-factory"
+    }), /不允许修改自治策略/u);
+
+    assert.equal((await registry.get(resource.resourceId))?.status, "active");
+  } finally {
+    await manager.shutdown();
+    database.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("transport close failure is propagated and a later close retries cleanup", async () => {
   const harness = await createManagerHarness(new FinishOnlyLlm("完成", "完成", null));
   let closeAttempts = 0;
@@ -862,7 +941,8 @@ async function createManagerHarness(
   notifications: MinecraftActorOwnerNotification[] = [],
   notificationSink: MinecraftActorOwnerNotificationSink = {
     notify(notification) { notifications.push(notification); }
-  }
+  },
+  shutdownDrainGraceMs = 5_000
 ) {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-minecraft-actor-manager-"));
   const database = new StateDatabase(dataDir, createSilentLogger());
@@ -881,7 +961,8 @@ async function createManagerHarness(
     llm,
     createSilentLogger(),
     notificationSink,
-    () => 1_000
+    () => 1_000,
+    shutdownDrainGraceMs
   );
   return {
     manager,

@@ -522,6 +522,16 @@ export function shiftInternalTriggerState(session: SessionState): InternalSessio
   return session.pendingInternalTriggers.shift() ?? null;
 }
 
+export function removeInternalTriggerState(
+  session: SessionState,
+  trigger: InternalSessionTriggerExecution
+): boolean {
+  const index = session.pendingInternalTriggers.indexOf(trigger);
+  if (index < 0) return false;
+  session.pendingInternalTriggers.splice(index, 1);
+  return true;
+}
+
 // Appends an inline trigger (background event) to the session queue.
 export function enqueueInlineTriggerState(session: SessionState, trigger: InlineSessionTriggerExecution): number {
   session.pendingInlineTriggers.push(trigger);

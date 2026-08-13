@@ -81,12 +81,14 @@ export function createScheduledTaskDispatcher(
         userId: string;
         groupId?: string;
         senderName: string;
-      }) => InternalSessionTriggerExecution
+      }) => InternalSessionTriggerExecution,
+      abortSignal?: AbortSignal
     ): Promise<void> {
       await dispatcher.dispatchTrigger({
         sessionId,
         queueLogEvent: "internal_trigger_queued",
-        createTrigger: triggerFactory
+        createTrigger: triggerFactory,
+        ...(abortSignal ? { abortSignal } : {})
       });
     },
     async dispatchTerminalEvent(event: ShellRuntimeEvent): Promise<void> {

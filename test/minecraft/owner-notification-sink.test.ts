@@ -5,8 +5,10 @@ import { createMinecraftActorOwnerNotificationSink } from "../../src/services/mi
 
 test("Minecraft owner notification becomes a durable internal session trigger", async () => {
   const dispatched: Array<{ sessionId: string; trigger: InternalSessionTriggerExecution }> = [];
+  let receivedSignal: AbortSignal | undefined;
   const sink = createMinecraftActorOwnerNotificationSink({
-    async dispatchInternalTrigger(sessionId, factory) {
+    async dispatchInternalTrigger(sessionId, factory, signal) {
+      receivedSignal = signal;
       dispatched.push({
         sessionId,
         trigger: factory({
@@ -18,6 +20,7 @@ test("Minecraft owner notification becomes a durable internal session trigger", 
     }
   }, () => 123);
 
+  const controller = new AbortController();
   await sink.notify({
     notificationId: "res_minecraft_1:event:8:owner_attention",
     ownerSessionId: "onebot:private:owner",
@@ -26,9 +29,10 @@ test("Minecraft owner notification becomes a durable internal session trigger", 
     type: "game_attention",
     summary: "找不到游戏内的 Alice",
     details: { lastSeenSecondsAgo: 30 }
-  });
+  }, controller.signal);
 
   assert.equal(dispatched.length, 1);
+  assert.equal(receivedSignal, controller.signal);
   assert.equal(dispatched[0]?.sessionId, "onebot:private:owner");
   assert.deepEqual(dispatched[0]?.trigger, {
     kind: "minecraft_actor_attention",

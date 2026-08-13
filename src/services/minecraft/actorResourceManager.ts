@@ -64,7 +64,7 @@ export interface MinecraftActorOwnerNotification {
 }
 
 export interface MinecraftActorOwnerNotificationSink {
-  notify(notification: MinecraftActorOwnerNotification): Promise<void> | void;
+  notify(notification: MinecraftActorOwnerNotification, signal?: AbortSignal): Promise<void> | void;
 }
 
 export interface CreateMinecraftActorResourceInput {
@@ -114,6 +114,8 @@ const PRIORITY_ORDER: Record<MinecraftActorWakePriority, number> = {
   critical: 2
 };
 
+const DEFAULT_SHUTDOWN_DRAIN_GRACE_MS = 5_000;
+
 export class MinecraftActorResourceManager {
   private readonly clients = new Map<string, Promise<MinecraftActorClient>>();
   private readonly clientsPendingCleanup = new Map<string, Promise<MinecraftActorClient>>();
@@ -125,6 +127,7 @@ export class MinecraftActorResourceManager {
   private readonly closingResources = new Set<string>();
   private readonly outboxWakeOperations = new Map<string, Promise<MinecraftActorWakeOutcome>>();
   private readonly outboxOwnerOperations = new Map<string, Promise<void>>();
+  private readonly outboxOwnerControllers = new Map<string, AbortController>();
   private shuttingDown = false;
   private shutdownOperation: Promise<void> | null = null;
 
@@ -134,7 +137,8 @@ export class MinecraftActorResourceManager {
     private readonly llm: Pick<LlmClient, "generate">,
     private readonly logger: Logger,
     private readonly notificationSink?: MinecraftActorOwnerNotificationSink,
-    private readonly now: () => number = Date.now
+    private readonly now: () => number = Date.now,
+    private readonly shutdownDrainGraceMs = DEFAULT_SHUTDOWN_DRAIN_GRACE_MS
   ) {}
 
   async create(input: CreateMinecraftActorResourceInput): Promise<RuntimeResourceRecord> {
@@ -424,6 +428,8 @@ export class MinecraftActorResourceManager {
   ): void {
     const operationKey = `${record.resourceId}:${outboxId}`;
     if (this.outboxOwnerOperations.has(operationKey)) return;
+    const controller = new AbortController();
+    this.outboxOwnerControllers.set(operationKey, controller);
     const operation = (async () => {
       try {
         const notification = parseOwnerNotificationPayload(payload);
@@ -432,7 +438,7 @@ export class MinecraftActorResourceManager {
           type: notification.type,
           summary: notification.summary,
           ...(notification.details === undefined ? {} : { details: notification.details })
-        });
+        }, controller.signal);
         const delivered = await this.registry.markMinecraftActorOutboxDelivered(
           record.resourceId,
           outboxId,
@@ -449,6 +455,7 @@ export class MinecraftActorResourceManager {
     })().finally(() => {
       if (this.outboxOwnerOperations.get(operationKey) === operation) {
         this.outboxOwnerOperations.delete(operationKey);
+        this.outboxOwnerControllers.delete(operationKey);
       }
     });
     this.outboxOwnerOperations.set(operationKey, operation);
@@ -536,6 +543,7 @@ export class MinecraftActorResourceManager {
     }
     for (const resourceId of this.clients.keys()) this.closingResources.add(resourceId);
     for (const resourceId of this.clientsPendingCleanup.keys()) this.closingResources.add(resourceId);
+    await this.drainOwnerDeliveriesWithinGrace(reason);
     await this.drainBackgroundOperations();
     const clients = [...new Set([
       ...this.clients.values(),
@@ -549,6 +557,27 @@ export class MinecraftActorResourceManager {
       .map(result => result.reason);
     if (failures.length > 0) {
       throw new AggregateError(failures, "关闭 Minecraft Actor 本地 transport 失败");
+    }
+  }
+
+  private async drainOwnerDeliveriesWithinGrace(reason: string): Promise<void> {
+    const operations = [...this.outboxOwnerOperations.values()];
+    if (operations.length === 0) return;
+    const drained = Promise.allSettled(operations).then(() => true);
+    let timeout: NodeJS.Timeout | undefined;
+    const timedOut = new Promise<false>(resolve => {
+      timeout = setTimeout(() => resolve(false), this.shutdownDrainGraceMs);
+      timeout.unref?.();
+    });
+    const completed = await Promise.race([drained, timedOut]);
+    if (timeout) clearTimeout(timeout);
+    if (completed) return;
+    this.logger.warn(
+      { pendingOwnerDeliveries: this.outboxOwnerOperations.size, graceMs: this.shutdownDrainGraceMs },
+      "minecraft_actor_shutdown_owner_delivery_grace_expired"
+    );
+    for (const controller of this.outboxOwnerControllers.values()) {
+      controller.abort(new Error(`${reason}: owner delivery shutdown grace expired`));
     }
   }
 
@@ -685,7 +714,7 @@ export class MinecraftActorResourceManager {
           notificationId: `decision_failed:${resourceId}:${this.now()}`,
           type: "decision_failed",
           summary: `Minecraft 决策失败：${message}`
-        });
+        }, signal);
       }
       return { status: "failed", error: message };
     }
@@ -730,12 +759,11 @@ export class MinecraftActorResourceManager {
     record: RuntimeResourceRecord,
     markUnrecoverableOnPolicyError = false
   ): Promise<RuntimeResourceRecord> {
-    const reconcile = this.clientFactory.reconcileRecoveryState;
-    if (!reconcile) return record;
+    if (!this.clientFactory.reconcileRecoveryState) return record;
     const current = requireActorState(record);
     let reconciled: MinecraftActorRecoveryState;
     try {
-      reconciled = reconcile(cloneRecoveryState(current));
+      reconciled = this.clientFactory.reconcileRecoveryState(cloneRecoveryState(current));
       validateRecoveryState(reconciled);
     } catch (error) {
       if (markUnrecoverableOnPolicyError) {
@@ -746,7 +774,9 @@ export class MinecraftActorResourceManager {
     if (isDeepStrictEqual(current, reconciled)) return record;
     return this.enqueueStateUpdate(record.resourceId, async () => {
       const latest = await this.requireActiveResource(record.resourceId);
-      const next = reconcile(cloneRecoveryState(requireActorState(latest)));
+      const next = this.clientFactory.reconcileRecoveryState!(
+        cloneRecoveryState(requireActorState(latest))
+      );
       validateRecoveryState(next);
       const updated = await this.registry.updateMinecraftActor(record.resourceId, next, {
         updatedAtMs: this.now(),
@@ -820,7 +850,8 @@ export class MinecraftActorResourceManager {
 
   private async deliverOwner(
     record: RuntimeResourceRecord,
-    input: Omit<MinecraftActorOwnerNotification, "ownerSessionId" | "resourceId" | "actorId">
+    input: Omit<MinecraftActorOwnerNotification, "ownerSessionId" | "resourceId" | "actorId">,
+    signal?: AbortSignal
   ): Promise<void> {
     if (!this.notificationSink) {
       throw new Error("Minecraft Actor owner notification sink 未装配");
@@ -828,24 +859,48 @@ export class MinecraftActorResourceManager {
     if (!record.ownerSessionId) {
       throw new Error(`Minecraft Actor 资源缺少 owner session：${record.resourceId}`);
     }
-    await this.notificationSink.notify({
+    const delivery = Promise.resolve(this.notificationSink.notify({
       ownerSessionId: record.ownerSessionId,
       resourceId: record.resourceId,
       actorId: requireActorState(record).actorId,
       ...input
-    });
+    }, signal));
+    await waitForAbortableOperation(delivery, signal);
   }
 
   private async notifyOwnerBestEffort(
     record: RuntimeResourceRecord,
-    input: Omit<MinecraftActorOwnerNotification, "ownerSessionId" | "resourceId" | "actorId">
+    input: Omit<MinecraftActorOwnerNotification, "ownerSessionId" | "resourceId" | "actorId">,
+    signal?: AbortSignal
   ): Promise<void> {
     try {
-      await this.deliverOwner(record, input);
+      await this.deliverOwner(record, input, signal);
     } catch (error) {
       this.logger.warn({ err: error, resourceId: record.resourceId }, "minecraft_actor_owner_notification_failed");
     }
   }
+}
+
+async function waitForAbortableOperation<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return operation;
+  if (signal.aborted) throw abortSignalError(signal);
+  let abortListener: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    abortListener = () => reject(abortSignalError(signal));
+    signal.addEventListener("abort", abortListener, { once: true });
+  });
+  try {
+    return await Promise.race([operation, aborted]);
+  } finally {
+    if (abortListener) signal.removeEventListener("abort", abortListener);
+  }
+}
+
+function abortSignalError(signal: AbortSignal): Error {
+  if (signal.reason instanceof Error) return signal.reason;
+  const error = new Error(String(signal.reason ?? "Minecraft Actor 操作已中止"));
+  error.name = "AbortError";
+  return error;
 }
 
 function parseOwnerNotificationPayload(payload: unknown): {

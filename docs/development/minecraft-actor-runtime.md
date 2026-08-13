@@ -40,6 +40,8 @@ CONFIG_INSTANCE=dev npm run dev
 
 Runtime 的 Unix socket 与 SQLite 位于 `data/dev/minecraft-runtime/`。停止父项目只关闭本地 transport，不会隐式关闭远端 Actor；控制连接租约到期后，daemon 会取消活动行为和排队任务、关闭自治并进入安全状态。
 
+父项目停机时会先给正在进行的 owner notification 最多 5 秒收敛时间；超时则中止会话侧投递并保留 outbox 为 pending，避免单次模型生成阻塞整个应用退出。下次启动会按原 notification ID 重试。
+
 Minecraft endpoint、模型和权限配置属于 restart-required 配置。开发时修改后必须重启父项目；热重载会继续保留启动时策略，避免旧连接沿用已撤销权限或持久资源进入半迁移状态。
 
 ## 模型可见接口

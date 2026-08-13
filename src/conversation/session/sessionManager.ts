@@ -1121,6 +1121,13 @@ export class SessionManager {
     return trigger;
   }
 
+  removeInternalTrigger(sessionId: string, trigger: InternalSessionTriggerExecution): boolean {
+    const session = this.requireSession(sessionId);
+    const removed = this.internalTriggerQueue.remove(session, trigger);
+    if (removed) this.notifySessionChanged(sessionId);
+    return removed;
+  }
+
   enqueueInlineTrigger(sessionId: string, trigger: InlineSessionTriggerExecution): number {
     const session = this.requireSession(sessionId);
     const size = this.inlineTriggerQueue.enqueue(session, trigger);

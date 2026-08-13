@@ -46,7 +46,9 @@ export function createInternalTriggerDispatcher(
     };
     createTrigger: (target: InternalTriggerTarget) => InternalSessionTriggerExecution;
     queueLogEvent: string;
+    abortSignal?: AbortSignal;
   }): Promise<void> => {
+    input.abortSignal?.throwIfAborted();
     const parsed = parseSessionIdentity(input.sessionId);
     if (parsed.kind !== "private" && parsed.kind !== "group" && parsed.kind !== "web") {
       throw new Error(`Unsupported sessionId: ${input.sessionId}`);
@@ -73,6 +75,7 @@ export function createInternalTriggerDispatcher(
       userStore
     });
     const trigger = input.createTrigger(target);
+    attachRuntimeAbortSignal(trigger, input.abortSignal);
     sessionManager.appendInternalTranscript(session.id, createInternalTriggerEvent({
       trigger,
       stage: "received"
@@ -91,11 +94,27 @@ export function createInternalTriggerDispatcher(
         || sessionManager.hasPendingInternalTriggers(session.id)
       ) {
         await new Promise<void>((resolve, reject) => {
-          const queueSize = sessionManager.enqueueInternalTrigger(session.id, {
+          let settled = false;
+          let onAbort = (): void => {};
+          const finish = (operation: () => void): void => {
+            if (settled) return;
+            settled = true;
+            input.abortSignal?.removeEventListener("abort", onAbort);
+            operation();
+          };
+          const queuedTrigger: InternalSessionTriggerExecution = {
             ...trigger,
-            resolveCompletion: resolve,
-            rejectCompletion: reject
-          });
+            resolveCompletion: () => finish(resolve),
+            rejectCompletion: error => finish(() => reject(error))
+          };
+          attachRuntimeAbortSignal(queuedTrigger, input.abortSignal);
+          onAbort = (): void => {
+            if (!sessionManager.removeInternalTrigger(session.id, queuedTrigger)) return;
+            finish(() => reject(abortSignalError(input.abortSignal!)));
+            persistSession(session.id, "internal_trigger_cancelled");
+          };
+          input.abortSignal?.addEventListener("abort", onAbort, { once: true });
+          const queueSize = sessionManager.enqueueInternalTrigger(session.id, queuedTrigger);
           logger.info(
             {
               sessionId: session.id,
@@ -109,6 +128,7 @@ export function createInternalTriggerDispatcher(
             stage: "queued"
           }));
           persistSession(session.id, "internal_trigger_queued");
+          if (input.abortSignal?.aborted) onAbort();
         });
         return;
       }
@@ -142,6 +162,25 @@ export function createInternalTriggerDispatcher(
   return {
     dispatchTrigger
   };
+}
+
+function attachRuntimeAbortSignal(
+  trigger: InternalSessionTriggerExecution,
+  signal?: AbortSignal
+): void {
+  if (!signal || trigger.kind !== "minecraft_actor_attention") return;
+  Object.defineProperty(trigger, "abortSignal", {
+    configurable: true,
+    enumerable: false,
+    value: signal
+  });
+}
+
+function abortSignalError(signal: AbortSignal): Error {
+  if (signal.reason instanceof Error) return signal.reason;
+  const error = new Error(String(signal.reason ?? "内部事件已中止"));
+  error.name = "AbortError";
+  return error;
 }
 
 async function resolveInternalTriggerTarget(input: {

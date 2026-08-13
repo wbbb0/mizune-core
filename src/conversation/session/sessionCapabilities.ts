@@ -318,6 +318,7 @@ export interface SessionInternalTriggerDispatchAccess {
   hasPendingInlineTriggers(sessionId: string): boolean;
   appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void;
   enqueueInternalTrigger(sessionId: string, trigger: InternalSessionTriggerExecution): number;
+  removeInternalTrigger(sessionId: string, trigger: InternalSessionTriggerExecution): boolean;
   enqueueInlineTrigger(sessionId: string, trigger: InlineSessionTriggerExecution): number;
 }
 

@@ -1,5 +1,6 @@
 import {
   enqueueInternalTriggerState,
+  removeInternalTriggerState,
   shiftInternalTriggerState
 } from "./sessionMutations.ts";
 import type { InternalSessionTriggerExecution, SessionState } from "./sessionTypes.ts";
@@ -21,5 +22,9 @@ export class SessionInternalTriggerQueue {
 
   shift(session: SessionState): InternalSessionTriggerExecution | null {
     return shiftInternalTriggerState(session);
+  }
+
+  remove(session: SessionState, trigger: InternalSessionTriggerExecution): boolean {
+    return removeInternalTriggerState(session, trigger);
   }
 }

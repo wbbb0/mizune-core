@@ -359,6 +359,8 @@ export interface MinecraftActorAttentionTriggerExecution {
   attentionType: "game_attention" | "decision_failed";
   summary: string;
   details: string | null;
+  /** Runtime-only cancellation; defined as non-enumerable and never persisted. */
+  abortSignal?: AbortSignal;
   resolveCompletion?: () => void;
   rejectCompletion?: (error: unknown) => void;
 }

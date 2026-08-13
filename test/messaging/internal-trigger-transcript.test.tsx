@@ -977,6 +977,65 @@ function createOrchestratorDeps(input: {
     assert.equal(settled, true);
   });
 
+  test("queued Minecraft attention is removed when its shutdown signal aborts", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "qqbot:p:owner";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    sessionManager.appendSyntheticPendingMessage(sessionId, {
+      chatType: "private",
+      userId: "owner",
+      senderName: "Owner",
+      text: "busy",
+      images: []
+    });
+    const persistedReasons: string[] = [];
+    const controller = new AbortController();
+    const dispatcher = createInternalTriggerDispatcher({
+      logger: pino({ level: "silent" }),
+      sessionManager,
+      userStore: {
+        async getByUserId() { return { nickname: "Owner" }; }
+      } as never,
+      userIdentityStore: {
+        async findInternalUserId() { return "owner"; }
+      } as never,
+      persistSession(_sessionId, reason) { persistedReasons.push(reason); }
+    }, {
+      async runInternalTriggerSession() { throw new Error("queued trigger must not start"); },
+      wakeInlineBatch() { throw new Error("durable trigger must not use inline batch"); }
+    });
+
+    const dispatched = dispatcher.dispatchTrigger({
+      sessionId,
+      queueLogEvent: "minecraft_attention_queued",
+      abortSignal: controller.signal,
+      createTrigger(target) {
+        return {
+          kind: "minecraft_actor_attention",
+          targetType: target.type,
+          targetUserId: target.userId,
+          targetSenderName: target.senderName,
+          jobName: "Minecraft Actor 请求关注",
+          instruction: "检查事件",
+          enqueuedAt: Date.now(),
+          resourceId: "res-mc",
+          actorId: "actor-1",
+          attentionType: "game_attention",
+          summary: "附近危险",
+          details: "{}"
+        };
+      }
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(sessionManager.getSession(sessionId).pendingInternalTriggers.length, 1);
+
+    controller.abort(new Error("application_shutdown"));
+    await assert.rejects(dispatched, /application_shutdown/u);
+    assert.equal(sessionManager.getSession(sessionId).pendingInternalTriggers.length, 0);
+    assert.ok(persistedReasons.includes("internal_trigger_cancelled"));
+  });
+
   test("terminal close trigger supports web sessions", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);
