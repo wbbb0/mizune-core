@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { RuntimeResourceStore } from "./runtimeResourceStore.ts";
 import type {
   BrowserPageRecoveryState,
+  MinecraftActorRecoveryState,
   RuntimeResourceKind,
   RuntimeResourceRecord,
   RuntimeResourceStatus,
@@ -21,6 +22,10 @@ export class RuntimeResourceRegistry {
 
   async reset(): Promise<void> {
     await this.store.reset();
+  }
+
+  async resetEphemeral(): Promise<void> {
+    await this.store.resetEphemeral();
   }
 
   async createBrowserPage(input: {
@@ -76,6 +81,53 @@ export class RuntimeResourceRegistry {
     return record;
   }
 
+  async createMinecraftActor(input: {
+    ownerSessionId: string;
+    title: string | null;
+    description?: string | null;
+    summary: string;
+    createdAtMs: number;
+    expiresAtMs: number | null;
+    minecraftActor: MinecraftActorRecoveryState;
+  }): Promise<RuntimeResourceRecord> {
+    const resourceId = createRuntimeResourceId("res_minecraft");
+    const record: RuntimeResourceRecord = {
+      resourceId,
+      kind: "minecraft_actor",
+      status: "active",
+      ownerSessionId: input.ownerSessionId,
+      title: input.title,
+      description: normalizeOptionalDescription(input.description),
+      summary: input.summary,
+      createdAtMs: input.createdAtMs,
+      lastAccessedAtMs: input.createdAtMs,
+      expiresAtMs: input.expiresAtMs,
+      minecraftActor: input.minecraftActor
+    };
+    await this.store.upsert(record);
+    return record;
+  }
+
+  async updateMinecraftActor(
+    resourceId: string,
+    minecraftActor: MinecraftActorRecoveryState,
+    input: { updatedAtMs: number; summary?: string; status?: RuntimeResourceStatus }
+  ): Promise<RuntimeResourceRecord | null> {
+    const record = await this.store.getRow(resourceId);
+    if (!record || record.kind !== "minecraft_actor") {
+      return null;
+    }
+    const updated: RuntimeResourceRecord = {
+      ...record,
+      ...(input.summary !== undefined ? { summary: input.summary } : {}),
+      ...(input.status !== undefined ? { status: input.status } : {}),
+      lastAccessedAtMs: input.updatedAtMs,
+      minecraftActor
+    };
+    await this.store.upsert(updated);
+    return updated;
+  }
+
   async touch(resourceId: string, input: {
     accessedAtMs: number;
     expiresAtMs?: number | null;
@@ -103,7 +155,7 @@ export class RuntimeResourceRegistry {
   }
 }
 
-function createRuntimeResourceId(prefix: "res_browser" | "res_shell"): string {
+function createRuntimeResourceId(prefix: "res_browser" | "res_shell" | "res_minecraft"): string {
   return `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 8)}`;
 }
 

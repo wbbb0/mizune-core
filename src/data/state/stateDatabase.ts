@@ -532,7 +532,7 @@ function createRuntimeResourcesSchema(db: SqliteDatabase): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS runtime_resources (
       resource_id TEXT PRIMARY KEY NOT NULL CHECK (resource_id = trim(resource_id) AND length(resource_id) > 0),
-      kind TEXT NOT NULL CHECK (kind IN ('browser_page', 'shell_session')),
+      kind TEXT NOT NULL CHECK (kind IN ('browser_page', 'shell_session', 'minecraft_actor')),
       status TEXT NOT NULL CHECK (status IN ('active', 'expired', 'closed', 'unrecoverable')),
       owner_session_id TEXT,
       title TEXT,
@@ -560,7 +560,56 @@ function createRuntimeResourcesSchema(db: SqliteDatabase): void {
       tty INTEGER NOT NULL CHECK (tty IN (0, 1)),
       login INTEGER NOT NULL CHECK (login IN (0, 1))
     );
+
+    CREATE TABLE IF NOT EXISTS runtime_minecraft_actors (
+      resource_id TEXT PRIMARY KEY NOT NULL REFERENCES runtime_resources(resource_id) ON DELETE CASCADE,
+      actor_id TEXT NOT NULL CHECK (actor_id = trim(actor_id) AND length(actor_id) > 0),
+      transport_kind TEXT NOT NULL CHECK (transport_kind IN ('unix_socket', 'loopback_tcp', 'in_process')),
+      endpoint TEXT NOT NULL CHECK (endpoint = trim(endpoint) AND length(endpoint) > 0),
+      protocol_version INTEGER NOT NULL CHECK (protocol_version = 1),
+      persistent_state TEXT NOT NULL DEFAULT '',
+      current_goal TEXT,
+      model_refs_json TEXT NOT NULL DEFAULT '[]',
+      allow_autonomy_policy_change INTEGER NOT NULL CHECK (allow_autonomy_policy_change IN (0, 1)),
+      allow_program_deployment INTEGER NOT NULL CHECK (allow_program_deployment IN (0, 1)),
+      last_event_sequence INTEGER NOT NULL CHECK (last_event_sequence >= 0)
+    );
   `);
+}
+
+function migrateRuntimeResourcesSchema(db: SqliteDatabase): boolean {
+  const resources = db.prepare("SELECT * FROM runtime_resources").all() as Array<Record<string, unknown>>;
+  const browserPages = db.prepare("SELECT * FROM runtime_browser_pages").all() as Array<Record<string, unknown>>;
+  const shellSessions = db.prepare("SELECT * FROM runtime_shell_sessions").all() as Array<Record<string, unknown>>;
+
+  db.exec(`
+    DROP TABLE runtime_browser_pages;
+    DROP TABLE runtime_shell_sessions;
+    DROP TABLE runtime_resources;
+  `);
+  createRuntimeResourcesSchema(db);
+
+  const insertResource = db.prepare(`
+    INSERT INTO runtime_resources (
+      resource_id, kind, status, owner_session_id, title, description,
+      summary, created_at_ms, last_accessed_at_ms, expires_at_ms
+    ) VALUES (
+      @resource_id, @kind, @status, @owner_session_id, @title, @description,
+      @summary, @created_at_ms, @last_accessed_at_ms, @expires_at_ms
+    )
+  `);
+  const insertBrowser = db.prepare(`
+    INSERT INTO runtime_browser_pages (resource_id, requested_url, resolved_url, backend, title, profile_id)
+    VALUES (@resource_id, @requested_url, @resolved_url, @backend, @title, @profile_id)
+  `);
+  const insertShell = db.prepare(`
+    INSERT INTO runtime_shell_sessions (resource_id, command, cwd, shell, tty, login)
+    VALUES (@resource_id, @command, @cwd, @shell, @tty, @login)
+  `);
+  for (const row of resources) insertResource.run(row);
+  for (const row of browserPages) insertBrowser.run(row);
+  for (const row of shellSessions) insertShell.run(row);
+  return true;
 }
 
 function validateRuntimeResourcesSchema(db: SqliteDatabase): void {
@@ -591,6 +640,19 @@ function validateRuntimeResourcesSchema(db: SqliteDatabase): void {
     shell: "TEXT",
     tty: "INTEGER",
     login: "INTEGER"
+  });
+  assertTableColumns(db, "runtime_minecraft_actors", {
+    resource_id: "TEXT",
+    actor_id: "TEXT",
+    transport_kind: "TEXT",
+    endpoint: "TEXT",
+    protocol_version: "INTEGER",
+    persistent_state: "TEXT",
+    current_goal: "TEXT",
+    model_refs_json: "TEXT",
+    allow_autonomy_policy_change: "INTEGER",
+    allow_program_deployment: "INTEGER",
+    last_event_sequence: "INTEGER"
   });
 }
 
@@ -720,10 +782,12 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   },
   {
     groupId: "state.runtime_resources",
-    schemaVersion: 1,
+    schemaVersion: 2,
+    minReadableSchemaVersion: 1,
     resetPolicy: "block_reset",
-    ownedTables: ["runtime_resources", "runtime_browser_pages", "runtime_shell_sessions"],
+    ownedTables: ["runtime_resources", "runtime_browser_pages", "runtime_shell_sessions", "runtime_minecraft_actors"],
     createSchema: createRuntimeResourcesSchema,
+    migrateSchema: migrateRuntimeResourcesSchema,
     validateSchema: validateRuntimeResourcesSchema
   },
   {

@@ -251,7 +251,7 @@ export const whitelistDataDomain = defineDataDomain({
 export const runtimeResourcesDataDomain = defineDataDomain({
   database: "state",
   tableGroup: "state.runtime_resources",
-  schemaVersion: 1,
+  schemaVersion: 2,
   resetPolicy: "block_reset",
   tables: {
     runtime_resources: defineTable({
@@ -269,14 +269,21 @@ export const runtimeResourcesDataDomain = defineDataDomain({
         integerColumn("lastAccessedAtMs", { title: "Last Accessed", role: "time", primary: true, storageName: "last_accessed_at_ms", notNull: true }),
         integerColumn("expiresAtMs", { title: "Expires", role: "time", storageName: "expires_at_ms", nullable: true }),
         jsonColumn("browserPage", { title: "Browser Page", role: "payload", storage: "computed" }),
-        jsonColumn("shellSession", { title: "Shell Session", role: "payload", storage: "computed" })
+        jsonColumn("shellSession", { title: "Shell Session", role: "payload", storage: "computed" }),
+        jsonColumn("minecraftActor", { title: "Minecraft Actor", role: "payload", storage: "computed" })
       ],
       defaultSort: [{ column: "lastAccessedAtMs", direction: "desc" }],
-      detail: { payloadColumns: ["summary", "browserPage", "shellSession"] },
+      detail: { payloadColumns: ["summary", "browserPage", "shellSession", "minecraftActor"] },
       children: [
         {
           resourceKey: "runtime_browser_pages",
           title: "Browser Page",
+          parentField: "resourceId",
+          childField: "resourceId"
+        },
+        {
+          resourceKey: "runtime_minecraft_actors",
+          title: "Minecraft Actor",
           parentField: "resourceId",
           childField: "resourceId"
         },
@@ -313,6 +320,25 @@ export const runtimeResourcesDataDomain = defineDataDomain({
         booleanColumn("login", { title: "Login", role: "badge", primary: true, notNull: true, listWidth: "xs" })
       ],
       defaultSort: [{ column: "resourceId", direction: "asc" }]
+    }),
+    runtime_minecraft_actors: defineTable({
+      table: "runtime_minecraft_actors",
+      primaryKey: ["resourceId"],
+      columns: [
+        textColumn("resourceId", { title: "Resource ID", role: "id", primary: true, storageName: "resource_id", notNull: true }),
+        textColumn("actorId", { title: "Actor ID", role: "title", primary: true, storageName: "actor_id", notNull: true }),
+        textColumn("transportKind", { title: "Transport", role: "badge", storageName: "transport_kind", notNull: true }),
+        textColumn("endpoint", { title: "Endpoint", role: "subtitle", notNull: true }),
+        integerColumn("protocolVersion", { title: "Protocol", role: "badge", storageName: "protocol_version", notNull: true }),
+        textColumn("persistentState", { title: "Persistent State", role: "payload", storageName: "persistent_state", notNull: true }),
+        textColumn("currentGoal", { title: "Current Goal", storageName: "current_goal", nullable: true }),
+        jsonColumn("modelRefs", { title: "Models", storageName: "model_refs_json", notNull: true }),
+        booleanColumn("allowAutonomyPolicyChange", { title: "Autonomy Policy", role: "badge", storageName: "allow_autonomy_policy_change", notNull: true }),
+        booleanColumn("allowProgramDeployment", { title: "Program Deployment", role: "badge", storageName: "allow_program_deployment", notNull: true }),
+        integerColumn("lastEventSequence", { title: "Last Event", role: "time", storageName: "last_event_sequence", notNull: true })
+      ],
+      defaultSort: [{ column: "resourceId", direction: "asc" }],
+      detail: { payloadColumns: ["persistentState", "modelRefs"] }
     })
   }
 });
@@ -356,6 +382,7 @@ export const whitelistTableModel = requireDomainTable(whitelistDataDomain, "whit
 export const runtimeResourcesTableModel = requireDomainTable(runtimeResourcesDataDomain, "runtime_resources");
 export const runtimeBrowserPagesTableModel = requireDomainTable(runtimeResourcesDataDomain, "runtime_browser_pages");
 export const runtimeShellSessionsTableModel = requireDomainTable(runtimeResourcesDataDomain, "runtime_shell_sessions");
+export const runtimeMinecraftActorsTableModel = requireDomainTable(runtimeResourcesDataDomain, "runtime_minecraft_actors");
 export const recentErrorsTableModel = requireDomainTable(recentErrorsDataDomain, "recent_errors");
 
 function requireDomainTable(domain: DataDomainModel, key: string): DataTableModel {

@@ -56,6 +56,7 @@ import {
   requestsTableModel,
   scheduledJobTargetsTableModel,
   runtimeBrowserPagesTableModel,
+  runtimeMinecraftActorsTableModel,
   runtimeResourcesTableModel,
   runtimeShellSessionsTableModel,
   recentErrorsTableModel,
@@ -102,7 +103,7 @@ export function createDataRegistryService(input: {
   chatFileStore: Pick<ChatFileStore, "listRows" | "getRow" | "deleteFile">;
   assetLifecycleStore: Pick<AssetLifecycleStore, "listRows" | "removeRefsForAsset">;
   sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
-  runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows">;
+  runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows" | "listMinecraftActorRows">;
   recentErrorStore: Pick<RecentErrorStore, "listRows">;
   contentSafetyStore?: Pick<ContentSafetyStore, "listRows">;
   scenarioHostStateStore?: Pick<ScenarioHostStateStore, "listRows">;
@@ -137,7 +138,7 @@ function createInitialDataResourceDefinitions(input: {
   chatFileStore: Pick<ChatFileStore, "listRows" | "getRow" | "deleteFile">;
   assetLifecycleStore: Pick<AssetLifecycleStore, "listRows" | "removeRefsForAsset">;
   sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
-  runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows">;
+  runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows" | "listMinecraftActorRows">;
   recentErrorStore: Pick<RecentErrorStore, "listRows">;
   contentSafetyStore?: Pick<ContentSafetyStore, "listRows">;
   scenarioHostStateStore?: Pick<ScenarioHostStateStore, "listRows">;
@@ -197,6 +198,7 @@ function createInitialDataResourceDefinitions(input: {
     createLiveResourcesResource(input.runtimeResourceStore),
     createRuntimeBrowserPagesResource(input.runtimeResourceStore),
     createRuntimeShellSessionsResource(input.runtimeResourceStore),
+    createRuntimeMinecraftActorsResource(input.runtimeResourceStore),
     createAudioFilesResource(input.audioStore, input.assetLifecycleStore),
     createComfyTasksResource(input.comfyTaskStore, input.assetLifecycleStore),
     createComfyTaskResultFilesResource(input.comfyTaskStore),
@@ -1604,7 +1606,7 @@ function createLiveResourcesResource(
       kind: "sqlite",
       database: "state",
       tableGroup: "state.runtime_resources",
-      tables: ["runtime_resources", "runtime_browser_pages", "runtime_shell_sessions"]
+      tables: ["runtime_resources", "runtime_browser_pages", "runtime_shell_sessions", "runtime_minecraft_actors"]
     },
     model: runtimeResourcesTableModel,
     export: { enabled: true, fileName: "live_resources.json", format: "json" },
@@ -1663,6 +1665,24 @@ function createRuntimeShellSessionsResource(
     navigation: { hiddenFromList: true, parentResourceKey: "live_resources" },
     fileName: "runtime_shell_sessions.json",
     listRows: (query) => runtimeResourceStore.listShellSessionRows(query)
+  });
+}
+
+function createRuntimeMinecraftActorsResource(
+  runtimeResourceStore: Pick<RuntimeResourceStore, "listMinecraftActorRows">
+): DataResourceDefinition {
+  return readOnlySqliteRowsResource({
+    key: "runtime_minecraft_actors",
+    title: "运行时 Minecraft Actor",
+    shape: "collection",
+    database: "state",
+    tableGroup: "state.runtime_resources",
+    tables: ["runtime_minecraft_actors"],
+    model: runtimeMinecraftActorsTableModel,
+    rowIdentity: { fields: ["resourceId"], encode: "single" },
+    navigation: { hiddenFromList: true, parentResourceKey: "live_resources" },
+    fileName: "runtime_minecraft_actors.json",
+    listRows: (query) => runtimeResourceStore.listMinecraftActorRows(query)
   });
 }
 

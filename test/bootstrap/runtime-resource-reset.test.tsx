@@ -13,7 +13,7 @@ import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
-test("initializeBootstrapState initializes state database before resetting runtime resources", async () => {
+test("initializeBootstrapState resets ephemeral resources but preserves Minecraft actors", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-runtime-resource-reset-"));
   const logger = createSilentLogger();
   const stateDatabase = new StateDatabase(dataDir, logger);
@@ -36,7 +36,26 @@ test("initializeBootstrapState initializes state database before resetting runti
         login: true
       }
     });
-    assert.equal((await runtimeResourceRegistry.list()).length, 1);
+    const minecraft = await runtimeResourceRegistry.createMinecraftActor({
+      ownerSessionId: "onebot:private:owner",
+      title: "测试 Actor",
+      summary: "离线测试 Actor",
+      createdAtMs: 2,
+      expiresAtMs: null,
+      minecraftActor: {
+        actorId: "actor-1",
+        transportKind: "in_process",
+        endpoint: "simulation:actor-1",
+        protocolVersion: 1,
+        persistentState: "在出生点待命",
+        currentGoal: null,
+        modelRefs: ["prod_deepseek.v4_flash"],
+        allowAutonomyPolicyChange: false,
+        allowProgramDeployment: false,
+        lastEventSequence: 0
+      }
+    });
+    assert.equal((await runtimeResourceRegistry.list()).length, 2);
 
     await initializeBootstrapState({
       config: createTestAppConfig(),
@@ -77,7 +96,10 @@ test("initializeBootstrapState initializes state database before resetting runti
     });
 
     assert.ok(stateDatabase.getStatus());
-    assert.deepEqual(await runtimeResourceRegistry.list(), []);
+    const remaining = await runtimeResourceRegistry.list();
+    assert.equal(remaining.length, 1);
+    assert.equal(remaining[0]?.resourceId, minecraft.resourceId);
+    assert.equal(remaining[0]?.kind, "minecraft_actor");
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }

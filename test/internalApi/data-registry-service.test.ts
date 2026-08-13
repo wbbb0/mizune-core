@@ -546,6 +546,9 @@ function createRegistryService(dataDir: string, options: {
       },
       async listShellSessionRows() {
         return { rows: [], total: 0, offset: 0, limit: 100 };
+      },
+      async listMinecraftActorRows() {
+        return { rows: [], total: 0, offset: 0, limit: 100 };
       }
     },
     recentErrorStore: {
@@ -605,6 +608,7 @@ test("DataRegistryService exposes initial file and directory resources", async (
       "requests",
       "rp_profile",
       "runtime_browser_pages",
+      "runtime_minecraft_actors",
       "runtime_shell_sessions",
       "scenario_host_session_states",
       "scheduled_job_targets",

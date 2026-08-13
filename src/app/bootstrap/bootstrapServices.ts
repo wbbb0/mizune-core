@@ -288,7 +288,7 @@ export async function initializeBootstrapState(
     recentErrorStore
   } = services;
 
-  await runtimeResourceRegistry.reset();
+  await runtimeResourceRegistry.resetEphemeral();
   await recentErrorStore.init();
   await whitelistStore.init();
   await sessionPersistence.init();

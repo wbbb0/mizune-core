@@ -1,6 +1,7 @@
 import type { StateDatabase } from "#data/state/stateDatabase.ts";
 import type {
   BrowserPageRecoveryState,
+  MinecraftActorRecoveryState,
   RuntimeResourceKind,
   RuntimeResourceRecord,
   RuntimeResourceStatus,
@@ -25,10 +26,14 @@ export class RuntimeResourceStore {
       SELECT r.resource_id, r.kind, r.status, r.owner_session_id, r.title, r.description,
              r.summary, r.created_at_ms, r.last_accessed_at_ms, r.expires_at_ms,
              bp.requested_url, bp.resolved_url, bp.backend, bp.title AS bp_title, bp.profile_id,
-             ss.command, ss.cwd, ss.shell, ss.tty, ss.login
+             ss.command, ss.cwd, ss.shell, ss.tty, ss.login,
+             ma.actor_id, ma.transport_kind, ma.endpoint, ma.protocol_version,
+             ma.persistent_state, ma.current_goal, ma.model_refs_json,
+             ma.allow_autonomy_policy_change, ma.allow_program_deployment, ma.last_event_sequence
       FROM runtime_resources r
       LEFT JOIN runtime_browser_pages bp ON r.resource_id = bp.resource_id
       LEFT JOIN runtime_shell_sessions ss ON r.resource_id = ss.resource_id
+      LEFT JOIN runtime_minecraft_actors ma ON r.resource_id = ma.resource_id
       ${kind ? "WHERE r.kind = ?" : ""}
       ORDER BY r.last_accessed_at_ms DESC
     `).all(...(kind ? [kind] : [])) as RuntimeResourceRow[];
@@ -63,6 +68,7 @@ export class RuntimeResourceStore {
 
     const deleteBrowser = db.prepare("DELETE FROM runtime_browser_pages WHERE resource_id = ?");
     const deleteShell = db.prepare("DELETE FROM runtime_shell_sessions WHERE resource_id = ?");
+    const deleteMinecraftActor = db.prepare("DELETE FROM runtime_minecraft_actors WHERE resource_id = ?");
 
     const insertBrowser = db.prepare(`
       INSERT INTO runtime_browser_pages (resource_id, requested_url, resolved_url, backend, title, profile_id)
@@ -72,6 +78,18 @@ export class RuntimeResourceStore {
     const insertShell = db.prepare(`
       INSERT INTO runtime_shell_sessions (resource_id, command, cwd, shell, tty, login)
       VALUES (@resourceId, @command, @cwd, @shell, @tty, @login)
+    `);
+
+    const insertMinecraftActor = db.prepare(`
+      INSERT INTO runtime_minecraft_actors (
+        resource_id, actor_id, transport_kind, endpoint, protocol_version,
+        persistent_state, current_goal, model_refs_json,
+        allow_autonomy_policy_change, allow_program_deployment, last_event_sequence
+      ) VALUES (
+        @resourceId, @actorId, @transportKind, @endpoint, @protocolVersion,
+        @persistentState, @currentGoal, @modelRefsJson,
+        @allowAutonomyPolicyChange, @allowProgramDeployment, @lastEventSequence
+      )
     `);
 
     const upsert = db.transaction(() => {
@@ -90,6 +108,7 @@ export class RuntimeResourceStore {
 
       deleteBrowser.run(record.resourceId);
       deleteShell.run(record.resourceId);
+      deleteMinecraftActor.run(record.resourceId);
 
       if (record.kind === "browser_page") {
         if (!record.browserPage) {
@@ -114,6 +133,23 @@ export class RuntimeResourceStore {
           shell: record.shellSession.shell,
           tty: record.shellSession.tty ? 1 : 0,
           login: record.shellSession.login ? 1 : 0
+        });
+      } else if (record.kind === "minecraft_actor") {
+        if (!record.minecraftActor) {
+          throw new Error("minecraft_actor record requires minecraftActor data");
+        }
+        insertMinecraftActor.run({
+          resourceId: record.resourceId,
+          actorId: record.minecraftActor.actorId,
+          transportKind: record.minecraftActor.transportKind,
+          endpoint: record.minecraftActor.endpoint,
+          protocolVersion: record.minecraftActor.protocolVersion,
+          persistentState: record.minecraftActor.persistentState,
+          currentGoal: record.minecraftActor.currentGoal,
+          modelRefsJson: JSON.stringify(record.minecraftActor.modelRefs),
+          allowAutonomyPolicyChange: record.minecraftActor.allowAutonomyPolicyChange ? 1 : 0,
+          allowProgramDeployment: record.minecraftActor.allowProgramDeployment ? 1 : 0,
+          lastEventSequence: record.minecraftActor.lastEventSequence
         });
       }
     });
@@ -170,10 +206,14 @@ export class RuntimeResourceStore {
       SELECT r.resource_id, r.kind, r.status, r.owner_session_id, r.title, r.description,
              r.summary, r.created_at_ms, r.last_accessed_at_ms, r.expires_at_ms,
              bp.requested_url, bp.resolved_url, bp.backend, bp.title AS bp_title, bp.profile_id,
-             ss.command, ss.cwd, ss.shell, ss.tty, ss.login
+             ss.command, ss.cwd, ss.shell, ss.tty, ss.login,
+             ma.actor_id, ma.transport_kind, ma.endpoint, ma.protocol_version,
+             ma.persistent_state, ma.current_goal, ma.model_refs_json,
+             ma.allow_autonomy_policy_change, ma.allow_program_deployment, ma.last_event_sequence
       FROM runtime_resources r
       LEFT JOIN runtime_browser_pages bp ON r.resource_id = bp.resource_id
       LEFT JOIN runtime_shell_sessions ss ON r.resource_id = ss.resource_id
+      LEFT JOIN runtime_minecraft_actors ma ON r.resource_id = ma.resource_id
       WHERE r.resource_id = ?
     `).get(resourceId) as RuntimeResourceRow | undefined;
     return row ? rowToRecord(row) : null;
@@ -183,7 +223,13 @@ export class RuntimeResourceStore {
     const db = await this.getReadyDb();
     db.prepare("DELETE FROM runtime_browser_pages").run();
     db.prepare("DELETE FROM runtime_shell_sessions").run();
+    db.prepare("DELETE FROM runtime_minecraft_actors").run();
     db.prepare("DELETE FROM runtime_resources").run();
+  }
+
+  async resetEphemeral(): Promise<void> {
+    const db = await this.getReadyDb();
+    db.prepare("DELETE FROM runtime_resources WHERE kind IN ('browser_page', 'shell_session')").run();
   }
 
   async listRows(input: { offset?: number; limit?: number } = {}): Promise<{ rows: unknown[]; total: number; offset: number; limit: number }> {
@@ -264,6 +310,76 @@ export class RuntimeResourceStore {
       limit
     };
   }
+
+  async listMinecraftActorRows(input: { offset?: number; limit?: number; filters?: Record<string, unknown> } = {}): Promise<{
+    rows: Array<{
+      resourceId: string;
+      actorId: string;
+      transportKind: MinecraftActorRecoveryState["transportKind"];
+      endpoint: string;
+      protocolVersion: 1;
+      persistentState: string;
+      currentGoal: string | null;
+      modelRefs: string[];
+      allowAutonomyPolicyChange: boolean;
+      allowProgramDeployment: boolean;
+      lastEventSequence: number;
+    }>;
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const db = await this.getReadyDb();
+    const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
+    const offset = Math.max(input.offset ?? 0, 0);
+    const resourceId = typeof input.filters?.resourceId === "string" && input.filters.resourceId.trim()
+      ? input.filters.resourceId.trim()
+      : null;
+    const whereSql = resourceId ? "WHERE resource_id = ?" : "";
+    const params = resourceId ? [resourceId] : [];
+    const total = (db.prepare(`SELECT COUNT(*) AS count FROM runtime_minecraft_actors ${whereSql}`).get(...params) as { count: number }).count;
+    const rows = db.prepare(`
+      SELECT
+        resource_id AS resourceId,
+        actor_id AS actorId,
+        transport_kind AS transportKind,
+        endpoint,
+        protocol_version AS protocolVersion,
+        persistent_state AS persistentState,
+        current_goal AS currentGoal,
+        model_refs_json AS modelRefsJson,
+        allow_autonomy_policy_change AS allowAutonomyPolicyChange,
+        allow_program_deployment AS allowProgramDeployment,
+        last_event_sequence AS lastEventSequence
+      FROM runtime_minecraft_actors
+      ${whereSql}
+      ORDER BY resource_id ASC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset) as Array<{
+      resourceId: string;
+      actorId: string;
+      transportKind: MinecraftActorRecoveryState["transportKind"];
+      endpoint: string;
+      protocolVersion: 1;
+      persistentState: string;
+      currentGoal: string | null;
+      modelRefsJson: string;
+      allowAutonomyPolicyChange: 0 | 1;
+      allowProgramDeployment: 0 | 1;
+      lastEventSequence: number;
+    }>;
+    return {
+      rows: rows.map(({ modelRefsJson, ...row }) => ({
+        ...row,
+        modelRefs: parseModelRefs(modelRefsJson),
+        allowAutonomyPolicyChange: row.allowAutonomyPolicyChange === 1,
+        allowProgramDeployment: row.allowProgramDeployment === 1
+      })),
+      total,
+      offset,
+      limit
+    };
+  }
 }
 
 interface RuntimeResourceRow {
@@ -287,6 +403,16 @@ interface RuntimeResourceRow {
   shell: string | null;
   tty: number | null;
   login: number | null;
+  actor_id: string | null;
+  transport_kind: string | null;
+  endpoint: string | null;
+  protocol_version: number | null;
+  persistent_state: string | null;
+  current_goal: string | null;
+  model_refs_json: string | null;
+  allow_autonomy_policy_change: number | null;
+  allow_program_deployment: number | null;
+  last_event_sequence: number | null;
 }
 
 function rowToRecord(row: RuntimeResourceRow): RuntimeResourceRecord {
@@ -320,5 +446,31 @@ function rowToRecord(row: RuntimeResourceRow): RuntimeResourceRecord {
       login: row.login === 1
     };
   }
+  if (row.kind === "minecraft_actor" && row.actor_id && row.endpoint) {
+    record.minecraftActor = {
+      actorId: row.actor_id,
+      transportKind: row.transport_kind as MinecraftActorRecoveryState["transportKind"],
+      endpoint: row.endpoint,
+      protocolVersion: 1,
+      persistentState: row.persistent_state ?? "",
+      currentGoal: row.current_goal,
+      modelRefs: parseModelRefs(row.model_refs_json),
+      allowAutonomyPolicyChange: row.allow_autonomy_policy_change === 1,
+      allowProgramDeployment: row.allow_program_deployment === 1,
+      lastEventSequence: row.last_event_sequence ?? 0
+    };
+  }
   return record;
+}
+
+function parseModelRefs(value: string | null): string[] {
+  try {
+    const parsed: unknown = JSON.parse(value ?? "[]");
+    if (Array.isArray(parsed) && parsed.every(item => typeof item === "string" && item.trim().length > 0)) {
+      return parsed;
+    }
+  } catch {
+    // Corrupt cache rows are surfaced as an empty model list and cannot start decisions.
+  }
+  return [];
 }
