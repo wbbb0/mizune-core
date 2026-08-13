@@ -224,13 +224,17 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     description: "查看和发送已登记 asset。",
     plannerSignals: [
       "查看聊天导入文件",
+      "从 URL 下载文件并管理下载任务",
       "发送已登记图片或附件",
       "裁剪、旋转、翻转、拉伸或转换图片格式"
     ],
     toolNames: [
       "asset_list",
       "list_live_resources",
+      "start_download_resource",
       "read_download_resource",
+      "pause_download_resource",
+      "resume_download_resource",
       "cancel_download_resource",
       "asset_document_overview",
       "asset_document_read",

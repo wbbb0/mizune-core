@@ -98,7 +98,7 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   }
 
   if (hasAnyTool(visibleToolNames, ["list_live_resources", "read_download_resource", "cancel_download_resource"])) {
-    lines.push("后台下载资源用 list_live_resources(type=download) 查找，read_download_resource 查看单个状态；下载完成后结果会提示可用的 asset_* 后续工具。");
+    lines.push("用户要求从明确 URL 下载文件时用 start_download_resource；后台下载用 list_live_resources(type=download) 查找，read_download_resource 查看状态，pause_download_resource/resume_download_resource 暂停或续传；下载完成后结果会提示可用的 asset_* 后续工具。");
   }
 
   if (hasAnyTool(visibleToolNames, ["asset_media_inspect", "filesystem_media_inspect"])) {

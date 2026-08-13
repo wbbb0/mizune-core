@@ -13,6 +13,7 @@ import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.
 import type { InternalApiServices } from "#internalApi/types.ts";
 import type { ContextMaintenanceService } from "#context/contextMaintenanceService.ts";
 import type { ContextExtractionQueue } from "#context/contextExtractionQueue.ts";
+import type { DownloadRuntime } from "#services/workspace/downloadRuntime.ts";
 
 export interface InternalApiController {
   close: () => Promise<void>;
@@ -111,6 +112,7 @@ export async function shutdownRuntime(input: {
   onRequest: (event: OneBotRequestEvent) => void;
   internalApi: InternalApiController | null;
   browserService: BrowserService;
+  downloadRuntime: DownloadRuntime;
   schedulerStarted: boolean;
   scheduler: Scheduler;
   contextMaintenanceService: ContextMaintenanceService;
@@ -131,6 +133,7 @@ export async function shutdownRuntime(input: {
       await input.scheduler.stop();
     }
     await input.browserService.shutdown();
+    await input.downloadRuntime.close();
     input.contextMaintenanceService.stop();
     input.contextExtractionQueue.stop();
     await input.comfyTaskRunner.stop();

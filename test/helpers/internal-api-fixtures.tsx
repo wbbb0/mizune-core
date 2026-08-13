@@ -8,6 +8,7 @@ import { registerBasicRoutes } from "../../src/internalApi/routes/basicRoutes.ts
 import { registerBrowserRoutes } from "../../src/internalApi/routes/browserRoutes.ts";
 import { registerMessagingRoutes } from "../../src/internalApi/routes/messagingRoutes.ts";
 import { registerShellRoutes } from "../../src/internalApi/routes/shellRoutes.ts";
+import { registerDownloadRoutes } from "../../src/internalApi/routes/downloadRoutes.ts";
 import { registerUploadRoutes } from "../../src/internalApi/routes/uploadRoutes.ts";
 import { createInternalApiServices, type InternalApiDeps } from "../../src/internalApi/types.ts";
 import type { InternalTranscriptItem, PersistedSessionState } from "../../src/conversation/session/sessionTypes.ts";
@@ -25,6 +26,7 @@ import {
 import type { ContextManagementItem } from "../../src/context/contextTypes.ts";
 import { createInitialScenarioHostSessionState, type ScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
 import type { ShellRunParams, ShellRunResult, ShellSession } from "../../src/services/shell/types.ts";
+import type { DownloadRuntimeSnapshot } from "../../src/services/workspace/downloadRuntime.ts";
 
 export interface InternalApiFixtureState {
   sentMessages: Array<{ userId?: string; groupId?: string; text: string }>;
@@ -57,6 +59,7 @@ export interface InternalApiFixtureState {
   scenarioHostStates: Record<string, ScenarioHostSessionState>;
   sessionSnapshots: Array<{ summary: SessionSnapshotSummary; payload: SessionSnapshotPayload }>;
   shellSessions: ShellSession[];
+  downloadTasks: DownloadRuntimeSnapshot[];
   closedSessionIds: string[];
   configCheckForUpdatesCount: number;
   whitelistReloadCount: number;
@@ -139,6 +142,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     scenarioHostStates: {},
     sessionSnapshots: [],
     shellSessions: [createShellSession()],
+    downloadTasks: [],
     closedSessionIds: [],
     configCheckForUpdatesCount: 0,
     whitelistReloadCount: 0,
@@ -1374,6 +1378,39 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         state.closedSessionIds.push(sessionId);
       }
     } as unknown as InternalApiDeps["shellRuntime"],
+    downloadRuntime: {
+      list() {
+        return state.downloadTasks;
+      },
+      read(resourceId: string) {
+        return state.downloadTasks.find((item) => item.resource_id === resourceId) ?? null;
+      },
+      async start(input: { sourceUrl: string; sourceName?: string; concurrency?: number }) {
+        const task = createDownloadTask({
+          resource_id: `res_download_${state.downloadTasks.length + 1}`,
+          source_url: input.sourceUrl,
+          source_name: input.sourceName ?? null,
+          concurrency: input.concurrency ?? 4
+        });
+        state.downloadTasks.push(task);
+        return task;
+      },
+      async pause(resourceId: string) {
+        return updateFixtureDownload(state.downloadTasks, resourceId, { status: "paused", retryable: true });
+      },
+      async resume(resourceId: string) {
+        return updateFixtureDownload(state.downloadTasks, resourceId, { status: "running", retryable: false });
+      },
+      async cancel(resourceId: string) {
+        return updateFixtureDownload(state.downloadTasks, resourceId, { status: "cancelled", retryable: false });
+      },
+      async remove(resourceId: string) {
+        const index = state.downloadTasks.findIndex((item) => item.resource_id === resourceId);
+        if (index < 0) return false;
+        state.downloadTasks.splice(index, 1);
+        return true;
+      }
+    } as unknown as InternalApiDeps["downloadRuntime"],
     configManager: {
       async checkForUpdates() {
         state.configCheckForUpdatesCount += 1;
@@ -1528,8 +1565,49 @@ export async function createInternalApiApp(deps: InternalApiDeps) {
   registerBasicRoutes(app, services.basicRoutes);
   registerBrowserRoutes(app, services.browserRoutes);
   registerShellRoutes(app, services.shellRoutes);
+  registerDownloadRoutes(app, services.downloadRoutes);
   registerMessagingRoutes(app, services.messagingRoutes);
   registerUploadRoutes(app, services.uploadRoutes);
   await app.ready();
   return app;
+}
+
+function createDownloadTask(overrides: Partial<DownloadRuntimeSnapshot> = {}): DownloadRuntimeSnapshot {
+  return {
+    ok: true,
+    resource_id: "res_download_fixture",
+    status: "running",
+    phase: "transferring",
+    source_url: "https://example.com/file.bin",
+    source_name: "file.bin",
+    origin: "url_download",
+    concurrency: 4,
+    downloaded_bytes: 0,
+    total_bytes: 100,
+    percent: 0,
+    mime_type: null,
+    file_id: null,
+    file_ref: null,
+    asset_ref: null,
+    chat_file_path: null,
+    kind: "file",
+    size_bytes: null,
+    error: null,
+    retryable: false,
+    created_at_ms: 1,
+    updated_at_ms: 1,
+    ...overrides
+  };
+}
+
+function updateFixtureDownload(
+  tasks: DownloadRuntimeSnapshot[],
+  resourceId: string,
+  patch: Partial<DownloadRuntimeSnapshot>
+): DownloadRuntimeSnapshot | null {
+  const index = tasks.findIndex((item) => item.resource_id === resourceId);
+  if (index < 0) return null;
+  const updated = { ...tasks[index]!, ...patch, updated_at_ms: Date.now() };
+  tasks[index] = updated;
+  return updated;
 }

@@ -4,7 +4,7 @@
 
 ## 环境要求
 
-- Node.js 20.19+
+- Node.js 24+
 - npm
 - 至少一个可用的 LLM provider
 - 如果要接 OneBot，还需要一个可用的 OneBot 实现
@@ -14,6 +14,7 @@
 根目录和 WebUI 需要分别安装依赖：
 
 ```bash
+git submodule update --init --recursive
 npm install
 npm --prefix webui install
 ```

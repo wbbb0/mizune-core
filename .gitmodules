@@ -1,3 +1,6 @@
 [submodule "vendor/workbench-kit"]
 	path = vendor/workbench-kit
 	url = https://github.com/wbbb0/workbench-kit.git
+[submodule "vendor/node-http-download-engine"]
+	path = vendor/node-http-download-engine
+	url = https://github.com/wbbb0/node-http-download-engine.git

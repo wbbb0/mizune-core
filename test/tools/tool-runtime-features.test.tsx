@@ -229,6 +229,11 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     assert.ok(names.includes("ground_with_google_search"));
     assert.ok(names.includes("search_with_iqs_lite_advanced"));
     assert.ok(names.includes("list_live_resources"));
+    assert.ok(names.includes("start_download_resource"));
+    assert.ok(names.includes("read_download_resource"));
+    assert.ok(names.includes("pause_download_resource"));
+    assert.ok(names.includes("resume_download_resource"));
+    assert.ok(names.includes("cancel_download_resource"));
     assert.ok(names.includes("capture_screenshot"));
     assert.ok(names.includes("manage_scheduled_job"));
     assert.ok(names.includes("respond_request"));
@@ -292,7 +297,10 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     assert.equal(names.has("list_current_group_files"), true);
     assert.equal(names.has("download_current_group_file"), false);
     assert.equal(names.has("download_asset"), false);
+    assert.equal(names.has("start_download_resource"), false);
     assert.equal(names.has("read_download_resource"), false);
+    assert.equal(names.has("pause_download_resource"), false);
+    assert.equal(names.has("resume_download_resource"), false);
     assert.equal(names.has("cancel_download_resource"), false);
   });
 
@@ -5426,6 +5434,76 @@ function createRuntimeWaitToolContext() {
     assert.deepEqual(payload.live_resources.map((item: any) => item.resource_id), ["res_browser_1"]);
     assert.equal(payload.live_resources[0].description, "查看首页文案");
     assert.deepEqual(canonical.live_resources.map((item: any) => item.resource_id), ["res_browser_1"]);
+  });
+
+  test("download resource tools start, pause, and resume URL downloads", async () => {
+    const snapshot = {
+      ok: true,
+      resource_id: "res_download_tool",
+      status: "running",
+      phase: "transferring",
+      source_url: "https://example.com/report.pdf",
+      source_name: "report.pdf",
+      origin: "url_download",
+      concurrency: 6,
+      downloaded_bytes: 10,
+      total_bytes: 100,
+      percent: 10,
+      mime_type: null,
+      file_id: null,
+      file_ref: null,
+      asset_ref: null,
+      chat_file_path: null,
+      kind: "file",
+      size_bytes: null,
+      error: null,
+      retryable: false,
+      created_at_ms: 1,
+      updated_at_ms: 2
+    } as const;
+    let startInput: any = null;
+    const context = {
+      lastMessage: { sessionId: "qqbot:p:10001", userId: "10001", senderName: "Alice" },
+      downloadRuntime: {
+        async start(input: any) {
+          startInput = input;
+          return snapshot;
+        },
+        async pause() {
+          return { ...snapshot, status: "paused", retryable: true };
+        },
+        async resume() {
+          return snapshot;
+        }
+      },
+      chatFileStore: {
+        async getFile() { return null; }
+      }
+    } as any;
+
+    const started = parseToolContent(await resourceToolHandlers.start_download_resource!(
+      { id: "tool_download_start", type: "function", function: { name: "start_download_resource", arguments: "{}" } },
+      { url: snapshot.source_url, source_name: "report.pdf", kind: "file", concurrency: 6, proxy: "direct" },
+      context
+    ));
+    assert.equal(started.resource_id, snapshot.resource_id);
+    assert.equal(startInput.origin, "url_download");
+    assert.equal(startInput.proxyConsumer, undefined);
+    assert.equal(startInput.owner.sessionId, "qqbot:p:10001");
+
+    const paused = parseToolContent(await resourceToolHandlers.pause_download_resource!(
+      { id: "tool_download_pause", type: "function", function: { name: "pause_download_resource", arguments: "{}" } },
+      { resource_id: snapshot.resource_id },
+      context
+    ));
+    assert.equal(paused.status, "paused");
+
+    const resumed = parseToolContent(await resourceToolHandlers.resume_download_resource!(
+      { id: "tool_download_resume", type: "function", function: { name: "resume_download_resource", arguments: "{}" } },
+      { resource_id: snapshot.resource_id },
+      context
+    ));
+    assert.equal(resumed.status, "running");
   });
 
   test("list_live_resources only returns valid active resources", async () => {

@@ -247,7 +247,10 @@ test("resources section relies on default selection navigation and keeps program
   const source = await readFile(new URL("../../../webui/src/composables/sections/useResourcesSection.ts", import.meta.url), "utf8");
 
   assert.match(source, /useWorkbenchNavigation/);
-  assert.match(source, /function selectShell\(sessionId: string\)\s*\{\s*selectedShellId\.value = sessionId;\s*\}/);
+  const selectShellSource = source.match(/function selectShell\(sessionId: string\)\s*\{[\s\S]*?\n  \}/)?.[0] ?? "";
+  assert.match(selectShellSource, /selectedShellId\.value = sessionId;/);
+  assert.match(selectShellSource, /selectedResourceKind\.value = "shell";/);
+  assert.doesNotMatch(selectShellSource, /showArea/);
   assert.match(source, /if \(resourceId\)\s*\{[\s\S]*selectedShellId\.value = resourceId;[\s\S]*workbenchNavigation\.showArea\("mainArea"\);[\s\S]*\}/);
 });
 

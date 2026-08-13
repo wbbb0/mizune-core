@@ -14,6 +14,7 @@ import type { RequestStore } from "#requests/requestStore.ts";
 import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { ShellRuntime } from "#services/shell/runtime.ts";
+import type { DownloadRuntime } from "#services/workspace/downloadRuntime.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
 import type { SessionSnapshotStore } from "#conversation/session/sessionSnapshotStore.ts";
 import type { ConfigManager } from "#config/configManager.ts";
@@ -194,6 +195,10 @@ export interface InternalApiShellDeps {
   shellRuntime: ShellRuntime;
 }
 
+export interface InternalApiDownloadDeps {
+  downloadRuntime: DownloadRuntime;
+}
+
 export interface InternalApiBrowserDeps {
   browserService: BrowserService;
 }
@@ -231,6 +236,7 @@ export interface InternalApiDeps {
   recentErrorStore: RecentErrorStore;
   runtimeResourceStore: RuntimeResourceStore;
   shellRuntime: ShellRuntime;
+  downloadRuntime: DownloadRuntime;
   configManager: ConfigManager;
   sessionPersistence: SessionPersistence;
   sessionSnapshotStore: SessionSnapshotStore;
@@ -268,6 +274,7 @@ export interface InternalApiServices {
   messagingRoutes: InternalApiMessagingDeps;
   uploadRoutes: InternalApiUploadsDeps;
   shellRoutes: InternalApiShellDeps;
+  downloadRoutes: InternalApiDownloadDeps;
   browserRoutes: InternalApiBrowserDeps;
 }
 
@@ -365,6 +372,9 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
     },
     shellRoutes: {
       shellRuntime: deps.shellRuntime
+    },
+    downloadRoutes: {
+      downloadRuntime: deps.downloadRuntime
     },
     browserRoutes: {
       browserService: deps.browserService

@@ -269,7 +269,7 @@ export const chatFileToolDescriptors: ToolDescriptor[] = [
             asset_id: { type: "string" },
             query: { type: "string" },
             kind: { type: "string", enum: ["image", "animated_image", "video", "audio", "file"] },
-            origin: { type: "string", enum: ["chat_message", "browser_download", "browser_screenshot", "comfy_generated", "group_file_download", "image_transform", "local_file_import", "user_upload"] },
+            origin: { type: "string", enum: ["chat_message", "browser_download", "browser_screenshot", "comfy_generated", "group_file_download", "image_transform", "local_file_import", "url_download", "user_upload"] },
             limit: { type: "integer", minimum: 1, maximum: 100 }
           },
           additionalProperties: false

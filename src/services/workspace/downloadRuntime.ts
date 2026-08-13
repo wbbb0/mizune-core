@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { createWriteStream, type WriteStream } from "node:fs";
-import { mkdir, rm } from "node:fs/promises";
+import { access, mkdir, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { once } from "node:events";
-import { fetch as undiciFetch } from "undici";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
-import { fetchWithProxy, type ProxyConsumer } from "#services/proxy/index.ts";
+import { resolveProxyUrls, type ProxyConsumer } from "#services/proxy/index.ts";
+import {
+  createHttpDownloadEngine,
+  type HttpDownloadCheckpoint,
+  type HttpDownloadEngine,
+  type HttpDownloadEvent
+} from "#vendor/http-download-engine";
 import type { ChatFileKind, ChatFileOrigin, ChatFileRecord } from "./types.ts";
 import type { ChatFileStore } from "./chatFileStore.ts";
 import type { ShellRunOwner } from "#services/shell/types.ts";
@@ -15,6 +18,7 @@ import type { ShellRunOwner } from "#services/shell/types.ts";
 const DEFAULT_FOREGROUND_WAIT_MS = 10000;
 const SETTLED_TASK_RETENTION_MS = 30 * 60 * 1000;
 const MAX_SETTLED_TASKS = 50;
+const MAX_DOWNLOAD_CONCURRENCY = 16;
 
 export interface DownloadStartInput {
   sourceUrl: string;
@@ -25,15 +29,21 @@ export interface DownloadStartInput {
   proxyConsumer?: ProxyConsumer;
   owner?: ShellRunOwner;
   foregroundWaitMs?: number;
+  concurrency?: number;
 }
+
+export type DownloadRuntimeStatus = "running" | "paused" | "completed" | "failed" | "cancelled";
+export type DownloadRuntimePhase = "queued" | "probing" | "transferring" | "finalizing" | "importing";
 
 export interface DownloadRuntimeSnapshot {
   ok: true;
   resource_id: string;
-  status: "running" | "completed" | "failed" | "cancelled";
+  status: DownloadRuntimeStatus;
+  phase: DownloadRuntimePhase;
   source_url: string;
   source_name: string | null;
   origin: ChatFileOrigin;
+  concurrency: number;
   downloaded_bytes: number;
   total_bytes: number | null;
   percent: number | null;
@@ -45,6 +55,7 @@ export interface DownloadRuntimeSnapshot {
   kind: ChatFileKind | null;
   size_bytes: number | null;
   error: string | null;
+  retryable: boolean;
   created_at_ms: number;
   updated_at_ms: number;
   background_followup?: {
@@ -71,9 +82,12 @@ export type DownloadRuntimeEvent =
 
 export type DownloadRuntimeEventHandler = (event: DownloadRuntimeEvent) => void | Promise<void>;
 
+type DownloadEnginePort = Pick<HttpDownloadEngine, "probe" | "download" | "close">;
+
 interface DownloadTaskState {
   resourceId: string;
-  status: DownloadRuntimeSnapshot["status"];
+  status: DownloadRuntimeStatus;
+  phase: DownloadRuntimePhase;
   sourceUrl: string;
   sourceName: string | null;
   origin: ChatFileOrigin;
@@ -81,15 +95,19 @@ interface DownloadTaskState {
   proxyConsumer?: ProxyConsumer;
   owner: ShellRunOwner | null;
   requestedKind: ChatFileKind | null;
+  concurrency: number;
   mimeType: string | null;
   downloadedBytes: number;
   totalBytes: number | null;
+  checkpoint: HttpDownloadCheckpoint | null;
   file: ChatFileRecord | null;
   error: string | null;
+  retryable: boolean;
   createdAtMs: number;
   updatedAtMs: number;
   abortController: AbortController;
   tempPath: string;
+  completedPath: string;
   completion: Promise<void>;
   notifyOnSettled: boolean;
 }
@@ -97,16 +115,28 @@ interface DownloadTaskState {
 export class DownloadRuntime {
   private readonly tasks = new Map<string, DownloadTaskState>();
   private readonly tmpReady: Promise<void>;
+  private readonly engine: DownloadEnginePort;
   private eventHandler: DownloadRuntimeEventHandler | null;
+  private closed = false;
 
   constructor(
     private readonly config: AppConfig,
     private readonly logger: Logger,
     private readonly dataDir: string,
     private readonly chatFileStore: ChatFileStore,
-    options?: { onEvent?: DownloadRuntimeEventHandler | null }
+    options?: {
+      onEvent?: DownloadRuntimeEventHandler | null;
+      engine?: DownloadEnginePort;
+      allowPrivateHosts?: boolean;
+    }
   ) {
     this.eventHandler = options?.onEvent ?? null;
+    this.engine = options?.engine ?? createHttpDownloadEngine({
+      allowPrivateHosts: options?.allowPrivateHosts ?? false,
+      allowPrivateProxyHosts: true,
+      maxConcurrency: MAX_DOWNLOAD_CONCURRENCY,
+      userAgent: `${config.appName}/download-runtime`
+    });
     this.tmpReady = this.cleanupStaleTempFiles();
   }
 
@@ -115,6 +145,7 @@ export class DownloadRuntime {
   }
 
   async start(input: DownloadStartInput): Promise<DownloadRuntimeSnapshot> {
+    this.assertOpen();
     await this.tmpReady;
     if (!this.config.chatFiles.enabled) {
       throw new Error("assets are disabled");
@@ -128,27 +159,32 @@ export class DownloadRuntime {
     const state: DownloadTaskState = {
       resourceId,
       status: "running",
+      phase: "queued",
       sourceUrl,
-      sourceName: normalizeOptionalString(input.sourceName) ?? null,
+      sourceName: normalizeOptionalString(input.sourceName) ?? inferFilenameFromUrl(sourceUrl),
       origin: input.origin,
       sourceContext: input.sourceContext ?? {},
       ...(input.proxyConsumer ? { proxyConsumer: input.proxyConsumer } : {}),
       owner: input.owner ?? null,
       requestedKind: input.kind ?? null,
+      concurrency: normalizeConcurrency(input.concurrency),
       mimeType: null,
       downloadedBytes: 0,
       totalBytes: null,
+      checkpoint: null,
       file: null,
       error: null,
+      retryable: false,
       createdAtMs: now,
       updatedAtMs: now,
       abortController: new AbortController(),
-      tempPath: join(tempDir, `${resourceId}.download`),
+      tempPath: join(tempDir, `${resourceId}.part`),
+      completedPath: join(tempDir, `${resourceId}.complete`),
       completion: Promise.resolve(),
       notifyOnSettled: false
     };
-    state.completion = this.runDownload(state);
     this.tasks.set(resourceId, state);
+    state.completion = this.runDownload(state);
 
     const waitMs = normalizeWaitMs(input.foregroundWaitMs);
     await Promise.race([
@@ -175,50 +211,109 @@ export class DownloadRuntime {
     return state ? this.snapshot(state, false) : null;
   }
 
+  async pause(resourceId: string): Promise<DownloadRuntimeSnapshot | null> {
+    const state = this.tasks.get(resourceId);
+    if (!state) return null;
+    if (state.status !== "running") return this.snapshot(state, false);
+    state.status = "paused";
+    state.error = null;
+    state.retryable = true;
+    state.updatedAtMs = Date.now();
+    state.abortController.abort(new Error("download paused"));
+    return this.snapshot(state, false);
+  }
+
+  async resume(resourceId: string): Promise<DownloadRuntimeSnapshot | null> {
+    this.assertOpen();
+    const state = this.tasks.get(resourceId);
+    if (!state) return null;
+    if (state.status !== "paused" && !(state.status === "failed" && state.retryable)) {
+      return this.snapshot(state, false);
+    }
+    await state.completion.catch(() => undefined);
+    state.status = "running";
+    state.phase = "queued";
+    state.error = null;
+    state.retryable = false;
+    state.updatedAtMs = Date.now();
+    state.abortController = new AbortController();
+    state.completion = this.runDownload(state);
+    return this.snapshot(state, false);
+  }
+
   async cancel(resourceId: string): Promise<DownloadRuntimeSnapshot | null> {
     const state = this.tasks.get(resourceId);
-    if (!state) {
-      return null;
-    }
-    if (state.status === "running") {
+    if (!state) return null;
+    if (state.status === "running" || state.status === "paused" || state.status === "failed") {
       state.status = "cancelled";
       state.error = "download cancelled";
+      state.retryable = false;
       state.updatedAtMs = Date.now();
-      state.abortController.abort();
-      await rm(state.tempPath, { force: true }).catch(() => undefined);
+      state.abortController.abort(new Error("download cancelled"));
+      await this.cleanupTaskFiles(state);
     }
     return this.snapshot(state, false);
   }
 
+  async remove(resourceId: string): Promise<boolean> {
+    const state = this.tasks.get(resourceId);
+    if (!state) return false;
+    if (state.status === "running") {
+      throw new Error("running download must be cancelled before removal");
+    }
+    await this.cleanupTaskFiles(state);
+    this.tasks.delete(resourceId);
+    return true;
+  }
+
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    const active = Array.from(this.tasks.values()).filter((state) => state.status === "running");
+    for (const state of active) {
+      state.status = "paused";
+      state.retryable = true;
+      state.updatedAtMs = Date.now();
+      state.abortController.abort(new Error("download runtime closed"));
+    }
+    await Promise.allSettled(active.map((state) => state.completion));
+    await this.engine.close();
+  }
+
   private async runDownload(state: DownloadTaskState): Promise<void> {
     try {
-      const response = state.proxyConsumer
-        ? await fetchWithProxy(this.config, state.proxyConsumer, state.sourceUrl, { signal: state.abortController.signal })
-        : await undiciFetch(state.sourceUrl, { signal: state.abortController.signal });
-      if (!response.ok) {
-        throw new Error(`download failed: ${response.status} ${response.statusText}`);
+      if (!await pathExists(state.completedPath)) {
+        const proxy = this.resolveProxy(state);
+        state.phase = "probing";
+        state.updatedAtMs = Date.now();
+        const probe = await this.engine.probe({
+          url: state.sourceUrl,
+          signal: state.abortController.signal,
+          ...(proxy ? { proxy } : {})
+        });
+        state.totalBytes = probe.totalBytes;
+        if (probe.totalBytes != null && probe.totalBytes > this.config.chatFiles.maxUploadBytes) {
+          throw new Error("download exceeds chatFiles.maxUploadBytes");
+        }
+        const result = await this.engine.download({
+          url: state.sourceUrl,
+          destinationPath: state.completedPath,
+          tempPath: state.tempPath,
+          concurrency: state.concurrency,
+          checkpoint: state.checkpoint,
+          signal: state.abortController.signal,
+          ...(proxy ? { proxy } : {}),
+          onEvent: async (event) => this.handleEngineEvent(state, event)
+        });
+        state.downloadedBytes = result.totalBytes;
+        state.totalBytes = result.totalBytes;
+        state.updatedAtMs = Date.now();
       }
-      state.mimeType = normalizeOptionalString(response.headers.get("content-type")) ?? null;
-      state.totalBytes = parseContentLength(response.headers.get("content-length"));
-      if (state.totalBytes != null && state.totalBytes > this.config.chatFiles.maxUploadBytes) {
-        throw new Error("download exceeds chatFiles.maxUploadBytes");
-      }
-      state.sourceName = state.sourceName ?? inferFilenameFromHeadersOrUrl(response.headers.get("content-disposition"), state.sourceUrl);
+      this.throwIfInterrupted(state);
+      state.phase = "importing";
       state.updatedAtMs = Date.now();
-
-      const body = response.body;
-      if (!body) {
-        throw new Error("download response body is empty");
-      }
-      await this.writeResponseBody(state, body as AsyncIterable<Uint8Array>);
-
-      if (state.downloadedBytes > this.config.chatFiles.maxUploadBytes) {
-        throw new Error("download exceeds chatFiles.maxUploadBytes");
-      }
-      this.throwIfCancelled(state);
-
       const file = await this.chatFileStore.importFileFromPath({
-        sourcePath: state.tempPath,
+        sourcePath: state.completedPath,
         origin: state.origin,
         sourceContext: {
           source_url: state.sourceUrl,
@@ -228,16 +323,17 @@ export class DownloadRuntime {
         ...(state.mimeType ? { mimeType: state.mimeType } : {}),
         ...(state.requestedKind ? { kind: state.requestedKind } : {})
       });
-      if (this.isCancelled(state)) {
+      if (state.status !== "running") {
         await this.chatFileStore.deleteFile(file.fileId).catch((cleanupError) => {
           this.logger.warn({ cleanupError, fileId: file.fileId, resourceId: state.resourceId }, "download_runtime_cancel_import_cleanup_failed");
         });
-        throw new DownloadCancelledError();
+        throw new DownloadInterruptedError();
       }
       state.file = file;
       state.status = "completed";
+      state.retryable = false;
       state.updatedAtMs = Date.now();
-      await rm(state.tempPath, { force: true }).catch(() => undefined);
+      await this.cleanupTaskFiles(state);
       if (state.owner && state.notifyOnSettled) {
         this.emitEvent({
           kind: "download_completed",
@@ -248,60 +344,57 @@ export class DownloadRuntime {
         });
       }
     } catch (error) {
-      if (state.status !== "cancelled") {
-        state.status = "failed";
-        state.error = error instanceof Error ? error.message : String(error);
-        state.updatedAtMs = Date.now();
-        await rm(state.tempPath, { force: true }).catch(() => undefined);
-        this.logger.warn({ error, resourceId: state.resourceId, sourceUrl: state.sourceUrl }, "download_runtime_failed");
-        if (state.owner && state.notifyOnSettled) {
-          this.emitEvent({
-            kind: "download_failed",
-            owner: state.owner,
-            resourceId: state.resourceId,
-            sourceUrl: state.sourceUrl,
-            error: state.error
-          });
-        }
+      if (state.status === "paused" || state.status === "cancelled" || error instanceof DownloadInterruptedError) {
+        return;
+      }
+      state.status = "failed";
+      state.error = error instanceof Error ? error.message : String(error);
+      state.retryable = readRetryable(error);
+      state.updatedAtMs = Date.now();
+      this.logger.warn({ error, resourceId: state.resourceId, sourceUrl: state.sourceUrl }, "download_runtime_failed");
+      if (state.owner && state.notifyOnSettled) {
+        this.emitEvent({
+          kind: "download_failed",
+          owner: state.owner,
+          resourceId: state.resourceId,
+          sourceUrl: state.sourceUrl,
+          error: state.error
+        });
       }
     }
   }
 
-  private async writeResponseBody(state: DownloadTaskState, body: AsyncIterable<Uint8Array>): Promise<void> {
-    const output = createWriteStream(state.tempPath);
-    let streamError: Error | null = null;
-    const onError = (error: Error) => {
-      streamError = error;
-    };
-    output.on("error", onError);
-    let closed = false;
-    try {
-      for await (const chunk of body) {
-        this.throwIfCancelled(state);
-        if (streamError) {
-          throw streamError;
-        }
-        const buffer = Buffer.from(chunk);
-        state.downloadedBytes += buffer.byteLength;
-        state.updatedAtMs = Date.now();
-        if (state.downloadedBytes > this.config.chatFiles.maxUploadBytes) {
-          state.abortController.abort();
-          throw new Error("download exceeds chatFiles.maxUploadBytes");
-        }
-        await writeChunk(output, buffer);
-        if (streamError) {
-          throw streamError;
-        }
+  private async handleEngineEvent(state: DownloadTaskState, event: HttpDownloadEvent): Promise<void> {
+    if (event.type === "phase") {
+      state.phase = event.phase;
+    } else if (event.type === "progress") {
+      state.downloadedBytes = event.downloadedBytes;
+      state.totalBytes = event.totalBytes;
+      if (event.totalBytes != null && event.totalBytes > this.config.chatFiles.maxUploadBytes) {
+        throw new Error("download exceeds chatFiles.maxUploadBytes");
       }
-      output.end();
-      await waitForStreamClose(output);
-      closed = true;
-    } finally {
-      output.off("error", onError);
-      if (!closed) {
-        output.destroy();
+      if (event.downloadedBytes > this.config.chatFiles.maxUploadBytes) {
+        throw new Error("download exceeds chatFiles.maxUploadBytes");
       }
+    } else if (event.type === "checkpoint") {
+      state.checkpoint = event.checkpoint;
+    } else if (event.type === "checkpoint-reset") {
+      state.checkpoint = null;
     }
+    state.updatedAtMs = Date.now();
+  }
+
+  private resolveProxy(state: DownloadTaskState): { url: string } | null {
+    if (!state.proxyConsumer) return null;
+    const proxies = resolveProxyUrls(this.config, state.proxyConsumer);
+    const protocol = new URL(state.sourceUrl).protocol;
+    const proxyUrl = protocol === "https:" ? proxies.https : proxies.http;
+    if (!proxyUrl) return null;
+    const proxyProtocol = new URL(proxyUrl).protocol;
+    if (proxyProtocol !== "http:" && proxyProtocol !== "https:") {
+      throw new Error("download engine only supports HTTP or HTTPS proxies");
+    }
+    return { url: proxyUrl };
   }
 
   private snapshot(state: DownloadTaskState, includeBackgroundFollowup: boolean): DownloadRuntimeSnapshot {
@@ -312,9 +405,11 @@ export class DownloadRuntime {
       ok: true,
       resource_id: state.resourceId,
       status: state.status,
+      phase: state.phase,
       source_url: state.sourceUrl,
       source_name: state.file?.sourceName ?? state.sourceName,
       origin: state.origin,
+      concurrency: state.concurrency,
       downloaded_bytes: state.downloadedBytes,
       total_bytes: state.totalBytes,
       percent,
@@ -326,6 +421,7 @@ export class DownloadRuntime {
       kind: state.file?.kind ?? state.requestedKind,
       size_bytes: state.file?.sizeBytes ?? null,
       error: state.error,
+      retryable: state.retryable,
       created_at_ms: state.createdAtMs,
       updated_at_ms: state.updatedAtMs,
       ...(includeBackgroundFollowup && state.owner ? {
@@ -343,26 +439,23 @@ export class DownloadRuntime {
     });
   }
 
-  private isCancelled(state: DownloadTaskState): boolean {
-    return state.status === "cancelled" || state.abortController.signal.aborted;
-  }
-
-  private throwIfCancelled(state: DownloadTaskState): void {
-    if (this.isCancelled(state)) {
-      throw new DownloadCancelledError();
+  private throwIfInterrupted(state: DownloadTaskState): void {
+    if (state.status !== "running" || state.abortController.signal.aborted) {
+      throw new DownloadInterruptedError();
     }
   }
 
   private cleanupSettledTasks(): void {
     const now = Date.now();
     const settled = Array.from(this.tasks.values())
-      .filter((state) => state.status !== "running")
+      .filter((state) => state.status === "completed" || state.status === "failed" || state.status === "cancelled")
       .sort((left, right) => right.updatedAtMs - left.updatedAtMs);
     const keep = new Set(settled.slice(0, MAX_SETTLED_TASKS).map((state) => state.resourceId));
     for (const state of settled) {
       if (keep.has(state.resourceId) && now - state.updatedAtMs <= SETTLED_TASK_RETENTION_MS) {
         continue;
       }
+      void this.cleanupTaskFiles(state);
       this.tasks.delete(state.resourceId);
     }
   }
@@ -376,36 +469,23 @@ export class DownloadRuntime {
       this.logger.warn({ error, tempDir }, "download_runtime_tmp_prepare_failed");
     });
   }
+
+  private async cleanupTaskFiles(state: DownloadTaskState): Promise<void> {
+    await Promise.all([
+      rm(state.tempPath, { force: true }),
+      rm(state.completedPath, { force: true })
+    ]).catch(() => undefined);
+  }
+
+  private assertOpen(): void {
+    if (this.closed) throw new Error("download runtime is closed");
+  }
 }
 
-class DownloadCancelledError extends Error {
+class DownloadInterruptedError extends Error {
   constructor() {
-    super("download cancelled");
+    super("download interrupted");
   }
-}
-
-async function writeChunk(output: WriteStream, buffer: Buffer): Promise<void> {
-  if (output.destroyed) {
-    throw new Error("download output stream is closed");
-  }
-  if (output.write(buffer)) {
-    return;
-  }
-  await Promise.race([
-    once(output, "drain"),
-    once(output, "error").then(([error]) => {
-      throw error;
-    })
-  ]);
-}
-
-async function waitForStreamClose(output: WriteStream): Promise<void> {
-  await Promise.race([
-    once(output, "finish"),
-    once(output, "error").then(([error]) => {
-      throw error;
-    })
-  ]);
 }
 
 function validateHttpUrl(value: string): string {
@@ -414,6 +494,10 @@ function validateHttpUrl(value: string): string {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error("download sourceUrl must be an absolute http or https URL");
   }
+  if (parsed.username || parsed.password) {
+    throw new Error("download sourceUrl must not contain credentials");
+  }
+  parsed.hash = "";
   return parsed.toString();
 }
 
@@ -424,34 +508,35 @@ function normalizeWaitMs(value: number | undefined): number {
   return Math.min(60000, Math.floor(value));
 }
 
+function normalizeConcurrency(value: number | undefined): number {
+  if (!Number.isSafeInteger(value) || value == null || value <= 0) return 4;
+  return Math.min(MAX_DOWNLOAD_CONCURRENCY, value);
+}
+
 function normalizeOptionalString(value: unknown): string | undefined {
   const normalized = String(value ?? "").trim();
-  return normalized || undefined;
+  return normalized ? basename(normalized) : undefined;
 }
 
-function parseContentLength(value: string | null): number | null {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : null;
+function inferFilenameFromUrl(sourceUrl: string): string {
+  const encoded = basename(new URL(sourceUrl).pathname);
+  if (!encoded || encoded === "/") return "download.bin";
+  try {
+    return decodeURIComponent(encoded).trim() || "download.bin";
+  } catch {
+    return encoded;
+  }
 }
 
-function inferFilenameFromHeadersOrUrl(contentDisposition: string | null, sourceUrl: string): string {
-  const fromHeader = parseContentDispositionFilename(contentDisposition);
-  if (fromHeader) {
-    return fromHeader;
-  }
-  const pathname = new URL(sourceUrl).pathname;
-  const fromPath = basename(pathname);
-  return fromPath && fromPath !== "/" ? fromPath : "download.bin";
+function readRetryable(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "retryable" in error && (error as { retryable?: unknown }).retryable);
 }
 
-function parseContentDispositionFilename(value: string | null): string | null {
-  if (!value) {
-    return null;
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
   }
-  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(value)?.[1];
-  if (utf8) {
-    return decodeURIComponent(utf8).trim() || null;
-  }
-  const plain = /filename="?([^";]+)"?/i.exec(value)?.[1];
-  return plain?.trim() || null;
 }

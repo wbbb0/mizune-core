@@ -42,6 +42,42 @@ export interface ShellRunRequest {
   background?: boolean;
 }
 
+export type DownloadStatus = "running" | "paused" | "completed" | "failed" | "cancelled";
+export type DownloadPhase = "queued" | "probing" | "transferring" | "finalizing" | "importing";
+
+export interface DownloadTask {
+  ok: true;
+  resource_id: string;
+  status: DownloadStatus;
+  phase: DownloadPhase;
+  source_url: string;
+  source_name: string | null;
+  origin: string;
+  concurrency: number;
+  downloaded_bytes: number;
+  total_bytes: number | null;
+  percent: number | null;
+  mime_type: string | null;
+  file_id: string | null;
+  file_ref: string | null;
+  asset_ref: string | null;
+  chat_file_path: string | null;
+  kind: string | null;
+  size_bytes: number | null;
+  error: string | null;
+  retryable: boolean;
+  created_at_ms: number;
+  updated_at_ms: number;
+}
+
+export interface DownloadStartRequest {
+  url: string;
+  sourceName?: string;
+  kind?: "image" | "animated_image" | "video" | "audio" | "file";
+  concurrency?: number;
+  proxy?: "auto" | "direct";
+}
+
 export const runtimeResourcesApi = {
   listShellSessions(): Promise<{ sessions: ShellSession[] }> {
     return api.get("/api/shell/sessions");
@@ -61,6 +97,30 @@ export const runtimeResourcesApi = {
 
   resizeShell(sessionId: string, cols: number, rows: number): Promise<{ ok: true; session: ShellSession }> {
     return api.post(`/api/shell/sessions/${encodeURIComponent(sessionId)}/resize`, { cols, rows });
+  },
+
+  listDownloads(): Promise<{ tasks: DownloadTask[] }> {
+    return api.get("/api/downloads");
+  },
+
+  startDownload(request: DownloadStartRequest): Promise<{ task: DownloadTask }> {
+    return api.post("/api/downloads", request);
+  },
+
+  pauseDownload(resourceId: string): Promise<{ task: DownloadTask }> {
+    return api.post(`/api/downloads/${encodeURIComponent(resourceId)}/pause`);
+  },
+
+  resumeDownload(resourceId: string): Promise<{ task: DownloadTask }> {
+    return api.post(`/api/downloads/${encodeURIComponent(resourceId)}/resume`);
+  },
+
+  cancelDownload(resourceId: string): Promise<{ task: DownloadTask }> {
+    return api.post(`/api/downloads/${encodeURIComponent(resourceId)}/cancel`);
+  },
+
+  removeDownload(resourceId: string): Promise<{ ok: true }> {
+    return api.delete(`/api/downloads/${encodeURIComponent(resourceId)}`);
   }
 };
 

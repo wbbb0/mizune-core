@@ -94,6 +94,7 @@ export type ChatFileOrigin =
   | "group_file_download"
   | "image_transform"
   | "local_file_import"
+  | "url_download"
   | "user_upload";
 
 export interface ChatFileRecord {

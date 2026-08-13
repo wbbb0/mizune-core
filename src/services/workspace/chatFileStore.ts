@@ -24,6 +24,7 @@ export const chatFileRecordRegistrySchema = s.object({
     "group_file_download",
     "image_transform",
     "local_file_import",
+    "url_download",
     "user_upload"
   ] as const),
   chatFilePath: s.string().trim().nonempty(),
@@ -678,6 +679,7 @@ function originPrefix(origin: ChatFileOrigin): string | null {
   if (origin === "browser_screenshot") return "shot";
   if (origin === "group_file_download") return "grp";
   if (origin === "local_file_import") return "ws";
+  if (origin === "url_download") return "url";
   if (origin === "user_upload") return "upload";
   if (origin === "chat_message") return "chat";
   return null;

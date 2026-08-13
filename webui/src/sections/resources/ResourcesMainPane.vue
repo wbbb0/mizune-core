@@ -2,7 +2,7 @@
 import "@xterm/xterm/css/xterm.css";
 
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
-import { ChevronDown, ChevronUp, Circle, ClipboardPaste, Copy, Eraser, Files, PlugZap, RefreshCw, Search, Square, Zap } from "lucide-vue-next";
+import { ChevronDown, ChevronUp, Circle, ClipboardPaste, Copy, Eraser, Files, Pause, Play, PlugZap, RefreshCw, Search, Square, Trash2, X, Zap } from "lucide-vue-next";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
@@ -15,11 +15,18 @@ import { useResourcesSection } from "@/composables/sections/useResourcesSection"
 const {
   selectedShell,
   selectedShellId,
+  selectedDownload,
+  selectedResourceKind,
   busy,
   error,
   refreshShells,
+  refreshDownloads,
   closeShell,
-  signalShell
+  signalShell,
+  pauseDownload,
+  resumeDownload,
+  cancelDownload,
+  removeDownload
 } = useResourcesSection();
 
 const terminalHost = ref<HTMLElement | null>(null);
@@ -41,7 +48,10 @@ let fitTimer: number | null = null;
 let terminalNoticeTimer: number | null = null;
 
 const effectiveSession = computed(() => attachedSession.value ?? selectedShell.value);
-const title = computed(() => effectiveSession.value?.command || "运行时资源");
+const isDownloadView = computed(() => selectedResourceKind.value === "download");
+const title = computed(() => isDownloadView.value
+  ? selectedDownload.value?.source_name || "下载任务"
+  : effectiveSession.value?.command || "运行时资源");
 const statusLabel = computed(() => {
   if (!effectiveSession.value) return "未选择";
   if (effectiveSession.value.status === "closed") return "已关闭";
@@ -58,7 +68,7 @@ const statusClass = computed(() => {
 });
 
 onMounted(() => {
-  createTerminal();
+  if (!isDownloadView.value) createTerminal();
   resizeObserver = new ResizeObserver(() => scheduleFit());
   if (terminalHost.value) {
     resizeObserver.observe(terminalHost.value);
@@ -83,7 +93,18 @@ onBeforeUnmount(() => {
 });
 
 watch(selectedShellId, () => {
-  void attachSelectedShell();
+  if (!isDownloadView.value) void attachSelectedShell();
+});
+
+watch(selectedResourceKind, async (kind) => {
+  if (kind === "download") {
+    detachSocket();
+    disposeTerminal();
+    return;
+  }
+  await nextTick();
+  createTerminal();
+  await attachSelectedShell();
 });
 
 watch(searchQuery, (value) => {
@@ -313,6 +334,50 @@ async function stopShell() {
   await closeShell(sessionId);
 }
 
+async function copyDownloadRef() {
+  const value = selectedDownload.value?.asset_ref || selectedDownload.value?.resource_id;
+  if (value) await writeClipboardText(value, "已复制资源引用");
+}
+
+function downloadStatusLabel(status: string) {
+  return {
+    running: "下载中",
+    paused: "已暂停",
+    completed: "已完成",
+    failed: "失败",
+    cancelled: "已取消"
+  }[status] ?? status;
+}
+
+function downloadStatusClass(status: string) {
+  if (status === "completed") return "text-success";
+  if (status === "failed") return "text-danger";
+  if (status === "running") return "text-warning";
+  return "text-text-subtle";
+}
+
+function downloadPhaseLabel(phase: string) {
+  return {
+    queued: "排队中",
+    probing: "探测资源",
+    transferring: "传输中",
+    finalizing: "写入完成",
+    importing: "登记资源"
+  }[phase] ?? phase;
+}
+
+function formatBytes(value: number | null) {
+  if (value == null) return "未知";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KiB`;
+  if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MiB`;
+  return `${(value / 1024 ** 3).toFixed(1)} GiB`;
+}
+
+function formatTime(value: number) {
+  return new Date(value).toLocaleString();
+}
+
 function focusTerminal() {
   terminal.value?.focus();
 }
@@ -468,14 +533,72 @@ function isShellSession(value: unknown): value is ShellSession {
   <div class="flex h-full min-h-0 flex-col bg-surface">
     <WorkbenchAreaHeader :title="title">
       <template #actions>
-        <WorkbenchIconButton :icon="PlugZap" :disabled="!selectedShellId" title="重连" @click="reconnect" />
-        <WorkbenchIconButton :icon="Zap" :disabled="!effectiveSession || effectiveSession.status !== 'running' || busy" title="SIGINT" @click="sendSignal('SIGINT')" />
-        <WorkbenchIconButton :icon="Square" :disabled="!effectiveSession || effectiveSession.status !== 'running' || busy" title="停止" @click="stopShell" />
-        <WorkbenchIconButton :icon="RefreshCw" :disabled="busy" title="刷新" @click="refreshShells" />
+        <template v-if="isDownloadView">
+          <WorkbenchIconButton :icon="Pause" :disabled="!selectedDownload || selectedDownload.status !== 'running' || busy" title="暂停" @click="selectedDownload && pauseDownload(selectedDownload.resource_id)" />
+          <WorkbenchIconButton :icon="Play" :disabled="!selectedDownload || !(selectedDownload.status === 'paused' || selectedDownload.status === 'failed' && selectedDownload.retryable) || busy" title="恢复" @click="selectedDownload && resumeDownload(selectedDownload.resource_id)" />
+          <WorkbenchIconButton :icon="X" :disabled="!selectedDownload || !['running', 'paused', 'failed'].includes(selectedDownload.status) || busy" title="取消" @click="selectedDownload && cancelDownload(selectedDownload.resource_id)" />
+          <WorkbenchIconButton :icon="Trash2" :disabled="!selectedDownload || selectedDownload.status === 'running' || busy" title="移除记录" @click="selectedDownload && removeDownload(selectedDownload.resource_id)" />
+          <WorkbenchIconButton :icon="RefreshCw" :disabled="busy" title="刷新" @click="refreshDownloads" />
+        </template>
+        <template v-else>
+          <WorkbenchIconButton :icon="PlugZap" :disabled="!selectedShellId" title="重连" @click="reconnect" />
+          <WorkbenchIconButton :icon="Zap" :disabled="!effectiveSession || effectiveSession.status !== 'running' || busy" title="SIGINT" @click="sendSignal('SIGINT')" />
+          <WorkbenchIconButton :icon="Square" :disabled="!effectiveSession || effectiveSession.status !== 'running' || busy" title="停止" @click="stopShell" />
+          <WorkbenchIconButton :icon="RefreshCw" :disabled="busy" title="刷新" @click="refreshShells" />
+        </template>
       </template>
     </WorkbenchAreaHeader>
 
-    <div v-if="effectiveSession" class="flex min-h-0 flex-1 flex-col">
+    <div v-if="isDownloadView && selectedDownload" class="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-5">
+      <div class="mx-auto grid max-w-4xl gap-5">
+        <section class="rounded-lg border border-border-subtle bg-surface-raised p-4">
+          <div class="flex items-center gap-3">
+            <span class="inline-flex items-center gap-1.5 text-small font-medium" :class="downloadStatusClass(selectedDownload.status)">
+              <Circle :size="9" fill="currentColor" :stroke-width="0" />
+              {{ downloadStatusLabel(selectedDownload.status) }}
+            </span>
+            <span class="text-small text-text-subtle">{{ downloadPhaseLabel(selectedDownload.phase) }}</span>
+            <span class="ml-auto font-mono text-small text-text-muted">{{ selectedDownload.percent ?? 0 }}%</span>
+          </div>
+          <div class="mt-3 h-2 overflow-hidden rounded-full bg-surface-muted">
+            <div class="h-full rounded-full bg-accent transition-[width]" :style="{ width: `${selectedDownload.percent ?? 0}%` }" />
+          </div>
+          <div class="mt-2 flex justify-between gap-3 text-small text-text-subtle">
+            <span>{{ formatBytes(selectedDownload.downloaded_bytes) }}</span>
+            <span>{{ formatBytes(selectedDownload.total_bytes) }}</span>
+          </div>
+        </section>
+
+        <section class="grid gap-3 rounded-lg border border-border-subtle bg-surface-raised p-4 text-small">
+          <div class="grid gap-1">
+            <span class="text-text-muted">来源 URL</span>
+            <a :href="selectedDownload.source_url" target="_blank" rel="noreferrer" class="break-all text-accent hover:underline">{{ selectedDownload.source_url }}</a>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div><span class="text-text-muted">任务 ID</span><div class="mt-1 break-all font-mono">{{ selectedDownload.resource_id }}</div></div>
+            <div><span class="text-text-muted">并发</span><div class="mt-1">{{ selectedDownload.concurrency }}</div></div>
+            <div><span class="text-text-muted">创建时间</span><div class="mt-1">{{ formatTime(selectedDownload.created_at_ms) }}</div></div>
+            <div><span class="text-text-muted">更新时间</span><div class="mt-1">{{ formatTime(selectedDownload.updated_at_ms) }}</div></div>
+            <div><span class="text-text-muted">类型</span><div class="mt-1">{{ selectedDownload.mime_type || selectedDownload.kind || '未知' }}</div></div>
+            <div><span class="text-text-muted">可重试</span><div class="mt-1">{{ selectedDownload.retryable ? '是' : '否' }}</div></div>
+          </div>
+        </section>
+
+        <section v-if="selectedDownload.asset_ref" class="flex items-center gap-3 rounded-lg border border-success/30 bg-success/5 p-4">
+          <div class="min-w-0 flex-1">
+            <div class="text-small text-text-muted">已登记 Asset</div>
+            <div class="mt-1 truncate font-mono text-small">{{ selectedDownload.asset_ref }}</div>
+          </div>
+          <button class="btn h-8 gap-1.5" @click="copyDownloadRef"><Copy :size="13" />复制引用</button>
+        </section>
+
+        <div v-if="selectedDownload.error || error" class="rounded border border-danger/30 bg-danger/5 px-3 py-2 text-small text-danger">
+          {{ selectedDownload.error || error }}
+        </div>
+      </div>
+    </div>
+
+    <div v-else-if="!isDownloadView && effectiveSession" class="flex min-h-0 flex-1 flex-col">
       <div class="flex min-h-9 items-center gap-3 border-b border-border-subtle px-4 text-small">
         <span class="shrink-0 inline-flex items-center gap-1.5" :class="statusClass">
           <Circle :size="9" fill="currentColor" :stroke-width="0" />
@@ -517,6 +640,6 @@ function isShellSession(value: unknown): value is ShellSession {
       <div ref="terminalHost" class="min-h-0 flex-1 overflow-hidden bg-[#0f1115]" @click="focusTerminal" />
     </div>
 
-    <WorkbenchEmptyState v-else message="← 选择或新建一个 Shell 资源" />
+    <WorkbenchEmptyState v-else :message="isDownloadView ? '← 选择或新建一个下载任务' : '← 选择或新建一个 Shell 资源'" />
   </div>
 </template>

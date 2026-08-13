@@ -25,7 +25,7 @@ Mizune Core 是一个基于 Node.js / TypeScript 的长期运行 LLM 聊天代�
 
 ## 技术栈
 
-- 后端：Node.js 20.19+、TypeScript、Fastify、Zod、pino
+- 后端：Node.js 24+、TypeScript、Fastify、Zod、pino
 - 前端：Vue 3、Vite、Tailwind CSS
 - 测试与构建：node:test、tsx、tsdown、Playwright
 
@@ -34,6 +34,7 @@ Mizune Core 是一个基于 Node.js / TypeScript 的长期运行 LLM 聊天代�
 详细配置步骤见 [快速上手](docs/getting-started.md)。最短流程如下：
 
 ```bash
+git submodule update --init --recursive
 npm install
 npm --prefix webui install
 

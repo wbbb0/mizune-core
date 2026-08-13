@@ -53,6 +53,18 @@ const shellResizeBodySchema = z.object({
   rows: z.number().int().positive().max(1000)
 });
 
+const downloadParamsSchema = z.object({
+  resourceId: z.string().trim().min(1, "resourceId is required")
+});
+
+const downloadStartBodySchema = z.object({
+  url: z.url("url must be an absolute URL"),
+  sourceName: z.string().trim().min(1).max(255).optional(),
+  kind: z.enum(["image", "animated_image", "video", "audio", "file"]).optional(),
+  concurrency: z.number().int().min(1).max(16).optional(),
+  proxy: z.enum(["auto", "direct"]).optional().default("auto")
+}).strict();
+
 const sendTextBodySchema = z.object({
   userId: z.string().trim().min(1).optional(),
   groupId: z.string().trim().min(1).optional(),
@@ -212,6 +224,8 @@ export type ParsedShellRunBody = z.infer<typeof shellRunBodySchema>;
 export type ParsedShellInteractBody = z.infer<typeof shellInteractBodySchema>;
 export type ParsedShellSignalBody = z.infer<typeof shellSignalBodySchema>;
 export type ParsedShellResizeBody = z.infer<typeof shellResizeBodySchema>;
+export type ParsedDownloadParams = z.infer<typeof downloadParamsSchema>;
+export type ParsedDownloadStartBody = z.infer<typeof downloadStartBodySchema>;
 export type ParsedSendTextBody = z.infer<typeof sendTextBodySchema>;
 export type ParsedWebTurnBody = z.infer<typeof webTurnBodySchema>;
 export type ParsedCreateSessionBody = z.infer<typeof createSessionBodySchema>;
@@ -312,6 +326,14 @@ export function parseShellSignalBody(body: unknown): ParsedShellSignalBody | { e
 
 export function parseShellResizeBody(body: unknown): ParsedShellResizeBody | { error: string } {
   return parseWithSchema(shellResizeBodySchema, body);
+}
+
+export function parseDownloadParams(params: unknown): ParsedDownloadParams | { error: string } {
+  return parseWithSchema(downloadParamsSchema, params);
+}
+
+export function parseDownloadStartBody(body: unknown): ParsedDownloadStartBody | { error: string } {
+  return parseWithSchema(downloadStartBodySchema, body);
 }
 
 export function parseSendTextBody(body: unknown): ParsedSendTextBody | { error: string } {

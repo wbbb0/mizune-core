@@ -82,6 +82,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     forwardResolver,
     conversationAccess,
     shellRuntime,
+    downloadRuntime,
     configManager,
     recentErrorStore,
     singleInstanceLock
@@ -282,6 +283,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     comfyTaskStore,
     scheduler,
     shellRuntime,
+    downloadRuntime,
     configManager,
     sessionPersistence,
     sessionSnapshotStore,
@@ -380,6 +382,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
           onRequest,
           internalApi,
           browserService,
+          downloadRuntime,
           schedulerStarted,
           scheduler,
           contextMaintenanceService,

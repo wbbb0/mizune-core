@@ -54,7 +54,10 @@ type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
 const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "list_live_resources",
+  "start_download_resource",
   "read_download_resource",
+  "pause_download_resource",
+  "resume_download_resource",
   "cancel_download_resource",
   "open_page",
   "inspect_page",
@@ -767,8 +770,8 @@ function statusPriority(status: PromptLiveResource["status"]): number {
   }
 }
 
-function downloadStatusToPromptStatus(status: "running" | "completed" | "failed" | "cancelled"): PromptLiveResource["status"] {
-  if (status === "running") return "active";
+function downloadStatusToPromptStatus(status: "running" | "paused" | "completed" | "failed" | "cancelled"): PromptLiveResource["status"] {
+  if (status === "running" || status === "paused") return "active";
   if (status === "failed") return "unrecoverable";
   return "closed";
 }
@@ -790,7 +793,7 @@ function buildShellResourceSummary(item: {
 }
 
 function buildDownloadResourceSummary(item: {
-  status: "running" | "completed" | "failed" | "cancelled";
+  status: "running" | "paused" | "completed" | "failed" | "cancelled";
   downloaded_bytes: number;
   total_bytes: number | null;
   percent: number | null;

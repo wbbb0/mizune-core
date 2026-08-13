@@ -8,6 +8,7 @@ import { registerBasicRoutes } from "./routes/basicRoutes.ts";
 import { registerBrowserRoutes } from "./routes/browserRoutes.ts";
 import { registerMessagingRoutes } from "./routes/messagingRoutes.ts";
 import { registerShellRoutes } from "./routes/shellRoutes.ts";
+import { registerDownloadRoutes } from "./routes/downloadRoutes.ts";
 import { registerShellWebSocketUpgrade } from "./routes/shellWebSocket.ts";
 import { registerUploadRoutes } from "./routes/uploadRoutes.ts";
 import { registerAuthRoutes } from "./routes/authRoutes.ts";
@@ -46,6 +47,7 @@ function registerInternalApiRoutes(app: FastifyInstance, services: InternalApiSe
   registerBasicRoutes(app, services.basicRoutes);
   registerBrowserRoutes(app, services.browserRoutes);
   registerShellRoutes(app, services.shellRoutes);
+  registerDownloadRoutes(app, services.downloadRoutes);
   registerMessagingRoutes(app, services.messagingRoutes);
   registerUploadRoutes(app, services.uploadRoutes);
 }

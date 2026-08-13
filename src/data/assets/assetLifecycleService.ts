@@ -241,7 +241,8 @@ function isLifecycleManagedChatFile(file: ChatFileRecord): boolean {
     || file.origin === "browser_download"
     || file.origin === "browser_screenshot"
     || file.origin === "comfy_generated"
-    || file.origin === "group_file_download";
+    || file.origin === "group_file_download"
+    || file.origin === "url_download";
 }
 
 function dedupeSessions<T extends { id: string }>(sessions: T[]): T[] {

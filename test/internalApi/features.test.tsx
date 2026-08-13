@@ -479,6 +479,43 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
     }
   });
 
+  test("internal api manages download tasks for the resources workbench", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      const started = await app.inject({
+        method: "POST",
+        url: "/api/downloads",
+        payload: {
+          url: "https://example.com/archive.zip",
+          sourceName: "archive.zip",
+          concurrency: 8,
+          proxy: "direct"
+        }
+      });
+      assert.equal(started.statusCode, 200);
+      const resourceId = started.json().task.resource_id;
+      assert.equal(started.json().task.source_name, "archive.zip");
+      assert.equal(started.json().task.concurrency, 8);
+
+      const listed = await app.inject({ method: "GET", url: "/api/downloads" });
+      assert.equal(listed.statusCode, 200);
+      assert.equal(listed.json().tasks.length, 1);
+
+      const paused = await app.inject({ method: "POST", url: `/api/downloads/${resourceId}/pause` });
+      assert.equal(paused.json().task.status, "paused");
+      const resumed = await app.inject({ method: "POST", url: `/api/downloads/${resourceId}/resume` });
+      assert.equal(resumed.json().task.status, "running");
+      const cancelled = await app.inject({ method: "POST", url: `/api/downloads/${resourceId}/cancel` });
+      assert.equal(cancelled.json().task.status, "cancelled");
+      const removed = await app.inject({ method: "DELETE", url: `/api/downloads/${resourceId}` });
+      assert.equal(removed.statusCode, 200);
+      assert.deepEqual(removed.json(), { ok: true });
+    } finally {
+      await app.close();
+    }
+  });
+
   test("internal api auto-completes default routing preset template on load and save", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
