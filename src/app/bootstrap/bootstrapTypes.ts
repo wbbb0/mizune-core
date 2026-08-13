@@ -56,6 +56,10 @@ import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import type { ContentSafetyService } from "#contentSafety/contentSafetyService.ts";
 import type { ContentSafetyStore } from "#contentSafety/contentSafetyStore.ts";
 import type { RecentErrorCapture, RecentErrorStore } from "#runtime/recentErrorStore.ts";
+import type { MinecraftActorResourceManager } from "#services/minecraft/actorResourceManager.ts";
+import type { MinecraftActorRuntimeService } from "#services/minecraft/actorRuntimeService.ts";
+import type { MinecraftActorProvisioningService } from "#services/minecraft/actorProvisioningService.ts";
+import type { MinecraftActorOwnerNotificationRouter } from "#services/minecraft/ownerNotificationSink.ts";
 
 export interface AppServiceBootstrap {
   config: ReturnType<typeof loadConfig>;
@@ -114,6 +118,10 @@ export interface AppServiceBootstrap {
   shellRuntime: ShellRuntime;
   runtimeResourceRegistry: RuntimeResourceRegistry;
   runtimeResourceStore: RuntimeResourceStore;
+  minecraftActorManager: MinecraftActorResourceManager;
+  minecraftActorRuntime: MinecraftActorRuntimeService;
+  minecraftActorProvisioning: MinecraftActorProvisioningService;
+  minecraftActorOwnerNotifications: MinecraftActorOwnerNotificationRouter;
   recentErrorStore: RecentErrorStore;
   configManager: ConfigManager;
   singleInstanceLock: SingleInstanceLock;

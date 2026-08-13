@@ -12,7 +12,23 @@ import {
   type MinecraftDecisionResult,
   type MinecraftDecisionWakeReason
 } from "./decisionRunner.ts";
-import type { JsonValue, MinecraftActorSnapshot, MinecraftRuntimeEvent } from "./actorTypes.ts";
+import type {
+  JsonValue,
+  MinecraftActorSnapshot,
+  MinecraftActivateProgramCommand,
+  MinecraftBehaviorCommand,
+  MinecraftCancelBehaviorCommand,
+  MinecraftCancelTaskCommand,
+  MinecraftCommandResult,
+  MinecraftObservationEnvelope,
+  MinecraftObservationRequest,
+  MinecraftProgramDocument,
+  MinecraftProgramObservation,
+  MinecraftProgramValidationResult,
+  MinecraftRuntimeEvent,
+  MinecraftSetAutonomyCommand,
+  MinecraftTaskCommand
+} from "./actorTypes.ts";
 
 export type MinecraftActorWakePriority = "normal" | "high" | "critical";
 
@@ -102,9 +118,11 @@ export class MinecraftActorResourceManager {
   private readonly stateUpdates = new Map<string, Promise<unknown>>();
   private readonly eventIngestions = new Map<string, Promise<MinecraftActorEventIngestionResult>>();
   private readonly closeOperations = new Map<string, Promise<void>>();
+  private readonly ensureOperations = new Map<string, Promise<RuntimeResourceRecord>>();
   private readonly closingResources = new Set<string>();
   private readonly outboxWakeOperations = new Map<string, Promise<MinecraftActorWakeOutcome>>();
   private readonly outboxOwnerOperations = new Map<string, Promise<void>>();
+  private shuttingDown = false;
 
   constructor(
     private readonly registry: RuntimeResourceRegistry,
@@ -116,6 +134,7 @@ export class MinecraftActorResourceManager {
   ) {}
 
   async create(input: CreateMinecraftActorResourceInput): Promise<RuntimeResourceRecord> {
+    this.requireManagerRunning();
     validateRecoveryState(input.actor);
     const createdAtMs = input.createdAtMs ?? this.now();
     return this.registry.createMinecraftActor({
@@ -127,6 +146,28 @@ export class MinecraftActorResourceManager {
       expiresAtMs: null,
       minecraftActor: cloneRecoveryState(input.actor)
     });
+  }
+
+  async ensure(input: CreateMinecraftActorResourceInput): Promise<RuntimeResourceRecord> {
+    this.requireManagerRunning();
+    validateRecoveryState(input.actor);
+    const key = `${input.actor.transportKind}\0${input.actor.endpoint}\0${input.actor.actorId}`;
+    const existing = this.ensureOperations.get(key);
+    if (existing) return existing;
+    const operation = (async () => {
+      const active = await this.registry.listActive("minecraft_actor");
+      const matched = active.find(record => {
+        const actor = record.minecraftActor;
+        return actor?.actorId === input.actor.actorId
+          && actor.transportKind === input.actor.transportKind
+          && actor.endpoint === input.actor.endpoint;
+      });
+      return matched ?? this.create(input);
+    })().finally(() => {
+      if (this.ensureOperations.get(key) === operation) this.ensureOperations.delete(key);
+    });
+    this.ensureOperations.set(key, operation);
+    return operation;
   }
 
   async list(): Promise<RuntimeResourceRecord[]> {
@@ -144,7 +185,95 @@ export class MinecraftActorResourceManager {
     return client.getSnapshot(signal);
   }
 
+  async observe(
+    resourceId: string,
+    request: MinecraftObservationRequest,
+    signal?: AbortSignal
+  ): Promise<MinecraftObservationEnvelope> {
+    const client = await this.requireClient(resourceId);
+    return client.observe(request, signal);
+  }
+
+  async startBehavior(
+    resourceId: string,
+    command: MinecraftBehaviorCommand,
+    signal?: AbortSignal
+  ): Promise<MinecraftCommandResult> {
+    const client = await this.requireClient(resourceId);
+    return client.startBehavior(command, signal);
+  }
+
+  async cancelBehavior(
+    resourceId: string,
+    command: MinecraftCancelBehaviorCommand,
+    signal?: AbortSignal
+  ): Promise<MinecraftCommandResult> {
+    const client = await this.requireClient(resourceId);
+    return client.cancelBehavior(command, signal);
+  }
+
+  async submitTask(
+    resourceId: string,
+    command: MinecraftTaskCommand,
+    signal?: AbortSignal
+  ): Promise<MinecraftCommandResult> {
+    const client = await this.requireClient(resourceId);
+    return client.submitTask(command, signal);
+  }
+
+  async cancelTask(
+    resourceId: string,
+    command: MinecraftCancelTaskCommand,
+    signal?: AbortSignal
+  ): Promise<MinecraftCommandResult> {
+    const client = await this.requireClient(resourceId);
+    return client.cancelTask(command, signal);
+  }
+
+  async setAutonomy(
+    resourceId: string,
+    command: MinecraftSetAutonomyCommand,
+    signal?: AbortSignal
+  ): Promise<MinecraftCommandResult> {
+    const record = await this.requireActiveResource(resourceId);
+    if (!requireActorState(record).allowAutonomyPolicyChange) {
+      throw new Error("Minecraft Actor 资源不允许修改自治策略");
+    }
+    const client = await this.getClient(record);
+    return client.setAutonomy(command, signal);
+  }
+
+  async getActiveProgram(resourceId: string, signal?: AbortSignal): Promise<MinecraftProgramObservation> {
+    const client = await this.requireClient(resourceId);
+    return client.getActiveProgram(signal);
+  }
+
+  async validateProgram(
+    resourceId: string,
+    document: MinecraftProgramDocument,
+    signal?: AbortSignal
+  ): Promise<MinecraftProgramValidationResult> {
+    const record = await this.requireActiveResource(resourceId);
+    if (!requireActorState(record).allowProgramDeployment) {
+      throw new Error("Minecraft Actor 资源不允许部署行为程序");
+    }
+    return (await this.getClient(record)).validateProgram(document, signal);
+  }
+
+  async activateProgram(
+    resourceId: string,
+    command: MinecraftActivateProgramCommand,
+    signal?: AbortSignal
+  ): Promise<MinecraftCommandResult> {
+    const record = await this.requireActiveResource(resourceId);
+    if (!requireActorState(record).allowProgramDeployment) {
+      throw new Error("Minecraft Actor 资源不允许部署行为程序");
+    }
+    return (await this.getClient(record)).activateProgram(command, signal);
+  }
+
   wake(resourceId: string, request: MinecraftActorWakeRequest): Promise<MinecraftActorWakeOutcome> {
+    this.requireManagerRunning();
     validateWakeRequest(request);
     const normalizedRequest: MinecraftActorWakeRequest = {
       ...request,
@@ -168,6 +297,7 @@ export class MinecraftActorResourceManager {
   }
 
   async ingestEvents(resourceId: string): Promise<MinecraftActorEventIngestionResult> {
+    this.requireManagerRunning();
     const normalizedResourceId = requireNonEmpty(resourceId, "resourceId");
     const existing = this.eventIngestions.get(normalizedResourceId);
     if (existing) return existing;
@@ -359,6 +489,7 @@ export class MinecraftActorResourceManager {
   }
 
   async notifyOwnerAttention(resourceId: string, summary: string, details?: JsonValue): Promise<void> {
+    this.requireManagerRunning();
     const record = await this.requireResource(resourceId);
     await this.deliverOwner(record, {
       notificationId: `manual:${resourceId}:${this.now()}`,
@@ -369,6 +500,7 @@ export class MinecraftActorResourceManager {
   }
 
   async close(resourceId: string, reason = "closed"): Promise<void> {
+    this.requireManagerRunning();
     const normalizedResourceId = requireNonEmpty(resourceId, "resourceId");
     const existing = this.closeOperations.get(normalizedResourceId);
     if (existing) return existing;
@@ -379,6 +511,32 @@ export class MinecraftActorResourceManager {
     });
     this.closeOperations.set(normalizedResourceId, operation);
     return operation;
+  }
+
+  async shutdown(reason = "application_shutdown"): Promise<void> {
+    if (this.shuttingDown) return;
+    this.shuttingDown = true;
+    for (const [resourceId, loop] of this.loops) {
+      loop.running?.controller.abort(new Error(reason));
+      if (loop.pending) {
+        loop.pending.resolve({ status: "superseded", reason });
+        loop.pending = null;
+      }
+      this.closingResources.add(resourceId);
+    }
+    const clients = [...new Set([
+      ...this.clients.values(),
+      ...this.clientsPendingCleanup.values()
+    ])];
+    this.clients.clear();
+    this.clientsPendingCleanup.clear();
+    const results = await Promise.allSettled(clients.map(async client => (await client).close()));
+    const failures = results
+      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+      .map(result => result.reason);
+    if (failures.length > 0) {
+      throw new AggregateError(failures, "关闭 Minecraft Actor 本地 transport 失败");
+    }
   }
 
   private async performClose(resourceId: string, reason: string): Promise<void> {
@@ -498,6 +656,7 @@ export class MinecraftActorResourceManager {
   }
 
   private async getClient(record: RuntimeResourceRecord): Promise<MinecraftActorClient> {
+    this.requireManagerRunning();
     if (this.closingResources.has(record.resourceId)) {
       throw new Error(`Minecraft Actor 资源正在关闭：${record.resourceId}`);
     }
@@ -526,6 +685,15 @@ export class MinecraftActorResourceManager {
       throw new Error(`Minecraft Actor 资源在客户端创建期间关闭：${record.resourceId}`);
     }
     return client;
+  }
+
+  private async requireClient(resourceId: string): Promise<MinecraftActorClient> {
+    const record = await this.requireActiveResource(resourceId);
+    return this.getClient(record);
+  }
+
+  private requireManagerRunning(): void {
+    if (this.shuttingDown) throw new Error("Minecraft Actor manager 正在关闭");
   }
 
   private async patchActorState(

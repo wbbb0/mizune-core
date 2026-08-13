@@ -453,6 +453,65 @@ test("client creation is single-flight and close disposes a client created durin
   }
 });
 
+test("ensure 并发复用同一 transport endpoint 的持久资源", async () => {
+  const harness = await createManagerHarness(new FinishOnlyLlm("完成", "完成", null));
+  try {
+    const [first, second] = await Promise.all([
+      harness.manager.ensure(resourceInput()),
+      harness.manager.ensure({ ...resourceInput(), ownerSessionId: "web:owner" })
+    ]);
+
+    assert.equal(first.resourceId, second.resourceId);
+    assert.equal((await harness.manager.list()).length, 1);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("shutdown 只释放 transport，不把持久 Actor resource 标记为 closed", async () => {
+  const harness = await createManagerHarness(new FinishOnlyLlm("完成", "完成", null));
+  try {
+    const resource = await harness.manager.create(resourceInput());
+    await harness.manager.probe(resource.resourceId);
+
+    await harness.manager.shutdown();
+
+    assert.equal(harness.client.closeCalls, 1);
+    assert.equal((await harness.registry.get(resource.resourceId))?.status, "active");
+    await assert.rejects(harness.manager.probe(resource.resourceId), /manager 正在关闭/u);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("服务端资源权限阻止自治修改和程序部署", async () => {
+  const harness = await createManagerHarness(new FinishOnlyLlm("完成", "完成", null));
+  try {
+    const resource = await harness.manager.create(resourceInput());
+    await assert.rejects(harness.manager.setAutonomy(resource.resourceId, {
+      policy: actorSnapshot().autonomyPolicy,
+      expectedActorRevision: 3,
+      idempotencyKey: "autonomy-denied"
+    }), /不允许修改自治策略/u);
+    await assert.rejects(harness.manager.validateProgram(resource.resourceId, {
+      protocolVersion: 1,
+      programId: "denied",
+      programVersion: 1,
+      expectedActorRevision: 3,
+      language: "python",
+      apiVersion: "mizune.mc.v1",
+      entrypoint: "main",
+      source: "async def main(ctx):\n    return\n",
+      sourceHash: `sha256:${"0".repeat(64)}`,
+      requiredCapabilities: [],
+      metadata: {}
+    }), /不允许部署行为程序/u);
+    assert.equal(harness.factoryCalls, 0);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("transport close failure is propagated and a later close retries cleanup", async () => {
   const harness = await createManagerHarness(new FinishOnlyLlm("完成", "完成", null));
   let closeAttempts = 0;

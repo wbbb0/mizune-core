@@ -100,7 +100,7 @@ function replyHello(socket: Socket, message: Record<string, unknown>, connection
     sessionId: `session-${connectionIndex}`,
     capabilities: {
       heartbeatIntervalMs: 1_000,
-      controlLeaseTtlMs: 5_000,
+      controllerLeaseTtlMs: 5_000,
       maxFrameBytes: 1_048_576,
       maxEventsPerPage: 256,
       rpcMethods: ["actor.get_snapshot"],

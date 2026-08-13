@@ -24,6 +24,7 @@ import {
 } from "./runtimeLifecycle.ts";
 import { backfillOneBotSessionHistory } from "./oneBotHistoryBackfill.ts";
 import { createOneBotStartupIngressGate } from "./oneBotStartupIngressGate.ts";
+import { createMinecraftActorOwnerNotificationSink } from "#services/minecraft/ownerNotificationSink.ts";
 
 export interface AppRuntimeOptions extends AppServiceBootstrapOptions {
   forceOneBotStartup?: boolean;
@@ -82,6 +83,8 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     forwardResolver,
     conversationAccess,
     shellRuntime,
+    minecraftActorRuntime,
+    minecraftActorOwnerNotifications,
     configManager,
     recentErrorStore,
     singleInstanceLock
@@ -153,6 +156,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
       contextExtractionQueue
     )
   );
+  minecraftActorOwnerNotifications.bind(createMinecraftActorOwnerNotificationSink(sessionWorkCoordinator));
   shellRuntime.setEventHandler((event) => sessionWorkCoordinator.dispatchTerminalEvent(event));
   services.downloadRuntime.setEventHandler((event) => sessionWorkCoordinator.dispatchDownloadEvent(event));
 
@@ -329,6 +333,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
       schedulerStarted = await startSchedulerIfEnabled(config, scheduler, logger);
       contextMaintenanceService.start();
       await comfyTaskRunner.start();
+      await minecraftActorRuntime.start();
     }
 
     let internalApi = options.disableBackgroundServices
@@ -385,12 +390,16 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
           contextMaintenanceService,
           contextExtractionQueue,
           comfyTaskRunner,
+          minecraftActorRuntime,
           singleInstanceLock,
           logger
         });
       }
     };
   } catch (error) {
+    await minecraftActorRuntime.stop().catch(stopError => {
+      logger.warn({ err: stopError }, "minecraft_actor_runtime_startup_cleanup_failed");
+    });
     await singleInstanceLock.release();
     throw error;
   }

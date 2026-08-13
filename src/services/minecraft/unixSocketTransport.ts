@@ -20,7 +20,7 @@ interface PendingResponse {
 
 interface TransportCapabilities {
   heartbeatIntervalMs: number;
-  controlLeaseTtlMs: number;
+  controllerLeaseTtlMs: number;
   maxFrameBytes: number;
   rpcMethods: string[];
   features: string[];
@@ -91,6 +91,9 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
         await this.ensureConnected(signal);
         const sessionId = this.sessionId;
         if (!sessionId) throw new MinecraftTransportDisconnectedError("Minecraft Runtime 会话尚未建立");
+        if (!this.capabilities?.rpcMethods.includes(method)) {
+          throw new Error(`Minecraft Runtime 不支持 RPC 方法：${method}`);
+        }
         const message = await this.sendAndWait({
           type: "request",
           requestId,
@@ -208,7 +211,8 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
       requestId,
       supportedProtocolVersions: [1],
       actorId: this.actorId,
-      client: { name: this.clientName, version: this.clientVersion }
+      clientName: this.clientName,
+      clientVersion: this.clientVersion
     }, requestId, deadlineAtMs);
     if (hello.type !== "hello_result" || hello.protocolVersion !== 1 || hello.actorId !== this.actorId) {
       throw new Error("Minecraft Runtime hello 响应与请求不匹配");
@@ -309,16 +313,15 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
     const requestId = randomUUID();
     const deadlineAtMs = this.now() + Math.min(
       this.requestTimeoutMs,
-      this.capabilities?.controlLeaseTtlMs ?? this.requestTimeoutMs
+      this.capabilities?.controllerLeaseTtlMs ?? this.requestTimeoutMs
     );
     try {
       const response = await this.sendAndWait({
         type: "heartbeat",
         requestId,
-        sessionId,
-        deadlineAtMs
+        sessionId
       }, requestId, deadlineAtMs);
-      if (response.type !== "heartbeat_result" || response.sessionId !== sessionId) {
+      if (response.type !== "heartbeat_ack" || response.sessionId !== sessionId) {
         throw new Error("Minecraft Runtime heartbeat 响应无效");
       }
     } catch (error) {
@@ -430,17 +433,25 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
 function parseCapabilities(value: unknown, configuredMaxFrameBytes: number): TransportCapabilities {
   if (!isRecord(value)) throw new Error("Minecraft Runtime hello.capabilities 无效");
   const heartbeatIntervalMs = requirePositiveInteger(value.heartbeatIntervalMs, "heartbeatIntervalMs");
-  const controlLeaseTtlMs = requirePositiveInteger(value.controlLeaseTtlMs, "controlLeaseTtlMs");
+  const controllerLeaseTtlMs = requirePositiveInteger(value.controllerLeaseTtlMs, "controllerLeaseTtlMs");
   const maxFrameBytes = requirePositiveInteger(value.maxFrameBytes, "maxFrameBytes");
   if (maxFrameBytes > configuredMaxFrameBytes) {
     // The local limit remains authoritative; a larger remote capability is fine.
   }
   const rpcMethods = requireStringArray(value.rpcMethods, "rpcMethods");
   const features = requireStringArray(value.features, "features");
-  if (controlLeaseTtlMs <= heartbeatIntervalMs) {
+  for (const required of [
+    "request_deadline@1",
+    "durable_idempotency@1",
+    "event_cursor@1",
+    "control_lease@1"
+  ]) {
+    if (!features.includes(required)) throw new Error(`Minecraft Runtime 缺少必要能力：${required}`);
+  }
+  if (controllerLeaseTtlMs <= heartbeatIntervalMs) {
     throw new Error("Minecraft Runtime control lease 必须长于 heartbeat 间隔");
   }
-  return { heartbeatIntervalMs, controlLeaseTtlMs, maxFrameBytes, rpcMethods, features };
+  return { heartbeatIntervalMs, controllerLeaseTtlMs, maxFrameBytes, rpcMethods, features };
 }
 
 function requireStringArray(value: unknown, name: string): string[] {

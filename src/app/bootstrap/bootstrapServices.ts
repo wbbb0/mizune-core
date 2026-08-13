@@ -58,6 +58,11 @@ import { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import { isOwnerBootstrapCommandText } from "./ownerBootstrapPolicy.ts";
 import type { AppBootstrapServices, AppServiceBootstrap, BootstrapRuntimeContext } from "./bootstrapTypes.ts";
 import { resolvePersonaReadinessStatus } from "#persona/personaSetupPolicy.ts";
+import { ConfiguredMinecraftActorClientFactory } from "#services/minecraft/actorClientFactory.ts";
+import { MinecraftActorResourceManager } from "#services/minecraft/actorResourceManager.ts";
+import { MinecraftActorRuntimeService } from "#services/minecraft/actorRuntimeService.ts";
+import { MinecraftActorProvisioningService } from "#services/minecraft/actorProvisioningService.ts";
+import { MinecraftActorOwnerNotificationRouter } from "#services/minecraft/ownerNotificationSink.ts";
 
 export function createBootstrapServices(
   context: BootstrapRuntimeContext,
@@ -132,6 +137,20 @@ export function createBootstrapServices(
   const searchService = new SearchService(config, logger);
   const runtimeResourceStore = new RuntimeResourceStore(stateDatabase);
   const sharedResourceRegistry = new RuntimeResourceRegistry(runtimeResourceStore);
+  const minecraftActorClientFactory = new ConfiguredMinecraftActorClientFactory(config);
+  const minecraftActorOwnerNotifications = new MinecraftActorOwnerNotificationRouter();
+  const minecraftActorManager = new MinecraftActorResourceManager(
+    sharedResourceRegistry,
+    minecraftActorClientFactory,
+    llmClient,
+    logger,
+    minecraftActorOwnerNotifications
+  );
+  const minecraftActorProvisioning = new MinecraftActorProvisioningService(
+    minecraftActorClientFactory,
+    minecraftActorManager
+  );
+  const minecraftActorRuntime = new MinecraftActorRuntimeService(config, minecraftActorManager, logger);
   const recentErrorStore = new RecentErrorStore(dataDir, logger, stateDatabase);
   context.recentErrorCapture.bind(recentErrorStore);
   const browserService = new BrowserService(createBrowserServiceDeps({
@@ -207,6 +226,10 @@ export function createBootstrapServices(
     shellRuntime,
     runtimeResourceRegistry: sharedResourceRegistry,
     runtimeResourceStore,
+    minecraftActorManager,
+    minecraftActorRuntime,
+    minecraftActorProvisioning,
+    minecraftActorOwnerNotifications,
     recentErrorStore
   };
 }

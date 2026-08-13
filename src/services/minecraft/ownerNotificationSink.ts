@@ -16,6 +16,19 @@ interface InternalTriggerDispatcher {
   ): Promise<void>;
 }
 
+export class MinecraftActorOwnerNotificationRouter implements MinecraftActorOwnerNotificationSink {
+  private delegate: MinecraftActorOwnerNotificationSink | null = null;
+
+  bind(delegate: MinecraftActorOwnerNotificationSink): void {
+    this.delegate = delegate;
+  }
+
+  async notify(notification: MinecraftActorOwnerNotification): Promise<void> {
+    if (!this.delegate) throw new Error("Minecraft Actor owner notification router 尚未绑定");
+    await this.delegate.notify(notification);
+  }
+}
+
 export function createMinecraftActorOwnerNotificationSink(
   dispatcher: InternalTriggerDispatcher,
   now: () => number = Date.now

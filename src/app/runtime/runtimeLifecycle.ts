@@ -13,6 +13,7 @@ import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.
 import type { InternalApiServices } from "#internalApi/types.ts";
 import type { ContextMaintenanceService } from "#context/contextMaintenanceService.ts";
 import type { ContextExtractionQueue } from "#context/contextExtractionQueue.ts";
+import type { MinecraftActorRuntimeService } from "#services/minecraft/actorRuntimeService.ts";
 
 export interface InternalApiController {
   close: () => Promise<void>;
@@ -116,6 +117,7 @@ export async function shutdownRuntime(input: {
   contextMaintenanceService: ContextMaintenanceService;
   contextExtractionQueue: ContextExtractionQueue;
   comfyTaskRunner: ComfyTaskRunner;
+  minecraftActorRuntime: MinecraftActorRuntimeService;
   singleInstanceLock: { release: () => Promise<void> };
   logger: Logger & { flush?: () => void | Promise<void> };
 }): Promise<void> {
@@ -130,6 +132,7 @@ export async function shutdownRuntime(input: {
     if (input.schedulerStarted) {
       await input.scheduler.stop();
     }
+    await input.minecraftActorRuntime.stop();
     await input.browserService.shutdown();
     input.contextMaintenanceService.stop();
     input.contextExtractionQueue.stop();
