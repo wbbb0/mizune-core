@@ -724,9 +724,9 @@ async function collectPromptLiveResources(deps: GenerationPromptBuilderDeps): Pr
       resourceId: item.resourceId,
       kind: "minecraft_actor" as const,
       status: item.status,
-      title: item.title,
-      description: item.description,
-      summary: item.summary,
+      title: null,
+      description: null,
+      summary: "持久 Minecraft Actor；需要详情时使用 probe/observe 工具读取",
       lastAccessedAtMs: item.lastAccessedAtMs
     }))
   ]

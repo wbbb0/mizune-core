@@ -478,8 +478,116 @@ test("shutdown 只释放 transport，不把持久 Actor resource 标记为 close
 
     assert.equal(harness.client.closeCalls, 1);
     assert.equal((await harness.registry.get(resource.resourceId))?.status, "active");
-    await assert.rejects(harness.manager.probe(resource.resourceId), /manager 正在关闭/u);
+    await assert.rejects(harness.manager.probe(resource.resourceId), /正在关闭/u);
   } finally {
+    await harness.close();
+  }
+});
+
+test("shutdown 与延迟 client 创建并发时等待创建完成并只关闭一次", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-minecraft-actor-shutdown-race-"));
+  const database = new StateDatabase(dataDir, createSilentLogger());
+  const registry = new RuntimeResourceRegistry(new RuntimeResourceStore(database));
+  const client = new ResourceActorClient();
+  const clientReady = deferred<ResourceActorClient>();
+  const manager = new MinecraftActorResourceManager(
+    registry,
+    { create: () => clientReady.promise },
+    new FinishOnlyLlm("完成", "完成", null),
+    createSilentLogger()
+  );
+  try {
+    const resource = await manager.create(resourceInput());
+    const probe = manager.probe(resource.resourceId);
+    await delay(1);
+    const firstShutdown = manager.shutdown();
+    const secondShutdown = manager.shutdown();
+    clientReady.resolve(client);
+
+    await Promise.all([firstShutdown, secondShutdown]);
+    await assert.rejects(probe, /客户端创建期间关闭/u);
+    assert.equal(client.closeCalls, 1);
+    assert.equal((await registry.get(resource.resourceId))?.status, "active");
+  } finally {
+    database.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("shutdown 等待已启动的 owner outbox 投递收敛后再关闭 transport", async () => {
+  const ownerStarted = deferred<void>();
+  const releaseOwner = deferred<void>();
+  const harness = await createManagerHarness(
+    new FinishOnlyLlm("处理完成", "已处理", null),
+    [],
+    {
+      async notify() {
+        ownerStarted.resolve(undefined);
+        await releaseOwner.promise;
+      }
+    }
+  );
+  try {
+    const resource = await harness.manager.create(resourceInput());
+    harness.client.events = [runtimeEvent({ sequence: 8, priority: "critical" })];
+    const ingestion = await harness.manager.ingestEvents(resource.resourceId);
+    await ownerStarted.promise;
+    await ingestion.wake;
+
+    let stopped = false;
+    const shutdown = harness.manager.shutdown().then(() => { stopped = true; });
+    await delay(5);
+    assert.equal(stopped, false);
+    releaseOwner.resolve(undefined);
+    await shutdown;
+
+    assert.equal(harness.client.closeCalls, 1);
+    assert.deepEqual(await harness.registry.listPendingMinecraftActorOutbox(resource.resourceId), []);
+  } finally {
+    releaseOwner.resolve(undefined);
+    await harness.close();
+  }
+});
+
+test("shutdown 等待被打断的 manual wake 真正退出", async () => {
+  const wakeStarted = deferred<void>();
+  const releaseWake = deferred<void>();
+  const harness = await createManagerHarness(new FinishOnlyLlm("完成", "完成", null));
+  try {
+    const resource = await harness.manager.create(resourceInput());
+    await harness.manager.probe(resource.resourceId);
+    const managerInternals = harness.manager as unknown as {
+      executeWake(
+        resourceId: string,
+        request: { type: "owner_request"; summary: string; occurredAtMs: number },
+        signal: AbortSignal
+      ): Promise<{ status: "interrupted"; reason: string }>;
+    };
+    managerInternals.executeWake = async (_resourceId, _request, signal) => {
+      wakeStarted.resolve(undefined);
+      await releaseWake.promise;
+      return {
+        status: "interrupted",
+        reason: signal.reason instanceof Error ? signal.reason.message : String(signal.reason)
+      };
+    };
+    const wake = harness.manager.wake(resource.resourceId, {
+      type: "owner_request",
+      summary: "手动检查",
+      occurredAtMs: 100
+    });
+    await wakeStarted.promise;
+    let stopped = false;
+    const shutdown = harness.manager.shutdown().then(() => { stopped = true; });
+    await delay(5);
+    assert.equal(stopped, false);
+    releaseWake.resolve(undefined);
+    await shutdown;
+
+    assert.equal((await wake).status, "interrupted");
+    assert.equal(harness.client.closeCalls, 1);
+  } finally {
+    releaseWake.resolve(undefined);
     await harness.close();
   }
 });
@@ -509,6 +617,143 @@ test("服务端资源权限阻止自治修改和程序部署", async () => {
     assert.equal(harness.factoryCalls, 0);
   } finally {
     await harness.close();
+  }
+});
+
+test("首次恢复 client 前把持久模型与权限收敛到当前 endpoint 策略", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-minecraft-actor-reconcile-"));
+  const database = new StateDatabase(dataDir, createSilentLogger());
+  const registry = new RuntimeResourceRegistry(new RuntimeResourceStore(database));
+  const client = new ResourceActorClient();
+  const manager = new MinecraftActorResourceManager(
+    registry,
+    {
+      create: () => client,
+      reconcileRecoveryState(actor) {
+        return {
+          ...actor,
+          modelRefs: ["current-model"],
+          allowAutonomyPolicyChange: true,
+          allowProgramDeployment: true
+        };
+      }
+    },
+    new FinishOnlyLlm("完成", "完成", null),
+    createSilentLogger()
+  );
+  try {
+    const resource = await manager.create(resourceInput());
+    await manager.probe(resource.resourceId);
+    const reconciled = await registry.get(resource.resourceId);
+
+    assert.deepEqual(reconciled?.minecraftActor?.modelRefs, ["current-model"]);
+    assert.equal(reconciled?.minecraftActor?.allowAutonomyPolicyChange, true);
+    assert.equal(reconciled?.minecraftActor?.allowProgramDeployment, true);
+  } finally {
+    await manager.shutdown();
+    database.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("配置撤权在首次命令授权前生效，不允许用旧持久权限执行一次", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-minecraft-actor-revoke-"));
+  const database = new StateDatabase(dataDir, createSilentLogger());
+  const registry = new RuntimeResourceRegistry(new RuntimeResourceStore(database));
+  let factoryCalls = 0;
+  const manager = new MinecraftActorResourceManager(
+    registry,
+    {
+      create() {
+        factoryCalls += 1;
+        return new ResourceActorClient();
+      },
+      reconcileRecoveryState(actor) {
+        return {
+          ...actor,
+          modelRefs: ["revoked-policy-model"],
+          allowAutonomyPolicyChange: false,
+          allowProgramDeployment: false
+        };
+      }
+    },
+    new FinishOnlyLlm("完成", "完成", null),
+    createSilentLogger()
+  );
+  try {
+    const resource = await manager.create({
+      ...resourceInput(),
+      actor: {
+        ...resourceInput().actor,
+        allowAutonomyPolicyChange: true,
+        allowProgramDeployment: true
+      }
+    });
+    await assert.rejects(manager.setAutonomy(resource.resourceId, {
+      policy: actorSnapshot().autonomyPolicy,
+      expectedActorRevision: 3,
+      idempotencyKey: "revoked-autonomy"
+    }), /不允许修改自治策略/u);
+    await assert.rejects(manager.validateProgram(resource.resourceId, {
+      protocolVersion: 1,
+      programId: "revoked",
+      programVersion: 1,
+      expectedActorRevision: 3,
+      language: "python",
+      apiVersion: "mizune.mc.v1",
+      entrypoint: "main",
+      source: "async def main(ctx):\n    return\n",
+      sourceHash: `sha256:${"0".repeat(64)}`,
+      requiredCapabilities: [],
+      metadata: {}
+    }), /不允许部署行为程序/u);
+
+    assert.equal(factoryCalls, 0);
+    const persisted = await registry.get(resource.resourceId);
+    assert.equal(persisted?.minecraftActor?.allowAutonomyPolicyChange, false);
+    assert.equal(persisted?.minecraftActor?.allowProgramDeployment, false);
+    assert.deepEqual(persisted?.minecraftActor?.modelRefs, ["revoked-policy-model"]);
+  } finally {
+    await manager.shutdown();
+    database.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("恢复端点被移除时先标记资源不可恢复，再拒绝控制命令", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-minecraft-actor-removed-endpoint-"));
+  const database = new StateDatabase(dataDir, createSilentLogger());
+  const registry = new RuntimeResourceRegistry(new RuntimeResourceStore(database));
+  const manager = new MinecraftActorResourceManager(
+    registry,
+    {
+      create: () => new ResourceActorClient(),
+      reconcileRecoveryState() {
+        throw new Error("Minecraft Actor 恢复端点已不在服务端允许列表");
+      }
+    },
+    new FinishOnlyLlm("完成", "完成", null),
+    createSilentLogger()
+  );
+  try {
+    const resource = await manager.create({
+      ...resourceInput(),
+      actor: {
+        ...resourceInput().actor,
+        allowAutonomyPolicyChange: true
+      }
+    });
+    await assert.rejects(manager.setAutonomy(resource.resourceId, {
+      policy: actorSnapshot().autonomyPolicy,
+      expectedActorRevision: 3,
+      idempotencyKey: "removed-endpoint"
+    }), /恢复端点已不在服务端允许列表/u);
+
+    assert.equal((await registry.get(resource.resourceId))?.status, "unrecoverable");
+  } finally {
+    await manager.shutdown();
+    database.close();
+    await rm(dataDir, { recursive: true, force: true });
   }
 });
 

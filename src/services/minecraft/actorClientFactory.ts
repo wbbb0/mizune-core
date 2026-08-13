@@ -1,4 +1,5 @@
 import { isAbsolute, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import type { AppConfig } from "#config/config.ts";
 import type { MinecraftActorRecoveryState } from "#runtime/resources/resourceTypes.ts";
 import { ProtocolMinecraftActorClient, type MinecraftActorClient } from "./actorClient.ts";
@@ -59,7 +60,29 @@ export class ConfiguredMinecraftActorClientFactory implements MinecraftActorClie
     return new ProtocolMinecraftActorClient(endpoint.actor.actorId, transport);
   }
 
+  reconcileRecoveryState(actor: MinecraftActorRecoveryState): MinecraftActorRecoveryState {
+    const endpoint = this.findRecoveryEndpointByIdentity(actor);
+    return {
+      ...actor,
+      modelRefs: [...endpoint.actor.modelRefs],
+      allowAutonomyPolicyChange: endpoint.actor.allowAutonomyPolicyChange,
+      allowProgramDeployment: endpoint.actor.allowProgramDeployment
+    };
+  }
+
   private findAllowedRecoveryEndpoint(actor: MinecraftActorRecoveryState): ResolvedMinecraftActorEndpoint {
+    const resolved = this.findRecoveryEndpointByIdentity(actor);
+    if (
+      !isDeepStrictEqual(resolved.actor.modelRefs, actor.modelRefs)
+      || resolved.actor.allowAutonomyPolicyChange !== actor.allowAutonomyPolicyChange
+      || resolved.actor.allowProgramDeployment !== actor.allowProgramDeployment
+    ) {
+      throw new Error(`Minecraft Actor 恢复策略与当前 endpoint 配置不一致：${actor.actorId}`);
+    }
+    return resolved;
+  }
+
+  private findRecoveryEndpointByIdentity(actor: MinecraftActorRecoveryState): ResolvedMinecraftActorEndpoint {
     if (actor.transportKind !== "unix_socket" || actor.protocolVersion !== 1) {
       throw new Error(`Minecraft Actor transport 不受当前运行时支持：${actor.transportKind}`);
     }

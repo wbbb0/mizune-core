@@ -8,6 +8,24 @@ Minecraft Actor 是一个 owner-only 的持久系统资源。父项目负责会�
 
 当前 worktree 的 `config/instances/dev.yml` 已配置 endpoint `dev`，Actor ID 为 `mizune-dev`，使用 `ds_deepseek_v4_flash`。实际配置和 `data/dev` 都是本地文件，不进入 Git。
 
+新 worktree 需要在本地实例配置中加入以下片段；路径相对 `config/` 解析：
+
+```yaml
+minecraft:
+  enabled: true
+  eventPollIntervalMs: 500
+  endpoints:
+    dev:
+      actorId: mizune-dev
+      socketPath: ../data/dev/minecraft-runtime/runtime.sock
+      modelRefs:
+        - ds_deepseek_v4_flash
+      allowAutonomyPolicyChange: true
+      allowProgramDeployment: true
+      initialPersistentState: 尚无持久经历。
+      initialGoal: null
+```
+
 先在一个终端启动模拟 Runtime：
 
 ```bash
@@ -22,6 +40,8 @@ CONFIG_INSTANCE=dev npm run dev
 
 Runtime 的 Unix socket 与 SQLite 位于 `data/dev/minecraft-runtime/`。停止父项目只关闭本地 transport，不会隐式关闭远端 Actor；控制连接租约到期后，daemon 会取消活动行为和排队任务、关闭自治并进入安全状态。
 
+Minecraft endpoint、模型和权限配置属于 restart-required 配置。开发时修改后必须重启父项目；热重载会继续保留启动时策略，避免旧连接沿用已撤销权限或持久资源进入半迁移状态。
+
 ## 模型可见接口
 
 启用 `minecraft_actor` 工具集后，owner 会话可以：
@@ -34,6 +54,8 @@ Runtime 的 Unix socket 与 SQLite 位于 `data/dev/minecraft-runtime/`。停止
 - 手动唤起上层决策，或立即推进一次事件 outbox。
 
 socket 路径、Actor ID、决策模型和部署权限只能由服务端配置给出。模型不能提供 transport 地址、revision 或幂等键；父项目在执行前读取当前快照，并从 session ID、tool call ID、resource ID 和动作类型派生稳定幂等键。
+
+同一个 endpoint/Actor 在父项目中只保留一个 active resource。最初创建它的 owner session 是关注事件的持有会话；其他 owner 会话可以控制该全局资源，但不会隐式转移通知路由。owner notification 使用 at-least-once 投递，极端崩溃窗口可能按同一 notification ID 重放，消费侧应把该 ID 作为去重依据。
 
 ## 验证边界
 

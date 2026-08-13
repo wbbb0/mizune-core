@@ -14,6 +14,7 @@ import type { InternalApiServices } from "#internalApi/types.ts";
 import type { ContextMaintenanceService } from "#context/contextMaintenanceService.ts";
 import type { ContextExtractionQueue } from "#context/contextExtractionQueue.ts";
 import type { MinecraftActorRuntimeService } from "#services/minecraft/actorRuntimeService.ts";
+import { isDeepStrictEqual } from "node:util";
 
 export interface InternalApiController {
   close: () => Promise<void>;
@@ -62,6 +63,12 @@ export function subscribeRuntimeReload(input: {
   services: InternalApiServices;
 }): void {
   input.configManager.subscribe(async ({ previousConfig, currentConfig }) => {
+    if (!isDeepStrictEqual(previousConfig.minecraft, currentConfig.minecraft)) {
+      input.config.minecraft = structuredClone(previousConfig.minecraft);
+      input.logger.warn(
+        "minecraft_config_change_requires_restart; keeping the active runtime policy until restart"
+      );
+    }
     input.searchService.reloadConfig();
     await input.browserService.reloadConfig();
     await input.oneBotClient.reloadConfig(previousConfig);

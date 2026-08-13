@@ -52,6 +52,7 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
   private readonly configuredMaxFrameBytes: number;
   private readonly clientName: string;
   private readonly clientVersion: string;
+  private readonly controllerId = randomUUID();
   private readonly now: () => number;
   private readonly pending = new Map<string, PendingResponse>();
   private readonly abandonedResponseIds = new Set<string>();
@@ -212,8 +213,17 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
       supportedProtocolVersions: [1],
       actorId: this.actorId,
       clientName: this.clientName,
-      clientVersion: this.clientVersion
+      clientVersion: this.clientVersion,
+      controllerId: this.controllerId
     }, requestId, deadlineAtMs);
+    if (hello.type === "error") {
+      const error = isRecord(hello.error) ? hello.error : {};
+      throw new MinecraftActorRpcError(
+        typeof error.code === "string" ? error.code : "hello_failed",
+        typeof error.message === "string" ? error.message : "Minecraft Runtime 握手失败",
+        false
+      );
+    }
     if (hello.type !== "hello_result" || hello.protocolVersion !== 1 || hello.actorId !== this.actorId) {
       throw new Error("Minecraft Runtime hello 响应与请求不匹配");
     }

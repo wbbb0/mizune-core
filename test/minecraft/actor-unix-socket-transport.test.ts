@@ -187,7 +187,7 @@ test("request timeout rejects locally and sends a best-effort protocol cancel", 
     if (message.type === "cancel") {
       cancelledTarget = String(message.targetRequestId);
       reply(socket, {
-        type: "cancel_result",
+        type: "cancel_ack",
         requestId: message.requestId,
         targetRequestId: message.targetRequestId,
         cancelled: true
@@ -200,6 +200,30 @@ test("request timeout rejects locally and sends a best-effort protocol cancel", 
     await assert.rejects(client.getSnapshot(), /请求超时/u);
     await waitUntil(() => cancelledTarget !== null);
     assert.equal(cancelledTarget, requestId);
+  } finally {
+    await transport.close();
+    await server.close();
+  }
+});
+
+test("hello error preserves controller_busy protocol code", async () => {
+  const server = await startFramedServer((socket, message) => {
+    if (message.type !== "hello") return;
+    assert.equal(typeof message.controllerId, "string");
+    reply(socket, {
+      type: "error",
+      requestId: message.requestId,
+      error: { code: "controller_busy", message: "another controller holds the active lease" }
+    });
+  });
+  const transport = createTransport(server.socketPath);
+  try {
+    const client = new ProtocolMinecraftActorClient("actor-dev", transport);
+    await assert.rejects(client.getSnapshot(), error => (
+      error instanceof Error
+      && "code" in error
+      && error.code === "controller_busy"
+    ));
   } finally {
     await transport.close();
     await server.close();

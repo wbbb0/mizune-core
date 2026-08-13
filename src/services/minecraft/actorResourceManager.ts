@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { LlmClient } from "#llm/llmClient.ts";
 import type {
   MinecraftActorRecoveryState,
@@ -49,6 +50,7 @@ export interface MinecraftActorClientFactory {
     resourceId: string;
     actor: MinecraftActorRecoveryState;
   }): Promise<MinecraftActorClient> | MinecraftActorClient;
+  reconcileRecoveryState?(actor: MinecraftActorRecoveryState): MinecraftActorRecoveryState;
 }
 
 export interface MinecraftActorOwnerNotification {
@@ -87,6 +89,7 @@ interface PendingWake {
 interface RunningWake {
   request: MinecraftActorWakeRequest;
   controller: AbortController;
+  operation: Promise<void> | null;
 }
 
 interface ActorLoopState {
@@ -123,6 +126,7 @@ export class MinecraftActorResourceManager {
   private readonly outboxWakeOperations = new Map<string, Promise<MinecraftActorWakeOutcome>>();
   private readonly outboxOwnerOperations = new Map<string, Promise<void>>();
   private shuttingDown = false;
+  private shutdownOperation: Promise<void> | null = null;
 
   constructor(
     private readonly registry: RuntimeResourceRegistry,
@@ -162,7 +166,7 @@ export class MinecraftActorResourceManager {
           && actor.transportKind === input.actor.transportKind
           && actor.endpoint === input.actor.endpoint;
       });
-      return matched ?? this.create(input);
+      return matched ? this.reconcileResourceRecord(matched) : this.create(input);
     })().finally(() => {
       if (this.ensureOperations.get(key) === operation) this.ensureOperations.delete(key);
     });
@@ -235,7 +239,7 @@ export class MinecraftActorResourceManager {
     command: MinecraftSetAutonomyCommand,
     signal?: AbortSignal
   ): Promise<MinecraftCommandResult> {
-    const record = await this.requireActiveResource(resourceId);
+    const record = await this.requireReconciledActiveResource(resourceId);
     if (!requireActorState(record).allowAutonomyPolicyChange) {
       throw new Error("Minecraft Actor 资源不允许修改自治策略");
     }
@@ -253,7 +257,7 @@ export class MinecraftActorResourceManager {
     document: MinecraftProgramDocument,
     signal?: AbortSignal
   ): Promise<MinecraftProgramValidationResult> {
-    const record = await this.requireActiveResource(resourceId);
+    const record = await this.requireReconciledActiveResource(resourceId);
     if (!requireActorState(record).allowProgramDeployment) {
       throw new Error("Minecraft Actor 资源不允许部署行为程序");
     }
@@ -265,7 +269,7 @@ export class MinecraftActorResourceManager {
     command: MinecraftActivateProgramCommand,
     signal?: AbortSignal
   ): Promise<MinecraftCommandResult> {
-    const record = await this.requireActiveResource(resourceId);
+    const record = await this.requireReconciledActiveResource(resourceId);
     if (!requireActorState(record).allowProgramDeployment) {
       throw new Error("Minecraft Actor 资源不允许部署行为程序");
     }
@@ -514,8 +518,14 @@ export class MinecraftActorResourceManager {
   }
 
   async shutdown(reason = "application_shutdown"): Promise<void> {
-    if (this.shuttingDown) return;
+    if (this.shutdownOperation) return this.shutdownOperation;
     this.shuttingDown = true;
+    const operation = this.performShutdown(reason);
+    this.shutdownOperation = operation;
+    return operation;
+  }
+
+  private async performShutdown(reason: string): Promise<void> {
     for (const [resourceId, loop] of this.loops) {
       loop.running?.controller.abort(new Error(reason));
       if (loop.pending) {
@@ -524,6 +534,9 @@ export class MinecraftActorResourceManager {
       }
       this.closingResources.add(resourceId);
     }
+    for (const resourceId of this.clients.keys()) this.closingResources.add(resourceId);
+    for (const resourceId of this.clientsPendingCleanup.keys()) this.closingResources.add(resourceId);
+    await this.drainBackgroundOperations();
     const clients = [...new Set([
       ...this.clients.values(),
       ...this.clientsPendingCleanup.values()
@@ -536,6 +549,27 @@ export class MinecraftActorResourceManager {
       .map(result => result.reason);
     if (failures.length > 0) {
       throw new AggregateError(failures, "关闭 Minecraft Actor 本地 transport 失败");
+    }
+  }
+
+  private async drainBackgroundOperations(): Promise<void> {
+    while (true) {
+      const operations = [...new Set<Promise<unknown>>([
+        ...this.ensureOperations.values(),
+        ...this.eventIngestions.values(),
+        ...this.stateUpdates.values(),
+        ...this.closeOperations.values(),
+        ...this.outboxWakeOperations.values(),
+        ...this.outboxOwnerOperations.values(),
+        ...[...this.loops.values()].flatMap(loop => loop.running?.operation ? [loop.running.operation] : [])
+      ])];
+      if (operations.length === 0) return;
+      const results = await Promise.allSettled(operations);
+      for (const result of results) {
+        if (result.status === "rejected") {
+          this.logger.warn({ err: result.reason }, "minecraft_actor_shutdown_operation_failed");
+        }
+      }
     }
   }
 
@@ -595,8 +629,9 @@ export class MinecraftActorResourceManager {
 
   private startWake(resourceId: string, loop: ActorLoopState, pending: PendingWake): void {
     const controller = new AbortController();
-    loop.running = { request: pending.request, controller };
-    void this.executeWake(resourceId, pending.request, controller.signal)
+    const running: RunningWake = { request: pending.request, controller, operation: null };
+    loop.running = running;
+    const operation = this.executeWake(resourceId, pending.request, controller.signal)
       .then(pending.resolve)
       .finally(() => {
         loop.running = null;
@@ -608,6 +643,7 @@ export class MinecraftActorResourceManager {
           this.loops.delete(resourceId);
         }
       });
+    running.operation = operation;
   }
 
   private async executeWake(
@@ -616,7 +652,7 @@ export class MinecraftActorResourceManager {
     signal: AbortSignal
   ): Promise<MinecraftActorWakeOutcome> {
     try {
-      const record = await this.requireActiveResource(resourceId);
+      const record = await this.requireReconciledActiveResource(resourceId);
       const actorState = requireActorState(record);
       const client = await this.getClient(record);
       const runner = new MinecraftDecisionRunner(this.llm, client, this.logger);
@@ -645,7 +681,7 @@ export class MinecraftActorResourceManager {
       this.logger.warn({ err: error, resourceId, wakeType: request.type }, "minecraft_actor_decision_failed");
       const record = await this.get(resourceId);
       if (record) {
-        void this.notifyOwnerBestEffort(record, {
+        await this.notifyOwnerBestEffort(record, {
           notificationId: `decision_failed:${resourceId}:${this.now()}`,
           type: "decision_failed",
           summary: `Minecraft 决策失败：${message}`
@@ -669,10 +705,13 @@ export class MinecraftActorResourceManager {
       return client;
     }
     const creation = Promise.resolve()
-      .then(() => this.clientFactory.create({
-        resourceId: record.resourceId,
-        actor: cloneRecoveryState(requireActorState(record))
-      }))
+      .then(async () => {
+        const reconciledRecord = await this.reconcileResourceRecord(record, true);
+        return this.clientFactory.create({
+          resourceId: reconciledRecord.resourceId,
+          actor: cloneRecoveryState(requireActorState(reconciledRecord))
+        });
+      })
       .catch(error => {
         if (this.clients.get(record.resourceId) === creation) {
           this.clients.delete(record.resourceId);
@@ -685,6 +724,37 @@ export class MinecraftActorResourceManager {
       throw new Error(`Minecraft Actor 资源在客户端创建期间关闭：${record.resourceId}`);
     }
     return client;
+  }
+
+  private async reconcileResourceRecord(
+    record: RuntimeResourceRecord,
+    markUnrecoverableOnPolicyError = false
+  ): Promise<RuntimeResourceRecord> {
+    const reconcile = this.clientFactory.reconcileRecoveryState;
+    if (!reconcile) return record;
+    const current = requireActorState(record);
+    let reconciled: MinecraftActorRecoveryState;
+    try {
+      reconciled = reconcile(cloneRecoveryState(current));
+      validateRecoveryState(reconciled);
+    } catch (error) {
+      if (markUnrecoverableOnPolicyError) {
+        await this.registry.markStatus(record.resourceId, "unrecoverable", this.now());
+      }
+      throw error;
+    }
+    if (isDeepStrictEqual(current, reconciled)) return record;
+    return this.enqueueStateUpdate(record.resourceId, async () => {
+      const latest = await this.requireActiveResource(record.resourceId);
+      const next = reconcile(cloneRecoveryState(requireActorState(latest)));
+      validateRecoveryState(next);
+      const updated = await this.registry.updateMinecraftActor(record.resourceId, next, {
+        updatedAtMs: this.now(),
+        summary: buildResourceSummary(next)
+      });
+      if (!updated) throw new Error(`Minecraft Actor 资源不是 active：${record.resourceId}`);
+      return updated;
+    });
   }
 
   private async requireClient(resourceId: string): Promise<MinecraftActorClient> {
@@ -742,6 +812,10 @@ export class MinecraftActorResourceManager {
       throw new Error(`Minecraft Actor 资源不是 active：${record.status}`);
     }
     return record;
+  }
+
+  private async requireReconciledActiveResource(resourceId: string): Promise<RuntimeResourceRecord> {
+    return this.reconcileResourceRecord(await this.requireActiveResource(resourceId), true);
   }
 
   private async deliverOwner(
