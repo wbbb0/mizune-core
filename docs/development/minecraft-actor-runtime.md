@@ -17,7 +17,7 @@ minecraft:
   endpoints:
     dev:
       actorId: mizune-dev
-      socketPath: ../data/dev/minecraft-runtime/runtime.sock
+      socketPath: /tmp/mizune-mc-dev/runtime.sock
       modelRefs:
         - ds_deepseek_v4_flash
       allowAutonomyPolicyChange: true
@@ -38,7 +38,7 @@ npm run dev:minecraft-runtime
 CONFIG_INSTANCE=dev npm run dev
 ```
 
-Runtime 的 Unix socket 与 SQLite 位于 `data/dev/minecraft-runtime/`。停止父项目只关闭本地 transport，不会隐式关闭远端 Actor；控制连接租约到期后，daemon 会取消活动行为和排队任务、关闭自治并进入安全状态。
+Runtime 的 Unix socket 位于 `/tmp/mizune-mc-dev/runtime.sock`，SQLite 位于 `data/dev/minecraft-runtime/runtime.sqlite`。socket 使用短路径是为了避开 Linux AF_UNIX 约 108 字节的路径上限；daemon 会把其父目录权限收敛为 `0700`。停止父项目只关闭本地 transport，不会隐式关闭远端 Actor；控制连接租约到期后，daemon 会取消活动行为和排队任务、关闭自治并进入安全状态。
 
 父项目停机时会先给正在进行的 owner notification 最多 5 秒收敛时间；超时则中止会话侧投递并保留 outbox 为 pending，避免单次模型生成阻塞整个应用退出。下次启动会按原 notification ID 重试。
 

@@ -37,7 +37,7 @@
     "dev": "NODE_ENV=development node scripts/dev.mjs",
     "dev:bot": "NODE_ENV=development LLM_BOT_WEBUI_MODE=external tsx watch src/index.ts",
     "dev:webui": "NODE_ENV=development npm --prefix webui run dev",
-    "dev:minecraft-runtime": "PYTHONPATH=vendor/mizune-mc-runtime/src python3 -m mizune_mc_runtime.daemon --socket data/dev/minecraft-runtime/runtime.sock --database data/dev/minecraft-runtime/runtime.sqlite --actor-id mizune-dev",
+    "dev:minecraft-runtime": "PYTHONPATH=vendor/mizune-mc-runtime/src python3 -m mizune_mc_runtime.daemon --socket /tmp/mizune-mc-dev/runtime.sock --database data/dev/minecraft-runtime/runtime.sqlite --actor-id mizune-dev",
     "install:browsers": "playwright install chromium",
     "cleanup:invalid-chat-media": "npx tsx scripts/cleanup-invalid-chat-media.ts",
     "migrate:memory": "npx tsx scripts/migrate-memory-refactor.ts",
