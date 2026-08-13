@@ -1,3 +1,6 @@
 [submodule "vendor/workbench-kit"]
 	path = vendor/workbench-kit
 	url = https://github.com/wbbb0/workbench-kit.git
+[submodule "vendor/mizune-mc-runtime"]
+	path = vendor/mizune-mc-runtime
+	url = https://github.com/wbbb0/mizune-mc-runtime.git
