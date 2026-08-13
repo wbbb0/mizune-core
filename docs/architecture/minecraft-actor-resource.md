@@ -77,6 +77,8 @@ SHA-256 由父项目根据完整源码计算，不要求模型生成。静态 AS
 
 决策 runner 自己实施硬截止，不依赖 provider 是否遵守 AbortSignal；截止后的迟到工具调用不会更新决策状态。已经发往远端、但 transport 忽略取消的控制仍可能产生“结果未知”，因此正式 Unix socket / loopback transport 必须同时实现 request deadline、持久化命令幂等结果和重连后的 snapshot 对账。当前模拟 Runtime 的幂等表仍在内存，只覆盖父进程单独崩溃；父项目与 Runtime 同时重启的重放安全是正式 transport 前的明确前置条件。
 
+`MinecraftActorClient.close()` 的协议含义只允许是释放当前父进程持有的本地 transport，不得隐式承担“让远端退出服务器、停止自治”等需要跨进程持久重试的业务动作。正式 Runtime/Bridge 必须使用带期限的控制租约或心跳：父连接消失且租约到期后自动停手并进入安全状态。显式关闭远端 Actor 应使用带持久幂等键和可恢复 outbox 的独立控制命令。这样父进程退出天然释放本地连接，不依赖易丢失的内存 cleanup intent 承担远端安全语义。
+
 ## 下一落地点
 
 1. 实现带 request ID、取消和重连的 Unix socket / loopback transport，并让 Python runtime daemon 提供同一 v1 RPC。

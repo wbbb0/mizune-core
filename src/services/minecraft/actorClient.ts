@@ -34,6 +34,7 @@ export type MinecraftActorRpcMethod =
 
 export interface MinecraftActorTransport {
   call(method: MinecraftActorRpcMethod, payload: Record<string, unknown>, signal?: AbortSignal): Promise<unknown>;
+  /** 只释放当前进程的 transport；远端停机必须使用可持久重试的显式命令。 */
   close(): Promise<void> | void;
 }
 
@@ -52,6 +53,7 @@ export interface MinecraftActorClient {
   ): Promise<MinecraftProgramValidationResult>;
   activateProgram(command: MinecraftActivateProgramCommand, signal?: AbortSignal): Promise<MinecraftCommandResult>;
   listEvents(afterSequence?: number, signal?: AbortSignal): Promise<MinecraftRuntimeEvent[]>;
+  /** 只释放当前进程的 transport；不得隐式承担远端 Actor 的业务关闭。 */
   close(): Promise<void> | void;
 }
 
