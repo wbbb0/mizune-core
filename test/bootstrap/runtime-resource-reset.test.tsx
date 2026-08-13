@@ -38,6 +38,7 @@ test("initializeBootstrapState resets ephemeral resources but preserves Minecraf
     });
     const minecraft = await runtimeResourceRegistry.createMinecraftActor({
       ownerSessionId: "onebot:private:owner",
+      ownerPrincipalId: "owner",
       title: "测试 Actor",
       summary: "离线测试 Actor",
       createdAtMs: 2,

@@ -63,6 +63,7 @@ import { MinecraftActorResourceManager } from "#services/minecraft/actorResource
 import { MinecraftActorRuntimeService } from "#services/minecraft/actorRuntimeService.ts";
 import { MinecraftActorProvisioningService } from "#services/minecraft/actorProvisioningService.ts";
 import { MinecraftActorOwnerNotificationRouter } from "#services/minecraft/ownerNotificationSink.ts";
+import { MinecraftActorControlStore } from "#services/minecraft/actorControlStore.ts";
 
 export function createBootstrapServices(
   context: BootstrapRuntimeContext,
@@ -137,10 +138,12 @@ export function createBootstrapServices(
   const searchService = new SearchService(config, logger);
   const runtimeResourceStore = new RuntimeResourceStore(stateDatabase);
   const sharedResourceRegistry = new RuntimeResourceRegistry(runtimeResourceStore);
+  const minecraftActorControlStore = new MinecraftActorControlStore(stateDatabase);
   const minecraftActorClientFactory = new ConfiguredMinecraftActorClientFactory(config);
   const minecraftActorOwnerNotifications = new MinecraftActorOwnerNotificationRouter();
   const minecraftActorManager = new MinecraftActorResourceManager(
     sharedResourceRegistry,
+    minecraftActorControlStore,
     minecraftActorClientFactory,
     llmClient,
     logger,

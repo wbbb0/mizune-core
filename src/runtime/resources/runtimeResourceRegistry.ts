@@ -90,6 +90,7 @@ export class RuntimeResourceRegistry {
 
   async createMinecraftActor(input: {
     ownerSessionId: string;
+    ownerPrincipalId: string;
     title: string | null;
     description?: string | null;
     summary: string;
@@ -111,7 +112,7 @@ export class RuntimeResourceRegistry {
       expiresAtMs: input.expiresAtMs,
       minecraftActor: input.minecraftActor
     };
-    await this.store.upsert(record);
+    await this.store.upsert(record, { minecraftOwnerPrincipalId: input.ownerPrincipalId });
     return record;
   }
 

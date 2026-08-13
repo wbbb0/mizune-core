@@ -7,8 +7,10 @@ import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 
 test("runtime service 隔离单个 Actor 轮询故障并在停止时关闭 manager", async () => {
   const ingested: string[] = [];
+  const processed: string[] = [];
   let shutdownCalls = 0;
   const manager = {
+    async recoverMailbox() { return 0; },
     async list() {
       return [
         { resourceId: "actor-failed", status: "active" },
@@ -21,6 +23,7 @@ test("runtime service 隔离单个 Actor 轮询故障并在停止时关闭 manag
       if (resourceId === "actor-failed") throw new Error("temporary disconnect");
       return { events: [], wake: null };
     },
+    async processMailbox(resourceId: string) { processed.push(resourceId); return null; },
     async shutdown() { shutdownCalls += 1; }
   } as unknown as MinecraftActorResourceManager;
   const config = createTestAppConfig({
@@ -32,6 +35,7 @@ test("runtime service 隔离单个 Actor 轮询故障并在停止时关闭 manag
   await service.stop();
 
   assert.deepEqual(ingested.sort(), ["actor-failed", "actor-healthy"]);
+  assert.deepEqual(processed, ["actor-healthy"]);
   assert.equal(shutdownCalls, 1);
 });
 

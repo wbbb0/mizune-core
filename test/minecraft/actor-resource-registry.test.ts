@@ -31,6 +31,7 @@ test("Minecraft actor resource persists decision state and survives ephemeral re
     });
     const created = await firstRegistry.createMinecraftActor({
       ownerSessionId: "onebot:private:owner",
+      ownerPrincipalId: "owner",
       title: "Mizune MC",
       description: "离线模拟 Actor",
       summary: "空闲；goal=探索",
@@ -316,7 +317,7 @@ test("runtime resource schema migration from v2 preserves Minecraft actor state"
     assert.deepEqual(await store.listPendingMinecraftActorOutbox("res_minecraft_old"), []);
     assert.equal(
       migratedDatabase.getStatus()?.tableGroups.find(group => group.groupId === "state.runtime_resources")?.actualSchemaVersion,
-      3
+      4
     );
     migratedDatabase.close();
   } finally {

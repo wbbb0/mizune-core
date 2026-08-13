@@ -65,7 +65,7 @@ export class RuntimeResourceStore {
     return all.filter((r) => r.status === "active");
   }
 
-  async upsert(record: RuntimeResourceRecord): Promise<void> {
+  async upsert(record: RuntimeResourceRecord, input: { minecraftOwnerPrincipalId?: string } = {}): Promise<void> {
     const db = await this.getReadyDb();
     const upsertBase = db.prepare(`
       INSERT INTO runtime_resources (
@@ -110,6 +110,12 @@ export class RuntimeResourceStore {
         @persistentState, @currentGoal, @modelRefsJson,
         @allowAutonomyPolicyChange, @allowProgramDeployment, @lastEventSequence
       )
+    `);
+    const insertMinecraftControlState = db.prepare(`
+      INSERT INTO minecraft_actor_control_state (
+        resource_id, owner_principal_id, revision, loop_phase, updated_at_ms
+      ) VALUES (@resourceId, @ownerPrincipalId, 0, 'idle', @updatedAtMs)
+      ON CONFLICT(resource_id) DO NOTHING
     `);
 
     const upsert = db.transaction(() => {
@@ -170,6 +176,15 @@ export class RuntimeResourceStore {
           allowAutonomyPolicyChange: record.minecraftActor.allowAutonomyPolicyChange ? 1 : 0,
           allowProgramDeployment: record.minecraftActor.allowProgramDeployment ? 1 : 0,
           lastEventSequence: record.minecraftActor.lastEventSequence
+        });
+        const ownerPrincipalId = input.minecraftOwnerPrincipalId?.trim();
+        if (!ownerPrincipalId) {
+          throw new Error("minecraft_actor upsert requires minecraftOwnerPrincipalId");
+        }
+        insertMinecraftControlState.run({
+          resourceId: record.resourceId,
+          ownerPrincipalId,
+          updatedAtMs: record.lastAccessedAtMs
         });
       }
     });

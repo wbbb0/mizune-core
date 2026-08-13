@@ -25,6 +25,10 @@ export class MinecraftActorRuntimeService {
     if (this.started || !this.config.minecraft.enabled) return;
     if (this.stopping) throw new Error("Minecraft Actor runtime service 正在关闭");
     this.started = true;
+    const recoveredDecisions = await this.manager.recoverMailbox();
+    if (recoveredDecisions > 0) {
+      this.logger.warn({ recoveredDecisions }, "minecraft_actor_decisions_recovered");
+    }
     await this.pollNow();
     if (this.stopping) return;
     this.timer = setInterval(() => {
@@ -67,6 +71,9 @@ export class MinecraftActorRuntimeService {
       if (failure && failure.nextAttemptAtMs > this.now()) return;
       try {
         await this.manager.ingestEvents(record.resourceId);
+        void this.manager.processMailbox(record.resourceId).catch(error => {
+          this.logger.warn({ err: error, resourceId: record.resourceId }, "minecraft_actor_mailbox_processing_failed");
+        });
         if (failure) {
           this.logger.info({ resourceId: record.resourceId }, "minecraft_actor_runtime_recovered");
         }

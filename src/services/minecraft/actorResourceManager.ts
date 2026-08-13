@@ -9,6 +9,11 @@ import type { RuntimeResourceRegistry } from "#runtime/resources/runtimeResource
 import type { Logger } from "pino";
 import type { MinecraftActorClient } from "./actorClient.ts";
 import {
+  MinecraftActorControlStore,
+  type MinecraftActorRequestPriority,
+  type MinecraftActorRequestRecord
+} from "./actorControlStore.ts";
+import {
   MinecraftDecisionRunner,
   type MinecraftDecisionResult,
   type MinecraftDecisionWakeReason
@@ -69,6 +74,7 @@ export interface MinecraftActorOwnerNotificationSink {
 
 export interface CreateMinecraftActorResourceInput {
   ownerSessionId: string;
+  ownerPrincipalId?: string;
   title?: string | null;
   description?: string | null;
   summary?: string;
@@ -81,6 +87,16 @@ export interface MinecraftActorEventIngestionResult {
   wake: Promise<MinecraftActorWakeOutcome> | null;
 }
 
+export interface MinecraftActorRequestInput {
+  ownerPrincipalId: string;
+  ownerSessionId: string;
+  instruction: string;
+  constraints?: string | null;
+  priority?: MinecraftActorRequestPriority;
+  idempotencyKey: string;
+  expectedRevision?: number;
+}
+
 interface PendingWake {
   request: MinecraftActorWakeRequest;
   resolve: (outcome: MinecraftActorWakeOutcome) => void;
@@ -89,7 +105,7 @@ interface PendingWake {
 interface RunningWake {
   request: MinecraftActorWakeRequest;
   controller: AbortController;
-  operation: Promise<void> | null;
+  operation: Promise<unknown> | null;
 }
 
 interface ActorLoopState {
@@ -122,10 +138,10 @@ export class MinecraftActorResourceManager {
   private readonly loops = new Map<string, ActorLoopState>();
   private readonly stateUpdates = new Map<string, Promise<unknown>>();
   private readonly eventIngestions = new Map<string, Promise<MinecraftActorEventIngestionResult>>();
+  private readonly mailboxOperations = new Map<string, Promise<MinecraftActorWakeOutcome | null>>();
   private readonly closeOperations = new Map<string, Promise<void>>();
   private readonly ensureOperations = new Map<string, Promise<RuntimeResourceRecord>>();
   private readonly closingResources = new Set<string>();
-  private readonly outboxWakeOperations = new Map<string, Promise<MinecraftActorWakeOutcome>>();
   private readonly outboxOwnerOperations = new Map<string, Promise<void>>();
   private readonly ownerDeliveryShutdownController = new AbortController();
   private shuttingDown = false;
@@ -133,6 +149,7 @@ export class MinecraftActorResourceManager {
 
   constructor(
     private readonly registry: RuntimeResourceRegistry,
+    private readonly controlStore: MinecraftActorControlStore,
     private readonly clientFactory: MinecraftActorClientFactory,
     private readonly llm: Pick<LlmClient, "generate">,
     private readonly logger: Logger,
@@ -145,8 +162,11 @@ export class MinecraftActorResourceManager {
     this.requireManagerRunning();
     validateRecoveryState(input.actor);
     const createdAtMs = input.createdAtMs ?? this.now();
-    return this.registry.createMinecraftActor({
-      ownerSessionId: requireNonEmpty(input.ownerSessionId, "ownerSessionId"),
+    const ownerSessionId = requireNonEmpty(input.ownerSessionId, "ownerSessionId");
+    const ownerPrincipalId = requireNonEmpty(input.ownerPrincipalId ?? ownerSessionId, "ownerPrincipalId");
+    const created = await this.registry.createMinecraftActor({
+      ownerSessionId,
+      ownerPrincipalId,
       title: input.title ?? null,
       ...(input.description === undefined ? {} : { description: input.description }),
       summary: input.summary ?? buildResourceSummary(input.actor),
@@ -154,6 +174,7 @@ export class MinecraftActorResourceManager {
       expiresAtMs: null,
       minecraftActor: cloneRecoveryState(input.actor)
     });
+    return created;
   }
 
   async ensure(input: CreateMinecraftActorResourceInput): Promise<RuntimeResourceRecord> {
@@ -170,7 +191,19 @@ export class MinecraftActorResourceManager {
           && actor.transportKind === input.actor.transportKind
           && actor.endpoint === input.actor.endpoint;
       });
-      return matched ? this.reconcileResourceRecord(matched) : this.create(input);
+      if (!matched) return this.create(input);
+      const ownerPrincipalId = requireNonEmpty(input.ownerPrincipalId ?? input.ownerSessionId, "ownerPrincipalId");
+      await this.controlStore.initializeActor({
+        resourceId: matched.resourceId,
+        ownerPrincipalId,
+        ownerSessionId: requireNonEmpty(input.ownerSessionId, "ownerSessionId"),
+        nowMs: this.now()
+      });
+      await this.controlStore.requireOwnerRevision({
+        resourceId: matched.resourceId,
+        ownerPrincipalId
+      });
+      return this.reconcileResourceRecord(matched);
     })().finally(() => {
       if (this.ensureOperations.get(key) === operation) this.ensureOperations.delete(key);
     });
@@ -185,6 +218,160 @@ export class MinecraftActorResourceManager {
   async get(resourceId: string): Promise<RuntimeResourceRecord | null> {
     const record = await this.registry.get(resourceId);
     return record?.kind === "minecraft_actor" ? record : null;
+  }
+
+  async request(resourceId: string, input: MinecraftActorRequestInput): Promise<{
+    request: MinecraftActorRequestRecord;
+    revision: number;
+    replayed: boolean;
+  }> {
+    this.requireManagerRunning();
+    await this.requireActiveResource(resourceId);
+    await this.controlStore.initializeActor({
+      resourceId,
+      ownerPrincipalId: input.ownerPrincipalId,
+      ownerSessionId: input.ownerSessionId,
+      nowMs: this.now()
+    });
+    const result = await this.controlStore.enqueueRequest({
+      resourceId,
+      idempotencyKey: input.idempotencyKey,
+      ownerPrincipalId: input.ownerPrincipalId,
+      ownerSessionId: input.ownerSessionId,
+      instruction: input.instruction,
+      ...(input.constraints === undefined ? {} : { constraints: input.constraints }),
+      ...(input.priority === undefined ? {} : { priority: input.priority }),
+      ...(input.expectedRevision === undefined ? {} : { expectedRevision: input.expectedRevision }),
+      nowMs: this.now()
+    });
+    return {
+      request: result.request,
+      revision: result.state.revision,
+      replayed: result.replayed
+    };
+  }
+
+  async recoverMailbox(): Promise<number> {
+    this.requireManagerRunning();
+    return this.controlStore.recoverInterruptedDecisions(this.now());
+  }
+
+  async processMailbox(resourceId: string): Promise<MinecraftActorWakeOutcome | null> {
+    this.requireManagerRunning();
+    const normalizedResourceId = requireNonEmpty(resourceId, "resourceId");
+    const existing = this.mailboxOperations.get(normalizedResourceId);
+    if (existing) return existing;
+    const operation = this.processMailboxOnce(normalizedResourceId).finally(() => {
+      if (this.mailboxOperations.get(normalizedResourceId) === operation) {
+        this.mailboxOperations.delete(normalizedResourceId);
+      }
+    });
+    this.mailboxOperations.set(normalizedResourceId, operation);
+    return operation;
+  }
+
+  private async processMailboxOnce(normalizedResourceId: string): Promise<MinecraftActorWakeOutcome | null> {
+    const loop = this.getLoop(normalizedResourceId);
+    if (loop.running) return null;
+    const claimed = await this.controlStore.claimNextWake(normalizedResourceId, this.now());
+    if (!claimed) {
+      if (!loop.pending) this.loops.delete(normalizedResourceId);
+      return null;
+    }
+
+    const controller = new AbortController();
+    const wakeRequest: MinecraftActorWakeRequest = {
+      type: claimed.wake.wakeType,
+      summary: claimed.wake.summary,
+      ...(claimed.wake.details === null ? {} : { details: claimed.wake.details }),
+      occurredAtMs: claimed.wake.createdAtMs,
+      priority: claimed.wake.priority,
+      interruptCurrent: claimed.wake.priority !== "normal",
+      decisionId: claimed.decision.decisionId
+    };
+    const running: RunningWake = { request: wakeRequest, controller, operation: null };
+    loop.running = running;
+    const operation = this.executeWake(normalizedResourceId, wakeRequest, controller.signal)
+      .then(async outcome => {
+        if (outcome.status === "completed") {
+          await this.controlStore.completeDecision({
+            resourceId: normalizedResourceId,
+            wakeId: claimed.wake.wakeId,
+            decisionId: claimed.decision.decisionId,
+            status: "completed",
+            summary: outcome.result.completion.summary,
+            persistentState: outcome.result.completion.persistentState,
+            currentGoal: outcome.result.completion.currentGoal,
+            nowMs: this.now()
+          });
+          return outcome;
+        }
+        if (outcome.status === "interrupted" || outcome.status === "superseded") {
+          if (this.shuttingDown) {
+            await this.controlStore.completeDecision({
+              resourceId: normalizedResourceId,
+              wakeId: claimed.wake.wakeId,
+              decisionId: claimed.decision.decisionId,
+              status: "failed",
+              error: outcome.reason,
+              retryAtMs: this.now(),
+              nowMs: this.now()
+            });
+            return outcome;
+          }
+          await this.controlStore.completeDecision({
+            resourceId: normalizedResourceId,
+            wakeId: claimed.wake.wakeId,
+            decisionId: claimed.decision.decisionId,
+            status: "interrupted",
+            error: outcome.reason,
+            nowMs: this.now()
+          });
+          return outcome;
+        }
+        const shouldRetry = claimed.wake.attemptCount < 3;
+        await this.controlStore.completeDecision({
+          resourceId: normalizedResourceId,
+          wakeId: claimed.wake.wakeId,
+          decisionId: claimed.decision.decisionId,
+          status: shouldRetry ? "failed" : "dead_letter",
+          error: outcome.error,
+          ...(shouldRetry ? { retryAtMs: this.now() + retryDelayMs(claimed.wake.attemptCount) } : {}),
+          nowMs: this.now()
+        });
+        return outcome;
+      })
+      .finally(() => {
+        if (loop.running === running) loop.running = null;
+        if (!loop.pending) this.loops.delete(normalizedResourceId);
+      });
+    running.operation = operation;
+    return operation;
+  }
+
+  async interrupt(resourceId: string, input: {
+    ownerPrincipalId: string;
+    ownerSessionId?: string;
+    expectedRevision?: number;
+    reason?: string;
+  }): Promise<{ interrupted: boolean; revision: number }> {
+    this.requireManagerRunning();
+    const resource = await this.requireActiveResource(resourceId);
+    await this.controlStore.initializeActor({
+      resourceId,
+      ownerPrincipalId: input.ownerPrincipalId,
+      ownerSessionId: input.ownerSessionId ?? resource.ownerSessionId ?? input.ownerPrincipalId,
+      nowMs: this.now()
+    });
+    const state = await this.controlStore.requireOwnerRevision({
+      resourceId,
+      ownerPrincipalId: input.ownerPrincipalId,
+      ...(input.expectedRevision === undefined ? {} : { expectedRevision: input.expectedRevision })
+    });
+    const running = this.loops.get(resourceId)?.running;
+    if (!running) return { interrupted: false, revision: state.revision };
+    running.controller.abort(new Error(input.reason?.trim() || "owner_interrupt"));
+    return { interrupted: true, revision: state.revision };
   }
 
   async probe(resourceId: string, signal?: AbortSignal): Promise<MinecraftActorSnapshot> {
@@ -407,7 +594,30 @@ export class MinecraftActorResourceManager {
     let wake: Promise<MinecraftActorWakeOutcome> | null = null;
     if (decisionEntry) {
       try {
-        wake = this.startOutboxWake(record.resourceId, decisionEntry.outboxId, decisionEntry.payload);
+        const payload = parseWakePayload(decisionEntry.payload);
+        await this.controlStore.enqueueWake({
+          resourceId: record.resourceId,
+          wakeId: decisionEntry.outboxId,
+          sourceType: "runtime_event",
+          sourceId: decisionEntry.outboxId,
+          priority: payload.priority ?? "normal",
+          wakeType: payload.type,
+          summary: payload.summary,
+          ...(payload.details === undefined ? {} : { details: payload.details }),
+          nowMs: payload.occurredAtMs
+        });
+        const delivered = await this.registry.markMinecraftActorOutboxDelivered(
+          record.resourceId,
+          decisionEntry.outboxId,
+          this.now()
+        );
+        if (!delivered) throw new Error(`Minecraft Actor outbox 状态已变化：${decisionEntry.outboxId}`);
+        if (!this.loops.get(record.resourceId)?.running) {
+          wake = this.processMailbox(record.resourceId).then(outcome => {
+            if (!outcome) throw new Error(`Minecraft Actor mailbox 未领取已入队唤醒：${decisionEntry.outboxId}`);
+            return outcome;
+          });
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         await this.registry.markMinecraftActorOutboxFailed(record.resourceId, decisionEntry.outboxId, message);
@@ -457,44 +667,6 @@ export class MinecraftActorResourceManager {
       }
     });
     this.outboxOwnerOperations.set(operationKey, operation);
-  }
-
-  private startOutboxWake(
-    resourceId: string,
-    outboxId: string,
-    payload: unknown
-  ): Promise<MinecraftActorWakeOutcome> {
-    const operationKey = `${resourceId}:${outboxId}`;
-    const existing = this.outboxWakeOperations.get(operationKey);
-    if (existing) return existing;
-    const operation = this.wake(resourceId, {
-      ...parseWakePayload(payload),
-      decisionId: outboxId
-    }).then(async outcome => {
-      if (outcome.status === "completed") {
-        const delivered = await this.registry.markMinecraftActorOutboxDelivered(
-          resourceId,
-          outboxId,
-          this.now()
-        );
-        if (!delivered) {
-          throw new Error(`Minecraft Actor outbox 状态已变化：${outboxId}`);
-        }
-      } else {
-        await this.registry.markMinecraftActorOutboxFailed(
-          resourceId,
-          outboxId,
-          `decision_${outcome.status}`
-        );
-      }
-      return outcome;
-    }).finally(() => {
-      if (this.outboxWakeOperations.get(operationKey) === operation) {
-        this.outboxWakeOperations.delete(operationKey);
-      }
-    });
-    this.outboxWakeOperations.set(operationKey, operation);
-    return operation;
   }
 
   async notifyOwnerAttention(resourceId: string, summary: string, details?: JsonValue): Promise<void> {
@@ -584,9 +756,9 @@ export class MinecraftActorResourceManager {
       const operations = [...new Set<Promise<unknown>>([
         ...this.ensureOperations.values(),
         ...this.eventIngestions.values(),
+        ...this.mailboxOperations.values(),
         ...this.stateUpdates.values(),
         ...this.closeOperations.values(),
-        ...this.outboxWakeOperations.values(),
         ...this.outboxOwnerOperations.values(),
         ...[...this.loops.values()].flatMap(loop => loop.running?.operation ? [loop.running.operation] : [])
       ])];
@@ -612,7 +784,7 @@ export class MinecraftActorResourceManager {
     this.clients.delete(resourceId);
     if (client) this.clientsPendingCleanup.set(resourceId, client);
     const closeState = this.enqueueStateUpdate(resourceId, async () => {
-      await this.registry.markStatus(resourceId, "closed", this.now());
+      await this.controlStore.closeActor(resourceId, reason, this.now());
     });
     await closeState;
     const cleanupClient = this.clientsPendingCleanup.get(resourceId);
@@ -659,6 +831,16 @@ export class MinecraftActorResourceManager {
     const running: RunningWake = { request: pending.request, controller, operation: null };
     loop.running = running;
     const operation = this.executeWake(resourceId, pending.request, controller.signal)
+      .then(async outcome => {
+        if (outcome.status === "completed") {
+          await this.patchActorState(resourceId, current => ({
+            ...current,
+            persistentState: outcome.result.completion.persistentState,
+            currentGoal: outcome.result.completion.currentGoal
+          }), outcome.result.completion.summary);
+        }
+        return outcome;
+      })
       .then(pending.resolve)
       .finally(() => {
         loop.running = null;
@@ -694,11 +876,6 @@ export class MinecraftActorResourceManager {
         allowProgramDeployment: actorState.allowProgramDeployment,
         abortSignal: signal
       });
-      await this.patchActorState(resourceId, current => ({
-        ...current,
-        persistentState: result.completion.persistentState,
-        currentGoal: result.completion.currentGoal
-      }), result.completion.summary);
       return { status: "completed", result };
     } catch (error) {
       if (signal.aborted) {
@@ -998,6 +1175,10 @@ function buildResourceSummary(state: MinecraftActorRecoveryState): string {
 
 function priorityValue(request: MinecraftActorWakeRequest): number {
   return PRIORITY_ORDER[request.priority ?? "normal"];
+}
+
+function retryDelayMs(attemptCount: number): number {
+  return Math.min(60_000, 1_000 * 2 ** Math.max(0, Math.min(attemptCount - 1, 6)));
 }
 
 function compactRuntimeEvent(event: MinecraftRuntimeEvent): JsonValue {

@@ -15,6 +15,7 @@ import { RuntimeResourceRegistry } from "../../src/runtime/resources/runtimeReso
 import { RuntimeResourceStore } from "../../src/runtime/resources/runtimeResourceStore.ts";
 import type { MinecraftActorClient } from "../../src/services/minecraft/actorClient.ts";
 import { ConfiguredMinecraftActorClientFactory } from "../../src/services/minecraft/actorClientFactory.ts";
+import { MinecraftActorControlStore } from "../../src/services/minecraft/actorControlStore.ts";
 import {
   MinecraftActorResourceManager,
   type MinecraftActorOwnerNotification,
@@ -295,7 +296,7 @@ test("blocked owner generation cannot delay a critical actor decision", async ()
   }
 });
 
-test("decision outbox stays pending until the decision completes successfully", async () => {
+test("decision outbox atomically transfers into durable mailbox before the decision completes", async () => {
   const generationStarted = deferred<void>();
   const releaseGeneration = deferred<void>();
   const llm: Pick<LlmClient, "generate"> = {
@@ -313,8 +314,8 @@ test("decision outbox stays pending until the decision completes successfully", 
 
     const ingested = await harness.manager.ingestEvents(resource.resourceId);
     await generationStarted.promise;
-    const pendingBefore = await harness.registry.listPendingMinecraftActorOutbox(resource.resourceId);
-    assert.deepEqual(pendingBefore.map(entry => entry.kind), ["decision_wake"]);
+    assert.deepEqual(await harness.registry.listPendingMinecraftActorOutbox(resource.resourceId), []);
+    assert.equal((await harness.controlStore.getControlState(resource.resourceId))?.loopPhase, "deciding");
 
     releaseGeneration.resolve(undefined);
     assert.equal((await ingested.wake)?.status, "completed");
@@ -324,7 +325,8 @@ test("decision outbox stays pending until the decision completes successfully", 
   }
 });
 
-test("failed decision remains pending for a later event ingestion retry", async () => {
+test("failed decision remains in durable mailbox for a later retry", async () => {
+  let nowMs = 1_000;
   let shouldFail = true;
   const llm: Pick<LlmClient, "generate"> = {
     generate: async params => {
@@ -333,28 +335,92 @@ test("failed decision remains pending for a later event ingestion retry", async 
       return llmResult();
     }
   };
-  const harness = await createManagerHarness(llm);
+  const harness = await createManagerHarness(llm, [], undefined, 5_000, () => nowMs);
   try {
     const resource = await harness.manager.create(resourceInput());
     harness.client.events = [runtimeEvent({ sequence: 8, priority: "critical" })];
 
     const first = await harness.manager.ingestEvents(resource.resourceId);
     assert.equal((await first.wake)?.status, "failed");
-    assert.deepEqual(
-      (await harness.registry.listPendingMinecraftActorOutbox(resource.resourceId)).map(entry => entry.kind),
-      ["decision_wake"]
-    );
+    assert.deepEqual(await harness.registry.listPendingMinecraftActorOutbox(resource.resourceId), []);
+    assert.equal((await harness.controlStore.getControlState(resource.resourceId))?.loopPhase, "queued");
 
     shouldFail = false;
-    const second = await harness.manager.ingestEvents(resource.resourceId);
-    assert.equal((await second.wake)?.status, "completed");
-    assert.deepEqual(await harness.registry.listPendingMinecraftActorOutbox(resource.resourceId), []);
+    nowMs = 2_000;
+    const second = await harness.manager.processMailbox(resource.resourceId);
+    assert.equal(second?.status, "completed");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("mailbox processing is single-flight and keeps the running decision interruptible", async () => {
+  const started = deferred<void>();
+  const released = deferred<void>();
+  const llm: Pick<LlmClient, "generate"> = {
+    generate: async params => {
+      started.resolve(undefined);
+      await released.promise;
+      await finishDecision(params, "完成", "已完成", null);
+      return llmResult();
+    }
+  };
+  const harness = await createManagerHarness(llm);
+  try {
+    const resource = await harness.manager.create(resourceInput());
+    await harness.manager.request(resource.resourceId, {
+      ownerPrincipalId: resourceInput().ownerSessionId,
+      ownerSessionId: resourceInput().ownerSessionId,
+      instruction: "等待测试",
+      idempotencyKey: "single-flight"
+    });
+    const first = harness.manager.processMailbox(resource.resourceId);
+    await started.promise;
+    const second = harness.manager.processMailbox(resource.resourceId);
+    const interrupted = await harness.manager.interrupt(resource.resourceId, {
+      ownerPrincipalId: resourceInput().ownerSessionId,
+      reason: "测试打断"
+    });
+    assert.equal(interrupted.interrupted, true);
+    released.resolve(undefined);
+    const [firstOutcome, secondOutcome] = await Promise.all([first, second]);
+    assert.equal(firstOutcome?.status, "interrupted");
+    assert.equal(secondOutcome?.status, "interrupted");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("shutdown 中断的 durable mailbox decision 会重新入队而不是永久丢弃", async () => {
+  const started = deferred<void>();
+  const llm: Pick<LlmClient, "generate"> = {
+    generate: params => new Promise((_resolve, reject) => {
+      started.resolve(undefined);
+      params.abortSignal?.addEventListener("abort", () => reject(params.abortSignal?.reason), { once: true });
+    })
+  };
+  const harness = await createManagerHarness(llm);
+  try {
+    const resource = await harness.manager.create(resourceInput());
+    const queued = await harness.manager.request(resource.resourceId, {
+      ownerPrincipalId: resourceInput().ownerSessionId,
+      ownerSessionId: resourceInput().ownerSessionId,
+      instruction: "重启后继续",
+      idempotencyKey: "shutdown-requeue"
+    });
+    const processing = harness.manager.processMailbox(resource.resourceId);
+    await started.promise;
+    await harness.manager.shutdown();
+    assert.equal((await processing)?.status, "interrupted");
+    assert.equal((await harness.controlStore.getRequest(resource.resourceId, queued.request.requestId))?.status, "queued");
+    assert.equal((await harness.controlStore.getControlState(resource.resourceId))?.loopPhase, "queued");
   } finally {
     await harness.close();
   }
 });
 
 test("decision outbox retry reuses one system-owned control idempotency key", async () => {
+  let nowMs = 1_000;
   let attempt = 0;
   const llm: Pick<LlmClient, "generate"> = {
     generate: async params => {
@@ -372,15 +438,15 @@ test("decision outbox retry reuses one system-owned control idempotency key", as
       return llmResult();
     }
   };
-  const harness = await createManagerHarness(llm);
+  const harness = await createManagerHarness(llm, [], undefined, 5_000, () => nowMs);
   try {
     const resource = await harness.manager.create(resourceInput());
     harness.client.events = [runtimeEvent({ sequence: 8, priority: "critical" })];
 
     const first = await harness.manager.ingestEvents(resource.resourceId);
     assert.equal((await first.wake)?.status, "failed");
-    const second = await harness.manager.ingestEvents(resource.resourceId);
-    assert.equal((await second.wake)?.status, "completed");
+    nowMs = 2_000;
+    assert.equal((await harness.manager.processMailbox(resource.resourceId))?.status, "completed");
 
     assert.equal(harness.client.behaviorCommandKeys.length, 2);
     assert.equal(harness.client.behaviorCommandKeys[0], harness.client.behaviorCommandKeys[1]);
@@ -425,6 +491,7 @@ test("client creation is single-flight and close disposes a client created durin
   let factoryCalls = 0;
   const manager = new MinecraftActorResourceManager(
     registry,
+    new MinecraftActorControlStore(database),
     {
       create() {
         factoryCalls += 1;
@@ -494,6 +561,7 @@ test("shutdown 与延迟 client 创建并发时等待创建完成并只关闭一
   const clientReady = deferred<ResourceActorClient>();
   const manager = new MinecraftActorResourceManager(
     registry,
+    new MinecraftActorControlStore(database),
     { create: () => clientReady.promise },
     new FinishOnlyLlm("完成", "完成", null),
     createSilentLogger()
@@ -715,6 +783,7 @@ test("首次恢复 client 前把持久模型与权限收敛到当前 endpoint �
   const client = new ResourceActorClient();
   const manager = new MinecraftActorResourceManager(
     registry,
+    new MinecraftActorControlStore(database),
     {
       create: () => client,
       reconcileRecoveryState(actor) {
@@ -751,6 +820,7 @@ test("配置撤权在首次命令授权前生效，不允许用旧持久权限�
   let factoryCalls = 0;
   const manager = new MinecraftActorResourceManager(
     registry,
+    new MinecraftActorControlStore(database),
     {
       create() {
         factoryCalls += 1;
@@ -814,6 +884,7 @@ test("恢复端点被移除时先标记资源不可恢复，再拒绝控制命�
   const registry = new RuntimeResourceRegistry(new RuntimeResourceStore(database));
   const manager = new MinecraftActorResourceManager(
     registry,
+    new MinecraftActorControlStore(database),
     {
       create: () => new ResourceActorClient(),
       reconcileRecoveryState() {
@@ -866,6 +937,7 @@ test("真实配置工厂通过 manager 恢复时保留实例方法绑定", async
   const factory = new ConfiguredMinecraftActorClientFactory(config);
   const manager = new MinecraftActorResourceManager(
     registry,
+    new MinecraftActorControlStore(database),
     factory,
     new FinishOnlyLlm("完成", "完成", null),
     createSilentLogger()
@@ -917,6 +989,7 @@ test("client creation failure is reported once and does not poison later close c
   let factoryCalls = 0;
   const manager = new MinecraftActorResourceManager(
     registry,
+    new MinecraftActorControlStore(database),
     {
       create: () => {
         factoryCalls += 1;
@@ -995,16 +1068,19 @@ async function createManagerHarness(
   notificationSink: MinecraftActorOwnerNotificationSink = {
     notify(notification) { notifications.push(notification); }
   },
-  shutdownDrainGraceMs = 5_000
+  shutdownDrainGraceMs = 5_000,
+  now: () => number = () => 1_000
 ) {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-minecraft-actor-manager-"));
   const database = new StateDatabase(dataDir, createSilentLogger());
   const store = new RuntimeResourceStore(database);
   const registry = new RuntimeResourceRegistry(store);
+  const controlStore = new MinecraftActorControlStore(database);
   const client = new ResourceActorClient();
   let factoryCalls = 0;
   const manager = new MinecraftActorResourceManager(
     registry,
+    controlStore,
     {
       create() {
         factoryCalls += 1;
@@ -1014,12 +1090,13 @@ async function createManagerHarness(
     llm,
     createSilentLogger(),
     notificationSink,
-    () => 1_000,
+    now,
     shutdownDrainGraceMs
   );
   return {
     manager,
     registry,
+    controlStore,
     client,
     notifications,
     get factoryCalls() { return factoryCalls; },

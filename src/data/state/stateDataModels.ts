@@ -251,7 +251,7 @@ export const whitelistDataDomain = defineDataDomain({
 export const runtimeResourcesDataDomain = defineDataDomain({
   database: "state",
   tableGroup: "state.runtime_resources",
-  schemaVersion: 3,
+  schemaVersion: 4,
   resetPolicy: "block_reset",
   tables: {
     runtime_resources: defineTable({

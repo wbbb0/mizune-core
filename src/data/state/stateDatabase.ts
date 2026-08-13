@@ -588,7 +588,110 @@ function createRuntimeResourcesSchema(db: SqliteDatabase): void {
       delivered_at_ms INTEGER,
       PRIMARY KEY (resource_id, outbox_id)
     );
+
+    CREATE TABLE IF NOT EXISTS minecraft_actor_control_state (
+      resource_id TEXT PRIMARY KEY NOT NULL REFERENCES runtime_resources(resource_id) ON DELETE CASCADE,
+      owner_principal_id TEXT NOT NULL CHECK (owner_principal_id = trim(owner_principal_id) AND length(owner_principal_id) > 0),
+      revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
+      loop_phase TEXT NOT NULL DEFAULT 'idle' CHECK (loop_phase IN ('idle', 'queued', 'deciding', 'paused', 'error', 'closed')),
+      active_wake_id TEXT,
+      active_decision_id TEXT,
+      last_error TEXT,
+      updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0)
+    );
+
+    CREATE TABLE IF NOT EXISTS minecraft_actor_requests (
+      resource_id TEXT NOT NULL REFERENCES runtime_resources(resource_id) ON DELETE CASCADE,
+      request_id TEXT NOT NULL CHECK (request_id = trim(request_id) AND length(request_id) > 0),
+      idempotency_key TEXT NOT NULL CHECK (idempotency_key = trim(idempotency_key) AND length(idempotency_key) > 0),
+      fingerprint TEXT NOT NULL,
+      owner_principal_id TEXT NOT NULL,
+      owner_session_id TEXT NOT NULL,
+      instruction TEXT NOT NULL CHECK (instruction = trim(instruction) AND length(instruction) > 0),
+      constraints_text TEXT,
+      priority TEXT NOT NULL CHECK (priority IN ('normal', 'high')),
+      status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'interrupted', 'cancelled')),
+      decision_id TEXT,
+      result_summary TEXT,
+      error TEXT,
+      created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+      updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+      started_at_ms INTEGER,
+      completed_at_ms INTEGER,
+      PRIMARY KEY (resource_id, request_id),
+      UNIQUE (resource_id, idempotency_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS minecraft_actor_wake_mailbox (
+      resource_id TEXT NOT NULL REFERENCES runtime_resources(resource_id) ON DELETE CASCADE,
+      wake_id TEXT NOT NULL CHECK (wake_id = trim(wake_id) AND length(wake_id) > 0),
+      source_type TEXT NOT NULL CHECK (source_type IN ('owner_request', 'runtime_event', 'manual', 'autonomy')),
+      source_id TEXT NOT NULL CHECK (source_id = trim(source_id) AND length(source_id) > 0),
+      fingerprint TEXT NOT NULL,
+      priority TEXT NOT NULL CHECK (priority IN ('normal', 'high', 'critical')),
+      wake_type TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      details_json TEXT,
+      status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'completed', 'failed', 'interrupted', 'dead_letter')),
+      decision_id TEXT NOT NULL,
+      attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+      next_attempt_at_ms INTEGER NOT NULL CHECK (next_attempt_at_ms >= 0),
+      last_error TEXT,
+      created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+      updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+      completed_at_ms INTEGER,
+      PRIMARY KEY (resource_id, wake_id),
+      UNIQUE (resource_id, source_type, source_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS minecraft_actor_decisions (
+      resource_id TEXT NOT NULL REFERENCES runtime_resources(resource_id) ON DELETE CASCADE,
+      decision_id TEXT NOT NULL CHECK (decision_id = trim(decision_id) AND length(decision_id) > 0),
+      wake_id TEXT NOT NULL,
+      request_id TEXT,
+      status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'interrupted', 'dead_letter')),
+      attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+      wake_type TEXT NOT NULL,
+      wake_summary TEXT NOT NULL,
+      decision_summary TEXT,
+      error TEXT,
+      created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+      updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+      started_at_ms INTEGER,
+      completed_at_ms INTEGER,
+      PRIMARY KEY (resource_id, decision_id),
+      UNIQUE (resource_id, wake_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS minecraft_actor_events (
+      event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      resource_id TEXT NOT NULL REFERENCES runtime_resources(resource_id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      severity TEXT NOT NULL CHECK (severity IN ('debug', 'info', 'warning', 'critical')),
+      actor_revision INTEGER NOT NULL CHECK (actor_revision >= 0),
+      request_id TEXT,
+      decision_id TEXT,
+      payload_json TEXT NOT NULL,
+      occurred_at_ms INTEGER NOT NULL CHECK (occurred_at_ms >= 0)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_minecraft_actor_requests_status
+      ON minecraft_actor_requests(resource_id, status, created_at_ms, request_id);
+    CREATE INDEX IF NOT EXISTS idx_minecraft_actor_wake_pending
+      ON minecraft_actor_wake_mailbox(resource_id, status, next_attempt_at_ms, priority, created_at_ms);
+    CREATE INDEX IF NOT EXISTS idx_minecraft_actor_events_cursor
+      ON minecraft_actor_events(resource_id, event_id);
   `);
+
+  db.prepare(`
+    INSERT INTO minecraft_actor_control_state (
+      resource_id, owner_principal_id, revision, loop_phase, updated_at_ms
+    )
+    SELECT resource_id, COALESCE(NULLIF(owner_session_id, ''), 'legacy-owner'), 0, 'idle', last_accessed_at_ms
+    FROM runtime_resources
+    WHERE kind = 'minecraft_actor'
+    ON CONFLICT(resource_id) DO NOTHING
+  `).run();
 }
 
 function migrateRuntimeResourcesSchema(db: SqliteDatabase): boolean {
@@ -687,6 +790,81 @@ function validateRuntimeResourcesSchema(db: SqliteDatabase): void {
     last_error: "TEXT",
     created_at_ms: "INTEGER",
     delivered_at_ms: "INTEGER"
+  });
+  assertTableColumns(db, "minecraft_actor_control_state", {
+    resource_id: "TEXT",
+    owner_principal_id: "TEXT",
+    revision: "INTEGER",
+    loop_phase: "TEXT",
+    active_wake_id: "TEXT",
+    active_decision_id: "TEXT",
+    last_error: "TEXT",
+    updated_at_ms: "INTEGER"
+  });
+  assertTableColumns(db, "minecraft_actor_requests", {
+    resource_id: "TEXT",
+    request_id: "TEXT",
+    idempotency_key: "TEXT",
+    fingerprint: "TEXT",
+    owner_principal_id: "TEXT",
+    owner_session_id: "TEXT",
+    instruction: "TEXT",
+    constraints_text: "TEXT",
+    priority: "TEXT",
+    status: "TEXT",
+    decision_id: "TEXT",
+    result_summary: "TEXT",
+    error: "TEXT",
+    created_at_ms: "INTEGER",
+    updated_at_ms: "INTEGER",
+    started_at_ms: "INTEGER",
+    completed_at_ms: "INTEGER"
+  });
+  assertTableColumns(db, "minecraft_actor_wake_mailbox", {
+    resource_id: "TEXT",
+    wake_id: "TEXT",
+    source_type: "TEXT",
+    source_id: "TEXT",
+    fingerprint: "TEXT",
+    priority: "TEXT",
+    wake_type: "TEXT",
+    summary: "TEXT",
+    details_json: "TEXT",
+    status: "TEXT",
+    decision_id: "TEXT",
+    attempt_count: "INTEGER",
+    next_attempt_at_ms: "INTEGER",
+    last_error: "TEXT",
+    created_at_ms: "INTEGER",
+    updated_at_ms: "INTEGER",
+    completed_at_ms: "INTEGER"
+  });
+  assertTableColumns(db, "minecraft_actor_decisions", {
+    resource_id: "TEXT",
+    decision_id: "TEXT",
+    wake_id: "TEXT",
+    request_id: "TEXT",
+    status: "TEXT",
+    attempt_count: "INTEGER",
+    wake_type: "TEXT",
+    wake_summary: "TEXT",
+    decision_summary: "TEXT",
+    error: "TEXT",
+    created_at_ms: "INTEGER",
+    updated_at_ms: "INTEGER",
+    started_at_ms: "INTEGER",
+    completed_at_ms: "INTEGER"
+  });
+  assertTableColumns(db, "minecraft_actor_events", {
+    event_id: "INTEGER",
+    resource_id: "TEXT",
+    event_type: "TEXT",
+    severity: "TEXT",
+    actor_revision: "INTEGER",
+    request_id: "TEXT",
+    decision_id: "TEXT",
+    payload_json: "TEXT",
+    occurred_at_ms: "INTEGER"
   });
 }
 
@@ -816,7 +994,7 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   },
   {
     groupId: "state.runtime_resources",
-    schemaVersion: 3,
+    schemaVersion: 4,
     minReadableSchemaVersion: 1,
     resetPolicy: "block_reset",
     ownedTables: [
@@ -824,7 +1002,17 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
       "runtime_browser_pages",
       "runtime_shell_sessions",
       "runtime_minecraft_actors",
-      "runtime_minecraft_actor_outbox"
+      "runtime_minecraft_actor_outbox",
+      "minecraft_actor_control_state",
+      "minecraft_actor_requests",
+      "minecraft_actor_wake_mailbox",
+      "minecraft_actor_decisions",
+      "minecraft_actor_events"
+    ],
+    ownedIndexes: [
+      "idx_minecraft_actor_requests_status",
+      "idx_minecraft_actor_wake_pending",
+      "idx_minecraft_actor_events_cursor"
     ],
     createSchema: createRuntimeResourcesSchema,
     migrateSchema: migrateRuntimeResourcesSchema,

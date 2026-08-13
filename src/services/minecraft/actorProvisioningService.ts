@@ -15,6 +15,7 @@ export class MinecraftActorProvisioningService {
   async ensure(input: {
     endpointId: string;
     ownerSessionId: string;
+    ownerPrincipalId: string;
     title?: string | null;
     description?: string | null;
     persistentState?: string;
@@ -23,6 +24,7 @@ export class MinecraftActorProvisioningService {
     const endpoint = this.endpoints.resolveEndpoint(input.endpointId);
     return this.manager.ensure({
       ownerSessionId: input.ownerSessionId,
+      ownerPrincipalId: input.ownerPrincipalId,
       title: input.title ?? endpoint.endpointId,
       ...(input.description === undefined ? {} : { description: input.description }),
       actor: {

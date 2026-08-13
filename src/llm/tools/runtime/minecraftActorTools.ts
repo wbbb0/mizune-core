@@ -301,6 +301,7 @@ export const minecraftActorToolHandlers: Record<string, ToolHandler> = {
     const resource = await context.minecraftActorProvisioning!.ensure({
       endpointId,
       ownerSessionId: context.lastMessage.sessionId,
+      ownerPrincipalId: context.lastMessage.userId,
       ...(title === undefined ? {} : { title }),
       ...(persistentState === undefined ? {} : { persistentState }),
       ...(input.current_goal === undefined
