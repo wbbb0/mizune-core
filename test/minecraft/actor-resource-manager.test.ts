@@ -584,6 +584,59 @@ test("shutdown grace 到期后中止 owner 投递并保留 pending outbox", asyn
   }
 });
 
+test("shutdown 开始后拒绝登记晚到的 owner 投递", async () => {
+  let notifyCalls = 0;
+  const outboxReadStarted = deferred<void>();
+  const releaseOutboxRead = deferred<void>();
+  const harness = await createManagerHarness(
+    new FinishOnlyLlm("处理完成", "已处理", null),
+    [],
+    {
+      async notify() {
+        notifyCalls += 1;
+        await new Promise<void>(() => {});
+      }
+    },
+    10
+  );
+  try {
+    const resource = await harness.manager.create(resourceInput());
+    await harness.registry.recordMinecraftActorEvents({
+      resourceId: resource.resourceId,
+      lastEventSequence: 8,
+      updatedAtMs: 1_000,
+      entries: [{
+        outboxId: "event:8:owner_attention",
+        eventSequence: 8,
+        kind: "owner_notification",
+        payload: {
+          type: "game_attention",
+          summary: "晚到的关注事件"
+        }
+      }]
+    });
+    const listPending = harness.registry.listPendingMinecraftActorOutbox.bind(harness.registry);
+    harness.registry.listPendingMinecraftActorOutbox = async (...args) => {
+      outboxReadStarted.resolve(undefined);
+      await releaseOutboxRead.promise;
+      return listPending(...args);
+    };
+
+    const ingestion = harness.manager.ingestEvents(resource.resourceId);
+    await outboxReadStarted.promise;
+    const shutdown = harness.manager.shutdown();
+    releaseOutboxRead.resolve(undefined);
+    await Promise.all([shutdown, ingestion]);
+
+    assert.equal(notifyCalls, 0);
+    const pending = await harness.registry.listPendingMinecraftActorOutbox(resource.resourceId);
+    assert.equal(pending.some(entry => entry.outboxId === "event:8:owner_attention"), true);
+  } finally {
+    releaseOutboxRead.resolve(undefined);
+    await harness.close();
+  }
+});
+
 test("shutdown 等待被打断的 manual wake 真正退出", async () => {
   const wakeStarted = deferred<void>();
   const releaseWake = deferred<void>();

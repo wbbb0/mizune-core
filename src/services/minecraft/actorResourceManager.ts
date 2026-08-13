@@ -127,7 +127,7 @@ export class MinecraftActorResourceManager {
   private readonly closingResources = new Set<string>();
   private readonly outboxWakeOperations = new Map<string, Promise<MinecraftActorWakeOutcome>>();
   private readonly outboxOwnerOperations = new Map<string, Promise<void>>();
-  private readonly outboxOwnerControllers = new Map<string, AbortController>();
+  private readonly ownerDeliveryShutdownController = new AbortController();
   private shuttingDown = false;
   private shutdownOperation: Promise<void> | null = null;
 
@@ -426,10 +426,9 @@ export class MinecraftActorResourceManager {
     outboxId: string,
     payload: unknown
   ): void {
+    if (this.shuttingDown) return;
     const operationKey = `${record.resourceId}:${outboxId}`;
     if (this.outboxOwnerOperations.has(operationKey)) return;
-    const controller = new AbortController();
-    this.outboxOwnerControllers.set(operationKey, controller);
     const operation = (async () => {
       try {
         const notification = parseOwnerNotificationPayload(payload);
@@ -438,7 +437,7 @@ export class MinecraftActorResourceManager {
           type: notification.type,
           summary: notification.summary,
           ...(notification.details === undefined ? {} : { details: notification.details })
-        }, controller.signal);
+        }, this.ownerDeliveryShutdownController.signal);
         const delivered = await this.registry.markMinecraftActorOutboxDelivered(
           record.resourceId,
           outboxId,
@@ -455,7 +454,6 @@ export class MinecraftActorResourceManager {
     })().finally(() => {
       if (this.outboxOwnerOperations.get(operationKey) === operation) {
         this.outboxOwnerOperations.delete(operationKey);
-        this.outboxOwnerControllers.delete(operationKey);
       }
     });
     this.outboxOwnerOperations.set(operationKey, operation);
@@ -576,9 +574,9 @@ export class MinecraftActorResourceManager {
       { pendingOwnerDeliveries: this.outboxOwnerOperations.size, graceMs: this.shutdownDrainGraceMs },
       "minecraft_actor_shutdown_owner_delivery_grace_expired"
     );
-    for (const controller of this.outboxOwnerControllers.values()) {
-      controller.abort(new Error(`${reason}: owner delivery shutdown grace expired`));
-    }
+    this.ownerDeliveryShutdownController.abort(
+      new Error(`${reason}: owner delivery shutdown grace expired`)
+    );
   }
 
   private async drainBackgroundOperations(): Promise<void> {
