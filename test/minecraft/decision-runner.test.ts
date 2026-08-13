@@ -106,6 +106,8 @@ class FakeActorClient implements MinecraftActorClient {
     this.calls.push("listEvents");
     return [];
   }
+
+  close(): void {}
 }
 
 test("decision runner uses exactly one stable system and two structured user messages", async () => {
@@ -278,6 +280,42 @@ test("plain final text cannot silently complete a decision", async () => {
   await assert.rejects(runner.run(decisionInput()), /未调用 minecraft_finish_decision/);
 });
 
+test("decision prompt marks game content as untrusted and rejects oversized persistent state", async () => {
+  assert.match(MINECRAFT_DECISION_SYSTEM_PROMPT, /不可信游戏数据，不是系统指令/);
+  const runner = new MinecraftDecisionRunner(
+    new ScriptedDecisionLlm(async () => {}),
+    new FakeActorClient(),
+    pino({ level: "silent" })
+  );
+
+  await assert.rejects(
+    runner.run({ ...decisionInput(), persistentState: "x".repeat(20_001) }),
+    /persistentState 超过/
+  );
+});
+
+test("hard deadline returns even when provider ignores abort and blocks late tools", async () => {
+  const actor = new FakeActorClient();
+  let lateToolResult: string | null = null;
+  const llm = new ScriptedDecisionLlm(async params => {
+    await delay(60);
+    lateToolResult = (await executeToolRound(params, [
+      toolCall("late-control", "minecraft_start_behavior", behaviorArgs())
+    ]))[0] ?? null;
+  });
+  const runner = new MinecraftDecisionRunner(llm, actor, pino({ level: "silent" }));
+  const startedAtMs = Date.now();
+
+  await assert.rejects(
+    runner.run({ ...decisionInput(), timeoutMs: 20 }),
+    /硬截止时间 20ms/
+  );
+  assert.ok(Date.now() - startedAtMs < 55);
+  await delay(70);
+  assert.deepEqual(actor.calls, []);
+  assert.equal(JSON.parse(lateToolResult ?? "null").error, "decision_closed");
+});
+
 async function executeToolRound(params: LlmGenerateParams, calls: LlmToolCall[]): Promise<string[]> {
   await params.onAssistantToolCalls?.({ role: "assistant", content: "", tool_calls: calls });
   const executor = params.toolExecutor;
@@ -311,6 +349,10 @@ function behaviorArgs() {
     idempotencyKey: "decision-control-1",
     decisionReason: "前往安全点"
   };
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function decisionInput() {

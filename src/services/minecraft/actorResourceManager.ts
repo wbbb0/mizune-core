@@ -34,6 +34,7 @@ export interface MinecraftActorClientFactory {
 }
 
 export interface MinecraftActorOwnerNotification {
+  notificationId: string;
   ownerSessionId: string;
   resourceId: string;
   actorId: string;
@@ -93,9 +94,12 @@ const PRIORITY_ORDER: Record<MinecraftActorWakePriority, number> = {
 };
 
 export class MinecraftActorResourceManager {
-  private readonly clients = new Map<string, MinecraftActorClient>();
+  private readonly clients = new Map<string, Promise<MinecraftActorClient>>();
   private readonly loops = new Map<string, ActorLoopState>();
-  private readonly stateUpdates = new Map<string, Promise<void>>();
+  private readonly stateUpdates = new Map<string, Promise<unknown>>();
+  private readonly eventIngestions = new Map<string, Promise<MinecraftActorEventIngestionResult>>();
+  private readonly closeOperations = new Map<string, Promise<void>>();
+  private readonly closingResources = new Set<string>();
 
   constructor(
     private readonly registry: RuntimeResourceRegistry,
@@ -155,61 +159,138 @@ export class MinecraftActorResourceManager {
   }
 
   async ingestEvents(resourceId: string): Promise<MinecraftActorEventIngestionResult> {
+    const normalizedResourceId = requireNonEmpty(resourceId, "resourceId");
+    const existing = this.eventIngestions.get(normalizedResourceId);
+    if (existing) return existing;
+    const ingestion = this.ingestEventsOnce(normalizedResourceId);
+    this.eventIngestions.set(normalizedResourceId, ingestion);
+    try {
+      return await ingestion;
+    } finally {
+      if (this.eventIngestions.get(normalizedResourceId) === ingestion) {
+        this.eventIngestions.delete(normalizedResourceId);
+      }
+    }
+  }
+
+  private async ingestEventsOnce(resourceId: string): Promise<MinecraftActorEventIngestionResult> {
     const record = await this.requireActiveResource(resourceId);
     const actor = requireActorState(record);
     const client = await this.getClient(record);
+    let { wake } = await this.flushEventOutbox(record);
     const listed = await client.listEvents(actor.lastEventSequence);
     const events = listed
       .filter(event => event.sequence > actor.lastEventSequence)
       .sort((left, right) => left.sequence - right.sequence);
     if (events.length === 0) {
-      return { events: [], wake: null };
+      return { events: [], wake };
     }
 
     const lastSequence = events.at(-1)?.sequence ?? actor.lastEventSequence;
-    await this.patchActorState(resourceId, current => ({
-      ...current,
-      lastEventSequence: Math.max(current.lastEventSequence, lastSequence)
-    }));
-
     const attentionEvents = events.filter(event => event.priority === "high" || event.priority === "critical");
-    if (attentionEvents.length > 0) {
-      await this.notifyOwner(record, {
-        type: "game_attention",
-        summary: summarizeEvents(attentionEvents),
-        details: { events: attentionEvents.slice(-8).map(compactRuntimeEvent) }
-      });
-    }
-
     const significant = events.filter(event =>
       event.priority === "high"
       || event.priority === "critical"
       || SIGNIFICANT_EVENT_TYPES.has(event.eventType)
     );
-    if (significant.length === 0) {
-      return { events, wake: null };
+    const outboxEntries: Array<{
+      outboxId: string;
+      eventSequence: number;
+      kind: "owner_notification" | "decision_wake";
+      payload: JsonValue;
+    }> = [];
+    if (attentionEvents.length > 0) {
+      const eventSequence = attentionEvents.at(-1)?.sequence ?? lastSequence;
+      outboxEntries.push({
+        outboxId: `event:${eventSequence}:owner_attention`,
+        eventSequence,
+        kind: "owner_notification",
+        payload: {
+          type: "game_attention",
+          summary: summarizeEvents(attentionEvents),
+          details: { events: attentionEvents.slice(-8).map(compactRuntimeEvent) }
+        }
+      });
+    }
+    if (significant.length > 0) {
+      const eventSequence = significant.at(-1)?.sequence ?? lastSequence;
+      const occurredAtMs = significant.at(-1)?.occurredAtMs ?? this.now();
+      const priority = significant.some(event => event.priority === "critical")
+        ? "critical"
+        : significant.some(event => event.priority === "high") ? "high" : "normal";
+      outboxEntries.push({
+        outboxId: `event:${eventSequence}:decision_wake`,
+        eventSequence,
+        kind: "decision_wake",
+        payload: {
+          type: "runtime_events",
+          summary: summarizeEvents(significant),
+          details: { events: significant.slice(-12).map(compactRuntimeEvent) },
+          occurredAtMs,
+          priority,
+          interruptCurrent: priority !== "normal"
+        }
+      });
     }
 
-    const occurredAtMs = significant.at(-1)?.occurredAtMs ?? this.now();
-    const priority = significant.some(event => event.priority === "critical")
-      ? "critical"
-      : significant.some(event => event.priority === "high") ? "high" : "normal";
-    return {
-      events,
-      wake: this.wake(resourceId, {
-        type: "runtime_events",
-        summary: summarizeEvents(significant),
-        details: { events: significant.slice(-12).map(compactRuntimeEvent) },
-        occurredAtMs,
-        priority,
-        interruptCurrent: priority !== "normal"
-      })
-    };
+    await this.enqueueStateUpdate(resourceId, async () => {
+      if (this.closingResources.has(resourceId)) {
+        throw new Error(`Minecraft Actor 资源正在关闭：${resourceId}`);
+      }
+      const recorded = await this.registry.recordMinecraftActorEvents({
+        resourceId,
+        lastEventSequence: lastSequence,
+        entries: outboxEntries,
+        updatedAtMs: this.now()
+      });
+      if (!recorded) throw new Error(`Minecraft Actor 资源不是 active：${resourceId}`);
+    });
+
+    const refreshed = await this.requireActiveResource(resourceId);
+    const flushed = await this.flushEventOutbox(refreshed);
+    wake = flushed.wake ?? wake;
+    return { events, wake };
+  }
+
+  private async flushEventOutbox(
+    record: RuntimeResourceRecord
+  ): Promise<{ wake: Promise<MinecraftActorWakeOutcome> | null }> {
+    let wake: Promise<MinecraftActorWakeOutcome> | null = null;
+    const entries = await this.registry.listPendingMinecraftActorOutbox(record.resourceId);
+    for (const entry of entries) {
+      try {
+        if (entry.kind === "owner_notification") {
+          const payload = parseOwnerNotificationPayload(entry.payload);
+          await this.deliverOwner(record, {
+            notificationId: `${record.resourceId}:${entry.outboxId}`,
+            type: payload.type,
+            summary: payload.summary,
+            ...(payload.details === undefined ? {} : { details: payload.details })
+          });
+        } else {
+          wake = this.wake(record.resourceId, parseWakePayload(entry.payload));
+        }
+        const delivered = await this.registry.markMinecraftActorOutboxDelivered(
+          record.resourceId,
+          entry.outboxId,
+          this.now()
+        );
+        if (!delivered) {
+          throw new Error(`Minecraft Actor outbox 状态已变化：${entry.outboxId}`);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await this.registry.markMinecraftActorOutboxFailed(record.resourceId, entry.outboxId, message);
+        throw error;
+      }
+    }
+    return { wake };
   }
 
   async notifyOwnerAttention(resourceId: string, summary: string, details?: JsonValue): Promise<void> {
     const record = await this.requireResource(resourceId);
-    await this.notifyOwner(record, {
+    await this.deliverOwner(record, {
+      notificationId: `manual:${resourceId}:${this.now()}`,
       type: "game_attention",
       summary: requireNonEmpty(summary, "summary"),
       ...(details === undefined ? {} : { details })
@@ -217,14 +298,31 @@ export class MinecraftActorResourceManager {
   }
 
   async close(resourceId: string, reason = "closed"): Promise<void> {
+    const normalizedResourceId = requireNonEmpty(resourceId, "resourceId");
+    const existing = this.closeOperations.get(normalizedResourceId);
+    if (existing) return existing;
+    const operation = this.performClose(normalizedResourceId, reason);
+    this.closeOperations.set(normalizedResourceId, operation);
+    return operation;
+  }
+
+  private async performClose(resourceId: string, reason: string): Promise<void> {
+    this.closingResources.add(resourceId);
     const loop = this.loops.get(resourceId);
     loop?.running?.controller.abort(new Error(reason));
     if (loop?.pending) {
       loop.pending.resolve({ status: "superseded", reason });
       loop.pending = null;
     }
+    const client = this.clients.get(resourceId);
     this.clients.delete(resourceId);
-    await this.registry.markStatus(resourceId, "closed", this.now());
+    const closeState = this.enqueueStateUpdate(resourceId, async () => {
+      await this.registry.markStatus(resourceId, "closed", this.now());
+    });
+    const closeClient = client?.then(value => value.close()).catch(error => {
+      this.logger.warn({ err: error, resourceId }, "minecraft_actor_client_close_failed");
+    });
+    await Promise.all([closeState, closeClient]);
   }
 
   private getLoop(resourceId: string): ActorLoopState {
@@ -299,7 +397,8 @@ export class MinecraftActorResourceManager {
       this.logger.warn({ err: error, resourceId, wakeType: request.type }, "minecraft_actor_decision_failed");
       const record = await this.get(resourceId);
       if (record) {
-        await this.notifyOwner(record, {
+        await this.notifyOwnerBestEffort(record, {
+          notificationId: `decision_failed:${resourceId}:${this.now()}`,
           type: "decision_failed",
           summary: `Minecraft 决策失败：${message}`
         });
@@ -309,14 +408,31 @@ export class MinecraftActorResourceManager {
   }
 
   private async getClient(record: RuntimeResourceRecord): Promise<MinecraftActorClient> {
+    if (this.closingResources.has(record.resourceId)) {
+      throw new Error(`Minecraft Actor 资源正在关闭：${record.resourceId}`);
+    }
     const cached = this.clients.get(record.resourceId);
     if (cached) return cached;
-    const client = await this.clientFactory.create({
-      resourceId: record.resourceId,
-      actor: cloneRecoveryState(requireActorState(record))
-    });
-    this.clients.set(record.resourceId, client);
-    return client;
+    const creation = Promise.resolve()
+      .then(() => this.clientFactory.create({
+        resourceId: record.resourceId,
+        actor: cloneRecoveryState(requireActorState(record))
+      }))
+      .then(async client => {
+        if (this.closingResources.has(record.resourceId)) {
+          await client.close();
+          throw new Error(`Minecraft Actor 资源在客户端创建期间关闭：${record.resourceId}`);
+        }
+        return client;
+      })
+      .catch(error => {
+        if (this.clients.get(record.resourceId) === creation) {
+          this.clients.delete(record.resourceId);
+        }
+        throw error;
+      });
+    this.clients.set(record.resourceId, creation);
+    return creation;
   }
 
   private async patchActorState(
@@ -324,19 +440,24 @@ export class MinecraftActorResourceManager {
     patch: (state: MinecraftActorRecoveryState) => MinecraftActorRecoveryState,
     summary?: string
   ): Promise<void> {
-    const previous = this.stateUpdates.get(resourceId) ?? Promise.resolve();
-    const update = previous.catch(() => undefined).then(async () => {
-      const record = await this.requireResource(resourceId);
+    await this.enqueueStateUpdate(resourceId, async () => {
+      const record = await this.requireActiveResource(resourceId);
       const next = patch(requireActorState(record));
       validateRecoveryState(next);
-      await this.registry.updateMinecraftActor(resourceId, next, {
+      const updated = await this.registry.updateMinecraftActor(resourceId, next, {
         updatedAtMs: this.now(),
         ...(summary === undefined ? {} : { summary })
       });
+      if (!updated) throw new Error(`Minecraft Actor 资源不是 active：${resourceId}`);
     });
+  }
+
+  private async enqueueStateUpdate<T>(resourceId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.stateUpdates.get(resourceId) ?? Promise.resolve();
+    const update = previous.catch(() => undefined).then(operation);
     this.stateUpdates.set(resourceId, update);
     try {
-      await update;
+      return await update;
     } finally {
       if (this.stateUpdates.get(resourceId) === update) {
         this.stateUpdates.delete(resourceId);
@@ -352,6 +473,9 @@ export class MinecraftActorResourceManager {
   }
 
   private async requireActiveResource(resourceId: string): Promise<RuntimeResourceRecord> {
+    if (this.closingResources.has(resourceId)) {
+      throw new Error(`Minecraft Actor 资源正在关闭：${resourceId}`);
+    }
     const record = await this.requireResource(resourceId);
     if (record.status !== "active") {
       throw new Error(`Minecraft Actor 资源不是 active：${record.status}`);
@@ -359,22 +483,69 @@ export class MinecraftActorResourceManager {
     return record;
   }
 
-  private async notifyOwner(
+  private async deliverOwner(
     record: RuntimeResourceRecord,
     input: Omit<MinecraftActorOwnerNotification, "ownerSessionId" | "resourceId" | "actorId">
   ): Promise<void> {
     if (!this.notificationSink || !record.ownerSessionId) return;
+    await this.notificationSink.notify({
+      ownerSessionId: record.ownerSessionId,
+      resourceId: record.resourceId,
+      actorId: requireActorState(record).actorId,
+      ...input
+    });
+  }
+
+  private async notifyOwnerBestEffort(
+    record: RuntimeResourceRecord,
+    input: Omit<MinecraftActorOwnerNotification, "ownerSessionId" | "resourceId" | "actorId">
+  ): Promise<void> {
     try {
-      await this.notificationSink.notify({
-        ownerSessionId: record.ownerSessionId,
-        resourceId: record.resourceId,
-        actorId: requireActorState(record).actorId,
-        ...input
-      });
+      await this.deliverOwner(record, input);
     } catch (error) {
       this.logger.warn({ err: error, resourceId: record.resourceId }, "minecraft_actor_owner_notification_failed");
     }
   }
+}
+
+function parseOwnerNotificationPayload(payload: unknown): {
+  type: "game_attention";
+  summary: string;
+  details?: JsonValue;
+} {
+  if (!isRecord(payload) || payload.type !== "game_attention" || typeof payload.summary !== "string") {
+    throw new Error("Minecraft Actor owner notification outbox payload 无效");
+  }
+  return {
+    type: "game_attention",
+    summary: requireNonEmpty(payload.summary, "outbox.summary"),
+    ...(payload.details === undefined ? {} : { details: payload.details as JsonValue })
+  };
+}
+
+function parseWakePayload(payload: unknown): MinecraftActorWakeRequest {
+  if (!isRecord(payload)
+      || typeof payload.type !== "string"
+      || typeof payload.summary !== "string"
+      || typeof payload.occurredAtMs !== "number") {
+    throw new Error("Minecraft Actor decision wake outbox payload 无效");
+  }
+  const priority = payload.priority;
+  if (priority !== "normal" && priority !== "high" && priority !== "critical") {
+    throw new Error("Minecraft Actor decision wake priority 无效");
+  }
+  return {
+    type: payload.type,
+    summary: payload.summary,
+    occurredAtMs: payload.occurredAtMs,
+    priority,
+    interruptCurrent: payload.interruptCurrent === true,
+    ...(payload.details === undefined ? {} : { details: payload.details as JsonValue })
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function requireActorState(record: RuntimeResourceRecord): MinecraftActorRecoveryState {
@@ -390,6 +561,12 @@ function validateRecoveryState(state: MinecraftActorRecoveryState): void {
   if (state.protocolVersion !== 1) throw new Error("仅支持 Minecraft Actor protocolVersion=1");
   if (state.modelRefs.length === 0 || state.modelRefs.some(model => !model.trim())) {
     throw new Error("actor.modelRefs 必须至少包含一个非空模型引用");
+  }
+  if (state.persistentState.length > 20_000) {
+    throw new Error("actor.persistentState 不能超过 20000 字符");
+  }
+  if (state.currentGoal !== null && state.currentGoal.length > 500) {
+    throw new Error("actor.currentGoal 不能超过 500 字符");
   }
   if (!Number.isSafeInteger(state.lastEventSequence) || state.lastEventSequence < 0) {
     throw new Error("actor.lastEventSequence 必须是非负安全整数");

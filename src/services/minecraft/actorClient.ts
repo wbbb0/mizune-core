@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
   MINECRAFT_ACTOR_PROTOCOL_VERSION,
@@ -32,6 +33,7 @@ export type MinecraftActorRpcMethod =
 
 export interface MinecraftActorTransport {
   call(method: MinecraftActorRpcMethod, payload: Record<string, unknown>, signal?: AbortSignal): Promise<unknown>;
+  close?(): Promise<void> | void;
 }
 
 export interface MinecraftActorClient {
@@ -49,7 +51,16 @@ export interface MinecraftActorClient {
   ): Promise<MinecraftProgramValidationResult>;
   activateProgram(command: MinecraftActivateProgramCommand, signal?: AbortSignal): Promise<MinecraftCommandResult>;
   listEvents(afterSequence?: number, signal?: AbortSignal): Promise<MinecraftRuntimeEvent[]>;
+  close(): Promise<void> | void;
 }
+
+const ACTOR_RESPONSE_BUDGET = {
+  maxDepth: 24,
+  maxNodes: 20_000,
+  maxStringLength: 100_000,
+  maxTotalStringLength: 512_000,
+  maxEventsPerPage: 256
+} as const;
 
 const jsonValueSchema: z.ZodType<unknown> = z.lazy(() => z.union([
   z.null(),
@@ -244,26 +255,26 @@ export class ProtocolMinecraftActorClient implements MinecraftActorClient {
   }
 
   async startBehavior(command: MinecraftBehaviorCommand, signal?: AbortSignal): Promise<MinecraftCommandResult> {
-    return this.command("behavior.start", { command }, signal);
+    return this.command("behavior.start", { command }, command.idempotencyKey, signal);
   }
 
   async cancelBehavior(
     command: MinecraftCancelBehaviorCommand,
     signal?: AbortSignal
   ): Promise<MinecraftCommandResult> {
-    return this.command("behavior.cancel", { command }, signal);
+    return this.command("behavior.cancel", { command }, command.idempotencyKey, signal);
   }
 
   async submitTask(command: MinecraftTaskCommand, signal?: AbortSignal): Promise<MinecraftCommandResult> {
-    return this.command("task.submit", { command }, signal);
+    return this.command("task.submit", { command }, command.idempotencyKey, signal);
   }
 
   async cancelTask(command: MinecraftCancelTaskCommand, signal?: AbortSignal): Promise<MinecraftCommandResult> {
-    return this.command("task.cancel", { command }, signal);
+    return this.command("task.cancel", { command }, command.idempotencyKey, signal);
   }
 
   async setAutonomy(command: MinecraftSetAutonomyCommand, signal?: AbortSignal): Promise<MinecraftCommandResult> {
-    return this.command("autonomy.set_policy", { command }, signal);
+    return this.command("autonomy.set_policy", { command }, command.idempotencyKey, signal);
   }
 
   async getActiveProgram(signal?: AbortSignal): Promise<MinecraftProgramObservation> {
@@ -277,44 +288,74 @@ export class ProtocolMinecraftActorClient implements MinecraftActorClient {
   ): Promise<MinecraftProgramValidationResult> {
     const validatedDocument = programDocumentSchema.parse(document) as MinecraftProgramDocument;
     const raw = await this.call("program.validate", { document: validatedDocument }, signal);
-    return programValidationResultSchema.parse(raw) as MinecraftProgramValidationResult;
+    const result = programValidationResultSchema.parse(raw) as MinecraftProgramValidationResult;
+    if (result.draft && !isDeepStrictEqual(result.draft.program, validatedDocument)) {
+      throw new Error("program validation draft 与提交文档不匹配");
+    }
+    return result;
   }
 
   async activateProgram(
     command: MinecraftActivateProgramCommand,
     signal?: AbortSignal
   ): Promise<MinecraftCommandResult> {
-    return this.command("program.activate", { command }, signal);
+    return this.command("program.activate", { command }, command.idempotencyKey, signal);
   }
 
   async listEvents(afterSequence = 0, signal?: AbortSignal): Promise<MinecraftRuntimeEvent[]> {
+    if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
+      throw new Error("events.list afterSequence 必须是非负安全整数");
+    }
     const raw = await this.call("events.list", { afterSequence }, signal);
-    const parsed = z.array(runtimeEventSchema).parse(raw) as MinecraftRuntimeEvent[];
+    const parsed = z.array(runtimeEventSchema).max(ACTOR_RESPONSE_BUDGET.maxEventsPerPage).parse(raw) as MinecraftRuntimeEvent[];
+    let previousSequence = afterSequence;
+    const eventIds = new Set<string>();
     for (const event of parsed) {
       this.requireActorId(event.actorId, "runtime event");
+      if (event.sequence <= previousSequence) {
+        throw new Error(`runtime event sequence 必须严格递增：${event.sequence} <= ${previousSequence}`);
+      }
+      if (eventIds.has(event.eventId)) {
+        throw new Error(`runtime eventId 重复：${event.eventId}`);
+      }
+      previousSequence = event.sequence;
+      eventIds.add(event.eventId);
     }
     return parsed;
+  }
+
+  async close(): Promise<void> {
+    await this.transport.close?.();
   }
 
   private async command(
     method: MinecraftActorRpcMethod,
     payload: Record<string, unknown>,
+    expectedIdempotencyKey: string,
     signal?: AbortSignal
   ): Promise<MinecraftCommandResult> {
     const raw = await this.call(method, payload, signal);
-    return commandResultSchema.parse(raw) as MinecraftCommandResult;
+    const result = commandResultSchema.parse(raw) as MinecraftCommandResult;
+    if (result.idempotencyKey !== expectedIdempotencyKey) {
+      throw new Error(
+        `command result idempotencyKey 不匹配：期望 ${expectedIdempotencyKey}，实际 ${result.idempotencyKey}`
+      );
+    }
+    return result;
   }
 
-  private call(
+  private async call(
     method: MinecraftActorRpcMethod,
     payload: Record<string, unknown>,
     signal?: AbortSignal
   ): Promise<unknown> {
-    return this.transport.call(method, {
+    const raw = await this.transport.call(method, {
       protocolVersion: MINECRAFT_ACTOR_PROTOCOL_VERSION,
       actorId: this.actorId,
       ...payload
     }, signal);
+    assertActorResponseBudget(raw, method);
+    return raw;
   }
 
   private parseActorEnvelope(schema: z.ZodType, raw: unknown, label: string): unknown {
@@ -326,6 +367,42 @@ export class ProtocolMinecraftActorClient implements MinecraftActorClient {
   private requireActorId(actual: string, label: string): void {
     if (actual !== this.actorId) {
       throw new Error(`${label} actorId 不匹配：期望 ${this.actorId}，实际 ${actual}`);
+    }
+  }
+}
+
+function assertActorResponseBudget(value: unknown, method: MinecraftActorRpcMethod): void {
+  const pending: Array<{ value: unknown; depth: number }> = [{ value, depth: 0 }];
+  const visited = new WeakSet<object>();
+  let nodes = 0;
+  let totalStringLength = 0;
+
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current) break;
+    nodes += 1;
+    if (nodes > ACTOR_RESPONSE_BUDGET.maxNodes) {
+      throw new Error(`${method} 响应超过节点预算 ${ACTOR_RESPONSE_BUDGET.maxNodes}`);
+    }
+    if (current.depth > ACTOR_RESPONSE_BUDGET.maxDepth) {
+      throw new Error(`${method} 响应超过嵌套深度预算 ${ACTOR_RESPONSE_BUDGET.maxDepth}`);
+    }
+    if (typeof current.value === "string") {
+      if (current.value.length > ACTOR_RESPONSE_BUDGET.maxStringLength) {
+        throw new Error(`${method} 响应字符串超过长度预算 ${ACTOR_RESPONSE_BUDGET.maxStringLength}`);
+      }
+      totalStringLength += current.value.length;
+      if (totalStringLength > ACTOR_RESPONSE_BUDGET.maxTotalStringLength) {
+        throw new Error(`${method} 响应超过总字符串预算 ${ACTOR_RESPONSE_BUDGET.maxTotalStringLength}`);
+      }
+    }
+    if (current.value === null || typeof current.value !== "object") continue;
+    if (visited.has(current.value)) {
+      throw new Error(`${method} 响应包含循环引用`);
+    }
+    visited.add(current.value);
+    for (const child of Object.values(current.value)) {
+      pending.push({ value: child, depth: current.depth + 1 });
     }
   }
 }

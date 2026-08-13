@@ -8,6 +8,26 @@ import type {
   ShellSessionRecoveryState
 } from "./resourceTypes.ts";
 
+export type MinecraftActorOutboxKind = "owner_notification" | "decision_wake";
+
+export interface MinecraftActorOutboxEntry {
+  resourceId: string;
+  outboxId: string;
+  eventSequence: number;
+  kind: MinecraftActorOutboxKind;
+  payload: unknown;
+  attemptCount: number;
+  lastError: string | null;
+  createdAtMs: number;
+}
+
+export interface NewMinecraftActorOutboxEntry {
+  outboxId: string;
+  eventSequence: number;
+  kind: MinecraftActorOutboxKind;
+  payload: unknown;
+}
+
 export class RuntimeResourceStore {
   constructor(private readonly stateDb: StateDatabase) {}
 
@@ -200,6 +220,158 @@ export class RuntimeResourceStore {
     return this.getRow(resourceId);
   }
 
+  async updateActiveMinecraftActor(
+    resourceId: string,
+    minecraftActor: MinecraftActorRecoveryState,
+    input: { updatedAtMs: number; summary?: string }
+  ): Promise<boolean> {
+    const db = await this.getReadyDb();
+    const updateBase = db.prepare(`
+      UPDATE runtime_resources
+      SET last_accessed_at_ms = @updatedAtMs,
+          summary = CASE WHEN @hasSummary = 1 THEN @summary ELSE summary END
+      WHERE resource_id = @resourceId AND kind = 'minecraft_actor' AND status = 'active'
+    `);
+    const updateActor = db.prepare(`
+      UPDATE runtime_minecraft_actors
+      SET actor_id = @actorId,
+          transport_kind = @transportKind,
+          endpoint = @endpoint,
+          protocol_version = @protocolVersion,
+          persistent_state = @persistentState,
+          current_goal = @currentGoal,
+          model_refs_json = @modelRefsJson,
+          allow_autonomy_policy_change = @allowAutonomyPolicyChange,
+          allow_program_deployment = @allowProgramDeployment,
+          last_event_sequence = @lastEventSequence
+      WHERE resource_id = @resourceId
+    `);
+    const update = db.transaction(() => {
+      const baseResult = updateBase.run({
+        resourceId,
+        updatedAtMs: input.updatedAtMs,
+        hasSummary: input.summary === undefined ? 0 : 1,
+        summary: input.summary ?? ""
+      });
+      if (baseResult.changes !== 1) return false;
+      const actorResult = updateActor.run({
+        resourceId,
+        actorId: minecraftActor.actorId,
+        transportKind: minecraftActor.transportKind,
+        endpoint: minecraftActor.endpoint,
+        protocolVersion: minecraftActor.protocolVersion,
+        persistentState: minecraftActor.persistentState,
+        currentGoal: minecraftActor.currentGoal,
+        modelRefsJson: JSON.stringify(minecraftActor.modelRefs),
+        allowAutonomyPolicyChange: minecraftActor.allowAutonomyPolicyChange ? 1 : 0,
+        allowProgramDeployment: minecraftActor.allowProgramDeployment ? 1 : 0,
+        lastEventSequence: minecraftActor.lastEventSequence
+      });
+      if (actorResult.changes !== 1) {
+        throw new Error(`Minecraft Actor 子记录不存在：${resourceId}`);
+      }
+      return true;
+    });
+    return update();
+  }
+
+  async recordMinecraftActorEvents(
+    resourceId: string,
+    lastEventSequence: number,
+    entries: NewMinecraftActorOutboxEntry[],
+    updatedAtMs: number
+  ): Promise<boolean> {
+    const db = await this.getReadyDb();
+    const touchActive = db.prepare(`
+      UPDATE runtime_resources
+      SET last_accessed_at_ms = @updatedAtMs
+      WHERE resource_id = @resourceId AND kind = 'minecraft_actor' AND status = 'active'
+    `);
+    const updateCursor = db.prepare(`
+      UPDATE runtime_minecraft_actors
+      SET last_event_sequence = MAX(last_event_sequence, @lastEventSequence)
+      WHERE resource_id = @resourceId
+    `);
+    const insertOutbox = db.prepare(`
+      INSERT INTO runtime_minecraft_actor_outbox (
+        resource_id, outbox_id, event_sequence, kind, payload_json,
+        status, attempt_count, last_error, created_at_ms, delivered_at_ms
+      ) VALUES (
+        @resourceId, @outboxId, @eventSequence, @kind, @payloadJson,
+        'pending', 0, NULL, @createdAtMs, NULL
+      )
+      ON CONFLICT(resource_id, outbox_id) DO NOTHING
+    `);
+    const record = db.transaction(() => {
+      if (touchActive.run({ resourceId, updatedAtMs }).changes !== 1) return false;
+      if (updateCursor.run({ resourceId, lastEventSequence }).changes !== 1) {
+        throw new Error(`Minecraft Actor 子记录不存在：${resourceId}`);
+      }
+      for (const entry of entries) {
+        insertOutbox.run({
+          resourceId,
+          outboxId: entry.outboxId,
+          eventSequence: entry.eventSequence,
+          kind: entry.kind,
+          payloadJson: JSON.stringify(entry.payload),
+          createdAtMs: updatedAtMs
+        });
+      }
+      return true;
+    });
+    return record();
+  }
+
+  async listPendingMinecraftActorOutbox(
+    resourceId: string,
+    limit = 64
+  ): Promise<MinecraftActorOutboxEntry[]> {
+    const db = await this.getReadyDb();
+    const boundedLimit = Math.min(Math.max(limit, 1), 256);
+    const rows = db.prepare(`
+      SELECT resource_id, outbox_id, event_sequence, kind, payload_json,
+             attempt_count, last_error, created_at_ms
+      FROM runtime_minecraft_actor_outbox
+      WHERE resource_id = ? AND status = 'pending'
+      ORDER BY event_sequence ASC,
+               CASE kind WHEN 'owner_notification' THEN 0 ELSE 1 END ASC,
+               outbox_id ASC
+      LIMIT ?
+    `).all(resourceId, boundedLimit) as MinecraftActorOutboxRow[];
+    return rows.map(row => ({
+      resourceId: row.resource_id,
+      outboxId: row.outbox_id,
+      eventSequence: row.event_sequence,
+      kind: row.kind,
+      payload: parseOutboxPayload(row.payload_json, row.outbox_id),
+      attemptCount: row.attempt_count,
+      lastError: row.last_error,
+      createdAtMs: row.created_at_ms
+    }));
+  }
+
+  async markMinecraftActorOutboxDelivered(
+    resourceId: string,
+    outboxId: string,
+    deliveredAtMs: number
+  ): Promise<boolean> {
+    const db = await this.getReadyDb();
+    return db.prepare(`
+      UPDATE runtime_minecraft_actor_outbox
+      SET status = 'delivered', delivered_at_ms = ?, last_error = NULL
+      WHERE resource_id = ? AND outbox_id = ? AND status = 'pending'
+    `).run(deliveredAtMs, resourceId, outboxId).changes === 1;
+  }
+
+  async markMinecraftActorOutboxFailed(resourceId: string, outboxId: string, error: string): Promise<void> {
+    const db = await this.getReadyDb();
+    db.prepare(`
+      UPDATE runtime_minecraft_actor_outbox
+      SET attempt_count = attempt_count + 1, last_error = ?
+      WHERE resource_id = ? AND outbox_id = ? AND status = 'pending'
+    `).run(error.slice(0, 4_000), resourceId, outboxId);
+  }
+
   async getRow(resourceId: string): Promise<RuntimeResourceRecord | null> {
     const db = await this.getReadyDb();
     const row = db.prepare(`
@@ -379,6 +551,25 @@ export class RuntimeResourceStore {
       offset,
       limit
     };
+  }
+}
+
+interface MinecraftActorOutboxRow {
+  resource_id: string;
+  outbox_id: string;
+  event_sequence: number;
+  kind: MinecraftActorOutboxKind;
+  payload_json: string;
+  attempt_count: number;
+  last_error: string | null;
+  created_at_ms: number;
+}
+
+function parseOutboxPayload(raw: string, outboxId: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch (error) {
+    throw new Error(`Minecraft Actor outbox ${outboxId} payload 无效`, { cause: error });
   }
 }
 

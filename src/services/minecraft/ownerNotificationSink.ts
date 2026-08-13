@@ -43,9 +43,10 @@ export function createMinecraftActorOwnerNotificationSink(
 }
 
 function buildJobName(notification: MinecraftActorOwnerNotification): string {
-  return notification.type === "decision_failed"
+  const label = notification.type === "decision_failed"
     ? `Minecraft Actor 决策失败 (${notification.actorId})`
     : `Minecraft Actor 请求关注 (${notification.actorId})`;
+  return `${label} [${notification.notificationId}]`;
 }
 
 function buildInstruction(notification: MinecraftActorOwnerNotification): string {

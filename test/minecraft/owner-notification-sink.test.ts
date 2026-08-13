@@ -19,6 +19,7 @@ test("Minecraft owner notification becomes an inline internal session trigger", 
   }, () => 123);
 
   await sink.notify({
+    notificationId: "res_minecraft_1:event:8:owner_attention",
     ownerSessionId: "onebot:private:owner",
     resourceId: "res_minecraft_1",
     actorId: "actor-1",
@@ -34,7 +35,7 @@ test("Minecraft owner notification becomes an inline internal session trigger", 
     targetType: "private",
     targetUserId: "owner",
     targetSenderName: "主人",
-    jobName: "Minecraft Actor 请求关注 (actor-1)",
+    jobName: "Minecraft Actor 请求关注 (actor-1) [res_minecraft_1:event:8:owner_attention]",
     instruction: "Minecraft Actor 在游戏中遇到需要会话关注的事件。根据摘要判断是否应通知用户或询问决定；没有必要时可以保持简短。",
     enqueuedAt: 123,
     resourceId: "res_minecraft_1",

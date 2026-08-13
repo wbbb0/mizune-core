@@ -21,6 +21,8 @@ class RecordingTransport implements MinecraftActorTransport {
     }
     return this.responses.shift();
   }
+
+  close(): void {}
 }
 
 test("protocol client sends versioned actor-scoped observation requests", async () => {
@@ -124,7 +126,11 @@ test("protocol client supports typed two-phase program deployment", async () => 
     draft: { draftId: "draft-1", validatedAtMs: 10_000, program: document },
     diagnostics: []
   });
-  transport.responses.push(commandResult({ status: "succeeded", value: { program: document } }));
+  transport.responses.push(commandResult({
+    idempotencyKey: "activate-program-1",
+    status: "succeeded",
+    value: { program: document }
+  }));
   const client = new ProtocolMinecraftActorClient("actor-1", transport);
 
   const validated = await client.validateProgram(document);
@@ -151,6 +157,65 @@ test("protocol client rejects contradictory program validation results", async (
   const client = new ProtocolMinecraftActorClient("actor-1", transport);
 
   await assert.rejects(client.validateProgram(programDocument()), /contradictory/);
+});
+
+test("protocol client rejects mismatched command and program response correlation", async () => {
+  const transport = new RecordingTransport();
+  transport.responses.push(commandResult({ idempotencyKey: "wrong-key" }));
+  transport.responses.push({
+    protocolVersion: 1,
+    ok: true,
+    draft: {
+      draftId: "draft-wrong",
+      validatedAtMs: 10_000,
+      program: { ...programDocument(), programVersion: 2 }
+    },
+    diagnostics: []
+  });
+  const client = new ProtocolMinecraftActorClient("actor-1", transport);
+
+  await assert.rejects(client.startBehavior({
+    kind: "go_to",
+    position: { x: 1, y: 64, z: 1 },
+    tolerance: 1,
+    expectedActorRevision: 3,
+    expectedObservationRevision: 7,
+    idempotencyKey: "expected-key",
+    decisionReason: "测试响应关联"
+  }), /idempotencyKey 不匹配/);
+  await assert.rejects(client.validateProgram(programDocument()), /draft 与提交文档不匹配/);
+});
+
+test("protocol client rejects oversized and deeply nested runtime responses", async () => {
+  const transport = new RecordingTransport();
+  transport.responses.push(Array.from({ length: 257 }, (_, index) => runtimeEvent({
+    eventId: `event-${index}`,
+    sequence: index + 1
+  })));
+  let nested: Record<string, unknown> = {};
+  for (let depth = 0; depth < 25; depth += 1) nested = { next: nested };
+  transport.responses.push(observation({ value: nested }));
+  const client = new ProtocolMinecraftActorClient("actor-1", transport);
+
+  await assert.rejects(client.listEvents(), /Too big|节点预算|超过/u);
+  await assert.rejects(client.observe({ scope: "environment" }), /嵌套深度预算/);
+});
+
+test("protocol client rejects duplicate or non-monotonic event pages", async () => {
+  const transport = new RecordingTransport();
+  transport.responses.push([
+    runtimeEvent({ eventId: "event-2", sequence: 2 }),
+    runtimeEvent({ eventId: "event-1", sequence: 1 })
+  ]);
+  transport.responses.push([
+    runtimeEvent({ eventId: "same", sequence: 3 }),
+    runtimeEvent({ eventId: "same", sequence: 4 })
+  ]);
+  const client = new ProtocolMinecraftActorClient("actor-1", transport);
+
+  await assert.rejects(client.listEvents(), /sequence 必须严格递增/);
+  await assert.rejects(client.listEvents(), /eventId 重复/);
+  await assert.rejects(client.listEvents(-1), /afterSequence/);
 });
 
 function selfState() {

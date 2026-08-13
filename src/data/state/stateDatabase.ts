@@ -574,10 +574,32 @@ function createRuntimeResourcesSchema(db: SqliteDatabase): void {
       allow_program_deployment INTEGER NOT NULL CHECK (allow_program_deployment IN (0, 1)),
       last_event_sequence INTEGER NOT NULL CHECK (last_event_sequence >= 0)
     );
+
+    CREATE TABLE IF NOT EXISTS runtime_minecraft_actor_outbox (
+      resource_id TEXT NOT NULL REFERENCES runtime_resources(resource_id) ON DELETE CASCADE,
+      outbox_id TEXT NOT NULL CHECK (outbox_id = trim(outbox_id) AND length(outbox_id) > 0),
+      event_sequence INTEGER NOT NULL CHECK (event_sequence >= 0),
+      kind TEXT NOT NULL CHECK (kind IN ('owner_notification', 'decision_wake')),
+      payload_json TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending', 'delivered')),
+      attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+      last_error TEXT,
+      created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+      delivered_at_ms INTEGER,
+      PRIMARY KEY (resource_id, outbox_id)
+    );
   `);
 }
 
 function migrateRuntimeResourcesSchema(db: SqliteDatabase): boolean {
+  const hasMinecraftActors = db.prepare(`
+    SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'runtime_minecraft_actors'
+  `).get() !== undefined;
+  if (hasMinecraftActors) {
+    createRuntimeResourcesSchema(db);
+    return true;
+  }
+
   const resources = db.prepare("SELECT * FROM runtime_resources").all() as Array<Record<string, unknown>>;
   const browserPages = db.prepare("SELECT * FROM runtime_browser_pages").all() as Array<Record<string, unknown>>;
   const shellSessions = db.prepare("SELECT * FROM runtime_shell_sessions").all() as Array<Record<string, unknown>>;
@@ -653,6 +675,18 @@ function validateRuntimeResourcesSchema(db: SqliteDatabase): void {
     allow_autonomy_policy_change: "INTEGER",
     allow_program_deployment: "INTEGER",
     last_event_sequence: "INTEGER"
+  });
+  assertTableColumns(db, "runtime_minecraft_actor_outbox", {
+    resource_id: "TEXT",
+    outbox_id: "TEXT",
+    event_sequence: "INTEGER",
+    kind: "TEXT",
+    payload_json: "TEXT",
+    status: "TEXT",
+    attempt_count: "INTEGER",
+    last_error: "TEXT",
+    created_at_ms: "INTEGER",
+    delivered_at_ms: "INTEGER"
   });
 }
 
@@ -782,10 +816,16 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   },
   {
     groupId: "state.runtime_resources",
-    schemaVersion: 2,
+    schemaVersion: 3,
     minReadableSchemaVersion: 1,
     resetPolicy: "block_reset",
-    ownedTables: ["runtime_resources", "runtime_browser_pages", "runtime_shell_sessions", "runtime_minecraft_actors"],
+    ownedTables: [
+      "runtime_resources",
+      "runtime_browser_pages",
+      "runtime_shell_sessions",
+      "runtime_minecraft_actors",
+      "runtime_minecraft_actor_outbox"
+    ],
     createSchema: createRuntimeResourcesSchema,
     migrateSchema: migrateRuntimeResourcesSchema,
     validateSchema: validateRuntimeResourcesSchema

@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { RuntimeResourceStore } from "./runtimeResourceStore.ts";
+import type {
+  NewMinecraftActorOutboxEntry,
+  RuntimeResourceStore
+} from "./runtimeResourceStore.ts";
 import type {
   BrowserPageRecoveryState,
   MinecraftActorRecoveryState,
@@ -115,21 +118,36 @@ export class RuntimeResourceRegistry {
   async updateMinecraftActor(
     resourceId: string,
     minecraftActor: MinecraftActorRecoveryState,
-    input: { updatedAtMs: number; summary?: string; status?: RuntimeResourceStatus }
+    input: { updatedAtMs: number; summary?: string }
   ): Promise<RuntimeResourceRecord | null> {
-    const record = await this.store.getRow(resourceId);
-    if (!record || record.kind !== "minecraft_actor") {
-      return null;
-    }
-    const updated: RuntimeResourceRecord = {
-      ...record,
-      ...(input.summary !== undefined ? { summary: input.summary } : {}),
-      ...(input.status !== undefined ? { status: input.status } : {}),
-      lastAccessedAtMs: input.updatedAtMs,
-      minecraftActor
-    };
-    await this.store.upsert(updated);
-    return updated;
+    const updated = await this.store.updateActiveMinecraftActor(resourceId, minecraftActor, input);
+    return updated ? this.store.getRow(resourceId) : null;
+  }
+
+  async recordMinecraftActorEvents(input: {
+    resourceId: string;
+    lastEventSequence: number;
+    entries: NewMinecraftActorOutboxEntry[];
+    updatedAtMs: number;
+  }): Promise<boolean> {
+    return this.store.recordMinecraftActorEvents(
+      input.resourceId,
+      input.lastEventSequence,
+      input.entries,
+      input.updatedAtMs
+    );
+  }
+
+  async listPendingMinecraftActorOutbox(resourceId: string) {
+    return this.store.listPendingMinecraftActorOutbox(resourceId);
+  }
+
+  async markMinecraftActorOutboxDelivered(resourceId: string, outboxId: string, deliveredAtMs: number) {
+    return this.store.markMinecraftActorOutboxDelivered(resourceId, outboxId, deliveredAtMs);
+  }
+
+  async markMinecraftActorOutboxFailed(resourceId: string, outboxId: string, error: string) {
+    return this.store.markMinecraftActorOutboxFailed(resourceId, outboxId, error);
   }
 
   async touch(resourceId: string, input: {

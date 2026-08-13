@@ -16,7 +16,8 @@ import { RuntimeResourceStore } from "../../src/runtime/resources/runtimeResourc
 import type { MinecraftActorClient } from "../../src/services/minecraft/actorClient.ts";
 import {
   MinecraftActorResourceManager,
-  type MinecraftActorOwnerNotification
+  type MinecraftActorOwnerNotification,
+  type MinecraftActorOwnerNotificationSink
 } from "../../src/services/minecraft/actorResourceManager.ts";
 import type {
   MinecraftActivateProgramCommand,
@@ -40,6 +41,8 @@ type Generate = LlmClient["generate"];
 
 class ResourceActorClient implements MinecraftActorClient {
   events: MinecraftRuntimeEvent[] = [];
+  closeCalls = 0;
+  listEventsCalls = 0;
 
   async getSnapshot(): Promise<MinecraftActorSnapshot> {
     return actorSnapshot();
@@ -87,7 +90,12 @@ class ResourceActorClient implements MinecraftActorClient {
   }
 
   async listEvents(afterSequence = 0): Promise<MinecraftRuntimeEvent[]> {
+    this.listEventsCalls += 1;
     return this.events.filter(event => event.sequence > afterSequence);
+  }
+
+  close(): void {
+    this.closeCalls += 1;
   }
 }
 
@@ -179,6 +187,136 @@ test("event ingestion advances cursor, wakes decision loop and notifies owner", 
   }
 });
 
+test("concurrent event ingestion is single-flight", async () => {
+  const notifications: MinecraftActorOwnerNotification[] = [];
+  const harness = await createManagerHarness(
+    new FinishOnlyLlm("处理安全事件", "已处理", null),
+    notifications
+  );
+  try {
+    const resource = await harness.manager.create(resourceInput());
+    harness.client.events = [runtimeEvent({ sequence: 8, priority: "critical" })];
+
+    const [first, second] = await Promise.all([
+      harness.manager.ingestEvents(resource.resourceId),
+      harness.manager.ingestEvents(resource.resourceId)
+    ]);
+    await Promise.all([first.wake, second.wake]);
+
+    assert.equal(harness.client.listEventsCalls, 1);
+    assert.equal(notifications.length, 1);
+    assert.equal(notifications[0]?.notificationId, `${resource.resourceId}:event:8:owner_attention`);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("failed owner notification remains in outbox and retries after cursor advance", async () => {
+  const notifications: MinecraftActorOwnerNotification[] = [];
+  const attemptedIds: string[] = [];
+  let attempts = 0;
+  const notificationSink: MinecraftActorOwnerNotificationSink = {
+    notify(notification) {
+      attempts += 1;
+      attemptedIds.push(notification.notificationId);
+      if (attempts === 1) throw new Error("temporary notification failure");
+      notifications.push(notification);
+    }
+  };
+  const harness = await createManagerHarness(
+    new FinishOnlyLlm("处理安全事件", "已处理", null),
+    notifications,
+    notificationSink
+  );
+  try {
+    const resource = await harness.manager.create(resourceInput());
+    harness.client.events = [runtimeEvent({ sequence: 8, priority: "critical" })];
+
+    await assert.rejects(harness.manager.ingestEvents(resource.resourceId), /temporary notification failure/);
+    assert.equal((await harness.registry.get(resource.resourceId))?.minecraftActor?.lastEventSequence, 8);
+
+    const retried = await harness.manager.ingestEvents(resource.resourceId);
+    assert.equal((await retried.wake)?.status, "completed");
+    assert.equal(attempts, 2);
+    assert.equal(notifications.length, 1);
+    assert.equal(attemptedIds[0], attemptedIds[1]);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("client creation is single-flight and close disposes a client created during shutdown", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-minecraft-actor-close-"));
+  const database = new StateDatabase(dataDir, createSilentLogger());
+  const registry = new RuntimeResourceRegistry(new RuntimeResourceStore(database));
+  const client = new ResourceActorClient();
+  const clientReady = deferred<ResourceActorClient>();
+  let factoryCalls = 0;
+  const manager = new MinecraftActorResourceManager(
+    registry,
+    {
+      create() {
+        factoryCalls += 1;
+        return clientReady.promise;
+      }
+    },
+    new FinishOnlyLlm("完成", "完成", null),
+    createSilentLogger()
+  );
+  try {
+    const resource = await manager.create(resourceInput());
+    const firstProbe = manager.probe(resource.resourceId);
+    const secondProbe = manager.probe(resource.resourceId);
+    await waitUntil(() => factoryCalls === 1);
+
+    const close = manager.close(resource.resourceId, "测试关闭");
+    clientReady.resolve(client);
+    const probes = await Promise.allSettled([firstProbe, secondProbe]);
+    await close;
+
+    assert.equal(factoryCalls, 1);
+    assert.equal(client.closeCalls, 1);
+    assert.ok(probes.every(result => result.status === "rejected"));
+    assert.equal((await registry.get(resource.resourceId))?.status, "closed");
+  } finally {
+    database.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("close remains irreversible when an aborted provider finishes late", async () => {
+  const generationStarted = deferred<void>();
+  const releaseGeneration = deferred<void>();
+  const llm: Pick<LlmClient, "generate"> = {
+    generate: async params => {
+      generationStarted.resolve(undefined);
+      await releaseGeneration.promise;
+      await finishDecision(params, "迟到完成", "不应持久化", "不应恢复");
+      return llmResult();
+    }
+  };
+  const harness = await createManagerHarness(llm);
+  try {
+    const resource = await harness.manager.create(resourceInput());
+    const wake = harness.manager.wake(resource.resourceId, {
+      type: "idle_opportunity",
+      summary: "空闲",
+      occurredAtMs: 100
+    });
+    await generationStarted.promise;
+    await harness.manager.close(resource.resourceId, "owner closed");
+    releaseGeneration.resolve(undefined);
+
+    assert.equal((await wake).status, "interrupted");
+    await delay(10);
+    const persisted = await harness.registry.get(resource.resourceId);
+    assert.equal(persisted?.status, "closed");
+    assert.equal(persisted?.minecraftActor?.persistentState, "在出生点待命");
+  } finally {
+    await harness.close();
+  }
+});
+
 class FinishOnlyLlm {
   constructor(
     private readonly summary: string,
@@ -194,7 +332,10 @@ class FinishOnlyLlm {
 
 async function createManagerHarness(
   llm: Pick<LlmClient, "generate">,
-  notifications: MinecraftActorOwnerNotification[] = []
+  notifications: MinecraftActorOwnerNotification[] = [],
+  notificationSink: MinecraftActorOwnerNotificationSink = {
+    notify(notification) { notifications.push(notification); }
+  }
 ) {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-minecraft-actor-manager-"));
   const database = new StateDatabase(dataDir, createSilentLogger());
@@ -212,7 +353,7 @@ async function createManagerHarness(
     },
     llm,
     createSilentLogger(),
-    { notify(notification) { notifications.push(notification); } },
+    notificationSink,
     () => 1_000
   );
   return {
@@ -225,6 +366,28 @@ async function createManagerHarness(
       await rm(dataDir, { recursive: true, force: true });
     }
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
+async function waitUntil(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("timed out waiting for condition");
+    await delay(1);
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function resourceInput() {
