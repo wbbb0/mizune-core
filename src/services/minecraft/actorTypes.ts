@@ -114,6 +114,51 @@ export interface MinecraftRuntimeEvent {
   payload: Record<string, JsonValue>;
 }
 
+export interface MinecraftProgramMetadata {
+  decisionId?: string;
+  modelRef?: string;
+  createdAtMs?: number;
+  summary?: string;
+}
+
+export interface MinecraftProgramDocument {
+  protocolVersion: typeof MINECRAFT_ACTOR_PROTOCOL_VERSION;
+  programId: string;
+  programVersion: number;
+  expectedActorRevision: number;
+  language: "python";
+  apiVersion: "mizune.mc.v1";
+  entrypoint: "main";
+  source: string;
+  sourceHash: string;
+  requiredCapabilities: string[];
+  metadata: MinecraftProgramMetadata;
+}
+
+export interface MinecraftProgramDraft {
+  draftId: string;
+  validatedAtMs: number;
+  program: MinecraftProgramDocument;
+}
+
+export interface MinecraftScriptDiagnostic {
+  code: string;
+  message: string;
+  line: number | null;
+  column: number | null;
+}
+
+export interface MinecraftProgramValidationResult {
+  protocolVersion: typeof MINECRAFT_ACTOR_PROTOCOL_VERSION;
+  ok: boolean;
+  draft: MinecraftProgramDraft | null;
+  diagnostics: MinecraftScriptDiagnostic[];
+}
+
+export interface MinecraftProgramObservation extends Omit<MinecraftObservationEnvelope, "value"> {
+  value: MinecraftProgramDocument | null;
+}
+
 export type MinecraftObservationRequest =
   | { scope: "self" }
   | { scope: "environment" }
@@ -159,4 +204,11 @@ export interface MinecraftSetAutonomyCommand {
   policy: MinecraftAutonomyPolicy;
   expectedActorRevision: number;
   idempotencyKey: string;
+}
+
+export interface MinecraftActivateProgramCommand {
+  draftId: string;
+  expectedActorRevision: number;
+  idempotencyKey: string;
+  decisionReason: string;
 }

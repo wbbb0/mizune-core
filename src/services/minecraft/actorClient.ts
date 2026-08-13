@@ -2,12 +2,16 @@ import { z } from "zod";
 import {
   MINECRAFT_ACTOR_PROTOCOL_VERSION,
   type MinecraftActorSnapshot,
+  type MinecraftActivateProgramCommand,
   type MinecraftBehaviorCommand,
   type MinecraftCancelBehaviorCommand,
   type MinecraftCancelTaskCommand,
   type MinecraftCommandResult,
   type MinecraftObservationEnvelope,
   type MinecraftObservationRequest,
+  type MinecraftProgramDocument,
+  type MinecraftProgramObservation,
+  type MinecraftProgramValidationResult,
   type MinecraftRuntimeEvent,
   type MinecraftSetAutonomyCommand,
   type MinecraftTaskCommand
@@ -21,6 +25,9 @@ export type MinecraftActorRpcMethod =
   | "task.submit"
   | "task.cancel"
   | "autonomy.set_policy"
+  | "program.get_active"
+  | "program.validate"
+  | "program.activate"
   | "events.list";
 
 export interface MinecraftActorTransport {
@@ -35,6 +42,12 @@ export interface MinecraftActorClient {
   submitTask(command: MinecraftTaskCommand, signal?: AbortSignal): Promise<MinecraftCommandResult>;
   cancelTask(command: MinecraftCancelTaskCommand, signal?: AbortSignal): Promise<MinecraftCommandResult>;
   setAutonomy(command: MinecraftSetAutonomyCommand, signal?: AbortSignal): Promise<MinecraftCommandResult>;
+  getActiveProgram(signal?: AbortSignal): Promise<MinecraftProgramObservation>;
+  validateProgram(
+    document: MinecraftProgramDocument,
+    signal?: AbortSignal
+  ): Promise<MinecraftProgramValidationResult>;
+  activateProgram(command: MinecraftActivateProgramCommand, signal?: AbortSignal): Promise<MinecraftCommandResult>;
   listEvents(afterSequence?: number, signal?: AbortSignal): Promise<MinecraftRuntimeEvent[]>;
 }
 
@@ -154,6 +167,59 @@ const runtimeEventSchema = z.object({
   payload: z.record(z.string(), jsonValueSchema)
 }).strict();
 
+const programMetadataSchema = z.object({
+  decisionId: z.string().min(1).optional(),
+  modelRef: z.string().min(1).optional(),
+  createdAtMs: z.number().int().nonnegative().optional(),
+  summary: z.string().max(4_000).optional()
+}).strict();
+
+const programDocumentSchema = z.object({
+  protocolVersion: z.literal(MINECRAFT_ACTOR_PROTOCOL_VERSION),
+  programId: z.string().min(1).max(128),
+  programVersion: z.number().int().positive(),
+  expectedActorRevision: z.number().int().nonnegative(),
+  language: z.literal("python"),
+  apiVersion: z.literal("mizune.mc.v1"),
+  entrypoint: z.literal("main"),
+  source: z.string().min(1).max(100_000),
+  sourceHash: z.string().regex(/^sha256:[0-9a-f]{64}$/u),
+  requiredCapabilities: z.array(z.string().min(1)).max(128).refine(
+    values => new Set(values).size === values.length,
+    "requiredCapabilities 不能重复"
+  ),
+  metadata: programMetadataSchema
+}).strict();
+
+const programDraftSchema = z.object({
+  draftId: z.string().min(1),
+  validatedAtMs: z.number().int().nonnegative(),
+  program: programDocumentSchema
+}).strict();
+
+const programValidationResultSchema = z.object({
+  protocolVersion: z.literal(MINECRAFT_ACTOR_PROTOCOL_VERSION),
+  ok: z.boolean(),
+  draft: programDraftSchema.nullable(),
+  diagnostics: z.array(z.object({
+    code: z.string().min(1),
+    message: z.string().min(1),
+    line: z.number().int().positive().nullable(),
+    column: z.number().int().nonnegative().nullable()
+  }).strict())
+}).strict().superRefine((result, context) => {
+  if (result.ok && (result.draft === null || result.diagnostics.length > 0)) {
+    context.addIssue({ code: "custom", message: "successful program validation has contradictory fields" });
+  }
+  if (!result.ok && result.draft !== null) {
+    context.addIssue({ code: "custom", message: "failed program validation cannot include a draft" });
+  }
+});
+
+const programObservationSchema = observationEnvelopeSchema.extend({
+  value: programDocumentSchema.nullable()
+}).strict();
+
 export class ProtocolMinecraftActorClient implements MinecraftActorClient {
   constructor(
     private readonly actorId: string,
@@ -198,6 +264,27 @@ export class ProtocolMinecraftActorClient implements MinecraftActorClient {
 
   async setAutonomy(command: MinecraftSetAutonomyCommand, signal?: AbortSignal): Promise<MinecraftCommandResult> {
     return this.command("autonomy.set_policy", { command }, signal);
+  }
+
+  async getActiveProgram(signal?: AbortSignal): Promise<MinecraftProgramObservation> {
+    const raw = await this.call("program.get_active", {}, signal);
+    return this.parseActorEnvelope(programObservationSchema, raw, "program observation") as MinecraftProgramObservation;
+  }
+
+  async validateProgram(
+    document: MinecraftProgramDocument,
+    signal?: AbortSignal
+  ): Promise<MinecraftProgramValidationResult> {
+    const validatedDocument = programDocumentSchema.parse(document) as MinecraftProgramDocument;
+    const raw = await this.call("program.validate", { document: validatedDocument }, signal);
+    return programValidationResultSchema.parse(raw) as MinecraftProgramValidationResult;
+  }
+
+  async activateProgram(
+    command: MinecraftActivateProgramCommand,
+    signal?: AbortSignal
+  ): Promise<MinecraftCommandResult> {
+    return this.command("program.activate", { command }, signal);
   }
 
   async listEvents(afterSequence = 0, signal?: AbortSignal): Promise<MinecraftRuntimeEvent[]> {

@@ -5,7 +5,10 @@ import {
   type MinecraftActorRpcMethod,
   type MinecraftActorTransport
 } from "../../src/services/minecraft/actorClient.ts";
-import type { MinecraftBehaviorCommand } from "../../src/services/minecraft/actorTypes.ts";
+import type {
+  MinecraftBehaviorCommand,
+  MinecraftProgramDocument
+} from "../../src/services/minecraft/actorTypes.ts";
 
 class RecordingTransport implements MinecraftActorTransport {
   readonly calls: Array<{ method: MinecraftActorRpcMethod; payload: Record<string, unknown> }> = [];
@@ -112,6 +115,44 @@ test("protocol client rejects non-JSON observation values", async () => {
   await assert.rejects(client.observe({ scope: "self" }));
 });
 
+test("protocol client supports typed two-phase program deployment", async () => {
+  const transport = new RecordingTransport();
+  const document = programDocument();
+  transport.responses.push({
+    protocolVersion: 1,
+    ok: true,
+    draft: { draftId: "draft-1", validatedAtMs: 10_000, program: document },
+    diagnostics: []
+  });
+  transport.responses.push(commandResult({ status: "succeeded", value: { program: document } }));
+  const client = new ProtocolMinecraftActorClient("actor-1", transport);
+
+  const validated = await client.validateProgram(document);
+  const activated = await client.activateProgram({
+    draftId: validated.draft?.draftId ?? "missing",
+    expectedActorRevision: 3,
+    idempotencyKey: "activate-program-1",
+    decisionReason: "部署通过校验的行为程序"
+  });
+
+  assert.equal(validated.draft?.draftId, "draft-1");
+  assert.equal(activated.ok, true);
+  assert.deepEqual(transport.calls.map(call => call.method), ["program.validate", "program.activate"]);
+  assert.deepEqual(transport.calls[0]?.payload, {
+    protocolVersion: 1,
+    actorId: "actor-1",
+    document
+  });
+});
+
+test("protocol client rejects contradictory program validation results", async () => {
+  const transport = new RecordingTransport();
+  transport.responses.push({ protocolVersion: 1, ok: true, draft: null, diagnostics: [] });
+  const client = new ProtocolMinecraftActorClient("actor-1", transport);
+
+  await assert.rejects(client.validateProgram(programDocument()), /contradictory/);
+});
+
 function selfState() {
   return {
     position: { x: 0, y: 64, z: 0 },
@@ -191,5 +232,21 @@ function runtimeEvent(overrides: Record<string, unknown> = {}) {
     observationRevision: 7,
     payload: {},
     ...overrides
+  };
+}
+
+function programDocument(): MinecraftProgramDocument {
+  return {
+    protocolVersion: 1,
+    programId: "idle-item-collector",
+    programVersion: 1,
+    expectedActorRevision: 3,
+    language: "python",
+    apiVersion: "mizune.mc.v1",
+    entrypoint: "main",
+    source: "async def main(ctx):\n    return\n",
+    sourceHash: "sha256:" + "a".repeat(64),
+    requiredCapabilities: [],
+    metadata: { summary: "空闲时收集掉落物" }
   };
 }
