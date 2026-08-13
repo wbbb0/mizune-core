@@ -1,0 +1,162 @@
+export const MINECRAFT_ACTOR_PROTOCOL_VERSION = 1 as const;
+
+export type JsonPrimitive = null | boolean | number | string;
+export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+
+export type MinecraftEntityKind = "player" | "hostile" | "passive" | "item";
+export type MinecraftBehaviorKind =
+  | "go_to"
+  | "follow_and_assist"
+  | "interact_entity"
+  | "collect_item"
+  | "chat"
+  | "combat";
+export type MinecraftTaskKind = "go_to" | "collect_item" | "interact_entity" | "chat" | "combat";
+export type MinecraftTaskPriority = "low" | "normal" | "high";
+
+export interface MinecraftVec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface MinecraftSelfSnapshot {
+  position: MinecraftVec3;
+  health: number;
+  food: number;
+  connected: boolean;
+}
+
+export interface MinecraftBehaviorRun {
+  runId: string;
+  capability: string;
+  status: "running" | "succeeded" | "failed" | "cancelled";
+  startedAtMs: number;
+  completedAtMs: number | null;
+  arguments: Record<string, JsonValue>;
+  reason: string | null;
+}
+
+export interface MinecraftTaskRun {
+  taskId: string;
+  kind: MinecraftTaskKind;
+  source: "control" | "autonomy";
+  priority: MinecraftTaskPriority;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  createdAtMs: number;
+  startedAtMs: number | null;
+  completedAtMs: number | null;
+  behaviorRunId: string | null;
+  arguments: Record<string, JsonValue>;
+  reason: string | null;
+}
+
+export interface MinecraftAutonomyPolicy {
+  enabled: boolean;
+  idleDelayMs: number;
+  collectItems: boolean;
+  explore: boolean;
+  combatHostiles: boolean;
+  exploreRadius: number;
+  combatStopHealth: number;
+}
+
+export interface MinecraftActorSnapshot {
+  protocolVersion: typeof MINECRAFT_ACTOR_PROTOCOL_VERSION;
+  actorId: string;
+  actorRevision: number;
+  observationRevision: number;
+  self: MinecraftSelfSnapshot;
+  activeBehavior: MinecraftBehaviorRun | null;
+  actionLease: {
+    leaseId: string;
+    holderId: string;
+    acquiredAtMs: number;
+  } | null;
+  activeTask: MinecraftTaskRun | null;
+  queuedTaskCount: number;
+  autonomyPolicy: MinecraftAutonomyPolicy;
+}
+
+export interface MinecraftObservationEnvelope {
+  protocolVersion: typeof MINECRAFT_ACTOR_PROTOCOL_VERSION;
+  actorId: string;
+  actorRevision: number;
+  observationRevision: number;
+  observedAtMs: number;
+  self: MinecraftSelfSnapshot;
+  value: JsonValue;
+}
+
+export interface MinecraftCommandResult {
+  protocolVersion: typeof MINECRAFT_ACTOR_PROTOCOL_VERSION;
+  commandId: string;
+  idempotencyKey: string;
+  ok: boolean;
+  status: "accepted" | "succeeded" | "failed";
+  reason: string | null;
+  retryability: "none" | "after_refresh" | "after_state_change" | "never";
+  actorRevision: number;
+  observationRevision: number;
+  value: JsonValue;
+}
+
+export interface MinecraftRuntimeEvent {
+  protocolVersion: typeof MINECRAFT_ACTOR_PROTOCOL_VERSION;
+  eventId: string;
+  sequence: number;
+  actorId: string;
+  eventType: string;
+  priority: "low" | "normal" | "high" | "critical";
+  occurredAtMs: number;
+  actorRevision: number;
+  observationRevision: number;
+  payload: Record<string, JsonValue>;
+}
+
+export type MinecraftObservationRequest =
+  | { scope: "self" }
+  | { scope: "environment" }
+  | { scope: "inventory" }
+  | { scope: "entities"; kind?: MinecraftEntityKind; radius?: number; limit?: number }
+  | { scope: "player"; playerUuid: string }
+  | { scope: "chat"; afterMessageId?: string; limit?: number }
+  | { scope: "tasks"; includeCompleted?: boolean; limit?: number };
+
+interface MinecraftCommitBase {
+  expectedActorRevision: number;
+  expectedObservationRevision: number;
+  idempotencyKey: string;
+  decisionReason: string;
+}
+
+export type MinecraftBehaviorCommand = MinecraftCommitBase & (
+  | { kind: "go_to"; position: MinecraftVec3; tolerance: number }
+  | { kind: "follow_and_assist"; targetRef: string; followDistance: number; lostTargetWaitSeconds: number }
+  | { kind: "interact_entity"; targetRef: string; interaction: "use" | "mount" | "feed" }
+  | { kind: "collect_item"; targetRef: string }
+  | { kind: "chat"; text: string; channel: "global" | "team" }
+  | { kind: "combat"; targetRef: string; stopHealth: number }
+);
+
+export interface MinecraftTaskCommand extends MinecraftCommitBase {
+  kind: MinecraftTaskKind;
+  arguments: Record<string, JsonValue>;
+  priority: MinecraftTaskPriority;
+}
+
+export interface MinecraftCancelBehaviorCommand {
+  expectedActorRevision: number;
+  idempotencyKey: string;
+  reason: string;
+}
+
+export interface MinecraftCancelTaskCommand extends MinecraftCancelBehaviorCommand {
+  taskId: string;
+}
+
+export interface MinecraftSetAutonomyCommand {
+  policy: MinecraftAutonomyPolicy;
+  expectedActorRevision: number;
+  idempotencyKey: string;
+}
