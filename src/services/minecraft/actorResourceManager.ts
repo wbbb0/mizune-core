@@ -97,6 +97,7 @@ const PRIORITY_ORDER: Record<MinecraftActorWakePriority, number> = {
 
 export class MinecraftActorResourceManager {
   private readonly clients = new Map<string, Promise<MinecraftActorClient>>();
+  private readonly clientsPendingCleanup = new Map<string, Promise<MinecraftActorClient>>();
   private readonly loops = new Map<string, ActorLoopState>();
   private readonly stateUpdates = new Map<string, Promise<unknown>>();
   private readonly eventIngestions = new Map<string, Promise<MinecraftActorEventIngestionResult>>();
@@ -371,7 +372,11 @@ export class MinecraftActorResourceManager {
     const normalizedResourceId = requireNonEmpty(resourceId, "resourceId");
     const existing = this.closeOperations.get(normalizedResourceId);
     if (existing) return existing;
-    const operation = this.performClose(normalizedResourceId, reason);
+    const operation = this.performClose(normalizedResourceId, reason).finally(() => {
+      if (this.closeOperations.get(normalizedResourceId) === operation) {
+        this.closeOperations.delete(normalizedResourceId);
+      }
+    });
     this.closeOperations.set(normalizedResourceId, operation);
     return operation;
   }
@@ -386,13 +391,27 @@ export class MinecraftActorResourceManager {
     }
     const client = this.clients.get(resourceId);
     this.clients.delete(resourceId);
+    if (client) this.clientsPendingCleanup.set(resourceId, client);
     const closeState = this.enqueueStateUpdate(resourceId, async () => {
       await this.registry.markStatus(resourceId, "closed", this.now());
     });
-    const closeClient = client?.then(value => value.close()).catch(error => {
-      this.logger.warn({ err: error, resourceId }, "minecraft_actor_client_close_failed");
-    });
-    await Promise.all([closeState, closeClient]);
+    await closeState;
+    const cleanupClient = this.clientsPendingCleanup.get(resourceId);
+    if (cleanupClient) {
+      let resolvedClient: MinecraftActorClient;
+      try {
+        resolvedClient = await cleanupClient;
+      } catch (error) {
+        if (this.clientsPendingCleanup.get(resourceId) === cleanupClient) {
+          this.clientsPendingCleanup.delete(resourceId);
+        }
+        throw error;
+      }
+      await resolvedClient.close();
+      if (this.clientsPendingCleanup.get(resourceId) === cleanupClient) {
+        this.clientsPendingCleanup.delete(resourceId);
+      }
+    }
   }
 
   private getLoop(resourceId: string): ActorLoopState {
@@ -483,19 +502,18 @@ export class MinecraftActorResourceManager {
       throw new Error(`Minecraft Actor 资源正在关闭：${record.resourceId}`);
     }
     const cached = this.clients.get(record.resourceId);
-    if (cached) return cached;
+    if (cached) {
+      const client = await cached;
+      if (this.closingResources.has(record.resourceId)) {
+        throw new Error(`Minecraft Actor 资源在客户端创建期间关闭：${record.resourceId}`);
+      }
+      return client;
+    }
     const creation = Promise.resolve()
       .then(() => this.clientFactory.create({
         resourceId: record.resourceId,
         actor: cloneRecoveryState(requireActorState(record))
       }))
-      .then(async client => {
-        if (this.closingResources.has(record.resourceId)) {
-          await client.close();
-          throw new Error(`Minecraft Actor 资源在客户端创建期间关闭：${record.resourceId}`);
-        }
-        return client;
-      })
       .catch(error => {
         if (this.clients.get(record.resourceId) === creation) {
           this.clients.delete(record.resourceId);
@@ -503,7 +521,11 @@ export class MinecraftActorResourceManager {
         throw error;
       });
     this.clients.set(record.resourceId, creation);
-    return creation;
+    const client = await creation;
+    if (this.closingResources.has(record.resourceId)) {
+      throw new Error(`Minecraft Actor 资源在客户端创建期间关闭：${record.resourceId}`);
+    }
+    return client;
   }
 
   private async patchActorState(

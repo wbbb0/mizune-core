@@ -75,7 +75,7 @@ SHA-256 由父项目根据完整源码计算，不要求模型生成。静态 AS
 
 游戏事件在进入 outbox 前会做确定性的深度、节点、数组、键和字符串裁剪；event type 使用协议枚举，摘要有固定长度上限。owner 与 Actor 两类 prompt 都把摘要和详情整体编码成不可执行的第三方 JSON 数据，不依赖可由游戏文本闭合的展示标签。所有 Actor 读取/控制结果进入模型前还有独立的 64k 字符投影预算。原始事件仍留在 Runtime 自己的结构化日志中，不能未经投影直接进入主会话。
 
-决策 runner 自己实施硬截止，不依赖 provider 是否遵守 AbortSignal；截止后的迟到工具调用不会更新决策状态。已经发往远端、但 transport 忽略取消的控制仍可能产生“结果未知”，因此正式 Unix socket / loopback transport 必须同时实现 request deadline、命令幂等和重连后的 snapshot 对账。
+决策 runner 自己实施硬截止，不依赖 provider 是否遵守 AbortSignal；截止后的迟到工具调用不会更新决策状态。已经发往远端、但 transport 忽略取消的控制仍可能产生“结果未知”，因此正式 Unix socket / loopback transport 必须同时实现 request deadline、持久化命令幂等结果和重连后的 snapshot 对账。当前模拟 Runtime 的幂等表仍在内存，只覆盖父进程单独崩溃；父项目与 Runtime 同时重启的重放安全是正式 transport 前的明确前置条件。
 
 ## 下一落地点
 

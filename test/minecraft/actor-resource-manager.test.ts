@@ -453,6 +453,60 @@ test("client creation is single-flight and close disposes a client created durin
   }
 });
 
+test("transport close failure is propagated and a later close retries cleanup", async () => {
+  const harness = await createManagerHarness(new FinishOnlyLlm("完成", "完成", null));
+  let closeAttempts = 0;
+  harness.client.close = () => {
+    closeAttempts += 1;
+    if (closeAttempts === 1) throw new Error("temporary transport close failure");
+  };
+  try {
+    const resource = await harness.manager.create(resourceInput());
+    await harness.manager.probe(resource.resourceId);
+
+    await assert.rejects(harness.manager.close(resource.resourceId), /temporary transport close failure/);
+    assert.equal((await harness.registry.get(resource.resourceId))?.status, "closed");
+    await harness.manager.close(resource.resourceId);
+    assert.equal(closeAttempts, 2);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("client creation failure is reported once and does not poison later close cleanup", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-minecraft-actor-create-failure-"));
+  const database = new StateDatabase(dataDir, createSilentLogger());
+  const registry = new RuntimeResourceRegistry(new RuntimeResourceStore(database));
+  const clientReady = deferred<ResourceActorClient>();
+  let factoryCalls = 0;
+  const manager = new MinecraftActorResourceManager(
+    registry,
+    {
+      create: () => {
+        factoryCalls += 1;
+        return clientReady.promise;
+      }
+    },
+    new FinishOnlyLlm("完成", "完成", null),
+    createSilentLogger()
+  );
+  try {
+    const resource = await manager.create(resourceInput());
+    const probe = manager.probe(resource.resourceId);
+    await waitUntil(() => factoryCalls === 1);
+    const close = manager.close(resource.resourceId, "创建失败期间关闭");
+    clientReady.reject(new Error("transport creation failed"));
+
+    await assert.rejects(probe, /transport creation failed|客户端创建期间关闭/);
+    await assert.rejects(close, /transport creation failed/);
+    await manager.close(resource.resourceId);
+    assert.equal((await registry.get(resource.resourceId))?.status, "closed");
+  } finally {
+    database.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("close remains irreversible when an aborted provider finishes late", async () => {
   const generationStarted = deferred<void>();
   const releaseGeneration = deferred<void>();

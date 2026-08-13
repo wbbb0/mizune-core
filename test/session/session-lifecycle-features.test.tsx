@@ -268,6 +268,20 @@ import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
     await rejected;
   });
 
+  test("restore aborts controllers from an overwritten live session", async () => {
+    const sessionManager = new SessionManager(createTestAppConfig());
+    const sessionId = "qqbot:p:restore-live";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    const generation = sessionManager.beginSyntheticGeneration(sessionId);
+    const persisted = sessionManager.getPersistedSession(sessionId);
+
+    sessionManager.restoreSessions([persisted]);
+
+    assert.equal(generation.abortController.signal.aborted, true);
+    assert.equal(generation.responseAbortController.signal.aborted, true);
+    assert.equal(sessionManager.hasActiveResponse(sessionId), false);
+  });
+
   test("session history backfill boundary is initialized and advanced by clear and compression", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const sessionId = "qqbot:p:test";

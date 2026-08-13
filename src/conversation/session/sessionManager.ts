@@ -830,6 +830,8 @@ export class SessionManager {
     for (const item of items) {
       const existing = this.sessionStore.get(item.id);
       if (existing) {
+        existing.generationAbortController?.abort(new Error("会话状态正在恢复"));
+        existing.responseAbortController?.abort(new Error("会话状态正在恢复"));
         rejectPendingTriggerCompletionsState(existing, new Error("会话已恢复，旧的内部事件等待已取消"));
       }
       this.sessionStore.set(item.id, restoreSessionState(item));
