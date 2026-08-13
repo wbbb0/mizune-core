@@ -14,12 +14,16 @@ import {
 } from "../../src/services/minecraft/decisionRunner.ts";
 import type {
   MinecraftActorSnapshot,
+  MinecraftActivateProgramCommand,
   MinecraftBehaviorCommand,
   MinecraftCancelBehaviorCommand,
   MinecraftCancelTaskCommand,
   MinecraftCommandResult,
   MinecraftObservationEnvelope,
   MinecraftObservationRequest,
+  MinecraftProgramDocument,
+  MinecraftProgramObservation,
+  MinecraftProgramValidationResult,
   MinecraftRuntimeEvent,
   MinecraftSetAutonomyCommand,
   MinecraftTaskCommand
@@ -75,6 +79,26 @@ class FakeActorClient implements MinecraftActorClient {
 
   async setAutonomy(_command: MinecraftSetAutonomyCommand): Promise<MinecraftCommandResult> {
     this.calls.push("setAutonomy");
+    return commandResult();
+  }
+
+  async getActiveProgram(): Promise<MinecraftProgramObservation> {
+    this.calls.push("getActiveProgram");
+    return { ...observation(null), value: null };
+  }
+
+  async validateProgram(document: MinecraftProgramDocument): Promise<MinecraftProgramValidationResult> {
+    this.calls.push("validateProgram");
+    return {
+      protocolVersion: 1,
+      ok: true,
+      draft: { draftId: "draft-1", validatedAtMs: 20_000, program: document },
+      diagnostics: []
+    };
+  }
+
+  async activateProgram(_command: MinecraftActivateProgramCommand): Promise<MinecraftCommandResult> {
+    this.calls.push("activateProgram");
     return commandResult();
   }
 
@@ -181,6 +205,66 @@ test("authorized decision loop receives autonomy policy tool", async () => {
 
   const toolNames = resolveTools(llm.params).map(tool => tool.function.name);
   assert.ok(toolNames.includes("minecraft_set_autonomy"));
+});
+
+test("program deployment is capability scoped and parent computes source hash", async () => {
+  const actor = new FakeActorClient();
+  const validationResults: Record<string, unknown>[] = [];
+  const source = "async def main(ctx):\n    return\n";
+  const llm = new ScriptedDecisionLlm(async params => {
+    const [rawValidation] = await executeToolRound(params, [toolCall("validate-1", "minecraft_validate_program", {
+      programId: "idle-program",
+      programVersion: 1,
+      expectedActorRevision: 3,
+      source,
+      requiredCapabilities: [],
+      summary: "空闲程序"
+    })]);
+    validationResults.push(JSON.parse(rawValidation ?? "null") as Record<string, unknown>);
+    await executeToolRound(params, [toolCall("activate-1", "minecraft_activate_program", {
+      draftId: "draft-1",
+      expectedActorRevision: 3,
+      idempotencyKey: "activate-1",
+      decisionReason: "启用已校验程序"
+    })]);
+    await executeToolRound(params, [toolCall("finish-program", "minecraft_finish_decision", {
+      summary: "已激活程序",
+      persistentState: "active=idle-program@1"
+    })]);
+  });
+  const runner = new MinecraftDecisionRunner(llm, actor, pino({ level: "silent" }));
+
+  await runner.run({ ...decisionInput(), allowProgramDeployment: true });
+
+  assert.deepEqual(actor.calls, ["validateProgram", "activateProgram"]);
+  const draft = validationResults[0]?.draft as { program?: { sourceHash?: string } } | undefined;
+  assert.match(draft?.program?.sourceHash ?? "", /^sha256:[0-9a-f]{64}$/u);
+  const toolNames = resolveTools(llm.params).map(tool => tool.function.name);
+  assert.ok(toolNames.includes("minecraft_validate_program"));
+  assert.ok(toolNames.includes("minecraft_activate_program"));
+});
+
+test("one wake cannot successfully commit two controls across tool rounds", async () => {
+  const actor = new FakeActorClient();
+  const secondResults: Record<string, unknown>[] = [];
+  const llm = new ScriptedDecisionLlm(async params => {
+    await executeToolRound(params, [toolCall("control-first", "minecraft_start_behavior", behaviorArgs())]);
+    const [rawSecond] = await executeToolRound(params, [toolCall("control-second", "minecraft_start_behavior", {
+      ...behaviorArgs(),
+      idempotencyKey: "decision-control-2"
+    })]);
+    secondResults.push(JSON.parse(rawSecond ?? "null") as Record<string, unknown>);
+    await executeToolRound(params, [toolCall("finish-one-commit", "minecraft_finish_decision", {
+      summary: "仅提交第一个行为",
+      persistentState: "正在前往 x=8"
+    })]);
+  });
+  const runner = new MinecraftDecisionRunner(llm, actor, pino({ level: "silent" }));
+
+  await runner.run(decisionInput());
+
+  assert.deepEqual(actor.calls, ["startBehavior"]);
+  assert.equal(secondResults[0]?.error, "decision_control_already_committed");
 });
 
 test("plain final text cannot silently complete a decision", async () => {

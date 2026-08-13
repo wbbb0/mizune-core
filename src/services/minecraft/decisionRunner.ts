@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { LlmClient } from "#llm/llmClient.ts";
 import type {
   LlmMessage,
@@ -12,9 +13,12 @@ import { z } from "zod";
 import type { MinecraftActorClient } from "./actorClient.ts";
 import type {
   JsonValue,
+  MinecraftActivateProgramCommand,
   MinecraftAutonomyPolicy,
   MinecraftBehaviorCommand,
   MinecraftObservationRequest,
+  MinecraftProgramDocument,
+  MinecraftProgramValidationResult,
   MinecraftTaskCommand
 } from "./actorTypes.ts";
 
@@ -25,9 +29,23 @@ export const MINECRAFT_DECISION_SYSTEM_PROMPT = `你是 Mizune 的 Minecraft Act
 2. 所有对象只能使用读取工具返回的不透明 ref；所有控制都必须携带最新 actor_revision、observation_revision 和新的 idempotency_key。
 3. 普通文本没有控制效果。完成本次决策时必须调用 minecraft_finish_decision，返回简短决策摘要和完整的更新后持久状态文本。
 4. 不确定、引用过期或 revision 冲突时重新读取；不要猜测实时状态。不要逐 tick 控制，优先提交参数化高层行为或任务。
-5. 不得尝试执行任意 Shell、Java、网络或未声明能力。`;
+5. 每次唤起最多成功提交一个控制；提交成功后只允许读取结果或结束本次决策，不能再启动第二个行为、任务或程序版本。
+6. 程序修改必须先校验草稿，再在后续独占轮次原子激活；静态校验不等于安全隔离，也不能扩张未授权 capability。
+7. 不得尝试执行任意 Shell、Java、网络或未声明能力。`;
 
-const READ_TOOL_NAMES = new Set(["minecraft_get_snapshot", "minecraft_observe"]);
+const READ_TOOL_NAMES = new Set([
+  "minecraft_get_snapshot",
+  "minecraft_observe",
+  "minecraft_get_active_program"
+]);
+const CONTROL_TOOL_NAMES = new Set([
+  "minecraft_start_behavior",
+  "minecraft_submit_task",
+  "minecraft_cancel_behavior",
+  "minecraft_cancel_task",
+  "minecraft_set_autonomy",
+  "minecraft_activate_program"
+]);
 const TERMINAL_TOOL_NAME = "minecraft_finish_decision";
 
 const observationRequestSchema = z.discriminatedUnion("scope", [
@@ -132,6 +150,25 @@ const setAutonomySchema = z.object({
   idempotencyKey: z.string().min(1).max(128)
 }).strict();
 
+const validateProgramSchema = z.object({
+  programId: z.string().min(1).max(128),
+  programVersion: z.number().int().positive(),
+  expectedActorRevision: z.number().int().nonnegative(),
+  source: z.string().min(1).max(100_000),
+  requiredCapabilities: z.array(z.string().min(1)).max(128).refine(
+    values => new Set(values).size === values.length,
+    "requiredCapabilities 不能重复"
+  ),
+  summary: z.string().max(4_000).optional()
+}).strict();
+
+const activateProgramSchema = z.object({
+  draftId: z.string().min(1),
+  expectedActorRevision: z.number().int().nonnegative(),
+  idempotencyKey: z.string().min(1).max(128),
+  decisionReason: z.string().min(1).max(300)
+}).strict();
+
 const finishDecisionSchema = z.object({
   summary: z.string().min(1).max(500),
   persistentState: z.string().max(20_000),
@@ -153,6 +190,7 @@ export interface MinecraftDecisionInput {
   modelRef: string | string[];
   timeoutMs?: number;
   allowAutonomyPolicyChange?: boolean;
+  allowProgramDeployment?: boolean;
   abortSignal?: AbortSignal;
 }
 
@@ -181,9 +219,13 @@ export class MinecraftDecisionRunner {
   async run(input: MinecraftDecisionInput): Promise<MinecraftDecisionResult> {
     const startedAtMs = Date.now();
     const messages = buildDecisionMessages(input);
-    const tools = buildDecisionTools(input.allowAutonomyPolicyChange === true);
+    const tools = buildDecisionTools({
+      includeAutonomy: input.allowAutonomyPolicyChange === true,
+      includeProgramDeployment: input.allowProgramDeployment === true
+    });
     const rejectedCallIds = new Set<string>();
     let completion: MinecraftDecisionCompletion | null = null;
+    let committedControlTool: string | null = null;
     let toolCallCount = 0;
     const timeoutSignal = AbortSignal.timeout(input.timeoutMs ?? 10_000);
     const abortSignal = input.abortSignal
@@ -220,6 +262,13 @@ export class MinecraftDecisionRunner {
             message: "控制或结束工具必须独占一轮；本批调用未执行任何副作用。"
           });
         }
+        if (CONTROL_TOOL_NAMES.has(toolCall.function.name) && committedControlTool !== null) {
+          return jsonResult({
+            error: "decision_control_already_committed",
+            committedTool: committedControlTool,
+            message: "本次唤起已经成功提交一个控制；请结束决策并等待下一次唤起。"
+          });
+        }
         const args = parseToolArguments(toolCall.function.arguments, this.logger, {
           toolName: toolCall.function.name,
           toolCallId: toolCall.id
@@ -229,8 +278,12 @@ export class MinecraftDecisionRunner {
             toolCall.function.name,
             args,
             abortSignal,
-            input.allowAutonomyPolicyChange === true
+            input.allowAutonomyPolicyChange === true,
+            input.allowProgramDeployment === true
           );
+          if (executed.committed) {
+            committedControlTool = toolCall.function.name;
+          }
           if (executed.completion) {
             completion = executed.completion;
           }
@@ -262,8 +315,13 @@ export class MinecraftDecisionRunner {
     name: string,
     rawArgs: unknown,
     signal: AbortSignal,
-    allowAutonomyPolicyChange: boolean
-  ): Promise<{ result: string | LlmToolExecutionResult; completion?: MinecraftDecisionCompletion }> {
+    allowAutonomyPolicyChange: boolean,
+    allowProgramDeployment: boolean
+  ): Promise<{
+    result: string | LlmToolExecutionResult;
+    completion?: MinecraftDecisionCompletion;
+    committed?: boolean;
+  }> {
     switch (name) {
       case "minecraft_get_snapshot":
         return { result: jsonResult(await this.actor.getSnapshot(signal)) };
@@ -271,18 +329,20 @@ export class MinecraftDecisionRunner {
         const request = observationRequestSchema.parse(rawArgs) as MinecraftObservationRequest;
         return { result: jsonResult(await this.actor.observe(request, signal)) };
       }
+      case "minecraft_get_active_program":
+        return { result: jsonResult(await this.actor.getActiveProgram(signal)) };
       case "minecraft_start_behavior": {
         const command = behaviorCommandSchema.parse(rawArgs) as MinecraftBehaviorCommand;
-        return { result: jsonResult(await this.actor.startBehavior(command, signal)) };
+        return commandExecutionResult(await this.actor.startBehavior(command, signal));
       }
       case "minecraft_submit_task": {
         const command = taskCommandSchema.parse(rawArgs) as MinecraftTaskCommand;
-        return { result: jsonResult(await this.actor.submitTask(command, signal)) };
+        return commandExecutionResult(await this.actor.submitTask(command, signal));
       }
       case "minecraft_cancel_behavior":
-        return { result: jsonResult(await this.actor.cancelBehavior(cancelBehaviorSchema.parse(rawArgs), signal)) };
+        return commandExecutionResult(await this.actor.cancelBehavior(cancelBehaviorSchema.parse(rawArgs), signal));
       case "minecraft_cancel_task":
-        return { result: jsonResult(await this.actor.cancelTask(cancelTaskSchema.parse(rawArgs), signal)) };
+        return commandExecutionResult(await this.actor.cancelTask(cancelTaskSchema.parse(rawArgs), signal));
       case "minecraft_set_autonomy": {
         if (!allowAutonomyPolicyChange) {
           return { result: jsonResult({ error: "autonomy_policy_change_not_allowed" }) };
@@ -292,7 +352,35 @@ export class MinecraftDecisionRunner {
           expectedActorRevision: number;
           idempotencyKey: string;
         };
-        return { result: jsonResult(await this.actor.setAutonomy(command, signal)) };
+        return commandExecutionResult(await this.actor.setAutonomy(command, signal));
+      }
+      case "minecraft_validate_program": {
+        if (!allowProgramDeployment) {
+          return { result: jsonResult({ error: "program_deployment_not_allowed" }) };
+        }
+        const input = validateProgramSchema.parse(rawArgs);
+        const document: MinecraftProgramDocument = {
+          protocolVersion: 1,
+          programId: input.programId,
+          programVersion: input.programVersion,
+          expectedActorRevision: input.expectedActorRevision,
+          language: "python",
+          apiVersion: "mizune.mc.v1",
+          entrypoint: "main",
+          source: input.source,
+          sourceHash: `sha256:${createHash("sha256").update(input.source, "utf8").digest("hex")}`,
+          requiredCapabilities: input.requiredCapabilities,
+          metadata: input.summary === undefined ? {} : { summary: input.summary }
+        };
+        const validation: MinecraftProgramValidationResult = await this.actor.validateProgram(document, signal);
+        return { result: jsonResult(validation) };
+      }
+      case "minecraft_activate_program": {
+        if (!allowProgramDeployment) {
+          return { result: jsonResult({ error: "program_deployment_not_allowed" }) };
+        }
+        const command = activateProgramSchema.parse(rawArgs) as MinecraftActivateProgramCommand;
+        return commandExecutionResult(await this.actor.activateProgram(command, signal));
       }
       case TERMINAL_TOOL_NAME: {
         const finished = finishDecisionSchema.parse(rawArgs);
@@ -347,7 +435,10 @@ function isLegalToolBatch(calls: LlmToolCall[]): boolean {
   return calls.every(call => READ_TOOL_NAMES.has(call.function.name));
 }
 
-function buildDecisionTools(includeAutonomy: boolean): LlmToolDefinition[] {
+function buildDecisionTools(options: {
+  includeAutonomy: boolean;
+  includeProgramDeployment: boolean;
+}): LlmToolDefinition[] {
   const tools: LlmToolDefinition[] = [
     tool("minecraft_get_snapshot", "读取 Actor revision、当前行为、任务、lease、自身状态和自治策略。", {}),
     tool("minecraft_observe", "按范围读取同一 observation revision 下的结构化游戏状态。", {
@@ -395,7 +486,7 @@ function buildDecisionTools(includeAutonomy: boolean): LlmToolDefinition[] {
       nextWakeHint: { type: "string" }
     }, ["summary", "persistentState"])
   ];
-  if (includeAutonomy) {
+  if (options.includeAutonomy) {
     tools.splice(-1, 0, tool("minecraft_set_autonomy", "修改 Actor 空闲自治策略。仅授权的控制循环可见。", {
       policy: {
         type: "object",
@@ -414,6 +505,30 @@ function buildDecisionTools(includeAutonomy: boolean): LlmToolDefinition[] {
       expectedActorRevision: { type: "integer", minimum: 0 },
       idempotencyKey: { type: "string" }
     }, ["policy", "expectedActorRevision", "idempotencyKey"]));
+  }
+  if (options.includeProgramDeployment) {
+    tools.splice(-1, 0,
+      tool("minecraft_get_active_program", "读取当前已激活的 Python 行为程序及其版本；这是只读操作。", {}),
+      tool("minecraft_validate_program", "静态校验一个完整 Python 行为程序并创建短期草稿；不会激活或执行。", {
+        programId: { type: "string", minLength: 1, maxLength: 128 },
+        programVersion: { type: "integer", minimum: 1 },
+        expectedActorRevision: { type: "integer", minimum: 0 },
+        source: { type: "string", minLength: 1, maxLength: 100_000 },
+        requiredCapabilities: {
+          type: "array",
+          maxItems: 128,
+          uniqueItems: true,
+          items: { type: "string", minLength: 1 }
+        },
+        summary: { type: "string", maxLength: 4_000 }
+      }, ["programId", "programVersion", "expectedActorRevision", "source", "requiredCapabilities"]),
+      tool("minecraft_activate_program", "原子激活已通过校验的程序草稿。属于控制提交，必须独占一轮。", {
+        draftId: { type: "string", minLength: 1 },
+        expectedActorRevision: { type: "integer", minimum: 0 },
+        idempotencyKey: { type: "string", minLength: 1, maxLength: 128 },
+        decisionReason: { type: "string", minLength: 1, maxLength: 300 }
+      }, ["draftId", "expectedActorRevision", "idempotencyKey", "decisionReason"])
+    );
   }
   return tools;
 }
@@ -463,6 +578,13 @@ function vec3JsonSchema(): Record<string, unknown> {
 
 function jsonResult(value: unknown): string {
   return JSON.stringify(value) ?? "null";
+}
+
+function commandExecutionResult(result: { ok: boolean }): {
+  result: string;
+  committed: boolean;
+} {
+  return { result: jsonResult(result), committed: result.ok };
 }
 
 function isAbortError(error: unknown, signal: AbortSignal): boolean {
