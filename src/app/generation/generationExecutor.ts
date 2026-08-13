@@ -177,6 +177,8 @@ export function createGenerationExecutor(
     comfyClient,
     comfyTaskStore,
     comfyTemplateCatalog,
+    minecraftActorManager,
+    minecraftActorProvisioning,
     forwardResolver
   } = toolRuntime;
   const {
@@ -508,6 +510,8 @@ export function createGenerationExecutor(
         comfyClient,
         comfyTaskStore,
         comfyTemplateCatalog,
+        ...(minecraftActorManager ? { minecraftActorManager } : {}),
+        ...(minecraftActorProvisioning ? { minecraftActorProvisioning } : {}),
         forwardResolver,
         userStore,
         contextStore: deps.identity.contextStore,

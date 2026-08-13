@@ -192,6 +192,33 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    id: "minecraft_actor",
+    title: "Minecraft Actor",
+    description: "创建和控制持久 Minecraft Actor，读取结构化游戏状态、提交确定性行为与任务、管理自治和 Python 行为程序。",
+    plannerSignals: [
+      "Minecraft 游戏状态、移动、交互、战斗或聊天",
+      "管理 Minecraft Actor 任务、自治或行为程序",
+      "处理游戏内显著事件"
+    ],
+    ownerOnly: true,
+    toolNames: [
+      "minecraft_actor_list",
+      "minecraft_actor_create",
+      "minecraft_actor_probe",
+      "minecraft_actor_observe",
+      "minecraft_actor_start_behavior",
+      "minecraft_actor_submit_task",
+      "minecraft_actor_cancel",
+      "minecraft_actor_set_autonomy",
+      "minecraft_actor_get_program",
+      "minecraft_actor_validate_program",
+      "minecraft_actor_activate_program",
+      "minecraft_actor_wake",
+      "minecraft_actor_ingest_events",
+      "minecraft_actor_close"
+    ]
+  },
+  {
     id: "filesystem_io",
     title: "本地文件",
     description: "浏览、编辑、搜索和发送本地文件。",

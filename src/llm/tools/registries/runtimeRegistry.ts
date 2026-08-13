@@ -11,6 +11,7 @@ import { schedulerToolDescriptors, schedulerToolHandlers } from "../runtime/sche
 import { shellToolDescriptors, shellToolHandlers } from "../runtime/shellTools.ts";
 import { timeToolDescriptors, timeToolHandlers } from "../runtime/timeTools.ts";
 import { turnPlannerToolDescriptors, turnPlannerToolHandlers } from "../runtime/turnPlannerTools.ts";
+import { minecraftActorToolDescriptors, minecraftActorToolHandlers } from "../runtime/minecraftActorTools.ts";
 import {
   chatFileToolDescriptors,
   chatFileToolHandlers,
@@ -31,7 +32,8 @@ const runtimeStaticToolDescriptorsRegistry = [
   ...selfAccountToolDescriptors,
   ...diceToolDescriptors,
   ...timeToolDescriptors,
-  ...runtimeWaitToolDescriptors
+  ...runtimeWaitToolDescriptors,
+  ...minecraftActorToolDescriptors
 ];
 
 export function runtimeToolDescriptorsRegistry(config?: AppConfig) {
@@ -55,5 +57,6 @@ export const runtimeToolHandlersRegistry = {
   ...selfAccountToolHandlers,
   ...diceToolHandlers,
   ...timeToolHandlers,
-  ...runtimeWaitToolHandlers
+  ...runtimeWaitToolHandlers,
+  ...minecraftActorToolHandlers
 };

@@ -51,6 +51,8 @@ import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
 import type { SessionCaptioner } from "./sessionCaptioner.ts";
 import type { ContentSafetyService } from "#contentSafety/contentSafetyService.ts";
+import type { MinecraftActorResourceManager } from "#services/minecraft/actorResourceManager.ts";
+import type { MinecraftActorProvisioningService } from "#services/minecraft/actorProvisioningService.ts";
 
 // These dependency contracts describe the generation pipeline in domain-shaped slices.
 // The broad runtime bundle still exists at the composition root, but lower-level modules
@@ -76,6 +78,7 @@ export interface GenerationPromptBuilderDeps {
   scenarioHostStateStore: ScenarioHostStateStore;
   contextStore?: Pick<ContextStore, "listUserFacts" | "listUserPromptFacts" | "listSessionFacts">;
   contextRetrievalService?: Pick<ContextRetrievalService, "retrieveUserContext" | "recordPromptMemoryReport">;
+  minecraftActorManager?: Pick<MinecraftActorResourceManager, "list">;
 }
 
 export interface GenerationSessionRuntimeDeps {
@@ -124,6 +127,8 @@ export interface GenerationToolRuntimeDeps {
   comfyClient: ComfyClient;
   comfyTaskStore: ComfyTaskStore;
   comfyTemplateCatalog: ComfyTemplateCatalogService;
+  minecraftActorManager?: MinecraftActorResourceManager;
+  minecraftActorProvisioning?: MinecraftActorProvisioningService;
 }
 
 export interface GenerationLifecycleDeps extends SessionWorkPersistenceDeps {

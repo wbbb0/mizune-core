@@ -14,6 +14,7 @@ export const assistantModeDefinition: SessionModeDefinition = {
     "chat_context",
     "web_research",
     "shell_runtime",
+    "minecraft_actor",
     "filesystem_io",
     "asset_io",
     "scheduler_admin",

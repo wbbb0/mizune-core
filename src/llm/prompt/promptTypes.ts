@@ -66,7 +66,7 @@ export interface PromptHistoryMessage {
 
 export interface PromptLiveResource {
   resourceId: string;
-  kind: "browser_page" | "shell_session" | "download";
+  kind: "browser_page" | "shell_session" | "download" | "minecraft_actor";
   status: "active" | "expired" | "closed" | "unrecoverable";
   title?: string | null;
   description?: string | null;

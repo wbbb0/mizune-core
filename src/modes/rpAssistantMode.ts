@@ -17,6 +17,7 @@ export const rpAssistantModeDefinition: SessionModeDefinition = {
     "chat_delegation",
     "web_research",
     "shell_runtime",
+    "minecraft_actor",
     "filesystem_io",
     "asset_io",
     "social_admin",

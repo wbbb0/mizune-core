@@ -67,7 +67,10 @@ const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "terminal_send_lines",
   "terminal_key",
   "terminal_signal",
-  "terminal_stop"
+  "terminal_stop",
+  "minecraft_actor_list",
+  "minecraft_actor_probe",
+  "minecraft_actor_observe"
 ]);
 export interface GenerationPromptHistoryMessage {
   role: "user" | "assistant";
@@ -682,9 +685,10 @@ async function projectPreparedBatchDerivedText(
 }
 
 async function collectPromptLiveResources(deps: GenerationPromptBuilderDeps): Promise<PromptLiveResource[]> {
-  const [browserPages, shellSessions] = await Promise.all([
+  const [browserPages, shellSessions, minecraftActors] = await Promise.all([
     deps.browserService.listPages(),
-    deps.shellRuntime.listSessionResources()
+    deps.shellRuntime.listSessionResources(),
+    deps.minecraftActorManager?.list() ?? []
   ]);
   const downloads = deps.downloadRuntime.list();
 
@@ -715,6 +719,15 @@ async function collectPromptLiveResources(deps: GenerationPromptBuilderDeps): Pr
       description: item.source_url,
       summary: buildDownloadResourceSummary(item),
       lastAccessedAtMs: item.updated_at_ms
+    })),
+    ...minecraftActors.map((item) => ({
+      resourceId: item.resourceId,
+      kind: "minecraft_actor" as const,
+      status: item.status,
+      title: item.title,
+      description: item.description,
+      summary: item.summary,
+      lastAccessedAtMs: item.lastAccessedAtMs
     }))
   ]
     .sort(comparePromptLiveResources)

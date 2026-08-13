@@ -35,7 +35,8 @@ export function buildGenerationPromptBuilderDeps(services: AppServiceBootstrap):
     toolsetRuleStore: services.toolsetRuleStore,
     contextStore: services.contextStore,
     contextRetrievalService: services.contextRetrievalService,
-    scenarioHostStateStore: services.scenarioHostStateStore
+    scenarioHostStateStore: services.scenarioHostStateStore,
+    minecraftActorManager: services.minecraftActorManager
   };
 }
 
@@ -89,7 +90,9 @@ export function buildGenerationToolRuntimeDeps(services: AppServiceBootstrap): G
     forwardResolver: services.forwardResolver,
     comfyClient: services.comfyClient,
     comfyTaskStore: services.comfyTaskStore,
-    comfyTemplateCatalog: services.comfyTemplateCatalog
+    comfyTemplateCatalog: services.comfyTemplateCatalog,
+    minecraftActorManager: services.minecraftActorManager,
+    minecraftActorProvisioning: services.minecraftActorProvisioning
   };
 }
 

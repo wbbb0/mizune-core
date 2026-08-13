@@ -57,6 +57,8 @@ import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import type { StructuredSuggestionService } from "#llm/structured/structuredSuggestionService.ts";
 import type { GenerationCommittedTextSink } from "#app/generation/generationOutputContracts.ts";
 import type { ToolResultObservationPolicy } from "./resultObservation.ts";
+import type { MinecraftActorResourceManager } from "#services/minecraft/actorResourceManager.ts";
+import type { MinecraftActorProvisioningService } from "#services/minecraft/actorProvisioningService.ts";
 
 export type Relationship = "owner" | "known";
 export type ToolAccessLevel = "any" | "owner" | "operator";
@@ -132,6 +134,8 @@ export interface BuiltinToolRuntimeDeps {
   comfyClient: ComfyClient;
   comfyTaskStore: ComfyTaskStore;
   comfyTemplateCatalog: ComfyTemplateCatalogService;
+  minecraftActorManager?: MinecraftActorResourceManager;
+  minecraftActorProvisioning?: MinecraftActorProvisioningService;
 }
 
 export interface PromptDebugSnapshot {

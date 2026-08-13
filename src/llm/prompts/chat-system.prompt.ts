@@ -1214,12 +1214,16 @@ function buildLiveResourceLines(resources: PromptLiveResource[] | undefined): st
     return [];
   }
   const lines = visible.map((item) => {
-    const kind = item.kind === "browser_page" ? "browser" : item.kind === "download" ? "download" : "shell";
+    const kind = item.kind === "browser_page"
+      ? "browser"
+      : item.kind === "download"
+        ? "download"
+        : item.kind === "minecraft_actor" ? "minecraft" : "shell";
     const title = item.title?.trim() ? ` | ${item.title.trim()}` : "";
     const description = item.description?.trim() ? ` | ${item.description.trim()}` : "";
     return `- ${item.resourceId} | ${kind} | ${item.status}${title}${description} | ${item.summary}`;
   });
-  return [`当前可复用 live_resource（需要继续操作网页、终端或后台下载时优先复用这些 resource_id）：\n${lines.join("\n")}`];
+  return [`当前可复用 live_resource（需要继续操作网页、终端、Minecraft Actor 或后台下载时优先复用这些 resource_id）：\n${lines.join("\n")}`];
 }
 
 function buildToolsetRuleLines(rules: ToolsetRuleEntry[] | undefined): string[] {
