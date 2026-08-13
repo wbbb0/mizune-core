@@ -97,6 +97,35 @@ export interface MinecraftActorRequestInput {
   expectedRevision?: number;
 }
 
+export interface MinecraftActorStatusView {
+  resourceId: string;
+  actorId: string;
+  title: string | null;
+  resourceStatus: RuntimeResourceRecord["status"];
+  summary: string;
+  currentGoal: string | null;
+  persistentState: string;
+  loopPhase: "idle" | "queued" | "deciding" | "paused" | "error" | "closed" | "unavailable";
+  revision: number;
+  hasError: boolean;
+  recentRequests: Array<{
+    requestId: string;
+    instruction: string;
+    priority: MinecraftActorRequestPriority;
+    status: MinecraftActorRequestRecord["status"];
+    resultSummary: string | null;
+    hasError: boolean;
+    updatedAtMs: number;
+  }>;
+  runtimeSnapshot: MinecraftActorSnapshot | null;
+  runtimeAvailable: boolean;
+}
+
+export interface MinecraftActorCloseAuthorization {
+  ownerPrincipalId: string;
+  expectedRevision?: number;
+}
+
 interface PendingWake {
   request: MinecraftActorWakeRequest;
   resolve: (outcome: MinecraftActorWakeOutcome) => void;
@@ -135,6 +164,7 @@ const DEFAULT_SHUTDOWN_DRAIN_GRACE_MS = 5_000;
 export class MinecraftActorResourceManager {
   private readonly clients = new Map<string, Promise<MinecraftActorClient>>();
   private readonly clientsPendingCleanup = new Map<string, Promise<MinecraftActorClient>>();
+  private readonly clientCleanupOperations = new Map<string, Promise<void>>();
   private readonly loops = new Map<string, ActorLoopState>();
   private readonly stateUpdates = new Map<string, Promise<unknown>>();
   private readonly eventIngestions = new Map<string, Promise<MinecraftActorEventIngestionResult>>();
@@ -215,9 +245,76 @@ export class MinecraftActorResourceManager {
     return this.registry.list("minecraft_actor");
   }
 
+  async listOwned(ownerPrincipalId: string): Promise<RuntimeResourceRecord[]> {
+    const normalizedOwnerPrincipalId = requireNonEmpty(ownerPrincipalId, "ownerPrincipalId");
+    const resources = await this.registry.list("minecraft_actor");
+    const states = await Promise.all(
+      resources.map(resource => this.controlStore.getControlState(resource.resourceId))
+    );
+    return resources.filter((_resource, index) => (
+      states[index]?.ownerPrincipalId === normalizedOwnerPrincipalId
+    ));
+  }
+
   async get(resourceId: string): Promise<RuntimeResourceRecord | null> {
     const record = await this.registry.get(resourceId);
     return record?.kind === "minecraft_actor" ? record : null;
+  }
+
+  async status(
+    resourceId: string,
+    ownerPrincipalId: string,
+    signal?: AbortSignal
+  ): Promise<MinecraftActorStatusView> {
+    await this.controlStore.requireOwnerRevision({ resourceId, ownerPrincipalId });
+    const initialRecord = await this.requireResource(resourceId);
+    let runtimeSnapshot: MinecraftActorSnapshot | null = null;
+    let runtimeAvailable = false;
+    if (initialRecord.status === "active") {
+      try {
+        runtimeSnapshot = await this.probe(resourceId, signal);
+        runtimeAvailable = true;
+      } catch (error) {
+        if (signal?.aborted) throw error;
+      }
+    }
+    const [record, state, requests] = await Promise.all([
+      this.requireResource(resourceId),
+      this.controlStore.getControlState(resourceId),
+      this.controlStore.listRequests(resourceId, 20)
+    ]);
+    if (state?.ownerPrincipalId !== ownerPrincipalId) {
+      throw new Error(`Minecraft Actor 不属于当前主体：${resourceId}`);
+    }
+    if (record.status !== "active") {
+      runtimeSnapshot = null;
+      runtimeAvailable = false;
+    }
+    const actor = record.minecraftActor;
+    if (!actor) throw new Error(`资源不是 Minecraft Actor：${resourceId}`);
+    return {
+      resourceId: record.resourceId,
+      actorId: actor.actorId,
+      title: record.title,
+      resourceStatus: record.status,
+      summary: record.summary,
+      currentGoal: actor.currentGoal,
+      persistentState: actor.persistentState,
+      loopPhase: state?.loopPhase ?? "unavailable",
+      revision: state?.revision ?? 0,
+      hasError: state?.lastError !== null && state?.lastError !== undefined,
+      recentRequests: requests.map(request => ({
+        requestId: request.requestId,
+        instruction: request.instruction,
+        priority: request.priority,
+        status: request.status,
+        resultSummary: request.resultSummary,
+        hasError: request.error !== null,
+        updatedAtMs: request.updatedAtMs
+      })),
+      runtimeSnapshot,
+      runtimeAvailable
+    };
   }
 
   async request(resourceId: string, input: MinecraftActorRequestInput): Promise<{
@@ -680,12 +777,27 @@ export class MinecraftActorResourceManager {
     });
   }
 
-  async close(resourceId: string, reason = "closed"): Promise<void> {
+  async close(
+    resourceId: string,
+    reason = "closed",
+    authorization?: MinecraftActorCloseAuthorization
+  ): Promise<void> {
     this.requireManagerRunning();
     const normalizedResourceId = requireNonEmpty(resourceId, "resourceId");
     const existing = this.closeOperations.get(normalizedResourceId);
-    if (existing) return existing;
-    const operation = this.performClose(normalizedResourceId, reason).finally(() => {
+    if (existing) {
+      if (authorization) {
+        await this.controlStore.requireOwnerRevision({
+          resourceId: normalizedResourceId,
+          ownerPrincipalId: authorization.ownerPrincipalId,
+          ...(authorization.expectedRevision === undefined
+            ? {}
+            : { expectedRevision: authorization.expectedRevision })
+        });
+      }
+      return existing;
+    }
+    const operation = this.performClose(normalizedResourceId, reason, authorization).finally(() => {
       if (this.closeOperations.get(normalizedResourceId) === operation) {
         this.closeOperations.delete(normalizedResourceId);
       }
@@ -759,6 +871,7 @@ export class MinecraftActorResourceManager {
         ...this.mailboxOperations.values(),
         ...this.stateUpdates.values(),
         ...this.closeOperations.values(),
+        ...this.clientCleanupOperations.values(),
         ...this.outboxOwnerOperations.values(),
         ...[...this.loops.values()].flatMap(loop => loop.running?.operation ? [loop.running.operation] : [])
       ])];
@@ -772,7 +885,60 @@ export class MinecraftActorResourceManager {
     }
   }
 
-  private async performClose(resourceId: string, reason: string): Promise<void> {
+  private async performClose(
+    resourceId: string,
+    reason: string,
+    authorization?: MinecraftActorCloseAuthorization
+  ): Promise<void> {
+    // 内部生命周期关闭需要同步挡住正在创建的 client；外部带权限的关闭则必须先让
+    // SQLite 事务原子完成 owner/revision 校验，避免失败请求先打断正在执行的 Actor。
+    if (!authorization) this.beginLocalClose(resourceId, reason);
+    await this.enqueueStateUpdate(resourceId, async () => {
+      await this.controlStore.closeActor(resourceId, reason, this.now(), authorization);
+    });
+    if (authorization) this.beginLocalClose(resourceId, reason);
+    await this.startClientCleanup(resourceId);
+    if (this.clientsPendingCleanup.has(resourceId)) {
+      queueMicrotask(() => void this.startClientCleanup(resourceId));
+    }
+  }
+
+  private startClientCleanup(resourceId: string): Promise<void> {
+    const existing = this.clientCleanupOperations.get(resourceId);
+    if (existing) return existing;
+    const operation = this.cleanupPendingClient(resourceId).finally(() => {
+      if (this.clientCleanupOperations.get(resourceId) === operation) {
+        this.clientCleanupOperations.delete(resourceId);
+      }
+    });
+    this.clientCleanupOperations.set(resourceId, operation);
+    return operation;
+  }
+
+  private async cleanupPendingClient(resourceId: string): Promise<void> {
+    const cleanupClient = this.clientsPendingCleanup.get(resourceId);
+    if (!cleanupClient) return;
+    let resolvedClient: MinecraftActorClient;
+    try {
+      resolvedClient = await cleanupClient;
+    } catch (error) {
+      if (this.clientsPendingCleanup.get(resourceId) === cleanupClient) {
+        this.clientsPendingCleanup.delete(resourceId);
+      }
+      this.logger.warn({ err: error, resourceId }, "minecraft_actor_client_creation_cleanup_failed");
+      return;
+    }
+    try {
+      await resolvedClient.close();
+      if (this.clientsPendingCleanup.get(resourceId) === cleanupClient) {
+        this.clientsPendingCleanup.delete(resourceId);
+      }
+    } catch (error) {
+      this.logger.warn({ err: error, resourceId }, "minecraft_actor_transport_cleanup_failed");
+    }
+  }
+
+  private beginLocalClose(resourceId: string, reason: string): void {
     this.closingResources.add(resourceId);
     const loop = this.loops.get(resourceId);
     loop?.running?.controller.abort(new Error(reason));
@@ -783,26 +949,6 @@ export class MinecraftActorResourceManager {
     const client = this.clients.get(resourceId);
     this.clients.delete(resourceId);
     if (client) this.clientsPendingCleanup.set(resourceId, client);
-    const closeState = this.enqueueStateUpdate(resourceId, async () => {
-      await this.controlStore.closeActor(resourceId, reason, this.now());
-    });
-    await closeState;
-    const cleanupClient = this.clientsPendingCleanup.get(resourceId);
-    if (cleanupClient) {
-      let resolvedClient: MinecraftActorClient;
-      try {
-        resolvedClient = await cleanupClient;
-      } catch (error) {
-        if (this.clientsPendingCleanup.get(resourceId) === cleanupClient) {
-          this.clientsPendingCleanup.delete(resourceId);
-        }
-        throw error;
-      }
-      await resolvedClient.close();
-      if (this.clientsPendingCleanup.get(resourceId) === cleanupClient) {
-        this.clientsPendingCleanup.delete(resourceId);
-      }
-    }
   }
 
   private getLoop(resourceId: string): ActorLoopState {

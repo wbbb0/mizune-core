@@ -230,6 +230,7 @@ export function createBootstrapServices(
     runtimeResourceRegistry: sharedResourceRegistry,
     runtimeResourceStore,
     minecraftActorManager,
+    minecraftActorControlStore,
     minecraftActorRuntime,
     minecraftActorProvisioning,
     minecraftActorOwnerNotifications,

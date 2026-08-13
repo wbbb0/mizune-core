@@ -300,6 +300,8 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     assetLifecycleService,
     contextSessionCleanupService,
     runtimeResourceStore: services.runtimeResourceStore,
+    minecraftActorManager: services.minecraftActorManager,
+    minecraftActorControlStore: services.minecraftActorControlStore,
     recentErrorStore
   });
 

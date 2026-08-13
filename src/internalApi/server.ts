@@ -11,6 +11,8 @@ import { registerShellRoutes } from "./routes/shellRoutes.ts";
 import { registerShellWebSocketUpgrade } from "./routes/shellWebSocket.ts";
 import { registerUploadRoutes } from "./routes/uploadRoutes.ts";
 import { registerAuthRoutes } from "./routes/authRoutes.ts";
+import { registerMinecraftActorRoutes } from "./routes/minecraftActorRoutes.ts";
+import { SseConnectionRegistry } from "./routes/sse.ts";
 import { loadOrCreateWebuiAuth } from "./auth/webuiAuthStore.ts";
 import { buildCookieName, verifySessionToken } from "./auth/webuiAuth.ts";
 import type { InternalApiRuntimeDeps, InternalApiServices } from "./types.ts";
@@ -42,16 +44,22 @@ function resolveWebuiDistPath(): string {
   return resolved ?? candidates[0]!;
 }
 
-function registerInternalApiRoutes(app: FastifyInstance, services: InternalApiServices): void {
+function registerInternalApiRoutes(
+  app: FastifyInstance,
+  services: InternalApiServices,
+  sseConnections: SseConnectionRegistry
+): void {
   registerBasicRoutes(app, services.basicRoutes);
   registerBrowserRoutes(app, services.browserRoutes);
   registerShellRoutes(app, services.shellRoutes);
   registerMessagingRoutes(app, services.messagingRoutes);
   registerUploadRoutes(app, services.uploadRoutes);
+  registerMinecraftActorRoutes(app, services.minecraftActorRoutes, sseConnections);
 }
 
 export async function startInternalApi(deps: InternalApiRuntimeDeps) {
   const app = Fastify({ logger: false });
+  const sseConnections = new SseConnectionRegistry();
   const { services } = deps;
   const webuiEnabled = deps.config.internalApi.webui.enabled;
   const webuiAuthEnabled = webuiEnabled && deps.config.internalApi.webui.auth.enabled;
@@ -130,7 +138,7 @@ export async function startInternalApi(deps: InternalApiRuntimeDeps) {
     }
   });
 
-  registerInternalApiRoutes(app, services);
+  registerInternalApiRoutes(app, services, sseConnections);
   const closeShellWebSockets = registerShellWebSocketUpgrade(app.server, services.shellRoutes, {
     enabled: webuiAuthEnabled,
     verifyCookie: (cookieHeader) => {
@@ -143,6 +151,9 @@ export async function startInternalApi(deps: InternalApiRuntimeDeps) {
   });
   app.addHook("onClose", async () => {
     await closeShellWebSockets();
+  });
+  app.addHook("preClose", async () => {
+    sseConnections.closeAll();
   });
 
   const listenHost = externalWebuiMode

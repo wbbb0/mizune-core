@@ -9,6 +9,7 @@ import { registerBrowserRoutes } from "../../src/internalApi/routes/browserRoute
 import { registerMessagingRoutes } from "../../src/internalApi/routes/messagingRoutes.ts";
 import { registerShellRoutes } from "../../src/internalApi/routes/shellRoutes.ts";
 import { registerUploadRoutes } from "../../src/internalApi/routes/uploadRoutes.ts";
+import { registerMinecraftActorRoutes } from "../../src/internalApi/routes/minecraftActorRoutes.ts";
 import { createInternalApiServices, type InternalApiDeps } from "../../src/internalApi/types.ts";
 import type { InternalTranscriptItem, PersistedSessionState } from "../../src/conversation/session/sessionTypes.ts";
 import type { SessionSnapshotPayload, SessionSnapshotSummary } from "../../src/conversation/session/sessionSnapshotStore.ts";
@@ -1322,6 +1323,17 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         return [];
       }
     } as unknown as InternalApiDeps["runtimeResourceStore"],
+    minecraftActorManager: {
+      async list() { return []; },
+      async get() { return null; }
+    } as unknown as InternalApiDeps["minecraftActorManager"],
+    minecraftActorControlStore: {
+      async getControlState() { return null; },
+      async listRequests() { return []; },
+      async listRecentEvents() { return []; },
+      async getEventBounds() { return { firstEventId: 0, lastEventId: 0 }; },
+      subscribe() { return () => {}; }
+    } as unknown as InternalApiDeps["minecraftActorControlStore"],
     recentErrorStore: {
       async listRows(input: { offset?: number; limit?: number } = {}) {
         const offset = input.offset ?? 0;
@@ -1530,6 +1542,7 @@ export async function createInternalApiApp(deps: InternalApiDeps) {
   registerShellRoutes(app, services.shellRoutes);
   registerMessagingRoutes(app, services.messagingRoutes);
   registerUploadRoutes(app, services.uploadRoutes);
+  registerMinecraftActorRoutes(app, services.minecraftActorRoutes);
   await app.ready();
   return app;
 }

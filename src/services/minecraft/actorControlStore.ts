@@ -729,15 +729,34 @@ export class MinecraftActorControlStore {
     return result;
   }
 
-  async closeActor(resourceId: string, reason: string, nowMs: number): Promise<MinecraftActorControlState> {
+  async closeActor(
+    resourceId: string,
+    reason: string,
+    nowMs: number,
+    authorization?: { ownerPrincipalId: string; expectedRevision?: number }
+  ): Promise<MinecraftActorControlState> {
     const db = await this.getDb();
     const normalizedResourceId = requireText(resourceId, "resourceId", 256);
     const normalizedReason = requireText(reason, "reason", 1_000);
     const normalizedNow = requireTimestamp(nowMs, "nowMs");
+    const normalizedAuthorization = authorization
+      ? {
+          ownerPrincipalId: requireText(authorization.ownerPrincipalId, "ownerPrincipalId", 256),
+          expectedRevision: authorization.expectedRevision === undefined
+            ? undefined
+            : requireNonNegativeInteger(authorization.expectedRevision, "expectedRevision")
+        }
+      : null;
     const appendedEvents: MinecraftActorJournalEvent[] = [];
     const close = db.transaction(() => {
       const state = requireControlStateSync(db, normalizedResourceId);
+      if (normalizedAuthorization) {
+        requireOwner(state, normalizedAuthorization.ownerPrincipalId);
+      }
       if (state.loopPhase === "closed") return state;
+      if (normalizedAuthorization) {
+        requireExpectedRevision(state, normalizedAuthorization.expectedRevision);
+      }
       const nextRevision = state.revision + 1;
       db.prepare(`
         UPDATE minecraft_actor_wake_mailbox
@@ -825,6 +844,34 @@ export class MinecraftActorControlStore {
       SELECT MAX(event_id) AS eventId FROM minecraft_actor_events WHERE resource_id = ?
     `).get(requireText(resourceId, "resourceId", 256)) as { eventId: number | null };
     return row.eventId ?? 0;
+  }
+
+  async getEventBounds(resourceId: string): Promise<{ firstEventId: number; lastEventId: number }> {
+    const db = await this.getDb();
+    const row = db.prepare(`
+      SELECT MIN(event_id) AS firstEventId, MAX(event_id) AS lastEventId
+      FROM minecraft_actor_events WHERE resource_id = ?
+    `).get(requireText(resourceId, "resourceId", 256)) as {
+      firstEventId: number | null;
+      lastEventId: number | null;
+    };
+    return {
+      firstEventId: row.firstEventId ?? 0,
+      lastEventId: row.lastEventId ?? 0
+    };
+  }
+
+  async listRecentEvents(resourceId: string, limit = 100): Promise<MinecraftActorJournalEvent[]> {
+    const db = await this.getDb();
+    const rows = db.prepare(`
+      SELECT * FROM (
+        SELECT * FROM minecraft_actor_events
+        WHERE resource_id = ?
+        ORDER BY event_id DESC
+        LIMIT ?
+      ) ORDER BY event_id ASC
+    `).all(requireText(resourceId, "resourceId", 256), clampLimit(limit, 256)) as EventRow[];
+    return rows.map(mapEventRow);
   }
 
   private async getDb(): Promise<SqliteDatabase> {

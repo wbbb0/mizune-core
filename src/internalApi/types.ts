@@ -66,6 +66,8 @@ import {
 import type { DerivedObservation } from "#llm/derivations/derivedObservation.ts";
 import type { ContentSafetyAuditView } from "#contentSafety/contentSafetyTypes.ts";
 import type { ComfyTaskStore } from "#comfy/taskStore.ts";
+import type { MinecraftActorResourceManager } from "#services/minecraft/actorResourceManager.ts";
+import type { MinecraftActorControlStore } from "#services/minecraft/actorControlStore.ts";
 
 // Domain-shaped dependency slices keep route/application code from depending on
 // the full internal API service graph when a smaller contract is enough.
@@ -198,6 +200,11 @@ export interface InternalApiBrowserDeps {
   browserService: BrowserService;
 }
 
+export interface InternalApiMinecraftActorDeps {
+  minecraftActorManager: MinecraftActorResourceManager;
+  minecraftActorControlStore: MinecraftActorControlStore;
+}
+
 export interface InternalApiWorkspaceDeps {
   localFileService: LocalFileService;
   chatFileStore: ChatFileStore;
@@ -230,6 +237,8 @@ export interface InternalApiDeps {
   scheduler: Scheduler;
   recentErrorStore: RecentErrorStore;
   runtimeResourceStore: RuntimeResourceStore;
+  minecraftActorManager: MinecraftActorResourceManager;
+  minecraftActorControlStore: MinecraftActorControlStore;
   shellRuntime: ShellRuntime;
   configManager: ConfigManager;
   sessionPersistence: SessionPersistence;
@@ -269,6 +278,7 @@ export interface InternalApiServices {
   uploadRoutes: InternalApiUploadsDeps;
   shellRoutes: InternalApiShellDeps;
   browserRoutes: InternalApiBrowserDeps;
+  minecraftActorRoutes: InternalApiMinecraftActorDeps;
 }
 
 export interface InternalApiRuntimeDeps {
@@ -368,6 +378,10 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
     },
     browserRoutes: {
       browserService: deps.browserService
+    },
+    minecraftActorRoutes: {
+      minecraftActorManager: deps.minecraftActorManager,
+      minecraftActorControlStore: deps.minecraftActorControlStore
     }
   };
 }

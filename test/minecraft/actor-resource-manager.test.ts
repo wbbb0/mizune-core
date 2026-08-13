@@ -909,10 +909,52 @@ test("恢复端点被移除时先标记资源不可恢复，再拒绝控制命�
     }), /恢复端点已不在服务端允许列表/u);
 
     assert.equal((await registry.get(resource.resourceId))?.status, "unrecoverable");
+
+    const status = await manager.status(resource.resourceId, resourceInput().ownerSessionId);
+    assert.equal(status.resourceStatus, "unrecoverable");
+    assert.equal(status.runtimeAvailable, false);
+    assert.equal(status.runtimeSnapshot, null);
   } finally {
     await manager.shutdown();
     database.close();
     await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("Actor list/status 按 owner principal 隔离读取", async () => {
+  const harness = await createManagerHarness(new FinishOnlyLlm("完成", "完成", null));
+  try {
+    const first = await harness.manager.create({
+      ...resourceInput(),
+      ownerPrincipalId: "owner-a"
+    });
+    const second = await harness.manager.create({
+      ...resourceInput(),
+      ownerSessionId: "onebot:private:owner-b",
+      ownerPrincipalId: "owner-b",
+      actor: {
+        ...resourceInput().actor,
+        actorId: "actor-2",
+        endpoint: "simulation:actor-2",
+        persistentState: "B 的秘密状态"
+      }
+    });
+
+    assert.deepEqual(
+      (await harness.manager.listOwned("owner-a")).map(item => item.resourceId),
+      [first.resourceId]
+    );
+    assert.deepEqual(
+      (await harness.manager.listOwned("owner-b")).map(item => item.resourceId),
+      [second.resourceId]
+    );
+    await assert.rejects(
+      harness.manager.status(second.resourceId, "owner-a"),
+      /不属于当前主体/u
+    );
+    assert.equal((await harness.manager.status(second.resourceId, "owner-b")).persistentState, "B 的秘密状态");
+  } finally {
+    await harness.close();
   }
 });
 
@@ -961,7 +1003,7 @@ test("真实配置工厂通过 manager 恢复时保留实例方法绑定", async
   }
 });
 
-test("transport close failure is propagated and a later close retries cleanup", async () => {
+test("durable close 不会被 transport 清理失败翻转，且会后台重试", async () => {
   const harness = await createManagerHarness(new FinishOnlyLlm("完成", "完成", null));
   let closeAttempts = 0;
   harness.client.close = () => {
@@ -972,16 +1014,16 @@ test("transport close failure is propagated and a later close retries cleanup", 
     const resource = await harness.manager.create(resourceInput());
     await harness.manager.probe(resource.resourceId);
 
-    await assert.rejects(harness.manager.close(resource.resourceId), /temporary transport close failure/);
-    assert.equal((await harness.registry.get(resource.resourceId))?.status, "closed");
     await harness.manager.close(resource.resourceId);
+    assert.equal((await harness.registry.get(resource.resourceId))?.status, "closed");
+    await waitUntil(() => closeAttempts === 2);
     assert.equal(closeAttempts, 2);
   } finally {
     await harness.close();
   }
 });
 
-test("client creation failure is reported once and does not poison later close cleanup", async () => {
+test("durable close 吞下已失效 client 的创建失败且不污染后续关闭", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-minecraft-actor-create-failure-"));
   const database = new StateDatabase(dataDir, createSilentLogger());
   const registry = new RuntimeResourceRegistry(new RuntimeResourceStore(database));
@@ -1007,7 +1049,7 @@ test("client creation failure is reported once and does not poison later close c
     clientReady.reject(new Error("transport creation failed"));
 
     await assert.rejects(probe, /transport creation failed|客户端创建期间关闭/);
-    await assert.rejects(close, /transport creation failed/);
+    await close;
     await manager.close(resource.resourceId);
     assert.equal((await registry.get(resource.resourceId))?.status, "closed");
   } finally {

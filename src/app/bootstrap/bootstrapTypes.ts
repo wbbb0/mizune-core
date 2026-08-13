@@ -60,6 +60,7 @@ import type { MinecraftActorResourceManager } from "#services/minecraft/actorRes
 import type { MinecraftActorRuntimeService } from "#services/minecraft/actorRuntimeService.ts";
 import type { MinecraftActorProvisioningService } from "#services/minecraft/actorProvisioningService.ts";
 import type { MinecraftActorOwnerNotificationRouter } from "#services/minecraft/ownerNotificationSink.ts";
+import type { MinecraftActorControlStore } from "#services/minecraft/actorControlStore.ts";
 
 export interface AppServiceBootstrap {
   config: ReturnType<typeof loadConfig>;
@@ -119,6 +120,7 @@ export interface AppServiceBootstrap {
   runtimeResourceRegistry: RuntimeResourceRegistry;
   runtimeResourceStore: RuntimeResourceStore;
   minecraftActorManager: MinecraftActorResourceManager;
+  minecraftActorControlStore: MinecraftActorControlStore;
   minecraftActorRuntime: MinecraftActorRuntimeService;
   minecraftActorProvisioning: MinecraftActorProvisioningService;
   minecraftActorOwnerNotifications: MinecraftActorOwnerNotificationRouter;
