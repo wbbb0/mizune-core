@@ -34,6 +34,7 @@ test("session snapshot store persists session and scenario mode state", async ()
       title: "快照会话",
       titleSource: "manual"
     });
+    session.botProfile = { name: "小岚", identity: "摄影师" };
     session.modeId = "scenario_host";
     session.internalTranscript.push({
       id: "assistant-1",
@@ -73,6 +74,7 @@ test("session snapshot store persists session and scenario mode state", async ()
     const loaded = await store.get(session.id, created.id);
     assert.ok(loaded);
     assert.equal(loaded.payload.session.title, "快照会话");
+    assert.deepEqual(loaded.payload.session.botProfile, session.botProfile);
     assert.equal(loaded.payload.modeState?.kind, "scenario_host");
     assert.equal(loaded.payload.modeState?.state.player.displayName, "玩家");
 

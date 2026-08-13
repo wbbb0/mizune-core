@@ -22,6 +22,7 @@ import {
   cloneSessionToolsetPreferences,
   createDefaultSessionToolsetPreferences
 } from "./sessionToolsetPreferences.ts";
+import { cloneSessionBotProfile } from "./sessionBotProfile.ts";
 
 // Creates and converts runtime session state snapshots.
 
@@ -61,6 +62,7 @@ export function createSessionState(target: {
     replyDelivery: source,
     pacingPreferences: createDefaultSessionPacingPreferences(source),
     toolsetPreferences: createDefaultSessionToolsetPreferences(),
+    botProfile: null,
     debugControl: {
       enabled: false,
       oncePending: false
@@ -134,6 +136,7 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
     toolsetPreferences: cloneSessionToolsetPreferences(
       item.toolsetPreferences ?? createDefaultSessionToolsetPreferences()
     ),
+    botProfile: cloneSessionBotProfile(item.botProfile ?? null),
     debugControl: {
       enabled: item.debugControl?.enabled === true,
       oncePending: false
@@ -241,6 +244,7 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     replyDelivery: session.replyDelivery,
     pacingPreferences: cloneSessionPacingPreferences(session.pacingPreferences),
     toolsetPreferences: cloneSessionToolsetPreferences(session.toolsetPreferences),
+    botProfile: cloneSessionBotProfile(session.botProfile),
     debugControl: {
       enabled: session.debugControl.enabled
     },

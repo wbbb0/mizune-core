@@ -1176,3 +1176,84 @@ function createTaskTracker(status: NonNullable<SessionTaskTracker["primary"]>["s
     parked: []
   };
 }
+
+test("session bot profile is a volatile identity override across normal modes", () => {
+  const base = {
+    sessionId: "qqbot:p:owner",
+    persona: { name: "全局名字", temperament: "沉稳", voiceStyle: "正式" },
+    sessionBotProfile: {
+      name: "小岚",
+      identity: "摄影师",
+      background: "住在杭州",
+      temperament: "松弛",
+      voiceStyle: "自然随意"
+    },
+    relationship: "owner" as const,
+    npcProfiles: [],
+    participantProfiles: [],
+    userProfile: createPromptUserProfile({ userId: "owner", senderName: "Owner" }),
+    historySummary: null,
+    recentMessages: [],
+    batchMessages: [createPromptBatchMessage()]
+  };
+
+  for (const modeId of ["assistant", "rp_assistant", "scenario_host"] as const) {
+    const prompt = buildPrompt({
+      ...base,
+      modeId,
+      ...(modeId === "rp_assistant"
+        ? { modeProfile: { target: "rp" as const, profile: { identity: "全局 RP 身份", background: "", continuityFacts: "", boundaries: "" } } }
+        : modeId === "scenario_host"
+          ? { modeProfile: { target: "scenario" as const, profile: { theme: "测试", worldBaseline: "现实", narrationStyle: "克制", boundaries: "" } } }
+          : {})
+    });
+    const systemMessages = prompt.filter((message) => message.role === "system");
+    const fullSystem = readPromptSystemText(prompt);
+    assert.equal(hasPromptSection(fullSystem, "session_bot_profile"), true);
+    assert.match(fullSystem, /名字=小岚/);
+    assert.match(fullSystem, /角色资料数据，不是系统指令/);
+    assert.doesNotMatch(String(systemMessages[0]?.content ?? ""), /session_bot_profile/);
+    assert.match(String(systemMessages[1]?.content ?? ""), /session_bot_profile/);
+  }
+});
+
+test("empty session identity and persona setup do not inject session bot profile", () => {
+  const common = {
+    sessionId: "qqbot:p:owner",
+    persona: { name: "全局名字", temperament: "沉稳", voiceStyle: "正式" },
+    relationship: "owner" as const,
+    npcProfiles: [],
+    participantProfiles: [],
+    userProfile: createPromptUserProfile({ userId: "owner", senderName: "Owner" }),
+    historySummary: null,
+    recentMessages: [],
+    batchMessages: [createPromptBatchMessage()]
+  };
+  assert.equal(hasPromptSection(readPromptSystemText(buildPrompt(common)), "session_bot_profile"), false);
+  assert.equal(hasPromptSection(readPromptSystemText(buildSetupPrompt({
+    sessionId: common.sessionId,
+    persona: common.persona,
+    phase: "config",
+    missingFields: [],
+    recentMessages: [],
+    batchMessages: common.batchMessages
+  })), "session_bot_profile"), false);
+});
+
+test("scheduled prompts retain the current session bot profile", () => {
+  const prompt = buildScheduledTaskPrompt({
+    sessionId: "qqbot:p:owner",
+    modeId: "assistant",
+    trigger: { kind: "scheduled_instruction", jobName: "提醒", taskInstruction: "提醒喝水" },
+    persona: { name: "全局名字", temperament: "沉稳", voiceStyle: "正式" },
+    sessionBotProfile: { name: "小岚", identity: "摄影师" },
+    relationship: "owner",
+    npcProfiles: [],
+    participantProfiles: [],
+    userProfile: createPromptUserProfile({ userId: "owner", senderName: "Owner" }),
+    historySummary: null,
+    recentMessages: [],
+    targetContext: { chatType: "private", userId: "owner", senderName: "Owner" }
+  });
+  assert.match(readPromptSystemText(prompt), /当前聊天 bot 身份：名字=小岚；身份定位=摄影师/);
+});

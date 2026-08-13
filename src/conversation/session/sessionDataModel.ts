@@ -3,7 +3,7 @@ import { booleanColumn, defineDataDomain, defineTable, integerColumn, jsonColumn
 export const sessionDataDomain = defineDataDomain({
   database: "sessions",
   tableGroup: "sessions.persisted_sessions",
-  schemaVersion: 8,
+  schemaVersion: 9,
   minReadableSchemaVersion: 6,
   tables: {
     sessions: defineTable({
@@ -22,6 +22,7 @@ export const sessionDataDomain = defineDataDomain({
         textColumn("replyDelivery", { title: "Reply Delivery", nullable: true, storageName: "reply_delivery" }),
         jsonColumn("pacingPreferencesJson", { storageName: "pacing_preferences_json", hidden: true, nullable: true }),
         jsonColumn("toolsetPreferencesJson", { storageName: "toolset_preferences_json", hidden: true, nullable: true }),
+        jsonColumn("botProfileJson", { storageName: "bot_profile_json", hidden: true, nullable: true }),
         jsonColumn("pendingMessagesJson", { storageName: "pending_messages_json", hidden: true, notNull: true }),
         jsonColumn("queuedGroupReplyTargetsJson", { storageName: "queued_group_reply_targets_json", hidden: true, notNull: true, defaultSql: "'[]'" }),
         booleanColumn("pendingTranscriptGroupIdIsSet", { storageName: "pending_transcript_group_id_is_set", hidden: true, notNull: true, defaultSql: "0" }),

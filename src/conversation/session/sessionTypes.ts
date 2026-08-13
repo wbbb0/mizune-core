@@ -3,6 +3,7 @@ import type { ChatAttachment } from "#services/workspace/types.ts";
 import type { SessionOperationMode } from "./sessionOperationMode.ts";
 import type { SessionPacingPreferences } from "./sessionPacing.ts";
 import type { SessionToolsetPreferences } from "./sessionToolsetPreferences.ts";
+import type { SessionBotProfile } from "./sessionBotProfile.ts";
 import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
 import type {
   InternalTranscriptItem as InternalTranscriptItemContract,
@@ -394,6 +395,7 @@ export interface SessionState {
   replyDelivery: SessionDelivery;
   pacingPreferences: SessionPacingPreferences;
   toolsetPreferences: SessionToolsetPreferences;
+  botProfile: SessionBotProfile | null;
   debugControl: SessionDebugControlState;
   pendingMessages: SessionMessage[];
   pendingSteerMessages: SessionMessage[];
@@ -439,6 +441,7 @@ export interface PersistedSessionState {
   replyDelivery?: SessionDelivery;
   pacingPreferences?: SessionPacingPreferences;
   toolsetPreferences?: SessionToolsetPreferences;
+  botProfile?: SessionBotProfile | null;
   debugControl?: {
     enabled?: boolean;
   };

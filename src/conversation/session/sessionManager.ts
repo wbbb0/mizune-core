@@ -17,6 +17,8 @@ import {
   setActiveAssistantDraftResponseState,
   setSessionOperationModeState,
   setSessionSettingsState,
+  patchSessionBotProfileState,
+  clearSessionBotProfileState,
   enqueueGroupReplyTargetState
 } from "./sessionMutations.ts";
 import { SessionStore } from "./sessionStore.ts";
@@ -66,6 +68,7 @@ import {
 import type { ToolObservationSummary } from "./toolObservation.ts";
 import { normalizeTaskTracker } from "#conversation/taskTracker/taskTrackerNormalize.ts";
 import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
+import type { SessionBotProfile, SessionBotProfileField } from "./sessionBotProfile.ts";
 
 export type {
   ActiveAssistantResponse,
@@ -461,6 +464,18 @@ export class SessionManager {
     return {
       overrides: { ...this.requireSession(sessionId).toolsetPreferences.overrides }
     };
+  }
+
+  patchBotProfile(sessionId: string, patch: SessionBotProfile): SessionBotProfile | null {
+    const profile = patchSessionBotProfileState(this.requireSession(sessionId), patch);
+    this.notifySessionChanged(sessionId);
+    return profile == null ? null : { ...profile };
+  }
+
+  clearBotProfile(sessionId: string, fields?: readonly SessionBotProfileField[]): SessionBotProfile | null {
+    const profile = clearSessionBotProfileState(this.requireSession(sessionId), fields);
+    this.notifySessionChanged(sessionId);
+    return profile == null ? null : { ...profile };
   }
 
   getModeId(sessionId: string): string {

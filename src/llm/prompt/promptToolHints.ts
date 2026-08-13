@@ -147,6 +147,10 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("只有当前会话上下文不够时才跨会话，且只读最小必要范围；不要把其他会话信息混成当前会话事实。");
   }
 
+  if (hasAnyTool(visibleToolNames, ["patch_current_chat_identity", "clear_current_chat_identity"])) {
+    lines.push("用户明确要求只在当前聊天改变你的名字、身份、背景、性格或语气时，使用当前聊天身份工具；不要修改全局 persona 或模式资料。群聊中只有 owner 可以写。工具成功后，本轮立即按返回的完整身份继续回复。");
+  }
+
   lines.push(...buildScenarioHostToolHintLines(visibleToolNames));
 
   if (hasAnyTool(visibleToolNames, ["list_session_modes", "switch_session_mode"])) {

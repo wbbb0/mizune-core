@@ -16,6 +16,7 @@ import type { LlmMessage } from "../llmClient.ts";
 import type { ToolsetRuleEntry } from "./toolsetRuleStore.ts";
 import type { ContextRetrievedItem } from "#context/contextTypes.ts";
 import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
+import type { SessionBotProfile } from "#conversation/session/sessionBotProfile.ts";
 
 export type PromptInteractionMode = "normal" | "debug";
 
@@ -145,6 +146,7 @@ export interface PromptInput {
   replayMessages?: LlmMessage[] | undefined;
   includeBatchMediaCaptions?: boolean | undefined;
   persona: Persona;
+  sessionBotProfile?: SessionBotProfile | null;
   relationship: Relationship;
   npcProfiles: PromptNpcProfile[];
   participantProfiles: PromptParticipantProfile[];
@@ -283,6 +285,7 @@ export interface InternalSessionTriggerPromptInput {
         error: string;
       };
   persona: Persona;
+  sessionBotProfile?: PromptInput["sessionBotProfile"];
   relationship: Relationship;
   npcProfiles: PromptInput["npcProfiles"];
   participantProfiles: PromptInput["participantProfiles"];

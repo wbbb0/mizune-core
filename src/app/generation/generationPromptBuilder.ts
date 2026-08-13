@@ -48,6 +48,7 @@ import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#ser
 import { buildChatFileHandleResult } from "#llm/tools/core/fileHandle.ts";
 import type { ContextMemoryFactEntry, ContextPromptMemoryRetrievalSkipReason } from "#context/contextTypes.ts";
 import { contextTermOverlapScore } from "#context/contextTextTerms.ts";
+import type { SessionBotProfile } from "#conversation/session/sessionBotProfile.ts";
 
 type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
@@ -129,6 +130,7 @@ export interface GenerationPromptBuilder {
     currentTurnDirectives?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
+    sessionBotProfile?: SessionBotProfile | null;
     relationship: Relationship;
     participantProfiles: GenerationPromptParticipantProfile[];
     currentUser: StoredUser;
@@ -157,6 +159,7 @@ export interface GenerationPromptBuilder {
     trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"];
     inlineBatchMessage?: string | undefined;
     persona: PersonaState;
+    sessionBotProfile?: SessionBotProfile | null;
     relationship: Relationship;
     participantProfiles: GenerationPromptParticipantProfile[];
     currentUser: StoredUser;
@@ -1052,6 +1055,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     currentTurnDirectives?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
+    sessionBotProfile?: SessionBotProfile | null;
     relationship: Relationship;
     participantProfiles: GenerationPromptParticipantProfile[];
     currentUser: StoredUser;
@@ -1246,6 +1250,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       currentTurnDirectives: input.currentTurnDirectives,
       replayMessages,
       persona: input.persona,
+      ...(input.sessionBotProfile !== undefined ? { sessionBotProfile: input.sessionBotProfile } : {}),
       relationship: input.relationship,
       npcProfiles: assistantMode ? [] : buildNpcPromptProfiles(deps, relevantUserIds),
       participantProfiles: assistantMode ? [] : input.participantProfiles,
@@ -1308,6 +1313,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"];
     inlineBatchMessage?: string | undefined;
     persona: PersonaState;
+    sessionBotProfile?: SessionBotProfile | null;
     relationship: Relationship;
     participantProfiles: GenerationPromptParticipantProfile[];
     currentUser: StoredUser;
@@ -1452,6 +1458,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       trigger: scheduledTrigger,
       ...(input.inlineBatchMessage ? { inlineBatchMessage: input.inlineBatchMessage } : {}),
       persona: input.persona,
+      ...(input.sessionBotProfile !== undefined ? { sessionBotProfile: input.sessionBotProfile } : {}),
       relationship: input.relationship,
       npcProfiles: assistantMode ? [] : buildNpcPromptProfiles(deps, relevantUserIds),
       participantProfiles: assistantMode ? [] : input.participantProfiles,

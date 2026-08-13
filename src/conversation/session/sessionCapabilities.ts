@@ -23,6 +23,7 @@ import type { SessionOperationMode } from "./sessionOperationMode.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { ToolObservationSummary } from "./toolObservation.ts";
 import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
+import type { SessionBotProfile, SessionBotProfileField } from "./sessionBotProfile.ts";
 
 // These capability slices let downstream modules depend on the session surface
 // they actually use instead of importing the whole SessionManager facade.
@@ -120,6 +121,8 @@ export interface SessionToolRuntimeAccess extends SessionOperationModeAccess {
   getModeId(sessionId: string): string;
   setTitle(sessionId: string, title: string, titleSource: "default" | "auto" | "manual"): SessionState;
   setModeId(sessionId: string, modeId: string, options?: { appendSwitchMarker?: boolean }): boolean;
+  patchBotProfile(sessionId: string, patch: SessionBotProfile): SessionBotProfile | null;
+  clearBotProfile(sessionId: string, fields?: readonly SessionBotProfileField[]): SessionBotProfile | null;
   appendAssistantHistory(
     sessionId: string,
     message: {

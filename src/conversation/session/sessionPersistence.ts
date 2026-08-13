@@ -18,6 +18,7 @@ import { createEmptySessionTaskTracker, sessionTaskTrackerSchema } from "#conver
 import { normalizeTaskTracker } from "#conversation/taskTracker/taskTrackerNormalize.ts";
 import { sessionPacingPreferencesSchema } from "./sessionPacing.ts";
 import { sessionToolsetPreferencesSchema } from "./sessionToolsetPreferences.ts";
+import { sessionBotProfileSchema } from "./sessionBotProfile.ts";
 
 const personaDraftSchema = z.object({
   name: z.string(),
@@ -123,6 +124,7 @@ export const persistedSessionStateSchema = z.object({
   replyDelivery: z.enum(["onebot", "web"]).default("onebot"),
   pacingPreferences: sessionPacingPreferencesSchema.optional(),
   toolsetPreferences: sessionToolsetPreferencesSchema.optional(),
+  botProfile: sessionBotProfileSchema.nullable().optional(),
   pendingMessages: z.array(persistedSessionMessageSchema),
   queuedGroupReplyTargets: z.array(z.object({
     userId: z.string().min(1),
@@ -225,6 +227,7 @@ export class SessionPersistence {
         reply_delivery,
         pacing_preferences_json,
         toolset_preferences_json,
+        bot_profile_json,
         pending_messages_json,
         queued_group_reply_targets_json,
         pending_transcript_group_id_is_set,
@@ -285,6 +288,7 @@ export class SessionPersistence {
             reply_delivery,
             pacing_preferences_json,
             toolset_preferences_json,
+            bot_profile_json,
             pending_messages_json,
             queued_group_reply_targets_json,
             pending_transcript_group_id_is_set,
@@ -315,6 +319,7 @@ export class SessionPersistence {
             @replyDelivery,
             @pacingPreferencesJson,
             @toolsetPreferencesJson,
+            @botProfileJson,
             @pendingMessagesJson,
             @queuedGroupReplyTargetsJson,
             @pendingTranscriptGroupIdIsSet,
@@ -345,6 +350,7 @@ export class SessionPersistence {
             reply_delivery = excluded.reply_delivery,
             pacing_preferences_json = excluded.pacing_preferences_json,
             toolset_preferences_json = excluded.toolset_preferences_json,
+            bot_profile_json = excluded.bot_profile_json,
             pending_messages_json = excluded.pending_messages_json,
             queued_group_reply_targets_json = excluded.queued_group_reply_targets_json,
             pending_transcript_group_id_is_set = excluded.pending_transcript_group_id_is_set,
@@ -476,6 +482,7 @@ type PersistedSessionRow = {
   reply_delivery: "onebot" | "web" | null;
   pacing_preferences_json: string | null;
   toolset_preferences_json: string | null;
+  bot_profile_json: string | null;
   pending_messages_json: string;
   queued_group_reply_targets_json: string;
   pending_transcript_group_id_is_set: 0 | 1;
@@ -543,6 +550,9 @@ function toPersistedSessionParams(session: PersistedSessionState): Record<string
     toolsetPreferencesJson: session.toolsetPreferences == null
       ? null
       : JSON.stringify(session.toolsetPreferences),
+    botProfileJson: session.botProfile == null
+      ? null
+      : JSON.stringify(session.botProfile),
     pendingMessagesJson: JSON.stringify(session.pendingMessages),
     queuedGroupReplyTargetsJson: JSON.stringify(session.queuedGroupReplyTargets ?? []),
     pendingTranscriptGroupIdIsSet: Number("pendingTranscriptGroupId" in session),
@@ -693,6 +703,9 @@ function rowToPersistedSessionState(row: PersistedSessionRow): PersistedSessionS
       : {}),
     ...(row.toolset_preferences_json
       ? { toolsetPreferences: JSON.parse(row.toolset_preferences_json) }
+      : {}),
+    ...(row.bot_profile_json
+      ? { botProfile: JSON.parse(row.bot_profile_json) }
       : {}),
     pendingMessages: JSON.parse(row.pending_messages_json),
     ...parseQueuedGroupReplyTargets(row.queued_group_reply_targets_json),

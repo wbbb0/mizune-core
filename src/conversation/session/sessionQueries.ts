@@ -15,6 +15,7 @@ import { normalizeTranscriptItems } from "./transcriptMetadata.ts";
 import { resolveSessionParticipantLabel } from "./sessionIdentity.ts";
 import { cloneSessionPacingPreferences } from "./sessionPacing.ts";
 import { cloneSessionToolsetPreferences } from "./sessionToolsetPreferences.ts";
+import { cloneSessionBotProfile } from "./sessionBotProfile.ts";
 
 // Provides read-only projections and snapshots derived from session state.
 export function cloneSessionState(session: SessionState): SessionState {
@@ -24,6 +25,7 @@ export function cloneSessionState(session: SessionState): SessionState {
     operationMode: cloneSessionOperationMode(session.operationMode),
     pacingPreferences: cloneSessionPacingPreferences(session.pacingPreferences),
     toolsetPreferences: cloneSessionToolsetPreferences(session.toolsetPreferences),
+    botProfile: cloneSessionBotProfile(session.botProfile),
     debugControl: { ...session.debugControl },
     pendingMessages: [...session.pendingMessages],
     pendingSteerMessages: [...session.pendingSteerMessages],

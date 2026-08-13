@@ -22,8 +22,32 @@ import {
 } from "./sessionOperationMode.ts";
 import { createTranscriptGroupId } from "./transcriptMetadata.ts";
 import { createEmptySessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
+import {
+  clearSessionBotProfileFields,
+  patchSessionBotProfile,
+  type SessionBotProfile,
+  type SessionBotProfileField
+} from "./sessionBotProfile.ts";
 
 const MAX_DEBUG_MARKERS = 24;
+
+export function patchSessionBotProfileState(
+  session: SessionState,
+  patch: SessionBotProfile
+): SessionBotProfile | null {
+  session.botProfile = patchSessionBotProfile(session.botProfile, patch);
+  session.lastActiveAt = Date.now();
+  return session.botProfile;
+}
+
+export function clearSessionBotProfileState(
+  session: SessionState,
+  fields?: readonly SessionBotProfileField[]
+): SessionBotProfile | null {
+  session.botProfile = clearSessionBotProfileFields(session.botProfile, fields);
+  session.lastActiveAt = Date.now();
+  return session.botProfile;
+}
 
 function updateSessionMessageTiming(session: SessionState, now: number): void {
   if (session.lastMessageAt != null) {

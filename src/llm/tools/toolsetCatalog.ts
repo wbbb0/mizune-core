@@ -26,7 +26,8 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     plannerSignals: [
       "查看 reply/forward/image 上下文",
       "查看当前群资料、群公告全文、群文件或群成员",
-      "先展开上下文再回复"
+      "先展开上下文再回复",
+      "为当前聊天设置、修改或清除 bot 身份"
     ],
     toolNames: [
       "view_message",
@@ -40,6 +41,9 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "list_current_group_members",
       "asset_media_view",
       "asset_media_inspect",
+      "get_current_chat_identity",
+      "patch_current_chat_identity",
+      "clear_current_chat_identity",
       "end_turn_without_reply"
     ]
   },

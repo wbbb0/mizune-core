@@ -123,6 +123,14 @@
 - `scenarioHostState.profile`
   - 只负责当前 `scenario_host` 会话所需的主题、世界基线、叙事风格与边界
   - 每个会话独立保存，不跨聊天复用
+- `session.botProfile`
+  - 只负责当前聊天中的 bot 自我呈现覆盖，包括名字、身份定位、背景、性格表现和语气风格
+  - 每个会话独立保存；由用户在普通聊天中明确提出后，通过会话身份工具写入
+  - 不承载安全边界、工具权限、模式职责或跨会话记忆
+
+正常聊天中的自我呈现按以下顺序叠加：全局 `persona` → 模式 profile → 当前会话 `botProfile`。后层只覆盖同类自我呈现字段，不能改变前层规定的模式职责。例如 `scenario_host` 中的会话身份可以改变主持人的名字和口吻，但不能让 bot 变成玩家/NPC，也不能改写 Scenario 世界状态。
+
+会话身份不是普通上下文记忆，不写入 `context_items`，也不依赖异步记忆抽取。私聊中的当前用户可以设置本会话身份；群聊因为共享同一个 session，当前只允许 bot owner 修改，避免任意群成员永久覆盖整群身份。普通聊天使用 `patch_current_chat_identity` / `clear_current_chat_identity` 修改；配置草稿阶段不暴露这些入口。
 
 Scenario 运行态同样是会话级数据，保存在 `scenario_host_session_states` 中；`profile` 与当前局势、位置、玩家角色、NPC、目标、lore、非角色实体、关系、剧情日志和轻规则配置等状态一起组成当前会话的完整 Scenario Host 状态。玩家和 NPC 的穿着与随身持有物保存在各自角色字段中，通用 `entities` 只描述地点、组织、物品等非角色对象。
 

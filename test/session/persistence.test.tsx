@@ -143,7 +143,9 @@ test("session schema version 6 migrates to session settings storage", async () =
         sessions: {
           ...sessionsTable,
           columns: sessionsTable.columns.filter((column) => (
-            column.key !== "pacingPreferencesJson" && column.key !== "toolsetPreferencesJson"
+            column.key !== "pacingPreferencesJson"
+            && column.key !== "toolsetPreferencesJson"
+            && column.key !== "botProfileJson"
           ))
         }
       }
@@ -169,6 +171,49 @@ test("session schema version 6 migrates to session settings storage", async () =
     const [loaded] = await persistence.loadAll();
     assert.deepEqual(loaded?.pacingPreferences, persisted.pacingPreferences);
     assert.deepEqual(loaded?.toolsetPreferences, persisted.toolsetPreferences);
+  });
+});
+
+test("session schema version 8 migrates and persists per-session bot profile", async () => {
+  await withDataDir("llm-bot-session-profile-migration-test", async (dataDir: string) => {
+    const logger = pino({ level: "silent" });
+    const sessionsTable = sessionDataDomain.tables.sessions;
+    assert.ok(sessionsTable);
+    const oldDomain = {
+      ...sessionDataDomain,
+      schemaVersion: 8,
+      minReadableSchemaVersion: 6,
+      tables: {
+        ...sessionDataDomain.tables,
+        sessions: {
+          ...sessionsTable,
+          columns: sessionsTable.columns.filter((column) => column.key !== "botProfileJson")
+        }
+      }
+    };
+    const dbPath = join(dataDir, "sessions", "sessions.sqlite");
+    const oldHandle = await new SqliteService(logger).openDatabase({
+      databaseId: "sessions",
+      dbPath,
+      tableGroups: createTableGroupsFromDataDomain(oldDomain)
+    });
+    oldHandle.close();
+
+    const persistence = new SessionPersistence(dataDir, logger);
+    await persistence.init();
+    const session = createSessionState({ id: "web:session-profile", type: "private", source: "web" });
+    assert.equal(session.botProfile, null);
+    session.botProfile = {
+      name: "小岚",
+      identity: "摄影师",
+      background: "住在杭州",
+      temperament: "松弛",
+      voiceStyle: "自然随意"
+    };
+    await persistence.save(toPersistedSessionState(session));
+
+    const [loaded] = await persistence.loadAll();
+    assert.deepEqual(loaded?.botProfile, session.botProfile);
   });
 });
 

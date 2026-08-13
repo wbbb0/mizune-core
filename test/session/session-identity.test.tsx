@@ -159,3 +159,11 @@ import { resolveSessionDisplayTitle } from "../../src/conversation/session/sessi
     assert.deepEqual(cloned.participantRef, session.participantRef);
     assert.notStrictEqual(cloned.participantRef, session.participantRef);
   });
+
+  test("cloned session state deep copies the current chat bot profile", () => {
+    const session = createSessionState({ id: "web:profile-clone", type: "private", source: "web" });
+    session.botProfile = { name: "小岚", identity: "摄影师" };
+    const cloned = cloneSessionState(session);
+    assert.deepEqual(cloned.botProfile, session.botProfile);
+    assert.notStrictEqual(cloned.botProfile, session.botProfile);
+  });
