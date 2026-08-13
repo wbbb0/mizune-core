@@ -172,6 +172,7 @@ const activateProgramSchema = z.object({
 const finishDecisionSchema = z.object({
   summary: z.string().min(1).max(500),
   persistentState: z.string().max(20_000),
+  currentGoal: z.string().max(500).nullable().optional(),
   nextWakeHint: z.string().max(500).optional()
 }).strict();
 
@@ -197,6 +198,7 @@ export interface MinecraftDecisionInput {
 export interface MinecraftDecisionCompletion {
   summary: string;
   persistentState: string;
+  currentGoal: string | null;
   nextWakeHint: string | null;
 }
 
@@ -279,7 +281,8 @@ export class MinecraftDecisionRunner {
             args,
             abortSignal,
             input.allowAutonomyPolicyChange === true,
-            input.allowProgramDeployment === true
+            input.allowProgramDeployment === true,
+            input.currentGoal
           );
           if (executed.committed) {
             committedControlTool = toolCall.function.name;
@@ -316,7 +319,8 @@ export class MinecraftDecisionRunner {
     rawArgs: unknown,
     signal: AbortSignal,
     allowAutonomyPolicyChange: boolean,
-    allowProgramDeployment: boolean
+    allowProgramDeployment: boolean,
+    existingGoal: string | null
   ): Promise<{
     result: string | LlmToolExecutionResult;
     completion?: MinecraftDecisionCompletion;
@@ -387,6 +391,7 @@ export class MinecraftDecisionRunner {
         const decision: MinecraftDecisionCompletion = {
           summary: finished.summary,
           persistentState: finished.persistentState,
+          currentGoal: finished.currentGoal === undefined ? existingGoal : finished.currentGoal,
           nextWakeHint: finished.nextWakeHint ?? null
         };
         return {
@@ -483,6 +488,7 @@ function buildDecisionTools(options: {
     tool(TERMINAL_TOOL_NAME, "结束本次决策并提交更新后的持久状态。结束工具必须独占一轮。", {
       summary: { type: "string" },
       persistentState: { type: "string" },
+      currentGoal: { type: ["string", "null"] },
       nextWakeHint: { type: "string" }
     }, ["summary", "persistentState"])
   ];

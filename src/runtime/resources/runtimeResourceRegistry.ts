@@ -20,6 +20,10 @@ export class RuntimeResourceRegistry {
     return this.store.listActive(kind);
   }
 
+  async get(resourceId: string): Promise<RuntimeResourceRecord | null> {
+    return this.store.getRow(resourceId);
+  }
+
   async reset(): Promise<void> {
     await this.store.reset();
   }

@@ -146,6 +146,7 @@ test("decision runner uses exactly one stable system and two structured user mes
   assert.deepEqual(actor.calls, ["getSnapshot"]);
   assert.equal(result.completion.summary, "继续观察");
   assert.equal(result.completion.persistentState, "目标：保护 Alice；当前没有活动任务");
+  assert.equal(result.completion.currentGoal, "保护 Alice");
   assert.equal(result.toolCallCount, 2);
 });
 
