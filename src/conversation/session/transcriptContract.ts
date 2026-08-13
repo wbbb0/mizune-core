@@ -21,7 +21,8 @@ export const transcriptInternalTriggerKindValues = [
   "download_completed",
   "download_failed",
   "terminal_session_closed",
-  "terminal_input_required"
+  "terminal_input_required",
+  "minecraft_actor_attention"
 ] as const;
 export const transcriptInternalTriggerStageValues = ["received", "queued", "queued_inline", "dequeued", "inlined", "started"] as const;
 export const transcriptContextExtractionStatusValues = ["queued", "enqueue_failed", "processed", "process_failed"] as const;

@@ -256,6 +256,9 @@ function selectScheduledActiveToolsetIds(modeId: string, triggerKind: InternalSe
     if (triggerKind === "comfy_task_completed") {
       return ["chat_context", "filesystem_io", "asset_io", "comfy_image"];
     }
+    if (triggerKind === "minecraft_actor_attention") {
+      return ["chat_context", "time_utils"];
+    }
     return ["chat_context", "web_research", "shell_runtime", "filesystem_io", "asset_io", "scheduler_admin", "time_utils", "comfy_image", "session_mode_control"];
   }
   if (triggerKind === "scheduled_instruction") {
@@ -269,6 +272,9 @@ function selectScheduledActiveToolsetIds(modeId: string, triggerKind: InternalSe
   }
   if (triggerKind === "download_completed" || triggerKind === "download_failed") {
     return withScenarioHostState(["chat_context", "web_research", "asset_io", "time_utils"]);
+  }
+  if (triggerKind === "minecraft_actor_attention") {
+    return withScenarioHostState(["chat_context", "time_utils"]);
   }
   return withScenarioHostState(["chat_context", "shell_runtime", "filesystem_io", "asset_io", "time_utils"]);
 }
@@ -364,6 +370,18 @@ function toScheduledPromptTrigger(trigger: InternalSessionTriggerExecution) {
       resourceId: trigger.resourceId,
       sourceUrl: trigger.sourceUrl,
       error: trigger.error
+    };
+  }
+  if (trigger.kind === "minecraft_actor_attention") {
+    return {
+      kind: "minecraft_actor_attention" as const,
+      jobName: trigger.jobName,
+      taskInstruction: trigger.instruction,
+      resourceId: trigger.resourceId,
+      actorId: trigger.actorId,
+      attentionType: trigger.attentionType,
+      summary: trigger.summary,
+      details: trigger.details
     };
   }
   return {

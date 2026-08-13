@@ -281,6 +281,16 @@ export interface InternalSessionTriggerPromptInput {
         resourceId: string;
         sourceUrl: string;
         error: string;
+      }
+    | {
+        kind: "minecraft_actor_attention";
+        jobName: string;
+        taskInstruction: string;
+        resourceId: string;
+        actorId: string;
+        attentionType: "game_attention" | "decision_failed";
+        summary: string;
+        details: string | null;
       };
   persona: Persona;
   relationship: Relationship;

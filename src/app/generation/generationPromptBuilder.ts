@@ -829,6 +829,8 @@ function buildScheduledQueryText(trigger: Parameters<typeof buildScheduledTaskPr
       return `${trigger.jobName}\n${trigger.taskInstruction}\n${trigger.fileRef}\n${trigger.sourceName}`.trim();
     case "download_failed":
       return `${trigger.jobName}\n${trigger.taskInstruction}\n${trigger.error}`.trim();
+    case "minecraft_actor_attention":
+      return `${trigger.jobName}\n${trigger.taskInstruction}\n${trigger.summary}\n${trigger.details ?? ""}`.trim();
     default:
       return "";
   }

@@ -714,6 +714,11 @@ export function buildScheduledTaskSystemSections(input: {
         kind: "download_failed";
         jobName: string;
         taskInstruction: string;
+      }
+    | {
+        kind: "minecraft_actor_attention";
+        jobName: string;
+        taskInstruction: string;
       };
   targetContext:
     | {
@@ -780,6 +785,16 @@ export function buildScheduledTaskSystemSections(input: {
       systemSection("download_failed", [
         "下面这次执行是后台下载失败后的内部回调，不是用户刚刚发来了一条新消息。",
         "先根据错误判断是否能换来源或重试；需要用户决策时再简短询问。"
+      ])
+    ].filter((item): item is PromptSection => Boolean(item));
+  }
+
+  if (input.trigger.kind === "minecraft_actor_attention") {
+    return [
+      systemSection("minecraft_actor_attention", [
+        "下面这次执行是 Minecraft Actor 请求所属会话关注的内部回调，不是用户刚刚发来了一条新消息。",
+        "根据事件摘要判断是否应简短通知用户、提出需要用户决定的问题，或保持静默。",
+        "不要把 Actor 的内部计划伪装成游戏玩家发言，也不要仅凭该回调猜测未提供的实时游戏状态。"
       ])
     ].filter((item): item is PromptSection => Boolean(item));
   }

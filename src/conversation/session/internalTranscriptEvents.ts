@@ -206,6 +206,9 @@ export function createInternalTriggerEvent(input: {
     ...(trigger.kind === "download_completed" || trigger.kind === "download_failed"
       ? { resourceId: trigger.resourceId }
       : {}),
+    ...(trigger.kind === "minecraft_actor_attention"
+      ? { resourceId: trigger.resourceId }
+      : {}),
     ...(details ? { details } : {})
   };
 }
@@ -249,6 +252,9 @@ function buildTriggerSummary(trigger: InternalSessionTriggerExecution, stage: In
   }
   if (trigger.kind === "download_completed") {
     return `${stageLabel}下载完成事件「${trigger.jobName}」，文件 ${trigger.fileRef}`;
+  }
+  if (trigger.kind === "minecraft_actor_attention") {
+    return `${stageLabel} Minecraft Actor 事件「${trigger.jobName}」，资源 ${trigger.resourceId}`;
   }
   return `${stageLabel}下载失败事件「${trigger.jobName}」，资源 ${trigger.resourceId}`;
 }
@@ -301,6 +307,17 @@ function buildTriggerDetails(trigger: InternalSessionTriggerExecution): string |
       `resourceId: ${trigger.resourceId}`,
       `sourceUrl: ${trigger.sourceUrl}`,
       `error: ${trigger.error}`,
+      `instruction: ${trigger.instruction}`
+    ].join("\n");
+  }
+
+  if (trigger.kind === "minecraft_actor_attention") {
+    return [
+      `resourceId: ${trigger.resourceId}`,
+      `actorId: ${trigger.actorId}`,
+      `attentionType: ${trigger.attentionType}`,
+      `summary: ${trigger.summary}`,
+      `details: ${trigger.details ?? "(none)"}`,
       `instruction: ${trigger.instruction}`
     ].join("\n");
   }

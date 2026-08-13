@@ -374,6 +374,18 @@ export function renderTriggerEventBody(trigger: InlineSessionTriggerExecution): 
     ].join("\n");
   }
 
+  if (trigger.kind === "minecraft_actor_attention") {
+    return [
+      `任务名称：${trigger.jobName}`,
+      `任务说明：${trigger.instruction}`,
+      `resource_id：${trigger.resourceId}`,
+      `actor_id：${trigger.actorId}`,
+      `事件类型：${trigger.attentionType}`,
+      `摘要：${trigger.summary}`,
+      `详情：${trigger.details ?? "无"}`
+    ].join("\n");
+  }
+
   // download_failed
   return [
     `任务名称：${trigger.jobName}`,

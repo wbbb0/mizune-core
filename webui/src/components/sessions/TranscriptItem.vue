@@ -572,6 +572,8 @@ function formatTriggerKind(kind: InternalTriggerKind): string {
       return "download_completed";
     case "download_failed":
       return "download_failed";
+    case "minecraft_actor_attention":
+      return "minecraft_actor_attention";
   }
 }
 

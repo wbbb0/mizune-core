@@ -345,6 +345,24 @@ export interface DownloadFailedTriggerExecution {
   rejectCompletion?: (error: unknown) => void;
 }
 
+export interface MinecraftActorAttentionTriggerExecution {
+  kind: "minecraft_actor_attention";
+  targetType: "private" | "group";
+  targetUserId?: string;
+  targetGroupId?: string;
+  targetSenderName: string;
+  jobName: string;
+  instruction: string;
+  enqueuedAt: number;
+  resourceId: string;
+  actorId: string;
+  attentionType: "game_attention" | "decision_failed";
+  summary: string;
+  details: string | null;
+  resolveCompletion?: () => void;
+  rejectCompletion?: (error: unknown) => void;
+}
+
 export type InternalSessionTriggerExecution =
   | ScheduledInstructionTriggerExecution
   | ComfyTaskCompletedTriggerExecution
@@ -352,7 +370,8 @@ export type InternalSessionTriggerExecution =
   | TerminalSessionClosedTriggerExecution
   | TerminalInputRequiredTriggerExecution
   | DownloadCompletedTriggerExecution
-  | DownloadFailedTriggerExecution;
+  | DownloadFailedTriggerExecution
+  | MinecraftActorAttentionTriggerExecution;
 
 // Inline triggers are background-event triggers that can be injected into the
 // next LLM request within an in-flight tool-call loop, instead of waiting for
@@ -368,7 +387,8 @@ export type InlineSessionTriggerExecution =
   | Omit<TerminalSessionClosedTriggerExecution, "resolveCompletion" | "rejectCompletion">
   | Omit<TerminalInputRequiredTriggerExecution, "resolveCompletion" | "rejectCompletion">
   | Omit<DownloadCompletedTriggerExecution, "resolveCompletion" | "rejectCompletion">
-  | Omit<DownloadFailedTriggerExecution, "resolveCompletion" | "rejectCompletion">;
+  | Omit<DownloadFailedTriggerExecution, "resolveCompletion" | "rejectCompletion">
+  | Omit<MinecraftActorAttentionTriggerExecution, "resolveCompletion" | "rejectCompletion">;
 
 export type SessionPhase =
   | { kind: "idle" }
