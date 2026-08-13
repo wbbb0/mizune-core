@@ -370,6 +370,46 @@ function createOrchestratorDeps(input: {
     assert.ok(persistedReasons.includes("internal_trigger_started"));
   });
 
+  test("Minecraft owner trigger rejects fallback generation outcomes for outbox retry", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "qqbot:p:owner";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    const orchestrator = createGenerationSessionOrchestrator(createOrchestratorDeps({
+      config,
+      sessionManager,
+      setupStore: {} as never
+    }), {
+      promptBuilder: {
+        async buildScheduledPromptMessages() {
+          return { promptMessages: [], debugSnapshot: {} as never };
+        }
+      } as never,
+      async runGeneration(input) {
+        input.completionOutcomeSink?.({
+          status: "fallback_failure",
+          error: "provider unavailable"
+        });
+      },
+      processNextSessionWork() {}
+    });
+
+    await assert.rejects(orchestrator.runInternalTriggerSession(sessionId, {
+      kind: "minecraft_actor_attention",
+      targetType: "private",
+      targetUserId: "owner",
+      targetSenderName: "Owner",
+      jobName: "Minecraft Actor 请求关注",
+      instruction: "检查事件",
+      enqueuedAt: 1,
+      resourceId: "res-mc",
+      actorId: "actor-1",
+      attentionType: "game_attention",
+      summary: "附近危险",
+      details: "{}"
+    }), /fallback_failure.*provider unavailable/);
+  });
+
   test("scheduled instruction resets reply delivery to the session source", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);

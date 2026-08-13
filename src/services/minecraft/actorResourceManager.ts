@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 import type { LlmClient } from "#llm/llmClient.ts";
 import type {
   MinecraftActorRecoveryState,
@@ -18,6 +19,7 @@ export type MinecraftActorWakePriority = "normal" | "high" | "critical";
 export interface MinecraftActorWakeRequest extends MinecraftDecisionWakeReason {
   priority?: MinecraftActorWakePriority;
   interruptCurrent?: boolean;
+  decisionId?: string;
 }
 
 export type MinecraftActorWakeOutcome =
@@ -101,6 +103,7 @@ export class MinecraftActorResourceManager {
   private readonly closeOperations = new Map<string, Promise<void>>();
   private readonly closingResources = new Set<string>();
   private readonly outboxWakeOperations = new Map<string, Promise<MinecraftActorWakeOutcome>>();
+  private readonly outboxOwnerOperations = new Map<string, Promise<void>>();
 
   constructor(
     private readonly registry: RuntimeResourceRegistry,
@@ -142,8 +145,12 @@ export class MinecraftActorResourceManager {
 
   wake(resourceId: string, request: MinecraftActorWakeRequest): Promise<MinecraftActorWakeOutcome> {
     validateWakeRequest(request);
+    const normalizedRequest: MinecraftActorWakeRequest = {
+      ...request,
+      decisionId: request.decisionId ?? randomUUID()
+    };
     return new Promise(resolve => {
-      const pending: PendingWake = { request, resolve };
+      const pending: PendingWake = { request: normalizedRequest, resolve };
       const loop = this.getLoop(resourceId);
       if (!loop.running) {
         this.startWake(resourceId, loop, pending);
@@ -256,37 +263,60 @@ export class MinecraftActorResourceManager {
   private async flushEventOutbox(
     record: RuntimeResourceRecord
   ): Promise<{ wake: Promise<MinecraftActorWakeOutcome> | null }> {
-    let wake: Promise<MinecraftActorWakeOutcome> | null = null;
     const entries = await this.registry.listPendingMinecraftActorOutbox(record.resourceId);
-    for (const entry of entries) {
+    const decisionEntry = entries.find(entry => entry.kind === "decision_wake");
+    let wake: Promise<MinecraftActorWakeOutcome> | null = null;
+    if (decisionEntry) {
       try {
-        if (entry.kind === "owner_notification") {
-          const payload = parseOwnerNotificationPayload(entry.payload);
-          await this.deliverOwner(record, {
-            notificationId: `${record.resourceId}:${entry.outboxId}`,
-            type: payload.type,
-            summary: payload.summary,
-            ...(payload.details === undefined ? {} : { details: payload.details })
-          });
-          const delivered = await this.registry.markMinecraftActorOutboxDelivered(
-            record.resourceId,
-            entry.outboxId,
-            this.now()
-          );
-          if (!delivered) {
-            throw new Error(`Minecraft Actor outbox 状态已变化：${entry.outboxId}`);
-          }
-        } else {
-          wake = this.startOutboxWake(record.resourceId, entry.outboxId, entry.payload);
-          break;
-        }
+        wake = this.startOutboxWake(record.resourceId, decisionEntry.outboxId, decisionEntry.payload);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        await this.registry.markMinecraftActorOutboxFailed(record.resourceId, entry.outboxId, message);
+        await this.registry.markMinecraftActorOutboxFailed(record.resourceId, decisionEntry.outboxId, message);
         throw error;
       }
     }
+    for (const entry of entries) {
+      if (entry.kind !== "owner_notification") continue;
+      this.startOutboxOwnerDelivery(record, entry.outboxId, entry.payload);
+    }
     return { wake };
+  }
+
+  private startOutboxOwnerDelivery(
+    record: RuntimeResourceRecord,
+    outboxId: string,
+    payload: unknown
+  ): void {
+    const operationKey = `${record.resourceId}:${outboxId}`;
+    if (this.outboxOwnerOperations.has(operationKey)) return;
+    const operation = (async () => {
+      try {
+        const notification = parseOwnerNotificationPayload(payload);
+        await this.deliverOwner(record, {
+          notificationId: `${record.resourceId}:${outboxId}`,
+          type: notification.type,
+          summary: notification.summary,
+          ...(notification.details === undefined ? {} : { details: notification.details })
+        });
+        const delivered = await this.registry.markMinecraftActorOutboxDelivered(
+          record.resourceId,
+          outboxId,
+          this.now()
+        );
+        if (!delivered) {
+          throw new Error(`Minecraft Actor outbox 状态已变化：${outboxId}`);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await this.registry.markMinecraftActorOutboxFailed(record.resourceId, outboxId, message);
+        this.logger.warn({ err: error, resourceId: record.resourceId, outboxId }, "minecraft_actor_owner_outbox_failed");
+      }
+    })().finally(() => {
+      if (this.outboxOwnerOperations.get(operationKey) === operation) {
+        this.outboxOwnerOperations.delete(operationKey);
+      }
+    });
+    this.outboxOwnerOperations.set(operationKey, operation);
   }
 
   private startOutboxWake(
@@ -297,7 +327,10 @@ export class MinecraftActorResourceManager {
     const operationKey = `${resourceId}:${outboxId}`;
     const existing = this.outboxWakeOperations.get(operationKey);
     if (existing) return existing;
-    const operation = this.wake(resourceId, parseWakePayload(payload)).then(async outcome => {
+    const operation = this.wake(resourceId, {
+      ...parseWakePayload(payload),
+      decisionId: outboxId
+    }).then(async outcome => {
       if (outcome.status === "completed") {
         const delivered = await this.registry.markMinecraftActorOutboxDelivered(
           resourceId,
@@ -415,6 +448,7 @@ export class MinecraftActorResourceManager {
         persistentState: actorState.persistentState,
         currentGoal: actorState.currentGoal,
         wakeReason: request,
+        controlIdempotencyKey: createDecisionControlIdempotencyKey(resourceId, request.decisionId),
         modelRef: actorState.modelRefs,
         allowAutonomyPolicyChange: actorState.allowAutonomyPolicyChange,
         allowProgramDeployment: actorState.allowProgramDeployment,
@@ -434,7 +468,7 @@ export class MinecraftActorResourceManager {
       this.logger.warn({ err: error, resourceId, wakeType: request.type }, "minecraft_actor_decision_failed");
       const record = await this.get(resourceId);
       if (record) {
-        await this.notifyOwnerBestEffort(record, {
+        void this.notifyOwnerBestEffort(record, {
           notificationId: `decision_failed:${resourceId}:${this.now()}`,
           type: "decision_failed",
           summary: `Minecraft 决策失败：${message}`
@@ -621,6 +655,9 @@ function validateWakeRequest(request: MinecraftActorWakeRequest): void {
   if (!Number.isSafeInteger(request.occurredAtMs) || request.occurredAtMs < 0) {
     throw new Error("wake.occurredAtMs 必须是非负安全整数");
   }
+  if (request.decisionId !== undefined && (!request.decisionId.trim() || request.decisionId.length > 256)) {
+    throw new Error("wake.decisionId 无效");
+  }
 }
 
 function requireNonEmpty(value: string, name: string): string {
@@ -685,7 +722,12 @@ function projectUntrustedGameData(value: JsonValue): JsonValue {
 
 function summarizeEvents(events: MinecraftRuntimeEvent[]): string {
   const types = [...new Set(events.map(event => event.eventType))];
-  return `收到 ${events.length} 个显著游戏事件：${types.join("、")}`;
+  return `收到 ${events.length} 个显著游戏事件：${types.join("、")}`.slice(0, 500);
+}
+
+function createDecisionControlIdempotencyKey(resourceId: string, decisionId: string | undefined): string {
+  if (!decisionId) throw new Error("Minecraft Actor decisionId 缺失");
+  return `decision:${createHash("sha256").update(`${resourceId}\0${decisionId}`, "utf8").digest("hex")}`;
 }
 
 function abortReason(signal: AbortSignal): string {

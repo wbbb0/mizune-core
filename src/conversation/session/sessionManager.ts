@@ -14,6 +14,7 @@ import {
   promoteNextQueuedGroupReplyTargetState,
   requeuePendingMessagesState,
   resetProfileOperationState,
+  rejectPendingTriggerCompletionsState,
   setActiveAssistantDraftResponseState,
   setSessionOperationModeState,
   setSessionSettingsState,
@@ -432,6 +433,7 @@ export class SessionManager {
     if (session.responseAbortController != null) {
       session.responseAbortController.abort();
     }
+    rejectPendingTriggerCompletionsState(session, new Error("会话已删除，排队中的内部事件已取消"));
     const deleted = this.sessionStore.delete(sessionId);
     if (deleted) {
       this.notifySessionChanged(sessionId);
@@ -826,6 +828,10 @@ export class SessionManager {
   // Restores persisted sessions back into runtime state.
   restoreSessions(items: PersistedSessionState[]): void {
     for (const item of items) {
+      const existing = this.sessionStore.get(item.id);
+      if (existing) {
+        rejectPendingTriggerCompletionsState(existing, new Error("会话已恢复，旧的内部事件等待已取消"));
+      }
       this.sessionStore.set(item.id, restoreSessionState(item));
       this.notifySessionChanged(item.id);
     }

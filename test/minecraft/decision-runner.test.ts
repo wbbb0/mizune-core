@@ -46,6 +46,7 @@ class ScriptedDecisionLlm {
 
 class FakeActorClient implements MinecraftActorClient {
   readonly calls: string[] = [];
+  readonly commandIdempotencyKeys: string[] = [];
 
   async getSnapshot(): Promise<MinecraftActorSnapshot> {
     this.calls.push("getSnapshot");
@@ -57,28 +58,33 @@ class FakeActorClient implements MinecraftActorClient {
     return observation([]);
   }
 
-  async startBehavior(_command: MinecraftBehaviorCommand): Promise<MinecraftCommandResult> {
+  async startBehavior(command: MinecraftBehaviorCommand): Promise<MinecraftCommandResult> {
     this.calls.push("startBehavior");
+    this.commandIdempotencyKeys.push(command.idempotencyKey);
     return commandResult();
   }
 
-  async cancelBehavior(_command: MinecraftCancelBehaviorCommand): Promise<MinecraftCommandResult> {
+  async cancelBehavior(command: MinecraftCancelBehaviorCommand): Promise<MinecraftCommandResult> {
     this.calls.push("cancelBehavior");
+    this.commandIdempotencyKeys.push(command.idempotencyKey);
     return commandResult();
   }
 
-  async submitTask(_command: MinecraftTaskCommand): Promise<MinecraftCommandResult> {
+  async submitTask(command: MinecraftTaskCommand): Promise<MinecraftCommandResult> {
     this.calls.push("submitTask");
+    this.commandIdempotencyKeys.push(command.idempotencyKey);
     return commandResult();
   }
 
-  async cancelTask(_command: MinecraftCancelTaskCommand): Promise<MinecraftCommandResult> {
+  async cancelTask(command: MinecraftCancelTaskCommand): Promise<MinecraftCommandResult> {
     this.calls.push("cancelTask");
+    this.commandIdempotencyKeys.push(command.idempotencyKey);
     return commandResult();
   }
 
-  async setAutonomy(_command: MinecraftSetAutonomyCommand): Promise<MinecraftCommandResult> {
+  async setAutonomy(command: MinecraftSetAutonomyCommand): Promise<MinecraftCommandResult> {
     this.calls.push("setAutonomy");
+    this.commandIdempotencyKeys.push(command.idempotencyKey);
     return commandResult();
   }
 
@@ -97,8 +103,9 @@ class FakeActorClient implements MinecraftActorClient {
     };
   }
 
-  async activateProgram(_command: MinecraftActivateProgramCommand): Promise<MinecraftCommandResult> {
+  async activateProgram(command: MinecraftActivateProgramCommand): Promise<MinecraftCommandResult> {
     this.calls.push("activateProgram");
+    this.commandIdempotencyKeys.push(command.idempotencyKey);
     return commandResult();
   }
 
@@ -150,6 +157,14 @@ test("decision runner uses exactly one stable system and two structured user mes
   assert.equal(result.completion.persistentState, "目标：保护 Alice；当前没有活动任务");
   assert.equal(result.completion.currentGoal, "保护 Alice");
   assert.equal(result.toolCallCount, 2);
+  const startBehaviorTool = resolveTools(params).find(tool => tool.function.name === "minecraft_start_behavior");
+  const parameters = startBehaviorTool?.function.parameters as {
+    properties?: Record<string, unknown>;
+    required?: string[];
+  } | undefined;
+  assert.ok(parameters);
+  assert.equal(parameters.properties?.idempotencyKey, undefined);
+  assert.ok(!parameters.required?.includes("idempotencyKey"));
 });
 
 test("mixed read and control batch is rejected before any actor side effect", async () => {
@@ -227,7 +242,6 @@ test("program deployment is capability scoped and parent computes source hash", 
     await executeToolRound(params, [toolCall("activate-1", "minecraft_activate_program", {
       draftId: "draft-1",
       expectedActorRevision: 3,
-      idempotencyKey: "activate-1",
       decisionReason: "启用已校验程序"
     })]);
     await executeToolRound(params, [toolCall("finish-program", "minecraft_finish_decision", {
@@ -240,6 +254,7 @@ test("program deployment is capability scoped and parent computes source hash", 
   await runner.run({ ...decisionInput(), allowProgramDeployment: true });
 
   assert.deepEqual(actor.calls, ["validateProgram", "activateProgram"]);
+  assert.deepEqual(actor.commandIdempotencyKeys, ["decision-control-1"]);
   const draft = validationResults[0]?.draft as { program?: { sourceHash?: string } } | undefined;
   assert.match(draft?.program?.sourceHash ?? "", /^sha256:[0-9a-f]{64}$/u);
   const toolNames = resolveTools(llm.params).map(tool => tool.function.name);
@@ -253,8 +268,7 @@ test("one wake cannot successfully commit two controls across tool rounds", asyn
   const llm = new ScriptedDecisionLlm(async params => {
     await executeToolRound(params, [toolCall("control-first", "minecraft_start_behavior", behaviorArgs())]);
     const [rawSecond] = await executeToolRound(params, [toolCall("control-second", "minecraft_start_behavior", {
-      ...behaviorArgs(),
-      idempotencyKey: "decision-control-2"
+      ...behaviorArgs()
     })]);
     secondResults.push(JSON.parse(rawSecond ?? "null") as Record<string, unknown>);
     await executeToolRound(params, [toolCall("finish-one-commit", "minecraft_finish_decision", {
@@ -292,6 +306,33 @@ test("decision prompt marks game content as untrusted and rejects oversized pers
     runner.run({ ...decisionInput(), persistentState: "x".repeat(20_001) }),
     /persistentState 超过/
   );
+});
+
+test("large actor read results are projected to a bounded model tool result", async () => {
+  const actor = new FakeActorClient();
+  actor.observe = async () => observation({
+    entities: Array.from({ length: 128 }, (_, index) => ({
+      ref: `entity-ref-${index}`,
+      description: "x".repeat(10_000)
+    }))
+  });
+  let readResult = "";
+  const llm = new ScriptedDecisionLlm(async params => {
+    [readResult = ""] = await executeToolRound(params, [
+      toolCall("read-large", "minecraft_observe", { scope: "entities", limit: 128 })
+    ]);
+    await executeToolRound(params, [toolCall("finish-large", "minecraft_finish_decision", {
+      summary: "读取完成",
+      persistentState: "保持原状态"
+    })]);
+  });
+  const runner = new MinecraftDecisionRunner(llm, actor, pino({ level: "silent" }));
+
+  await runner.run(decisionInput());
+
+  assert.ok(readResult.length <= 64_000);
+  assert.match(readResult, /decision_tool_result_budget|TRUNCATED/);
+  assert.match(readResult, /entity-ref-0/);
 });
 
 test("hard deadline returns even when provider ignores abort and blocks late tools", async () => {
@@ -346,7 +387,6 @@ function behaviorArgs() {
     tolerance: 1,
     expectedActorRevision: 3,
     expectedObservationRevision: 7,
-    idempotencyKey: "decision-control-1",
     decisionReason: "前往安全点"
   };
 }
@@ -366,6 +406,7 @@ function decisionInput() {
       details: { nearbyItems: 0 },
       occurredAtMs: 20_000
     },
+    controlIdempotencyKey: "decision-control-1",
     modelRef: ["prod_deepseek.v4_flash", "prod_deepseek.v4_pro"],
     timeoutMs: 10_000
   };

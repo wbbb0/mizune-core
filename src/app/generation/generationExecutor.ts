@@ -88,6 +88,13 @@ export interface GenerationSendTarget {
   senderName: string;
 }
 
+export type GenerationExecutionOutcome =
+  | { status: "completed" }
+  | { status: "fallback_failure"; error: string }
+  | { status: "unconfigured" }
+  | { status: "aborted" }
+  | { status: "failed"; error: string };
+
 export interface RunGenerationInput {
   sessionId: string;
   expectedEpoch: number;
@@ -119,6 +126,7 @@ export interface RunGenerationInput {
   forceRegenerateTitleAfterTurn?: boolean | undefined;
   committedTextSink?: GenerationCommittedTextSink | undefined;
   draftOverlaySink?: GenerationDraftOverlaySink | undefined;
+  completionOutcomeSink?: ((outcome: GenerationExecutionOutcome) => void) | undefined;
 }
 
 export async function projectProviderPreflightMessages(input: {
@@ -211,8 +219,10 @@ export function createGenerationExecutor(
       streamResponse,
       forceRegenerateTitleAfterTurn,
       committedTextSink,
-      draftOverlaySink
+      draftOverlaySink,
+      completionOutcomeSink
     } = input;
+    let completionOutcome: GenerationExecutionOutcome = { status: "completed" };
     let outboundDrainPromise: Promise<void> | null = null;
     let lastResultReasoningContent = "";
     let lastResultAssistantMetadata: Record<string, unknown> | undefined;
@@ -308,6 +318,7 @@ export function createGenerationExecutor(
       await (options?.waitForAbortGraceWindow ?? waitForGenerationAbortGraceWindow)(abortController.signal);
 
       if (abortController.signal.aborted) {
+        completionOutcome = { status: "aborted" };
         return;
       }
       let summary = "";
@@ -796,9 +807,14 @@ export function createGenerationExecutor(
           });
           await draftOverlaySink?.fail(failureMessage);
           summary = "";
+          completionOutcome = {
+            status: "fallback_failure",
+            error: formatErrorDetails(error)
+          };
         }
       } else {
         summary = "LLM 未配置。请在 LLM catalog 文件中填写 provider、model 与 routing preset 清单，在运行时配置中设置 llm.routingPreset，并将 llm.enabled 设为 true。";
+        completionOutcome = { status: "unconfigured" };
       }
 
       await segmentCoordinator.flushSummary(summary, streamResponse);
@@ -807,9 +823,17 @@ export function createGenerationExecutor(
 
       persistSession(sessionId, "generation_completed");
     } catch (error: unknown) {
+      completionOutcome = abortController.signal.aborted || responseAbortController.signal.aborted
+        ? { status: "aborted" }
+        : { status: "failed", error: formatErrorDetails(error) };
       logger.error({ err: error, sessionId }, "generation_failed");
       throw error;
     } finally {
+      try {
+        completionOutcomeSink?.(completionOutcome);
+      } catch (error) {
+        logger.warn({ err: error, sessionId }, "generation_completion_outcome_sink_failed");
+      }
       const finishedCurrent = sessionManager.finishGeneration(sessionId, abortController);
       if (finishedCurrent && setupMode && input.setupCompletionSignal && input.setupOnComplete) {
         const modeId = sessionManager.getModeId(sessionId);

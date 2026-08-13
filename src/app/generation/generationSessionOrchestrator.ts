@@ -15,7 +15,11 @@ import type {
   GenerationSessionOrchestratorDeps,
   GenerationSessionRuntimeDeps
 } from "./generationRunnerDeps.ts";
-import type { GenerationRuntimeBatchMessage, RunGenerationInput } from "./generationExecutor.ts";
+import type {
+  GenerationExecutionOutcome,
+  GenerationRuntimeBatchMessage,
+  RunGenerationInput
+} from "./generationExecutor.ts";
 import type {
   GenerationCommittedTextSink,
   GenerationDraftOverlaySink
@@ -1119,6 +1123,7 @@ export function createGenerationSessionOrchestrator(
             }
       });
 
+      const completion = { outcome: null as GenerationExecutionOutcome | null };
       await services.runGeneration({
         sessionId,
         expectedEpoch,
@@ -1148,8 +1153,18 @@ export function createGenerationSessionOrchestrator(
         debugSnapshot: promptBuildResult.debugSnapshot,
         plannedToolsetIds: activeScheduledToolsets.map((toolset) => toolset.id),
         availableToolsets: scheduledAvailableToolsets,
-        streamResponse: false
+        streamResponse: false,
+        completionOutcomeSink(outcome) {
+          completion.outcome = outcome;
+        }
       });
+      const completionOutcome = completion.outcome;
+      if (trigger.kind === "minecraft_actor_attention" && completionOutcome?.status !== "completed") {
+        const details = completionOutcome && "error" in completionOutcome
+          ? `：${completionOutcome.error}`
+          : "";
+        throw new Error(`Minecraft Actor owner 回调未成功完成 (${completionOutcome?.status ?? "unknown"})${details}`);
+      }
     })().catch((error: unknown) => {
       if (sessionManager.isGenerating(sessionId)) {
         logger.error({ err: error, sessionId, triggerKind: trigger.kind, jobName: trigger.jobName }, "scheduled_generation_prepare_failed");

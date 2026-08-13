@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { createGenerationExecutor } from "../../src/app/generation/generationExecutor.ts";
+import type { GenerationExecutionOutcome } from "../../src/app/generation/generationExecutor.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 
@@ -22,6 +23,7 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
   const sentTexts: string[] = [];
   const persistedReasons: string[] = [];
   let processNextCalled = 0;
+  const completion = { outcome: null as GenerationExecutionOutcome | null };
 
   const executor = createGenerationExecutor({
     promptBuilder: {
@@ -192,7 +194,10 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
       lastLlmUsage: null
     },
     availableToolNames: [],
-    streamResponse: true
+    streamResponse: true,
+    completionOutcomeSink(outcome) {
+      completion.outcome = outcome;
+    }
   });
 
   assert.equal(processNextCalled, 1);
@@ -217,4 +222,5 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
   assert.ok(persistedReasons.includes("assistant_response_finalized"));
   assert.ok(persistedReasons.includes("generation_finished"));
   assert.ok(persistedReasons.includes("internal_transcript_updated"));
+  assert.equal(completion.outcome?.status, "fallback_failure");
 });

@@ -255,6 +255,7 @@ export function appendDebugMarkerState(session: SessionState, marker: SessionDeb
 
 // Clears the mutable runtime state for a session.
 export function clearSessionState(session: SessionState): void {
+  rejectPendingTriggerCompletionsState(session, new Error("会话已清空，排队中的内部事件已取消"));
   session.mutationEpoch += 1;
   session.historyRevision += 1;
   session.operationMode = createNormalSessionOperationMode();
@@ -288,6 +289,7 @@ export function clearSessionState(session: SessionState): void {
 }
 
 export function resetProfileOperationState(session: SessionState): void {
+  rejectPendingTriggerCompletionsState(session, new Error("会话操作模式已重置，排队中的内部事件已取消"));
   session.mutationEpoch += 1;
   session.operationMode = createNormalSessionOperationMode();
   session.setupConfirmed = false;
@@ -303,6 +305,19 @@ export function resetProfileOperationState(session: SessionState): void {
   session.lastLlmUsage = null;
   session.phase = { kind: "idle" };
   session.lastActiveAt = Date.now();
+}
+
+export function rejectPendingTriggerCompletionsState(session: SessionState, error: Error): void {
+  const pending = [...session.pendingInternalTriggers];
+  session.pendingInternalTriggers = [];
+  session.pendingInlineTriggers = [];
+  for (const trigger of pending) {
+    try {
+      trigger.rejectCompletion?.(error);
+    } catch {
+      // Completion callbacks are external waiters; session cleanup must still finish.
+    }
+  }
 }
 
 export function setSessionOperationModeState(session: SessionState, operationMode: SessionOperationMode): void {

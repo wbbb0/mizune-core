@@ -26,7 +26,7 @@ export const MINECRAFT_DECISION_SYSTEM_PROMPT = `你是 Mizune 的 Minecraft Act
 
 规则：
 1. 先按需读取状态，再提交一个明确的行为或任务。只读工具可在同一轮并行；任何控制工具必须独占一轮，不能与读取、其他控制或结束工具同批调用。
-2. 所有对象只能使用读取工具返回的不透明 ref；所有控制都必须携带最新 actor_revision、observation_revision 和新的 idempotency_key。
+2. 所有对象只能使用读取工具返回的不透明 ref；所有控制都必须携带最新 actor_revision 和 observation_revision。控制幂等键由系统按本次持久决策生成，模型不要生成。
 3. 普通文本没有控制效果。完成本次决策时必须调用 minecraft_finish_decision，返回简短决策摘要和完整的更新后持久状态文本。
 4. 不确定、引用过期或 revision 冲突时重新读取；不要猜测实时状态。不要逐 tick 控制，优先提交参数化高层行为或任务。
 5. 每次唤起最多成功提交一个控制；提交成功后只允许读取结果或结束本次决策，不能再启动第二个行为、任务或程序版本。
@@ -75,7 +75,6 @@ const observationRequestSchema = z.discriminatedUnion("scope", [
 const revisionFields = {
   expectedActorRevision: z.number().int().nonnegative(),
   expectedObservationRevision: z.number().int().nonnegative(),
-  idempotencyKey: z.string().min(1).max(128),
   decisionReason: z.string().min(1).max(300)
 } as const;
 
@@ -129,7 +128,6 @@ const taskCommandSchema = z.object({
 
 const cancelBehaviorSchema = z.object({
   expectedActorRevision: z.number().int().nonnegative(),
-  idempotencyKey: z.string().min(1).max(128),
   reason: z.string().min(1).max(300)
 }).strict();
 
@@ -147,8 +145,7 @@ const autonomyPolicySchema = z.object({
 
 const setAutonomySchema = z.object({
   policy: autonomyPolicySchema,
-  expectedActorRevision: z.number().int().nonnegative(),
-  idempotencyKey: z.string().min(1).max(128)
+  expectedActorRevision: z.number().int().nonnegative()
 }).strict();
 
 const validateProgramSchema = z.object({
@@ -166,7 +163,6 @@ const validateProgramSchema = z.object({
 const activateProgramSchema = z.object({
   draftId: z.string().min(1),
   expectedActorRevision: z.number().int().nonnegative(),
-  idempotencyKey: z.string().min(1).max(128),
   decisionReason: z.string().min(1).max(300)
 }).strict();
 
@@ -189,6 +185,7 @@ export interface MinecraftDecisionInput {
   persistentState: string;
   currentGoal: string | null;
   wakeReason: MinecraftDecisionWakeReason;
+  controlIdempotencyKey?: string;
   modelRef: string | string[];
   timeoutMs?: number;
   allowAutonomyPolicyChange?: boolean;
@@ -227,6 +224,7 @@ export class MinecraftDecisionRunner {
       throw new Error("Minecraft 决策 timeoutMs 必须是正安全整数");
     }
     const messages = buildDecisionMessages(input);
+    const controlIdempotencyKey = resolveControlIdempotencyKey(input);
     const tools = buildDecisionTools({
       includeAutonomy: input.allowAutonomyPolicyChange === true,
       includeProgramDeployment: input.allowProgramDeployment === true
@@ -297,7 +295,8 @@ export class MinecraftDecisionRunner {
             abortSignal,
             input.allowAutonomyPolicyChange === true,
             input.allowProgramDeployment === true,
-            input.currentGoal
+            input.currentGoal,
+            controlIdempotencyKey
           );
           if (decisionClosed || abortSignal.aborted) {
             return decisionClosedResult();
@@ -313,7 +312,7 @@ export class MinecraftDecisionRunner {
           if (isAbortError(error, abortSignal)) {
             throw error;
           }
-          return jsonResult({
+          return decisionModelResult({
             error: "tool_execution_failed",
             message: error instanceof Error ? error.message : String(error)
           });
@@ -346,7 +345,8 @@ export class MinecraftDecisionRunner {
     signal: AbortSignal,
     allowAutonomyPolicyChange: boolean,
     allowProgramDeployment: boolean,
-    existingGoal: string | null
+    existingGoal: string | null,
+    controlIdempotencyKey: string
   ): Promise<{
     result: string | LlmToolExecutionResult;
     completion?: MinecraftDecisionCompletion;
@@ -354,25 +354,37 @@ export class MinecraftDecisionRunner {
   }> {
     switch (name) {
       case "minecraft_get_snapshot":
-        return { result: jsonResult(await this.actor.getSnapshot(signal)) };
+        return { result: decisionModelResult(await this.actor.getSnapshot(signal)) };
       case "minecraft_observe": {
         const request = observationRequestSchema.parse(rawArgs) as MinecraftObservationRequest;
-        return { result: jsonResult(await this.actor.observe(request, signal)) };
+        return { result: decisionModelResult(await this.actor.observe(request, signal)) };
       }
       case "minecraft_get_active_program":
-        return { result: jsonResult(await this.actor.getActiveProgram(signal)) };
+        return { result: decisionModelResult(await this.actor.getActiveProgram(signal)) };
       case "minecraft_start_behavior": {
-        const command = behaviorCommandSchema.parse(rawArgs) as MinecraftBehaviorCommand;
+        const command = {
+          ...behaviorCommandSchema.parse(rawArgs),
+          idempotencyKey: controlIdempotencyKey
+        } as MinecraftBehaviorCommand;
         return commandExecutionResult(await this.actor.startBehavior(command, signal));
       }
       case "minecraft_submit_task": {
-        const command = taskCommandSchema.parse(rawArgs) as MinecraftTaskCommand;
+        const command = {
+          ...taskCommandSchema.parse(rawArgs),
+          idempotencyKey: controlIdempotencyKey
+        } as MinecraftTaskCommand;
         return commandExecutionResult(await this.actor.submitTask(command, signal));
       }
       case "minecraft_cancel_behavior":
-        return commandExecutionResult(await this.actor.cancelBehavior(cancelBehaviorSchema.parse(rawArgs), signal));
+        return commandExecutionResult(await this.actor.cancelBehavior({
+          ...cancelBehaviorSchema.parse(rawArgs),
+          idempotencyKey: controlIdempotencyKey
+        }, signal));
       case "minecraft_cancel_task":
-        return commandExecutionResult(await this.actor.cancelTask(cancelTaskSchema.parse(rawArgs), signal));
+        return commandExecutionResult(await this.actor.cancelTask({
+          ...cancelTaskSchema.parse(rawArgs),
+          idempotencyKey: controlIdempotencyKey
+        }, signal));
       case "minecraft_set_autonomy": {
         if (!allowAutonomyPolicyChange) {
           return { result: jsonResult({ error: "autonomy_policy_change_not_allowed" }) };
@@ -380,9 +392,11 @@ export class MinecraftDecisionRunner {
         const command = setAutonomySchema.parse(rawArgs) as {
           policy: MinecraftAutonomyPolicy;
           expectedActorRevision: number;
-          idempotencyKey: string;
         };
-        return commandExecutionResult(await this.actor.setAutonomy(command, signal));
+        return commandExecutionResult(await this.actor.setAutonomy({
+          ...command,
+          idempotencyKey: controlIdempotencyKey
+        }, signal));
       }
       case "minecraft_validate_program": {
         if (!allowProgramDeployment) {
@@ -403,13 +417,16 @@ export class MinecraftDecisionRunner {
           metadata: input.summary === undefined ? {} : { summary: input.summary }
         };
         const validation: MinecraftProgramValidationResult = await this.actor.validateProgram(document, signal);
-        return { result: jsonResult(validation) };
+        return { result: decisionModelResult(validation) };
       }
       case "minecraft_activate_program": {
         if (!allowProgramDeployment) {
           return { result: jsonResult({ error: "program_deployment_not_allowed" }) };
         }
-        const command = activateProgramSchema.parse(rawArgs) as MinecraftActivateProgramCommand;
+        const command = {
+          ...activateProgramSchema.parse(rawArgs),
+          idempotencyKey: controlIdempotencyKey
+        } as MinecraftActivateProgramCommand;
         return commandExecutionResult(await this.actor.activateProgram(command, signal));
       }
       case TERMINAL_TOOL_NAME: {
@@ -493,24 +510,22 @@ function buildDecisionTools(options: {
       channel: { type: "string", enum: ["global", "team"] },
       stopHealth: { type: "number" },
       ...revisionJsonProperties()
-    }, ["kind", "expectedActorRevision", "expectedObservationRevision", "idempotencyKey", "decisionReason"]),
+    }, ["kind", "expectedActorRevision", "expectedObservationRevision", "decisionReason"]),
     tool("minecraft_submit_task", "提交可排队、可追踪的高层任务；适合非即时工作。控制工具必须独占一轮。", {
       kind: { type: "string", enum: ["go_to", "collect_item", "interact_entity", "chat", "combat"] },
       arguments: { type: "object" },
       priority: { type: "string", enum: ["low", "normal", "high"] },
       ...revisionJsonProperties()
-    }, ["kind", "arguments", "priority", "expectedActorRevision", "expectedObservationRevision", "idempotencyKey", "decisionReason"]),
+    }, ["kind", "arguments", "priority", "expectedActorRevision", "expectedObservationRevision", "decisionReason"]),
     tool("minecraft_cancel_behavior", "取消当前行为；若行为属于任务，会同时终止任务。", {
       expectedActorRevision: { type: "integer", minimum: 0 },
-      idempotencyKey: { type: "string" },
       reason: { type: "string" }
-    }, ["expectedActorRevision", "idempotencyKey", "reason"]),
+    }, ["expectedActorRevision", "reason"]),
     tool("minecraft_cancel_task", "取消指定的排队中或运行中任务。", {
       taskId: { type: "string" },
       expectedActorRevision: { type: "integer", minimum: 0 },
-      idempotencyKey: { type: "string" },
       reason: { type: "string" }
-    }, ["taskId", "expectedActorRevision", "idempotencyKey", "reason"]),
+    }, ["taskId", "expectedActorRevision", "reason"]),
     tool(TERMINAL_TOOL_NAME, "结束本次决策并提交更新后的持久状态。结束工具必须独占一轮。", {
       summary: { type: "string" },
       persistentState: { type: "string" },
@@ -534,9 +549,8 @@ function buildDecisionTools(options: {
         },
         required: ["enabled", "idleDelayMs", "collectItems", "explore", "combatHostiles", "exploreRadius", "combatStopHealth"]
       },
-      expectedActorRevision: { type: "integer", minimum: 0 },
-      idempotencyKey: { type: "string" }
-    }, ["policy", "expectedActorRevision", "idempotencyKey"]));
+      expectedActorRevision: { type: "integer", minimum: 0 }
+    }, ["policy", "expectedActorRevision"]));
   }
   if (options.includeProgramDeployment) {
     tools.splice(-1, 0,
@@ -557,9 +571,8 @@ function buildDecisionTools(options: {
       tool("minecraft_activate_program", "原子激活已通过校验的程序草稿。属于控制提交，必须独占一轮。", {
         draftId: { type: "string", minLength: 1 },
         expectedActorRevision: { type: "integer", minimum: 0 },
-        idempotencyKey: { type: "string", minLength: 1, maxLength: 128 },
         decisionReason: { type: "string", minLength: 1, maxLength: 300 }
-      }, ["draftId", "expectedActorRevision", "idempotencyKey", "decisionReason"])
+      }, ["draftId", "expectedActorRevision", "decisionReason"])
     );
   }
   return tools;
@@ -590,7 +603,6 @@ function revisionJsonProperties(): Record<string, unknown> {
   return {
     expectedActorRevision: { type: "integer", minimum: 0 },
     expectedObservationRevision: { type: "integer", minimum: 0 },
-    idempotencyKey: { type: "string", description: "为本次控制新生成且后续重试保持不变的幂等键。" },
     decisionReason: { type: "string" }
   };
 }
@@ -612,11 +624,53 @@ function jsonResult(value: unknown): string {
   return JSON.stringify(value) ?? "null";
 }
 
+function decisionModelResult(value: unknown): string {
+  const state = { nodes: 0 };
+  const project = (current: unknown, depth: number): unknown => {
+    state.nodes += 1;
+    if (state.nodes > 2_000) return "[TRUNCATED_NODE_BUDGET]";
+    if (typeof current === "string") {
+      return current.length <= 4_000 ? current : `${current.slice(0, 3_999)}…`;
+    }
+    if (current === null || typeof current !== "object") return current;
+    if (depth >= 10) return "[TRUNCATED_DEPTH]";
+    if (Array.isArray(current)) {
+      return current.slice(0, 128).map(item => project(item, depth + 1));
+    }
+    return Object.fromEntries(
+      Object.entries(current as Record<string, unknown>)
+        .slice(0, 128)
+        .map(([key, child]) => [key.slice(0, 128), project(child, depth + 1)])
+    );
+  };
+  const serialized = jsonResult(project(value, 0));
+  if (serialized.length <= 64_000) return serialized;
+  return jsonResult({
+    truncated: true,
+    reason: "decision_tool_result_budget",
+    jsonPreview: truncateForEncodedJsonBudget(serialized, 48_000)
+  });
+}
+
+function truncateForEncodedJsonBudget(value: string, maxEncodedChars: number): string {
+  let low = 0;
+  let high = value.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (JSON.stringify(value.slice(0, middle)).length <= maxEncodedChars) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return `${value.slice(0, low)}…`;
+}
+
 function commandExecutionResult(result: { ok: boolean }): {
   result: string;
   committed: boolean;
 } {
-  return { result: jsonResult(result), committed: result.ok };
+  return { result: decisionModelResult(result), committed: result.ok };
 }
 
 function validateDecisionInput(input: MinecraftDecisionInput): void {
@@ -644,6 +698,21 @@ function validateDecisionInput(input: MinecraftDecisionInput): void {
       throw new Error("Minecraft 决策 wakeReason.details 超过 200000 字符");
     }
   }
+  if (input.controlIdempotencyKey !== undefined
+      && (!input.controlIdempotencyKey.trim() || input.controlIdempotencyKey.length > 128)) {
+    throw new Error("Minecraft 决策 controlIdempotencyKey 无效");
+  }
+}
+
+function resolveControlIdempotencyKey(input: MinecraftDecisionInput): string {
+  if (input.controlIdempotencyKey) return input.controlIdempotencyKey;
+  const identity = JSON.stringify({
+    actorId: input.actorId,
+    type: input.wakeReason.type,
+    occurredAtMs: input.wakeReason.occurredAtMs,
+    summary: input.wakeReason.summary
+  });
+  return `decision:${createHash("sha256").update(identity, "utf8").digest("hex")}`;
 }
 
 function decisionClosedResult(): string {

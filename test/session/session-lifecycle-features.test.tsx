@@ -59,6 +59,35 @@ import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
     );
   });
 
+  test("clear and delete reject queued internal trigger completion waiters", async () => {
+    const sessionManager = new SessionManager(createTestAppConfig());
+    for (const operation of ["clear", "delete"] as const) {
+      const sessionId = `qqbot:p:${operation}`;
+      sessionManager.ensureSession({ id: sessionId, type: "private" });
+      const completion = new Promise<void>((resolve, reject) => {
+        sessionManager.enqueueInternalTrigger(sessionId, {
+          kind: "scheduled_instruction",
+          targetType: "private",
+          targetUserId: operation,
+          targetSenderName: operation,
+          jobName: "等待中的任务",
+          instruction: "测试",
+          enqueuedAt: 1,
+          resolveCompletion: resolve,
+          rejectCompletion: reject
+        });
+      });
+      const rejected = assert.rejects(completion, /内部事件已取消/);
+
+      if (operation === "clear") {
+        sessionManager.clearSession(sessionId);
+      } else {
+        assert.equal(sessionManager.deleteSession(sessionId), true);
+      }
+      await rejected;
+    }
+  });
+
   test("queued group reply targets are deduped by internal user id and promoted in first-trigger order", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const sessionId = "qqbot:g:test";
@@ -207,6 +236,36 @@ import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
       assert.match(marker.content, /profile_phase_transition/);
     }
     assert.equal(sessionManager.getLlmVisibleHistory(sessionId).length, 2);
+  });
+
+  test("profile reset rejects queued internal trigger completion waiters", async () => {
+    const sessionManager = new SessionManager(createTestAppConfig());
+    const sessionId = "qqbot:p:profile-trigger";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    sessionManager.setOperationMode(sessionId, {
+      kind: "persona_config",
+      draft: createEmptyPersona()
+    });
+    const completion = new Promise<void>((resolve, reject) => {
+      sessionManager.enqueueInternalTrigger(sessionId, {
+        kind: "scheduled_instruction",
+        targetType: "private",
+        targetUserId: "owner",
+        targetSenderName: "Owner",
+        jobName: "等待中的任务",
+        instruction: "测试",
+        enqueuedAt: 1,
+        resolveCompletion: resolve,
+        rejectCompletion: reject
+      });
+    });
+    const rejected = assert.rejects(completion, /内部事件已取消/);
+
+    assert.equal(sessionManager.finishProfileOperation(sessionId, {
+      action: "exit_cancelled",
+      source: "command"
+    }), true);
+    await rejected;
   });
 
   test("session history backfill boundary is initialized and advanced by clear and compression", async () => {

@@ -43,6 +43,9 @@ class ResourceActorClient implements MinecraftActorClient {
   events: MinecraftRuntimeEvent[] = [];
   closeCalls = 0;
   listEventsCalls = 0;
+  behaviorCommandKeys: string[] = [];
+  behaviorSideEffects = 0;
+  private readonly seenBehaviorKeys = new Set<string>();
 
   async getSnapshot(): Promise<MinecraftActorSnapshot> {
     return actorSnapshot();
@@ -52,8 +55,13 @@ class ResourceActorClient implements MinecraftActorClient {
     return observation(null);
   }
 
-  async startBehavior(_command: MinecraftBehaviorCommand): Promise<MinecraftCommandResult> {
-    return commandResult();
+  async startBehavior(command: MinecraftBehaviorCommand): Promise<MinecraftCommandResult> {
+    this.behaviorCommandKeys.push(command.idempotencyKey);
+    if (!this.seenBehaviorKeys.has(command.idempotencyKey)) {
+      this.seenBehaviorKeys.add(command.idempotencyKey);
+      this.behaviorSideEffects += 1;
+    }
+    return commandResult(command.idempotencyKey);
   }
 
   async cancelBehavior(_command: MinecraftCancelBehaviorCommand): Promise<MinecraftCommandResult> {
@@ -211,7 +219,7 @@ test("concurrent event ingestion is single-flight", async () => {
   }
 });
 
-test("failed owner notification remains in outbox and retries after cursor advance", async () => {
+test("failed owner notification remains in outbox and retries independently after cursor advance", async () => {
   const notifications: MinecraftActorOwnerNotification[] = [];
   const attemptedIds: string[] = [];
   let attempts = 0;
@@ -232,15 +240,55 @@ test("failed owner notification remains in outbox and retries after cursor advan
     const resource = await harness.manager.create(resourceInput());
     harness.client.events = [runtimeEvent({ sequence: 8, priority: "critical" })];
 
-    await assert.rejects(harness.manager.ingestEvents(resource.resourceId), /temporary notification failure/);
+    const first = await harness.manager.ingestEvents(resource.resourceId);
+    assert.equal((await first.wake)?.status, "completed");
+    await waitUntil(async () => attempts === 1 && (
+      await harness.registry.listPendingMinecraftActorOutbox(resource.resourceId)
+    ).some(entry => entry.kind === "owner_notification" && entry.attemptCount === 1));
     assert.equal((await harness.registry.get(resource.resourceId))?.minecraftActor?.lastEventSequence, 8);
 
     const retried = await harness.manager.ingestEvents(resource.resourceId);
-    assert.equal((await retried.wake)?.status, "completed");
+    assert.equal(retried.wake, null);
+    await waitUntil(() => attempts === 2);
     assert.equal(attempts, 2);
     assert.equal(notifications.length, 1);
     assert.equal(attemptedIds[0], attemptedIds[1]);
   } finally {
+    await harness.close();
+  }
+});
+
+test("blocked owner generation cannot delay a critical actor decision", async () => {
+  const ownerStarted = deferred<void>();
+  const releaseOwner = deferred<void>();
+  let decisionCalls = 0;
+  const harness = await createManagerHarness({
+    generate: async params => {
+      decisionCalls += 1;
+      await finishDecision(params, "已避险", "已处理", null);
+      return llmResult();
+    }
+  }, [], {
+    async notify() {
+      ownerStarted.resolve(undefined);
+      await releaseOwner.promise;
+    }
+  });
+  try {
+    const resource = await harness.manager.create(resourceInput());
+    harness.client.events = [runtimeEvent({ sequence: 8, priority: "critical" })];
+
+    const ingested = await harness.manager.ingestEvents(resource.resourceId);
+    await ownerStarted.promise;
+    assert.equal((await ingested.wake)?.status, "completed");
+    assert.equal(decisionCalls, 1);
+
+    releaseOwner.resolve(undefined);
+    await waitUntil(async () => (
+      await harness.registry.listPendingMinecraftActorOutbox(resource.resourceId)
+    ).length === 0);
+  } finally {
+    releaseOwner.resolve(undefined);
     await harness.close();
   }
 });
@@ -299,6 +347,43 @@ test("failed decision remains pending for a later event ingestion retry", async 
     const second = await harness.manager.ingestEvents(resource.resourceId);
     assert.equal((await second.wake)?.status, "completed");
     assert.deepEqual(await harness.registry.listPendingMinecraftActorOutbox(resource.resourceId), []);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("decision outbox retry reuses one system-owned control idempotency key", async () => {
+  let attempt = 0;
+  const llm: Pick<LlmClient, "generate"> = {
+    generate: async params => {
+      attempt += 1;
+      await executeDecisionTool(params, "minecraft_start_behavior", {
+        kind: "go_to",
+        position: { x: 8, y: 64, z: 0 },
+        tolerance: 1,
+        expectedActorRevision: 3,
+        expectedObservationRevision: 7,
+        decisionReason: "离开危险区域"
+      });
+      if (attempt === 1) throw new Error("failed after control commit");
+      await finishDecision(params, "重放完成", "已离开危险区域", null);
+      return llmResult();
+    }
+  };
+  const harness = await createManagerHarness(llm);
+  try {
+    const resource = await harness.manager.create(resourceInput());
+    harness.client.events = [runtimeEvent({ sequence: 8, priority: "critical" })];
+
+    const first = await harness.manager.ingestEvents(resource.resourceId);
+    assert.equal((await first.wake)?.status, "failed");
+    const second = await harness.manager.ingestEvents(resource.resourceId);
+    assert.equal((await second.wake)?.status, "completed");
+
+    assert.equal(harness.client.behaviorCommandKeys.length, 2);
+    assert.equal(harness.client.behaviorCommandKeys[0], harness.client.behaviorCommandKeys[1]);
+    assert.match(harness.client.behaviorCommandKeys[0] ?? "", /^decision:[0-9a-f]{64}$/u);
+    assert.equal(harness.client.behaviorSideEffects, 1);
   } finally {
     await harness.close();
   }
@@ -463,9 +548,9 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-async function waitUntil(predicate: () => boolean): Promise<void> {
+async function waitUntil(predicate: () => boolean | Promise<boolean>): Promise<void> {
   const deadline = Date.now() + 1_000;
-  while (!predicate()) {
+  while (!(await predicate())) {
     if (Date.now() >= deadline) throw new Error("timed out waiting for condition");
     await delay(1);
   }
@@ -507,6 +592,20 @@ async function finishDecision(
       name: "minecraft_finish_decision",
       arguments: JSON.stringify({ summary, persistentState, currentGoal })
     }
+  };
+  await params.onAssistantToolCalls?.({ role: "assistant", content: "", tool_calls: [call] });
+  await params.toolExecutor?.(call);
+}
+
+async function executeDecisionTool(
+  params: LlmGenerateParams,
+  name: string,
+  args: Record<string, unknown>
+): Promise<void> {
+  const call: LlmToolCall = {
+    id: `${name}-call`,
+    type: "function",
+    function: { name, arguments: JSON.stringify(args) }
   };
   await params.onAssistantToolCalls?.({ role: "assistant", content: "", tool_calls: [call] });
   await params.toolExecutor?.(call);
@@ -555,11 +654,11 @@ function observation(value: MinecraftObservationEnvelope["value"]): MinecraftObs
   };
 }
 
-function commandResult(): MinecraftCommandResult {
+function commandResult(idempotencyKey = "key-1"): MinecraftCommandResult {
   return {
     protocolVersion: 1,
     commandId: "command-1",
-    idempotencyKey: "key-1",
+    idempotencyKey,
     ok: true,
     status: "accepted",
     reason: null,

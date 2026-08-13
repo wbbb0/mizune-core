@@ -20,7 +20,7 @@ Minecraft Actor 是跨会话可见的系统资源，不是聊天 session，也�
 2. 一个包含 Actor ID、当前目标和持久状态文本的结构化 user message。
 3. 一个包含本次唤起原因、时间和必要详情的结构化 user message。
 
-Decision Runner 固定关闭思考覆盖，并优先使用 provider 的原生无思考端点。模型可以并行调用只读工具；控制、结束和程序部署工具必须独占工具轮次。整个唤起跨多个工具轮次最多接受一次成功控制提交，随后只能读取结果或调用 `minecraft_finish_decision`。
+Decision Runner 固定关闭思考覆盖，并优先使用 provider 的原生无思考端点。模型可以并行调用只读工具；控制、结束和程序部署工具必须独占工具轮次。整个唤起跨多个工具轮次最多接受一次成功控制提交，随后只能读取结果或调用 `minecraft_finish_decision`。控制幂等键不再由模型输出，而是由 resource/outbox decision ID 派生；同一持久事件重放会复用同一键，由 Runtime 返回既有结果或拒绝参数冲突，避免模型在 finish 前失败后重复产生第二个控制副作用。
 
 `minecraft_finish_decision` 返回：
 
@@ -61,7 +61,7 @@ SHA-256 由父项目根据完整源码计算，不要求模型生成。静态 AS
 - pending 槽位只保留优先级更高或同级更新的事件，被替代的调用方会收到 `superseded`；
 - Actor 状态写入经过逐资源串行化，事件游标与决策完成不会互相覆盖。
 
-高优先级/critical 游戏事件会通过 `MinecraftActorOwnerNotificationSink` 转成 `minecraft_actor_attention` 内部触发器，进入所属 OneBot/Web 会话的 inline trigger 队列。Minecraft 服务因此不直接依赖 OneBot；实际装配只需要把现有 session-work dispatcher 包装成通知 sink。
+高优先级/critical 游戏事件会通过 `MinecraftActorOwnerNotificationSink` 转成 `minecraft_actor_attention` 独立内部触发器，排在所属 OneBot/Web 会话的可见消息之后执行。Minecraft 服务因此不直接依赖 OneBot；实际装配只需要把现有 session-work dispatcher 包装成通知 sink。
 
 ## 当前验证
 
@@ -71,9 +71,9 @@ SHA-256 由父项目根据完整源码计算，不要求模型生成。静态 AS
 
 真实模型验证命令与已测延迟见 `docs/development/minecraft-decision-smoke.md`。
 
-资源状态更新、关闭和事件 cursor 按 resource 串行；SQLite schema v3 使用持久 outbox 将已拉取事件与 owner 通知/决策唤起分开。通知带稳定 `notificationId`，owner 回调作为独立 generation 执行并只在执行完成后确认；决策唤起也只在成功完成后确认，失败、打断或进程退出会保留为待重试。语义是 at-least-once，进程在外部效果完成与确认之间退出时允许重复。client 创建使用 single-flight，并在关闭竞态中释放 transport。
+资源状态更新、关闭和事件 cursor 按 resource 串行；SQLite schema v3 使用持久 outbox 将已拉取事件与 owner 通知/决策唤起分开。两类 outbox 独立推进，owner 会话繁忙或失败不会延迟 critical Actor 决策。通知带稳定 `notificationId`，owner 回调作为独立 generation 执行并只在模型正常完成后确认；决策唤起也只在成功完成后确认，失败、打断或进程退出会保留为待重试。会话清空、删除或恢复会显式拒绝仍在等待的内部回调，使 outbox 可以重试。语义是 at-least-once，进程在外部效果完成与确认之间退出时允许重复。client 创建使用 single-flight，并在关闭竞态中释放 transport。
 
-游戏事件在进入 outbox 前会做确定性的深度、节点、数组、键和字符串裁剪；owner 与 Actor 两类 prompt 都把玩家聊天和 payload 明确标成不可执行的第三方数据。原始事件仍留在 Runtime 自己的结构化日志中，不能未经投影直接进入主会话。
+游戏事件在进入 outbox 前会做确定性的深度、节点、数组、键和字符串裁剪；event type 使用协议枚举，摘要有固定长度上限。owner 与 Actor 两类 prompt 都把摘要和详情整体编码成不可执行的第三方 JSON 数据，不依赖可由游戏文本闭合的展示标签。所有 Actor 读取/控制结果进入模型前还有独立的 64k 字符投影预算。原始事件仍留在 Runtime 自己的结构化日志中，不能未经投影直接进入主会话。
 
 决策 runner 自己实施硬截止，不依赖 provider 是否遵守 AbortSignal；截止后的迟到工具调用不会更新决策状态。已经发往远端、但 transport 忽略取消的控制仍可能产生“结果未知”，因此正式 Unix socket / loopback transport 必须同时实现 request deadline、命令幂等和重连后的 snapshot 对账。
 

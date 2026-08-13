@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
   MINECRAFT_ACTOR_PROTOCOL_VERSION,
+  MINECRAFT_RUNTIME_EVENT_TYPES,
   type MinecraftActorSnapshot,
   type MinecraftActivateProgramCommand,
   type MinecraftBehaviorCommand,
@@ -33,7 +34,7 @@ export type MinecraftActorRpcMethod =
 
 export interface MinecraftActorTransport {
   call(method: MinecraftActorRpcMethod, payload: Record<string, unknown>, signal?: AbortSignal): Promise<unknown>;
-  close?(): Promise<void> | void;
+  close(): Promise<void> | void;
 }
 
 export interface MinecraftActorClient {
@@ -170,7 +171,7 @@ const runtimeEventSchema = z.object({
   eventId: z.string().min(1),
   sequence: z.number().int().nonnegative(),
   actorId: z.string().min(1),
-  eventType: z.string().min(1),
+  eventType: z.enum(MINECRAFT_RUNTIME_EVENT_TYPES),
   priority: z.enum(["low", "normal", "high", "critical"]),
   occurredAtMs: z.number().int().nonnegative(),
   actorRevision: z.number().int().nonnegative(),
@@ -325,7 +326,7 @@ export class ProtocolMinecraftActorClient implements MinecraftActorClient {
   }
 
   async close(): Promise<void> {
-    await this.transport.close?.();
+    await this.transport.close();
   }
 
   private async command(

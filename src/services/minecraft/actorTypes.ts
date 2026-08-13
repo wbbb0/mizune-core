@@ -1,5 +1,38 @@
 export const MINECRAFT_ACTOR_PROTOCOL_VERSION = 1 as const;
 
+export const MINECRAFT_RUNTIME_EVENT_TYPES = [
+  "program_started",
+  "program_completed",
+  "program_cancelled",
+  "program_failed",
+  "program_draft_validated",
+  "program_activated",
+  "decision_committed",
+  "behavior_started",
+  "behavior_progress",
+  "behavior_completed",
+  "behavior_cancelled",
+  "task_submitted",
+  "task_started",
+  "task_completed",
+  "task_cancelled",
+  "chat_received",
+  "autonomy_policy_changed",
+  "autonomy_goal_selected",
+  "action_started",
+  "action_result",
+  "checkpoint",
+  "wake_candidate",
+  "safety_interrupt",
+  "diagnostic_log",
+  "debug_command_received",
+  "debug_command_result",
+  "connection_changed",
+  "snapshot_updated"
+] as const;
+
+export type MinecraftRuntimeEventType = typeof MINECRAFT_RUNTIME_EVENT_TYPES[number];
+
 export type JsonPrimitive = null | boolean | number | string;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
@@ -106,7 +139,7 @@ export interface MinecraftRuntimeEvent {
   eventId: string;
   sequence: number;
   actorId: string;
-  eventType: string;
+  eventType: MinecraftRuntimeEventType;
   priority: "low" | "normal" | "high" | "critical";
   occurredAtMs: number;
   actorRevision: number;
