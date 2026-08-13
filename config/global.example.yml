@@ -340,5 +340,13 @@ browser:
     profileAutoSaveDebounceMs: 250
     profileMaxCount: 24
     screenshotMaxBytes: 5242880
+minecraft:
+  # 默认关闭。模型只能选择这里预先允许的 endpoint ID，不能提供任意 socket 路径。
+  enabled: false
+  eventPollIntervalMs: 1000
+  requestTimeoutMs: 10000
+  connectTimeoutMs: 3000
+  maxFrameBytes: 1048576
+  endpoints: {}
 backup:
   profileRotateLimit: 10

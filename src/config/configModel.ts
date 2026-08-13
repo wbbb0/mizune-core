@@ -441,6 +441,28 @@ const browserConfigSchema = s.object({
   playwright: playwrightSearchSchema
 }).title("浏览器").describe("配置网页浏览能力与 Playwright 浏览器会话。").default(emptyObject);
 
+const minecraftEndpointConfigSchema = s.object({
+  actorId: s.string().trim().nonempty().title("Actor ID"),
+  socketPath: s.string().trim().nonempty().title("Unix Socket 路径"),
+  modelRefs: s.array(s.string().trim().nonempty()).title("决策模型"),
+  allowAutonomyPolicyChange: s.boolean().title("允许修改自治策略").default(false),
+  allowProgramDeployment: s.boolean().title("允许部署行为程序").default(false),
+  initialPersistentState: s.string().title("初始持久状态").default("尚无持久经历。"),
+  initialGoal: s.union([s.string(), s.literal(null)]).title("初始目标").default(null)
+}).title("Minecraft Actor 端点").strict();
+
+const minecraftConfigSchema = s.object({
+  enabled: s.boolean().title("启用").default(false),
+  eventPollIntervalMs: s.number().int().min(100).max(60_000).title("事件轮询间隔毫秒").default(1_000),
+  requestTimeoutMs: s.number().int().min(100).max(300_000).title("RPC 请求超时毫秒").default(10_000),
+  connectTimeoutMs: s.number().int().min(100).max(60_000).title("连接超时毫秒").default(3_000),
+  maxFrameBytes: s.number().int().min(1_024).max(16 * 1_024 * 1_024).title("最大协议帧字节数").default(1_048_576),
+  endpoints: s.record(
+    s.string().trim().nonempty(),
+    minecraftEndpointConfigSchema
+  ).title("允许的 Actor 端点").default({})
+}).title("Minecraft Actor").describe("配置受控 Minecraft Runtime 端点和后台事件轮询。").default(emptyObject);
+
 const backupConfigSchema = s.object({
   profileRotateLimit: s.number().int().positive().title("配置轮换保留数").default(10)
 }).title("备份").describe("控制浏览器等配置文件的备份保留策略。").default(emptyObject);
@@ -620,6 +642,7 @@ export const fileConfigSchema = s.object({
   contentSafety: contentSafetyConfigSchema,
   search: searchConfigSchema,
   browser: browserConfigSchema,
+  minecraft: minecraftConfigSchema,
   backup: backupConfigSchema
 }).title("运行时配置");
 
@@ -665,6 +688,7 @@ export type ComfyTemplateConfig = Infer<typeof comfyTemplateConfigSchema>;
 export type SearchConfig = Infer<typeof searchConfigSchema>;
 export type BackupConfig = Infer<typeof backupConfigSchema>;
 export type ContentSafetyConfig = Infer<typeof contentSafetyConfigSchema>;
+export type MinecraftConfig = Infer<typeof minecraftConfigSchema>;
 
 export interface ConfigSummary {
   appName: string;
