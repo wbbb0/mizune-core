@@ -884,6 +884,59 @@ function createOrchestratorDeps(input: {
     assert.equal(wakeCalled, true);
   });
 
+  test("Minecraft attention waits for standalone generation completion", async () => {
+    const config = createTestAppConfig();
+    const sessionManager = new SessionManager(config);
+    const sessionId = "qqbot:p:owner";
+    sessionManager.ensureSession({ id: sessionId, type: "private" });
+    let finishGeneration!: () => void;
+    const generation = new Promise<void>(resolve => { finishGeneration = resolve; });
+    let settled = false;
+
+    const dispatcher = createInternalTriggerDispatcher({
+      logger: pino({ level: "silent" }),
+      sessionManager,
+      userStore: {
+        async getByUserId() { return { nickname: "Owner" }; }
+      } as never,
+      userIdentityStore: {
+        async findInternalUserId() { return "owner"; }
+      } as never,
+      persistSession() {}
+    }, {
+      async runInternalTriggerSession() { await generation; },
+      wakeInlineBatch() { throw new Error("durable trigger must not use inline batch"); }
+    });
+
+    const dispatched = dispatcher.dispatchTrigger({
+      sessionId,
+      queueLogEvent: "minecraft_attention_queued",
+      createTrigger(target) {
+        return {
+          kind: "minecraft_actor_attention",
+          targetType: target.type,
+          targetUserId: target.userId,
+          targetSenderName: target.senderName,
+          jobName: "Minecraft Actor 请求关注",
+          instruction: "检查事件",
+          enqueuedAt: Date.now(),
+          resourceId: "res-mc",
+          actorId: "actor-1",
+          attentionType: "game_attention",
+          summary: "附近危险",
+          details: "{}"
+        };
+      }
+    }).then(() => { settled = true; });
+
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(settled, false);
+    assert.equal(sessionManager.getSession(sessionId).pendingInlineTriggers.length, 0);
+    finishGeneration();
+    await dispatched;
+    assert.equal(settled, true);
+  });
+
   test("terminal close trigger supports web sessions", async () => {
     const config = createTestAppConfig();
     const sessionManager = new SessionManager(config);

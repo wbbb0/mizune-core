@@ -79,9 +79,11 @@ export function createInternalTriggerDispatcher(
     }));
     persistSession(session.id, "internal_trigger_received");
 
-    // Scheduled instructions are stand-alone topics. Queue them behind the
-    // active response and open a fresh session once the current turn winds down.
-    if (trigger.kind === "scheduled_instruction") {
+    // Scheduled instructions and durable Minecraft owner notifications are
+    // stand-alone topics. The dispatcher resolves only after their generation
+    // finishes, so the producer can keep its durable outbox item unacknowledged
+    // across process crashes or generation failures.
+    if (trigger.kind === "scheduled_instruction" || trigger.kind === "minecraft_actor_attention") {
       if (
         sessionManager.hasActiveResponse(session.id)
         || session.pendingMessages.length > 0
@@ -114,7 +116,7 @@ export function createInternalTriggerDispatcher(
       return;
     }
 
-    // Background-event triggers go inline. They are enqueued and either
+    // Other background-event triggers go inline. They are enqueued and either
     // picked up by the next LLM request in the tool-call loop or, when the
     // session is idle, consumed immediately via a batch session.
     const queueSize = sessionManager.enqueueInlineTrigger(session.id, trigger);

@@ -71,7 +71,9 @@ SHA-256 由父项目根据完整源码计算，不要求模型生成。静态 AS
 
 真实模型验证命令与已测延迟见 `docs/development/minecraft-decision-smoke.md`。
 
-资源状态更新、关闭和事件 cursor 按 resource 串行；SQLite schema v3 使用持久 outbox 将已拉取事件与 owner 通知/决策唤起分开。通知带稳定 `notificationId`，失败不会因 cursor 已推进而丢失。client 创建使用 single-flight，并在关闭竞态中释放 transport。
+资源状态更新、关闭和事件 cursor 按 resource 串行；SQLite schema v3 使用持久 outbox 将已拉取事件与 owner 通知/决策唤起分开。通知带稳定 `notificationId`，owner 回调作为独立 generation 执行并只在执行完成后确认；决策唤起也只在成功完成后确认，失败、打断或进程退出会保留为待重试。语义是 at-least-once，进程在外部效果完成与确认之间退出时允许重复。client 创建使用 single-flight，并在关闭竞态中释放 transport。
+
+游戏事件在进入 outbox 前会做确定性的深度、节点、数组、键和字符串裁剪；owner 与 Actor 两类 prompt 都把玩家聊天和 payload 明确标成不可执行的第三方数据。原始事件仍留在 Runtime 自己的结构化日志中，不能未经投影直接进入主会话。
 
 决策 runner 自己实施硬截止，不依赖 provider 是否遵守 AbortSignal；截止后的迟到工具调用不会更新决策状态。已经发往远端、但 transport 忽略取消的控制仍可能产生“结果未知”，因此正式 Unix socket / loopback transport 必须同时实现 request deadline、命令幂等和重连后的 snapshot 对账。
 

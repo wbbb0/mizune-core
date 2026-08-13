@@ -3,7 +3,7 @@ import test from "node:test";
 import type { InternalSessionTriggerExecution } from "../../src/conversation/session/sessionTypes.ts";
 import { createMinecraftActorOwnerNotificationSink } from "../../src/services/minecraft/ownerNotificationSink.ts";
 
-test("Minecraft owner notification becomes an inline internal session trigger", async () => {
+test("Minecraft owner notification becomes a durable internal session trigger", async () => {
   const dispatched: Array<{ sessionId: string; trigger: InternalSessionTriggerExecution }> = [];
   const sink = createMinecraftActorOwnerNotificationSink({
     async dispatchInternalTrigger(sessionId, factory) {

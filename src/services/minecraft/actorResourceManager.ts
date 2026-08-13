@@ -100,6 +100,7 @@ export class MinecraftActorResourceManager {
   private readonly eventIngestions = new Map<string, Promise<MinecraftActorEventIngestionResult>>();
   private readonly closeOperations = new Map<string, Promise<void>>();
   private readonly closingResources = new Set<string>();
+  private readonly outboxWakeOperations = new Map<string, Promise<MinecraftActorWakeOutcome>>();
 
   constructor(
     private readonly registry: RuntimeResourceRegistry,
@@ -267,16 +268,17 @@ export class MinecraftActorResourceManager {
             summary: payload.summary,
             ...(payload.details === undefined ? {} : { details: payload.details })
           });
+          const delivered = await this.registry.markMinecraftActorOutboxDelivered(
+            record.resourceId,
+            entry.outboxId,
+            this.now()
+          );
+          if (!delivered) {
+            throw new Error(`Minecraft Actor outbox 状态已变化：${entry.outboxId}`);
+          }
         } else {
-          wake = this.wake(record.resourceId, parseWakePayload(entry.payload));
-        }
-        const delivered = await this.registry.markMinecraftActorOutboxDelivered(
-          record.resourceId,
-          entry.outboxId,
-          this.now()
-        );
-        if (!delivered) {
-          throw new Error(`Minecraft Actor outbox 状态已变化：${entry.outboxId}`);
+          wake = this.startOutboxWake(record.resourceId, entry.outboxId, entry.payload);
+          break;
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -285,6 +287,41 @@ export class MinecraftActorResourceManager {
       }
     }
     return { wake };
+  }
+
+  private startOutboxWake(
+    resourceId: string,
+    outboxId: string,
+    payload: unknown
+  ): Promise<MinecraftActorWakeOutcome> {
+    const operationKey = `${resourceId}:${outboxId}`;
+    const existing = this.outboxWakeOperations.get(operationKey);
+    if (existing) return existing;
+    const operation = this.wake(resourceId, parseWakePayload(payload)).then(async outcome => {
+      if (outcome.status === "completed") {
+        const delivered = await this.registry.markMinecraftActorOutboxDelivered(
+          resourceId,
+          outboxId,
+          this.now()
+        );
+        if (!delivered) {
+          throw new Error(`Minecraft Actor outbox 状态已变化：${outboxId}`);
+        }
+      } else {
+        await this.registry.markMinecraftActorOutboxFailed(
+          resourceId,
+          outboxId,
+          `decision_${outcome.status}`
+        );
+      }
+      return outcome;
+    }).finally(() => {
+      if (this.outboxWakeOperations.get(operationKey) === operation) {
+        this.outboxWakeOperations.delete(operationKey);
+      }
+    });
+    this.outboxWakeOperations.set(operationKey, operation);
+    return operation;
   }
 
   async notifyOwnerAttention(resourceId: string, summary: string, details?: JsonValue): Promise<void> {
@@ -487,7 +524,12 @@ export class MinecraftActorResourceManager {
     record: RuntimeResourceRecord,
     input: Omit<MinecraftActorOwnerNotification, "ownerSessionId" | "resourceId" | "actorId">
   ): Promise<void> {
-    if (!this.notificationSink || !record.ownerSessionId) return;
+    if (!this.notificationSink) {
+      throw new Error("Minecraft Actor owner notification sink 未装配");
+    }
+    if (!record.ownerSessionId) {
+      throw new Error(`Minecraft Actor 资源缺少 owner session：${record.resourceId}`);
+    }
     await this.notificationSink.notify({
       ownerSessionId: record.ownerSessionId,
       resourceId: record.resourceId,
@@ -610,8 +652,35 @@ function compactRuntimeEvent(event: MinecraftRuntimeEvent): JsonValue {
     eventType: event.eventType,
     priority: event.priority,
     occurredAtMs: event.occurredAtMs,
-    payload: event.payload
+    untrustedGameData: true,
+    payload: projectUntrustedGameData(event.payload)
   };
+}
+
+function projectUntrustedGameData(value: JsonValue): JsonValue {
+  const budget = { nodes: 0 };
+  const project = (current: JsonValue, depth: number): JsonValue => {
+    budget.nodes += 1;
+    if (budget.nodes > 48) return "[TRUNCATED_NODE_BUDGET]";
+    if (typeof current === "string") {
+      return current.length <= 240 ? current : `${current.slice(0, 239)}…`;
+    }
+    if (current === null || typeof current !== "object") return current;
+    if (depth >= 4) return "[TRUNCATED_DEPTH]";
+    if (Array.isArray(current)) {
+      return current.slice(0, 12).map(item => project(item, depth + 1));
+    }
+    return Object.fromEntries(
+      Object.entries(current)
+        .slice(0, 16)
+        .map(([key, child]) => [key.slice(0, 80), project(child, depth + 1)])
+    );
+  };
+  const projected = project(value, 0);
+  const serialized = JSON.stringify(projected);
+  return serialized.length <= 12_000
+    ? projected
+    : { truncated: true, reason: "payload_projection_budget" };
 }
 
 function summarizeEvents(events: MinecraftRuntimeEvent[]): string {
