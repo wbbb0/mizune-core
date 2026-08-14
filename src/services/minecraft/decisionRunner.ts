@@ -679,7 +679,7 @@ function buildDecisionTools(options: {
     }, ["scope"]));
   }
   if (hasRpc(options.policy, "behavior.start") && options.policy.behaviorKinds.includes("go_to")) {
-    tools.push(tool("minecraft_go_to", "移动到指定方块；targetBlock 必须是精确整数方块坐标。", {
+    tools.push(tool("minecraft_go_to", "移动到指定站立位置；targetBlock 是玩家双脚所在的空气方块坐标，不是脚下的地面或支撑方块。", {
       targetBlock: blockPosJsonSchema(),
       decisionReason: { type: "string", minLength: 1, maxLength: 300 }
     }, ["targetBlock", "decisionReason"]));

@@ -20,6 +20,18 @@ import { MinecraftRuntimeTemplateCatalog } from "#services/minecraft/runtimeTemp
 import { MinecraftRuntimeProcessSupervisor } from "#services/minecraft/runtimeProcessSupervisor.ts";
 import { parseMinecraftServerAddress } from "#services/minecraft/serverTarget.ts";
 import { UnixSocketMinecraftActorTransport } from "#services/minecraft/unixSocketTransport.ts";
+import {
+  EVENT_PAGE_SIZE,
+  MAX_EVENT_DRAIN_PAGES,
+  assertMovementCapabilityManifest,
+  consumeMovementEvents,
+  drainEventCursor,
+  parseSmokeExpectedBehavior,
+  parseSmokeInstruction,
+  requireDecisionModelForBehavior,
+  verifySucceededMovement,
+  type MovementEventState
+} from "./managed-neoforge-smoke-support.ts";
 
 await main();
 
@@ -31,6 +43,9 @@ async function main(): Promise<void> {
   const serverAddress = process.env.MIZUNE_MC_SMOKE_SERVER?.trim() || "127.0.0.1:25566";
   const timeoutMs = parsePositiveInteger(process.env.MIZUNE_MC_SMOKE_TIMEOUT_MS, 180_000);
   const decisionModelRef = process.env.MIZUNE_MC_SMOKE_DECISION_MODEL?.trim() || null;
+  const instruction = parseSmokeInstruction(process.env.MIZUNE_MC_SMOKE_INSTRUCTION);
+  const expectedBehavior = parseSmokeExpectedBehavior(process.env.MIZUNE_MC_SMOKE_EXPECT_BEHAVIOR);
+  requireDecisionModelForBehavior(expectedBehavior, decisionModelRef);
   const decisionTimeoutMs = parsePositiveInteger(process.env.MIZUNE_MC_SMOKE_DECISION_TIMEOUT_MS, 12_000);
   const logger = pino({ level: process.env.MIZUNE_MC_SMOKE_LOG_LEVEL || "warn" });
   const loadedConfig = loadConfig({ ...process.env, CONFIG_INSTANCE: instance });
@@ -93,7 +108,6 @@ async function main(): Promise<void> {
       templates,
       logger
     );
-    const instruction = "登录服务器，看看周围环境，然后在游戏聊天里向服务器里的大家打个简短的招呼。";
     const delegated = await provisioning.delegate({
       serverAddress,
       instruction,
@@ -141,6 +155,13 @@ async function main(): Promise<void> {
 
     const existingChat = await client.observe({ scope: "chat", limit: 100 }, controller.signal);
     const previousMessageIds = collectMessageIds(existingChat.value);
+    const [decisionSnapshot, eventCursor, capabilities] = await Promise.all([
+      client.getSnapshot(controller.signal),
+      drainEventCursor(afterSequence => client.listEvents(afterSequence, controller.signal)),
+      client.getCapabilities(controller.signal)
+    ]);
+    const startPosition = decisionSnapshot.self.position;
+    if (expectedBehavior === "movement") assertMovementCapabilityManifest(capabilities);
     let decisionLoop: Record<string, unknown> | null = null;
     if (decisionModelRef) {
       const llm = new LlmClient(config, logger);
@@ -184,12 +205,9 @@ async function main(): Promise<void> {
         throw new Error(`真实聊天行为未被接受：${chatAccepted.reason ?? chatAccepted.status}`);
       }
     }
-    const outgoingChat = await waitForNewOutgoingChat(
-      client,
-      previousMessageIds,
-      timeoutMs,
-      controller.signal
-    );
+    const verifiedBehavior = expectedBehavior === "movement"
+      ? await waitForSucceededMovement(client, eventCursor, startPosition, timeoutMs, controller.signal)
+      : await waitForVerifiedChat(client, previousMessageIds, timeoutMs, controller.signal);
 
     console.log(JSON.stringify({
       ok: true,
@@ -206,12 +224,7 @@ async function main(): Promise<void> {
         players: summarizeCollection(players.value),
         entities: summarizeCollection(entities.value)
       },
-      verifiedBehavior: {
-        capability: "minecraft.chat.send@1",
-        status: "succeeded",
-        messageId: outgoingChat.messageId,
-        text: outgoingChat.text
-      },
+      verifiedBehavior,
       decisionLoop
     }, null, 2));
     runCompleted = true;
@@ -337,6 +350,70 @@ async function waitForNewOutgoingChat(
     await delay(100, signal);
   }
   throw new Error(`等待新的真实聊天行为完成超时（${timeoutMs}ms）`);
+}
+
+async function waitForVerifiedChat(
+  client: ProtocolMinecraftActorClient,
+  previousMessageIds: ReadonlySet<string>,
+  timeoutMs: number,
+  signal: AbortSignal
+): Promise<Record<string, unknown>> {
+  const outgoing = await waitForNewOutgoingChat(client, previousMessageIds, timeoutMs, signal);
+  return {
+    capability: "minecraft.chat.send@1",
+    status: "succeeded",
+    messageId: outgoing.messageId,
+    text: outgoing.text,
+    terminalReason: "chat_sent"
+  };
+}
+
+async function waitForSucceededMovement(
+  client: ProtocolMinecraftActorClient,
+  initialCursor: number,
+  startPosition: { x: number; y: number; z: number },
+  timeoutMs: number,
+  signal: AbortSignal
+): Promise<Record<string, unknown>> {
+  const deadlineAt = Date.now() + timeoutMs;
+  let cursor = initialCursor;
+  let state: MovementEventState = { started: null, terminal: null };
+  while (Date.now() < deadlineAt) {
+    if (signal.aborted) throw signal.reason;
+    let drained = false;
+    for (let pageIndex = 0; pageIndex < MAX_EVENT_DRAIN_PAGES; pageIndex += 1) {
+      if (signal.aborted) throw signal.reason;
+      if (Date.now() >= deadlineAt) break;
+      const events = await client.listEvents(cursor, signal);
+      for (const event of events) cursor = event.sequence;
+      state = consumeMovementEvents(state, events);
+      if (state.terminal?.status === "failed" || state.terminal?.status === "cancelled") {
+        throw new Error(
+          `真实移动行为终止：${state.terminal.status} (${state.terminal.reason ?? "无原因"})`
+        );
+      }
+      if (events.length < EVENT_PAGE_SIZE) {
+        drained = true;
+        break;
+      }
+    }
+    if (!drained && Date.now() < deadlineAt) {
+      throw new Error("移动验证事件流持续满页，无法在有界范围内取得稳定 cursor");
+    }
+    if (state.terminal?.status === "succeeded") {
+      const finalSnapshot = await client.getSnapshot(signal);
+      if (!finalSnapshot.self.connected) {
+        throw new Error("移动成功事件后 Actor 已断开连接");
+      }
+      return verifySucceededMovement({
+        terminal: state.terminal,
+        startPosition,
+        finalPosition: finalSnapshot.self.position
+      });
+    }
+    await delay(100, signal);
+  }
+  throw new Error(`等待真实移动行为终态超时（${timeoutMs}ms）`);
 }
 
 function collectMessageIds(value: unknown): Set<string> {

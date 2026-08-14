@@ -4,7 +4,7 @@ Minecraft Actor 是一个 owner-only 的持久系统资源。父项目负责会�
 
 当前 daemon 同时支持 simulation 与 `neoforge` 后端。动态服务器 binding、自然语言 delegate 和父进程 supervisor 已进入父项目：主 Bot 创建资源后，父进程会在每资源隔离的运行目录中拉起 daemon；NeoForge 后端再由 daemon 从受控启动档案拉起真实客户端。两者属于同一个 Runtime incarnation，并分别拥有可核验的独立进程组；父项目持久记录 daemon/client 各自的 PID、Linux start ticks、boot ID 与实例 ID。
 
-NeoForge 1.21.1 Bridge 已实现受认证的 Unix socket v2 协议，并在完整 NeoForge/Create 镜像服上验证了真实客户端登录、玩家/实体/背包/环境快照、游戏聊天事件和普通全局聊天发送。Python daemon 会在开放父进程 socket 前验证 Bridge instance、目标服务器和首个完整快照，之后原子刷新快照并连续抽取多页事件。聊天与 opt-in 的 Baritone `go_to` 都映射为统一 behavior/action lease；移动仅在 Bridge 同时广告 action 三个 RPC 与 `minecraft.movement.go_to@1` 时可见，目标使用严格整数 `targetBlock`，不接受 position/tolerance。
+NeoForge 1.21.1 Bridge 已实现受认证的 Unix socket v2 协议，并在完整 NeoForge/Create 镜像服上验证了真实客户端登录、玩家/实体/背包/环境快照、游戏聊天事件和普通全局聊天发送。Python daemon 会在开放父进程 socket 前验证 Bridge instance、目标服务器和首个完整快照，之后原子刷新快照并连续抽取多页事件。聊天与 opt-in 的 Baritone `go_to` 都映射为统一 behavior/action lease；移动仅在 Bridge 同时广告 action 三个 RPC 与 `minecraft.movement.go_to@1` 时可见，目标使用玩家双脚所占空气方块的严格整数 `targetBlock`，不接受 position/tolerance，也不把下方支撑方块当作目标。
 
 ## dev 启动
 
@@ -87,6 +87,19 @@ npm run smoke:minecraft:managed-neoforge
 ```
 
 模型路径同样要求游戏聊天中出现新消息，并在 JSON 中报告模型、决策耗时、工具调用数和 token usage；模型原始响应、完整玩家信息和认证数据不会进入普通输出。当前真实 NeoForge/Create 镜像服已经在 15 秒硬截止时间内用 v4 pro 完成该路径；同一目标的 v4 flash 无思考实测为 8.04 秒、4 次模型请求、8 个工具调用、18,654 tokens（其中 12,160 cached、reasoning 0）。这说明十秒级简单反应可行，但紧凑情景摘要和更高级行为包装仍是降低多轮读取与成本的下一项工作。若要比较其他 flash 版本，只需把模型引用改成实例中对应的 model ref。
+
+`MIZUNE_MC_SMOKE_INSTRUCTION` 可把默认聊天目标替换为普通中文指令；`MIZUNE_MC_SMOKE_EXPECT_BEHAVIOR` 只接受 `chat` 或 `movement`。移动验证必须显式配置低成本、低思考或无思考的决策模型，并等待 `minecraft.movement.go_to@1` 的高优先级领域终态；只有成功终态、最终双脚所在方块发生变化且等于行为的 `targetBlock` 才算通过，不以 `activeBehavior=null` 代替效果验证。例如：
+
+```bash
+CONFIG_INSTANCE=dev \
+MIZUNE_MC_SMOKE_RESUME=1 \
+MIZUNE_MC_SMOKE_DECISION_MODEL=ds_deepseek_v4_flash \
+MIZUNE_MC_SMOKE_EXPECT_BEHAVIOR=movement \
+MIZUNE_MC_SMOKE_INSTRUCTION='看看周围，然后向东走几步' \
+npm run smoke:minecraft:managed-neoforge
+```
+
+紧凑 JSON 的 `verifiedBehavior` 会报告能力、终态、目标方块、起点/终点位置和终态原因；玩家观察仍只输出聚合计数，不输出完整玩家实体。
 
 父项目停机时会先中止独立决策循环，再对所有受管 Runtime 执行 TERM/KILL 收敛。每次发信号前都会重新校验 PID + start ticks + boot ID，且必须确认进程真正退出才写入终态。如无法识别或停止进程，supervisor 会保留 `stopping`/`needs_attention` 状态并让停机失败，不会伪装回收成功。
 
