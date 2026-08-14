@@ -28,8 +28,10 @@ test("父项目客户端与 Python daemon 完成真实握手、程序部署和�
   try {
     await waitForSocket(socketPath, daemon);
     const client = new ProtocolMinecraftActorClient("actor-contract", transport);
-    const initial = await client.getSnapshot();
+    const initial = await client.getDecisionContext();
     assert.equal(initial.actorRevision, 0);
+    assert.equal(initial.activeWork.available, true);
+    assert.equal(initial.freshnessMs, 0);
     assert.equal((await client.observe({ scope: "self" })).actorId, "actor-contract");
 
     const source = [
@@ -66,7 +68,7 @@ test("父项目客户端与 Python daemon 完成真实握手、程序部署和�
     assert.equal(activation.ok, true);
     assert.equal((await client.getActiveProgram()).value?.programId, "contract-program");
 
-    const beforeBehavior = await client.getSnapshot();
+    const beforeBehavior = await client.getDecisionContext();
     const behavior = await client.startBehavior({
       kind: "go_to",
       position: { x: 10, y: 64, z: 0 },

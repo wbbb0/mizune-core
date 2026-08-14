@@ -9,6 +9,7 @@ import {
   type MinecraftCancelBehaviorCommand,
   type MinecraftCancelTaskCommand,
   type MinecraftCommandResult,
+  type MinecraftDecisionContext,
   type MinecraftObservationEnvelope,
   type MinecraftObservationRequest,
   type MinecraftProgramDocument,
@@ -21,6 +22,7 @@ import {
 
 export type MinecraftActorRpcMethod =
   | "actor.get_snapshot"
+  | "decision.context.get"
   | "observation.get"
   | "behavior.start"
   | "behavior.cancel"
@@ -49,6 +51,7 @@ export interface MinecraftActorTransport {
 export interface MinecraftActorClient {
   getCapabilities(signal?: AbortSignal): Promise<MinecraftRuntimeCapabilities>;
   getSnapshot(signal?: AbortSignal): Promise<MinecraftActorSnapshot>;
+  getDecisionContext(signal?: AbortSignal): Promise<MinecraftDecisionContext>;
   observe(request: MinecraftObservationRequest, signal?: AbortSignal): Promise<MinecraftObservationEnvelope>;
   startBehavior(command: MinecraftBehaviorCommand, signal?: AbortSignal): Promise<MinecraftCommandResult>;
   cancelBehavior(command: MinecraftCancelBehaviorCommand, signal?: AbortSignal): Promise<MinecraftCommandResult>;
@@ -73,6 +76,7 @@ const ACTOR_RESPONSE_BUDGET = {
   maxTotalStringLength: 512_000,
   maxEventsPerPage: 256
 } as const;
+const DECISION_CONTEXT_MAX_WIRE_CHARS = 128_000;
 
 const jsonValueSchema: z.ZodType<unknown> = z.lazy(() => z.union([
   z.null(),
@@ -170,6 +174,89 @@ const observationEnvelopeSchema = z.object({
   self: selfSnapshotSchema,
   value: jsonValueSchema
 }).strict();
+
+const contextArgumentValueSchema = z.union([
+  z.null(), z.boolean(), z.number().finite(), z.string().max(256), vec3Schema
+]);
+const contextArgumentsSchema = z.record(z.string().max(128), contextArgumentValueSchema)
+  .refine(value => Object.keys(value).length <= 16, "context arguments 超过字段预算");
+const contextBehaviorSchema = behaviorRunSchema.extend({
+  runId: z.string().min(1).max(256),
+  capability: z.string().min(1).max(256),
+  reason: z.string().max(256).nullable(),
+  arguments: contextArgumentsSchema
+}).strict();
+const contextTaskSchema = z.object({
+  taskId: z.string().min(1).max(256),
+  kind: z.enum(["go_to", "collect_item", "interact_entity", "chat", "combat"]),
+  source: z.enum(["control", "autonomy"]),
+  priority: z.enum(["low", "normal", "high"]),
+  status: z.enum(["queued", "running", "succeeded", "failed", "cancelled"]),
+  createdAtMs: z.number().int().nonnegative(),
+  startedAtMs: z.number().int().nonnegative().nullable(),
+  completedAtMs: z.number().int().nonnegative().nullable(),
+  arguments: contextArgumentsSchema,
+  reason: z.string().max(256).nullable()
+}).strict();
+const contextEntitySchema = z.object({
+  ref: z.string().min(1).max(512), stableKey: z.string().min(1).max(256),
+  kind: z.enum(["player", "hostile", "passive", "item"]),
+  typeId: z.string().min(1).max(256), name: z.string().max(128).nullable(),
+  position: vec3Schema, distance: z.number().finite().nonnegative(), visible: z.boolean(),
+  health: z.number().finite().nonnegative().nullable(),
+  itemStack: z.object({ itemId: z.string().min(1).max(256), count: z.number().int().positive() }).strict().nullable()
+}).strict();
+const contextCollectionSchema = z.object({
+  available: z.boolean(), truncated: z.boolean(), items: z.array(contextEntitySchema).max(16)
+}).strict().superRefine((value, context) => {
+  if (!value.available && value.items.length > 0) context.addIssue({ code: "custom", message: "unavailable collection cannot contain items" });
+});
+const decisionContextSchema = z.object({
+  protocolVersion: z.literal(MINECRAFT_ACTOR_PROTOCOL_VERSION), actorId: z.string().min(1),
+  actorRevision: z.number().int().nonnegative(), observationRevision: z.number().int().nonnegative(),
+  controlStateToken: opaqueRefSchema, contextRef: opaqueRefSchema,
+  observedAtMs: z.number().int().nonnegative(), sourceCapturedAtMs: z.number().int().nonnegative(),
+  freshnessMs: z.number().int().nonnegative(), self: selfSnapshotSchema,
+  activeWork: z.object({
+    available: z.boolean(), activeBehavior: contextBehaviorSchema.nullable(),
+    activeTask: contextTaskSchema.nullable(), queuedTaskCount: z.number().int().nonnegative()
+  }).strict(),
+  environmentSummary: z.object({
+    available: z.boolean(), truncated: z.boolean(), dimension: z.string().max(256).nullable(),
+    biome: z.string().max(256).nullable(), gameTime: z.number().finite().nonnegative().nullable(),
+    weather: z.string().max(64).nullable(), lightLevel: z.number().finite().nonnegative().nullable(),
+    hazards: z.array(z.string().max(128)).max(16),
+    nearbyBlockIds: z.array(z.object({ blockId: z.string().min(1).max(256), count: z.number().int().positive() }).strict()).max(16)
+  }).strict().superRefine((value, context) => {
+    if (!value.available && (value.dimension !== null || value.biome !== null || value.gameTime !== null
+      || value.weather !== null || value.lightLevel !== null || value.hazards.length > 0
+      || value.nearbyBlockIds.length > 0)) {
+      context.addIssue({ code: "custom", message: "unavailable environment must not masquerade as observed data" });
+    }
+  }),
+  inventorySummary: z.object({
+    available: z.boolean(), truncated: z.boolean(),
+    stacks: z.array(z.object({ itemId: z.string().min(1).max(256), count: z.number().int().nonnegative() }).strict()).max(32),
+    usedSlots: z.number().int().nonnegative().nullable(), capacity: z.number().int().nonnegative().nullable()
+  }).strict().superRefine((value, context) => {
+    if (!value.available && (value.stacks.length > 0 || value.usedSlots !== null || value.capacity !== null)) {
+      context.addIssue({ code: "custom", message: "unavailable inventory must not masquerade as observed data" });
+    }
+  }),
+  nearby: z.object({ players: contextCollectionSchema, hostiles: contextCollectionSchema, items: contextCollectionSchema }).strict(),
+  recentChat: z.object({
+    available: z.boolean(), truncated: z.boolean(),
+    messages: z.array(z.object({
+      messageId: z.string().min(1).max(256), direction: z.enum(["incoming", "outgoing"]),
+      channel: z.string().min(1).max(128), sender: z.string().max(128).nullable(),
+      text: z.string().max(512), occurredAtMs: z.number().int().nonnegative()
+    }).strict()).max(20), cursor: z.string().max(256).nullable(), gap: z.boolean()
+  }).strict()
+}).strict().superRefine((value, context) => {
+  if (value.sourceCapturedAtMs > value.observedAtMs || value.freshnessMs !== value.observedAtMs - value.sourceCapturedAtMs) {
+    context.addIssue({ code: "custom", message: "decision context freshness is inconsistent" });
+  }
+});
 
 const commandResultSchema = z.object({
   protocolVersion: z.literal(MINECRAFT_ACTOR_PROTOCOL_VERSION),
@@ -275,6 +362,14 @@ export class ProtocolMinecraftActorClient implements MinecraftActorClient {
   async getSnapshot(signal?: AbortSignal): Promise<MinecraftActorSnapshot> {
     const raw = await this.call("actor.get_snapshot", {}, signal);
     return this.parseActorEnvelope(actorSnapshotSchema, raw, "actor snapshot") as MinecraftActorSnapshot;
+  }
+
+  async getDecisionContext(signal?: AbortSignal): Promise<MinecraftDecisionContext> {
+    const raw = await this.call("decision.context.get", { request: { profile: "reactive_v1" } }, signal);
+    if (JSON.stringify(raw).length > DECISION_CONTEXT_MAX_WIRE_CHARS) {
+      throw new Error("Minecraft decision context 超过总 wire 预算");
+    }
+    return this.parseActorEnvelope(decisionContextSchema, raw, "decision context") as MinecraftDecisionContext;
   }
 
   async observe(

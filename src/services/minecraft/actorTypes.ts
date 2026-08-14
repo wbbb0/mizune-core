@@ -125,6 +125,79 @@ export interface MinecraftObservationEnvelope {
   value: JsonValue;
 }
 
+export interface MinecraftDecisionContextCollection {
+  available: boolean;
+  truncated: boolean;
+  items: Array<{
+    ref: string;
+    stableKey: string;
+    kind: MinecraftEntityKind;
+    typeId: string;
+    name: string | null;
+    position: MinecraftVec3;
+    distance: number;
+    visible: boolean;
+    health: number | null;
+    itemStack: { itemId: string; count: number } | null;
+  }>;
+}
+
+export interface MinecraftDecisionContext {
+  protocolVersion: typeof MINECRAFT_ACTOR_PROTOCOL_VERSION;
+  actorId: string;
+  actorRevision: number;
+  observationRevision: number;
+  controlStateToken: string;
+  contextRef: string;
+  observedAtMs: number;
+  sourceCapturedAtMs: number;
+  freshnessMs: number;
+  self: MinecraftSelfSnapshot;
+  activeWork: {
+    available: boolean;
+    activeBehavior: MinecraftBehaviorRun | null;
+    activeTask: Omit<MinecraftTaskRun, "behaviorRunId"> | null;
+    queuedTaskCount: number;
+  };
+  environmentSummary: {
+    available: boolean;
+    truncated: boolean;
+    dimension: string | null;
+    biome: string | null;
+    gameTime: number | null;
+    weather: string | null;
+    lightLevel: number | null;
+    hazards: string[];
+    nearbyBlockIds: Array<{ blockId: string; count: number }>;
+  };
+  inventorySummary: {
+    available: boolean;
+    truncated: boolean;
+    stacks: Array<{ itemId: string; count: number }>;
+    usedSlots: number | null;
+    capacity: number | null;
+  };
+  nearby: {
+    players: MinecraftDecisionContextCollection;
+    hostiles: MinecraftDecisionContextCollection;
+    items: MinecraftDecisionContextCollection;
+  };
+  recentChat: {
+    available: boolean;
+    truncated: boolean;
+    messages: Array<{
+      messageId: string;
+      direction: "incoming" | "outgoing";
+      channel: string;
+      sender: string | null;
+      text: string;
+      occurredAtMs: number;
+    }>;
+    cursor: string | null;
+    gap: boolean;
+  };
+}
+
 export interface MinecraftCommandResult {
   protocolVersion: typeof MINECRAFT_ACTOR_PROTOCOL_VERSION;
   commandId: string;

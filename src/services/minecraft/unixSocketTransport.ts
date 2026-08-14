@@ -10,6 +10,7 @@ import { MINECRAFT_ACTOR_PROTOCOL_VERSION } from "./actorTypes.ts";
 
 const KNOWN_RPC_METHODS = new Set<MinecraftActorRpcMethod>([
   "actor.get_snapshot",
+  "decision.context.get",
   "observation.get",
   "behavior.start",
   "behavior.cancel",

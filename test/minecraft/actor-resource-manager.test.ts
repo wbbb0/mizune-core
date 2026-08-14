@@ -31,6 +31,7 @@ import type {
   MinecraftCancelBehaviorCommand,
   MinecraftCancelTaskCommand,
   MinecraftCommandResult,
+  MinecraftDecisionContext,
   MinecraftObservationEnvelope,
   MinecraftObservationRequest,
   MinecraftProgramDocument,
@@ -61,6 +62,10 @@ class ResourceActorClient implements MinecraftActorClient {
 
   async getSnapshot(): Promise<MinecraftActorSnapshot> {
     return actorSnapshot();
+  }
+
+  async getDecisionContext(): Promise<MinecraftDecisionContext> {
+    return decisionContext();
   }
 
   async observe(_request: MinecraftObservationRequest): Promise<MinecraftObservationEnvelope> {
@@ -122,7 +127,7 @@ class ResourceActorClient implements MinecraftActorClient {
 function fullRuntimeCapabilities(): MinecraftRuntimeCapabilities {
   return {
     rpcMethods: [
-      "actor.get_snapshot", "observation.get", "behavior.start", "behavior.cancel",
+      "actor.get_snapshot", "decision.context.get", "observation.get", "behavior.start", "behavior.cancel",
       "task.submit", "task.cancel", "autonomy.set_policy", "program.get_active",
       "program.validate", "program.activate", "events.list"
     ],
@@ -1376,6 +1381,26 @@ function observation(value: MinecraftObservationEnvelope["value"]): MinecraftObs
     observedAtMs: 100,
     self: selfState(),
     value
+  };
+}
+
+function decisionContext(): MinecraftDecisionContext {
+  const snapshot = actorSnapshot();
+  return {
+    protocolVersion: 2, actorId: snapshot.actorId, actorRevision: snapshot.actorRevision,
+    observationRevision: snapshot.observationRevision, controlStateToken: snapshot.controlStateToken,
+    contextRef: "context-ref-decision-reactive-v1-actor-1", observedAtMs: 100,
+    sourceCapturedAtMs: 100, freshnessMs: 0, self: snapshot.self,
+    activeWork: { available: true, activeBehavior: null, activeTask: null, queuedTaskCount: 0 },
+    environmentSummary: { available: true, truncated: false, dimension: "minecraft:overworld", biome: null,
+      gameTime: 0, weather: "clear", lightLevel: 15, hazards: [], nearbyBlockIds: [] },
+    inventorySummary: { available: true, truncated: false, stacks: [], usedSlots: 0, capacity: 41 },
+    nearby: {
+      players: { available: true, truncated: false, items: [] },
+      hostiles: { available: true, truncated: false, items: [] },
+      items: { available: true, truncated: false, items: [] }
+    },
+    recentChat: { available: true, truncated: false, messages: [], cursor: null, gap: false }
   };
 }
 

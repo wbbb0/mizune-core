@@ -20,6 +20,7 @@ import type {
   MinecraftActivateProgramCommand,
   MinecraftAutonomyPolicy,
   MinecraftBehaviorCommand,
+  MinecraftDecisionContext,
   MinecraftObservationRequest,
   MinecraftProgramDocument,
   MinecraftProgramValidationResult,
@@ -29,7 +30,7 @@ import type {
 export const MINECRAFT_DECISION_SYSTEM_PROMPT = `你是 Mizune 的 Minecraft Actor 决策器。你只负责上层目标选择、异常处理和任务规划；移动、交互、战斗、聊天等执行由确定性状态机完成。
 
 规则：
-1. 先按需读取状态，再提交一个明确的行为或任务。只读工具可在同一轮并行；任何控制工具必须独占一轮，不能与读取、其他控制或结束工具同批调用。
+1. 首个 user 状态已含 Runtime 原子生成的 initialContext，应先直接据此决策；只有 freshness、available、gap 表明需刷新，或任务确实需要额外细节时，才调用 refresh/observe。只读工具可在同一轮并行；任何控制工具必须独占一轮，不能与读取、其他控制或结束工具同批调用。
 2. 所有对象只能使用读取工具返回的不透明 ref。控制 guard、来源上下文与幂等键由系统根据最近成功读取的状态自动注入，模型不要生成或复制任何 revision、token 或幂等键。
 3. 普通文本没有控制效果。完成本次决策时必须调用 minecraft_finish_decision，返回简短决策摘要和完整的更新后持久状态文本。
 4. 不确定、引用过期或控制状态冲突时重新读取；不要猜测实时状态。不要逐 tick 控制，优先提交参数化高层行为或任务。
@@ -40,7 +41,7 @@ export const MINECRAFT_DECISION_SYSTEM_PROMPT = `你是 Mizune 的 Minecraft Act
 9. 本次 user 状态中的 runtimeCapabilities 来自受信任 Runtime；只能选择本次实际提供的工具与能力，不得假设隐藏能力可用。`;
 
 const READ_TOOL_NAMES = new Set([
-  "minecraft_get_snapshot",
+  "minecraft_refresh_context",
   "minecraft_observe",
   "minecraft_get_active_program"
 ]);
@@ -240,7 +241,7 @@ interface DecisionReadState {
   controlStateToken: string;
   contextRef: string;
 }
-type DecisionReadEnvelope = Pick<MinecraftActorSnapshot,
+type DecisionReadEnvelope = Pick<MinecraftActorSnapshot | MinecraftDecisionContext,
   "actorRevision" | "observationRevision" | "controlStateToken" | "contextRef">;
 
 export class MinecraftDecisionRunner {
@@ -278,10 +279,13 @@ export class MinecraftDecisionRunner {
         this.actor.getCapabilities(abortSignal),
         abortSignal
       );
-      const initialSnapshot = await waitForGeneration(this.actor.getSnapshot(abortSignal), abortSignal);
-      const readState: DecisionReadState = readStateFrom(initialSnapshot);
       const capabilityPolicy = buildCapabilityPolicy(runtimeCapabilities);
-      const messages = buildDecisionMessages(input, capabilityPolicy, initialSnapshot);
+      if (!hasRpc(capabilityPolicy, "decision.context.get")) {
+        throw new Error("Minecraft Runtime 未提供必需的 decision.context.get；独立决策已拒绝降级");
+      }
+      const initialContext = await waitForGeneration(this.actor.getDecisionContext(abortSignal), abortSignal);
+      const readState: DecisionReadState = readStateFrom(initialContext);
+      const messages = buildDecisionMessages(input, capabilityPolicy, initialContext);
       const tools = buildDecisionTools({
         policy: capabilityPolicy,
         includeAutonomy: input.allowAutonomyPolicyChange === true,
@@ -398,12 +402,12 @@ export class MinecraftDecisionRunner {
     committed?: boolean;
   }> {
     switch (name) {
-      case "minecraft_get_snapshot":
-        if (!hasRpc(capabilityPolicy, "actor.get_snapshot")) return capabilityUnavailable(name);
+      case "minecraft_refresh_context":
+        if (!hasRpc(capabilityPolicy, "decision.context.get")) return capabilityUnavailable(name);
         {
-          const snapshot = await this.actor.getSnapshot(signal);
-          updateReadState(readState, snapshot);
-          return { result: decisionModelResult(snapshot) };
+          const context = await this.actor.getDecisionContext(signal);
+          updateReadState(readState, context);
+          return { result: decisionModelResult(context) };
         }
       case "minecraft_observe": {
         if (!hasRpc(capabilityPolicy, "observation.get")) return capabilityUnavailable(name);
@@ -530,7 +534,7 @@ export class MinecraftDecisionRunner {
 function buildDecisionMessages(
   input: MinecraftDecisionInput,
   capabilityPolicy: DecisionCapabilityPolicy,
-  initialSnapshot: MinecraftActorSnapshot
+  initialContext: MinecraftDecisionContext
 ): LlmMessage[] {
   return [
     { role: "system", content: MINECRAFT_DECISION_SYSTEM_PROMPT },
@@ -542,7 +546,7 @@ function buildDecisionMessages(
         currentGoal: input.currentGoal,
         persistentState: input.persistentState,
         runtimeCapabilities: capabilityPolicy.runtime,
-        initialSnapshot: projectDecisionValue(initialSnapshot)
+        initialContext: projectDecisionValue(initialContext)
       })
     },
     {
@@ -571,10 +575,7 @@ function updateReadState(
   current: DecisionReadState,
   value: DecisionReadEnvelope
 ): void {
-  if (
-    value.actorRevision < current.actorRevision
-    || (value.actorRevision === current.actorRevision && value.observationRevision < current.observationRevision)
-  ) return;
+  if (value.actorRevision < current.actorRevision || value.observationRevision < current.observationRevision) return;
   Object.assign(current, readStateFrom(value));
 }
 
@@ -634,8 +635,8 @@ function buildDecisionTools(options: {
   includeProgramDeployment: boolean;
 }): LlmToolDefinition[] {
   const tools: LlmToolDefinition[] = [];
-  if (hasRpc(options.policy, "actor.get_snapshot")) {
-    tools.push(tool("minecraft_get_snapshot", "刷新 Actor 当前行为、任务、lease、自身状态和自治策略。", {}));
+  if (hasRpc(options.policy, "decision.context.get")) {
+    tools.push(tool("minecraft_refresh_context", "原子刷新决策所需的自身、活动工作、环境、背包、附近对象和最近聊天摘要。", {}));
   }
   if (hasRpc(options.policy, "observation.get") && options.policy.runtime.observationScopes.length > 0) {
     tools.push(tool("minecraft_observe", "按范围读取结构化游戏状态，并刷新后续控制使用的内部读取状态。", {
