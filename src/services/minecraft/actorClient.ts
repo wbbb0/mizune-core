@@ -32,13 +32,22 @@ export type MinecraftActorRpcMethod =
   | "program.activate"
   | "events.list";
 
+export interface MinecraftRuntimeCapabilities {
+  rpcMethods: MinecraftActorRpcMethod[];
+  observationScopes: MinecraftObservationRequest["scope"][];
+  behaviorCapabilities: string[];
+  runtimeFeatures: string[];
+}
+
 export interface MinecraftActorTransport {
   call(method: MinecraftActorRpcMethod, payload: Record<string, unknown>, signal?: AbortSignal): Promise<unknown>;
+  getCapabilities(signal?: AbortSignal): Promise<MinecraftRuntimeCapabilities>;
   /** 只释放当前进程的 transport；远端停机必须使用可持久重试的显式命令。 */
   close(): Promise<void> | void;
 }
 
 export interface MinecraftActorClient {
+  getCapabilities(signal?: AbortSignal): Promise<MinecraftRuntimeCapabilities>;
   getSnapshot(signal?: AbortSignal): Promise<MinecraftActorSnapshot>;
   observe(request: MinecraftObservationRequest, signal?: AbortSignal): Promise<MinecraftObservationEnvelope>;
   startBehavior(command: MinecraftBehaviorCommand, signal?: AbortSignal): Promise<MinecraftCommandResult>;
@@ -242,6 +251,10 @@ export class ProtocolMinecraftActorClient implements MinecraftActorClient {
     if (!actorId.trim()) {
       throw new Error("Minecraft actorId 不能为空");
     }
+  }
+
+  async getCapabilities(signal?: AbortSignal): Promise<MinecraftRuntimeCapabilities> {
+    return this.transport.getCapabilities(signal);
   }
 
   async getSnapshot(signal?: AbortSignal): Promise<MinecraftActorSnapshot> {

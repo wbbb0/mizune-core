@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { loadConfig } from "#config/config.ts";
 import { LlmClient } from "#llm/llmClient.ts";
-import type { MinecraftActorClient } from "#services/minecraft/actorClient.ts";
+import type {
+  MinecraftActorClient,
+  MinecraftRuntimeCapabilities
+} from "#services/minecraft/actorClient.ts";
 import { MinecraftDecisionRunner } from "#services/minecraft/decisionRunner.ts";
 import type {
   MinecraftActorSnapshot,
@@ -148,6 +151,25 @@ function createSmokeActor(trace: ActorTrace): MinecraftActorClient {
   });
 
   return {
+    async getCapabilities(): Promise<MinecraftRuntimeCapabilities> {
+      return {
+        rpcMethods: [
+          "actor.get_snapshot", "observation.get", "behavior.start", "behavior.cancel",
+          "task.submit", "task.cancel", "autonomy.set_policy", "program.get_active",
+          "program.validate", "program.activate", "events.list"
+        ],
+        observationScopes: ["self", "environment", "inventory", "entities", "player", "chat", "tasks"],
+        behaviorCapabilities: [
+          "minecraft.movement.go_to@1",
+          "minecraft.follow_and_assist@1",
+          "minecraft.interaction.entity@1",
+          "minecraft.inventory.collect_item@1",
+          "minecraft.chat.send@1",
+          "minecraft.combat.engage@1"
+        ],
+        runtimeFeatures: ["simulation@1"]
+      };
+    },
     async getSnapshot() {
       trace.calls.push("getSnapshot");
       return snapshot();

@@ -1,7 +1,34 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createConnection, type Socket } from "node:net";
-import type { MinecraftActorRpcMethod, MinecraftActorTransport } from "./actorClient.ts";
+import type {
+  MinecraftActorRpcMethod,
+  MinecraftActorTransport,
+  MinecraftRuntimeCapabilities
+} from "./actorClient.ts";
+
+const KNOWN_RPC_METHODS = new Set<MinecraftActorRpcMethod>([
+  "actor.get_snapshot",
+  "observation.get",
+  "behavior.start",
+  "behavior.cancel",
+  "task.submit",
+  "task.cancel",
+  "autonomy.set_policy",
+  "program.get_active",
+  "program.validate",
+  "program.activate",
+  "events.list"
+]);
+const KNOWN_OBSERVATION_SCOPES = new Set<MinecraftRuntimeCapabilities["observationScopes"][number]>([
+  "self",
+  "environment",
+  "inventory",
+  "entities",
+  "player",
+  "chat",
+  "tasks"
+]);
 
 export interface UnixSocketMinecraftActorTransportOptions {
   socketPath: string;
@@ -25,11 +52,10 @@ interface PendingResponse {
   reject: (error: Error) => void;
 }
 
-interface TransportCapabilities {
+interface TransportCapabilities extends MinecraftRuntimeCapabilities {
   heartbeatIntervalMs: number;
   controllerLeaseTtlMs: number;
   maxFrameBytes: number;
-  rpcMethods: string[];
   features: string[];
 }
 
@@ -139,6 +165,19 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
         throw error;
       }
     }
+  }
+
+  async getCapabilities(signal?: AbortSignal): Promise<MinecraftRuntimeCapabilities> {
+    if (this.closed) throw new Error("Minecraft Unix socket transport 已关闭");
+    await this.ensureConnected(signal);
+    const capabilities = this.capabilities;
+    if (!capabilities) throw new MinecraftTransportDisconnectedError("Minecraft Runtime capability 尚未建立");
+    return {
+      rpcMethods: [...capabilities.rpcMethods],
+      observationScopes: [...capabilities.observationScopes],
+      behaviorCapabilities: [...capabilities.behaviorCapabilities],
+      runtimeFeatures: [...capabilities.runtimeFeatures]
+    };
   }
 
   async close(): Promise<void> {
@@ -509,8 +548,20 @@ function parseCapabilities(value: unknown, configuredMaxFrameBytes: number): Tra
   if (maxFrameBytes > configuredMaxFrameBytes) {
     // The local limit remains authoritative; a larger remote capability is fine.
   }
-  const rpcMethods = requireStringArray(value.rpcMethods, "rpcMethods");
-  const features = requireStringArray(value.features, "features");
+  const rpcMethods = requireStringArray(value.rpcMethods, "rpcMethods", 64, 128)
+    .filter((method): method is MinecraftActorRpcMethod => KNOWN_RPC_METHODS.has(method as MinecraftActorRpcMethod));
+  const observationScopes = requireStringArray(value.observationScopes, "observationScopes", 32, 128)
+    .filter((scope): scope is MinecraftRuntimeCapabilities["observationScopes"][number] => (
+      KNOWN_OBSERVATION_SCOPES.has(scope as MinecraftRuntimeCapabilities["observationScopes"][number])
+    ));
+  const behaviorCapabilities = requireStringArray(
+    value.behaviorCapabilities,
+    "behaviorCapabilities",
+    128,
+    256
+  );
+  const runtimeFeatures = requireStringArray(value.runtimeFeatures, "runtimeFeatures", 128, 256);
+  const features = requireStringArray(value.features, "features", 64, 128);
   for (const required of [
     "request_deadline@1",
     "durable_idempotency@1",
@@ -522,11 +573,24 @@ function parseCapabilities(value: unknown, configuredMaxFrameBytes: number): Tra
   if (controllerLeaseTtlMs <= heartbeatIntervalMs) {
     throw new Error("Minecraft Runtime control lease 必须长于 heartbeat 间隔");
   }
-  return { heartbeatIntervalMs, controllerLeaseTtlMs, maxFrameBytes, rpcMethods, features };
+  return {
+    heartbeatIntervalMs,
+    controllerLeaseTtlMs,
+    maxFrameBytes,
+    rpcMethods,
+    observationScopes,
+    behaviorCapabilities,
+    runtimeFeatures,
+    features
+  };
 }
 
-function requireStringArray(value: unknown, name: string): string[] {
-  if (!Array.isArray(value) || value.some(item => typeof item !== "string" || !item.trim())) {
+function requireStringArray(value: unknown, name: string, maxItems: number, maxLength: number): string[] {
+  if (
+    !Array.isArray(value)
+    || value.length > maxItems
+    || value.some(item => typeof item !== "string" || !item.trim() || item.length > maxLength)
+  ) {
     throw new Error(`Minecraft Runtime ${name} 无效`);
   }
   return [...new Set(value)];

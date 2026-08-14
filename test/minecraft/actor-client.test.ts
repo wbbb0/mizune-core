@@ -3,7 +3,8 @@ import test from "node:test";
 import {
   ProtocolMinecraftActorClient,
   type MinecraftActorRpcMethod,
-  type MinecraftActorTransport
+  type MinecraftActorTransport,
+  type MinecraftRuntimeCapabilities
 } from "../../src/services/minecraft/actorClient.ts";
 import type {
   MinecraftBehaviorCommand,
@@ -13,6 +14,15 @@ import type {
 class RecordingTransport implements MinecraftActorTransport {
   readonly calls: Array<{ method: MinecraftActorRpcMethod; payload: Record<string, unknown> }> = [];
   responses: unknown[] = [];
+
+  async getCapabilities(): Promise<MinecraftRuntimeCapabilities> {
+    return {
+      rpcMethods: ["actor.get_snapshot", "observation.get"],
+      observationScopes: ["self", "entities"],
+      behaviorCapabilities: [],
+      runtimeFeatures: ["test_runtime@1"]
+    };
+  }
 
   async call(method: MinecraftActorRpcMethod, payload: Record<string, unknown>): Promise<unknown> {
     this.calls.push({ method, payload });

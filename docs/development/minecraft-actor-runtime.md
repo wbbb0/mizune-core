@@ -60,7 +60,7 @@ npm run dev:minecraft-runtime
 
 ## 真实客户端 smoke
 
-以下 opt-in smoke 使用临时父项目数据库，实际启动已配置的 NeoForge 客户端，走完整的自然语言 delegate、supervisor、Python daemon、Bridge 首快照、结构化观察和一条带随机后缀的普通游戏聊天行为：
+以下 opt-in smoke 使用临时父项目数据库，实际启动已配置的 NeoForge 客户端，走完整的自然语言 delegate、supervisor、Python daemon、Bridge 首快照、结构化观察和一条普通游戏聊天行为。默认路径使用确定性调用并附带随机后缀，适合验证底层链路：
 
 ```bash
 CONFIG_INSTANCE=dev npm run smoke:minecraft:managed-neoforge
@@ -75,6 +75,18 @@ CONFIG_INSTANCE=dev MIZUNE_MC_SMOKE_RESUME=1 npm run smoke:minecraft:managed-neo
 ```
 
 该命令会删除这一个专用 profile 的重连锁，不应由普通模型循环自动设置。smoke 的默认 JSON 仅输出机器人状态与坐标、环境方块类型、有限背包摘要以及玩家/实体计数；仍只用于本地受控调试，不应接入普通聊天或集中日志。
+
+要验证真实的私有 Decision Runner，可显式选择实例中已配置的低成本模型。smoke 会把“登录服务器，看看周围环境，然后在游戏聊天里向服务器里的大家打个简短的招呼”作为普通用户目标交给独立循环；模型以无思考模式运行，只能看到当前 Runtime 实际广告的只读接口、行为和终止工具：
+
+```bash
+CONFIG_INSTANCE=dev \
+MIZUNE_MC_SMOKE_RESUME=1 \
+MIZUNE_MC_SMOKE_DECISION_MODEL=ds_deepseek_v4_pro \
+MIZUNE_MC_SMOKE_DECISION_TIMEOUT_MS=15000 \
+npm run smoke:minecraft:managed-neoforge
+```
+
+模型路径同样要求游戏聊天中出现新消息，并在 JSON 中报告模型、决策耗时、工具调用数和 token usage；模型原始响应、完整玩家信息和认证数据不会进入普通输出。当前真实 NeoForge/Create 镜像服已经在 15 秒硬截止时间内用 v4 pro 完成该路径；同一目标的 v4 flash 无思考实测为 8.04 秒、4 次模型请求、8 个工具调用、18,654 tokens（其中 12,160 cached、reasoning 0）。这说明十秒级简单反应可行，但紧凑情景摘要和更高级行为包装仍是降低多轮读取与成本的下一项工作。若要比较其他 flash 版本，只需把模型引用改成实例中对应的 model ref。
 
 父项目停机时会先中止独立决策循环，再对所有受管 Runtime 执行 TERM/KILL 收敛。每次发信号前都会重新校验 PID + start ticks + boot ID，且必须确认进程真正退出才写入终态。如无法识别或停止进程，supervisor 会保留 `stopping`/`needs_attention` 状态并让停机失败，不会伪装回收成功。
 
@@ -103,4 +115,6 @@ WebUI 的「运行时资源 → Minecraft Actor」提供概览、SSE 动态、�
 
 默认父项目测试包含两个真实跨进程契约：一个验证 simulation daemon 的握手、行为与持久化；另一个让 supervisor 启动 Python daemon 和假 NeoForge 客户端，验证 Bridge 首快照门禁、daemon/client 双进程指纹、动态 capability 与成组停止。子模块自身测试覆盖 SQLite checkpoint、跨重启幂等、事件游标、deadline、cancel、heartbeat、控制租约安全停机，以及 NeoForge Bridge 的 framing、认证、单控制器租约、快照限额、显式事件缺口、多页 drain、聊天 mutation 和 live daemon 断线关闭。
 
-真实 1.21.1 NeoForge/Create 离线镜像服已通过上述 opt-in smoke：父项目自然语言 delegate 能启动真实客户端，读取连接状态、坐标、环境方块、背包、玩家和实体，并通过统一 behavior 状态机发送一条普通全局聊天。下一阶段先让私有 Decision Runner 自然选择该行为，再按 capability 逐项开放移动、交互和战斗，不改变已经由契约测试保护的父项目 RPC 和工具语义。
+真实 1.21.1 NeoForge/Create 离线镜像服已通过上述两种 opt-in smoke：父项目自然语言 delegate 能启动真实客户端，读取连接状态、坐标、环境方块、背包、玩家和实体；私有 Decision Runner 也能根据普通中文目标自行读取环境、选择当前唯一开放的聊天行为，并通过统一 behavior 状态机完成普通全局聊天。Decision Runner 在握手后按 Runtime manifest 动态裁剪 RPC、观察 scope 和行为种类，不能调用未开放的移动、交互或战斗能力；执行入口还会再次校验能力，不能靠伪造隐藏 tool call 绕过。
+
+聊天命令虽然仍携带最近读取到的 observation revision，但不会因为游戏时间、天气等无关快照刷新而失败；它只严格比较 actor revision，并继续受连接状态、controller/action lease、deadline 和幂等键约束。任何引用实体、位置或物品的后续行为仍必须严格校验 observation revision 与 opaque ref。下一阶段按同一 capability 边界逐项实现移动、交互和战斗，每增加一个行为先落状态机与契约测试，再开放给 Decision Runner 和真实 smoke。

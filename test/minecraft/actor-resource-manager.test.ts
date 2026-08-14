@@ -13,7 +13,10 @@ import type {
 import { StateDatabase } from "../../src/data/state/stateDatabase.ts";
 import { RuntimeResourceRegistry } from "../../src/runtime/resources/runtimeResourceRegistry.ts";
 import { RuntimeResourceStore } from "../../src/runtime/resources/runtimeResourceStore.ts";
-import type { MinecraftActorClient } from "../../src/services/minecraft/actorClient.ts";
+import type {
+  MinecraftActorClient,
+  MinecraftRuntimeCapabilities
+} from "../../src/services/minecraft/actorClient.ts";
 import { ConfiguredMinecraftActorClientFactory } from "../../src/services/minecraft/actorClientFactory.ts";
 import { MinecraftActorControlStore } from "../../src/services/minecraft/actorControlStore.ts";
 import {
@@ -51,6 +54,10 @@ class ResourceActorClient implements MinecraftActorClient {
   behaviorCommandKeys: string[] = [];
   behaviorSideEffects = 0;
   private readonly seenBehaviorKeys = new Set<string>();
+
+  async getCapabilities() {
+    return fullRuntimeCapabilities();
+  }
 
   async getSnapshot(): Promise<MinecraftActorSnapshot> {
     return actorSnapshot();
@@ -110,6 +117,26 @@ class ResourceActorClient implements MinecraftActorClient {
   close(): void {
     this.closeCalls += 1;
   }
+}
+
+function fullRuntimeCapabilities(): MinecraftRuntimeCapabilities {
+  return {
+    rpcMethods: [
+      "actor.get_snapshot", "observation.get", "behavior.start", "behavior.cancel",
+      "task.submit", "task.cancel", "autonomy.set_policy", "program.get_active",
+      "program.validate", "program.activate", "events.list"
+    ],
+    observationScopes: ["self", "environment", "inventory", "entities", "player", "chat", "tasks"],
+    behaviorCapabilities: [
+      "minecraft.movement.go_to@1",
+      "minecraft.follow_and_assist@1",
+      "minecraft.interaction.entity@1",
+      "minecraft.inventory.collect_item@1",
+      "minecraft.chat.send@1",
+      "minecraft.combat.engage@1"
+    ],
+    runtimeFeatures: ["simulation@1"]
+  };
 }
 
 test("actor resource manager persists completed decision state", async () => {

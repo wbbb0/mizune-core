@@ -104,6 +104,9 @@ function replyHello(socket: Socket, message: Record<string, unknown>, connection
       maxFrameBytes: 1_048_576,
       maxEventsPerPage: 256,
       rpcMethods: ["actor.get_snapshot"],
+      observationScopes: ["self"],
+      behaviorCapabilities: [],
+      runtimeFeatures: ["test_runtime@1"],
       features: ["request_deadline@1", "durable_idempotency@1", "event_cursor@1", "control_lease@1"]
     }
   }, 3);
@@ -136,6 +139,12 @@ test("Unix socket transport completes a framed hello and typed actor request", a
   const transport = createTransport(server.socketPath);
   try {
     const client = new ProtocolMinecraftActorClient("actor-dev", transport);
+    assert.deepEqual(await client.getCapabilities(), {
+      rpcMethods: ["actor.get_snapshot"],
+      observationScopes: ["self"],
+      behaviorCapabilities: [],
+      runtimeFeatures: ["test_runtime@1"]
+    });
     const snapshot = await client.getSnapshot();
     assert.equal(snapshot.actorId, "actor-dev");
     assert.deepEqual(received.slice(0, 2), ["hello", "request"]);
@@ -197,6 +206,9 @@ test("reconnect refreshes managed runtime identity and auth token credentials", 
           maxFrameBytes: 1_048_576,
           maxEventsPerPage: 256,
           rpcMethods: ["actor.get_snapshot"],
+          observationScopes: ["self"],
+          behaviorCapabilities: [],
+          runtimeFeatures: ["test_runtime@1"],
           features: ["request_deadline@1", "durable_idempotency@1", "event_cursor@1", "control_lease@1"]
         }
       });
