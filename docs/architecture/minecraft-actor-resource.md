@@ -1,6 +1,6 @@
 # Minecraft Actor 资源与独立决策循环
 
-状态：父项目的持久 Actor 控制面、独立模型循环、动态服务器绑定、受管进程 supervisor、真实只读 NeoForge Bridge、模拟 Runtime 契约与 WebUI 工作台已实现；真实写行为和隔离 Python Worker 尚未接入。
+状态：父项目的持久 Actor 控制面、独立模型循环、动态服务器绑定、受管进程 supervisor、真实 NeoForge Bridge、首个真实聊天行为、模拟 Runtime 契约与 WebUI 工作台已实现；移动/交互/战斗和隔离 Python Worker 尚未接入。
 
 ## 系统边界
 
@@ -57,7 +57,7 @@ Runtime 的命令结果、checkpoint 和事件游标由子模块 daemon 使用�
 - `emergency stop`：未来独立的运维安全 RPC；在实现前 UI 明确禁用。
 - `close`：永久关闭父项目 Actor 和未完成 mailbox；transport close 只释放本地连接。
 
-父连接消失后，Runtime 控制租约到期会取消活动行为和排队任务、关闭自治并进入安全态。持久 close 成功是管理 API 的成功边界；本地 transport 清理失败只记录并后台重试，不能把已经提交的永久关闭翻转成 HTTP 失败。
+父连接消失后，Runtime 控制租约到期会取消尚未产生外部副作用的活动行为和排队任务、关闭自治并进入安全态。已经投递到外部客户端但尚未确认结果的行为必须收敛为“副作用未知”的失败终态，不能误报取消。持久 close 成功是管理 API 的成功边界；本地 transport 清理失败只记录并后台重试，不能把已经提交的永久关闭翻转成 HTTP 失败。
 
 ## SSE 与 WebUI read model
 
@@ -85,10 +85,10 @@ SSE 使用 SQLite event ID：
 
 ## 接下来
 
-1. 先开放真实聊天发送，并把聊天与移动等行为统一纳入 task/behavior、租约、幂等和事件契约。
+1. 将已验证的真实聊天行为交给私有 Decision Runner，用低成本无思考模型验证“自然语言委派 → 游戏聊天 → 完成事件”的十秒级闭环。
 2. 接入 Baritone/确定性控制层的移动、跟随和采集，再扩展实体/物品交互与战斗。
 3. 增加独立 emergency-stop RPC 和 WebUI 按钮，并对真实客户端验证断联、卡住和危险中断。
-4. 将已验证行为交给私有 Decision Runner，使用低成本无思考模型测试十秒级唤起和无任务自治。
+4. 在移动能力稳定后开放受限空闲自治，验证无明确任务时的目标选择与打断。
 5. 最后实现隔离 Python Worker；在此之前继续使用经过测试的确定性内建行为完成基础游玩。
 
 真实模型 smoke 与延迟结论见 `docs/development/minecraft-decision-smoke.md`，本地 daemon 和父项目启动方式见 `docs/development/minecraft-actor-runtime.md`。

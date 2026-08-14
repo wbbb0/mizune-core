@@ -134,14 +134,20 @@ async function main(): Promise<void> {
       client.observe({ scope: "entities", radius: 32, limit: 64 }, controller.signal)
     ]);
 
-    let mutationRejected = false;
-    try {
-      await transport.call("behavior.start", {}, controller.signal);
-    } catch (error) {
-      mutationRejected = /不支持 RPC 方法|unsupported_method/u.test(toErrorMessage(error));
-      if (!mutationRejected) throw error;
+    const chatText = `Mizune 真实行为联调 ${randomUUID().slice(0, 8)}`;
+    const chatAccepted = await client.startBehavior({
+      kind: "chat",
+      text: chatText,
+      channel: "global",
+      expectedActorRevision: snapshot.actorRevision,
+      expectedObservationRevision: snapshot.observationRevision,
+      idempotencyKey: `managed-neoforge-chat:${randomUUID()}`,
+      decisionReason: "验证受认证的真实聊天行为"
+    }, controller.signal);
+    if (!chatAccepted.ok || chatAccepted.status !== "accepted") {
+      throw new Error(`真实聊天行为未被接受：${chatAccepted.reason ?? chatAccepted.status}`);
     }
-    if (!mutationRejected) throw new Error("只读 NeoForge Runtime 意外接受了 behavior.start");
+    const outgoingChat = await waitForOutgoingChat(client, chatText, timeoutMs, controller.signal);
 
     console.log(JSON.stringify({
       ok: true,
@@ -158,7 +164,12 @@ async function main(): Promise<void> {
         players: summarizeCollection(players.value),
         entities: summarizeCollection(entities.value)
       },
-      mutationBoundary: "behavior.start rejected"
+      verifiedBehavior: {
+        capability: "minecraft.chat.send@1",
+        status: "succeeded",
+        messageId: outgoingChat.messageId,
+        text: outgoingChat.text
+      }
     }, null, 2));
     runCompleted = true;
   } catch (error) {
@@ -261,8 +272,27 @@ function parsePositiveInteger(raw: string | undefined, fallback: number): number
   return parsed;
 }
 
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+async function waitForOutgoingChat(
+  client: ProtocolMinecraftActorClient,
+  expectedText: string,
+  timeoutMs: number,
+  signal: AbortSignal
+): Promise<Record<string, unknown>> {
+  const deadlineAt = Date.now() + timeoutMs;
+  while (Date.now() < deadlineAt) {
+    if (signal.aborted) throw signal.reason;
+    const observed = await client.observe({ scope: "chat", limit: 100 }, signal);
+    if (Array.isArray(observed.value)) {
+      const match = observed.value.find(value => (
+        isRecord(value)
+        && value.direction === "outgoing"
+        && value.text === expectedText
+      ));
+      if (isRecord(match)) return match;
+    }
+    await delay(100, signal);
+  }
+  throw new Error(`等待真实聊天行为完成超时（${timeoutMs}ms）`);
 }
 
 function summarizeEnvironment(value: unknown): unknown {

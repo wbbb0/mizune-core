@@ -2,9 +2,9 @@
 
 Minecraft Actor 是一个 owner-only 的持久系统资源。父项目负责会话、模型决策、持久经历、显著事件唤起和权限；`vendor/mizune-mc-runtime` daemon 负责结构化状态、确定性行为、任务队列、自治策略和 Python Program 生命周期。
 
-当前 daemon 同时支持 simulation 与 `neoforge_readonly` 后端。动态服务器 binding、自然语言 delegate 和父进程 supervisor 已进入父项目：主 Bot 创建资源后，父进程会在每资源隔离的运行目录中拉起 daemon；NeoForge 后端再由 daemon 从受控启动档案拉起真实客户端。两者属于同一个 Runtime incarnation，并分别拥有可核验的独立进程组；父项目持久记录 daemon/client 各自的 PID、Linux start ticks、boot ID 与实例 ID。
+当前 daemon 同时支持 simulation 与 `neoforge` 后端。动态服务器 binding、自然语言 delegate 和父进程 supervisor 已进入父项目：主 Bot 创建资源后，父进程会在每资源隔离的运行目录中拉起 daemon；NeoForge 后端再由 daemon 从受控启动档案拉起真实客户端。两者属于同一个 Runtime incarnation，并分别拥有可核验的独立进程组；父项目持久记录 daemon/client 各自的 PID、Linux start ticks、boot ID 与实例 ID。
 
-NeoForge 1.21.1 Bridge 已实现受认证的 Unix socket v2 协议，并在完整 NeoForge/Create 镜像服上验证了真实客户端登录、玩家/实体/背包/环境快照和游戏聊天事件。它目前只公布 `snapshot.get` 与 `events.list` 两个只读 RPC。Python daemon 会在开放父进程 socket 前验证 Bridge instance、目标服务器和首个完整快照，之后原子刷新快照并连续抽取多页事件；事件 cursor 过期会持久记录高优先级缺口后从最早保留位置恢复。断线、错服、客户端退出或协议漂移会关闭 Actor 控制面，且 live capability manifest 不会公布任何写接口。
+NeoForge 1.21.1 Bridge 已实现受认证的 Unix socket v2 协议，并在完整 NeoForge/Create 镜像服上验证了真实客户端登录、玩家/实体/背包/环境快照、游戏聊天事件和普通全局聊天发送。Python daemon 会在开放父进程 socket 前验证 Bridge instance、目标服务器和首个完整快照，之后原子刷新快照并连续抽取多页事件；事件 cursor 过期会持久记录高优先级缺口后从最早保留位置恢复。真实聊天使用现有 `behavior.start(kind=chat)`、action lease、幂等命令和 `behavior_completed` 事件，未开放的移动/交互/战斗能力不会出现在 manifest。
 
 ## dev 启动
 
@@ -60,7 +60,7 @@ npm run dev:minecraft-runtime
 
 ## 真实客户端 smoke
 
-以下 opt-in smoke 使用临时父项目数据库，实际启动已配置的 NeoForge 客户端，走完整的自然语言 delegate、supervisor、Python daemon、Bridge 首快照和只读观察链路：
+以下 opt-in smoke 使用临时父项目数据库，实际启动已配置的 NeoForge 客户端，走完整的自然语言 delegate、supervisor、Python daemon、Bridge 首快照、结构化观察和一条带随机后缀的普通游戏聊天行为：
 
 ```bash
 CONFIG_INSTANCE=dev npm run smoke:minecraft:managed-neoforge
@@ -101,6 +101,6 @@ WebUI 的「运行时资源 → Minecraft Actor」提供概览、SSE 动态、�
 
 ## 验证边界
 
-默认父项目测试包含两个真实跨进程契约：一个验证 simulation daemon 的握手、行为与持久化；另一个让 supervisor 启动 Python daemon 和假 NeoForge 客户端，验证 Bridge 首快照门禁、daemon/client 双进程指纹、只读 capability 与成组停止。子模块自身测试覆盖 SQLite checkpoint、跨重启幂等、事件游标、deadline、cancel、heartbeat、控制租约安全停机，以及 NeoForge Bridge 的 framing、认证、单控制器租约、快照限额、显式事件缺口、多页 drain 和 live daemon 断线关闭。
+默认父项目测试包含两个真实跨进程契约：一个验证 simulation daemon 的握手、行为与持久化；另一个让 supervisor 启动 Python daemon 和假 NeoForge 客户端，验证 Bridge 首快照门禁、daemon/client 双进程指纹、动态 capability 与成组停止。子模块自身测试覆盖 SQLite checkpoint、跨重启幂等、事件游标、deadline、cancel、heartbeat、控制租约安全停机，以及 NeoForge Bridge 的 framing、认证、单控制器租约、快照限额、显式事件缺口、多页 drain、聊天 mutation 和 live daemon 断线关闭。
 
-真实 1.21.1 NeoForge/Create 离线镜像服已通过上述 opt-in smoke：父项目自然语言 delegate 能启动真实客户端并读取连接状态、坐标、环境方块、背包、玩家和实体，且写行为仍被 capability 边界拒绝。下一阶段按 capability 逐项开放聊天发送、移动、交互和战斗，不改变已经由契约测试保护的父项目 RPC 和工具语义。
+真实 1.21.1 NeoForge/Create 离线镜像服已通过上述 opt-in smoke：父项目自然语言 delegate 能启动真实客户端，读取连接状态、坐标、环境方块、背包、玩家和实体，并通过统一 behavior 状态机发送一条普通全局聊天。下一阶段先让私有 Decision Runner 自然选择该行为，再按 capability 逐项开放移动、交互和战斗，不改变已经由契约测试保护的父项目 RPC 和工具语义。

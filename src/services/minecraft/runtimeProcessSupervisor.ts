@@ -510,7 +510,7 @@ export class MinecraftRuntimeProcessSupervisor {
     ];
     if (input.template.backend === "neoforge") {
       daemonArguments.push(
-        "--backend", "neoforge_readonly",
+        "--backend", "neoforge",
         "--bridge-descriptor-file", input.bridgeDescriptorFile,
         "--bridge-auth-token-file", input.tokenFile,
         "--expected-server-address", input.expectedServerAddress,
